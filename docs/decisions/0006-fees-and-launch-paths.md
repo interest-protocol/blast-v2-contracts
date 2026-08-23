@@ -85,7 +85,7 @@ balance that is neither priced nor claimable would be a hidden reserve, and this
 one. The invariant is executable:
 
 ```text
-meme atomic units:   total_meme_held_by_launch  = M + named_meme_claims
+meme atomic units:   total_meme_held_by_launch  = M + accrued_fees_meme + named_meme_claims
 quote atomic units:  total_quote_held_by_launch = Q + accrued_fees_quote + named_quote_claims
 ```
 
@@ -96,16 +96,20 @@ with a test asserting no residual on either line.
 | Fee | Charged on | Asset | Ceiling | Recipient |
 | --- | --- | --- | --- | --- |
 | creation fee | launch | quote | hard ceiling in config | protocol |
-| trade fee | every buy and sell | **quote** | hard ceiling in config | split protocol / creator |
+| trade fees | every buy and sell | quote, meme, both, or neither as selected at launch | independently bounded per-launch rates | split protocol / creator |
 | migration fee | terminal settlement | quote | hard ceiling in config | protocol |
 
-All trade fees are charged in the quote asset ([ADR 0004](0004-bonding-curve.md)). Fees **accrue** into a
-named balance and are **claimed** separately; they are never routed to an arbitrary recipient during a
-trade. Every fee division rounds **up** in the protocol's favour, per `../engineering-principles.md`, and
-the rounding beneficiary is named at each division site.
+The launcher independently selects fixed `quote_fee_bps` and `meme_fee_bps` for its launch
+([ADR 0004](0004-bonding-curve.md), [ADR 0021](0021-pure-constant-product-curve-quotes.md)). Zero disables
+the corresponding asset; either or both may be positive within the accepted launch bound. Fees
+**accrue** into separate named balances of their charged assets and are **claimed** separately; they are
+never routed to an arbitrary recipient during a trade. Every fee division rounds **up** in the
+protocol's favour, per `../engineering-principles.md`, and the rounding beneficiary is named at each
+division site.
 
-Proposed split: `TRADE_FEE_BPS = 100`, divided evenly between protocol and creator, with the odd atomic
-unit rounding to the protocol. **Proposed, not accepted.**
+Proposed vector fixture: `QUOTE_FEE_BPS = 100` and `MEME_FEE_BPS = 0`. These are examples, not launch
+defaults or protocol-wide rates. The proposed protocol/creator split is even, with an odd atomic unit
+rounding to the protocol. **Proposed, not accepted.**
 
 Proposed: `MIGRATION_FEE_BPS = 100` and `MIGRATION_FEE_CEILING_BPS = 300`. **Proposed, not accepted.**
 These are the two values [`../vectors/curve.json`](../vectors/curve.json) sources from this ADR for its
@@ -115,8 +119,8 @@ These are the two values [`../vectors/curve.json`](../vectors/curve.json) source
 took `referrer: Option<address>` on every trade and funded the referrer by discounting the protocol share
 (`memez@00596fd:fun/sources/structs/constant_product.move:73-99`;
 `memez@00596fd:fun/sources/structs/fees.move:122-168`). Blast settles referral economics entirely
-out-of-band ([ADR 0009](0009-referrals-and-revshare.md)), so the curve fee split is protocol/creator
-only.
+out-of-band ([ADR 0009](0009-referrals-and-revshare.md)), so both curve fee assets split only between
+protocol and creator.
 
 ### Venue-side fees are not Blast fees
 

@@ -32,6 +32,9 @@ The core package now contains:
 - `creator_authority.move` — enum-backed address/X creator identity, one unified
   consuming one-time claim, composable coin-typed `CreatorCap<Meme>` return,
   canonical BCS X attestation bytes, and replay-complete events;
+- `curve.move` — package-only constant-product buy/sell quotes, independently
+  selected quote/meme fee ordering, sell-side burn ramp, checked reserve
+  arithmetic, threshold reporting, and an explicit no-clamp sell-back invariant;
 - `errors.move` — the append-only package error registry exposed as zero-cost
   package macros; owning modules perform their assertions inline;
 - `events_wrapper.move` — the stable package-wide `Event<T>` indexing envelope
@@ -41,6 +44,9 @@ The core package now contains:
 - `creator_authority_tests.move` — interface and integration tests for the ACL,
   shared X configuration, and address/X creator-claim seam, including the
   independent Ed25519 fixture and adversarial lifecycle cases.
+- `curve_tests.move` — exact shared vectors, rounding and threshold boundaries,
+  maximum-width arithmetic, guard precedence, round-trip dust, and a fixed-seed
+  reachable-state sell-back property suite.
 
 These functions are package-internal where the future `launch` module must own
 the call. This avoids publishing an incomplete `Launch` object layout before its

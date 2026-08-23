@@ -28,7 +28,7 @@ contracts/
 ## Current status
 
 The workspace, its engineering contract, and the Sui design record are established.
-The first Sui Move slice implements accepted ADRs 0013 through 0018: one-time
+The implemented Sui Move slices cover accepted ADRs 0013 through 0021: one-time
 `CreatorCap<Meme>` claims for address and X identities, coin-type-isolated
 creator authority that survives migration, and the backend-attested X branch.
 It includes dedicated package-constant and macro-error registries, a wrapped-event
@@ -36,9 +36,11 @@ module, inline invariant assertions, a concern-limited singleton admin registry,
 drop-only admin sign-in witnesses, an independent shared X signer configuration,
 delayed recipient-accepted root transfer,
 minimal X signer rotation/revocation,
-exact BCS encoding, an Ed25519 vector, and adversarial Move tests. The
-load-bearing launch ABI, economics, and lifecycle storage records remain proposed
-and are not silently frozen by this slice.
+exact BCS encoding, an Ed25519 vector, and adversarial Move tests. A pure
+package-only constant-product quote module now fixes buy/sell rounding, independently
+selected quote/meme fee ordering, the sell burn ramp, threshold reporting, and the no-clamp sell-back
+invariant without committing launch storage or deployment parameters. The
+load-bearing launch ABI and lifecycle storage records remain proposed.
 
 The decision records cover the Sui package — package layout, Coin
 Registry creation and the three-transaction bootstrap, mint-authority lifetime and
@@ -51,9 +53,9 @@ in [decisions/README.md](docs/decisions/README.md).
 
 Shared differential vectors for both chains live in [docs/vectors/](docs/vectors/).
 
-The next implementation slice is the common launch lifecycle plus the
-constant-product curve. Auction and Stable remain optional follow-ups rather
-than making the V2 core carry all three modes on day one. See
+The next implementation slice is one audit-sized launch-state/lifecycle module
+that consumes the reviewed curve quotes. Auction and Stable remain optional
+follow-ups rather than making the V2 core carry all three modes on day one. See
 [protocol scope](docs/protocol-scope.md) and [architecture](docs/architecture.md).
 
 ## Working here

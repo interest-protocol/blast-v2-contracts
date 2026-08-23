@@ -46,7 +46,7 @@ and never accidentally.
 | release venue reservation | — | yes | — | — | only while a reservation is held and no settlement exists | `ReservationReleased` |
 | claim protocol fees | — | yes | — | — | accrued balance only | `ProtocolFeesClaimed` |
 | update coin metadata | — | — | yes | — | bonding only | `MetadataUpdated` |
-| set trade fee | — | yes | — | — | `<= TRADE_FEE_CEILING_BPS` | `TradeFeeSet` |
+| choose launch quote/meme fee rates | — | — | — | launcher | fixed at launch; each within its accepted bound | fields in `LaunchCreated` |
 | set creation fee | — | yes | — | — | `<= CREATION_FEE_CEILING` | `CreationFeeSet` |
 | set migration fee | — | yes | — | — | `<= MIGRATION_FEE_CEILING_BPS` | `MigrationFeeSet` |
 | approve adapter witness | — | yes | — | — | bounded set size | `AdapterApproved` |

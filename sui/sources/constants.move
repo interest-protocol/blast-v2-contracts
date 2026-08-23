@@ -2,6 +2,11 @@ module blast_fun::constants;
 
 // === Package Constants ===
 
+/// Denominator for protocol rates expressed in basis points.
+macro public(package) fun basis_points_denominator(): u64 {
+    10_000
+}
+
 /// Maximum number of simultaneously active routine protocol administrators.
 macro public(package) fun max_admins(): u64 {
     16

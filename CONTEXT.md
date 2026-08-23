@@ -43,3 +43,15 @@ Resolution of a SuiNS name to a concrete creator address by a dependency-bearing
 periphery before core launch state is created. Later name changes do not change
 the creator identity.
 _Avoid_: SuiNS claim, dynamic creator name
+
+**Curve quote**:
+A pure numeric buy or sell result derived from launch reserves and configured
+economic parameters. It moves no assets and mutates no launch state; the launch
+operation validates lifecycle and slippage before applying it.
+_Avoid_: trade, swap, curve execution
+
+**Launch fee rates**:
+The fixed `quote_fee_bps` and `meme_fee_bps` selected independently by the
+launcher. A zero rate disables fees in that asset; the two rates represent no
+fees, quote-only, meme-only, or both without a separate mode.
+_Avoid_: fee mode, global trade fee

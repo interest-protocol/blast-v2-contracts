@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "description": "Constant-product bonding curve with virtual quote liquidity: buys, sells, progress-dependent sell-side burn, terminal disposition burn, threshold crossing, and boundary cases.",
   "source_decisions": [
     "docs/decisions/0004-bonding-curve.md",
@@ -12,7 +12,9 @@
     "quote": "atomic units, 9 decimals in these cases",
     "bps": "basis points, 10000 = 100%",
     "rounding": {
-      "meme_out": "floor - user payout rounds down",
+      "meme_out_gross": "floor - curve payout rounds down",
+      "meme_fee": "ceil - protocol fee rounds up",
+      "meme_out_net": "gross meme output minus meme fee",
       "quote_out_gross": "floor - user payout rounds down",
       "quote_fee": "ceil - protocol fee rounds up",
       "progress_bps": "floor - never overstates progress",
@@ -21,19 +23,20 @@
     }
   },
   "parameters": {
-    "note": "Every value here is proposed, not accepted, and sourced from docs/decisions/0004-bonding-curve.md (curve and trade fee), docs/decisions/0003-treasury-cap-lifetime-and-burn.md (max_burn_bps) and docs/decisions/0006-fees-and-launch-paths.md (migration fee and its ceiling). Changing one invalidates every case below.",
+    "note": "Every value here is proposed, not accepted, and sourced from docs/decisions/0004-bonding-curve.md (curve and launch-selected asset fees), docs/decisions/0003-treasury-cap-lifetime-and-burn.md (max_burn_bps) and docs/decisions/0006-fees-and-launch-paths.md (migration fee and its ceiling). Changing one invalidates every case below.",
     "meme_total_supply_atomic": 1000000000000000000,
     "curve_meme_inventory_M0_atomic": 800000000000000000,
     "virtual_quote_V_atomic": 1000000000000,
     "terminal_threshold_T_atomic": 3000000000000,
-    "trade_fee_bps": 100,
+    "quote_fee_bps": 100,
+    "meme_fee_bps": 0,
     "max_burn_bps": 100,
     "migration_fee_bps": 100,
     "migration_fee_ceiling_bps": 300
   },
   "formulas": {
-    "buy": "fee=ceil(g*fee_bps/10000); n=g-fee; meme_out=floor(M*n/(V+Q+n)); M'=M-meme_out; Q'=Q+n",
-    "sell": "progress_bps=min(floor(Q*10000/T),10000); burn_bps=floor(max_burn_bps*progress_bps/10000); burned=ceil(m*burn_bps/10000); eff=m-burned; gross=floor((V+Q)*eff/(M+eff)); fee=ceil(gross*fee_bps/10000); net=gross-fee; M'=M+eff; Q'=Q-gross"
+    "buy": "quote_fee=ceil(q*quote_fee_bps/10000); q_net=q-quote_fee; meme_gross=floor(M*q_net/(V+Q+q_net)); meme_fee=ceil(meme_gross*meme_fee_bps/10000); meme_net=meme_gross-meme_fee; M'=M-meme_gross; Q'=Q+q_net",
+    "sell": "meme_fee=ceil(m*meme_fee_bps/10000); m_after_fee=m-meme_fee; progress_bps=min(floor(Q*10000/T),10000); burn_bps=floor(max_burn_bps*progress_bps/10000); burned=ceil(m_after_fee*burn_bps/10000); eff=m_after_fee-burned; gross=floor((V+Q)*eff/(M+eff)); quote_fee=ceil(gross*quote_fee_bps/10000); net=gross-quote_fee; M'=M+eff; Q'=Q-gross"
   },
   "cases": [
     {
@@ -47,12 +50,58 @@
       "expect": {
         "quote_fee": 10000000,
         "quote_in_net": 990000000,
-        "meme_out": 791216695471483,
+        "meme_out_gross": 791216695471483,
+        "meme_fee": 0,
+        "meme_out_net": 791216695471483,
         "meme_reserve_after": 799208783304528517,
         "real_quote_after": 990000000,
         "crossed_threshold": false
       },
       "notes": "Opening trade against virtual liquidity only."
+    },
+    {
+      "name": "buy_meme_fee_only",
+      "kind": "buy",
+      "given": {
+        "meme_reserve": 800000000000000000,
+        "real_quote": 0,
+        "quote_in_gross": 1000000000,
+        "quote_fee_bps": 0,
+        "meme_fee_bps": 100
+      },
+      "expect": {
+        "quote_fee": 0,
+        "quote_in_net": 1000000000,
+        "meme_out_gross": 799200799200799,
+        "meme_fee": 7992007992008,
+        "meme_out_net": 791208791208791,
+        "meme_reserve_after": 799200799200799201,
+        "real_quote_after": 1000000000,
+        "crossed_threshold": false
+      },
+      "notes": "A zero quote rate and positive meme rate select meme-only fees."
+    },
+    {
+      "name": "buy_both_asset_fees",
+      "kind": "buy",
+      "given": {
+        "meme_reserve": 800000000000000000,
+        "real_quote": 0,
+        "quote_in_gross": 1000000000,
+        "quote_fee_bps": 100,
+        "meme_fee_bps": 100
+      },
+      "expect": {
+        "quote_fee": 10000000,
+        "quote_in_net": 990000000,
+        "meme_out_gross": 791216695471483,
+        "meme_fee": 7912166954715,
+        "meme_out_net": 783304528516768,
+        "meme_reserve_after": 799208783304528517,
+        "real_quote_after": 990000000,
+        "crossed_threshold": false
+      },
+      "notes": "Positive rates in both assets charge each fee exactly once."
     },
     {
       "name": "buy_mid",
@@ -65,7 +114,9 @@
       "expect": {
         "quote_fee": 5000000000,
         "quote_in_net": 495000000000,
-        "meme_out": 264445850397222986,
+        "meme_out_gross": 264445850397222986,
+        "meme_fee": 0,
+        "meme_out_net": 264445850397222986,
         "meme_reserve_after": 534762932907305531,
         "real_quote_after": 495990000000,
         "crossed_threshold": false
@@ -81,6 +132,8 @@
         "meme_in": 1000000000000000
       },
       "expect": {
+        "meme_fee": 0,
+        "meme_in_after_fee": 1000000000000000,
         "progress_bps": 1653,
         "burn_bps": 16,
         "meme_burned": 1600000000000,
@@ -95,6 +148,32 @@
       "notes": "Burn moment 1 at partial progress. quote_out_gross <= real_quote holds without a clamp."
     },
     {
+      "name": "sell_both_asset_fees",
+      "kind": "sell",
+      "given": {
+        "meme_reserve": 534762932907305531,
+        "real_quote": 495990000000,
+        "meme_in": 1000000000000000,
+        "quote_fee_bps": 100,
+        "meme_fee_bps": 100
+      },
+      "expect": {
+        "meme_fee": 10000000000000,
+        "meme_in_after_fee": 990000000000000,
+        "progress_bps": 1653,
+        "burn_bps": 16,
+        "meme_burned": 1584000000000,
+        "meme_in_effective": 988416000000000,
+        "quote_out_gross": 2759975228,
+        "quote_fee": 27599753,
+        "quote_out_net": 2732375475,
+        "meme_reserve_after": 535751348907305531,
+        "real_quote_after": 493230024772,
+        "clamp_would_bind": false
+      },
+      "notes": "Meme fee precedes the burn and curve; quote fee follows the curve."
+    },
+    {
       "name": "buy_to_below_threshold",
       "kind": "buy",
       "given": {
@@ -105,7 +184,9 @@
       "expect": {
         "quote_fee": 25000000000,
         "quote_in_net": 2475000000000,
-        "meme_out": 569784172661870503,
+        "meme_out_gross": 569784172661870503,
+        "meme_fee": 0,
+        "meme_out_net": 569784172661870503,
         "meme_reserve_after": 230215827338129497,
         "real_quote_after": 2475000000000,
         "crossed_threshold": false
@@ -123,7 +204,9 @@
       "expect": {
         "quote_fee": 6000000000,
         "quote_in_net": 594000000000,
-        "meme_out": 33607324020361003,
+        "meme_out_gross": 33607324020361003,
+        "meme_fee": 0,
+        "meme_out_net": 33607324020361003,
         "meme_reserve_after": 196608503317768494,
         "real_quote_after": 3069000000000,
         "crossed_threshold": true
@@ -139,6 +222,8 @@
         "meme_in": 1000000000000000
       },
       "expect": {
+        "meme_fee": 0,
+        "meme_in_after_fee": 1000000000000000,
         "progress_bps": 10000,
         "burn_bps": 100,
         "meme_burned": 10000000000000,
@@ -162,6 +247,8 @@
         "meme_in": 1000000000000000
       },
       "expect": {
+        "meme_fee": 0,
+        "meme_in_after_fee": 1000000000000000,
         "progress_bps": 9999,
         "burn_bps": 99,
         "meme_burned": 9900000000000,
@@ -184,6 +271,8 @@
         "meme_in": 791216695471483
       },
       "expect": {
+        "meme_fee": 0,
+        "meme_in_after_fee": 791216695471483,
         "progress_bps": 3,
         "burn_bps": 0,
         "meme_burned": 0,
@@ -209,7 +298,7 @@
         "abort": "EZeroOutput",
         "quote_fee": 1,
         "quote_in_net": 0,
-        "meme_out_if_unguarded": 0
+        "meme_out_gross_if_unguarded": 0
       },
       "notes": "One atomic quote unit is entirely consumed by the ceiling fee. A zero-output trade must abort with a named error, not succeed silently."
     },
@@ -248,17 +337,17 @@
   "properties": [
     {
       "name": "sell_back_invariant",
-      "statement": "For any meme_in not exceeding the meme outstanding outside the curve, quote_out_gross <= real_quote.",
-      "status": "asserted design requirement, NOT yet backed by committed evidence",
-      "required_test": "seeded property test with a committed generator, a fixed CI seed, a recorded operation count, and full input printing on failure; no violation count is claimed here because no generator is committed to substantiate one"
+      "statement": "For any gross meme input not exceeding the user's net meme received from reachable buys, quote_out_gross <= real_quote.",
+      "status": "backed by sui/tests/curve_tests.move at fixed seed 314159 over 256 reachable buy-then-sell scenarios cycling through no fees, quote-only, meme-only, and both",
+      "evidence": "The test commits its generator, fee modes, parameters, seed, operation count, an algebraically equivalent pre-call check, and an assert_eq trace that prints the operation index plus all generated/state inputs on failure."
     },
     {
       "name": "monotonicity",
-      "statement": "meme_out is non-decreasing in quote_in and non-increasing in real_quote."
+      "statement": "At fixed fee rates, meme_out_net is non-decreasing in quote_in and non-increasing in real_quote."
     },
     {
       "name": "conservation_meme_atomic_units",
-      "statement": "meme_total_supply_initial = M + meme_outstanding + meme_named_claims + burned_sell_side + burned_terminal + meme_deployed_to_venue",
+      "statement": "meme_total_supply_initial = M + meme_outstanding + accrued_fees_meme + meme_named_claims + burned_sell_side + burned_terminal + meme_deployed_to_venue",
       "note": "Burn appears only in this identity. Meme and quote are never combined into one equation."
     },
     {
@@ -271,7 +360,7 @@
     },
     {
       "name": "intermediate_width",
-      "statement": "M <= 10^18 < 2^60 and quote_net < 2^64, so M*quote_net < 2^124 fits a u128; the quotient is bounded by M, so the narrowing back to u64 is proved rather than assumed."
+      "statement": "All products and effective-reserve sums widen to u256. Buy output is bounded by M, sell output is checked against Q before narrowing, and post-trade u64 reserve additions are checked."
     }
   ]
 }

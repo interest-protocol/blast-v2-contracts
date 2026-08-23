@@ -42,6 +42,25 @@ if rg -n '^use blast_fun::errors|^use std::unit_test::assert_eq|^use sui::event:
   failures=$((failures + 1))
 fi
 
+if rg -n '^[[:space:]]*(assert!|abort\b|public struct\b)' sources/errors.move; then
+  echo 'errors.move must contain only diagnostic constants and zero-cost numeric macros.' >&2
+  failures=$((failures + 1))
+fi
+
+if rg -n '\b(Coin|Balance|UID|TxContext|transfer::|event::|object::)\b' sources/curve.move \
+  || rg -n '^(public|entry) fun ' sources/curve.move \
+  || [[ "$(rg -c '^public\(package\) fun quote_(buy|sell)\(' sources/curve.move)" != 2 ]]; then
+  echo 'curve.move must remain a pure package-only numeric quote module.' >&2
+  failures=$((failures + 1))
+fi
+
+if [[ "$(rg -c '^[[:space:]]+quote_fee_bps: u64,' sources/curve.move)" != 2 ]] \
+  || [[ "$(rg -c '^[[:space:]]+meme_fee_bps: u64,' sources/curve.move)" != 2 ]] \
+  || rg -n 'trade_fee_bps|fee_asset|fee_mode' sources/curve.move; then
+  echo 'Each curve quote must use independent quote/meme rates; zero rates encode fee-asset choice.' >&2
+  failures=$((failures + 1))
+fi
+
 if rg -n \
   '\b(acl::(add_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in|destroy_protocol_authority_for_testing|destroy_super_admin_cap_for_testing)|x_claim_config::(set_signer|revoke_signer|destroy_for_testing)|creator_authority::(claim_creator_cap|destroy_for_testing|destroy_cap_for_testing))(<[^>]+>)?\(' \
   sources tests; then

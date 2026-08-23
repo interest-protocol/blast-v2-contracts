@@ -76,14 +76,14 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 
 | Event | Env | Key fields beyond the envelope |
 | --- | :---: | --- |
-| `LaunchCreated` | L | creator-identity kind and either creator address or `x_identity_hash`, `V`, `T`, `M0`, total supply, `meme_decimals`, `quote_decimals`, full quote risk snapshot (regulated **tri-state**, deny cap id, supply state, quote total supply, treasury/metadata cap state, symbol and name hashes), fee configuration, route params, reservation id if any |
-| `Bought` | L | `quote_in_gross`, `quote_fee`, `quote_in_net`, `meme_out`, `M'`, `Q'`, `crossed_threshold` |
-| `Sold` | L | `meme_in`, `progress_bps`, `burn_bps`, `meme_burned`, `meme_in_effective`, `quote_out_gross`, `quote_fee`, `quote_out_net`, `M'`, `Q'` |
+| `LaunchCreated` | L | creator-identity kind and either creator address or `x_identity_hash`, `V`, `T`, `M0`, total supply, `meme_decimals`, `quote_decimals`, full quote risk snapshot (regulated **tri-state**, deny cap id, supply state, quote total supply, treasury/metadata cap state, symbol and name hashes), fixed `quote_fee_bps` and `meme_fee_bps`, route params, reservation id if any |
+| `Bought` | L | `quote_in_gross`, `quote_fee`, `quote_in_net`, `meme_out_gross`, `meme_fee`, `meme_out_net`, `M'`, `Q'`, `crossed_threshold` |
+| `Sold` | L | `meme_in_gross`, `meme_fee`, `meme_in_after_fee`, `progress_bps`, `burn_bps`, `meme_burned`, `meme_in_effective`, `quote_out_gross`, `quote_fee`, `quote_out_net`, `M'`, `Q'` |
 | `MemeBurnedOnCurve` | L | `amount`, `burn_bps`, `progress_bps`, `total_supply_after` |
 | `MemeBurnedAtMigration` | L | `amount`, `total_supply_after` |
 | `SupplyStateChanged` | L | `old_state`, `new_state`, `final_total_supply` |
-| `FeesAccrued` | L | `protocol_delta`, `creator_delta`, `protocol_total`, `creator_total` |
-| `CreatorFeesClaimed` / `ProtocolFeesClaimed` | L | `amount`, `remaining_total`, recipient |
+| `FeesAccrued` | L | meme/quote `protocol_delta`, `creator_delta`, `protocol_total`, and `creator_total` fields |
+| `CreatorFeesClaimed` / `ProtocolFeesClaimed` | L | asset type, `amount`, `remaining_total`, recipient |
 | `CreatorFeeSplitSet` | L | `recipients` (bounded vector), `shares_bps`, `old_recipients`, `old_shares_bps`, `remainder_beneficiary`, `max_recipients_bound`, `config_id` |
 | `LpFeesCollected` | L | `venue`, `pool_id`, `position_id`, `lp_vault_id`, `meme_collected`, `quote_collected`, `creator_share`, `protocol_share`, `principal_liquidity_before`, `principal_liquidity_after` |
 | `CreatorContributed` | L | `quote_amount`, `meme_received`, `Q'` — distinguishes creator-supplied progress from market progress |

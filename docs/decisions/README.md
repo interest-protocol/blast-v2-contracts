@@ -66,10 +66,11 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0018](0018-authority-module-separation.md) | Separate protocol ACL, X signer configuration, and creator authority | **accepted** |
 | [0019](0019-consuming-creator-authority-and-cap-return.md) | Consuming creator authority and returning CreatorCap | **accepted** |
 | [0020](0020-admin-cap-self-destruction.md) | Admin-cap self-destruction and voluntary renunciation | **accepted** |
+| [0021](0021-pure-constant-product-curve-quotes.md) | Pure constant-product curve quotes | **accepted** |
 
-Only ADRs 0013–0020 are accepted. Constants, ceilings, curve
-parameters, and every other proposed ABI or storage commitment still await
-approval.
+Only ADRs 0013–0021 are accepted. ADR 0021 accepts the pure curve formulas and
+package boundary, but not the proposed deployment constants in ADR 0004. Other
+ceilings, public ABI, and storage commitments still await approval.
 
 ## Open premises
 

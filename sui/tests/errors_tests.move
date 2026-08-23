@@ -42,4 +42,16 @@ fun package_error_registry_is_stable() {
     std::unit_test::assert_eq!(blast_fun::errors::creator_not_sender!(), 26);
     std::unit_test::assert_eq!(blast_fun::errors::invalid_x_claim_attestation!(), 27);
     std::unit_test::assert_eq!(blast_fun::errors::super_admin_transfer_unchanged!(), 28);
+    std::unit_test::assert_eq!(blast_fun::errors::invalid_curve_reserve!(), 29);
+    std::unit_test::assert_eq!(blast_fun::errors::invalid_terminal_threshold!(), 30);
+    std::unit_test::assert_eq!(blast_fun::errors::invalid_quote_fee_bps!(), 31);
+    std::unit_test::assert_eq!(blast_fun::errors::invalid_max_burn_bps!(), 32);
+    std::unit_test::assert_eq!(blast_fun::errors::zero_trade_input!(), 33);
+    std::unit_test::assert_eq!(blast_fun::errors::zero_trade_output!(), 34);
+    std::unit_test::assert_eq!(blast_fun::errors::curve_reserve_overflow!(), 35);
+    std::unit_test::assert_eq!(
+        blast_fun::errors::sell_back_invariant_violated!(),
+        36,
+    );
+    std::unit_test::assert_eq!(blast_fun::errors::invalid_meme_fee_bps!(), 37);
 }

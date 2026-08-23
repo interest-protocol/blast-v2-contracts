@@ -105,6 +105,42 @@ const EInvalidXClaimAttestation: u64 = 27;
 /// A root-transfer proposal targeted the already pending recipient.
 const ESuperAdminTransferUnchanged: u64 = 28;
 
+#[test_only]
+/// Meme inventory or virtual quote reserve cannot represent a valid constant-product market.
+const EInvalidCurveReserve: u64 = 29;
+
+#[test_only]
+/// The real-quote terminal threshold must be nonzero.
+const EInvalidTerminalThreshold: u64 = 30;
+
+#[test_only]
+/// The quote-asset fee exceeds one hundred percent.
+const EInvalidQuoteFeeBps: u64 = 31;
+
+#[test_only]
+/// The sell-side maximum burn exceeds one hundred percent.
+const EInvalidMaxBurnBps: u64 = 32;
+
+#[test_only]
+/// A curve quote requires a nonzero trade input.
+const EZeroTradeInput: u64 = 33;
+
+#[test_only]
+/// Rounding or fees reduced the user's quoted output to zero.
+const EZeroTradeOutput: u64 = 34;
+
+#[test_only]
+/// A post-trade curve reserve cannot be represented as u64.
+const ECurveReserveOverflow: u64 = 35;
+
+#[test_only]
+/// A sell quote requested more real quote than the curve holds.
+const ESellBackInvariantViolated: u64 = 36;
+
+#[test_only]
+/// The meme-asset fee exceeds one hundred percent.
+const EInvalidMemeFeeBps: u64 = 37;
+
 // === Package Error Codes ===
 
 macro public(package) fun invalid_admin_cap(): u64 {
@@ -193,4 +229,40 @@ macro public(package) fun invalid_x_claim_attestation(): u64 {
 
 macro public(package) fun super_admin_transfer_unchanged(): u64 {
     28
+}
+
+macro public(package) fun invalid_curve_reserve(): u64 {
+    29
+}
+
+macro public(package) fun invalid_terminal_threshold(): u64 {
+    30
+}
+
+macro public(package) fun invalid_quote_fee_bps(): u64 {
+    31
+}
+
+macro public(package) fun invalid_max_burn_bps(): u64 {
+    32
+}
+
+macro public(package) fun zero_trade_input(): u64 {
+    33
+}
+
+macro public(package) fun zero_trade_output(): u64 {
+    34
+}
+
+macro public(package) fun curve_reserve_overflow(): u64 {
+    35
+}
+
+macro public(package) fun sell_back_invariant_violated(): u64 {
+    36
+}
+
+macro public(package) fun invalid_meme_fee_bps(): u64 {
+    37
 }
