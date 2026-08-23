@@ -1,0 +1,102 @@
+# Blast V2 on Sui
+
+This directory owns the Sui Move implementation. Shared protocol behavior lives
+in `../docs/`; Sui-specific rules live in `../AGENTS.md`.
+
+The initial package stays single and dependency-light:
+
+```text
+sui/
+├── Move.toml
+├── sources/
+├── tests/
+└── scripts/
+```
+
+Add a separate Move package only for a real dependency/security boundary such as
+a venue adapter or test coins. External Git dependencies must use immutable full
+commit SHAs. `Published.toml`, normalized deployment summaries, and upgrade-cap
+disposition are release records and should be committed when they exist.
+
+## Implemented first slice
+
+The core package now contains:
+
+- `constants.move` — package-wide protocol values exposed as zero-cost package
+  macros, with related attestation-layout values derived rather than repeated;
+- `acl.move` — singleton `ProtocolAuthority`, delayed `SuperAdminCap` transfer,
+  bounded revocable protocol-wide `AdminCap` delegation, holder-driven cap
+  destruction, and drop-only `AdminWitness` sign-in only;
+- `x_claim_config.move` — independently initialized shared X backend-signer
+  configuration, witness-gated rotation/revocation, and Ed25519 verification;
+- `creator_authority.move` — enum-backed address/X creator identity, one unified
+  consuming one-time claim, composable coin-typed `CreatorCap<Meme>` return,
+  canonical BCS X attestation bytes, and replay-complete events;
+- `errors.move` — the append-only package error registry exposed as zero-cost
+  package macros; owning modules perform their assertions inline;
+- `events_wrapper.move` — the stable package-wide `Event<T>` indexing envelope
+  and its single package emitter;
+- `events.move` — public payload schemas, package-only emitters routed through
+  the wrapper, and test-only collection/field inspection;
+- `creator_authority_tests.move` — interface and integration tests for the ACL,
+  shared X configuration, and address/X creator-claim seam, including the
+  independent Ed25519 fixture and adversarial lifecycle cases.
+
+These functions are package-internal where the future `launch` module must own
+the call. This avoids publishing an incomplete `Launch` object layout before its
+economics and lifecycle ADRs are accepted.
+
+The cross-language backend fixture is
+[`../docs/vectors/x-creator-claim.json`](../docs/vectors/x-creator-claim.json).
+
+## Planned package set
+
+Proposed in [../docs/decisions/0001-sui-package-and-module-layout.md](../docs/decisions/0001-sui-package-and-module-layout.md).
+Only the `blast_fun` core package exists today.
+
+| Package | Role | Why separate |
+| --- | --- | --- |
+| `blast_fun` | all core protocol logic; **imports no venue package** | the trusted core must build with the framework alone |
+| `blast_fun_cetus` / `_bluefin` / `_turbos` | migration adapters | each carries a distinct external failure surface and its own dependency exemption |
+| `blast_fun_revshare` | epoch settlement and claims | separately governed, holds funds, must not reach curve state |
+| `blast_fun_template` | generated per-launch coin package | published once per launch by the creator |
+
+Core defines the neutral route and handoff types; adapters depend inward on core.
+Core and adapter are composed **in the programmable transaction block**, never by
+core importing an adapter.
+
+SuiNS follows the same dependency rule. The future `blast_fun_suins` periphery
+will resolve a valid current target while constructing the launch and pass only
+that concrete address into core. Core stores no name and imports no SuiNS module;
+the resolved address later claims through the ordinary address branch.
+
+## Launch bootstrap
+
+Three transactions, for the reasons given in
+[../docs/decisions/0002-coin-creation-and-currency-authority.md](../docs/decisions/0002-coin-creation-and-currency-authority.md):
+
+1. **publish** the generated coin package — its `init` creates the currency through
+   the Coin Registry, mints the full supply, claims the metadata capability, and
+   hands the creator a launch ticket;
+2. **promote** the currency to its derived shared address; this call is
+   permissionless and anyone can make it;
+3. **launch** — one transaction that redeems the ticket, optionally takes a venue
+   pool reservation through an adapter command, and opens the curve. It is atomic:
+   reservation and curve opening either both happen or neither does.
+
+Whether steps 1 and 3 can merge is an open premise (P1) recorded in
+[../docs/decisions/README.md](../docs/decisions/README.md).
+
+The implementation is pinned to Sui CLI `1.77.2-51d177ad7d65` from the
+`mainnet-v1.77.2` release. CI and release records must use this exact build until
+an explicit toolchain-upgrade change updates the pin and lockfile. Use:
+
+```bash
+sui move build
+sui move lint --warnings-are-errors
+sui move test --lint
+./scripts/check_source_boundaries.sh
+```
+
+Do not add JSON-RPC to new scripts or SDK code. Prefer gRPC for normal
+reads/writes/simulation and GraphQL for custom indexed or historical queries.

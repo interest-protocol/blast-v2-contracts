@@ -1,0 +1,6 @@
+[package]
+name = "blast_fun"
+edition = "2024"
+
+[addresses]
+blast_fun = "0x0"

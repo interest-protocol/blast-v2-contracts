@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "description": "Migration price derivation across quote decimal combinations and both pair orientations. Demonstrates that the on-chain raw-ratio calculation needs no decimal correction, while the human display price needs both decimal values.",
+  "source_decisions": [
+    "docs/decisions/0005-quote-asset-generalisation.md",
+    "docs/decisions/0010-migration-and-venue-adapters.md"
+  ],
+  "status": "proposed",
+  "units": {
+    "meme_atomic": "meme atomic units at meme_decimals",
+    "quote_atomic": "quote atomic units at quote_decimals",
+    "sqrt_price_x64": "Q64.64 fixed point, the Uniswap-V3 convention used by all three target venues"
+  },
+  "venue_bounds": {
+    "min_sqrt_price_x64": 4295048016,
+    "max_sqrt_price_x64": 79226673515401279992447579055,
+    "tick_bound": 443636,
+    "evidence": [
+      "CetusProtocol/cetus-contracts@ddfbdeba174319998b012de876ab7ec23c3ab0bc:packages/cetus_clmm/sources/math/tick_math.move:7-11",
+      "turbos-finance/turbos-sui-move-interface@cff693265bfc41c7de2233afe31c9d7428adc9e1:clmm/sources/lib/math_tick.move:12-14"
+    ]
+  },
+  "formulas": {
+    "meme_is_coin_a": "sqrt_price_x64 = isqrt((quote_atomic << 128) / meme_atomic)",
+    "meme_is_coin_b": "sqrt_price_x64 = isqrt((meme_atomic << 128) / quote_atomic)",
+    "display_price": "display_price_quote_per_meme = raw_ratio * 10^(meme_decimals - quote_decimals)",
+    "orientation_rule": "Cetus enforces a canonical order over defining-id type-name bytes, and the meme type name embeds an unpredictable freshly published package address, so the adapter must handle both orientations. Evidence: CetusProtocol/cetus-contracts@ddfbdeba174319998b012de876ab7ec23c3ab0bc:packages/cetus_clmm/sources/factory.move:1074-1140"
+  },
+  "cases": [
+    {
+      "name": "sui_like_9dec_quote",
+      "given": {
+        "meme_decimals": 9,
+        "quote_decimals": 9,
+        "meme_atomic": 196608503317768494,
+        "quote_atomic": 3038310000000
+      },
+      "expect": {
+        "sqrt_price_x64_meme_is_coin_a": 72516129429223843,
+        "sqrt_price_x64_meme_is_coin_b": 4692505923844928806099,
+        "both_in_venue_range": true,
+        "display_factor_exponent": 0,
+        "display_price_quote_per_meme_exact_rational": "506385000000/32768083886294749",
+        "display_price_quote_per_meme_decimal_34sf": "0.0000154536042374999999597047269507",
+        "display_price_is_a_derived_presentation_value": true
+      },
+      "notes": "MEME/SUI. Raw ratio and display price coincide only because the decimals are equal."
+    },
+    {
+      "name": "usdc_like_6dec_quote",
+      "given": {
+        "meme_decimals": 9,
+        "quote_decimals": 6,
+        "meme_atomic": 196608503317768494,
+        "quote_atomic": 3038310000
+      },
+      "expect": {
+        "sqrt_price_x64_meme_is_coin_a": 2293161360959133,
+        "sqrt_price_x64_meme_is_coin_b": 148390066531826006806777,
+        "both_in_venue_range": true,
+        "display_factor_exponent": 3,
+        "display_price_quote_per_meme_exact_rational": "506385000000/32768083886294749",
+        "display_price_quote_per_meme_decimal_34sf": "0.0000154536042374999999597047269507",
+        "display_price_is_a_derived_presentation_value": true
+      },
+      "notes": "MEME/USDC. Raw ratio is 1000x smaller than the 9-decimal case, yet the display price is identical."
+    },
+    {
+      "name": "lst_like_8dec_quote",
+      "given": {
+        "meme_decimals": 9,
+        "quote_decimals": 8,
+        "meme_atomic": 196608503317768494,
+        "quote_atomic": 303831000000
+      },
+      "expect": {
+        "sqrt_price_x64_meme_is_coin_a": 22931613609591333,
+        "sqrt_price_x64_meme_is_coin_b": 14839006653182600680677,
+        "both_in_venue_range": true,
+        "display_factor_exponent": 1,
+        "display_price_quote_per_meme_exact_rational": "506385000000/32768083886294749",
+        "display_price_quote_per_meme_decimal_34sf": "0.0000154536042374999999597047269507",
+        "display_price_is_a_derived_presentation_value": true
+      },
+      "notes": "MEME/sSUI-style liquid staking token at 8 decimals."
+    },
+    {
+      "name": "meme_6dec_quote_9dec",
+      "given": {
+        "meme_decimals": 6,
+        "quote_decimals": 9,
+        "meme_atomic": 196608503317768,
+        "quote_atomic": 3038310000000
+      },
+      "expect": {
+        "sqrt_price_x64_meme_is_coin_a": 2293161360959136182,
+        "sqrt_price_x64_meme_is_coin_b": 148390066531825820383,
+        "both_in_venue_range": true,
+        "display_factor_exponent": -3,
+        "display_price_quote_per_meme_exact_rational": "379788750/24576062914721",
+        "display_price_quote_per_meme_decimal_34sf": "0.0000154536042375000387885466361251",
+        "display_price_is_a_derived_presentation_value": true
+      },
+      "notes": "Non-9-decimal meme. Present specifically so no formula may depend on the meme having 9 decimals."
+    }
+  ],
+  "properties": [
+    {
+      "name": "no_decimal_correction_on_chain",
+      "statement": "For a FIXED reserve state, changing the quote's decimals scales the raw atomic ratio by exactly 10^(meme_decimals - quote_decimals) and leaves the display price EXACTLY unchanged. Cases sui_like_9dec_quote, usdc_like_6dec_quote and lst_like_8dec_quote share the identical exact rational 506385000000/32768083886294749, which is the proof. The on-chain raw-ratio calculation therefore applies no decimal correction; only the display conversion does.",
+      "caveat": "meme_6dec_quote_9dec is a DIFFERENT reserve state, not a rescaling: a 6-decimal token cannot represent 196608503317768494 nine-decimal atomic units, so its meme reserve is truncated to 196608503317768. Its exact display price 379788750/24576062914721 therefore differs from the other three and agrees only to 12 significant digits. Stating this prevents the false claim that all four are exactly equal.",
+      "reproduce": "display = Fraction(quote_atomic, 10**quote_decimals) / Fraction(meme_atomic, 10**meme_decimals)"
+    },
+    {
+      "name": "both_orientations_covered",
+      "statement": "Every case supplies the sqrt price for the meme as coin A and as coin B. The adapter must select by the venue's canonical ordering, not by assumption."
+    },
+    {
+      "name": "range_guard",
+      "statement": "Every derived sqrt_price_x64 lies strictly inside [min_sqrt_price_x64, max_sqrt_price_x64]. A derived price outside the range must abort rather than clamp."
+    },
+    {
+      "name": "pair_immutability",
+      "statement": "The (Meme, Quote) pair used to derive these values is fixed at launch and identical at migration. No route, retry, or recovery path may change it."
+    },
+    {
+      "name": "display_price_is_not_terminating",
+      "statement": "The exact display price is a non-terminating rational: 32768083886294749 has prime factors other than 2 and 5. Any decimal rendering is therefore a rounded presentation value, never the exact quantity. The exact rational is authoritative; the 34-significant-figure decimal is provided for human comparison only and must not be used as a test oracle."
+    }
+  ]
+}

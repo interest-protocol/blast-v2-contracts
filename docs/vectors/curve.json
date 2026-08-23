@@ -1,0 +1,277 @@
+{
+  "schema_version": 1,
+  "description": "Constant-product bonding curve with virtual quote liquidity: buys, sells, progress-dependent sell-side burn, terminal disposition burn, threshold crossing, and boundary cases.",
+  "source_decisions": [
+    "docs/decisions/0004-bonding-curve.md",
+    "docs/decisions/0003-treasury-cap-lifetime-and-burn.md",
+    "docs/decisions/0006-fees-and-launch-paths.md"
+  ],
+  "status": "proposed",
+  "units": {
+    "meme": "atomic units, 9 decimals in these cases",
+    "quote": "atomic units, 9 decimals in these cases",
+    "bps": "basis points, 10000 = 100%",
+    "rounding": {
+      "meme_out": "floor - user payout rounds down",
+      "quote_out_gross": "floor - user payout rounds down",
+      "quote_fee": "ceil - protocol fee rounds up",
+      "progress_bps": "floor - never overstates progress",
+      "burn_bps": "floor - never overstates the ramp",
+      "meme_burned": "ceil - seller obligation rounds up"
+    }
+  },
+  "parameters": {
+    "note": "Every value here is proposed, not accepted, and sourced from docs/decisions/0004-bonding-curve.md (curve and trade fee), docs/decisions/0003-treasury-cap-lifetime-and-burn.md (max_burn_bps) and docs/decisions/0006-fees-and-launch-paths.md (migration fee and its ceiling). Changing one invalidates every case below.",
+    "meme_total_supply_atomic": 1000000000000000000,
+    "curve_meme_inventory_M0_atomic": 800000000000000000,
+    "virtual_quote_V_atomic": 1000000000000,
+    "terminal_threshold_T_atomic": 3000000000000,
+    "trade_fee_bps": 100,
+    "max_burn_bps": 100,
+    "migration_fee_bps": 100,
+    "migration_fee_ceiling_bps": 300
+  },
+  "formulas": {
+    "buy": "fee=ceil(g*fee_bps/10000); n=g-fee; meme_out=floor(M*n/(V+Q+n)); M'=M-meme_out; Q'=Q+n",
+    "sell": "progress_bps=min(floor(Q*10000/T),10000); burn_bps=floor(max_burn_bps*progress_bps/10000); burned=ceil(m*burn_bps/10000); eff=m-burned; gross=floor((V+Q)*eff/(M+eff)); fee=ceil(gross*fee_bps/10000); net=gross-fee; M'=M+eff; Q'=Q-gross"
+  },
+  "cases": [
+    {
+      "name": "buy_first_one_quote_unit",
+      "kind": "buy",
+      "given": {
+        "meme_reserve": 800000000000000000,
+        "real_quote": 0,
+        "quote_in_gross": 1000000000
+      },
+      "expect": {
+        "quote_fee": 10000000,
+        "quote_in_net": 990000000,
+        "meme_out": 791216695471483,
+        "meme_reserve_after": 799208783304528517,
+        "real_quote_after": 990000000,
+        "crossed_threshold": false
+      },
+      "notes": "Opening trade against virtual liquidity only."
+    },
+    {
+      "name": "buy_mid",
+      "kind": "buy",
+      "given": {
+        "meme_reserve": 799208783304528517,
+        "real_quote": 990000000,
+        "quote_in_gross": 500000000000
+      },
+      "expect": {
+        "quote_fee": 5000000000,
+        "quote_in_net": 495000000000,
+        "meme_out": 264445850397222986,
+        "meme_reserve_after": 534762932907305531,
+        "real_quote_after": 495990000000,
+        "crossed_threshold": false
+      },
+      "notes": "Continues from buy_first_one_quote_unit."
+    },
+    {
+      "name": "sell_mid_with_progress_burn",
+      "kind": "sell",
+      "given": {
+        "meme_reserve": 534762932907305531,
+        "real_quote": 495990000000,
+        "meme_in": 1000000000000000
+      },
+      "expect": {
+        "progress_bps": 1653,
+        "burn_bps": 16,
+        "meme_burned": 1600000000000,
+        "meme_in_effective": 998400000000000,
+        "quote_out_gross": 2787801814,
+        "quote_fee": 27878019,
+        "quote_out_net": 2759923795,
+        "meme_reserve_after": 535761332907305531,
+        "real_quote_after": 493202198186,
+        "clamp_would_bind": false
+      },
+      "notes": "Burn moment 1 at partial progress. quote_out_gross <= real_quote holds without a clamp."
+    },
+    {
+      "name": "buy_to_below_threshold",
+      "kind": "buy",
+      "given": {
+        "meme_reserve": 800000000000000000,
+        "real_quote": 0,
+        "quote_in_gross": 2500000000000
+      },
+      "expect": {
+        "quote_fee": 25000000000,
+        "quote_in_net": 2475000000000,
+        "meme_out": 569784172661870503,
+        "meme_reserve_after": 230215827338129497,
+        "real_quote_after": 2475000000000,
+        "crossed_threshold": false
+      },
+      "notes": "Fresh sequence. Stops just below the terminal threshold."
+    },
+    {
+      "name": "buy_crossing_threshold",
+      "kind": "buy",
+      "given": {
+        "meme_reserve": 230215827338129497,
+        "real_quote": 2475000000000,
+        "quote_in_gross": 600000000000
+      },
+      "expect": {
+        "quote_fee": 6000000000,
+        "quote_in_net": 594000000000,
+        "meme_out": 33607324020361003,
+        "meme_reserve_after": 196608503317768494,
+        "real_quote_after": 3069000000000,
+        "crossed_threshold": true
+      },
+      "notes": "Crossing happens on a buy only. Terminal state feeds the migration price."
+    },
+    {
+      "name": "sell_at_full_progress_max_burn_unreachable",
+      "kind": "sell",
+      "given": {
+        "meme_reserve": 196608503317768494,
+        "real_quote": 3069000000000,
+        "meme_in": 1000000000000000
+      },
+      "expect": {
+        "progress_bps": 10000,
+        "burn_bps": 100,
+        "meme_burned": 10000000000000,
+        "meme_in_effective": 990000000000000,
+        "quote_out_gross": 20386338622,
+        "quote_fee": 203863387,
+        "quote_out_net": 20182475235,
+        "meme_reserve_after": 197598503317768494,
+        "real_quote_after": 3048613661378,
+        "clamp_would_bind": false,
+        "abort": "EUnreachableByConstruction"
+      },
+      "notes": "Pure-math boundary, UNREACHABLE through the lifecycle. progress_bps reaches 10000 only when real_quote >= T, and crossing T closes trading, so no sell can execute in this state. Retained to pin the arithmetic at the top of the ramp; it must never be presented as an executable trade. See the sell_at_max_live_progress case for the highest burn a live sell can actually incur."
+    },
+    {
+      "name": "sell_at_max_live_progress",
+      "kind": "sell",
+      "given": {
+        "meme_reserve": 200000000000050001,
+        "real_quote": 2999999999999,
+        "meme_in": 1000000000000000
+      },
+      "expect": {
+        "progress_bps": 9999,
+        "burn_bps": 99,
+        "meme_burned": 9900000000000,
+        "meme_in_effective": 990100000000000,
+        "quote_out_gross": 19704453104,
+        "quote_fee": 197044532,
+        "quote_out_net": 19507408572,
+        "meme_reserve_after": 200990100000050001,
+        "real_quote_after": 2980295546895,
+        "clamp_would_bind": false
+      },
+      "notes": "Highest burn attainable on an executable sell: real_quote = T-1 gives progress_bps 9999 and burn_bps 99, one basis point below the configured max_burn_bps of 100. The state is constructed directly rather than reached by a buy, because the ceiling fee makes the net-quote map non-surjective and no single gross amount yields net exactly T-1; the sell function is a pure function of state, so the vector is well-defined regardless."
+    },
+    {
+      "name": "sell_round_trip_immediately_after_first_buy",
+      "kind": "sell",
+      "given": {
+        "meme_reserve": 799208783304528517,
+        "real_quote": 990000000,
+        "meme_in": 791216695471483
+      },
+      "expect": {
+        "progress_bps": 3,
+        "burn_bps": 0,
+        "meme_burned": 0,
+        "meme_in_effective": 791216695471483,
+        "quote_out_gross": 989999999,
+        "quote_fee": 9900000,
+        "quote_out_net": 980099999,
+        "meme_reserve_after": 800000000000000000,
+        "real_quote_after": 1,
+        "clamp_would_bind": false
+      },
+      "notes": "Inverse/dust bound. Spent 1000000000, recovered 980099999; 19900001 lost, of which 1 atomic unit is curve-retained rounding dust and 19900000 is the two fees. progress_bps is 3, which floors to burn_bps 0 - the ramp does not round a negligible progress up into a burn."
+    },
+    {
+      "name": "buy_one_atomic_unit",
+      "kind": "buy",
+      "given": {
+        "meme_reserve": 800000000000000000,
+        "real_quote": 0,
+        "quote_in_gross": 1
+      },
+      "expect": {
+        "abort": "EZeroOutput",
+        "quote_fee": 1,
+        "quote_in_net": 0,
+        "meme_out_if_unguarded": 0
+      },
+      "notes": "One atomic quote unit is entirely consumed by the ceiling fee. A zero-output trade must abort with a named error, not succeed silently."
+    },
+    {
+      "name": "sell_more_meme_than_exists_outside_curve",
+      "kind": "sell",
+      "given": {
+        "meme_reserve": 800000000000000000,
+        "real_quote": 0,
+        "meme_in": 1000000000
+      },
+      "expect": {
+        "abort": "EUnreachableByConstruction",
+        "quote_out_gross_if_unguarded": 1249,
+        "real_quote_available": 0
+      },
+      "notes": "Unreachable in practice: no meme exists outside the curve at M0, so no caller can hold this Coin<Meme>. Recorded because it is exactly the state in which the historical .min() clamp would bind. Blast asserts the sell-back invariant instead of clamping."
+    },
+    {
+      "name": "terminal_disposition",
+      "kind": "migration",
+      "given": {
+        "meme_reserve": 196608503317768494,
+        "real_quote": 3069000000000,
+        "migration_fee_bps": 100
+      },
+      "expect": {
+        "migration_fee": 30690000000,
+        "quote_to_liquidity": 3038310000000,
+        "meme_available_for_liquidity": 196608503317768494,
+        "burn_moment_2_rule": "meme_available_for_liquidity minus meme actually deployed by the venue adapter is burned in one accounted step before the supply state is locked to BurnOnly"
+      },
+      "notes": "Burn moment 2. The exact burned amount depends on how much meme the venue consumes at the derived price, so the rule is asserted rather than a fixed number."
+    }
+  ],
+  "properties": [
+    {
+      "name": "sell_back_invariant",
+      "statement": "For any meme_in not exceeding the meme outstanding outside the curve, quote_out_gross <= real_quote.",
+      "status": "asserted design requirement, NOT yet backed by committed evidence",
+      "required_test": "seeded property test with a committed generator, a fixed CI seed, a recorded operation count, and full input printing on failure; no violation count is claimed here because no generator is committed to substantiate one"
+    },
+    {
+      "name": "monotonicity",
+      "statement": "meme_out is non-decreasing in quote_in and non-increasing in real_quote."
+    },
+    {
+      "name": "conservation_meme_atomic_units",
+      "statement": "meme_total_supply_initial = M + meme_outstanding + meme_named_claims + burned_sell_side + burned_terminal + meme_deployed_to_venue",
+      "note": "Burn appears only in this identity. Meme and quote are never combined into one equation."
+    },
+    {
+      "name": "conservation_quote_atomic_units",
+      "statement": "quote_in_total = quote_out_total + Q + accrued_fees_quote + quote_named_claims + migration_fee_quote + quote_deployed_to_venue"
+    },
+    {
+      "name": "burn_ramp_top_is_an_asymptote",
+      "statement": "burn_bps == max_burn_bps requires progress_bps == 10000, which requires real_quote >= T, at which point trading is closed. The maximum burn on an executable sell is max_burn_bps - 1."
+    },
+    {
+      "name": "intermediate_width",
+      "statement": "M <= 10^18 < 2^60 and quote_net < 2^64, so M*quote_net < 2^124 fits a u128; the quotient is bounded by M, so the narrowing back to u64 is proved rather than assumed."
+    }
+  ]
+}
