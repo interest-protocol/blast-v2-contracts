@@ -88,7 +88,7 @@ so the administrative compromise scope is unchanged.
 ### Cold launch policy remains separate
 
 `LaunchConfig` keeps its exact bounded quote map, graduation defaults, migration
-witness set, six public mutations, and one package-only launch snapshot. It does
+witness set, five public mutations, and one package-only launch snapshot. It does
 not absorb the X signer or live trade-fee share. Every trade therefore reads a
 small `RuntimeConfig`, while launch creation reads `LaunchConfig` once and stores
 its immutable effective policy.

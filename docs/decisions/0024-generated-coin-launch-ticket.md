@@ -19,17 +19,19 @@ their custody.
 
 ### Blast consumes the OTW
 
-`launch_ticket::new_address` and `launch_ticket::new_x` are public because the
-generated coin package calls one of them from its `init`. Each constructor takes
-the OTW and the Coin Registry metadata inputs in the same order as
+`launch_ticket::new` is public because the generated coin package calls it from
+its `init`. The constructor takes the OTW and the Coin Registry metadata inputs
+in the same order as
 `coin_registry::new_currency_with_otw`, followed by the creator identity, the
 `burnable` choice, and `TxContext`.
 
-The constructor validates the creator identity first. It then calls
+The caller obtains a validated `CreatorIdentity` from
+`creator_authority::new_address` or `creator_authority::new_x`. The ticket
+constructor converts it into one linear `CreatorAuthority<Meme>`, then calls
 `new_currency_with_otw` and finalizes the initializer. Blast does not expose a
 ticket constructor that accepts an existing `TreasuryCap` or `MetadataCap`.
 
-The constructors return the ticket. They do not transfer it. The generated
+The constructor returns the ticket. It does not transfer it. The generated
 package remains responsible for deliberate delivery from its non-composable
 `init` boundary.
 
@@ -72,6 +74,10 @@ Registry path.
 **Transfer the ticket inside Blast.** Rejected: a reusable public constructor
 must return its owned result so the generated package controls delivery.
 
+**Expose separate address and X ticket constructors.** Rejected: identity
+selection is composable input; duplicating the OTW currency-creation and custody
+path adds interface and implementation without another lifecycle.
+
 **Create a public supply-mode object or enum factory.** Rejected: the external
 choice has only two states and does not need another public construction API.
 
@@ -95,7 +101,8 @@ authority.
 - A transfer test proves caller-selected ticket delivery.
 - Invalid address and X identities abort before currency creation.
 - A non-OTW type is rejected by the pinned Coin Registry implementation.
-- Structural checks require the OTW constructor and reject regulated, legacy,
-  transfer, and arbitrary-cap construction paths.
+- Structural checks require one creator-identity OTW constructor and reject
+  duplicate identity-specific, regulated, legacy, transfer, and arbitrary-cap
+  construction paths.
 - Build, strict lint, full tests, coverage, and source-boundary checks remain
   release gates.

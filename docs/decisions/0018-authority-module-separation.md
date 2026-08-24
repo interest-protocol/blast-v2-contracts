@@ -65,8 +65,10 @@ message was signed by the currently authorized Blast backend key.
 
 ### `creator_authority` owns creator-capability issuance
 
-`blast_fun::creator_authority` owns `CreatorIdentity`, launch-scoped one-time `CreatorAuthority<Meme>`,
-the canonical X claim message/attestation rules, and `CreatorCap<Meme>`. Its single claim function selects
+`blast_fun::creator_authority` owns validated droppable `CreatorIdentity` input,
+its package-only conversion into launch-scoped one-time
+`CreatorAuthority<Meme>`, the canonical X claim message/attestation rules, and
+`CreatorCap<Meme>`. Its single claim function selects
 the address or X branch, asks `x_claim_config` to authenticate the X signature when required, consumes
 `CreatorAuthority<Meme>`, constructs and returns the creator capability, and
 emits `CreatorCapClaimed`. It does not own, accept, or pass through

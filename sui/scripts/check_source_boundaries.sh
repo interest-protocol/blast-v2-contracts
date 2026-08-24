@@ -218,7 +218,9 @@ if [[ ! -f sources/launch_ticket.move ]] \
   || ! rg -U -q \
     'public struct LaunchTicket<phantom Meme> has key, store \{\s*id: UID,\s*treasury_cap: TreasuryCap<Meme>,\s*metadata_cap: MetadataCap<Meme>,\s*creator_authority: CreatorAuthority<Meme>,\s*burnable: bool,\s*\}' \
     sources/launch_ticket.move \
-  || [[ "$(rg -c '^public fun new_(address|x)<Meme: drop>\(' sources/launch_ticket.move)" != 2 ]] \
+  || [[ "$(rg -c '^public fun new<Meme: drop>\(' sources/launch_ticket.move)" != 1 ]] \
+  || [[ "$(rg -c 'creator_identity: CreatorIdentity' sources/launch_ticket.move)" != 1 ]] \
+  || rg -n '^public fun new_(address|x)<Meme: drop>\(' sources/launch_ticket.move \
   || [[ "$(rg -c '^public\(package\) fun into_parts<Meme>\(' sources/launch_ticket.move)" != 1 ]] \
   || ! rg -q 'coin_registry::new_currency_with_otw' sources/launch_ticket.move \
   || ! rg -q 'initializer\.finalize\(ctx\)' sources/launch_ticket.move \
@@ -241,7 +243,7 @@ if [[ -z "$launch_ticket_event_payload" ]] \
 fi
 
 if rg -n \
-  '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|creator_authority::claim_creator_cap|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees))(<[^>]+>)?\(' \
+  '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|creator_authority::(into_authority|event_fields|claim_creator_cap)|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees))(<[^>]+>)?\(' \
   sources tests; then
   echo 'Blast-owned receiver functions must use Move 2024 dot syntax.' >&2
   failures=$((failures + 1))
@@ -282,6 +284,27 @@ fi
 if ! rg -q '^public struct CreatorCap<phantom Meme> has key, store' \
   sources/creator_authority.move; then
   echo 'creator_authority.move must own CreatorCap<Meme> construction.' >&2
+  failures=$((failures + 1))
+fi
+
+if ! rg -U -q \
+  'public enum CreatorIdentity has drop, store \{\s*Address\(address\),\s*X\(vector<u8>\),\s*\}' \
+  sources/creator_authority.move \
+  || ! rg -U -q \
+    'public struct CreatorAuthority<phantom Meme> has store \{\s*identity: CreatorIdentity,\s*\}' \
+    sources/creator_authority.move \
+  || ! rg -U -q \
+    'public fun new_address\(creator: address\): CreatorIdentity' \
+    sources/creator_authority.move \
+  || ! rg -U -q \
+    'public fun new_x\(x_identity_hash: vector<u8>\): CreatorIdentity' \
+    sources/creator_authority.move \
+  || ! rg -U -q \
+    'public\(package\) fun into_authority<Meme>\(\s*self: CreatorIdentity,\s*\): CreatorAuthority<Meme>' \
+    sources/creator_authority.move \
+  || rg -U -n 'public fun new_(address|x).*CreatorAuthority' \
+    sources/creator_authority.move; then
+  echo 'Public creator constructors must create freely composable identities; only package code may mint linear coin-typed creator authority.' >&2
   failures=$((failures + 1))
 fi
 

@@ -74,8 +74,9 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0026](0026-deferred-sell-burn.md) | Deferred sell burn custody | **accepted** |
 | [0027](0027-graduation-economics-and-migration-witnesses.md) | Graduation economics and migration witnesses | **accepted** |
 | [0028](0028-hot-cold-runtime-configuration.md) | Hot/cold runtime configuration consolidation | **accepted** |
+| [0029](0029-composable-creator-identity.md) | Composable creator identity and protected linear authority | **accepted** |
 
-Only ADRs 0013–0028 are accepted. ADR 0021 accepts the pure curve formulas and
+Only ADRs 0013–0029 are accepted. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR

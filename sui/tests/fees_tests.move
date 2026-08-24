@@ -410,7 +410,8 @@ fun start(): Fixture {
     scenario.next_tx(CREATOR);
     let admin_cap = scenario.take_from_sender<acl::AdminCap>();
     let fixture_runtime_config = runtime_config::new_disabled_for_testing(scenario.ctx());
-    let creator_authority = creator_authority::new_address<TEST_MEME>(CREATOR);
+    let creator_authority = creator_authority::new_address(CREATOR)
+        .into_authority<TEST_MEME>();
     let fixture_clock = clock::create_for_testing(scenario.ctx());
     let creator_cap = creator_authority.claim_creator_cap(
         &fixture_runtime_config,

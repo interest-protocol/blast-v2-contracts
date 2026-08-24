@@ -10,7 +10,13 @@ use sui::clock::Clock;
 
 // === Public Types ===
 
-/// One-time creator claim authorization stored by a launch until consumed.
+/// Validated caller input selecting who may claim the creator capability.
+public enum CreatorIdentity has drop, store {
+    Address(address),
+    X(vector<u8>),
+}
+
+/// Protected one-time, coin-typed creator claim authorization stored until consumed.
 public struct CreatorAuthority<phantom Meme> has store {
     identity: CreatorIdentity,
 }
@@ -18,12 +24,6 @@ public struct CreatorAuthority<phantom Meme> has store {
 /// Authority over creator-controlled settings and accrued fees for one coin type.
 public struct CreatorCap<phantom Meme> has key, store {
     id: UID,
-}
-
-/// The launch-time rule for who may claim the creator capability.
-public enum CreatorIdentity has drop, store {
-    Address(address),
-    X(vector<u8>),
 }
 
 /// Canonical BCS message signed by the Blast backend after authenticated X verification.
@@ -34,30 +34,45 @@ public struct XClaimMessage has copy, drop {
     expiry_ms: u64,
 }
 
-// === Package Functions ===
+// === Public Functions ===
 
-/// Records a concrete wallet or SuiNS-resolved address as the one permitted claimant.
-public(package) fun new_address<Meme>(
-    creator: address,
-): CreatorAuthority<Meme> {
+/// Validates a concrete wallet or SuiNS-resolved creator identity.
+public fun new_address(creator: address): CreatorIdentity {
     assert!(creator != @0x0, blast_fun::errors::invalid_creator!());
 
-    CreatorAuthority<Meme> {
-        identity: CreatorIdentity::Address(creator),
-    }
+    CreatorIdentity::Address(creator)
 }
 
-/// Records an immutable stable X user-id commitment as the only permitted claim identity.
-public(package) fun new_x<Meme>(
-    x_identity_hash: vector<u8>,
-): CreatorAuthority<Meme> {
+/// Validates an immutable stable X user-id commitment as a creator identity.
+public fun new_x(x_identity_hash: vector<u8>): CreatorIdentity {
     assert!(
         x_identity_hash.length() == constants::x_identity_hash_length!(),
         blast_fun::errors::invalid_x_identity_hash!(),
     );
 
-    CreatorAuthority<Meme> {
-        identity: CreatorIdentity::X(x_identity_hash),
+    CreatorIdentity::X(x_identity_hash)
+}
+
+// === Package Functions ===
+
+/// Converts validated caller input into one linear, coin-typed claim authorization.
+public(package) fun into_authority<Meme>(
+    self: CreatorIdentity,
+): CreatorAuthority<Meme> {
+    CreatorAuthority {
+        identity: self,
+    }
+}
+
+/// Returns the address/X option pair recorded by launch-ticket creation events.
+public(package) fun event_fields(
+    self: &CreatorIdentity,
+): (Option<address>, Option<vector<u8>>) {
+    match (self) {
+        CreatorIdentity::Address(creator) => (option::some(*creator), option::none()),
+        CreatorIdentity::X(x_identity_hash) => {
+            (option::none(), option::some(*x_identity_hash))
+        },
     }
 }
 

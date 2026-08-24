@@ -675,7 +675,8 @@ fun address_creator_claim_returns_composable_cap_without_attestation() {
     let mut scenario = test_scenario::begin(LAUNCHER);
     let (super_admin_cap, protocol_authority, config) =
         new_protocol_for_testing(LAUNCHER, scenario.ctx());
-    let creator_state = creator_authority::new_address<TEST_MEME>(CREATOR);
+    let creator_state = creator_authority::new_address(CREATOR)
+        .into_authority<TEST_MEME>();
     let test_clock = clock::create_for_testing(scenario.ctx());
     scenario.next_tx(CREATOR);
     let cap = creator_state.claim_creator_cap<TEST_MEME>(
@@ -713,8 +714,8 @@ fun address_creator_claim_returns_composable_cap_without_attestation() {
 #[test]
 #[expected_failure(abort_code = 9)]
 fun address_identity_rejects_zero_creator_address() {
-    let creator_state = creator_authority::new_address<TEST_MEME>(@0x0);
-    destroy(creator_state);
+    let creator_identity = creator_authority::new_address(@0x0);
+    destroy(creator_identity);
 }
 
 #[test]
@@ -722,7 +723,8 @@ fun address_identity_rejects_zero_creator_address() {
 fun address_creator_claim_rejects_different_sender() {
     let mut scenario = test_scenario::begin(LAUNCHER);
     let config = new_runtime_config(scenario.ctx());
-    let creator_state = creator_authority::new_address<TEST_MEME>(CREATOR);
+    let creator_state = creator_authority::new_address(CREATOR)
+        .into_authority<TEST_MEME>();
     let test_clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(@0xBAD);
@@ -743,7 +745,8 @@ fun address_creator_claim_rejects_different_sender() {
 fun address_creator_claim_rejects_x_attestation() {
     let mut scenario = test_scenario::begin(LAUNCHER);
     let config = new_runtime_config(scenario.ctx());
-    let creator_state = creator_authority::new_address<TEST_MEME>(CREATOR);
+    let creator_state = creator_authority::new_address(CREATOR)
+        .into_authority<TEST_MEME>();
     let test_clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(CREATOR);
@@ -762,8 +765,8 @@ fun address_creator_claim_rejects_x_attestation() {
 #[test]
 #[expected_failure(abort_code = 10)]
 fun x_identity_rejects_non_32_byte_identity_commitment() {
-    let creator_state = creator_authority::new_x<TEST_MEME>(x"1122");
-    destroy(creator_state);
+    let creator_identity = creator_authority::new_x(x"1122");
+    destroy(creator_identity);
 }
 
 #[test]
@@ -900,7 +903,8 @@ fun x_claim_rejects_expired_attestation() {
 fun x_claim_rejects_signature_for_another_meme_type() {
     let mut scenario = test_scenario::begin(LAUNCHER);
     let config = new_runtime_config(scenario.ctx());
-    let creator_state = creator_authority::new_x<OTHER_MEME>(x_identity_hash());
+    let creator_state = creator_authority::new_x(x_identity_hash())
+        .into_authority<OTHER_MEME>();
     let mut test_clock = clock::create_for_testing(scenario.ctx());
     test_clock.set_for_testing(NOW_MS);
 
@@ -922,9 +926,9 @@ fun x_claim_rejects_signature_for_another_meme_type() {
 fun x_claim_rejects_signature_for_another_x_identity() {
     let mut scenario = test_scenario::begin(LAUNCHER);
     let config = new_runtime_config(scenario.ctx());
-    let creator_state = creator_authority::new_x<TEST_MEME>(
+    let creator_state = creator_authority::new_x(
         x"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-    );
+    ).into_authority<TEST_MEME>();
     let mut test_clock = clock::create_for_testing(scenario.ctx());
     test_clock.set_for_testing(NOW_MS);
 
@@ -1092,7 +1096,7 @@ fun new_runtime_config(ctx: &mut TxContext): runtime_config::RuntimeConfig {
 }
 
 fun new_x_authority(): creator_authority::CreatorAuthority<TEST_MEME> {
-    creator_authority::new_x<TEST_MEME>(x_identity_hash())
+    creator_authority::new_x(x_identity_hash()).into_authority<TEST_MEME>()
 }
 
 fun x_identity_hash(): vector<u8> {

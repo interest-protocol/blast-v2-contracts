@@ -126,10 +126,12 @@ core interface. See `docs/architecture.md`.
   in Blast-defined custody only until the one-time creator claim returns it
   separately alongside `CreatorCap<Meme>`. See ADR 0023.
 - `launch_ticket` must consume the generated coin's OTW and call
-  `coin_registry::new_currency_with_otw` itself. Its public constructors must not
-  accept arbitrary pre-created treasury or metadata caps. `LaunchTicket<Meme>`
+  `coin_registry::new_currency_with_otw` itself. Its single public constructor
+  accepts a validated, droppable `CreatorIdentity`; only package code may convert
+  that input into linear `CreatorAuthority<Meme>`. It must not accept arbitrary
+  pre-created treasury or metadata caps. `LaunchTicket<Meme>`
   stores the empty `TreasuryCap<Meme>`, native `MetadataCap<Meme>`, one
-  `CreatorAuthority<Meme>`, and the `burnable` choice. Constructors return the
+  `CreatorAuthority<Meme>`, and the `burnable` choice. The constructor returns the
   ticket without transfer; the generated package decides delivery. Only the
   package-level consuming `into_parts` seam may release those stored values to
   the future launch module. See ADR 0024.

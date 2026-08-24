@@ -145,6 +145,12 @@ current shared runtime configuration, so an update applies to the next accrual
 of every existing and future launch without reallocating fees already accrued.
 _Avoid_: fixed fee split, launch fee share
 
+**Creator fee share**:
+The implied complement of the protocol fee share: `10,000 - protocol_fee_share_bps`.
+It is never independently configured or stored; the creator receives the exact
+fee remainder after the protocol amount is rounded.
+_Avoid_: creator fee rate, creator split config, launch creator share
+
 **Runtime config**:
 The small shared live-settings object containing the dedicated X-claim signer
 key and global protocol fee share. Both values apply immediately to the next

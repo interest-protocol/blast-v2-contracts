@@ -2,7 +2,7 @@
 module blast_fun::launch_ticket;
 
 use blast_fun::{
-    creator_authority::{Self, CreatorAuthority},
+    creator_authority::{Self, CreatorAuthority, CreatorIdentity},
     events,
 };
 use std::string::String;
@@ -22,68 +22,42 @@ public struct LaunchTicket<phantom Meme> has key, store {
 
 // === Public Functions ===
 
-/// Creates an OTW currency ticket whose creator identity is a concrete address.
-public fun new_address<Meme: drop>(
+/// Creates an OTW currency ticket for one validated creator identity.
+public fun new<Meme: drop>(
     otw: Meme,
     decimals: u8,
     symbol: String,
     name: String,
     description: String,
     icon_url: String,
-    creator: address,
+    creator_identity: CreatorIdentity,
     burnable: bool,
     ctx: &mut TxContext,
 ): LaunchTicket<Meme> {
-    let creator_authority = creator_authority::new_address<Meme>(creator);
-    let ticket = new(
+    let (creator, x_identity_hash) = creator_identity.event_fields();
+    let creator_authority = creator_identity.into_authority<Meme>();
+    let (initializer, treasury_cap) = coin_registry::new_currency_with_otw(
         otw,
         decimals,
         symbol,
         name,
         description,
         icon_url,
-        creator_authority,
-        burnable,
         ctx,
     );
+    let metadata_cap = initializer.finalize(ctx);
 
-    ticket.emit_created(
-        option::some(creator),
-        option::none(),
-        ctx.sender(),
-    );
-
-    ticket
-}
-
-/// Creates an OTW currency ticket whose creator identity is an X commitment.
-public fun new_x<Meme: drop>(
-    otw: Meme,
-    decimals: u8,
-    symbol: String,
-    name: String,
-    description: String,
-    icon_url: String,
-    x_identity_hash: vector<u8>,
-    burnable: bool,
-    ctx: &mut TxContext,
-): LaunchTicket<Meme> {
-    let creator_authority = creator_authority::new_x<Meme>(x_identity_hash);
-    let ticket = new(
-        otw,
-        decimals,
-        symbol,
-        name,
-        description,
-        icon_url,
+    let ticket = LaunchTicket {
+        id: object::new(ctx),
+        treasury_cap,
+        metadata_cap,
         creator_authority,
         burnable,
-        ctx,
-    );
+    };
 
     ticket.emit_created(
-        option::none(),
-        option::some(x_identity_hash),
+        creator,
+        x_identity_hash,
         ctx.sender(),
     );
 
@@ -115,37 +89,6 @@ public(package) fun into_parts<Meme>(
 }
 
 // === Private Functions ===
-
-fun new<Meme: drop>(
-    otw: Meme,
-    decimals: u8,
-    symbol: String,
-    name: String,
-    description: String,
-    icon_url: String,
-    creator_authority: CreatorAuthority<Meme>,
-    burnable: bool,
-    ctx: &mut TxContext,
-): LaunchTicket<Meme> {
-    let (initializer, treasury_cap) = coin_registry::new_currency_with_otw(
-        otw,
-        decimals,
-        symbol,
-        name,
-        description,
-        icon_url,
-        ctx,
-    );
-    let metadata_cap = initializer.finalize(ctx);
-
-    LaunchTicket {
-        id: object::new(ctx),
-        treasury_cap,
-        metadata_cap,
-        creator_authority,
-        burnable,
-    }
-}
 
 fun emit_created<Meme>(
     self: &LaunchTicket<Meme>,

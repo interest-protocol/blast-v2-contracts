@@ -27,16 +27,17 @@ The pinned SuiNS review, compatibility notes, and primary-source links are in
 
 ### Every CreatorCap is claimed once
 
-Every launch begins with an unissued `CreatorCap<Meme>`. Creator authority state
-stores one `CreatorIdentity` enum:
+Every launch begins with an unissued `CreatorCap<Meme>`. A caller first selects
+one validated `CreatorIdentity` input:
 
 - `Address(address)` for a literal wallet or a SuiNS-resolved address; or
 - `X(vector<u8>)` for the immutable X user-id commitment.
 
-It stores no claimed boolean. `CreatorAuthority<Meme>` itself is the one-time,
-linear authorization resource consumed by a successful claim. The coin type
-remains the permanent capability, creator-claim event, and X-signature domain.
-Creator authority stores no runtime launch id.
+Package code wraps that input in `CreatorAuthority<Meme>`. It stores no claimed
+boolean. `CreatorAuthority<Meme>` itself is the one-time, linear authorization
+resource consumed by a successful claim. The coin type remains the permanent
+capability, creator-claim event, and X-signature domain. Creator authority stores
+no runtime launch id.
 
 The creator-authority module exposes one package claim seam,
 `claim_creator_cap`. The future launch module exposes exactly one corresponding

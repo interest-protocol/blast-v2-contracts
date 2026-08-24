@@ -36,6 +36,9 @@ The protocol/creator split is different: it is one live, global `protocol_fee_sh
 shared `RuntimeConfig`, bounded from zero through 10,000 basis points. Every trade on every launch
 reads the current configuration. An update therefore applies to the next fee accrual of all existing
 and future launches; neither `Launch` nor `FeeLedger` snapshots the split.
+There is no independently stored `creator_fee_share_bps`: it is always the
+complement of the protocol share, and the creator receives the exact fee
+remainder after protocol-favouring rounding.
 The singleton starts at zero so package publication cannot silently begin taking protocol revenue.
 An administrator must choose any nonzero share explicitly, and the setter rejects an unchanged value
 so every emitted update represents a real state transition.

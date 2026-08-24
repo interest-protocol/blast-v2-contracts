@@ -32,14 +32,15 @@ The core package now contains:
   dedicated X backend signer and global protocol fee share, with witness-gated
   signer rotation/revocation, Ed25519 verification, and bounded 0–10,000 bps
   fee-share updates;
-- `creator_authority.move` — enum-backed address/X creator identity, one unified
-  consuming one-time claim, a composable coin-typed `CreatorCap<Meme>` return,
-  no unrelated metadata-cap pass-through, canonical BCS X attestation bytes,
-  and replay-complete events;
-- `launch_ticket.move` — public address/X constructors that consume the generated
-  coin OTW, create the current unregulated zero-supply currency, and return a
-  transferable ticket holding both native caps, one creator authority, and the
-  launcher-selected burnable flag;
+- `creator_authority.move` — validated public address/X identity values,
+  package-only conversion into linear coin-typed creator authority, one unified
+  consuming claim, a composable `CreatorCap<Meme>` return, no unrelated
+  metadata-cap pass-through, canonical BCS X attestation bytes, and
+  replay-complete events;
+- `launch_ticket.move` — one public constructor that accepts a creator identity,
+  consumes the generated coin OTW, creates the current unregulated zero-supply
+  currency, and returns a transferable ticket holding both native caps, one
+  creator authority, and the launcher-selected burnable flag;
 - `curve.move` — package-only constant-product buy/sell quotes, independently
   selected quote/meme fee ordering, sell-side burn ramp, checked reserve
   arithmetic, threshold reporting, and an explicit no-clamp sell-back invariant;

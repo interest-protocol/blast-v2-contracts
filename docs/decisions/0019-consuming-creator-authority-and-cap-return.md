@@ -23,9 +23,9 @@ unrepresentable.
 
 ## Decision
 
-`CreatorAuthority<phantom Meme>` stores only `CreatorIdentity`. It retains `store` and has neither `copy`
-nor `drop`, so launch state must preserve it until it is either claimed or handled by a future explicit
-recovery decision.
+`CreatorAuthority<phantom Meme>` stores only its validated `CreatorIdentity`. It
+retains `store` and has neither `copy` nor `drop`, so launch state must preserve
+it until it is either claimed or handled by a future explicit recovery decision.
 
 `creator_authority::claim_creator_cap` takes `CreatorAuthority<Meme>` by value. It performs all address or
 X-identity, attestation, signer, expiry, and signature checks before destructuring the authority. On
@@ -51,10 +51,12 @@ retired and remains reserved; a repeat claim is rejected structurally because th
 longer exists, not by a runtime boolean assertion.
 
 Consumption proves at most one cap per creator-authority resource. The stronger one-cap-per-launch
-invariant also requires the launch path to construct exactly one `CreatorAuthority<Meme>` from the unique
-launch ticket and never expose a recreation path. The package-only `new_address` and `new_x` constructors
-exist solely for that launch initialization. The future launch implementation and its tests must enforce
-this construction invariant.
+invariant also requires the launch path to construct exactly one
+`CreatorAuthority<Meme>` from the unique launch ticket and never expose a
+recreation path. Public `new_address` and `new_x` constructors create only a
+droppable `CreatorIdentity`; package-only conversion creates linear authority
+during unique OTW ticket initialization. The future launch implementation and
+its tests must enforce this construction invariant.
 
 ## Alternatives considered
 

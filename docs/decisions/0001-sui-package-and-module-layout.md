@@ -142,7 +142,8 @@ published.
 | `launch_config::set_graduation_defaults`, `launch_config::allow_migration_witness`, `launch_config::disallow_migration_witness` | functions | protocol administrators curate bounded future-launch terminal economics and external migrator code identities without rewriting existing launches |
 | `creator_authority::CreatorCap` | type | transferable coin-typed authority consumed by creator fee and migration integrations ([ADR 0014](0014-typed-creator-cap-and-diagnostic-modules.md)) |
 | `launch_ticket::LaunchTicket` | type | returned across the generated-package boundary and held by the launcher until registration completes |
-| `launch_ticket::new_address`, `launch_ticket::new_x` | functions | called from a generated coin package's `init`; consume its OTW and return the ticket for deliberate delivery ([ADR 0024](0024-generated-coin-launch-ticket.md)) |
+| `creator_authority::new_address`, `creator_authority::new_x` | functions | validate a freely composable creator-identity input without issuing creator authority ([ADR 0029](0029-composable-creator-identity.md)) |
+| `launch_ticket::new` | function | called from a generated coin package's `init`; consumes its OTW and creator identity, then returns the ticket for deliberate delivery ([ADR 0024](0024-generated-coin-launch-ticket.md), [ADR 0029](0029-composable-creator-identity.md)) |
 | `launch::claim_creator_cap` | function | the single address/X claim seam; consumes the stored authority after validating `TxContext::sender` and returns `CreatorCap` and native `MetadataCap` separately for composition ([ADR 0019](0019-consuming-creator-authority-and-cap-return.md)) |
 | `migration::collect_lp_fees` | function | must return owned coins for composition |
 | `migration::release_reservation` | function | `AdminCap`-gated venue-state cleanup before a venue switch ([ADR 0010](0010-migration-and-venue-adapters.md)) |

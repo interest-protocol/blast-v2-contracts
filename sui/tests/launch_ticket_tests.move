@@ -1,7 +1,7 @@
 #[test_only]
 module blast_fun::launch_ticket_tests;
 
-use blast_fun::{events, launch_ticket::{Self, LaunchTicket}};
+use blast_fun::{creator_authority, events, launch_ticket::{Self, LaunchTicket}};
 use std::unit_test::{assert_eq, destroy};
 use sui::test_scenario;
 
@@ -20,14 +20,15 @@ public struct INVALID_OTW(bool) has drop;
 #[test]
 fun address_ticket_returns_empty_capabilities_and_replay_complete_event() {
     let mut scenario = test_scenario::begin(LAUNCHER);
-    let ticket = launch_ticket::new_address(
+    let creator_identity = creator_authority::new_address(CREATOR);
+    let ticket = launch_ticket::new(
         LAUNCH_TICKET_TESTS(),
         9,
         b"TICKET".to_string(),
         b"Ticket Test".to_string(),
         b"Address launch ticket".to_string(),
         b"https://blast.fun/ticket.png".to_string(),
-        CREATOR,
+        creator_identity,
         false,
         scenario.ctx(),
     );
@@ -73,14 +74,15 @@ fun address_ticket_returns_empty_capabilities_and_replay_complete_event() {
 fun x_ticket_is_composable_and_records_burn_only_selection() {
     let mut scenario = test_scenario::begin(LAUNCHER);
     let x_identity_hash = x"11223344556677889900aabbccddeeffffeeddccbbaa00998877665544332211";
-    let ticket = launch_ticket::new_x(
+    let creator_identity = creator_authority::new_x(x_identity_hash);
+    let ticket = launch_ticket::new(
         LAUNCH_TICKET_TESTS(),
         6,
         b"XTICKET".to_string(),
         b"X Ticket Test".to_string(),
         b"X launch ticket".to_string(),
         b"".to_string(),
-        x_identity_hash,
+        creator_identity,
         true,
         scenario.ctx(),
     );
@@ -128,14 +130,15 @@ fun x_ticket_is_composable_and_records_burn_only_selection() {
 #[expected_failure(abort_code = 9)]
 fun address_ticket_rejects_zero_creator_before_currency_creation() {
     let mut scenario = test_scenario::begin(LAUNCHER);
-    let ticket = launch_ticket::new_address(
+    let creator_identity = creator_authority::new_address(@0x0);
+    let ticket = launch_ticket::new(
         LAUNCH_TICKET_TESTS(),
         9,
         b"TICKET".to_string(),
         b"Ticket Test".to_string(),
         b"Invalid creator".to_string(),
         b"".to_string(),
-        @0x0,
+        creator_identity,
         false,
         scenario.ctx(),
     );
@@ -148,14 +151,15 @@ fun address_ticket_rejects_zero_creator_before_currency_creation() {
 #[expected_failure(abort_code = 10)]
 fun x_ticket_rejects_invalid_identity_before_currency_creation() {
     let mut scenario = test_scenario::begin(LAUNCHER);
-    let ticket = launch_ticket::new_x(
+    let creator_identity = creator_authority::new_x(x"1122");
+    let ticket = launch_ticket::new(
         LAUNCH_TICKET_TESTS(),
         9,
         b"XTICKET".to_string(),
         b"X Ticket Test".to_string(),
         b"Invalid X identity".to_string(),
         b"".to_string(),
-        x"1122",
+        creator_identity,
         true,
         scenario.ctx(),
     );
@@ -168,14 +172,15 @@ fun x_ticket_rejects_invalid_identity_before_currency_creation() {
 #[expected_failure]
 fun ticket_rejects_a_non_otw_type() {
     let mut scenario = test_scenario::begin(LAUNCHER);
-    let ticket = launch_ticket::new_address(
+    let creator_identity = creator_authority::new_address(CREATOR);
+    let ticket = launch_ticket::new(
         INVALID_OTW(false),
         9,
         b"INVALID".to_string(),
         b"Invalid OTW".to_string(),
         b"Not a one-time witness".to_string(),
         b"".to_string(),
-        CREATOR,
+        creator_identity,
         false,
         scenario.ctx(),
     );

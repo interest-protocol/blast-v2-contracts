@@ -177,11 +177,13 @@ public fun claim_creator_cap<Meme>(
 ): CreatorCap<Meme>
 ```
 
-Core stores `CreatorIdentity::{Address(address), X(vector<u8>)}` but does not ask
-the external caller to construct that enum. The launch path records the identity;
-the single claim path matches it internally. Callers can construct `None` for an
-address claim or `Some(vector<u8>)` for the canonical X call-data envelope using
-ordinary PTB pure inputs. The launch extracts and consumes its single stored
+The generated package constructs a validated
+`CreatorIdentity::{Address(address), X(vector<u8>)}` through a public Move
+function and supplies it to launch-ticket creation; it is not a raw PTB `Pure`
+input. Package code converts it into the coin-typed linear authority stored by
+the launch. Claim callers can construct `None` for an address claim or
+`Some(vector<u8>)` for the canonical X call-data envelope using ordinary PTB
+pure inputs. The launch extracts and consumes its single stored
 `CreatorAuthority<Meme>` and returns the resulting cap; it does not restore an
 authority after a successful claim.
 
