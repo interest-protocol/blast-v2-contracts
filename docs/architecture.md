@@ -13,7 +13,8 @@ contracts/
 ├── docs/                 shared protocol and engineering specification
 ├── deployments/          normalized public deployment records (when present)
 ├── sui/
-│   ├── sources/          core Move package
+│   ├── sources/          core Move domain modules
+│   │   └── lib/          package diagnostics and indexing infrastructure
 │   ├── tests/
 │   └── scripts/
 └── evm/
@@ -55,10 +56,11 @@ without returning to core for its post-conditions.
 | --- | --- | --- |
 | Protocol ACL | root rotation and revocable routine-admin membership | feature configuration, backend keys, creator identity, or fees |
 | Signed-action config | one shared domain-specific backend key and signature authentication | admin delegation, domain transition state, or economic authority |
-| Registry/config | global limits, fee ceilings, approved migration targets, emergency state | user balances or curve math |
+| Trade-fee config | live global protocol share and its bounded admin setter | accrued balances, launch-selected fee rates, or claim authority |
+| Registry/config | global limits, other fee ceilings, approved migration targets, emergency state | user balances or curve math |
 | Launch | asset identity, lifecycle, reserves, accounting, transition guards | venue-specific migration code |
 | Curve math | pure quote and reserve transition formulas | authority, storage, transfers |
-| Fees | fee calculation and accrued fee/referral accounting | arbitrary recipient execution |
+| Fees | creator/protocol fee splitting, accrued accounting, and capability claims | arbitrary recipient execution or referral attribution |
 | Allocation/vesting | bounded stakeholder schedules and claims | launch pricing |
 | Migration interface | one-time handoff payload and settlement proof | DEX-specific object/storage details |
 | Adapter | prepare and complete a migration for one venue | changing core economics |
@@ -68,38 +70,29 @@ directions, not a demand for seven packages.
 
 ## Asset pair
 
-A launch pairs its meme coin with a configurable quote `Coin<Quote>`. **SUI is not
-hard-coded and holds no privileged position.** The one structural prerequisite is
-that the quote type has a finalized, shared Coin Registry `Currency<Quote>`; that is
-not an allowlist, because any party can complete a coin's registry
-migration or promotion permissionlessly.
+A launch pairs its generated meme coin with a quote `Coin<Quote>`. The initial
+quote admission rule is deliberately reopened for the launch-state review; core
+does not currently approve regulated or legacy quote support, and no generic
+quote-risk snapshot module is planned.
 
-Two properties follow and are enforced as invariants:
+One property remains invariant regardless of the admitted quote set:
 
 - **Pair immutability.** The selected `(Meme, Quote)` pair is fixed at launch and
   never changes through bonding, migration, recovery, or settlement. Migration
   selects a route; it never selects a different pair.
-- **Disclosure over gatekeeping.** Quote risk facts — regulated status as a
-  tri-state, deny-cap identity, supply state, both decimal values — are captured
-  immutably at launch and emitted. Core does not judge or rank a quote; admission,
-  routing, and UI curation are external to core.
-
-See [decisions/0005-quote-asset-generalisation.md](decisions/0005-quote-asset-generalisation.md).
+See [ADR 0023](decisions/0023-generated-coin-supply-and-metadata-custody.md).
 
 ## Coin creation
 
-The Coin Registry is the coin-creation primitive. Because the framework's only
-route to a `TreasuryCap` is registry creation, and the non-witness constructor is
-first-come for an unregistered type, coin creation must happen inside the generated
-package's `init`. That makes bootstrap a three-transaction sequence — publish,
-registry promotion, launch — detailed in
-[decisions/0002-coin-creation-and-currency-authority.md](decisions/0002-coin-creation-and-currency-authority.md).
-
-Mint authority is retained inside the launch object for the bonding phase so that
-sell-side burn and venue pool reservation are both reachable, and no public mint
-path exists anywhere in the package surface. It is surrendered permanently at
-migration. See
-[decisions/0003-treasury-cap-lifetime-and-burn.md](decisions/0003-treasury-cap-lifetime-and-burn.md).
+The current Coin Registry OTW path is the only generated-coin creation primitive.
+The generated package creates a zero-supply currency and a launch ticket holding
+its empty `TreasuryCap<Meme>` and `MetadataCap<Meme>`. After permissionless
+registration finalization, launch mints a nonzero supply capped at one billion
+whole coins and consumes the treasury cap into owner-selected `Fixed` or
+`BurnOnly` state. No mint authority survives in Blast core or an adapter. The
+native metadata cap remains in Blast-defined custody until the one-time creator
+claim returns it separately alongside `CreatorCap<Meme>`. See
+[ADR 0023](decisions/0023-generated-coin-supply-and-metadata-custody.md).
 
 ## Lifecycle
 

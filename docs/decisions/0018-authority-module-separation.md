@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-23
 - Amends: [0001](0001-sui-package-and-module-layout.md), [0014](0014-typed-creator-cap-and-diagnostic-modules.md), [0015](0015-protocol-authority-and-x-signer-state.md), [0016](0016-unified-creator-cap-claim-and-suins-periphery.md)
-- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md)
+- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0023](0023-generated-coin-supply-and-metadata-custody.md)
 
 ## Sources
 
@@ -68,7 +68,9 @@ message was signed by the currently authorized Blast backend key.
 `blast_fun::creator_authority` owns `CreatorIdentity`, launch-scoped one-time `CreatorAuthority<Meme>`,
 the canonical X claim message/attestation rules, and `CreatorCap<Meme>`. Its single claim function selects
 the address or X branch, asks `x_claim_config` to authenticate the X signature when required, consumes
-`CreatorAuthority<Meme>`, constructs and returns the capability, and emits `CreatorCapClaimed`.
+`CreatorAuthority<Meme>` and the stored `MetadataCap<Meme>`, constructs the
+creator capability, returns both capabilities separately, and emits
+`CreatorCapClaimed`.
 
 The module does not decide fee amounts and does not withdraw assets. A future `fees` module owns accrued
 creator-fee accounting and exposes the fee-claim operation. That function must accept the matching

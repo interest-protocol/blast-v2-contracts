@@ -102,14 +102,26 @@ core interface. See `docs/architecture.md`.
   Events are index facts, never onchain replay guards. Do not add a parallel
   nonce. A repeatable signed operation needs an explicit bounded replay policy
   before it is implemented.
-- Creator-cap claims must take `CreatorAuthority<Meme>` by value and return
-  `CreatorCap<Meme>`. They must not directly transfer the cap, retain a claimed
-  flag, or hide construction behind a separate issue function. The launch path
-  must create exactly one creator authority for its unique meme type and remove
-  it from launch state when claiming.
+- Creator-cap claims must take `CreatorAuthority<Meme>` and the native
+  `MetadataCap<Meme>` by value and return them as two independent objects:
+  `(CreatorCap<Meme>, MetadataCap<Meme>)`. They must not directly transfer either
+  cap, retain a claimed flag, wrap metadata authority inside creator economic
+  authority, add Blast metadata proxy functions, or hide construction behind a
+  separate issue function. The launch path must create exactly one creator
+  authority for its unique meme type and remove it from launch state when
+  claiming.
 - After `CreatorCap<Meme>` is claimed, creator economic operations authorize with
   that typed capability. They must not re-check ACL membership, X identity, or
   the backend signer; those facts authorize issuance, not later fee ownership.
+- Generated meme currencies use only the current Coin Registry OTW path and must
+  never call `make_regulated` or a legacy metadata migration. The generated
+  package creates a zero-supply `TreasuryCap<Meme>` and `MetadataCap<Meme>`;
+  after permissionless registry finalization, launch mints the nonzero initial
+  supply once, caps it at one billion whole coins, and consumes the treasury cap
+  into owner-selected `Fixed` or `BurnOnly` state. No treasury or deny capability
+  may survive in Blast core state or an adapter. The unique metadata cap remains
+  in Blast-defined custody only until the one-time creator claim returns it
+  separately alongside `CreatorCap<Meme>`. See ADR 0023.
 - Give every privileged setter a documented bound and corresponding event.
 - Define pause scope precisely. Emergency pause must not strand user exits unless
   that behavior is explicitly approved and tested.
@@ -153,6 +165,16 @@ core interface. See `docs/architecture.md`.
 - Mutation events must include stable entity identity, old/new or delta values,
   final totals needed for reconciliation, and a revision/sequence when order is
   otherwise ambiguous.
+- On Sui, do not add an application-level sequence, revision, nonce, generic
+  schema version, or action tag to an event merely to order, paginate, classify,
+  or detect ingestion gaps. Native event metadata provides checkpoint,
+  transaction, and per-transaction event order/cursors, while the inner Move
+  payload type identifies the schema and action. Prefer stable entity identity
+  plus old/new values or final snapshots for replay continuity. Add a domain
+  counter or discriminator only when it is itself onchain business state or the
+  native position and payload type are insufficient, and record that necessity
+  in an ADR. See
+  `docs/research/sui-event-ordering-and-domain-sequences.md`.
 - Treat event field changes as schema migrations with replay tests.
 - Keep event collection, wrapper unwrapping, and payload field inspection under
   `#[test_only]`; do not publish view functions solely for event tests.
@@ -181,6 +203,10 @@ must be differential-tested from shared vectors.
 
 - Use stable Move edition `2024`, not alpha/beta editions.
 - Use a Blast-prefixed named address.
+- Keep package-wide diagnostics and indexing infrastructure in `sources/lib/`;
+  keep domain modules at the `sources/` root until a directory represents a
+  durable multi-module concern. Filesystem directories do not change Move module
+  names or visibility. Do not introduce one-file taxonomy directories.
 - Rely on the Move 2024 implicit prelude instead of importing it again. Do not
   write explicit `use` declarations for `std::vector`, `std::option`, `Option`,
   `std::internal`, `sui::object`, `ID`, `UID`, `sui::tx_context`, `TxContext`,
@@ -195,7 +221,7 @@ must be differential-tested from shared vectors.
   (`std::unit_test::assert_eq!()`), and one-off framework functions such as
   `sui::event::emit(...)`.
 - Name capabilities with the `Cap` suffix and events in past tense.
-- Keep package-wide production values in `sources/constants.move` as
+- Keep package-wide production values in `sources/lib/constants.move` as
   lower-snake-case `macro public(package)` accessors. Do not declare protocol
   limits, delays, byte lengths, schema tags, or layout offsets in state modules;
   derive related layout values from the primitive constants in that registry.
@@ -233,6 +259,12 @@ must be differential-tested from shared vectors.
   operations that genuinely have no natural receiver; generic framework helpers
   such as `object::id<T>(&T)` remain static when the compiler cannot specialize
   them as receiver aliases without wrapper functions.
+- When adding or materially editing a function in the module that defines its
+  natural receiver type, name that first parameter `self`. Keep a domain-specific
+  name when the function operates on peer values of the same type or `self` would
+  hide which value plays which role. Constructors and genuinely static helpers
+  have no `self` parameter. This naming convention documents method intent; Move
+  dot syntax itself is determined by the first argument's type.
 - Prefer package visibility for cross-module internals; expose public API only
   when external composability requires it.
 - Default functions to private. Promote a function to `public(package)` only

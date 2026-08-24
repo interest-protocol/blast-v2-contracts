@@ -141,6 +141,22 @@ const ESellBackInvariantViolated: u64 = 36;
 /// The meme-asset fee exceeds one hundred percent.
 const EInvalidMemeFeeBps: u64 = 37;
 
+#[test_only]
+/// Neither asset has an accrued balance for the presented claim authority.
+const ENothingAccrued: u64 = 38;
+
+#[test_only]
+/// A fee accrual cannot contain zero meme and zero quote simultaneously.
+const EZeroFeeAccrual: u64 = 39;
+
+#[test_only]
+/// The global protocol share exceeds one hundred percent.
+const EInvalidProtocolFeeShareBps: u64 = 40;
+
+#[test_only]
+/// A protocol-share update supplied the currently active value.
+const EProtocolFeeShareUnchanged: u64 = 41;
+
 // === Package Error Codes ===
 
 macro public(package) fun invalid_admin_cap(): u64 {
@@ -265,4 +281,20 @@ macro public(package) fun sell_back_invariant_violated(): u64 {
 
 macro public(package) fun invalid_meme_fee_bps(): u64 {
     37
+}
+
+macro public(package) fun nothing_accrued(): u64 {
+    38
+}
+
+macro public(package) fun zero_fee_accrual(): u64 {
+    39
+}
+
+macro public(package) fun invalid_protocol_fee_share_bps(): u64 {
+    40
+}
+
+macro public(package) fun protocol_fee_share_unchanged(): u64 {
+    41
 }

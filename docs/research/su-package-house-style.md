@@ -383,7 +383,7 @@ three independent gates and make warnings fatal under its own release policy.
 
 ### P0 — replace the error assertion-wrapper design (resolved 2026-08-23)
 
-Blast [`sui/sources/errors.move`](../../sui/sources/errors.move) now exposes package numeric macros and no
+Blast [`sui/sources/lib/errors.move`](../../sui/sources/lib/errors.move) now exposes package numeric macros and no
 assertion wrappers. `acl.move`, `x_claim_config.move`, and `creator_authority.move` perform each assertion
 at the owning invariant.
 Blast retains Memez-style named copies only as `#[test_only]` source-registry constants, while production
@@ -422,7 +422,7 @@ receiver syntax in many places. Align the remaining surface with the source conv
 
 ### P0 — centralize constants and reuse framework utilities (resolved 2026-08-23)
 
-Blast [`sui/sources/constants.move`](../../sui/sources/constants.move) now owns all current production
+Blast [`sui/sources/lib/constants.move`](../../sui/sources/lib/constants.move) now owns all current production
 protocol limits, delays, cryptographic byte lengths, schema values, and attestation-layout values as
 package macros. `acl.move` and `creator_authority.move` no longer declare production constants. Derived
 offsets and total lengths are computed from primitive registry values instead of repeating magic numbers.
@@ -434,7 +434,7 @@ only where the framework does not express the protocol-specific operation clearl
 
 ### P1 — add event payload and replay tests (wrapper seam resolved 2026-08-23)
 
-Blast's [`events.move`](../../sui/sources/events.move) follows the schema/emitter split and uses completed-fact
+Blast's [`events.move`](../../sui/sources/lib/events.move) follows the schema/emitter split and uses completed-fact
 names more consistently than `su`. `events_wrapper::Event<T>`, test-only collection/unwrapping, and payload
 field accessors are now implemented, with an authority-creation payload regression test. Continue adding
 exact payload assertions for admin changes, root rotation, signer rotation/revocation, and creator-cap claims;

@@ -8,6 +8,7 @@ that an unexplained numeric difference between the two is a release blocker.
 | File | Covers | Owning decision |
 | --- | --- | --- |
 | [`curve.json`](curve.json) | buy, sell, threshold crossing, both burn moments, boundaries, round trip | [`../decisions/0004-bonding-curve.md`](../decisions/0004-bonding-curve.md), [`../decisions/0003-treasury-cap-lifetime-and-burn.md`](../decisions/0003-treasury-cap-lifetime-and-burn.md) |
+| [`fees.json`](fees.json) | configurable protocol/creator shares, rounding, update sequences, maximum width | [`../decisions/0022-dual-asset-fee-ledger-and-claims.md`](../decisions/0022-dual-asset-fee-ledger-and-claims.md) |
 | [`quote-decimals.json`](quote-decimals.json) | decimal combinations, both pair orientations, `sqrt_price_x64`, display price | [`../decisions/0005-quote-asset-generalisation.md`](../decisions/0005-quote-asset-generalisation.md), [`../decisions/0010-migration-and-venue-adapters.md`](../decisions/0010-migration-and-venue-adapters.md) |
 | [`x-creator-claim.json`](x-creator-claim.json) | canonical coin-type-bound X claim BCS encoding and Ed25519 verification fixture | [`../decisions/0017-coin-type-domain-for-x-creator-claims.md`](../decisions/0017-coin-type-domain-for-x-creator-claims.md) |
 
@@ -24,9 +25,10 @@ that an unexplained numeric difference between the two is a release blocker.
    `quote-decimals.json` is a non-terminating rational, so no finite decimal represents it exactly.
 3. **Every division names its direction.** Each case records the rounding direction applied and, where
    value moves, who receives the remainder.
-4. **Parameters are proposed.** The curve, fee, and burn constants embedded in these files come from
-   ADRs whose status is `proposed`. Changing a constant invalidates every dependent vector, and the files
-   must be regenerated rather than edited by hand.
+4. **Parameter status follows its owning ADR.** The fee-rate ceiling and global split bounds in
+   `fees.json` are accepted by ADR 0022; the remaining curve, migration-fee, and burn parameters are
+   proposed. Changing any value invalidates every dependent vector, and the files must be regenerated
+   rather than edited by hand.
 5. **Both implementations consume shared economic files.** Signature-domain
    fixtures may be chain-specific where the chains expose different native
    type systems. ADR 0017 binds the Sui claim to the generated coin's original
@@ -46,7 +48,7 @@ The arithmetic vector files are JSON objects with:
 - `description` — what the file covers;
 - `source_decisions` — the ADR paths that own the values;
 - `units` — the unit and rounding conventions in force;
-- `parameters` — the proposed constants the cases were generated from;
+- `parameters` — the accepted or proposed constants and bounds the cases were generated from;
 - `cases` — an array of objects, each with `name`, `kind`, `given`, `expect`, and `notes`.
 
 A case's `expect` block is the assertion target. A case whose `expect` contains `abort` names the exact

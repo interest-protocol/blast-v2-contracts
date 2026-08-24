@@ -28,9 +28,11 @@ contracts/
 ## Current status
 
 The workspace, its engineering contract, and the Sui design record are established.
-The implemented Sui Move slices cover accepted ADRs 0013 through 0021: one-time
+The implemented Sui Move slices cover accepted ADRs 0013 through 0022 and the
+metadata-custody portion of ADR 0023: one-time
 `CreatorCap<Meme>` claims for address and X identities, coin-type-isolated
-creator authority that survives migration, and the backend-attested X branch.
+creator authority that survives migration, separate native metadata-cap return,
+and the backend-attested X branch.
 It includes dedicated package-constant and macro-error registries, a wrapped-event
 module, inline invariant assertions, a concern-limited singleton admin registry,
 drop-only admin sign-in witnesses, an independent shared X signer configuration,
@@ -40,11 +42,16 @@ exact BCS encoding, an Ed25519 vector, and adversarial Move tests. A pure
 package-only constant-product quote module now fixes buy/sell rounding, independently
 selected quote/meme fee ordering, the sell burn ramp, threshold reporting, and the no-clamp sell-back
 invariant without committing launch storage or deployment parameters. The
-load-bearing launch ABI and lifecycle storage records remain proposed.
+embedded dual-asset fee ledger now fixes creator/protocol accounting, odd-unit
+rounding under a live global share, maximum-width conservation, and
+capability-gated composable claims.
+The fixed/burnable generated-supply policy is accepted; its normalized
+one-billion launch-intake assertion, the load-bearing launch ABI, quote admission
+rule, and lifecycle storage records remain proposed.
 
 The decision records cover the Sui package — package layout, Coin
-Registry creation and the three-transaction bootstrap, mint-authority lifetime and
-the two burn moments, the constant-product curve, the permissionless quote asset,
+Registry creation and the three-transaction bootstrap, final fixed/burnable supply,
+the constant-product curve, the reopened quote-admission boundary,
 fees and launch paths, capability ACL and pause, creator identity, referral
 settlement, migration routes and the Cetus/Bluefin/Turbos adapters, the event
 schema, growth-feature dispositions, and the accepted one-time creator-cap claim
@@ -53,8 +60,10 @@ in [decisions/README.md](docs/decisions/README.md).
 
 Shared differential vectors for both chains live in [docs/vectors/](docs/vectors/).
 
-The next implementation slice is one audit-sized launch-state/lifecycle module
-that consumes the reviewed curve quotes. Auction and Stable remain optional
+The current Sui implementation includes the audit-sized dual-asset fee ledger and
+the shared trade-fee configuration whose live percentage every launch reads.
+The next audit-sized slice is the launch-state/lifecycle module that composes the
+configuration, ledger, and reviewed curve quotes. Auction and Stable remain optional
 follow-ups rather than making the V2 core carry all three modes on day one. See
 [protocol scope](docs/protocol-scope.md) and [architecture](docs/architecture.md).
 

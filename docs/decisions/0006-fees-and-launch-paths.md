@@ -2,6 +2,7 @@
 
 - Status: proposed
 - Date: 2026-08-22
+- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md)
 
 ## Sources
 
@@ -101,15 +102,16 @@ with a test asserting no residual on either line.
 
 The launcher independently selects fixed `quote_fee_bps` and `meme_fee_bps` for its launch
 ([ADR 0004](0004-bonding-curve.md), [ADR 0021](0021-pure-constant-product-curve-quotes.md)). Zero disables
-the corresponding asset; either or both may be positive within the accepted launch bound. Fees
+the corresponding asset; either or both may be positive up to the independently enforced 1,000-basis-point
+ceiling accepted by [ADR 0022](0022-dual-asset-fee-ledger-and-claims.md). Fees
 **accrue** into separate named balances of their charged assets and are **claimed** separately; they are
 never routed to an arbitrary recipient during a trade. Every fee division rounds **up** in the
 protocol's favour, per `../engineering-principles.md`, and the rounding beneficiary is named at each
 division site.
 
 Proposed vector fixture: `QUOTE_FEE_BPS = 100` and `MEME_FEE_BPS = 0`. These are examples, not launch
-defaults or protocol-wide rates. The proposed protocol/creator split is even, with an odd atomic unit
-rounding to the protocol. **Proposed, not accepted.**
+defaults or protocol-wide rates. The protocol/creator split reads the current global configuration on
+every trade, with ceiling rounding on the protocol amount, as accepted by ADR 0022.
 
 Proposed: `MIGRATION_FEE_BPS = 100` and `MIGRATION_FEE_CEILING_BPS = 300`. **Proposed, not accepted.**
 These are the two values [`../vectors/curve.json`](../vectors/curve.json) sources from this ADR for its
@@ -135,7 +137,8 @@ costs recorded in the migration settlement, not Blast fee lines.
 
 ## Alternatives considered
 
-**Fees in both assets.** Rejected in [ADR 0004](0004-bonding-curve.md): it doubles the accounting surface.
+**Restrict fees to one asset.** Rejected by ADR 0021 and ADR 0022: independent quote and meme rates let a
+launcher select neither, either, or both while every charged asset remains explicitly accounted.
 
 **Route fees directly to recipients during a trade.** Rejected: it makes a trade depend on an arbitrary
 recipient's ability to receive, and `../architecture.md` keeps arbitrary recipient execution out of the

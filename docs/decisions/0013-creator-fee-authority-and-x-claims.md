@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-22
 - Supersedes: [0008](0008-creator-identity-and-claims.md)
-- Amended by: [0014](0014-typed-creator-cap-and-diagnostic-modules.md), [0015](0015-protocol-authority-and-x-signer-state.md), [0016](0016-unified-creator-cap-claim-and-suins-periphery.md), [0017](0017-coin-type-domain-for-x-creator-claims.md), [0019](0019-consuming-creator-authority-and-cap-return.md)
+- Amended by: [0014](0014-typed-creator-cap-and-diagnostic-modules.md), [0015](0015-protocol-authority-and-x-signer-state.md), [0016](0016-unified-creator-cap-claim-and-suins-periphery.md), [0017](0017-coin-type-domain-for-x-creator-claims.md), [0019](0019-consuming-creator-authority-and-cap-return.md), [0023](0023-generated-coin-supply-and-metadata-custody.md)
 
 ## Sources
 
@@ -44,7 +44,9 @@ not additional application-message schemes.
 generated meme coin type binds it to its launch and remains unchanged after
 migration. Possessing it, not a social name or a recorded address, authorizes
 creator proceeds and the other creator operations explicitly listed in
-[ADR 0007](0007-acl-pause-and-versioning.md). See
+[ADR 0007](0007-acl-pause-and-versioning.md). It contains no metadata capability;
+the native `MetadataCap<Meme>` is returned separately at claim, as specified by
+ADR 0023. See
 [ADR 0014](0014-typed-creator-cap-and-diagnostic-modules.md).
 
 The X signature assigns this capability once. It is not required again whenever
@@ -55,8 +57,9 @@ the holder withdraws accrued fees.
 Every launch accepts a concrete creator address and leaves its `CreatorCap`
 unissued. That address later calls the unified `claim_creator_cap` function with
 no X attestation. The contract compares the stored address with
-`TxContext::sender`, consumes the one-time claim marker, and returns the cap to
-the calling PTB. ADR 0019 defines that marker as the linear
+`TxContext::sender`, consumes the one-time claim marker, and returns the creator
+cap and native metadata cap separately to the calling PTB. ADR 0019 defines that
+marker as the linear
 `CreatorAuthority<Meme>` resource itself and requires the claim to return the
 cap rather than transfer it.
 
@@ -98,7 +101,7 @@ The claim flow is:
    `TxContext::sender` equals the
    attested claimant;
 6. the contract consumes `CreatorAuthority<Meme>`, emits the claim fact, and
-   returns `CreatorCap<Meme>` to the claimant's PTB.
+   returns `(CreatorCap<Meme>, MetadataCap<Meme>)` to the claimant's PTB.
 
 The wallet's transaction signature already proves control of the claimant
 address. There is no second custom claimant-acceptance signature.

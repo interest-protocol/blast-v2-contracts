@@ -81,6 +81,7 @@ The committed vector files live in [vectors/](vectors/):
 | File | Covers |
 | --- | --- |
 | [vectors/curve.json](vectors/curve.json) | buys, sells, threshold crossing, both burn moments, one-atomic-unit boundaries, round-trip dust, and the sell-back property |
+| [vectors/fees.json](vectors/fees.json) | configurable protocol/creator shares, rounding, update sequences, and maximum-width boundaries |
 | [vectors/quote-decimals.json](vectors/quote-decimals.json) | decimal combinations, both pair orientations, exact `sqrt_price_x64`, venue range bounds |
 | [vectors/x-creator-claim.json](vectors/x-creator-claim.json) | canonical X claim BCS bytes, original meme-type domain, and Ed25519 fixture |
 
@@ -168,5 +169,5 @@ the decision that owns it. Nothing here may be marked done from prose alone.
 | 3.1 | Route A/B/C decision table and acceptance-band boundaries | [0010](decisions/0010-migration-and-venue-adapters.md) |
 | 3.2 | Reservation cleanup before any venue switch | [0010](decisions/0010-migration-and-venue-adapters.md) |
 | 3.3 | Terminal ordering: seed, return, burn, lock supply, freeze metadata | [0003](decisions/0003-treasury-cap-lifetime-and-burn.md), [0010](decisions/0010-migration-and-venue-adapters.md) |
-| 3.4 | Event reducer replay across all three sequence scopes | [0011](decisions/0011-event-schema-and-replay.md) |
+| 3.4 | Event reducer replay in native Sui order across all entity scopes | [0011](decisions/0011-event-schema-and-replay.md) |
 | 3.5 | Per-venue dependency exemption resolved or the adapter excluded | [0010](decisions/0010-migration-and-venue-adapters.md) |

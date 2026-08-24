@@ -27,8 +27,8 @@ not deferred.
 | # | Feature | Mechanism | Metric | Abuse case | Complexity | Disposition |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Creator LP fee stream | `LpVault` holds the venue position; fees collected via `pool::collect_fee` (`bluefin@91ce930:sources/pool.move:593`) and venue equivalents, split to creator and protocol | creator fee revenue per graduated launch; share of creators returning for a second launch | creator wash-trades their own pool to farm fees they partly fund — bounded, since they pay the full swap fee to earn a fraction | **low** — the vault already exists in [ADR 0010](0010-migration-and-venue-adapters.md) | **accept** |
-| 2 | Bounded fee-sharing splits | `CreatorCap` holder assigns fractions across at most `MAX_FEE_RECIPIENTS` addresses, set once per launch, changeable under the cap | fraction of launches using a split; recipient count distribution | none material; the split only divides what the creator already earns | **low** — fixed-size vector, no growth | **accept**, with `MAX_FEE_RECIPIENTS` proposed at 8 |
-| 3 | Quote-asset diversity as distribution | already delivered by [ADR 0005](0005-quote-asset-generalisation.md): any coin with a finalized `Currency` can be the quote, including an LST, a stablecoin, or a regulated coin | launches per distinct quote type; share of launches with a non-default quote | a project launches against an illiquid quote it controls, so the graduation price is meaningless — mitigated by disclosure, not prevention | **zero additional** | **accept** — no new mechanism |
+| 2 | Bounded fee-sharing splits | `CreatorCap` holder assigns fractions across a bounded recipient set | fraction of launches using a split; recipient count distribution | none material; the split only divides what the creator already earns | **low** if bounded | **defer** — ADR 0022 ships one transferable authority and composable claims first |
+| 3 | Quote-asset diversity as distribution | candidate quote types are decided at the launch boundary | launches per distinct quote type; share of launches with a non-default quote | a project launches against an illiquid quote it controls, making graduation price meaningless | **not yet bounded** | **defer** — ADR 0023 reopens quote admission and rejects regulated/legacy support as an assumed default |
 | 4 | Graduation-linked dynamic fee | would reuse the progress ramp already derived for sell-side burn ([ADR 0003](0003-treasury-cap-lifetime-and-burn.md)) | fee revenue per launch versus flat fee; completion rate of launches reaching threshold | timing trades around the ramp and obscuring the launcher's selected rate | **low**, but multiplies fee-vector states | **reject for initial launchpad** — fixed launcher-selected quote/meme rates are auditable; revisit only in a separate accepted fee-policy ADR |
 | 5 | RevShare campaigns | [ADR 0009](0009-referrals-and-revshare.md) epoch settlement, with campaigns defined off-chain | claimed fraction per epoch; referred volume per campaign | sybil at the attribution layer, addressed by session-bound attribution and the challenge window, **not** by the Merkle root | **medium** — a separate package already specified | **accept**, gated on the attribution service being operable |
 | 6 | Creator-configurable curve parameters | let creators pick `V`, `T`, or `MAX_BURN_BPS` per launch | — | a creator picks parameters that make the curve trivially exploitable for insiders | **medium** — every vector becomes per-launch, and differential testing multiplies | **reject for now**; revisit only with a bounded parameter lattice and per-cell vectors |
@@ -39,15 +39,14 @@ not deferred.
 
 ### Invariants each accepted feature must not break
 
-Both accepted fee features carry a full authority row, bound and event in
-[ADR 0007](0007-acl-pause-and-versioning.md) (`set creator fee split`, `collect LP fees`) and a full
-event with reducer coverage in [ADR 0011](0011-event-schema-and-replay.md) (`CreatorFeeSplitSet`,
-`LpFeesCollected`). Neither ships without them.
+The accepted LP fee feature carries a full authority row, bound and event in
+[ADR 0007](0007-acl-pause-and-versioning.md) (`collect LP fees`) and reducer coverage in
+[ADR 0011](0011-event-schema-and-replay.md) (`LpFeesCollected`). It does not ship without them.
 
 | Feature | Must not break |
 | --- | --- |
 | 1 Creator LP fee stream | LP position stays locked; fee collection cannot withdraw principal; no path returns the position to an EOA; `principal_liquidity_before == principal_liquidity_after` in every `LpFeesCollected` |
-| 2 Fee-sharing splits | recipient count `<= MAX_FEE_RECIPIENTS`; shares sum exactly to `10_000` bps; the rounding remainder has a named beneficiary; no unclaimable remainder |
+| 2 Fee-sharing splits | deferred until a separate allocation module fixes its recipient bound, share conservation, rounding, and update lifecycle |
 | 3 Quote diversity | pair immutability; risk snapshot immutability |
 | 5 RevShare campaigns | `MAX_EPOCH_LEAVES`, `MAX_EPOCH_FUNDED`, `MAX_OPEN_EPOCHS`; funding conservation |
 
@@ -69,18 +68,16 @@ economic commitment. Feature 4 instead reuses a mechanism Blast has already deri
   operational gate.
 - Five are rejected with reasons that name the invariant or cost driving the rejection, so a future
   proposal starts from a stated bar rather than from scratch.
-- `MAX_FEE_RECIPIENTS` and the dynamic-fee ramp constants are proposed values requiring approval.
+- Any future fee-recipient bound and the dynamic-fee ramp constants require separate approval.
 
 ## Verification
 
 - Feature 1: LP-lock test — no path transfers the position out of `LpVault`; fee collection leaves
   principal unchanged; collection before migration aborts `ENotMigrated`; collection without the
   `CreatorCap` aborts `ENotAuthorized`; the `LpFeesCollected` reducer reconciles with vault balances.
-- Feature 2: split tests — over-count aborts `ETooManyRecipients`; shares summing to anything other than
-  `10_000` bps abort `ESharesNotWhole`; a non-`CreatorCap` caller aborts `ENotAuthorized`; the rounding
-  remainder lands on the named beneficiary; the `CreatorFeeSplitSet` reducer reproduces per-recipient
-  entitlements.
-- Feature 3: covered by [ADR 0005](0005-quote-asset-generalisation.md) tests.
+- Feature 2: deferred; ADR 0022 tests the global configurable protocol/creator split and composable
+  cap-holder claim that ship in the initial ledger.
+- Feature 3: deferred until the initial quote admission rule is accepted with launch state.
 - Feature 4: ramp tests at every boundary, plus a ceiling test at maximum progress.
 - Feature 5: covered by [ADR 0009](0009-referrals-and-revshare.md) tests.
 - Rejected features: an inventory test asserting no public function implements them, so a rejection is

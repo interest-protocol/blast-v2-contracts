@@ -50,7 +50,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0002](0002-coin-creation-and-currency-authority.md) | Coin creation, currency authority, and the launch transaction sequence | proposed |
 | [0003](0003-treasury-cap-lifetime-and-burn.md) | TreasuryCap lifetime and the two burn moments | proposed |
 | [0004](0004-bonding-curve.md) | Constant-product bonding curve | proposed |
-| [0005](0005-quote-asset-generalisation.md) | Generic, permissionless quote asset | proposed |
+| [0005](0005-quote-asset-generalisation.md) | Generic, permissionless quote asset | superseded by 0023 |
 | [0006](0006-fees-and-launch-paths.md) | Asset provenance, seed mode, and creator fees | proposed |
 | [0007](0007-acl-pause-and-versioning.md) | Capability ACL, pause scope, and versioning | proposed |
 | [0008](0008-creator-identity-and-claims.md) | Creator assignment, social claims, and replay-safe signatures | superseded by 0013 |
@@ -67,10 +67,14 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0019](0019-consuming-creator-authority-and-cap-return.md) | Consuming creator authority and returning CreatorCap | **accepted** |
 | [0020](0020-admin-cap-self-destruction.md) | Admin-cap self-destruction and voluntary renunciation | **accepted** |
 | [0021](0021-pure-constant-product-curve-quotes.md) | Pure constant-product curve quotes | **accepted** |
+| [0022](0022-dual-asset-fee-ledger-and-claims.md) | Dual-asset fee ledger and capability claims | **accepted** |
+| [0023](0023-generated-coin-supply-and-metadata-custody.md) | Generated coin supply and metadata custody | **accepted** |
 
-Only ADRs 0013–0021 are accepted. ADR 0021 accepts the pure curve formulas and
-package boundary, but not the proposed deployment constants in ADR 0004. Other
-ceilings, public ABI, and storage commitments still await approval.
+Only ADRs 0013–0023 are accepted. ADR 0021 accepts the pure curve formulas and
+package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
+semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
+supply modes, one-billion ceiling, and separate native metadata-cap return. Other deployment constants, public
+ABI, and storage commitments still await approval.
 
 ## Open premises
 

@@ -63,11 +63,11 @@ Layered, with dependencies pointing only downward:
 6  launch          lifecycle, state transitions, entrypoints
 5  fees            accrual, split, claim
 4  curve           quote and reserve transitions
-3  quote           launch-time quote risk snapshot
-   route           RouteRequest / RouteCommitment / PreparedLaunch
+3  route           RouteRequest / RouteCommitment / PreparedLaunch
    migration       MigrationPayload handoff type
 2  acl             ProtocolAuthority, SuperAdminCap, AdminCap delegation
    x_claim_config  shared X backend key lifecycle and signature authentication
+   trade_fee_config shared live protocol/creator fee percentage
    creator_authority address/X claim state and CreatorCap issuance
    display         Display custody and field policy
 1  math            pure arithmetic, rounding-named helpers
@@ -78,6 +78,11 @@ Layered, with dependencies pointing only downward:
 
 `math`, `events`, `constants` and `errors` hold no authority and no storage. `route` and `migration`
 define types only; they contain no venue knowledge.
+
+Physically, `constants`, `errors`, `events`, and `events_wrapper` live under `sources/lib/`; domain
+modules remain directly under `sources/`. The directory is navigational only and does not change their
+`blast_fun::<module>` names or visibility. Further directories require a durable multi-module concern,
+not a one-file taxonomy.
 
 ### Dependency direction, stated without contradiction
 
@@ -122,7 +127,7 @@ published.
 | `route::RouteRequest`, `route::RouteCommitment`, `route::PreparedLaunch` | types | crossed by adapter packages |
 | `route::seal_commitment` | function | adapter-witness-gated constructor; the only way to build a commitment |
 | `migration::MigrationPayload` | type | crossed by adapter packages |
-| `fees::claim_creator_fees`, `fees::claim_protocol_fees` | function | must return owned coins for composition |
+| `launch::claim_creator_fees`, `launch::claim_protocol_fees` | function | embedded fee state is reached through the launch while both claimed coins are returned for composition ([ADR 0022](0022-dual-asset-fee-ledger-and-claims.md)) |
 | `acl::ProtocolAuthority`, `acl::SuperAdminCap`, `acl::AdminCap`, `acl::AdminWitness` | types | shared administration registry, externally held capabilities, and the drop-only transaction proof passed across privileged module boundaries ([ADR 0015](0015-protocol-authority-and-x-signer-state.md)) |
 | `acl::add_admin`, `acl::revoke_admin` | functions | root-holder transactions deliberately deliver and immediately revoke routine admin authority |
 | `acl::destroy_admin_cap` | function | an admin-cap holder must be able to renounce live membership or delete an already-revoked cap for its storage rebate ([ADR 0020](0020-admin-cap-self-destruction.md)) |
@@ -130,10 +135,11 @@ published.
 | `acl::begin_super_admin_transfer`, `acl::cancel_super_admin_transfer`, `acl::accept_super_admin_transfer`, `acl::destroy_retired_super_admin_cap` | functions | root rotation is a wallet-driven delayed two-party lifecycle |
 | `x_claim_config::XClaimConfig` | type | shared singleton consumed by public X creator-claim transactions and admin signer rotation ([ADR 0018](0018-authority-module-separation.md)) |
 | `x_claim_config::set_signer`, `x_claim_config::revoke_signer` | functions | protocol administrators rotate or revoke the shared backend claim signer with a borrowed `AdminWitness` |
+| `trade_fee_config::TradeFeeConfig` | type | every trade reads the current shared protocol fee share, so one update applies to every launch ([ADR 0022](0022-dual-asset-fee-ledger-and-claims.md)) |
+| `trade_fee_config::set_protocol_fee_share` | function | an administrator updates the globally bounded share with a borrowed `AdminWitness` and replay-complete event |
 | `creator_authority::CreatorCap` | type | transferable coin-typed authority consumed by creator fee and migration integrations ([ADR 0014](0014-typed-creator-cap-and-diagnostic-modules.md)) |
 | `blast_fun::new_launch_ticket` | function | called from a generated coin package's `init` |
-| `launch::claim_creator_cap` | function | the single address/X claim seam; consumes the stored authority after validating `TxContext::sender` and returns `CreatorCap` for composition ([ADR 0019](0019-consuming-creator-authority-and-cap-return.md)) |
-| `fees::set_creator_fee_split` | function | creator-held routing change, called from a wallet or router PTB |
+| `launch::claim_creator_cap` | function | the single address/X claim seam; consumes the stored authority after validating `TxContext::sender` and returns `CreatorCap` and native `MetadataCap` separately for composition ([ADR 0019](0019-consuming-creator-authority-and-cap-return.md)) |
 | `migration::collect_lp_fees` | function | must return owned coins for composition |
 | `migration::release_reservation` | function | `AdminCap`-gated venue-state cleanup before a venue switch ([ADR 0010](0010-migration-and-venue-adapters.md)) |
 
@@ -173,8 +179,10 @@ For each displayed non-generic type:
 
 - **creation** — `display_registry::new_with_publisher<T>` with the package `Publisher`, then `share`
   (`sui@ae60d06:crates/sui-framework/packages/sui-framework/sources/registries/display_registry.move:63-73, 93-96`);
-- **authority** — one `DisplayCap<T>` per displayed type, custodied under `AdminCap`, never by a
-  creator; this is a **different authority** from the `MetadataCap` that gates coin metadata;
+- **authority** — one `DisplayCap<T>` per displayed protocol type, custodied under
+  `AdminCap`, never by a creator; generated coin metadata instead follows the
+  native `MetadataCap<Meme>` returned separately from `CreatorCap<Meme>` under
+  ADR 0023;
 - **field template** — `name`, `description`, `image_url`, `project_url`, `link`, `thumbnail_url`;
 - **update rules** — `set`/`unset` are `AdminCap`-gated and emit old/new values; `clear` is prohibited
   on a live protocol type;

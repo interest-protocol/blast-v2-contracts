@@ -7,6 +7,11 @@ macro public(package) fun basis_points_denominator(): u64 {
     10_000
 }
 
+/// Maximum launcher-selected trade-fee rate for either the meme or quote asset.
+macro public(package) fun max_launch_fee_bps(): u64 {
+    1_000
+}
+
 /// Maximum number of simultaneously active routine protocol administrators.
 macro public(package) fun max_admins(): u64 {
     16

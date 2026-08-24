@@ -8,8 +8,23 @@ the authority associated with its creator proceeds.
 **CreatorCap<Meme>**:
 The capability parameterized by a launch's unique meme coin type that controls
 creator proceeds and the explicitly approved creator operations for that coin,
-including after migration.
+including after migration. It does not contain or proxy the native Coin Registry
+metadata capability.
 _Avoid_: fee claimer cap, owner key
+
+**MetadataCap<Meme>**:
+The unique native Coin Registry capability held by Blast until the one-time
+creator claim, then returned as a separate object alongside `CreatorCap<Meme>`.
+Its holder uses the Coin Registry's native metadata functions directly.
+_Avoid_: creator metadata wrapper, metadata slot
+
+**Generated coin supply mode**:
+The coin owner chooses `Fixed` (neither mintable nor burnable) or `BurnOnly`
+(burnable but never mintable). The generated package records the selection;
+launch mints once and consumes the unique treasury capability after permissionless
+Coin Registry finalization. Initial supply is nonzero and capped at one billion
+whole coins.
+_Avoid_: mutable supply, retained mint authority
 
 **Creator identity**:
 The launch-time rule that identifies who may claim an unissued
@@ -52,6 +67,20 @@ _Avoid_: trade, swap, curve execution
 
 **Launch fee rates**:
 The fixed `quote_fee_bps` and `meme_fee_bps` selected independently by the
-launcher. A zero rate disables fees in that asset; the two rates represent no
-fees, quote-only, meme-only, or both without a separate mode.
+launcher, each capped at 1,000 basis points (10%). A zero rate disables fees in
+that asset; the two rates represent no fees, quote-only, meme-only, or both
+without a separate mode.
 _Avoid_: fee mode, global trade fee
+
+**Fee ledger**:
+The four-balance accounting value embedded in a launch: creator and protocol
+balances for both the meme and quote assets. Every accrued fee uses the current
+global protocol share, with an indivisible remainder assigned to the protocol.
+_Avoid_: fee vault, fee recipient registry
+
+**Protocol fee share**:
+The globally configured protocol percentage of every meme-asset and quote-asset
+trade fee, expressed in basis points from 0 through 10,000. Every trade reads the
+current shared configuration, so an update applies to the next accrual of every
+existing and future launch without reallocating fees already accrued.
+_Avoid_: fixed fee split, launch fee share

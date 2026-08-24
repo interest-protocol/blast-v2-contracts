@@ -13,8 +13,10 @@ if rg -n \
   failures=$((failures + 1))
 fi
 
+mapfile -t move_files < <(find sources tests -type f -name '*.move' -print | sort)
+
 duplicate_import_roots="$({
-  for file in sources/*.move tests/*.move; do
+  for file in "${move_files[@]}"; do
     awk '
       /^use / {
         root = $2;
@@ -42,7 +44,7 @@ if rg -n '^use blast_fun::errors|^use std::unit_test::assert_eq|^use sui::event:
   failures=$((failures + 1))
 fi
 
-if rg -n '^[[:space:]]*(assert!|abort\b|public struct\b)' sources/errors.move; then
+if rg -n '^[[:space:]]*(assert!|abort\b|public struct\b)' sources/lib/errors.move; then
   echo 'errors.move must contain only diagnostic constants and zero-cost numeric macros.' >&2
   failures=$((failures + 1))
 fi
@@ -61,8 +63,71 @@ if [[ "$(rg -c '^[[:space:]]+quote_fee_bps: u64,' sources/curve.move)" != 2 ]] \
   failures=$((failures + 1))
 fi
 
+fees_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/fees.move)"
+
+if rg -n '\b(UID|key|transfer::|XClaim|ed25519|recipient|launch_id)\b' \
+  <<<"$fees_production" \
+  || rg -n 'fee_balance_overflow|std::u64::max_value|max_balance' <<<"$fees_production" \
+  || [[ "$(rg -c '^[[:space:]]+(protocol|creator)_(meme|quote): Balance<' sources/fees.move)" != 4 ]] \
+  || [[ "$(rg -c '^public\(package\) fun (new|accrue|claim_creator_fees|claim_protocol_fees)' sources/fees.move)" != 4 ]]; then
+  echo 'fees.move must remain an embedded supply-conserved four-balance ledger with only its approved package seam.' >&2
+  failures=$((failures + 1))
+fi
+
+if rg -n '^(public|entry) fun ' <<<"$fees_production" \
+  || rg -n 'set_creator_fee_split|sui::event|events::' <<<"$fees_production" \
+  || [[ "$(rg -c '^[[:space:]]+self: &mut FeeLedger<Meme, Quote>,' sources/fees.move)" != 3 ]] \
+  || ! rg -q '^[[:space:]]+protocol_fee_share_bps: u64,' sources/fees.move \
+  || ! rg -q '^[[:space:]]+_: &CreatorCap<Meme>,' sources/fees.move \
+  || ! rg -q '^[[:space:]]+_: &AdminWitness,' sources/fees.move; then
+  echo 'Fee state is package-only, uses the live protocol split, and is evented by its enclosing launch operation.' >&2
+  failures=$((failures + 1))
+fi
+
+if ! rg -U -q 'macro public\(package\) fun max_launch_fee_bps\(\): u64 \{\s*1_000\s*\}' \
+  sources/lib/constants.move \
+  || rg -n 'protocol_trade_fee_share_bps' sources; then
+  echo 'The fee-rate ceiling is constant, while the protocol share must not be hard-coded.' >&2
+  failures=$((failures + 1))
+fi
+
+trade_fee_config_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/trade_fee_config.move)"
+
+if [[ ! -f sources/trade_fee_config.move ]] \
+  || ! rg -U -q \
+    'public struct TradeFeeConfig has key \{\s*id: UID,\s*protocol_fee_share_bps: u64,\s*\}' \
+    sources/trade_fee_config.move \
+  || rg -n '\b(AdminCap|ProtocolAuthority)\b' <<<"$trade_fee_config_production" \
+  || rg -n '\bsequence\b' <<<"$trade_fee_config_production" \
+  || [[ "$(rg -c '^[[:space:]]+_: &AdminWitness,' sources/trade_fee_config.move)" != 1 ]] \
+  || [[ "$(rg -c '^public fun set_protocol_fee_share\(' sources/trade_fee_config.move)" != 1 ]] \
+  || [[ "$(rg -c '^public\(package\) fun protocol_fee_share_bps\(' sources/trade_fee_config.move)" != 1 ]]; then
+  echo 'trade_fee_config.move must own only the live bounded global share and its AdminWitness-gated setter.' >&2
+  failures=$((failures + 1))
+fi
+
+if ! rg -q 'protocol_fee_share_bps <= constants::basis_points_denominator!()' \
+  sources/trade_fee_config.move \
+  || ! rg -q 'protocol_fee_share_bps != self.protocol_fee_share_bps' \
+  sources/trade_fee_config.move \
+  || ! rg -U -q 'protocol_fee_share_bps: 0,\s*\}' \
+  sources/trade_fee_config.move; then
+  echo 'Trade-fee configuration must start safely at zero and reject out-of-range or unchanged updates.' >&2
+  failures=$((failures + 1))
+fi
+
+trade_fee_event_payloads="$(sed -n \
+  -e '/^public struct TradeFeeConfigCreated/,/^}/p' \
+  -e '/^public struct ProtocolFeeShareChanged/,/^}/p' \
+  sources/lib/events.move)"
+
+if rg -n '\bsequence\b' <<<"$trade_fee_event_payloads"; then
+  echo 'Trade-fee config events rely on native Sui event order and must not duplicate a sequence.' >&2
+  failures=$((failures + 1))
+fi
+
 if rg -n \
-  '\b(acl::(add_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in|destroy_protocol_authority_for_testing|destroy_super_admin_cap_for_testing)|x_claim_config::(set_signer|revoke_signer|destroy_for_testing)|creator_authority::(claim_creator_cap|destroy_for_testing|destroy_cap_for_testing))(<[^>]+>)?\(' \
+  '\b(acl::(add_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in|destroy_protocol_authority_for_testing|destroy_super_admin_cap_for_testing)|x_claim_config::(set_signer|revoke_signer|destroy_for_testing)|trade_fee_config::(set_protocol_fee_share|protocol_fee_share_bps|destroy_for_testing)|creator_authority::(claim_creator_cap|destroy_for_testing|destroy_cap_for_testing)|fees::(accrue|claim_creator_fees|claim_protocol_fees|destroy_for_testing))(<[^>]+>)?\(' \
   sources tests; then
   echo 'Blast-owned receiver functions must use Move 2024 dot syntax.' >&2
   failures=$((failures + 1))
@@ -111,12 +176,19 @@ if ! rg -q '^public struct CreatorCap<phantom Meme> has key, store' \
   failures=$((failures + 1))
 fi
 
+creator_authority_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/creator_authority.move)"
+
 if rg -n '\bcreator_cap_claimed:[[:space:]]*bool|\bissue_creator_cap\b|\btransfer::' \
-  sources/creator_authority.move \
+  <<<"$creator_authority_production" \
   || ! rg -U -q \
-    '(?s)public\(package\) fun claim_creator_cap<Meme>\(\s*authority: CreatorAuthority<Meme>,.*\): CreatorCap<Meme> \{' \
+    '(?s)public\(package\) fun claim_creator_cap<Meme>\(\s*authority: CreatorAuthority<Meme>,.*\): \(CreatorCap<Meme>, MetadataCap<Meme>\) \{' \
+    sources/creator_authority.move \
+  || ! rg -U -q \
+    'public struct CreatorCap<phantom Meme> has key, store \{\s*id: UID,\s*\}' \
+    sources/creator_authority.move \
+  || ! rg -q '^[[:space:]]+metadata_cap: MetadataCap<Meme>,' \
     sources/creator_authority.move; then
-  echo 'Creator-cap claims must consume CreatorAuthority and return CreatorCap without a flag or transfer.' >&2
+  echo 'Creator claims must consume CreatorAuthority and return separate CreatorCap and MetadataCap objects without a flag, wrapper, or transfer.' >&2
   failures=$((failures + 1))
 fi
 

@@ -1,0 +1,94 @@
+{
+  "schema_version": 2,
+  "description": "Accepted Blast V2 live global protocol/creator split for each accrued fee asset.",
+  "source_decisions": [
+    "docs/decisions/0022-dual-asset-fee-ledger-and-claims.md"
+  ],
+  "units": {
+    "fee": "atomic units of the charged asset",
+    "rate": "basis points"
+  },
+  "parameters": {
+    "max_launch_fee_bps_per_asset": 1000,
+    "minimum_protocol_fee_share_bps": 0,
+    "maximum_protocol_fee_share_bps": 10000,
+    "basis_points_denominator": 10000,
+    "rounding_remainder_beneficiary": "protocol"
+  },
+  "cases": [
+    {
+      "name": "zero_fee",
+      "kind": "split",
+      "given": { "fee": "0", "protocol_fee_share_bps": 7000 },
+      "expect": { "protocol": "0", "creator": "0" },
+      "notes": "Zero is a numeric boundary; the stateful accrue operation rejects two zero assets."
+    },
+    {
+      "name": "zero_protocol_share",
+      "kind": "split",
+      "given": { "fee": "9", "protocol_fee_share_bps": 0 },
+      "expect": { "protocol": "0", "creator": "9" },
+      "notes": "A zero global share routes the complete fee to the creator."
+    },
+    {
+      "name": "one_atomic_unit_with_nonzero_protocol_share",
+      "kind": "split",
+      "given": { "fee": "1", "protocol_fee_share_bps": 1 },
+      "expect": { "protocol": "1", "creator": "0" },
+      "notes": "Ceiling rounding assigns the indivisible unit to protocol for any positive share."
+    },
+    {
+      "name": "even_half",
+      "kind": "split",
+      "given": { "fee": "10", "protocol_fee_share_bps": 5000 },
+      "expect": { "protocol": "5", "creator": "5" },
+      "notes": "An exact division has no rounding residue."
+    },
+    {
+      "name": "asymmetric_seventy_percent",
+      "kind": "split",
+      "given": { "fee": "10", "protocol_fee_share_bps": 7000 },
+      "expect": { "protocol": "7", "creator": "3" },
+      "notes": "The beneficiary split is not hard-coded to an even division."
+    },
+    {
+      "name": "odd_half",
+      "kind": "split",
+      "given": { "fee": "9", "protocol_fee_share_bps": 5000 },
+      "expect": { "protocol": "5", "creator": "4" },
+      "notes": "Ceiling division assigns the odd unit to protocol."
+    },
+    {
+      "name": "full_protocol_share",
+      "kind": "split",
+      "given": { "fee": "9", "protocol_fee_share_bps": 10000 },
+      "expect": { "protocol": "9", "creator": "0" },
+      "notes": "The inclusive upper boundary routes the complete fee to protocol."
+    },
+    {
+      "name": "maximum_u64",
+      "kind": "split",
+      "given": {
+        "fee": "18446744073709551615",
+        "protocol_fee_share_bps": 5000
+      },
+      "expect": {
+        "protocol": "9223372036854775808",
+        "creator": "9223372036854775807"
+      },
+      "notes": "MoveStdlib widens the product, so the complete u64 domain is representable."
+    },
+    {
+      "name": "live_share_update_on_existing_ledger",
+      "kind": "sequence",
+      "given": {
+        "accruals": [
+          { "fee": "3", "protocol_fee_share_bps": 5000 },
+          { "fee": "5", "protocol_fee_share_bps": 8000 }
+        ]
+      },
+      "expect": { "protocol_total": "6", "creator_total": "2" },
+      "notes": "The second accrual uses the updated global share without reallocating the first accrual."
+    }
+  ]
+}

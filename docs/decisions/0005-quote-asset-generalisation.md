@@ -1,7 +1,11 @@
 # 0005: Generic, permissionless quote asset
 
-- Status: proposed
+- Status: superseded by [0023](0023-generated-coin-supply-and-metadata-custody.md)
 - Date: 2026-08-22
+
+> This was the earlier broad quote-asset proposal. ADR 0023 rejects implementing
+> its regulated/legacy risk-snapshot path and reopens the initial quote admission
+> rule for the launch-state review.
 
 ## Sources
 

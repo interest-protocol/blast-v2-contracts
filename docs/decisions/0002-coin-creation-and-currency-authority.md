@@ -2,6 +2,13 @@
 
 - Status: proposed
 - Date: 2026-08-22
+- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md)
+
+> ADR 0023 supersedes the transaction details below. The generated package hands
+> Blast a zero-supply treasury cap and native metadata cap in a launch ticket;
+> after permissionless registration finalization, launch mints once and consumes
+> the treasury cap into `Fixed` or `BurnOnly`. The metadata cap is later returned
+> separately alongside `CreatorCap<Meme>`.
 
 ## Sources
 

@@ -18,6 +18,19 @@ public struct XClaimConfigCreated has copy, drop {
     config_id: ID,
 }
 
+/// Emitted after the zero-share global trade-fee configuration is created.
+public struct TradeFeeConfigCreated has copy, drop {
+    config_id: ID,
+    protocol_fee_share_bps: u64,
+}
+
+/// Emitted after the live global protocol fee share is changed.
+public struct ProtocolFeeShareChanged has copy, drop {
+    config_id: ID,
+    old_protocol_fee_share_bps: u64,
+    new_protocol_fee_share_bps: u64,
+}
+
 /// Emitted after a routine protocol administrator is created and delivered.
 public struct AdminAdded has copy, drop {
     authority_id: ID,
@@ -102,6 +115,28 @@ public(package) fun protocol_authority_created(
 
 public(package) fun x_claim_config_created(config_id: ID) {
     blast_fun::events_wrapper::emit_event(XClaimConfigCreated { config_id });
+}
+
+public(package) fun trade_fee_config_created(
+    config_id: ID,
+    protocol_fee_share_bps: u64,
+) {
+    blast_fun::events_wrapper::emit_event(TradeFeeConfigCreated {
+        config_id,
+        protocol_fee_share_bps,
+    });
+}
+
+public(package) fun protocol_fee_share_changed(
+    config_id: ID,
+    old_protocol_fee_share_bps: u64,
+    new_protocol_fee_share_bps: u64,
+) {
+    blast_fun::events_wrapper::emit_event(ProtocolFeeShareChanged {
+        config_id,
+        old_protocol_fee_share_bps,
+        new_protocol_fee_share_bps,
+    });
 }
 
 public(package) fun admin_added(authority_id: ID, admin_cap_id: ID, recipient: address) {
@@ -232,6 +267,24 @@ public fun protocol_authority_created_fields(
 #[test_only]
 public fun x_claim_config_created_fields(self: &XClaimConfigCreated): ID {
     self.config_id
+}
+
+#[test_only]
+public fun trade_fee_config_created_fields(
+    self: &TradeFeeConfigCreated,
+): (ID, u64) {
+    (self.config_id, self.protocol_fee_share_bps)
+}
+
+#[test_only]
+public fun protocol_fee_share_changed_fields(
+    self: &ProtocolFeeShareChanged,
+): (ID, u64, u64) {
+    (
+        self.config_id,
+        self.old_protocol_fee_share_bps,
+        self.new_protocol_fee_share_bps,
+    )
 }
 
 #[test_only]

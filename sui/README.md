@@ -9,6 +9,7 @@ The initial package stays single and dependency-light:
 sui/
 ├── Move.toml
 ├── sources/
+│   └── lib/              shared diagnostics and indexing infrastructure
 ├── tests/
 └── scripts/
 ```
@@ -30,11 +31,18 @@ The core package now contains:
 - `x_claim_config.move` — independently initialized shared X backend-signer
   configuration, witness-gated rotation/revocation, and Ed25519 verification;
 - `creator_authority.move` — enum-backed address/X creator identity, one unified
-  consuming one-time claim, composable coin-typed `CreatorCap<Meme>` return,
+  consuming one-time claim, and separate composable returns of the coin-typed
+  `CreatorCap<Meme>` and native `MetadataCap<Meme>`,
   canonical BCS X attestation bytes, and replay-complete events;
 - `curve.move` — package-only constant-product buy/sell quotes, independently
   selected quote/meme fee ordering, sell-side burn ramp, checked reserve
   arithmetic, threshold reporting, and an explicit no-clamp sell-back invariant;
+- `fees.move` — embedded four-balance creator/protocol fee accounting for both
+  meme and quote assets, live configurable remainder-safe splitting, and composable claims
+  authorized by `CreatorCap<Meme>` or `AdminWitness`;
+- `trade_fee_config.move` — zero-share shared singleton, live 0–10,000 bps
+  protocol-share updates authorized by `AdminWitness`, and replay-complete
+  old/new configuration events that rely on native Sui event ordering;
 - `errors.move` — the append-only package error registry exposed as zero-cost
   package macros; owning modules perform their assertions inline;
 - `events_wrapper.move` — the stable package-wide `Event<T>` indexing envelope
@@ -47,6 +55,10 @@ The core package now contains:
 - `curve_tests.move` — exact shared vectors, rounding and threshold boundaries,
   maximum-width arithmetic, guard precedence, round-trip dust, and a fixed-seed
   reachable-state sell-back property suite.
+- `fees_tests.move` — dual-asset conservation, odd-unit protocol rounding,
+  maximum-width arithmetic, empty claims, single-asset modes, live split changes
+  and percentage boundaries, transferred creator authority,
+  and composable payout routing.
 
 These functions are package-internal where the future `launch` module must own
 the call. This avoids publishing an incomplete `Launch` object layout before its
@@ -81,17 +93,16 @@ the resolved address later claims through the ordinary address branch.
 Three transactions, for the reasons given in
 [../docs/decisions/0002-coin-creation-and-currency-authority.md](../docs/decisions/0002-coin-creation-and-currency-authority.md):
 
-1. **publish** the generated coin package — its `init` creates the currency through
-   the Coin Registry, mints the full supply, claims the metadata capability, and
-   hands the creator a launch ticket;
-2. **promote** the currency to its derived shared address; this call is
-   permissionless and anyone can make it;
-3. **launch** — one transaction that redeems the ticket, optionally takes a venue
-   pool reservation through an adapter command, and opens the curve. It is atomic:
-   reservation and curve opening either both happen or neither does.
-
-Whether steps 1 and 3 can merge is an open premise (P1) recorded in
-[../docs/decisions/README.md](../docs/decisions/README.md).
+1. **publish** the generated coin package — its OTW `init` creates an
+   unregulated, zero-supply currency and returns the empty `TreasuryCap<Meme>`
+   and native `MetadataCap<Meme>` inside a Blast launch ticket;
+2. **finalize registration** — a permissionless Coin Registry call promotes the
+   currency to its derived shared address; Blast's event-driven worker may submit
+   this transaction without another user approval;
+3. **launch** — one transaction redeems the ticket, validates the registered
+   currency and empty treasury cap, mints at most one billion whole coins, then
+   consumes mint authority into owner-selected `Fixed` or `BurnOnly` before
+   opening the curve.
 
 The implementation is pinned to Sui CLI `1.77.2-51d177ad7d65` from the
 `mainnet-v1.77.2` release. CI and release records must use this exact build until

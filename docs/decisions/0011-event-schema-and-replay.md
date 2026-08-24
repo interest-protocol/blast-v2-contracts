@@ -2,13 +2,14 @@
 
 - Status: proposed
 - Date: 2026-08-22
-- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md)
+- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0022](0022-dual-asset-fee-ledger-and-claims.md)
 
 ## Sources
 
 | Ref | Full commit | Repository |
 | --- | --- | --- |
 | `sui@ae60d06` | `ae60d065ed27576d25ac1c94145e5ffe3ddcf89e` | MystenLabs/sui |
+| `sui@06734f6` | `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` | MystenLabs/sui |
 | `su@a3552af` | `a3552af11a531717378b6337a174f9340d1099dc` | interest-protocol/su-lending |
 
 ## Context
@@ -18,12 +19,9 @@ reconstruct lifecycle, balances, configuration, fee state, allocation state, and
 reading mutable state**, and that mutation events carry stable identity, old/new or delta values, final
 totals, and a sequence number where order is otherwise ambiguous.
 
-Two Blast-specific facts raise the bar. During bonding the Coin Registry reports no supply, because
-`total_supply` returns `none` while the state is `Unknown`
-(`sui@ae60d06:crates/sui-framework/packages/sui-framework/sources/registries/coin_registry.move:630-638`),
-so **events are the only source of live supply**. And the quote risk snapshot is a launch-time reading
-that can go stale ([ADR 0005](0005-quote-asset-generalisation.md)), so the event must say what was true
-and when.
+Blast's generated currency enters core only after its supply is irreversibly
+`Fixed` or `BurnOnly` under ADR 0023. Events still carry initial and final supply
+facts so indexers can reconcile every burn without reading mutable state.
 
 ## Decision
 
@@ -40,34 +38,35 @@ the need to version reducers when an inner payload schema changes.
 The domain scopes below describe ordering and replay fields inside `T`; they are
 not competing Move event types that bypass the generic wrapper.
 
-### Three sequenced domain scopes and one meme-scoped fact
+### Native Sui order and four replay scopes
 
 Not every event belongs to a launch. Global ACL, configuration and Display events are protocol-wide,
 settlement events belong to an epoch in a separately governed package, and the one-time
 `CreatorCapClaimed` fact follows the unique meme type into integrations beyond the launch lifecycle.
-Forcing one sequenced domain scope on all payloads would require fabricated or redundant identifiers and make a
-single sequence counter a global write contention point. Each mutable domain therefore has its own
-**independently gapless, monotonic** sequence; the at-most-once meme fact needs no counter.
+Sui already identifies an event by transaction digest plus its per-transaction event index at the pinned
+revision, while current event delivery additionally exposes checkpoint and transaction position. A
+protocol payload must not duplicate that native ordering with a stored counter merely for pagination,
+gap detection, or replay. See
+[`../research/sui-event-ordering-and-domain-sequences.md`](../research/sui-event-ordering-and-domain-sequences.md).
 
-| Domain scope | Fields | Sequence scope | Emitted by |
+| Domain scope | Identity and replay fields | Ordering | Emitted by |
 | --- | --- | --- | --- |
-| **per-launch** | `launch_id`, `meme_type`, `quote_type`, `launch_seq`, `timestamp_ms` | strictly increasing and gapless **per launch**, starting at 0 on `LaunchCreated` | `blast_fun` launch, curve, fee, migration paths |
-| **global** | `config_id`, `global_seq`, `timestamp_ms` | strictly increasing and gapless **per shared `Config` object** | `blast_fun` ACL, configuration, Display, adapter-approval, X-claim signer paths |
-| **epoch** | `epoch_id`, `quote_type`, `epoch_seq`, `timestamp_ms` | strictly increasing and gapless **per epoch** | `blast_fun_revshare` |
-| **per-meme fact** | original meme `TypeName` | no sequence; at most one claim fact per generated meme type | `blast_fun` creator authority |
+| **per-launch** | original meme and quote `TypeName`, plus timestamp when the domain needs it | native checkpoint, transaction, and event position | `blast_fun` launch, curve, claim, migration paths |
+| **global** | concern-owning shared object id | native checkpoint, transaction, and event position | `blast_fun` ACL, configuration, Display, adapter-approval, X-claim signer paths |
+| **epoch** | `epoch_id` and quote type | native checkpoint, transaction, and event position | `blast_fun_revshare` |
+| **per-meme fact** | original meme `TypeName` | native position; at most one claim fact per generated meme type | `blast_fun` creator authority |
 
-The three sequences are independent. A consumer orders **within** a scope by its sequence and **across**
-scopes by transaction digest and checkpoint, never by comparing a `launch_seq` with a `global_seq`.
+Replay continuity comes from stable entity identity together with old/new values, exact deltas, or final
+snapshots. A domain counter is added only if it is itself business state or native position cannot order
+the relevant transitions; that exception requires an explicit ADR.
 
 ADR 0018 further separates global administration from X signer configuration. ACL payloads use the
 `ProtocolAuthority` identity, while X signer payloads use the `XClaimConfig` identity; each shared object
 has its own replay scope and neither creation payload pretends the objects share storage.
 
-Two payloads deliberately carry fields from more than one domain scope because they genuinely belong to two domains:
+One payload deliberately carries fields from more than one domain scope because it genuinely belongs to two domains:
 
-- `CreatorFeeSplitSet` carries the per-launch envelope (it changes one launch's fee routing) and repeats
-  the `config_id` bound that constrained it;
-- `EpochFunded` carries the epoch envelope and repeats `launch_ids`, the set it settles for, when the
+- `EpochFunded` carries the epoch envelope and repeats `meme_types`, the launch set it settles for, when the
   epoch is launch-scoped rather than protocol-wide.
 
 ### Event catalogue
@@ -76,15 +75,13 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 
 | Event | Env | Key fields beyond the envelope |
 | --- | :---: | --- |
-| `LaunchCreated` | L | creator-identity kind and either creator address or `x_identity_hash`, `V`, `T`, `M0`, total supply, `meme_decimals`, `quote_decimals`, full quote risk snapshot (regulated **tri-state**, deny cap id, supply state, quote total supply, treasury/metadata cap state, symbol and name hashes), fixed `quote_fee_bps` and `meme_fee_bps`, route params, reservation id if any |
-| `Bought` | L | `quote_in_gross`, `quote_fee`, `quote_in_net`, `meme_out_gross`, `meme_fee`, `meme_out_net`, `M'`, `Q'`, `crossed_threshold` |
-| `Sold` | L | `meme_in_gross`, `meme_fee`, `meme_in_after_fee`, `progress_bps`, `burn_bps`, `meme_burned`, `meme_in_effective`, `quote_out_gross`, `quote_fee`, `quote_out_net`, `M'`, `Q'` |
+| `LaunchCreated` | L | creator-identity kind and either creator address or `x_identity_hash`, `V`, `T`, `M0`, total supply, fixed/burnable supply mode, `meme_decimals`, `quote_decimals`, fixed `quote_fee_bps` and `meme_fee_bps`, all four initial fee-ledger totals, route params, reservation id if any |
+| `Bought` | L | `quote_in_gross`, `quote_fee`, `quote_in_net`, `meme_out_gross`, `meme_fee`, `meme_out_net`, applied `protocol_fee_share_bps`, meme/quote `protocol_fee_delta` and `creator_fee_delta`, all four final fee-ledger totals, `M'`, `Q'`, `crossed_threshold` |
+| `Sold` | L | `meme_in_gross`, `meme_fee`, `meme_in_after_fee`, `progress_bps`, `burn_bps`, `meme_burned`, `meme_in_effective`, `quote_out_gross`, `quote_fee`, `quote_out_net`, applied `protocol_fee_share_bps`, meme/quote `protocol_fee_delta` and `creator_fee_delta`, all four final fee-ledger totals, `M'`, `Q'` |
 | `MemeBurnedOnCurve` | L | `amount`, `burn_bps`, `progress_bps`, `total_supply_after` |
 | `MemeBurnedAtMigration` | L | `amount`, `total_supply_after` |
 | `SupplyStateChanged` | L | `old_state`, `new_state`, `final_total_supply` |
-| `FeesAccrued` | L | meme/quote `protocol_delta`, `creator_delta`, `protocol_total`, and `creator_total` fields |
-| `CreatorFeesClaimed` / `ProtocolFeesClaimed` | L | asset type, `amount`, `remaining_total`, recipient |
-| `CreatorFeeSplitSet` | L | `recipients` (bounded vector), `shares_bps`, `old_recipients`, `old_shares_bps`, `remainder_beneficiary`, `max_recipients_bound`, `config_id` |
+| `CreatorFeesClaimed` / `ProtocolFeesClaimed` | L | both claimed amounts, both affected remaining totals, claimant |
 | `LpFeesCollected` | L | `venue`, `pool_id`, `position_id`, `lp_vault_id`, `meme_collected`, `quote_collected`, `creator_share`, `protocol_share`, `principal_liquidity_before`, `principal_liquidity_after` |
 | `CreatorContributed` | L | `quote_amount`, `meme_received`, `Q'` — distinguishes creator-supplied progress from market progress |
 | `ContributionClaimRecorded` | L | contributor, asset, amount, claim owner, withdrawal conditions |
@@ -96,6 +93,8 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `AdminRevoked` | G | authority id and admin-cap id; membership removed while the cap object may remain |
 | `AdminDestroyed` | G | authority id, admin-cap id, `was_active`; cap deleted and membership absent afterward |
 | `XClaimConfigCreated` | G | disabled shared signer configuration id |
+| `TradeFeeConfigCreated` | G | shared fee-config id and initial `protocol_fee_share_bps` |
+| `ProtocolFeeShareChanged` | G | shared fee-config id and old/new `protocol_fee_share_bps` |
 | `RouteSelected` | L | route A/B/C, venue, tick spacing, fee rate, orientation, target sqrt price, `reservation_id` |
 | `ReservationReleased` | L | `venue`, `reservation_id`, `tick_spacing`, `orientation`, reason |
 | `MigrationBegun` | L | payload id, `M`, `Q` at handoff |
@@ -108,8 +107,8 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `VersionBumped` | G | `old_version`, `new_version` |
 | `AdapterApproved` / `AdapterRevoked` | G | witness type name |
 | `XClaimSignerSet` / `XClaimSignerRevoked` | G | previous public key and, for set/rotation, current public key; no key id or active flag |
-| `EpochOpened` | E | quote type, `MAX_EPOCH_LEAVES`, `MAX_EPOCH_FUNDED`, dust policy, `scope` (`protocol` or `launch_scoped`), `launch_ids` (empty when `scope` is `protocol`) |
-| `EpochFunded` | E | `funded_delta`, `funded_total`, `launch_ids` (the launch-scoped set this epoch settles for; empty when the epoch scope is `protocol`) |
+| `EpochOpened` | E | quote type, `MAX_EPOCH_LEAVES`, `MAX_EPOCH_FUNDED`, dust policy, `scope` (`protocol` or `launch_scoped`), `meme_types` (empty when `scope` is `protocol`) |
+| `EpochFunded` | E | `funded_delta`, `funded_total`, `meme_types` (the launch-scoped set this epoch settles for; empty when the epoch scope is `protocol`) |
 | `RootPublished` | E | root, `leaf_count`, `claimable_cap`, challenge window end, root-commitment kind |
 | `RootReplaced` | E | `old_root`, `new_root` |
 | `Claimed` | E | `leaf_index`, recipient, amount, `cumulative_claimed`, `funded_total` |
@@ -122,12 +121,17 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
   `CreatorCapClaimed`. No economic path reads a handle, and no raw X credential
   enters state or events ([ADR 0013](0013-creator-fee-authority-and-x-claims.md)).
 - Each event carries exactly one primary envelope; the two dual-domain events above repeat the secondary
-  identifier as an ordinary field, never as a second sequence. The meme fact is keyed by original
-  `TypeName` and has no launch id or sequence because it can be emitted only once.
-- The quote risk snapshot is emitted once, at `LaunchCreated`, and is explicitly a launch-time reading;
-  an indexer wanting current risk must additionally watch the live `Currency<Quote>`.
+  identifier as an ordinary field. Payloads do not duplicate Sui's native event position. The meme fact
+  is keyed by original `TypeName` and can be emitted only once.
 - Every burn is a named term with the resulting total supply, so supply is reconstructable during bonding
-  when the registry reports none.
+  for a burnable launch; fixed launches emit no burn facts.
+- `Bought` and `Sold` are the sole fee-accrual facts. Each contains the split deltas and post-accrual
+  totals plus the live global percentage applied; no second event describes the same mutation.
+- The fee-share configuration has its own global replay scope. Its update affects the next accrual of
+  every launch, while already-accrued balances remain unchanged.
+- Claim events identify the claimant but not a payout recipient because the claimed coins are returned.
+  Final coin routing and current `CreatorCap<Meme>` custody are native transaction/object-ownership
+  facts, not protocol event state.
 - Field changes are schema migrations and require a replay test
   (`../../AGENTS.md`).
 
@@ -135,15 +139,21 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 
 A reducer over the stream must reproduce, without reading any object:
 
-`M`, `Q`, total supply, cumulative burned by moment, accrued and claimed fees per recipient, the current
-creator fee split and its remainder beneficiary, cumulative LP fees collected and their split, lifecycle
-state, pause and version state, configuration and its ceilings, creator authority, contribution claims,
+`M`, `Q`, total supply, cumulative burned by moment, accrued and claimed creator/protocol fees in both
+assets, the current global protocol fee share, cumulative LP fees collected and their split, lifecycle
+state, pause and version state, configuration and its ceilings, creator-authority issuance, contribution claims,
 route, reservation and reservation-release state, migration settlement, and per-epoch RevShare funding,
 claims, and sweeps.
 
-Sequence reconstruction is per scope: `launch_seq` gapless within each launch, `global_seq` gapless per
-`Config`, `epoch_seq` gapless per epoch. A reducer that assumes one global ordering across the three is
-wrong by construction. `CreatorCapClaimed` is reduced as one immutable fact keyed by meme type.
+Two deliberately non-indexable custody facts remain outside the protocol event reducer: the current
+owner of a transferable `CreatorCap<Meme>` and the final recipients of coins returned by a claim. Both
+are available from native Sui object ownership and transaction effects. The protocol stream records
+cap issuance, claimant identity, claimed amounts, and the resulting accounting state.
+
+Reducers process native Sui event order and partition state by the stable identity carried in each
+payload. Old/new continuity and final snapshots expose dropped or misapplied domain transitions without
+adding counters to protocol storage. `CreatorCapClaimed` is reduced as one immutable fact keyed by meme
+type.
 
 ### Operation-to-rule checklist
 
@@ -155,7 +165,7 @@ wrong by construction. `CreatorCapClaimed` is reduced as one immutable fact keye
 | `buy` | version, pause, state, slippage, non-zero out | `Bought` | none | none | returns `Coin<Meme>` | `EZeroOutput`, slippage, deadline |
 | `sell` | version, pause, state, burn, slippage, non-zero out | `Sold`, `MemeBurnedOnCurve` | none | none | returns `Coin<Quote>` | `EZeroOutput`, slippage, deadline |
 | claim fees | capability, accrued only | `*FeesClaimed` | none | none | returns coin | `ENotAuthorized`, `ENothingAccrued` |
-| set creator fee split | capability, recipient count, share sum | `CreatorFeeSplitSet` | none | fixed `MAX_FEE_RECIPIENTS` | n/a | `ETooManyRecipients`, `ESharesNotWhole` |
+| set protocol fee share | admin witness, `<= 10_000` | `ProtocolFeeShareChanged` | none | one scalar | n/a | `EInvalidProtocolFeeShareBps` |
 | collect LP fees | capability, vault-locked position | `LpFeesCollected` | vendored SHA pin | none | returns coins | `ENotAuthorized`, `EPositionNotInVault` |
 | release reservation | capability, reservation exists | `ReservationReleased` | vendored SHA pin | frees the reservation slot | n/a | `ENoReservation`, `EWrongVenue` |
 | metadata update | capability, bonding only | `MetadataUpdated` | none | none | n/a | `EMetadataFrozen` |
@@ -185,13 +195,15 @@ launch is most actively indexed.
 and a shared shape would carry unused fields in half the stream.
 
 **A single envelope with one global sequence.** Rejected on two grounds. A protocol-wide configuration
-change has no `launch_id`, so the field would have to be fabricated; and a single monotonic counter
+change has no `meme_type`, so the field would have to be fabricated; and a single monotonic counter
 across all launches would make every trade contend on one shared field, which is a throughput cost paid
-for nothing an indexer needs.
+for nothing an indexer needs. Separate application counters are also rejected when native Sui event
+position already provides the required order.
 
 ## Consequences
 
-- Indexers can rebuild everything from events; object reads become an optimisation, not a requirement.
+- Indexers can rebuild all protocol accounting and lifecycle state from events; native object reads and
+  transaction effects remain authoritative for the two explicitly documented custody facts.
 - Adding or changing any field above is a schema migration requiring a replay test.
 - The event stream is wide; that cost is accepted because `../engineering-principles.md` treats events as
   the accounting interface rather than as notifications.
@@ -199,15 +211,16 @@ for nothing an indexer needs.
 ## Verification
 
 - Reducer replay test: reconstruct final state from events alone and compare field-by-field with object
-  state, for a sequence covering launch, many trades, both burn moments, threshold crossing, a creator
-  fee-split change, a failed migration with retry **including reservation release on venue switch**, a
+  state, for a sequence covering launch, many trades, both burn moments, threshold crossing, both fee
+  claims, a failed migration with retry **including reservation release on venue switch**, a
   successful migration, LP fee collection, and a full RevShare epoch.
 - Field-level assertions on every event in the catalogue.
-- Sequence tests, one per scope: `launch_seq` strictly increasing and gapless within a launch,
-  `global_seq` within a `Config`, `epoch_seq` within an epoch; plus a negative test asserting the reducer
-  does not order across scopes by sequence.
-- Fee-split reducer test: after a `CreatorFeeSplitSet`, replayed per-recipient entitlements equal object
-  state, and the remainder beneficiary receives exactly the rounding residue.
+- Native-order replay test: checkpoint, transaction, and event positions produce the same per-entity
+  state as direct transaction-order replay, including multiple Blast events in one transaction.
+- Schema tests reject application-level counters that merely duplicate native Sui event ordering.
+- Fee-ledger reducer test: replayed creator/protocol totals in both assets equal object state after each
+  accrual and claim across global percentage updates; each trade records its applied percentage, and
+  ceiling rounding assigns any indivisible residue to the protocol.
 - LP-fee reducer test: cumulative `LpFeesCollected` reconciles with the vault balances, and
   `principal_liquidity_before == principal_liquidity_after` in every collection.
 - Supply-reconstruction test: cumulative burns from events equal the final registry `total_supply` after

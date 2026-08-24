@@ -54,4 +54,11 @@ fun package_error_registry_is_stable() {
         36,
     );
     std::unit_test::assert_eq!(blast_fun::errors::invalid_meme_fee_bps!(), 37);
+    std::unit_test::assert_eq!(blast_fun::errors::nothing_accrued!(), 38);
+    std::unit_test::assert_eq!(blast_fun::errors::zero_fee_accrual!(), 39);
+    std::unit_test::assert_eq!(
+        blast_fun::errors::invalid_protocol_fee_share_bps!(),
+        40,
+    );
+    std::unit_test::assert_eq!(blast_fun::errors::protocol_fee_share_unchanged!(), 41);
 }

@@ -2,7 +2,7 @@
 
 This file is the canonical map from a raw Sui Move abort code to its package
 macro, raising module, and stable meaning. Keep it synchronized with
-[`sui/sources/errors.move`](../sui/sources/errors.move) whenever a code is added.
+[`sui/sources/lib/errors.move`](../sui/sources/lib/errors.move) whenever a code is added.
 
 ## Strategy
 
@@ -64,5 +64,9 @@ the next unused value and must not fill a retired gap.
 | 35 | `curve_reserve_overflow` | `curve` | A post-trade meme or real-quote reserve cannot be represented as `u64`. |
 | 36 | `sell_back_invariant_violated` | `curve` | The full sell quote exceeds the real quote held by the curve; the result is rejected rather than clamped. |
 | 37 | `invalid_meme_fee_bps` | `curve` | The meme-asset fee exceeds 10,000 basis points. |
+| 38 | `nothing_accrued` | `fees` | Neither asset has an accrued balance for the presented creator or protocol claim authority. |
+| 39 | `zero_fee_accrual` | `fees` | A fee accrual supplied zero meme and zero quote balances. |
+| 40 | `invalid_protocol_fee_share_bps` | `trade_fee_config` | The global protocol fee share exceeds 10,000 basis points. |
+| 41 | `protocol_fee_share_unchanged` | `trade_fee_config` | A protocol fee-share update supplied the currently active value. |
 
-The next new package-wide protocol error must use code **38**.
+The next new package-wide protocol error must use code **42**.

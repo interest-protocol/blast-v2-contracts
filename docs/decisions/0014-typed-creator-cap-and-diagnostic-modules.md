@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-22
 - Amends: [0013](0013-creator-fee-authority-and-x-claims.md)
-- Amended by: [0016](0016-unified-creator-cap-claim-and-suins-periphery.md), [0017](0017-coin-type-domain-for-x-creator-claims.md), [0018](0018-authority-module-separation.md), [0019](0019-consuming-creator-authority-and-cap-return.md)
+- Amended by: [0016](0016-unified-creator-cap-claim-and-suins-periphery.md), [0017](0017-coin-type-domain-for-x-creator-claims.md), [0018](0018-authority-module-separation.md), [0019](0019-consuming-creator-authority-and-cap-return.md), [0023](0023-generated-coin-supply-and-metadata-custody.md)
 
 ## Sources
 
@@ -35,13 +35,14 @@ dependency layout already proposed in ADR 0001.
 ### Creator authority is parameterized by the meme coin type
 
 `blast_fun::creator_authority` owns the Sui capability `CreatorCap<phantom Meme>` and its one-time
-issuance lifecycle. The capability contains only its object
-`UID`; it does not store a launch id, creator address, X identity, lifecycle, or
-migration state.
+issuance lifecycle. The capability contains only its object `UID`; it does not
+store a launch id, creator address, X identity, metadata capability, lifecycle,
+or migration state. As amended by ADR 0023, the native `MetadataCap<Meme>` is
+returned as a separate object at creator claim.
 
 `CreatorAuthority<phantom Meme>` carries only the launch-scoped address-or-X
 identity. It is a linear, store-only resource: the unified claim consumes it by
-value and returns exactly `CreatorCap<Meme>`. Every constructor and claim
+value and returns exactly `(CreatorCap<Meme>, MetadataCap<Meme>)`. Every constructor and claim
 preserves the same `Meme` type parameter.
 
 The invariant is one generated meme coin type per launch. Future fee and LP-fee

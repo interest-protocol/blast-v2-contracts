@@ -6,7 +6,7 @@ module blast_fun::creator_authority;
 
 use blast_fun::{constants, events, x_claim_config::XClaimConfig};
 use std::{bcs, type_name::{Self, TypeName}};
-use sui::clock::Clock;
+use sui::{clock::Clock, coin_registry::MetadataCap};
 
 // === Public Types ===
 
@@ -15,7 +15,7 @@ public struct CreatorAuthority<phantom Meme> has store {
     identity: CreatorIdentity,
 }
 
-/// Authority over creator-controlled settings and accrued creator fees for one coin type.
+/// Authority over creator-controlled settings and accrued fees for one coin type.
 public struct CreatorCap<phantom Meme> has key, store {
     id: UID,
 }
@@ -61,14 +61,15 @@ public(package) fun new_x<Meme>(
     }
 }
 
-/// Consumes the launch's creator authority and returns its unique creator capability.
+/// Consumes the launch's creator authority and returns its two independent capabilities.
 public(package) fun claim_creator_cap<Meme>(
     authority: CreatorAuthority<Meme>,
+    metadata_cap: MetadataCap<Meme>,
     config: &XClaimConfig,
     x_attestation: Option<vector<u8>>,
     clock: &Clock,
     ctx: &mut TxContext,
-): CreatorCap<Meme> {
+): (CreatorCap<Meme>, MetadataCap<Meme>) {
     let claimant = ctx.sender();
 
     let (x_identity_hash, x_claim_expiry_ms) = match (&authority.identity) {
@@ -117,7 +118,7 @@ public(package) fun claim_creator_cap<Meme>(
         x_claim_expiry_ms,
     );
 
-    creator_cap
+    (creator_cap, metadata_cap)
 }
 
 // === Private Functions ===
@@ -195,5 +196,6 @@ public fun destroy_for_testing<Meme>(authority: CreatorAuthority<Meme>) {
 /// Deletes a creator capability after a test has inspected it.
 public fun destroy_cap_for_testing<Meme>(cap: CreatorCap<Meme>) {
     let CreatorCap { id } = cap;
+
     id.delete();
 }

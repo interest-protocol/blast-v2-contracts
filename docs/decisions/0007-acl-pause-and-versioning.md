@@ -2,6 +2,7 @@
 
 - Status: proposed
 - Date: 2026-08-22
+- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md)
 - Authority spine settled by: [0015](0015-protocol-authority-and-x-signer-state.md)
 - Admin-cap lifecycle settled by: [0020](0020-admin-cap-self-destruction.md)
 
@@ -26,7 +27,7 @@ the version gate must live in shared state, not in the entrypoint.
 | --- | --- | --- |
 | `SuperAdminCap` | protocol multisig | add/revoke protocol admins; delayed root transfer |
 | `AdminCap` | protocol operations | bounded parameter changes, version bump, pause, adapter approval, `DisplayCap` custody, X-claim signer rotation |
-| `CreatorCap` | per launch, creator address | creator fee claim, creator fee-split assignment, LP fee collection after migration, metadata update during bonding |
+| `CreatorCap` | per launch, creator address | creator fee claim, LP fee collection after migration, metadata update during bonding |
 
 Possession of a `Launch` object grants nothing. Being the address recorded as creator grants nothing on
 its own — the `CreatorCap` is the authority, so authority is transferable exactly when the capability is,
@@ -41,12 +42,12 @@ and never accidentally.
 | `begin_migration` | — | — | — | yes | threshold crossed | `MigrationBegun` |
 | `settle_migration` | — | — | — | yes | sealed settlement | `Migrated` |
 | claim creator fees | — | — | yes | — | accrued balance only | `CreatorFeesClaimed` |
-| set creator fee split | — | — | yes | — | `<= MAX_FEE_RECIPIENTS`; shares sum to exactly `10_000` bps | `CreatorFeeSplitSet` |
 | collect LP fees | — | — | yes | — | fees only; position stays in `LpVault`; principal liquidity unchanged | `LpFeesCollected` |
 | release venue reservation | — | yes | — | — | only while a reservation is held and no settlement exists | `ReservationReleased` |
 | claim protocol fees | — | yes | — | — | accrued balance only | `ProtocolFeesClaimed` |
 | update coin metadata | — | — | yes | — | bonding only | `MetadataUpdated` |
 | choose launch quote/meme fee rates | — | — | — | launcher | fixed at launch; each within its accepted bound | fields in `LaunchCreated` |
+| set global protocol fee share | — | yes | — | — | `<= 10_000` bps | `ProtocolFeeShareChanged` |
 | set creation fee | — | yes | — | — | `<= CREATION_FEE_CEILING` | `CreationFeeSet` |
 | set migration fee | — | yes | — | — | `<= MIGRATION_FEE_CEILING_BPS` | `MigrationFeeSet` |
 | approve adapter witness | — | yes | — | — | bounded set size | `AdapterApproved` |
@@ -74,7 +75,6 @@ never bare.
 | `begin_migration` | `ENotLive` | `EThresholdNotReached` until crossed | `EMigrationAlreadyBegun` | `EAlreadyMigrated` | `EInRecovery` |
 | `settle_migration` | `ENotMigrating` | `ENotMigrating` | ok | `EAlreadyMigrated` | `ENotMigrating` |
 | claim creator fees | `ENothingAccrued` | ok | ok | ok | ok |
-| set creator fee split | ok | ok | ok | ok | ok |
 | collect LP fees | `ENotMigrated` | `ENotMigrated` | `ENotMigrated` | ok | `ENotMigrated` |
 | release venue reservation | `ENoReservation` | ok if held | ok if held | `EAlreadyMigrated` | ok if held |
 | update metadata | `ENotLive` | ok | `EMetadataFrozen` | `EMetadataFrozen` | `EMetadataFrozen` |
@@ -82,9 +82,12 @@ never bare.
 
 **Fee claims are not lifecycle-gated.** Accrued fees are a settled obligation, so a claim never aborts
 because of the launch's state; in `Configured` there is simply nothing accrued, which is
-`ENothingAccrued` and not `ENotLive`. Setting the fee split is likewise state-independent: it changes
-routing for future accrual only and never touches an accrued balance. LP fee collection is the one
-fee-adjacent operation that *is* state-gated, because the `LpVault` does not exist until migration.
+`ENothingAccrued` and not `ENotLive`. LP fee collection is the one fee-adjacent operation that *is*
+state-gated, because the `LpVault` does not exist until migration.
+
+**The protocol fee share is global and live.** Its setter is not launch-lifecycle-gated. Once updated,
+every launch uses the new percentage on its next trade; balances accrued before the update retain their
+existing creator/protocol ownership.
 
 ### Guard precedence
 
@@ -127,15 +130,6 @@ Pause is per scope, never global-by-accident:
 demonstrated economic emergency, requires `AdminCap`, and emits a reason code. Fee claims are never
 pausable, because accrued fees are already owed.
 
-### Blast's pause cannot undo a third-party freeze
-
-If the quote asset is regulated, its issuer can deny-list an address or globally pause that coin
-(`sui@ae60d06:crates/sui-framework/packages/sui-framework/sources/registries/coin_registry.move:139-148, 263-278`).
-In that event the curve's `Balance<Quote>` may be unmovable regardless of Blast's pause state. **No Blast
-capability can restore transferability of a third party's coin.** This limit is disclosed at launch
-through the risk snapshot of [ADR 0005](0005-quote-asset-generalisation.md) and repeated here so no
-operator believes the pause matrix covers it.
-
 ### Versioning
 
 A `version: u64` lives in the shared `Config`. Every mutating entrypoint asserts it matches the compiled
@@ -164,7 +158,6 @@ authority and makes delegation impossible without changing the recorded creator.
 - Routine admins can irreversibly renounce membership, and revoked holders retain a storage-rebate path.
 - Guard precedence is observable and therefore a release commitment.
 - `PAUSE_SELL` is a deliberate, loud, exceptional action.
-- A regulated-quote freeze is outside Blast's control and is disclosed rather than mitigated.
 - A version bump is a hard cutover with no grace period.
 
 ## Verification
@@ -172,9 +165,8 @@ authority and makes delegation impossible without changing the recorded creator.
 - Authority matrix executed as a test table: each role's allowed and forbidden actions, plus rotation and
   revocation.
 - Admin-cap destruction tests cover active membership removal and already-revoked object cleanup.
-- Fee-split tests: recipient count above `MAX_FEE_RECIPIENTS` aborts `ETooManyRecipients`; shares summing
-  to anything other than `10_000` bps abort `ESharesNotWhole`; a non-`CreatorCap` holder aborts
-  `ENotAuthorized`; the rounding remainder lands on the named beneficiary.
+- Trade-fee split tests cover configurable values, both percentage boundaries, a changed share applied
+  to an existing launch, protocol-favouring ceiling rounding, and typed creator/protocol claim authority.
 - LP-fee tests: collection by a non-`CreatorCap` holder aborts; collection before migration aborts
   `ENotMigrated`; no collection path reduces principal liquidity or removes the position from the vault.
 - Reservation-release tests: release without a reservation aborts `ENoReservation`; release naming the

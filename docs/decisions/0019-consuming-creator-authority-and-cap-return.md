@@ -3,6 +3,7 @@
 - Status: accepted
 - Date: 2026-08-23
 - Amends: [0011](0011-event-schema-and-replay.md), [0013](0013-creator-fee-authority-and-x-claims.md), [0014](0014-typed-creator-cap-and-diagnostic-modules.md), [0016](0016-unified-creator-cap-claim-and-suins-periphery.md), [0017](0017-coin-type-domain-for-x-creator-claims.md), [0018](0018-authority-module-separation.md)
+- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md)
 
 ## Context
 
@@ -31,13 +32,14 @@ X-identity, attestation, signer, expiry, and signature checks before destructuri
 success it:
 
 1. consumes the `CreatorAuthority<Meme>` and its identity;
-2. creates exactly one `CreatorCap<Meme>`;
+2. creates exactly one `CreatorCap<Meme>` and preserves the launch's unique
+   native `MetadataCap<Meme>` as a separate return value;
 3. emits `CreatorCapClaimed`; and
-4. returns the capability to the calling PTB.
+4. returns `(CreatorCap<Meme>, MetadataCap<Meme>)` to the calling PTB.
 
 The claim does not transfer the capability. The authenticated creator is still `ctx.sender()`, but after
-the claim returns, that caller may transfer, store, wrap, or immediately use the `CreatorCap<Meme>` in a
-later command.
+the claim returns, that caller may independently transfer, store, or immediately
+use either returned capability in a later command.
 
 There is no `creator_cap_claimed` field and no separate `issue_creator_cap` function. Error code 12 is
 retired and remains reserved; a repeat claim is rejected structurally because the authority value no
@@ -68,7 +70,8 @@ separate verb suggests another issuance lifecycle and makes uniqueness harder to
 
 - A creator may claim days or months after launch as long as the launch still holds its authority.
 - Successful claim removes the creator identity and leaves no inert claimed-state object or boolean.
-- `CreatorCap<Meme>` remains `key, store` and can be delivered or composed by the claimant.
+- `CreatorCap<Meme>` remains `key, store`, contains only its `UID`, and can be
+  delivered or composed independently from the native metadata capability.
 - A second claim from the same authority is impossible to express because the first call consumes it.
 - Indexers continue treating `CreatorCapClaimed` as the one-time fact, while contracts rely on resource
   consumption rather than event history.
@@ -79,11 +82,11 @@ separate verb suggests another issuance lifecycle and makes uniqueness harder to
 
 - Structural checks reject a claimed boolean, an `issue_creator_cap` helper, or a transfer call from
   `creator_authority.move`.
-- Structural checks require the claim to take `CreatorAuthority<Meme>` by value and return
-  `CreatorCap<Meme>`.
+- Structural checks require the claim to take `CreatorAuthority<Meme>` and
+  `MetadataCap<Meme>` by value and return the two capabilities separately.
 - Address and X happy-path tests capture the returned typed capability.
-- The address test transfers the returned cap to an address different from the authenticated claimant,
-  proving PTB composability and caller-selected delivery.
+- The address test transfers the creator cap and metadata cap to different
+  addresses, proving independent PTB composability and caller-selected delivery.
 - Existing wrong-sender, wrong-attestation, signer, expiry, type-domain, and signature failures preserve
   their abort precedence before capability creation.
 - Build, strict lint, tests, coverage, and source-boundary checks pass with the pinned Sui toolchain.
