@@ -28,8 +28,10 @@ The core package now contains:
 - `acl.move` — singleton `ProtocolAuthority`, delayed `SuperAdminCap` transfer,
   bounded revocable protocol-wide `AdminCap` delegation, holder-driven cap
   destruction, and drop-only `AdminWitness` sign-in only;
-- `x_claim_config.move` — independently initialized shared X backend-signer
-  configuration, witness-gated rotation/revocation, and Ed25519 verification;
+- `runtime_config.move` — one small shared live-settings object containing the
+  dedicated X backend signer and global protocol fee share, with witness-gated
+  signer rotation/revocation, Ed25519 verification, and bounded 0–10,000 bps
+  fee-share updates;
 - `creator_authority.move` — enum-backed address/X creator identity, one unified
   consuming one-time claim, a composable coin-typed `CreatorCap<Meme>` return,
   no unrelated metadata-cap pass-through, canonical BCS X attestation bytes,
@@ -44,9 +46,6 @@ The core package now contains:
 - `fees.move` — embedded four-balance creator/protocol fee accounting for both
   meme and quote assets, live configurable remainder-safe splitting, and composable claims
   authorized by `CreatorCap<Meme>` or `AdminWitness`;
-- `trade_fee_config.move` — zero-share shared singleton, live 0–10,000 bps
-  protocol-share updates authorized by `AdminWitness`, and replay-complete
-  old/new configuration events that rely on native Sui event ordering;
 - `launch_config.move` — bounded original-type quote admission and targets,
   zero-safe graduation defaults, a bounded external migrator-witness whitelist,
   `AdminWitness`-gated mutations, and one package-only immutable launch snapshot;
@@ -57,8 +56,10 @@ The core package now contains:
 - `events.move` — public payload schemas, package-only emitters routed through
   the wrapper, and test-only collection/field inspection;
 - `creator_authority_tests.move` — interface and integration tests for the ACL,
-  shared X configuration, and address/X creator-claim seam, including the
+  shared runtime configuration, and address/X creator-claim seam, including the
   independent Ed25519 fixture and adversarial lifecycle cases.
+- `runtime_config_tests.move` — combined initialization, live protocol-share
+  boundaries, and replay-complete runtime configuration events.
 - `curve_tests.move` — exact shared vectors, rounding and threshold boundaries,
   maximum-width arithmetic, guard precedence, round-trip dust, and a fixed-seed
   reachable-state sell-back property suite.

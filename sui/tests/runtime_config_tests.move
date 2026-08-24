@@ -1,7 +1,7 @@
 #[test_only]
-module blast_fun::trade_fee_config_tests;
+module blast_fun::runtime_config_tests;
 
-use blast_fun::{acl, events, trade_fee_config};
+use blast_fun::{acl, events, runtime_config};
 use sui::{event, test_scenario::{Self, Scenario}};
 
 // === Constants ===
@@ -12,21 +12,21 @@ const PROTOCOL_ADMIN: address = @0xAD;
 // === Tests ===
 
 #[test]
-fun package_init_creates_zero_share_config_and_replay_complete_event() {
+fun package_init_creates_disabled_zero_share_runtime_config() {
     let mut scenario = test_scenario::begin(PUBLISHER);
-    trade_fee_config::init_for_testing(scenario.ctx());
-    let created = events::collect_one<events::TradeFeeConfigCreated>(0);
+    runtime_config::init_for_testing(scenario.ctx());
+    let created = events::collect_one<events::RuntimeConfigCreated>(0);
     let (emitted_config_id, protocol_fee_share_bps) =
-        created.trade_fee_config_created_fields();
+        created.runtime_config_created_fields();
 
     scenario.next_tx(PUBLISHER);
-    let config = scenario.take_shared<trade_fee_config::TradeFeeConfig>();
+    let config = scenario.take_shared<runtime_config::RuntimeConfig>();
     let config_id = object::id(&config);
 
     std::unit_test::assert_eq!(config.protocol_fee_share_bps(), 0);
     std::unit_test::assert_eq!(emitted_config_id, config_id);
     std::unit_test::assert_eq!(protocol_fee_share_bps, 0);
-    assert!(event::events_by_type<events::TradeFeeConfigCreated>().is_empty());
+    assert!(event::events_by_type<events::RuntimeConfigCreated>().is_empty());
 
     config.destroy_for_testing();
     scenario.end();
@@ -50,6 +50,41 @@ fun active_admin_updates_live_share_and_emits_old_and_new_values() {
     std::unit_test::assert_eq!(old_share_bps, 0);
     std::unit_test::assert_eq!(new_share_bps, 7_000);
     assert!(event::events_by_type<events::ProtocolFeeShareChanged>().is_empty());
+
+    authority.destroy_admin_cap(admin_cap);
+    authority.destroy_super_admin_cap_for_testing(super_admin_cap);
+    authority.destroy_protocol_authority_for_testing();
+    config.destroy_for_testing();
+    scenario.end();
+}
+
+#[test]
+fun one_runtime_config_and_admin_witness_update_both_live_settings() {
+    let mut scenario = test_scenario::begin(PUBLISHER);
+    let (super_admin_cap, mut authority, admin_cap, mut config) =
+        new_config_with_admin(&mut scenario);
+    let admin_witness = authority.sign_in(&admin_cap);
+    let config_id = object::id(&config);
+    let signer_public_key =
+        x"11223344556677889900aabbccddeeffffeeddccbbaa00998877665544332211";
+
+    config.set_x_claim_signer(&admin_witness, signer_public_key);
+    config.set_protocol_fee_share(&admin_witness, 2_500);
+
+    let signer_set = events::collect_one<events::XClaimSignerSet>(0);
+    let (signer_config_id, previous_public_key, emitted_public_key) =
+        signer_set.x_claim_signer_set_fields();
+    let fee_share_changed = events::collect_one<events::ProtocolFeeShareChanged>(0);
+    let (fee_config_id, old_share_bps, new_share_bps) =
+        fee_share_changed.protocol_fee_share_changed_fields();
+
+    std::unit_test::assert_eq!(signer_config_id, config_id);
+    assert!(previous_public_key.is_empty());
+    std::unit_test::assert_eq!(emitted_public_key, signer_public_key);
+    std::unit_test::assert_eq!(fee_config_id, config_id);
+    std::unit_test::assert_eq!(old_share_bps, 0);
+    std::unit_test::assert_eq!(new_share_bps, 2_500);
+    std::unit_test::assert_eq!(config.protocol_fee_share_bps(), 2_500);
 
     authority.destroy_admin_cap(admin_cap);
     authority.destroy_super_admin_cap_for_testing(super_admin_cap);
@@ -137,7 +172,7 @@ fun new_config_with_admin(
     acl::SuperAdminCap,
     acl::ProtocolAuthority,
     acl::AdminCap,
-    trade_fee_config::TradeFeeConfig,
+    runtime_config::RuntimeConfig,
 ) {
     let (super_admin_cap, mut authority) =
         acl::new_protocol_for_testing(PUBLISHER, scenario.ctx());
@@ -146,11 +181,11 @@ fun new_config_with_admin(
         PROTOCOL_ADMIN,
         scenario.ctx(),
     );
-    trade_fee_config::init_for_testing(scenario.ctx());
+    runtime_config::init_for_testing(scenario.ctx());
 
     scenario.next_tx(PROTOCOL_ADMIN);
     let admin_cap = scenario.take_from_sender<acl::AdminCap>();
-    let config = scenario.take_shared<trade_fee_config::TradeFeeConfig>();
+    let config = scenario.take_shared<runtime_config::RuntimeConfig>();
 
     (super_admin_cap, authority, admin_cap, config)
 }

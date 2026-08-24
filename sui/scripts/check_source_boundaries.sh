@@ -91,38 +91,56 @@ if ! rg -U -q 'macro public\(package\) fun max_launch_fee_bps\(\): u64 \{\s*1_00
   failures=$((failures + 1))
 fi
 
-trade_fee_config_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/trade_fee_config.move)"
+runtime_config_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/runtime_config.move)"
 
-if [[ ! -f sources/trade_fee_config.move ]] \
+if [[ ! -f sources/runtime_config.move ]] \
   || ! rg -U -q \
-    'public struct TradeFeeConfig has key \{\s*id: UID,\s*protocol_fee_share_bps: u64,\s*\}' \
-    sources/trade_fee_config.move \
-  || rg -n '\b(AdminCap|ProtocolAuthority)\b' <<<"$trade_fee_config_production" \
-  || rg -n '\bsequence\b' <<<"$trade_fee_config_production" \
-  || [[ "$(rg -c '^[[:space:]]+_: &AdminWitness,' sources/trade_fee_config.move)" != 1 ]] \
-  || [[ "$(rg -c '^public fun set_protocol_fee_share\(' sources/trade_fee_config.move)" != 1 ]] \
-  || [[ "$(rg -c '^public\(package\) fun protocol_fee_share_bps\(' sources/trade_fee_config.move)" != 1 ]]; then
-  echo 'trade_fee_config.move must own only the live bounded global share and its AdminWitness-gated setter.' >&2
+    'public struct RuntimeConfig has key \{\s*id: UID,\s*x_claim_signer_public_key: vector<u8>,\s*protocol_fee_share_bps: u64,\s*\}' \
+    sources/runtime_config.move \
+  || rg -n '\b(AdminCap|ProtocolAuthority|LaunchConfig|VecMap|VecSet|TypeName)\b' \
+    <<<"$runtime_config_production" \
+  || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' \
+    <<<"$runtime_config_production" \
+  || [[ "$(rg -c '^[[:space:]]+_: &AdminWitness,' sources/runtime_config.move)" != 3 ]] \
+  || [[ "$(rg -c '^public fun (set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share)\(' <<<"$runtime_config_production")" != 3 ]] \
+  || [[ "$(rg -c '^public\(package\) fun (assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps)\(' <<<"$runtime_config_production")" != 3 ]]; then
+  echo 'runtime_config.move must own only the small live X signer and protocol fee-share settings.' >&2
   failures=$((failures + 1))
 fi
 
 if ! rg -q 'protocol_fee_share_bps <= constants::basis_points_denominator!()' \
-  sources/trade_fee_config.move \
+  sources/runtime_config.move \
   || ! rg -q 'protocol_fee_share_bps != self.protocol_fee_share_bps' \
-  sources/trade_fee_config.move \
-  || ! rg -U -q 'protocol_fee_share_bps: 0,\s*\}' \
-  sources/trade_fee_config.move; then
-  echo 'Trade-fee configuration must start safely at zero and reject out-of-range or unchanged updates.' >&2
+  sources/runtime_config.move \
+  || ! rg -Fq 'signer_public_key.length() == constants::ed25519_public_key_length!()' \
+    sources/runtime_config.move \
+  || ! rg -q 'self.x_claim_signer_public_key != signer_public_key' \
+    sources/runtime_config.move \
+  || ! rg -U -q \
+    'x_claim_signer_public_key: vector\[\],\s*protocol_fee_share_bps: 0,\s*\}' \
+    sources/runtime_config.move; then
+  echo 'Runtime configuration must start disabled and at zero, with exact signer and fee-share guards.' >&2
   failures=$((failures + 1))
 fi
 
-trade_fee_event_payloads="$(sed -n \
-  -e '/^public struct TradeFeeConfigCreated/,/^}/p' \
+runtime_config_event_payloads="$(sed -n \
+  -e '/^public struct RuntimeConfigCreated/,/^}/p' \
   -e '/^public struct ProtocolFeeShareChanged/,/^}/p' \
+  -e '/^public struct XClaimSignerSet/,/^}/p' \
+  -e '/^public struct XClaimSignerRevoked/,/^}/p' \
   sources/lib/events.move)"
 
-if rg -n '\bsequence\b' <<<"$trade_fee_event_payloads"; then
-  echo 'Trade-fee config events rely on native Sui event order and must not duplicate a sequence.' >&2
+if [[ -z "$runtime_config_event_payloads" ]] \
+  || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' \
+    <<<"$runtime_config_event_payloads"; then
+  echo 'Runtime-config events must use typed replay facts without duplicate ordering or schema fields.' >&2
+  failures=$((failures + 1))
+fi
+
+if [[ -f sources/x_claim_config.move || -f sources/trade_fee_config.move ]] \
+  || rg -n '\b(XClaimConfig|TradeFeeConfig)\b' sources tests \
+  || [[ "$(rg -o 'transfer::share_object' sources/*.move | wc -l)" != 3 ]]; then
+  echo 'Runtime consolidation must retire the two shallow shared configs and keep exactly three protocol-wide shared singletons.' >&2
   failures=$((failures + 1))
 fi
 
@@ -211,7 +229,7 @@ if [[ -z "$launch_ticket_event_payload" ]] \
 fi
 
 if rg -n \
-  '\b(acl::(add_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in|destroy_protocol_authority_for_testing|destroy_super_admin_cap_for_testing)|x_claim_config::(set_signer|revoke_signer|destroy_for_testing)|trade_fee_config::(set_protocol_fee_share|protocol_fee_share_bps|destroy_for_testing)|launch_config::(allow_quote|set_migration_quote_target|remove_quote|set_graduation_defaults|allow_migration_witness|remove_migration_witness|snapshot_for_launch|active_quote_count_for_testing|migration_witness_count_for_testing|destroy_for_testing)|creator_authority::(claim_creator_cap|destroy_for_testing|destroy_cap_for_testing)|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees|destroy_for_testing))(<[^>]+>)?\(' \
+  '\b(acl::(add_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in|destroy_protocol_authority_for_testing|destroy_super_admin_cap_for_testing)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps|destroy_for_testing)|launch_config::(allow_quote|set_migration_quote_target|remove_quote|set_graduation_defaults|allow_migration_witness|remove_migration_witness|snapshot_for_launch|active_quote_count_for_testing|migration_witness_count_for_testing|destroy_for_testing)|creator_authority::(claim_creator_cap|destroy_for_testing|destroy_cap_for_testing)|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees|destroy_for_testing))(<[^>]+>)?\(' \
   sources tests; then
   echo 'Blast-owned receiver functions must use Move 2024 dot syntax.' >&2
   failures=$((failures + 1))
@@ -224,7 +242,7 @@ if rg -n '^[[:space:]]+assert_super_admin\(' sources/acl.move \
 fi
 
 if rg -n \
-  'XClaimConfig|ed25519|x_claim_signer|verify_x_claim|CreatorCap|issue_creator_cap' \
+  'RuntimeConfig|ed25519|x_claim_signer|verify_x_claim|CreatorCap|issue_creator_cap' \
   sources/acl.move; then
   echo 'acl.move must own only protocol-admin membership and root rotation.' >&2
   failures=$((failures + 1))
@@ -239,18 +257,6 @@ fi
 if ! rg -q '^public fun destroy_admin_cap\(' sources/acl.move \
   || rg -n 'destroy_admin_cap_for_testing' sources tests; then
   echo 'AdminCap holders must use the production self-destruction path.' >&2
-  failures=$((failures + 1))
-fi
-
-if rg -n '\b(AdminCap|ProtocolAuthority)\b' sources/x_claim_config.move \
-  || [[ "$(rg -c '^[[:space:]]+_: &AdminWitness,' sources/x_claim_config.move)" != 2 ]]; then
-  echo 'X signer admin functions must depend only on a borrowed AdminWitness.' >&2
-  failures=$((failures + 1))
-fi
-
-if [[ ! -f sources/x_claim_config.move ]] \
-  || ! rg -q '^public struct XClaimConfig has key' sources/x_claim_config.move; then
-  echo 'x_claim_config.move must own the shared X signer configuration.' >&2
   failures=$((failures + 1))
 fi
 
@@ -281,9 +287,9 @@ if rg -n 'schema_version|action_tag|nonce' sources/creator_authority.move; then
   failures=$((failures + 1))
 fi
 
-if rg -l '^public struct XClaimConfig has key' sources \
-  | rg -v '^sources/x_claim_config\.move$'; then
-  echo 'XClaimConfig is declared outside its owning module.' >&2
+if rg -l '^public struct RuntimeConfig has key' sources \
+  | rg -v '^sources/runtime_config\.move$'; then
+  echo 'RuntimeConfig is declared outside its owning module.' >&2
   failures=$((failures + 1))
 fi
 

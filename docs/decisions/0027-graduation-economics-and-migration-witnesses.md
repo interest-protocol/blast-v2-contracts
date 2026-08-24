@@ -3,6 +3,7 @@
 - Status: accepted
 - Date: 2026-08-24
 - Amends: [0006](0006-fees-and-launch-paths.md), [0010](0010-migration-and-venue-adapters.md), [0011](0011-event-schema-and-replay.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0025](0025-quote-whitelist-and-migration-targets.md)
+- Preserved by: [0028](0028-hot-cold-runtime-configuration.md)
 
 ## Sources
 

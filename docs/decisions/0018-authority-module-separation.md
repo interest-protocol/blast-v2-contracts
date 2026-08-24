@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-23
 - Amends: [0001](0001-sui-package-and-module-layout.md), [0014](0014-typed-creator-cap-and-diagnostic-modules.md), [0015](0015-protocol-authority-and-x-signer-state.md), [0016](0016-unified-creator-cap-claim-and-suins-periphery.md)
-- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0023](0023-generated-coin-supply-and-metadata-custody.md)
+- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0023](0023-generated-coin-supply-and-metadata-custody.md), [0028](0028-hot-cold-runtime-configuration.md)
 
 ## Sources
 

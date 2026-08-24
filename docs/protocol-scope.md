@@ -38,7 +38,7 @@ formulas require ADRs and shared test vectors.
 | Trade-fee ledger | Independent meme/quote rates capped at 10% per asset; fees accrue into an embedded four-balance ledger using the current global protocol share, with ceiling rounding assigned to protocol | [decisions/0022-dual-asset-fee-ledger-and-claims.md](decisions/0022-dual-asset-fee-ledger-and-claims.md) |
 
 The full index, including every open premise, is in
-[decisions/README.md](decisions/README.md). ADRs 0013–0027 are accepted; economic
+[decisions/README.md](decisions/README.md). ADRs 0013–0028 are accepted; economic
 constants not fixed by those accepted records and the remaining proposed records still
 await approval.
 
@@ -88,7 +88,7 @@ rather than left unspecified.
 ## Decisions required before source implementation
 
 Each decision belongs in `docs/decisions/` before it creates a public ABI or
-storage commitment. ADRs 0013–0027 settle the creator-cap claim, protocol
+storage commitment. ADRs 0013–0028 settle the creator-cap claim, protocol
 authority, X-signature, pure curve, trade-fee-ledger, and generated-coin supply
 semantics plus cold launch and graduation policy below; the remaining portions
 and records are still proposed.

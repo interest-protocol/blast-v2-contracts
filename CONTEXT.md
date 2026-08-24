@@ -141,9 +141,16 @@ _Avoid_: fee vault, fee recipient registry
 **Protocol fee share**:
 The globally configured protocol percentage of every meme-asset and quote-asset
 trade fee, expressed in basis points from 0 through 10,000. Every trade reads the
-current shared configuration, so an update applies to the next accrual of every
-existing and future launch without reallocating fees already accrued.
+current shared runtime configuration, so an update applies to the next accrual
+of every existing and future launch without reallocating fees already accrued.
 _Avoid_: fixed fee split, launch fee share
+
+**Runtime config**:
+The small shared live-settings object containing the dedicated X-claim signer
+key and global protocol fee share. Both values apply immediately to the next
+operation in their own domain. It contains no ACL membership, creator identity,
+cold launch policy, balances, generic signer registry, or arbitrary settings map.
+_Avoid_: global protocol state, generic settings registry, signer registry
 
 **Pending burn**:
 Meme balance separated from sell input by the burn curve and held in the launch

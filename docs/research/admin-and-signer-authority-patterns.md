@@ -133,9 +133,10 @@ boundaries, although the same borrowed witness may authorize several ordered
 commands in one atomic programmable transaction. Revocation prevents every
 future sign-in.
 
-ADR 0018 applies that rule through separate state-owning modules. `acl.move`
-owns live membership and witness construction. `x_claim_config.move` owns the
-shared backend key and accepts only `&AdminWitness` for signer
+ADRs 0018 and 0028 apply that rule through separate authority and runtime
+modules. `acl.move` owns live membership and witness construction.
+`runtime_config.move` owns the shared dedicated X backend key and accepts only
+`&AdminWitness` for signer
 rotation/revocation. `creator_authority.move` owns the signed X message and the
 one-time `CreatorCap<Meme>` issuance transition. Future fee withdrawal consumes
 the typed creator capability and does not depend on ACL or the backend key again.

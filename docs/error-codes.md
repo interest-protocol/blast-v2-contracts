@@ -28,11 +28,11 @@ the next unused value and must not fill a retired gap.
 | ---: | --- | --- | --- |
 | 0 | `invalid_admin_cap` | `acl` | The supplied `AdminCap` is not active in the singleton protocol authority. |
 | 1 | *(retired)* | — | Mutable chain-id validation removed by ADR 0015. |
-| 2 | `invalid_x_claim_public_key` | `x_claim_config` | The X claim signer public key is not 32 bytes. |
-| 3 | `x_claim_signer_inactive` | `x_claim_config` | X claims are disabled because no signer public key is configured. |
+| 2 | `invalid_x_claim_public_key` | `runtime_config` | The X claim signer public key is not 32 bytes. |
+| 3 | `x_claim_signer_inactive` | `runtime_config` | X claims are disabled because no signer public key is configured. |
 | 4 | *(retired)* | — | First-config state removed by ADR 0015. |
 | 5 | *(retired)* | — | Signer-generation state removed by ADR 0015. |
-| 6 | `invalid_x_claim_signature` | `x_claim_config` | Ed25519 verification failed for the canonical claim bytes. |
+| 6 | `invalid_x_claim_signature` | `runtime_config` | Ed25519 verification failed for the canonical claim bytes. |
 | 7 | *(retired)* | — | First-config state removed by ADR 0015. |
 | 8 | *(retired)* | — | Signer-generation state removed by ADR 0015. |
 | 9 | `invalid_creator` | `creator_authority` | An address creator identity targeted the zero address. |
@@ -50,7 +50,7 @@ the next unused value and must not fill a retired gap.
 | 21 | `super_admin_transfer_not_ready` | `acl` | The seven-day root-transfer delay has not elapsed. |
 | 22 | `super_admin_transfer_time_overflow` | `acl` | The root-transfer ready timestamp would overflow `u64`. |
 | 23 | `super_admin_cap_still_active` | `acl` | The currently active root capability cannot be destroyed. |
-| 24 | `x_claim_signer_unchanged` | `x_claim_config` | Signer rotation supplied the current public key. |
+| 24 | `x_claim_signer_unchanged` | `runtime_config` | Signer rotation supplied the current public key. |
 | 25 | `missing_x_claim_attestation` | `creator_authority` | An X creator claim omitted its required attestation. |
 | 26 | `creator_not_sender` | `creator_authority` | The sender is not the address creator recorded at launch. |
 | 27 | `invalid_x_claim_attestation` | `creator_authority` | X claim call data is not canonical BCS `(u64, vector<u8>)` containing a 64-byte signature. |
@@ -66,8 +66,8 @@ the next unused value and must not fill a retired gap.
 | 37 | `invalid_meme_fee_bps` | `curve` | The meme-asset fee exceeds 10,000 basis points. |
 | 38 | `nothing_accrued` | `fees` | Neither asset has an accrued balance for the presented creator or protocol claim authority. |
 | 39 | `zero_fee_accrual` | `fees` | A fee accrual supplied zero meme and zero quote balances. |
-| 40 | `invalid_protocol_fee_share_bps` | `trade_fee_config` | The global protocol fee share exceeds 10,000 basis points. |
-| 41 | `protocol_fee_share_unchanged` | `trade_fee_config` | A protocol fee-share update supplied the currently active value. |
+| 40 | `invalid_protocol_fee_share_bps` | `runtime_config` | The global protocol fee share exceeds 10,000 basis points. |
+| 41 | `protocol_fee_share_unchanged` | `runtime_config` | A protocol fee-share update supplied the currently active value. |
 | 42 | `invalid_migration_quote_target` | `launch_config` | A quote migration target was zero. |
 | 43 | `quote_already_allowed` | `launch_config` | The quote type is already admitted for new launches. |
 | 44 | `quote_capacity_reached` | `launch_config` | The bounded active quote whitelist is full. |

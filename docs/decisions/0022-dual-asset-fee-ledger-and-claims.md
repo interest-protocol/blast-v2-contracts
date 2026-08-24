@@ -3,6 +3,7 @@
 - Status: accepted
 - Date: 2026-08-23
 - Partially accepts: [0006](0006-fees-and-launch-paths.md), [0007](0007-acl-pause-and-versioning.md), [0011](0011-event-schema-and-replay.md)
+- Amended by: [0028](0028-hot-cold-runtime-configuration.md)
 
 ## Sources
 
@@ -31,8 +32,8 @@ and **1,000 basis points (10%)**, inclusive. Zero disables that asset's fee, and
 positive. The launch module will enforce the ceiling when it stores the rates; `fees.move` receives
 already-calculated `Balance` values and does not recompute curve fees or accept rates.
 
-The protocol/creator split is different: it is one live, global `protocol_fee_share_bps` value in a
-shared fee configuration, bounded from zero through 10,000 basis points. Every trade on every launch
+The protocol/creator split is different: it is one live, global `protocol_fee_share_bps` value in the
+shared `RuntimeConfig`, bounded from zero through 10,000 basis points. Every trade on every launch
 reads the current configuration. An update therefore applies to the next fee accrual of all existing
 and future launches; neither `Launch` nor `FeeLedger` snapshots the split.
 The singleton starts at zero so package publication cannot silently begin taking protocol revenue.
@@ -114,12 +115,12 @@ the `protocol_fee_share_bps` actually applied, the exact protocol/creator deltas
 ledger totals. A separate `FeesAccrued` payload would duplicate one atomic mutation and either consume
 additional event bandwidth or create two competing facts for one transition.
 
-`TradeFeeConfigCreated` records the initial global share and `ProtocolFeeShareChanged` records its old
+`RuntimeConfigCreated` records the initial global share and `ProtocolFeeShareChanged` records its old
 and new values. `LaunchCreated` records all four initial zero ledger totals but no split snapshot.
 `CreatorFeesClaimed` and `ProtocolFeesClaimed` carry both claimed amounts and the two affected remaining
 totals, which are zero after a full-balance claim. Launch-scoped payloads use the original meme and quote
 type names as stable identity and carry a timestamp where the domain needs it; fee-configuration payloads
-use their shared config identity and old/new values. Native Sui checkpoint, transaction, and event
+use the shared runtime-config identity and old/new values. Native Sui checkpoint, transaction, and event
 position provide ordering. Every payload is emitted through the package event wrapper after final state
 is known.
 

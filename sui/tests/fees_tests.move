@@ -1,7 +1,7 @@
 #[test_only]
 module blast_fun::fees_tests;
 
-use blast_fun::{acl, creator_authority, fees, x_claim_config};
+use blast_fun::{acl, creator_authority, fees, runtime_config};
 use sui::{
     balance,
     clock::{Self, Clock},
@@ -30,7 +30,7 @@ fun dual_asset_accrual_splits_and_claims_exactly() {
         super_admin_cap,
         authority,
         admin_cap,
-        x_config,
+        live_config,
         test_clock,
         creator_cap,
     ) = new_claim_authorities(&mut scenario);
@@ -80,7 +80,7 @@ fun dual_asset_accrual_splits_and_claims_exactly() {
         super_admin_cap,
         admin_cap,
         authority,
-        x_config,
+        live_config,
         test_clock,
         creator_cap,
         scenario,
@@ -94,7 +94,7 @@ fun protocol_fee_share_boundaries_route_every_accrued_unit() {
         super_admin_cap,
         authority,
         admin_cap,
-        x_config,
+        live_config,
         test_clock,
         creator_cap,
     ) = new_claim_authorities(&mut scenario);
@@ -168,7 +168,7 @@ fun protocol_fee_share_boundaries_route_every_accrued_unit() {
         super_admin_cap,
         admin_cap,
         authority,
-        x_config,
+        live_config,
         test_clock,
         creator_cap,
         scenario,
@@ -202,12 +202,12 @@ fun protocol_cannot_claim_when_nothing_is_accrued() {
 #[expected_failure(abort_code = 38)]
 fun creator_cannot_claim_when_nothing_is_accrued() {
     let mut scenario = test_scenario::begin(CREATOR);
-    let x_config = x_claim_config::new_disabled_for_testing(scenario.ctx());
+    let live_config = runtime_config::new_disabled_for_testing(scenario.ctx());
     let creator_authority = creator_authority::new_address<TEST_MEME>(CREATOR);
     let test_clock = clock::create_for_testing(scenario.ctx());
     scenario.next_tx(CREATOR);
     let creator_cap = creator_authority.claim_creator_cap(
-        &x_config,
+        &live_config,
         option::none(),
         &test_clock,
         scenario.ctx(),
@@ -219,7 +219,7 @@ fun creator_cannot_claim_when_nothing_is_accrued() {
     destroy_coin(quote);
     ledger.destroy_for_testing();
     creator_cap.destroy_cap_for_testing();
-    x_config.destroy_for_testing();
+    live_config.destroy_for_testing();
     test_clock.destroy_for_testing();
     scenario.end();
 }
@@ -245,7 +245,7 @@ fun maximum_u64_fees_match_the_committed_split_vector() {
         super_admin_cap,
         authority,
         admin_cap,
-        x_config,
+        live_config,
         test_clock,
         creator_cap,
     ) = new_claim_authorities(&mut scenario);
@@ -277,7 +277,7 @@ fun maximum_u64_fees_match_the_committed_split_vector() {
         super_admin_cap,
         admin_cap,
         authority,
-        x_config,
+        live_config,
         test_clock,
         creator_cap,
         scenario,
@@ -291,18 +291,20 @@ fun changed_protocol_fee_share_applies_to_the_next_accrual() {
         super_admin_cap,
         authority,
         admin_cap,
-        x_config,
+        mut live_config,
         test_clock,
         creator_cap,
     ) = new_claim_authorities(&mut scenario);
     let admin_witness = authority.sign_in(&admin_cap);
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>();
 
+    live_config.set_protocol_fee_share(&admin_witness, PROTOCOL_FEE_SHARE_BPS);
     ledger.accrue(
         balance::create_for_testing<TEST_MEME>(3),
         balance::create_for_testing<TEST_QUOTE>(4),
-        PROTOCOL_FEE_SHARE_BPS,
+        live_config.protocol_fee_share_bps(),
     );
+    live_config.set_protocol_fee_share(&admin_witness, 8_000);
     let (
         protocol_meme_delta,
         creator_meme_delta,
@@ -315,7 +317,7 @@ fun changed_protocol_fee_share_applies_to_the_next_accrual() {
     ) = ledger.accrue(
         balance::create_for_testing<TEST_MEME>(5),
         balance::create_for_testing<TEST_QUOTE>(6),
-        8_000,
+        live_config.protocol_fee_share_bps(),
     );
 
     std::unit_test::assert_eq!(protocol_meme_delta, 4);
@@ -346,7 +348,7 @@ fun changed_protocol_fee_share_applies_to_the_next_accrual() {
         super_admin_cap,
         admin_cap,
         authority,
-        x_config,
+        live_config,
         test_clock,
         creator_cap,
         scenario,
@@ -360,7 +362,7 @@ fun meme_only_accrual_returns_zero_quote_coins() {
         super_admin_cap,
         authority,
         admin_cap,
-        x_config,
+        live_config,
         test_clock,
         creator_cap,
     ) = new_claim_authorities(&mut scenario);
@@ -392,7 +394,7 @@ fun meme_only_accrual_returns_zero_quote_coins() {
         super_admin_cap,
         admin_cap,
         authority,
-        x_config,
+        live_config,
         test_clock,
         creator_cap,
         scenario,
@@ -406,7 +408,7 @@ fun quote_only_accrual_returns_zero_meme_coins() {
         super_admin_cap,
         authority,
         admin_cap,
-        x_config,
+        live_config,
         test_clock,
         creator_cap,
     ) = new_claim_authorities(&mut scenario);
@@ -438,7 +440,7 @@ fun quote_only_accrual_returns_zero_meme_coins() {
         super_admin_cap,
         admin_cap,
         authority,
-        x_config,
+        live_config,
         test_clock,
         creator_cap,
         scenario,
@@ -452,7 +454,7 @@ fun transferred_creator_cap_claims_and_routes_both_assets_composably() {
         super_admin_cap,
         authority,
         admin_cap,
-        x_config,
+        live_config,
         test_clock,
         creator_cap,
     ) = new_claim_authorities(&mut scenario);
@@ -497,7 +499,7 @@ fun transferred_creator_cap_claims_and_routes_both_assets_composably() {
     authority.destroy_admin_cap(admin_cap);
     authority.destroy_super_admin_cap_for_testing(super_admin_cap);
     authority.destroy_protocol_authority_for_testing();
-    x_config.destroy_for_testing();
+    live_config.destroy_for_testing();
     test_clock.destroy_for_testing();
     scenario.end();
 }
@@ -510,7 +512,7 @@ fun new_claim_authorities(
     acl::SuperAdminCap,
     acl::ProtocolAuthority,
     acl::AdminCap,
-    x_claim_config::XClaimConfig,
+    runtime_config::RuntimeConfig,
     Clock,
     creator_authority::CreatorCap<TEST_MEME>,
 ) {
@@ -519,11 +521,11 @@ fun new_claim_authorities(
     authority.add_admin(&super_admin_cap, CREATOR, scenario.ctx());
     scenario.next_tx(CREATOR);
     let admin_cap = scenario.take_from_sender<acl::AdminCap>();
-    let x_config = x_claim_config::new_disabled_for_testing(scenario.ctx());
+    let live_config = runtime_config::new_disabled_for_testing(scenario.ctx());
     let creator_authority = creator_authority::new_address<TEST_MEME>(CREATOR);
     let test_clock = clock::create_for_testing(scenario.ctx());
     let creator_cap = creator_authority.claim_creator_cap(
-        &x_config,
+        &live_config,
         option::none(),
         &test_clock,
         scenario.ctx(),
@@ -532,7 +534,7 @@ fun new_claim_authorities(
         super_admin_cap,
         authority,
         admin_cap,
-        x_config,
+        live_config,
         test_clock,
         creator_cap,
     )
@@ -542,7 +544,7 @@ fun destroy_claim_authorities(
     super_admin_cap: acl::SuperAdminCap,
     admin_cap: acl::AdminCap,
     mut authority: acl::ProtocolAuthority,
-    x_config: x_claim_config::XClaimConfig,
+    live_config: runtime_config::RuntimeConfig,
     test_clock: Clock,
     creator_cap: creator_authority::CreatorCap<TEST_MEME>,
     scenario: Scenario,
@@ -551,7 +553,7 @@ fun destroy_claim_authorities(
     authority.destroy_admin_cap(admin_cap);
     authority.destroy_super_admin_cap_for_testing(super_admin_cap);
     authority.destroy_protocol_authority_for_testing();
-    x_config.destroy_for_testing();
+    live_config.destroy_for_testing();
     test_clock.destroy_for_testing();
     scenario.end();
 }

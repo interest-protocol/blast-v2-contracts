@@ -4,14 +4,14 @@ Date: 2026-08-23
 
 ## Question
 
-Does the singleton `TradeFeeConfig` need to store and emit its own monotonically
+Does the singleton `RuntimeConfig` need to store and emit its own monotonically
 increasing `sequence`, or do Sui's event coordinates plus Blast's event payloads
 already make configuration replay deterministic and complete?
 
 ## Verdict
 
-Remove the application-level `sequence` from `TradeFeeConfig`,
-`TradeFeeConfigCreated`, and `ProtocolFeeShareChanged`.
+Do not add an application-level `sequence` to `RuntimeConfig`,
+`RuntimeConfigCreated`, or `ProtocolFeeShareChanged`.
 
 Sui already assigns each event a ledger position and exposes ordered,
 cursor-resumable event queries. Blast's creation event identifies the singleton
@@ -21,10 +21,12 @@ therefore sufficient to reconstruct the configuration. A stored counter would
 duplicate indexing metadata while adding object storage, mutation, event bytes,
 and an ABI field with no protocol meaning.
 
-This conclusion is specific to this singleton scalar configuration. A domain
-sequence can still be justified when it represents protocol state, orders facts
-whose ledger order is intentionally insufficient, or supports an ingestion model
-that deliberately does not retain Sui cursors/checkpoint coverage.
+This conclusion is specific to this singleton runtime configuration, whose
+mutation events carry replay-complete old and new values for each setting. A
+domain sequence can still be justified when it represents protocol state,
+orders facts whose ledger order is intentionally insufficient, or supports an
+ingestion model that deliberately does not retain Sui cursors/checkpoint
+coverage.
 
 ## Primary-source findings
 
@@ -93,13 +95,13 @@ cannot resume a query, prove checkpoint coverage, identify the omitted
 transaction, or detect a missing final domain event when no later domain event
 arrives.
 
-## Replay proof for `TradeFeeConfig`
+## Replay proof for the runtime fee share
 
 Starting at package deployment:
 
-1. `TradeFeeConfigCreated(config_id, protocol_fee_share_bps)` establishes the
+1. `RuntimeConfigCreated(runtime_config_id, protocol_fee_share_bps)` establishes the
    unique entity and initial value.
-2. Each `ProtocolFeeShareChanged(config_id, old, new)` applies to that entity.
+2. Each `ProtocolFeeShareChanged(runtime_config_id, old, new)` applies to that entity.
 3. Process mutations in Sui ledger order. Require `old` to equal the replayed
    current value, then replace it with `new`.
 

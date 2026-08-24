@@ -73,8 +73,10 @@ core interface. See `docs/architecture.md`.
 - Capabilities/roles authorize actions; object possession or an address check
   must not accidentally imply broader authority.
 - Keep distinct authority mechanisms in concern-owning modules. `acl.move` owns
-  only root rotation and routine-admin membership; a feature configuration owns
-  its own shared state and accepts only a borrowed `AdminWitness`. Public
+  only root rotation and routine-admin membership. `runtime_config.move` owns
+  the small live X-signer and protocol-fee-share settings, while
+  `launch_config.move` owns cold policy snapshotted only by new launches. Their
+  setters accept only a borrowed `AdminWitness`. Public
   `acl::sign_in` must check the supplied `AdminCap` against the live singleton
   registry and return that unforgeable witness with `drop` as its only ability.
   An owned revocable admin cap must expose holder-driven destruction: remove its
@@ -85,10 +87,10 @@ core interface. See `docs/architecture.md`.
   module that owns a capability's one-time issuance also owns that capability
   type. Do not turn ACL into a registry for cryptographic keys, creator identity,
   fees, or unrelated feature state.
-- Treat every backend-signed action as its own domain. Its configuration module
-  owns the current authorized key and signature verification, while the domain
-  module owns the exact signed message and state transition. Do not reuse a
-  generic signer configuration across actions unless the shared domain and
+- Treat every backend-signed action as its own domain. `runtime_config.move`
+  owns the current dedicated X-claim key and signature verification, while the
+  domain module owns the exact signed message and state transition. Do not reuse
+  a generic signer configuration across actions unless the shared domain and
   compromise scope are explicitly approved and tested.
 - Keep a dedicated-key signed message to the fields that authorize its one
   transition. Do not duplicate a fixed Move message type with a schema-version
@@ -295,7 +297,7 @@ must be differential-tested from shared vectors.
   to satisfy this optimization rule.
 - Use receiver-style dot syntax whenever the first argument is the natural
   receiver; this is mandatory for Blast-owned objects and same-package methods
-  (`authority.assert_super_admin(cap)`, `config.set_signer(...)`,
+  (`authority.assert_super_admin(cap)`, `config.set_x_claim_signer(...)`,
   `creator_state.claim_creator_cap(...)`) as well as framework receivers
   (`ctx.sender()`, `clock.timestamp_ms()`, `uid.to_inner()`, `option.is_some()`).
   Add a local `use fun` receiver alias when the pinned dependency requires one.

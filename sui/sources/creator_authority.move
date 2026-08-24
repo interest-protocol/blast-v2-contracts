@@ -4,7 +4,7 @@
 #[allow(lint(abort_without_constant))]
 module blast_fun::creator_authority;
 
-use blast_fun::{constants, events, x_claim_config::XClaimConfig};
+use blast_fun::{constants, events, runtime_config::RuntimeConfig};
 use std::{bcs, type_name::{Self, TypeName}};
 use sui::clock::Clock;
 
@@ -64,7 +64,7 @@ public(package) fun new_x<Meme>(
 /// Consumes the launch's creator authority and returns its creator capability.
 public(package) fun claim_creator_cap<Meme>(
     authority: CreatorAuthority<Meme>,
-    config: &XClaimConfig,
+    config: &RuntimeConfig,
     x_attestation: Option<vector<u8>>,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -87,7 +87,7 @@ public(package) fun claim_creator_cap<Meme>(
                 x_attestation.is_some(),
                 blast_fun::errors::missing_x_claim_attestation!(),
             );
-            config.assert_active();
+            config.assert_x_claim_active();
 
             let (expiry_ms, signature) = parse_x_claim_attestation(
                 x_attestation.destroy_some(),
@@ -103,7 +103,7 @@ public(package) fun claim_creator_cap<Meme>(
                 claimant,
                 expiry_ms,
             );
-            config.verify_signature(&message, &signature);
+            config.verify_x_claim_signature(&message, &signature);
             (option::some(*identity_hash), option::some(expiry_ms))
         },
     };

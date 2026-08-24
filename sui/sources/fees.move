@@ -31,7 +31,7 @@ public(package) fun new<Meme, Quote>(): FeeLedger<Meme, Quote> {
 
 /// Splits and accrues the meme and quote fees produced by one completed curve operation.
 ///
-/// `protocol_fee_share_bps` is the current validated value from the shared protocol fee
+/// `protocol_fee_share_bps` is the current validated value from the shared runtime
 /// configuration. The enclosing launch operation must read it for every trade.
 ///
 /// Returns the protocol and creator deltas for each asset, followed by the four final

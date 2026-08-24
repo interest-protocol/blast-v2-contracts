@@ -55,8 +55,7 @@ without returning to core for its post-conditions.
 | Component | Responsibility | Must not own |
 | --- | --- | --- |
 | Protocol ACL | root rotation and revocable routine-admin membership | feature configuration, backend keys, creator identity, or fees |
-| Signed-action config | one shared domain-specific backend key and signature authentication | admin delegation, domain transition state, or economic authority |
-| Trade-fee config | live global protocol share and its bounded admin setter | accrued balances, launch-selected fee rates, or claim authority |
+| Runtime config | one dedicated X-claim backend key and the live global protocol fee share | admin delegation, creator identity or issuance, launch policy, accrued balances, launch-selected fee rates, or claim authority |
 | Launch config | cold bounded quote targets, graduation defaults, and external migrator witness admission for future launches | live launch repricing, quote registry objects, DEX costs or dependencies, user balances, curve math, or hot trade configuration |
 | Registry/config | global limits, other fee ceilings, emergency state | user balances or curve math |
 | Launch ticket | generated OTW currency creation and pre-launch capability custody | supply minting, trades, metadata updates, or migration |

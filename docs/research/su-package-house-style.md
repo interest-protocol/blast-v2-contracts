@@ -384,7 +384,7 @@ three independent gates and make warnings fatal under its own release policy.
 ### P0 — replace the error assertion-wrapper design (resolved 2026-08-23)
 
 Blast [`sui/sources/lib/errors.move`](../../sui/sources/lib/errors.move) now exposes package numeric macros and no
-assertion wrappers. `acl.move`, `x_claim_config.move`, and `creator_authority.move` perform each assertion
+assertion wrappers. `acl.move`, `runtime_config.move`, and `creator_authority.move` perform each assertion
 at the owning invariant.
 Blast retains Memez-style named copies only as `#[test_only]` source-registry constants, while production
 uses the same literal-returning macro form as `su`:
@@ -409,7 +409,7 @@ agreed SDK contract or compact them once before freezing. Never renumber after p
 
 ### P1 — standardize structure and dot syntax
 
-Current Blast already has dedicated `errors`, `events`, `acl`, `x_claim_config`, and
+Current Blast already has dedicated `errors`, `events`, `acl`, `runtime_config`, and
 `creator_authority` modules and uses
 receiver syntax in many places. Align the remaining surface with the source conventions:
 

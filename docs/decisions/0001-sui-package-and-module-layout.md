@@ -2,7 +2,7 @@
 
 - Status: proposed
 - Date: 2026-08-22
-- Amended by: [0020](0020-admin-cap-self-destruction.md)
+- Amended by: [0020](0020-admin-cap-self-destruction.md), [0028](0028-hot-cold-runtime-configuration.md)
 
 ## Sources
 
@@ -67,8 +67,7 @@ Layered, with dependencies pointing only downward:
    route           RouteRequest / RouteCommitment / PreparedLaunch
    migration       MigrationPayload handoff type
 2  acl             ProtocolAuthority, SuperAdminCap, AdminCap delegation
-   x_claim_config  shared X backend key lifecycle and signature authentication
-   trade_fee_config shared live protocol/creator fee percentage
+   runtime_config  shared live X backend key and protocol/creator fee percentage
    launch_config   cold quote, graduation-default, and migrator-witness policy snapshots
    creator_authority address/X claim state and CreatorCap issuance
    display         Display custody and field policy
@@ -136,10 +135,8 @@ published.
 | `acl::destroy_admin_cap` | function | an admin-cap holder must be able to renounce live membership or delete an already-revoked cap for its storage rebate ([ADR 0020](0020-admin-cap-self-destruction.md)) |
 | `acl::sign_in` | function | external PTBs must turn a currently registered `AdminCap` into the drop-only witness accepted by feature setters |
 | `acl::begin_super_admin_transfer`, `acl::cancel_super_admin_transfer`, `acl::accept_super_admin_transfer`, `acl::destroy_retired_super_admin_cap` | functions | root rotation is a wallet-driven delayed two-party lifecycle |
-| `x_claim_config::XClaimConfig` | type | shared singleton consumed by public X creator-claim transactions and admin signer rotation ([ADR 0018](0018-authority-module-separation.md)) |
-| `x_claim_config::set_signer`, `x_claim_config::revoke_signer` | functions | protocol administrators rotate or revoke the shared backend claim signer with a borrowed `AdminWitness` |
-| `trade_fee_config::TradeFeeConfig` | type | every trade reads the current shared protocol fee share, so one update applies to every launch ([ADR 0022](0022-dual-asset-fee-ledger-and-claims.md)) |
-| `trade_fee_config::set_protocol_fee_share` | function | an administrator updates the globally bounded share with a borrowed `AdminWitness` and replay-complete event |
+| `runtime_config::RuntimeConfig` | type | small shared singleton consumed by public X creator claims and every trade for the dedicated signer and live protocol fee share ([ADR 0028](0028-hot-cold-runtime-configuration.md)) |
+| `runtime_config::set_x_claim_signer`, `runtime_config::revoke_x_claim_signer`, `runtime_config::set_protocol_fee_share` | functions | protocol administrators mutate the two live domains with a borrowed `AdminWitness` and typed replay-complete events |
 | `launch_config::LaunchConfig` | type | shared bounded cold policy containing quote targets, graduation defaults, and external migrator witness types selected when new launch state snapshots its economics ([ADR 0025](0025-quote-whitelist-and-migration-targets.md), [ADR 0027](0027-graduation-economics-and-migration-witnesses.md)) |
 | `launch_config::allow_quote`, `launch_config::set_migration_quote_target`, `launch_config::remove_quote` | functions | protocol administrators curate future launch admission and targets with a borrowed `AdminWitness` and replay-complete events |
 | `launch_config::set_graduation_defaults`, `launch_config::allow_migration_witness`, `launch_config::remove_migration_witness` | functions | protocol administrators curate bounded future-launch terminal economics and external migrator code identities without rewriting existing launches |

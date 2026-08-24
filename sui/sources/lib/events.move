@@ -13,14 +13,9 @@ public struct ProtocolAuthorityCreated has copy, drop {
     super_admin_transfer_delay_ms: u64,
 }
 
-/// Emitted after the disabled shared X backend signer configuration is created.
-public struct XClaimConfigCreated has copy, drop {
-    config_id: ID,
-}
-
-/// Emitted after the zero-share global trade-fee configuration is created.
-public struct TradeFeeConfigCreated has copy, drop {
-    config_id: ID,
+/// Emitted after the disabled, zero-share shared runtime configuration is created.
+public struct RuntimeConfigCreated has copy, drop {
+    runtime_config_id: ID,
     protocol_fee_share_bps: u64,
 }
 
@@ -78,7 +73,7 @@ public struct MigrationWitnessRemoved has copy, drop {
 
 /// Emitted after the live global protocol fee share is changed.
 public struct ProtocolFeeShareChanged has copy, drop {
-    config_id: ID,
+    runtime_config_id: ID,
     old_protocol_fee_share_bps: u64,
     new_protocol_fee_share_bps: u64,
 }
@@ -128,14 +123,14 @@ public struct SuperAdminTransferred has copy, drop {
 
 /// Emitted after the X claim signer is initially set or rotated.
 public struct XClaimSignerSet has copy, drop {
-    config_id: ID,
+    runtime_config_id: ID,
     previous_public_key: vector<u8>,
     signer_public_key: vector<u8>,
 }
 
 /// Emitted after the current X claim signer is revoked.
 public struct XClaimSignerRevoked has copy, drop {
-    config_id: ID,
+    runtime_config_id: ID,
     previous_public_key: vector<u8>,
 }
 
@@ -177,16 +172,12 @@ public(package) fun protocol_authority_created(
     });
 }
 
-public(package) fun x_claim_config_created(config_id: ID) {
-    blast_fun::events_wrapper::emit_event(XClaimConfigCreated { config_id });
-}
-
-public(package) fun trade_fee_config_created(
-    config_id: ID,
+public(package) fun runtime_config_created(
+    runtime_config_id: ID,
     protocol_fee_share_bps: u64,
 ) {
-    blast_fun::events_wrapper::emit_event(TradeFeeConfigCreated {
-        config_id,
+    blast_fun::events_wrapper::emit_event(RuntimeConfigCreated {
+        runtime_config_id,
         protocol_fee_share_bps,
     });
 }
@@ -270,12 +261,12 @@ public(package) fun migration_witness_removed<MigrationWitness>(config_id: ID) {
 }
 
 public(package) fun protocol_fee_share_changed(
-    config_id: ID,
+    runtime_config_id: ID,
     old_protocol_fee_share_bps: u64,
     new_protocol_fee_share_bps: u64,
 ) {
     blast_fun::events_wrapper::emit_event(ProtocolFeeShareChanged {
-        config_id,
+        runtime_config_id,
         old_protocol_fee_share_bps,
         new_protocol_fee_share_bps,
     });
@@ -338,20 +329,23 @@ public(package) fun super_admin_transferred(
 }
 
 public(package) fun x_claim_signer_set(
-    config_id: ID,
+    runtime_config_id: ID,
     previous_public_key: vector<u8>,
     signer_public_key: vector<u8>,
 ) {
     blast_fun::events_wrapper::emit_event(XClaimSignerSet {
-        config_id,
+        runtime_config_id,
         previous_public_key,
         signer_public_key,
     });
 }
 
-public(package) fun x_claim_signer_revoked(config_id: ID, previous_public_key: vector<u8>) {
+public(package) fun x_claim_signer_revoked(
+    runtime_config_id: ID,
+    previous_public_key: vector<u8>,
+) {
     blast_fun::events_wrapper::emit_event(XClaimSignerRevoked {
-        config_id,
+        runtime_config_id,
         previous_public_key,
     });
 }
@@ -428,15 +422,10 @@ public fun protocol_authority_created_fields(
 }
 
 #[test_only]
-public fun x_claim_config_created_fields(self: &XClaimConfigCreated): ID {
-    self.config_id
-}
-
-#[test_only]
-public fun trade_fee_config_created_fields(
-    self: &TradeFeeConfigCreated,
+public fun runtime_config_created_fields(
+    self: &RuntimeConfigCreated,
 ): (ID, u64) {
-    (self.config_id, self.protocol_fee_share_bps)
+    (self.runtime_config_id, self.protocol_fee_share_bps)
 }
 
 #[test_only]
@@ -510,7 +499,7 @@ public fun protocol_fee_share_changed_fields(
     self: &ProtocolFeeShareChanged,
 ): (ID, u64, u64) {
     (
-        self.config_id,
+        self.runtime_config_id,
         self.old_protocol_fee_share_bps,
         self.new_protocol_fee_share_bps,
     )
@@ -566,12 +555,16 @@ public fun super_admin_transferred_fields(
 public fun x_claim_signer_set_fields(
     self: &XClaimSignerSet,
 ): (ID, vector<u8>, vector<u8>) {
-    (self.config_id, self.previous_public_key, self.signer_public_key)
+    (
+        self.runtime_config_id,
+        self.previous_public_key,
+        self.signer_public_key,
+    )
 }
 
 #[test_only]
 public fun x_claim_signer_revoked_fields(self: &XClaimSignerRevoked): (ID, vector<u8>) {
-    (self.config_id, self.previous_public_key)
+    (self.runtime_config_id, self.previous_public_key)
 }
 
 #[test_only]

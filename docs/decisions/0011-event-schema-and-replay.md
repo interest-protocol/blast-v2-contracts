@@ -2,7 +2,7 @@
 
 - Status: proposed
 - Date: 2026-08-22
-- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0022](0022-dual-asset-fee-ledger-and-claims.md)
+- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0028](0028-hot-cold-runtime-configuration.md)
 
 ## Sources
 
@@ -60,9 +60,9 @@ Replay continuity comes from stable entity identity together with old/new values
 snapshots. A domain counter is added only if it is itself business state or native position cannot order
 the relevant transitions; that exception requires an explicit ADR.
 
-ADR 0018 further separates global administration from X signer configuration. ACL payloads use the
-`ProtocolAuthority` identity, while X signer payloads use the `XClaimConfig` identity; each shared object
-has its own replay scope and neither creation payload pretends the objects share storage.
+ADRs 0018 and 0028 separate global administration from live runtime configuration. ACL payloads use the
+`ProtocolAuthority` identity, while X signer and protocol-fee-share payloads use the one `RuntimeConfig`
+identity. Cold launch-policy payloads continue to use the independent `LaunchConfig` identity.
 
 One payload deliberately carries fields from more than one domain scope because it genuinely belongs to two domains:
 
@@ -92,9 +92,8 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `AdminAdded` | G | authority id, admin-cap id, recipient |
 | `AdminRevoked` | G | authority id and admin-cap id; membership removed while the cap object may remain |
 | `AdminDestroyed` | G | authority id, admin-cap id, `was_active`; cap deleted and membership absent afterward |
-| `XClaimConfigCreated` | G | disabled shared signer configuration id |
-| `TradeFeeConfigCreated` | G | shared fee-config id and initial `protocol_fee_share_bps` |
-| `ProtocolFeeShareChanged` | G | shared fee-config id and old/new `protocol_fee_share_bps` |
+| `RuntimeConfigCreated` | G | runtime-config id and initial zero `protocol_fee_share_bps`; disabled signer state is an initialization invariant |
+| `ProtocolFeeShareChanged` | G | shared runtime-config id and old/new `protocol_fee_share_bps` |
 | `LaunchConfigCreated` | G | shared launch-config id, quote and migration-witness bounds, and zero-safe initial graduation defaults |
 | `QuoteAllowed` | G | shared config id, original quote type, initial migration quote target |
 | `QuoteMigrationTargetChanged` | G | shared config id, original quote type, old/new migration quote target |

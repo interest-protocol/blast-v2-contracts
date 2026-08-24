@@ -170,7 +170,7 @@ These rules support the accepted one-function claim interface:
 ```move
 public fun claim_creator_cap<Meme>(
     launch: &mut Launch<Meme>,
-    config: &XClaimConfig,
+    config: &RuntimeConfig,
     x_attestation: Option<vector<u8>>,
     clock: &Clock,
     ctx: &mut TxContext,

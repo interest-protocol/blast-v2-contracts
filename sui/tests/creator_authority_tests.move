@@ -1,7 +1,7 @@
 #[test_only]
 module blast_fun::creator_authority_tests;
 
-use blast_fun::{acl, constants, creator_authority, events, x_claim_config};
+use blast_fun::{acl, constants, creator_authority, events, runtime_config};
 use sui::{clock, event, test_scenario::{Self, Scenario}};
 
 // === Constants ===
@@ -38,7 +38,9 @@ fun singleton_creation_events_use_generic_wrapper() {
         emitted_max_admins,
         emitted_delay_ms,
     ) = created.protocol_authority_created_fields();
-    let config_created = events::collect_one<events::XClaimConfigCreated>(0);
+    let runtime_config_created = events::collect_one<events::RuntimeConfigCreated>(0);
+    let (emitted_runtime_config_id, protocol_fee_share_bps) =
+        runtime_config_created.runtime_config_created_fields();
 
     std::unit_test::assert_eq!(emitted_authority_id, authority_id);
     std::unit_test::assert_eq!(emitted_super_admin_cap_id, super_admin_cap_id);
@@ -48,12 +50,10 @@ fun singleton_creation_events_use_generic_wrapper() {
         emitted_delay_ms,
         constants::super_admin_transfer_delay_ms!(),
     );
-    std::unit_test::assert_eq!(
-        config_created.x_claim_config_created_fields(),
-        config_id,
-    );
+    std::unit_test::assert_eq!(emitted_runtime_config_id, config_id);
+    std::unit_test::assert_eq!(protocol_fee_share_bps, 0);
     assert!(event::events_by_type<events::ProtocolAuthorityCreated>().is_empty());
-    assert!(event::events_by_type<events::XClaimConfigCreated>().is_empty());
+    assert!(event::events_by_type<events::RuntimeConfigCreated>().is_empty());
 
     authority.destroy_super_admin_cap_for_testing(super_admin_cap);
     authority.destroy_protocol_authority_for_testing();
@@ -76,7 +76,7 @@ fun super_admin_adds_global_admin_that_configures_x_signer() {
     scenario.next_tx(PROTOCOL_ADMIN);
     let admin_cap = scenario.take_from_sender<acl::AdminCap>();
     let admin_witness = authority.sign_in(&admin_cap);
-    config.set_signer(
+    config.set_x_claim_signer(
         &admin_witness,
         x_signer_public_key(),
     );
@@ -92,7 +92,7 @@ fun x_claim_signer_set_event_is_replay_complete() {
     let config_id = object::id(&config);
     let admin_witness = authority.sign_in(&admin_cap);
 
-    config.set_signer(
+    config.set_x_claim_signer(
         &admin_witness,
         x_signer_public_key(),
     );
@@ -114,12 +114,12 @@ fun x_claim_signer_revoked_event_is_replay_complete() {
         new_protocol_with_admin(&mut scenario);
     let config_id = object::id(&config);
     let admin_witness = authority.sign_in(&admin_cap);
-    config.set_signer(
+    config.set_x_claim_signer(
         &admin_witness,
         x_signer_public_key(),
     );
 
-    config.revoke_signer(&admin_witness);
+    config.revoke_x_claim_signer(&admin_witness);
 
     let signer_revoked = events::collect_one<events::XClaimSignerRevoked>(0);
     let (emitted_config_id, previous_public_key) =
@@ -138,7 +138,7 @@ fun x_claim_signer_rejects_invalid_public_key_length() {
         new_protocol_with_admin(&mut scenario);
     let admin_witness = authority.sign_in(&admin_cap);
 
-    config.set_signer(&admin_witness, x"00");
+    config.set_x_claim_signer(&admin_witness, x"00");
 
     destroy_protocol_state(super_admin_cap, admin_cap, authority, config, scenario);
 }
@@ -151,7 +151,7 @@ fun x_claim_signer_cannot_revoke_while_disabled() {
         new_protocol_with_admin(&mut scenario);
     let admin_witness = authority.sign_in(&admin_cap);
 
-    config.revoke_signer(&admin_witness);
+    config.revoke_x_claim_signer(&admin_witness);
 
     destroy_protocol_state(super_admin_cap, admin_cap, authority, config, scenario);
 }
@@ -166,7 +166,7 @@ fun revoked_admin_cannot_configure_x_signer() {
     authority.revoke_admin(&super_admin_cap, admin_cap_id);
     let admin_witness = authority.sign_in(&admin_cap);
 
-    config.set_signer(
+    config.set_x_claim_signer(
         &admin_witness,
         x_signer_public_key(),
     );
@@ -249,7 +249,7 @@ fun admin_registered_in_another_protocol_registry_is_rejected() {
     let mut second_config = second_config;
     let admin_witness = second_authority.sign_in(&first_admin);
 
-    second_config.set_signer(
+    second_config.set_x_claim_signer(
         &admin_witness,
         x_signer_public_key(),
     );
@@ -610,10 +610,10 @@ fun package_init_delivers_only_root() {
 #[expected_failure(abort_code = 3)]
 fun package_init_starts_x_signer_disabled() {
     let mut scenario = test_scenario::begin(LAUNCHER);
-    x_claim_config::init_for_testing(scenario.ctx());
+    runtime_config::init_for_testing(scenario.ctx());
 
     scenario.next_tx(LAUNCHER);
-    let config = scenario.take_shared<x_claim_config::XClaimConfig>();
+    let config = scenario.take_shared<runtime_config::RuntimeConfig>();
     let creator_state = new_x_authority();
     let mut test_clock = clock::create_for_testing(scenario.ctx());
     test_clock.set_for_testing(NOW_MS);
@@ -675,7 +675,7 @@ fun address_identity_rejects_zero_creator_address() {
 #[expected_failure(abort_code = 26)]
 fun address_creator_claim_rejects_different_sender() {
     let mut scenario = test_scenario::begin(LAUNCHER);
-    let config = new_x_claim_config(scenario.ctx());
+    let config = new_runtime_config(scenario.ctx());
     let creator_state = creator_authority::new_address<TEST_MEME>(CREATOR);
     let test_clock = clock::create_for_testing(scenario.ctx());
 
@@ -694,7 +694,7 @@ fun address_creator_claim_rejects_different_sender() {
 #[expected_failure(abort_code = 11)]
 fun address_creator_claim_rejects_x_attestation() {
     let mut scenario = test_scenario::begin(LAUNCHER);
-    let config = new_x_claim_config(scenario.ctx());
+    let config = new_runtime_config(scenario.ctx());
     let creator_state = creator_authority::new_address<TEST_MEME>(CREATOR);
     let test_clock = clock::create_for_testing(scenario.ctx());
 
@@ -719,7 +719,7 @@ fun x_identity_rejects_non_32_byte_identity_commitment() {
 #[test]
 fun valid_x_attestation_consumes_authority_and_returns_creator_cap() {
     let mut scenario = test_scenario::begin(LAUNCHER);
-    let config = new_x_claim_config(scenario.ctx());
+    let config = new_runtime_config(scenario.ctx());
     let creator_state = new_x_authority();
     let mut test_clock = clock::create_for_testing(scenario.ctx());
     test_clock.set_for_testing(NOW_MS);
@@ -750,7 +750,7 @@ fun valid_x_attestation_consumes_authority_and_returns_creator_cap() {
 #[expected_failure(abort_code = 6)]
 fun x_claim_rejects_signature_bound_to_another_sender() {
     let mut scenario = test_scenario::begin(LAUNCHER);
-    let config = new_x_claim_config(scenario.ctx());
+    let config = new_runtime_config(scenario.ctx());
     let creator_state = new_x_authority();
     let mut test_clock = clock::create_for_testing(scenario.ctx());
     test_clock.set_for_testing(NOW_MS);
@@ -765,7 +765,7 @@ fun x_claim_rejects_signature_bound_to_another_sender() {
 #[expected_failure(abort_code = 25)]
 fun x_creator_claim_requires_attestation() {
     let mut scenario = test_scenario::begin(LAUNCHER);
-    let config = new_x_claim_config(scenario.ctx());
+    let config = new_runtime_config(scenario.ctx());
     let creator_state = new_x_authority();
     let test_clock = clock::create_for_testing(scenario.ctx());
 
@@ -784,7 +784,7 @@ fun x_creator_claim_requires_attestation() {
 #[expected_failure(abort_code = 27)]
 fun x_creator_claim_rejects_malformed_attestation() {
     let mut scenario = test_scenario::begin(LAUNCHER);
-    let config = new_x_claim_config(scenario.ctx());
+    let config = new_runtime_config(scenario.ctx());
     let creator_state = new_x_authority();
     let test_clock = clock::create_for_testing(scenario.ctx());
 
@@ -803,7 +803,7 @@ fun x_creator_claim_rejects_malformed_attestation() {
 #[expected_failure(abort_code = 3)]
 fun disabled_x_signer_rejects_before_attestation_parsing() {
     let mut scenario = test_scenario::begin(LAUNCHER);
-    let config = x_claim_config::new_disabled_for_testing(scenario.ctx());
+    let config = runtime_config::new_disabled_for_testing(scenario.ctx());
     let creator_state = new_x_authority();
     let test_clock = clock::create_for_testing(scenario.ctx());
 
@@ -822,7 +822,7 @@ fun disabled_x_signer_rejects_before_attestation_parsing() {
 #[expected_failure(abort_code = 14)]
 fun x_claim_rejects_expired_attestation() {
     let mut scenario = test_scenario::begin(LAUNCHER);
-    let config = new_x_claim_config(scenario.ctx());
+    let config = new_runtime_config(scenario.ctx());
     let creator_state = new_x_authority();
     let mut test_clock = clock::create_for_testing(scenario.ctx());
     test_clock.set_for_testing(EXPIRY_MS + 1);
@@ -837,7 +837,7 @@ fun x_claim_rejects_expired_attestation() {
 #[expected_failure(abort_code = 6)]
 fun x_claim_rejects_signature_for_another_meme_type() {
     let mut scenario = test_scenario::begin(LAUNCHER);
-    let config = new_x_claim_config(scenario.ctx());
+    let config = new_runtime_config(scenario.ctx());
     let creator_state = creator_authority::new_x<OTHER_MEME>(x_identity_hash());
     let mut test_clock = clock::create_for_testing(scenario.ctx());
     test_clock.set_for_testing(NOW_MS);
@@ -859,7 +859,7 @@ fun x_claim_rejects_signature_for_another_meme_type() {
 #[expected_failure(abort_code = 6)]
 fun x_claim_rejects_signature_for_another_x_identity() {
     let mut scenario = test_scenario::begin(LAUNCHER);
-    let config = new_x_claim_config(scenario.ctx());
+    let config = new_runtime_config(scenario.ctx());
     let creator_state = creator_authority::new_x<TEST_MEME>(
         x"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
     );
@@ -879,7 +879,7 @@ fun x_claim_rejects_attestation_from_rotated_signer_key() {
     let (super_admin_cap, protocol_authority, admin_cap, mut config) =
         new_protocol_with_admin(&mut scenario);
     let admin_witness = protocol_authority.sign_in(&admin_cap);
-    config.set_signer(
+    config.set_x_claim_signer(
         &admin_witness,
         x"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
     );
@@ -907,11 +907,11 @@ fun x_claim_rejects_attestation_after_signer_revocation() {
     let (super_admin_cap, protocol_authority, admin_cap, mut config) =
         new_protocol_with_admin(&mut scenario);
     let admin_witness = protocol_authority.sign_in(&admin_cap);
-    config.set_signer(
+    config.set_x_claim_signer(
         &admin_witness,
         x_signer_public_key(),
     );
-    config.revoke_signer(&admin_witness);
+    config.revoke_x_claim_signer(&admin_witness);
     let creator_state = new_x_authority();
     let mut test_clock = clock::create_for_testing(scenario.ctx());
     test_clock.set_for_testing(NOW_MS);
@@ -935,12 +935,12 @@ fun signer_rotation_reenables_x_claims_after_revocation() {
     let (super_admin_cap, protocol_authority, admin_cap, mut config) =
         new_protocol_with_admin(&mut scenario);
     let admin_witness = protocol_authority.sign_in(&admin_cap);
-    config.set_signer(
+    config.set_x_claim_signer(
         &admin_witness,
         x"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
     );
-    config.revoke_signer(&admin_witness);
-    config.set_signer(
+    config.revoke_x_claim_signer(&admin_witness);
+    config.set_x_claim_signer(
         &admin_witness,
         x_signer_public_key(),
     );
@@ -974,11 +974,11 @@ fun signer_rotation_rejects_current_public_key() {
     let (super_admin_cap, protocol_authority, admin_cap, mut config) =
         new_protocol_with_admin(&mut scenario);
     let admin_witness = protocol_authority.sign_in(&admin_cap);
-    config.set_signer(
+    config.set_x_claim_signer(
         &admin_witness,
         x_signer_public_key(),
     );
-    config.set_signer(
+    config.set_x_claim_signer(
         &admin_witness,
         x_signer_public_key(),
     );
@@ -996,7 +996,7 @@ fun signer_rotation_rejects_current_public_key() {
 
 fun claim_x(
     creator_state: creator_authority::CreatorAuthority<TEST_MEME>,
-    config: &x_claim_config::XClaimConfig,
+    config: &runtime_config::RuntimeConfig,
     test_clock: &clock::Clock,
     scenario: &mut Scenario,
 ): creator_authority::CreatorCap<TEST_MEME> {
@@ -1015,16 +1015,16 @@ fun x_claim_attestation(): vector<u8> {
 fun new_protocol_for_testing(
     super_admin_recipient: address,
     ctx: &mut TxContext,
-): (acl::SuperAdminCap, acl::ProtocolAuthority, x_claim_config::XClaimConfig) {
+): (acl::SuperAdminCap, acl::ProtocolAuthority, runtime_config::RuntimeConfig) {
     let (super_admin_cap, authority) =
         acl::new_protocol_for_testing(super_admin_recipient, ctx);
-    let config = x_claim_config::new_disabled_for_testing(ctx);
+    let config = runtime_config::new_disabled_for_testing(ctx);
     (super_admin_cap, authority, config)
 }
 
 fun new_protocol_with_admin(
     scenario: &mut Scenario,
-): (acl::SuperAdminCap, acl::ProtocolAuthority, acl::AdminCap, x_claim_config::XClaimConfig) {
+): (acl::SuperAdminCap, acl::ProtocolAuthority, acl::AdminCap, runtime_config::RuntimeConfig) {
     let (super_admin_cap, mut authority, config) =
         new_protocol_for_testing(LAUNCHER, scenario.ctx());
     authority.add_admin(
@@ -1041,7 +1041,7 @@ fun destroy_protocol_state(
     super_admin_cap: acl::SuperAdminCap,
     admin_cap: acl::AdminCap,
     mut authority: acl::ProtocolAuthority,
-    config: x_claim_config::XClaimConfig,
+    config: runtime_config::RuntimeConfig,
     scenario: Scenario,
 ) {
     authority.destroy_admin_cap(admin_cap);
@@ -1052,7 +1052,7 @@ fun destroy_protocol_state(
 }
 
 fun destroy_x_test_state(
-    config: x_claim_config::XClaimConfig,
+    config: runtime_config::RuntimeConfig,
     test_clock: clock::Clock,
     scenario: Scenario,
 ) {
@@ -1061,8 +1061,8 @@ fun destroy_x_test_state(
     scenario.end();
 }
 
-fun new_x_claim_config(ctx: &mut TxContext): x_claim_config::XClaimConfig {
-    x_claim_config::new_for_testing(x_signer_public_key(), ctx)
+fun new_runtime_config(ctx: &mut TxContext): runtime_config::RuntimeConfig {
+    runtime_config::new_for_testing(x_signer_public_key(), ctx)
 }
 
 fun new_x_authority(): creator_authority::CreatorAuthority<TEST_MEME> {

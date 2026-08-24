@@ -29,7 +29,7 @@ contracts/
 
 The workspace, its engineering contract, and the Sui design record are established.
 The implemented Sui Move slices cover the current audit-sized boundaries from
-accepted ADRs 0013 through 0027: one-time
+accepted ADRs 0013 through 0028: one-time
 `CreatorCap<Meme>` claims for address and X identities, coin-type-isolated
 creator authority that survives migration, a creator-authority boundary with no
 metadata-cap pass-through, and the backend-attested X branch.
@@ -44,7 +44,8 @@ quote `Currency` object or importing a DEX package, so later admin updates canno
 rewrite existing launches. DEX pool-opening costs are deliberately unsupported.
 It includes dedicated package-constant and macro-error registries, a wrapped-event
 module, inline invariant assertions, a concern-limited singleton admin registry,
-drop-only admin sign-in witnesses, an independent shared X signer configuration,
+drop-only admin sign-in witnesses, one small shared runtime configuration for
+the dedicated X signer and live protocol fee share,
 delayed recipient-accepted root transfer,
 minimal X signer rotation/revocation,
 exact BCS encoding, an Ed25519 vector, and adversarial Move tests. A pure
@@ -71,7 +72,7 @@ in [decisions/README.md](docs/decisions/README.md).
 Shared differential vectors for both chains live in [docs/vectors/](docs/vectors/).
 
 The current Sui implementation includes the audit-sized launch ticket, dual-asset
-fee ledger, shared trade-fee configuration, and bounded cold launch
+fee ledger, consolidated live runtime configuration, and bounded cold launch
 configuration. The next audit-sized slice is pure graduation arithmetic and
 custody: reserve the Meme allocation before curve inventory and account for the
 Quote migration fee independently from venue expenditure. Launch-state
