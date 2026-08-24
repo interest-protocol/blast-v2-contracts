@@ -94,8 +94,9 @@ burned and evented. Neither mode permits silent balance disposal.
 That capability moves through the Blast launch intake and remains inside launch
 state while `CreatorAuthority<Meme>` is unclaimed.
 
-The successful one-time creator claim consumes both the creator authority and
-the stored metadata capability, then returns two independent objects:
+The future launch-level creator claim independently consumes the creator
+authority and removes the stored metadata capability from launch custody. It
+returns two independent objects:
 
 ```move
 (CreatorCap<Meme>, MetadataCap<Meme>)
@@ -105,8 +106,10 @@ the stored metadata capability, then returns two independent objects:
 the native Coin Registry capability, so its holder can call native metadata
 setters, transfer it, freeze it, or delete it according to the framework API.
 Blast exposes no metadata extraction method and no proxy setters because it does
-not wrap the capability. Metadata-cap custody changes never consume or invalidate
-creator fee authority, and migration cannot seize either creator-owned object.
+not wrap the capability. The launch-level operation calls
+`creator_authority::claim_creator_cap` without passing the metadata cap through
+that helper. Metadata-cap custody changes never consume or invalidate creator
+fee authority, and migration cannot seize either creator-owned object.
 
 ### Quote policy remains separate
 
@@ -159,8 +162,9 @@ metadata update through shared Blast state.
 - A burnable launch executes a sell burn through `Currency<Meme>` and decreases registry total supply.
 - Structural checks reject a surviving `TreasuryCap`, every `DenyCap`, and legacy
   migration calls from launch state, adapters, and generated production templates.
-- Creator-claim tests prove the function returns `CreatorCap<Meme>` and
-  `MetadataCap<Meme>` separately and that callers can route the two objects to
-  different recipients. Fee tests prove creator claims depend only on the
-  creator cap.
+- Current creator-authority tests prove the helper returns only
+  `CreatorCap<Meme>` and has no metadata-cap dependency. Future launch-level
+  tests must prove the public claim releases `MetadataCap<Meme>` independently
+  and lets callers route the two objects separately. Fee tests prove creator
+  claims depend only on the creator cap.
 - Build, strict lint, full tests, Move coverage, and structural source checks remain release gates.

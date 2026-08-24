@@ -181,14 +181,14 @@ creator_authority_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sou
 if rg -n '\bcreator_cap_claimed:[[:space:]]*bool|\bissue_creator_cap\b|\btransfer::' \
   <<<"$creator_authority_production" \
   || ! rg -U -q \
-    '(?s)public\(package\) fun claim_creator_cap<Meme>\(\s*authority: CreatorAuthority<Meme>,.*\): \(CreatorCap<Meme>, MetadataCap<Meme>\) \{' \
+    '(?s)public\(package\) fun claim_creator_cap<Meme>\(\s*authority: CreatorAuthority<Meme>,.*\): CreatorCap<Meme> \{' \
     sources/creator_authority.move \
   || ! rg -U -q \
     'public struct CreatorCap<phantom Meme> has key, store \{\s*id: UID,\s*\}' \
     sources/creator_authority.move \
-  || ! rg -q '^[[:space:]]+metadata_cap: MetadataCap<Meme>,' \
+  || rg -n '\bMetadataCap\b|\bmetadata_cap\b' \
     sources/creator_authority.move; then
-  echo 'Creator claims must consume CreatorAuthority and return separate CreatorCap and MetadataCap objects without a flag, wrapper, or transfer.' >&2
+  echo 'Creator-authority claims must consume CreatorAuthority and return only CreatorCap without unrelated capability pass-through, a flag, wrapper, or transfer.' >&2
   failures=$((failures + 1))
 fi
 

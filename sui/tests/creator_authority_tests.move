@@ -2,7 +2,7 @@
 module blast_fun::creator_authority_tests;
 
 use blast_fun::{acl, constants, creator_authority, events, x_claim_config};
-use sui::{clock, coin_registry, event, test_scenario::{Self, Scenario}};
+use sui::{clock, event, test_scenario::{Self, Scenario}};
 
 // === Constants ===
 
@@ -16,8 +16,8 @@ const EXPIRY_MS: u64 = 2_000_000;
 
 // === Test-Only Types ===
 
-public struct TEST_MEME has key { id: UID }
-public struct OTHER_MEME has key { id: UID }
+public struct TEST_MEME() has drop;
+public struct OTHER_MEME() has drop;
 
 // === Tests ===
 
@@ -619,31 +619,26 @@ fun package_init_starts_x_signer_disabled() {
     test_clock.set_for_testing(NOW_MS);
 
     scenario.next_tx(X_CLAIMANT);
-    let (cap, metadata_cap) = claim_x(creator_state, &config, &test_clock, &mut scenario);
-    destroy_claim_result(cap, metadata_cap);
+    let cap = claim_x(creator_state, &config, &test_clock, &mut scenario);
+    cap.destroy_cap_for_testing();
     destroy_x_test_state(config, test_clock, scenario);
 }
 
 #[test]
-fun address_creator_claim_returns_two_independently_composable_caps() {
+fun address_creator_claim_returns_composable_cap_without_attestation() {
     let mut scenario = test_scenario::begin(LAUNCHER);
     let (super_admin_cap, protocol_authority, config) =
         new_protocol_for_testing(LAUNCHER, scenario.ctx());
     let creator_state = creator_authority::new_address<TEST_MEME>(CREATOR);
     let test_clock = clock::create_for_testing(scenario.ctx());
-    let metadata_cap = new_test_meme_metadata_cap();
-    let metadata_cap_id = object::id(&metadata_cap);
-
     scenario.next_tx(CREATOR);
-    let (cap, metadata_cap) = creator_state.claim_creator_cap<TEST_MEME>(
-        metadata_cap,
+    let cap = creator_state.claim_creator_cap<TEST_MEME>(
         &config,
         option::none(),
         &test_clock,
         scenario.ctx(),
     );
     transfer::public_transfer(cap, PROTOCOL_ADMIN);
-    transfer::public_transfer(metadata_cap, CREATOR);
 
     let claimed = events::collect_one<events::CreatorCapClaimed>(0);
     let (meme, x_identity_hash, creator, x_claim_expiry_ms) =
@@ -662,40 +657,11 @@ fun address_creator_claim_returns_two_independently_composable_caps() {
     assert!(!scenario.has_most_recent_for_sender<creator_authority::CreatorCap<OTHER_MEME>>());
     let cap = scenario.take_from_sender<creator_authority::CreatorCap<TEST_MEME>>();
     cap.destroy_cap_for_testing();
-
-    scenario.next_tx(CREATOR);
-    let metadata_cap = scenario.take_from_sender<coin_registry::MetadataCap<TEST_MEME>>();
-    std::unit_test::assert_eq!(object::id(&metadata_cap), metadata_cap_id);
-    transfer::public_freeze_object(metadata_cap);
     test_clock.destroy_for_testing();
     protocol_authority.destroy_super_admin_cap_for_testing(super_admin_cap);
     protocol_authority.destroy_protocol_authority_for_testing();
     config.destroy_for_testing();
     scenario.end();
-}
-
-#[test]
-fun burnable_coin_claim_returns_metadata_cap_separately() {
-    let mut scenario = test_scenario::begin(LAUNCHER);
-    let config = new_x_claim_config(scenario.ctx());
-    let creator_state = creator_authority::new_address<TEST_MEME>(CREATOR);
-    let test_clock = clock::create_for_testing(scenario.ctx());
-    let metadata_cap = new_test_meme_metadata_cap_with_supply(true);
-    let metadata_cap_id = object::id(&metadata_cap);
-
-    scenario.next_tx(CREATOR);
-    let (cap, metadata_cap) = creator_state.claim_creator_cap(
-        metadata_cap,
-        &config,
-        option::none(),
-        &test_clock,
-        scenario.ctx(),
-    );
-
-    std::unit_test::assert_eq!(object::id(&metadata_cap), metadata_cap_id);
-
-    destroy_claim_result(cap, metadata_cap);
-    destroy_x_test_state(config, test_clock, scenario);
 }
 
 #[test]
@@ -714,14 +680,13 @@ fun address_creator_claim_rejects_different_sender() {
     let test_clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(@0xBAD);
-    let (cap, metadata_cap) = creator_state.claim_creator_cap<TEST_MEME>(
-        new_test_meme_metadata_cap(),
+    let cap = creator_state.claim_creator_cap<TEST_MEME>(
         &config,
         option::none(),
         &test_clock,
         scenario.ctx(),
     );
-    destroy_claim_result(cap, metadata_cap);
+    cap.destroy_cap_for_testing();
     destroy_x_test_state(config, test_clock, scenario);
 }
 
@@ -734,14 +699,13 @@ fun address_creator_claim_rejects_x_attestation() {
     let test_clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(CREATOR);
-    let (cap, metadata_cap) = creator_state.claim_creator_cap<TEST_MEME>(
-        new_test_meme_metadata_cap(),
+    let cap = creator_state.claim_creator_cap<TEST_MEME>(
         &config,
         option::some(x_claim_attestation()),
         &test_clock,
         scenario.ctx(),
     );
-    destroy_claim_result(cap, metadata_cap);
+    cap.destroy_cap_for_testing();
     destroy_x_test_state(config, test_clock, scenario);
 }
 
@@ -753,7 +717,7 @@ fun x_identity_rejects_non_32_byte_identity_commitment() {
 }
 
 #[test]
-fun valid_x_attestation_consumes_authority_and_returns_two_caps() {
+fun valid_x_attestation_consumes_authority_and_returns_creator_cap() {
     let mut scenario = test_scenario::begin(LAUNCHER);
     let config = new_x_claim_config(scenario.ctx());
     let creator_state = new_x_authority();
@@ -770,17 +734,15 @@ fun valid_x_attestation_consumes_authority_and_returns_two_caps() {
         x"64303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303a3a63726561746f725f617574686f726974795f74657374733a3a544553545f4d454d452011223344556677889900aabbccddeeffffeeddccbbaa009988776655443322110000000000000000000000000000000000000000000000000000000000c0ffee80841e0000000000",
     );
 
-    let metadata_cap = new_test_meme_metadata_cap();
     scenario.next_tx(X_CLAIMANT);
-    let (cap, metadata_cap) = creator_state.claim_creator_cap<TEST_MEME>(
-        metadata_cap,
+    let cap = creator_state.claim_creator_cap<TEST_MEME>(
         &config,
         option::some(x_claim_attestation()),
         &test_clock,
         scenario.ctx(),
     );
 
-    destroy_claim_result(cap, metadata_cap);
+    cap.destroy_cap_for_testing();
     destroy_x_test_state(config, test_clock, scenario);
 }
 
@@ -794,8 +756,8 @@ fun x_claim_rejects_signature_bound_to_another_sender() {
     test_clock.set_for_testing(NOW_MS);
 
     scenario.next_tx(@0xBAD);
-    let (cap, metadata_cap) = claim_x(creator_state, &config, &test_clock, &mut scenario);
-    destroy_claim_result(cap, metadata_cap);
+    let cap = claim_x(creator_state, &config, &test_clock, &mut scenario);
+    cap.destroy_cap_for_testing();
     destroy_x_test_state(config, test_clock, scenario);
 }
 
@@ -808,14 +770,13 @@ fun x_creator_claim_requires_attestation() {
     let test_clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(X_CLAIMANT);
-    let (cap, metadata_cap) = creator_state.claim_creator_cap<TEST_MEME>(
-        new_test_meme_metadata_cap(),
+    let cap = creator_state.claim_creator_cap<TEST_MEME>(
         &config,
         option::none(),
         &test_clock,
         scenario.ctx(),
     );
-    destroy_claim_result(cap, metadata_cap);
+    cap.destroy_cap_for_testing();
     destroy_x_test_state(config, test_clock, scenario);
 }
 
@@ -828,14 +789,13 @@ fun x_creator_claim_rejects_malformed_attestation() {
     let test_clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(X_CLAIMANT);
-    let (cap, metadata_cap) = creator_state.claim_creator_cap<TEST_MEME>(
-        new_test_meme_metadata_cap(),
+    let cap = creator_state.claim_creator_cap<TEST_MEME>(
         &config,
         option::some(x"00"),
         &test_clock,
         scenario.ctx(),
     );
-    destroy_claim_result(cap, metadata_cap);
+    cap.destroy_cap_for_testing();
     destroy_x_test_state(config, test_clock, scenario);
 }
 
@@ -848,14 +808,13 @@ fun disabled_x_signer_rejects_before_attestation_parsing() {
     let test_clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(X_CLAIMANT);
-    let (cap, metadata_cap) = creator_state.claim_creator_cap<TEST_MEME>(
-        new_test_meme_metadata_cap(),
+    let cap = creator_state.claim_creator_cap<TEST_MEME>(
         &config,
         option::some(x"00"),
         &test_clock,
         scenario.ctx(),
     );
-    destroy_claim_result(cap, metadata_cap);
+    cap.destroy_cap_for_testing();
     destroy_x_test_state(config, test_clock, scenario);
 }
 
@@ -869,8 +828,8 @@ fun x_claim_rejects_expired_attestation() {
     test_clock.set_for_testing(EXPIRY_MS + 1);
 
     scenario.next_tx(X_CLAIMANT);
-    let (cap, metadata_cap) = claim_x(creator_state, &config, &test_clock, &mut scenario);
-    destroy_claim_result(cap, metadata_cap);
+    let cap = claim_x(creator_state, &config, &test_clock, &mut scenario);
+    cap.destroy_cap_for_testing();
     destroy_x_test_state(config, test_clock, scenario);
 }
 
@@ -884,14 +843,13 @@ fun x_claim_rejects_signature_for_another_meme_type() {
     test_clock.set_for_testing(NOW_MS);
 
     scenario.next_tx(X_CLAIMANT);
-    let (cap, metadata_cap) = creator_state.claim_creator_cap<OTHER_MEME>(
-        new_other_meme_metadata_cap(),
+    let cap = creator_state.claim_creator_cap<OTHER_MEME>(
         &config,
         option::some(x_claim_attestation()),
         &test_clock,
         scenario.ctx(),
     );
-    destroy_claim_result(cap, metadata_cap);
+    cap.destroy_cap_for_testing();
     config.destroy_for_testing();
     test_clock.destroy_for_testing();
     scenario.end();
@@ -909,8 +867,8 @@ fun x_claim_rejects_signature_for_another_x_identity() {
     test_clock.set_for_testing(NOW_MS);
 
     scenario.next_tx(X_CLAIMANT);
-    let (cap, metadata_cap) = claim_x(creator_state, &config, &test_clock, &mut scenario);
-    destroy_claim_result(cap, metadata_cap);
+    let cap = claim_x(creator_state, &config, &test_clock, &mut scenario);
+    cap.destroy_cap_for_testing();
     destroy_x_test_state(config, test_clock, scenario);
 }
 
@@ -930,8 +888,8 @@ fun x_claim_rejects_attestation_from_rotated_signer_key() {
     test_clock.set_for_testing(NOW_MS);
 
     scenario.next_tx(X_CLAIMANT);
-    let (cap, metadata_cap) = claim_x(creator_state, &config, &test_clock, &mut scenario);
-    destroy_claim_result(cap, metadata_cap);
+    let cap = claim_x(creator_state, &config, &test_clock, &mut scenario);
+    cap.destroy_cap_for_testing();
     test_clock.destroy_for_testing();
     destroy_protocol_state(
         super_admin_cap,
@@ -959,8 +917,8 @@ fun x_claim_rejects_attestation_after_signer_revocation() {
     test_clock.set_for_testing(NOW_MS);
 
     scenario.next_tx(X_CLAIMANT);
-    let (cap, metadata_cap) = claim_x(creator_state, &config, &test_clock, &mut scenario);
-    destroy_claim_result(cap, metadata_cap);
+    let cap = claim_x(creator_state, &config, &test_clock, &mut scenario);
+    cap.destroy_cap_for_testing();
     test_clock.destroy_for_testing();
     destroy_protocol_state(
         super_admin_cap,
@@ -990,17 +948,14 @@ fun signer_rotation_reenables_x_claims_after_revocation() {
     let creator_state = new_x_authority();
     let mut test_clock = clock::create_for_testing(scenario.ctx());
     test_clock.set_for_testing(NOW_MS);
-    let metadata_cap = new_test_meme_metadata_cap();
-
     scenario.next_tx(X_CLAIMANT);
-    let (cap, metadata_cap) = creator_state.claim_creator_cap(
-        metadata_cap,
+    let cap = creator_state.claim_creator_cap(
         &config,
         option::some(x_claim_attestation()),
         &test_clock,
         scenario.ctx(),
     );
-    destroy_claim_result(cap, metadata_cap);
+    cap.destroy_cap_for_testing();
     test_clock.destroy_for_testing();
 
     destroy_protocol_state(
@@ -1044,78 +999,13 @@ fun claim_x(
     config: &x_claim_config::XClaimConfig,
     test_clock: &clock::Clock,
     scenario: &mut Scenario,
-): (
-    creator_authority::CreatorCap<TEST_MEME>,
-    coin_registry::MetadataCap<TEST_MEME>,
-) {
+): creator_authority::CreatorCap<TEST_MEME> {
     creator_state.claim_creator_cap(
-        new_test_meme_metadata_cap(),
         config,
         option::some(x_claim_attestation()),
         test_clock,
         scenario.ctx(),
     )
-}
-
-fun destroy_claim_result<Meme>(
-    cap: creator_authority::CreatorCap<Meme>,
-    metadata_cap: coin_registry::MetadataCap<Meme>,
-) {
-    cap.destroy_cap_for_testing();
-    transfer::public_freeze_object(metadata_cap);
-}
-
-fun new_test_meme_metadata_cap(): coin_registry::MetadataCap<TEST_MEME> {
-    new_test_meme_metadata_cap_with_supply(false)
-}
-
-fun new_test_meme_metadata_cap_with_supply(
-    burnable: bool,
-): coin_registry::MetadataCap<TEST_MEME> {
-    let mut ctx = tx_context::dummy();
-    let mut registry = coin_registry::create_coin_data_registry_for_testing(&mut ctx);
-    let (mut initializer, mut treasury_cap) = coin_registry::new_currency(
-        &mut registry,
-        9,
-        b"TEST".to_string(),
-        b"Test Meme".to_string(),
-        b"Creator authority test currency".to_string(),
-        b"".to_string(),
-        &mut ctx,
-    );
-    let coin = treasury_cap.mint(1, &mut ctx);
-
-    if (burnable) initializer.make_supply_burn_only(treasury_cap)
-    else initializer.make_supply_fixed(treasury_cap);
-    let metadata_cap = initializer.finalize(&mut ctx);
-
-    coin_registry::share_for_testing(registry);
-    coin.into_balance().destroy_for_testing();
-
-    metadata_cap
-}
-
-fun new_other_meme_metadata_cap(): coin_registry::MetadataCap<OTHER_MEME> {
-    let mut ctx = tx_context::dummy();
-    let mut registry = coin_registry::create_coin_data_registry_for_testing(&mut ctx);
-    let (mut initializer, mut treasury_cap) = coin_registry::new_currency(
-        &mut registry,
-        9,
-        b"OTHER".to_string(),
-        b"Other Meme".to_string(),
-        b"Creator authority alternate test currency".to_string(),
-        b"".to_string(),
-        &mut ctx,
-    );
-    let coin = treasury_cap.mint(1, &mut ctx);
-
-    initializer.make_supply_fixed(treasury_cap);
-    let metadata_cap = initializer.finalize(&mut ctx);
-
-    coin_registry::share_for_testing(registry);
-    coin.into_balance().destroy_for_testing();
-
-    metadata_cap
 }
 
 fun x_claim_attestation(): vector<u8> {

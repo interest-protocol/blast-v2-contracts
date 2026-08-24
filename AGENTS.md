@@ -102,14 +102,15 @@ core interface. See `docs/architecture.md`.
   Events are index facts, never onchain replay guards. Do not add a parallel
   nonce. A repeatable signed operation needs an explicit bounded replay policy
   before it is implemented.
-- Creator-cap claims must take `CreatorAuthority<Meme>` and the native
-  `MetadataCap<Meme>` by value and return them as two independent objects:
-  `(CreatorCap<Meme>, MetadataCap<Meme>)`. They must not directly transfer either
-  cap, retain a claimed flag, wrap metadata authority inside creator economic
-  authority, add Blast metadata proxy functions, or hide construction behind a
-  separate issue function. The launch path must create exactly one creator
-  authority for its unique meme type and remove it from launch state when
-  claiming.
+- `creator_authority::claim_creator_cap` must take
+  `CreatorAuthority<Meme>` by value and return only `CreatorCap<Meme>`. It must
+  not accept or pass through `MetadataCap<Meme>`, directly transfer the cap,
+  retain a claimed flag, or hide construction behind a separate issue function.
+  The future launch-level claim may remove the native metadata cap from launch
+  custody and return it separately alongside the creator cap, but it must not
+  route that unrelated capability through `creator_authority`. The launch path
+  must create exactly one creator authority for its unique meme type and remove
+  it from launch state when claiming.
 - After `CreatorCap<Meme>` is claimed, creator economic operations authorize with
   that typed capability. They must not re-check ACL membership, X identity, or
   the backend signer; those facts authorize issuance, not later fee ownership.
@@ -238,6 +239,10 @@ must be differential-tested from shared vectors.
   non-production exceptions to the package constants registry.
 - Prefer `public` composable functions that return newly created owned values.
   Direct transfer is reserved for deliberately non-composable entry wrappers.
+- Do not add pass-through parameters. A function must not accept a value solely
+  to return it unchanged. The module that owns the value must return it directly;
+  pass it into another module only when that module validates, transforms,
+  consumes, or stores it as part of its own concern.
 - Order function parameters as primary object, capability or witness, domain values,
   system objects such as `Clock`, then `TxContext` last.
 - Format function bodies as logical paragraphs. Use one blank line when the code

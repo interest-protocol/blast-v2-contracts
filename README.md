@@ -28,11 +28,10 @@ contracts/
 ## Current status
 
 The workspace, its engineering contract, and the Sui design record are established.
-The implemented Sui Move slices cover accepted ADRs 0013 through 0022 and the
-metadata-custody portion of ADR 0023: one-time
+The implemented Sui Move slices cover accepted ADRs 0013 through 0022: one-time
 `CreatorCap<Meme>` claims for address and X identities, coin-type-isolated
-creator authority that survives migration, separate native metadata-cap return,
-and the backend-attested X branch.
+creator authority that survives migration, a creator-authority boundary with no
+metadata-cap pass-through, and the backend-attested X branch.
 It includes dedicated package-constant and macro-error registries, a wrapped-event
 module, inline invariant assertions, a concern-limited singleton admin registry,
 drop-only admin sign-in witnesses, an independent shared X signer configuration,

@@ -6,7 +6,6 @@ use sui::{
     balance,
     clock::{Self, Clock},
     coin::Coin,
-    coin_registry,
     test_scenario::{Self, Scenario},
 };
 
@@ -19,7 +18,7 @@ const PROTOCOL_FEE_SHARE_BPS: u64 = 5_000;
 
 // === Test-Only Types ===
 
-public struct TEST_MEME has key { id: UID }
+public struct TEST_MEME() has drop;
 public struct TEST_QUOTE() has drop;
 
 // === Tests ===
@@ -206,11 +205,8 @@ fun creator_cannot_claim_when_nothing_is_accrued() {
     let x_config = x_claim_config::new_disabled_for_testing(scenario.ctx());
     let creator_authority = creator_authority::new_address<TEST_MEME>(CREATOR);
     let test_clock = clock::create_for_testing(scenario.ctx());
-    let metadata_cap = new_test_meme_metadata_cap();
-
     scenario.next_tx(CREATOR);
-    let (creator_cap, metadata_cap) = creator_authority.claim_creator_cap(
-        metadata_cap,
+    let creator_cap = creator_authority.claim_creator_cap(
         &x_config,
         option::none(),
         &test_clock,
@@ -223,7 +219,6 @@ fun creator_cannot_claim_when_nothing_is_accrued() {
     destroy_coin(quote);
     ledger.destroy_for_testing();
     creator_cap.destroy_cap_for_testing();
-    transfer::public_freeze_object(metadata_cap);
     x_config.destroy_for_testing();
     test_clock.destroy_for_testing();
     scenario.end();
@@ -522,22 +517,17 @@ fun new_claim_authorities(
     let (super_admin_cap, mut authority) =
         acl::new_protocol_for_testing(CREATOR, scenario.ctx());
     authority.add_admin(&super_admin_cap, CREATOR, scenario.ctx());
-    let metadata_cap = new_test_meme_metadata_cap();
-
     scenario.next_tx(CREATOR);
     let admin_cap = scenario.take_from_sender<acl::AdminCap>();
     let x_config = x_claim_config::new_disabled_for_testing(scenario.ctx());
     let creator_authority = creator_authority::new_address<TEST_MEME>(CREATOR);
     let test_clock = clock::create_for_testing(scenario.ctx());
-    let (creator_cap, metadata_cap) = creator_authority.claim_creator_cap(
-        metadata_cap,
+    let creator_cap = creator_authority.claim_creator_cap(
         &x_config,
         option::none(),
         &test_clock,
         scenario.ctx(),
     );
-    transfer::public_freeze_object(metadata_cap);
-
     (
         super_admin_cap,
         authority,
@@ -546,29 +536,6 @@ fun new_claim_authorities(
         test_clock,
         creator_cap,
     )
-}
-
-fun new_test_meme_metadata_cap(): coin_registry::MetadataCap<TEST_MEME> {
-    let mut ctx = tx_context::dummy();
-    let mut registry = coin_registry::create_coin_data_registry_for_testing(&mut ctx);
-    let (mut initializer, mut treasury_cap) = coin_registry::new_currency(
-        &mut registry,
-        9,
-        b"TEST".to_string(),
-        b"Test Meme".to_string(),
-        b"Fee-ledger test currency".to_string(),
-        b"".to_string(),
-        &mut ctx,
-    );
-    let coin = treasury_cap.mint(1, &mut ctx);
-
-    initializer.make_supply_fixed(treasury_cap);
-    let metadata_cap = initializer.finalize(&mut ctx);
-
-    coin_registry::share_for_testing(registry);
-    coin.into_balance().destroy_for_testing();
-
-    metadata_cap
 }
 
 fun destroy_claim_authorities(

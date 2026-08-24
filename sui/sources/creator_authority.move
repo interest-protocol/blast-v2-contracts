@@ -6,7 +6,7 @@ module blast_fun::creator_authority;
 
 use blast_fun::{constants, events, x_claim_config::XClaimConfig};
 use std::{bcs, type_name::{Self, TypeName}};
-use sui::{clock::Clock, coin_registry::MetadataCap};
+use sui::clock::Clock;
 
 // === Public Types ===
 
@@ -61,15 +61,14 @@ public(package) fun new_x<Meme>(
     }
 }
 
-/// Consumes the launch's creator authority and returns its two independent capabilities.
+/// Consumes the launch's creator authority and returns its creator capability.
 public(package) fun claim_creator_cap<Meme>(
     authority: CreatorAuthority<Meme>,
-    metadata_cap: MetadataCap<Meme>,
     config: &XClaimConfig,
     x_attestation: Option<vector<u8>>,
     clock: &Clock,
     ctx: &mut TxContext,
-): (CreatorCap<Meme>, MetadataCap<Meme>) {
+): CreatorCap<Meme> {
     let claimant = ctx.sender();
 
     let (x_identity_hash, x_claim_expiry_ms) = match (&authority.identity) {
@@ -118,7 +117,7 @@ public(package) fun claim_creator_cap<Meme>(
         x_claim_expiry_ms,
     );
 
-    (creator_cap, metadata_cap)
+    creator_cap
 }
 
 // === Private Functions ===

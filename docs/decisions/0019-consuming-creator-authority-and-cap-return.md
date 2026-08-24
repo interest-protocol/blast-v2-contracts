@@ -32,14 +32,19 @@ X-identity, attestation, signer, expiry, and signature checks before destructuri
 success it:
 
 1. consumes the `CreatorAuthority<Meme>` and its identity;
-2. creates exactly one `CreatorCap<Meme>` and preserves the launch's unique
-   native `MetadataCap<Meme>` as a separate return value;
+2. creates exactly one `CreatorCap<Meme>`;
 3. emits `CreatorCapClaimed`; and
-4. returns `(CreatorCap<Meme>, MetadataCap<Meme>)` to the calling PTB.
+4. returns `CreatorCap<Meme>` to the calling PTB.
+
+This helper does not accept or return `MetadataCap<Meme>`. The future public
+launch-level claim removes the native metadata cap from launch custody and
+returns it separately alongside the creator cap. It must not pass the metadata
+cap through this helper merely to return it unchanged.
 
 The claim does not transfer the capability. The authenticated creator is still `ctx.sender()`, but after
-the claim returns, that caller may independently transfer, store, or immediately
-use either returned capability in a later command.
+the claim returns, that caller may transfer, store, or immediately use the
+returned creator capability in a later command. The future launch-level function
+provides the independent metadata-cap return.
 
 There is no `creator_cap_claimed` field and no separate `issue_creator_cap` function. Error code 12 is
 retired and remains reserved; a repeat claim is rejected structurally because the authority value no
@@ -82,11 +87,12 @@ separate verb suggests another issuance lifecycle and makes uniqueness harder to
 
 - Structural checks reject a claimed boolean, an `issue_creator_cap` helper, or a transfer call from
   `creator_authority.move`.
-- Structural checks require the claim to take `CreatorAuthority<Meme>` and
-  `MetadataCap<Meme>` by value and return the two capabilities separately.
+- Structural checks require the helper to take `CreatorAuthority<Meme>`, return
+  only `CreatorCap<Meme>`, and contain no metadata-cap dependency.
 - Address and X happy-path tests capture the returned typed capability.
-- The address test transfers the creator cap and metadata cap to different
-  addresses, proving independent PTB composability and caller-selected delivery.
+- The address test transfers the returned creator cap to an address different
+  from the authenticated claimant, proving PTB composability and caller-selected
+  delivery.
 - Existing wrong-sender, wrong-attestation, signer, expiry, type-domain, and signature failures preserve
   their abort precedence before capability creation.
 - Build, strict lint, tests, coverage, and source-boundary checks pass with the pinned Sui toolchain.

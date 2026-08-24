@@ -58,8 +58,9 @@ Every launch accepts a concrete creator address and leaves its `CreatorCap`
 unissued. That address later calls the unified `claim_creator_cap` function with
 no X attestation. The contract compares the stored address with
 `TxContext::sender`, consumes the one-time claim marker, and returns the creator
-cap and native metadata cap separately to the calling PTB. ADR 0019 defines that
-marker as the linear
+cap and native metadata cap separately to the calling PTB. The future launch
+function removes the metadata cap from launch custody; it does not pass that cap
+through the creator-authority helper. ADR 0019 defines the claim marker as the linear
 `CreatorAuthority<Meme>` resource itself and requires the claim to return the
 cap rather than transfer it.
 
@@ -100,8 +101,10 @@ The claim flow is:
    key, expiry, meme coin type, identity commitment, and that
    `TxContext::sender` equals the
    attested claimant;
-6. the contract consumes `CreatorAuthority<Meme>`, emits the claim fact, and
-   returns `(CreatorCap<Meme>, MetadataCap<Meme>)` to the claimant's PTB.
+6. the creator-authority helper consumes `CreatorAuthority<Meme>`, emits the
+   claim fact, and returns `CreatorCap<Meme>`;
+7. the launch function independently removes `MetadataCap<Meme>` from launch
+   custody and returns both separate objects to the claimant's PTB.
 
 The wallet's transaction signature already proves control of the claimant
 address. There is no second custom claimant-acceptance signature.

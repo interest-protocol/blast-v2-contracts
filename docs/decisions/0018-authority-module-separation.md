@@ -68,9 +68,10 @@ message was signed by the currently authorized Blast backend key.
 `blast_fun::creator_authority` owns `CreatorIdentity`, launch-scoped one-time `CreatorAuthority<Meme>`,
 the canonical X claim message/attestation rules, and `CreatorCap<Meme>`. Its single claim function selects
 the address or X branch, asks `x_claim_config` to authenticate the X signature when required, consumes
-`CreatorAuthority<Meme>` and the stored `MetadataCap<Meme>`, constructs the
-creator capability, returns both capabilities separately, and emits
-`CreatorCapClaimed`.
+`CreatorAuthority<Meme>`, constructs and returns the creator capability, and
+emits `CreatorCapClaimed`. It does not own, accept, or pass through
+`MetadataCap<Meme>`; the future launch module owns metadata release from launch
+custody.
 
 The module does not decide fee amounts and does not withdraw assets. A future `fees` module owns accrued
 creator-fee accounting and exposes the fee-claim operation. That function must accept the matching

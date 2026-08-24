@@ -31,9 +31,9 @@ The core package now contains:
 - `x_claim_config.move` — independently initialized shared X backend-signer
   configuration, witness-gated rotation/revocation, and Ed25519 verification;
 - `creator_authority.move` — enum-backed address/X creator identity, one unified
-  consuming one-time claim, and separate composable returns of the coin-typed
-  `CreatorCap<Meme>` and native `MetadataCap<Meme>`,
-  canonical BCS X attestation bytes, and replay-complete events;
+  consuming one-time claim, a composable coin-typed `CreatorCap<Meme>` return,
+  no unrelated metadata-cap pass-through, canonical BCS X attestation bytes,
+  and replay-complete events;
 - `curve.move` — package-only constant-product buy/sell quotes, independently
   selected quote/meme fee ordering, sell-side burn ramp, checked reserve
   arithmetic, threshold reporting, and an explicit no-clamp sell-back invariant;

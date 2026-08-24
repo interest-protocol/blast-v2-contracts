@@ -42,7 +42,9 @@ returned as a separate object at creator claim.
 
 `CreatorAuthority<phantom Meme>` carries only the launch-scoped address-or-X
 identity. It is a linear, store-only resource: the unified claim consumes it by
-value and returns exactly `(CreatorCap<Meme>, MetadataCap<Meme>)`. Every constructor and claim
+value and returns exactly `CreatorCap<Meme>`. It does not accept or pass through
+`MetadataCap<Meme>`. The future launch-level claim releases the native metadata
+cap from launch custody as a separate operation. Every constructor and claim
 preserves the same `Meme` type parameter.
 
 The invariant is one generated meme coin type per launch. Future fee and LP-fee

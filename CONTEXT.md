@@ -15,8 +15,9 @@ _Avoid_: fee claimer cap, owner key
 **MetadataCap<Meme>**:
 The unique native Coin Registry capability held by Blast until the one-time
 creator claim, then returned as a separate object alongside `CreatorCap<Meme>`.
-Its holder uses the Coin Registry's native metadata functions directly.
-_Avoid_: creator metadata wrapper, metadata slot
+Its holder uses the Coin Registry's native metadata functions directly. It does
+not pass through the creator-authority claim helper.
+_Avoid_: creator metadata wrapper, metadata slot, capability pass-through
 
 **Generated coin supply mode**:
 The coin owner chooses `Fixed` (neither mintable nor burnable) or `BurnOnly`
