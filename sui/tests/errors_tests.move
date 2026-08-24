@@ -4,7 +4,7 @@ module blast_fun::errors_tests;
 // === Tests ===
 
 #[test]
-fun package_error_registry_is_stable() {
+fun authority_and_claim_error_registry_is_stable() {
     std::unit_test::assert_eq!(blast_fun::errors::invalid_admin_cap!(), 0);
     std::unit_test::assert_eq!(blast_fun::errors::invalid_x_claim_public_key!(), 2);
     std::unit_test::assert_eq!(blast_fun::errors::x_claim_signer_inactive!(), 3);
@@ -42,6 +42,10 @@ fun package_error_registry_is_stable() {
     std::unit_test::assert_eq!(blast_fun::errors::creator_not_sender!(), 26);
     std::unit_test::assert_eq!(blast_fun::errors::invalid_x_claim_attestation!(), 27);
     std::unit_test::assert_eq!(blast_fun::errors::super_admin_transfer_unchanged!(), 28);
+}
+
+#[test]
+fun market_and_launch_error_registry_is_stable() {
     std::unit_test::assert_eq!(blast_fun::errors::invalid_curve_reserve!(), 29);
     std::unit_test::assert_eq!(blast_fun::errors::invalid_terminal_threshold!(), 30);
     std::unit_test::assert_eq!(blast_fun::errors::invalid_quote_fee_bps!(), 31);
@@ -61,4 +65,24 @@ fun package_error_registry_is_stable() {
         40,
     );
     std::unit_test::assert_eq!(blast_fun::errors::protocol_fee_share_unchanged!(), 41);
+    std::unit_test::assert_eq!(blast_fun::errors::invalid_migration_quote_target!(), 42);
+    std::unit_test::assert_eq!(blast_fun::errors::quote_already_allowed!(), 43);
+    std::unit_test::assert_eq!(blast_fun::errors::quote_capacity_reached!(), 44);
+    std::unit_test::assert_eq!(blast_fun::errors::quote_not_allowed!(), 45);
+    std::unit_test::assert_eq!(blast_fun::errors::migration_quote_target_unchanged!(), 46);
+    std::unit_test::assert_eq!(blast_fun::errors::invalid_quote_migration_fee_bps!(), 47);
+    std::unit_test::assert_eq!(
+        blast_fun::errors::invalid_meme_graduation_allocation_bps!(),
+        48,
+    );
+    std::unit_test::assert_eq!(blast_fun::errors::graduation_defaults_unchanged!(), 49);
+    std::unit_test::assert_eq!(
+        blast_fun::errors::migration_witness_already_allowed!(),
+        50,
+    );
+    std::unit_test::assert_eq!(
+        blast_fun::errors::migration_witness_capacity_reached!(),
+        51,
+    );
+    std::unit_test::assert_eq!(blast_fun::errors::migration_witness_not_allowed!(), 52);
 }

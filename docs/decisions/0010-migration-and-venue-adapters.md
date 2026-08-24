@@ -3,6 +3,13 @@
 - Status: proposed
 - Date: 2026-08-22
 
+> Amended by accepted
+> [ADR 0027](0027-graduation-economics-and-migration-witnesses.md): each launch
+> selects one allowlisted external migrator witness type; each migrator remains a
+> separate package depending inward on core; and any DEX requiring a pool-opening
+> fee is ineligible. Bluefin's fee-bearing creation interface therefore remains
+> research evidence, not an approved Blast route.
+
 ## Sources
 
 | Ref | Full commit | Repository |
@@ -163,7 +170,7 @@ disposal without economic semantics. Locking also preserves the creator fee stre
 | Deprecated / non-composable | all `create_pool_v2*` abort `EMethodDeprecated` (`cetus@ddfbdeb:packages/cetus_clmm/sources/pool_creator.move:37, 58, 78`) | — | `deploy_pool*` entry variants are non-composable (`turbos@cff6932:clmm/sources/pool_factory.move:44, 91`) |
 | Requires `&CoinMetadata` | no — v3 removed it | no — symbol, decimals and url are raw `vector<u8>` parameters (`bluefin@91ce930:sources/pool.move:191-196`) | no |
 | Coin Registry compatible | yes | yes | yes |
-| Pool creation fee | — | `Balance<CoinTypeFee>`, amount from `config::get_pool_creation_fee_amount` (`bluefin@91ce930:sources/config.move:66`) | — |
+| Pool creation fee | none | required by pinned interface, therefore **ineligible under ADR 0027** | none found |
 | Route A available | **yes** — `PoolCreationCap` + permission pair; quote must be allowlisted | none found in interface (**P4**) | none found in interface (**P4**) |
 | Route C inputs | pool getters | `current_sqrt_price` (`bluefin@91ce930:sources/pool.move:675`), `get_fee_rate` (`:773`), `get_tick_spacing` (`:782`) | `get_pool_tick_spacing` (`turbos@cff6932:clmm/sources/pool.move:191-195`) |
 | Pair ordering | canonical type-name order enforced (**P3**) | to verify (**P4**) | to verify (**P4**) |
@@ -184,7 +191,8 @@ specified above.
 | Bluefin | tag-pinned git dependencies (`bluefin@91ce930:Move.toml:7-9`) plus interface bodies that `abort 0` — 52 in `pool.move`, including `create_pool` itself at `bluefin@91ce930:sources/pool.move:202` — declared against `published-at = 0xd075338d…` (`bluefin@91ce930:Move.toml:4`) | same, plus a documented interface-abort exemption: the aborting bodies are a dependency's link stubs resolved to the published package, never Blast production paths |
 | Turbos | pins the **Sui framework to `rev = "testnet"`, a mutable branch** (`turbos@cff6932:clmm/Move.toml:7`); **and** ships interface bodies that `abort 0` — five in the creation module alone, at `turbos@cff6932:clmm/sources/pool_factory.move:65, 88, 99, 105, 114`, and the same pattern in the getters, e.g. `get_pool_tick_spacing` at `turbos@cff6932:clmm/sources/pool.move:194`; package version `0.1.8`, `published-at = 0xa5a0c25c…` (`turbos@cff6932:clmm/Move.toml:3-4`), last updated 2025-10-05 | **release blocker.** Both the mutable framework pin and the interface-abort exemption must be resolved: replace the branch pin with a commit, and verify the published id so the aborting local bodies are provably link stubs rather than executed code. |
 
-Release order follows evidence quality: Cetus, then Bluefin, then Turbos.
+Release order among eligible no-opening-fee venues follows evidence quality.
+Bluefin is excluded unless it exposes an approved no-fee creation path.
 
 ## Alternatives considered
 

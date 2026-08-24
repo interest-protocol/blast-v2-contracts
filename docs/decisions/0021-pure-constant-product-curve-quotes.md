@@ -26,8 +26,9 @@ math module.
 `curve.move` owns exactly two production functions: package-only `quote_buy` and `quote_sell`. They are
 pure numeric functions. They create no objects, hold no state, accept no coins or balances, emit no
 events, transfer nothing, and import no venue package. The future launch module remains responsible for
-checking lifecycle and slippage, applying the returned deltas, splitting fees, burning the returned
-meme amount, and emitting the completed trade fact.
+checking lifecycle and slippage, applying the returned deltas, splitting fees,
+moving the returned burn-designated meme amount into pending custody, and
+emitting the completed trade fact. ADR 0026 owns its terminal destruction.
 
 Both functions accept the launch-specific real meme reserve, real quote reserve, virtual quote reserve,
 terminal threshold, action input, and configured rates as `u64` atomic units or basis points. Each
@@ -44,15 +45,15 @@ The accepted formulas and rounding are:
 - buy user output: gross meme output minus meme fee;
 - sell meme fee: `ceil(meme_in_gross * meme_fee_bps / 10_000)`, before burn and curve math;
 - sell progress and burn rate: floor, capped at 10,000 basis points;
-- sell meme burn: ceiling on the post-fee meme input, because it is the seller's obligation;
+- sell pending-burn allocation: ceiling on the post-fee meme input, because it is the seller's obligation;
 - sell gross quote output: `floor((V + Q) * meme_in_effective / (M + meme_in_effective))`;
 - sell quote fee: `ceil(quote_out_gross * quote_fee_bps / 10_000)`, after curve math; and
 - sell net quote output: gross output minus that fee.
 
-User payouts round down. Protocol fees and seller burn obligations round up. Each quote returns the fee,
+User payouts round down. Protocol fees and seller pending-burn obligations round up. Each quote returns the fee,
 gross/effective input, gross/net user output, post-trade reserves, and the additional buy threshold or
 sell burn fields as one tuple. On a buy the curve reserve loses the gross meme output while the caller
-separates the meme fee from the user's net output. On a sell neither the meme fee nor burned meme enters
+separates the meme fee from the user's net output. On a sell neither the meme fee nor pending-burn meme enters
 the curve; only `meme_in_effective` increases its reserve. Tuples keep the interface package-only and
 avoid committing a public quote struct before an external consumer exists.
 

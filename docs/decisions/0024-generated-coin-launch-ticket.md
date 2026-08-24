@@ -1,6 +1,6 @@
 # 0024: Generated coin launch ticket
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-24
 - Implements: [0023](0023-generated-coin-supply-and-metadata-custody.md)
 

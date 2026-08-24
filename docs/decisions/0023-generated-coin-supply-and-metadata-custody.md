@@ -3,6 +3,7 @@
 - Status: accepted
 - Date: 2026-08-23
 - Amends: [0002](0002-coin-creation-and-currency-authority.md), [0003](0003-treasury-cap-lifetime-and-burn.md), [0006](0006-fees-and-launch-paths.md), [0007](0007-acl-pause-and-versioning.md), [0013](0013-creator-fee-authority-and-x-claims.md), [0014](0014-typed-creator-cap-and-diagnostic-modules.md), [0018](0018-authority-module-separation.md), [0019](0019-consuming-creator-authority-and-cap-return.md)
+- Amended by: [0025](0025-quote-whitelist-and-migration-targets.md), [0026](0026-deferred-sell-burn.md)
 
 ## Sources
 
@@ -81,8 +82,10 @@ result. It does not accept a second caller-supplied mode that could disagree wit
 the generated package's committed selection.
 
 - A `Fixed` launch must have `max_burn_bps == 0`. Sell-side and terminal burns are unreachable.
-- A `BurnOnly` launch may configure the separately bounded sell-side burn policy. Burns execute through
-  the shared `Currency<Meme>`; minting remains impossible.
+- A `BurnOnly` launch may configure the separately bounded sell-side burn policy.
+  Sell-designated meme accumulates in launch-owned pending-burn custody and is
+  destroyed once through the shared `Currency<Meme>` at migration; minting
+  remains impossible.
 
 For a fixed launch, every terminal meme unit must be deployed to the selected venue or returned through
 an explicitly accounted residual path. For a burnable launch, terminal residual inventory may instead be
@@ -114,9 +117,10 @@ fee authority, and migration cannot seize either creator-owned object.
 
 ### Quote policy remains separate
 
-This decision governs the newly generated `Meme` currency. It does not justify a generic quote-risk
-snapshot module or add regulated/legacy quote support. The initial quote-asset admission rule must be
-approved with the launch-state slice before `Launch<Meme, Quote>` is committed.
+This decision governs the newly generated, always-unregulated `Meme` currency.
+It does not impose the same rule on `Quote`: ADR 0025 separately allows protocol
+administrators to whitelist quote types, including regulated quote assets when
+the protocol deliberately approves them.
 
 ## Alternatives considered
 
@@ -149,7 +153,7 @@ metadata update through shared Blast state.
 - `CreatorCap<Meme>` remains the transferable creator-economic authority;
   `MetadataCap<Meme>` remains the separate native metadata authority.
 - A creator may claim before or after migration; unclaimed metadata authority remains in launch state.
-- Quote admission remains an explicit gate for the next launch-state decision.
+- Quote admission is the separate bounded policy accepted by ADR 0025.
 
 ## Verification
 
@@ -161,7 +165,9 @@ metadata update through shared Blast state.
   one atomic unit above the normalized ceiling, partial inventory, regulated currencies, legacy-migrated
   currencies, and `Unknown` supply state.
 - A fixed launch rejects every nonzero burn parameter before constructing launch state.
-- A burnable launch executes a sell burn through `Currency<Meme>` and decreases registry total supply.
+- A burnable sell moves the designated amount only into pending-burn custody;
+  migration burns the exact accumulated balance through `Currency<Meme>` and
+  decreases registry total supply once.
 - Structural checks reject a surviving `TreasuryCap`, every `DenyCap`, and legacy
   migration calls from launch state, adapters, and generated production templates.
 - Current creator-authority tests prove the helper returns only

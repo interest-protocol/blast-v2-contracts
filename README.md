@@ -28,13 +28,20 @@ contracts/
 ## Current status
 
 The workspace, its engineering contract, and the Sui design record are established.
-The implemented Sui Move slices cover accepted ADRs 0013 through 0022: one-time
+The implemented Sui Move slices cover the current audit-sized boundaries from
+accepted ADRs 0013 through 0027: one-time
 `CreatorCap<Meme>` claims for address and X identities, coin-type-isolated
 creator authority that survives migration, a creator-authority boundary with no
 metadata-cap pass-through, and the backend-attested X branch.
 The generated-coin bootstrap now includes a composable `LaunchTicket<Meme>`:
 Blast consumes the coin package's OTW, creates the current unregulated zero-supply
 currency, and stores its native capabilities until launch intake.
+The cold shared `LaunchConfig` now admits original quote types with per-quote
+migration targets, stores zero-safe 5% Quote-fee and 10% Meme-allocation
+ceilings, and bounds the external migrator witness types available to new
+launches. Launch intake will select one allowlisted witness without requiring a
+quote `Currency` object or importing a DEX package, so later admin updates cannot
+rewrite existing launches. DEX pool-opening costs are deliberately unsupported.
 It includes dedicated package-constant and macro-error registries, a wrapped-event
 module, inline invariant assertions, a concern-limited singleton admin registry,
 drop-only admin sign-in witnesses, an independent shared X signer configuration,
@@ -47,13 +54,14 @@ invariant without committing launch storage or deployment parameters. The
 embedded dual-asset fee ledger now fixes creator/protocol accounting, odd-unit
 rounding under a live global share, maximum-width conservation, and
 capability-gated composable claims.
-The fixed/burnable generated-supply policy is accepted; its normalized
-one-billion launch-intake assertion, the load-bearing launch ABI, quote admission
-rule, and lifecycle storage records remain proposed.
+The fixed/burnable generated-supply policy, launch-ticket boundary, launch
+policy, and deferred sell-burn custody are accepted. Pure graduation arithmetic
+and custody, followed by normalized launch intake and lifecycle storage, remain
+the next implementation boundaries.
 
 The decision records cover the Sui package — package layout, Coin
 Registry creation and the three-transaction bootstrap, final fixed/burnable supply,
-the constant-product curve, the reopened quote-admission boundary,
+the constant-product curve, bounded quote admission and migration-target snapshots,
 fees and launch paths, capability ACL and pause, creator identity, referral
 settlement, migration routes and the Cetus/Bluefin/Turbos adapters, the event
 schema, growth-feature dispositions, and the accepted one-time creator-cap claim
@@ -63,9 +71,11 @@ in [decisions/README.md](docs/decisions/README.md).
 Shared differential vectors for both chains live in [docs/vectors/](docs/vectors/).
 
 The current Sui implementation includes the audit-sized launch ticket, dual-asset
-fee ledger, and shared trade-fee configuration. The next audit-sized slice is the
-launch-state construction path that consumes the ticket after permissionless
-Coin Registry finalization. Auction and Stable remain optional
+fee ledger, shared trade-fee configuration, and bounded cold launch
+configuration. The next audit-sized slice is pure graduation arithmetic and
+custody: reserve the Meme allocation before curve inventory and account for the
+Quote migration fee independently from venue expenditure. Launch-state
+construction follows it. Auction and Stable remain optional
 follow-ups rather than making the V2 core carry all three modes on day one. See
 [protocol scope](docs/protocol-scope.md) and [architecture](docs/architecture.md).
 

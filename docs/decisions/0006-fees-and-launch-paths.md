@@ -126,14 +126,19 @@ protocol and creator.
 
 ### Venue-side fees are not Blast fees
 
+> Amended by [ADR 0027](0027-graduation-economics-and-migration-witnesses.md):
+> the Bluefin charge below remains a pinned external-interface fact, but a DEX
+> requiring any pool-opening payment is ineligible for Blast. No such cost or fee
+> asset enters core accounting.
+
 Bluefin charges a pool creation fee paid as a `Balance<CoinTypeFee>`, with the amount read from
 `config::get_pool_creation_fee_amount`
 (`bluefin@91ce930:sources/pool.move:186-202`, the `creation_fee: Balance<CoinTypeFee>` parameter at `:200`; `bluefin@91ce930:sources/config.move:66`). The interface comment documents the protocol share of swap fees on creator-created pools as **fixed at
 25%**, not settable by the pool creator
 (`bluefin@91ce930:sources/pool.move:157`). That is the cited fact. Premise **P7** is narrower: whether
 the **live mainnet `GlobalConfig` still matches that documented 25%**, since the comment is source prose
-in an interface package whose bodies `abort 0` and cannot be executed to confirm it. These are venue
-costs recorded in the migration settlement, not Blast fee lines.
+in an interface package whose bodies `abort 0` and cannot be executed to confirm it. This is not a
+Blast fee line and is not supported by the accepted V2 design.
 
 ## Alternatives considered
 

@@ -126,6 +126,64 @@ if rg -n '\bsequence\b' <<<"$trade_fee_event_payloads"; then
   failures=$((failures + 1))
 fi
 
+launch_config_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/launch_config.move)"
+
+if [[ ! -f sources/launch_config.move ]] \
+  || ! rg -U -q \
+    'public struct LaunchConfig has key \{\s*id: UID,\s*quotes: VecMap<TypeName, u64>,\s*quote_migration_fee_bps: u64,\s*meme_graduation_allocation_bps: u64,\s*migration_witnesses: VecSet<TypeName>,\s*\}' \
+    sources/launch_config.move \
+  || rg -n '\b(AdminCap|ProtocolAuthority)\b' <<<"$launch_config_production" \
+  || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' <<<"$launch_config_production" \
+  || [[ "$(rg -o '_: &AdminWitness' <<<"$launch_config_production" | wc -l)" != 6 ]] \
+  || [[ "$(rg -c '^public fun ' <<<"$launch_config_production")" != 6 ]] \
+  || [[ "$(rg -c '^public fun (allow_quote|set_migration_quote_target|remove_quote|allow_migration_witness|remove_migration_witness)<' <<<"$launch_config_production")" != 5 ]] \
+  || [[ "$(rg -c '^public fun set_graduation_defaults\(' <<<"$launch_config_production")" != 1 ]] \
+  || [[ "$(rg -c '^public\(package\) fun ' <<<"$launch_config_production")" != 1 ]] \
+  || ! rg -U -q \
+    'public\(package\) fun snapshot_for_launch<Quote, MigrationWitness: drop>\(\s*self: &LaunchConfig,\s*\): \(u64, u64, u64, TypeName\)' \
+    sources/launch_config.move; then
+  echo 'launch_config.move must own only bounded future-launch policy and its AdminWitness-gated mutations.' >&2
+  failures=$((failures + 1))
+fi
+
+if ! rg -U -q 'macro public\(package\) fun max_quote_assets\(\): u64 \{\s*16\s*\}' \
+  sources/lib/constants.move \
+  || ! rg -U -q 'macro public\(package\) fun max_migration_witnesses\(\): u64 \{\s*16\s*\}' \
+    sources/lib/constants.move \
+  || ! rg -U -q 'macro public\(package\) fun max_quote_migration_fee_bps\(\): u64 \{\s*500\s*\}' \
+    sources/lib/constants.move \
+  || ! rg -U -q 'macro public\(package\) fun max_meme_graduation_allocation_bps\(\): u64 \{\s*1_000\s*\}' \
+  sources/lib/constants.move \
+  || ! rg -Fq 'type_name::with_original_ids<Quote>()' sources/launch_config.move \
+  || ! rg -Fq 'type_name::with_original_ids<MigrationWitness>()' sources/launch_config.move \
+  || ! rg -Fq 'self.quotes.length() < constants::max_quote_assets!()' \
+    sources/launch_config.move \
+  || ! rg -Fq 'self.migration_witnesses.length()' sources/launch_config.move \
+  || ! rg -U -q \
+    'quote_migration_fee_bps: 0,\s*meme_graduation_allocation_bps: 0,\s*migration_witnesses: vec_set::empty\(\)' \
+    sources/launch_config.move \
+  || rg -n '\bCurrency<Quote>\b|coin_registry' <<<"$launch_config_production"; then
+  echo 'Launch policy must use approved ceilings, original type identities, fixed bounds, zero defaults, and no Coin Registry dependency.' >&2
+  failures=$((failures + 1))
+fi
+
+launch_config_event_payloads="$(sed -n \
+  -e '/^public struct LaunchConfigCreated/,/^}/p' \
+  -e '/^public struct QuoteAllowed/,/^}/p' \
+  -e '/^public struct QuoteMigrationTargetChanged/,/^}/p' \
+  -e '/^public struct QuoteRemoved/,/^}/p' \
+  -e '/^public struct GraduationDefaultsChanged/,/^}/p' \
+  -e '/^public struct MigrationWitnessAllowed/,/^}/p' \
+  -e '/^public struct MigrationWitnessRemoved/,/^}/p' \
+  sources/lib/events.move)"
+
+if [[ -z "$launch_config_event_payloads" ]] \
+  || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' \
+    <<<"$launch_config_event_payloads"; then
+  echo 'Launch-config events must use typed replay facts without duplicate ordering or schema fields.' >&2
+  failures=$((failures + 1))
+fi
+
 if [[ ! -f sources/launch_ticket.move ]] \
   || ! rg -U -q \
     'public struct LaunchTicket<phantom Meme> has key, store \{\s*id: UID,\s*treasury_cap: TreasuryCap<Meme>,\s*metadata_cap: MetadataCap<Meme>,\s*creator_authority: CreatorAuthority<Meme>,\s*burnable: bool,\s*\}' \
@@ -153,7 +211,7 @@ if [[ -z "$launch_ticket_event_payload" ]] \
 fi
 
 if rg -n \
-  '\b(acl::(add_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in|destroy_protocol_authority_for_testing|destroy_super_admin_cap_for_testing)|x_claim_config::(set_signer|revoke_signer|destroy_for_testing)|trade_fee_config::(set_protocol_fee_share|protocol_fee_share_bps|destroy_for_testing)|creator_authority::(claim_creator_cap|destroy_for_testing|destroy_cap_for_testing)|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees|destroy_for_testing))(<[^>]+>)?\(' \
+  '\b(acl::(add_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in|destroy_protocol_authority_for_testing|destroy_super_admin_cap_for_testing)|x_claim_config::(set_signer|revoke_signer|destroy_for_testing)|trade_fee_config::(set_protocol_fee_share|protocol_fee_share_bps|destroy_for_testing)|launch_config::(allow_quote|set_migration_quote_target|remove_quote|set_graduation_defaults|allow_migration_witness|remove_migration_witness|snapshot_for_launch|active_quote_count_for_testing|migration_witness_count_for_testing|destroy_for_testing)|creator_authority::(claim_creator_cap|destroy_for_testing|destroy_cap_for_testing)|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees|destroy_for_testing))(<[^>]+>)?\(' \
   sources tests; then
   echo 'Blast-owned receiver functions must use Move 2024 dot syntax.' >&2
   failures=$((failures + 1))

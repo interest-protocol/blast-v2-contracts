@@ -12,6 +12,26 @@ macro public(package) fun max_launch_fee_bps(): u64 {
     1_000
 }
 
+/// Maximum number of quote assets concurrently admitted for new launches.
+macro public(package) fun max_quote_assets(): u64 {
+    16
+}
+
+/// Maximum number of external migration implementations admitted for new launches.
+macro public(package) fun max_migration_witnesses(): u64 {
+    16
+}
+
+/// Maximum protocol share of gross terminal Quote collected at graduation.
+macro public(package) fun max_quote_migration_fee_bps(): u64 {
+    500
+}
+
+/// Maximum initial Meme supply reserved for the protocol at graduation.
+macro public(package) fun max_meme_graduation_allocation_bps(): u64 {
+    1_000
+}
+
 /// Maximum number of simultaneously active routine protocol administrators.
 macro public(package) fun max_admins(): u64 {
     16

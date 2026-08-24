@@ -57,7 +57,8 @@ without returning to core for its post-conditions.
 | Protocol ACL | root rotation and revocable routine-admin membership | feature configuration, backend keys, creator identity, or fees |
 | Signed-action config | one shared domain-specific backend key and signature authentication | admin delegation, domain transition state, or economic authority |
 | Trade-fee config | live global protocol share and its bounded admin setter | accrued balances, launch-selected fee rates, or claim authority |
-| Registry/config | global limits, other fee ceilings, approved migration targets, emergency state | user balances or curve math |
+| Launch config | cold bounded quote targets, graduation defaults, and external migrator witness admission for future launches | live launch repricing, quote registry objects, DEX costs or dependencies, user balances, curve math, or hot trade configuration |
+| Registry/config | global limits, other fee ceilings, emergency state | user balances or curve math |
 | Launch ticket | generated OTW currency creation and pre-launch capability custody | supply minting, trades, metadata updates, or migration |
 | Launch | asset identity, lifecycle, reserves, accounting, transition guards | venue-specific migration code |
 | Curve math | pure quote and reserve transition formulas | authority, storage, transfers |
@@ -71,16 +72,21 @@ directions, not a demand for seven packages.
 
 ## Asset pair
 
-A launch pairs its generated meme coin with a quote `Coin<Quote>`. The initial
-quote admission rule is deliberately reopened for the launch-state review; core
-does not currently approve regulated or legacy quote support, and no generic
-quote-risk snapshot module is planned.
+A launch pairs its generated meme coin with a quote `Coin<Quote>`. Core admits
+new pairs through the bounded quote portion of `LaunchConfig`, keyed by the
+quote's original `TypeName`. Each entry supplies the nonzero real-quote migration
+target. Launch state copies that target, both graduation rates, and the complete
+selected migration witness's original `TypeName` once. Both whitelists are
+admission decisions; the snapshot does not add a quote `Currency` shared-object
+dependency or a DEX package dependency. See
+[ADR 0025](decisions/0025-quote-whitelist-and-migration-targets.md) and
+[ADR 0027](decisions/0027-graduation-economics-and-migration-witnesses.md).
 
 One property remains invariant regardless of the admitted quote set:
 
-- **Pair immutability.** The selected `(Meme, Quote)` pair is fixed at launch and
-  never changes through bonding, migration, recovery, or settlement. Migration
-  selects a route; it never selects a different pair.
+- **Pair and migrator immutability.** The selected `(Meme, Quote)` pair and
+  migration witness type are fixed at launch and never change through bonding,
+  migration, recovery, or settlement.
 See [ADR 0023](decisions/0023-generated-coin-supply-and-metadata-custody.md).
 
 ## Coin creation
@@ -107,9 +113,11 @@ Configured -> Live -> MigrationPending -> Migrated
 - `Configured`: immutable launch identity and bounded parameters exist; trading
   has not started.
 - `Live`: the approved curve accepts buys/sells while enforcing deadlines,
-  slippage, protection, fee, and reserve rules.
+  slippage, fee, and reserve rules. On burnable launches, sell-designated burn
+  remains in a separate pending balance rather than mutating registry supply.
 - `MigrationPending`: the terminal threshold is reached, trading is closed, and
-  the one-time migration payload is outstanding.
+  the one-time migration payload is outstanding; accumulated pending burn is
+  terminally destroyed before settlement.
 - `Migrated`: the target venue has accepted the assets and the settlement result
   is final.
 

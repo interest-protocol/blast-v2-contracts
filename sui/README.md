@@ -47,6 +47,9 @@ The core package now contains:
 - `trade_fee_config.move` — zero-share shared singleton, live 0–10,000 bps
   protocol-share updates authorized by `AdminWitness`, and replay-complete
   old/new configuration events that rely on native Sui event ordering;
+- `launch_config.move` — bounded original-type quote admission and targets,
+  zero-safe graduation defaults, a bounded external migrator-witness whitelist,
+  `AdminWitness`-gated mutations, and one package-only immutable launch snapshot;
 - `errors.move` — the append-only package error registry exposed as zero-cost
   package macros; owning modules perform their assertions inline;
 - `events_wrapper.move` — the stable package-wide `Event<T>` indexing envelope
@@ -66,8 +69,13 @@ The core package now contains:
 - `launch_ticket_tests.move` — OTW provenance, address/X creator validation,
   zero-supply native-cap custody, fixed/burnable selections, replay-complete
   creation events, and caller-selected ticket delivery.
+- `launch_config_tests.move` and `launch_config_capacity_tests.move` — safe
+  initialization, administrative lifecycles, immutable future-launch snapshots,
+  independent graduation boundaries, route-cost replay facts, collection bounds,
+  guard precedence, and exact package-error coverage.
 
-These functions are package-internal where the future `launch` module must own
+Internal quote, fee-ledger, launch-ticket, and configuration seams are
+package-only where the future `launch` module must own
 the call. This avoids publishing an incomplete `Launch` object layout before its
 economics and lifecycle ADRs are accepted.
 

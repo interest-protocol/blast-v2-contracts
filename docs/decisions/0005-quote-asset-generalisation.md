@@ -1,11 +1,11 @@
 # 0005: Generic, permissionless quote asset
 
-- Status: superseded by [0023](0023-generated-coin-supply-and-metadata-custody.md)
+- Status: superseded by [0025](0025-quote-whitelist-and-migration-targets.md)
 - Date: 2026-08-22
 
-> This was the earlier broad quote-asset proposal. ADR 0023 rejects implementing
-> its regulated/legacy risk-snapshot path and reopens the initial quote admission
-> rule for the launch-state review.
+> This was the earlier broad quote-asset proposal. ADR 0025 replaces it with a
+> bounded administrative whitelist and per-quote migration targets, without a
+> `Currency<Quote>` launch input or a blanket regulated-quote rejection.
 
 ## Sources
 

@@ -69,6 +69,7 @@ Layered, with dependencies pointing only downward:
 2  acl             ProtocolAuthority, SuperAdminCap, AdminCap delegation
    x_claim_config  shared X backend key lifecycle and signature authentication
    trade_fee_config shared live protocol/creator fee percentage
+   launch_config   cold quote, graduation-default, and migrator-witness policy snapshots
    creator_authority address/X claim state and CreatorCap issuance
    display         Display custody and field policy
 1  math            pure arithmetic, rounding-named helpers
@@ -123,6 +124,7 @@ published.
 | `launch::prepare` | function | first command of the launch PTB; its results feed an adapter in another package |
 | `launch::finish` | function | last command of the launch PTB; consumes the adapter's sealed commitment |
 | `launch::buy`, `launch::sell` | function | must compose inside router PTBs and return owned coins |
+| `launch::quote_buy`, `launch::quote_sell` | functions | frontends need authoritative read-only quotes derived from actual launch state rather than caller-supplied reserves and rates ([ADR 0025](0025-quote-whitelist-and-migration-targets.md)) |
 | `launch::begin_migration` | function | produces the single-use handoff consumed by an adapter package |
 | `launch::settle_migration` | function | consumes the adapter's sealed settlement |
 | `route::RouteRequest`, `route::RouteCommitment`, `route::PreparedLaunch` | types | crossed by adapter packages |
@@ -138,6 +140,9 @@ published.
 | `x_claim_config::set_signer`, `x_claim_config::revoke_signer` | functions | protocol administrators rotate or revoke the shared backend claim signer with a borrowed `AdminWitness` |
 | `trade_fee_config::TradeFeeConfig` | type | every trade reads the current shared protocol fee share, so one update applies to every launch ([ADR 0022](0022-dual-asset-fee-ledger-and-claims.md)) |
 | `trade_fee_config::set_protocol_fee_share` | function | an administrator updates the globally bounded share with a borrowed `AdminWitness` and replay-complete event |
+| `launch_config::LaunchConfig` | type | shared bounded cold policy containing quote targets, graduation defaults, and external migrator witness types selected when new launch state snapshots its economics ([ADR 0025](0025-quote-whitelist-and-migration-targets.md), [ADR 0027](0027-graduation-economics-and-migration-witnesses.md)) |
+| `launch_config::allow_quote`, `launch_config::set_migration_quote_target`, `launch_config::remove_quote` | functions | protocol administrators curate future launch admission and targets with a borrowed `AdminWitness` and replay-complete events |
+| `launch_config::set_graduation_defaults`, `launch_config::allow_migration_witness`, `launch_config::remove_migration_witness` | functions | protocol administrators curate bounded future-launch terminal economics and external migrator code identities without rewriting existing launches |
 | `creator_authority::CreatorCap` | type | transferable coin-typed authority consumed by creator fee and migration integrations ([ADR 0014](0014-typed-creator-cap-and-diagnostic-modules.md)) |
 | `launch_ticket::LaunchTicket` | type | returned across the generated-package boundary and held by the launcher until registration completes |
 | `launch_ticket::new_address`, `launch_ticket::new_x` | functions | called from a generated coin package's `init`; consume its OTW and return the ticket for deliberate delivery ([ADR 0024](0024-generated-coin-launch-ticket.md)) |

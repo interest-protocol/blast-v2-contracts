@@ -77,8 +77,7 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | --- | :---: | --- |
 | `LaunchCreated` | L | creator-identity kind and either creator address or `x_identity_hash`, `V`, `T`, `M0`, total supply, fixed/burnable supply mode, `meme_decimals`, `quote_decimals`, fixed `quote_fee_bps` and `meme_fee_bps`, all four initial fee-ledger totals, route params, reservation id if any |
 | `Bought` | L | `quote_in_gross`, `quote_fee`, `quote_in_net`, `meme_out_gross`, `meme_fee`, `meme_out_net`, applied `protocol_fee_share_bps`, meme/quote `protocol_fee_delta` and `creator_fee_delta`, all four final fee-ledger totals, `M'`, `Q'`, `crossed_threshold` |
-| `Sold` | L | `meme_in_gross`, `meme_fee`, `meme_in_after_fee`, `progress_bps`, `burn_bps`, `meme_burned`, `meme_in_effective`, `quote_out_gross`, `quote_fee`, `quote_out_net`, applied `protocol_fee_share_bps`, meme/quote `protocol_fee_delta` and `creator_fee_delta`, all four final fee-ledger totals, `M'`, `Q'` |
-| `MemeBurnedOnCurve` | L | `amount`, `burn_bps`, `progress_bps`, `total_supply_after` |
+| `Sold` | L | `meme_in_gross`, `meme_fee`, `meme_in_after_fee`, `progress_bps`, `burn_bps`, `pending_burn_delta`, `pending_burn_total`, `meme_in_effective`, `quote_out_gross`, `quote_fee`, `quote_out_net`, applied `protocol_fee_share_bps`, meme/quote `protocol_fee_delta` and `creator_fee_delta`, all four final fee-ledger totals, `M'`, `Q'` |
 | `MemeBurnedAtMigration` | L | `amount`, `total_supply_after` |
 | `SupplyStateChanged` | L | `old_state`, `new_state`, `final_total_supply` |
 | `CreatorFeesClaimed` / `ProtocolFeesClaimed` | L | both claimed amounts, both affected remaining totals, claimant |
@@ -96,6 +95,13 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `XClaimConfigCreated` | G | disabled shared signer configuration id |
 | `TradeFeeConfigCreated` | G | shared fee-config id and initial `protocol_fee_share_bps` |
 | `ProtocolFeeShareChanged` | G | shared fee-config id and old/new `protocol_fee_share_bps` |
+| `LaunchConfigCreated` | G | shared launch-config id, quote and migration-witness bounds, and zero-safe initial graduation defaults |
+| `QuoteAllowed` | G | shared config id, original quote type, initial migration quote target |
+| `QuoteMigrationTargetChanged` | G | shared config id, original quote type, old/new migration quote target |
+| `QuoteRemoved` | G | shared config id, original quote type, previous migration quote target |
+| `GraduationDefaultsChanged` | G | shared config id and complete old/new Quote-fee and Meme-allocation pairs |
+| `MigrationWitnessAllowed` | G | shared config id and admitted external migrator witness original type |
+| `MigrationWitnessRemoved` | G | shared config id and removed external migrator witness original type |
 | `RouteSelected` | L | route A/B/C, venue, tick spacing, fee rate, orientation, target sqrt price, `reservation_id` |
 | `ReservationReleased` | L | `venue`, `reservation_id`, `tick_spacing`, `orientation`, reason |
 | `MigrationBegun` | L | payload id, `M`, `Q` at handoff |
@@ -124,8 +130,9 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 - Each event carries exactly one primary envelope; the two dual-domain events above repeat the secondary
   identifier as an ordinary field. Payloads do not duplicate Sui's native event position. The meme fact
   is keyed by original `TypeName` and can be emitted only once.
-- Every burn is a named term with the resulting total supply, so supply is reconstructable during bonding
-  for a burnable launch; fixed launches emit no burn facts.
+- During bonding, `Sold` records pending-burn custody rather than claiming that
+  supply decreased. The one terminal burn is a named fact with resulting total
+  supply; fixed launches have neither pending burn nor a burn event.
 - `Bought` and `Sold` are the sole fee-accrual facts. Each contains the split deltas and post-accrual
   totals plus the live global percentage applied; no second event describes the same mutation.
 - The fee-share configuration has its own global replay scope. Its update affects the next accrual of
@@ -140,11 +147,13 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 
 A reducer over the stream must reproduce, without reading any object:
 
-`M`, `Q`, total supply, cumulative burned by moment, accrued and claimed creator/protocol fees in both
-assets, the current global protocol fee share, cumulative LP fees collected and their split, lifecycle
-state, pause and version state, configuration and its ceilings, creator-authority issuance, contribution claims,
-route, reservation and reservation-release state, migration settlement, and per-epoch RevShare funding,
-claims, and sweeps.
+`M`, `Q`, pending burn, total supply, terminal burn, accrued and claimed
+creator/protocol fees in both assets, the current global protocol fee share,
+the active quote whitelist and targets, cumulative LP fees collected and their
+split, lifecycle state, pause and version state, configuration and its ceilings,
+creator-authority issuance, contribution claims, route, reservation and
+reservation-release state, migration settlement, and per-epoch RevShare
+funding, claims, and sweeps.
 
 Two deliberately non-indexable custody facts remain outside the protocol event reducer: the current
 owner of a transferable `CreatorCap<Meme>` and the final recipients of coins returned by a claim. Both
@@ -164,9 +173,10 @@ type.
 | `reserve` (adapter) | cap-id and digest checks | `RouteSelected` | vendored SHA pin | no new collection | returns values | named aborts |
 | `finish` | supply, cap, inventory, witness, digest | `LaunchCreated` | core has no venue dep | one `Launch` per ticket | returns `Launch` | named aborts per check |
 | `buy` | version, pause, state, slippage, non-zero out | `Bought` | none | none | returns `Coin<Meme>` | `EZeroOutput`, slippage, deadline |
-| `sell` | version, pause, state, burn, slippage, non-zero out | `Sold`, `MemeBurnedOnCurve` | none | none | returns `Coin<Quote>` | `EZeroOutput`, slippage, deadline |
+| `sell` | version, pause, state, pending-burn allocation, slippage, non-zero out | `Sold` | none | one embedded pending-burn balance | returns `Coin<Quote>` | `EZeroOutput`, slippage, deadline |
 | claim fees | capability, accrued only | `*FeesClaimed` | none | none | returns coin | `ENotAuthorized`, `ENothingAccrued` |
 | set protocol fee share | admin witness, `<= 10_000` | `ProtocolFeeShareChanged` | none | one scalar | n/a | `EInvalidProtocolFeeShareBps` |
+| mutate quote whitelist | admin witness, target, membership, capacity | `QuoteAllowed`, `QuoteMigrationTargetChanged`, or `QuoteRemoved` | none | at most 16 entries | n/a | exact errors 42–46 |
 | collect LP fees | capability, vault-locked position | `LpFeesCollected` | vendored SHA pin | none | returns coins | `ENotAuthorized`, `EPositionNotInVault` |
 | release reservation | capability, reservation exists | `ReservationReleased` | vendored SHA pin | frees the reservation slot | n/a | `ENoReservation`, `EWrongVenue` |
 | metadata update | capability, bonding only | `MetadataUpdated` | none | none | n/a | `EMetadataFrozen` |

@@ -19,7 +19,7 @@
       "quote_fee": "ceil - protocol fee rounds up",
       "progress_bps": "floor - never overstates progress",
       "burn_bps": "floor - never overstates the ramp",
-      "meme_burned": "ceil - seller obligation rounds up"
+      "meme_pending_burn": "ceil - seller obligation rounds up"
     }
   },
   "parameters": {
@@ -136,7 +136,7 @@
         "meme_in_after_fee": 1000000000000000,
         "progress_bps": 1653,
         "burn_bps": 16,
-        "meme_burned": 1600000000000,
+        "meme_pending_burn": 1600000000000,
         "meme_in_effective": 998400000000000,
         "quote_out_gross": 2787801814,
         "quote_fee": 27878019,
@@ -162,7 +162,7 @@
         "meme_in_after_fee": 990000000000000,
         "progress_bps": 1653,
         "burn_bps": 16,
-        "meme_burned": 1584000000000,
+        "meme_pending_burn": 1584000000000,
         "meme_in_effective": 988416000000000,
         "quote_out_gross": 2759975228,
         "quote_fee": 27599753,
@@ -226,7 +226,7 @@
         "meme_in_after_fee": 1000000000000000,
         "progress_bps": 10000,
         "burn_bps": 100,
-        "meme_burned": 10000000000000,
+        "meme_pending_burn": 10000000000000,
         "meme_in_effective": 990000000000000,
         "quote_out_gross": 20386338622,
         "quote_fee": 203863387,
@@ -251,7 +251,7 @@
         "meme_in_after_fee": 1000000000000000,
         "progress_bps": 9999,
         "burn_bps": 99,
-        "meme_burned": 9900000000000,
+        "meme_pending_burn": 9900000000000,
         "meme_in_effective": 990100000000000,
         "quote_out_gross": 19704453104,
         "quote_fee": 197044532,
@@ -275,7 +275,7 @@
         "meme_in_after_fee": 791216695471483,
         "progress_bps": 3,
         "burn_bps": 0,
-        "meme_burned": 0,
+        "meme_pending_burn": 0,
         "meme_in_effective": 791216695471483,
         "quote_out_gross": 989999999,
         "quote_fee": 9900000,
@@ -347,7 +347,7 @@
     },
     {
       "name": "conservation_meme_atomic_units",
-      "statement": "meme_total_supply_initial = M + meme_outstanding + accrued_fees_meme + meme_named_claims + burned_sell_side + burned_terminal + meme_deployed_to_venue",
+      "statement": "before migration: meme_total_supply_initial = M + meme_outstanding + accrued_fees_meme + meme_named_claims + pending_burn + meme_deployed_to_venue; after migration pending_burn becomes burned_terminal",
       "note": "Burn appears only in this identity. Meme and quote are never combined into one equation."
     },
     {

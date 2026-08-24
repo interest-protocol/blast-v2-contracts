@@ -372,7 +372,7 @@ fun sell_mid_with_progress_burn_matches_the_committed_vector() {
         _,
         progress_bps,
         burn_bps,
-        meme_burned,
+        meme_pending_burn,
         meme_in_effective,
         quote_out_gross,
         quote_fee,
@@ -392,7 +392,7 @@ fun sell_mid_with_progress_burn_matches_the_committed_vector() {
 
     std::unit_test::assert_eq!(progress_bps, 1_653);
     std::unit_test::assert_eq!(burn_bps, 16);
-    std::unit_test::assert_eq!(meme_burned, 1_600_000_000_000);
+    std::unit_test::assert_eq!(meme_pending_burn, 1_600_000_000_000);
     std::unit_test::assert_eq!(meme_in_effective, 998_400_000_000_000);
     std::unit_test::assert_eq!(quote_out_gross, 2_787_801_814);
     std::unit_test::assert_eq!(quote_fee, 27_878_019);
@@ -408,7 +408,7 @@ fun sell_can_charge_both_asset_fees_before_and_after_curve_math() {
         meme_in_after_fee,
         progress_bps,
         burn_bps,
-        meme_burned,
+        meme_pending_burn,
         meme_in_effective,
         quote_out_gross,
         quote_fee,
@@ -430,7 +430,7 @@ fun sell_can_charge_both_asset_fees_before_and_after_curve_math() {
     std::unit_test::assert_eq!(meme_in_after_fee, 990_000_000_000_000);
     std::unit_test::assert_eq!(progress_bps, 1_653);
     std::unit_test::assert_eq!(burn_bps, 16);
-    std::unit_test::assert_eq!(meme_burned, 1_584_000_000_000);
+    std::unit_test::assert_eq!(meme_pending_burn, 1_584_000_000_000);
     std::unit_test::assert_eq!(meme_in_effective, 988_416_000_000_000);
     std::unit_test::assert_eq!(quote_out_gross, 2_759_975_228);
     std::unit_test::assert_eq!(quote_fee, 27_599_753);
@@ -446,7 +446,7 @@ fun sell_progress_boundaries_match_the_committed_vectors() {
         _,
         full_progress_bps,
         full_burn_bps,
-        full_meme_burned,
+        full_meme_pending_burn,
         _,
         full_quote_out_gross,
         _,
@@ -466,7 +466,7 @@ fun sell_progress_boundaries_match_the_committed_vectors() {
 
     std::unit_test::assert_eq!(full_progress_bps, 10_000);
     std::unit_test::assert_eq!(full_burn_bps, 100);
-    std::unit_test::assert_eq!(full_meme_burned, 10_000_000_000_000);
+    std::unit_test::assert_eq!(full_meme_pending_burn, 10_000_000_000_000);
     std::unit_test::assert_eq!(full_quote_out_gross, 20_386_338_622);
     std::unit_test::assert_eq!(full_quote_out_net, 20_182_475_235);
     std::unit_test::assert_eq!(full_real_quote_after, 3_048_613_661_378);
@@ -476,7 +476,7 @@ fun sell_progress_boundaries_match_the_committed_vectors() {
         _,
         live_progress_bps,
         live_burn_bps,
-        live_meme_burned,
+        live_meme_pending_burn,
         live_meme_in_effective,
         live_quote_out_gross,
         live_quote_fee,
@@ -496,7 +496,7 @@ fun sell_progress_boundaries_match_the_committed_vectors() {
 
     std::unit_test::assert_eq!(live_progress_bps, 9_999);
     std::unit_test::assert_eq!(live_burn_bps, 99);
-    std::unit_test::assert_eq!(live_meme_burned, 9_900_000_000_000);
+    std::unit_test::assert_eq!(live_meme_pending_burn, 9_900_000_000_000);
     std::unit_test::assert_eq!(live_meme_in_effective, 990_100_000_000_000);
     std::unit_test::assert_eq!(live_quote_out_gross, 19_704_453_104);
     std::unit_test::assert_eq!(live_quote_fee, 197_044_532);
@@ -530,7 +530,7 @@ fun immediate_round_trip_pins_fees_and_one_atomic_unit_of_curve_dust() {
         _,
         progress_bps,
         burn_bps,
-        meme_burned,
+        meme_pending_burn,
         _,
         quote_out_gross,
         quote_fee,
@@ -550,7 +550,7 @@ fun immediate_round_trip_pins_fees_and_one_atomic_unit_of_curve_dust() {
 
     std::unit_test::assert_eq!(progress_bps, 3);
     std::unit_test::assert_eq!(burn_bps, 0);
-    std::unit_test::assert_eq!(meme_burned, 0);
+    std::unit_test::assert_eq!(meme_pending_burn, 0);
     std::unit_test::assert_eq!(quote_out_gross, 989_999_999);
     std::unit_test::assert_eq!(quote_fee, 9_900_000);
     std::unit_test::assert_eq!(quote_out_net, 980_099_999);
@@ -566,7 +566,7 @@ fun sell_math_supports_maximum_u64_operands_without_intermediate_overflow() {
         _,
         progress_bps,
         burn_bps,
-        meme_burned,
+        meme_pending_burn,
         meme_in_effective,
         quote_out_gross,
         quote_fee,
@@ -586,7 +586,7 @@ fun sell_math_supports_maximum_u64_operands_without_intermediate_overflow() {
 
     std::unit_test::assert_eq!(progress_bps, 10_000);
     std::unit_test::assert_eq!(burn_bps, 0);
-    std::unit_test::assert_eq!(meme_burned, 0);
+    std::unit_test::assert_eq!(meme_pending_burn, 0);
     std::unit_test::assert_eq!(meme_in_effective, std::u64::max_value!() - 1);
     std::unit_test::assert_eq!(quote_out_gross, std::u64::max_value!() - 1);
     std::unit_test::assert_eq!(quote_fee, 0);

@@ -131,6 +131,37 @@ core interface. See `docs/architecture.md`.
   ticket without transfer; the generated package decides delivery. Only the
   package-level consuming `into_parts` seam may release those stored values to
   the future launch module. See ADR 0024.
+- `launch_config.move` owns cold policy read together only when a launch is
+  created: the 16-entry original-type quote whitelist and targets, the zero-safe
+  Quote migration-fee and Meme graduation-allocation defaults, and a 16-entry
+  whitelist of external migrator witness types. All mutations use only
+  `AdminWitness`. The quote whitelist itself is admission: do not add a
+  `Currency<Quote>` input or another registry check. Each launch selects one
+  allowlisted `MigrationWitness` type and copies its original `TypeName` with the
+  target and both graduation rates; later whitelist changes affect future
+  launches only. Do not add live launch-policy reads to trading or migration.
+  See ADRs 0025 and 0027.
+- DEXs supported by Blast must not charge a pool-opening fee. Do not add venue
+  cost, fee-asset, third-coin, external-payer, reimbursement, or refund fields to
+  core launch or migration state. Ordinary transaction gas remains the caller's
+  transaction concern. A venue that requires a separate pool-creation payment is
+  unsupported.
+- A DEX migrator is never part of the core package. Each external migrator
+  package depends inward on core, owns its DEX dependency and sealed
+  `Witness() has drop`, and supplies that witness to unlock a non-copyable,
+  non-droppable core migration handoff. Core authorizes code identity by matching
+  the supplied witness's original `TypeName` to the value selected at launch;
+  it must not whitelist caller addresses or import DEX packages. See ADRs 0010
+  and 0027.
+- Public frontend buy/sell quotes belong on the future `launch` module and must
+  derive every reserve and economic input from the actual live launch object.
+  Keep raw caller-parameterized `curve` arithmetic package-only.
+- A burnable launch must custody each sell's curve-designated meme amount in a
+  separate `pending_burn: Balance<Meme>` that never joins curve reserves, fees,
+  claims, or migration assets. Burn the accumulated balance once through the
+  Coin Registry during terminal migration. A fixed launch requires zero
+  configured burn and must never send coins to `0x0` as a fake burn. Events must
+  distinguish pending custody from completed supply destruction. See ADR 0026.
 - Give every privileged setter a documented bound and corresponding event.
 - Define pause scope precisely. Emergency pause must not strand user exits unless
   that behavior is explicitly approved and tested.

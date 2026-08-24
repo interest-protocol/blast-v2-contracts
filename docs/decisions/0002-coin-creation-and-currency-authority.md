@@ -2,13 +2,15 @@
 
 - Status: proposed
 - Date: 2026-08-22
-- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md)
+- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md), [0024](0024-generated-coin-launch-ticket.md), [0025](0025-quote-whitelist-and-migration-targets.md)
 
 > ADR 0023 supersedes the transaction details below. The generated package hands
 > Blast a zero-supply treasury cap and native metadata cap in a launch ticket;
 > after permissionless registration finalization, launch mints once and consumes
 > the treasury cap into `Fixed` or `BurnOnly`. The metadata cap is later returned
-> separately alongside `CreatorCap<Meme>`.
+> separately alongside `CreatorCap<Meme>`. ADR 0025 also removes the proposed
+> `Currency<Quote>` launch input: the bounded quote whitelist itself authorizes
+> the pair and supplies the immutable migration target.
 
 ## Sources
 

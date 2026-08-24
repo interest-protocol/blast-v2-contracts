@@ -24,6 +24,58 @@ public struct TradeFeeConfigCreated has copy, drop {
     protocol_fee_share_bps: u64,
 }
 
+/// Emitted after the bounded cold launch configuration is created.
+public struct LaunchConfigCreated has copy, drop {
+    config_id: ID,
+    max_quote_assets: u64,
+    max_migration_witnesses: u64,
+    quote_migration_fee_bps: u64,
+    meme_graduation_allocation_bps: u64,
+}
+
+/// Emitted after a quote and its initial migration target are admitted.
+public struct QuoteAllowed has copy, drop {
+    config_id: ID,
+    quote: TypeName,
+    migration_quote_target: u64,
+}
+
+/// Emitted after the target used by future launches for one quote changes.
+public struct QuoteMigrationTargetChanged has copy, drop {
+    config_id: ID,
+    quote: TypeName,
+    old_migration_quote_target: u64,
+    new_migration_quote_target: u64,
+}
+
+/// Emitted after a quote is removed from future launch admission.
+public struct QuoteRemoved has copy, drop {
+    config_id: ID,
+    quote: TypeName,
+    previous_migration_quote_target: u64,
+}
+
+/// Emitted after the graduation defaults snapshotted by future launches change.
+public struct GraduationDefaultsChanged has copy, drop {
+    config_id: ID,
+    old_quote_migration_fee_bps: u64,
+    old_meme_graduation_allocation_bps: u64,
+    new_quote_migration_fee_bps: u64,
+    new_meme_graduation_allocation_bps: u64,
+}
+
+/// Emitted after an external migrator witness type is admitted for future launches.
+public struct MigrationWitnessAllowed has copy, drop {
+    config_id: ID,
+    migration_witness: TypeName,
+}
+
+/// Emitted after an external migrator witness type is removed from future launches.
+public struct MigrationWitnessRemoved has copy, drop {
+    config_id: ID,
+    migration_witness: TypeName,
+}
+
 /// Emitted after the live global protocol fee share is changed.
 public struct ProtocolFeeShareChanged has copy, drop {
     config_id: ID,
@@ -136,6 +188,84 @@ public(package) fun trade_fee_config_created(
     blast_fun::events_wrapper::emit_event(TradeFeeConfigCreated {
         config_id,
         protocol_fee_share_bps,
+    });
+}
+
+public(package) fun launch_config_created(
+    config_id: ID,
+    max_quote_assets: u64,
+    max_migration_witnesses: u64,
+    quote_migration_fee_bps: u64,
+    meme_graduation_allocation_bps: u64,
+) {
+    blast_fun::events_wrapper::emit_event(LaunchConfigCreated {
+        config_id,
+        max_quote_assets,
+        max_migration_witnesses,
+        quote_migration_fee_bps,
+        meme_graduation_allocation_bps,
+    });
+}
+
+public(package) fun quote_allowed<Quote>(config_id: ID, migration_quote_target: u64) {
+    blast_fun::events_wrapper::emit_event(QuoteAllowed {
+        config_id,
+        quote: type_name::with_original_ids<Quote>(),
+        migration_quote_target,
+    });
+}
+
+public(package) fun quote_migration_target_changed<Quote>(
+    config_id: ID,
+    old_migration_quote_target: u64,
+    new_migration_quote_target: u64,
+) {
+    blast_fun::events_wrapper::emit_event(QuoteMigrationTargetChanged {
+        config_id,
+        quote: type_name::with_original_ids<Quote>(),
+        old_migration_quote_target,
+        new_migration_quote_target,
+    });
+}
+
+public(package) fun quote_removed<Quote>(
+    config_id: ID,
+    previous_migration_quote_target: u64,
+) {
+    blast_fun::events_wrapper::emit_event(QuoteRemoved {
+        config_id,
+        quote: type_name::with_original_ids<Quote>(),
+        previous_migration_quote_target,
+    });
+}
+
+public(package) fun graduation_defaults_changed(
+    config_id: ID,
+    old_quote_migration_fee_bps: u64,
+    old_meme_graduation_allocation_bps: u64,
+    new_quote_migration_fee_bps: u64,
+    new_meme_graduation_allocation_bps: u64,
+) {
+    blast_fun::events_wrapper::emit_event(GraduationDefaultsChanged {
+        config_id,
+        old_quote_migration_fee_bps,
+        old_meme_graduation_allocation_bps,
+        new_quote_migration_fee_bps,
+        new_meme_graduation_allocation_bps,
+    });
+}
+
+public(package) fun migration_witness_allowed<MigrationWitness>(config_id: ID) {
+    blast_fun::events_wrapper::emit_event(MigrationWitnessAllowed {
+        config_id,
+        migration_witness: type_name::with_original_ids<MigrationWitness>(),
+    });
+}
+
+public(package) fun migration_witness_removed<MigrationWitness>(config_id: ID) {
+    blast_fun::events_wrapper::emit_event(MigrationWitnessRemoved {
+        config_id,
+        migration_witness: type_name::with_original_ids<MigrationWitness>(),
     });
 }
 
@@ -307,6 +437,72 @@ public fun trade_fee_config_created_fields(
     self: &TradeFeeConfigCreated,
 ): (ID, u64) {
     (self.config_id, self.protocol_fee_share_bps)
+}
+
+#[test_only]
+public fun launch_config_created_fields(
+    self: &LaunchConfigCreated,
+): (ID, u64, u64, u64, u64) {
+    (
+        self.config_id,
+        self.max_quote_assets,
+        self.max_migration_witnesses,
+        self.quote_migration_fee_bps,
+        self.meme_graduation_allocation_bps,
+    )
+}
+
+#[test_only]
+public fun quote_allowed_fields(self: &QuoteAllowed): (ID, TypeName, u64) {
+    (self.config_id, self.quote, self.migration_quote_target)
+}
+
+#[test_only]
+public fun quote_migration_target_changed_fields(
+    self: &QuoteMigrationTargetChanged,
+): (ID, TypeName, u64, u64) {
+    (
+        self.config_id,
+        self.quote,
+        self.old_migration_quote_target,
+        self.new_migration_quote_target,
+    )
+}
+
+#[test_only]
+public fun quote_removed_fields(self: &QuoteRemoved): (ID, TypeName, u64) {
+    (
+        self.config_id,
+        self.quote,
+        self.previous_migration_quote_target,
+    )
+}
+
+#[test_only]
+public fun graduation_defaults_changed_fields(
+    self: &GraduationDefaultsChanged,
+): (ID, u64, u64, u64, u64) {
+    (
+        self.config_id,
+        self.old_quote_migration_fee_bps,
+        self.old_meme_graduation_allocation_bps,
+        self.new_quote_migration_fee_bps,
+        self.new_meme_graduation_allocation_bps,
+    )
+}
+
+#[test_only]
+public fun migration_witness_allowed_fields(
+    self: &MigrationWitnessAllowed,
+): (ID, TypeName) {
+    (self.config_id, self.migration_witness)
+}
+
+#[test_only]
+public fun migration_witness_removed_fields(
+    self: &MigrationWitnessRemoved,
+): (ID, TypeName) {
+    (self.config_id, self.migration_witness)
 }
 
 #[test_only]

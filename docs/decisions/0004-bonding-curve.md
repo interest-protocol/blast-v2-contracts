@@ -3,6 +3,10 @@
 - Status: proposed
 - Date: 2026-08-22
 
+> ADR 0026 clarifies that the sell formula's `burned` amount is a pending-burn
+> allocation during bonding, not an immediate supply decrease. It remains
+> excluded from curve inventory and is destroyed once at migration.
+
 ## Sources
 
 | Ref | Full commit | Repository |

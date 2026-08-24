@@ -79,7 +79,7 @@ public(package) fun quote_buy(
 
 /// Quotes a sell without moving coins or mutating launch state.
 ///
-/// Returns `(meme_fee, meme_in_after_fee, progress_bps, burn_bps, meme_burned,
+/// Returns `(meme_fee, meme_in_after_fee, progress_bps, burn_bps, meme_pending_burn,
 /// meme_in_effective, quote_out_gross, quote_fee, quote_out_net,
 /// meme_reserve_after, real_quote_after)`.
 public(package) fun quote_sell(
@@ -136,12 +136,12 @@ public(package) fun quote_sell(
         progress_bps,
         blast_fun::constants::basis_points_denominator!(),
     );
-    let meme_burned = mul_div_up(
+    let meme_pending_burn = mul_div_up(
         meme_in_after_fee,
         burn_bps,
         blast_fun::constants::basis_points_denominator!(),
     );
-    let meme_in_effective = meme_in_after_fee - meme_burned;
+    let meme_in_effective = meme_in_after_fee - meme_pending_burn;
     assert!(meme_in_effective > 0, blast_fun::errors::zero_trade_output!());
 
     let meme_reserve_after = meme_reserve
@@ -172,7 +172,7 @@ public(package) fun quote_sell(
         meme_in_after_fee,
         progress_bps,
         burn_bps,
-        meme_burned,
+        meme_pending_burn,
         meme_in_effective,
         quote_out_gross,
         quote_fee,

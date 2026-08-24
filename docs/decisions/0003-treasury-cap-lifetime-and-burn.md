@@ -1,11 +1,13 @@
 # 0003: TreasuryCap lifetime and the two burn moments
 
-- Status: partially superseded by [0023](0023-generated-coin-supply-and-metadata-custody.md)
+- Status: superseded by [0023](0023-generated-coin-supply-and-metadata-custody.md) and [0026](0026-deferred-sell-burn.md)
 - Date: 2026-08-22
 
 > ADR 0023 replaces the retained-`TreasuryCap` lifecycle and makes all burn
-> behavior conditional on launcher-selected `BurnOnly`. The burn formulas remain
-> proposed arithmetic for burnable launches; fixed launches use no burn path.
+> behavior conditional on launcher-selected `BurnOnly`. ADR 0026 replaces
+> per-sell supply destruction with launch-owned pending-burn custody and one
+> terminal Coin Registry burn. The historical body below is retained only as
+> decision history; fixed launches use no burn path.
 
 ## Sources
 

@@ -48,9 +48,9 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | --- | --- | --- |
 | [0001](0001-sui-package-and-module-layout.md) | Sui package and module layout | proposed |
 | [0002](0002-coin-creation-and-currency-authority.md) | Coin creation, currency authority, and the launch transaction sequence | proposed |
-| [0003](0003-treasury-cap-lifetime-and-burn.md) | TreasuryCap lifetime and the two burn moments | proposed |
+| [0003](0003-treasury-cap-lifetime-and-burn.md) | TreasuryCap lifetime and the two burn moments | superseded by 0023 and 0026 |
 | [0004](0004-bonding-curve.md) | Constant-product bonding curve | proposed |
-| [0005](0005-quote-asset-generalisation.md) | Generic, permissionless quote asset | superseded by 0023 |
+| [0005](0005-quote-asset-generalisation.md) | Generic, permissionless quote asset | superseded by 0025 |
 | [0006](0006-fees-and-launch-paths.md) | Asset provenance, seed mode, and creator fees | proposed |
 | [0007](0007-acl-pause-and-versioning.md) | Capability ACL, pause scope, and versioning | proposed |
 | [0008](0008-creator-identity-and-claims.md) | Creator assignment, social claims, and replay-safe signatures | superseded by 0013 |
@@ -69,14 +69,23 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0021](0021-pure-constant-product-curve-quotes.md) | Pure constant-product curve quotes | **accepted** |
 | [0022](0022-dual-asset-fee-ledger-and-claims.md) | Dual-asset fee ledger and capability claims | **accepted** |
 | [0023](0023-generated-coin-supply-and-metadata-custody.md) | Generated coin supply and metadata custody | **accepted** |
-| [0024](0024-generated-coin-launch-ticket.md) | Generated coin launch ticket | proposed |
+| [0024](0024-generated-coin-launch-ticket.md) | Generated coin launch ticket | **accepted** |
+| [0025](0025-quote-whitelist-and-migration-targets.md) | Quote whitelist and migration targets | **accepted** |
+| [0026](0026-deferred-sell-burn.md) | Deferred sell burn custody | **accepted** |
+| [0027](0027-graduation-economics-and-migration-witnesses.md) | Graduation economics and migration witnesses | **accepted** |
 
-Only ADRs 0013–0023 are accepted. ADR 0021 accepts the pure curve formulas and
+Only ADRs 0013–0027 are accepted. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
-supply modes, one-billion ceiling, and separate native metadata-cap return. Other deployment constants, public
-ABI, and storage commitments still await approval. ADR 0024 is the implemented
-review candidate for the generated-coin launch-ticket boundary.
+supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
+0024 accepts the generated-coin launch-ticket boundary, ADR 0025 the bounded
+quote whitelist and immutable per-launch target snapshot, and ADR 0026 the
+deferred terminal sell-burn lifecycle. Other deployment constants, public ABI,
+and storage commitments still await approval.
+
+ADR 0027 accepts the graduation economics, launch-policy consolidation,
+bounded migration-witness admission, external migrator package boundary, and
+the exclusion of DEX pool-opening fees.
 
 ## Open premises
 

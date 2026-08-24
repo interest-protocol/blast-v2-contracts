@@ -27,18 +27,19 @@ formulas require ADRs and shared test vectors.
 | D1 curve count | **One** curve: constant product with virtual quote liquidity | [decisions/0004-bonding-curve.md](decisions/0004-bonding-curve.md) |
 | D2 other modes | Auction and Stable are **out** of the initial Sui core | this document, below |
 | D3 coin creation | Coin Registry is the creation primitive | [decisions/0002-coin-creation-and-currency-authority.md](decisions/0002-coin-creation-and-currency-authority.md) |
-| D4 burn | Coin owner selects `Fixed` or `BurnOnly`; only burnable launches may use progress-dependent sell burns or burn terminal residuals | [decisions/0023-generated-coin-supply-and-metadata-custody.md](decisions/0023-generated-coin-supply-and-metadata-custody.md) |
+| D4 burn | Coin owner selects `Fixed` or `BurnOnly`; burnable launches escrow progress-dependent sell allocations and destroy them once at migration, while fixed launches require zero burn | [decisions/0023-generated-coin-supply-and-metadata-custody.md](decisions/0023-generated-coin-supply-and-metadata-custody.md), [decisions/0026-deferred-sell-burn.md](decisions/0026-deferred-sell-burn.md) |
 | D5 venues | Cetus, Bluefin and Turbos fully specified; release order gated by evidence quality | [decisions/0010-migration-and-venue-adapters.md](decisions/0010-migration-and-venue-adapters.md) |
 | D6 referrals | No referral state and no referrer argument in curve trades; off-chain attribution with bounded epoch settlement | [decisions/0009-referrals-and-revshare.md](decisions/0009-referrals-and-revshare.md) |
 | D7 launch access | **Permissionless only**: the historical protected/private launch path is removed | [decisions/0013-creator-fee-authority-and-x-claims.md](decisions/0013-creator-fee-authority-and-x-claims.md) |
 | D8 creator claim | Every address or X creator explicitly claims one `CreatorCap`; only X supplies an attestation bound to the original meme type, while SuiNS is resolved in periphery to the address recorded at launch | [decisions/0016-unified-creator-cap-claim-and-suins-periphery.md](decisions/0016-unified-creator-cap-claim-and-suins-periphery.md), [decisions/0017-coin-type-domain-for-x-creator-claims.md](decisions/0017-coin-type-domain-for-x-creator-claims.md) |
 | Generated coin supply | Current unregulated Coin Registry OTW path only; nonzero initial supply capped at one billion whole coins; coin owner chooses irreversible `Fixed` or `BurnOnly`; native metadata authority is returned separately at creator claim | [decisions/0023-generated-coin-supply-and-metadata-custody.md](decisions/0023-generated-coin-supply-and-metadata-custody.md) |
-| Quote asset | Admission reopened for the launch-state review; regulated/legacy quote support and a generic quote-risk module are not approved | [decisions/0023-generated-coin-supply-and-metadata-custody.md](decisions/0023-generated-coin-supply-and-metadata-custody.md) |
+| Quote asset | Bounded administrative whitelist keyed by original type, with one nonzero migration target per quote snapshotted by future launches; no quote `Currency` input at snapshot | [decisions/0025-quote-whitelist-and-migration-targets.md](decisions/0025-quote-whitelist-and-migration-targets.md) |
+| Graduation economics and migrator admission | Future-launch defaults start at zero, cap Quote migration revenue at 5% and reserved Meme allocation at 10%, and allow at most 16 external migrator witness types; each launch selects one witness | [decisions/0027-graduation-economics-and-migration-witnesses.md](decisions/0027-graduation-economics-and-migration-witnesses.md) |
 | Trade-fee ledger | Independent meme/quote rates capped at 10% per asset; fees accrue into an embedded four-balance ledger using the current global protocol share, with ceiling rounding assigned to protocol | [decisions/0022-dual-asset-fee-ledger-and-claims.md](decisions/0022-dual-asset-fee-ledger-and-claims.md) |
 
 The full index, including every open premise, is in
-[decisions/README.md](decisions/README.md). ADRs 0013–0023 are accepted; economic
-constants not fixed by ADRs 0021–0023 and the remaining proposed records still
+[decisions/README.md](decisions/README.md). ADRs 0013–0027 are accepted; economic
+constants not fixed by those accepted records and the remaining proposed records still
 await approval.
 
 ## Deferred capabilities
@@ -87,21 +88,23 @@ rather than left unspecified.
 ## Decisions required before source implementation
 
 Each decision belongs in `docs/decisions/` before it creates a public ABI or
-storage commitment. ADRs 0013–0023 settle the creator-cap claim, protocol
+storage commitment. ADRs 0013–0027 settle the creator-cap claim, protocol
 authority, X-signature, pure curve, trade-fee-ledger, and generated-coin supply
-semantics below; the remaining portions and records are still proposed.
+semantics plus cold launch and graduation policy below; the remaining portions
+and records are still proposed.
 
 | # | Decision | Record |
 | --- | --- | --- |
 | 1 | Curve formula, scales, virtual reserves, terminal threshold, dust policy | [0004](decisions/0004-bonding-curve.md) |
-| 2 | Creation/migration fee ceilings; trade-fee accounting is settled by ADR 0022 | [0006](decisions/0006-fees-and-launch-paths.md), [0022](decisions/0022-dual-asset-fee-ledger-and-claims.md) |
+| 2 | Launch creation-fee policy remains open; trade-fee accounting and graduation ceilings are settled; DEX pool-opening fees are unsupported | [0006](decisions/0006-fees-and-launch-paths.md), [0022](decisions/0022-dual-asset-fee-ledger-and-claims.md), [0027](decisions/0027-graduation-economics-and-migration-witnesses.md) |
 | 3 | Creation authority and X-claim signer rotation policy | [0002](decisions/0002-coin-creation-and-currency-authority.md), [0013](decisions/0013-creator-fee-authority-and-x-claims.md), [0015](decisions/0015-protocol-authority-and-x-signer-state.md), [0017](decisions/0017-coin-type-domain-for-x-creator-claims.md) |
 | 4 | Pause matrix and which exits remain available in each state | [0007](decisions/0007-acl-pause-and-versioning.md) |
 | 5 | Migration targets, timeout/recovery behaviour, settlement ownership | [0010](decisions/0010-migration-and-venue-adapters.md) |
-| 6 | Allocation limits and contribution claim ownership | [0006](decisions/0006-fees-and-launch-paths.md) |
+| 6 | Contribution allocation limits and claim ownership remain open; the protocol Meme graduation allocation is settled | [0006](decisions/0006-fees-and-launch-paths.md), [0027](decisions/0027-graduation-economics-and-migration-witnesses.md) |
 | 7 | Sui upgrade posture, administrators, version gating | [0007](decisions/0007-acl-pause-and-versioning.md) |
 | 8 | X creator-claim signature domain and replay protection | [0013](decisions/0013-creator-fee-authority-and-x-claims.md), [0017](decisions/0017-coin-type-domain-for-x-creator-claims.md) |
-| 9 | Initial quote-asset admission rule | [0023](decisions/0023-generated-coin-supply-and-metadata-custody.md) |
+| 9 | Initial quote-asset admission rule — accepted | [0025](decisions/0025-quote-whitelist-and-migration-targets.md) |
+| 10 | Graduation revenue, reserved supply, and migration-witness policy — accepted | [0027](decisions/0027-graduation-economics-and-migration-witnesses.md) |
 | 10 | Package and module boundaries, and explorer Display policy | [0001](decisions/0001-sui-package-and-module-layout.md) |
 | 11 | Event schema and replay completeness | [0011](decisions/0011-event-schema-and-replay.md) |
 | 12 | Growth-feature scope | [0012](decisions/0012-flywheel-features.md) |

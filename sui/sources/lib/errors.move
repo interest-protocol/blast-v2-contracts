@@ -157,6 +157,50 @@ const EInvalidProtocolFeeShareBps: u64 = 40;
 /// A protocol-share update supplied the currently active value.
 const EProtocolFeeShareUnchanged: u64 = 41;
 
+#[test_only]
+/// A quote migration target must be nonzero.
+const EInvalidMigrationQuoteTarget: u64 = 42;
+
+#[test_only]
+/// The quote type is already admitted for new launches.
+const EQuoteAlreadyAllowed: u64 = 43;
+
+#[test_only]
+/// The bounded active quote whitelist is full.
+const EQuoteCapacityReached: u64 = 44;
+
+#[test_only]
+/// The quote type is not admitted for new launches.
+const EQuoteNotAllowed: u64 = 45;
+
+#[test_only]
+/// A quote-target update supplied the currently active value.
+const EMigrationQuoteTargetUnchanged: u64 = 46;
+
+#[test_only]
+/// The graduation share of gross terminal Quote exceeds five percent.
+const EInvalidQuoteMigrationFeeBps: u64 = 47;
+
+#[test_only]
+/// The graduation share of initial Meme supply exceeds ten percent.
+const EInvalidMemeGraduationAllocationBps: u64 = 48;
+
+#[test_only]
+/// A graduation-default update supplied the complete active pair.
+const EGraduationDefaultsUnchanged: u64 = 49;
+
+#[test_only]
+/// The migration witness type is already admitted for future launches.
+const EMigrationWitnessAlreadyAllowed: u64 = 50;
+
+#[test_only]
+/// The bounded migration-witness whitelist is full.
+const EMigrationWitnessCapacityReached: u64 = 51;
+
+#[test_only]
+/// The migration witness type is not admitted for future launches.
+const EMigrationWitnessNotAllowed: u64 = 52;
+
 // === Package Error Codes ===
 
 macro public(package) fun invalid_admin_cap(): u64 {
@@ -297,4 +341,48 @@ macro public(package) fun invalid_protocol_fee_share_bps(): u64 {
 
 macro public(package) fun protocol_fee_share_unchanged(): u64 {
     41
+}
+
+macro public(package) fun invalid_migration_quote_target(): u64 {
+    42
+}
+
+macro public(package) fun quote_already_allowed(): u64 {
+    43
+}
+
+macro public(package) fun quote_capacity_reached(): u64 {
+    44
+}
+
+macro public(package) fun quote_not_allowed(): u64 {
+    45
+}
+
+macro public(package) fun migration_quote_target_unchanged(): u64 {
+    46
+}
+
+macro public(package) fun invalid_quote_migration_fee_bps(): u64 {
+    47
+}
+
+macro public(package) fun invalid_meme_graduation_allocation_bps(): u64 {
+    48
+}
+
+macro public(package) fun graduation_defaults_unchanged(): u64 {
+    49
+}
+
+macro public(package) fun migration_witness_already_allowed(): u64 {
+    50
+}
+
+macro public(package) fun migration_witness_capacity_reached(): u64 {
+    51
+}
+
+macro public(package) fun migration_witness_not_allowed(): u64 {
+    52
 }
