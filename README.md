@@ -32,6 +32,9 @@ The implemented Sui Move slices cover accepted ADRs 0013 through 0022: one-time
 `CreatorCap<Meme>` claims for address and X identities, coin-type-isolated
 creator authority that survives migration, a creator-authority boundary with no
 metadata-cap pass-through, and the backend-attested X branch.
+The generated-coin bootstrap now includes a composable `LaunchTicket<Meme>`:
+Blast consumes the coin package's OTW, creates the current unregulated zero-supply
+currency, and stores its native capabilities until launch intake.
 It includes dedicated package-constant and macro-error registries, a wrapped-event
 module, inline invariant assertions, a concern-limited singleton admin registry,
 drop-only admin sign-in witnesses, an independent shared X signer configuration,
@@ -59,10 +62,10 @@ in [decisions/README.md](docs/decisions/README.md).
 
 Shared differential vectors for both chains live in [docs/vectors/](docs/vectors/).
 
-The current Sui implementation includes the audit-sized dual-asset fee ledger and
-the shared trade-fee configuration whose live percentage every launch reads.
-The next audit-sized slice is the launch-state/lifecycle module that composes the
-configuration, ledger, and reviewed curve quotes. Auction and Stable remain optional
+The current Sui implementation includes the audit-sized launch ticket, dual-asset
+fee ledger, and shared trade-fee configuration. The next audit-sized slice is the
+launch-state construction path that consumes the ticket after permissionless
+Coin Registry finalization. Auction and Stable remain optional
 follow-ups rather than making the V2 core carry all three modes on day one. See
 [protocol scope](docs/protocol-scope.md) and [architecture](docs/architecture.md).
 

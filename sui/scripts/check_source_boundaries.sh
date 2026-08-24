@@ -126,8 +126,34 @@ if rg -n '\bsequence\b' <<<"$trade_fee_event_payloads"; then
   failures=$((failures + 1))
 fi
 
+if [[ ! -f sources/launch_ticket.move ]] \
+  || ! rg -U -q \
+    'public struct LaunchTicket<phantom Meme> has key, store \{\s*id: UID,\s*treasury_cap: TreasuryCap<Meme>,\s*metadata_cap: MetadataCap<Meme>,\s*creator_authority: CreatorAuthority<Meme>,\s*burnable: bool,\s*\}' \
+    sources/launch_ticket.move \
+  || [[ "$(rg -c '^public fun new_(address|x)<Meme: drop>\(' sources/launch_ticket.move)" != 2 ]] \
+  || [[ "$(rg -c '^public\(package\) fun into_parts<Meme>\(' sources/launch_ticket.move)" != 1 ]] \
+  || ! rg -q 'coin_registry::new_currency_with_otw' sources/launch_ticket.move \
+  || ! rg -q 'initializer\.finalize\(ctx\)' sources/launch_ticket.move \
+  || rg -n '\b(make_regulated|DenyCap|CoinMetadata)\b|coin_registry::new_currency\(' \
+    sources/launch_ticket.move \
+  || rg -n '\btransfer::|^(entry fun|public entry fun)' sources/launch_ticket.move; then
+  echo 'launch_ticket.move must create only current unregulated OTW currencies, store both native caps, and return composable tickets.' >&2
+  failures=$((failures + 1))
+fi
+
+launch_ticket_event_payload="$(sed -n \
+  -e '/^public struct LaunchTicketCreated/,/^}/p' \
+  sources/lib/events.move)"
+
+if [[ -z "$launch_ticket_event_payload" ]] \
+  || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' \
+    <<<"$launch_ticket_event_payload"; then
+  echo 'Launch-ticket creation must use the generic event wrapper without duplicate ordering or schema fields.' >&2
+  failures=$((failures + 1))
+fi
+
 if rg -n \
-  '\b(acl::(add_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in|destroy_protocol_authority_for_testing|destroy_super_admin_cap_for_testing)|x_claim_config::(set_signer|revoke_signer|destroy_for_testing)|trade_fee_config::(set_protocol_fee_share|protocol_fee_share_bps|destroy_for_testing)|creator_authority::(claim_creator_cap|destroy_for_testing|destroy_cap_for_testing)|fees::(accrue|claim_creator_fees|claim_protocol_fees|destroy_for_testing))(<[^>]+>)?\(' \
+  '\b(acl::(add_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in|destroy_protocol_authority_for_testing|destroy_super_admin_cap_for_testing)|x_claim_config::(set_signer|revoke_signer|destroy_for_testing)|trade_fee_config::(set_protocol_fee_share|protocol_fee_share_bps|destroy_for_testing)|creator_authority::(claim_creator_cap|destroy_for_testing|destroy_cap_for_testing)|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees|destroy_for_testing))(<[^>]+>)?\(' \
   sources tests; then
   echo 'Blast-owned receiver functions must use Move 2024 dot syntax.' >&2
   failures=$((failures + 1))

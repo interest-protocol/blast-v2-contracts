@@ -95,6 +95,18 @@ public struct CreatorCapClaimed has copy, drop {
     x_claim_expiry_ms: Option<u64>,
 }
 
+/// Emitted after a generated OTW currency and its launch ticket are created.
+public struct LaunchTicketCreated has copy, drop {
+    ticket_id: ID,
+    meme: TypeName,
+    treasury_cap_id: ID,
+    metadata_cap_id: ID,
+    launcher: address,
+    creator: Option<address>,
+    x_identity_hash: Option<vector<u8>>,
+    burnable: bool,
+}
+
 // === Package Functions ===
 
 public(package) fun protocol_authority_created(
@@ -227,6 +239,27 @@ public(package) fun creator_cap_claimed<Meme>(
     });
 }
 
+public(package) fun launch_ticket_created<Meme>(
+    ticket_id: ID,
+    treasury_cap_id: ID,
+    metadata_cap_id: ID,
+    launcher: address,
+    creator: Option<address>,
+    x_identity_hash: Option<vector<u8>>,
+    burnable: bool,
+) {
+    blast_fun::events_wrapper::emit_event(LaunchTicketCreated {
+        ticket_id,
+        meme: type_name::with_original_ids<Meme>(),
+        treasury_cap_id,
+        metadata_cap_id,
+        launcher,
+        creator,
+        x_identity_hash,
+        burnable,
+    });
+}
+
 // === Test-Only Functions ===
 
 /// Every `T` payload emitted so far, unwrapped from the package `Event<T>` envelope.
@@ -354,5 +387,21 @@ public fun creator_cap_claimed_fields(
         self.x_identity_hash,
         self.creator,
         self.x_claim_expiry_ms,
+    )
+}
+
+#[test_only]
+public fun launch_ticket_created_fields(
+    self: &LaunchTicketCreated,
+): (ID, TypeName, ID, ID, address, Option<address>, Option<vector<u8>>, bool) {
+    (
+        self.ticket_id,
+        self.meme,
+        self.treasury_cap_id,
+        self.metadata_cap_id,
+        self.launcher,
+        self.creator,
+        self.x_identity_hash,
+        self.burnable,
     )
 }

@@ -63,7 +63,8 @@ Layered, with dependencies pointing only downward:
 6  launch          lifecycle, state transitions, entrypoints
 5  fees            accrual, split, claim
 4  curve           quote and reserve transitions
-3  route           RouteRequest / RouteCommitment / PreparedLaunch
+3  launch_ticket   generated OTW currency creation and pre-launch capability custody
+   route           RouteRequest / RouteCommitment / PreparedLaunch
    migration       MigrationPayload handoff type
 2  acl             ProtocolAuthority, SuperAdminCap, AdminCap delegation
    x_claim_config  shared X backend key lifecycle and signature authentication
@@ -138,7 +139,8 @@ published.
 | `trade_fee_config::TradeFeeConfig` | type | every trade reads the current shared protocol fee share, so one update applies to every launch ([ADR 0022](0022-dual-asset-fee-ledger-and-claims.md)) |
 | `trade_fee_config::set_protocol_fee_share` | function | an administrator updates the globally bounded share with a borrowed `AdminWitness` and replay-complete event |
 | `creator_authority::CreatorCap` | type | transferable coin-typed authority consumed by creator fee and migration integrations ([ADR 0014](0014-typed-creator-cap-and-diagnostic-modules.md)) |
-| `blast_fun::new_launch_ticket` | function | called from a generated coin package's `init` |
+| `launch_ticket::LaunchTicket` | type | returned across the generated-package boundary and held by the launcher until registration completes |
+| `launch_ticket::new_address`, `launch_ticket::new_x` | functions | called from a generated coin package's `init`; consume its OTW and return the ticket for deliberate delivery ([ADR 0024](0024-generated-coin-launch-ticket.md)) |
 | `launch::claim_creator_cap` | function | the single address/X claim seam; consumes the stored authority after validating `TxContext::sender` and returns `CreatorCap` and native `MetadataCap` separately for composition ([ADR 0019](0019-consuming-creator-authority-and-cap-return.md)) |
 | `migration::collect_lp_fees` | function | must return owned coins for composition |
 | `migration::release_reservation` | function | `AdminCap`-gated venue-state cleanup before a venue switch ([ADR 0010](0010-migration-and-venue-adapters.md)) |

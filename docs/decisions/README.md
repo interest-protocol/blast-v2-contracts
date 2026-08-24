@@ -69,12 +69,14 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0021](0021-pure-constant-product-curve-quotes.md) | Pure constant-product curve quotes | **accepted** |
 | [0022](0022-dual-asset-fee-ledger-and-claims.md) | Dual-asset fee ledger and capability claims | **accepted** |
 | [0023](0023-generated-coin-supply-and-metadata-custody.md) | Generated coin supply and metadata custody | **accepted** |
+| [0024](0024-generated-coin-launch-ticket.md) | Generated coin launch ticket | proposed |
 
 Only ADRs 0013–0023 are accepted. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. Other deployment constants, public
-ABI, and storage commitments still await approval.
+ABI, and storage commitments still await approval. ADR 0024 is the implemented
+review candidate for the generated-coin launch-ticket boundary.
 
 ## Open premises
 

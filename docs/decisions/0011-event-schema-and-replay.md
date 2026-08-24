@@ -88,6 +88,7 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `MetadataUpdated` | L | field, `old_value`, `new_value` |
 | `MetadataFrozen` | L | metadata cap id |
 | `CreatorCapClaimed` | M | creator address, optional X identity commitment, optional X expiry |
+| `LaunchTicketCreated` | M | ticket id, original meme type, treasury-cap id, metadata-cap id, launcher, address-or-X creator identity, burnable selection |
 | `ProtocolAuthorityCreated` | G | authority id, initial root-cap id and recipient, admin bound, root-transfer delay |
 | `AdminAdded` | G | authority id, admin-cap id, recipient |
 | `AdminRevoked` | G | authority id and admin-cap id; membership removed while the cap object may remain |
@@ -117,7 +118,7 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 ### Rules the catalogue enforces
 
 - Events are named as **completed facts in past tense** and emitted **after** the final state is known.
-- An X identity commitment appears only in `LaunchCreated` and
+- An X identity commitment appears only in `LaunchTicketCreated`, `LaunchCreated`, and
   `CreatorCapClaimed`. No economic path reads a handle, and no raw X credential
   enters state or events ([ADR 0013](0013-creator-fee-authority-and-x-claims.md)).
 - Each event carries exactly one primary envelope; the two dual-domain events above repeat the secondary

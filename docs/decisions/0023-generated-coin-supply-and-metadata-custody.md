@@ -40,11 +40,12 @@ Every generated meme package uses `coin_registry::new_currency_with_otw` and doe
 accepts a `DenyCap` for a generated meme
 (`sui@06734f6:crates/sui-framework/packages/sui-framework/sources/registries/coin_registry.move:204-237,263-278`).
 
-The owner selects the mode while generating the one-launch coin package, and the
-generated package records that immutable selection in its Blast launch ticket.
-Its OTW `init` creates the currency with zero supply and places the empty
-`TreasuryCap<Meme>` and unique `MetadataCap<Meme>` in that ticket. It does not
-mint inside `init`.
+The owner selects the mode while generating the one-launch coin package. Its OTW
+`init` calls a Blast launch-ticket constructor with that immutable selection.
+The constructor consumes the OTW, creates the currency with zero supply, and
+places the empty `TreasuryCap<Meme>` and unique `MetadataCap<Meme>` in the
+returned ticket. It does not mint inside `init` or accept arbitrary pre-created
+caps. ADR 0024 fixes the concrete ticket boundary.
 
 After the permissionless `coin_registry::finalize_registration<Meme>` transaction
 promotes `Currency<Meme>` to its shared address, launch validates the ticket and
@@ -152,9 +153,10 @@ metadata update through shared Blast state.
 
 ## Verification
 
-- Current Coin Registry creation tests cover the zero-supply ticket and both
-  launch-time supply transitions, proving no `TreasuryCap` remains after either
-  one.
+- Current launch-ticket tests prove OTW-only currency creation, zero-supply cap
+  custody, both burnable selections, and address/X creator construction. Future
+  launch tests must cover both supply transitions and prove no `TreasuryCap`
+  survives either one.
 - Launch intake accepts exact supplies of one atomic unit and one billion whole coins, and rejects zero,
   one atomic unit above the normalized ceiling, partial inventory, regulated currencies, legacy-migrated
   currencies, and `Unknown` supply state.

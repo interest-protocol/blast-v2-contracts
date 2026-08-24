@@ -27,6 +27,13 @@ Coin Registry finalization. Initial supply is nonzero and capped at one billion
 whole coins.
 _Avoid_: mutable supply, retained mint authority
 
+**LaunchTicket<Meme>**:
+The transferable object created from the generated coin package's one-time
+witness. It holds the empty `TreasuryCap<Meme>`, native `MetadataCap<Meme>`,
+unissued `CreatorAuthority<Meme>`, and the launcher's burnable choice until the
+registered currency is ready to launch.
+_Avoid_: coin receipt, mint ticket, capability bundle
+
 **Creator identity**:
 The launch-time rule that identifies who may claim an unissued
 `CreatorCap<Meme>`: either a concrete address or an immutable X account

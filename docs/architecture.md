@@ -58,6 +58,7 @@ without returning to core for its post-conditions.
 | Signed-action config | one shared domain-specific backend key and signature authentication | admin delegation, domain transition state, or economic authority |
 | Trade-fee config | live global protocol share and its bounded admin setter | accrued balances, launch-selected fee rates, or claim authority |
 | Registry/config | global limits, other fee ceilings, approved migration targets, emergency state | user balances or curve math |
+| Launch ticket | generated OTW currency creation and pre-launch capability custody | supply minting, trades, metadata updates, or migration |
 | Launch | asset identity, lifecycle, reserves, accounting, transition guards | venue-specific migration code |
 | Curve math | pure quote and reserve transition formulas | authority, storage, transfers |
 | Fees | creator/protocol fee splitting, accrued accounting, and capability claims | arbitrary recipient execution or referral attribution |

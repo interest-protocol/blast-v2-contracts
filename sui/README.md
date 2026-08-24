@@ -34,6 +34,10 @@ The core package now contains:
   consuming one-time claim, a composable coin-typed `CreatorCap<Meme>` return,
   no unrelated metadata-cap pass-through, canonical BCS X attestation bytes,
   and replay-complete events;
+- `launch_ticket.move` — public address/X constructors that consume the generated
+  coin OTW, create the current unregulated zero-supply currency, and return a
+  transferable ticket holding both native caps, one creator authority, and the
+  launcher-selected burnable flag;
 - `curve.move` — package-only constant-product buy/sell quotes, independently
   selected quote/meme fee ordering, sell-side burn ramp, checked reserve
   arithmetic, threshold reporting, and an explicit no-clamp sell-back invariant;
@@ -59,6 +63,9 @@ The core package now contains:
   maximum-width arithmetic, empty claims, single-asset modes, live split changes
   and percentage boundaries, transferred creator authority,
   and composable payout routing.
+- `launch_ticket_tests.move` — OTW provenance, address/X creator validation,
+  zero-supply native-cap custody, fixed/burnable selections, replay-complete
+  creation events, and caller-selected ticket delivery.
 
 These functions are package-internal where the future `launch` module must own
 the call. This avoids publishing an incomplete `Launch` object layout before its

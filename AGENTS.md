@@ -123,6 +123,14 @@ core interface. See `docs/architecture.md`.
   may survive in Blast core state or an adapter. The unique metadata cap remains
   in Blast-defined custody only until the one-time creator claim returns it
   separately alongside `CreatorCap<Meme>`. See ADR 0023.
+- `launch_ticket` must consume the generated coin's OTW and call
+  `coin_registry::new_currency_with_otw` itself. Its public constructors must not
+  accept arbitrary pre-created treasury or metadata caps. `LaunchTicket<Meme>`
+  stores the empty `TreasuryCap<Meme>`, native `MetadataCap<Meme>`, one
+  `CreatorAuthority<Meme>`, and the `burnable` choice. Constructors return the
+  ticket without transfer; the generated package decides delivery. Only the
+  package-level consuming `into_parts` seam may release those stored values to
+  the future launch module. See ADR 0024.
 - Give every privileged setter a documented bound and corresponding event.
 - Define pause scope precisely. Emergency pause must not strand user exits unless
   that behavior is explicitly approved and tested.
