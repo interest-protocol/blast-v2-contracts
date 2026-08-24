@@ -43,8 +43,8 @@ public struct QuoteMigrationTargetChanged has copy, drop {
     new_migration_quote_target: u64,
 }
 
-/// Emitted after a quote is removed from future launch admission.
-public struct QuoteRemoved has copy, drop {
+/// Emitted after a quote is disallowed from future launch admission.
+public struct QuoteDisallowed has copy, drop {
     config_id: ID,
     quote: TypeName,
     previous_migration_quote_target: u64,
@@ -65,8 +65,8 @@ public struct MigrationWitnessAllowed has copy, drop {
     migration_witness: TypeName,
 }
 
-/// Emitted after an external migrator witness type is removed from future launches.
-public struct MigrationWitnessRemoved has copy, drop {
+/// Emitted after an external migrator witness type is disallowed for future launches.
+public struct MigrationWitnessDisallowed has copy, drop {
     config_id: ID,
     migration_witness: TypeName,
 }
@@ -78,8 +78,8 @@ public struct ProtocolFeeShareChanged has copy, drop {
     new_protocol_fee_share_bps: u64,
 }
 
-/// Emitted after a routine protocol administrator is created and delivered.
-public struct AdminAdded has copy, drop {
+/// Emitted after routine protocol administration is granted and its cap is delivered.
+public struct AdminGranted has copy, drop {
     authority_id: ID,
     admin_cap_id: ID,
     recipient: address,
@@ -219,11 +219,11 @@ public(package) fun quote_migration_target_changed<Quote>(
     });
 }
 
-public(package) fun quote_removed<Quote>(
+public(package) fun quote_disallowed<Quote>(
     config_id: ID,
     previous_migration_quote_target: u64,
 ) {
-    blast_fun::events_wrapper::emit_event(QuoteRemoved {
+    blast_fun::events_wrapper::emit_event(QuoteDisallowed {
         config_id,
         quote: type_name::with_original_ids<Quote>(),
         previous_migration_quote_target,
@@ -253,8 +253,8 @@ public(package) fun migration_witness_allowed<MigrationWitness>(config_id: ID) {
     });
 }
 
-public(package) fun migration_witness_removed<MigrationWitness>(config_id: ID) {
-    blast_fun::events_wrapper::emit_event(MigrationWitnessRemoved {
+public(package) fun migration_witness_disallowed<MigrationWitness>(config_id: ID) {
+    blast_fun::events_wrapper::emit_event(MigrationWitnessDisallowed {
         config_id,
         migration_witness: type_name::with_original_ids<MigrationWitness>(),
     });
@@ -272,8 +272,8 @@ public(package) fun protocol_fee_share_changed(
     });
 }
 
-public(package) fun admin_added(authority_id: ID, admin_cap_id: ID, recipient: address) {
-    blast_fun::events_wrapper::emit_event(AdminAdded { authority_id, admin_cap_id, recipient });
+public(package) fun admin_granted(authority_id: ID, admin_cap_id: ID, recipient: address) {
+    blast_fun::events_wrapper::emit_event(AdminGranted { authority_id, admin_cap_id, recipient });
 }
 
 public(package) fun admin_revoked(authority_id: ID, admin_cap_id: ID) {
@@ -459,7 +459,7 @@ public fun quote_migration_target_changed_fields(
 }
 
 #[test_only]
-public fun quote_removed_fields(self: &QuoteRemoved): (ID, TypeName, u64) {
+public fun quote_disallowed_fields(self: &QuoteDisallowed): (ID, TypeName, u64) {
     (
         self.config_id,
         self.quote,
@@ -488,8 +488,8 @@ public fun migration_witness_allowed_fields(
 }
 
 #[test_only]
-public fun migration_witness_removed_fields(
-    self: &MigrationWitnessRemoved,
+public fun migration_witness_disallowed_fields(
+    self: &MigrationWitnessDisallowed,
 ): (ID, TypeName) {
     (self.config_id, self.migration_witness)
 }
@@ -506,7 +506,7 @@ public fun protocol_fee_share_changed_fields(
 }
 
 #[test_only]
-public fun admin_added_fields(self: &AdminAdded): (ID, ID, address) {
+public fun admin_granted_fields(self: &AdminGranted): (ID, ID, address) {
     (self.authority_id, self.admin_cap_id, self.recipient)
 }
 

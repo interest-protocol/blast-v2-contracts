@@ -258,11 +258,16 @@ must be differential-tested from shared vectors.
   `use sui::{clock::Clock, vec_set::{Self, VecSet}};`. Do not repeat separate
   `use blast_fun::...`, `use sui::...`, or `use std::...` lines.
 - Do not import a module member solely to shorten one function or macro call.
-  Keep those calls fully qualified, especially package error macros
-  (`blast_fun::errors::name!()`), test assertion macros
-  (`std::unit_test::assert_eq!()`), and one-off framework functions such as
-  `sui::event::emit(...)`.
+  Keep package error macros (`blast_fun::errors::name!()`) and one-off framework
+  functions such as `sui::event::emit(...)` fully qualified. Test modules are
+  the readability exception: import the ubiquitous
+  `std::unit_test::{assert_eq, destroy}` members that they use.
 - Name capabilities with the `Cap` suffix and events in past tense.
+- Name paired interface operations as semantic inverses: `allow`/`disallow` for
+  whitelist membership and `grant`/`revoke` for authority. Merge create/update
+  distinctions when callers express one intent, but keep separate operations
+  when merging would require variant enums, optional sentinels, or mixed
+  authority types at the interface.
 - Keep package-wide production values in `sources/lib/constants.move` as
   lower-snake-case `macro public(package)` accessors. Do not declare protocol
   limits, delays, byte lengths, schema tags, or layout offsets in state modules;
@@ -332,6 +337,11 @@ must be differential-tested from shared vectors.
 - Run lints as a hard gate. Use `assert_eq!`, bare `assert!` in tests, exact
   expected aborts, builder fixtures, randomized/property tests, and boundary
   enumeration where coverage tooling is insufficient.
+- Use `std::unit_test::destroy` as the test-only black hole for teardown. Do not
+  add production-module `destroy_*_for_testing` functions merely to unpack
+  objects. When a suite repeatedly owns a scenario plus several shared objects
+  or capabilities, group them in a test `Fixture`; let `start` construct it and
+  let one receiver-style `end` consume the complete fixture with `destroy`.
 - New TypeScript uses `SuiGrpcClient` for standard reads/writes/simulation and
   `SuiGraphQLClient` for custom indexed or historical queries. SDK libraries
   should accept `ClientWithCoreApi`. JSON-RPC is legacy-only.

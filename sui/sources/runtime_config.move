@@ -177,14 +177,3 @@ public fun new_for_testing(
         protocol_fee_share_bps: 0,
     }
 }
-
-#[test_only]
-/// Deletes runtime configuration state after a focused test.
-public fun destroy_for_testing(self: RuntimeConfig) {
-    let RuntimeConfig {
-        id,
-        x_claim_signer_public_key: _,
-        protocol_fee_share_bps: _,
-    } = self;
-    id.delete();
-}

@@ -23,6 +23,8 @@ Tests are organized around risk, not only function names.
 - Assert guard precedence when more than one condition is invalid.
 - Prefer `assert_eq!` for values and plain boolean assertions without arbitrary
   test abort codes.
+- Import frequently used `std::unit_test::{assert_eq, destroy}` members in test
+  modules so assertions and teardown remain visually direct.
 - Keep test builders deterministic and explicit about sender, clock/time,
   balances, state, and authority.
 - Random tests use fixed seeds in CI and print enough input to reproduce failure.

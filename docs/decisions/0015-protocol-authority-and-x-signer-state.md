@@ -67,11 +67,11 @@ ability. Feature configuration receives only that witness, not the authority
 object and cap again. Revoked admin caps cannot produce a witness in a later
 transaction.
 
-The super admin is a cold root. It may add or revoke routine admins and manage
+The super admin is a cold root. It may grant or revoke routine admins and manage
 its own transfer. An active `AdminCap` performs routine protocol configuration,
 beginning with X signer management. No separate per-config admin exists.
 
-Admin membership is bounded. Adding a seventeenth active admin aborts. Admin
+Admin membership is bounded. Granting a seventeenth active admin aborts. Admin
 creation deliberately delivers the new capability to the named nonzero
 recipient and emits its capability id and recipient. Revocation removes its id
 from the registry and does not require possession of the revoked object. A cap
@@ -172,7 +172,7 @@ economic domain shared by the cap and downstream integrations.
 
 - Initialization creates one shared authority registry, one shared disabled X
   config, and one root cap; it does not create an implicit routine admin.
-- The root can add an admin; that admin can sign in and use the resulting
+- The root can grant an admin; that admin can sign in and use the resulting
   drop-only witness to set and revoke the X signer.
 - A revoked admin fails when it next attempts to sign in.
 - Active admin destruction removes registry membership and emits

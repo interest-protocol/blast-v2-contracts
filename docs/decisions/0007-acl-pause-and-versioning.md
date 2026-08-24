@@ -54,7 +54,7 @@ and never accidentally.
 | revoke adapter witness | — | yes | — | — | — | `AdapterRevoked` |
 | rotate X-claim signer | — | yes | — | — | different 32-byte key | `XClaimSignerSet` |
 | revoke X-claim signer | — | yes | — | — | configured key | `XClaimSignerRevoked` |
-| add / revoke protocol admin | yes | — | — | — | at most 16 active admins | `AdminAdded` / `AdminRevoked` |
+| grant / revoke protocol admin | yes | — | — | — | at most 16 active admins | `AdminGranted` / `AdminRevoked` |
 | destroy own admin cap | — | cap consumed | — | — | removes membership if active; always deletes cap | `AdminDestroyed` |
 | set / unset `Display` field | — | yes | — | — | — | `DisplayFieldSet` |
 | pause / unpause a scope | — | yes | — | — | scope enumerated | `Paused` / `Unpaused` |

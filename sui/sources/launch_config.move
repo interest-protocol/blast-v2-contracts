@@ -42,35 +42,8 @@ fun init(ctx: &mut TxContext) {
 
 // === Public Functions ===
 
-/// Admits one quote type and its target for launches created afterward.
+/// Admits one quote type or updates its target for launches created afterward.
 public fun allow_quote<Quote>(
-    self: &mut LaunchConfig,
-    _: &AdminWitness,
-    migration_quote_target: u64,
-) {
-    assert!(
-        migration_quote_target > 0,
-        blast_fun::errors::invalid_migration_quote_target!(),
-    );
-
-    let quote = type_name::with_original_ids<Quote>();
-
-    assert!(
-        !self.quotes.contains(&quote),
-        blast_fun::errors::quote_already_allowed!(),
-    );
-    assert!(
-        self.quotes.length() < constants::max_quote_assets!(),
-        blast_fun::errors::quote_capacity_reached!(),
-    );
-
-    self.quotes.insert(quote, migration_quote_target);
-
-    events::quote_allowed<Quote>(self.id.to_inner(), migration_quote_target);
-}
-
-/// Changes the migration target snapshotted by future launches of one quote.
-public fun set_migration_quote_target<Quote>(
     self: &mut LaunchConfig,
     _: &AdminWitness,
     migration_quote_target: u64,
@@ -83,32 +56,38 @@ public fun set_migration_quote_target<Quote>(
     let quote = type_name::with_original_ids<Quote>();
     let quote_index = self.quotes.get_idx_opt(&quote);
 
-    assert!(
-        quote_index.is_some(),
-        blast_fun::errors::quote_not_allowed!(),
-    );
+    if (quote_index.is_some()) {
+        let (_, current_target) = self.quotes.get_entry_by_idx_mut(
+            quote_index.destroy_some(),
+        );
+        let old_migration_quote_target = *current_target;
 
-    let (_, current_target) = self.quotes.get_entry_by_idx_mut(
-        quote_index.destroy_some(),
-    );
-    let old_migration_quote_target = *current_target;
+        assert!(
+            migration_quote_target != old_migration_quote_target,
+            blast_fun::errors::migration_quote_target_unchanged!(),
+        );
 
-    assert!(
-        migration_quote_target != old_migration_quote_target,
-        blast_fun::errors::migration_quote_target_unchanged!(),
-    );
+        *current_target = migration_quote_target;
 
-    *current_target = migration_quote_target;
+        events::quote_migration_target_changed<Quote>(
+            self.id.to_inner(),
+            old_migration_quote_target,
+            migration_quote_target,
+        );
+    } else {
+        assert!(
+            self.quotes.length() < constants::max_quote_assets!(),
+            blast_fun::errors::quote_capacity_reached!(),
+        );
 
-    events::quote_migration_target_changed<Quote>(
-        self.id.to_inner(),
-        old_migration_quote_target,
-        migration_quote_target,
-    );
+        self.quotes.insert(quote, migration_quote_target);
+
+        events::quote_allowed<Quote>(self.id.to_inner(), migration_quote_target);
+    };
 }
 
-/// Removes one quote from launches created afterward.
-public fun remove_quote<Quote>(self: &mut LaunchConfig, _: &AdminWitness) {
+/// Disallows one quote from launches created afterward.
+public fun disallow_quote<Quote>(self: &mut LaunchConfig, _: &AdminWitness) {
     let quote = type_name::with_original_ids<Quote>();
     let quote_index = self.quotes.get_idx_opt(&quote);
 
@@ -121,7 +100,7 @@ public fun remove_quote<Quote>(self: &mut LaunchConfig, _: &AdminWitness) {
         quote_index.destroy_some(),
     );
 
-    events::quote_removed<Quote>(
+    events::quote_disallowed<Quote>(
         self.id.to_inner(),
         previous_migration_quote_target,
     );
@@ -188,8 +167,8 @@ public fun allow_migration_witness<MigrationWitness: drop>(
     events::migration_witness_allowed<MigrationWitness>(self.id.to_inner());
 }
 
-/// Prevents future launches from selecting one external migrator witness type.
-public fun remove_migration_witness<MigrationWitness: drop>(
+/// Disallows future launches from selecting one external migrator witness type.
+public fun disallow_migration_witness<MigrationWitness: drop>(
     self: &mut LaunchConfig,
     _: &AdminWitness,
 ) {
@@ -202,7 +181,7 @@ public fun remove_migration_witness<MigrationWitness: drop>(
 
     self.migration_witnesses.remove(&migration_witness);
 
-    events::migration_witness_removed<MigrationWitness>(self.id.to_inner());
+    events::migration_witness_disallowed<MigrationWitness>(self.id.to_inner());
 }
 
 // === Package Functions ===
@@ -259,26 +238,12 @@ public fun init_for_testing(ctx: &mut TxContext) {
 
 #[test_only]
 /// Returns the number of quotes currently admitted by focused tests.
-public fun active_quote_count_for_testing(self: &LaunchConfig): u64 {
+public fun allowed_quote_count_for_testing(self: &LaunchConfig): u64 {
     self.quotes.length()
 }
 
 #[test_only]
 /// Returns the number of migration witnesses admitted by focused tests.
-public fun migration_witness_count_for_testing(self: &LaunchConfig): u64 {
+public fun allowed_migration_witness_count_for_testing(self: &LaunchConfig): u64 {
     self.migration_witnesses.length()
-}
-
-#[test_only]
-/// Deletes the launch configuration after focused tests.
-public fun destroy_for_testing(self: LaunchConfig) {
-    let LaunchConfig {
-        id,
-        quotes: _,
-        quote_migration_fee_bps: _,
-        meme_graduation_allocation_bps: _,
-        migration_witnesses: _,
-    } = self;
-
-    id.delete();
 }

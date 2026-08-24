@@ -34,20 +34,18 @@ raising it could strand traders behind a goal they did not accept.
 
 ### Bounded quote whitelist
 
-`quote_config.move` owns one shared `QuoteConfig` containing at most 16 active
-quote policies. Each policy is keyed by the quote's original `TypeName` and
-contains its nonzero `migration_quote_target` in quote atomic units.
+`launch_config.move` owns one shared `LaunchConfig` containing at most 16
+allowed quote policies. Each policy is keyed by the quote's original `TypeName`
+and contains its nonzero `migration_quote_target` in quote atomic units.
 
-An active `AdminWitness` may:
+An active `AdminWitness` may allow a quote with a target, use that same operation
+to update the target of an already-allowed quote, or disallow a quote from
+admission for future launches.
 
-- allow a quote with its initial target;
-- change the target of an already-allowed quote; or
-- remove a quote from admission for future launches.
-
-The module rejects duplicate additions, missing removals or updates, zero and
-unchanged targets, and additions beyond the active bound. Every successful
-mutation emits the full old/new fact needed for event-only replay. Events rely
-on native Sui event order and add no application sequence.
+The module rejects missing disallows, zero and unchanged targets, and inserts
+beyond the active bound. Every successful mutation emits the full old/new fact
+needed for event-only replay. Events rely on native Sui event order and add no
+application sequence.
 
 ### Launch-time snapshot
 
@@ -66,7 +64,7 @@ the generated meme currency remains separately required to be unregulated by
 ADR 0023.
 
 `Launch<Meme, Quote>` stores the returned target as immutable launch state.
-Later whitelist changes affect only launches constructed afterward. Removing a
+Later whitelist changes affect only launches constructed afterward. Disallowing a
 quote prevents new launches without changing the pair, trading rules, exits, or
 migration target of an existing launch.
 
@@ -106,17 +104,17 @@ and fee parameters are not an authoritative quote for a live launch.
 - Quote admission becomes an explicit privileged risk decision.
 - Migration targets are comparable only within their quote asset and are
   immutable once snapshotted into a launch.
-- Disabling a quote is safe for existing launches because it affects admission
+- Disallowing a quote is safe for existing launches because it affects admission
   only.
 - The active whitelist has a fixed storage and iteration bound.
 
 ## Verification
 
 - Initialization emits the empty whitelist and active bound.
-- Addition, update, and removal tests assert exact state and replay-complete
-  event fields.
-- Duplicate, missing, zero, unchanged, and capacity cases assert
-  exact package errors and guard precedence.
+- Insert, update, and disallow tests assert exact state and replay-complete event
+  fields.
+- Missing, zero, unchanged, and capacity cases assert exact package errors and
+  guard precedence.
 - A target update changes the next snapshot while a future launch test proves a
   previously stored target remains unchanged.
 - Structural checks keep the configuration concern separate from ACL, launch

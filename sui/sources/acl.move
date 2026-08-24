@@ -63,7 +63,7 @@ fun init(_otw: ACL, ctx: &mut TxContext) {
 // === Public Functions ===
 
 /// Creates and deliberately delivers a routine protocol administrator.
-public fun add_admin(
+public fun grant_admin(
     authority: &mut ProtocolAuthority,
     super_admin_cap: &SuperAdminCap,
     recipient: address,
@@ -84,7 +84,7 @@ public fun add_admin(
 
     transfer::public_transfer(admin_cap, recipient);
 
-    events::admin_added(authority.id.to_inner(), admin_cap_id, recipient);
+    events::admin_granted(authority.id.to_inner(), admin_cap_id, recipient);
 }
 
 /// Revokes a routine administrator immediately without requiring possession of its cap.
@@ -295,7 +295,7 @@ public fun init_for_testing(ctx: &mut TxContext) {
 }
 
 #[test_only]
-/// Creates unshared protocol authority and X signer state for focused tests.
+/// Creates unshared protocol authority state for focused tests.
 public fun new_protocol_for_testing(
     super_admin_recipient: address,
     ctx: &mut TxContext,
@@ -317,26 +317,4 @@ public fun new_protocol_for_testing(
 /// Returns an AdminCap id only for registry-membership tests.
 public fun admin_cap_id_for_testing(admin_cap: &AdminCap): ID {
     admin_cap.id.to_inner()
-}
-
-#[test_only]
-/// Deletes protocol authority state after a test.
-public fun destroy_protocol_authority_for_testing(authority: ProtocolAuthority) {
-    let ProtocolAuthority {
-        id,
-        super_admin_cap_id: _,
-        admins: _,
-        pending_super_admin: _,
-    } = authority;
-    id.delete();
-}
-
-#[test_only]
-/// Deletes a root capability after a test.
-public fun destroy_super_admin_cap_for_testing(
-    _authority: &ProtocolAuthority,
-    super_admin_cap: SuperAdminCap,
-) {
-    let SuperAdminCap { id } = super_admin_cap;
-    id.delete();
 }

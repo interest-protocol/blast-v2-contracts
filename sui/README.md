@@ -26,7 +26,7 @@ The core package now contains:
 - `constants.move` — package-wide protocol values exposed as zero-cost package
   macros, with related attestation-layout values derived rather than repeated;
 - `acl.move` — singleton `ProtocolAuthority`, delayed `SuperAdminCap` transfer,
-  bounded revocable protocol-wide `AdminCap` delegation, holder-driven cap
+  bounded protocol-wide `AdminCap` grant/revoke delegation, holder-driven cap
   destruction, and drop-only `AdminWitness` sign-in only;
 - `runtime_config.move` — one small shared live-settings object containing the
   dedicated X backend signer and global protocol fee share, with witness-gated
@@ -48,7 +48,8 @@ The core package now contains:
   authorized by `CreatorCap<Meme>` or `AdminWitness`;
 - `launch_config.move` — bounded original-type quote admission and targets,
   zero-safe graduation defaults, a bounded external migrator-witness whitelist,
-  `AdminWitness`-gated mutations, and one package-only immutable launch snapshot;
+  `AdminWitness`-gated `allow_*`/`disallow_*` mutations, quote upserts, and one
+  package-only immutable launch snapshot;
 - `errors.move` — the append-only package error registry exposed as zero-cost
   package macros; owning modules perform their assertions inline;
 - `events_wrapper.move` — the stable package-wide `Event<T>` indexing envelope
@@ -60,6 +61,9 @@ The core package now contains:
   independent Ed25519 fixture and adversarial lifecycle cases.
 - `runtime_config_tests.move` — combined initialization, live protocol-share
   boundaries, and replay-complete runtime configuration events.
+- Stateful test suites use local `Fixture` hot potatoes for scenarios, shared
+  objects, and capabilities; one `end` consumes each fixture through the native
+  test-only `std::unit_test::destroy` black hole.
 - `curve_tests.move` — exact shared vectors, rounding and threshold boundaries,
   maximum-width arithmetic, guard precedence, round-trip dust, and a fixed-seed
   reachable-state sell-back property suite.

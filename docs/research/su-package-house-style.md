@@ -446,7 +446,7 @@ Do not overwrite accepted Blast decisions where they are stronger or product-spe
 
 - keep the delayed, cancellable, recipient-accepted super-admin transfer rather than `su`'s current-holder
   finish flow;
-- keep completed-fact event names (`AdminAdded`, `AdminRevoked`, `SuperAdminTransferred`) instead of copying
+- keep completed-fact event names (`AdminGranted`, `AdminRevoked`, `SuperAdminTransferred`) instead of copying
   `NewAdmin` / `RevokeAdmin` / `FinishSuperAdminTransfer` literally;
 - keep X verification and creator-cap rules in their own minimal domain; `su` has no equivalent signed
   offchain-identity claim;
@@ -457,7 +457,7 @@ Do not overwrite accepted Blast decisions where they are stronger or product-spe
 ### P2 — decide composability at each owned-object creation seam
 
 `su_acl::new_admin` returns `AdminCap` and lets the caller transfer/store/compose it, while Blast's current
-`add_admin` transfers directly to a recipient. The `su` default is to return new owned values; direct
+`grant_admin` transfers directly to a recipient. The `su` default is to return new owned values; direct
 delivery is reserved for deliberate initialization or entry-style endpoints. Review `AdminCap` and
 `CreatorCap<Meme>` creation under that rule. If a function's product contract is specifically “deliver this
 cap to the resolved recipient,” document the direct transfer as intentional; otherwise return the cap.

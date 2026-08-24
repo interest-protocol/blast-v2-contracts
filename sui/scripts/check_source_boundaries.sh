@@ -38,9 +38,21 @@ if [[ -n "$duplicate_import_roots" ]]; then
   failures=$((failures + 1))
 fi
 
-if rg -n '^use blast_fun::errors|^use std::unit_test::assert_eq|^use sui::event::emit' \
+if rg -n '^use blast_fun::errors|^use sui::event::emit' \
   sources tests; then
-  echo 'Error/assertion macros and one-off event emission must remain fully qualified.' >&2
+  echo 'Error macros and one-off event emission must remain fully qualified.' >&2
+  failures=$((failures + 1))
+fi
+
+if rg -n 'std::unit_test::(assert_eq!|destroy\()' tests; then
+  echo 'Test modules must import assert_eq and destroy instead of qualifying each call.' >&2
+  failures=$((failures + 1))
+fi
+
+if rg -n '^[[:space:]]*(public(\(package\))?[[:space:]]+)?fun[[:space:]]+destroy.*for_testing' sources \
+  || rg -n '\btest_utils::destroy\b|(\.|::)destroy(_[a-z_]+)?_for_testing\(' tests \
+  || rg -n '^fun destroy(_[a-z0-9_]+)?\(' tests; then
+  echo 'Tests must use std::unit_test::destroy or Fixture.end, without bespoke production teardown APIs.' >&2
   failures=$((failures + 1))
 fi
 
@@ -152,9 +164,9 @@ if [[ ! -f sources/launch_config.move ]] \
     sources/launch_config.move \
   || rg -n '\b(AdminCap|ProtocolAuthority)\b' <<<"$launch_config_production" \
   || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' <<<"$launch_config_production" \
-  || [[ "$(rg -o '_: &AdminWitness' <<<"$launch_config_production" | wc -l)" != 6 ]] \
-  || [[ "$(rg -c '^public fun ' <<<"$launch_config_production")" != 6 ]] \
-  || [[ "$(rg -c '^public fun (allow_quote|set_migration_quote_target|remove_quote|allow_migration_witness|remove_migration_witness)<' <<<"$launch_config_production")" != 5 ]] \
+  || [[ "$(rg -o '_: &AdminWitness' <<<"$launch_config_production" | wc -l)" != 5 ]] \
+  || [[ "$(rg -c '^public fun ' <<<"$launch_config_production")" != 5 ]] \
+  || [[ "$(rg -c '^public fun (allow_quote|disallow_quote|allow_migration_witness|disallow_migration_witness)<' <<<"$launch_config_production")" != 4 ]] \
   || [[ "$(rg -c '^public fun set_graduation_defaults\(' <<<"$launch_config_production")" != 1 ]] \
   || [[ "$(rg -c '^public\(package\) fun ' <<<"$launch_config_production")" != 1 ]] \
   || ! rg -U -q \
@@ -189,10 +201,10 @@ launch_config_event_payloads="$(sed -n \
   -e '/^public struct LaunchConfigCreated/,/^}/p' \
   -e '/^public struct QuoteAllowed/,/^}/p' \
   -e '/^public struct QuoteMigrationTargetChanged/,/^}/p' \
-  -e '/^public struct QuoteRemoved/,/^}/p' \
+  -e '/^public struct QuoteDisallowed/,/^}/p' \
   -e '/^public struct GraduationDefaultsChanged/,/^}/p' \
   -e '/^public struct MigrationWitnessAllowed/,/^}/p' \
-  -e '/^public struct MigrationWitnessRemoved/,/^}/p' \
+  -e '/^public struct MigrationWitnessDisallowed/,/^}/p' \
   sources/lib/events.move)"
 
 if [[ -z "$launch_config_event_payloads" ]] \
@@ -229,7 +241,7 @@ if [[ -z "$launch_ticket_event_payload" ]] \
 fi
 
 if rg -n \
-  '\b(acl::(add_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in|destroy_protocol_authority_for_testing|destroy_super_admin_cap_for_testing)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps|destroy_for_testing)|launch_config::(allow_quote|set_migration_quote_target|remove_quote|set_graduation_defaults|allow_migration_witness|remove_migration_witness|snapshot_for_launch|active_quote_count_for_testing|migration_witness_count_for_testing|destroy_for_testing)|creator_authority::(claim_creator_cap|destroy_for_testing|destroy_cap_for_testing)|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees|destroy_for_testing))(<[^>]+>)?\(' \
+  '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|creator_authority::claim_creator_cap|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees))(<[^>]+>)?\(' \
   sources tests; then
   echo 'Blast-owned receiver functions must use Move 2024 dot syntax.' >&2
   failures=$((failures + 1))
@@ -251,6 +263,13 @@ fi
 if ! rg -q '^public struct AdminWitness\(\) has drop;' sources/acl.move \
   || ! rg -q '^public fun sign_in\(' sources/acl.move; then
   echo 'acl.move must expose sign_in through an unforgeable drop-only AdminWitness.' >&2
+  failures=$((failures + 1))
+fi
+
+if ! rg -q '^public fun grant_admin\(' sources/acl.move \
+  || rg -n '\b(add_admin|AdminAdded|QuoteRemoved|MigrationWitnessRemoved)\b' sources tests \
+  || rg -n '\b(active_quote_count_for_testing|migration_witness_count_for_testing)\b' sources tests; then
+  echo 'Package interfaces must use grant/revoke authority and allow/disallow whitelist vocabulary.' >&2
   failures=$((failures + 1))
 fi
 

@@ -89,7 +89,7 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `CreatorCapClaimed` | M | creator address, optional X identity commitment, optional X expiry |
 | `LaunchTicketCreated` | M | ticket id, original meme type, treasury-cap id, metadata-cap id, launcher, address-or-X creator identity, burnable selection |
 | `ProtocolAuthorityCreated` | G | authority id, initial root-cap id and recipient, admin bound, root-transfer delay |
-| `AdminAdded` | G | authority id, admin-cap id, recipient |
+| `AdminGranted` | G | authority id, admin-cap id, recipient |
 | `AdminRevoked` | G | authority id and admin-cap id; membership removed while the cap object may remain |
 | `AdminDestroyed` | G | authority id, admin-cap id, `was_active`; cap deleted and membership absent afterward |
 | `RuntimeConfigCreated` | G | runtime-config id and initial zero `protocol_fee_share_bps`; disabled signer state is an initialization invariant |
@@ -97,10 +97,10 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `LaunchConfigCreated` | G | shared launch-config id, quote and migration-witness bounds, and zero-safe initial graduation defaults |
 | `QuoteAllowed` | G | shared config id, original quote type, initial migration quote target |
 | `QuoteMigrationTargetChanged` | G | shared config id, original quote type, old/new migration quote target |
-| `QuoteRemoved` | G | shared config id, original quote type, previous migration quote target |
+| `QuoteDisallowed` | G | shared config id, original quote type, previous migration quote target |
 | `GraduationDefaultsChanged` | G | shared config id and complete old/new Quote-fee and Meme-allocation pairs |
 | `MigrationWitnessAllowed` | G | shared config id and admitted external migrator witness original type |
-| `MigrationWitnessRemoved` | G | shared config id and removed external migrator witness original type |
+| `MigrationWitnessDisallowed` | G | shared config id and disallowed external migrator witness original type |
 | `RouteSelected` | L | route A/B/C, venue, tick spacing, fee rate, orientation, target sqrt price, `reservation_id` |
 | `ReservationReleased` | L | `venue`, `reservation_id`, `tick_spacing`, `orientation`, reason |
 | `MigrationBegun` | L | payload id, `M`, `Q` at handoff |
@@ -175,7 +175,7 @@ type.
 | `sell` | version, pause, state, pending-burn allocation, slippage, non-zero out | `Sold` | none | one embedded pending-burn balance | returns `Coin<Quote>` | `EZeroOutput`, slippage, deadline |
 | claim fees | capability, accrued only | `*FeesClaimed` | none | none | returns coin | `ENotAuthorized`, `ENothingAccrued` |
 | set protocol fee share | admin witness, `<= 10_000` | `ProtocolFeeShareChanged` | none | one scalar | n/a | `EInvalidProtocolFeeShareBps` |
-| mutate quote whitelist | admin witness, target, membership, capacity | `QuoteAllowed`, `QuoteMigrationTargetChanged`, or `QuoteRemoved` | none | at most 16 entries | n/a | exact errors 42–46 |
+| mutate quote whitelist | admin witness, target, membership, capacity | `QuoteAllowed`, `QuoteMigrationTargetChanged`, or `QuoteDisallowed` | none | at most 16 entries | n/a | exact errors 42 and 44–46; 43 retired |
 | collect LP fees | capability, vault-locked position | `LpFeesCollected` | vendored SHA pin | none | returns coins | `ENotAuthorized`, `EPositionNotInVault` |
 | release reservation | capability, reservation exists | `ReservationReleased` | vendored SHA pin | frees the reservation slot | n/a | `ENoReservation`, `EWrongVenue` |
 | metadata update | capability, bonding only | `MetadataUpdated` | none | none | n/a | `EMetadataFrozen` |

@@ -184,17 +184,3 @@ public fun new_x_claim_attestation_for_testing(
 
     attestation
 }
-
-#[test_only]
-/// Destroys standalone creator authority state after a test.
-public fun destroy_for_testing<Meme>(authority: CreatorAuthority<Meme>) {
-    let CreatorAuthority { .. } = authority;
-}
-
-#[test_only]
-/// Deletes a creator capability after a test has inspected it.
-public fun destroy_cap_for_testing<Meme>(cap: CreatorCap<Meme>) {
-    let CreatorCap { id } = cap;
-
-    id.delete();
-}

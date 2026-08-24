@@ -69,7 +69,7 @@ the next unused value and must not fill a retired gap.
 | 40 | `invalid_protocol_fee_share_bps` | `runtime_config` | The global protocol fee share exceeds 10,000 basis points. |
 | 41 | `protocol_fee_share_unchanged` | `runtime_config` | A protocol fee-share update supplied the currently active value. |
 | 42 | `invalid_migration_quote_target` | `launch_config` | A quote migration target was zero. |
-| 43 | `quote_already_allowed` | `launch_config` | The quote type is already admitted for new launches. |
+| 43 | retired | `launch_config` | Reserved after `allow_quote` absorbed quote-target updates. |
 | 44 | `quote_capacity_reached` | `launch_config` | The bounded active quote whitelist is full. |
 | 45 | `quote_not_allowed` | `launch_config` | The quote type is not admitted for new launches. |
 | 46 | `migration_quote_target_unchanged` | `launch_config` | A quote-target update supplied the currently active value. |

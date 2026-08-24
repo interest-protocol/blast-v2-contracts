@@ -74,8 +74,8 @@ configuration, DEX object, or address.
 All public mutations borrow `AdminWitness`. Graduation defaults update together,
 reject either value above its hard ceiling, reject an unchanged pair, and allow
 zero independently. Witness admission rejects duplicates and capacity overflow;
-removal rejects a missing type. Every successful mutation emits a wrapped typed
-event.
+disallowing rejects a missing type. Every successful mutation emits a wrapped
+typed event.
 
 ### One migrator selected per launch
 
@@ -88,7 +88,7 @@ snapshot function:
    `TypeName`.
 
 The launch stores those four values. It never reads `LaunchConfig` again.
-Removing a witness prevents future launches from selecting it but does not
+Disallowing a witness prevents future launches from selecting it but does not
 rewrite or strand launches that already selected it. This is intentional cold
 policy, matching the pinned Memez.Fun pattern.
 
@@ -202,7 +202,7 @@ error.
 ### Required event accounting
 
 Configuration events expose config identity, complete old/new graduation
-defaults, and admitted or removed migration witness types. `LaunchCreated`
+defaults, and allowed or disallowed migration witness types. `LaunchCreated`
 exposes all immutable effective snapshots. Successful migration events expose at
 least:
 

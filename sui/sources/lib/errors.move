@@ -347,9 +347,7 @@ macro public(package) fun invalid_migration_quote_target(): u64 {
     42
 }
 
-macro public(package) fun quote_already_allowed(): u64 {
-    43
-}
+// Error code 43 is retired and must not be reused.
 
 macro public(package) fun quote_capacity_reached(): u64 {
     44

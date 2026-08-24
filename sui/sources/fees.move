@@ -114,21 +114,3 @@ public(package) fun claim_protocol_fees<Meme, Quote>(
         self.protocol_quote.withdraw_all().into_coin(ctx),
     )
 }
-
-// === Test-Only Functions ===
-
-#[test_only]
-/// Destroys an empty standalone ledger after focused tests.
-public fun destroy_for_testing<Meme, Quote>(self: FeeLedger<Meme, Quote>) {
-    let FeeLedger {
-        protocol_meme,
-        creator_meme,
-        protocol_quote,
-        creator_quote,
-    } = self;
-
-    protocol_meme.destroy_zero();
-    creator_meme.destroy_zero();
-    protocol_quote.destroy_zero();
-    creator_quote.destroy_zero();
-}

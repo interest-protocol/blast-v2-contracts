@@ -2,6 +2,7 @@
 module blast_fun::fees_tests;
 
 use blast_fun::{acl, creator_authority, fees, runtime_config};
+use std::unit_test::{assert_eq, destroy};
 use sui::{
     balance,
     clock::{Self, Clock},
@@ -21,20 +22,22 @@ const PROTOCOL_FEE_SHARE_BPS: u64 = 5_000;
 public struct TEST_MEME() has drop;
 public struct TEST_QUOTE() has drop;
 
+public struct Fixture {
+    scenario: Scenario,
+    super_admin_cap: acl::SuperAdminCap,
+    authority: acl::ProtocolAuthority,
+    admin_cap: acl::AdminCap,
+    runtime_config: runtime_config::RuntimeConfig,
+    clock: Clock,
+    creator_cap: creator_authority::CreatorCap<TEST_MEME>,
+}
+
 // === Tests ===
 
 #[test]
 fun dual_asset_accrual_splits_and_claims_exactly() {
-    let mut scenario = test_scenario::begin(CREATOR);
-    let (
-        super_admin_cap,
-        authority,
-        admin_cap,
-        live_config,
-        test_clock,
-        creator_cap,
-    ) = new_claim_authorities(&mut scenario);
-    let admin_witness = authority.sign_in(&admin_cap);
+    let mut fixture = start();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>();
 
     let (
@@ -52,53 +55,37 @@ fun dual_asset_accrual_splits_and_claims_exactly() {
         7_000,
     );
 
-    std::unit_test::assert_eq!(protocol_meme_delta, 7);
-    std::unit_test::assert_eq!(creator_meme_delta, 2);
-    std::unit_test::assert_eq!(protocol_quote_delta, 7);
-    std::unit_test::assert_eq!(creator_quote_delta, 3);
-    std::unit_test::assert_eq!(protocol_meme_total, 7);
-    std::unit_test::assert_eq!(creator_meme_total, 2);
-    std::unit_test::assert_eq!(protocol_quote_total, 7);
-    std::unit_test::assert_eq!(creator_quote_total, 3);
+    assert_eq!(protocol_meme_delta, 7);
+    assert_eq!(creator_meme_delta, 2);
+    assert_eq!(protocol_quote_delta, 7);
+    assert_eq!(creator_quote_delta, 3);
+    assert_eq!(protocol_meme_total, 7);
+    assert_eq!(creator_meme_total, 2);
+    assert_eq!(protocol_quote_total, 7);
+    assert_eq!(creator_quote_total, 3);
 
     let (creator_meme, creator_quote) =
-        ledger.claim_creator_fees(&creator_cap, scenario.ctx());
+        ledger.claim_creator_fees(&fixture.creator_cap, fixture.scenario.ctx());
     let (protocol_meme, protocol_quote) =
-        ledger.claim_protocol_fees(&admin_witness, scenario.ctx());
+        ledger.claim_protocol_fees(&admin_witness, fixture.scenario.ctx());
 
-    std::unit_test::assert_eq!(creator_meme.value(), 2);
-    std::unit_test::assert_eq!(creator_quote.value(), 3);
-    std::unit_test::assert_eq!(protocol_meme.value(), 7);
-    std::unit_test::assert_eq!(protocol_quote.value(), 7);
+    assert_eq!(creator_meme.value(), 2);
+    assert_eq!(creator_quote.value(), 3);
+    assert_eq!(protocol_meme.value(), 7);
+    assert_eq!(protocol_quote.value(), 7);
 
-    destroy_coin(creator_meme);
-    destroy_coin(creator_quote);
-    destroy_coin(protocol_meme);
-    destroy_coin(protocol_quote);
-    ledger.destroy_for_testing();
-    destroy_claim_authorities(
-        super_admin_cap,
-        admin_cap,
-        authority,
-        live_config,
-        test_clock,
-        creator_cap,
-        scenario,
-    );
+    destroy(creator_meme);
+    destroy(creator_quote);
+    destroy(protocol_meme);
+    destroy(protocol_quote);
+    destroy(ledger);
+    fixture.end();
 }
 
 #[test]
 fun protocol_fee_share_boundaries_route_every_accrued_unit() {
-    let mut scenario = test_scenario::begin(CREATOR);
-    let (
-        super_admin_cap,
-        authority,
-        admin_cap,
-        live_config,
-        test_clock,
-        creator_cap,
-    ) = new_claim_authorities(&mut scenario);
-    let admin_witness = authority.sign_in(&admin_cap);
+    let mut fixture = start();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>();
 
     let (
@@ -116,14 +103,14 @@ fun protocol_fee_share_boundaries_route_every_accrued_unit() {
         0,
     );
 
-    std::unit_test::assert_eq!(protocol_meme_delta, 0);
-    std::unit_test::assert_eq!(creator_meme_delta, 9);
-    std::unit_test::assert_eq!(protocol_quote_delta, 0);
-    std::unit_test::assert_eq!(creator_quote_delta, 10);
-    std::unit_test::assert_eq!(protocol_meme_total, 0);
-    std::unit_test::assert_eq!(creator_meme_total, 9);
-    std::unit_test::assert_eq!(protocol_quote_total, 0);
-    std::unit_test::assert_eq!(creator_quote_total, 10);
+    assert_eq!(protocol_meme_delta, 0);
+    assert_eq!(creator_meme_delta, 9);
+    assert_eq!(protocol_quote_delta, 0);
+    assert_eq!(creator_quote_delta, 10);
+    assert_eq!(protocol_meme_total, 0);
+    assert_eq!(creator_meme_total, 9);
+    assert_eq!(protocol_quote_total, 0);
+    assert_eq!(creator_quote_total, 10);
 
     let (
         protocol_meme_delta,
@@ -140,88 +127,60 @@ fun protocol_fee_share_boundaries_route_every_accrued_unit() {
         10_000,
     );
 
-    std::unit_test::assert_eq!(protocol_meme_delta, 5);
-    std::unit_test::assert_eq!(creator_meme_delta, 0);
-    std::unit_test::assert_eq!(protocol_quote_delta, 6);
-    std::unit_test::assert_eq!(creator_quote_delta, 0);
-    std::unit_test::assert_eq!(protocol_meme_total, 5);
-    std::unit_test::assert_eq!(creator_meme_total, 9);
-    std::unit_test::assert_eq!(protocol_quote_total, 6);
-    std::unit_test::assert_eq!(creator_quote_total, 10);
+    assert_eq!(protocol_meme_delta, 5);
+    assert_eq!(creator_meme_delta, 0);
+    assert_eq!(protocol_quote_delta, 6);
+    assert_eq!(creator_quote_delta, 0);
+    assert_eq!(protocol_meme_total, 5);
+    assert_eq!(creator_meme_total, 9);
+    assert_eq!(protocol_quote_total, 6);
+    assert_eq!(creator_quote_total, 10);
 
     let (creator_meme, creator_quote) =
-        ledger.claim_creator_fees(&creator_cap, scenario.ctx());
+        ledger.claim_creator_fees(&fixture.creator_cap, fixture.scenario.ctx());
     let (protocol_meme, protocol_quote) =
-        ledger.claim_protocol_fees(&admin_witness, scenario.ctx());
+        ledger.claim_protocol_fees(&admin_witness, fixture.scenario.ctx());
 
-    std::unit_test::assert_eq!(creator_meme.value(), 9);
-    std::unit_test::assert_eq!(creator_quote.value(), 10);
-    std::unit_test::assert_eq!(protocol_meme.value(), 5);
-    std::unit_test::assert_eq!(protocol_quote.value(), 6);
+    assert_eq!(creator_meme.value(), 9);
+    assert_eq!(creator_quote.value(), 10);
+    assert_eq!(protocol_meme.value(), 5);
+    assert_eq!(protocol_quote.value(), 6);
 
-    destroy_coin(creator_meme);
-    destroy_coin(creator_quote);
-    destroy_coin(protocol_meme);
-    destroy_coin(protocol_quote);
-    ledger.destroy_for_testing();
-    destroy_claim_authorities(
-        super_admin_cap,
-        admin_cap,
-        authority,
-        live_config,
-        test_clock,
-        creator_cap,
-        scenario,
-    );
+    destroy(creator_meme);
+    destroy(creator_quote);
+    destroy(protocol_meme);
+    destroy(protocol_quote);
+    destroy(ledger);
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = 38)]
 fun protocol_cannot_claim_when_nothing_is_accrued() {
-    let mut scenario = test_scenario::begin(CREATOR);
-    let (super_admin_cap, mut authority) =
-        acl::new_protocol_for_testing(CREATOR, scenario.ctx());
-    authority.add_admin(&super_admin_cap, CREATOR, scenario.ctx());
-
-    scenario.next_tx(CREATOR);
-    let admin_cap = scenario.take_from_sender<acl::AdminCap>();
-    let admin_witness = authority.sign_in(&admin_cap);
+    let mut fixture = start();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>();
-    let (meme, quote) = ledger.claim_protocol_fees(&admin_witness, scenario.ctx());
+    let (meme, quote) =
+        ledger.claim_protocol_fees(&admin_witness, fixture.scenario.ctx());
 
-    destroy_coin(meme);
-    destroy_coin(quote);
-    ledger.destroy_for_testing();
-    authority.destroy_admin_cap(admin_cap);
-    authority.destroy_super_admin_cap_for_testing(super_admin_cap);
-    authority.destroy_protocol_authority_for_testing();
-    scenario.end();
+    destroy(meme);
+    destroy(quote);
+    destroy(ledger);
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = 38)]
 fun creator_cannot_claim_when_nothing_is_accrued() {
-    let mut scenario = test_scenario::begin(CREATOR);
-    let live_config = runtime_config::new_disabled_for_testing(scenario.ctx());
-    let creator_authority = creator_authority::new_address<TEST_MEME>(CREATOR);
-    let test_clock = clock::create_for_testing(scenario.ctx());
-    scenario.next_tx(CREATOR);
-    let creator_cap = creator_authority.claim_creator_cap(
-        &live_config,
-        option::none(),
-        &test_clock,
-        scenario.ctx(),
-    );
+    let mut fixture = start();
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>();
-    let (meme, quote) = ledger.claim_creator_fees(&creator_cap, scenario.ctx());
+    let (meme, quote) =
+        ledger.claim_creator_fees(&fixture.creator_cap, fixture.scenario.ctx());
 
-    destroy_coin(meme);
-    destroy_coin(quote);
-    ledger.destroy_for_testing();
-    creator_cap.destroy_cap_for_testing();
-    live_config.destroy_for_testing();
-    test_clock.destroy_for_testing();
-    scenario.end();
+    destroy(meme);
+    destroy(quote);
+    destroy(ledger);
+    fixture.end();
 }
 
 #[test]
@@ -235,21 +194,13 @@ fun accrual_rejects_two_zero_asset_balances() {
         PROTOCOL_FEE_SHARE_BPS,
     );
 
-    ledger.destroy_for_testing();
+    destroy(ledger);
 }
 
 #[test]
 fun maximum_u64_fees_match_the_committed_split_vector() {
-    let mut scenario = test_scenario::begin(CREATOR);
-    let (
-        super_admin_cap,
-        authority,
-        admin_cap,
-        live_config,
-        test_clock,
-        creator_cap,
-    ) = new_claim_authorities(&mut scenario);
-    let admin_witness = authority.sign_in(&admin_cap);
+    let mut fixture = start();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>();
 
     ledger.accrue(
@@ -259,52 +210,36 @@ fun maximum_u64_fees_match_the_committed_split_vector() {
     );
 
     let (creator_meme, creator_quote) =
-        ledger.claim_creator_fees(&creator_cap, scenario.ctx());
+        ledger.claim_creator_fees(&fixture.creator_cap, fixture.scenario.ctx());
     let (protocol_meme, protocol_quote) =
-        ledger.claim_protocol_fees(&admin_witness, scenario.ctx());
+        ledger.claim_protocol_fees(&admin_witness, fixture.scenario.ctx());
 
-    std::unit_test::assert_eq!(creator_meme.value(), 9_223_372_036_854_775_807);
-    std::unit_test::assert_eq!(creator_quote.value(), 9_223_372_036_854_775_807);
-    std::unit_test::assert_eq!(protocol_meme.value(), 9_223_372_036_854_775_808);
-    std::unit_test::assert_eq!(protocol_quote.value(), 9_223_372_036_854_775_808);
+    assert_eq!(creator_meme.value(), 9_223_372_036_854_775_807);
+    assert_eq!(creator_quote.value(), 9_223_372_036_854_775_807);
+    assert_eq!(protocol_meme.value(), 9_223_372_036_854_775_808);
+    assert_eq!(protocol_quote.value(), 9_223_372_036_854_775_808);
 
-    destroy_coin(creator_meme);
-    destroy_coin(creator_quote);
-    destroy_coin(protocol_meme);
-    destroy_coin(protocol_quote);
-    ledger.destroy_for_testing();
-    destroy_claim_authorities(
-        super_admin_cap,
-        admin_cap,
-        authority,
-        live_config,
-        test_clock,
-        creator_cap,
-        scenario,
-    );
+    destroy(creator_meme);
+    destroy(creator_quote);
+    destroy(protocol_meme);
+    destroy(protocol_quote);
+    destroy(ledger);
+    fixture.end();
 }
 
 #[test]
 fun changed_protocol_fee_share_applies_to_the_next_accrual() {
-    let mut scenario = test_scenario::begin(CREATOR);
-    let (
-        super_admin_cap,
-        authority,
-        admin_cap,
-        mut live_config,
-        test_clock,
-        creator_cap,
-    ) = new_claim_authorities(&mut scenario);
-    let admin_witness = authority.sign_in(&admin_cap);
+    let mut fixture = start();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>();
 
-    live_config.set_protocol_fee_share(&admin_witness, PROTOCOL_FEE_SHARE_BPS);
+    fixture.runtime_config.set_protocol_fee_share(&admin_witness, PROTOCOL_FEE_SHARE_BPS);
     ledger.accrue(
         balance::create_for_testing<TEST_MEME>(3),
         balance::create_for_testing<TEST_QUOTE>(4),
-        live_config.protocol_fee_share_bps(),
+        fixture.runtime_config.protocol_fee_share_bps(),
     );
-    live_config.set_protocol_fee_share(&admin_witness, 8_000);
+    fixture.runtime_config.set_protocol_fee_share(&admin_witness, 8_000);
     let (
         protocol_meme_delta,
         creator_meme_delta,
@@ -317,56 +252,40 @@ fun changed_protocol_fee_share_applies_to_the_next_accrual() {
     ) = ledger.accrue(
         balance::create_for_testing<TEST_MEME>(5),
         balance::create_for_testing<TEST_QUOTE>(6),
-        live_config.protocol_fee_share_bps(),
+        fixture.runtime_config.protocol_fee_share_bps(),
     );
 
-    std::unit_test::assert_eq!(protocol_meme_delta, 4);
-    std::unit_test::assert_eq!(creator_meme_delta, 1);
-    std::unit_test::assert_eq!(protocol_quote_delta, 5);
-    std::unit_test::assert_eq!(creator_quote_delta, 1);
-    std::unit_test::assert_eq!(protocol_meme_total, 6);
-    std::unit_test::assert_eq!(creator_meme_total, 2);
-    std::unit_test::assert_eq!(protocol_quote_total, 7);
-    std::unit_test::assert_eq!(creator_quote_total, 3);
+    assert_eq!(protocol_meme_delta, 4);
+    assert_eq!(creator_meme_delta, 1);
+    assert_eq!(protocol_quote_delta, 5);
+    assert_eq!(creator_quote_delta, 1);
+    assert_eq!(protocol_meme_total, 6);
+    assert_eq!(creator_meme_total, 2);
+    assert_eq!(protocol_quote_total, 7);
+    assert_eq!(creator_quote_total, 3);
 
     let (protocol_meme, protocol_quote) =
-        ledger.claim_protocol_fees(&admin_witness, scenario.ctx());
+        ledger.claim_protocol_fees(&admin_witness, fixture.scenario.ctx());
     let (creator_meme, creator_quote) =
-        ledger.claim_creator_fees(&creator_cap, scenario.ctx());
+        ledger.claim_creator_fees(&fixture.creator_cap, fixture.scenario.ctx());
 
-    std::unit_test::assert_eq!(protocol_meme.value(), 6);
-    std::unit_test::assert_eq!(protocol_quote.value(), 7);
-    std::unit_test::assert_eq!(creator_meme.value(), 2);
-    std::unit_test::assert_eq!(creator_quote.value(), 3);
+    assert_eq!(protocol_meme.value(), 6);
+    assert_eq!(protocol_quote.value(), 7);
+    assert_eq!(creator_meme.value(), 2);
+    assert_eq!(creator_quote.value(), 3);
 
-    destroy_coin(protocol_meme);
-    destroy_coin(protocol_quote);
-    destroy_coin(creator_meme);
-    destroy_coin(creator_quote);
-    ledger.destroy_for_testing();
-    destroy_claim_authorities(
-        super_admin_cap,
-        admin_cap,
-        authority,
-        live_config,
-        test_clock,
-        creator_cap,
-        scenario,
-    );
+    destroy(protocol_meme);
+    destroy(protocol_quote);
+    destroy(creator_meme);
+    destroy(creator_quote);
+    destroy(ledger);
+    fixture.end();
 }
 
 #[test]
 fun meme_only_accrual_returns_zero_quote_coins() {
-    let mut scenario = test_scenario::begin(CREATOR);
-    let (
-        super_admin_cap,
-        authority,
-        admin_cap,
-        live_config,
-        test_clock,
-        creator_cap,
-    ) = new_claim_authorities(&mut scenario);
-    let admin_witness = authority.sign_in(&admin_cap);
+    let mut fixture = start();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>();
 
     ledger.accrue(
@@ -376,43 +295,27 @@ fun meme_only_accrual_returns_zero_quote_coins() {
     );
 
     let (creator_meme, creator_quote) =
-        ledger.claim_creator_fees(&creator_cap, scenario.ctx());
+        ledger.claim_creator_fees(&fixture.creator_cap, fixture.scenario.ctx());
     let (protocol_meme, protocol_quote) =
-        ledger.claim_protocol_fees(&admin_witness, scenario.ctx());
+        ledger.claim_protocol_fees(&admin_witness, fixture.scenario.ctx());
 
-    std::unit_test::assert_eq!(creator_meme.value(), 1);
-    std::unit_test::assert_eq!(creator_quote.value(), 0);
-    std::unit_test::assert_eq!(protocol_meme.value(), 2);
-    std::unit_test::assert_eq!(protocol_quote.value(), 0);
+    assert_eq!(creator_meme.value(), 1);
+    assert_eq!(creator_quote.value(), 0);
+    assert_eq!(protocol_meme.value(), 2);
+    assert_eq!(protocol_quote.value(), 0);
 
-    destroy_coin(creator_meme);
-    destroy_coin(creator_quote);
-    destroy_coin(protocol_meme);
-    destroy_coin(protocol_quote);
-    ledger.destroy_for_testing();
-    destroy_claim_authorities(
-        super_admin_cap,
-        admin_cap,
-        authority,
-        live_config,
-        test_clock,
-        creator_cap,
-        scenario,
-    );
+    destroy(creator_meme);
+    destroy(creator_quote);
+    destroy(protocol_meme);
+    destroy(protocol_quote);
+    destroy(ledger);
+    fixture.end();
 }
 
 #[test]
 fun quote_only_accrual_returns_zero_meme_coins() {
-    let mut scenario = test_scenario::begin(CREATOR);
-    let (
-        super_admin_cap,
-        authority,
-        admin_cap,
-        live_config,
-        test_clock,
-        creator_cap,
-    ) = new_claim_authorities(&mut scenario);
-    let admin_witness = authority.sign_in(&admin_cap);
+    let mut fixture = start();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>();
 
     ledger.accrue(
@@ -422,42 +325,34 @@ fun quote_only_accrual_returns_zero_meme_coins() {
     );
 
     let (creator_meme, creator_quote) =
-        ledger.claim_creator_fees(&creator_cap, scenario.ctx());
+        ledger.claim_creator_fees(&fixture.creator_cap, fixture.scenario.ctx());
     let (protocol_meme, protocol_quote) =
-        ledger.claim_protocol_fees(&admin_witness, scenario.ctx());
+        ledger.claim_protocol_fees(&admin_witness, fixture.scenario.ctx());
 
-    std::unit_test::assert_eq!(creator_meme.value(), 0);
-    std::unit_test::assert_eq!(creator_quote.value(), 2);
-    std::unit_test::assert_eq!(protocol_meme.value(), 0);
-    std::unit_test::assert_eq!(protocol_quote.value(), 2);
+    assert_eq!(creator_meme.value(), 0);
+    assert_eq!(creator_quote.value(), 2);
+    assert_eq!(protocol_meme.value(), 0);
+    assert_eq!(protocol_quote.value(), 2);
 
-    destroy_coin(creator_meme);
-    destroy_coin(creator_quote);
-    destroy_coin(protocol_meme);
-    destroy_coin(protocol_quote);
-    ledger.destroy_for_testing();
-    destroy_claim_authorities(
-        super_admin_cap,
-        admin_cap,
-        authority,
-        live_config,
-        test_clock,
-        creator_cap,
-        scenario,
-    );
+    destroy(creator_meme);
+    destroy(creator_quote);
+    destroy(protocol_meme);
+    destroy(protocol_quote);
+    destroy(ledger);
+    fixture.end();
 }
 
 #[test]
 fun transferred_creator_cap_claims_and_routes_both_assets_composably() {
-    let mut scenario = test_scenario::begin(CREATOR);
-    let (
+    let Fixture {
+        mut scenario,
         super_admin_cap,
         authority,
         admin_cap,
-        live_config,
-        test_clock,
+        runtime_config: fixture_runtime_config,
+        clock: fixture_clock,
         creator_cap,
-    ) = new_claim_authorities(&mut scenario);
+    } = start();
     let admin_witness = authority.sign_in(&admin_cap);
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>();
     ledger.accrue(
@@ -468,8 +363,8 @@ fun transferred_creator_cap_claims_and_routes_both_assets_composably() {
 
     let (protocol_meme, protocol_quote) =
         ledger.claim_protocol_fees(&admin_witness, scenario.ctx());
-    destroy_coin(protocol_meme);
-    destroy_coin(protocol_quote);
+    destroy(protocol_meme);
+    destroy(protocol_quote);
     scenario.return_to_sender(admin_cap);
     transfer::public_transfer(creator_cap, BENEFICIARY);
 
@@ -478,86 +373,63 @@ fun transferred_creator_cap_claims_and_routes_both_assets_composably() {
         scenario.take_from_sender<creator_authority::CreatorCap<TEST_MEME>>();
     let (creator_meme, creator_quote) =
         ledger.claim_creator_fees(&creator_cap, scenario.ctx());
-    std::unit_test::assert_eq!(creator_meme.value(), 4);
-    std::unit_test::assert_eq!(creator_quote.value(), 5);
+    assert_eq!(creator_meme.value(), 4);
+    assert_eq!(creator_quote.value(), 5);
     transfer::public_transfer(creator_meme, PAYOUT_RECIPIENT);
     transfer::public_transfer(creator_quote, PAYOUT_RECIPIENT);
-    creator_cap.destroy_cap_for_testing();
-    ledger.destroy_for_testing();
+    destroy(ledger);
 
     scenario.next_tx(PAYOUT_RECIPIENT);
     let creator_meme = scenario.take_from_sender<Coin<TEST_MEME>>();
     let creator_quote = scenario.take_from_sender<Coin<TEST_QUOTE>>();
-    std::unit_test::assert_eq!(creator_meme.value(), 4);
-    std::unit_test::assert_eq!(creator_quote.value(), 5);
-    destroy_coin(creator_meme);
-    destroy_coin(creator_quote);
+    assert_eq!(creator_meme.value(), 4);
+    assert_eq!(creator_quote.value(), 5);
+    destroy(creator_meme);
+    destroy(creator_quote);
 
     scenario.next_tx(CREATOR);
     let admin_cap = scenario.take_from_sender<acl::AdminCap>();
-    let mut authority = authority;
-    authority.destroy_admin_cap(admin_cap);
-    authority.destroy_super_admin_cap_for_testing(super_admin_cap);
-    authority.destroy_protocol_authority_for_testing();
-    live_config.destroy_for_testing();
-    test_clock.destroy_for_testing();
-    scenario.end();
+    Fixture {
+        scenario,
+        super_admin_cap,
+        authority,
+        admin_cap,
+        runtime_config: fixture_runtime_config,
+        clock: fixture_clock,
+        creator_cap,
+    }.end();
 }
 
 // === Private Functions ===
 
-fun new_claim_authorities(
-    scenario: &mut Scenario,
-): (
-    acl::SuperAdminCap,
-    acl::ProtocolAuthority,
-    acl::AdminCap,
-    runtime_config::RuntimeConfig,
-    Clock,
-    creator_authority::CreatorCap<TEST_MEME>,
-) {
+fun start(): Fixture {
+    let mut scenario = test_scenario::begin(CREATOR);
     let (super_admin_cap, mut authority) =
         acl::new_protocol_for_testing(CREATOR, scenario.ctx());
-    authority.add_admin(&super_admin_cap, CREATOR, scenario.ctx());
+    authority.grant_admin(&super_admin_cap, CREATOR, scenario.ctx());
     scenario.next_tx(CREATOR);
     let admin_cap = scenario.take_from_sender<acl::AdminCap>();
-    let live_config = runtime_config::new_disabled_for_testing(scenario.ctx());
+    let fixture_runtime_config = runtime_config::new_disabled_for_testing(scenario.ctx());
     let creator_authority = creator_authority::new_address<TEST_MEME>(CREATOR);
-    let test_clock = clock::create_for_testing(scenario.ctx());
+    let fixture_clock = clock::create_for_testing(scenario.ctx());
     let creator_cap = creator_authority.claim_creator_cap(
-        &live_config,
+        &fixture_runtime_config,
         option::none(),
-        &test_clock,
+        &fixture_clock,
         scenario.ctx(),
     );
-    (
+
+    Fixture {
+        scenario,
         super_admin_cap,
         authority,
         admin_cap,
-        live_config,
-        test_clock,
+        runtime_config: fixture_runtime_config,
+        clock: fixture_clock,
         creator_cap,
-    )
+    }
 }
 
-fun destroy_claim_authorities(
-    super_admin_cap: acl::SuperAdminCap,
-    admin_cap: acl::AdminCap,
-    mut authority: acl::ProtocolAuthority,
-    live_config: runtime_config::RuntimeConfig,
-    test_clock: Clock,
-    creator_cap: creator_authority::CreatorCap<TEST_MEME>,
-    scenario: Scenario,
-) {
-    creator_cap.destroy_cap_for_testing();
-    authority.destroy_admin_cap(admin_cap);
-    authority.destroy_super_admin_cap_for_testing(super_admin_cap);
-    authority.destroy_protocol_authority_for_testing();
-    live_config.destroy_for_testing();
-    test_clock.destroy_for_testing();
-    scenario.end();
-}
-
-fun destroy_coin<T>(coin: Coin<T>) {
-    coin.into_balance().destroy_for_testing();
+fun end(self: Fixture) {
+    destroy(self);
 }

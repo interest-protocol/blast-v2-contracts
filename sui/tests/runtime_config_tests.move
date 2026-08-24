@@ -2,12 +2,23 @@
 module blast_fun::runtime_config_tests;
 
 use blast_fun::{acl, events, runtime_config};
+use std::unit_test::{assert_eq, destroy};
 use sui::{event, test_scenario::{Self, Scenario}};
 
 // === Constants ===
 
 const PUBLISHER: address = @0xA11CE;
 const PROTOCOL_ADMIN: address = @0xAD;
+
+// === Test-Only Types ===
+
+public struct Fixture {
+    scenario: Scenario,
+    super_admin_cap: acl::SuperAdminCap,
+    authority: acl::ProtocolAuthority,
+    admin_cap: acl::AdminCap,
+    config: runtime_config::RuntimeConfig,
+}
 
 // === Tests ===
 
@@ -23,53 +34,45 @@ fun package_init_creates_disabled_zero_share_runtime_config() {
     let config = scenario.take_shared<runtime_config::RuntimeConfig>();
     let config_id = object::id(&config);
 
-    std::unit_test::assert_eq!(config.protocol_fee_share_bps(), 0);
-    std::unit_test::assert_eq!(emitted_config_id, config_id);
-    std::unit_test::assert_eq!(protocol_fee_share_bps, 0);
+    assert_eq!(config.protocol_fee_share_bps(), 0);
+    assert_eq!(emitted_config_id, config_id);
+    assert_eq!(protocol_fee_share_bps, 0);
     assert!(event::events_by_type<events::RuntimeConfigCreated>().is_empty());
 
-    config.destroy_for_testing();
-    scenario.end();
+    destroy(config);
+    destroy(scenario);
 }
 
 #[test]
 fun active_admin_updates_live_share_and_emits_old_and_new_values() {
-    let mut scenario = test_scenario::begin(PUBLISHER);
-    let (super_admin_cap, mut authority, admin_cap, mut config) =
-        new_config_with_admin(&mut scenario);
-    let admin_witness = authority.sign_in(&admin_cap);
-    let config_id = object::id(&config);
+    let mut fixture = start();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let config_id = object::id(&fixture.config);
 
-    config.set_protocol_fee_share(&admin_witness, 7_000);
+    fixture.config.set_protocol_fee_share(&admin_witness, 7_000);
 
     let changed = events::collect_one<events::ProtocolFeeShareChanged>(0);
     let (emitted_config_id, old_share_bps, new_share_bps) =
         changed.protocol_fee_share_changed_fields();
-    std::unit_test::assert_eq!(config.protocol_fee_share_bps(), 7_000);
-    std::unit_test::assert_eq!(emitted_config_id, config_id);
-    std::unit_test::assert_eq!(old_share_bps, 0);
-    std::unit_test::assert_eq!(new_share_bps, 7_000);
+    assert_eq!(fixture.config.protocol_fee_share_bps(), 7_000);
+    assert_eq!(emitted_config_id, config_id);
+    assert_eq!(old_share_bps, 0);
+    assert_eq!(new_share_bps, 7_000);
     assert!(event::events_by_type<events::ProtocolFeeShareChanged>().is_empty());
 
-    authority.destroy_admin_cap(admin_cap);
-    authority.destroy_super_admin_cap_for_testing(super_admin_cap);
-    authority.destroy_protocol_authority_for_testing();
-    config.destroy_for_testing();
-    scenario.end();
+    fixture.end();
 }
 
 #[test]
 fun one_runtime_config_and_admin_witness_update_both_live_settings() {
-    let mut scenario = test_scenario::begin(PUBLISHER);
-    let (super_admin_cap, mut authority, admin_cap, mut config) =
-        new_config_with_admin(&mut scenario);
-    let admin_witness = authority.sign_in(&admin_cap);
-    let config_id = object::id(&config);
+    let mut fixture = start();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let config_id = object::id(&fixture.config);
     let signer_public_key =
         x"11223344556677889900aabbccddeeffffeeddccbbaa00998877665544332211";
 
-    config.set_x_claim_signer(&admin_witness, signer_public_key);
-    config.set_protocol_fee_share(&admin_witness, 2_500);
+    fixture.config.set_x_claim_signer(&admin_witness, signer_public_key);
+    fixture.config.set_protocol_fee_share(&admin_witness, 2_500);
 
     let signer_set = events::collect_one<events::XClaimSignerSet>(0);
     let (signer_config_id, previous_public_key, emitted_public_key) =
@@ -78,71 +81,53 @@ fun one_runtime_config_and_admin_witness_update_both_live_settings() {
     let (fee_config_id, old_share_bps, new_share_bps) =
         fee_share_changed.protocol_fee_share_changed_fields();
 
-    std::unit_test::assert_eq!(signer_config_id, config_id);
+    assert_eq!(signer_config_id, config_id);
     assert!(previous_public_key.is_empty());
-    std::unit_test::assert_eq!(emitted_public_key, signer_public_key);
-    std::unit_test::assert_eq!(fee_config_id, config_id);
-    std::unit_test::assert_eq!(old_share_bps, 0);
-    std::unit_test::assert_eq!(new_share_bps, 2_500);
-    std::unit_test::assert_eq!(config.protocol_fee_share_bps(), 2_500);
+    assert_eq!(emitted_public_key, signer_public_key);
+    assert_eq!(fee_config_id, config_id);
+    assert_eq!(old_share_bps, 0);
+    assert_eq!(new_share_bps, 2_500);
+    assert_eq!(fixture.config.protocol_fee_share_bps(), 2_500);
 
-    authority.destroy_admin_cap(admin_cap);
-    authority.destroy_super_admin_cap_for_testing(super_admin_cap);
-    authority.destroy_protocol_authority_for_testing();
-    config.destroy_for_testing();
-    scenario.end();
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = 40)]
 fun protocol_fee_share_rejects_above_one_hundred_percent() {
-    let mut scenario = test_scenario::begin(PUBLISHER);
-    let (super_admin_cap, mut authority, admin_cap, mut config) =
-        new_config_with_admin(&mut scenario);
-    let admin_witness = authority.sign_in(&admin_cap);
+    let mut fixture = start();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
 
-    config.set_protocol_fee_share(&admin_witness, 10_001);
+    fixture.config.set_protocol_fee_share(&admin_witness, 10_001);
 
-    authority.destroy_admin_cap(admin_cap);
-    authority.destroy_super_admin_cap_for_testing(super_admin_cap);
-    authority.destroy_protocol_authority_for_testing();
-    config.destroy_for_testing();
-    scenario.end();
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = 41)]
 fun protocol_fee_share_rejects_unchanged_value() {
-    let mut scenario = test_scenario::begin(PUBLISHER);
-    let (super_admin_cap, mut authority, admin_cap, mut config) =
-        new_config_with_admin(&mut scenario);
-    let admin_witness = authority.sign_in(&admin_cap);
+    let mut fixture = start();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
 
-    config.set_protocol_fee_share(&admin_witness, 0);
+    fixture.config.set_protocol_fee_share(&admin_witness, 0);
 
-    authority.destroy_admin_cap(admin_cap);
-    authority.destroy_super_admin_cap_for_testing(super_admin_cap);
-    authority.destroy_protocol_authority_for_testing();
-    config.destroy_for_testing();
-    scenario.end();
+    fixture.end();
 }
 
 #[test]
 fun protocol_fee_share_accepts_both_percentage_boundaries() {
-    let mut scenario = test_scenario::begin(PUBLISHER);
-    let (super_admin_cap, mut authority, admin_cap, mut config) =
-        new_config_with_admin(&mut scenario);
-    let admin_witness = authority.sign_in(&admin_cap);
-    let config_id = object::id(&config);
+    let mut fixture = start();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let config_id = object::id(&fixture.config);
 
-    config.set_protocol_fee_share(&admin_witness, 10_000);
-    std::unit_test::assert_eq!(config.protocol_fee_share_bps(), 10_000);
+    fixture.config.set_protocol_fee_share(&admin_witness, 10_000);
+    assert_eq!(fixture.config.protocol_fee_share_bps(), 10_000);
 
-    config.set_protocol_fee_share(&admin_witness, 0);
-    std::unit_test::assert_eq!(config.protocol_fee_share_bps(), 0);
+    fixture.config.set_protocol_fee_share(&admin_witness, 0);
+    assert_eq!(fixture.config.protocol_fee_share_bps(), 0);
 
     let mut changes = events::collect<events::ProtocolFeeShareChanged>();
-    std::unit_test::assert_eq!(changes.length(), 2);
+    assert_eq!(changes.length(), 2);
     let second = changes.pop_back();
     let first = changes.pop_back();
     let (first_config_id, first_old, first_new) =
@@ -150,33 +135,23 @@ fun protocol_fee_share_accepts_both_percentage_boundaries() {
     let (second_config_id, second_old, second_new) =
         second.protocol_fee_share_changed_fields();
 
-    std::unit_test::assert_eq!(first_config_id, config_id);
-    std::unit_test::assert_eq!(first_old, 0);
-    std::unit_test::assert_eq!(first_new, 10_000);
-    std::unit_test::assert_eq!(second_config_id, config_id);
-    std::unit_test::assert_eq!(second_old, 10_000);
-    std::unit_test::assert_eq!(second_new, 0);
+    assert_eq!(first_config_id, config_id);
+    assert_eq!(first_old, 0);
+    assert_eq!(first_new, 10_000);
+    assert_eq!(second_config_id, config_id);
+    assert_eq!(second_old, 10_000);
+    assert_eq!(second_new, 0);
 
-    authority.destroy_admin_cap(admin_cap);
-    authority.destroy_super_admin_cap_for_testing(super_admin_cap);
-    authority.destroy_protocol_authority_for_testing();
-    config.destroy_for_testing();
-    scenario.end();
+    fixture.end();
 }
 
 // === Private Functions ===
 
-fun new_config_with_admin(
-    scenario: &mut Scenario,
-): (
-    acl::SuperAdminCap,
-    acl::ProtocolAuthority,
-    acl::AdminCap,
-    runtime_config::RuntimeConfig,
-) {
+fun start(): Fixture {
+    let mut scenario = test_scenario::begin(PUBLISHER);
     let (super_admin_cap, mut authority) =
         acl::new_protocol_for_testing(PUBLISHER, scenario.ctx());
-    authority.add_admin(
+    authority.grant_admin(
         &super_admin_cap,
         PROTOCOL_ADMIN,
         scenario.ctx(),
@@ -187,5 +162,9 @@ fun new_config_with_admin(
     let admin_cap = scenario.take_from_sender<acl::AdminCap>();
     let config = scenario.take_shared<runtime_config::RuntimeConfig>();
 
-    (super_admin_cap, authority, admin_cap, config)
+    Fixture { scenario, super_admin_cap, authority, admin_cap, config }
+}
+
+fun end(self: Fixture) {
+    destroy(self);
 }

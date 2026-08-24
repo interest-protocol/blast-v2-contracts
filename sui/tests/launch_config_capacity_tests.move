@@ -2,6 +2,7 @@
 module blast_fun::launch_config_capacity_tests;
 
 use blast_fun::{acl, constants, launch_config};
+use std::unit_test::{assert_eq, destroy};
 use sui::test_scenario::{Self, Scenario};
 
 // === Constants ===
@@ -30,47 +31,43 @@ public struct R14() has drop;
 public struct R15() has drop;
 public struct R16() has drop;
 
+public struct Fixture {
+    scenario: Scenario,
+    super_admin_cap: acl::SuperAdminCap,
+    authority: acl::ProtocolAuthority,
+    admin_cap: acl::AdminCap,
+    config: launch_config::LaunchConfig,
+}
+
 // === Tests ===
 
 #[test]
 fun migration_witness_registry_allows_replacement_at_capacity() {
-    let mut scenario = test_scenario::begin(@0x0);
-    let (super_admin_cap, mut authority, admin_cap, mut config) =
-        new_config_with_admin(&mut scenario);
-    let admin_witness = authority.sign_in(&admin_cap);
+    let mut fixture = start();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
 
-    allow_sixteen_migration_witnesses(&mut config, &admin_witness);
-    config.remove_migration_witness<MIGRATION_WITNESS<R0>>(&admin_witness);
-    config.allow_migration_witness<MIGRATION_WITNESS<R16>>(&admin_witness);
+    allow_sixteen_migration_witnesses(&mut fixture.config, &admin_witness);
+    fixture.config.disallow_migration_witness<MIGRATION_WITNESS<R0>>(&admin_witness);
+    fixture.config.allow_migration_witness<MIGRATION_WITNESS<R16>>(&admin_witness);
 
-    std::unit_test::assert_eq!(
-        config.migration_witness_count_for_testing(),
+    assert_eq!(
+        fixture.config.allowed_migration_witness_count_for_testing(),
         constants::max_migration_witnesses!(),
     );
 
-    authority.destroy_admin_cap(admin_cap);
-    authority.destroy_super_admin_cap_for_testing(super_admin_cap);
-    authority.destroy_protocol_authority_for_testing();
-    config.destroy_for_testing();
-    scenario.end();
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = 51)]
 fun migration_witness_registry_rejects_seventeenth_type() {
-    let mut scenario = test_scenario::begin(PUBLISHER);
-    let (super_admin_cap, mut authority, admin_cap, mut config) =
-        new_config_with_admin(&mut scenario);
-    let admin_witness = authority.sign_in(&admin_cap);
+    let mut fixture = start();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
 
-    allow_sixteen_migration_witnesses(&mut config, &admin_witness);
-    config.allow_migration_witness<MIGRATION_WITNESS<R16>>(&admin_witness);
+    allow_sixteen_migration_witnesses(&mut fixture.config, &admin_witness);
+    fixture.config.allow_migration_witness<MIGRATION_WITNESS<R16>>(&admin_witness);
 
-    authority.destroy_admin_cap(admin_cap);
-    authority.destroy_super_admin_cap_for_testing(super_admin_cap);
-    authority.destroy_protocol_authority_for_testing();
-    config.destroy_for_testing();
-    scenario.end();
+    fixture.end();
 }
 
 // === Private Test Helpers ===
@@ -97,17 +94,11 @@ fun allow_sixteen_migration_witnesses(
     config.allow_migration_witness<MIGRATION_WITNESS<R15>>(admin_witness);
 }
 
-fun new_config_with_admin(
-    scenario: &mut Scenario,
-): (
-    acl::SuperAdminCap,
-    acl::ProtocolAuthority,
-    acl::AdminCap,
-    launch_config::LaunchConfig,
-) {
+fun start(): Fixture {
+    let mut scenario = test_scenario::begin(PUBLISHER);
     let (super_admin_cap, mut authority) =
         acl::new_protocol_for_testing(PUBLISHER, scenario.ctx());
-    authority.add_admin(
+    authority.grant_admin(
         &super_admin_cap,
         PROTOCOL_ADMIN,
         scenario.ctx(),
@@ -116,7 +107,17 @@ fun new_config_with_admin(
 
     scenario.next_tx(PROTOCOL_ADMIN);
     let admin_cap = scenario.take_from_sender<acl::AdminCap>();
-    let config = scenario.take_shared<launch_config::LaunchConfig>();
+    let fixture_config = scenario.take_shared<launch_config::LaunchConfig>();
 
-    (super_admin_cap, authority, admin_cap, config)
+    Fixture {
+        scenario,
+        super_admin_cap,
+        authority,
+        admin_cap,
+        config: fixture_config,
+    }
+}
+
+fun end(self: Fixture) {
+    destroy(self);
 }
