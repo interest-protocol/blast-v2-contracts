@@ -70,7 +70,6 @@ fun market_and_launch_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::invalid_migration_quote_target!(), 42);
     assert_eq!(blast_fun::errors::quote_capacity_reached!(), 44);
     assert_eq!(blast_fun::errors::quote_not_allowed!(), 45);
-    assert_eq!(blast_fun::errors::migration_quote_target_unchanged!(), 46);
     assert_eq!(blast_fun::errors::invalid_quote_migration_fee_bps!(), 47);
     assert_eq!(
         blast_fun::errors::invalid_meme_graduation_allocation_bps!(),
@@ -88,6 +87,10 @@ fun market_and_launch_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::migration_witness_not_allowed!(), 52);
     assert_eq!(blast_fun::errors::invalid_meme_liquidity_provision_bps!(), 59);
     assert_eq!(blast_fun::errors::invalid_meme_supply_partition_bps!(), 60);
+    assert_eq!(blast_fun::errors::zero_meme_liquidity_provision!(), 62);
+    assert_eq!(blast_fun::errors::zero_meme_curve_inventory!(), 63);
+    assert_eq!(blast_fun::errors::invalid_virtual_quote!(), 64);
+    assert_eq!(blast_fun::errors::quote_parameters_unchanged!(), 65);
 }
 
 #[test]

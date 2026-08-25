@@ -51,10 +51,15 @@ The core package now contains:
 - `curve.move` — package-only constant-product buy/sell quotes, independently
   selected quote/meme fee ordering, sell-side burn ramp, checked reserve
   arithmetic, threshold reporting, and an explicit no-clamp sell-back invariant;
+- `graduation.move` — package-only balance partitioning that ceiling-rounds
+  protocol Meme allocation and Quote migration revenue, floor-rounds pool Meme
+  principal, and rejects rounded partitions without positive pool or curve
+  inventory; valuation and curve-release forecasts remain off chain;
 - `fees.move` — embedded four-balance creator/protocol fee accounting for both
   meme and quote assets, live configurable remainder-safe splitting, and composable claims
   authorized by `CreatorCap<Meme>` or `AdminWitness`;
-- `launch_config.move` — bounded original-type quote admission and targets,
+- `launch_config.move` — bounded original-type quote admission with one
+  virtual-reserve/terminal-target pair,
   the complete graduation triple (zero-safe Quote fee and Meme allocation plus
   the nonzero destination-pool Meme liquidity provision), a bounded external
   migrator-witness whitelist, `AdminWitness`-gated `allow_*`/`disallow_*`
@@ -105,7 +110,7 @@ The core package now contains:
   restriction, irreversible admin retirement, native ticket/receipt completion,
   and receipt-to-cap binding.
 
-Internal quote, fee-ledger, launch-ticket, and configuration seams are
+Internal quote, graduation, fee-ledger, launch-ticket, and configuration seams are
 package-only where the future `launch` module must own
 the call. This avoids publishing an incomplete `Launch` object layout before its
 economics and lifecycle ADRs are accepted.

@@ -14,6 +14,8 @@ use fun init_next_tx as InitFixture.next_tx;
 
 const PUBLISHER: address = @0xA11CE;
 const PROTOCOL_ADMIN: address = @0xAD;
+const VIRTUAL_QUOTE: u64 = 5_000_000;
+const UPDATED_VIRTUAL_QUOTE: u64 = 8_000_000;
 const MIGRATION_QUOTE_TARGET: u64 = 25_000_000;
 const UPDATED_MIGRATION_QUOTE_TARGET: u64 = 40_000_000;
 const QUOTE_MIGRATION_FEE_BPS: u64 = 250;
@@ -99,7 +101,7 @@ fun admin_allows_migration_witness_for_launch_snapshot() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.allow_quote<TEST_QUOTE>(&admin_witness, MIGRATION_QUOTE_TARGET);
+        f.config.allow_quote<TEST_QUOTE>(&admin_witness, VIRTUAL_QUOTE, MIGRATION_QUOTE_TARGET);
         f.config.allow_migration_witness<TEST_MIGRATION_WITNESS>(&admin_witness);
         f.config.set_graduation_defaults(
             &admin_witness,
@@ -108,7 +110,7 @@ fun admin_allows_migration_witness_for_launch_snapshot() {
             MEME_LIQUIDITY_PROVISION_BPS,
         );
 
-        let (_, _, _, _, migration_witness) =
+        let (_, _, _, _, _, migration_witness) =
             f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
 
         assert_eq!(
@@ -121,13 +123,17 @@ fun admin_allows_migration_witness_for_launch_snapshot() {
 }
 
 #[test]
-fun admin_allows_quote_and_launch_snapshot_uses_its_target() {
+fun admin_allows_quote_and_launch_snapshot_uses_its_parameters() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.allow_quote<TEST_QUOTE>(&admin_witness, MIGRATION_QUOTE_TARGET);
+        f.config.allow_quote<TEST_QUOTE>(
+            &admin_witness,
+            VIRTUAL_QUOTE,
+            MIGRATION_QUOTE_TARGET,
+        );
         f.config.allow_migration_witness<TEST_MIGRATION_WITNESS>(&admin_witness);
         f.config.set_graduation_defaults(
             &admin_witness,
@@ -136,16 +142,19 @@ fun admin_allows_quote_and_launch_snapshot_uses_its_target() {
             MEME_LIQUIDITY_PROVISION_BPS,
         );
 
-        let (target, _, _, _, _) =
+        let (virtual_quote, target, _, _, _, _) =
             f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
         let allowed = events::collect_one<events::QuoteAllowed>(0);
-        let (quote, migration_quote_target) = allowed.quote_allowed_fields();
+        let (quote, emitted_virtual_quote, migration_quote_target) =
+            allowed.quote_allowed_fields();
 
+        assert_eq!(virtual_quote, VIRTUAL_QUOTE);
         assert_eq!(target, MIGRATION_QUOTE_TARGET);
         assert_eq!(
             quote,
             std::type_name::with_original_ids<TEST_QUOTE>(),
         );
+        assert_eq!(emitted_virtual_quote, VIRTUAL_QUOTE);
         assert_eq!(migration_quote_target, MIGRATION_QUOTE_TARGET);
         assert!(event::events_by_type<events::QuoteAllowed>().is_empty());
     });
@@ -160,7 +169,7 @@ fun allowing_an_existing_quote_updates_only_the_next_launch_snapshot() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.allow_quote<TEST_QUOTE>(&admin_witness, MIGRATION_QUOTE_TARGET);
+        f.config.allow_quote<TEST_QUOTE>(&admin_witness, VIRTUAL_QUOTE, MIGRATION_QUOTE_TARGET);
         f.config.allow_migration_witness<TEST_MIGRATION_WITNESS>(&admin_witness);
         f.config.set_graduation_defaults(
             &admin_witness,
@@ -169,28 +178,82 @@ fun allowing_an_existing_quote_updates_only_the_next_launch_snapshot() {
             MEME_LIQUIDITY_PROVISION_BPS,
         );
         let _ = events::collect_one<events::QuoteAllowed>(0);
-        let (first_snapshot, _, _, _, _) =
+        let (first_virtual_quote, first_target, _, _, _, _) =
             f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
 
         f.config.allow_quote<TEST_QUOTE>(
             &admin_witness,
+            VIRTUAL_QUOTE,
             UPDATED_MIGRATION_QUOTE_TARGET,
         );
 
-        let (next_snapshot, _, _, _, _) =
+        let (next_virtual_quote, next_target, _, _, _, _) =
             f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
-        let changed = events::collect_one<events::QuoteMigrationTargetChanged>(0);
-        let (quote, old_target, new_target) =
-            changed.quote_migration_target_changed_fields();
+        let changed = events::collect_one<events::QuoteParametersChanged>(0);
+        let (
+            quote,
+            old_virtual_quote,
+            old_target,
+            new_virtual_quote,
+            new_target,
+        ) = changed.quote_parameters_changed_fields();
 
-        assert_eq!(first_snapshot, MIGRATION_QUOTE_TARGET);
-        assert_eq!(next_snapshot, UPDATED_MIGRATION_QUOTE_TARGET);
+        assert_eq!(first_virtual_quote, VIRTUAL_QUOTE);
+        assert_eq!(first_target, MIGRATION_QUOTE_TARGET);
+        assert_eq!(next_virtual_quote, VIRTUAL_QUOTE);
+        assert_eq!(next_target, UPDATED_MIGRATION_QUOTE_TARGET);
         assert_eq!(
             quote,
             std::type_name::with_original_ids<TEST_QUOTE>(),
         );
+        assert_eq!(old_virtual_quote, VIRTUAL_QUOTE);
         assert_eq!(old_target, MIGRATION_QUOTE_TARGET);
+        assert_eq!(new_virtual_quote, VIRTUAL_QUOTE);
         assert_eq!(new_target, UPDATED_MIGRATION_QUOTE_TARGET);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun allowing_an_existing_quote_can_update_only_virtual_quote() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+
+        f.config.allow_quote<TEST_QUOTE>(
+            &admin_witness,
+            VIRTUAL_QUOTE,
+            MIGRATION_QUOTE_TARGET,
+        );
+        f.config.allow_migration_witness<TEST_MIGRATION_WITNESS>(&admin_witness);
+        f.config.set_graduation_defaults(
+            &admin_witness,
+            0,
+            0,
+            MEME_LIQUIDITY_PROVISION_BPS,
+        );
+        let _ = events::collect_one<events::QuoteAllowed>(0);
+
+        f.config.allow_quote<TEST_QUOTE>(
+            &admin_witness,
+            UPDATED_VIRTUAL_QUOTE,
+            MIGRATION_QUOTE_TARGET,
+        );
+
+        let (virtual_quote, target, _, _, _, _) =
+            f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
+        let changed = events::collect_one<events::QuoteParametersChanged>(0);
+        let (_, old_virtual_quote, old_target, new_virtual_quote, new_target) =
+            changed.quote_parameters_changed_fields();
+
+        assert_eq!(virtual_quote, UPDATED_VIRTUAL_QUOTE);
+        assert_eq!(target, MIGRATION_QUOTE_TARGET);
+        assert_eq!(old_virtual_quote, VIRTUAL_QUOTE);
+        assert_eq!(old_target, MIGRATION_QUOTE_TARGET);
+        assert_eq!(new_virtual_quote, UPDATED_VIRTUAL_QUOTE);
+        assert_eq!(new_target, MIGRATION_QUOTE_TARGET);
     });
 
     fixture.end();
@@ -203,20 +266,22 @@ fun admin_disallows_quote_from_future_launch_admission() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.allow_quote<TEST_QUOTE>(&admin_witness, MIGRATION_QUOTE_TARGET);
+        f.config.allow_quote<TEST_QUOTE>(&admin_witness, VIRTUAL_QUOTE, MIGRATION_QUOTE_TARGET);
         f.config.allow_migration_witness<TEST_MIGRATION_WITNESS>(&admin_witness);
         let _ = events::collect_one<events::QuoteAllowed>(0);
 
         f.config.disallow_quote<TEST_QUOTE>(&admin_witness);
 
         let disallowed = events::collect_one<events::QuoteDisallowed>(0);
-        let (quote, previous_target) = disallowed.quote_disallowed_fields();
+        let (quote, previous_virtual_quote, previous_target) =
+            disallowed.quote_disallowed_fields();
 
         assert_eq!(f.config.allowed_quote_count_for_testing(), 0);
         assert_eq!(
             quote,
             std::type_name::with_original_ids<TEST_QUOTE>(),
         );
+        assert_eq!(previous_virtual_quote, VIRTUAL_QUOTE);
         assert_eq!(previous_target, MIGRATION_QUOTE_TARGET);
     });
 
@@ -230,7 +295,7 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.allow_quote<TEST_QUOTE>(&admin_witness, MIGRATION_QUOTE_TARGET);
+        f.config.allow_quote<TEST_QUOTE>(&admin_witness, VIRTUAL_QUOTE, MIGRATION_QUOTE_TARGET);
         f.config.allow_migration_witness<TEST_MIGRATION_WITNESS>(&admin_witness);
         let _ = events::collect_one<events::QuoteAllowed>(0);
         f.config.set_graduation_defaults(
@@ -241,6 +306,7 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
         );
 
         let (
+            virtual_quote,
             migration_quote_target,
             quote_migration_fee_bps,
             meme_graduation_allocation_bps,
@@ -257,6 +323,7 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
             new_meme_liquidity_provision_bps,
         ) = changed.graduation_defaults_changed_fields();
 
+        assert_eq!(virtual_quote, VIRTUAL_QUOTE);
         assert_eq!(migration_quote_target, MIGRATION_QUOTE_TARGET);
         assert_eq!(quote_migration_fee_bps, QUOTE_MIGRATION_FEE_BPS);
         assert_eq!(
@@ -313,7 +380,7 @@ fun graduation_defaults_accept_fee_zeros_and_liquidity_provision_boundaries() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.allow_quote<TEST_QUOTE>(&admin_witness, MIGRATION_QUOTE_TARGET);
+        f.config.allow_quote<TEST_QUOTE>(&admin_witness, VIRTUAL_QUOTE, MIGRATION_QUOTE_TARGET);
         f.config.allow_migration_witness<TEST_MIGRATION_WITNESS>(&admin_witness);
         let _ = events::collect_one<events::QuoteAllowed>(0);
 
@@ -343,6 +410,7 @@ fun graduation_defaults_accept_fee_zeros_and_liquidity_provision_boundaries() {
 
         let (
             _,
+            _,
             quote_migration_fee_bps,
             meme_graduation_allocation_bps,
             meme_liquidity_provision_bps,
@@ -366,7 +434,7 @@ fun disallowing_migration_witness_does_not_change_an_existing_launch_snapshot() 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.allow_quote<TEST_QUOTE>(&admin_witness, MIGRATION_QUOTE_TARGET);
+        f.config.allow_quote<TEST_QUOTE>(&admin_witness, VIRTUAL_QUOTE, MIGRATION_QUOTE_TARGET);
         f.config.allow_migration_witness<TEST_MIGRATION_WITNESS>(&admin_witness);
         f.config.set_graduation_defaults(
             &admin_witness,
@@ -374,7 +442,7 @@ fun disallowing_migration_witness_does_not_change_an_existing_launch_snapshot() 
             0,
             MEME_LIQUIDITY_PROVISION_BPS,
         );
-        let (_, _, _, _, snapshotted_migration_witness) =
+        let (_, _, _, _, _, snapshotted_migration_witness) =
             f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
         let _ = events::collect_one<events::MigrationWitnessAllowed>(0);
 
@@ -533,9 +601,9 @@ fun launch_snapshot_rejects_unconfigured_liquidity_provision() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.allow_quote<TEST_QUOTE>(&admin_witness, MIGRATION_QUOTE_TARGET);
+        f.config.allow_quote<TEST_QUOTE>(&admin_witness, VIRTUAL_QUOTE, MIGRATION_QUOTE_TARGET);
         f.config.allow_migration_witness<TEST_MIGRATION_WITNESS>(&admin_witness);
-        let (_, _, _, _, _) =
+        let (_, _, _, _, _, _) =
             f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
     });
 
@@ -607,7 +675,7 @@ fun allowing_quote_rejects_zero_target_before_type_lookup() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.allow_quote<TEST_QUOTE>(&admin_witness, 0);
+        f.config.allow_quote<TEST_QUOTE>(&admin_witness, VIRTUAL_QUOTE, 0);
     });
 
     fixture.end();
@@ -624,23 +692,23 @@ fun quote_allowlist_is_bounded() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.allow_quote<QUOTE<Q0>>(&admin_witness, 1);
-        f.config.allow_quote<QUOTE<Q1>>(&admin_witness, 1);
-        f.config.allow_quote<QUOTE<Q2>>(&admin_witness, 1);
-        f.config.allow_quote<QUOTE<Q3>>(&admin_witness, 1);
-        f.config.allow_quote<QUOTE<Q4>>(&admin_witness, 1);
-        f.config.allow_quote<QUOTE<Q5>>(&admin_witness, 1);
-        f.config.allow_quote<QUOTE<Q6>>(&admin_witness, 1);
-        f.config.allow_quote<QUOTE<Q7>>(&admin_witness, 1);
-        f.config.allow_quote<QUOTE<Q8>>(&admin_witness, 1);
-        f.config.allow_quote<QUOTE<Q9>>(&admin_witness, 1);
-        f.config.allow_quote<QUOTE<Q10>>(&admin_witness, 1);
-        f.config.allow_quote<QUOTE<Q11>>(&admin_witness, 1);
-        f.config.allow_quote<QUOTE<Q12>>(&admin_witness, 1);
-        f.config.allow_quote<QUOTE<Q13>>(&admin_witness, 1);
-        f.config.allow_quote<QUOTE<Q14>>(&admin_witness, 1);
-        f.config.allow_quote<QUOTE<Q15>>(&admin_witness, 1);
-        f.config.allow_quote<QUOTE<Q16>>(&admin_witness, 1);
+        f.config.allow_quote<QUOTE<Q0>>(&admin_witness, VIRTUAL_QUOTE, 1);
+        f.config.allow_quote<QUOTE<Q1>>(&admin_witness, VIRTUAL_QUOTE, 1);
+        f.config.allow_quote<QUOTE<Q2>>(&admin_witness, VIRTUAL_QUOTE, 1);
+        f.config.allow_quote<QUOTE<Q3>>(&admin_witness, VIRTUAL_QUOTE, 1);
+        f.config.allow_quote<QUOTE<Q4>>(&admin_witness, VIRTUAL_QUOTE, 1);
+        f.config.allow_quote<QUOTE<Q5>>(&admin_witness, VIRTUAL_QUOTE, 1);
+        f.config.allow_quote<QUOTE<Q6>>(&admin_witness, VIRTUAL_QUOTE, 1);
+        f.config.allow_quote<QUOTE<Q7>>(&admin_witness, VIRTUAL_QUOTE, 1);
+        f.config.allow_quote<QUOTE<Q8>>(&admin_witness, VIRTUAL_QUOTE, 1);
+        f.config.allow_quote<QUOTE<Q9>>(&admin_witness, VIRTUAL_QUOTE, 1);
+        f.config.allow_quote<QUOTE<Q10>>(&admin_witness, VIRTUAL_QUOTE, 1);
+        f.config.allow_quote<QUOTE<Q11>>(&admin_witness, VIRTUAL_QUOTE, 1);
+        f.config.allow_quote<QUOTE<Q12>>(&admin_witness, VIRTUAL_QUOTE, 1);
+        f.config.allow_quote<QUOTE<Q13>>(&admin_witness, VIRTUAL_QUOTE, 1);
+        f.config.allow_quote<QUOTE<Q14>>(&admin_witness, VIRTUAL_QUOTE, 1);
+        f.config.allow_quote<QUOTE<Q15>>(&admin_witness, VIRTUAL_QUOTE, 1);
+        f.config.allow_quote<QUOTE<Q16>>(&admin_witness, VIRTUAL_QUOTE, 1);
     });
 
     fixture.end();
@@ -648,20 +716,38 @@ fun quote_allowlist_is_bounded() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EMigrationQuoteTargetUnchanged,
+    abort_code = blast_fun::errors::EQuoteParametersUnchanged,
     location = blast_fun::launch_config,
 )]
-fun allowing_quote_rejects_unchanged_target() {
+fun allowing_quote_rejects_unchanged_parameter_pair() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.allow_quote<TEST_QUOTE>(&admin_witness, MIGRATION_QUOTE_TARGET);
+        f.config.allow_quote<TEST_QUOTE>(&admin_witness, VIRTUAL_QUOTE, MIGRATION_QUOTE_TARGET);
         f.config.allow_quote<TEST_QUOTE>(
             &admin_witness,
+            VIRTUAL_QUOTE,
             MIGRATION_QUOTE_TARGET,
         );
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidVirtualQuote,
+    location = blast_fun::launch_config,
+)]
+fun allowing_quote_rejects_zero_virtual_quote_before_target() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+
+        f.config.allow_quote<TEST_QUOTE>(&admin_witness, 0, 0);
     });
 
     fixture.end();
@@ -695,9 +781,9 @@ fun launch_snapshot_rejects_disallowed_quote() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.allow_quote<TEST_QUOTE>(&admin_witness, MIGRATION_QUOTE_TARGET);
+        f.config.allow_quote<TEST_QUOTE>(&admin_witness, VIRTUAL_QUOTE, MIGRATION_QUOTE_TARGET);
         f.config.disallow_quote<TEST_QUOTE>(&admin_witness);
-        let (_, _, _, _, _) =
+        let (_, _, _, _, _, _) =
             f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
     });
 
@@ -715,8 +801,8 @@ fun launch_snapshot_rejects_unlisted_migration_witness() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.allow_quote<TEST_QUOTE>(&admin_witness, MIGRATION_QUOTE_TARGET);
-        let (_, _, _, _, _) =
+        f.config.allow_quote<TEST_QUOTE>(&admin_witness, VIRTUAL_QUOTE, MIGRATION_QUOTE_TARGET);
+        let (_, _, _, _, _, _) =
             f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
     });
 

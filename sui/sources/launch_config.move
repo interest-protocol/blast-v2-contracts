@@ -17,11 +17,17 @@ use sui::{
 /// Shared singleton containing cold policy snapshotted by each new launch.
 public struct LaunchConfig has key {
     id: UID,
-    quotes: VecMap<TypeName, u64>,
+    quotes: VecMap<TypeName, QuoteParameters>,
     quote_migration_fee_bps: u64,
     meme_graduation_allocation_bps: u64,
     meme_liquidity_provision_bps: u64,
     migration_witnesses: VecSet<TypeName>,
+}
+
+/// Immutable curve-shape and terminal parameters admitted for one Quote type.
+public struct QuoteParameters has copy, drop, store {
+    virtual_quote: u64,
+    migration_quote_target: u64,
 }
 
 // === Private Initialization ===
@@ -47,12 +53,17 @@ fun init(ctx: &mut TxContext) {
 
 // === Public Functions ===
 
-/// Admits one quote type or updates its target for launches created afterward.
+/// Admits one quote type or updates its curve parameters for launches created afterward.
 public fun allow_quote<Quote>(
     self: &mut LaunchConfig,
     _: &AdminWitness,
+    virtual_quote: u64,
     migration_quote_target: u64,
 ) {
+    assert!(
+        virtual_quote > 0,
+        blast_fun::errors::invalid_virtual_quote!(),
+    );
     assert!(
         migration_quote_target > 0,
         blast_fun::errors::invalid_migration_quote_target!(),
@@ -62,20 +73,27 @@ public fun allow_quote<Quote>(
     let quote_index = self.quotes.get_idx_opt(&quote);
 
     if (quote_index.is_some()) {
-        let (_, current_target) = self.quotes.get_entry_by_idx_mut(
+        let (_, current_parameters) = self.quotes.get_entry_by_idx_mut(
             quote_index.destroy_some(),
         );
-        let old_migration_quote_target = *current_target;
+        let old_virtual_quote = current_parameters.virtual_quote;
+        let old_migration_quote_target = current_parameters.migration_quote_target;
 
         assert!(
-            migration_quote_target != old_migration_quote_target,
-            blast_fun::errors::migration_quote_target_unchanged!(),
+            virtual_quote != old_virtual_quote
+                || migration_quote_target != old_migration_quote_target,
+            blast_fun::errors::quote_parameters_unchanged!(),
         );
 
-        *current_target = migration_quote_target;
+        *current_parameters = QuoteParameters {
+            virtual_quote,
+            migration_quote_target,
+        };
 
-        events::quote_migration_target_changed<Quote>(
+        events::quote_parameters_changed<Quote>(
+            old_virtual_quote,
             old_migration_quote_target,
+            virtual_quote,
             migration_quote_target,
         );
     } else {
@@ -84,9 +102,12 @@ public fun allow_quote<Quote>(
             blast_fun::errors::quote_capacity_reached!(),
         );
 
-        self.quotes.insert(quote, migration_quote_target);
+        self.quotes.insert(quote, QuoteParameters {
+            virtual_quote,
+            migration_quote_target,
+        });
 
-        events::quote_allowed<Quote>(migration_quote_target);
+        events::quote_allowed<Quote>(virtual_quote, migration_quote_target);
     };
 }
 
@@ -100,12 +121,13 @@ public fun disallow_quote<Quote>(self: &mut LaunchConfig, _: &AdminWitness) {
         blast_fun::errors::quote_not_allowed!(),
     );
 
-    let (_, previous_migration_quote_target) = self.quotes.remove_entry_by_idx(
+    let (_, previous_parameters) = self.quotes.remove_entry_by_idx(
         quote_index.destroy_some(),
     );
 
     events::quote_disallowed<Quote>(
-        previous_migration_quote_target,
+        previous_parameters.virtual_quote,
+        previous_parameters.migration_quote_target,
     );
 }
 
@@ -210,7 +232,7 @@ public fun disallow_migration_witness<MigrationWitness: drop>(
 /// Validates a launch quote and returns all cold policy to snapshot into launch state.
 public(package) fun snapshot_for_launch<Quote, MigrationWitness: drop>(
     self: &LaunchConfig,
-): (u64, u64, u64, u64, TypeName) {
+): (u64, u64, u64, u64, u64, TypeName) {
     let quote = type_name::with_original_ids<Quote>();
     let quote_index = self.quotes.get_idx_opt(&quote);
 
@@ -219,7 +241,7 @@ public(package) fun snapshot_for_launch<Quote, MigrationWitness: drop>(
         blast_fun::errors::quote_not_allowed!(),
     );
 
-    let (_, migration_quote_target) = self.quotes.get_entry_by_idx(
+    let (_, parameters) = self.quotes.get_entry_by_idx(
         quote_index.destroy_some(),
     );
     let migration_witness = type_name::with_original_ids<MigrationWitness>();
@@ -234,7 +256,8 @@ public(package) fun snapshot_for_launch<Quote, MigrationWitness: drop>(
     );
 
     (
-        *migration_quote_target,
+        parameters.virtual_quote,
+        parameters.migration_quote_target,
         self.quote_migration_fee_bps,
         self.meme_graduation_allocation_bps,
         self.meme_liquidity_provision_bps,

@@ -11,6 +11,11 @@
 > Amended by [ADR 0033](0033-meme-liquidity-provision.md): the snapshot
 > additionally returns the nonzero destination-pool Meme liquidity provision
 > and aborts while that rate is unconfigured.
+> Amended by [ADR 0039](0039-deterministic-quote-valuations.md): each Quote entry
+> now stores a nonzero virtual reserve together with its terminal target, and
+> the launch snapshot returns both parameters atomically. Frontend quote and
+> valuation previews move to the SDK; state-changing launch operations recompute
+> required curve results internally from immutable launch state.
 
 ## Sources
 

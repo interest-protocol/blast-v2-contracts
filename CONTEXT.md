@@ -77,10 +77,16 @@ _Avoid_: trade, swap, curve execution
 
 **Quote whitelist**:
 The bounded set of quote coin types that protocol administrators currently
-allow for new launches. Each original quote type maps directly to one migration
-quote target. The whitelist itself is the admission decision; launch lookup does
+allow for new launches. Each original quote type maps directly to one nonzero
+virtual Quote reserve and migration quote target. The whitelist itself is the admission decision; launch lookup does
 not require a `Currency<Quote>` registry object.
 _Avoid_: permissionless quote, quote registry proof
+
+**Virtual quote reserve**:
+The nonzero synthetic Quote amount, in the Quote's atomic units, that establishes
+the opening constant-product price and curve steepness. It is snapshotted with
+the migration target and is never withdrawable pool principal.
+_Avoid_: virtual market cap, real quote, USD liquidity
 
 **Migration quote target**:
 The nonzero amount of real quote reserve, in that quote's atomic units, that a
@@ -88,9 +94,15 @@ new launch snapshots from the quote whitelist. Reaching it closes bonding;
 later whitelist updates do not move an existing launch's target.
 _Avoid_: live global threshold, quote percentage
 
+**Launch economics preview**:
+An off-chain integer derivation of expected curve release and implied
+total-supply valuations from immutable launch parameters. It informs SDK/UI
+display but never authorizes a transition or replaces actual contract balances.
+_Avoid_: on-chain valuation, USD market cap, authoritative forecast
+
 **Launch config**:
 The cold shared policy object read only when a launch is created. It combines
-quote admission and targets with bounded graduation defaults and a bounded
+quote admission and virtual/terminal parameters with bounded graduation defaults and a bounded
 whitelist of external migration witness types because those values are checked
 in the same transaction. Each launch stores one selected witness type. Existing
 launches never read the config again.

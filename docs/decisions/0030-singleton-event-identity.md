@@ -4,6 +4,10 @@
 - Date: 2026-08-25
 - Amends: [0011](0011-event-schema-and-replay.md), [0015](0015-protocol-authority-and-x-signer-state.md), [0020](0020-admin-cap-self-destruction.md), [0028](0028-hot-cold-runtime-configuration.md)
 
+> Amended by [ADR 0039](0039-deterministic-quote-valuations.md): the pre-release
+> `QuoteMigrationTargetChanged` event is replaced by the replay-complete
+> `QuoteParametersChanged` event for the virtual/terminal pair.
+
 ## Sources
 
 | Ref | Full commit | Repository |

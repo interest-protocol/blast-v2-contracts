@@ -29,7 +29,7 @@ contracts/
 
 The workspace, its engineering contract, and the Sui design record are established.
 The implemented Sui Move slices cover the current audit-sized boundaries from
-accepted ADRs 0013 through 0038: one-time
+accepted ADRs 0013 through 0039: one-time
 `CreatorCap<Meme>` claims for address and X identities, coin-type-isolated
 creator authority that survives migration, a creator-authority boundary with no
 metadata-cap pass-through, and the backend-attested X branch.
@@ -40,7 +40,7 @@ irreversibly selects `Fixed` or `BurnOnly`, and stores the complete balance plus
 native metadata capability until launch intake. No mint capability survives the
 initializer.
 The cold shared `LaunchConfig` now admits original quote types with per-quote
-migration targets, stores zero-safe 5% Quote-fee and 10% Meme-allocation
+virtual reserves and migration targets, stores zero-safe 5% Quote-fee and 10% Meme-allocation
 ceilings plus the nonzero 1–9,999 bps destination-pool Meme liquidity
 provision whose zero value is only an unconfigured sentinel, and bounds the
 external migrator witness types available to new
@@ -65,9 +65,9 @@ embedded dual-asset fee ledger now fixes creator/protocol accounting, odd-unit
 rounding under a live global share, maximum-width conservation, and
 capability-gated composable claims.
 The fixed/burnable generated-supply policy, launch-ticket boundary, launch
-policy, and deferred sell-burn custody are accepted. Pure graduation arithmetic
-and custody, followed by normalized launch intake and lifecycle storage, remain
-the next implementation boundaries.
+policy, deferred sell-burn custody, and pure graduation balance partitions are
+accepted and implemented. Normalized launch intake and lifecycle storage remain
+the next implementation boundary.
 
 Package-capability custody is implemented, but public release still requires
 version gates on every mutable shared protocol object so old package bytecode
@@ -78,7 +78,7 @@ pre-planted cutover flag exists (ADR 0034).
 
 The decision records cover the Sui package — package layout, Coin
 Registry creation and the three-transaction bootstrap, final fixed/burnable supply,
-the constant-product curve, bounded quote admission and migration-target snapshots,
+the constant-product curve, bounded quote admission and virtual/terminal snapshots,
 fees and launch paths, capability ACL and pause, creator identity, referral
 settlement, migration routes and the Cetus/Bluefin/Turbos adapters, the event
 schema, growth-feature dispositions, and the accepted one-time creator-cap claim
@@ -88,11 +88,14 @@ in [decisions/README.md](docs/decisions/README.md).
 Shared differential vectors for both chains live in [docs/vectors/](docs/vectors/).
 
 The current Sui implementation includes the audit-sized launch ticket, dual-asset
-fee ledger, consolidated live runtime configuration, and bounded cold launch
-configuration. The next audit-sized slice is pure graduation arithmetic and
-custody: reserve the Meme allocation before curve inventory and account for the
-Quote migration fee independently from venue expenditure. Launch-state
-construction follows it. Auction and Stable remain optional
+fee ledger, consolidated live runtime configuration, bounded cold launch
+configuration, and package-only graduation balance partitioning. Graduation
+uses ceiling rounding for protocol Meme and Quote obligations, floor rounding
+for destination-pool Meme principal, positive atomic pool and curve guards, and
+separate conservation identities without introducing venue expenditure. The
+workspace SDK derives explanatory release and valuation previews off chain. The
+next audit-sized slice is launch-state construction and immutable intake of
+those named balances. Auction and Stable remain optional
 follow-ups rather than making the V2 core carry all three modes on day one. See
 [protocol scope](docs/protocol-scope.md) and [architecture](docs/architecture.md).
 

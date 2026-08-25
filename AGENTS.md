@@ -1,7 +1,8 @@
 # Blast V2 contract rules
 
 These instructions apply to this repository. They are the implementation gate
-for both `sui/` and `evm/`.
+for both `sui/` and `evm/`. The consensus-minimal contract/SDK rule below is
+self-contained so this repository remains valid when cloned independently.
 
 ## Before making a change
 
@@ -66,6 +67,30 @@ The intended layering is:
 
 Core code must not import a venue adapter. Adapters depend inward on the narrow
 core interface. See `docs/architecture.md`.
+
+## Consensus-minimal contract boundary
+
+Contract code exists only for consensus-critical state, authorization, asset
+custody/allocation/conservation, lifecycle transitions, trustless synchronous
+composition, and the primitive facts required for independent reconstruction.
+
+Deterministic projections belong in the SDK when they can be reproduced from
+canonical object state and replayable events. This includes implied valuations,
+market-cap displays, expected graduation outcomes, formatting, aggregation,
+transaction construction, and convenience reads. Do not add storage, events,
+public functions, package functions, or view functions solely to expose such a
+derived value.
+
+Store or emit the smallest canonical inputs from which consumers can reconstruct
+the result. If a chain does not make those primitives directly readable, expose
+only the minimum getter required to recover them. A state-changing operation
+must still recompute any value needed to enforce fees, slippage, thresholds,
+conservation, or another invariant; an SDK preview is never transaction
+authority. Actual contract balances and completed events are authoritative.
+
+Before adding contract logic, document its concrete consensus-critical caller or
+invariant. If deleting the proposed logic would not weaken a transition, asset
+invariant, trustless composition, or reconstructability, keep it in the SDK.
 
 ## State, authority, and upgrades
 
@@ -157,7 +182,8 @@ core interface. See `docs/architecture.md`.
   `destroy` seam may release those stored values to the future launch module.
   See ADRs 0024, 0035, 0036, 0037, and 0038.
 - `launch_config.move` owns cold policy read together only when a launch is
-  created: the 16-entry original-type quote whitelist and targets, the zero-safe
+  created: the 16-entry original-type quote whitelist with nonzero virtual Quote
+  reserves and migration targets, the zero-safe
   Quote migration-fee and Meme graduation-allocation defaults, the nonzero
   1–9,999 bps destination-pool Meme liquidity provision, and a 16-entry
   whitelist of external migrator witness types. The protocol Meme allocation
@@ -165,8 +191,9 @@ core interface. See `docs/architecture.md`.
   `AdminWitness`. The quote whitelist itself is admission: do not add a
   `Currency<Quote>` input or another registry check. Each launch selects one
   allowlisted `MigrationWitness` type and copies its original `TypeName` with the
-  target and all three graduation rates; later whitelist changes affect future
-  launches only. Do not add live launch-policy reads to trading or migration.
+  virtual reserve, target, and all three graduation rates; later whitelist
+  changes affect future launches only. Do not add live launch-policy reads to
+  trading or migration.
   Zero liquidity provision is unconfigured and must not inherit a migrate-all
   sentinel. See ADRs 0025, 0027, and 0033.
 - DEXs supported by Blast must not charge a pool-opening fee. Do not add venue
@@ -181,9 +208,11 @@ core interface. See `docs/architecture.md`.
   the supplied witness's original `TypeName` to the value selected at launch;
   it must not whitelist caller addresses or import DEX packages. See ADRs 0010
   and 0027.
-- Public frontend buy/sell quotes belong on the future `launch` module and must
-  derive every reserve and economic input from the actual live launch object.
-  Keep raw caller-parameterized `curve` arithmetic package-only.
+- SDK buy/sell previews derive every reserve and economic input from actual live
+  launch object reads. State-changing launch operations recompute the same curve
+  result internally and enforce slippage from stored state. Do not publish an
+  on-chain quote function solely for frontend convenience; keep raw
+  caller-parameterized `curve` arithmetic package-only.
 - A burnable launch must custody each sell's curve-designated meme amount in a
   separate `pending_burn: Balance<Meme>` that never joins curve reserves, fees,
   claims, or migration assets. Burn the accumulated balance once through the
