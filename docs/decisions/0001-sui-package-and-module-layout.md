@@ -67,7 +67,7 @@ Layered, with dependencies pointing only downward:
    route           RouteRequest / RouteCommitment / PreparedLaunch
    migration       MigrationPayload handoff type
 2  acl             ProtocolAuthority, SuperAdminCap, AdminCap delegation
-   upgrade         validated UpgradeCap custody and exact-digest authorization
+   package_admin   Publisher/UpgradeCap custody, policy, and upgrade authorization
    runtime_config  shared live X backend key and protocol/creator fee percentage
    launch_config   cold quote, graduation-default, and migrator-witness policy snapshots
    creator_authority address/X claim state and CreatorCap issuance
@@ -123,9 +123,10 @@ published.
 | Item | Kind | Why it must be public |
 | --- | --- | --- |
 | `blast::BLAST` | type | canonical package OTW consumed once to claim and retain the framework `Publisher` ([ADR 0031](0031-package-witness-and-publisher-custody.md)) |
-| `upgrade::UpgradeManager` | type | shared custody object that prevents the raw Blast `UpgradeCap` from remaining under a deployment key ([ADR 0032](0032-admin-authorized-upgrade-cap-custody.md)) |
-| `upgrade::wrap` | function | the publisher must be able to validate and move the unique raw package cap into shared protocol custody before any upgrade |
-| `upgrade::authorize_upgrade`, `upgrade::commit_upgrade` | functions | an external upgrade PTB must turn a live `AdminWitness` and exact digest into the native ticket, then consume the cap-bound native receipt |
+| `package_admin::PackageAdmin` | type | shared non-storable custody object that removes Blast's Publisher and raw UpgradeCap from deployment-key custody ([ADR 0032](0032-admin-authorized-upgrade-cap-custody.md)) |
+| `package_admin::wrap` | function | the publisher must be able to validate and move both unique package capabilities into shared protocol custody after publication |
+| `package_admin::authorize_upgrade`, `package_admin::commit_upgrade` | functions | an external upgrade PTB must turn a live `AdminWitness` and exact digest into the native ticket, then consume the cap-bound native receipt |
+| `package_admin::restrict_to_additive`, `package_admin::restrict_to_dependency_only` | functions | an active admin must be able to irreversibly reduce the Sui framework policy without exposing a generic or loosening setter |
 | `launch::prepare` | function | first command of the launch PTB; its results feed an adapter in another package |
 | `launch::finish` | function | last command of the launch PTB; consumes the adapter's sealed commitment |
 | `launch::buy`, `launch::sell` | function | must compose inside router PTBs and return owned coins |
@@ -220,10 +221,11 @@ risk; retained as a documented upgrade path.
 ## Consequences
 
 - Core stays buildable and reproducible with the Sui framework as its only dependency.
-- Package provenance is isolated in `blast`; the resulting `Publisher` remains
-  separately custodied instead of enlarging ACL shared state.
-- Package-upgrade custody is isolated in `upgrade`; it owns no Publisher or ACL
-  membership state and exposes no raw-cap release path.
+- Package bootstrap is isolated in `blast`; the resulting `Publisher` moves
+  from the publishing sender into package administration after publication.
+- Durable package-capability custody is isolated in `package_admin`; it stores
+  the Publisher and UpgradeCap but no ACL membership state, and exposes no
+  capability release path.
 - State modules contain no duplicated protocol constants, and standard-library arithmetic keeps primitive
   bounds out of Blast source.
 - An adapter's failure or dependency drift cannot reach core.
@@ -237,9 +239,10 @@ risk; retained as a documented upgrade path.
 - Dependency test: `blast_fun` builds with no venue dependency in its manifest.
 - Publisher test: `blast::init` delivers one `Publisher` that recognizes both
   the defining `blast` module and other types in the `blast_fun` package.
-- Upgrade-custody test: only the original Blast package cap can be wrapped, a
-  live admin witness authorizes an exact digest, and only the matching native
-  receipt advances the stored cap version.
+- Package-administration test: only Blast's canonical Publisher and original
+  package cap can be wrapped, a live admin witness authorizes an exact digest
+  and may irreversibly narrow policy, only the matching native receipt advances
+  the cap version, and the package-only governance cutover cannot be reversed.
 - Constants test: production protocol values appear only in `constants.move`, and no source duplicates
   primitive `MAX_U*` bounds supplied by MoveStdlib.
 - Public-surface test: an inventory test enumerates the package's public functions and fails if any

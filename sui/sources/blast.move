@@ -19,3 +19,9 @@ fun init(otw: BLAST, ctx: &mut TxContext) {
 public fun init_for_testing(ctx: &mut TxContext) {
     init(BLAST(), ctx);
 }
+
+#[test_only]
+/// Claims an additional canonical-module Publisher for package-administration fixture inputs.
+public fun publisher_for_testing(ctx: &mut TxContext): sui::package::Publisher {
+    sui::package::test_claim(BLAST(), ctx)
+}

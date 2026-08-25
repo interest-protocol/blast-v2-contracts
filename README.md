@@ -43,10 +43,11 @@ launches. Launch intake will select one allowlisted witness without requiring a
 quote `Currency` object or importing a DEX package, so later admin updates cannot
 rewrite existing launches. DEX pool-opening costs are deliberately unsupported.
 It includes dedicated package-constant and macro-error registries, a wrapped-event
-module, a package-only OTW bootstrap that claims and retains the framework
-`Publisher`, a dedicated shared manager that validates and permanently wraps the
-Blast `UpgradeCap`, exact-digest upgrade authorization through a live
-`AdminWitness`, inline invariant assertions, a concern-limited singleton admin registry,
+module, a package-only OTW bootstrap that claims the framework `Publisher`, one
+shared package-administration object that validates and permanently wraps both
+that Publisher and the Blast `UpgradeCap`, exact-digest upgrade authorization
+and irreversible policy restriction through a live `AdminWitness`, inline
+invariant assertions, a concern-limited singleton admin registry,
 drop-only admin sign-in witnesses, one small shared runtime configuration for
 the dedicated X signer and live protocol fee share,
 delayed recipient-accepted root transfer,
@@ -63,10 +64,11 @@ policy, and deferred sell-burn custody are accepted. Pure graduation arithmetic
 and custody, followed by normalized launch intake and lifecycle storage, remain
 the next implementation boundaries.
 
-Upgrade custody is implemented, but public release still requires version gates
-on every mutable shared protocol object so old package bytecode cannot bypass an
-upgrade. Routine admins currently have full compatible-code authority; a durable
-manager flag is present so a later governance design can retire that path.
+Package-capability custody is implemented, but public release still requires
+version gates on every mutable shared protocol object so old package bytecode
+cannot bypass an upgrade. Routine admins have code authority under the current
+irreversibly restrictable policy. A package-only one-way cutover lets a later
+governance module retire that path after it installs replacement authorization.
 
 The decision records cover the Sui package — package layout, Coin
 Registry creation and the three-transaction bootstrap, final fixed/burnable supply,

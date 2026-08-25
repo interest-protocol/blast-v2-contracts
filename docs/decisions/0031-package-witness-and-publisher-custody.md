@@ -45,12 +45,12 @@ Add `blast_fun::blast` as the package-level module. It owns:
 - a private initializer that consumes `BLAST` through
   `sui::package::claim_and_keep`.
 
-The resulting owned `Publisher` is delivered to the package publisher and kept
-outside Blast protocol state. Deployment custody should place it with the
-protocol's operational owner or multisig until a reviewed feature explicitly
-uses it. Possession of this object does not grant ACL membership, configuration
-authority, or package-upgrade authority; `SuperAdminCap`, `AdminCap`, and Sui's
-separate `UpgradeCap` retain those responsibilities.
+The resulting owned `Publisher` is delivered to the package publisher as a
+deployment-time bridge. ADR 0032 then requires the publisher to move it, beside
+the validated `UpgradeCap`, into the shared `PackageAdmin`. Possession of the
+Publisher does not grant ACL membership, configuration authority, or package-
+upgrade authority; those responsibilities remain distinct even though the two
+framework package capabilities share a custody object.
 
 `acl::init`, `runtime_config::init`, and `launch_config::init` accept only
 `&mut TxContext`. An initializer accepts an OTW only when it passes that witness
@@ -58,9 +58,9 @@ to an API that validates or consumes it for the module's concern. The ACL
 initializer continues to create exactly one `ProtocolAuthority` and initial
 `SuperAdminCap` as an independent package-publication action.
 
-No Blast event is emitted for the `Publisher`: it is framework-owned deployment
-custody, not protocol lifecycle or accounting state. Its object id and owner
-belong in the normalized deployment record.
+The claim itself emits no Blast event. The later package-administration wrap
+emits the Publisher object ID as part of the complete custody fact, and the
+normalized deployment record must identify that final shared custodian.
 
 ## Alternatives considered
 
@@ -85,14 +85,14 @@ feature abstraction.
 
 - Every state/feature initializer follows one rule: omit an OTW unless that
   initializer actually consumes it for its own concern.
-- Package publication creates one additional owned framework `Publisher` object
-  under the publisher's address.
+- Package publication creates one framework `Publisher` under the publisher's
+  address only until the required package-administration wrap.
 - ACL's public types and authority semantics are no longer conflated with
   package provenance.
 - Future publisher-gated features may use the retained object after their own
-  ABI, authority, custody, and event decisions are approved.
-- The `Publisher` is not a substitute for the `UpgradeCap` and must be recorded
-  separately during deployment.
+  ABI, authority, and event decisions are approved.
+- The `Publisher` is not a substitute for the `UpgradeCap`; both IDs and their
+  final shared custodian must be recorded during deployment.
 
 ## Verification
 

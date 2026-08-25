@@ -20,7 +20,7 @@ Focused upgrade-custody review on 2026-08-25 checked Walrus at
 and its pinned Sui framework at
 [`06734f6ff0af45d8632a14a4dc4b100197f6b1a2`](https://github.com/MystenLabs/sui/tree/06734f6ff0af45d8632a14a4dc4b100197f6b1a2).
 The comparison of cap intake, manager custody, ticket/receipt authorization, and
-separate Publisher use is in
+Walrus' separate display-owned Publisher use is in
 [research/walrus-upgrade-cap-custody.md](research/walrus-upgrade-cap-custody.md).
 
 Every tracked blob was inventoried and content-read at the commits above. The

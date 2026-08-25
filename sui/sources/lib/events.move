@@ -137,9 +137,10 @@ public struct LaunchTicketCreated has copy, drop {
     burnable: bool,
 }
 
-/// Emitted after the Blast UpgradeCap is validated and placed in shared custody.
-public struct UpgradeManagerCreated has copy, drop {
-    manager_id: ID,
+/// Emitted after Blast's package capabilities are validated and placed in shared custody.
+public struct PackageAdminCreated has copy, drop {
+    package_admin_id: ID,
+    publisher_id: ID,
     upgrade_cap_id: ID,
     package_id: ID,
     package_version: u64,
@@ -161,6 +162,15 @@ public struct UpgradeCommitted has copy, drop {
     previous_version: u64,
     new_version: u64,
 }
+
+/// Emitted after an active protocol admin irreversibly narrows upgrade policy.
+public struct UpgradePolicyRestricted has copy, drop {
+    previous_policy: u8,
+    new_policy: u8,
+}
+
+/// Emitted after package governance permanently retires routine-admin package authority.
+public struct PackageAdminAuthorizationDisabled() has copy, drop;
 
 // === Package Functions ===
 
@@ -364,16 +374,18 @@ public(package) fun launch_ticket_created<Meme>(
     });
 }
 
-public(package) fun upgrade_manager_created(
-    manager_id: ID,
+public(package) fun package_admin_created(
+    package_admin_id: ID,
+    publisher_id: ID,
     upgrade_cap_id: ID,
     package_id: ID,
     package_version: u64,
     policy: u8,
     admin_authorization_enabled: bool,
 ) {
-    blast_fun::events_wrapper::emit_event(UpgradeManagerCreated {
-        manager_id,
+    blast_fun::events_wrapper::emit_event(PackageAdminCreated {
+        package_admin_id,
+        publisher_id,
         upgrade_cap_id,
         package_id,
         package_version,
@@ -406,6 +418,17 @@ public(package) fun upgrade_committed(
         previous_version,
         new_version,
     });
+}
+
+public(package) fun upgrade_policy_restricted(previous_policy: u8, new_policy: u8) {
+    blast_fun::events_wrapper::emit_event(UpgradePolicyRestricted {
+        previous_policy,
+        new_policy,
+    });
+}
+
+public(package) fun package_admin_authorization_disabled() {
+    blast_fun::events_wrapper::emit_event(PackageAdminAuthorizationDisabled());
 }
 
 // === Test-Only Functions ===
@@ -609,17 +632,23 @@ public fun launch_ticket_created_fields(
 }
 
 #[test_only]
-public fun upgrade_manager_created_fields(
-    self: &UpgradeManagerCreated,
-): (ID, ID, ID, u64, u8, bool) {
+public fun package_admin_created_fields(
+    self: &PackageAdminCreated,
+): (ID, ID, ID, ID, u64, u8, bool) {
     (
-        self.manager_id,
+        self.package_admin_id,
+        self.publisher_id,
         self.upgrade_cap_id,
         self.package_id,
         self.package_version,
         self.policy,
         self.admin_authorization_enabled,
     )
+}
+
+#[test_only]
+public fun upgrade_policy_restricted_fields(self: &UpgradePolicyRestricted): (u8, u8) {
+    (self.previous_policy, self.new_policy)
 }
 
 #[test_only]

@@ -31,9 +31,9 @@ The core package now contains:
 - `acl.move` — singleton `ProtocolAuthority`, delayed `SuperAdminCap` transfer,
   bounded protocol-wide `AdminCap` grant/revoke delegation, holder-driven cap
   destruction, and drop-only `AdminWitness` sign-in only;
-- `upgrade.move` — shared custody of the package's validated `UpgradeCap`, with
-  exact 32-byte digest authorization gated by a live `AdminWitness` and
-  receipt-bound commit;
+- `package_admin.move` — shared custody of the package's validated `Publisher`
+  and `UpgradeCap`, with live-admin exact-digest authorization, irreversible
+  policy restriction, receipt-bound commit, and one-way governance cutover;
 - `runtime_config.move` — one small shared live-settings object containing the
   dedicated X backend signer and global protocol fee share, with witness-gated
   signer rotation/revocation, Ed25519 verification, and bounded 0–10,000 bps
@@ -68,9 +68,14 @@ The core package now contains:
   independent Ed25519 fixture and adversarial lifecycle cases.
 - `runtime_config_tests.move` — combined initialization, live protocol-share
   boundaries, and replay-complete runtime configuration events.
-- Stateful test suites use local `Fixture` hot potatoes for scenarios, shared
-  objects, and capabilities; one `end` consumes each fixture through the native
-  test-only `std::unit_test::destroy` black hole.
+- `package_admin_tests.move` establishes the stateful-suite fixture convention: one
+  complete local option-backed `Fixture` environment for its scenario, shared
+  objects, capabilities, and less-common negative-path inputs. Receiver-style
+  transaction macros extract the options, advance the sender, pass stable
+  mutable references to the case, and restore every non-consumed value. New or
+  materially edited stateful suites follow that pattern: test bodies do not
+  destructure fixtures or drive `test_scenario` directly, and one `end` consumes
+  the fixture through the native test-only `std::unit_test::destroy` black hole.
 - `curve_tests.move` — exact shared vectors, rounding and threshold boundaries,
   maximum-width arithmetic, guard precedence, round-trip dust, and a fixed-seed
   reachable-state sell-back property suite.
@@ -87,9 +92,10 @@ The core package now contains:
   guard precedence, and exact package-error coverage.
 - `blast_tests.move` — package initialization proves the retained `Publisher`
   identifies both the defining `blast` module and the wider `blast_fun` package.
-- `upgrade_tests.move` — package-cap provenance, shared custody facts, active
-  admin authorization, digest bounds, future admin-path retirement, native
-  ticket/receipt completion, and receipt-to-cap binding.
+- `package_admin_tests.move` — Publisher/module and UpgradeCap/package
+  provenance, shared custody facts, active-admin authorization and policy
+  restriction, irreversible admin retirement, native ticket/receipt completion,
+  and receipt-to-cap binding.
 
 Internal quote, fee-ledger, launch-ticket, and configuration seams are
 package-only where the future `launch` module must own
@@ -99,25 +105,29 @@ economics and lifecycle ADRs are accepted.
 The cross-language backend fixture is
 [`../docs/vectors/x-creator-claim.json`](../docs/vectors/x-creator-claim.json).
 
-## Upgrade custody
+## Package administration custody
 
 The publish transaction delivers two independent framework objects: a retained
-`Publisher` from `blast::init` and the raw package `UpgradeCap`. The publisher
-remains address-owned for a future feature that actually needs package
-provenance. Before any upgrade, the deployment flow must pass the untouched raw
-cap to `upgrade::wrap`; the function accepts only the cap for Blast's original
-package and exposes no release path.
+`Publisher` from `blast::init` and the raw package `UpgradeCap`. The deployment
+flow must pass both untouched capabilities to `package_admin::wrap`. It accepts
+only the Publisher claimed by Blast's canonical module and the cap for Blast's
+original package, then shares one non-storable `PackageAdmin` with no capability
+release path.
 
 An upgrade PTB calls `acl::sign_in`, passes the resulting `AdminWitness` and
-exact package digest to `upgrade::authorize_upgrade`, runs the native Sui
-upgrade command, and passes its receipt to `upgrade::commit_upgrade`. Commit
+exact package digest to `package_admin::authorize_upgrade`, runs the native Sui
+upgrade command, and passes its receipt to `package_admin::commit_upgrade`. Commit
 does not repeat the witness because the non-droppable receipt is already bound
-to the manager's cap. See
+to the `PackageAdmin`'s cap. See
 [ADR 0032](../docs/decisions/0032-admin-authorized-upgrade-cap-custody.md).
 
-This first-stage policy gives every active routine admin full code-upgrade power
-allowed by the cap's current compatible policy. Do not publish publicly until
-all mutable shared objects also enforce the approved package/version gates.
+While routine-admin authorization is enabled, every active admin has code-
+upgrade power under the current policy and may permanently narrow that policy
+to additive or dependency-only. A future package governance module may call the
+package-only one-way cutover after installing replacement authorization. Once
+the flag is false, the original admin upgrade and policy functions can never be
+used again; there is no re-enable path. Do not publish publicly until all
+mutable shared objects also enforce the approved package/version gates.
 
 ## Planned package set
 

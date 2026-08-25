@@ -87,18 +87,23 @@ core interface. See `docs/architecture.md`.
   module that owns a capability's one-time issuance also owns that capability
   type. Do not turn ACL into a registry for cryptographic keys, creator identity,
   fees, or unrelated feature state.
-- `upgrade.move` owns the package `UpgradeCap` lifecycle. Its one public intake
-  must compare the cap's package against `type_name::original_id<BLAST>()`, then
-  share a manager containing the cap and the durable
-  `admin_authorization_enabled` flag. Expose no raw-cap release, transfer,
-  policy-narrowing, or immutability path without a new ADR. The current
-  authorization path takes a borrowed `AdminWitness`, validates an exact
-  32-byte digest, and uses the cap's current policy; commit takes the matching
-  framework receipt and does not repeat the witness. Keep Publisher custody and
-  ACL membership state out of the manager. Treat every active routine admin as
-  full compatible-code authority until approved governance irreversibly disables
-  the original path. Wrapped cap custody never replaces shared-object version
-  gates; those gates remain a public-release requirement. See ADR 0032.
+- `package_admin.move` owns durable custody of the package `Publisher` and
+  `UpgradeCap`. Its one public intake must verify that the Publisher was claimed
+  by `blast::BLAST`, compare the cap's package against
+  `type_name::original_id<BLAST>()`, and share a non-storable `PackageAdmin`
+  containing both capabilities and the durable
+  `admin_authorization_enabled` flag. Expose no capability release, transfer,
+  burn, or generic Publisher borrow. The current upgrade path takes a borrowed
+  `AdminWitness`, validates an exact 32-byte digest, and uses the cap's current
+  policy; commit takes the matching framework receipt and does not repeat the
+  witness. Admins may irreversibly narrow policy to additive or dependency-only
+  while their path is enabled; reject equal or looser requests before mutation.
+  A package-only, one-way cutover may change the flag from true to false for a
+  future governance module, but no function may re-enable it. Treat every
+  active routine admin as full code authority allowed by the current policy
+  until that approved governance transition. Wrapped capability custody never
+  replaces shared-object version gates; those gates remain a public-release
+  requirement. See ADR 0032.
 - Treat every backend-signed action as its own domain. `runtime_config.move`
   owns the current dedicated X-claim key and signature verification, while the
   domain module owns the exact signed message and state transition. Do not reuse
@@ -363,8 +368,17 @@ must be differential-tested from shared vectors.
 - Use `std::unit_test::destroy` as the test-only black hole for teardown. Do not
   add production-module `destroy_*_for_testing` functions merely to unpack
   objects. When a suite repeatedly owns a scenario plus several shared objects
-  or capabilities, group them in a test `Fixture`; let `start` construct it and
-  let one receiver-style `end` consume the complete fixture with `destroy`.
+  or capabilities, group the complete common environment in a test `Fixture`,
+  including values that only some cases use. Store its scenario, objects, and
+  capabilities as `Option<T>`. Let `start` construct and fill every option; use
+  a receiver-style `run!`, `next_tx!`, or similarly named macro to extract the
+  values, advance the transaction sender when applicable, pass stable mutable
+  references to the test closure, and fill every option again immediately after
+  the closure. A consuming operation may have a narrowly named macro variant
+  that deliberately leaves only the consumed option empty. Test bodies must not
+  destructure the fixture or directly call scenario setup, `next_tx`, shared
+  object take/return, or sender-owned object take/return. Let one receiver-style
+  `end` consume the complete fixture with `destroy`.
 - New TypeScript uses `SuiGrpcClient` for standard reads/writes/simulation and
   `SuiGraphQLClient` for custom indexed or historical queries. SDK libraries
   should accept `ClientWithCoreApi`. JSON-RPC is legacy-only.

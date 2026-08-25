@@ -26,7 +26,7 @@ the version gate must live in shared state, not in the entrypoint.
 | Capability | Held by | Grants |
 | --- | --- | --- |
 | `SuperAdminCap` | protocol multisig | add/revoke protocol admins; delayed root transfer |
-| `AdminCap` | protocol operations | bounded parameter changes, version bump, pause, adapter approval, `DisplayCap` custody, X-claim signer rotation, and—through a live `AdminWitness`—interim exact-digest package-upgrade authorization |
+| `AdminCap` | protocol operations | bounded parameter changes, version bump, pause, adapter approval, `DisplayCap` custody, X-claim signer rotation, and—through a live `AdminWitness` while that path remains enabled—interim exact-digest package-upgrade authorization and irreversible policy restriction |
 | `CreatorCap` | per launch, creator address | creator fee claim, LP fee collection after migration, metadata update during bonding |
 
 Possession of a `Launch` object grants nothing. Being the address recorded as creator grants nothing on
@@ -60,12 +60,14 @@ and never accidentally.
 | pause / unpause a scope | — | yes | — | — | scope enumerated | `Paused` / `Unpaused` |
 | bump package version | — | yes | — | — | monotonic | `VersionBumped` |
 | authorize / commit package upgrade | — | yes | — | — | exact 32-byte digest; wrapped cap's current policy; matching native receipt | `UpgradeAuthorized` / `UpgradeCommitted` |
+| restrict package upgrade policy | — | yes | — | — | strictly more restrictive; additive or dependency-only | `UpgradePolicyRestricted` |
 
 Every ordinary configuration row has a bound and an event. The package-upgrade
 row is intentionally stronger: an active routine admin can authorize arbitrary
-replacement code allowed by the wrapped cap's current policy. ADR 0032 accepts
-that interim authority explicitly; it must not be described operationally as an
-ordinary parameter update.
+replacement code allowed by the wrapped cap's current policy and permanently
+narrow that policy. ADR 0032 accepts that interim authority explicitly and
+defines a package-only one-way governance cutover; it must not be described
+operationally as an ordinary parameter update.
 
 ### Negative transition matrix
 

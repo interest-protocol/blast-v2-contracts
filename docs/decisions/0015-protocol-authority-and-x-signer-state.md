@@ -72,8 +72,11 @@ The super admin is a cold root. It may grant or revoke routine admins and manage
 its own transfer. An active `AdminCap` performs routine protocol configuration,
 beginning with X signer management. ADR 0032 additionally makes the resulting
 live `AdminWitness` interim authority to authorize exact package-upgrade
-digests. That is full compatible-code authority, not merely another bounded
-setter. No separate per-config admin exists.
+digests and irreversibly narrow the wrapped cap's policy while the durable admin
+path remains enabled. That is package code authority under the current policy,
+not merely another bounded setter. ADR 0032's package-only one-way cutover lets
+later governance retire both admin operations. No separate per-config admin
+exists.
 
 Admin membership is bounded. Granting a seventeenth active admin aborts. Admin
 creation deliberately delivers the new capability to the named nonzero

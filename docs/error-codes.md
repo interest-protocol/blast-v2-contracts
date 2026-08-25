@@ -79,8 +79,11 @@ the next unused value and must not fill a retired gap.
 | 50 | `migration_witness_already_allowed` | `launch_config` | The migration witness type is already admitted for future launches. |
 | 51 | `migration_witness_capacity_reached` | `launch_config` | The bounded migration-witness whitelist is full. |
 | 52 | `migration_witness_not_allowed` | `launch_config` | The migration witness type is not admitted for future launches. |
-| 53 | `invalid_upgrade_cap` | `upgrade` | The supplied `UpgradeCap` does not authorize the original Blast package. |
-| 54 | `invalid_package_digest` | `upgrade` | The Sui package digest is not exactly 32 bytes. |
-| 55 | `admin_upgrade_authorization_disabled` | `upgrade` | The durable routine-admin package-upgrade path has been retired. |
+| 53 | `invalid_upgrade_cap` | `package_admin` | The supplied `UpgradeCap` does not authorize the original Blast package. |
+| 54 | `invalid_package_digest` | `package_admin` | The Sui package digest is not exactly 32 bytes. |
+| 55 | `admin_package_authorization_disabled` | `package_admin` | The durable routine-admin package-upgrade and policy path has been retired. |
+| 56 | `invalid_package_publisher` | `package_admin` | The supplied `Publisher` was not claimed by Blast's canonical package module. |
+| 57 | `upgrade_policy_not_more_restrictive` | `package_admin` | The requested UpgradeCap policy is equal to or looser than the current policy. |
+| 58 | `admin_package_authorization_already_disabled` | `package_admin` | The irreversible routine-admin package-authority cutover already occurred. |
 
-The next new package-wide protocol error must use code **56**.
+The next new package-wide protocol error must use code **59**.

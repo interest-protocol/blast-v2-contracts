@@ -62,7 +62,7 @@ the relevant transitions; that exception requires an explicit ADR.
 
 ADRs 0018 and 0028 separate global administration from live runtime configuration. Their creation
 payloads announce the `ProtocolAuthority`, `RuntimeConfig`, `LaunchConfig`, and
-`UpgradeManager` object ids. Under ADR
+`PackageAdmin` object ids. Under ADR
 0030, each later mutation's fully qualified typed payload identifies its production-singleton concern
 without repeating that unchanging owner id.
 
@@ -106,9 +106,11 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `GraduationDefaultsChanged` | G | complete old/new Quote-fee and Meme-allocation pairs |
 | `MigrationWitnessAllowed` | G | admitted external migrator witness original type |
 | `MigrationWitnessDisallowed` | G | disallowed external migrator witness original type |
-| `UpgradeManagerCreated` | G | manager id, wrapped cap id, original package id, initial version and policy, and enabled admin-authorization state |
+| `PackageAdminCreated` | G | package-admin, Publisher, and wrapped cap ids; original package id; initial version, policy, and enabled admin-authorization state |
 | `UpgradeAuthorized` | G | package id and version, cap policy, and exact package digest authorized by a live admin witness |
 | `UpgradeCommitted` | G | replacement package id and previous/new cap versions |
+| `UpgradePolicyRestricted` | G | previous/new irreversible framework policy |
+| `PackageAdminAuthorizationDisabled` | G | completed one-way governance cutover from the original routine-admin package path |
 | `RouteSelected` | L | route A/B/C, venue, tick spacing, fee rate, orientation, target sqrt price, `reservation_id` |
 | `ReservationReleased` | L | `venue`, `reservation_id`, `tick_spacing`, `orientation`, reason |
 | `MigrationBegun` | L | payload id, `M`, `Q` at handoff |
@@ -191,7 +193,7 @@ counters to protocol storage. `CreatorCapClaimed` is reduced as one immutable fa
 | metadata update | capability, bonding only | `MetadataUpdated` | none | none | n/a | `EMetadataFrozen` |
 | creator-cap claim | consume `CreatorAuthority`; address equality with no attestation, or X backend signature/domain/expiry/active signer | `CreatorCapClaimed` | none | removes one authority | returns `CreatorCap` | address/X branch and structural consumption tests |
 | destroy admin cap | owned cap; membership lookup cannot block deletion | `AdminDestroyed` | none | removes one membership if present and deletes cap | n/a | active and already-revoked branches |
-| package upgrade | original-package cap at intake; enabled admin witness path; exact digest; native receipt bound to cap | `UpgradeManagerCreated`, `UpgradeAuthorized`, `UpgradeCommitted` | pinned Sui framework | one manager and one cap | ticket/receipt PTB | exact errors 53–55 plus framework wrong-cap failure |
+| package administration / upgrade | canonical-module Publisher and original-package cap at intake; enabled admin witness path; exact digest; strictly narrower policies; native receipt bound to cap | `PackageAdminCreated`, `UpgradeAuthorized`, `UpgradeCommitted`, `UpgradePolicyRestricted`, `PackageAdminAuthorizationDisabled` | pinned Sui framework | one package admin containing Publisher, cap, and one-way flag | ticket/receipt PTB | exact errors 53–58 plus framework wrong-cap failure |
 | `begin_migration` | state, threshold, single-use | `MigrationBegun` | core has no venue dep | one payload | returns payload | `EMigrationAlreadyBegun` |
 | adapter settle | acceptance band, orientation, range | `RouteSelected` | vendored SHA pin | none | returns settlement | band and range aborts |
 | `settle_migration` | witness, single-use, ordering | `Migrated`, `MemeBurnedAtMigration`, `SupplyStateChanged`, `MetadataFrozen` | core has no venue dep | one settlement | returns `LpVault` | `EAlreadyMigrated` |

@@ -81,51 +81,106 @@ if rg -n '^public struct ACL' sources/acl.move \
   failures=$((failures + 1))
 fi
 
-upgrade_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/upgrade.move)"
+package_admin_production="$(sed '/^\/\/ === Test-Only Types ===/,$d' sources/package_admin.move)"
 
-if [[ ! -f sources/upgrade.move ]] \
+if [[ ! -f sources/package_admin.move || -f sources/upgrade.move ]] \
   || ! rg -U -q \
-    'public struct UpgradeManager has key \{\s*id: UID,\s*cap: UpgradeCap,\s*admin_authorization_enabled: bool,\s*\}' \
-    sources/upgrade.move \
-  || [[ "$(rg -c '^public fun ' <<<"$upgrade_production")" != 3 ]] \
-  || [[ "$(rg -c '^public fun (wrap|authorize_upgrade|commit_upgrade)\(' <<<"$upgrade_production")" != 3 ]] \
-  || [[ "$(rg -o '_: &AdminWitness' <<<"$upgrade_production" | wc -l)" != 1 ]] \
+    'public struct PackageAdmin has key \{\s*id: UID,\s*publisher: Publisher,\s*upgrade_cap: UpgradeCap,\s*admin_authorization_enabled: bool,\s*\}' \
+    sources/package_admin.move \
+  || [[ "$(rg -c '^public fun ' <<<"$package_admin_production")" != 5 ]] \
+  || [[ "$(rg -c '^public fun (wrap|authorize_upgrade|restrict_to_additive|restrict_to_dependency_only|commit_upgrade)\(' <<<"$package_admin_production")" != 5 ]] \
+  || [[ "$(rg -c '^public\(package\) fun disable_admin_authorization\(' <<<"$package_admin_production")" != 1 ]] \
+  || [[ "$(rg -o '_: &AdminWitness' <<<"$package_admin_production" | wc -l)" != 3 ]] \
   || ! rg -U -q \
-    'public fun authorize_upgrade\(\s*self: &mut UpgradeManager,\s*_: &AdminWitness,\s*digest: vector<u8>,\s*\): UpgradeTicket' \
-    sources/upgrade.move \
+    'public fun wrap\(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext\)' \
+    sources/package_admin.move \
   || ! rg -U -q \
-    'public fun commit_upgrade\(\s*self: &mut UpgradeManager,\s*receipt: UpgradeReceipt,?\s*\)' \
-    sources/upgrade.move; then
-  echo 'upgrade.move must expose only validated wrapping plus AdminWitness-gated authorize and receipt-gated commit.' >&2
+    'public fun authorize_upgrade\(\s*self: &mut PackageAdmin,\s*_: &AdminWitness,\s*digest: vector<u8>,\s*\): UpgradeTicket' \
+    sources/package_admin.move \
+  || ! rg -U -q \
+    'public fun commit_upgrade\(self: &mut PackageAdmin, receipt: UpgradeReceipt\)' \
+    sources/package_admin.move; then
+  echo 'package_admin.move must expose only validated capability wrapping, admin authorization/policy restriction, receipt commit, and package-only cutover.' >&2
   failures=$((failures + 1))
 fi
 
-if ! rg -Fq 'package_id.to_address() == type_name::original_id<BLAST>()' \
-    sources/upgrade.move \
+if ! rg -Fq 'publisher.from_package<BLAST>() && publisher.from_module<BLAST>()' \
+    sources/package_admin.move \
+  || ! rg -Fq 'package_id.to_address() == type_name::original_id<BLAST>()' \
+    sources/package_admin.move \
   || ! rg -Fq 'digest.length() == constants::package_digest_length!()' \
-    sources/upgrade.move \
-  || ! rg -Fq 'self.admin_authorization_enabled' sources/upgrade.move \
-  || ! rg -Fq 'self.cap.authorize(policy, digest)' sources/upgrade.move \
-  || ! rg -Fq 'self.cap.commit(receipt)' sources/upgrade.move \
-  || rg -n '\b(Publisher|ProtocolAuthority|SuperAdminCap|AdminCap)\b' \
-    <<<"$upgrade_production" \
-  || rg -U -n '^(public|entry|public\(package\)) fun [^(]+\([^)]*\): UpgradeCap' \
-    <<<"$upgrade_production" \
-  || rg -n 'transfer::(public_)?transfer|make_immutable|only_(additive|dep)_upgrades' \
-    <<<"$upgrade_production"; then
-  echo 'Upgrade custody must validate the Blast cap, bind exact digests, retain the raw cap, and stay separate from Publisher and ACL state.' >&2
+    sources/package_admin.move \
+  || ! rg -Fq 'self.upgrade_cap.authorize(policy, digest)' sources/package_admin.move \
+  || ! rg -Fq 'self.upgrade_cap.commit(receipt)' sources/package_admin.move \
+  || ! rg -Fq 'self.upgrade_cap.only_additive_upgrades();' sources/package_admin.move \
+  || ! rg -Fq 'self.upgrade_cap.only_dep_upgrades();' sources/package_admin.move \
+  || ! rg -Fq 'new_policy > previous_policy' sources/package_admin.move \
+  || [[ "$(rg -c 'self.assert_admin_authorization_enabled\(\);' <<<"$package_admin_production")" != 3 ]] \
+  || ! rg -Fq 'self.admin_authorization_enabled = false;' sources/package_admin.move \
+  || ! rg -Fq 'events::package_admin_authorization_disabled();' sources/package_admin.move \
+  || rg -n '\bpackage::(version|only_(additive|dep)_upgrades)\(' \
+    <<<"$package_admin_production" \
+  || rg -n 'admin_authorization_enabled[[:space:]]*=[[:space:]]*true|enable_admin_authorization' \
+    <<<"$package_admin_production" \
+  || rg -U -n '^(public|entry|public\(package\)) fun [^(]+\([^)]*\): (&)?(Publisher|UpgradeCap)' \
+    <<<"$package_admin_production" \
+  || rg -n 'transfer::(public_)?transfer|burn_publisher|make_immutable' \
+    <<<"$package_admin_production" \
+  || rg -n '\b(ProtocolAuthority|SuperAdminCap|AdminCap)\b' \
+    <<<"$package_admin_production"; then
+  echo 'Package administration must retain both validated capabilities, use receiver syntax, narrow policy only, and make admin retirement irreversible.' >&2
   failures=$((failures + 1))
 fi
 
-upgrade_mutation_event_payloads="$(sed -n \
+package_admin_creation_event="$(sed -n \
+  '/^public struct PackageAdminCreated/,/^}/p' \
+  sources/lib/events.move)"
+package_admin_mutation_event_payloads="$(sed -n \
   -e '/^public struct UpgradeAuthorized/,/^}/p' \
   -e '/^public struct UpgradeCommitted/,/^}/p' \
+  -e '/^public struct UpgradePolicyRestricted/,/^}/p' \
   sources/lib/events.move)"
 
-if [[ -z "$upgrade_mutation_event_payloads" ]] \
+if [[ -z "$package_admin_creation_event" || -z "$package_admin_mutation_event_payloads" ]] \
+  || [[ "$(rg -c '^[[:space:]]+(package_admin_id|publisher_id|upgrade_cap_id|package_id|package_version|policy|admin_authorization_enabled):' <<<"$package_admin_creation_event")" != 7 ]] \
+  || ! rg -Fq 'public struct PackageAdminAuthorizationDisabled() has copy, drop;' \
+    sources/lib/events.move \
   || rg -n '\b(manager_id|upgrade_cap_id|sequence|schema_version|action_tag|nonce)\b' \
-    <<<"$upgrade_mutation_event_payloads"; then
-  echo 'Upgrade mutations must use typed facts without repeated custody, ordering, or schema fields.' >&2
+    <<<"$package_admin_mutation_event_payloads"; then
+  echo 'Package-administration mutations must use typed facts without repeated custody, ordering, or schema fields.' >&2
+  failures=$((failures + 1))
+fi
+
+package_admin_tests_body="$(sed -n \
+  '/^\/\/ === Tests ===/,/^\/\/ === Private Functions ===/p' \
+  tests/package_admin_tests.move)"
+package_admin_fixture="$(sed -n \
+  '/^public struct Fixture {/,/^}/p' \
+  tests/package_admin_tests.move)"
+package_admin_next_tx_macro="$(sed -n \
+  '/^macro fun next_tx(/,/^macro fun take_invalid_cap_inputs_next_tx(/p' \
+  tests/package_admin_tests.move)"
+package_admin_take_cap_macro="$(sed -n \
+  '/^macro fun take_invalid_cap_inputs_next_tx(/,/^macro fun take_invalid_publisher_inputs_next_tx(/p' \
+  tests/package_admin_tests.move)"
+package_admin_take_publisher_macro="$(sed -n \
+  '/^macro fun take_invalid_publisher_inputs_next_tx(/,/^fun start(/p' \
+  tests/package_admin_tests.move)"
+
+if [[ "$(rg -c ': Option<' <<<"$package_admin_fixture")" != 12 ]] \
+  || [[ "$(rg -o '\.extract\(\)' <<<"$package_admin_next_tx_macro" | wc -l)" != 12 ]] \
+  || [[ "$(rg -o '\.fill\(' <<<"$package_admin_next_tx_macro" | wc -l)" != 12 ]] \
+  || [[ "$(rg -o '\.extract\(\)' <<<"$package_admin_take_cap_macro" | wc -l)" != 12 ]] \
+  || [[ "$(rg -o '\.fill\(' <<<"$package_admin_take_cap_macro" | wc -l)" != 10 ]] \
+  || [[ "$(rg -o '\.extract\(\)' <<<"$package_admin_take_publisher_macro" | wc -l)" != 12 ]] \
+  || [[ "$(rg -o '\.fill\(' <<<"$package_admin_take_publisher_macro" | wc -l)" != 10 ]] \
+  || ! rg -Fq 'scenario.next_tx($sender);' <<<"$package_admin_next_tx_macro" \
+  || ! rg -Fq 'scenario.next_tx($sender);' <<<"$package_admin_take_cap_macro" \
+  || ! rg -Fq 'scenario.next_tx($sender);' <<<"$package_admin_take_publisher_macro" \
+  || rg -n \
+    'test_scenario::|scenario\.(next_tx|take_|return_)|let Fixture|fixture\.(scenario|super_admin_cap|authority|admin_cap|package_admin|other_package_admin|valid_publisher|foreign_publisher|valid_upgrade_cap|foreign_upgrade_cap|package_admin_created|wrapped_package_admin)' \
+    <<<"$package_admin_tests_body"; then
+  echo 'Package-administration tests must use the complete option-backed transaction fixture without direct scenario or fixture-field choreography.' >&2
   failures=$((failures + 1))
 fi
 
@@ -227,7 +282,7 @@ fi
 if [[ -f sources/x_claim_config.move || -f sources/trade_fee_config.move ]] \
   || rg -n '\b(XClaimConfig|TradeFeeConfig)\b' sources tests \
   || [[ "$(rg -o 'transfer::share_object' sources/*.move | wc -l)" != 4 ]]; then
-  echo 'Runtime consolidation plus upgrade custody must keep exactly four protocol-wide shared singletons.' >&2
+  echo 'Runtime consolidation plus package-administration custody must keep exactly four protocol-wide shared singletons.' >&2
   failures=$((failures + 1))
 fi
 
@@ -328,7 +383,7 @@ if [[ -z "$launch_ticket_event_payload" ]] \
 fi
 
 if rg -n \
-  '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|creator_authority::(into_authority|event_fields|claim_creator_cap)|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees)|upgrade::(authorize_upgrade|commit_upgrade))(<[^>]+>)?\(' \
+  '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|creator_authority::(into_authority|event_fields|claim_creator_cap)|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees)|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|disable_admin_authorization|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing|admin_authorization_enabled_for_testing))(<[^>]+>)?\(' \
   sources tests; then
   echo 'Blast-owned receiver functions must use Move 2024 dot syntax.' >&2
   failures=$((failures + 1))

@@ -38,10 +38,13 @@ it is not a field of `UpgradeManager`
 ([`display.move:22-40`](https://github.com/MystenLabs/walrus/blob/3c1cacc11c9292ed498f01f798cf790f02ea5062/contracts/walrus/sources/display.move#L22-L40),
 [`display.move:43-86`](https://github.com/MystenLabs/walrus/blob/3c1cacc11c9292ed498f01f798cf790f02ea5062/contracts/walrus/sources/display.move#L43-L86)).
 
-This differs from Blast only in custody, not in provenance semantics. Blast's
-[`blast.move`](../../sui/sources/blast.move) uses `claim_and_keep`, so the
-publishing sender owns the retained Publisher directly. That remains the
-smaller design while no concrete Blast feature consumes it.
+This differs from Blast's final design in ownership concern, not in provenance
+semantics. Blast's [`blast.move`](../../sui/sources/blast.move) uses
+`claim_and_keep`, so the publishing sender owns the retained Publisher only
+until the deployment-time `package_admin::wrap` call moves it into the shared
+package-administration object. Walrus gives Publisher to its concrete display
+concern; Blast keeps it in neutral package custody until a concrete feature is
+approved.
 
 ### It validates the raw UpgradeCap before wrapping it
 
@@ -125,37 +128,38 @@ Blast already has the two prerequisites:
   live registered `AdminCap` and returns a non-copyable, non-storable,
   drop-only `AdminWitness`.
 
-The smallest Walrus-informed design is:
+The adopted Walrus-informed design is:
 
-1. Add a concern-owning `upgrade` module with a shared, non-store
-   `UpgradeManager` that contains the framework `UpgradeCap`. Do not put this
-   state in ACL or in the package-provenance module.
-2. Expose one deployment-time intake that consumes the raw `UpgradeCap`, first
-   checks `upgrade_cap.package()` against the defining/original ID of a Blast
-   marker type that existed in version 1, then shares the manager. The raw cap
-   must never be returned or transferred after this point.
+1. Add a concern-owning `package_admin` module with a shared, non-store
+   `PackageAdmin` containing the framework `Publisher`, `UpgradeCap`, and a
+   one-way admin-authorization flag. Do not put this state in ACL.
+2. Expose one deployment-time intake that consumes both raw capabilities,
+   verifies the Publisher was claimed by the canonical `blast::BLAST` module,
+   checks `upgrade_cap.package()` against that marker's defining/original ID,
+   then shares the manager. Neither capability may be returned or transferred.
 3. For the requested interim policy, expose
-   `authorize_upgrade(&mut UpgradeManager, &AdminWitness, digest): UpgradeTicket`.
+   `authorize_upgrade(&mut PackageAdmin, &AdminWitness, digest): UpgradeTicket`.
    It should use the wrapped cap's current policy and exact digest. Any active
    routine Blast admin would then be able to authorize arbitrary code allowed by
    that policy; this materially expands the current routine-admin compromise
    scope and must be accepted explicitly in the upgrade ADR.
-4. Expose a separate `commit_upgrade(&mut UpgradeManager, receipt)` that consumes
+4. Expose a separate `commit_upgrade(&mut PackageAdmin, receipt)` that consumes
    the hot-potato receipt and calls the wrapped cap's `commit`. Requiring the
    witness again at commit adds no authorization: an unforgeable receipt already
    proves that the manager authorized the upgrade earlier in the same PTB.
-5. If later quorum or DAO governance is a real objective, make the admin path
-   durably disableable in version 1. Either adapt Walrus' manager-bound,
-   burnable emergency capability, or include an irreversible
-   `admin_authorization_enabled` state that the future governance transition can
-   turn off and that the original admin authorization function already checks.
-   Adding a second governance path later without disabling the original admin
+5. Expose explicit admin-witness operations for Sui's only two irreversible
+   policy restrictions—additive and dependency-only—and reject equal or looser
+   requests before mutation. Do not present framework policy as a mutable value.
+6. Make the admin path durably disableable in version 1 with a package-only
+   one-way transition. A future governance module must install replacement
+   authorization before setting the flag false; every original admin upgrade
+   and policy function checks it. Adding governance without disabling the old
    path would not reduce admin upgrade power.
-6. Keep the Publisher in its current separate custody. A future feature that
-   accepts an arbitrary Publisher should verify
-   `publisher.from_package<blast::BLAST>()` (and `from_module` if module identity
-   matters), but the Publisher should not be stored in `UpgradeManager` merely
-   to re-prove the already checked cap.
+
+This deliberately departs from Walrus' placement of Publisher in its display
+state. Blast currently has no display feature, and shared neutral custody avoids
+leaving a unique retained capability under a deployment key while preserving it
+for a later reviewed package-provenance use.
 
 If “admin” is intended to mean cold root rather than any routine admin, use a
 dedicated upgrade capability or a root sign-in witness instead of reusing
@@ -167,15 +171,15 @@ alone does not prove it is the live registered root.
 
 - intake rejects an `UpgradeCap` for another package before creating or sharing
   any manager;
-- exactly one manager owns the only Blast `UpgradeCap`, and no public/test-only
-  escape hatch releases the raw cap;
+- exactly one package-administration object owns the Blast Publisher and
+  UpgradeCap, and no public/test-only escape hatch releases either capability;
 - a live admin can authorize the exact digest, while revoked and foreign admin
   caps cannot produce the required witness;
 - the full ticket → native upgrade → receipt → commit PTB succeeds and a wrong
   receipt/cap pairing aborts atomically;
 - any shared-state package/version gate is advanced in the same upgrade flow so
   old entrypoints cannot bypass the new code;
-- the optional admin-path retirement is irreversible and makes the original
-  authorization function unsatisfiable; and
-- Publisher identity and custody remain recorded separately from the upgrade
-  manager and `UpgradeCap`.
+- admin-path retirement is irreversible and makes the original authorization
+  and policy functions unsatisfiable; and
+- intake proves both Publisher module provenance and UpgradeCap package
+  provenance, while the creation fact records their final shared custodian.

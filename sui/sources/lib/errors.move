@@ -210,8 +210,20 @@ const EInvalidUpgradeCap: u64 = 53;
 const EInvalidPackageDigest: u64 = 54;
 
 #[test_only]
-/// The durable routine-admin package-upgrade path has been retired.
-const EAdminUpgradeAuthorizationDisabled: u64 = 55;
+/// The durable routine-admin package-upgrade and policy path has been retired.
+const EAdminPackageAuthorizationDisabled: u64 = 55;
+
+#[test_only]
+/// The supplied Publisher was not claimed by Blast's canonical package module.
+const EInvalidPackagePublisher: u64 = 56;
+
+#[test_only]
+/// An upgrade-policy request was equal to or looser than the current policy.
+const EUpgradePolicyNotMoreRestrictive: u64 = 57;
+
+#[test_only]
+/// The irreversible routine-admin package-authority cutover already occurred.
+const EAdminPackageAuthorizationAlreadyDisabled: u64 = 58;
 
 // === Package Error Codes ===
 
@@ -405,6 +417,18 @@ macro public(package) fun invalid_package_digest(): u64 {
     54
 }
 
-macro public(package) fun admin_upgrade_authorization_disabled(): u64 {
+macro public(package) fun admin_package_authorization_disabled(): u64 {
     55
+}
+
+macro public(package) fun invalid_package_publisher(): u64 {
+    56
+}
+
+macro public(package) fun upgrade_policy_not_more_restrictive(): u64 {
+    57
+}
+
+macro public(package) fun admin_package_authorization_already_disabled(): u64 {
+    58
 }
