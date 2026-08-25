@@ -80,8 +80,9 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0032](0032-admin-authorized-upgrade-cap-custody.md) | Package administration custody and admin-authorized upgrades | **accepted** |
 | [0033](0033-meme-liquidity-provision.md) | Meme liquidity provision for destination pools | **accepted** |
 | [0034](0034-remove-premature-governance-cutover.md) | Remove the premature governance cutover | **accepted** |
+| [0035](0035-initializer-finalized-meme-supply.md) | Finalize generated Meme supply during initialization | **accepted** |
 
-Only ADRs 0013–0034 are accepted. ADR 0021 accepts the pure curve formulas and
+Only ADRs 0013–0035 are accepted. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -117,6 +118,10 @@ ADR 0034 removes ADR 0032's speculative governance cutover — the durable
 enabled flag, package-only disable path, its event, and error codes 55/58 —
 because no governance design exists to call it. A future governance ADR retires
 the routine-admin package path through the mandatory shared-object version gate.
+
+ADR 0035 mints the exact one-billion-coin Meme inventory during OTW currency
+initialization, immediately consumes mint authority into `Fixed` or `BurnOnly`,
+and stores only the resulting balance in `LaunchTicket`.
 
 ## Open premises
 

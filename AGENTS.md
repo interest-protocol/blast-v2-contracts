@@ -134,24 +134,26 @@ core interface. See `docs/architecture.md`.
   that typed capability. They must not re-check ACL membership, X identity, or
   the backend signer; those facts authorize issuance, not later fee ownership.
 - Generated meme currencies use only the current Coin Registry OTW path and must
-  never call `make_regulated` or a legacy metadata migration. The generated
-  package creates a zero-supply `TreasuryCap<Meme>` and `MetadataCap<Meme>`;
-  after permissionless registry finalization, launch mints the nonzero initial
-  supply once, caps it at one billion whole coins, and consumes the treasury cap
-  into owner-selected `Fixed` or `BurnOnly` state. No treasury or deny capability
-  may survive in Blast core state or an adapter. The unique metadata cap remains
+  never call `make_regulated` or a legacy metadata migration. During generated
+  package initialization, `launch_ticket::new` mints exactly one billion whole
+  coins, supports at most ten decimals so the normalized amount fits `u64`, and
+  immediately consumes the unique `TreasuryCap<Meme>` into the owner-selected
+  `Fixed` or `BurnOnly` initializer state. No treasury or deny capability may
+  leave that constructor, survive in Blast core state, or enter an adapter. The
+  complete `Balance<Meme>` enters ticket custody. The unique metadata cap remains
   in Blast-defined custody only until the one-time creator claim returns it
-  separately alongside `CreatorCap<Meme>`. See ADR 0023.
+  separately alongside `CreatorCap<Meme>`. See ADRs 0023 and 0035.
 - `launch_ticket` must consume the generated coin's OTW and call
   `coin_registry::new_currency_with_otw` itself. Its single public constructor
   accepts a validated, droppable `CreatorIdentity`; only package code may convert
   that input into linear `CreatorAuthority<Meme>`. It must not accept arbitrary
-  pre-created treasury or metadata caps. `LaunchTicket<Meme>`
-  stores the empty `TreasuryCap<Meme>`, native `MetadataCap<Meme>`, one
-  `CreatorAuthority<Meme>`, and the `burnable` choice. The constructor returns the
-  ticket without transfer; the generated package decides delivery. Only the
-  package-level consuming `into_parts` seam may release those stored values to
-  the future launch module. See ADR 0024.
+  pre-created treasury or metadata caps. `LaunchTicket<Meme>` stores the complete
+  fixed initial `Balance<Meme>`, native `MetadataCap<Meme>`, one
+  `CreatorAuthority<Meme>`, and the `burnable` choice after mint authority has
+  already been destroyed. The constructor returns the ticket without transfer;
+  the generated package decides delivery. Only the package-level consuming
+  `into_parts` seam may release those stored values to the future launch module.
+  See ADRs 0024 and 0035.
 - `launch_config.move` owns cold policy read together only when a launch is
   created: the 16-entry original-type quote whitelist and targets, the zero-safe
   Quote migration-fee and Meme graduation-allocation defaults, the nonzero

@@ -44,9 +44,10 @@ The core package now contains:
   metadata-cap pass-through, canonical BCS X attestation bytes, and
   replay-complete events;
 - `launch_ticket.move` — one public constructor that accepts a creator identity,
-  consumes the generated coin OTW, creates the current unregulated zero-supply
-  currency, and returns a transferable ticket holding both native caps, one
-  creator authority, and the launcher-selected burnable flag;
+  consumes the generated coin OTW, mints the normalized one-billion-coin supply,
+  consumes mint authority into `Fixed` or `BurnOnly`, and returns a transferable
+  ticket holding the complete Meme balance, native metadata cap, one creator
+  authority, and the launcher-selected burnable flag;
 - `curve.move` — package-only constant-product buy/sell quotes, independently
   selected quote/meme fee ordering, sell-side burn ramp, checked reserve
   arithmetic, threshold reporting, and an explicit no-clamp sell-back invariant;
@@ -91,8 +92,8 @@ The core package now contains:
   and percentage boundaries, transferred creator authority,
   and composable payout routing.
 - `launch_ticket_tests.move` — OTW provenance, address/X creator validation,
-  zero-supply native-cap custody, fixed/burnable selections, replay-complete
-  creation events, and caller-selected ticket delivery.
+  exact billion-coin balance custody, fixed/burnable selections, decimal bounds,
+  replay-complete creation events, and caller-selected ticket delivery.
 - `launch_config_tests.move` and `launch_config_capacity_tests.move` — safe
   initialization, administrative lifecycles, immutable future-launch snapshots,
   independent graduation boundaries, route-cost replay facts, collection bounds,
@@ -160,19 +161,17 @@ the resolved address later claims through the ordinary address branch.
 
 ## Launch bootstrap
 
-Three transactions, for the reasons given in
-[../docs/decisions/0002-coin-creation-and-currency-authority.md](../docs/decisions/0002-coin-creation-and-currency-authority.md):
+Two transactions, following
+[ADR 0035](../docs/decisions/0035-initializer-finalized-meme-supply.md):
 
 1. **publish** the generated coin package — its OTW `init` creates an
-   unregulated, zero-supply currency and returns the empty `TreasuryCap<Meme>`
-   and native `MetadataCap<Meme>` inside a Blast launch ticket;
-2. **finalize registration** — a permissionless Coin Registry call promotes the
-   currency to its derived shared address; Blast's event-driven worker may submit
-   this transaction without another user approval;
-3. **launch** — one transaction redeems the ticket, validates the registered
-   currency and empty treasury cap, mints at most one billion whole coins, then
-   consumes mint authority into owner-selected `Fixed` or `BurnOnly` before
-   opening the curve.
+   unregulated currency, mints exactly one billion whole coins, consumes mint
+   authority into owner-selected `Fixed` or `BurnOnly`, and returns the complete
+   balance plus native `MetadataCap<Meme>` inside a Blast launch ticket;
+2. **finalize registration and launch** — a permissionless Coin Registry command
+   promotes the already finalized currency, and the same PTB may redeem the
+   ticket without borrowing that newly shared currency. The future launch module
+   determines the remaining launch inputs.
 
 The implementation is pinned to Sui CLI `1.77.2-51d177ad7d65` from the
 `mainnet-v1.77.2` release. CI and release records must use this exact build until

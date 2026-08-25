@@ -22,16 +22,16 @@ _Avoid_: creator metadata wrapper, metadata slot, capability pass-through
 **Generated coin supply mode**:
 The coin owner chooses `Fixed` (neither mintable nor burnable) or `BurnOnly`
 (burnable but never mintable). The generated package records the selection;
-launch mints once and consumes the unique treasury capability after permissionless
-Coin Registry finalization. Initial supply is nonzero and capped at one billion
-whole coins.
+the OTW initializer mints exactly one billion whole coins and immediately
+consumes the unique treasury capability into that final state. Generated Meme
+precision is at most ten decimals so the normalized supply fits `u64`.
 _Avoid_: mutable supply, retained mint authority
 
 **LaunchTicket<Meme>**:
 The transferable object created from the generated coin package's one-time
-witness. It holds the empty `TreasuryCap<Meme>`, native `MetadataCap<Meme>`,
-unissued `CreatorAuthority<Meme>`, and the launcher's burnable choice until the
-registered currency is ready to launch.
+witness. It holds the complete fixed `Balance<Meme>`, native
+`MetadataCap<Meme>`, unissued `CreatorAuthority<Meme>`, and the launcher's
+burnable choice after mint authority has been irreversibly consumed.
 _Avoid_: coin receipt, mint ticket, capability bundle
 
 **Creator identity**:

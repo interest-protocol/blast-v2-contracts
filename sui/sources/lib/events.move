@@ -132,7 +132,7 @@ public struct CreatorCapClaimed has copy, drop {
 public struct LaunchTicketCreated has copy, drop {
     ticket_id: ID,
     meme: TypeName,
-    treasury_cap_id: ID,
+    initial_supply: u64,
     metadata_cap_id: ID,
     launcher: address,
     creator: Option<address>,
@@ -360,7 +360,7 @@ public(package) fun creator_cap_claimed<Meme>(
 
 public(package) fun launch_ticket_created<Meme>(
     ticket_id: ID,
-    treasury_cap_id: ID,
+    initial_supply: u64,
     metadata_cap_id: ID,
     launcher: address,
     creator: Option<address>,
@@ -370,7 +370,7 @@ public(package) fun launch_ticket_created<Meme>(
     blast_fun::events_wrapper::emit_event(LaunchTicketCreated {
         ticket_id,
         meme: type_name::with_original_ids<Meme>(),
-        treasury_cap_id,
+        initial_supply,
         metadata_cap_id,
         launcher,
         creator,
@@ -620,11 +620,11 @@ public fun creator_cap_claimed_fields(
 #[test_only]
 public fun launch_ticket_created_fields(
     self: &LaunchTicketCreated,
-): (ID, TypeName, ID, ID, address, Option<address>, Option<vector<u8>>, bool) {
+): (ID, TypeName, u64, ID, address, Option<address>, Option<vector<u8>>, bool) {
     (
         self.ticket_id,
         self.meme,
-        self.treasury_cap_id,
+        self.initial_supply,
         self.metadata_cap_id,
         self.launcher,
         self.creator,

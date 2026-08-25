@@ -1,8 +1,13 @@
 # Sui OTW launch bootstrap and capability handoff
 
 - Date: 2026-08-23
-- Status: primary-source research
+- Status: primary-source research; protocol conclusion superseded by ADR 0035
 - Sui pin: `06734f6ff0af45d8632a14a4dc4b100197f6b1a2`
+
+> The framework facts below remain valid, but
+> [ADR 0035](../decisions/0035-initializer-finalized-meme-supply.md) replaces the
+> former Blast conclusion: the initializer now mints the fixed billion-coin
+> inventory and consumes the treasury cap before finalization.
 
 ## Question
 

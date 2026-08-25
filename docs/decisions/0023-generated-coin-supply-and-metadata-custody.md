@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-23
 - Amends: [0002](0002-coin-creation-and-currency-authority.md), [0003](0003-treasury-cap-lifetime-and-burn.md), [0006](0006-fees-and-launch-paths.md), [0007](0007-acl-pause-and-versioning.md), [0013](0013-creator-fee-authority-and-x-claims.md), [0014](0014-typed-creator-cap-and-diagnostic-modules.md), [0018](0018-authority-module-separation.md), [0019](0019-consuming-creator-authority-and-cap-return.md)
-- Amended by: [0025](0025-quote-whitelist-and-migration-targets.md), [0026](0026-deferred-sell-burn.md)
+- Amended by: [0025](0025-quote-whitelist-and-migration-targets.md), [0026](0026-deferred-sell-burn.md), [0035](0035-initializer-finalized-meme-supply.md)
 
 ## Sources
 

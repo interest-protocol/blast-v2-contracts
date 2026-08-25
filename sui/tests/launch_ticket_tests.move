@@ -3,12 +3,17 @@ module blast_fun::launch_ticket_tests;
 
 use blast_fun::{creator_authority, events, launch_ticket::{Self, LaunchTicket}};
 use std::unit_test::{assert_eq, destroy};
-use sui::test_scenario::{Self, Scenario};
+use sui::{coin_registry::Currency, test_scenario::{Self, Scenario}};
 
 // === Constants ===
 
 const LAUNCHER: address = @0xA11CE;
 const CREATOR: address = @0xC0FFEE;
+/// `sui::object::SUI_COIN_REGISTRY_OBJECT_ID` at the pinned framework revision.
+const COIN_REGISTRY: address = @0xc;
+const SUPPLY_AT_0_DECIMALS: u64 = 1_000_000_000;
+const SUPPLY_AT_6_DECIMALS: u64 = 1_000_000_000_000_000;
+const SUPPLY_AT_10_DECIMALS: u64 = 10_000_000_000_000_000_000;
 
 // === Test-Only Types ===
 
@@ -23,14 +28,14 @@ public struct TicketFixture {
 // === Tests ===
 
 #[test]
-fun address_ticket_returns_empty_capabilities_and_replay_complete_event() {
+fun address_ticket_mints_fixed_supply_and_emits_replay_complete_event() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
         let creator_identity = creator_authority::new_address(CREATOR);
         let ticket = launch_ticket::new(
             LAUNCH_TICKET_TESTS(),
-            9,
+            0,
             b"TICKET".to_string(),
             b"Ticket Test".to_string(),
             b"Address launch ticket".to_string(),
@@ -45,7 +50,7 @@ fun address_ticket_returns_empty_capabilities_and_replay_complete_event() {
         let (
             emitted_ticket_id,
             meme,
-            treasury_cap_id,
+            initial_supply,
             metadata_cap_id,
             launcher,
             creator,
@@ -62,18 +67,28 @@ fun address_ticket_returns_empty_capabilities_and_replay_complete_event() {
         assert_eq!(creator.destroy_some(), CREATOR);
         assert!(x_identity_hash.is_none());
         assert!(!burnable);
+        assert_eq!(initial_supply, SUPPLY_AT_0_DECIMALS);
 
-        let (treasury_cap, metadata_cap, creator_authority, burnable) =
+        let (meme, metadata_cap, creator_authority, burnable) =
             ticket.into_parts();
 
-        assert_eq!(object::id(&treasury_cap), treasury_cap_id);
         assert_eq!(object::id(&metadata_cap), metadata_cap_id);
-        assert_eq!(treasury_cap.total_supply(), 0);
+        assert_eq!(meme.value(), SUPPLY_AT_0_DECIMALS);
         assert!(!burnable);
 
-        destroy(treasury_cap);
+        destroy(meme);
         destroy(metadata_cap);
         destroy(creator_authority);
+    });
+
+    fixture.next_tx_expecting_events!(LAUNCHER, 1, |f| {
+        let currency = f.take_currency<LAUNCH_TICKET_TESTS>();
+
+        assert!(currency.is_supply_fixed());
+        assert!(!currency.is_supply_burn_only());
+        assert_eq!(currency.total_supply().destroy_some(), SUPPLY_AT_0_DECIMALS);
+
+        destroy(currency);
     });
 
     fixture.end();
@@ -85,7 +100,6 @@ fun x_ticket_is_composable_and_records_burn_only_selection() {
     let x_identity_hash =
         x"11223344556677889900aabbccddeeffffeeddccbbaa00998877665544332211";
     let expected_ticket_id;
-    let expected_treasury_cap_id;
     let expected_metadata_cap_id;
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -106,7 +120,7 @@ fun x_ticket_is_composable_and_records_burn_only_selection() {
         let (
             ticket_id,
             _,
-            treasury_cap_id,
+            initial_supply,
             metadata_cap_id,
             launcher,
             creator,
@@ -119,9 +133,9 @@ fun x_ticket_is_composable_and_records_burn_only_selection() {
         assert!(creator.is_none());
         assert_eq!(emitted_x_identity_hash.destroy_some(), x_identity_hash);
         assert!(burnable);
+        assert_eq!(initial_supply, SUPPLY_AT_6_DECIMALS);
 
         expected_ticket_id = ticket_id;
-        expected_treasury_cap_id = treasury_cap_id;
         expected_metadata_cap_id = metadata_cap_id;
 
         transfer::public_transfer(ticket, CREATOR);
@@ -131,17 +145,87 @@ fun x_ticket_is_composable_and_records_burn_only_selection() {
         let ticket = f.take_ticket();
         assert_eq!(object::id(&ticket), expected_ticket_id);
 
-        let (treasury_cap, metadata_cap, creator_authority, burnable) =
+        let (meme, metadata_cap, creator_authority, burnable) =
             ticket.into_parts();
 
-        assert_eq!(object::id(&treasury_cap), expected_treasury_cap_id);
         assert_eq!(object::id(&metadata_cap), expected_metadata_cap_id);
-        assert_eq!(treasury_cap.total_supply(), 0);
+        assert_eq!(meme.value(), SUPPLY_AT_6_DECIMALS);
         assert!(burnable);
+        let currency = f.take_currency<LAUNCH_TICKET_TESTS>();
 
-        destroy(treasury_cap);
+        assert!(!currency.is_supply_fixed());
+        assert!(currency.is_supply_burn_only());
+        assert_eq!(currency.total_supply().destroy_some(), SUPPLY_AT_6_DECIMALS);
+
+        destroy(meme);
         destroy(metadata_cap);
         destroy(creator_authority);
+        destroy(currency);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun ticket_accepts_the_largest_normalized_billion_coin_supply() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let creator_identity = creator_authority::new_address(CREATOR);
+        let ticket = launch_ticket::new(
+            LAUNCH_TICKET_TESTS(),
+            10,
+            b"MAX".to_string(),
+            b"Maximum Decimals".to_string(),
+            b"Largest representable fixed Blast supply".to_string(),
+            b"".to_string(),
+            creator_identity,
+            true,
+            f.ctx!(),
+        );
+        let (meme, metadata_cap, creator_authority, burnable) =
+            ticket.into_parts();
+
+        assert_eq!(meme.value(), SUPPLY_AT_10_DECIMALS);
+        assert!(burnable);
+
+        destroy(meme);
+        destroy(metadata_cap);
+        destroy(creator_authority);
+    });
+
+    fixture.next_tx_expecting_events!(LAUNCHER, 1, |f| {
+        let currency = f.take_currency<LAUNCH_TICKET_TESTS>();
+
+        assert!(currency.is_supply_burn_only());
+        assert_eq!(currency.total_supply().destroy_some(), SUPPLY_AT_10_DECIMALS);
+
+        destroy(currency);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = 61, location = blast_fun::launch_ticket)]
+fun ticket_rejects_decimals_that_cannot_represent_one_billion_coins() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let creator_identity = creator_authority::new_address(CREATOR);
+        let ticket = launch_ticket::new(
+            LAUNCH_TICKET_TESTS(),
+            11,
+            b"OVERFLOW".to_string(),
+            b"Too Many Decimals".to_string(),
+            b"One billion whole coins would exceed u64".to_string(),
+            b"".to_string(),
+            creator_identity,
+            false,
+            f.ctx!(),
+        );
+
+        destroy(ticket);
     });
 
     fixture.end();
@@ -262,6 +346,10 @@ fun start(): TicketFixture {
 
 fun take_ticket(self: &TicketFixture): LaunchTicket<LAUNCH_TICKET_TESTS> {
     self.scenario.take_from_sender()
+}
+
+fun take_currency<Meme>(self: &TicketFixture): Currency<Meme> {
+    self.scenario.take_from_address(COIN_REGISTRY)
 }
 
 fun end(self: TicketFixture) {

@@ -131,8 +131,9 @@ this is the rule set it is checked against.
   successful migration, and a full settlement epoch.
 - **Display resolution.** For each displayed type, every required field resolves to
   a non-empty string.
-- **No-public-mint.** A negative test asserting no public path reaches a mint for a
-  launched coin type.
+- **No post-initializer mint.** Structural and lifecycle tests prove the OTW-only
+  `launch_ticket::new` constructor is the sole mint site and consumes supply
+  authority before returning, so no later public path can mint the coin type.
 - **Pair immutability.** No transition, route, retry, or recovery path changes the
   selected `(Meme, Quote)` pair.
 - **Premise conversion.** Each open premise in
@@ -150,7 +151,7 @@ the decision that owns it. Nothing here may be marked done from prose alone.
 | # | Test | Owner |
 | --- | --- | --- |
 | 0.1 | P10 cross-package hot-potato threading compile fixture | [0002](decisions/0002-coin-creation-and-currency-authority.md) |
-| 0.2 | P11 by-value `TreasuryCap` across a command boundary | [0002](decisions/0002-coin-creation-and-currency-authority.md) |
+| 0.2 | Retired: initializer-finalized supply removes `TreasuryCap` command threading | [0035](decisions/0035-initializer-finalized-meme-supply.md) |
 | 0.3 | P13 `init` accepting a shared object | [0002](decisions/0002-coin-creation-and-currency-authority.md) |
 | 0.4 | P14 command result as a Move reference | [0002](decisions/0002-coin-creation-and-currency-authority.md) |
 | 0.5 | P1 type argument naming a package published in the same transaction | [0002](decisions/0002-coin-creation-and-currency-authority.md) |
@@ -163,13 +164,13 @@ the decision that owns it. Nothing here may be marked done from prose alone.
 
 | # | Test | Owner |
 | --- | --- | --- |
-| 1.1 | No public path reaches a mint for a launched coin type | [0001](decisions/0001-sui-package-and-module-layout.md), [0003](decisions/0003-treasury-cap-lifetime-and-burn.md) |
+| 1.1 | The OTW ticket constructor is the sole mint site and no treasury cap survives it | [0035](decisions/0035-initializer-finalized-meme-supply.md) |
 | 1.2 | Pair immutability across every transition, route, retry and recovery | [0005](decisions/0005-quote-asset-generalisation.md) |
 | 1.3 | Both conservation identities, meme units and quote units, after every operation | [0003](decisions/0003-treasury-cap-lifetime-and-burn.md) |
 | 1.4 | Curve vectors and both burn moments | [0004](decisions/0004-bonding-curve.md), [vectors/curve.json](vectors/curve.json) |
 | 1.5 | Sell-back invariant, seeded property test with a committed generator | [0004](decisions/0004-bonding-curve.md) |
 | 1.6 | Decimal and orientation vectors, exact rationals only | [0005](decisions/0005-quote-asset-generalisation.md), [vectors/quote-decimals.json](vectors/quote-decimals.json) |
-| 1.7 | Launch-transaction adversarial suite, all thirteen cases | [0002](decisions/0002-coin-creation-and-currency-authority.md) |
+| 1.7 | Initializer supply suite: exact normalized billion, both modes, decimal ceiling, and no surviving treasury cap | [0035](decisions/0035-initializer-finalized-meme-supply.md) |
 
 ### Gate 2 — authority, identity, settlement
 
@@ -187,6 +188,6 @@ the decision that owns it. Nothing here may be marked done from prose alone.
 | --- | --- | --- |
 | 3.1 | Route A/B/C decision table and acceptance-band boundaries | [0010](decisions/0010-migration-and-venue-adapters.md) |
 | 3.2 | Reservation cleanup before any venue switch | [0010](decisions/0010-migration-and-venue-adapters.md) |
-| 3.3 | Terminal ordering: seed, return, burn, lock supply, freeze metadata | [0003](decisions/0003-treasury-cap-lifetime-and-burn.md), [0010](decisions/0010-migration-and-venue-adapters.md) |
+| 3.3 | Terminal ordering preserves already-final supply while routing liquidity, residuals, and deferred burn | [0026](decisions/0026-deferred-sell-burn.md), [0035](decisions/0035-initializer-finalized-meme-supply.md) |
 | 3.4 | Event reducer replay in native Sui order across all entity scopes | [0011](decisions/0011-event-schema-and-replay.md) |
 | 3.5 | Per-venue dependency exemption resolved or the adapter excluded | [0010](decisions/0010-migration-and-venue-adapters.md) |

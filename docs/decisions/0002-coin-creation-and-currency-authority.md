@@ -2,12 +2,12 @@
 
 - Status: proposed
 - Date: 2026-08-22
-- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md), [0024](0024-generated-coin-launch-ticket.md), [0025](0025-quote-whitelist-and-migration-targets.md)
+- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md), [0024](0024-generated-coin-launch-ticket.md), [0025](0025-quote-whitelist-and-migration-targets.md), [0035](0035-initializer-finalized-meme-supply.md)
 
-> ADR 0023 supersedes the transaction details below. The generated package hands
-> Blast a zero-supply treasury cap and native metadata cap in a launch ticket;
-> after permissionless registration finalization, launch mints once and consumes
-> the treasury cap into `Fixed` or `BurnOnly`. The metadata cap is later returned
+> ADR 0035 supersedes the transaction details below. Blast mints exactly one
+> billion whole coins during generated-package initialization, consumes the
+> treasury cap into `Fixed` or `BurnOnly`, and places the complete balance plus
+> native metadata cap in the launch ticket. The metadata cap is later returned
 > separately alongside `CreatorCap<Meme>`. ADR 0025 also removes the proposed
 > `Currency<Quote>` launch input: the bounded quote whitelist itself authorizes
 > the pair and supplies the immutable migration target.

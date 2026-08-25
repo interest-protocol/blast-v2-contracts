@@ -227,6 +227,10 @@ const EInvalidMemeLiquidityProvisionBps: u64 = 59;
 /// Protocol Meme allocation plus pool provision leaves no positive curve share.
 const EInvalidMemeSupplyPartitionBps: u64 = 60;
 
+#[test_only]
+/// Meme decimals cannot represent the fixed one-billion supply in a u64 balance.
+const EInvalidMemeDecimals: u64 = 61;
+
 // === Package Error Codes ===
 
 macro public(package) fun invalid_admin_cap(): u64 {
@@ -437,4 +441,8 @@ macro public(package) fun invalid_meme_liquidity_provision_bps(): u64 {
 
 macro public(package) fun invalid_meme_supply_partition_bps(): u64 {
     60
+}
+
+macro public(package) fun invalid_meme_decimals(): u64 {
+    61
 }

@@ -498,18 +498,39 @@ fi
 
 if [[ ! -f sources/launch_ticket.move ]] \
   || ! rg -U -q \
-    'public struct LaunchTicket<phantom Meme> has key, store \{\s*id: UID,\s*treasury_cap: TreasuryCap<Meme>,\s*metadata_cap: MetadataCap<Meme>,\s*creator_authority: CreatorAuthority<Meme>,\s*burnable: bool,\s*\}' \
+    'public struct LaunchTicket<phantom Meme> has key, store \{\s*id: UID,\s*meme: Balance<Meme>,\s*metadata_cap: MetadataCap<Meme>,\s*creator_authority: CreatorAuthority<Meme>,\s*burnable: bool,\s*\}' \
     sources/launch_ticket.move \
   || [[ "$(rg -c '^public fun new<Meme: drop>\(' sources/launch_ticket.move)" != 1 ]] \
   || [[ "$(rg -c 'creator_identity: CreatorIdentity' sources/launch_ticket.move)" != 1 ]] \
   || rg -n '^public fun new_(address|x)<Meme: drop>\(' sources/launch_ticket.move \
   || [[ "$(rg -c '^public\(package\) fun into_parts<Meme>\(' sources/launch_ticket.move)" != 1 ]] \
   || ! rg -q 'coin_registry::new_currency_with_otw' sources/launch_ticket.move \
+  || ! rg -Fq 'let meme = treasury_cap.mint_balance(initial_supply);' sources/launch_ticket.move \
+  || ! rg -Fq 'initializer.make_supply_fixed(treasury_cap);' sources/launch_ticket.move \
+  || ! rg -Fq 'initializer.make_supply_burn_only(treasury_cap);' sources/launch_ticket.move \
   || ! rg -q 'initializer\.finalize\(ctx\)' sources/launch_ticket.move \
+  || ! rg -Fq 'decimals <= constants::max_meme_decimals!()' sources/launch_ticket.move \
+  || ! rg -Fq 'constants::meme_total_supply_whole_coins!() * 10u64.pow(decimals)' sources/launch_ticket.move \
+  || rg -n '\bTreasuryCap<Meme>\b|treasury_cap:' sources/launch_ticket.move \
   || rg -n '\b(make_regulated|DenyCap|CoinMetadata)\b|coin_registry::new_currency\(' \
     sources/launch_ticket.move \
   || rg -n '\btransfer::|^(entry fun|public entry fun)' sources/launch_ticket.move; then
-  echo 'launch_ticket.move must create only current unregulated OTW currencies, store both native caps, and return composable tickets.' >&2
+  echo 'launch_ticket.move must mint the fixed inventory, consume supply authority, retain only balance/metadata/creator custody, and return a composable ticket.' >&2
+  failures=$((failures + 1))
+fi
+
+if [[ "$(rg -o '\.mint_balance\(' sources | wc -l)" != 1 ]] \
+  || rg -n '\bcoin::mint(_balance)?\(' sources \
+  || rg -n '\.mint_balance\(' sources --glob '!launch_ticket.move'; then
+  echo 'The OTW launch-ticket constructor must remain the only Meme mint site in the package.' >&2
+  failures=$((failures + 1))
+fi
+
+if ! rg -U -q 'macro public\(package\) fun meme_total_supply_whole_coins\(\): u64 \{\s*1_000_000_000\s*\}' \
+    sources/lib/constants.move \
+  || ! rg -U -q 'macro public\(package\) fun max_meme_decimals\(\): u8 \{\s*10\s*\}' \
+    sources/lib/constants.move; then
+  echo 'Generated Meme supply must remain exactly one billion whole coins with an overflow-proof decimal bound.' >&2
   failures=$((failures + 1))
 fi
 
@@ -518,9 +539,10 @@ launch_ticket_event_payload="$(sed -n \
   sources/lib/events.move)"
 
 if [[ -z "$launch_ticket_event_payload" ]] \
-  || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' \
+  || ! rg -q '^[[:space:]]+initial_supply: u64,' <<<"$launch_ticket_event_payload" \
+  || rg -n '\b(treasury_cap_id|sequence|schema_version|action_tag|nonce)\b' \
     <<<"$launch_ticket_event_payload"; then
-  echo 'Launch-ticket creation must use the generic event wrapper without duplicate ordering or schema fields.' >&2
+  echo 'Launch-ticket creation must record minted supply, omit its consumed cap, and avoid duplicate ordering or schema fields.' >&2
   failures=$((failures + 1))
 fi
 

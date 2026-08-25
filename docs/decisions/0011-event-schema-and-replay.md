@@ -2,7 +2,7 @@
 
 - Status: proposed
 - Date: 2026-08-22
-- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0032](0032-admin-authorized-upgrade-cap-custody.md)
+- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0032](0032-admin-authorized-upgrade-cap-custody.md), [0035](0035-initializer-finalized-meme-supply.md)
 
 ## Sources
 
@@ -89,7 +89,7 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `MetadataUpdated` | L | field, `old_value`, `new_value` |
 | `MetadataFrozen` | L | metadata cap id |
 | `CreatorCapClaimed` | M | creator address, optional X identity commitment, optional X expiry |
-| `LaunchTicketCreated` | M | ticket id, original meme type, treasury-cap id, metadata-cap id, launcher, address-or-X creator identity, burnable selection |
+| `LaunchTicketCreated` | M | ticket id, original meme type, exact initial supply, metadata-cap id, launcher, address-or-X creator identity, burnable selection |
 | `ProtocolAuthorityCreated` | G | authority id, initial root-cap id and recipient, admin bound, root-transfer delay |
 | `AdminGranted` | G | admin-cap id, recipient |
 | `AdminRevoked` | G | admin-cap id; membership removed while the cap object may remain |

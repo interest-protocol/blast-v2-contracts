@@ -3,6 +3,7 @@
 - Status: accepted
 - Date: 2026-08-24
 - Implements: [0023](0023-generated-coin-supply-and-metadata-custody.md)
+- Amended by: [0035](0035-initializer-finalized-meme-supply.md)
 
 ## Context
 

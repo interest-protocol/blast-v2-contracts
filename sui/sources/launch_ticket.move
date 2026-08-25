@@ -1,20 +1,21 @@
-/// Generated-coin creation and linear capability custody before launch opens.
+/// Generated-coin creation, finalized supply, and linear custody before launch opens.
 module blast_fun::launch_ticket;
 
 use blast_fun::{
+    constants,
     creator_authority::{CreatorAuthority, CreatorIdentity},
     events,
 };
 use std::string::String;
 use sui::{
-    coin::TreasuryCap,
+    balance::Balance,
     coin_registry::{Self, MetadataCap},
 };
 
-/// Linear custody of a generated coin's authorities between publish and launch.
+/// Linear custody of a generated coin's inventory and authorities before launch.
 public struct LaunchTicket<phantom Meme> has key, store {
     id: UID,
-    treasury_cap: TreasuryCap<Meme>,
+    meme: Balance<Meme>,
     metadata_cap: MetadataCap<Meme>,
     creator_authority: CreatorAuthority<Meme>,
     burnable: bool,
@@ -36,7 +37,8 @@ public fun new<Meme: drop>(
 ): LaunchTicket<Meme> {
     let (creator, x_identity_hash) = creator_identity.event_fields();
     let creator_authority = creator_identity.into_authority<Meme>();
-    let (initializer, treasury_cap) = coin_registry::new_currency_with_otw(
+    let initial_supply = initial_supply(decimals);
+    let (mut initializer, mut treasury_cap) = coin_registry::new_currency_with_otw(
         otw,
         decimals,
         symbol,
@@ -45,11 +47,19 @@ public fun new<Meme: drop>(
         icon_url,
         ctx,
     );
+    let meme = treasury_cap.mint_balance(initial_supply);
+
+    if (burnable) {
+        initializer.make_supply_burn_only(treasury_cap);
+    } else {
+        initializer.make_supply_fixed(treasury_cap);
+    };
+
     let metadata_cap = initializer.finalize(ctx);
 
     let ticket = LaunchTicket {
         id: object::new(ctx),
-        treasury_cap,
+        meme,
         metadata_cap,
         creator_authority,
         burnable,
@@ -70,14 +80,14 @@ public fun new<Meme: drop>(
 public(package) fun into_parts<Meme>(
     self: LaunchTicket<Meme>,
 ): (
-    TreasuryCap<Meme>,
+    Balance<Meme>,
     MetadataCap<Meme>,
     CreatorAuthority<Meme>,
     bool,
 ) {
     let LaunchTicket {
         id,
-        treasury_cap,
+        meme,
         metadata_cap,
         creator_authority,
         burnable,
@@ -85,7 +95,7 @@ public(package) fun into_parts<Meme>(
 
     id.delete();
 
-    (treasury_cap, metadata_cap, creator_authority, burnable)
+    (meme, metadata_cap, creator_authority, burnable)
 }
 
 // === Private Functions ===
@@ -98,11 +108,22 @@ fun emit_created<Meme>(
 ) {
     events::launch_ticket_created<Meme>(
         object::id(self),
-        object::id(&self.treasury_cap),
+        self.meme.value(),
         object::id(&self.metadata_cap),
         launcher,
         creator,
         x_identity_hash,
         self.burnable,
     );
+}
+
+/// Returns the exact normalized billion-coin inventory for a supported precision.
+fun initial_supply(decimals: u8): u64 {
+    assert!(
+        decimals <= constants::max_meme_decimals!(),
+        blast_fun::errors::invalid_meme_decimals!(),
+    );
+
+    // At the accepted maximum this is 10^9 * 10^10 = 10^19, below u64::MAX.
+    constants::meme_total_supply_whole_coins!() * 10u64.pow(decimals)
 }
