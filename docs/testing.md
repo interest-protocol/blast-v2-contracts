@@ -27,13 +27,16 @@ Tests are organized around risk, not only function names.
   modules so assertions and teardown remain visually direct.
 - Keep test builders deterministic and explicit about sender, clock/time,
   balances, state, and authority.
-- Stateful Sui suites use one complete option-backed fixture even when a case
-  touches only part of the environment. `start` fills the scenario, shared
-  objects, and capabilities. A receiver-style transaction macro extracts every
-  option, advances the sender, passes mutable references to a closure, and
-  restores every non-consumed value before returning. Test bodies orchestrate
-  only `start`, named transaction helpers, assertions, and `end`; they do not
-  destructure fixtures or manipulate `test_scenario` directly.
+- Stateful Sui suites use one lean fixture per module that stores the scenario
+  and only suite-reusable state as direct fields. `start` (or a named minimal
+  setup variant) owns all scenario choreography; a receiver-style
+  `run!`/`next_tx!` macro advances the sender and passes the single named
+  `&mut Fixture` handle to the closure — never a positional reference list or
+  underscore placeholders. `Option<T>` fields exist only for consuming or
+  replacement flows behind narrowly named `take_*`/`replace_*` helpers. Test
+  bodies orchestrate only `start`, transaction macros, assertions, and `end`;
+  they do not destructure fixtures or manipulate `test_scenario` directly, and
+  pure math or error-registry tests stay fixture-free.
 - Random tests use fixed seeds in CI and print enough input to reproduce failure.
 - Fuzz domains must include zero, one, maximum supported values, just below/at/
   above thresholds, and values that stress intermediate multiplication.

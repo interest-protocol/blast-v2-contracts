@@ -85,5 +85,7 @@ the next unused value and must not fill a retired gap.
 | 56 | `invalid_package_publisher` | `package_admin` | The supplied `Publisher` was not claimed by Blast's canonical package module. |
 | 57 | `upgrade_policy_not_more_restrictive` | `package_admin` | The requested UpgradeCap policy is equal to or looser than the current policy. |
 | 58 | `admin_package_authorization_already_disabled` | `package_admin` | The irreversible routine-admin package-authority cutover already occurred. |
+| 59 | `invalid_meme_liquidity_provision_bps` | `launch_config` | The destination-pool Meme provision is zero or exceeds 9,999 basis points. |
+| 60 | `invalid_meme_supply_partition_bps` | `launch_config` | Protocol Meme allocation plus pool provision leaves no positive rate for curve inventory. |
 
-The next new package-wide protocol error must use code **59**.
+The next new package-wide protocol error must use code **61**.

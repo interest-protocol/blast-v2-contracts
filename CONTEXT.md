@@ -107,6 +107,14 @@ migration. It is capped at 1,000 basis points and never enters the curve, pendin
 burn, trade-fee ledger, or venue liquidity.
 _Avoid_: migration meme fee, creator allocation, curve reserve
 
+**Meme liquidity provision**:
+The nonzero snapshotted percentage of initial Meme supply reserved before curve
+inventory for destination-pool principal. It is capped at 9,999 basis points,
+must leave a positive rate for curve inventory after protocol Meme allocation,
+and never becomes protocol or creator revenue. Zero means the launch policy is
+not configured; it never means migrate all terminal curve inventory.
+_Avoid_: Meme migration fee, platform allocation, terminal curve remainder
+
 **Migration witness whitelist**:
 The bounded set of sealed witness types owned by supported external migrator
 packages. A new launch must select one allowed original `TypeName`; the future

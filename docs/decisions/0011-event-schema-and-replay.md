@@ -99,11 +99,11 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `SuperAdminTransferred` | G | previous/new super-admin-cap ids and recipient |
 | `RuntimeConfigCreated` | G | runtime-config id and initial zero `protocol_fee_share_bps`; disabled signer state is an initialization invariant |
 | `ProtocolFeeShareChanged` | G | old/new `protocol_fee_share_bps` |
-| `LaunchConfigCreated` | G | shared launch-config id, quote and migration-witness bounds, and zero-safe initial graduation defaults |
+| `LaunchConfigCreated` | G | shared launch-config id, quote and migration-witness bounds, zero-safe initial graduation defaults, and the zero unconfigured Meme liquidity provision |
 | `QuoteAllowed` | G | original quote type, initial migration quote target |
 | `QuoteMigrationTargetChanged` | G | original quote type, old/new migration quote target |
 | `QuoteDisallowed` | G | original quote type, previous migration quote target |
-| `GraduationDefaultsChanged` | G | complete old/new Quote-fee and Meme-allocation pairs |
+| `GraduationDefaultsChanged` | G | complete old/new Quote-fee, Meme-allocation, and Meme-liquidity-provision triples |
 | `MigrationWitnessAllowed` | G | admitted external migrator witness original type |
 | `MigrationWitnessDisallowed` | G | disallowed external migrator witness original type |
 | `PackageAdminCreated` | G | package-admin, Publisher, and wrapped cap ids; original package id; initial version, policy, and enabled admin-authorization state |

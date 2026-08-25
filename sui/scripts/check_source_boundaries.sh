@@ -151,36 +151,37 @@ if [[ -z "$package_admin_creation_event" || -z "$package_admin_mutation_event_pa
   failures=$((failures + 1))
 fi
 
-package_admin_tests_body="$(sed -n \
-  '/^\/\/ === Tests ===/,/^\/\/ === Private Functions ===/p' \
-  tests/package_admin_tests.move)"
-package_admin_fixture="$(sed -n \
-  '/^public struct Fixture {/,/^}/p' \
-  tests/package_admin_tests.move)"
-package_admin_next_tx_macro="$(sed -n \
-  '/^macro fun next_tx(/,/^macro fun take_invalid_cap_inputs_next_tx(/p' \
-  tests/package_admin_tests.move)"
-package_admin_take_cap_macro="$(sed -n \
-  '/^macro fun take_invalid_cap_inputs_next_tx(/,/^macro fun take_invalid_publisher_inputs_next_tx(/p' \
-  tests/package_admin_tests.move)"
-package_admin_take_publisher_macro="$(sed -n \
-  '/^macro fun take_invalid_publisher_inputs_next_tx(/,/^fun start(/p' \
-  tests/package_admin_tests.move)"
+for test_file in tests/*.move; do
+  if ! rg -q '\bScenario\b' "$test_file"; then
+    continue
+  fi
 
-if [[ "$(rg -c ': Option<' <<<"$package_admin_fixture")" != 12 ]] \
-  || [[ "$(rg -o '\.extract\(\)' <<<"$package_admin_next_tx_macro" | wc -l)" != 12 ]] \
-  || [[ "$(rg -o '\.fill\(' <<<"$package_admin_next_tx_macro" | wc -l)" != 12 ]] \
-  || [[ "$(rg -o '\.extract\(\)' <<<"$package_admin_take_cap_macro" | wc -l)" != 12 ]] \
-  || [[ "$(rg -o '\.fill\(' <<<"$package_admin_take_cap_macro" | wc -l)" != 10 ]] \
-  || [[ "$(rg -o '\.extract\(\)' <<<"$package_admin_take_publisher_macro" | wc -l)" != 12 ]] \
-  || [[ "$(rg -o '\.fill\(' <<<"$package_admin_take_publisher_macro" | wc -l)" != 10 ]] \
-  || ! rg -Fq 'scenario.next_tx($sender);' <<<"$package_admin_next_tx_macro" \
-  || ! rg -Fq 'scenario.next_tx($sender);' <<<"$package_admin_take_cap_macro" \
-  || ! rg -Fq 'scenario.next_tx($sender);' <<<"$package_admin_take_publisher_macro" \
-  || rg -n \
-    'test_scenario::|scenario\.(next_tx|take_|return_)|let Fixture|fixture\.(scenario|super_admin_cap|authority|admin_cap|package_admin|other_package_admin|valid_publisher|foreign_publisher|valid_upgrade_cap|foreign_upgrade_cap|package_admin_created|wrapped_package_admin)' \
-    <<<"$package_admin_tests_body"; then
-  echo 'Package-administration tests must use the complete option-backed transaction fixture without direct scenario or fixture-field choreography.' >&2
+  test_bodies="$(sed -n \
+    '/^\/\/ === Tests ===/,/^\/\/ === Private Test Helpers ===/p' \
+    "$test_file")"
+  macro_count="$(rg -c '^macro fun ' "$test_file" || true)"
+  handle_count="$(rg -c '\$fn: \|&mut Fixture\|' "$test_file" || true)"
+
+  if ! rg -q '^public struct Fixture \{' "$test_file" \
+    || ! rg -q '^macro fun next_tx\(' "$test_file" \
+    || ! rg -q '^fun start\(' "$test_file" \
+    || ! rg -U -q 'fun end\(self: Fixture\) \{\s*destroy\(self\);\s*\}' "$test_file" \
+    || [[ -z "$macro_count" || -z "$handle_count" || "$macro_count" != "$handle_count" ]]; then
+    echo "$test_file: every scenario-backed suite needs one Fixture, start, receiver next_tx macros passing the single &mut Fixture handle, and one destroying end." >&2
+    failures=$((failures + 1))
+  fi
+
+  if rg -n \
+    'test_scenario::|\.next_tx\(|take_from_sender|take_shared|return_to_sender|return_shared|has_most_recent_for_sender|let Fixture|\.extract\(\)|\.fill\(' \
+    <<<"$test_bodies"; then
+    echo "$test_file: test bodies must not destructure fixtures or drive test_scenario directly; only start variants and fixture helpers may." >&2
+    failures=$((failures + 1))
+  fi
+done
+
+if rg -n 'AdminFixture|scenario: Option<' tests \
+  || rg -n '\|[A-Za-z0-9_&: <>,]*,[[:space:]]*_' tests; then
+  echo 'Legacy fixture patterns are prohibited: no AdminFixture, no option-backed scenario, and no positional closure parameter lists with underscore placeholders.' >&2
   failures=$((failures + 1))
 fi
 
@@ -290,7 +291,7 @@ launch_config_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources
 
 if [[ ! -f sources/launch_config.move ]] \
   || ! rg -U -q \
-    'public struct LaunchConfig has key \{\s*id: UID,\s*quotes: VecMap<TypeName, u64>,\s*quote_migration_fee_bps: u64,\s*meme_graduation_allocation_bps: u64,\s*migration_witnesses: VecSet<TypeName>,\s*\}' \
+    'public struct LaunchConfig has key \{\s*id: UID,\s*quotes: VecMap<TypeName, u64>,\s*quote_migration_fee_bps: u64,\s*meme_graduation_allocation_bps: u64,\s*meme_liquidity_provision_bps: u64,\s*migration_witnesses: VecSet<TypeName>,\s*\}' \
     sources/launch_config.move \
   || rg -n '\b(AdminCap|ProtocolAuthority)\b' <<<"$launch_config_production" \
   || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' <<<"$launch_config_production" \
@@ -300,7 +301,7 @@ if [[ ! -f sources/launch_config.move ]] \
   || [[ "$(rg -c '^public fun set_graduation_defaults\(' <<<"$launch_config_production")" != 1 ]] \
   || [[ "$(rg -c '^public\(package\) fun ' <<<"$launch_config_production")" != 1 ]] \
   || ! rg -U -q \
-    'public\(package\) fun snapshot_for_launch<Quote, MigrationWitness: drop>\(\s*self: &LaunchConfig,\s*\): \(u64, u64, u64, TypeName\)' \
+    'public\(package\) fun snapshot_for_launch<Quote, MigrationWitness: drop>\(\s*self: &LaunchConfig,\s*\): \(u64, u64, u64, u64, TypeName\)' \
     sources/launch_config.move; then
   echo 'launch_config.move must own only bounded future-launch policy and its AdminWitness-gated mutations.' >&2
   failures=$((failures + 1))
@@ -314,14 +315,20 @@ if ! rg -U -q 'macro public\(package\) fun max_quote_assets\(\): u64 \{\s*16\s*\
     sources/lib/constants.move \
   || ! rg -U -q 'macro public\(package\) fun max_meme_graduation_allocation_bps\(\): u64 \{\s*1_000\s*\}' \
   sources/lib/constants.move \
+  || ! rg -U -q 'macro public\(package\) fun max_meme_liquidity_provision_bps\(\): u64 \{\s*9_999\s*\}' \
+  sources/lib/constants.move \
   || ! rg -Fq 'type_name::with_original_ids<Quote>()' sources/launch_config.move \
   || ! rg -Fq 'type_name::with_original_ids<MigrationWitness>()' sources/launch_config.move \
   || ! rg -Fq 'self.quotes.length() < constants::max_quote_assets!()' \
     sources/launch_config.move \
   || ! rg -Fq 'self.migration_witnesses.length()' sources/launch_config.move \
   || ! rg -U -q \
-    'quote_migration_fee_bps: 0,\s*meme_graduation_allocation_bps: 0,\s*migration_witnesses: vec_set::empty\(\)' \
+    'quote_migration_fee_bps: 0,\s*meme_graduation_allocation_bps: 0,\s*meme_liquidity_provision_bps: 0,\s*migration_witnesses: vec_set::empty\(\)' \
     sources/launch_config.move \
+  || ! rg -U -q \
+    'meme_graduation_allocation_bps \+ meme_liquidity_provision_bps\s*< constants::basis_points_denominator!\(\)' \
+    sources/launch_config.move \
+  || ! rg -Fq 'self.meme_liquidity_provision_bps > 0' sources/launch_config.move \
   || rg -n '\bCurrency<Quote>\b|coin_registry' <<<"$launch_config_production"; then
   echo 'Launch policy must use approved ceilings, original type identities, fixed bounds, zero defaults, and no Coin Registry dependency.' >&2
   failures=$((failures + 1))

@@ -26,6 +26,7 @@ public struct LaunchConfigCreated has copy, drop {
     max_migration_witnesses: u64,
     quote_migration_fee_bps: u64,
     meme_graduation_allocation_bps: u64,
+    meme_liquidity_provision_bps: u64,
 }
 
 /// Emitted after a quote and its initial migration target are admitted.
@@ -51,8 +52,10 @@ public struct QuoteDisallowed has copy, drop {
 public struct GraduationDefaultsChanged has copy, drop {
     old_quote_migration_fee_bps: u64,
     old_meme_graduation_allocation_bps: u64,
+    old_meme_liquidity_provision_bps: u64,
     new_quote_migration_fee_bps: u64,
     new_meme_graduation_allocation_bps: u64,
+    new_meme_liquidity_provision_bps: u64,
 }
 
 /// Emitted after an external migrator witness type is admitted for future launches.
@@ -206,6 +209,7 @@ public(package) fun launch_config_created(
     max_migration_witnesses: u64,
     quote_migration_fee_bps: u64,
     meme_graduation_allocation_bps: u64,
+    meme_liquidity_provision_bps: u64,
 ) {
     blast_fun::events_wrapper::emit_event(LaunchConfigCreated {
         config_id,
@@ -213,6 +217,7 @@ public(package) fun launch_config_created(
         max_migration_witnesses,
         quote_migration_fee_bps,
         meme_graduation_allocation_bps,
+        meme_liquidity_provision_bps,
     });
 }
 
@@ -246,14 +251,18 @@ public(package) fun quote_disallowed<Quote>(
 public(package) fun graduation_defaults_changed(
     old_quote_migration_fee_bps: u64,
     old_meme_graduation_allocation_bps: u64,
+    old_meme_liquidity_provision_bps: u64,
     new_quote_migration_fee_bps: u64,
     new_meme_graduation_allocation_bps: u64,
+    new_meme_liquidity_provision_bps: u64,
 ) {
     blast_fun::events_wrapper::emit_event(GraduationDefaultsChanged {
         old_quote_migration_fee_bps,
         old_meme_graduation_allocation_bps,
+        old_meme_liquidity_provision_bps,
         new_quote_migration_fee_bps,
         new_meme_graduation_allocation_bps,
+        new_meme_liquidity_provision_bps,
     });
 }
 
@@ -478,13 +487,14 @@ public fun runtime_config_created_fields(
 #[test_only]
 public fun launch_config_created_fields(
     self: &LaunchConfigCreated,
-): (ID, u64, u64, u64, u64) {
+): (ID, u64, u64, u64, u64, u64) {
     (
         self.config_id,
         self.max_quote_assets,
         self.max_migration_witnesses,
         self.quote_migration_fee_bps,
         self.meme_graduation_allocation_bps,
+        self.meme_liquidity_provision_bps,
     )
 }
 
@@ -515,12 +525,14 @@ public fun quote_disallowed_fields(self: &QuoteDisallowed): (TypeName, u64) {
 #[test_only]
 public fun graduation_defaults_changed_fields(
     self: &GraduationDefaultsChanged,
-): (u64, u64, u64, u64) {
+): (u64, u64, u64, u64, u64, u64) {
     (
         self.old_quote_migration_fee_bps,
         self.old_meme_graduation_allocation_bps,
+        self.old_meme_liquidity_provision_bps,
         self.new_quote_migration_fee_bps,
         self.new_meme_graduation_allocation_bps,
+        self.new_meme_liquidity_provision_bps,
     )
 }
 

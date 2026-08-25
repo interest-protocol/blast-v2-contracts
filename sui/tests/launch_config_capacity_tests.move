@@ -44,16 +44,19 @@ public struct Fixture {
 #[test]
 fun migration_witness_registry_allows_replacement_at_capacity() {
     let mut fixture = start();
-    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
 
-    allow_sixteen_migration_witnesses(&mut fixture.config, &admin_witness);
-    fixture.config.disallow_migration_witness<MIGRATION_WITNESS<R0>>(&admin_witness);
-    fixture.config.allow_migration_witness<MIGRATION_WITNESS<R16>>(&admin_witness);
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
 
-    assert_eq!(
-        fixture.config.allowed_migration_witness_count_for_testing(),
-        constants::max_migration_witnesses!(),
-    );
+        f.allow_sixteen_migration_witnesses(&admin_witness);
+        f.config.disallow_migration_witness<MIGRATION_WITNESS<R0>>(&admin_witness);
+        f.config.allow_migration_witness<MIGRATION_WITNESS<R16>>(&admin_witness);
+
+        assert_eq!(
+            f.config.allowed_migration_witness_count_for_testing(),
+            constants::max_migration_witnesses!(),
+        );
+    });
 
     fixture.end();
 }
@@ -62,36 +65,46 @@ fun migration_witness_registry_allows_replacement_at_capacity() {
 #[expected_failure(abort_code = 51)]
 fun migration_witness_registry_rejects_seventeenth_type() {
     let mut fixture = start();
-    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
 
-    allow_sixteen_migration_witnesses(&mut fixture.config, &admin_witness);
-    fixture.config.allow_migration_witness<MIGRATION_WITNESS<R16>>(&admin_witness);
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+
+        f.allow_sixteen_migration_witnesses(&admin_witness);
+        f.config.allow_migration_witness<MIGRATION_WITNESS<R16>>(&admin_witness);
+    });
 
     fixture.end();
 }
 
 // === Private Test Helpers ===
 
+macro fun next_tx($fixture: &mut Fixture, $sender: address, $fn: |&mut Fixture|) {
+    let fixture = $fixture;
+
+    fixture.advance($sender);
+    $fn(fixture);
+}
+
 fun allow_sixteen_migration_witnesses(
-    config: &mut launch_config::LaunchConfig,
+    self: &mut Fixture,
     admin_witness: &acl::AdminWitness,
 ) {
-    config.allow_migration_witness<MIGRATION_WITNESS<R0>>(admin_witness);
-    config.allow_migration_witness<MIGRATION_WITNESS<R1>>(admin_witness);
-    config.allow_migration_witness<MIGRATION_WITNESS<R2>>(admin_witness);
-    config.allow_migration_witness<MIGRATION_WITNESS<R3>>(admin_witness);
-    config.allow_migration_witness<MIGRATION_WITNESS<R4>>(admin_witness);
-    config.allow_migration_witness<MIGRATION_WITNESS<R5>>(admin_witness);
-    config.allow_migration_witness<MIGRATION_WITNESS<R6>>(admin_witness);
-    config.allow_migration_witness<MIGRATION_WITNESS<R7>>(admin_witness);
-    config.allow_migration_witness<MIGRATION_WITNESS<R8>>(admin_witness);
-    config.allow_migration_witness<MIGRATION_WITNESS<R9>>(admin_witness);
-    config.allow_migration_witness<MIGRATION_WITNESS<R10>>(admin_witness);
-    config.allow_migration_witness<MIGRATION_WITNESS<R11>>(admin_witness);
-    config.allow_migration_witness<MIGRATION_WITNESS<R12>>(admin_witness);
-    config.allow_migration_witness<MIGRATION_WITNESS<R13>>(admin_witness);
-    config.allow_migration_witness<MIGRATION_WITNESS<R14>>(admin_witness);
-    config.allow_migration_witness<MIGRATION_WITNESS<R15>>(admin_witness);
+    self.config.allow_migration_witness<MIGRATION_WITNESS<R0>>(admin_witness);
+    self.config.allow_migration_witness<MIGRATION_WITNESS<R1>>(admin_witness);
+    self.config.allow_migration_witness<MIGRATION_WITNESS<R2>>(admin_witness);
+    self.config.allow_migration_witness<MIGRATION_WITNESS<R3>>(admin_witness);
+    self.config.allow_migration_witness<MIGRATION_WITNESS<R4>>(admin_witness);
+    self.config.allow_migration_witness<MIGRATION_WITNESS<R5>>(admin_witness);
+    self.config.allow_migration_witness<MIGRATION_WITNESS<R6>>(admin_witness);
+    self.config.allow_migration_witness<MIGRATION_WITNESS<R7>>(admin_witness);
+    self.config.allow_migration_witness<MIGRATION_WITNESS<R8>>(admin_witness);
+    self.config.allow_migration_witness<MIGRATION_WITNESS<R9>>(admin_witness);
+    self.config.allow_migration_witness<MIGRATION_WITNESS<R10>>(admin_witness);
+    self.config.allow_migration_witness<MIGRATION_WITNESS<R11>>(admin_witness);
+    self.config.allow_migration_witness<MIGRATION_WITNESS<R12>>(admin_witness);
+    self.config.allow_migration_witness<MIGRATION_WITNESS<R13>>(admin_witness);
+    self.config.allow_migration_witness<MIGRATION_WITNESS<R14>>(admin_witness);
+    self.config.allow_migration_witness<MIGRATION_WITNESS<R15>>(admin_witness);
 }
 
 fun start(): Fixture {
@@ -107,15 +120,17 @@ fun start(): Fixture {
 
     scenario.next_tx(PROTOCOL_ADMIN);
     let admin_cap = scenario.take_from_sender<acl::AdminCap>();
-    let fixture_config = scenario.take_shared<launch_config::LaunchConfig>();
+    let config = scenario.take_shared<launch_config::LaunchConfig>();
 
-    Fixture {
-        scenario,
-        super_admin_cap,
-        authority,
-        admin_cap,
-        config: fixture_config,
-    }
+    Fixture { scenario, super_admin_cap, authority, admin_cap, config }
+}
+
+fun advance(self: &mut Fixture, sender: address) {
+    self.scenario.next_tx(sender);
+}
+
+fun sign_in(self: &Fixture): acl::AdminWitness {
+    self.authority.sign_in(&self.admin_cap)
 }
 
 fun end(self: Fixture) {

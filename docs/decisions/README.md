@@ -78,8 +78,9 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0030](0030-singleton-event-identity.md) | Singleton event identity without repeated object ids | **accepted** |
 | [0031](0031-package-witness-and-publisher-custody.md) | Package witness and Publisher custody | **accepted** |
 | [0032](0032-admin-authorized-upgrade-cap-custody.md) | Package administration custody and admin-authorized upgrades | **accepted** |
+| [0033](0033-meme-liquidity-provision.md) | Meme liquidity provision for destination pools | **accepted** |
 
-Only ADRs 0013–0032 are accepted. ADR 0021 accepts the pure curve formulas and
+Only ADRs 0013–0033 are accepted. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -107,6 +108,10 @@ ADR 0032 validates and wraps the package `Publisher` and `UpgradeCap` in one
 shared package-administration object, lets a live `AdminWitness` authorize exact
 upgrade digests and irreversibly narrow policy, and provides the one-way
 package-only cutover that later governance must use to retire routine admins.
+
+ADR 0033 adds an independent, nonzero Meme liquidity-provision rate to the cold
+launch snapshot. It reserves destination-pool principal separately from protocol
+Meme revenue and forbids Memez.Fun's overloaded zero-means-all sentinel.
 
 ## Open premises
 

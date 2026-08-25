@@ -34,11 +34,11 @@ formulas require ADRs and shared test vectors.
 | D8 creator claim | Every address or X creator explicitly claims one `CreatorCap`; only X supplies an attestation bound to the original meme type, while SuiNS is resolved in periphery to the address recorded at launch | [decisions/0016-unified-creator-cap-claim-and-suins-periphery.md](decisions/0016-unified-creator-cap-claim-and-suins-periphery.md), [decisions/0017-coin-type-domain-for-x-creator-claims.md](decisions/0017-coin-type-domain-for-x-creator-claims.md) |
 | Generated coin supply | Current unregulated Coin Registry OTW path only; nonzero initial supply capped at one billion whole coins; coin owner chooses irreversible `Fixed` or `BurnOnly`; native metadata authority is returned separately at creator claim | [decisions/0023-generated-coin-supply-and-metadata-custody.md](decisions/0023-generated-coin-supply-and-metadata-custody.md) |
 | Quote asset | Bounded administrative whitelist keyed by original type, with one nonzero migration target per quote snapshotted by future launches; no quote `Currency` input at snapshot | [decisions/0025-quote-whitelist-and-migration-targets.md](decisions/0025-quote-whitelist-and-migration-targets.md) |
-| Graduation economics and migrator admission | Future-launch defaults start at zero, cap Quote migration revenue at 5% and reserved Meme allocation at 10%, and allow at most 16 external migrator witness types; each launch selects one witness | [decisions/0027-graduation-economics-and-migration-witnesses.md](decisions/0027-graduation-economics-and-migration-witnesses.md) |
+| Graduation economics and migrator admission | Future-launch defaults start at zero, cap Quote migration revenue at 5% and reserved Meme allocation at 10%, require a nonzero 1–9,999 bps destination-pool Meme liquidity provision that leaves positive curve inventory, and allow at most 16 external migrator witness types; each launch selects one witness | [decisions/0027-graduation-economics-and-migration-witnesses.md](decisions/0027-graduation-economics-and-migration-witnesses.md), [decisions/0033-meme-liquidity-provision.md](decisions/0033-meme-liquidity-provision.md) |
 | Trade-fee ledger | Independent meme/quote rates capped at 10% per asset; fees accrue into an embedded four-balance ledger using the current global protocol share, with ceiling rounding assigned to protocol | [decisions/0022-dual-asset-fee-ledger-and-claims.md](decisions/0022-dual-asset-fee-ledger-and-claims.md) |
 
 The full index, including every open premise, is in
-[decisions/README.md](decisions/README.md). ADRs 0013–0028 are accepted; economic
+[decisions/README.md](decisions/README.md). ADRs 0013–0033 are accepted; economic
 constants not fixed by those accepted records and the remaining proposed records still
 await approval.
 
@@ -88,7 +88,7 @@ rather than left unspecified.
 ## Decisions required before source implementation
 
 Each decision belongs in `docs/decisions/` before it creates a public ABI or
-storage commitment. ADRs 0013–0028 settle the creator-cap claim, protocol
+storage commitment. ADRs 0013–0033 settle the creator-cap claim, protocol
 authority, X-signature, pure curve, trade-fee-ledger, and generated-coin supply
 semantics plus cold launch and graduation policy below; the remaining portions
 and records are still proposed.
@@ -104,7 +104,7 @@ and records are still proposed.
 | 7 | Sui upgrade posture, administrators, version gating | [0007](decisions/0007-acl-pause-and-versioning.md) |
 | 8 | X creator-claim signature domain and replay protection | [0013](decisions/0013-creator-fee-authority-and-x-claims.md), [0017](decisions/0017-coin-type-domain-for-x-creator-claims.md) |
 | 9 | Initial quote-asset admission rule — accepted | [0025](decisions/0025-quote-whitelist-and-migration-targets.md) |
-| 10 | Graduation revenue, reserved supply, and migration-witness policy — accepted | [0027](decisions/0027-graduation-economics-and-migration-witnesses.md) |
+| 10 | Graduation revenue, reserved supply, destination-pool provision, and migration-witness policy — accepted | [0027](decisions/0027-graduation-economics-and-migration-witnesses.md), [0033](decisions/0033-meme-liquidity-provision.md) |
 | 10 | Package and module boundaries, and explorer Display policy | [0001](decisions/0001-sui-package-and-module-layout.md) |
 | 11 | Event schema and replay completeness | [0011](decisions/0011-event-schema-and-replay.md) |
 | 12 | Growth-feature scope | [0012](decisions/0012-flywheel-features.md) |

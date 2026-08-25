@@ -29,7 +29,7 @@ contracts/
 
 The workspace, its engineering contract, and the Sui design record are established.
 The implemented Sui Move slices cover the current audit-sized boundaries from
-accepted ADRs 0013 through 0032: one-time
+accepted ADRs 0013 through 0033: one-time
 `CreatorCap<Meme>` claims for address and X identities, coin-type-isolated
 creator authority that survives migration, a creator-authority boundary with no
 metadata-cap pass-through, and the backend-attested X branch.
@@ -38,7 +38,9 @@ Blast consumes the coin package's OTW, creates the current unregulated zero-supp
 currency, and stores its native capabilities until launch intake.
 The cold shared `LaunchConfig` now admits original quote types with per-quote
 migration targets, stores zero-safe 5% Quote-fee and 10% Meme-allocation
-ceilings, and bounds the external migrator witness types available to new
+ceilings plus the nonzero 1–9,999 bps destination-pool Meme liquidity
+provision whose zero value is only an unconfigured sentinel, and bounds the
+external migrator witness types available to new
 launches. Launch intake will select one allowlisted witness without requiring a
 quote `Currency` object or importing a DEX package, so later admin updates cannot
 rewrite existing launches. DEX pool-opening costs are deliberately unsupported.

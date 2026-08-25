@@ -225,6 +225,14 @@ const EUpgradePolicyNotMoreRestrictive: u64 = 57;
 /// The irreversible routine-admin package-authority cutover already occurred.
 const EAdminPackageAuthorizationAlreadyDisabled: u64 = 58;
 
+#[test_only]
+/// Destination-pool Meme provision must be between one and 9,999 basis points.
+const EInvalidMemeLiquidityProvisionBps: u64 = 59;
+
+#[test_only]
+/// Protocol Meme allocation plus pool provision leaves no positive curve share.
+const EInvalidMemeSupplyPartitionBps: u64 = 60;
+
 // === Package Error Codes ===
 
 macro public(package) fun invalid_admin_cap(): u64 {
@@ -431,4 +439,12 @@ macro public(package) fun upgrade_policy_not_more_restrictive(): u64 {
 
 macro public(package) fun admin_package_authorization_already_disabled(): u64 {
     58
+}
+
+macro public(package) fun invalid_meme_liquidity_provision_bps(): u64 {
+    59
+}
+
+macro public(package) fun invalid_meme_supply_partition_bps(): u64 {
+    60
 }

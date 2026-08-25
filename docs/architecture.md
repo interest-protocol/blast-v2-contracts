@@ -76,7 +76,9 @@ directions, not a demand for seven packages.
 A launch pairs its generated meme coin with a quote `Coin<Quote>`. Core admits
 new pairs through the bounded quote portion of `LaunchConfig`, keyed by the
 quote's original `TypeName`. Each entry supplies the nonzero real-quote migration
-target. Launch state copies that target, both graduation rates, and the complete
+target. Launch state copies that target, all three graduation rates — the
+Quote migration fee, the protocol Meme graduation allocation, and the nonzero
+destination-pool Meme liquidity provision — and the complete
 selected migration witness's original `TypeName` once. Both whitelists are
 admission decisions; the snapshot does not add a quote `Currency` shared-object
 dependency or a DEX package dependency. See

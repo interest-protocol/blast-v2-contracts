@@ -154,14 +154,17 @@ core interface. See `docs/architecture.md`.
   the future launch module. See ADR 0024.
 - `launch_config.move` owns cold policy read together only when a launch is
   created: the 16-entry original-type quote whitelist and targets, the zero-safe
-  Quote migration-fee and Meme graduation-allocation defaults, and a 16-entry
-  whitelist of external migrator witness types. All mutations use only
+  Quote migration-fee and Meme graduation-allocation defaults, the nonzero
+  1–9,999 bps destination-pool Meme liquidity provision, and a 16-entry
+  whitelist of external migrator witness types. The protocol Meme allocation
+  plus liquidity provision must remain below 10,000 bps. All mutations use only
   `AdminWitness`. The quote whitelist itself is admission: do not add a
   `Currency<Quote>` input or another registry check. Each launch selects one
   allowlisted `MigrationWitness` type and copies its original `TypeName` with the
-  target and both graduation rates; later whitelist changes affect future
+  target and all three graduation rates; later whitelist changes affect future
   launches only. Do not add live launch-policy reads to trading or migration.
-  See ADRs 0025 and 0027.
+  Zero liquidity provision is unconfigured and must not inherit a migrate-all
+  sentinel. See ADRs 0025, 0027, and 0033.
 - DEXs supported by Blast must not charge a pool-opening fee. Do not add venue
   cost, fee-asset, third-coin, external-payer, reimbursement, or refund fields to
   core launch or migration state. Ordinary transaction gas remains the caller's
@@ -367,18 +370,21 @@ must be differential-tested from shared vectors.
   enumeration where coverage tooling is insufficient.
 - Use `std::unit_test::destroy` as the test-only black hole for teardown. Do not
   add production-module `destroy_*_for_testing` functions merely to unpack
-  objects. When a suite repeatedly owns a scenario plus several shared objects
-  or capabilities, group the complete common environment in a test `Fixture`,
-  including values that only some cases use. Store its scenario, objects, and
-  capabilities as `Option<T>`. Let `start` construct and fill every option; use
-  a receiver-style `run!`, `next_tx!`, or similarly named macro to extract the
-  values, advance the transaction sender when applicable, pass stable mutable
-  references to the test closure, and fill every option again immediately after
-  the closure. A consuming operation may have a narrowly named macro variant
-  that deliberately leaves only the consumed option empty. Test bodies must not
-  destructure the fixture or directly call scenario setup, `next_tx`, shared
-  object take/return, or sender-owned object take/return. Let one receiver-style
-  `end` consume the complete fixture with `destroy`.
+  objects. Every scenario-backed suite uses one lean local `Fixture` storing its
+  `Scenario` and only suite-reusable objects and capabilities as direct fields.
+  `start` — or a named minimal variant for a test class that needs different
+  state — performs all scenario choreography and shared or sender-owned object
+  take/return. A receiver-style `run!`/`next_tx!` macro advances the transaction
+  sender and passes the single `&mut Fixture` handle to the test closure; a
+  closure receives exactly that one named handle, never a positional reference
+  list or underscore placeholders, and reaches state through fixture fields and
+  small domain helpers such as `sign_in`. Wrap a field in `Option<T>` only when
+  a consuming or replacement flow needs it, exposed through narrowly named
+  helpers (`take_*`, `replace_*`, `retake_*`). Test bodies must not destructure
+  the fixture or directly call scenario setup, `next_tx`, shared-object
+  take/return, or sender-owned object take/return; pure math and error-registry
+  tests stay fixture-free. Let one receiver-style `end` consume the complete
+  fixture with `destroy`.
 - New TypeScript uses `SuiGrpcClient` for standard reads/writes/simulation and
   `SuiGraphQLClient` for custom indexed or historical queries. SDK libraries
   should accept `ClientWithCoreApi`. JSON-RPC is legacy-only.

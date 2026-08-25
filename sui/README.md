@@ -54,9 +54,11 @@ The core package now contains:
   meme and quote assets, live configurable remainder-safe splitting, and composable claims
   authorized by `CreatorCap<Meme>` or `AdminWitness`;
 - `launch_config.move` — bounded original-type quote admission and targets,
-  zero-safe graduation defaults, a bounded external migrator-witness whitelist,
-  `AdminWitness`-gated `allow_*`/`disallow_*` mutations, quote upserts, and one
-  package-only immutable launch snapshot;
+  the complete graduation triple (zero-safe Quote fee and Meme allocation plus
+  the nonzero destination-pool Meme liquidity provision), a bounded external
+  migrator-witness whitelist, `AdminWitness`-gated `allow_*`/`disallow_*`
+  mutations, quote upserts, and one package-only immutable launch snapshot
+  that rejects an unconfigured provision;
 - `errors.move` — the append-only package error registry exposed as zero-cost
   package macros; owning modules perform their assertions inline;
 - `events_wrapper.move` — the stable package-wide `Event<T>` indexing envelope
@@ -68,14 +70,15 @@ The core package now contains:
   independent Ed25519 fixture and adversarial lifecycle cases.
 - `runtime_config_tests.move` — combined initialization, live protocol-share
   boundaries, and replay-complete runtime configuration events.
-- `package_admin_tests.move` establishes the stateful-suite fixture convention: one
-  complete local option-backed `Fixture` environment for its scenario, shared
-  objects, capabilities, and less-common negative-path inputs. Receiver-style
-  transaction macros extract the options, advance the sender, pass stable
-  mutable references to the case, and restore every non-consumed value. New or
-  materially edited stateful suites follow that pattern: test bodies do not
-  destructure fixtures or drive `test_scenario` directly, and one `end` consumes
-  the fixture through the native test-only `std::unit_test::destroy` black hole.
+- every scenario-backed suite follows one lean stateful-fixture convention: a
+  local `Fixture` stores the scenario and only suite-reusable objects as direct
+  fields, `start` (or a named minimal setup variant) owns all scenario
+  choreography, and a receiver-style `next_tx!` macro advances the sender and
+  passes the single named `&mut Fixture` handle to each transaction closure.
+  Consuming flows use `Option` fields behind narrowly named
+  `take_*`/`replace_*` helpers. Test bodies do not destructure fixtures or
+  drive `test_scenario` directly, and one `end` consumes the fixture through
+  the native test-only `std::unit_test::destroy` black hole.
 - `curve_tests.move` — exact shared vectors, rounding and threshold boundaries,
   maximum-width arithmetic, guard precedence, round-trip dust, and a fixed-seed
   reachable-state sell-back property suite.
