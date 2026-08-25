@@ -3,6 +3,7 @@
 - Status: accepted
 - Date: 2026-08-23
 - Amends: [0001](0001-sui-package-and-module-layout.md), [0007](0007-acl-pause-and-versioning.md), [0011](0011-event-schema-and-replay.md), [0015](0015-protocol-authority-and-x-signer-state.md), [0018](0018-authority-module-separation.md)
+- Amended by: [0030](0030-singleton-event-identity.md)
 
 ## Sources
 
@@ -30,7 +31,7 @@ for its storage rebate.
 1. derive the cap id and check its current registry membership once;
 2. remove the id when it is still active;
 3. delete the cap UID in both the active and already-revoked branches; and
-4. emit `AdminDestroyed { authority_id, admin_cap_id, was_active }` through the generic event wrapper.
+4. emit `AdminDestroyed { admin_cap_id, was_active }` through the generic event wrapper.
 
 The transition does not require `SuperAdminCap` and does not abort merely because membership was
 already removed. Possession of the owned cap is the authorization to destroy that object. The

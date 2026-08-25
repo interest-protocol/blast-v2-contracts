@@ -142,10 +142,17 @@ runtime_config_event_payloads="$(sed -n \
   -e '/^public struct XClaimSignerRevoked/,/^}/p' \
   sources/lib/events.move)"
 
+runtime_config_mutation_event_payloads="$(sed -n \
+  -e '/^public struct ProtocolFeeShareChanged/,/^}/p' \
+  -e '/^public struct XClaimSignerSet/,/^}/p' \
+  -e '/^public struct XClaimSignerRevoked/,/^}/p' \
+  sources/lib/events.move)"
+
 if [[ -z "$runtime_config_event_payloads" ]] \
   || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' \
-    <<<"$runtime_config_event_payloads"; then
-  echo 'Runtime-config events must use typed replay facts without duplicate ordering or schema fields.' >&2
+    <<<"$runtime_config_event_payloads" \
+  || rg -n '\bruntime_config_id\b' <<<"$runtime_config_mutation_event_payloads"; then
+  echo 'Runtime-config mutations must use typed replay facts without repeated singleton, ordering, or schema fields.' >&2
   failures=$((failures + 1))
 fi
 
@@ -207,10 +214,20 @@ launch_config_event_payloads="$(sed -n \
   -e '/^public struct MigrationWitnessDisallowed/,/^}/p' \
   sources/lib/events.move)"
 
+launch_config_mutation_event_payloads="$(sed -n \
+  -e '/^public struct QuoteAllowed/,/^}/p' \
+  -e '/^public struct QuoteMigrationTargetChanged/,/^}/p' \
+  -e '/^public struct QuoteDisallowed/,/^}/p' \
+  -e '/^public struct GraduationDefaultsChanged/,/^}/p' \
+  -e '/^public struct MigrationWitnessAllowed/,/^}/p' \
+  -e '/^public struct MigrationWitnessDisallowed/,/^}/p' \
+  sources/lib/events.move)"
+
 if [[ -z "$launch_config_event_payloads" ]] \
   || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' \
-    <<<"$launch_config_event_payloads"; then
-  echo 'Launch-config events must use typed replay facts without duplicate ordering or schema fields.' >&2
+    <<<"$launch_config_event_payloads" \
+  || rg -n '\bconfig_id\b' <<<"$launch_config_mutation_event_payloads"; then
+  echo 'Launch-config mutations must use typed replay facts without repeated singleton, ordering, or schema fields.' >&2
   failures=$((failures + 1))
 fi
 
@@ -278,6 +295,25 @@ fi
 if ! rg -q '^public fun destroy_admin_cap\(' sources/acl.move \
   || rg -n 'destroy_admin_cap_for_testing' sources tests; then
   echo 'AdminCap holders must use the production self-destruction path.' >&2
+  failures=$((failures + 1))
+fi
+
+acl_mutation_event_payloads="$(sed -n \
+  -e '/^public struct AdminGranted/,/^}/p' \
+  -e '/^public struct AdminRevoked/,/^}/p' \
+  -e '/^public struct AdminDestroyed/,/^}/p' \
+  -e '/^public struct SuperAdminTransferStarted/,/^}/p' \
+  -e '/^public struct SuperAdminTransferCancelled/,/^}/p' \
+  -e '/^public struct SuperAdminTransferred/,/^}/p' \
+  sources/lib/events.move)"
+
+if [[ -z "$acl_mutation_event_payloads" ]] \
+  || rg -n '\b(authority_id|current_super_admin_cap_id)\b' \
+    <<<"$acl_mutation_event_payloads" \
+  || ! rg -U -q \
+    '(?s)let previous = authority\.pending_super_admin\.extract\(\);\s*events::super_admin_transfer_cancelled\(previous\.recipient\);.*authority\.pending_super_admin = option::some\(PendingSuperAdminTransfer.*events::super_admin_transfer_started\(' \
+    sources/acl.move; then
+  echo 'ACL mutations must omit repeated singleton ids and emit replacement cancellation before the new transfer starts.' >&2
   failures=$((failures + 1))
 fi
 

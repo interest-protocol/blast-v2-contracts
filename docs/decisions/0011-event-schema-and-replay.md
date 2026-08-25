@@ -2,7 +2,7 @@
 
 - Status: proposed
 - Date: 2026-08-22
-- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0028](0028-hot-cold-runtime-configuration.md)
+- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md)
 
 ## Sources
 
@@ -52,7 +52,7 @@ gap detection, or replay. See
 | Domain scope | Identity and replay fields | Ordering | Emitted by |
 | --- | --- | --- | --- |
 | **per-launch** | original meme and quote `TypeName`, plus timestamp when the domain needs it | native checkpoint, transaction, and event position | `blast_fun` launch, curve, claim, migration paths |
-| **global** | concern-owning shared object id | native checkpoint, transaction, and event position | `blast_fun` ACL, configuration, Display, adapter-approval, X-claim signer paths |
+| **global** | fully qualified typed payload; a singleton's creation fact carries its discovery id, while mutations carry changing entry identity and old/new values | native checkpoint, transaction, and event position | `blast_fun` ACL, configuration, Display, adapter-approval, X-claim signer paths |
 | **epoch** | `epoch_id` and quote type | native checkpoint, transaction, and event position | `blast_fun_revshare` |
 | **per-meme fact** | original meme `TypeName` | native position; at most one claim fact per generated meme type | `blast_fun` creator authority |
 
@@ -60,9 +60,10 @@ Replay continuity comes from stable entity identity together with old/new values
 snapshots. A domain counter is added only if it is itself business state or native position cannot order
 the relevant transitions; that exception requires an explicit ADR.
 
-ADRs 0018 and 0028 separate global administration from live runtime configuration. ACL payloads use the
-`ProtocolAuthority` identity, while X signer and protocol-fee-share payloads use the one `RuntimeConfig`
-identity. Cold launch-policy payloads continue to use the independent `LaunchConfig` identity.
+ADRs 0018 and 0028 separate global administration from live runtime configuration. Their creation
+payloads announce the `ProtocolAuthority`, `RuntimeConfig`, and `LaunchConfig` object ids. Under ADR
+0030, each later mutation's fully qualified typed payload identifies its production-singleton concern
+without repeating that unchanging owner id.
 
 One payload deliberately carries fields from more than one domain scope because it genuinely belongs to two domains:
 
@@ -89,18 +90,21 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `CreatorCapClaimed` | M | creator address, optional X identity commitment, optional X expiry |
 | `LaunchTicketCreated` | M | ticket id, original meme type, treasury-cap id, metadata-cap id, launcher, address-or-X creator identity, burnable selection |
 | `ProtocolAuthorityCreated` | G | authority id, initial root-cap id and recipient, admin bound, root-transfer delay |
-| `AdminGranted` | G | authority id, admin-cap id, recipient |
-| `AdminRevoked` | G | authority id and admin-cap id; membership removed while the cap object may remain |
-| `AdminDestroyed` | G | authority id, admin-cap id, `was_active`; cap deleted and membership absent afterward |
+| `AdminGranted` | G | admin-cap id, recipient |
+| `AdminRevoked` | G | admin-cap id; membership removed while the cap object may remain |
+| `AdminDestroyed` | G | admin-cap id, `was_active`; cap deleted and membership absent afterward |
+| `SuperAdminTransferStarted` | G | recipient and `execute_after_ms` |
+| `SuperAdminTransferCancelled` | G | removed pending recipient |
+| `SuperAdminTransferred` | G | previous/new super-admin-cap ids and recipient |
 | `RuntimeConfigCreated` | G | runtime-config id and initial zero `protocol_fee_share_bps`; disabled signer state is an initialization invariant |
-| `ProtocolFeeShareChanged` | G | shared runtime-config id and old/new `protocol_fee_share_bps` |
+| `ProtocolFeeShareChanged` | G | old/new `protocol_fee_share_bps` |
 | `LaunchConfigCreated` | G | shared launch-config id, quote and migration-witness bounds, and zero-safe initial graduation defaults |
-| `QuoteAllowed` | G | shared config id, original quote type, initial migration quote target |
-| `QuoteMigrationTargetChanged` | G | shared config id, original quote type, old/new migration quote target |
-| `QuoteDisallowed` | G | shared config id, original quote type, previous migration quote target |
-| `GraduationDefaultsChanged` | G | shared config id and complete old/new Quote-fee and Meme-allocation pairs |
-| `MigrationWitnessAllowed` | G | shared config id and admitted external migrator witness original type |
-| `MigrationWitnessDisallowed` | G | shared config id and disallowed external migrator witness original type |
+| `QuoteAllowed` | G | original quote type, initial migration quote target |
+| `QuoteMigrationTargetChanged` | G | original quote type, old/new migration quote target |
+| `QuoteDisallowed` | G | original quote type, previous migration quote target |
+| `GraduationDefaultsChanged` | G | complete old/new Quote-fee and Meme-allocation pairs |
+| `MigrationWitnessAllowed` | G | admitted external migrator witness original type |
+| `MigrationWitnessDisallowed` | G | disallowed external migrator witness original type |
 | `RouteSelected` | L | route A/B/C, venue, tick spacing, fee rate, orientation, target sqrt price, `reservation_id` |
 | `ReservationReleased` | L | `venue`, `reservation_id`, `tick_spacing`, `orientation`, reason |
 | `MigrationBegun` | L | payload id, `M`, `Q` at handoff |
@@ -159,10 +163,10 @@ owner of a transferable `CreatorCap<Meme>` and the final recipients of coins ret
 are available from native Sui object ownership and transaction effects. The protocol stream records
 cap issuance, claimant identity, claimed amounts, and the resulting accounting state.
 
-Reducers process native Sui event order and partition state by the stable identity carried in each
-payload. Old/new continuity and final snapshots expose dropped or misapplied domain transitions without
-adding counters to protocol storage. `CreatorCapClaimed` is reduced as one immutable fact keyed by meme
-type.
+Reducers process native Sui event order and partition multi-instance state by the stable identity carried
+in each payload. A typed singleton stream is initialized by its creation fact and needs no repeated owner
+id. Old/new continuity and final snapshots expose dropped or misapplied domain transitions without adding
+counters to protocol storage. `CreatorCapClaimed` is reduced as one immutable fact keyed by meme type.
 
 ### Operation-to-rule checklist
 

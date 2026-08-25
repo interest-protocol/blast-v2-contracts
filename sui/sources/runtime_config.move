@@ -46,7 +46,6 @@ public fun set_x_claim_signer(
     self.x_claim_signer_public_key = signer_public_key;
 
     events::x_claim_signer_set(
-        self.id.to_inner(),
         previous_public_key,
         self.x_claim_signer_public_key,
     );
@@ -62,7 +61,7 @@ public fun revoke_x_claim_signer(
     let previous_public_key = self.x_claim_signer_public_key;
     self.x_claim_signer_public_key = vector[];
 
-    events::x_claim_signer_revoked(self.id.to_inner(), previous_public_key);
+    events::x_claim_signer_revoked(previous_public_key);
 }
 
 /// Updates the live protocol share used by every subsequent trade-fee accrual.
@@ -85,7 +84,6 @@ public fun set_protocol_fee_share(
     self.protocol_fee_share_bps = protocol_fee_share_bps;
 
     events::protocol_fee_share_changed(
-        self.id.to_inner(),
         old_protocol_fee_share_bps,
         protocol_fee_share_bps,
     );

@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-22
 - Amends: [0013](0013-creator-fee-authority-and-x-claims.md)
-- Amended by: [0016](0016-unified-creator-cap-claim-and-suins-periphery.md), [0017](0017-coin-type-domain-for-x-creator-claims.md), [0018](0018-authority-module-separation.md), [0019](0019-consuming-creator-authority-and-cap-return.md), [0023](0023-generated-coin-supply-and-metadata-custody.md)
+- Amended by: [0016](0016-unified-creator-cap-claim-and-suins-periphery.md), [0017](0017-coin-type-domain-for-x-creator-claims.md), [0018](0018-authority-module-separation.md), [0019](0019-consuming-creator-authority-and-cap-return.md), [0023](0023-generated-coin-supply-and-metadata-custody.md), [0030](0030-singleton-event-identity.md)
 
 ## Sources
 
@@ -88,7 +88,8 @@ inner payload type `T` for exact event discrimination.
 `blast_fun::events` owns the public inner payload structs and package-only
 emitter functions. Creator-cap claim payloads use the meme `TypeName` with
 original package ids as their durable identity; global signer payloads include
-the configuration identity and complete signer transition. Test-only helpers
+the complete signer transition, while the singleton configuration id remains on
+its creation fact. Test-only helpers
 collect and unwrap `Event<T>` payloads and expose fields without expanding the
 production ABI. Neither diagnostic module owns storage or authority.
 

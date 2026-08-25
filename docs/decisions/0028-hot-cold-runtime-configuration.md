@@ -3,6 +3,7 @@
 - Status: accepted
 - Date: 2026-08-24
 - Amends: [0001](0001-sui-package-and-module-layout.md), [0011](0011-event-schema-and-replay.md), [0015](0015-protocol-authority-and-x-signer-state.md), [0017](0017-coin-type-domain-for-x-creator-claims.md), [0018](0018-authority-module-separation.md), [0022](0022-dual-asset-fee-ledger-and-claims.md)
+- Amended by: [0030](0030-singleton-event-identity.md)
 - Preserves: [0027](0027-graduation-economics-and-migration-witnesses.md)
 
 ## Sources
@@ -106,12 +107,13 @@ decision against the actual traffic and compatibility requirements.
 `RuntimeConfigCreated` establishes the single runtime-config identity and its
 initial zero fee share; the empty signer is an initialization invariant.
 `XClaimSignerSet`, `XClaimSignerRevoked`, and `ProtocolFeeShareChanged` retain
-their typed payloads and use that same runtime-config identity. There is no
+their typed payloads without repeating that unchanging singleton id. There is no
 generic `ConfigChanged` event, application sequence, schema version, action tag,
 or nonce.
 
-`LaunchConfigCreated` and every cold-policy mutation event keep the independent
-launch-config identity. Indexers therefore retain two replay scopes that match
+`LaunchConfigCreated` establishes the independent launch-config identity, while
+each typed cold-policy mutation carries only its changing entry identity and
+old/new values. Indexers therefore retain two singleton replay scopes that match
 the hot and cold shared objects.
 
 ## Alternatives considered

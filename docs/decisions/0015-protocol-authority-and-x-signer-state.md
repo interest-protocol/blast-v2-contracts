@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-22
 - Amends: [0013](0013-creator-fee-authority-and-x-claims.md), [0014](0014-typed-creator-cap-and-diagnostic-modules.md)
-- Amended by: [0017](0017-coin-type-domain-for-x-creator-claims.md), [0018](0018-authority-module-separation.md), [0020](0020-admin-cap-self-destruction.md), [0028](0028-hot-cold-runtime-configuration.md)
+- Amended by: [0017](0017-coin-type-domain-for-x-creator-claims.md), [0018](0018-authority-module-separation.md), [0020](0020-admin-cap-self-destruction.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md)
 - Settles: the protocol-authority and X-signer portions of [0007](0007-acl-pause-and-versioning.md)
 
 ## Sources

@@ -87,7 +87,6 @@ fun super_admin_grant_is_replay_complete_and_delivers_the_cap() {
     let mut scenario = test_scenario::begin(LAUNCHER);
     let (super_admin_cap, mut authority, config) =
         new_protocol_for_testing(LAUNCHER, scenario.ctx());
-    let authority_id = object::id(&authority);
 
     authority.grant_admin(
         &super_admin_cap,
@@ -96,12 +95,10 @@ fun super_admin_grant_is_replay_complete_and_delivers_the_cap() {
     );
 
     let granted = events::collect_one<events::AdminGranted>(0);
-    let (emitted_authority_id, emitted_admin_cap_id, recipient) =
-        granted.admin_granted_fields();
+    let (emitted_admin_cap_id, recipient) = granted.admin_granted_fields();
     scenario.next_tx(PROTOCOL_ADMIN);
     let admin_cap = scenario.take_from_sender<acl::AdminCap>();
 
-    assert_eq!(emitted_authority_id, authority_id);
     assert_eq!(emitted_admin_cap_id, admin_cap.admin_cap_id_for_testing());
     assert_eq!(recipient, PROTOCOL_ADMIN);
 
@@ -113,9 +110,31 @@ fun super_admin_grant_is_replay_complete_and_delivers_the_cap() {
 }
 
 #[test]
+fun super_admin_revocation_identifies_only_the_removed_admin() {
+    let AdminFixture {
+        scenario,
+        super_admin_cap,
+        mut authority,
+        admin_cap,
+        config,
+    } = start_admin(LAUNCHER);
+    let admin_cap_id = admin_cap.admin_cap_id_for_testing();
+
+    authority.revoke_admin(&super_admin_cap, admin_cap_id);
+
+    let revoked = events::collect_one<events::AdminRevoked>(0);
+    assert_eq!(revoked.admin_revoked_fields(), admin_cap_id);
+
+    destroy(super_admin_cap);
+    destroy(authority);
+    destroy(admin_cap);
+    destroy(config);
+    destroy(scenario);
+}
+
+#[test]
 fun x_claim_signer_set_event_is_replay_complete() {
     let mut fixture = start_admin(LAUNCHER);
-    let config_id = object::id(&fixture.config);
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
 
     fixture.config.set_x_claim_signer(
@@ -124,9 +143,8 @@ fun x_claim_signer_set_event_is_replay_complete() {
     );
 
     let signer_set = events::collect_one<events::XClaimSignerSet>(0);
-    let (emitted_config_id, previous_public_key, signer_public_key) =
+    let (previous_public_key, signer_public_key) =
         signer_set.x_claim_signer_set_fields();
-    assert_eq!(emitted_config_id, config_id);
     assert!(previous_public_key.is_empty());
     assert_eq!(signer_public_key, x_signer_public_key());
 
@@ -136,7 +154,6 @@ fun x_claim_signer_set_event_is_replay_complete() {
 #[test]
 fun x_claim_signer_revoked_event_is_replay_complete() {
     let mut fixture = start_admin(LAUNCHER);
-    let config_id = object::id(&fixture.config);
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
     fixture.config.set_x_claim_signer(
         &admin_witness,
@@ -146,9 +163,7 @@ fun x_claim_signer_revoked_event_is_replay_complete() {
     fixture.config.revoke_x_claim_signer(&admin_witness);
 
     let signer_revoked = events::collect_one<events::XClaimSignerRevoked>(0);
-    let (emitted_config_id, previous_public_key) =
-        signer_revoked.x_claim_signer_revoked_fields();
-    assert_eq!(emitted_config_id, config_id);
+    let previous_public_key = signer_revoked.x_claim_signer_revoked_fields();
     assert_eq!(previous_public_key, x_signer_public_key());
 
     fixture.end();
@@ -213,15 +228,12 @@ fun active_admin_can_destroy_cap_and_renounce_membership() {
         admin_cap,
         config,
     } = start_admin(LAUNCHER);
-    let authority_id = object::id(&authority);
     let admin_cap_id = admin_cap.admin_cap_id_for_testing();
 
     authority.destroy_admin_cap(admin_cap);
 
     let destroyed = events::collect_one<events::AdminDestroyed>(0);
-    let (emitted_authority_id, emitted_admin_cap_id, was_active) =
-        destroyed.admin_destroyed_fields();
-    assert_eq!(emitted_authority_id, authority_id);
+    let (emitted_admin_cap_id, was_active) = destroyed.admin_destroyed_fields();
     assert_eq!(emitted_admin_cap_id, admin_cap_id);
     assert!(was_active);
 
@@ -240,16 +252,13 @@ fun revoked_admin_can_destroy_inert_cap() {
         admin_cap,
         config,
     } = start_admin(LAUNCHER);
-    let authority_id = object::id(&authority);
     let admin_cap_id = admin_cap.admin_cap_id_for_testing();
 
     authority.revoke_admin(&super_admin_cap, admin_cap_id);
     authority.destroy_admin_cap(admin_cap);
 
     let destroyed = events::collect_one<events::AdminDestroyed>(0);
-    let (emitted_authority_id, emitted_admin_cap_id, was_active) =
-        destroyed.admin_destroyed_fields();
-    assert_eq!(emitted_authority_id, authority_id);
+    let (emitted_admin_cap_id, was_active) = destroyed.admin_destroyed_fields();
     assert_eq!(emitted_admin_cap_id, admin_cap_id);
     assert!(!was_active);
 
@@ -353,6 +362,7 @@ fun super_admin_transfer_requires_delay_and_recipient_acceptance() {
     let mut scenario = test_scenario::begin(LAUNCHER);
     let (old_super_admin_cap, mut authority, config) =
         new_protocol_for_testing(LAUNCHER, scenario.ctx());
+    let old_super_admin_cap_id = object::id(&old_super_admin_cap);
     let mut test_clock = clock::create_for_testing(scenario.ctx());
     test_clock.set_for_testing(NOW_MS);
 
@@ -363,12 +373,28 @@ fun super_admin_transfer_requires_delay_and_recipient_acceptance() {
         scenario.ctx(),
     );
 
+    let started = events::collect_one<events::SuperAdminTransferStarted>(0);
+    let (started_recipient, execute_after_ms) =
+        started.super_admin_transfer_started_fields();
+    assert_eq!(started_recipient, NEW_SUPER_ADMIN);
+    assert_eq!(
+        execute_after_ms,
+        NOW_MS + constants::super_admin_transfer_delay_ms!(),
+    );
+
     test_clock.set_for_testing(NOW_MS + constants::super_admin_transfer_delay_ms!());
     scenario.next_tx(NEW_SUPER_ADMIN);
     authority.accept_super_admin_transfer(&test_clock, scenario.ctx());
 
+    let transferred = events::collect_one<events::SuperAdminTransferred>(0);
+    let (previous_super_admin_cap_id, new_super_admin_cap_id, recipient) =
+        transferred.super_admin_transferred_fields();
+    assert_eq!(previous_super_admin_cap_id, old_super_admin_cap_id);
+    assert_eq!(recipient, NEW_SUPER_ADMIN);
+
     scenario.next_tx(NEW_SUPER_ADMIN);
     let new_super_admin_cap = scenario.take_from_sender<acl::SuperAdminCap>();
+    assert_eq!(new_super_admin_cap_id, object::id(&new_super_admin_cap));
     authority.grant_admin(
         &new_super_admin_cap,
         PROTOCOL_ADMIN,
@@ -470,6 +496,30 @@ fun super_admin_transfer_replaces_different_pending_recipient() {
         PROTOCOL_ADMIN,
         &test_clock,
         scenario.ctx(),
+    );
+
+    let cancelled = events::collect_one<events::SuperAdminTransferCancelled>(0);
+    assert_eq!(
+        cancelled.super_admin_transfer_cancelled_fields(),
+        NEW_SUPER_ADMIN,
+    );
+    let mut started = events::collect<events::SuperAdminTransferStarted>();
+    assert_eq!(started.length(), 2);
+    let second_started = started.pop_back();
+    let first_started = started.pop_back();
+    let (first_recipient, first_execute_after_ms) =
+        first_started.super_admin_transfer_started_fields();
+    let (second_recipient, second_execute_after_ms) =
+        second_started.super_admin_transfer_started_fields();
+    assert_eq!(first_recipient, NEW_SUPER_ADMIN);
+    assert_eq!(
+        first_execute_after_ms,
+        NOW_MS + constants::super_admin_transfer_delay_ms!(),
+    );
+    assert_eq!(second_recipient, PROTOCOL_ADMIN);
+    assert_eq!(
+        second_execute_after_ms,
+        NOW_MS + 1 + constants::super_admin_transfer_delay_ms!(),
     );
 
     test_clock.set_for_testing(

@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-23
 - Partially accepts: [0006](0006-fees-and-launch-paths.md), [0007](0007-acl-pause-and-versioning.md), [0011](0011-event-schema-and-replay.md)
-- Amended by: [0028](0028-hot-cold-runtime-configuration.md)
+- Amended by: [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md)
 
 ## Sources
 
@@ -123,9 +123,9 @@ and new values. `LaunchCreated` records all four initial zero ledger totals but 
 `CreatorFeesClaimed` and `ProtocolFeesClaimed` carry both claimed amounts and the two affected remaining
 totals, which are zero after a full-balance claim. Launch-scoped payloads use the original meme and quote
 type names as stable identity and carry a timestamp where the domain needs it; fee-configuration payloads
-use the shared runtime-config identity and old/new values. Native Sui checkpoint, transaction, and event
-position provide ordering. Every payload is emitted through the package event wrapper after final state
-is known.
+use their fully qualified singleton payload type and old/new values without repeating the runtime-config
+id. Native Sui checkpoint, transaction, and event position provide ordering. Every payload is emitted
+through the package event wrapper after final state is known.
 
 Claim events name the transaction claimant, not a recipient. The functions return coins, and a later
 command in the same programmable transaction may transfer each coin to any address. An indexer that

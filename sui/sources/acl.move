@@ -84,7 +84,7 @@ public fun grant_admin(
 
     transfer::public_transfer(admin_cap, recipient);
 
-    events::admin_granted(authority.id.to_inner(), admin_cap_id, recipient);
+    events::admin_granted(admin_cap_id, recipient);
 }
 
 /// Revokes a routine administrator immediately without requiring possession of its cap.
@@ -102,7 +102,7 @@ public fun revoke_admin(
 
     authority.admins.remove(&admin_cap_id);
 
-    events::admin_revoked(authority.id.to_inner(), admin_cap_id);
+    events::admin_revoked(admin_cap_id);
 }
 
 /// Renounces routine administration and deletes the caller-owned cap for its storage rebate.
@@ -120,11 +120,7 @@ public fun destroy_admin_cap(
 
     id.delete();
 
-    events::admin_destroyed(
-        authority.id.to_inner(),
-        admin_cap_id,
-        was_active,
-    );
+    events::admin_destroyed(admin_cap_id, was_active);
 }
 
 /// Starts or replaces a delayed transfer of the singleton root authority.
@@ -157,11 +153,7 @@ public fun begin_super_admin_transfer(
     if (has_pending_super_admin_transfer) {
         let previous = authority.pending_super_admin.extract();
 
-        events::super_admin_transfer_cancelled(
-            authority.id.to_inner(),
-            authority.super_admin_cap_id,
-            previous.recipient,
-        );
+        events::super_admin_transfer_cancelled(previous.recipient);
     };
 
     authority.pending_super_admin = option::some(PendingSuperAdminTransfer {
@@ -170,8 +162,6 @@ public fun begin_super_admin_transfer(
     });
 
     events::super_admin_transfer_started(
-        authority.id.to_inner(),
-        authority.super_admin_cap_id,
         recipient,
         execute_after_ms,
     );
@@ -191,11 +181,7 @@ public fun cancel_super_admin_transfer(
 
     let pending = authority.pending_super_admin.extract();
 
-    events::super_admin_transfer_cancelled(
-        authority.id.to_inner(),
-        authority.super_admin_cap_id,
-        pending.recipient,
-    );
+    events::super_admin_transfer_cancelled(pending.recipient);
 }
 
 /// Accepts a root transfer after its delay and invalidates the previous root cap.
@@ -233,7 +219,6 @@ public fun accept_super_admin_transfer(
     transfer::transfer(new_super_admin_cap, recipient);
 
     events::super_admin_transferred(
-        authority.id.to_inner(),
         previous_super_admin_cap_id,
         new_super_admin_cap_id,
         recipient,

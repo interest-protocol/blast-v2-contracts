@@ -206,9 +206,12 @@ core interface. See `docs/architecture.md`.
 - A consumer starting at deployment and replaying events in order must be able to
   reconstruct lifecycle, balances/accounting, configuration, fee state,
   allocation state, and migrations without reading mutable state.
-- Mutation events must include stable entity identity, old/new or delta values,
-  final totals needed for reconciliation, and a revision/sequence when order is
-  otherwise ambiguous.
+- Mutation events must include stable entity identity when multiple instances of
+  that event's domain can exist, old/new or delta values, final totals needed for
+  reconciliation, and a revision/sequence when order is otherwise ambiguous.
+  For a production singleton, keep its object id on the creation/discovery fact
+  but do not repeat that unchanging id on every typed mutation payload. See ADR
+  0030.
 - On Sui, do not add an application-level sequence, revision, nonce, generic
   schema version, or action tag to an event merely to order, paginate, classify,
   or detect ingestion gaps. Native event metadata provides checkpoint,

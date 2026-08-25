@@ -107,7 +107,6 @@ fun package_init_creates_safe_bounded_launch_config() {
 fun admin_allows_quote_and_launch_snapshot_uses_its_target() {
     let mut fixture = start();
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let config_id = object::id(&fixture.config);
 
     fixture.config.allow_quote<TEST_QUOTE>(&admin_witness, MIGRATION_QUOTE_TARGET);
     fixture.config.allow_migration_witness<TEST_MIGRATION_WITNESS>(&admin_witness);
@@ -115,11 +114,9 @@ fun admin_allows_quote_and_launch_snapshot_uses_its_target() {
     let (target, _, _, _) =
         fixture.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
     let allowed = events::collect_one<events::QuoteAllowed>(0);
-    let (emitted_config_id, quote, migration_quote_target) =
-        allowed.quote_allowed_fields();
+    let (quote, migration_quote_target) = allowed.quote_allowed_fields();
 
     assert_eq!(target, MIGRATION_QUOTE_TARGET);
-    assert_eq!(emitted_config_id, config_id);
     assert_eq!(
         quote,
         std::type_name::with_original_ids<TEST_QUOTE>(),
@@ -134,7 +131,6 @@ fun admin_allows_quote_and_launch_snapshot_uses_its_target() {
 fun allowing_an_existing_quote_updates_only_the_next_launch_snapshot() {
     let mut fixture = start();
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let config_id = object::id(&fixture.config);
 
     fixture.config.allow_quote<TEST_QUOTE>(&admin_witness, MIGRATION_QUOTE_TARGET);
     fixture.config.allow_migration_witness<TEST_MIGRATION_WITNESS>(&admin_witness);
@@ -150,12 +146,11 @@ fun allowing_an_existing_quote_updates_only_the_next_launch_snapshot() {
     let (next_snapshot, _, _, _) =
         fixture.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
     let changed = events::collect_one<events::QuoteMigrationTargetChanged>(0);
-    let (emitted_config_id, quote, old_target, new_target) =
+    let (quote, old_target, new_target) =
         changed.quote_migration_target_changed_fields();
 
     assert_eq!(first_snapshot, MIGRATION_QUOTE_TARGET);
     assert_eq!(next_snapshot, UPDATED_MIGRATION_QUOTE_TARGET);
-    assert_eq!(emitted_config_id, config_id);
     assert_eq!(
         quote,
         std::type_name::with_original_ids<TEST_QUOTE>(),
@@ -170,7 +165,6 @@ fun allowing_an_existing_quote_updates_only_the_next_launch_snapshot() {
 fun admin_disallows_quote_from_future_launch_admission() {
     let mut fixture = start();
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let config_id = object::id(&fixture.config);
 
     fixture.config.allow_quote<TEST_QUOTE>(&admin_witness, MIGRATION_QUOTE_TARGET);
     fixture.config.allow_migration_witness<TEST_MIGRATION_WITNESS>(&admin_witness);
@@ -179,11 +173,9 @@ fun admin_disallows_quote_from_future_launch_admission() {
     fixture.config.disallow_quote<TEST_QUOTE>(&admin_witness);
 
     let disallowed = events::collect_one<events::QuoteDisallowed>(0);
-    let (emitted_config_id, quote, previous_target) =
-        disallowed.quote_disallowed_fields();
+    let (quote, previous_target) = disallowed.quote_disallowed_fields();
 
     assert_eq!(fixture.config.allowed_quote_count_for_testing(), 0);
-    assert_eq!(emitted_config_id, config_id);
     assert_eq!(
         quote,
         std::type_name::with_original_ids<TEST_QUOTE>(),
@@ -197,7 +189,6 @@ fun admin_disallows_quote_from_future_launch_admission() {
 fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
     let mut fixture = start();
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let config_id = object::id(&fixture.config);
 
     fixture.config.allow_quote<TEST_QUOTE>(&admin_witness, MIGRATION_QUOTE_TARGET);
     fixture.config.allow_migration_witness<TEST_MIGRATION_WITNESS>(&admin_witness);
@@ -223,7 +214,6 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
     ) = fixture.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
     let changed = events::collect_one<events::GraduationDefaultsChanged>(0);
     let (
-        emitted_config_id,
         old_quote_migration_fee_bps,
         old_meme_graduation_allocation_bps,
         new_quote_migration_fee_bps,
@@ -243,7 +233,6 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
         migration_witness,
         std::type_name::with_original_ids<TEST_MIGRATION_WITNESS>(),
     );
-    assert_eq!(emitted_config_id, config_id);
     assert_eq!(old_quote_migration_fee_bps, 0);
     assert_eq!(old_meme_graduation_allocation_bps, 0);
     assert_eq!(new_quote_migration_fee_bps, QUOTE_MIGRATION_FEE_BPS);
@@ -259,18 +248,15 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
 fun admin_allows_migration_witness_and_emits_its_original_type_name() {
     let mut fixture = start();
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let config_id = object::id(&fixture.config);
 
     fixture.config.allow_migration_witness<TEST_MIGRATION_WITNESS>(&admin_witness);
 
     let allowed = events::collect_one<events::MigrationWitnessAllowed>(0);
-    let (emitted_config_id, emitted_migration_witness) =
-        allowed.migration_witness_allowed_fields();
+    let emitted_migration_witness = allowed.migration_witness_allowed_fields();
     let migration_witness =
         std::type_name::with_original_ids<TEST_MIGRATION_WITNESS>();
 
     assert_eq!(fixture.config.allowed_migration_witness_count_for_testing(), 1);
-    assert_eq!(emitted_config_id, config_id);
     assert_eq!(emitted_migration_witness, migration_witness);
 
     fixture.end();
@@ -317,7 +303,6 @@ fun graduation_defaults_accept_ceilings_and_independent_zero_values() {
 fun disallowing_migration_witness_does_not_change_an_existing_launch_snapshot() {
     let mut fixture = start();
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let config_id = object::id(&fixture.config);
 
     fixture.config.allow_quote<TEST_QUOTE>(&admin_witness, MIGRATION_QUOTE_TARGET);
     fixture.config.allow_migration_witness<TEST_MIGRATION_WITNESS>(&admin_witness);
@@ -328,11 +313,9 @@ fun disallowing_migration_witness_does_not_change_an_existing_launch_snapshot() 
     fixture.config.disallow_migration_witness<TEST_MIGRATION_WITNESS>(&admin_witness);
 
     let disallowed = events::collect_one<events::MigrationWitnessDisallowed>(0);
-    let (emitted_config_id, emitted_migration_witness) =
-        disallowed.migration_witness_disallowed_fields();
+    let emitted_migration_witness = disallowed.migration_witness_disallowed_fields();
 
     assert_eq!(fixture.config.allowed_migration_witness_count_for_testing(), 0);
-    assert_eq!(emitted_config_id, config_id);
     assert_eq!(
         emitted_migration_witness,
         snapshotted_migration_witness,

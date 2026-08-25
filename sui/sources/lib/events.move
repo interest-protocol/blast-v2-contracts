@@ -30,14 +30,12 @@ public struct LaunchConfigCreated has copy, drop {
 
 /// Emitted after a quote and its initial migration target are admitted.
 public struct QuoteAllowed has copy, drop {
-    config_id: ID,
     quote: TypeName,
     migration_quote_target: u64,
 }
 
 /// Emitted after the target used by future launches for one quote changes.
 public struct QuoteMigrationTargetChanged has copy, drop {
-    config_id: ID,
     quote: TypeName,
     old_migration_quote_target: u64,
     new_migration_quote_target: u64,
@@ -45,14 +43,12 @@ public struct QuoteMigrationTargetChanged has copy, drop {
 
 /// Emitted after a quote is disallowed from future launch admission.
 public struct QuoteDisallowed has copy, drop {
-    config_id: ID,
     quote: TypeName,
     previous_migration_quote_target: u64,
 }
 
 /// Emitted after the graduation defaults snapshotted by future launches change.
 public struct GraduationDefaultsChanged has copy, drop {
-    config_id: ID,
     old_quote_migration_fee_bps: u64,
     old_meme_graduation_allocation_bps: u64,
     new_quote_migration_fee_bps: u64,
@@ -61,61 +57,50 @@ public struct GraduationDefaultsChanged has copy, drop {
 
 /// Emitted after an external migrator witness type is admitted for future launches.
 public struct MigrationWitnessAllowed has copy, drop {
-    config_id: ID,
     migration_witness: TypeName,
 }
 
 /// Emitted after an external migrator witness type is disallowed for future launches.
 public struct MigrationWitnessDisallowed has copy, drop {
-    config_id: ID,
     migration_witness: TypeName,
 }
 
 /// Emitted after the live global protocol fee share is changed.
 public struct ProtocolFeeShareChanged has copy, drop {
-    runtime_config_id: ID,
     old_protocol_fee_share_bps: u64,
     new_protocol_fee_share_bps: u64,
 }
 
 /// Emitted after routine protocol administration is granted and its cap is delivered.
 public struct AdminGranted has copy, drop {
-    authority_id: ID,
     admin_cap_id: ID,
     recipient: address,
 }
 
 /// Emitted after a routine protocol administrator is revoked.
 public struct AdminRevoked has copy, drop {
-    authority_id: ID,
     admin_cap_id: ID,
 }
 
 /// Emitted after a cap holder deletes an admin cap; records whether live membership was removed.
 public struct AdminDestroyed has copy, drop {
-    authority_id: ID,
     admin_cap_id: ID,
     was_active: bool,
 }
 
 /// Emitted after a delayed root-authority transfer is scheduled.
 public struct SuperAdminTransferStarted has copy, drop {
-    authority_id: ID,
-    current_super_admin_cap_id: ID,
     recipient: address,
     execute_after_ms: u64,
 }
 
 /// Emitted after a pending root-authority transfer is cancelled or replaced.
 public struct SuperAdminTransferCancelled has copy, drop {
-    authority_id: ID,
-    current_super_admin_cap_id: ID,
     recipient: address,
 }
 
 /// Emitted after the proposed recipient accepts root authority.
 public struct SuperAdminTransferred has copy, drop {
-    authority_id: ID,
     previous_super_admin_cap_id: ID,
     new_super_admin_cap_id: ID,
     recipient: address,
@@ -123,14 +108,12 @@ public struct SuperAdminTransferred has copy, drop {
 
 /// Emitted after the X claim signer is initially set or rotated.
 public struct XClaimSignerSet has copy, drop {
-    runtime_config_id: ID,
     previous_public_key: vector<u8>,
     signer_public_key: vector<u8>,
 }
 
 /// Emitted after the current X claim signer is revoked.
 public struct XClaimSignerRevoked has copy, drop {
-    runtime_config_id: ID,
     previous_public_key: vector<u8>,
 }
 
@@ -198,21 +181,18 @@ public(package) fun launch_config_created(
     });
 }
 
-public(package) fun quote_allowed<Quote>(config_id: ID, migration_quote_target: u64) {
+public(package) fun quote_allowed<Quote>(migration_quote_target: u64) {
     blast_fun::events_wrapper::emit_event(QuoteAllowed {
-        config_id,
         quote: type_name::with_original_ids<Quote>(),
         migration_quote_target,
     });
 }
 
 public(package) fun quote_migration_target_changed<Quote>(
-    config_id: ID,
     old_migration_quote_target: u64,
     new_migration_quote_target: u64,
 ) {
     blast_fun::events_wrapper::emit_event(QuoteMigrationTargetChanged {
-        config_id,
         quote: type_name::with_original_ids<Quote>(),
         old_migration_quote_target,
         new_migration_quote_target,
@@ -220,25 +200,21 @@ public(package) fun quote_migration_target_changed<Quote>(
 }
 
 public(package) fun quote_disallowed<Quote>(
-    config_id: ID,
     previous_migration_quote_target: u64,
 ) {
     blast_fun::events_wrapper::emit_event(QuoteDisallowed {
-        config_id,
         quote: type_name::with_original_ids<Quote>(),
         previous_migration_quote_target,
     });
 }
 
 public(package) fun graduation_defaults_changed(
-    config_id: ID,
     old_quote_migration_fee_bps: u64,
     old_meme_graduation_allocation_bps: u64,
     new_quote_migration_fee_bps: u64,
     new_meme_graduation_allocation_bps: u64,
 ) {
     blast_fun::events_wrapper::emit_event(GraduationDefaultsChanged {
-        config_id,
         old_quote_migration_fee_bps,
         old_meme_graduation_allocation_bps,
         new_quote_migration_fee_bps,
@@ -246,82 +222,65 @@ public(package) fun graduation_defaults_changed(
     });
 }
 
-public(package) fun migration_witness_allowed<MigrationWitness>(config_id: ID) {
+public(package) fun migration_witness_allowed<MigrationWitness>() {
     blast_fun::events_wrapper::emit_event(MigrationWitnessAllowed {
-        config_id,
         migration_witness: type_name::with_original_ids<MigrationWitness>(),
     });
 }
 
-public(package) fun migration_witness_disallowed<MigrationWitness>(config_id: ID) {
+public(package) fun migration_witness_disallowed<MigrationWitness>() {
     blast_fun::events_wrapper::emit_event(MigrationWitnessDisallowed {
-        config_id,
         migration_witness: type_name::with_original_ids<MigrationWitness>(),
     });
 }
 
 public(package) fun protocol_fee_share_changed(
-    runtime_config_id: ID,
     old_protocol_fee_share_bps: u64,
     new_protocol_fee_share_bps: u64,
 ) {
     blast_fun::events_wrapper::emit_event(ProtocolFeeShareChanged {
-        runtime_config_id,
         old_protocol_fee_share_bps,
         new_protocol_fee_share_bps,
     });
 }
 
-public(package) fun admin_granted(authority_id: ID, admin_cap_id: ID, recipient: address) {
-    blast_fun::events_wrapper::emit_event(AdminGranted { authority_id, admin_cap_id, recipient });
+public(package) fun admin_granted(admin_cap_id: ID, recipient: address) {
+    blast_fun::events_wrapper::emit_event(AdminGranted { admin_cap_id, recipient });
 }
 
-public(package) fun admin_revoked(authority_id: ID, admin_cap_id: ID) {
-    blast_fun::events_wrapper::emit_event(AdminRevoked { authority_id, admin_cap_id });
+public(package) fun admin_revoked(admin_cap_id: ID) {
+    blast_fun::events_wrapper::emit_event(AdminRevoked { admin_cap_id });
 }
 
-public(package) fun admin_destroyed(authority_id: ID, admin_cap_id: ID, was_active: bool) {
+public(package) fun admin_destroyed(admin_cap_id: ID, was_active: bool) {
     blast_fun::events_wrapper::emit_event(AdminDestroyed {
-        authority_id,
         admin_cap_id,
         was_active,
     });
 }
 
 public(package) fun super_admin_transfer_started(
-    authority_id: ID,
-    current_super_admin_cap_id: ID,
     recipient: address,
     execute_after_ms: u64,
 ) {
     blast_fun::events_wrapper::emit_event(SuperAdminTransferStarted {
-        authority_id,
-        current_super_admin_cap_id,
         recipient,
         execute_after_ms,
     });
 }
 
 public(package) fun super_admin_transfer_cancelled(
-    authority_id: ID,
-    current_super_admin_cap_id: ID,
     recipient: address,
 ) {
-    blast_fun::events_wrapper::emit_event(SuperAdminTransferCancelled {
-        authority_id,
-        current_super_admin_cap_id,
-        recipient,
-    });
+    blast_fun::events_wrapper::emit_event(SuperAdminTransferCancelled { recipient });
 }
 
 public(package) fun super_admin_transferred(
-    authority_id: ID,
     previous_super_admin_cap_id: ID,
     new_super_admin_cap_id: ID,
     recipient: address,
 ) {
     blast_fun::events_wrapper::emit_event(SuperAdminTransferred {
-        authority_id,
         previous_super_admin_cap_id,
         new_super_admin_cap_id,
         recipient,
@@ -329,23 +288,19 @@ public(package) fun super_admin_transferred(
 }
 
 public(package) fun x_claim_signer_set(
-    runtime_config_id: ID,
     previous_public_key: vector<u8>,
     signer_public_key: vector<u8>,
 ) {
     blast_fun::events_wrapper::emit_event(XClaimSignerSet {
-        runtime_config_id,
         previous_public_key,
         signer_public_key,
     });
 }
 
 public(package) fun x_claim_signer_revoked(
-    runtime_config_id: ID,
     previous_public_key: vector<u8>,
 ) {
     blast_fun::events_wrapper::emit_event(XClaimSignerRevoked {
-        runtime_config_id,
         previous_public_key,
     });
 }
@@ -442,16 +397,15 @@ public fun launch_config_created_fields(
 }
 
 #[test_only]
-public fun quote_allowed_fields(self: &QuoteAllowed): (ID, TypeName, u64) {
-    (self.config_id, self.quote, self.migration_quote_target)
+public fun quote_allowed_fields(self: &QuoteAllowed): (TypeName, u64) {
+    (self.quote, self.migration_quote_target)
 }
 
 #[test_only]
 public fun quote_migration_target_changed_fields(
     self: &QuoteMigrationTargetChanged,
-): (ID, TypeName, u64, u64) {
+): (TypeName, u64, u64) {
     (
-        self.config_id,
         self.quote,
         self.old_migration_quote_target,
         self.new_migration_quote_target,
@@ -459,9 +413,8 @@ public fun quote_migration_target_changed_fields(
 }
 
 #[test_only]
-public fun quote_disallowed_fields(self: &QuoteDisallowed): (ID, TypeName, u64) {
+public fun quote_disallowed_fields(self: &QuoteDisallowed): (TypeName, u64) {
     (
-        self.config_id,
         self.quote,
         self.previous_migration_quote_target,
     )
@@ -470,9 +423,8 @@ public fun quote_disallowed_fields(self: &QuoteDisallowed): (ID, TypeName, u64) 
 #[test_only]
 public fun graduation_defaults_changed_fields(
     self: &GraduationDefaultsChanged,
-): (ID, u64, u64, u64, u64) {
+): (u64, u64, u64, u64) {
     (
-        self.config_id,
         self.old_quote_migration_fee_bps,
         self.old_meme_graduation_allocation_bps,
         self.new_quote_migration_fee_bps,
@@ -483,68 +435,61 @@ public fun graduation_defaults_changed_fields(
 #[test_only]
 public fun migration_witness_allowed_fields(
     self: &MigrationWitnessAllowed,
-): (ID, TypeName) {
-    (self.config_id, self.migration_witness)
+): TypeName {
+    self.migration_witness
 }
 
 #[test_only]
 public fun migration_witness_disallowed_fields(
     self: &MigrationWitnessDisallowed,
-): (ID, TypeName) {
-    (self.config_id, self.migration_witness)
+): TypeName {
+    self.migration_witness
 }
 
 #[test_only]
 public fun protocol_fee_share_changed_fields(
     self: &ProtocolFeeShareChanged,
-): (ID, u64, u64) {
+): (u64, u64) {
     (
-        self.runtime_config_id,
         self.old_protocol_fee_share_bps,
         self.new_protocol_fee_share_bps,
     )
 }
 
 #[test_only]
-public fun admin_granted_fields(self: &AdminGranted): (ID, ID, address) {
-    (self.authority_id, self.admin_cap_id, self.recipient)
+public fun admin_granted_fields(self: &AdminGranted): (ID, address) {
+    (self.admin_cap_id, self.recipient)
 }
 
 #[test_only]
-public fun admin_revoked_fields(self: &AdminRevoked): (ID, ID) {
-    (self.authority_id, self.admin_cap_id)
+public fun admin_revoked_fields(self: &AdminRevoked): ID {
+    self.admin_cap_id
 }
 
 #[test_only]
-public fun admin_destroyed_fields(self: &AdminDestroyed): (ID, ID, bool) {
-    (self.authority_id, self.admin_cap_id, self.was_active)
+public fun admin_destroyed_fields(self: &AdminDestroyed): (ID, bool) {
+    (self.admin_cap_id, self.was_active)
 }
 
 #[test_only]
 public fun super_admin_transfer_started_fields(
     self: &SuperAdminTransferStarted,
-): (ID, ID, address, u64) {
-    (
-        self.authority_id,
-        self.current_super_admin_cap_id,
-        self.recipient,
-        self.execute_after_ms,
-    )
+): (address, u64) {
+    (self.recipient, self.execute_after_ms)
 }
 
 #[test_only]
 public fun super_admin_transfer_cancelled_fields(
     self: &SuperAdminTransferCancelled,
-): (ID, ID, address) {
-    (self.authority_id, self.current_super_admin_cap_id, self.recipient)
+): address {
+    self.recipient
 }
 
 #[test_only]
 public fun super_admin_transferred_fields(
     self: &SuperAdminTransferred,
-): (ID, ID, ID, address) {
+): (ID, ID, address) {
     (
-        self.authority_id,
         self.previous_super_admin_cap_id,
         self.new_super_admin_cap_id,
         self.recipient,
@@ -554,17 +499,16 @@ public fun super_admin_transferred_fields(
 #[test_only]
 public fun x_claim_signer_set_fields(
     self: &XClaimSignerSet,
-): (ID, vector<u8>, vector<u8>) {
+): (vector<u8>, vector<u8>) {
     (
-        self.runtime_config_id,
         self.previous_public_key,
         self.signer_public_key,
     )
 }
 
 #[test_only]
-public fun x_claim_signer_revoked_fields(self: &XClaimSignerRevoked): (ID, vector<u8>) {
-    (self.runtime_config_id, self.previous_public_key)
+public fun x_claim_signer_revoked_fields(self: &XClaimSignerRevoked): vector<u8> {
+    self.previous_public_key
 }
 
 #[test_only]

@@ -15,11 +15,11 @@ Do not add an application-level `sequence` to `RuntimeConfig`,
 
 Sui already assigns each event a ledger position and exposes ordered,
 cursor-resumable event queries. Blast's creation event identifies the singleton
-and records its initial value; each mutation event identifies the same object and
-records the old and new values. Replaying those payloads in Sui ledger order is
-therefore sufficient to reconstruct the configuration. A stored counter would
-duplicate indexing metadata while adding object storage, mutation, event bytes,
-and an ABI field with no protocol meaning.
+and records its initial value; each fully qualified typed mutation belongs to
+that production-singleton stream and records the old and new values. Replaying
+those payloads in Sui ledger order is therefore sufficient to reconstruct the
+configuration. Neither a repeated singleton id nor a stored counter adds
+protocol meaning.
 
 This conclusion is specific to this singleton runtime configuration, whose
 mutation events carry replay-complete old and new values for each setting. A
@@ -101,7 +101,8 @@ Starting at package deployment:
 
 1. `RuntimeConfigCreated(runtime_config_id, protocol_fee_share_bps)` establishes the
    unique entity and initial value.
-2. Each `ProtocolFeeShareChanged(runtime_config_id, old, new)` applies to that entity.
+2. Each typed `ProtocolFeeShareChanged(old, new)` applies to that production
+   singleton.
 3. Process mutations in Sui ledger order. Require `old` to equal the replayed
    current value, then replace it with `new`.
 

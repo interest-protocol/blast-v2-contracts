@@ -75,8 +75,9 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0027](0027-graduation-economics-and-migration-witnesses.md) | Graduation economics and migration witnesses | **accepted** |
 | [0028](0028-hot-cold-runtime-configuration.md) | Hot/cold runtime configuration consolidation | **accepted** |
 | [0029](0029-composable-creator-identity.md) | Composable creator identity and protected linear authority | **accepted** |
+| [0030](0030-singleton-event-identity.md) | Singleton event identity without repeated object ids | **accepted** |
 
-Only ADRs 0013–0029 are accepted. ADR 0021 accepts the pure curve formulas and
+Only ADRs 0013–0030 are accepted. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -92,6 +93,9 @@ the exclusion of DEX pool-opening fees.
 ADR 0028 consolidates the dedicated X signer and live protocol fee share into
 one small `RuntimeConfig`, while preserving separate `ProtocolAuthority` and
 cold `LaunchConfig` shared objects.
+
+ADR 0030 keeps shared-object discovery ids on singleton creation events while
+removing repeated owner ids from typed singleton mutation payloads.
 
 ## Open premises
 

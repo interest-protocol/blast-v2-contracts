@@ -70,7 +70,6 @@ public fun allow_quote<Quote>(
         *current_target = migration_quote_target;
 
         events::quote_migration_target_changed<Quote>(
-            self.id.to_inner(),
             old_migration_quote_target,
             migration_quote_target,
         );
@@ -82,7 +81,7 @@ public fun allow_quote<Quote>(
 
         self.quotes.insert(quote, migration_quote_target);
 
-        events::quote_allowed<Quote>(self.id.to_inner(), migration_quote_target);
+        events::quote_allowed<Quote>(migration_quote_target);
     };
 }
 
@@ -101,7 +100,6 @@ public fun disallow_quote<Quote>(self: &mut LaunchConfig, _: &AdminWitness) {
     );
 
     events::quote_disallowed<Quote>(
-        self.id.to_inner(),
         previous_migration_quote_target,
     );
 }
@@ -137,7 +135,6 @@ public fun set_graduation_defaults(
     self.meme_graduation_allocation_bps = meme_graduation_allocation_bps;
 
     events::graduation_defaults_changed(
-        self.id.to_inner(),
         old_quote_migration_fee_bps,
         old_meme_graduation_allocation_bps,
         quote_migration_fee_bps,
@@ -164,7 +161,7 @@ public fun allow_migration_witness<MigrationWitness: drop>(
 
     self.migration_witnesses.insert(migration_witness);
 
-    events::migration_witness_allowed<MigrationWitness>(self.id.to_inner());
+    events::migration_witness_allowed<MigrationWitness>();
 }
 
 /// Disallows future launches from selecting one external migrator witness type.
@@ -181,7 +178,7 @@ public fun disallow_migration_witness<MigrationWitness: drop>(
 
     self.migration_witnesses.remove(&migration_witness);
 
-    events::migration_witness_disallowed<MigrationWitness>(self.id.to_inner());
+    events::migration_witness_disallowed<MigrationWitness>();
 }
 
 // === Package Functions ===
