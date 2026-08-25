@@ -19,7 +19,7 @@ const UPDATED_VIRTUAL_QUOTE: u64 = 8_000_000;
 const MIGRATION_QUOTE_TARGET: u64 = 25_000_000;
 const UPDATED_MIGRATION_QUOTE_TARGET: u64 = 40_000_000;
 const QUOTE_MIGRATION_FEE_BPS: u64 = 250;
-const MEME_GRADUATION_ALLOCATION_BPS: u64 = 750;
+const PROTOCOL_MEME_GRADUATION_FEE_BPS: u64 = 750;
 const MEME_LIQUIDITY_PROVISION_BPS: u64 = 2_000;
 
 // === Test-Only Types ===
@@ -73,7 +73,7 @@ fun package_init_creates_safe_bounded_launch_config() {
             max_quote_assets,
             max_migration_witnesses,
             quote_migration_fee_bps,
-            meme_graduation_allocation_bps,
+            protocol_meme_graduation_fee_bps,
             meme_liquidity_provision_bps,
         ) = f.created.launch_config_created_fields();
 
@@ -84,7 +84,7 @@ fun package_init_creates_safe_bounded_launch_config() {
             constants::max_migration_witnesses!(),
         );
         assert_eq!(quote_migration_fee_bps, 0);
-        assert_eq!(meme_graduation_allocation_bps, 0);
+        assert_eq!(protocol_meme_graduation_fee_bps, 0);
         assert_eq!(meme_liquidity_provision_bps, 0);
         assert_eq!(f.config.allowed_quote_count_for_testing(), 0);
         assert_eq!(f.config.allowed_migration_witness_count_for_testing(), 0);
@@ -301,7 +301,7 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
         f.config.set_graduation_defaults(
             &admin_witness,
             QUOTE_MIGRATION_FEE_BPS,
-            MEME_GRADUATION_ALLOCATION_BPS,
+            PROTOCOL_MEME_GRADUATION_FEE_BPS,
             MEME_LIQUIDITY_PROVISION_BPS,
         );
 
@@ -309,17 +309,17 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
             virtual_quote,
             migration_quote_target,
             quote_migration_fee_bps,
-            meme_graduation_allocation_bps,
+            protocol_meme_graduation_fee_bps,
             meme_liquidity_provision_bps,
             migration_witness,
         ) = f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
         let changed = events::collect_one<events::GraduationDefaultsChanged>(0);
         let (
             old_quote_migration_fee_bps,
-            old_meme_graduation_allocation_bps,
+            old_protocol_meme_graduation_fee_bps,
             old_meme_liquidity_provision_bps,
             new_quote_migration_fee_bps,
-            new_meme_graduation_allocation_bps,
+            new_protocol_meme_graduation_fee_bps,
             new_meme_liquidity_provision_bps,
         ) = changed.graduation_defaults_changed_fields();
 
@@ -327,8 +327,8 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
         assert_eq!(migration_quote_target, MIGRATION_QUOTE_TARGET);
         assert_eq!(quote_migration_fee_bps, QUOTE_MIGRATION_FEE_BPS);
         assert_eq!(
-            meme_graduation_allocation_bps,
-            MEME_GRADUATION_ALLOCATION_BPS,
+            protocol_meme_graduation_fee_bps,
+            PROTOCOL_MEME_GRADUATION_FEE_BPS,
         );
         assert_eq!(meme_liquidity_provision_bps, MEME_LIQUIDITY_PROVISION_BPS);
         assert_eq!(
@@ -336,12 +336,12 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
             std::type_name::with_original_ids<TEST_MIGRATION_WITNESS>(),
         );
         assert_eq!(old_quote_migration_fee_bps, 0);
-        assert_eq!(old_meme_graduation_allocation_bps, 0);
+        assert_eq!(old_protocol_meme_graduation_fee_bps, 0);
         assert_eq!(old_meme_liquidity_provision_bps, 0);
         assert_eq!(new_quote_migration_fee_bps, QUOTE_MIGRATION_FEE_BPS);
         assert_eq!(
-            new_meme_graduation_allocation_bps,
-            MEME_GRADUATION_ALLOCATION_BPS,
+            new_protocol_meme_graduation_fee_bps,
+            PROTOCOL_MEME_GRADUATION_FEE_BPS,
         );
         assert_eq!(
             new_meme_liquidity_provision_bps,
@@ -387,17 +387,17 @@ fun graduation_defaults_accept_fee_zeros_and_liquidity_provision_boundaries() {
         f.config.set_graduation_defaults(
             &admin_witness,
             constants::max_quote_migration_fee_bps!(),
-            constants::max_meme_graduation_allocation_bps!(),
+            constants::max_protocol_meme_graduation_fee_bps!(),
             constants::basis_points_denominator!()
-                - constants::max_meme_graduation_allocation_bps!()
+                - constants::max_protocol_meme_graduation_fee_bps!()
                 - 1,
         );
         f.config.set_graduation_defaults(
             &admin_witness,
             0,
-            constants::max_meme_graduation_allocation_bps!(),
+            constants::max_protocol_meme_graduation_fee_bps!(),
             constants::basis_points_denominator!()
-                - constants::max_meme_graduation_allocation_bps!()
+                - constants::max_protocol_meme_graduation_fee_bps!()
                 - 1,
         );
         f.config.set_graduation_defaults(
@@ -412,14 +412,14 @@ fun graduation_defaults_accept_fee_zeros_and_liquidity_provision_boundaries() {
             _,
             _,
             quote_migration_fee_bps,
-            meme_graduation_allocation_bps,
+            protocol_meme_graduation_fee_bps,
             meme_liquidity_provision_bps,
             _,
         ) = f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
         let changes = events::collect<events::GraduationDefaultsChanged>();
 
         assert_eq!(quote_migration_fee_bps, 0);
-        assert_eq!(meme_graduation_allocation_bps, 0);
+        assert_eq!(protocol_meme_graduation_fee_bps, 0);
         assert_eq!(meme_liquidity_provision_bps, 1);
         assert_eq!(changes.length(), 4);
     });
@@ -476,7 +476,7 @@ fun graduation_defaults_reject_quote_rate_above_ceiling_first() {
         f.config.set_graduation_defaults(
             &admin_witness,
             constants::max_quote_migration_fee_bps!() + 1,
-            constants::max_meme_graduation_allocation_bps!() + 1,
+            constants::max_protocol_meme_graduation_fee_bps!() + 1,
             0,
         );
     });
@@ -486,7 +486,7 @@ fun graduation_defaults_reject_quote_rate_above_ceiling_first() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidMemeGraduationAllocationBps,
+    abort_code = blast_fun::errors::EInvalidProtocolMemeGraduationFeeBps,
     location = blast_fun::launch_config,
 )]
 fun graduation_defaults_reject_meme_rate_above_ceiling_before_provision() {
@@ -498,7 +498,7 @@ fun graduation_defaults_reject_meme_rate_above_ceiling_before_provision() {
         f.config.set_graduation_defaults(
             &admin_witness,
             0,
-            constants::max_meme_graduation_allocation_bps!() + 1,
+            constants::max_protocol_meme_graduation_fee_bps!() + 1,
             0,
         );
     });
@@ -559,7 +559,7 @@ fun graduation_defaults_reject_provision_ceiling_before_partition() {
         f.config.set_graduation_defaults(
             &admin_witness,
             0,
-            constants::max_meme_graduation_allocation_bps!(),
+            constants::max_protocol_meme_graduation_fee_bps!(),
             constants::max_meme_liquidity_provision_bps!() + 1,
         );
     });
@@ -581,9 +581,9 @@ fun graduation_defaults_reject_partition_without_curve_inventory() {
         f.config.set_graduation_defaults(
             &admin_witness,
             0,
-            constants::max_meme_graduation_allocation_bps!(),
+            constants::max_protocol_meme_graduation_fee_bps!(),
             constants::basis_points_denominator!()
-                - constants::max_meme_graduation_allocation_bps!(),
+                - constants::max_protocol_meme_graduation_fee_bps!(),
         );
     });
 

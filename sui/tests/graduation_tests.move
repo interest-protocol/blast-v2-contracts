@@ -8,7 +8,7 @@ use sui::balance;
 // === Constants ===
 
 const QUOTE_MIGRATION_FEE_BPS: u64 = 250;
-const MEME_GRADUATION_ALLOCATION_BPS: u64 = 750;
+const PROTOCOL_MEME_GRADUATION_FEE_BPS: u64 = 750;
 const MEME_LIQUIDITY_PROVISION_BPS: u64 = 2_000;
 
 // === Test-Only Types ===
@@ -35,7 +35,7 @@ fun zero_protocol_lines_preserve_independent_asset_conservation() {
 fun meme_only_protocol_line_rounds_up_without_quote_revenue() {
     assert_partition(
         1_000_001,
-        MEME_GRADUATION_ALLOCATION_BPS,
+        PROTOCOL_MEME_GRADUATION_FEE_BPS,
         MEME_LIQUIDITY_PROVISION_BPS,
         725_000,
         75_001,
@@ -66,7 +66,7 @@ fun quote_only_protocol_line_rounds_up_without_meme_revenue() {
 fun both_protocol_lines_round_up_while_pool_provision_rounds_down() {
     assert_partition(
         1_000_001,
-        MEME_GRADUATION_ALLOCATION_BPS,
+        PROTOCOL_MEME_GRADUATION_FEE_BPS,
         MEME_LIQUIDITY_PROVISION_BPS,
         725_000,
         75_001,
@@ -106,63 +106,63 @@ fun exact_division_has_no_rounding_transfer() {
 
 #[test]
 fun larger_rates_never_reserve_fewer_atomic_units() {
-    let (low_curve, low_allocation, low_provision) = graduation::partition_meme(
+    let (low_curve, low_protocol_meme_fee, low_provision) = graduation::partition_meme(
         balance::create_for_testing<TEST_MEME>(1_000_001),
         100,
         1_000,
     );
-    let (high_curve, high_allocation, high_provision) = graduation::partition_meme(
+    let (high_curve, high_protocol_meme_fee, high_provision) = graduation::partition_meme(
         balance::create_for_testing<TEST_MEME>(1_000_001),
         200,
         2_000,
     );
 
-    assert!(high_allocation.value() >= low_allocation.value());
+    assert!(high_protocol_meme_fee.value() >= low_protocol_meme_fee.value());
     assert!(high_provision.value() >= low_provision.value());
     assert!(high_curve.value() <= low_curve.value());
 
     destroy(low_curve);
-    destroy(low_allocation);
+    destroy(low_protocol_meme_fee);
     destroy(low_provision);
     destroy(high_curve);
-    destroy(high_allocation);
+    destroy(high_protocol_meme_fee);
     destroy(high_provision);
 }
 
 #[random_test]
 fun valid_random_meme_partitions_conserve(seed: u32) {
     let initial_supply = (seed as u64) + 10_000;
-    let allocation_bps = (seed as u64) % 1_001;
-    let (curve, allocation, provision) = graduation::partition_meme(
+    let protocol_meme_fee_bps = (seed as u64) % 1_001;
+    let (curve, protocol_meme_fee, provision) = graduation::partition_meme(
         balance::create_for_testing<TEST_MEME>(initial_supply),
-        allocation_bps,
+        protocol_meme_fee_bps,
         1_000,
     );
 
     assert_eq!(
-        curve.value() + allocation.value() + provision.value(),
+        curve.value() + protocol_meme_fee.value() + provision.value(),
         initial_supply,
     );
 
     destroy(curve);
-    destroy(allocation);
+    destroy(protocol_meme_fee);
     destroy(provision);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidMemeGraduationAllocationBps,
+    abort_code = blast_fun::errors::EInvalidProtocolMemeGraduationFeeBps,
     location = blast_fun::graduation,
 )]
-fun meme_partition_rejects_invalid_allocation_before_invalid_provision() {
-    let (curve, allocation, provision) = graduation::partition_meme(
+fun meme_partition_rejects_invalid_protocol_fee_before_invalid_provision() {
+    let (curve, protocol_meme_fee, provision) = graduation::partition_meme(
         balance::create_for_testing<TEST_MEME>(10_000),
         1_001,
         0,
     );
 
     destroy(curve);
-    destroy(allocation);
+    destroy(protocol_meme_fee);
     destroy(provision);
 }
 
@@ -172,14 +172,14 @@ fun meme_partition_rejects_invalid_allocation_before_invalid_provision() {
     location = blast_fun::graduation,
 )]
 fun meme_partition_rejects_zero_provision_rate() {
-    let (curve, allocation, provision) = graduation::partition_meme(
+    let (curve, protocol_meme_fee, provision) = graduation::partition_meme(
         balance::create_for_testing<TEST_MEME>(10_000),
         0,
         0,
     );
 
     destroy(curve);
-    destroy(allocation);
+    destroy(protocol_meme_fee);
     destroy(provision);
 }
 
@@ -189,14 +189,14 @@ fun meme_partition_rejects_zero_provision_rate() {
     location = blast_fun::graduation,
 )]
 fun meme_partition_rejects_rate_partition_without_curve_share() {
-    let (curve, allocation, provision) = graduation::partition_meme(
+    let (curve, protocol_meme_fee, provision) = graduation::partition_meme(
         balance::create_for_testing<TEST_MEME>(10_000),
         1_000,
         9_000,
     );
 
     destroy(curve);
-    destroy(allocation);
+    destroy(protocol_meme_fee);
     destroy(provision);
 }
 
@@ -206,14 +206,14 @@ fun meme_partition_rejects_rate_partition_without_curve_share() {
     location = blast_fun::graduation,
 )]
 fun meme_partition_rejects_positive_rate_that_rounds_to_zero_provision() {
-    let (curve, allocation, provision) = graduation::partition_meme(
+    let (curve, protocol_meme_fee, provision) = graduation::partition_meme(
         balance::create_for_testing<TEST_MEME>(9_999),
         0,
         1,
     );
 
     destroy(curve);
-    destroy(allocation);
+    destroy(protocol_meme_fee);
     destroy(provision);
 }
 
@@ -223,14 +223,14 @@ fun meme_partition_rejects_positive_rate_that_rounds_to_zero_provision() {
     location = blast_fun::graduation,
 )]
 fun meme_partition_rejects_rounding_that_consumes_curve_inventory() {
-    let (curve, allocation, provision) = graduation::partition_meme(
+    let (curve, protocol_meme_fee, provision) = graduation::partition_meme(
         balance::create_for_testing<TEST_MEME>(2),
         1,
         5_000,
     );
 
     destroy(curve);
-    destroy(allocation);
+    destroy(protocol_meme_fee);
     destroy(provision);
 }
 
@@ -253,28 +253,28 @@ fun quote_partition_rejects_fee_above_ceiling() {
 
 fun assert_partition(
     initial_supply: u64,
-    allocation_bps: u64,
+    protocol_meme_fee_bps: u64,
     provision_bps: u64,
     expected_curve: u64,
-    expected_allocation: u64,
+    expected_protocol_meme_fee: u64,
     expected_provision: u64,
 ) {
-    let (curve, allocation, provision) = graduation::partition_meme(
+    let (curve, protocol_meme_fee, provision) = graduation::partition_meme(
         balance::create_for_testing<TEST_MEME>(initial_supply),
-        allocation_bps,
+        protocol_meme_fee_bps,
         provision_bps,
     );
 
     assert_eq!(curve.value(), expected_curve);
-    assert_eq!(allocation.value(), expected_allocation);
+    assert_eq!(protocol_meme_fee.value(), expected_protocol_meme_fee);
     assert_eq!(provision.value(), expected_provision);
     assert_eq!(
-        curve.value() + allocation.value() + provision.value(),
+        curve.value() + protocol_meme_fee.value() + provision.value(),
         initial_supply,
     );
 
     destroy(curve);
-    destroy(allocation);
+    destroy(protocol_meme_fee);
     destroy(provision);
 }
 

@@ -76,7 +76,7 @@ the next unused value and must not fill a retired gap.
 | 45 | `quote_not_allowed` | `launch_config` | The quote type is not admitted for new launches. |
 | 46 | *(retired)* | — | Quote updates now compare the complete virtual/terminal pair under code 65. |
 | 47 | `invalid_quote_migration_fee_bps` | `launch_config`, `graduation` | The Quote migration-fee rate exceeds 500 basis points. |
-| 48 | `invalid_meme_graduation_allocation_bps` | `launch_config`, `graduation` | The Meme graduation-allocation rate exceeds 1,000 basis points. |
+| 48 | `invalid_protocol_meme_graduation_fee_bps` | `launch_config`, `graduation` | The Protocol Meme graduation fee rate exceeds 1,000 basis points. |
 | 49 | `graduation_defaults_unchanged` | `launch_config` | A graduation-default update supplied the complete active triple. |
 | 50 | `migration_witness_already_allowed` | `launch_config` | The migration witness type is already admitted for future launches. |
 | 51 | `migration_witness_capacity_reached` | `launch_config` | The bounded migration-witness whitelist is full. |
@@ -88,10 +88,10 @@ the next unused value and must not fill a retired gap.
 | 57 | `upgrade_policy_not_more_restrictive` | `package_admin` | The requested UpgradeCap policy is equal to or looser than the current policy. |
 | 58 | *(retired)* | — | Premature governance cutover removed by ADR 0034. |
 | 59 | `invalid_meme_liquidity_provision_bps` | `launch_config`, `graduation` | The destination-pool Meme provision rate is zero or exceeds 9,999 basis points. |
-| 60 | `invalid_meme_supply_partition_bps` | `launch_config`, `graduation` | Protocol Meme allocation plus pool provision leaves no positive rate for curve inventory. |
+| 60 | `invalid_meme_supply_partition_bps` | `launch_config`, `graduation` | Protocol Meme graduation fee plus pool provision leaves no positive rate for curve inventory. |
 | 61 | *(retired)* | — | Caller-configurable Meme decimals removed by ADR 0036; generated currencies always use nine decimals. |
 | 62 | `zero_meme_liquidity_provision` | `graduation` | A positive destination-pool provision rate rounded to zero Meme atomic units. |
-| 63 | `zero_meme_curve_inventory` | `graduation` | Rounded protocol allocation and pool provision consumed the complete initial Meme balance. |
+| 63 | `zero_meme_curve_inventory` | `graduation` | Rounded protocol Meme graduation fee and pool provision consumed the complete initial Meme balance. |
 | 64 | `invalid_virtual_quote` | `launch_config` | A Quote policy supplied a zero virtual Quote reserve. |
 | 65 | `quote_parameters_unchanged` | `launch_config` | A Quote-policy update supplied the complete active virtual/terminal parameter pair. |
 

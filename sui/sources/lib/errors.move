@@ -179,7 +179,7 @@ const EInvalidQuoteMigrationFeeBps: u64 = 47;
 
 #[test_only]
 /// The graduation share of initial Meme supply exceeds ten percent.
-const EInvalidMemeGraduationAllocationBps: u64 = 48;
+const EInvalidProtocolMemeGraduationFeeBps: u64 = 48;
 
 #[test_only]
 /// A graduation-default update supplied the complete active triple.
@@ -222,7 +222,7 @@ const EUpgradePolicyNotMoreRestrictive: u64 = 57;
 const EInvalidMemeLiquidityProvisionBps: u64 = 59;
 
 #[test_only]
-/// Protocol Meme allocation plus pool provision leaves no positive curve share.
+/// Protocol Meme graduation fee plus pool provision leaves no positive curve share.
 const EInvalidMemeSupplyPartitionBps: u64 = 60;
 
 // Code 61 retired: caller-configurable Meme decimals were removed by ADR 0036.
@@ -405,7 +405,7 @@ macro public(package) fun invalid_quote_migration_fee_bps(): u64 {
     47
 }
 
-macro public(package) fun invalid_meme_graduation_allocation_bps(): u64 {
+macro public(package) fun invalid_protocol_meme_graduation_fee_bps(): u64 {
     48
 }
 

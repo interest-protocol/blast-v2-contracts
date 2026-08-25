@@ -439,7 +439,7 @@ launch_config_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources
 
 if [[ ! -f sources/launch_config.move ]] \
   || ! rg -U -q \
-    'public struct LaunchConfig has key \{\s*id: UID,\s*quotes: VecMap<TypeName, QuoteParameters>,\s*quote_migration_fee_bps: u64,\s*meme_graduation_allocation_bps: u64,\s*meme_liquidity_provision_bps: u64,\s*migration_witnesses: VecSet<TypeName>,\s*\}' \
+    'public struct LaunchConfig has key \{\s*id: UID,\s*quotes: VecMap<TypeName, QuoteParameters>,\s*quote_migration_fee_bps: u64,\s*protocol_meme_graduation_fee_bps: u64,\s*meme_liquidity_provision_bps: u64,\s*migration_witnesses: VecSet<TypeName>,\s*\}' \
     sources/launch_config.move \
   || ! rg -U -q \
     'public struct QuoteParameters has copy, drop, store \{\s*virtual_quote: u64,\s*migration_quote_target: u64,\s*\}' \
@@ -451,7 +451,7 @@ if [[ ! -f sources/launch_config.move ]] \
   || [[ "$(rg -c '^public fun (allow_quote|disallow_quote|allow_migration_witness|disallow_migration_witness)<' <<<"$launch_config_production")" != 4 ]] \
   || [[ "$(rg -c '^public fun set_graduation_defaults\(' <<<"$launch_config_production")" != 1 ]] \
   || ! rg -U -q \
-    'public fun set_graduation_defaults\(\s*self: &mut LaunchConfig,\s*_: &AdminWitness,\s*quote_migration_fee_bps: u64,\s*meme_graduation_allocation_bps: u64,\s*meme_liquidity_provision_bps: u64,\s*\)' \
+    'public fun set_graduation_defaults\(\s*self: &mut LaunchConfig,\s*_: &AdminWitness,\s*quote_migration_fee_bps: u64,\s*protocol_meme_graduation_fee_bps: u64,\s*meme_liquidity_provision_bps: u64,\s*\)' \
     sources/launch_config.move \
   || [[ "$(rg -c '^public\(package\) fun ' <<<"$launch_config_production")" != 1 ]] \
   || ! rg -U -q \
@@ -467,7 +467,7 @@ if ! rg -U -q 'macro public\(package\) fun max_quote_assets\(\): u64 \{\s*16\s*\
     sources/lib/constants.move \
   || ! rg -U -q 'macro public\(package\) fun max_quote_migration_fee_bps\(\): u64 \{\s*500\s*\}' \
     sources/lib/constants.move \
-  || ! rg -U -q 'macro public\(package\) fun max_meme_graduation_allocation_bps\(\): u64 \{\s*1_000\s*\}' \
+  || ! rg -U -q 'macro public\(package\) fun max_protocol_meme_graduation_fee_bps\(\): u64 \{\s*1_000\s*\}' \
   sources/lib/constants.move \
   || ! rg -U -q 'macro public\(package\) fun max_meme_liquidity_provision_bps\(\): u64 \{\s*9_999\s*\}' \
   sources/lib/constants.move \
@@ -478,10 +478,10 @@ if ! rg -U -q 'macro public\(package\) fun max_quote_assets\(\): u64 \{\s*16\s*\
     sources/launch_config.move \
   || ! rg -Fq 'self.migration_witnesses.length()' sources/launch_config.move \
   || ! rg -U -q \
-    'quote_migration_fee_bps: 0,\s*meme_graduation_allocation_bps: 0,\s*meme_liquidity_provision_bps: 0,\s*migration_witnesses: vec_set::empty\(\)' \
+    'quote_migration_fee_bps: 0,\s*protocol_meme_graduation_fee_bps: 0,\s*meme_liquidity_provision_bps: 0,\s*migration_witnesses: vec_set::empty\(\)' \
     sources/launch_config.move \
   || ! rg -U -q \
-    'meme_graduation_allocation_bps \+ meme_liquidity_provision_bps\s*< constants::basis_points_denominator!\(\)' \
+    'protocol_meme_graduation_fee_bps \+ meme_liquidity_provision_bps\s*< constants::basis_points_denominator!\(\)' \
     sources/launch_config.move \
   || ! rg -Fq 'self.meme_liquidity_provision_bps > 0' sources/launch_config.move \
   || rg -n '\bCurrency<Quote>\b|coin_registry' <<<"$launch_config_production"; then
@@ -490,7 +490,7 @@ if ! rg -U -q 'macro public\(package\) fun max_quote_assets\(\): u64 \{\s*16\s*\
 fi
 
 if ! rg -U -q \
-    'let quote_migration_fee_bps = config\.quote_migration_fee_bps;\s*let meme_graduation_allocation_bps = config\.meme_graduation_allocation_bps;\s*let meme_liquidity_provision_bps = config\.meme_liquidity_provision_bps;\s*transfer::share_object\(config\);\s*events::launch_config_created\(\s*config_id,\s*constants::max_quote_assets!\(\),\s*constants::max_migration_witnesses!\(\),\s*quote_migration_fee_bps,\s*meme_graduation_allocation_bps,\s*meme_liquidity_provision_bps,\s*\)' \
+    'let quote_migration_fee_bps = config\.quote_migration_fee_bps;\s*let protocol_meme_graduation_fee_bps = config\.protocol_meme_graduation_fee_bps;\s*let meme_liquidity_provision_bps = config\.meme_liquidity_provision_bps;\s*transfer::share_object\(config\);\s*events::launch_config_created\(\s*config_id,\s*constants::max_quote_assets!\(\),\s*constants::max_migration_witnesses!\(\),\s*quote_migration_fee_bps,\s*protocol_meme_graduation_fee_bps,\s*meme_liquidity_provision_bps,\s*\)' \
     sources/launch_config.move; then
   echo 'Launch-config initialization must emit the three stored defaults read from the constructed config in order, never literal defaults.' >&2
   failures=$((failures + 1))
@@ -528,7 +528,7 @@ graduation_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/gr
 if [[ ! -f sources/graduation.move ]] \
   || [[ "$(rg -c '^public\(package\) fun ' <<<"$graduation_production")" != 2 ]] \
   || ! rg -U -q \
-    'public\(package\) fun partition_meme<Meme>\(\s*mut meme: Balance<Meme>,\s*meme_graduation_allocation_bps: u64,\s*meme_liquidity_provision_bps: u64,\s*\): \(Balance<Meme>, Balance<Meme>, Balance<Meme>\)' \
+    'public\(package\) fun partition_meme<Meme>\(\s*mut meme: Balance<Meme>,\s*protocol_meme_graduation_fee_bps: u64,\s*meme_liquidity_provision_bps: u64,\s*\): \(Balance<Meme>, Balance<Meme>, Balance<Meme>\)' \
     sources/graduation.move \
   || ! rg -U -q \
     'public\(package\) fun partition_quote<Quote>\(\s*mut quote: Balance<Quote>,\s*quote_migration_fee_bps: u64,\s*\): \(Balance<Quote>, Balance<Quote>\)' \
@@ -547,7 +547,7 @@ if ! rg -Fq 'initial_supply.mul_div_ceil(' sources/graduation.move \
   || ! rg -Fq 'initial_supply.mul_div(' sources/graduation.move \
   || ! rg -Fq 'quote.value().mul_div_ceil(' sources/graduation.move \
   || ! rg -Fq 'provision_amount > 0' sources/graduation.move \
-  || ! rg -Fq 'allocation_amount + provision_amount < initial_supply' \
+  || ! rg -Fq 'protocol_meme_fee_amount + provision_amount < initial_supply' \
     sources/graduation.move \
   || [[ "$(rg -c '\.split\(' sources/graduation.move)" != 3 ]]; then
   echo 'Graduation partitions must preserve the accepted ceil/floor, positive-bucket, and balance-custody rules.' >&2

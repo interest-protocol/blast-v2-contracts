@@ -184,9 +184,9 @@ invariant, trustless composition, or reconstructability, keep it in the SDK.
 - `launch_config.move` owns cold policy read together only when a launch is
   created: the 16-entry original-type quote whitelist with nonzero virtual Quote
   reserves and migration targets, the zero-safe
-  Quote migration-fee and Meme graduation-allocation defaults, the nonzero
+  Quote migration-fee and Protocol Meme graduation fee defaults, the nonzero
   1–9,999 bps destination-pool Meme liquidity provision, and a 16-entry
-  whitelist of external migrator witness types. The protocol Meme allocation
+  whitelist of external migrator witness types. The protocol Meme graduation fee
   plus liquidity provision must remain below 10,000 bps. All mutations use only
   `AdminWitness`. The quote whitelist itself is admission: do not add a
   `Currency<Quote>` input or another registry check. Each launch selects one

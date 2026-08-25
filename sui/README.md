@@ -52,7 +52,7 @@ The core package now contains:
   selected quote/meme fee ordering, sell-side burn ramp, checked reserve
   arithmetic, threshold reporting, and an explicit no-clamp sell-back invariant;
 - `graduation.move` — package-only balance partitioning that ceiling-rounds
-  protocol Meme allocation and Quote migration revenue, floor-rounds pool Meme
+  protocol Meme graduation fee and Quote migration revenue, floor-rounds pool Meme
   principal, and rejects rounded partitions without positive pool or curve
   inventory; valuation and curve-release forecasts remain off chain;
 - `fees.move` — embedded four-balance creator/protocol fee accounting for both
@@ -60,7 +60,7 @@ The core package now contains:
   authorized by `CreatorCap<Meme>` or `AdminWitness`;
 - `launch_config.move` — bounded original-type quote admission with one
   virtual-reserve/terminal-target pair,
-  the complete graduation triple (zero-safe Quote fee and Meme allocation plus
+  the complete graduation triple (zero-safe Quote fee and protocol Meme fee plus
   the nonzero destination-pool Meme liquidity provision), a bounded external
   migrator-witness whitelist, `AdminWitness`-gated `allow_*`/`disallow_*`
   mutations, quote upserts, and one package-only immutable launch snapshot

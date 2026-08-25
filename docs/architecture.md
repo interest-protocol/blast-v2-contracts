@@ -63,7 +63,7 @@ without returning to core for its post-conditions.
 | Launch ticket | generated OTW currency creation and pre-launch capability custody | supply minting, trades, metadata updates, or migration |
 | Launch | asset identity, lifecycle, reserves, accounting, transition guards | venue-specific migration code |
 | Curve math | pure quote and reserve transition formulas | authority, storage, transfers |
-| Graduation math | pre-curve Meme allocation/provision and terminal Quote-fee balance partitioning | forecast valuations, lifecycle state, claims, venue costs, transfers, or DEX dependencies |
+| Graduation math | pre-curve protocol Meme fee/liquidity provision and terminal Quote-fee balance partitioning | forecast valuations, lifecycle state, claims, venue costs, transfers, or DEX dependencies |
 | Off-chain SDK | deterministic curve-release and native-Quote valuation previews from immutable launch facts | contract authority, balance mutation, migration permission, or a second source of truth |
 | Fees | creator/protocol fee splitting, accrued accounting, and capability claims | arbitrary recipient execution or referral attribution |
 | Allocation/vesting | bounded stakeholder schedules and claims | launch pricing |
@@ -93,7 +93,7 @@ A launch pairs its generated meme coin with a quote `Coin<Quote>`. Core admits
 new pairs through the bounded quote portion of `LaunchConfig`, keyed by the
 quote's original `TypeName`. Each entry supplies a nonzero virtual Quote reserve
 and nonzero real-Quote migration target. Launch state copies that pair, all three graduation rates — the
-Quote migration fee, the protocol Meme graduation allocation, and the nonzero
+Quote migration fee, the protocol Meme graduation fee, and the nonzero
 destination-pool Meme liquidity provision — and the complete
 selected migration witness's original `TypeName` once. Both whitelists are
 admission decisions; the snapshot does not add a quote `Currency` shared-object

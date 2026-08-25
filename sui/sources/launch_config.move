@@ -19,7 +19,7 @@ public struct LaunchConfig has key {
     id: UID,
     quotes: VecMap<TypeName, QuoteParameters>,
     quote_migration_fee_bps: u64,
-    meme_graduation_allocation_bps: u64,
+    protocol_meme_graduation_fee_bps: u64,
     meme_liquidity_provision_bps: u64,
     migration_witnesses: VecSet<TypeName>,
 }
@@ -36,7 +36,7 @@ fun init(ctx: &mut TxContext) {
     let config = new(ctx);
     let config_id = config.id.to_inner();
     let quote_migration_fee_bps = config.quote_migration_fee_bps;
-    let meme_graduation_allocation_bps = config.meme_graduation_allocation_bps;
+    let protocol_meme_graduation_fee_bps = config.protocol_meme_graduation_fee_bps;
     let meme_liquidity_provision_bps = config.meme_liquidity_provision_bps;
 
     transfer::share_object(config);
@@ -46,7 +46,7 @@ fun init(ctx: &mut TxContext) {
         constants::max_quote_assets!(),
         constants::max_migration_witnesses!(),
         quote_migration_fee_bps,
-        meme_graduation_allocation_bps,
+        protocol_meme_graduation_fee_bps,
         meme_liquidity_provision_bps,
     );
 }
@@ -136,7 +136,7 @@ public fun set_graduation_defaults(
     self: &mut LaunchConfig,
     _: &AdminWitness,
     quote_migration_fee_bps: u64,
-    meme_graduation_allocation_bps: u64,
+    protocol_meme_graduation_fee_bps: u64,
     meme_liquidity_provision_bps: u64,
 ) {
     assert!(
@@ -144,9 +144,9 @@ public fun set_graduation_defaults(
         blast_fun::errors::invalid_quote_migration_fee_bps!(),
     );
     assert!(
-        meme_graduation_allocation_bps
-            <= constants::max_meme_graduation_allocation_bps!(),
-        blast_fun::errors::invalid_meme_graduation_allocation_bps!(),
+        protocol_meme_graduation_fee_bps
+            <= constants::max_protocol_meme_graduation_fee_bps!(),
+        blast_fun::errors::invalid_protocol_meme_graduation_fee_bps!(),
     );
     assert!(
         meme_liquidity_provision_bps > 0
@@ -155,35 +155,35 @@ public fun set_graduation_defaults(
         blast_fun::errors::invalid_meme_liquidity_provision_bps!(),
     );
     assert!(
-        meme_graduation_allocation_bps + meme_liquidity_provision_bps
+        protocol_meme_graduation_fee_bps + meme_liquidity_provision_bps
             < constants::basis_points_denominator!(),
         blast_fun::errors::invalid_meme_supply_partition_bps!(),
     );
     assert!(
         quote_migration_fee_bps != self.quote_migration_fee_bps
-            || meme_graduation_allocation_bps
-                != self.meme_graduation_allocation_bps
+            || protocol_meme_graduation_fee_bps
+                != self.protocol_meme_graduation_fee_bps
             || meme_liquidity_provision_bps
                 != self.meme_liquidity_provision_bps,
         blast_fun::errors::graduation_defaults_unchanged!(),
     );
 
     let old_quote_migration_fee_bps = self.quote_migration_fee_bps;
-    let old_meme_graduation_allocation_bps =
-        self.meme_graduation_allocation_bps;
+    let old_protocol_meme_graduation_fee_bps =
+        self.protocol_meme_graduation_fee_bps;
     let old_meme_liquidity_provision_bps =
         self.meme_liquidity_provision_bps;
 
     self.quote_migration_fee_bps = quote_migration_fee_bps;
-    self.meme_graduation_allocation_bps = meme_graduation_allocation_bps;
+    self.protocol_meme_graduation_fee_bps = protocol_meme_graduation_fee_bps;
     self.meme_liquidity_provision_bps = meme_liquidity_provision_bps;
 
     events::graduation_defaults_changed(
         old_quote_migration_fee_bps,
-        old_meme_graduation_allocation_bps,
+        old_protocol_meme_graduation_fee_bps,
         old_meme_liquidity_provision_bps,
         quote_migration_fee_bps,
-        meme_graduation_allocation_bps,
+        protocol_meme_graduation_fee_bps,
         meme_liquidity_provision_bps,
     );
 }
@@ -259,7 +259,7 @@ public(package) fun snapshot_for_launch<Quote, MigrationWitness: drop>(
         parameters.virtual_quote,
         parameters.migration_quote_target,
         self.quote_migration_fee_bps,
-        self.meme_graduation_allocation_bps,
+        self.protocol_meme_graduation_fee_bps,
         self.meme_liquidity_provision_bps,
         migration_witness,
     )
@@ -272,7 +272,7 @@ fun new(ctx: &mut TxContext): LaunchConfig {
         id: object::new(ctx),
         quotes: vec_map::empty(),
         quote_migration_fee_bps: 0,
-        meme_graduation_allocation_bps: 0,
+        protocol_meme_graduation_fee_bps: 0,
         meme_liquidity_provision_bps: 0,
         migration_witnesses: vec_set::empty(),
     }

@@ -114,7 +114,7 @@ revenue only after successful migration. It is SUI only when Quote is SUI and is
 capped at 500 basis points.
 _Avoid_: SUI migration fee, DEX creation cost, trade fee
 
-**Meme graduation allocation**:
+**Protocol Meme graduation fee**:
 The snapshotted percentage of initial Meme supply reserved before curve
 inventory is created and made protocol-claimable only after successful
 migration. It is capped at 1,000 basis points and never enters the curve, pending
@@ -124,7 +124,8 @@ _Avoid_: migration meme fee, creator allocation, curve reserve
 **Meme liquidity provision**:
 The nonzero snapshotted percentage of initial Meme supply reserved before curve
 inventory for destination-pool principal. It is capped at 9,999 basis points,
-must leave a positive rate for curve inventory after protocol Meme allocation,
+must leave a positive rate for curve inventory after the protocol Meme
+graduation fee,
 and never becomes protocol or creator revenue. Zero means the launch policy is
 not configured; it never means migrate all terminal curve inventory.
 _Avoid_: Meme migration fee, platform allocation, terminal curve remainder

@@ -72,7 +72,7 @@ fun market_and_launch_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::quote_not_allowed!(), 45);
     assert_eq!(blast_fun::errors::invalid_quote_migration_fee_bps!(), 47);
     assert_eq!(
-        blast_fun::errors::invalid_meme_graduation_allocation_bps!(),
+        blast_fun::errors::invalid_protocol_meme_graduation_fee_bps!(),
         48,
     );
     assert_eq!(blast_fun::errors::graduation_defaults_unchanged!(), 49);

@@ -11,7 +11,7 @@
     "quote": "atomic units of the selected Quote currency",
     "rate": "basis points, 10000 = 100%",
     "rounding": {
-      "meme_graduation_allocation": "ceil - protocol obligation rounds up",
+      "protocol_meme_graduation_fee": "ceil - protocol obligation rounds up",
       "meme_liquidity_provision": "floor - pool principal rounds down and leaves the remainder in curve inventory",
       "terminal_curve_meme": "ceil - the curve never releases more Meme than the exact rational endpoint",
       "quote_migration_fee": "ceil - protocol obligation rounds up",
@@ -21,13 +21,13 @@
   "parameters": {
     "basis_points_denominator": 10000,
     "maximum_quote_migration_fee_bps": 500,
-    "maximum_meme_graduation_allocation_bps": 1000,
+    "maximum_protocol_meme_graduation_fee_bps": 1000,
     "maximum_meme_liquidity_provision_bps": 9999
   },
   "formulas": {
-    "meme_graduation_allocation": "ceil(initial_meme_supply * meme_graduation_allocation_bps / 10000)",
+    "protocol_meme_graduation_fee": "ceil(initial_meme_supply * protocol_meme_graduation_fee_bps / 10000)",
     "meme_liquidity_provision": "floor(initial_meme_supply * meme_liquidity_provision_bps / 10000)",
-    "curve_inventory": "initial_meme_supply - meme_graduation_allocation - meme_liquidity_provision",
+    "curve_inventory": "initial_meme_supply - protocol_meme_graduation_fee - meme_liquidity_provision",
     "quote_migration_fee": "ceil(gross_terminal_quote * quote_migration_fee_bps / 10000)",
     "net_quote": "gross_terminal_quote - quote_migration_fee",
     "terminal_curve_meme": "ceil(curve_inventory * virtual_quote / (virtual_quote + migration_quote_target))",
@@ -81,14 +81,14 @@
       "name": "zero_protocol_lines",
       "given": {
         "initial_meme_supply": "10001",
-        "meme_graduation_allocation_bps": 0,
+        "protocol_meme_graduation_fee_bps": 0,
         "meme_liquidity_provision_bps": 2000,
         "gross_terminal_quote": "10001",
         "quote_migration_fee_bps": 0
       },
       "expect": {
         "curve_inventory": "8001",
-        "meme_graduation_allocation": "0",
+        "protocol_meme_graduation_fee": "0",
         "meme_liquidity_provision": "2000",
         "net_quote": "10001",
         "quote_migration_fee": "0"
@@ -98,14 +98,14 @@
       "name": "meme_protocol_line_only",
       "given": {
         "initial_meme_supply": "1000001",
-        "meme_graduation_allocation_bps": 750,
+        "protocol_meme_graduation_fee_bps": 750,
         "meme_liquidity_provision_bps": 2000,
         "gross_terminal_quote": "1000001",
         "quote_migration_fee_bps": 0
       },
       "expect": {
         "curve_inventory": "725000",
-        "meme_graduation_allocation": "75001",
+        "protocol_meme_graduation_fee": "75001",
         "meme_liquidity_provision": "200000",
         "net_quote": "1000001",
         "quote_migration_fee": "0"
@@ -115,14 +115,14 @@
       "name": "quote_protocol_line_only",
       "given": {
         "initial_meme_supply": "1000001",
-        "meme_graduation_allocation_bps": 0,
+        "protocol_meme_graduation_fee_bps": 0,
         "meme_liquidity_provision_bps": 2000,
         "gross_terminal_quote": "1000001",
         "quote_migration_fee_bps": 250
       },
       "expect": {
         "curve_inventory": "800001",
-        "meme_graduation_allocation": "0",
+        "protocol_meme_graduation_fee": "0",
         "meme_liquidity_provision": "200000",
         "net_quote": "975000",
         "quote_migration_fee": "25001"
@@ -132,14 +132,14 @@
       "name": "both_protocol_lines",
       "given": {
         "initial_meme_supply": "1000001",
-        "meme_graduation_allocation_bps": 750,
+        "protocol_meme_graduation_fee_bps": 750,
         "meme_liquidity_provision_bps": 2000,
         "gross_terminal_quote": "1000001",
         "quote_migration_fee_bps": 250
       },
       "expect": {
         "curve_inventory": "725000",
-        "meme_graduation_allocation": "75001",
+        "protocol_meme_graduation_fee": "75001",
         "meme_liquidity_provision": "200000",
         "net_quote": "975000",
         "quote_migration_fee": "25001"
@@ -149,14 +149,14 @@
       "name": "maximum_u64",
       "given": {
         "initial_meme_supply": "18446744073709551615",
-        "meme_graduation_allocation_bps": 1000,
+        "protocol_meme_graduation_fee_bps": 1000,
         "meme_liquidity_provision_bps": 8999,
         "gross_terminal_quote": "18446744073709551615",
         "quote_migration_fee_bps": 500
       },
       "expect": {
         "curve_inventory": "1844674407370955",
-        "meme_graduation_allocation": "1844674407370955162",
+        "protocol_meme_graduation_fee": "1844674407370955162",
         "meme_liquidity_provision": "16600224991931225498",
         "net_quote": "17524406870024074034",
         "quote_migration_fee": "922337203685477581"
@@ -166,7 +166,7 @@
       "name": "positive_provision_rate_rounds_to_zero",
       "given": {
         "initial_meme_supply": "9999",
-        "meme_graduation_allocation_bps": 0,
+        "protocol_meme_graduation_fee_bps": 0,
         "meme_liquidity_provision_bps": 1
       },
       "expect_error": "zero_meme_liquidity_provision"
@@ -175,7 +175,7 @@
       "name": "rounding_consumes_curve_inventory",
       "given": {
         "initial_meme_supply": "2",
-        "meme_graduation_allocation_bps": 1,
+        "protocol_meme_graduation_fee_bps": 1,
         "meme_liquidity_provision_bps": 5000
       },
       "expect_error": "zero_meme_curve_inventory"
@@ -184,7 +184,7 @@
   "properties": [
     {
       "name": "meme_conservation",
-      "statement": "For every successful partition, curve_inventory + meme_graduation_allocation + meme_liquidity_provision = initial_meme_supply."
+      "statement": "For every successful partition, curve_inventory + protocol_meme_graduation_fee + meme_liquidity_provision = initial_meme_supply."
     },
     {
       "name": "quote_conservation",

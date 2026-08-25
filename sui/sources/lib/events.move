@@ -25,7 +25,7 @@ public struct LaunchConfigCreated has copy, drop {
     max_quote_assets: u64,
     max_migration_witnesses: u64,
     quote_migration_fee_bps: u64,
-    meme_graduation_allocation_bps: u64,
+    protocol_meme_graduation_fee_bps: u64,
     meme_liquidity_provision_bps: u64,
 }
 
@@ -55,10 +55,10 @@ public struct QuoteDisallowed has copy, drop {
 /// Emitted after the graduation defaults snapshotted by future launches change.
 public struct GraduationDefaultsChanged has copy, drop {
     old_quote_migration_fee_bps: u64,
-    old_meme_graduation_allocation_bps: u64,
+    old_protocol_meme_graduation_fee_bps: u64,
     old_meme_liquidity_provision_bps: u64,
     new_quote_migration_fee_bps: u64,
-    new_meme_graduation_allocation_bps: u64,
+    new_protocol_meme_graduation_fee_bps: u64,
     new_meme_liquidity_provision_bps: u64,
 }
 
@@ -208,7 +208,7 @@ public(package) fun launch_config_created(
     max_quote_assets: u64,
     max_migration_witnesses: u64,
     quote_migration_fee_bps: u64,
-    meme_graduation_allocation_bps: u64,
+    protocol_meme_graduation_fee_bps: u64,
     meme_liquidity_provision_bps: u64,
 ) {
     blast_fun::events_wrapper::emit_event(LaunchConfigCreated {
@@ -216,7 +216,7 @@ public(package) fun launch_config_created(
         max_quote_assets,
         max_migration_witnesses,
         quote_migration_fee_bps,
-        meme_graduation_allocation_bps,
+        protocol_meme_graduation_fee_bps,
         meme_liquidity_provision_bps,
     });
 }
@@ -260,18 +260,18 @@ public(package) fun quote_disallowed<Quote>(
 
 public(package) fun graduation_defaults_changed(
     old_quote_migration_fee_bps: u64,
-    old_meme_graduation_allocation_bps: u64,
+    old_protocol_meme_graduation_fee_bps: u64,
     old_meme_liquidity_provision_bps: u64,
     new_quote_migration_fee_bps: u64,
-    new_meme_graduation_allocation_bps: u64,
+    new_protocol_meme_graduation_fee_bps: u64,
     new_meme_liquidity_provision_bps: u64,
 ) {
     blast_fun::events_wrapper::emit_event(GraduationDefaultsChanged {
         old_quote_migration_fee_bps,
-        old_meme_graduation_allocation_bps,
+        old_protocol_meme_graduation_fee_bps,
         old_meme_liquidity_provision_bps,
         new_quote_migration_fee_bps,
-        new_meme_graduation_allocation_bps,
+        new_protocol_meme_graduation_fee_bps,
         new_meme_liquidity_provision_bps,
     });
 }
@@ -497,7 +497,7 @@ public fun launch_config_created_fields(
         self.max_quote_assets,
         self.max_migration_witnesses,
         self.quote_migration_fee_bps,
-        self.meme_graduation_allocation_bps,
+        self.protocol_meme_graduation_fee_bps,
         self.meme_liquidity_provision_bps,
     )
 }
@@ -535,10 +535,10 @@ public fun graduation_defaults_changed_fields(
 ): (u64, u64, u64, u64, u64, u64) {
     (
         self.old_quote_migration_fee_bps,
-        self.old_meme_graduation_allocation_bps,
+        self.old_protocol_meme_graduation_fee_bps,
         self.old_meme_liquidity_provision_bps,
         self.new_quote_migration_fee_bps,
-        self.new_meme_graduation_allocation_bps,
+        self.new_protocol_meme_graduation_fee_bps,
         self.new_meme_liquidity_provision_bps,
     )
 }

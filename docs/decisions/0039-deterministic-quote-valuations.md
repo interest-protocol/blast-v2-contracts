@@ -77,7 +77,7 @@ Let all asset amounts below be atomic units:
 
 ```text
 S = initial Meme supply
-A = ceil(S * meme_graduation_allocation_bps / 10_000)
+A = ceil(S * protocol_meme_graduation_fee_bps / 10_000)
 L = floor(S * meme_liquidity_provision_bps / 10_000)
 C = S - A - L
 V = virtual Quote reserve
