@@ -2,7 +2,7 @@
 module blast_fun::launch_ticket;
 
 use blast_fun::{
-    creator_authority::{Self, CreatorAuthority, CreatorIdentity},
+    creator_authority::{CreatorAuthority, CreatorIdentity},
     events,
 };
 use std::string::String;

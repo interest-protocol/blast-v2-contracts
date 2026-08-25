@@ -33,7 +33,7 @@ The core package now contains:
   destruction, and drop-only `AdminWitness` sign-in only;
 - `package_admin.move` — shared custody of the package's validated `Publisher`
   and `UpgradeCap`, with live-admin exact-digest authorization, irreversible
-  policy restriction, receipt-bound commit, and one-way governance cutover;
+  policy restriction, and receipt-bound commit;
 - `runtime_config.move` — one small shared live-settings object containing the
   dedicated X backend signer and global protocol fee share, with witness-gated
   signer rotation/revocation, Ed25519 verification, and bounded 0–10,000 bps
@@ -54,9 +54,11 @@ The core package now contains:
   meme and quote assets, live configurable remainder-safe splitting, and composable claims
   authorized by `CreatorCap<Meme>` or `AdminWitness`;
 - `launch_config.move` — bounded original-type quote admission and targets,
-  zero-safe graduation defaults, a bounded external migrator-witness whitelist,
-  `AdminWitness`-gated `allow_*`/`disallow_*` mutations, quote upserts, and one
-  package-only immutable launch snapshot;
+  the complete graduation triple (zero-safe Quote fee and Meme allocation plus
+  the nonzero destination-pool Meme liquidity provision), a bounded external
+  migrator-witness whitelist, `AdminWitness`-gated `allow_*`/`disallow_*`
+  mutations, quote upserts, and one package-only immutable launch snapshot
+  that rejects an unconfigured provision;
 - `errors.move` — the append-only package error registry exposed as zero-cost
   package macros; owning modules perform their assertions inline;
 - `events_wrapper.move` — the stable package-wide `Event<T>` indexing envelope
@@ -68,14 +70,19 @@ The core package now contains:
   independent Ed25519 fixture and adversarial lifecycle cases.
 - `runtime_config_tests.move` — combined initialization, live protocol-share
   boundaries, and replay-complete runtime configuration events.
-- `package_admin_tests.move` establishes the stateful-suite fixture convention: one
-  complete local option-backed `Fixture` environment for its scenario, shared
-  objects, capabilities, and less-common negative-path inputs. Receiver-style
-  transaction macros extract the options, advance the sender, pass stable
-  mutable references to the case, and restore every non-consumed value. New or
-  materially edited stateful suites follow that pattern: test bodies do not
-  destructure fixtures or drive `test_scenario` directly, and one `end` consumes
-  the fixture through the native test-only `std::unit_test::destroy` black hole.
+- every scenario-backed suite follows one focused hot-potato fixture
+  convention: each setup family gets its own ability-free fixture type named
+  for its purpose (`ClaimFixture`, `UpgradeFixture`, …) that stores the
+  scenario plus only the objects that family actually uses, with a uniquely
+  named `start` variant owning all scenario choreography. Receiver-style
+  `next_tx!` macros — `use fun`-aliased onto each fixture type when a module
+  defines several — advance the sender and pass the single named fixture
+  handle to each transaction closure, and a fixture `ctx!` macro is the only
+  transaction-context access a test body may use. Consuming flows use `Option`
+  fields behind narrowly named `take_*`/`replace_*`/`retake_*` helpers. Test
+  bodies do not destructure fixtures, touch the scenario field, or drive
+  `test_scenario` directly, and one consuming `end` per fixture type routes
+  through the native test-only `std::unit_test::destroy` black hole.
 - `curve_tests.move` — exact shared vectors, rounding and threshold boundaries,
   maximum-width arithmetic, guard precedence, round-trip dust, and a fixed-seed
   reachable-state sell-back property suite.
@@ -121,13 +128,14 @@ does not repeat the witness because the non-droppable receipt is already bound
 to the `PackageAdmin`'s cap. See
 [ADR 0032](../docs/decisions/0032-admin-authorized-upgrade-cap-custody.md).
 
-While routine-admin authorization is enabled, every active admin has code-
-upgrade power under the current policy and may permanently narrow that policy
-to additive or dependency-only. A future package governance module may call the
-package-only one-way cutover after installing replacement authorization. Once
-the flag is false, the original admin upgrade and policy functions can never be
-used again; there is no re-enable path. Do not publish publicly until all
-mutable shared objects also enforce the approved package/version gates.
+Every active admin has code-upgrade power under the current policy and may
+permanently narrow that policy to additive or dependency-only. There is no
+pre-planted governance cutover: a future governance design installs replacement
+authorization and retires the routine-admin path through the mandatory
+shared-object version gate
+([ADR 0034](../docs/decisions/0034-remove-premature-governance-cutover.md)).
+Do not publish publicly until all mutable shared objects enforce the approved
+package/version gates.
 
 ## Planned package set
 

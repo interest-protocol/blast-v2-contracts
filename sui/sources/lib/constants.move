@@ -32,6 +32,11 @@ macro public(package) fun max_meme_graduation_allocation_bps(): u64 {
     1_000
 }
 
+/// Maximum initial Meme supply reservable for destination-pool liquidity.
+macro public(package) fun max_meme_liquidity_provision_bps(): u64 {
+    9_999
+}
+
 /// Maximum number of simultaneously active routine protocol administrators.
 macro public(package) fun max_admins(): u64 {
     16

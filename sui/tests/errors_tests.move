@@ -86,23 +86,17 @@ fun market_and_launch_error_registry_is_stable() {
         51,
     );
     assert_eq!(blast_fun::errors::migration_witness_not_allowed!(), 52);
+    assert_eq!(blast_fun::errors::invalid_meme_liquidity_provision_bps!(), 59);
+    assert_eq!(blast_fun::errors::invalid_meme_supply_partition_bps!(), 60);
 }
 
 #[test]
 fun package_admin_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::invalid_upgrade_cap!(), 53);
     assert_eq!(blast_fun::errors::invalid_package_digest!(), 54);
-    assert_eq!(
-        blast_fun::errors::admin_package_authorization_disabled!(),
-        55,
-    );
     assert_eq!(blast_fun::errors::invalid_package_publisher!(), 56);
     assert_eq!(
         blast_fun::errors::upgrade_policy_not_more_restrictive!(),
         57,
-    );
-    assert_eq!(
-        blast_fun::errors::admin_package_authorization_already_disabled!(),
-        58,
     );
 }

@@ -18,6 +18,7 @@ mapfile -t move_files < <(find sources tests -type f -name '*.move' -print | sor
 duplicate_import_roots="$({
   for file in "${move_files[@]}"; do
     awk '
+      /^use fun / { next }
       /^use / {
         root = $2;
         sub(/::.*/, "", root);
@@ -85,11 +86,11 @@ package_admin_production="$(sed '/^\/\/ === Test-Only Types ===/,$d' sources/pac
 
 if [[ ! -f sources/package_admin.move || -f sources/upgrade.move ]] \
   || ! rg -U -q \
-    'public struct PackageAdmin has key \{\s*id: UID,\s*publisher: Publisher,\s*upgrade_cap: UpgradeCap,\s*admin_authorization_enabled: bool,\s*\}' \
+    'public struct PackageAdmin has key \{\s*id: UID,\s*publisher: Publisher,\s*upgrade_cap: UpgradeCap,\s*\}' \
     sources/package_admin.move \
   || [[ "$(rg -c '^public fun ' <<<"$package_admin_production")" != 5 ]] \
   || [[ "$(rg -c '^public fun (wrap|authorize_upgrade|restrict_to_additive|restrict_to_dependency_only|commit_upgrade)\(' <<<"$package_admin_production")" != 5 ]] \
-  || [[ "$(rg -c '^public\(package\) fun disable_admin_authorization\(' <<<"$package_admin_production")" != 1 ]] \
+  || rg -n '^public\(package\) fun ' <<<"$package_admin_production" \
   || [[ "$(rg -o '_: &AdminWitness' <<<"$package_admin_production" | wc -l)" != 3 ]] \
   || ! rg -U -q \
     'public fun wrap\(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext\)' \
@@ -100,7 +101,7 @@ if [[ ! -f sources/package_admin.move || -f sources/upgrade.move ]] \
   || ! rg -U -q \
     'public fun commit_upgrade\(self: &mut PackageAdmin, receipt: UpgradeReceipt\)' \
     sources/package_admin.move; then
-  echo 'package_admin.move must expose only validated capability wrapping, admin authorization/policy restriction, receipt commit, and package-only cutover.' >&2
+  echo 'package_admin.move must expose only validated capability wrapping, admin authorization/policy restriction, and receipt commit.' >&2
   failures=$((failures + 1))
 fi
 
@@ -115,20 +116,16 @@ if ! rg -Fq 'publisher.from_package<BLAST>() && publisher.from_module<BLAST>()' 
   || ! rg -Fq 'self.upgrade_cap.only_additive_upgrades();' sources/package_admin.move \
   || ! rg -Fq 'self.upgrade_cap.only_dep_upgrades();' sources/package_admin.move \
   || ! rg -Fq 'new_policy > previous_policy' sources/package_admin.move \
-  || [[ "$(rg -c 'self.assert_admin_authorization_enabled\(\);' <<<"$package_admin_production")" != 3 ]] \
-  || ! rg -Fq 'self.admin_authorization_enabled = false;' sources/package_admin.move \
-  || ! rg -Fq 'events::package_admin_authorization_disabled();' sources/package_admin.move \
   || rg -n '\bpackage::(version|only_(additive|dep)_upgrades)\(' \
     <<<"$package_admin_production" \
-  || rg -n 'admin_authorization_enabled[[:space:]]*=[[:space:]]*true|enable_admin_authorization' \
-    <<<"$package_admin_production" \
+  || rg -n 'admin_authorization|governance_cutover' sources/package_admin.move \
   || rg -U -n '^(public|entry|public\(package\)) fun [^(]+\([^)]*\): (&)?(Publisher|UpgradeCap)' \
     <<<"$package_admin_production" \
   || rg -n 'transfer::(public_)?transfer|burn_publisher|make_immutable' \
     <<<"$package_admin_production" \
   || rg -n '\b(ProtocolAuthority|SuperAdminCap|AdminCap)\b' \
     <<<"$package_admin_production"; then
-  echo 'Package administration must retain both validated capabilities, use receiver syntax, narrow policy only, and make admin retirement irreversible.' >&2
+  echo 'Package administration must retain both validated capabilities, use receiver syntax, narrow policy only, and stay free of premature governance state.' >&2
   failures=$((failures + 1))
 fi
 
@@ -142,8 +139,8 @@ package_admin_mutation_event_payloads="$(sed -n \
   sources/lib/events.move)"
 
 if [[ -z "$package_admin_creation_event" || -z "$package_admin_mutation_event_payloads" ]] \
-  || [[ "$(rg -c '^[[:space:]]+(package_admin_id|publisher_id|upgrade_cap_id|package_id|package_version|policy|admin_authorization_enabled):' <<<"$package_admin_creation_event")" != 7 ]] \
-  || ! rg -Fq 'public struct PackageAdminAuthorizationDisabled() has copy, drop;' \
+  || [[ "$(rg -c '^[[:space:]]+(package_admin_id|publisher_id|upgrade_cap_id|package_id|package_version|policy):' <<<"$package_admin_creation_event")" != 6 ]] \
+  || rg -n 'PackageAdminAuthorizationDisabled|admin_authorization_enabled' \
     sources/lib/events.move \
   || rg -n '\b(manager_id|upgrade_cap_id|sequence|schema_version|action_tag|nonce)\b' \
     <<<"$package_admin_mutation_event_payloads"; then
@@ -151,36 +148,165 @@ if [[ -z "$package_admin_creation_event" || -z "$package_admin_mutation_event_pa
   failures=$((failures + 1))
 fi
 
-package_admin_tests_body="$(sed -n \
-  '/^\/\/ === Tests ===/,/^\/\/ === Private Functions ===/p' \
-  tests/package_admin_tests.move)"
-package_admin_fixture="$(sed -n \
-  '/^public struct Fixture {/,/^}/p' \
-  tests/package_admin_tests.move)"
-package_admin_next_tx_macro="$(sed -n \
-  '/^macro fun next_tx(/,/^macro fun take_invalid_cap_inputs_next_tx(/p' \
-  tests/package_admin_tests.move)"
-package_admin_take_cap_macro="$(sed -n \
-  '/^macro fun take_invalid_cap_inputs_next_tx(/,/^macro fun take_invalid_publisher_inputs_next_tx(/p' \
-  tests/package_admin_tests.move)"
-package_admin_take_publisher_macro="$(sed -n \
-  '/^macro fun take_invalid_publisher_inputs_next_tx(/,/^fun start(/p' \
-  tests/package_admin_tests.move)"
+expected_failure_without_location="$(awk '
+  /#\[expected_failure/ {
+    attribute = $0;
+    while (attribute !~ /\]/ && (getline continuation) > 0) {
+      attribute = attribute " " continuation;
+    }
+    if (attribute !~ /location = /) {
+      print FILENAME ": " attribute;
+    }
+  }
+' tests/*.move)"
 
-if [[ "$(rg -c ': Option<' <<<"$package_admin_fixture")" != 12 ]] \
-  || [[ "$(rg -o '\.extract\(\)' <<<"$package_admin_next_tx_macro" | wc -l)" != 12 ]] \
-  || [[ "$(rg -o '\.fill\(' <<<"$package_admin_next_tx_macro" | wc -l)" != 12 ]] \
-  || [[ "$(rg -o '\.extract\(\)' <<<"$package_admin_take_cap_macro" | wc -l)" != 12 ]] \
-  || [[ "$(rg -o '\.fill\(' <<<"$package_admin_take_cap_macro" | wc -l)" != 10 ]] \
-  || [[ "$(rg -o '\.extract\(\)' <<<"$package_admin_take_publisher_macro" | wc -l)" != 12 ]] \
-  || [[ "$(rg -o '\.fill\(' <<<"$package_admin_take_publisher_macro" | wc -l)" != 10 ]] \
-  || ! rg -Fq 'scenario.next_tx($sender);' <<<"$package_admin_next_tx_macro" \
-  || ! rg -Fq 'scenario.next_tx($sender);' <<<"$package_admin_take_cap_macro" \
-  || ! rg -Fq 'scenario.next_tx($sender);' <<<"$package_admin_take_publisher_macro" \
-  || rg -n \
-    'test_scenario::|scenario\.(next_tx|take_|return_)|let Fixture|fixture\.(scenario|super_admin_cap|authority|admin_cap|package_admin|other_package_admin|valid_publisher|foreign_publisher|valid_upgrade_cap|foreign_upgrade_cap|package_admin_created|wrapped_package_admin)' \
-    <<<"$package_admin_tests_body"; then
-  echo 'Package-administration tests must use the complete option-backed transaction fixture without direct scenario or fixture-field choreography.' >&2
+if [[ -n "$expected_failure_without_location" ]]; then
+  printf '%s\n' "$expected_failure_without_location"
+  echo 'Every expected_failure must pin an explicit abort location.' >&2
+  failures=$((failures + 1))
+fi
+
+for test_file in tests/*.move; do
+  tests_marker_count="$(rg -c '^// === Tests ===$' "$test_file" || true)"
+  helpers_marker_count="$(rg -c '^// === Private Test Helpers ===$' "$test_file" || true)"
+  tests_marker_count="${tests_marker_count:-0}"
+  helpers_marker_count="${helpers_marker_count:-0}"
+
+  if [[ "$tests_marker_count" != 1 ]]; then
+    echo "$test_file: exactly one '// === Tests ===' marker is required." >&2
+    failures=$((failures + 1))
+    continue
+  fi
+
+  scenario_backed=0
+  if rg -q '\bScenario\b' "$test_file"; then
+    scenario_backed=1
+  fi
+
+  if [[ "$helpers_marker_count" -gt 1 ]] \
+    || [[ "$scenario_backed" == 1 && "$helpers_marker_count" != 1 ]]; then
+    echo "$test_file: exactly one '// === Private Test Helpers ===' marker is required for scenario-backed suites and it may never be duplicated." >&2
+    failures=$((failures + 1))
+    continue
+  fi
+
+  tests_marker_line="$(rg -n '^// === Tests ===$' "$test_file" | cut -d: -f1)"
+  if [[ "$helpers_marker_count" == 1 ]]; then
+    helpers_marker_line="$(rg -n '^// === Private Test Helpers ===$' "$test_file" \
+      | cut -d: -f1)"
+    if ((helpers_marker_line <= tests_marker_line)); then
+      echo "$test_file: the Tests section must precede Private Test Helpers." >&2
+      failures=$((failures + 1))
+      continue
+    fi
+    test_bodies="$(sed -n "${tests_marker_line},${helpers_marker_line}p" "$test_file")"
+  else
+    test_bodies="$(sed -n "${tests_marker_line},\$p" "$test_file")"
+  fi
+
+  if ! rg -q '^[[:space:]]*#\[test\]' <<<"$test_bodies"; then
+    echo "$test_file: the extracted Tests section contains no standalone '#[test]' attribute lines." >&2
+    failures=$((failures + 1))
+    continue
+  fi
+
+  if rg -n \
+    'test_scenario::|\.scenario\b|\.ctx\(|\.next_tx\(|take_from_sender|take_shared|return_to_sender|return_shared|has_most_recent_for_sender|let [A-Za-z0-9_]*Fixture|\.extract\(|\.fill\(|\.swap\(|\.borrow\(|\.borrow_mut\(|option::(borrow|borrow_mut|extract|fill|swap)\(' \
+    <<<"$test_bodies"; then
+    echo "$test_file: test bodies must reach state only through fixture fields and helpers, never scenario plumbing, fixture destructuring, or receiver- or module-style Option internals." >&2
+    failures=$((failures + 1))
+  fi
+
+  if [[ "$scenario_backed" == 0 ]]; then
+    continue
+  fi
+
+  fixture_types="$(rg -o '^public struct ([A-Za-z0-9]*Fixture)\b' -r '$1' "$test_file" \
+    | sort -u || true)"
+
+  if [[ -z "$fixture_types" ]]; then
+    echo "$test_file: scenario-backed suites need at least one focused '*Fixture' hot-potato type." >&2
+    failures=$((failures + 1))
+    continue
+  fi
+
+  while IFS= read -r fixture_type; do
+    fixture_struct="$(awk -v type="$fixture_type" '
+      $0 ~ "^public struct " type "([^A-Za-z0-9_]|$)" { collecting = 1 }
+      collecting { print }
+      collecting && /^}/ { exit }
+    ' "$test_file")"
+    fixture_header="$(printf '%s\n' "$fixture_struct" | sed '/{/q')"
+
+    if [[ -z "$fixture_struct" ]]; then
+      echo "$test_file: ${fixture_type} declaration could not be extracted." >&2
+      failures=$((failures + 1))
+      continue
+    fi
+    if rg -q '\bhas\b' <<<"$fixture_header"; then
+      echo "$test_file: fixtures must stay ability-free hot potatoes." >&2
+      failures=$((failures + 1))
+    fi
+    if ! rg -q 'scenario: Scenario,' <<<"$fixture_struct"; then
+      echo "$test_file: ${fixture_type} must own its Scenario as a direct field." >&2
+      failures=$((failures + 1))
+    fi
+    if ! rg -q "^fun start[a-z_0-9]*\(.*\): ${fixture_type} \{" "$test_file"; then
+      echo "$test_file: ${fixture_type} needs a dedicated start helper returning it." >&2
+      failures=$((failures + 1))
+    fi
+    if ! rg -U -q \
+      "(^|\n)fun [a-z_0-9]*end\(self: ${fixture_type}\) \{\s*destroy\(self\);\s*\}" \
+      "$test_file"; then
+      echo "$test_file: ${fixture_type} needs one consuming end helper that destroys it." >&2
+      failures=$((failures + 1))
+    fi
+  done <<<"$fixture_types"
+
+  transaction_macro_pattern='^macro fun ([a-z0-9_]+_)?(run|next_tx(_expecting_events)?)\('
+  if ! rg -q "$transaction_macro_pattern" "$test_file"; then
+    echo "$test_file: scenario-backed suites need a receiver-style run or next_tx transaction macro." >&2
+    failures=$((failures + 1))
+  fi
+
+  transaction_macro_lines="$(rg -n "$transaction_macro_pattern" "$test_file" \
+    | cut -d: -f1 || true)"
+  while IFS= read -r macro_line; do
+    [[ -z "$macro_line" ]] && continue
+
+    macro_signature="$(awk -v start="$macro_line" \
+      'NR >= start { print; if (/\{/) exit }' "$test_file")"
+    macro_declaration="$(awk -v start="$macro_line" \
+      'NR >= start { print; if (NR > start && /^}/) exit }' "$test_file")"
+    first_parameter="$(rg -o '\$[a-z_]+: [^,)]*' <<<"$macro_signature" | head -1)"
+    macro_fixture_type="$(rg -o '^\$fixture: &mut ([A-Za-z0-9]*Fixture)$' -r '$1' \
+      <<<"$first_parameter" || true)"
+    closure_parameter_count="$(rg -c ': \|' <<<"$macro_signature" || true)"
+    fixture_type_mention_count="$(rg -o 'Fixture' <<<"$macro_signature" | wc -l)"
+
+    if [[ -z "$macro_fixture_type" ]]; then
+      echo "$test_file:${macro_line}: a transaction macro must take one named &mut fixture handle first." >&2
+      failures=$((failures + 1))
+      continue
+    fi
+    if [[ "${closure_parameter_count:-0}" != 1 ]] \
+      || ! rg -q "^[[:space:]]*\\\$fn: \\|&mut ${macro_fixture_type}\\|,?$" \
+        <<<"$macro_signature" \
+      || [[ "$fixture_type_mention_count" != 2 ]]; then
+      echo "$test_file:${macro_line}: a transaction macro needs exactly one |&mut ${macro_fixture_type}| closure and no extra fixture or closure values." >&2
+      failures=$((failures + 1))
+      continue
+    fi
+    if ! rg -q '\$fn\(fixture\)' <<<"$macro_declaration"; then
+      echo "$test_file:${macro_line}: a transaction macro must invoke its closure with the fixture handle." >&2
+      failures=$((failures + 1))
+    fi
+  done <<<"$transaction_macro_lines"
+done
+
+if rg -n 'AdminFixture|scenario: Option<' tests \
+  || rg -n '\|[A-Za-z0-9_&: <>,]*,[[:space:]]*_' tests; then
+  echo 'Legacy fixture patterns are prohibited: no AdminFixture, no option-backed scenario, and no positional closure parameter lists with underscore placeholders.' >&2
   failures=$((failures + 1))
 fi
 
@@ -290,7 +416,7 @@ launch_config_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources
 
 if [[ ! -f sources/launch_config.move ]] \
   || ! rg -U -q \
-    'public struct LaunchConfig has key \{\s*id: UID,\s*quotes: VecMap<TypeName, u64>,\s*quote_migration_fee_bps: u64,\s*meme_graduation_allocation_bps: u64,\s*migration_witnesses: VecSet<TypeName>,\s*\}' \
+    'public struct LaunchConfig has key \{\s*id: UID,\s*quotes: VecMap<TypeName, u64>,\s*quote_migration_fee_bps: u64,\s*meme_graduation_allocation_bps: u64,\s*meme_liquidity_provision_bps: u64,\s*migration_witnesses: VecSet<TypeName>,\s*\}' \
     sources/launch_config.move \
   || rg -n '\b(AdminCap|ProtocolAuthority)\b' <<<"$launch_config_production" \
   || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' <<<"$launch_config_production" \
@@ -298,9 +424,12 @@ if [[ ! -f sources/launch_config.move ]] \
   || [[ "$(rg -c '^public fun ' <<<"$launch_config_production")" != 5 ]] \
   || [[ "$(rg -c '^public fun (allow_quote|disallow_quote|allow_migration_witness|disallow_migration_witness)<' <<<"$launch_config_production")" != 4 ]] \
   || [[ "$(rg -c '^public fun set_graduation_defaults\(' <<<"$launch_config_production")" != 1 ]] \
+  || ! rg -U -q \
+    'public fun set_graduation_defaults\(\s*self: &mut LaunchConfig,\s*_: &AdminWitness,\s*quote_migration_fee_bps: u64,\s*meme_graduation_allocation_bps: u64,\s*meme_liquidity_provision_bps: u64,\s*\)' \
+    sources/launch_config.move \
   || [[ "$(rg -c '^public\(package\) fun ' <<<"$launch_config_production")" != 1 ]] \
   || ! rg -U -q \
-    'public\(package\) fun snapshot_for_launch<Quote, MigrationWitness: drop>\(\s*self: &LaunchConfig,\s*\): \(u64, u64, u64, TypeName\)' \
+    'public\(package\) fun snapshot_for_launch<Quote, MigrationWitness: drop>\(\s*self: &LaunchConfig,\s*\): \(u64, u64, u64, u64, TypeName\)' \
     sources/launch_config.move; then
   echo 'launch_config.move must own only bounded future-launch policy and its AdminWitness-gated mutations.' >&2
   failures=$((failures + 1))
@@ -314,16 +443,29 @@ if ! rg -U -q 'macro public\(package\) fun max_quote_assets\(\): u64 \{\s*16\s*\
     sources/lib/constants.move \
   || ! rg -U -q 'macro public\(package\) fun max_meme_graduation_allocation_bps\(\): u64 \{\s*1_000\s*\}' \
   sources/lib/constants.move \
+  || ! rg -U -q 'macro public\(package\) fun max_meme_liquidity_provision_bps\(\): u64 \{\s*9_999\s*\}' \
+  sources/lib/constants.move \
   || ! rg -Fq 'type_name::with_original_ids<Quote>()' sources/launch_config.move \
   || ! rg -Fq 'type_name::with_original_ids<MigrationWitness>()' sources/launch_config.move \
   || ! rg -Fq 'self.quotes.length() < constants::max_quote_assets!()' \
     sources/launch_config.move \
   || ! rg -Fq 'self.migration_witnesses.length()' sources/launch_config.move \
   || ! rg -U -q \
-    'quote_migration_fee_bps: 0,\s*meme_graduation_allocation_bps: 0,\s*migration_witnesses: vec_set::empty\(\)' \
+    'quote_migration_fee_bps: 0,\s*meme_graduation_allocation_bps: 0,\s*meme_liquidity_provision_bps: 0,\s*migration_witnesses: vec_set::empty\(\)' \
     sources/launch_config.move \
+  || ! rg -U -q \
+    'meme_graduation_allocation_bps \+ meme_liquidity_provision_bps\s*< constants::basis_points_denominator!\(\)' \
+    sources/launch_config.move \
+  || ! rg -Fq 'self.meme_liquidity_provision_bps > 0' sources/launch_config.move \
   || rg -n '\bCurrency<Quote>\b|coin_registry' <<<"$launch_config_production"; then
   echo 'Launch policy must use approved ceilings, original type identities, fixed bounds, zero defaults, and no Coin Registry dependency.' >&2
+  failures=$((failures + 1))
+fi
+
+if ! rg -U -q \
+    'let quote_migration_fee_bps = config\.quote_migration_fee_bps;\s*let meme_graduation_allocation_bps = config\.meme_graduation_allocation_bps;\s*let meme_liquidity_provision_bps = config\.meme_liquidity_provision_bps;\s*transfer::share_object\(config\);\s*events::launch_config_created\(\s*config_id,\s*constants::max_quote_assets!\(\),\s*constants::max_migration_witnesses!\(\),\s*quote_migration_fee_bps,\s*meme_graduation_allocation_bps,\s*meme_liquidity_provision_bps,\s*\)' \
+    sources/launch_config.move; then
+  echo 'Launch-config initialization must emit the three stored defaults read from the constructed config in order, never literal defaults.' >&2
   failures=$((failures + 1))
 fi
 
@@ -383,7 +525,7 @@ if [[ -z "$launch_ticket_event_payload" ]] \
 fi
 
 if rg -n \
-  '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|creator_authority::(into_authority|event_fields|claim_creator_cap)|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees)|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|disable_admin_authorization|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing|admin_authorization_enabled_for_testing))(<[^>]+>)?\(' \
+  '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|creator_authority::(into_authority|event_fields|claim_creator_cap)|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees)|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
   sources tests; then
   echo 'Blast-owned receiver functions must use Move 2024 dot syntax.' >&2
   failures=$((failures + 1))

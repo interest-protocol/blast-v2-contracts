@@ -99,18 +99,17 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `SuperAdminTransferred` | G | previous/new super-admin-cap ids and recipient |
 | `RuntimeConfigCreated` | G | runtime-config id and initial zero `protocol_fee_share_bps`; disabled signer state is an initialization invariant |
 | `ProtocolFeeShareChanged` | G | old/new `protocol_fee_share_bps` |
-| `LaunchConfigCreated` | G | shared launch-config id, quote and migration-witness bounds, and zero-safe initial graduation defaults |
+| `LaunchConfigCreated` | G | shared launch-config id, quote and migration-witness bounds, zero-safe initial graduation defaults, and the zero unconfigured Meme liquidity provision |
 | `QuoteAllowed` | G | original quote type, initial migration quote target |
 | `QuoteMigrationTargetChanged` | G | original quote type, old/new migration quote target |
 | `QuoteDisallowed` | G | original quote type, previous migration quote target |
-| `GraduationDefaultsChanged` | G | complete old/new Quote-fee and Meme-allocation pairs |
+| `GraduationDefaultsChanged` | G | complete old/new Quote-fee, Meme-allocation, and Meme-liquidity-provision triples |
 | `MigrationWitnessAllowed` | G | admitted external migrator witness original type |
 | `MigrationWitnessDisallowed` | G | disallowed external migrator witness original type |
-| `PackageAdminCreated` | G | package-admin, Publisher, and wrapped cap ids; original package id; initial version, policy, and enabled admin-authorization state |
+| `PackageAdminCreated` | G | package-admin, Publisher, and wrapped cap ids; original package id; initial version and policy |
 | `UpgradeAuthorized` | G | package id and version, cap policy, and exact package digest authorized by a live admin witness |
 | `UpgradeCommitted` | G | replacement package id and previous/new cap versions |
 | `UpgradePolicyRestricted` | G | previous/new irreversible framework policy |
-| `PackageAdminAuthorizationDisabled` | G | completed one-way governance cutover from the original routine-admin package path |
 | `RouteSelected` | L | route A/B/C, venue, tick spacing, fee rate, orientation, target sqrt price, `reservation_id` |
 | `ReservationReleased` | L | `venue`, `reservation_id`, `tick_spacing`, `orientation`, reason |
 | `MigrationBegun` | L | payload id, `M`, `Q` at handoff |
@@ -193,7 +192,7 @@ counters to protocol storage. `CreatorCapClaimed` is reduced as one immutable fa
 | metadata update | capability, bonding only | `MetadataUpdated` | none | none | n/a | `EMetadataFrozen` |
 | creator-cap claim | consume `CreatorAuthority`; address equality with no attestation, or X backend signature/domain/expiry/active signer | `CreatorCapClaimed` | none | removes one authority | returns `CreatorCap` | address/X branch and structural consumption tests |
 | destroy admin cap | owned cap; membership lookup cannot block deletion | `AdminDestroyed` | none | removes one membership if present and deletes cap | n/a | active and already-revoked branches |
-| package administration / upgrade | canonical-module Publisher and original-package cap at intake; enabled admin witness path; exact digest; strictly narrower policies; native receipt bound to cap | `PackageAdminCreated`, `UpgradeAuthorized`, `UpgradeCommitted`, `UpgradePolicyRestricted`, `PackageAdminAuthorizationDisabled` | pinned Sui framework | one package admin containing Publisher, cap, and one-way flag | ticket/receipt PTB | exact errors 53–58 plus framework wrong-cap failure |
+| package administration / upgrade | canonical-module Publisher and original-package cap at intake; admin witness; exact digest; strictly narrower policies; native receipt bound to cap | `PackageAdminCreated`, `UpgradeAuthorized`, `UpgradeCommitted`, `UpgradePolicyRestricted` | pinned Sui framework | one package admin containing Publisher and cap | ticket/receipt PTB | exact errors 53, 54, 56, 57 plus framework wrong-cap failure |
 | `begin_migration` | state, threshold, single-use | `MigrationBegun` | core has no venue dep | one payload | returns payload | `EMigrationAlreadyBegun` |
 | adapter settle | acceptance band, orientation, range | `RouteSelected` | vendored SHA pin | none | returns settlement | band and range aborts |
 | `settle_migration` | witness, single-use, ordering | `Migrated`, `MemeBurnedAtMigration`, `SupplyStateChanged`, `MetadataFrozen` | core has no venue dep | one settlement | returns `LpVault` | `EAlreadyMigrated` |

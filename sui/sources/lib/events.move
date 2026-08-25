@@ -26,6 +26,7 @@ public struct LaunchConfigCreated has copy, drop {
     max_migration_witnesses: u64,
     quote_migration_fee_bps: u64,
     meme_graduation_allocation_bps: u64,
+    meme_liquidity_provision_bps: u64,
 }
 
 /// Emitted after a quote and its initial migration target are admitted.
@@ -51,8 +52,10 @@ public struct QuoteDisallowed has copy, drop {
 public struct GraduationDefaultsChanged has copy, drop {
     old_quote_migration_fee_bps: u64,
     old_meme_graduation_allocation_bps: u64,
+    old_meme_liquidity_provision_bps: u64,
     new_quote_migration_fee_bps: u64,
     new_meme_graduation_allocation_bps: u64,
+    new_meme_liquidity_provision_bps: u64,
 }
 
 /// Emitted after an external migrator witness type is admitted for future launches.
@@ -145,7 +148,6 @@ public struct PackageAdminCreated has copy, drop {
     package_id: ID,
     package_version: u64,
     policy: u8,
-    admin_authorization_enabled: bool,
 }
 
 /// Emitted after an active protocol admin authorizes an exact package digest.
@@ -168,9 +170,6 @@ public struct UpgradePolicyRestricted has copy, drop {
     previous_policy: u8,
     new_policy: u8,
 }
-
-/// Emitted after package governance permanently retires routine-admin package authority.
-public struct PackageAdminAuthorizationDisabled() has copy, drop;
 
 // === Package Functions ===
 
@@ -206,6 +205,7 @@ public(package) fun launch_config_created(
     max_migration_witnesses: u64,
     quote_migration_fee_bps: u64,
     meme_graduation_allocation_bps: u64,
+    meme_liquidity_provision_bps: u64,
 ) {
     blast_fun::events_wrapper::emit_event(LaunchConfigCreated {
         config_id,
@@ -213,6 +213,7 @@ public(package) fun launch_config_created(
         max_migration_witnesses,
         quote_migration_fee_bps,
         meme_graduation_allocation_bps,
+        meme_liquidity_provision_bps,
     });
 }
 
@@ -246,14 +247,18 @@ public(package) fun quote_disallowed<Quote>(
 public(package) fun graduation_defaults_changed(
     old_quote_migration_fee_bps: u64,
     old_meme_graduation_allocation_bps: u64,
+    old_meme_liquidity_provision_bps: u64,
     new_quote_migration_fee_bps: u64,
     new_meme_graduation_allocation_bps: u64,
+    new_meme_liquidity_provision_bps: u64,
 ) {
     blast_fun::events_wrapper::emit_event(GraduationDefaultsChanged {
         old_quote_migration_fee_bps,
         old_meme_graduation_allocation_bps,
+        old_meme_liquidity_provision_bps,
         new_quote_migration_fee_bps,
         new_meme_graduation_allocation_bps,
+        new_meme_liquidity_provision_bps,
     });
 }
 
@@ -381,7 +386,6 @@ public(package) fun package_admin_created(
     package_id: ID,
     package_version: u64,
     policy: u8,
-    admin_authorization_enabled: bool,
 ) {
     blast_fun::events_wrapper::emit_event(PackageAdminCreated {
         package_admin_id,
@@ -390,7 +394,6 @@ public(package) fun package_admin_created(
         package_id,
         package_version,
         policy,
-        admin_authorization_enabled,
     });
 }
 
@@ -425,10 +428,6 @@ public(package) fun upgrade_policy_restricted(previous_policy: u8, new_policy: u
         previous_policy,
         new_policy,
     });
-}
-
-public(package) fun package_admin_authorization_disabled() {
-    blast_fun::events_wrapper::emit_event(PackageAdminAuthorizationDisabled());
 }
 
 // === Test-Only Functions ===
@@ -478,13 +477,14 @@ public fun runtime_config_created_fields(
 #[test_only]
 public fun launch_config_created_fields(
     self: &LaunchConfigCreated,
-): (ID, u64, u64, u64, u64) {
+): (ID, u64, u64, u64, u64, u64) {
     (
         self.config_id,
         self.max_quote_assets,
         self.max_migration_witnesses,
         self.quote_migration_fee_bps,
         self.meme_graduation_allocation_bps,
+        self.meme_liquidity_provision_bps,
     )
 }
 
@@ -515,12 +515,14 @@ public fun quote_disallowed_fields(self: &QuoteDisallowed): (TypeName, u64) {
 #[test_only]
 public fun graduation_defaults_changed_fields(
     self: &GraduationDefaultsChanged,
-): (u64, u64, u64, u64) {
+): (u64, u64, u64, u64, u64, u64) {
     (
         self.old_quote_migration_fee_bps,
         self.old_meme_graduation_allocation_bps,
+        self.old_meme_liquidity_provision_bps,
         self.new_quote_migration_fee_bps,
         self.new_meme_graduation_allocation_bps,
+        self.new_meme_liquidity_provision_bps,
     )
 }
 
@@ -634,7 +636,7 @@ public fun launch_ticket_created_fields(
 #[test_only]
 public fun package_admin_created_fields(
     self: &PackageAdminCreated,
-): (ID, ID, ID, ID, u64, u8, bool) {
+): (ID, ID, ID, ID, u64, u8) {
     (
         self.package_admin_id,
         self.publisher_id,
@@ -642,7 +644,6 @@ public fun package_admin_created_fields(
         self.package_id,
         self.package_version,
         self.policy,
-        self.admin_authorization_enabled,
     )
 }
 

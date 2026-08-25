@@ -8,6 +8,9 @@
 > uncommitted `QuoteConfig` surface became `LaunchConfig`, and the package-only
 > snapshot now returns the unchanged quote target together with bounded cold
 > graduation and migration-witness policy.
+> Amended by [ADR 0033](0033-meme-liquidity-provision.md): the snapshot
+> additionally returns the nonzero destination-pool Meme liquidity provision
+> and aborts while that rate is unconfigured.
 
 ## Sources
 

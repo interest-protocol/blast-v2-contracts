@@ -91,19 +91,19 @@ core interface. See `docs/architecture.md`.
   `UpgradeCap`. Its one public intake must verify that the Publisher was claimed
   by `blast::BLAST`, compare the cap's package against
   `type_name::original_id<BLAST>()`, and share a non-storable `PackageAdmin`
-  containing both capabilities and the durable
-  `admin_authorization_enabled` flag. Expose no capability release, transfer,
-  burn, or generic Publisher borrow. The current upgrade path takes a borrowed
-  `AdminWitness`, validates an exact 32-byte digest, and uses the cap's current
-  policy; commit takes the matching framework receipt and does not repeat the
-  witness. Admins may irreversibly narrow policy to additive or dependency-only
-  while their path is enabled; reject equal or looser requests before mutation.
-  A package-only, one-way cutover may change the flag from true to false for a
-  future governance module, but no function may re-enable it. Treat every
-  active routine admin as full code authority allowed by the current policy
-  until that approved governance transition. Wrapped capability custody never
+  containing both capabilities and nothing else. Expose no capability release,
+  transfer, burn, or generic Publisher borrow. The current upgrade path takes a
+  borrowed `AdminWitness`, validates an exact 32-byte digest, and uses the cap's
+  current policy; commit takes the matching framework receipt and does not
+  repeat the witness. Admins may irreversibly narrow policy to additive or
+  dependency-only; reject equal or looser requests before mutation. Treat every
+  active routine admin as full code authority allowed by the current policy.
+  Do not add governance affordances — no cutover flag, disable path, or
+  replacement-authority stub — before an approved governance ADR supplies a
+  concrete caller; retirement of the routine-admin path happens through the
+  mandatory shared-object version gate. Wrapped capability custody never
   replaces shared-object version gates; those gates remain a public-release
-  requirement. See ADR 0032.
+  requirement. See ADRs 0032 and 0034.
 - Treat every backend-signed action as its own domain. `runtime_config.move`
   owns the current dedicated X-claim key and signature verification, while the
   domain module owns the exact signed message and state transition. Do not reuse
@@ -154,14 +154,17 @@ core interface. See `docs/architecture.md`.
   the future launch module. See ADR 0024.
 - `launch_config.move` owns cold policy read together only when a launch is
   created: the 16-entry original-type quote whitelist and targets, the zero-safe
-  Quote migration-fee and Meme graduation-allocation defaults, and a 16-entry
-  whitelist of external migrator witness types. All mutations use only
+  Quote migration-fee and Meme graduation-allocation defaults, the nonzero
+  1–9,999 bps destination-pool Meme liquidity provision, and a 16-entry
+  whitelist of external migrator witness types. The protocol Meme allocation
+  plus liquidity provision must remain below 10,000 bps. All mutations use only
   `AdminWitness`. The quote whitelist itself is admission: do not add a
   `Currency<Quote>` input or another registry check. Each launch selects one
   allowlisted `MigrationWitness` type and copies its original `TypeName` with the
-  target and both graduation rates; later whitelist changes affect future
+  target and all three graduation rates; later whitelist changes affect future
   launches only. Do not add live launch-policy reads to trading or migration.
-  See ADRs 0025 and 0027.
+  Zero liquidity provision is unconfigured and must not inherit a migrate-all
+  sentinel. See ADRs 0025, 0027, and 0033.
 - DEXs supported by Blast must not charge a pool-opening fee. Do not add venue
   cost, fee-asset, third-coin, external-payer, reimbursement, or refund fields to
   core launch or migration state. Ordinary transaction gas remains the caller's
@@ -367,18 +370,25 @@ must be differential-tested from shared vectors.
   enumeration where coverage tooling is insufficient.
 - Use `std::unit_test::destroy` as the test-only black hole for teardown. Do not
   add production-module `destroy_*_for_testing` functions merely to unpack
-  objects. When a suite repeatedly owns a scenario plus several shared objects
-  or capabilities, group the complete common environment in a test `Fixture`,
-  including values that only some cases use. Store its scenario, objects, and
-  capabilities as `Option<T>`. Let `start` construct and fill every option; use
-  a receiver-style `run!`, `next_tx!`, or similarly named macro to extract the
-  values, advance the transaction sender when applicable, pass stable mutable
-  references to the test closure, and fill every option again immediately after
-  the closure. A consuming operation may have a narrowly named macro variant
-  that deliberately leaves only the consumed option empty. Test bodies must not
-  destructure the fixture or directly call scenario setup, `next_tx`, shared
-  object take/return, or sender-owned object take/return. Let one receiver-style
-  `end` consume the complete fixture with `destroy`.
+  objects. Every scenario-backed suite uses small, purpose-specific hot-potato
+  fixtures: one ability-free fixture type per setup family, named for what it
+  provides (`ClaimFixture`, `UpgradeFixture`, …), storing its `Scenario` and
+  only the objects and capabilities that family actually uses. A uniquely named
+  `start` variant per fixture performs all scenario choreography and shared or
+  sender-owned object take/return. A receiver-style `run!`/`next_tx!` macro —
+  `use fun`-aliased onto each fixture type when a module defines several —
+  advances the transaction sender and passes the single named fixture handle to
+  the test closure; a closure receives exactly that one named handle, never a
+  positional reference list or underscore placeholders, and reaches state
+  through fixture fields and small domain helpers such as `sign_in`, with a
+  fixture `ctx!` macro as the only transaction-context access. Wrap a field in
+  `Option<T>` only when a consuming or replacement flow needs it, exposed
+  through narrowly named helpers (`take_*`, `replace_*`, `retake_*`). Test
+  bodies must not destructure a fixture, touch its scenario field or `Option`
+  internals, or directly call scenario setup, `next_tx`, shared-object
+  take/return, or sender-owned object take/return; pure math and error-registry
+  tests stay fixture-free. Let one receiver-style `end` per fixture type
+  consume the complete fixture with `destroy`.
 - New TypeScript uses `SuiGrpcClient` for standard reads/writes/simulation and
   `SuiGraphQLClient` for custom indexed or historical queries. SDK libraries
   should accept `ClientWithCoreApi`. JSON-RPC is legacy-only.

@@ -16,7 +16,6 @@ public struct PackageAdmin has key {
     id: UID,
     publisher: Publisher,
     upgrade_cap: UpgradeCap,
-    admin_authorization_enabled: bool,
 }
 
 // === Public Functions ===
@@ -40,7 +39,6 @@ public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxConte
     let policy = upgrade_cap.policy();
     let package_admin = new(publisher, upgrade_cap, ctx);
     let package_admin_id = object::id(&package_admin);
-    let admin_authorization_enabled = package_admin.admin_authorization_enabled;
 
     transfer::share_object(package_admin);
 
@@ -51,7 +49,6 @@ public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxConte
         package_id,
         package_version,
         policy,
-        admin_authorization_enabled,
     );
 }
 
@@ -61,7 +58,6 @@ public fun authorize_upgrade(
     _: &AdminWitness,
     digest: vector<u8>,
 ): UpgradeTicket {
-    self.assert_admin_authorization_enabled();
     assert!(
         digest.length() == constants::package_digest_length!(),
         blast_fun::errors::invalid_package_digest!(),
@@ -84,8 +80,6 @@ public fun authorize_upgrade(
 
 /// Irreversibly narrows the wrapped UpgradeCap to additive upgrades.
 public fun restrict_to_additive(self: &mut PackageAdmin, _: &AdminWitness) {
-    self.assert_admin_authorization_enabled();
-
     let previous_policy = self.assert_policy_can_be_restricted_to(package::additive_policy());
     self.upgrade_cap.only_additive_upgrades();
 
@@ -94,8 +88,6 @@ public fun restrict_to_additive(self: &mut PackageAdmin, _: &AdminWitness) {
 
 /// Irreversibly narrows the wrapped UpgradeCap to dependency-only upgrades.
 public fun restrict_to_dependency_only(self: &mut PackageAdmin, _: &AdminWitness) {
-    self.assert_admin_authorization_enabled();
-
     let previous_policy = self.assert_policy_can_be_restricted_to(package::dep_only_policy());
     self.upgrade_cap.only_dep_upgrades();
 
@@ -116,20 +108,6 @@ public fun commit_upgrade(self: &mut PackageAdmin, receipt: UpgradeReceipt) {
     );
 }
 
-// === Package Functions ===
-
-/// Permanently retires the original routine-admin package-administration path.
-public(package) fun disable_admin_authorization(self: &mut PackageAdmin) {
-    assert!(
-        self.admin_authorization_enabled,
-        blast_fun::errors::admin_package_authorization_already_disabled!(),
-    );
-
-    self.admin_authorization_enabled = false;
-
-    events::package_admin_authorization_disabled();
-}
-
 // === Private Functions ===
 
 fun new(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext): PackageAdmin {
@@ -137,15 +115,7 @@ fun new(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext): Pac
         id: object::new(ctx),
         publisher,
         upgrade_cap,
-        admin_authorization_enabled: true,
     }
-}
-
-fun assert_admin_authorization_enabled(self: &PackageAdmin) {
-    assert!(
-        self.admin_authorization_enabled,
-        blast_fun::errors::admin_package_authorization_disabled!(),
-    );
 }
 
 fun assert_policy_can_be_restricted_to(self: &PackageAdmin, new_policy: u8): u8 {
@@ -197,9 +167,4 @@ public fun version_for_testing(self: &PackageAdmin): u64 {
 #[test_only]
 public fun policy_for_testing(self: &PackageAdmin): u8 {
     self.upgrade_cap.policy()
-}
-
-#[test_only]
-public fun admin_authorization_enabled_for_testing(self: &PackageAdmin): bool {
-    self.admin_authorization_enabled
 }

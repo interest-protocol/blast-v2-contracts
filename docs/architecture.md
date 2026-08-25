@@ -76,7 +76,9 @@ directions, not a demand for seven packages.
 A launch pairs its generated meme coin with a quote `Coin<Quote>`. Core admits
 new pairs through the bounded quote portion of `LaunchConfig`, keyed by the
 quote's original `TypeName`. Each entry supplies the nonzero real-quote migration
-target. Launch state copies that target, both graduation rates, and the complete
+target. Launch state copies that target, all three graduation rates — the
+Quote migration fee, the protocol Meme graduation allocation, and the nonzero
+destination-pool Meme liquidity provision — and the complete
 selected migration witness's original `TypeName` once. Both whitelists are
 admission decisions; the snapshot does not add a quote `Currency` shared-object
 dependency or a DEX package dependency. See
@@ -171,8 +173,9 @@ Upgradeability is a product/security decision, not a default convenience.
   `PackageAdmin` after module/package provenance checks. A live `AdminWitness`
   authorizes an exact digest under the cap's current policy and may
   irreversibly narrow that policy; the native receipt then commits against the
-  same cap. A package-only one-way cutover lets later governance retire every
-  old routine-admin package path after installing replacement authorization.
+  same cap. A future governance design retires the routine-admin package path
+  through the mandatory shared-object version gate after installing replacement
+  authorization (ADR 0034); no pre-planted cutover flag exists.
   Version every mutable shared object and gate mutations so old package
   versions cannot bypass a fix; those gates remain a release blocker even
   though capability custody is implemented.

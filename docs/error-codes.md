@@ -15,7 +15,9 @@ wrappers.
 Named `EPascalCase` copies are `#[test_only]`. They document the registry for
 source tooling without adding production constants or public ABI. Negative Move
 tests use literal numbers in `#[expected_failure]`, because attribute arguments
-cannot call a macro. Frontends, SDKs, indexers, and bots should generate or
+cannot call a macro, and always pin `location = blast_fun::<raising module>` so
+an unrelated abort with the same number cannot satisfy the expectation.
+Frontends, SDKs, indexers, and bots should generate or
 maintain their mapping from this table and the pinned source, not infer meaning
 from a transaction's calling function alone.
 
@@ -69,21 +71,23 @@ the next unused value and must not fill a retired gap.
 | 40 | `invalid_protocol_fee_share_bps` | `runtime_config` | The global protocol fee share exceeds 10,000 basis points. |
 | 41 | `protocol_fee_share_unchanged` | `runtime_config` | A protocol fee-share update supplied the currently active value. |
 | 42 | `invalid_migration_quote_target` | `launch_config` | A quote migration target was zero. |
-| 43 | retired | `launch_config` | Reserved after `allow_quote` absorbed quote-target updates. |
+| 43 | *(retired)* | — | Reserved after `allow_quote` absorbed quote-target updates. |
 | 44 | `quote_capacity_reached` | `launch_config` | The bounded active quote whitelist is full. |
 | 45 | `quote_not_allowed` | `launch_config` | The quote type is not admitted for new launches. |
 | 46 | `migration_quote_target_unchanged` | `launch_config` | A quote-target update supplied the currently active value. |
 | 47 | `invalid_quote_migration_fee_bps` | `launch_config` | The Quote migration-fee default exceeds 500 basis points. |
 | 48 | `invalid_meme_graduation_allocation_bps` | `launch_config` | The Meme graduation-allocation default exceeds 1,000 basis points. |
-| 49 | `graduation_defaults_unchanged` | `launch_config` | A graduation-default update supplied the complete active pair. |
+| 49 | `graduation_defaults_unchanged` | `launch_config` | A graduation-default update supplied the complete active triple. |
 | 50 | `migration_witness_already_allowed` | `launch_config` | The migration witness type is already admitted for future launches. |
 | 51 | `migration_witness_capacity_reached` | `launch_config` | The bounded migration-witness whitelist is full. |
 | 52 | `migration_witness_not_allowed` | `launch_config` | The migration witness type is not admitted for future launches. |
 | 53 | `invalid_upgrade_cap` | `package_admin` | The supplied `UpgradeCap` does not authorize the original Blast package. |
 | 54 | `invalid_package_digest` | `package_admin` | The Sui package digest is not exactly 32 bytes. |
-| 55 | `admin_package_authorization_disabled` | `package_admin` | The durable routine-admin package-upgrade and policy path has been retired. |
+| 55 | *(retired)* | — | Premature governance cutover removed by ADR 0034. |
 | 56 | `invalid_package_publisher` | `package_admin` | The supplied `Publisher` was not claimed by Blast's canonical package module. |
 | 57 | `upgrade_policy_not_more_restrictive` | `package_admin` | The requested UpgradeCap policy is equal to or looser than the current policy. |
-| 58 | `admin_package_authorization_already_disabled` | `package_admin` | The irreversible routine-admin package-authority cutover already occurred. |
+| 58 | *(retired)* | — | Premature governance cutover removed by ADR 0034. |
+| 59 | `invalid_meme_liquidity_provision_bps` | `launch_config` | The destination-pool Meme provision is zero or exceeds 9,999 basis points. |
+| 60 | `invalid_meme_supply_partition_bps` | `launch_config` | Protocol Meme allocation plus pool provision leaves no positive rate for curve inventory. |
 
-The next new package-wide protocol error must use code **59**.
+The next new package-wide protocol error must use code **61**.

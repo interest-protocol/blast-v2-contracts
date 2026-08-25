@@ -5,6 +5,13 @@
 - Amends: [0006](0006-fees-and-launch-paths.md), [0010](0010-migration-and-venue-adapters.md), [0011](0011-event-schema-and-replay.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0025](0025-quote-whitelist-and-migration-targets.md)
 - Preserved by: [0028](0028-hot-cold-runtime-configuration.md)
 
+> Amended by [ADR 0033](0033-meme-liquidity-provision.md): `LaunchConfig` gains a
+> third cold rate, the nonzero destination-pool
+> `meme_liquidity_provision_bps`. The graduation setter updates the complete
+> triple and rejects an unchanged triple, the package-only snapshot returns
+> five values, and the exact struct layout and snapshot list quoted below are
+> the pre-0033 forms.
+
 ## Sources
 
 | Ref | Full commit | Repository |

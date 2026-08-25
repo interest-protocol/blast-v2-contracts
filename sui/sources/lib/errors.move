@@ -161,9 +161,7 @@ const EProtocolFeeShareUnchanged: u64 = 41;
 /// A quote migration target must be nonzero.
 const EInvalidMigrationQuoteTarget: u64 = 42;
 
-#[test_only]
-/// The quote type is already admitted for new launches.
-const EQuoteAlreadyAllowed: u64 = 43;
+// Code 43 retired: `allow_quote` absorbed quote-target updates as an upsert.
 
 #[test_only]
 /// The bounded active quote whitelist is full.
@@ -186,7 +184,7 @@ const EInvalidQuoteMigrationFeeBps: u64 = 47;
 const EInvalidMemeGraduationAllocationBps: u64 = 48;
 
 #[test_only]
-/// A graduation-default update supplied the complete active pair.
+/// A graduation-default update supplied the complete active triple.
 const EGraduationDefaultsUnchanged: u64 = 49;
 
 #[test_only]
@@ -209,9 +207,7 @@ const EInvalidUpgradeCap: u64 = 53;
 /// A Sui package digest must contain exactly 32 bytes.
 const EInvalidPackageDigest: u64 = 54;
 
-#[test_only]
-/// The durable routine-admin package-upgrade and policy path has been retired.
-const EAdminPackageAuthorizationDisabled: u64 = 55;
+// Code 55 retired: the premature governance cutover was removed by ADR 0034.
 
 #[test_only]
 /// The supplied Publisher was not claimed by Blast's canonical package module.
@@ -221,9 +217,15 @@ const EInvalidPackagePublisher: u64 = 56;
 /// An upgrade-policy request was equal to or looser than the current policy.
 const EUpgradePolicyNotMoreRestrictive: u64 = 57;
 
+// Code 58 retired: the premature governance cutover was removed by ADR 0034.
+
 #[test_only]
-/// The irreversible routine-admin package-authority cutover already occurred.
-const EAdminPackageAuthorizationAlreadyDisabled: u64 = 58;
+/// Destination-pool Meme provision must be between one and 9,999 basis points.
+const EInvalidMemeLiquidityProvisionBps: u64 = 59;
+
+#[test_only]
+/// Protocol Meme allocation plus pool provision leaves no positive curve share.
+const EInvalidMemeSupplyPartitionBps: u64 = 60;
 
 // === Package Error Codes ===
 
@@ -417,9 +419,7 @@ macro public(package) fun invalid_package_digest(): u64 {
     54
 }
 
-macro public(package) fun admin_package_authorization_disabled(): u64 {
-    55
-}
+// Error code 55 is retired and must not be reused.
 
 macro public(package) fun invalid_package_publisher(): u64 {
     56
@@ -429,6 +429,12 @@ macro public(package) fun upgrade_policy_not_more_restrictive(): u64 {
     57
 }
 
-macro public(package) fun admin_package_authorization_already_disabled(): u64 {
-    58
+// Error code 58 is retired and must not be reused.
+
+macro public(package) fun invalid_meme_liquidity_provision_bps(): u64 {
+    59
+}
+
+macro public(package) fun invalid_meme_supply_partition_bps(): u64 {
+    60
 }

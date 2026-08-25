@@ -18,7 +18,8 @@ Tests are organized around risk, not only function names.
 
 ## Test rules
 
-- Assert exact named errors/abort codes for negative cases. A bare expected failure
+- Assert exact named errors/abort codes for negative cases, pinning
+  `location` to the raising module. A bare expected failure
   is prohibited because an unrelated abort can make it pass.
 - Assert guard precedence when more than one condition is invalid.
 - Prefer `assert_eq!` for values and plain boolean assertions without arbitrary
@@ -27,13 +28,22 @@ Tests are organized around risk, not only function names.
   modules so assertions and teardown remain visually direct.
 - Keep test builders deterministic and explicit about sender, clock/time,
   balances, state, and authority.
-- Stateful Sui suites use one complete option-backed fixture even when a case
-  touches only part of the environment. `start` fills the scenario, shared
-  objects, and capabilities. A receiver-style transaction macro extracts every
-  option, advances the sender, passes mutable references to a closure, and
-  restores every non-consumed value before returning. Test bodies orchestrate
-  only `start`, named transaction helpers, assertions, and `end`; they do not
-  destructure fixtures or manipulate `test_scenario` directly.
+- Stateful Sui suites use small, purpose-specific hot-potato fixtures: one
+  ability-free fixture type per setup family, named for what it provides
+  (`ClaimFixture`, `UpgradeFixture`, …), storing the scenario plus only the
+  objects that family actually uses. A uniquely named `start` variant per
+  fixture owns all scenario choreography and shared or sender-owned object
+  take/return. Receiver-style `next_tx!` macros — `use fun`-aliased onto each
+  fixture type when a module defines several — advance the sender and pass the
+  single named fixture handle to the closure, never a positional reference
+  list or underscore placeholders. A fixture `ctx!` macro is the only
+  transaction-context access a body may use. `Option<T>` fields exist only for
+  consuming or replacement flows behind narrowly named
+  `take_*`/`replace_*`/`retake_*` helpers. Test bodies orchestrate only
+  starts, transaction macros, fixture helpers and field reads, assertions, and
+  one consuming `end`; they never touch `test_scenario`, the scenario field,
+  or fixture `Option` internals directly, and pure math or error-registry
+  tests stay fixture-free.
 - Random tests use fixed seeds in CI and print enough input to reproduce failure.
 - Fuzz domains must include zero, one, maximum supported values, just below/at/
   above thresholds, and values that stress intermediate multiplication.
