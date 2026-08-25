@@ -62,7 +62,10 @@ fun migration_witness_registry_allows_replacement_at_capacity() {
 }
 
 #[test]
-#[expected_failure(abort_code = 51, location = blast_fun::launch_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EMigrationWitnessCapacityReached,
+    location = blast_fun::launch_config,
+)]
 fun migration_witness_registry_rejects_seventeenth_type() {
     let mut fixture = start();
 

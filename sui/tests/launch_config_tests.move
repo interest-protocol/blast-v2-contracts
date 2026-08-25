@@ -395,7 +395,10 @@ fun disallowing_migration_witness_does_not_change_an_existing_launch_snapshot() 
 }
 
 #[test]
-#[expected_failure(abort_code = 47, location = blast_fun::launch_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidQuoteMigrationFeeBps,
+    location = blast_fun::launch_config,
+)]
 fun graduation_defaults_reject_quote_rate_above_ceiling_first() {
     let mut fixture = start();
 
@@ -414,7 +417,10 @@ fun graduation_defaults_reject_quote_rate_above_ceiling_first() {
 }
 
 #[test]
-#[expected_failure(abort_code = 48, location = blast_fun::launch_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidMemeGraduationAllocationBps,
+    location = blast_fun::launch_config,
+)]
 fun graduation_defaults_reject_meme_rate_above_ceiling_before_provision() {
     let mut fixture = start();
 
@@ -433,7 +439,10 @@ fun graduation_defaults_reject_meme_rate_above_ceiling_before_provision() {
 }
 
 #[test]
-#[expected_failure(abort_code = 59, location = blast_fun::launch_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidMemeLiquidityProvisionBps,
+    location = blast_fun::launch_config,
+)]
 fun graduation_defaults_reject_zero_liquidity_provision() {
     let mut fixture = start();
 
@@ -447,7 +456,10 @@ fun graduation_defaults_reject_zero_liquidity_provision() {
 }
 
 #[test]
-#[expected_failure(abort_code = 59, location = blast_fun::launch_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidMemeLiquidityProvisionBps,
+    location = blast_fun::launch_config,
+)]
 fun graduation_defaults_reject_liquidity_provision_above_ceiling() {
     let mut fixture = start();
 
@@ -466,7 +478,10 @@ fun graduation_defaults_reject_liquidity_provision_above_ceiling() {
 }
 
 #[test]
-#[expected_failure(abort_code = 59, location = blast_fun::launch_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidMemeLiquidityProvisionBps,
+    location = blast_fun::launch_config,
+)]
 fun graduation_defaults_reject_provision_ceiling_before_partition() {
     let mut fixture = start();
 
@@ -485,7 +500,10 @@ fun graduation_defaults_reject_provision_ceiling_before_partition() {
 }
 
 #[test]
-#[expected_failure(abort_code = 60, location = blast_fun::launch_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidMemeSupplyPartitionBps,
+    location = blast_fun::launch_config,
+)]
 fun graduation_defaults_reject_partition_without_curve_inventory() {
     let mut fixture = start();
 
@@ -505,7 +523,10 @@ fun graduation_defaults_reject_partition_without_curve_inventory() {
 }
 
 #[test]
-#[expected_failure(abort_code = 59, location = blast_fun::launch_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidMemeLiquidityProvisionBps,
+    location = blast_fun::launch_config,
+)]
 fun launch_snapshot_rejects_unconfigured_liquidity_provision() {
     let mut fixture = start();
 
@@ -522,7 +543,10 @@ fun launch_snapshot_rejects_unconfigured_liquidity_provision() {
 }
 
 #[test]
-#[expected_failure(abort_code = 49, location = blast_fun::launch_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EGraduationDefaultsUnchanged,
+    location = blast_fun::launch_config,
+)]
 fun graduation_defaults_reject_unchanged_triple() {
     let mut fixture = start();
 
@@ -538,7 +562,10 @@ fun graduation_defaults_reject_unchanged_triple() {
 }
 
 #[test]
-#[expected_failure(abort_code = 52, location = blast_fun::launch_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EMigrationWitnessNotAllowed,
+    location = blast_fun::launch_config,
+)]
 fun disallowing_migration_witness_rejects_unlisted_type() {
     let mut fixture = start();
 
@@ -552,7 +579,10 @@ fun disallowing_migration_witness_rejects_unlisted_type() {
 }
 
 #[test]
-#[expected_failure(abort_code = 50, location = blast_fun::launch_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EMigrationWitnessAlreadyAllowed,
+    location = blast_fun::launch_config,
+)]
 fun allowing_migration_witness_rejects_duplicate_type() {
     let mut fixture = start();
 
@@ -567,7 +597,10 @@ fun allowing_migration_witness_rejects_duplicate_type() {
 }
 
 #[test]
-#[expected_failure(abort_code = 42, location = blast_fun::launch_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidMigrationQuoteTarget,
+    location = blast_fun::launch_config,
+)]
 fun allowing_quote_rejects_zero_target_before_type_lookup() {
     let mut fixture = start();
 
@@ -581,7 +614,10 @@ fun allowing_quote_rejects_zero_target_before_type_lookup() {
 }
 
 #[test]
-#[expected_failure(abort_code = 44, location = blast_fun::launch_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EQuoteCapacityReached,
+    location = blast_fun::launch_config,
+)]
 fun quote_allowlist_is_bounded() {
     let mut fixture = start();
 
@@ -611,7 +647,10 @@ fun quote_allowlist_is_bounded() {
 }
 
 #[test]
-#[expected_failure(abort_code = 46, location = blast_fun::launch_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EMigrationQuoteTargetUnchanged,
+    location = blast_fun::launch_config,
+)]
 fun allowing_quote_rejects_unchanged_target() {
     let mut fixture = start();
 
@@ -629,7 +668,10 @@ fun allowing_quote_rejects_unchanged_target() {
 }
 
 #[test]
-#[expected_failure(abort_code = 45, location = blast_fun::launch_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EQuoteNotAllowed,
+    location = blast_fun::launch_config,
+)]
 fun disallowing_quote_rejects_quote_that_is_not_allowed() {
     let mut fixture = start();
 
@@ -643,7 +685,10 @@ fun disallowing_quote_rejects_quote_that_is_not_allowed() {
 }
 
 #[test]
-#[expected_failure(abort_code = 45, location = blast_fun::launch_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EQuoteNotAllowed,
+    location = blast_fun::launch_config,
+)]
 fun launch_snapshot_rejects_disallowed_quote() {
     let mut fixture = start();
 
@@ -660,7 +705,10 @@ fun launch_snapshot_rejects_disallowed_quote() {
 }
 
 #[test]
-#[expected_failure(abort_code = 52, location = blast_fun::launch_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EMigrationWitnessNotAllowed,
+    location = blast_fun::launch_config,
+)]
 fun launch_snapshot_rejects_unlisted_migration_witness() {
     let mut fixture = start();
 

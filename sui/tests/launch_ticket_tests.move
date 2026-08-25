@@ -166,7 +166,10 @@ fun x_ticket_is_composable_and_records_burn_only_selection() {
 }
 
 #[test]
-#[expected_failure(abort_code = 9, location = blast_fun::creator_authority)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidCreator,
+    location = blast_fun::creator_authority,
+)]
 fun address_ticket_rejects_zero_creator_before_currency_creation() {
     let mut fixture = start();
 
@@ -190,7 +193,10 @@ fun address_ticket_rejects_zero_creator_before_currency_creation() {
 }
 
 #[test]
-#[expected_failure(abort_code = 10, location = blast_fun::creator_authority)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidXIdentityHash,
+    location = blast_fun::creator_authority,
+)]
 fun x_ticket_rejects_invalid_identity_before_currency_creation() {
     let mut fixture = start();
 

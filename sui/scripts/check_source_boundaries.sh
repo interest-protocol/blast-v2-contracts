@@ -166,6 +166,24 @@ if [[ -n "$expected_failure_without_location" ]]; then
   failures=$((failures + 1))
 fi
 
+expected_failure_without_named_abort="$(awk '
+  /#\[expected_failure/ {
+    attribute = $0;
+    while (attribute !~ /\]/ && (getline continuation) > 0) {
+      attribute = attribute " " continuation;
+    }
+    if (attribute !~ /abort_code = ([[:alnum:]_]+::)+E[[:alnum:]_]+/) {
+      print FILENAME ": " attribute;
+    }
+  }
+' tests/*.move)"
+
+if [[ -n "$expected_failure_without_named_abort" ]]; then
+  printf '%s\n' "$expected_failure_without_named_abort"
+  echo 'Every expected_failure must use a qualified named error constant, never a numeric or bare failure.' >&2
+  failures=$((failures + 1))
+fi
+
 for test_file in tests/*.move; do
   tests_marker_count="$(rg -c '^// === Tests ===$' "$test_file" || true)"
   helpers_marker_count="$(rg -c '^// === Private Test Helpers ===$' "$test_file" || true)"

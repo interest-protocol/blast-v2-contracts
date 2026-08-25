@@ -248,7 +248,10 @@ fun x_claim_signer_revoked_event_is_replay_complete() {
 }
 
 #[test]
-#[expected_failure(abort_code = 2, location = blast_fun::runtime_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidXClaimPublicKey,
+    location = blast_fun::runtime_config,
+)]
 fun x_claim_signer_rejects_invalid_public_key_length() {
     let mut fixture = start_signer(LAUNCHER);
 
@@ -262,7 +265,10 @@ fun x_claim_signer_rejects_invalid_public_key_length() {
 }
 
 #[test]
-#[expected_failure(abort_code = 3, location = blast_fun::runtime_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EXClaimSignerInactive,
+    location = blast_fun::runtime_config,
+)]
 fun x_claim_signer_cannot_revoke_while_disabled() {
     let mut fixture = start_signer(LAUNCHER);
 
@@ -276,7 +282,10 @@ fun x_claim_signer_cannot_revoke_while_disabled() {
 }
 
 #[test]
-#[expected_failure(abort_code = 0, location = blast_fun::acl)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidAdminCap,
+    location = blast_fun::acl,
+)]
 fun revoked_admin_cannot_configure_x_signer() {
     let mut fixture = start_signer(LAUNCHER);
 
@@ -334,7 +343,10 @@ fun revoked_admin_can_destroy_inert_cap() {
 }
 
 #[test]
-#[expected_failure(abort_code = 0, location = blast_fun::acl)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidAdminCap,
+    location = blast_fun::acl,
+)]
 fun destroyed_active_admin_is_removed_from_registry() {
     let mut fixture = start_acl();
 
@@ -350,7 +362,10 @@ fun destroyed_active_admin_is_removed_from_registry() {
 }
 
 #[test]
-#[expected_failure(abort_code = 0, location = blast_fun::acl)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidAdminCap,
+    location = blast_fun::acl,
+)]
 fun admin_registered_in_another_protocol_registry_is_rejected() {
     let mut fixture = start_acl();
 
@@ -373,7 +388,10 @@ fun admin_registered_in_another_protocol_registry_is_rejected() {
 }
 
 #[test]
-#[expected_failure(abort_code = 17, location = blast_fun::acl)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EAdminCapacityReached,
+    location = blast_fun::acl,
+)]
 fun active_admin_registry_is_bounded() {
     let mut fixture = start_acl();
 
@@ -390,7 +408,10 @@ fun active_admin_registry_is_bounded() {
 }
 
 #[test]
-#[expected_failure(abort_code = 16, location = blast_fun::acl)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidAdminRecipient,
+    location = blast_fun::acl,
+)]
 fun super_admin_cannot_grant_zero_address_admin() {
     let mut fixture = start_acl();
 
@@ -453,7 +474,10 @@ fun super_admin_transfer_requires_delay_and_recipient_acceptance() {
 }
 
 #[test]
-#[expected_failure(abort_code = 23, location = blast_fun::acl)]
+#[expected_failure(
+    abort_code = blast_fun::errors::ESuperAdminCapStillActive,
+    location = blast_fun::acl,
+)]
 fun active_super_admin_cap_cannot_be_destroyed() {
     let mut fixture = start_acl();
 
@@ -467,7 +491,10 @@ fun active_super_admin_cap_cannot_be_destroyed() {
 }
 
 #[test]
-#[expected_failure(abort_code = 22, location = blast_fun::acl)]
+#[expected_failure(
+    abort_code = blast_fun::errors::ESuperAdminTransferTimeOverflow,
+    location = blast_fun::acl,
+)]
 fun super_admin_transfer_rejects_timestamp_overflow() {
     let mut fixture = start_transfer();
 
@@ -481,7 +508,10 @@ fun super_admin_transfer_rejects_timestamp_overflow() {
 }
 
 #[test]
-#[expected_failure(abort_code = 28, location = blast_fun::acl)]
+#[expected_failure(
+    abort_code = blast_fun::errors::ESuperAdminTransferUnchanged,
+    location = blast_fun::acl,
+)]
 fun super_admin_transfer_rejects_unchanged_pending_recipient_before_timestamp_work() {
     let mut fixture = start_transfer();
 
@@ -549,7 +579,10 @@ fun super_admin_transfer_replaces_different_pending_recipient() {
 }
 
 #[test]
-#[expected_failure(abort_code = 15, location = blast_fun::acl)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidSuperAdminCap,
+    location = blast_fun::acl,
+)]
 fun accepted_super_admin_transfer_invalidates_previous_root_cap() {
     let mut fixture = start_transfer();
 
@@ -569,7 +602,10 @@ fun accepted_super_admin_transfer_invalidates_previous_root_cap() {
 }
 
 #[test]
-#[expected_failure(abort_code = 18, location = blast_fun::acl)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidSuperAdminRecipient,
+    location = blast_fun::acl,
+)]
 fun super_admin_transfer_rejects_zero_recipient() {
     let mut fixture = start_transfer();
 
@@ -581,7 +617,10 @@ fun super_admin_transfer_rejects_zero_recipient() {
 }
 
 #[test]
-#[expected_failure(abort_code = 21, location = blast_fun::acl)]
+#[expected_failure(
+    abort_code = blast_fun::errors::ESuperAdminTransferNotReady,
+    location = blast_fun::acl,
+)]
 fun super_admin_transfer_rejects_early_acceptance() {
     let mut fixture = start_transfer();
 
@@ -598,7 +637,10 @@ fun super_admin_transfer_rejects_early_acceptance() {
 }
 
 #[test]
-#[expected_failure(abort_code = 20, location = blast_fun::acl)]
+#[expected_failure(
+    abort_code = blast_fun::errors::ENotPendingSuperAdminRecipient,
+    location = blast_fun::acl,
+)]
 fun super_admin_transfer_rejects_wrong_recipient() {
     let mut fixture = start_transfer();
 
@@ -616,7 +658,10 @@ fun super_admin_transfer_rejects_wrong_recipient() {
 }
 
 #[test]
-#[expected_failure(abort_code = 19, location = blast_fun::acl)]
+#[expected_failure(
+    abort_code = blast_fun::errors::ENoPendingSuperAdminTransfer,
+    location = blast_fun::acl,
+)]
 fun cancelled_super_admin_transfer_cannot_be_accepted() {
     let mut fixture = start_transfer();
 
@@ -635,7 +680,10 @@ fun cancelled_super_admin_transfer_cannot_be_accepted() {
 }
 
 #[test]
-#[expected_failure(abort_code = 19, location = blast_fun::acl)]
+#[expected_failure(
+    abort_code = blast_fun::errors::ENoPendingSuperAdminTransfer,
+    location = blast_fun::acl,
+)]
 fun super_admin_cannot_cancel_without_pending_transfer() {
     let mut fixture = start_acl();
 
@@ -658,7 +706,10 @@ fun package_init_delivers_only_root() {
 }
 
 #[test]
-#[expected_failure(abort_code = 3, location = blast_fun::runtime_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EXClaimSignerInactive,
+    location = blast_fun::runtime_config,
+)]
 fun package_init_starts_x_signer_disabled() {
     let mut fixture = start_runtime_init();
 
@@ -708,14 +759,20 @@ fun address_creator_claim_returns_composable_cap_without_attestation() {
 }
 
 #[test]
-#[expected_failure(abort_code = 9, location = blast_fun::creator_authority)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidCreator,
+    location = blast_fun::creator_authority,
+)]
 fun address_identity_rejects_zero_creator_address() {
     let creator_identity = creator_authority::new_address(@0x0);
     destroy(creator_identity);
 }
 
 #[test]
-#[expected_failure(abort_code = 26, location = blast_fun::creator_authority)]
+#[expected_failure(
+    abort_code = blast_fun::errors::ECreatorNotSender,
+    location = blast_fun::creator_authority,
+)]
 fun address_creator_claim_rejects_different_sender() {
     let mut fixture = start_claim();
 
@@ -732,7 +789,10 @@ fun address_creator_claim_rejects_different_sender() {
 }
 
 #[test]
-#[expected_failure(abort_code = 11, location = blast_fun::creator_authority)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EUnexpectedXClaimAttestation,
+    location = blast_fun::creator_authority,
+)]
 fun address_creator_claim_rejects_x_attestation() {
     let mut fixture = start_claim();
 
@@ -749,7 +809,10 @@ fun address_creator_claim_rejects_x_attestation() {
 }
 
 #[test]
-#[expected_failure(abort_code = 10, location = blast_fun::creator_authority)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidXIdentityHash,
+    location = blast_fun::creator_authority,
+)]
 fun x_identity_rejects_non_32_byte_identity_commitment() {
     let creator_identity = creator_authority::new_x(x"1122");
     destroy(creator_identity);
@@ -782,7 +845,10 @@ fun valid_x_attestation_consumes_authority_and_returns_creator_cap() {
 }
 
 #[test]
-#[expected_failure(abort_code = 6, location = blast_fun::runtime_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidXClaimSignature,
+    location = blast_fun::runtime_config,
+)]
 fun x_claim_rejects_signature_bound_to_another_sender() {
     let mut fixture = start_x_claim();
 
@@ -798,7 +864,10 @@ fun x_claim_rejects_signature_bound_to_another_sender() {
 }
 
 #[test]
-#[expected_failure(abort_code = 25, location = blast_fun::creator_authority)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EMissingXClaimAttestation,
+    location = blast_fun::creator_authority,
+)]
 fun x_creator_claim_requires_attestation() {
     let mut fixture = start_x_claim();
 
@@ -812,7 +881,10 @@ fun x_creator_claim_requires_attestation() {
 }
 
 #[test]
-#[expected_failure(abort_code = 27, location = blast_fun::creator_authority)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidXClaimAttestation,
+    location = blast_fun::creator_authority,
+)]
 fun x_creator_claim_rejects_malformed_attestation() {
     let mut fixture = start_x_claim();
 
@@ -826,7 +898,10 @@ fun x_creator_claim_rejects_malformed_attestation() {
 }
 
 #[test]
-#[expected_failure(abort_code = 3, location = blast_fun::runtime_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EXClaimSignerInactive,
+    location = blast_fun::runtime_config,
+)]
 fun disabled_x_signer_rejects_before_attestation_parsing() {
     let mut fixture = start_claim();
 
@@ -840,7 +915,10 @@ fun disabled_x_signer_rejects_before_attestation_parsing() {
 }
 
 #[test]
-#[expected_failure(abort_code = 14, location = blast_fun::creator_authority)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EXClaimExpired,
+    location = blast_fun::creator_authority,
+)]
 fun x_claim_rejects_expired_attestation() {
     let mut fixture = start_x_claim();
 
@@ -856,7 +934,10 @@ fun x_claim_rejects_expired_attestation() {
 }
 
 #[test]
-#[expected_failure(abort_code = 6, location = blast_fun::runtime_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidXClaimSignature,
+    location = blast_fun::runtime_config,
+)]
 fun x_claim_rejects_signature_for_another_meme_type() {
     let mut fixture = start_x_claim();
 
@@ -874,7 +955,10 @@ fun x_claim_rejects_signature_for_another_meme_type() {
 }
 
 #[test]
-#[expected_failure(abort_code = 6, location = blast_fun::runtime_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidXClaimSignature,
+    location = blast_fun::runtime_config,
+)]
 fun x_claim_rejects_signature_for_another_x_identity() {
     let mut fixture = start_x_claim();
 
@@ -893,7 +977,10 @@ fun x_claim_rejects_signature_for_another_x_identity() {
 }
 
 #[test]
-#[expected_failure(abort_code = 6, location = blast_fun::runtime_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidXClaimSignature,
+    location = blast_fun::runtime_config,
+)]
 fun x_claim_rejects_attestation_from_rotated_signer_key() {
     let mut fixture = start_signer_claim();
 
@@ -917,7 +1004,10 @@ fun x_claim_rejects_attestation_from_rotated_signer_key() {
 }
 
 #[test]
-#[expected_failure(abort_code = 3, location = blast_fun::runtime_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EXClaimSignerInactive,
+    location = blast_fun::runtime_config,
+)]
 fun x_claim_rejects_attestation_after_signer_revocation() {
     let mut fixture = start_signer_claim();
 
@@ -970,7 +1060,10 @@ fun signer_rotation_reenables_x_claims_after_revocation() {
 }
 
 #[test]
-#[expected_failure(abort_code = 24, location = blast_fun::runtime_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EXClaimSignerUnchanged,
+    location = blast_fun::runtime_config,
+)]
 fun signer_rotation_rejects_current_public_key() {
     let mut fixture = start_signer(LAUNCHER);
 

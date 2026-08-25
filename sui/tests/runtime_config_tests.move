@@ -103,7 +103,10 @@ fun one_runtime_config_and_admin_witness_update_both_live_settings() {
 }
 
 #[test]
-#[expected_failure(abort_code = 40, location = blast_fun::runtime_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidProtocolFeeShareBps,
+    location = blast_fun::runtime_config,
+)]
 fun protocol_fee_share_rejects_above_one_hundred_percent() {
     let mut fixture = start();
 
@@ -117,7 +120,10 @@ fun protocol_fee_share_rejects_above_one_hundred_percent() {
 }
 
 #[test]
-#[expected_failure(abort_code = 41, location = blast_fun::runtime_config)]
+#[expected_failure(
+    abort_code = blast_fun::errors::EProtocolFeeShareUnchanged,
+    location = blast_fun::runtime_config,
+)]
 fun protocol_fee_share_rejects_unchanged_value() {
     let mut fixture = start();
 
