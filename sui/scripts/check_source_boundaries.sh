@@ -61,6 +61,74 @@ if rg -n '^[[:space:]]*(assert!|abort\b|public struct\b)' sources/lib/errors.mov
   failures=$((failures + 1))
 fi
 
+blast_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/blast.move)"
+
+if [[ ! -f sources/blast.move ]] \
+  || ! rg -Fq 'public struct BLAST() has drop;' sources/blast.move \
+  || ! rg -U -q \
+    'fun init\(otw: BLAST, ctx: &mut TxContext\) \{\s*sui::package::claim_and_keep\(otw, ctx\);\s*\}' \
+    <<<"$blast_production" \
+  || [[ "$(rg -c '^(public struct|fun) ' <<<"$blast_production")" != 2 ]] \
+  || [[ "$(rg -c '^fun init\(' <<<"$blast_production")" != 1 ]] \
+  || rg -n '^(public|entry|public\(package\)) fun ' <<<"$blast_production"; then
+  echo 'blast.move must own only the package BLAST witness and private Publisher claim.' >&2
+  failures=$((failures + 1))
+fi
+
+if rg -n '^public struct ACL' sources/acl.move \
+  || ! rg -Fq 'fun init(ctx: &mut TxContext) {' sources/acl.move; then
+  echo 'acl.move must use a context-only initializer and must not own the package OTW.' >&2
+  failures=$((failures + 1))
+fi
+
+upgrade_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/upgrade.move)"
+
+if [[ ! -f sources/upgrade.move ]] \
+  || ! rg -U -q \
+    'public struct UpgradeManager has key \{\s*id: UID,\s*cap: UpgradeCap,\s*admin_authorization_enabled: bool,\s*\}' \
+    sources/upgrade.move \
+  || [[ "$(rg -c '^public fun ' <<<"$upgrade_production")" != 3 ]] \
+  || [[ "$(rg -c '^public fun (wrap|authorize_upgrade|commit_upgrade)\(' <<<"$upgrade_production")" != 3 ]] \
+  || [[ "$(rg -o '_: &AdminWitness' <<<"$upgrade_production" | wc -l)" != 1 ]] \
+  || ! rg -U -q \
+    'public fun authorize_upgrade\(\s*self: &mut UpgradeManager,\s*_: &AdminWitness,\s*digest: vector<u8>,\s*\): UpgradeTicket' \
+    sources/upgrade.move \
+  || ! rg -U -q \
+    'public fun commit_upgrade\(\s*self: &mut UpgradeManager,\s*receipt: UpgradeReceipt,?\s*\)' \
+    sources/upgrade.move; then
+  echo 'upgrade.move must expose only validated wrapping plus AdminWitness-gated authorize and receipt-gated commit.' >&2
+  failures=$((failures + 1))
+fi
+
+if ! rg -Fq 'package_id.to_address() == type_name::original_id<BLAST>()' \
+    sources/upgrade.move \
+  || ! rg -Fq 'digest.length() == constants::package_digest_length!()' \
+    sources/upgrade.move \
+  || ! rg -Fq 'self.admin_authorization_enabled' sources/upgrade.move \
+  || ! rg -Fq 'self.cap.authorize(policy, digest)' sources/upgrade.move \
+  || ! rg -Fq 'self.cap.commit(receipt)' sources/upgrade.move \
+  || rg -n '\b(Publisher|ProtocolAuthority|SuperAdminCap|AdminCap)\b' \
+    <<<"$upgrade_production" \
+  || rg -U -n '^(public|entry|public\(package\)) fun [^(]+\([^)]*\): UpgradeCap' \
+    <<<"$upgrade_production" \
+  || rg -n 'transfer::(public_)?transfer|make_immutable|only_(additive|dep)_upgrades' \
+    <<<"$upgrade_production"; then
+  echo 'Upgrade custody must validate the Blast cap, bind exact digests, retain the raw cap, and stay separate from Publisher and ACL state.' >&2
+  failures=$((failures + 1))
+fi
+
+upgrade_mutation_event_payloads="$(sed -n \
+  -e '/^public struct UpgradeAuthorized/,/^}/p' \
+  -e '/^public struct UpgradeCommitted/,/^}/p' \
+  sources/lib/events.move)"
+
+if [[ -z "$upgrade_mutation_event_payloads" ]] \
+  || rg -n '\b(manager_id|upgrade_cap_id|sequence|schema_version|action_tag|nonce)\b' \
+    <<<"$upgrade_mutation_event_payloads"; then
+  echo 'Upgrade mutations must use typed facts without repeated custody, ordering, or schema fields.' >&2
+  failures=$((failures + 1))
+fi
+
 if rg -n '\b(Coin|Balance|UID|TxContext|transfer::|event::|object::)\b' sources/curve.move \
   || rg -n '^(public|entry) fun ' sources/curve.move \
   || [[ "$(rg -c '^public\(package\) fun quote_(buy|sell)\(' sources/curve.move)" != 2 ]]; then
@@ -158,8 +226,8 @@ fi
 
 if [[ -f sources/x_claim_config.move || -f sources/trade_fee_config.move ]] \
   || rg -n '\b(XClaimConfig|TradeFeeConfig)\b' sources tests \
-  || [[ "$(rg -o 'transfer::share_object' sources/*.move | wc -l)" != 3 ]]; then
-  echo 'Runtime consolidation must retire the two shallow shared configs and keep exactly three protocol-wide shared singletons.' >&2
+  || [[ "$(rg -o 'transfer::share_object' sources/*.move | wc -l)" != 4 ]]; then
+  echo 'Runtime consolidation plus upgrade custody must keep exactly four protocol-wide shared singletons.' >&2
   failures=$((failures + 1))
 fi
 
@@ -260,7 +328,7 @@ if [[ -z "$launch_ticket_event_payload" ]] \
 fi
 
 if rg -n \
-  '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|creator_authority::(into_authority|event_fields|claim_creator_cap)|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees))(<[^>]+>)?\(' \
+  '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|creator_authority::(into_authority|event_fields|claim_creator_cap)|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees)|upgrade::(authorize_upgrade|commit_upgrade))(<[^>]+>)?\(' \
   sources tests; then
   echo 'Blast-owned receiver functions must use Move 2024 dot syntax.' >&2
   failures=$((failures + 1))

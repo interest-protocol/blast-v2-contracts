@@ -54,6 +54,8 @@ without returning to core for its post-conditions.
 
 | Component | Responsibility | Must not own |
 | --- | --- | --- |
+| Package provenance | canonical OTW and one-time framework `Publisher` claim | protocol administration, feature state, or upgrade authority |
+| Package upgrade custody | validated raw `UpgradeCap`, exact-digest authorization, and receipt commit | Publisher provenance, ACL membership storage, feature configuration, or state migration |
 | Protocol ACL | root rotation and revocable routine-admin membership | feature configuration, backend keys, creator identity, or fees |
 | Runtime config | one dedicated X-claim backend key and the live global protocol fee share | admin delegation, creator identity or issuance, launch policy, accrued balances, launch-selected fee rates, or claim authority |
 | Launch config | cold bounded quote targets, graduation defaults, and external migrator witness admission for future launches | live launch repricing, quote registry objects, DEX costs or dependencies, user balances, curve math, or hot trade configuration |
@@ -165,10 +167,18 @@ intentional semantic difference in an ADR and in shared differential vectors.
 
 Upgradeability is a product/security decision, not a default convenience.
 
-- Sui: keep the public surface minimal, version shared state, and gate mutations
-  so old package versions cannot bypass a fix.
+- Sui: the raw Blast `UpgradeCap` enters one shared `UpgradeManager` after an
+  original-package check. A live `AdminWitness` authorizes an exact digest under
+  the cap's current policy; the native receipt then commits against that same
+  cap. Publisher provenance remains separate. This interim policy gives every
+  active routine admin code-upgrade authority. Version every mutable shared
+  object and gate mutations so old package versions cannot bypass a fix; those
+  gates remain a release blocker even though capability custody is implemented.
 - EVM: choose immutable deployment or a named proxy pattern before storage is
   committed. If upgradeable, document administrator, delay, rollback/escape
   policy, initializer behavior, and storage-layout checks.
 
-The upgrade decision must be approved before the first public deployment.
+The Sui custody and interim authority decision is accepted in
+[ADR 0032](decisions/0032-admin-authorized-upgrade-cap-custody.md). Replacement
+governance, delay, recovery, and the shared-state migration/version plan require
+approval before the first public deployment. The EVM decision also remains open.

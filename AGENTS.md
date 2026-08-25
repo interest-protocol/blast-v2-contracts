@@ -87,6 +87,18 @@ core interface. See `docs/architecture.md`.
   module that owns a capability's one-time issuance also owns that capability
   type. Do not turn ACL into a registry for cryptographic keys, creator identity,
   fees, or unrelated feature state.
+- `upgrade.move` owns the package `UpgradeCap` lifecycle. Its one public intake
+  must compare the cap's package against `type_name::original_id<BLAST>()`, then
+  share a manager containing the cap and the durable
+  `admin_authorization_enabled` flag. Expose no raw-cap release, transfer,
+  policy-narrowing, or immutability path without a new ADR. The current
+  authorization path takes a borrowed `AdminWitness`, validates an exact
+  32-byte digest, and uses the cap's current policy; commit takes the matching
+  framework receipt and does not repeat the witness. Keep Publisher custody and
+  ACL membership state out of the manager. Treat every active routine admin as
+  full compatible-code authority until approved governance irreversibly disables
+  the original path. Wrapped cap custody never replaces shared-object version
+  gates; those gates remain a public-release requirement. See ADR 0032.
 - Treat every backend-signed action as its own domain. `runtime_config.move`
   owns the current dedicated X-claim key and signature verification, while the
   domain module owns the exact signed message and state transition. Do not reuse
@@ -250,6 +262,12 @@ must be differential-tested from shared vectors.
 
 - Use stable Move edition `2024`, not alpha/beta editions.
 - Use a Blast-prefixed named address.
+- Keep the canonical package OTW in `blast.move` as `BLAST` and consume it only
+  through `sui::package::claim_and_keep` so the publishing sender retains the
+  framework `Publisher`. State and feature initializers must omit OTW parameters
+  unless they genuinely validate, transform, consume, or store that witness for
+  their own concern. Keep Publisher custody separate from ACL and `UpgradeCap`,
+  and record its object id and final custodian in deployment records.
 - Keep package-wide diagnostics and indexing infrastructure in `sources/lib/`;
   keep domain modules at the `sources/` root until a directory represents a
   durable multi-module concern. Filesystem directories do not change Move module
@@ -374,7 +392,7 @@ at least:
 - schema version, network/chain ID, environment, and UTC timestamp;
 - repository commit, clean/dirty state, compiler and toolchain versions;
 - package/contract identifiers and dependency identifiers;
-- deployer, transaction digest/hash, status, and created/admin/upgrade objects;
+- deployer, transaction digest/hash, status, and created/admin/Publisher/upgrade objects;
 - constructor/init parameters and post-deploy verification results.
 
 Raw simulator or broadcast output can remain generated and ignored. Public

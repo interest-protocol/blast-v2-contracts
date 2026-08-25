@@ -29,7 +29,7 @@ contracts/
 
 The workspace, its engineering contract, and the Sui design record are established.
 The implemented Sui Move slices cover the current audit-sized boundaries from
-accepted ADRs 0013 through 0028: one-time
+accepted ADRs 0013 through 0032: one-time
 `CreatorCap<Meme>` claims for address and X identities, coin-type-isolated
 creator authority that survives migration, a creator-authority boundary with no
 metadata-cap pass-through, and the backend-attested X branch.
@@ -43,7 +43,10 @@ launches. Launch intake will select one allowlisted witness without requiring a
 quote `Currency` object or importing a DEX package, so later admin updates cannot
 rewrite existing launches. DEX pool-opening costs are deliberately unsupported.
 It includes dedicated package-constant and macro-error registries, a wrapped-event
-module, inline invariant assertions, a concern-limited singleton admin registry,
+module, a package-only OTW bootstrap that claims and retains the framework
+`Publisher`, a dedicated shared manager that validates and permanently wraps the
+Blast `UpgradeCap`, exact-digest upgrade authorization through a live
+`AdminWitness`, inline invariant assertions, a concern-limited singleton admin registry,
 drop-only admin sign-in witnesses, one small shared runtime configuration for
 the dedicated X signer and live protocol fee share,
 delayed recipient-accepted root transfer,
@@ -59,6 +62,11 @@ The fixed/burnable generated-supply policy, launch-ticket boundary, launch
 policy, and deferred sell-burn custody are accepted. Pure graduation arithmetic
 and custody, followed by normalized launch intake and lifecycle storage, remain
 the next implementation boundaries.
+
+Upgrade custody is implemented, but public release still requires version gates
+on every mutable shared protocol object so old package bytecode cannot bypass an
+upgrade. Routine admins currently have full compatible-code authority; a durable
+manager flag is present so a later governance design can retire that path.
 
 The decision records cover the Sui package — package layout, Coin
 Registry creation and the three-transaction bootstrap, final fixed/burnable supply,

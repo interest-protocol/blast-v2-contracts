@@ -76,8 +76,10 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0028](0028-hot-cold-runtime-configuration.md) | Hot/cold runtime configuration consolidation | **accepted** |
 | [0029](0029-composable-creator-identity.md) | Composable creator identity and protected linear authority | **accepted** |
 | [0030](0030-singleton-event-identity.md) | Singleton event identity without repeated object ids | **accepted** |
+| [0031](0031-package-witness-and-publisher-custody.md) | Package witness and Publisher custody | **accepted** |
+| [0032](0032-admin-authorized-upgrade-cap-custody.md) | Admin-authorized UpgradeCap custody | **accepted** |
 
-Only ADRs 0013–0030 are accepted. ADR 0021 accepts the pure curve formulas and
+Only ADRs 0013–0032 are accepted. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -96,6 +98,15 @@ cold `LaunchConfig` shared objects.
 
 ADR 0030 keeps shared-object discovery ids on singleton creation events while
 removing repeated owner ids from typed singleton mutation payloads.
+
+ADR 0031 moves the package OTW out of ACL into a minimal `blast` module, uses it
+to claim and retain the framework `Publisher`, and keeps all state-module
+initializers context-only unless they genuinely consume an OTW.
+
+ADR 0032 validates and wraps the package `UpgradeCap` in a dedicated shared
+manager, lets a live `AdminWitness` authorize exact upgrade digests under the
+cap's current policy, and preserves a durable seam for later retirement of the
+routine-admin path.
 
 ## Open premises
 

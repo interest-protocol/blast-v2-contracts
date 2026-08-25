@@ -201,6 +201,18 @@ const EMigrationWitnessCapacityReached: u64 = 51;
 /// The migration witness type is not admitted for future launches.
 const EMigrationWitnessNotAllowed: u64 = 52;
 
+#[test_only]
+/// The supplied UpgradeCap does not authorize the original Blast package.
+const EInvalidUpgradeCap: u64 = 53;
+
+#[test_only]
+/// A Sui package digest must contain exactly 32 bytes.
+const EInvalidPackageDigest: u64 = 54;
+
+#[test_only]
+/// The durable routine-admin package-upgrade path has been retired.
+const EAdminUpgradeAuthorizationDisabled: u64 = 55;
+
 // === Package Error Codes ===
 
 macro public(package) fun invalid_admin_cap(): u64 {
@@ -383,4 +395,16 @@ macro public(package) fun migration_witness_capacity_reached(): u64 {
 
 macro public(package) fun migration_witness_not_allowed(): u64 {
     52
+}
+
+macro public(package) fun invalid_upgrade_cap(): u64 {
+    53
+}
+
+macro public(package) fun invalid_package_digest(): u64 {
+    54
+}
+
+macro public(package) fun admin_upgrade_authorization_disabled(): u64 {
+    55
 }

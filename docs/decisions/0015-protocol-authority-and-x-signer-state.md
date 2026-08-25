@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-22
 - Amends: [0013](0013-creator-fee-authority-and-x-claims.md), [0014](0014-typed-creator-cap-and-diagnostic-modules.md)
-- Amended by: [0017](0017-coin-type-domain-for-x-creator-claims.md), [0018](0018-authority-module-separation.md), [0020](0020-admin-cap-self-destruction.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md)
+- Amended by: [0017](0017-coin-type-domain-for-x-creator-claims.md), [0018](0018-authority-module-separation.md), [0020](0020-admin-cap-self-destruction.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0031](0031-package-witness-and-publisher-custody.md), [0032](0032-admin-authorized-upgrade-cap-custody.md)
 - Settles: the protocol-authority and X-signer portions of [0007](0007-acl-pause-and-versioning.md)
 
 ## Sources
@@ -19,8 +19,9 @@
 The first X-claim slice treated its `AdminCap` as authority over one
 `XClaimConfig`, so the cap stored that config's object id. Production instead
 has one protocol-wide administration domain. Per-config binding adds state and
-suggests that multiple independent Blast administrations can exist when the
-package one-time witness creates only one authority root.
+suggests that multiple independent Blast administrations can exist when package
+publication initializes only one authority root. ADR 0031 separates the package
+OTW and `Publisher` claim from that context-only ACL initialization.
 
 The first config also persisted `package_id`, a manually supplied `chain_id`, a
 signer key id, and an active flag beside the signer public key. The package's
@@ -69,7 +70,10 @@ transaction.
 
 The super admin is a cold root. It may grant or revoke routine admins and manage
 its own transfer. An active `AdminCap` performs routine protocol configuration,
-beginning with X signer management. No separate per-config admin exists.
+beginning with X signer management. ADR 0032 additionally makes the resulting
+live `AdminWitness` interim authority to authorize exact package-upgrade
+digests. That is full compatible-code authority, not merely another bounded
+setter. No separate per-config admin exists.
 
 Admin membership is bounded. Granting a seventeenth active admin aborts. Admin
 creation deliberately delivers the new capability to the named nonzero
@@ -158,8 +162,9 @@ economic domain shared by the cap and downstream integrations.
   config object.
 - A routine admin may voluntarily renounce membership, and a previously revoked
   holder may delete the inert cap for its storage rebate.
-- A stolen routine admin can change routine configuration but cannot create or
-  revive admins or rotate the root.
+- A stolen routine admin can change routine configuration and, under ADR 0032's
+  interim policy, authorize compatible replacement package code. It still
+  cannot create or revive admins or rotate the root.
 - A stolen root can schedule a takeover and alter admins, but the public delay
   gives operators time to cancel while the current root remains available.
 - The accepted recipient must actively complete root transfer.
@@ -175,6 +180,8 @@ economic domain shared by the cap and downstream integrations.
 - The root can grant an admin; that admin can sign in and use the resulting
   drop-only witness to set and revoke the X signer.
 - A revoked admin fails when it next attempts to sign in.
+- An active admin's witness authorizes an exact package digest, while a revoked
+  or foreign admin cap cannot reach that authorization path.
 - Active admin destruction removes registry membership and emits
   `AdminDestroyed.was_active = true`; destruction after root revocation remains
   available and emits `was_active = false`.

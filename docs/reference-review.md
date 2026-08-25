@@ -15,6 +15,14 @@ v5.7.0 at [`cab19933c33c2ad1d4c7a84864a3601dddfd16f3`](https://github.com/OpenZe
 The detailed comparison is in
 [research/admin-and-signer-authority-patterns.md](research/admin-and-signer-authority-patterns.md).
 
+Focused upgrade-custody review on 2026-08-25 checked Walrus at
+[`3c1cacc11c9292ed498f01f798cf790f02ea5062`](https://github.com/MystenLabs/walrus/tree/3c1cacc11c9292ed498f01f798cf790f02ea5062)
+and its pinned Sui framework at
+[`06734f6ff0af45d8632a14a4dc4b100197f6b1a2`](https://github.com/MystenLabs/sui/tree/06734f6ff0af45d8632a14a4dc4b100197f6b1a2).
+The comparison of cap intake, manager custody, ticket/receipt authorization, and
+separate Publisher use is in
+[research/walrus-upgrade-cap-custody.md](research/walrus-upgrade-cap-custody.md).
+
 Every tracked blob was inventoried and content-read at the commits above. The
 review then treated authored guidance, contracts, tests, SDK/deployment scripts,
 manifests, lockfiles, deployment JSON, vendored code, images, and generated
@@ -119,7 +127,8 @@ external ABI claim in those records cites one of these commits as
 
 | Short ref | Repository | Pinned commit | Files read |
 | --- | --- | --- | --- |
-| `sui@06734f6` | [MystenLabs/sui](https://github.com/MystenLabs/sui) | `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` | `crates/sui-framework/packages/move-stdlib/sources/type_name.move`, `crates/sui-framework/packages/sui-framework/sources/object.move` |
+| `sui@06734f6` | [MystenLabs/sui](https://github.com/MystenLabs/sui) | `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` | `crates/sui-framework/packages/move-stdlib/sources/type_name.move`, `crates/sui-framework/packages/sui-framework/sources/object.move`, `.../package.move` |
+| `walrus@3c1cacc` | [MystenLabs/walrus](https://github.com/MystenLabs/walrus) | `3c1cacc11c9292ed498f01f798cf790f02ea5062` | `contracts/walrus/sources/init.move`, `.../upgrade.move`, `.../display.move`, `contracts/walrus/tests/upgrade_tests.move` |
 | `sui@ae60d06` | [MystenLabs/sui](https://github.com/MystenLabs/sui) | `ae60d065ed27576d25ac1c94145e5ffe3ddcf89e` | `crates/sui-framework/packages/sui-framework/sources/registries/coin_registry.move`, `.../registries/display_registry.move`, `.../derived_object.move`, `.../coin.move`, `crates/sui-framework/packages/sui-framework/tests/registries/coin_registry_tests.move` |
 | `cetus@ddfbdeb` | [CetusProtocol/cetus-contracts](https://github.com/CetusProtocol/cetus-contracts) | `ddfbdeba174319998b012de876ab7ec23c3ab0bc` | `packages/cetus_clmm/sources/pool_creator.move`, `.../factory.move`, `.../math/tick_math.move`, `.../position.move`, `packages/cetus_clmm/Move.toml` |
 | `bluefin@91ce930` | [fireflyprotocol/bluefin-spot-contract-interface](https://github.com/fireflyprotocol/bluefin-spot-contract-interface) | `91ce930575b2aa3decab9b7e129b8002deba80c1` | `sources/pool.move`, `sources/config.move`, `Move.toml`, `README.md` |

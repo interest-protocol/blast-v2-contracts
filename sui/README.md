@@ -16,18 +16,24 @@ sui/
 
 Add a separate Move package only for a real dependency/security boundary such as
 a venue adapter or test coins. External Git dependencies must use immutable full
-commit SHAs. `Published.toml`, normalized deployment summaries, and upgrade-cap
-disposition are release records and should be committed when they exist.
+commit SHAs. `Published.toml`, normalized deployment summaries, Publisher
+custody, and upgrade-cap disposition are release records and should be committed
+when they exist.
 
 ## Implemented first slice
 
 The core package now contains:
 
+- `blast.move` — the canonical package OTW and private initialization path that
+  claims and delivers the framework `Publisher` to the publishing sender;
 - `constants.move` — package-wide protocol values exposed as zero-cost package
   macros, with related attestation-layout values derived rather than repeated;
 - `acl.move` — singleton `ProtocolAuthority`, delayed `SuperAdminCap` transfer,
   bounded protocol-wide `AdminCap` grant/revoke delegation, holder-driven cap
   destruction, and drop-only `AdminWitness` sign-in only;
+- `upgrade.move` — shared custody of the package's validated `UpgradeCap`, with
+  exact 32-byte digest authorization gated by a live `AdminWitness` and
+  receipt-bound commit;
 - `runtime_config.move` — one small shared live-settings object containing the
   dedicated X backend signer and global protocol fee share, with witness-gated
   signer rotation/revocation, Ed25519 verification, and bounded 0–10,000 bps
@@ -79,6 +85,11 @@ The core package now contains:
   initialization, administrative lifecycles, immutable future-launch snapshots,
   independent graduation boundaries, route-cost replay facts, collection bounds,
   guard precedence, and exact package-error coverage.
+- `blast_tests.move` — package initialization proves the retained `Publisher`
+  identifies both the defining `blast` module and the wider `blast_fun` package.
+- `upgrade_tests.move` — package-cap provenance, shared custody facts, active
+  admin authorization, digest bounds, future admin-path retirement, native
+  ticket/receipt completion, and receipt-to-cap binding.
 
 Internal quote, fee-ledger, launch-ticket, and configuration seams are
 package-only where the future `launch` module must own
@@ -87,6 +98,26 @@ economics and lifecycle ADRs are accepted.
 
 The cross-language backend fixture is
 [`../docs/vectors/x-creator-claim.json`](../docs/vectors/x-creator-claim.json).
+
+## Upgrade custody
+
+The publish transaction delivers two independent framework objects: a retained
+`Publisher` from `blast::init` and the raw package `UpgradeCap`. The publisher
+remains address-owned for a future feature that actually needs package
+provenance. Before any upgrade, the deployment flow must pass the untouched raw
+cap to `upgrade::wrap`; the function accepts only the cap for Blast's original
+package and exposes no release path.
+
+An upgrade PTB calls `acl::sign_in`, passes the resulting `AdminWitness` and
+exact package digest to `upgrade::authorize_upgrade`, runs the native Sui
+upgrade command, and passes its receipt to `upgrade::commit_upgrade`. Commit
+does not repeat the witness because the non-droppable receipt is already bound
+to the manager's cap. See
+[ADR 0032](../docs/decisions/0032-admin-authorized-upgrade-cap-custody.md).
+
+This first-stage policy gives every active routine admin full code-upgrade power
+allowed by the cap's current compatible policy. Do not publish publicly until
+all mutable shared objects also enforce the approved package/version gates.
 
 ## Planned package set
 

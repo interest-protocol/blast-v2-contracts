@@ -9,9 +9,6 @@ use sui::{clock::Clock, vec_set::{Self, VecSet}};
 
 // === Public Structs ===
 
-/// One-time witness used to initialize the package's singleton authority root.
-public struct ACL() has drop;
-
 /// A pending delayed handoff of the singleton super-admin authority.
 public struct PendingSuperAdminTransfer has drop, store {
     recipient: address,
@@ -41,7 +38,7 @@ public struct AdminWitness() has drop;
 
 // === Private Initialization ===
 
-fun init(_otw: ACL, ctx: &mut TxContext) {
+fun init(ctx: &mut TxContext) {
     let recipient = ctx.sender();
     let (super_admin_cap, authority) = new_protocol(ctx);
 
@@ -276,7 +273,7 @@ fun assert_super_admin(authority: &ProtocolAuthority, super_admin_cap: &SuperAdm
 #[test_only]
 /// Runs package initialization under `test_scenario`.
 public fun init_for_testing(ctx: &mut TxContext) {
-    init(ACL(), ctx);
+    init(ctx);
 }
 
 #[test_only]

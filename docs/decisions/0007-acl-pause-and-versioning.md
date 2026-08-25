@@ -2,7 +2,7 @@
 
 - Status: proposed
 - Date: 2026-08-22
-- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md)
+- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md), [0032](0032-admin-authorized-upgrade-cap-custody.md)
 - Authority spine settled by: [0015](0015-protocol-authority-and-x-signer-state.md)
 - Admin-cap lifecycle settled by: [0020](0020-admin-cap-self-destruction.md)
 
@@ -26,7 +26,7 @@ the version gate must live in shared state, not in the entrypoint.
 | Capability | Held by | Grants |
 | --- | --- | --- |
 | `SuperAdminCap` | protocol multisig | add/revoke protocol admins; delayed root transfer |
-| `AdminCap` | protocol operations | bounded parameter changes, version bump, pause, adapter approval, `DisplayCap` custody, X-claim signer rotation |
+| `AdminCap` | protocol operations | bounded parameter changes, version bump, pause, adapter approval, `DisplayCap` custody, X-claim signer rotation, and—through a live `AdminWitness`—interim exact-digest package-upgrade authorization |
 | `CreatorCap` | per launch, creator address | creator fee claim, LP fee collection after migration, metadata update during bonding |
 
 Possession of a `Launch` object grants nothing. Being the address recorded as creator grants nothing on
@@ -59,8 +59,13 @@ and never accidentally.
 | set / unset `Display` field | — | yes | — | — | — | `DisplayFieldSet` |
 | pause / unpause a scope | — | yes | — | — | scope enumerated | `Paused` / `Unpaused` |
 | bump package version | — | yes | — | — | monotonic | `VersionBumped` |
+| authorize / commit package upgrade | — | yes | — | — | exact 32-byte digest; wrapped cap's current policy; matching native receipt | `UpgradeAuthorized` / `UpgradeCommitted` |
 
-Every privileged row has a bound and an event. No row grants an unbounded value change.
+Every ordinary configuration row has a bound and an event. The package-upgrade
+row is intentionally stronger: an active routine admin can authorize arbitrary
+replacement code allowed by the wrapped cap's current policy. ADR 0032 accepts
+that interim authority explicitly; it must not be described operationally as an
+ordinary parameter update.
 
 ### Negative transition matrix
 
@@ -137,6 +142,11 @@ package constant before any other work. `AdminCap` bumps it monotonically. Old p
 callable forever on Sui, so the shared-state check is the only durable gate; a bump immediately disables
 every previously published entrypoint.
 
+ADR 0032's wrapped `UpgradeCap` controls who can publish replacement code; it
+does not replace this shared-state cutover. Upgrade custody without the version
+gate still leaves old entrypoints callable and is therefore insufficient for a
+public release.
+
 ## Alternatives considered
 
 **Address-based admin checks.** Rejected by `../../AGENTS.md`: object possession or an address check must
@@ -156,6 +166,8 @@ authority and makes delegation impossible without changing the recorded creator.
 - Every privileged action is capability-gated, bounded, and evented, so the admin surface is replayable
   from events alone.
 - Routine admins can irreversibly renounce membership, and revoked holders retain a storage-rebate path.
+- Until a later governance path retires the original authorization function, any
+  active routine admin is also compatible-code upgrade authority.
 - Guard precedence is observable and therefore a release commitment.
 - `PAUSE_SELL` is a deliberate, loud, exceptional action.
 - A version bump is a hard cutover with no grace period.

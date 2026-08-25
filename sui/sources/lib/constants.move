@@ -47,6 +47,11 @@ macro public(package) fun ed25519_public_key_length(): u64 {
     32
 }
 
+/// Exact byte length of a Sui package upgrade digest.
+macro public(package) fun package_digest_length(): u64 {
+    32
+}
+
 /// Canonical Ed25519 signature length.
 macro public(package) fun ed25519_signature_length(): u8 {
     64

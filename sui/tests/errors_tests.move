@@ -87,3 +87,13 @@ fun market_and_launch_error_registry_is_stable() {
     );
     assert_eq!(blast_fun::errors::migration_witness_not_allowed!(), 52);
 }
+
+#[test]
+fun upgrade_error_registry_is_stable() {
+    assert_eq!(blast_fun::errors::invalid_upgrade_cap!(), 53);
+    assert_eq!(blast_fun::errors::invalid_package_digest!(), 54);
+    assert_eq!(
+        blast_fun::errors::admin_upgrade_authorization_disabled!(),
+        55,
+    );
+}

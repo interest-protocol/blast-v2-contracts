@@ -137,6 +137,31 @@ public struct LaunchTicketCreated has copy, drop {
     burnable: bool,
 }
 
+/// Emitted after the Blast UpgradeCap is validated and placed in shared custody.
+public struct UpgradeManagerCreated has copy, drop {
+    manager_id: ID,
+    upgrade_cap_id: ID,
+    package_id: ID,
+    package_version: u64,
+    policy: u8,
+    admin_authorization_enabled: bool,
+}
+
+/// Emitted after an active protocol admin authorizes an exact package digest.
+public struct UpgradeAuthorized has copy, drop {
+    package_id: ID,
+    package_version: u64,
+    policy: u8,
+    digest: vector<u8>,
+}
+
+/// Emitted after the native upgrade receipt advances the wrapped UpgradeCap.
+public struct UpgradeCommitted has copy, drop {
+    new_package_id: ID,
+    previous_version: u64,
+    new_version: u64,
+}
+
 // === Package Functions ===
 
 public(package) fun protocol_authority_created(
@@ -339,6 +364,50 @@ public(package) fun launch_ticket_created<Meme>(
     });
 }
 
+public(package) fun upgrade_manager_created(
+    manager_id: ID,
+    upgrade_cap_id: ID,
+    package_id: ID,
+    package_version: u64,
+    policy: u8,
+    admin_authorization_enabled: bool,
+) {
+    blast_fun::events_wrapper::emit_event(UpgradeManagerCreated {
+        manager_id,
+        upgrade_cap_id,
+        package_id,
+        package_version,
+        policy,
+        admin_authorization_enabled,
+    });
+}
+
+public(package) fun upgrade_authorized(
+    package_id: ID,
+    package_version: u64,
+    policy: u8,
+    digest: vector<u8>,
+) {
+    blast_fun::events_wrapper::emit_event(UpgradeAuthorized {
+        package_id,
+        package_version,
+        policy,
+        digest,
+    });
+}
+
+public(package) fun upgrade_committed(
+    new_package_id: ID,
+    previous_version: u64,
+    new_version: u64,
+) {
+    blast_fun::events_wrapper::emit_event(UpgradeCommitted {
+        new_package_id,
+        previous_version,
+        new_version,
+    });
+}
+
 // === Test-Only Functions ===
 
 /// Every `T` payload emitted so far, unwrapped from the package `Event<T>` envelope.
@@ -536,5 +605,42 @@ public fun launch_ticket_created_fields(
         self.creator,
         self.x_identity_hash,
         self.burnable,
+    )
+}
+
+#[test_only]
+public fun upgrade_manager_created_fields(
+    self: &UpgradeManagerCreated,
+): (ID, ID, ID, u64, u8, bool) {
+    (
+        self.manager_id,
+        self.upgrade_cap_id,
+        self.package_id,
+        self.package_version,
+        self.policy,
+        self.admin_authorization_enabled,
+    )
+}
+
+#[test_only]
+public fun upgrade_authorized_fields(
+    self: &UpgradeAuthorized,
+): (ID, u64, u8, vector<u8>) {
+    (
+        self.package_id,
+        self.package_version,
+        self.policy,
+        self.digest,
+    )
+}
+
+#[test_only]
+public fun upgrade_committed_fields(
+    self: &UpgradeCommitted,
+): (ID, u64, u64) {
+    (
+        self.new_package_id,
+        self.previous_version,
+        self.new_version,
     )
 }

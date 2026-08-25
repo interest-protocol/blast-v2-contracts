@@ -3,6 +3,7 @@
 - Status: accepted
 - Date: 2026-08-24
 - Amends: [0014](0014-typed-creator-cap-and-diagnostic-modules.md), [0016](0016-unified-creator-cap-claim-and-suins-periphery.md), [0018](0018-authority-module-separation.md), [0019](0019-consuming-creator-authority-and-cap-return.md), [0024](0024-generated-coin-launch-ticket.md)
+- Amended by: [0031](0031-package-witness-and-publisher-custody.md)
 
 ## Sources
 
@@ -70,8 +71,8 @@ No current production wrapper is removed:
 - UID-only admin and creator caps are Sui ownership capabilities whose object
   identity and type control authorization.
 - `AdminWitness` is an unforgeable transaction-local proof of live ACL
-  membership, while `ACL` is the package one-time witness required by Sui
-  initialization.
+  membership. The separate `BLAST` OTW exists only to claim the package
+  `Publisher`; ACL state initialization does not require a witness.
 - `Event<T>` is the approved stable indexing envelope, and each inner event
   payload is a distinct replay schema.
 - `PendingSuperAdminTransfer` keeps recipient and deadline present or absent as
