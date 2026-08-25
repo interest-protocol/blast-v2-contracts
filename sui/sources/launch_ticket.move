@@ -33,7 +33,8 @@ public fun new<Meme: drop>(
     burnable: bool,
     ctx: &mut TxContext,
 ): LaunchTicket<Meme> {
-    let (creator, x_identity_hash) = creator_identity.fields();
+    let creator = creator_identity.creator();
+    let x_identity_hash = creator_identity.x_identity_hash();
     let creator_authority = creator_identity.into_authority<Meme>();
     let initial_supply = constants::meme_total_supply_atomic_units!();
     let (mut initializer, mut treasury_cap) = coin_registry::new_currency_with_otw(
@@ -74,8 +75,8 @@ public fun new<Meme: drop>(
 
 // === Package Functions ===
 
-/// Consumes the ticket and releases its stored launch inputs to the launch module.
-public(package) fun into_parts<Meme>(
+/// Destroys the ticket and releases its stored launch resources.
+public(package) fun destroy<Meme>(
     self: LaunchTicket<Meme>,
 ): (
     Balance<Meme>,

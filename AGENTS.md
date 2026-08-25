@@ -154,8 +154,8 @@ core interface. See `docs/architecture.md`.
   recorded in the creation event, but must not be duplicated in ticket storage.
   The constructor returns the ticket without transfer;
   the generated package decides delivery. Only the package-level consuming
-  `into_parts` seam may release those stored values to the future launch module.
-  See ADRs 0024, 0035, 0036, and 0037.
+  `destroy` seam may release those stored values to the future launch module.
+  See ADRs 0024, 0035, 0036, 0037, and 0038.
 - `launch_config.move` owns cold policy read together only when a launch is
   created: the 16-entry original-type quote whitelist and targets, the zero-safe
   Quote migration-fee and Meme graduation-allocation defaults, the nonzero
@@ -303,6 +303,14 @@ must be differential-tested from shared vectors.
   distinctions when callers express one intent, but keep separate operations
   when merging would require variant enums, optional sentinels, or mixed
   authority types at the interface.
+- Give read methods the exact domain value they return (`creator`,
+  `x_identity_hash`, `policy`), with `is_*`/`has_*` reserved for predicates. Use
+  `destroy` when a consuming wrapper deletes itself and releases its contents.
+  Reserve `into_*` for a real type conversion whose destination appears in the
+  name (`into_authority`, `into_balance`); never use generic projection names
+  such as `fields`, `parts`, `data`, or `info`. Test-only event payload snapshots
+  may retain the established `<event>_fields` convention because Move cannot
+  overload one field getter across all event types. See ADR 0038.
 - Keep package-wide production values in `sources/lib/constants.move` as
   lower-snake-case `macro public(package)` accessors. Do not declare protocol
   limits, delays, byte lengths, schema tags, or layout offsets in state modules;

@@ -3,6 +3,7 @@
 - Status: accepted
 - Date: 2026-08-25
 - Amends: [0024](0024-generated-coin-launch-ticket.md), [0035](0035-initializer-finalized-meme-supply.md)
+- Amended by: [0038](0038-standard-method-names.md)
 
 ## Context
 

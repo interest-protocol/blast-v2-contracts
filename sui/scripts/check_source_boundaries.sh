@@ -45,6 +45,11 @@ if rg -n '^use blast_fun::errors|^use sui::event::emit' \
   failures=$((failures + 1))
 fi
 
+if rg -n '\bfun (fields|into_parts)\b|\.(fields|into_parts)\(' sources tests; then
+  echo 'APIs must use field-named reads, destination-named conversions, or destroy for consuming wrappers.' >&2
+  failures=$((failures + 1))
+fi
+
 if rg -n 'std::unit_test::(assert_eq!|destroy\()' tests; then
   echo 'Test modules must import assert_eq and destroy instead of qualifying each call.' >&2
   failures=$((failures + 1))
@@ -521,7 +526,7 @@ if [[ ! -f sources/launch_ticket.move ]] \
   || [[ "$(rg -c '^public fun new<Meme: drop>\(' sources/launch_ticket.move)" != 1 ]] \
   || [[ "$(rg -c 'creator_identity: CreatorIdentity' sources/launch_ticket.move)" != 1 ]] \
   || rg -n '^public fun new_(address|x)<Meme: drop>\(' sources/launch_ticket.move \
-  || [[ "$(rg -c '^public\(package\) fun into_parts<Meme>\(' sources/launch_ticket.move)" != 1 ]] \
+  || [[ "$(rg -c '^public\(package\) fun destroy<Meme>\(' sources/launch_ticket.move)" != 1 ]] \
   || ! rg -q 'coin_registry::new_currency_with_otw' sources/launch_ticket.move \
   || ! rg -Fq 'let meme = treasury_cap.mint_balance(initial_supply);' sources/launch_ticket.move \
   || ! rg -Fq 'initializer.make_supply_fixed(treasury_cap);' sources/launch_ticket.move \
@@ -567,7 +572,7 @@ if [[ -z "$launch_ticket_event_payload" ]] \
 fi
 
 if rg -n \
-  '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|creator_authority::(into_authority|fields|claim_creator_cap)|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees)|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
+  '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|creator_authority::(into_authority|creator|x_identity_hash|claim_creator_cap)|launch_ticket::destroy|fees::(accrue|claim_creator_fees|claim_protocol_fees)|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
   sources tests; then
   echo 'Blast-owned receiver functions must use Move 2024 dot syntax.' >&2
   failures=$((failures + 1))

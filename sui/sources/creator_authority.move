@@ -64,15 +64,19 @@ public(package) fun into_authority<Meme>(
     }
 }
 
-/// Returns the validated identity as mutually exclusive address/X fields.
-public(package) fun fields(
-    self: &CreatorIdentity,
-): (Option<address>, Option<vector<u8>>) {
+/// Returns the validated address identity, if this is the address variant.
+public(package) fun creator(self: &CreatorIdentity): Option<address> {
     match (self) {
-        CreatorIdentity::Address(creator) => (option::some(*creator), option::none()),
-        CreatorIdentity::X(x_identity_hash) => {
-            (option::none(), option::some(*x_identity_hash))
-        },
+        CreatorIdentity::Address(creator) => option::some(*creator),
+        CreatorIdentity::X(_) => option::none(),
+    }
+}
+
+/// Returns the validated X identity commitment, if this is the X variant.
+public(package) fun x_identity_hash(self: &CreatorIdentity): Option<vector<u8>> {
+    match (self) {
+        CreatorIdentity::Address(_) => option::none(),
+        CreatorIdentity::X(x_identity_hash) => option::some(*x_identity_hash),
     }
 }
 

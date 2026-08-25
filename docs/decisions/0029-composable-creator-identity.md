@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-24
 - Amends: [0014](0014-typed-creator-cap-and-diagnostic-modules.md), [0016](0016-unified-creator-cap-claim-and-suins-periphery.md), [0018](0018-authority-module-separation.md), [0019](0019-consuming-creator-authority-and-cap-return.md), [0024](0024-generated-coin-launch-ticket.md)
-- Amended by: [0031](0031-package-witness-and-publisher-custody.md)
+- Amended by: [0031](0031-package-witness-and-publisher-custody.md), [0038](0038-standard-method-names.md)
 
 ## Sources
 
