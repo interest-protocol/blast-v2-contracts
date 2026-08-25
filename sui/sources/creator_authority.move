@@ -64,8 +64,8 @@ public(package) fun into_authority<Meme>(
     }
 }
 
-/// Returns the address/X option pair recorded by launch-ticket creation events.
-public(package) fun event_fields(
+/// Returns the validated identity as mutually exclusive address/X fields.
+public(package) fun fields(
     self: &CreatorIdentity,
 ): (Option<address>, Option<vector<u8>>) {
     match (self) {

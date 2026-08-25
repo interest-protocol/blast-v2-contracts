@@ -34,7 +34,7 @@ public fun new<Meme: drop>(
     burnable: bool,
     ctx: &mut TxContext,
 ): LaunchTicket<Meme> {
-    let (creator, x_identity_hash) = creator_identity.event_fields();
+    let (creator, x_identity_hash) = creator_identity.fields();
     let creator_authority = creator_identity.into_authority<Meme>();
     let initial_supply = constants::meme_total_supply_atomic_units!();
     let (mut initializer, mut treasury_cap) = coin_registry::new_currency_with_otw(
