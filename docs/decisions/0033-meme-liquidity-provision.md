@@ -5,6 +5,10 @@
 - Amends: [0025](0025-quote-whitelist-and-migration-targets.md),
   [0027](0027-graduation-economics-and-migration-witnesses.md)
 
+> Amended by [ADR 0039](0039-deterministic-quote-valuations.md): the snapshot
+> additionally returns per-Quote virtual liquidity before the target and the
+> off-chain SDK derives the exact curve endpoint and native-Quote previews.
+
 ## Sources
 
 | Ref | Full commit | Repository |

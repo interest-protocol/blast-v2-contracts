@@ -11,6 +11,9 @@
 > triple and rejects an unchanged triple, the package-only snapshot returns
 > five values, and the exact struct layout and snapshot list quoted below are
 > the pre-0033 forms.
+> Amended by [ADR 0039](0039-deterministic-quote-valuations.md): the per-Quote
+> virtual reserve joins the launch snapshot, while an off-chain SDK derives
+> exact-target release and Quote-denominated valuation previews.
 
 ## Sources
 

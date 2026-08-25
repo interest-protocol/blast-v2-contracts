@@ -439,7 +439,10 @@ launch_config_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources
 
 if [[ ! -f sources/launch_config.move ]] \
   || ! rg -U -q \
-    'public struct LaunchConfig has key \{\s*id: UID,\s*quotes: VecMap<TypeName, u64>,\s*quote_migration_fee_bps: u64,\s*meme_graduation_allocation_bps: u64,\s*meme_liquidity_provision_bps: u64,\s*migration_witnesses: VecSet<TypeName>,\s*\}' \
+    'public struct LaunchConfig has key \{\s*id: UID,\s*quotes: VecMap<TypeName, QuoteParameters>,\s*quote_migration_fee_bps: u64,\s*meme_graduation_allocation_bps: u64,\s*meme_liquidity_provision_bps: u64,\s*migration_witnesses: VecSet<TypeName>,\s*\}' \
+    sources/launch_config.move \
+  || ! rg -U -q \
+    'public struct QuoteParameters has copy, drop, store \{\s*virtual_quote: u64,\s*migration_quote_target: u64,\s*\}' \
     sources/launch_config.move \
   || rg -n '\b(AdminCap|ProtocolAuthority)\b' <<<"$launch_config_production" \
   || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' <<<"$launch_config_production" \
@@ -452,7 +455,7 @@ if [[ ! -f sources/launch_config.move ]] \
     sources/launch_config.move \
   || [[ "$(rg -c '^public\(package\) fun ' <<<"$launch_config_production")" != 1 ]] \
   || ! rg -U -q \
-    'public\(package\) fun snapshot_for_launch<Quote, MigrationWitness: drop>\(\s*self: &LaunchConfig,\s*\): \(u64, u64, u64, u64, TypeName\)' \
+    'public\(package\) fun snapshot_for_launch<Quote, MigrationWitness: drop>\(\s*self: &LaunchConfig,\s*\): \(u64, u64, u64, u64, u64, TypeName\)' \
     sources/launch_config.move; then
   echo 'launch_config.move must own only bounded future-launch policy and its AdminWitness-gated mutations.' >&2
   failures=$((failures + 1))
@@ -470,6 +473,7 @@ if ! rg -U -q 'macro public\(package\) fun max_quote_assets\(\): u64 \{\s*16\s*\
   sources/lib/constants.move \
   || ! rg -Fq 'type_name::with_original_ids<Quote>()' sources/launch_config.move \
   || ! rg -Fq 'type_name::with_original_ids<MigrationWitness>()' sources/launch_config.move \
+  || ! rg -Fq 'virtual_quote > 0' sources/launch_config.move \
   || ! rg -Fq 'self.quotes.length() < constants::max_quote_assets!()' \
     sources/launch_config.move \
   || ! rg -Fq 'self.migration_witnesses.length()' sources/launch_config.move \
@@ -495,7 +499,7 @@ fi
 launch_config_event_payloads="$(sed -n \
   -e '/^public struct LaunchConfigCreated/,/^}/p' \
   -e '/^public struct QuoteAllowed/,/^}/p' \
-  -e '/^public struct QuoteMigrationTargetChanged/,/^}/p' \
+  -e '/^public struct QuoteParametersChanged/,/^}/p' \
   -e '/^public struct QuoteDisallowed/,/^}/p' \
   -e '/^public struct GraduationDefaultsChanged/,/^}/p' \
   -e '/^public struct MigrationWitnessAllowed/,/^}/p' \
@@ -504,7 +508,7 @@ launch_config_event_payloads="$(sed -n \
 
 launch_config_mutation_event_payloads="$(sed -n \
   -e '/^public struct QuoteAllowed/,/^}/p' \
-  -e '/^public struct QuoteMigrationTargetChanged/,/^}/p' \
+  -e '/^public struct QuoteParametersChanged/,/^}/p' \
   -e '/^public struct QuoteDisallowed/,/^}/p' \
   -e '/^public struct GraduationDefaultsChanged/,/^}/p' \
   -e '/^public struct MigrationWitnessAllowed/,/^}/p' \
@@ -516,6 +520,37 @@ if [[ -z "$launch_config_event_payloads" ]] \
     <<<"$launch_config_event_payloads" \
   || rg -n '\bconfig_id\b' <<<"$launch_config_mutation_event_payloads"; then
   echo 'Launch-config mutations must use typed replay facts without repeated singleton, ordering, or schema fields.' >&2
+  failures=$((failures + 1))
+fi
+
+graduation_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/graduation.move)"
+
+if [[ ! -f sources/graduation.move ]] \
+  || [[ "$(rg -c '^public\(package\) fun ' <<<"$graduation_production")" != 2 ]] \
+  || ! rg -U -q \
+    'public\(package\) fun partition_meme<Meme>\(\s*mut meme: Balance<Meme>,\s*meme_graduation_allocation_bps: u64,\s*meme_liquidity_provision_bps: u64,\s*\): \(Balance<Meme>, Balance<Meme>, Balance<Meme>\)' \
+    sources/graduation.move \
+  || ! rg -U -q \
+    'public\(package\) fun partition_quote<Quote>\(\s*mut quote: Balance<Quote>,\s*quote_migration_fee_bps: u64,\s*\): \(Balance<Quote>, Balance<Quote>\)' \
+    sources/graduation.move \
+  || rg -n '^public struct|^public fun|^entry fun|^public entry fun' \
+    <<<"$graduation_production" \
+  || rg -n '\b(events::|transfer::|Coin<|TxContext|UID|ID)\b' \
+    <<<"$graduation_production" \
+  || rg -n '\b(derive_outcome|opening_valuation|curve_terminal_valuation|dex_opening_valuation)\b' \
+    <<<"$graduation_production"; then
+  echo 'graduation.move must expose only package-level balance partitions without forecasts, state, events, transfers, or venue dependencies.' >&2
+  failures=$((failures + 1))
+fi
+
+if ! rg -Fq 'initial_supply.mul_div_ceil(' sources/graduation.move \
+  || ! rg -Fq 'initial_supply.mul_div(' sources/graduation.move \
+  || ! rg -Fq 'quote.value().mul_div_ceil(' sources/graduation.move \
+  || ! rg -Fq 'provision_amount > 0' sources/graduation.move \
+  || ! rg -Fq 'allocation_amount + provision_amount < initial_supply' \
+    sources/graduation.move \
+  || [[ "$(rg -c '\.split\(' sources/graduation.move)" != 3 ]]; then
+  echo 'Graduation partitions must preserve the accepted ceil/floor, positive-bucket, and balance-custody rules.' >&2
   failures=$((failures + 1))
 fi
 

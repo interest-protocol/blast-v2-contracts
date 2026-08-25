@@ -101,6 +101,7 @@ The committed vector files live in [vectors/](vectors/):
 | --- | --- |
 | [vectors/curve.json](vectors/curve.json) | buys, sells, threshold crossing, both burn moments, one-atomic-unit boundaries, round-trip dust, and the sell-back property |
 | [vectors/fees.json](vectors/fees.json) | configurable protocol/creator shares, rounding, update sequences, and maximum-width boundaries |
+| [vectors/graduation.json](vectors/graduation.json) | On-chain Meme/Quote partitions plus off-chain exact-target release and native-Quote preview vectors |
 | [vectors/quote-decimals.json](vectors/quote-decimals.json) | decimal combinations, both pair orientations, exact `sqrt_price_x64`, venue range bounds |
 | [vectors/x-creator-claim.json](vectors/x-creator-claim.json) | canonical X claim BCS bytes, original meme-type domain, and Ed25519 fixture |
 

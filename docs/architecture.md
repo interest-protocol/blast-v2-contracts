@@ -58,11 +58,13 @@ without returning to core for its post-conditions.
 | Package administration | validated `Publisher` and raw `UpgradeCap` custody, exact-digest authorization, irreversible policy restriction, receipt commit, and one-way admin retirement | ACL membership storage, feature configuration, or state migration |
 | Protocol ACL | root rotation and revocable routine-admin membership | feature configuration, backend keys, creator identity, or fees |
 | Runtime config | one dedicated X-claim backend key and the live global protocol fee share | admin delegation, creator identity or issuance, launch policy, accrued balances, launch-selected fee rates, or claim authority |
-| Launch config | cold bounded quote targets, graduation defaults, and external migrator witness admission for future launches | live launch repricing, quote registry objects, DEX costs or dependencies, user balances, curve math, or hot trade configuration |
+| Launch config | cold bounded virtual/terminal Quote parameters, graduation defaults, and external migrator witness admission for future launches | live launch repricing, quote registry objects, DEX costs or dependencies, user balances, derived valuations, or hot trade configuration |
 | Registry/config | global limits, other fee ceilings, emergency state | user balances or curve math |
 | Launch ticket | generated OTW currency creation and pre-launch capability custody | supply minting, trades, metadata updates, or migration |
 | Launch | asset identity, lifecycle, reserves, accounting, transition guards | venue-specific migration code |
 | Curve math | pure quote and reserve transition formulas | authority, storage, transfers |
+| Graduation math | pre-curve Meme allocation/provision and terminal Quote-fee balance partitioning | forecast valuations, lifecycle state, claims, venue costs, transfers, or DEX dependencies |
+| Off-chain SDK | deterministic curve-release and native-Quote valuation previews from immutable launch facts | contract authority, balance mutation, migration permission, or a second source of truth |
 | Fees | creator/protocol fee splitting, accrued accounting, and capability claims | arbitrary recipient execution or referral attribution |
 | Allocation/vesting | bounded stakeholder schedules and claims | launch pricing |
 | Migration interface | one-time handoff payload and settlement proof | DEX-specific object/storage details |
@@ -71,19 +73,34 @@ without returning to core for its post-conditions.
 Modules may begin together in the single chain project. These are dependency
 directions, not a demand for seven packages.
 
+## On-chain and SDK responsibility
+
+Blast contracts contain only logic required for consensus-critical transitions,
+authorization, asset custody/conservation, trustless synchronous composition,
+and canonical facts that outside consumers cannot otherwise reconstruct. The SDK
+owns deterministic projections, valuation previews, aggregation, formatting,
+transaction construction, and convenient reads derived from those facts.
+
+A derivable value may still be recomputed inside a state-changing contract
+operation when it enforces a threshold, fee, slippage bound, or conservation
+rule. It is not stored or published merely because a UI wants to display it.
+Contract balances and completed events are authoritative; SDK results are
+previews. See [ADR 0039](decisions/0039-deterministic-quote-valuations.md).
+
 ## Asset pair
 
 A launch pairs its generated meme coin with a quote `Coin<Quote>`. Core admits
 new pairs through the bounded quote portion of `LaunchConfig`, keyed by the
-quote's original `TypeName`. Each entry supplies the nonzero real-quote migration
-target. Launch state copies that target, all three graduation rates — the
+quote's original `TypeName`. Each entry supplies a nonzero virtual Quote reserve
+and nonzero real-Quote migration target. Launch state copies that pair, all three graduation rates — the
 Quote migration fee, the protocol Meme graduation allocation, and the nonzero
 destination-pool Meme liquidity provision — and the complete
 selected migration witness's original `TypeName` once. Both whitelists are
 admission decisions; the snapshot does not add a quote `Currency` shared-object
 dependency or a DEX package dependency. See
 [ADR 0025](decisions/0025-quote-whitelist-and-migration-targets.md) and
-[ADR 0027](decisions/0027-graduation-economics-and-migration-witnesses.md).
+[ADR 0027](decisions/0027-graduation-economics-and-migration-witnesses.md) and
+[ADR 0039](decisions/0039-deterministic-quote-valuations.md).
 
 One property remains invariant regardless of the admitted quote set:
 

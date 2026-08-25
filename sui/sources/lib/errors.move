@@ -171,9 +171,7 @@ const EQuoteCapacityReached: u64 = 44;
 /// The quote type is not admitted for new launches.
 const EQuoteNotAllowed: u64 = 45;
 
-#[test_only]
-/// A quote-target update supplied the currently active value.
-const EMigrationQuoteTargetUnchanged: u64 = 46;
+// Code 46 retired: Quote updates now compare the complete virtual/terminal pair.
 
 #[test_only]
 /// The graduation share of gross terminal Quote exceeds five percent.
@@ -228,6 +226,22 @@ const EInvalidMemeLiquidityProvisionBps: u64 = 59;
 const EInvalidMemeSupplyPartitionBps: u64 = 60;
 
 // Code 61 retired: caller-configurable Meme decimals were removed by ADR 0036.
+
+#[test_only]
+/// A positive pool-provision rate rounded to zero Meme atomic units.
+const EZeroMemeLiquidityProvision: u64 = 62;
+
+#[test_only]
+/// Rounded graduation buckets consumed every Meme atomic unit before curve creation.
+const EZeroMemeCurveInventory: u64 = 63;
+
+#[test_only]
+/// A Quote policy's virtual reserve must be nonzero.
+const EInvalidVirtualQuote: u64 = 64;
+
+#[test_only]
+/// A Quote policy update supplied the complete active parameter pair.
+const EQuoteParametersUnchanged: u64 = 65;
 
 // === Package Error Codes ===
 
@@ -385,9 +399,7 @@ macro public(package) fun quote_not_allowed(): u64 {
     45
 }
 
-macro public(package) fun migration_quote_target_unchanged(): u64 {
-    46
-}
+// Error code 46 is retired and must not be reused.
 
 macro public(package) fun invalid_quote_migration_fee_bps(): u64 {
     47
@@ -442,3 +454,19 @@ macro public(package) fun invalid_meme_supply_partition_bps(): u64 {
 }
 
 // Error code 61 is retired and must not be reused.
+
+macro public(package) fun zero_meme_liquidity_provision(): u64 {
+    62
+}
+
+macro public(package) fun zero_meme_curve_inventory(): u64 {
+    63
+}
+
+macro public(package) fun invalid_virtual_quote(): u64 {
+    64
+}
+
+macro public(package) fun quote_parameters_unchanged(): u64 {
+    65
+}

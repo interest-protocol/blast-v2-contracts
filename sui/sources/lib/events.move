@@ -29,22 +29,26 @@ public struct LaunchConfigCreated has copy, drop {
     meme_liquidity_provision_bps: u64,
 }
 
-/// Emitted after a quote and its initial migration target are admitted.
+/// Emitted after a quote and its initial curve parameters are admitted.
 public struct QuoteAllowed has copy, drop {
     quote: TypeName,
+    virtual_quote: u64,
     migration_quote_target: u64,
 }
 
-/// Emitted after the target used by future launches for one quote changes.
-public struct QuoteMigrationTargetChanged has copy, drop {
+/// Emitted after either curve parameter used by future launches for one Quote changes.
+public struct QuoteParametersChanged has copy, drop {
     quote: TypeName,
+    old_virtual_quote: u64,
     old_migration_quote_target: u64,
+    new_virtual_quote: u64,
     new_migration_quote_target: u64,
 }
 
 /// Emitted after a quote is disallowed from future launch admission.
 public struct QuoteDisallowed has copy, drop {
     quote: TypeName,
+    previous_virtual_quote: u64,
     previous_migration_quote_target: u64,
 }
 
@@ -217,29 +221,39 @@ public(package) fun launch_config_created(
     });
 }
 
-public(package) fun quote_allowed<Quote>(migration_quote_target: u64) {
+public(package) fun quote_allowed<Quote>(
+    virtual_quote: u64,
+    migration_quote_target: u64,
+) {
     blast_fun::events_wrapper::emit_event(QuoteAllowed {
         quote: type_name::with_original_ids<Quote>(),
+        virtual_quote,
         migration_quote_target,
     });
 }
 
-public(package) fun quote_migration_target_changed<Quote>(
+public(package) fun quote_parameters_changed<Quote>(
+    old_virtual_quote: u64,
     old_migration_quote_target: u64,
+    new_virtual_quote: u64,
     new_migration_quote_target: u64,
 ) {
-    blast_fun::events_wrapper::emit_event(QuoteMigrationTargetChanged {
+    blast_fun::events_wrapper::emit_event(QuoteParametersChanged {
         quote: type_name::with_original_ids<Quote>(),
+        old_virtual_quote,
         old_migration_quote_target,
+        new_virtual_quote,
         new_migration_quote_target,
     });
 }
 
 public(package) fun quote_disallowed<Quote>(
+    previous_virtual_quote: u64,
     previous_migration_quote_target: u64,
 ) {
     blast_fun::events_wrapper::emit_event(QuoteDisallowed {
         quote: type_name::with_original_ids<Quote>(),
+        previous_virtual_quote,
         previous_migration_quote_target,
     });
 }
@@ -489,25 +503,28 @@ public fun launch_config_created_fields(
 }
 
 #[test_only]
-public fun quote_allowed_fields(self: &QuoteAllowed): (TypeName, u64) {
-    (self.quote, self.migration_quote_target)
+public fun quote_allowed_fields(self: &QuoteAllowed): (TypeName, u64, u64) {
+    (self.quote, self.virtual_quote, self.migration_quote_target)
 }
 
 #[test_only]
-public fun quote_migration_target_changed_fields(
-    self: &QuoteMigrationTargetChanged,
-): (TypeName, u64, u64) {
+public fun quote_parameters_changed_fields(
+    self: &QuoteParametersChanged,
+): (TypeName, u64, u64, u64, u64) {
     (
         self.quote,
+        self.old_virtual_quote,
         self.old_migration_quote_target,
+        self.new_virtual_quote,
         self.new_migration_quote_target,
     )
 }
 
 #[test_only]
-public fun quote_disallowed_fields(self: &QuoteDisallowed): (TypeName, u64) {
+public fun quote_disallowed_fields(self: &QuoteDisallowed): (TypeName, u64, u64) {
     (
         self.quote,
+        self.previous_virtual_quote,
         self.previous_migration_quote_target,
     )
 }
