@@ -161,9 +161,7 @@ const EProtocolFeeShareUnchanged: u64 = 41;
 /// A quote migration target must be nonzero.
 const EInvalidMigrationQuoteTarget: u64 = 42;
 
-#[test_only]
-/// The quote type is already admitted for new launches.
-const EQuoteAlreadyAllowed: u64 = 43;
+// Code 43 retired: `allow_quote` absorbed quote-target updates as an upsert.
 
 #[test_only]
 /// The bounded active quote whitelist is full.
@@ -186,7 +184,7 @@ const EInvalidQuoteMigrationFeeBps: u64 = 47;
 const EInvalidMemeGraduationAllocationBps: u64 = 48;
 
 #[test_only]
-/// A graduation-default update supplied the complete active pair.
+/// A graduation-default update supplied the complete active triple.
 const EGraduationDefaultsUnchanged: u64 = 49;
 
 #[test_only]

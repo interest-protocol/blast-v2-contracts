@@ -251,25 +251,25 @@ fun buy_math_supports_maximum_u64_operands_without_intermediate_overflow() {
 }
 
 #[test]
-#[expected_failure(abort_code = 29)]
+#[expected_failure(abort_code = 29, location = blast_fun::curve)]
 fun buy_validates_reserves_before_every_other_guard() {
     curve::quote_buy(0, 0, 0, 0, 0, 10_001, 10_001);
 }
 
 #[test]
-#[expected_failure(abort_code = 29)]
+#[expected_failure(abort_code = 29, location = blast_fun::curve)]
 fun buy_rejects_zero_virtual_quote_reserve() {
     curve::quote_buy(MEME_RESERVE, 0, 0, TERMINAL_THRESHOLD, 1, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = 30)]
+#[expected_failure(abort_code = 30, location = blast_fun::curve)]
 fun buy_rejects_zero_terminal_threshold() {
     curve::quote_buy(MEME_RESERVE, 0, VIRTUAL_QUOTE, 0, 1, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = 31)]
+#[expected_failure(abort_code = 31, location = blast_fun::curve)]
 fun buy_rejects_quote_fee_above_one_hundred_percent() {
     curve::quote_buy(
         MEME_RESERVE,
@@ -283,7 +283,7 @@ fun buy_rejects_quote_fee_above_one_hundred_percent() {
 }
 
 #[test]
-#[expected_failure(abort_code = 37)]
+#[expected_failure(abort_code = 37, location = blast_fun::curve)]
 fun buy_rejects_meme_fee_above_one_hundred_percent() {
     curve::quote_buy(
         MEME_RESERVE,
@@ -297,7 +297,7 @@ fun buy_rejects_meme_fee_above_one_hundred_percent() {
 }
 
 #[test]
-#[expected_failure(abort_code = 33)]
+#[expected_failure(abort_code = 33, location = blast_fun::curve)]
 fun buy_rejects_zero_input() {
     curve::quote_buy(
         MEME_RESERVE,
@@ -311,7 +311,7 @@ fun buy_rejects_zero_input() {
 }
 
 #[test]
-#[expected_failure(abort_code = 34)]
+#[expected_failure(abort_code = 34, location = blast_fun::curve)]
 fun buy_one_atomic_unit_rejects_zero_output() {
     curve::quote_buy(
         MEME_RESERVE,
@@ -325,7 +325,7 @@ fun buy_one_atomic_unit_rejects_zero_output() {
 }
 
 #[test]
-#[expected_failure(abort_code = 34)]
+#[expected_failure(abort_code = 34, location = blast_fun::curve)]
 fun buy_rejects_a_meme_output_rounded_to_zero() {
     curve::quote_buy(
         1,
@@ -339,7 +339,7 @@ fun buy_rejects_a_meme_output_rounded_to_zero() {
 }
 
 #[test]
-#[expected_failure(abort_code = 34)]
+#[expected_failure(abort_code = 34, location = blast_fun::curve)]
 fun buy_rejects_an_output_consumed_entirely_by_the_meme_fee() {
     curve::quote_buy(
         MEME_RESERVE,
@@ -353,7 +353,7 @@ fun buy_rejects_an_output_consumed_entirely_by_the_meme_fee() {
 }
 
 #[test]
-#[expected_failure(abort_code = 35)]
+#[expected_failure(abort_code = 35, location = blast_fun::curve)]
 fun buy_rejects_post_trade_real_quote_overflow() {
     curve::quote_buy(
         std::u64::max_value!(),
@@ -663,25 +663,25 @@ fun seeded_sell_back_invariant_holds_for_reachable_buy_then_sell() {
 }
 
 #[test]
-#[expected_failure(abort_code = 29)]
+#[expected_failure(abort_code = 29, location = blast_fun::curve)]
 fun sell_rejects_zero_meme_reserve_before_every_other_guard() {
     curve::quote_sell(0, 0, 0, 0, 0, 10_001, 10_001, 10_001);
 }
 
 #[test]
-#[expected_failure(abort_code = 29)]
+#[expected_failure(abort_code = 29, location = blast_fun::curve)]
 fun sell_rejects_zero_virtual_quote_reserve() {
     curve::quote_sell(MEME_RESERVE, 1, 0, TERMINAL_THRESHOLD, 1, 0, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = 30)]
+#[expected_failure(abort_code = 30, location = blast_fun::curve)]
 fun sell_rejects_zero_terminal_threshold() {
     curve::quote_sell(MEME_RESERVE, 1, VIRTUAL_QUOTE, 0, 1, 0, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = 31)]
+#[expected_failure(abort_code = 31, location = blast_fun::curve)]
 fun sell_validates_quote_fee_before_meme_fee_and_max_burn() {
     curve::quote_sell(
         MEME_RESERVE,
@@ -696,7 +696,7 @@ fun sell_validates_quote_fee_before_meme_fee_and_max_burn() {
 }
 
 #[test]
-#[expected_failure(abort_code = 37)]
+#[expected_failure(abort_code = 37, location = blast_fun::curve)]
 fun sell_validates_meme_fee_before_max_burn() {
     curve::quote_sell(
         MEME_RESERVE,
@@ -711,7 +711,7 @@ fun sell_validates_meme_fee_before_max_burn() {
 }
 
 #[test]
-#[expected_failure(abort_code = 32)]
+#[expected_failure(abort_code = 32, location = blast_fun::curve)]
 fun sell_rejects_max_burn_above_one_hundred_percent() {
     curve::quote_sell(
         MEME_RESERVE,
@@ -726,7 +726,7 @@ fun sell_rejects_max_burn_above_one_hundred_percent() {
 }
 
 #[test]
-#[expected_failure(abort_code = 33)]
+#[expected_failure(abort_code = 33, location = blast_fun::curve)]
 fun sell_rejects_zero_input() {
     curve::quote_sell(
         MEME_RESERVE,
@@ -741,7 +741,7 @@ fun sell_rejects_zero_input() {
 }
 
 #[test]
-#[expected_failure(abort_code = 34)]
+#[expected_failure(abort_code = 34, location = blast_fun::curve)]
 fun sell_rejects_an_input_consumed_entirely_by_the_burn() {
     curve::quote_sell(
         MEME_RESERVE,
@@ -756,7 +756,7 @@ fun sell_rejects_an_input_consumed_entirely_by_the_burn() {
 }
 
 #[test]
-#[expected_failure(abort_code = 34)]
+#[expected_failure(abort_code = 34, location = blast_fun::curve)]
 fun sell_rejects_an_input_consumed_entirely_by_the_meme_fee() {
     curve::quote_sell(
         MEME_RESERVE,
@@ -771,7 +771,7 @@ fun sell_rejects_an_input_consumed_entirely_by_the_meme_fee() {
 }
 
 #[test]
-#[expected_failure(abort_code = 34)]
+#[expected_failure(abort_code = 34, location = blast_fun::curve)]
 fun sell_rejects_a_gross_output_rounded_to_zero() {
     curve::quote_sell(
         MEME_RESERVE,
@@ -786,13 +786,13 @@ fun sell_rejects_a_gross_output_rounded_to_zero() {
 }
 
 #[test]
-#[expected_failure(abort_code = 34)]
+#[expected_failure(abort_code = 34, location = blast_fun::curve)]
 fun sell_rejects_a_net_output_consumed_entirely_by_the_fee() {
     curve::quote_sell(1, 1, 1, 1, 1, 10_000, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = 35)]
+#[expected_failure(abort_code = 35, location = blast_fun::curve)]
 fun sell_rejects_post_trade_meme_reserve_overflow() {
     curve::quote_sell(
         std::u64::max_value!(),
@@ -807,7 +807,7 @@ fun sell_rejects_post_trade_meme_reserve_overflow() {
 }
 
 #[test]
-#[expected_failure(abort_code = 36)]
+#[expected_failure(abort_code = 36, location = blast_fun::curve)]
 fun sell_rejects_an_unreachable_state_instead_of_clamping_the_payout() {
     curve::quote_sell(
         MEME_RESERVE,

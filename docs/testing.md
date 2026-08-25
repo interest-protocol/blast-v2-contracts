@@ -18,7 +18,8 @@ Tests are organized around risk, not only function names.
 
 ## Test rules
 
-- Assert exact named errors/abort codes for negative cases. A bare expected failure
+- Assert exact named errors/abort codes for negative cases, pinning
+  `location` to the raising module. A bare expected failure
   is prohibited because an unrelated abort can make it pass.
 - Assert guard precedence when more than one condition is invalid.
 - Prefer `assert_eq!` for values and plain boolean assertions without arbitrary

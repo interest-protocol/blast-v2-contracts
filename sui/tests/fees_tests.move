@@ -163,7 +163,7 @@ fun protocol_fee_share_boundaries_route_every_accrued_unit() {
 }
 
 #[test]
-#[expected_failure(abort_code = 38)]
+#[expected_failure(abort_code = 38, location = blast_fun::fees)]
 fun protocol_cannot_claim_when_nothing_is_accrued() {
     let mut fixture = start();
 
@@ -182,7 +182,7 @@ fun protocol_cannot_claim_when_nothing_is_accrued() {
 }
 
 #[test]
-#[expected_failure(abort_code = 38)]
+#[expected_failure(abort_code = 38, location = blast_fun::fees)]
 fun creator_cannot_claim_when_nothing_is_accrued() {
     let mut fixture = start();
 
@@ -200,7 +200,7 @@ fun creator_cannot_claim_when_nothing_is_accrued() {
 }
 
 #[test]
-#[expected_failure(abort_code = 39)]
+#[expected_failure(abort_code = 39, location = blast_fun::fees)]
 fun accrual_rejects_two_zero_asset_balances() {
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>();
 
@@ -474,7 +474,7 @@ fun retake_creator_cap(self: &mut Fixture) {
     self.creator_cap.fill(creator_cap);
 }
 
-fun take_coin<T>(self: &mut Fixture): Coin<T> {
+fun take_coin<T>(self: &Fixture): Coin<T> {
     self.scenario.take_from_sender()
 }
 

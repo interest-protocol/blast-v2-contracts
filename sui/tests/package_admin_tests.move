@@ -63,7 +63,7 @@ fun wrap_accepts_blast_capabilities_and_shares_complete_custody_fact() {
 }
 
 #[test]
-#[expected_failure(abort_code = 53)]
+#[expected_failure(abort_code = 53, location = blast_fun::package_admin)]
 fun wrap_rejects_upgrade_cap_for_another_package() {
     let mut fixture = start();
 
@@ -79,7 +79,7 @@ fun wrap_rejects_upgrade_cap_for_another_package() {
 }
 
 #[test]
-#[expected_failure(abort_code = 56)]
+#[expected_failure(abort_code = 56, location = blast_fun::package_admin)]
 fun wrap_checks_publisher_before_upgrade_cap_provenance() {
     let mut fixture = start();
 
@@ -136,7 +136,7 @@ fun active_admin_authorizes_exact_digest_and_commits_matching_receipt() {
 }
 
 #[test]
-#[expected_failure(abort_code = 54)]
+#[expected_failure(abort_code = 54, location = blast_fun::package_admin)]
 fun authorization_rejects_non_digest_length() {
     let mut fixture = start();
 
@@ -155,7 +155,7 @@ fun authorization_rejects_non_digest_length() {
 }
 
 #[test]
-#[expected_failure(abort_code = 0)]
+#[expected_failure(abort_code = 0, location = blast_fun::acl)]
 fun revoked_admin_cannot_reach_upgrade_authorization() {
     let mut fixture = start();
 
@@ -232,7 +232,7 @@ fun active_admin_can_irreversibly_restrict_upgrade_policy() {
 }
 
 #[test]
-#[expected_failure(abort_code = 57)]
+#[expected_failure(abort_code = 57, location = blast_fun::package_admin)]
 fun policy_restriction_rejects_unchanged_policy() {
     let mut fixture = start();
 
@@ -251,7 +251,7 @@ fun policy_restriction_rejects_unchanged_policy() {
 }
 
 #[test]
-#[expected_failure(abort_code = 57)]
+#[expected_failure(abort_code = 57, location = blast_fun::package_admin)]
 fun policy_restriction_rejects_looser_policy() {
     let mut fixture = start();
 

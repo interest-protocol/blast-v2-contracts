@@ -83,9 +83,9 @@ fun x_ticket_is_composable_and_records_burn_only_selection() {
     let mut fixture = start();
     let x_identity_hash =
         x"11223344556677889900aabbccddeeffffeeddccbbaa00998877665544332211";
-    let mut expected_ticket_id = @0x0.to_id();
-    let mut expected_treasury_cap_id = @0x0.to_id();
-    let mut expected_metadata_cap_id = @0x0.to_id();
+    let expected_ticket_id;
+    let expected_treasury_cap_id;
+    let expected_metadata_cap_id;
 
     fixture.next_tx!(LAUNCHER, |f| {
         let creator_identity = creator_authority::new_x(x_identity_hash);
@@ -147,7 +147,7 @@ fun x_ticket_is_composable_and_records_burn_only_selection() {
 }
 
 #[test]
-#[expected_failure(abort_code = 9)]
+#[expected_failure(abort_code = 9, location = blast_fun::creator_authority)]
 fun address_ticket_rejects_zero_creator_before_currency_creation() {
     let mut fixture = start();
 
@@ -172,7 +172,7 @@ fun address_ticket_rejects_zero_creator_before_currency_creation() {
 }
 
 #[test]
-#[expected_failure(abort_code = 10)]
+#[expected_failure(abort_code = 10, location = blast_fun::creator_authority)]
 fun x_ticket_rejects_invalid_identity_before_currency_creation() {
     let mut fixture = start();
 
@@ -197,7 +197,7 @@ fun x_ticket_rejects_invalid_identity_before_currency_creation() {
 }
 
 #[test]
-#[expected_failure]
+#[expected_failure(abort_code = sui::coin_registry::ENotOneTimeWitness)]
 fun ticket_rejects_a_non_otw_type() {
     let mut fixture = start();
 
@@ -250,7 +250,7 @@ fun advance(self: &mut Fixture, sender: address): u64 {
     self.scenario.next_tx(sender).num_user_events()
 }
 
-fun take_ticket(self: &mut Fixture): LaunchTicket<LAUNCH_TICKET_TESTS> {
+fun take_ticket(self: &Fixture): LaunchTicket<LAUNCH_TICKET_TESTS> {
     self.scenario.take_from_sender()
 }
 
