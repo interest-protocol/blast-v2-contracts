@@ -170,7 +170,7 @@ the decision that owns it. Nothing here may be marked done from prose alone.
 | 1.4 | Curve vectors and both burn moments | [0004](decisions/0004-bonding-curve.md), [vectors/curve.json](vectors/curve.json) |
 | 1.5 | Sell-back invariant, seeded property test with a committed generator | [0004](decisions/0004-bonding-curve.md) |
 | 1.6 | Decimal and orientation vectors, exact rationals only | [0005](decisions/0005-quote-asset-generalisation.md), [vectors/quote-decimals.json](vectors/quote-decimals.json) |
-| 1.7 | Initializer supply suite: exact normalized billion, both modes, decimal ceiling, and no surviving treasury cap | [0035](decisions/0035-initializer-finalized-meme-supply.md) |
+| 1.7 | Initializer supply suite: canonical nine-decimal billion, both modes, and no surviving treasury cap | [0035](decisions/0035-initializer-finalized-meme-supply.md), [0036](decisions/0036-fixed-nine-decimal-generated-memes.md) |
 
 ### Gate 2 — authority, identity, settlement
 

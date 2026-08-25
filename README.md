@@ -29,12 +29,13 @@ contracts/
 
 The workspace, its engineering contract, and the Sui design record are established.
 The implemented Sui Move slices cover the current audit-sized boundaries from
-accepted ADRs 0013 through 0035: one-time
+accepted ADRs 0013 through 0036: one-time
 `CreatorCap<Meme>` claims for address and X identities, coin-type-isolated
 creator authority that survives migration, a creator-authority boundary with no
 metadata-cap pass-through, and the backend-attested X branch.
 The generated-coin bootstrap now includes a composable `LaunchTicket<Meme>`:
-Blast consumes the coin package's OTW, mints exactly one billion whole coins,
+Blast consumes the coin package's OTW, mints exactly one billion whole coins at
+the protocol-fixed nine-decimal precision,
 irreversibly selects `Fixed` or `BurnOnly`, and stores the complete balance plus
 native metadata capability until launch intake. No mint capability survives the
 initializer.

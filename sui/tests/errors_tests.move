@@ -88,7 +88,6 @@ fun market_and_launch_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::migration_witness_not_allowed!(), 52);
     assert_eq!(blast_fun::errors::invalid_meme_liquidity_provision_bps!(), 59);
     assert_eq!(blast_fun::errors::invalid_meme_supply_partition_bps!(), 60);
-    assert_eq!(blast_fun::errors::invalid_meme_decimals!(), 61);
 }
 
 #[test]

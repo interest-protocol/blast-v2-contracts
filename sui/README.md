@@ -162,10 +162,11 @@ the resolved address later claims through the ordinary address branch.
 ## Launch bootstrap
 
 Two transactions, following
-[ADR 0035](../docs/decisions/0035-initializer-finalized-meme-supply.md):
+[ADR 0035](../docs/decisions/0035-initializer-finalized-meme-supply.md) and
+[ADR 0036](../docs/decisions/0036-fixed-nine-decimal-generated-memes.md):
 
 1. **publish** the generated coin package — its OTW `init` creates an
-   unregulated currency, mints exactly one billion whole coins, consumes mint
+   unregulated nine-decimal currency, mints exactly one billion whole coins,
    authority into owner-selected `Fixed` or `BurnOnly`, and returns the complete
    balance plus native `MetadataCap<Meme>` inside a Blast launch ticket;
 2. **finalize registration and launch** — a permissionless Coin Registry command

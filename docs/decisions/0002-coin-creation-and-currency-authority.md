@@ -2,7 +2,7 @@
 
 - Status: proposed
 - Date: 2026-08-22
-- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md), [0024](0024-generated-coin-launch-ticket.md), [0025](0025-quote-whitelist-and-migration-targets.md), [0035](0035-initializer-finalized-meme-supply.md)
+- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md), [0024](0024-generated-coin-launch-ticket.md), [0025](0025-quote-whitelist-and-migration-targets.md), [0035](0035-initializer-finalized-meme-supply.md), [0036](0036-fixed-nine-decimal-generated-memes.md)
 
 > ADR 0035 supersedes the transaction details below. Blast mints exactly one
 > billion whole coins during generated-package initialization, consumes the

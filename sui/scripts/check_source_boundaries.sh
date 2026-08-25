@@ -509,8 +509,9 @@ if [[ ! -f sources/launch_ticket.move ]] \
   || ! rg -Fq 'initializer.make_supply_fixed(treasury_cap);' sources/launch_ticket.move \
   || ! rg -Fq 'initializer.make_supply_burn_only(treasury_cap);' sources/launch_ticket.move \
   || ! rg -q 'initializer\.finalize\(ctx\)' sources/launch_ticket.move \
-  || ! rg -Fq 'decimals <= constants::max_meme_decimals!()' sources/launch_ticket.move \
-  || ! rg -Fq 'constants::meme_total_supply_whole_coins!() * 10u64.pow(decimals)' sources/launch_ticket.move \
+  || ! rg -Fq 'let initial_supply = constants::meme_total_supply_atomic_units!();' sources/launch_ticket.move \
+  || ! rg -Fq 'constants::meme_decimals!(),' sources/launch_ticket.move \
+  || rg -n '\bdecimals: u8\b' sources/launch_ticket.move \
   || rg -n '\bTreasuryCap<Meme>\b|treasury_cap:' sources/launch_ticket.move \
   || rg -n '\b(make_regulated|DenyCap|CoinMetadata)\b|coin_registry::new_currency\(' \
     sources/launch_ticket.move \
@@ -526,11 +527,11 @@ if [[ "$(rg -o '\.mint_balance\(' sources | wc -l)" != 1 ]] \
   failures=$((failures + 1))
 fi
 
-if ! rg -U -q 'macro public\(package\) fun meme_total_supply_whole_coins\(\): u64 \{\s*1_000_000_000\s*\}' \
+if ! rg -U -q 'macro public\(package\) fun meme_decimals\(\): u8 \{\s*9\s*\}' \
     sources/lib/constants.move \
-  || ! rg -U -q 'macro public\(package\) fun max_meme_decimals\(\): u8 \{\s*10\s*\}' \
+  || ! rg -U -q 'macro public\(package\) fun meme_total_supply_atomic_units\(\): u64 \{\s*1_000_000_000__000_000_000\s*\}' \
     sources/lib/constants.move; then
-  echo 'Generated Meme supply must remain exactly one billion whole coins with an overflow-proof decimal bound.' >&2
+  echo 'Generated Meme supply must remain exactly one billion coins at the canonical nine-decimal precision.' >&2
   failures=$((failures + 1))
 fi
 

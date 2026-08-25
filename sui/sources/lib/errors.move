@@ -227,9 +227,7 @@ const EInvalidMemeLiquidityProvisionBps: u64 = 59;
 /// Protocol Meme allocation plus pool provision leaves no positive curve share.
 const EInvalidMemeSupplyPartitionBps: u64 = 60;
 
-#[test_only]
-/// Meme decimals cannot represent the fixed one-billion supply in a u64 balance.
-const EInvalidMemeDecimals: u64 = 61;
+// Code 61 retired: caller-configurable Meme decimals were removed by ADR 0036.
 
 // === Package Error Codes ===
 
@@ -443,6 +441,4 @@ macro public(package) fun invalid_meme_supply_partition_bps(): u64 {
     60
 }
 
-macro public(package) fun invalid_meme_decimals(): u64 {
-    61
-}
+// Error code 61 is retired and must not be reused.

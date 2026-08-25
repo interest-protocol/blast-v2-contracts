@@ -37,14 +37,14 @@ macro public(package) fun max_meme_liquidity_provision_bps(): u64 {
     9_999
 }
 
-/// Exact whole-coin supply minted for every generated Meme currency.
-macro public(package) fun meme_total_supply_whole_coins(): u64 {
-    1_000_000_000
+/// Canonical decimal precision for every generated Meme currency.
+macro public(package) fun meme_decimals(): u8 {
+    9
 }
 
-/// Largest Meme decimal precision for which one billion whole coins fits in `u64`.
-macro public(package) fun max_meme_decimals(): u8 {
-    10
+/// One billion nine-decimal Meme coins expressed in atomic units.
+macro public(package) fun meme_total_supply_atomic_units(): u64 {
+    1_000_000_000__000_000_000
 }
 
 /// Maximum number of simultaneously active routine protocol administrators.

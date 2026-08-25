@@ -1,13 +1,15 @@
 # Sui OTW launch bootstrap and capability handoff
 
 - Date: 2026-08-23
-- Status: primary-source research; protocol conclusion superseded by ADR 0035
+- Status: primary-source research; protocol conclusion superseded by ADRs 0035 and 0036
 - Sui pin: `06734f6ff0af45d8632a14a4dc4b100197f6b1a2`
 
 > The framework facts below remain valid, but
-> [ADR 0035](../decisions/0035-initializer-finalized-meme-supply.md) replaces the
-> former Blast conclusion: the initializer now mints the fixed billion-coin
-> inventory and consumes the treasury cap before finalization.
+> [ADR 0035](../decisions/0035-initializer-finalized-meme-supply.md) and
+> [ADR 0036](../decisions/0036-fixed-nine-decimal-generated-memes.md) replace the
+> former Blast conclusion: the initializer now creates a nine-decimal currency,
+> mints the fixed billion-coin inventory, and consumes the treasury cap before
+> finalization.
 
 ## Question
 

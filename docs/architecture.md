@@ -95,14 +95,16 @@ See [ADR 0023](decisions/0023-generated-coin-supply-and-metadata-custody.md).
 ## Coin creation
 
 The current Coin Registry OTW path is the only generated-coin creation primitive.
-The generated package's Blast constructor mints exactly one billion whole coins
-and consumes the treasury cap into owner-selected `Fixed` or `BurnOnly` state
+The generated package's Blast constructor fixes precision at nine decimals,
+mints exactly one billion whole coins, and consumes the treasury cap into
+owner-selected `Fixed` or `BurnOnly` state
 before finalizing the initializer. Its launch ticket holds the complete
 `Balance<Meme>` and `MetadataCap<Meme>`; no mint authority survives in Blast core
 or an adapter, and launch intake does not need the shared Meme currency merely to
 finalize supply. The native metadata cap remains in Blast-defined custody until
 the one-time creator claim returns it separately alongside `CreatorCap<Meme>`.
-See [ADR 0035](decisions/0035-initializer-finalized-meme-supply.md).
+See [ADR 0035](decisions/0035-initializer-finalized-meme-supply.md) and
+[ADR 0036](decisions/0036-fixed-nine-decimal-generated-memes.md).
 
 ## Lifecycle
 

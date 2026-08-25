@@ -26,7 +26,6 @@ public struct LaunchTicket<phantom Meme> has key, store {
 /// Creates an OTW currency ticket for one validated creator identity.
 public fun new<Meme: drop>(
     otw: Meme,
-    decimals: u8,
     symbol: String,
     name: String,
     description: String,
@@ -37,10 +36,10 @@ public fun new<Meme: drop>(
 ): LaunchTicket<Meme> {
     let (creator, x_identity_hash) = creator_identity.event_fields();
     let creator_authority = creator_identity.into_authority<Meme>();
-    let initial_supply = initial_supply(decimals);
+    let initial_supply = constants::meme_total_supply_atomic_units!();
     let (mut initializer, mut treasury_cap) = coin_registry::new_currency_with_otw(
         otw,
-        decimals,
+        constants::meme_decimals!(),
         symbol,
         name,
         description,
@@ -98,8 +97,6 @@ public(package) fun into_parts<Meme>(
     (meme, metadata_cap, creator_authority, burnable)
 }
 
-// === Private Functions ===
-
 fun emit_created<Meme>(
     self: &LaunchTicket<Meme>,
     creator: Option<address>,
@@ -115,15 +112,4 @@ fun emit_created<Meme>(
         x_identity_hash,
         self.burnable,
     );
-}
-
-/// Returns the exact normalized billion-coin inventory for a supported precision.
-fun initial_supply(decimals: u8): u64 {
-    assert!(
-        decimals <= constants::max_meme_decimals!(),
-        blast_fun::errors::invalid_meme_decimals!(),
-    );
-
-    // At the accepted maximum this is 10^9 * 10^10 = 10^19, below u64::MAX.
-    constants::meme_total_supply_whole_coins!() * 10u64.pow(decimals)
 }

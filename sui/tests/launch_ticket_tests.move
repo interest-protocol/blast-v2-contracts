@@ -11,9 +11,8 @@ const LAUNCHER: address = @0xA11CE;
 const CREATOR: address = @0xC0FFEE;
 /// `sui::object::SUI_COIN_REGISTRY_OBJECT_ID` at the pinned framework revision.
 const COIN_REGISTRY: address = @0xc;
-const SUPPLY_AT_0_DECIMALS: u64 = 1_000_000_000;
-const SUPPLY_AT_6_DECIMALS: u64 = 1_000_000_000_000_000;
-const SUPPLY_AT_10_DECIMALS: u64 = 10_000_000_000_000_000_000;
+const MEME_DECIMALS: u8 = 9;
+const MEME_TOTAL_SUPPLY: u64 = 1_000_000_000__000_000_000;
 
 // === Test-Only Types ===
 
@@ -35,7 +34,6 @@ fun address_ticket_mints_fixed_supply_and_emits_replay_complete_event() {
         let creator_identity = creator_authority::new_address(CREATOR);
         let ticket = launch_ticket::new(
             LAUNCH_TICKET_TESTS(),
-            0,
             b"TICKET".to_string(),
             b"Ticket Test".to_string(),
             b"Address launch ticket".to_string(),
@@ -67,13 +65,13 @@ fun address_ticket_mints_fixed_supply_and_emits_replay_complete_event() {
         assert_eq!(creator.destroy_some(), CREATOR);
         assert!(x_identity_hash.is_none());
         assert!(!burnable);
-        assert_eq!(initial_supply, SUPPLY_AT_0_DECIMALS);
+        assert_eq!(initial_supply, MEME_TOTAL_SUPPLY);
 
         let (meme, metadata_cap, creator_authority, burnable) =
             ticket.into_parts();
 
         assert_eq!(object::id(&metadata_cap), metadata_cap_id);
-        assert_eq!(meme.value(), SUPPLY_AT_0_DECIMALS);
+        assert_eq!(meme.value(), MEME_TOTAL_SUPPLY);
         assert!(!burnable);
 
         destroy(meme);
@@ -86,7 +84,8 @@ fun address_ticket_mints_fixed_supply_and_emits_replay_complete_event() {
 
         assert!(currency.is_supply_fixed());
         assert!(!currency.is_supply_burn_only());
-        assert_eq!(currency.total_supply().destroy_some(), SUPPLY_AT_0_DECIMALS);
+        assert_eq!(currency.decimals(), MEME_DECIMALS);
+        assert_eq!(currency.total_supply().destroy_some(), MEME_TOTAL_SUPPLY);
 
         destroy(currency);
     });
@@ -106,7 +105,6 @@ fun x_ticket_is_composable_and_records_burn_only_selection() {
         let creator_identity = creator_authority::new_x(x_identity_hash);
         let ticket = launch_ticket::new(
             LAUNCH_TICKET_TESTS(),
-            6,
             b"XTICKET".to_string(),
             b"X Ticket Test".to_string(),
             b"X launch ticket".to_string(),
@@ -133,7 +131,7 @@ fun x_ticket_is_composable_and_records_burn_only_selection() {
         assert!(creator.is_none());
         assert_eq!(emitted_x_identity_hash.destroy_some(), x_identity_hash);
         assert!(burnable);
-        assert_eq!(initial_supply, SUPPLY_AT_6_DECIMALS);
+        assert_eq!(initial_supply, MEME_TOTAL_SUPPLY);
 
         expected_ticket_id = ticket_id;
         expected_metadata_cap_id = metadata_cap_id;
@@ -149,83 +147,19 @@ fun x_ticket_is_composable_and_records_burn_only_selection() {
             ticket.into_parts();
 
         assert_eq!(object::id(&metadata_cap), expected_metadata_cap_id);
-        assert_eq!(meme.value(), SUPPLY_AT_6_DECIMALS);
+        assert_eq!(meme.value(), MEME_TOTAL_SUPPLY);
         assert!(burnable);
         let currency = f.take_currency<LAUNCH_TICKET_TESTS>();
 
         assert!(!currency.is_supply_fixed());
         assert!(currency.is_supply_burn_only());
-        assert_eq!(currency.total_supply().destroy_some(), SUPPLY_AT_6_DECIMALS);
+        assert_eq!(currency.decimals(), MEME_DECIMALS);
+        assert_eq!(currency.total_supply().destroy_some(), MEME_TOTAL_SUPPLY);
 
         destroy(meme);
         destroy(metadata_cap);
         destroy(creator_authority);
         destroy(currency);
-    });
-
-    fixture.end();
-}
-
-#[test]
-fun ticket_accepts_the_largest_normalized_billion_coin_supply() {
-    let mut fixture = start();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let creator_identity = creator_authority::new_address(CREATOR);
-        let ticket = launch_ticket::new(
-            LAUNCH_TICKET_TESTS(),
-            10,
-            b"MAX".to_string(),
-            b"Maximum Decimals".to_string(),
-            b"Largest representable fixed Blast supply".to_string(),
-            b"".to_string(),
-            creator_identity,
-            true,
-            f.ctx!(),
-        );
-        let (meme, metadata_cap, creator_authority, burnable) =
-            ticket.into_parts();
-
-        assert_eq!(meme.value(), SUPPLY_AT_10_DECIMALS);
-        assert!(burnable);
-
-        destroy(meme);
-        destroy(metadata_cap);
-        destroy(creator_authority);
-    });
-
-    fixture.next_tx_expecting_events!(LAUNCHER, 1, |f| {
-        let currency = f.take_currency<LAUNCH_TICKET_TESTS>();
-
-        assert!(currency.is_supply_burn_only());
-        assert_eq!(currency.total_supply().destroy_some(), SUPPLY_AT_10_DECIMALS);
-
-        destroy(currency);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(abort_code = 61, location = blast_fun::launch_ticket)]
-fun ticket_rejects_decimals_that_cannot_represent_one_billion_coins() {
-    let mut fixture = start();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let creator_identity = creator_authority::new_address(CREATOR);
-        let ticket = launch_ticket::new(
-            LAUNCH_TICKET_TESTS(),
-            11,
-            b"OVERFLOW".to_string(),
-            b"Too Many Decimals".to_string(),
-            b"One billion whole coins would exceed u64".to_string(),
-            b"".to_string(),
-            creator_identity,
-            false,
-            f.ctx!(),
-        );
-
-        destroy(ticket);
     });
 
     fixture.end();
@@ -240,7 +174,6 @@ fun address_ticket_rejects_zero_creator_before_currency_creation() {
         let creator_identity = creator_authority::new_address(@0x0);
         let ticket = launch_ticket::new(
             LAUNCH_TICKET_TESTS(),
-            9,
             b"TICKET".to_string(),
             b"Ticket Test".to_string(),
             b"Invalid creator".to_string(),
@@ -265,7 +198,6 @@ fun x_ticket_rejects_invalid_identity_before_currency_creation() {
         let creator_identity = creator_authority::new_x(x"1122");
         let ticket = launch_ticket::new(
             LAUNCH_TICKET_TESTS(),
-            9,
             b"XTICKET".to_string(),
             b"X Ticket Test".to_string(),
             b"Invalid X identity".to_string(),
@@ -293,7 +225,6 @@ fun ticket_rejects_a_non_otw_type() {
         let creator_identity = creator_authority::new_address(CREATOR);
         let ticket = launch_ticket::new(
             INVALID_OTW(false),
-            9,
             b"INVALID".to_string(),
             b"Invalid OTW".to_string(),
             b"Not a one-time witness".to_string(),

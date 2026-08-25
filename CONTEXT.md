@@ -24,7 +24,8 @@ The coin owner chooses `Fixed` (neither mintable nor burnable) or `BurnOnly`
 (burnable but never mintable). The generated package records the selection;
 the OTW initializer mints exactly one billion whole coins and immediately
 consumes the unique treasury capability into that final state. Generated Meme
-precision is at most ten decimals so the normalized supply fits `u64`.
+precision is always nine decimals, so the stored supply is exactly
+`1_000_000_000__000_000_000` atomic units.
 _Avoid_: mutable supply, retained mint authority
 
 **LaunchTicket<Meme>**:

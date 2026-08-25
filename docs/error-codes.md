@@ -89,6 +89,6 @@ the next unused value and must not fill a retired gap.
 | 58 | *(retired)* | — | Premature governance cutover removed by ADR 0034. |
 | 59 | `invalid_meme_liquidity_provision_bps` | `launch_config` | The destination-pool Meme provision is zero or exceeds 9,999 basis points. |
 | 60 | `invalid_meme_supply_partition_bps` | `launch_config` | Protocol Meme allocation plus pool provision leaves no positive rate for curve inventory. |
-| 61 | `invalid_meme_decimals` | `launch_ticket` | Meme decimals exceed the maximum precision that can represent exactly one billion whole coins in a `u64` balance. |
+| 61 | *(retired)* | — | Caller-configurable Meme decimals removed by ADR 0036; generated currencies always use nine decimals. |
 
 The next new package-wide protocol error must use code **62**.

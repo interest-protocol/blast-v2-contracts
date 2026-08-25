@@ -3,6 +3,7 @@
 - Status: accepted
 - Date: 2026-08-25
 - Amends: [0002](0002-coin-creation-and-currency-authority.md), [0023](0023-generated-coin-supply-and-metadata-custody.md), [0024](0024-generated-coin-launch-ticket.md)
+- Amended by: [0036](0036-fixed-nine-decimal-generated-memes.md)
 
 ## Sources
 
