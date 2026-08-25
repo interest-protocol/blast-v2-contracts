@@ -230,9 +230,9 @@ This is not a naming-only issue:
   ([`ADR 0004:136-141`](../decisions/0004-bonding-curve.md)).
 
 The current `LaunchTicket` is not where this policy belongs. It intentionally
-holds only the empty treasury and metadata capabilities, creator authority, and
-burnable choice before launch policy is selected
-([`sui/sources/launch_ticket.move:14-21`](../../sui/sources/launch_ticket.move)).
+holds only the finalized Meme balance, metadata capability, and creator
+authority; supply mode is authoritative in Coin Registry state
+([`sui/sources/launch_ticket.move`](../../sui/sources/launch_ticket.move)).
 The migration-Meme value belongs in the cold launch snapshot and then the future
 launch's named balances.
 

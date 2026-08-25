@@ -18,7 +18,6 @@ public struct LaunchTicket<phantom Meme> has key, store {
     meme: Balance<Meme>,
     metadata_cap: MetadataCap<Meme>,
     creator_authority: CreatorAuthority<Meme>,
-    burnable: bool,
 }
 
 // === Public Functions ===
@@ -61,12 +60,12 @@ public fun new<Meme: drop>(
         meme,
         metadata_cap,
         creator_authority,
-        burnable,
     };
 
     ticket.emit_created(
         creator,
         x_identity_hash,
+        burnable,
         ctx.sender(),
     );
 
@@ -82,25 +81,24 @@ public(package) fun into_parts<Meme>(
     Balance<Meme>,
     MetadataCap<Meme>,
     CreatorAuthority<Meme>,
-    bool,
 ) {
     let LaunchTicket {
         id,
         meme,
         metadata_cap,
         creator_authority,
-        burnable,
     } = self;
 
     id.delete();
 
-    (meme, metadata_cap, creator_authority, burnable)
+    (meme, metadata_cap, creator_authority)
 }
 
 fun emit_created<Meme>(
     self: &LaunchTicket<Meme>,
     creator: Option<address>,
     x_identity_hash: Option<vector<u8>>,
+    burnable: bool,
     launcher: address,
 ) {
     events::launch_ticket_created<Meme>(
@@ -110,6 +108,6 @@ fun emit_created<Meme>(
         launcher,
         creator,
         x_identity_hash,
-        self.burnable,
+        burnable,
     );
 }

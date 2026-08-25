@@ -29,7 +29,7 @@ contracts/
 
 The workspace, its engineering contract, and the Sui design record are established.
 The implemented Sui Move slices cover the current audit-sized boundaries from
-accepted ADRs 0013 through 0036: one-time
+accepted ADRs 0013 through 0037: one-time
 `CreatorCap<Meme>` claims for address and X identities, coin-type-isolated
 creator authority that survives migration, a creator-authority boundary with no
 metadata-cap pass-through, and the backend-attested X branch.

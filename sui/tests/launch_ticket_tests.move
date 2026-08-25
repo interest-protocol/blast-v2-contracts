@@ -67,13 +67,10 @@ fun address_ticket_mints_fixed_supply_and_emits_replay_complete_event() {
         assert!(!burnable);
         assert_eq!(initial_supply, MEME_TOTAL_SUPPLY);
 
-        let (meme, metadata_cap, creator_authority, burnable) =
-            ticket.into_parts();
+        let (meme, metadata_cap, creator_authority) = ticket.into_parts();
 
         assert_eq!(object::id(&metadata_cap), metadata_cap_id);
         assert_eq!(meme.value(), MEME_TOTAL_SUPPLY);
-        assert!(!burnable);
-
         destroy(meme);
         destroy(metadata_cap);
         destroy(creator_authority);
@@ -143,12 +140,10 @@ fun x_ticket_is_composable_and_records_burn_only_selection() {
         let ticket = f.take_ticket();
         assert_eq!(object::id(&ticket), expected_ticket_id);
 
-        let (meme, metadata_cap, creator_authority, burnable) =
-            ticket.into_parts();
+        let (meme, metadata_cap, creator_authority) = ticket.into_parts();
 
         assert_eq!(object::id(&metadata_cap), expected_metadata_cap_id);
         assert_eq!(meme.value(), MEME_TOTAL_SUPPLY);
-        assert!(burnable);
         let currency = f.take_currency<LAUNCH_TICKET_TESTS>();
 
         assert!(!currency.is_supply_fixed());

@@ -31,8 +31,9 @@ _Avoid_: mutable supply, retained mint authority
 **LaunchTicket<Meme>**:
 The transferable object created from the generated coin package's one-time
 witness. It holds the complete fixed `Balance<Meme>`, native
-`MetadataCap<Meme>`, unissued `CreatorAuthority<Meme>`, and the launcher's
-burnable choice after mint authority has been irreversibly consumed.
+`MetadataCap<Meme>`, and unissued `CreatorAuthority<Meme>` after mint authority
+has been irreversibly consumed. Supply mode lives authoritatively in the Coin
+Registry rather than being duplicated in ticket storage.
 _Avoid_: coin receipt, mint ticket, capability bundle
 
 **Creator identity**:

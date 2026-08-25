@@ -149,11 +149,13 @@ core interface. See `docs/architecture.md`.
   that input into linear `CreatorAuthority<Meme>`. It must not accept arbitrary
   pre-created treasury or metadata caps. `LaunchTicket<Meme>` stores the complete
   fixed initial `Balance<Meme>`, native `MetadataCap<Meme>`, one
-  `CreatorAuthority<Meme>`, and the `burnable` choice after mint authority has
-  already been destroyed. The constructor returns the ticket without transfer;
+  `CreatorAuthority<Meme>` after mint authority has already been destroyed. The
+  constructor's `burnable` input selects the irreversible registry state and is
+  recorded in the creation event, but must not be duplicated in ticket storage.
+  The constructor returns the ticket without transfer;
   the generated package decides delivery. Only the package-level consuming
   `into_parts` seam may release those stored values to the future launch module.
-  See ADRs 0024, 0035, and 0036.
+  See ADRs 0024, 0035, 0036, and 0037.
 - `launch_config.move` owns cold policy read together only when a launch is
   created: the 16-entry original-type quote whitelist and targets, the zero-safe
   Quote migration-fee and Meme graduation-allocation defaults, the nonzero

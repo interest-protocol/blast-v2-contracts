@@ -104,7 +104,10 @@ or an adapter, and launch intake does not need the shared Meme currency merely t
 finalize supply. The native metadata cap remains in Blast-defined custody until
 the one-time creator claim returns it separately alongside `CreatorCap<Meme>`.
 See [ADR 0035](decisions/0035-initializer-finalized-meme-supply.md) and
-[ADR 0036](decisions/0036-fixed-nine-decimal-generated-memes.md).
+[ADR 0036](decisions/0036-fixed-nine-decimal-generated-memes.md). The finalized
+supply mode remains authoritative in Coin Registry state and is not duplicated
+inside the launch ticket; see
+[ADR 0037](decisions/0037-remove-redundant-ticket-burn-mode.md).
 
 ## Lifecycle
 

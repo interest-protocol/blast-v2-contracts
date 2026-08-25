@@ -163,7 +163,9 @@ the resolved address later claims through the ordinary address branch.
 
 Two transactions, following
 [ADR 0035](../docs/decisions/0035-initializer-finalized-meme-supply.md) and
-[ADR 0036](../docs/decisions/0036-fixed-nine-decimal-generated-memes.md):
+[ADR 0036](../docs/decisions/0036-fixed-nine-decimal-generated-memes.md), with
+the minimal ticket custody from
+[ADR 0037](../docs/decisions/0037-remove-redundant-ticket-burn-mode.md):
 
 1. **publish** the generated coin package — its OTW `init` creates an
    unregulated nine-decimal currency, mints exactly one billion whole coins,

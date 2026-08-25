@@ -516,7 +516,7 @@ fi
 
 if [[ ! -f sources/launch_ticket.move ]] \
   || ! rg -U -q \
-    'public struct LaunchTicket<phantom Meme> has key, store \{\s*id: UID,\s*meme: Balance<Meme>,\s*metadata_cap: MetadataCap<Meme>,\s*creator_authority: CreatorAuthority<Meme>,\s*burnable: bool,\s*\}' \
+    'public struct LaunchTicket<phantom Meme> has key, store \{\s*id: UID,\s*meme: Balance<Meme>,\s*metadata_cap: MetadataCap<Meme>,\s*creator_authority: CreatorAuthority<Meme>,\s*\}' \
     sources/launch_ticket.move \
   || [[ "$(rg -c '^public fun new<Meme: drop>\(' sources/launch_ticket.move)" != 1 ]] \
   || [[ "$(rg -c 'creator_identity: CreatorIdentity' sources/launch_ticket.move)" != 1 ]] \
@@ -530,6 +530,7 @@ if [[ ! -f sources/launch_ticket.move ]] \
   || ! rg -Fq 'let initial_supply = constants::meme_total_supply_atomic_units!();' sources/launch_ticket.move \
   || ! rg -Fq 'constants::meme_decimals!(),' sources/launch_ticket.move \
   || rg -n '\bdecimals: u8\b' sources/launch_ticket.move \
+  || rg -n '^[[:space:]]+burnable: bool,' <<<"$(sed -n '/^public struct LaunchTicket/,/^}/p' sources/launch_ticket.move)" \
   || rg -n '\bTreasuryCap<Meme>\b|treasury_cap:' sources/launch_ticket.move \
   || rg -n '\b(make_regulated|DenyCap|CoinMetadata)\b|coin_registry::new_currency\(' \
     sources/launch_ticket.move \

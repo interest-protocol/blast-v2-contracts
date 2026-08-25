@@ -82,8 +82,9 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0034](0034-remove-premature-governance-cutover.md) | Remove the premature governance cutover | **accepted** |
 | [0035](0035-initializer-finalized-meme-supply.md) | Finalize generated Meme supply during initialization | **accepted** |
 | [0036](0036-fixed-nine-decimal-generated-memes.md) | Fix generated Meme precision at nine decimals | **accepted** |
+| [0037](0037-remove-redundant-ticket-burn-mode.md) | Remove redundant supply mode from launch-ticket custody | **accepted** |
 
-Only ADRs 0013–0036 are accepted. ADR 0021 accepts the pure curve formulas and
+Only ADRs 0013–0037 are accepted. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -127,6 +128,10 @@ and stores only the resulting balance in `LaunchTicket`.
 ADR 0036 removes caller-selected precision from `launch_ticket::new`. Every
 generated Meme has nine decimals and exactly
 `1_000_000_000__000_000_000` atomic units.
+
+ADR 0037 keeps finalized supply mode solely in Coin Registry state. The
+constructor still records the choice in its creation event, but `LaunchTicket`
+stores and releases only the three linear launch resources.
 
 ## Open premises
 
