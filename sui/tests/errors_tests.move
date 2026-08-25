@@ -94,17 +94,9 @@ fun market_and_launch_error_registry_is_stable() {
 fun package_admin_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::invalid_upgrade_cap!(), 53);
     assert_eq!(blast_fun::errors::invalid_package_digest!(), 54);
-    assert_eq!(
-        blast_fun::errors::admin_package_authorization_disabled!(),
-        55,
-    );
     assert_eq!(blast_fun::errors::invalid_package_publisher!(), 56);
     assert_eq!(
         blast_fun::errors::upgrade_policy_not_more_restrictive!(),
         57,
-    );
-    assert_eq!(
-        blast_fun::errors::admin_package_authorization_already_disabled!(),
-        58,
     );
 }

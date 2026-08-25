@@ -85,11 +85,11 @@ package_admin_production="$(sed '/^\/\/ === Test-Only Types ===/,$d' sources/pac
 
 if [[ ! -f sources/package_admin.move || -f sources/upgrade.move ]] \
   || ! rg -U -q \
-    'public struct PackageAdmin has key \{\s*id: UID,\s*publisher: Publisher,\s*upgrade_cap: UpgradeCap,\s*admin_authorization_enabled: bool,\s*\}' \
+    'public struct PackageAdmin has key \{\s*id: UID,\s*publisher: Publisher,\s*upgrade_cap: UpgradeCap,\s*\}' \
     sources/package_admin.move \
   || [[ "$(rg -c '^public fun ' <<<"$package_admin_production")" != 5 ]] \
   || [[ "$(rg -c '^public fun (wrap|authorize_upgrade|restrict_to_additive|restrict_to_dependency_only|commit_upgrade)\(' <<<"$package_admin_production")" != 5 ]] \
-  || [[ "$(rg -c '^public\(package\) fun disable_admin_authorization\(' <<<"$package_admin_production")" != 1 ]] \
+  || rg -n '^public\(package\) fun ' <<<"$package_admin_production" \
   || [[ "$(rg -o '_: &AdminWitness' <<<"$package_admin_production" | wc -l)" != 3 ]] \
   || ! rg -U -q \
     'public fun wrap\(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext\)' \
@@ -100,7 +100,7 @@ if [[ ! -f sources/package_admin.move || -f sources/upgrade.move ]] \
   || ! rg -U -q \
     'public fun commit_upgrade\(self: &mut PackageAdmin, receipt: UpgradeReceipt\)' \
     sources/package_admin.move; then
-  echo 'package_admin.move must expose only validated capability wrapping, admin authorization/policy restriction, receipt commit, and package-only cutover.' >&2
+  echo 'package_admin.move must expose only validated capability wrapping, admin authorization/policy restriction, and receipt commit.' >&2
   failures=$((failures + 1))
 fi
 
@@ -115,20 +115,16 @@ if ! rg -Fq 'publisher.from_package<BLAST>() && publisher.from_module<BLAST>()' 
   || ! rg -Fq 'self.upgrade_cap.only_additive_upgrades();' sources/package_admin.move \
   || ! rg -Fq 'self.upgrade_cap.only_dep_upgrades();' sources/package_admin.move \
   || ! rg -Fq 'new_policy > previous_policy' sources/package_admin.move \
-  || [[ "$(rg -c 'self.assert_admin_authorization_enabled\(\);' <<<"$package_admin_production")" != 3 ]] \
-  || ! rg -Fq 'self.admin_authorization_enabled = false;' sources/package_admin.move \
-  || ! rg -Fq 'events::package_admin_authorization_disabled();' sources/package_admin.move \
   || rg -n '\bpackage::(version|only_(additive|dep)_upgrades)\(' \
     <<<"$package_admin_production" \
-  || rg -n 'admin_authorization_enabled[[:space:]]*=[[:space:]]*true|enable_admin_authorization' \
-    <<<"$package_admin_production" \
+  || rg -n 'admin_authorization|governance_cutover' sources/package_admin.move \
   || rg -U -n '^(public|entry|public\(package\)) fun [^(]+\([^)]*\): (&)?(Publisher|UpgradeCap)' \
     <<<"$package_admin_production" \
   || rg -n 'transfer::(public_)?transfer|burn_publisher|make_immutable' \
     <<<"$package_admin_production" \
   || rg -n '\b(ProtocolAuthority|SuperAdminCap|AdminCap)\b' \
     <<<"$package_admin_production"; then
-  echo 'Package administration must retain both validated capabilities, use receiver syntax, narrow policy only, and make admin retirement irreversible.' >&2
+  echo 'Package administration must retain both validated capabilities, use receiver syntax, narrow policy only, and stay free of premature governance state.' >&2
   failures=$((failures + 1))
 fi
 
@@ -142,8 +138,8 @@ package_admin_mutation_event_payloads="$(sed -n \
   sources/lib/events.move)"
 
 if [[ -z "$package_admin_creation_event" || -z "$package_admin_mutation_event_payloads" ]] \
-  || [[ "$(rg -c '^[[:space:]]+(package_admin_id|publisher_id|upgrade_cap_id|package_id|package_version|policy|admin_authorization_enabled):' <<<"$package_admin_creation_event")" != 7 ]] \
-  || ! rg -Fq 'public struct PackageAdminAuthorizationDisabled() has copy, drop;' \
+  || [[ "$(rg -c '^[[:space:]]+(package_admin_id|publisher_id|upgrade_cap_id|package_id|package_version|policy):' <<<"$package_admin_creation_event")" != 6 ]] \
+  || rg -n 'PackageAdminAuthorizationDisabled|admin_authorization_enabled' \
     sources/lib/events.move \
   || rg -n '\b(manager_id|upgrade_cap_id|sequence|schema_version|action_tag|nonce)\b' \
     <<<"$package_admin_mutation_event_payloads"; then
@@ -390,7 +386,7 @@ if [[ -z "$launch_ticket_event_payload" ]] \
 fi
 
 if rg -n \
-  '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|creator_authority::(into_authority|event_fields|claim_creator_cap)|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees)|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|disable_admin_authorization|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing|admin_authorization_enabled_for_testing))(<[^>]+>)?\(' \
+  '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|creator_authority::(into_authority|event_fields|claim_creator_cap)|launch_ticket::into_parts|fees::(accrue|claim_creator_fees|claim_protocol_fees)|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
   sources tests; then
   echo 'Blast-owned receiver functions must use Move 2024 dot syntax.' >&2
   failures=$((failures + 1))

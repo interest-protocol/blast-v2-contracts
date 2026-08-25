@@ -79,8 +79,9 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0031](0031-package-witness-and-publisher-custody.md) | Package witness and Publisher custody | **accepted** |
 | [0032](0032-admin-authorized-upgrade-cap-custody.md) | Package administration custody and admin-authorized upgrades | **accepted** |
 | [0033](0033-meme-liquidity-provision.md) | Meme liquidity provision for destination pools | **accepted** |
+| [0034](0034-remove-premature-governance-cutover.md) | Remove the premature governance cutover | **accepted** |
 
-Only ADRs 0013–0033 are accepted. ADR 0021 accepts the pure curve formulas and
+Only ADRs 0013–0034 are accepted. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -105,13 +106,17 @@ to claim and retain the framework `Publisher`, and keeps all state-module
 initializers context-only unless they genuinely consume an OTW.
 
 ADR 0032 validates and wraps the package `Publisher` and `UpgradeCap` in one
-shared package-administration object, lets a live `AdminWitness` authorize exact
-upgrade digests and irreversibly narrow policy, and provides the one-way
-package-only cutover that later governance must use to retire routine admins.
+shared package-administration object and lets a live `AdminWitness` authorize
+exact upgrade digests and irreversibly narrow policy.
 
 ADR 0033 adds an independent, nonzero Meme liquidity-provision rate to the cold
 launch snapshot. It reserves destination-pool principal separately from protocol
 Meme revenue and forbids Memez.Fun's overloaded zero-means-all sentinel.
+
+ADR 0034 removes ADR 0032's speculative governance cutover — the durable
+enabled flag, package-only disable path, its event, and error codes 55/58 —
+because no governance design exists to call it. A future governance ADR retires
+the routine-admin package path through the mandatory shared-object version gate.
 
 ## Open premises
 

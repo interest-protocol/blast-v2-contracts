@@ -42,7 +42,6 @@ fun wrap_accepts_blast_capabilities_and_shares_complete_custody_fact() {
             emitted_package_id,
             emitted_package_version,
             emitted_policy,
-            emitted_admin_authorization_enabled,
         ) = created.package_admin_created_fields();
 
         assert_eq!(emitted_package_admin_id, object::id(&f.package_admin));
@@ -57,8 +56,6 @@ fun wrap_accepts_blast_capabilities_and_shares_complete_custody_fact() {
         assert_eq!(emitted_package_version, f.package_admin.version_for_testing());
         assert_eq!(emitted_policy, package::compatible_policy());
         assert_eq!(emitted_policy, f.package_admin.policy_for_testing());
-        assert!(emitted_admin_authorization_enabled);
-        assert!(f.package_admin.admin_authorization_enabled_for_testing());
         assert!(event::events_by_type<events::PackageAdminCreated>().is_empty());
     });
 
@@ -267,107 +264,6 @@ fun policy_restriction_rejects_looser_policy() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
         f.package_admin.restrict_to_additive(&admin_witness);
-    });
-
-    fixture.end();
-}
-
-#[test]
-fun governance_cutover_permanently_disables_admin_authorization() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PUBLISHER, |f| {
-        f.package_admin.disable_admin_authorization();
-        let _ = events::collect_one<events::PackageAdminAuthorizationDisabled>(0);
-
-        assert!(!f.package_admin.admin_authorization_enabled_for_testing());
-        assert!(
-            event::events_by_type<events::PackageAdminAuthorizationDisabled>()
-                .is_empty(),
-        );
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(abort_code = 55)]
-fun governance_cutover_disables_original_admin_upgrade_path() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PUBLISHER, |f| {
-        f.package_admin.disable_admin_authorization();
-        let _ = events::collect_one<events::PackageAdminAuthorizationDisabled>(0);
-    });
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-        let ticket = f.package_admin.authorize_upgrade(&admin_witness, package_digest());
-        let receipt = package::test_upgrade(ticket);
-
-        f.package_admin.commit_upgrade(receipt);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(abort_code = 55)]
-fun governance_cutover_rejects_before_digest_validation() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PUBLISHER, |f| {
-        f.package_admin.disable_admin_authorization();
-        let _ = events::collect_one<events::PackageAdminAuthorizationDisabled>(0);
-    });
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-        let ticket = f.package_admin.authorize_upgrade(&admin_witness, x"1122");
-        let receipt = package::test_upgrade(ticket);
-
-        f.package_admin.commit_upgrade(receipt);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(abort_code = 55)]
-fun governance_cutover_disables_original_admin_policy_path() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-        f.package_admin.restrict_to_additive(&admin_witness);
-        let _ = events::collect_one<events::UpgradePolicyRestricted>(0);
-    });
-
-    fixture.next_tx!(PUBLISHER, |f| {
-        f.package_admin.disable_admin_authorization();
-        let _ = events::collect_one<events::PackageAdminAuthorizationDisabled>(0);
-    });
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-        f.package_admin.restrict_to_additive(&admin_witness);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(abort_code = 58)]
-fun governance_cutover_rejects_repetition() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PUBLISHER, |f| {
-        f.package_admin.disable_admin_authorization();
-        let _ = events::collect_one<events::PackageAdminAuthorizationDisabled>(0);
-    });
-
-    fixture.next_tx!(PUBLISHER, |f| {
-        f.package_admin.disable_admin_authorization();
     });
 
     fixture.end();

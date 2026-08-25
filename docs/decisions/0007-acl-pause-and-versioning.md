@@ -65,8 +65,9 @@ and never accidentally.
 Every ordinary configuration row has a bound and an event. The package-upgrade
 row is intentionally stronger: an active routine admin can authorize arbitrary
 replacement code allowed by the wrapped cap's current policy and permanently
-narrow that policy. ADR 0032 accepts that interim authority explicitly and
-defines a package-only one-way governance cutover; it must not be described
+narrow that policy. ADR 0032 accepts that interim authority explicitly, and
+ADR 0034 keeps it in force until an approved governance design retires the
+routine-admin path through this ADR's version gate; it must not be described
 operationally as an ordinary parameter update.
 
 ### Negative transition matrix

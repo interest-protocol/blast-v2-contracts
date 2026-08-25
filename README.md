@@ -69,8 +69,9 @@ the next implementation boundaries.
 Package-capability custody is implemented, but public release still requires
 version gates on every mutable shared protocol object so old package bytecode
 cannot bypass an upgrade. Routine admins have code authority under the current
-irreversibly restrictable policy. A package-only one-way cutover lets a later
-governance module retire that path after it installs replacement authorization.
+irreversibly restrictable policy. A later governance design retires that path
+through those version gates after it installs replacement authorization; no
+pre-planted cutover flag exists (ADR 0034).
 
 The decision records cover the Sui package — package layout, Coin
 Registry creation and the three-transaction bootstrap, final fixed/burnable supply,

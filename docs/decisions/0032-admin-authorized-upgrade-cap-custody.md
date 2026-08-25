@@ -3,6 +3,10 @@
 - Status: accepted
 - Date: 2026-08-25
 - Amends: [0001](0001-sui-package-and-module-layout.md), [0007](0007-acl-pause-and-versioning.md), [0011](0011-event-schema-and-replay.md), [0015](0015-protocol-authority-and-x-signer-state.md), [0031](0031-package-witness-and-publisher-custody.md)
+- Amended by: [0034](0034-remove-premature-governance-cutover.md) — the
+  `admin_authorization_enabled` flag, package-only cutover, disabled event, and
+  error codes 55/58 described below were removed before any deployment; the
+  custody, authorization, policy-restriction, and commit decisions stand.
 
 ## Sources
 

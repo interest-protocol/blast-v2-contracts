@@ -209,9 +209,7 @@ const EInvalidUpgradeCap: u64 = 53;
 /// A Sui package digest must contain exactly 32 bytes.
 const EInvalidPackageDigest: u64 = 54;
 
-#[test_only]
-/// The durable routine-admin package-upgrade and policy path has been retired.
-const EAdminPackageAuthorizationDisabled: u64 = 55;
+// Code 55 retired: the premature governance cutover was removed by ADR 0034.
 
 #[test_only]
 /// The supplied Publisher was not claimed by Blast's canonical package module.
@@ -221,9 +219,7 @@ const EInvalidPackagePublisher: u64 = 56;
 /// An upgrade-policy request was equal to or looser than the current policy.
 const EUpgradePolicyNotMoreRestrictive: u64 = 57;
 
-#[test_only]
-/// The irreversible routine-admin package-authority cutover already occurred.
-const EAdminPackageAuthorizationAlreadyDisabled: u64 = 58;
+// Code 58 retired: the premature governance cutover was removed by ADR 0034.
 
 #[test_only]
 /// Destination-pool Meme provision must be between one and 9,999 basis points.
@@ -425,9 +421,7 @@ macro public(package) fun invalid_package_digest(): u64 {
     54
 }
 
-macro public(package) fun admin_package_authorization_disabled(): u64 {
-    55
-}
+// Error code 55 is retired and must not be reused.
 
 macro public(package) fun invalid_package_publisher(): u64 {
     56
@@ -437,9 +431,7 @@ macro public(package) fun upgrade_policy_not_more_restrictive(): u64 {
     57
 }
 
-macro public(package) fun admin_package_authorization_already_disabled(): u64 {
-    58
-}
+// Error code 58 is retired and must not be reused.
 
 macro public(package) fun invalid_meme_liquidity_provision_bps(): u64 {
     59

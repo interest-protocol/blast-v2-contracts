@@ -91,19 +91,19 @@ core interface. See `docs/architecture.md`.
   `UpgradeCap`. Its one public intake must verify that the Publisher was claimed
   by `blast::BLAST`, compare the cap's package against
   `type_name::original_id<BLAST>()`, and share a non-storable `PackageAdmin`
-  containing both capabilities and the durable
-  `admin_authorization_enabled` flag. Expose no capability release, transfer,
-  burn, or generic Publisher borrow. The current upgrade path takes a borrowed
-  `AdminWitness`, validates an exact 32-byte digest, and uses the cap's current
-  policy; commit takes the matching framework receipt and does not repeat the
-  witness. Admins may irreversibly narrow policy to additive or dependency-only
-  while their path is enabled; reject equal or looser requests before mutation.
-  A package-only, one-way cutover may change the flag from true to false for a
-  future governance module, but no function may re-enable it. Treat every
-  active routine admin as full code authority allowed by the current policy
-  until that approved governance transition. Wrapped capability custody never
+  containing both capabilities and nothing else. Expose no capability release,
+  transfer, burn, or generic Publisher borrow. The current upgrade path takes a
+  borrowed `AdminWitness`, validates an exact 32-byte digest, and uses the cap's
+  current policy; commit takes the matching framework receipt and does not
+  repeat the witness. Admins may irreversibly narrow policy to additive or
+  dependency-only; reject equal or looser requests before mutation. Treat every
+  active routine admin as full code authority allowed by the current policy.
+  Do not add governance affordances — no cutover flag, disable path, or
+  replacement-authority stub — before an approved governance ADR supplies a
+  concrete caller; retirement of the routine-admin path happens through the
+  mandatory shared-object version gate. Wrapped capability custody never
   replaces shared-object version gates; those gates remain a public-release
-  requirement. See ADR 0032.
+  requirement. See ADRs 0032 and 0034.
 - Treat every backend-signed action as its own domain. `runtime_config.move`
   owns the current dedicated X-claim key and signature verification, while the
   domain module owns the exact signed message and state transition. Do not reuse

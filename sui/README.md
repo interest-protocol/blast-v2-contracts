@@ -33,7 +33,7 @@ The core package now contains:
   destruction, and drop-only `AdminWitness` sign-in only;
 - `package_admin.move` — shared custody of the package's validated `Publisher`
   and `UpgradeCap`, with live-admin exact-digest authorization, irreversible
-  policy restriction, receipt-bound commit, and one-way governance cutover;
+  policy restriction, and receipt-bound commit;
 - `runtime_config.move` — one small shared live-settings object containing the
   dedicated X backend signer and global protocol fee share, with witness-gated
   signer rotation/revocation, Ed25519 verification, and bounded 0–10,000 bps
@@ -124,13 +124,14 @@ does not repeat the witness because the non-droppable receipt is already bound
 to the `PackageAdmin`'s cap. See
 [ADR 0032](../docs/decisions/0032-admin-authorized-upgrade-cap-custody.md).
 
-While routine-admin authorization is enabled, every active admin has code-
-upgrade power under the current policy and may permanently narrow that policy
-to additive or dependency-only. A future package governance module may call the
-package-only one-way cutover after installing replacement authorization. Once
-the flag is false, the original admin upgrade and policy functions can never be
-used again; there is no re-enable path. Do not publish publicly until all
-mutable shared objects also enforce the approved package/version gates.
+Every active admin has code-upgrade power under the current policy and may
+permanently narrow that policy to additive or dependency-only. There is no
+pre-planted governance cutover: a future governance design installs replacement
+authorization and retires the routine-admin path through the mandatory
+shared-object version gate
+([ADR 0034](../docs/decisions/0034-remove-premature-governance-cutover.md)).
+Do not publish publicly until all mutable shared objects enforce the approved
+package/version gates.
 
 ## Planned package set
 

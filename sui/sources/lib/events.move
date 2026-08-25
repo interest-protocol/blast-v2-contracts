@@ -148,7 +148,6 @@ public struct PackageAdminCreated has copy, drop {
     package_id: ID,
     package_version: u64,
     policy: u8,
-    admin_authorization_enabled: bool,
 }
 
 /// Emitted after an active protocol admin authorizes an exact package digest.
@@ -171,9 +170,6 @@ public struct UpgradePolicyRestricted has copy, drop {
     previous_policy: u8,
     new_policy: u8,
 }
-
-/// Emitted after package governance permanently retires routine-admin package authority.
-public struct PackageAdminAuthorizationDisabled() has copy, drop;
 
 // === Package Functions ===
 
@@ -390,7 +386,6 @@ public(package) fun package_admin_created(
     package_id: ID,
     package_version: u64,
     policy: u8,
-    admin_authorization_enabled: bool,
 ) {
     blast_fun::events_wrapper::emit_event(PackageAdminCreated {
         package_admin_id,
@@ -399,7 +394,6 @@ public(package) fun package_admin_created(
         package_id,
         package_version,
         policy,
-        admin_authorization_enabled,
     });
 }
 
@@ -434,10 +428,6 @@ public(package) fun upgrade_policy_restricted(previous_policy: u8, new_policy: u
         previous_policy,
         new_policy,
     });
-}
-
-public(package) fun package_admin_authorization_disabled() {
-    blast_fun::events_wrapper::emit_event(PackageAdminAuthorizationDisabled());
 }
 
 // === Test-Only Functions ===
@@ -646,7 +636,7 @@ public fun launch_ticket_created_fields(
 #[test_only]
 public fun package_admin_created_fields(
     self: &PackageAdminCreated,
-): (ID, ID, ID, ID, u64, u8, bool) {
+): (ID, ID, ID, ID, u64, u8) {
     (
         self.package_admin_id,
         self.publisher_id,
@@ -654,7 +644,6 @@ public fun package_admin_created_fields(
         self.package_id,
         self.package_version,
         self.policy,
-        self.admin_authorization_enabled,
     )
 }
 

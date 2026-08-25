@@ -241,8 +241,8 @@ risk; retained as a documented upgrade path.
   the defining `blast` module and other types in the `blast_fun` package.
 - Package-administration test: only Blast's canonical Publisher and original
   package cap can be wrapped, a live admin witness authorizes an exact digest
-  and may irreversibly narrow policy, only the matching native receipt advances
-  the cap version, and the package-only governance cutover cannot be reversed.
+  and may irreversibly narrow policy, and only the matching native receipt
+  advances the cap version.
 - Constants test: production protocol values appear only in `constants.move`, and no source duplicates
   primitive `MAX_U*` bounds supplied by MoveStdlib.
 - Public-surface test: an inventory test enumerates the package's public functions and fails if any
