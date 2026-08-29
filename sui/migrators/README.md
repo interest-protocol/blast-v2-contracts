@@ -4,6 +4,12 @@ This directory is one aggregate Move package for all supported liquidity
 venues. Venue modules depend on the launchpad core; the launchpad core never
 imports this package. A launch selects a venue's sealed migration witness.
 
+Bluefin, MMT, Cetus, Turbos, and Full Sail ship together in this one package, so
+they share one custody surface, one claim surface, one dependency graph, one
+release gate, and one `UpgradeCap`. [DEPENDENCIES.md](DEPENDENCIES.md) owns the
+package-id and dependency matrix, the committed module fingerprints, the
+dev-inspect matrix, and the immutable-release gate.
+
 ## Common vault
 
 Every completed migration creates one shared `vault::LpVault<Meme, Quote>`.
@@ -18,9 +24,21 @@ in its venue module, so another module in the aggregate package cannot forge the
 witness needed to access that position. There is no immutable position borrow,
 dynamic-object-field removal function, or public position borrow.
 
+This is one shared vault *type*, not one global vault object. Every migrated
+launch gets its own shared `LpVault<Meme, Quote>`, so unrelated fee collections
+never contend on the same Sui object.
+
 Creator and protocol fee claims are defined once in `vault`. Venue modules pass
 completed fee balances through the witness-gated `vault::accrue_fees` function;
-they cannot borrow the common fee ledger directly.
+they cannot borrow the common fee ledger directly. That function reads the live
+`runtime_config::protocol_fee_share_bps` during each collection and splits new
+fees through the same core `FeeLedger` as bonding-curve trade fees, so protocol
+amounts round up, creators receive the exact remainder, and a later share change
+never rewrites already accrued ownership.
+
+Every venue residual goes to the live `runtime_config::protocol_treasury`
+address read during that migration. No adapter stores its own treasury address,
+and no adapter burns a residual or sends one to `0x0`.
 
 ## Bluefin route
 
@@ -153,6 +171,12 @@ The dedicated `events` module owns five strongly typed payloads and their
 package-only emit helpers. Only that module calls `sui::event::emit`; state
 modules call its typed helpers.
 
+These are direct Sui events. This independently deployed package deliberately
+does **not** wrap them in the core `events_wrapper::Event<T>` envelope: wrapping
+would add nothing here, it would hide the payload type from native event
+filters, and it would pull a second package into the core event ABI. Consumers
+filter on the five payload types below.
+
 - `VaultCreated` records vault, pool, and position IDs plus venue, Meme, and
   Quote type names.
 - `MigrationCompleted` records launch, vault, and pool IDs; source, used, and
@@ -169,101 +193,77 @@ no application sequence, revision, nonce, schema version, or action tag.
 
 ## Pinned dependencies
 
-`Move.toml` pins every direct or overridden Git dependency to a complete
-commit:
+`Move.toml` pins every direct or overridden Git dependency to a complete commit:
 
 | Package | Commit |
 | --- | --- |
 | Bluefin Spot interface | `91ce930575b2aa3decab9b7e129b8002deba80c1` |
 | MMT V3 interface | `e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82` |
-| Cetus IntegerMate | `09a12d9b171122883d9350039d4ed6e8400033b9` |
-| Cetus MoveSTL | `0681fec63a310ae753d03a06f7c05d3e2925bb09` |
-| Turbos CLMM interface | `cff693265bfc41c7de2233afe31c9d7428adc9e1` |
-| Sui | `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` |
+| Turbos CLMM interface source | `cff693265bfc41c7de2233afe31c9d7428adc9e1` |
+| Sui framework | `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` |
 | IntegerMate | `09a12d9b171122883d9350039d4ed6e8400033b9` |
 | IntegerLibrary | `8a534bd1c0b334cd3937c27987f3147a06ba6a18` |
+| Cetus MoveSTL | `0681fec63a310ae753d03a06f7c05d3e2925bb09` |
 
-The current IntegerMate package is at its repository root. The aggregate
-package overrides Bluefin's older transitive revision with this same pin so
-future Cetus integration can use one integer package.
+Cetus, Turbos, Full Sail, and Full Sail's separate IntegerMate ship as minimal
+local normalized interfaces under `interfaces/`, because Cetus's reviewed source
+manifest has no `published-at`, Turbos's upstream manifest pins a mutable
+`Sui = testnet` reference, and Full Sail publishes no Move sources. Each local
+interface preserves the venue's original type address, sets `published-at` to the
+current mainnet revision, and binds the one Sui framework revision above in both
+lock environments. Their bodies are `abort 0` link stubs.
 
-The pinned Bluefin interface declares original package
-`0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267`.
-Mainnet revision 17 is
-`0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c`,
-with digest `4tyboYqrPbZzN6V5Lh2TccW8j9nbH65mJeQFynoQGxut`. Its normalized targets used
-by the adapter match the pinned interface signatures.
-
-The pinned MMT interface declares original package
-`0x70285592c97965e811e0c6f98dccc3a9c2b4ad854b3594faab9597ada267b860`.
-Mainnet revision 5 is
-`0xcf60a40f45d46fc1e828871a647c1e25a0915dec860d2662eb10fdb382c3c1d1`.
-The adapter uses the pinned revision's canonical-order, pool, position,
-liquidity, collection, and tick-helper interfaces.
-
-The local Cetus interface preserves original package
-`0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb` and
-sets `published-at` to mainnet revision 14 at
-`0x25ebb9a7c50eb17b3fa9c5a30fb8b5ad8f97caaf4928943acbcff7153dfee5e3`.
-That immutable package has digest `FEdn2yRh28atu7tANr6gCWQ3gtDSD2EZmyEeryTuokoi`.
-The normalized interface includes only the public Cetus types and functions
-used by this adapter.
-
-The pinned Turbos interface declares original package
-`0x91bfbc386a41afcfd9b2533058d7e915a1d3829089cc268ff4333d54d6339ca1` and
-sets `published-at` to mainnet latest package
-`0xa5a0c25c79e428eba04fb98b3fb2a34db45ab26d4c8faf0d7e39d66a63891e64`.
-At the pinned source, the adapter consumes exactly
-`pool_factory::deploy_pool_and_mint_with_return_`,
-`position_manager::mint_with_return_`,
-`position_manager::collect_with_return_`,
-`position_manager::get_position_info`, the `pool::get_pool_*` getters, and
-the signed full-range `math_tick` helpers. The local normalized interface pins
-the upstream mutable `Sui = testnet` reference to the aggregate package's
-exact `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` framework dependency.
-
-The local Full Sail interface preserves original package
-`0xe74104c66dd9f16b3096db2cc00300e556aa92edc871be4bc052b5dfb80db239`
-and sets `published-at` to mainnet revision 4 at
-`0x497a144ba3d93ae44d9fd23d4ff4761c329d87a505136d2269c743b2297fa881`.
-That package has digest `CWkTsBks7SsYsvDQ9QQxkHqgDAKdvuDkh4DAd9DHo3nF` and upgrade transaction
-`3rbk2g4FuuqFGKBLyNYLkqJjv2XKvgnSans6EpPaRCSd`. Mainnet GraphQL resolves
-the original ID directly to this revision; the official contracts page remains
-at revision 3. `@fullsailfinance/sdk@11.0.0` also identifies revision 4.
-
-The normalized interface contains only the consumed `factory`, `config`,
-`rewarder`, `pool`, `position`, and `tick_math` types and functions. Full Sail's
-separate IntegerMate package is pinned independently at original/current ID
-`0x6b904ae739b2baad330aae14991abcd3b7354d3dc3db72507ed8dabeeb7a36de`,
-revision 1, digest `sJBBNfgrAEwYvUxzbM8y7yHYdHTE5no2Urg4B3eJR1s`. Both local interfaces and
-both lockfile environments bind the exact Sui revision
-`06734f6ff0af45d8632a14a4dc4b100197f6b1a2`.
+[DEPENDENCIES.md](DEPENDENCIES.md) is the single owner of the resulting
+package-id matrix: original and current package ids, versions, whole-package
+digests, upgrade transactions, per-module bytecode fingerprints, the compiled
+dependency set, and which addresses actually enter the published linkage table.
 
 ## Verification and immutable-release gate
 
 Run from this directory:
 
 ```bash
+node scripts/check_mainnet_abi.mjs
 sui move build
 sui move lint --warnings-are-errors
 sui move build -e mainnet
+bash scripts/check_source_boundaries.sh
 bash scripts/check_turbos_dependency_pin.sh
 bash scripts/check_fullsail_dependency_pin.sh
-bash scripts/check_source_boundaries.sh
 ```
 
-The Bluefin, MMT, Cetus, Turbos, and Full Sail interface dependencies contain
-`abort 0` link stubs. A local build proves type compatibility only. Before
-production release, verify published-package lineage and normalized ABI. Then run mainnet
-dev-inspect fixtures for every creation and adoption orientation, exact
-balance-derived initialization, 50-bps Cetus, Turbos, and Full Sail adoption checks,
-one-basis-point residual limits, and fee collection without a liquidity change.
+`scripts/check_mainnet_abi.mjs` uses Node built-ins only and the official Sui
+mainnet GraphQL endpoint. For Bluefin, MMT, Cetus, Turbos, Full Sail, and Full
+Sail's separate IntegerMate package it resolves the original package id to its
+current revision, fails when any revision exists beyond the pinned tip, and
+asserts the package id, version, whole-package digest, previous transaction, and
+original type origins. It then asserts a committed SHA-256 over each consumed
+module's decoded on-chain bytecode and the normalized public ABI of every
+consumed function and struct, comparing structured signatures rather than
+display prose so that a missing or extra parameter, `&` versus `&mut`,
+visibility drift, ability drift, phantom drift, or return drift all fail. The
+same run cross-checks the local interface manifests, the root manifest, and the
+exact Sui framework edge in both the mainnet and testnet lock graphs. It fails
+closed: a GraphQL error, a missing package, a missing module, or a missing
+function ends the run non-zero.
 
-Source omission does not make principal custody permanent while this package
-has an `UpgradeCap`. After the release checks pass, destroy the package
-`UpgradeCap` and record the immutable-package evidence. Do not add a migrator
-admin capability. No production claim that LP principal is permanently locked
-is valid before this irreversible step.
+The interface dependencies contain `abort 0` link stubs, so a local build proves
+type compatibility only. Before production release, run the mainnet dev-inspect
+matrix in [DEPENDENCIES.md](DEPENDENCIES.md) for every route and orientation:
+all 15 migration routes, all 9 fee-collection routes, and both vault claims,
+covering exact balance-derived initialization, zero Bluefin creation fee, venue
+canonical order, full-range tick bounds, the 50-bps Cetus, Turbos, and Full Sail
+adoption checks, one-basis-point residual limits with treasury delivery, and fee
+collection with unchanged principal liquidity.
+
+Source omission does not make principal custody permanent while this package has
+an `UpgradeCap`: a compatible upgrade could add an extraction function. LP
+principal may be described as permanently locked **only after** every live ABI
+gate above passes, every local gate passes, every dev-inspect row passes, and the
+aggregate package's single `UpgradeCap` is destroyed and that immutable-package
+evidence is recorded. Until then the accurate statement is that principal is held
+by an upgradeable package with no exposed withdrawal path. Do not add a migrator
+admin capability as an alternative.
 
 ## Bluefin errors
 
