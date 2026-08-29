@@ -11,10 +11,16 @@ The vault stores the pool ID and the common `FeeLedger<Meme, Quote>`. Its one
 venue position is a child object under the sealed
 `vault::PositionKey<Venue>` dynamic-object-field name.
 
-Only package functions can construct a vault or borrow its typed position.
-There is no dynamic-object-field removal function and no public position
-borrow. Creator and protocol fee claims are defined once in `vault`; the venue
-modules only collect and normalize their fees into the shared ledger.
+Only package functions can construct a vault or mutably borrow its typed
+position. Construction consumes an ephemeral venue witness, and position
+access requires a reference to one. Each venue marker has a private constructor
+in its venue module, so another module in the aggregate package cannot forge the
+witness needed to access that position. There is no immutable position borrow,
+dynamic-object-field removal function, or public position borrow.
+
+Creator and protocol fee claims are defined once in `vault`. Venue modules pass
+completed fee balances through the witness-gated `vault::accrue_fees` function;
+they cannot borrow the common fee ledger directly.
 
 ## Bluefin route
 
@@ -41,6 +47,26 @@ positive liquidity before collection. It verifies both IDs again and requires
 unchanged position liquidity afterward. The Meme and Quote fee balances then
 enter `FeeLedger::accrue_from_runtime`, which reads the live protocol share for
 that collection.
+
+## Replayable events
+
+The dedicated `events` module owns five strongly typed payloads and their
+package-only emit helpers. Only that module calls `sui::event::emit`; state
+modules call its typed helpers.
+
+- `VaultCreated` records vault, pool, and position IDs plus venue, Meme, and
+  Quote type names.
+- `MigrationCompleted` records launch, vault, and pool IDs; source, used, and
+  residual amounts for both assets; residual treasury; balance-derived price;
+  and the exact tick and fee inputs.
+- `LpFeesCollected` records vault, pool, and position IDs; the venue and asset
+  types; collector; gross fees; applied protocol share; creator/protocol deltas
+  and final totals for both assets; and principal liquidity before and after.
+- `CreatorFeesClaimed` and `ProtocolFeesClaimed` record the vault, claimant,
+  drained amounts, asset types, and all four post-claim ledger totals.
+
+The payloads are completed facts and use native Sui event ordering. They contain
+no application sequence, revision, nonce, schema version, or action tag.
 
 ## Pinned dependencies
 
@@ -99,3 +125,9 @@ is valid before this irreversible step.
 | 4 | `EPositionPoolMismatch` | The pool, vault, and position IDs do not match. |
 | 5 | `EZeroPositionLiquidity` | The created or collected position has no principal liquidity. |
 | 6 | `EPositionLiquidityChanged` | Bluefin fee collection changed position principal. |
+
+## Vault errors
+
+| Code | Name | Meaning |
+| --- | --- | --- |
+| 0 | `EWrongVenue` | The supplied venue witness does not match the vault's attached position marker. |

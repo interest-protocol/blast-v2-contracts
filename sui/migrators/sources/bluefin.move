@@ -7,7 +7,7 @@ use blast_fun::{
     package_version::PackageVersion,
     runtime_config::RuntimeConfig,
 };
-use blast_fun_migrators::vault::{Self, LpVault};
+use blast_fun_migrators::{events, vault::{Self, LpVault}};
 use bluefin_spot::{
     config::{Self, GlobalConfig},
     pool::{Self, Pool},
@@ -62,6 +62,7 @@ public fun migrate<Meme, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    let launch_id = object::id(launch);
     let (lower_tick_bits, upper_tick_bits) =
         full_range_ticks(bluefin_config, tick_spacing);
     let pool_name = pool_name(meme_currency, quote_currency);
@@ -92,8 +93,8 @@ public fun migrate<Meme, Quote>(
     let (
         pool_id,
         position,
-        _,
-        _,
+        used_meme_amount,
+        used_quote_amount,
         residual_meme,
         residual_quote,
     ) = pool::create_pool_with_liquidity<Meme, Quote, Quote>(
@@ -122,12 +123,20 @@ public fun migrate<Meme, Quote>(
 
     lock_and_share(
         runtime_config,
+        launch_id,
         pool_id,
         position,
         meme_amount,
         quote_amount,
+        used_meme_amount,
+        used_quote_amount,
         residual_meme,
         residual_quote,
+        sqrt_price_x64,
+        lower_tick_bits,
+        upper_tick_bits,
+        tick_spacing,
+        fee_rate,
         ctx,
     );
 }
@@ -139,12 +148,18 @@ public fun collect_fees<Meme, Quote>(
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
     clock: &Clock,
+    ctx: &mut TxContext,
 ) {
     let pool_id = object::id(pool);
     assert!(vault::pool_id(self) == pool_id, EPositionPoolMismatch);
 
+    let venue = Venue();
     let position =
-        vault::borrow_position_mut<Meme, Quote, Venue, Position>(self);
+        vault::borrow_position_mut<Meme, Quote, Venue, Position>(
+            self,
+            &venue,
+        );
+    let position_id = object::id(position);
     assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
     let liquidity_before = position.liquidity();
     assert!(liquidity_before > 0, EZeroPositionLiquidity);
@@ -157,13 +172,20 @@ public fun collect_fees<Meme, Quote>(
     );
 
     assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
-    assert!(position.liquidity() == liquidity_before, EPositionLiquidityChanged);
+    let liquidity_after = position.liquidity();
+    assert!(liquidity_after == liquidity_before, EPositionLiquidityChanged);
     assert!(vault::pool_id(self) == pool_id, EPositionPoolMismatch);
 
-    vault::fee_ledger_mut(self).accrue_from_runtime(
+    vault::accrue_fees<Meme, Quote, Venue>(
+        self,
+        &venue,
+        position_id,
         meme_fee,
         quote_fee,
+        liquidity_before,
+        liquidity_after,
         runtime_config,
+        ctx,
     );
 }
 
@@ -220,24 +242,34 @@ fun assert_valid_sqrt_price(sqrt_price_x64: u128) {
 
 fun lock_and_share<Meme, Quote>(
     runtime_config: &RuntimeConfig,
+    launch_id: ID,
     pool_id: ID,
     position: Position,
-    opening_meme_amount: u64,
-    opening_quote_amount: u64,
+    source_meme_amount: u64,
+    source_quote_amount: u64,
+    used_meme_amount: u64,
+    used_quote_amount: u64,
     residual_meme: Balance<Meme>,
     residual_quote: Balance<Quote>,
+    sqrt_price_x64: u128,
+    lower_tick_bits: u32,
+    upper_tick_bits: u32,
+    tick_spacing: u32,
+    fee_rate: u64,
     ctx: &mut TxContext,
 ) {
     assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
     assert!(position.liquidity() > 0, EZeroPositionLiquidity);
+    let residual_meme_amount = residual_meme.value();
+    let residual_quote_amount = residual_quote.value();
     migration_math::assert_residual_within_bps(
-        opening_meme_amount,
-        residual_meme.value(),
+        source_meme_amount,
+        residual_meme_amount,
         MAX_RESIDUAL_BPS,
     );
     migration_math::assert_residual_within_bps(
-        opening_quote_amount,
-        residual_quote.value(),
+        source_quote_amount,
+        residual_quote_amount,
         MAX_RESIDUAL_BPS,
     );
 
@@ -251,9 +283,28 @@ fun lock_and_share<Meme, Quote>(
         protocol_treasury,
     );
 
-    vault::new<Meme, Quote, Venue, Position>(
+    let venue = Venue();
+    let vault_id = vault::new<Meme, Quote, Venue, Position>(
+        venue,
         pool_id,
         position,
         ctx,
+    );
+    events::migration_completed<Meme, Quote, Venue>(
+        launch_id,
+        vault_id,
+        pool_id,
+        source_meme_amount,
+        source_quote_amount,
+        used_meme_amount,
+        used_quote_amount,
+        residual_meme_amount,
+        residual_quote_amount,
+        protocol_treasury,
+        sqrt_price_x64,
+        lower_tick_bits,
+        upper_tick_bits,
+        tick_spacing,
+        fee_rate,
     );
 }
