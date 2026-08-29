@@ -29,6 +29,12 @@ migration payload in the same Move call.
   through the same core `FeeLedger` used by bonding-curve trade fees. Protocol
   amounts round up, creators receive the exact remainder, and already accrued
   ownership never changes.
+- **Admin-pinned venue tiers.** `venue_config::VenueConfig` is one shared
+  singleton pinning `(tick_spacing, fee_rate)` policy per venue. Migration is
+  permissionless, so routes read the pinned tier instead of trusting caller
+  parameters and fail closed until an `AdminWitness` pins the venue. The
+  singleton stays adjustable after the package `UpgradeCap` is destroyed and
+  affects only later migrations.
 - **Direct events, no wrapper.** `events.move` owns the five typed payloads
   (`VaultCreated`, `MigrationCompleted`, `LpFeesCollected`, `CreatorFeesClaimed`,
   `ProtocolFeesClaimed`) and is the only module that calls `sui::event::emit`.
@@ -304,6 +310,7 @@ node scripts/check_mainnet_abi.mjs --self-test
 node scripts/check_mainnet_abi.mjs
 sui move build
 sui move lint --warnings-are-errors
+sui move test --lint
 sui move build -e mainnet
 bash scripts/check_source_boundaries.sh
 bash scripts/check_turbos_dependency_pin.sh
@@ -312,6 +319,10 @@ bash scripts/check_fullsail_dependency_pin.sh
 
 A local build proves type compatibility only. The interface bodies are `abort 0`
 stubs, so nothing about venue behaviour is exercised until the mainnet gate runs.
+The Move test suite under `tests/` covers what does execute locally: vault
+custody and live-share fee accounting, the sealed venue-key guards, the pinned
+tier policy's set/read/fail-closed paths, the Turbos two's-complement event
+encoding, and the Full Sail canonical-order comparison.
 
 ## Mainnet dev-inspect matrix
 
@@ -332,6 +343,10 @@ Vault claims: `vault::claim_creator_fees` under `CreatorCap<Meme>` and
 `vault::claim_protocol_fees` under `AdminWitness`. Neither touches the venue or
 the position.
 
+Before any migration fixture runs, pin every venue tier in the shared
+`venue_config::VenueConfig` under a live `AdminWitness` and record that each
+pinned `(tick_spacing, fee_rate)` matches a tier the venue actually registers.
+
 Each migration fixture must show:
 
 - the balance-derived `sqrt_price_x64` matches the exact Q64.64 target for that
@@ -346,12 +361,22 @@ Each migration fixture must show:
 - both assets are at least 99.99% utilized and each residual is at most one basis
   point, with both residuals transferred to the live `protocol_treasury`; and
 - the returned position belongs to the new pool, has positive liquidity, and
-  enters the vault as its one sealed dynamic object field.
+  enters the vault as its one sealed dynamic object field;
+- the route's venue tier equals the pinned `VenueConfig` values, and a
+  mismatched `Fee` object or adopted pool aborts with the tier-mismatch code;
+- Bluefin accepts the hard-coded Meme-as-coin-A order for every allowlisted
+  Quote; and
+- MMT `get_friendly_ticks` at `tick_math::min_sqrt_price()` and
+  `tick_math::max_sqrt_price()` yields ticks its `open_position` accepts.
 
 Each fee-collection fixture must show venue liquidity is identical immediately
 before and after collection, the vault, pool, and position ids match on both
 sides of the call, and the split uses the live `protocol_fee_share_bps` read
-during that collection.
+during that collection. The Turbos fixture must additionally prove, against
+published bytecode, that `collect_with_return_` returns the complete collected
+fee in its return values and transfers nothing to its `recipient` argument;
+if any portion routed to `recipient`, a permissionless collector would divert
+the fee stream, so this row is a release blocker.
 
 ## Immutable-release gate
 

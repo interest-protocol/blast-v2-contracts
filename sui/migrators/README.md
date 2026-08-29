@@ -36,9 +36,31 @@ fees through the same core `FeeLedger` as bonding-curve trade fees, so protocol
 amounts round up, creators receive the exact remainder, and a later share change
 never rewrites already accrued ownership.
 
-Every venue residual goes to the live `runtime_config::protocol_treasury`
-address read during that migration. No adapter stores its own treasury address,
-and no adapter burns a residual or sends one to `0x0`.
+Every nonzero venue residual goes to the live
+`runtime_config::protocol_treasury` address read during that migration. A
+zero-value residual is destroyed instead of minting a dead coin object to the
+treasury. No adapter stores its own treasury address, and no adapter burns a
+nonzero residual or sends one to `0x0`.
+
+## Pinned venue tiers
+
+`launch::migrate` is deliberately permissionless, so no migration caller may
+choose the venue fee tier or tick spacing of the pool that permanently
+custodies the launch principal. The shared `venue_config::VenueConfig`
+singleton pins one production tier per venue; setters take only a live core
+`AdminWitness`, every mutation emits an old/new fact, and every route fails
+closed until its venue is pinned.
+
+- Bluefin routes read the pinned `(tick_spacing, fee_rate)` pair.
+- Cetus and Full Sail routes read the pinned tick spacing; the venue fee rate
+  follows its registered tier. Adopted pools must match both.
+- MMT routes read the pinned fee rate; the venue derives tick spacing.
+- Turbos routes require the supplied `Fee<FeeType>` object or adopted pool to
+  match the pinned `(tick_spacing, fee_rate)` pair exactly.
+
+Because tier policy lives in a shared object rather than package constants, it
+stays correctable on mainnet without a package upgrade, including after the
+`UpgradeCap` is destroyed; changes affect only later migrations.
 
 ## Bluefin route
 
@@ -49,16 +71,22 @@ Quote-per-Meme price from the actual payload balances. Display decimals do not
 affect the price. Bluefin event metadata comes from the supplied Coin Registry
 `Currency<Meme>` and `Currency<Quote>` objects.
 
-The caller selects tick spacing and fee rate. The adapter gets the live range
-from `config::get_tick_range`, aligns both endpoints inward, and validates the
-pinned Bluefin initialization-price bounds. It queries the Quote-denominated
-creation fee, requires a supported Quote type and an exact zero amount, and
-constructs only `balance::zero<Quote>()`.
+The tick spacing and fee rate come from the admin-pinned venue tier. The
+adapter gets the live range from `config::get_tick_range`, aligns both
+endpoints inward, and validates the pinned Bluefin initialization-price bounds.
+It queries the Quote-denominated creation fee, requires a supported Quote type
+and an exact zero amount, and constructs only `balance::zero<Quote>()`.
+
+The full Meme balance is the fixed liquidity side. At the balance-derived
+opening price a full-range seed leaves its rounding residual on the Quote
+requirement, so fixing Meme is the only order the venue can satisfy from the
+migrated balances.
 
 Each Meme or Quote residual must be at most one basis point of its migration
-input. Both residual balances go to the live protocol treasury. The returned
-position must belong to the new pool and have positive liquidity before it is
-attached to the common vault.
+input, the venue-reported used amounts must reconcile exactly against
+`source − residual`, and both nonzero residual balances go to the live protocol
+treasury. The returned position must belong to the new pool and have positive
+liquidity before it is attached to the common vault.
 
 `bluefin::collect_fees` verifies the vault pool ID, position pool ID, and
 positive liquidity before collection. It verifies both IDs again and requires
@@ -74,11 +102,11 @@ as coin Y. Each route checks both possible orders and requires exactly one
 canonical result before it redeems the migration payload.
 
 Both routes derive the atomic Q64.64 initialization price from the actual Meme
-and Quote balances. They create and initialize a new pool, derive full-range
-friendly ticks through the pinned MMT helpers, open the position, and require
-at least 99.99% use of both balances while adding liquidity. The position enters
-the common vault before the new MMT pool is shared. Both residual coins go to
-the live protocol treasury.
+and Quote balances and read the admin-pinned MMT fee rate. They create and
+initialize a new pool, derive full-range friendly ticks through the pinned MMT
+helpers, open the position, and require at least 99.99% use of both balances
+while adding liquidity. The position enters the common vault before the new MMT
+pool is shared. Both nonzero residual coins go to the live protocol treasury.
 
 MMT fee collection has one typed route for each pool orientation. Each route
 requires the sealed MMT venue value, verifies the vault, pool, and position
@@ -90,20 +118,29 @@ are normalized to Meme/Quote before they enter the common fee ledger.
 Cetus has new-pool and adopted-pool routes for both canonical type orders.
 `migrate_new_meme_a` and `migrate_existing_meme_a` require Meme as coin A.
 `migrate_new_meme_b` and `migrate_existing_meme_b` require Meme as coin B.
-Each route checks the Cetus canonical order and its pool-key rule. The caller
-does not supply an orientation or a price.
+Every route checks the Cetus canonical order, and the new-pool routes also
+derive the venue pool key. The caller does not supply an orientation, a price,
+or a tier.
 
-New routes derive the Q64.64 price from redeemed atomic balances. They use
+New routes derive the Q64.64 price from redeemed atomic balances and the tick
+spacing from the admin-pinned tier. They use
 `pool_creator::full_range_tick_range` and create unpermissioned pools through
-`create_pool_v3`. The adapter gets the fee rate from the live Cetus fee tier.
-It requires at least 99.99% use and at most one-basis-point residual for both
-assets. Residual Meme and Quote coins go to the live runtime treasury.
+`create_pool_v3` with Meme as the fixed liquidity side, so the rounding
+residual lands on the Quote requirement. They require at most a one-basis-point
+residual for both assets, which is the same bound as 99.99% utilization.
+Nonzero residual Meme and Quote coins go to the live runtime treasury.
 
-Existing routes redeem the core payload before the balance-derived target exists.
-They immediately compare that target with `pool::current_sqrt_price` at 50 bps,
-before opening a position or adding liquidity. They use Cetus's fixed-coin
-receipt, payment, and repayment flow, then check the created position belongs
-to the supplied pool. Atomic failure restores the core launch transition.
+Existing routes require the adopted pool to match the pinned tick spacing and
+its venue-registered fee, then redeem the core payload and immediately compare
+the balance-derived target with `pool::current_sqrt_price` at 50 bps, before
+opening a position or adding liquidity. The one-basis-point residual rule binds
+far tighter than that coarse gate, so adoption succeeds only when the pool
+price is within about one basis point of the seed ratio. The fixed liquidity
+side follows the adopted price — Meme when the pool is at or below the derived
+price, Quote above it — so the affordable side is always the fixed one. They
+use Cetus's fixed-coin receipt, payment, and repayment flow, then check the
+created position belongs to the supplied pool. Atomic failure restores the
+core launch transition.
 
 `collect_fees_meme_a` and `collect_fees_meme_b` require a real private Cetus
 venue value. They check vault, pool, and position IDs and positive liquidity.
@@ -113,27 +150,32 @@ accrual.
 
 ## Turbos routes
 
-Turbos has new-pool and adopted-pool routes for both type orders. The
-`migrate_*_meme_a` routes use Meme as coin A. The `migrate_*_meme_b` routes use
-Meme as coin B. New-pool callers provide one concrete `Fee<FeeType>` object;
-the selected `FeeType` fixes the Turbos fee tier and tick spacing. Existing
-routes take a pool with that same `FeeType`. Callers do not provide a price or
-an orientation flag.
+Turbos pools are keyed by their exact `(CoinA, CoinB, FeeType)` order and the
+venue registers no canonical pair order, so both type orders are genuine
+routes. The `migrate_*_meme_a` routes use Meme as coin A. The
+`migrate_*_meme_b` routes use Meme as coin B. New-pool callers provide one
+concrete `Fee<FeeType>` object, and existing routes take a pool with that same
+`FeeType`; both must match the admin-pinned `(tick_spacing, fee_rate)` pair, so
+the tier is deterministic. Callers do not provide a price, an orientation flag,
+or a tier.
 
 Each route derives its Q64.64 price from the redeemed atomic Meme and Quote
-balances. The adapter derives full-range signed ticks from
-`math_tick::get_min_tick` and `math_tick::get_max_tick`. New routes call
+balances. The adapter derives full-range magnitude-and-sign ticks from
+`math_tick::get_min_tick` and `math_tick::get_max_tick` for the venue calls and
+re-encodes them as two's-complement bits for the migration event, so the event
+schema carries one tick encoding across every venue. New routes call
 `pool_factory::deploy_pool_and_mint_with_return_`. Existing routes redeem the
 payload, compare the balance-derived price with the live pool price at exactly
 50 bps, then call `position_manager::mint_with_return_`. All liquidity calls
 use caller-provided deadlines and one-basis-point minimum amounts.
 
 The returned `TurbosPositionNFT` enters the common vault as its dynamic object
-field. The adapter rejects a mismatched pool ID, requires at least 99.99% use
-of both inputs, and sends each residual to the live runtime treasury. Both fee
-routes call `collect_with_return_`, read `get_position_info` before and after,
-and require unchanged positive liquidity. The Meme-B route reverses Turbos A/B
-fee coins before shared Meme/Quote accrual.
+field. The adapter rejects a mismatched pool ID, bounds each residual at one
+basis point of its input, and sends each nonzero residual to the live runtime
+treasury. Both fee routes call `collect_with_return_`, read
+`get_position_info` before and after, and require unchanged positive liquidity.
+The Meme-B route reverses Turbos A/B fee coins before shared Meme/Quote
+accrual.
 
 ## Full Sail routes
 
@@ -145,19 +187,26 @@ defining IDs to reproduce the pinned venue rule exactly. Each route verifies
 that order on chain before it redeems the migration payload. Callers do not
 supply an orientation or an economic price.
 
-New routes derive the Q64.64 price from the actual Meme and Quote balances and
-call revision 4 `factory::create_pool_with_liquidity`. They pass both source
+New routes derive the Q64.64 price from the actual Meme and Quote balances,
+the tick spacing from the admin-pinned tier, and call revision 4
+`factory::create_pool_with_liquidity` with Meme as the fixed liquidity side so
+the rounding residual lands on the Quote requirement. They pass both source
 amounts, an empty URI, zero feed IDs, and `false` for automatic volume
 calculation. Thus an arbitrary Meme does not claim an oracle or stable-asset
 feed. The adapter derives both full-range ticks from Full Sail `tick_math`,
-aligns them inward to the selected tick spacing, and uses the live global
+aligns them inward to the pinned tick spacing, and uses the live global
 configuration, rewarder vault, and pool registry.
 
-Adopted routes redeem the payload and immediately compare the balance-derived
-price with `pool::current_sqrt_price` at exactly 50 bps. Only then do they use
-Full Sail's open, fixed-coin add, payment, and repayment receipt flow. Every
-route requires at least 99.99% use of both assets and sends both residuals to
-the live runtime treasury.
+Adopted routes require the pool to match the pinned tick spacing and its
+venue-registered fee, then redeem the payload and immediately compare the
+balance-derived price with `pool::current_sqrt_price` at exactly 50 bps. The
+one-basis-point residual rule binds far tighter than that coarse gate. The
+fixed liquidity side follows the adopted price — Meme at or above the derived
+price in this orientation-dependent sense, Quote otherwise — so the affordable
+side is always the fixed one. Only then do they use Full Sail's open,
+fixed-coin add, payment, and repayment receipt flow. Every route bounds both
+residuals at one basis point and sends both nonzero residuals to the live
+runtime treasury.
 
 The returned `Position` enters the common vault as its sealed dynamic object
 field. Both fee routes call `pool::collect_fee(..., true)`, verify pool and
@@ -167,7 +216,7 @@ Meme/Quote accrual.
 
 ## Replayable events
 
-The dedicated `events` module owns five strongly typed payloads and their
+The dedicated `events` module owns eleven strongly typed payloads and their
 package-only emit helpers. Only that module calls `sui::event::emit`; state
 modules call its typed helpers.
 
@@ -175,13 +224,19 @@ These are direct Sui events. This independently deployed package deliberately
 does **not** wrap them in the core `events_wrapper::Event<T>` envelope: wrapping
 would add nothing here, it would hide the payload type from native event
 filters, and it would pull a second package into the core event ABI. Consumers
-filter on the five payload types below.
+filter on the payload types below.
 
+- `VenueConfigCreated` records discovery of the tier policy singleton, and
+  `BluefinTierUpdated`, `CetusTickSpacingUpdated`, `FullSailTickSpacingUpdated`,
+  `MmtFeeRateUpdated`, and `TurbosTierUpdated` each record one pinned tier
+  replacing the previous values.
 - `VaultCreated` records vault, pool, and position IDs plus venue, Meme, and
   Quote type names.
 - `MigrationCompleted` records launch, vault, and pool IDs; source, used, and
-  residual amounts for both assets; residual treasury; balance-derived price;
-  and the exact tick and fee inputs.
+  residual amounts for both assets; residual treasury; the pool's sqrt price at
+  seeding — balance-derived on new-pool routes, the adopted pool's live price
+  on adoption routes; and the tick and fee inputs, with both tick fields as
+  two's-complement `i32` bits on every venue.
 - `LpFeesCollected` records vault, pool, and position IDs; the venue and asset
   types; collector; gross fees; applied protocol share; creator/protocol deltas
   and final totals for both assets; and principal liquidity before and after.
@@ -227,11 +282,19 @@ node scripts/check_mainnet_abi.mjs --self-test
 node scripts/check_mainnet_abi.mjs
 sui move build
 sui move lint --warnings-are-errors
+sui move test --lint
 sui move build -e mainnet
 bash scripts/check_source_boundaries.sh
 bash scripts/check_turbos_dependency_pin.sh
 bash scripts/check_fullsail_dependency_pin.sh
 ```
+
+`tests/` covers what executes locally: the shared vault's custody and
+live-share fee accounting, the sealed venue-key guards, the pinned tier
+policy's set/read/fail-closed paths, the Turbos two's-complement event
+encoding, and the Full Sail canonical-order comparison. Venue calls remain
+`abort 0` link stubs, so everything venue-facing belongs to the dev-inspect
+matrix.
 
 `scripts/check_mainnet_abi.mjs` uses Node built-ins only and the official Sui
 mainnet GraphQL endpoint. For Bluefin, MMT, Cetus, Turbos, Full Sail, and Full
@@ -265,7 +328,13 @@ all 15 migration routes, all 9 fee-collection routes, and both vault claims,
 covering exact balance-derived initialization, zero Bluefin creation fee, venue
 canonical order, full-range tick bounds, the 50-bps Cetus, Turbos, and Full Sail
 adoption checks, one-basis-point residual limits with treasury delivery, and fee
-collection with unchanged principal liquidity.
+collection with unchanged principal liquidity. The matrix must additionally
+prove, against published venue bytecode: that Turbos `collect_with_return_`
+returns the complete collected fee and transfers nothing to its `recipient`
+argument; that Bluefin accepts the hard-coded Meme-as-coin-A order for every
+allowlisted Quote; that MMT `get_friendly_ticks` at the venue's extreme sqrt
+prices yields ticks its `open_position` accepts; and that every pinned venue
+tier in `VenueConfig` matches a registered venue tier.
 
 Source omission does not make principal custody permanent while this package has
 an `UpgradeCap`: a compatible upgrade could add an extraction function. LP
@@ -275,6 +344,13 @@ aggregate package's single `UpgradeCap` is destroyed and that immutable-package
 evidence is recorded. Until then the accurate statement is that principal is held
 by an upgradeable package with no exposed withdrawal path. Do not add a migrator
 admin capability as an alternative.
+
+No vault or collection entry point carries a package-version gate. That is a
+deliberate consequence of this release design: destroying the `UpgradeCap` is
+the retirement mechanism, so exactly one package version can ever exist and
+there is no old bytecode to fence off. The shared `VenueConfig` stays mutable
+under the core `AdminWitness` after immutability; it governs only future
+migrations and can never touch custodied principal or accrued ownership.
 
 ## Bluefin errors
 
@@ -287,6 +363,7 @@ admin capability as an alternative.
 | 4 | `EPositionPoolMismatch` | The pool, vault, and position IDs do not match. |
 | 5 | `EZeroPositionLiquidity` | The created or collected position has no principal liquidity. |
 | 6 | `EPositionLiquidityChanged` | Bluefin fee collection changed position principal. |
+| 7 | `EVenueAmountMismatch` | Bluefin-reported used amounts disagree with source minus residual. |
 
 ## MMT errors
 
@@ -306,7 +383,8 @@ admin capability as an alternative.
 | 2 | `EZeroPositionLiquidity` | The created or collected position has no principal liquidity. |
 | 3 | `EPositionLiquidityChanged` | Cetus fee collection changed position principal. |
 | 4 | `EPaymentExceedsBalance` | Cetus requested more than the redeemed balance. |
-| 5 | `EInsufficientUtilization` | Cetus used less than 99.99%, or left more than a 1-bps residual. |
+| 5 | `EInsufficientUtilization` | An adopted Cetus pool consumed less than 99.99% of either balance. |
+| 6 | `ETierMismatch` | The adopted Cetus pool does not match the pinned tier. |
 
 ## Turbos errors
 
@@ -316,7 +394,7 @@ admin capability as an alternative.
 | 1 | `EPositionPoolMismatch` | The vault, Turbos NFT, and pool IDs do not match. |
 | 2 | `EZeroPositionLiquidity` | The created or collected Turbos position has no principal liquidity. |
 | 3 | `EPositionLiquidityChanged` | Turbos fee collection changed position principal. |
-| 4 | `EInsufficientUtilization` | Turbos used less than 99.99%, or left more than a 1-bps residual. |
+| 4 | `ETierMismatch` | The Turbos fee object or adopted pool does not match the pinned tier. |
 
 ## Full Sail errors
 
@@ -328,10 +406,20 @@ admin capability as an alternative.
 | 3 | `EZeroPositionLiquidity` | The created or collected Full Sail position has no principal liquidity. |
 | 4 | `EPositionLiquidityChanged` | Full Sail fee collection changed position principal. |
 | 5 | `EPaymentExceedsBalance` | Full Sail requested more than the redeemed balance. |
-| 6 | `EInsufficientUtilization` | Full Sail used less than 99.99%, or left more than a 1-bps residual. |
+| 6 | `EInsufficientUtilization` | An adopted Full Sail pool consumed less than 99.99% of either balance. |
+| 7 | `ETierMismatch` | The adopted Full Sail pool does not match the pinned tier. |
 
 ## Vault errors
 
 | Code | Name | Meaning |
 | --- | --- | --- |
 | 0 | `EWrongVenue` | The supplied venue witness does not match the vault's attached position marker. |
+
+## Venue config errors
+
+| Code | Name | Meaning |
+| --- | --- | --- |
+| 0 | `EVenueTierUnset` | The venue's production tier has not been pinned yet. |
+| 1 | `EInvalidTickSpacing` | A tier pin supplied a zero tick spacing. |
+| 2 | `EInvalidFeeRate` | A tier pin supplied a zero fee rate. |
+| 3 | `EUnchangedTier` | A tier pin repeated the currently pinned values. |
