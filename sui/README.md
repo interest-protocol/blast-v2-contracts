@@ -9,7 +9,7 @@ sui/
 ├── launchpad/       Blast launchpad core (`blast_fun`)
 ├── migrators/       venue-specific migration adapter packages
 ├── templates/       generated per-launch package templates
-└── vesting/         independently deployed vesting packages
+└── vesting/         independent Blast vesting package
 ```
 
 The `sui/` root is not a Move package. Run Move commands from the package that
@@ -27,8 +27,10 @@ The generated Meme package template has its own manifest and lockfile. Verify it
 from `templates/blast_fun_template/` with `sui move build`, strict lint, and
 `bash scripts/check_source_boundaries.sh`.
 
-The first vesting package lives at `vesting/linear/`. Run `sui move build`,
-`sui move lint --warnings-are-errors`, and `sui move test` from that directory.
+The Blast vesting package lives at `vesting/` and contains `linear` and
+`checkpoints` modules. Run `sui move build`,
+`sui move lint --warnings-are-errors`, `sui move test --lint`, and
+`bash scripts/check_coverage.sh` from that directory.
 
 Core must not import packages from `migrators/` or `vesting/`. Those packages
 depend inward on the smallest required public surface from `launchpad/`.

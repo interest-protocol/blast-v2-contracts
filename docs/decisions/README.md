@@ -98,8 +98,9 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0050](0050-module-local-package-version-constant.md) | Module-local package-version constant | **accepted** |
 | [0051](0051-generated-meme-package-template.md) | Generated Meme package template | **accepted** |
 | [0052](0052-stepped-linear-vesting.md) | Fully funded stepped-linear vesting | **accepted** |
+| [0055](0055-global-vesting-package-and-checkpoints.md) | Global vesting package and checkpoint schedules | **accepted** |
 
-ADRs 0013–0036 and 0038–0052 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
+ADRs 0013–0036, 0038–0052, and 0055 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -111,6 +112,11 @@ and storage commitments still await approval.
 ADR 0027 accepts the graduation economics, launch-policy consolidation,
 bounded migration-witness admission, external migrator package boundary, and
 the exclusion of DEX pool-opening fees.
+
+ADR 0055 consolidates vesting under one package and adds exact irregular
+checkpoint schedules. A linear builder stores up to 256 entries in a framework
+`TableVec`; claims use binary search and retain ADR 0052's fixed-beneficiary and
+fair-cancellation policy.
 
 ADR 0028 consolidates the dedicated X signer and live protocol fee share into
 one small `RuntimeConfig`, while preserving separate `ProtocolAuthority` and
