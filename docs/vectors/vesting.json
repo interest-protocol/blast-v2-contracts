@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "description": "Stepped-linear vesting boundaries and final-remainder release.",
+  "source_decisions": ["../decisions/0052-stepped-linear-vesting.md"],
+  "units": {
+    "amount": "atomic coin units",
+    "time": "milliseconds",
+    "rounding": "intermediate vested value rounds down; the end boundary releases the remainder"
+  },
+  "parameters": {
+    "formula": "floor(total_amount * floor((timestamp_ms - start_ms) / period_ms) / periods)",
+    "end_rule": "timestamp_ms >= start_ms + period_ms * periods vests total_amount"
+  },
+  "cases": [
+    {
+      "name": "cliff_and_four_periods_with_remainder",
+      "kind": "boundary_table",
+      "given": {
+        "total_amount": "1001",
+        "start_ms": "100",
+        "cliff_ms": "200",
+        "period_ms": "100",
+        "periods": "4"
+      },
+      "expect": {
+        "points": [
+          { "timestamp_ms": "99", "vested": "0" },
+          { "timestamp_ms": "100", "vested": "0" },
+          { "timestamp_ms": "299", "vested": "0" },
+          { "timestamp_ms": "300", "vested": "500" },
+          { "timestamp_ms": "399", "vested": "500" },
+          { "timestamp_ms": "400", "vested": "750" },
+          { "timestamp_ms": "499", "vested": "750" },
+          { "timestamp_ms": "500", "vested": "1001" }
+        ]
+      },
+      "notes": "The cliff gates two accrued periods. The final atomic-unit remainder releases at the end."
+    },
+    {
+      "name": "maximum_width_linear",
+      "kind": "maximum_width",
+      "given": {
+        "total_amount": "18446744073709551615",
+        "start_ms": "0",
+        "cliff_ms": "0",
+        "period_ms": "1",
+        "periods": "18446744073709551615"
+      },
+      "expect": {
+        "points": [
+          { "timestamp_ms": "18446744073709551614", "vested": "18446744073709551614" },
+          { "timestamp_ms": "18446744073709551615", "vested": "18446744073709551615" }
+        ]
+      },
+      "notes": "Widened multiplication prevents intermediate overflow."
+    }
+  ]
+}

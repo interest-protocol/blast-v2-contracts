@@ -8,6 +8,16 @@ default branches do not silently rewrite the rationale for Blast V2.
 | [interest-protocol/su-lending](https://github.com/interest-protocol/su-lending/tree/a3552af11a531717378b6337a174f9340d1099dc) | `a3552af11a531717378b6337a174f9340d1099dc` | 290 | Primary Sui Move house-style, engineering, and audit reference |
 | [interest-protocol/memez-gg](https://github.com/interest-protocol/memez-gg/tree/00596fdac4dd11f427c7bc594e566ce36160db93) | `00596fdac4dd11f427c7bc594e566ce36160db93` | 135 | Historical Blast behavior and integration reference |
 
+Focused vesting review on 2026-08-29 additionally checked OpenZeppelin
+Contracts for Sui at
+[`57399c7`](https://github.com/OpenZeppelin/contracts-sui/tree/57399c7c9bd51c0cf11d5ea8c5e31091198293c4),
+Raydium CPI at
+[`115df27`](https://github.com/raydium-io/raydium-cpi/tree/115df2779d53bacc7db9d0be2773a4b48a6d372b),
+and the Solana Foundation rewards program at
+[`20522ed`](https://github.com/solana-foundation/rewards/tree/20522ed0bf7a514fcd50f872de90179e0dbbefe6).
+The comparison is in
+[research/vesting-contract-patterns-2026.md](research/vesting-contract-patterns-2026.md).
+
 Focused authority review on 2026-08-22 additionally checked the Memez lockfile's
 pinned [Interest access-control package](https://github.com/interest-protocol/interest-mvr/tree/91e2f4f83626c1cb924bac246932574501c21bf8/access-control/contracts)
 at `91e2f4f83626c1cb924bac246932574501c21bf8` and OpenZeppelin Contracts
@@ -23,7 +33,8 @@ The comparison of cap intake, manager custody, ticket/receipt authorization, and
 Walrus' separate display-owned Publisher use is in
 [research/walrus-upgrade-cap-custody.md](research/walrus-upgrade-cap-custody.md).
 
-Every tracked blob was inventoried and content-read at the commits above. The
+Every tracked blob in the two baseline references was inventoried and
+content-read at the commits above. The
 review then treated authored guidance, contracts, tests, SDK/deployment scripts,
 manifests, lockfiles, deployment JSON, vendored code, images, and generated
 coverage artifacts according to their evidentiary value. Generated `.trace` and
@@ -135,6 +146,9 @@ external ABI claim in those records cites one of these commits as
 | `turbos@cff6932` | [turbos-finance/turbos-sui-move-interface](https://github.com/turbos-finance/turbos-sui-move-interface) | `cff693265bfc41c7de2233afe31c9d7428adc9e1` | `clmm/sources/pool_factory.move`, `clmm/sources/pool.move`, `clmm/sources/lib/math_tick.move`, `clmm/Move.toml` |
 | `suins@692a12c` | [MystenLabs/suins-contracts](https://github.com/MystenLabs/suins-contracts) | `692a12c02260fd4abecf1630d33db819e4bcadef` | `packages/suins/sources/registry.move`, `packages/suins/sources/name_record.move` |
 | `memez@00596fd` | [interest-protocol/memez-gg](https://github.com/interest-protocol/memez-gg) | `00596fdac4dd11f427c7bc594e566ce36160db93` | `fun/sources/errors.move`, `fun/sources/events.move`, `fun/sources/lib/events_wrapper.move`, `fun/sources/structs/constant_product.move`, `.../burner.move`, `.../verifier.move`, `.../fees.move`, `fun/sources/memez_fun.move`, `periphery/templates/*`, `migrators/xpump/*` |
+| `openzeppelin-sui@57399c7` | [OpenZeppelin/contracts-sui](https://github.com/OpenZeppelin/contracts-sui) | `57399c7c9bd51c0cf11d5ea8c5e31091198293c4` | `contracts/finance/sources/vesting_wallet.move`, `contracts/finance/sources/vesting_wallet_linear.move`, vesting tests and audit index |
+| `raydium-cpi@115df27` | [raydium-io/raydium-cpi](https://github.com/raydium-io/raydium-cpi) | `115df2779d53bacc7db9d0be2773a4b48a6d372b` | `programs/launch-cpi/src/states.rs` |
+| `solana-rewards@20522ed` | [solana-foundation/rewards](https://github.com/solana-foundation/rewards) | `20522ed0bf7a514fcd50f872de90179e0dbbefe6` | `program/src/utils/vesting_utils.rs`, `program/src/utils/revoke_utils.rs`, `program/src/instructions/definition.rs`, vesting and revocation tests |
 
 Current documentation additionally consulted on 2026-08-22: the Sui Currency
 Standard, the fungible-token creation guide, and the programmable-transaction-block

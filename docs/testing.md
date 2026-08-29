@@ -153,13 +153,14 @@ the decision that owns it. Nothing here may be marked done from prose alone.
 | --- | --- | --- |
 | 0.1 | P10 cross-package hot-potato threading compile fixture | [0002](decisions/0002-coin-creation-and-currency-authority.md) |
 | 0.2 | Retired: initializer-finalized supply removes `TreasuryCap` command threading | [0035](decisions/0035-initializer-finalized-meme-supply.md) |
-| 0.3 | P13 `init` accepting a shared object | [0002](decisions/0002-coin-creation-and-currency-authority.md) |
-| 0.4 | P14 command result as a Move reference | [0002](decisions/0002-coin-creation-and-currency-authority.md) |
-| 0.5 | P1 type argument naming a package published in the same transaction | [0002](decisions/0002-coin-creation-and-currency-authority.md) |
-| 0.6 | P2 `&mut Currency<T>` shared-input only | [0003](decisions/0003-treasury-cap-lifetime-and-burn.md) |
-| 0.7 | P3 Cetus canonical ordering direction | [0010](decisions/0010-migration-and-venue-adapters.md) |
-| 0.8 | P8 Display freeze semantics, P12 generic instantiation | [0001](decisions/0001-sui-package-and-module-layout.md) |
-| 0.9 | P4, P5, P7, P9 live venue reads | [0006](decisions/0006-fees-and-launch-paths.md), [0010](decisions/0010-migration-and-venue-adapters.md) |
+| 0.3 | P6 generated-package initializer calls Blast and transfers the returned ticket | [0051](decisions/0051-generated-meme-package-template.md) |
+| 0.4 | P13 `init` accepting a shared object | [0002](decisions/0002-coin-creation-and-currency-authority.md) |
+| 0.5 | P14 command result as a Move reference | [0002](decisions/0002-coin-creation-and-currency-authority.md) |
+| 0.6 | P1 type argument naming a package published in the same transaction | [0002](decisions/0002-coin-creation-and-currency-authority.md) |
+| 0.7 | P2 `&mut Currency<T>` shared-input only | [0003](decisions/0003-treasury-cap-lifetime-and-burn.md) |
+| 0.8 | P3 Cetus canonical ordering direction | [0010](decisions/0010-migration-and-venue-adapters.md) |
+| 0.9 | P8 Display freeze semantics, P12 generic instantiation | [0001](decisions/0001-sui-package-and-module-layout.md) |
+| 0.10 | P4, P5, P7, P9 live venue reads | [0006](decisions/0006-fees-and-launch-paths.md), [0010](decisions/0010-migration-and-venue-adapters.md) |
 
 ### Gate 1 — core invariants
 
@@ -182,6 +183,7 @@ the decision that owns it. Nothing here may be marked done from prose alone.
 | 2.3 | Fee-split and LP-fee authority, bounds and events | [0007](decisions/0007-acl-pause-and-versioning.md), [0012](decisions/0012-flywheel-features.md) |
 | 2.4 | Address/SuiNS and X one-time creator-cap claims, coin-type isolation, threat table, backend integration P15, and attestation vectors | [0013](decisions/0013-creator-fee-authority-and-x-claims.md), [0016](decisions/0016-unified-creator-cap-claim-and-suins-periphery.md), [0017](decisions/0017-coin-type-domain-for-x-creator-claims.md) |
 | 2.5 | RevShare bounds, claimable cap, challenge, sweep, double-claim | [0009](decisions/0009-referrals-and-revshare.md) |
+| 2.6 | Vesting time boundaries, rounding, permissionless fixed-recipient claims, fair cancellation, cap binding, conservation, and replay | [0052](decisions/0052-stepped-linear-vesting.md), [vectors/vesting.json](vectors/vesting.json) |
 
 ### Gate 3 — migration and release
 

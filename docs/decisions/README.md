@@ -96,8 +96,10 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0048](0048-sui-package-workspace.md) | Sui package workspace | **accepted** |
 | [0049](0049-audit-hardened-package-version-and-launch-intake.md) | Audit-hardened package cutover and launch intake | **accepted** |
 | [0050](0050-module-local-package-version-constant.md) | Module-local package-version constant | **accepted** |
+| [0051](0051-generated-meme-package-template.md) | Generated Meme package template | **accepted** |
+| [0052](0052-stepped-linear-vesting.md) | Fully funded stepped-linear vesting | **accepted** |
 
-ADRs 0013–0036 and 0038–0050 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
+ADRs 0013–0036 and 0038–0052 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -205,6 +207,14 @@ ADR 0050 keeps the compiled package generation as a private constant beside the
 `PackageVersion` initializer and guards. The package constants registry no
 longer exposes a value that no other module consumes.
 
+ADR 0051 adds the buildable generated Meme package template. Its initializer
+calls the Blast launch-ticket constructor and sends the returned ticket to the
+publisher, converting P6 into compile evidence.
+
+ADR 0052 adds a framework-only Sui vesting package with fully funded,
+fixed-beneficiary stepped-linear schedules. Cancellation is opt-in through a
+schedule-bound capability and can return only unvested value.
+
 ## Open premises
 
 These ADRs depend on facts that require either a pinned Sui toolchain or a live
@@ -218,7 +228,6 @@ falsification test.
 | P3 | Which direction is the Cetus canonical pair ordering? | [0010](0010-migration-and-venue-adapters.md) |
 | P4 | Do Bluefin or Turbos expose a reservation primitive, and how do they order pairs? | [0010](0010-migration-and-venue-adapters.md) |
 | P5 | Which quote assets does Cetus currently admit to `allowed_pair_config`? | [0005](0005-quote-asset-generalisation.md), [0010](0010-migration-and-venue-adapters.md) |
-| P6 | May an `init` call a dependency package to construct and return an object? | [0002](0002-coin-creation-and-currency-authority.md) |
 | P7 | What is Bluefin's exact protocol fee share on creator-created pools? | [0006](0006-fees-and-launch-paths.md) |
 | P8 | Does `display_registry` expose any `DisplayCap` destruction path? | [0001](0001-sui-package-and-module-layout.md) |
 | P9 | Can an adapter determine pair support before consuming the migration payload? | [0005](0005-quote-asset-generalisation.md), [0010](0010-migration-and-venue-adapters.md) |

@@ -2,7 +2,7 @@
 name = "blast_fun"
 edition = "2024"
 license = "MIT"
-authors = ["Jose Cerqueira"]
+authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
 
 [addresses]
 blast_fun = "0x0"

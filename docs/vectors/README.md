@@ -11,6 +11,7 @@ that an unexplained numeric difference between the two is a release blocker.
 | [`fees.json`](fees.json) | configurable protocol/creator shares, rounding, update sequences, maximum width | [`../decisions/0022-dual-asset-fee-ledger-and-claims.md`](../decisions/0022-dual-asset-fee-ledger-and-claims.md) |
 | [`quote-decimals.json`](quote-decimals.json) | decimal combinations, both pair orientations, `sqrt_price_x64`, display price | [`../decisions/0005-quote-asset-generalisation.md`](../decisions/0005-quote-asset-generalisation.md), [`../decisions/0010-migration-and-venue-adapters.md`](../decisions/0010-migration-and-venue-adapters.md) |
 | [`x-creator-claim.json`](x-creator-claim.json) | canonical coin-type-bound X claim BCS encoding and Ed25519 verification fixture | [`../decisions/0017-coin-type-domain-for-x-creator-claims.md`](../decisions/0017-coin-type-domain-for-x-creator-claims.md) |
+| [`vesting.json`](vesting.json) | stepped-linear cliff boundaries, rounding remainder, and maximum-width arithmetic | [`../decisions/0052-stepped-linear-vesting.md`](../decisions/0052-stepped-linear-vesting.md) |
 
 ## Rules
 

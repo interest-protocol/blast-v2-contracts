@@ -38,9 +38,10 @@ formulas require ADRs and shared test vectors.
 | Trade-fee policy and ledger | Admins set the cold Meme/Quote rate pair in `LaunchConfig`, each capped at 10%; every new launch snapshots that pair, and fees accrue into an embedded four-balance ledger using the current global protocol share, with ceiling rounding assigned to protocol | [decisions/0022-dual-asset-fee-ledger-and-claims.md](decisions/0022-dual-asset-fee-ledger-and-claims.md), [decisions/0041-launch-config-owned-trade-fees.md](decisions/0041-launch-config-owned-trade-fees.md) |
 | Launch state intake | One permissionless constructor consumes a generated ticket, snapshots cold policy, partitions initial Meme custody, initializes zero Quote/pending-burn/fee balances, and preserves the one-time creator and metadata-cap claim; a consuming function publishes the key-only launch as top-level shared state | [decisions/0040-normalized-launch-state-intake.md](decisions/0040-normalized-launch-state-intake.md), [decisions/0042-key-only-shared-launch.md](decisions/0042-key-only-shared-launch.md) |
 | Operational version | One shared `PackageVersion` gates every mutable core shared object; native upgrade commit is separate from exact-next-version activation | [decisions/0049-audit-hardened-package-version-and-launch-intake.md](decisions/0049-audit-hardened-package-version-and-launch-intake.md) |
+| Independent vesting | One framework-only package provides fully funded fixed-beneficiary stepped-linear schedules with optional fair cancellation; automatic creator allocation remains outside launch intake | [decisions/0052-stepped-linear-vesting.md](decisions/0052-stepped-linear-vesting.md) |
 
 The full index, including every open premise, is in
-[decisions/README.md](decisions/README.md). ADRs 0013–0049 are accepted; economic
+[decisions/README.md](decisions/README.md). ADRs 0013–0052 are accepted; economic
 constants not fixed by those accepted records and the remaining proposed records still
 await approval.
 
