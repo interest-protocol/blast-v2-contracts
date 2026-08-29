@@ -6,6 +6,7 @@ SOURCE_DIR="$PACKAGE_DIR/sources"
 VAULT_SOURCE="$SOURCE_DIR/vault.move"
 BLUEFIN_SOURCE="$SOURCE_DIR/bluefin.move"
 MMT_SOURCE="$SOURCE_DIR/mmt.move"
+CETUS_SOURCE="$SOURCE_DIR/cetus.move"
 EVENTS_SOURCE="$SOURCE_DIR/events.move"
 
 fail() {
@@ -33,6 +34,7 @@ reject_pattern() {
 [[ -f "$VAULT_SOURCE" ]] || fail "missing sources/vault.move"
 [[ -f "$BLUEFIN_SOURCE" ]] || fail "missing sources/bluefin.move"
 [[ -f "$MMT_SOURCE" ]] || fail "missing sources/mmt.move"
+[[ -f "$CETUS_SOURCE" ]] || fail "missing sources/cetus.move"
 [[ -f "$EVENTS_SOURCE" ]] || fail "missing sources/events.move"
 
 require_pattern "$EVENTS_SOURCE" 'public struct VaultCreated' 'vault creation event'
@@ -127,6 +129,52 @@ require_pattern "$MMT_SOURCE" 'assert_coin_order<Meme, Quote>\(true\);' \
 require_pattern "$MMT_SOURCE" 'assert_coin_order<Meme, Quote>\(false\);' \
     'MMT Meme-Y order assertion before redemption'
 
+require_pattern "$CETUS_SOURCE" 'public struct Witness' 'sealed Cetus witness'
+require_pattern "$CETUS_SOURCE" 'public struct Venue' 'sealed Cetus venue marker'
+require_pattern "$CETUS_SOURCE" 'public fun migrate_new_meme_a' \
+    'Cetus new Meme-A migration route'
+require_pattern "$CETUS_SOURCE" 'public fun migrate_new_meme_b' \
+    'Cetus new Meme-B migration route'
+require_pattern "$CETUS_SOURCE" 'public fun migrate_existing_meme_a' \
+    'Cetus existing Meme-A migration route'
+require_pattern "$CETUS_SOURCE" 'public fun migrate_existing_meme_b' \
+    'Cetus existing Meme-B migration route'
+require_pattern "$CETUS_SOURCE" 'public fun collect_fees_meme_a' \
+    'Cetus Meme-A fee collection route'
+require_pattern "$CETUS_SOURCE" 'public fun collect_fees_meme_b' \
+    'Cetus Meme-B fee collection route'
+require_pattern "$CETUS_SOURCE" 'factory::is_right_order<Meme, Quote>' \
+    'Cetus Meme-A canonical-order check'
+require_pattern "$CETUS_SOURCE" 'factory::is_right_order<Quote, Meme>' \
+    'Cetus Meme-B canonical-order check'
+require_pattern "$CETUS_SOURCE" 'pool_creator::full_range_tick_range' \
+    'Cetus full-range tick derivation'
+require_pattern "$CETUS_SOURCE" 'pool_creator::create_pool_v3' \
+    'Cetus new-pool creation'
+require_pattern "$CETUS_SOURCE" 'pool::open_position' \
+    'Cetus adopted-pool position creation'
+require_pattern "$CETUS_SOURCE" 'pool::add_liquidity_fix_coin' \
+    'Cetus exact add-liquidity receipt flow'
+require_pattern "$CETUS_SOURCE" 'pool::add_liquidity_pay_amount' \
+    'Cetus add-liquidity payment query'
+require_pattern "$CETUS_SOURCE" 'pool::repay_add_liquidity' \
+    'Cetus add-liquidity repayment'
+require_pattern "$CETUS_SOURCE" 'migration_math::assert_price_within_bps' \
+    'Cetus existing-pool price guard'
+require_pattern "$CETUS_SOURCE" 'pool::current_sqrt_price' \
+    'Cetus current pool price query'
+require_pattern "$CETUS_SOURCE" 'pool::collect_fee' \
+    'Cetus fee collection'
+require_pattern "$CETUS_SOURCE" 'true,' 'Cetus fee recalculation'
+require_pattern "$CETUS_SOURCE" 'migration_math::minimum_utilized_amount' \
+    'Cetus one-basis-point minimum utilization'
+require_pattern "$CETUS_SOURCE" 'migration_math::assert_residual_within_bps' \
+    'Cetus one-basis-point residual assertion'
+require_pattern "$CETUS_SOURCE" 'events::migration_completed' \
+    'Cetus completed migration event emission'
+require_pattern "$CETUS_SOURCE" 'vault::accrue_fees' \
+    'Cetus shared replay-complete fee accrual'
+
 MMT_VENUE_CONSTRUCTION_COUNT="$(rg -o 'let venue = Venue\(\)' "$MMT_SOURCE" | wc -l || true)"
 [[ "$MMT_VENUE_CONSTRUCTION_COUNT" -eq 4 ]] || \
     fail "MMT must construct its sealed venue witness for both creation and collection routes"
@@ -137,6 +185,28 @@ MMT_ADD_LIQUIDITY_LINE="$(rg -n -m1 'liquidity::add_liquidity' "$MMT_SOURCE" | c
 MMT_POOL_TRANSFER_LINE="$(rg -n -m1 'pool::transfer\(pool\)' "$MMT_SOURCE" | cut -d: -f1)"
 [[ "$MMT_POOL_TRANSFER_LINE" -gt "$MMT_ADD_LIQUIDITY_LINE" ]] || \
     fail "MMT pool sharing must follow position creation and liquidity addition"
+
+CETUS_VENUE_CONSTRUCTION_COUNT="$(rg -o 'let venue = Venue\(\)' "$CETUS_SOURCE" | wc -l || true)"
+[[ "$CETUS_VENUE_CONSTRUCTION_COUNT" -eq 6 ]] || \
+    fail "Cetus must construct its sealed venue witness for all migration and collection routes"
+mapfile -t CETUS_REDEEM_LINES < <(rg -n 'payload\.redeem_migration' "$CETUS_SOURCE" | cut -d: -f1)
+mapfile -t CETUS_PRICE_GUARD_LINES < <(rg -n 'migration_math::assert_price_within_bps' "$CETUS_SOURCE" | cut -d: -f1)
+mapfile -t CETUS_OPEN_POSITION_LINES < <(rg -n 'pool::open_position' "$CETUS_SOURCE" | cut -d: -f1)
+[[ "${#CETUS_REDEEM_LINES[@]}" -eq 4 ]] || \
+    fail "Cetus must redeem exactly once for every migration route"
+[[ "${#CETUS_PRICE_GUARD_LINES[@]}" -eq 2 ]] || \
+    fail "Cetus must guard both adoption routes"
+[[ "${#CETUS_OPEN_POSITION_LINES[@]}" -eq 2 ]] || \
+    fail "Cetus must open one position for each adoption route"
+for CETUS_ADOPTION_INDEX in 0 1; do
+    CETUS_REDEEM_LINE="${CETUS_REDEEM_LINES[$((CETUS_ADOPTION_INDEX + 2))]}"
+    CETUS_PRICE_GUARD_LINE="${CETUS_PRICE_GUARD_LINES[$CETUS_ADOPTION_INDEX]}"
+    CETUS_OPEN_POSITION_LINE="${CETUS_OPEN_POSITION_LINES[$CETUS_ADOPTION_INDEX]}"
+    [[ "$CETUS_REDEEM_LINE" -lt "$CETUS_PRICE_GUARD_LINE" ]] || \
+        fail "Cetus adoption price guard must follow payload redemption"
+    [[ "$CETUS_PRICE_GUARD_LINE" -lt "$CETUS_OPEN_POSITION_LINE" ]] || \
+        fail "Cetus adoption price guard must precede position mutation"
+done
 
 VENUE_CONSTRUCTION_COUNT="$(rg -o 'let venue = Venue\(\)' "$BLUEFIN_SOURCE" | wc -l || true)"
 [[ "$VENUE_CONSTRUCTION_COUNT" -eq 2 ]] || \
@@ -149,8 +219,10 @@ reject_pattern 'events_wrapper|public struct Event<' \
 reject_pattern 'fee_ledger_mut' 'raw fee-ledger mutation is forbidden'
 reject_pattern 'remove_liquidity' 'principal removal is forbidden'
 reject_pattern 'close_position' 'position closure is forbidden'
-reject_pattern 'migrate_meme_b|collect_fees_meme_b|meme_is_coin_a' \
-    'Bluefin must use only the deterministic Meme-A/Quote-B orientation'
+reject_pattern 'burn_position|destroy_position' 'Cetus position destruction is forbidden'
+if rg -q 'migrate_meme_b|collect_fees_meme_b|meme_is_coin_a' "$BLUEFIN_SOURCE"; then
+    fail "Bluefin must use only the deterministic Meme-A/Quote-B orientation"
+fi
 reject_pattern '(position\.(burn|delete|destroy)|((burn|delete|destroy)[[:space:]]*\([^)]*position))' \
     'position burn or destruction is forbidden'
 reject_pattern '(sequence|revision|nonce|schema_version|action_tag):' \
@@ -175,6 +247,24 @@ if [[ "$COMPACT_SOURCE" =~ transfer::(public_)?transfer\([^\)]*position ]]; then
 fi
 if [[ "$COMPACT_SOURCE" =~ publicfun[^\{]*Position ]]; then
     fail "public Bluefin position exposure is forbidden"
+fi
+
+CETUS_COMPACT_SOURCE="$(tr -d '[:space:]' < "$CETUS_SOURCE")"
+if [[ "$CETUS_COMPACT_SOURCE" =~ abort0 ]]; then
+    fail "production Cetus abort stubs are forbidden"
+fi
+if [[ "$CETUS_COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*Venue ]]; then
+    fail "public or package Cetus venue exposure is forbidden"
+fi
+if [[ "$COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*cetus::Venue ]]; then
+    fail "cross-module Cetus venue exposure is forbidden"
+fi
+if [[ "$CETUS_COMPACT_SOURCE" =~ publicfun[^\{]*Position ]]; then
+    fail "public Cetus position exposure is forbidden"
+fi
+CETUS_PUBLIC_SIGNATURES="$(rg -U 'public fun [^{]+\{' "$CETUS_SOURCE")"
+if [[ "$CETUS_PUBLIC_SIGNATURES" =~ (sqrt_price|orientation|meme_is) ]]; then
+    fail "caller-supplied Cetus price or orientation is forbidden"
 fi
 
 BLUEFIN_COMPACT_SOURCE="$(tr -d '[:space:]' < "$BLUEFIN_SOURCE")"

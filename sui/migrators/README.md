@@ -67,6 +67,32 @@ requires the sealed MMT venue value, verifies the vault, pool, and position
 identities, and requires unchanged positive position liquidity. Coin X/Y fees
 are normalized to Meme/Quote before they enter the common fee ledger.
 
+## Cetus routes
+
+Cetus has new-pool and adopted-pool routes for both canonical type orders.
+`migrate_new_meme_a` and `migrate_existing_meme_a` require Meme as coin A.
+`migrate_new_meme_b` and `migrate_existing_meme_b` require Meme as coin B.
+Each route checks the Cetus canonical order and its pool-key rule. The caller
+does not supply an orientation or a price.
+
+New routes derive the Q64.64 price from redeemed atomic balances. They use
+`pool_creator::full_range_tick_range` and create unpermissioned pools through
+`create_pool_v3`. The adapter gets the fee rate from the live Cetus fee tier.
+It requires at least 99.99% use and at most one-basis-point residual for both
+assets. Residual Meme and Quote coins go to the live runtime treasury.
+
+Existing routes redeem the core payload before the balance-derived target exists.
+They immediately compare that target with `pool::current_sqrt_price` at 50 bps,
+before opening a position or adding liquidity. They use Cetus's fixed-coin
+receipt, payment, and repayment flow, then check the created position belongs
+to the supplied pool. Atomic failure restores the core launch transition.
+
+`collect_fees_meme_a` and `collect_fees_meme_b` require a real private Cetus
+venue value. They check vault, pool, and position IDs and positive liquidity.
+They call `pool::collect_fee(..., true)` and require unchanged liquidity.
+The Meme-B route reverses Cetus A/B fee balances before common Meme/Quote
+accrual.
+
 ## Replayable events
 
 The dedicated `events` module owns five strongly typed payloads and their
@@ -96,6 +122,8 @@ commit:
 | --- | --- |
 | Bluefin Spot interface | `91ce930575b2aa3decab9b7e129b8002deba80c1` |
 | MMT V3 interface | `e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82` |
+| Cetus IntegerMate | `09a12d9b171122883d9350039d4ed6e8400033b9` |
+| Cetus MoveSTL | `0681fec63a310ae753d03a06f7c05d3e2925bb09` |
 | Sui | `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` |
 | IntegerMate | `09a12d9b171122883d9350039d4ed6e8400033b9` |
 | IntegerLibrary | `8a534bd1c0b334cd3937c27987f3147a06ba6a18` |
@@ -118,6 +146,14 @@ Mainnet revision 5 is
 The adapter uses the pinned revision's canonical-order, pool, position,
 liquidity, collection, and tick-helper interfaces.
 
+The local Cetus interface preserves original package
+`0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb` and
+sets `published-at` to mainnet revision 14 at
+`0x25ebb9a7c50eb17b3fa9c5a30fb8b5ad8f97caaf4928943acbcff7153dfee5e3`.
+That immutable package has digest `FEdn2yRh28atu7tANr6gCWQ3gtDSD2EZmyEeryTuokoi`.
+The normalized interface includes only the public Cetus types and functions
+used by this adapter.
+
 ## Verification and immutable-release gate
 
 Run from this directory:
@@ -129,12 +165,12 @@ sui move build -e mainnet
 bash scripts/check_source_boundaries.sh
 ```
 
-The Bluefin and MMT dependencies contain `abort 0` link stubs. A local build
-proves type compatibility only. Before production release, verify
-published-package lineage and normalized ABI. Then run mainnet dev-inspect
-fixtures for Bluefin and both canonical MMT orientations, creation and exact
-balance-derived initialization, aligned ticks, one-basis-point residual limits,
-and unchanged liquidity during fee collection.
+The Bluefin, MMT, and Cetus interface dependencies contain `abort 0` link
+stubs. A local build proves type compatibility only. Before production release,
+verify published-package lineage and normalized ABI. Then run mainnet
+dev-inspect fixtures for every creation and adoption orientation, exact
+balance-derived initialization, 50-bps Cetus adoption checks, one-basis-point
+residual limits, and fee collection without a liquidity change.
 
 Source omission does not make principal custody permanent while this package
 has an `UpgradeCap`. After the release checks pass, destroy the package
@@ -162,6 +198,17 @@ is valid before this irreversible step.
 | 1 | `EPositionPoolMismatch` | The pool, vault, and position IDs do not match. |
 | 2 | `EZeroPositionLiquidity` | The created or collected position has no principal liquidity. |
 | 3 | `EPositionLiquidityChanged` | MMT fee collection changed position principal. |
+
+## Cetus errors
+
+| Code | Name | Meaning |
+| --- | --- | --- |
+| 0 | `EInvalidCoinOrder` | The selected Cetus route does not match canonical order. |
+| 1 | `EPositionPoolMismatch` | The vault, pool, and position IDs do not match. |
+| 2 | `EZeroPositionLiquidity` | The created or collected position has no principal liquidity. |
+| 3 | `EPositionLiquidityChanged` | Cetus fee collection changed position principal. |
+| 4 | `EPaymentExceedsBalance` | Cetus requested more than the redeemed balance. |
+| 5 | `EInsufficientUtilization` | Cetus used less than the one-basis-point minimum. |
 
 ## Vault errors
 
