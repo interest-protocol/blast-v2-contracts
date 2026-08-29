@@ -43,6 +43,19 @@ fun both_protocol_coins_have_independent_flexible_supplies() {
     fixture.end();
 }
 
+/// The production initializers must deliver both caps empty to the publisher.
+#[test]
+fun package_initialization_delivers_empty_treasury_caps_to_the_sender() {
+    let mut fixture = start_from_init();
+
+    fixture.next_tx!(ADMIN, |f| {
+        assert_eq!(f.fun_cap.total_supply(), 0);
+        assert_eq!(f.blast_cap.total_supply(), 0);
+    });
+
+    fixture.end();
+}
+
 // === Fixture Macros ===
 
 macro fun currency_next_tx(
@@ -68,6 +81,19 @@ fun start(): CurrencyFixture {
     let mut scenario = test_scenario::begin(ADMIN);
     let fun_cap = fun_sui::create_for_testing(scenario.ctx());
     let blast_cap = blast_sui::create_for_testing(scenario.ctx());
+
+    CurrencyFixture { scenario, fun_cap, blast_cap }
+}
+
+/// Runs both production coin initializers and takes the delivered caps.
+fun start_from_init(): CurrencyFixture {
+    let mut scenario = test_scenario::begin(ADMIN);
+    fun_sui::init_for_testing(scenario.ctx());
+    blast_sui::init_for_testing(scenario.ctx());
+
+    scenario.next_tx(ADMIN);
+    let fun_cap = scenario.take_from_sender<TreasuryCap<FUN_SUI>>();
+    let blast_cap = scenario.take_from_sender<TreasuryCap<BLAST_SUI>>();
 
     CurrencyFixture { scenario, fun_cap, blast_cap }
 }

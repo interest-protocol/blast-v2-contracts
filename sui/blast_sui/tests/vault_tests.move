@@ -799,6 +799,30 @@ fun fun_sui_mint_keeps_activated_receipt_during_safe_mode() {
     fixture.end();
 }
 
+/// One MIST above the low-water mark keeps the active fun position intact.
+#[test]
+fun buffer_above_the_low_water_mark_keeps_active_fun_stake() {
+    let mut fixture = start_vault();
+    let reserve = constants::fun_rounding_reserve_mist!();
+    let low_water = constants::fun_exit_low_water_mist!();
+    fixture.mint_fun(20 * MIST_PER_SUI);
+    fixture.advance_epoch();
+    fixture.sync();
+
+    fixture.next_tx!(USER, |f| {
+        f.vault!().consume_fun_buffer_for_testing(reserve - low_water - 1);
+    });
+
+    let custody = fixture.sync();
+    let (fun_custody, _, _, fun_supply, _) = custody.vault_custody_fields();
+    let (_, pending, tokens, _) = fun_custody.pool_custody_fields();
+    assert_eq!(pending, 0);
+    assert!(tokens > 0);
+    assert_eq!(fun_custody.pool_assets(), fun_supply + low_water + 1);
+
+    fixture.end();
+}
+
 /// A depleted fun buffer keeps a newly activated receipt for one full reward
 /// epoch, realizes those rewards, restores the reserve, and resumes conversion.
 #[test]
@@ -911,6 +935,14 @@ fun blast_request_restakes_realized_fun_and_emits_final_custody() {
 fun fun_sui_mint_is_rejected_after_the_validator_left() {
     let mut fixture = start_unwound_vault(0);
     fixture.mint_fun(MIST_PER_SUI);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EZeroAmount, location = blast_sui::vault)]
+fun zero_fun_sui_mint_is_rejected_before_the_unwind_check() {
+    let mut fixture = start_unwound_vault(0);
+    fixture.mint_fun(0);
     fixture.end();
 }
 
@@ -1775,6 +1807,26 @@ fun zero_blast_sui_redemption_is_rejected() {
     fixture.end();
 }
 
+/// The smallest successful post-fee redemption pays exactly one MIST.
+#[test]
+fun two_mist_blast_redemption_pays_one_mist_after_the_fee() {
+    let mut fixture = start_vault_with_deposit();
+
+    fixture.next_tx!(USER, |f| {
+        let mut blast_coin = f.take_blast_coin();
+        let two_mist = blast_coin.split(2, f.ctx!());
+        let sui_out = f
+            .vault!()
+            .redeem_blast_sui(&f.version, f.system!(), two_mist, 1, f.ctx!());
+
+        assert_eq!(sui_out.value(), 1);
+        transfer::public_transfer(blast_coin, USER);
+        transfer::public_transfer(sui_out, USER);
+    });
+
+    fixture.end();
+}
+
 #[test]
 #[expected_failure(abort_code = errors::EZeroSuiAfterFee, location = blast_sui::vault)]
 fun one_mist_blast_redemption_cannot_burn_for_zero_sui_after_fee() {
@@ -2028,6 +2080,106 @@ fun every_mutation_emits_a_custody_snapshot_that_replays_to_live_state() {
         assert_custody_matches(&after_last_sync, f.vault!());
         assert_eq!(f.vault!().fun_supply_for_testing(), 13 * MIST_PER_SUI);
         assert_eq!(f.vault!().blast_supply_for_testing(), BOOTSTRAP + shares - exit_shares);
+    });
+
+    fixture.end();
+}
+
+/// The fee rate replays from the creation fact plus ordered change facts.
+#[test]
+fun fee_rate_replays_from_creation_and_change_facts() {
+    let mut fixture = start_create();
+    let validator = fixture.validator();
+    let created;
+
+    fixture.next_tx!(OWNER, |f| {
+        let pool_id = f.system!().validator_staking_pool_id(validator);
+        created = f.create_vault(validator, pool_id, BOOTSTRAP, 0);
+    });
+
+    let mut fixture = fixture.into_vault_fixture();
+    let (_, _, _, _, _, _, mut replayed_fee, _) = created.vault_created_fields();
+    let (shares, _) = fixture.mint_blast(DEPOSIT);
+
+    fixture.next_tx!(OWNER, |f| {
+        f.vault!().set_redeem_fee(
+            &f.version,
+            &f.authority,
+            &f.super_admin_cap,
+            constants::max_redeem_fee_bps!(),
+        );
+    });
+    let changed = events::collect_one<events::RedeemFeeChanged>(0);
+    let (old_fee, new_fee) = changed.redeem_fee_changed_fields();
+    assert_eq!(old_fee, replayed_fee);
+    replayed_fee = new_fee;
+
+    fixture.next_tx!(USER, |f| {
+        let mut blast_coin = f.take_blast_coin();
+        let redeem_coin = blast_coin.split(shares / 2, f.ctx!());
+        let sui_out = f
+            .vault!()
+            .redeem_blast_sui(&f.version, f.system!(), redeem_coin, 0, f.ctx!());
+
+        transfer::public_transfer(blast_coin, USER);
+        transfer::public_transfer(sui_out, USER);
+    });
+    let redeemed = events::collect_one<events::BlastSuiRedeemed>(0);
+    let (_, gross, fee, _, _) = redeemed.blast_sui_redeemed_fields();
+    assert_eq!(fee, math::blast_redeem_fee_up(gross, replayed_fee));
+
+    fixture.next_tx!(USER, |f| {
+        assert_eq!(f.vault!().redeem_fee_bps_for_testing(), replayed_fee);
+    });
+
+    fixture.end();
+}
+
+/// Seeded mint, redeem, donate, reward, and sync sequences preserve the fun
+/// 1:1 backing everywhere and the sweep retention target after every sync.
+#[test]
+fun random_sequences_preserve_fun_backing_and_the_sweep_bound() {
+    let mut seed = 0x5EED_B1A5_7000_0001;
+    let reserve = constants::fun_rounding_reserve_mist!();
+    let mut fixture = start_vault_with_deposit();
+    // Value of USER's most recent funSUI coin object and the live supply.
+    let mut top_fun = 0;
+    let mut fun_total = 0;
+
+    30u64.do!(|_| {
+        seed = next_random(seed);
+        let op = seed % 5;
+        let synced = op >= 3;
+        let custody = if (op == 0) {
+            let amount = 1 + seed % (2 * MIST_PER_SUI);
+            top_fun = amount;
+            fun_total = fun_total + amount;
+            fixture.mint_fun(amount)
+        } else if (op == 1 && top_fun > 1) {
+            let amount = 1 + seed % (top_fun - 1);
+            top_fun = top_fun - amount;
+            fun_total = fun_total - amount;
+            fixture.redeem_fun(amount)
+        } else if (op == 2) {
+            fixture.donate(1 + seed % MIST_PER_SUI)
+        } else {
+            if (op == 3) fixture.advance_epoch_with_rewards(130);
+            fixture.sync()
+        };
+
+        let (fun_custody, blast_custody, rate, fun_supply, blast_supply) =
+            custody.vault_custody_fields();
+        assert_eq!(fun_supply, fun_total);
+        assert!(fun_custody.pool_assets() >= fun_supply);
+        assert!(blast_custody.pool_assets() > 0);
+        assert!(blast_supply >= BOOTSTRAP);
+        if (synced) {
+            // Post-sweep retention: at most one floored pool token of surplus
+            // stays behind beyond the supply plus the rounding reserve.
+            let (_, rate_sui, rate_pool_tokens) = rate.exchange_rate_fields();
+            let slack = math::fun_conversion_loss_bound_up(rate_sui, rate_pool_tokens) + 1;
+            assert!(fun_custody.pool_assets() <= fun_supply + reserve + slack);
+        };
     });
 
     fixture.end();
@@ -2506,6 +2658,11 @@ fun sync(self: &mut VaultFixture): events::VaultCustody {
 
 fun advance_runner_epoch(runner: &mut TestRunner) {
     runner.advance_epoch(option::none()).destroy_for_testing();
+}
+
+/// Deterministic 64-bit linear congruential step for the seeded sequence test.
+fun next_random(seed: u64): u64 {
+    (((seed as u128) * 6364136223846793005 + 1442695040888963407) % 18446744073709551616) as u64
 }
 
 /// Returns a remainder coin to `recipient`, deleting it when a full redemption emptied it.

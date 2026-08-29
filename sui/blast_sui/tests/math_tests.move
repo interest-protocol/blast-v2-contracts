@@ -29,6 +29,17 @@ fun redemption_fee_rounds_up_to_one_mist_at_every_rate() {
     assert_eq!(math::blast_redeem_fee_up(10_000, 0), 0);
 }
 
+/// Catches an off-by-one on operands where the floor equals the exact quotient.
+#[test]
+fun share_math_is_exact_when_division_has_no_remainder() {
+    assert_eq!(math::blast_shares_out_down(10, 40, 20), 5);
+    assert_eq!(math::blast_gross_sui_out_down(10, 40, 20), 20);
+    assert_eq!(math::blast_redeem_fee_up(10_000, constants::default_redeem_fee_bps!()), 2);
+    assert_eq!(math::sui_at_rate_down(6, 30, 20), 9);
+    assert_eq!(math::pool_tokens_at_rate_down(9, 30, 20), 6);
+    assert_eq!(math::pool_tokens_for_sui_up(33, 100, 165), 20);
+}
+
 /// Catches intermediate multiplication overflow at the maximum supported coin amount.
 #[test]
 fun share_math_supports_maximum_u64_inputs() {
