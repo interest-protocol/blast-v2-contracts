@@ -64,10 +64,6 @@ public(package) fun active_pool_tokens(self: &Custody): u64 {
     if (self.active_stake.is_some()) self.active_stake.borrow().value() else 0
 }
 
-public(package) fun active_sui(self: &Custody): u64 {
-    self.active_sui
-}
-
 public(package) fun snapshot(self: &Custody): events::PoolCustody {
     events::pool_custody(
         self.liquid_sui.value(),
@@ -122,16 +118,17 @@ public(package) fun activate_pending(
     self.join_active(converted);
 }
 
-/// Withdraws a pending or activated native receipt to liquid SUI.
+/// Withdraws the pending native receipt to liquid SUI, realizing its rewards.
 ///
-/// This realizes rewards without requiring conversion to pool tokens. It is
-/// the recovery path when fun conversion rounding would consume its buffer.
+/// This recovery path avoids conversion to pool tokens when fun conversion
+/// rounding would consume its buffer. Callers guard on a present receipt.
 public(package) fun realize_pending(
     self: &mut Custody,
     system_state: &mut SuiSystemState,
     ctx: &mut TxContext,
 ) {
-    if (self.pending_stake.is_some()) self.withdraw_all_pending(system_state, ctx);
+    let pending = self.pending_stake.extract();
+    self.liquid_sui.join(system_state.request_withdraw_stake_non_entry(pending, ctx));
 }
 
 /// Joins externally activated pool tokens and revalues the combined position.
@@ -156,13 +153,15 @@ public(package) fun revalue(self: &mut Custody, rate_sui: u64, rate_pool_tokens:
 
 /// Moves exactly `amount` MIST out of custody: liquid first, then pending, then active.
 ///
-/// The native rounding margin is exactly tight, and its sufficiency assumes
-/// pool exchange rates never decrease (the pinned framework accrues rewards
-/// only and never slashes principal). If a framework upgrade ever let a rate
-/// decrease, `active_sui` could overstate the position and this function
-/// would abort with `insufficient_native_redemption` instead of underpaying
-/// remaining holders: redemptions fail closed until a package upgrade
-/// reprices the ledger.
+/// The native rounding margin carries headroom above the proven three-MIST
+/// bound, so bounded rounding drift in a live system upgrade cannot starve
+/// an exact redemption. Sufficiency still assumes pool exchange rates never
+/// decrease (the framework accrues rewards only and never slashes
+/// principal). If a rate ever decreased, `active_sui` could overstate the
+/// position and this function would abort with
+/// `insufficient_native_redemption` instead of underpaying remaining
+/// holders: redemptions fail closed until a package upgrade reprices the
+/// ledger.
 public(package) fun withdraw_exact(
     self: &mut Custody,
     system_state: &mut SuiSystemState,
@@ -198,7 +197,7 @@ public(package) fun unwind(
     system_state: &mut SuiSystemState,
     ctx: &mut TxContext,
 ) {
-    if (self.pending_stake.is_some()) self.withdraw_all_pending(system_state, ctx);
+    if (self.pending_stake.is_some()) self.realize_pending(system_state, ctx);
     if (self.active_stake.is_some()) {
         let held = self.active_pool_tokens();
         self.redeem_active(system_state, held, 0, 0, ctx);
@@ -284,11 +283,3 @@ fun withdraw_pending(
     self.liquid_sui.join(system_state.request_withdraw_stake_non_entry(withdrawn, ctx));
 }
 
-fun withdraw_all_pending(
-    self: &mut Custody,
-    system_state: &mut SuiSystemState,
-    ctx: &mut TxContext,
-) {
-    let pending = self.pending_stake.extract();
-    self.liquid_sui.join(system_state.request_withdraw_stake_non_entry(pending, ctx));
-}

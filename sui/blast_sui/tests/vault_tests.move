@@ -799,6 +799,47 @@ fun fun_sui_mint_keeps_activated_receipt_during_safe_mode() {
     fixture.end();
 }
 
+/// A buffer below one conversion-loss bound retains the activated receipt.
+#[test]
+fun zero_buffer_retains_the_receipt_through_its_activation_epoch() {
+    let mut fixture = start_vault();
+    let reserve = constants::fun_rounding_reserve_mist!();
+    fixture.mint_fun(20 * MIST_PER_SUI);
+    fixture.advance_epoch();
+
+    fixture.next_tx!(USER, |f| {
+        f.vault!().consume_fun_buffer_for_testing(reserve);
+    });
+
+    let custody = fixture.sync();
+    let (fun_custody, _, _, fun_supply, _) = custody.vault_custody_fields();
+    let (liquid, pending, tokens, _) = fun_custody.pool_custody_fields();
+    assert_eq!(liquid, 0);
+    assert_eq!(pending, 20 * MIST_PER_SUI);
+    assert_eq!(tokens, 0);
+    assert_eq!(fun_supply, 20 * MIST_PER_SUI);
+
+    fixture.end();
+}
+
+/// A native loss beyond every buffer freezes the vault closed instead of
+/// underpaying: the impossible-under-monotonic-rates state aborts everywhere.
+#[test]
+#[expected_failure(abort_code = errors::EFunBackingBelowSupply, location = blast_sui::vault)]
+fun a_native_loss_beyond_every_buffer_freezes_the_vault_closed() {
+    let mut fixture = start_vault();
+    fixture.mint_fun(MIST_PER_SUI / 2);
+
+    fixture.next_tx!(USER, |f| {
+        f.vault!().simulate_native_loss_for_testing(
+            constants::fun_rounding_reserve_mist!() + 1,
+        );
+        f.vault!().sync(&f.version, f.system!(), f.ctx!());
+    });
+
+    fixture.end();
+}
+
 /// One MIST above the low-water mark keeps the active fun position intact.
 #[test]
 fun buffer_above_the_low_water_mark_keeps_active_fun_stake() {
@@ -943,6 +984,22 @@ fun fun_sui_mint_is_rejected_after_the_validator_left() {
 fun zero_fun_sui_mint_is_rejected_before_the_unwind_check() {
     let mut fixture = start_unwound_vault(0);
     fixture.mint_fun(0);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EZeroAmount, location = blast_sui::vault)]
+fun zero_fun_sui_redemption_is_rejected() {
+    let mut fixture = start_vault();
+
+    fixture.next_tx!(USER, |f| {
+        let sui_out = f
+            .vault!()
+            .redeem_fun_sui(&f.version, f.system!(), coin::zero(f.ctx!()), f.ctx!());
+
+        transfer::public_transfer(sui_out, USER);
+    });
+
     fixture.end();
 }
 

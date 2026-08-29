@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
 # Coverage gate for the Blast SUI package.
 #
-# 100% package coverage is deliberately not required:
-# - `deposit_receipt::create_display` needs the framework `DisplayRegistry`,
-#   whose test constructor is package-private to `sui`;
-# - defensive aborts (`insufficient_native_redemption`,
-#   `fun_backing_below_supply`, and the custody raise of
-#   `wrong_delegation_pool`) back production guards that the tests
-#   deliberately do not bypass.
-# Modules free of those exclusions must stay at 100.00.
+# Every module must stay at 100.00 except `deposit_receipt`:
+# `create_display` needs the framework `DisplayRegistry`, whose constructor
+# is gated to the system address and whose test wrapper is package-private
+# to `sui`, so that path is verified operationally by the deployment
+# runbook instead.
 set -euo pipefail
 
 package_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -24,12 +21,13 @@ require_module() {
   fi
 }
 
-for module in events_wrapper events package_version acl blast blast_sui fun_sui; do
+for module in events_wrapper events package_version acl blast blast_sui fun_sui \
+  math custody vault package_admin; do
   require_module "$module"
 done
 
 total="$(grep -oE '% Move Coverage: [0-9]+\.[0-9]+' <<<"$coverage_summary" | grep -oE '[0-9]+\.[0-9]+')"
-if ! awk -v t="$total" 'BEGIN { exit (t >= 95.00) ? 0 : 1 }'; then
-  printf 'Expected at least 95.00%% total Move coverage, got %s.\n' "$total" >&2
+if ! awk -v t="$total" 'BEGIN { exit (t >= 97.00) ? 0 : 1 }'; then
+  printf 'Expected at least 97.00%% total Move coverage, got %s.\n' "$total" >&2
   exit 1
 fi

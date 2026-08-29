@@ -31,8 +31,9 @@ public struct PackageAdmin has key {
 /// the replacement package, while this intake deliberately accepts only the
 /// original package ID.
 public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext) {
+    // from_module compares both the package address and the module name.
     assert!(
-        publisher.from_package<BLAST>() && publisher.from_module<BLAST>(),
+        publisher.from_module<BLAST>(),
         blast_sui::errors::invalid_package_publisher!(),
     );
     let package_id = upgrade_cap.package();

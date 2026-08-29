@@ -210,9 +210,10 @@ number into the raising module. Retired codes remain reserved.
 The next new error must use code 48.
 
 Codes 20 and 39, and the `custody` raise site of 47, are defensive: under the
-pinned framework's rounding and the vault's buffers they are unreachable, and
-the test suite deliberately leaves them unexercised rather than bypassing the
-production guards they back.
+framework's monotonic pool rates and the vault's buffers they are unreachable
+through public entry points. The suite still exercises each one directly —
+ledger-level unit tests drive 20 and 47, and a test-only simulated native
+loss drives 39 — to pin the fail-closed behavior.
 
 ## Native framework limits
 
@@ -227,12 +228,13 @@ the shared vault and `PackageVersion`, so an upgrade or vault-side failure does
 not add an application-level exit dependency.
 
 Exact native redemption assumes pool exchange rates never decrease: the
-pinned framework accrues rewards only and never slashes principal, and the
-custody rounding margin is exactly tight under that assumption. If a
-framework upgrade ever let a rate decrease, redemptions would abort with
-`insufficient_native_redemption` instead of underpaying remaining holders,
-and a package upgrade would have to reprice the ledger. Monitor framework
-staking changes for this property.
+framework accrues rewards only and never slashes principal. The custody
+rounding margin carries ten times the proven per-event rounding bound, so a
+live system upgrade that drifts native rounding by a few MIST cannot starve
+redemptions. If an upgrade ever let a rate actually decrease, redemptions
+would abort with `insufficient_native_redemption` instead of underpaying
+remaining holders, and a package upgrade would have to reprice the ledger.
+Monitor framework staking changes for this property.
 
 A validator address can register a fresh pool after its old pool becomes
 inactive. The vault therefore treats a current exchange-rate entry for its
@@ -289,9 +291,9 @@ Run with the workspace-pinned Sui CLI from this directory, or use
 `bash scripts/verify.sh [build|lint|test|boundaries|coverage|all]`.
 `scripts/check_source_boundaries.sh` mechanically pins the single `SuiSystem`
 dependency, bans `blast_fun` references, and confines `sui::event::emit` to
-the envelope module. `scripts/check_coverage.sh` requires 100% module coverage
-outside its named defensive and framework-private exclusions and at least 95%
-in total:
+the envelope module. `scripts/check_coverage.sh` requires 100% coverage for
+every module except `deposit_receipt`, whose display creation needs the
+system-gated framework `DisplayRegistry`, and at least 97% in total:
 
 ```bash
 sui move build --build-env testnet

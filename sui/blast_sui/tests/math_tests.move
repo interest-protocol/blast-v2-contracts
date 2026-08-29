@@ -147,6 +147,18 @@ fun zero_supply_never_mints_shares() {
 }
 
 #[test]
+#[expected_failure(abort_code = errors::EZeroAmount, location = blast_sui::math)]
+fun zero_share_redemption_is_rejected() {
+    math::blast_gross_sui_out_down(0, 10, 10);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EBlastAssetsDepleted, location = blast_sui::math)]
+fun redemption_against_depleted_blast_custody_is_rejected() {
+    math::blast_gross_sui_out_down(1, 0, 10);
+}
+
+#[test]
 #[expected_failure(abort_code = errors::EInvalidShareAmount, location = blast_sui::math)]
 fun redemption_above_supply_is_rejected() {
     math::blast_gross_sui_out_down(11, 10, 10);

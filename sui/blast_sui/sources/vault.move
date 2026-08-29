@@ -619,6 +619,12 @@ public fun is_unwind_only_for_testing(self: &Vault): bool {
 }
 
 #[test_only]
+/// Simulates a native loss beyond every buffer to prove the vault fails closed.
+public fun simulate_native_loss_for_testing(self: &mut Vault, amount: u64) {
+    self.fun_custody.transfer_liquid(&mut self.blast_custody, amount);
+}
+
+#[test_only]
 /// Simulates cumulative native rounding loss without thousands of test transactions.
 public fun consume_fun_buffer_for_testing(self: &mut Vault, amount: u64) {
     assert!(amount <= self.fun_backing_buffer());
