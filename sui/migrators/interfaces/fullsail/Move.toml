@@ -1,0 +1,11 @@
+[package]
+name = "FullSailCLMM"
+edition = "2024"
+published-at = "0x497a144ba3d93ae44d9fd23d4ff4761c329d87a505136d2269c743b2297fa881"
+
+[dependencies]
+FullSailIntegerMate = { local = "../fullsail_integer_mate" }
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
+
+[addresses]
+clmm_pool = "0xe74104c66dd9f16b3096db2cc00300e556aa92edc871be4bc052b5dfb80db239"

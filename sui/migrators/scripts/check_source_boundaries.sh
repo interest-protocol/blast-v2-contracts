@@ -8,6 +8,7 @@ BLUEFIN_SOURCE="$SOURCE_DIR/bluefin.move"
 MMT_SOURCE="$SOURCE_DIR/mmt.move"
 CETUS_SOURCE="$SOURCE_DIR/cetus.move"
 TURBOS_SOURCE="$SOURCE_DIR/turbos.move"
+FULLSAIL_SOURCE="$SOURCE_DIR/fullsail.move"
 EVENTS_SOURCE="$SOURCE_DIR/events.move"
 
 fail() {
@@ -210,11 +211,103 @@ reject_turbos_pre_guard_mutator() {
     done < <(printf '%s' "$before_guard" | rg -o '(pool|position_manager|pool_factory)::[[:alnum:]_]+' | sort -u)
 }
 
+fullsail_section() {
+    local name="$1"
+
+    awk -v name="$name" '
+        function declaration(line) {
+            return line ~ /^[[:space:]]*(public(\(package\))?[[:space:]]+)?(entry[[:space:]]+)?fun[[:space:]]+/
+        }
+        function target(line) {
+            return declaration(line) && line ~ ("fun[[:space:]]+" name "[<(]")
+        }
+        target($0) { active = 1 }
+        active && !target($0) && declaration($0) { exit }
+        active { print }
+    ' "$FULLSAIL_SOURCE"
+}
+
+require_fullsail_public() {
+    local route="$1"
+    local expected="$2"
+    local description="$3"
+    local section declaration compact count
+
+    section="$(fullsail_section "$route")"
+    declaration="$(printf '%s\n' "$section" | sed -n '1p' | tr -d '[:space:]')"
+    [[ "$declaration" == "publicfun${route}<"* ]] || \
+        fail "Full Sail $route must be public"
+    compact="$(printf '%s' "$section" | tr -d '[:space:]')"
+    count="$(printf '%s' "$compact" | rg -o -F "$expected" | wc -l || true)"
+    [[ -n "$compact" && "$count" -eq 1 ]] || \
+        fail "Full Sail $route missing $description"
+}
+
+require_fullsail_private() {
+    local function="$1"
+    local expected="$2"
+    local description="$3"
+    local section declaration compact count
+
+    section="$(fullsail_section "$function")"
+    declaration="$(printf '%s\n' "$section" | sed -n '1p' | tr -d '[:space:]')"
+    [[ "$declaration" == "fun${function}<"* || "$declaration" == "fun${function}("* ]] || \
+        fail "Full Sail $function must be private"
+    compact="$(printf '%s' "$section" | tr -d '[:space:]')"
+    count="$(printf '%s' "$compact" | rg -o -F "$expected" | wc -l || true)"
+    [[ -n "$compact" && "$count" -eq 1 ]] || \
+        fail "Full Sail $function missing $description"
+}
+
+require_fullsail_private_count() {
+    local function="$1"
+    local expected="$2"
+    local required_count="$3"
+    local description="$4"
+    local section declaration compact count
+
+    section="$(fullsail_section "$function")"
+    declaration="$(printf '%s\n' "$section" | sed -n '1p' | tr -d '[:space:]')"
+    [[ "$declaration" == "fun${function}<"* || "$declaration" == "fun${function}("* ]] || \
+        fail "Full Sail $function must be private"
+    compact="$(printf '%s' "$section" | tr -d '[:space:]')"
+    count="$(printf '%s' "$compact" | rg -o -F "$expected" | wc -l || true)"
+    [[ -n "$compact" && "$count" -eq "$required_count" ]] || \
+        fail "Full Sail $function missing $description"
+}
+
+reject_fullsail_pre_guard_mutator() {
+    local route="$1"
+    local section before_guard call redemption_count
+
+    section="$(fullsail_section "$route")"
+    before_guard="${section%%migration_math::assert_price_within_bps*}"
+    [[ "$before_guard" != "$section" ]] || \
+        fail "Full Sail $route missing price guard"
+    redemption_count="$(printf '%s' "$section" | rg -o -F 'payload.redeem_migration(Witness())' | wc -l || true)"
+    [[ "$redemption_count" -eq 1 ]] || \
+        fail "Full Sail $route must redeem exactly once"
+    [[ "$before_guard" == *'payload.redeem_migration(Witness())'* ]] || \
+        fail "Full Sail $route must redeem before its price guard"
+
+    while IFS= read -r call; do
+        case "$call" in
+            pool::tick_spacing|pool::fee_rate) ;;
+            *) fail "Full Sail $route mutates a venue before its price guard" ;;
+        esac
+    done < <(printf '%s' "$before_guard" | rg -o '(pool|factory)::[[:alnum:]_]+' | sort -u)
+
+    if printf '%s' "$before_guard" | rg -q 'position::'; then
+        fail "Full Sail $route mutates a position before its price guard"
+    fi
+}
+
 [[ -f "$VAULT_SOURCE" ]] || fail "missing sources/vault.move"
 [[ -f "$BLUEFIN_SOURCE" ]] || fail "missing sources/bluefin.move"
 [[ -f "$MMT_SOURCE" ]] || fail "missing sources/mmt.move"
 [[ -f "$CETUS_SOURCE" ]] || fail "missing sources/cetus.move"
 [[ -f "$TURBOS_SOURCE" ]] || fail "missing sources/turbos.move"
+[[ -f "$FULLSAIL_SOURCE" ]] || fail "missing sources/fullsail.move"
 [[ -f "$EVENTS_SOURCE" ]] || fail "missing sources/events.move"
 
 require_pattern "$EVENTS_SOURCE" 'public struct VaultCreated' 'vault creation event'
@@ -606,6 +699,132 @@ require_turbos_private 'lock_and_share' \
 require_turbos_private 'lock_and_share' \
     'events::migration_completed<Meme,Quote,Venue>(' 'direct migration event'
 
+require_pattern "$FULLSAIL_SOURCE" 'public struct Witness' 'sealed Full Sail witness'
+require_pattern "$FULLSAIL_SOURCE" 'public struct Venue' 'sealed Full Sail venue marker'
+require_pattern "$FULLSAIL_SOURCE" 'const MAX_PRICE_DEVIATION_BPS: u64 = 50;' \
+    'exact 50-bps Full Sail adoption limit'
+
+# New routes own canonical order, balance price, exact revision-4 creation, and lock.
+require_fullsail_public 'migrate_new_meme_a' \
+    'assert_canonical_order<Meme,Quote>(true);' 'Meme-A canonical order'
+require_fullsail_public 'migrate_new_meme_a' \
+    'migration_math::sqrt_price_x64(source_meme_amount,source_quote_amount,true,)' \
+    'Meme-A balance-derived price'
+require_fullsail_public 'migrate_new_meme_a' 'full_range_ticks(tick_spacing)' \
+    'Meme-A full-range ticks'
+require_fullsail_public 'migrate_new_meme_a' \
+    'factory::create_pool_with_liquidity<Meme,Quote>(pools,fullsail_config,rewarder_vault,tick_spacing,sqrt_price_x64,string::utf8(b""),lower_tick_bits,upper_tick_bits,meme.into_coin(ctx),quote.into_coin(ctx),source_meme_amount,source_quote_amount,true,@0x0,@0x0,false,clock,ctx,)' \
+    'exact Meme-A revision-4 pool creation with zero feed IDs'
+require_fullsail_public 'migrate_new_meme_a' \
+    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,residual_meme,residual_quote,source_meme_amount,source_quote_amount,sqrt_price_x64,' \
+    'Meme-A shared lock'
+
+require_fullsail_public 'migrate_new_meme_b' \
+    'assert_canonical_order<Meme,Quote>(false);' 'Meme-B canonical order'
+require_fullsail_public 'migrate_new_meme_b' \
+    'migration_math::sqrt_price_x64(source_meme_amount,source_quote_amount,false,)' \
+    'Meme-B balance-derived price'
+require_fullsail_public 'migrate_new_meme_b' 'full_range_ticks(tick_spacing)' \
+    'Meme-B full-range ticks'
+require_fullsail_public 'migrate_new_meme_b' \
+    'factory::create_pool_with_liquidity<Quote,Meme>(pools,fullsail_config,rewarder_vault,tick_spacing,sqrt_price_x64,string::utf8(b""),lower_tick_bits,upper_tick_bits,quote.into_coin(ctx),meme.into_coin(ctx),source_quote_amount,source_meme_amount,true,@0x0,@0x0,false,clock,ctx,)' \
+    'exact Meme-B revision-4 pool creation with zero feed IDs'
+require_fullsail_public 'migrate_new_meme_b' \
+    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,residual_meme,residual_quote,source_meme_amount,source_quote_amount,sqrt_price_x64,' \
+    'Meme-B shared lock'
+
+# Adopted routes redeem, enforce the 50-bps guard, then use only open/add/pay/repay.
+require_fullsail_public 'migrate_existing_meme_a' \
+    'migration_math::assert_price_within_bps(source_meme_amount,source_quote_amount,true,pool::current_sqrt_price(pool),MAX_PRICE_DEVIATION_BPS,)' \
+    'exact Meme-A 50-bps price guard'
+require_fullsail_public 'migrate_existing_meme_a' \
+    'pool::open_position<Meme,Quote>(fullsail_config,pool,lower_tick_bits,upper_tick_bits,ctx,)' \
+    'exact Meme-A position opening'
+require_fullsail_public 'migrate_existing_meme_a' \
+    'pool::add_liquidity_fix_coin<Meme,Quote>(fullsail_config,rewarder_vault,pool,&mutposition,source_meme_amount,true,clock,)' \
+    'exact Meme-A fixed-coin addition'
+require_fullsail_public 'migrate_existing_meme_a' \
+    'pool::repay_add_liquidity<Meme,Quote>(fullsail_config,pool,paid_meme,paid_quote,receipt,)' \
+    'exact Meme-A repayment'
+require_fullsail_public 'migrate_existing_meme_a' \
+    'assert!(position::pool_id(&position)==object::id(pool),EPositionPoolMismatch);' \
+    'Meme-A position-pool identity'
+reject_fullsail_pre_guard_mutator 'migrate_existing_meme_a'
+
+require_fullsail_public 'migrate_existing_meme_b' \
+    'migration_math::assert_price_within_bps(source_meme_amount,source_quote_amount,false,pool::current_sqrt_price(pool),MAX_PRICE_DEVIATION_BPS,)' \
+    'exact Meme-B 50-bps price guard'
+require_fullsail_public 'migrate_existing_meme_b' \
+    'pool::open_position<Quote,Meme>(fullsail_config,pool,lower_tick_bits,upper_tick_bits,ctx,)' \
+    'exact Meme-B position opening'
+require_fullsail_public 'migrate_existing_meme_b' \
+    'pool::add_liquidity_fix_coin<Quote,Meme>(fullsail_config,rewarder_vault,pool,&mutposition,source_quote_amount,true,clock,)' \
+    'exact Meme-B fixed-coin addition'
+require_fullsail_public 'migrate_existing_meme_b' \
+    'pool::repay_add_liquidity<Quote,Meme>(fullsail_config,pool,paid_quote,paid_meme,receipt,)' \
+    'exact Meme-B repayment'
+require_fullsail_public 'migrate_existing_meme_b' \
+    'assert!(position::pool_id(&position)==object::id(pool),EPositionPoolMismatch);' \
+    'Meme-B position-pool identity'
+reject_fullsail_pre_guard_mutator 'migrate_existing_meme_b'
+
+# Fee routes normalize A/B and compare principal liquidity around collection.
+require_fullsail_public 'collect_fees_meme_a' 'letvenue=Venue();' \
+    'private Meme-A venue construction'
+require_fullsail_public 'collect_fees_meme_a' \
+    'collect_position_fees<Meme,Quote,Meme,Quote>(self,&venue,fullsail_config,pool,)' \
+    'Meme-A collection orientation'
+require_fullsail_public 'collect_fees_meme_b' 'letvenue=Venue();' \
+    'private Meme-B venue construction'
+require_fullsail_public 'collect_fees_meme_b' \
+    'collect_position_fees<Quote,Meme,Meme,Quote>(self,&venue,fullsail_config,pool,)' \
+    'Meme-B collection orientation'
+require_fullsail_private 'collect_position_fees' 'venue:&Venue' \
+    'borrowed private venue'
+require_fullsail_private 'collect_position_fees' \
+    'vault::borrow_position_mut<Meme,Quote,Venue,Position>(self,venue,)' \
+    'venue-bound position borrow'
+require_fullsail_private_count 'collect_position_fees' \
+    'assert!(position::pool_id(position)==pool_id,EPositionPoolMismatch);' 2 \
+    'position-pool identity'
+require_fullsail_private 'collect_position_fees' \
+    'pool::collect_fee(fullsail_config,pool,position,true,)' \
+    'exact fee recalculation call'
+require_fullsail_private 'collect_position_fees' \
+    'assert!(liquidity_after==liquidity_before,EPositionLiquidityChanged);' \
+    'unchanged principal liquidity'
+
+# Full Sail-specific private seams fix order, ticks, residuals, and custody.
+require_fullsail_private 'assert_canonical_order' \
+    'type_name_greater_than<Meme,Quote>()' 'SDK-compatible canonical comparison'
+require_fullsail_private 'full_range_ticks' \
+    'i32::abs_u32(tick_math::min_tick())' 'minimum venue tick'
+require_fullsail_private 'full_range_ticks' \
+    'i32::as_u32(tick_math::max_tick())' 'maximum venue tick'
+require_fullsail_private 'full_range_ticks' \
+    'lower_magnitude/tick_spacing*tick_spacing' 'inward lower-tick alignment'
+require_fullsail_private 'full_range_ticks' \
+    'upper_magnitude/tick_spacing*tick_spacing' 'inward upper-tick alignment'
+require_fullsail_private 'lock_and_share' \
+    'migration_math::assert_residual_within_bps(source_meme_amount,residual_meme_amount,MAX_RESIDUAL_BPS,)' \
+    'Meme residual limit'
+require_fullsail_private 'lock_and_share' \
+    'migration_math::assert_residual_within_bps(source_quote_amount,residual_quote_amount,MAX_RESIDUAL_BPS,)' \
+    'Quote residual limit'
+require_fullsail_private 'lock_and_share' \
+    'runtime_config.protocol_treasury()' 'live treasury read'
+require_fullsail_private 'lock_and_share' \
+    'transfer::public_transfer(residual_meme,protocol_treasury);' \
+    'Meme treasury transfer'
+require_fullsail_private 'lock_and_share' \
+    'transfer::public_transfer(residual_quote,protocol_treasury);' \
+    'Quote treasury transfer'
+require_fullsail_private 'lock_and_share' \
+    'vault::new<Meme,Quote,Venue,Position>(venue,pool_id,position,ctx,)' \
+    'Full Sail position attachment'
+require_fullsail_private 'lock_and_share' \
+    'events::migration_completed<Meme,Quote,Venue>(' 'direct migration event'
+
 MMT_VENUE_CONSTRUCTION_COUNT="$(rg -o 'let venue = Venue\(\)' "$MMT_SOURCE" | wc -l || true)"
 [[ "$MMT_VENUE_CONSTRUCTION_COUNT" -eq 4 ]] || \
     fail "MMT must construct its sealed venue witness for both creation and collection routes"
@@ -627,8 +846,10 @@ reject_pattern 'events_wrapper|public struct Event<' \
     'generic adapter event envelopes are forbidden'
 reject_pattern 'fee_ledger_mut' 'raw fee-ledger mutation is forbidden'
 reject_pattern 'remove_liquidity' 'principal removal is forbidden'
+reject_pattern 'decrease_liquidity|withdraw_liquidity' 'principal withdrawal is forbidden'
 reject_pattern 'close_position' 'position closure is forbidden'
 reject_pattern 'burn_position|destroy_position' 'Cetus position destruction is forbidden'
+reject_pattern 'gauge|stake_position|staking' 'position gauge staking is forbidden'
 if rg -q 'migrate_meme_b|collect_fees_meme_b|meme_is_coin_a' "$BLUEFIN_SOURCE"; then
     fail "Bluefin must use only the deterministic Meme-A/Quote-B orientation"
 fi
@@ -717,6 +938,30 @@ if [[ "$TURBOS_PUBLIC_SIGNATURES" =~ (sqrt_price|orientation|meme_is) ]]; then
 fi
 if [[ "$TURBOS_COMPACT_SOURCE" =~ position_manager::(decrease_liquidity|burn|increase_liquidity) ]]; then
     fail "Turbos principal mutation is forbidden"
+fi
+
+FULLSAIL_VENUE_CONSTRUCTION_COUNT="$(rg -o 'let venue = Venue\(\)' "$FULLSAIL_SOURCE" | wc -l || true)"
+[[ "$FULLSAIL_VENUE_CONSTRUCTION_COUNT" -eq 6 ]] || \
+    fail "Full Sail must construct its sealed venue witness for every route"
+FULLSAIL_COMPACT_SOURCE="$(tr -d '[:space:]' < "$FULLSAIL_SOURCE")"
+if [[ "$FULLSAIL_COMPACT_SOURCE" =~ abort0 ]]; then
+    fail "production Full Sail abort stubs are forbidden"
+fi
+if [[ "$FULLSAIL_COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*Venue ]]; then
+    fail "public or package Full Sail venue exposure is forbidden"
+fi
+if [[ "$COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*fullsail::Venue ]]; then
+    fail "cross-module Full Sail venue exposure is forbidden"
+fi
+if [[ "$FULLSAIL_COMPACT_SOURCE" =~ publicfun[^\{]*Position ]]; then
+    fail "public Full Sail position exposure is forbidden"
+fi
+FULLSAIL_PUBLIC_SIGNATURES="$(rg -U 'public fun [^{]+\{' "$FULLSAIL_SOURCE")"
+if [[ "$FULLSAIL_PUBLIC_SIGNATURES" =~ (sqrt_price|orientation|meme_is) ]]; then
+    fail "caller-supplied Full Sail price or orientation is forbidden"
+fi
+if [[ "$FULLSAIL_COMPACT_SOURCE" =~ pool::(remove_liquidity|close_position) ]]; then
+    fail "Full Sail principal mutation is forbidden"
 fi
 
 echo "Migrator source boundaries passed"

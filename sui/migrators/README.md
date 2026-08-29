@@ -117,6 +117,33 @@ routes call `collect_with_return_`, read `get_position_info` before and after,
 and require unchanged positive liquidity. The Meme-B route reverses Turbos A/B
 fee coins before shared Meme/Quote accrual.
 
+## Full Sail routes
+
+Full Sail has new-pool and adopted-pool routes for both canonical type orders.
+Its canonical order is the SDK's descending lexical order of normalized coin
+types. Each route verifies that order on chain before it redeems the migration
+payload. Callers do not supply an orientation or an economic price.
+
+New routes derive the Q64.64 price from the actual Meme and Quote balances and
+call revision 4 `factory::create_pool_with_liquidity`. They pass both source
+amounts, an empty URI, zero feed IDs, and `false` for automatic volume
+calculation. Thus an arbitrary Meme does not claim an oracle or stable-asset
+feed. The adapter derives both full-range ticks from Full Sail `tick_math`,
+aligns them inward to the selected tick spacing, and uses the live global
+configuration, rewarder vault, and pool registry.
+
+Adopted routes redeem the payload and immediately compare the balance-derived
+price with `pool::current_sqrt_price` at exactly 50 bps. Only then do they use
+Full Sail's open, fixed-coin add, payment, and repayment receipt flow. Every
+route requires at least 99.99% use of both assets and sends both residuals to
+the live runtime treasury.
+
+The returned `Position` enters the common vault as its sealed dynamic object
+field. Both fee routes call `pool::collect_fee(..., true)`, verify pool and
+position identities before and after collection, and require unchanged
+positive liquidity. The Meme-B route reverses Full Sail A/B fees before common
+Meme/Quote accrual.
+
 ## Replayable events
 
 The dedicated `events` module owns five strongly typed payloads and their
@@ -192,6 +219,23 @@ the signed full-range `math_tick` helpers. The local normalized interface pins
 the upstream mutable `Sui = testnet` reference to the aggregate package's
 exact `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` framework dependency.
 
+The local Full Sail interface preserves original package
+`0xe74104c66dd9f16b3096db2cc00300e556aa92edc871be4bc052b5dfb80db239`
+and sets `published-at` to mainnet revision 4 at
+`0x497a144ba3d93ae44d9fd23d4ff4761c329d87a505136d2269c743b2297fa881`.
+That package has digest `CWkTsBks7SsYsvDQ9QQxkHqgDAKdvuDkh4DAd9DHo3nF` and upgrade transaction
+`3rbk2g4FuuqFGKBLyNYLkqJjv2XKvgnSans6EpPaRCSd`. Mainnet GraphQL resolves
+the original ID directly to this revision; the official contracts page remains
+at revision 3. `@fullsailfinance/sdk@11.0.0` also identifies revision 4.
+
+The normalized interface contains only the consumed `factory`, `config`,
+`rewarder`, `pool`, `position`, and `tick_math` types and functions. Full Sail's
+separate IntegerMate package is pinned independently at original/current ID
+`0x6b904ae739b2baad330aae14991abcd3b7354d3dc3db72507ed8dabeeb7a36de`,
+revision 1, digest `sJBBNfgrAEwYvUxzbM8y7yHYdHTE5no2Urg4B3eJR1s`. Both local interfaces and
+both lockfile environments bind the exact Sui revision
+`06734f6ff0af45d8632a14a4dc4b100197f6b1a2`.
+
 ## Verification and immutable-release gate
 
 Run from this directory:
@@ -201,14 +245,15 @@ sui move build
 sui move lint --warnings-are-errors
 sui move build -e mainnet
 bash scripts/check_turbos_dependency_pin.sh
+bash scripts/check_fullsail_dependency_pin.sh
 bash scripts/check_source_boundaries.sh
 ```
 
-The Bluefin, MMT, Cetus, and Turbos interface dependencies contain `abort 0` link
-stubs. A local build proves type compatibility only. Before production release,
-verify published-package lineage and normalized ABI. Then run mainnet
+The Bluefin, MMT, Cetus, Turbos, and Full Sail interface dependencies contain
+`abort 0` link stubs. A local build proves type compatibility only. Before
+production release, verify published-package lineage and normalized ABI. Then run mainnet
 dev-inspect fixtures for every creation and adoption orientation, exact
-balance-derived initialization, 50-bps Cetus and Turbos adoption checks,
+balance-derived initialization, 50-bps Cetus, Turbos, and Full Sail adoption checks,
 one-basis-point residual limits, and fee collection without a liquidity change.
 
 Source omission does not make principal custody permanent while this package
@@ -258,6 +303,18 @@ is valid before this irreversible step.
 | 2 | `EZeroPositionLiquidity` | The created or collected Turbos position has no principal liquidity. |
 | 3 | `EPositionLiquidityChanged` | Turbos fee collection changed position principal. |
 | 4 | `EInsufficientUtilization` | Turbos used less than 99.99%, or left more than a 1-bps residual. |
+
+## Full Sail errors
+
+| Code | Name | Meaning |
+| --- | --- | --- |
+| 0 | `EInvalidCoinOrder` | The selected Full Sail route does not match canonical order. |
+| 1 | `EInvalidTickSpacing` | The selected Full Sail tick spacing is zero. |
+| 2 | `EPositionPoolMismatch` | The vault, pool, and Full Sail position IDs do not match. |
+| 3 | `EZeroPositionLiquidity` | The created or collected Full Sail position has no principal liquidity. |
+| 4 | `EPositionLiquidityChanged` | Full Sail fee collection changed position principal. |
+| 5 | `EPaymentExceedsBalance` | Full Sail requested more than the redeemed balance. |
+| 6 | `EInsufficientUtilization` | Full Sail used less than 99.99%, or left more than a 1-bps residual. |
 
 ## Vault errors
 
