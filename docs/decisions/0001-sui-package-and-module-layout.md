@@ -59,7 +59,7 @@ below `sui/vesting/`. The `sui/` root is a package workspace and has no
 | `blast_fun_turbos` | Turbos migration adapter | `blast_fun`, Turbos |
 | `blast_fun_vesting_*` | approved vesting custody and release design | `blast_fun` (types only), Sui framework |
 | `blast_fun_revshare` | epoch settlement and claims | `blast_fun` (types only), Sui framework |
-| `blast_fun_template` | generated per-launch coin package | `blast_fun`, Sui framework |
+| `meme_template` | generated per-launch coin package | `blast_fun`, Sui framework |
 
 Each adapter is a separate package because it carries a distinct external failure surface and a distinct
 dependency-immutability exemption — the boundary test in `../architecture.md`. Vesting and

@@ -20,7 +20,7 @@ The SDK also replaces the compiled module's single non-system dependency with
 Blast's original package ID. It publishes with dependencies `0x1`, `0x2`, and
 the active Blast package object, then makes the new package immutable.
 
-For local verification, this package depends on `../../launchpad`:
+For local verification, this package depends on `../launchpad`:
 
 ```bash
 sui move build
@@ -29,6 +29,6 @@ bash scripts/check_source_boundaries.sh
 ```
 
 The expected `meme.mv` SHA-256 is
-`3168a68c91959aabf6d44571f9a3ff68956cbdc4c26293126c6d22f4ebd48c31`.
+`6747a1c0711a6ff8b94f7fc3f015f462e7ce11ec4b2d58ff2b2bd416357309c1`.
 After an intentional source or toolchain change, rebuild the module, update the
 SDK's embedded artifact and hash, and rerun both repositories' checks.

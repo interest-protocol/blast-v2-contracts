@@ -8,7 +8,7 @@ scripts, and release records.
 sui/
 ├── launchpad/       Blast launchpad core (`blast_fun`)
 ├── migrators/       venue-specific migration adapter packages
-├── templates/       generated per-launch package templates
+├── meme_template/   generated per-launch Meme package template
 └── vesting/         independent Blast vesting package
 ```
 
@@ -24,7 +24,7 @@ sui move test --lint
 ```
 
 The generated Meme package template has its own manifest and lockfile. Verify it
-from `templates/blast_fun_template/` with `sui move build`, strict lint, and
+from `meme_template/` with `sui move build`, strict lint, and
 `bash scripts/check_source_boundaries.sh`.
 
 The Blast vesting package lives at `vesting/` and contains `linear` and
