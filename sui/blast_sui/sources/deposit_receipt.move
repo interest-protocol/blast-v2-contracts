@@ -114,7 +114,7 @@ fun display_metadata(): (vector<String>, vector<String>) {
 // === Package Functions ===
 
 /// Wraps native stake in a key-only receipt without transferring it.
-public(package) fun issue(
+public(package) fun new(
     vault_id: ID,
     staked_sui: StakedSui,
     ctx: &mut TxContext,
