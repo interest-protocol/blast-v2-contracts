@@ -232,12 +232,11 @@ curve-released supply = 40%
 locked LP Meme supply = 20%
 ```
 
-At the review-time SUI price this is near Hop.fun's documented roughly $30,000
-graduation value, while keeping more than 8,000 SUI of Quote-side pool principal
-and avoiding a terminal haircut. The comparison is operational guidance, not an
-oracle rule. The admin must review the Quote-denominated preset before enabling
-a production Quote lane, and the UI must show native-Quote values without
-promising a stable USD threshold.
+With zero Quote migration fee, the lane makes up to 8,000 SUI of Quote-side
+pool principal available before venue rounding and residuals. The comparison is
+operational guidance, not an oracle rule. The admin must review the
+Quote-denominated preset before enabling a production Quote lane, and the UI
+must show native-Quote values without promising a stable USD threshold.
 
 ## Consequences
 
@@ -263,8 +262,9 @@ promising a stable USD threshold.
   claim isolation for externally accrued LP fees.
 - Each adapter builds against exact pins and has a source-boundary check that
   rejects principal-removal and position-transfer calls.
-- Migration vectors prove the recommended SUI lane has equal 40,000-SUI terminal
-  curve and DEX valuations.
+- `node docs/vectors/check-graduation-vector.mjs` reads the migration vector and
+  proves the recommended SUI lane has equal 40,000-SUI terminal curve and DEX
+  valuations.
 - Mainnet GraphQL checks prove each original package resolves to the recorded
   latest revision and that its bytecode-backed normalized ABI matches the
   adapter. Mainnet dev-inspect tests prove zero Bluefin
