@@ -8,6 +8,10 @@
 > Amended by [ADR 0039](0039-deterministic-quote-valuations.md): the snapshot
 > additionally returns per-Quote virtual liquidity before the target and the
 > off-chain SDK derives the exact curve endpoint and native-Quote previews.
+> Amended by [ADR 0043](0043-versioned-launch-trading-and-atomic-migration.md):
+> only the reserved provision enters the migration payload. BurnOnly destroys
+> terminal disposal natively; Fixed transfers it to `0x0` without reducing
+> total supply.
 
 ## Sources
 
@@ -36,14 +40,12 @@ creator or stakeholder supply allocation (ADR 0012), and any venue-side
 reward, treasury, or LP-fee policy belongs to the future external migrator
 package, never to core (ADRs 0010 and 0027).
 
-Blast also rejects two Memez.Fun behaviors: the overloaded sentinel in which a
-zero liquidity value means "provide the complete terminal curve inventory" —
-in Blast, zero is exclusively the unconfigured state and can never be
-snapshotted into a launch — and the terminal `@0x0` transfer that fakes a
-burn. How the non-migrated terminal remainder is disposed of — genuinely
-destroyed through the Coin Registry for a `BurnOnly` launch, or returned
-through an explicitly accounted residual path for a `Fixed` launch — is
-decided by the future migration ADR, not here.
+Blast rejects the overloaded sentinel in which a zero liquidity value means
+"provide the complete terminal curve inventory": zero is exclusively the
+unconfigured state and can never be snapshotted into a launch. This ADR
+originally rejected Memez.Fun's terminal `@0x0` transfer. ADR 0043 supersedes
+that part for Fixed launches with explicit disposal semantics and unchanged
+native total supply; BurnOnly still uses genuine Coin Registry destruction.
 
 ## Context
 
@@ -51,7 +53,7 @@ ADR 0027 fixed two graduation accounting lines: the Quote migration fee
 (protocol revenue) and the protocol Meme graduation fee (protocol
 revenue in Meme units). Neither line answers how much initial Meme supply is
 reserved as the destination pool's Meme principal at migration. Without an
-explicit rate, the future migration module would have to invent one — either
+explicit rate, the migration implementation would have to invent one — either
 by migrating the entire terminal curve remainder or by reading a live value,
 both of which ADR 0025/0027 forbid for cold launch policy.
 
@@ -165,7 +167,7 @@ reserve zero atomic units — the provision is zero whenever
 atomic supply below 10,000 units). The setter validates policy, not per-launch
 supplies, and the BPS-level partition bounds alone do not guarantee a positive
 rounded curve inventory for every small atomic supply once the ceiling-rounded
-protocol Meme graduation fee is applied. The future launch design must therefore
+protocol Meme graduation fee is applied. The launch design must therefore
 enforce both a positive atomic provision and a positive atomic curve
 inventory — or an explicit minimum initial supply — after rounding. At 9,999
 bps with a zero protocol Meme graduation fee the identity is exact:

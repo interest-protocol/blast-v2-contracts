@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-23
 - Partially accepts: [0006](0006-fees-and-launch-paths.md), [0007](0007-acl-pause-and-versioning.md), [0011](0011-event-schema-and-replay.md)
-- Amended by: [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md)
+- Amended by: [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0041](0041-launch-config-owned-trade-fees.md)
 
 ## Sources
 
@@ -27,10 +27,12 @@ trade cannot update reserves without atomically updating its fee obligations.
 
 ### Rates and beneficiary split
 
-The launcher selects fixed `quote_fee_bps` and `meme_fee_bps` independently. Each rate is between zero
-and **1,000 basis points (10%)**, inclusive. Zero disables that asset's fee, and both rates may be
-positive. The launch module will enforce the ceiling when it stores the rates; `fees.move` receives
-already-calculated `Balance` values and does not recompute curve fees or accept rates.
+Admins set fixed `quote_fee_bps` and `meme_fee_bps` independently in cold
+`LaunchConfig` policy. Each rate is between zero and **1,000 basis points
+(10%)**, inclusive. Zero disables that asset's fee, and both rates may be
+positive. `LaunchConfig` enforces the ceiling and each new launch snapshots the
+active pair; `fees.move` receives already-calculated `Balance` values and does
+not recompute curve fees or accept rates.
 
 The protocol/creator split is different: it is one live, global `protocol_fee_share_bps` value in the
 shared `RuntimeConfig`, bounded from zero through 10,000 basis points. Every trade on every launch
@@ -193,6 +195,7 @@ widened `mul_div_ceil` operation. A Blast wrapper would be a shallow forwarding 
 - Shared-config tests cover both percentage boundaries, reject values above 10,000 and unchanged
   updates, authorize changes with `AdminWitness`, and emit the config id and old/new percentage after
   mutation without a redundant application sequence.
-- The future launch integration test must replay fee events against the ledger after buys, sells, both
-  claims, migration, and a transferred creator capability.
+- Launch integration tests replay fee events against the ledger after buys,
+  sells, claims, and migration; transferred-capability routing is covered by
+  the fee-ledger integration suite.
 - Build, strict lint, full tests, Move coverage, and structural source checks are release gates.

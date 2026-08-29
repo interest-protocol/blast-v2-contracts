@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-23
 - Amends: [0002](0002-coin-creation-and-currency-authority.md), [0003](0003-treasury-cap-lifetime-and-burn.md), [0006](0006-fees-and-launch-paths.md), [0007](0007-acl-pause-and-versioning.md), [0013](0013-creator-fee-authority-and-x-claims.md), [0014](0014-typed-creator-cap-and-diagnostic-modules.md), [0018](0018-authority-module-separation.md), [0019](0019-consuming-creator-authority-and-cap-return.md)
-- Amended by: [0025](0025-quote-whitelist-and-migration-targets.md), [0026](0026-deferred-sell-burn.md), [0035](0035-initializer-finalized-meme-supply.md), [0036](0036-fixed-nine-decimal-generated-memes.md)
+- Amended by: [0025](0025-quote-whitelist-and-migration-targets.md), [0026](0026-deferred-sell-burn.md), [0035](0035-initializer-finalized-meme-supply.md), [0036](0036-fixed-nine-decimal-generated-memes.md), [0043](0043-versioned-launch-trading-and-atomic-migration.md)
 
 ## Sources
 
@@ -81,15 +81,13 @@ cap into the matching `Fixed` or `BurnOnly` registry transition, and records the
 result. It does not accept a second caller-supplied mode that could disagree with
 the generated package's committed selection.
 
-- A `Fixed` launch must have `max_burn_bps == 0`. Sell-side and terminal burns are unreachable.
-- A `BurnOnly` launch may configure the separately bounded sell-side burn policy.
-  Sell-designated meme accumulates in launch-owned pending-burn custody and is
-  destroyed once through the shared `Currency<Meme>` at migration; minting
-  remains impossible.
-
-For a fixed launch, every terminal meme unit must be deployed to the selected venue or returned through
-an explicitly accounted residual path. For a burnable launch, terminal residual inventory may instead be
-burned and evented. Neither mode permits silent balance disposal.
+- Both modes may carry a ticket-bound, separately bounded sell-burn policy.
+  Sell-designated Meme accumulates in launch-owned pending-burn custody.
+- At migration, `BurnOnly` destroys pending burn plus terminal curve residual
+  through the shared `Currency<Meme>`; minting remains impossible.
+- `Fixed` transfers the same disposal balance to `0x0`. Events identify this as
+  inaccessible fixed-supply disposal, not native burn, and total supply does not
+  decrease. Neither mode permits silent balance disposal.
 
 ### Metadata capability is returned separately
 
@@ -147,8 +145,8 @@ metadata update through shared Blast state.
 - Every generated coin is current-registry and unregulated. Its treasury cap is
   empty at ticket creation, then irreversibly consumed during launch so no mint
   authority survives in Blast state.
-- Fixed and burnable launches have different reachable burn transitions, enforced from the registry
-  state rather than a caller assertion.
+- Fixed and BurnOnly launches have different terminal disposal transitions,
+  selected directly from registry state rather than a caller assertion.
 - Migration adapters must not receive or require meme mint authority.
 - `CreatorCap<Meme>` remains the transferable creator-economic authority;
   `MetadataCap<Meme>` remains the separate native metadata authority.
@@ -164,7 +162,8 @@ metadata update through shared Blast state.
 - Launch intake accepts exact supplies of one atomic unit and one billion whole coins, and rejects zero,
   one atomic unit above the normalized ceiling, partial inventory, regulated currencies, legacy-migrated
   currencies, and `Unknown` supply state.
-- A fixed launch rejects every nonzero burn parameter before constructing launch state.
+- A fixed launch may accrue pending disposal, sends it with curve residual to
+  `0x0` at migration, and leaves native total supply unchanged.
 - A burnable sell moves the designated amount only into pending-burn custody;
   migration burns the exact accumulated balance through `Currency<Meme>` and
   decreases registry total supply once.

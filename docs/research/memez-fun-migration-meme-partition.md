@@ -3,6 +3,10 @@
 Status: supporting research
 Reviewed: 2026-08-25
 
+> Update (2026-08-28): ADR 0043 accepts Memez-style `0x0` terminal disposal for
+> Fixed launches, with explicit non-burn event semantics and unchanged native
+> total supply. The rejection below records the earlier design state.
+
 ## Source pins
 
 This note reviews three first-party sources:
@@ -207,9 +211,9 @@ explicitly between:
 At `blast-v2-contracts@ad951f8`, `LaunchConfig` stores only the per-Quote terminal
 target, Quote migration-fee rate, protocol Meme graduation-fee rate, and
 migration-witness set
-([`sui/sources/launch_config.move:17-24`](../../sui/sources/launch_config.move)).
+([`sui/launchpad/sources/launch_config.move:17-24`](../../sui/launchpad/sources/launch_config.move)).
 Its snapshot returns exactly the target, those two rates, and witness type
-([`launch_config.move:184-214`](../../sui/sources/launch_config.move)). There is no
+([`launch_config.move:184-214`](../../sui/launchpad/sources/launch_config.move)). There is no
 Meme pool-provision field.
 
 This is not a naming-only issue:
@@ -230,9 +234,9 @@ This is not a naming-only issue:
   ([`ADR 0004:136-141`](../decisions/0004-bonding-curve.md)).
 
 The current `LaunchTicket` is not where this policy belongs. It intentionally
-holds only the finalized Meme balance, metadata capability, and creator
-authority; supply mode is authoritative in Coin Registry state
-([`sui/sources/launch_ticket.move`](../../sui/sources/launch_ticket.move)).
+holds the finalized Meme balance, metadata capability, creator authority, and
+sell-burn rate; supply mode is authoritative in Coin Registry state
+([`sui/launchpad/sources/launch_ticket.move`](../../sui/launchpad/sources/launch_ticket.move)).
 The migration-Meme value belongs in the cold launch snapshot and then the future
 launch's named balances.
 

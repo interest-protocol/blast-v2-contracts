@@ -2,7 +2,8 @@
 
 This file is the canonical map from a raw Sui Move abort code to its package
 macro, raising module, and stable meaning. Keep it synchronized with
-[`sui/sources/lib/errors.move`](../sui/sources/lib/errors.move) whenever a code is added.
+[`sui/launchpad/sources/lib/errors.move`](../sui/launchpad/sources/lib/errors.move)
+whenever a code is added.
 
 ## Strategy
 
@@ -59,16 +60,16 @@ the next unused value and must not fill a retired gap.
 | 28 | `super_admin_transfer_unchanged` | `acl` | A root-transfer proposal targeted the already pending recipient. |
 | 29 | `invalid_curve_reserve` | `curve` | Meme inventory or virtual quote reserve is zero. |
 | 30 | `invalid_terminal_threshold` | `curve` | The real-quote terminal threshold is zero. |
-| 31 | `invalid_quote_fee_bps` | `curve` | The quote-asset fee exceeds 10,000 basis points. |
-| 32 | `invalid_max_burn_bps` | `curve` | The sell-side maximum burn exceeds 10,000 basis points. |
+| 31 | `invalid_quote_fee_bps` | `launch_config` | The cold quote-asset trade fee exceeds 1,000 basis points. |
+| 32 | *(retired)* | — | Sell-burn range validation is owned by the shared `Bps` constructor under code 75. |
 | 33 | `zero_trade_input` | `curve` | The requested buy or sell input is zero. |
 | 34 | `zero_trade_output` | `curve` | The effective meme input or user quote/meme output becomes zero after rounding, burn, or fee. |
 | 35 | `curve_reserve_overflow` | `curve` | A post-trade meme or real-quote reserve cannot be represented as `u64`. |
 | 36 | `sell_back_invariant_violated` | `curve` | The full sell quote exceeds the real quote held by the curve; the result is rejected rather than clamped. |
-| 37 | `invalid_meme_fee_bps` | `curve` | The meme-asset fee exceeds 10,000 basis points. |
+| 37 | `invalid_meme_fee_bps` | `launch_config` | The cold meme-asset trade fee exceeds 1,000 basis points. |
 | 38 | `nothing_accrued` | `fees` | Neither asset has an accrued balance for the presented creator or protocol claim authority. |
 | 39 | `zero_fee_accrual` | `fees` | A fee accrual supplied zero meme and zero quote balances. |
-| 40 | `invalid_protocol_fee_share_bps` | `runtime_config` | The global protocol fee share exceeds 10,000 basis points. |
+| 40 | *(retired)* | — | Protocol-share range validation is owned by the shared `Bps` constructor under code 75. |
 | 41 | `protocol_fee_share_unchanged` | `runtime_config` | A protocol fee-share update supplied the currently active value. |
 | 42 | `invalid_migration_quote_target` | `launch_config` | A quote migration target was zero. |
 | 43 | *(retired)* | — | Reserved after `allow_quote` absorbed quote-target updates. |
@@ -94,5 +95,18 @@ the next unused value and must not fill a retired gap.
 | 63 | `zero_meme_curve_inventory` | `graduation` | Rounded protocol Meme graduation fee and pool provision consumed the complete initial Meme balance. |
 | 64 | `invalid_virtual_quote` | `launch_config` | A Quote policy supplied a zero virtual Quote reserve. |
 | 65 | `quote_parameters_unchanged` | `launch_config` | A Quote-policy update supplied the complete active virtual/terminal parameter pair. |
+| 66 | `creator_authority_unavailable` | `launch` | The launch no longer contains its one-time creator authority and native metadata capability. |
+| 67 | `trade_fee_defaults_unchanged` | `launch_config` | A trade-fee update supplied the complete active Quote/Meme rate pair. |
+| 68 | `package_version_mismatch` | `package_version` | The shared package cutover rejects this bytecode generation or a nonconsecutive activation. |
+| 69 | *(retired)* | — | Redundant per-Launch version removed by ADR 0045. |
+| 70 | `invalid_launch_lifecycle` | `launch` | The launch lifecycle does not permit the requested trade or migration. |
+| 71 | `slippage_exceeded` | `launch` | The exact returned trade output is below the caller's minimum. |
+| 72 | `invalid_migration_witness` | `launch` | The requested migrator witness type was not selected by the launch. |
+| 73 | *(retired)* | — | The sealed `LaunchTicket` constructor makes an unknown Meme supply mode unreachable. |
+| 74 | `package_version_overflow` | `package_version` | The shared package-version counter cannot advance beyond `u64`. |
+| 75 | `invalid_bps` | `bps` | A basis-points value exceeds the inclusive 0 through 10,000 range. |
+| 76 | `invalid_meme_quote_pair` | `launch` | A launch selected the generated Meme type as its own Quote type. |
+| 77 | `invalid_initial_meme_supply` | `launch` | A launch ticket did not contain the canonical generated Meme supply. |
+| 78 | `invalid_migration_witness_type` | `launch_config` | A migration witness was a primitive or vector type instead of an adapter-defined struct. |
 
-The next new package-wide protocol error must use code **66**.
+The next new package-wide protocol error must use code **79**.

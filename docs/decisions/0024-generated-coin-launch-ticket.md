@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-24
 - Implements: [0023](0023-generated-coin-supply-and-metadata-custody.md)
-- Amended by: [0035](0035-initializer-finalized-meme-supply.md), [0036](0036-fixed-nine-decimal-generated-memes.md), [0037](0037-remove-redundant-ticket-burn-mode.md), [0038](0038-standard-method-names.md)
+- Amended by: [0035](0035-initializer-finalized-meme-supply.md), [0036](0036-fixed-nine-decimal-generated-memes.md), [0037](0037-remove-redundant-ticket-burn-mode.md), [0038](0038-standard-method-names.md), [0043](0043-versioned-launch-trading-and-atomic-migration.md), [0047](0047-coin-registry-authoritative-supply-mode.md)
 
 ## Context
 
@@ -24,7 +24,7 @@ their custody.
 its `init`. The constructor takes the OTW and the Coin Registry metadata inputs
 in the same order as
 `coin_registry::new_currency_with_otw`, followed by the creator identity, the
-`burnable` choice, and `TxContext`.
+`burnable` choice, bounded `sell_burn_bps`, and `TxContext`.
 
 The caller obtains a validated `CreatorIdentity` from
 `creator_authority::new_address` or `creator_authority::new_x`. The ticket
@@ -36,30 +36,32 @@ The constructor returns the ticket. It does not transfer it. The generated
 package remains responsible for deliberate delivery from its non-composable
 `init` boundary.
 
-### The ticket owns only pre-launch custody
+### The ticket owns pre-launch custody and sell-burn policy
 
 `LaunchTicket<Meme>` has `key, store` and contains:
 
 - its `UID`;
-- the empty `TreasuryCap<Meme>`;
+- the complete fixed `Balance<Meme>` minted under ADR 0035;
 - the native `MetadataCap<Meme>`;
 - exactly one unissued `CreatorAuthority<Meme>`; and
-- the launcher's `burnable` choice.
+- the launcher's `sell_burn_bps`.
 
-The choice is a boolean because the external decision is exactly burnable or
-not burnable. The launch operation later maps it to Coin Registry `BurnOnly` or
-`Fixed`. No second supply-mode argument may override the ticket.
+The constructor input selects Coin Registry `BurnOnly` or `Fixed` but is not
+stored in the ticket. The separate rate fixes the sell-burn ramp through 10,000
+basis points. Launch redemption copies the rate and cannot override it.
+Migration reads the native `Currency<Meme>` state directly.
 
-The ticket does not mint, update metadata, claim creator authority, or perform
-registration. `into_parts` is package-only and consumes the ticket before it
-returns the four stored launch inputs to the future launch module. This is a
-storage transition, not unchanged capability pass-through.
+The ticket does not update metadata, claim creator authority, or perform
+registration. `destroy` is package-only and consumes the ticket before it
+returns the complete balance, metadata cap, creator authority, and sell-burn
+rate to `launch.move`.
 
 ### Creation event
 
 `LaunchTicketCreated` uses the package `Event<T>` wrapper and records the ticket,
 original meme type, both native cap IDs, launcher, address-or-X creator identity,
-and burnable choice. It has no sequence, nonce, schema version, or action tag.
+burnable choice, and sell-burn rate. It has no sequence, nonce, schema version,
+or action tag.
 
 The event tells the Blast worker which transaction created a pending ticket. The
 worker reads that transaction's object effects to find the `Currency<Meme>` sent
@@ -89,16 +91,17 @@ authority.
 ## Consequences
 
 - One ticket is tied to one framework-validated OTW coin type.
-- The treasury cap is zero-supply when the ticket is created.
+- Mint authority is consumed before the ticket is returned.
 - Address and X creator validation fail before Coin Registry object creation.
 - The ticket is transferable before launch and cannot be silently dropped.
 - Registration and launch remain separate later transactions.
 
 ## Verification
 
-- Address and X tests cover both burnable choices and exact event fields.
-- Tests prove both native cap IDs survive ticket custody and treasury supply is
-  zero.
+- Address and X tests cover both native modes, sell-burn bounds, and exact event
+  fields.
+- Tests prove complete balance and metadata authority survive ticket custody and
+  no treasury cap survives.
 - A transfer test proves caller-selected ticket delivery.
 - Invalid address and X identities abort before currency creation.
 - A non-OTW type is rejected by the pinned Coin Registry implementation.

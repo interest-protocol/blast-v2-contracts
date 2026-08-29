@@ -15,7 +15,8 @@
 > now stores a nonzero virtual reserve together with its terminal target, and
 > the launch snapshot returns both parameters atomically. Frontend quote and
 > valuation previews move to the SDK; state-changing launch operations recompute
-> required curve results internally from immutable launch state.
+> required curve results internally from immutable launch state. It also
+> replaces terminal overshoot with an exact-target cap and Quote refund.
 
 ## Sources
 
@@ -76,10 +77,10 @@ Later whitelist changes affect only launches constructed afterward. Disallowing 
 quote prevents new launches without changing the pair, trading rules, exits, or
 migration target of an existing launch.
 
-The target is the minimum real quote reserve at which bonding closes. Trade
-fees are already excluded from that reserve. A terminal buy may overshoot the
-target; migration accounts for and deploys the complete resulting reserve after
-any separately approved migration fee.
+The target is the exact real Quote reserve at which bonding closes. Trade fees
+are excluded from that reserve. As amended by ADR 0039 and implemented by ADR
+0043, a terminal buy accepts only the gross Quote needed to reach the remaining
+net target and returns the excess Quote to the buyer.
 
 ### Frontend quotes
 

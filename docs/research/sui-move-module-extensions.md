@@ -151,7 +151,7 @@ caller and import the target module as usual.
 When Blast upgrades to a pinned compiler that lists `ModuleExtension` in the
 stable edition, migrate only helpers that need same-module access:
 
-1. keep one `sui/tests/extensions/<module>.move` per extended module;
+1. keep one `sui/launchpad/tests/extensions/<module>.move` per extended module;
 2. mark the extension itself `#[test_only]`;
 3. keep its helpers private when tests live inside the extension, use
    `public(package)` for cross-module Blast tests, and reserve `public` for a

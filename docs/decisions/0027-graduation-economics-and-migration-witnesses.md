@@ -14,6 +14,13 @@
 > Amended by [ADR 0039](0039-deterministic-quote-valuations.md): the per-Quote
 > virtual reserve joins the launch snapshot, while an off-chain SDK derives
 > exact-target release and Quote-denominated valuation previews.
+> Amended by [ADR 0043](0043-versioned-launch-trading-and-atomic-migration.md):
+> `launch::migrate` now implements the selected-witness core handoff and the
+> two supply-mode disposal paths; venue adapters remain separate packages.
+> Amended by
+> [ADR 0046](0046-witness-authorized-migration-redemption.md): any caller may
+> create the type-bound handoff, while redemption requires the selected sealed
+> witness value.
 
 ## Sources
 
@@ -185,11 +192,11 @@ zero without a special mode.
 One migration attempt uses the single-use core handoff. The atomic transaction
 performs these conceptual steps:
 
-1. validate lifecycle and selected witness identity;
+1. validate lifecycle and the selected witness type;
 2. derive the Blast Quote fee from gross terminal Quote;
 3. isolate net Quote and the distinct protocol-revenue balance;
 4. burn accumulated pending Meme for `BurnOnly` launches;
-5. release the handoff to the selected external migrator;
+5. redeem the handoff with the selected external migrator's sealed witness;
 6. create the venue pool and seed it with net Meme and Quote;
 7. return every named residual and settlement identity to core;
 8. commit protocol revenue and `Migrated` state; and
@@ -293,8 +300,8 @@ to open pools. A fee-charging venue will not be used.
   launches; an explicit recovery design would require a separate decision.
 - Protocol graduation revenue remains capability-claimed and composable.
 - Core stays free of DEX dependencies, DEX costs, and third assets.
-- Full migration implementation remains audit-sized: launch integration, core
-  linear handoff, then one external migrator package at a time.
+- Core migration is implemented as the launch-owned linear handoff. External
+  migrator packages remain separate audit slices, one venue at a time.
 
 ## Verification
 
@@ -307,9 +314,9 @@ Implementation proceeds one seam at a time:
 2. Pure graduation arithmetic and custody: one-unit and maximum-width rounding,
    zero remaining inventory, four enablement combinations, and independent
    conservation.
-3. Launch integration: protocol Meme graduation fee reserved before curve inventory, immutable
-   quote/fee/witness snapshots, fixed and burnable supply modes, and complete
-   `LaunchCreated` facts.
+3. Launch integration: protocol Meme graduation fee reserved before curve
+   inventory, immutable quote/fee/witness snapshots, native supply-mode event
+   history, and complete `LaunchCreated` facts.
 4. Core migration handoff: selected-witness mismatch, linear consumption,
    atomic retry, no double charging, terminal burn, residuals, and event-only
    reconstruction.

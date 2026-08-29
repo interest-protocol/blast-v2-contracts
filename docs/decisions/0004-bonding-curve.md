@@ -2,6 +2,7 @@
 
 - Status: proposed
 - Date: 2026-08-22
+- Amended by: [0041](0041-launch-config-owned-trade-fees.md)
 
 > ADR 0026 clarifies that the sell formula's `burned` amount is a pending-burn
 > allocation during bonding, not an immediate supply decrease. It remains
@@ -41,8 +42,10 @@ on-chain path. The effective quote reserve is `V + Q`; the effective meme reserv
 
 ### Fee placement
 
-At launch, the launcher independently selects `QUOTE_FEE_BPS` and `MEME_FEE_BPS`. A zero rate disables
-that asset's fee; either or both rates may be positive. The rates are fixed for that launch.
+Admins independently configure `QUOTE_FEE_BPS` and `MEME_FEE_BPS` in cold
+`LaunchConfig` policy. Each launch snapshots the active pair. A zero rate
+disables that asset's fee; either or both rates may be positive. The rates are
+fixed for that launch.
 
 On a buy, the quote fee is taken from input before curve math and the meme fee is taken from gross meme
 output after curve math. On a sell, the meme fee is taken from input before the progress burn and curve
@@ -183,7 +186,8 @@ the entire inventory.
 
 ## Consequences
 
-- Each launch independently selects zero or positive quote and meme fee rates.
+- Each launch independently snapshots the admin-owned Quote and Meme fee rates
+  active in `LaunchConfig` when the ticket is redeemed.
 - Each fee remains denominated in its charged asset, and slippage compares the user's net output.
 - Zero-output trades abort rather than silently succeeding.
 - The curve never strands value in a clamp.

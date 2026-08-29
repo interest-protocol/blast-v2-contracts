@@ -2,7 +2,7 @@
 
 - Status: proposed
 - Date: 2026-08-22
-- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md)
+- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md), [0041](0041-launch-config-owned-trade-fees.md)
 
 ## Sources
 
@@ -97,13 +97,15 @@ with a test asserting no residual on either line.
 | Fee | Charged on | Asset | Ceiling | Recipient |
 | --- | --- | --- | --- | --- |
 | creation fee | launch | quote | hard ceiling in config | protocol |
-| trade fees | every buy and sell | quote, meme, both, or neither as selected at launch | independently bounded per-launch rates | split protocol / creator |
+| trade fees | every buy and sell | quote, meme, both, or neither under cold launch policy | independently bounded `LaunchConfig` rates | split protocol / creator |
 | migration fee | terminal settlement | quote | hard ceiling in config | protocol |
 
-The launcher independently selects fixed `quote_fee_bps` and `meme_fee_bps` for its launch
-([ADR 0004](0004-bonding-curve.md), [ADR 0021](0021-pure-constant-product-curve-quotes.md)). Zero disables
-the corresponding asset; either or both may be positive up to the independently enforced 1,000-basis-point
-ceiling accepted by [ADR 0022](0022-dual-asset-fee-ledger-and-claims.md). Fees
+Admins set fixed `quote_fee_bps` and `meme_fee_bps` as cold `LaunchConfig`
+policy, and each launch snapshots the current pair
+([ADR 0004](0004-bonding-curve.md), [ADR 0021](0021-pure-constant-product-curve-quotes.md),
+[ADR 0041](0041-launch-config-owned-trade-fees.md)). Zero disables the
+corresponding asset; either or both may be positive up to the independently
+enforced 1,000-basis-point ceiling accepted by [ADR 0022](0022-dual-asset-fee-ledger-and-claims.md). Fees
 **accrue** into separate named balances of their charged assets and are **claimed** separately; they are
 never routed to an arbitrary recipient during a trade. Every fee division rounds **up** in the
 protocol's favour, per `../engineering-principles.md`, and the rounding beneficiary is named at each
@@ -142,8 +144,9 @@ Blast fee line and is not supported by the accepted V2 design.
 
 ## Alternatives considered
 
-**Restrict fees to one asset.** Rejected by ADR 0021 and ADR 0022: independent quote and meme rates let a
-launcher select neither, either, or both while every charged asset remains explicitly accounted.
+**Restrict fees to one asset.** Rejected by ADR 0021 and ADR 0022: independent
+quote and meme rates let policy configure neither, either, or both while every
+charged asset remains explicitly accounted.
 
 **Route fees directly to recipients during a trade.** Rejected: it makes a trade depend on an arbitrary
 recipient's ability to receive, and `../architecture.md` keeps arbitrary recipient execution out of the

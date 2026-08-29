@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-25
 - Amends: [0002](0002-coin-creation-and-currency-authority.md), [0023](0023-generated-coin-supply-and-metadata-custody.md), [0024](0024-generated-coin-launch-ticket.md)
-- Amended by: [0036](0036-fixed-nine-decimal-generated-memes.md), [0037](0037-remove-redundant-ticket-burn-mode.md)
+- Amended by: [0036](0036-fixed-nine-decimal-generated-memes.md), [0037](0037-remove-redundant-ticket-burn-mode.md), [0043](0043-versioned-launch-trading-and-atomic-migration.md), [0047](0047-coin-registry-authoritative-supply-mode.md)
 
 ## Sources
 
@@ -83,9 +83,9 @@ multiplication overflow-proof.
 - the complete `Balance<Meme>` inventory;
 - the native `MetadataCap<Meme>`;
 - one `CreatorAuthority<Meme>`; and
-- the immutable `burnable` choice.
+- the immutable `sell_burn_bps` rate added by ADR 0043.
 
-`into_parts` returns those four launch inputs. It never returns a
+The package-only consuming seam returns those four launch inputs. It never returns a
 `TreasuryCap<Meme>`.
 
 `LaunchTicketCreated` replaces `treasury_cap_id` with `initial_supply`. A cap id
@@ -131,8 +131,8 @@ supply.
   later be changed by Blast, an adapter, or the ticket holder.
 - The future launch API does not accept Meme currency merely to mint or lock
   supply.
-- Burnable launches still require `Currency<Meme>` when they actually destroy
-  pending balances; fixed launches never do.
+- Terminal migration borrows `Currency<Meme>` for both modes. BurnOnly destroys
+  disposal, while Fixed sends disposal to `0x0` without changing total supply.
 - Generated Meme packages must choose at most ten decimals.
 - The ticket creation event no longer exposes a consumed capability id.
 

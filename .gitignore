@@ -4,13 +4,13 @@
 !.env.example
 .sui-client/
 
-# Sui Move build artifacts
-sui/.move/
-sui/build/
-sui/.trace
-sui/.coverage_map.mvcov
-sui/traces/
-sui/coverage/
+# Sui Move build artifacts in any package below sui/
+sui/**/.move/
+sui/**/build/
+sui/**/.trace
+sui/**/.coverage_map.mvcov
+sui/**/traces/
+sui/**/coverage/
 
 # Foundry build and deployment artifacts
 evm/broadcast/

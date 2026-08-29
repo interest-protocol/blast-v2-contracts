@@ -23,7 +23,7 @@
     }
   },
   "parameters": {
-    "note": "Every value here is proposed, not accepted, and sourced from docs/decisions/0004-bonding-curve.md (curve and launch-selected asset fees), docs/decisions/0003-treasury-cap-lifetime-and-burn.md (max_burn_bps) and docs/decisions/0006-fees-and-launch-paths.md (migration fee and its ceiling). Changing one invalidates every case below.",
+    "note": "Every value here is proposed, not accepted, and sourced from docs/decisions/0004-bonding-curve.md (curve and LaunchConfig-owned asset fees), docs/decisions/0003-treasury-cap-lifetime-and-burn.md (max_burn_bps) and docs/decisions/0006-fees-and-launch-paths.md (migration fee and its ceiling). Changing one invalidates every case below.",
     "meme_total_supply_atomic": 1000000000000000000,
     "curve_meme_inventory_M0_atomic": 800000000000000000,
     "virtual_quote_V_atomic": 1000000000000,
@@ -338,8 +338,8 @@
     {
       "name": "sell_back_invariant",
       "statement": "For any gross meme input not exceeding the user's net meme received from reachable buys, quote_out_gross <= real_quote.",
-      "status": "backed by sui/tests/curve_tests.move at fixed seed 314159 over 256 reachable buy-then-sell scenarios cycling through no fees, quote-only, meme-only, and both",
-      "evidence": "The test commits its generator, fee modes, parameters, seed, operation count, an algebraically equivalent pre-call check, and an assert_eq trace that prints the operation index plus all generated/state inputs on failure."
+      "status": "backed by sui/launchpad/tests/curve_tests.move at fixed seed 314159 over 256 reachable buy-then-sell scenarios cycling through no fees, quote-only, meme-only, and both",
+      "evidence": "Every scenario sells the complete purchased Meme amount and one generated partial amount. The test commits its generator, fee modes, parameters, seed, operation count, an algebraically equivalent pre-call check, and an assert_eq trace that prints the operation index plus all generated/state inputs on failure."
     },
     {
       "name": "monotonicity",

@@ -27,18 +27,20 @@ formulas require ADRs and shared test vectors.
 | D1 curve count | **One** curve: constant product with virtual quote liquidity | [decisions/0004-bonding-curve.md](decisions/0004-bonding-curve.md) |
 | D2 other modes | Auction and Stable are **out** of the initial Sui core | this document, below |
 | D3 coin creation | Coin Registry is the creation primitive | [decisions/0002-coin-creation-and-currency-authority.md](decisions/0002-coin-creation-and-currency-authority.md) |
-| D4 burn | Coin owner selects `Fixed` or `BurnOnly`; burnable launches escrow progress-dependent sell allocations and destroy them once at migration, while fixed launches require zero burn | [decisions/0023-generated-coin-supply-and-metadata-custody.md](decisions/0023-generated-coin-supply-and-metadata-custody.md), [decisions/0026-deferred-sell-burn.md](decisions/0026-deferred-sell-burn.md) |
+| D4 burn | Coin owner selects `Fixed` or `BurnOnly` and fixes sell burn on the launch ticket; terminal disposal is a native supply burn for `BurnOnly` and an explicitly non-supply-reducing `0x0` transfer for `Fixed` | [decisions/0026-deferred-sell-burn.md](decisions/0026-deferred-sell-burn.md), [decisions/0043-versioned-launch-trading-and-atomic-migration.md](decisions/0043-versioned-launch-trading-and-atomic-migration.md) |
 | D5 venues | Cetus, Bluefin and Turbos fully specified; release order gated by evidence quality | [decisions/0010-migration-and-venue-adapters.md](decisions/0010-migration-and-venue-adapters.md) |
 | D6 referrals | No referral state and no referrer argument in curve trades; off-chain attribution with bounded epoch settlement | [decisions/0009-referrals-and-revshare.md](decisions/0009-referrals-and-revshare.md) |
 | D7 launch access | **Permissionless only**: the historical protected/private launch path is removed | [decisions/0013-creator-fee-authority-and-x-claims.md](decisions/0013-creator-fee-authority-and-x-claims.md) |
 | D8 creator claim | Every address or X creator explicitly claims one `CreatorCap`; only X supplies an attestation bound to the original meme type, while SuiNS is resolved in periphery to the address recorded at launch | [decisions/0016-unified-creator-cap-claim-and-suins-periphery.md](decisions/0016-unified-creator-cap-claim-and-suins-periphery.md), [decisions/0017-coin-type-domain-for-x-creator-claims.md](decisions/0017-coin-type-domain-for-x-creator-claims.md) |
-| Generated coin supply | Current unregulated Coin Registry OTW path only; precision is always nine decimals; initializer mints exactly one billion whole coins and immediately selects irreversible `Fixed` or `BurnOnly`; ticket stores the complete balance without duplicating registry supply mode; native metadata authority is returned separately at creator claim | [decisions/0035-initializer-finalized-meme-supply.md](decisions/0035-initializer-finalized-meme-supply.md), [decisions/0036-fixed-nine-decimal-generated-memes.md](decisions/0036-fixed-nine-decimal-generated-memes.md), [decisions/0037-remove-redundant-ticket-burn-mode.md](decisions/0037-remove-redundant-ticket-burn-mode.md) |
+| Generated coin supply | Current unregulated Coin Registry OTW path only; precision is always nine decimals; initializer mints exactly one billion whole coins and immediately selects irreversible `Fixed` or `BurnOnly`; ticket binds the mode and sell-burn rate with complete balance custody; native metadata authority is returned separately at creator claim | [decisions/0035-initializer-finalized-meme-supply.md](decisions/0035-initializer-finalized-meme-supply.md), [decisions/0036-fixed-nine-decimal-generated-memes.md](decisions/0036-fixed-nine-decimal-generated-memes.md), [decisions/0043-versioned-launch-trading-and-atomic-migration.md](decisions/0043-versioned-launch-trading-and-atomic-migration.md) |
 | Quote asset | Bounded administrative whitelist keyed by original type, with one nonzero virtual-reserve/terminal-target pair per Quote snapshotted by future launches; an off-chain SDK derives release and native-Quote previews, and no quote `Currency` input is required | [decisions/0025-quote-whitelist-and-migration-targets.md](decisions/0025-quote-whitelist-and-migration-targets.md), [decisions/0039-deterministic-quote-valuations.md](decisions/0039-deterministic-quote-valuations.md) |
 | Graduation economics and migrator admission | Future-launch defaults start at zero, cap Quote migration revenue at 5% and the protocol Meme graduation fee at 10%, require a nonzero 1–9,999 bps destination-pool Meme liquidity provision that leaves positive curve inventory, and allow at most 16 external migrator witness types; each launch selects one witness | [decisions/0027-graduation-economics-and-migration-witnesses.md](decisions/0027-graduation-economics-and-migration-witnesses.md), [decisions/0033-meme-liquidity-provision.md](decisions/0033-meme-liquidity-provision.md) |
-| Trade-fee ledger | Independent meme/quote rates capped at 10% per asset; fees accrue into an embedded four-balance ledger using the current global protocol share, with ceiling rounding assigned to protocol | [decisions/0022-dual-asset-fee-ledger-and-claims.md](decisions/0022-dual-asset-fee-ledger-and-claims.md) |
+| Trade-fee policy and ledger | Admins set the cold Meme/Quote rate pair in `LaunchConfig`, each capped at 10%; every new launch snapshots that pair, and fees accrue into an embedded four-balance ledger using the current global protocol share, with ceiling rounding assigned to protocol | [decisions/0022-dual-asset-fee-ledger-and-claims.md](decisions/0022-dual-asset-fee-ledger-and-claims.md), [decisions/0041-launch-config-owned-trade-fees.md](decisions/0041-launch-config-owned-trade-fees.md) |
+| Launch state intake | One permissionless constructor consumes a generated ticket, snapshots cold policy, partitions initial Meme custody, initializes zero Quote/pending-burn/fee balances, and preserves the one-time creator and metadata-cap claim; a consuming function publishes the key-only launch as top-level shared state | [decisions/0040-normalized-launch-state-intake.md](decisions/0040-normalized-launch-state-intake.md), [decisions/0042-key-only-shared-launch.md](decisions/0042-key-only-shared-launch.md) |
+| Operational version | One shared `PackageVersion` gates every mutable core shared object; native upgrade commit is separate from exact-next-version activation | [decisions/0049-audit-hardened-package-version-and-launch-intake.md](decisions/0049-audit-hardened-package-version-and-launch-intake.md) |
 
 The full index, including every open premise, is in
-[decisions/README.md](decisions/README.md). ADRs 0013–0039 are accepted; economic
+[decisions/README.md](decisions/README.md). ADRs 0013–0049 are accepted; economic
 constants not fixed by those accepted records and the remaining proposed records still
 await approval.
 
@@ -59,6 +61,10 @@ Venue adapters are incremental, but incremental now means **release order**, not
 design coverage: Cetus, Bluefin, and Turbos are each fully specified, and a venue
 whose dependency cannot be pinned to an immutable commit is blocked from release
 rather than left unspecified.
+
+Pause semantics and migration recovery remain deferred product policies. The
+current core does not add an emergency bypass, timeout destination, or recovery
+authority until those user-exit and custody rules are accepted in an ADR.
 
 ## Historical ideas retained
 
@@ -88,15 +94,15 @@ rather than left unspecified.
 ## Decisions required before source implementation
 
 Each decision belongs in `docs/decisions/` before it creates a public ABI or
-storage commitment. ADRs 0013–0039 settle the creator-cap claim, protocol
+storage commitment. ADRs 0013–0042 settle the creator-cap claim, protocol
 authority, X-signature, pure curve, trade-fee-ledger, and generated-coin supply
-semantics plus cold launch and graduation policy below; the remaining portions
-and records are still proposed.
+semantics plus cold launch policy, graduation policy, and normalized launch
+intake below; the remaining portions and records are still proposed.
 
 | # | Decision | Record |
 | --- | --- | --- |
 | 1 | Curve formula, scales, virtual reserves, terminal threshold, dust policy | [0004](decisions/0004-bonding-curve.md) |
-| 2 | Launch creation-fee policy remains open; trade-fee accounting and graduation ceilings are settled; DEX pool-opening fees are unsupported | [0006](decisions/0006-fees-and-launch-paths.md), [0022](decisions/0022-dual-asset-fee-ledger-and-claims.md), [0027](decisions/0027-graduation-economics-and-migration-witnesses.md) |
+| 2 | Launch creation-fee policy remains open; admin-owned cold trade-fee policy, accounting, and graduation ceilings are settled; DEX pool-opening fees are unsupported | [0006](decisions/0006-fees-and-launch-paths.md), [0022](decisions/0022-dual-asset-fee-ledger-and-claims.md), [0027](decisions/0027-graduation-economics-and-migration-witnesses.md), [0041](decisions/0041-launch-config-owned-trade-fees.md) |
 | 3 | Creation authority and X-claim signer rotation policy | [0002](decisions/0002-coin-creation-and-currency-authority.md), [0013](decisions/0013-creator-fee-authority-and-x-claims.md), [0015](decisions/0015-protocol-authority-and-x-signer-state.md), [0017](decisions/0017-coin-type-domain-for-x-creator-claims.md) |
 | 4 | Pause matrix and which exits remain available in each state | [0007](decisions/0007-acl-pause-and-versioning.md) |
 | 5 | Migration targets, timeout/recovery behaviour, settlement ownership | [0010](decisions/0010-migration-and-venue-adapters.md) |
@@ -108,6 +114,9 @@ and records are still proposed.
 | 10 | Package and module boundaries, and explorer Display policy | [0001](decisions/0001-sui-package-and-module-layout.md) |
 | 11 | Event schema and replay completeness | [0011](decisions/0011-event-schema-and-replay.md) |
 | 12 | Growth-feature scope | [0012](decisions/0012-flywheel-features.md) |
+| 13 | Normalized launch state intake — accepted | [0040](decisions/0040-normalized-launch-state-intake.md) |
+| 14 | LaunchConfig-owned Quote/Meme trade-fee rates — accepted | [0041](decisions/0041-launch-config-owned-trade-fees.md) |
+| 15 | Key-only shared Launch publication — accepted | [0042](decisions/0042-key-only-shared-launch.md) |
 
 EVM-side items — token compatibility policy, proxy or immutable posture, and the
 chain-specific mapping of item 8 — remain open. The Sui records above state which of

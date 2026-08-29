@@ -2,7 +2,7 @@
 
 - Status: proposed
 - Date: 2026-08-22
-- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0032](0032-admin-authorized-upgrade-cap-custody.md), [0035](0035-initializer-finalized-meme-supply.md), [0039](0039-deterministic-quote-valuations.md)
+- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0032](0032-admin-authorized-upgrade-cap-custody.md), [0035](0035-initializer-finalized-meme-supply.md), [0039](0039-deterministic-quote-valuations.md), [0041](0041-launch-config-owned-trade-fees.md)
 
 ## Sources
 
@@ -77,19 +77,18 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 
 | Event | Env | Key fields beyond the envelope |
 | --- | :---: | --- |
-| `LaunchCreated` | L | creator-identity kind and either creator address or `x_identity_hash`, `V`, `T`, `M0`, total supply, fixed/burnable supply mode, `meme_decimals`, `quote_decimals`, fixed `quote_fee_bps` and `meme_fee_bps`, all four initial fee-ledger totals, route params, reservation id if any |
-| `Bought` | L | `quote_in_gross`, `quote_fee`, `quote_in_net`, `meme_out_gross`, `meme_fee`, `meme_out_net`, applied `protocol_fee_share_bps`, meme/quote `protocol_fee_delta` and `creator_fee_delta`, all four final fee-ledger totals, `M'`, `Q'`, `crossed_threshold` |
+| `LaunchCreated` | L | source ticket, original Meme/Quote and migration-witness types, `sell_burn_bps`, `V`, `T`, total supply, fixed fee/graduation policy, named initial balances, metadata-cap id, and all four zero fee-ledger totals |
+| `Bought` | L | supplied/accepted/refunded Quote, `quote_fee`, `quote_in_net`, `meme_out_gross`, `meme_fee`, `meme_out_net`, applied `protocol_fee_share_bps`, meme/quote `protocol_fee_delta` and `creator_fee_delta`, all four final fee-ledger totals, `M'`, `Q'`, `crossed_threshold` |
 | `Sold` | L | `meme_in_gross`, `meme_fee`, `meme_in_after_fee`, `progress_bps`, `burn_bps`, `pending_burn_delta`, `pending_burn_total`, `meme_in_effective`, `quote_out_gross`, `quote_fee`, `quote_out_net`, applied `protocol_fee_share_bps`, meme/quote `protocol_fee_delta` and `creator_fee_delta`, all four final fee-ledger totals, `M'`, `Q'` |
-| `MemeBurnedAtMigration` | L | `amount`, `total_supply_after` |
-| `SupplyStateChanged` | L | `old_state`, `new_state`, `final_total_supply` |
-| `CreatorFeesClaimed` / `ProtocolFeesClaimed` | L | both claimed amounts, both affected remaining totals, claimant |
+| `Migrated` | L | selected witness, migration Meme/Quote, terminal disposal, native-burn flag, total supply after, graduation-fee deltas, and final protocol fee totals |
+| `CreatorFeesClaimed` / `ProtocolFeesClaimed` | L | both drained amounts and claimant |
 | `LpFeesCollected` | L | `venue`, `pool_id`, `position_id`, `lp_vault_id`, `meme_collected`, `quote_collected`, `creator_share`, `protocol_share`, `principal_liquidity_before`, `principal_liquidity_after` |
 | `CreatorContributed` | L | `quote_amount`, `meme_received`, `Q'` — distinguishes creator-supplied progress from market progress |
 | `ContributionClaimRecorded` | L | contributor, asset, amount, claim owner, withdrawal conditions |
 | `MetadataUpdated` | L | field, `old_value`, `new_value` |
 | `MetadataFrozen` | L | metadata cap id |
 | `CreatorCapClaimed` | M | creator address, optional X identity commitment, optional X expiry |
-| `LaunchTicketCreated` | M | ticket id, original meme type, exact initial supply, metadata-cap id, launcher, address-or-X creator identity, burnable selection |
+| `LaunchTicketCreated` | M | ticket id, original meme type, exact initial supply, metadata-cap id, launcher, address-or-X creator identity, burnable selection, and `sell_burn_bps` |
 | `ProtocolAuthorityCreated` | G | authority id, initial root-cap id and recipient, admin bound, root-transfer delay |
 | `AdminGranted` | G | admin-cap id, recipient |
 | `AdminRevoked` | G | admin-cap id; membership removed while the cap object may remain |
@@ -97,18 +96,21 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `SuperAdminTransferStarted` | G | recipient and `execute_after_ms` |
 | `SuperAdminTransferCancelled` | G | removed pending recipient |
 | `SuperAdminTransferred` | G | previous/new super-admin-cap ids and recipient |
-| `RuntimeConfigCreated` | G | runtime-config id and initial zero `protocol_fee_share_bps`; disabled signer state is an initialization invariant |
+| `PackageVersionCreated` | G | package-version singleton id and initial operational version |
+| `RuntimeConfigCreated` | G | runtime-config id and zero `protocol_fee_share_bps`; disabled signer state is an initialization invariant |
 | `ProtocolFeeShareChanged` | G | old/new `protocol_fee_share_bps` |
-| `LaunchConfigCreated` | G | shared launch-config id, quote and migration-witness bounds, zero-safe initial graduation defaults, and the zero unconfigured Meme liquidity provision |
+| `LaunchConfigCreated` | G | shared launch-config id, quote and migration-witness bounds, zero initial trade-fee rates, zero-safe initial graduation defaults, and the zero unconfigured Meme liquidity provision |
 | `QuoteAllowed` | G | original quote type, initial migration quote target |
 | `QuoteMigrationTargetChanged` | G | original quote type, old/new migration quote target |
 | `QuoteDisallowed` | G | original quote type, previous migration quote target |
+| `LaunchTradeFeesChanged` | G | complete old/new Quote and Meme trade-fee rate pairs |
 | `GraduationDefaultsChanged` | G | complete old/new Quote-fee, Meme-allocation, and Meme-liquidity-provision triples |
 | `MigrationWitnessAllowed` | G | admitted external migrator witness original type |
 | `MigrationWitnessDisallowed` | G | disallowed external migrator witness original type |
 | `PackageAdminCreated` | G | package-admin, Publisher, and wrapped cap ids; original package id; initial version and policy |
 | `UpgradeAuthorized` | G | package id and version, cap policy, and exact package digest authorized by a live admin witness |
 | `UpgradeCommitted` | G | replacement package id and previous/new cap versions |
+| `PackageVersionAdvanced` | G | previous/new shared package cutover versions after explicit checked activation |
 | `UpgradePolicyRestricted` | G | previous/new irreversible framework policy |
 | `RouteSelected` | L | route A/B/C, venue, tick spacing, fee rate, orientation, target sqrt price, `reservation_id` |
 | `ReservationReleased` | L | `venue`, `reservation_id`, `tick_spacing`, `orientation`, reason |
@@ -119,7 +121,6 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `DisplayFieldSet` | G | type name, key, `old_value`, `new_value` |
 | `ConfigChanged` | G | parameter, `old_value`, `new_value`, ceiling |
 | `Paused` / `Unpaused` | G | scope, reason code |
-| `VersionBumped` | G | `old_version`, `new_version` |
 | `AdapterApproved` / `AdapterRevoked` | G | witness type name |
 | `XClaimSignerSet` / `XClaimSignerRevoked` | G | previous public key and, for set/rotation, current public key; no key id or active flag |
 | `EpochOpened` | E | quote type, `MAX_EPOCH_LEAVES`, `MAX_EPOCH_FUNDED`, dust policy, `scope` (`protocol` or `launch_scoped`), `meme_types` (empty when `scope` is `protocol`) |
@@ -139,8 +140,8 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
   identifier as an ordinary field. Payloads do not duplicate Sui's native event position. The meme fact
   is keyed by original `TypeName` and can be emitted only once.
 - During bonding, `Sold` records pending-burn custody rather than claiming that
-  supply decreased. The one terminal burn is a named fact with resulting total
-  supply; fixed launches have neither pending burn nor a burn event.
+  supply decreased. `Migrated` distinguishes BurnOnly native destruction from
+  Fixed `0x0` disposal and records resulting total supply.
 - `Bought` and `Sold` are the sole fee-accrual facts. Each contains the split deltas and post-accrual
   totals plus the live global percentage applied; no second event describes the same mutation.
 - The fee-share configuration has its own global replay scope. Its update affects the next accrual of
@@ -182,22 +183,20 @@ counters to protocol storage. `CreatorCapClaimed` is reduced as one immutable fa
 | `prepare` | guard order test | `LaunchCreated` | core has no venue dep | ticket consumed, no growth | returns values | named aborts per field |
 | `reserve` (adapter) | cap-id and digest checks | `RouteSelected` | vendored SHA pin | no new collection | returns values | named aborts |
 | `finish` | supply, cap, inventory, witness, digest | `LaunchCreated` | core has no venue dep | one `Launch` per ticket | returns `Launch` | named aborts per check |
-| `buy` | version, pause, state, slippage, non-zero out | `Bought` | none | none | returns `Coin<Meme>` | `EZeroOutput`, slippage, deadline |
-| `sell` | version, pause, state, pending-burn allocation, slippage, non-zero out | `Sold` | none | one embedded pending-burn balance | returns `Coin<Quote>` | `EZeroOutput`, slippage, deadline |
+| `buy` | package version, `Live`, exact-target cap, slippage, non-zero out | `Bought` | none | none | returns `(Coin<Meme>, Coin<Quote> refund)` | zero output, slippage, lifecycle |
+| `sell` | package version, `Live`, pending-burn allocation, slippage, non-zero out | `Sold` | none | one embedded pending-burn balance | returns `Coin<Quote>` | zero output, slippage, lifecycle |
 | claim fees | capability, accrued only | `*FeesClaimed` | none | none | returns coin | `ENotAuthorized`, `ENothingAccrued` |
-| set protocol fee share | admin witness, `<= 10_000` | `ProtocolFeeShareChanged` | none | one scalar | n/a | `EInvalidProtocolFeeShareBps` |
+| set protocol fee share | admin witness, valid `Bps` | `ProtocolFeeShareChanged` | none | one scalar | n/a | `EInvalidBps` |
 | mutate quote whitelist | admin witness, target, membership, capacity | `QuoteAllowed`, `QuoteMigrationTargetChanged`, or `QuoteDisallowed` | none | at most 16 entries | n/a | exact errors 42 and 44–46; 43 retired |
 | collect LP fees | capability, vault-locked position | `LpFeesCollected` | vendored SHA pin | none | returns coins | `ENotAuthorized`, `EPositionNotInVault` |
 | release reservation | capability, reservation exists | `ReservationReleased` | vendored SHA pin | frees the reservation slot | n/a | `ENoReservation`, `EWrongVenue` |
 | metadata update | capability, bonding only | `MetadataUpdated` | none | none | n/a | `EMetadataFrozen` |
 | creator-cap claim | consume `CreatorAuthority`; address equality with no attestation, or X backend signature/domain/expiry/active signer | `CreatorCapClaimed` | none | removes one authority | returns `CreatorCap` | address/X branch and structural consumption tests |
 | destroy admin cap | owned cap; membership lookup cannot block deletion | `AdminDestroyed` | none | removes one membership if present and deletes cap | n/a | active and already-revoked branches |
-| package administration / upgrade | canonical-module Publisher and original-package cap at intake; admin witness; exact digest; strictly narrower policies; native receipt bound to cap | `PackageAdminCreated`, `UpgradeAuthorized`, `UpgradeCommitted`, `UpgradePolicyRestricted` | pinned Sui framework | one package admin containing Publisher and cap | ticket/receipt PTB | exact errors 53, 54, 56, 57 plus framework wrong-cap failure |
-| `begin_migration` | state, threshold, single-use | `MigrationBegun` | core has no venue dep | one payload | returns payload | `EMigrationAlreadyBegun` |
-| adapter settle | acceptance band, orientation, range | `RouteSelected` | vendored SHA pin | none | returns settlement | band and range aborts |
-| `settle_migration` | witness, single-use, ordering | `Migrated`, `MemeBurnedAtMigration`, `SupplyStateChanged`, `MetadataFrozen` | core has no venue dep | one settlement | returns `LpVault` | `EAlreadyMigrated` |
+| package administration / upgrade | package-version gate; canonical-module Publisher and original-package cap at intake; admin witness; exact digest; strictly narrower policies; native receipt bound to cap | `PackageAdminCreated`, `UpgradeAuthorized`, `UpgradeCommitted`, `PackageVersionAdvanced`, `UpgradePolicyRestricted` | pinned Sui framework | one package admin plus scalar runtime cutover | ticket/receipt PTB | exact errors 53, 54, 56, 57, 68 plus framework wrong-cap failure |
+| `migrate` | package version, `MigrationReady`, selected witness type, native Fixed/BurnOnly mode | `Migrated` | core has no venue dep | one non-droppable typed payload | returns payload | lifecycle, witness-type, unsupported native-mode errors |
+| `redeem_migration` | payload and exact sealed witness value | no separate event | core has no venue dep | consumes the payload | returns balances | static witness-type equality |
 | admin setters | capability, ceiling | `ConfigChanged` | none | none | n/a | `EAboveCeiling` |
-| pause / version | capability | `Paused`, `VersionBumped` | none | none | n/a | `ENotAuthorized` |
 | revshare publish | cap, leaf and funding bounds, claimable cap | `RootPublished` | none | fixed bitmap | n/a | `ETooManyLeaves`, `EEpochOverfunded` |
 | revshare claim | root final, index range, bitmap | `Claimed` | none | fixed bitmap | returns coin | `EAlreadyClaimed`, `ELeafIndexOutOfRange` |
 | revshare sweep | expiry, not swept | `EpochSwept` | none | frees a slot | n/a | `ENotExpired`, `EAlreadySwept` |
