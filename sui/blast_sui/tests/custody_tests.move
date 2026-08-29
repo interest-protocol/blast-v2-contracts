@@ -282,6 +282,42 @@ fun activate_pending_converts_every_arrived_receipt() {
 }
 
 #[test]
+fun withdraw_exact_spans_both_pending_receipts_and_active_stake() {
+    let mut fixture = start();
+    let mut ledger = option::none();
+
+    fixture.next_tx!(USER, |f| {
+        ledger.fill(f.new_staked_ledger(2 * MIST_PER_SUI));
+    });
+    fixture.advance_epoch();
+    fixture.next_tx!(USER, |f| {
+        let ledger = ledger.borrow_mut();
+        ledger.activate_pending(f.system!(), f.ctx!());
+        ledger.revalue(1, 1);
+        f.stake_more(ledger, 3 * MIST_PER_SUI);
+    });
+    fixture.advance_epoch();
+    fixture.next_tx!(USER, |f| {
+        let ledger = ledger.borrow_mut();
+        f.stake_more(ledger, 4 * MIST_PER_SUI);
+        assert_eq!(ledger.pending_sui(), 7 * MIST_PER_SUI);
+        assert_eq!(ledger.active_pool_tokens(), 2 * MIST_PER_SUI);
+
+        let sui_out = ledger.withdraw_exact(f.system!(), 8 * MIST_PER_SUI, 1, 1, f.ctx!());
+
+        // Both pending receipts drain whole and the active position funds the
+        // final SUI, so one exact withdrawal serves from every custody tier.
+        assert_eq!(sui_out.value(), 8 * MIST_PER_SUI);
+        assert_eq!(ledger.pending_sui(), 0);
+        assert!(ledger.active_pool_tokens() < 2 * MIST_PER_SUI);
+        destroy(sui_out);
+    });
+
+    destroy(ledger);
+    fixture.end();
+}
+
+#[test]
 fun withdraw_exact_drains_the_newest_receipt_first() {
     let mut fixture = start();
     let mut ledger = option::none();
