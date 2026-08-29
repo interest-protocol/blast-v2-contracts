@@ -7,7 +7,11 @@ use blast_fun::{
     package_version::PackageVersion,
     runtime_config::RuntimeConfig,
 };
-use blast_fun_migrators::{events, vault::{Self, LpVault}};
+use blast_fun_migrators::{
+    events,
+    vault::{Self, LpVault},
+    venue_config::VenueConfig,
+};
 use mmt_v3::{
     collect,
     create_pool,
@@ -15,7 +19,7 @@ use mmt_v3::{
     i32,
     liquidity,
     pool::{Self, Pool},
-    position::{Self, Position},
+    position::Position,
     tick_math,
     version::Version,
 };
@@ -46,14 +50,15 @@ public fun migrate_meme_x<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
     runtime_config: &RuntimeConfig,
+    venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     global_config: &mut GlobalConfig,
     mmt_version: &Version,
-    fee_rate: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     assert_coin_order<Meme, Quote>(true);
+    let fee_rate = venue_config.mmt_fee_rate();
 
     let launch_id = object::id(launch);
     let payload = launch.migrate<Meme, Quote, Witness>(
@@ -124,14 +129,15 @@ public fun migrate_meme_y<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
     runtime_config: &RuntimeConfig,
+    venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     global_config: &mut GlobalConfig,
     mmt_version: &Version,
-    fee_rate: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     assert_coin_order<Meme, Quote>(false);
+    let fee_rate = venue_config.mmt_fee_rate();
 
     let launch_id = object::id(launch);
     let payload = launch.migrate<Meme, Quote, Witness>(
@@ -222,8 +228,7 @@ public fun collect_fees_meme_x<Meme, Quote>(
         ctx,
     );
 
-    vault::accrue_fees<Meme, Quote, Venue>(
-        self,
+    self.accrue_fees(
         &venue,
         position_id,
         meme_fee.into_balance(),
@@ -260,8 +265,7 @@ public fun collect_fees_meme_y<Meme, Quote>(
         ctx,
     );
 
-    vault::accrue_fees<Meme, Quote, Venue>(
-        self,
+    self.accrue_fees(
         &venue,
         position_id,
         meme_fee.into_balance(),
@@ -301,6 +305,7 @@ fun create_and_seed_pool<X, Y>(
         ctx,
     );
     pool::initialize(&mut pool, sqrt_price_x64, clock);
+
     let (lower_tick, upper_tick) = pool::get_friendly_ticks(
         &pool,
         tick_math::min_sqrt_price(),
@@ -309,6 +314,7 @@ fun create_and_seed_pool<X, Y>(
     let lower_tick_bits = i32::as_u32(lower_tick);
     let upper_tick_bits = i32::as_u32(upper_tick);
     let tick_spacing = pool::tick_spacing(&pool);
+
     let mut position = liquidity::open_position(
         &mut pool,
         lower_tick,
@@ -339,6 +345,17 @@ fun create_and_seed_pool<X, Y>(
     )
 }
 
+fun transfer_residual<CoinType>(
+    residual: Coin<CoinType>,
+    protocol_treasury: address,
+) {
+    if (residual.value() == 0) {
+        residual.destroy_zero();
+    } else {
+        transfer::public_transfer(residual, protocol_treasury);
+    };
+}
+
 fun lock_and_share<Meme, Quote, X, Y>(
     runtime_config: &RuntimeConfig,
     venue: Venue,
@@ -357,8 +374,8 @@ fun lock_and_share<Meme, Quote, X, Y>(
     ctx: &mut TxContext,
 ) {
     let pool_id = object::id(&pool);
-    assert!(position::pool_id(&position) == pool_id, EPositionPoolMismatch);
-    assert!(position::liquidity(&position) > 0, EZeroPositionLiquidity);
+    assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
+    assert!(position.liquidity() > 0, EZeroPositionLiquidity);
     let residual_meme_amount = residual_meme.value();
     let residual_quote_amount = residual_quote.value();
     migration_math::assert_residual_within_bps(
@@ -371,12 +388,12 @@ fun lock_and_share<Meme, Quote, X, Y>(
         residual_quote_amount,
         MAX_RESIDUAL_BPS,
     );
+
     let used_meme_amount = source_meme_amount - residual_meme_amount;
     let used_quote_amount = source_quote_amount - residual_quote_amount;
-
     let protocol_treasury = runtime_config.protocol_treasury();
-    transfer::public_transfer(residual_meme, protocol_treasury);
-    transfer::public_transfer(residual_quote, protocol_treasury);
+    transfer_residual(residual_meme, protocol_treasury);
+    transfer_residual(residual_quote, protocol_treasury);
 
     let vault_id = vault::new<Meme, Quote, Venue, Position>(
         venue,
@@ -385,6 +402,7 @@ fun lock_and_share<Meme, Quote, X, Y>(
         ctx,
     );
     pool::transfer(pool);
+
     events::migration_completed<Meme, Quote, Venue>(
         launch_id,
         vault_id,
@@ -413,15 +431,13 @@ fun collect_position_fees<X, Y, Meme, Quote>(
     ctx: &mut TxContext,
 ): (ID, Coin<X>, Coin<Y>, u128, u128) {
     let pool_id = object::id(pool);
-    assert!(vault::pool_id(self) == pool_id, EPositionPoolMismatch);
+    assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
 
-    let position = vault::borrow_position_mut<Meme, Quote, Venue, Position>(
-        self,
-        venue,
-    );
+    let position =
+        self.borrow_position_mut<Meme, Quote, Venue, Position>(venue);
     let position_id = object::id(position);
-    assert!(position::pool_id(position) == pool_id, EPositionPoolMismatch);
-    let liquidity_before = position::liquidity(position);
+    assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
+    let liquidity_before = position.liquidity();
     assert!(liquidity_before > 0, EZeroPositionLiquidity);
 
     let (fee_x, fee_y) = collect::fee(
@@ -432,10 +448,10 @@ fun collect_position_fees<X, Y, Meme, Quote>(
         ctx,
     );
 
-    assert!(position::pool_id(position) == pool_id, EPositionPoolMismatch);
-    let liquidity_after = position::liquidity(position);
+    assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
+    let liquidity_after = position.liquidity();
     assert!(liquidity_after == liquidity_before, EPositionLiquidityChanged);
-    assert!(vault::pool_id(self) == pool_id, EPositionPoolMismatch);
+    assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
 
     (position_id, fee_x, fee_y, liquidity_before, liquidity_after)
 }

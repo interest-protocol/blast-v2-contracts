@@ -7,23 +7,29 @@ use blast_fun::{
     package_version::PackageVersion,
     runtime_config::RuntimeConfig,
 };
-use blast_fun_migrators::{events, vault::{Self, LpVault}};
+use blast_fun_migrators::{
+    events,
+    vault::{Self, LpVault},
+    venue_config::VenueConfig,
+};
 use clmm_pool::{
     config::{Self, GlobalConfig},
     factory::{Self, Pools},
     pool::{Self, Pool},
-    position::{Self, Position},
+    position::Position,
     rewarder::RewarderGlobalVault,
     tick_math,
 };
 use fullsail_integer_mate::i32;
-use std::{string, type_name};
+use std::type_name;
 use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, coin_registry::Currency};
 
 // === Constants ===
 
 /// Full Sail must use at least 99.99% of both migration balances.
 const MAX_RESIDUAL_BPS: u64 = 1;
+
+/// Coarse adoption gate; the residual rule below binds far tighter.
 const MAX_PRICE_DEVIATION_BPS: u64 = 50;
 
 const EInvalidCoinOrder: u64 = 0;
@@ -33,6 +39,7 @@ const EZeroPositionLiquidity: u64 = 3;
 const EPositionLiquidityChanged: u64 = 4;
 const EPaymentExceedsBalance: u64 = 5;
 const EInsufficientUtilization: u64 = 6;
+const ETierMismatch: u64 = 7;
 
 // === Public Structs ===
 
@@ -49,18 +56,20 @@ public fun migrate_new_meme_a<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
     runtime_config: &RuntimeConfig,
+    venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     fullsail_config: &GlobalConfig,
     rewarder_vault: &mut RewarderGlobalVault,
     pools: &mut Pools,
-    tick_spacing: u32,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     assert_canonical_order<Meme, Quote>(true);
-    let fee_rate = fee_rate(fullsail_config, tick_spacing);
+    let tick_spacing = venue_config.fullsail_tick_spacing();
+    let fee_rate = config::get_fee_rate(tick_spacing, fullsail_config);
     let (lower_tick_bits, upper_tick_bits) = full_range_ticks(tick_spacing);
     let launch_id = object::id(launch);
+
     let payload = launch.migrate<Meme, Quote, Witness>(
         package_version,
         meme_currency,
@@ -74,6 +83,9 @@ public fun migrate_new_meme_a<Meme, Quote>(
         source_quote_amount,
         true,
     );
+
+    // Meme is the fixed side: at the derived opening price a full-range seed
+    // leaves its rounding residual on the Quote requirement.
     let (position, residual_meme, residual_quote) =
         factory::create_pool_with_liquidity<Meme, Quote>(
             pools,
@@ -81,7 +93,7 @@ public fun migrate_new_meme_a<Meme, Quote>(
             rewarder_vault,
             tick_spacing,
             sqrt_price_x64,
-            string::utf8(b""),
+            b"".to_string(),
             lower_tick_bits,
             upper_tick_bits,
             meme.into_coin(ctx),
@@ -120,18 +132,20 @@ public fun migrate_new_meme_b<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
     runtime_config: &RuntimeConfig,
+    venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     fullsail_config: &GlobalConfig,
     rewarder_vault: &mut RewarderGlobalVault,
     pools: &mut Pools,
-    tick_spacing: u32,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     assert_canonical_order<Meme, Quote>(false);
-    let fee_rate = fee_rate(fullsail_config, tick_spacing);
+    let tick_spacing = venue_config.fullsail_tick_spacing();
+    let fee_rate = config::get_fee_rate(tick_spacing, fullsail_config);
     let (lower_tick_bits, upper_tick_bits) = full_range_ticks(tick_spacing);
     let launch_id = object::id(launch);
+
     let payload = launch.migrate<Meme, Quote, Witness>(
         package_version,
         meme_currency,
@@ -145,6 +159,9 @@ public fun migrate_new_meme_b<Meme, Quote>(
         source_quote_amount,
         false,
     );
+
+    // Meme is coin B here, so the fixed side flag is false: fixing Meme keeps
+    // the rounding residual on the Quote requirement at the derived price.
     let (position, residual_quote, residual_meme) =
         factory::create_pool_with_liquidity<Quote, Meme>(
             pools,
@@ -152,14 +169,14 @@ public fun migrate_new_meme_b<Meme, Quote>(
             rewarder_vault,
             tick_spacing,
             sqrt_price_x64,
-            string::utf8(b""),
+            b"".to_string(),
             lower_tick_bits,
             upper_tick_bits,
             quote.into_coin(ctx),
             meme.into_coin(ctx),
             source_quote_amount,
             source_meme_amount,
-            true,
+            false,
             @0x0,
             @0x0,
             false,
@@ -191,6 +208,7 @@ public fun migrate_existing_meme_a<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
     runtime_config: &RuntimeConfig,
+    venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     fullsail_config: &GlobalConfig,
     rewarder_vault: &mut RewarderGlobalVault,
@@ -199,10 +217,12 @@ public fun migrate_existing_meme_a<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert_canonical_order<Meme, Quote>(true);
-    let tick_spacing = pool::tick_spacing(pool);
-    let fee_rate = pool::fee_rate(pool);
+    let tick_spacing = pool.tick_spacing();
+    let fee_rate = pool.fee_rate();
+    assert_adopted_tier(venue_config, fullsail_config, tick_spacing, fee_rate);
     let (lower_tick_bits, upper_tick_bits) = full_range_ticks(tick_spacing);
     let launch_id = object::id(launch);
+
     let payload = launch.migrate<Meme, Quote, Witness>(
         package_version,
         meme_currency,
@@ -211,13 +231,29 @@ public fun migrate_existing_meme_a<Meme, Quote>(
     let (mut meme, mut quote) = payload.redeem_migration(Witness());
     let source_meme_amount = meme.value();
     let source_quote_amount = quote.value();
+    let pool_sqrt_price = pool.current_sqrt_price();
     migration_math::assert_price_within_bps(
         source_meme_amount,
         source_quote_amount,
         true,
-        pool::current_sqrt_price(pool),
+        pool_sqrt_price,
         MAX_PRICE_DEVIATION_BPS,
     );
+
+    // Fix the side the adopted price leaves affordable: at or below the
+    // derived price the Quote requirement shrinks, above it the Meme
+    // requirement shrinks.
+    let derived_sqrt_price = migration_math::sqrt_price_x64(
+        source_meme_amount,
+        source_quote_amount,
+        true,
+    );
+    let fix_meme = pool_sqrt_price <= derived_sqrt_price;
+    let (fixed_amount, fix_amount_a) = if (fix_meme) {
+        (source_meme_amount, true)
+    } else {
+        (source_quote_amount, false)
+    };
 
     let mut position = pool::open_position<Meme, Quote>(
         fullsail_config,
@@ -231,8 +267,8 @@ public fun migrate_existing_meme_a<Meme, Quote>(
         rewarder_vault,
         pool,
         &mut position,
-        source_meme_amount,
-        true,
+        fixed_amount,
+        fix_amount_a,
         clock,
     );
     let (paid_meme, paid_quote) = pool::add_liquidity_pay_amount(&receipt);
@@ -251,7 +287,7 @@ public fun migrate_existing_meme_a<Meme, Quote>(
         paid_quote,
         receipt,
     );
-    assert!(position::pool_id(&position) == object::id(pool), EPositionPoolMismatch);
+    assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
 
     let venue = Venue();
     lock_and_share<Meme, Quote>(
@@ -263,11 +299,7 @@ public fun migrate_existing_meme_a<Meme, Quote>(
         quote.into_coin(ctx),
         source_meme_amount,
         source_quote_amount,
-        migration_math::sqrt_price_x64(
-            source_meme_amount,
-            source_quote_amount,
-            true,
-        ),
+        pool_sqrt_price,
         lower_tick_bits,
         upper_tick_bits,
         tick_spacing,
@@ -281,6 +313,7 @@ public fun migrate_existing_meme_b<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
     runtime_config: &RuntimeConfig,
+    venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     fullsail_config: &GlobalConfig,
     rewarder_vault: &mut RewarderGlobalVault,
@@ -289,10 +322,12 @@ public fun migrate_existing_meme_b<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert_canonical_order<Meme, Quote>(false);
-    let tick_spacing = pool::tick_spacing(pool);
-    let fee_rate = pool::fee_rate(pool);
+    let tick_spacing = pool.tick_spacing();
+    let fee_rate = pool.fee_rate();
+    assert_adopted_tier(venue_config, fullsail_config, tick_spacing, fee_rate);
     let (lower_tick_bits, upper_tick_bits) = full_range_ticks(tick_spacing);
     let launch_id = object::id(launch);
+
     let payload = launch.migrate<Meme, Quote, Witness>(
         package_version,
         meme_currency,
@@ -301,13 +336,29 @@ public fun migrate_existing_meme_b<Meme, Quote>(
     let (mut meme, mut quote) = payload.redeem_migration(Witness());
     let source_meme_amount = meme.value();
     let source_quote_amount = quote.value();
+    let pool_sqrt_price = pool.current_sqrt_price();
     migration_math::assert_price_within_bps(
         source_meme_amount,
         source_quote_amount,
         false,
-        pool::current_sqrt_price(pool),
+        pool_sqrt_price,
         MAX_PRICE_DEVIATION_BPS,
     );
+
+    // Meme is coin B here, so the affordable fixed side flips: at or above
+    // the derived price the Quote requirement shrinks, below it the Meme
+    // requirement shrinks.
+    let derived_sqrt_price = migration_math::sqrt_price_x64(
+        source_meme_amount,
+        source_quote_amount,
+        false,
+    );
+    let fix_meme = pool_sqrt_price >= derived_sqrt_price;
+    let (fixed_amount, fix_amount_a) = if (fix_meme) {
+        (source_meme_amount, false)
+    } else {
+        (source_quote_amount, true)
+    };
 
     let mut position = pool::open_position<Quote, Meme>(
         fullsail_config,
@@ -321,8 +372,8 @@ public fun migrate_existing_meme_b<Meme, Quote>(
         rewarder_vault,
         pool,
         &mut position,
-        source_quote_amount,
-        true,
+        fixed_amount,
+        fix_amount_a,
         clock,
     );
     let (paid_quote, paid_meme) = pool::add_liquidity_pay_amount(&receipt);
@@ -341,7 +392,7 @@ public fun migrate_existing_meme_b<Meme, Quote>(
         paid_meme,
         receipt,
     );
-    assert!(position::pool_id(&position) == object::id(pool), EPositionPoolMismatch);
+    assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
 
     let venue = Venue();
     lock_and_share<Meme, Quote>(
@@ -353,11 +404,7 @@ public fun migrate_existing_meme_b<Meme, Quote>(
         quote.into_coin(ctx),
         source_meme_amount,
         source_quote_amount,
-        migration_math::sqrt_price_x64(
-            source_meme_amount,
-            source_quote_amount,
-            false,
-        ),
+        pool_sqrt_price,
         lower_tick_bits,
         upper_tick_bits,
         tick_spacing,
@@ -382,8 +429,8 @@ public fun collect_fees_meme_a<Meme, Quote>(
             fullsail_config,
             pool,
         );
-    vault::accrue_fees<Meme, Quote, Venue>(
-        self,
+
+    self.accrue_fees(
         &venue,
         position_id,
         meme_fee,
@@ -411,8 +458,8 @@ public fun collect_fees_meme_b<Meme, Quote>(
             fullsail_config,
             pool,
         );
-    vault::accrue_fees<Meme, Quote, Venue>(
-        self,
+
+    self.accrue_fees(
         &venue,
         position_id,
         meme_fee,
@@ -452,19 +499,37 @@ fun type_name_greater_than<A, B>(): bool {
         if (a_byte < b_byte) return false;
         index = index + 1;
     };
+
     a_length > b_length
 }
 
-fun fee_rate(config: &GlobalConfig, tick_spacing: u32): u64 {
-    config::get_fee_rate(tick_spacing, config)
+fun assert_adopted_tier(
+    venue_config: &VenueConfig,
+    fullsail_config: &GlobalConfig,
+    tick_spacing: u32,
+    fee_rate: u64,
+) {
+    assert!(
+        tick_spacing == venue_config.fullsail_tick_spacing(),
+        ETierMismatch,
+    );
+    assert!(
+        fee_rate == config::get_fee_rate(tick_spacing, fullsail_config),
+        ETierMismatch,
+    );
 }
 
+/// Aligns the venue tick bounds by truncating their magnitudes toward zero,
+/// which keeps the aligned bounds inside the venue range, then re-encodes the
+/// negative lower bound as two's-complement bits.
 fun full_range_ticks(tick_spacing: u32): (u32, u32) {
     assert!(tick_spacing > 0, EInvalidTickSpacing);
+
     let lower_magnitude = i32::abs_u32(tick_math::min_tick());
     let upper_magnitude = i32::as_u32(tick_math::max_tick());
     let lower_aligned = lower_magnitude / tick_spacing * tick_spacing;
     let upper_aligned = upper_magnitude / tick_spacing * tick_spacing;
+
     (i32::as_u32(i32::neg_from(lower_aligned)), upper_aligned)
 }
 
@@ -492,6 +557,17 @@ fun assert_payment_amounts(
     );
 }
 
+fun transfer_residual<CoinType>(
+    residual: Coin<CoinType>,
+    protocol_treasury: address,
+) {
+    if (residual.value() == 0) {
+        residual.destroy_zero();
+    } else {
+        transfer::public_transfer(residual, protocol_treasury);
+    };
+}
+
 fun lock_and_share<Meme, Quote>(
     runtime_config: &RuntimeConfig,
     venue: Venue,
@@ -508,8 +584,8 @@ fun lock_and_share<Meme, Quote>(
     fee_rate: u64,
     ctx: &mut TxContext,
 ) {
-    let pool_id = position::pool_id(&position);
-    assert!(position::liquidity(&position) > 0, EZeroPositionLiquidity);
+    let pool_id = position.pool_id();
+    assert!(position.liquidity() > 0, EZeroPositionLiquidity);
     let residual_meme_amount = residual_meme.value();
     let residual_quote_amount = residual_quote.value();
     migration_math::assert_residual_within_bps(
@@ -522,31 +598,20 @@ fun lock_and_share<Meme, Quote>(
         residual_quote_amount,
         MAX_RESIDUAL_BPS,
     );
+
     let used_meme_amount = source_meme_amount - residual_meme_amount;
     let used_quote_amount = source_quote_amount - residual_quote_amount;
-    assert!(
-        used_meme_amount >= migration_math::minimum_utilized_amount(
-            source_meme_amount,
-            MAX_RESIDUAL_BPS,
-        ),
-        EInsufficientUtilization,
-    );
-    assert!(
-        used_quote_amount >= migration_math::minimum_utilized_amount(
-            source_quote_amount,
-            MAX_RESIDUAL_BPS,
-        ),
-        EInsufficientUtilization,
-    );
     let protocol_treasury = runtime_config.protocol_treasury();
-    transfer::public_transfer(residual_meme, protocol_treasury);
-    transfer::public_transfer(residual_quote, protocol_treasury);
+    transfer_residual(residual_meme, protocol_treasury);
+    transfer_residual(residual_quote, protocol_treasury);
+
     let vault_id = vault::new<Meme, Quote, Venue, Position>(
         venue,
         pool_id,
         position,
         ctx,
     );
+
     events::migration_completed<Meme, Quote, Venue>(
         launch_id,
         vault_id,
@@ -573,24 +638,33 @@ fun collect_position_fees<X, Y, Meme, Quote>(
     pool: &mut Pool<X, Y>,
 ): (ID, Balance<X>, Balance<Y>, u128, u128) {
     let pool_id = object::id(pool);
-    assert!(vault::pool_id(self) == pool_id, EPositionPoolMismatch);
-    let position = vault::borrow_position_mut<Meme, Quote, Venue, Position>(
-        self,
-        venue,
-    );
+    assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
+
+    let position =
+        self.borrow_position_mut<Meme, Quote, Venue, Position>(venue);
     let position_id = object::id(position);
-    assert!(position::pool_id(position) == pool_id, EPositionPoolMismatch);
-    let liquidity_before = position::liquidity(position);
+    assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
+    let liquidity_before = position.liquidity();
     assert!(liquidity_before > 0, EZeroPositionLiquidity);
+
     let (fee_a, fee_b) = pool::collect_fee(
         fullsail_config,
         pool,
         position,
         true,
     );
-    assert!(position::pool_id(position) == pool_id, EPositionPoolMismatch);
-    let liquidity_after = position::liquidity(position);
+
+    assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
+    let liquidity_after = position.liquidity();
     assert!(liquidity_after == liquidity_before, EPositionLiquidityChanged);
-    assert!(vault::pool_id(self) == pool_id, EPositionPoolMismatch);
+    assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
+
     (position_id, fee_a, fee_b, liquidity_before, liquidity_after)
+}
+
+// === Test-Only Functions ===
+
+#[test_only]
+public fun type_name_greater_than_for_testing<A, B>(): bool {
+    type_name_greater_than<A, B>()
 }

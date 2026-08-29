@@ -93,7 +93,7 @@ public fun claim_protocol_fees<Meme, Quote>(
 
 // === Package Functions ===
 
-/// Creates one vault and attaches its only venue position as a child object.
+/// Creates and shares one vault with its only venue position as a child object.
 public(package) fun new<Meme, Quote, Venue: drop, Position: key + store>(
     _venue: Venue,
     pool_id: ID,
@@ -131,6 +131,11 @@ public(package) fun borrow_position_mut<
     self: &mut LpVault<Meme, Quote>,
     _venue: &Venue,
 ): &mut Position {
+    assert!(
+        dynamic_object_field::exists(&self.id, PositionKey<Venue>()),
+        EWrongVenue,
+    );
+
     dynamic_object_field::borrow_mut<PositionKey<Venue>, Position>(
         &mut self.id,
         PositionKey(),

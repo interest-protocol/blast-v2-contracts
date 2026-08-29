@@ -1,4 +1,9 @@
 /// Bluefin migration with custodied concentrated-liquidity principal.
+///
+/// Bluefin pools are keyed by their exact type-parameter order, so this module
+/// always creates `Pool<Meme, Quote>` with Meme as coin A. The release gate
+/// must prove against published bytecode that the venue accepts this order for
+/// every allowlisted Quote.
 module blast_fun_migrators::bluefin;
 
 use blast_fun::{
@@ -7,7 +12,11 @@ use blast_fun::{
     package_version::PackageVersion,
     runtime_config::RuntimeConfig,
 };
-use blast_fun_migrators::{events, vault::{Self, LpVault}};
+use blast_fun_migrators::{
+    events,
+    vault::{Self, LpVault},
+    venue_config::VenueConfig,
+};
 use bluefin_spot::{
     config::{Self, GlobalConfig},
     pool::{Self, Pool},
@@ -38,6 +47,7 @@ const EInvalidSqrtPrice: u64 = 3;
 const EPositionPoolMismatch: u64 = 4;
 const EZeroPositionLiquidity: u64 = 5;
 const EPositionLiquidityChanged: u64 = 6;
+const EVenueAmountMismatch: u64 = 7;
 
 // === Public Structs ===
 
@@ -49,27 +59,31 @@ public struct Venue() has drop;
 
 // === Public Functions ===
 
-/// Migrates with Meme as Bluefin coin A and Quote as Bluefin coin B.
+/// Migrates with Meme as Bluefin coin A at the admin-pinned venue tier.
+///
+/// The full Meme balance is the fixed liquidity side: at the balance-derived
+/// opening price a full-range seed leaves its rounding residual on the Quote
+/// side, so fixing Meme is the only order the venue can satisfy from the
+/// migrated balances.
 public fun migrate<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
     runtime_config: &RuntimeConfig,
+    venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     quote_currency: &Currency<Quote>,
     bluefin_config: &mut GlobalConfig,
-    tick_spacing: u32,
-    fee_rate: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     let launch_id = object::id(launch);
+    let (tick_spacing, fee_rate) = venue_config.bluefin_tier();
     let (lower_tick_bits, upper_tick_bits) =
         full_range_ticks(bluefin_config, tick_spacing);
     let pool_name = pool_name(meme_currency, quote_currency);
-    let pool_icon_url = meme_currency.icon_url().into_bytes();
+    let meme_icon_url = meme_currency.icon_url().into_bytes();
     let coin_a_symbol = meme_currency.symbol().into_bytes();
     let coin_a_decimals = meme_currency.decimals();
-    let coin_a_url = meme_currency.icon_url().into_bytes();
     let coin_b_symbol = quote_currency.symbol().into_bytes();
     let coin_b_decimals = quote_currency.decimals();
     let coin_b_url = quote_currency.icon_url().into_bytes();
@@ -81,11 +95,11 @@ public fun migrate<Meme, Quote>(
         ctx,
     );
     let (meme, quote) = payload.redeem_migration(Witness());
-    let meme_amount = meme.value();
-    let quote_amount = quote.value();
+    let source_meme_amount = meme.value();
+    let source_quote_amount = quote.value();
     let sqrt_price_x64 = migration_math::sqrt_price_x64(
-        meme_amount,
-        quote_amount,
+        source_meme_amount,
+        source_quote_amount,
         true,
     );
     assert_valid_sqrt_price(sqrt_price_x64);
@@ -101,10 +115,10 @@ public fun migrate<Meme, Quote>(
         clock,
         bluefin_config,
         pool_name,
-        pool_icon_url,
+        meme_icon_url,
         coin_a_symbol,
         coin_a_decimals,
-        coin_a_url,
+        meme_icon_url,
         coin_b_symbol,
         coin_b_decimals,
         coin_b_url,
@@ -116,8 +130,8 @@ public fun migrate<Meme, Quote>(
         upper_tick_bits,
         meme,
         quote,
-        quote_amount,
-        false,
+        source_meme_amount,
+        true,
         ctx,
     );
 
@@ -126,8 +140,8 @@ public fun migrate<Meme, Quote>(
         launch_id,
         pool_id,
         position,
-        meme_amount,
-        quote_amount,
+        source_meme_amount,
+        source_quote_amount,
         used_meme_amount,
         used_quote_amount,
         residual_meme,
@@ -151,14 +165,11 @@ public fun collect_fees<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     let pool_id = object::id(pool);
-    assert!(vault::pool_id(self) == pool_id, EPositionPoolMismatch);
+    assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
 
     let venue = Venue();
     let position =
-        vault::borrow_position_mut<Meme, Quote, Venue, Position>(
-            self,
-            &venue,
-        );
+        self.borrow_position_mut<Meme, Quote, Venue, Position>(&venue);
     let position_id = object::id(position);
     assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
     let liquidity_before = position.liquidity();
@@ -174,10 +185,9 @@ public fun collect_fees<Meme, Quote>(
     assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
     let liquidity_after = position.liquidity();
     assert!(liquidity_after == liquidity_before, EPositionLiquidityChanged);
-    assert!(vault::pool_id(self) == pool_id, EPositionPoolMismatch);
+    assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
 
-    vault::accrue_fees<Meme, Quote, Venue>(
-        self,
+    self.accrue_fees(
         &venue,
         position_id,
         meme_fee,
@@ -219,6 +229,7 @@ fun zero_creation_fee<Quote>(
         config::get_pool_creation_fee_amount<Quote>(bluefin_config);
     assert!(supported, EUnsupportedCreationFee);
     assert!(fee_amount == 0, ENonzeroCreationFee);
+
     balance::zero<Quote>()
 }
 
@@ -229,6 +240,7 @@ fun pool_name<CoinA, CoinB>(
     let mut name = currency_a.symbol().into_bytes();
     name.append(b"-");
     name.append(currency_b.symbol().into_bytes());
+
     name
 }
 
@@ -238,6 +250,18 @@ fun assert_valid_sqrt_price(sqrt_price_x64: u128) {
             && sqrt_price_x64 < MAX_SQRT_PRICE_X64,
         EInvalidSqrtPrice,
     );
+}
+
+fun transfer_residual<CoinType>(
+    residual: Balance<CoinType>,
+    protocol_treasury: address,
+    ctx: &mut TxContext,
+) {
+    if (residual.value() == 0) {
+        residual.destroy_zero();
+    } else {
+        transfer::public_transfer(residual.into_coin(ctx), protocol_treasury);
+    };
 }
 
 fun lock_and_share<Meme, Quote>(
@@ -272,16 +296,16 @@ fun lock_and_share<Meme, Quote>(
         residual_quote_amount,
         MAX_RESIDUAL_BPS,
     );
+    assert!(
+        used_meme_amount == source_meme_amount - residual_meme_amount
+            && used_quote_amount
+                == source_quote_amount - residual_quote_amount,
+        EVenueAmountMismatch,
+    );
 
     let protocol_treasury = runtime_config.protocol_treasury();
-    transfer::public_transfer(
-        residual_meme.into_coin(ctx),
-        protocol_treasury,
-    );
-    transfer::public_transfer(
-        residual_quote.into_coin(ctx),
-        protocol_treasury,
-    );
+    transfer_residual(residual_meme, protocol_treasury, ctx);
+    transfer_residual(residual_quote, protocol_treasury, ctx);
 
     let venue = Venue();
     let vault_id = vault::new<Meme, Quote, Venue, Position>(

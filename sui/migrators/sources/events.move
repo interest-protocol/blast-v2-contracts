@@ -1,8 +1,48 @@
+/// Typed replay facts for migrations, custody, tier policy, and fee flows.
 module blast_fun_migrators::events;
 
 use std::type_name::{Self, TypeName};
 
 // === Public Structs ===
+
+/// Records discovery of the one shared venue tier policy singleton.
+public struct VenueConfigCreated has copy, drop {
+    config_id: ID,
+}
+
+/// Records one pinned Bluefin tier replacing the previous values.
+public struct BluefinTierUpdated has copy, drop {
+    old_tick_spacing: u32,
+    new_tick_spacing: u32,
+    old_fee_rate: u64,
+    new_fee_rate: u64,
+}
+
+/// Records one pinned Cetus tick spacing replacing the previous value.
+public struct CetusTickSpacingUpdated has copy, drop {
+    old_tick_spacing: u32,
+    new_tick_spacing: u32,
+}
+
+/// Records one pinned Full Sail tick spacing replacing the previous value.
+public struct FullSailTickSpacingUpdated has copy, drop {
+    old_tick_spacing: u32,
+    new_tick_spacing: u32,
+}
+
+/// Records one pinned MMT fee rate replacing the previous value.
+public struct MmtFeeRateUpdated has copy, drop {
+    old_fee_rate: u64,
+    new_fee_rate: u64,
+}
+
+/// Records one pinned Turbos tier replacing the previous values.
+public struct TurbosTierUpdated has copy, drop {
+    old_tick_spacing: u32,
+    new_tick_spacing: u32,
+    old_fee_rate: u64,
+    new_fee_rate: u64,
+}
 
 /// Records discovery and typed position custody for one completed vault.
 public struct VaultCreated has copy, drop {
@@ -15,6 +55,11 @@ public struct VaultCreated has copy, drop {
 }
 
 /// Records one complete venue migration and residual disposition.
+///
+/// `sqrt_price_x64` is the pool's Q64.64 square-root price at the moment the
+/// principal was seeded: the balance-derived opening price on new-pool routes
+/// and the adopted pool's live price on adoption routes. Both tick fields are
+/// two's-complement `i32` bit patterns on every venue.
 public struct MigrationCompleted has copy, drop {
     launch_id: ID,
     vault_id: ID,
@@ -89,6 +134,65 @@ public struct ProtocolFeesClaimed has copy, drop {
 }
 
 // === Package Functions ===
+
+public(package) fun venue_config_created(config_id: ID) {
+    sui::event::emit(VenueConfigCreated { config_id });
+}
+
+public(package) fun bluefin_tier_updated(
+    old_tick_spacing: u32,
+    new_tick_spacing: u32,
+    old_fee_rate: u64,
+    new_fee_rate: u64,
+) {
+    sui::event::emit(BluefinTierUpdated {
+        old_tick_spacing,
+        new_tick_spacing,
+        old_fee_rate,
+        new_fee_rate,
+    });
+}
+
+public(package) fun cetus_tick_spacing_updated(
+    old_tick_spacing: u32,
+    new_tick_spacing: u32,
+) {
+    sui::event::emit(CetusTickSpacingUpdated {
+        old_tick_spacing,
+        new_tick_spacing,
+    });
+}
+
+public(package) fun fullsail_tick_spacing_updated(
+    old_tick_spacing: u32,
+    new_tick_spacing: u32,
+) {
+    sui::event::emit(FullSailTickSpacingUpdated {
+        old_tick_spacing,
+        new_tick_spacing,
+    });
+}
+
+public(package) fun mmt_fee_rate_updated(
+    old_fee_rate: u64,
+    new_fee_rate: u64,
+) {
+    sui::event::emit(MmtFeeRateUpdated { old_fee_rate, new_fee_rate });
+}
+
+public(package) fun turbos_tier_updated(
+    old_tick_spacing: u32,
+    new_tick_spacing: u32,
+    old_fee_rate: u64,
+    new_fee_rate: u64,
+) {
+    sui::event::emit(TurbosTierUpdated {
+        old_tick_spacing,
+        new_tick_spacing,
+        old_fee_rate,
+        new_fee_rate,
+    });
+}
 
 public(package) fun vault_created<Meme, Quote, Venue>(
     vault_id: ID,
