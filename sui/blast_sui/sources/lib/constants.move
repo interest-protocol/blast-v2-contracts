@@ -41,8 +41,13 @@ macro public(package) fun native_min_stake_mist(): u64 {
 /// principal and reward portions separately, so redeeming `v` pool tokens
 /// returns at least `floor(v * sui / tokens) - 3` MIST at the current rate.
 /// Requesting ceil pool tokens for `amount + 3` therefore funds `amount`.
+/// The constant carries ten times that proven bound: the vault calls the
+/// live system package, and headroom keeps exact redemption alive if a
+/// system upgrade drifts native rounding by a few MIST. Over-requested
+/// residue stays liquid in custody. An unbounded rate decrease is not a
+/// rounding drift and still fails closed.
 macro public(package) fun native_redemption_rounding_margin(): u64 {
-    3
+    30
 }
 
 /// Protocol-funded fun exit and rounding reserve, in MIST.
