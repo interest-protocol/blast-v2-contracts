@@ -115,11 +115,13 @@ public struct VestingClosed has copy, drop {
 // === Public Functions ===
 
 /// Returns this checkpoint's absolute unlock timestamp.
+#[test_only]
 public fun timestamp_ms(self: &Checkpoint): u64 {
     self.timestamp_ms
 }
 
 /// Returns this checkpoint's exact cumulative vested amount.
+#[test_only]
 public fun cumulative_amount(self: &Checkpoint): u64 {
     self.cumulative_amount
 }
