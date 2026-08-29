@@ -433,9 +433,12 @@ fun assert_canonical_order<Meme, Quote>(meme_is_a: bool) {
     assert!(meme_a_order == meme_is_a, EInvalidCoinOrder);
 }
 
+/// Replicates `clmm_pool::factory::new_pool_key`, which orders coin types with
+/// deprecated `type_name::get`. That helper returns defining IDs, so the guard
+/// must compare defining IDs to agree with the pinned venue bytecode.
 fun type_name_greater_than<A, B>(): bool {
-    let a_name = type_name::with_original_ids<A>().into_string();
-    let b_name = type_name::with_original_ids<B>().into_string();
+    let a_name = type_name::with_defining_ids<A>().into_string();
+    let b_name = type_name::with_defining_ids<B>().into_string();
     let a_bytes = a_name.as_bytes();
     let b_bytes = b_name.as_bytes();
     let a_length = a_bytes.length();

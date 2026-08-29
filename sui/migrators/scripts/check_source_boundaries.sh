@@ -796,7 +796,13 @@ require_fullsail_private 'collect_position_fees' \
 
 # Full Sail-specific private seams fix order, ticks, residuals, and custody.
 require_fullsail_private 'assert_canonical_order' \
-    'type_name_greater_than<Meme,Quote>()' 'SDK-compatible canonical comparison'
+    'type_name_greater_than<Meme,Quote>()' 'venue-exact canonical comparison'
+require_fullsail_private 'type_name_greater_than' \
+    'type_name::with_defining_ids<A>().into_string()' \
+    'left defining-ID venue comparison'
+require_fullsail_private 'type_name_greater_than' \
+    'type_name::with_defining_ids<B>().into_string()' \
+    'right defining-ID venue comparison'
 require_fullsail_private 'full_range_ticks' \
     'i32::abs_u32(tick_math::min_tick())' 'minimum venue tick'
 require_fullsail_private 'full_range_ticks' \

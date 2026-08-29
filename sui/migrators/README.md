@@ -120,9 +120,12 @@ fee coins before shared Meme/Quote accrual.
 ## Full Sail routes
 
 Full Sail has new-pool and adopted-pool routes for both canonical type orders.
-Its canonical order is the SDK's descending lexical order of normalized coin
-types. Each route verifies that order on chain before it redeems the migration
-payload. Callers do not supply an orientation or an economic price.
+Its canonical order is descending lexical order of coin type names, which
+`clmm_pool::factory::new_pool_key` enforces through the deprecated
+`type_name::get`. That helper returns defining IDs, so the adapter compares
+defining IDs to reproduce the pinned venue rule exactly. Each route verifies
+that order on chain before it redeems the migration payload. Callers do not
+supply an orientation or an economic price.
 
 New routes derive the Q64.64 price from the actual Meme and Quote balances and
 call revision 4 `factory::create_pool_with_liquidity`. They pass both source
