@@ -58,6 +58,12 @@ use_environment = "mainnet"
 manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
 deps = {}
 
+[pinned.mainnet.MoveStdlib_3]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "722ac4fcf4841346c91775f596c4ce23fb7fbd0f" }
+use_environment = "mainnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
 [pinned.mainnet.Sui]
 source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "17a9eb8e19146cac2f1fd8921c85911054d29e50" }
 use_environment = "mainnet"
@@ -76,6 +82,18 @@ use_environment = "mainnet"
 manifest_digest = "CD547CB1ACCE0880C835DAED2D8FFCB91D56C833AE5240D3AA5B918398263195"
 deps = { MoveStdlib = "MoveStdlib_2" }
 
+[pinned.mainnet.Sui_3]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "722ac4fcf4841346c91775f596c4ce23fb7fbd0f" }
+use_environment = "mainnet"
+manifest_digest = "CD547CB1ACCE0880C835DAED2D8FFCB91D56C833AE5240D3AA5B918398263195"
+deps = { MoveStdlib = "MoveStdlib_3" }
+
+[pinned.mainnet.TurbosCLMM]
+source = { git = "https://github.com/turbos-finance/turbos-sui-move-interface.git", subdir = "clmm", rev = "cff693265bfc41c7de2233afe31c9d7428adc9e1" }
+use_environment = "mainnet"
+manifest_digest = "302191F38E6CAC4B65AC6BD7619E388D4E3D34F0DD639FA69C2DE41954CB7603"
+deps = { Sui = "Sui_3" }
+
 [pinned.mainnet.blast_fun]
 source = { local = "../launchpad" }
 use_environment = "mainnet"
@@ -85,8 +103,8 @@ deps = { std = "MoveStdlib_2", sui = "Sui_2" }
 [pinned.mainnet.blast_fun_migrators]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "163BD4A1F1A490D13FF064BA1A54868FBB04D21AE966450A8F3E75DBAA810528"
-deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
+manifest_digest = "2E5A51F9B40C90102CF65FDD977E37DC389413E3270A603FD37BF836331999D9"
+deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", TurbosCLMM = "TurbosCLMM", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
 
 [pinned.mainnet.mmt_v3]
 source = { git = "https://github.com/mmt-finance/mmt-contract-interface.git", subdir = "mmt_v3", rev = "e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82" }
@@ -148,6 +166,12 @@ use_environment = "testnet"
 manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
 deps = {}
 
+[pinned.testnet.MoveStdlib_3]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "722ac4fcf4841346c91775f596c4ce23fb7fbd0f" }
+use_environment = "testnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
 [pinned.testnet.Sui]
 source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "17a9eb8e19146cac2f1fd8921c85911054d29e50" }
 use_environment = "testnet"
@@ -166,6 +190,18 @@ use_environment = "testnet"
 manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
 deps = { MoveStdlib = "MoveStdlib_2" }
 
+[pinned.testnet.Sui_3]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "722ac4fcf4841346c91775f596c4ce23fb7fbd0f" }
+use_environment = "testnet"
+manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
+deps = { MoveStdlib = "MoveStdlib_3" }
+
+[pinned.testnet.TurbosCLMM]
+source = { git = "https://github.com/turbos-finance/turbos-sui-move-interface.git", subdir = "clmm", rev = "cff693265bfc41c7de2233afe31c9d7428adc9e1" }
+use_environment = "testnet"
+manifest_digest = "41FC72C7990DFAEED85277A1FC6F3656C284E7A5C3279CC62A01D9CD0ED66234"
+deps = { Sui = "Sui_3" }
+
 [pinned.testnet.blast_fun]
 source = { local = "../launchpad" }
 use_environment = "testnet"
@@ -175,8 +211,8 @@ deps = { std = "MoveStdlib_2", sui = "Sui_2" }
 [pinned.testnet.blast_fun_migrators]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "92C2FD486036E82CF86D7860256A1D42BBB0F0D476B3201C06C4236A4E81422D"
-deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
+manifest_digest = "6D67D789455EE8C21B54328BE1CB91A24D36F8ACC1C9AB03AF84DDF0BA9E5846"
+deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", TurbosCLMM = "TurbosCLMM", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
 
 [pinned.testnet.mmt_v3]
 source = { git = "https://github.com/mmt-finance/mmt-contract-interface.git", subdir = "mmt_v3", rev = "e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82" }

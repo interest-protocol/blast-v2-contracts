@@ -93,6 +93,30 @@ They call `pool::collect_fee(..., true)` and require unchanged liquidity.
 The Meme-B route reverses Cetus A/B fee balances before common Meme/Quote
 accrual.
 
+## Turbos routes
+
+Turbos has new-pool and adopted-pool routes for both type orders. The
+`migrate_*_meme_a` routes use Meme as coin A. The `migrate_*_meme_b` routes use
+Meme as coin B. New-pool callers provide one concrete `Fee<FeeType>` object;
+the selected `FeeType` fixes the Turbos fee tier and tick spacing. Existing
+routes take a pool with that same `FeeType`. Callers do not provide a price or
+an orientation flag.
+
+Each route derives its Q64.64 price from the redeemed atomic Meme and Quote
+balances. The adapter derives full-range signed ticks from
+`math_tick::get_min_tick` and `math_tick::get_max_tick`. New routes call
+`pool_factory::deploy_pool_and_mint_with_return_`. Existing routes redeem the
+payload, compare the balance-derived price with the live pool price at exactly
+50 bps, then call `position_manager::mint_with_return_`. All liquidity calls
+use caller-provided deadlines and one-basis-point minimum amounts.
+
+The returned `TurbosPositionNFT` enters the common vault as its dynamic object
+field. The adapter rejects a mismatched pool ID, requires at least 99.99% use
+of both inputs, and sends each residual to the live runtime treasury. Both fee
+routes call `collect_with_return_`, read `get_position_info` before and after,
+and require unchanged positive liquidity. The Meme-B route reverses Turbos A/B
+fee coins before shared Meme/Quote accrual.
+
 ## Replayable events
 
 The dedicated `events` module owns five strongly typed payloads and their
@@ -124,6 +148,7 @@ commit:
 | MMT V3 interface | `e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82` |
 | Cetus IntegerMate | `09a12d9b171122883d9350039d4ed6e8400033b9` |
 | Cetus MoveSTL | `0681fec63a310ae753d03a06f7c05d3e2925bb09` |
+| Turbos CLMM interface | `cff693265bfc41c7de2233afe31c9d7428adc9e1` |
 | Sui | `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` |
 | IntegerMate | `09a12d9b171122883d9350039d4ed6e8400033b9` |
 | IntegerLibrary | `8a534bd1c0b334cd3937c27987f3147a06ba6a18` |
@@ -154,6 +179,19 @@ That immutable package has digest `FEdn2yRh28atu7tANr6gCWQ3gtDSD2EZmyEeryTuokoi`
 The normalized interface includes only the public Cetus types and functions
 used by this adapter.
 
+The pinned Turbos interface declares original package
+`0x91bfbc386a41afcfd9b2533058d7e915a1d3829089cc268ff4333d54d6339ca1` and
+sets `published-at` to mainnet latest package
+`0xa5a0c25c79e428eba04fb98b3fb2a34db45ab26d4c8faf0d7e39d66a63891e64`.
+At the pinned source, the adapter consumes exactly
+`pool_factory::deploy_pool_and_mint_with_return_`,
+`position_manager::mint_with_return_`,
+`position_manager::collect_with_return_`,
+`position_manager::get_position_info`, the `pool::get_pool_*` getters, and
+the signed full-range `math_tick` helpers. The aggregate package overrides the
+upstream mutable `Sui = testnet` reference with its pinned
+`06734f6ff0af45d8632a14a4dc4b100197f6b1a2` framework dependency.
+
 ## Verification and immutable-release gate
 
 Run from this directory:
@@ -165,12 +203,12 @@ sui move build -e mainnet
 bash scripts/check_source_boundaries.sh
 ```
 
-The Bluefin, MMT, and Cetus interface dependencies contain `abort 0` link
+The Bluefin, MMT, Cetus, and Turbos interface dependencies contain `abort 0` link
 stubs. A local build proves type compatibility only. Before production release,
 verify published-package lineage and normalized ABI. Then run mainnet
 dev-inspect fixtures for every creation and adoption orientation, exact
-balance-derived initialization, 50-bps Cetus adoption checks, one-basis-point
-residual limits, and fee collection without a liquidity change.
+balance-derived initialization, 50-bps Cetus and Turbos adoption checks,
+one-basis-point residual limits, and fee collection without a liquidity change.
 
 Source omission does not make principal custody permanent while this package
 has an `UpgradeCap`. After the release checks pass, destroy the package
@@ -209,6 +247,16 @@ is valid before this irreversible step.
 | 3 | `EPositionLiquidityChanged` | Cetus fee collection changed position principal. |
 | 4 | `EPaymentExceedsBalance` | Cetus requested more than the redeemed balance. |
 | 5 | `EInsufficientUtilization` | Cetus used less than 99.99%, or left more than a 1-bps residual. |
+
+## Turbos errors
+
+| Code | Name | Meaning |
+| --- | --- | --- |
+| 0 | `EInvalidTickSpacing` | The selected Turbos fee tier or pool has zero tick spacing. |
+| 1 | `EPositionPoolMismatch` | The vault, Turbos NFT, and pool IDs do not match. |
+| 2 | `EZeroPositionLiquidity` | The created or collected Turbos position has no principal liquidity. |
+| 3 | `EPositionLiquidityChanged` | Turbos fee collection changed position principal. |
+| 4 | `EInsufficientUtilization` | Turbos used less than 99.99%, or left more than a 1-bps residual. |
 
 ## Vault errors
 
