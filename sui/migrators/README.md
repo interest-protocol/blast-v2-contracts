@@ -188,9 +188,9 @@ At the pinned source, the adapter consumes exactly
 `position_manager::mint_with_return_`,
 `position_manager::collect_with_return_`,
 `position_manager::get_position_info`, the `pool::get_pool_*` getters, and
-the signed full-range `math_tick` helpers. The aggregate package overrides the
-upstream mutable `Sui = testnet` reference with its pinned
-`06734f6ff0af45d8632a14a4dc4b100197f6b1a2` framework dependency.
+the signed full-range `math_tick` helpers. The local normalized interface pins
+the upstream mutable `Sui = testnet` reference to the aggregate package's
+exact `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` framework dependency.
 
 ## Verification and immutable-release gate
 
@@ -200,6 +200,7 @@ Run from this directory:
 sui move build
 sui move lint --warnings-are-errors
 sui move build -e mainnet
+bash scripts/check_turbos_dependency_pin.sh
 bash scripts/check_source_boundaries.sh
 ```
 

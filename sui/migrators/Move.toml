@@ -9,7 +9,8 @@ blast_fun = { local = "../launchpad" }
 BluefinSpot = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
 mmt_v3 = { git = "https://github.com/mmt-finance/mmt-contract-interface.git", subdir = "mmt_v3", rev = "e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82" }
 CetusClmm = { local = "interfaces/cetus" }
-TurbosCLMM = { git = "https://github.com/turbos-finance/turbos-sui-move-interface.git", subdir = "clmm", rev = "cff693265bfc41c7de2233afe31c9d7428adc9e1" }
+# Normalized from turbos-finance/turbos-sui-move-interface@cff693265bfc41c7de2233afe31c9d7428adc9e1.
+TurbosCLMM = { local = "interfaces/turbos" }
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2", override = true }
 IntegerMate = { git = "https://github.com/CetusProtocol/integer-mate.git", rev = "09a12d9b171122883d9350039d4ed6e8400033b9", override = true }
 IntegerLibrary = { git = "https://github.com/fireflyprotocol/integer-library.git", rev = "8a534bd1c0b334cd3937c27987f3147a06ba6a18", override = true }
