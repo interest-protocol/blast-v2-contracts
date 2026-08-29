@@ -92,8 +92,27 @@ if [[ ! -f sources/lib/bps.move ]] \
 fi
 
 if rg -n '<= constants::basis_points_denominator!()' \
-    sources --glob '!**/lib/bps.move'; then
-  echo 'The inclusive basis-points range must be validated only by bps::new; owners may add stricter policy checks.' >&2
+    sources --glob '!**/lib/bps.move' --glob '!**/migration_math.move'; then
+  echo 'The inclusive basis-points range must be validated only by bps::new and the one migration_math rate seam; owners may add stricter policy checks.' >&2
+  failures=$((failures + 1))
+fi
+
+migration_math_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' \
+  sources/migration_math.move)"
+
+if [[ ! -f sources/migration_math.move ]] \
+  || [[ "$(rg -Fc '<= constants::basis_points_denominator!()' sources/migration_math.move)" != 1 ]] \
+  || ! rg -U -q \
+    'fun assert_valid_bps\(value: u64\) \{\s*assert!\(\s*value <= constants::basis_points_denominator!\(\),\s*blast_fun::errors::invalid_bps!\(\),\s*\);\s*\}' \
+    <<<"$migration_math_production" \
+  || rg -n '^(public|entry|public entry|public\(package\)) fun assert_valid_bps\(' \
+    <<<"$migration_math_production" \
+  || [[ "$(rg -c '^public fun ' <<<"$migration_math_production")" != 4 ]] \
+  || [[ "$(rg -c '^public fun (sqrt_price_x64|assert_price_within_bps|minimum_utilized_amount|assert_residual_within_bps)\(' <<<"$migration_math_production")" != 4 ]] \
+  || rg -n '^public\(package\) fun ' <<<"$migration_math_production" \
+  || rg -n '\b(Bps|bps::|UID|key|Balance|Coin|TxContext|transfer::|events::|RuntimeConfig)\b' \
+    <<<"$migration_math_production"; then
+  echo 'migration_math.move must stay a pure public price and utilization module whose only inclusive-bps range check is its one private rate validator.' >&2
   failures=$((failures + 1))
 fi
 
@@ -392,18 +411,33 @@ if rg -n '\b(UID|key|transfer::|XClaim|ed25519|recipient|launch_id)\b' \
   <<<"$fees_production" \
   || rg -n 'fee_balance_overflow|std::u64::max_value|max_balance' <<<"$fees_production" \
   || [[ "$(rg -c '^[[:space:]]+(protocol|creator)_(meme|quote): Balance<' sources/fees.move)" != 4 ]] \
-  || [[ "$(rg -c '^public\(package\) fun (new|accrue|totals|accrue_protocol_fees|claim_creator_fees|claim_protocol_fees)' sources/fees.move)" != 6 ]]; then
-  echo 'fees.move must remain an embedded supply-conserved four-balance ledger with only its approved package seam.' >&2
+  || [[ "$(rg -c '^public fun ' <<<"$fees_production")" != 5 ]] \
+  || [[ "$(rg -c '^public fun (new|accrue_from_runtime|totals|claim_creator_fees|claim_protocol_fees)<' <<<"$fees_production")" != 5 ]] \
+  || [[ "$(rg -c '^public\(package\) fun ' <<<"$fees_production")" != 2 ]] \
+  || [[ "$(rg -c '^public\(package\) fun (accrue|accrue_protocol_fees)<' <<<"$fees_production")" != 2 ]]; then
+  echo 'fees.move must remain an embedded supply-conserved four-balance ledger exposing only its five approved cross-package functions and two package seams.' >&2
   failures=$((failures + 1))
 fi
 
-if rg -n '^(public|entry) fun ' <<<"$fees_production" \
+fee_ledger_balance_operations="$({ rg -o \
+  'self\.(protocol|creator)_(meme|quote)\.([a-z_0-9]+)\(' -r '$3' \
+  <<<"$fees_production" || true; } | sort -u | tr '\n' ' ')"
+
+if rg -n '^(entry|public entry) fun ' <<<"$fees_production" \
   || rg -n 'set_creator_fee_split|sui::event|events::' <<<"$fees_production" \
-  || [[ "$(rg -c '^[[:space:]]+self: &mut FeeLedger<Meme, Quote>,' sources/fees.move)" != 4 ]] \
-  || ! rg -q '^[[:space:]]+protocol_fee_share_bps: Bps,' sources/fees.move \
-  || ! rg -q '^[[:space:]]+_: &CreatorCap<Meme>,' sources/fees.move \
-  || ! rg -q '^[[:space:]]+_: &AdminWitness,' sources/fees.move; then
-  echo 'Fee state is package-only, uses the live protocol split, and is evented by its enclosing launch operation.' >&2
+  || rg -n '\bfun set_[a-z_0-9]*(<|\()' <<<"$fees_production" \
+  || rg -n '\): [^{;]*Balance<' <<<"$fees_production" \
+  || [[ "$fee_ledger_balance_operations" != 'join value withdraw_all ' ]] \
+  || [[ "$(rg -c '^[[:space:]]+self: &mut FeeLedger<Meme, Quote>,' <<<"$fees_production")" != 5 ]] \
+  || [[ "$(rg -c '^[[:space:]]+self: &FeeLedger<Meme, Quote>,' <<<"$fees_production")" != 1 ]] \
+  || ! rg -q '^[[:space:]]+protocol_fee_share_bps: Bps,' <<<"$fees_production" \
+  || ! rg -q '^[[:space:]]+runtime_config: &RuntimeConfig,' <<<"$fees_production" \
+  || ! rg -U -q \
+    'self\.accrue\(\s*meme_fee,\s*quote_fee,\s*runtime_config\.protocol_fee_share\(\),\s*\)' \
+    <<<"$fees_production" \
+  || ! rg -q '^[[:space:]]+_: &CreatorCap<Meme>,' <<<"$fees_production" \
+  || ! rg -q '^[[:space:]]+_: &AdminWitness,' <<<"$fees_production"; then
+  echo 'Fee state stays capability-gated, splits on the live runtime protocol share, releases balances only through the two full drains, and is evented by its enclosing operation.' >&2
   failures=$((failures + 1))
 fi
 
@@ -437,17 +471,36 @@ runtime_config_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' source
 
 if [[ ! -f sources/runtime_config.move ]] \
   || ! rg -U -q \
-    'public struct RuntimeConfig has key \{\s*id: UID,\s*x_claim_signer_public_key: vector<u8>,\s*protocol_fee_share_bps: Bps,\s*\}' \
+    'public struct RuntimeConfig has key \{\s*id: UID,\s*x_claim_signer_public_key: vector<u8>,\s*protocol_treasury: address,\s*protocol_fee_share_bps: Bps,\s*\}' \
     sources/runtime_config.move \
   || rg -n '\b(AdminCap|ProtocolAuthority|LaunchConfig|VecMap|VecSet|TypeName)\b' \
     <<<"$runtime_config_production" \
   || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' \
     <<<"$runtime_config_production" \
-  || [[ "$(rg -c '^[[:space:]]+_: &AdminWitness,' sources/runtime_config.move)" != 3 ]] \
-  || [[ "$(rg -c '^public fun (set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share)\(' <<<"$runtime_config_production")" != 3 ]] \
-  || [[ "$(rg -c '^[[:space:]]+package_version: &PackageVersion,' sources/runtime_config.move)" != 3 ]] \
-  || [[ "$(rg -c '^public\(package\) fun (assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps)\(' <<<"$runtime_config_production")" != 3 ]]; then
-  echo 'runtime_config.move must own only version-gated X signer and protocol fee share state.' >&2
+  || rg -n '^(entry|public entry) fun ' <<<"$runtime_config_production" \
+  || [[ "$(rg -c '^[[:space:]]+_: &AdminWitness,' sources/runtime_config.move)" != 4 ]] \
+  || [[ "$(rg -c '^public fun ' <<<"$runtime_config_production")" != 6 ]] \
+  || [[ "$(rg -c '^public fun (set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|set_protocol_treasury)\(' <<<"$runtime_config_production")" != 4 ]] \
+  || [[ "$(rg -c '^[[:space:]]+package_version: &PackageVersion,' sources/runtime_config.move)" != 4 ]] \
+  || [[ "$(rg -c '^public\(package\) fun ' <<<"$runtime_config_production")" != 3 ]] \
+  || [[ "$(rg -c '^public\(package\) fun (assert_x_claim_active|verify_x_claim_signature|protocol_fee_share)\(' <<<"$runtime_config_production")" != 3 ]]; then
+  echo 'runtime_config.move must own only version-gated X signer, protocol fee share, and live treasury state.' >&2
+  failures=$((failures + 1))
+fi
+
+if ! rg -U -q \
+    'public fun set_protocol_treasury\(\s*self: &mut RuntimeConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness,\s*protocol_treasury: address,\s*\) \{\s*package_version\.assert_current\(\);' \
+    sources/runtime_config.move \
+  || ! rg -U -q \
+    'public fun protocol_treasury\(self: &RuntimeConfig\): address \{\s*self\.protocol_treasury\s*\}' \
+    sources/runtime_config.move \
+  || ! rg -U -q \
+    'public fun protocol_fee_share_bps\(self: &RuntimeConfig\): u64 \{\s*self\.protocol_fee_share_bps\.value\(\)\s*\}' \
+    sources/runtime_config.move \
+  || ! rg -U -q \
+    'public\(package\) fun protocol_fee_share\(self: &RuntimeConfig\): Bps \{\s*self\.protocol_fee_share_bps\s*\}' \
+    sources/runtime_config.move; then
+  echo 'The live treasury needs one version-gated AdminWitness setter, public treasury and raw-share reads, and a package-only validated Bps read.' >&2
   failures=$((failures + 1))
 fi
 
@@ -455,26 +508,31 @@ if ! rg -Fq 'protocol_fee_share_bps != self.protocol_fee_share_bps.value()' \
   sources/runtime_config.move \
   || ! rg -Fq 'self.protocol_fee_share_bps = bps::new(protocol_fee_share_bps);' \
     sources/runtime_config.move \
+  || ! rg -Fq 'protocol_treasury != @0x0,' sources/runtime_config.move \
+  || ! rg -Fq 'protocol_treasury != self.protocol_treasury,' sources/runtime_config.move \
+  || ! rg -Fq 'self.protocol_treasury = protocol_treasury;' sources/runtime_config.move \
   || ! rg -Fq 'signer_public_key.length() == constants::ed25519_public_key_length!()' \
     sources/runtime_config.move \
   || ! rg -q 'self.x_claim_signer_public_key != signer_public_key' \
     sources/runtime_config.move \
   || ! rg -U -q \
-    'x_claim_signer_public_key: vector\[\],\s*protocol_fee_share_bps: bps::new\(0\),\s*\}' \
+    'x_claim_signer_public_key: vector\[\],\s*protocol_treasury: ctx\.sender\(\),\s*protocol_fee_share_bps: bps::new\(0\),\s*\}' \
     sources/runtime_config.move; then
-  echo 'Runtime configuration must start disabled and at zero, with exact signer and fee-share guards.' >&2
+  echo 'Runtime configuration must start disabled at zero with the live publisher treasury, and keep exact signer, fee-share, and nonzero/unchanged treasury guards.' >&2
   failures=$((failures + 1))
 fi
 
 runtime_config_event_payloads="$(sed -n \
   -e '/^public struct RuntimeConfigCreated/,/^}/p' \
   -e '/^public struct ProtocolFeeShareChanged/,/^}/p' \
+  -e '/^public struct ProtocolTreasuryChanged/,/^}/p' \
   -e '/^public struct XClaimSignerSet/,/^}/p' \
   -e '/^public struct XClaimSignerRevoked/,/^}/p' \
   sources/lib/events.move)"
 
 runtime_config_mutation_event_payloads="$(sed -n \
   -e '/^public struct ProtocolFeeShareChanged/,/^}/p' \
+  -e '/^public struct ProtocolTreasuryChanged/,/^}/p' \
   -e '/^public struct XClaimSignerSet/,/^}/p' \
   -e '/^public struct XClaimSignerRevoked/,/^}/p' \
   sources/lib/events.move)"
@@ -482,8 +540,20 @@ runtime_config_mutation_event_payloads="$(sed -n \
 if [[ -z "$runtime_config_event_payloads" ]] \
   || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' \
     <<<"$runtime_config_event_payloads" \
-  || rg -n '\bruntime_config_id\b' <<<"$runtime_config_mutation_event_payloads"; then
-  echo 'Runtime-config mutations must use typed replay facts without repeated singleton, ordering, or schema fields.' >&2
+  || rg -n '\bruntime_config_id\b' <<<"$runtime_config_mutation_event_payloads" \
+  || ! rg -U -q \
+    'public struct RuntimeConfigCreated has copy, drop \{\s*runtime_config_id: ID,\s*protocol_treasury: address,\s*protocol_fee_share_bps: u64,\s*\}' \
+    sources/lib/events.move \
+  || ! rg -U -q \
+    'public struct ProtocolTreasuryChanged has copy, drop \{\s*old_protocol_treasury: address,\s*new_protocol_treasury: address,\s*\}' \
+    sources/lib/events.move \
+  || ! rg -U -q \
+    'events::runtime_config_created\(\s*config_id,\s*config\.protocol_treasury,\s*config\.protocol_fee_share_bps\.value\(\),\s*\);\s*transfer::share_object\(config\);' \
+    sources/runtime_config.move \
+  || ! rg -U -q \
+    'events::protocol_treasury_changed\(\s*old_protocol_treasury,\s*protocol_treasury,\s*\);' \
+    sources/runtime_config.move; then
+  echo 'Runtime-config creation must commit the live treasury before sharing and every mutation must use typed replay facts without repeated singleton, ordering, or schema fields.' >&2
   failures=$((failures + 1))
 fi
 
@@ -758,7 +828,7 @@ if rg -n '\bstate_version\b|launch_state_version' sources tests; then
   failures=$((failures + 1))
 fi
 
-for gate_spec in 'acl:7:7' 'launch_config:6:6' 'runtime_config:3:3' 'package_admin:4:5' 'launch:7:7'; do
+for gate_spec in 'acl:7:7' 'launch_config:6:6' 'runtime_config:4:4' 'package_admin:4:5' 'launch:7:7'; do
   IFS=: read -r gate_module expected_guards expected_parameters <<<"$gate_spec"
   actual_guards="$(rg -c '^[[:space:]]+package_version\.assert_current\(\);' "sources/${gate_module}.move" || true)"
   actual_parameters="$(rg -c '^[[:space:]]+package_version: &(mut )?PackageVersion,' "sources/${gate_module}.move" || true)"
@@ -776,7 +846,7 @@ if [[ "$(rg -c '^[[:space:]]+package_version\.assert_current\(\);' sources/launc
 fi
 
 if rg -n \
-  '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_trade_fees|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|launch::(share|migrate|redeem_migration)|creator_authority::(into_authority|creator|x_identity_hash|claim_creator_cap)|launch_ticket::destroy|fees::(accrue|claim_creator_fees|claim_protocol_fees)|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
+  '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|set_protocol_treasury|assert_x_claim_active|verify_x_claim_signature|protocol_treasury|protocol_fee_share|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_trade_fees|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|launch::(share|migrate|redeem_migration)|creator_authority::(into_authority|creator|x_identity_hash|claim_creator_cap)|launch_ticket::destroy|fees::(accrue|accrue_from_runtime|accrue_protocol_fees|totals|claim_creator_fees|claim_protocol_fees)|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
   sources tests; then
   echo 'Blast-owned receiver functions must use Move 2024 dot syntax.' >&2
   failures=$((failures + 1))
