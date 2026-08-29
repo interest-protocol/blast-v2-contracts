@@ -20,7 +20,7 @@ jobs:
           curl -fsSL -o sui.tgz \
             "https://github.com/MystenLabs/sui/releases/download/${SUI_RELEASE}/sui-${SUI_RELEASE}-ubuntu-x86_64.tgz"
           mkdir -p "$HOME/.local/bin"
-          tar -xzf sui.tgz -C "$HOME/.local/bin" sui
+          tar -xzf sui.tgz -C "$HOME/.local/bin" ./sui
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Verify
         run: bash sui/blast_sui/scripts/verify.sh all
