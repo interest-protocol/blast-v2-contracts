@@ -82,11 +82,22 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0034](0034-remove-premature-governance-cutover.md) | Remove the premature governance cutover | **accepted** |
 | [0035](0035-initializer-finalized-meme-supply.md) | Finalize generated Meme supply during initialization | **accepted** |
 | [0036](0036-fixed-nine-decimal-generated-memes.md) | Fix generated Meme precision at nine decimals | **accepted** |
-| [0037](0037-remove-redundant-ticket-burn-mode.md) | Remove redundant supply mode from launch-ticket custody | **accepted** |
+| [0037](0037-remove-redundant-ticket-burn-mode.md) | Remove redundant supply mode from launch-ticket custody | superseded by 0043 |
 | [0038](0038-standard-method-names.md) | Standard method names for reads, conversions, and wrapper destruction | **accepted** |
 | [0039](0039-deterministic-quote-valuations.md) | Deterministic Quote-denominated launch valuations | **accepted** |
+| [0040](0040-normalized-launch-state-intake.md) | Normalized launch state intake | **accepted** |
+| [0041](0041-launch-config-owned-trade-fees.md) | LaunchConfig-owned trade fees | **accepted** |
+| [0042](0042-key-only-shared-launch.md) | Key-only shared launch publication | **accepted** |
+| [0043](0043-versioned-launch-trading-and-atomic-migration.md) | Versioned launch trading and atomic migration | **accepted** |
+| [0044](0044-validated-basis-points-unit.md) | Validated basis-points unit | **accepted** |
+| [0045](0045-single-package-version.md) | Single package version | **accepted** |
+| [0046](0046-witness-authorized-migration-redemption.md) | Witness-authorized migration redemption | **accepted** |
+| [0047](0047-coin-registry-authoritative-supply-mode.md) | Coin Registry authoritative supply mode | **accepted** |
+| [0048](0048-sui-package-workspace.md) | Sui package workspace | **accepted** |
+| [0049](0049-audit-hardened-package-version-and-launch-intake.md) | Audit-hardened package cutover and launch intake | **accepted** |
+| [0050](0050-module-local-package-version-constant.md) | Module-local package-version constant | **accepted** |
 
-Only ADRs 0013–0039 are accepted. ADR 0021 accepts the pure curve formulas and
+ADRs 0013–0036 and 0038–0050 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -102,6 +113,14 @@ the exclusion of DEX pool-opening fees.
 ADR 0028 consolidates the dedicated X signer and live protocol fee share into
 one small `RuntimeConfig`, while preserving separate `ProtocolAuthority` and
 cold `LaunchConfig` shared objects.
+
+ADR 0041 places the bounded Quote/Meme total trade-fee pair in cold
+`LaunchConfig`. Admins update the pair atomically, each future launch snapshots it,
+and launch callers cannot supply rates.
+
+ADR 0042 removes `store` from `Launch`, keeps `key` as its only ability, and
+adds one consuming publication function that shares each constructed launch as
+top-level state.
 
 ADR 0030 keeps shared-object discovery ids on singleton creation events while
 removing repeated owner ids from typed singleton mutation payloads.
@@ -131,9 +150,9 @@ ADR 0036 removes caller-selected precision from `launch_ticket::new`. Every
 generated Meme has nine decimals and exactly
 `1_000_000_000__000_000_000` atomic units.
 
-ADR 0037 keeps finalized supply mode solely in Coin Registry state. The
-constructor still records the choice in its creation event, but `LaunchTicket`
-stores and releases only the three linear launch resources.
+ADR 0037's removal of ticket supply-mode custody was superseded by ADR 0043.
+ADR 0047 restores Coin Registry as the only supply-mode authority. The ticket
+and Launch bind only the sell-burn rate, while migration reads native mode.
 
 ADR 0038 replaces generic projection and decomposition verbs with one naming
 rule: field-named reads, destination-named `into_*` conversions, and `destroy`
@@ -142,6 +161,49 @@ for consuming wrappers that delete themselves and release their contents.
 ADR 0039 stores the virtual and terminal Quote reserves as one per-Quote policy
 pair and assigns curve-release and native-Quote forecasts to an off-chain SDK
 function derived from immutable launch inputs rather than independent caps.
+
+ADR 0040 consumes the reviewed ticket, policy, graduation, and fee-ledger seams
+into one normalized `Launch<Meme, Quote>`, emits its complete initial state, and
+exposes the unified creator-cap plus native metadata-cap claim. Trading,
+migration, pause, and version transitions remain deferred.
+
+ADR 0042 makes that normalized launch key-only and requires the creation PTB to
+consume it through `launch::share`, preventing public transfer or nesting.
+
+ADR 0043 adds the global runtime package cutover, ticket-bound sell-burn policy,
+public buy/sell and fee claims, and an atomic
+witness-typed migration payload. Fixed terminal disposal goes to `0x0` without
+reducing total supply; BurnOnly disposal uses the native registry burn.
+
+ADR 0044 adds one validated `Bps` unit for stored rates and package arithmetic.
+Domain modules retain stricter ceilings and combined-rate policy, while public
+setter inputs and replay event fields remain raw `u64` values.
+
+ADR 0045 removes the redundant per-Launch version. Runtime config now holds the
+only operational package version for Launch and package-administration cutover.
+
+ADR 0046 moves the sealed external adapter witness from permissionless
+`launch::migrate` to `launch::redeem_migration`. The migration caller selects
+the snapshotted witness type, while only that witness's owner can open the
+non-droppable payload in the same transaction.
+
+ADR 0047 makes native Coin Registry state the only supply-mode authority. The
+ticket and Launch retain `sell_burn_bps` but no cached `burnable` Boolean, and
+migration selects Fixed or BurnOnly disposal directly from `Currency<Meme>`.
+
+ADR 0048 turns `sui/` into a package workspace. The current `blast_fun` package
+lives in `sui/launchpad/`; future venue adapters and vesting packages live below
+`sui/migrators/` and `sui/vesting/` with independent manifests and lockfiles.
+
+ADR 0049 moves the one operational package version into a dedicated singleton
+so every mutable shared object can use the same gate without a module cycle. It
+separates native upgrade commit from checked bytecode activation, hardens launch
+and migration-witness intake, and removes a migration-time recheck of immutable
+launch policy.
+
+ADR 0050 keeps the compiled package generation as a private constant beside the
+`PackageVersion` initializer and guards. The package constants registry no
+longer exposes a value that no other module consumes.
 
 ## Open premises
 

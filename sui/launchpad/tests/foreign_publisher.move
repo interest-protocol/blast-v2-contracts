@@ -1,0 +1,26 @@
+#[test_only]
+/// Supplies a Publisher whose original package address is not Blast's test address.
+module 0xf::foreign_publisher;
+
+use blast_fun::blast::BLAST;
+use std::unit_test::destroy;
+use sui::package::{Self, Publisher};
+
+public struct FOREIGN_PUBLISHER() has drop;
+
+public fun new(ctx: &mut TxContext): Publisher {
+    package::test_claim(FOREIGN_PUBLISHER(), ctx)
+}
+
+// === Tests ===
+
+#[test]
+fun publisher_has_a_foreign_original_package() {
+    let mut ctx = tx_context::dummy();
+    let publisher = new(&mut ctx);
+
+    assert!(!publisher.from_package<BLAST>());
+
+    destroy(publisher);
+    destroy(ctx);
+}

@@ -2,6 +2,8 @@
 
 - Status: proposed
 - Date: 2026-08-22
+- Amended by: [0042](0042-key-only-shared-launch.md),
+  [0048](0048-sui-package-workspace.md)
 - Amended by: [0020](0020-admin-cap-self-destruction.md), [0028](0028-hot-cold-runtime-configuration.md), [0031](0031-package-witness-and-publisher-custody.md), [0032](0032-admin-authorized-upgrade-cap-custody.md)
 
 ## Sources
@@ -19,8 +21,10 @@ Naming and style rules are taken from the current
 
 ## Context
 
-`sui/Move.toml` declares one package, `blast_fun`, edition `2024`, named address `blast_fun = "0x0"`.
-`sui/sources/` is empty. The layout must be decided before any module creates a public ABI, because
+`sui/launchpad/Move.toml` declares one package, `blast_fun`, edition `2024`,
+with named address `blast_fun = "0x0"`. At the time of the original decision,
+its source directory was empty. The layout had to be decided before any module
+created a public ABI, because
 `../architecture.md` treats public types, signatures, event schemas, and storage layouts as release
 commitments, and old Sui package versions remain callable after an upgrade.
 
@@ -42,18 +46,25 @@ Pulling any of those into `blast_fun` would make the trusted core unreproducible
 
 ### Package set
 
+The repository places the core package at `sui/launchpad/`, venue-specific
+packages below `sui/migrators/`, and independently deployed vesting packages
+below `sui/vesting/`. The `sui/` root is a package workspace and has no
+`Move.toml`. See ADR 0048.
+
 | Package | Contains | Depends on |
 | --- | --- | --- |
 | `blast_fun` | all core protocol logic and every neutral shared type | Sui framework only |
 | `blast_fun_cetus` | Cetus route preflight and migration adapter | `blast_fun`, Cetus |
 | `blast_fun_bluefin` | Bluefin migration adapter | `blast_fun`, Bluefin |
 | `blast_fun_turbos` | Turbos migration adapter | `blast_fun`, Turbos |
+| `blast_fun_vesting_*` | approved vesting custody and release design | `blast_fun` (types only), Sui framework |
 | `blast_fun_revshare` | epoch settlement and claims | `blast_fun` (types only), Sui framework |
 | `blast_fun_template` | generated per-launch coin package | `blast_fun`, Sui framework |
 
 Each adapter is a separate package because it carries a distinct external failure surface and a distinct
-dependency-immutability exemption — the boundary test in `../architecture.md`. `blast_fun_revshare` is
-separate because it is separately governed and holds funds; it must not be able to touch curve state.
+dependency-immutability exemption — the boundary test in `../architecture.md`. Vesting and
+`blast_fun_revshare` packages are separate because they hold funds under independent lifecycle and
+governance rules; they must not be able to touch curve state.
 
 ### Modules inside `blast_fun`
 
@@ -144,9 +155,11 @@ published.
 | `acl::begin_super_admin_transfer`, `acl::cancel_super_admin_transfer`, `acl::accept_super_admin_transfer`, `acl::destroy_retired_super_admin_cap` | functions | root rotation is a wallet-driven delayed two-party lifecycle |
 | `runtime_config::RuntimeConfig` | type | small shared singleton consumed by public X creator claims and every trade for the dedicated signer and live protocol fee share ([ADR 0028](0028-hot-cold-runtime-configuration.md)) |
 | `runtime_config::set_x_claim_signer`, `runtime_config::revoke_x_claim_signer`, `runtime_config::set_protocol_fee_share` | functions | protocol administrators mutate the two live domains with a borrowed `AdminWitness` and typed replay-complete events |
-| `launch_config::LaunchConfig` | type | shared bounded cold policy containing virtual/terminal Quote pairs, graduation defaults, and external migrator witness types selected when new launch state snapshots its economics ([ADR 0025](0025-quote-whitelist-and-migration-targets.md), [ADR 0027](0027-graduation-economics-and-migration-witnesses.md), [ADR 0039](0039-deterministic-quote-valuations.md)) |
+| `launch_config::LaunchConfig` | type | shared bounded cold policy containing virtual/terminal Quote pairs, Quote/Meme trade-fee rates, graduation defaults, and external migrator witness types selected when new launch state snapshots its economics ([ADR 0025](0025-quote-whitelist-and-migration-targets.md), [ADR 0027](0027-graduation-economics-and-migration-witnesses.md), [ADR 0039](0039-deterministic-quote-valuations.md), [ADR 0041](0041-launch-config-owned-trade-fees.md)) |
 | `launch_config::allow_quote`, `launch_config::disallow_quote` | functions | protocol administrators curate future launch admission and virtual/terminal pairs with a borrowed `AdminWitness`; allowing an admitted Quote atomically updates its pair and emits a replay-complete change event |
-| `launch_config::set_graduation_defaults`, `launch_config::allow_migration_witness`, `launch_config::disallow_migration_witness` | functions | protocol administrators curate bounded future-launch terminal economics and external migrator code identities without rewriting existing launches |
+| `launch_config::set_trade_fees`, `launch_config::set_graduation_defaults`, `launch_config::allow_migration_witness`, `launch_config::disallow_migration_witness` | functions | protocol administrators curate bounded future-launch trade and terminal economics plus external migrator code identities without rewriting existing launches |
+| `launch::Launch` | type | key-only top-level shared custody for one pair's immutable policy, balances, accounting, and creator resources ([ADR 0040](0040-normalized-launch-state-intake.md), [ADR 0042](0042-key-only-shared-launch.md)) |
+| `launch::new`, `launch::share` | functions | construct one normalized launch as an owned linear value, then consume it into top-level shared state within the creation PTB |
 | `creator_authority::CreatorCap` | type | transferable coin-typed authority consumed by creator fee and migration integrations ([ADR 0014](0014-typed-creator-cap-and-diagnostic-modules.md)) |
 | `launch_ticket::LaunchTicket` | type | returned across the generated-package boundary and held by the launcher until registration completes |
 | `creator_authority::new_address`, `creator_authority::new_x` | functions | validate a freely composable creator-identity input without issuing creator authority ([ADR 0029](0029-composable-creator-identity.md)) |

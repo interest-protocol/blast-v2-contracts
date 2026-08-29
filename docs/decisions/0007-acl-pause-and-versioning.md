@@ -2,7 +2,7 @@
 
 - Status: proposed
 - Date: 2026-08-22
-- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md), [0032](0032-admin-authorized-upgrade-cap-custody.md)
+- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md), [0032](0032-admin-authorized-upgrade-cap-custody.md), [0041](0041-launch-config-owned-trade-fees.md), [0049](0049-audit-hardened-package-version-and-launch-intake.md)
 - Authority spine settled by: [0015](0015-protocol-authority-and-x-signer-state.md)
 - Admin-cap lifecycle settled by: [0020](0020-admin-cap-self-destruction.md)
 
@@ -46,7 +46,7 @@ and never accidentally.
 | release venue reservation | — | yes | — | — | only while a reservation is held and no settlement exists | `ReservationReleased` |
 | claim protocol fees | — | yes | — | — | accrued balance only | `ProtocolFeesClaimed` |
 | update coin metadata | — | — | yes | — | bonding only | `MetadataUpdated` |
-| choose launch quote/meme fee rates | — | — | — | launcher | fixed at launch; each within its accepted bound | fields in `LaunchCreated` |
+| set future-launch quote/meme fee rates | — | yes | — | — | each `<= 1_000` bps; changed pair | `LaunchTradeFeesChanged` |
 | set global protocol fee share | — | yes | — | — | `<= 10_000` bps | `ProtocolFeeShareChanged` |
 | set creation fee | — | yes | — | — | `<= CREATION_FEE_CEILING` | `CreationFeeSet` |
 | set migration fee | — | yes | — | — | `<= MIGRATION_FEE_CEILING_BPS` | `MigrationFeeSet` |

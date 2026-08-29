@@ -55,7 +55,7 @@ Tests are organized around risk, not only function names.
 
 ## Sui gate
 
-From `sui/`:
+From `sui/launchpad/` for the core package:
 
 ```bash
 sui move build

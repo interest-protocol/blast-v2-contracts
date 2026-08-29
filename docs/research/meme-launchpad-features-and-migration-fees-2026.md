@@ -10,7 +10,7 @@
 Blast's accepted design models two separate terminal accounting lines:
 
 1. a **quote-asset migration fee**, denominated in Quote and therefore SUI when Quote is SUI;
-2. a **meme graduation allocation**, denominated in Meme.
+2. a **protocol Meme graduation fee**, denominated in Meme.
 
 Migration implementation identity is separate from accounting: each launch
 selects one allowlisted external migrator witness type. DEXs requiring a
@@ -19,7 +19,7 @@ asset.
 
 The admin may update bounded defaults for **future launches** at any time. Each launch must copy its effective terminal rates into immutable launch state before trading opens. Existing launches must not be repriced: these deductions change the assets that reach the DEX, the graduation value, and possibly whether migration can succeed.
 
-That differs from Blast's accepted live protocol/creator share for trading fees. The live share only divides the launcher's already-fixed total trade fee on subsequent trades and never reclassifies accrued balances. A terminal rate changes net pool-seeding assets, so it must be snapshotted.
+That differs from Blast's accepted live protocol/creator share for trading fees. The live share only divides each launch's already-snapshotted total trade fee on subsequent trades and never reclassifies accrued balances. A terminal rate changes net pool-seeding assets, so it must be snapshotted.
 
 Blast's historical Memez code already used this safer pattern. A new pool copied its fee configuration, reserved the meme allocation from initial supply, and stored a concrete quote migration fee later deducted from the migration quote coin. The admin fee setter replaced the template read by later launches; it did not rewrite the copied economics of existing pools. See pinned [pool creation and migration](https://github.com/interest-protocol/memez-gg/blob/00596fdac4dd11f427c7bc594e566ce36160db93/fun/sources/pump.move#L76-L218), [admin fee setter](https://github.com/interest-protocol/memez-gg/blob/00596fdac4dd11f427c7bc594e566ce36160db93/fun/sources/config.move#L130-L136), and [fee/allocation construction](https://github.com/interest-protocol/memez-gg/blob/00596fdac4dd11f427c7bc594e566ce36160db93/fun/sources/structs/fees.move#L214-L245).
 
@@ -27,7 +27,7 @@ Blast's historical Memez code already used this safer pattern. A new pool copied
 
 Blast already has one permissionless virtual-liquidity constant-product curve, explicit Configured → Live → MigrationPending → Migrated states, launch-fixed quote/meme trade rates, an accepted dual-asset fee ledger, a live global protocol/creator trade-fee split, typed migration adapters, and a permanent LpVault. Local sources: [protocol scope](../protocol-scope.md), [curve](../decisions/0004-bonding-curve.md), [fees](../decisions/0006-fees-and-launch-paths.md), [migration](../decisions/0010-migration-and-venue-adapters.md), and [accepted dual-asset trade ledger](../decisions/0022-dual-asset-fee-ledger-and-claims.md).
 
-The narrow gap is that ADR 0006 proposes only a quote-side migration fee. A meme graduation allocation changes supply disposition and terminal accounting. It therefore needs a fee-policy ADR and new shared vectors; it should not be folded silently into the accepted trade-fee ledger.
+The narrow gap is that ADR 0006 proposes only a quote-side migration fee. A protocol Meme graduation fee changes supply disposition and terminal accounting. It therefore needs a fee-policy ADR and new shared vectors; it should not be folded silently into the accepted trade-fee ledger.
 
 Two-asset migration accounting is not exotic infrastructure: Meteora DBC's official account schema
 tracks protocol migration fees separately in base and quote, alongside pool-creation, creator, partner,
@@ -55,10 +55,10 @@ referral, vesting, and liquidity settings. [Meteora DBC accounts](https://github
 | Line | Asset and calculation base | Purpose | Mutability |
 | --- | --- | --- | --- |
 | **Quote migration fee** | Percentage of real terminal Quote; SUI only for Meme/SUI launches | Blast-owned graduation revenue | Admin updates hard-capped defaults for later launches; rate/ownership snapshots at launch |
-| **Meme graduation allocation** | Recommended: reserve a disclosed percentage from initial Meme supply at launch, then release only after successful migration | Blast/creator/community graduation incentive | Admin updates hard-capped defaults for later launches; amount/rate/ownership snapshots at launch |
+| **Protocol Meme graduation fee** | Recommended: reserve a disclosed percentage from initial Meme supply at launch, then release only after successful migration | Blast protocol revenue | Admin updates hard-capped defaults for later launches; amount/rate/ownership snapshots at launch |
 | **Migration authorization** | Original `TypeName` of one allowlisted external migrator witness | Authorizes adapter code without a DEX dependency in core | Admin updates the bounded whitelist for future launches; each launch snapshots one type |
 
-Reserving the Meme allocation from initial supply is safer than taking a new percentage from terminal curve inventory. A terminal-inventory haircut silently changes the net DEX reserve ratio and post-migration price. If the product insists on that design, the ADR must derive the pool price from **net** seed reserves, disclose the discontinuity, and regenerate curve/threshold/migration vectors.
+Reserving the protocol Meme graduation fee from initial supply is safer than taking a new percentage from terminal curve inventory. A terminal-inventory haircut silently changes the net DEX reserve ratio and post-migration price. If the product insists on that design, the ADR must derive the pool price from **net** seed reserves, disclose the discontinuity, and regenerate curve/threshold/migration vectors.
 
 Some venue interfaces require a separate fee coin; Blast's pinned Bluefin
 interface is one example. Such a route is ineligible. Blast does not add a fee
@@ -67,7 +67,7 @@ coin, deduct a venue charge from Quote, or create another payer/refund lifecycle
 The Migrated settlement/event should make these conservation lines replayable:
 
 - gross terminal Quote − Blast quote fee = Quote seeded + named Quote residual;
-- initial Meme supply = curve inventory + graduation allocation + every other approved bucket;
+- initial Meme supply = curve inventory + protocol Meme graduation fee + every other approved bucket;
 - terminal migration Meme = Meme seeded + terminal burn + named Meme residual; and
 
 Emit gross balances, both Blast lines, selected migration-witness type, net seed
@@ -78,7 +78,7 @@ balances, burn/residuals, LP vault identity, and final claimable totals.
 | Setting | Defaults updateable anytime? | Existing launch changes? | Why |
 | --- | :---: | :---: | --- |
 | quote migration fee | yes, within independent ceiling and old/new event | **no** | changes net quote liquidity and graduation value |
-| meme graduation allocation | yes, within independent ceiling and old/new event | **no** | changes supply distribution |
+| protocol Meme graduation fee | yes, within independent ceiling and old/new event | **no** | changes supply distribution |
 | migration witness whitelist | yes for future launches | **no** | each launch commits to one adapter code identity |
 | launch total quote/meme trade rates | no after launch | no | this is the trader-visible charge schedule |
 | global protocol share of subsequent trade fees | yes, already accepted | **yes, prospectively** | divides a fixed total fee; prior accrual is untouched |
@@ -92,17 +92,17 @@ Every setter needs its own ceiling, concern-specific admin witness, unchanged-va
 | Disposition | Features |
 | --- | --- |
 | **Borrow now** | Graduation economics card; immutable per-launch terminal schedule; permissionless witness-gated migration; permanent LP vault with fee-only collection; one recommended preset plus advanced disclosure; same-transaction creator buy at the public curve price and separately labeled |
-| **Adapt later** | Bounded graduation bounty; bounded multi-recipient creator sharing; vested creator/community share of the Meme graduation allocation; periodic referral payout UX on Blast's already-specified bounded epochs |
+| **Adapt later** | Bounded graduation bounty; bounded multi-recipient creator sharing separate from the protocol Meme graduation fee; periodic referral payout UX on Blast's already-specified bounded epochs |
 | **Reject for initial core** | Retroactive fee increases; creator-defined arbitrary curves; high transfer/tax tokens; UI-only anti-bot advertised as an on-chain guarantee; dynamic launch-fee ramps without a new fee-policy ADR; automatic buybacks; DEX pool-opening charges or third-asset fee paths |
 
 ## Decisions and tests required before an ADR
 
-1. Fix the Meme allocation base. Initial supply reserved at launch is recommended; terminal curve inventory is not.
-2. Decide whether the allocation is protocol-only or includes creator/community shares. A creator share reopens the vesting decision currently rejected for the first release by ADR 0012.
+1. Fix the protocol Meme graduation-fee base. Initial supply reserved at launch is recommended; terminal curve inventory is not.
+2. Decide whether the fee is protocol-only or includes creator/community shares. A creator share reopens the vesting decision currently rejected for the first release by ADR 0012.
 3. Choose independent ceilings and defaults only after simulating graduation price, LP depth, protocol/creator revenue, and non-graduation outcomes. Do not copy the old 5% + 5% blindly.
 4. Verify each adapter has no pool-opening charge and can prove its selected sealed witness type.
 5. Add shared vectors for zero/either/both fees, ceilings, one-unit rounding, insufficient net liquidity, retry, and recovery.
-6. Add event-replay tests reconstructing every gross deduction, net seed, allocation, claimable balance, and default change without reading mutable state.
+6. Add event-replay tests reconstructing every gross deduction, net seed, protocol Meme graduation fee, claimable balance, and default change without reading mutable state.
 
 ## Evidence limits
 

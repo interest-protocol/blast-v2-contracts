@@ -77,7 +77,7 @@ Let all asset amounts below be atomic units:
 
 ```text
 S = initial Meme supply
-A = ceil(S * meme_graduation_allocation_bps / 10_000)
+A = ceil(S * protocol_meme_graduation_fee_bps / 10_000)
 L = floor(S * meme_liquidity_provision_bps / 10_000)
 C = S - A - L
 V = virtual Quote reserve
@@ -98,8 +98,8 @@ from the curve. Consequently, a desired release such as 40% of total supply is
 achieved by selecting a valid existing parameter set whose derived `B` equals
 that amount; no `curve_sale_bps` or sale-cap field exists on chain.
 
-The future stateful launch module must cap the final buy at exactly `T` net real
-Quote. Any unused gross Quote is returned by that stateful interface; it is not
+`launch::buy`, added by ADR 0043, caps the final buy at exactly `T` net real
+Quote. It returns unused gross Quote as a separate coin; that refund is not
 migration principal. The executed terminal Meme balance remains authoritative;
 the SDK does not instruct the contract to rewrite it to `R`.
 
@@ -200,8 +200,8 @@ chain expands the trusted contract surface without improving conservation.
 - Existing error meanings remain stable; new codes cover zero virtual Quote and
   a completely unchanged Quote parameter pair.
 - There is no independent curve-sale, burn, or valuation parameter.
-- A future stateful launch implementation must enforce exact net-Quote closure
-  and allocate actual Meme and Quote balances without consulting an SDK result.
+- The stateful launch enforces exact net-Quote closure and allocates actual Meme
+  and Quote balances without consulting an SDK result.
 - The SDK preview may differ from an executed curve by atomic rounding dust;
   emitted balances, not the preview, are authoritative.
 - Indexers can reconstruct every input and recompute every derived result using
@@ -218,5 +218,5 @@ chain expands the trusted contract surface without improving conservation.
 - Structural checks pin the Quote policy pair, snapshot arity, event fields, and
   balance-partition seam while rejecting on-chain forecast valuation logic or
   independent sale-cap/valuation storage.
-- Future launch integration tests must prove exact target capping, refund
-  conservation, and complete allocation of actual terminal balances.
+- Launch integration tests prove exact target capping, refund conservation, and
+  complete allocation of actual terminal balances.

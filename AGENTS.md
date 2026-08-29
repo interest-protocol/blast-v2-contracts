@@ -4,6 +4,10 @@ These instructions apply to this repository. They are the implementation gate
 for both `sui/` and `evm/`. The consensus-minimal contract/SDK rule below is
 self-contained so this repository remains valid when cloned independently.
 
+Sui Move packages live below `sui/`: core in `sui/launchpad/`, venue adapters
+in child packages below `sui/migrators/`, and independently deployed vesting
+designs below `sui/vesting/`. The `sui/` root is not itself a Move package.
+
 ## Before making a change
 
 1. Read this file, the root README, and the relevant files in `docs/`.
@@ -60,13 +64,15 @@ The intended layering is:
 
 1. types, errors, units, and pure math;
 2. protocol state and lifecycle transitions;
-3. fees, allocations, and vesting;
-4. migration interfaces;
-5. chain- or venue-specific adapters;
+3. fees and allocations;
+4. migration and vesting interfaces;
+5. chain- or venue-specific adapters and vesting implementations;
 6. transaction/deployment tooling.
 
 Core code must not import a venue adapter. Adapters depend inward on the narrow
-core interface. See `docs/architecture.md`.
+core interface. Vesting packages must also depend inward without expanding core
+unless a consensus-critical launch transition requires that interface. See
+`docs/architecture.md`.
 
 ## Consensus-minimal contract boundary
 
@@ -175,27 +181,36 @@ invariant, trustless composition, or reconstructability, keep it in the SDK.
   pre-created treasury or metadata caps. `LaunchTicket<Meme>` stores the complete
   fixed initial `Balance<Meme>`, native `MetadataCap<Meme>`, one
   `CreatorAuthority<Meme>` after mint authority has already been destroyed. The
-  constructor's `burnable` input selects the irreversible registry state and is
-  recorded in the creation event, but must not be duplicated in ticket storage.
+  constructor's `burnable` choice selects the irreversible registry state and is
+  recorded in the creation event but not ticket storage. Its separately bounded
+  `sell_burn_bps` fixes the per-sell burn ramp and remains in ticket custody so
+  launch redemption cannot substitute another rate.
   The constructor returns the ticket without transfer;
   the generated package decides delivery. Only the package-level consuming
   `destroy` seam may release those stored values to the future launch module.
   See ADRs 0024, 0035, 0036, 0037, and 0038.
 - `launch_config.move` owns cold policy read together only when a launch is
   created: the 16-entry original-type quote whitelist with nonzero virtual Quote
-  reserves and migration targets, the zero-safe
-  Quote migration-fee and Meme graduation-allocation defaults, the nonzero
+  reserves and migration targets, the independently bounded 0–1,000 bps Quote
+  and Meme trade-fee rates, the zero-safe
+  Quote migration-fee and Protocol Meme graduation fee defaults, the nonzero
   1–9,999 bps destination-pool Meme liquidity provision, and a 16-entry
-  whitelist of external migrator witness types. The protocol Meme allocation
+  whitelist of external migrator witness types. The protocol Meme graduation fee
   plus liquidity provision must remain below 10,000 bps. All mutations use only
   `AdminWitness`. The quote whitelist itself is admission: do not add a
   `Currency<Quote>` input or another registry check. Each launch selects one
   allowlisted `MigrationWitness` type and copies its original `TypeName` with the
-  virtual reserve, target, and all three graduation rates; later whitelist
-  changes affect future launches only. Do not add live launch-policy reads to
-  trading or migration.
+  virtual reserve, target, both trade-fee rates, and all three graduation rates;
+  later configuration changes affect future launches only. Launch callers do
+  not choose trade-fee rates. Do not add live launch-policy reads to trading or
+  migration.
   Zero liquidity provision is unconfigured and must not inherit a migrate-all
-  sentinel. See ADRs 0025, 0027, and 0033.
+  sentinel. See ADRs 0025, 0027, 0033, and 0041.
+- `launch.move` owns one top-level shared `Launch<Meme, Quote>` per launch. The
+  type has `key` as its only ability: do not add `store`, a public transfer path,
+  or nesting support. `launch::new` returns the constructed linear value and
+  the creation PTB must consume it through `launch::share`; future operations
+  borrow the shared object. See ADRs 0040 and 0042.
 - DEXs supported by Blast must not charge a pool-opening fee. Do not add venue
   cost, fee-asset, third-coin, external-payer, reimbursement, or refund fields to
   core launch or migration state. Ordinary transaction gas remains the caller's
@@ -203,22 +218,29 @@ invariant, trustless composition, or reconstructability, keep it in the SDK.
   unsupported.
 - A DEX migrator is never part of the core package. Each external migrator
   package depends inward on core, owns its DEX dependency and sealed
-  `Witness() has drop`, and supplies that witness to unlock a non-copyable,
-  non-droppable core migration handoff. Core authorizes code identity by matching
-  the supplied witness's original `TypeName` to the value selected at launch;
-  it must not whitelist caller addresses or import DEX packages. See ADRs 0010
-  and 0027.
+  `Witness() has drop`, and supplies that witness when it redeems a
+  non-copyable, non-droppable core migration handoff. Any caller may start
+  migration with the selected witness type. Core binds the payload by matching
+  that type's original `TypeName` to the value selected at launch, and payload
+  redemption requires a value of the exact type. Core must not whitelist caller
+  addresses or import DEX packages. See ADRs 0010, 0027, and 0046.
 - SDK buy/sell previews derive every reserve and economic input from actual live
   launch object reads. State-changing launch operations recompute the same curve
   result internally and enforce slippage from stored state. Do not publish an
   on-chain quote function solely for frontend convenience; keep raw
   caller-parameterized `curve` arithmetic package-only.
-- A burnable launch must custody each sell's curve-designated meme amount in a
+- A launch must custody each sell's curve-designated meme amount in a
   separate `pending_burn: Balance<Meme>` that never joins curve reserves, fees,
-  claims, or migration assets. Burn the accumulated balance once through the
-  Coin Registry during terminal migration. A fixed launch requires zero
-  configured burn and must never send coins to `0x0` as a fake burn. Events must
-  distinguish pending custody from completed supply destruction. See ADR 0026.
+  claims, or migration assets. At terminal migration, a `BurnOnly` launch burns
+  that balance and terminal curve residual through Coin Registry; a `Fixed`
+  launch transfers the same disposal balance to `0x0` without claiming that
+  native total supply decreased. Events must distinguish pending custody,
+  completed supply destruction, and fixed-supply disposal. See ADR 0026.
+- Coin Registry is the only onchain authority for generated Meme supply mode.
+  Do not store a duplicate `burnable` field in `LaunchTicket` or `Launch`.
+  Migration must read `Currency<Meme>`, burn disposal for `BurnOnly`, send it to
+  `0x0` for `Fixed`, and reject every other native state before asset mutation.
+  See ADR 0047.
 - Give every privileged setter a documented bound and corresponding event.
 - Define pause scope precisely. Emergency pause must not strand user exits unless
   that behavior is explicitly approved and tested.
@@ -344,6 +366,10 @@ must be differential-tested from shared vectors.
   lower-snake-case `macro public(package)` accessors. Do not declare protocol
   limits, delays, byte lengths, schema tags, or layout offsets in state modules;
   derive related layout values from the primitive constants in that registry.
+  The sole exception is the private `PACKAGE_VERSION` constant in
+  `package_version.move`: only that module consumes the compiled generation, so
+  upgrade operators edit the generation beside the checks and initializer that
+  enforce it. See ADR 0050.
 - Before defining an integer bound, arithmetic helper, vector helper, or manual
   loop, inspect the exact MoveStdlib and Sui framework revision pinned by
   `Move.lock`, then the pinned `su` house-style reference. Prefer the standard

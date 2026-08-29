@@ -3,6 +3,10 @@
 Status: supporting research
 Reviewed: 2026-08-25
 
+> Update (2026-08-28): ADR 0043 accepts Memez-style `0x0` terminal disposal for
+> Fixed launches, with explicit non-burn event semantics and unchanged native
+> total supply. The rejection below records the earlier design state.
+
 ## Source pins
 
 This note reviews three first-party sources:
@@ -21,7 +25,7 @@ The Blast comparison is against
 ## Conclusion
 
 The suspected omission is real. Blast currently has a
-`meme_graduation_allocation_bps`, but that value is protocol-owned Meme revenue;
+`protocol_meme_graduation_fee_bps`, but that value is protocol-owned Meme revenue;
 ADR 0027 expressly excludes it from migration inventory. It is **not** the
 amount of Meme used to seed the destination pool. No separate launch-policy
 field or accepted formula currently determines that amount.
@@ -37,7 +41,7 @@ Memez.Fun keeps these concerns independent:
 4. the external XPump migrator has its own reward, residual treasury, and LP-fee
    treasury policy.
 
-Blast should therefore not reinterpret its existing protocol allocation as pool
+Blast should therefore not reinterpret its existing protocol Meme graduation fee as pool
 liquidity. The next protocol decision needs a separately named migration-Meme
 policy, such as `meme_liquidity_provision_bps`, or an explicit terminal formula
 that derives the amount needed for price continuity.
@@ -130,7 +134,7 @@ collapsed into one launch field.
 
 | Line | Memez.Fun behavior | Relevance to Blast |
 | --- | --- | --- |
-| Stakeholder Meme allocation | `MemezFees` stores a separate `allocation` payload. Launch splits `floor(current_meme_balance * allocation_bps / 10_000)` before reserving pool liquidity, and distributes it only after migration, optionally through vesting ([`fees.move:225-242`](https://github.com/interest-protocol/memez-gg/blob/00596fdac4dd11f427c7bc594e566ce36160db93/fun/sources/structs/fees.move#L225-L242), [`memez_fun.move:346-364`](https://github.com/interest-protocol/memez-gg/blob/00596fdac4dd11f427c7bc594e566ce36160db93/fun/sources/memez_fun.move#L346-L364)). Static configured recipients and launch-supplied stakeholders can share it ([`fees.move:225-240`](https://github.com/interest-protocol/memez-gg/blob/00596fdac4dd11f427c7bc594e566ce36160db93/fun/sources/structs/fees.move#L225-L240)). | Closest historical analogue to Blast's current protocol Meme graduation allocation, not to destination-pool liquidity. A creator could be one configured stakeholder, but Pump does not intrinsically label this balance "creator." |
+| Stakeholder Meme allocation | `MemezFees` stores a separate `allocation` payload. Launch splits `floor(current_meme_balance * allocation_bps / 10_000)` before reserving pool liquidity, and distributes it only after migration, optionally through vesting ([`fees.move:225-242`](https://github.com/interest-protocol/memez-gg/blob/00596fdac4dd11f427c7bc594e566ce36160db93/fun/sources/structs/fees.move#L225-L242), [`memez_fun.move:346-364`](https://github.com/interest-protocol/memez-gg/blob/00596fdac4dd11f427c7bc594e566ce36160db93/fun/sources/memez_fun.move#L346-L364)). Static configured recipients and launch-supplied stakeholders can share it ([`fees.move:225-240`](https://github.com/interest-protocol/memez-gg/blob/00596fdac4dd11f427c7bc594e566ce36160db93/fun/sources/structs/fees.move#L225-L240)). | Closest historical analogue to Blast's current protocol Meme graduation fee, not to destination-pool liquidity. A creator could be one configured stakeholder, but Pump does not intrinsically label this balance "creator." |
 | Quote migration fee | A percentage `Fee` is copied at launch, rounded up when taken, distributed to its configured recipients, and deducted from terminal Quote before the migration payload is built ([`fees.move:214-223`](https://github.com/interest-protocol/memez-gg/blob/00596fdac4dd11f427c7bc594e566ce36160db93/fun/sources/structs/fees.move#L214-L223), [`pump.move:213-218`](https://github.com/interest-protocol/memez-gg/blob/00596fdac4dd11f427c7bc594e566ce36160db93/fun/sources/pump.move#L213-L218)). | Matches Blast's separate Quote graduation-fee concept. |
 | Pump creator/developer Meme | Pump allows the developer to make a paid first purchase and holds those purchased coins for a later developer claim ([`pump.move:137-149`](https://github.com/interest-protocol/memez-gg/blob/00596fdac4dd11f427c7bc594e566ce36160db93/fun/sources/pump.move#L137-L149), [`pump.move:220-232`](https://github.com/interest-protocol/memez-gg/blob/00596fdac4dd11f427c7bc594e566ce36160db93/fun/sources/pump.move#L220-L232)). Stable, a different launch mode, has an explicit vested developer allocation ([`stable.move:93-116`](https://github.com/interest-protocol/memez-gg/blob/00596fdac4dd11f427c7bc594e566ce36160db93/fun/sources/stable.move#L93-L116), [`stable.move:183-203`](https://github.com/interest-protocol/memez-gg/blob/00596fdac4dd11f427c7bc594e566ce36160db93/fun/sources/stable.move#L183-L203)). | Blast deliberately rejected a free creator token allocation for the first release; creator economic exposure currently comes from purchases and fee ownership, not a supply gift ([ADR 0012, line 38](../decisions/0012-flywheel-features.md)). Adding one is a separate product decision. |
 | XPump migration caller reward | After unlocking the core payload, XPump splits a configured fixed Quote reward before calculating pool price and adding liquidity ([`xpump.move:188-205`](https://github.com/interest-protocol/memez-gg/blob/00596fdac4dd11f427c7bc594e566ce36160db93/migrators/xpump/sources/xpump.move#L188-L205)). | Adapter incentive, not platform Meme allocation or pool-opening cost. Blast has not accepted it. |
@@ -205,16 +209,16 @@ explicitly between:
 ## Blast comparison
 
 At `blast-v2-contracts@ad951f8`, `LaunchConfig` stores only the per-Quote terminal
-target, Quote migration-fee rate, protocol Meme graduation-allocation rate, and
+target, Quote migration-fee rate, protocol Meme graduation-fee rate, and
 migration-witness set
-([`sui/sources/launch_config.move:17-24`](../../sui/sources/launch_config.move)).
+([`sui/launchpad/sources/launch_config.move:17-24`](../../sui/launchpad/sources/launch_config.move)).
 Its snapshot returns exactly the target, those two rates, and witness type
-([`launch_config.move:184-214`](../../sui/sources/launch_config.move)). There is no
+([`launch_config.move:184-214`](../../sui/launchpad/sources/launch_config.move)). There is no
 Meme pool-provision field.
 
 This is not a naming-only issue:
 
-- ADR 0027 says the current Meme graduation allocation is held separately and
+- ADR 0027 says the current protocol Meme graduation fee is held separately and
   never enters migration inventory
   ([`ADR 0027:141-155`](../decisions/0027-graduation-economics-and-migration-witnesses.md)).
 - The same ADR later requires migration to seed "net Meme and Quote" and account
@@ -230,9 +234,9 @@ This is not a naming-only issue:
   ([`ADR 0004:136-141`](../decisions/0004-bonding-curve.md)).
 
 The current `LaunchTicket` is not where this policy belongs. It intentionally
-holds only the finalized Meme balance, metadata capability, and creator
-authority; supply mode is authoritative in Coin Registry state
-([`sui/sources/launch_ticket.move`](../../sui/sources/launch_ticket.move)).
+holds the finalized Meme balance, metadata capability, creator authority, and
+sell-burn rate; supply mode is authoritative in Coin Registry state
+([`sui/launchpad/sources/launch_ticket.move`](../../sui/launchpad/sources/launch_ticket.move)).
 The migration-Meme value belongs in the cold launch snapshot and then the future
 launch's named balances.
 
@@ -245,7 +249,7 @@ launch's named balances.
    across quotes or targets.
 3. What does zero mean? It should not inherit Memez.Fun's surprising "all
    terminal inventory" sentinel without an explicit decision.
-4. Does the protocol Meme allocation remain protocol-only, or can a bounded
+4. Does the protocol Meme graduation fee remain protocol-only, or can a bounded
    portion go to a creator/community recipient? That is independent of pool seed.
 5. Is the protocol claim composable, as ADR 0027 currently says, or is a treasury
    address snapshotted? Memez.Fun's configured core recipients and XPump's adapter

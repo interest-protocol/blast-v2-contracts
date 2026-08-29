@@ -14,6 +14,13 @@
 > Amended by [ADR 0039](0039-deterministic-quote-valuations.md): the per-Quote
 > virtual reserve joins the launch snapshot, while an off-chain SDK derives
 > exact-target release and Quote-denominated valuation previews.
+> Amended by [ADR 0043](0043-versioned-launch-trading-and-atomic-migration.md):
+> `launch::migrate` now implements the selected-witness core handoff and the
+> two supply-mode disposal paths; venue adapters remain separate packages.
+> Amended by
+> [ADR 0046](0046-witness-authorized-migration-redemption.md): any caller may
+> create the type-bound handoff, while redemption requires the selected sealed
+> witness value.
 
 ## Sources
 
@@ -52,7 +59,7 @@ refund lifecycle.
 1. **Quote migration fee.** A percentage of gross real terminal `Quote`, stored
    as protocol revenue only after successful migration. It is SUI only when
    `Quote` is SUI. Zero disables it.
-2. **Meme graduation allocation.** A percentage of initial `Meme` supply,
+2. **Protocol Meme graduation fee.** A percentage of initial `Meme` supply,
    separated before curve inventory is established. It is initially protocol
    owned and becomes claimable only after successful migration. Zero disables
    it.
@@ -71,7 +78,7 @@ public struct LaunchConfig has key {
     id: UID,
     quotes: VecMap<TypeName, u64>,
     quote_migration_fee_bps: u64,
-    meme_graduation_allocation_bps: u64,
+    protocol_meme_graduation_fee_bps: u64,
     migration_witnesses: VecSet<TypeName>,
 }
 ```
@@ -154,11 +161,11 @@ new explicit product decision replaces this one.
 
 - `migration_quote_target`;
 - `quote_migration_fee_bps`;
-- `meme_graduation_allocation_bps`; and
+- `protocol_meme_graduation_fee_bps`; and
 - selected migration-witness original `TypeName`.
 
 At launch, the complete initial Meme supply is divided into explicitly named
-buckets. The graduation allocation is calculated before curve construction and
+buckets. The protocol Meme graduation fee is calculated before curve construction and
 held in its own `Balance<Meme>`. It never enters curve inventory, pending burn,
 trade fees, migration inventory, or creator claims. Launch creation rejects a
 configuration that leaves zero valid curve inventory after all approved supply
@@ -169,8 +176,8 @@ buckets.
 The approved formulas are:
 
 ```text
-meme_graduation_allocation
-  = ceil(initial_meme_supply * meme_graduation_allocation_bps / 10_000)
+protocol_meme_graduation_fee
+  = ceil(initial_meme_supply * protocol_meme_graduation_fee_bps / 10_000)
 
 quote_migration_fee
   = ceil(gross_terminal_quote * quote_migration_fee_bps / 10_000)
@@ -185,11 +192,11 @@ zero without a special mode.
 One migration attempt uses the single-use core handoff. The atomic transaction
 performs these conceptual steps:
 
-1. validate lifecycle and selected witness identity;
+1. validate lifecycle and the selected witness type;
 2. derive the Blast Quote fee from gross terminal Quote;
 3. isolate net Quote and the distinct protocol-revenue balance;
 4. burn accumulated pending Meme for `BurnOnly` launches;
-5. release the handoff to the selected external migrator;
+5. redeem the handoff with the selected external migrator's sealed witness;
 6. create the venue pool and seed it with net Meme and Quote;
 7. return every named residual and settlement identity to core;
 8. commit protocol revenue and `Migrated` state; and
@@ -203,8 +210,8 @@ transition to `Migrated`.
 ### Claims
 
 The initial ownership policy is protocol-only. After successful migration, one
-public launch function borrows `AdminWitness`, drains the source-specific Meme
-graduation allocation and Quote migration revenue, and returns
+public launch function borrows `AdminWitness`, drains the source-specific
+protocol Meme graduation fee and Quote migration revenue, and returns
 `(Coin<Meme>, Coin<Quote>)`. It accepts no recipient and performs no transfer.
 Claiming before `Migrated`, or while both balances are empty, aborts with a named
 error.
@@ -219,7 +226,7 @@ least:
 - original Meme, Quote, and migration-witness types;
 - gross terminal Meme and Quote balances;
 - Quote migration fee and final protocol-claimable Quote total;
-- reserved Meme graduation allocation and final protocol-claimable Meme total;
+- reserved Protocol Meme graduation fee and final protocol-claimable Meme total;
 - pending Meme burned and resulting supply;
 - net Meme and Quote seeded;
 - named Meme and Quote residuals; and
@@ -238,7 +245,7 @@ gross_terminal_quote - quote_migration_fee
 
 initial_meme_supply
   = curve_inventory
-  + meme_graduation_allocation
+  + protocol_meme_graduation_fee
   + meme_outstanding
   + meme_trade_fees
   + pending_burn
@@ -255,7 +262,7 @@ The event-only reducer must reproduce every term without reading mutable state.
 | Decision | Accepted behavior |
 | --- | --- |
 | Quote migration-fee ceiling | **500 bps (5%)** |
-| Meme allocation ceiling | **1,000 bps (10%)** |
+| Protocol Meme graduation-fee ceiling | **1,000 bps (10%)** |
 | Initial defaults | **zero/zero** |
 | Initial ownership | **protocol-only**; creator/community ownership and vesting remain deferred |
 | Rounding | **ceiling** for both protocol obligations |
@@ -293,8 +300,8 @@ to open pools. A fee-charging venue will not be used.
   launches; an explicit recovery design would require a separate decision.
 - Protocol graduation revenue remains capability-claimed and composable.
 - Core stays free of DEX dependencies, DEX costs, and third assets.
-- Full migration implementation remains audit-sized: launch integration, core
-  linear handoff, then one external migrator package at a time.
+- Core migration is implemented as the launch-owned linear handoff. External
+  migrator packages remain separate audit slices, one venue at a time.
 
 ## Verification
 
@@ -307,9 +314,9 @@ Implementation proceeds one seam at a time:
 2. Pure graduation arithmetic and custody: one-unit and maximum-width rounding,
    zero remaining inventory, four enablement combinations, and independent
    conservation.
-3. Launch integration: allocation reserved before curve inventory, immutable
-   quote/fee/witness snapshots, fixed and burnable supply modes, and complete
-   `LaunchCreated` facts.
+3. Launch integration: protocol Meme graduation fee reserved before curve
+   inventory, immutable quote/fee/witness snapshots, native supply-mode event
+   history, and complete `LaunchCreated` facts.
 4. Core migration handoff: selected-witness mismatch, linear consumption,
    atomic retry, no double charging, terminal burn, residuals, and event-only
    reconstruction.
