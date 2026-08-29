@@ -913,6 +913,16 @@ fun depleted_fun_buffer_recovers_without_forfeiting_every_activation_epoch() {
     assert_eq!(tokens, 0);
     assert_eq!(fun_supply, 21 * MIST_PER_SUI);
     assert!(fun_custody.pool_assets() >= fun_supply);
+    let pending_before_resync = pending;
+
+    // A refresh in this same epoch stops at the retained receipt and leaves
+    // the newer receipt queued behind it untouched.
+    let custody = fixture.sync();
+    let (fun_custody, _, _, _, _) = custody.vault_custody_fields();
+    let (liquid, pending, tokens, _) = fun_custody.pool_custody_fields();
+    assert_eq!(liquid, reserve);
+    assert_eq!(pending, pending_before_resync);
+    assert_eq!(tokens, 0);
 
     // After one complete rewarded epoch, recovery realizes the retained
     // receipt's yield, restores the full reserve, converts the second receipt

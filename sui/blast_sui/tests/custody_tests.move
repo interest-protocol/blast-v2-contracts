@@ -136,6 +136,90 @@ fun stale_receipts_take_their_own_slots_until_the_ledger_cap_skips_delegation() 
 }
 
 #[test]
+fun same_epoch_stake_joins_the_newest_receipt_even_at_the_ledger_cap() {
+    let mut fixture = start();
+    let mut ledger = option::none();
+
+    fixture.next_tx!(USER, |f| {
+        ledger.fill(f.new_staked_ledger(2 * MIST_PER_SUI));
+    });
+    fixture.advance_epoch();
+    fixture.next_tx!(USER, |f| {
+        f.stake_more(ledger.borrow_mut(), 3 * MIST_PER_SUI);
+    });
+    fixture.advance_epoch();
+    fixture.next_tx!(USER, |f| {
+        f.stake_more(ledger.borrow_mut(), 4 * MIST_PER_SUI);
+        // The ledger is full, but the newest receipt shares this epoch's
+        // activation, so a further same-epoch stake joins it instead of
+        // skipping.
+        f.stake_more(ledger.borrow_mut(), 5 * MIST_PER_SUI);
+        assert_eq!(ledger.borrow().pending_sui(), 14 * MIST_PER_SUI);
+        assert_eq!(ledger.borrow().liquid_sui(), 0);
+    });
+    fixture.advance_epoch();
+    fixture.next_tx!(USER, |f| {
+        // A new activation epoch cannot join and finds no free slot: skip.
+        f.stake_more(ledger.borrow_mut(), 6 * MIST_PER_SUI);
+        assert_eq!(ledger.borrow().pending_sui(), 14 * MIST_PER_SUI);
+        assert_eq!(ledger.borrow().liquid_sui(), 6 * MIST_PER_SUI);
+    });
+
+    destroy(ledger);
+    fixture.end();
+}
+
+#[test]
+fun activate_pending_stops_at_the_first_unarrived_receipt() {
+    let mut fixture = start();
+    let mut ledger = option::none();
+
+    fixture.next_tx!(USER, |f| {
+        ledger.fill(f.new_staked_ledger(2 * MIST_PER_SUI));
+    });
+    fixture.advance_epoch();
+    fixture.next_tx!(USER, |f| {
+        let ledger = ledger.borrow_mut();
+        f.stake_more(ledger, 3 * MIST_PER_SUI);
+
+        ledger.activate_pending(f.system!(), f.ctx!());
+
+        // Only the arrived first receipt converts; the receipt activating
+        // next epoch stays pending.
+        assert_eq!(ledger.active_pool_tokens(), 2 * MIST_PER_SUI);
+        assert_eq!(ledger.pending_sui(), 3 * MIST_PER_SUI);
+    });
+
+    destroy(ledger);
+    fixture.end();
+}
+
+#[test]
+fun unwind_realizes_every_pending_receipt() {
+    let mut fixture = start();
+    let mut ledger = option::none();
+
+    fixture.next_tx!(USER, |f| {
+        ledger.fill(f.new_staked_ledger(2 * MIST_PER_SUI));
+    });
+    fixture.advance_epoch();
+    fixture.next_tx!(USER, |f| {
+        let ledger = ledger.borrow_mut();
+        f.stake_more(ledger, 3 * MIST_PER_SUI);
+
+        ledger.unwind(f.system!(), f.ctx!());
+
+        assert_eq!(ledger.pending_sui(), 0);
+        assert_eq!(ledger.active_pool_tokens(), 0);
+        assert!(ledger.liquid_sui() >= 5 * MIST_PER_SUI);
+        assert_eq!(ledger.assets(), ledger.liquid_sui());
+    });
+
+    destroy(ledger);
+    fixture.end();
+}
+
+#[test]
 fun activate_pending_converts_every_arrived_receipt() {
     let mut fixture = start();
     let mut ledger = option::none();
