@@ -15,6 +15,12 @@ fun init(otw: BLAST, ctx: &mut TxContext) {
 // === Test-Only Functions ===
 
 #[test_only]
+/// Runs package initialization with a genuine test one-time witness.
+public fun init_for_testing(ctx: &mut TxContext) {
+    init(sui::test_utils::create_one_time_witness<BLAST>(), ctx);
+}
+
+#[test_only]
 public fun publisher_for_testing(ctx: &mut TxContext): sui::package::Publisher {
     sui::package::test_claim(BLAST(), ctx)
 }

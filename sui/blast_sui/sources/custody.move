@@ -155,6 +155,14 @@ public(package) fun revalue(self: &mut Custody, rate_sui: u64, rate_pool_tokens:
 }
 
 /// Moves exactly `amount` MIST out of custody: liquid first, then pending, then active.
+///
+/// The native rounding margin is exactly tight, and its sufficiency assumes
+/// pool exchange rates never decrease (the pinned framework accrues rewards
+/// only and never slashes principal). If a framework upgrade ever let a rate
+/// decrease, `active_sui` could overstate the position and this function
+/// would abort with `insufficient_native_redemption` instead of underpaying
+/// remaining holders: redemptions fail closed until a package upgrade
+/// reprices the ledger.
 public(package) fun withdraw_exact(
     self: &mut Custody,
     system_state: &mut SuiSystemState,

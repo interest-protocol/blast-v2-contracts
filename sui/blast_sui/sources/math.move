@@ -5,8 +5,10 @@
 ///
 /// All inputs are atomic MIST, atomic share units, or native pool tokens held
 /// in `u64`. Products use the framework `u128` intermediates of `mul_div` and
-/// `mul_div_ceil`; every result is bounded by one of its `u64` inputs, so no
-/// narrowing can overflow.
+/// `mul_div_ceil`; every result is a real MIST, share, or pool-token amount,
+/// bounded by total network SUI under the vault invariants (blast assets are
+/// always at least the supply, pool rates start one-to-one), so the `u64`
+/// narrowing cannot overflow on any reachable input.
 module blast_sui::math;
 
 use blast_sui::constants;

@@ -133,6 +133,7 @@ public fun mint_fun_sui(
     package_version.assert_current();
     let amount = sui_in.value();
     assert!(amount > 0, blast_sui::errors::zero_amount!());
+    self.assert_accepts_mints();
     self.refresh(system_state, ctx);
     self.assert_accepts_mints();
 

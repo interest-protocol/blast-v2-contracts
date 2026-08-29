@@ -39,6 +39,12 @@ fun create(
 // === Test-Only Functions ===
 
 #[test_only]
+/// Runs package initialization with a genuine test one-time witness.
+public fun init_for_testing(ctx: &mut TxContext) {
+    init(sui::test_utils::create_one_time_witness<FUN_SUI>(), ctx);
+}
+
+#[test_only]
 public fun create_for_testing(
     ctx: &mut TxContext,
 ): TreasuryCap<FUN_SUI> {

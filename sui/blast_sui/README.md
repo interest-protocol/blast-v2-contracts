@@ -132,9 +132,9 @@ that yield, so the sweep has no supply condition.
   blastSUI share. Donations of at least one SUI are delegated when possible;
   smaller donations remain liquid until the blast balance reaches that threshold.
 - Unwind-only mode rejects fun mints, blast requests, and blast claims. Both
-  coin redemptions, direct receipt cancellation, and donations stay open. A
-  donation remains liquid in unwind-only mode. There is no pause and no
-  administrative withdrawal path.
+  coin redemptions, direct receipt cancellation, donations, and
+  `set_redeem_fee` stay open. A donation remains liquid in unwind-only mode.
+  There is no pause and no administrative withdrawal path.
 
 ## Events
 
@@ -209,6 +209,11 @@ number into the raising module. Retired codes remain reserved.
 
 The next new error must use code 48.
 
+Codes 20 and 39, and the `custody` raise site of 47, are defensive: under the
+pinned framework's rounding and the vault's buffers they are unreachable, and
+the test suite deliberately leaves them unexercised rather than bypassing the
+production guards they back.
+
 ## Native framework limits
 
 The package performs one current-epoch exchange-rate-table lookup and never
@@ -220,6 +225,14 @@ Production operations must gas-test these paths after a long safe-mode run and
 monitor their transaction budgets. Receipt cancellation remains independent of
 the shared vault and `PackageVersion`, so an upgrade or vault-side failure does
 not add an application-level exit dependency.
+
+Exact native redemption assumes pool exchange rates never decrease: the
+pinned framework accrues rewards only and never slashes principal, and the
+custody rounding margin is exactly tight under that assumption. If a
+framework upgrade ever let a rate decrease, redemptions would abort with
+`insufficient_native_redemption` instead of underpaying remaining holders,
+and a package upgrade would have to reprice the ledger. Monitor framework
+staking changes for this property.
 
 A validator address can register a fresh pool after its old pool becomes
 inactive. The vault therefore treats a current exchange-rate entry for its
@@ -239,14 +252,18 @@ new address for any replacement validator.
 2. Complete the framework's second Coin Registry step for both OTW currencies:
    call `coin_registry::finalize_registration` for the `funSUI` and `blastSUI`
    `Currency` objects transferred during package initialization.
-3. Initialize the package-local ACL and `PackageVersion`, then create the
-   receipt Display V2 through `deposit_receipt::create_display` with the system
-   `DisplayRegistry` at `0xd`. Confirm the derived display is shared and its
-   `DisplayCap` is owned by `@0x0`.
+3. The package-local ACL and `PackageVersion` initialize automatically in the
+   publish transaction; verify the shared `ProtocolAuthority`, the sender-owned
+   `SuperAdminCap`, and the shared `PackageVersion` from its effects. Then
+   create the receipt Display V2 through `deposit_receipt::create_display` with
+   the system `DisplayRegistry` at `0xd`. Confirm the derived display is shared
+   and its `DisplayCap` is owned by `@0x0`.
 4. Wait until the selected validator's second active epoch so its pool has a
    current exchange-rate entry. Create the vault with that pool ID and the owner
    seed, then verify the emitted validator binding, 0.1-SUI fun reserve, blast
-   bootstrap, locked seed shares, and 2-bps redemption fee.
+   bootstrap, locked seed shares, and 2-bps redemption fee. A `pool_id` the
+   system has never seen aborts inside the framework table lookup, not with
+   `validator_not_active`; check the ID before submitting.
 
 ## Upgrade runbook
 
@@ -262,10 +279,19 @@ new address for any replacement validator.
    calls succeed, both coin redemptions remain usable, and deposit receipts can
    still cancel directly.
 
+Additive is the strictest policy restriction the package exposes; a
+dependency-only restriction would foreclose adding a rescue entry point if a
+defensive invariant abort ever froze the vault.
+
 ## Verification
 
 Run with the workspace-pinned Sui CLI from this directory, or use
-`bash scripts/verify.sh [build|lint|test|all]`:
+`bash scripts/verify.sh [build|lint|test|boundaries|coverage|all]`.
+`scripts/check_source_boundaries.sh` mechanically pins the single `SuiSystem`
+dependency, bans `blast_fun` references, and confines `sui::event::emit` to
+the envelope module. `scripts/check_coverage.sh` requires 100% module coverage
+outside its named defensive and framework-private exclusions and at least 95%
+in total:
 
 ```bash
 sui move build --build-env testnet

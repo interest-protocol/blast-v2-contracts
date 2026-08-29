@@ -155,6 +155,10 @@ public fun accept_super_admin_transfer(
 }
 
 /// Deletes a root cap only after a successful replacement made it inert.
+///
+/// Like `deposit_receipt::cancel`, this deliberately skips the package
+/// version gate: it consumes only the caller's own inert object against
+/// the live registry, so cleanup stays possible mid-cutover.
 public fun destroy_retired_super_admin_cap(
     self: &ProtocolAuthority,
     super_admin_cap: SuperAdminCap,
