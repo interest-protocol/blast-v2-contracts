@@ -25,17 +25,19 @@ contracts/
 │   ├── launchpad/            Blast launchpad core package
 │   ├── migrators/            venue adapter packages
 │   ├── templates/            generated per-launch package templates
-│   └── vesting/              vesting packages
+│   └── vesting/              framework-only vesting package
 └── evm/                      independent Solidity/Foundry toolchain
 ```
 
 ## Current status
 
 The workspace, its engineering contract, and the Sui design record are established.
-The independently deployed stepped-linear vesting package is also implemented.
-It supports fully funded fixed-beneficiary schedules, optional cliffs, explicit
-release cadence, permissionless claims, and fair capability-gated cancellation
-that can return only unvested value.
+The independently deployed vesting package is also implemented. Its `linear`
+module supports optional cliffs and explicit release cadence. Its `checkpoints`
+module supports up to 256 exact irregular cumulative unlocks through a linear
+`TableVec` builder and binary-search claims. Both use fully funded,
+fixed-beneficiary schedules, permissionless claims, and fair capability-gated
+cancellation that can return only unvested value.
 The implemented Sui Move slices cover the current audit-sized boundaries from
 accepted ADRs 0013 through 0046: one-time
 `CreatorCap<Meme>` claims for address and X identities, coin-type-isolated

@@ -1,8 +1,8 @@
 [package]
-name = "blast_fun_vesting_linear"
+name = "blast_fun_vesting"
 edition = "2024"
 license = "MIT"
 authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
 
 [addresses]
-blast_fun_vesting_linear = "0x0"
+blast_fun_vesting = "0x0"
