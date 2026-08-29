@@ -51,9 +51,13 @@ require_cetus_public() {
     local route="$1"
     local expected="$2"
     local description="$3"
-    local compact count
+    local section declaration compact count
 
-    compact="$(cetus_section "$route" | tr -d '[:space:]')"
+    section="$(cetus_section "$route")"
+    declaration="$(printf '%s\n' "$section" | sed -n '1p' | tr -d '[:space:]')"
+    [[ "$declaration" == "publicfun${route}<"* ]] || \
+        fail "Cetus $route must be public"
+    compact="$(printf '%s' "$section" | tr -d '[:space:]')"
     count="$(printf '%s' "$compact" | rg -o -F "$expected" | wc -l || true)"
     [[ -n "$compact" && "$count" -eq 1 ]] || \
         fail "Cetus $route missing $description"
@@ -63,9 +67,13 @@ require_cetus_private() {
     local function="$1"
     local expected="$2"
     local description="$3"
-    local compact count
+    local section declaration compact count
 
-    compact="$(cetus_section "$function" | tr -d '[:space:]')"
+    section="$(cetus_section "$function")"
+    declaration="$(printf '%s\n' "$section" | sed -n '1p' | tr -d '[:space:]')"
+    [[ "$declaration" == "fun${function}<"* || "$declaration" == "fun${function}("* ]] || \
+        fail "Cetus $function must be private"
+    compact="$(printf '%s' "$section" | tr -d '[:space:]')"
     count="$(printf '%s' "$compact" | rg -o -F "$expected" | wc -l || true)"
     [[ -n "$compact" && "$count" -eq 1 ]] || \
         fail "Cetus $function missing $description"
@@ -76,9 +84,13 @@ require_cetus_private_count() {
     local expected="$2"
     local required_count="$3"
     local description="$4"
-    local compact count
+    local section declaration compact count
 
-    compact="$(cetus_section "$function" | tr -d '[:space:]')"
+    section="$(cetus_section "$function")"
+    declaration="$(printf '%s\n' "$section" | sed -n '1p' | tr -d '[:space:]')"
+    [[ "$declaration" == "fun${function}<"* || "$declaration" == "fun${function}("* ]] || \
+        fail "Cetus $function must be private"
+    compact="$(printf '%s' "$section" | tr -d '[:space:]')"
     count="$(printf '%s' "$compact" | rg -o -F "$expected" | wc -l || true)"
     [[ -n "$compact" && "$count" -eq "$required_count" ]] || \
         fail "Cetus $function missing $description"
