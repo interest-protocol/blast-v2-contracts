@@ -31,22 +31,18 @@ reject_pattern() {
     fi
 }
 
-cetus_public_section() {
+cetus_section() {
     local name="$1"
 
-    awk -v start="public fun $name<" '
-        index($0, start) == 1 { active = 1 }
-        active && index($0, start) != 1 && ($0 ~ /^public fun / || $0 ~ /^fun /) { exit }
-        active { print }
-    ' "$CETUS_SOURCE"
-}
-
-cetus_private_section() {
-    local name="$1"
-
-    awk -v start="fun $name" '
-        index($0, start) == 1 { active = 1 }
-        active && index($0, start) != 1 && $0 ~ /^fun / { exit }
+    awk -v name="$name" '
+        function declaration(line) {
+            return line ~ /^[[:space:]]*(public(\(package\))?[[:space:]]+)?(entry[[:space:]]+)?fun[[:space:]]+/
+        }
+        function target(line) {
+            return declaration(line) && line ~ ("fun[[:space:]]+" name "[<(]")
+        }
+        target($0) { active = 1 }
+        active && !target($0) && declaration($0) { exit }
         active { print }
     ' "$CETUS_SOURCE"
 }
@@ -57,7 +53,7 @@ require_cetus_public() {
     local description="$3"
     local compact count
 
-    compact="$(cetus_public_section "$route" | tr -d '[:space:]')"
+    compact="$(cetus_section "$route" | tr -d '[:space:]')"
     count="$(printf '%s' "$compact" | rg -o -F "$expected" | wc -l || true)"
     [[ -n "$compact" && "$count" -eq 1 ]] || \
         fail "Cetus $route missing $description"
@@ -69,7 +65,7 @@ require_cetus_private() {
     local description="$3"
     local compact count
 
-    compact="$(cetus_private_section "$function" | tr -d '[:space:]')"
+    compact="$(cetus_section "$function" | tr -d '[:space:]')"
     count="$(printf '%s' "$compact" | rg -o -F "$expected" | wc -l || true)"
     [[ -n "$compact" && "$count" -eq 1 ]] || \
         fail "Cetus $function missing $description"
@@ -82,7 +78,7 @@ require_cetus_private_count() {
     local description="$4"
     local compact count
 
-    compact="$(cetus_private_section "$function" | tr -d '[:space:]')"
+    compact="$(cetus_section "$function" | tr -d '[:space:]')"
     count="$(printf '%s' "$compact" | rg -o -F "$expected" | wc -l || true)"
     [[ -n "$compact" && "$count" -eq "$required_count" ]] || \
         fail "Cetus $function missing $description"
@@ -92,7 +88,7 @@ reject_cetus_pre_guard_mutator() {
     local route="$1"
     local section before_guard call redemption_count
 
-    section="$(cetus_public_section "$route")"
+    section="$(cetus_section "$route")"
     before_guard="${section%%migration_math::assert_price_within_bps*}"
     [[ "$before_guard" != "$section" ]] || \
         fail "Cetus $route missing price guard"
@@ -231,7 +227,7 @@ require_cetus_public 'migrate_new_meme_a' \
     'pool_creator::create_pool_v3<Meme,Quote>(cetus_config,pools,tick_spacing,sqrt_price_x64,string::utf8(b""),lower_tick_bits,upper_tick_bits,meme.into_coin(ctx),quote.into_coin(ctx),true,clock,ctx,)' \
     'exact Meme-A pool creation'
 require_cetus_public 'migrate_new_meme_a' \
-    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,residual_meme,residual_quote,' \
+    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,residual_meme,residual_quote,source_meme_amount,source_quote_amount,sqrt_price_x64,' \
     'Meme-A shared lock'
 
 require_cetus_public 'migrate_new_meme_b' \
@@ -247,7 +243,7 @@ require_cetus_public 'migrate_new_meme_b' \
     'pool_creator::create_pool_v3<Quote,Meme>(cetus_config,pools,tick_spacing,sqrt_price_x64,string::utf8(b""),lower_tick_bits,upper_tick_bits,quote.into_coin(ctx),meme.into_coin(ctx),true,clock,ctx,)' \
     'exact Meme-B pool creation'
 require_cetus_public 'migrate_new_meme_b' \
-    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,residual_meme,residual_quote,' \
+    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,residual_meme,residual_quote,source_meme_amount,source_quote_amount,sqrt_price_x64,' \
     'Meme-B shared lock'
 
 # Each adopted pool must redeem, guard at exactly 50 bps, then mutate once.
@@ -271,7 +267,7 @@ require_cetus_public 'migrate_existing_meme_a' \
     'assert!(position::pool_id(&position)==object::id(pool),EPositionPoolMismatch);' \
     'Meme-A position-pool identity'
 require_cetus_public 'migrate_existing_meme_a' \
-    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,meme.into_coin(ctx),quote.into_coin(ctx),' \
+    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,meme.into_coin(ctx),quote.into_coin(ctx),source_meme_amount,source_quote_amount,migration_math::sqrt_price_x64(source_meme_amount,source_quote_amount,true,),' \
     'Meme-A shared lock'
 reject_cetus_pre_guard_mutator 'migrate_existing_meme_a'
 
@@ -295,7 +291,7 @@ require_cetus_public 'migrate_existing_meme_b' \
     'assert!(position::pool_id(&position)==object::id(pool),EPositionPoolMismatch);' \
     'Meme-B position-pool identity'
 require_cetus_public 'migrate_existing_meme_b' \
-    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,meme.into_coin(ctx),quote.into_coin(ctx),' \
+    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,meme.into_coin(ctx),quote.into_coin(ctx),source_meme_amount,source_quote_amount,migration_math::sqrt_price_x64(source_meme_amount,source_quote_amount,false,),' \
     'Meme-B shared lock'
 reject_cetus_pre_guard_mutator 'migrate_existing_meme_b'
 
