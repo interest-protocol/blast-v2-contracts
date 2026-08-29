@@ -4,9 +4,13 @@
 // Verifies, against the official Sui mainnet GraphQL endpoint, that every
 // external venue package the adapters link to is still the exact immutable
 // revision this repository pins, and that the public ABI the adapters consume
-// has not drifted. Uses Node built-ins only.
+// has not drifted. It also validates the committed manifest and lock records
+// strictly, so no dependency can become mutable, rebound, or re-sourced.
+// Uses Node built-ins only.
 //
 // Run `node scripts/check_mainnet_abi.mjs` from `sui/migrators/`.
+// Run with `--self-test` to exercise the strict response, manifest, and lock
+// validators offline; that mode makes no network request.
 // Run with `--emit` to print the observed facts as a paste-ready expectation
 // block when a reviewed venue upgrade is adopted.
 
@@ -23,23 +27,83 @@ const ENDPOINT = 'https://graphql.mainnet.sui.io/graphql';
 /// Genesis checkpoint digest of Sui mainnet; its first four bytes are 35834a8a.
 const CHAIN_IDENTIFIER = '4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S';
 
+/// Whole-request deadline, applied to connection and body read together.
+const REQUEST_TIMEOUT_MS = 30_000;
+
+const REQUEST_ATTEMPTS = 3;
+
 const STD_ADDRESS = `0x${'0'.repeat(63)}1`;
 const SUI_ADDRESS = `0x${'0'.repeat(63)}2`;
 
+const SUI_GIT = 'https://github.com/MystenLabs/sui.git';
+const SUI_FRAMEWORK_SUBDIR = 'crates/sui-framework/packages/sui-framework';
+const MOVE_STDLIB_SUBDIR = 'crates/sui-framework/packages/move-stdlib';
+const BLUEFIN_GIT =
+    'https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git';
+const MMT_GIT = 'https://github.com/mmt-finance/mmt-contract-interface.git';
+const INTEGER_MATE_GIT = 'https://github.com/CetusProtocol/integer-mate.git';
+const INTEGER_LIBRARY_GIT =
+    'https://github.com/fireflyprotocol/integer-library.git';
+const MOVE_STL_GIT = 'https://github.com/CetusProtocol/move-stl.git';
+
+/// Every Git revision the built graph is allowed to resolve to.
+const REV = {
+    sui: '06734f6ff0af45d8632a14a4dc4b100197f6b1a2',
+    suiLegacy: '17a9eb8e19146cac2f1fd8921c85911054d29e50',
+    suiBluefin: '4e46da89efd5c5e59fe2b8e877bd960896601ec9',
+    bluefin: '91ce930575b2aa3decab9b7e129b8002deba80c1',
+    mmt: 'e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82',
+    integerMate: '09a12d9b171122883d9350039d4ed6e8400033b9',
+    integerMateBluefin: '06660f704c4ac1d443ab62346a46b5b60d49df33',
+    integerLibrary: '8a534bd1c0b334cd3937c27987f3147a06ba6a18',
+    moveStl: '0681fec63a310ae753d03a06f7c05d3e2925bb09',
+};
+
 /// The one Sui framework revision every local normalized interface must bind.
-const SUI_FRAMEWORK_REV = '06734f6ff0af45d8632a14a4dc4b100197f6b1a2';
+const SUI_FRAMEWORK_REV = REV.sui;
 
 const LOCK_ENVIRONMENTS = ['mainnet', 'testnet'];
 
+const LOCK_VERSION = 4;
+
 const ABILITY_ORDER = ['copy', 'drop', 'store', 'key'];
+
+const PRIMITIVE_TYPES = [
+    'bool',
+    'u8',
+    'u16',
+    'u32',
+    'u64',
+    'u128',
+    'u256',
+    'address',
+    'signer',
+];
+
+const VISIBILITIES = {
+    PUBLIC: 'public',
+    FRIEND: 'public(package)',
+    PRIVATE: 'private',
+};
+
+/// Keys a `[package]` table may declare. Anything else fails the gate.
+const PACKAGE_TABLE_KEYS = [
+    'name',
+    'version',
+    'edition',
+    'license',
+    'authors',
+    'published-at',
+];
+
+const MANIFEST_TABLES = ['package', 'dependencies', 'addresses'];
+
+const LOCK_NODE_KEYS = ['source', 'use_environment', 'manifest_digest', 'deps'];
 
 const PACKAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // === Expected Packages ===
 
-/// One entry per external package the aggregate migrators package links to.
-/// `modules` lists every module that declares an adapter-consumed type or
-/// function, with the SHA-256 of its decoded on-chain bytecode.
 const PACKAGES = [
     {
         key: 'bluefin',
@@ -275,7 +339,7 @@ const PACKAGES = [
                 name: 'factory',
                 sha256: 'b13f70d07a91f192045152a367a073b06b520cc71458e3e78ce7b2e82e5f2906',
                 structs: ['Pools'],
-                functions: ['create_pool_with_liquidity', 'new_pool_key'],
+                functions: ['create_pool_with_liquidity'],
             },
             {
                 name: 'pool',
@@ -334,6 +398,195 @@ const PACKAGES = [
         ],
     },
 ];
+
+// === Expected Local Pins ===
+
+function packageByKey(key) {
+    const found = PACKAGES.find((candidate) => candidate.key === key);
+    if (!found) throw new Error(`unknown package key ${key}`);
+    return found;
+}
+
+/// Every committed manifest, bound to its exact dependency records. Each record
+/// is compared key-for-key and value-for-value, so an added `branch`/`tag`, a
+/// dropped `rev`, a changed repository or subdirectory, a changed override rule,
+/// or an extra dependency all fail.
+const MANIFESTS = [
+    {
+        path: 'Move.toml',
+        packageName: 'blast_fun_migrators',
+        publishedAt: null,
+        addresses: { blast_fun_migrators: '0x0' },
+        dependencies: {
+            blast_fun: { local: '../launchpad' },
+            BluefinSpot: { git: BLUEFIN_GIT, rev: REV.bluefin },
+            mmt_v3: { git: MMT_GIT, subdir: 'mmt_v3', rev: REV.mmt },
+            CetusClmm: { local: 'interfaces/cetus' },
+            TurbosCLMM: { local: 'interfaces/turbos' },
+            FullSailCLMM: { local: 'interfaces/fullsail' },
+            FullSailIntegerMate: { local: 'interfaces/fullsail_integer_mate' },
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
+                override: true,
+            },
+            IntegerMate: {
+                git: INTEGER_MATE_GIT,
+                rev: REV.integerMate,
+                override: true,
+            },
+            IntegerLibrary: {
+                git: INTEGER_LIBRARY_GIT,
+                rev: REV.integerLibrary,
+                override: true,
+            },
+        },
+    },
+    {
+        path: 'interfaces/cetus/Move.toml',
+        packageName: 'CetusClmm',
+        packageKey: 'cetus',
+        lockNode: 'CetusClmm',
+        dependencies: {
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
+                override: true,
+            },
+            IntegerMate: {
+                git: INTEGER_MATE_GIT,
+                rev: REV.integerMate,
+                override: true,
+            },
+            MoveSTL: { git: MOVE_STL_GIT, rev: REV.moveStl, override: true },
+        },
+    },
+    {
+        path: 'interfaces/turbos/Move.toml',
+        packageName: 'TurbosCLMM',
+        packageKey: 'turbos',
+        lockNode: 'TurbosCLMM',
+        dependencies: {
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
+                override: true,
+            },
+        },
+    },
+    {
+        path: 'interfaces/fullsail/Move.toml',
+        packageName: 'FullSailCLMM',
+        packageKey: 'fullsail',
+        lockNode: 'FullSailCLMM',
+        dependencies: {
+            FullSailIntegerMate: { local: '../fullsail_integer_mate' },
+            Sui: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.sui },
+        },
+    },
+    {
+        path: 'interfaces/fullsail_integer_mate/Move.toml',
+        packageName: 'FullSailIntegerMate',
+        packageKey: 'fullsail_integer_mate',
+        lockNode: 'FullSailIntegerMate',
+        dependencies: {
+            Sui: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.sui },
+        },
+    },
+];
+
+/// Every pinned node the lock is allowed to contain, in both environments,
+/// bound to its exact source record and its exact resolved dependency edges.
+/// Both environments resolve identical edges, so one table covers both.
+const LOCK_NODES = {
+    BluefinSpot: {
+        source: { git: BLUEFIN_GIT, subdir: '.', rev: REV.bluefin },
+        deps: { IntegerLibrary: 'IntegerLibrary', IntegerMate: 'IntegerMate', Sui: 'Sui_1' },
+    },
+    CetusClmm: {
+        source: { local: 'interfaces/cetus' },
+        deps: { IntegerMate: 'IntegerMate_1', MoveSTL: 'MoveSTL', Sui: 'Sui_2' },
+    },
+    FullSailCLMM: {
+        source: { local: 'interfaces/fullsail' },
+        deps: { FullSailIntegerMate: 'FullSailIntegerMate', Sui: 'Sui_2' },
+    },
+    FullSailIntegerMate: {
+        source: { local: 'interfaces/fullsail_integer_mate' },
+        deps: { Sui: 'Sui_2' },
+    },
+    IntegerLibrary: {
+        source: { git: INTEGER_LIBRARY_GIT, subdir: '.', rev: REV.integerLibrary },
+        deps: { Sui: 'Sui' },
+    },
+    IntegerMate: {
+        source: { git: INTEGER_MATE_GIT, subdir: 'sui', rev: REV.integerMateBluefin },
+        deps: { Sui: 'Sui' },
+    },
+    IntegerMate_1: {
+        source: { git: INTEGER_MATE_GIT, subdir: '.', rev: REV.integerMate },
+        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
+    },
+    MoveSTL: {
+        source: { git: MOVE_STL_GIT, subdir: '.', rev: REV.moveStl },
+        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
+    },
+    MoveStdlib: {
+        source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.suiLegacy },
+        deps: {},
+    },
+    MoveStdlib_1: {
+        source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.suiBluefin },
+        deps: {},
+    },
+    MoveStdlib_2: {
+        source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.sui },
+        deps: {},
+    },
+    Sui: {
+        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiLegacy },
+        deps: { MoveStdlib: 'MoveStdlib' },
+    },
+    Sui_1: {
+        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiBluefin },
+        deps: { MoveStdlib: 'MoveStdlib_1' },
+    },
+    Sui_2: {
+        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.sui },
+        deps: { MoveStdlib: 'MoveStdlib_2' },
+    },
+    TurbosCLMM: {
+        source: { local: 'interfaces/turbos' },
+        deps: { Sui: 'Sui_2' },
+    },
+    blast_fun: {
+        source: { local: '../launchpad' },
+        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
+    },
+    blast_fun_migrators: {
+        source: { root: true },
+        deps: {
+            BluefinSpot: 'BluefinSpot',
+            CetusClmm: 'CetusClmm',
+            FullSailCLMM: 'FullSailCLMM',
+            FullSailIntegerMate: 'FullSailIntegerMate',
+            IntegerLibrary: 'IntegerLibrary',
+            IntegerMate: 'IntegerMate_1',
+            Sui: 'Sui_2',
+            TurbosCLMM: 'TurbosCLMM',
+            blast_fun: 'blast_fun',
+            mmt_v3: 'mmt_v3',
+        },
+    },
+    mmt_v3: {
+        source: { git: MMT_GIT, subdir: 'mmt_v3', rev: REV.mmt },
+        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
+    },
+};
+
 
 /// Normalized public ABI every adapter call site depends on. `@self` is the
 /// package's own original address, `@sui` and `@std` are the framework
@@ -485,8 +738,6 @@ const ABI = {
         'struct Pools has store, key',
     'clmm_pool::factory::create_pool_with_liquidity':
         'public fun create_pool_with_liquidity<$0, $1>(&mut @self::factory::Pools, &@self::config::GlobalConfig, &mut @self::rewarder::RewarderGlobalVault, u32, u128, @std::string::String, u32, u32, @sui::coin::Coin<$0>, @sui::coin::Coin<$1>, u64, u64, bool, address, address, bool, &@sui::clock::Clock, &mut @sui::tx_context::TxContext): (@self::position::Position, @sui::coin::Coin<$0>, @sui::coin::Coin<$1>)',
-    'clmm_pool::factory::new_pool_key':
-        'public fun new_pool_key<$0, $1>(u32): @sui::object::ID',
     'clmm_pool::pool::AddLiquidityReceipt':
         'struct AddLiquidityReceipt<phantom $0, phantom $1>',
     'clmm_pool::pool::Pool':
@@ -545,32 +796,298 @@ function checkEqual(actual, expected, message) {
     );
 }
 
+// === Response Shape Validation ===
+
+// The GraphQL response is untrusted input to a release gate. Every scalar and
+// list is validated before rendering, so a partial, null, or novel response can
+// never normalize into a value that happens to match an expectation.
+
+function shapeError(path, detail) {
+    return new Error(`${path}: ${detail}`);
+}
+
+function expectObject(value, path, allowedKeys) {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+        throw shapeError(path, `expected an object, got ${JSON.stringify(value)}`);
+    }
+    const unexpected = Object.keys(value).filter(
+        (key) => !allowedKeys.includes(key),
+    );
+    if (unexpected.length > 0) {
+        throw shapeError(path, `unexpected field(s) ${unexpected.join(', ')}`);
+    }
+    for (const key of allowedKeys) {
+        if (!Object.hasOwn(value, key)) throw shapeError(path, `missing ${key}`);
+    }
+    return value;
+}
+
+function expectString(value, path) {
+    if (typeof value !== 'string' || value.length === 0) {
+        throw shapeError(path, `expected a non-empty string, got ${JSON.stringify(value)}`);
+    }
+    return value;
+}
+
+function expectBoolean(value, path) {
+    if (typeof value !== 'boolean') {
+        throw shapeError(path, `expected a boolean, got ${JSON.stringify(value)}`);
+    }
+    return value;
+}
+
+function expectInteger(value, path) {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+        throw shapeError(path, `expected a non-negative integer, got ${JSON.stringify(value)}`);
+    }
+    return value;
+}
+
+function expectArray(value, path) {
+    if (!Array.isArray(value)) {
+        throw shapeError(path, `expected a list, got ${JSON.stringify(value)}`);
+    }
+    return value;
+}
+
+function expectAbilities(value, path) {
+    const abilities = expectArray(value, path).map((ability, index) => {
+        const name = expectString(ability, `${path}[${index}]`).toLowerCase();
+        if (!ABILITY_ORDER.includes(name)) {
+            throw shapeError(`${path}[${index}]`, `unknown ability ${ability}`);
+        }
+        return name;
+    });
+    const unique = new Set(abilities);
+    if (unique.size !== abilities.length) {
+        throw shapeError(path, `duplicate abilities in ${abilities.join(', ')}`);
+    }
+    return ABILITY_ORDER.filter((ability) => unique.has(ability));
+}
+
+// === Normalization ===
+
+function normalizeAddress(address, path = 'address') {
+    expectString(address, path);
+    if (!/^0x[0-9a-fA-F]{1,64}$/.test(address)) {
+        throw shapeError(path, `not a Sui address: ${address}`);
+    }
+    return `0x${address.slice(2).toLowerCase().padStart(64, '0')}`;
+}
+
+function aliasAddress(address, selfOriginal, path) {
+    const normalized = normalizeAddress(address, path);
+    if (normalized === selfOriginal) return '@self';
+    if (normalized === SUI_ADDRESS) return '@sui';
+    if (normalized === STD_ADDRESS) return '@std';
+    return normalized;
+}
+
+function renderBody(body, selfOriginal, path) {
+    if (typeof body === 'string') {
+        if (!PRIMITIVE_TYPES.includes(body)) {
+            throw shapeError(path, `unknown primitive type ${body}`);
+        }
+        return body;
+    }
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+        throw shapeError(path, `unsupported type body ${JSON.stringify(body)}`);
+    }
+
+    const keys = Object.keys(body);
+    if (keys.length !== 1) {
+        throw shapeError(path, `expected exactly one type body field, got ${keys.join(', ')}`);
+    }
+
+    if (keys[0] === 'typeParameter') {
+        return `$${expectInteger(body.typeParameter, `${path}.typeParameter`)}`;
+    }
+    if (keys[0] === 'vector') {
+        return `vector<${renderBody(body.vector, selfOriginal, `${path}.vector`)}>`;
+    }
+    if (keys[0] === 'datatype') {
+        const datatype = expectObject(body.datatype, `${path}.datatype`, [
+            'package',
+            'module',
+            'type',
+            'typeParameters',
+        ]);
+        const args = expectArray(
+            datatype.typeParameters,
+            `${path}.datatype.typeParameters`,
+        ).map((parameter, index) =>
+            renderBody(parameter, selfOriginal, `${path}.datatype.typeParameters[${index}]`),
+        );
+        const address = aliasAddress(
+            datatype.package,
+            selfOriginal,
+            `${path}.datatype.package`,
+        );
+        const module = expectString(datatype.module, `${path}.datatype.module`);
+        const type = expectString(datatype.type, `${path}.datatype.type`);
+        const suffix = args.length > 0 ? `<${args.join(', ')}>` : '';
+        return `${address}::${module}::${type}${suffix}`;
+    }
+    throw shapeError(path, `unsupported type body field ${keys[0]}`);
+}
+
+function renderType(value, selfOriginal, path) {
+    const wrapper = expectObject(value, path, ['signature']);
+    const signature = wrapper.signature;
+    if (signature === null || typeof signature !== 'object' || Array.isArray(signature)) {
+        throw shapeError(`${path}.signature`, `expected an object, got ${JSON.stringify(signature)}`);
+    }
+
+    const keys = Object.keys(signature);
+    const unexpected = keys.filter((key) => key !== 'ref' && key !== 'body');
+    if (unexpected.length > 0) {
+        throw shapeError(`${path}.signature`, `unexpected field(s) ${unexpected.join(', ')}`);
+    }
+    if (!Object.hasOwn(signature, 'body')) {
+        throw shapeError(`${path}.signature`, 'missing body');
+    }
+
+    let reference = '';
+    if (Object.hasOwn(signature, 'ref') && signature.ref !== null) {
+        if (signature.ref === '&') reference = '&';
+        else if (signature.ref === '&mut') reference = '&mut ';
+        else {
+            throw shapeError(
+                `${path}.signature.ref`,
+                `unknown reference kind ${JSON.stringify(signature.ref)}`,
+            );
+        }
+    }
+
+    return `${reference}${renderBody(signature.body, selfOriginal, `${path}.signature.body`)}`;
+}
+
+function renderConstraints(value, path) {
+    const ordered = expectAbilities(value, path);
+    return ordered.length > 0 ? `: ${ordered.join('+')}` : '';
+}
+
+function renderFunction(name, value, selfOriginal) {
+    const path = `function ${name}`;
+    const fn = expectObject(value, path, [
+        'name',
+        'visibility',
+        'isEntry',
+        'typeParameters',
+        'parameters',
+        'return',
+    ]);
+
+    checkNameMatches(fn.name, name, `${path}.name`);
+
+    const visibility = VISIBILITIES[expectString(fn.visibility, `${path}.visibility`)];
+    if (!visibility) {
+        throw shapeError(`${path}.visibility`, `unknown visibility ${fn.visibility}`);
+    }
+    const entry = expectBoolean(fn.isEntry, `${path}.isEntry`) ? 'entry ' : '';
+
+    const typeParameters = expectArray(
+        fn.typeParameters,
+        `${path}.typeParameters`,
+    ).map((parameter, index) => {
+        const declared = expectObject(
+            parameter,
+            `${path}.typeParameters[${index}]`,
+            ['constraints'],
+        );
+        return `$${index}${renderConstraints(declared.constraints, `${path}.typeParameters[${index}].constraints`)}`;
+    });
+    const generics = typeParameters.length > 0 ? `<${typeParameters.join(', ')}>` : '';
+
+    const parameters = expectArray(fn.parameters, `${path}.parameters`).map(
+        (parameter, index) =>
+            renderType(parameter, selfOriginal, `${path}.parameters[${index}]`),
+    );
+    const returns = expectArray(fn.return, `${path}.return`).map((value, index) =>
+        renderType(value, selfOriginal, `${path}.return[${index}]`),
+    );
+    const returned =
+        returns.length === 0
+            ? ''
+            : returns.length === 1
+              ? `: ${returns[0]}`
+              : `: (${returns.join(', ')})`;
+
+    return `${visibility} ${entry}fun ${name}${generics}(${parameters.join(', ')})${returned}`;
+}
+
+function renderStruct(name, value) {
+    const path = `struct ${name}`;
+    const struct = expectObject(value, path, [
+        'name',
+        'abilities',
+        'typeParameters',
+    ]);
+
+    checkNameMatches(struct.name, name, `${path}.name`);
+
+    const typeParameters = expectArray(
+        struct.typeParameters,
+        `${path}.typeParameters`,
+    ).map((parameter, index) => {
+        const declared = expectObject(
+            parameter,
+            `${path}.typeParameters[${index}]`,
+            ['isPhantom', 'constraints'],
+        );
+        const phantom = expectBoolean(
+            declared.isPhantom,
+            `${path}.typeParameters[${index}].isPhantom`,
+        )
+            ? 'phantom '
+            : '';
+        return `${phantom}$${index}${renderConstraints(declared.constraints, `${path}.typeParameters[${index}].constraints`)}`;
+    });
+    const generics = typeParameters.length > 0 ? `<${typeParameters.join(', ')}>` : '';
+
+    const abilities = expectAbilities(struct.abilities, `${path}.abilities`);
+    const has = abilities.length > 0 ? ` has ${abilities.join(', ')}` : '';
+
+    return `struct ${name}${generics}${has}`;
+}
+
+function checkNameMatches(actual, expected, path) {
+    if (expectString(actual, path) !== expected) {
+        throw shapeError(path, `expected ${expected}, got ${actual}`);
+    }
+}
+
 // === GraphQL ===
 
 async function graphql(query, variables) {
     let lastError;
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-        let response;
+    for (let attempt = 1; attempt <= REQUEST_ATTEMPTS; attempt += 1) {
+        let status = null;
+        let text = null;
         try {
-            response = await fetch(ENDPOINT, {
+            const response = await fetch(ENDPOINT, {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({ query, variables }),
+                signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
             });
+            status = response.status;
+            // Read the body inside the retry boundary so a stream failure or a
+            // body-read timeout retries like any other transport error.
+            text = await response.text();
         } catch (error) {
             lastError = error;
             await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
             continue;
         }
 
-        const text = await response.text();
-        if (response.status >= 500) {
-            lastError = new Error(`HTTP ${response.status}: ${text.slice(0, 200)}`);
+        if (status >= 500) {
+            lastError = new Error(`HTTP ${status}: ${text.slice(0, 200)}`);
             await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
             continue;
         }
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${text.slice(0, 400)}`);
+        if (status < 200 || status >= 300) {
+            throw new Error(`HTTP ${status}: ${text.slice(0, 400)}`);
         }
 
         let body;
@@ -585,100 +1102,9 @@ async function graphql(query, variables) {
         if (!body.data) throw new Error('GraphQL response has no data');
         return body.data;
     }
-    throw new Error(`GraphQL request failed after 3 attempts: ${lastError}`);
-}
-
-// === Normalization ===
-
-function normalizeAddress(address) {
-    const hex = address.replace(/^0x/, '').toLowerCase();
-    return `0x${hex.padStart(64, '0')}`;
-}
-
-function aliasAddress(address, selfOriginal) {
-    const normalized = normalizeAddress(address);
-    if (normalized === selfOriginal) return '@self';
-    if (normalized === SUI_ADDRESS) return '@sui';
-    if (normalized === STD_ADDRESS) return '@std';
-    return normalized;
-}
-
-function renderBody(body, selfOriginal) {
-    if (typeof body === 'string') return body;
-    if (body === null || typeof body !== 'object') {
-        throw new Error(`unsupported type body: ${JSON.stringify(body)}`);
-    }
-    if (typeof body.typeParameter === 'number') return `$${body.typeParameter}`;
-    if (body.vector !== undefined) {
-        return `vector<${renderBody(body.vector, selfOriginal)}>`;
-    }
-    if (body.datatype) {
-        const { package: pkg, module, type, typeParameters } = body.datatype;
-        const args = (typeParameters ?? []).map((parameter) =>
-            renderBody(parameter, selfOriginal),
-        );
-        const suffix = args.length > 0 ? `<${args.join(', ')}>` : '';
-        return `${aliasAddress(pkg, selfOriginal)}::${module}::${type}${suffix}`;
-    }
-    throw new Error(`unsupported type body: ${JSON.stringify(body)}`);
-}
-
-function renderType(signature, selfOriginal) {
-    const reference = signature.ref === '&mut' ? '&mut ' : (signature.ref ?? '');
-    return `${reference}${renderBody(signature.body, selfOriginal)}`;
-}
-
-function renderAbilities(abilities) {
-    const lowered = abilities.map((ability) => ability.toLowerCase());
-    return ABILITY_ORDER.filter((ability) => lowered.includes(ability));
-}
-
-function renderConstraints(constraints) {
-    const ordered = renderAbilities(constraints ?? []);
-    return ordered.length > 0 ? `: ${ordered.join('+')}` : '';
-}
-
-function renderFunction(name, fn, selfOriginal) {
-    const visibility = {
-        PUBLIC: 'public',
-        FRIEND: 'public(package)',
-        PRIVATE: 'private',
-    }[fn.visibility];
-    if (!visibility) throw new Error(`unknown visibility: ${fn.visibility}`);
-
-    const typeParameters = (fn.typeParameters ?? []).map(
-        (parameter, index) => `$${index}${renderConstraints(parameter.constraints)}`,
+    throw new Error(
+        `GraphQL request failed after ${REQUEST_ATTEMPTS} attempts: ${lastError}`,
     );
-    const generics =
-        typeParameters.length > 0 ? `<${typeParameters.join(', ')}>` : '';
-    const parameters = (fn.parameters ?? []).map((parameter) =>
-        renderType(parameter.signature, selfOriginal),
-    );
-    const returns = (fn.return ?? []).map((value) =>
-        renderType(value.signature, selfOriginal),
-    );
-    const returned =
-        returns.length === 0
-            ? ''
-            : returns.length === 1
-              ? `: ${returns[0]}`
-              : `: (${returns.join(', ')})`;
-    const entry = fn.isEntry ? 'entry ' : '';
-
-    return `${visibility} ${entry}fun ${name}${generics}(${parameters.join(', ')})${returned}`;
-}
-
-function renderStruct(name, struct) {
-    const typeParameters = (struct.typeParameters ?? []).map(
-        (parameter, index) =>
-            `${parameter.isPhantom ? 'phantom ' : ''}$${index}${renderConstraints(parameter.constraints)}`,
-    );
-    const generics =
-        typeParameters.length > 0 ? `<${typeParameters.join(', ')}>` : '';
-    const abilities = renderAbilities(struct.abilities ?? []);
-    const has = abilities.length > 0 ? ` has ${abilities.join(', ')}` : '';
-
-    return `struct ${name}${generics}${has}`;
 }
 
 // === Chain Queries ===
@@ -729,6 +1155,31 @@ ${functionFields}
 }`;
 }
 
+function packageFacts(node, path, extraKeys) {
+    const facts = expectObject(node, path, [
+        'address',
+        'version',
+        'digest',
+        'previousTransaction',
+        ...extraKeys,
+    ]);
+    const previousTransaction = expectObject(
+        facts.previousTransaction,
+        `${path}.previousTransaction`,
+        ['digest'],
+    );
+
+    return {
+        address: normalizeAddress(facts.address, `${path}.address`),
+        version: expectInteger(facts.version, `${path}.version`),
+        digest: expectString(facts.digest, `${path}.digest`),
+        previousTransaction: expectString(
+            previousTransaction.digest,
+            `${path}.previousTransaction.digest`,
+        ),
+    };
+}
+
 async function verifyPackage(expected, observed) {
     const label = expected.label;
     const data = await graphql(PACKAGE_QUERY, {
@@ -739,83 +1190,120 @@ async function verifyPackage(expected, observed) {
     // `package(address:)` resolves any address in a lineage to its current
     // revision; `package(address:, version:)` returns exactly the pinned one,
     // so `packageVersionsAfter` there reports any newer tip.
-    const live = data.latest;
-    if (!check(live != null, `${label}: original package id does not resolve`)) {
+    if (!check(data.latest != null, `${label}: original package id does not resolve`)) {
         return null;
     }
 
-    const currentId = normalizeAddress(live.address);
-    const previousTransaction = live.previousTransaction?.digest ?? null;
-    observed.currentId = currentId;
+    let live;
+    try {
+        live = packageFacts(data.latest, `${label} latest`, ['typeOrigins']);
+    } catch (error) {
+        check(false, `${label}: ${error.message}`);
+        return null;
+    }
+
+    observed.currentId = live.address;
     observed.version = live.version;
     observed.digest = live.digest;
-    observed.previousTransaction = previousTransaction;
+    observed.previousTransaction = live.previousTransaction;
 
-    checkEqual(currentId, expected.currentId, `${label}: current package id drift`);
+    checkEqual(live.address, expected.currentId, `${label}: current package id drift`);
     checkEqual(live.version, expected.version, `${label}: package version drift`);
     checkEqual(live.digest, expected.digest, `${label}: package digest drift`);
     checkEqual(
-        previousTransaction,
+        live.previousTransaction,
         expected.previousTransaction,
         `${label}: previous transaction drift`,
     );
 
-    const pinned = data.pinned;
-    if (
-        check(pinned != null, `${label}: pinned revision ${expected.version} is gone`)
-    ) {
-        checkEqual(
-            normalizeAddress(pinned.address),
-            expected.currentId,
-            `${label}: revision ${expected.version} is not the expected package id`,
-        );
-        checkEqual(
-            pinned.digest,
-            expected.digest,
-            `${label}: revision ${expected.version} digest drift`,
-        );
-        checkEqual(
-            pinned.previousTransaction?.digest ?? null,
-            expected.previousTransaction,
-            `${label}: revision ${expected.version} previous transaction drift`,
-        );
+    if (check(data.pinned != null, `${label}: pinned revision ${expected.version} is gone`)) {
+        try {
+            const pinned = packageFacts(data.pinned, `${label} pinned`, [
+                'packageVersionsAfter',
+            ]);
+            checkEqual(
+                pinned.address,
+                expected.currentId,
+                `${label}: revision ${expected.version} is not the expected package id`,
+            );
+            checkEqual(
+                pinned.digest,
+                expected.digest,
+                `${label}: revision ${expected.version} digest drift`,
+            );
+            checkEqual(
+                pinned.previousTransaction,
+                expected.previousTransaction,
+                `${label}: revision ${expected.version} previous transaction drift`,
+            );
 
-        const later = pinned.packageVersionsAfter;
-        check(
-            later.nodes.length === 0 && later.pageInfo.hasNextPage === false,
-            `${label}: a later package revision exists beyond the expected tip ` +
-                `v${expected.version}: ${JSON.stringify(later.nodes)}`,
-        );
-    }
-
-    const origins = new Map(
-        live.typeOrigins.map((origin) => [
-            `${origin.module}::${origin.struct}`,
-            normalizeAddress(origin.definingId),
-        ]),
-    );
-    let checkedOrigins = 0;
-    for (const module of expected.modules) {
-        for (const name of module.structs) {
-            const key = `${module.name}::${name}`;
-            const definingId = origins.get(key);
-            if (
-                check(
-                    definingId !== undefined,
-                    `${label}: missing type origin for ${key}`,
-                )
-            ) {
-                checkEqual(
-                    definingId,
-                    expected.originalId,
-                    `${label}: ${key} is not defined by the original package`,
-                );
-                checkedOrigins += 1;
-            }
+            const later = expectObject(
+                data.pinned.packageVersionsAfter,
+                `${label} pinned.packageVersionsAfter`,
+                ['pageInfo', 'nodes'],
+            );
+            const pageInfo = expectObject(
+                later.pageInfo,
+                `${label} pinned.packageVersionsAfter.pageInfo`,
+                ['hasNextPage'],
+            );
+            const nodes = expectArray(
+                later.nodes,
+                `${label} pinned.packageVersionsAfter.nodes`,
+            );
+            check(
+                nodes.length === 0 &&
+                    expectBoolean(
+                        pageInfo.hasNextPage,
+                        `${label} pinned.packageVersionsAfter.pageInfo.hasNextPage`,
+                    ) === false,
+                `${label}: a later package revision exists beyond the expected tip ` +
+                    `v${expected.version}: ${JSON.stringify(nodes)}`,
+            );
+        } catch (error) {
+            check(false, `${label}: ${error.message}`);
         }
     }
 
-    return { currentId, checkedOrigins };
+    let checkedOrigins = 0;
+    try {
+        const origins = new Map(
+            expectArray(data.latest.typeOrigins, `${label} typeOrigins`).map(
+                (origin, index) => {
+                    const path = `${label} typeOrigins[${index}]`;
+                    const record = expectObject(origin, path, [
+                        'module',
+                        'struct',
+                        'definingId',
+                    ]);
+                    return [
+                        `${expectString(record.module, `${path}.module`)}::` +
+                            `${expectString(record.struct, `${path}.struct`)}`,
+                        normalizeAddress(record.definingId, `${path}.definingId`),
+                    ];
+                },
+            ),
+        );
+        for (const module of expected.modules) {
+            for (const name of module.structs) {
+                const key = `${module.name}::${name}`;
+                const definingId = origins.get(key);
+                if (check(definingId !== undefined, `${label}: missing type origin for ${key}`)) {
+                    checkEqual(
+                        definingId,
+                        expected.originalId,
+                        `${label}: ${key} is not defined by the original package`,
+                    );
+                    checkedOrigins += 1;
+                }
+            }
+        }
+    } catch (error) {
+        check(false, `${label}: ${error.message}`);
+        return null;
+    }
+
+    return { currentId: live.address, checkedOrigins };
 }
 
 async function verifyModule(expected, module, currentId, observed) {
@@ -826,176 +1314,860 @@ async function verifyModule(expected, module, currentId, observed) {
         return { functions: 0, structs: 0 };
     }
 
-    const bytes = Buffer.from(live.bytes, 'base64');
-    check(
-        bytes.length > 4 && bytes.readUInt32BE(0) === 0xa11ceb0b,
-        `${label}: decoded module bytes are not Move bytecode`,
-    );
-    const sha256 = createHash('sha256').update(bytes).digest('hex');
-    observed.modules.push({ name: module.name, sha256 });
-    checkEqual(sha256, module.sha256, `${label}: module bytecode fingerprint drift`);
+    try {
+        checkNameMatches(live.name, module.name, `${label}.name`);
+        const encoded = expectString(live.bytes, `${label}.bytes`);
+        const bytes = Buffer.from(encoded, 'base64');
+        check(
+            bytes.length > 4 && bytes.readUInt32BE(0) === 0xa11ceb0b,
+            `${label}: decoded module bytes are not Move bytecode`,
+        );
+        const sha256 = createHash('sha256').update(bytes).digest('hex');
+        observed.modules.push({ name: module.name, sha256 });
+        checkEqual(sha256, module.sha256, `${label}: module bytecode fingerprint drift`);
+    } catch (error) {
+        check(false, `${label}: ${error.message}`);
+    }
 
     let structs = 0;
     module.structs.forEach((name, index) => {
-        const struct = live[`s${index}`];
-        if (!check(struct != null, `${label}::${name}: struct is missing`)) return;
-        const normalized = renderStruct(name, struct);
-        observed.abi[`${expected.addressName}::${module.name}::${name}`] = normalized;
-        checkEqual(
-            normalized,
-            ABI[`${expected.addressName}::${module.name}::${name}`],
-            `${label}::${name}: struct declaration drift`,
-        );
-        structs += 1;
+        const key = `${expected.addressName}::${module.name}::${name}`;
+        if (!check(live[`s${index}`] != null, `${label}::${name}: struct is missing`)) return;
+        try {
+            const normalized = renderStruct(name, live[`s${index}`]);
+            observed.abi[key] = normalized;
+            checkEqual(normalized, ABI[key], `${label}::${name}: struct declaration drift`);
+            structs += 1;
+        } catch (error) {
+            check(false, `${label}::${name}: ${error.message}`);
+        }
     });
 
     let functions = 0;
     module.functions.forEach((name, index) => {
-        const fn = live[`f${index}`];
-        if (!check(fn != null, `${label}::${name}: function is missing`)) return;
-        const normalized = renderFunction(name, fn, expected.originalId);
-        observed.abi[`${expected.addressName}::${module.name}::${name}`] = normalized;
-        checkEqual(
-            normalized,
-            ABI[`${expected.addressName}::${module.name}::${name}`],
-            `${label}::${name}: function signature drift`,
-        );
-        functions += 1;
+        const key = `${expected.addressName}::${module.name}::${name}`;
+        if (!check(live[`f${index}`] != null, `${label}::${name}: function is missing`)) return;
+        try {
+            const normalized = renderFunction(name, live[`f${index}`], expected.originalId);
+            observed.abi[key] = normalized;
+            checkEqual(normalized, ABI[key], `${label}::${name}: function signature drift`);
+            functions += 1;
+        } catch (error) {
+            check(false, `${label}::${name}: ${error.message}`);
+        }
     });
 
     return { functions, structs };
 }
 
-// === Local Manifests And Lock ===
+// === Strict TOML Records ===
+
+// A deliberately small TOML reader for the exact shapes these committed files
+// use. Anything outside that shape — an escape, a nested inline table, a
+// duplicate key, a duplicate table, an unknown value form — is an error, so a
+// dependency can never slip through as unparsed text. Comments are removed
+// before any comparison, so commented-out text cannot satisfy an expectation.
+
+function stripComment(line, label, lineNumber) {
+    let inString = false;
+    for (let index = 0; index < line.length; index += 1) {
+        const character = line[index];
+        if (character === '\\') {
+            throw new Error(`${label}:${lineNumber}: unsupported escape`);
+        }
+        if (character === '"') inString = !inString;
+        else if (character === '#' && !inString) return line.slice(0, index);
+    }
+    if (inString) throw new Error(`${label}:${lineNumber}: unterminated string`);
+    return line;
+}
+
+function splitInline(inner) {
+    const parts = [];
+    let inString = false;
+    let start = 0;
+    for (let index = 0; index < inner.length; index += 1) {
+        const character = inner[index];
+        if (character === '"') inString = !inString;
+        else if (character === ',' && !inString) {
+            parts.push(inner.slice(start, index));
+            start = index + 1;
+        }
+    }
+    parts.push(inner.slice(start));
+    return parts;
+}
+
+function parseScalar(text, label, lineNumber) {
+    if (/^"[^"]*"$/.test(text)) return text.slice(1, -1);
+    if (text === 'true') return true;
+    if (text === 'false') return false;
+    if (/^[0-9]+$/.test(text)) return Number(text);
+    throw new Error(`${label}:${lineNumber}: unsupported value ${text}`);
+}
+
+function parseInlineTable(text, label, lineNumber) {
+    const inner = text.slice(1, -1).trim();
+    const record = new Map();
+    if (inner === '') return record;
+    for (const part of splitInline(inner)) {
+        const match = /^\s*([A-Za-z0-9_.-]+)\s*=\s*(.+?)\s*$/.exec(part);
+        if (!match) {
+            throw new Error(`${label}:${lineNumber}: unsupported inline entry ${part.trim()}`);
+        }
+        if (record.has(match[1])) {
+            throw new Error(`${label}:${lineNumber}: duplicate key ${match[1]} in inline table`);
+        }
+        if (match[2].startsWith('{') || match[2].startsWith('[')) {
+            throw new Error(`${label}:${lineNumber}: nested inline structures are not supported`);
+        }
+        record.set(match[1], parseScalar(match[2], label, lineNumber));
+    }
+    return record;
+}
+
+function parseValue(text, label, lineNumber) {
+    if (text.startsWith('{')) {
+        if (!text.endsWith('}')) {
+            throw new Error(`${label}:${lineNumber}: unterminated inline table`);
+        }
+        return parseInlineTable(text, label, lineNumber);
+    }
+    if (text.startsWith('[')) {
+        if (!text.endsWith(']')) {
+            throw new Error(`${label}:${lineNumber}: unterminated array`);
+        }
+        const inner = text.slice(1, -1).trim();
+        if (inner === '') return [];
+        return splitInline(inner).map((part) =>
+            parseScalar(part.trim(), label, lineNumber),
+        );
+    }
+    return parseScalar(text, label, lineNumber);
+}
+
+function parseToml(source, label) {
+    const tables = new Map();
+    let current = null;
+    let currentName = null;
+
+    source.split('\n').forEach((rawLine, index) => {
+        const lineNumber = index + 1;
+        const line = stripComment(rawLine, label, lineNumber).trim();
+        if (line === '') return;
+
+        const header = /^\[([A-Za-z0-9_.-]+)\]$/.exec(line);
+        if (header) {
+            if (tables.has(header[1])) {
+                throw new Error(`${label}:${lineNumber}: duplicate table [${header[1]}]`);
+            }
+            current = new Map();
+            currentName = header[1];
+            tables.set(currentName, current);
+            return;
+        }
+
+        const match = /^([A-Za-z0-9_.-]+)\s*=\s*(.+?)\s*$/.exec(line);
+        if (!match) throw new Error(`${label}:${lineNumber}: unsupported line ${line}`);
+        if (current === null) {
+            throw new Error(`${label}:${lineNumber}: key ${match[1]} outside a table`);
+        }
+        if (current.has(match[1])) {
+            throw new Error(`${label}:${lineNumber}: duplicate key ${match[1]} in [${currentName}]`);
+        }
+        current.set(match[1], parseValue(match[2], label, lineNumber));
+    });
+
+    return tables;
+}
+
+// === Local Manifest And Lock Validation ===
+
+function recordToString(record) {
+    return [...record.entries()]
+        .map(([key, value]) => `${key} = ${JSON.stringify(value)}`)
+        .sort()
+        .join(', ');
+}
+
+function expectedToString(expected) {
+    return Object.entries(expected)
+        .map(([key, value]) => `${key} = ${JSON.stringify(value)}`)
+        .sort()
+        .join(', ');
+}
+
+/// Rejects every mutable Git selector regardless of what the expectation says.
+function assertImmutableGitRecord(label, name, record) {
+    for (const selector of ['branch', 'tag', 'subdir_rev']) {
+        check(
+            !record.has(selector),
+            `${label}: ${name} uses the mutable selector "${selector}"`,
+        );
+    }
+    const revision = record.get('rev');
+    check(
+        typeof revision === 'string' && /^[0-9a-f]{40}$/.test(revision),
+        `${label}: ${name} must pin an immutable 40-hex commit, got ${JSON.stringify(revision)}`,
+    );
+}
+
+function validateRecord(label, name, actual, expected) {
+    if (!(actual instanceof Map)) {
+        check(false, `${label}: ${name} is not a dependency record`);
+        return false;
+    }
+    if (actual.has('git')) assertImmutableGitRecord(label, name, actual);
+    return checkEqual(
+        recordToString(actual),
+        expectedToString(expected),
+        `${label}: ${name} dependency record drift`,
+    );
+}
+
+function validateManifestSource(spec, source) {
+    const label = spec.path;
+    const counts = { records: 0, gitRecords: 0 };
+
+    let tables;
+    try {
+        tables = parseToml(source, label);
+    } catch (error) {
+        check(false, error.message);
+        return counts;
+    }
+
+    const unexpectedTables = [...tables.keys()].filter(
+        (name) => !MANIFEST_TABLES.includes(name),
+    );
+    check(
+        unexpectedTables.length === 0,
+        `${label}: unexpected table(s) ${unexpectedTables.join(', ')}`,
+    );
+
+    const packageTable = tables.get('package');
+    if (check(packageTable !== undefined, `${label}: missing [package]`)) {
+        const unknown = [...packageTable.keys()].filter(
+            (key) => !PACKAGE_TABLE_KEYS.includes(key),
+        );
+        check(unknown.length === 0, `${label}: unknown [package] key(s) ${unknown.join(', ')}`);
+        checkEqual(packageTable.get('name'), spec.packageName, `${label}: package name drift`);
+
+        const expectedPublishedAt = spec.packageKey
+            ? packageByKey(spec.packageKey).currentId
+            : null;
+        checkEqual(
+            packageTable.get('published-at') ?? null,
+            expectedPublishedAt,
+            `${label}: published-at drift`,
+        );
+    }
+
+    const dependencies = tables.get('dependencies');
+    if (check(dependencies !== undefined, `${label}: missing [dependencies]`)) {
+        checkEqual(
+            [...dependencies.keys()].sort().join(', '),
+            Object.keys(spec.dependencies).sort().join(', '),
+            `${label}: dependency name set drift`,
+        );
+        for (const [name, expected] of Object.entries(spec.dependencies)) {
+            const actual = dependencies.get(name);
+            if (!check(actual !== undefined, `${label}: missing dependency ${name}`)) continue;
+            validateRecord(label, name, actual, expected);
+            counts.records += 1;
+            if (actual instanceof Map && actual.has('git')) counts.gitRecords += 1;
+        }
+        // Any dependency the spec does not name is still held to immutability.
+        for (const [name, actual] of dependencies) {
+            if (Object.hasOwn(spec.dependencies, name)) continue;
+            if (actual instanceof Map && actual.has('git')) {
+                assertImmutableGitRecord(label, name, actual);
+                counts.gitRecords += 1;
+            }
+        }
+    }
+
+    const expectedAddresses = spec.packageKey
+        ? { [packageByKey(spec.packageKey).addressName]: packageByKey(spec.packageKey).originalId }
+        : spec.addresses;
+    const addresses = tables.get('addresses');
+    if (check(addresses !== undefined, `${label}: missing [addresses]`)) {
+        checkEqual(
+            recordToString(addresses),
+            expectedToString(expectedAddresses),
+            `${label}: named address drift`,
+        );
+    }
+
+    return counts;
+}
+
+function validateLockSource(source) {
+    const label = 'Move.lock';
+    const counts = { nodes: 0, gitRecords: 0, suiEdges: 0 };
+
+    let tables;
+    try {
+        tables = parseToml(source, label);
+    } catch (error) {
+        check(false, error.message);
+        return counts;
+    }
+
+    const move = tables.get('move');
+    if (check(move !== undefined, `${label}: missing [move]`)) {
+        checkEqual(move.get('version'), LOCK_VERSION, `${label}: lock format version drift`);
+    }
+
+    const expectedNames = Object.keys(LOCK_NODES).sort();
+    const unexpectedTables = [...tables.keys()].filter(
+        (name) =>
+            name !== 'move' &&
+            !LOCK_ENVIRONMENTS.some((environment) => name.startsWith(`pinned.${environment}.`)),
+    );
+    check(
+        unexpectedTables.length === 0,
+        `${label}: unexpected table(s) ${unexpectedTables.join(', ')}`,
+    );
+
+    for (const environment of LOCK_ENVIRONMENTS) {
+        const prefix = `pinned.${environment}.`;
+        const present = [...tables.keys()]
+            .filter((name) => name.startsWith(prefix))
+            .map((name) => name.slice(prefix.length));
+        if (
+            !checkEqual(
+                present.sort().join(', '),
+                expectedNames.join(', '),
+                `${label}: ${environment} pinned node set drift`,
+            )
+        ) {
+            continue;
+        }
+
+        for (const name of expectedNames) {
+            const node = tables.get(`${prefix}${name}`);
+            const nodeLabel = `${label}: ${prefix}${name}`;
+            const unknown = [...node.keys()].filter((key) => !LOCK_NODE_KEYS.includes(key));
+            check(unknown.length === 0, `${nodeLabel} has unknown key(s) ${unknown.join(', ')}`);
+            for (const key of LOCK_NODE_KEYS) {
+                check(node.has(key), `${nodeLabel} is missing ${key}`);
+            }
+            checkEqual(
+                node.get('use_environment'),
+                environment,
+                `${nodeLabel} declares the wrong environment`,
+            );
+
+            const source = node.get('source');
+            const sourceOk = validateRecord(
+                nodeLabel,
+                'source',
+                source,
+                LOCK_NODES[name].source,
+            );
+            if (source instanceof Map && source.has('git')) counts.gitRecords += 1;
+
+            const deps = node.get('deps');
+            let depsOk = false;
+            if (deps instanceof Map) {
+                depsOk = checkEqual(
+                    recordToString(deps),
+                    expectedToString(LOCK_NODES[name].deps),
+                    `${nodeLabel} resolved dependency drift`,
+                );
+            } else {
+                check(false, `${nodeLabel} has no deps record`);
+            }
+
+            if (sourceOk && depsOk) counts.nodes += 1;
+        }
+
+        // Each local normalized interface must resolve its Sui edge to the one
+        // pinned framework revision, by node name and by that node's source.
+        for (const spec of MANIFESTS) {
+            if (!spec.lockNode) continue;
+            const nodeLabel = `${label}: ${prefix}${spec.lockNode}`;
+            const deps = tables.get(`${prefix}${spec.lockNode}`)?.get('deps');
+            if (!(deps instanceof Map)) {
+                check(false, `${nodeLabel} has no deps record`);
+                continue;
+            }
+            const suiNode = deps.get('Sui');
+            if (!check(typeof suiNode === 'string', `${nodeLabel} does not bind a Sui dependency`)) {
+                continue;
+            }
+            const suiSource = tables.get(`${prefix}${suiNode}`)?.get('source');
+            if (!(suiSource instanceof Map)) {
+                check(false, `${nodeLabel} binds Sui to the unknown node ${suiNode}`);
+                continue;
+            }
+            if (
+                checkEqual(
+                    recordToString(suiSource),
+                    expectedToString({
+                        git: SUI_GIT,
+                        subdir: SUI_FRAMEWORK_SUBDIR,
+                        rev: SUI_FRAMEWORK_REV,
+                    }),
+                    `${nodeLabel} resolves Sui through ${suiNode} to the wrong framework record`,
+                )
+            ) {
+                counts.suiEdges += 1;
+            }
+        }
+    }
+
+    return counts;
+}
 
 function readPackageFile(relativePath) {
     return readFileSync(join(PACKAGE_DIR, relativePath), 'utf8');
 }
 
-function verifyManifests() {
-    let manifests = 0;
-    for (const expected of PACKAGES) {
-        if (!expected.manifest) continue;
-        const source = readPackageFile(expected.manifest);
-        const label = `${expected.manifest}`;
-        check(
-            source.includes(`published-at = "${expected.currentId}"`),
-            `${label}: published-at must be ${expected.currentId}`,
-        );
-        check(
-            source.includes(`${expected.addressName} = "${expected.originalId}"`),
-            `${label}: ${expected.addressName} must stay ${expected.originalId}`,
-        );
-        check(
-            source.includes(`rev = "${SUI_FRAMEWORK_REV}"`),
-            `${label}: Sui framework dependency must pin ${SUI_FRAMEWORK_REV}`,
-        );
-        manifests += 1;
+function verifyLocalPins() {
+    const totals = { manifests: 0, records: 0, gitRecords: 0, nodes: 0, suiEdges: 0 };
+    for (const spec of MANIFESTS) {
+        const counts = validateManifestSource(spec, readPackageFile(spec.path));
+        totals.manifests += 1;
+        totals.records += counts.records;
+        totals.gitRecords += counts.gitRecords;
     }
 
-    const root = readPackageFile('Move.toml');
-    for (const expected of PACKAGES) {
-        if (!expected.manifest) continue;
-        const local = dirname(expected.manifest).replace(/^\.\//, '');
-        check(
-            root.includes(`local = "${local}"`),
-            `Move.toml: must depend on the local ${local} interface`,
-        );
-    }
-    const rootRevisions = [...root.matchAll(/rev = "([^"]+)"/g)].map(
-        (match) => match[1],
-    );
-    check(rootRevisions.length > 0, 'Move.toml: no Git revisions found');
-    for (const revision of rootRevisions) {
-        check(
-            /^[0-9a-f]{40}$/.test(revision),
-            `Move.toml: revision ${revision} is not an immutable 40-hex commit`,
-        );
-    }
-    manifests += 1;
+    const lock = validateLockSource(readPackageFile('Move.lock'));
+    totals.nodes = lock.nodes;
+    totals.gitRecords += lock.gitRecords;
+    totals.suiEdges = lock.suiEdges;
 
-    return { manifests, rootRevisions: rootRevisions.length };
+    return totals;
 }
 
-function parseLock(source) {
-    const sections = new Map();
-    let current = null;
-    for (const rawLine of source.split('\n')) {
-        const line = rawLine.trim();
-        const header = line.match(/^\[([^\]]+)\]$/);
-        if (header) {
-            current = [];
-            sections.set(header[1], current);
-            continue;
-        }
-        if (current && line.length > 0) current.push(line);
-    }
-    return sections;
+// === Self Test ===
+
+// Offline regression cover for the two trust boundaries this gate depends on:
+// the GraphQL response shape and the committed dependency records. It makes no
+// network request and mutates no file; every negative case runs against an
+// in-memory copy of a committed file or a synthetic response object.
+
+const GOOD_FUNCTION = {
+    name: 'collect_fee',
+    visibility: 'PUBLIC',
+    isEntry: false,
+    typeParameters: [{ constraints: [] }, { constraints: ['COPY', 'DROP'] }],
+    parameters: [
+        {
+            signature: {
+                ref: '&mut',
+                body: {
+                    datatype: {
+                        package: SUI_ADDRESS,
+                        module: 'balance',
+                        type: 'Balance',
+                        typeParameters: [{ typeParameter: 0 }],
+                    },
+                },
+            },
+        },
+        { signature: { ref: '&', body: 'address' } },
+    ],
+    return: [{ signature: { body: 'u64' } }],
+};
+
+const GOOD_STRUCT = {
+    name: 'Pool',
+    abilities: ['KEY', 'STORE'],
+    typeParameters: [
+        { isPhantom: true, constraints: [] },
+        { isPhantom: false, constraints: ['STORE'] },
+    ],
+};
+
+function clone(value) {
+    return structuredClone(value);
 }
 
-function verifyLock() {
-    const source = readPackageFile('Move.lock');
-    const sections = parseLock(source);
+function withFunction(mutate) {
+    const value = clone(GOOD_FUNCTION);
+    mutate(value);
+    return value;
+}
 
-    const lockRevisions = [...source.matchAll(/rev = "([^"]+)"/g)].map(
-        (match) => match[1],
+function withStruct(mutate) {
+    const value = clone(GOOD_STRUCT);
+    mutate(value);
+    return value;
+}
+
+/// Replaces the first literal occurrence, asserting that it was present.
+function mutateSource(source, from, to) {
+    const index = source.indexOf(from);
+    if (index === -1) throw new Error(`self-test fixture missing: ${from}`);
+    return source.slice(0, index) + to + source.slice(index + from.length);
+}
+
+function selfTestCases() {
+    const rootManifest = readPackageFile('Move.toml');
+    const turbosManifest = readPackageFile('interfaces/turbos/Move.toml');
+    const fullsailManifest = readPackageFile('interfaces/fullsail/Move.toml');
+    const lock = readPackageFile('Move.lock');
+
+    const rootSpec = MANIFESTS.find((spec) => spec.path === 'Move.toml');
+    const turbosSpec = MANIFESTS.find(
+        (spec) => spec.path === 'interfaces/turbos/Move.toml',
     );
-    check(lockRevisions.length > 0, 'Move.lock: no pinned Git revisions found');
-    for (const revision of lockRevisions) {
-        check(
-            /^[0-9a-f]{40}$/.test(revision),
-            `Move.lock: revision ${revision} is not an immutable 40-hex commit`,
+    const fullsailSpec = MANIFESTS.find(
+        (spec) => spec.path === 'interfaces/fullsail/Move.toml',
+    );
+
+    const manifest = (spec, source) => () => validateManifestSource(spec, source);
+    const lockCase = (source) => () => validateLockSource(source);
+
+    return [
+        // --- Positive: the committed files and a well-formed response ---
+        {
+            name: 'committed manifests and lock validate clean',
+            expect: 'pass',
+            run: () => verifyLocalPins(),
+        },
+        {
+            name: 'well-formed function renders canonically',
+            expect: 'pass',
+            run: () => {
+                const rendered = renderFunction('collect_fee', GOOD_FUNCTION, STD_ADDRESS);
+                if (
+                    rendered !==
+                    'public fun collect_fee<$0, $1: copy+drop>' +
+                        '(&mut @sui::balance::Balance<$0>, &address): u64'
+                ) {
+                    throw new Error(`unexpected rendering: ${rendered}`);
+                }
+            },
+        },
+        {
+            name: 'well-formed struct renders canonically',
+            expect: 'pass',
+            run: () => {
+                const rendered = renderStruct('Pool', GOOD_STRUCT);
+                if (rendered !== 'struct Pool<phantom $0, $1: store> has store, key') {
+                    throw new Error(`unexpected rendering: ${rendered}`);
+                }
+            },
+        },
+
+        // --- Negative: ABI response shape ---
+        {
+            name: 'null parameter list is rejected',
+            run: () => renderFunction('collect_fee', withFunction((f) => { f.parameters = null; }), STD_ADDRESS),
+        },
+        {
+            name: 'null return list is rejected',
+            run: () => renderFunction('collect_fee', withFunction((f) => { f.return = null; }), STD_ADDRESS),
+        },
+        {
+            name: 'null type-parameter list is rejected',
+            run: () => renderFunction('collect_fee', withFunction((f) => { f.typeParameters = null; }), STD_ADDRESS),
+        },
+        {
+            name: 'null struct ability list is rejected',
+            run: () => renderStruct('Pool', withStruct((s) => { s.abilities = null; })),
+        },
+        {
+            name: 'missing isEntry is rejected',
+            run: () => renderFunction('collect_fee', withFunction((f) => { delete f.isEntry; }), STD_ADDRESS),
+        },
+        {
+            name: 'null isEntry is rejected',
+            run: () => renderFunction('collect_fee', withFunction((f) => { f.isEntry = null; }), STD_ADDRESS),
+        },
+        {
+            name: 'unknown ability is rejected',
+            run: () => renderStruct('Pool', withStruct((s) => { s.abilities = ['KEY', 'SEAL']; })),
+        },
+        {
+            name: 'duplicate ability is rejected',
+            run: () => renderStruct('Pool', withStruct((s) => { s.abilities = ['KEY', 'KEY']; })),
+        },
+        {
+            name: 'unknown constraint is rejected',
+            run: () => renderFunction('collect_fee', withFunction((f) => { f.typeParameters[1].constraints = ['SEAL']; }), STD_ADDRESS),
+        },
+        {
+            name: 'duplicate constraint is rejected',
+            run: () => renderFunction('collect_fee', withFunction((f) => { f.typeParameters[1].constraints = ['COPY', 'COPY']; }), STD_ADDRESS),
+        },
+        {
+            name: 'unknown visibility is rejected',
+            run: () => renderFunction('collect_fee', withFunction((f) => { f.visibility = 'PACKAGE'; }), STD_ADDRESS),
+        },
+        {
+            name: 'renamed function is rejected',
+            run: () => renderFunction('collect_fee', withFunction((f) => { f.name = 'collect_fee_v2'; }), STD_ADDRESS),
+        },
+        {
+            name: 'missing signature body is rejected',
+            run: () => renderFunction('collect_fee', withFunction((f) => { delete f.parameters[1].signature.body; }), STD_ADDRESS),
+        },
+        {
+            name: 'unknown reference kind is rejected',
+            run: () => renderFunction('collect_fee', withFunction((f) => { f.parameters[1].signature.ref = '&imm'; }), STD_ADDRESS),
+        },
+        {
+            name: 'novel type body shape is rejected',
+            run: () => renderFunction('collect_fee', withFunction((f) => { f.parameters[1].signature.body = { enumType: 'X' }; }), STD_ADDRESS),
+        },
+        {
+            name: 'unknown primitive type is rejected',
+            run: () => renderFunction('collect_fee', withFunction((f) => { f.parameters[1].signature.body = 'u512'; }), STD_ADDRESS),
+        },
+        {
+            name: 'extra response field is rejected',
+            run: () => renderFunction('collect_fee', withFunction((f) => { f.attributes = []; }), STD_ADDRESS),
+        },
+        {
+            name: 'missing datatype type parameters are rejected',
+            run: () => renderFunction('collect_fee', withFunction((f) => { delete f.parameters[0].signature.body.datatype.typeParameters; }), STD_ADDRESS),
+        },
+        {
+            name: 'missing struct phantom flag is rejected',
+            run: () => renderStruct('Pool', withStruct((s) => { delete s.typeParameters[0].isPhantom; })),
+        },
+
+        // --- Negative: manifest records ---
+        {
+            name: 'commented-out dependency cannot satisfy an expectation',
+            run: manifest(
+                turbosSpec,
+                mutateSource(turbosManifest, 'Sui = {', '# Sui = {'),
+            ),
+        },
+        {
+            name: 'missing rev is rejected',
+            run: manifest(
+                turbosSpec,
+                mutateSource(turbosManifest, `, rev = "${REV.sui}"`, ''),
+            ),
+        },
+        {
+            name: 'branch selector is rejected',
+            run: manifest(
+                turbosSpec,
+                mutateSource(turbosManifest, `rev = "${REV.sui}"`, 'branch = "main"'),
+            ),
+        },
+        {
+            name: 'tag selector is rejected',
+            run: manifest(
+                turbosSpec,
+                mutateSource(turbosManifest, `rev = "${REV.sui}"`, 'tag = "mainnet-v1.35.2"'),
+            ),
+        },
+        {
+            name: 'wrong-but-40-hex Sui revision is rejected',
+            run: manifest(
+                turbosSpec,
+                mutateSource(turbosManifest, REV.sui, REV.suiLegacy),
+            ),
+        },
+        {
+            name: 'root Sui revision change is rejected',
+            run: manifest(rootSpec, mutateSource(rootManifest, REV.sui, REV.suiBluefin)),
+        },
+        {
+            name: 'wrong Git repository is rejected',
+            run: manifest(
+                turbosSpec,
+                mutateSource(turbosManifest, SUI_GIT, 'https://github.com/attacker/sui.git'),
+            ),
+        },
+        {
+            name: 'wrong Git subdirectory is rejected',
+            run: manifest(
+                turbosSpec,
+                mutateSource(turbosManifest, SUI_FRAMEWORK_SUBDIR, MOVE_STDLIB_SUBDIR),
+            ),
+        },
+        {
+            name: 'dropped override rule is rejected',
+            run: manifest(
+                turbosSpec,
+                mutateSource(turbosManifest, ', override = true', ''),
+            ),
+        },
+        {
+            name: 'added override rule is rejected',
+            run: manifest(
+                fullsailSpec,
+                mutateSource(fullsailManifest, `rev = "${REV.sui}" }`, `rev = "${REV.sui}", override = true }`),
+            ),
+        },
+        {
+            name: 'extra Git dependency is rejected',
+            run: manifest(
+                turbosSpec,
+                mutateSource(
+                    turbosManifest,
+                    '[addresses]',
+                    `Extra = { git = "${MOVE_STL_GIT}", rev = "main" }\n\n[addresses]`,
+                ),
+            ),
+        },
+        {
+            name: 'duplicate manifest key is rejected',
+            run: manifest(
+                turbosSpec,
+                mutateSource(turbosManifest, '[addresses]', '[addresses]\nturbos_clmm = "0x1"'),
+            ),
+        },
+        {
+            name: 'duplicate manifest table is rejected',
+            run: manifest(turbosSpec, `${turbosManifest}\n[addresses]\n`),
+        },
+        {
+            name: 'changed published-at is rejected',
+            run: manifest(
+                turbosSpec,
+                mutateSource(turbosManifest, packageByKey('turbos').currentId, `0x${'a'.repeat(64)}`),
+            ),
+        },
+        {
+            name: 'changed named address is rejected',
+            run: manifest(
+                turbosSpec,
+                mutateSource(turbosManifest, packageByKey('turbos').originalId, `0x${'b'.repeat(64)}`),
+            ),
+        },
+        {
+            name: 'unexpected manifest table is rejected',
+            run: manifest(turbosSpec, `${turbosManifest}\n[dev-dependencies]\nX = { local = "." }\n`),
+        },
+        {
+            name: 'rebound local interface path is rejected',
+            run: manifest(
+                rootSpec,
+                mutateSource(rootManifest, 'local = "interfaces/turbos"', 'local = "interfaces/cetus"'),
+            ),
+        },
+
+        // --- Negative: lock records ---
+        {
+            name: 'lock branch selector is rejected',
+            run: lockCase(mutateSource(lock, `rev = "${REV.bluefin}"`, 'branch = "main"')),
+        },
+        {
+            name: 'lock tag selector is rejected',
+            run: lockCase(mutateSource(lock, `rev = "${REV.mmt}"`, 'tag = "v1"')),
+        },
+        {
+            name: 'lock missing rev is rejected',
+            run: lockCase(mutateSource(lock, `, rev = "${REV.bluefin}"`, '')),
+        },
+        {
+            name: 'lock wrong-but-40-hex Sui revision is rejected',
+            run: lockCase(
+                mutateSource(
+                    lock,
+                    `[pinned.testnet.Sui_2]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.sui}" }`,
+                    `[pinned.testnet.Sui_2]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.suiLegacy}" }`,
+                ),
+            ),
+        },
+        {
+            name: 'lock rebound Sui edge is rejected',
+            run: lockCase(
+                mutateSource(
+                    lock,
+                    '[pinned.mainnet.TurbosCLMM]\nsource = { local = "interfaces/turbos" }\nuse_environment = "mainnet"',
+                    '[pinned.mainnet.TurbosCLMM]\nsource = { local = "interfaces/turbos" }\nuse_environment = "mainnet"',
+                ).replace(
+                    /(\[pinned\.mainnet\.TurbosCLMM\][\s\S]*?deps = \{ Sui = ")Sui_2(" \})/,
+                    '$1Sui_1$2',
+                ),
+            ),
+        },
+        {
+            name: 'lock wrong Git repository is rejected',
+            run: lockCase(mutateSource(lock, MMT_GIT, 'https://github.com/attacker/mmt.git')),
+        },
+        {
+            name: 'lock wrong subdirectory is rejected',
+            run: lockCase(
+                mutateSource(
+                    lock,
+                    `subdir = "mmt_v3", rev = "${REV.mmt}"`,
+                    `subdir = ".", rev = "${REV.mmt}"`,
+                ),
+            ),
+        },
+        {
+            name: 'lock duplicate section is rejected',
+            run: lockCase(`${lock}\n[pinned.mainnet.Sui_2]\nsource = { root = true }\n`),
+        },
+        {
+            name: 'lock duplicate key is rejected',
+            run: lockCase(
+                mutateSource(lock, '[pinned.mainnet.MoveStdlib]\n', '[pinned.mainnet.MoveStdlib]\ndeps = {}\n'),
+            ),
+        },
+        {
+            name: 'extra lock node is rejected',
+            run: lockCase(
+                `${lock}\n[pinned.mainnet.Rogue]\nsource = { git = "${MOVE_STL_GIT}", subdir = ".", rev = "main" }\nuse_environment = "mainnet"\nmanifest_digest = "00"\ndeps = {}\n`,
+            ),
+        },
+        {
+            name: 'missing lock node is rejected',
+            run: lockCase(lock.replace(/\[pinned\.testnet\.MoveSTL\][\s\S]*?\n\n/, '')),
+        },
+        {
+            name: 'rebound root dependency is rejected',
+            run: lockCase(
+                mutateSource(lock, 'IntegerMate = "IntegerMate_1"', 'IntegerMate = "IntegerMate"'),
+            ),
+        },
+        {
+            name: 'lock format version change is rejected',
+            run: lockCase(mutateSource(lock, 'version = 4', 'version = 5')),
+        },
+        {
+            name: 'lock local path change is rejected',
+            run: lockCase(
+                mutateSource(lock, 'source = { local = "interfaces/cetus" }', 'source = { local = "interfaces/turbos" }'),
+            ),
+        },
+    ];
+}
+
+function runSelfTest() {
+    let passed = 0;
+    let failed = 0;
+
+    for (const testCase of selfTestCases()) {
+        const before = failures.length;
+        let thrown = null;
+        try {
+            testCase.run();
+        } catch (error) {
+            thrown = error;
+        }
+        const recorded = failures.splice(before).length;
+        const rejected = thrown !== null || recorded > 0;
+        const wantPass = testCase.expect === 'pass';
+        const ok = wantPass ? !rejected : rejected;
+
+        if (ok) passed += 1;
+        else failed += 1;
+        process.stdout.write(
+            `  ${ok ? 'ok  ' : 'FAIL'} ${wantPass ? 'accepts' : 'rejects'}: ${testCase.name}` +
+                `${ok || wantPass ? '' : ' (accepted)'}` +
+                `${ok || !wantPass ? '' : ` (${thrown?.message ?? `${recorded} failure(s)`})`}\n`,
         );
     }
 
-    let suiEdges = 0;
-    for (const environment of LOCK_ENVIRONMENTS) {
-        for (const expected of PACKAGES) {
-            if (!expected.manifest) continue;
-            const local = dirname(expected.manifest).replace(/^\.\//, '');
-            const entry = [...sections.entries()].find(
-                ([name, lines]) =>
-                    name.startsWith(`pinned.${environment}.`) &&
-                    lines.some((line) => line.includes(`source = { local = "${local}" }`)),
-            );
-            if (
-                !check(
-                    entry !== undefined,
-                    `Move.lock: ${environment} has no pinned entry for ${local}`,
-                )
-            ) {
-                continue;
-            }
-
-            const deps = entry[1].find((line) => line.startsWith('deps = '));
-            const suiNode = deps?.match(/Sui = "([^"]+)"/)?.[1];
-            if (
-                !check(
-                    suiNode !== undefined,
-                    `Move.lock: ${entry[0]} does not bind a Sui framework dependency`,
-                )
-            ) {
-                continue;
-            }
-
-            const suiSection = sections.get(`pinned.${environment}.${suiNode}`);
-            const suiSource = suiSection?.find((line) => line.startsWith('source = '));
-            checkEqual(
-                suiSource?.match(/rev = "([^"]+)"/)?.[1],
-                SUI_FRAMEWORK_REV,
-                `Move.lock: ${entry[0]} resolves ${suiNode} to the wrong Sui framework revision`,
-            );
-            check(
-                suiSource?.includes(
-                    'subdir = "crates/sui-framework/packages/sui-framework"',
-                ) === true,
-                `Move.lock: ${entry[0]} resolves ${suiNode} outside the Sui framework package`,
-            );
-            suiEdges += 1;
-        }
-    }
-
-    return { lockRevisions: lockRevisions.length, suiEdges };
+    process.stdout.write(
+        `check_mainnet_abi self-test: ${failed === 0 ? 'PASS' : 'FAIL'} ` +
+            `${passed}/${passed + failed} cases\n`,
+    );
+    process.exit(failed === 0 ? 0 : 1);
 }
 
 // === Emit ===
@@ -1027,6 +2199,11 @@ function emit(observations) {
 // === Main ===
 
 async function main() {
+    if (process.argv.includes('--self-test')) {
+        runSelfTest();
+        return;
+    }
+
     const shouldEmit = process.argv.includes('--emit');
 
     const identifier = await graphql('query { chainIdentifier }', {});
@@ -1085,13 +2262,12 @@ async function main() {
     }
 
     const before = failures.length;
-    const manifests = verifyManifests();
-    const lock = verifyLock();
+    const pins = verifyLocalPins();
     process.stdout.write(
         `${status(before)} ${'local pins'.padEnd(21)} ` +
-            `manifests ${manifests.manifests} manifest revisions ` +
-            `${manifests.rootRevisions} lock revisions ${lock.lockRevisions} ` +
-            `local-interface Sui edges ${lock.suiEdges}\n`,
+            `manifests ${pins.manifests} dependency records ${pins.records} ` +
+            `lock nodes ${pins.nodes} immutable Git records ${pins.gitRecords} ` +
+            `local-interface Sui edges ${pins.suiEdges}\n`,
     );
 
     report(shouldEmit, observations, {

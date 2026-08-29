@@ -223,6 +223,7 @@ dependency set, and which addresses actually enter the published linkage table.
 Run from this directory:
 
 ```bash
+node scripts/check_mainnet_abi.mjs --self-test
 node scripts/check_mainnet_abi.mjs
 sui move build
 sui move lint --warnings-are-errors
@@ -241,11 +242,21 @@ original type origins. It then asserts a committed SHA-256 over each consumed
 module's decoded on-chain bytecode and the normalized public ABI of every
 consumed function and struct, comparing structured signatures rather than
 display prose so that a missing or extra parameter, `&` versus `&mut`,
-visibility drift, ability drift, phantom drift, or return drift all fail. The
-same run cross-checks the local interface manifests, the root manifest, and the
-exact Sui framework edge in both the mainnet and testnet lock graphs. It fails
-closed: a GraphQL error, a missing package, a missing module, or a missing
-function ends the run non-zero.
+visibility drift, ability drift, phantom drift, or return drift all fail.
+
+Every GraphQL field is shape-validated before it is rendered, so a null,
+partial, or novel response fails instead of normalizing into a passing value.
+The same run parses the root manifest, the four local interface manifests, and
+both lock environments with a strict reader and binds every dependency name to
+its exact source, subdirectory, local path, revision, and `override` rule;
+comments are stripped before comparison, and `branch`, `tag`, a missing `rev`, a
+duplicate key or table, an unexpected record, and a rebound edge all fail.
+
+It fails closed: a GraphQL error, a missing package, a missing module, or a
+missing function ends the run non-zero. `--self-test` runs the response,
+manifest, and lock validators against in-memory fixtures with no network request
+and no file change, so every fail-closed path stays covered between venue
+upgrades.
 
 The interface dependencies contain `abort 0` link stubs, so a local build proves
 type compatibility only. Before production release, run the mainnet dev-inspect
@@ -258,8 +269,8 @@ collection with unchanged principal liquidity.
 
 Source omission does not make principal custody permanent while this package has
 an `UpgradeCap`: a compatible upgrade could add an extraction function. LP
-principal may be described as permanently locked **only after** every live ABI
-gate above passes, every local gate passes, every dev-inspect row passes, and the
+principal may be described as permanently locked **only after** the self-test and
+every live ABI gate above pass, every local gate passes, every dev-inspect row passes, and the
 aggregate package's single `UpgradeCap` is destroyed and that immutable-package
 evidence is recorded. Until then the accurate statement is that principal is held
 by an upgradeable package with no exposed withdrawal path. Do not add a migrator

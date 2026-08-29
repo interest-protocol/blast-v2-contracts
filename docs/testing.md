@@ -79,6 +79,7 @@ proves type compatibility only:
 
 ```bash
 cd sui/migrators
+node scripts/check_mainnet_abi.mjs --self-test
 node scripts/check_mainnet_abi.mjs
 sui move build
 sui move lint --warnings-are-errors
@@ -98,11 +99,31 @@ It then asserts a committed SHA-256 over each consumed module's decoded on-chain
 bytecode and the normalized public ABI of every consumed function and struct.
 The ABI comparison uses structured signatures, not display prose, so a missing or
 extra parameter, `&` versus `&mut`, a type-parameter or phantom change, a return
-change, a visibility change, or an ability change each fail. The same run proves
-that no manifest or lock revision is a branch or tag and that every local
-normalized interface binds the one Sui framework revision in both the mainnet
-and testnet lock graphs. It fails closed on GraphQL errors and on missing
-packages, modules, or functions.
+change, a visibility change, or an ability change each fail. Every GraphQL field
+is shape-validated first, so a null list, a missing `isEntry`, an unknown or
+duplicated ability or constraint, an unknown visibility or reference kind, or any
+novel type body fails rather than normalizing into a passing value.
+
+The same run parses the root manifest, the four local interface manifests, and
+both lock environments with a strict reader that removes comments before any
+comparison. Each dependency name is bound to its exact source, subdirectory,
+local path, revision, and `override` rule; every Git record must carry an
+immutable 40-hex `rev` and no `branch` or `tag`; and a duplicate key, a duplicate
+table, an unexpected record, a wrong repository or subdirectory, a rebound edge,
+or any Sui revision other than the one exact pin fails in both the mainnet and
+testnet lock graphs.
+
+It fails closed on GraphQL errors and on missing packages, modules, or functions,
+and each request has a whole-request timeout covering the body read.
+
+`node scripts/check_mainnet_abi.mjs --self-test` is the offline regression check
+for those fail-closed paths. It makes no network request and mutates no file: it
+renders well-formed fixtures, validates the committed manifests and lock, and
+asserts that mutated inputs are rejected — null lists, a missing `isEntry`,
+unknown and duplicate abilities and constraints, a commented-out dependency, a
+missing `rev`, `branch` and `tag` selectors, duplicate keys and tables, wrong
+repositories and subdirectories, and a wrong-but-40-hex Sui revision among them.
+Run it before the live check; it is fast and needs no network.
 
 A committed expectation is never updated to match a newer venue revision without
 re-review. When mainnet moves ahead, the run fails and reports the newer tip;
@@ -237,7 +258,7 @@ the decision that owns it. Nothing here may be marked done from prose alone.
 | 3.3 | Terminal ordering preserves already-final supply while routing liquidity, residuals, and deferred burn | [0026](decisions/0026-deferred-sell-burn.md), [0035](decisions/0035-initializer-finalized-meme-supply.md) |
 | 3.4 | Event reducer replay in native Sui order across all entity scopes | [0011](decisions/0011-event-schema-and-replay.md) |
 | 3.5 | Per-venue dependency exemption resolved or the adapter excluded | [0010](decisions/0010-migration-and-venue-adapters.md) |
-| 3.6 | Live mainnet lineage, module fingerprints, and normalized venue ABI for all five venues plus Full Sail IntegerMate, via `sui/migrators/scripts/check_mainnet_abi.mjs` | [0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md) |
+| 3.6 | Live mainnet lineage, module fingerprints, and normalized venue ABI for all five venues plus Full Sail IntegerMate, via `sui/migrators/scripts/check_mainnet_abi.mjs`, with its offline `--self-test` green | [0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md) |
 | 3.7 | Mainnet dev-inspect matrix: all 15 migration routes and orientations, all 9 fee-collection routes, and both vault claims, proving balance-derived initialization, zero Bluefin creation fee, venue canonical order, full-range ticks, the 50-bps adoption checks, one-basis-point residuals delivered to the live treasury, and fee collection with unchanged principal liquidity | [0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md) |
 | 3.8 | Migration and LP-fee events replay from direct Sui events with no core envelope: per-launch vault creation, migration amounts and residual treasury, each collection's live `protocol_fee_share_bps` split, and both claim paths | [0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md) |
 | 3.9 | Aggregate migrators `UpgradeCap` destroyed and the immutable-package evidence recorded under `deployments/sui/mainnet/`; no locked-principal claim is valid before this row passes | [0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md) |

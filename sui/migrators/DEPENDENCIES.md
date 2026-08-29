@@ -62,8 +62,18 @@ Cetus, Turbos, Full Sail, and Full Sail's separate IntegerMate package it then:
    magic, and asserts the committed SHA-256 fingerprint; and
 6. asserts the normalized public ABI of every consumed function and struct.
 
-The ABI comparison uses the structured `OpenMoveTypeSignature` from GraphQL, not
-display prose. Each entry renders reference mutability, every parameter in order,
+### Response validation
+
+The GraphQL response is untrusted input to a release gate, so every field is
+validated before it is rendered. Each function and struct object must carry
+exactly the requested fields; each list must be a real list; `isEntry` and
+`isPhantom` must be real booleans; visibility, abilities, constraints, primitive
+type names, reference kinds, and type-body shapes must each be a known value with
+no duplicates. A null, absent, partial, or novel response is a failure, never a
+value that normalizes into something an expectation happens to match.
+
+The ABI comparison then uses the structured `OpenMoveTypeSignature`, not display
+prose. Each entry renders reference mutability, every parameter in order,
 type-parameter constraints, phantom markers, abilities, visibility, `entry`, and
 the full return tuple. `@self` is the package's own original address, `@sui` and
 `@std` are the framework addresses, and every other address is compared
@@ -71,18 +81,59 @@ literally, so a venue that re-points a helper type to a different package fails.
 Missing or extra parameters, `&` versus `&mut`, visibility drift, ability drift,
 phantom drift, and return drift each fail the run.
 
-The same run cross-checks the committed local pins: each local normalized
-interface manifest's `published-at` and original named address, its Sui framework
-revision, the root manifest's dependency edges, and — in **both** the `mainnet`
-and `testnet` lock graphs — that every local normalized interface resolves its
-`Sui` edge to `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` under
-`crates/sui-framework/packages/sui-framework`. Every Git revision in `Move.toml`
-and `Move.lock` must be an immutable 40-hex commit.
+### Local pin validation
 
-The run fails closed. GraphQL transport errors retry three times; a GraphQL
-`errors` payload, a missing package, a missing module, or a missing function is
-an immediate failure. `--emit` prints the observed facts as a paste-ready
-expectation block; it never relaxes an assertion.
+The same run parses `Move.toml`, the four local interface manifests, and
+`Move.lock` with a strict reader for exactly the record shapes those files use.
+Comments are removed before any comparison, so commented-out text can never
+satisfy an expectation, and a duplicate key, a duplicate table, an escape, a
+nested inline table, or any unrecognized value form is itself a failure.
+
+Each file is then bound to an exact expectation:
+
+- every `[dependencies]` name set must match, and each record must match
+  key-for-key and value-for-value — repository, subdirectory, local path,
+  revision, and `override` rule included;
+- every Git record in every checked manifest and in both lock environments must
+  carry an immutable 40-hex `rev` and must not carry `branch` or `tag`, whatever
+  the expectation says;
+- `[package]` may declare only known keys, `published-at` must equal the current
+  package id, `[addresses]` must equal the original package id, and no table
+  outside `package`, `dependencies`, and `addresses` may appear;
+- `Move.lock` must declare format version 4, exactly the 18 expected pinned nodes
+  in each of the `mainnet` and `testnet` environments, each node's exact `source`
+  record and exact resolved `deps` edges, and nothing else; and
+- each local normalized interface must resolve its named `Sui` edge to a node
+  whose source is `MystenLabs/sui` at
+  `crates/sui-framework/packages/sui-framework` and
+  `06734f6ff0af45d8632a14a4dc4b100197f6b1a2`.
+
+### Failure behaviour
+
+The run fails closed. Each request has a 30-second whole-request deadline
+covering both the connection and the body read; transport errors, timeouts, and
+HTTP 5xx retry three times, and the body is read inside that retry boundary. A
+GraphQL `errors` payload, a non-JSON body, any other non-2xx status, a missing
+package, a missing module, and a missing function are immediate failures.
+`--emit` prints the observed facts as a paste-ready expectation block; it never
+relaxes an assertion.
+
+### Offline self-test
+
+```bash
+node scripts/check_mainnet_abi.mjs --self-test
+```
+
+Makes no network request and mutates no file. It renders a well-formed function
+and struct fixture, validates the committed manifests and lock, and then asserts
+that 50 mutated inputs are rejected — null lists, a missing or null `isEntry`,
+unknown and duplicate abilities and constraints, unknown visibility, novel type
+bodies and reference kinds, extra response fields, a commented-out dependency, a
+missing `rev`, `branch` and `tag` selectors, a wrong-but-40-hex Sui revision,
+wrong repositories and subdirectories, added and dropped `override` rules,
+duplicate keys and tables, extra and missing lock nodes, and rebound `deps`
+edges. Every case that a live run cannot reach without a real venue upgrade is
+covered here instead.
 
 ## Published venue packages
 
@@ -149,14 +200,17 @@ Only modules that declare an adapter-consumed type or function are fingerprinted
 | MMT V3 | 9 | 14 | 5 | 5 |
 | Cetus CLMM | 5 | 15 | 5 | 5 |
 | Turbos CLMM | 7 | 14 | 7 | 7 |
-| Full Sail CLMM | 6 | 15 | 6 | 6 |
+| Full Sail CLMM | 6 | 14 | 6 | 6 |
 | Full Sail IntegerMate | 1 | 3 | 1 | 1 |
-| **Total** | **31** | **67** | **27** | **27** |
+| **Total** | **31** | **66** | **27** | **27** |
 
-`clmm_pool::factory::new_pool_key` is included even though the adapter never
-calls it: `fullsail::assert_coin_order` replicates that ordering rule with
-`type_name::with_defining_ids`, so a change to the venue helper's signature must
-still fail the gate.
+The list contains only functions and structs the adapters actually reference.
+`clmm_pool::factory::new_pool_key` is deliberately excluded: `fullsail.move`
+replicates that ordering rule locally with `type_name::with_defining_ids` and
+never calls the venue helper, so its signature is not an authoritative
+dependency. The consumed `clmm_pool::factory` module is still fingerprinted
+byte-for-byte, and `scripts/check_source_boundaries.sh` still owns the
+defining-ID ordering rule.
 
 ## Source pins
 
@@ -236,6 +290,7 @@ Both pinned interfaces already target the current mainnet revision, so the
 Run from this directory:
 
 ```bash
+node scripts/check_mainnet_abi.mjs --self-test
 node scripts/check_mainnet_abi.mjs
 sui move build
 sui move lint --warnings-are-errors
@@ -296,7 +351,9 @@ still has an `UpgradeCap`: a compatible upgrade could add an extraction function
 The principal of a migrated launch may be described as **permanently locked only
 after** all of the following, in order:
 
-1. `node scripts/check_mainnet_abi.mjs` passes against live mainnet;
+1. `node scripts/check_mainnet_abi.mjs --self-test` and
+   `node scripts/check_mainnet_abi.mjs` both pass, the latter against live
+   mainnet;
 2. the local build, lint, source-boundary, and dependency-pin gates pass;
 3. every route and orientation in the dev-inspect matrix above passes, including
    all fee-collection routes and both vault claims; and
