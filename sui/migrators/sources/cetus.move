@@ -36,6 +36,7 @@ const EPositionLiquidityChanged: u64 = 3;
 const EPaymentExceedsBalance: u64 = 4;
 const EInsufficientUtilization: u64 = 5;
 const ETierMismatch: u64 = 6;
+const EMemeBelowQuote: u64 = 7;
 
 // === Public Structs ===
 
@@ -77,6 +78,10 @@ public fun migrate_new_meme_a<Meme, Quote>(
     let (meme, quote) = payload.redeem_migration(Witness());
     let source_meme_amount = meme.value();
     let source_quote_amount = quote.value();
+    // A full-range seed with Meme fixed is feasible only while the Meme atom
+    // balance is at least the Quote atom balance; reject the perverse
+    // configuration with a named guard instead of a venue abort.
+    assert!(source_meme_amount >= source_quote_amount, EMemeBelowQuote);
     let sqrt_price_x64 = migration_math::sqrt_price_x64(
         source_meme_amount,
         source_quote_amount,
@@ -150,6 +155,10 @@ public fun migrate_new_meme_b<Meme, Quote>(
     let (meme, quote) = payload.redeem_migration(Witness());
     let source_meme_amount = meme.value();
     let source_quote_amount = quote.value();
+    // A full-range seed with Meme fixed is feasible only while the Meme atom
+    // balance is at least the Quote atom balance; reject the perverse
+    // configuration with a named guard instead of a venue abort.
+    assert!(source_meme_amount >= source_quote_amount, EMemeBelowQuote);
     let sqrt_price_x64 = migration_math::sqrt_price_x64(
         source_meme_amount,
         source_quote_amount,

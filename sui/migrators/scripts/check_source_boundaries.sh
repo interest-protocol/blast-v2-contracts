@@ -408,7 +408,11 @@ require_pattern "$BLUEFIN_SOURCE" 'events::migration_completed' \
     'completed migration event emission'
 require_pattern "$BLUEFIN_SOURCE" 'self\.accrue_fees\(' 'shared replay-complete fee accrual'
 require_pattern "$BLUEFIN_SOURCE" 'venue_config.bluefin_tier\(\)' 'pinned Bluefin tier read'
-require_pattern "$BLUEFIN_SOURCE" 'transfer_residual\(' 'dust-free Bluefin residual routing'
+require_pattern "$BLUEFIN_SOURCE" 'source_meme_amount >= source_quote_amount' \
+    'Bluefin fixed-side feasibility guard'
+BLUEFIN_RESIDUAL_ROUTING_COUNT="$(rg -o 'transfer_residual\(residual_' "$BLUEFIN_SOURCE" | wc -l || true)"
+[[ "$BLUEFIN_RESIDUAL_ROUTING_COUNT" -eq 2 ]] || \
+    fail "Bluefin must route both residuals through the dust-free helper"
 
 require_pattern "$MMT_SOURCE" 'public struct Witness' 'sealed MMT witness'
 require_pattern "$MMT_SOURCE" 'public struct Venue' 'sealed MMT venue marker'
@@ -436,8 +440,12 @@ require_pattern "$MMT_SOURCE" 'collect::fee' 'MMT fee collection'
 require_pattern "$MMT_SOURCE" 'events::migration_completed' \
     'MMT completed migration event emission'
 require_pattern "$MMT_SOURCE" 'self\.accrue_fees\(' 'MMT shared replay-complete fee accrual'
-require_pattern "$MMT_SOURCE" 'venue_config.mmt_fee_rate\(\)' 'pinned MMT tier read'
-require_pattern "$MMT_SOURCE" 'transfer_residual\(' 'dust-free MMT residual routing'
+MMT_TIER_READ_COUNT="$(rg -o 'venue_config\.mmt_fee_rate\(\)' "$MMT_SOURCE" | wc -l || true)"
+[[ "$MMT_TIER_READ_COUNT" -eq 2 ]] || \
+    fail "both MMT migration routes must read the pinned tier"
+MMT_RESIDUAL_ROUTING_COUNT="$(rg -o 'transfer_residual\(residual_' "$MMT_SOURCE" | wc -l || true)"
+[[ "$MMT_RESIDUAL_ROUTING_COUNT" -eq 2 ]] || \
+    fail "MMT must route both residuals through the dust-free helper"
 require_pattern "$MMT_SOURCE" 'assert_coin_order<Meme, Quote>\(true\);' \
     'MMT Meme-X order assertion before redemption'
 require_pattern "$MMT_SOURCE" 'assert_coin_order<Meme, Quote>\(false\);' \
@@ -453,6 +461,9 @@ require_cetus_public 'migrate_new_meme_a' \
     'assert_canonical_order<Meme,Quote>(true);' 'Meme-A canonical order'
 require_cetus_public 'migrate_new_meme_a' \
     'lettick_spacing=venue_config.cetus_tick_spacing();' 'Meme-A pinned tier'
+require_cetus_public 'migrate_new_meme_a' \
+    'assert!(source_meme_amount>=source_quote_amount,EMemeBelowQuote);' \
+    'Meme-A fixed-side feasibility guard'
 require_cetus_public 'migrate_new_meme_a' \
     'factory::new_pool_key<Meme,Quote>(tick_spacing)' 'Meme-A pool key'
 require_cetus_public 'migrate_new_meme_a' \
@@ -471,6 +482,9 @@ require_cetus_public 'migrate_new_meme_b' \
     'assert_canonical_order<Meme,Quote>(false);' 'Meme-B canonical order'
 require_cetus_public 'migrate_new_meme_b' \
     'lettick_spacing=venue_config.cetus_tick_spacing();' 'Meme-B pinned tier'
+require_cetus_public 'migrate_new_meme_b' \
+    'assert!(source_meme_amount>=source_quote_amount,EMemeBelowQuote);' \
+    'Meme-B fixed-side feasibility guard'
 require_cetus_public 'migrate_new_meme_b' \
     'factory::new_pool_key<Quote,Meme>(tick_spacing)' 'Meme-B pool key'
 require_cetus_public 'migrate_new_meme_b' \
@@ -719,7 +733,7 @@ reject_turbos_pre_guard_mutator 'migrate_existing_meme_b'
 require_turbos_public 'collect_fees_meme_a' 'letvenue=Venue();' \
     'private Meme-A venue construction'
 require_turbos_public 'collect_fees_meme_a' \
-    'collect_position_fees<Meme,Quote,Meme,Quote,FeeType>(self,&venue,pool,positions,deadline,clock,versioned,ctx,)' \
+    'collect_position_fees<Meme,Quote,Meme,Quote,FeeType>(self,&venue,runtime_config,pool,positions,deadline,clock,versioned,ctx,)' \
     'Meme-A collection orientation'
 require_turbos_public 'collect_fees_meme_a' \
     'self.accrue_fees(&venue,position_id,meme_fee.into_balance(),quote_fee.into_balance(),' \
@@ -727,7 +741,7 @@ require_turbos_public 'collect_fees_meme_a' \
 require_turbos_public 'collect_fees_meme_b' 'letvenue=Venue();' \
     'private Meme-B venue construction'
 require_turbos_public 'collect_fees_meme_b' \
-    'collect_position_fees<Quote,Meme,Meme,Quote,FeeType>(self,&venue,pool,positions,deadline,clock,versioned,ctx,)' \
+    'collect_position_fees<Quote,Meme,Meme,Quote,FeeType>(self,&venue,runtime_config,pool,positions,deadline,clock,versioned,ctx,)' \
     'Meme-B collection orientation'
 require_turbos_public 'collect_fees_meme_b' \
     'self.accrue_fees(&venue,position_id,meme_fee.into_balance(),quote_fee.into_balance(),' \
@@ -747,7 +761,7 @@ require_turbos_private_count 'collect_position_fees' \
     'position_manager::get_position_info(positions,position_id.to_address(),)' 2 \
     'position liquidity reads'
 require_turbos_private 'collect_position_fees' \
-    'position_manager::collect_with_return_<X,Y,FeeType>(pool,positions,position,std::u64::max_value!(),std::u64::max_value!(),ctx.sender(),deadline,clock,versioned,ctx,)' \
+    'position_manager::collect_with_return_<X,Y,FeeType>(pool,positions,position,std::u64::max_value!(),std::u64::max_value!(),//Thepinnedinterfaceimpliesreturn-onlysemantics;ifthevenue//everpaidthisrecipient,valuewouldreachtheprotocoltreasury//ratherthanthepermissionlesscollector.runtime_config.protocol_treasury(),deadline,clock,versioned,ctx,)' \
     'exact fee-only collection call'
 require_turbos_private 'collect_position_fees' \
     'assert!(liquidity_after==liquidity_before,EPositionLiquidityChanged);' \
@@ -808,6 +822,9 @@ require_fullsail_public 'migrate_new_meme_a' \
 require_fullsail_public 'migrate_new_meme_a' \
     'lettick_spacing=venue_config.fullsail_tick_spacing();' 'Meme-A pinned tier'
 require_fullsail_public 'migrate_new_meme_a' \
+    'assert!(source_meme_amount>=source_quote_amount,EMemeBelowQuote);' \
+    'Meme-A fixed-side feasibility guard'
+require_fullsail_public 'migrate_new_meme_a' \
     'migration_math::sqrt_price_x64(source_meme_amount,source_quote_amount,true,)' \
     'Meme-A balance-derived price'
 require_fullsail_public 'migrate_new_meme_a' 'full_range_ticks(tick_spacing)' \
@@ -823,6 +840,9 @@ require_fullsail_public 'migrate_new_meme_b' \
     'assert_canonical_order<Meme,Quote>(false);' 'Meme-B canonical order'
 require_fullsail_public 'migrate_new_meme_b' \
     'lettick_spacing=venue_config.fullsail_tick_spacing();' 'Meme-B pinned tier'
+require_fullsail_public 'migrate_new_meme_b' \
+    'assert!(source_meme_amount>=source_quote_amount,EMemeBelowQuote);' \
+    'Meme-B fixed-side feasibility guard'
 require_fullsail_public 'migrate_new_meme_b' \
     'migration_math::sqrt_price_x64(source_meme_amount,source_quote_amount,false,)' \
     'Meme-B balance-derived price'
@@ -1019,7 +1039,7 @@ CETUS_COMPACT_SOURCE="$(tr -d '[:space:]' < "$CETUS_SOURCE")"
 if [[ "$CETUS_COMPACT_SOURCE" =~ abort0 ]]; then
     fail "production Cetus abort stubs are forbidden"
 fi
-if [[ "$CETUS_COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*Venue[^C] ]]; then
+if [[ "$CETUS_COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*Venue([^C]|$) ]]; then
     fail "public or package Cetus venue exposure is forbidden"
 fi
 if [[ "$COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*cetus::Venue ]]; then
@@ -1045,7 +1065,7 @@ fi
 if [[ "$BLUEFIN_COMPACT_SOURCE" =~ into_balance|balance::(create|from|withdraw|split) ]]; then
     fail "nonzero Bluefin creation-fee balance construction is forbidden"
 fi
-if [[ "$BLUEFIN_COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*Venue[^C] ]]; then
+if [[ "$BLUEFIN_COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*Venue([^C]|$) ]]; then
     fail "public or package Bluefin venue exposure is forbidden"
 fi
 if [[ "$COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*bluefin::Venue ]]; then
@@ -1057,7 +1077,7 @@ MMT_PUBLIC_SIGNATURES="$(rg -U 'public fun [^{]+\{' "$MMT_SOURCE")"
 if [[ "$MMT_PUBLIC_SIGNATURES" =~ (sqrt_price|orientation|meme_is|tick_spacing:|fee_rate:) ]]; then
     fail "caller-supplied MMT price, orientation, or tier is forbidden"
 fi
-if [[ "$MMT_COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*Venue[^C] ]]; then
+if [[ "$MMT_COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*Venue([^C]|$) ]]; then
     fail "public or package MMT venue exposure is forbidden"
 fi
 if [[ "$COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*mmt::Venue ]]; then
@@ -1071,7 +1091,7 @@ TURBOS_COMPACT_SOURCE="$(tr -d '[:space:]' < "$TURBOS_SOURCE")"
 if [[ "$TURBOS_COMPACT_SOURCE" =~ abort0 ]]; then
     fail "production Turbos abort stubs are forbidden"
 fi
-if [[ "$TURBOS_COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*Venue[^C] ]]; then
+if [[ "$TURBOS_COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*Venue([^C]|$) ]]; then
     fail "public or package Turbos venue exposure is forbidden"
 fi
 if [[ "$COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*turbos::Venue ]]; then
@@ -1095,7 +1115,7 @@ FULLSAIL_COMPACT_SOURCE="$(tr -d '[:space:]' < "$FULLSAIL_SOURCE")"
 if [[ "$FULLSAIL_COMPACT_SOURCE" =~ abort0 ]]; then
     fail "production Full Sail abort stubs are forbidden"
 fi
-if [[ "$FULLSAIL_COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*Venue[^C] ]]; then
+if [[ "$FULLSAIL_COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*Venue([^C]|$) ]]; then
     fail "public or package Full Sail venue exposure is forbidden"
 fi
 if [[ "$COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*fullsail::Venue ]]; then

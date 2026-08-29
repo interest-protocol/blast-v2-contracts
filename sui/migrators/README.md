@@ -80,7 +80,9 @@ and an exact zero amount, and constructs only `balance::zero<Quote>()`.
 The full Meme balance is the fixed liquidity side. At the balance-derived
 opening price a full-range seed leaves its rounding residual on the Quote
 requirement, so fixing Meme is the only order the venue can satisfy from the
-migrated balances.
+migrated balances. That holds exactly while the Meme atom balance is at least
+the Quote atom balance, and every fixed-side route rejects the perverse
+opposite configuration with a named guard.
 
 Each Meme or Quote residual must be at most one basis point of its migration
 input, the venue-reported used amounts must reconcile exactly against
@@ -137,10 +139,11 @@ opening a position or adding liquidity. The one-basis-point residual rule binds
 far tighter than that coarse gate, so adoption succeeds only when the pool
 price is within about one basis point of the seed ratio. The fixed liquidity
 side follows the adopted price — Meme when the pool is at or below the derived
-price, Quote above it — so the affordable side is always the fixed one. They
-use Cetus's fixed-coin receipt, payment, and repayment flow, then check the
-created position belongs to the supplied pool. Atomic failure restores the
-core launch transition.
+price, Quote above it — so outside a boundary sliver of roughly 4e-8 relative
+price around the derived value, the affordable side is the fixed one. They use
+Cetus's fixed-coin receipt, payment, and repayment flow, then check the created
+position belongs to the supplied pool. Atomic failure restores the core launch
+transition.
 
 `collect_fees_meme_a` and `collect_fees_meme_b` require a real private Cetus
 venue value. They check vault, pool, and position IDs and positive liquidity.
@@ -202,8 +205,9 @@ venue-registered fee, then redeem the payload and immediately compare the
 balance-derived price with `pool::current_sqrt_price` at exactly 50 bps. The
 one-basis-point residual rule binds far tighter than that coarse gate. The
 fixed liquidity side follows the adopted price — Meme at or above the derived
-price in this orientation-dependent sense, Quote otherwise — so the affordable
-side is always the fixed one. Only then do they use Full Sail's open,
+price in this orientation-dependent sense, Quote otherwise — so outside a
+boundary sliver of roughly 4e-8 relative price around the derived value, the
+affordable side is the fixed one. Only then do they use Full Sail's open,
 fixed-coin add, payment, and repayment receipt flow. Every route bounds both
 residuals at one basis point and sends both nonzero residuals to the live
 runtime treasury.
@@ -331,7 +335,9 @@ adoption checks, one-basis-point residual limits with treasury delivery, and fee
 collection with unchanged principal liquidity. The matrix must additionally
 prove, against published venue bytecode: that Turbos `collect_with_return_`
 returns the complete collected fee and transfers nothing to its `recipient`
-argument; that Bluefin accepts the hard-coded Meme-as-coin-A order for every
+argument — the adapter passes the live protocol treasury there, so even a
+venue-side payout could only reach the protocol, never the permissionless
+collector; that Bluefin accepts the hard-coded Meme-as-coin-A order for every
 allowlisted Quote; that MMT `get_friendly_ticks` at the venue's extreme sqrt
 prices yields ticks its `open_position` accepts; and that every pinned venue
 tier in `VenueConfig` matches a registered venue tier.
@@ -364,6 +370,7 @@ migrations and can never touch custodied principal or accrued ownership.
 | 5 | `EZeroPositionLiquidity` | The created or collected position has no principal liquidity. |
 | 6 | `EPositionLiquidityChanged` | Bluefin fee collection changed position principal. |
 | 7 | `EVenueAmountMismatch` | Bluefin-reported used amounts disagree with source minus residual. |
+| 8 | `EMemeBelowQuote` | The Meme atom balance is below the Quote atom balance, so a Meme-fixed full-range seed cannot succeed. |
 
 ## MMT errors
 
@@ -385,6 +392,7 @@ migrations and can never touch custodied principal or accrued ownership.
 | 4 | `EPaymentExceedsBalance` | Cetus requested more than the redeemed balance. |
 | 5 | `EInsufficientUtilization` | An adopted Cetus pool consumed less than 99.99% of either balance. |
 | 6 | `ETierMismatch` | The adopted Cetus pool does not match the pinned tier. |
+| 7 | `EMemeBelowQuote` | The Meme atom balance is below the Quote atom balance, so a Meme-fixed full-range seed cannot succeed. |
 
 ## Turbos errors
 
@@ -394,7 +402,8 @@ migrations and can never touch custodied principal or accrued ownership.
 | 1 | `EPositionPoolMismatch` | The vault, Turbos NFT, and pool IDs do not match. |
 | 2 | `EZeroPositionLiquidity` | The created or collected Turbos position has no principal liquidity. |
 | 3 | `EPositionLiquidityChanged` | Turbos fee collection changed position principal. |
-| 4 | `ETierMismatch` | The Turbos fee object or adopted pool does not match the pinned tier. |
+| 4 | — | Retired before publication; never reuse. |
+| 5 | `ETierMismatch` | The Turbos fee object or adopted pool does not match the pinned tier. |
 
 ## Full Sail errors
 
@@ -408,6 +417,7 @@ migrations and can never touch custodied principal or accrued ownership.
 | 5 | `EPaymentExceedsBalance` | Full Sail requested more than the redeemed balance. |
 | 6 | `EInsufficientUtilization` | An adopted Full Sail pool consumed less than 99.99% of either balance. |
 | 7 | `ETierMismatch` | The adopted Full Sail pool does not match the pinned tier. |
+| 8 | `EMemeBelowQuote` | The Meme atom balance is below the Quote atom balance, so a Meme-fixed full-range seed cannot succeed. |
 
 ## Vault errors
 

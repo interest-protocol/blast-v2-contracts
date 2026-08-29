@@ -39,7 +39,7 @@ const EInvalidTickSpacing: u64 = 0;
 const EPositionPoolMismatch: u64 = 1;
 const EZeroPositionLiquidity: u64 = 2;
 const EPositionLiquidityChanged: u64 = 3;
-const ETierMismatch: u64 = 4;
+const ETierMismatch: u64 = 5;
 
 // === Public Structs ===
 
@@ -415,6 +415,7 @@ public fun collect_fees_meme_a<Meme, Quote, FeeType>(
         collect_position_fees<Meme, Quote, Meme, Quote, FeeType>(
             self,
             &venue,
+            runtime_config,
             pool,
             positions,
             deadline,
@@ -451,6 +452,7 @@ public fun collect_fees_meme_b<Meme, Quote, FeeType>(
         collect_position_fees<Quote, Meme, Meme, Quote, FeeType>(
             self,
             &venue,
+            runtime_config,
             pool,
             positions,
             deadline,
@@ -606,6 +608,7 @@ fun lock_and_share<Meme, Quote>(
 fun collect_position_fees<X, Y, Meme, Quote, FeeType>(
     self: &mut LpVault<Meme, Quote>,
     venue: &Venue,
+    runtime_config: &RuntimeConfig,
     pool: &mut Pool<X, Y, FeeType>,
     positions: &mut Positions,
     deadline: u64,
@@ -636,7 +639,10 @@ fun collect_position_fees<X, Y, Meme, Quote, FeeType>(
         position,
         std::u64::max_value!(),
         std::u64::max_value!(),
-        ctx.sender(),
+        // The pinned interface implies return-only semantics; if the venue
+        // ever paid this recipient, value would reach the protocol treasury
+        // rather than the permissionless collector.
+        runtime_config.protocol_treasury(),
         deadline,
         clock,
         versioned,

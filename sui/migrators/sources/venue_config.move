@@ -129,6 +129,9 @@ public fun set_mmt_fee_rate(
 }
 
 /// Pins the Turbos tick spacing and fee so exactly one `Fee` tier object matches.
+///
+/// The fee is bounded to `u32` because the venue's `Fee` objects carry a
+/// `u32`; a larger pin could never match any tier.
 public fun set_turbos_tier(
     self: &mut VenueConfig,
     _: &AdminWitness,
@@ -136,6 +139,7 @@ public fun set_turbos_tier(
     fee_rate: u64,
 ) {
     assert_tier_inputs(tick_spacing, fee_rate);
+    assert!(fee_rate <= (std::u32::max_value!() as u64), EInvalidFeeRate);
     assert!(
         self.turbos_tick_spacing != tick_spacing
             || self.turbos_fee_rate != fee_rate,

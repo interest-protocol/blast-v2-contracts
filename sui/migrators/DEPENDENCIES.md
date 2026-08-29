@@ -374,9 +374,11 @@ before and after collection, the vault, pool, and position ids match on both
 sides of the call, and the split uses the live `protocol_fee_share_bps` read
 during that collection. The Turbos fixture must additionally prove, against
 published bytecode, that `collect_with_return_` returns the complete collected
-fee in its return values and transfers nothing to its `recipient` argument;
-if any portion routed to `recipient`, a permissionless collector would divert
-the fee stream, so this row is a release blocker.
+fee in its return values and transfers nothing to its `recipient` argument.
+The adapter passes the live protocol treasury as `recipient`, so even a
+venue-side payout could only reach the protocol, never the permissionless
+collector; the row remains a release blocker because a payout would still
+bypass the creator's ledger share.
 
 ## Immutable-release gate
 

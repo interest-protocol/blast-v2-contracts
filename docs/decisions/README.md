@@ -99,6 +99,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0051](0051-generated-meme-package-template.md) | Generated Meme package template | **accepted** |
 | [0052](0052-stepped-linear-vesting.md) | Fully funded stepped-linear vesting | **accepted** |
 | [0054](0054-v3-dex-migrators-and-locked-lp-fees.md) | V3 DEX migrators, exact seed pricing, and locked LP fees | **accepted** |
+| [0057](0057-admin-pinned-venue-tiers.md) | Admin-pinned venue tiers for permissionless migration | **accepted** |
 
 ADRs 0013–0036 and 0038–0052 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
@@ -220,6 +221,10 @@ ADR 0054 accepts isolated V3 adapter packages, real-balance seed pricing, locked
 LP principal, and the operational recommended SUI lane. Its Memez, Raydium,
 Pump, and Hop comparisons are context only; they do not set an on-chain USD
 oracle or immutable global default.
+
+ADR 0057 amends 0054: permissionless migration reads its venue fee tier from
+one admin-pinned shared `VenueConfig` singleton instead of caller parameters,
+failing closed until each venue is pinned.
 
 ## Open premises
 
