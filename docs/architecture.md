@@ -13,18 +13,21 @@ contracts/
 ├── docs/                 shared protocol and engineering specification
 ├── deployments/          normalized public deployment records (when present)
 ├── sui/
-│   ├── sources/          core Move domain modules
-│   │   └── lib/          package diagnostics and indexing infrastructure
-│   ├── tests/
-│   └── scripts/
+│   ├── launchpad/        core blast_fun Move package
+│   │   ├── sources/      core Move domain modules
+│   │   │   └── lib/      package diagnostics and indexing infrastructure
+│   │   ├── tests/
+│   │   └── scripts/
+│   ├── migrators/        independently deployed venue adapter packages
+│   └── vesting/          independently deployed vesting packages
 └── evm/
     ├── src/              core Solidity project
     ├── test/
     └── script/
 ```
 
-Start with one package/project per chain. A new package is justified only by one
-of these boundaries:
+Start with one core package/project per chain. A new package is justified only
+by one of these boundaries:
 
 - an external dependency that should not enter core;
 - a separately governed or separately deployed component;
@@ -36,8 +39,9 @@ without forcing unrelated dependencies into the trusted core.
 
 The Sui package set that follows from those boundaries is decided in
 [decisions/0001-sui-package-and-module-layout.md](decisions/0001-sui-package-and-module-layout.md):
-`blast_fun` core, one package per venue adapter, a separately governed settlement
-package, and a generated per-launch coin package.
+`blast_fun` core, one package per venue adapter, independently deployed vesting
+packages, a separately governed settlement package, and a generated per-launch
+coin package.
 
 ### Dependency direction
 
@@ -57,12 +61,15 @@ without returning to core for its post-conditions.
 | Package bootstrap | canonical OTW and one-time framework `Publisher` claim | protocol administration, feature state, or upgrade authority |
 | Package administration | validated `Publisher` and raw `UpgradeCap` custody, exact-digest authorization, irreversible policy restriction, receipt commit, and one-way admin retirement | ACL membership storage, feature configuration, or state migration |
 | Protocol ACL | root rotation and revocable routine-admin membership | feature configuration, backend keys, creator identity, or fees |
-| Runtime config | one dedicated X-claim backend key and the live global protocol fee share | admin delegation, creator identity or issuance, launch policy, accrued balances, launch-selected fee rates, or claim authority |
-| Launch config | cold bounded quote targets, graduation defaults, and external migrator witness admission for future launches | live launch repricing, quote registry objects, DEX costs or dependencies, user balances, curve math, or hot trade configuration |
+| Runtime config | one dedicated X-claim backend key and the live global protocol fee share | admin delegation, creator identity or issuance, cold launch policy, accrued balances, total trade-fee rates, or claim authority |
+| Launch config | cold bounded virtual/terminal Quote parameters, Quote/Meme trade-fee rates, graduation defaults, and external migrator witness admission for future launches | live launch repricing, quote registry objects, DEX costs or dependencies, user balances, derived valuations, or hot trade configuration |
 | Registry/config | global limits, other fee ceilings, emergency state | user balances or curve math |
 | Launch ticket | generated OTW currency creation and pre-launch capability custody | supply minting, trades, metadata updates, or migration |
-| Launch | asset identity, lifecycle, reserves, accounting, transition guards | venue-specific migration code |
+| Launch | key-only top-level shared asset identity, lifecycle, reserves, accounting, and transition guards | owned transfer, nesting, or venue-specific migration code |
+| Basis-points unit | universal 0–10,000 rate validation, explicit up/down application, and complement math | domain ceilings, combined-rate policy, authority, storage ownership, or events |
 | Curve math | pure quote and reserve transition formulas | authority, storage, transfers |
+| Graduation math | pre-curve protocol Meme fee/liquidity provision and terminal Quote-fee balance partitioning | forecast valuations, lifecycle state, claims, venue costs, transfers, or DEX dependencies |
+| Off-chain SDK | deterministic curve-release and native-Quote valuation previews from immutable launch facts | contract authority, balance mutation, migration permission, or a second source of truth |
 | Fees | creator/protocol fee splitting, accrued accounting, and capability claims | arbitrary recipient execution or referral attribution |
 | Allocation/vesting | bounded stakeholder schedules and claims | launch pricing |
 | Migration interface | one-time handoff payload and settlement proof | DEX-specific object/storage details |
@@ -71,19 +78,40 @@ without returning to core for its post-conditions.
 Modules may begin together in the single chain project. These are dependency
 directions, not a demand for seven packages.
 
+## On-chain and SDK responsibility
+
+Blast contracts contain only logic required for consensus-critical transitions,
+authorization, asset custody/conservation, trustless synchronous composition,
+and canonical facts that outside consumers cannot otherwise reconstruct. The SDK
+owns deterministic projections, valuation previews, aggregation, formatting,
+transaction construction, and convenient reads derived from those facts.
+
+A derivable value may still be recomputed inside a state-changing contract
+operation when it enforces a threshold, fee, slippage bound, or conservation
+rule. It is not stored or published merely because a UI wants to display it.
+Contract balances and completed events are authoritative; SDK results are
+previews. See [ADR 0039](decisions/0039-deterministic-quote-valuations.md).
+
 ## Asset pair
 
-A launch pairs its generated meme coin with a quote `Coin<Quote>`. Core admits
+A launch pairs its generated meme coin with a quote `Coin<Quote>`. Stored rates
+use the validated `Bps` unit; public configuration inputs and replay events use
+raw `u64` primitive values. Core admits
 new pairs through the bounded quote portion of `LaunchConfig`, keyed by the
-quote's original `TypeName`. Each entry supplies the nonzero real-quote migration
-target. Launch state copies that target, all three graduation rates — the
-Quote migration fee, the protocol Meme graduation allocation, and the nonzero
+quote's original `TypeName`. Each entry supplies a nonzero virtual Quote reserve
+and nonzero real-Quote migration target. Launch state copies that pair, both
+administratively configured trade-fee rates, all three graduation rates — the
+Quote migration fee, the protocol Meme graduation fee, and the nonzero
 destination-pool Meme liquidity provision — and the complete
 selected migration witness's original `TypeName` once. Both whitelists are
 admission decisions; the snapshot does not add a quote `Currency` shared-object
 dependency or a DEX package dependency. See
 [ADR 0025](decisions/0025-quote-whitelist-and-migration-targets.md) and
-[ADR 0027](decisions/0027-graduation-economics-and-migration-witnesses.md).
+[ADR 0027](decisions/0027-graduation-economics-and-migration-witnesses.md) and
+[ADR 0039](decisions/0039-deterministic-quote-valuations.md), and
+[ADR 0041](decisions/0041-launch-config-owned-trade-fees.md).
+The shared unit and rounding boundary are fixed by
+[ADR 0044](decisions/0044-validated-basis-points-unit.md).
 
 One property remains invariant regardless of the admitted quote set:
 
@@ -99,49 +127,47 @@ The generated package's Blast constructor fixes precision at nine decimals,
 mints exactly one billion whole coins, and consumes the treasury cap into
 owner-selected `Fixed` or `BurnOnly` state
 before finalizing the initializer. Its launch ticket holds the complete
-`Balance<Meme>` and `MetadataCap<Meme>`; no mint authority survives in Blast core
+`Balance<Meme>`, `MetadataCap<Meme>`, and bounded sell-burn rate; no mint authority survives in Blast core
 or an adapter, and launch intake does not need the shared Meme currency merely to
 finalize supply. The native metadata cap remains in Blast-defined custody until
 the one-time creator claim returns it separately alongside `CreatorCap<Meme>`.
-See [ADR 0035](decisions/0035-initializer-finalized-meme-supply.md) and
-[ADR 0036](decisions/0036-fixed-nine-decimal-generated-memes.md). The finalized
-supply mode remains authoritative in Coin Registry state and is not duplicated
-inside the launch ticket; see
-[ADR 0037](decisions/0037-remove-redundant-ticket-burn-mode.md).
+See [ADR 0035](decisions/0035-initializer-finalized-meme-supply.md),
+[ADR 0036](decisions/0036-fixed-nine-decimal-generated-memes.md), and
+[ADR 0047](decisions/0047-coin-registry-authoritative-supply-mode.md).
+The ticket binds sell-burn policy only. Terminal migration reads the
+authoritative supply mode from Coin Registry.
 
 ## Lifecycle
 
 The common lifecycle is intentionally small:
 
 ```text
-Configured -> Live -> MigrationPending -> Migrated
-                 \-> Cancelled (only if an approved recovery policy permits it)
+Live -> MigrationReady -> Migrated
 ```
 
-- `Configured`: immutable launch identity and bounded parameters exist; trading
-  has not started.
-- `Live`: the approved curve accepts buys/sells while enforcing deadlines,
-  slippage, fee, and reserve rules. On burnable launches, sell-designated burn
-  remains in a separate pending balance rather than mutating registry supply.
-- `MigrationPending`: the terminal threshold is reached, trading is closed, and
-  the one-time migration payload is outstanding; accumulated pending burn is
-  terminally destroyed before settlement.
-- `Migrated`: the target venue has accepted the assets and the settlement result
-  is final.
+- `Live`: the approved curve accepts buys/sells while enforcing slippage, fee,
+  and reserve rules. Sell-designated burn remains in a separate
+  pending balance rather than mutating registry supply.
+- `MigrationReady`: an exact-target buy closed trading and returned excess
+  Quote; any caller may request a payload bound to the selected witness type.
+- `Migrated`: terminal disposal is complete and a non-droppable typed payload
+  has been returned to the external adapter in the same transaction.
 
-Every transition is single-use, evented, and tested against every other source
-state. Recovery from `MigrationPending` must not recreate a second migration
-right or allow an authority to redirect assets outside the approved policy.
+Every transition is single-use and evented. Failure to consume the linear
+migration handoff aborts the transaction and rolls the transition back.
 
 ## Migration boundary
 
 The historical contracts correctly treated migration as a typed, one-time
 handoff. V2 retains that property but narrows it:
 
-1. Core closes trading and produces a single-use migration payload/claim.
-2. A target adapter consumes the payload and supplies venue-specific inputs.
-3. Core verifies the allowed target and records final settlement.
-4. The adapter cannot mutate launch economics or retain unaccounted assets.
+1. An exact-target buy returns excess Quote and closes trading.
+2. Core verifies the launch-selected witness type, partitions terminal assets,
+   and completes mode-specific disposal.
+3. Core marks the launch migrated and returns a witness-typed, non-droppable
+   payload in the same transaction.
+4. The external adapter redeems the payload with its sealed witness and supplies
+   venue-specific inputs; any failure rolls back the core transition.
 
 Incomplete adapters never ship as aborting production functions. An unavailable
 venue stays outside the release. A venue whose dependency cannot yet be pinned to an
@@ -181,14 +207,15 @@ Upgradeability is a product/security decision, not a default convenience.
   same cap. A future governance design retires the routine-admin package path
   through the mandatory shared-object version gate after installing replacement
   authorization (ADR 0034); no pre-planted cutover flag exists.
-  Version every mutable shared object and gate mutations so old package
-  versions cannot bypass a fix; those gates remain a release blocker even
-  though capability custody is implemented.
+  One dedicated shared `PackageVersion` gates every mutable core shared object.
+  Native receipt commit does not activate bytecode. A separate live-admin
+  operation activates only the exact next compiled operational version;
+  additive and dependency-only upgrades do not activate a new generation.
 - EVM: choose immutable deployment or a named proxy pattern before storage is
   committed. If upgradeable, document administrator, delay, rollback/escape
   policy, initializer behavior, and storage-layout checks.
 
 The Sui custody and interim authority decision is accepted in
 [ADR 0032](decisions/0032-admin-authorized-upgrade-cap-custody.md). Replacement
-governance, delay, recovery, and the shared-state migration/version plan require
+governance, delay, recovery, and remaining shared-state cutover coverage require
 approval before the first public deployment. The EVM decision also remains open.

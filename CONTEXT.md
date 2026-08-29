@@ -32,8 +32,10 @@ _Avoid_: mutable supply, retained mint authority
 The transferable object created from the generated coin package's one-time
 witness. It holds the complete fixed `Balance<Meme>`, native
 `MetadataCap<Meme>`, and unissued `CreatorAuthority<Meme>` after mint authority
-has been irreversibly consumed. Supply mode lives authoritatively in the Coin
-Registry rather than being duplicated in ticket storage.
+has been irreversibly consumed. It also binds the deployer-selected
+`sell_burn_bps` so launch redemption cannot substitute the rate. Coin Registry
+is the only onchain supply-mode authority; `LaunchTicketCreated` records the
+owner's original selection.
 _Avoid_: coin receipt, mint ticket, capability bundle
 
 **Creator identity**:
@@ -77,10 +79,16 @@ _Avoid_: trade, swap, curve execution
 
 **Quote whitelist**:
 The bounded set of quote coin types that protocol administrators currently
-allow for new launches. Each original quote type maps directly to one migration
-quote target. The whitelist itself is the admission decision; launch lookup does
+allow for new launches. Each original quote type maps directly to one nonzero
+virtual Quote reserve and migration quote target. The whitelist itself is the admission decision; launch lookup does
 not require a `Currency<Quote>` registry object.
 _Avoid_: permissionless quote, quote registry proof
+
+**Virtual quote reserve**:
+The nonzero synthetic Quote amount, in the Quote's atomic units, that establishes
+the opening constant-product price and curve steepness. It is snapshotted with
+the migration target and is never withdrawable pool principal.
+_Avoid_: virtual market cap, real quote, USD liquidity
 
 **Migration quote target**:
 The nonzero amount of real quote reserve, in that quote's atomic units, that a
@@ -88,13 +96,28 @@ new launch snapshots from the quote whitelist. Reaching it closes bonding;
 later whitelist updates do not move an existing launch's target.
 _Avoid_: live global threshold, quote percentage
 
+**Launch economics preview**:
+An off-chain integer derivation of expected curve release and implied
+total-supply valuations from immutable launch parameters. It informs SDK/UI
+display but never authorizes a transition or replaces actual contract balances.
+_Avoid_: on-chain valuation, USD market cap, authoritative forecast
+
 **Launch config**:
 The cold shared policy object read only when a launch is created. It combines
-quote admission and targets with bounded graduation defaults and a bounded
-whitelist of external migration witness types because those values are checked
-in the same transaction. Each launch stores one selected witness type. Existing
-launches never read the config again.
+quote admission and virtual/terminal parameters with the bounded Quote/Meme
+trade-fee pair, bounded graduation defaults, and a bounded whitelist of external
+migration witness types because those values are checked in the same
+transaction. Each launch stores one selected witness type. Existing launches
+never read the config again.
 _Avoid_: global protocol config, live launch config, quote config
+
+**Launch object**:
+The key-only top-level shared object that owns one pair's reserves, accounting,
+immutable policy, `Live → MigrationReady → Migrated` lifecycle,
+pending burn, and creator custody. The creation PTB constructs it with
+`launch::new` and must consume it with `launch::share`. It is never nested in
+another object or publicly transferred as owned state.
+_Avoid_: storable launch, owned launch transfer, launch wrapper
 
 **Quote migration fee**:
 The snapshotted percentage of gross terminal Quote reserved as Blast protocol
@@ -102,7 +125,7 @@ revenue only after successful migration. It is SUI only when Quote is SUI and is
 capped at 500 basis points.
 _Avoid_: SUI migration fee, DEX creation cost, trade fee
 
-**Meme graduation allocation**:
+**Protocol Meme graduation fee**:
 The snapshotted percentage of initial Meme supply reserved before curve
 inventory is created and made protocol-claimable only after successful
 migration. It is capped at 1,000 basis points and never enters the curve, pending
@@ -112,16 +135,18 @@ _Avoid_: migration meme fee, creator allocation, curve reserve
 **Meme liquidity provision**:
 The nonzero snapshotted percentage of initial Meme supply reserved before curve
 inventory for destination-pool principal. It is capped at 9,999 basis points,
-must leave a positive rate for curve inventory after protocol Meme allocation,
+must leave a positive rate for curve inventory after the protocol Meme
+graduation fee,
 and never becomes protocol or creator revenue. Zero means the launch policy is
 not configured; it never means migrate all terminal curve inventory.
 _Avoid_: Meme migration fee, platform allocation, terminal curve remainder
 
 **Migration witness whitelist**:
 The bounded set of sealed witness types owned by supported external migrator
-packages. A new launch must select one allowed original `TypeName`; the future
-core handoff will accept only a value of that selected type. Removing a witness
-blocks future selection without rewriting existing launches.
+packages. A new launch must select one allowed original `TypeName`. Any caller
+can create the type-bound core handoff, but only a value of the selected type can
+redeem it. Removing a witness blocks future selection without rewriting existing
+launches.
 _Avoid_: migrator address whitelist, DEX dependency in core, live migration revocation
 
 **DEX pool-opening cost**:
@@ -136,11 +161,11 @@ supply raw reserve or fee inputs to the package-only curve arithmetic.
 _Avoid_: configurable frontend quote, raw curve quote
 
 **Launch fee rates**:
-The fixed `quote_fee_bps` and `meme_fee_bps` selected independently by the
-launcher, each capped at 1,000 basis points (10%). A zero rate disables fees in
-that asset; the two rates represent no fees, quote-only, meme-only, or both
-without a separate mode.
-_Avoid_: fee mode, global trade fee
+The fixed `quote_fee_bps` and `meme_fee_bps` set as cold administrative policy
+in `LaunchConfig`, each capped at 1,000 basis points (10%). Each new launch
+snapshots the current pair. A zero rate disables fees in that asset; the two
+rates represent no fees, quote-only, meme-only, or both without a separate mode.
+_Avoid_: launcher-selected fee, fee mode, live global trade fee
 
 **Fee ledger**:
 The four-balance accounting value embedded in a launch: creator and protocol
@@ -163,14 +188,19 @@ _Avoid_: creator fee rate, creator split config, launch creator share
 
 **Runtime config**:
 The small shared live-settings object containing the dedicated X-claim signer
-key and global protocol fee share. Both values apply immediately to the next
-operation in their own domain. It contains no ACL membership, creator identity,
-cold launch policy, balances, generic signer registry, or arbitrary settings map.
+key, global protocol fee share, and active package version. The package version
+gates launch mutations and package administration and advances atomically after
+a successful native upgrade commit. The other values apply immediately to the
+next operation in their own domain. It contains no ACL membership, creator
+identity, cold launch policy, balances, generic signer registry, or arbitrary
+settings map.
 _Avoid_: global protocol state, generic settings registry, signer registry
 
 **Pending burn**:
 Meme balance separated from sell input by the burn curve and held in the launch
 until migration. It is excluded from curve reserves, fees, claims, and migration
-liquidity, but remains in total supply until a burnable launch destroys the
-complete balance through the Coin Registry at migration.
-_Avoid_: burned-on-sell, zero-address burn, fee balance
+liquidity and remains in total supply during bonding. At migration it joins the
+terminal curve residual. A `BurnOnly` launch destroys that disposal balance
+through Coin Registry; a `Fixed` launch transfers it to `0x0` while native total
+supply remains unchanged.
+_Avoid_: burned-on-sell, fixed native burn, fee balance

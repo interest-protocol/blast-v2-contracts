@@ -1,9 +1,13 @@
 # 0037: Remove redundant supply mode from launch-ticket custody
 
-- Status: accepted
+- Status: superseded by [0043](0043-versioned-launch-trading-and-atomic-migration.md)
 - Date: 2026-08-25
 - Amends: [0024](0024-generated-coin-launch-ticket.md), [0035](0035-initializer-finalized-meme-supply.md)
-- Amended by: [0038](0038-standard-method-names.md)
+- Amended by: [0038](0038-standard-method-names.md), [0043](0043-versioned-launch-trading-and-atomic-migration.md), [0047](0047-coin-registry-authoritative-supply-mode.md)
+
+> [ADR 0047](0047-coin-registry-authoritative-supply-mode.md) restores Coin
+> Registry as the only supply-mode authority while retaining the later
+> `sell_burn_bps` field in ticket and launch custody.
 
 ## Context
 

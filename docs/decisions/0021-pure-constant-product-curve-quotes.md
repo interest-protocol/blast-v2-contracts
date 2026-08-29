@@ -3,6 +3,7 @@
 - Status: accepted
 - Date: 2026-08-23
 - Partially accepts: [0004](0004-bonding-curve.md)
+- Amended by: [0041](0041-launch-config-owned-trade-fees.md)
 
 ## Sources
 
@@ -32,8 +33,8 @@ emitting the completed trade fact. ADR 0026 owns its terminal destruction.
 
 Both functions accept the launch-specific real meme reserve, real quote reserve, virtual quote reserve,
 terminal threshold, action input, and configured rates as `u64` atomic units or basis points. Each
-future launch stores an independently selected `quote_fee_bps` and `meme_fee_bps`; those rates are fixed
-for that launch. A zero rate disables fees in that asset, so `(0, 0)`, quote-only, meme-only, and both are
+future launch stores the `quote_fee_bps` and `meme_fee_bps` pair snapshotted from
+`LaunchConfig`; those rates are fixed for that launch. A zero rate disables fees in that asset, so `(0, 0)`, quote-only, meme-only, and both are
 represented without a mode enum. No deployment value is hard-coded. The concrete values in ADR 0004
 and `docs/vectors/curve.json` remain proposed fixtures, not accepted protocol defaults.
 
