@@ -1,15 +1,21 @@
 {
   "schema_version": 1,
-  "description": "Stepped-linear vesting boundaries and final-remainder release.",
-  "source_decisions": ["../decisions/0052-stepped-linear-vesting.md"],
+  "description": "Stepped-linear and exact checkpoint vesting boundaries.",
+  "source_decisions": [
+    "../decisions/0052-stepped-linear-vesting.md",
+    "../decisions/0055-global-vesting-package-and-checkpoints.md"
+  ],
   "units": {
     "amount": "atomic coin units",
     "time": "milliseconds",
-    "rounding": "intermediate vested value rounds down; the end boundary releases the remainder"
+    "rounding": "linear intermediate value rounds down and releases the remainder at the end; checkpoints release exact cumulative amounts"
   },
   "parameters": {
     "formula": "floor(total_amount * floor((timestamp_ms - start_ms) / period_ms) / periods)",
-    "end_rule": "timestamp_ms >= start_ms + period_ms * periods vests total_amount"
+    "creation_rule": "start_ms >= current_onchain_timestamp_ms",
+    "end_rule": "timestamp_ms >= start_ms + period_ms * periods vests total_amount",
+    "checkpoint_rule": "the last checkpoint at or before timestamp_ms supplies the exact cumulative vested amount",
+    "checkpoint_creation_rule": "1 to 256 strictly increasing timestamps and cumulative amounts; first timestamp >= current_onchain_timestamp_ms; final amount = funding"
   },
   "cases": [
     {
@@ -53,6 +59,29 @@
         ]
       },
       "notes": "Widened multiplication prevents intermediate overflow."
+    },
+    {
+      "name": "three_irregular_checkpoints",
+      "kind": "checkpoint_boundary_table",
+      "given": {
+        "total_amount": "1000",
+        "checkpoints": [
+          { "timestamp_ms": "100", "cumulative_amount": "100" },
+          { "timestamp_ms": "250", "cumulative_amount": "400" },
+          { "timestamp_ms": "700", "cumulative_amount": "1000" }
+        ]
+      },
+      "expect": {
+        "points": [
+          { "timestamp_ms": "99", "vested": "0" },
+          { "timestamp_ms": "100", "vested": "100" },
+          { "timestamp_ms": "249", "vested": "100" },
+          { "timestamp_ms": "250", "vested": "400" },
+          { "timestamp_ms": "699", "vested": "400" },
+          { "timestamp_ms": "700", "vested": "1000" }
+        ]
+      },
+      "notes": "Checkpoint amounts are exact; no proportional rounding is applied."
     }
   ]
 }

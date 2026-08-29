@@ -1,10 +1,37 @@
-// The package error module deliberately inlines stable numeric codes at their owning checks.
-#[allow(lint(abort_without_constant))]
 /// Fully funded, fixed-beneficiary stepped-linear vesting.
-module blast_fun_vesting_linear::vesting;
+module blast_fun_vesting::linear;
 
-use blast_fun_vesting_linear::events;
-use sui::{balance::Balance, clock::Clock, coin::Coin};
+use std::type_name::{Self, TypeName};
+use sui::{balance::Balance, clock::Clock, coin::Coin, event};
+
+// === Constants ===
+
+#[error(code = 0)]
+const EInvalidBeneficiary: vector<u8> = b"Beneficiary must not be the zero address.";
+#[error(code = 1)]
+const EInvalidRefundRecipient: vector<u8> = b"Refund recipient must not be the zero address.";
+#[error(code = 2)]
+const EZeroAllocation: vector<u8> = b"Vesting allocation must be greater than zero.";
+#[error(code = 3)]
+const EZeroPeriod: vector<u8> = b"Vesting period must be greater than zero.";
+#[error(code = 4)]
+const EZeroPeriods: vector<u8> = b"Vesting period count must be greater than zero.";
+#[error(code = 5)]
+const EInvalidCliff: vector<u8> = b"Cliff must not exceed the vesting duration.";
+#[error(code = 6)]
+const EScheduleOverflow: vector<u8> = b"Vesting schedule exceeds the u64 time range.";
+#[error(code = 7)]
+const ENothingClaimable: vector<u8> = b"No vested balance is available to claim.";
+#[error(code = 8)]
+const EInvalidCancelCap: vector<u8> = b"Cancellation capability does not match this schedule.";
+#[error(code = 9)]
+const EScheduleNotEnded: vector<u8> = b"Vesting schedule has not ended.";
+#[error(code = 10)]
+const EScheduleNotEmpty: vector<u8> = b"Vesting schedule still holds funds.";
+#[error(code = 11)]
+const ECancelCapRequired: vector<u8> = b"Cancelable schedule requires its cancellation capability.";
+#[error(code = 12)]
+const EStartInPast: vector<u8> = b"Vesting start must not precede the current clock time.";
 
 // === Public Structs ===
 
@@ -27,6 +54,52 @@ public struct CancelCap<phantom CoinType> has key, store {
     vesting_id: ID,
 }
 
+/// Emitted after one fully funded schedule and any cancellation cap are created.
+public struct VestingCreated has copy, drop {
+    vesting_id: ID,
+    coin_type: TypeName,
+    funder: address,
+    beneficiary: address,
+    refund_recipient: Option<address>,
+    cancel_cap_id: Option<ID>,
+    total_amount: u64,
+    start_ms: u64,
+    cliff_ms: u64,
+    period_ms: u64,
+    periods: u64,
+}
+
+/// Emitted after newly vested value is transferred to the fixed beneficiary.
+public struct VestingClaimed has copy, drop {
+    vesting_id: ID,
+    coin_type: TypeName,
+    caller: address,
+    beneficiary: address,
+    amount: u64,
+    released_total: u64,
+    remaining_balance: u64,
+}
+
+/// Emitted after fair cancellation settles vested and unvested custody.
+public struct VestingCanceled has copy, drop {
+    vesting_id: ID,
+    coin_type: TypeName,
+    caller: address,
+    beneficiary: address,
+    refund_recipient: address,
+    beneficiary_amount: u64,
+    refund_amount: u64,
+    released_total: u64,
+}
+
+/// Emitted after a drained, ended irrevocable schedule is deleted.
+public struct VestingClosed has copy, drop {
+    vesting_id: ID,
+    coin_type: TypeName,
+    caller: address,
+    released_total: u64,
+}
+
 // === Public Functions ===
 
 /// Creates a fully funded schedule with no cancellation authority.
@@ -37,6 +110,7 @@ public fun new_irrevocable<CoinType>(
     cliff_ms: u64,
     period_ms: u64,
     periods: u64,
+    clock: &Clock,
     ctx: &mut TxContext,
 ): Vesting<CoinType> {
     let total_amount = funds.value();
@@ -48,21 +122,23 @@ public fun new_irrevocable<CoinType>(
         cliff_ms,
         period_ms,
         periods,
+        clock,
         ctx,
     );
 
-    events::vesting_created<CoinType>(
-        object::id(&vesting),
-        ctx.sender(),
+    event::emit(VestingCreated {
+        vesting_id: object::id(&vesting),
+        coin_type: type_name::with_original_ids<CoinType>(),
+        funder: ctx.sender(),
         beneficiary,
-        option::none(),
-        option::none(),
+        refund_recipient: option::none(),
+        cancel_cap_id: option::none(),
         total_amount,
         start_ms,
         cliff_ms,
         period_ms,
         periods,
-    );
+    });
 
     vesting
 }
@@ -76,6 +152,7 @@ public fun new_cancelable<CoinType>(
     cliff_ms: u64,
     period_ms: u64,
     periods: u64,
+    clock: &Clock,
     ctx: &mut TxContext,
 ): (Vesting<CoinType>, CancelCap<CoinType>) {
     let total_amount = funds.value();
@@ -87,6 +164,7 @@ public fun new_cancelable<CoinType>(
         cliff_ms,
         period_ms,
         periods,
+        clock,
         ctx,
     );
     let vesting_id = object::id(&vesting);
@@ -95,18 +173,19 @@ public fun new_cancelable<CoinType>(
         vesting_id,
     };
 
-    events::vesting_created<CoinType>(
+    event::emit(VestingCreated {
         vesting_id,
-        ctx.sender(),
+        coin_type: type_name::with_original_ids<CoinType>(),
+        funder: ctx.sender(),
         beneficiary,
-        option::some(refund_recipient),
-        option::some(object::id(&cancel_cap)),
+        refund_recipient: option::some(refund_recipient),
+        cancel_cap_id: option::some(object::id(&cancel_cap)),
         total_amount,
         start_ms,
         cliff_ms,
         period_ms,
         periods,
-    );
+    });
 
     (vesting, cancel_cap)
 }
@@ -123,7 +202,7 @@ public fun claim<CoinType>(
     ctx: &mut TxContext,
 ) {
     let amount = self.releasable_at(clock.timestamp_ms());
-    assert!(amount > 0, blast_fun_vesting_linear::errors::nothing_claimable!());
+    assert!(amount > 0, ENothingClaimable);
 
     let vesting_id = object::id(self);
     let caller = ctx.sender();
@@ -135,14 +214,15 @@ public fun claim<CoinType>(
 
     transfer::public_transfer(payout, beneficiary);
 
-    events::vesting_claimed<CoinType>(
+    event::emit(VestingClaimed {
         vesting_id,
+        coin_type: type_name::with_original_ids<CoinType>(),
         caller,
         beneficiary,
         amount,
         released_total,
         remaining_balance,
-    );
+    });
 }
 
 /// Settles vested value to the beneficiary and unvested value to the fixed refund recipient.
@@ -153,10 +233,7 @@ public fun cancel<CoinType>(
     ctx: &mut TxContext,
 ) {
     let vesting_id = object::id(&self);
-    assert!(
-        cap.vesting_id == vesting_id,
-        blast_fun_vesting_linear::errors::invalid_cancel_cap!(),
-    );
+    assert!(cap.vesting_id == vesting_id, EInvalidCancelCap);
 
     let beneficiary = self.beneficiary;
     // A matching cap can only be minted by `new_cancelable`, which stores `Some`.
@@ -191,15 +268,16 @@ public fun cancel<CoinType>(
     id.delete();
     cap_id.delete();
 
-    events::vesting_canceled<CoinType>(
+    event::emit(VestingCanceled {
         vesting_id,
+        coin_type: type_name::with_original_ids<CoinType>(),
         caller,
         beneficiary,
         refund_recipient,
         beneficiary_amount,
         refund_amount,
-        vested_total,
-    );
+        released_total: vested_total,
+    });
 }
 
 /// Deletes a drained irrevocable schedule after its final vesting boundary.
@@ -208,18 +286,9 @@ public fun close_irrevocable<CoinType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    assert!(
-        self.cancel_refund_recipient.is_none(),
-        blast_fun_vesting_linear::errors::cancel_cap_required!(),
-    );
-    assert!(
-        clock.timestamp_ms() >= self.end_ms(),
-        blast_fun_vesting_linear::errors::schedule_not_ended!(),
-    );
-    assert!(
-        self.balance.value() == 0,
-        blast_fun_vesting_linear::errors::schedule_not_empty!(),
-    );
+    assert!(self.cancel_refund_recipient.is_none(), ECancelCapRequired);
+    assert!(clock.timestamp_ms() >= self.end_ms(), EScheduleNotEnded);
+    assert!(self.balance.value() == 0, EScheduleNotEmpty);
 
     let vesting_id = object::id(&self);
     let released_total = self.released;
@@ -238,7 +307,12 @@ public fun close_irrevocable<CoinType>(
     balance.destroy_zero();
     id.delete();
 
-    events::vesting_closed<CoinType>(vesting_id, ctx.sender(), released_total);
+    event::emit(VestingClosed {
+        vesting_id,
+        coin_type: type_name::with_original_ids<CoinType>(),
+        caller: ctx.sender(),
+        released_total,
+    });
 }
 
 // === Private Functions ===
@@ -251,45 +325,23 @@ fun new<CoinType>(
     cliff_ms: u64,
     period_ms: u64,
     periods: u64,
+    clock: &Clock,
     ctx: &mut TxContext,
 ): Vesting<CoinType> {
-    assert!(
-        beneficiary != @0x0,
-        blast_fun_vesting_linear::errors::invalid_beneficiary!(),
-    );
+    assert!(beneficiary != @0x0, EInvalidBeneficiary);
     if (cancel_refund_recipient.is_some()) {
-        assert!(
-            *cancel_refund_recipient.borrow() != @0x0,
-            blast_fun_vesting_linear::errors::invalid_refund_recipient!(),
-        );
+        assert!(*cancel_refund_recipient.borrow() != @0x0, EInvalidRefundRecipient);
     };
-    assert!(
-        funds.value() > 0,
-        blast_fun_vesting_linear::errors::zero_allocation!(),
-    );
-    assert!(
-        period_ms > 0,
-        blast_fun_vesting_linear::errors::zero_period!(),
-    );
-    assert!(
-        periods > 0,
-        blast_fun_vesting_linear::errors::zero_periods!(),
-    );
+    assert!(funds.value() > 0, EZeroAllocation);
+    assert!(period_ms > 0, EZeroPeriod);
+    assert!(periods > 0, EZeroPeriods);
+    assert!(start_ms >= clock.timestamp_ms(), EStartInPast);
 
     let max = std::u64::max_value!();
-    assert!(
-        period_ms <= max / periods,
-        blast_fun_vesting_linear::errors::schedule_overflow!(),
-    );
+    assert!(period_ms <= max / periods, EScheduleOverflow);
     let duration_ms = period_ms * periods;
-    assert!(
-        cliff_ms <= duration_ms,
-        blast_fun_vesting_linear::errors::invalid_cliff!(),
-    );
-    assert!(
-        duration_ms <= max - start_ms,
-        blast_fun_vesting_linear::errors::schedule_overflow!(),
-    );
+    assert!(cliff_ms <= duration_ms, EInvalidCliff);
+    assert!(duration_ms <= max - start_ms, EScheduleOverflow);
 
     Vesting {
         id: object::new(ctx),
@@ -358,4 +410,64 @@ public fun released<CoinType>(self: &Vesting<CoinType>): u64 {
 #[test_only]
 public fun cancel_cap_vesting_id<CoinType>(self: &CancelCap<CoinType>): ID {
     self.vesting_id
+}
+
+#[test_only]
+public fun vesting_created_fields(
+    self: &VestingCreated,
+): (ID, TypeName, address, address, Option<address>, Option<ID>, u64, u64, u64, u64, u64) {
+    (
+        self.vesting_id,
+        self.coin_type,
+        self.funder,
+        self.beneficiary,
+        self.refund_recipient,
+        self.cancel_cap_id,
+        self.total_amount,
+        self.start_ms,
+        self.cliff_ms,
+        self.period_ms,
+        self.periods,
+    )
+}
+
+#[test_only]
+public fun vesting_claimed_fields(
+    self: &VestingClaimed,
+): (ID, TypeName, address, address, u64, u64, u64) {
+    (
+        self.vesting_id,
+        self.coin_type,
+        self.caller,
+        self.beneficiary,
+        self.amount,
+        self.released_total,
+        self.remaining_balance,
+    )
+}
+
+#[test_only]
+public fun vesting_canceled_fields(
+    self: &VestingCanceled,
+): (ID, TypeName, address, address, address, u64, u64, u64) {
+    (
+        self.vesting_id,
+        self.coin_type,
+        self.caller,
+        self.beneficiary,
+        self.refund_recipient,
+        self.beneficiary_amount,
+        self.refund_amount,
+        self.released_total,
+    )
+}
+
+#[test_only]
+public fun vesting_closed_fields(self: &VestingClosed): (ID, TypeName, address, u64) {
+    (
+        self.vesting_id,
+        self.coin_type,
+        self.caller,
+        self.released_total,
+    )
 }

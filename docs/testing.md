@@ -66,6 +66,13 @@ sui move test --lint
 Add gas/trace/coverage jobs only when the pinned Sui CLI supports stable output.
 Generated traces and coverage maps are not committed.
 
+The vesting package pins a 100% Move coverage gate:
+
+```bash
+cd sui/vesting
+bash scripts/check_coverage.sh
+```
+
 ## EVM gate
 
 From `evm/`:

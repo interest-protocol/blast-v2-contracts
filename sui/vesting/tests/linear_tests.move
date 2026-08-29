@@ -1,7 +1,15 @@
 #[test_only]
-module blast_fun_vesting_linear::vesting_tests;
+module blast_fun_vesting::linear_tests;
 
-use blast_fun_vesting_linear::{events, vesting::{Self, CancelCap, Vesting}};
+use blast_fun_vesting::linear::{
+    Self,
+    CancelCap,
+    Vesting,
+    VestingCanceled,
+    VestingClaimed,
+    VestingClosed,
+    VestingCreated,
+};
 use std::unit_test::{assert_eq, destroy};
 use sui::{clock::{Self, Clock}, coin::{Self, Coin}, event, test_scenario::{Self, Scenario}};
 
@@ -25,6 +33,14 @@ use fun claim_fixture_take_beneficiary_payout as ClaimFixture.take_beneficiary_p
 use fun claim_fixture_vested_at as ClaimFixture.vested_at;
 use fun claim_fixture_vesting_id as ClaimFixture.vesting_id;
 use fun claim_fixture_vesting_id_before_close as ClaimFixture.vesting_id_before_close;
+use fun unit_cancel_with_mismatched_cap as UnitFixture.cancel_with_mismatched_cap;
+use fun unit_claim as UnitFixture.claim;
+use fun unit_close_irrevocable as UnitFixture.close_irrevocable;
+use fun unit_create_cancelable as UnitFixture.create_cancelable;
+use fun unit_create_irrevocable as UnitFixture.create_irrevocable;
+use fun unit_end as UnitFixture.end;
+use fun unit_set_clock as UnitFixture.set_clock;
+use fun unit_vesting as UnitFixture.vesting;
 
 // === Constants ===
 
@@ -43,12 +59,20 @@ const PERIODS: u64 = 4;
 
 public struct TEST_COIN() has drop;
 
+/// Single-transaction construction and focused failure-path fixture.
+public struct UnitFixture {
+    scenario: Scenario,
+    clock: Clock,
+    vesting: Option<Vesting<TEST_COIN>>,
+    cancel_cap: Option<CancelCap<TEST_COIN>>,
+}
+
 /// Shared irrevocable lifecycle with beneficiary payout inspection.
 public struct ClaimFixture {
     scenario: Scenario,
     clock: Clock,
     vesting: Option<Vesting<TEST_COIN>>,
-    created: events::VestingCreated,
+    created: VestingCreated,
     vesting_id: ID,
 }
 
@@ -58,7 +82,7 @@ public struct CancelFixture {
     clock: Clock,
     vesting: Option<Vesting<TEST_COIN>>,
     cancel_cap: Option<CancelCap<TEST_COIN>>,
-    created: events::VestingCreated,
+    created: VestingCreated,
     vesting_id: ID,
     cancel_cap_id: ID,
 }
@@ -85,7 +109,7 @@ fun irrevocable_lifecycle_matches_vectors_and_replays_events() {
 
         f.claim_at(300);
 
-        let claimed = events::collect_one<events::VestingClaimed>(0);
+        let claimed = collect_one<VestingClaimed>();
         let (
             emitted_id,
             emitted_coin_type,
@@ -102,7 +126,6 @@ fun irrevocable_lifecycle_matches_vectors_and_replays_events() {
         assert_eq!(amount, 500);
         assert_eq!(released_total, 500);
         assert_eq!(remaining_balance, 501);
-        assert!(event::events_by_type<events::VestingClaimed>().is_empty());
     });
 
     fixture.next_tx!(BENEFICIARY, |f| {
@@ -113,7 +136,7 @@ fun irrevocable_lifecycle_matches_vectors_and_replays_events() {
         assert_eq!(f.releasable_at(399), 0);
         f.claim_at(400);
 
-        let claimed = events::collect_one<events::VestingClaimed>(0);
+        let claimed = collect_one<VestingClaimed>();
         let (_, _, _, _, amount, released_total, remaining_balance) =
             claimed.vesting_claimed_fields();
         assert_eq!(amount, 250);
@@ -129,10 +152,10 @@ fun irrevocable_lifecycle_matches_vectors_and_replays_events() {
         f.claim_at(500);
         f.close_at(500);
 
-        let claimed = events::collect_one<events::VestingClaimed>(0);
+        let claimed = collect_one<VestingClaimed>();
         let (_, _, _, _, amount, released_total, remaining_balance) =
             claimed.vesting_claimed_fields();
-        let closed = events::collect_one<events::VestingClosed>(0);
+        let closed = collect_one<VestingClosed>();
         let (closed_id, _, caller, closed_released_total) =
             closed.vesting_closed_fields();
 
@@ -180,7 +203,7 @@ fun cancelable_schedule_preserves_prior_and_unclaimed_vested_value() {
 
         f.claim_at(200);
 
-        let claimed = events::collect_one<events::VestingClaimed>(0);
+        let claimed = collect_one<VestingClaimed>();
         let (_, _, caller, _, amount, released_total, remaining_balance) =
             claimed.vesting_claimed_fields();
         assert_eq!(caller, CALLER);
@@ -196,7 +219,7 @@ fun cancelable_schedule_preserves_prior_and_unclaimed_vested_value() {
     fixture.next_tx!(CANCELER, |f| {
         f.cancel_at(350);
 
-        let canceled = events::collect_one<events::VestingCanceled>(0);
+        let canceled = collect_one<VestingCanceled>();
         let (
             vesting_id,
             coin_type,
@@ -230,290 +253,299 @@ fun cancelable_schedule_preserves_prior_and_unclaimed_vested_value() {
 }
 
 #[test]
+fun cancellation_before_the_first_period_returns_the_full_allocation() {
+    let mut fixture = start_cancel();
+
+    fixture.next_tx!(CANCELER, |f| {
+        f.cancel_at(START_MS);
+
+        let canceled = collect_one<VestingCanceled>();
+        let (_, _, caller, beneficiary, refund_recipient, beneficiary_amount, refund_amount, released_total) =
+            canceled.vesting_canceled_fields();
+        assert_eq!(caller, CANCELER);
+        assert_eq!(beneficiary, BENEFICIARY);
+        assert_eq!(refund_recipient, REFUND_RECIPIENT);
+        assert_eq!(beneficiary_amount, 0);
+        assert_eq!(refund_amount, TOTAL_AMOUNT);
+        assert_eq!(released_total, 0);
+    });
+
+    fixture.next_tx!(REFUND_RECIPIENT, |f| {
+        assert_eq!(f.take_refund(), TOTAL_AMOUNT);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun cancellation_after_full_vesting_has_no_refund() {
+    let mut fixture = start_cancel();
+
+    fixture.next_tx!(CANCELER, |f| {
+        f.cancel_at(START_MS + PERIOD_MS * PERIODS);
+
+        let canceled = collect_one<VestingCanceled>();
+        let (_, _, caller, beneficiary, refund_recipient, beneficiary_amount, refund_amount, released_total) =
+            canceled.vesting_canceled_fields();
+        assert_eq!(caller, CANCELER);
+        assert_eq!(beneficiary, BENEFICIARY);
+        assert_eq!(refund_recipient, REFUND_RECIPIENT);
+        assert_eq!(beneficiary_amount, TOTAL_AMOUNT);
+        assert_eq!(refund_amount, 0);
+        assert_eq!(released_total, TOTAL_AMOUNT);
+    });
+
+    fixture.next_tx!(BENEFICIARY, |f| {
+        assert_eq!(f.take_beneficiary_payout(), TOTAL_AMOUNT);
+    });
+
+    fixture.end();
+}
+
+#[test]
 fun maximum_width_schedule_uses_wide_multiplication() {
-    let mut ctx = tx_context::dummy();
-    let funds = coin::mint_for_testing<TEST_COIN>(std::u64::max_value!(), &mut ctx);
-    let vesting = vesting::new_irrevocable(
-        funds,
+    let mut fixture = start_unit(0);
+    fixture.create_irrevocable(
+        std::u64::max_value!(),
         BENEFICIARY,
         0,
         0,
         1,
         std::u64::max_value!(),
-        &mut ctx,
     );
 
     assert_eq!(
-        vesting.vested_at_for_testing(std::u64::max_value!() - 1),
+        fixture.vesting().vested_at_for_testing(std::u64::max_value!() - 1),
         std::u64::max_value!() - 1,
     );
     assert_eq!(
-        vesting.vested_at_for_testing(std::u64::max_value!()),
+        fixture.vesting().vested_at_for_testing(std::u64::max_value!()),
         std::u64::max_value!(),
     );
 
-    destroy(vesting);
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting_linear::errors::EInvalidBeneficiary,
-    location = blast_fun_vesting_linear::vesting,
+    abort_code = blast_fun_vesting::linear::EInvalidBeneficiary,
+    location = blast_fun_vesting::linear,
 )]
 fun constructor_rejects_zero_beneficiary_before_other_invalid_inputs() {
-    let mut ctx = tx_context::dummy();
-    let funds = coin::mint_for_testing<TEST_COIN>(0, &mut ctx);
-    let vesting = vesting::new_irrevocable(funds, @0x0, 0, 0, 0, 0, &mut ctx);
+    let mut fixture = start_unit(0);
+    fixture.create_irrevocable(0, @0x0, 0, 0, 0, 0);
 
-    destroy(vesting);
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting_linear::errors::EInvalidRefundRecipient,
-    location = blast_fun_vesting_linear::vesting,
+    abort_code = blast_fun_vesting::linear::EInvalidRefundRecipient,
+    location = blast_fun_vesting::linear,
 )]
 fun cancelable_constructor_rejects_zero_refund_before_zero_allocation() {
-    let mut ctx = tx_context::dummy();
-    let funds = coin::mint_for_testing<TEST_COIN>(0, &mut ctx);
-    let (vesting, cancel_cap) = vesting::new_cancelable(
-        funds,
+    let mut fixture = start_unit(0);
+    fixture.create_cancelable(
+        0,
         BENEFICIARY,
         @0x0,
         0,
         0,
         PERIOD_MS,
         PERIODS,
-        &mut ctx,
     );
 
-    destroy(vesting);
-    destroy(cancel_cap);
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting_linear::errors::EZeroAllocation,
-    location = blast_fun_vesting_linear::vesting,
+    abort_code = blast_fun_vesting::linear::EZeroAllocation,
+    location = blast_fun_vesting::linear,
 )]
 fun constructor_rejects_zero_allocation() {
-    let mut ctx = tx_context::dummy();
-    let funds = coin::mint_for_testing<TEST_COIN>(0, &mut ctx);
-    let vesting = vesting::new_irrevocable(
-        funds,
+    let mut fixture = start_unit(0);
+    fixture.create_irrevocable(
+        0,
         BENEFICIARY,
         0,
         0,
         PERIOD_MS,
         PERIODS,
-        &mut ctx,
     );
 
-    destroy(vesting);
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting_linear::errors::EZeroPeriod,
-    location = blast_fun_vesting_linear::vesting,
+    abort_code = blast_fun_vesting::linear::EZeroPeriod,
+    location = blast_fun_vesting::linear,
 )]
 fun constructor_rejects_zero_period_before_zero_period_count() {
-    let mut ctx = tx_context::dummy();
-    let funds = coin::mint_for_testing<TEST_COIN>(1, &mut ctx);
-    let vesting = vesting::new_irrevocable(funds, BENEFICIARY, 0, 0, 0, 0, &mut ctx);
+    let mut fixture = start_unit(0);
+    fixture.create_irrevocable(1, BENEFICIARY, 0, 0, 0, 0);
 
-    destroy(vesting);
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting_linear::errors::EZeroPeriods,
-    location = blast_fun_vesting_linear::vesting,
+    abort_code = blast_fun_vesting::linear::EZeroPeriods,
+    location = blast_fun_vesting::linear,
 )]
 fun constructor_rejects_zero_period_count() {
-    let mut ctx = tx_context::dummy();
-    let funds = coin::mint_for_testing<TEST_COIN>(1, &mut ctx);
-    let vesting = vesting::new_irrevocable(funds, BENEFICIARY, 0, 0, 1, 0, &mut ctx);
+    let mut fixture = start_unit(0);
+    fixture.create_irrevocable(1, BENEFICIARY, 0, 0, 1, 0);
 
-    destroy(vesting);
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting_linear::errors::EInvalidCliff,
-    location = blast_fun_vesting_linear::vesting,
+    abort_code = blast_fun_vesting::linear::EInvalidCliff,
+    location = blast_fun_vesting::linear,
 )]
 fun constructor_rejects_cliff_after_end() {
-    let mut ctx = tx_context::dummy();
-    let funds = coin::mint_for_testing<TEST_COIN>(1, &mut ctx);
-    let vesting = vesting::new_irrevocable(funds, BENEFICIARY, 0, 5, 1, 4, &mut ctx);
+    let mut fixture = start_unit(0);
+    fixture.create_irrevocable(1, BENEFICIARY, 0, 5, 1, 4);
 
-    destroy(vesting);
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting_linear::errors::EScheduleOverflow,
-    location = blast_fun_vesting_linear::vesting,
+    abort_code = blast_fun_vesting::linear::EScheduleOverflow,
+    location = blast_fun_vesting::linear,
 )]
 fun constructor_rejects_duration_multiplication_overflow() {
-    let mut ctx = tx_context::dummy();
-    let funds = coin::mint_for_testing<TEST_COIN>(1, &mut ctx);
-    let vesting = vesting::new_irrevocable(
-        funds,
+    let mut fixture = start_unit(0);
+    fixture.create_irrevocable(
+        1,
         BENEFICIARY,
         0,
         0,
         std::u64::max_value!(),
         2,
-        &mut ctx,
     );
 
-    destroy(vesting);
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting_linear::errors::EScheduleOverflow,
-    location = blast_fun_vesting_linear::vesting,
+    abort_code = blast_fun_vesting::linear::EScheduleOverflow,
+    location = blast_fun_vesting::linear,
 )]
 fun constructor_rejects_end_time_overflow() {
-    let mut ctx = tx_context::dummy();
-    let funds = coin::mint_for_testing<TEST_COIN>(1, &mut ctx);
-    let vesting = vesting::new_irrevocable(
-        funds,
+    let mut fixture = start_unit(0);
+    fixture.create_irrevocable(
+        1,
         BENEFICIARY,
         std::u64::max_value!(),
         0,
         1,
         1,
-        &mut ctx,
     );
 
-    destroy(vesting);
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting_linear::errors::ENothingClaimable,
-    location = blast_fun_vesting_linear::vesting,
+    abort_code = blast_fun_vesting::linear::EStartInPast,
+    location = blast_fun_vesting::linear,
+)]
+fun constructor_rejects_a_start_before_the_current_clock_time() {
+    let mut fixture = start_unit(100);
+    fixture.create_irrevocable(1, BENEFICIARY, 99, 0, 1, 1);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun_vesting::linear::ENothingClaimable,
+    location = blast_fun_vesting::linear,
 )]
 fun claim_rejects_zero_release_before_the_cliff() {
-    let mut ctx = tx_context::dummy();
-    let mut clock = clock::create_for_testing(&mut ctx);
-    let funds = coin::mint_for_testing<TEST_COIN>(TOTAL_AMOUNT, &mut ctx);
-    let mut vesting = vesting::new_irrevocable(
-        funds,
+    let mut fixture = start_unit(0);
+    fixture.create_irrevocable(
+        TOTAL_AMOUNT,
         BENEFICIARY,
         START_MS,
         CLIFF_MS,
         PERIOD_MS,
         PERIODS,
-        &mut ctx,
     );
-    clock.set_for_testing(299);
+    fixture.set_clock(299);
 
-    vesting.claim(&clock, &mut ctx);
+    fixture.claim();
 
-    destroy(vesting);
-    destroy(clock);
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting_linear::errors::EInvalidCancelCap,
-    location = blast_fun_vesting_linear::vesting,
+    abort_code = blast_fun_vesting::linear::EInvalidCancelCap,
+    location = blast_fun_vesting::linear,
 )]
 fun cancellation_rejects_a_cap_for_another_schedule() {
-    let mut ctx = tx_context::dummy();
-    let clock = clock::create_for_testing(&mut ctx);
-    let first_funds = coin::mint_for_testing<TEST_COIN>(1, &mut ctx);
-    let second_funds = coin::mint_for_testing<TEST_COIN>(1, &mut ctx);
-    let (first, first_cap) = vesting::new_cancelable(
-        first_funds,
-        BENEFICIARY,
-        REFUND_RECIPIENT,
-        0,
-        0,
-        1,
-        1,
-        &mut ctx,
-    );
-    let (second, second_cap) = vesting::new_cancelable(
-        second_funds,
-        BENEFICIARY,
-        REFUND_RECIPIENT,
-        0,
-        0,
-        1,
-        1,
-        &mut ctx,
-    );
+    let mut fixture = start_unit(0);
+    fixture.cancel_with_mismatched_cap();
 
-    first.cancel(second_cap, &clock, &mut ctx);
-
-    destroy(first_cap);
-    destroy(second);
-    destroy(clock);
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting_linear::errors::EScheduleNotEnded,
-    location = blast_fun_vesting_linear::vesting,
+    abort_code = blast_fun_vesting::linear::EScheduleNotEnded,
+    location = blast_fun_vesting::linear,
 )]
 fun close_rejects_a_schedule_before_its_end() {
-    let mut ctx = tx_context::dummy();
-    let clock = clock::create_for_testing(&mut ctx);
-    let funds = coin::mint_for_testing<TEST_COIN>(1, &mut ctx);
-    let vesting = vesting::new_irrevocable(funds, BENEFICIARY, 0, 0, 1, 1, &mut ctx);
+    let mut fixture = start_unit(0);
+    fixture.create_irrevocable(1, BENEFICIARY, 0, 0, 1, 1);
 
-    vesting.close_irrevocable(&clock, &mut ctx);
+    fixture.close_irrevocable();
 
-    destroy(clock);
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting_linear::errors::EScheduleNotEmpty,
-    location = blast_fun_vesting_linear::vesting,
+    abort_code = blast_fun_vesting::linear::EScheduleNotEmpty,
+    location = blast_fun_vesting::linear,
 )]
 fun close_rejects_unclaimed_custody_after_the_end() {
-    let mut ctx = tx_context::dummy();
-    let mut clock = clock::create_for_testing(&mut ctx);
-    let funds = coin::mint_for_testing<TEST_COIN>(1, &mut ctx);
-    let vesting = vesting::new_irrevocable(funds, BENEFICIARY, 0, 0, 1, 1, &mut ctx);
-    clock.set_for_testing(1);
+    let mut fixture = start_unit(0);
+    fixture.create_irrevocable(1, BENEFICIARY, 0, 0, 1, 1);
+    fixture.set_clock(1);
 
-    vesting.close_irrevocable(&clock, &mut ctx);
+    fixture.close_irrevocable();
 
-    destroy(clock);
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting_linear::errors::ECancelCapRequired,
-    location = blast_fun_vesting_linear::vesting,
+    abort_code = blast_fun_vesting::linear::ECancelCapRequired,
+    location = blast_fun_vesting::linear,
 )]
 fun irrevocable_close_rejects_a_cancellable_schedule_before_time_checks() {
-    let mut ctx = tx_context::dummy();
-    let clock = clock::create_for_testing(&mut ctx);
-    let funds = coin::mint_for_testing<TEST_COIN>(1, &mut ctx);
-    let (vesting, cancel_cap) = vesting::new_cancelable(
-        funds,
+    let mut fixture = start_unit(0);
+    fixture.create_cancelable(
+        1,
         BENEFICIARY,
         REFUND_RECIPIENT,
         0,
         0,
         1,
         1,
-        &mut ctx,
     );
 
-    vesting.close_irrevocable(&clock, &mut ctx);
+    fixture.close_irrevocable();
 
-    destroy(cancel_cap);
-    destroy(clock);
+    fixture.end();
 }
 
 // === Private Test Helpers ===
@@ -540,21 +572,137 @@ macro fun cancel_next_tx(
     $fn(fixture);
 }
 
+fun start_unit(timestamp_ms: u64): UnitFixture {
+    let mut scenario = test_scenario::begin(FUNDER);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    clock.set_for_testing(timestamp_ms);
+
+    UnitFixture {
+        scenario,
+        clock,
+        vesting: option::none(),
+        cancel_cap: option::none(),
+    }
+}
+
+fun unit_create_irrevocable(
+    self: &mut UnitFixture,
+    amount: u64,
+    beneficiary: address,
+    start_ms: u64,
+    cliff_ms: u64,
+    period_ms: u64,
+    periods: u64,
+) {
+    let funds = coin::mint_for_testing<TEST_COIN>(amount, self.scenario.ctx());
+    let vesting = linear::new_irrevocable(
+        funds,
+        beneficiary,
+        start_ms,
+        cliff_ms,
+        period_ms,
+        periods,
+        &self.clock,
+        self.scenario.ctx(),
+    );
+    self.vesting.fill(vesting);
+}
+
+fun unit_create_cancelable(
+    self: &mut UnitFixture,
+    amount: u64,
+    beneficiary: address,
+    refund_recipient: address,
+    start_ms: u64,
+    cliff_ms: u64,
+    period_ms: u64,
+    periods: u64,
+) {
+    let funds = coin::mint_for_testing<TEST_COIN>(amount, self.scenario.ctx());
+    let (vesting, cancel_cap) = linear::new_cancelable(
+        funds,
+        beneficiary,
+        refund_recipient,
+        start_ms,
+        cliff_ms,
+        period_ms,
+        periods,
+        &self.clock,
+        self.scenario.ctx(),
+    );
+    self.vesting.fill(vesting);
+    self.cancel_cap.fill(cancel_cap);
+}
+
+fun unit_set_clock(self: &mut UnitFixture, timestamp_ms: u64) {
+    self.clock.set_for_testing(timestamp_ms);
+}
+
+fun unit_vesting(self: &UnitFixture): &Vesting<TEST_COIN> {
+    self.vesting.borrow()
+}
+
+fun unit_claim(self: &mut UnitFixture) {
+    self.vesting.borrow_mut().claim(&self.clock, self.scenario.ctx());
+}
+
+fun unit_cancel_with_mismatched_cap(self: &mut UnitFixture) {
+    let first_funds = coin::mint_for_testing<TEST_COIN>(1, self.scenario.ctx());
+    let second_funds = coin::mint_for_testing<TEST_COIN>(1, self.scenario.ctx());
+    let (first, first_cap) = linear::new_cancelable(
+        first_funds,
+        BENEFICIARY,
+        REFUND_RECIPIENT,
+        0,
+        0,
+        1,
+        1,
+        &self.clock,
+        self.scenario.ctx(),
+    );
+    let (second, second_cap) = linear::new_cancelable(
+        second_funds,
+        BENEFICIARY,
+        REFUND_RECIPIENT,
+        0,
+        0,
+        1,
+        1,
+        &self.clock,
+        self.scenario.ctx(),
+    );
+
+    first.cancel(second_cap, &self.clock, self.scenario.ctx());
+
+    destroy(first_cap);
+    destroy(second);
+}
+
+fun unit_close_irrevocable(self: &mut UnitFixture) {
+    let vesting = self.vesting.extract();
+    vesting.close_irrevocable(&self.clock, self.scenario.ctx());
+}
+
+fun unit_end(self: UnitFixture) {
+    destroy(self);
+}
+
 fun start_claim(): ClaimFixture {
     let mut scenario = test_scenario::begin(FUNDER);
     let clock = clock::create_for_testing(scenario.ctx());
     let funds = coin::mint_for_testing<TEST_COIN>(TOTAL_AMOUNT, scenario.ctx());
-    let vesting = vesting::new_irrevocable(
+    let vesting = linear::new_irrevocable(
         funds,
         BENEFICIARY,
         START_MS,
         CLIFF_MS,
         PERIOD_MS,
         PERIODS,
+        &clock,
         scenario.ctx(),
     );
     let vesting_id = object::id(&vesting);
-    let created = events::collect_one<events::VestingCreated>(0);
+    let created = collect_one<VestingCreated>();
 
     vesting.share();
     scenario.next_tx(CALLER);
@@ -573,7 +721,7 @@ fun start_cancel(): CancelFixture {
     let mut scenario = test_scenario::begin(FUNDER);
     let clock = clock::create_for_testing(scenario.ctx());
     let funds = coin::mint_for_testing<TEST_COIN>(TOTAL_AMOUNT, scenario.ctx());
-    let (vesting, cancel_cap) = vesting::new_cancelable(
+    let (vesting, cancel_cap) = linear::new_cancelable(
         funds,
         BENEFICIARY,
         REFUND_RECIPIENT,
@@ -581,11 +729,12 @@ fun start_cancel(): CancelFixture {
         0,
         PERIOD_MS,
         PERIODS,
+        &clock,
         scenario.ctx(),
     );
     let vesting_id = object::id(&vesting);
     let cancel_cap_id = object::id(&cancel_cap);
-    let created = events::collect_one<events::VestingCreated>(0);
+    let created = collect_one<VestingCreated>();
 
     vesting.share();
     transfer::public_transfer(cancel_cap, CANCELER);
@@ -602,6 +751,12 @@ fun start_cancel(): CancelFixture {
         vesting_id,
         cancel_cap_id,
     }
+}
+
+fun collect_one<T: copy + drop>(): T {
+    let mut events = event::events_by_type<T>();
+    assert!(events.length() == 1);
+    events.pop_back()
 }
 
 fun claim_fixture_vested_at(self: &ClaimFixture, timestamp_ms: u64): u64 {

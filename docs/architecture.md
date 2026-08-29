@@ -19,7 +19,7 @@ contracts/
 │   │   ├── tests/
 │   │   └── scripts/
 │   ├── migrators/        independently deployed venue adapter packages
-│   └── vesting/          independently deployed vesting packages
+│   └── vesting/          independent global vesting package
 └── evm/
     ├── src/              core Solidity project
     ├── test/

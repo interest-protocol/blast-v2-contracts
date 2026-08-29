@@ -28,8 +28,9 @@ and supports permissionless release to a fixed beneficiary
 
 ## Decision
 
-Create `sui/vesting/linear/` as an independent, framework-only Move package.
-It does not import `blast_fun`, and core does not import it.
+Create the framework-only `linear` module in the independent
+`sui/vesting/` Move package. It does not import `blast_fun`, and core does not
+import it. ADR 0055 later adds `checkpoints` to this package before deployment.
 
 One key-only `Vesting<CoinType>` owns one fully funded `Balance<CoinType>` and
 the immutable fields `beneficiary`, `start_ms`, `cliff_ms`, `period_ms`, and
@@ -45,8 +46,10 @@ The public constructors are:
 
 Both require a nonzero beneficiary, nonzero funding, nonzero period, nonzero
 period count, `cliff_ms <= period_ms * periods`, and a representable duration and
-end time. `start_ms` may be past, present, or future because retroactive grants
-and migrations are valid issuer choices; the event makes that choice explicit.
+end time. Both take the native Sui `Clock` and require
+`start_ms >= clock.timestamp_ms()`. SDK and UI validation mirror this check for
+early feedback, but the contract is authoritative. Retroactive migrations need
+a separately reviewed path rather than weakening the standard constructor.
 
 For total allocation `A`, time `t`, start `S`, cliff offset `C`, period `P`, and
 period count `N`, cumulative vested value is:
@@ -76,9 +79,10 @@ receive path. Beneficiary rotation, schedule edits, pausing, milestone or
 price-based unlocks, arbitrary curves, tradable positions, onchain batches, and
 administrative recovery are outside this ABI.
 
-Creation, claim, cancellation, and close emit stable payloads through the
-package event envelope. Events contain the schedule id and canonical primitive
-inputs or final accounting totals needed for replay. The SDK derives claim
+Creation, claim, cancellation, and close emit their event structs directly from
+the `linear` module. The same module owns its string-literal error constants.
+Events contain the schedule id and canonical primitive inputs or final
+accounting totals needed for replay. The SDK derives claim
 previews, end times, calendars, aggregation, and transaction batches.
 
 The EVM implementation is intentionally deferred with the rest of the currently
@@ -123,7 +127,8 @@ approved liquid-stream product can use a receipt object.
   unvested value.
 - No privileged global object, setter, collection, package dependency, or
   launchpad ABI is added.
-- Past starts are powerful and must be shown clearly by creation tooling.
+- Immediate starts are valid; creation tooling should use a small future buffer
+  when transaction latency could otherwise make a chosen start stale.
 - Audit and operational fixes require a new package deployment because the
   production package is immutable.
 - EVM parity remains a recorded release gap until the EVM vertical is active.
@@ -134,9 +139,13 @@ approved liquid-stream product can use a receipt object.
   end, repeated claims, rounding remainder, and maximum-width allocation.
 - Negative tests cover every constructor bound, nothing-to-claim, mismatched
   cancellation capability, premature close, nonempty close, and an attempt to
-  close a cancellable schedule without its cap.
+  close a cancellable schedule without its cap, including a start before the
+  current onchain clock.
 - Cancellation tests reconcile prior releases, vested payout, refund, and zero
   remaining custody.
+- `UnitFixture`, `ClaimFixture`, and `CancelFixture` own all test setup,
+  transaction context, clock mutation, object custody, and teardown. The pinned
+  Move coverage tool reports 100.00% module coverage.
 - Event replay tests reconstruct creation, claims, cancellation or close.
 - Build, lint with warnings as errors, and Move tests pass under the pinned Sui
   CLI and framework.
