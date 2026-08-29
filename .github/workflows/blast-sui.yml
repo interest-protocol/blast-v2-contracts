@@ -1,0 +1,28 @@
+name: blast_sui
+
+on:
+  push:
+    branches: [main]
+    paths: ['sui/blast_sui/**', '.github/workflows/blast-sui.yml']
+  pull_request:
+    paths: ['sui/blast_sui/**', '.github/workflows/blast-sui.yml']
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUI_RELEASE: mainnet-v1.77.2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Sui CLI
+        run: |
+          curl -fsSL -o sui.tgz \
+            "https://github.com/MystenLabs/sui/releases/download/${SUI_RELEASE}/sui-${SUI_RELEASE}-ubuntu-x86_64.tgz"
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf sui.tgz -C "$HOME/.local/bin" sui
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Verify
+        run: bash sui/blast_sui/scripts/verify.sh all
+      - name: Coverage gate
+        run: bash sui/blast_sui/scripts/check_coverage.sh
