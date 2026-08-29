@@ -1,0 +1,259 @@
+/// Bluefin migration with custodied concentrated-liquidity principal.
+module blast_fun_migrators::bluefin;
+
+use blast_fun::{
+    launch::Launch,
+    migration_math,
+    package_version::PackageVersion,
+    runtime_config::RuntimeConfig,
+};
+use blast_fun_migrators::vault::{Self, LpVault};
+use bluefin_spot::{
+    config::{Self, GlobalConfig},
+    pool::{Self, Pool},
+    position::Position,
+};
+use integer_mate::i32;
+use sui::{
+    balance::{Self, Balance},
+    clock::Clock,
+    coin_registry::Currency,
+};
+
+// === Constants ===
+
+/// Venue rounding can return at most one basis point of either source balance.
+const MAX_RESIDUAL_BPS: u64 = 1;
+
+/// Bluefin's inclusive lower Q64.64 initialization bound at the pinned package.
+const MIN_SQRT_PRICE_X64: u128 = 4_295_048_016;
+
+/// Bluefin rejects initialization at or above this exclusive Q64.64 bound.
+const MAX_SQRT_PRICE_X64: u128 = 79_226_673_515_401_279_992_447_579_055;
+
+const EInvalidTickSpacing: u64 = 0;
+const EUnsupportedCreationFee: u64 = 1;
+const ENonzeroCreationFee: u64 = 2;
+const EInvalidSqrtPrice: u64 = 3;
+const EPositionPoolMismatch: u64 = 4;
+const EZeroPositionLiquidity: u64 = 5;
+const EPositionLiquidityChanged: u64 = 6;
+
+// === Public Structs ===
+
+/// Sealed adapter identity selected by a Blast launch.
+public struct Witness() has drop;
+
+/// Sealed marker for the Bluefin position attached to the common vault.
+public struct Venue() has drop;
+
+// === Public Functions ===
+
+/// Migrates with Meme as Bluefin coin A and Quote as Bluefin coin B.
+public fun migrate<Meme, Quote>(
+    launch: &mut Launch<Meme, Quote>,
+    package_version: &PackageVersion,
+    runtime_config: &RuntimeConfig,
+    meme_currency: &mut Currency<Meme>,
+    quote_currency: &Currency<Quote>,
+    bluefin_config: &mut GlobalConfig,
+    tick_spacing: u32,
+    fee_rate: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let (lower_tick_bits, upper_tick_bits) =
+        full_range_ticks(bluefin_config, tick_spacing);
+    let pool_name = pool_name(meme_currency, quote_currency);
+    let pool_icon_url = meme_currency.icon_url().into_bytes();
+    let coin_a_symbol = meme_currency.symbol().into_bytes();
+    let coin_a_decimals = meme_currency.decimals();
+    let coin_a_url = meme_currency.icon_url().into_bytes();
+    let coin_b_symbol = quote_currency.symbol().into_bytes();
+    let coin_b_decimals = quote_currency.decimals();
+    let coin_b_url = quote_currency.icon_url().into_bytes();
+    let creation_fee = zero_creation_fee<Quote>(bluefin_config);
+
+    let payload = launch.migrate<Meme, Quote, Witness>(
+        package_version,
+        meme_currency,
+        ctx,
+    );
+    let (meme, quote) = payload.redeem_migration(Witness());
+    let meme_amount = meme.value();
+    let quote_amount = quote.value();
+    let sqrt_price_x64 = migration_math::sqrt_price_x64(
+        meme_amount,
+        quote_amount,
+        true,
+    );
+    assert_valid_sqrt_price(sqrt_price_x64);
+
+    let (
+        pool_id,
+        position,
+        _,
+        _,
+        residual_meme,
+        residual_quote,
+    ) = pool::create_pool_with_liquidity<Meme, Quote, Quote>(
+        clock,
+        bluefin_config,
+        pool_name,
+        pool_icon_url,
+        coin_a_symbol,
+        coin_a_decimals,
+        coin_a_url,
+        coin_b_symbol,
+        coin_b_decimals,
+        coin_b_url,
+        tick_spacing,
+        fee_rate,
+        sqrt_price_x64,
+        creation_fee,
+        lower_tick_bits,
+        upper_tick_bits,
+        meme,
+        quote,
+        quote_amount,
+        false,
+        ctx,
+    );
+
+    lock_and_share(
+        runtime_config,
+        pool_id,
+        position,
+        meme_amount,
+        quote_amount,
+        residual_meme,
+        residual_quote,
+        ctx,
+    );
+}
+
+/// Collects Meme and Quote fees without changing the position principal.
+public fun collect_fees<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    runtime_config: &RuntimeConfig,
+    bluefin_config: &GlobalConfig,
+    pool: &mut Pool<Meme, Quote>,
+    clock: &Clock,
+) {
+    let pool_id = object::id(pool);
+    assert!(vault::pool_id(self) == pool_id, EPositionPoolMismatch);
+
+    let position =
+        vault::borrow_position_mut<Meme, Quote, Venue, Position>(self);
+    assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
+    let liquidity_before = position.liquidity();
+    assert!(liquidity_before > 0, EZeroPositionLiquidity);
+
+    let (_, _, meme_fee, quote_fee) = pool::collect_fee(
+        clock,
+        bluefin_config,
+        pool,
+        position,
+    );
+
+    assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
+    assert!(position.liquidity() == liquidity_before, EPositionLiquidityChanged);
+    assert!(vault::pool_id(self) == pool_id, EPositionPoolMismatch);
+
+    vault::fee_ledger_mut(self).accrue_from_runtime(
+        meme_fee,
+        quote_fee,
+        runtime_config,
+    );
+}
+
+// === Private Functions ===
+
+fun full_range_ticks(
+    bluefin_config: &GlobalConfig,
+    tick_spacing: u32,
+): (u32, u32) {
+    assert!(tick_spacing > 0, EInvalidTickSpacing);
+
+    let (minimum_tick, maximum_tick) =
+        config::get_tick_range(bluefin_config);
+    let tick_spacing = i32::from(tick_spacing);
+    let lower_tick = i32::mul(
+        i32::div(minimum_tick, tick_spacing),
+        tick_spacing,
+    );
+    let upper_tick = i32::mul(
+        i32::div(maximum_tick, tick_spacing),
+        tick_spacing,
+    );
+
+    (i32::as_u32(lower_tick), i32::as_u32(upper_tick))
+}
+
+fun zero_creation_fee<Quote>(
+    bluefin_config: &GlobalConfig,
+): Balance<Quote> {
+    let (supported, fee_amount) =
+        config::get_pool_creation_fee_amount<Quote>(bluefin_config);
+    assert!(supported, EUnsupportedCreationFee);
+    assert!(fee_amount == 0, ENonzeroCreationFee);
+    balance::zero<Quote>()
+}
+
+fun pool_name<CoinA, CoinB>(
+    currency_a: &Currency<CoinA>,
+    currency_b: &Currency<CoinB>,
+): vector<u8> {
+    let mut name = currency_a.symbol().into_bytes();
+    name.append(b"-");
+    name.append(currency_b.symbol().into_bytes());
+    name
+}
+
+fun assert_valid_sqrt_price(sqrt_price_x64: u128) {
+    assert!(
+        sqrt_price_x64 >= MIN_SQRT_PRICE_X64
+            && sqrt_price_x64 < MAX_SQRT_PRICE_X64,
+        EInvalidSqrtPrice,
+    );
+}
+
+fun lock_and_share<Meme, Quote>(
+    runtime_config: &RuntimeConfig,
+    pool_id: ID,
+    position: Position,
+    opening_meme_amount: u64,
+    opening_quote_amount: u64,
+    residual_meme: Balance<Meme>,
+    residual_quote: Balance<Quote>,
+    ctx: &mut TxContext,
+) {
+    assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
+    assert!(position.liquidity() > 0, EZeroPositionLiquidity);
+    migration_math::assert_residual_within_bps(
+        opening_meme_amount,
+        residual_meme.value(),
+        MAX_RESIDUAL_BPS,
+    );
+    migration_math::assert_residual_within_bps(
+        opening_quote_amount,
+        residual_quote.value(),
+        MAX_RESIDUAL_BPS,
+    );
+
+    let protocol_treasury = runtime_config.protocol_treasury();
+    transfer::public_transfer(
+        residual_meme.into_coin(ctx),
+        protocol_treasury,
+    );
+    transfer::public_transfer(
+        residual_quote.into_coin(ctx),
+        protocol_treasury,
+    );
+
+    vault::new<Meme, Quote, Venue, Position>(
+        pool_id,
+        position,
+        ctx,
+    );
+}
