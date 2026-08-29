@@ -135,7 +135,11 @@ fun singleton_creation_events_use_generic_wrapper() {
         ) = created.protocol_authority_created_fields();
         let runtime_config_created =
             events::collect_one<events::RuntimeConfigCreated>(0);
-        let (emitted_runtime_config_id, protocol_fee_share_bps) =
+        let (
+            emitted_runtime_config_id,
+            protocol_treasury,
+            protocol_fee_share_bps,
+        ) =
             runtime_config_created.runtime_config_created_fields();
         let package_version_created =
             events::collect_one<events::PackageVersionCreated>(0);
@@ -152,6 +156,7 @@ fun singleton_creation_events_use_generic_wrapper() {
             constants::super_admin_transfer_delay_ms!(),
         );
         assert_eq!(emitted_runtime_config_id, config_id);
+        assert_eq!(protocol_treasury, LAUNCHER);
         assert_eq!(protocol_fee_share_bps, 0);
         assert_eq!(emitted_package_version, 1);
         assert!(event::events_by_type<events::ProtocolAuthorityCreated>().is_empty());

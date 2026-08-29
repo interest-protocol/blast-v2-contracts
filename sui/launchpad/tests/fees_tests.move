@@ -274,10 +274,10 @@ fun changed_protocol_fee_share_applies_to_the_next_accrual() {
             &admin_witness,
             PROTOCOL_FEE_SHARE_BPS,
         );
-        accrue(&mut ledger,
+        ledger.accrue_from_runtime(
             balance::create_for_testing<TEST_MEME>(3),
             balance::create_for_testing<TEST_QUOTE>(4),
-            f.runtime_config.protocol_fee_share_bps().value(),
+            &f.runtime_config,
         );
         f.runtime_config.set_protocol_fee_share(
             &f.package_version,
@@ -293,10 +293,10 @@ fun changed_protocol_fee_share_applies_to_the_next_accrual() {
             creator_meme_total,
             protocol_quote_total,
             creator_quote_total,
-        ) = accrue(&mut ledger,
+        ) = ledger.accrue_from_runtime(
             balance::create_for_testing<TEST_MEME>(5),
             balance::create_for_testing<TEST_QUOTE>(6),
-            f.runtime_config.protocol_fee_share_bps().value(),
+            &f.runtime_config,
         );
 
         assert_eq!(protocol_meme_delta, 4);

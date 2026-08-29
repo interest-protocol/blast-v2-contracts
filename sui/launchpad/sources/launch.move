@@ -221,7 +221,7 @@ public fun buy<Meme, Quote>(
 
     let mut meme_out = self.meme_reserve.split(meme_out_gross);
     let meme_fee_balance = meme_out.split(meme_fee);
-    let protocol_fee_share_bps = runtime_config.protocol_fee_share_bps();
+    let protocol_fee_share_bps = runtime_config.protocol_fee_share();
 
     if (crossed_threshold) {
         self.lifecycle = Lifecycle::MigrationReady;
@@ -295,7 +295,7 @@ public fun sell<Meme, Quote>(
 
     let mut quote_out = self.real_quote_reserve.split(quote_out_gross);
     let quote_fee_balance = quote_out.split(quote_fee);
-    let protocol_fee_share_bps = runtime_config.protocol_fee_share_bps();
+    let protocol_fee_share_bps = runtime_config.protocol_fee_share();
     let (
         protocol_meme_fee_delta,
         creator_meme_fee_delta,

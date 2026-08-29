@@ -14,6 +14,7 @@ use fun init_next_tx as InitFixture.next_tx;
 
 const PUBLISHER: address = @0xA11CE;
 const PROTOCOL_ADMIN: address = @0xAD;
+const NEXT_TREASURY: address = @0x7EA5;
 
 // === Test-Only Types ===
 
@@ -36,15 +37,17 @@ public struct ConfigFixture {
 // === Tests ===
 
 #[test]
-fun package_init_creates_disabled_zero_share_runtime_config() {
+fun package_init_creates_live_treasury_and_disabled_zero_share_runtime_config() {
     let mut fixture = start_init();
 
     fixture.next_tx!(PUBLISHER, |f| {
-        let (emitted_config_id, protocol_fee_share_bps) =
+        let (emitted_config_id, protocol_treasury, protocol_fee_share_bps) =
             f.created.runtime_config_created_fields();
 
-        assert_eq!(f.config.protocol_fee_share_bps().value(), 0);
+        assert_eq!(f.config.protocol_treasury(), PUBLISHER);
+        assert_eq!(f.config.protocol_fee_share_bps(), 0);
         assert_eq!(emitted_config_id, object::id(&f.config));
+        assert_eq!(protocol_treasury, PUBLISHER);
         assert_eq!(protocol_fee_share_bps, 0);
         assert!(event::events_by_type<events::RuntimeConfigCreated>().is_empty());
     });
@@ -64,7 +67,7 @@ fun active_admin_updates_live_share_and_emits_old_and_new_values() {
         let changed = events::collect_one<events::ProtocolFeeShareChanged>(0);
         let (old_share_bps, new_share_bps) =
             changed.protocol_fee_share_changed_fields();
-        assert_eq!(f.config.protocol_fee_share_bps().value(), 7_000);
+        assert_eq!(f.config.protocol_fee_share_bps(), 7_000);
         assert_eq!(old_share_bps, 0);
         assert_eq!(new_share_bps, 7_000);
         assert!(event::events_by_type<events::ProtocolFeeShareChanged>().is_empty());
@@ -101,7 +104,7 @@ fun one_runtime_config_and_admin_witness_update_both_live_settings() {
         assert_eq!(emitted_public_key, signer_public_key);
         assert_eq!(old_share_bps, 0);
         assert_eq!(new_share_bps, 2_500);
-        assert_eq!(f.config.protocol_fee_share_bps().value(), 2_500);
+        assert_eq!(f.config.protocol_fee_share_bps(), 2_500);
     });
 
     fixture.end();
@@ -171,10 +174,10 @@ fun protocol_fee_share_accepts_both_percentage_boundaries() {
         let admin_witness = f.sign_in();
 
         f.config.set_protocol_fee_share(&f.package_version, &admin_witness, 10_000);
-        assert_eq!(f.config.protocol_fee_share_bps().value(), 10_000);
+        assert_eq!(f.config.protocol_fee_share_bps(), 10_000);
 
         f.config.set_protocol_fee_share(&f.package_version, &admin_witness, 0);
-        assert_eq!(f.config.protocol_fee_share_bps().value(), 0);
+        assert_eq!(f.config.protocol_fee_share_bps(), 0);
 
         let mut changes = events::collect<events::ProtocolFeeShareChanged>();
         assert_eq!(changes.length(), 2);
@@ -187,6 +190,96 @@ fun protocol_fee_share_accepts_both_percentage_boundaries() {
         assert_eq!(first_new, 10_000);
         assert_eq!(second_old, 10_000);
         assert_eq!(second_new, 0);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun active_admin_updates_live_treasury_and_emits_old_and_new_values() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+
+        f.config.set_protocol_treasury(
+            &f.package_version,
+            &admin_witness,
+            NEXT_TREASURY,
+        );
+
+        let changed = events::collect_one<events::ProtocolTreasuryChanged>(0);
+        let (old_treasury, new_treasury) =
+            changed.protocol_treasury_changed_fields();
+
+        assert_eq!(f.config.protocol_treasury(), NEXT_TREASURY);
+        assert_eq!(old_treasury, PUBLISHER);
+        assert_eq!(new_treasury, NEXT_TREASURY);
+        assert!(event::events_by_type<events::ProtocolTreasuryChanged>().is_empty());
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidProtocolTreasury,
+    location = blast_fun::runtime_config,
+)]
+fun protocol_treasury_rejects_zero_address() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+
+        f.config.set_protocol_treasury(
+            &f.package_version,
+            &admin_witness,
+            @0x0,
+        );
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EProtocolTreasuryUnchanged,
+    location = blast_fun::runtime_config,
+)]
+fun protocol_treasury_rejects_unchanged_address() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+
+        f.config.set_protocol_treasury(
+            &f.package_version,
+            &admin_witness,
+            PUBLISHER,
+        );
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EPackageVersionMismatch,
+    location = blast_fun::package_version,
+)]
+fun stale_package_version_rejects_treasury_before_address_validation() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+        f.package_version.set_for_testing(2);
+
+        f.config.set_protocol_treasury(
+            &f.package_version,
+            &admin_witness,
+            @0x0,
+        );
     });
 
     fixture.end();

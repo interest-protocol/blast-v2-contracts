@@ -2,7 +2,7 @@
 // macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
 // locations and the stable code map documented in `docs/error-codes.md`.
 #[allow(lint(abort_without_constant))]
-/// Small live protocol settings read by trades and X creator claims.
+/// Small live protocol settings read by trades, migrators, and X creator claims.
 module blast_fun::runtime_config;
 
 use blast_fun::{
@@ -19,6 +19,7 @@ use blast_fun::{
 public struct RuntimeConfig has key {
     id: UID,
     x_claim_signer_public_key: vector<u8>,
+    protocol_treasury: address,
     protocol_fee_share_bps: Bps,
 }
 
@@ -30,6 +31,7 @@ fun init(ctx: &mut TxContext) {
 
     events::runtime_config_created(
         config_id,
+        config.protocol_treasury,
         config.protocol_fee_share_bps.value(),
     );
 
@@ -99,6 +101,42 @@ public fun set_protocol_fee_share(
     );
 }
 
+/// Replaces the live nonzero destination for subsequent migration residuals.
+public fun set_protocol_treasury(
+    self: &mut RuntimeConfig,
+    package_version: &PackageVersion,
+    _: &AdminWitness,
+    protocol_treasury: address,
+) {
+    package_version.assert_current();
+    assert!(
+        protocol_treasury != @0x0,
+        blast_fun::errors::invalid_protocol_treasury!(),
+    );
+    assert!(
+        protocol_treasury != self.protocol_treasury,
+        blast_fun::errors::protocol_treasury_unchanged!(),
+    );
+
+    let old_protocol_treasury = self.protocol_treasury;
+    self.protocol_treasury = protocol_treasury;
+
+    events::protocol_treasury_changed(
+        old_protocol_treasury,
+        protocol_treasury,
+    );
+}
+
+/// Returns the live destination used by subsequent adapter residual transfers.
+public fun protocol_treasury(self: &RuntimeConfig): address {
+    self.protocol_treasury
+}
+
+/// Returns the raw live protocol share used by subsequent fee accruals.
+public fun protocol_fee_share_bps(self: &RuntimeConfig): u64 {
+    self.protocol_fee_share_bps.value()
+}
+
 // === Package Functions ===
 
 /// Rejects use of the X claim path while no backend signer is authorized.
@@ -127,18 +165,19 @@ public(package) fun verify_x_claim_signature(
     );
 }
 
-/// Returns the current global protocol share in basis points for the next fee accrual.
-public(package) fun protocol_fee_share_bps(self: &RuntimeConfig): Bps {
+/// Returns the validated live protocol share for package-owned fee arithmetic.
+public(package) fun protocol_fee_share(self: &RuntimeConfig): Bps {
     self.protocol_fee_share_bps
 }
 
 // === Private Functions ===
 
-/// Starts disabled and at zero protocol share so publication authorizes neither behavior.
+/// Starts with no X signer, a live publisher treasury, and zero protocol fee share.
 fun new(ctx: &mut TxContext): RuntimeConfig {
     RuntimeConfig {
         id: object::new(ctx),
         x_claim_signer_public_key: vector[],
+        protocol_treasury: ctx.sender(),
         protocol_fee_share_bps: bps::new(0),
     }
 }
@@ -165,6 +204,7 @@ public fun new_disabled_for_testing(ctx: &mut TxContext): RuntimeConfig {
 
     events::runtime_config_created(
         config.id.to_inner(),
+        config.protocol_treasury,
         config.protocol_fee_share_bps.value(),
     );
 
@@ -182,6 +222,7 @@ public fun new_for_testing(
     RuntimeConfig {
         id: object::new(ctx),
         x_claim_signer_public_key: signer_public_key,
+        protocol_treasury: ctx.sender(),
         protocol_fee_share_bps: bps::new(0),
     }
 }
