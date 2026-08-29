@@ -77,11 +77,11 @@ public fun authorize_upgrade(
 
     // The native cap clears its package id while a ticket is outstanding; read first.
     let package_id = self.upgrade_cap.package();
-    let package_version = self.upgrade_cap.version();
+    let cap_version = self.upgrade_cap.version();
     let policy = self.upgrade_cap.policy();
     let ticket = self.upgrade_cap.authorize(policy, digest);
 
-    events::upgrade_authorized(package_id, package_version, policy, *ticket.digest());
+    events::upgrade_authorized(package_id, cap_version, policy, *ticket.digest());
     ticket
 }
 
@@ -101,6 +101,11 @@ public fun commit_upgrade(
 }
 
 /// Irreversibly narrows upgrades to additive changes.
+///
+/// Additive is the strictest exposed policy. A dependency-only restriction
+/// is deliberately not exposed: it would foreclose adding a rescue entry
+/// point if a defensive invariant abort ever froze the vault, while
+/// additive still permits new code beside the frozen path.
 public fun restrict_to_additive(
     self: &mut PackageAdmin,
     package_version: &PackageVersion,
@@ -112,22 +117,6 @@ public fun restrict_to_additive(
     let previous_policy = self.assert_policy_can_be_restricted_to(package::additive_policy());
 
     self.upgrade_cap.only_additive_upgrades();
-
-    events::upgrade_policy_restricted(previous_policy, self.upgrade_cap.policy());
-}
-
-/// Irreversibly narrows upgrades to dependency-only changes.
-public fun restrict_to_dependency_only(
-    self: &mut PackageAdmin,
-    package_version: &PackageVersion,
-    authority: &ProtocolAuthority,
-    super_admin_cap: &SuperAdminCap,
-) {
-    package_version.assert_current();
-    authority.assert_super_admin(super_admin_cap);
-    let previous_policy = self.assert_policy_can_be_restricted_to(package::dep_only_policy());
-
-    self.upgrade_cap.only_dep_upgrades();
 
     events::upgrade_policy_restricted(previous_policy, self.upgrade_cap.policy());
 }

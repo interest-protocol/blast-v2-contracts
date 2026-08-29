@@ -258,7 +258,11 @@ The shared `PackageAdmin` permanently holds this package's raw `Publisher` and
 capabilities, shares the object, and returns nothing. Upgrade authorization,
 irreversible policy restriction, package-version activation, and fee changes
 require the active package-local `SuperAdminCap`; commit remains authorized
-only by the matching native receipt. One shared `PackageVersion` gates package
+only by the matching native receipt. Additive is the strictest exposed
+policy restriction. A dependency-only restriction is deliberately not
+exposed: it would foreclose adding a rescue entry point if a defensive
+invariant abort ever froze the vault, while additive still permits new code
+beside the frozen path. One shared `PackageVersion` gates package
 administration and every vault mutation.
 
 The same offchain maintainer multisig may own this package's `SuperAdminCap`

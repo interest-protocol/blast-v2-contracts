@@ -179,19 +179,10 @@ fun super_admin_authorization_commit_and_restriction_emit_replay_complete_facts(
             &f.authority,
             &f.super_admin_cap,
         );
-        f.package_admin.restrict_to_dependency_only(
-            &f.package_version,
-            &f.authority,
-            &f.super_admin_cap,
-        );
-        let restricted = events::collect<events::UpgradePolicyRestricted>();
-        assert_eq!(restricted.length(), 2);
-        let (previous_policy, new_policy) = restricted[0].upgrade_policy_restricted_fields();
+        let restricted = events::collect_one<events::UpgradePolicyRestricted>(0);
+        let (previous_policy, new_policy) = restricted.upgrade_policy_restricted_fields();
         assert_eq!(previous_policy, package::compatible_policy());
         assert_eq!(new_policy, package::additive_policy());
-        let (previous_policy, new_policy) = restricted[1].upgrade_policy_restricted_fields();
-        assert_eq!(previous_policy, package::additive_policy());
-        assert_eq!(new_policy, package::dep_only_policy());
         assert_eq!(new_policy, f.package_admin.policy_for_testing());
     });
 
@@ -222,22 +213,19 @@ fun equal_policy_restriction_is_rejected_before_mutation() {
     fixture.end();
 }
 
+
 #[test]
 #[expected_failure(
-    abort_code = errors::EUpgradePolicyNotMoreRestrictive,
-    location = blast_sui::package_admin,
+    abort_code = errors::EPackageVersionOverflow,
+    location = blast_sui::package_version,
 )]
-fun looser_policy_restriction_is_rejected_before_mutation() {
+fun activation_rejects_a_package_generation_overflow() {
     let mut fixture = start_upgrade();
 
     fixture.next_tx!(SUPER_ADMIN, |f| {
-        f.package_admin.restrict_to_dependency_only(
-            &f.package_version,
-            &f.authority,
-            &f.super_admin_cap,
-        );
-        f.package_admin.restrict_to_additive(
-            &f.package_version,
+        f.package_version.set_for_testing(std::u64::max_value!());
+        package_admin::activate_package_version(
+            &mut f.package_version,
             &f.authority,
             &f.super_admin_cap,
         );
@@ -408,10 +396,13 @@ fun start_wrap(): WrapFixture {
     WrapFixture { scenario: test_scenario::begin(PUBLISHER) }
 }
 
-/// Runs the production wrap flow so the fixture custodies the real shared object.
+/// Runs the production claim and wrap flow so the fixture custodies the real shared object.
 fun start_custody(): CustodyFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
-    let publisher = blast::publisher_for_testing(scenario.ctx());
+    blast::init_for_testing(scenario.ctx());
+
+    scenario.next_tx(PUBLISHER);
+    let publisher = scenario.take_from_sender<package::Publisher>();
     let upgrade_cap = package::test_publish(@0x0.to_id(), scenario.ctx());
     let publisher_id = object::id(&publisher);
     let upgrade_cap_id = object::id(&upgrade_cap);
