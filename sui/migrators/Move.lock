@@ -73,8 +73,14 @@ deps = { std = "MoveStdlib_2", sui = "Sui_2" }
 [pinned.mainnet.blast_fun_migrators]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "0C070394748C0425E983489C08421E71F54EBDD25F6D8D33FA738B52ABE02E94"
-deps = { BluefinSpot = "BluefinSpot", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_fun = "blast_fun" }
+manifest_digest = "8E4E9D54241100BA139FC08C9C84DD7F8B567B9DEE5B96A6BC195557D2AFDF1A"
+deps = { BluefinSpot = "BluefinSpot", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
+
+[pinned.mainnet.mmt_v3]
+source = { git = "https://github.com/mmt-finance/mmt-contract-interface.git", subdir = "mmt_v3", rev = "e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib_2", sui = "Sui_2" }
 
 [pinned.testnet.BluefinSpot]
 source = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", subdir = ".", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
@@ -145,5 +151,11 @@ deps = { std = "MoveStdlib_2", sui = "Sui_2" }
 [pinned.testnet.blast_fun_migrators]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "6C6AA167B99E58FE482A553AB3C5D19633967461CB88B7F9101D932A1CA2A862"
-deps = { BluefinSpot = "BluefinSpot", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_fun = "blast_fun" }
+manifest_digest = "1E85CF55171FA5EE3AC9361D2B105214381CB9F5BDB74A1A1237C511CA38FA8D"
+deps = { BluefinSpot = "BluefinSpot", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
+
+[pinned.testnet.mmt_v3]
+source = { git = "https://github.com/mmt-finance/mmt-contract-interface.git", subdir = "mmt_v3", rev = "e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82" }
+use_environment = "testnet"
+manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
+deps = { std = "MoveStdlib_2", sui = "Sui_2" }

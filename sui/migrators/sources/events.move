@@ -14,7 +14,7 @@ public struct VaultCreated has copy, drop {
     quote: TypeName,
 }
 
-/// Records the complete Bluefin migration and residual disposition.
+/// Records one complete venue migration and residual disposition.
 public struct MigrationCompleted has copy, drop {
     launch_id: ID,
     vault_id: ID,

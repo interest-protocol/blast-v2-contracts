@@ -48,6 +48,25 @@ unchanged position liquidity afterward. The Meme and Quote fee balances then
 enter `FeeLedger::accrue_from_runtime`, which reads the live protocol share for
 that collection.
 
+## MMT routes
+
+MMT requires canonical type order. `mmt::migrate_meme_x` is valid only when
+Meme sorts as coin X, and `mmt::migrate_meme_y` is valid only when Meme sorts
+as coin Y. Each route checks both possible orders and requires exactly one
+canonical result before it redeems the migration payload.
+
+Both routes derive the atomic Q64.64 initialization price from the actual Meme
+and Quote balances. They create and initialize a new pool, derive full-range
+friendly ticks through the pinned MMT helpers, open the position, and require
+at least 99.99% use of both balances while adding liquidity. The position enters
+the common vault before the new MMT pool is shared. Both residual coins go to
+the live protocol treasury.
+
+MMT fee collection has one typed route for each pool orientation. Each route
+requires the sealed MMT venue value, verifies the vault, pool, and position
+identities, and requires unchanged positive position liquidity. Coin X/Y fees
+are normalized to Meme/Quote before they enter the common fee ledger.
+
 ## Replayable events
 
 The dedicated `events` module owns five strongly typed payloads and their
@@ -76,6 +95,7 @@ commit:
 | Package | Commit |
 | --- | --- |
 | Bluefin Spot interface | `91ce930575b2aa3decab9b7e129b8002deba80c1` |
+| MMT V3 interface | `e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82` |
 | Sui | `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` |
 | IntegerMate | `09a12d9b171122883d9350039d4ed6e8400033b9` |
 | IntegerLibrary | `8a534bd1c0b334cd3937c27987f3147a06ba6a18` |
@@ -91,6 +111,13 @@ Mainnet revision 17 is
 with digest `4tyboYqrPbZzN6V5Lh2TccW8j9nbH65mJeQFynoQGxut`. Its normalized targets used
 by the adapter match the pinned interface signatures.
 
+The pinned MMT interface declares original package
+`0x70285592c97965e811e0c6f98dccc3a9c2b4ad854b3594faab9597ada267b860`.
+Mainnet revision 5 is
+`0xcf60a40f45d46fc1e828871a647c1e25a0915dec860d2662eb10fdb382c3c1d1`.
+The adapter uses the pinned revision's canonical-order, pool, position,
+liquidity, collection, and tick-helper interfaces.
+
 ## Verification and immutable-release gate
 
 Run from this directory:
@@ -102,11 +129,12 @@ sui move build -e mainnet
 bash scripts/check_source_boundaries.sh
 ```
 
-The Bluefin dependency contains `abort 0` link stubs. A local build proves type
-compatibility only. Before production release, verify published-package lineage
-and normalized ABI, then run mainnet dev-inspect fixtures for the deterministic
-Meme-A/Quote-B order, zero Quote creation fee, aligned ticks, one-basis-point
-residual limits, and unchanged liquidity during fee collection.
+The Bluefin and MMT dependencies contain `abort 0` link stubs. A local build
+proves type compatibility only. Before production release, verify
+published-package lineage and normalized ABI. Then run mainnet dev-inspect
+fixtures for Bluefin and both canonical MMT orientations, creation and exact
+balance-derived initialization, aligned ticks, one-basis-point residual limits,
+and unchanged liquidity during fee collection.
 
 Source omission does not make principal custody permanent while this package
 has an `UpgradeCap`. After the release checks pass, destroy the package
@@ -125,6 +153,15 @@ is valid before this irreversible step.
 | 4 | `EPositionPoolMismatch` | The pool, vault, and position IDs do not match. |
 | 5 | `EZeroPositionLiquidity` | The created or collected position has no principal liquidity. |
 | 6 | `EPositionLiquidityChanged` | Bluefin fee collection changed position principal. |
+
+## MMT errors
+
+| Code | Name | Meaning |
+| --- | --- | --- |
+| 0 | `EInvalidCoinOrder` | The selected MMT route does not match the unique canonical type order. |
+| 1 | `EPositionPoolMismatch` | The pool, vault, and position IDs do not match. |
+| 2 | `EZeroPositionLiquidity` | The created or collected position has no principal liquidity. |
+| 3 | `EPositionLiquidityChanged` | MMT fee collection changed position principal. |
 
 ## Vault errors
 

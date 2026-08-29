@@ -5,6 +5,7 @@ PACKAGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SOURCE_DIR="$PACKAGE_DIR/sources"
 VAULT_SOURCE="$SOURCE_DIR/vault.move"
 BLUEFIN_SOURCE="$SOURCE_DIR/bluefin.move"
+MMT_SOURCE="$SOURCE_DIR/mmt.move"
 EVENTS_SOURCE="$SOURCE_DIR/events.move"
 
 fail() {
@@ -31,6 +32,7 @@ reject_pattern() {
 
 [[ -f "$VAULT_SOURCE" ]] || fail "missing sources/vault.move"
 [[ -f "$BLUEFIN_SOURCE" ]] || fail "missing sources/bluefin.move"
+[[ -f "$MMT_SOURCE" ]] || fail "missing sources/mmt.move"
 [[ -f "$EVENTS_SOURCE" ]] || fail "missing sources/events.move"
 
 require_pattern "$EVENTS_SOURCE" 'public struct VaultCreated' 'vault creation event'
@@ -94,6 +96,48 @@ require_pattern "$BLUEFIN_SOURCE" 'events::migration_completed' \
     'completed migration event emission'
 require_pattern "$BLUEFIN_SOURCE" 'vault::accrue_fees' 'shared replay-complete fee accrual'
 
+require_pattern "$MMT_SOURCE" 'public struct Witness' 'sealed MMT witness'
+require_pattern "$MMT_SOURCE" 'public struct Venue' 'sealed MMT venue marker'
+require_pattern "$MMT_SOURCE" 'public fun migrate_meme_x' 'MMT Meme-X migration route'
+require_pattern "$MMT_SOURCE" 'public fun migrate_meme_y' 'MMT Meme-Y migration route'
+require_pattern "$MMT_SOURCE" 'public fun collect_fees_meme_x' \
+    'MMT Meme-X fee collection route'
+require_pattern "$MMT_SOURCE" 'public fun collect_fees_meme_y' \
+    'MMT Meme-Y fee collection route'
+require_pattern "$MMT_SOURCE" 'create_pool::check_coin_order<Meme, Quote>' \
+    'MMT Meme-X canonical-order check'
+require_pattern "$MMT_SOURCE" 'create_pool::check_coin_order<Quote, Meme>' \
+    'MMT Meme-Y canonical-order check'
+require_pattern "$MMT_SOURCE" 'create_pool::new<X, Y>' 'MMT pool creation'
+require_pattern "$MMT_SOURCE" 'pool::initialize' 'MMT exact-price initialization'
+require_pattern "$MMT_SOURCE" 'pool::get_friendly_ticks' 'MMT friendly full-range ticks'
+require_pattern "$MMT_SOURCE" 'tick_math::min_sqrt_price' 'MMT minimum full-range price'
+require_pattern "$MMT_SOURCE" 'tick_math::max_sqrt_price' 'MMT maximum full-range price'
+require_pattern "$MMT_SOURCE" 'liquidity::open_position' 'MMT position creation'
+require_pattern "$MMT_SOURCE" 'liquidity::add_liquidity' 'MMT liquidity addition'
+require_pattern "$MMT_SOURCE" 'migration_math::minimum_utilized_amount' \
+    'MMT one-basis-point minimum utilization'
+require_pattern "$MMT_SOURCE" 'pool::transfer\(pool\)' 'MMT pool sharing after position creation'
+require_pattern "$MMT_SOURCE" 'collect::fee' 'MMT fee collection'
+require_pattern "$MMT_SOURCE" 'events::migration_completed' \
+    'MMT completed migration event emission'
+require_pattern "$MMT_SOURCE" 'vault::accrue_fees' 'MMT shared replay-complete fee accrual'
+require_pattern "$MMT_SOURCE" 'assert_coin_order<Meme, Quote>\(true\);' \
+    'MMT Meme-X order assertion before redemption'
+require_pattern "$MMT_SOURCE" 'assert_coin_order<Meme, Quote>\(false\);' \
+    'MMT Meme-Y order assertion before redemption'
+
+MMT_VENUE_CONSTRUCTION_COUNT="$(rg -o 'let venue = Venue\(\)' "$MMT_SOURCE" | wc -l || true)"
+[[ "$MMT_VENUE_CONSTRUCTION_COUNT" -eq 4 ]] || \
+    fail "MMT must construct its sealed venue witness for both creation and collection routes"
+MMT_POOL_TRANSFER_COUNT="$(rg -o 'pool::transfer\(pool\)' "$MMT_SOURCE" | wc -l || true)"
+[[ "$MMT_POOL_TRANSFER_COUNT" -eq 1 ]] || \
+    fail "MMT must expose exactly one pool-sharing path after position creation"
+MMT_ADD_LIQUIDITY_LINE="$(rg -n -m1 'liquidity::add_liquidity' "$MMT_SOURCE" | cut -d: -f1)"
+MMT_POOL_TRANSFER_LINE="$(rg -n -m1 'pool::transfer\(pool\)' "$MMT_SOURCE" | cut -d: -f1)"
+[[ "$MMT_POOL_TRANSFER_LINE" -gt "$MMT_ADD_LIQUIDITY_LINE" ]] || \
+    fail "MMT pool sharing must follow position creation and liquidity addition"
+
 VENUE_CONSTRUCTION_COUNT="$(rg -o 'let venue = Venue\(\)' "$BLUEFIN_SOURCE" | wc -l || true)"
 [[ "$VENUE_CONSTRUCTION_COUNT" -eq 2 ]] || \
     fail "Bluefin must construct its sealed venue witness for creation and collection"
@@ -107,8 +151,6 @@ reject_pattern 'remove_liquidity' 'principal removal is forbidden'
 reject_pattern 'close_position' 'position closure is forbidden'
 reject_pattern 'migrate_meme_b|collect_fees_meme_b|meme_is_coin_a' \
     'Bluefin must use only the deterministic Meme-A/Quote-B orientation'
-reject_pattern 'into_balance|balance::(create|from|withdraw|split)' \
-    'nonzero creation-fee balance construction is forbidden'
 reject_pattern '(position\.(burn|delete|destroy)|((burn|delete|destroy)[[:space:]]*\([^)]*position))' \
     'position burn or destruction is forbidden'
 reject_pattern '(sequence|revision|nonce|schema_version|action_tag):' \
@@ -136,11 +178,22 @@ if [[ "$COMPACT_SOURCE" =~ publicfun[^\{]*Position ]]; then
 fi
 
 BLUEFIN_COMPACT_SOURCE="$(tr -d '[:space:]' < "$BLUEFIN_SOURCE")"
+if [[ "$BLUEFIN_COMPACT_SOURCE" =~ into_balance|balance::(create|from|withdraw|split) ]]; then
+    fail "nonzero Bluefin creation-fee balance construction is forbidden"
+fi
 if [[ "$BLUEFIN_COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*Venue ]]; then
     fail "public or package Bluefin venue exposure is forbidden"
 fi
 if [[ "$COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*bluefin::Venue ]]; then
     fail "cross-module Bluefin venue exposure is forbidden"
+fi
+
+MMT_COMPACT_SOURCE="$(tr -d '[:space:]' < "$MMT_SOURCE")"
+if [[ "$MMT_COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*Venue ]]; then
+    fail "public or package MMT venue exposure is forbidden"
+fi
+if [[ "$COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*mmt::Venue ]]; then
+    fail "cross-module MMT venue exposure is forbidden"
 fi
 
 echo "Migrator source boundaries passed"
