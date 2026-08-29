@@ -31,6 +31,89 @@ reject_pattern() {
     fi
 }
 
+cetus_public_section() {
+    local name="$1"
+
+    awk -v start="public fun $name<" '
+        index($0, start) == 1 { active = 1 }
+        active && index($0, start) != 1 && ($0 ~ /^public fun / || $0 ~ /^fun /) { exit }
+        active { print }
+    ' "$CETUS_SOURCE"
+}
+
+cetus_private_section() {
+    local name="$1"
+
+    awk -v start="fun $name" '
+        index($0, start) == 1 { active = 1 }
+        active && index($0, start) != 1 && $0 ~ /^fun / { exit }
+        active { print }
+    ' "$CETUS_SOURCE"
+}
+
+require_cetus_public() {
+    local route="$1"
+    local expected="$2"
+    local description="$3"
+    local compact count
+
+    compact="$(cetus_public_section "$route" | tr -d '[:space:]')"
+    count="$(printf '%s' "$compact" | rg -o -F "$expected" | wc -l || true)"
+    [[ -n "$compact" && "$count" -eq 1 ]] || \
+        fail "Cetus $route missing $description"
+}
+
+require_cetus_private() {
+    local function="$1"
+    local expected="$2"
+    local description="$3"
+    local compact count
+
+    compact="$(cetus_private_section "$function" | tr -d '[:space:]')"
+    count="$(printf '%s' "$compact" | rg -o -F "$expected" | wc -l || true)"
+    [[ -n "$compact" && "$count" -eq 1 ]] || \
+        fail "Cetus $function missing $description"
+}
+
+require_cetus_private_count() {
+    local function="$1"
+    local expected="$2"
+    local required_count="$3"
+    local description="$4"
+    local compact count
+
+    compact="$(cetus_private_section "$function" | tr -d '[:space:]')"
+    count="$(printf '%s' "$compact" | rg -o -F "$expected" | wc -l || true)"
+    [[ -n "$compact" && "$count" -eq "$required_count" ]] || \
+        fail "Cetus $function missing $description"
+}
+
+reject_cetus_pre_guard_mutator() {
+    local route="$1"
+    local section before_guard call redemption_count
+
+    section="$(cetus_public_section "$route")"
+    before_guard="${section%%migration_math::assert_price_within_bps*}"
+    [[ "$before_guard" != "$section" ]] || \
+        fail "Cetus $route missing price guard"
+    redemption_count="$(printf '%s' "$section" | rg -o -F 'payload.redeem_migration(Witness())' | wc -l || true)"
+    [[ "$redemption_count" -eq 1 ]] || \
+        fail "Cetus $route must redeem exactly once"
+    [[ "$before_guard" == *'payload.redeem_migration(Witness())'* ]] || \
+        fail "Cetus $route must redeem before its price guard"
+
+    while IFS= read -r call; do
+        case "$call" in
+            pool::tick_spacing|pool::fee_rate) ;;
+            *) fail "Cetus $route mutates a pool before its price guard" ;;
+        esac
+    done < <(printf '%s' "$before_guard" | rg -o 'pool::[[:alnum:]_]+' | sort -u)
+
+    if printf '%s' "$before_guard" | rg -q 'position::'; then
+        fail "Cetus $route mutates a position before its price guard"
+    fi
+}
+
 [[ -f "$VAULT_SOURCE" ]] || fail "missing sources/vault.move"
 [[ -f "$BLUEFIN_SOURCE" ]] || fail "missing sources/bluefin.move"
 [[ -f "$MMT_SOURCE" ]] || fail "missing sources/mmt.move"
@@ -131,49 +214,152 @@ require_pattern "$MMT_SOURCE" 'assert_coin_order<Meme, Quote>\(false\);' \
 
 require_pattern "$CETUS_SOURCE" 'public struct Witness' 'sealed Cetus witness'
 require_pattern "$CETUS_SOURCE" 'public struct Venue' 'sealed Cetus venue marker'
-require_pattern "$CETUS_SOURCE" 'public fun migrate_new_meme_a' \
-    'Cetus new Meme-A migration route'
-require_pattern "$CETUS_SOURCE" 'public fun migrate_new_meme_b' \
-    'Cetus new Meme-B migration route'
-require_pattern "$CETUS_SOURCE" 'public fun migrate_existing_meme_a' \
-    'Cetus existing Meme-A migration route'
-require_pattern "$CETUS_SOURCE" 'public fun migrate_existing_meme_b' \
-    'Cetus existing Meme-B migration route'
-require_pattern "$CETUS_SOURCE" 'public fun collect_fees_meme_a' \
-    'Cetus Meme-A fee collection route'
-require_pattern "$CETUS_SOURCE" 'public fun collect_fees_meme_b' \
-    'Cetus Meme-B fee collection route'
-require_pattern "$CETUS_SOURCE" 'factory::is_right_order<Meme, Quote>' \
-    'Cetus Meme-A canonical-order check'
-require_pattern "$CETUS_SOURCE" 'factory::is_right_order<Quote, Meme>' \
-    'Cetus Meme-B canonical-order check'
-require_pattern "$CETUS_SOURCE" 'pool_creator::full_range_tick_range' \
-    'Cetus full-range tick derivation'
-require_pattern "$CETUS_SOURCE" 'pool_creator::create_pool_v3' \
-    'Cetus new-pool creation'
-require_pattern "$CETUS_SOURCE" 'pool::open_position' \
-    'Cetus adopted-pool position creation'
-require_pattern "$CETUS_SOURCE" 'pool::add_liquidity_fix_coin' \
-    'Cetus exact add-liquidity receipt flow'
-require_pattern "$CETUS_SOURCE" 'pool::add_liquidity_pay_amount' \
-    'Cetus add-liquidity payment query'
-require_pattern "$CETUS_SOURCE" 'pool::repay_add_liquidity' \
-    'Cetus add-liquidity repayment'
-require_pattern "$CETUS_SOURCE" 'migration_math::assert_price_within_bps' \
-    'Cetus existing-pool price guard'
-require_pattern "$CETUS_SOURCE" 'pool::current_sqrt_price' \
-    'Cetus current pool price query'
-require_pattern "$CETUS_SOURCE" 'pool::collect_fee' \
-    'Cetus fee collection'
-require_pattern "$CETUS_SOURCE" 'true,' 'Cetus fee recalculation'
-require_pattern "$CETUS_SOURCE" 'migration_math::minimum_utilized_amount' \
-    'Cetus one-basis-point minimum utilization'
-require_pattern "$CETUS_SOURCE" 'migration_math::assert_residual_within_bps' \
-    'Cetus one-basis-point residual assertion'
-require_pattern "$CETUS_SOURCE" 'events::migration_completed' \
-    'Cetus completed migration event emission'
-require_pattern "$CETUS_SOURCE" 'vault::accrue_fees' \
-    'Cetus shared replay-complete fee accrual'
+require_pattern "$CETUS_SOURCE" 'const MAX_PRICE_DEVIATION_BPS: u64 = 50;' \
+    'exact 50-bps Cetus adoption limit'
+
+# Each new-pool route owns its selected canonical order, pool key, price, and lock.
+require_cetus_public 'migrate_new_meme_a' \
+    'assert_canonical_order<Meme,Quote>(true);' 'Meme-A canonical order'
+require_cetus_public 'migrate_new_meme_a' \
+    'factory::new_pool_key<Meme,Quote>(tick_spacing)' 'Meme-A pool key'
+require_cetus_public 'migrate_new_meme_a' \
+    'pool_creator::full_range_tick_range(tick_spacing)' 'Meme-A full-range ticks'
+require_cetus_public 'migrate_new_meme_a' \
+    'migration_math::sqrt_price_x64(source_meme_amount,source_quote_amount,true,)' \
+    'Meme-A balance-derived price'
+require_cetus_public 'migrate_new_meme_a' \
+    'pool_creator::create_pool_v3<Meme,Quote>(cetus_config,pools,tick_spacing,sqrt_price_x64,string::utf8(b""),lower_tick_bits,upper_tick_bits,meme.into_coin(ctx),quote.into_coin(ctx),true,clock,ctx,)' \
+    'exact Meme-A pool creation'
+require_cetus_public 'migrate_new_meme_a' \
+    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,residual_meme,residual_quote,' \
+    'Meme-A shared lock'
+
+require_cetus_public 'migrate_new_meme_b' \
+    'assert_canonical_order<Meme,Quote>(false);' 'Meme-B canonical order'
+require_cetus_public 'migrate_new_meme_b' \
+    'factory::new_pool_key<Quote,Meme>(tick_spacing)' 'Meme-B pool key'
+require_cetus_public 'migrate_new_meme_b' \
+    'pool_creator::full_range_tick_range(tick_spacing)' 'Meme-B full-range ticks'
+require_cetus_public 'migrate_new_meme_b' \
+    'migration_math::sqrt_price_x64(source_meme_amount,source_quote_amount,false,)' \
+    'Meme-B balance-derived price'
+require_cetus_public 'migrate_new_meme_b' \
+    'pool_creator::create_pool_v3<Quote,Meme>(cetus_config,pools,tick_spacing,sqrt_price_x64,string::utf8(b""),lower_tick_bits,upper_tick_bits,quote.into_coin(ctx),meme.into_coin(ctx),true,clock,ctx,)' \
+    'exact Meme-B pool creation'
+require_cetus_public 'migrate_new_meme_b' \
+    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,residual_meme,residual_quote,' \
+    'Meme-B shared lock'
+
+# Each adopted pool must redeem, guard at exactly 50 bps, then mutate once.
+require_cetus_public 'migrate_existing_meme_a' \
+    'payload.redeem_migration(Witness())' 'Meme-A guarded redemption'
+require_cetus_public 'migrate_existing_meme_a' \
+    'migration_math::assert_price_within_bps(source_meme_amount,source_quote_amount,true,pool::current_sqrt_price(pool),MAX_PRICE_DEVIATION_BPS,)' \
+    'exact Meme-A 50-bps price guard'
+require_cetus_public 'migrate_existing_meme_a' \
+    'pool::open_position<Meme,Quote>(cetus_config,pool,lower_tick_bits,upper_tick_bits,ctx,)' \
+    'exact Meme-A position opening'
+require_cetus_public 'migrate_existing_meme_a' \
+    'pool::add_liquidity_fix_coin<Meme,Quote>(cetus_config,pool,&mutposition,source_meme_amount,true,clock,)' \
+    'exact Meme-A fixed-coin addition'
+require_cetus_public 'migrate_existing_meme_a' \
+    'pool::add_liquidity_pay_amount(&receipt)' 'Meme-A payment query'
+require_cetus_public 'migrate_existing_meme_a' \
+    'pool::repay_add_liquidity<Meme,Quote>(cetus_config,pool,paid_meme,paid_quote,receipt,)' \
+    'exact Meme-A repayment'
+require_cetus_public 'migrate_existing_meme_a' \
+    'assert!(position::pool_id(&position)==object::id(pool),EPositionPoolMismatch);' \
+    'Meme-A position-pool identity'
+require_cetus_public 'migrate_existing_meme_a' \
+    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,meme.into_coin(ctx),quote.into_coin(ctx),' \
+    'Meme-A shared lock'
+reject_cetus_pre_guard_mutator 'migrate_existing_meme_a'
+
+require_cetus_public 'migrate_existing_meme_b' \
+    'payload.redeem_migration(Witness())' 'Meme-B guarded redemption'
+require_cetus_public 'migrate_existing_meme_b' \
+    'migration_math::assert_price_within_bps(source_meme_amount,source_quote_amount,false,pool::current_sqrt_price(pool),MAX_PRICE_DEVIATION_BPS,)' \
+    'exact Meme-B 50-bps price guard'
+require_cetus_public 'migrate_existing_meme_b' \
+    'pool::open_position<Quote,Meme>(cetus_config,pool,lower_tick_bits,upper_tick_bits,ctx,)' \
+    'exact Meme-B position opening'
+require_cetus_public 'migrate_existing_meme_b' \
+    'pool::add_liquidity_fix_coin<Quote,Meme>(cetus_config,pool,&mutposition,source_quote_amount,true,clock,)' \
+    'exact Meme-B fixed-coin addition'
+require_cetus_public 'migrate_existing_meme_b' \
+    'pool::add_liquidity_pay_amount(&receipt)' 'Meme-B payment query'
+require_cetus_public 'migrate_existing_meme_b' \
+    'pool::repay_add_liquidity<Quote,Meme>(cetus_config,pool,paid_quote,paid_meme,receipt,)' \
+    'exact Meme-B repayment'
+require_cetus_public 'migrate_existing_meme_b' \
+    'assert!(position::pool_id(&position)==object::id(pool),EPositionPoolMismatch);' \
+    'Meme-B position-pool identity'
+require_cetus_public 'migrate_existing_meme_b' \
+    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,meme.into_coin(ctx),quote.into_coin(ctx),' \
+    'Meme-B shared lock'
+reject_cetus_pre_guard_mutator 'migrate_existing_meme_b'
+
+# Collection wrappers normalize both orientations through a private Venue path.
+require_cetus_public 'collect_fees_meme_a' 'letvenue=Venue();' \
+    'private Meme-A venue construction'
+require_cetus_public 'collect_fees_meme_a' \
+    'collect_position_fees<Meme,Quote,Meme,Quote>(self,&venue,cetus_config,pool,)' \
+    'Meme-A collection orientation'
+require_cetus_public 'collect_fees_meme_a' \
+    'vault::accrue_fees<Meme,Quote,Venue>(self,&venue,position_id,meme_fee,quote_fee,' \
+    'Meme-A common accrual'
+require_cetus_public 'collect_fees_meme_b' 'letvenue=Venue();' \
+    'private Meme-B venue construction'
+require_cetus_public 'collect_fees_meme_b' \
+    'collect_position_fees<Quote,Meme,Meme,Quote>(self,&venue,cetus_config,pool,)' \
+    'Meme-B collection orientation'
+require_cetus_public 'collect_fees_meme_b' \
+    'vault::accrue_fees<Meme,Quote,Venue>(self,&venue,position_id,meme_fee,quote_fee,' \
+    'Meme-B normalized common accrual'
+require_cetus_private 'collect_position_fees' 'venue:&Venue' \
+    'borrowed private venue'
+require_cetus_private 'collect_position_fees' \
+    'vault::borrow_position_mut<Meme,Quote,Venue,Position>(self,venue,)' \
+    'venue-bound position borrow'
+require_cetus_private_count 'collect_position_fees' \
+    'assert!(vault::pool_id(self)==pool_id,EPositionPoolMismatch);' 2 \
+    'vault-pool identity'
+require_cetus_private_count 'collect_position_fees' \
+    'assert!(position::pool_id(position)==pool_id,EPositionPoolMismatch);' 2 \
+    'position-pool identity'
+require_cetus_private 'collect_position_fees' \
+    'assert!(liquidity_before>0,EZeroPositionLiquidity);' \
+    'positive liquidity'
+require_cetus_private 'collect_position_fees' \
+    'pool::collect_fee(cetus_config,pool,position,true,)' \
+    'exact fee recalculation call'
+require_cetus_private 'collect_position_fees' \
+    'assert!(liquidity_after==liquidity_before,EPositionLiquidityChanged);' \
+    'unchanged liquidity'
+
+# Shared lock is the sole utilization, residual, treasury, and event seam.
+require_cetus_private 'lock_and_share' \
+    'runtime_config.protocol_treasury()' 'live treasury read'
+require_cetus_private 'lock_and_share' \
+    'migration_math::assert_residual_within_bps(source_meme_amount,residual_meme_amount,MAX_RESIDUAL_BPS,)' \
+    'Meme residual limit'
+require_cetus_private 'lock_and_share' \
+    'migration_math::assert_residual_within_bps(source_quote_amount,residual_quote_amount,MAX_RESIDUAL_BPS,)' \
+    'Quote residual limit'
+require_cetus_private 'lock_and_share' \
+    'used_meme_amount>=migration_math::minimum_utilized_amount(source_meme_amount,MAX_RESIDUAL_BPS,)' \
+    'Meme utilization limit'
+require_cetus_private 'lock_and_share' \
+    'used_quote_amount>=migration_math::minimum_utilized_amount(source_quote_amount,MAX_RESIDUAL_BPS,)' \
+    'Quote utilization limit'
+require_cetus_private 'lock_and_share' \
+    'transfer::public_transfer(residual_meme,protocol_treasury);' \
+    'Meme treasury transfer'
+require_cetus_private 'lock_and_share' \
+    'transfer::public_transfer(residual_quote,protocol_treasury);' \
+    'Quote treasury transfer'
+require_cetus_private 'lock_and_share' \
+    'events::migration_completed<Meme,Quote,Venue>(' 'direct migration event'
 
 MMT_VENUE_CONSTRUCTION_COUNT="$(rg -o 'let venue = Venue\(\)' "$MMT_SOURCE" | wc -l || true)"
 [[ "$MMT_VENUE_CONSTRUCTION_COUNT" -eq 4 ]] || \
@@ -185,28 +371,6 @@ MMT_ADD_LIQUIDITY_LINE="$(rg -n -m1 'liquidity::add_liquidity' "$MMT_SOURCE" | c
 MMT_POOL_TRANSFER_LINE="$(rg -n -m1 'pool::transfer\(pool\)' "$MMT_SOURCE" | cut -d: -f1)"
 [[ "$MMT_POOL_TRANSFER_LINE" -gt "$MMT_ADD_LIQUIDITY_LINE" ]] || \
     fail "MMT pool sharing must follow position creation and liquidity addition"
-
-CETUS_VENUE_CONSTRUCTION_COUNT="$(rg -o 'let venue = Venue\(\)' "$CETUS_SOURCE" | wc -l || true)"
-[[ "$CETUS_VENUE_CONSTRUCTION_COUNT" -eq 6 ]] || \
-    fail "Cetus must construct its sealed venue witness for all migration and collection routes"
-mapfile -t CETUS_REDEEM_LINES < <(rg -n 'payload\.redeem_migration' "$CETUS_SOURCE" | cut -d: -f1)
-mapfile -t CETUS_PRICE_GUARD_LINES < <(rg -n 'migration_math::assert_price_within_bps' "$CETUS_SOURCE" | cut -d: -f1)
-mapfile -t CETUS_OPEN_POSITION_LINES < <(rg -n 'pool::open_position' "$CETUS_SOURCE" | cut -d: -f1)
-[[ "${#CETUS_REDEEM_LINES[@]}" -eq 4 ]] || \
-    fail "Cetus must redeem exactly once for every migration route"
-[[ "${#CETUS_PRICE_GUARD_LINES[@]}" -eq 2 ]] || \
-    fail "Cetus must guard both adoption routes"
-[[ "${#CETUS_OPEN_POSITION_LINES[@]}" -eq 2 ]] || \
-    fail "Cetus must open one position for each adoption route"
-for CETUS_ADOPTION_INDEX in 0 1; do
-    CETUS_REDEEM_LINE="${CETUS_REDEEM_LINES[$((CETUS_ADOPTION_INDEX + 2))]}"
-    CETUS_PRICE_GUARD_LINE="${CETUS_PRICE_GUARD_LINES[$CETUS_ADOPTION_INDEX]}"
-    CETUS_OPEN_POSITION_LINE="${CETUS_OPEN_POSITION_LINES[$CETUS_ADOPTION_INDEX]}"
-    [[ "$CETUS_REDEEM_LINE" -lt "$CETUS_PRICE_GUARD_LINE" ]] || \
-        fail "Cetus adoption price guard must follow payload redemption"
-    [[ "$CETUS_PRICE_GUARD_LINE" -lt "$CETUS_OPEN_POSITION_LINE" ]] || \
-        fail "Cetus adoption price guard must precede position mutation"
-done
 
 VENUE_CONSTRUCTION_COUNT="$(rg -o 'let venue = Venue\(\)' "$BLUEFIN_SOURCE" | wc -l || true)"
 [[ "$VENUE_CONSTRUCTION_COUNT" -eq 2 ]] || \

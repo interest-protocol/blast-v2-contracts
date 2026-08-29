@@ -208,7 +208,7 @@ is valid before this irreversible step.
 | 2 | `EZeroPositionLiquidity` | The created or collected position has no principal liquidity. |
 | 3 | `EPositionLiquidityChanged` | Cetus fee collection changed position principal. |
 | 4 | `EPaymentExceedsBalance` | Cetus requested more than the redeemed balance. |
-| 5 | `EInsufficientUtilization` | Cetus used less than the one-basis-point minimum. |
+| 5 | `EInsufficientUtilization` | Cetus used less than 99.99%, or left more than a 1-bps residual. |
 
 ## Vault errors
 
