@@ -220,6 +220,41 @@ fun unwind_realizes_every_pending_receipt() {
 }
 
 #[test]
+fun withdrawing_more_than_principal_is_funded_by_an_activated_receipts_rewards() {
+    let mut fixture = start();
+    let mut ledger = option::none();
+
+    fixture.next_tx!(USER, |f| {
+        ledger.fill(f.new_staked_ledger(2 * MIST_PER_SUI));
+    });
+    fixture.advance_epoch_with_rewards(130);
+    fixture.advance_epoch_with_rewards(130);
+    fixture.next_tx!(USER, |f| {
+        let ledger = ledger.borrow_mut();
+
+        // One MIST above principal forces the whole-receipt native
+        // withdrawal, whose realized rewards over-deliver: the saturating
+        // remainder stops at zero, the caller gets the exact amount, and the
+        // excess stays liquid.
+        let sui_out = ledger.withdraw_exact(
+            f.system!(),
+            2 * MIST_PER_SUI + 1,
+            1,
+            1,
+            f.ctx!(),
+        );
+
+        assert_eq!(sui_out.value(), 2 * MIST_PER_SUI + 1);
+        assert_eq!(ledger.pending_sui(), 0);
+        assert!(ledger.liquid_sui() > 0);
+        destroy(sui_out);
+    });
+
+    destroy(ledger);
+    fixture.end();
+}
+
+#[test]
 fun activate_pending_converts_every_arrived_receipt() {
     let mut fixture = start();
     let mut ledger = option::none();
@@ -350,4 +385,9 @@ fun stake_more(self: &mut CustodyFixture, ledger: &mut Custody, amount: u64) {
 
 fun advance_epoch(self: &mut CustodyFixture) {
     self.runner.advance_epoch(option::none()).destroy_for_testing();
+}
+
+fun advance_epoch_with_rewards(self: &mut CustodyFixture, computation_charge: u64) {
+    let options = self.runner.advance_epoch_opts().computation_charge(computation_charge);
+    self.runner.advance_epoch(option::some(options)).destroy_for_testing();
 }
