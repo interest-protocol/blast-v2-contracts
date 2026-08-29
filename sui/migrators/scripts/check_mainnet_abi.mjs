@@ -100,6 +100,9 @@ const MANIFEST_TABLES = ['package', 'dependencies', 'addresses'];
 
 const LOCK_NODE_KEYS = ['source', 'use_environment', 'manifest_digest', 'deps'];
 
+/// Shape the Move CLI generates for `manifest_digest`: 64 uppercase hex digits.
+const LOCK_DIGEST_PATTERN = /^[0-9A-F]{64}$/;
+
 const PACKAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // === Expected Packages ===
@@ -947,8 +950,11 @@ function renderType(value, selfOriginal, path) {
         throw shapeError(`${path}.signature`, 'missing body');
     }
 
+    // The live schema omits `ref` for a by-value type, so absence is the known
+    // shape and every present value — including an explicit null — must be one
+    // of the two known reference kinds.
     let reference = '';
-    if (Object.hasOwn(signature, 'ref') && signature.ref !== null) {
+    if (Object.hasOwn(signature, 'ref')) {
         if (signature.ref === '&') reference = '&';
         else if (signature.ref === '&mut') reference = '&mut ';
         else {
@@ -1180,6 +1186,33 @@ function packageFacts(node, path, extraKeys) {
     };
 }
 
+/// Validates every type-origin record and rejects a repeated `module::struct`
+/// key before insertion.
+///
+/// A plain `new Map` would let a later entry overwrite an earlier one, so a
+/// conflicting defining id followed by the expected id would read as correct.
+/// Any repeat fails, including one that repeats the same defining id.
+function buildTypeOrigins(path, value) {
+    const origins = new Map();
+    expectArray(value, path).forEach((origin, index) => {
+        const entryPath = `${path}[${index}]`;
+        const record = expectObject(origin, entryPath, [
+            'module',
+            'struct',
+            'definingId',
+        ]);
+        const key =
+            `${expectString(record.module, `${entryPath}.module`)}::` +
+            `${expectString(record.struct, `${entryPath}.struct`)}`;
+        if (origins.has(key)) {
+            throw shapeError(entryPath, `duplicate type origin ${key}`);
+        }
+        origins.set(key, normalizeAddress(record.definingId, `${entryPath}.definingId`));
+    });
+
+    return origins;
+}
+
 async function verifyPackage(expected, observed) {
     const label = expected.label;
     const data = await graphql(PACKAGE_QUERY, {
@@ -1267,23 +1300,7 @@ async function verifyPackage(expected, observed) {
 
     let checkedOrigins = 0;
     try {
-        const origins = new Map(
-            expectArray(data.latest.typeOrigins, `${label} typeOrigins`).map(
-                (origin, index) => {
-                    const path = `${label} typeOrigins[${index}]`;
-                    const record = expectObject(origin, path, [
-                        'module',
-                        'struct',
-                        'definingId',
-                    ]);
-                    return [
-                        `${expectString(record.module, `${path}.module`)}::` +
-                            `${expectString(record.struct, `${path}.struct`)}`,
-                        normalizeAddress(record.definingId, `${path}.definingId`),
-                    ];
-                },
-            ),
-        );
+        const origins = buildTypeOrigins(`${label} typeOrigins`, data.latest.typeOrigins);
         for (const module of expected.modules) {
             for (const name of module.structs) {
                 const key = `${module.name}::${name}`;
@@ -1659,6 +1676,13 @@ function validateLockSource(source) {
                 `${nodeLabel} declares the wrong environment`,
             );
 
+            const digest = node.get('manifest_digest');
+            check(
+                typeof digest === 'string' && LOCK_DIGEST_PATTERN.test(digest),
+                `${nodeLabel} manifest_digest must be 64 uppercase hex digits, got ` +
+                    `${JSON.stringify(digest)}`,
+            );
+
             const source = node.get('source');
             const sourceOk = validateRecord(
                 nodeLabel,
@@ -1811,6 +1835,9 @@ function selfTestCases() {
     const fullsailManifest = readPackageFile('interfaces/fullsail/Move.toml');
     const lock = readPackageFile('Move.lock');
 
+    const FIRST_LOCK_DIGEST = lock.match(/manifest_digest = "([^"]*)"/)?.[1];
+    if (!FIRST_LOCK_DIGEST) throw new Error('self-test fixture missing: manifest_digest');
+
     const rootSpec = MANIFESTS.find((spec) => spec.path === 'Move.toml');
     const turbosSpec = MANIFESTS.find(
         (spec) => spec.path === 'interfaces/turbos/Move.toml',
@@ -1910,6 +1937,75 @@ function selfTestCases() {
         {
             name: 'unknown reference kind is rejected',
             run: () => renderFunction('collect_fee', withFunction((f) => { f.parameters[1].signature.ref = '&imm'; }), STD_ADDRESS),
+        },
+        {
+            // The live schema omits `ref` for by-value; explicit null is novel.
+            name: 'explicit null reference is rejected',
+            run: () =>
+                renderFunction(
+                    'f',
+                    {
+                        name: 'f',
+                        visibility: 'PUBLIC',
+                        isEntry: false,
+                        typeParameters: [],
+                        parameters: [{ signature: { ref: null, body: 'u64' } }],
+                        return: [],
+                    },
+                    STD_ADDRESS,
+                ),
+        },
+        {
+            name: 'absent reference still renders by value',
+            expect: 'pass',
+            run: () => {
+                const rendered = renderFunction(
+                    'f',
+                    {
+                        name: 'f',
+                        visibility: 'PUBLIC',
+                        isEntry: false,
+                        typeParameters: [],
+                        parameters: [{ signature: { body: 'u64' } }],
+                        return: [],
+                    },
+                    STD_ADDRESS,
+                );
+                if (rendered !== 'public fun f(u64)') {
+                    throw new Error(`unexpected rendering: ${rendered}`);
+                }
+            },
+        },
+        {
+            name: 'well-formed type origins build cleanly',
+            expect: 'pass',
+            run: () => {
+                const origins = buildTypeOrigins('origins', [
+                    { module: 'm', struct: 'S', definingId: STD_ADDRESS },
+                    { module: 'm', struct: 'T', definingId: SUI_ADDRESS },
+                ]);
+                if (origins.size !== 2 || origins.get('m::S') !== STD_ADDRESS) {
+                    throw new Error('unexpected origin map');
+                }
+            },
+        },
+        {
+            // A wrong defining id followed by the expected one must not be
+            // overwritten into a passing lookup.
+            name: 'duplicate type origin with a conflicting defining id is rejected',
+            run: () =>
+                buildTypeOrigins('origins', [
+                    { module: 'm', struct: 'S', definingId: `0x${'0'.repeat(63)}3` },
+                    { module: 'm', struct: 'S', definingId: STD_ADDRESS },
+                ]),
+        },
+        {
+            name: 'duplicate type origin with the same defining id is rejected',
+            run: () =>
+                buildTypeOrigins('origins', [
+                    { module: 'm', struct: 'S', definingId: STD_ADDRESS },
+                    { module: 'm', struct: 'S', definingId: STD_ADDRESS },
+                ]),
         },
         {
             name: 'novel type body shape is rejected',
@@ -2132,6 +2228,32 @@ function selfTestCases() {
             name: 'lock local path change is rejected',
             run: lockCase(
                 mutateSource(lock, 'source = { local = "interfaces/cetus" }', 'source = { local = "interfaces/turbos" }'),
+            ),
+        },
+        {
+            name: 'boolean lock manifest digest is rejected',
+            run: lockCase(
+                mutateSource(lock, `manifest_digest = "${FIRST_LOCK_DIGEST}"`, 'manifest_digest = false'),
+            ),
+        },
+        {
+            name: 'malformed lock manifest digest is rejected',
+            run: lockCase(
+                mutateSource(
+                    lock,
+                    `manifest_digest = "${FIRST_LOCK_DIGEST}"`,
+                    'manifest_digest = "not-a-digest"',
+                ),
+            ),
+        },
+        {
+            name: 'lowercase lock manifest digest is rejected',
+            run: lockCase(
+                mutateSource(
+                    lock,
+                    `manifest_digest = "${FIRST_LOCK_DIGEST}"`,
+                    `manifest_digest = "${FIRST_LOCK_DIGEST.toLowerCase()}"`,
+                ),
             ),
         },
     ];

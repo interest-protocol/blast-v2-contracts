@@ -70,7 +70,12 @@ exactly the requested fields; each list must be a real list; `isEntry` and
 `isPhantom` must be real booleans; visibility, abilities, constraints, primitive
 type names, reference kinds, and type-body shapes must each be a known value with
 no duplicates. A null, absent, partial, or novel response is a failure, never a
-value that normalizes into something an expectation happens to match.
+value that normalizes into something an expectation happens to match. The live
+schema omits `signature.ref` for a by-value type, so absence is the by-value
+shape and any present `ref` — including an explicit null — must be `&` or
+`&mut`. Type origins are built one entry at a time and reject a repeated
+`module::struct` key, so a wrong defining id cannot be overwritten by a later
+expected one; an exact repeat of the same defining id fails too.
 
 The ABI comparison then uses the structured `OpenMoveTypeSignature`, not display
 prose. Each entry renders reference mutability, every parameter in order,
@@ -102,7 +107,9 @@ Each file is then bound to an exact expectation:
   outside `package`, `dependencies`, and `addresses` may appear;
 - `Move.lock` must declare format version 4, exactly the 18 expected pinned nodes
   in each of the `mainnet` and `testnet` environments, each node's exact `source`
-  record and exact resolved `deps` edges, and nothing else; and
+  record and exact resolved `deps` edges, and nothing else; every node's
+  `manifest_digest` must be a string of 64 uppercase hex digits, the shape the
+  Move CLI generates; and
 - each local normalized interface must resolve its named `Sui` edge to a node
   whose source is `MystenLabs/sui` at
   `crates/sui-framework/packages/sui-framework` and
@@ -126,14 +133,17 @@ node scripts/check_mainnet_abi.mjs --self-test
 
 Makes no network request and mutates no file. It renders a well-formed function
 and struct fixture, validates the committed manifests and lock, and then asserts
-that 50 mutated inputs are rejected — null lists, a missing or null `isEntry`,
+that 56 mutated inputs are rejected — null lists, a missing or null `isEntry`,
 unknown and duplicate abilities and constraints, unknown visibility, novel type
-bodies and reference kinds, extra response fields, a commented-out dependency, a
-missing `rev`, `branch` and `tag` selectors, a wrong-but-40-hex Sui revision,
-wrong repositories and subdirectories, added and dropped `override` rules,
-duplicate keys and tables, extra and missing lock nodes, and rebound `deps`
-edges. Every case that a live run cannot reach without a real venue upgrade is
-covered here instead.
+bodies and reference kinds, an explicit null `signature.ref`, extra response
+fields, duplicate type origins with conflicting and with identical defining ids,
+a commented-out dependency, a missing `rev`, `branch` and `tag` selectors, a
+wrong-but-40-hex Sui revision, wrong repositories and subdirectories, added and
+dropped `override` rules, duplicate keys and tables, extra and missing lock
+nodes, rebound `deps` edges, and boolean, malformed, and lowercase
+`manifest_digest` values. Five positive fixtures pin the accepted shapes,
+including a by-value parameter with `ref` absent. Every case that a live run
+cannot reach without a real venue upgrade is covered here instead.
 
 ## Published venue packages
 
