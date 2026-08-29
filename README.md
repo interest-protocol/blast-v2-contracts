@@ -119,6 +119,11 @@ shares the key-only launch through the explicit publication function. The
 launch then owns coin-moving trading, capability-gated fee claims, and the
 single-use migration lifecycle.
 The workspace SDK derives explanatory release and valuation previews off chain.
+ADR 0054 records the accepted isolated V3 migrator design and its recommended
+SUI lane: 8,000 SUI virtual Quote and migration target, zero terminal fees, and
+20% Meme pool provision. This is operational launch configuration, not an
+on-chain USD oracle or immutable global default; Memez, Raydium, Pump, and Hop
+comparisons are context only.
 The next audit-sized slice is SDK transaction construction and live-state
 previews for this ABI. Pause policy, Auction, and Stable remain optional
 follow-ups rather than making the V2 core carry them on day one. See

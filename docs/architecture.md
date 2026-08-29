@@ -92,6 +92,21 @@ rule. It is not stored or published merely because a UI wants to display it.
 Contract balances and completed events are authoritative; SDK results are
 previews. See [ADR 0039](decisions/0039-deterministic-quote-valuations.md).
 
+## Migration valuation disclosure
+
+The recommended SUI lane is an operational pre-launch configuration: 8,000 SUI
+virtual Quote, an 8,000-SUI migration target, zero terminal fees, and a 20%
+Meme pool provision. It yields a 10,000-SUI opening curve valuation and equal
+40,000-SUI curve-terminal and DEX-opening valuations. An administrator selects
+this Quote-denominated configuration before each eligible launch; it is not an
+immutable global default or an on-chain USD oracle.
+
+Memez's balance-derived V3 price, Raydium's effective-reserve continuity, and
+Pump and Hop graduation disclosures inform this comparison only. Blast cannot
+move virtual Quote into a DEX pool, so it must disclose the real-balance DEX
+valuation separately and must not present a USD comparison as a protocol rule.
+See [ADR 0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md).
+
 ## Asset pair
 
 A launch pairs its generated meme coin with a quote `Coin<Quote>`. Stored rates

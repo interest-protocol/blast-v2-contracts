@@ -98,6 +98,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0050](0050-module-local-package-version-constant.md) | Module-local package-version constant | **accepted** |
 | [0051](0051-generated-meme-package-template.md) | Generated Meme package template | **accepted** |
 | [0052](0052-stepped-linear-vesting.md) | Fully funded stepped-linear vesting | **accepted** |
+| [0054](0054-v3-dex-migrators-and-locked-lp-fees.md) | V3 DEX migrators, exact seed pricing, and locked LP fees | **accepted** |
 
 ADRs 0013–0036 and 0038–0052 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
@@ -214,6 +215,11 @@ publisher, converting P6 into compile evidence.
 ADR 0052 adds a framework-only Sui vesting package with fully funded,
 fixed-beneficiary stepped-linear schedules. Cancellation is opt-in through a
 schedule-bound capability and can return only unvested value.
+
+ADR 0054 accepts isolated V3 adapter packages, real-balance seed pricing, locked
+LP principal, and the operational recommended SUI lane. Its Memez, Raydium,
+Pump, and Hop comparisons are context only; they do not set an on-chain USD
+oracle or immutable global default.
 
 ## Open premises
 

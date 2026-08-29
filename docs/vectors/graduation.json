@@ -4,7 +4,8 @@
   "source_decisions": [
     "docs/decisions/0027-graduation-economics-and-migration-witnesses.md",
     "docs/decisions/0033-meme-liquidity-provision.md",
-    "docs/decisions/0039-deterministic-quote-valuations.md"
+    "docs/decisions/0039-deterministic-quote-valuations.md",
+    "docs/decisions/0054-v3-dex-migrators-and-locked-lp-fees.md"
   ],
   "units": {
     "meme": "atomic units of the generated Meme currency",
@@ -75,6 +76,28 @@
         "opening_valuation": "1000000000000",
         "curve_terminal_valuation": "4000000000000",
         "dex_opening_valuation": "4000000000000"
+      }
+    },
+    {
+      "name": "recommended_sui_lane",
+      "given": {
+        "initial_meme_supply": "1000000000000000000",
+        "curve_inventory": "800000000000000000",
+        "meme_liquidity_provision": "200000000000000000",
+        "virtual_quote": "8000000000000",
+        "migration_quote_target": "8000000000000",
+        "protocol_meme_graduation_fee_bps": 0,
+        "meme_liquidity_provision_bps": 2000,
+        "quote_migration_fee_bps": 0
+      },
+      "expect": {
+        "terminal_curve_meme": "400000000000000000",
+        "curve_meme_released": "400000000000000000",
+        "quote_migration_fee": "0",
+        "net_quote": "8000000000000",
+        "opening_valuation": "10000000000000",
+        "curve_terminal_valuation": "40000000000000",
+        "dex_opening_valuation": "40000000000000"
       }
     },
     {
