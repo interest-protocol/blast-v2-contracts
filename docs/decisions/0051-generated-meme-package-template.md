@@ -35,7 +35,7 @@ must delegate currency creation and ticket custody to Blast.
 
 ## Decision
 
-Add one buildable package at `sui/templates/blast_fun_template/`. Its module:
+Add one buildable package at `sui/meme_template/`. Its module:
 
 - defines the package's one-time witness;
 - selects either an address or X creator identity from one fixed 32-byte payload
@@ -128,7 +128,7 @@ SDK. The small initializer branch runs only during package publication.
 
 ## Verification
 
-From `sui/templates/blast_fun_template/`, run:
+From `sui/meme_template/`, run:
 
 ```bash
 sui move build

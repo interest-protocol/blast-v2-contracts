@@ -24,7 +24,7 @@ contracts/
 ├── sui/                      Sui Move package workspace
 │   ├── launchpad/            Blast launchpad core package
 │   ├── migrators/            venue adapter packages
-│   ├── templates/            generated per-launch package templates
+│   ├── meme_template/        generated per-launch Meme package template
 │   └── vesting/              framework-only vesting package
 └── evm/                      independent Solidity/Foundry toolchain
 ```

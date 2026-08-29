@@ -1,5 +1,5 @@
 /// Generated Meme package that creates one Blast launch ticket at publication.
-module blast_fun_template::meme;
+module meme_template::meme;
 
 use blast_fun::{creator_authority, launch_ticket};
 use sui::address;
