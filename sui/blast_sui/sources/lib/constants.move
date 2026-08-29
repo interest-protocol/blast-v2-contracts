@@ -35,6 +35,18 @@ macro public(package) fun native_min_stake_mist(): u64 {
     1_000_000_000
 }
 
+/// Most pending native receipts one custody ledger holds at once.
+///
+/// Same-epoch requests join the newest receipt, refresh drains every arrived
+/// receipt at the first current-rate epoch, and delegation is gated by that
+/// same current-rate proof, so at most two receipts — one buffer-deferred and
+/// one current-epoch — can coexist. Three carries one slot of slack, and
+/// `stake_idle` skips delegation instead of aborting when the ledger is full,
+/// so an unexpected third receipt costs deferred yield, never a user abort.
+macro public(package) fun max_pending_stakes(): u64 {
+    3
+}
+
 /// Extra MIST requested from one native FungibleStakedSui redemption.
 ///
 /// Native redemption floors the pool's total SUI value, then floors the

@@ -203,7 +203,7 @@ public fun request_blast_sui(
         staked_sui.pool_id() == self.pool_id,
         blast_sui::errors::wrong_delegation_pool!(),
     );
-    let receipt = deposit_receipt::issue(object::id(self), staked_sui, ctx);
+    let receipt = deposit_receipt::new(object::id(self), staked_sui, ctx);
     self.stake_idle(system_state, ctx);
 
     events::blast_sui_deposit_requested(
@@ -426,30 +426,38 @@ fun refresh_native(self: &mut Vault, system_state: &mut SuiSystemState, ctx: &mu
         self.fun_custody.revalue(self.rate_sui, self.rate_pool_tokens);
         self.blast_custody.revalue(self.rate_sui, self.rate_pool_tokens);
 
-        // Convert an activated fun receipt only when its floor loss preserves
-        // the exit buffer. Otherwise keep it through activation and safe mode,
-        // then realize it in a normal later epoch so recovery cannot forfeit
-        // current or deferred rewards.
-        let fun_activation_epoch = self.fun_custody.pending_activation_epoch();
-        if (fun_activation_epoch.is_some() && *fun_activation_epoch.borrow() <= epoch) {
-            let activation_epoch = *fun_activation_epoch.borrow();
-            let buffer = self.fun_backing_buffer();
+        // Resolve arrived fun receipts oldest-first, rechecking the buffer per
+        // receipt: convert one only while its floor loss preserves the exit
+        // buffer; otherwise keep it through activation and safe mode, then
+        // realize it in a normal later epoch so recovery cannot forfeit
+        // current or deferred rewards. The loop is bounded by the pending
+        // ledger cap and stops at the first receipt it must retain, since
+        // later receipts activate no earlier.
+        if (is_current) {
             let loss_bound = math::fun_conversion_loss_bound_up(
                 self.rate_sui,
                 self.rate_pool_tokens,
             );
-            if (
-                is_current
-                    && buffer >= loss_bound
-                    && buffer - loss_bound > constants::fun_exit_low_water_mist!()
-            ) {
-                self.fun_custody.activate_pending(system_state, ctx);
-                self.fun_custody.revalue(self.rate_sui, self.rate_pool_tokens);
-            } else if (is_current && activation_epoch < epoch) {
-                // Withdrawing during the activation epoch forfeits that epoch's
-                // reward. Withdrawing during safe mode can also forfeit deferred
-                // rewards. Recover only after a full epoch with a current rate.
-                self.fun_custody.realize_pending(system_state, ctx);
+            loop {
+                let fun_activation_epoch = self.fun_custody.pending_activation_epoch();
+                if (fun_activation_epoch.is_none() || *fun_activation_epoch.borrow() > epoch) {
+                    break
+                };
+                let activation_epoch = *fun_activation_epoch.borrow();
+                let buffer = self.fun_backing_buffer();
+                if (
+                    buffer >= loss_bound
+                        && buffer - loss_bound > constants::fun_exit_low_water_mist!()
+                ) {
+                    self.fun_custody.activate_oldest_pending(system_state, ctx);
+                    self.fun_custody.revalue(self.rate_sui, self.rate_pool_tokens);
+                } else if (activation_epoch < epoch) {
+                    // Withdrawing during the activation epoch forfeits that
+                    // epoch's reward. Withdrawing during safe mode can also
+                    // forfeit deferred rewards. Recover only after a full
+                    // epoch with a current rate.
+                    self.fun_custody.realize_pending(system_state, ctx);
+                } else break;
             };
         };
     };

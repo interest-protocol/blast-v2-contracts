@@ -100,6 +100,98 @@ fun transferring_every_active_token_moves_the_whole_native_position() {
     fixture.end();
 }
 
+#[test]
+fun stale_receipts_take_their_own_slots_until_the_ledger_cap_skips_delegation() {
+    let mut fixture = start();
+    let mut ledger = option::none();
+
+    fixture.next_tx!(USER, |f| {
+        ledger.fill(f.new_staked_ledger(2 * MIST_PER_SUI));
+    });
+    fixture.advance_epoch();
+    fixture.next_tx!(USER, |f| {
+        f.stake_more(ledger.borrow_mut(), 3 * MIST_PER_SUI);
+        assert_eq!(ledger.borrow().pending_sui(), 5 * MIST_PER_SUI);
+        assert_eq!(ledger.borrow().liquid_sui(), 0);
+    });
+    fixture.advance_epoch();
+    fixture.next_tx!(USER, |f| {
+        f.stake_more(ledger.borrow_mut(), 4 * MIST_PER_SUI);
+        assert_eq!(ledger.borrow().pending_sui(), 9 * MIST_PER_SUI);
+        assert_eq!(ledger.borrow().liquid_sui(), 0);
+    });
+    fixture.advance_epoch();
+    fixture.next_tx!(USER, |f| {
+        // Three stale receipts fill the ledger and the newest cannot join a
+        // fourth activation epoch: delegation skips and the deposit stays
+        // liquid, still counted at face value.
+        f.stake_more(ledger.borrow_mut(), 5 * MIST_PER_SUI);
+        assert_eq!(ledger.borrow().pending_sui(), 9 * MIST_PER_SUI);
+        assert_eq!(ledger.borrow().liquid_sui(), 5 * MIST_PER_SUI);
+        assert_eq!(ledger.borrow().assets(), 14 * MIST_PER_SUI);
+    });
+
+    destroy(ledger);
+    fixture.end();
+}
+
+#[test]
+fun activate_pending_converts_every_arrived_receipt() {
+    let mut fixture = start();
+    let mut ledger = option::none();
+
+    fixture.next_tx!(USER, |f| {
+        ledger.fill(f.new_staked_ledger(2 * MIST_PER_SUI));
+    });
+    fixture.advance_epoch();
+    fixture.next_tx!(USER, |f| {
+        f.stake_more(ledger.borrow_mut(), 3 * MIST_PER_SUI);
+    });
+    fixture.advance_epoch();
+    fixture.next_tx!(USER, |f| {
+        let ledger = ledger.borrow_mut();
+        ledger.activate_pending(f.system!(), f.ctx!());
+
+        assert_eq!(ledger.pending_sui(), 0);
+        assert_eq!(ledger.active_pool_tokens(), 5 * MIST_PER_SUI);
+        ledger.revalue(1, 1);
+        assert_eq!(ledger.assets(), 5 * MIST_PER_SUI);
+    });
+
+    destroy(ledger);
+    fixture.end();
+}
+
+#[test]
+fun withdraw_exact_drains_the_newest_receipt_first() {
+    let mut fixture = start();
+    let mut ledger = option::none();
+
+    fixture.next_tx!(USER, |f| {
+        ledger.fill(f.new_staked_ledger(2 * MIST_PER_SUI));
+    });
+    fixture.advance_epoch();
+    fixture.next_tx!(USER, |f| {
+        f.stake_more(ledger.borrow_mut(), 3 * MIST_PER_SUI);
+    });
+    fixture.next_tx!(USER, |f| {
+        let ledger = ledger.borrow_mut();
+        let oldest_epoch = ledger.pending_activation_epoch();
+
+        let sui_out = ledger.withdraw_exact(f.system!(), 4 * MIST_PER_SUI, 1, 1, f.ctx!());
+
+        // The newest three-SUI receipt is consumed whole and the oldest only
+        // splits for the remainder, so the oldest receipt stays delegated.
+        assert_eq!(sui_out.value(), 4 * MIST_PER_SUI);
+        assert_eq!(ledger.pending_sui(), MIST_PER_SUI);
+        assert_eq!(ledger.pending_activation_epoch(), oldest_epoch);
+        destroy(sui_out);
+    });
+
+    destroy(ledger);
+    fixture.end();
+}
+
 // === Fixture Macros ===
 
 /// Runs `$fn` as one transaction with the shared system state borrowed.
@@ -162,6 +254,14 @@ fun new_staked_ledger(self: &mut CustodyFixture, amount: u64): Custody {
     assert_eq!(ledger.pending_sui(), amount);
 
     ledger
+}
+
+/// Deposits `amount` and delegates the ledger's idle SUI to the fixed pool.
+fun stake_more(self: &mut CustodyFixture, ledger: &mut Custody, amount: u64) {
+    let validator = self.runner.genesis_validator_addresses()[1];
+    let pool_id = self.system!().validator_staking_pool_id(validator);
+    ledger.deposit(coin::mint_for_testing<SUI>(amount, self.ctx!()).into_balance());
+    ledger.stake_idle(self.system!(), validator, &pool_id, 0, self.ctx!());
 }
 
 fun advance_epoch(self: &mut CustodyFixture) {

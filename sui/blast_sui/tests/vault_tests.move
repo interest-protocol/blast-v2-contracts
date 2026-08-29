@@ -865,7 +865,8 @@ fun buffer_above_the_low_water_mark_keeps_active_fun_stake() {
 }
 
 /// A depleted fun buffer keeps a newly activated receipt for one full reward
-/// epoch, realizes those rewards, restores the reserve, and resumes conversion.
+/// epoch while new deposits delegate into their own pending slots, realizes
+/// those rewards, restores the reserve, and resumes conversion.
 #[test]
 fun depleted_fun_buffer_recovers_without_forfeiting_every_activation_epoch() {
     let mut fixture = start_vault();
@@ -901,26 +902,28 @@ fun depleted_fun_buffer_recovers_without_forfeiting_every_activation_epoch() {
     assert_eq!(tokens, 0);
     assert!(fun_custody.pool_assets() >= fun_supply);
 
-    // New principal can remain liquid for this one epoch because native stake
-    // with different activation epochs cannot be joined.
+    // New principal delegates immediately as its own second receipt: native
+    // stake with different activation epochs cannot join the retained one,
+    // so the deposit takes a free pending slot instead of waiting liquid.
     let custody = fixture.mint_fun(MIST_PER_SUI);
     let (fun_custody, _, _, fun_supply, _) = custody.vault_custody_fields();
     let (liquid, pending, tokens, _) = fun_custody.pool_custody_fields();
-    assert_eq!(liquid, reserve + MIST_PER_SUI);
-    assert!(pending >= 19 * MIST_PER_SUI);
+    assert_eq!(liquid, reserve);
+    assert!(pending >= 20 * MIST_PER_SUI);
     assert_eq!(tokens, 0);
     assert_eq!(fun_supply, 21 * MIST_PER_SUI);
     assert!(fun_custody.pool_assets() >= fun_supply);
 
-    // After one complete rewarded epoch, recovery realizes yield, restores the
-    // full reserve, and re-stakes all fun principal above it.
+    // After one complete rewarded epoch, recovery realizes the retained
+    // receipt's yield, restores the full reserve, converts the second receipt
+    // with the recovered buffer, and re-stakes all liquid above the reserve.
     fixture.advance_epoch_with_rewards(130);
     let custody = fixture.sync();
     let (fun_custody, _, _, fun_supply, _) = custody.vault_custody_fields();
     let (liquid, pending, tokens, _) = fun_custody.pool_custody_fields();
     assert_eq!(liquid, reserve);
-    assert!(pending >= 21 * MIST_PER_SUI);
-    assert_eq!(tokens, 0);
+    assert!(pending >= 19 * MIST_PER_SUI);
+    assert!(tokens > 0);
     assert_eq!(fun_custody.pool_assets(), fun_supply + reserve);
 
     // The recovered buffer now permits ordinary fungible conversion at the
@@ -2496,7 +2499,7 @@ fun issue_test_receipt(
             validator,
             f.ctx!(),
         );
-        let receipt = deposit_receipt::issue(vault_id, staked_sui, f.ctx!());
+        let receipt = deposit_receipt::new(vault_id, staked_sui, f.ctx!());
         deposit_receipt::keep(receipt, f.ctx!());
     });
 }

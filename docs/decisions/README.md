@@ -100,8 +100,9 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0052](0052-stepped-linear-vesting.md) | Fully funded stepped-linear vesting | **accepted** |
 | [0053](0053-single-validator-funsui-and-blastsui.md) | Single-validator `funSUI` and `blastSUI` | **accepted** |
 | [0055](0055-global-vesting-package-and-checkpoints.md) | Global vesting package and checkpoint schedules | **accepted** |
+| [0056](0056-bounded-pending-stake-vector.md) | Bounded pending-stake vector in custody ledgers | **accepted** |
 
-ADRs 0013–0036, 0038–0053, and 0055 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
+ADRs 0013–0036, 0038–0053, 0055, and 0056 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
