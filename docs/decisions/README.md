@@ -98,10 +98,13 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0050](0050-module-local-package-version-constant.md) | Module-local package-version constant | **accepted** |
 | [0051](0051-generated-meme-package-template.md) | Generated Meme package template | **accepted** |
 | [0052](0052-stepped-linear-vesting.md) | Fully funded stepped-linear vesting | **accepted** |
+| [0053](0053-single-validator-funsui-and-blastsui.md) | Single-validator `funSUI` and `blastSUI` | **accepted** |
 | [0054](0054-v3-dex-migrators-and-locked-lp-fees.md) | V3 DEX migrators, exact seed pricing, and locked LP fees | **accepted** |
+| [0055](0055-global-vesting-package-and-checkpoints.md) | Global vesting package and checkpoint schedules | **accepted** |
+| [0056](0056-bounded-pending-stake-vector.md) | Bounded pending-stake vector in custody ledgers | **accepted** |
 | [0057](0057-admin-pinned-venue-tiers.md) | Admin-pinned venue tiers for permissionless migration | **accepted** |
 
-ADRs 0013–0036 and 0038–0052 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
+ADRs 0013–0036 and 0038–0057 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -113,6 +116,11 @@ and storage commitments still await approval.
 ADR 0027 accepts the graduation economics, launch-policy consolidation,
 bounded migration-witness admission, external migrator package boundary, and
 the exclusion of DEX pool-opening fees.
+
+ADR 0055 consolidates vesting under one package and adds exact irregular
+checkpoint schedules. A linear builder stores up to 256 entries in a framework
+`TableVec`; claims use binary search and retain ADR 0052's fixed-beneficiary and
+fair-cancellation policy.
 
 ADR 0028 consolidates the dedicated X signer and live protocol fee share into
 one small `RuntimeConfig`, while preserving separate `ProtocolAuthority` and
@@ -216,6 +224,13 @@ publisher, converting P6 into compile evidence.
 ADR 0052 adds a framework-only Sui vesting package with fully funded,
 fixed-beneficiary stepped-linear schedules. Cancellation is opt-in through a
 schedule-bound capability and can return only unvested value.
+
+ADR 0053 accepts the independent `blast_sui` package: a 1:1 `funSUI` ledger
+and a `blastSUI` share ledger with separate native positions on one immutable
+validator, a yield sweep from fun to blast custody behind a fixed rounding
+reserve, a seed `blastSUI` supply locked at `@0x0` so every redemption is a
+fee-paying partial exit, a bounded redemption fee, and one package-local
+super-admin for fee changes and upgrades.
 
 ADR 0054 accepts isolated V3 adapter packages, real-balance seed pricing, locked
 LP principal, and the operational recommended SUI lane. Its Memez, Raydium,

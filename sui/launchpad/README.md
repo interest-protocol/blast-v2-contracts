@@ -182,7 +182,7 @@ package exist today.
 | `blast_fun_cetus` / `_bluefin` / `_turbos` | migration adapters | each carries a distinct external failure surface and its own dependency exemption |
 | [`blast_fun_vesting_linear`](../vesting/linear/) | fully funded stepped-linear custody and release | independently deployed and tested asset custody |
 | `blast_fun_revshare` | epoch settlement and claims | separately governed, holds funds, must not reach curve state |
-| [`blast_fun_template`](../templates/blast_fun_template/) | generated per-launch coin package | published once per launch by the creator |
+| [`meme_template`](../meme_template/) | generated per-launch coin package | published once per launch by the creator |
 
 Core defines the neutral route and handoff types; adapters depend inward on core.
 Core and adapter are composed **in the programmable transaction block**, never by

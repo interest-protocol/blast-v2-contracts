@@ -1,11 +1,11 @@
 [package]
-name = "blast_fun_template"
+name = "meme_template"
 edition = "2024"
 license = "MIT"
 authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
 
 [dependencies]
-blast_fun = { local = "../../launchpad" }
+blast_fun = { local = "../launchpad" }
 
 [addresses]
-blast_fun_template = "0x0"
+meme_template = "0x0"
