@@ -63,9 +63,7 @@ public fun assert_price_within_bps(
 
 /// Returns the minimum venue-consumed amount after a ceiling-rounded residual allowance.
 public fun minimum_utilized_amount(amount: u64, max_residual_bps: u64): u64 {
-    let max_residual = maximum_residual_amount(amount, max_residual_bps);
-
-    amount - max_residual
+    amount - maximum_residual_amount(amount, max_residual_bps)
 }
 
 /// Rejects a returned venue residual above the ceiling-rounded allowance.
@@ -74,13 +72,8 @@ public fun assert_residual_within_bps(
     residual_amount: u64,
     max_residual_bps: u64,
 ) {
-    let max_residual = maximum_residual_amount(
-        source_amount,
-        max_residual_bps,
-    );
-
     assert!(
-        residual_amount <= max_residual,
+        residual_amount <= maximum_residual_amount(source_amount, max_residual_bps),
         blast_fun::errors::migration_residual_exceeded!(),
     );
 }

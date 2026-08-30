@@ -112,7 +112,8 @@ public fun restrict_to_additive(
 ) {
     package_version.assert_current();
     authority.assert_super_admin(super_admin_cap);
-    let previous_policy = self.assert_policy_can_be_restricted_to(package::additive_policy());
+    let previous_policy = self.upgrade_cap.policy();
+    self.assert_policy_can_be_restricted_to(package::additive_policy());
 
     self.upgrade_cap.only_additive_upgrades();
 
@@ -139,14 +140,11 @@ fun new(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext): Pac
     PackageAdmin { id: object::new(ctx), publisher, upgrade_cap }
 }
 
-fun assert_policy_can_be_restricted_to(self: &PackageAdmin, new_policy: u8): u8 {
-    let previous_policy = self.upgrade_cap.policy();
+fun assert_policy_can_be_restricted_to(self: &PackageAdmin, new_policy: u8) {
     assert!(
-        new_policy > previous_policy,
+        new_policy > self.upgrade_cap.policy(),
         blast_sui::errors::upgrade_policy_not_more_restrictive!(),
     );
-
-    previous_policy
 }
 
 // === Test-Only Types ===

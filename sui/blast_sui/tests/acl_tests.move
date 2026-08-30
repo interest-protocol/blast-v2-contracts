@@ -107,7 +107,7 @@ fun returned_super_admin_cap_composes_before_keep() {
             &f.clock,
             f.ctx!(),
         );
-        acl::keep(new_cap, f.ctx!());
+        new_cap.keep(f.ctx!());
 
         let started = events::collect_one<events::SuperAdminTransferStarted>(0);
         let (recipient, _) = started.super_admin_transfer_started_fields();
@@ -128,7 +128,7 @@ fun accepted_transfer_invalidates_the_previous_root_cap() {
     });
 
     fixture.next_tx!(NEW_SUPER_ADMIN, |f| {
-        acl::keep(f.accept_transfer(), f.ctx!());
+        f.accept_transfer().keep(f.ctx!());
     });
 
     fixture.next_tx!(PUBLISHER, |f| {

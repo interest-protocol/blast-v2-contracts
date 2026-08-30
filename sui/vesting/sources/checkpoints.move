@@ -2,12 +2,11 @@
 module blast_fun_vesting::checkpoints;
 
 use std::type_name::{Self, TypeName};
-use sui::{balance::Balance, clock::Clock, coin::Coin, event, table_vec::{Self, TableVec}};
+use sui::{balance::Balance, clock::Clock, coin::Coin, event};
 
 // === Constants ===
 
 const MAX_CHECKPOINTS: u64 = 256;
-const MAX_CHECKPOINT_PAGE_SIZE: u64 = 32;
 
 #[error(code = 0)]
 const EInvalidBeneficiary: vector<u8> = b"Beneficiary must not be the zero address.";
@@ -37,9 +36,6 @@ const EScheduleNotEnded: vector<u8> = b"Vesting schedule has not ended.";
 const EScheduleNotEmpty: vector<u8> = b"Vesting schedule still holds funds.";
 #[error(code = 13)]
 const ECancelCapRequired: vector<u8> = b"Cancelable schedule requires its cancellation capability.";
-#[error(code = 14)]
-const ECheckpointPageTooLarge: vector<u8> = b"Checkpoint page size must not exceed 32.";
-
 // === Public Structs ===
 
 /// One exact cumulative unlock boundary.
@@ -50,7 +46,7 @@ public struct Checkpoint has copy, drop, store {
 
 /// Linear builder for one bounded immutable checkpoint schedule.
 public struct Schedule {
-    checkpoints: TableVec<Checkpoint>,
+    checkpoints: vector<Checkpoint>,
 }
 
 /// Key-only shared custody for one immutable checkpoint schedule.
@@ -59,7 +55,7 @@ public struct Vesting<phantom CoinType> has key {
     balance: Balance<CoinType>,
     beneficiary: address,
     cancel_refund_recipient: Option<address>,
-    checkpoints: TableVec<Checkpoint>,
+    checkpoints: vector<Checkpoint>,
     released: u64,
 }
 
@@ -111,8 +107,8 @@ public struct VestingClosed has copy, drop {
 // === Public Functions ===
 
 /// Creates an empty schedule that must be populated and consumed in the same PTB.
-public fun new_schedule(ctx: &mut TxContext): Schedule {
-    Schedule { checkpoints: table_vec::empty(ctx) }
+public fun new_schedule(): Schedule {
+    Schedule { checkpoints: vector[] }
 }
 
 /// Appends one strictly increasing cumulative unlock boundary.
@@ -211,21 +207,6 @@ public fun share<CoinType>(self: Vesting<CoinType>) {
     transfer::share_object(self);
 }
 
-/// Returns at most 32 checkpoints beginning at `start` for bounded reads.
-public fun checkpoint_page<CoinType>(
-    self: &Vesting<CoinType>,
-    start: u64,
-    limit: u64,
-): vector<Checkpoint> {
-    assert!(limit <= MAX_CHECKPOINT_PAGE_SIZE, ECheckpointPageTooLarge);
-
-    let length = self.checkpoints.length();
-    if (start >= length) return vector[];
-    let remaining = length - start;
-    let count = if (limit < remaining) limit else remaining;
-    vector::tabulate!(count, |offset| self.checkpoints[start + offset])
-}
-
 /// Transfers all newly vested value to the fixed beneficiary.
 public fun claim<CoinType>(
     self: &mut Vesting<CoinType>,
@@ -235,22 +216,17 @@ public fun claim<CoinType>(
     let amount = self.releasable_at(clock.timestamp_ms());
     assert!(amount > 0, ENothingClaimable);
 
-    let vesting_id = object::id(self);
     let beneficiary = self.beneficiary;
     self.released = self.released + amount;
-    let payout = self.balance.split(amount).into_coin(ctx);
-    let remaining_balance = self.balance.value();
-    let released_total = self.released;
-
-    transfer::public_transfer(payout, beneficiary);
+    transfer::public_transfer(self.balance.split(amount).into_coin(ctx), beneficiary);
 
     event::emit(VestingClaimed {
-        vesting_id,
+        vesting_id: object::id(self),
         coin_type: type_name::with_original_ids<CoinType>(),
         beneficiary,
         amount,
-        released_total,
-        remaining_balance,
+        released_total: self.released,
+        remaining_balance: self.balance.value(),
     });
 }
 
@@ -275,22 +251,19 @@ public fun cancel<CoinType>(
         mut balance,
         beneficiary: _,
         cancel_refund_recipient: _,
-        checkpoints,
+        checkpoints: _,
         released: _,
     } = self;
     let CancelCap { id: cap_id, vesting_id: _ } = cap;
 
     if (beneficiary_amount > 0) {
-        let payout = balance.split(beneficiary_amount).into_coin(ctx);
-        transfer::public_transfer(payout, beneficiary);
+        transfer::public_transfer(balance.split(beneficiary_amount).into_coin(ctx), beneficiary);
     };
     if (refund_amount > 0) {
-        let refund = balance.split(refund_amount).into_coin(ctx);
-        transfer::public_transfer(refund, refund_recipient);
+        transfer::public_transfer(balance.split(refund_amount).into_coin(ctx), refund_recipient);
     };
 
     balance.destroy_zero();
-    checkpoints.drop();
     id.delete();
     cap_id.delete();
 
@@ -316,24 +289,22 @@ public fun close_irrevocable<CoinType>(
     assert!(self.balance.value() == 0, EScheduleNotEmpty);
 
     let vesting_id = object::id(&self);
-    let released_total = self.released;
     let Vesting {
         id,
         balance,
         beneficiary: _,
         cancel_refund_recipient: _,
-        checkpoints,
-        released: _,
+        checkpoints: _,
+        released,
     } = self;
 
     balance.destroy_zero();
-    checkpoints.drop();
     id.delete();
 
     event::emit(VestingClosed {
         vesting_id,
         coin_type: type_name::with_original_ids<CoinType>(),
-        released_total,
+        released_total: released,
     });
 }
 
@@ -354,7 +325,7 @@ fun new<CoinType>(
     let total_amount = funds.value();
     assert!(total_amount > 0, EZeroAllocation);
 
-    validate_schedule(&schedule, total_amount, clock.timestamp_ms());
+    schedule.validate(total_amount, clock.timestamp_ms());
     let Schedule { checkpoints } = schedule;
 
     Vesting {
@@ -367,24 +338,24 @@ fun new<CoinType>(
     }
 }
 
-fun validate_schedule(
-    schedule: &Schedule,
+fun validate(
+    self: &Schedule,
     total_amount: u64,
     current_ms: u64,
 ) {
-    let length = schedule.checkpoints.length();
+    let length = self.checkpoints.length();
     assert!(length > 0, ENoCheckpoints);
 
-    let first = &schedule.checkpoints[0];
-    assert!(first.timestamp_ms >= current_ms, ECheckpointInPast);
-    let final_amount = schedule.checkpoints[length - 1].cumulative_amount;
-    assert!(final_amount == total_amount, EFinalAmountMismatch);
+    assert!(self.checkpoints[0].timestamp_ms >= current_ms, ECheckpointInPast);
+    assert!(
+        self.checkpoints[length - 1].cumulative_amount == total_amount,
+        EFinalAmountMismatch,
+    );
 }
 
 fun vested_at<CoinType>(self: &Vesting<CoinType>, timestamp_ms: u64): u64 {
-    let length = self.checkpoints.length();
     let mut low = 0;
-    let mut high = length;
+    let mut high = self.checkpoints.length();
     while (low < high) {
         let middle = low + (high - low) / 2;
         if (self.checkpoints[middle].timestamp_ms <= timestamp_ms) {
@@ -437,17 +408,7 @@ public fun releasable_at_for_testing<CoinType>(
 }
 
 #[test_only]
-public fun balance<CoinType>(self: &Vesting<CoinType>): u64 {
-    self.balance.value()
-}
-
-#[test_only]
-public fun released<CoinType>(self: &Vesting<CoinType>): u64 {
-    self.released
-}
-
-#[test_only]
-public fun cancel_cap_vesting_id<CoinType>(self: &CancelCap<CoinType>): ID {
+public fun vesting_id<CoinType>(self: &CancelCap<CoinType>): ID {
     self.vesting_id
 }
 

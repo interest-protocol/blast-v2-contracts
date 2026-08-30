@@ -82,7 +82,7 @@ public(package) fun x_identity_hash(self: &CreatorIdentity): Option<vector<u8>> 
 
 /// Consumes the launch's creator authority and returns its creator capability.
 public(package) fun claim_creator_cap<Meme>(
-    authority: CreatorAuthority<Meme>,
+    self: CreatorAuthority<Meme>,
     config: &RuntimeConfig,
     x_attestation: Option<vector<u8>>,
     clock: &Clock,
@@ -90,7 +90,7 @@ public(package) fun claim_creator_cap<Meme>(
 ): CreatorCap<Meme> {
     let claimant = ctx.sender();
 
-    let (x_identity_hash, x_claim_expiry_ms) = match (&authority.identity) {
+    let (x_identity_hash, x_claim_expiry_ms) = match (&self.identity) {
         CreatorIdentity::Address(creator) => {
             assert!(
                 x_attestation.is_none(),
@@ -127,7 +127,7 @@ public(package) fun claim_creator_cap<Meme>(
         },
     };
 
-    let CreatorAuthority { .. } = authority;
+    let CreatorAuthority { .. } = self;
     let creator_cap = CreatorCap<Meme> { id: object::new(ctx) };
 
     events::creator_cap_claimed<Meme>(x_identity_hash, x_claim_expiry_ms);
@@ -143,16 +143,12 @@ fun x_claim_message_bytes<Meme>(
     claimant: address,
     expiry_ms: u64,
 ): vector<u8> {
-    XClaimMessage {
+    bcs::to_bytes(&XClaimMessage {
         meme: type_name::with_original_ids<Meme>(),
         x_identity_hash,
         claimant,
         expiry_ms,
-    }.to_bytes()
-}
-
-fun to_bytes(message: &XClaimMessage): vector<u8> {
-    bcs::to_bytes(message)
+    })
 }
 
 /// Parses canonical BCS `(expiry_ms: u64, signature: vector<u8>)` call data.

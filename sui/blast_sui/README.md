@@ -29,11 +29,12 @@ It depends only on the pinned `SuiSystem` framework package and must not import
   the matching native receipt.
 - `package_version.move` — the operational package generation that gates every
   administration and vault mutation.
-- `custody.move` — one native ledger: liquid `Balance<SUI>`, at most one
-  pending `StakedSui` (the pre-activation receipt, worth exactly its
-  principal), at most one active `FungibleStakedSui`, and the conservative
-  floor valuation of the active tokens at the rate the vault applies. A ledger
-  never reads the pool itself.
+- `custody.move` — one native ledger: liquid `Balance<SUI>`, up to three
+  activation-ordered pending `StakedSui` receipts (each worth exactly its
+  principal before activation), at most one active `FungibleStakedSui`, and the
+  conservative floor valuation of the active tokens at the rate the vault
+  applies. Same-epoch requests join; a full queue leaves excess SUI liquid
+  instead of aborting. A ledger never reads the pool itself.
 - `vault.move` — one shared `Vault` owning both treasury caps, the `fun` and
   `blast` ledgers, the immutable pool ID, the cached pool
   exchange-rate entry (`rate_epoch`, `rate_sui`, `rate_pool_tokens`), the live

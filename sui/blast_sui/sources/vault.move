@@ -18,6 +18,8 @@ use blast_sui::{
 use sui::{coin::{Coin, TreasuryCap}, sui::SUI};
 use sui_system::sui_system::SuiSystemState;
 
+use fun exchange_rate_at as SuiSystemState.exchange_rate_at;
+
 // === Public Structs ===
 
 /// Shared owner of both treasury caps and the two native custody ledgers.
@@ -82,7 +84,7 @@ public fun create(
         blast_sui::errors::validator_not_active!(),
     );
     let epoch = ctx.epoch();
-    let (is_current, rate_sui, rate_pool_tokens) = exchange_rate_at(system_state, &pool_id, epoch);
+    let (is_current, rate_sui, rate_pool_tokens) = system_state.exchange_rate_at(&pool_id, epoch);
     assert!(is_current, blast_sui::errors::stale_exchange_rate!());
 
     let mut seed = owner_seed.into_balance();
@@ -243,7 +245,7 @@ public fun claim_blast_sui(
 
     let (receipt_id, principal_sui) = (receipt.id(), receipt.principal_sui());
     let active_stake = system_state.convert_to_fungible_staked_sui(
-        receipt.into_staked_sui(),
+        receipt.destroy(),
         ctx,
     );
     let pool_tokens = active_stake.value();
@@ -412,7 +414,7 @@ fun refresh_native(self: &mut Vault, system_state: &mut SuiSystemState, ctx: &mu
     } else {
         let epoch = ctx.epoch();
         let (is_current, rate_sui, rate_pool_tokens) =
-            exchange_rate_at(system_state, &self.pool_id, epoch);
+            system_state.exchange_rate_at(&self.pool_id, epoch);
         if (is_current) {
             self.rate_epoch = epoch;
             self.rate_sui = rate_sui;
@@ -439,7 +441,7 @@ fun refresh_native(self: &mut Vault, system_state: &mut SuiSystemState, ctx: &mu
                 self.rate_pool_tokens,
             );
             loop {
-                let fun_activation_epoch = self.fun_custody.pending_activation_epoch();
+                let fun_activation_epoch = self.fun_custody.oldest_pending_activation_epoch();
                 if (fun_activation_epoch.is_none() || *fun_activation_epoch.borrow() > epoch) {
                     break
                 };
@@ -456,7 +458,7 @@ fun refresh_native(self: &mut Vault, system_state: &mut SuiSystemState, ctx: &mu
                     // epoch's reward. Withdrawing during safe mode can also
                     // forfeit deferred rewards. Recover only after a full
                     // epoch with a current rate.
-                    self.fun_custody.realize_pending(system_state, ctx);
+                    self.fun_custody.realize_oldest_pending(system_state, ctx);
                 } else break;
             };
         };
@@ -576,8 +578,8 @@ fun fun_backing_buffer(self: &Vault): u64 {
 
 fun custody(self: &Vault): events::VaultCustody {
     events::vault_custody(
-        self.fun_custody.snapshot(),
-        self.blast_custody.snapshot(),
+        self.fun_custody.pool_custody(),
+        self.blast_custody.pool_custody(),
         events::exchange_rate(self.rate_epoch, self.rate_sui, self.rate_pool_tokens),
         self.fun_cap.total_supply(),
         self.blast_cap.total_supply(),
@@ -598,12 +600,12 @@ public fun blast_supply_for_testing(self: &Vault): u64 {
 
 #[test_only]
 public fun fun_custody_for_testing(self: &Vault): events::PoolCustody {
-    self.fun_custody.snapshot()
+    self.fun_custody.pool_custody()
 }
 
 #[test_only]
 public fun blast_custody_for_testing(self: &Vault): events::PoolCustody {
-    self.blast_custody.snapshot()
+    self.blast_custody.pool_custody()
 }
 
 #[test_only]

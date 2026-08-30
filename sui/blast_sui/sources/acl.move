@@ -37,7 +37,7 @@ fun init(ctx: &mut TxContext) {
     let (super_admin_cap, authority) = new_protocol(ctx);
 
     transfer::share_object(authority);
-    keep(super_admin_cap, ctx);
+    super_admin_cap.keep(ctx);
 }
 
 // === Public Functions ===

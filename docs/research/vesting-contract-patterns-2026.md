@@ -54,11 +54,11 @@ transfer plus one schedule.
 
 The second schedule module is `checkpoints`. Callers append increasing absolute
 timestamps and cumulative atomic amounts to a linear `Schedule` builder, then
-consume it in a vesting constructor. The schedule stores up to 256 entries in a
-framework `TableVec` and uses binary search for claims. This supports unequal
-tranches, multiple cliffs, and irregular token-sale schedules without arbitrary
-curve math or a large parent shared object. A bounded 32-entry page helper lets
-offchain tooling iterate without copying the complete schedule into an event.
+consume it in a vesting constructor. The schedule stores up to 256 entries in an
+inline vector and uses binary search for claims. This supports unequal tranches,
+multiple cliffs, and irregular token-sale schedules without arbitrary curve
+math. Offchain tooling reads the complete bounded vector from canonical object
+content and may page it locally.
 
 Keep these outside the vesting package unless a concrete product requires them:
 

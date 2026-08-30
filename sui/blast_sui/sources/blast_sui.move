@@ -12,13 +12,12 @@ public struct BLAST_SUI() has drop;
 
 #[allow(lint(self_transfer))]
 fun init(otw: BLAST_SUI, ctx: &mut TxContext) {
-    let treasury_cap = create(otw, ctx);
-    transfer::public_transfer(treasury_cap, ctx.sender());
+    transfer::public_transfer(new(otw, ctx), ctx.sender());
 }
 
 // === Private Functions ===
 
-fun create(
+fun new(
     otw: BLAST_SUI,
     ctx: &mut TxContext,
 ): TreasuryCap<BLAST_SUI> {
@@ -45,8 +44,8 @@ public fun init_for_testing(ctx: &mut TxContext) {
 }
 
 #[test_only]
-public fun create_for_testing(
+public fun new_for_testing(
     ctx: &mut TxContext,
 ): TreasuryCap<BLAST_SUI> {
-    create(BLAST_SUI(), ctx)
+    new(BLAST_SUI(), ctx)
 }

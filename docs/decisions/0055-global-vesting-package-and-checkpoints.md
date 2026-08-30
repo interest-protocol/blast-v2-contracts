@@ -27,15 +27,15 @@ or speculative schedule abstraction.
 
 `checkpoints::Vesting<CoinType>` owns one fully funded balance, one fixed
 beneficiary, an optional fixed cancellation refund recipient, cumulative
-released value, and an immutable `TableVec<Checkpoint>`. A checkpoint contains:
+released value, and an immutable `vector<Checkpoint>`. A checkpoint contains:
 
 - `timestamp_ms`, an absolute Sui clock timestamp; and
 - `cumulative_amount`, the total atomic units vested at that timestamp.
 
-Callers create a linear `Schedule` value with `new_schedule(ctx)`, append
+Callers create a linear `Schedule` value with `new_schedule()`, append
 entries with `schedule.add(timestamp_ms, cumulative_amount)`, and consume the
 completed value in `new_irrevocable` or `new_cancelable`. `Schedule` cannot be
-dropped or stored, so a PTB cannot abandon the `TableVec` handle.
+dropped or stored, so a PTB cannot abandon an incomplete builder.
 
 The builder contains 1–256 checkpoints. Timestamps and cumulative amounts are
 strictly increasing. The first timestamp must be greater than or equal to the
@@ -45,9 +45,9 @@ steps, surplus custody, and an unvested terminal remainder.
 
 At time `t`, vested value is zero before the first checkpoint and otherwise the
 cumulative amount of the last checkpoint whose timestamp is at most `t`.
-Claim uses binary search over the immutable `TableVec` and transfers only newly
+Claim uses binary search over the immutable vector and transfers only newly
 vested value to the fixed beneficiary. The 256-entry bound is a module constant
-and caps construction work and persistent dynamic fields.
+and caps construction work and serialized shared-object size.
 
 The module mirrors ADR 0052 cancellation semantics. `new_irrevocable` creates
 no authority. `new_cancelable` fixes a nonzero refund recipient and returns one
@@ -58,12 +58,9 @@ recipient.
 
 Creation, claim, cancellation, and close emit direct module events. Creation
 records the schedule id, total amount, and checkpoint count, but does not copy
-the checkpoint data into a bounded event vector. An indexer reads the created
-shared object, obtains the nested `TableVec` table id from object content, and
-enumerates its indexed dynamic fields. The module also exposes
-`checkpoint_page(vesting, start, limit)` for direct or simulated reads; the
-limit is capped at 32. The SDK owns iteration, plus previews, labels, calendars,
-and batched transaction construction.
+the checkpoint data into an event. An indexer or SDK reads the bounded vector
+from the created shared object's canonical content. The SDK owns local paging,
+previews, labels, calendars, and batched transaction construction.
 
 ## Rejected alternatives
 
@@ -71,22 +68,24 @@ and batched transaction construction.
 same framework-only dependency and immutable deployment policy. Separate
 packages would add deployment and SDK surface without a security boundary.
 
-**Raw vector storage.** Rejected because it enlarges the parent shared object and
-unnecessarily limits practical schedules to a small serialized value. The
-constructor builder writes each entry into a framework `TableVec`.
+**Dynamic checkpoint storage.** Rejected because a non-empty `TableVec::drop`
+deletes its table UID without removing the dynamic-field children, stranding
+their storage rebates when a vesting object is canceled or closed. The maximum
+inline vector is about 4 KiB, well below the object-size limit, and avoids child
+reads and writes on every lifecycle operation.
 
-**Custom dynamic fields.** Rejected because `TableVec` already supplies the
-required indexed dynamic-field storage, length tracking, borrowing, and safe
-drop lifecycle.
+**Custom dynamic fields.** Rejected because the entries have no independent
+identity or lifecycle, the vector is bounded, and a custom index would recreate
+length, ordering, iteration, and complete-deletion logic.
 
 **Relative offsets and basis points.** Rejected because absolute timestamps and
 atomic cumulative amounts are the canonical settlement facts and require no
 rounding policy.
 
-**Unbounded checkpoints.** Rejected because each checkpoint is persistent state
-created onchain. The 256-entry limit supports more than 21 years of monthly
-irregular unlocks while fixing creation work and storage growth. Binary search
-keeps each release lookup logarithmic in the checkpoint count.
+**Unbounded checkpoints.** Rejected because every checkpoint enlarges canonical
+state. The 256-entry limit supports more than 21 years of monthly irregular
+unlocks while fixing construction work and object size. Binary search keeps
+each release lookup logarithmic in the checkpoint count.
 
 **Arbitrary nonlinear or price-gated curves.** Rejected until a concrete Blast
 transition requires oracle trust or curve arithmetic that neither schedule can
@@ -104,6 +103,10 @@ express.
   published immutable deployment is migrated.
 - Both modules retain fixture-based tests and the package-level 100% Move
   coverage gate.
+- The immutable mainnet release is blocked until a full 256-entry irrevocable
+  and cancellable vector is created and exercised on mainnet, with transaction
+  digests, gas, serialized object size, SDK decoding, and first/middle/final
+  boundary evidence recorded under `deployments/sui/mainnet/`.
 
 ## Sources
 

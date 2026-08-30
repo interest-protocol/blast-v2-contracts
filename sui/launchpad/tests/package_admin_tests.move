@@ -12,6 +12,7 @@ use sui::{
 
 use fun custody_end as CustodyFixture.end;
 use fun custody_next_tx as CustodyFixture.next_tx;
+use fun package_admin::activate_package_version as package_version::PackageVersion.activate_package_version;
 use fun upgrade_ctx as UpgradeFixture.ctx;
 use fun upgrade_end as UpgradeFixture.end;
 use fun upgrade_next_tx as UpgradeFixture.next_tx;
@@ -128,17 +129,14 @@ fun active_admin_explicitly_activates_the_exact_next_operational_version() {
         let admin_witness = f.sign_in();
         f.package_version.set_for_testing(0);
 
-        package_admin::activate_package_version(
-            &mut f.package_version,
-            &admin_witness,
-        );
+        f.package_version.activate_package_version(&admin_witness);
 
         let advanced = events::collect_one<events::PackageVersionAdvanced>(0);
         let (previous_version, new_version) =
             advanced.package_version_advanced_fields();
         assert_eq!(previous_version, 0);
         assert_eq!(new_version, 1);
-        assert_eq!(f.package_version.value_for_testing(), 1);
+        assert_eq!(f.package_version.version_for_testing(), 1);
         assert!(event::events_by_type<events::PackageVersionAdvanced>().is_empty());
     });
 
@@ -156,10 +154,7 @@ fun activation_rejects_skipping_an_operational_version() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        package_admin::activate_package_version(
-            &mut f.package_version,
-            &admin_witness,
-        );
+        f.package_version.activate_package_version(&admin_witness);
     });
 
     fixture.end();
@@ -177,10 +172,7 @@ fun activation_rejects_operational_version_overflow() {
         let admin_witness = f.sign_in();
         f.package_version.set_for_testing(std::u64::max_value!());
 
-        package_admin::activate_package_version(
-            &mut f.package_version,
-            &admin_witness,
-        );
+        f.package_version.activate_package_version(&admin_witness);
     });
 
     fixture.end();
@@ -232,7 +224,7 @@ fun active_admin_authorizes_exact_digest_and_commits_matching_receipt() {
         assert_eq!(new_version, 2);
         assert_eq!(f.package_admin.package_id_for_testing(), new_package_id);
         assert_eq!(f.package_admin.version_for_testing(), 2);
-        assert_eq!(f.package_version.value_for_testing(), 1);
+        assert_eq!(f.package_version.version_for_testing(), 1);
         assert!(event::events_by_type<events::PackageVersionAdvanced>().is_empty());
         assert!(event::events_by_type<events::UpgradeAuthorized>().is_empty());
         assert!(event::events_by_type<events::UpgradeCommitted>().is_empty());

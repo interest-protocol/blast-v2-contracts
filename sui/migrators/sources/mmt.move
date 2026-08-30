@@ -26,6 +26,10 @@ use mmt_v3::{
 };
 use sui::{clock::Clock, coin::Coin, coin_registry::Currency};
 
+use fun liquidity::add_liquidity as Pool.add_liquidity;
+use fun liquidity::open_position as Pool.open_position;
+use fun collect::fee as Pool.collect_fee;
+
 // === Constants ===
 
 /// MMT must use at least 99.99% of both migration balances.
@@ -68,7 +72,7 @@ public fun migrate_meme_x<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert_coin_order<Meme, Quote>(true);
-    let (pinned_tick_spacing, fee_rate) = pinned_tier(venue_config);
+    let (pinned_tick_spacing, fee_rate) = effective_tier(venue_config);
 
     let launch_id = object::id(launch);
     let payload = launch.migrate<Meme, Quote, Witness>(
@@ -115,10 +119,8 @@ public fun migrate_meme_x<Meme, Quote>(
         ctx,
     );
 
-    let venue = Venue();
     lock_and_share<Meme, Quote, Meme, Quote>(
         runtime_config,
-        venue,
         launch_id,
         pool,
         position,
@@ -148,7 +150,7 @@ public fun migrate_meme_y<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert_coin_order<Meme, Quote>(false);
-    let (pinned_tick_spacing, fee_rate) = pinned_tier(venue_config);
+    let (pinned_tick_spacing, fee_rate) = effective_tier(venue_config);
 
     let launch_id = object::id(launch);
     let payload = launch.migrate<Meme, Quote, Witness>(
@@ -195,10 +197,8 @@ public fun migrate_meme_y<Meme, Quote>(
         ctx,
     );
 
-    let venue = Venue();
     lock_and_share<Meme, Quote, Quote, Meme>(
         runtime_config,
-        venue,
         launch_id,
         pool,
         position,
@@ -301,9 +301,9 @@ public fun set_tier(
 
 // === Private Functions ===
 
-fun pinned_tier(venue_config: &VenueConfig): (u32, u64) {
-    if (venue_config.contains<Venue>()) {
-        venue_config.tier<Venue>()
+fun effective_tier(venue_config: &VenueConfig): (u32, u64) {
+    if (venue_config.has_tier_override<Venue>()) {
+        venue_config.tier_override<Venue>()
     } else {
         (DEFAULT_TICK_SPACING, DEFAULT_FEE_RATE)
     }
@@ -335,27 +335,24 @@ fun create_and_seed_pool<X, Y>(
         mmt_version,
         ctx,
     );
-    pool::initialize(&mut pool, sqrt_price_x64, clock);
+    pool.initialize(sqrt_price_x64, clock);
 
-    let (lower_tick, upper_tick) = pool::get_friendly_ticks(
-        &pool,
+    let (lower_tick, upper_tick) = pool.get_friendly_ticks(
         tick_math::min_sqrt_price(),
         tick_math::max_sqrt_price(),
     );
-    let lower_tick_bits = i32::as_u32(lower_tick);
-    let upper_tick_bits = i32::as_u32(upper_tick);
-    let tick_spacing = pool::tick_spacing(&pool);
+    let lower_tick_bits = lower_tick.as_u32();
+    let upper_tick_bits = upper_tick.as_u32();
+    let tick_spacing = pool.tick_spacing();
     assert!(tick_spacing == pinned_tick_spacing, ETierMismatch);
 
-    let mut position = liquidity::open_position(
-        &mut pool,
+    let mut position = pool.open_position(
         lower_tick,
         upper_tick,
         mmt_version,
         ctx,
     );
-    let (residual_x, residual_y) = liquidity::add_liquidity(
-        &mut pool,
+    let (residual_x, residual_y) = pool.add_liquidity(
         &mut position,
         coin_x,
         coin_y,
@@ -390,7 +387,6 @@ fun transfer_residual<CoinType>(
 
 fun lock_and_share<Meme, Quote, X, Y>(
     runtime_config: &RuntimeConfig,
-    venue: Venue,
     launch_id: ID,
     pool: Pool<X, Y>,
     position: Position,
@@ -428,12 +424,12 @@ fun lock_and_share<Meme, Quote, X, Y>(
     transfer_residual(residual_quote, protocol_treasury);
 
     let vault_id = vault::new<Meme, Quote, Venue, Position>(
-        venue,
+        Venue(),
         pool_id,
         position,
         ctx,
     );
-    pool::transfer(pool);
+    pool.transfer();
 
     events::migration_completed<Meme, Quote, Venue>(
         launch_id,
@@ -466,14 +462,13 @@ fun collect_position_fees<X, Y, Meme, Quote>(
     assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
 
     let position =
-        self.borrow_position_mut<Meme, Quote, Venue, Position>(venue);
+        self.position_mut<Meme, Quote, Venue, Position>(venue);
     let position_id = object::id(position);
     assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
     let liquidity_before = position.liquidity();
     assert!(liquidity_before > 0, EZeroPositionLiquidity);
 
-    let (fee_x, fee_y) = collect::fee(
-        pool,
+    let (fee_x, fee_y) = pool.collect_fee(
         position,
         clock,
         mmt_version,
@@ -491,6 +486,6 @@ fun collect_position_fees<X, Y, Meme, Quote>(
 // === Test-Only Functions ===
 
 #[test_only]
-public fun pinned_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
-    pinned_tier(venue_config)
+public fun effective_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
+    effective_tier(venue_config)
 }

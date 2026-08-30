@@ -310,7 +310,8 @@ The shared vault needs only facts that authorize mint, burn, and native custody:
 - immutable validator address and staking-pool ID;
 - one liquid `Balance<SUI>` for native withdrawal rounding and sub-threshold
   dust;
-- at most one pending `StakedSui` for the next activation epoch;
+- an activation-ordered `vector<StakedSui>` capped at three by ADR 0056, with
+  same-epoch requests joined and a full queue degrading to liquid custody;
 - at most one active `FungibleStakedSui` for the immutable pool;
 - the last refreshed epoch and last valid native exchange rate; and
 - the package-state version needed for upgrades.

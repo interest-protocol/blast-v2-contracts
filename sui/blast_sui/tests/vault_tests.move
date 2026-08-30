@@ -277,7 +277,7 @@ fun returned_receipt_composes_into_same_transaction_cancellation_without_keep() 
             coin::mint_for_testing(principal, f.ctx!()),
             f.ctx!(),
         );
-        let sui_out = deposit_receipt::cancel(receipt, f.system!(), f.ctx!());
+        let sui_out = receipt.cancel(f.system!(), f.ctx!());
         returned_sui = sui_out.value();
         transfer::public_transfer(sui_out, USER);
     });
@@ -2428,8 +2428,8 @@ fun create_vault(
     bootstrap: u64,
     fun_premint: u64,
 ): events::VaultCreated {
-    let mut fun_cap = fun_sui::create_for_testing(self.ctx!());
-    let blast_cap = blast_coin::create_for_testing(self.ctx!());
+    let mut fun_cap = fun_sui::new_for_testing(self.ctx!());
+    let blast_cap = blast_coin::new_for_testing(self.ctx!());
     let premint = fun_cap.mint(fun_premint, self.ctx!());
     vault::create(
         &self.version,
@@ -2510,7 +2510,7 @@ fun issue_test_receipt(
             f.ctx!(),
         );
         let receipt = deposit_receipt::new(vault_id, staked_sui, f.ctx!());
-        deposit_receipt::keep(receipt, f.ctx!());
+        receipt.keep(f.ctx!());
     });
 }
 
@@ -2594,7 +2594,7 @@ fun request_blast(self: &mut VaultFixture, amount: u64): events::BlastSuiDeposit
             coin::mint_for_testing(amount, f.ctx!()),
             f.ctx!(),
         );
-        deposit_receipt::keep(receipt, f.ctx!());
+        receipt.keep(f.ctx!());
     });
 
     events::collect_one<events::BlastSuiDepositRequested>(0)
@@ -2646,7 +2646,7 @@ fun cancel_blast(self: &mut VaultFixture): u64 {
             .runner
             .scenario_mut()
             .take_from_sender<BlastSuiDepositReceipt>();
-        let sui_out = deposit_receipt::cancel(receipt, f.system!(), f.ctx!());
+        let sui_out = receipt.cancel(f.system!(), f.ctx!());
         returned_sui = sui_out.value();
         transfer::public_transfer(sui_out, USER);
     });

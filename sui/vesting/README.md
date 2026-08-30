@@ -19,12 +19,11 @@ Production deployments are immutable.
 
 ## Checkpoint builder
 
-Checkpoint schedules use the framework `TableVec`, which stores entries as
-indexed dynamic fields. Build one linear `Schedule` value in a PTB, then consume
-it in a constructor:
+Checkpoint schedules use an inline `vector<Checkpoint>` capped at 256 entries.
+Build one linear `Schedule` value in a PTB, then consume it in a constructor:
 
 ```move
-let mut schedule = checkpoints::new_schedule(ctx);
+let mut schedule = checkpoints::new_schedule();
 schedule.add(first_timestamp_ms, first_cumulative_amount);
 schedule.add(final_timestamp_ms, total_amount);
 let vesting = checkpoints::new_irrevocable(
@@ -40,12 +39,12 @@ vesting.share();
 Timestamps and cumulative amounts must be strictly increasing. The first
 timestamp cannot precede the current `Clock`, and the final amount must equal
 the funding coin. Claims use binary search, so lookup work is logarithmic in
-the checkpoint count. The 256-entry cap bounds dynamic-field creation and
-persistent storage.
+the checkpoint count. The 256-entry cap bounds construction work and the shared
+object's serialized size.
 
 `VestingCreated` contains the total amount and checkpoint count, not a copy of
-the checkpoint data. Indexers can read the indexed dynamic fields directly or
-iterate `checkpoint_page(vesting, start, limit)`, whose limit is capped at 32.
+the checkpoint data. Indexers and the SDK read the complete bounded vector from
+the shared object's canonical content.
 
 ## Error registry
 
@@ -84,8 +83,6 @@ Codes are stable within that module.
 | 11 | `EScheduleNotEnded` | Close is before the final checkpoint. |
 | 12 | `EScheduleNotEmpty` | Close has remaining custody. |
 | 13 | `ECancelCapRequired` | A cancellable schedule must use its cap. |
-| 14 | `ECheckpointPageTooLarge` | A read requested more than 32 entries. |
-
 ## Verification
 
 Run with the workspace-pinned Sui CLI:
@@ -98,5 +95,12 @@ bash scripts/check_coverage.sh
 ```
 
 The coverage script requires 100.00% Move coverage for both production modules.
+
+Before the immutable mainnet release, complete testing gate 3.10 in
+[`docs/testing.md`](../../docs/testing.md): create full 256-checkpoint
+irrevocable and cancellable schedules on mainnet, decode the complete vectors
+through the SDK, exercise first/middle/final boundaries, and record transaction
+digests plus gas and object-size evidence under `deployments/sui/mainnet/`.
+
 See [ADR 0052](../../docs/decisions/0052-stepped-linear-vesting.md) and
 [ADR 0055](../../docs/decisions/0055-global-vesting-package-and-checkpoints.md).

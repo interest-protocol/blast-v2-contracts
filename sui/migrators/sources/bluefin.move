@@ -30,6 +30,9 @@ use sui::{
     coin_registry::Currency,
 };
 
+use fun config::get_tick_range as GlobalConfig.tick_range;
+use fun config::get_pool_creation_fee_amount as GlobalConfig.pool_creation_fee_amount;
+
 // === Constants ===
 
 /// Venue rounding can return at most one basis point of either source balance.
@@ -85,7 +88,7 @@ public fun migrate<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     let launch_id = object::id(launch);
-    let (tick_spacing, fee_rate) = pinned_tier(venue_config);
+    let (tick_spacing, fee_rate) = effective_tier(venue_config);
     let (lower_tick_bits, upper_tick_bits) =
         full_range_ticks(bluefin_config, tick_spacing);
     let pool_name = pool_name(meme_currency, quote_currency);
@@ -181,7 +184,7 @@ public fun collect_fees<Meme, Quote>(
 
     let venue = Venue();
     let position =
-        self.borrow_position_mut<Meme, Quote, Venue, Position>(&venue);
+        self.position_mut<Meme, Quote, Venue, Position>(&venue);
     let position_id = object::id(position);
     assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
     let liquidity_before = position.liquidity();
@@ -223,9 +226,9 @@ public fun set_tier(
 
 // === Private Functions ===
 
-fun pinned_tier(venue_config: &VenueConfig): (u32, u64) {
-    if (venue_config.contains<Venue>()) {
-        venue_config.tier<Venue>()
+fun effective_tier(venue_config: &VenueConfig): (u32, u64) {
+    if (venue_config.has_tier_override<Venue>()) {
+        venue_config.tier_override<Venue>()
     } else {
         (DEFAULT_TICK_SPACING, DEFAULT_FEE_RATE)
     }
@@ -237,26 +240,18 @@ fun full_range_ticks(
 ): (u32, u32) {
     assert!(tick_spacing > 0, EInvalidTickSpacing);
 
-    let (minimum_tick, maximum_tick) =
-        config::get_tick_range(bluefin_config);
+    let (minimum_tick, maximum_tick) = bluefin_config.tick_range();
     let tick_spacing = i32::from(tick_spacing);
-    let lower_tick = i32::mul(
-        i32::div(minimum_tick, tick_spacing),
-        tick_spacing,
-    );
-    let upper_tick = i32::mul(
-        i32::div(maximum_tick, tick_spacing),
-        tick_spacing,
-    );
+    let lower_tick = minimum_tick.div(tick_spacing).mul(tick_spacing);
+    let upper_tick = maximum_tick.div(tick_spacing).mul(tick_spacing);
 
-    (i32::as_u32(lower_tick), i32::as_u32(upper_tick))
+    (lower_tick.as_u32(), upper_tick.as_u32())
 }
 
 fun zero_creation_fee<Quote>(
     bluefin_config: &GlobalConfig,
 ): Balance<Quote> {
-    let (supported, fee_amount) =
-        config::get_pool_creation_fee_amount<Quote>(bluefin_config);
+    let (supported, fee_amount) = bluefin_config.pool_creation_fee_amount<Quote>();
     assert!(supported, EUnsupportedCreationFee);
     assert!(fee_amount == 0, ENonzeroCreationFee);
 
@@ -337,9 +332,8 @@ fun lock_and_share<Meme, Quote>(
     transfer_residual(residual_meme, protocol_treasury, ctx);
     transfer_residual(residual_quote, protocol_treasury, ctx);
 
-    let venue = Venue();
     let vault_id = vault::new<Meme, Quote, Venue, Position>(
-        venue,
+        Venue(),
         pool_id,
         position,
         ctx,
@@ -366,6 +360,6 @@ fun lock_and_share<Meme, Quote>(
 // === Test-Only Functions ===
 
 #[test_only]
-public fun pinned_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
-    pinned_tier(venue_config)
+public fun effective_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
+    effective_tier(venue_config)
 }

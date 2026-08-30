@@ -13,6 +13,11 @@ module blast_fun_migrators::venue_config;
 use blast_fun_migrators::events;
 use sui::dynamic_field;
 
+use fun dynamic_field::add as UID.add_dynamic_field;
+use fun dynamic_field::borrow as UID.dynamic_field;
+use fun dynamic_field::borrow_mut as UID.dynamic_field_mut;
+use fun dynamic_field::exists as UID.has_dynamic_field;
+
 // === Constants ===
 
 const EInvalidTickSpacing: u64 = 0;
@@ -57,20 +62,19 @@ public(package) fun set_tier<Venue: drop>(
     assert!(tick_spacing > 0, EInvalidTickSpacing);
     assert!(fee_rate > 0, EInvalidFeeRate);
 
-    let (old_tick_spacing, old_fee_rate) = if (self.contains<Venue>()) {
-        let tier: &mut Tier =
-            dynamic_field::borrow_mut(&mut self.id, TierKey<Venue>());
-        let old_tick_spacing = tier.tick_spacing;
-        let old_fee_rate = tier.fee_rate;
+    let (old_tick_spacing, old_fee_rate) = if (self.has_tier_override<Venue>()) {
+        let tier_override_mut: &mut Tier =
+            self.id.dynamic_field_mut(TierKey<Venue>());
+        let old_tick_spacing = tier_override_mut.tick_spacing;
+        let old_fee_rate = tier_override_mut.fee_rate;
         assert!(
             old_tick_spacing != tick_spacing || old_fee_rate != fee_rate,
             EUnchangedTier,
         );
-        *tier = Tier { tick_spacing, fee_rate };
+        *tier_override_mut = Tier { tick_spacing, fee_rate };
         (old_tick_spacing, old_fee_rate)
     } else {
-        dynamic_field::add(
-            &mut self.id,
+        self.id.add_dynamic_field(
             TierKey<Venue>(),
             Tier { tick_spacing, fee_rate },
         );
@@ -86,17 +90,17 @@ public(package) fun set_tier<Venue: drop>(
 }
 
 /// Reports whether an admin pin overrides the venue module's compiled default.
-public(package) fun contains<Venue>(self: &VenueConfig): bool {
-    dynamic_field::exists(&self.id, TierKey<Venue>())
+public(package) fun has_tier_override<Venue>(self: &VenueConfig): bool {
+    self.id.has_dynamic_field(TierKey<Venue>())
 }
 
 /// Returns the pinned `(tick_spacing, fee_rate)`; aborts while no pin exists.
-public(package) fun tier<Venue>(self: &VenueConfig): (u32, u64) {
-    assert!(self.contains<Venue>(), EVenueTierUnset);
+public(package) fun tier_override<Venue>(self: &VenueConfig): (u32, u64) {
+    assert!(self.has_tier_override<Venue>(), EVenueTierUnset);
 
-    let tier: &Tier = dynamic_field::borrow(&self.id, TierKey<Venue>());
+    let tier_override: &Tier = self.id.dynamic_field(TierKey<Venue>());
 
-    (tier.tick_spacing, tier.fee_rate)
+    (tier_override.tick_spacing, tier_override.fee_rate)
 }
 
 // === Test-Only Functions ===

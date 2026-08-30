@@ -38,16 +38,16 @@ fun substrate_pins_reads_and_replaces_one_sealed_entry() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        assert_eq!(f.config.contains<TestVenue>(), false);
+        assert_eq!(f.config.has_tier_override<TestVenue>(), false);
 
         f.config.set_tier(TestVenue(), 60, 3_000);
-        assert_eq!(f.config.contains<TestVenue>(), true);
-        let (tick_spacing, fee_rate) = f.config.tier<TestVenue>();
+        assert_eq!(f.config.has_tier_override<TestVenue>(), true);
+        let (tick_spacing, fee_rate) = f.config.tier_override<TestVenue>();
         assert_eq!(tick_spacing, 60);
         assert_eq!(fee_rate, 3_000);
 
         f.config.set_tier(TestVenue(), 60, 4_000);
-        let (tick_spacing, fee_rate) = f.config.tier<TestVenue>();
+        let (tick_spacing, fee_rate) = f.config.tier_override<TestVenue>();
         assert_eq!(tick_spacing, 60);
         assert_eq!(fee_rate, 4_000);
     });
@@ -63,22 +63,22 @@ fun venue_defaults_hold_until_an_admin_pin_replaces_them() {
         // The compiled highest-tier defaults identified from live mainnet
         // registries on 2026-08-30.
         let (tick_spacing, fee_rate) =
-            bluefin::pinned_tier_for_testing(&f.config);
+            bluefin::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 200);
         assert_eq!(fee_rate, 10_000);
         let (tick_spacing, fee_rate) =
-            cetus::pinned_tier_for_testing(&f.config);
+            cetus::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 260);
         assert_eq!(fee_rate, 40_000);
         let (tick_spacing, fee_rate) =
-            fullsail::pinned_tier_for_testing(&f.config);
+            fullsail::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 20);
         assert_eq!(fee_rate, 10_000);
-        let (tick_spacing, fee_rate) = mmt::pinned_tier_for_testing(&f.config);
+        let (tick_spacing, fee_rate) = mmt::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 400);
         assert_eq!(fee_rate, 20_000);
         let (tick_spacing, fee_rate) =
-            turbos::pinned_tier_for_testing(&f.config);
+            turbos::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 800);
         assert_eq!(fee_rate, 40_000);
 
@@ -90,22 +90,22 @@ fun venue_defaults_hold_until_an_admin_pin_replaces_them() {
         turbos::set_tier(&mut f.config, &admin_witness, 220, 20_000);
 
         let (tick_spacing, fee_rate) =
-            bluefin::pinned_tier_for_testing(&f.config);
+            bluefin::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 220);
         assert_eq!(fee_rate, 20_000);
         let (tick_spacing, fee_rate) =
-            cetus::pinned_tier_for_testing(&f.config);
+            cetus::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 220);
         assert_eq!(fee_rate, 20_000);
         let (tick_spacing, fee_rate) =
-            fullsail::pinned_tier_for_testing(&f.config);
+            fullsail::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 40);
         assert_eq!(fee_rate, 2_000);
-        let (tick_spacing, fee_rate) = mmt::pinned_tier_for_testing(&f.config);
+        let (tick_spacing, fee_rate) = mmt::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 200);
         assert_eq!(fee_rate, 10_000);
         let (tick_spacing, fee_rate) =
-            turbos::pinned_tier_for_testing(&f.config);
+            turbos::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 220);
         assert_eq!(fee_rate, 20_000);
     });
@@ -124,10 +124,10 @@ fun venue_pins_stay_sealed_per_witness_type() {
 
         // Only the Bluefin entry changed; every other venue keeps its default.
         let (tick_spacing, fee_rate) =
-            cetus::pinned_tier_for_testing(&f.config);
+            cetus::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 260);
         assert_eq!(fee_rate, 40_000);
-        assert_eq!(f.config.contains<TestVenue>(), false);
+        assert_eq!(f.config.has_tier_override<TestVenue>(), false);
     });
 
     fixture.end();
@@ -188,7 +188,7 @@ fun unpinned_tier_read_fails_closed() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let (_, _) = f.config.tier<TestVenue>();
+        let (_, _) = f.config.tier_override<TestVenue>();
     });
 
     fixture.end();

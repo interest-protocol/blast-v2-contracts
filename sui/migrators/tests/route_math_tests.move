@@ -24,12 +24,12 @@ fun tick_bits_encodes_negative_magnitudes_as_twos_complement() {
 
 #[test]
 fun fullsail_order_is_a_strict_total_order_on_distinct_types() {
-    let a_greater = fullsail::type_name_greater_than_for_testing<TypeA, TypeB>();
-    let b_greater = fullsail::type_name_greater_than_for_testing<TypeB, TypeA>();
+    let a_greater = fullsail::is_type_name_greater_for_testing<TypeA, TypeB>();
+    let b_greater = fullsail::is_type_name_greater_for_testing<TypeB, TypeA>();
 
     assert_eq!(a_greater != b_greater, true);
     assert_eq!(
-        fullsail::type_name_greater_than_for_testing<TypeA, TypeA>(),
+        fullsail::is_type_name_greater_for_testing<TypeA, TypeA>(),
         false,
     );
 }
@@ -39,11 +39,11 @@ fun fullsail_order_compares_defining_addresses_first() {
     // This unpublished test package resolves to address zero, so the framework
     // SUI type is the greater name for any local type.
     assert_eq!(
-        fullsail::type_name_greater_than_for_testing<SUI, TypeA>(),
+        fullsail::is_type_name_greater_for_testing<SUI, TypeA>(),
         true,
     );
     assert_eq!(
-        fullsail::type_name_greater_than_for_testing<TypeA, SUI>(),
+        fullsail::is_type_name_greater_for_testing<TypeA, SUI>(),
         false,
     );
 }

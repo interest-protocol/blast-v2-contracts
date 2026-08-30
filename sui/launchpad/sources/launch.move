@@ -216,8 +216,6 @@ public fun buy<Meme, Quote>(
 
     let mut meme_out = self.meme_reserve.split(meme_out_gross);
     let meme_fee_balance = meme_out.split(meme_fee);
-    let protocol_fee_share_bps = runtime_config.protocol_fee_share();
-
     if (crossed_threshold) {
         self.lifecycle = Lifecycle::MigrationReady;
     };
@@ -225,7 +223,7 @@ public fun buy<Meme, Quote>(
     self.accrue_and_emit_bought(
         meme_fee_balance,
         quote_fee_balance,
-        protocol_fee_share_bps,
+        runtime_config.protocol_fee_share(),
         quote_supplied,
         quote_in_gross,
         quote_refund.value(),
@@ -283,8 +281,7 @@ public fun sell<Meme, Quote>(
 
     let mut meme_in = meme_in.into_balance();
     let meme_fee_balance = meme_in.split(meme_fee);
-    let pending_burn = meme_in.split(pending_burn_delta);
-    let pending_burn_total = self.pending_burn.join(pending_burn);
+    let pending_burn_total = self.pending_burn.join(meme_in.split(pending_burn_delta));
     self.meme_reserve.join(meme_in);
 
     let mut quote_out = self.real_quote_reserve.split(quote_out_gross);
@@ -423,15 +420,13 @@ public fun migrate<Meme, Quote, MigrationWitness: drop>(
 
     self.lifecycle = Lifecycle::Migrated;
 
-    let total_supply_after = currency.total_supply().destroy_some();
-
     events::migrated<Meme, Quote, MigrationWitness>(
         object::id(self),
         burnable,
         meme.value(),
         quote.value(),
         disposed_meme,
-        total_supply_after,
+        currency.total_supply().destroy_some(),
         protocol_meme_graduation_fee_amount,
         quote_migration_fee_amount,
         protocol_meme_fee_total,
@@ -443,10 +438,10 @@ public fun migrate<Meme, Quote, MigrationWitness: drop>(
 
 /// Opens the linear handoff with the witness owned by the selected adapter.
 public fun redeem_migration<Meme, Quote, MigrationWitness: drop>(
-    payload: MigrationPayload<Meme, Quote, MigrationWitness>,
+    self: MigrationPayload<Meme, Quote, MigrationWitness>,
     _: MigrationWitness,
 ): (Balance<Meme>, Balance<Quote>) {
-    let MigrationPayload { meme, quote } = payload;
+    let MigrationPayload { meme, quote } = self;
 
     (meme, quote)
 }

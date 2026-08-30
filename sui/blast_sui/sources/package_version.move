@@ -35,7 +35,7 @@ public(package) fun assert_current(self: &PackageVersion) {
 }
 
 /// Activates bytecode exactly one generation after shared state.
-public(package) fun activate(self: &mut PackageVersion): (u64, u64) {
+public(package) fun activate(self: &mut PackageVersion) {
     let previous_version = self.version;
     let new_version = previous_version
         .checked_add(1)
@@ -49,7 +49,6 @@ public(package) fun activate(self: &mut PackageVersion): (u64, u64) {
     self.version = new_version;
 
     events::package_version_advanced(previous_version, new_version);
-    (previous_version, new_version)
 }
 
 // === Private Functions ===
@@ -76,7 +75,6 @@ public fun set_for_testing(self: &mut PackageVersion, version: u64) {
 }
 
 #[test_only]
-public fun value_for_testing(self: &PackageVersion): u64 {
+public fun version_for_testing(self: &PackageVersion): u64 {
     self.version
 }
-

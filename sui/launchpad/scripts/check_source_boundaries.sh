@@ -625,7 +625,7 @@ if ! rg -Fq 'publisher.from_package<BLAST>() && publisher.from_module<BLAST>()' 
   || ! rg -Fq 'self.upgrade_cap.commit(receipt)' sources/package_admin.move \
   || ! rg -Fq 'self.upgrade_cap.only_additive_upgrades();' sources/package_admin.move \
   || ! rg -Fq 'self.upgrade_cap.only_dep_upgrades();' sources/package_admin.move \
-  || ! rg -Fq 'new_policy > previous_policy' sources/package_admin.move \
+  || ! rg -Fq 'new_policy > self.upgrade_cap.policy()' sources/package_admin.move \
   || rg -n '\bpackage::(version|only_(additive|dep)_upgrades)\(' \
     <<<"$package_admin_production" \
   || rg -n 'admin_authorization|governance_cutover' sources/package_admin.move \
@@ -1283,11 +1283,10 @@ if [[ ! -f sources/launch_ticket.move ]] \
     'public\(package\) fun destroy<Meme>\(\s*self: LaunchTicket<Meme>,\s*\): \(\s*Balance<Meme>,\s*MetadataCap<Meme>,\s*CreatorAuthority<Meme>,\s*Bps,\s*\)' \
     sources/launch_ticket.move \
   || ! rg -q 'coin_registry::new_currency_with_otw' sources/launch_ticket.move \
-  || ! rg -Fq 'let meme = treasury_cap.mint_balance(initial_supply);' sources/launch_ticket.move \
+  || ! rg -Fq 'let meme = treasury_cap.mint_balance(constants::meme_total_supply_atomic_units!());' sources/launch_ticket.move \
   || ! rg -U -q \
     'if \(burnable\) \{\s*initializer\.make_supply_burn_only\(treasury_cap\);\s*\} else \{\s*initializer\.make_supply_fixed\(treasury_cap\);\s*\};\s*let metadata_cap = initializer\.finalize\(ctx\);' \
     sources/launch_ticket.move \
-  || ! rg -Fq 'let initial_supply = constants::meme_total_supply_atomic_units!();' sources/launch_ticket.move \
   || ! rg -Fq 'let sell_burn_bps = bps::new(sell_burn_bps);' sources/launch_ticket.move \
   || ! rg -Fq 'constants::meme_decimals!(),' sources/launch_ticket.move \
   || rg -n '\bdecimals: u8\b' sources/launch_ticket.move \
@@ -1349,7 +1348,7 @@ if [[ ! -f sources/launch.move ]] \
     'public fun migrate<Meme, Quote, MigrationWitness: drop>\(\s*self: &mut Launch<Meme, Quote>,\s*package_version: &PackageVersion,\s*currency: &mut Currency<Meme>,\s*ctx: &mut TxContext,\s*\): MigrationPayload<Meme, Quote, MigrationWitness>' \
     sources/launch.move \
   || ! rg -U -q \
-    'public fun redeem_migration<Meme, Quote, MigrationWitness: drop>\(\s*payload: MigrationPayload<Meme, Quote, MigrationWitness>,\s*_: MigrationWitness,\s*\): \(Balance<Meme>, Balance<Quote>\)' \
+    'public fun redeem_migration<Meme, Quote, MigrationWitness: drop>\(\s*self: MigrationPayload<Meme, Quote, MigrationWitness>,\s*_: MigrationWitness,\s*\): \(Balance<Meme>, Balance<Quote>\)' \
     sources/launch.move \
   || rg -n '\b(creation_fee|max_burn_bps|route|venue|Display|valuation|expected_release)\b' \
     <<<"$launch_production" \
@@ -1490,7 +1489,7 @@ if [[ -z "$acl_mutation_event_payloads" ]] \
   || rg -n '\b(authority_id|current_super_admin_cap_id)\b' \
     <<<"$acl_mutation_event_payloads" \
   || ! rg -U -q \
-    '(?s)let previous = authority\.pending_super_admin\.extract\(\);\s*events::super_admin_transfer_cancelled\(previous\.recipient\);.*authority\.pending_super_admin = option::some\(PendingSuperAdminTransfer.*events::super_admin_transfer_started\(' \
+    '(?s)events::super_admin_transfer_cancelled\(\s*self\.pending_super_admin\.extract\(\)\.recipient,\s*\);.*self\.pending_super_admin = option::some\(PendingSuperAdminTransfer.*events::super_admin_transfer_started\(' \
     sources/acl.move; then
   echo 'ACL mutations must omit repeated singleton ids and emit replacement cancellation before the new transfer starts.' >&2
   failures=$((failures + 1))
@@ -1528,7 +1527,7 @@ creator_authority_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sou
 if rg -n '\bcreator_cap_claimed:[[:space:]]*bool|\bissue_creator_cap\b|\btransfer::' \
   <<<"$creator_authority_production" \
   || ! rg -U -q \
-    '(?s)public\(package\) fun claim_creator_cap<Meme>\(\s*authority: CreatorAuthority<Meme>,.*\): CreatorCap<Meme> \{' \
+    '(?s)public\(package\) fun claim_creator_cap<Meme>\(\s*self: CreatorAuthority<Meme>,.*\): CreatorCap<Meme> \{' \
     sources/creator_authority.move \
   || ! rg -U -q \
     'public struct CreatorCap<phantom Meme> has key, store \{\s*id: UID,\s*\}' \

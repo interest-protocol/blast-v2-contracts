@@ -28,6 +28,10 @@ use turbos_clmm::{
     position_nft::TurbosPositionNFT,
 };
 
+use fun position_manager::get_position_info as Positions.position_info;
+use fun position_manager::collect_with_return_ as Pool.collect_with_return_;
+use fun position_manager::mint_with_return_ as Pool.mint_with_return_;
+
 // === Constants ===
 
 /// Turbos must use at least 99.99% of both migration balances.
@@ -75,7 +79,7 @@ public fun migrate_new_meme_a<Meme, Quote, FeeType>(
     versioned: &Versioned,
     ctx: &mut TxContext,
 ) {
-    let (tick_spacing, fee_rate) = assert_fee_tier(venue_config, fee);
+    let (tick_spacing, fee_rate) = checked_fee_tier(venue_config, fee);
     let (lower_magnitude, lower_is_neg, upper_magnitude, upper_is_neg) =
         full_range_ticks(tick_spacing);
     let lower_tick_bits = tick_bits(lower_magnitude, lower_is_neg);
@@ -128,10 +132,8 @@ public fun migrate_new_meme_a<Meme, Quote, FeeType>(
     assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
     assert_positive_liquidity(&position, positions);
 
-    let venue = Venue();
     lock_and_share<Meme, Quote>(
         runtime_config,
-        venue,
         launch_id,
         position,
         residual_meme,
@@ -162,7 +164,7 @@ public fun migrate_new_meme_b<Meme, Quote, FeeType>(
     versioned: &Versioned,
     ctx: &mut TxContext,
 ) {
-    let (tick_spacing, fee_rate) = assert_fee_tier(venue_config, fee);
+    let (tick_spacing, fee_rate) = checked_fee_tier(venue_config, fee);
     let (lower_magnitude, lower_is_neg, upper_magnitude, upper_is_neg) =
         full_range_ticks(tick_spacing);
     let lower_tick_bits = tick_bits(lower_magnitude, lower_is_neg);
@@ -215,10 +217,8 @@ public fun migrate_new_meme_b<Meme, Quote, FeeType>(
     assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
     assert_positive_liquidity(&position, positions);
 
-    let venue = Venue();
     lock_and_share<Meme, Quote>(
         runtime_config,
-        venue,
         launch_id,
         position,
         residual_meme,
@@ -248,7 +248,7 @@ public fun migrate_existing_meme_a<Meme, Quote, FeeType>(
     versioned: &Versioned,
     ctx: &mut TxContext,
 ) {
-    let (tick_spacing, fee_rate) = assert_pool_tier(venue_config, pool);
+    let (tick_spacing, fee_rate) = checked_pool_tier(venue_config, pool);
     let (lower_magnitude, lower_is_neg, upper_magnitude, upper_is_neg) =
         full_range_ticks(tick_spacing);
     let lower_tick_bits = tick_bits(lower_magnitude, lower_is_neg);
@@ -281,8 +281,7 @@ public fun migrate_existing_meme_a<Meme, Quote, FeeType>(
     );
 
     let (position, residual_meme, residual_quote) =
-        position_manager::mint_with_return_<Meme, Quote, FeeType>(
-            pool,
+        pool.mint_with_return_<Meme, Quote, FeeType>(
             positions,
             vector[meme.into_coin(ctx)],
             vector[quote.into_coin(ctx)],
@@ -302,10 +301,8 @@ public fun migrate_existing_meme_a<Meme, Quote, FeeType>(
     assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
     assert_positive_liquidity(&position, positions);
 
-    let venue = Venue();
     lock_and_share<Meme, Quote>(
         runtime_config,
-        venue,
         launch_id,
         position,
         residual_meme,
@@ -335,7 +332,7 @@ public fun migrate_existing_meme_b<Meme, Quote, FeeType>(
     versioned: &Versioned,
     ctx: &mut TxContext,
 ) {
-    let (tick_spacing, fee_rate) = assert_pool_tier(venue_config, pool);
+    let (tick_spacing, fee_rate) = checked_pool_tier(venue_config, pool);
     let (lower_magnitude, lower_is_neg, upper_magnitude, upper_is_neg) =
         full_range_ticks(tick_spacing);
     let lower_tick_bits = tick_bits(lower_magnitude, lower_is_neg);
@@ -368,8 +365,7 @@ public fun migrate_existing_meme_b<Meme, Quote, FeeType>(
     );
 
     let (position, residual_quote, residual_meme) =
-        position_manager::mint_with_return_<Quote, Meme, FeeType>(
-            pool,
+        pool.mint_with_return_<Quote, Meme, FeeType>(
             positions,
             vector[quote.into_coin(ctx)],
             vector[meme.into_coin(ctx)],
@@ -389,10 +385,8 @@ public fun migrate_existing_meme_b<Meme, Quote, FeeType>(
     assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
     assert_positive_liquidity(&position, positions);
 
-    let venue = Venue();
     lock_and_share<Meme, Quote>(
         runtime_config,
-        venue,
         launch_id,
         position,
         residual_meme,
@@ -499,30 +493,30 @@ public fun set_tier(
 
 // === Private Functions ===
 
-fun pinned_tier(venue_config: &VenueConfig): (u32, u64) {
-    if (venue_config.contains<Venue>()) {
-        venue_config.tier<Venue>()
+fun effective_tier(venue_config: &VenueConfig): (u32, u64) {
+    if (venue_config.has_tier_override<Venue>()) {
+        venue_config.tier_override<Venue>()
     } else {
         (DEFAULT_TICK_SPACING, DEFAULT_FEE_RATE)
     }
 }
 
-fun assert_fee_tier<FeeType>(
+fun checked_fee_tier<FeeType>(
     venue_config: &VenueConfig,
     fee: &Fee<FeeType>,
 ): (u32, u64) {
-    let (tick_spacing, fee_rate) = pinned_tier(venue_config);
+    let (tick_spacing, fee_rate) = effective_tier(venue_config);
     assert!(fee.get_tick_spacing() == tick_spacing, ETierMismatch);
     assert!((fee.get_fee() as u64) == fee_rate, ETierMismatch);
 
     (tick_spacing, fee_rate)
 }
 
-fun assert_pool_tier<CoinA, CoinB, FeeType>(
+fun checked_pool_tier<CoinA, CoinB, FeeType>(
     venue_config: &VenueConfig,
     pool: &Pool<CoinA, CoinB, FeeType>,
 ): (u32, u64) {
-    let (tick_spacing, fee_rate) = pinned_tier(venue_config);
+    let (tick_spacing, fee_rate) = effective_tier(venue_config);
     assert!(pool.get_pool_tick_spacing() == tick_spacing, ETierMismatch);
     assert!((pool.get_pool_fee() as u64) == fee_rate, ETierMismatch);
 
@@ -536,10 +530,10 @@ fun full_range_ticks(tick_spacing: u32): (u32, bool, u32, bool) {
     let upper_tick = math_tick::get_max_tick(tick_spacing);
 
     (
-        i32::abs_u32(lower_tick),
-        i32::is_neg(lower_tick),
-        i32::abs_u32(upper_tick),
-        i32::is_neg(upper_tick),
+        lower_tick.abs_u32(),
+        lower_tick.is_neg(),
+        upper_tick.abs_u32(),
+        upper_tick.is_neg(),
     )
 }
 
@@ -557,10 +551,7 @@ fun assert_positive_liquidity(
     position: &TurbosPositionNFT,
     positions: &Positions,
 ) {
-    let (_, _, liquidity) = position_manager::get_position_info(
-        positions,
-        object::id(position).to_address(),
-    );
+    let (_, _, liquidity) = positions.position_info(object::id(position).to_address());
     assert!(liquidity > 0, EZeroPositionLiquidity);
 }
 
@@ -577,7 +568,6 @@ fun transfer_residual<CoinType>(
 
 fun lock_and_share<Meme, Quote>(
     runtime_config: &RuntimeConfig,
-    venue: Venue,
     launch_id: ID,
     position: TurbosPositionNFT,
     residual_meme: Coin<Meme>,
@@ -612,7 +602,7 @@ fun lock_and_share<Meme, Quote>(
     transfer_residual(residual_quote, protocol_treasury);
 
     let vault_id = vault::new<Meme, Quote, Venue, TurbosPositionNFT>(
-        venue,
+        Venue(),
         pool_id,
         position,
         ctx,
@@ -651,7 +641,7 @@ fun collect_position_fees<X, Y, Meme, Quote, FeeType>(
     let pool_id = object::id(pool);
     assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
 
-    let position = self.borrow_position_mut<
+    let position = self.position_mut<
         Meme,
         Quote,
         Venue,
@@ -659,14 +649,10 @@ fun collect_position_fees<X, Y, Meme, Quote, FeeType>(
     >(venue);
     let position_id = object::id(position);
     assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
-    let (_, _, liquidity_before) = position_manager::get_position_info(
-        positions,
-        position_id.to_address(),
-    );
+    let (_, _, liquidity_before) = positions.position_info(position_id.to_address());
     assert!(liquidity_before > 0, EZeroPositionLiquidity);
 
-    let (fee_a, fee_b) = position_manager::collect_with_return_<X, Y, FeeType>(
-        pool,
+    let (fee_a, fee_b) = pool.collect_with_return_<X, Y, FeeType>(
         positions,
         position,
         std::u64::max_value!(),
@@ -682,10 +668,7 @@ fun collect_position_fees<X, Y, Meme, Quote, FeeType>(
     );
 
     assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
-    let (_, _, liquidity_after) = position_manager::get_position_info(
-        positions,
-        position_id.to_address(),
-    );
+    let (_, _, liquidity_after) = positions.position_info(position_id.to_address());
     assert!(liquidity_after == liquidity_before, EPositionLiquidityChanged);
     assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
 
@@ -700,6 +683,6 @@ public fun tick_bits_for_testing(magnitude: u32, is_neg: bool): u32 {
 }
 
 #[test_only]
-public fun pinned_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
-    pinned_tier(venue_config)
+public fun effective_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
+    effective_tier(venue_config)
 }

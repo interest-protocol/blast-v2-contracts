@@ -354,9 +354,9 @@ require_pattern "$VAULT_SOURCE" 'public struct PositionKey' 'sealed position key
 require_pattern "$VAULT_SOURCE" 'public\(package\) fun new' 'package-only vault construction'
 require_pattern "$VAULT_SOURCE" '_venue: Venue' 'owned venue witness on vault construction'
 require_pattern "$VAULT_SOURCE" 'dynamic_object_field::add' 'dynamic object-field position attachment'
-require_pattern "$VAULT_SOURCE" 'dynamic_object_field::borrow_mut<' 'typed mutable position borrow'
+require_pattern "$VAULT_SOURCE" 'self\.id\.dynamic_object_field_mut' 'typed mutable position borrow'
 require_pattern "$VAULT_SOURCE" '_venue: &Venue' 'borrowed venue witness on position access'
-VAULT_VENUE_GUARD_COUNT="$(rg -o 'dynamic_object_field::exists' "$VAULT_SOURCE" | wc -l || true)"
+VAULT_VENUE_GUARD_COUNT="$(rg -o 'self\.id\.has_dynamic_object_field' "$VAULT_SOURCE" | wc -l || true)"
 [[ "$VAULT_VENUE_GUARD_COUNT" -eq 2 ]] || \
     fail "vault borrow and accrual must both guard the sealed venue key"
 require_pattern "$VAULT_SOURCE" 'public fun claim_creator_fees' 'creator fee claim'
@@ -378,9 +378,9 @@ require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun set_tier<Venue: dr
     'witness-sealed package-only tier write'
 require_pattern "$VENUE_CONFIG_SOURCE" '_venue: Venue' \
     'owned venue witness on tier writes'
-require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun contains<Venue>' \
+require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun has_tier_override<Venue>' \
     'package-only pin presence read'
-require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun tier<Venue>' \
+require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun tier_override<Venue>' \
     'package-only tier read'
 require_pattern "$VENUE_CONFIG_SOURCE" 'dynamic_field::add' \
     'dynamic-field tier storage for upgrade-safe venue registration'
@@ -392,7 +392,7 @@ for source in "$BLUEFIN_SOURCE" "$CETUS_SOURCE" "$FULLSAIL_SOURCE" "$MMT_SOURCE"
         fail "every venue module must expose its admin tier pin"
     count="$(rg -c '_: &AdminWitness,' "$source" || true)"
     VENUE_TIER_SETTER_COUNT=$((VENUE_TIER_SETTER_COUNT + ${count:-0}))
-    rg -q 'fun pinned_tier\(venue_config: &VenueConfig\)' "$source" || \
+    rg -q 'fun effective_tier\(venue_config: &VenueConfig\)' "$source" || \
         fail "every venue module must own its default-tier fallback read"
     rg -q 'const DEFAULT_TICK_SPACING: u32' "$source" || \
         fail "every venue module must compile its researched default tick spacing"
@@ -406,14 +406,14 @@ require_pattern "$BLUEFIN_SOURCE" 'public struct Witness' 'sealed Bluefin witnes
 require_pattern "$BLUEFIN_SOURCE" 'public struct Venue' 'sealed Bluefin venue marker'
 require_pattern "$BLUEFIN_SOURCE" 'public fun migrate' 'Bluefin migration'
 require_pattern "$BLUEFIN_SOURCE" 'public fun collect_fees' 'Bluefin fee collection'
-require_pattern "$BLUEFIN_SOURCE" 'config::get_pool_creation_fee_amount<Quote>' \
+require_pattern "$BLUEFIN_SOURCE" 'bluefin_config\.pool_creation_fee_amount<Quote>' \
     'Quote creation-fee query'
 require_pattern "$BLUEFIN_SOURCE" 'balance::zero<Quote>\(\)' \
     'zero Quote creation-fee balance'
 require_pattern "$BLUEFIN_SOURCE" 'events::migration_completed' \
     'completed migration event emission'
 require_pattern "$BLUEFIN_SOURCE" 'self\.accrue_fees\(' 'shared replay-complete fee accrual'
-require_pattern "$BLUEFIN_SOURCE" 'pinned_tier\(venue_config\)' 'pinned Bluefin tier read'
+require_pattern "$BLUEFIN_SOURCE" 'effective_tier\(venue_config\)' 'effective Bluefin tier read'
 require_pattern "$BLUEFIN_SOURCE" 'source_meme_amount >= source_quote_amount' \
     'Bluefin fixed-side feasibility guard'
 BLUEFIN_RESIDUAL_ROUTING_COUNT="$(rg -o 'transfer_residual\(residual_' "$BLUEFIN_SOURCE" | wc -l || true)"
@@ -433,21 +433,21 @@ require_pattern "$MMT_SOURCE" 'create_pool::check_coin_order<Meme, Quote>' \
 require_pattern "$MMT_SOURCE" 'create_pool::check_coin_order<Quote, Meme>' \
     'MMT Meme-Y canonical-order check'
 require_pattern "$MMT_SOURCE" 'create_pool::new<X, Y>' 'MMT pool creation'
-require_pattern "$MMT_SOURCE" 'pool::initialize' 'MMT exact-price initialization'
-require_pattern "$MMT_SOURCE" 'pool::get_friendly_ticks' 'MMT friendly full-range ticks'
+require_pattern "$MMT_SOURCE" 'pool\.initialize' 'MMT exact-price initialization'
+require_pattern "$MMT_SOURCE" 'pool\.get_friendly_ticks' 'MMT friendly full-range ticks'
 require_pattern "$MMT_SOURCE" 'tick_math::min_sqrt_price' 'MMT minimum full-range price'
 require_pattern "$MMT_SOURCE" 'tick_math::max_sqrt_price' 'MMT maximum full-range price'
-require_pattern "$MMT_SOURCE" 'liquidity::open_position' 'MMT position creation'
-require_pattern "$MMT_SOURCE" 'liquidity::add_liquidity' 'MMT liquidity addition'
+require_pattern "$MMT_SOURCE" 'pool\.open_position' 'MMT position creation'
+require_pattern "$MMT_SOURCE" 'pool\.add_liquidity' 'MMT liquidity addition'
 require_pattern "$MMT_SOURCE" 'migration_math::minimum_utilized_amount' \
     'MMT one-basis-point minimum utilization'
-require_pattern "$MMT_SOURCE" 'pool::transfer\(pool\)' 'MMT pool sharing after position creation'
-require_pattern "$MMT_SOURCE" 'collect::fee' 'MMT fee collection'
+require_pattern "$MMT_SOURCE" 'pool\.transfer\(\)' 'MMT pool sharing after position creation'
+require_pattern "$MMT_SOURCE" 'pool\.collect_fee' 'MMT fee collection'
 require_pattern "$MMT_SOURCE" 'events::migration_completed' \
     'MMT completed migration event emission'
 require_pattern "$MMT_SOURCE" 'self\.accrue_fees\(' 'MMT shared replay-complete fee accrual'
 # Two migration routes plus the test-only default inspector.
-MMT_TIER_READ_COUNT="$(rg -o 'pinned_tier\(venue_config\)' "$MMT_SOURCE" | wc -l || true)"
+MMT_TIER_READ_COUNT="$(rg -o 'effective_tier\(venue_config\)' "$MMT_SOURCE" | wc -l || true)"
 [[ "$MMT_TIER_READ_COUNT" -eq 3 ]] || \
     fail "both MMT migration routes must read the pinned tier"
 MMT_RESIDUAL_ROUTING_COUNT="$(rg -o 'transfer_residual\(residual_' "$MMT_SOURCE" | wc -l || true)"
@@ -467,7 +467,7 @@ require_pattern "$CETUS_SOURCE" 'const MAX_PRICE_DEVIATION_BPS: u64 = 50;' \
 require_cetus_public 'migrate_new_meme_a' \
     'assert_canonical_order<Meme,Quote>(true);' 'Meme-A canonical order'
 require_cetus_public 'migrate_new_meme_a' \
-    'let(tick_spacing,pinned_fee_rate)=pinned_tier(venue_config);' 'Meme-A pinned tier'
+    'let(tick_spacing,pinned_fee_rate)=effective_tier(venue_config);' 'Meme-A effective tier'
 require_cetus_public 'migrate_new_meme_a' \
     'assert!(source_meme_amount>=source_quote_amount,EMemeBelowQuote);' \
     'Meme-A fixed-side feasibility guard'
@@ -482,13 +482,13 @@ require_cetus_public 'migrate_new_meme_a' \
     'pool_creator::create_pool_v3<Meme,Quote>(cetus_config,pools,tick_spacing,sqrt_price_x64,b"".to_string(),lower_tick_bits,upper_tick_bits,meme.into_coin(ctx),quote.into_coin(ctx),true,clock,ctx,)' \
     'exact Meme-A pool creation'
 require_cetus_public 'migrate_new_meme_a' \
-    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,residual_meme,residual_quote,source_meme_amount,source_quote_amount,sqrt_price_x64,' \
+    'lock_and_share<Meme,Quote>(runtime_config,launch_id,position,residual_meme,residual_quote,source_meme_amount,source_quote_amount,sqrt_price_x64,' \
     'Meme-A shared lock'
 
 require_cetus_public 'migrate_new_meme_b' \
     'assert_canonical_order<Meme,Quote>(false);' 'Meme-B canonical order'
 require_cetus_public 'migrate_new_meme_b' \
-    'let(tick_spacing,pinned_fee_rate)=pinned_tier(venue_config);' 'Meme-B pinned tier'
+    'let(tick_spacing,pinned_fee_rate)=effective_tier(venue_config);' 'Meme-B effective tier'
 require_cetus_public 'migrate_new_meme_b' \
     'assert!(source_meme_amount>=source_quote_amount,EMemeBelowQuote);' \
     'Meme-B fixed-side feasibility guard'
@@ -503,7 +503,7 @@ require_cetus_public 'migrate_new_meme_b' \
     'pool_creator::create_pool_v3<Quote,Meme>(cetus_config,pools,tick_spacing,sqrt_price_x64,b"".to_string(),lower_tick_bits,upper_tick_bits,quote.into_coin(ctx),meme.into_coin(ctx),false,clock,ctx,)' \
     'exact Meme-B pool creation'
 require_cetus_public 'migrate_new_meme_b' \
-    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,residual_meme,residual_quote,source_meme_amount,source_quote_amount,sqrt_price_x64,' \
+    'lock_and_share<Meme,Quote>(runtime_config,launch_id,position,residual_meme,residual_quote,source_meme_amount,source_quote_amount,sqrt_price_x64,' \
     'Meme-B shared lock'
 
 # Each adopted pool must redeem, guard at exactly 50 bps, then mutate once.
@@ -537,7 +537,7 @@ require_cetus_public 'migrate_existing_meme_a' \
     'assert!(position.pool_id()==object::id(pool),EPositionPoolMismatch);' \
     'Meme-A position-pool identity'
 require_cetus_public 'migrate_existing_meme_a' \
-    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,meme.into_coin(ctx),quote.into_coin(ctx),source_meme_amount,source_quote_amount,pool_sqrt_price,' \
+    'lock_and_share<Meme,Quote>(runtime_config,launch_id,position,meme.into_coin(ctx),quote.into_coin(ctx),source_meme_amount,source_quote_amount,pool_sqrt_price,' \
     'Meme-A shared lock'
 reject_cetus_pre_guard_mutator 'migrate_existing_meme_a'
 
@@ -571,7 +571,7 @@ require_cetus_public 'migrate_existing_meme_b' \
     'assert!(position.pool_id()==object::id(pool),EPositionPoolMismatch);' \
     'Meme-B position-pool identity'
 require_cetus_public 'migrate_existing_meme_b' \
-    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,meme.into_coin(ctx),quote.into_coin(ctx),source_meme_amount,source_quote_amount,pool_sqrt_price,' \
+    'lock_and_share<Meme,Quote>(runtime_config,launch_id,position,meme.into_coin(ctx),quote.into_coin(ctx),source_meme_amount,source_quote_amount,pool_sqrt_price,' \
     'Meme-B shared lock'
 reject_cetus_pre_guard_mutator 'migrate_existing_meme_b'
 
@@ -595,7 +595,7 @@ require_cetus_public 'collect_fees_meme_b' \
 require_cetus_private 'collect_position_fees' 'venue:&Venue' \
     'borrowed private venue'
 require_cetus_private 'collect_position_fees' \
-    'self.borrow_position_mut<Meme,Quote,Venue,Position>(venue)' \
+    'self.position_mut<Meme,Quote,Venue,Position>(venue)' \
     'venue-bound position borrow'
 require_cetus_private_count 'collect_position_fees' \
     'assert!(self.pool_id()==pool_id,EPositionPoolMismatch);' 2 \
@@ -651,7 +651,7 @@ require_pattern "$TURBOS_SOURCE" 'math_tick::get_max_tick' \
 require_turbos_public 'migrate_new_meme_a' 'fee:&Fee<FeeType>' \
     'Meme-A selected FeeType'
 require_turbos_public 'migrate_new_meme_a' \
-    'assert_fee_tier(venue_config,fee);' 'Meme-A pinned tier'
+    'checked_fee_tier(venue_config,fee);' 'Meme-A checked tier'
 require_turbos_public 'migrate_new_meme_a' \
     'letlower_tick_bits=tick_bits(lower_magnitude,lower_is_neg);' \
     'Meme-A event tick encoding'
@@ -664,7 +664,7 @@ require_turbos_public 'migrate_new_meme_a' \
     'pool_factory::deploy_pool_and_mint_with_return_<Meme,Quote,FeeType>(pool_config,fee,sqrt_price_x64,positions,vector[meme.into_coin(ctx)],vector[quote.into_coin(ctx)],lower_magnitude,lower_is_neg,upper_magnitude,upper_is_neg,source_meme_amount,source_quote_amount,minimum_meme_amount,minimum_quote_amount,deadline,clock,versioned,ctx,)' \
     'exact Meme-A new-pool call'
 require_turbos_public 'migrate_new_meme_a' \
-    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,residual_meme,residual_quote,' \
+    'lock_and_share<Meme,Quote>(runtime_config,launch_id,position,residual_meme,residual_quote,' \
     'Meme-A shared lock'
 require_turbos_public 'migrate_new_meme_a' \
     'assert_positive_liquidity(&position,positions);' \
@@ -673,7 +673,7 @@ require_turbos_public 'migrate_new_meme_a' \
 require_turbos_public 'migrate_new_meme_b' 'fee:&Fee<FeeType>' \
     'Meme-B selected FeeType'
 require_turbos_public 'migrate_new_meme_b' \
-    'assert_fee_tier(venue_config,fee);' 'Meme-B pinned tier'
+    'checked_fee_tier(venue_config,fee);' 'Meme-B checked tier'
 require_turbos_public 'migrate_new_meme_b' \
     'letlower_tick_bits=tick_bits(lower_magnitude,lower_is_neg);' \
     'Meme-B event tick encoding'
@@ -686,7 +686,7 @@ require_turbos_public 'migrate_new_meme_b' \
     'pool_factory::deploy_pool_and_mint_with_return_<Quote,Meme,FeeType>(pool_config,fee,sqrt_price_x64,positions,vector[quote.into_coin(ctx)],vector[meme.into_coin(ctx)],lower_magnitude,lower_is_neg,upper_magnitude,upper_is_neg,source_quote_amount,source_meme_amount,minimum_quote_amount,minimum_meme_amount,deadline,clock,versioned,ctx,)' \
     'exact Meme-B new-pool call'
 require_turbos_public 'migrate_new_meme_b' \
-    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,residual_meme,residual_quote,' \
+    'lock_and_share<Meme,Quote>(runtime_config,launch_id,position,residual_meme,residual_quote,' \
     'Meme-B shared lock'
 require_turbos_public 'migrate_new_meme_b' \
     'assert_positive_liquidity(&position,positions);' \
@@ -697,14 +697,14 @@ require_turbos_public 'migrate_existing_meme_a' \
     'migration_math::assert_price_within_bps(source_meme_amount,source_quote_amount,true,pool_sqrt_price,MAX_PRICE_DEVIATION_BPS,)' \
     'exact Meme-A 50-bps price guard'
 require_turbos_public 'migrate_existing_meme_a' \
-    'assert_pool_tier(venue_config,pool);' 'Meme-A adopted tier pin'
+    'checked_pool_tier(venue_config,pool);' 'Meme-A adopted tier check'
 require_turbos_public 'migrate_existing_meme_a' \
     'letpool_sqrt_price=pool.get_pool_sqrt_price();' 'Meme-A adopted-price read'
 require_turbos_public 'migrate_existing_meme_a' \
     'letlower_tick_bits=tick_bits(lower_magnitude,lower_is_neg);' \
     'Meme-A event tick encoding'
 require_turbos_public 'migrate_existing_meme_a' \
-    'position_manager::mint_with_return_<Meme,Quote,FeeType>(pool,positions,vector[meme.into_coin(ctx)],vector[quote.into_coin(ctx)],lower_magnitude,lower_is_neg,upper_magnitude,upper_is_neg,source_meme_amount,source_quote_amount,minimum_meme_amount,minimum_quote_amount,deadline,clock,versioned,ctx,)' \
+    'pool.mint_with_return_<Meme,Quote,FeeType>(positions,vector[meme.into_coin(ctx)],vector[quote.into_coin(ctx)],lower_magnitude,lower_is_neg,upper_magnitude,upper_is_neg,source_meme_amount,source_quote_amount,minimum_meme_amount,minimum_quote_amount,deadline,clock,versioned,ctx,)' \
     'exact Meme-A existing-pool call'
 require_turbos_public 'migrate_existing_meme_a' \
     'assert!(position.pool_id()==object::id(pool),EPositionPoolMismatch);' \
@@ -718,14 +718,14 @@ require_turbos_public 'migrate_existing_meme_b' \
     'migration_math::assert_price_within_bps(source_meme_amount,source_quote_amount,false,pool_sqrt_price,MAX_PRICE_DEVIATION_BPS,)' \
     'exact Meme-B 50-bps price guard'
 require_turbos_public 'migrate_existing_meme_b' \
-    'assert_pool_tier(venue_config,pool);' 'Meme-B adopted tier pin'
+    'checked_pool_tier(venue_config,pool);' 'Meme-B adopted tier check'
 require_turbos_public 'migrate_existing_meme_b' \
     'letpool_sqrt_price=pool.get_pool_sqrt_price();' 'Meme-B adopted-price read'
 require_turbos_public 'migrate_existing_meme_b' \
     'letlower_tick_bits=tick_bits(lower_magnitude,lower_is_neg);' \
     'Meme-B event tick encoding'
 require_turbos_public 'migrate_existing_meme_b' \
-    'position_manager::mint_with_return_<Quote,Meme,FeeType>(pool,positions,vector[quote.into_coin(ctx)],vector[meme.into_coin(ctx)],lower_magnitude,lower_is_neg,upper_magnitude,upper_is_neg,source_quote_amount,source_meme_amount,minimum_quote_amount,minimum_meme_amount,deadline,clock,versioned,ctx,)' \
+    'pool.mint_with_return_<Quote,Meme,FeeType>(positions,vector[quote.into_coin(ctx)],vector[meme.into_coin(ctx)],lower_magnitude,lower_is_neg,upper_magnitude,upper_is_neg,source_quote_amount,source_meme_amount,minimum_quote_amount,minimum_meme_amount,deadline,clock,versioned,ctx,)' \
     'exact Meme-B existing-pool call'
 require_turbos_public 'migrate_existing_meme_b' \
     'assert!(position.pool_id()==object::id(pool),EPositionPoolMismatch);' \
@@ -755,7 +755,7 @@ require_turbos_public 'collect_fees_meme_b' \
 require_turbos_private 'collect_position_fees' 'venue:&Venue' \
     'borrowed private venue'
 require_turbos_private 'collect_position_fees' \
-    'self.borrow_position_mut<Meme,Quote,Venue,TurbosPositionNFT,>(venue)' \
+    'self.position_mut<Meme,Quote,Venue,TurbosPositionNFT,>(venue)' \
     'venue-bound Turbos NFT borrow'
 require_turbos_private_count 'collect_position_fees' \
     'assert!(self.pool_id()==pool_id,EPositionPoolMismatch);' 2 \
@@ -764,10 +764,10 @@ require_turbos_private_count 'collect_position_fees' \
     'assert!(position.pool_id()==pool_id,EPositionPoolMismatch);' 2 \
     'NFT-pool identity'
 require_turbos_private_count 'collect_position_fees' \
-    'position_manager::get_position_info(positions,position_id.to_address(),)' 2 \
+    'positions.position_info(position_id.to_address())' 2 \
     'position liquidity reads'
 require_turbos_private 'collect_position_fees' \
-    'position_manager::collect_with_return_<X,Y,FeeType>(pool,positions,position,std::u64::max_value!(),std::u64::max_value!(),//Thepinnedinterfaceimpliesreturn-onlysemantics;ifthevenue//everpaidthisrecipient,valuewouldreachtheprotocoltreasury//ratherthanthepermissionlesscollector.runtime_config.protocol_treasury(),deadline,clock,versioned,ctx,)' \
+    'pool.collect_with_return_<X,Y,FeeType>(positions,position,std::u64::max_value!(),std::u64::max_value!(),//Thepinnedinterfaceimpliesreturn-onlysemantics;ifthevenue//everpaidthisrecipient,valuewouldreachtheprotocoltreasury//ratherthanthepermissionlesscollector.runtime_config.protocol_treasury(),deadline,clock,versioned,ctx,)' \
     'exact fee-only collection call'
 require_turbos_private 'collect_position_fees' \
     'assert!(liquidity_after==liquidity_before,EPositionLiquidityChanged);' \
@@ -779,7 +779,7 @@ require_turbos_private 'full_range_ticks' \
 require_turbos_private 'full_range_ticks' \
     'math_tick::get_max_tick(tick_spacing)' 'maximum tick derivation'
 require_turbos_private 'assert_positive_liquidity' \
-    'position_manager::get_position_info(positions,object::id(position).to_address(),)' \
+    'positions.position_info(object::id(position).to_address())' \
     'created-position liquidity read'
 require_turbos_private 'assert_positive_liquidity' \
     'assert!(liquidity>0,EZeroPositionLiquidity);' \
@@ -793,7 +793,7 @@ require_turbos_private 'lock_and_share' \
     'migration_math::assert_residual_within_bps(source_quote_amount,residual_quote_amount,MAX_RESIDUAL_BPS,)' \
     'Quote residual limit'
 require_turbos_private 'lock_and_share' \
-    'vault::new<Meme,Quote,Venue,TurbosPositionNFT>(venue,pool_id,position,ctx,)' \
+    'vault::new<Meme,Quote,Venue,TurbosPositionNFT>(Venue(),pool_id,position,ctx,)' \
     'Turbos NFT attachment'
 require_turbos_private 'lock_and_share' \
     'transfer_residual(residual_meme,protocol_treasury);' \
@@ -803,13 +803,13 @@ require_turbos_private 'lock_and_share' \
     'Quote treasury transfer'
 require_turbos_private 'lock_and_share' \
     'events::migration_completed<Meme,Quote,Venue>(' 'direct migration event'
-require_turbos_private 'assert_fee_tier' \
-    'pinned_tier(venue_config)' 'pinned tier read'
-require_turbos_private 'assert_fee_tier' \
+require_turbos_private 'checked_fee_tier' \
+    'effective_tier(venue_config)' 'effective tier read'
+require_turbos_private 'checked_fee_tier' \
     'fee.get_tick_spacing()==tick_spacing' 'pinned tier tick spacing'
-require_turbos_private 'assert_pool_tier' \
+require_turbos_private 'checked_pool_tier' \
     'pool.get_pool_tick_spacing()==tick_spacing' 'pinned adopted tick spacing'
-require_turbos_private 'assert_pool_tier' \
+require_turbos_private 'checked_pool_tier' \
     '(pool.get_pool_fee()asu64)==fee_rate' 'pinned adopted fee'
 require_turbos_private 'tick_bits' \
     '((1u64<<32)-(magnitudeasu64))asu32' 'twos-complement event encoding'
@@ -826,7 +826,7 @@ require_pattern "$FULLSAIL_SOURCE" 'const MAX_PRICE_DEVIATION_BPS: u64 = 50;' \
 require_fullsail_public 'migrate_new_meme_a' \
     'assert_canonical_order<Meme,Quote>(true);' 'Meme-A canonical order'
 require_fullsail_public 'migrate_new_meme_a' \
-    'let(tick_spacing,pinned_fee_rate)=pinned_tier(venue_config);' 'Meme-A pinned tier'
+    'let(tick_spacing,pinned_fee_rate)=effective_tier(venue_config);' 'Meme-A effective tier'
 require_fullsail_public 'migrate_new_meme_a' \
     'assert!(source_meme_amount>=source_quote_amount,EMemeBelowQuote);' \
     'Meme-A fixed-side feasibility guard'
@@ -839,13 +839,13 @@ require_fullsail_public 'migrate_new_meme_a' \
     'factory::create_pool_with_liquidity<Meme,Quote>(pools,fullsail_config,rewarder_vault,tick_spacing,sqrt_price_x64,b"".to_string(),lower_tick_bits,upper_tick_bits,meme.into_coin(ctx),quote.into_coin(ctx),source_meme_amount,source_quote_amount,true,@0x0,@0x0,false,clock,ctx,)' \
     'exact Meme-A revision-4 pool creation with zero feed IDs'
 require_fullsail_public 'migrate_new_meme_a' \
-    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,residual_meme,residual_quote,source_meme_amount,source_quote_amount,sqrt_price_x64,' \
+    'lock_and_share<Meme,Quote>(runtime_config,launch_id,position,residual_meme,residual_quote,source_meme_amount,source_quote_amount,sqrt_price_x64,' \
     'Meme-A shared lock'
 
 require_fullsail_public 'migrate_new_meme_b' \
     'assert_canonical_order<Meme,Quote>(false);' 'Meme-B canonical order'
 require_fullsail_public 'migrate_new_meme_b' \
-    'let(tick_spacing,pinned_fee_rate)=pinned_tier(venue_config);' 'Meme-B pinned tier'
+    'let(tick_spacing,pinned_fee_rate)=effective_tier(venue_config);' 'Meme-B effective tier'
 require_fullsail_public 'migrate_new_meme_b' \
     'assert!(source_meme_amount>=source_quote_amount,EMemeBelowQuote);' \
     'Meme-B fixed-side feasibility guard'
@@ -858,7 +858,7 @@ require_fullsail_public 'migrate_new_meme_b' \
     'factory::create_pool_with_liquidity<Quote,Meme>(pools,fullsail_config,rewarder_vault,tick_spacing,sqrt_price_x64,b"".to_string(),lower_tick_bits,upper_tick_bits,quote.into_coin(ctx),meme.into_coin(ctx),source_quote_amount,source_meme_amount,false,@0x0,@0x0,false,clock,ctx,)' \
     'exact Meme-B revision-4 pool creation with zero feed IDs'
 require_fullsail_public 'migrate_new_meme_b' \
-    'lock_and_share<Meme,Quote>(runtime_config,venue,launch_id,position,residual_meme,residual_quote,source_meme_amount,source_quote_amount,sqrt_price_x64,' \
+    'lock_and_share<Meme,Quote>(runtime_config,launch_id,position,residual_meme,residual_quote,source_meme_amount,source_quote_amount,sqrt_price_x64,' \
     'Meme-B shared lock'
 
 # Adopted routes redeem, enforce the 50-bps guard, then use only open/add/pay/repay.
@@ -930,7 +930,7 @@ require_fullsail_public 'collect_fees_meme_b' \
 require_fullsail_private 'collect_position_fees' 'venue:&Venue' \
     'borrowed private venue'
 require_fullsail_private 'collect_position_fees' \
-    'self.borrow_position_mut<Meme,Quote,Venue,Position>(venue)' \
+    'self.position_mut<Meme,Quote,Venue,Position>(venue)' \
     'venue-bound position borrow'
 require_fullsail_private_count 'collect_position_fees' \
     'assert!(position.pool_id()==pool_id,EPositionPoolMismatch);' 2 \
@@ -944,17 +944,17 @@ require_fullsail_private 'collect_position_fees' \
 
 # Full Sail-specific private seams fix order, ticks, residuals, and custody.
 require_fullsail_private 'assert_canonical_order' \
-    'type_name_greater_than<Meme,Quote>()' 'venue-exact canonical comparison'
-require_fullsail_private 'type_name_greater_than' \
+    'is_type_name_greater<Meme,Quote>()' 'venue-exact canonical comparison'
+require_fullsail_private 'is_type_name_greater' \
     'type_name::with_defining_ids<A>().into_string()' \
     'left defining-ID venue comparison'
-require_fullsail_private 'type_name_greater_than' \
+require_fullsail_private 'is_type_name_greater' \
     'type_name::with_defining_ids<B>().into_string()' \
     'right defining-ID venue comparison'
 require_fullsail_private 'full_range_ticks' \
-    'i32::abs_u32(tick_math::min_tick())' 'minimum venue tick'
+    'tick_math::min_tick().abs_u32()' 'minimum venue tick'
 require_fullsail_private 'full_range_ticks' \
-    'i32::as_u32(tick_math::max_tick())' 'maximum venue tick'
+    'tick_math::max_tick().as_u32()' 'maximum venue tick'
 require_fullsail_private 'full_range_ticks' \
     'lower_magnitude/tick_spacing*tick_spacing' 'inward lower-tick alignment'
 require_fullsail_private 'full_range_ticks' \
@@ -974,7 +974,7 @@ require_fullsail_private 'lock_and_share' \
     'transfer_residual(residual_quote,protocol_treasury);' \
     'Quote treasury transfer'
 require_fullsail_private 'lock_and_share' \
-    'vault::new<Meme,Quote,Venue,Position>(venue,pool_id,position,ctx,)' \
+    'vault::new<Meme,Quote,Venue,Position>(Venue(),pool_id,position,ctx,)' \
     'Full Sail position attachment'
 require_fullsail_private 'lock_and_share' \
     'events::migration_completed<Meme,Quote,Venue>(' 'direct migration event'
@@ -985,19 +985,19 @@ require_fullsail_private 'transfer_residual' \
     'dust-free treasury routing'
 
 MMT_VENUE_CONSTRUCTION_COUNT="$(rg -o 'let venue = Venue\(\)' "$MMT_SOURCE" | wc -l || true)"
-[[ "$MMT_VENUE_CONSTRUCTION_COUNT" -eq 4 ]] || \
-    fail "MMT must construct its sealed venue witness for both creation and collection routes"
-MMT_POOL_TRANSFER_COUNT="$(rg -o 'pool::transfer\(pool\)' "$MMT_SOURCE" | wc -l || true)"
+[[ "$MMT_VENUE_CONSTRUCTION_COUNT" -eq 2 ]] || \
+    fail "MMT must construct its sealed venue witness for both collection routes"
+MMT_POOL_TRANSFER_COUNT="$(rg -o 'pool\.transfer\(\)' "$MMT_SOURCE" | wc -l || true)"
 [[ "$MMT_POOL_TRANSFER_COUNT" -eq 1 ]] || \
     fail "MMT must expose exactly one pool-sharing path after position creation"
-MMT_ADD_LIQUIDITY_LINE="$(rg -n -m1 'liquidity::add_liquidity' "$MMT_SOURCE" | cut -d: -f1)"
-MMT_POOL_TRANSFER_LINE="$(rg -n -m1 'pool::transfer\(pool\)' "$MMT_SOURCE" | cut -d: -f1)"
+MMT_ADD_LIQUIDITY_LINE="$(rg -n -m1 'pool\.add_liquidity' "$MMT_SOURCE" | cut -d: -f1)"
+MMT_POOL_TRANSFER_LINE="$(rg -n -m1 'pool\.transfer\(\)' "$MMT_SOURCE" | cut -d: -f1)"
 [[ "$MMT_POOL_TRANSFER_LINE" -gt "$MMT_ADD_LIQUIDITY_LINE" ]] || \
     fail "MMT pool sharing must follow position creation and liquidity addition"
 
 VENUE_CONSTRUCTION_COUNT="$(rg -o 'let venue = Venue\(\)' "$BLUEFIN_SOURCE" | wc -l || true)"
-[[ "$VENUE_CONSTRUCTION_COUNT" -eq 2 ]] || \
-    fail "Bluefin must construct its sealed venue witness for creation and collection"
+[[ "$VENUE_CONSTRUCTION_COUNT" -eq 1 ]] || \
+    fail "Bluefin must construct its sealed venue witness for collection"
 
 reject_pattern 'dynamic(_object)?_field::remove(_opt)?' \
     'dynamic object-field removal is forbidden'
@@ -1088,8 +1088,8 @@ if [[ "$COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*mmt::Venue ]]; then
 fi
 
 TURBOS_VENUE_CONSTRUCTION_COUNT="$(rg -o 'let venue = Venue\(\)' "$TURBOS_SOURCE" | wc -l || true)"
-[[ "$TURBOS_VENUE_CONSTRUCTION_COUNT" -eq 6 ]] || \
-    fail "Turbos must construct its sealed venue witness for every route"
+[[ "$TURBOS_VENUE_CONSTRUCTION_COUNT" -eq 2 ]] || \
+    fail "Turbos must construct its sealed venue witness for both collection routes"
 TURBOS_COMPACT_SOURCE="$(tr -d '[:space:]' < "$TURBOS_SOURCE")"
 if [[ "$TURBOS_COMPACT_SOURCE" =~ abort0 ]]; then
     fail "production Turbos abort stubs are forbidden"
@@ -1112,8 +1112,8 @@ if [[ "$TURBOS_COMPACT_SOURCE" =~ position_manager::(decrease_liquidity|burn|inc
 fi
 
 FULLSAIL_VENUE_CONSTRUCTION_COUNT="$(rg -o 'let venue = Venue\(\)' "$FULLSAIL_SOURCE" | wc -l || true)"
-[[ "$FULLSAIL_VENUE_CONSTRUCTION_COUNT" -eq 6 ]] || \
-    fail "Full Sail must construct its sealed venue witness for every route"
+[[ "$FULLSAIL_VENUE_CONSTRUCTION_COUNT" -eq 2 ]] || \
+    fail "Full Sail must construct its sealed venue witness for both collection routes"
 FULLSAIL_COMPACT_SOURCE="$(tr -d '[:space:]' < "$FULLSAIL_SOURCE")"
 if [[ "$FULLSAIL_COMPACT_SOURCE" =~ abort0 ]]; then
     fail "production Full Sail abort stubs are forbidden"

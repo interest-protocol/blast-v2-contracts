@@ -86,7 +86,8 @@ public fun restrict_to_additive(
     _: &AdminWitness,
 ) {
     package_version.assert_current();
-    let previous_policy = self.assert_policy_can_be_restricted_to(package::additive_policy());
+    let previous_policy = self.upgrade_cap.policy();
+    self.assert_policy_can_be_restricted_to(package::additive_policy());
     self.upgrade_cap.only_additive_upgrades();
 
     events::upgrade_policy_restricted(previous_policy, self.upgrade_cap.policy());
@@ -99,7 +100,8 @@ public fun restrict_to_dependency_only(
     _: &AdminWitness,
 ) {
     package_version.assert_current();
-    let previous_policy = self.assert_policy_can_be_restricted_to(package::dep_only_policy());
+    let previous_policy = self.upgrade_cap.policy();
+    self.assert_policy_can_be_restricted_to(package::dep_only_policy());
     self.upgrade_cap.only_dep_upgrades();
 
     events::upgrade_policy_restricted(previous_policy, self.upgrade_cap.policy());
@@ -143,13 +145,11 @@ fun new(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext): Pac
     }
 }
 
-fun assert_policy_can_be_restricted_to(self: &PackageAdmin, new_policy: u8): u8 {
-    let previous_policy = self.upgrade_cap.policy();
+fun assert_policy_can_be_restricted_to(self: &PackageAdmin, new_policy: u8) {
     assert!(
-        new_policy > previous_policy,
+        new_policy > self.upgrade_cap.policy(),
         blast_fun::errors::upgrade_policy_not_more_restrictive!(),
     );
-    previous_policy
 }
 
 // === Test-Only Types ===

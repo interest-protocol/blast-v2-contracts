@@ -331,7 +331,7 @@ fun withdraw_exact_drains_the_newest_receipt_first() {
     });
     fixture.next_tx!(USER, |f| {
         let ledger = ledger.borrow_mut();
-        let oldest_epoch = ledger.pending_activation_epoch();
+        let oldest_epoch = ledger.oldest_pending_activation_epoch();
 
         let sui_out = ledger.withdraw_exact(f.system!(), 4 * MIST_PER_SUI, 1, 1, f.ctx!());
 
@@ -339,7 +339,7 @@ fun withdraw_exact_drains_the_newest_receipt_first() {
         // splits for the remainder, so the oldest receipt stays delegated.
         assert_eq!(sui_out.value(), 4 * MIST_PER_SUI);
         assert_eq!(ledger.pending_sui(), MIST_PER_SUI);
-        assert_eq!(ledger.pending_activation_epoch(), oldest_epoch);
+        assert_eq!(ledger.oldest_pending_activation_epoch(), oldest_epoch);
         destroy(sui_out);
     });
 

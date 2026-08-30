@@ -68,10 +68,10 @@ public fun migrate_new_meme_a<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert_canonical_order<Meme, Quote>(true);
-    let (tick_spacing, pinned_fee_rate) = pinned_tier(venue_config);
+    let (tick_spacing, pinned_fee_rate) = effective_tier(venue_config);
     // The key value is unused; the call aborts when the pair and spacing
     // cannot form a canonical Cetus pool key.
-    let _pool_key = factory::new_pool_key<Meme, Quote>(tick_spacing);
+    let _ = factory::new_pool_key<Meme, Quote>(tick_spacing);
     let fee_rate = config::get_fee_rate(tick_spacing, cetus_config);
     assert!(fee_rate == pinned_fee_rate, ETierMismatch);
     let (lower_tick_bits, upper_tick_bits) =
@@ -114,10 +114,8 @@ public fun migrate_new_meme_a<Meme, Quote>(
             ctx,
         );
 
-    let venue = Venue();
     lock_and_share<Meme, Quote>(
         runtime_config,
-        venue,
         launch_id,
         position,
         residual_meme,
@@ -146,10 +144,10 @@ public fun migrate_new_meme_b<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert_canonical_order<Meme, Quote>(false);
-    let (tick_spacing, pinned_fee_rate) = pinned_tier(venue_config);
+    let (tick_spacing, pinned_fee_rate) = effective_tier(venue_config);
     // The key value is unused; the call aborts when the pair and spacing
     // cannot form a canonical Cetus pool key.
-    let _pool_key = factory::new_pool_key<Quote, Meme>(tick_spacing);
+    let _ = factory::new_pool_key<Quote, Meme>(tick_spacing);
     let fee_rate = config::get_fee_rate(tick_spacing, cetus_config);
     assert!(fee_rate == pinned_fee_rate, ETierMismatch);
     let (lower_tick_bits, upper_tick_bits) =
@@ -192,10 +190,8 @@ public fun migrate_new_meme_b<Meme, Quote>(
             ctx,
         );
 
-    let venue = Venue();
     lock_and_share<Meme, Quote>(
         runtime_config,
-        venue,
         launch_id,
         position,
         residual_meme,
@@ -285,8 +281,8 @@ public fun migrate_existing_meme_a<Meme, Quote>(
         paid_meme,
         paid_quote,
     );
-    let paid_meme = balance::split(&mut meme, paid_meme);
-    let paid_quote = balance::split(&mut quote, paid_quote);
+    let paid_meme = meme.split(paid_meme);
+    let paid_quote = quote.split(paid_quote);
     pool::repay_add_liquidity<Meme, Quote>(
         cetus_config,
         pool,
@@ -296,10 +292,8 @@ public fun migrate_existing_meme_a<Meme, Quote>(
     );
     assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
 
-    let venue = Venue();
     lock_and_share<Meme, Quote>(
         runtime_config,
-        venue,
         launch_id,
         position,
         meme.into_coin(ctx),
@@ -389,8 +383,8 @@ public fun migrate_existing_meme_b<Meme, Quote>(
         paid_meme,
         paid_quote,
     );
-    let paid_quote = balance::split(&mut quote, paid_quote);
-    let paid_meme = balance::split(&mut meme, paid_meme);
+    let paid_quote = quote.split(paid_quote);
+    let paid_meme = meme.split(paid_meme);
     pool::repay_add_liquidity<Quote, Meme>(
         cetus_config,
         pool,
@@ -400,10 +394,8 @@ public fun migrate_existing_meme_b<Meme, Quote>(
     );
     assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
 
-    let venue = Venue();
     lock_and_share<Meme, Quote>(
         runtime_config,
-        venue,
         launch_id,
         position,
         meme.into_coin(ctx),
@@ -501,14 +493,14 @@ fun assert_adopted_tier(
     tick_spacing: u32,
     fee_rate: u64,
 ) {
-    let (pinned_tick_spacing, pinned_fee_rate) = pinned_tier(venue_config);
+    let (pinned_tick_spacing, pinned_fee_rate) = effective_tier(venue_config);
     assert!(tick_spacing == pinned_tick_spacing, ETierMismatch);
     assert!(fee_rate == pinned_fee_rate, ETierMismatch);
 }
 
-fun pinned_tier(venue_config: &VenueConfig): (u32, u64) {
-    if (venue_config.contains<Venue>()) {
-        venue_config.tier<Venue>()
+fun effective_tier(venue_config: &VenueConfig): (u32, u64) {
+    if (venue_config.has_tier_override<Venue>()) {
+        venue_config.tier_override<Venue>()
     } else {
         (DEFAULT_TICK_SPACING, DEFAULT_FEE_RATE)
     }
@@ -551,7 +543,6 @@ fun transfer_residual<CoinType>(
 
 fun lock_and_share<Meme, Quote>(
     runtime_config: &RuntimeConfig,
-    venue: Venue,
     launch_id: ID,
     position: Position,
     residual_meme: Coin<Meme>,
@@ -587,7 +578,7 @@ fun lock_and_share<Meme, Quote>(
     transfer_residual(residual_quote, protocol_treasury);
 
     let vault_id = vault::new<Meme, Quote, Venue, Position>(
-        venue,
+        Venue(),
         pool_id,
         position,
         ctx,
@@ -622,7 +613,7 @@ fun collect_position_fees<X, Y, Meme, Quote>(
     assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
 
     let position =
-        self.borrow_position_mut<Meme, Quote, Venue, Position>(venue);
+        self.position_mut<Meme, Quote, Venue, Position>(venue);
     let position_id = object::id(position);
     assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
     let liquidity_before = position.liquidity();
@@ -646,6 +637,6 @@ fun collect_position_fees<X, Y, Meme, Quote>(
 // === Test-Only Functions ===
 
 #[test_only]
-public fun pinned_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
-    pinned_tier(venue_config)
+public fun effective_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
+    effective_tier(venue_config)
 }

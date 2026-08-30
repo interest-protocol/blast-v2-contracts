@@ -41,7 +41,6 @@ public fun new<Meme: drop>(
     let creator = creator_identity.creator();
     let x_identity_hash = creator_identity.x_identity_hash();
     let creator_authority = creator_identity.into_authority<Meme>();
-    let initial_supply = constants::meme_total_supply_atomic_units!();
     let (mut initializer, mut treasury_cap) = coin_registry::new_currency_with_otw(
         otw,
         constants::meme_decimals!(),
@@ -51,7 +50,7 @@ public fun new<Meme: drop>(
         icon_url,
         ctx,
     );
-    let meme = treasury_cap.mint_balance(initial_supply);
+    let meme = treasury_cap.mint_balance(constants::meme_total_supply_atomic_units!());
 
     if (burnable) {
         initializer.make_supply_burn_only(treasury_cap);

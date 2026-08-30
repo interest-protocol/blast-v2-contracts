@@ -16,6 +16,8 @@ use sui_system::{
     sui_system::SuiSystemState,
 };
 
+use fun configure_display as Display.configure;
+
 // === Public Structs ===
 
 /// An owned blastSUI deposit that has not entered vault custody or coin supply.
@@ -49,14 +51,12 @@ public fun cancel(
     let receipt_id = id.to_inner();
     let principal_sui = staked_sui.amount();
     let sui_out = system_state.request_withdraw_stake_non_entry(staked_sui, ctx).into_coin(ctx);
-    let returned_sui = sui_out.value();
-
     id.delete();
     events::blast_sui_deposit_cancelled(
         receipt_id,
         vault_id,
         principal_sui,
-        returned_sui,
+        sui_out.value(),
     );
 
     sui_out
@@ -77,9 +77,9 @@ public fun create_display(
         internal::permit<BlastSuiDepositReceipt>(),
         ctx,
     );
-    configure_display(&mut display, &cap);
+    display.configure(&cap);
 
-    display_registry::share(display);
+    display.share();
     transfer::public_transfer(cap, @0x0);
 }
 
@@ -127,7 +127,7 @@ public(package) fun new(
 }
 
 public(package) fun id(self: &BlastSuiDepositReceipt): ID {
-    object::id(self)
+    self.id.to_inner()
 }
 
 public(package) fun principal_sui(self: &BlastSuiDepositReceipt): u64 {
@@ -153,7 +153,7 @@ public(package) fun assert_binding(
 }
 
 /// Deletes a validated receipt wrapper and releases its native stake.
-public(package) fun into_staked_sui(self: BlastSuiDepositReceipt): StakedSui {
+public(package) fun destroy(self: BlastSuiDepositReceipt): StakedSui {
     let BlastSuiDepositReceipt { id, vault_id: _, staked_sui } = self;
     id.delete();
 
@@ -170,7 +170,7 @@ public fun display_metadata_for_testing(): (vector<String>, vector<String>) {
 #[test_only]
 public fun fields_for_testing(self: &BlastSuiDepositReceipt): (ID, ID, ID, u64, u64) {
     (
-        object::id(self),
+        self.id.to_inner(),
         self.vault_id,
         self.staked_sui.pool_id(),
         self.staked_sui.amount(),

@@ -69,11 +69,11 @@ public fun allow_quote<Quote>(
     let quote_index = self.quotes.get_idx_opt(&quote);
 
     if (quote_index.is_some()) {
-        let (_, current_parameters) = self.quotes.get_entry_by_idx_mut(
+        let (_, quote_parameters_mut) = self.quotes.get_entry_by_idx_mut(
             quote_index.destroy_some(),
         );
-        let old_virtual_quote = current_parameters.virtual_quote;
-        let old_migration_quote_target = current_parameters.migration_quote_target;
+        let old_virtual_quote = quote_parameters_mut.virtual_quote;
+        let old_migration_quote_target = quote_parameters_mut.migration_quote_target;
 
         assert!(
             virtual_quote != old_virtual_quote
@@ -81,7 +81,7 @@ public fun allow_quote<Quote>(
             blast_fun::errors::quote_parameters_unchanged!(),
         );
 
-        *current_parameters = QuoteParameters {
+        *quote_parameters_mut = QuoteParameters {
             virtual_quote,
             migration_quote_target,
         };
@@ -115,8 +115,7 @@ public fun disallow_quote<Quote>(
 ) {
     package_version.assert_current();
 
-    let quote = type_name::with_original_ids<Quote>();
-    let quote_index = self.quotes.get_idx_opt(&quote);
+    let quote_index = self.quotes.get_idx_opt(&type_name::with_original_ids<Quote>());
 
     assert!(
         quote_index.is_some(),
@@ -287,8 +286,7 @@ public fun disallow_migration_witness<MigrationWitness: drop>(
 public(package) fun snapshot_for_launch<Quote, MigrationWitness: drop>(
     self: &LaunchConfig,
 ): (u64, u64, Bps, Bps, Bps, Bps, Bps, TypeName) {
-    let quote = type_name::with_original_ids<Quote>();
-    let quote_index = self.quotes.get_idx_opt(&quote);
+    let quote_index = self.quotes.get_idx_opt(&type_name::with_original_ids<Quote>());
 
     assert!(
         quote_index.is_some(),

@@ -24,7 +24,6 @@ use fun cancel_fixture_claim_at as CancelFixture.claim_at;
 use fun cancel_fixture_take_beneficiary_payout as CancelFixture.take_beneficiary_payout;
 use fun cancel_fixture_take_refund as CancelFixture.take_refund;
 use fun cancel_fixture_vesting_id as CancelFixture.vesting_id;
-use fun cancel_fixture_vesting_id_before_cancel as CancelFixture.vesting_id_before_cancel;
 use fun claim_fixture_claim_at as ClaimFixture.claim_at;
 use fun claim_fixture_close_at as ClaimFixture.close_at;
 use fun claim_fixture_assert_created as ClaimFixture.assert_created;
@@ -32,7 +31,6 @@ use fun claim_fixture_releasable_at as ClaimFixture.releasable_at;
 use fun claim_fixture_take_beneficiary_payout as ClaimFixture.take_beneficiary_payout;
 use fun claim_fixture_vested_at as ClaimFixture.vested_at;
 use fun claim_fixture_vesting_id as ClaimFixture.vesting_id;
-use fun claim_fixture_vesting_id_before_close as ClaimFixture.vesting_id_before_close;
 use fun unit_cancel_with_mismatched_cap as UnitFixture.cancel_with_mismatched_cap;
 use fun unit_claim as UnitFixture.claim;
 use fun unit_close_irrevocable as UnitFixture.close_irrevocable;
@@ -160,7 +158,7 @@ fun irrevocable_lifecycle_matches_vectors_and_replays_events() {
         assert_eq!(amount, 251);
         assert_eq!(released_total, TOTAL_AMOUNT);
         assert_eq!(remaining_balance, 0);
-        assert_eq!(closed_id, f.vesting_id_before_close());
+        assert_eq!(closed_id, f.vesting_id());
         assert_eq!(closed_released_total, TOTAL_AMOUNT);
     });
 
@@ -224,7 +222,7 @@ fun cancelable_schedule_preserves_prior_and_unclaimed_vested_value() {
             released_total,
         ) = canceled.vesting_canceled_fields();
 
-        assert_eq!(vesting_id, f.vesting_id_before_cancel());
+        assert_eq!(vesting_id, f.vesting_id());
         assert_eq!(coin_type, std::type_name::with_original_ids<TEST_COIN>());
         assert_eq!(beneficiary, BENEFICIARY);
         assert_eq!(refund_recipient, REFUND_RECIPIENT);
@@ -669,8 +667,7 @@ fun unit_cancel_with_mismatched_cap(self: &mut UnitFixture) {
 }
 
 fun unit_close_irrevocable(self: &mut UnitFixture) {
-    let vesting = self.vesting.extract();
-    vesting.close_irrevocable(&self.clock, self.scenario.ctx());
+    self.vesting.extract().close_irrevocable(&self.clock, self.scenario.ctx());
 }
 
 fun unit_end(self: UnitFixture) {
@@ -790,20 +787,15 @@ fun claim_fixture_claim_at(self: &mut ClaimFixture, timestamp_ms: u64) {
 
 fun claim_fixture_close_at(self: &mut ClaimFixture, timestamp_ms: u64) {
     self.clock.set_for_testing(timestamp_ms);
-    let vesting = self.vesting.extract();
-    vesting.close_irrevocable(&self.clock, self.scenario.ctx());
+    self.vesting.extract().close_irrevocable(&self.clock, self.scenario.ctx());
 }
 
 fun claim_fixture_vesting_id(self: &ClaimFixture): ID {
     self.vesting_id
 }
 
-fun claim_fixture_vesting_id_before_close(self: &ClaimFixture): ID {
-    self.vesting_id
-}
-
 fun claim_fixture_take_beneficiary_payout(self: &ClaimFixture): u64 {
-    coin::burn_for_testing(self.scenario.take_from_sender<Coin<TEST_COIN>>())
+    self.scenario.take_from_sender<Coin<TEST_COIN>>().burn_for_testing()
 }
 
 fun claim_end(self: ClaimFixture) {
@@ -818,16 +810,14 @@ fun cancel_fixture_claim_at(self: &mut CancelFixture, timestamp_ms: u64) {
 
 fun cancel_fixture_cancel_at(self: &mut CancelFixture, timestamp_ms: u64) {
     self.clock.set_for_testing(timestamp_ms);
-    let vesting = self.vesting.extract();
-    let cancel_cap = self.cancel_cap.extract();
-    vesting.cancel(cancel_cap, &self.clock, self.scenario.ctx());
+    self.vesting.extract().cancel(
+        self.cancel_cap.extract(),
+        &self.clock,
+        self.scenario.ctx(),
+    );
 }
 
 fun cancel_fixture_vesting_id(self: &CancelFixture): ID {
-    self.vesting_id
-}
-
-fun cancel_fixture_vesting_id_before_cancel(self: &CancelFixture): ID {
     self.vesting_id
 }
 
@@ -836,15 +826,15 @@ fun cancel_fixture_cancel_cap_id(self: &CancelFixture): ID {
 }
 
 fun cancel_fixture_cancel_cap_vesting_id(self: &CancelFixture): ID {
-    self.cancel_cap.borrow().cancel_cap_vesting_id()
+    self.cancel_cap.borrow().vesting_id()
 }
 
 fun cancel_fixture_take_beneficiary_payout(self: &CancelFixture): u64 {
-    coin::burn_for_testing(self.scenario.take_from_sender<Coin<TEST_COIN>>())
+    self.scenario.take_from_sender<Coin<TEST_COIN>>().burn_for_testing()
 }
 
 fun cancel_fixture_take_refund(self: &CancelFixture): u64 {
-    coin::burn_for_testing(self.scenario.take_from_sender<Coin<TEST_COIN>>())
+    self.scenario.take_from_sender<Coin<TEST_COIN>>().burn_for_testing()
 }
 
 fun cancel_end(self: CancelFixture) {

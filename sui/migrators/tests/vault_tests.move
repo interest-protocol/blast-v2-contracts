@@ -84,7 +84,7 @@ fun borrow_returns_the_attached_position() {
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let venue = TestVenue();
-        let position = f.vault.borrow_position_mut<
+        let position = f.vault.position_mut<
             MEME,
             QUOTE,
             TestVenue,
@@ -108,7 +108,7 @@ fun wrong_venue_borrow_fails_closed() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let venue = OtherVenue();
 
-        f.vault.borrow_position_mut<MEME, QUOTE, OtherVenue, TestPosition>(
+        f.vault.position_mut<MEME, QUOTE, OtherVenue, TestPosition>(
             &venue,
         );
     });

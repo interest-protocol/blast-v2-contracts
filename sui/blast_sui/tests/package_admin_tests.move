@@ -7,6 +7,7 @@ use sui::{event, package, test_scenario::{Self, Scenario}};
 
 use fun custody_end as CustodyFixture.end;
 use fun custody_next_tx as CustodyFixture.next_tx;
+use fun package_admin::activate_package_version as package_version::PackageVersion.activate_package_version;
 use fun upgrade_ctx as UpgradeFixture.ctx;
 use fun upgrade_end as UpgradeFixture.end;
 use fun upgrade_next_tx as UpgradeFixture.next_tx;
@@ -56,11 +57,10 @@ fun package_version_activation_emits_the_only_wrapped_cutover_fact() {
     let mut fixture = start_upgrade();
 
     fixture.next_tx!(SUPER_ADMIN, |f| {
-        assert_eq!(f.package_version.value_for_testing(), 1);
+        assert_eq!(f.package_version.version_for_testing(), 1);
 
         f.package_version.set_for_testing(0);
-        package_admin::activate_package_version(
-            &mut f.package_version,
+        f.package_version.activate_package_version(
             &f.authority,
             &f.super_admin_cap,
         );
@@ -69,7 +69,7 @@ fun package_version_activation_emits_the_only_wrapped_cutover_fact() {
         let (previous_version, new_version) = advanced.package_version_advanced_fields();
         assert_eq!(previous_version, 0);
         assert_eq!(new_version, 1);
-        assert_eq!(new_version, f.package_version.value_for_testing());
+        assert_eq!(new_version, f.package_version.version_for_testing());
     });
 
     fixture.end();
@@ -214,8 +214,7 @@ fun activation_rejects_a_package_generation_overflow() {
 
     fixture.next_tx!(SUPER_ADMIN, |f| {
         f.package_version.set_for_testing(std::u64::max_value!());
-        package_admin::activate_package_version(
-            &mut f.package_version,
+        f.package_version.activate_package_version(
             &f.authority,
             &f.super_admin_cap,
         );
@@ -233,8 +232,7 @@ fun activation_rejects_skipping_a_package_generation() {
     let mut fixture = start_upgrade();
 
     fixture.next_tx!(SUPER_ADMIN, |f| {
-        package_admin::activate_package_version(
-            &mut f.package_version,
+        f.package_version.activate_package_version(
             &f.authority,
             &f.super_admin_cap,
         );

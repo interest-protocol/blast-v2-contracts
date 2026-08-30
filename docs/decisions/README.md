@@ -120,8 +120,8 @@ bounded migration-witness admission, external migrator package boundary, and
 the exclusion of DEX pool-opening fees.
 
 ADR 0055 consolidates vesting under one package and adds exact irregular
-checkpoint schedules. A linear builder stores up to 256 entries in a framework
-`TableVec`; claims use binary search and retain ADR 0052's fixed-beneficiary and
+checkpoint schedules. A linear builder stores up to 256 entries in an inline
+vector; claims use binary search and retain ADR 0052's fixed-beneficiary and
 fair-cancellation policy.
 
 ADR 0028 consolidates the dedicated X signer and live protocol fee share into

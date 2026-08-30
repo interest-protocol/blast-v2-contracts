@@ -25,6 +25,7 @@ use fullsail_integer_mate::i32;
 use std::type_name;
 use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, coin_registry::Currency};
 
+
 // === Constants ===
 
 /// Full Sail must use at least 99.99% of both migration balances.
@@ -75,7 +76,7 @@ public fun migrate_new_meme_a<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert_canonical_order<Meme, Quote>(true);
-    let (tick_spacing, pinned_fee_rate) = pinned_tier(venue_config);
+    let (tick_spacing, pinned_fee_rate) = effective_tier(venue_config);
     let fee_rate = config::get_fee_rate(tick_spacing, fullsail_config);
     assert!(fee_rate == pinned_fee_rate, ETierMismatch);
     let (lower_tick_bits, upper_tick_bits) = full_range_ticks(tick_spacing);
@@ -123,10 +124,8 @@ public fun migrate_new_meme_a<Meme, Quote>(
             ctx,
         );
 
-    let venue = Venue();
     lock_and_share<Meme, Quote>(
         runtime_config,
-        venue,
         launch_id,
         position,
         residual_meme,
@@ -156,7 +155,7 @@ public fun migrate_new_meme_b<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert_canonical_order<Meme, Quote>(false);
-    let (tick_spacing, pinned_fee_rate) = pinned_tier(venue_config);
+    let (tick_spacing, pinned_fee_rate) = effective_tier(venue_config);
     let fee_rate = config::get_fee_rate(tick_spacing, fullsail_config);
     assert!(fee_rate == pinned_fee_rate, ETierMismatch);
     let (lower_tick_bits, upper_tick_bits) = full_range_ticks(tick_spacing);
@@ -204,10 +203,8 @@ public fun migrate_new_meme_b<Meme, Quote>(
             ctx,
         );
 
-    let venue = Venue();
     lock_and_share<Meme, Quote>(
         runtime_config,
-        venue,
         launch_id,
         position,
         residual_meme,
@@ -298,8 +295,8 @@ public fun migrate_existing_meme_a<Meme, Quote>(
         paid_meme,
         paid_quote,
     );
-    let paid_meme = balance::split(&mut meme, paid_meme);
-    let paid_quote = balance::split(&mut quote, paid_quote);
+    let paid_meme = meme.split(paid_meme);
+    let paid_quote = quote.split(paid_quote);
     pool::repay_add_liquidity<Meme, Quote>(
         fullsail_config,
         pool,
@@ -309,10 +306,8 @@ public fun migrate_existing_meme_a<Meme, Quote>(
     );
     assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
 
-    let venue = Venue();
     lock_and_share<Meme, Quote>(
         runtime_config,
-        venue,
         launch_id,
         position,
         meme.into_coin(ctx),
@@ -403,8 +398,8 @@ public fun migrate_existing_meme_b<Meme, Quote>(
         paid_meme,
         paid_quote,
     );
-    let paid_quote = balance::split(&mut quote, paid_quote);
-    let paid_meme = balance::split(&mut meme, paid_meme);
+    let paid_quote = quote.split(paid_quote);
+    let paid_meme = meme.split(paid_meme);
     pool::repay_add_liquidity<Quote, Meme>(
         fullsail_config,
         pool,
@@ -414,10 +409,8 @@ public fun migrate_existing_meme_b<Meme, Quote>(
     );
     assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
 
-    let venue = Venue();
     lock_and_share<Meme, Quote>(
         runtime_config,
-        venue,
         launch_id,
         position,
         meme.into_coin(ctx),
@@ -504,8 +497,8 @@ public fun set_tier(
 // === Private Functions ===
 
 fun assert_canonical_order<Meme, Quote>(meme_is_a: bool) {
-    let meme_a_order = type_name_greater_than<Meme, Quote>();
-    let meme_b_order = type_name_greater_than<Quote, Meme>();
+    let meme_a_order = is_type_name_greater<Meme, Quote>();
+    let meme_b_order = is_type_name_greater<Quote, Meme>();
     assert!(meme_a_order != meme_b_order, EInvalidCoinOrder);
     assert!(meme_a_order == meme_is_a, EInvalidCoinOrder);
 }
@@ -513,7 +506,7 @@ fun assert_canonical_order<Meme, Quote>(meme_is_a: bool) {
 /// Replicates `clmm_pool::factory::new_pool_key`, which orders coin types with
 /// deprecated `type_name::get`. That helper returns defining IDs, so the guard
 /// must compare defining IDs to agree with the pinned venue bytecode.
-fun type_name_greater_than<A, B>(): bool {
+fun is_type_name_greater<A, B>(): bool {
     let a_name = type_name::with_defining_ids<A>().into_string();
     let b_name = type_name::with_defining_ids<B>().into_string();
     let a_bytes = a_name.as_bytes();
@@ -536,13 +529,13 @@ fun type_name_greater_than<A, B>(): bool {
 /// Full Sail adjusts a live pool's fee dynamically, so an adopted pool can
 /// never be bound to the registered base fee; only its tick spacing is pinned.
 fun assert_adopted_tier(venue_config: &VenueConfig, tick_spacing: u32) {
-    let (pinned_tick_spacing, _) = pinned_tier(venue_config);
+    let (pinned_tick_spacing, _) = effective_tier(venue_config);
     assert!(tick_spacing == pinned_tick_spacing, ETierMismatch);
 }
 
-fun pinned_tier(venue_config: &VenueConfig): (u32, u64) {
-    if (venue_config.contains<Venue>()) {
-        venue_config.tier<Venue>()
+fun effective_tier(venue_config: &VenueConfig): (u32, u64) {
+    if (venue_config.has_tier_override<Venue>()) {
+        venue_config.tier_override<Venue>()
     } else {
         (DEFAULT_TICK_SPACING, DEFAULT_FEE_RATE)
     }
@@ -554,12 +547,12 @@ fun pinned_tier(venue_config: &VenueConfig): (u32, u64) {
 fun full_range_ticks(tick_spacing: u32): (u32, u32) {
     assert!(tick_spacing > 0, EInvalidTickSpacing);
 
-    let lower_magnitude = i32::abs_u32(tick_math::min_tick());
-    let upper_magnitude = i32::as_u32(tick_math::max_tick());
+    let lower_magnitude = tick_math::min_tick().abs_u32();
+    let upper_magnitude = tick_math::max_tick().as_u32();
     let lower_aligned = lower_magnitude / tick_spacing * tick_spacing;
     let upper_aligned = upper_magnitude / tick_spacing * tick_spacing;
 
-    (i32::as_u32(i32::neg_from(lower_aligned)), upper_aligned)
+    (i32::neg_from(lower_aligned).as_u32(), upper_aligned)
 }
 
 fun assert_payment_amounts(
@@ -599,7 +592,6 @@ fun transfer_residual<CoinType>(
 
 fun lock_and_share<Meme, Quote>(
     runtime_config: &RuntimeConfig,
-    venue: Venue,
     launch_id: ID,
     position: Position,
     residual_meme: Coin<Meme>,
@@ -635,7 +627,7 @@ fun lock_and_share<Meme, Quote>(
     transfer_residual(residual_quote, protocol_treasury);
 
     let vault_id = vault::new<Meme, Quote, Venue, Position>(
-        venue,
+        Venue(),
         pool_id,
         position,
         ctx,
@@ -670,7 +662,7 @@ fun collect_position_fees<X, Y, Meme, Quote>(
     assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
 
     let position =
-        self.borrow_position_mut<Meme, Quote, Venue, Position>(venue);
+        self.position_mut<Meme, Quote, Venue, Position>(venue);
     let position_id = object::id(position);
     assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
     let liquidity_before = position.liquidity();
@@ -694,11 +686,11 @@ fun collect_position_fees<X, Y, Meme, Quote>(
 // === Test-Only Functions ===
 
 #[test_only]
-public fun type_name_greater_than_for_testing<A, B>(): bool {
-    type_name_greater_than<A, B>()
+public fun is_type_name_greater_for_testing<A, B>(): bool {
+    is_type_name_greater<A, B>()
 }
 
 #[test_only]
-public fun pinned_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
-    pinned_tier(venue_config)
+public fun effective_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
+    effective_tier(venue_config)
 }

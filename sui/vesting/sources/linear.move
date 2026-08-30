@@ -109,7 +109,6 @@ public fun new_irrevocable<CoinType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Vesting<CoinType> {
-    let total_amount = funds.value();
     let vesting = new(
         funds,
         beneficiary,
@@ -128,7 +127,7 @@ public fun new_irrevocable<CoinType>(
         beneficiary,
         refund_recipient: option::none(),
         cancel_cap_id: option::none(),
-        total_amount,
+        total_amount: vesting.balance.value(),
         start_ms,
         cliff_ms,
         period_ms,
@@ -150,7 +149,6 @@ public fun new_cancelable<CoinType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Vesting<CoinType>, CancelCap<CoinType>) {
-    let total_amount = funds.value();
     let vesting = new(
         funds,
         beneficiary,
@@ -174,7 +172,7 @@ public fun new_cancelable<CoinType>(
         beneficiary,
         refund_recipient: option::some(refund_recipient),
         cancel_cap_id: option::some(object::id(&cancel_cap)),
-        total_amount,
+        total_amount: vesting.balance.value(),
         start_ms,
         cliff_ms,
         period_ms,
@@ -198,22 +196,17 @@ public fun claim<CoinType>(
     let amount = self.releasable_at(clock.timestamp_ms());
     assert!(amount > 0, ENothingClaimable);
 
-    let vesting_id = object::id(self);
     let beneficiary = self.beneficiary;
     self.released = self.released + amount;
-    let payout = self.balance.split(amount).into_coin(ctx);
-    let remaining_balance = self.balance.value();
-    let released_total = self.released;
-
-    transfer::public_transfer(payout, beneficiary);
+    transfer::public_transfer(self.balance.split(amount).into_coin(ctx), beneficiary);
 
     event::emit(VestingClaimed {
-        vesting_id,
+        vesting_id: object::id(self),
         coin_type: type_name::with_original_ids<CoinType>(),
         beneficiary,
         amount,
-        released_total,
-        remaining_balance,
+        released_total: self.released,
+        remaining_balance: self.balance.value(),
     });
 }
 
@@ -247,12 +240,10 @@ public fun cancel<CoinType>(
     let CancelCap { id: cap_id, vesting_id: _ } = cap;
 
     if (beneficiary_amount > 0) {
-        let payout = balance.split(beneficiary_amount).into_coin(ctx);
-        transfer::public_transfer(payout, beneficiary);
+        transfer::public_transfer(balance.split(beneficiary_amount).into_coin(ctx), beneficiary);
     };
     if (refund_amount > 0) {
-        let refund = balance.split(refund_amount).into_coin(ctx);
-        transfer::public_transfer(refund, refund_recipient);
+        transfer::public_transfer(balance.split(refund_amount).into_coin(ctx), refund_recipient);
     };
 
     balance.destroy_zero();
@@ -281,7 +272,6 @@ public fun close_irrevocable<CoinType>(
     assert!(self.balance.value() == 0, EScheduleNotEmpty);
 
     let vesting_id = object::id(&self);
-    let released_total = self.released;
     let Vesting {
         id,
         balance,
@@ -291,7 +281,7 @@ public fun close_irrevocable<CoinType>(
         cliff_ms: _,
         period_ms: _,
         periods: _,
-        released: _,
+        released,
     } = self;
 
     balance.destroy_zero();
@@ -300,7 +290,7 @@ public fun close_irrevocable<CoinType>(
     event::emit(VestingClosed {
         vesting_id,
         coin_type: type_name::with_original_ids<CoinType>(),
-        released_total,
+        released_total: released,
     });
 }
 
@@ -387,17 +377,7 @@ public fun releasable_at_for_testing<CoinType>(
 }
 
 #[test_only]
-public fun balance<CoinType>(self: &Vesting<CoinType>): u64 {
-    self.balance.value()
-}
-
-#[test_only]
-public fun released<CoinType>(self: &Vesting<CoinType>): u64 {
-    self.released
-}
-
-#[test_only]
-public fun cancel_cap_vesting_id<CoinType>(self: &CancelCap<CoinType>): ID {
+public fun vesting_id<CoinType>(self: &CancelCap<CoinType>): ID {
     self.vesting_id
 }
 

@@ -2,6 +2,7 @@
 
 - Status: accepted
 - Date: 2026-08-29
+- Amended by: [0056](0056-bounded-pending-stake-vector.md)
 
 ## Sources
 
@@ -52,11 +53,13 @@ The package creates two unrestricted nine-decimal currencies:
   backing `funSUI`.
 
 One shared `Vault` owns both treasury caps and two separate custody ledgers,
-`fun` and `blast`. Each ledger holds a liquid `Balance<SUI>`, at most one
-pending `StakedSui`, at most one active `FungibleStakedSui`, and the
-conservative SUI valuation of that active position. Pending stake is the native
-pre-activation receipt: it is worth exactly its principal and earns nothing
-until the next epoch. Both ledgers delegate only to the validator address and
+`fun` and `blast`. Each ledger holds a liquid `Balance<SUI>`, up to three
+activation-ordered pending `StakedSui` receipts, at most one active
+`FungibleStakedSui`, and the conservative SUI valuation of that active position.
+Pending stake is worth exactly its principal before activation. Same-epoch
+requests join, arrived receipts drain oldest-first, and a full queue leaves
+excess SUI liquid instead of aborting, as specified by ADR 0056. Both ledgers
+delegate only to the validator address and
 staking-pool ID fixed at creation. The vault caches exactly one native pool
 exchange-rate entry — its epoch, `sui_amount`, and `pool_token_amount` — and
 each ledger stores the floor valuation of its active tokens at that rate. The

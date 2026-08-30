@@ -15,7 +15,7 @@ public(package) fun emit_event<T: copy + drop>(event: T) {
 
 /// Unwraps a payload collected from the generic protocol event envelope.
 #[test_only]
-public fun unwrap<T: copy + drop>(event: Event<T>): T {
-    let Event(inner) = event;
+public fun unwrap<T: copy + drop>(self: Event<T>): T {
+    let Event(inner) = self;
     inner
 }

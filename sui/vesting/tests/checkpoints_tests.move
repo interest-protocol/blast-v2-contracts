@@ -4,7 +4,6 @@ module blast_fun_vesting::checkpoints_tests;
 use blast_fun_vesting::checkpoints::{
     Self,
     CancelCap,
-    Checkpoint,
     Schedule,
     Vesting,
     VestingCanceled,
@@ -26,20 +25,17 @@ use fun cancel_fixture_claim_at as CancelFixture.claim_at;
 use fun cancel_fixture_take_beneficiary_payout as CancelFixture.take_beneficiary_payout;
 use fun cancel_fixture_take_refund as CancelFixture.take_refund;
 use fun cancel_fixture_vesting_id as CancelFixture.vesting_id;
-use fun cancel_fixture_vesting_id_before_cancel as CancelFixture.vesting_id_before_cancel;
 use fun claim_fixture_assert_created as ClaimFixture.assert_created;
-use fun claim_fixture_checkpoint_page as ClaimFixture.checkpoint_page;
 use fun claim_fixture_claim_at as ClaimFixture.claim_at;
 use fun claim_fixture_close_at as ClaimFixture.close_at;
 use fun claim_fixture_releasable_at as ClaimFixture.releasable_at;
 use fun claim_fixture_take_beneficiary_payout as ClaimFixture.take_beneficiary_payout;
 use fun claim_fixture_vested_at as ClaimFixture.vested_at;
 use fun claim_fixture_vesting_id as ClaimFixture.vesting_id;
-use fun claim_fixture_vesting_id_before_close as ClaimFixture.vesting_id_before_close;
+use fun add_checkpoint_range as Schedule.add_checkpoint_range;
 use fun unit_cancel_with_mismatched_cap as UnitFixture.cancel_with_mismatched_cap;
 use fun unit_add_checkpoint as UnitFixture.add_checkpoint;
 use fun unit_add_checkpoint_range as UnitFixture.add_checkpoint_range;
-use fun unit_checkpoint_page as UnitFixture.checkpoint_page;
 use fun unit_claim as UnitFixture.claim;
 use fun unit_close_irrevocable as UnitFixture.close_irrevocable;
 use fun unit_create_cancelable as UnitFixture.create_cancelable;
@@ -106,16 +102,6 @@ fun irrevocable_lifecycle_releases_irregular_amounts_and_replays_events() {
         let vesting_id = f.vesting_id();
         let coin_type = std::type_name::with_original_ids<TEST_COIN>();
 
-        let first_page = f.checkpoint_page(0, 1);
-        assert_eq!(first_page.length(), 1);
-        assert_eq!(first_page[0].timestamp_ms(), FIRST_MS);
-        assert_eq!(first_page[0].cumulative_amount(), FIRST_AMOUNT);
-        let tail_page = f.checkpoint_page(1, 32);
-        assert_eq!(tail_page.length(), 2);
-        assert_eq!(tail_page[1].timestamp_ms(), FINAL_MS);
-        assert_eq!(tail_page[1].cumulative_amount(), TOTAL_AMOUNT);
-        assert_eq!(f.checkpoint_page(3, 32).length(), 0);
-
         assert_eq!(f.vested_at(FIRST_MS - 1), 0);
         assert_eq!(f.vested_at(FIRST_MS), FIRST_AMOUNT);
         assert_eq!(f.vested_at(SECOND_MS - 1), FIRST_AMOUNT);
@@ -177,7 +163,7 @@ fun irrevocable_lifecycle_releases_irregular_amounts_and_replays_events() {
         assert_eq!(amount, TOTAL_AMOUNT - SECOND_AMOUNT);
         assert_eq!(released_total, TOTAL_AMOUNT);
         assert_eq!(remaining_balance, 0);
-        assert_eq!(closed_id, f.vesting_id_before_close());
+        assert_eq!(closed_id, f.vesting_id());
         assert_eq!(closed_released_total, TOTAL_AMOUNT);
     });
 
@@ -239,7 +225,7 @@ fun cancelable_schedule_preserves_prior_and_unclaimed_vested_value() {
             released_total,
         ) = canceled.vesting_canceled_fields();
 
-        assert_eq!(vesting_id, f.vesting_id_before_cancel());
+        assert_eq!(vesting_id, f.vesting_id());
         assert_eq!(coin_type, std::type_name::with_original_ids<TEST_COIN>());
         assert_eq!(beneficiary, BENEFICIARY);
         assert_eq!(refund_recipient, REFUND_RECIPIENT);
@@ -393,21 +379,6 @@ fun constructor_rejects_empty_checkpoints() {
 fun schedule_rejects_more_than_256_checkpoints() {
     let mut fixture = start_unit(0);
     fixture.add_checkpoint_range(257);
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun_vesting::checkpoints::ECheckpointPageTooLarge,
-    location = blast_fun_vesting::checkpoints,
-)]
-fun checkpoint_page_rejects_more_than_32_entries() {
-    let mut fixture = start_unit(0);
-    fixture.add_checkpoint(10, 1);
-    fixture.create_irrevocable(1, BENEFICIARY);
-
-    let _ = fixture.checkpoint_page(0, 33);
 
     fixture.end();
 }
@@ -576,8 +547,8 @@ macro fun cancel_next_tx(
     $fn(fixture);
 }
 
-fun standard_schedule(ctx: &mut TxContext): Schedule {
-    let mut schedule = checkpoints::new_schedule(ctx);
+fun standard_schedule(): Schedule {
+    let mut schedule = checkpoints::new_schedule();
     schedule.add(FIRST_MS, FIRST_AMOUNT);
     schedule.add(SECOND_MS, SECOND_AMOUNT);
     schedule.add(FINAL_MS, TOTAL_AMOUNT);
@@ -587,17 +558,16 @@ fun standard_schedule(ctx: &mut TxContext): Schedule {
 fun one_checkpoint_schedule(
     timestamp_ms: u64,
     cumulative_amount: u64,
-    ctx: &mut TxContext,
 ): Schedule {
-    let mut schedule = checkpoints::new_schedule(ctx);
+    let mut schedule = checkpoints::new_schedule();
     schedule.add(timestamp_ms, cumulative_amount);
     schedule
 }
 
-fun add_checkpoint_range(schedule: &mut Schedule, length: u64) {
+fun add_checkpoint_range(self: &mut Schedule, length: u64) {
     let mut index = 0;
     while (index < length) {
-        schedule.add(index, index + 1);
+        self.add(index, index + 1);
         index = index + 1;
     };
 }
@@ -606,7 +576,7 @@ fun start_unit(timestamp_ms: u64): UnitFixture {
     let mut scenario = test_scenario::begin(FUNDER);
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(timestamp_ms);
-    let schedule = checkpoints::new_schedule(scenario.ctx());
+    let schedule = checkpoints::new_schedule();
 
     UnitFixture {
         scenario,
@@ -626,7 +596,7 @@ fun unit_add_checkpoint(
 }
 
 fun unit_add_checkpoint_range(self: &mut UnitFixture, length: u64) {
-    add_checkpoint_range(self.schedule.borrow_mut(), length);
+    self.schedule.borrow_mut().add_checkpoint_range(length);
 }
 
 fun unit_create_irrevocable(
@@ -674,14 +644,6 @@ fun unit_vesting(self: &UnitFixture): &Vesting<TEST_COIN> {
     self.vesting.borrow()
 }
 
-fun unit_checkpoint_page(
-    self: &UnitFixture,
-    start: u64,
-    limit: u64,
-): vector<Checkpoint> {
-    self.vesting.borrow().checkpoint_page(start, limit)
-}
-
 fun unit_claim(self: &mut UnitFixture) {
     self.vesting.borrow_mut().claim(&self.clock, self.scenario.ctx());
 }
@@ -689,8 +651,8 @@ fun unit_claim(self: &mut UnitFixture) {
 fun unit_cancel_with_mismatched_cap(self: &mut UnitFixture) {
     let first_funds = coin::mint_for_testing<TEST_COIN>(1, self.scenario.ctx());
     let second_funds = coin::mint_for_testing<TEST_COIN>(1, self.scenario.ctx());
-    let first_schedule = one_checkpoint_schedule(1, 1, self.scenario.ctx());
-    let second_schedule = one_checkpoint_schedule(1, 1, self.scenario.ctx());
+    let first_schedule = one_checkpoint_schedule(1, 1);
+    let second_schedule = one_checkpoint_schedule(1, 1);
     let (first, first_cap) = checkpoints::new_cancelable(
         first_funds,
         BENEFICIARY,
@@ -715,8 +677,7 @@ fun unit_cancel_with_mismatched_cap(self: &mut UnitFixture) {
 }
 
 fun unit_close_irrevocable(self: &mut UnitFixture) {
-    let vesting = self.vesting.extract();
-    vesting.close_irrevocable(&self.clock, self.scenario.ctx());
+    self.vesting.extract().close_irrevocable(&self.clock, self.scenario.ctx());
 }
 
 fun unit_end(self: UnitFixture) {
@@ -727,7 +688,7 @@ fun start_claim(): ClaimFixture {
     let mut scenario = test_scenario::begin(FUNDER);
     let clock = clock::create_for_testing(scenario.ctx());
     let funds = coin::mint_for_testing<TEST_COIN>(TOTAL_AMOUNT, scenario.ctx());
-    let schedule = standard_schedule(scenario.ctx());
+    let schedule = standard_schedule();
     let vesting = checkpoints::new_irrevocable(
         funds,
         BENEFICIARY,
@@ -755,7 +716,7 @@ fun start_cancel(): CancelFixture {
     let mut scenario = test_scenario::begin(FUNDER);
     let clock = clock::create_for_testing(scenario.ctx());
     let funds = coin::mint_for_testing<TEST_COIN>(TOTAL_AMOUNT, scenario.ctx());
-    let schedule = standard_schedule(scenario.ctx());
+    let schedule = standard_schedule();
     let (vesting, cancel_cap) = checkpoints::new_cancelable(
         funds,
         BENEFICIARY,
@@ -819,14 +780,6 @@ fun claim_fixture_releasable_at(self: &ClaimFixture, timestamp_ms: u64): u64 {
     self.vesting.borrow().releasable_at_for_testing(timestamp_ms)
 }
 
-fun claim_fixture_checkpoint_page(
-    self: &ClaimFixture,
-    start: u64,
-    limit: u64,
-): vector<Checkpoint> {
-    self.vesting.borrow().checkpoint_page(start, limit)
-}
-
 fun claim_fixture_claim_at(self: &mut ClaimFixture, timestamp_ms: u64) {
     self.clock.set_for_testing(timestamp_ms);
     self.vesting.borrow_mut().claim(&self.clock, self.scenario.ctx());
@@ -834,20 +787,15 @@ fun claim_fixture_claim_at(self: &mut ClaimFixture, timestamp_ms: u64) {
 
 fun claim_fixture_close_at(self: &mut ClaimFixture, timestamp_ms: u64) {
     self.clock.set_for_testing(timestamp_ms);
-    let vesting = self.vesting.extract();
-    vesting.close_irrevocable(&self.clock, self.scenario.ctx());
+    self.vesting.extract().close_irrevocable(&self.clock, self.scenario.ctx());
 }
 
 fun claim_fixture_vesting_id(self: &ClaimFixture): ID {
     self.vesting_id
 }
 
-fun claim_fixture_vesting_id_before_close(self: &ClaimFixture): ID {
-    self.vesting_id
-}
-
 fun claim_fixture_take_beneficiary_payout(self: &ClaimFixture): u64 {
-    coin::burn_for_testing(self.scenario.take_from_sender<Coin<TEST_COIN>>())
+    self.scenario.take_from_sender<Coin<TEST_COIN>>().burn_for_testing()
 }
 
 fun claim_end(self: ClaimFixture) {
@@ -862,16 +810,14 @@ fun cancel_fixture_claim_at(self: &mut CancelFixture, timestamp_ms: u64) {
 
 fun cancel_fixture_cancel_at(self: &mut CancelFixture, timestamp_ms: u64) {
     self.clock.set_for_testing(timestamp_ms);
-    let vesting = self.vesting.extract();
-    let cancel_cap = self.cancel_cap.extract();
-    vesting.cancel(cancel_cap, &self.clock, self.scenario.ctx());
+    self.vesting.extract().cancel(
+        self.cancel_cap.extract(),
+        &self.clock,
+        self.scenario.ctx(),
+    );
 }
 
 fun cancel_fixture_vesting_id(self: &CancelFixture): ID {
-    self.vesting_id
-}
-
-fun cancel_fixture_vesting_id_before_cancel(self: &CancelFixture): ID {
     self.vesting_id
 }
 
@@ -880,15 +826,15 @@ fun cancel_fixture_cancel_cap_id(self: &CancelFixture): ID {
 }
 
 fun cancel_fixture_cancel_cap_vesting_id(self: &CancelFixture): ID {
-    self.cancel_cap.borrow().cancel_cap_vesting_id()
+    self.cancel_cap.borrow().vesting_id()
 }
 
 fun cancel_fixture_take_beneficiary_payout(self: &CancelFixture): u64 {
-    coin::burn_for_testing(self.scenario.take_from_sender<Coin<TEST_COIN>>())
+    self.scenario.take_from_sender<Coin<TEST_COIN>>().burn_for_testing()
 }
 
 fun cancel_fixture_take_refund(self: &CancelFixture): u64 {
-    coin::burn_for_testing(self.scenario.take_from_sender<Coin<TEST_COIN>>())
+    self.scenario.take_from_sender<Coin<TEST_COIN>>().burn_for_testing()
 }
 
 fun cancel_end(self: CancelFixture) {

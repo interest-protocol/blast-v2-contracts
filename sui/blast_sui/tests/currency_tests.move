@@ -79,8 +79,8 @@ macro fun currency_ctx($fixture: &mut CurrencyFixture): &mut TxContext {
 
 fun start(): CurrencyFixture {
     let mut scenario = test_scenario::begin(ADMIN);
-    let fun_cap = fun_sui::create_for_testing(scenario.ctx());
-    let blast_cap = blast_sui::create_for_testing(scenario.ctx());
+    let fun_cap = fun_sui::new_for_testing(scenario.ctx());
+    let blast_cap = blast_sui::new_for_testing(scenario.ctx());
 
     CurrencyFixture { scenario, fun_cap, blast_cap }
 }

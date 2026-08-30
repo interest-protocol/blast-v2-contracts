@@ -49,25 +49,25 @@ fun init(ctx: &mut TxContext) {
 
 /// Creates and deliberately delivers a routine protocol administrator.
 public fun grant_admin(
-    authority: &mut ProtocolAuthority,
+    self: &mut ProtocolAuthority,
     package_version: &PackageVersion,
     super_admin_cap: &SuperAdminCap,
     recipient: address,
     ctx: &mut TxContext,
 ) {
     package_version.assert_current();
-    authority.assert_super_admin(super_admin_cap);
+    self.assert_super_admin(super_admin_cap);
 
     assert!(recipient != @0x0, blast_fun::errors::invalid_admin_recipient!());
     assert!(
-        authority.admins.length() < constants::max_admins!(),
+        self.admins.length() < constants::max_admins!(),
         blast_fun::errors::admin_capacity_reached!(),
     );
 
     let admin_cap = AdminCap { id: object::new(ctx) };
     let admin_cap_id = admin_cap.id.to_inner();
 
-    authority.admins.insert(admin_cap_id);
+    self.admins.insert(admin_cap_id);
 
     transfer::public_transfer(admin_cap, recipient);
 
@@ -76,27 +76,27 @@ public fun grant_admin(
 
 /// Revokes a routine administrator immediately without requiring possession of its cap.
 public fun revoke_admin(
-    authority: &mut ProtocolAuthority,
+    self: &mut ProtocolAuthority,
     package_version: &PackageVersion,
     super_admin_cap: &SuperAdminCap,
     admin_cap_id: ID,
 ) {
     package_version.assert_current();
-    authority.assert_super_admin(super_admin_cap);
+    self.assert_super_admin(super_admin_cap);
 
     assert!(
-        authority.admins.contains(&admin_cap_id),
+        self.admins.contains(&admin_cap_id),
         blast_fun::errors::invalid_admin_cap!(),
     );
 
-    authority.admins.remove(&admin_cap_id);
+    self.admins.remove(&admin_cap_id);
 
     events::admin_revoked(admin_cap_id);
 }
 
 /// Renounces routine administration and deletes the caller-owned cap for its storage rebate.
 public fun destroy_admin_cap(
-    authority: &mut ProtocolAuthority,
+    self: &mut ProtocolAuthority,
     package_version: &PackageVersion,
     admin_cap: AdminCap,
 ) {
@@ -104,10 +104,10 @@ public fun destroy_admin_cap(
 
     let AdminCap { id } = admin_cap;
     let admin_cap_id = id.to_inner();
-    let was_active = authority.admins.contains(&admin_cap_id);
+    let was_active = self.admins.contains(&admin_cap_id);
 
     if (was_active) {
-        authority.admins.remove(&admin_cap_id);
+        self.admins.remove(&admin_cap_id);
     };
 
     id.delete();
@@ -117,7 +117,7 @@ public fun destroy_admin_cap(
 
 /// Starts or replaces a delayed transfer of the singleton root authority.
 public fun begin_super_admin_transfer(
-    authority: &mut ProtocolAuthority,
+    self: &mut ProtocolAuthority,
     package_version: &PackageVersion,
     super_admin_cap: &SuperAdminCap,
     recipient: address,
@@ -125,17 +125,17 @@ public fun begin_super_admin_transfer(
     ctx: &mut TxContext,
 ) {
     package_version.assert_current();
-    authority.assert_super_admin(super_admin_cap);
+    self.assert_super_admin(super_admin_cap);
 
     assert!(
         recipient != @0x0 && recipient != ctx.sender(),
         blast_fun::errors::invalid_super_admin_recipient!(),
     );
 
-    let has_pending_super_admin_transfer = authority.pending_super_admin.is_some();
+    let has_pending_super_admin_transfer = self.pending_super_admin.is_some();
     if (has_pending_super_admin_transfer) {
         assert!(
-            authority.pending_super_admin.borrow().recipient != recipient,
+            self.pending_super_admin.borrow().recipient != recipient,
             blast_fun::errors::super_admin_transfer_unchanged!(),
         );
     };
@@ -145,12 +145,12 @@ public fun begin_super_admin_transfer(
         .destroy_or!(abort blast_fun::errors::super_admin_transfer_time_overflow!());
 
     if (has_pending_super_admin_transfer) {
-        let previous = authority.pending_super_admin.extract();
-
-        events::super_admin_transfer_cancelled(previous.recipient);
+        events::super_admin_transfer_cancelled(
+            self.pending_super_admin.extract().recipient,
+        );
     };
 
-    authority.pending_super_admin = option::some(PendingSuperAdminTransfer {
+    self.pending_super_admin = option::some(PendingSuperAdminTransfer {
         recipient,
         execute_after_ms,
     });
@@ -163,26 +163,26 @@ public fun begin_super_admin_transfer(
 
 /// Cancels a pending root transfer while the current root remains active.
 public fun cancel_super_admin_transfer(
-    authority: &mut ProtocolAuthority,
+    self: &mut ProtocolAuthority,
     package_version: &PackageVersion,
     super_admin_cap: &SuperAdminCap,
 ) {
     package_version.assert_current();
-    authority.assert_super_admin(super_admin_cap);
+    self.assert_super_admin(super_admin_cap);
 
     assert!(
-        authority.pending_super_admin.is_some(),
+        self.pending_super_admin.is_some(),
         blast_fun::errors::no_pending_super_admin_transfer!(),
     );
 
-    let pending = authority.pending_super_admin.extract();
-
-    events::super_admin_transfer_cancelled(pending.recipient);
+    events::super_admin_transfer_cancelled(
+        self.pending_super_admin.extract().recipient,
+    );
 }
 
 /// Accepts a root transfer after its delay and invalidates the previous root cap.
 public fun accept_super_admin_transfer(
-    authority: &mut ProtocolAuthority,
+    self: &mut ProtocolAuthority,
     package_version: &PackageVersion,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -190,12 +190,12 @@ public fun accept_super_admin_transfer(
     package_version.assert_current();
 
     assert!(
-        authority.pending_super_admin.is_some(),
+        self.pending_super_admin.is_some(),
         blast_fun::errors::no_pending_super_admin_transfer!(),
     );
 
     let (recipient, execute_after_ms) = {
-        let pending = authority.pending_super_admin.borrow();
+        let pending = self.pending_super_admin.borrow();
         (pending.recipient, pending.execute_after_ms)
     };
 
@@ -208,12 +208,12 @@ public fun accept_super_admin_transfer(
         blast_fun::errors::super_admin_transfer_not_ready!(),
     );
 
-    let previous_super_admin_cap_id = authority.super_admin_cap_id;
+    let previous_super_admin_cap_id = self.super_admin_cap_id;
     let new_super_admin_cap = SuperAdminCap { id: object::new(ctx) };
     let new_super_admin_cap_id = new_super_admin_cap.id.to_inner();
 
-    let _ = authority.pending_super_admin.extract();
-    authority.super_admin_cap_id = new_super_admin_cap_id;
+    let _ = self.pending_super_admin.extract();
+    self.super_admin_cap_id = new_super_admin_cap_id;
 
     transfer::transfer(new_super_admin_cap, recipient);
 
@@ -226,11 +226,11 @@ public fun accept_super_admin_transfer(
 
 /// Deletes a root cap only after a successful replacement made it inert.
 public fun destroy_retired_super_admin_cap(
-    authority: &ProtocolAuthority,
+    self: &ProtocolAuthority,
     super_admin_cap: SuperAdminCap,
 ) {
     assert!(
-        super_admin_cap.id.to_inner() != authority.super_admin_cap_id,
+        super_admin_cap.id.to_inner() != self.super_admin_cap_id,
         blast_fun::errors::super_admin_cap_still_active!(),
     );
 
@@ -240,14 +240,14 @@ public fun destroy_retired_super_admin_cap(
 
 /// Authenticates a routine administrator for privileged calls in the current transaction.
 public fun sign_in(
-    authority: &ProtocolAuthority,
+    self: &ProtocolAuthority,
     package_version: &PackageVersion,
     admin_cap: &AdminCap,
 ): AdminWitness {
     package_version.assert_current();
 
     assert!(
-        authority.admins.contains(&admin_cap.id.to_inner()),
+        self.admins.contains(&admin_cap.id.to_inner()),
         blast_fun::errors::invalid_admin_cap!(),
     );
 
@@ -269,9 +269,9 @@ fun new_protocol(ctx: &mut TxContext): (SuperAdminCap, ProtocolAuthority) {
     (super_admin_cap, authority)
 }
 
-fun assert_super_admin(authority: &ProtocolAuthority, super_admin_cap: &SuperAdminCap) {
+fun assert_super_admin(self: &ProtocolAuthority, super_admin_cap: &SuperAdminCap) {
     assert!(
-        super_admin_cap.id.to_inner() == authority.super_admin_cap_id,
+        super_admin_cap.id.to_inner() == self.super_admin_cap_id,
         blast_fun::errors::invalid_super_admin_cap!(),
     );
 }

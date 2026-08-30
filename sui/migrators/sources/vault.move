@@ -10,6 +10,10 @@ use blast_fun::{
 use blast_fun_migrators::events;
 use sui::{balance::Balance, coin::Coin, dynamic_object_field};
 
+use fun dynamic_object_field::add as UID.add_dynamic_object_field;
+use fun dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut;
+use fun dynamic_object_field::exists as UID.has_dynamic_object_field;
+
 // === Constants ===
 
 const EWrongVenue: u64 = 0;
@@ -34,7 +38,6 @@ public fun claim_creator_fees<Meme, Quote>(
     creator_cap: &CreatorCap<Meme>,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
-    let vault_id = object::id(self);
     let (meme, quote) = self.fee_ledger.claim_creator_fees(creator_cap, ctx);
     let meme_amount = meme.value();
     let quote_amount = quote.value();
@@ -46,7 +49,7 @@ public fun claim_creator_fees<Meme, Quote>(
     ) = self.fee_ledger.totals();
 
     events::creator_fees_claimed<Meme, Quote>(
-        vault_id,
+        object::id(self),
         meme_amount,
         quote_amount,
         protocol_meme_fee_total,
@@ -64,7 +67,6 @@ public fun claim_protocol_fees<Meme, Quote>(
     admin_witness: &AdminWitness,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
-    let vault_id = object::id(self);
     let (meme, quote) =
         self.fee_ledger.claim_protocol_fees(admin_witness, ctx);
     let meme_amount = meme.value();
@@ -77,7 +79,7 @@ public fun claim_protocol_fees<Meme, Quote>(
     ) = self.fee_ledger.totals();
 
     events::protocol_fees_claimed<Meme, Quote>(
-        vault_id,
+        object::id(self),
         meme_amount,
         quote_amount,
         protocol_meme_fee_total,
@@ -105,11 +107,7 @@ public(package) fun new<Meme, Quote, Venue: drop, Position: key + store>(
         fee_ledger: fees::new<Meme, Quote>(),
     };
     let vault_id = object::id(&vault);
-    dynamic_object_field::add<PositionKey<Venue>, Position>(
-        &mut vault.id,
-        PositionKey(),
-        position,
-    );
+    vault.id.add_dynamic_object_field(PositionKey<Venue>(), position);
     transfer::share_object(vault);
     events::vault_created<Meme, Quote, Venue>(
         vault_id,
@@ -120,7 +118,7 @@ public(package) fun new<Meme, Quote, Venue: drop, Position: key + store>(
 }
 
 /// Mutably borrows the venue position without providing a removal path.
-public(package) fun borrow_position_mut<
+public(package) fun position_mut<
     Meme,
     Quote,
     Venue,
@@ -130,14 +128,11 @@ public(package) fun borrow_position_mut<
     _venue: &Venue,
 ): &mut Position {
     assert!(
-        dynamic_object_field::exists(&self.id, PositionKey<Venue>()),
+        self.id.has_dynamic_object_field(PositionKey<Venue>()),
         EWrongVenue,
     );
 
-    dynamic_object_field::borrow_mut<PositionKey<Venue>, Position>(
-        &mut self.id,
-        PositionKey(),
-    )
+    self.id.dynamic_object_field_mut(PositionKey<Venue>())
 }
 
 /// Returns the venue pool associated with the locked position.
@@ -160,7 +155,7 @@ public(package) fun accrue_fees<Meme, Quote, Venue>(
     _: &TxContext,
 ) {
     assert!(
-        dynamic_object_field::exists(&self.id, PositionKey<Venue>()),
+        self.id.has_dynamic_object_field(PositionKey<Venue>()),
         EWrongVenue,
     );
 

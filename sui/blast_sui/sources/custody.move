@@ -57,7 +57,7 @@ public(package) fun pending_sui(self: &Custody): u64 {
 }
 
 /// Returns the oldest pending receipt's activation epoch, if any receipt exists.
-public(package) fun pending_activation_epoch(self: &Custody): Option<u64> {
+public(package) fun oldest_pending_activation_epoch(self: &Custody): Option<u64> {
     if (self.pending_stakes.is_empty()) {
         option::none()
     } else {
@@ -69,7 +69,7 @@ public(package) fun active_pool_tokens(self: &Custody): u64 {
     if (self.active_stake.is_some()) self.active_stake.borrow().value() else 0
 }
 
-public(package) fun snapshot(self: &Custody): events::PoolCustody {
+public(package) fun pool_custody(self: &Custody): events::PoolCustody {
     events::pool_custody(
         self.liquid_sui.value(),
         self.pending_sui(),
@@ -144,7 +144,7 @@ public(package) fun activate_oldest_pending(
 ///
 /// This recovery path avoids conversion to pool tokens when fun conversion
 /// rounding would consume its buffer. Callers guard on a present receipt.
-public(package) fun realize_pending(
+public(package) fun realize_oldest_pending(
     self: &mut Custody,
     system_state: &mut SuiSystemState,
     ctx: &mut TxContext,
@@ -219,7 +219,7 @@ public(package) fun unwind(
     system_state: &mut SuiSystemState,
     ctx: &mut TxContext,
 ) {
-    while (!self.pending_stakes.is_empty()) self.realize_pending(system_state, ctx);
+    while (!self.pending_stakes.is_empty()) self.realize_oldest_pending(system_state, ctx);
     if (self.active_stake.is_some()) {
         let held_pool_tokens = self.active_pool_tokens();
         self.redeem_active(system_state, held_pool_tokens, 0, 0, ctx);
@@ -311,4 +311,3 @@ fun withdraw_pending(
         self.liquid_sui.join(sui_out);
     }
 }
-
