@@ -29,12 +29,17 @@ migration payload in the same Move call.
   through the same core `FeeLedger` used by bonding-curve trade fees. Protocol
   amounts round up, creators receive the exact remainder, and already accrued
   ownership never changes.
-- **Admin-pinned venue tiers.** `venue_config::VenueConfig` is one shared
-  singleton pinning `(tick_spacing, fee_rate)` policy per venue. Migration is
-  permissionless, so routes read the pinned tier instead of trusting caller
-  parameters and fail closed until an `AdminWitness` pins the venue. The
-  singleton stays adjustable after the package `UpgradeCap` is destroyed and
-  affects only later migrations.
+- **Sealed venue tiers with compiled defaults.** `venue_config::VenueConfig`
+  is one shared singleton holding one `(tick_spacing, fee_rate)` entry per
+  venue as a dynamic field keyed by `TierKey<Venue>`, so an upgrade-added
+  venue module can register its own tier without touching the frozen struct
+  layout. Migration is permissionless, so routes read the effective tier
+  instead of trusting caller parameters. Each venue module compiles a
+  researched highest-tier default (see the README table, sourced from live
+  mainnet registries on 2026-08-30) and falls back to it while no pin exists;
+  only that module's sealed witness can write its entry, behind a live
+  `AdminWitness`. The singleton stays adjustable after the package
+  `UpgradeCap` is destroyed and affects only later migrations.
 - **Direct events, no wrapper.** `events.move` owns the five typed payloads
   (`VaultCreated`, `MigrationCompleted`, `LpFeesCollected`, `CreatorFeesClaimed`,
   `ProtocolFeesClaimed`) and is the only module that calls `sui::event::emit`.
@@ -343,9 +348,10 @@ Vault claims: `vault::claim_creator_fees` under `CreatorCap<Meme>` and
 `vault::claim_protocol_fees` under `AdminWitness`. Neither touches the venue or
 the position.
 
-Before any migration fixture runs, pin every venue tier in the shared
-`venue_config::VenueConfig` under a live `AdminWitness` and record that each
-pinned `(tick_spacing, fee_rate)` matches a tier the venue actually registers.
+The compiled defaults are active from publication, so no tier setup
+transaction is required before the fixtures run; a fixture that overrides a
+tier must record that the pinned `(tick_spacing, fee_rate)` matches a tier the
+venue actually registers.
 
 Each migration fixture must show:
 
@@ -362,23 +368,39 @@ Each migration fixture must show:
   point, with both residuals transferred to the live `protocol_treasury`; and
 - the returned position belongs to the new pool, has positive liquidity, and
   enters the vault as its one sealed dynamic object field;
-- the route's venue tier equals the pinned `VenueConfig` values, and a
-  mismatched `Fee` object or adopted pool aborts with the tier-mismatch code;
-- Bluefin accepts the hard-coded Meme-as-coin-A order for every allowlisted
-  Quote; and
-- MMT `get_friendly_ticks` at `tick_math::min_sqrt_price()` and
-  `tick_math::max_sqrt_price()` yields ticks its `open_position` accepts.
+- the route's venue tier equals the effective `VenueConfig` values, and a
+  mismatched `Fee` object or adopted pool aborts with the tier-mismatch code.
+
+Three venue-semantics rows were already **proven against published mainnet
+bytecode on 2026-08-30** by disassembling the live modules (fetched through the
+official GraphQL endpoint, disassembled with the pinned `sui move
+disassemble`):
+
+- **Bluefin order acceptance.** The current `bluefin_spot::pool` module
+  contains no type-name comparison at all, so no canonical-order check exists
+  to reject the hard-coded Meme-as-coin-A order for any Quote.
+- **MMT friendly ticks.** `tick_math::get_tick_at_sqrt_price` bounds its input
+  with an inclusive `Le` against exactly `max_sqrt_price()`, and `i32::mod` is
+  sign-following, so the `tick - (tick mod spacing)` alignment always moves
+  both bounds toward zero — inside the venue range that `open_position`
+  accepts.
+- **Turbos collection recipient.** See the fee-collection paragraph below.
+
+The dev-inspect fixtures re-confirm these facts end to end but they are no
+longer open questions.
 
 Each fee-collection fixture must show venue liquidity is identical immediately
 before and after collection, the vault, pool, and position ids match on both
 sides of the call, and the split uses the live `protocol_fee_share_bps` read
-during that collection. The Turbos fixture must additionally prove, against
-published bytecode, that `collect_with_return_` returns the complete collected
-fee in its return values and transfers nothing to its `recipient` argument.
-The adapter passes the live protocol treasury as `recipient`, so even a
-venue-side payout could only reach the protocol, never the permissionless
-collector; the row remains a release blocker because a payout would still
-bypass the creator's ledger share.
+during that collection. The Turbos `recipient` question is already proven
+against the published v22 bytecode (2026-08-30): inside
+`position_manager::collect_with_return_` the recipient address flows only into
+`pool::collect_v2`, whose body uses it solely in `event::emit<CollectEventV2>`;
+the fee coins come from `pool::split_out_and_return_` and are returned to the
+caller, and no `transfer::` call exists anywhere in that chain. The adapter
+still passes the live protocol treasury as `recipient`, so the venue event
+attributes the protocol and any future venue drift could only pay the
+treasury, never the permissionless collector.
 
 ## Immutable-release gate
 

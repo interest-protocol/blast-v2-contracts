@@ -47,16 +47,35 @@ nonzero residual or sends one to `0x0`.
 `launch::migrate` is deliberately permissionless, so no migration caller may
 choose the venue fee tier or tick spacing of the pool that permanently
 custodies the launch principal. The shared `venue_config::VenueConfig`
-singleton pins one production tier per venue; setters take only a live core
-`AdminWitness`, every mutation emits an old/new fact, and every route fails
-closed until its venue is pinned.
+singleton holds one sealed tier entry per venue as a dynamic field keyed by
+`TierKey<Venue>`, so an upgrade-added venue module can register its own tier
+without touching the singleton's frozen struct layout. Only a venue module can
+write its own entry — the package-only write consumes that venue's sealed
+witness — and each module's public `set_tier` additionally requires a live
+core `AdminWitness`. Every mutation emits an old/new `VenueTierUpdated` fact;
+zero old values mean the compiled default was still active.
 
-- Bluefin routes read the pinned `(tick_spacing, fee_rate)` pair.
-- Cetus and Full Sail routes read the pinned tick spacing; the venue fee rate
-  follows its registered tier. Adopted pools must match both.
-- MMT routes read the pinned fee rate; the venue derives tick spacing.
+Each venue module compiles its researched default, so every route works from
+publication with no setup transaction. Meme pools take the venue's highest
+tier; the defaults below were read from live mainnet registries on 2026-08-30:
+
+| Venue | Default `(tick_spacing, fee_rate)` | Source |
+| --- | --- | --- |
+| Bluefin | `(200, 10_000)` — 1% | no venue registry; dominant production meme tier across live pools |
+| Cetus | `(260, 40_000)` — 4% | highest of 16 tiers in the `GlobalConfig` fee-tier registry |
+| Full Sail | `(20, 10_000)` — 1% | highest of 5 tiers in the `GlobalConfig` fee-tier registry |
+| MMT | `(400, 20_000)` — 2% | highest of 10 entries in the `fee_amount_tick_spacing` table |
+| Turbos | `(800, 40_000)` — 4% | highest registered `Fee` tier object (`FEE40000BPS`) |
+
+- Bluefin routes use the effective `(tick_spacing, fee_rate)` pair directly.
+- Cetus and Full Sail new routes use the effective tick spacing and require
+  the venue's registered fee for that spacing to equal the effective fee.
+- Cetus adopted pools must match the effective pair. Full Sail adjusts live
+  pool fees dynamically, so its adopted pools match on tick spacing alone.
+- MMT routes use the effective fee rate and require the venue-derived tick
+  spacing of the created pool to equal the effective spacing.
 - Turbos routes require the supplied `Fee<FeeType>` object or adopted pool to
-  match the pinned `(tick_spacing, fee_rate)` pair exactly.
+  match the effective pair exactly.
 
 Because tier policy lives in a shared object rather than package constants, it
 stays correctable on mainnet without a package upgrade, including after the
@@ -71,7 +90,7 @@ Quote-per-Meme price from the actual payload balances. Display decimals do not
 affect the price. Bluefin event metadata comes from the supplied Coin Registry
 `Currency<Meme>` and `Currency<Quote>` objects.
 
-The tick spacing and fee rate come from the admin-pinned venue tier. The
+The tick spacing and fee rate come from the effective venue tier. The
 adapter gets the live range from `config::get_tick_range`, aligns both
 endpoints inward, and validates the pinned Bluefin initialization-price bounds.
 It queries the Quote-denominated creation fee, requires a supported Quote type
@@ -104,7 +123,7 @@ as coin Y. Each route checks both possible orders and requires exactly one
 canonical result before it redeems the migration payload.
 
 Both routes derive the atomic Q64.64 initialization price from the actual Meme
-and Quote balances and read the admin-pinned MMT fee rate. They create and
+and Quote balances and read the effective MMT fee rate. They create and
 initialize a new pool, derive full-range friendly ticks through the pinned MMT
 helpers, open the position, and require at least 99.99% use of both balances
 while adding liquidity. The position enters the common vault before the new MMT
@@ -191,7 +210,7 @@ that order on chain before it redeems the migration payload. Callers do not
 supply an orientation or an economic price.
 
 New routes derive the Q64.64 price from the actual Meme and Quote balances,
-the tick spacing from the admin-pinned tier, and call revision 4
+the tick spacing from the effective tier, and call revision 4
 `factory::create_pool_with_liquidity` with Meme as the fixed liquidity side so
 the rounding residual lands on the Quote requirement. They pass both source
 amounts, an empty URI, zero feed IDs, and `false` for automatic volume
@@ -220,7 +239,7 @@ Meme/Quote accrual.
 
 ## Replayable events
 
-The dedicated `events` module owns eleven strongly typed payloads and their
+The dedicated `events` module owns seven strongly typed payloads and their
 package-only emit helpers. Only that module calls `sui::event::emit`; state
 modules call its typed helpers.
 
@@ -231,9 +250,9 @@ filters, and it would pull a second package into the core event ABI. Consumers
 filter on the payload types below.
 
 - `VenueConfigCreated` records discovery of the tier policy singleton, and
-  `BluefinTierUpdated`, `CetusTickSpacingUpdated`, `FullSailTickSpacingUpdated`,
-  `MmtFeeRateUpdated`, and `TurbosTierUpdated` each record one pinned tier
-  replacing the previous values.
+  `VenueTierUpdated` records one sealed venue tier pin replacing the previous
+  values, carrying the venue witness type name; zero old values mean the venue
+  module's compiled default was active before the pin.
 - `VaultCreated` records vault, pool, and position IDs plus venue, Meme, and
   Quote type names.
 - `MigrationCompleted` records launch, vault, and pool IDs; source, used, and
@@ -380,6 +399,7 @@ migrations and can never touch custodied principal or accrued ownership.
 | 1 | `EPositionPoolMismatch` | The pool, vault, and position IDs do not match. |
 | 2 | `EZeroPositionLiquidity` | The created or collected position has no principal liquidity. |
 | 3 | `EPositionLiquidityChanged` | MMT fee collection changed position principal. |
+| 4 | `ETierMismatch` | The venue-derived tick spacing of the created pool does not match the effective tier. |
 
 ## Cetus errors
 
@@ -391,7 +411,7 @@ migrations and can never touch custodied principal or accrued ownership.
 | 3 | `EPositionLiquidityChanged` | Cetus fee collection changed position principal. |
 | 4 | `EPaymentExceedsBalance` | Cetus requested more than the redeemed balance. |
 | 5 | `EInsufficientUtilization` | An adopted Cetus pool consumed less than 99.99% of either balance. |
-| 6 | `ETierMismatch` | The adopted Cetus pool does not match the pinned tier. |
+| 6 | `ETierMismatch` | The pool or venue-registered fee does not match the effective tier. |
 | 7 | `EMemeBelowQuote` | The Meme atom balance is below the Quote atom balance, so a Meme-fixed full-range seed cannot succeed. |
 
 ## Turbos errors
@@ -403,7 +423,8 @@ migrations and can never touch custodied principal or accrued ownership.
 | 2 | `EZeroPositionLiquidity` | The created or collected Turbos position has no principal liquidity. |
 | 3 | `EPositionLiquidityChanged` | Turbos fee collection changed position principal. |
 | 4 | — | Retired before publication; never reuse. |
-| 5 | `ETierMismatch` | The Turbos fee object or adopted pool does not match the pinned tier. |
+| 5 | `ETierMismatch` | The Turbos fee object or adopted pool does not match the effective tier. |
+| 6 | `EInvalidFeeRate` | A Turbos tier pin exceeds the venue's `u32` fee width. |
 
 ## Full Sail errors
 
@@ -416,7 +437,7 @@ migrations and can never touch custodied principal or accrued ownership.
 | 4 | `EPositionLiquidityChanged` | Full Sail fee collection changed position principal. |
 | 5 | `EPaymentExceedsBalance` | Full Sail requested more than the redeemed balance. |
 | 6 | `EInsufficientUtilization` | An adopted Full Sail pool consumed less than 99.99% of either balance. |
-| 7 | `ETierMismatch` | The adopted Full Sail pool does not match the pinned tier. |
+| 7 | `ETierMismatch` | The tick spacing does not match the effective tier, or the registered fee disagrees with the effective fee on a new pool. |
 | 8 | `EMemeBelowQuote` | The Meme atom balance is below the Quote atom balance, so a Meme-fixed full-range seed cannot succeed. |
 
 ## Vault errors
@@ -429,7 +450,7 @@ migrations and can never touch custodied principal or accrued ownership.
 
 | Code | Name | Meaning |
 | --- | --- | --- |
-| 0 | `EVenueTierUnset` | The venue's production tier has not been pinned yet. |
-| 1 | `EInvalidTickSpacing` | A tier pin supplied a zero tick spacing. |
-| 2 | `EInvalidFeeRate` | A tier pin supplied a zero fee rate. |
-| 3 | `EUnchangedTier` | A tier pin repeated the currently pinned values. |
+| 0 | `EInvalidTickSpacing` | A tier pin supplied a zero tick spacing. |
+| 1 | `EInvalidFeeRate` | A tier pin supplied a zero fee rate. |
+| 2 | `EUnchangedTier` | A tier pin repeated the currently pinned values. |
+| 3 | `EVenueTierUnset` | A pinned-tier read found no pin; routes never hit this because they fall back to the compiled default. |

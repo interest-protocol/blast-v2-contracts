@@ -24,34 +24,60 @@ values and freeze them at `UpgradeCap` destruction.
 ## Decision
 
 Add one shared singleton, `venue_config::VenueConfig`, to the aggregate
-migrators package. It pins one production tier per venue:
-`(tick_spacing, fee_rate)` for Bluefin and Turbos, `tick_spacing` for Cetus
-and Full Sail (the venue fee follows its registered tier, and adopted pools
-must match both), and `fee_rate` for MMT.
+migrators package. It holds one full `(tick_spacing, fee_rate)` entry per
+venue as a **dynamic field** keyed by the sealed `TierKey<Venue>` name, so an
+upgrade-added venue module can register its own tier without touching the
+singleton's frozen struct layout, and each entry can only be written by the
+module that constructs that venue's witness.
 
-- Every migration route reads its tier from the singleton instead of trusting
-  caller parameters; migrate signatures carry no tier inputs.
-- A zero field is unset and every read aborts, so each venue fails closed
-  until pinned. Setters reject zero values, reject no-op re-pins, bound the
-  Turbos fee to `u32`, take only a borrowed live `acl::AdminWitness`, and emit
-  old/new facts (`BluefinTierUpdated`, `CetusTickSpacingUpdated`,
-  `FullSailTickSpacingUpdated`, `MmtFeeRateUpdated`, `TurbosTierUpdated`).
-- Package initialization shares exactly one unset config and emits
+- Every migration route reads its effective tier from the singleton instead of
+  trusting caller parameters; migrate signatures carry no tier inputs.
+- Each venue module compiles a researched default and falls back to it while
+  no pin exists, so every route works from publication with no setup
+  transaction. Meme pools take the venue's highest tier; the defaults were
+  read from the live mainnet registries on 2026-08-30 — Bluefin `(200,
+  10_000)` (no registry exists; the dominant production tier), Cetus `(260,
+  40_000)`, Full Sail `(20, 10_000)`, MMT `(400, 20_000)`, Turbos `(800,
+  40_000)` — and are recorded with sources in the package README.
+- The package-only write consumes the venue's sealed witness, and each venue
+  module's public `set_tier` additionally requires a borrowed live
+  `acl::AdminWitness`. Writes reject zero values and no-op re-pins; Turbos
+  bounds its fee pin to `u32`. Every write emits one `VenueTierUpdated` fact
+  carrying the venue witness type name and old/new values, where zero old
+  values mean the compiled default was active.
+- Cetus and Full Sail new pools additionally require the venue's registered
+  fee for the effective spacing to equal the effective fee, binding the pin to
+  the venue registry. Full Sail adjusts live pool fees dynamically, so its
+  adopted pools match on tick spacing alone; Cetus adopted pools match the
+  full pair; MMT asserts the venue-derived spacing of the created pool;
+  Turbos requires the supplied `Fee` object or adopted pool to match exactly.
+- Package initialization shares exactly one empty config and emits
   `VenueConfigCreated`; no other constructor exists, so a caller cannot forge
   a second policy object for a permissionless route.
 - Tier reads are `public(package)`; there is no public getter. Offchain
-  consumers reconstruct the live tier from the mutation events.
+  consumers overlay the documented defaults with the `VenueTierUpdated`
+  stream.
 - Fee collection routes take no tier input; tier policy is irrelevant to
   draining fees from an already-pinned position.
 
-The dev-inspect release gate must prove every pinned tier matches a tier the
-venue actually registers, and a mismatched `Fee` object or adopted pool aborts.
+The dev-inspect release gate must prove every effective tier matches a tier
+the venue actually registers, and a mismatched `Fee` object or adopted pool
+aborts.
 
 ## Alternatives considered
 
-**Compile-time tier constants.** Rejected: values would be guessed in
-venue-specific units, frozen forever at `UpgradeCap` destruction, and wrong
-constants would strand every launch bound to that venue until an upgrade.
+**Compile-time tier constants as the only mechanism.** Rejected: frozen
+forever at `UpgradeCap` destruction, and a wrong constant would strand every
+launch bound to that venue. Adopted instead as **overridable defaults**: the
+values are researched from live venue registries rather than guessed, they
+make every route work from publication, and the dynamic-field pin corrects
+them on mainnet at any time.
+
+**Struct fields on `VenueConfig`.** Rejected: upgrade compatibility freezes a
+shared object's struct layout, so a future venue module could never add its
+tier without a new config object. Dynamic fields keyed by the sealed venue
+witness keep registration open to upgrade-added modules and seal each entry to
+its owner.
 
 **Admin-gated migration.** Rejected: ADR 0046's permissionless migration is a
 deliberate liveness property; gating the caller reintroduces a trusted
@@ -74,8 +100,9 @@ amend this ADR.
 
 ## Verification
 
-From `sui/migrators/`: `sui move test --lint` covers the set/read,
-fail-closed, zero-bound, and no-op-rejection paths;
+From `sui/migrators/`: `sui move test --lint` covers the sealed set/read
+substrate, the per-venue compiled defaults and their admin overrides, the
+zero-bound and no-op rejections, and the Turbos `u32` fee bound;
 `bash scripts/check_source_boundaries.sh` pins the per-route tier reads and
 rejects caller tier parameters on every public migrate signature; the mainnet
 dev-inspect matrix in `DEPENDENCIES.md` proves the pinned tiers against the
