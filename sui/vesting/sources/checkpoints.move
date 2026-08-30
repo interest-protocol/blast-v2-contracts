@@ -309,7 +309,7 @@ public fun cancel<CoinType>(
 public fun close_irrevocable<CoinType>(
     self: Vesting<CoinType>,
     clock: &Clock,
-    _ctx: &mut TxContext,
+    _: &mut TxContext,
 ) {
     assert!(self.cancel_refund_recipient.is_none(), ECancelCapRequired);
     assert!(clock.timestamp_ms() >= self.end_ms(), EScheduleNotEnded);

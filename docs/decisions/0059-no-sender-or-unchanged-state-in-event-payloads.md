@@ -65,11 +65,13 @@ both, for the same reason.
 test-only accessor becomes `upgrade_authorized_digest`.
 
 `accrue_fees` in the migrators vault and `close_irrevocable` in both vesting
-modules no longer read the context. `accrue_fees` is package-private and drops
-the parameter; the three public venue entry points and `close_irrevocable` keep
-their uniform signatures with the repository's `_`-prefixed unused-parameter
-convention, which costs callers nothing because Sui supplies `TxContext` from
-the runtime rather than from the transaction's argument list.
+modules no longer read the context. Each keeps the parameter as the anonymous
+`_: &TxContext`, matching the existing `_: &AdminWitness` convention. Keeping it
+costs callers nothing — Sui supplies `TxContext` from the runtime, not from the
+transaction's argument list — it leaves the parameter available to a later
+version of either function, and it confines this record's edits to the events
+modules and their emission sites: all five venue adapters are byte-identical to
+their pre-audit source.
 
 ### What deliberate redundancy stays
 
@@ -105,10 +107,11 @@ fail if any `events::` call site passes `ctx.sender()`.
 envelope that delivers the payload already carries the sender, so the field is
 duplicated in the same message rather than saving a lookup.
 
-**Keep `LpFeesCollected.collector` to avoid touching venue signatures.**
-Rejected, but it is why `accrue_fees` lost a parameter: the alternative was an
-inconsistent adapter surface where three venues declare a context they never
-read while two use it.
+**Drop the now-unread context parameters instead of anonymizing them.**
+Rejected: removing `accrue_fees`' context would orphan the parameter in the three
+venue entry points that only forwarded it, forcing either an inconsistent adapter
+surface or a signature change across bytecode-proven adapters — a blast radius
+this record does not need and does not want.
 
 **Also drop the previous-value-at-removal fields.** Rejected: unlike the sender,
 they are not carried by the envelope, and reconstructing them requires the full
@@ -127,6 +130,9 @@ prior stream, which is exactly the late-join case ADR 0011 protects.
   sponsored or delegated action, or a recipient — must name that field for the
   role it plays and record the necessity in an ADR, because the boundary gate
   denies the actor names above.
+- No adapter, venue, or vesting signature changes: `accrue_fees` and
+  `close_irrevocable` keep an anonymous context, so every public entry point is
+  byte-identical to its pre-audit form.
 
 ## Verification
 

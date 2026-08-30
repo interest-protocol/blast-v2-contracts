@@ -157,6 +157,7 @@ public(package) fun accrue_fees<Meme, Quote, Venue>(
     principal_liquidity_before: u128,
     principal_liquidity_after: u128,
     runtime_config: &RuntimeConfig,
+    _: &TxContext,
 ) {
     assert!(
         dynamic_object_field::exists(&self.id, PositionKey<Venue>()),
