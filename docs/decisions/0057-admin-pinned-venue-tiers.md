@@ -51,9 +51,10 @@ module that constructs that venue's witness.
   adopted pools match on tick spacing alone; Cetus adopted pools match the
   full pair; MMT asserts the venue-derived spacing of the created pool;
   Turbos requires the supplied `Fee` object or adopted pool to match exactly.
-- Package initialization shares exactly one empty config and emits
-  `VenueConfigCreated`; no other constructor exists, so a caller cannot forge
-  a second policy object for a permissionless route.
+- Package initialization shares exactly one empty config; no other
+  constructor exists, so a caller cannot forge a second policy object for a
+  permissionless route. There is no creation event — Sui transaction effects
+  natively record the shared object and its type at publication.
 - Tier reads are `public(package)`; there is no public getter. Offchain
   consumers overlay the documented defaults with the `VenueTierUpdated`
   stream.

@@ -239,7 +239,7 @@ Meme/Quote accrual.
 
 ## Replayable events
 
-The dedicated `events` module owns seven strongly typed payloads and their
+The dedicated `events` module owns six strongly typed payloads and their
 package-only emit helpers. Only that module calls `sui::event::emit`; state
 modules call its typed helpers.
 
@@ -249,10 +249,11 @@ would add nothing here, it would hide the payload type from native event
 filters, and it would pull a second package into the core event ABI. Consumers
 filter on the payload types below.
 
-- `VenueConfigCreated` records discovery of the tier policy singleton, and
-  `VenueTierUpdated` records one sealed venue tier pin replacing the previous
+- `VenueTierUpdated` records one sealed venue tier pin replacing the previous
   values, carrying the venue witness type name; zero old values mean the venue
-  module's compiled default was active before the pin.
+  module's compiled default was active before the pin. The singleton itself
+  needs no creation event: Sui transaction effects natively record the shared
+  object and its type at publication.
 - `VaultCreated` records vault, pool, and position IDs plus venue, Meme, and
   Quote type names.
 - `MigrationCompleted` records launch, vault, and pool IDs; source, used, and

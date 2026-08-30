@@ -5,11 +5,6 @@ use std::type_name::{Self, TypeName};
 
 // === Public Structs ===
 
-/// Records discovery of the one shared venue tier policy singleton.
-public struct VenueConfigCreated has copy, drop {
-    config_id: ID,
-}
-
 /// Records one pinned venue tier replacing the previous values.
 ///
 /// Zero old values mean the venue module's compiled default was active before
@@ -112,10 +107,6 @@ public struct ProtocolFeesClaimed has copy, drop {
 }
 
 // === Package Functions ===
-
-public(package) fun venue_config_created(config_id: ID) {
-    sui::event::emit(VenueConfigCreated { config_id });
-}
 
 public(package) fun venue_tier_updated<Venue>(
     old_tick_spacing: u32,

@@ -39,11 +39,7 @@ public struct VenueConfig has key {
 // === Private Initialization ===
 
 fun init(ctx: &mut TxContext) {
-    let config = VenueConfig { id: object::new(ctx) };
-    let config_id = object::id(&config);
-
-    transfer::share_object(config);
-    events::venue_config_created(config_id);
+    transfer::share_object(VenueConfig { id: object::new(ctx) });
 }
 
 // === Package Functions ===

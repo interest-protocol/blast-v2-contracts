@@ -347,7 +347,6 @@ require_pattern "$EVENTS_SOURCE" 'sui::event::emit\(CreatorFeesClaimed' \
     'direct strongly typed creator-claim event emission'
 require_pattern "$EVENTS_SOURCE" 'sui::event::emit\(ProtocolFeesClaimed' \
     'direct strongly typed protocol-claim event emission'
-require_pattern "$EVENTS_SOURCE" 'public struct VenueConfigCreated' 'venue config discovery event'
 require_pattern "$EVENTS_SOURCE" 'public struct VenueTierUpdated' 'sealed venue tier mutation event'
 
 require_pattern "$VAULT_SOURCE" 'public struct LpVault' 'shared LpVault'
@@ -371,10 +370,8 @@ require_pattern "$VAULT_SOURCE" 'events::protocol_fees_claimed' 'protocol claim 
 
 require_pattern "$VENUE_CONFIG_SOURCE" 'public struct VenueConfig has key' \
     'shared venue tier policy singleton'
-require_pattern "$VENUE_CONFIG_SOURCE" 'transfer::share_object\(config\)' \
+require_pattern "$VENUE_CONFIG_SOURCE" 'transfer::share_object\(VenueConfig' \
     'shared venue config creation'
-require_pattern "$VENUE_CONFIG_SOURCE" 'events::venue_config_created' \
-    'venue config discovery emission'
 require_pattern "$VENUE_CONFIG_SOURCE" 'public struct TierKey' \
     'sealed per-venue tier key'
 require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun set_tier<Venue: drop>' \
@@ -1026,8 +1023,8 @@ if rg -q 'sui::event::emit' "$SOURCE_DIR" \
 fi
 
 EVENT_EMISSION_COUNT="$(rg -o 'sui::event::emit' "$EVENTS_SOURCE" | wc -l)"
-[[ "$EVENT_EMISSION_COUNT" -eq 7 ]] || \
-    fail "events.move must emit exactly seven strongly typed payloads"
+[[ "$EVENT_EMISSION_COUNT" -eq 6 ]] || \
+    fail "events.move must emit exactly six strongly typed payloads"
 
 POSITION_ATTACHMENT_COUNT="$(rg -o 'dynamic_object_field::add' "$SOURCE_DIR" | wc -l)"
 [[ "$POSITION_ATTACHMENT_COUNT" -eq 1 ]] || \
