@@ -2,7 +2,14 @@
 module blast_fun_migrators::venue_config_tests;
 
 use blast_fun::{acl, package_version};
-use blast_fun_migrators::venue_config::{Self, VenueConfig};
+use blast_fun_migrators::{
+    bluefin,
+    cetus,
+    fullsail,
+    mmt,
+    turbos,
+    venue_config::{Self, VenueConfig},
+};
 use std::unit_test::{assert_eq, destroy};
 use sui::test_scenario::{Self, Scenario};
 
@@ -12,6 +19,8 @@ const PUBLISHER: address = @0xA11CE;
 const PROTOCOL_ADMIN: address = @0xAD;
 
 // === Test-Only Types ===
+
+public struct TestVenue() has drop;
 
 /// Admin-pinned tier policy through the core ACL sign-in seam.
 public struct TierFixture {
@@ -25,109 +34,100 @@ public struct TierFixture {
 // === Tests ===
 
 #[test]
-fun pins_and_reads_every_venue_tier() {
+fun substrate_pins_reads_and_replaces_one_sealed_entry() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        assert_eq!(f.config.contains<TestVenue>(), false);
+
+        f.config.set_tier(TestVenue(), 60, 3_000);
+        assert_eq!(f.config.contains<TestVenue>(), true);
+        let (tick_spacing, fee_rate) = f.config.tier<TestVenue>();
+        assert_eq!(tick_spacing, 60);
+        assert_eq!(fee_rate, 3_000);
+
+        f.config.set_tier(TestVenue(), 60, 4_000);
+        let (tick_spacing, fee_rate) = f.config.tier<TestVenue>();
+        assert_eq!(tick_spacing, 60);
+        assert_eq!(fee_rate, 4_000);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun venue_defaults_hold_until_an_admin_pin_replaces_them() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        // The compiled highest-tier defaults identified from live mainnet
+        // registries on 2026-08-30.
+        let (tick_spacing, fee_rate) =
+            bluefin::pinned_tier_for_testing(&f.config);
+        assert_eq!(tick_spacing, 200);
+        assert_eq!(fee_rate, 10_000);
+        let (tick_spacing, fee_rate) =
+            cetus::pinned_tier_for_testing(&f.config);
+        assert_eq!(tick_spacing, 260);
+        assert_eq!(fee_rate, 40_000);
+        let (tick_spacing, fee_rate) =
+            fullsail::pinned_tier_for_testing(&f.config);
+        assert_eq!(tick_spacing, 20);
+        assert_eq!(fee_rate, 10_000);
+        let (tick_spacing, fee_rate) = mmt::pinned_tier_for_testing(&f.config);
+        assert_eq!(tick_spacing, 400);
+        assert_eq!(fee_rate, 20_000);
+        let (tick_spacing, fee_rate) =
+            turbos::pinned_tier_for_testing(&f.config);
+        assert_eq!(tick_spacing, 800);
+        assert_eq!(fee_rate, 40_000);
+
+        let admin_witness = f.sign_in();
+        bluefin::set_tier(&mut f.config, &admin_witness, 220, 20_000);
+        cetus::set_tier(&mut f.config, &admin_witness, 220, 20_000);
+        fullsail::set_tier(&mut f.config, &admin_witness, 40, 2_000);
+        mmt::set_tier(&mut f.config, &admin_witness, 200, 10_000);
+        turbos::set_tier(&mut f.config, &admin_witness, 220, 20_000);
+
+        let (tick_spacing, fee_rate) =
+            bluefin::pinned_tier_for_testing(&f.config);
+        assert_eq!(tick_spacing, 220);
+        assert_eq!(fee_rate, 20_000);
+        let (tick_spacing, fee_rate) =
+            cetus::pinned_tier_for_testing(&f.config);
+        assert_eq!(tick_spacing, 220);
+        assert_eq!(fee_rate, 20_000);
+        let (tick_spacing, fee_rate) =
+            fullsail::pinned_tier_for_testing(&f.config);
+        assert_eq!(tick_spacing, 40);
+        assert_eq!(fee_rate, 2_000);
+        let (tick_spacing, fee_rate) = mmt::pinned_tier_for_testing(&f.config);
+        assert_eq!(tick_spacing, 200);
+        assert_eq!(fee_rate, 10_000);
+        let (tick_spacing, fee_rate) =
+            turbos::pinned_tier_for_testing(&f.config);
+        assert_eq!(tick_spacing, 220);
+        assert_eq!(fee_rate, 20_000);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun venue_pins_stay_sealed_per_witness_type() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_bluefin_tier(&admin_witness, 60, 3_000);
-        f.config.set_cetus_tick_spacing(&admin_witness, 200);
-        f.config.set_fullsail_tick_spacing(&admin_witness, 220);
-        f.config.set_mmt_fee_rate(&admin_witness, 10_000);
-        f.config.set_turbos_tier(&admin_witness, 100, 10_000);
+        bluefin::set_tier(&mut f.config, &admin_witness, 220, 20_000);
 
-        let (bluefin_tick_spacing, bluefin_fee_rate) =
-            f.config.bluefin_tier();
-        assert_eq!(bluefin_tick_spacing, 60);
-        assert_eq!(bluefin_fee_rate, 3_000);
-        assert_eq!(f.config.cetus_tick_spacing(), 200);
-        assert_eq!(f.config.fullsail_tick_spacing(), 220);
-        assert_eq!(f.config.mmt_fee_rate(), 10_000);
-        let (turbos_tick_spacing, turbos_fee_rate) = f.config.turbos_tier();
-        assert_eq!(turbos_tick_spacing, 100);
-        assert_eq!(turbos_fee_rate, 10_000);
-
-        f.config.set_bluefin_tier(&admin_witness, 60, 4_000);
-        let (bluefin_tick_spacing, bluefin_fee_rate) =
-            f.config.bluefin_tier();
-        assert_eq!(bluefin_tick_spacing, 60);
-        assert_eq!(bluefin_fee_rate, 4_000);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = venue_config::EVenueTierUnset,
-    location = blast_fun_migrators::venue_config,
-)]
-fun unset_bluefin_tier_read_fails_closed() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let (_, _) = f.config.bluefin_tier();
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = venue_config::EVenueTierUnset,
-    location = blast_fun_migrators::venue_config,
-)]
-fun unset_cetus_tier_read_fails_closed() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        f.config.cetus_tick_spacing();
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = venue_config::EVenueTierUnset,
-    location = blast_fun_migrators::venue_config,
-)]
-fun unset_fullsail_tier_read_fails_closed() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        f.config.fullsail_tick_spacing();
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = venue_config::EVenueTierUnset,
-    location = blast_fun_migrators::venue_config,
-)]
-fun unset_mmt_tier_read_fails_closed() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        f.config.mmt_fee_rate();
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = venue_config::EVenueTierUnset,
-    location = blast_fun_migrators::venue_config,
-)]
-fun unset_turbos_tier_read_fails_closed() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let (_, _) = f.config.turbos_tier();
+        // Only the Bluefin entry changed; every other venue keeps its default.
+        let (tick_spacing, fee_rate) =
+            cetus::pinned_tier_for_testing(&f.config);
+        assert_eq!(tick_spacing, 260);
+        assert_eq!(fee_rate, 40_000);
+        assert_eq!(f.config.contains<TestVenue>(), false);
     });
 
     fixture.end();
@@ -142,26 +142,7 @@ fun rejects_zero_tick_spacing() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.config.set_bluefin_tier(&admin_witness, 0, 3_000);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = venue_config::EInvalidTickSpacing,
-    location = blast_fun_migrators::venue_config,
-)]
-fun rejects_zero_single_tick_spacing() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.config.set_cetus_tick_spacing(&admin_witness, 0);
+        f.config.set_tier(TestVenue(), 0, 3_000);
     });
 
     fixture.end();
@@ -176,9 +157,7 @@ fun rejects_zero_fee_rate() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.config.set_mmt_fee_rate(&admin_witness, 0);
+        f.config.set_tier(TestVenue(), 60, 0);
     });
 
     fixture.end();
@@ -193,10 +172,45 @@ fun rejects_unchanged_tier() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.config.set_tier(TestVenue(), 100, 10_000);
+        f.config.set_tier(TestVenue(), 100, 10_000);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = venue_config::EVenueTierUnset,
+    location = blast_fun_migrators::venue_config,
+)]
+fun unpinned_tier_read_fails_closed() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let (_, _) = f.config.tier<TestVenue>();
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = turbos::EInvalidFeeRate,
+    location = blast_fun_migrators::turbos,
+)]
+fun turbos_pin_rejects_a_fee_no_venue_tier_can_carry() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_turbos_tier(&admin_witness, 100, 10_000);
-        f.config.set_turbos_tier(&admin_witness, 100, 10_000);
+        turbos::set_tier(
+            &mut f.config,
+            &admin_witness,
+            800,
+            (std::u32::max_value!() as u64) + 1,
+        );
     });
 
     fixture.end();

@@ -6,6 +6,7 @@
 module blast_fun_migrators::turbos;
 
 use blast_fun::{
+    acl::AdminWitness,
     launch::Launch,
     migration_math,
     package_version::PackageVersion,
@@ -32,6 +33,13 @@ use turbos_clmm::{
 /// Turbos must use at least 99.99% of both migration balances.
 const MAX_RESIDUAL_BPS: u64 = 1;
 
+/// The highest registered Turbos `Fee` tier object — `FEE40000BPS`, spacing
+/// 800 at a 4% fee (1e6 denominator) — enumerated from live mainnet
+/// `turbos_clmm::fee::Fee` objects on 2026-08-30. Meme pools take the venue's
+/// highest tier.
+const DEFAULT_TICK_SPACING: u32 = 800;
+const DEFAULT_FEE_RATE: u64 = 40_000;
+
 /// Coarse adoption gate; the residual rule below binds far tighter.
 const MAX_PRICE_DEVIATION_BPS: u64 = 50;
 
@@ -40,6 +48,7 @@ const EPositionPoolMismatch: u64 = 1;
 const EZeroPositionLiquidity: u64 = 2;
 const EPositionLiquidityChanged: u64 = 3;
 const ETierMismatch: u64 = 5;
+const EInvalidFeeRate: u64 = 6;
 
 // === Public Structs ===
 
@@ -473,13 +482,36 @@ public fun collect_fees_meme_b<Meme, Quote, FeeType>(
     );
 }
 
+/// Pins the Turbos tier under a live core admin witness, replacing the default.
+///
+/// The fee is bounded to `u32` because the venue's `Fee` objects carry a
+/// `u32`; a larger pin could never match any tier.
+public fun set_tier(
+    venue_config: &mut VenueConfig,
+    _: &AdminWitness,
+    tick_spacing: u32,
+    fee_rate: u64,
+) {
+    assert!(fee_rate <= (std::u32::max_value!() as u64), EInvalidFeeRate);
+
+    venue_config.set_tier(Venue(), tick_spacing, fee_rate);
+}
+
 // === Private Functions ===
+
+fun pinned_tier(venue_config: &VenueConfig): (u32, u64) {
+    if (venue_config.contains<Venue>()) {
+        venue_config.tier<Venue>()
+    } else {
+        (DEFAULT_TICK_SPACING, DEFAULT_FEE_RATE)
+    }
+}
 
 fun assert_fee_tier<FeeType>(
     venue_config: &VenueConfig,
     fee: &Fee<FeeType>,
 ): (u32, u64) {
-    let (tick_spacing, fee_rate) = venue_config.turbos_tier();
+    let (tick_spacing, fee_rate) = pinned_tier(venue_config);
     assert!(fee.get_tick_spacing() == tick_spacing, ETierMismatch);
     assert!((fee.get_fee() as u64) == fee_rate, ETierMismatch);
 
@@ -490,7 +522,7 @@ fun assert_pool_tier<CoinA, CoinB, FeeType>(
     venue_config: &VenueConfig,
     pool: &Pool<CoinA, CoinB, FeeType>,
 ): (u32, u64) {
-    let (tick_spacing, fee_rate) = venue_config.turbos_tier();
+    let (tick_spacing, fee_rate) = pinned_tier(venue_config);
     assert!(pool.get_pool_tick_spacing() == tick_spacing, ETierMismatch);
     assert!((pool.get_pool_fee() as u64) == fee_rate, ETierMismatch);
 
@@ -665,4 +697,9 @@ fun collect_position_fees<X, Y, Meme, Quote, FeeType>(
 #[test_only]
 public fun tick_bits_for_testing(magnitude: u32, is_neg: bool): u32 {
     tick_bits(magnitude, is_neg)
+}
+
+#[test_only]
+public fun pinned_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
+    pinned_tier(venue_config)
 }

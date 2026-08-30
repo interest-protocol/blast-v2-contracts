@@ -10,34 +10,12 @@ public struct VenueConfigCreated has copy, drop {
     config_id: ID,
 }
 
-/// Records one pinned Bluefin tier replacing the previous values.
-public struct BluefinTierUpdated has copy, drop {
-    old_tick_spacing: u32,
-    new_tick_spacing: u32,
-    old_fee_rate: u64,
-    new_fee_rate: u64,
-}
-
-/// Records one pinned Cetus tick spacing replacing the previous value.
-public struct CetusTickSpacingUpdated has copy, drop {
-    old_tick_spacing: u32,
-    new_tick_spacing: u32,
-}
-
-/// Records one pinned Full Sail tick spacing replacing the previous value.
-public struct FullSailTickSpacingUpdated has copy, drop {
-    old_tick_spacing: u32,
-    new_tick_spacing: u32,
-}
-
-/// Records one pinned MMT fee rate replacing the previous value.
-public struct MmtFeeRateUpdated has copy, drop {
-    old_fee_rate: u64,
-    new_fee_rate: u64,
-}
-
-/// Records one pinned Turbos tier replacing the previous values.
-public struct TurbosTierUpdated has copy, drop {
+/// Records one pinned venue tier replacing the previous values.
+///
+/// Zero old values mean the venue module's compiled default was active before
+/// this pin; consumers overlay the documented defaults when replaying.
+public struct VenueTierUpdated has copy, drop {
+    venue: TypeName,
     old_tick_spacing: u32,
     new_tick_spacing: u32,
     old_fee_rate: u64,
@@ -139,54 +117,14 @@ public(package) fun venue_config_created(config_id: ID) {
     sui::event::emit(VenueConfigCreated { config_id });
 }
 
-public(package) fun bluefin_tier_updated(
+public(package) fun venue_tier_updated<Venue>(
     old_tick_spacing: u32,
     new_tick_spacing: u32,
     old_fee_rate: u64,
     new_fee_rate: u64,
 ) {
-    sui::event::emit(BluefinTierUpdated {
-        old_tick_spacing,
-        new_tick_spacing,
-        old_fee_rate,
-        new_fee_rate,
-    });
-}
-
-public(package) fun cetus_tick_spacing_updated(
-    old_tick_spacing: u32,
-    new_tick_spacing: u32,
-) {
-    sui::event::emit(CetusTickSpacingUpdated {
-        old_tick_spacing,
-        new_tick_spacing,
-    });
-}
-
-public(package) fun fullsail_tick_spacing_updated(
-    old_tick_spacing: u32,
-    new_tick_spacing: u32,
-) {
-    sui::event::emit(FullSailTickSpacingUpdated {
-        old_tick_spacing,
-        new_tick_spacing,
-    });
-}
-
-public(package) fun mmt_fee_rate_updated(
-    old_fee_rate: u64,
-    new_fee_rate: u64,
-) {
-    sui::event::emit(MmtFeeRateUpdated { old_fee_rate, new_fee_rate });
-}
-
-public(package) fun turbos_tier_updated(
-    old_tick_spacing: u32,
-    new_tick_spacing: u32,
-    old_fee_rate: u64,
-    new_fee_rate: u64,
-) {
-    sui::event::emit(TurbosTierUpdated {
+    sui::event::emit(VenueTierUpdated {
+        venue: type_name::with_original_ids<Venue>(),
         old_tick_spacing,
         new_tick_spacing,
         old_fee_rate,

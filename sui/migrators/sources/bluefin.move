@@ -7,6 +7,7 @@
 module blast_fun_migrators::bluefin;
 
 use blast_fun::{
+    acl::AdminWitness,
     launch::Launch,
     migration_math,
     package_version::PackageVersion,
@@ -33,6 +34,12 @@ use sui::{
 
 /// Venue rounding can return at most one basis point of either source balance.
 const MAX_RESIDUAL_BPS: u64 = 1;
+
+/// Bluefin registers no fee-tier table, so the default is the venue's dominant
+/// production meme tier — spacing 200 at a 1% fee (1e6 denominator), observed
+/// across live mainnet `bluefin_spot::pool::Pool` objects on 2026-08-30.
+const DEFAULT_TICK_SPACING: u32 = 200;
+const DEFAULT_FEE_RATE: u64 = 10_000;
 
 /// Bluefin's inclusive lower Q64.64 initialization bound at the pinned package.
 const MIN_SQRT_PRICE_X64: u128 = 4_295_048_016;
@@ -78,7 +85,7 @@ public fun migrate<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     let launch_id = object::id(launch);
-    let (tick_spacing, fee_rate) = venue_config.bluefin_tier();
+    let (tick_spacing, fee_rate) = pinned_tier(venue_config);
     let (lower_tick_bits, upper_tick_bits) =
         full_range_ticks(bluefin_config, tick_spacing);
     let pool_name = pool_name(meme_currency, quote_currency);
@@ -204,7 +211,25 @@ public fun collect_fees<Meme, Quote>(
     );
 }
 
+/// Pins the Bluefin tier under a live core admin witness, replacing the default.
+public fun set_tier(
+    venue_config: &mut VenueConfig,
+    _: &AdminWitness,
+    tick_spacing: u32,
+    fee_rate: u64,
+) {
+    venue_config.set_tier(Venue(), tick_spacing, fee_rate);
+}
+
 // === Private Functions ===
+
+fun pinned_tier(venue_config: &VenueConfig): (u32, u64) {
+    if (venue_config.contains<Venue>()) {
+        venue_config.tier<Venue>()
+    } else {
+        (DEFAULT_TICK_SPACING, DEFAULT_FEE_RATE)
+    }
+}
 
 fun full_range_ticks(
     bluefin_config: &GlobalConfig,
@@ -336,4 +361,11 @@ fun lock_and_share<Meme, Quote>(
         tick_spacing,
         fee_rate,
     );
+}
+
+// === Test-Only Functions ===
+
+#[test_only]
+public fun pinned_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
+    pinned_tier(venue_config)
 }

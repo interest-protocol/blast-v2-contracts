@@ -2,6 +2,7 @@
 module blast_fun_migrators::cetus;
 
 use blast_fun::{
+    acl::AdminWitness,
     launch::Launch,
     migration_math,
     package_version::PackageVersion,
@@ -25,6 +26,12 @@ use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, coin_registry::Cur
 
 /// Cetus must use at least 99.99% of both migration balances.
 const MAX_RESIDUAL_BPS: u64 = 1;
+
+/// The highest of Cetus's sixteen registered fee tiers — spacing 260 at a 4%
+/// fee (1e6 denominator) — read from the live mainnet `GlobalConfig` fee-tier
+/// registry on 2026-08-30. Meme pools take the venue's highest tier.
+const DEFAULT_TICK_SPACING: u32 = 260;
+const DEFAULT_FEE_RATE: u64 = 40_000;
 
 /// Coarse adoption gate; the residual rule below binds far tighter.
 const MAX_PRICE_DEVIATION_BPS: u64 = 50;
@@ -61,11 +68,12 @@ public fun migrate_new_meme_a<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert_canonical_order<Meme, Quote>(true);
-    let tick_spacing = venue_config.cetus_tick_spacing();
+    let (tick_spacing, pinned_fee_rate) = pinned_tier(venue_config);
     // The key value is unused; the call aborts when the pair and spacing
     // cannot form a canonical Cetus pool key.
     let _pool_key = factory::new_pool_key<Meme, Quote>(tick_spacing);
     let fee_rate = config::get_fee_rate(tick_spacing, cetus_config);
+    assert!(fee_rate == pinned_fee_rate, ETierMismatch);
     let (lower_tick_bits, upper_tick_bits) =
         pool_creator::full_range_tick_range(tick_spacing);
     let launch_id = object::id(launch);
@@ -138,11 +146,12 @@ public fun migrate_new_meme_b<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert_canonical_order<Meme, Quote>(false);
-    let tick_spacing = venue_config.cetus_tick_spacing();
+    let (tick_spacing, pinned_fee_rate) = pinned_tier(venue_config);
     // The key value is unused; the call aborts when the pair and spacing
     // cannot form a canonical Cetus pool key.
     let _pool_key = factory::new_pool_key<Quote, Meme>(tick_spacing);
     let fee_rate = config::get_fee_rate(tick_spacing, cetus_config);
+    assert!(fee_rate == pinned_fee_rate, ETierMismatch);
     let (lower_tick_bits, upper_tick_bits) =
         pool_creator::full_range_tick_range(tick_spacing);
     let launch_id = object::id(launch);
@@ -217,7 +226,7 @@ public fun migrate_existing_meme_a<Meme, Quote>(
     assert_canonical_order<Meme, Quote>(true);
     let tick_spacing = pool.tick_spacing();
     let fee_rate = pool.fee_rate();
-    assert_adopted_tier(venue_config, cetus_config, tick_spacing, fee_rate);
+    assert_adopted_tier(venue_config, tick_spacing, fee_rate);
     let (lower_tick_bits, upper_tick_bits) =
         pool_creator::full_range_tick_range(tick_spacing);
     let launch_id = object::id(launch);
@@ -321,7 +330,7 @@ public fun migrate_existing_meme_b<Meme, Quote>(
     assert_canonical_order<Meme, Quote>(false);
     let tick_spacing = pool.tick_spacing();
     let fee_rate = pool.fee_rate();
-    assert_adopted_tier(venue_config, cetus_config, tick_spacing, fee_rate);
+    assert_adopted_tier(venue_config, tick_spacing, fee_rate);
     let (lower_tick_bits, upper_tick_bits) =
         pool_creator::full_range_tick_range(tick_spacing);
     let launch_id = object::id(launch);
@@ -468,6 +477,16 @@ public fun collect_fees_meme_b<Meme, Quote>(
     );
 }
 
+/// Pins the Cetus tier under a live core admin witness, replacing the default.
+public fun set_tier(
+    venue_config: &mut VenueConfig,
+    _: &AdminWitness,
+    tick_spacing: u32,
+    fee_rate: u64,
+) {
+    venue_config.set_tier(Venue(), tick_spacing, fee_rate);
+}
+
 // === Private Functions ===
 
 fun assert_canonical_order<Meme, Quote>(meme_is_a: bool) {
@@ -479,18 +498,20 @@ fun assert_canonical_order<Meme, Quote>(meme_is_a: bool) {
 
 fun assert_adopted_tier(
     venue_config: &VenueConfig,
-    cetus_config: &GlobalConfig,
     tick_spacing: u32,
     fee_rate: u64,
 ) {
-    assert!(
-        tick_spacing == venue_config.cetus_tick_spacing(),
-        ETierMismatch,
-    );
-    assert!(
-        fee_rate == config::get_fee_rate(tick_spacing, cetus_config),
-        ETierMismatch,
-    );
+    let (pinned_tick_spacing, pinned_fee_rate) = pinned_tier(venue_config);
+    assert!(tick_spacing == pinned_tick_spacing, ETierMismatch);
+    assert!(fee_rate == pinned_fee_rate, ETierMismatch);
+}
+
+fun pinned_tier(venue_config: &VenueConfig): (u32, u64) {
+    if (venue_config.contains<Venue>()) {
+        venue_config.tier<Venue>()
+    } else {
+        (DEFAULT_TICK_SPACING, DEFAULT_FEE_RATE)
+    }
 }
 
 fun assert_payment_amounts(
@@ -620,4 +641,11 @@ fun collect_position_fees<X, Y, Meme, Quote>(
     assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
 
     (position_id, fee_a, fee_b, liquidity_before, liquidity_after)
+}
+
+// === Test-Only Functions ===
+
+#[test_only]
+public fun pinned_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
+    pinned_tier(venue_config)
 }

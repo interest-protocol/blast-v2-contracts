@@ -2,6 +2,7 @@
 module blast_fun_migrators::mmt;
 
 use blast_fun::{
+    acl::AdminWitness,
     launch::Launch,
     migration_math,
     package_version::PackageVersion,
@@ -30,10 +31,19 @@ use sui::{clock::Clock, coin::Coin, coin_registry::Currency};
 /// MMT must use at least 99.99% of both migration balances.
 const MAX_RESIDUAL_BPS: u64 = 1;
 
+/// The highest of MMT's ten registered fee entries — a 2% fee (1e6
+/// denominator) whose registered tick spacing is 400 — read from the live
+/// mainnet `fee_amount_tick_spacing` table on 2026-08-30. Meme pools take the
+/// venue's highest tier. The venue derives spacing from the fee, so the
+/// created pool's spacing is asserted against the pinned value.
+const DEFAULT_TICK_SPACING: u32 = 400;
+const DEFAULT_FEE_RATE: u64 = 20_000;
+
 const EInvalidCoinOrder: u64 = 0;
 const EPositionPoolMismatch: u64 = 1;
 const EZeroPositionLiquidity: u64 = 2;
 const EPositionLiquidityChanged: u64 = 3;
+const ETierMismatch: u64 = 4;
 
 // === Public Structs ===
 
@@ -58,7 +68,7 @@ public fun migrate_meme_x<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert_coin_order<Meme, Quote>(true);
-    let fee_rate = venue_config.mmt_fee_rate();
+    let (pinned_tick_spacing, fee_rate) = pinned_tier(venue_config);
 
     let launch_id = object::id(launch);
     let payload = launch.migrate<Meme, Quote, Witness>(
@@ -94,6 +104,7 @@ public fun migrate_meme_x<Meme, Quote>(
     ) = create_and_seed_pool<Meme, Quote>(
         global_config,
         mmt_version,
+        pinned_tick_spacing,
         fee_rate,
         sqrt_price_x64,
         meme.into_coin(ctx),
@@ -137,7 +148,7 @@ public fun migrate_meme_y<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert_coin_order<Meme, Quote>(false);
-    let fee_rate = venue_config.mmt_fee_rate();
+    let (pinned_tick_spacing, fee_rate) = pinned_tier(venue_config);
 
     let launch_id = object::id(launch);
     let payload = launch.migrate<Meme, Quote, Witness>(
@@ -173,6 +184,7 @@ public fun migrate_meme_y<Meme, Quote>(
     ) = create_and_seed_pool<Quote, Meme>(
         global_config,
         mmt_version,
+        pinned_tick_spacing,
         fee_rate,
         sqrt_price_x64,
         quote.into_coin(ctx),
@@ -277,7 +289,25 @@ public fun collect_fees_meme_y<Meme, Quote>(
     );
 }
 
+/// Pins the MMT tier under a live core admin witness, replacing the default.
+public fun set_tier(
+    venue_config: &mut VenueConfig,
+    _: &AdminWitness,
+    tick_spacing: u32,
+    fee_rate: u64,
+) {
+    venue_config.set_tier(Venue(), tick_spacing, fee_rate);
+}
+
 // === Private Functions ===
+
+fun pinned_tier(venue_config: &VenueConfig): (u32, u64) {
+    if (venue_config.contains<Venue>()) {
+        venue_config.tier<Venue>()
+    } else {
+        (DEFAULT_TICK_SPACING, DEFAULT_FEE_RATE)
+    }
+}
 
 fun assert_coin_order<Meme, Quote>(meme_is_x: bool) {
     let meme_x_order = create_pool::check_coin_order<Meme, Quote>();
@@ -289,6 +319,7 @@ fun assert_coin_order<Meme, Quote>(meme_is_x: bool) {
 fun create_and_seed_pool<X, Y>(
     global_config: &mut GlobalConfig,
     mmt_version: &Version,
+    pinned_tick_spacing: u32,
     fee_rate: u64,
     sqrt_price_x64: u128,
     coin_x: Coin<X>,
@@ -314,6 +345,7 @@ fun create_and_seed_pool<X, Y>(
     let lower_tick_bits = i32::as_u32(lower_tick);
     let upper_tick_bits = i32::as_u32(upper_tick);
     let tick_spacing = pool::tick_spacing(&pool);
+    assert!(tick_spacing == pinned_tick_spacing, ETierMismatch);
 
     let mut position = liquidity::open_position(
         &mut pool,
@@ -454,4 +486,11 @@ fun collect_position_fees<X, Y, Meme, Quote>(
     assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
 
     (position_id, fee_x, fee_y, liquidity_before, liquidity_after)
+}
+
+// === Test-Only Functions ===
+
+#[test_only]
+public fun pinned_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
+    pinned_tier(venue_config)
 }
