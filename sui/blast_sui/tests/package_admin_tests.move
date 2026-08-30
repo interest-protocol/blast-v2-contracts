@@ -3,7 +3,7 @@ module blast_sui::package_admin_tests;
 
 use blast_sui::{acl, blast, errors, events, package_admin, package_version};
 use std::unit_test::{assert_eq, destroy};
-use sui::{package, test_scenario::{Self, Scenario}};
+use sui::{event, package, test_scenario::{Self, Scenario}};
 
 use fun custody_end as CustodyFixture.end;
 use fun custody_next_tx as CustodyFixture.next_tx;
@@ -47,21 +47,16 @@ public struct UpgradeFixture {
     authority: acl::ProtocolAuthority,
     package_admin: package_admin::PackageAdmin,
     package_version: package_version::PackageVersion,
-    version_created: events::PackageVersionCreated,
 }
 
 // === Tests ===
 
 #[test]
-fun package_version_initialization_and_activation_emit_wrapped_facts() {
+fun package_version_activation_emits_the_only_wrapped_cutover_fact() {
     let mut fixture = start_upgrade();
 
     fixture.next_tx!(SUPER_ADMIN, |f| {
-        let (package_version_id, emitted_version) =
-            f.version_created.package_version_created_fields();
-        assert_eq!(package_version_id, object::id(&f.package_version));
-        assert_eq!(emitted_version, 1);
-        assert_eq!(emitted_version, f.package_version.value_for_testing());
+        assert_eq!(f.package_version.value_for_testing(), 1);
 
         f.package_version.set_for_testing(0);
         package_admin::activate_package_version(
@@ -260,7 +255,7 @@ fun foreign_super_admin_cap_cannot_authorize_an_upgrade() {
 
     fixture.next_tx!(SUPER_ADMIN, |f| {
         let (foreign_cap, foreign_authority) =
-            acl::new_protocol_for_testing(OTHER_PACKAGE_ID, f.ctx!());
+            acl::new_protocol_for_testing(f.ctx!());
         let ticket = f.package_admin.authorize_upgrade(
                 &f.package_version,
                 &f.authority,
@@ -419,10 +414,12 @@ fun start_custody(): CustodyFixture {
 fun start_upgrade(): UpgradeFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     package_version::init_for_testing(scenario.ctx());
-    let version_created = events::collect_one<events::PackageVersionCreated>(0);
+
+    assert_eq!(event::num_events(), 0);
+
     let package_admin = package_admin::new_for_testing(PACKAGE_ID.to_id(), scenario.ctx());
     let (super_admin_cap, authority) =
-        acl::new_protocol_for_testing(PUBLISHER, scenario.ctx());
+        acl::new_protocol_for_testing(scenario.ctx());
 
     scenario.next_tx(PUBLISHER);
     let package_version = scenario.take_shared<package_version::PackageVersion>();
@@ -433,7 +430,6 @@ fun start_upgrade(): UpgradeFixture {
         authority,
         package_admin,
         package_version,
-        version_created,
     }
 }
 

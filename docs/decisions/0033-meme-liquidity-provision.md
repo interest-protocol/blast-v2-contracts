@@ -12,6 +12,9 @@
 > only the reserved provision enters the migration payload. BurnOnly destroys
 > terminal disposal natively; Fixed transfers it to `0x0` without reducing
 > total supply.
+> Amended by [ADR 0058](0058-eventless-package-initialization.md): the
+> `LaunchConfigCreated` payload is removed; the initial zero provision is a
+> compiled constant of the published bytecode.
 
 ## Sources
 
@@ -201,11 +204,12 @@ would violate the layering in `docs/architecture.md`.
 
 ### Event schema
 
-`LaunchConfigCreated` gains `meme_liquidity_provision_bps` (initially 0) and
-`GraduationDefaultsChanged` carries the complete old/new triple. Both remain
-wrapped in the package `Event<T>` envelope with no application sequence,
-schema version, action tag, or nonce. A replay consumer reconstructs the
-effective policy of every launch from creation plus mutation facts alone.
+`LaunchConfig` starts `meme_liquidity_provision_bps` at the compiled zero — ADR
+0058 removed the `LaunchConfigCreated` payload that once restated it — and
+`GraduationDefaultsChanged` carries the complete old/new triple wrapped in the
+package `Event<T>` envelope, with no application sequence, schema version,
+action tag, or nonce. A replay consumer reconstructs the effective policy of
+every launch from that compiled zero plus the mutation facts alone.
 
 ## Alternatives considered
 

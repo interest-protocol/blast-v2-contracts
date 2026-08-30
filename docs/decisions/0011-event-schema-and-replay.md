@@ -2,7 +2,13 @@
 
 - Status: proposed
 - Date: 2026-08-22
-- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0032](0032-admin-authorized-upgrade-cap-custody.md), [0035](0035-initializer-finalized-meme-supply.md), [0039](0039-deterministic-quote-valuations.md), [0041](0041-launch-config-owned-trade-fees.md)
+- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0032](0032-admin-authorized-upgrade-cap-custody.md), [0035](0035-initializer-finalized-meme-supply.md), [0039](0039-deterministic-quote-valuations.md), [0041](0041-launch-config-owned-trade-fees.md), [0058](0058-eventless-package-initialization.md)
+
+> Amended by [ADR 0058](0058-eventless-package-initialization.md): package
+> initialization emits no events. The `ProtocolAuthorityCreated`,
+> `PackageVersionCreated`, `RuntimeConfigCreated`, and `LaunchConfigCreated`
+> rows below are removed from the catalogue; native publication effects and the
+> published constants carry those facts.
 
 ## Sources
 
@@ -52,7 +58,7 @@ gap detection, or replay. See
 | Domain scope | Identity and replay fields | Ordering | Emitted by |
 | --- | --- | --- | --- |
 | **per-launch** | original meme and quote `TypeName`, plus timestamp when the domain needs it | native checkpoint, transaction, and event position | `blast_fun` launch, curve, claim, migration paths |
-| **global** | fully qualified typed payload; a singleton's creation fact carries its discovery id, while mutations carry changing entry identity and old/new values | native checkpoint, transaction, and event position | `blast_fun` ACL, configuration, Display, adapter-approval, X-claim signer paths |
+| **global** | fully qualified typed payload; publication effects supply singleton discovery, while mutations carry changing entry identity and old/new values | native checkpoint, transaction, and event position | `blast_fun` ACL, configuration, Display, adapter-approval, X-claim signer paths |
 | **epoch** | `epoch_id` and quote type | native checkpoint, transaction, and event position | `blast_fun_revshare` |
 | **per-meme fact** | original meme `TypeName` | native position; at most one claim fact per generated meme type | `blast_fun` creator authority |
 
@@ -60,11 +66,12 @@ Replay continuity comes from stable entity identity together with old/new values
 snapshots. A domain counter is added only if it is itself business state or native position cannot order
 the relevant transitions; that exception requires an explicit ADR.
 
-ADRs 0018 and 0028 separate global administration from live runtime configuration. Their creation
-payloads announce the `ProtocolAuthority`, `RuntimeConfig`, `LaunchConfig`, and
-`PackageAdmin` object ids. Under ADR
-0030, each later mutation's fully qualified typed payload identifies its production-singleton concern
-without repeating that unchanging owner id.
+ADRs 0018 and 0028 separate global administration from live runtime configuration. Under ADR 0058 the
+`ProtocolAuthority`, `RuntimeConfig`, `LaunchConfig`, and package-version singletons announce
+themselves through the publish transaction's native effects rather than a creation payload;
+`PackageAdminCreated` remains because wrapping commits a caller-supplied cap's version and policy.
+Under ADR 0030, each later mutation's fully qualified typed payload identifies its production-singleton
+concern without repeating that unchanging owner id.
 
 One payload deliberately carries fields from more than one domain scope because it genuinely belongs to two domains:
 
@@ -89,17 +96,13 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `MetadataFrozen` | L | metadata cap id |
 | `CreatorCapClaimed` | M | creator address, optional X identity commitment, optional X expiry |
 | `LaunchTicketCreated` | M | ticket id, original meme type, exact initial supply, metadata-cap id, launcher, address-or-X creator identity, burnable selection, and `sell_burn_bps` |
-| `ProtocolAuthorityCreated` | G | authority id, initial root-cap id and recipient, admin bound, root-transfer delay |
 | `AdminGranted` | G | admin-cap id, recipient |
 | `AdminRevoked` | G | admin-cap id; membership removed while the cap object may remain |
 | `AdminDestroyed` | G | admin-cap id, `was_active`; cap deleted and membership absent afterward |
 | `SuperAdminTransferStarted` | G | recipient and `execute_after_ms` |
 | `SuperAdminTransferCancelled` | G | removed pending recipient |
 | `SuperAdminTransferred` | G | previous/new super-admin-cap ids and recipient |
-| `PackageVersionCreated` | G | package-version singleton id and initial operational version |
-| `RuntimeConfigCreated` | G | runtime-config id and zero `protocol_fee_share_bps`; disabled signer state is an initialization invariant |
 | `ProtocolFeeShareChanged` | G | old/new `protocol_fee_share_bps` |
-| `LaunchConfigCreated` | G | shared launch-config id, quote and migration-witness bounds, zero initial trade-fee rates, zero-safe initial graduation defaults, and the zero unconfigured Meme liquidity provision |
 | `QuoteAllowed` | G | original quote type, initial migration quote target |
 | `QuoteMigrationTargetChanged` | G | original quote type, old/new migration quote target |
 | `QuoteDisallowed` | G | original quote type, previous migration quote target |
@@ -172,8 +175,8 @@ are available from native Sui object ownership and transaction effects. The prot
 cap issuance, claimant identity, claimed amounts, and the resulting accounting state.
 
 Reducers process native Sui event order and partition multi-instance state by the stable identity carried
-in each payload. A typed singleton stream is initialized by its creation fact and needs no repeated owner
-id. Old/new continuity and final snapshots expose dropped or misapplied domain transitions without adding
+in each payload. A typed singleton stream is initialized by the publish transaction's effects and the
+published constants, then advanced by old/new mutation pairs, and needs no repeated owner id. Old/new continuity and final snapshots expose dropped or misapplied domain transitions without adding
 counters to protocol storage. `CreatorCapClaimed` is reduced as one immutable fact keyed by meme type.
 
 ### Operation-to-rule checklist

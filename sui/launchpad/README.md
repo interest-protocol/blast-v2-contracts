@@ -87,7 +87,11 @@ The core package now contains:
 - `events_wrapper.move` — the stable package-wide `Event<T>` indexing envelope
   and its single package emitter;
 - `events.move` — public payload schemas, package-only emitters routed through
-  the wrapper, and test-only collection/field inspection;
+  the wrapper, and test-only collection/field inspection; package
+  initialization emits nothing, because transaction effects natively record
+  each shared singleton, its type, the delivered root capability, and the
+  publishing sender, and every other initial value is a compiled constant
+  (ADR 0058);
 - `creator_authority_tests.move` — interface and integration tests for the ACL,
   shared runtime configuration, and address/X creator-claim seam, including the
   independent Ed25519 fixture and adversarial lifecycle cases.

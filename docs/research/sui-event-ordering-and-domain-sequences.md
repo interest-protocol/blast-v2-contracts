@@ -10,14 +10,15 @@ already make configuration replay deterministic and complete?
 
 ## Verdict
 
-Do not add an application-level `sequence` to `RuntimeConfig`,
-`RuntimeConfigCreated`, or `ProtocolFeeShareChanged`.
+Do not add an application-level `sequence` to `RuntimeConfig` or
+`ProtocolFeeShareChanged`.
 
 Sui already assigns each event a ledger position and exposes ordered,
-cursor-resumable event queries. Blast's creation event identifies the singleton
-and records its initial value; each fully qualified typed mutation belongs to
-that production-singleton stream and records the old and new values. Replaying
-those payloads in Sui ledger order is therefore sufficient to reconstruct the
+cursor-resumable event queries. The publish transaction's effects identify the
+singleton and the published bytecode carries its initial value (ADR 0058); each
+fully qualified typed mutation belongs to that production-singleton stream and
+records the old and new values. Replaying those payloads in Sui ledger order is
+therefore sufficient to reconstruct the
 configuration. Neither a repeated singleton id nor a stored counter adds
 protocol meaning.
 
@@ -99,8 +100,8 @@ arrives.
 
 Starting at package deployment:
 
-1. `RuntimeConfigCreated(runtime_config_id, protocol_fee_share_bps)` establishes the
-   unique entity and initial value.
+1. The publish transaction's effects establish the unique entity, and the
+   compiled zero of `bps::new(0)` is its initial value (ADR 0058).
 2. Each typed `ProtocolFeeShareChanged(old, new)` applies to that production
    singleton.
 3. Process mutations in Sui ledger order. Require `old` to equal the replayed

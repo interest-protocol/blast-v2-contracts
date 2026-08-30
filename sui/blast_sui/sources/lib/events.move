@@ -34,14 +34,6 @@ public struct VaultCustody has copy, drop {
     blast_supply: u64,
 }
 
-/// Emitted after the package administration root is created.
-public struct ProtocolAuthorityCreated has copy, drop {
-    authority_id: ID,
-    super_admin_cap_id: ID,
-    super_admin_recipient: address,
-    super_admin_transfer_delay_ms: u64,
-}
-
 /// Emitted after a delayed root-authority transfer is scheduled.
 public struct SuperAdminTransferStarted has copy, drop {
     recipient: address,
@@ -58,12 +50,6 @@ public struct SuperAdminTransferred has copy, drop {
     previous_super_admin_cap_id: ID,
     new_super_admin_cap_id: ID,
     recipient: address,
-}
-
-/// Emitted after the one shared operational package version is created.
-public struct PackageVersionCreated has copy, drop {
-    package_version_id: ID,
-    version: u64,
 }
 
 /// Emitted after checked activation advances the shared bytecode cutover.
@@ -227,20 +213,6 @@ public(package) fun vault_custody(
     VaultCustody { fun_custody, blast_custody, exchange_rate, fun_supply, blast_supply }
 }
 
-public(package) fun protocol_authority_created(
-    authority_id: ID,
-    super_admin_cap_id: ID,
-    super_admin_recipient: address,
-    super_admin_transfer_delay_ms: u64,
-) {
-    blast_sui::events_wrapper::emit_event(ProtocolAuthorityCreated {
-        authority_id,
-        super_admin_cap_id,
-        super_admin_recipient,
-        super_admin_transfer_delay_ms,
-    });
-}
-
 public(package) fun super_admin_transfer_started(recipient: address, execute_after_ms: u64) {
     blast_sui::events_wrapper::emit_event(SuperAdminTransferStarted {
         recipient,
@@ -261,13 +233,6 @@ public(package) fun super_admin_transferred(
         previous_super_admin_cap_id,
         new_super_admin_cap_id,
         recipient,
-    });
-}
-
-public(package) fun package_version_created(package_version_id: ID, version: u64) {
-    blast_sui::events_wrapper::emit_event(PackageVersionCreated {
-        package_version_id,
-        version,
     });
 }
 
@@ -513,18 +478,6 @@ public fun vault_custody_fields(
 }
 
 #[test_only]
-public fun protocol_authority_created_fields(
-    self: &ProtocolAuthorityCreated,
-): (ID, ID, address, u64) {
-    (
-        self.authority_id,
-        self.super_admin_cap_id,
-        self.super_admin_recipient,
-        self.super_admin_transfer_delay_ms,
-    )
-}
-
-#[test_only]
 public fun super_admin_transfer_started_fields(
     self: &SuperAdminTransferStarted,
 ): (address, u64) {
@@ -539,11 +492,6 @@ public fun super_admin_transfer_cancelled_fields(self: &SuperAdminTransferCancel
 #[test_only]
 public fun super_admin_transferred_fields(self: &SuperAdminTransferred): (ID, ID, address) {
     (self.previous_super_admin_cap_id, self.new_super_admin_cap_id, self.recipient)
-}
-
-#[test_only]
-public fun package_version_created_fields(self: &PackageVersionCreated): (ID, u64) {
-    (self.package_version_id, self.version)
 }
 
 #[test_only]

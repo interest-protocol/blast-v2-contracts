@@ -1447,7 +1447,7 @@ fun start(): LaunchFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
     let (super_admin_cap, mut authority) =
-        acl::new_protocol_for_testing(PUBLISHER, scenario.ctx());
+        acl::new_protocol_for_testing(scenario.ctx());
     authority.grant_admin(
         &package_version,
         &super_admin_cap,

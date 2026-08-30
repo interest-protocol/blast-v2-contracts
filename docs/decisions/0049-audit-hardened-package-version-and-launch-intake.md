@@ -4,6 +4,10 @@
 > [ADR 0050](0050-module-local-package-version-constant.md) keeps the compiled
 > generation as a private constant in `package_version.move` rather than the
 > package-wide constants registry.
+> Event update (2026-08-30):
+> [ADR 0058](0058-eventless-package-initialization.md) removes the
+> `PackageVersionCreated` and `RuntimeConfigCreated` payloads; publication
+> effects and the compiled constants carry those facts.
 
 - Status: accepted
 - Date: 2026-08-29
@@ -65,9 +69,9 @@ assert the stored value equals the owning module's `PACKAGE_VERSION` before any 
 validation. Read-only destruction of an already retired root cap remains
 ungated because it does not mutate shared state.
 
-The singleton emits `PackageVersionCreated` with its object ID and initial
-version. `RuntimeConfigCreated` contains only its own ID and initial protocol fee
-share.
+Neither the package-version singleton nor the runtime configuration emits a
+creation payload: under ADR 0058 publication effects record both shared objects,
+and the initial version and protocol fee share are compiled constants.
 
 ### Commit and activation are separate
 

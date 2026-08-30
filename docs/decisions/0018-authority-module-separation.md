@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-23
 - Amends: [0001](0001-sui-package-and-module-layout.md), [0014](0014-typed-creator-cap-and-diagnostic-modules.md), [0015](0015-protocol-authority-and-x-signer-state.md), [0016](0016-unified-creator-cap-claim-and-suins-periphery.md)
-- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0023](0023-generated-coin-supply-and-metadata-custody.md), [0028](0028-hot-cold-runtime-configuration.md), [0031](0031-package-witness-and-publisher-custody.md)
+- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0023](0023-generated-coin-supply-and-metadata-custody.md), [0028](0028-hot-cold-runtime-configuration.md), [0031](0031-package-witness-and-publisher-custody.md), [0058](0058-eventless-package-initialization.md)
 
 ## Sources
 
@@ -85,10 +85,10 @@ is the durable post-claim authority.
 
 ACL and X signer configuration initialize independently with context-only
 initializers. The separate `blast` package module owns and consumes the package
-OTW to claim the `Publisher` under ADR 0031. `ProtocolAuthorityCreated` contains only ACL
-identity and policy. A separate `XClaimConfigCreated` identifies the disabled shared signer object.
-Splitting the creation facts is a pre-publication event-schema correction and makes each stream reducible
-without implying that one object is stored inside the other.
+OTW to claim the `Publisher` under ADR 0031. Under ADR 0058 neither initializer emits a creation
+payload at all: publication effects record each shared object, its type, and the delivered root
+capability, and the remaining ACL policy fields are compiled constants. Each stream stays independently
+reducible without implying that one object is stored inside the other.
 
 ## Alternatives considered
 

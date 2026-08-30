@@ -2007,7 +2007,7 @@ fun foreign_super_admin_cap_cannot_change_the_fee() {
     let mut fixture = start_vault();
 
     fixture.next_tx!(OWNER, |f| {
-        let (foreign_cap, foreign_authority) = acl::new_protocol_for_testing(USER, f.ctx!());
+        let (foreign_cap, foreign_authority) = acl::new_protocol_for_testing(f.ctx!());
         f.vault!().set_redeem_fee(
             &f.version,
             &f.authority,
@@ -2448,7 +2448,7 @@ fun create_vault(
 fun into_vault_fixture(self: CreateFixture): VaultFixture {
     let CreateFixture { mut runner, version, system_state } = self;
     system_state.destroy_none();
-    let (super_admin_cap, authority) = acl::new_protocol_for_testing(OWNER, runner.ctx());
+    let (super_admin_cap, authority) = acl::new_protocol_for_testing(runner.ctx());
 
     VaultFixture {
         runner,

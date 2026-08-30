@@ -22,7 +22,6 @@ const NEXT_TREASURY: address = @0x7EA5;
 public struct InitFixture {
     scenario: Scenario,
     config: runtime_config::RuntimeConfig,
-    created: events::RuntimeConfigCreated,
 }
 
 /// Live-settings administration through the ACL sign-in seam.
@@ -41,15 +40,8 @@ fun package_init_creates_live_treasury_and_disabled_zero_share_runtime_config() 
     let mut fixture = start_init();
 
     fixture.next_tx!(PUBLISHER, |f| {
-        let (emitted_config_id, protocol_treasury, protocol_fee_share_bps) =
-            f.created.runtime_config_created_fields();
-
         assert_eq!(f.config.protocol_treasury(), PUBLISHER);
         assert_eq!(f.config.protocol_fee_share_bps(), 0);
-        assert_eq!(emitted_config_id, object::id(&f.config));
-        assert_eq!(protocol_treasury, PUBLISHER);
-        assert_eq!(protocol_fee_share_bps, 0);
-        assert!(event::events_by_type<events::RuntimeConfigCreated>().is_empty());
     });
 
     fixture.end();
@@ -312,19 +304,20 @@ macro fun config_next_tx(
 fun start_init(): InitFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     runtime_config::init_for_testing(scenario.ctx());
-    let created = events::collect_one<events::RuntimeConfigCreated>(0);
+
+    assert_eq!(event::num_events(), 0);
 
     scenario.next_tx(PUBLISHER);
     let config = scenario.take_shared<runtime_config::RuntimeConfig>();
 
-    InitFixture { scenario, config, created }
+    InitFixture { scenario, config }
 }
 
 fun start(): ConfigFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
     let (super_admin_cap, mut authority) =
-        acl::new_protocol_for_testing(PUBLISHER, scenario.ctx());
+        acl::new_protocol_for_testing(scenario.ctx());
     authority.grant_admin(
         &package_version,
         &super_admin_cap,

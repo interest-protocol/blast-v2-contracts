@@ -138,9 +138,12 @@ that yield, so the sweep has no supply condition.
 
 ## Events
 
-All payloads are wrapped in `events_wrapper::Event<T>`. Administration emits
-`ProtocolAuthorityCreated`, `SuperAdminTransferStarted`, `SuperAdminTransferCancelled`,
-`SuperAdminTransferred`, `PackageVersionCreated`, `PackageVersionAdvanced`,
+All payloads are wrapped in `events_wrapper::Event<T>`. Package publication
+itself emits nothing: transaction effects natively record the shared
+`ProtocolAuthority` and `PackageVersion` and the delivered `SuperAdminCap`, and
+the compiled transfer delay and initial generation are constants of the
+published bytecode (ADR 0058). Administration emits `SuperAdminTransferStarted`,
+`SuperAdminTransferCancelled`, `SuperAdminTransferred`, `PackageVersionAdvanced`,
 `PackageAdminCreated`, `UpgradeAuthorized`, `UpgradeCommitted`, and
 `UpgradePolicyRestricted`. The receipt and vault flows emit `VaultCreated`,
 `FunSuiMinted`, `FunSuiRedeemed`, `BlastSuiDepositRequested`,

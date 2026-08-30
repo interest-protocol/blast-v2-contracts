@@ -52,7 +52,6 @@ public struct Q16() has drop;
 public struct InitFixture {
     scenario: Scenario,
     config: launch_config::LaunchConfig,
-    created: events::LaunchConfigCreated,
 }
 
 /// Cold-policy administration through the ACL sign-in seam.
@@ -72,22 +71,13 @@ fun package_init_creates_safe_bounded_launch_config() {
 
     fixture.next_tx!(PUBLISHER, |f| {
         let (
-            emitted_config_id,
-            max_quote_assets,
-            max_migration_witnesses,
             quote_fee_bps,
             meme_fee_bps,
             quote_migration_fee_bps,
             protocol_meme_graduation_fee_bps,
             meme_liquidity_provision_bps,
-        ) = f.created.launch_config_created_fields();
+        ) = f.config.rate_defaults_for_testing();
 
-        assert_eq!(emitted_config_id, object::id(&f.config));
-        assert_eq!(max_quote_assets, constants::max_quote_assets!());
-        assert_eq!(
-            max_migration_witnesses,
-            constants::max_migration_witnesses!(),
-        );
         assert_eq!(quote_fee_bps, 0);
         assert_eq!(meme_fee_bps, 0);
         assert_eq!(quote_migration_fee_bps, 0);
@@ -95,7 +85,6 @@ fun package_init_creates_safe_bounded_launch_config() {
         assert_eq!(meme_liquidity_provision_bps, 0);
         assert_eq!(f.config.allowed_quote_count_for_testing(), 0);
         assert_eq!(f.config.allowed_migration_witness_count_for_testing(), 0);
-        assert!(event::events_by_type<events::LaunchConfigCreated>().is_empty());
     });
 
     fixture.end();
@@ -1135,19 +1124,20 @@ macro fun config_next_tx(
 fun start_init(): InitFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     launch_config::init_for_testing(scenario.ctx());
-    let created = events::collect_one<events::LaunchConfigCreated>(0);
+
+    assert_eq!(event::num_events(), 0);
 
     scenario.next_tx(PUBLISHER);
     let config = scenario.take_shared<launch_config::LaunchConfig>();
 
-    InitFixture { scenario, config, created }
+    InitFixture { scenario, config }
 }
 
 fun start(): ConfigFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
     let (super_admin_cap, mut authority) =
-        acl::new_protocol_for_testing(PUBLISHER, scenario.ctx());
+        acl::new_protocol_for_testing(scenario.ctx());
     authority.grant_admin(
         &package_version,
         &super_admin_cap,

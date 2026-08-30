@@ -3,10 +3,19 @@
 - Status: accepted
 - Date: 2026-08-25
 - Amends: [0011](0011-event-schema-and-replay.md), [0015](0015-protocol-authority-and-x-signer-state.md), [0020](0020-admin-cap-self-destruction.md), [0028](0028-hot-cold-runtime-configuration.md)
+- Amended by: [0039](0039-deterministic-quote-valuations.md), [0058](0058-eventless-package-initialization.md)
 
 > Amended by [ADR 0039](0039-deterministic-quote-valuations.md): the pre-release
 > `QuoteMigrationTargetChanged` event is replaced by the replay-complete
 > `QuoteParametersChanged` event for the virtual/terminal pair.
+
+> Amended by [ADR 0058](0058-eventless-package-initialization.md): the
+> "Creation events retain singleton discovery ids" decision below is reversed.
+> `ProtocolAuthorityCreated`, `RuntimeConfigCreated`, and `LaunchConfigCreated`
+> are removed entirely, because every field they carried is either recorded by
+> the publish transaction's native effects or compiled into the published
+> bytecode. The rest of this record — no repeated owner id on typed singleton
+> mutations, and changed state only on root-transfer facts — stands unchanged.
 
 ## Sources
 

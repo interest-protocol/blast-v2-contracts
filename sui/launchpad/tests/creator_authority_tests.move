@@ -6,6 +6,7 @@ use blast_fun::{
     constants,
     creator_authority,
     events,
+    launch_config::{Self, LaunchConfig},
     package_version::{Self, PackageVersion},
     runtime_config,
 };
@@ -23,7 +24,10 @@ use fun claim_next_tx_expecting_events as ClaimFixture.next_tx_expecting_events;
 use fun event_ctx as EventFixture.ctx;
 use fun event_end as EventFixture.end;
 use fun event_next_tx as EventFixture.next_tx;
+use fun event_take_authority as EventFixture.take_authority;
+use fun event_take_launch_config as EventFixture.take_launch_config;
 use fun event_take_package_version as EventFixture.take_package_version;
+use fun event_take_runtime_config as EventFixture.take_runtime_config;
 use fun init_end as InitFixture.end;
 use fun signer_claim_end as SignerClaimFixture.end;
 use fun signer_claim_next_tx as SignerClaimFixture.next_tx;
@@ -113,67 +117,28 @@ public struct SignerClaimFixture {
 // === Tests ===
 
 #[test]
-fun singleton_creation_events_use_generic_wrapper() {
+fun package_initialization_shares_singletons_without_events() {
     let mut fixture = start_event();
-    let emitted_package_version_id;
 
     fixture.next_tx!(LAUNCHER, |f| {
+        acl::init_for_testing(f.ctx!());
         package_version::init_for_testing(f.ctx!());
-        let (package_version, super_admin_cap, authority, config) =
-            new_protocol(f.ctx!());
-        let authority_id = object::id(&authority);
-        let super_admin_cap_id = object::id(&super_admin_cap);
-        let config_id = object::id(&config);
+        runtime_config::init_for_testing(f.ctx!());
+        launch_config::init_for_testing(f.ctx!());
 
-        let created = events::collect_one<events::ProtocolAuthorityCreated>(0);
-        let (
-            emitted_authority_id,
-            emitted_super_admin_cap_id,
-            emitted_recipient,
-            emitted_max_admins,
-            emitted_delay_ms,
-        ) = created.protocol_authority_created_fields();
-        let runtime_config_created =
-            events::collect_one<events::RuntimeConfigCreated>(0);
-        let (
-            emitted_runtime_config_id,
-            protocol_treasury,
-            protocol_fee_share_bps,
-        ) =
-            runtime_config_created.runtime_config_created_fields();
-        let package_version_created =
-            events::collect_one<events::PackageVersionCreated>(0);
-        let (package_version_id, emitted_package_version) =
-            package_version_created.package_version_created_fields();
-        emitted_package_version_id = package_version_id;
-
-        assert_eq!(emitted_authority_id, authority_id);
-        assert_eq!(emitted_super_admin_cap_id, super_admin_cap_id);
-        assert_eq!(emitted_recipient, LAUNCHER);
-        assert_eq!(emitted_max_admins, constants::max_admins!());
-        assert_eq!(
-            emitted_delay_ms,
-            constants::super_admin_transfer_delay_ms!(),
-        );
-        assert_eq!(emitted_runtime_config_id, config_id);
-        assert_eq!(protocol_treasury, LAUNCHER);
-        assert_eq!(protocol_fee_share_bps, 0);
-        assert_eq!(emitted_package_version, 1);
-        assert!(event::events_by_type<events::ProtocolAuthorityCreated>().is_empty());
-        assert!(event::events_by_type<events::RuntimeConfigCreated>().is_empty());
-
-        destroy(super_admin_cap);
-        destroy(authority);
-        destroy(config);
-        destroy(package_version);
+        assert_eq!(event::num_events(), 0);
     });
 
     fixture.next_tx!(LAUNCHER, |f| {
         let package_version = f.take_package_version();
-
-        assert_eq!(object::id(&package_version), emitted_package_version_id);
+        let authority = f.take_authority();
+        let config = f.take_runtime_config();
+        let launch_config = f.take_launch_config();
 
         destroy(package_version);
+        destroy(authority);
+        destroy(config);
+        destroy(launch_config);
     });
 
     fixture.end();
@@ -759,7 +724,7 @@ fun super_admin_cannot_cancel_without_pending_transfer() {
 fun package_init_delivers_only_root() {
     let fixture = start_package_init();
 
-    assert_eq!(fixture.user_event_count, 1);
+    assert_eq!(fixture.user_event_count, 0);
     assert!(fixture.super_admin_cap_delivered);
     assert!(!fixture.admin_cap_delivered);
 
@@ -1304,7 +1269,7 @@ fun start_acl(): AclFixture {
     let mut scenario = test_scenario::begin(LAUNCHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
     let (super_admin_cap, mut authority) =
-        acl::new_protocol_for_testing(LAUNCHER, scenario.ctx());
+        acl::new_protocol_for_testing(scenario.ctx());
     authority.grant_admin(
         &package_version,
         &super_admin_cap,
@@ -1328,7 +1293,7 @@ fun start_transfer(): TransferFixture {
     let mut scenario = test_scenario::begin(LAUNCHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
     let (super_admin_cap, authority) =
-        acl::new_protocol_for_testing(LAUNCHER, scenario.ctx());
+        acl::new_protocol_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
 
     TransferFixture {
@@ -1531,6 +1496,19 @@ fun event_take_package_version(self: &EventFixture): PackageVersion {
     self.scenario.take_shared<PackageVersion>()
 }
 
+fun event_take_authority(self: &EventFixture): acl::ProtocolAuthority {
+    self.scenario.take_shared<acl::ProtocolAuthority>()
+}
+
+fun event_take_runtime_config(self: &EventFixture): runtime_config::RuntimeConfig {
+    self.scenario.take_shared<runtime_config::RuntimeConfig>()
+}
+
+fun event_take_launch_config(self: &EventFixture): LaunchConfig {
+    self.scenario.take_shared<LaunchConfig>()
+}
+
+
 fun init_end(self: InitFixture) {
     destroy(self);
 }
@@ -1565,7 +1543,7 @@ fun new_protocol(
 ) {
     let package_version = package_version::new_for_testing(ctx);
     let (super_admin_cap, authority) =
-        acl::new_protocol_for_testing(LAUNCHER, ctx);
+        acl::new_protocol_for_testing(ctx);
     let config = runtime_config::new_disabled_for_testing(ctx);
     (package_version, super_admin_cap, authority, config)
 }

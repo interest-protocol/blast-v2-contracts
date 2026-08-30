@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-23
 - Partially accepts: [0006](0006-fees-and-launch-paths.md), [0007](0007-acl-pause-and-versioning.md), [0011](0011-event-schema-and-replay.md)
-- Amended by: [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0041](0041-launch-config-owned-trade-fees.md)
+- Amended by: [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0041](0041-launch-config-owned-trade-fees.md), [0058](0058-eventless-package-initialization.md)
 
 ## Sources
 
@@ -120,8 +120,9 @@ the `protocol_fee_share_bps` actually applied, the exact protocol/creator deltas
 ledger totals. A separate `FeesAccrued` payload would duplicate one atomic mutation and either consume
 additional event bandwidth or create two competing facts for one transition.
 
-`RuntimeConfigCreated` records the initial global share and `ProtocolFeeShareChanged` records its old
-and new values. `LaunchCreated` records all four initial zero ledger totals but no split snapshot.
+The initial global share is the compiled zero of the published bytecode — under ADR 0058 there is no
+`RuntimeConfigCreated` payload — and `ProtocolFeeShareChanged` records its old and new values.
+`LaunchCreated` records all four initial zero ledger totals but no split snapshot.
 `CreatorFeesClaimed` and `ProtocolFeesClaimed` carry both claimed amounts and the two affected remaining
 totals, which are zero after a full-balance claim. Launch-scoped payloads use the original meme and quote
 type names as stable identity and carry a timestamp where the domain needs it; fee-configuration payloads

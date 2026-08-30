@@ -4,44 +4,10 @@ use std::type_name::{Self, TypeName};
 
 // === Public Structs ===
 
-/// Emitted after the singleton protocol administration root is created.
-public struct ProtocolAuthorityCreated has copy, drop {
-    authority_id: ID,
-    super_admin_cap_id: ID,
-    super_admin_recipient: address,
-    max_admins: u64,
-    super_admin_transfer_delay_ms: u64,
-}
-
-/// Emitted after the one shared operational package version is created.
-public struct PackageVersionCreated has copy, drop {
-    package_version_id: ID,
-    version: u64,
-}
-
-/// Emitted after the live-treasury, disabled-signer runtime configuration is created.
-public struct RuntimeConfigCreated has copy, drop {
-    runtime_config_id: ID,
-    protocol_treasury: address,
-    protocol_fee_share_bps: u64,
-}
-
 /// Emitted after checked activation advances the shared bytecode cutover.
 public struct PackageVersionAdvanced has copy, drop {
     previous_version: u64,
     new_version: u64,
-}
-
-/// Emitted after the bounded cold launch configuration is created.
-public struct LaunchConfigCreated has copy, drop {
-    config_id: ID,
-    max_quote_assets: u64,
-    max_migration_witnesses: u64,
-    quote_fee_bps: u64,
-    meme_fee_bps: u64,
-    quote_migration_fee_bps: u64,
-    protocol_meme_graduation_fee_bps: u64,
-    meme_liquidity_provision_bps: u64,
 }
 
 /// Emitted after the trade-fee pair snapshotted by future launches changes.
@@ -332,67 +298,10 @@ public struct UpgradePolicyRestricted has copy, drop {
 
 // === Package Functions ===
 
-public(package) fun protocol_authority_created(
-    authority_id: ID,
-    super_admin_cap_id: ID,
-    super_admin_recipient: address,
-    max_admins: u64,
-    super_admin_transfer_delay_ms: u64,
-) {
-    blast_fun::events_wrapper::emit_event(ProtocolAuthorityCreated {
-        authority_id,
-        super_admin_cap_id,
-        super_admin_recipient,
-        max_admins,
-        super_admin_transfer_delay_ms,
-    });
-}
-
-public(package) fun package_version_created(package_version_id: ID, version: u64) {
-    blast_fun::events_wrapper::emit_event(PackageVersionCreated {
-        package_version_id,
-        version,
-    });
-}
-
-public(package) fun runtime_config_created(
-    runtime_config_id: ID,
-    protocol_treasury: address,
-    protocol_fee_share_bps: u64,
-) {
-    blast_fun::events_wrapper::emit_event(RuntimeConfigCreated {
-        runtime_config_id,
-        protocol_treasury,
-        protocol_fee_share_bps,
-    });
-}
-
 public(package) fun package_version_advanced(previous_version: u64, new_version: u64) {
     blast_fun::events_wrapper::emit_event(PackageVersionAdvanced {
         previous_version,
         new_version,
-    });
-}
-
-public(package) fun launch_config_created(
-    config_id: ID,
-    max_quote_assets: u64,
-    max_migration_witnesses: u64,
-    quote_fee_bps: u64,
-    meme_fee_bps: u64,
-    quote_migration_fee_bps: u64,
-    protocol_meme_graduation_fee_bps: u64,
-    meme_liquidity_provision_bps: u64,
-) {
-    blast_fun::events_wrapper::emit_event(LaunchConfigCreated {
-        config_id,
-        max_quote_assets,
-        max_migration_witnesses,
-        quote_fee_bps,
-        meme_fee_bps,
-        quote_migration_fee_bps,
-        protocol_meme_graduation_fee_bps,
-        meme_liquidity_provision_bps,
     });
 }
 
@@ -895,55 +804,10 @@ public fun collect_one<T: copy + drop>(abort_code: u64): T {
 }
 
 #[test_only]
-public fun protocol_authority_created_fields(
-    self: &ProtocolAuthorityCreated,
-): (ID, ID, address, u64, u64) {
-    (
-        self.authority_id,
-        self.super_admin_cap_id,
-        self.super_admin_recipient,
-        self.max_admins,
-        self.super_admin_transfer_delay_ms,
-    )
-}
-
-#[test_only]
-public fun package_version_created_fields(self: &PackageVersionCreated): (ID, u64) {
-    (self.package_version_id, self.version)
-}
-
-#[test_only]
-public fun runtime_config_created_fields(
-    self: &RuntimeConfigCreated,
-): (ID, address, u64) {
-    (
-        self.runtime_config_id,
-        self.protocol_treasury,
-        self.protocol_fee_share_bps,
-    )
-}
-
-#[test_only]
 public fun package_version_advanced_fields(
     self: &PackageVersionAdvanced,
 ): (u64, u64) {
     (self.previous_version, self.new_version)
-}
-
-#[test_only]
-public fun launch_config_created_fields(
-    self: &LaunchConfigCreated,
-): (ID, u64, u64, u64, u64, u64, u64, u64) {
-    (
-        self.config_id,
-        self.max_quote_assets,
-        self.max_migration_witnesses,
-        self.quote_fee_bps,
-        self.meme_fee_bps,
-        self.quote_migration_fee_bps,
-        self.protocol_meme_graduation_fee_bps,
-        self.meme_liquidity_provision_bps,
-    )
 }
 
 #[test_only]

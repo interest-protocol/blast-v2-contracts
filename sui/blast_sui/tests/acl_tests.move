@@ -3,7 +3,7 @@ module blast_sui::acl_tests;
 
 use blast_sui::{acl, constants, errors, events, package_version::{Self, PackageVersion}};
 use std::unit_test::{assert_eq, destroy};
-use sui::{clock::{Self, Clock}, test_scenario::{Self, Scenario}};
+use sui::{clock::{Self, Clock}, event, test_scenario::{Self, Scenario}};
 
 use fun init_end as InitFixture.end;
 use fun init_next_tx as InitFixture.next_tx;
@@ -26,7 +26,6 @@ public struct InitFixture {
     package_version: PackageVersion,
     authority: acl::ProtocolAuthority,
     super_admin_cap: acl::SuperAdminCap,
-    created: events::ProtocolAuthorityCreated,
 }
 
 /// Delayed singleton-authority transfer state and its test clock.
@@ -41,17 +40,14 @@ public struct TransferFixture {
 // === Tests ===
 
 #[test]
-fun init_shares_the_authority_delivers_the_root_cap_and_emits_the_creation_fact() {
+fun init_shares_the_authority_and_delivers_the_root_cap_without_events() {
     let mut fixture = start_init();
 
     fixture.next_tx!(PUBLISHER, |f| {
-        let (authority_id, super_admin_cap_id, recipient, delay_ms) =
-            f.created.protocol_authority_created_fields();
-        assert_eq!(authority_id, object::id(&f.authority));
-        assert_eq!(super_admin_cap_id, object::id(&f.super_admin_cap));
-        assert_eq!(super_admin_cap_id, f.authority.super_admin_cap_id_for_testing());
-        assert_eq!(recipient, PUBLISHER);
-        assert_eq!(delay_ms, constants::super_admin_transfer_delay_ms!());
+        assert_eq!(
+            object::id(&f.super_admin_cap),
+            f.authority.super_admin_cap_id_for_testing(),
+        );
     });
 
     fixture.end();
@@ -334,21 +330,22 @@ fun start_init(): InitFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     acl::init_for_testing(scenario.ctx());
     package_version::init_for_testing(scenario.ctx());
-    let created = events::collect_one<events::ProtocolAuthorityCreated>(0);
+
+    assert_eq!(event::num_events(), 0);
 
     scenario.next_tx(PUBLISHER);
     let authority = scenario.take_shared<acl::ProtocolAuthority>();
     let package_version = scenario.take_shared<PackageVersion>();
     let super_admin_cap = scenario.take_from_sender<acl::SuperAdminCap>();
 
-    InitFixture { scenario, package_version, authority, super_admin_cap, created }
+    InitFixture { scenario, package_version, authority, super_admin_cap }
 }
 
 fun start_transfer(): TransferFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
     let (super_admin_cap, authority) =
-        acl::new_protocol_for_testing(PUBLISHER, scenario.ctx());
+        acl::new_protocol_for_testing(scenario.ctx());
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(NOW_MS);
 
@@ -362,7 +359,7 @@ fun start_transfer(): TransferFixture {
 }
 
 fun init_end(self: InitFixture) {
-    let InitFixture { scenario, package_version, authority, super_admin_cap, created: _ } = self;
+    let InitFixture { scenario, package_version, authority, super_admin_cap } = self;
 
     test_scenario::return_shared(authority);
     test_scenario::return_shared(package_version);

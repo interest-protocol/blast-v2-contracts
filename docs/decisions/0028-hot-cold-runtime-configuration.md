@@ -11,7 +11,7 @@
 - Status: accepted
 - Date: 2026-08-24
 - Amends: [0001](0001-sui-package-and-module-layout.md), [0011](0011-event-schema-and-replay.md), [0015](0015-protocol-authority-and-x-signer-state.md), [0017](0017-coin-type-domain-for-x-creator-claims.md), [0018](0018-authority-module-separation.md), [0022](0022-dual-asset-fee-ledger-and-claims.md)
-- Amended by: [0030](0030-singleton-event-identity.md), [0041](0041-launch-config-owned-trade-fees.md), [0049](0049-audit-hardened-package-version-and-launch-intake.md)
+- Amended by: [0030](0030-singleton-event-identity.md), [0041](0041-launch-config-owned-trade-fees.md), [0049](0049-audit-hardened-package-version-and-launch-intake.md), [0058](0058-eventless-package-initialization.md)
 - Preserves: [0027](0027-graduation-economics-and-migration-witnesses.md)
 
 ## Sources
@@ -115,17 +115,17 @@ decision against the actual traffic and compatibility requirements.
 
 ### Events and replay identity
 
-`RuntimeConfigCreated` establishes the single runtime-config identity and its
-initial zero fee share; the empty signer is an initialization invariant.
+Under ADR 0058 neither singleton emits a creation payload: publication effects
+establish both identities, the initial zero fee share and zero cold rates are
+compiled constants, and the empty signer is an initialization invariant.
 `XClaimSignerSet`, `XClaimSignerRevoked`, and `ProtocolFeeShareChanged` retain
-their typed payloads without repeating that unchanging singleton id. There is no
+their typed payloads without repeating the unchanging singleton id. There is no
 generic `ConfigChanged` event, application sequence, schema version, action tag,
 or nonce.
 
-`LaunchConfigCreated` establishes the independent launch-config identity, while
-each typed cold-policy mutation carries only its changing entry identity and
-old/new values. Indexers therefore retain two singleton replay scopes that match
-the hot and cold shared objects.
+Each typed cold-policy mutation likewise carries only its changing entry identity
+and old/new values. Indexers therefore retain two singleton replay scopes that
+match the hot and cold shared objects.
 
 ## Alternatives considered
 
@@ -158,12 +158,13 @@ to receive only `AdminWitness`, never ACL storage or capability identity.
 - X authentication, fee splitting, launch snapshotting, and ACL membership
   remain independently testable through their concern interfaces.
 - The former `XClaimConfigCreated` and `TradeFeeConfigCreated` payloads are
-  replaced before publication by one `RuntimeConfigCreated` payload.
+  replaced before publication by one `RuntimeConfigCreated` payload, which
+  ADR 0058 then removes entirely.
 
 ## Verification
 
 - Package initialization creates exactly one disabled, zero-share
-  `RuntimeConfig` and emits one replay-complete creation payload.
+  `RuntimeConfig` and, under ADR 0058, emits no event.
 - Existing key-length, inactive, unchanged-key, rotation, revocation, old-key,
   expiry, message-domain, and signature tests pass through `RuntimeConfig`.
 - Existing fee-share zero, 10,000, above-ceiling, unchanged, old/new event, and

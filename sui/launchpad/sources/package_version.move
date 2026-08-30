@@ -23,14 +23,7 @@ public struct PackageVersion has key {
 // === Private Initialization ===
 
 fun init(ctx: &mut TxContext) {
-    let package_version = new(ctx);
-
-    events::package_version_created(
-        package_version.id.to_inner(),
-        package_version.version,
-    );
-
-    transfer::share_object(package_version);
+    transfer::share_object(new(ctx));
 }
 
 // === Package Functions ===

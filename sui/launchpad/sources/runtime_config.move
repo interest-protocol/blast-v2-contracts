@@ -26,16 +26,7 @@ public struct RuntimeConfig has key {
 // === Private Initialization ===
 
 fun init(ctx: &mut TxContext) {
-    let config = new(ctx);
-    let config_id = config.id.to_inner();
-
-    events::runtime_config_created(
-        config_id,
-        config.protocol_treasury,
-        config.protocol_fee_share_bps.value(),
-    );
-
-    transfer::share_object(config);
+    transfer::share_object(new(ctx));
 }
 
 // === Public Functions ===
@@ -198,17 +189,9 @@ public fun init_for_testing(ctx: &mut TxContext) {
 }
 
 #[test_only]
-/// Creates disabled unshared runtime state and emits its creation fact.
+/// Creates disabled unshared runtime state for focused tests.
 public fun new_disabled_for_testing(ctx: &mut TxContext): RuntimeConfig {
-    let config = new(ctx);
-
-    events::runtime_config_created(
-        config.id.to_inner(),
-        config.protocol_treasury,
-        config.protocol_fee_share_bps.value(),
-    );
-
-    config
+    new(ctx)
 }
 
 #[test_only]

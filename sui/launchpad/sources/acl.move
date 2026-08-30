@@ -39,22 +39,10 @@ public struct AdminWitness() has drop;
 // === Private Initialization ===
 
 fun init(ctx: &mut TxContext) {
-    let recipient = ctx.sender();
     let (super_admin_cap, authority) = new_protocol(ctx);
 
-    let authority_id = authority.id.to_inner();
-    let super_admin_cap_id = super_admin_cap.id.to_inner();
-
     transfer::share_object(authority);
-    transfer::transfer(super_admin_cap, recipient);
-
-    events::protocol_authority_created(
-        authority_id,
-        super_admin_cap_id,
-        recipient,
-        constants::max_admins!(),
-        constants::super_admin_transfer_delay_ms!(),
-    );
+    transfer::transfer(super_admin_cap, ctx.sender());
 }
 
 // === Public Functions ===
@@ -298,21 +286,8 @@ public fun init_for_testing(ctx: &mut TxContext) {
 
 #[test_only]
 /// Creates unshared protocol authority state for focused tests.
-public fun new_protocol_for_testing(
-    super_admin_recipient: address,
-    ctx: &mut TxContext,
-): (SuperAdminCap, ProtocolAuthority) {
-    let (super_admin_cap, authority) = new_protocol(ctx);
-
-    events::protocol_authority_created(
-        authority.id.to_inner(),
-        super_admin_cap.id.to_inner(),
-        super_admin_recipient,
-        constants::max_admins!(),
-        constants::super_admin_transfer_delay_ms!(),
-    );
-
-    (super_admin_cap, authority)
+public fun new_protocol_for_testing(ctx: &mut TxContext): (SuperAdminCap, ProtocolAuthority) {
+    new_protocol(ctx)
 }
 
 #[test_only]

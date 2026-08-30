@@ -569,6 +569,16 @@ if rg -n '^public struct ACL' sources/acl.move \
   failures=$((failures + 1))
 fi
 
+# Publication effects natively record every shared singleton, the delivered root
+# capability, and the publishing sender, and each initializer commits compiled
+# constants only. No `init` may therefore emit a creation event. See ADR 0058.
+if rg -U -n 'fun init\([^)]*\) \{[^}]*events::' sources --glob '*.move' \
+  || rg -n '\b(ProtocolAuthorityCreated|PackageVersionCreated|RuntimeConfigCreated|LaunchConfigCreated)\b' \
+    sources tests; then
+  echo 'Package initialization must stay eventless: native publication effects are the discovery fact.' >&2
+  failures=$((failures + 1))
+fi
+
 package_admin_production="$(sed '/^\/\/ === Test-Only Types ===/,$d' sources/package_admin.move)"
 
 if [[ ! -f sources/package_admin.move || -f sources/upgrade.move ]] \
@@ -1009,7 +1019,7 @@ check_runtime_function() {
 
 check_runtime_function init \
   'fun init(ctx: &mut TxContext)' \
-  'let config = new(ctx); let config_id = config.id.to_inner(); events::runtime_config_created( config_id, config.protocol_treasury, config.protocol_fee_share_bps.value(), ); transfer::share_object(config);'
+  'transfer::share_object(new(ctx));'
 
 check_runtime_function new \
   'fun new(ctx: &mut TxContext): RuntimeConfig' \
@@ -1097,36 +1107,24 @@ fi
 
 events_facts="$(move_facts sources/lib/events.move)"
 
-runtime_config_event_payloads="$(awk -F'\t' '
-  $1 == "TYPE" && $5 == 0 \
-    && ($2 == "RuntimeConfigCreated" || $2 == "ProtocolFeeShareChanged" \
-      || $2 == "ProtocolTreasuryChanged" || $2 == "XClaimSignerSet" \
-      || $2 == "XClaimSignerRevoked") { print $8 }
-' <<<"$events_facts")"
-
 runtime_config_mutation_event_payloads="$(awk -F'\t' '
   $1 == "TYPE" && $5 == 0 \
     && ($2 == "ProtocolFeeShareChanged" || $2 == "ProtocolTreasuryChanged" \
       || $2 == "XClaimSignerSet" || $2 == "XClaimSignerRevoked") { print $8 }
 ' <<<"$events_facts")"
 
-if [[ "$(wc -l <<<"$runtime_config_event_payloads")" != 5 ]] \
+if [[ "$(wc -l <<<"$runtime_config_mutation_event_payloads")" != 4 ]] \
   || rg -q '\b(sequence|schema_version|action_tag|nonce)\b' \
-    <<<"$runtime_config_event_payloads" \
+    <<<"$runtime_config_mutation_event_payloads" \
   || rg -q '\bruntime_config_id\b' <<<"$runtime_config_mutation_event_payloads" \
-  || [[ "$(move_production_type RuntimeConfigCreated <<<"$events_facts")" \
-    != 'struct RuntimeConfigCreated has copy, drop { runtime_config_id: ID, protocol_treasury: address, protocol_fee_share_bps: u64, }' ]] \
+  || rg -q '\bRuntimeConfigCreated\b' <<<"$events_facts" \
   || [[ "$(move_production_type ProtocolTreasuryChanged <<<"$events_facts")" \
     != 'struct ProtocolTreasuryChanged has copy, drop { old_protocol_treasury: address, new_protocol_treasury: address, }' ]] \
-  || [[ "$(move_production_signature runtime_config_created <<<"$events_facts")" \
-    != 'fun runtime_config_created( runtime_config_id: ID, protocol_treasury: address, protocol_fee_share_bps: u64, )' ]] \
-  || [[ "$(move_production_body runtime_config_created <<<"$events_facts")" \
-    != 'blast_fun::events_wrapper::emit_event(RuntimeConfigCreated { runtime_config_id, protocol_treasury, protocol_fee_share_bps, });' ]] \
   || [[ "$(move_production_signature protocol_treasury_changed <<<"$events_facts")" \
     != 'fun protocol_treasury_changed( old_protocol_treasury: address, new_protocol_treasury: address, )' ]] \
   || [[ "$(move_production_body protocol_treasury_changed <<<"$events_facts")" \
     != 'blast_fun::events_wrapper::emit_event(ProtocolTreasuryChanged { old_protocol_treasury, new_protocol_treasury, });' ]]; then
-  echo 'Runtime-config creation must commit the live treasury before sharing and every mutation must emit unswapped typed replay facts without repeated singleton, ordering, or schema fields.' >&2
+  echo 'Runtime-config creation must stay eventless and every mutation must emit unswapped typed replay facts without repeated singleton, ordering, or schema fields.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1198,14 +1196,14 @@ if ! rg -U -q 'macro public\(package\) fun max_quote_assets\(\): u64 \{\s*16\s*\
 fi
 
 if ! rg -U -q \
-    'events::launch_config_created\(\s*config_id,\s*constants::max_quote_assets!\(\),\s*constants::max_migration_witnesses!\(\),\s*config\.quote_fee_bps\.value\(\),\s*config\.meme_fee_bps\.value\(\),\s*config\.quote_migration_fee_bps\.value\(\),\s*config\.protocol_meme_graduation_fee_bps\.value\(\),\s*config\.meme_liquidity_provision_bps\.value\(\),\s*\);\s*transfer::share_object\(config\);' \
-    sources/launch_config.move; then
-  echo 'Launch-config initialization must emit the five stored defaults directly before sharing consumes the config.' >&2
+    'fun init\(ctx: &mut TxContext\) \{\s*transfer::share_object\(new\(ctx\)\);\s*\}' \
+    sources/launch_config.move \
+  || rg -q '\bLaunchConfigCreated\b' sources/lib/events.move sources/launch_config.move; then
+  echo 'Launch-config initialization must share the one bounded singleton and emit no creation event.' >&2
   failures=$((failures + 1))
 fi
 
 launch_config_event_payloads="$(sed -n \
-  -e '/^public struct LaunchConfigCreated/,/^}/p' \
   -e '/^public struct QuoteAllowed/,/^}/p' \
   -e '/^public struct QuoteParametersChanged/,/^}/p' \
   -e '/^public struct QuoteDisallowed/,/^}/p' \

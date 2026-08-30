@@ -103,8 +103,9 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0055](0055-global-vesting-package-and-checkpoints.md) | Global vesting package and checkpoint schedules | **accepted** |
 | [0056](0056-bounded-pending-stake-vector.md) | Bounded pending-stake vector in custody ledgers | **accepted** |
 | [0057](0057-admin-pinned-venue-tiers.md) | Admin-pinned venue tiers for permissionless migration | **accepted** |
+| [0058](0058-eventless-package-initialization.md) | Eventless package initialization | **accepted** |
 
-ADRs 0013–0036 and 0038–0057 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
+ADRs 0013–0036 and 0038–0058 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -240,6 +241,11 @@ oracle or immutable global default.
 ADR 0057 amends 0054: permissionless migration reads its venue fee tier from
 one admin-pinned shared `VenueConfig` singleton instead of caller parameters,
 failing closed until each venue is pinned.
+
+ADR 0058 amends 0011 and reverses 0030's creation-event exception: no `init`
+emits an event in any package, because every field those payloads carried is
+either recorded by the publish transaction's native effects or compiled into the
+published bytecode.
 
 ## Open premises
 

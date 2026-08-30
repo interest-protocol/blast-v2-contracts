@@ -41,21 +41,7 @@ public struct QuoteParameters has copy, drop, store {
 // === Private Initialization ===
 
 fun init(ctx: &mut TxContext) {
-    let config = new(ctx);
-    let config_id = config.id.to_inner();
-
-    events::launch_config_created(
-        config_id,
-        constants::max_quote_assets!(),
-        constants::max_migration_witnesses!(),
-        config.quote_fee_bps.value(),
-        config.meme_fee_bps.value(),
-        config.quote_migration_fee_bps.value(),
-        config.protocol_meme_graduation_fee_bps.value(),
-        config.meme_liquidity_provision_bps.value(),
-    );
-
-    transfer::share_object(config);
+    transfer::share_object(new(ctx));
 }
 
 // === Public Functions ===
@@ -362,6 +348,18 @@ public fun init_for_testing(ctx: &mut TxContext) {
 /// Returns the number of quotes currently admitted by focused tests.
 public fun allowed_quote_count_for_testing(self: &LaunchConfig): u64 {
     self.quotes.length()
+}
+
+#[test_only]
+/// Returns the five stored rate defaults inspected by focused tests.
+public fun rate_defaults_for_testing(self: &LaunchConfig): (u64, u64, u64, u64, u64) {
+    (
+        self.quote_fee_bps.value(),
+        self.meme_fee_bps.value(),
+        self.quote_migration_fee_bps.value(),
+        self.protocol_meme_graduation_fee_bps.value(),
+        self.meme_liquidity_provision_bps.value(),
+    )
 }
 
 #[test_only]
