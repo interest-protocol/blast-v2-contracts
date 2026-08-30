@@ -94,7 +94,6 @@ fun launch_consumes_ticket_and_emits_complete_initial_state() {
             meme,
             quote,
             migration_witness,
-            launcher,
             metadata_cap_id,
         ) = created.launch_created_identity_fields();
         let (
@@ -128,7 +127,6 @@ fun launch_consumes_ticket_and_emits_complete_initial_state() {
             migration_witness,
             type_name::with_original_ids<TEST_MIGRATION_WITNESS>(),
         );
-        assert_eq!(launcher, LAUNCHER);
         assert_eq!(sell_burn_bps, SELL_BURN_BPS);
         assert_eq!(launch.sell_burn_bps_for_testing(), sell_burn_bps);
         assert_eq!(initial_meme_supply, INITIAL_MEME_SUPPLY);
@@ -248,12 +246,11 @@ fun burn_only_ticket_keeps_supply_mode_authoritative_in_coin_registry() {
             _,
             _,
             _,
-            _,
             burnable,
             sell_burn_bps,
         ) = ticket_created.launch_ticket_created_fields();
         let launch_created = events::collect_one<events::LaunchCreated>(0);
-        let (_, source_ticket_id, _, _, _, _, _) =
+        let (_, source_ticket_id, _, _, _, _) =
             launch_created.launch_created_identity_fields();
 
         assert_eq!(emitted_ticket_id, ticket_id);
@@ -485,7 +482,6 @@ fun buy_and_sell_all_bought_meme_move_exact_coins_and_accounting() {
         assert_bought_event(
             &bought,
             object::id(&launch),
-            LAUNCHER,
             quote_in_gross,
             quote_in_gross,
             0,
@@ -532,7 +528,6 @@ fun buy_and_sell_all_bought_meme_move_exact_coins_and_accounting() {
         let sold = events::collect_one<events::Sold>(0);
         let (
             sold_launch_id,
-            seller,
             emitted_meme_in_gross,
             emitted_sell_meme_fee,
             emitted_meme_in_after_fee,
@@ -545,7 +540,6 @@ fun buy_and_sell_all_bought_meme_move_exact_coins_and_accounting() {
             emitted_quote_out_net,
         ) = sold.sold_trade_fields();
         assert_eq!(sold_launch_id, object::id(&launch));
-        assert_eq!(seller, LAUNCHER);
         assert_eq!(emitted_meme_in_gross, meme_in_gross);
         assert_eq!(emitted_sell_meme_fee, sell_meme_fee);
         assert_eq!(emitted_meme_in_after_fee, meme_in_after_fee);
@@ -664,10 +658,9 @@ fun creator_claim_drains_trade_fees_as_composable_coins() {
         assert_eq!(meme_fees.value(), creator_meme_before);
         assert_eq!(quote_fees.value(), creator_quote_before);
         let claimed = events::collect_one<events::CreatorFeesClaimed>(0);
-        let (launch_id, claimant, meme_amount, quote_amount) =
+        let (launch_id, meme_amount, quote_amount) =
             claimed.creator_fees_claimed_fields();
         assert_eq!(launch_id, object::id(&launch));
-        assert_eq!(claimant, CREATOR);
         assert_eq!(meme_amount, creator_meme_before);
         assert_eq!(quote_amount, creator_quote_before);
 
@@ -717,10 +710,9 @@ fun live_protocol_share_routes_and_claims_launch_trade_fees() {
         assert_eq!(quote_fees.value(), protocol_quote);
 
         let claimed = events::collect_one<events::ProtocolFeesClaimed>(0);
-        let (launch_id, claimant, meme_amount, quote_amount) =
+        let (launch_id, meme_amount, quote_amount) =
             claimed.protocol_fees_claimed_fields();
         assert_eq!(launch_id, object::id(&launch));
-        assert_eq!(claimant, PROTOCOL_ADMIN);
         assert_eq!(meme_amount, protocol_meme);
         assert_eq!(quote_amount, protocol_quote);
 
@@ -1588,7 +1580,6 @@ fun assert_launch_snapshot(launch: &Launch<LAUNCH_TESTS, TEST_QUOTE>) {
 fun assert_bought_event(
     bought: &events::Bought,
     launch_id: ID,
-    buyer: address,
     quote_supplied: u64,
     quote_in_gross: u64,
     quote_refund: u64,
@@ -1601,7 +1592,6 @@ fun assert_bought_event(
 ) {
     let (
         emitted_launch_id,
-        emitted_buyer,
         emitted_quote_supplied,
         emitted_quote_in_gross,
         emitted_quote_refund,
@@ -1614,7 +1604,6 @@ fun assert_bought_event(
     ) = bought.bought_trade_fields();
 
     assert_eq!(emitted_launch_id, launch_id);
-    assert_eq!(emitted_buyer, buyer);
     assert_eq!(emitted_quote_supplied, quote_supplied);
     assert_eq!(emitted_quote_in_gross, quote_in_gross);
     assert_eq!(emitted_quote_refund, quote_refund);
@@ -1633,7 +1622,6 @@ fun assert_terminal_bought_event(
 ) {
     let (
         emitted_launch_id,
-        _,
         quote_supplied,
         quote_in_gross,
         emitted_quote_refund,

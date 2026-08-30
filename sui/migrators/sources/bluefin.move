@@ -174,7 +174,7 @@ public fun collect_fees<Meme, Quote>(
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
     clock: &Clock,
-    ctx: &mut TxContext,
+    _ctx: &mut TxContext,
 ) {
     let pool_id = object::id(pool);
     assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
@@ -207,7 +207,6 @@ public fun collect_fees<Meme, Quote>(
         liquidity_before,
         liquidity_after,
         runtime_config,
-        ctx,
     );
 }
 

@@ -70,9 +70,6 @@ public struct PackageAdminCreated has copy, drop {
 
 /// Emitted after the super-admin authorizes an exact package digest.
 public struct UpgradeAuthorized has copy, drop {
-    package_id: ID,
-    package_version: u64,
-    policy: u8,
     digest: vector<u8>,
 }
 
@@ -261,18 +258,8 @@ public(package) fun package_admin_created(
     });
 }
 
-public(package) fun upgrade_authorized(
-    package_id: ID,
-    package_version: u64,
-    policy: u8,
-    digest: vector<u8>,
-) {
-    blast_sui::events_wrapper::emit_event(UpgradeAuthorized {
-        package_id,
-        package_version,
-        policy,
-        digest,
-    });
+public(package) fun upgrade_authorized(digest: vector<u8>) {
+    blast_sui::events_wrapper::emit_event(UpgradeAuthorized { digest });
 }
 
 public(package) fun upgrade_committed(
@@ -514,8 +501,8 @@ public fun package_admin_created_fields(
 }
 
 #[test_only]
-public fun upgrade_authorized_fields(self: &UpgradeAuthorized): (ID, u64, u8, vector<u8>) {
-    (self.package_id, self.package_version, self.policy, self.digest)
+public fun upgrade_authorized_digest(self: &UpgradeAuthorized): vector<u8> {
+    self.digest
 }
 
 #[test_only]

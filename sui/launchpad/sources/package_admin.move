@@ -71,17 +71,10 @@ public fun authorize_upgrade(
         blast_fun::errors::invalid_package_digest!(),
     );
 
-    let package_id = self.upgrade_cap.package();
-    let package_version = self.upgrade_cap.version();
     let policy = self.upgrade_cap.policy();
     let ticket = self.upgrade_cap.authorize(policy, digest);
 
-    events::upgrade_authorized(
-        package_id,
-        package_version,
-        policy,
-        *ticket.digest(),
-    );
+    events::upgrade_authorized(*ticket.digest());
 
     ticket
 }

@@ -441,7 +441,6 @@ public fun collect_fees_meme_a<Meme, Quote, FeeType>(
         liquidity_before,
         liquidity_after,
         runtime_config,
-        ctx,
     );
 }
 
@@ -478,7 +477,6 @@ public fun collect_fees_meme_b<Meme, Quote, FeeType>(
         liquidity_before,
         liquidity_after,
         runtime_config,
-        ctx,
     );
 }
 

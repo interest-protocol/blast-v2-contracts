@@ -262,13 +262,15 @@ filter on the payload types below.
   on adoption routes; and the tick and fee inputs, with both tick fields as
   two's-complement `i32` bits on every venue.
 - `LpFeesCollected` records vault, pool, and position IDs; the venue and asset
-  types; collector; gross fees; applied protocol share; creator/protocol deltas
-  and final totals for both assets; and principal liquidity before and after.
-- `CreatorFeesClaimed` and `ProtocolFeesClaimed` record the vault, claimant,
-  drained amounts, asset types, and all four post-claim ledger totals.
+  types; gross fees; applied protocol share; creator/protocol deltas and final
+  totals for both assets; and principal liquidity before and after.
+- `CreatorFeesClaimed` and `ProtocolFeesClaimed` record the vault, drained
+  amounts, asset types, and all four post-claim ledger totals.
 
 The payloads are completed facts and use native Sui event ordering. They contain
-no application sequence, revision, nonce, schema version, or action tag.
+no application sequence, revision, nonce, schema version, or action tag, and no
+field restating the transaction sender: the collector and both claimants are the
+event envelope's sender under ADR 0059.
 
 ## Pinned dependencies
 

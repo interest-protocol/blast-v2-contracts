@@ -73,7 +73,6 @@ public struct CancelCap<phantom CoinType> has key, store {
 public struct VestingCreated has copy, drop {
     vesting_id: ID,
     coin_type: TypeName,
-    funder: address,
     beneficiary: address,
     refund_recipient: Option<address>,
     cancel_cap_id: Option<ID>,
@@ -85,7 +84,6 @@ public struct VestingCreated has copy, drop {
 public struct VestingClaimed has copy, drop {
     vesting_id: ID,
     coin_type: TypeName,
-    caller: address,
     beneficiary: address,
     amount: u64,
     released_total: u64,
@@ -96,7 +94,6 @@ public struct VestingClaimed has copy, drop {
 public struct VestingCanceled has copy, drop {
     vesting_id: ID,
     coin_type: TypeName,
-    caller: address,
     beneficiary: address,
     refund_recipient: address,
     beneficiary_amount: u64,
@@ -108,7 +105,6 @@ public struct VestingCanceled has copy, drop {
 public struct VestingClosed has copy, drop {
     vesting_id: ID,
     coin_type: TypeName,
-    caller: address,
     released_total: u64,
 }
 
@@ -164,7 +160,6 @@ public fun new_irrevocable<CoinType>(
     event::emit(VestingCreated {
         vesting_id: object::id(&vesting),
         coin_type: type_name::with_original_ids<CoinType>(),
-        funder: ctx.sender(),
         beneficiary,
         refund_recipient: option::none(),
         cancel_cap_id: option::none(),
@@ -201,7 +196,6 @@ public fun new_cancelable<CoinType>(
     event::emit(VestingCreated {
         vesting_id,
         coin_type: type_name::with_original_ids<CoinType>(),
-        funder: ctx.sender(),
         beneficiary,
         refund_recipient: option::some(refund_recipient),
         cancel_cap_id: option::some(object::id(&cancel_cap)),
@@ -242,7 +236,6 @@ public fun claim<CoinType>(
     assert!(amount > 0, ENothingClaimable);
 
     let vesting_id = object::id(self);
-    let caller = ctx.sender();
     let beneficiary = self.beneficiary;
     self.released = self.released + amount;
     let payout = self.balance.split(amount).into_coin(ctx);
@@ -254,7 +247,6 @@ public fun claim<CoinType>(
     event::emit(VestingClaimed {
         vesting_id,
         coin_type: type_name::with_original_ids<CoinType>(),
-        caller,
         beneficiary,
         amount,
         released_total,
@@ -278,7 +270,6 @@ public fun cancel<CoinType>(
     let vested_total = self.vested_at(clock.timestamp_ms());
     let beneficiary_amount = vested_total - self.released;
     let refund_amount = self.balance.value() - beneficiary_amount;
-    let caller = ctx.sender();
     let Vesting {
         id,
         mut balance,
@@ -306,7 +297,6 @@ public fun cancel<CoinType>(
     event::emit(VestingCanceled {
         vesting_id,
         coin_type: type_name::with_original_ids<CoinType>(),
-        caller,
         beneficiary,
         refund_recipient,
         beneficiary_amount,
@@ -319,7 +309,7 @@ public fun cancel<CoinType>(
 public fun close_irrevocable<CoinType>(
     self: Vesting<CoinType>,
     clock: &Clock,
-    ctx: &mut TxContext,
+    _ctx: &mut TxContext,
 ) {
     assert!(self.cancel_refund_recipient.is_none(), ECancelCapRequired);
     assert!(clock.timestamp_ms() >= self.end_ms(), EScheduleNotEnded);
@@ -343,7 +333,6 @@ public fun close_irrevocable<CoinType>(
     event::emit(VestingClosed {
         vesting_id,
         coin_type: type_name::with_original_ids<CoinType>(),
-        caller: ctx.sender(),
         released_total,
     });
 }
@@ -465,11 +454,10 @@ public fun cancel_cap_vesting_id<CoinType>(self: &CancelCap<CoinType>): ID {
 #[test_only]
 public fun vesting_created_fields(
     self: &VestingCreated,
-): (ID, TypeName, address, address, Option<address>, Option<ID>, u64, u64) {
+): (ID, TypeName, address, Option<address>, Option<ID>, u64, u64) {
     (
         self.vesting_id,
         self.coin_type,
-        self.funder,
         self.beneficiary,
         self.refund_recipient,
         self.cancel_cap_id,
@@ -481,11 +469,10 @@ public fun vesting_created_fields(
 #[test_only]
 public fun vesting_claimed_fields(
     self: &VestingClaimed,
-): (ID, TypeName, address, address, u64, u64, u64) {
+): (ID, TypeName, address, u64, u64, u64) {
     (
         self.vesting_id,
         self.coin_type,
-        self.caller,
         self.beneficiary,
         self.amount,
         self.released_total,
@@ -496,11 +483,10 @@ public fun vesting_claimed_fields(
 #[test_only]
 public fun vesting_canceled_fields(
     self: &VestingCanceled,
-): (ID, TypeName, address, address, address, u64, u64, u64) {
+): (ID, TypeName, address, address, u64, u64, u64) {
     (
         self.vesting_id,
         self.coin_type,
-        self.caller,
         self.beneficiary,
         self.refund_recipient,
         self.beneficiary_amount,
@@ -510,11 +496,10 @@ public fun vesting_canceled_fields(
 }
 
 #[test_only]
-public fun vesting_closed_fields(self: &VestingClosed): (ID, TypeName, address, u64) {
+public fun vesting_closed_fields(self: &VestingClosed): (ID, TypeName, u64) {
     (
         self.vesting_id,
         self.coin_type,
-        self.caller,
         self.released_total,
     )
 }

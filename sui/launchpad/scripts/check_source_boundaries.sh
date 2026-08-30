@@ -579,6 +579,16 @@ if rg -U -n 'fun init\([^)]*\) \{[^}]*events::' sources --glob '*.move' \
   failures=$((failures + 1))
 fi
 
+# Native transaction metadata already carries the sender of every transaction, so
+# no payload may restate it under an actor name, and no call site may pass it into
+# an event. See ADR 0059.
+if rg -n '^[[:space:]]+(buyer|seller|claimant|launcher|migrator|collector|caller|funder):' \
+    sources/lib/events.move \
+  || rg -U -n 'events::[a-z_]+(<[^>]*>)?\([^;]*ctx\.sender\(\)' sources --glob '*.move'; then
+  echo 'Event payloads must not restate the transaction sender under an actor name.' >&2
+  failures=$((failures + 1))
+fi
+
 package_admin_production="$(sed '/^\/\/ === Test-Only Types ===/,$d' sources/package_admin.move)"
 
 if [[ ! -f sources/package_admin.move || -f sources/upgrade.move ]] \
@@ -1373,7 +1383,7 @@ launch_created_event_payload="$(sed -n \
   sources/lib/events.move)"
 
 if [[ -z "$launch_created_event_payload" ]] \
-  || [[ "$(rg -c '^[[:space:]]+[a-z_]+:' <<<"$launch_created_event_payload")" != 25 ]] \
+  || [[ "$(rg -c '^[[:space:]]+[a-z_]+:' <<<"$launch_created_event_payload")" != 24 ]] \
   || ! rg -q '^[[:space:]]+ticket_id: ID,' <<<"$launch_created_event_payload" \
   || ! rg -q '^[[:space:]]+metadata_cap_id: ID,' <<<"$launch_created_event_payload" \
   || [[ "$(rg -c '^[[:space:]]+(protocol|creator)_(meme|quote)_trade_fees: u64,' <<<"$launch_created_event_payload")" != 4 ]] \

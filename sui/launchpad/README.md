@@ -91,7 +91,8 @@ The core package now contains:
   initialization emits nothing, because transaction effects natively record
   each shared singleton, its type, the delivered root capability, and the
   publishing sender, and every other initial value is a compiled constant
-  (ADR 0058);
+  (ADR 0058); no payload restates the transaction sender, so buyers, sellers,
+  launchers, migrators, and claimants come from the event envelope (ADR 0059);
 - `creator_authority_tests.move` — interface and integration tests for the ACL,
   shared runtime configuration, and address/X creator-claim seam, including the
   independent Ed25519 fixture and adversarial lifecycle cases.

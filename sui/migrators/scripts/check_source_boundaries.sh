@@ -1135,4 +1135,11 @@ if [[ "$FULLSAIL_COMPACT_SOURCE" =~ pool::(remove_liquidity|close_position) ]]; 
     fail "Full Sail principal mutation is forbidden"
 fi
 
+# Native transaction metadata carries the sender, so no payload may restate it
+# under an actor name and no call site may pass it into an event. See ADR 0059.
+if rg -n '^[[:space:]]+(claimant|collector|caller|funder|migrator):' "$EVENTS_SOURCE" \
+    || rg -U -n 'events::[a-z_]+(<[^>]*>)?\([^;]*ctx\.sender\(\)' "$SOURCE_DIR"; then
+    fail "event payloads must not restate the transaction sender"
+fi
+
 echo "Migrator source boundaries passed"

@@ -130,11 +130,7 @@ public(package) fun claim_creator_cap<Meme>(
     let CreatorAuthority { .. } = authority;
     let creator_cap = CreatorCap<Meme> { id: object::new(ctx) };
 
-    events::creator_cap_claimed<Meme>(
-        claimant,
-        x_identity_hash,
-        x_claim_expiry_ms,
-    );
+    events::creator_cap_claimed<Meme>(x_identity_hash, x_claim_expiry_ms);
 
     creator_cap
 }

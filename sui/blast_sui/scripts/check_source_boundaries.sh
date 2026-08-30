@@ -22,4 +22,11 @@ if grep -rn "sui::event::emit" "$package_dir/sources" | grep -v "sources/lib/eve
   fail "Only events_wrapper may call sui::event::emit."
 fi
 
+# 4. Native transaction metadata carries the sender, so no payload may restate it
+# under an actor name and no call site may pass it into an event. See ADR 0059.
+if grep -rnE '^[[:space:]]+(claimant|collector|caller|funder|migrator|buyer|seller|launcher):' \
+    "$package_dir/sources/lib/events.move"; then
+  fail "Event payloads must not restate the transaction sender."
+fi
+
 printf 'Source boundaries hold.\n'

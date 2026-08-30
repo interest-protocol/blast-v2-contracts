@@ -151,12 +151,7 @@ fun super_admin_authorization_commit_and_restriction_emit_replay_complete_facts(
                 package_digest(),
             );
         let authorized = events::collect_one<events::UpgradeAuthorized>(0);
-        let (package_id, package_version, policy, digest) =
-            authorized.upgrade_authorized_fields();
-        assert_eq!(package_id, PACKAGE_ID.to_id());
-        assert_eq!(package_version, 1);
-        assert_eq!(policy, package::compatible_policy());
-        assert_eq!(digest, package_digest());
+        assert_eq!(authorized.upgrade_authorized_digest(), package_digest());
 
         let receipt = package::test_upgrade(ticket);
         let upgraded_package_id = receipt.package();

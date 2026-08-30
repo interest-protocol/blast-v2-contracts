@@ -129,12 +129,7 @@ public fun new<Meme, Quote, MigrationWitness: drop>(
         creator_authority: option::some(creator_authority),
     };
 
-    launch.emit_created(
-        ticket_id,
-        initial_meme_supply,
-        metadata_cap_id,
-        ctx.sender(),
-    );
+    launch.emit_created(ticket_id, initial_meme_supply, metadata_cap_id);
 
     launch
 }
@@ -231,7 +226,6 @@ public fun buy<Meme, Quote>(
         meme_fee_balance,
         quote_fee_balance,
         protocol_fee_share_bps,
-        ctx.sender(),
         quote_supplied,
         quote_in_gross,
         quote_refund.value(),
@@ -313,7 +307,6 @@ public fun sell<Meme, Quote>(
 
     events::sold<Meme, Quote>(
         object::id(self),
-        ctx.sender(),
         meme_in_gross,
         meme_fee,
         meme_in_after_fee,
@@ -354,7 +347,6 @@ public fun claim_creator_fees<Meme, Quote>(
 
     events::creator_fees_claimed<Meme, Quote>(
         object::id(self),
-        ctx.sender(),
         meme.value(),
         quote.value(),
     );
@@ -375,7 +367,6 @@ public fun claim_protocol_fees<Meme, Quote>(
 
     events::protocol_fees_claimed<Meme, Quote>(
         object::id(self),
-        ctx.sender(),
         meme.value(),
         quote.value(),
     );
@@ -436,7 +427,6 @@ public fun migrate<Meme, Quote, MigrationWitness: drop>(
 
     events::migrated<Meme, Quote, MigrationWitness>(
         object::id(self),
-        ctx.sender(),
         burnable,
         meme.value(),
         quote.value(),
@@ -510,7 +500,6 @@ fun accrue_and_emit_bought<Meme, Quote>(
     meme_fee_balance: Balance<Meme>,
     quote_fee_balance: Balance<Quote>,
     protocol_fee_share_bps: Bps,
-    buyer: address,
     quote_supplied: u64,
     quote_in_gross: u64,
     quote_refund: u64,
@@ -538,7 +527,6 @@ fun accrue_and_emit_bought<Meme, Quote>(
 
     events::bought<Meme, Quote>(
         object::id(self),
-        buyer,
         quote_supplied,
         quote_in_gross,
         quote_refund,
@@ -567,13 +555,11 @@ fun emit_created<Meme, Quote>(
     ticket_id: ID,
     initial_meme_supply: u64,
     metadata_cap_id: ID,
-    launcher: address,
 ) {
     events::launch_created<Meme, Quote>(
         object::id(self),
         ticket_id,
         self.migration_witness,
-        launcher,
         metadata_cap_id,
         self.sell_burn_bps.value(),
         initial_meme_supply,

@@ -76,13 +76,10 @@ public fun authorize_upgrade(
         blast_sui::errors::invalid_package_digest!(),
     );
 
-    // The native cap clears its package id while a ticket is outstanding; read first.
-    let package_id = self.upgrade_cap.package();
-    let cap_version = self.upgrade_cap.version();
     let policy = self.upgrade_cap.policy();
     let ticket = self.upgrade_cap.authorize(policy, digest);
 
-    events::upgrade_authorized(package_id, cap_version, policy, *ticket.digest());
+    events::upgrade_authorized(*ticket.digest());
     ticket
 }
 

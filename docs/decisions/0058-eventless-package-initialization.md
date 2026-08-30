@@ -2,6 +2,7 @@
 
 - Status: **accepted**
 - Date: 2026-08-30
+- Extended by: [0059](0059-no-sender-or-unchanged-state-in-event-payloads.md)
 - Amends: [0011](0011-event-schema-and-replay.md), [0018](0018-authority-module-separation.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0033](0033-meme-liquidity-provision.md), [0049](0049-audit-hardened-package-version-and-launch-intake.md)
 
 ## Sources

@@ -47,7 +47,6 @@ public fun claim_creator_fees<Meme, Quote>(
 
     events::creator_fees_claimed<Meme, Quote>(
         vault_id,
-        ctx.sender(),
         meme_amount,
         quote_amount,
         protocol_meme_fee_total,
@@ -79,7 +78,6 @@ public fun claim_protocol_fees<Meme, Quote>(
 
     events::protocol_fees_claimed<Meme, Quote>(
         vault_id,
-        ctx.sender(),
         meme_amount,
         quote_amount,
         protocol_meme_fee_total,
@@ -159,7 +157,6 @@ public(package) fun accrue_fees<Meme, Quote, Venue>(
     principal_liquidity_before: u128,
     principal_liquidity_after: u128,
     runtime_config: &RuntimeConfig,
-    ctx: &TxContext,
 ) {
     assert!(
         dynamic_object_field::exists(&self.id, PositionKey<Venue>()),
@@ -188,7 +185,6 @@ public(package) fun accrue_fees<Meme, Quote, Venue>(
         object::id(self),
         self.pool_id,
         position_id,
-        ctx.sender(),
         gross_meme_fee,
         gross_quote_fee,
         protocol_fee_share_bps,

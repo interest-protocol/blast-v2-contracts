@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-23
 - Partially accepts: [0006](0006-fees-and-launch-paths.md), [0007](0007-acl-pause-and-versioning.md), [0011](0011-event-schema-and-replay.md)
-- Amended by: [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0041](0041-launch-config-owned-trade-fees.md), [0058](0058-eventless-package-initialization.md)
+- Amended by: [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0041](0041-launch-config-owned-trade-fees.md), [0058](0058-eventless-package-initialization.md), [0059](0059-no-sender-or-unchanged-state-in-event-payloads.md)
 
 ## Sources
 
@@ -130,7 +130,8 @@ use their fully qualified singleton payload type and old/new values without repe
 id. Native Sui checkpoint, transaction, and event position provide ordering. Every payload is emitted
 through the package event wrapper after final state is known.
 
-Claim events name the transaction claimant, not a recipient. The functions return coins, and a later
+Claim events name neither claimant nor recipient: under ADR 0059 the claimant is the event
+envelope's transaction sender. The functions return coins, and a later
 command in the same programmable transaction may transfer each coin to any address. An indexer that
 needs the final payout address follows native transaction effects; it must not infer the recipient from
 the protocol claim event.

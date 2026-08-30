@@ -439,7 +439,7 @@ public fun collect_fees_meme_a<Meme, Quote>(
     runtime_config: &RuntimeConfig,
     fullsail_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
-    ctx: &mut TxContext,
+    _ctx: &mut TxContext,
 ) {
     let venue = Venue();
     let (position_id, meme_fee, quote_fee, liquidity_before, liquidity_after) =
@@ -458,7 +458,6 @@ public fun collect_fees_meme_a<Meme, Quote>(
         liquidity_before,
         liquidity_after,
         runtime_config,
-        ctx,
     );
 }
 
@@ -468,7 +467,7 @@ public fun collect_fees_meme_b<Meme, Quote>(
     runtime_config: &RuntimeConfig,
     fullsail_config: &GlobalConfig,
     pool: &mut Pool<Quote, Meme>,
-    ctx: &mut TxContext,
+    _ctx: &mut TxContext,
 ) {
     let venue = Venue();
     let (position_id, quote_fee, meme_fee, liquidity_before, liquidity_after) =
@@ -487,7 +486,6 @@ public fun collect_fees_meme_b<Meme, Quote>(
         liquidity_before,
         liquidity_after,
         runtime_config,
-        ctx,
     );
 }
 

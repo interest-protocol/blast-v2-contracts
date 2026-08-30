@@ -123,7 +123,6 @@ public struct XClaimSignerRevoked has copy, drop {
 public struct CreatorCapClaimed has copy, drop {
     meme: TypeName,
     x_identity_hash: Option<vector<u8>>,
-    creator: address,
     x_claim_expiry_ms: Option<u64>,
 }
 
@@ -133,7 +132,6 @@ public struct LaunchTicketCreated has copy, drop {
     meme: TypeName,
     initial_supply: u64,
     metadata_cap_id: ID,
-    launcher: address,
     creator: Option<address>,
     x_identity_hash: Option<vector<u8>>,
     burnable: bool,
@@ -147,7 +145,6 @@ public struct LaunchCreated has copy, drop {
     meme: TypeName,
     quote: TypeName,
     migration_witness: TypeName,
-    launcher: address,
     metadata_cap_id: ID,
     sell_burn_bps: u64,
     initial_meme_supply: u64,
@@ -174,7 +171,6 @@ public struct Bought has copy, drop {
     launch_id: ID,
     meme: TypeName,
     quote: TypeName,
-    buyer: address,
     quote_supplied: u64,
     quote_in_gross: u64,
     quote_refund: u64,
@@ -202,7 +198,6 @@ public struct Sold has copy, drop {
     launch_id: ID,
     meme: TypeName,
     quote: TypeName,
-    seller: address,
     meme_in_gross: u64,
     meme_fee: u64,
     meme_in_after_fee: u64,
@@ -233,7 +228,6 @@ public struct Migrated has copy, drop {
     meme: TypeName,
     quote: TypeName,
     migration_witness: TypeName,
-    migrator: address,
     migration_meme: u64,
     migration_quote: u64,
     disposed_meme: u64,
@@ -250,7 +244,6 @@ public struct CreatorFeesClaimed has copy, drop {
     launch_id: ID,
     meme: TypeName,
     quote: TypeName,
-    claimant: address,
     meme_amount: u64,
     quote_amount: u64,
 }
@@ -260,7 +253,6 @@ public struct ProtocolFeesClaimed has copy, drop {
     launch_id: ID,
     meme: TypeName,
     quote: TypeName,
-    claimant: address,
     meme_amount: u64,
     quote_amount: u64,
 }
@@ -277,9 +269,6 @@ public struct PackageAdminCreated has copy, drop {
 
 /// Emitted after an active protocol admin authorizes an exact package digest.
 public struct UpgradeAuthorized has copy, drop {
-    package_id: ID,
-    package_version: u64,
-    policy: u8,
     digest: vector<u8>,
 }
 
@@ -468,14 +457,12 @@ public(package) fun x_claim_signer_revoked(
 }
 
 public(package) fun creator_cap_claimed<Meme>(
-    creator: address,
     x_identity_hash: Option<vector<u8>>,
     x_claim_expiry_ms: Option<u64>,
 ) {
     blast_fun::events_wrapper::emit_event(CreatorCapClaimed {
         meme: type_name::with_original_ids<Meme>(),
         x_identity_hash,
-        creator,
         x_claim_expiry_ms,
     });
 }
@@ -484,7 +471,6 @@ public(package) fun launch_ticket_created<Meme>(
     ticket_id: ID,
     initial_supply: u64,
     metadata_cap_id: ID,
-    launcher: address,
     creator: Option<address>,
     x_identity_hash: Option<vector<u8>>,
     burnable: bool,
@@ -495,7 +481,6 @@ public(package) fun launch_ticket_created<Meme>(
         meme: type_name::with_original_ids<Meme>(),
         initial_supply,
         metadata_cap_id,
-        launcher,
         creator,
         x_identity_hash,
         burnable,
@@ -507,7 +492,6 @@ public(package) fun launch_created<Meme, Quote>(
     launch_id: ID,
     ticket_id: ID,
     migration_witness: TypeName,
-    launcher: address,
     metadata_cap_id: ID,
     sell_burn_bps: u64,
     initial_meme_supply: u64,
@@ -534,7 +518,6 @@ public(package) fun launch_created<Meme, Quote>(
         meme: type_name::with_original_ids<Meme>(),
         quote: type_name::with_original_ids<Quote>(),
         migration_witness,
-        launcher,
         metadata_cap_id,
         sell_burn_bps,
         initial_meme_supply,
@@ -559,7 +542,6 @@ public(package) fun launch_created<Meme, Quote>(
 
 public(package) fun bought<Meme, Quote>(
     launch_id: ID,
-    buyer: address,
     quote_supplied: u64,
     quote_in_gross: u64,
     quote_refund: u64,
@@ -585,7 +567,6 @@ public(package) fun bought<Meme, Quote>(
         launch_id,
         meme: type_name::with_original_ids<Meme>(),
         quote: type_name::with_original_ids<Quote>(),
-        buyer,
         quote_supplied,
         quote_in_gross,
         quote_refund,
@@ -611,7 +592,6 @@ public(package) fun bought<Meme, Quote>(
 
 public(package) fun sold<Meme, Quote>(
     launch_id: ID,
-    seller: address,
     meme_in_gross: u64,
     meme_fee: u64,
     meme_in_after_fee: u64,
@@ -639,7 +619,6 @@ public(package) fun sold<Meme, Quote>(
         launch_id,
         meme: type_name::with_original_ids<Meme>(),
         quote: type_name::with_original_ids<Quote>(),
-        seller,
         meme_in_gross,
         meme_fee,
         meme_in_after_fee,
@@ -667,7 +646,6 @@ public(package) fun sold<Meme, Quote>(
 
 public(package) fun migrated<Meme, Quote, MigrationWitness>(
     launch_id: ID,
-    migrator: address,
     native_supply_burned: bool,
     migration_meme: u64,
     migration_quote: u64,
@@ -683,7 +661,6 @@ public(package) fun migrated<Meme, Quote, MigrationWitness>(
         meme: type_name::with_original_ids<Meme>(),
         quote: type_name::with_original_ids<Quote>(),
         migration_witness: type_name::with_original_ids<MigrationWitness>(),
-        migrator,
         migration_meme,
         migration_quote,
         disposed_meme,
@@ -698,7 +675,6 @@ public(package) fun migrated<Meme, Quote, MigrationWitness>(
 
 public(package) fun creator_fees_claimed<Meme, Quote>(
     launch_id: ID,
-    claimant: address,
     meme_amount: u64,
     quote_amount: u64,
 ) {
@@ -706,7 +682,6 @@ public(package) fun creator_fees_claimed<Meme, Quote>(
         launch_id,
         meme: type_name::with_original_ids<Meme>(),
         quote: type_name::with_original_ids<Quote>(),
-        claimant,
         meme_amount,
         quote_amount,
     });
@@ -714,7 +689,6 @@ public(package) fun creator_fees_claimed<Meme, Quote>(
 
 public(package) fun protocol_fees_claimed<Meme, Quote>(
     launch_id: ID,
-    claimant: address,
     meme_amount: u64,
     quote_amount: u64,
 ) {
@@ -722,7 +696,6 @@ public(package) fun protocol_fees_claimed<Meme, Quote>(
         launch_id,
         meme: type_name::with_original_ids<Meme>(),
         quote: type_name::with_original_ids<Quote>(),
-        claimant,
         meme_amount,
         quote_amount,
     });
@@ -747,15 +720,9 @@ public(package) fun package_admin_created(
 }
 
 public(package) fun upgrade_authorized(
-    package_id: ID,
-    package_version: u64,
-    policy: u8,
     digest: vector<u8>,
 ) {
     blast_fun::events_wrapper::emit_event(UpgradeAuthorized {
-        package_id,
-        package_version,
-        policy,
         digest,
     });
 }
@@ -952,11 +919,10 @@ public fun x_claim_signer_revoked_fields(self: &XClaimSignerRevoked): vector<u8>
 #[test_only]
 public fun creator_cap_claimed_fields(
     self: &CreatorCapClaimed,
-): (TypeName, Option<vector<u8>>, address, Option<u64>) {
+): (TypeName, Option<vector<u8>>, Option<u64>) {
     (
         self.meme,
         self.x_identity_hash,
-        self.creator,
         self.x_claim_expiry_ms,
     )
 }
@@ -964,13 +930,12 @@ public fun creator_cap_claimed_fields(
 #[test_only]
 public fun launch_ticket_created_fields(
     self: &LaunchTicketCreated,
-): (ID, TypeName, u64, ID, address, Option<address>, Option<vector<u8>>, bool, u64) {
+): (ID, TypeName, u64, ID, Option<address>, Option<vector<u8>>, bool, u64) {
     (
         self.ticket_id,
         self.meme,
         self.initial_supply,
         self.metadata_cap_id,
-        self.launcher,
         self.creator,
         self.x_identity_hash,
         self.burnable,
@@ -986,14 +951,13 @@ public fun launch_created_sell_burn_bps(self: &LaunchCreated): u64 {
 #[test_only]
 public fun launch_created_identity_fields(
     self: &LaunchCreated,
-): (ID, ID, TypeName, TypeName, TypeName, address, ID) {
+): (ID, ID, TypeName, TypeName, TypeName, ID) {
     (
         self.launch_id,
         self.ticket_id,
         self.meme,
         self.quote,
         self.migration_witness,
-        self.launcher,
         self.metadata_cap_id,
     )
 }
@@ -1034,10 +998,9 @@ public fun launch_created_policy_fields(
 #[test_only]
 public fun bought_trade_fields(
     self: &Bought,
-): (ID, address, u64, u64, u64, u64, u64, u64, u64, u64, bool) {
+): (ID, u64, u64, u64, u64, u64, u64, u64, u64, bool) {
     (
         self.launch_id,
-        self.buyer,
         self.quote_supplied,
         self.quote_in_gross,
         self.quote_refund,
@@ -1053,10 +1016,9 @@ public fun bought_trade_fields(
 #[test_only]
 public fun sold_trade_fields(
     self: &Sold,
-): (ID, address, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64) {
+): (ID, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64) {
     (
         self.launch_id,
-        self.seller,
         self.meme_in_gross,
         self.meme_fee,
         self.meme_in_after_fee,
@@ -1087,17 +1049,13 @@ public fun migrated_balance_fields(
 }
 
 #[test_only]
-public fun creator_fees_claimed_fields(
-    self: &CreatorFeesClaimed,
-): (ID, address, u64, u64) {
-    (self.launch_id, self.claimant, self.meme_amount, self.quote_amount)
+public fun creator_fees_claimed_fields(self: &CreatorFeesClaimed): (ID, u64, u64) {
+    (self.launch_id, self.meme_amount, self.quote_amount)
 }
 
 #[test_only]
-public fun protocol_fees_claimed_fields(
-    self: &ProtocolFeesClaimed,
-): (ID, address, u64, u64) {
-    (self.launch_id, self.claimant, self.meme_amount, self.quote_amount)
+public fun protocol_fees_claimed_fields(self: &ProtocolFeesClaimed): (ID, u64, u64) {
+    (self.launch_id, self.meme_amount, self.quote_amount)
 }
 
 #[test_only]
@@ -1120,15 +1078,8 @@ public fun upgrade_policy_restricted_fields(self: &UpgradePolicyRestricted): (u8
 }
 
 #[test_only]
-public fun upgrade_authorized_fields(
-    self: &UpgradeAuthorized,
-): (ID, u64, u8, vector<u8>) {
-    (
-        self.package_id,
-        self.package_version,
-        self.policy,
-        self.digest,
-    )
+public fun upgrade_authorized_digest(self: &UpgradeAuthorized): vector<u8> {
+    self.digest
 }
 
 #[test_only]

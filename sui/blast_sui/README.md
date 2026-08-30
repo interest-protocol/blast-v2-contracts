@@ -145,7 +145,10 @@ the compiled transfer delay and initial generation are constants of the
 published bytecode (ADR 0058). Administration emits `SuperAdminTransferStarted`,
 `SuperAdminTransferCancelled`, `SuperAdminTransferred`, `PackageVersionAdvanced`,
 `PackageAdminCreated`, `UpgradeAuthorized`, `UpgradeCommitted`, and
-`UpgradePolicyRestricted`. The receipt and vault flows emit `VaultCreated`,
+`UpgradePolicyRestricted`. `UpgradeAuthorized` carries only the authorized
+digest; the cap's package id, version, and policy replay from
+`PackageAdminCreated`, `UpgradeCommitted`, and `UpgradePolicyRestricted`
+(ADR 0059). The receipt and vault flows emit `VaultCreated`,
 `FunSuiMinted`, `FunSuiRedeemed`, `BlastSuiDepositRequested`,
 `BlastSuiDepositClaimed`, `BlastSuiDepositCancelled`, `BlastSuiRedeemed`,
 `BlastSuiDonated`, `FunYieldSwept`, `RedeemFeeChanged`, `VaultSynced`, and

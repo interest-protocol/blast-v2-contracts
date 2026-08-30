@@ -135,7 +135,6 @@ fun wrong_venue_accrual_fails_closed() {
             5,
             5,
             &f.runtime_config,
-            f.scenario.ctx(),
         );
     });
 
@@ -167,7 +166,6 @@ macro fun accrue($fixture: &mut VaultFixture, $meme: u64, $quote: u64) {
         5,
         5,
         &fixture.runtime_config,
-        fixture.scenario.ctx(),
     );
 }
 

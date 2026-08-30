@@ -222,16 +222,7 @@ fun active_admin_authorizes_exact_digest_and_commits_matching_receipt() {
         f.package_admin.commit_upgrade(&f.package_version, receipt);
 
         let authorized = events::collect_one<events::UpgradeAuthorized>(0);
-        let (
-            authorized_package_id,
-            authorized_package_version,
-            authorized_policy,
-            authorized_digest,
-        ) = authorized.upgrade_authorized_fields();
-        assert_eq!(authorized_package_id, PACKAGE_ID.to_id());
-        assert_eq!(authorized_package_version, 1);
-        assert_eq!(authorized_policy, package::compatible_policy());
-        assert_eq!(authorized_digest, digest);
+        assert_eq!(authorized.upgrade_authorized_digest(), digest);
 
         let committed = events::collect_one<events::UpgradeCommitted>(0);
         let (emitted_new_package_id, previous_version, new_version) =
