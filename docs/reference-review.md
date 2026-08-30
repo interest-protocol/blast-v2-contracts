@@ -18,6 +18,13 @@ and the Solana Foundation rewards program at
 The comparison is in
 [research/vesting-contract-patterns-2026.md](research/vesting-contract-patterns-2026.md).
 
+Focused generated-package review on 2026-08-29 checked the Blast V1 browser
+publisher at
+[`5c2380830a759cfd7d2f4d3f1ee0826bf788c20a`](https://github.com/interest-protocol/blast.fun/tree/5c2380830a759cfd7d2f4d3f1ee0826bf788c20a)
+and Mysten's Move bytecode template implementation at
+[`1056b789cb3d69250ff41d11dfabb383587e6b0c`](https://github.com/MystenLabs/ts-sdks/tree/1056b789cb3d69250ff41d11dfabb383587e6b0c).
+ADR 0051 records the adapted compile-once, patch, publish, and freeze flow.
+
 Focused authority review on 2026-08-22 additionally checked the Memez lockfile's
 pinned [Interest access-control package](https://github.com/interest-protocol/interest-mvr/tree/91e2f4f83626c1cb924bac246932574501c21bf8/access-control/contracts)
 at `91e2f4f83626c1cb924bac246932574501c21bf8` and OpenZeppelin Contracts

@@ -4,7 +4,7 @@
 
 **Goal:** Build Bluefin, MMT, Cetus, Turbos, and Full Sail Sui migration packages that initialize or safely adopt a CLMM at the real seed-balance price, permanently lock the position, split LP fees between creator and protocol, and route residuals to the live protocol treasury.
 
-**Architecture:** `blast_fun` adds venue-neutral X64 price math, a live treasury field, and an external runtime-accrual seam on its existing dual-asset fee ledger. Five independent adapter packages depend inward on that ABI and on exact venue revisions. Each package owns its sealed witness and shared `LpVault`, while all venue-specific creation, ordering, tick, and collection calls remain outside core.
+**Architecture:** `blast_fun` adds venue-neutral X64 price math, a live treasury field, and an external runtime-accrual seam on its existing dual-asset fee ledger. One aggregate migrators package depends inward on that ABI and on exact compatible venue revisions. It owns one shared per-launch `LpVault` implementation, while five modules own sealed witnesses and venue-specific creation, ordering, tick, and collection calls. Each venue position is a dynamic object field keyed by its sealed marker.
 
 **Tech Stack:** Sui Move 2024, Sui CLI `1.77.2-51d177ad7d65`, `u256` integer arithmetic, shell source-boundary checks, exact Git dependency SHAs.
 
@@ -13,9 +13,10 @@
 ## Global Constraints
 
 - Preserve all pre-existing user changes in the dirty contracts and SDK repositories.
-- Core imports no venue package; every adapter is an independent child Move package.
+- Core imports no venue package; all five adapters are modules in one child Move package.
 - All Git dependencies and transitive overrides use immutable full commit SHAs from ADR 0054.
-- No production adapter exposes or calls position transfer, close, burn, decrease-liquidity, or remove-liquidity functionality.
+- No production module exposes or calls dynamic-object-field removal, position transfer, close, burn, decrease-liquidity, or remove-liquidity functionality.
+- The package is not permanently locked until every venue's published ABI and dev-inspect checks pass and its single `UpgradeCap` is destroyed.
 - Price is derived on chain from real Meme and net Quote atomic balances; display decimals and USD prices never enter CLMM math.
 - New-pool price deviation is zero; adopted Cetus/Turbos/Full Sail price deviation is at most 50 bps.
 - Returned migration residuals are at most 1 bps of each source balance and transfer to the live nonzero protocol treasury.
@@ -39,17 +40,17 @@
 - Produces: `migration_math::minimum_utilized_amount(u64, u64): u64`
 - Produces: `migration_math::assert_residual_within_bps(u64, u64, u64)`
 
-- [ ] **Step 1: Write price tests before the module exists**
+- [x] **Step 1: Write price tests before the module exists**
 
 Add focused tests for `1:1 -> 2^64`, both reciprocal type orders, the committed Quote-decimal vectors, floor-square behavior, zero balances, `u64::MAX`, 50-bps acceptance/rejection, and 1-bps residual boundaries.
 
-- [ ] **Step 2: Run the focused suite and observe RED**
+- [x] **Step 2: Run the focused suite and observe RED**
 
 Run: `cd sui/launchpad && sui move test migration_math_tests`
 
 Expected: compilation fails because `blast_fun::migration_math` does not exist.
 
-- [ ] **Step 3: Add append-only errors and bounded `u256` math**
+- [x] **Step 3: Add append-only errors and bounded `u256` math**
 
 Implement:
 
@@ -79,19 +80,19 @@ public fun assert_residual_within_bps(
 
 Use a fixed upper-exclusive `2^96` binary-search bound because the numerator and denominator are positive `u64` values and the Q128 ratio is below `2^192`.
 
-- [ ] **Step 4: Run RED-to-GREEN verification**
+- [x] **Step 4: Run RED-to-GREEN verification**
 
 Run: `cd sui/launchpad && sui move test migration_math_tests`
 
 Expected: all migration-math tests pass.
 
-- [ ] **Step 5: Run the complete core suite**
+- [x] **Step 5: Run the complete core suite**
 
 Run: `cd sui/launchpad && sui move test --lint`
 
 Expected: all existing and new tests pass without warnings.
 
-- [ ] **Step 6: Commit only Task 1 files**
+- [x] **Step 6: Commit only Task 1 files**
 
 ```bash
 git add sui/launchpad/sources/migration_math.move sui/launchpad/tests/migration_math_tests.move sui/launchpad/sources/lib/errors.move docs/error-codes.md
@@ -119,19 +120,19 @@ git commit -m "feat(sui): add exact migration price math"
 - Produces: `fees::accrue_from_runtime(&mut FeeLedger<Meme, Quote>, Balance<Meme>, Balance<Quote>, &RuntimeConfig)`
 - Produces: public creator/protocol ledger claims for adapter-owned ledgers
 
-- [ ] **Step 1: Add failing runtime and external-accrual tests**
+- [x] **Step 1: Add failing runtime and external-accrual tests**
 
 Test publisher-sender initialization, nonzero/unchanged treasury rejection,
 package-version guard precedence, admin update events, raw public fee-share
 reads, prospective live-share accrual, and creator/protocol claim isolation.
 
-- [ ] **Step 2: Observe RED**
+- [x] **Step 2: Observe RED**
 
 Run: `cd sui/launchpad && sui move test runtime_config_tests && sui move test fees_tests`
 
 Expected: compilation fails on the missing treasury and external-accrual seams.
 
-- [ ] **Step 3: Implement the minimum public ABI**
+- [x] **Step 3: Implement the minimum public ABI**
 
 Add `protocol_treasury: address` to `RuntimeConfig`, initialize it from
 `ctx.sender()`, validate nonzero/different updates, and emit creation/change
@@ -140,13 +141,13 @@ make the raw `protocol_fee_share_bps` getter public. Add
 `FeeLedger::accrue_from_runtime` and widen only the constructor, totals, and two
 claim methods needed by adapters.
 
-- [ ] **Step 4: Update core callers and prove GREEN**
+- [x] **Step 4: Update core callers and prove GREEN**
 
 Run: `cd sui/launchpad && sui move test --lint`
 
 Expected: all core tests pass.
 
-- [ ] **Step 5: Commit only Task 2 files**
+- [x] **Step 5: Commit only Task 2 files**
 
 ```bash
 git add sui/launchpad/sources/runtime_config.move sui/launchpad/sources/fees.move sui/launchpad/sources/launch.move sui/launchpad/sources/lib/events.move sui/launchpad/sources/lib/errors.move sui/launchpad/tests/runtime_config_tests.move sui/launchpad/tests/fees_tests.move sui/launchpad/tests/launch_tests.move docs/error-codes.md
@@ -205,74 +206,85 @@ git commit -m "docs: accept locked V3 migration design"
 ### Task 4: Bluefin adapter
 
 **Files:**
-- Create: `sui/migrators/bluefin/Move.toml`
-- Create: `sui/migrators/bluefin/sources/bluefin.move`
-- Create: `sui/migrators/bluefin/scripts/check_source_boundaries.sh`
-- Create: `sui/migrators/bluefin/README.md`
+- Create: `sui/migrators/Move.toml`
+- Create: `sui/migrators/sources/vault.move`
+- Create: `sui/migrators/sources/bluefin.move`
+- Create: `sui/migrators/scripts/check_source_boundaries.sh`
+- Create: `sui/migrators/README.md`
 
 **Interfaces:**
-- Produces: sealed `blast_fun_bluefin::bluefin::Witness`
-- Produces: shared `LpVault<Meme, Quote>`
-- Produces: `migrate_meme_a` and `migrate_meme_b`
-- Produces: `collect_fees`, `claim_creator_fees`, and `claim_protocol_fees`
+- Produces: sealed `blast_fun_migrators::bluefin::Witness` and `Venue`
+- Produces: shared per-launch `vault::LpVault<Meme, Quote>` with the position
+  attached as a sealed-marker dynamic object field
+- Produces: one deterministic `bluefin::migrate` route with Meme coin A
+- Produces: `bluefin::collect_fees`, `vault::claim_creator_fees`, and
+  `vault::claim_protocol_fees`
 
-- [ ] **Step 1: Add a failing structural boundary check**
+- [x] **Step 1: Add a failing structural boundary check**
 
-The script must require the witness, vault, migration, collection, and claim
-symbols and reject `remove_liquidity`, `close_position`, position transfer,
-position burn, and any nonzero creation-fee balance construction.
+The script must require the witness, shared vault, dynamic object-field add and
+borrow, migration, collection, and claim symbols. It must reject
+`dynamic_object_field::remove`, `remove_liquidity`, `close_position`, position
+transfer, position burn, and any nonzero creation-fee balance construction.
 
-- [ ] **Step 2: Observe RED**
+- [x] **Step 2: Observe RED**
 
-Run: `bash sui/migrators/bluefin/scripts/check_source_boundaries.sh`
+Run: `bash sui/migrators/scripts/check_source_boundaries.sh`
 
-Expected: failure because `sources/bluefin.move` does not exist.
+Expected: failure because the aggregate package and production modules do not
+exist.
 
-- [ ] **Step 3: Implement the Bluefin migration and vault**
+- [x] **Step 3: Implement the Bluefin migration and vault**
 
-Use exact Bluefin and transitive pins. Read the Quote-denominated creation fee,
-assert `supported && fee == 0`, derive pair-order price from core, align the
-config-provided full tick range, call `create_pool_with_liquidity`, enforce 1-bps
-residual limits, transfer residuals to `protocol_treasury`, and share the vault.
-Collection must compare `position::liquidity` before/after and accrue normalized
-Meme/Quote balances through `FeeLedger::accrue_from_runtime`.
+First implement the common vault with one dynamic object field keyed by
+`PositionKey<Venue>`. Expose package-only typed construction and borrow, never
+removal. Expose creator/protocol fee claims once from the vault module.
 
-- [ ] **Step 4: Prove GREEN**
+Use exact Bluefin and compatible normalized transitive pins. Read the
+Quote-denominated creation fee, assert `supported && fee == 0`, always derive
+the direct Quote/Meme price for `Pool<Meme, Quote>`, align the config-provided
+full tick range, call `create_pool_with_liquidity`, enforce 1-bps residual
+limits, transfer residuals to `protocol_treasury`, attach the position, and
+share the vault. Collection must compare `position::liquidity` before/after and
+accrue normalized Meme/Quote balances through
+`FeeLedger::accrue_from_runtime`.
+
+- [x] **Step 4: Prove GREEN**
 
 Run:
 
 ```bash
-cd sui/migrators/bluefin
+cd sui/migrators
 sui move build
 sui move lint --warnings-are-errors
 bash scripts/check_source_boundaries.sh
 ```
 
-- [ ] **Step 5: Commit only the Bluefin package**
+- [x] **Step 5: Commit only the shared vault and Bluefin slice**
 
 ```bash
-git add sui/migrators/bluefin
-git commit -m "feat(sui): add Bluefin locked migration vault"
+git add sui/migrators/Move.toml sui/migrators/Move.lock sui/migrators/README.md sui/migrators/scripts/check_source_boundaries.sh sui/migrators/sources/vault.move sui/migrators/sources/bluefin.move
+git commit -m "feat(sui): add shared migrator vault and Bluefin"
 ```
 
-### Task 5: MMT adapter
+### Task 5: MMT module
 
 **Files:**
-- Create: `sui/migrators/mmt/Move.toml`
-- Create: `sui/migrators/mmt/sources/mmt.move`
-- Create: `sui/migrators/mmt/scripts/check_source_boundaries.sh`
-- Create: `sui/migrators/mmt/README.md`
+- Modify: `sui/migrators/Move.toml`
+- Create: `sui/migrators/sources/mmt.move`
+- Modify: `sui/migrators/scripts/check_source_boundaries.sh`
+- Modify: `sui/migrators/README.md`
 
 **Interfaces:**
-- Produces the same normalized vault/migration/collection/claim surface under `blast_fun_mmt::mmt`.
+- Produces MMT migration/collection against the common vault and common claims.
 
-- [ ] **Step 1: Add and run the failing MMT boundary check**
+- [x] **Step 1: Add and run the failing MMT boundary check**
 
-Run: `bash sui/migrators/mmt/scripts/check_source_boundaries.sh`
+Run: `bash sui/migrators/scripts/check_source_boundaries.sh`
 
 Expected: failure because the production module is missing.
 
-- [ ] **Step 2: Implement MMT create-initialize-add-share ordering**
+- [x] **Step 2: Implement MMT create-initialize-add-share ordering**
 
 Use `check_coin_order`, `create_pool::new`, `pool::initialize`, venue full-range
 tick helpers, `liquidity::open_position`, `liquidity::add_liquidity`, and finally
@@ -280,43 +292,48 @@ tick helpers, `liquidity::open_position`, `liquidity::add_liquidity`, and finall
 fee coins from `collect::fee`, verify unchanged `position::liquidity`, and accrue
 through the core ledger.
 
-- [ ] **Step 3: Build, lint, and prove the boundary**
+- [x] **Step 3: Build, lint, and prove the boundary**
 
 Run:
 
 ```bash
-cd sui/migrators/mmt
+cd sui/migrators
 sui move build
 sui move lint --warnings-are-errors
 bash scripts/check_source_boundaries.sh
 ```
 
-- [ ] **Step 4: Commit only the MMT package**
+- [x] **Step 4: Commit only the MMT slice**
 
 ```bash
-git add sui/migrators/mmt
+git add sui/migrators/Move.toml sui/migrators/Move.lock sui/migrators/README.md sui/migrators/scripts/check_source_boundaries.sh sui/migrators/sources/mmt.move
 git commit -m "feat(sui): add MMT locked migration vault"
 ```
 
-### Task 6: Cetus adapter
+### Task 6: Cetus module
 
 **Files:**
-- Create: `sui/migrators/cetus/Move.toml`
-- Create: `sui/migrators/cetus/sources/cetus.move`
-- Create: `sui/migrators/cetus/scripts/check_source_boundaries.sh`
-- Create: `sui/migrators/cetus/README.md`
+- Create: `sui/migrators/interfaces/cetus/Move.toml`
+- Create: minimal normalized ABI modules under `sui/migrators/interfaces/cetus/sources/`
+- Modify: `sui/migrators/Move.toml`
+- Create: `sui/migrators/sources/cetus.move`
+- Modify: `sui/migrators/scripts/check_source_boundaries.sh`
+- Modify: `sui/migrators/README.md`
 
 **Interfaces:**
 - Produces new-pool and explicit existing-pool routes for both canonical type orders.
-- Existing routes accept a typed `&mut cetus_clmm::pool::Pool<A, B>` and enforce 50-bps price deviation before redemption/addition.
+- Existing routes accept a typed `&mut cetus_clmm::pool::Pool<A, B>` and enforce
+  50-bps price deviation immediately after the payload reveals its exact
+  balances and before any Cetus pool or position mutation. An abort rolls back
+  the atomic core migration transition.
 
-- [ ] **Step 1: Add and run the failing Cetus boundary check**
+- [x] **Step 1: Add and run the failing Cetus boundary check**
 
-Run: `bash sui/migrators/cetus/scripts/check_source_boundaries.sh`
+Run: `bash sui/migrators/scripts/check_source_boundaries.sh`
 
 Expected: failure because the production module is missing.
 
-- [ ] **Step 2: Implement canonical new and adoption paths**
+- [x] **Step 2: Implement canonical new and adoption paths**
 
 Use `pool_creator::full_range_tick_range`. New unpermissioned pairs use
 `create_pool_v3`; adopted pools use `pool::open_position`,
@@ -325,42 +342,47 @@ Use `pool_creator::full_range_tick_range`. New unpermissioned pairs use
 minimum. Collect with `pool::collect_fee(..., true)` and assert
 `position::liquidity` is unchanged.
 
-- [ ] **Step 3: Build, lint, and prove the boundary**
+The reviewed Git source supplies the interface facts but omits `published-at`.
+The local interface must preserve original address `0x1eab...b2fb` and set
+`published-at` to latest mainnet revision 14 at `0x25eb...e5e3`, with the
+normalized target signatures checked against digest `FEdn2y...Tuokoi`.
+
+- [x] **Step 3: Build, lint, and prove the boundary**
 
 Run:
 
 ```bash
-cd sui/migrators/cetus
+cd sui/migrators
 sui move build
 sui move lint --warnings-are-errors
 bash scripts/check_source_boundaries.sh
 ```
 
-- [ ] **Step 4: Commit only the Cetus package**
+- [x] **Step 4: Commit only the Cetus slice**
 
 ```bash
-git add sui/migrators/cetus
+git add sui/migrators/Move.toml sui/migrators/Move.lock sui/migrators/README.md sui/migrators/scripts/check_source_boundaries.sh sui/migrators/sources/cetus.move sui/migrators/interfaces/cetus
 git commit -m "feat(sui): add Cetus locked migration vault"
 ```
 
-### Task 7: Turbos adapter
+### Task 7: Turbos module
 
 **Files:**
-- Create: `sui/migrators/turbos/Move.toml`
-- Create: `sui/migrators/turbos/sources/turbos.move`
-- Create: `sui/migrators/turbos/scripts/check_source_boundaries.sh`
-- Create: `sui/migrators/turbos/README.md`
+- Modify: `sui/migrators/Move.toml`
+- Create: `sui/migrators/sources/turbos.move`
+- Modify: `sui/migrators/scripts/check_source_boundaries.sh`
+- Modify: `sui/migrators/README.md`
 
 **Interfaces:**
 - Produces new-pool and explicit existing-pool routes for both type orders and one selected `FeeType`.
 
-- [ ] **Step 1: Add and run the failing Turbos boundary check**
+- [x] **Step 1: Add and run the failing Turbos boundary check**
 
-Run: `bash sui/migrators/turbos/scripts/check_source_boundaries.sh`
+Run: `bash sui/migrators/scripts/check_source_boundaries.sh`
 
 Expected: failure because the production module is missing.
 
-- [ ] **Step 2: Implement pinned Turbos creation/adoption**
+- [x] **Step 2: Implement pinned Turbos creation/adoption**
 
 Override upstream's mutable framework reference with `sui@06734f6`. Derive
 full-range signed ticks with `math_tick::get_min_tick/get_max_tick`. New pools use
@@ -369,33 +391,35 @@ full-range signed ticks with `math_tick::get_min_tick/get_max_tick`. New pools u
 1-bps minima and caller deadline. Collection uses
 `collect_with_return_` and compares `get_position_info` liquidity before/after.
 
-- [ ] **Step 3: Build, lint, and prove the boundary**
+- [x] **Step 3: Build, lint, and prove the boundary**
 
 Run:
 
 ```bash
-cd sui/migrators/turbos
+cd sui/migrators
 sui move build
 sui move lint --warnings-are-errors
 bash scripts/check_source_boundaries.sh
 ```
 
-- [ ] **Step 4: Commit only the Turbos package**
+- [x] **Step 4: Commit only the Turbos slice**
 
 ```bash
-git add sui/migrators/turbos
+git add sui/migrators/Move.toml sui/migrators/Move.lock sui/migrators/README.md sui/migrators/scripts/check_source_boundaries.sh sui/migrators/sources/turbos.move
 git commit -m "feat(sui): add Turbos locked migration vault"
 ```
 
-### Task 8: Full Sail adapter and on-chain ABI pin
+### Task 8: Full Sail module and on-chain ABI pin
 
 **Files:**
 - Create: `sui/migrators/interfaces/fullsail/Move.toml`
 - Create: minimal interface modules under `sui/migrators/interfaces/fullsail/sources/`
-- Create: `sui/migrators/fullsail/Move.toml`
-- Create: `sui/migrators/fullsail/sources/fullsail.move`
-- Create: `sui/migrators/fullsail/scripts/check_source_boundaries.sh`
-- Create: `sui/migrators/fullsail/README.md`
+- Create: `sui/migrators/interfaces/fullsail_integer_mate/Move.toml`
+- Create: minimal integer interface modules under `sui/migrators/interfaces/fullsail_integer_mate/sources/`
+- Modify: `sui/migrators/Move.toml`
+- Create: `sui/migrators/sources/fullsail.move`
+- Modify: `sui/migrators/scripts/check_source_boundaries.sh`
+- Modify: `sui/migrators/README.md`
 
 **Interfaces:**
 - Produces new-pool and explicit existing-pool routes for both canonical type orders.
@@ -403,7 +427,7 @@ git commit -m "feat(sui): add Turbos locked migration vault"
 - Pins original package `0xe741...b239` to latest mainnet revision 4 at
   `0x497a...a881`, digest `CWkTs...Ho3nF`.
 
-- [ ] **Step 1: Prove the published docs pin is stale and inspect bytecode**
+- [x] **Step 1: Prove the published docs pin is stale and inspect bytecode**
 
 Use Sui GraphQL package lineage to resolve the latest revision from the
 original package id. Fetch module bytecode and normalized ABI from revision 4.
@@ -412,12 +436,12 @@ Check `factory::create_pool_with_liquidity`, `pool::open_position`,
 `pool::collect_fee`, `pool::current_sqrt_price`, `position::liquidity`, and
 `position::pool_id`. Record the package and module digests.
 
-- [ ] **Step 2: Add and observe the failing boundary/build checks**
+- [x] **Step 2: Add and observe the failing boundary/build checks**
 
 The boundary script must reject principal withdrawal, position transfer,
 close, burn, and gauge staking. Run it before the production module exists.
 
-- [ ] **Step 3: Build the exact local interface and adapter**
+- [x] **Step 3: Build the exact local interface and adapter**
 
 Generate only the public types and functions the adapter consumes from the
 normalized revision-4 ABI. New pools use
@@ -427,21 +451,21 @@ after the 50-bps check. Use venue tick helpers for full range, enforce the
 position in the shared vault, and verify liquidity is unchanged across fee
 collection.
 
-- [ ] **Step 4: Build, lint, and prove the boundary**
+- [x] **Step 4: Build, lint, and prove the boundary**
 
 Run:
 
 ```bash
-cd sui/migrators/fullsail
+cd sui/migrators
 sui move build
 sui move lint --warnings-are-errors
 bash scripts/check_source_boundaries.sh
 ```
 
-- [ ] **Step 5: Commit only the Full Sail package and interface**
+- [x] **Step 5: Commit only the Full Sail package and interface**
 
 ```bash
-git add sui/migrators/fullsail sui/migrators/interfaces/fullsail
+git add sui/migrators/sources/fullsail.move sui/migrators/interfaces/fullsail sui/migrators/interfaces/fullsail_integer_mate sui/migrators/Move.toml sui/migrators/Move.lock sui/migrators/README.md sui/migrators/scripts/check_source_boundaries.sh
 git commit -m "feat(sui): add Full Sail locked migration vault"
 ```
 
@@ -450,18 +474,34 @@ git commit -m "feat(sui): add Full Sail locked migration vault"
 **Files:**
 - Modify: `sui/migrators/README.md`
 - Create: `sui/migrators/DEPENDENCIES.md`
+- Create: `sui/migrators/scripts/check_mainnet_abi.mjs`
 - Modify: `docs/testing.md`
 
 **Interfaces:**
 - Produces a reproducible package-id/dependency matrix and explicit mainnet dev-inspect release gate.
+- Produces a dependency-free official-GraphQL checker for latest package
+  lineage, package/module bytecode digests, and every adapter-consumed ABI.
+- Produces an immutable-package gate that records the aggregate package's one
+  `UpgradeCap` destruction after every venue passes verification.
 
-- [ ] **Step 1: Verify every package locally from clean commands**
+- [x] **Step 1: Verify live package lineage, bytecode, and consumed ABI**
 
-Run the core build, strict lint, complete tests, source-boundary script, then the
-build/lint/boundary triplet for all five adapters. Record exact exit codes and
-test counts.
+Create `scripts/check_mainnet_abi.mjs` with Node built-ins only. Query the
+official Sui mainnet GraphQL endpoint, resolve the latest revision after each
+original Bluefin, MMT, Cetus, Turbos, and Full Sail package, assert the expected
+current package id/version/digest and consumed module-byte fingerprints, then
+assert the exact normalized signatures used by the adapters. Include Full
+Sail's separate IntegerMate package. Fail closed on GraphQL errors, later
+versions, missing modules/functions, signature/ability drift, or digest drift.
 
-- [ ] **Step 2: Inspect the aggregate diff and dependency locks**
+Run: `cd sui/migrators && node scripts/check_mainnet_abi.mjs`
+
+- [x] **Step 2: Verify every package locally from clean commands**
+
+Run the core build, strict lint, complete tests, then the aggregate migrators
+build/lint/source-boundary triplet. Record exact exit codes and test counts.
+
+- [x] **Step 3: Inspect the aggregate diff and dependency locks**
 
 Run:
 
@@ -474,20 +514,20 @@ rg -n 'rev = "(main|mainnet|testnet|v[0-9]|mainnet-v)' sui/migrators --glob 'Mov
 
 Expected: no whitespace errors and no mutable/tag dependency revision.
 
-- [ ] **Step 3: Request Opus 5 security review**
+- [x] **Step 4: Request Opus 5 security review**
 
 Use exact `claude-opus-5` under `jose@interestprotocol.com` to review price
 orientation, arithmetic bounds, ability/visibility leaks, residual conservation,
 principal lock, venue ABI signatures, and dependency pins. Apply only findings
 that reproduce against the pinned compiler or source.
 
-- [ ] **Step 4: Re-run full verification after review changes**
+- [x] **Step 5: Re-run full verification after review changes**
 
 Repeat every command from Step 1 and `git diff --check` with fresh output.
 
-- [ ] **Step 5: Commit release documentation**
+- [x] **Step 6: Commit release checker and documentation**
 
 ```bash
-git add sui/migrators/README.md sui/migrators/DEPENDENCIES.md docs/testing.md
+git add sui/migrators/README.md sui/migrators/DEPENDENCIES.md sui/migrators/scripts/check_mainnet_abi.mjs docs/testing.md
 git commit -m "docs(sui): record migrator release gates"
 ```

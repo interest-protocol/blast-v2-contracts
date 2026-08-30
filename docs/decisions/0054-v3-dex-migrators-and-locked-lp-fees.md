@@ -63,11 +63,18 @@ The implementation must prevent four failures:
 
 ### Package boundary
 
-Each venue is an independently deployed package below `sui/migrators/`. It owns
-one sealed `Witness() has drop`, its venue dependency, venue-specific pool
-creation or adoption, and its `LpVault`. Each package calls guarded
+All five venues are modules in one independently deployed package below
+`sui/migrators/`. Each venue module owns one sealed `Witness() has drop`, its
+venue-specific pool creation or adoption calls, and a sealed venue marker. The
+package owns one shared vault implementation. Each venue module calls guarded
 `launch::migrate` and witness-gated `launch::redeem_migration` in one Move call.
 Core imports no venue package.
+
+This is one shared vault *type*, not one global vault object. Every migrated
+launch creates its own `LpVault<Meme, Quote>` so unrelated fee collection does
+not contend on one shared Sui object. The aggregate package accepts the cost of
+an all-venues dependency and release gate in exchange for one custody and claim
+surface.
 
 The core package exposes only three venue-neutral primitives needed
 synchronously by adapters:
@@ -131,14 +138,31 @@ right unconsumed.
 Every successful route creates and shares one
 `LpVault<Meme, Quote>` containing:
 
-- the venue position or position NFT;
-- the venue pool id and immutable opening-price facts; and
+- the venue pool id; and
 - one core `FeeLedger<Meme, Quote>` for collected LP fees.
+
+The venue position or position NFT is attached to the vault UID as exactly one
+dynamic **object** field keyed by a sealed venue marker. All supported position
+types have `key + store`; `dynamic_object_field` preserves the child object and
+its identity. The vault module exposes package-only typed borrow operations for
+fee collection, but exposes no remove operation.
+
+The vault does not duplicate migration amounts or the derived opening square
+root. The core `Migrated` event already commits the Meme and Quote amounts, and
+the opening square root is deterministically reconstructed from those primitive
+facts plus the venue orientation. This keeps derived convenience state out of
+the contract.
 
 No public or package-visible function returns the position, transfers it,
 closes it, burns it, decreases liquidity, or calls a venue principal-removal
 function. Source-boundary checks reject those calls. The only mutable position
 operation exposed by the adapter is fee collection.
+
+That source boundary is not permanent while the migrators package remains
+upgradeable: a compatible upgrade could add a new extraction function. Each
+production package must therefore pass every venue's published-package ABI and
+dev-inspect checks and then destroy its single `UpgradeCap`. No deployment may be
+described as permanently locked before this irreversible immutability step.
 
 Fee collection records venue liquidity immediately before and after the
 external collection call and aborts unless they are equal. New Meme and Quote
@@ -146,6 +170,11 @@ fees are split using the current global `protocol_fee_share_bps`. Protocol
 amounts round up and creator amounts receive the exact remainder, matching
 bonding-curve trade fees. Later changes affect only later collections; already
 accrued ownership never changes.
+
+The independently deployed migrators package emits its replay-complete venue
+events as direct, strongly typed Sui events. It does not wrap them in the core
+package's generic event envelope. This preserves native payload filtering and
+does not change the core package's event ABI.
 
 The vault exposes separate composable claims:
 
@@ -170,30 +199,39 @@ terminal-disposal policy remains unchanged and separate.
 
 | Venue | New pool | Existing pool | Position custody | Special guard |
 | --- | --- | --- | --- | --- |
-| Bluefin | `pool::create_pool_with_liquidity` | never adopted; a new pool is created | `bluefin_spot::position::Position` | `config::get_pool_creation_fee_amount<Quote>` must report supported and exactly zero; the adapter supplies a zero Quote balance |
+| Bluefin | `pool::create_pool_with_liquidity` | never adopted; a new pool is created | `bluefin_spot::position::Position` | Meme is always coin A and Quote is always coin B; `config::get_pool_creation_fee_amount<Quote>` must report supported and exactly zero; the adapter supplies a zero Quote balance |
 | MMT | `create_pool::new`, `pool::initialize`, add liquidity, then `pool::transfer` | never adopted | `mmt_v3::position::Position` | `create_pool::check_coin_order` must agree with the selected entry function |
 | Cetus | `pool_creator::create_pool_v3` for an unpermissioned pair | accepted only through the explicit adoption entry and 50-bps check | `cetus_clmm::position::Position` | canonical pair ordering and `pool_creator::full_range_tick_range` are mandatory; permission-pair creation needs its separate creation-cap path and is not guessed |
 | Turbos | `pool_factory::deploy_pool_and_mint_with_return_` | accepted only through the explicit adoption entry and 50-bps check | `turbos_clmm::position_nft::TurbosPositionNFT` | exact fee-object type, registry pair ordering, deadline, and `math_tick` full-range bounds are mandatory |
 | Full Sail | `factory::create_pool_with_liquidity` | accepted only through an explicit adoption entry and 50-bps check | `clmm_pool::position::Position` | canonical order, revision-4 ABI, full-range tick bounds, and the live config/rewarder objects are mandatory |
 
-Every venue gets two typed entry functions when runtime branching cannot swap
-generic type parameters: one where Meme is venue coin A/X and one where Meme is
-venue coin B/Y. Each function verifies the venue's canonical order before
-redeeming the payload.
+Bluefin has one deterministic `Pool<Meme, Quote>` route because it creates the
+pool and its pinned bytecode imposes no pair sorter. Other venues get two typed
+entry functions only when a mandatory venue sorter or an existing pool can put
+Meme in either generic slot. Each such function verifies the venue's canonical
+or existing order before redeeming the payload. A caller never chooses an
+economic price orientation: Meme remains the base asset and all fee output is
+normalized to `(Meme, Quote)`.
 
 ### Dependency and release gate
 
 All direct and overridden transitive Git dependencies use the full commits in
-the source table. Bluefin, Turbos, and Full Sail interface bodies contain local `abort 0`
+the source table. Cetus's reviewed source manifest has no `published-at`, so a
+minimal local interface preserves its original type address while linking the
+adapter to mainnet revision 14 at
+`0x25ebb9a7c50eb17b3fa9c5a30fb8b5ad8f97caaf4928943acbcff7153dfee5e3`
+(digest `FEdn2yRh28atu7tANr6gCWQ3gtDSD2EZmyEeryTuokoi`). Bluefin, Cetus,
+Turbos, and Full Sail interface bodies contain local `abort 0`
 link stubs; adapters may ship only after a mainnet dry run proves that the
 published package ids resolve those calls. Full Sail also has a GraphQL lineage
 and normalized-ABI gate against the latest mainnet bytecode. Turbos' upstream mutable `testnet`
 framework pin is overridden by `sui@06734f6`.
 
 Local tests cover core math, runtime treasury, fee ownership, structural absence
-of principal withdrawal, and all package builds. Mainnet publication remains
+of dynamic-field removal or principal withdrawal, and the aggregate package build. Mainnet publication remains
 blocked until package-id verification and dev-inspect fixtures pass for all
-venue routes.
+venue routes. After those checks, the aggregate package's single `UpgradeCap`
+is destroyed and the resulting immutable-package evidence is recorded.
 
 ## Migration valuation and launchpad comparison
 
@@ -260,13 +298,16 @@ must show native-Quote values without promising a stable USD threshold.
   authorization, package-version precedence, and change events.
 - Fee-ledger tests prove prospective live-share changes and creator/protocol
   claim isolation for externally accrued LP fees.
-- Each adapter builds against exact pins and has a source-boundary check that
-  rejects principal-removal and position-transfer calls.
+- The aggregate package builds against exact compatible pins and has a
+  source-boundary check that rejects dynamic-field removal, principal-removal,
+  and position-transfer calls.
+- The production migrators package records destruction of its single
+  `UpgradeCap` after all five venue routes pass the mainnet checks.
 - `node docs/vectors/check-graduation-vector.mjs` reads the migration vector and
   proves the recommended SUI lane has equal 40,000-SUI terminal curve and DEX
   valuations.
 - Mainnet GraphQL checks prove each original package resolves to the recorded
   latest revision and that its bytecode-backed normalized ABI matches the
   adapter. Mainnet dev-inspect tests prove zero Bluefin
-  creation fee, both type orders, tick bounds, residual tolerance, and
+  creation fee, deterministic Meme-A/Quote-B ordering, tick bounds, residual tolerance, and
   fee-collection principal equality.
