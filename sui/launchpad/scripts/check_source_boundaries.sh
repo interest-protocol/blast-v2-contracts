@@ -22,6 +22,386 @@ if rg -n \
 fi
 
 mapfile -t move_files < <(find sources tests -type f -name '*.move' -print | sort)
+mapfile -t source_files < <(find sources -type f -name '*.move' -print | sort)
+
+# Deterministic Move reader used by every body-bound check below. It removes
+# comments and string contents before parsing, so a token inside a comment, a
+# doc comment, or a literal can never satisfy a requirement, and it reports each
+# declaration with brace-matched boundaries, so indentation and line breaks
+# cannot hide or split one. Records are tab separated:
+#   FN    name vis entry macro test_only after_marker line signature body
+#   TYPE  name kind vis test_only after_marker line declaration
+#   MARKER  first '// === Test-Only ... ===' line, or 0
+#   NORM    whole comment-free source with whitespace collapsed
+#   MALFORMED  reason (also exits nonzero, so unparsable source fails closed)
+move_facts_reader=$(cat <<'MOVE_FACTS_READER'
+function blanks(count,   pad) {
+    pad = ""
+    while (length(pad) < count) pad = pad "                                        "
+    return substr(pad, 1, count)
+}
+
+function normalize(chunk) {
+    gsub(/[ \t\n\r]+/, " ", chunk)
+    sub(/^ /, "", chunk)
+    sub(/ $/, "", chunk)
+    return chunk
+}
+
+function fail(reason) {
+    printf("MALFORMED\t%s\n", reason)
+    broken = 1
+    exit 3
+}
+
+function line_of(offset,   parts) {
+    return split(substr(text, 1, offset - 1), parts, "\n")
+}
+
+function match_paren(open, opener, closer,   depth, index_, char_) {
+    depth = 0
+    for (index_ = open; index_ <= text_length; index_++) {
+        char_ = substr(text, index_, 1)
+        if (char_ == opener) depth++
+        else if (char_ == closer) {
+            depth--
+            if (depth == 0) return index_
+        }
+    }
+    return 0
+}
+
+function modifiers_before(stop,   scan, char_, boundary, between) {
+    boundary = 0
+    for (scan = stop; scan >= 1; scan--) {
+        char_ = substr(text, scan, 1)
+        if (char_ == ";" || char_ == "}" || char_ == "]") { boundary = scan; break }
+    }
+    attribute_text = ""
+    if (boundary > 0 && substr(text, boundary, 1) == "]") collect_attributes(boundary)
+    between = normalize(substr(text, boundary + 1, stop - boundary))
+    return between
+}
+
+function collect_attributes(bracket_end,   depth, scan, char_, open) {
+    while (1) {
+        depth = 0
+        open = 0
+        for (scan = bracket_end; scan >= 1; scan--) {
+            char_ = substr(text, scan, 1)
+            if (char_ == "]") depth++
+            else if (char_ == "[") {
+                depth--
+                if (depth == 0) { open = scan; break }
+            }
+        }
+        if (open <= 1 || substr(text, open - 1, 1) != "#") return
+        attribute_text = normalize(substr(text, open - 1, bracket_end - open + 2)) " " attribute_text
+        bracket_end = 0
+        for (scan = open - 2; scan >= 1; scan--) {
+            char_ = substr(text, scan, 1)
+            if (char_ == " " || char_ == "\t" || char_ == "\n") continue
+            if (char_ == "]") { bracket_end = scan }
+            break
+        }
+        if (bracket_end == 0) return
+    }
+}
+
+{ source_lines[NR] = $0 }
+
+END {
+    total_lines = NR
+    marker_line = 0
+    for (index_ = 1; index_ <= total_lines; index_++) {
+        if (source_lines[index_] ~ /^\/\/ === Test-Only (Functions|Types) ===$/) {
+            marker_line = index_
+            break
+        }
+    }
+
+    text = ""
+    in_block = 0
+    block_depth = 0
+    in_string = 0
+    for (index_ = 1; index_ <= total_lines; index_++) {
+        line = source_lines[index_]
+        cleaned = ""
+        line_length = length(line)
+        cursor = 1
+        while (cursor <= line_length) {
+            char_ = substr(line, cursor, 1)
+            pair = substr(line, cursor, 2)
+            if (in_block) {
+                if (pair == "*/") {
+                    block_depth--
+                    if (block_depth == 0) in_block = 0
+                    cleaned = cleaned "  "
+                    cursor += 2
+                    continue
+                }
+                if (pair == "/*") {
+                    block_depth++
+                    cleaned = cleaned "  "
+                    cursor += 2
+                    continue
+                }
+                cleaned = cleaned " "
+                cursor++
+                continue
+            }
+            if (in_string) {
+                if (char_ == "\\") {
+                    cleaned = cleaned blanks(cursor + 1 <= line_length ? 2 : 1)
+                    cursor += 2
+                    continue
+                }
+                if (char_ == "\"") {
+                    in_string = 0
+                    cleaned = cleaned "\""
+                    cursor++
+                    continue
+                }
+                cleaned = cleaned "_"
+                cursor++
+                continue
+            }
+            if (pair == "//") {
+                cleaned = cleaned blanks(line_length - cursor + 1)
+                cursor = line_length + 1
+                continue
+            }
+            if (pair == "/*") {
+                in_block = 1
+                block_depth = 1
+                cleaned = cleaned "  "
+                cursor += 2
+                continue
+            }
+            if (char_ == "\"") {
+                in_string = 1
+                cleaned = cleaned "\""
+                cursor++
+                continue
+            }
+            cleaned = cleaned char_
+            cursor++
+        }
+        text = text cleaned "\n"
+    }
+    if (in_block) fail("unterminated block comment")
+    if (in_string) fail("unterminated string literal")
+
+    text_length = length(text)
+
+    cursor = 1
+    while (cursor <= text_length) {
+        remainder = substr(text, cursor)
+        if (!match(remainder, /(^|[^A-Za-z0-9_$])fun[ \t\n]/)) break
+        hit = substr(remainder, RSTART, 1)
+        keyword = cursor + RSTART - 1
+        if (hit != "f") keyword++
+        cursor = keyword + 3
+
+        if (substr(text, 1, keyword - 1) ~ /use[ \t\n]+$/) continue
+
+        if (!match(substr(text, cursor), /^[ \t\n]+[A-Za-z_][A-Za-z0-9_]*!?/)) {
+            fail("function keyword without a name at line " line_of(keyword))
+        }
+        name = normalize(substr(text, cursor + RSTART - 1, RLENGTH))
+        name_end = cursor + RSTART + RLENGTH - 2
+
+        modifiers = modifiers_before(keyword - 1)
+        attributes = attribute_text
+        if (modifiers != "" \
+            && modifiers !~ /^((public(\(package\)|\(friend\))?|entry|macro)( |$))+$/) {
+            fail("unrecognized function modifiers '" modifiers "' before " name)
+        }
+
+        visibility = "private"
+        if (modifiers ~ /(^| )public\(package\)( |$)/) visibility = "package"
+        else if (modifiers ~ /(^| )public\(friend\)( |$)/) visibility = "friend"
+        else if (modifiers ~ /(^| )public( |$)/) visibility = "public"
+        is_entry = (modifiers ~ /(^| )entry( |$)/) ? 1 : 0
+        is_macro = (modifiers ~ /(^| )macro( |$)/) ? 1 : 0
+        is_test_only = (attributes ~ /test_only/) ? 1 : 0
+        function_line = line_of(keyword)
+        after_marker = (marker_line > 0 && function_line >= marker_line) ? 1 : 0
+
+        open_paren = index(substr(text, name_end + 1), "(")
+        if (open_paren == 0) fail("function " name " has no parameter list")
+        open_paren += name_end
+        close_paren = match_paren(open_paren, "(", ")")
+        if (close_paren == 0) fail("function " name " has an unbalanced parameter list")
+
+        body_open = 0
+        for (index_ = close_paren + 1; index_ <= text_length; index_++) {
+            char_ = substr(text, index_, 1)
+            if (char_ == "{") { body_open = index_; break }
+            if (char_ == ";") break
+        }
+        if (body_open == 0) fail("function " name " has no body")
+        body_close = match_paren(body_open, "{", "}")
+        if (body_close == 0) fail("function " name " has an unbalanced body")
+
+        printf("FN\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%s\n",
+            name, visibility, is_entry, is_macro, is_test_only, after_marker,
+            function_line,
+            normalize(substr(text, keyword, body_open - keyword)),
+            normalize(substr(text, body_open + 1, body_close - body_open - 1)))
+
+        cursor = body_close + 1
+    }
+
+    cursor = 1
+    while (cursor <= text_length) {
+        remainder = substr(text, cursor)
+        if (!match(remainder, /(^|[^A-Za-z0-9_$])(struct|enum)[ \t\n]/)) break
+        hit = substr(remainder, RSTART, 1)
+        keyword = cursor + RSTART - 1
+        if (hit != "s" && hit != "e") keyword++
+        kind = (substr(text, keyword, 6) == "struct") ? "struct" : "enum"
+        cursor = keyword + length(kind)
+
+        if (!match(substr(text, cursor), /^[ \t\n]+[A-Za-z_][A-Za-z0-9_]*/)) {
+            fail(kind " keyword without a name at line " line_of(keyword))
+        }
+        name = normalize(substr(text, cursor + RSTART - 1, RLENGTH))
+
+        declaration_end = 0
+        for (index_ = cursor; index_ <= text_length; index_++) {
+            char_ = substr(text, index_, 1)
+            if (char_ == "{") {
+                declaration_end = match_paren(index_, "{", "}")
+                if (declaration_end == 0) fail(kind " " name " has an unbalanced body")
+                break
+            }
+            if (char_ == ";") { declaration_end = index_; break }
+        }
+        if (declaration_end == 0) fail(kind " " name " is unterminated")
+
+        modifiers = modifiers_before(keyword - 1)
+        attributes = attribute_text
+        visibility = (modifiers ~ /(^| )public( |$)/) ? "public" : "private"
+        declaration_line = line_of(keyword)
+
+        printf("TYPE\t%s\t%s\t%s\t%d\t%d\t%d\t%s\n",
+            name, kind, visibility,
+            (attributes ~ /test_only/) ? 1 : 0,
+            (marker_line > 0 && declaration_line >= marker_line) ? 1 : 0,
+            declaration_line,
+            normalize(substr(text, keyword, declaration_end - keyword + 1)))
+
+        cursor = declaration_end + 1
+    }
+
+    printf("MARKER\t%d\n", marker_line)
+    printf("NORM\t%s\n", normalize(text))
+}
+MOVE_FACTS_READER
+)
+
+move_facts_cache="$(mktemp -d)"
+trap 'rm -rf "$move_facts_cache"' EXIT
+
+# Parses one Move file once and caches its records. A parser failure is recorded
+# as a MALFORMED line so every consumer of the facts fails closed.
+move_facts() {
+  local file="$1"
+  local cached="${move_facts_cache}/${file//\//__}.facts"
+
+  if [[ ! -f "$cached" ]]; then
+    if ! awk "$move_facts_reader" "$file" >"$cached"; then
+      printf 'MALFORMED\tparser rejected %s\n' "$file" >>"$cached"
+    fi
+  fi
+
+  cat "$cached"
+}
+
+# Sorted "name:visibility:entry" inventory of the production functions, so extra,
+# duplicated, renamed, or re-scoped declarations are all rejected by one compare.
+move_production_functions() {
+  awk -F'\t' '$1 == "FN" && $6 == 0 { print $2 ":" $3 ":" $4 }' | sort | tr '\n' ' '
+}
+
+# Emits the exact production body of one named function, and nothing when the
+# name is absent, duplicated, or only present as a #[test_only] declaration.
+move_production_body() {
+  awk -F'\t' -v name="$1" '
+    $1 == "FN" && $2 == name && $6 == 0 { body = $10; found += 1 }
+    END { if (found == 1) print body }
+  '
+}
+
+# Emits the exact production signature of one named function under the same rule.
+move_production_signature() {
+  awk -F'\t' -v name="$1" '
+    $1 == "FN" && $2 == name && $6 == 0 { signature = $9; found += 1 }
+    END { if (found == 1) print signature }
+  '
+}
+
+# Emits the exact production declaration of one named struct or enum.
+move_production_type() {
+  awk -F'\t' -v name="$1" '
+    $1 == "TYPE" && $2 == name && $5 == 0 { declaration = $8; found += 1 }
+    END { if (found == 1) print declaration }
+  '
+}
+
+# Emits the comment-free source with whitespace collapsed.
+move_normalized_source() {
+  awk -F'\t' '$1 == "NORM" { print $2 }'
+}
+
+# Counts pattern occurrences on stdin, not matching lines, because normalized
+# source is one long line.
+count_occurrences() {
+  { rg -o "$1" || true; } | wc -l | tr -d ' '
+}
+
+# Sorted list of every `self.<ledger balance>.<operation>(` in one body, so an
+# unauthorized or duplicated balance operation changes the compared value.
+move_balance_operations() {
+  { rg -o 'self\.(protocol|creator)_(meme|quote)\.[a-z_0-9]+\(' || true; } \
+    | tr -d '(' | sed 's/^self\.//' | sort | tr '\n' ' '
+}
+
+for move_file in "${move_files[@]}"; do
+  if move_facts "$move_file" | rg -q '^MALFORMED'; then
+    move_facts "$move_file" | rg '^MALFORMED'
+    echo "${move_file}: the boundary reader could not parse this source; every body-bound check fails closed." >&2
+    failures=$((failures + 1))
+  fi
+done
+
+# The '// === Test-Only Functions ===' comment is a section label, never an
+# authority. The body-bound checks classify by attribute, and this gate proves the
+# marker and the attributes agree in both directions for every production module,
+# which is what lets the remaining marker-scoped scans below stay sound.
+for move_file in "${source_files[@]}"; do
+  demarcation_violations="$(move_facts "$move_file" | awk -F'\t' '
+    $1 == "FN" && $7 == 1 && $6 == 0 {
+      print "  function " $2 " (line " $8 ") sits below the test-only marker without #[test_only]"
+    }
+    $1 == "FN" && $7 == 0 && $6 == 1 {
+      print "  function " $2 " (line " $8 ") is #[test_only] above the test-only marker"
+    }
+    $1 == "TYPE" && $6 == 1 && $5 == 0 {
+      print "  " $3 " " $2 " (line " $7 ") sits below the test-only marker without #[test_only]"
+    }
+    $1 == "TYPE" && $6 == 0 && $5 == 1 {
+      print "  " $3 " " $2 " (line " $7 ") is #[test_only] above the test-only marker"
+    }
+  ')"
+
+  if [[ -n "$demarcation_violations" ]]; then
+    printf '%s\n' "$demarcation_violations"
+    echo "${move_file}: every declaration below the test-only marker must carry #[test_only], and every #[test_only] declaration must sit below it." >&2
+    failures=$((failures + 1))
+  fi
+done
 
 duplicate_import_roots="$({
   for file in "${move_files[@]}"; do
@@ -91,28 +471,76 @@ if [[ ! -f sources/lib/bps.move ]] \
   failures=$((failures + 1))
 fi
 
-if rg -n '<= constants::basis_points_denominator!()' \
-    sources --glob '!**/lib/bps.move' --glob '!**/migration_math.move'; then
-  echo 'The inclusive basis-points range must be validated only by bps::new and the one migration_math rate seam; owners may add stricter policy checks.' >&2
+migration_math_facts="$(move_facts sources/migration_math.move)"
+migration_math_source="$(move_normalized_source <<<"$migration_math_facts")"
+
+# Every other module must delegate the inclusive range to bps::new. Both operand
+# orders of the inclusive comparison are rejected, so a reversed spelling cannot
+# reintroduce the duplicate validation, while a strictly-below policy check such
+# as the graduation partition sum stays allowed. The scan reads comment-free
+# normalized text, so formatting and comments cannot hide or fake it, and
+# migration_math is examined separately below.
+for move_file in "${source_files[@]}"; do
+  case "$move_file" in
+    sources/lib/bps.move | sources/migration_math.move) continue ;;
+  esac
+
+  if move_facts "$move_file" | move_normalized_source \
+    | rg -q '<= *constants::basis_points_denominator|constants::basis_points_denominator!\(\) *>='; then
+    echo "${move_file}: the inclusive basis-points range must be validated only by bps::new and the one migration_math rate seam; owners may add stricter policy checks." >&2
+    failures=$((failures + 1))
+  fi
+done
+
+if [[ ! -f sources/migration_math.move ]] \
+  || [[ "$(move_production_functions <<<"$migration_math_facts")" \
+    != 'assert_price_within_bps:public:0 assert_residual_within_bps:public:0 assert_valid_bps:private:0 integer_sqrt:private:0 maximum_residual_amount:private:0 minimum_utilized_amount:public:0 ratio_q128:private:0 sqrt_price_x64:public:0 ' ]] \
+  || [[ "$(move_production_body assert_valid_bps <<<"$migration_math_facts")" \
+    != 'assert!( value <= constants::basis_points_denominator!(), blast_fun::errors::invalid_bps!(), );' ]] \
+  || rg -q '\b(Bps|bps::|UID|key|Balance|Coin|TxContext|transfer::|events::|RuntimeConfig)\b' \
+    <<<"$migration_math_source"; then
+  echo 'migration_math.move must stay a pure price and utilization module with exactly its four public entries, four private helpers, and one inclusive-bps validator.' >&2
   failures=$((failures + 1))
 fi
 
-migration_math_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' \
-  sources/migration_math.move)"
+# The validator only protects the module when every rate-taking entry reaches it,
+# so each public path is bound to the helper it must call, and no other body may
+# compare against the denominator.
+migration_math_unbound="$(awk -F'\t' '
+  $1 == "FN" && $6 == 0 && $2 != "assert_valid_bps" \
+    && ($10 ~ /<= *constants::basis_points_denominator/ \
+      || $10 ~ /constants::basis_points_denominator!\(\) *>=/) {
+    print "  " $2 " repeats the inclusive basis-points range outside the one validator"
+  }
+  $1 == "FN" && $2 == "assert_price_within_bps" && $6 == 0 \
+    && $10 !~ /^assert_valid_bps\(max_deviation_bps\);/ {
+    print "  assert_price_within_bps must validate max_deviation_bps before using it"
+  }
+  $1 == "FN" && $2 == "maximum_residual_amount" && $6 == 0 \
+    && $10 !~ /^assert_valid_bps\(max_residual_bps\);/ {
+    print "  maximum_residual_amount must validate max_residual_bps before using it"
+  }
+  $1 == "FN" && $2 == "assert_residual_within_bps" && $6 == 0 \
+    && $10 !~ /maximum_residual_amount\(/ {
+    print "  assert_residual_within_bps must derive its allowance from maximum_residual_amount"
+  }
+  $1 == "FN" && $2 == "minimum_utilized_amount" && $6 == 0 \
+    && $10 !~ /maximum_residual_amount\(/ {
+    print "  minimum_utilized_amount must derive its allowance from maximum_residual_amount"
+  }
+  $1 == "FN" && $2 == "sqrt_price_x64" && $6 == 0 \
+    && $10 !~ /integer_sqrt\(ratio_q128\(/ {
+    print "  sqrt_price_x64 must square-root the exact Q128 ratio"
+  }
+  $1 == "FN" && $2 == "ratio_q128" && $6 == 0 \
+    && $10 !~ /^assert!\( meme_amount > 0 && quote_amount > 0,/ {
+    print "  ratio_q128 must reject a zero seed balance before dividing"
+  }
+' <<<"$migration_math_facts")"
 
-if [[ ! -f sources/migration_math.move ]] \
-  || [[ "$(rg -Fc '<= constants::basis_points_denominator!()' sources/migration_math.move)" != 1 ]] \
-  || ! rg -U -q \
-    'fun assert_valid_bps\(value: u64\) \{\s*assert!\(\s*value <= constants::basis_points_denominator!\(\),\s*blast_fun::errors::invalid_bps!\(\),\s*\);\s*\}' \
-    <<<"$migration_math_production" \
-  || rg -n '^(public|entry|public entry|public\(package\)) fun assert_valid_bps\(' \
-    <<<"$migration_math_production" \
-  || [[ "$(rg -c '^public fun ' <<<"$migration_math_production")" != 4 ]] \
-  || [[ "$(rg -c '^public fun (sqrt_price_x64|assert_price_within_bps|minimum_utilized_amount|assert_residual_within_bps)\(' <<<"$migration_math_production")" != 4 ]] \
-  || rg -n '^public\(package\) fun ' <<<"$migration_math_production" \
-  || rg -n '\b(Bps|bps::|UID|key|Balance|Coin|TxContext|transfer::|events::|RuntimeConfig)\b' \
-    <<<"$migration_math_production"; then
-  echo 'migration_math.move must stay a pure public price and utilization module whose only inclusive-bps range check is its one private rate validator.' >&2
+if [[ -n "$migration_math_unbound" ]]; then
+  printf '%s\n' "$migration_math_unbound"
+  echo 'Every migration-math rate path must reach its approved validator and helper.' >&2
   failures=$((failures + 1))
 fi
 
@@ -405,39 +833,112 @@ if [[ "$(rg -c '^[[:space:]]+quote_fee_bps: Bps,' sources/curve.move)" != 3 ]] \
   failures=$((failures + 1))
 fi
 
-fees_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/fees.move)"
+fees_facts="$(move_facts sources/fees.move)"
+fees_source="$(move_normalized_source <<<"$fees_facts")"
 
-if rg -n '\b(UID|key|transfer::|XClaim|ed25519|recipient|launch_id)\b' \
-  <<<"$fees_production" \
-  || rg -n 'fee_balance_overflow|std::u64::max_value|max_balance' <<<"$fees_production" \
-  || [[ "$(rg -c '^[[:space:]]+(protocol|creator)_(meme|quote): Balance<' sources/fees.move)" != 4 ]] \
-  || [[ "$(rg -c '^public fun ' <<<"$fees_production")" != 5 ]] \
-  || [[ "$(rg -c '^public fun (new|accrue_from_runtime|totals|claim_creator_fees|claim_protocol_fees)<' <<<"$fees_production")" != 5 ]] \
-  || [[ "$(rg -c '^public\(package\) fun ' <<<"$fees_production")" != 2 ]] \
-  || [[ "$(rg -c '^public\(package\) fun (accrue|accrue_protocol_fees)<' <<<"$fees_production")" != 2 ]]; then
+if [[ ! -f sources/fees.move ]] \
+  || [[ "$(move_production_functions <<<"$fees_facts")" \
+    != 'accrue:package:0 accrue_from_runtime:public:0 accrue_protocol_fees:package:0 claim_creator_fees:public:0 claim_protocol_fees:public:0 new:public:0 totals:public:0 ' ]] \
+  || [[ "$(move_production_type FeeLedger <<<"$fees_facts")" \
+    != 'struct FeeLedger<phantom Meme, phantom Quote> has store { protocol_meme: Balance<Meme>, creator_meme: Balance<Meme>, protocol_quote: Balance<Quote>, creator_quote: Balance<Quote>, }' ]] \
+  || rg -q '\b(UID|key|transfer::|XClaim|ed25519|recipient|launch_id)\b' <<<"$fees_source" \
+  || rg -q 'fee_balance_overflow|std::u64::max_value|max_balance' <<<"$fees_source" \
+  || rg -q 'set_creator_fee_split|sui::event|events::' <<<"$fees_source"; then
   echo 'fees.move must remain an embedded supply-conserved four-balance ledger exposing only its five approved cross-package functions and two package seams.' >&2
   failures=$((failures + 1))
 fi
 
-fee_ledger_balance_operations="$({ rg -o \
-  'self\.(protocol|creator)_(meme|quote)\.([a-z_0-9]+)\(' -r '$3' \
-  <<<"$fees_production" || true; } | sort -u | tr '\n' ' ')"
+# Ledger custody has exactly one release path per owner, so the module may not
+# reach a stored balance through an alias, a module-form call, a destructuring
+# bind, or any framework helper other than the zero constructor.
+if rg -q '(^| )use fun ' <<<"$fees_source" \
+  || rg -q '\blet FeeLedger\b' <<<"$fees_source" \
+  || [[ "$(count_occurrences 'FeeLedger \{' <<<"$fees_source")" != 1 ]] \
+  || [[ "$(count_occurrences 'balance::[a-z_0-9]+\(' <<<"$fees_source")" \
+    != "$(count_occurrences 'balance::zero\(\)' <<<"$fees_source")" ]] \
+  || rg -q '\b(into_balance|borrow_mut|destroy_zero|withdraw)\(' <<<"$fees_source"; then
+  echo 'fees.move must reach its four stored balances only through the approved receiver-style operations, never through aliases, module-form calls, or destructuring.' >&2
+  failures=$((failures + 1))
+fi
 
-if rg -n '^(entry|public entry) fun ' <<<"$fees_production" \
-  || rg -n 'set_creator_fee_split|sui::event|events::' <<<"$fees_production" \
-  || rg -n '\bfun set_[a-z_0-9]*(<|\()' <<<"$fees_production" \
-  || rg -n '\): [^{;]*Balance<' <<<"$fees_production" \
-  || [[ "$fee_ledger_balance_operations" != 'join value withdraw_all ' ]] \
-  || [[ "$(rg -c '^[[:space:]]+self: &mut FeeLedger<Meme, Quote>,' <<<"$fees_production")" != 5 ]] \
-  || [[ "$(rg -c '^[[:space:]]+self: &FeeLedger<Meme, Quote>,' <<<"$fees_production")" != 1 ]] \
-  || ! rg -q '^[[:space:]]+protocol_fee_share_bps: Bps,' <<<"$fees_production" \
-  || ! rg -q '^[[:space:]]+runtime_config: &RuntimeConfig,' <<<"$fees_production" \
-  || ! rg -U -q \
-    'self\.accrue\(\s*meme_fee,\s*quote_fee,\s*runtime_config\.protocol_fee_share\(\),\s*\)' \
-    <<<"$fees_production" \
-  || ! rg -q '^[[:space:]]+_: &CreatorCap<Meme>,' <<<"$fees_production" \
-  || ! rg -q '^[[:space:]]+_: &AdminWitness,' <<<"$fees_production"; then
-  echo 'Fee state stays capability-gated, splits on the live runtime protocol share, releases balances only through the two full drains, and is evented by its enclosing operation.' >&2
+# Each authorized transition is bound to its own named body, so a capability, an
+# emptiness test, or a drained balance cannot be swapped between the two owners.
+fee_ledger_violations=''
+
+check_fee_function() {
+  local name="$1" expected_signature="$2" expected_operations="$3" expected_body="$4"
+  local signature body operations
+
+  signature="$(move_production_signature "$name" <<<"$fees_facts")"
+  body="$(move_production_body "$name" <<<"$fees_facts")"
+  operations="$(move_balance_operations <<<"$body")"
+
+  if [[ -z "$signature" || -z "$body" ]]; then
+    fee_ledger_violations+="  ${name} has no single production declaration"$'\n'
+    return
+  fi
+  if [[ "$signature" != "$expected_signature" ]]; then
+    fee_ledger_violations+="  ${name} does not keep its approved authorization and result signature"$'\n'
+  fi
+  if [[ "$operations" != "$expected_operations" ]]; then
+    fee_ledger_violations+="  ${name} operates on '${operations}' instead of the authorized '${expected_operations}'"$'\n'
+  fi
+  if [[ -n "$expected_body" && "$body" != "$expected_body" ]]; then
+    fee_ledger_violations+="  ${name} body is not the approved transition"$'\n'
+  fi
+}
+
+check_fee_function new \
+  'fun new<Meme, Quote>(): FeeLedger<Meme, Quote>' \
+  '' \
+  'FeeLedger { protocol_meme: balance::zero(), creator_meme: balance::zero(), protocol_quote: balance::zero(), creator_quote: balance::zero(), }'
+
+check_fee_function accrue_from_runtime \
+  'fun accrue_from_runtime<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, meme_fee: Balance<Meme>, quote_fee: Balance<Quote>, runtime_config: &RuntimeConfig, ): (u64, u64, u64, u64, u64, u64, u64, u64)' \
+  '' \
+  'self.accrue( meme_fee, quote_fee, runtime_config.protocol_fee_share(), )'
+
+check_fee_function totals \
+  'fun totals<Meme, Quote>( self: &FeeLedger<Meme, Quote>, ): (u64, u64, u64, u64)' \
+  'creator_meme.value creator_quote.value protocol_meme.value protocol_quote.value ' \
+  '( self.protocol_meme.value(), self.creator_meme.value(), self.protocol_quote.value(), self.creator_quote.value(), )'
+
+check_fee_function claim_creator_fees \
+  'fun claim_creator_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, _: &CreatorCap<Meme>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
+  'creator_meme.value creator_meme.withdraw_all creator_quote.value creator_quote.withdraw_all ' \
+  'assert!( self.creator_meme.value() > 0 || self.creator_quote.value() > 0, blast_fun::errors::nothing_accrued!(), ); ( self.creator_meme.withdraw_all().into_coin(ctx), self.creator_quote.withdraw_all().into_coin(ctx), )'
+
+check_fee_function claim_protocol_fees \
+  'fun claim_protocol_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, _: &AdminWitness, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
+  'protocol_meme.value protocol_meme.withdraw_all protocol_quote.value protocol_quote.withdraw_all ' \
+  'assert!( self.protocol_meme.value() > 0 || self.protocol_quote.value() > 0, blast_fun::errors::nothing_accrued!(), ); ( self.protocol_meme.withdraw_all().into_coin(ctx), self.protocol_quote.withdraw_all().into_coin(ctx), )'
+
+check_fee_function accrue_protocol_fees \
+  'fun accrue_protocol_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, meme_fee: Balance<Meme>, quote_fee: Balance<Quote>, ): (u64, u64, u64, u64)' \
+  'protocol_meme.join protocol_quote.join ' \
+  'let meme_delta = meme_fee.value(); let quote_delta = quote_fee.value(); let protocol_meme_total = self.protocol_meme.join(meme_fee); let protocol_quote_total = self.protocol_quote.join(quote_fee); ( meme_delta, quote_delta, protocol_meme_total, protocol_quote_total, )'
+
+# The raw accrual keeps a longer body, so it is bound to its guard and to one
+# contiguous rounding and custody sequence instead: the protocol share rounds up,
+# the creator receives the exact remainder, the protocol amount leaves the
+# incoming balances, and each half joins only its own bucket.
+check_fee_function accrue \
+  'fun accrue<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, mut meme_fee: Balance<Meme>, mut quote_fee: Balance<Quote>, protocol_fee_share_bps: Bps, ): (u64, u64, u64, u64, u64, u64, u64, u64)' \
+  'creator_meme.join creator_quote.join protocol_meme.join protocol_quote.join ' \
+  ''
+
+fees_accrue_body="$(move_production_body accrue <<<"$fees_facts")"
+
+if ! rg -Fq 'assert!( meme_fee_amount > 0 || quote_fee_amount > 0, blast_fun::errors::zero_fee_accrual!(), );' \
+    <<<"$fees_accrue_body" \
+  || ! rg -Fq 'let protocol_meme_amount = protocol_fee_share_bps.apply_up(meme_fee_amount); let protocol_quote_amount = protocol_fee_share_bps.apply_up(quote_fee_amount); let creator_meme_amount = meme_fee_amount - protocol_meme_amount; let creator_quote_amount = quote_fee_amount - protocol_quote_amount; let protocol_meme = meme_fee.split(protocol_meme_amount); let protocol_quote = quote_fee.split(protocol_quote_amount); let protocol_meme_total = self.protocol_meme.join(protocol_meme); let creator_meme_total = self.creator_meme.join(meme_fee); let protocol_quote_total = self.protocol_quote.join(protocol_quote); let creator_quote_total = self.creator_quote.join(quote_fee);' \
+    <<<"$fees_accrue_body"; then
+  fee_ledger_violations+='  accrue is not bound to the approved guard, round-up split, and per-owner joins'$'\n'
+fi
+
+if [[ -n "$fee_ledger_violations" ]]; then
+  printf '%s' "$fee_ledger_violations"
+  echo 'Fee state stays capability-gated per owner, splits on the live runtime protocol share, and releases balances only through the two authorized full drains.' >&2
   failures=$((failures + 1))
 fi
 
@@ -467,93 +968,165 @@ if [[ ! -f sources/package_version.move ]] \
   failures=$((failures + 1))
 fi
 
-runtime_config_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/runtime_config.move)"
+runtime_config_facts="$(move_facts sources/runtime_config.move)"
+runtime_config_source="$(move_normalized_source <<<"$runtime_config_facts")"
 
 if [[ ! -f sources/runtime_config.move ]] \
-  || ! rg -U -q \
-    'public struct RuntimeConfig has key \{\s*id: UID,\s*x_claim_signer_public_key: vector<u8>,\s*protocol_treasury: address,\s*protocol_fee_share_bps: Bps,\s*\}' \
-    sources/runtime_config.move \
-  || rg -n '\b(AdminCap|ProtocolAuthority|LaunchConfig|VecMap|VecSet|TypeName)\b' \
-    <<<"$runtime_config_production" \
-  || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' \
-    <<<"$runtime_config_production" \
-  || rg -n '^(entry|public entry) fun ' <<<"$runtime_config_production" \
-  || [[ "$(rg -c '^[[:space:]]+_: &AdminWitness,' sources/runtime_config.move)" != 4 ]] \
-  || [[ "$(rg -c '^public fun ' <<<"$runtime_config_production")" != 6 ]] \
-  || [[ "$(rg -c '^public fun (set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|set_protocol_treasury)\(' <<<"$runtime_config_production")" != 4 ]] \
-  || [[ "$(rg -c '^[[:space:]]+package_version: &PackageVersion,' sources/runtime_config.move)" != 4 ]] \
-  || [[ "$(rg -c '^public\(package\) fun ' <<<"$runtime_config_production")" != 3 ]] \
-  || [[ "$(rg -c '^public\(package\) fun (assert_x_claim_active|verify_x_claim_signature|protocol_fee_share)\(' <<<"$runtime_config_production")" != 3 ]]; then
+  || [[ "$(move_production_functions <<<"$runtime_config_facts")" \
+    != 'assert_x_claim_active:package:0 init:private:0 new:private:0 protocol_fee_share:package:0 protocol_fee_share_bps:public:0 protocol_treasury:public:0 revoke_x_claim_signer:public:0 set_protocol_fee_share:public:0 set_protocol_treasury:public:0 set_x_claim_signer:public:0 validate_x_claim_public_key:private:0 verify_x_claim_signature:package:0 ' ]] \
+  || [[ "$(move_production_type RuntimeConfig <<<"$runtime_config_facts")" \
+    != 'struct RuntimeConfig has key { id: UID, x_claim_signer_public_key: vector<u8>, protocol_treasury: address, protocol_fee_share_bps: Bps, }' ]] \
+  || rg -q '\b(AdminCap|ProtocolAuthority|LaunchConfig|VecMap|VecSet|TypeName)\b' \
+    <<<"$runtime_config_source" \
+  || rg -q '\b(sequence|schema_version|action_tag|nonce)\b' <<<"$runtime_config_source"; then
   echo 'runtime_config.move must own only version-gated X signer, protocol fee share, and live treasury state.' >&2
   failures=$((failures + 1))
 fi
 
-if ! rg -U -q \
-    'public fun set_protocol_treasury\(\s*self: &mut RuntimeConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness,\s*protocol_treasury: address,\s*\) \{\s*package_version\.assert_current\(\);' \
-    sources/runtime_config.move \
-  || ! rg -U -q \
-    'public fun protocol_treasury\(self: &RuntimeConfig\): address \{\s*self\.protocol_treasury\s*\}' \
-    sources/runtime_config.move \
-  || ! rg -U -q \
-    'public fun protocol_fee_share_bps\(self: &RuntimeConfig\): u64 \{\s*self\.protocol_fee_share_bps\.value\(\)\s*\}' \
-    sources/runtime_config.move \
-  || ! rg -U -q \
-    'public\(package\) fun protocol_fee_share\(self: &RuntimeConfig\): Bps \{\s*self\.protocol_fee_share_bps\s*\}' \
-    sources/runtime_config.move; then
-  echo 'The live treasury needs one version-gated AdminWitness setter, public treasury and raw-share reads, and a package-only validated Bps read.' >&2
+# Every runtime transition is bound to its own named production body, so a guard,
+# an assignment, or a completed-fact event cannot be satisfied by a comment, by a
+# sibling function, by a dead helper, or by a #[test_only] decoy.
+runtime_config_violations=''
+
+check_runtime_function() {
+  local name="$1" expected_signature="$2" expected_body="$3"
+  local signature body
+
+  signature="$(move_production_signature "$name" <<<"$runtime_config_facts")"
+  body="$(move_production_body "$name" <<<"$runtime_config_facts")"
+
+  if [[ -z "$signature" || -z "$body" ]]; then
+    runtime_config_violations+="  ${name} has no single production declaration"$'\n'
+    return
+  fi
+  if [[ "$signature" != "$expected_signature" ]]; then
+    runtime_config_violations+="  ${name} does not keep its approved authorization signature"$'\n'
+  fi
+  if [[ -n "$expected_body" && "$body" != "$expected_body" ]]; then
+    runtime_config_violations+="  ${name} body is not the approved transition"$'\n'
+  fi
+}
+
+check_runtime_function init \
+  'fun init(ctx: &mut TxContext)' \
+  'let config = new(ctx); let config_id = config.id.to_inner(); events::runtime_config_created( config_id, config.protocol_treasury, config.protocol_fee_share_bps.value(), ); transfer::share_object(config);'
+
+check_runtime_function new \
+  'fun new(ctx: &mut TxContext): RuntimeConfig' \
+  'RuntimeConfig { id: object::new(ctx), x_claim_signer_public_key: vector[], protocol_treasury: ctx.sender(), protocol_fee_share_bps: bps::new(0), }'
+
+check_runtime_function set_protocol_treasury \
+  'fun set_protocol_treasury( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness, protocol_treasury: address, )' \
+  'package_version.assert_current(); assert!( protocol_treasury != @0x0, blast_fun::errors::invalid_protocol_treasury!(), ); assert!( protocol_treasury != self.protocol_treasury, blast_fun::errors::protocol_treasury_unchanged!(), ); let old_protocol_treasury = self.protocol_treasury; self.protocol_treasury = protocol_treasury; events::protocol_treasury_changed( old_protocol_treasury, protocol_treasury, );'
+
+check_runtime_function protocol_treasury \
+  'fun protocol_treasury(self: &RuntimeConfig): address' \
+  'self.protocol_treasury'
+
+check_runtime_function protocol_fee_share_bps \
+  'fun protocol_fee_share_bps(self: &RuntimeConfig): u64' \
+  'self.protocol_fee_share_bps.value()'
+
+check_runtime_function protocol_fee_share \
+  'fun protocol_fee_share(self: &RuntimeConfig): Bps' \
+  'self.protocol_fee_share_bps'
+
+check_runtime_function assert_x_claim_active \
+  'fun assert_x_claim_active(self: &RuntimeConfig)' \
+  'assert!( !self.x_claim_signer_public_key.is_empty(), blast_fun::errors::x_claim_signer_inactive!(), );'
+
+check_runtime_function validate_x_claim_public_key \
+  'fun validate_x_claim_public_key(signer_public_key: &vector<u8>)' \
+  'assert!( signer_public_key.length() == constants::ed25519_public_key_length!(), blast_fun::errors::invalid_x_claim_public_key!(), );'
+
+check_runtime_function verify_x_claim_signature \
+  'fun verify_x_claim_signature( self: &RuntimeConfig, message: &vector<u8>, signature: &vector<u8>, )' \
+  'self.assert_x_claim_active(); assert!( sui::ed25519::ed25519_verify( signature, &self.x_claim_signer_public_key, message, ), blast_fun::errors::invalid_x_claim_signature!(), );'
+
+check_runtime_function set_x_claim_signer \
+  'fun set_x_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness, signer_public_key: vector<u8>, )' \
+  'package_version.assert_current(); validate_x_claim_public_key(&signer_public_key); assert!( self.x_claim_signer_public_key != signer_public_key, blast_fun::errors::x_claim_signer_unchanged!(), ); let previous_public_key = self.x_claim_signer_public_key; self.x_claim_signer_public_key = signer_public_key; events::x_claim_signer_set( previous_public_key, self.x_claim_signer_public_key, );'
+
+check_runtime_function revoke_x_claim_signer \
+  'fun revoke_x_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness, )' \
+  'package_version.assert_current(); self.assert_x_claim_active(); let previous_public_key = self.x_claim_signer_public_key; self.x_claim_signer_public_key = vector[]; events::x_claim_signer_revoked(previous_public_key);'
+
+check_runtime_function set_protocol_fee_share \
+  'fun set_protocol_fee_share( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness, protocol_fee_share_bps: u64, )' \
+  'package_version.assert_current(); assert!( protocol_fee_share_bps != self.protocol_fee_share_bps.value(), blast_fun::errors::protocol_fee_share_unchanged!(), ); let old_protocol_fee_share_bps = self.protocol_fee_share_bps.value(); self.protocol_fee_share_bps = bps::new(protocol_fee_share_bps); events::protocol_fee_share_changed( old_protocol_fee_share_bps, protocol_fee_share_bps, );'
+
+# The four named mutations are the complete set of RuntimeConfig transitions, and
+# each one must check the live package version as its first statement rather than
+# relying on any aggregate count.
+runtime_config_mutations="$(awk -F'\t' '
+  $1 == "FN" && $6 == 0 && $10 ~ /self\.(x_claim_signer_public_key|protocol_treasury|protocol_fee_share_bps) = / {
+    print $2
+  }
+' <<<"$runtime_config_facts" | sort | tr '\n' ' ')"
+
+if [[ "$runtime_config_mutations" \
+  != 'revoke_x_claim_signer set_protocol_fee_share set_protocol_treasury set_x_claim_signer ' ]]; then
+  runtime_config_violations+="  runtime state is mutated by '${runtime_config_mutations}' instead of the four approved setters"$'\n'
+fi
+
+runtime_config_ungated="$(awk -F'\t' '
+  $1 == "FN" && $6 == 0 \
+    && ($2 == "set_x_claim_signer" || $2 == "revoke_x_claim_signer" \
+      || $2 == "set_protocol_fee_share" || $2 == "set_protocol_treasury") {
+    if ($9 !~ /[(,] package_version: &PackageVersion,/) {
+      print "  " $2 " must take the shared PackageVersion under that exact name"
+    }
+    if ($10 !~ /^package_version\.assert_current\(\);/) {
+      print "  " $2 " must check the live package version as its first statement"
+    }
+    if ($9 !~ /[(,] _: &AdminWitness,/) {
+      print "  " $2 " must be authorized by a borrowed AdminWitness"
+    }
+  }
+' <<<"$runtime_config_facts")"
+
+if [[ -n "$runtime_config_ungated" ]]; then
+  runtime_config_violations+="${runtime_config_ungated}"$'\n'
+fi
+
+if [[ -n "$runtime_config_violations" ]]; then
+  printf '%s' "$runtime_config_violations"
+  echo 'Runtime configuration must start disabled at zero with the live publisher treasury, and every mutation must keep its version gate, guards, assignment, and completed-fact event in order.' >&2
   failures=$((failures + 1))
 fi
 
-if ! rg -Fq 'protocol_fee_share_bps != self.protocol_fee_share_bps.value()' \
-  sources/runtime_config.move \
-  || ! rg -Fq 'self.protocol_fee_share_bps = bps::new(protocol_fee_share_bps);' \
-    sources/runtime_config.move \
-  || ! rg -Fq 'protocol_treasury != @0x0,' sources/runtime_config.move \
-  || ! rg -Fq 'protocol_treasury != self.protocol_treasury,' sources/runtime_config.move \
-  || ! rg -Fq 'self.protocol_treasury = protocol_treasury;' sources/runtime_config.move \
-  || ! rg -Fq 'signer_public_key.length() == constants::ed25519_public_key_length!()' \
-    sources/runtime_config.move \
-  || ! rg -q 'self.x_claim_signer_public_key != signer_public_key' \
-    sources/runtime_config.move \
-  || ! rg -U -q \
-    'x_claim_signer_public_key: vector\[\],\s*protocol_treasury: ctx\.sender\(\),\s*protocol_fee_share_bps: bps::new\(0\),\s*\}' \
-    sources/runtime_config.move; then
-  echo 'Runtime configuration must start disabled at zero with the live publisher treasury, and keep exact signer, fee-share, and nonzero/unchanged treasury guards.' >&2
-  failures=$((failures + 1))
-fi
+events_facts="$(move_facts sources/lib/events.move)"
 
-runtime_config_event_payloads="$(sed -n \
-  -e '/^public struct RuntimeConfigCreated/,/^}/p' \
-  -e '/^public struct ProtocolFeeShareChanged/,/^}/p' \
-  -e '/^public struct ProtocolTreasuryChanged/,/^}/p' \
-  -e '/^public struct XClaimSignerSet/,/^}/p' \
-  -e '/^public struct XClaimSignerRevoked/,/^}/p' \
-  sources/lib/events.move)"
+runtime_config_event_payloads="$(awk -F'\t' '
+  $1 == "TYPE" && $5 == 0 \
+    && ($2 == "RuntimeConfigCreated" || $2 == "ProtocolFeeShareChanged" \
+      || $2 == "ProtocolTreasuryChanged" || $2 == "XClaimSignerSet" \
+      || $2 == "XClaimSignerRevoked") { print $8 }
+' <<<"$events_facts")"
 
-runtime_config_mutation_event_payloads="$(sed -n \
-  -e '/^public struct ProtocolFeeShareChanged/,/^}/p' \
-  -e '/^public struct ProtocolTreasuryChanged/,/^}/p' \
-  -e '/^public struct XClaimSignerSet/,/^}/p' \
-  -e '/^public struct XClaimSignerRevoked/,/^}/p' \
-  sources/lib/events.move)"
+runtime_config_mutation_event_payloads="$(awk -F'\t' '
+  $1 == "TYPE" && $5 == 0 \
+    && ($2 == "ProtocolFeeShareChanged" || $2 == "ProtocolTreasuryChanged" \
+      || $2 == "XClaimSignerSet" || $2 == "XClaimSignerRevoked") { print $8 }
+' <<<"$events_facts")"
 
-if [[ -z "$runtime_config_event_payloads" ]] \
-  || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' \
+if [[ "$(wc -l <<<"$runtime_config_event_payloads")" != 5 ]] \
+  || rg -q '\b(sequence|schema_version|action_tag|nonce)\b' \
     <<<"$runtime_config_event_payloads" \
-  || rg -n '\bruntime_config_id\b' <<<"$runtime_config_mutation_event_payloads" \
-  || ! rg -U -q \
-    'public struct RuntimeConfigCreated has copy, drop \{\s*runtime_config_id: ID,\s*protocol_treasury: address,\s*protocol_fee_share_bps: u64,\s*\}' \
-    sources/lib/events.move \
-  || ! rg -U -q \
-    'public struct ProtocolTreasuryChanged has copy, drop \{\s*old_protocol_treasury: address,\s*new_protocol_treasury: address,\s*\}' \
-    sources/lib/events.move \
-  || ! rg -U -q \
-    'events::runtime_config_created\(\s*config_id,\s*config\.protocol_treasury,\s*config\.protocol_fee_share_bps\.value\(\),\s*\);\s*transfer::share_object\(config\);' \
-    sources/runtime_config.move \
-  || ! rg -U -q \
-    'events::protocol_treasury_changed\(\s*old_protocol_treasury,\s*protocol_treasury,\s*\);' \
-    sources/runtime_config.move; then
-  echo 'Runtime-config creation must commit the live treasury before sharing and every mutation must use typed replay facts without repeated singleton, ordering, or schema fields.' >&2
+  || rg -q '\bruntime_config_id\b' <<<"$runtime_config_mutation_event_payloads" \
+  || [[ "$(move_production_type RuntimeConfigCreated <<<"$events_facts")" \
+    != 'struct RuntimeConfigCreated has copy, drop { runtime_config_id: ID, protocol_treasury: address, protocol_fee_share_bps: u64, }' ]] \
+  || [[ "$(move_production_type ProtocolTreasuryChanged <<<"$events_facts")" \
+    != 'struct ProtocolTreasuryChanged has copy, drop { old_protocol_treasury: address, new_protocol_treasury: address, }' ]] \
+  || [[ "$(move_production_signature runtime_config_created <<<"$events_facts")" \
+    != 'fun runtime_config_created( runtime_config_id: ID, protocol_treasury: address, protocol_fee_share_bps: u64, )' ]] \
+  || [[ "$(move_production_body runtime_config_created <<<"$events_facts")" \
+    != 'blast_fun::events_wrapper::emit_event(RuntimeConfigCreated { runtime_config_id, protocol_treasury, protocol_fee_share_bps, });' ]] \
+  || [[ "$(move_production_signature protocol_treasury_changed <<<"$events_facts")" \
+    != 'fun protocol_treasury_changed( old_protocol_treasury: address, new_protocol_treasury: address, )' ]] \
+  || [[ "$(move_production_body protocol_treasury_changed <<<"$events_facts")" \
+    != 'blast_fun::events_wrapper::emit_event(ProtocolTreasuryChanged { old_protocol_treasury, new_protocol_treasury, });' ]]; then
+  echo 'Runtime-config creation must commit the live treasury before sharing and every mutation must emit unswapped typed replay facts without repeated singleton, ordering, or schema fields.' >&2
   failures=$((failures + 1))
 fi
 
@@ -845,9 +1418,21 @@ if [[ "$(rg -c '^[[:space:]]+package_version\.assert_current\(\);' sources/launc
   failures=$((failures + 1))
 fi
 
-if rg -n \
-  '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|set_protocol_treasury|assert_x_claim_active|verify_x_claim_signature|protocol_treasury|protocol_fee_share|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_trade_fees|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|launch::(share|migrate|redeem_migration)|creator_authority::(into_authority|creator|x_identity_hash|claim_creator_cap)|launch_ticket::destroy|fees::(accrue|accrue_from_runtime|accrue_protocol_fees|totals|claim_creator_fees|claim_protocol_fees)|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
-  sources tests; then
+# Reads call-normalized text, so whitespace around `::` or before an argument
+# list cannot disguise a module-form call as anything other than what it is.
+receiver_syntax_violations="$(
+  for move_file in "${move_files[@]}"; do
+    { move_facts "$move_file" \
+      | move_normalized_source \
+      | sed 's/ *:: */::/g; s/ *(/(/g' \
+      | rg -o \
+        '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|set_protocol_treasury|assert_x_claim_active|verify_x_claim_signature|protocol_treasury|protocol_fee_share|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_trade_fees|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|launch::(share|migrate|redeem_migration)|creator_authority::(into_authority|creator|x_identity_hash|claim_creator_cap)|launch_ticket::destroy|fees::(accrue|accrue_from_runtime|accrue_protocol_fees|totals|claim_creator_fees|claim_protocol_fees)|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
+      || true; } | sed "s|^|  ${move_file}: |"
+  done
+)"
+
+if [[ -n "$receiver_syntax_violations" ]]; then
+  printf '%s\n' "$receiver_syntax_violations"
   echo 'Blast-owned receiver functions must use Move 2024 dot syntax.' >&2
   failures=$((failures + 1))
 fi

@@ -173,14 +173,14 @@ upgrade mechanism.
 ## Planned package set
 
 Proposed in [../../docs/decisions/0001-sui-package-and-module-layout.md](../../docs/decisions/0001-sui-package-and-module-layout.md).
-The `blast_fun` core, generated Meme template, and stepped-linear vesting
-package exist today.
+The `blast_fun` core, generated Meme template, and global vesting package exist
+today.
 
 | Package | Role | Why separate |
 | --- | --- | --- |
 | `blast_fun` | all core protocol logic; **imports no venue package** | the trusted core must build with the framework alone |
 | `blast_fun_cetus` / `_bluefin` / `_turbos` | migration adapters | each carries a distinct external failure surface and its own dependency exemption |
-| [`blast_fun_vesting_linear`](../vesting/linear/) | fully funded stepped-linear custody and release | independently deployed and tested asset custody |
+| [`blast_fun_vesting`](../vesting/) | fully funded linear and checkpoint custody and release | independently deployed and tested asset custody |
 | `blast_fun_revshare` | epoch settlement and claims | separately governed, holds funds, must not reach curve state |
 | [`meme_template`](../meme_template/) | generated per-launch coin package | published once per launch by the creator |
 
