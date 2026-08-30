@@ -303,7 +303,7 @@ public fun sell<Meme, Quote>(
     );
 
     events::sold<Meme, Quote>(
-        object::id(self),
+        self.id.to_inner(),
         meme_in_gross,
         meme_fee,
         meme_in_after_fee,
@@ -343,7 +343,7 @@ public fun claim_creator_fees<Meme, Quote>(
     let (meme, quote) = self.fee_ledger.claim_creator_fees(creator_cap, ctx);
 
     events::creator_fees_claimed<Meme, Quote>(
-        object::id(self),
+        self.id.to_inner(),
         meme.value(),
         quote.value(),
     );
@@ -363,7 +363,7 @@ public fun claim_protocol_fees<Meme, Quote>(
     let (meme, quote) = self.fee_ledger.claim_protocol_fees(admin_witness, ctx);
 
     events::protocol_fees_claimed<Meme, Quote>(
-        object::id(self),
+        self.id.to_inner(),
         meme.value(),
         quote.value(),
     );
@@ -421,7 +421,7 @@ public fun migrate<Meme, Quote, MigrationWitness: drop>(
     self.lifecycle = Lifecycle::Migrated;
 
     events::migrated<Meme, Quote, MigrationWitness>(
-        object::id(self),
+        self.id.to_inner(),
         burnable,
         meme.value(),
         quote.value(),
@@ -521,7 +521,7 @@ fun accrue_and_emit_bought<Meme, Quote>(
     );
 
     events::bought<Meme, Quote>(
-        object::id(self),
+        self.id.to_inner(),
         quote_supplied,
         quote_in_gross,
         quote_refund,
@@ -552,7 +552,7 @@ fun emit_created<Meme, Quote>(
     metadata_cap_id: ID,
 ) {
     events::launch_created<Meme, Quote>(
-        object::id(self),
+        self.id.to_inner(),
         ticket_id,
         self.migration_witness,
         metadata_cap_id,

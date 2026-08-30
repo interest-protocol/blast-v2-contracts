@@ -44,7 +44,7 @@ public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxConte
     let package_version = upgrade_cap.version();
     let policy = upgrade_cap.policy();
     let package_admin = new(publisher, upgrade_cap, ctx);
-    let package_admin_id = object::id(&package_admin);
+    let package_admin_id = package_admin.id.to_inner();
 
     transfer::share_object(package_admin);
 

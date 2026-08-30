@@ -111,7 +111,7 @@ public fun create(
     let locked_blast_sui = locked_coin.value();
 
     events::vault_created(
-        object::id(&self),
+        self.id.to_inner(),
         validator,
         pool_id,
         fun_reserve_sui,
@@ -205,12 +205,12 @@ public fun request_blast_sui(
         staked_sui.pool_id() == self.pool_id,
         blast_sui::errors::wrong_delegation_pool!(),
     );
-    let receipt = deposit_receipt::new(object::id(self), staked_sui, ctx);
+    let receipt = deposit_receipt::new(self.id.to_inner(), staked_sui, ctx);
     self.stake_idle(system_state, ctx);
 
     events::blast_sui_deposit_requested(
         receipt.id(),
-        object::id(self),
+        self.id.to_inner(),
         receipt.pool_id(),
         receipt.principal_sui(),
         receipt.activation_epoch(),
@@ -233,7 +233,7 @@ public fun claim_blast_sui(
 ): Coin<BLAST_SUI> {
     package_version.assert_current();
     self.assert_accepts_mints();
-    receipt.assert_binding(object::id(self), self.pool_id);
+    receipt.assert_binding(self.id.to_inner(), self.pool_id);
     assert!(
         receipt.activation_epoch() <= ctx.epoch(),
         blast_sui::errors::blast_deposit_not_active!(),
@@ -271,7 +271,7 @@ public fun claim_blast_sui(
 
     events::blast_sui_deposit_claimed(
         receipt_id,
-        object::id(self),
+        self.id.to_inner(),
         principal_sui,
         contributed_sui,
         pool_tokens,

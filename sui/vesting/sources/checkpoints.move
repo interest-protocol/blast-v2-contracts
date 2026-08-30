@@ -154,7 +154,7 @@ public fun new_irrevocable<CoinType>(
     );
 
     event::emit(VestingCreated {
-        vesting_id: object::id(&vesting),
+        vesting_id: vesting.id.to_inner(),
         coin_type: type_name::with_original_ids<CoinType>(),
         beneficiary,
         refund_recipient: option::none(),
@@ -183,7 +183,7 @@ public fun new_cancelable<CoinType>(
         clock,
         ctx,
     );
-    let vesting_id = object::id(&vesting);
+    let vesting_id = vesting.id.to_inner();
     let cancel_cap = CancelCap {
         id: object::new(ctx),
         vesting_id,
@@ -194,7 +194,7 @@ public fun new_cancelable<CoinType>(
         coin_type: type_name::with_original_ids<CoinType>(),
         beneficiary,
         refund_recipient: option::some(refund_recipient),
-        cancel_cap_id: option::some(object::id(&cancel_cap)),
+        cancel_cap_id: option::some(cancel_cap.id.to_inner()),
         total_amount: vesting.balance.value(),
         checkpoint_count: vesting.checkpoints.length(),
     });
@@ -221,7 +221,7 @@ public fun claim<CoinType>(
     transfer::public_transfer(self.balance.split(amount).into_coin(ctx), beneficiary);
 
     event::emit(VestingClaimed {
-        vesting_id: object::id(self),
+        vesting_id: self.id.to_inner(),
         coin_type: type_name::with_original_ids<CoinType>(),
         beneficiary,
         amount,
@@ -237,7 +237,7 @@ public fun cancel<CoinType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let vesting_id = object::id(&self);
+    let vesting_id = self.id.to_inner();
     assert!(cap.vesting_id == vesting_id, EInvalidCancelCap);
 
     let beneficiary = self.beneficiary;
@@ -288,7 +288,7 @@ public fun close_irrevocable<CoinType>(
     assert!(clock.timestamp_ms() >= self.end_ms(), EScheduleNotEnded);
     assert!(self.balance.value() == 0, EScheduleNotEmpty);
 
-    let vesting_id = object::id(&self);
+    let vesting_id = self.id.to_inner();
     let Vesting {
         id,
         balance,

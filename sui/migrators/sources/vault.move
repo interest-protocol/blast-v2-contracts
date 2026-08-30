@@ -49,7 +49,7 @@ public fun claim_creator_fees<Meme, Quote>(
     ) = self.fee_ledger.totals();
 
     events::creator_fees_claimed<Meme, Quote>(
-        object::id(self),
+        self.id.to_inner(),
         meme_amount,
         quote_amount,
         protocol_meme_fee_total,
@@ -79,7 +79,7 @@ public fun claim_protocol_fees<Meme, Quote>(
     ) = self.fee_ledger.totals();
 
     events::protocol_fees_claimed<Meme, Quote>(
-        object::id(self),
+        self.id.to_inner(),
         meme_amount,
         quote_amount,
         protocol_meme_fee_total,
@@ -106,7 +106,7 @@ public(package) fun new<Meme, Quote, Venue: drop, Position: key + store>(
         pool_id,
         fee_ledger: fees::new<Meme, Quote>(),
     };
-    let vault_id = object::id(&vault);
+    let vault_id = vault.id.to_inner();
     vault.id.add_dynamic_object_field(PositionKey<Venue>(), position);
     transfer::share_object(vault);
     events::vault_created<Meme, Quote, Venue>(
@@ -178,7 +178,7 @@ public(package) fun accrue_fees<Meme, Quote, Venue>(
     );
 
     events::lp_fees_collected<Meme, Quote, Venue>(
-        object::id(self),
+        self.id.to_inner(),
         self.pool_id,
         position_id,
         gross_meme_fee,

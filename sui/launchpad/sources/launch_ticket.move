@@ -110,7 +110,7 @@ fun emit_created<Meme>(
     sell_burn_bps: u64,
 ) {
     events::launch_ticket_created<Meme>(
-        object::id(self),
+        self.id.to_inner(),
         self.meme.value(),
         object::id(&self.metadata_cap),
         creator,
