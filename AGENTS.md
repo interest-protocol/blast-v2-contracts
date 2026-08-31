@@ -12,23 +12,38 @@ designs below `sui/vesting/`. The `sui/` root is not itself a Move package.
 
 1. Read this file, the root README, and the relevant files in `docs/`.
 2. Read the chain-local README and manifest/toolchain configuration.
-3. Inspect the existing implementation and tests before proposing a new
+3. Record `sui --version` and resolve the target package's exact compiler,
+   edition, framework source, environment, and dependency mapping.
+4. Inspect the existing implementation and tests before proposing a new
    abstraction.
-4. For unstable toolchain or SDK behavior, read the installed documentation for
+5. For unstable toolchain or SDK behavior, read the installed documentation for
    the exact pinned version. Use current official documentation if it is not
    installed.
-5. If the change settles a protocol, authority, upgrade, storage, dependency, or
+6. If the change settles a protocol, authority, upgrade, storage, dependency, or
    cross-chain parity decision, add an ADR under `docs/decisions/` first.
+
+## Sui Move skill routing
+
+Before writing, changing, refactoring, fixing, reviewing, or testing Sui Move
+code, load `.agents/skills/sui-move-guide/SKILL.md`. Use it to select the
+smallest applicable sequence of Sui Move skills.
+
+Repository instructions, accepted ADRs, pinned source, target-network support,
+and `ProtocolConfig` take precedence over skill examples. When the installed CLI
+exposes `sui prompt`, use its bundled skills as version-matched discovery only.
+Treat online examples for newer revisions the same way until they are verified
+against the package pin.
 
 Reference repositories and skills are research inputs. Never copy a module,
 storage layout, error number, address, dependency revision, or rule merely
 because it appears there. Verify the claim against Blast's invariants and the
 actual pinned toolchain.
 
-For Sui Move implementation style, begin with
+The vendored Sui Move suite is the active reusable engineering standard. For
+pinned house-style and implementation evidence, use
 `interest-protocol/su-lending@a3552af11a531717378b6337a174f9340d1099dc`,
 especially `packages/su`, its tests, `docs/error-codes.md`, and its repository
-Move skills. Treat it as the primary house-style and security-pattern reference
+Move skills. Treat it as a house-style and security-pattern research reference
 for module organization, visibility, receiver syntax, diagnostics, capability
 design, guard ordering, composability, testing, and lint gates. Use
 `interest-protocol/memez-gg@00596fdac4dd11f427c7bc594e566ce36160db93`
@@ -246,6 +261,13 @@ invariant, trustless composition, or reconstructability, keep it in the SDK.
   that behavior is explicitly approved and tested.
 - Decide upgradeability before deployment. Version mutable shared state and gate
   old Sui package versions.
+- Model an upgrade as a new immutable package version. Old versions remain
+  callable, module initializers do not rerun, and existing public function
+  signatures remain fixed except for permitted relaxation of generic ability
+  constraints. Published struct and enum layouts and abilities remain fixed.
+  Relink dependencies explicitly, and use a new type plus an authorized
+  migration when stored shape must change. Check every proposal against the
+  active `UpgradeCap` policy.
 - Minimize public structs and functions. Sui upgrades cannot erase old callable
   bytecode.
 
@@ -271,21 +293,24 @@ invariant, trustless composition, or reconstructability, keep it in the SDK.
   precedence.
 - Name events as completed facts and emit them after the final successful state
   is known.
-- On Sui, emit every protocol payload `T` through the single
-  `events_wrapper::Event<T>` envelope and its package-only `emit_event` helper.
+- When a package standard defines `events_wrapper::Event<T>`, emit every
+  protocol payload in that package through its package-only `emit_event` helper.
   State and diagnostic modules must not call `sui::event::emit` directly. Treat
   both the outer wrapper and inner payload type as published indexing ABI; an
   upgrade may add payload types but must not bypass or silently replace the
   envelope.
+- An independently deployed package may deliberately use direct, strongly typed
+  Sui events when an accepted design record requires it. Centralize construction
+  and emission and preserve the same schema, ordering, and replay discipline. Do
+  not import another package's envelope only for uniform appearance.
 - A consumer starting at deployment and replaying events in order must be able to
   reconstruct lifecycle, balances/accounting, configuration, fee state,
   allocation state, and migrations without reading mutable state.
 - Mutation events must include stable entity identity when multiple instances of
   that event's domain can exist, old/new or delta values, final totals needed for
-  reconciliation, and a revision/sequence when order is otherwise ambiguous.
-  For a production singleton, keep its object id on the creation/discovery fact
-  but do not repeat that unchanging id on every typed mutation payload. See ADR
-  0030.
+  reconciliation. For a production singleton, keep its object id on the
+  creation/discovery fact but do not repeat that unchanging id on every typed
+  mutation payload. See ADR 0030.
 - On Sui, do not add an application-level sequence, revision, nonce, generic
   schema version, or action tag to an event merely to order, paginate, classify,
   or detect ingestion gaps. Native event metadata provides checkpoint,
@@ -296,6 +321,11 @@ invariant, trustless composition, or reconstructability, keep it in the SDK.
   native position and payload type are insufficient, and record that necessity
   in an ADR. See
   `docs/research/sui-event-ordering-and-domain-sequences.md`.
+- Persist native checkpoint, transaction, and event positions plus a safe resume
+  watermark. For a live handoff, open the subscription first, retain its first
+  progress marker, backfill through the matching list API to that marker, then
+  consume the buffered stream. Select an archival provider when the required
+  history exceeds full-node retention.
 - Treat event field changes as schema migrations with replay tests.
 - Keep event collection, wrapper unwrapping, and payload field inspection under
   `#[test_only]`; do not publish view functions solely for event tests.
@@ -370,12 +400,15 @@ must reproduce equivalent formulas through the shared vectors.
   upgrade operators edit the generation beside the checks and initializer that
   enforce it. See ADR 0050.
 - Before defining an integer bound, arithmetic helper, vector helper, or manual
-  loop, inspect the exact MoveStdlib and Sui framework revision pinned by
-  `Move.lock`, then the pinned `su` house-style reference. Prefer the standard
-  integer methods/macros (`min`, `max`, `diff`, `checked_*`, `saturating_*`,
-  `max_value!`, `div_ceil`, `mul_div`, `range_do!`, `do!`) and vector macros
-  (`do!`, `do_ref!`, `map!`, `filter!`, `find_index!`, `fold!`, `any!`, `all!`)
-  when they preserve clarity and abort precedence.
+  loop, resolve the exact MoveStdlib and Sui framework revision through the root
+  package's dependency mapping for the selected `Move.lock` environment. Do not
+  assume the unsuffixed framework entry is the root pin; confirm the compiled
+  mapping in `BuildInfo.yaml` after a build. Then inspect that source and the
+  pinned `su` house-style reference. Prefer the standard integer methods/macros
+  (`min`, `max`, `diff`, `checked_*`, `saturating_*`, `max_value!`, `div_ceil`,
+  `mul_div`, `range_do!`, `do!`) and vector macros (`do!`, `do_ref!`, `map!`,
+  `filter!`, `find_index!`, `fold!`, `any!`, `all!`) when they preserve clarity
+  and abort precedence.
 - Never duplicate primitive maximum literals such as `MAX_U64`; use
   `std::uN::max_value!()` or checked arithmetic. The `#[test_only]` named error
   aliases in `errors.move` and constants local to test fixtures are deliberate
@@ -386,8 +419,12 @@ must reproduce equivalent formulas through the shared vectors.
   to return it unchanged. The module that owns the value must return it directly;
   pass it into another module only when that module validates, transforms,
   consumes, or stores it as part of its own concern.
-- Order function parameters as primary object, capability or witness, domain values,
-  system objects such as `Clock`, then `TxContext` last.
+- Order function parameters as primary object, capability or witness, domain
+  values, system objects such as `Clock`, then `TxContext` last. This is source
+  style, not a PTB injection requirement. Validate every callable signature
+  against the target `ProtocolConfig`. Where protocol-135 rules are active,
+  permit at most one `&mut TxContext` or multiple `&TxContext` parameters; never
+  take it by value or return it by value or reference.
 - Format function bodies as logical paragraphs. Use one blank line when the code
   moves between authorization/input validation, derived values, state mutation,
   object transfer or return, and event emission. Keep tightly coupled statements
@@ -426,9 +463,9 @@ must reproduce equivalent formulas through the shared vectors.
   this order, omitting empty sections: `Constants`, `Public Structs` or `Public
   Types`, `Private Initialization`, `Public Functions` (split by domain when a
   large module benefits), `Public Aliases`, `Package Functions`, `Private
-  Functions`, `Test-Only Functions`. Move 2024 requires struct declarations to
-  be public; minimize their fields and abilities when the type is only an
-  implementation detail.
+  Functions`, `Test-Only Types`, `Test-Only Functions`. Move 2024 requires struct
+  declarations to be public; minimize their fields and abilities when the type
+  is only an implementation detail.
 - Pin Git dependencies to immutable full commit SHAs. Keep the core package free
   of network-only dependencies; isolate external dependencies in adapters.
 - Run lints as a hard gate. Use `assert_eq!`, bare `assert!` in tests, exact
@@ -469,7 +506,14 @@ at least:
 - repository commit, clean/dirty state, compiler and toolchain versions;
 - package/contract identifiers and dependency identifiers;
 - deployer, transaction digest/hash, status, and created/admin/Publisher/upgrade objects;
-- constructor/init parameters and post-deploy verification results.
+- constructor/init parameters and post-deploy verification results;
+- post-publication or post-upgrade source-verification results when available.
+
+After publishing or upgrading a Sui package, run
+`sui client verify-source <package-path>` when publication metadata and network
+access are available. Record that it proves reproducible root bytecode and
+linkage correspondence, not protocol correctness or recursive dependency-source
+trust.
 
 Raw simulator or broadcast output can remain generated and ignored. Public
 normalized records must not contain secrets.
