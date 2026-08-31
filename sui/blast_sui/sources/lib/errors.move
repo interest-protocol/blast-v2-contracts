@@ -87,13 +87,13 @@ const EBlastAssetsDepleted: u64 = 22;
 /// The protocol bootstrap deposit is below the native one-SUI stake minimum.
 const EBootstrapBelowNativeMinimum: u64 = 23;
 
-// Code 24 retired: routine AdminCap authorization was removed.
+// Code 24 retired: an earlier routine-admin error assignment was removed.
 
 #[test_only]
 /// The supplied SuperAdminCap is no longer the active root capability.
 const EInvalidSuperAdminCap: u64 = 25;
 
-// Codes 26-29 retired: routine administrators and role authorization were removed.
+// Codes 26-29 retired: an earlier role-specific administrator design was removed.
 
 #[test_only]
 /// The root authority cannot be transferred to the zero address or to its current holder.
@@ -164,6 +164,26 @@ const EZeroSuiAfterFee: u64 = 45;
 #[test_only]
 /// Native delegation returned stake from a pool other than the vault's immutable pool.
 const EWrongDelegationPool: u64 = 47;
+
+#[test_only]
+/// A routine administrator cannot be delivered to the zero address.
+const EInvalidAdminRecipient: u64 = 48;
+
+#[test_only]
+/// The bounded active-admin registry is full.
+const EAdminCapacityReached: u64 = 49;
+
+#[test_only]
+/// The supplied AdminCap is not active in this protocol registry.
+const EInvalidAdminCap: u64 = 50;
+
+#[test_only]
+/// PackageAdmin cannot be shared before every required capability is attached.
+const EMissingPackageCapability: u64 = 51;
+
+#[test_only]
+/// PackageAdmin already owns a capability object of this exact type.
+const EPackageCapabilityAlreadyExists: u64 = 52;
 
 // === Package Macros ===
 
@@ -321,4 +341,24 @@ macro public(package) fun zero_sui_after_fee(): u64 {
 
 macro public(package) fun wrong_delegation_pool(): u64 {
     47
+}
+
+macro public(package) fun invalid_admin_recipient(): u64 {
+    48
+}
+
+macro public(package) fun admin_capacity_reached(): u64 {
+    49
+}
+
+macro public(package) fun invalid_admin_cap(): u64 {
+    50
+}
+
+macro public(package) fun missing_package_capability(): u64 {
+    51
+}
+
+macro public(package) fun package_capability_already_exists(): u64 {
+    52
 }

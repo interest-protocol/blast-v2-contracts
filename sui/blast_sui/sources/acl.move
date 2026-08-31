@@ -1,7 +1,7 @@
 // `blast_sui::errors` centralizes package abort codes through zero-cost macros. This narrow
 // suppression preserves caller-local abort locations and stable package error codes.
 #[allow(lint(abort_without_constant))]
-/// Package-local administration with one transferable super-admin.
+/// Package-local administration with one transferable root and revocable routine admins.
 ///
 /// This registry is independent of the launchpad ACL. The same offchain
 /// maintainer may hold both root capabilities, but they are separate onchain
@@ -9,7 +9,7 @@
 module blast_sui::acl;
 
 use blast_sui::{constants, events, package_version::PackageVersion};
-use sui::clock::Clock;
+use sui::{clock::Clock, vec_set::{Self, VecSet}};
 
 // === Public Structs ===
 
@@ -19,17 +19,26 @@ public struct PendingSuperAdminTransfer has drop, store {
     execute_after_ms: u64,
 }
 
-/// Singleton registry for the active root and its pending delayed handoff.
+/// Singleton registry for the active root, routine admins, and delayed handoff.
 public struct ProtocolAuthority has key {
     id: UID,
     super_admin_cap_id: ID,
+    admins: VecSet<ID>,
     pending_super_admin: Option<PendingSuperAdminTransfer>,
 }
 
-/// Singleton authority for every privileged protocol operation.
+/// Cold root authority that creates and revokes routine administrators.
 public struct SuperAdminCap has key {
     id: UID,
 }
+
+/// Revocable authority for routine protocol administration.
+public struct AdminCap has key, store {
+    id: UID,
+}
+
+/// Ephemeral proof that an AdminCap was active when it signed in.
+public struct AdminWitness() has drop;
 
 // === Private Initialization ===
 
@@ -45,6 +54,79 @@ fun init(ctx: &mut TxContext) {
 /// Keeps a returned root capability in the transaction sender's account.
 public fun keep(self: SuperAdminCap, ctx: &mut TxContext) {
     transfer::transfer(self, ctx.sender());
+}
+
+/// Creates and delivers one routine administrator.
+public fun grant_admin(
+    self: &mut ProtocolAuthority,
+    package_version: &PackageVersion,
+    super_admin_cap: &SuperAdminCap,
+    recipient: address,
+    ctx: &mut TxContext,
+) {
+    package_version.assert_current();
+    self.assert_super_admin(super_admin_cap);
+    assert!(recipient != @0x0, blast_sui::errors::invalid_admin_recipient!());
+    assert!(
+        self.admins.length() < constants::max_admins!(),
+        blast_sui::errors::admin_capacity_reached!(),
+    );
+
+    let admin_cap = AdminCap { id: object::new(ctx) };
+    let admin_cap_id = admin_cap.id.to_inner();
+    self.admins.insert(admin_cap_id);
+    transfer::public_transfer(admin_cap, recipient);
+
+    events::admin_granted(admin_cap_id, recipient);
+}
+
+/// Revokes one routine administrator without requiring possession of its cap.
+public fun revoke_admin(
+    self: &mut ProtocolAuthority,
+    package_version: &PackageVersion,
+    super_admin_cap: &SuperAdminCap,
+    admin_cap_id: ID,
+) {
+    package_version.assert_current();
+    self.assert_super_admin(super_admin_cap);
+    assert!(
+        self.admins.contains(&admin_cap_id),
+        blast_sui::errors::invalid_admin_cap!(),
+    );
+
+    self.admins.remove(&admin_cap_id);
+    events::admin_revoked(admin_cap_id);
+}
+
+/// Removes and deletes a caller-owned AdminCap, active or already revoked.
+public fun destroy_admin_cap(
+    self: &mut ProtocolAuthority,
+    package_version: &PackageVersion,
+    admin_cap: AdminCap,
+) {
+    package_version.assert_current();
+    let AdminCap { id } = admin_cap;
+    let admin_cap_id = id.to_inner();
+    let was_active = self.admins.contains(&admin_cap_id);
+    if (was_active) self.admins.remove(&admin_cap_id);
+    id.delete();
+
+    events::admin_destroyed(admin_cap_id, was_active);
+}
+
+/// Authenticates one active routine administrator for this transaction.
+public fun sign_in(
+    self: &ProtocolAuthority,
+    package_version: &PackageVersion,
+    admin_cap: &AdminCap,
+): AdminWitness {
+    package_version.assert_current();
+    assert!(
+        self.admins.contains(&admin_cap.id.to_inner()),
+        blast_sui::errors::invalid_admin_cap!(),
+    );
+
+    AdminWitness()
 }
 
 /// Starts or replaces a delayed transfer of the singleton root authority.
@@ -181,6 +263,7 @@ fun new_protocol(ctx: &mut TxContext): (SuperAdminCap, ProtocolAuthority) {
     let authority = ProtocolAuthority {
         id: object::new(ctx),
         super_admin_cap_id: super_admin_cap.id.to_inner(),
+        admins: vec_set::empty(),
         pending_super_admin: option::none(),
     };
 
@@ -204,4 +287,9 @@ public fun new_protocol_for_testing(ctx: &mut TxContext): (SuperAdminCap, Protoc
 #[test_only]
 public fun super_admin_cap_id_for_testing(self: &ProtocolAuthority): ID {
     self.super_admin_cap_id
+}
+
+#[test_only]
+public fun admin_cap_id_for_testing(self: &AdminCap): ID {
+    self.id.to_inner()
 }

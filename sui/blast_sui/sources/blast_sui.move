@@ -1,7 +1,7 @@
 /// The unrestricted residual-share LST that receives all vault staking rewards.
 module blast_sui::blast_sui;
 
-use sui::{coin::TreasuryCap, coin_registry};
+use sui::{coin::TreasuryCap, coin_registry::{Self, MetadataCap}};
 
 // === Public Structs ===
 
@@ -12,7 +12,10 @@ public struct BLAST_SUI() has drop;
 
 #[allow(lint(self_transfer))]
 fun init(otw: BLAST_SUI, ctx: &mut TxContext) {
-    transfer::public_transfer(new(otw, ctx), ctx.sender());
+    let (treasury_cap, metadata_cap) = new(otw, ctx);
+
+    transfer::public_transfer(treasury_cap, ctx.sender());
+    transfer::public_transfer(metadata_cap, ctx.sender());
 }
 
 // === Private Functions ===
@@ -20,7 +23,7 @@ fun init(otw: BLAST_SUI, ctx: &mut TxContext) {
 fun new(
     otw: BLAST_SUI,
     ctx: &mut TxContext,
-): TreasuryCap<BLAST_SUI> {
+): (TreasuryCap<BLAST_SUI>, MetadataCap<BLAST_SUI>) {
     let (initializer, treasury_cap) = coin_registry::new_currency_with_otw(
         otw,
         9,
@@ -30,9 +33,9 @@ fun new(
         b"https://www.blast.fun/art/generated/blast-sui-mark-gpt-v4.png".to_string(),
         ctx,
     );
-    initializer.finalize_and_delete_metadata_cap(ctx);
+    let metadata_cap = initializer.finalize(ctx);
 
-    treasury_cap
+    (treasury_cap, metadata_cap)
 }
 
 // === Test-Only Functions ===
@@ -46,6 +49,6 @@ public fun init_for_testing(ctx: &mut TxContext) {
 #[test_only]
 public fun new_for_testing(
     ctx: &mut TxContext,
-): TreasuryCap<BLAST_SUI> {
+): (TreasuryCap<BLAST_SUI>, MetadataCap<BLAST_SUI>) {
     new(BLAST_SUI(), ctx)
 }

@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-08-29
-- Amended by: [0056](0056-bounded-pending-stake-vector.md)
+- Amended by: [0056](0056-bounded-pending-stake-vector.md), [0060](0060-blastsui-metadata-cap-custody.md), [0061](0061-blastsui-routine-admin-and-composable-package-custody.md)
 
 ## Sources
 

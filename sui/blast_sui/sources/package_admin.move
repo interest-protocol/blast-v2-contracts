@@ -1,36 +1,52 @@
 // `blast_sui::errors` centralizes package abort codes through zero-cost macros. This narrow
 // suppression preserves caller-local abort locations and stable package error codes.
 #[allow(lint(abort_without_constant))]
-/// Permanent shared custody for the framework Publisher and UpgradeCap.
+/// Permanent shared custody for package capabilities.
 module blast_sui::package_admin;
 
 use blast_sui::{
-    acl::{ProtocolAuthority, SuperAdminCap},
+    acl::AdminWitness,
     blast::BLAST,
+    blast_sui::BLAST_SUI,
     constants,
+    deposit_receipt::BlastSuiDepositReceipt,
     events,
+    fun_sui::FUN_SUI,
     package_version::PackageVersion,
 };
 use std::type_name;
-use sui::package::{Self, Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};
+use sui::{
+    coin_registry::MetadataCap,
+    display_registry::DisplayCap,
+    dynamic_object_field,
+    package::{Self, Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket},
+};
 
 // === Public Structs ===
 
-/// Shared, non-releasable custody for package provenance and upgrade authority.
+/// Shared, non-releasable custody for package and update authority.
 public struct PackageAdmin has key {
     id: UID,
     publisher: Publisher,
     upgrade_cap: UpgradeCap,
 }
 
+// === Dynamic-Field Keys ===
+
+/// Type-derived key for a capability owned as a dynamic object field.
+public struct CapabilityKey<phantom Capability>() has copy, drop, store;
+
 // === Public Functions ===
 
-/// Validates and permanently wraps this package's Publisher and raw UpgradeCap.
+/// Validates the fixed package capabilities and returns composable custody.
 ///
-/// Deployment must call this before any raw-cap upgrade. An upgraded cap names
-/// the replacement package, while this intake deliberately accepts only the
-/// original package ID.
-public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext) {
+/// Deployment must call this before any raw-cap upgrade. The returned key-only
+/// object must receive its required child capabilities before `share`.
+public fun new(
+    publisher: Publisher,
+    upgrade_cap: UpgradeCap,
+    ctx: &mut TxContext,
+): PackageAdmin {
     // from_module compares both the package address and the module name.
     assert!(
         publisher.from_module<BLAST>(),
@@ -42,15 +58,45 @@ public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxConte
         blast_sui::errors::invalid_upgrade_cap!(),
     );
 
-    let publisher_id = object::id(&publisher);
-    let upgrade_cap_id = object::id(&upgrade_cap);
-    let package_version = upgrade_cap.version();
-    let policy = upgrade_cap.policy();
-    let package_admin = new(publisher, upgrade_cap, ctx);
-    let package_admin_id = package_admin.id.to_inner();
+    new_unchecked(publisher, upgrade_cap, ctx)
+}
 
-    transfer::share_object(package_admin);
+/// Attaches one exact capability type under active routine-admin authority.
+public fun add_capability<Capability: key + store>(
+    self: &mut PackageAdmin,
+    package_version: &PackageVersion,
+    _: &AdminWitness,
+    capability: Capability,
+) {
+    package_version.assert_current();
+    let capability_id = self.attach_capability(capability);
 
+    events::package_capability_added<Capability>(self.id.to_inner(), capability_id);
+}
+
+/// Verifies required bootstrap capabilities and irreversibly shares custody.
+public fun share(self: PackageAdmin) {
+    assert!(
+        self.has_capability<MetadataCap<FUN_SUI>>(),
+        blast_sui::errors::missing_package_capability!(),
+    );
+    assert!(
+        self.has_capability<MetadataCap<BLAST_SUI>>(),
+        blast_sui::errors::missing_package_capability!(),
+    );
+    assert!(
+        self.has_capability<DisplayCap<BlastSuiDepositReceipt>>(),
+        blast_sui::errors::missing_package_capability!(),
+    );
+
+    let package_admin_id = self.id.to_inner();
+    let publisher_id = object::id(&self.publisher);
+    let upgrade_cap_id = object::id(&self.upgrade_cap);
+    let package_id = self.upgrade_cap.package();
+    let package_version = self.upgrade_cap.version();
+    let policy = self.upgrade_cap.policy();
+
+    transfer::share_object(self);
     events::package_admin_created(
         package_admin_id,
         publisher_id,
@@ -65,12 +111,10 @@ public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxConte
 public fun authorize_upgrade(
     self: &mut PackageAdmin,
     package_version: &PackageVersion,
-    authority: &ProtocolAuthority,
-    super_admin_cap: &SuperAdminCap,
+    _: &AdminWitness,
     digest: vector<u8>,
 ): UpgradeTicket {
     package_version.assert_current();
-    authority.assert_super_admin(super_admin_cap);
     assert!(
         digest.length() == constants::package_digest_length!(),
         blast_sui::errors::invalid_package_digest!(),
@@ -107,11 +151,9 @@ public fun commit_upgrade(
 public fun restrict_to_additive(
     self: &mut PackageAdmin,
     package_version: &PackageVersion,
-    authority: &ProtocolAuthority,
-    super_admin_cap: &SuperAdminCap,
+    _: &AdminWitness,
 ) {
     package_version.assert_current();
-    authority.assert_super_admin(super_admin_cap);
     let previous_policy = self.upgrade_cap.policy();
     self.assert_policy_can_be_restricted_to(package::additive_policy());
 
@@ -122,22 +164,46 @@ public fun restrict_to_additive(
 
 /// Activates bytecode that is exactly one operational generation after shared state.
 ///
-/// The activation PTB passes the existing authority and active super-admin cap
-/// to this new-generation function.
+/// The activation PTB signs in an active routine admin before this call.
 public fun activate_package_version(
     package_version: &mut PackageVersion,
-    authority: &ProtocolAuthority,
-    super_admin_cap: &SuperAdminCap,
+    _: &AdminWitness,
 ) {
-    authority.assert_super_admin(super_admin_cap);
-
     package_version.activate();
 }
 
 // === Private Functions ===
 
-fun new(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext): PackageAdmin {
+fun new_unchecked(
+    publisher: Publisher,
+    upgrade_cap: UpgradeCap,
+    ctx: &mut TxContext,
+): PackageAdmin {
     PackageAdmin { id: object::new(ctx), publisher, upgrade_cap }
+}
+
+fun attach_capability<Capability: key + store>(
+    self: &mut PackageAdmin,
+    capability: Capability,
+): ID {
+    assert!(
+        !self.has_capability<Capability>(),
+        blast_sui::errors::package_capability_already_exists!(),
+    );
+    let capability_id = object::id(&capability);
+    dynamic_object_field::add(
+        &mut self.id,
+        CapabilityKey<Capability>(),
+        capability,
+    );
+    capability_id
+}
+
+fun has_capability<Capability: key + store>(self: &PackageAdmin): bool {
+    dynamic_object_field::exists_with_type<CapabilityKey<Capability>, Capability>(
+        &self.id,
+        CapabilityKey<Capability>(),
+    )
 }
 
 fun assert_policy_can_be_restricted_to(self: &PackageAdmin, new_policy: u8) {
@@ -156,8 +222,28 @@ public struct TEST_PACKAGE_ADMIN() has drop;
 
 #[test_only]
 /// Creates unshared package administration around simulated package capabilities.
-public fun new_for_testing(package_id: ID, ctx: &mut TxContext): PackageAdmin {
-    new(
+public fun new_for_testing(
+    package_id: ID,
+    fun_metadata_cap: MetadataCap<FUN_SUI>,
+    blast_metadata_cap: MetadataCap<BLAST_SUI>,
+    display_cap: DisplayCap<BlastSuiDepositReceipt>,
+    ctx: &mut TxContext,
+): PackageAdmin {
+    let mut self = new_unchecked(
+        package::test_claim(TEST_PACKAGE_ADMIN(), ctx),
+        package::test_publish(package_id, ctx),
+        ctx,
+    );
+    self.attach_capability(fun_metadata_cap);
+    self.attach_capability(blast_metadata_cap);
+    self.attach_capability(display_cap);
+    self
+}
+
+#[test_only]
+/// Creates incomplete custody for staged-construction rejection tests.
+public fun new_empty_for_testing(package_id: ID, ctx: &mut TxContext): PackageAdmin {
+    new_unchecked(
         package::test_claim(TEST_PACKAGE_ADMIN(), ctx),
         package::test_publish(package_id, ctx),
         ctx,
@@ -172,6 +258,32 @@ public fun publisher_id_for_testing(self: &PackageAdmin): ID {
 #[test_only]
 public fun upgrade_cap_id_for_testing(self: &PackageAdmin): ID {
     object::id(&self.upgrade_cap)
+}
+
+#[test_only]
+public fun blast_metadata_cap_id_for_testing(self: &PackageAdmin): ID {
+    self.capability_id_for_testing<MetadataCap<BLAST_SUI>>()
+}
+
+#[test_only]
+public fun fun_metadata_cap_id_for_testing(self: &PackageAdmin): ID {
+    self.capability_id_for_testing<MetadataCap<FUN_SUI>>()
+}
+
+#[test_only]
+public fun display_cap_id_for_testing(self: &PackageAdmin): ID {
+    self.capability_id_for_testing<DisplayCap<BlastSuiDepositReceipt>>()
+}
+
+#[test_only]
+public fun capability_id_for_testing<Capability: key + store>(
+    self: &PackageAdmin,
+): ID {
+    let capability: &Capability = dynamic_object_field::borrow(
+        &self.id,
+        CapabilityKey<Capability>(),
+    );
+    object::id(capability)
 }
 
 #[test_only]

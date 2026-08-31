@@ -29,6 +29,39 @@ Keep deterministic projections, formatting, aggregation, previews, transaction c
 - Wrap a child when it must be reachable only through its parent. Use transfer-to-object plus `Receiving<T>` when the parent intentionally accepts separately transferred objects, not as a substitute for typed storage or admission policy.
 - Remember that `store` lets foreign modules publicly transfer, party-transfer, share, freeze, receive, and wrap the object. Omit it when the defining module must retain lifecycle control.
 
+### Stage irreversible construction for composition
+
+When an object needs several independently produced resources before it can
+enter its final ownership state, prefer a staged API:
+
+```move
+let mut parent = module::new(fixed_inputs, ctx);
+parent.add_child(authority, child_a);
+parent.add_child(authority, child_b);
+parent.share();
+```
+
+- Make `new` validate and store only the fixed identity inputs, then return an
+  unshared object for same-transaction composition.
+- Make each `add_*` function perform one authorized attachment. Use an exact
+  typed key, reject duplicate occupancy, and emit the smallest completed fact
+  needed to reconstruct the attachment.
+- Make `share`, `freeze`, or another terminal function verify every required
+  child and perform the irreversible ownership transition. Do not let an
+  incomplete parent enter its final ownership state.
+- If the finalized shared object is intentionally extensible, keep the same
+  authorized `add_*` primitive usable after publication. Require only the
+  baseline children in the terminal function; later capability types must not
+  require a parent-layout or constructor-ABI change.
+- Keep the intermediate parent `key`-only when it must not escape by transfer,
+  storage, or drop. Then the transaction must complete the lifecycle or abort.
+- Prefer this composable sequence when a child is returned by another Move
+  call. Do not force deployment tooling to end one transaction, transfer the
+  child through an address, and start another transaction only because a
+  constructor also shares or freezes.
+- Keep a one-shot entry point only as a thin convenience that delegates to the
+  same single-purpose primitives; do not duplicate construction invariants.
+
 ## Choose package boundaries
 
 - Start with one core package.

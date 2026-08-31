@@ -22,6 +22,11 @@ macro public(package) fun super_admin_transfer_delay_ms(): u64 {
     7 * 24 * 60 * 60 * 1_000
 }
 
+/// Maximum number of simultaneously active routine protocol administrators.
+macro public(package) fun max_admins(): u64 {
+    16
+}
+
 /// Exact byte length of a Sui package digest.
 macro public(package) fun package_digest_length(): u64 {
     32

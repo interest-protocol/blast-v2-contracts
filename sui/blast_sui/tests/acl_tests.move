@@ -7,6 +7,8 @@ use sui::{clock::{Self, Clock}, event, test_scenario::{Self, Scenario}};
 
 use fun init_end as InitFixture.end;
 use fun init_next_tx as InitFixture.next_tx;
+use fun admin_end as AdminFixture.end;
+use fun admin_next_tx as AdminFixture.next_tx;
 use fun transfer_ctx as TransferFixture.ctx;
 use fun transfer_end as TransferFixture.end;
 use fun transfer_next_tx as TransferFixture.next_tx;
@@ -15,6 +17,7 @@ use fun transfer_next_tx as TransferFixture.next_tx;
 
 const PUBLISHER: address = @0xA11CE;
 const NEW_SUPER_ADMIN: address = @0xB0B;
+const ADMIN: address = @0xC0DE;
 const OTHER: address = @0xAD;
 const NOW_MS: u64 = 1_000_000;
 
@@ -37,6 +40,15 @@ public struct TransferFixture {
     clock: Clock,
 }
 
+/// Root-managed routine administrator state.
+public struct AdminFixture {
+    scenario: Scenario,
+    package_version: PackageVersion,
+    authority: acl::ProtocolAuthority,
+    super_admin_cap: acl::SuperAdminCap,
+    admin_cap: Option<acl::AdminCap>,
+}
+
 // === Tests ===
 
 #[test]
@@ -47,6 +59,182 @@ fun init_shares_the_authority_and_delivers_the_root_cap_without_events() {
         assert_eq!(
             object::id(&f.super_admin_cap),
             f.authority.super_admin_cap_id_for_testing(),
+        );
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun super_admin_grant_is_replay_complete_and_delivers_the_admin_cap() {
+    let mut fixture = start_transfer();
+    let granted_admin_cap_id;
+
+    fixture.next_tx!(PUBLISHER, |f| {
+        f.authority.grant_admin(
+            &f.package_version,
+            f.super_admin_cap.borrow(),
+            ADMIN,
+            f.ctx!(),
+        );
+        let granted = events::collect_one<events::AdminGranted>(0);
+        let (admin_cap_id, recipient) = granted.admin_granted_fields();
+        assert_eq!(recipient, ADMIN);
+        granted_admin_cap_id = admin_cap_id;
+    });
+
+    fixture.next_tx!(ADMIN, |f| {
+        let admin_cap = f.scenario.take_from_sender<acl::AdminCap>();
+        assert_eq!(admin_cap.admin_cap_id_for_testing(), granted_admin_cap_id);
+        destroy(admin_cap);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun active_admin_signs_in_and_root_revocation_is_replay_complete() {
+    let mut fixture = start_admin();
+    let admin_cap_id = fixture.admin_cap.borrow().admin_cap_id_for_testing();
+
+    fixture.next_tx!(ADMIN, |f| {
+        destroy(f.authority.sign_in(&f.package_version, f.admin_cap.borrow()));
+    });
+
+    fixture.next_tx!(PUBLISHER, |f| {
+        f.authority.revoke_admin(
+            &f.package_version,
+            &f.super_admin_cap,
+            admin_cap_id,
+        );
+        let revoked = events::collect_one<events::AdminRevoked>(0);
+        assert_eq!(revoked.admin_revoked_fields(), admin_cap_id);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidAdminCap, location = blast_sui::acl)]
+fun revoked_admin_cannot_sign_in() {
+    let mut fixture = start_admin();
+    let admin_cap_id = fixture.admin_cap.borrow().admin_cap_id_for_testing();
+
+    fixture.next_tx!(PUBLISHER, |f| {
+        f.authority.revoke_admin(
+            &f.package_version,
+            &f.super_admin_cap,
+            admin_cap_id,
+        );
+    });
+
+    fixture.next_tx!(ADMIN, |f| {
+        destroy(f.authority.sign_in(&f.package_version, f.admin_cap.borrow()));
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun admin_holder_deletes_an_active_cap_and_removes_membership() {
+    let mut fixture = start_admin();
+    let admin_cap_id = fixture.admin_cap.borrow().admin_cap_id_for_testing();
+
+    fixture.next_tx!(ADMIN, |f| {
+        f.authority.destroy_admin_cap(
+            &f.package_version,
+            f.admin_cap.extract(),
+        );
+        let destroyed = events::collect_one<events::AdminDestroyed>(0);
+        let (emitted_admin_cap_id, was_active) = destroyed.admin_destroyed_fields();
+        assert_eq!(emitted_admin_cap_id, admin_cap_id);
+        assert!(was_active);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun admin_holder_can_delete_a_cap_after_root_revocation() {
+    let mut fixture = start_admin();
+    let admin_cap_id = fixture.admin_cap.borrow().admin_cap_id_for_testing();
+
+    fixture.next_tx!(PUBLISHER, |f| {
+        f.authority.revoke_admin(
+            &f.package_version,
+            &f.super_admin_cap,
+            admin_cap_id,
+        );
+    });
+
+    fixture.next_tx!(ADMIN, |f| {
+        f.authority.destroy_admin_cap(
+            &f.package_version,
+            f.admin_cap.extract(),
+        );
+        let destroyed = events::collect_one<events::AdminDestroyed>(0);
+        let (emitted_admin_cap_id, was_active) = destroyed.admin_destroyed_fields();
+        assert_eq!(emitted_admin_cap_id, admin_cap_id);
+        assert!(!was_active);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidAdminRecipient, location = blast_sui::acl)]
+fun super_admin_cannot_grant_an_admin_to_the_zero_address() {
+    let mut fixture = start_transfer();
+
+    fixture.next_tx!(PUBLISHER, |f| {
+        f.authority.grant_admin(
+            &f.package_version,
+            f.super_admin_cap.borrow(),
+            @0x0,
+            f.ctx!(),
+        );
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidAdminCap, location = blast_sui::acl)]
+fun super_admin_cannot_revoke_an_unknown_admin() {
+    let mut fixture = start_transfer();
+
+    fixture.next_tx!(PUBLISHER, |f| {
+        f.authority.revoke_admin(
+            &f.package_version,
+            f.super_admin_cap.borrow(),
+            @0xBAD.to_id(),
+        );
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EAdminCapacityReached, location = blast_sui::acl)]
+fun active_admin_registry_is_bounded() {
+    let mut fixture = start_transfer();
+
+    fixture.next_tx!(PUBLISHER, |f| {
+        let mut index = 0;
+        while (index < constants::max_admins!()) {
+            f.authority.grant_admin(
+                &f.package_version,
+                f.super_admin_cap.borrow(),
+                ADMIN,
+                f.ctx!(),
+            );
+            index = index + 1;
+        };
+        f.authority.grant_admin(
+            &f.package_version,
+            f.super_admin_cap.borrow(),
+            ADMIN,
+            f.ctx!(),
         );
     });
 
@@ -318,6 +506,17 @@ macro fun transfer_next_tx(
     $fn(fixture);
 }
 
+macro fun admin_next_tx(
+    $fixture: &mut AdminFixture,
+    $sender: address,
+    $fn: |&mut AdminFixture|,
+) {
+    let fixture = $fixture;
+
+    fixture.scenario.next_tx($sender);
+    $fn(fixture);
+}
+
 macro fun transfer_ctx($fixture: &mut TransferFixture): &mut TxContext {
     let fixture = $fixture;
 
@@ -358,6 +557,29 @@ fun start_transfer(): TransferFixture {
     }
 }
 
+fun start_admin(): AdminFixture {
+    let mut scenario = test_scenario::begin(PUBLISHER);
+    let package_version = package_version::new_for_testing(scenario.ctx());
+    let (super_admin_cap, mut authority) = acl::new_protocol_for_testing(scenario.ctx());
+    authority.grant_admin(
+        &package_version,
+        &super_admin_cap,
+        ADMIN,
+        scenario.ctx(),
+    );
+
+    scenario.next_tx(ADMIN);
+    let admin_cap = scenario.take_from_sender<acl::AdminCap>();
+
+    AdminFixture {
+        scenario,
+        package_version,
+        authority,
+        super_admin_cap,
+        admin_cap: option::some(admin_cap),
+    }
+}
+
 fun init_end(self: InitFixture) {
     let InitFixture { scenario, package_version, authority, super_admin_cap } = self;
 
@@ -368,6 +590,10 @@ fun init_end(self: InitFixture) {
 }
 
 fun transfer_end(self: TransferFixture) {
+    destroy(self);
+}
+
+fun admin_end(self: AdminFixture) {
     destroy(self);
 }
 

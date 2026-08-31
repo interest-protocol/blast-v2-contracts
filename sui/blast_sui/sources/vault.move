@@ -5,7 +5,7 @@
 module blast_sui::vault;
 
 use blast_sui::{
-    acl::{ProtocolAuthority, SuperAdminCap},
+    acl::AdminWitness,
     blast_sui::BLAST_SUI,
     constants,
     custody::{Self, Custody},
@@ -351,12 +351,10 @@ public fun redeem_blast_sui(
 public fun set_redeem_fee(
     self: &mut Vault,
     package_version: &PackageVersion,
-    authority: &ProtocolAuthority,
-    super_admin_cap: &SuperAdminCap,
+    _: &AdminWitness,
     redeem_fee_bps: u64,
 ) {
     package_version.assert_current();
-    authority.assert_super_admin(super_admin_cap);
     assert!(
         redeem_fee_bps <= constants::max_redeem_fee_bps!(),
         blast_sui::errors::redeem_fee_above_maximum!(),

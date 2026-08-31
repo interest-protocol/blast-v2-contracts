@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # Coverage gate for the Blast SUI package.
 #
-# Every module must stay at 100.00 except `deposit_receipt`:
-# `create_display` needs the framework `DisplayRegistry`, whose constructor
-# is gated to the system address and whose test wrapper is package-private
-# to `sui`, so that path is verified operationally by the deployment
-# runbook instead.
+# Every production module must stay at 100.00 except `deposit_receipt`, whose
+# macro-expanded Display configuration currently reports 96.67 even though the
+# canonical Display creation and dynamic-object-field cap handoff execute in
+# package-admin tests.
 set -euo pipefail
 
 package_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

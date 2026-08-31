@@ -62,7 +62,7 @@ public fun cancel(
     sui_out
 }
 
-/// Creates the receipt Display V2 once and permanently locks its update cap.
+/// Creates the receipt Display V2 and returns its update cap for package custody.
 ///
 /// This is a permissionless deployment step. The system registry derives one
 /// canonical display per type and rejects every later creation attempt.
@@ -70,7 +70,7 @@ public fun create_display(
     package_version: &PackageVersion,
     registry: &mut DisplayRegistry,
     ctx: &mut TxContext,
-) {
+): DisplayCap<BlastSuiDepositReceipt> {
     package_version.assert_current();
     let (mut display, cap) = display_registry::new<BlastSuiDepositReceipt>(
         registry,
@@ -80,7 +80,7 @@ public fun create_display(
     display.configure(&cap);
 
     display.share();
-    transfer::public_transfer(cap, @0x0);
+    cap
 }
 
 // === Private Functions ===

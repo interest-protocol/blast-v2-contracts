@@ -11,22 +11,28 @@ It depends only on the pinned `SuiSystem` framework package and must not import
 - `blast.move` — canonical package OTW; `init` uses the framework's
   `claim_and_keep` path so the Publisher can immediately enter protocol custody.
 - `fun_sui.move` / `blast_sui.move` — the two unrestricted nine-decimal coins.
-  Their initial metadata includes the fixed Blast icon and is immutable because
-  initialization deletes both `MetadataCap`s.
+  Their initial metadata includes the Blast icon. Initialization sends both
+  `MetadataCap` objects to the publisher for immediate package-admin custody.
 - `deposit_receipt.move` — the key-only `BlastSuiDepositReceipt`, fair delayed
   issuance, direct native cancellation, and wallet Display V2 metadata. Its
-  one-time display creator locks the update cap at `@0x0`.
+  one-time display creator returns the update cap for package-admin custody.
 - `acl.move` — package-local administration with one shared
-  `ProtocolAuthority` and one active `SuperAdminCap`. Every privileged action
-  validates that cap against the registry. The same offchain maintainer may
-  hold this cap and the launchpad's, but they are separate onchain objects.
-  Delayed root acceptance returns the new key-only cap for composition;
-  `acl::keep` stores it with the accepting sender.
-- `package_admin.move` — permanent shared custody of this package's `Publisher`
-  and `UpgradeCap` with no release or borrow path. `wrap` validates both and
-  returns nothing. Authorization, policy restriction, and package-version
-  activation require the active `SuperAdminCap`; commit is authorized only by
-  the matching native receipt.
+  `ProtocolAuthority`, one cold `SuperAdminCap`, and at most 16 revocable
+  routine `AdminCap` objects. The root grants and revokes routine admins;
+  `acl::sign_in` validates a live cap and returns the drop-only `AdminWitness`
+  used by ordinary administration. The same offchain maintainers may hold
+  capabilities in this package and the launchpad, but the objects and
+  registries remain independent. Delayed root acceptance returns the new
+  key-only cap for composition; `acl::keep` stores it with the accepting sender.
+- `package_admin.move` — permanent shared custody of this package's `Publisher`,
+  `UpgradeCap`, both currency `MetadataCap` objects, and the receipt
+  `DisplayCap` with no release or borrow path. Deployment composes `new`, one
+  admin-gated `add_capability` call per child object, and terminal `share` in
+  one PTB.
+  Child objects use type-keyed dynamic object fields, so future capability
+  types do not change the parent layout. Upgrade authorization, policy
+  restriction, and package-version activation require an `AdminWitness`;
+  commit is authorized only by the matching native receipt.
 - `package_version.move` — the operational package generation that gates every
   administration and vault mutation.
 - `custody.move` — one native ledger: liquid `Balance<SUI>`, up to three
@@ -119,8 +125,8 @@ that yield, so the sweep has no supply condition.
   MIST; rounding residue stays liquid. Because the reserve is seeded at
   creation, a full `funSUI` exit is exact even when the position was converted
   in its activation epoch and fun custody has earned nothing yet.
-- `set_redeem_fee` requires the active `SuperAdminCap`, rejects an unchanged
-  value and any
+- `set_redeem_fee` requires an active routine admin's `AdminWitness`, rejects an
+  unchanged value and any
   value above 100 bps, and emits the old and new rate.
 - Every asset mutation delegates idle liquid SUI only when a current exchange-rate
   entry proves that the immutable pool itself is active. Blast custody stakes
@@ -143,13 +149,15 @@ All payloads are wrapped in `events_wrapper::Event<T>`. Package publication
 itself emits nothing: transaction effects natively record the shared
 `ProtocolAuthority` and `PackageVersion` and the delivered `SuperAdminCap`, and
 the compiled transfer delay and initial generation are constants of the
-published bytecode (ADR 0058). Administration emits `SuperAdminTransferStarted`,
-`SuperAdminTransferCancelled`, `SuperAdminTransferred`, `PackageVersionAdvanced`,
-`PackageAdminCreated`, `UpgradeAuthorized`, `UpgradeCommitted`, and
-`UpgradePolicyRestricted`. `UpgradeAuthorized` carries only the authorized
-digest; the cap's package id, version, and policy replay from
-`PackageAdminCreated`, `UpgradeCommitted`, and `UpgradePolicyRestricted`
-(ADR 0059). The receipt and vault flows emit `VaultCreated`,
+published bytecode (ADR 0058). Administration emits `AdminGranted`,
+`AdminRevoked`, `AdminDestroyed`, `SuperAdminTransferStarted`,
+`SuperAdminTransferCancelled`, `SuperAdminTransferred`,
+`PackageCapabilityAdded`, `PackageVersionAdvanced`, `PackageAdminCreated`,
+`UpgradeAuthorized`, `UpgradeCommitted`, and `UpgradePolicyRestricted`.
+`UpgradeAuthorized` carries only the authorized digest; the cap's package ID,
+version, and policy replay from `PackageAdminCreated`, `UpgradeCommitted`, and
+`UpgradePolicyRestricted` (ADR 0059). The receipt and vault flows emit
+`VaultCreated`,
 `FunSuiMinted`, `FunSuiRedeemed`, `BlastSuiDepositRequested`,
 `BlastSuiDepositClaimed`, `BlastSuiDepositCancelled`, `BlastSuiRedeemed`,
 `BlastSuiDonated`, `FunYieldSwept`, `RedeemFeeChanged`, `VaultSynced`, and
@@ -192,9 +200,9 @@ number into the raising module. Retired codes remain reserved.
 | 21 | *(retired)* | — | Final-holder block replaced by the seed supply locked at `@0x0`. |
 | 22 | `blast_assets_depleted` | `math` | blastSUI shares exist but blast custody holds no assets to price them. |
 | 23 | `bootstrap_below_native_minimum` | `vault` | The owner seed cannot fund the fun reserve plus a blast bootstrap of at least the native one-SUI stake minimum. |
-| 24 | *(retired)* | — | Routine `AdminCap` authorization was removed. |
+| 24 | *(retired)* | — | Earlier routine-admin error assignment; the current bounded ACL uses codes 48–50. |
 | 25 | `invalid_super_admin_cap` | `acl` | The supplied `SuperAdminCap` is no longer the active root capability. |
-| 26–29 | *(retired)* | — | Routine administrators and role authorization were removed. |
+| 26–29 | *(retired)* | — | Earlier role-specific administrator design; the current ACL has one routine-admin role. |
 | 30 | `invalid_super_admin_recipient` | `acl` | The root cannot be transferred to the zero address or its current holder. |
 | 31 | `no_pending_super_admin_transfer` | `acl` | No pending super-admin transfer exists. |
 | 32 | `not_pending_super_admin_recipient` | `acl` | The transaction sender is not the proposed super-admin recipient. |
@@ -213,8 +221,13 @@ number into the raising module. Retired codes remain reserved.
 | 45 | `zero_sui_after_fee` | `vault` | A blastSUI redemption fee would leave no SUI output, so no shares are burned. |
 | 46 | *(retired)* | — | Display V2 uniqueness is enforced by the framework registry. |
 | 47 | `wrong_delegation_pool` | `custody`, `vault` | Native delegation returned stake from a pool other than the vault's immutable pool. |
+| 48 | `invalid_admin_recipient` | `acl` | A routine admin cannot be granted to the zero address. |
+| 49 | `admin_capacity_reached` | `acl` | The bounded set already contains 16 active routine admins. |
+| 50 | `invalid_admin_cap` | `acl` | The supplied routine admin capability is not active in this registry. |
+| 51 | `missing_package_capability` | `package_admin` | Required metadata or Display authority is absent when package custody is shared. |
+| 52 | `package_capability_already_exists` | `package_admin` | The exact capability type is already attached to package custody. |
 
-The next new error must use code 48.
+The next new error must use code 53.
 
 Codes 20 and 39, and the `custody` raise site of 47, are defensive: under the
 framework's monotonic pool rates and the vault's buffers they are unreachable
@@ -255,19 +268,26 @@ new address for any replacement validator.
 
 ## Deployment runbook
 
-1. Publish the package. Before any raw-cap upgrade, call `package_admin::wrap`
-   with the original Publisher and `UpgradeCap`; upgrading the raw cap first
-   changes its package ID and permanently makes this intake reject it.
+1. Publish the package. Do not use the raw `UpgradeCap`: upgrading it changes
+   its package ID and permanently makes package-admin intake reject it.
 2. Complete the framework's second Coin Registry step for both OTW currencies:
    call `coin_registry::finalize_registration` for the `funSUI` and `blastSUI`
    `Currency` objects transferred during package initialization.
 3. The package-local ACL and `PackageVersion` initialize automatically in the
    publish transaction; verify the shared `ProtocolAuthority`, the sender-owned
-   `SuperAdminCap`, and the shared `PackageVersion` from its effects. Then
-   create the receipt Display V2 through `deposit_receipt::create_display` with
-   the system `DisplayRegistry` at `0xd`. Confirm the derived display is shared
-   and its `DisplayCap` is owned by `@0x0`.
-4. Wait until the selected validator's second active epoch so its pool has a
+   `SuperAdminCap`, and the shared `PackageVersion` from its effects. Use the
+   root once to call `acl::grant_admin`, then keep the delivered routine
+   `AdminCap` with the operator.
+4. In one PTB, call `acl::sign_in`, create the receipt Display V2 through
+   `deposit_receipt::create_display` with the system `DisplayRegistry` at
+   `0xd`, call `package_admin::new` with the original Publisher and
+   `UpgradeCap`, attach the delivered `MetadataCap<FUN_SUI>`,
+   `MetadataCap<BLAST_SUI>`, and returned receipt `DisplayCap` with three
+   `package_admin::add_capability` calls, then call `package_admin::share`.
+   Confirm the Display and `PackageAdmin` are
+   shared and each child identity and type appears in
+   `PackageCapabilityAdded` before `PackageAdminCreated`.
+5. Wait until the selected validator's second active epoch so its pool has a
    current exchange-rate entry. Create the vault with that pool ID and the owner
    seed, then verify the emitted validator binding, 0.1-SUI fun reserve, blast
    bootstrap, locked seed shares, and 2-bps redemption fee. A `pool_id` the
@@ -276,14 +296,14 @@ new address for any replacement validator.
 
 ## Upgrade runbook
 
-1. Build and audit the candidate bytecode, then use the active
-   `SuperAdminCap` to authorize its exact 32-byte digest.
-2. Execute the native package upgrade and commit the matching native upgrade
-   receipt into `PackageAdmin`.
-3. Advance `PackageVersion` only after the upgraded package is committed and
-   integrations are ready to use the new generation. Pass the existing
-   `ProtocolAuthority` and active `SuperAdminCap` to the new generation's
-   `package_admin::activate_package_version`.
+1. Build and audit the candidate bytecode.
+2. In one upgrade PTB, sign in with an active routine `AdminCap`, use its
+   `AdminWitness` to authorize the exact 32-byte digest, execute the native
+   package upgrade, and commit the matching native receipt into `PackageAdmin`.
+3. If the upgrade changes the compiled operational generation, finish that
+   same PTB by passing the existing `AdminWitness` to the new generation's
+   `package_admin::activate_package_version`. Activate only when integrations
+   are ready to use the new generation.
 4. Verify that old-generation vault calls fail the version gate, new-generation
    calls succeed, both coin redemptions remain usable, and deposit receipts can
    still cancel directly.

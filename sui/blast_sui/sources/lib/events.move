@@ -1,5 +1,7 @@
 module blast_sui::events;
 
+use std::type_name::TypeName;
+
 // === Public Structs ===
 
 /// Final native custody buckets of one ledger after a completed transition.
@@ -58,7 +60,31 @@ public struct PackageVersionAdvanced has copy, drop {
     new_version: u64,
 }
 
-/// Emitted after the validated Publisher and UpgradeCap enter permanent shared custody.
+/// Emitted after the root grants and delivers one routine administrator.
+public struct AdminGranted has copy, drop {
+    admin_cap_id: ID,
+    recipient: address,
+}
+
+/// Emitted after the root removes one routine administrator from the live registry.
+public struct AdminRevoked has copy, drop {
+    admin_cap_id: ID,
+}
+
+/// Emitted after an AdminCap holder deletes its object.
+public struct AdminDestroyed has copy, drop {
+    admin_cap_id: ID,
+    was_active: bool,
+}
+
+/// Emitted after an active admin attaches one capability object to PackageAdmin.
+public struct PackageCapabilityAdded has copy, drop {
+    package_admin_id: ID,
+    capability_id: ID,
+    capability_type: TypeName,
+}
+
+/// Emitted after the validated package capabilities enter permanent shared custody.
 public struct PackageAdminCreated has copy, drop {
     package_admin_id: ID,
     publisher_id: ID,
@@ -237,6 +263,29 @@ public(package) fun package_version_advanced(previous_version: u64, new_version:
     blast_sui::events_wrapper::emit_event(PackageVersionAdvanced {
         previous_version,
         new_version,
+    });
+}
+
+public(package) fun admin_granted(admin_cap_id: ID, recipient: address) {
+    blast_sui::events_wrapper::emit_event(AdminGranted { admin_cap_id, recipient });
+}
+
+public(package) fun admin_revoked(admin_cap_id: ID) {
+    blast_sui::events_wrapper::emit_event(AdminRevoked { admin_cap_id });
+}
+
+public(package) fun admin_destroyed(admin_cap_id: ID, was_active: bool) {
+    blast_sui::events_wrapper::emit_event(AdminDestroyed { admin_cap_id, was_active });
+}
+
+public(package) fun package_capability_added<Capability>(
+    package_admin_id: ID,
+    capability_id: ID,
+) {
+    blast_sui::events_wrapper::emit_event(PackageCapabilityAdded {
+        package_admin_id,
+        capability_id,
+        capability_type: std::type_name::with_original_ids<Capability>(),
     });
 }
 
@@ -484,6 +533,28 @@ public fun super_admin_transferred_fields(self: &SuperAdminTransferred): (ID, ID
 #[test_only]
 public fun package_version_advanced_fields(self: &PackageVersionAdvanced): (u64, u64) {
     (self.previous_version, self.new_version)
+}
+
+#[test_only]
+public fun admin_granted_fields(self: &AdminGranted): (ID, address) {
+    (self.admin_cap_id, self.recipient)
+}
+
+#[test_only]
+public fun admin_revoked_fields(self: &AdminRevoked): ID {
+    self.admin_cap_id
+}
+
+#[test_only]
+public fun admin_destroyed_fields(self: &AdminDestroyed): (ID, bool) {
+    (self.admin_cap_id, self.was_active)
+}
+
+#[test_only]
+public fun package_capability_added_fields(
+    self: &PackageCapabilityAdded,
+): (ID, ID, TypeName) {
+    (self.package_admin_id, self.capability_id, self.capability_type)
 }
 
 #[test_only]

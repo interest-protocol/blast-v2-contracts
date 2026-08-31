@@ -105,8 +105,10 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0057](0057-admin-pinned-venue-tiers.md) | Admin-pinned venue tiers for permissionless migration | **accepted** |
 | [0058](0058-eventless-package-initialization.md) | Eventless package initialization | **accepted** |
 | [0059](0059-no-sender-or-unchanged-state-in-event-payloads.md) | No transaction sender or unchanged state in event payloads | **accepted** |
+| [0060](0060-blastsui-metadata-cap-custody.md) | Retain currency and receipt update capabilities in package-admin custody | **accepted** |
+| [0061](0061-blastsui-routine-admin-and-composable-package-custody.md) | Routine administration and composable package custody for blastSUI | **accepted** |
 
-ADRs 0013–0036 and 0038–0059 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
+ADRs 0013–0036 and 0038–0061 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -232,7 +234,7 @@ and a `blastSUI` share ledger with separate native positions on one immutable
 validator, a yield sweep from fun to blast custody behind a fixed rounding
 reserve, a seed `blastSUI` supply locked at `@0x0` so every redemption is a
 fee-paying partial exit, a bounded redemption fee, and one package-local
-super-admin for fee changes and upgrades.
+authority boundary for fee changes and upgrades, as amended by ADR 0061.
 
 ADR 0054 accepts isolated V3 adapter packages, real-balance seed pricing, locked
 LP principal, and the operational recommended SUI lane. Its Memez, Raydium,
@@ -252,6 +254,17 @@ ADR 0059 extends that test to individual fields: no payload restates the
 transaction sender, and `UpgradeAuthorized` keeps only its digest. The
 delta-plus-total and old/new redundancy ADR 0011 chose deliberately is preserved
 and explicitly out of scope for future field audits.
+
+ADR 0060 amends 0053 before the first blastSUI deployment. Both currency
+initializers retain their unique native metadata capabilities, the receipt
+Display creator returns its unique update capability, and the deployment flow
+moves all three into the shared `PackageAdmin`.
+
+ADR 0061 narrows the blastSUI `SuperAdminCap` to routine-admin membership and
+root rotation. Live `AdminCap` sign-in produces the witness for routine fee and
+package operations. Package custody now uses the composable
+construct–attach–finalize lifecycle, with exact-type dynamic object fields for
+current and future child capabilities.
 
 ## Open premises
 
