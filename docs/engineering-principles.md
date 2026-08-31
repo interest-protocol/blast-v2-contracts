@@ -116,3 +116,22 @@ state for an event, separates a mutation from an external call, names auditable
 arithmetic, or preserves required evaluation order. In particular, copying one
 field before mutably borrowing another field of the same Move value can be
 required by the borrow checker.
+
+## 12. Keep multi-phase transitions as readable orchestrators
+
+A transition becomes a monolithic implementation when one body mixes several
+independent phases, such as liveness recovery, rate-cache updates, custody
+revaluation, receipt activation, buffer policy, and event emission. The problem
+is not a fixed line count. The anti-pattern exists when a reviewer must hold
+several invariants and nested branches in mind to verify one state transition.
+
+Keep the owning function as a short, ordered description of the transition.
+Extract cohesive phases into domain-named private helpers. Use a private
+`macro fun` when the helper is only a source-organization boundary and its
+instructions must remain expanded at the call site. A macro removes Move
+function-call overhead; it does not make the expanded operations gas-free.
+
+Before extracting a macro, verify argument evaluation, capture, borrow lifetime,
+abort location, mutation order, and event order. Prefer a normal private
+function when the helper is a reusable semantic boundary or when inlining would
+duplicate substantial bytecode across call sites.

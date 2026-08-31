@@ -399,62 +399,106 @@ fun refresh(self: &mut Vault, system_state: &mut SuiSystemState, ctx: &mut TxCon
 fun refresh_native(self: &mut Vault, system_state: &mut SuiSystemState, ctx: &mut TxContext) {
     let validator = system_state.validator_address_by_pool_id(&self.pool_id);
     if (!system_state.active_validator_addresses_ref().contains(&validator)) {
-        self.fun_custody.unwind(system_state, ctx);
-        self.blast_custody.unwind(system_state, ctx);
-        self.unwind_only = true;
+        self.unwind_inactive_validator!(system_state, ctx);
+        return
+    };
 
-        events::native_stake_unwound(self.custody());
-    } else {
-        let epoch = ctx.epoch();
-        let (is_current, rate_sui, rate_pool_tokens) =
-            system_state.exchange_rate_at(&self.pool_id, epoch);
-        if (is_current) {
-            self.rate_epoch = epoch;
-            self.rate_sui = rate_sui;
-            self.rate_pool_tokens = rate_pool_tokens;
-        };
+    let epoch = ctx.epoch();
+    let (is_current, rate_sui, rate_pool_tokens) =
+        system_state.exchange_rate_at(&self.pool_id, epoch);
+    self.apply_rate_and_revalue!(
+        system_state,
+        epoch,
+        is_current,
+        rate_sui,
+        rate_pool_tokens,
+        ctx,
+    );
+    if (is_current) self.resolve_arrived_fun_receipts!(system_state, epoch, ctx);
+}
 
-        // After the active-address check above, a current entry proves that the
-        // immutable pool itself is active. Address membership alone is not
-        // enough because an address can return with a different pool.
-        if (is_current) self.blast_custody.activate_pending(system_state, ctx);
-        self.fun_custody.revalue(self.rate_sui, self.rate_pool_tokens);
-        self.blast_custody.revalue(self.rate_sui, self.rate_pool_tokens);
+/// Enters the terminal unwind mode after the validator address leaves the active set.
+macro fun unwind_inactive_validator(
+    $self: &mut Vault,
+    $system_state: &mut SuiSystemState,
+    $ctx: &mut TxContext,
+) {
+    let self = $self;
+    let system_state = $system_state;
+    let ctx = $ctx;
 
-        // Resolve arrived fun receipts oldest-first, rechecking the buffer per
-        // receipt: convert one only while its floor loss preserves the exit
-        // buffer; otherwise keep it through activation and safe mode, then
-        // realize it in a normal later epoch so recovery cannot forfeit
-        // current or deferred rewards. The loop is bounded by the pending
-        // ledger cap and stops at the first receipt it must retain, since
-        // later receipts activate no earlier.
-        if (is_current) {
-            let loss_bound = math::fun_conversion_loss_bound_up(
-                self.rate_sui,
-                self.rate_pool_tokens,
-            );
-            loop {
-                let fun_activation_epoch = self.fun_custody.oldest_pending_activation_epoch();
-                if (fun_activation_epoch.is_none() || *fun_activation_epoch.borrow() > epoch) {
-                    break
-                };
-                let activation_epoch = *fun_activation_epoch.borrow();
-                let buffer = self.fun_backing_buffer();
-                if (
-                    buffer >= loss_bound
-                        && buffer - loss_bound > constants::fun_exit_low_water_mist!()
-                ) {
-                    self.fun_custody.activate_oldest_pending(system_state, ctx);
-                    self.fun_custody.revalue(self.rate_sui, self.rate_pool_tokens);
-                } else if (activation_epoch < epoch) {
-                    // Withdrawing during the activation epoch forfeits that
-                    // epoch's reward. Withdrawing during safe mode can also
-                    // forfeit deferred rewards. Recover only after a full
-                    // epoch with a current rate.
-                    self.fun_custody.realize_oldest_pending(system_state, ctx);
-                } else break;
-            };
-        };
+    self.fun_custody.unwind(system_state, ctx);
+    self.blast_custody.unwind(system_state, ctx);
+    self.unwind_only = true;
+
+    events::native_stake_unwound(self.custody());
+}
+
+/// Updates a current rate, activates blast receipts, and revalues both native ledgers.
+macro fun apply_rate_and_revalue(
+    $self: &mut Vault,
+    $system_state: &mut SuiSystemState,
+    $epoch: u64,
+    $is_current: bool,
+    $rate_sui: u64,
+    $rate_pool_tokens: u64,
+    $ctx: &mut TxContext,
+) {
+    let self = $self;
+    let system_state = $system_state;
+    let epoch = $epoch;
+    let is_current = $is_current;
+    let rate_sui = $rate_sui;
+    let rate_pool_tokens = $rate_pool_tokens;
+    let ctx = $ctx;
+
+    if (is_current) {
+        self.rate_epoch = epoch;
+        self.rate_sui = rate_sui;
+        self.rate_pool_tokens = rate_pool_tokens;
+
+        // A current entry proves the immutable pool itself is active. Address
+        // membership alone is insufficient because an address can return with
+        // a different pool.
+        self.blast_custody.activate_pending(system_state, ctx);
+    };
+    self.fun_custody.revalue(self.rate_sui, self.rate_pool_tokens);
+    self.blast_custody.revalue(self.rate_sui, self.rate_pool_tokens);
+}
+
+/// Resolves arrived fun receipts oldest-first while preserving the exit buffer.
+macro fun resolve_arrived_fun_receipts(
+    $self: &mut Vault,
+    $system_state: &mut SuiSystemState,
+    $epoch: u64,
+    $ctx: &mut TxContext,
+) {
+    let self = $self;
+    let system_state = $system_state;
+    let epoch = $epoch;
+    let ctx = $ctx;
+    let loss_bound = math::fun_conversion_loss_bound_up(
+        self.rate_sui,
+        self.rate_pool_tokens,
+    );
+
+    loop {
+        let fun_activation_epoch = self.fun_custody.oldest_pending_activation_epoch();
+        if (fun_activation_epoch.is_none() || *fun_activation_epoch.borrow() > epoch) break;
+
+        let activation_epoch = *fun_activation_epoch.borrow();
+        let buffer = self.fun_backing_buffer();
+        if (
+            buffer >= loss_bound
+                && buffer - loss_bound > constants::fun_exit_low_water_mist!()
+        ) {
+            self.fun_custody.activate_oldest_pending(system_state, ctx);
+            self.fun_custody.revalue(self.rate_sui, self.rate_pool_tokens);
+        } else if (activation_epoch < epoch) {
+            // Waiting past activation avoids forfeiting the activation epoch's
+            // reward or any reward deferred during safe mode.
+            self.fun_custody.realize_oldest_pending(system_state, ctx);
+        } else break;
     };
 }
 
