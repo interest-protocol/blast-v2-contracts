@@ -287,18 +287,6 @@ const EInvalidInitialMemeSupply: u64 = 77;
 /// A migration witness must be a non-primitive adapter-defined struct type.
 const EInvalidMigrationWitnessType: u64 = 78;
 
-#[test_only]
-/// Migration pricing requires positive real Meme and net Quote seed balances.
-const EInvalidMigrationSeedBalance: u64 = 79;
-
-#[test_only]
-/// An existing venue pool is outside the adapter's accepted migration price band.
-const EMigrationPriceDeviationExceeded: u64 = 80;
-
-#[test_only]
-/// Venue rounding returned more migration principal than the allowed residual bound.
-const EMigrationResidualExceeded: u64 = 81;
-
 // === Package Error Codes ===
 
 macro public(package) fun invalid_admin_cap(): u64 {
@@ -565,16 +553,4 @@ macro public(package) fun invalid_initial_meme_supply(): u64 {
 
 macro public(package) fun invalid_migration_witness_type(): u64 {
     78
-}
-
-macro public(package) fun invalid_migration_seed_balance(): u64 {
-    79
-}
-
-macro public(package) fun migration_price_deviation_exceeded(): u64 {
-    80
-}
-
-macro public(package) fun migration_residual_exceeded(): u64 {
-    81
 }

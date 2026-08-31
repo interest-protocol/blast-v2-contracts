@@ -1,9 +1,9 @@
 # Blast Fun Sui error codes
 
-This file is the canonical map from a raw Sui Move abort code to its package
-macro, raising module, and stable meaning. Keep it synchronized with
+This file is the canonical map from a raw Sui Move abort code to its package,
+raising module, and stable meaning. Keep it synchronized with
 [`sui/launchpad/sources/lib/errors.move`](../sui/launchpad/sources/lib/errors.move)
-whenever a code is added.
+and migrator-owned error constants whenever a code is added.
 
 ## Strategy
 
@@ -108,8 +108,22 @@ the next unused value and must not fill a retired gap.
 | 76 | `invalid_meme_quote_pair` | `launch` | A launch selected the generated Meme type as its own Quote type. |
 | 77 | `invalid_initial_meme_supply` | `launch` | A launch ticket did not contain the canonical generated Meme supply. |
 | 78 | `invalid_migration_witness_type` | `launch_config` | A migration witness was a primitive or vector type instead of an adapter-defined struct. |
-| 79 | `invalid_migration_seed_balance` | `migration_math` | Migration price derivation received a zero Meme or Quote seed balance. |
-| 80 | `migration_price_deviation_exceeded` | `migration_math` | An observed CLMM price is outside the adapter's accepted deviation from the exact seed ratio. |
-| 81 | `migration_residual_exceeded` | `migration_math` | Venue rounding returned more unseeded migration principal than the allowed residual bound. |
+| 79 | *(retired)* | — | Migration seed validation moved to the migrators package. |
+| 80 | *(retired)* | — | Migration price-deviation validation moved to the migrators package. |
+| 81 | *(retired)* | — | Migration residual validation moved to the migrators package. |
 
 The next new package-wide protocol error must use code **82**.
+
+## Migrators migration-math errors
+
+These module-local constants live in
+[`sui/migrators/sources/migration_math.move`](../sui/migrators/sources/migration_math.move).
+The package and module are part of the abort identity; the retained numbers ease
+the transition from the former launchpad-owned module.
+
+| Code | Constant | Raised from | Meaning |
+| ---: | --- | --- | --- |
+| 75 | `EInvalidBps` | `blast_fun_migrators::migration_math` | A migration tolerance exceeds the inclusive 0 through 10,000 range. |
+| 79 | `EInvalidMigrationSeedBalance` | `blast_fun_migrators::migration_math` | Migration price derivation received a zero Meme or Quote seed balance. |
+| 80 | `EMigrationPriceDeviationExceeded` | `blast_fun_migrators::migration_math` | An observed CLMM price is outside the adapter's accepted deviation from the exact seed ratio. |
+| 81 | `EMigrationResidualExceeded` | `blast_fun_migrators::migration_math` | Venue rounding returned more unseeded migration principal than the allowed residual bound. |

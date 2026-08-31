@@ -194,17 +194,14 @@ public fun accept_super_admin_transfer(
         blast_fun::errors::no_pending_super_admin_transfer!(),
     );
 
-    let (recipient, execute_after_ms) = {
-        let pending = self.pending_super_admin.borrow();
-        (pending.recipient, pending.execute_after_ms)
-    };
+    let pending = self.pending_super_admin.extract();
 
     assert!(
-        recipient == ctx.sender(),
+        pending.recipient == ctx.sender(),
         blast_fun::errors::not_pending_super_admin_recipient!(),
     );
     assert!(
-        clock.timestamp_ms() >= execute_after_ms,
+        clock.timestamp_ms() >= pending.execute_after_ms,
         blast_fun::errors::super_admin_transfer_not_ready!(),
     );
 
@@ -212,15 +209,14 @@ public fun accept_super_admin_transfer(
     let new_super_admin_cap = SuperAdminCap { id: object::new(ctx) };
     let new_super_admin_cap_id = new_super_admin_cap.id.to_inner();
 
-    let _ = self.pending_super_admin.extract();
     self.super_admin_cap_id = new_super_admin_cap_id;
 
-    transfer::transfer(new_super_admin_cap, recipient);
+    transfer::transfer(new_super_admin_cap, pending.recipient);
 
     events::super_admin_transferred(
         previous_super_admin_cap_id,
         new_super_admin_cap_id,
-        recipient,
+        pending.recipient,
     );
 }
 

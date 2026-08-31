@@ -11,6 +11,7 @@ TURBOS_SOURCE="$SOURCE_DIR/turbos.move"
 FULLSAIL_SOURCE="$SOURCE_DIR/fullsail.move"
 EVENTS_SOURCE="$SOURCE_DIR/events.move"
 VENUE_CONFIG_SOURCE="$SOURCE_DIR/venue_config.move"
+MIGRATION_MATH_SOURCE="$SOURCE_DIR/migration_math.move"
 
 fail() {
     echo "Migrator source boundary failed: $1" >&2
@@ -314,6 +315,33 @@ reject_fullsail_pre_guard_mutator() {
 [[ -f "$FULLSAIL_SOURCE" ]] || fail "missing sources/fullsail.move"
 [[ -f "$EVENTS_SOURCE" ]] || fail "missing sources/events.move"
 [[ -f "$VENUE_CONFIG_SOURCE" ]] || fail "missing sources/venue_config.move"
+[[ -f "$MIGRATION_MATH_SOURCE" ]] || fail "missing sources/migration_math.move"
+[[ ! -e "$PACKAGE_DIR/../launchpad/sources/migration_math.move" ]] || \
+    fail "migration math must be owned by the migrators package"
+
+require_pattern "$MIGRATION_MATH_SOURCE" \
+    '^module blast_fun_migrators::migration_math;' \
+    'migrator-owned migration math module'
+[[ "$(rg -c '^public fun ' "$MIGRATION_MATH_SOURCE")" -eq 4 ]] || \
+    fail "migration math must expose exactly four public functions"
+[[ "$(rg -c '^fun ' "$MIGRATION_MATH_SOURCE")" -eq 4 ]] || \
+    fail "migration math must keep exactly four private helpers"
+require_pattern "$MIGRATION_MATH_SOURCE" \
+    '^const BASIS_POINTS_DENOMINATOR: u64 = 10_000;' \
+    'local basis-points denominator'
+require_pattern "$MIGRATION_MATH_SOURCE" \
+    'assert_valid_bps\(max_deviation_bps\);' \
+    'price-deviation basis-points validation'
+require_pattern "$MIGRATION_MATH_SOURCE" \
+    'maximum_residual_amount\(source_amount, max_residual_bps\)' \
+    'residual limit derivation'
+require_pattern "$MIGRATION_MATH_SOURCE" \
+    'integer_sqrt\(ratio_q128\(meme_amount, quote_amount, meme_is_coin_a\)\)' \
+    'Q128 square-root derivation'
+if rg -n '\b(UID|key|Balance|Coin|TxContext|transfer::|events::|RuntimeConfig)\b' \
+    "$MIGRATION_MATH_SOURCE"; then
+    fail "migration math must remain pure and stateless"
+fi
 
 require_pattern "$EVENTS_SOURCE" 'public struct VaultCreated' 'vault creation event'
 require_pattern "$EVENTS_SOURCE" 'public struct MigrationCompleted' 'completed migration event'

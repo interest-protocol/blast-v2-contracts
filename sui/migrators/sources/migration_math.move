@@ -1,16 +1,15 @@
-// `blast_fun::errors` intentionally centralizes package-wide abort codes through zero-cost
-// macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
-// locations and the stable code map documented in `docs/error-codes.md`.
-#[allow(lint(abort_without_constant))]
 /// Venue-neutral concentrated-liquidity price and utilization invariants.
-module blast_fun::migration_math;
-
-use blast_fun::constants;
+module blast_fun_migrators::migration_math;
 
 // === Constants ===
 
 const Q128_SHIFT: u8 = 128;
 const SQRT_UPPER_BOUND_SHIFT: u8 = 96;
+const BASIS_POINTS_DENOMINATOR: u64 = 10_000;
+const EInvalidBps: u64 = 75;
+const EInvalidMigrationSeedBalance: u64 = 79;
+const EMigrationPriceDeviationExceeded: u64 = 80;
+const EMigrationResidualExceeded: u64 = 81;
 
 // === Public Functions ===
 
@@ -55,9 +54,9 @@ public fun assert_price_within_bps(
 
     assert!(
         difference <= expected_ratio_q128
-            && difference * (constants::basis_points_denominator!() as u256)
+            && difference * (BASIS_POINTS_DENOMINATOR as u256)
                 <= expected_ratio_q128 * (max_deviation_bps as u256),
-        blast_fun::errors::migration_price_deviation_exceeded!(),
+        EMigrationPriceDeviationExceeded,
     );
 }
 
@@ -74,7 +73,7 @@ public fun assert_residual_within_bps(
 ) {
     assert!(
         residual_amount <= maximum_residual_amount(source_amount, max_residual_bps),
-        blast_fun::errors::migration_residual_exceeded!(),
+        EMigrationResidualExceeded,
     );
 }
 
@@ -87,7 +86,7 @@ fun ratio_q128(
 ): u256 {
     assert!(
         meme_amount > 0 && quote_amount > 0,
-        blast_fun::errors::invalid_migration_seed_balance!(),
+        EInvalidMigrationSeedBalance,
     );
 
     let (numerator, denominator) = if (meme_is_coin_a) {
@@ -121,14 +120,14 @@ fun maximum_residual_amount(amount: u64, max_residual_bps: u64): u64 {
     assert_valid_bps(max_residual_bps);
 
     let numerator = (amount as u128) * (max_residual_bps as u128);
-    let denominator = constants::basis_points_denominator!() as u128;
+    let denominator = BASIS_POINTS_DENOMINATOR as u128;
 
     ((numerator + denominator - 1) / denominator) as u64
 }
 
 fun assert_valid_bps(value: u64) {
     assert!(
-        value <= constants::basis_points_denominator!(),
-        blast_fun::errors::invalid_bps!(),
+        value <= BASIS_POINTS_DENOMINATOR,
+        EInvalidBps,
     );
 }
