@@ -118,6 +118,76 @@ fun first_price_unit_above_fifty_basis_points_is_rejected() {
 }
 
 #[test]
+fun exact_fifty_basis_point_price_deviation_below_target_is_accepted_for_both_orders() {
+    let meme_as_coin_a = migration_math::sqrt_price_x64(10_000, 9_950, true) + 1;
+    let meme_as_coin_b = migration_math::sqrt_price_x64(9_950, 10_000, false) + 1;
+
+    migration_math::assert_price_within_bps(
+        10_000,
+        10_000,
+        true,
+        meme_as_coin_a,
+        50,
+    );
+    migration_math::assert_price_within_bps(
+        10_000,
+        10_000,
+        false,
+        meme_as_coin_b,
+        50,
+    );
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EMigrationPriceDeviationExceeded,
+    location = blast_fun::migration_math,
+)]
+fun first_price_ratio_unit_below_fifty_basis_points_is_rejected_for_meme_as_coin_a() {
+    let outside = migration_math::sqrt_price_x64(10_000, 9_949, true) + 1;
+
+    migration_math::assert_price_within_bps(
+        10_000,
+        10_000,
+        true,
+        outside,
+        50,
+    );
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EMigrationPriceDeviationExceeded,
+    location = blast_fun::migration_math,
+)]
+fun first_price_ratio_unit_below_fifty_basis_points_is_rejected_for_meme_as_coin_b() {
+    let outside = migration_math::sqrt_price_x64(9_949, 10_000, false) + 1;
+
+    migration_math::assert_price_within_bps(
+        10_000,
+        10_000,
+        false,
+        outside,
+        50,
+    );
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EMigrationPriceDeviationExceeded,
+    location = blast_fun::migration_math,
+)]
+fun price_deviation_over_one_hundred_percent_rejects_before_scaling() {
+    migration_math::assert_price_within_bps(
+        1,
+        1,
+        true,
+        std::u128::max_value!(),
+        10_000,
+    );
+}
+
+#[test]
 fun one_basis_point_residual_boundary_is_accepted() {
     assert_eq!(
         migration_math::minimum_utilized_amount(10_000, 1),
