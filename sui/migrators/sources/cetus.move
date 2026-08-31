@@ -36,14 +36,22 @@ const DEFAULT_FEE_RATE: u64 = 40_000;
 /// Coarse adoption gate; the residual rule below binds far tighter.
 const MAX_PRICE_DEVIATION_BPS: u64 = 50;
 
-const EInvalidCoinOrder: u64 = 0;
-const EPositionPoolMismatch: u64 = 1;
-const EZeroPositionLiquidity: u64 = 2;
-const EPositionLiquidityChanged: u64 = 3;
-const EPaymentExceedsBalance: u64 = 4;
-const EInsufficientUtilization: u64 = 5;
-const ETierMismatch: u64 = 6;
-const EMemeBelowQuote: u64 = 7;
+#[error(code = 0)]
+const EInvalidCoinOrder: vector<u8> = b"Meme and Quote types do not match the selected Cetus pool order.";
+#[error(code = 1)]
+const EPositionPoolMismatch: vector<u8> = b"Cetus position does not belong to the selected pool.";
+#[error(code = 2)]
+const EZeroPositionLiquidity: vector<u8> = b"Cetus position liquidity must be greater than zero.";
+#[error(code = 3)]
+const EPositionLiquidityChanged: vector<u8> = b"Cetus fee collection must not change position liquidity.";
+#[error(code = 4)]
+const EPaymentExceedsBalance: vector<u8> = b"Cetus payment exceeds the available migration balance.";
+#[error(code = 5)]
+const EInsufficientUtilization: vector<u8> = b"Cetus migration did not use enough of the supplied balances.";
+#[error(code = 6)]
+const ETierMismatch: vector<u8> = b"Cetus pool tier does not match the configured venue tier.";
+#[error(code = 7)]
+const EMemeBelowQuote: vector<u8> = b"Migration Meme balance must be at least the Quote balance.";
 
 // === Public Structs ===
 

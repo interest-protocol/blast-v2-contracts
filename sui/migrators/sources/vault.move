@@ -16,8 +16,10 @@ use fun dynamic_object_field::exists as UID.has_dynamic_object_field;
 
 // === Constants ===
 
-const EWrongVenue: u64 = 0;
-const ENothingClaimable: u64 = 1;
+#[error(code = 0)]
+const EWrongVenue: vector<u8> = b"Venue witness does not match this LP vault.";
+#[error(code = 1)]
+const ENothingClaimable: vector<u8> = b"No protocol fees or migration residuals are available to claim.";
 
 // === Public Structs ===
 

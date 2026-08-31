@@ -47,12 +47,18 @@ const DEFAULT_FEE_RATE: u64 = 40_000;
 /// Coarse adoption gate; the residual rule below binds far tighter.
 const MAX_PRICE_DEVIATION_BPS: u64 = 50;
 
-const EInvalidTickSpacing: u64 = 0;
-const EPositionPoolMismatch: u64 = 1;
-const EZeroPositionLiquidity: u64 = 2;
-const EPositionLiquidityChanged: u64 = 3;
-const ETierMismatch: u64 = 5;
-const EInvalidFeeRate: u64 = 6;
+#[error(code = 0)]
+const EInvalidTickSpacing: vector<u8> = b"Turbos tick spacing must be greater than zero.";
+#[error(code = 1)]
+const EPositionPoolMismatch: vector<u8> = b"Turbos position does not belong to the selected pool.";
+#[error(code = 2)]
+const EZeroPositionLiquidity: vector<u8> = b"Turbos position liquidity must be greater than zero.";
+#[error(code = 3)]
+const EPositionLiquidityChanged: vector<u8> = b"Turbos fee collection must not change position liquidity.";
+#[error(code = 5)]
+const ETierMismatch: vector<u8> = b"Turbos pool tier does not match the configured venue tier.";
+#[error(code = 6)]
+const EInvalidFeeRate: vector<u8> = b"Turbos fee rate exceeds the supported u32 range.";
 
 // === Public Structs ===
 

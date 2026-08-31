@@ -42,15 +42,24 @@ const DEFAULT_FEE_RATE: u64 = 10_000;
 /// Coarse adoption gate; the residual rule below binds far tighter.
 const MAX_PRICE_DEVIATION_BPS: u64 = 50;
 
-const EInvalidCoinOrder: u64 = 0;
-const EInvalidTickSpacing: u64 = 1;
-const EPositionPoolMismatch: u64 = 2;
-const EZeroPositionLiquidity: u64 = 3;
-const EPositionLiquidityChanged: u64 = 4;
-const EPaymentExceedsBalance: u64 = 5;
-const EInsufficientUtilization: u64 = 6;
-const ETierMismatch: u64 = 7;
-const EMemeBelowQuote: u64 = 8;
+#[error(code = 0)]
+const EInvalidCoinOrder: vector<u8> = b"Meme and Quote types do not match the selected Full Sail pool order.";
+#[error(code = 1)]
+const EInvalidTickSpacing: vector<u8> = b"Full Sail tick spacing must be greater than zero.";
+#[error(code = 2)]
+const EPositionPoolMismatch: vector<u8> = b"Full Sail position does not belong to the selected pool.";
+#[error(code = 3)]
+const EZeroPositionLiquidity: vector<u8> = b"Full Sail position liquidity must be greater than zero.";
+#[error(code = 4)]
+const EPositionLiquidityChanged: vector<u8> = b"Full Sail fee collection must not change position liquidity.";
+#[error(code = 5)]
+const EPaymentExceedsBalance: vector<u8> = b"Full Sail payment exceeds the available migration balance.";
+#[error(code = 6)]
+const EInsufficientUtilization: vector<u8> = b"Full Sail migration did not use enough of the supplied balances.";
+#[error(code = 7)]
+const ETierMismatch: vector<u8> = b"Full Sail pool tier does not match the configured venue tier.";
+#[error(code = 8)]
+const EMemeBelowQuote: vector<u8> = b"Migration Meme balance must be at least the Quote balance.";
 
 // === Public Structs ===
 

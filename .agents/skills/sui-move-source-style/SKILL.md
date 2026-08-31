@@ -60,6 +60,29 @@ Format function bodies as logical paragraphs, with one blank line between valida
 - Name event payloads as completed past-tense facts: `AdminGranted`, `FeesClaimed`.
 - Include rounding direction in math names: `apply_down`, `mul_div_up`, `to_assets_down`.
 
+## Define module-local errors as attributed strings
+
+- When an error is declared and raised in the same module, always use an
+  attributed descriptive string constant:
+
+  ```move
+  #[error(code = 0)]
+  const EInvalidInput: vector<u8> = b"Input must be greater than zero.";
+  ```
+
+- Do not use a bare `const EInvalidInput: u64 = 0;` for a module-local error.
+  The attributed form preserves the stable numeric abort code and gives the
+  compiler, tests, SDKs, and transaction clients a readable error identity.
+- Keep codes stable and unique within their error namespace. Do not renumber an
+  existing error merely while converting its declaration form.
+- Write the message as the violated invariant or required corrective condition.
+  Do not only expand the constant name into prose.
+- In negative tests, expect the named attributed constant, such as
+  `abort_code = module::EInvalidInput`, instead of repeating its numeric code.
+- Use a package-wide error registry or package macro only when multiple modules
+  intentionally share one stable error namespace. Do not add registry indirection
+  for an invariant owned by one module.
+
 ## Keep visibility narrow
 
 - Use `public fun` only for real transaction or composition surfaces.

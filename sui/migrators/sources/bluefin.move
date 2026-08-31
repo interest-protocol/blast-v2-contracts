@@ -50,15 +50,24 @@ const MIN_SQRT_PRICE_X64: u128 = 4_295_048_016;
 /// Bluefin rejects initialization at or above this exclusive Q64.64 bound.
 const MAX_SQRT_PRICE_X64: u128 = 79_226_673_515_401_279_992_447_579_055;
 
-const EInvalidTickSpacing: u64 = 0;
-const EUnsupportedCreationFee: u64 = 1;
-const ENonzeroCreationFee: u64 = 2;
-const EInvalidSqrtPrice: u64 = 3;
-const EPositionPoolMismatch: u64 = 4;
-const EZeroPositionLiquidity: u64 = 5;
-const EPositionLiquidityChanged: u64 = 6;
-const EVenueAmountMismatch: u64 = 7;
-const EMemeBelowQuote: u64 = 8;
+#[error(code = 0)]
+const EInvalidTickSpacing: vector<u8> = b"Bluefin tick spacing must be greater than zero.";
+#[error(code = 1)]
+const EUnsupportedCreationFee: vector<u8> = b"Bluefin pool creation fee configuration is unsupported.";
+#[error(code = 2)]
+const ENonzeroCreationFee: vector<u8> = b"Bluefin pool creation fee must be zero.";
+#[error(code = 3)]
+const EInvalidSqrtPrice: vector<u8> = b"Bluefin initial square-root price is outside the supported range.";
+#[error(code = 4)]
+const EPositionPoolMismatch: vector<u8> = b"Bluefin position does not belong to the selected pool.";
+#[error(code = 5)]
+const EZeroPositionLiquidity: vector<u8> = b"Bluefin position liquidity must be greater than zero.";
+#[error(code = 6)]
+const EPositionLiquidityChanged: vector<u8> = b"Bluefin fee collection must not change position liquidity.";
+#[error(code = 7)]
+const EVenueAmountMismatch: vector<u8> = b"Bluefin reported amounts do not match the consumed balances.";
+#[error(code = 8)]
+const EMemeBelowQuote: vector<u8> = b"Migration Meme balance must be at least the Quote balance.";
 
 // === Public Structs ===
 

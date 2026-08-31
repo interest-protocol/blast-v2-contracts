@@ -13,6 +13,18 @@ number into the module that owns the invariant, and that module performs the
 `assert!` at the check site. `errors.move` contains no assertions or guard
 wrappers.
 
+An error declared and raised in one module instead uses an attributed string
+constant:
+
+```move
+#[error(code = 0)]
+const EInvalidInput: vector<u8> = b"Input must be greater than zero.";
+```
+
+This is the required form for module-local errors. It preserves the stable abort
+code and supplies a readable diagnostic. Do not create a package error macro
+for an invariant that only one module owns.
+
 Named `EPascalCase` copies are `#[test_only]`. They document the registry for
 source tooling without adding production constants or public ABI. Negative Move
 tests use literal numbers in `#[expected_failure]`, because attribute arguments
@@ -116,7 +128,7 @@ The next new package-wide protocol error must use code **82**.
 
 ## Migrators migration-math errors
 
-These module-local constants live in
+These attributed string constants live in
 [`sui/migrators/sources/migration_math.move`](../sui/migrators/sources/migration_math.move).
 The package and module are part of the abort identity; the retained numbers ease
 the transition from the former launchpad-owned module.

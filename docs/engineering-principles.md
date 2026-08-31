@@ -135,3 +135,28 @@ Before extracting a macro, verify argument evaluation, capture, borrow lifetime,
 abort location, mutation order, and event order. Prefer a normal private
 function when the helper is a reusable semantic boundary or when inlining would
 duplicate substantial bytecode across call sites.
+
+## 13. Use attributed strings for module-local errors
+
+A bare numeric error constant in the module that raises it is an opaque-error
+anti-pattern:
+
+```move
+const EInvalidInput: u64 = 0;
+```
+
+Define a stable numeric code and a descriptive message together instead:
+
+```move
+#[error(code = 0)]
+const EInvalidInput: vector<u8> = b"Input must be greater than zero.";
+```
+
+Use this form for every error that is declared and raised in the same module.
+It preserves the abort code while making compiler and client diagnostics useful.
+The message must describe the violated invariant and must not merely restate the
+constant name.
+
+Package-wide error registries are the exception. When several modules share a
+stable error namespace, keep the zero-cost package error macros and the canonical
+registry documentation so the invariant is still asserted by its owning module.

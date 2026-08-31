@@ -71,7 +71,7 @@ fun integer_square_root_rounds_down() {
 
 #[test]
 #[expected_failure(
-    abort_code = 79,
+    abort_code = migration_math::EInvalidMigrationSeedBalance,
     location = blast_fun_migrators::migration_math,
 )]
 fun zero_meme_seed_is_rejected() {
@@ -80,7 +80,7 @@ fun zero_meme_seed_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = 79,
+    abort_code = migration_math::EInvalidMigrationSeedBalance,
     location = blast_fun_migrators::migration_math,
 )]
 fun zero_quote_seed_is_rejected() {
@@ -102,7 +102,7 @@ fun exact_fifty_basis_point_price_deviation_is_accepted() {
 
 #[test]
 #[expected_failure(
-    abort_code = 80,
+    abort_code = migration_math::EMigrationPriceDeviationExceeded,
     location = blast_fun_migrators::migration_math,
 )]
 fun first_price_unit_above_fifty_basis_points_is_rejected() {
@@ -140,7 +140,7 @@ fun exact_fifty_basis_point_price_deviation_below_target_is_accepted_for_both_or
 
 #[test]
 #[expected_failure(
-    abort_code = 80,
+    abort_code = migration_math::EMigrationPriceDeviationExceeded,
     location = blast_fun_migrators::migration_math,
 )]
 fun first_price_ratio_unit_below_fifty_basis_points_is_rejected_for_meme_as_coin_a() {
@@ -157,7 +157,7 @@ fun first_price_ratio_unit_below_fifty_basis_points_is_rejected_for_meme_as_coin
 
 #[test]
 #[expected_failure(
-    abort_code = 80,
+    abort_code = migration_math::EMigrationPriceDeviationExceeded,
     location = blast_fun_migrators::migration_math,
 )]
 fun first_price_ratio_unit_below_fifty_basis_points_is_rejected_for_meme_as_coin_b() {
@@ -174,7 +174,7 @@ fun first_price_ratio_unit_below_fifty_basis_points_is_rejected_for_meme_as_coin
 
 #[test]
 #[expected_failure(
-    abort_code = 80,
+    abort_code = migration_math::EMigrationPriceDeviationExceeded,
     location = blast_fun_migrators::migration_math,
 )]
 fun price_deviation_over_one_hundred_percent_rejects_before_scaling() {
@@ -204,7 +204,7 @@ fun one_basis_point_residual_boundary_is_accepted() {
 
 #[test]
 #[expected_failure(
-    abort_code = 81,
+    abort_code = migration_math::EMigrationResidualExceeded,
     location = blast_fun_migrators::migration_math,
 )]
 fun residual_above_one_basis_point_is_rejected() {
@@ -213,7 +213,7 @@ fun residual_above_one_basis_point_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = 75,
+    abort_code = migration_math::EInvalidBps,
     location = blast_fun_migrators::migration_math,
 )]
 fun residual_limit_rejects_more_than_one_hundred_percent() {

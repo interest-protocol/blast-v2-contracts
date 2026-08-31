@@ -319,6 +319,20 @@ reject_fullsail_pre_guard_mutator() {
 [[ ! -e "$PACKAGE_DIR/../launchpad/sources/migration_math.move" ]] || \
     fail "migration math must be owned by the migrators package"
 
+if ! awk '
+    /^const E[[:alnum:]_]+:/ {
+        if (previous !~ /^#\[error\(code = [0-9]+\)\]$/ \
+                || $0 !~ /^const E[[:alnum:]_]+: vector<u8> = b".*";$/) {
+            print FILENAME ":" FNR ": " $0
+            invalid = 1
+        }
+    }
+    { previous = $0 }
+    END { exit invalid }
+' "$SOURCE_DIR"/*.move; then
+    fail "module-local errors must be attributed descriptive string constants"
+fi
+
 require_pattern "$MIGRATION_MATH_SOURCE" \
     '^module blast_fun_migrators::migration_math;' \
     'migrator-owned migration math module'

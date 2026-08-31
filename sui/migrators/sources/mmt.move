@@ -43,11 +43,16 @@ const MAX_RESIDUAL_BPS: u64 = 1;
 const DEFAULT_TICK_SPACING: u32 = 400;
 const DEFAULT_FEE_RATE: u64 = 20_000;
 
-const EInvalidCoinOrder: u64 = 0;
-const EPositionPoolMismatch: u64 = 1;
-const EZeroPositionLiquidity: u64 = 2;
-const EPositionLiquidityChanged: u64 = 3;
-const ETierMismatch: u64 = 4;
+#[error(code = 0)]
+const EInvalidCoinOrder: vector<u8> = b"Meme and Quote types do not match the selected MMT pool order.";
+#[error(code = 1)]
+const EPositionPoolMismatch: vector<u8> = b"MMT position does not belong to the selected pool.";
+#[error(code = 2)]
+const EZeroPositionLiquidity: vector<u8> = b"MMT position liquidity must be greater than zero.";
+#[error(code = 3)]
+const EPositionLiquidityChanged: vector<u8> = b"MMT fee collection must not change position liquidity.";
+#[error(code = 4)]
+const ETierMismatch: vector<u8> = b"MMT pool tier does not match the configured venue tier.";
 
 // === Public Structs ===
 

@@ -20,10 +20,14 @@ use fun dynamic_field::exists as UID.has_dynamic_field;
 
 // === Constants ===
 
-const EInvalidTickSpacing: u64 = 0;
-const EInvalidFeeRate: u64 = 1;
-const EUnchangedTier: u64 = 2;
-const EVenueTierUnset: u64 = 3;
+#[error(code = 0)]
+const EInvalidTickSpacing: vector<u8> = b"Venue tick spacing must be greater than zero.";
+#[error(code = 1)]
+const EInvalidFeeRate: vector<u8> = b"Venue fee rate must be greater than zero.";
+#[error(code = 2)]
+const EUnchangedTier: vector<u8> = b"Venue tier must differ from its current value.";
+#[error(code = 3)]
+const EVenueTierUnset: vector<u8> = b"Venue tier is not configured.";
 
 // === Public Structs ===
 
