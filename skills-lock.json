@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "skills": {
+    "sui-move-architecture": {
+      "source": "josemvcerqueira/sui-move-engineering-skills",
+      "ref": "v0.5.0",
+      "sourceType": "github",
+      "skillPath": "skills/sui-move-architecture/SKILL.md",
+      "computedHash": "e1a9f645c667fbc11829388c7be3be0e26f3b3ec5e3736aba68cd1ec859cc9fd"
+    },
+    "sui-move-events-errors": {
+      "source": "josemvcerqueira/sui-move-engineering-skills",
+      "ref": "v0.5.0",
+      "sourceType": "github",
+      "skillPath": "skills/sui-move-events-errors/SKILL.md",
+      "computedHash": "6e2b85fa8dac2e8e59962d46031d5115f4d9e97a7c78f2716f68050006f0f187"
+    },
+    "sui-move-guide": {
+      "source": "josemvcerqueira/sui-move-engineering-skills",
+      "ref": "v0.5.0",
+      "sourceType": "github",
+      "skillPath": "skills/sui-move-guide/SKILL.md",
+      "computedHash": "8e3357e247902f341c9a218ffd4389e34e474a46a3668c9e32f9023fe1268207"
+    },
+    "sui-move-patterns": {
+      "source": "josemvcerqueira/sui-move-engineering-skills",
+      "ref": "v0.5.0",
+      "sourceType": "github",
+      "skillPath": "skills/sui-move-patterns/SKILL.md",
+      "computedHash": "fe934748f3933696f8672810b82c7c5e7b0fadb4fd6e5e94053ff63cccc076e2"
+    },
+    "sui-move-review": {
+      "source": "josemvcerqueira/sui-move-engineering-skills",
+      "ref": "v0.5.0",
+      "sourceType": "github",
+      "skillPath": "skills/sui-move-review/SKILL.md",
+      "computedHash": "1874021e2ea1f72b20eff3f5e0da6d36629b2c14ccd06254781b9ddbefe3c187"
+    },
+    "sui-move-security": {
+      "source": "josemvcerqueira/sui-move-engineering-skills",
+      "ref": "v0.5.0",
+      "sourceType": "github",
+      "skillPath": "skills/sui-move-security/SKILL.md",
+      "computedHash": "1d9059e379b1a536e9c4e85393bbbadb85707d831ff6ea8fb3ddca358ab5e665"
+    },
+    "sui-move-source-style": {
+      "source": "josemvcerqueira/sui-move-engineering-skills",
+      "ref": "v0.5.0",
+      "sourceType": "github",
+      "skillPath": "skills/sui-move-source-style/SKILL.md",
+      "computedHash": "66c3ae60ea941e7edd4262ce224d2dadcbc62ebcedf343dcc4e4e2649f407749"
+    },
+    "sui-move-testing": {
+      "source": "josemvcerqueira/sui-move-engineering-skills",
+      "ref": "v0.5.0",
+      "sourceType": "github",
+      "skillPath": "skills/sui-move-testing/SKILL.md",
+      "computedHash": "70c7651abbc8d3f59e98f3b095482385f04a891d56cd1fb2a43f2457d0ded9b3"
+    }
+  }
+}

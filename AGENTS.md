@@ -24,9 +24,18 @@ designs below `sui/vesting/`. The `sui/` root is not itself a Move package.
 
 ## Sui Move skill routing
 
+The vendored Sui Move engineering suite is pinned to `v0.5.0` in
+`skills-lock.json`.
 Before writing, changing, refactoring, fixing, reviewing, or testing Sui Move
 code, load `.agents/skills/sui-move-guide/SKILL.md`. Use it to select the
 smallest applicable sequence of Sui Move skills.
+
+Load `.agents/skills/sui-move-patterns/SKILL.md` only when a task explicitly
+asks for a named pattern, compares reusable implementation shapes, or matches
+one of that skill's promoted design problems. After selecting a pattern, apply
+the focused architecture, security, source, event/error, and testing skills
+that own its invariants. Do not load the patterns skill for ordinary standards
+work.
 
 Repository instructions, accepted ADRs, pinned source, target-network support,
 and `ProtocolConfig` take precedence over skill examples. When the installed CLI

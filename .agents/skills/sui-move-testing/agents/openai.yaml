@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sui Move Testing"
+  short_description: "Build risk-based Move tests and fixtures"
+  default_prompt: "Use $sui-move-testing to create or review the Move tests and fixture flow for this change."

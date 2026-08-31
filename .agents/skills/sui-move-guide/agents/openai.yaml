@@ -1,0 +1,7 @@
+interface:
+  display_name: "Sui Move Guide"
+  short_description: "Choose the right Sui Move skill or flow"
+  default_prompt: "Use $sui-move-guide to choose the smallest applicable Sui Move skill sequence for this task."
+
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sui Move Patterns"
+  short_description: "Select reusable Move architecture patterns"
+  default_prompt: "Use $sui-move-patterns to select and apply the smallest fitting Sui Move pattern for this design."

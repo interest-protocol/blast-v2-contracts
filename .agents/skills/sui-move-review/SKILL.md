@@ -1,6 +1,6 @@
 ---
 name: sui-move-review
-description: Audit Sui Move source or deployed bytecode against the complete engineering standard. Use for pull-request, branch, diff, package, module, deployed-package, security, architecture, event, error, test, or release-readiness reviews that need all suite conventions applied together.
+description: Audit a Sui Move pull request, branch, package, or release against the complete engineering standard. Use when the user wants a comprehensive review that applies every suite convention together; use focused skills for narrow architecture, security, event, error, source-style, or test reviews.
 ---
 
 # Sui Move Review
@@ -17,20 +17,61 @@ Read these sibling skills completely before reviewing:
 4. [sui-move-events-errors](../sui-move-events-errors/SKILL.md)
 5. [sui-move-testing](../sui-move-testing/SKILL.md)
 
-Read the target repository instructions, package manifest, relevant design records, implementation, tests, and structural gates. Treat reference repositories and bundled CLI guidance as evidence, not authority over the target's accepted protocol decisions. For a deployed package, record the network, package ID, original lineage, and Sui CLI version; inspect fetched bytecode and its package summary or disassembly as execution authority.
+Read [Package upgrade posture](references/package-upgrade-posture.md)
+completely when the target is unpublished or the review concerns publication,
+deployment, upgrades, immutability claims, package-capability custody, or
+operational versioning. Also read it when the evidence does not establish one
+of the three postures. Otherwise apply the classification in step 2 without
+loading the reference.
+
+Read the target repository instructions, package manifest, relevant design records, implementation, tests, and structural gates. Treat reference repositories as evidence, not authority over the target's accepted protocol decisions.
 
 ## Review in this order
 
-1. Establish intended behavior, assets and invariants, threat assumptions, required liveness and exits, and the published compatibility boundary.
-2. For an upgrade, compare against the published package and active `UpgradeCap` policy: existing public function signatures must remain unchanged except for permitted relaxation of generic ability constraints; struct and enum layouts and abilities must remain unchanged; module initializers must not be relied on; old package versions must remain safe or be operationally gated; and state-shape changes must use a new type and an authorized migration or a dynamic-extension seam designed before publication.
-3. Map package and module responsibilities, object ownership and sequencing mode, state ownership, dependency direction, and every authority issuance and custody-changing path.
-4. Run a redundancy pass over stored fields, event types and fields, public seams, parameters, helpers, and locals. Name each fact's authority and consumer; preserve type/ability boundaries and replay-critical redundancy.
-5. Search callers and trace every changed or transitively affected production transition through canonical object and generic type binding, target-valid `TxContext` signatures, fail-fast guards, read-only dependency data, proposed values, postconditions, effectful handoffs, mutation, asset movement, emission, and returns.
-6. Reconcile arithmetic, rounding, balances, fees, burns, refunds, and residuals.
-7. Check event replay, native positions and watermarks, gap-free live/backfill handoff, archival retention, payload necessity, error ownership, abort location, and guard precedence.
-8. Check naming, sections, imports, visibility, abilities, signatures, `self` receiver naming, receiver syntax, direct UID access, pinned framework reuse, macro choices, local usage, and test-only seams. For bytecode, verify the actual public and entry surface, abilities, layouts, dependencies, initializers, and absence of leaked test helpers.
-9. Check test evidence across positive, negative, boundary, stateful invariant, ownership-mode, receive and derived-object lifecycle, adversarial composition, signatures, time, oracle, randomness, hostile-asset, replay, emergency, upgrade, and dependency risks.
-10. Run the relevant pinned build, lint, test, source-boundary, ABI, dependency, coverage, source-verification, and diff checks when available. Treat `verify-source` as deployed root bytecode and linkage evidence, not a correctness audit or recursive dependency verification.
+1. Establish intended behavior, assets and invariants, threat assumptions, required liveness and exits, publication status, accepted future `Publisher` uses, and the published compatibility boundary.
+2. Classify each package as intentionally immutable, simple upgradeable, or
+   evolving shared-state upgradeable. Verify that the following agree with that
+   posture:
+   - `UpgradeCap` lifecycle and custody;
+   - `Publisher` decision;
+   - operational version seam;
+   - deployment flow;
+   - public promises.
+   Do not recommend upgrade machinery without a concrete risk or roadmap
+   requirement.
+3. For an upgrade, compare against the published package and active
+   `UpgradeCap` policy:
+   - preserve existing public function signatures except for permitted
+     relaxation of generic ability constraints;
+   - preserve struct and enum layouts and abilities;
+   - do not rely on module initializers;
+   - keep old package versions safe or operationally gated;
+   - use a new type and an authorized migration, or a dynamic-extension seam
+     designed before publication, for state-shape changes.
+4. Map package and module responsibilities, state ownership, dependency direction, and every authority issuance and custody-changing path.
+5. Run a redundancy pass over stored fields, event types and fields, public
+   seams, parameters, helpers, and locals. Name each fact's authority and
+   consumer. Preserve type and ability boundaries plus replay-critical
+   redundancy.
+6. Search callers and trace every changed or transitively affected production
+   transition through fail-fast guards, read-only dependency data, proposed values,
+   postconditions, effectful handoffs, mutation, asset movement, emission, and
+   returns. Require the owner function to read as that ordered summary. When it
+   mixes independently nameable phases or phase-specific nested branches,
+   extract cohesive domain-named private helpers without changing the sequence.
+7. Reconcile arithmetic, rounding, balances, fees, burns, refunds, and residuals.
+8. Check event replay, payload necessity, error ownership, abort location, and
+   guard precedence. In simple packages, reject bare module-local `u64` errors:
+   errors declared and raised by one module must use `#[error(code = N)]` with
+   descriptive `vector<u8>` messages and preserved codes. Reserve package error
+   macros for namespaces shared by multiple modules.
+9. Check naming, sections, imports, visibility, abilities, signatures, `self`
+   receiver naming, receiver syntax, direct UID access, pinned framework reuse,
+   macro choices, local usage, and test-only seams.
+10. Check test evidence across positive, negative, boundary, stateful invariant,
+    adversarial composition, signatures, time, oracle, randomness,
+    hostile-asset, replay, emergency, upgrade, and dependency risks.
+11. Run the relevant pinned build, lint, test, source-boundary, ABI, dependency, coverage, and diff checks when available.
 
 ## Report findings
 
