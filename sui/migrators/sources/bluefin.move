@@ -50,6 +50,8 @@ const MIN_SQRT_PRICE_X64: u128 = 4_295_048_016;
 /// Bluefin rejects initialization at or above this exclusive Q64.64 bound.
 const MAX_SQRT_PRICE_X64: u128 = 79_226_673_515_401_279_992_447_579_055;
 
+// === Errors ===
+
 #[error(code = 0)]
 const EInvalidTickSpacing: vector<u8> = b"Bluefin tick spacing must be greater than zero.";
 #[error(code = 1)]

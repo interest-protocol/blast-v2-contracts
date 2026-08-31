@@ -13,6 +13,8 @@ use sui::{
     coin_registry::{Self, MetadataCap},
 };
 
+// === Public Structs ===
+
 /// Linear custody of a generated coin's inventory and authorities before launch.
 public struct LaunchTicket<phantom Meme> has key, store {
     id: UID,

@@ -1,7 +1,8 @@
 #[allow(unused_const)]
+/// Stable append-only abort codes and package error macros for blastSUI.
 module blast_sui::errors;
 
-// === Constants ===
+// === Errors ===
 
 // Append-only package error registry. Never reuse a retired numeric code.
 
@@ -184,8 +185,6 @@ const EMissingPackageCapability: u64 = 51;
 #[test_only]
 /// PackageAdmin already owns a capability object of this exact type.
 const EPackageCapabilityAlreadyExists: u64 = 52;
-
-// === Package Macros ===
 
 macro public(package) fun zero_amount(): u64 {
     0

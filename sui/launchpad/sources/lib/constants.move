@@ -1,3 +1,4 @@
+/// Shared compile-time constants for the Blast launchpad.
 module blast_fun::constants;
 
 // === Package Constants ===

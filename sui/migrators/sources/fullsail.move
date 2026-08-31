@@ -25,7 +25,6 @@ use fullsail_integer_mate::i32;
 use std::type_name;
 use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, coin_registry::Currency};
 
-
 // === Constants ===
 
 /// Full Sail must use at least 99.99% of both migration balances.
@@ -41,6 +40,8 @@ const DEFAULT_FEE_RATE: u64 = 10_000;
 
 /// Coarse adoption gate; the residual rule below binds far tighter.
 const MAX_PRICE_DEVIATION_BPS: u64 = 50;
+
+// === Errors ===
 
 #[error(code = 0)]
 const EInvalidCoinOrder: vector<u8> = b"Meme and Quote types do not match the selected Full Sail pool order.";

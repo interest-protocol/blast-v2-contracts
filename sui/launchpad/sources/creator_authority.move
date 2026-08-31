@@ -2,6 +2,7 @@
 // macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
 // locations and the stable code map documented in `docs/error-codes.md`.
 #[allow(lint(abort_without_constant))]
+/// Creator identity verification and launch-scoped creator authority.
 module blast_fun::creator_authority;
 
 use blast_fun::{constants, events, runtime_config::RuntimeConfig};

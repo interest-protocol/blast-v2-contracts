@@ -43,6 +43,8 @@ const MAX_RESIDUAL_BPS: u64 = 1;
 const DEFAULT_TICK_SPACING: u32 = 400;
 const DEFAULT_FEE_RATE: u64 = 20_000;
 
+// === Errors ===
+
 #[error(code = 0)]
 const EInvalidCoinOrder: vector<u8> = b"Meme and Quote types do not match the selected MMT pool order.";
 #[error(code = 1)]

@@ -18,7 +18,7 @@ use fun dynamic_field::borrow as UID.dynamic_field;
 use fun dynamic_field::borrow_mut as UID.dynamic_field_mut;
 use fun dynamic_field::exists as UID.has_dynamic_field;
 
-// === Constants ===
+// === Errors ===
 
 #[error(code = 0)]
 const EInvalidTickSpacing: vector<u8> = b"Venue tick spacing must be greater than zero.";

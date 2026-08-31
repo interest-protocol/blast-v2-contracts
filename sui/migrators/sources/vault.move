@@ -14,7 +14,7 @@ use fun dynamic_object_field::add as UID.add_dynamic_object_field;
 use fun dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut;
 use fun dynamic_object_field::exists as UID.has_dynamic_object_field;
 
-// === Constants ===
+// === Errors ===
 
 #[error(code = 0)]
 const EWrongVenue: vector<u8> = b"Venue witness does not match this LP vault.";

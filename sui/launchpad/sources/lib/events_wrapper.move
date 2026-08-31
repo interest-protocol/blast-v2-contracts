@@ -1,3 +1,4 @@
+/// Stable package envelope and emission helper for Blast events.
 module blast_fun::events_wrapper;
 
 // === Public Structs ===

@@ -83,34 +83,6 @@ public fun create_display(
     cap
 }
 
-// === Private Functions ===
-
-/// Applies the canonical wallet metadata to a new Display V2 object.
-fun configure_display(
-    display: &mut Display<BlastSuiDepositReceipt>,
-    cap: &DisplayCap<BlastSuiDepositReceipt>,
-) {
-    let (fields, values) = display_metadata();
-    fields.zip_do!(values, |field, value| display.set(cap, field, value));
-}
-
-fun display_metadata(): (vector<String>, vector<String>) {
-    (
-        vector[
-            b"name".to_string(),
-            b"description".to_string(),
-            b"image_url".to_string(),
-            b"link".to_string(),
-        ],
-        vector[
-            b"blastSUI Deposit Receipt".to_string(),
-            b"SUI delegated to the Blast validator. Claim blastSUI after activation, or cancel for SUI at any time.".to_string(),
-            b"https://www.blast.fun/art/generated/blast-sui-mark-gpt-v4.png".to_string(),
-            b"https://www.blast.fun".to_string(),
-        ],
-    )
-}
-
 // === Package Functions ===
 
 /// Wraps native stake in a key-only receipt without transferring it.
@@ -158,6 +130,34 @@ public(package) fun destroy(self: BlastSuiDepositReceipt): StakedSui {
     id.delete();
 
     staked_sui
+}
+
+// === Private Functions ===
+
+/// Applies the canonical wallet metadata to a new Display V2 object.
+fun configure_display(
+    display: &mut Display<BlastSuiDepositReceipt>,
+    cap: &DisplayCap<BlastSuiDepositReceipt>,
+) {
+    let (fields, values) = display_metadata();
+    fields.zip_do!(values, |field, value| display.set(cap, field, value));
+}
+
+fun display_metadata(): (vector<String>, vector<String>) {
+    (
+        vector[
+            b"name".to_string(),
+            b"description".to_string(),
+            b"image_url".to_string(),
+            b"link".to_string(),
+        ],
+        vector[
+            b"blastSUI Deposit Receipt".to_string(),
+            b"SUI delegated to the Blast validator. Claim blastSUI after activation, or cancel for SUI at any time.".to_string(),
+            b"https://www.blast.fun/art/generated/blast-sui-mark-gpt-v4.png".to_string(),
+            b"https://www.blast.fun".to_string(),
+        ],
+    )
 }
 
 // === Test-Only Functions ===

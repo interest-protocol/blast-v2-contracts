@@ -1,3 +1,4 @@
+/// Stable package envelope and emission helper for blastSUI events.
 module blast_sui::events_wrapper;
 
 // === Public Structs ===

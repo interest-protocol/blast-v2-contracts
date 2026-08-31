@@ -8,6 +8,8 @@ use sui::{balance::Balance, clock::Clock, coin::Coin, event};
 
 const MAX_CHECKPOINTS: u64 = 256;
 
+// === Errors ===
+
 #[error(code = 0)]
 const EInvalidBeneficiary: vector<u8> = b"Beneficiary must not be the zero address.";
 #[error(code = 1)]
@@ -36,6 +38,7 @@ const EScheduleNotEnded: vector<u8> = b"Vesting schedule has not ended.";
 const EScheduleNotEmpty: vector<u8> = b"Vesting schedule still holds funds.";
 #[error(code = 13)]
 const ECancelCapRequired: vector<u8> = b"Cancelable schedule requires its cancellation capability.";
+
 // === Public Structs ===
 
 /// One exact cumulative unlock boundary.

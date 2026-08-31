@@ -2,6 +2,7 @@
 // macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
 // locations and the stable code map documented in `docs/error-codes.md`.
 #[allow(lint(abort_without_constant))]
+/// Delayed root authority and revocable routine administration for Blast.
 module blast_fun::acl;
 
 use blast_fun::{constants, events, package_version::PackageVersion};
@@ -288,6 +289,6 @@ public fun new_protocol_for_testing(ctx: &mut TxContext): (SuperAdminCap, Protoc
 
 #[test_only]
 /// Returns an AdminCap id only for registry-membership tests.
-public fun admin_cap_id_for_testing(admin_cap: &AdminCap): ID {
-    admin_cap.id.to_inner()
+public fun admin_cap_id_for_testing(self: &AdminCap): ID {
+    self.id.to_inner()
 }

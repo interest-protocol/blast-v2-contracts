@@ -31,8 +31,6 @@ public struct PackageAdmin has key {
     upgrade_cap: UpgradeCap,
 }
 
-// === Dynamic-Field Keys ===
-
 /// Type-derived key for a capability owned as a dynamic object field.
 public struct CapabilityKey<phantom Capability>() has copy, drop, store;
 

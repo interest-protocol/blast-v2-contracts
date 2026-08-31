@@ -6,6 +6,9 @@ module blast_fun_migrators::migration_math;
 const Q128_SHIFT: u8 = 128;
 const SQRT_UPPER_BOUND_SHIFT: u8 = 96;
 const BASIS_POINTS_DENOMINATOR: u64 = 10_000;
+
+// === Errors ===
+
 #[error(code = 0)]
 const EInvalidBps: vector<u8> = b"Migration tolerance must not exceed 10,000 basis points.";
 #[error(code = 1)]
@@ -15,13 +18,13 @@ const EMigrationPriceDeviationExceeded: vector<u8> = b"Pool price exceeds the pe
 #[error(code = 3)]
 const EMigrationResidualExceeded: vector<u8> = b"Migration residual exceeds the permitted amount.";
 
-// === Public Functions ===
+// === Package Functions ===
 
 /// Derives floor(sqrt(coin_b / coin_a) * 2^64) from migration atomic units.
 ///
 /// When Meme is coin A, the ratio is Quote/Meme. When Meme is coin B, it is
 /// Meme/Quote. Display decimals never enter this calculation.
-public fun sqrt_price_x64(
+public(package) fun sqrt_price_x64(
     meme_amount: u64,
     quote_amount: u64,
     meme_is_coin_a: bool,
@@ -34,7 +37,7 @@ public fun sqrt_price_x64(
 /// The comparison squares the observed Q64.64 value and compares it with the
 /// exact floor Q128 rational derived from the migration balances. Both products
 /// remain below u256 after first rejecting deviations larger than 100%.
-public fun assert_price_within_bps(
+public(package) fun assert_price_within_bps(
     meme_amount: u64,
     quote_amount: u64,
     meme_is_coin_a: bool,
@@ -65,12 +68,12 @@ public fun assert_price_within_bps(
 }
 
 /// Returns the minimum venue-consumed amount after a ceiling-rounded residual allowance.
-public fun minimum_utilized_amount(amount: u64, max_residual_bps: u64): u64 {
+public(package) fun minimum_utilized_amount(amount: u64, max_residual_bps: u64): u64 {
     amount - maximum_residual_amount(amount, max_residual_bps)
 }
 
 /// Rejects a returned venue residual above the ceiling-rounded allowance.
-public fun assert_residual_within_bps(
+public(package) fun assert_residual_within_bps(
     source_amount: u64,
     residual_amount: u64,
     max_residual_bps: u64,

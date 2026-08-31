@@ -78,7 +78,7 @@ fun create_seeds_the_fun_reserve_and_stakes_the_bootstrap_in_blast_custody_only(
 
     fixture.next_tx!(OWNER, |f| {
         let pool_id = f.system!().validator_staking_pool_id(validator);
-        created = f.create_vault(validator, pool_id, BOOTSTRAP, 0);
+        created = f.create_vault(pool_id, BOOTSTRAP, 0);
     });
 
     let mut fixture = fixture.into_vault_fixture();
@@ -132,14 +132,14 @@ fun create_returns_no_seed_coin_and_locks_every_bootstrap_share_at_the_zero_addr
 
     fixture.next_tx!(OWNER, |f| {
         let pool_id = f.system!().validator_staking_pool_id(validator);
-        f.create_vault(validator, pool_id, BOOTSTRAP, 0);
+        f.create_vault(pool_id, BOOTSTRAP, 0);
     });
 
     let mut fixture = fixture.into_vault_fixture();
 
     fixture.next_tx!(OWNER, |f| {
-        assert!(!f.has_blast_coin(OWNER));
-        assert!(!f.has_blast_coin(USER));
+        assert!(!has_blast_coin(OWNER));
+        assert!(!has_blast_coin(USER));
         assert_eq!(f.locked_blast_sui(), BOOTSTRAP);
         assert_eq!(f.vault!().blast_supply_for_testing(), BOOTSTRAP);
     });
@@ -156,7 +156,7 @@ fun create_rejects_a_seed_below_the_native_minimum_plus_the_fun_reserve() {
 
     fixture.next_tx!(OWNER, |f| {
         let pool_id = f.system!().validator_staking_pool_id(validator);
-        f.create_vault(validator, pool_id, MIST_PER_SUI - 1, 0);
+        f.create_vault(pool_id, MIST_PER_SUI - 1, 0);
     });
 
     fixture.end();
@@ -173,7 +173,7 @@ fun create_rejects_a_pool_without_a_current_epoch_exchange_rate() {
     fixture.next_tx!(OWNER, |f| {
         let pool_id = f.system!().validator_staking_pool_id(validator);
         assert!(!f.system!().pool_exchange_rates(&pool_id).contains(f.ctx!().epoch()));
-        f.create_vault(validator, pool_id, BOOTSTRAP, 0);
+        f.create_vault(pool_id, BOOTSTRAP, 0);
     });
 
     fixture.end();
@@ -192,7 +192,7 @@ fun create_rejects_an_inactive_validator() {
     fixture.remove_validator(validator);
     fixture.advance_epoch();
     fixture.next_tx!(OWNER, |f| {
-        f.create_vault(validator, pool_id, BOOTSTRAP, 0);
+        f.create_vault(pool_id, BOOTSTRAP, 0);
     });
 
     fixture.end();
@@ -213,7 +213,7 @@ fun create_rejects_a_validator_in_its_first_active_epoch() {
 
     fixture.next_tx!(OWNER, |f| {
         let pool_id = f.system!().validator_staking_pool_id(validator);
-        f.create_vault(validator, pool_id, BOOTSTRAP, 0);
+        f.create_vault(pool_id, BOOTSTRAP, 0);
     });
 
     fixture.end();
@@ -227,7 +227,7 @@ fun create_rejects_a_treasury_cap_with_existing_supply() {
 
     fixture.next_tx!(OWNER, |f| {
         let pool_id = f.system!().validator_staking_pool_id(validator);
-        f.create_vault(validator, pool_id, BOOTSTRAP, 1);
+        f.create_vault(pool_id, BOOTSTRAP, 1);
     });
 
     fixture.end();
@@ -1502,7 +1502,7 @@ fun redeeming_every_user_share_leaves_the_locked_supply_and_its_backing() {
     assert!(fun_tokens > 0);
 
     fixture.next_tx!(USER, |f| {
-        assert!(!f.has_blast_coin(USER));
+        assert!(!has_blast_coin(USER));
         assert_eq!(f.locked_blast_sui(), BOOTSTRAP);
         assert!(!f.vault!().is_unwind_only_for_testing());
     });
@@ -1555,7 +1555,7 @@ fun locked_backing_cannot_be_drained_by_user_redemptions() {
     assert_eq!(blast_supply, BOOTSTRAP);
 
     fixture.next_tx!(USER, |f| {
-        assert!(!f.has_blast_coin(USER));
+        assert!(!has_blast_coin(USER));
         assert_eq!(f.locked_blast_sui(), BOOTSTRAP);
     });
 
@@ -2165,7 +2165,7 @@ fun fee_rate_replays_from_creation_and_change_facts() {
 
     fixture.next_tx!(OWNER, |f| {
         let pool_id = f.system!().validator_staking_pool_id(validator);
-        created = f.create_vault(validator, pool_id, BOOTSTRAP, 0);
+        created = f.create_vault(pool_id, BOOTSTRAP, 0);
     });
 
     let mut fixture = fixture.into_vault_fixture();
@@ -2345,7 +2345,7 @@ fun start_vault_with_bootstrap(bootstrap: u64): VaultFixture {
 
     fixture.next_tx!(OWNER, |f| {
         let pool_id = f.system!().validator_staking_pool_id(validator);
-        f.create_vault(validator, pool_id, bootstrap, 0);
+        f.create_vault(pool_id, bootstrap, 0);
     });
 
     fixture.into_vault_fixture()
@@ -2424,7 +2424,6 @@ fun validator(self: &CreateFixture): address {
 /// `create` returns nothing; the minted seed shares are locked at `@0x0` by the vault itself.
 fun create_vault(
     self: &mut CreateFixture,
-    _validator: address,
     pool_id: ID,
     bootstrap: u64,
     fun_premint: u64,
@@ -2481,7 +2480,7 @@ fun take_blast_coin(self: &mut VaultFixture): Coin<BLAST_SUI> {
 }
 
 /// Whether `holder` owns any blastSUI coin.
-fun has_blast_coin(_self: &VaultFixture, holder: address): bool {
+fun has_blast_coin(holder: address): bool {
     test_scenario::has_most_recent_for_address<Coin<BLAST_SUI>>(holder)
 }
 

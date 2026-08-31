@@ -18,6 +18,7 @@ use sui_system::{staking_pool::{FungibleStakedSui, StakedSui}, sui_system::SuiSy
 
 // === Public Structs ===
 
+/// One vault ledger holding liquid, pending, and active native stake.
 public struct Custody has store {
     liquid_sui: Balance<SUI>,
     pending_stakes: vector<StakedSui>,

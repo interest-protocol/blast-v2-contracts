@@ -1,3 +1,4 @@
+/// Shared compile-time constants for the blastSUI protocol.
 module blast_sui::constants;
 
 // === Package Constants ===

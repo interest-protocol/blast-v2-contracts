@@ -1,3 +1,4 @@
+/// Replay-complete event payloads for Blast launchpad transitions.
 module blast_fun::events;
 
 use std::type_name::{Self, TypeName};

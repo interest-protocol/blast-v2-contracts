@@ -36,6 +36,8 @@ const DEFAULT_FEE_RATE: u64 = 40_000;
 /// Coarse adoption gate; the residual rule below binds far tighter.
 const MAX_PRICE_DEVIATION_BPS: u64 = 50;
 
+// === Errors ===
+
 #[error(code = 0)]
 const EInvalidCoinOrder: vector<u8> = b"Meme and Quote types do not match the selected Cetus pool order.";
 #[error(code = 1)]

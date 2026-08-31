@@ -1,7 +1,8 @@
 #[allow(unused_const)]
+/// Stable append-only abort codes and package error macros for Blast.
 module blast_fun::errors;
 
-// === Constants ===
+// === Errors ===
 
 // Append-only package error registry. Never reuse a retired numeric code.
 // These names exist only in test builds and source tooling; production callers use the
@@ -286,8 +287,6 @@ const EInvalidInitialMemeSupply: u64 = 77;
 #[test_only]
 /// A migration witness must be a non-primitive adapter-defined struct type.
 const EInvalidMigrationWitnessType: u64 = 78;
-
-// === Package Error Codes ===
 
 macro public(package) fun invalid_admin_cap(): u64 {
     0

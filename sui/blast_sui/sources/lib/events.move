@@ -1,3 +1,4 @@
+/// Replay-complete event payloads for blastSUI state transitions.
 module blast_sui::events;
 
 use std::type_name::TypeName;

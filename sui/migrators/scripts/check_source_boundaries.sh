@@ -336,8 +336,8 @@ fi
 require_pattern "$MIGRATION_MATH_SOURCE" \
     '^module blast_fun_migrators::migration_math;' \
     'migrator-owned migration math module'
-[[ "$(rg -c '^public fun ' "$MIGRATION_MATH_SOURCE")" -eq 4 ]] || \
-    fail "migration math must expose exactly four public functions"
+[[ "$(rg -c '^public\(package\) fun ' "$MIGRATION_MATH_SOURCE")" -eq 4 ]] || \
+    fail "migration math must expose exactly four package functions"
 [[ "$(rg -c '^fun ' "$MIGRATION_MATH_SOURCE")" -eq 4 ]] || \
     fail "migration math must keep exactly four private helpers"
 require_pattern "$MIGRATION_MATH_SOURCE" \

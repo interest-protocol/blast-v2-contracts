@@ -4,7 +4,7 @@ module blast_fun_vesting::linear;
 use std::type_name::{Self, TypeName};
 use sui::{balance::Balance, clock::Clock, coin::Coin, event};
 
-// === Constants ===
+// === Errors ===
 
 #[error(code = 0)]
 const EInvalidBeneficiary: vector<u8> = b"Beneficiary must not be the zero address.";

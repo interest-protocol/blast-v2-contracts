@@ -2,6 +2,7 @@
 // macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
 // locations and the stable code map documented in `docs/error-codes.md`.
 #[allow(lint(abort_without_constant))]
+/// Launch fee accounting and creator/protocol fee custody.
 module blast_fun::fees;
 
 use blast_fun::{
