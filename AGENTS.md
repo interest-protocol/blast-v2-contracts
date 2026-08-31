@@ -1,8 +1,8 @@
 # Blast V2 contract rules
 
 These instructions apply to this repository. They are the implementation gate
-for both `sui/` and `evm/`. The consensus-minimal contract/SDK rule below is
-self-contained so this repository remains valid when cloned independently.
+for `sui/`. The consensus-minimal contract/SDK rule below is self-contained so
+this repository remains valid when cloned independently.
 
 Sui Move packages live below `sui/`: core in `sui/launchpad/`, venue adapters
 in child packages below `sui/migrators/`, and independently deployed vesting
@@ -38,7 +38,7 @@ and adopt/adapt/reject decisions live in
 
 ## Non-negotiable rules
 
-- Keep one protocol specification and two idiomatic chain implementations.
+- Keep one protocol specification, and keep each chain implementation idiomatic.
 - Prefer the smallest public ABI and the fewest privileged operations that meet
   the approved product scope.
 - Validate all authorization, lifecycle, identity, bounds, deadlines, slippage,
@@ -245,10 +245,9 @@ invariant, trustless composition, or reconstructability, keep it in the SDK.
 - Define pause scope precisely. Emergency pause must not strand user exits unless
   that behavior is explicitly approved and tested.
 - Decide upgradeability before deployment. Version mutable shared state and gate
-  old Sui package versions; define EVM proxy/storage policy explicitly if a proxy
-  is approved.
+  old Sui package versions.
 - Minimize public structs and functions. Sui upgrades cannot erase old callable
-  bytecode, and EVM upgrades cannot repair an incompatible storage commitment.
+  bytecode.
 
 ## Errors and events
 
@@ -318,8 +317,8 @@ or debt round up and user payouts round down, unless the product specification
 explicitly chooses otherwise.
 
 Do not replace multiplication/division with shifts or unchecked arithmetic
-without an adversarial proof and boundary tests. Equivalent Sui and EVM formulas
-must be differential-tested from shared vectors.
+without an adversarial proof and boundary tests. Any future chain implementation
+must reproduce equivalent formulas through the shared vectors.
 
 ## Sui Move
 
@@ -460,20 +459,6 @@ must be differential-tested from shared vectors.
   `SuiGraphQLClient` for custom indexed or historical queries. SDK libraries
   should accept `ClientWithCoreApi`. JSON-RPC is legacy-only.
 
-## Solidity / EVM
-
-- Use custom errors and explicit events for protocol failures and mutations.
-- Apply checks-effects-interactions and guard reentrancy at the smallest correct
-  boundary. Treat callbacks and non-standard tokens as hostile.
-- Use safe token-transfer semantics and balance-delta checks where fee-on-transfer
-  or rebasing assets are intentionally supported; otherwise reject them.
-- Avoid arbitrary external calls and unconstrained delegate calls.
-- If upgradeable, lock initializers, reserve storage deliberately, validate the
-  upgrade authorization path, and regression-test storage layout.
-- Pin compiler and dependency revisions before the first production contract.
-- Use unit, fuzz, invariant, fork/integration, gas-bound, and differential tests
-  as required by `docs/testing.md`.
-
 ## Deployment and release records
 
 Do not treat console output or a `latest` pointer as the deployment record. Store
@@ -495,7 +480,7 @@ A contract change is complete only when:
 
 - the implementation is simpler than or justified against the current design;
 - positive, negative, boundary, property/invariant, and replay tests pass;
-- both chain implementations or the parity matrix explain any intentional gap;
+- the parity matrix explains any intentional implementation gap;
 - lint, format, build, and test commands pass with the pinned toolchains;
 - affected errors, events, deployments, architecture, and ADRs are updated;
 - no placeholder path, mutable dependency branch, broad suppression, or

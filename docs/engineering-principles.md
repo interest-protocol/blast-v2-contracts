@@ -51,8 +51,7 @@ adapter, rounding path, unclaimable remainder, or event-only counter.
 
 Core functions produce values or state transitions; thin transaction entrypoints
 may choose a recipient. On Sui, return owned objects/capabilities rather than
-self-transferring them. On EVM, avoid coupling core accounting to an arbitrary
-callback. Make the safe path useful in routers and programmable transactions.
+self-transferring them. Make the safe path useful in programmable transactions.
 
 ## 6. Separate dependency risk
 

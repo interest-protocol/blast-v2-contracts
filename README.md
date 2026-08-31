@@ -1,13 +1,11 @@
 # Blast V2 contracts
 
-This repository is the smart-contract vertical for Blast V2. It owns two
-implementations of one protocol specification:
+This repository is the smart-contract vertical for Blast V2. It currently owns
+the Sui implementation of the protocol specification:
 
 - `sui/` — Sui Move package workspace and deployment tooling.
-- `evm/` — Solidity contracts, Foundry tests, and EVM deployment tooling.
 
-The implementations share product behavior and invariants. They do not share
-storage layouts, chain-specific abstractions, or source code.
+The EVM implementation is deferred and no EVM project is included yet.
 
 ```text
 contracts/
@@ -21,12 +19,11 @@ contracts/
 │   ├── testing.md            required verification matrix
 │   ├── decisions/            architecture decision records
 │   └── vectors/              chain-neutral differential test vectors
-├── sui/                      Sui Move package workspace
+└── sui/                      Sui Move package workspace
 │   ├── launchpad/            Blast launchpad core package
 │   ├── migrators/            venue adapter packages
 │   ├── meme_template/        generated per-launch Meme package template
 │   └── vesting/              framework-only vesting package
-└── evm/                      independent Solidity/Foundry toolchain
 ```
 
 ## Current status
@@ -109,7 +106,8 @@ schema, growth-feature dispositions, and the accepted one-time creator-cap claim
 model. They are indexed, with every open premise,
 in [decisions/README.md](docs/decisions/README.md).
 
-Shared differential vectors for both chains live in [docs/vectors/](docs/vectors/).
+Implementation-independent protocol vectors live in
+[docs/vectors/](docs/vectors/).
 
 The current Sui implementation includes the launch ticket, dual-asset fee
 ledger, consolidated runtime configuration, bounded cold launch configuration,
@@ -142,20 +140,13 @@ Read [AGENTS.md](AGENTS.md) before changing code. In particular:
 - dependencies and release toolchains must be immutable and reproducible;
 - placeholder production paths are not accepted.
 
-Each chain owns its build commands:
+Run the Sui build commands from `sui/launchpad/`:
 
 ```bash
 cd sui/launchpad
 sui move build
 sui move lint --warnings-are-errors
 sui move test --lint
-```
-
-```bash
-cd evm
-forge fmt --check
-forge build
-forge test
 ```
 
 The Sui implementation is pinned to Sui CLI

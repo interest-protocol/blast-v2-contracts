@@ -12,11 +12,6 @@ sui/**/.coverage_map.mvcov
 sui/**/traces/
 sui/**/coverage/
 
-# Foundry build and deployment artifacts
-evm/broadcast/
-evm/cache/
-evm/out/
-
 # Local reports; normalized public deployment records belong in deployments/
 coverage/
 lcov.info

@@ -2,9 +2,9 @@
 
 ## Goal
 
-Blast V2 is one launch protocol with Sui and EVM implementations. Parity is
-defined by observable behavior and economic invariants, not by identical module
-or storage structure.
+Blast V2 currently has one Sui Move implementation. Other chain implementations
+are deferred. Future parity is defined by observable behavior and economic
+invariants, not by identical module or storage structure.
 
 ## Repository boundary
 
@@ -12,7 +12,7 @@ or storage structure.
 contracts/
 ├── docs/                 shared protocol and engineering specification
 ├── deployments/          normalized public deployment records (when present)
-├── sui/
+└── sui/
 │   ├── launchpad/        core blast_fun Move package
 │   │   ├── sources/      core Move domain modules
 │   │   │   └── lib/      package diagnostics and indexing infrastructure
@@ -20,10 +20,6 @@ contracts/
 │   │   └── scripts/
 │   ├── migrators/        independently deployed venue adapter packages
 │   └── vesting/          independent global vesting package
-└── evm/
-    ├── src/              core Solidity project
-    ├── test/
-    └── script/
 ```
 
 Start with one core package/project per chain. A new package is justified only
@@ -197,9 +193,9 @@ outstanding, never two. The initial price is derived from the terminal atomic
 reserves and is never a configured constant. See
 [decisions/0010-migration-and-venue-adapters.md](decisions/0010-migration-and-venue-adapters.md).
 
-## Cross-chain parity
+## Future chain parity
 
-The parity specification covers:
+Any future chain implementation must preserve:
 
 - lifecycle transitions and authorization outcomes;
 - quote, fee, allocation, vesting, and migration arithmetic;
@@ -226,11 +222,8 @@ Upgradeability is a product/security decision, not a default convenience.
   Native receipt commit does not activate bytecode. A separate live-admin
   operation activates only the exact next compiled operational version;
   additive and dependency-only upgrades do not activate a new generation.
-- EVM: choose immutable deployment or a named proxy pattern before storage is
-  committed. If upgradeable, document administrator, delay, rollback/escape
-  policy, initializer behavior, and storage-layout checks.
 
 The Sui custody and interim authority decision is accepted in
 [ADR 0032](decisions/0032-admin-authorized-upgrade-cap-custody.md). Replacement
 governance, delay, recovery, and remaining shared-state cutover coverage require
-approval before the first public deployment. The EVM decision also remains open.
+approval before the first public deployment.

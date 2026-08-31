@@ -14,7 +14,7 @@ Tests are organized around risk, not only function names.
 | Events | field-level assertions plus full reducer replay against final state |
 | Upgrade | old-version rejection, state migration, ABI/storage compatibility, initializer and authority checks |
 | Deployment | simulation/dry run, execution status, finality, normalized artifact schema, post-deploy smoke assertions |
-| Cross-chain | shared vectors for quotes, fees, thresholds, vesting, X-claim attestations, lifecycle, and intentional difference records |
+| Protocol vectors | implementation-independent cases for quotes, fees, thresholds, vesting, X-claim attestations, and lifecycle |
 
 ## Test rules
 
@@ -131,25 +131,11 @@ re-review. When mainnet moves ahead, the run fails and reports the newer tip;
 adopting it is a reviewed change to the pinned interface, the fingerprints, and
 the ABI table.
 
-## EVM gate
-
-From `evm/`:
-
-```bash
-forge fmt --check
-forge build
-forge test
-forge test --gas-report
-```
-
-Production releases also require fuzz/invariant profiles with committed run
-counts/seeds, storage-layout checks if upgradeable, and integration tests against
-the exact external interfaces used by approved adapters.
-
 ## Differential vectors
 
 Shared vectors should be chain-neutral data with explicit units and expected
-results. Both implementations consume the same cases. At minimum include:
+results. Any future chain implementation must consume the same cases. At minimum
+include:
 
 - quote input/output and post-trade reserves;
 - fee split and rounding remainder;

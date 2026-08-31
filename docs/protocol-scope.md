@@ -119,8 +119,6 @@ intake below; the remaining portions and records are still proposed.
 | 14 | LaunchConfig-owned Quote/Meme trade-fee rates — accepted | [0041](decisions/0041-launch-config-owned-trade-fees.md) |
 | 15 | Key-only shared Launch publication — accepted | [0042](decisions/0042-key-only-shared-launch.md) |
 
-EVM-side items — token compatibility policy, proxy or immutable posture, and the
-chain-specific mapping of item 8 — remain open. The Sui records above state which of
-their invariants the EVM implementation must reproduce, and the shared vectors in
-[vectors/](vectors/) are chain-neutral so both implementations consume the same
-cases.
+Non-Sui implementation decisions remain deferred. The Sui records above define
+the invariants that any future chain implementation must reproduce, and the
+shared vectors in [vectors/](vectors/) remain implementation-independent.

@@ -1,7 +1,8 @@
 # Shared differential vectors
 
-Chain-neutral test data consumed by **both** the Sui and EVM implementations. `../testing.md` requires
-that an unexplained numeric difference between the two is a release blocker.
+Implementation-independent test data consumed by Sui and reserved for any future
+chain implementation. `../testing.md` requires that an unexplained numeric
+difference is a release blocker.
 
 ## Files
 
@@ -30,11 +31,11 @@ that an unexplained numeric difference between the two is a release blocker.
    `fees.json` are accepted by ADR 0022; the remaining curve, migration-fee, and burn parameters are
    proposed. Changing any value invalidates every dependent vector, and the files must be regenerated
    rather than edited by hand.
-5. **Both implementations consume shared economic files.** Signature-domain
-   fixtures may be chain-specific where the chains expose different native
-   type systems. ADR 0017 binds the Sui claim to the generated coin's original
-   `TypeName`, while the EVM mapping may use its idiomatic EIP-712 domain. Any
-   such difference must be documented in an ADR, per `../architecture.md`.
+5. **Every implementation consumes shared economic files.** Signature-domain
+   fixtures may be chain-specific where chains expose different native type
+   systems. ADR 0017 binds the Sui claim to the generated coin's original
+   `TypeName`. Any future difference must be documented in an ADR, per
+   `../architecture.md`.
 6. **Unreachable cases are labelled.** A case whose `expect` names `EUnreachableByConstruction` pins pure
    arithmetic at a boundary the lifecycle cannot produce. It is a maths oracle, never evidence that the
    trade can execute.

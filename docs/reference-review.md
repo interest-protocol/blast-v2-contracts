@@ -77,8 +77,8 @@ Adapted rather than copied:
   with one core package/project per chain.
 - Event replay covers Blast lifecycle, reserves, fees, configuration,
   allocations, and migrations rather than lending positions/oracle snapshots.
-- Sui capability conventions are mapped to explicit EVM roles without pretending
-  their authority models are identical.
+- A future chain implementation must map Sui capability conventions to its
+  native authority model without pretending the models are identical.
 
 Not copied:
 

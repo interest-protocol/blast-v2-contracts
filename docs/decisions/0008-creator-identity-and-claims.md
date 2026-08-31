@@ -207,7 +207,7 @@ reversible, so hashing must be described as binding, not concealment.
 
 ## Verification
 
-Signed-message vectors, shared with `../../evm/` for cross-chain parity:
+Signed-message vectors reserved for future chain parity:
 
 | Case | Expected |
 | --- | --- |
