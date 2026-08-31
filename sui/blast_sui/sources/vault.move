@@ -105,10 +105,8 @@ public fun create(
     };
     self.fun_custody.deposit(fun_reserve);
     self.blast_custody.deposit(seed);
-    let vault_pool_id = self.pool_id;
-    self.blast_custody.stake_idle(system_state, validator, &vault_pool_id, 0, ctx);
+    self.blast_custody.stake_idle(system_state, validator, &pool_id, 0, ctx);
     let locked_coin = self.blast_cap.mint(bootstrap_sui, ctx);
-    let locked_blast_sui = locked_coin.value();
 
     events::vault_created(
         self.id.to_inner(),
@@ -116,7 +114,7 @@ public fun create(
         pool_id,
         fun_reserve_sui,
         bootstrap_sui,
-        locked_blast_sui,
+        locked_coin.value(),
         self.redeem_fee_bps,
         self.custody(),
     );
@@ -189,14 +187,14 @@ public fun request_blast_sui(
     ctx: &mut TxContext,
 ): BlastSuiDepositReceipt {
     package_version.assert_current();
-    let amount = sui_in.value();
     assert!(
-        amount >= constants::native_min_stake_mist!(),
+        sui_in.value() >= constants::native_min_stake_mist!(),
         blast_sui::errors::blast_deposit_below_native_minimum!(),
     );
     self.refresh(system_state, ctx);
     self.assert_accepts_mints();
 
+    // Resolve before the mutable native call; nested shared and mutable system-state borrows conflict.
     let validator = system_state.validator_address_by_pool_id(&self.pool_id);
     let staked_sui = system_state.request_add_stake_non_entry(sui_in, validator, ctx);
     assert!(
@@ -545,8 +543,7 @@ fun protect_fun_exit_liquidity(
     system_state: &mut SuiSystemState,
     ctx: &mut TxContext,
 ) {
-    let fun_supply = self.fun_cap.total_supply();
-    if (fun_supply == 0 || self.fun_custody.active_pool_tokens() == 0) return;
+    if (self.fun_cap.total_supply() == 0 || self.fun_custody.active_pool_tokens() == 0) return;
 
     if (self.fun_backing_buffer() > constants::fun_exit_low_water_mist!()) return;
 

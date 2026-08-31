@@ -95,3 +95,24 @@ Do not add a mode, role, setter, adapter, package, proxy, or generic abstraction
 without identifying the invariant or product requirement it serves. Delete dead
 paths instead of suppressing warnings. Ship one complete adapter rather than
 several placeholder integrations.
+
+## 11. Remove redundant single-use temporaries
+
+A local is a redundant single-use temporary when it only renames a pure
+expression before passing or returning that value once:
+
+```move
+let value = pure_expression();
+consume(value);
+```
+
+Prefer `consume(pure_expression())` when the name adds no domain meaning and
+inlining preserves borrow lifetime, evaluation order, abort order, and mutation
+order.
+
+This rule is not based on use count alone. Keep a one-use local when it narrows
+an overlapping borrow, holds a resource across checks, snapshots pre-mutation
+state for an event, separates a mutation from an external call, names auditable
+arithmetic, or preserves required evaluation order. In particular, copying one
+field before mutably borrowing another field of the same Move value can be
+required by the borrow checker.

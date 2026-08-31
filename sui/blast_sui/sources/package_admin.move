@@ -52,9 +52,8 @@ public fun new(
         publisher.from_module<BLAST>(),
         blast_sui::errors::invalid_package_publisher!(),
     );
-    let package_id = upgrade_cap.package();
     assert!(
-        package_id.to_address() == type_name::original_id<BLAST>(),
+        upgrade_cap.package().to_address() == type_name::original_id<BLAST>(),
         blast_sui::errors::invalid_upgrade_cap!(),
     );
 
