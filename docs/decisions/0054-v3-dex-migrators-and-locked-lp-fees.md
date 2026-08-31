@@ -76,12 +76,11 @@ not contend on one shared Sui object. The aggregate package accepts the cost of
 an all-venues dependency and release gate in exchange for one custody and claim
 surface.
 
-The core package exposes only three venue-neutral primitives needed
+The core package exposes only two venue-neutral primitives needed
 synchronously by adapters:
 
 - exact seed-price and price-deviation arithmetic;
-- the existing dual-asset fee ledger through a runtime-configured accrual seam;
-- the live protocol fee share and live protocol treasury address.
+- the existing dual-asset fee ledger through a live-share accrual seam.
 
 These primitives authorize or conserve assets during an adapter transition and
 therefore meet the consensus-minimal rule. Forecast valuations remain in the
@@ -179,19 +178,16 @@ does not change the core package's event ABI.
 The vault exposes separate composable claims:
 
 - `CreatorCap<Meme>` drains only creator Meme and Quote fees;
-- `AdminWitness` drains only protocol Meme and Quote fees.
+- `AdminWitness` drains protocol Meme and Quote fees plus migration residuals.
 
 Neither claim calls the venue or touches the position.
 
-### Treasury and residuals
+### Protocol residual custody
 
-`RuntimeConfig` stores one nonzero live `protocol_treasury`. Publication sets it
-to the publishing sender so the singleton is live immediately. A current
-`AdminWitness` may replace it with a different nonzero address through the
-package-version gate. Creation and changes emit replay-complete events.
-
-After venue liquidity creation, every returned Meme or Quote residual is
-transferred to the treasury address read during that migration. No adapter burns
+After venue liquidity creation, every returned Meme or Quote residual stays in
+the per-launch `LpVault` as protocol-owned custody. The existing
+`AdminWitness`-gated protocol claim drains those balances together with accrued
+protocol LP fees. No adapter stores a payout address, burns a nonzero residual,
 or sends migration residuals to `0x0`. The launch's earlier Fixed/BurnOnly
 terminal-disposal policy remains unchanged and separate.
 

@@ -68,7 +68,6 @@ public struct Venue() has drop;
 public fun migrate_new_meme_a<Meme, Quote, FeeType>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    runtime_config: &RuntimeConfig,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     pool_config: &mut PoolConfig,
@@ -133,7 +132,6 @@ public fun migrate_new_meme_a<Meme, Quote, FeeType>(
     assert_positive_liquidity(&position, positions);
 
     lock_and_share<Meme, Quote>(
-        runtime_config,
         launch_id,
         position,
         residual_meme,
@@ -153,7 +151,6 @@ public fun migrate_new_meme_a<Meme, Quote, FeeType>(
 public fun migrate_new_meme_b<Meme, Quote, FeeType>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    runtime_config: &RuntimeConfig,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     pool_config: &mut PoolConfig,
@@ -218,7 +215,6 @@ public fun migrate_new_meme_b<Meme, Quote, FeeType>(
     assert_positive_liquidity(&position, positions);
 
     lock_and_share<Meme, Quote>(
-        runtime_config,
         launch_id,
         position,
         residual_meme,
@@ -238,7 +234,6 @@ public fun migrate_new_meme_b<Meme, Quote, FeeType>(
 public fun migrate_existing_meme_a<Meme, Quote, FeeType>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    runtime_config: &RuntimeConfig,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     pool: &mut Pool<Meme, Quote, FeeType>,
@@ -302,7 +297,6 @@ public fun migrate_existing_meme_a<Meme, Quote, FeeType>(
     assert_positive_liquidity(&position, positions);
 
     lock_and_share<Meme, Quote>(
-        runtime_config,
         launch_id,
         position,
         residual_meme,
@@ -322,7 +316,6 @@ public fun migrate_existing_meme_a<Meme, Quote, FeeType>(
 public fun migrate_existing_meme_b<Meme, Quote, FeeType>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    runtime_config: &RuntimeConfig,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     pool: &mut Pool<Quote, Meme, FeeType>,
@@ -386,7 +379,6 @@ public fun migrate_existing_meme_b<Meme, Quote, FeeType>(
     assert_positive_liquidity(&position, positions);
 
     lock_and_share<Meme, Quote>(
-        runtime_config,
         launch_id,
         position,
         residual_meme,
@@ -418,7 +410,6 @@ public fun collect_fees_meme_a<Meme, Quote, FeeType>(
         collect_position_fees<Meme, Quote, Meme, Quote, FeeType>(
             self,
             &venue,
-            runtime_config,
             pool,
             positions,
             deadline,
@@ -455,7 +446,6 @@ public fun collect_fees_meme_b<Meme, Quote, FeeType>(
         collect_position_fees<Quote, Meme, Meme, Quote, FeeType>(
             self,
             &venue,
-            runtime_config,
             pool,
             positions,
             deadline,
@@ -555,19 +545,7 @@ fun assert_positive_liquidity(
     assert!(liquidity > 0, EZeroPositionLiquidity);
 }
 
-fun transfer_residual<CoinType>(
-    residual: Coin<CoinType>,
-    protocol_treasury: address,
-) {
-    if (residual.value() == 0) {
-        residual.destroy_zero();
-    } else {
-        transfer::public_transfer(residual, protocol_treasury);
-    };
-}
-
 fun lock_and_share<Meme, Quote>(
-    runtime_config: &RuntimeConfig,
     launch_id: ID,
     position: TurbosPositionNFT,
     residual_meme: Coin<Meme>,
@@ -597,14 +575,13 @@ fun lock_and_share<Meme, Quote>(
 
     let used_meme_amount = source_meme_amount - residual_meme_amount;
     let used_quote_amount = source_quote_amount - residual_quote_amount;
-    let protocol_treasury = runtime_config.protocol_treasury();
-    transfer_residual(residual_meme, protocol_treasury);
-    transfer_residual(residual_quote, protocol_treasury);
 
     let vault_id = vault::new<Meme, Quote, Venue, TurbosPositionNFT>(
         Venue(),
         pool_id,
         position,
+        residual_meme.into_balance(),
+        residual_quote.into_balance(),
         ctx,
     );
 
@@ -618,7 +595,6 @@ fun lock_and_share<Meme, Quote>(
         used_quote_amount,
         residual_meme_amount,
         residual_quote_amount,
-        protocol_treasury,
         sqrt_price_x64,
         lower_tick_bits,
         upper_tick_bits,
@@ -630,7 +606,6 @@ fun lock_and_share<Meme, Quote>(
 fun collect_position_fees<X, Y, Meme, Quote, FeeType>(
     self: &mut LpVault<Meme, Quote>,
     venue: &Venue,
-    runtime_config: &RuntimeConfig,
     pool: &mut Pool<X, Y, FeeType>,
     positions: &mut Positions,
     deadline: u64,
@@ -640,6 +615,7 @@ fun collect_position_fees<X, Y, Meme, Quote, FeeType>(
 ): (ID, Coin<X>, Coin<Y>, u128, u128) {
     let pool_id = object::id(pool);
     assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
+    let vault_address = object::id(self).to_address();
 
     let position = self.position_mut<
         Meme,
@@ -657,10 +633,9 @@ fun collect_position_fees<X, Y, Meme, Quote, FeeType>(
         position,
         std::u64::max_value!(),
         std::u64::max_value!(),
-        // The pinned interface implies return-only semantics; if the venue
-        // ever paid this recipient, value would reach the protocol treasury
-        // rather than the permissionless collector.
-        runtime_config.protocol_treasury(),
+        // The pinned interface returns both fee coins and uses this recipient
+        // only for attribution in its collection event.
+        vault_address,
         deadline,
         clock,
         versioned,

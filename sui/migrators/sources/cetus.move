@@ -59,7 +59,6 @@ public struct Venue() has drop;
 public fun migrate_new_meme_a<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    runtime_config: &RuntimeConfig,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
@@ -115,7 +114,6 @@ public fun migrate_new_meme_a<Meme, Quote>(
         );
 
     lock_and_share<Meme, Quote>(
-        runtime_config,
         launch_id,
         position,
         residual_meme,
@@ -135,7 +133,6 @@ public fun migrate_new_meme_a<Meme, Quote>(
 public fun migrate_new_meme_b<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    runtime_config: &RuntimeConfig,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
@@ -191,7 +188,6 @@ public fun migrate_new_meme_b<Meme, Quote>(
         );
 
     lock_and_share<Meme, Quote>(
-        runtime_config,
         launch_id,
         position,
         residual_meme,
@@ -211,7 +207,6 @@ public fun migrate_new_meme_b<Meme, Quote>(
 public fun migrate_existing_meme_a<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    runtime_config: &RuntimeConfig,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
@@ -293,7 +288,6 @@ public fun migrate_existing_meme_a<Meme, Quote>(
     assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
 
     lock_and_share<Meme, Quote>(
-        runtime_config,
         launch_id,
         position,
         meme.into_coin(ctx),
@@ -313,7 +307,6 @@ public fun migrate_existing_meme_a<Meme, Quote>(
 public fun migrate_existing_meme_b<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    runtime_config: &RuntimeConfig,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
@@ -395,7 +388,6 @@ public fun migrate_existing_meme_b<Meme, Quote>(
     assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
 
     lock_and_share<Meme, Quote>(
-        runtime_config,
         launch_id,
         position,
         meme.into_coin(ctx),
@@ -530,19 +522,7 @@ fun assert_payment_amounts(
     );
 }
 
-fun transfer_residual<CoinType>(
-    residual: Coin<CoinType>,
-    protocol_treasury: address,
-) {
-    if (residual.value() == 0) {
-        residual.destroy_zero();
-    } else {
-        transfer::public_transfer(residual, protocol_treasury);
-    };
-}
-
 fun lock_and_share<Meme, Quote>(
-    runtime_config: &RuntimeConfig,
     launch_id: ID,
     position: Position,
     residual_meme: Coin<Meme>,
@@ -573,14 +553,13 @@ fun lock_and_share<Meme, Quote>(
 
     let used_meme_amount = source_meme_amount - residual_meme_amount;
     let used_quote_amount = source_quote_amount - residual_quote_amount;
-    let protocol_treasury = runtime_config.protocol_treasury();
-    transfer_residual(residual_meme, protocol_treasury);
-    transfer_residual(residual_quote, protocol_treasury);
 
     let vault_id = vault::new<Meme, Quote, Venue, Position>(
         Venue(),
         pool_id,
         position,
+        residual_meme.into_balance(),
+        residual_quote.into_balance(),
         ctx,
     );
 
@@ -594,7 +573,6 @@ fun lock_and_share<Meme, Quote>(
         used_quote_amount,
         residual_meme_amount,
         residual_quote_amount,
-        protocol_treasury,
         sqrt_price_x64,
         lower_tick_bits,
         upper_tick_bits,

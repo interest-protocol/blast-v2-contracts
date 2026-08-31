@@ -135,7 +135,6 @@ public fun mint_fun_sui(
     package_version.assert_current();
     let amount = sui_in.value();
     assert!(amount > 0, blast_sui::errors::zero_amount!());
-    self.assert_accepts_mints();
     self.refresh(system_state, ctx);
     self.assert_accepts_mints();
 
@@ -190,7 +189,6 @@ public fun request_blast_sui(
     ctx: &mut TxContext,
 ): BlastSuiDepositReceipt {
     package_version.assert_current();
-    self.assert_accepts_mints();
     let amount = sui_in.value();
     assert!(
         amount >= constants::native_min_stake_mist!(),
@@ -232,7 +230,6 @@ public fun claim_blast_sui(
     ctx: &mut TxContext,
 ): Coin<BLAST_SUI> {
     package_version.assert_current();
-    self.assert_accepts_mints();
     receipt.assert_binding(self.id.to_inner(), self.pool_id);
     assert!(
         receipt.activation_epoch() <= ctx.epoch(),

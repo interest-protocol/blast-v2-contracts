@@ -19,7 +19,6 @@ use blast_fun::{
 public struct RuntimeConfig has key {
     id: UID,
     x_claim_signer_public_key: vector<u8>,
-    protocol_treasury: address,
     protocol_fee_share_bps: Bps,
 }
 
@@ -92,37 +91,6 @@ public fun set_protocol_fee_share(
     );
 }
 
-/// Replaces the live nonzero destination for subsequent migration residuals.
-public fun set_protocol_treasury(
-    self: &mut RuntimeConfig,
-    package_version: &PackageVersion,
-    _: &AdminWitness,
-    protocol_treasury: address,
-) {
-    package_version.assert_current();
-    assert!(
-        protocol_treasury != @0x0,
-        blast_fun::errors::invalid_protocol_treasury!(),
-    );
-    assert!(
-        protocol_treasury != self.protocol_treasury,
-        blast_fun::errors::protocol_treasury_unchanged!(),
-    );
-
-    let old_protocol_treasury = self.protocol_treasury;
-    self.protocol_treasury = protocol_treasury;
-
-    events::protocol_treasury_changed(
-        old_protocol_treasury,
-        protocol_treasury,
-    );
-}
-
-/// Returns the live destination used by subsequent adapter residual transfers.
-public fun protocol_treasury(self: &RuntimeConfig): address {
-    self.protocol_treasury
-}
-
 /// Returns the raw live protocol share used by subsequent fee accruals.
 public fun protocol_fee_share_bps(self: &RuntimeConfig): u64 {
     self.protocol_fee_share_bps.value()
@@ -163,12 +131,11 @@ public(package) fun protocol_fee_share(self: &RuntimeConfig): Bps {
 
 // === Private Functions ===
 
-/// Starts with no X signer, a live publisher treasury, and zero protocol fee share.
+/// Starts with no X signer and zero protocol fee share.
 fun new(ctx: &mut TxContext): RuntimeConfig {
     RuntimeConfig {
         id: object::new(ctx),
         x_claim_signer_public_key: vector[],
-        protocol_treasury: ctx.sender(),
         protocol_fee_share_bps: bps::new(0),
     }
 }
@@ -205,7 +172,6 @@ public fun new_for_testing(
     RuntimeConfig {
         id: object::new(ctx),
         x_claim_signer_public_key: signer_public_key,
-        protocol_treasury: ctx.sender(),
         protocol_fee_share_bps: bps::new(0),
     }
 }

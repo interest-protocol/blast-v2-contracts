@@ -299,14 +299,6 @@ const EMigrationPriceDeviationExceeded: u64 = 80;
 /// Venue rounding returned more migration principal than the allowed residual bound.
 const EMigrationResidualExceeded: u64 = 81;
 
-#[test_only]
-/// The live migration-residual treasury cannot be the zero address.
-const EInvalidProtocolTreasury: u64 = 82;
-
-#[test_only]
-/// A treasury update supplied the currently active address.
-const EProtocolTreasuryUnchanged: u64 = 83;
-
 // === Package Error Codes ===
 
 macro public(package) fun invalid_admin_cap(): u64 {
@@ -585,12 +577,4 @@ macro public(package) fun migration_price_deviation_exceeded(): u64 {
 
 macro public(package) fun migration_residual_exceeded(): u64 {
     81
-}
-
-macro public(package) fun invalid_protocol_treasury(): u64 {
-    82
-}
-
-macro public(package) fun protocol_treasury_unchanged(): u64 {
-    83
 }

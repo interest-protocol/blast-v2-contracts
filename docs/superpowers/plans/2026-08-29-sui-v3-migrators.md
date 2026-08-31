@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build Bluefin, MMT, Cetus, Turbos, and Full Sail Sui migration packages that initialize or safely adopt a CLMM at the real seed-balance price, permanently lock the position, split LP fees between creator and protocol, and route residuals to the live protocol treasury.
+**Goal:** Build Bluefin, MMT, Cetus, Turbos, and Full Sail Sui migration packages that initialize or safely adopt a CLMM at the real seed-balance price, permanently lock the position, split LP fees between creator and protocol, and keep residuals in protocol-owned vault custody.
 
-**Architecture:** `blast_fun` adds venue-neutral X64 price math, a live treasury field, and an external runtime-accrual seam on its existing dual-asset fee ledger. One aggregate migrators package depends inward on that ABI and on exact compatible venue revisions. It owns one shared per-launch `LpVault` implementation, while five modules own sealed witnesses and venue-specific creation, ordering, tick, and collection calls. Each venue position is a dynamic object field keyed by its sealed marker.
+**Architecture:** `blast_fun` adds venue-neutral X64 price math and an external runtime-accrual seam on its existing dual-asset fee ledger. One aggregate migrators package depends inward on that ABI and on exact compatible venue revisions. It owns one shared per-launch `LpVault` implementation, including protocol residual custody, while five modules own sealed witnesses and venue-specific creation, ordering, tick, and collection calls. Each venue position is a dynamic object field keyed by its sealed marker.
 
 **Tech Stack:** Sui Move 2024, Sui CLI `1.77.2-51d177ad7d65`, `u256` integer arithmetic, shell source-boundary checks, exact Git dependency SHAs.
 
@@ -19,7 +19,7 @@
 - The package is not permanently locked until every venue's published ABI and dev-inspect checks pass and its single `UpgradeCap` is destroyed.
 - Price is derived on chain from real Meme and net Quote atomic balances; display decimals and USD prices never enter CLMM math.
 - New-pool price deviation is zero; adopted Cetus/Turbos/Full Sail price deviation is at most 50 bps.
-- Returned migration residuals are at most 1 bps of each source balance and transfer to the live nonzero protocol treasury.
+- Returned migration residuals are at most 1 bps of each source balance and stay in protocol-owned vault custody.
 - Bluefin pool-opening fee must read as supported and exactly zero.
 - LP fees use the current `protocol_fee_share_bps`; protocol rounds up and creator receives the remainder.
 - Tests precede production changes and each red test must be observed failing for the intended reason.
@@ -99,7 +99,7 @@ git add sui/launchpad/sources/migration_math.move sui/launchpad/tests/migration_
 git commit -m "feat(sui): add exact migration price math"
 ```
 
-### Task 2: Live treasury and reusable LP fee accounting
+### Task 2: Reusable LP fee accounting
 
 **Files:**
 - Modify: `sui/launchpad/sources/runtime_config.move`
@@ -113,31 +113,26 @@ git commit -m "feat(sui): add exact migration price math"
 - Modify: `docs/error-codes.md`
 
 **Interfaces:**
-- Produces: `runtime_config::protocol_treasury(&RuntimeConfig): address`
 - Produces: `runtime_config::protocol_fee_share_bps(&RuntimeConfig): u64`
-- Produces: `runtime_config::set_protocol_treasury(&mut RuntimeConfig, &PackageVersion, &AdminWitness, address)`
 - Produces: `fees::new<Meme, Quote>(): FeeLedger<Meme, Quote>` as a public constructor
 - Produces: `fees::accrue_from_runtime(&mut FeeLedger<Meme, Quote>, Balance<Meme>, Balance<Quote>, &RuntimeConfig)`
 - Produces: public creator/protocol ledger claims for adapter-owned ledgers
 
 - [x] **Step 1: Add failing runtime and external-accrual tests**
 
-Test publisher-sender initialization, nonzero/unchanged treasury rejection,
-package-version guard precedence, admin update events, raw public fee-share
-reads, prospective live-share accrual, and creator/protocol claim isolation.
+Test package-version guard precedence, raw public fee-share reads, prospective
+live-share accrual, and creator/protocol claim isolation.
 
 - [x] **Step 2: Observe RED**
 
 Run: `cd sui/launchpad && sui move test runtime_config_tests && sui move test fees_tests`
 
-Expected: compilation fails on the missing treasury and external-accrual seams.
+Expected: compilation fails on the missing external-accrual seams.
 
 - [x] **Step 3: Implement the minimum public ABI**
 
-Add `protocol_treasury: address` to `RuntimeConfig`, initialize it from
-`ctx.sender()`, validate nonzero/different updates, and emit creation/change
-facts. Rename the package-only validated BPS read to `protocol_fee_share` and
-make the raw `protocol_fee_share_bps` getter public. Add
+Rename the package-only validated BPS read to `protocol_fee_share` and make the
+raw `protocol_fee_share_bps` getter public. Add
 `FeeLedger::accrue_from_runtime` and widen only the constructor, totals, and two
 claim methods needed by adapters.
 
@@ -244,8 +239,8 @@ Use exact Bluefin and compatible normalized transitive pins. Read the
 Quote-denominated creation fee, assert `supported && fee == 0`, always derive
 the direct Quote/Meme price for `Pool<Meme, Quote>`, align the config-provided
 full tick range, call `create_pool_with_liquidity`, enforce 1-bps residual
-limits, transfer residuals to `protocol_treasury`, attach the position, and
-share the vault. Collection must compare `position::liquidity` before/after and
+limits, keep residuals in protocol-owned vault custody, attach the position,
+and share the vault. Collection must compare `position::liquidity` before/after and
 accrue normalized Meme/Quote balances through
 `FeeLedger::accrue_from_runtime`.
 

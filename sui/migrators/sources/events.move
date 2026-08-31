@@ -27,7 +27,7 @@ public struct VaultCreated has copy, drop {
     quote: TypeName,
 }
 
-/// Records one complete venue migration and residual disposition.
+/// Records one complete venue migration and residual custody.
 ///
 /// `sqrt_price_x64` is the pool's Q64.64 square-root price at the moment the
 /// principal was seeded: the balance-derived opening price on new-pool routes
@@ -46,7 +46,6 @@ public struct MigrationCompleted has copy, drop {
     used_quote_amount: u64,
     residual_meme_amount: u64,
     residual_quote_amount: u64,
-    residual_treasury: address,
     sqrt_price_x64: u128,
     lower_tick_bits: u32,
     upper_tick_bits: u32,
@@ -145,7 +144,6 @@ public(package) fun migration_completed<Meme, Quote, Venue>(
     used_quote_amount: u64,
     residual_meme_amount: u64,
     residual_quote_amount: u64,
-    residual_treasury: address,
     sqrt_price_x64: u128,
     lower_tick_bits: u32,
     upper_tick_bits: u32,
@@ -165,7 +163,6 @@ public(package) fun migration_completed<Meme, Quote, Venue>(
         used_quote_amount,
         residual_meme_amount,
         residual_quote_amount,
-        residual_treasury,
         sqrt_price_x64,
         lower_tick_bits,
         upper_tick_bits,

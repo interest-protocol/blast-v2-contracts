@@ -13,8 +13,8 @@ dev-inspect matrix, and the immutable-release gate.
 ## Common vault
 
 Every completed migration creates one shared `vault::LpVault<Meme, Quote>`.
-The vault stores the pool ID and the common `FeeLedger<Meme, Quote>`. Its one
-venue position is a child object under the sealed
+The vault stores the pool ID, protocol-owned migration residual balances, and
+the common `FeeLedger<Meme, Quote>`. Its one venue position is a child object under the sealed
 `vault::PositionKey<Venue>` dynamic-object-field name.
 
 Only package functions can construct a vault or mutably borrow its typed
@@ -36,11 +36,10 @@ fees through the same core `FeeLedger` as bonding-curve trade fees, so protocol
 amounts round up, creators receive the exact remainder, and a later share change
 never rewrites already accrued ownership.
 
-Every nonzero venue residual goes to the live
-`runtime_config::protocol_treasury` address read during that migration. A
-zero-value residual is destroyed instead of minting a dead coin object to the
-treasury. No adapter stores its own treasury address, and no adapter burns a
-nonzero residual or sends one to `0x0`.
+Every venue residual stays in its per-launch vault as protocol-owned custody.
+The existing admin-gated protocol claim drains those residuals together with
+accrued protocol LP fees. No adapter stores a payout address, burns a nonzero
+residual, or sends one to `0x0`.
 
 ## Pinned venue tiers
 
@@ -105,9 +104,9 @@ opposite configuration with a named guard.
 
 Each Meme or Quote residual must be at most one basis point of its migration
 input, the venue-reported used amounts must reconcile exactly against
-`source − residual`, and both nonzero residual balances go to the live protocol
-treasury. The returned position must belong to the new pool and have positive
-liquidity before it is attached to the common vault.
+`source − residual`, and both residual balances enter protocol-owned vault
+custody. The returned position must belong to the new pool and have positive
+liquidity before it is attached to that vault.
 
 `bluefin::collect_fees` verifies the vault pool ID, position pool ID, and
 positive liquidity before collection. It verifies both IDs again and requires
@@ -127,7 +126,7 @@ and Quote balances and read the effective MMT fee rate. They create and
 initialize a new pool, derive full-range friendly ticks through the pinned MMT
 helpers, open the position, and require at least 99.99% use of both balances
 while adding liquidity. The position enters the common vault before the new MMT
-pool is shared. Both nonzero residual coins go to the live protocol treasury.
+pool is shared. Both residual coins enter the same protocol-owned vault custody.
 
 MMT fee collection has one typed route for each pool orientation. Each route
 requires the sealed MMT venue value, verifies the vault, pool, and position
@@ -149,7 +148,7 @@ spacing from the admin-pinned tier. They use
 `create_pool_v3` with Meme as the fixed liquidity side, so the rounding
 residual lands on the Quote requirement. They require at most a one-basis-point
 residual for both assets, which is the same bound as 99.99% utilization.
-Nonzero residual Meme and Quote coins go to the live runtime treasury.
+Residual Meme and Quote coins enter protocol-owned custody in the LP vault.
 
 Existing routes require the adopted pool to match the pinned tick spacing and
 its venue-registered fee, then redeem the core payload and immediately compare
@@ -193,8 +192,8 @@ use caller-provided deadlines and one-basis-point minimum amounts.
 
 The returned `TurbosPositionNFT` enters the common vault as its dynamic object
 field. The adapter rejects a mismatched pool ID, bounds each residual at one
-basis point of its input, and sends each nonzero residual to the live runtime
-treasury. Both fee routes call `collect_with_return_`, read
+basis point of its input, and keeps both residuals in protocol-owned vault
+custody. Both fee routes call `collect_with_return_`, read
 `get_position_info` before and after, and require unchanged positive liquidity.
 The Meme-B route reverses Turbos A/B fee coins before shared Meme/Quote
 accrual.
@@ -228,8 +227,7 @@ price in this orientation-dependent sense, Quote otherwise — so outside a
 boundary sliver of roughly 4e-8 relative price around the derived value, the
 affordable side is the fixed one. Only then do they use Full Sail's open,
 fixed-coin add, payment, and repayment receipt flow. Every route bounds both
-residuals at one basis point and sends both nonzero residuals to the live
-runtime treasury.
+residuals at one basis point and keeps them in protocol-owned vault custody.
 
 The returned `Position` enters the common vault as its sealed dynamic object
 field. Both fee routes call `pool::collect_fee(..., true)`, verify pool and
@@ -257,7 +255,7 @@ filter on the payload types below.
 - `VaultCreated` records vault, pool, and position IDs plus venue, Meme, and
   Quote type names.
 - `MigrationCompleted` records launch, vault, and pool IDs; source, used, and
-  residual amounts for both assets; residual treasury; the pool's sqrt price at
+  residual amounts for both assets; the pool's sqrt price at
   seeding — balance-derived on new-pool routes, the adopted pool's live price
   on adoption routes; and the tick and fee inputs, with both tick fields as
   two's-complement `i32` bits on every venue.
@@ -353,13 +351,12 @@ matrix in [DEPENDENCIES.md](DEPENDENCIES.md) for every route and orientation:
 all 15 migration routes, all 9 fee-collection routes, and both vault claims,
 covering exact balance-derived initialization, zero Bluefin creation fee, venue
 canonical order, full-range tick bounds, the 50-bps Cetus, Turbos, and Full Sail
-adoption checks, one-basis-point residual limits with treasury delivery, and fee
+adoption checks, one-basis-point residual limits with vault custody, and fee
 collection with unchanged principal liquidity. The matrix must additionally
 prove, against published venue bytecode: that Turbos `collect_with_return_`
 returns the complete collected fee and transfers nothing to its `recipient`
-argument — the adapter passes the live protocol treasury there, so even a
-venue-side payout could only reach the protocol, never the permissionless
-collector; that Bluefin accepts the hard-coded Meme-as-coin-A order for every
+argument — the adapter passes its own vault address there for event attribution;
+that Bluefin accepts the hard-coded Meme-as-coin-A order for every
 allowlisted Quote; that MMT `get_friendly_ticks` at the venue's extreme sqrt
 prices yields ticks its `open_position` accepts; and that every pinned venue
 tier in `VenueConfig` matches a registered venue tier.

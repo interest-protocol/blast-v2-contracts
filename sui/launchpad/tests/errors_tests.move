@@ -103,8 +103,6 @@ fun market_and_launch_error_registry_is_stable() {
         80,
     );
     assert_eq!(blast_fun::errors::migration_residual_exceeded!(), 81);
-    assert_eq!(blast_fun::errors::invalid_protocol_treasury!(), 82);
-    assert_eq!(blast_fun::errors::protocol_treasury_unchanged!(), 83);
 }
 
 #[test]

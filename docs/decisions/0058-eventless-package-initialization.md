@@ -32,8 +32,7 @@ classes.
 record every created object with its id, type, and owner, and the transaction
 records its sender. That covers `authority_id`, `super_admin_cap_id`,
 `package_version_id`, `runtime_config_id`, `config_id`, the delivered root cap's
-`super_admin_recipient`, and `RuntimeConfig.protocol_treasury`, which is exactly
-`ctx.sender()` of that same publish transaction.
+`super_admin_recipient`.
 
 **Class 2 — compiled invariants of the bytecode being published.** `init` runs
 only at the original publish, never on upgrade, so every remaining field is the
@@ -80,7 +79,6 @@ old/new pairs on every singleton mutation:
 | --- | --- |
 | every singleton object id | publish transaction effects |
 | `super_admin_cap_id`, `super_admin_recipient` | publish effects; then `SuperAdminTransferred.previous_super_admin_cap_id` / `new_super_admin_cap_id` |
-| `protocol_treasury` | publish sender; then `ProtocolTreasuryChanged.old_protocol_treasury` |
 | `protocol_fee_share_bps` | compiled zero; then `ProtocolFeeShareChanged.old_protocol_fee_share_bps` |
 | `version` | compiled `PACKAGE_VERSION`; then `PackageVersionAdvanced.previous_version` |
 | `quote_fee_bps`, `meme_fee_bps` | compiled zero; then `LaunchTradeFeesChanged` old pair |

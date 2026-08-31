@@ -21,9 +21,10 @@ migration payload in the same Move call.
   position is one dynamic **object** field under the sealed
   `vault::PositionKey<Venue>` name, with no removal, transfer, or immutable
   borrow path.
-- **Live treasury.** Every venue residual is transferred to the
-  `runtime_config::protocol_treasury` address read during that migration. No
-  adapter stores its own treasury and none burns or sends residuals to `0x0`.
+- **Protocol residual custody.** Every venue residual stays in its per-launch
+  vault and is drained only by the existing admin-gated protocol claim. No
+  adapter stores a payout address, burns a nonzero residual, or sends one to
+  `0x0`.
 - **Same live protocol fee share.** `vault::accrue_fees` reads
   `runtime_config::protocol_fee_share_bps` at each collection and splits new fees
   through the same core `FeeLedger` used by bonding-curve trade fees. Protocol
@@ -40,9 +41,10 @@ migration payload in the same Move call.
   only that module's sealed witness can write its entry, behind a live
   `AdminWitness`. The singleton stays adjustable after the package
   `UpgradeCap` is destroyed and affects only later migrations.
-- **Direct events, no wrapper.** `events.move` owns the five typed payloads
-  (`VaultCreated`, `MigrationCompleted`, `LpFeesCollected`, `CreatorFeesClaimed`,
-  `ProtocolFeesClaimed`) and is the only module that calls `sui::event::emit`.
+- **Direct events, no wrapper.** `events.move` owns the six typed payloads
+  (`VenueTierUpdated`, `VaultCreated`, `MigrationCompleted`, `LpFeesCollected`,
+  `CreatorFeesClaimed`, `ProtocolFeesClaimed`) and is the only module that calls
+  `sui::event::emit`.
   This package deliberately does **not** use the core `events_wrapper::Event<T>`
   envelope: it is a separate package, so native payload filtering stays direct
   and the core event ABI is unchanged. Payloads carry no application sequence,
@@ -365,7 +367,7 @@ Each migration fixture must show:
 - adopted Cetus, Turbos, and Full Sail pools pass the 50-bps deviation check
   immediately before liquidity is added;
 - both assets are at least 99.99% utilized and each residual is at most one basis
-  point, with both residuals transferred to the live `protocol_treasury`; and
+  point, with both residuals held in the per-launch vault; and
 - the returned position belongs to the new pool, has positive liquidity, and
   enters the vault as its one sealed dynamic object field;
 - the route's venue tier equals the effective `VenueConfig` values, and a
@@ -398,9 +400,8 @@ against the published v22 bytecode (2026-08-30): inside
 `pool::collect_v2`, whose body uses it solely in `event::emit<CollectEventV2>`;
 the fee coins come from `pool::split_out_and_return_` and are returned to the
 caller, and no `transfer::` call exists anywhere in that chain. The adapter
-still passes the live protocol treasury as `recipient`, so the venue event
-attributes the protocol and any future venue drift could only pay the
-treasury, never the permissionless collector.
+passes its own vault address as `recipient`, so the venue event attributes the
+vault that receives and accounts for the returned fees.
 
 ## Immutable-release gate
 

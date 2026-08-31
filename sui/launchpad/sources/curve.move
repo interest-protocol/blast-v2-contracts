@@ -29,8 +29,7 @@ public(package) fun cap_buy_quote_input(
     if (quote_in_net <= quote_remaining) {
         (quote_supplied, 0)
     } else {
-        let quote_in_gross = mul_div_up(
-            quote_remaining,
+        let quote_in_gross = quote_remaining.mul_div_ceil(
             blast_fun::constants::basis_points_denominator!(),
             quote_fee_bps.complement().value(),
         );
@@ -126,8 +125,7 @@ public(package) fun quote_sell(
     let progress_bps = if (real_quote >= terminal_threshold) {
         blast_fun::constants::basis_points_denominator!()
     } else {
-        mul_div_down(
-            real_quote,
+        real_quote.mul_div(
             blast_fun::constants::basis_points_denominator!(),
             terminal_threshold,
         )
@@ -169,27 +167,4 @@ public(package) fun quote_sell(
         meme_reserve_after,
         real_quote - quote_out_gross,
     )
-}
-
-// === Private Functions ===
-
-/// Multiplies in u256 and rounds the quotient toward zero.
-fun mul_div_down(
-    multiplicand: u64,
-    multiplier: u64,
-    denominator: u64,
-): u64 {
-    (
-        ((multiplicand as u256) * (multiplier as u256)) / (denominator as u256)
-    ) as u64
-}
-
-/// Multiplies in u256 and rounds the quotient toward positive infinity.
-fun mul_div_up(
-    multiplicand: u64,
-    multiplier: u64,
-    denominator: u64,
-): u64 {
-    ((multiplicand as u256) * (multiplier as u256))
-        .div_ceil(denominator as u256) as u64
 }

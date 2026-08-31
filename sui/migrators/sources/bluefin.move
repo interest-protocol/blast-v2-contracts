@@ -79,7 +79,6 @@ public struct Venue() has drop;
 public fun migrate<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    runtime_config: &RuntimeConfig,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     quote_currency: &Currency<Quote>,
@@ -151,7 +150,6 @@ public fun migrate<Meme, Quote>(
     );
 
     lock_and_share(
-        runtime_config,
         launch_id,
         pool_id,
         position,
@@ -277,20 +275,7 @@ fun assert_valid_sqrt_price(sqrt_price_x64: u128) {
     );
 }
 
-fun transfer_residual<CoinType>(
-    residual: Balance<CoinType>,
-    protocol_treasury: address,
-    ctx: &mut TxContext,
-) {
-    if (residual.value() == 0) {
-        residual.destroy_zero();
-    } else {
-        transfer::public_transfer(residual.into_coin(ctx), protocol_treasury);
-    };
-}
-
 fun lock_and_share<Meme, Quote>(
-    runtime_config: &RuntimeConfig,
     launch_id: ID,
     pool_id: ID,
     position: Position,
@@ -328,14 +313,12 @@ fun lock_and_share<Meme, Quote>(
         EVenueAmountMismatch,
     );
 
-    let protocol_treasury = runtime_config.protocol_treasury();
-    transfer_residual(residual_meme, protocol_treasury, ctx);
-    transfer_residual(residual_quote, protocol_treasury, ctx);
-
     let vault_id = vault::new<Meme, Quote, Venue, Position>(
         Venue(),
         pool_id,
         position,
+        residual_meme,
+        residual_quote,
         ctx,
     );
     events::migration_completed<Meme, Quote, Venue>(
@@ -348,7 +331,6 @@ fun lock_and_share<Meme, Quote>(
         used_quote_amount,
         residual_meme_amount,
         residual_quote_amount,
-        protocol_treasury,
         sqrt_price_x64,
         lower_tick_bits,
         upper_tick_bits,

@@ -79,6 +79,24 @@ fun accrues_with_the_live_share_and_never_resplits_prior_ownership() {
 }
 
 #[test]
+fun protocol_claim_drains_migration_residuals_without_accrued_fees() {
+    let mut fixture = start_with_residuals(3, 4);
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+        let (meme, quote) =
+            f.vault.claim_protocol_fees(&admin_witness, f.scenario.ctx());
+
+        assert_eq!(meme.value(), 3);
+        assert_eq!(quote.value(), 4);
+        destroy(meme);
+        destroy(quote);
+    });
+
+    fixture.end();
+}
+
+#[test]
 fun borrow_returns_the_attached_position() {
     let mut fixture = start();
 
@@ -172,6 +190,13 @@ macro fun accrue($fixture: &mut VaultFixture, $meme: u64, $quote: u64) {
 }
 
 fun start(): VaultFixture {
+    start_with_residuals(0, 0)
+}
+
+fun start_with_residuals(
+    protocol_meme_residual: u64,
+    protocol_quote_residual: u64,
+): VaultFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
     let (super_admin_cap, mut authority) =
@@ -194,6 +219,8 @@ fun start(): VaultFixture {
         TestVenue(),
         pool_id,
         position,
+        balance::create_for_testing<MEME>(protocol_meme_residual),
+        balance::create_for_testing<QUOTE>(protocol_quote_residual),
         scenario.ctx(),
     );
 

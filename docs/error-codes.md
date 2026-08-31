@@ -111,7 +111,5 @@ the next unused value and must not fill a retired gap.
 | 79 | `invalid_migration_seed_balance` | `migration_math` | Migration price derivation received a zero Meme or Quote seed balance. |
 | 80 | `migration_price_deviation_exceeded` | `migration_math` | An observed CLMM price is outside the adapter's accepted deviation from the exact seed ratio. |
 | 81 | `migration_residual_exceeded` | `migration_math` | Venue rounding returned more unseeded migration principal than the allowed residual bound. |
-| 82 | `invalid_protocol_treasury` | `runtime_config` | The live migration-residual treasury update supplied the zero address. |
-| 83 | `protocol_treasury_unchanged` | `runtime_config` | A live migration-residual treasury update supplied the currently active address. |
 
-The next new package-wide protocol error must use code **84**.
+The next new package-wide protocol error must use code **82**.

@@ -8,7 +8,7 @@ use blast_fun::{
     runtime_config::RuntimeConfig,
 };
 use blast_fun_migrators::events;
-use sui::{balance::Balance, coin::Coin, dynamic_object_field};
+use sui::{balance::{Self, Balance}, coin::Coin, dynamic_object_field};
 
 use fun dynamic_object_field::add as UID.add_dynamic_object_field;
 use fun dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut;
@@ -17,16 +17,19 @@ use fun dynamic_object_field::exists as UID.has_dynamic_object_field;
 // === Constants ===
 
 const EWrongVenue: u64 = 0;
+const ENothingClaimable: u64 = 1;
 
 // === Public Structs ===
 
 /// A sealed field name that binds one venue position type to one vault.
 public struct PositionKey<phantom Venue>() has copy, drop, store;
 
-/// Shared per-launch custody and normalized Meme/Quote fee accounting.
+/// Shared per-launch custody for one position, protocol residuals, and LP fees.
 public struct LpVault<phantom Meme, phantom Quote> has key {
     id: UID,
     pool_id: ID,
+    protocol_meme_residual: Balance<Meme>,
+    protocol_quote_residual: Balance<Quote>,
     fee_ledger: FeeLedger<Meme, Quote>,
 }
 
@@ -61,14 +64,39 @@ public fun claim_creator_fees<Meme, Quote>(
     (meme, quote)
 }
 
-/// Drains only protocol-owned LP fees under a live core admin witness.
+/// Drains protocol-owned migration residuals and LP fees under a live admin witness.
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     admin_witness: &AdminWitness,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
-    let (meme, quote) =
-        self.fee_ledger.claim_protocol_fees(admin_witness, ctx);
+    let (
+        protocol_meme_fee_total,
+        _,
+        protocol_quote_fee_total,
+        _,
+    ) = self.fee_ledger.totals();
+    let has_protocol_fees =
+        protocol_meme_fee_total > 0 || protocol_quote_fee_total > 0;
+    let has_residuals =
+        self.protocol_meme_residual.value() > 0
+            || self.protocol_quote_residual.value() > 0;
+    assert!(
+        has_protocol_fees || has_residuals,
+        ENothingClaimable,
+    );
+
+    let (mut meme, mut quote) = if (has_protocol_fees) {
+        let (meme_fees, quote_fees) =
+            self.fee_ledger.claim_protocol_fees(admin_witness, ctx);
+        (meme_fees.into_balance(), quote_fees.into_balance())
+    } else {
+        (balance::zero(), balance::zero())
+    };
+    meme.join(self.protocol_meme_residual.withdraw_all());
+    quote.join(self.protocol_quote_residual.withdraw_all());
+    let meme = meme.into_coin(ctx);
+    let quote = quote.into_coin(ctx);
     let meme_amount = meme.value();
     let quote_amount = quote.value();
     let (
@@ -98,12 +126,16 @@ public(package) fun new<Meme, Quote, Venue: drop, Position: key + store>(
     _venue: Venue,
     pool_id: ID,
     position: Position,
+    protocol_meme_residual: Balance<Meme>,
+    protocol_quote_residual: Balance<Quote>,
     ctx: &mut TxContext,
 ): ID {
     let position_id = object::id(&position);
     let mut vault = LpVault {
         id: object::new(ctx),
         pool_id,
+        protocol_meme_residual,
+        protocol_quote_residual,
         fee_ledger: fees::new<Meme, Quote>(),
     };
     let vault_id = vault.id.to_inner();

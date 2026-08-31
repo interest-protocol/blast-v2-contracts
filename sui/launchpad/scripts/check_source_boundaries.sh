@@ -993,13 +993,13 @@ runtime_config_source="$(move_normalized_source <<<"$runtime_config_facts")"
 
 if [[ ! -f sources/runtime_config.move ]] \
   || [[ "$(move_production_functions <<<"$runtime_config_facts")" \
-    != 'assert_x_claim_active:package:0 init:private:0 new:private:0 protocol_fee_share:package:0 protocol_fee_share_bps:public:0 protocol_treasury:public:0 revoke_x_claim_signer:public:0 set_protocol_fee_share:public:0 set_protocol_treasury:public:0 set_x_claim_signer:public:0 validate_x_claim_public_key:private:0 verify_x_claim_signature:package:0 ' ]] \
+    != 'assert_x_claim_active:package:0 init:private:0 new:private:0 protocol_fee_share:package:0 protocol_fee_share_bps:public:0 revoke_x_claim_signer:public:0 set_protocol_fee_share:public:0 set_x_claim_signer:public:0 validate_x_claim_public_key:private:0 verify_x_claim_signature:package:0 ' ]] \
   || [[ "$(move_production_type RuntimeConfig <<<"$runtime_config_facts")" \
-    != 'struct RuntimeConfig has key { id: UID, x_claim_signer_public_key: vector<u8>, protocol_treasury: address, protocol_fee_share_bps: Bps, }' ]] \
+    != 'struct RuntimeConfig has key { id: UID, x_claim_signer_public_key: vector<u8>, protocol_fee_share_bps: Bps, }' ]] \
   || rg -q '\b(AdminCap|ProtocolAuthority|LaunchConfig|VecMap|VecSet|TypeName)\b' \
     <<<"$runtime_config_source" \
   || rg -q '\b(sequence|schema_version|action_tag|nonce)\b' <<<"$runtime_config_source"; then
-  echo 'runtime_config.move must own only version-gated X signer, protocol fee share, and live treasury state.' >&2
+  echo 'runtime_config.move must own only version-gated X signer and protocol fee share state.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1033,15 +1033,7 @@ check_runtime_function init \
 
 check_runtime_function new \
   'fun new(ctx: &mut TxContext): RuntimeConfig' \
-  'RuntimeConfig { id: object::new(ctx), x_claim_signer_public_key: vector[], protocol_treasury: ctx.sender(), protocol_fee_share_bps: bps::new(0), }'
-
-check_runtime_function set_protocol_treasury \
-  'fun set_protocol_treasury( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness, protocol_treasury: address, )' \
-  'package_version.assert_current(); assert!( protocol_treasury != @0x0, blast_fun::errors::invalid_protocol_treasury!(), ); assert!( protocol_treasury != self.protocol_treasury, blast_fun::errors::protocol_treasury_unchanged!(), ); let old_protocol_treasury = self.protocol_treasury; self.protocol_treasury = protocol_treasury; events::protocol_treasury_changed( old_protocol_treasury, protocol_treasury, );'
-
-check_runtime_function protocol_treasury \
-  'fun protocol_treasury(self: &RuntimeConfig): address' \
-  'self.protocol_treasury'
+  'RuntimeConfig { id: object::new(ctx), x_claim_signer_public_key: vector[], protocol_fee_share_bps: bps::new(0), }'
 
 check_runtime_function protocol_fee_share_bps \
   'fun protocol_fee_share_bps(self: &RuntimeConfig): u64' \
@@ -1075,24 +1067,24 @@ check_runtime_function set_protocol_fee_share \
   'fun set_protocol_fee_share( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness, protocol_fee_share_bps: u64, )' \
   'package_version.assert_current(); assert!( protocol_fee_share_bps != self.protocol_fee_share_bps.value(), blast_fun::errors::protocol_fee_share_unchanged!(), ); let old_protocol_fee_share_bps = self.protocol_fee_share_bps.value(); self.protocol_fee_share_bps = bps::new(protocol_fee_share_bps); events::protocol_fee_share_changed( old_protocol_fee_share_bps, protocol_fee_share_bps, );'
 
-# The four named mutations are the complete set of RuntimeConfig transitions, and
+# The three named mutations are the complete set of RuntimeConfig transitions, and
 # each one must check the live package version as its first statement rather than
 # relying on any aggregate count.
 runtime_config_mutations="$(awk -F'\t' '
-  $1 == "FN" && $6 == 0 && $10 ~ /self\.(x_claim_signer_public_key|protocol_treasury|protocol_fee_share_bps) = / {
+  $1 == "FN" && $6 == 0 && $10 ~ /self\.(x_claim_signer_public_key|protocol_fee_share_bps) = / {
     print $2
   }
 ' <<<"$runtime_config_facts" | sort | tr '\n' ' ')"
 
 if [[ "$runtime_config_mutations" \
-  != 'revoke_x_claim_signer set_protocol_fee_share set_protocol_treasury set_x_claim_signer ' ]]; then
-  runtime_config_violations+="  runtime state is mutated by '${runtime_config_mutations}' instead of the four approved setters"$'\n'
+  != 'revoke_x_claim_signer set_protocol_fee_share set_x_claim_signer ' ]]; then
+  runtime_config_violations+="  runtime state is mutated by '${runtime_config_mutations}' instead of the three approved setters"$'\n'
 fi
 
 runtime_config_ungated="$(awk -F'\t' '
   $1 == "FN" && $6 == 0 \
     && ($2 == "set_x_claim_signer" || $2 == "revoke_x_claim_signer" \
-      || $2 == "set_protocol_fee_share" || $2 == "set_protocol_treasury") {
+      || $2 == "set_protocol_fee_share") {
     if ($9 !~ /[(,] package_version: &PackageVersion,/) {
       print "  " $2 " must take the shared PackageVersion under that exact name"
     }
@@ -1111,7 +1103,7 @@ fi
 
 if [[ -n "$runtime_config_violations" ]]; then
   printf '%s' "$runtime_config_violations"
-  echo 'Runtime configuration must start disabled at zero with the live publisher treasury, and every mutation must keep its version gate, guards, assignment, and completed-fact event in order.' >&2
+  echo 'Runtime configuration must start disabled at zero, and every mutation must keep its version gate, guards, assignment, and completed-fact event in order.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1119,21 +1111,15 @@ events_facts="$(move_facts sources/lib/events.move)"
 
 runtime_config_mutation_event_payloads="$(awk -F'\t' '
   $1 == "TYPE" && $5 == 0 \
-    && ($2 == "ProtocolFeeShareChanged" || $2 == "ProtocolTreasuryChanged" \
+    && ($2 == "ProtocolFeeShareChanged" \
       || $2 == "XClaimSignerSet" || $2 == "XClaimSignerRevoked") { print $8 }
 ' <<<"$events_facts")"
 
-if [[ "$(wc -l <<<"$runtime_config_mutation_event_payloads")" != 4 ]] \
+if [[ "$(wc -l <<<"$runtime_config_mutation_event_payloads")" != 3 ]] \
   || rg -q '\b(sequence|schema_version|action_tag|nonce)\b' \
     <<<"$runtime_config_mutation_event_payloads" \
   || rg -q '\bruntime_config_id\b' <<<"$runtime_config_mutation_event_payloads" \
-  || rg -q '\bRuntimeConfigCreated\b' <<<"$events_facts" \
-  || [[ "$(move_production_type ProtocolTreasuryChanged <<<"$events_facts")" \
-    != 'struct ProtocolTreasuryChanged has copy, drop { old_protocol_treasury: address, new_protocol_treasury: address, }' ]] \
-  || [[ "$(move_production_signature protocol_treasury_changed <<<"$events_facts")" \
-    != 'fun protocol_treasury_changed( old_protocol_treasury: address, new_protocol_treasury: address, )' ]] \
-  || [[ "$(move_production_body protocol_treasury_changed <<<"$events_facts")" \
-    != 'blast_fun::events_wrapper::emit_event(ProtocolTreasuryChanged { old_protocol_treasury, new_protocol_treasury, });' ]]; then
+  || rg -q '\bRuntimeConfigCreated\b' <<<"$events_facts"; then
   echo 'Runtime-config creation must stay eventless and every mutation must emit unswapped typed replay facts without repeated singleton, ordering, or schema fields.' >&2
   failures=$((failures + 1))
 fi
@@ -1408,7 +1394,7 @@ if rg -n '\bstate_version\b|launch_state_version' sources tests; then
   failures=$((failures + 1))
 fi
 
-for gate_spec in 'acl:7:7' 'launch_config:6:6' 'runtime_config:4:4' 'package_admin:4:5' 'launch:7:7'; do
+for gate_spec in 'acl:7:7' 'launch_config:6:6' 'runtime_config:3:3' 'package_admin:4:5' 'launch:7:7'; do
   IFS=: read -r gate_module expected_guards expected_parameters <<<"$gate_spec"
   actual_guards="$(rg -c '^[[:space:]]+package_version\.assert_current\(\);' "sources/${gate_module}.move" || true)"
   actual_parameters="$(rg -c '^[[:space:]]+package_version: &(mut )?PackageVersion,' "sources/${gate_module}.move" || true)"
@@ -1433,7 +1419,7 @@ receiver_syntax_violations="$(
       | move_normalized_source \
       | sed 's/ *:: */::/g; s/ *(/(/g' \
       | rg -o \
-        '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|set_protocol_treasury|assert_x_claim_active|verify_x_claim_signature|protocol_treasury|protocol_fee_share|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_trade_fees|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|launch::(share|migrate|redeem_migration)|creator_authority::(into_authority|creator|x_identity_hash|claim_creator_cap)|launch_ticket::destroy|fees::(accrue|accrue_from_runtime|accrue_protocol_fees|totals|claim_creator_fees|claim_protocol_fees)|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
+        '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_trade_fees|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|launch::(share|migrate|redeem_migration)|creator_authority::(into_authority|creator|x_identity_hash|claim_creator_cap)|launch_ticket::destroy|fees::(accrue|accrue_from_runtime|accrue_protocol_fees|totals|claim_creator_fees|claim_protocol_fees)|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
       || true; } | sed "s|^|  ${move_file}: |"
   done
 )"

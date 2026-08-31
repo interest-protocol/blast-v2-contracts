@@ -63,7 +63,6 @@ public struct Venue() has drop;
 public fun migrate_meme_x<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    runtime_config: &RuntimeConfig,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     global_config: &mut GlobalConfig,
@@ -120,7 +119,6 @@ public fun migrate_meme_x<Meme, Quote>(
     );
 
     lock_and_share<Meme, Quote, Meme, Quote>(
-        runtime_config,
         launch_id,
         pool,
         position,
@@ -141,7 +139,6 @@ public fun migrate_meme_x<Meme, Quote>(
 public fun migrate_meme_y<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    runtime_config: &RuntimeConfig,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     global_config: &mut GlobalConfig,
@@ -198,7 +195,6 @@ public fun migrate_meme_y<Meme, Quote>(
     );
 
     lock_and_share<Meme, Quote, Quote, Meme>(
-        runtime_config,
         launch_id,
         pool,
         position,
@@ -374,19 +370,7 @@ fun create_and_seed_pool<X, Y>(
     )
 }
 
-fun transfer_residual<CoinType>(
-    residual: Coin<CoinType>,
-    protocol_treasury: address,
-) {
-    if (residual.value() == 0) {
-        residual.destroy_zero();
-    } else {
-        transfer::public_transfer(residual, protocol_treasury);
-    };
-}
-
 fun lock_and_share<Meme, Quote, X, Y>(
-    runtime_config: &RuntimeConfig,
     launch_id: ID,
     pool: Pool<X, Y>,
     position: Position,
@@ -419,14 +403,13 @@ fun lock_and_share<Meme, Quote, X, Y>(
 
     let used_meme_amount = source_meme_amount - residual_meme_amount;
     let used_quote_amount = source_quote_amount - residual_quote_amount;
-    let protocol_treasury = runtime_config.protocol_treasury();
-    transfer_residual(residual_meme, protocol_treasury);
-    transfer_residual(residual_quote, protocol_treasury);
 
     let vault_id = vault::new<Meme, Quote, Venue, Position>(
         Venue(),
         pool_id,
         position,
+        residual_meme.into_balance(),
+        residual_quote.into_balance(),
         ctx,
     );
     pool.transfer();
@@ -441,7 +424,6 @@ fun lock_and_share<Meme, Quote, X, Y>(
         used_quote_amount,
         residual_meme_amount,
         residual_quote_amount,
-        protocol_treasury,
         sqrt_price_x64,
         lower_tick_bits,
         upper_tick_bits,

@@ -67,12 +67,6 @@ public struct ProtocolFeeShareChanged has copy, drop {
     new_protocol_fee_share_bps: u64,
 }
 
-/// Emitted after the live migration-residual treasury is replaced.
-public struct ProtocolTreasuryChanged has copy, drop {
-    old_protocol_treasury: address,
-    new_protocol_treasury: address,
-}
-
 /// Emitted after routine protocol administration is granted and its cap is delivered.
 public struct AdminGranted has copy, drop {
     admin_cap_id: ID,
@@ -382,16 +376,6 @@ public(package) fun protocol_fee_share_changed(
     blast_fun::events_wrapper::emit_event(ProtocolFeeShareChanged {
         old_protocol_fee_share_bps,
         new_protocol_fee_share_bps,
-    });
-}
-
-public(package) fun protocol_treasury_changed(
-    old_protocol_treasury: address,
-    new_protocol_treasury: address,
-) {
-    blast_fun::events_wrapper::emit_event(ProtocolTreasuryChanged {
-        old_protocol_treasury,
-        new_protocol_treasury,
     });
 }
 
@@ -852,13 +836,6 @@ public fun protocol_fee_share_changed_fields(
         self.old_protocol_fee_share_bps,
         self.new_protocol_fee_share_bps,
     )
-}
-
-#[test_only]
-public fun protocol_treasury_changed_fields(
-    self: &ProtocolTreasuryChanged,
-): (address, address) {
-    (self.old_protocol_treasury, self.new_protocol_treasury)
 }
 
 #[test_only]
