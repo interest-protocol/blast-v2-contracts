@@ -130,12 +130,13 @@ The next new package-wide protocol error must use code **82**.
 
 These attributed string constants live in
 [`sui/migrators/sources/migration_math.move`](../sui/migrators/sources/migration_math.move).
-The package and module are part of the abort identity; the retained numbers ease
-the transition from the former launchpad-owned module.
+The package and module are part of the abort identity, so this new module owns a
+compact local sequence instead of inheriting gaps from the former launchpad
+registry.
 
 | Code | Constant | Raised from | Meaning |
 | ---: | --- | --- | --- |
-| 75 | `EInvalidBps` | `blast_fun_migrators::migration_math` | A migration tolerance exceeds the inclusive 0 through 10,000 range. |
-| 79 | `EInvalidMigrationSeedBalance` | `blast_fun_migrators::migration_math` | Migration price derivation received a zero Meme or Quote seed balance. |
-| 80 | `EMigrationPriceDeviationExceeded` | `blast_fun_migrators::migration_math` | An observed CLMM price is outside the adapter's accepted deviation from the exact seed ratio. |
-| 81 | `EMigrationResidualExceeded` | `blast_fun_migrators::migration_math` | Venue rounding returned more unseeded migration principal than the allowed residual bound. |
+| 0 | `EInvalidBps` | `blast_fun_migrators::migration_math` | A migration tolerance exceeds the inclusive 0 through 10,000 range. |
+| 1 | `EInvalidMigrationSeedBalance` | `blast_fun_migrators::migration_math` | Migration price derivation received a zero Meme or Quote seed balance. |
+| 2 | `EMigrationPriceDeviationExceeded` | `blast_fun_migrators::migration_math` | An observed CLMM price is outside the adapter's accepted deviation from the exact seed ratio. |
+| 3 | `EMigrationResidualExceeded` | `blast_fun_migrators::migration_math` | Venue rounding returned more unseeded migration principal than the allowed residual bound. |

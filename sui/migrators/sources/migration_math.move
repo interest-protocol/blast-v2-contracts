@@ -6,13 +6,13 @@ module blast_fun_migrators::migration_math;
 const Q128_SHIFT: u8 = 128;
 const SQRT_UPPER_BOUND_SHIFT: u8 = 96;
 const BASIS_POINTS_DENOMINATOR: u64 = 10_000;
-#[error(code = 75)]
+#[error(code = 0)]
 const EInvalidBps: vector<u8> = b"Migration tolerance must not exceed 10,000 basis points.";
-#[error(code = 79)]
+#[error(code = 1)]
 const EInvalidMigrationSeedBalance: vector<u8> = b"Migration seed balances must both be greater than zero.";
-#[error(code = 80)]
+#[error(code = 2)]
 const EMigrationPriceDeviationExceeded: vector<u8> = b"Pool price exceeds the permitted migration deviation.";
-#[error(code = 81)]
+#[error(code = 3)]
 const EMigrationResidualExceeded: vector<u8> = b"Migration residual exceeds the permitted amount.";
 
 // === Public Functions ===
