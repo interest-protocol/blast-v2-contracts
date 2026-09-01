@@ -1,7 +1,7 @@
 #[test_only]
 module blast_fun_migrators::route_math_tests;
 
-use blast_fun_migrators::{fullsail, turbos};
+use blast_fun_migrators::{aftermath, fullsail, turbos};
 use std::unit_test::assert_eq;
 use sui::sui::SUI;
 
@@ -44,6 +44,30 @@ fun fullsail_order_compares_defining_addresses_first() {
     );
     assert_eq!(
         fullsail::is_type_name_greater_for_testing<TypeA, SUI>(),
+        false,
+    );
+}
+
+#[test]
+fun aftermath_order_is_a_strict_total_order_on_distinct_types() {
+    let a_less = aftermath::is_type_name_less_for_testing<TypeA, TypeB>();
+    let b_less = aftermath::is_type_name_less_for_testing<TypeB, TypeA>();
+
+    assert_eq!(a_less != b_less, true);
+    assert_eq!(
+        aftermath::is_type_name_less_for_testing<TypeA, TypeA>(),
+        false,
+    );
+}
+
+#[test]
+fun aftermath_order_compares_defining_addresses_first() {
+    assert_eq!(
+        aftermath::is_type_name_less_for_testing<TypeA, SUI>(),
+        true,
+    );
+    assert_eq!(
+        aftermath::is_type_name_less_for_testing<SUI, TypeA>(),
         false,
     );
 }

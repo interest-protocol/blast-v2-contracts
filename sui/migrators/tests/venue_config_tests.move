@@ -3,6 +3,7 @@ module blast_fun_migrators::venue_config_tests;
 
 use blast_fun::{acl, package_version};
 use blast_fun_migrators::{
+    aftermath,
     bluefin,
     cetus,
     fullsail,
@@ -38,16 +39,16 @@ fun substrate_pins_reads_and_replaces_one_sealed_entry() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        assert_eq!(f.config.has_tier_override<TestVenue>(), false);
+        assert_eq!(f.config.has_tier<TestVenue>(), false);
 
         f.config.set_tier(TestVenue(), 60, 3_000);
-        assert_eq!(f.config.has_tier_override<TestVenue>(), true);
-        let (tick_spacing, fee_rate) = f.config.tier_override<TestVenue>();
+        assert_eq!(f.config.has_tier<TestVenue>(), true);
+        let (tick_spacing, fee_rate) = f.config.tier<TestVenue>();
         assert_eq!(tick_spacing, 60);
         assert_eq!(fee_rate, 3_000);
 
         f.config.set_tier(TestVenue(), 60, 4_000);
-        let (tick_spacing, fee_rate) = f.config.tier_override<TestVenue>();
+        let (tick_spacing, fee_rate) = f.config.tier<TestVenue>();
         assert_eq!(tick_spacing, 60);
         assert_eq!(fee_rate, 4_000);
     });
@@ -81,6 +82,11 @@ fun venue_defaults_hold_until_an_admin_pin_replaces_them() {
             turbos::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 800);
         assert_eq!(fee_rate, 40_000);
+        let (meme_weight, quote_weight, swap_in_fee) =
+            aftermath::effective_policy_for_testing(&f.config);
+        assert_eq!(meme_weight, 500_000_000_000_000_000);
+        assert_eq!(quote_weight, 500_000_000_000_000_000);
+        assert_eq!(swap_in_fee, 20_000_000_000_000_000);
 
         let admin_witness = f.sign_in();
         bluefin::set_tier(&mut f.config, &admin_witness, 220, 20_000);
@@ -88,11 +94,23 @@ fun venue_defaults_hold_until_an_admin_pin_replaces_them() {
         fullsail::set_tier(&mut f.config, &admin_witness, 40, 2_000);
         mmt::set_tier(&mut f.config, &admin_witness, 200, 10_000);
         turbos::set_tier(&mut f.config, &admin_witness, 220, 20_000);
+        aftermath::set_policy(
+            &mut f.config,
+            &admin_witness,
+            600_000_000_000_000_000,
+            400_000_000_000_000_000,
+            3_000_000_000_000_000,
+        );
 
         let (tick_spacing, fee_rate) =
             bluefin::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 220);
         assert_eq!(fee_rate, 20_000);
+        let (meme_weight, quote_weight, swap_in_fee) =
+            aftermath::effective_policy_for_testing(&f.config);
+        assert_eq!(meme_weight, 600_000_000_000_000_000);
+        assert_eq!(quote_weight, 400_000_000_000_000_000);
+        assert_eq!(swap_in_fee, 3_000_000_000_000_000);
         let (tick_spacing, fee_rate) =
             cetus::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 220);
@@ -127,7 +145,7 @@ fun venue_pins_stay_sealed_per_witness_type() {
             cetus::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 260);
         assert_eq!(fee_rate, 40_000);
-        assert_eq!(f.config.has_tier_override<TestVenue>(), false);
+        assert_eq!(f.config.has_tier<TestVenue>(), false);
     });
 
     fixture.end();
@@ -181,6 +199,208 @@ fun rejects_unchanged_tier() {
 
 #[test]
 #[expected_failure(
+    abort_code = aftermath::EInvalidFeeRate,
+    location = blast_fun_migrators::aftermath,
+)]
+fun aftermath_rejects_fee_below_venue_minimum() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+        aftermath::set_policy(
+            &mut f.config,
+            &admin_witness,
+            500_000_000_000_000_000,
+            500_000_000_000_000_000,
+            99_999_999_999_999,
+        );
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = aftermath::EInvalidFeeRate,
+    location = blast_fun_migrators::aftermath,
+)]
+fun aftermath_rejects_fee_above_venue_maximum() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+        aftermath::set_policy(
+            &mut f.config,
+            &admin_witness,
+            500_000_000_000_000_000,
+            500_000_000_000_000_000,
+            100_000_000_000_000_001,
+        );
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun aftermath_accepts_inclusive_fee_boundaries() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+        aftermath::set_policy(
+            &mut f.config,
+            &admin_witness,
+            500_000_000_000_000_000,
+            500_000_000_000_000_000,
+            100_000_000_000_000,
+        );
+        let (_, _, swap_in_fee) = aftermath::effective_policy_for_testing(&f.config);
+        assert_eq!(swap_in_fee, 100_000_000_000_000);
+        aftermath::set_policy(
+            &mut f.config,
+            &admin_witness,
+            500_000_000_000_000_000,
+            500_000_000_000_000_000,
+            100_000_000_000_000_000,
+        );
+        let (_, _, swap_in_fee) = aftermath::effective_policy_for_testing(&f.config);
+        assert_eq!(swap_in_fee, 100_000_000_000_000_000);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun aftermath_accepts_inclusive_weight_boundaries() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+        aftermath::set_policy(
+            &mut f.config,
+            &admin_witness,
+            10_000_000_000_000_000,
+            990_000_000_000_000_000,
+            20_000_000_000_000_000,
+        );
+        let (meme_weight, quote_weight, _) =
+            aftermath::effective_policy_for_testing(&f.config);
+        assert_eq!(meme_weight, 10_000_000_000_000_000);
+        assert_eq!(quote_weight, 990_000_000_000_000_000);
+
+        aftermath::set_policy(
+            &mut f.config,
+            &admin_witness,
+            990_000_000_000_000_000,
+            10_000_000_000_000_000,
+            20_000_000_000_000_000,
+        );
+        let (meme_weight, quote_weight, _) =
+            aftermath::effective_policy_for_testing(&f.config);
+        assert_eq!(meme_weight, 990_000_000_000_000_000);
+        assert_eq!(quote_weight, 10_000_000_000_000_000);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = aftermath::EInvalidWeight,
+    location = blast_fun_migrators::aftermath,
+)]
+fun aftermath_rejects_weight_below_venue_minimum() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+        aftermath::set_policy(
+            &mut f.config,
+            &admin_witness,
+            9_999_999_999_999_999,
+            990_000_000_000_000_001,
+            20_000_000_000_000_000,
+        );
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = aftermath::EInvalidWeight,
+    location = blast_fun_migrators::aftermath,
+)]
+fun aftermath_rejects_weights_that_do_not_sum_to_one() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+        aftermath::set_policy(
+            &mut f.config,
+            &admin_witness,
+            500_000_000_000_000_000,
+            499_000_000_000_000_000,
+            20_000_000_000_000_000,
+        );
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = aftermath::EUnchangedPolicy,
+    location = blast_fun_migrators::aftermath,
+)]
+fun aftermath_rejects_a_pin_equal_to_the_compiled_default() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+        aftermath::set_policy(
+            &mut f.config,
+            &admin_witness,
+            500_000_000_000_000_000,
+            500_000_000_000_000_000,
+            20_000_000_000_000_000,
+        );
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = aftermath::EUnchangedPolicy,
+    location = blast_fun_migrators::aftermath,
+)]
+fun aftermath_rejects_a_repeated_pinned_policy() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+        aftermath::set_policy(
+            &mut f.config,
+            &admin_witness,
+            600_000_000_000_000_000,
+            400_000_000_000_000_000,
+            20_000_000_000_000_000,
+        );
+        aftermath::set_policy(
+            &mut f.config,
+            &admin_witness,
+            600_000_000_000_000_000,
+            400_000_000_000_000_000,
+            20_000_000_000_000_000,
+        );
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
     abort_code = venue_config::EVenueTierUnset,
     location = blast_fun_migrators::venue_config,
 )]
@@ -188,7 +408,7 @@ fun unpinned_tier_read_fails_closed() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let (_, _) = f.config.tier_override<TestVenue>();
+        let (_, _) = f.config.tier<TestVenue>();
     });
 
     fixture.end();

@@ -1,13 +1,12 @@
-/// Shared venue tier policy stored as sealed per-venue dynamic fields.
+/// Shared venue policy stored as sealed per-venue dynamic fields.
 ///
 /// `launch::migrate` is deliberately permissionless, so no migration caller may
-/// choose the venue fee tier or tick spacing of the pool that permanently
-/// custodies the launch principal. Each venue module owns its tier policy: it
-/// compiles a researched default, seals writes with its own venue witness, and
-/// gates its public setter with a live core `AdminWitness`. Entries live as
-/// dynamic fields rather than struct fields so a package upgrade can register
-/// a new venue without touching this object's frozen layout, and the singleton
-/// stays correctable on mainnet even after the `UpgradeCap` is destroyed.
+/// choose the economic policy of the pool that permanently custodies the launch
+/// principal. Each venue module owns its policy, validates writes under a live
+/// core `AdminWitness`, and seals its dynamic-field namespace with a private key
+/// constructor. Entries remain extensible without changing this object's frozen
+/// layout, and the singleton stays correctable after the `UpgradeCap` is
+/// destroyed.
 module blast_fun_migrators::venue_config;
 
 use blast_fun_migrators::events;
@@ -40,7 +39,7 @@ public struct Tier has copy, drop, store {
     fee_rate: u64,
 }
 
-/// Shared singleton holding one sealed tier entry per registered venue.
+/// Shared singleton holding sealed policy entries for registered venues.
 public struct VenueConfig has key {
     id: UID,
 }
@@ -66,16 +65,16 @@ public(package) fun set_tier<Venue: drop>(
     assert!(tick_spacing > 0, EInvalidTickSpacing);
     assert!(fee_rate > 0, EInvalidFeeRate);
 
-    let (old_tick_spacing, old_fee_rate) = if (self.has_tier_override<Venue>()) {
-        let tier_override_mut: &mut Tier =
+    let (old_tick_spacing, old_fee_rate) = if (self.has_tier<Venue>()) {
+        let tier_mut: &mut Tier =
             self.id.dynamic_field_mut(TierKey<Venue>());
-        let old_tick_spacing = tier_override_mut.tick_spacing;
-        let old_fee_rate = tier_override_mut.fee_rate;
+        let old_tick_spacing = tier_mut.tick_spacing;
+        let old_fee_rate = tier_mut.fee_rate;
         assert!(
             old_tick_spacing != tick_spacing || old_fee_rate != fee_rate,
             EUnchangedTier,
         );
-        *tier_override_mut = Tier { tick_spacing, fee_rate };
+        *tier_mut = Tier { tick_spacing, fee_rate };
         (old_tick_spacing, old_fee_rate)
     } else {
         self.id.add_dynamic_field(
@@ -93,18 +92,51 @@ public(package) fun set_tier<Venue: drop>(
     );
 }
 
-/// Reports whether an admin pin overrides the venue module's compiled default.
-public(package) fun has_tier_override<Venue>(self: &VenueConfig): bool {
+/// Reports whether the venue has a stored tier.
+public(package) fun has_tier<Venue>(self: &VenueConfig): bool {
     self.id.has_dynamic_field(TierKey<Venue>())
 }
 
 /// Returns the pinned `(tick_spacing, fee_rate)`; aborts while no pin exists.
-public(package) fun tier_override<Venue>(self: &VenueConfig): (u32, u64) {
-    assert!(self.has_tier_override<Venue>(), EVenueTierUnset);
+public(package) fun tier<Venue>(self: &VenueConfig): (u32, u64) {
+    assert!(self.has_tier<Venue>(), EVenueTierUnset);
 
-    let tier_override: &Tier = self.id.dynamic_field(TierKey<Venue>());
+    let tier: &Tier = self.id.dynamic_field(TierKey<Venue>());
 
-    (tier_override.tick_spacing, tier_override.fee_rate)
+    (tier.tick_spacing, tier.fee_rate)
+}
+
+/// Adds a policy under a key constructible only by its concern-owning module.
+public(package) fun add_policy<Key: copy + drop + store, Policy: store>(
+    self: &mut VenueConfig,
+    key: Key,
+    policy: Policy,
+) {
+    self.id.add_dynamic_field(key, policy);
+}
+
+/// Reports whether the concern-owning module has installed its policy override.
+public(package) fun has_policy<Key: copy + drop + store>(
+    self: &VenueConfig,
+    key: Key,
+): bool {
+    self.id.has_dynamic_field(key)
+}
+
+/// Borrows an installed policy through its concern-owned sealed key.
+public(package) fun policy<Key: copy + drop + store, Policy: store>(
+    self: &VenueConfig,
+    key: Key,
+): &Policy {
+    self.id.dynamic_field(key)
+}
+
+/// Mutably borrows an installed policy through its concern-owned sealed key.
+public(package) fun policy_mut<Key: copy + drop + store, Policy: store>(
+    self: &mut VenueConfig,
+    key: Key,
+): &mut Policy {
+    self.id.dynamic_field_mut(key)
 }
 
 // === Test-Only Functions ===

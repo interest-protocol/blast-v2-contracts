@@ -4,7 +4,7 @@ This directory is one aggregate Move package for all supported liquidity
 venues. Venue modules depend on the launchpad core; the launchpad core never
 imports this package. A launch selects a venue's sealed migration witness.
 
-Bluefin, MMT, Cetus, Turbos, and Full Sail ship together in this one package, so
+Bluefin, MMT, Cetus, Turbos, Full Sail, and Aftermath ship together in this one package, so
 they share one custody surface, one claim surface, one dependency graph, one
 release gate, and one `UpgradeCap`. [DEPENDENCIES.md](DEPENDENCIES.md) owns the
 package-id and dependency matrix, the committed module fingerprints, the
@@ -79,6 +79,39 @@ tier; the defaults below were read from live mainnet registries on 2026-08-30:
 Because tier policy lives in a shared object rather than package constants, it
 stays correctable on mainnet without a package upgrade, including after the
 `UpgradeCap` is destroyed; changes affect only later migrations.
+
+Aftermath has no tick-spacing dimension. Its module-owned `AftermathPolicy`
+stores role-based Meme and Quote weights plus the symmetric swap-in fee under a
+sealed `aftermath::PolicyKey`. The compiled default is 50/50 with a 2% fee in
+Aftermath's `1e18` unit. Admin pins require each weight to be at least 1%, the
+weights to sum exactly to 100%, and the fee to stay within Aftermath's
+0.01%–10% range.
+
+## Aftermath routes
+
+`aftermath::migrate_meme_first` and `migrate_meme_second` create a fresh
+two-coin weighted pool through Aftermath's V2 capability API. The selected
+route must match Aftermath's defining-ID lexicographic type order before the
+core payload is redeemed. The LP type must also be absent from the live pool
+registry.
+
+Both routes use the effective role-based weights and symmetric swap-in fee while
+fixing zero flatness and zero swap-out, deposit, and withdrawal fees. The
+Meme-first and Meme-second routes reorder the policy weights into Aftermath's
+canonical type order. They send both source coins in full. Before sharing the
+pool, the adapter checks both exact reserves, every curve and fee parameter,
+nine LP decimals, positive liquid LP, and Aftermath's exact 1,000-unit illiquid
+LP reserve. Every returned liquid LP token is attached to the common vault as
+`Coin<Lp>` with zero residuals.
+
+Operators must first publish a fresh nine-decimal LP currency and create its
+`CreatePoolCapV2` with Aftermath's LP-creation flow. That preparation is a
+separate transaction; the cap is then consumed by the atomic Blast migration.
+
+Aftermath swap fees compound into the fungible LP position and cannot be
+separated from principal safely. This adapter therefore exposes no Aftermath
+fee-collection, LP burn, or withdrawal route. The locked liquidity gains the
+fees, while creator and protocol fee claims remain empty for this venue.
 
 ## Bluefin route
 
@@ -321,11 +354,11 @@ encoding, and the Full Sail canonical-order comparison. Venue calls remain
 matrix.
 
 `scripts/check_mainnet_abi.mjs` uses Node built-ins only and the official Sui
-mainnet GraphQL endpoint. For Bluefin, MMT, Cetus, Turbos, Full Sail, and Full
-Sail's separate IntegerMate package it resolves the original package id to its
+mainnet GraphQL endpoint. For Bluefin, MMT, Cetus, Turbos, Full Sail, Aftermath,
+and Full Sail's separate IntegerMate package it resolves the original package id to its
 current revision, fails when any revision exists beyond the pinned tip, and
 asserts the package id, version, whole-package digest, previous transaction, and
-original type origins. It then asserts a committed SHA-256 over each consumed
+exact type origins, including Aftermath's revision-3 capability origin. It then asserts a committed SHA-256 over each consumed
 module's decoded on-chain bytecode and the normalized public ABI of every
 consumed function and struct, comparing structured signatures rather than
 display prose so that a missing or extra parameter, `&` versus `&mut`,
@@ -333,7 +366,7 @@ visibility drift, ability drift, phantom drift, or return drift all fail.
 
 Every GraphQL field is shape-validated before it is rendered, so a null,
 partial, or novel response fails instead of normalizing into a passing value.
-The same run parses the root manifest, the four local interface manifests, and
+The same run parses the root manifest, the five local interface manifests, and
 both lock environments with a strict reader and binds every dependency name to
 its exact source, subdirectory, local path, revision, and `override` rule;
 comments are stripped before comparison, and `branch`, `tag`, a missing `rev`, a
@@ -348,7 +381,7 @@ upgrades.
 The interface dependencies contain `abort 0` link stubs, so a local build proves
 type compatibility only. Before production release, run the mainnet dev-inspect
 matrix in [DEPENDENCIES.md](DEPENDENCIES.md) for every route and orientation:
-all 15 migration routes, all 9 fee-collection routes, and both vault claims,
+all 17 migration routes, all 9 fee-collection routes, and both vault claims,
 covering exact balance-derived initialization, zero Bluefin creation fee, venue
 canonical order, full-range tick bounds, the 50-bps Cetus, Turbos, and Full Sail
 adoption checks, one-basis-point residual limits with vault custody, and fee
@@ -383,7 +416,7 @@ migrations and can never touch custodied principal or accrued ownership.
 | --- | --- | --- |
 | 0 | `EInvalidTickSpacing` | Tick spacing is zero. |
 | 1 | `EUnsupportedCreationFee` | Quote is not a supported Bluefin creation-fee type. |
-| 2 | `ENonzeroCreationFee` | Bluefin requires a nonzero Quote pool-opening fee. |
+| 2 | `ENonzeroCreationFee` | Bluefin reported a nonzero Quote pool-opening fee. |
 | 3 | `EInvalidSqrtPrice` | The balance-derived price is outside pinned Bluefin bounds. |
 | 4 | `EPositionPoolMismatch` | The pool, vault, and position IDs do not match. |
 | 5 | `EZeroPositionLiquidity` | The created or collected position has no principal liquidity. |
@@ -440,11 +473,25 @@ migrations and can never touch custodied principal or accrued ownership.
 | 7 | `ETierMismatch` | The tick spacing does not match the effective tier, or the registered fee disagrees with the effective fee on a new pool. |
 | 8 | `EMemeBelowQuote` | The Meme atom balance is below the Quote atom balance, so a Meme-fixed full-range seed cannot succeed. |
 
+## Aftermath errors
+
+| Code | Name | Meaning |
+| --- | --- | --- |
+| 0 | `EInvalidCoinOrder` | The selected route does not match Aftermath's canonical type order. |
+| 1 | `ELpTypeAlreadyRegistered` | The supplied LP type already identifies an active pool. |
+| 2 | `EInvalidFeeRate` | The effective swap-in fee is outside Aftermath's supported range. |
+| 3 | `EPoolInvariantMismatch` | The pool, registry, weights, curve, or fee policy differs from the requested policy. |
+| 4 | `EBalanceMismatch` | The pool does not hold every source Meme and Quote unit. |
+| 5 | `ELpSupplyMismatch` | LP decimals, liquid supply, or the illiquid reserve differs from policy. |
+| 6 | `EInvalidWeight` | Either weight is below 1% or the pair does not sum to 100%. |
+| 7 | `EUnchangedPolicy` | A policy pin repeated the currently effective weights and fee. |
+
 ## Vault errors
 
 | Code | Name | Meaning |
 | --- | --- | --- |
 | 0 | `EWrongVenue` | The supplied venue witness does not match the vault's attached position marker. |
+| 1 | `ENothingClaimable` | No protocol fee balance or migration residual is available to claim. |
 
 ## Venue config errors
 

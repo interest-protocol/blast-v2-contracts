@@ -9,6 +9,7 @@ MMT_SOURCE="$SOURCE_DIR/mmt.move"
 CETUS_SOURCE="$SOURCE_DIR/cetus.move"
 TURBOS_SOURCE="$SOURCE_DIR/turbos.move"
 FULLSAIL_SOURCE="$SOURCE_DIR/fullsail.move"
+AFTERMATH_SOURCE="$SOURCE_DIR/aftermath.move"
 EVENTS_SOURCE="$SOURCE_DIR/events.move"
 VENUE_CONFIG_SOURCE="$SOURCE_DIR/venue_config.move"
 MIGRATION_MATH_SOURCE="$SOURCE_DIR/migration_math.move"
@@ -313,6 +314,7 @@ reject_fullsail_pre_guard_mutator() {
 [[ -f "$CETUS_SOURCE" ]] || fail "missing sources/cetus.move"
 [[ -f "$TURBOS_SOURCE" ]] || fail "missing sources/turbos.move"
 [[ -f "$FULLSAIL_SOURCE" ]] || fail "missing sources/fullsail.move"
+[[ -f "$AFTERMATH_SOURCE" ]] || fail "missing sources/aftermath.move"
 [[ -f "$EVENTS_SOURCE" ]] || fail "missing sources/events.move"
 [[ -f "$VENUE_CONFIG_SOURCE" ]] || fail "missing sources/venue_config.move"
 [[ -f "$MIGRATION_MATH_SOURCE" ]] || fail "missing sources/migration_math.move"
@@ -390,6 +392,14 @@ require_pattern "$EVENTS_SOURCE" 'sui::event::emit\(CreatorFeesClaimed' \
 require_pattern "$EVENTS_SOURCE" 'sui::event::emit\(ProtocolFeesClaimed' \
     'direct strongly typed protocol-claim event emission'
 require_pattern "$EVENTS_SOURCE" 'public struct VenueTierUpdated' 'sealed venue tier mutation event'
+require_pattern "$EVENTS_SOURCE" 'public struct AftermathPolicyUpdated' \
+    'Aftermath policy mutation event'
+require_pattern "$EVENTS_SOURCE" 'public struct AftermathMigrationCompleted' \
+    'Aftermath-specific completed migration event'
+require_pattern "$EVENTS_SOURCE" 'sui::event::emit\(AftermathPolicyUpdated' \
+    'direct strongly typed Aftermath policy event emission'
+require_pattern "$EVENTS_SOURCE" 'sui::event::emit\(AftermathMigrationCompleted' \
+    'direct strongly typed Aftermath migration event emission'
 
 require_pattern "$VAULT_SOURCE" 'public struct LpVault' 'shared LpVault'
 require_pattern "$VAULT_SOURCE" 'protocol_meme_residual: Balance<Meme>' \
@@ -430,14 +440,22 @@ require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun set_tier<Venue: dr
     'witness-sealed package-only tier write'
 require_pattern "$VENUE_CONFIG_SOURCE" '_venue: Venue' \
     'owned venue witness on tier writes'
-require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun has_tier_override<Venue>' \
+require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun has_tier<Venue>' \
     'package-only pin presence read'
-require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun tier_override<Venue>' \
+require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun tier<Venue>' \
     'package-only tier read'
 require_pattern "$VENUE_CONFIG_SOURCE" 'dynamic_field::add' \
     'dynamic-field tier storage for upgrade-safe venue registration'
 require_pattern "$VENUE_CONFIG_SOURCE" 'events::venue_tier_updated<Venue>' \
     'sealed tier mutation emission'
+require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun add_policy<Key:' \
+    'sealed-key package-only policy installation'
+require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun has_policy<Key:' \
+    'sealed-key package-only policy presence read'
+require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun policy<Key:' \
+    'sealed-key package-only policy read'
+require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun policy_mut<Key:' \
+    'sealed-key package-only policy mutation'
 VENUE_TIER_SETTER_COUNT=0
 for source in "$BLUEFIN_SOURCE" "$CETUS_SOURCE" "$FULLSAIL_SOURCE" "$MMT_SOURCE" "$TURBOS_SOURCE"; do
     rg -q 'public fun set_tier' "$source" || \
@@ -453,6 +471,72 @@ for source in "$BLUEFIN_SOURCE" "$CETUS_SOURCE" "$FULLSAIL_SOURCE" "$MMT_SOURCE"
 done
 [[ "$VENUE_TIER_SETTER_COUNT" -eq 5 ]] || \
     fail "every venue tier pin must take a live core admin witness exactly once"
+
+# Aftermath owns a typed future-migration policy and permanently locks every liquid LP token.
+require_pattern "$AFTERMATH_SOURCE" 'public struct Witness' 'sealed Aftermath witness'
+require_pattern "$AFTERMATH_SOURCE" 'public struct Venue' 'sealed Aftermath venue marker'
+require_pattern "$AFTERMATH_SOURCE" 'public struct PolicyKey' \
+    'sealed Aftermath policy key'
+require_pattern "$AFTERMATH_SOURCE" 'public struct AftermathPolicy' \
+    'typed Aftermath future-migration policy'
+require_pattern "$AFTERMATH_SOURCE" 'public fun migrate_meme_first' \
+    'canonical Meme-first migration route'
+require_pattern "$AFTERMATH_SOURCE" 'public fun migrate_meme_second' \
+    'canonical Meme-second migration route'
+require_pattern "$AFTERMATH_SOURCE" 'assert_canonical_order<Meme, Quote>\(true\)' \
+    'Meme-first pre-redemption order guard'
+require_pattern "$AFTERMATH_SOURCE" 'assert_canonical_order<Meme, Quote>\(false\)' \
+    'Meme-second pre-redemption order guard'
+require_pattern "$AFTERMATH_SOURCE" 'type_name::with_defining_ids<A>' \
+    'Aftermath defining-ID canonical sorter'
+require_pattern "$AFTERMATH_SOURCE" 'pool_registry\.contains_lp_coin<Lp>' \
+    'fresh LP type precondition'
+require_pattern "$AFTERMATH_SOURCE" 'create_pool_2_coins_v2<Lp, C1, C2>' \
+    'Aftermath V2 two-coin creation call'
+require_pattern "$AFTERMATH_SOURCE" 'pool_registry\.lp_type_to_pool_id<Lp>\(\) == object::id\(&pool\)' \
+    'exact LP-type-to-pool registry reconciliation'
+require_pattern "$AFTERMATH_SOURCE" 'pool\.balance_of<Lp, C1>\(\) == amount_1' \
+    'exact first source-balance reconciliation'
+require_pattern "$AFTERMATH_SOURCE" 'pool\.balance_of<Lp, C2>\(\) == amount_2' \
+    'exact second source-balance reconciliation'
+require_pattern "$AFTERMATH_SOURCE" 'pool\.weight_of<Lp, C1>\(\) == weight_1' \
+    'first configured weight reconciliation'
+require_pattern "$AFTERMATH_SOURCE" 'pool\.weight_of<Lp, C2>\(\) == weight_2' \
+    'second configured weight reconciliation'
+require_pattern "$AFTERMATH_SOURCE" 'pool\.fees_swap_in_for<Lp, C1>\(\) == fee_rate' \
+    'symmetric swap-in fee reconciliation'
+require_pattern "$AFTERMATH_SOURCE" 'pool\.fees_swap_out_for<Lp, C1>\(\) == 0' \
+    'zero swap-out fee reconciliation'
+require_pattern "$AFTERMATH_SOURCE" 'pool\.fees_deposit_for<Lp, C1>\(\) == 0' \
+    'zero deposit fee reconciliation'
+require_pattern "$AFTERMATH_SOURCE" 'pool\.fees_withdraw_for<Lp, C1>\(\) == 0' \
+    'zero withdrawal fee reconciliation'
+require_pattern "$AFTERMATH_SOURCE" 'pool\.lp_decimals\(\) == REQUIRED_LP_DECIMALS' \
+    'nine-decimal LP reconciliation'
+require_pattern "$AFTERMATH_SOURCE" 'lp_supply - locked_lp_amount == MIN_ILLIQUID_LP' \
+    'exact illiquid LP reserve reconciliation'
+require_pattern "$AFTERMATH_SOURCE" \
+    'vault::new<Meme, Quote, Venue, Coin<Lp>>' \
+    'whole fungible LP coin custody'
+require_pattern "$AFTERMATH_SOURCE" 'events::aftermath_migration_completed' \
+    'Aftermath-specific migration emission'
+require_pattern "$AFTERMATH_SOURCE" 'public fun set_policy' \
+    'admin-pinned Aftermath weighted-pool policy'
+require_pattern "$AFTERMATH_SOURCE" 'meme_weight \+ policy\.quote_weight == FIXED_ONE' \
+    'normalized Aftermath weight policy'
+require_pattern "$AFTERMATH_SOURCE" 'events::aftermath_policy_updated' \
+    'replay-complete Aftermath policy mutation emission'
+if rg -q 'public fun collect|accrue_fees|remove_liquidity|withdraw_liquidity' "$AFTERMATH_SOURCE"; then
+    fail "Aftermath must expose no fee collection or LP withdrawal path"
+fi
+AFTERMATH_COMPACT_SOURCE="$(tr -d '[:space:]' < "$AFTERMATH_SOURCE")"
+if [[ "$AFTERMATH_COMPACT_SOURCE" =~ publicfunmigrate[^{]*(weights|flatness|fee_rate|swap_in_fee|name): ]]; then
+    fail "caller-supplied Aftermath economic parameters are forbidden"
+fi
+AFTERMATH_VAULT_LINE="$(rg -n -m1 'vault::new<Meme' "$AFTERMATH_SOURCE" | cut -d: -f1)"
+AFTERMATH_SHARE_LINE="$(rg -n -m1 'pool\.share\(\)' "$AFTERMATH_SOURCE" | cut -d: -f1)"
+[[ "$AFTERMATH_SHARE_LINE" -gt "$AFTERMATH_VAULT_LINE" ]] || \
+    fail "Aftermath pool sharing must follow whole-LP vault custody"
 
 require_pattern "$BLUEFIN_SOURCE" 'public struct Witness' 'sealed Bluefin witness'
 require_pattern "$BLUEFIN_SOURCE" 'public struct Venue' 'sealed Bluefin venue marker'
@@ -1050,8 +1134,8 @@ if rg -q 'sui::event::emit' "$SOURCE_DIR" \
 fi
 
 EVENT_EMISSION_COUNT="$(rg -o 'sui::event::emit' "$EVENTS_SOURCE" | wc -l)"
-[[ "$EVENT_EMISSION_COUNT" -eq 6 ]] || \
-    fail "events.move must emit exactly six strongly typed payloads"
+[[ "$EVENT_EMISSION_COUNT" -eq 8 ]] || \
+    fail "events.move must emit exactly eight strongly typed payloads"
 
 POSITION_ATTACHMENT_COUNT="$(rg -o 'dynamic_object_field::add' "$SOURCE_DIR" | wc -l)"
 [[ "$POSITION_ATTACHMENT_COUNT" -eq 1 ]] || \

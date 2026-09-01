@@ -400,6 +400,52 @@ const PACKAGES = [
             },
         ],
     },
+    {
+        key: 'aftermath',
+        label: 'Aftermath AMM',
+        addressName: 'amm',
+        originalId:
+            '0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c',
+        currentId:
+            '0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29',
+        version: 3,
+        digest: 'Gxia3EZSdQeCXGPkmhXRzXWfmV6bnw7oRvSXNxNLQ9T1',
+        previousTransaction: '7qeJhR15a6jqo7xujZMMe5Bcm11vR7cSBiFHypW3VQ3J',
+        manifest: 'interfaces/aftermath/Move.toml',
+        modules: [
+            {
+                name: 'pool',
+                sha256: 'f952884b3e6ea275911ae488e9d1e3f4b2a4409cdd30e8bed69e98fd7d0f7d78',
+                structs: ['CreatePoolCapV2', 'Pool'],
+                structOrigins: { CreatePoolCapV2: 'current' },
+                functions: [
+                    'balance_of',
+                    'fees_deposit_for',
+                    'fees_swap_in_for',
+                    'fees_swap_out_for',
+                    'fees_withdraw_for',
+                    'flatness',
+                    'lp_decimals',
+                    'lp_supply_value',
+                    'share',
+                    'size',
+                    'weight_of',
+                ],
+            },
+            {
+                name: 'pool_factory',
+                sha256: 'e2601c8181d142cb10bf10bbbe90adbd9545688238cbc3ba8b1bf9cf0809b17d',
+                structs: [],
+                functions: ['create_pool_2_coins_v2'],
+            },
+            {
+                name: 'pool_registry',
+                sha256: '9d4f76ef56e619111d94b41bac54641f2012d16a7e796a83436479b319dc6a62',
+                structs: ['PoolRegistry'],
+                functions: ['contains_lp_coin', 'lp_type_to_pool_id'],
+            },
+        ],
+    },
 ];
 
 // === Expected Local Pins ===
@@ -428,6 +474,7 @@ const MANIFESTS = [
             TurbosCLMM: { local: 'interfaces/turbos' },
             FullSailCLMM: { local: 'interfaces/fullsail' },
             FullSailIntegerMate: { local: 'interfaces/fullsail_integer_mate' },
+            AftermathAmm: { local: 'interfaces/aftermath' },
             Sui: {
                 git: SUI_GIT,
                 subdir: SUI_FRAMEWORK_SUBDIR,
@@ -442,6 +489,20 @@ const MANIFESTS = [
             IntegerLibrary: {
                 git: INTEGER_LIBRARY_GIT,
                 rev: REV.integerLibrary,
+                override: true,
+            },
+        },
+    },
+    {
+        path: 'interfaces/aftermath/Move.toml',
+        packageName: 'AftermathAmm',
+        packageKey: 'aftermath',
+        lockNode: 'AftermathAmm',
+        dependencies: {
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
                 override: true,
             },
         },
@@ -505,80 +566,85 @@ const MANIFESTS = [
 /// bound to its exact source record and its exact resolved dependency edges.
 /// Both environments resolve identical edges, so one table covers both.
 const LOCK_NODES = {
+    AftermathAmm: {
+        source: { local: 'interfaces/aftermath' },
+        deps: { Sui: 'Sui' },
+    },
     BluefinSpot: {
         source: { git: BLUEFIN_GIT, subdir: '.', rev: REV.bluefin },
-        deps: { IntegerLibrary: 'IntegerLibrary', IntegerMate: 'IntegerMate', Sui: 'Sui_1' },
+        deps: { IntegerLibrary: 'IntegerLibrary', IntegerMate: 'IntegerMate', Sui: 'Sui_2' },
     },
     CetusClmm: {
         source: { local: 'interfaces/cetus' },
-        deps: { IntegerMate: 'IntegerMate_1', MoveSTL: 'MoveSTL', Sui: 'Sui_2' },
+        deps: { IntegerMate: 'IntegerMate_1', MoveSTL: 'MoveSTL', Sui: 'Sui' },
     },
     FullSailCLMM: {
         source: { local: 'interfaces/fullsail' },
-        deps: { FullSailIntegerMate: 'FullSailIntegerMate', Sui: 'Sui_2' },
+        deps: { FullSailIntegerMate: 'FullSailIntegerMate', Sui: 'Sui' },
     },
     FullSailIntegerMate: {
         source: { local: 'interfaces/fullsail_integer_mate' },
-        deps: { Sui: 'Sui_2' },
+        deps: { Sui: 'Sui' },
     },
     IntegerLibrary: {
         source: { git: INTEGER_LIBRARY_GIT, subdir: '.', rev: REV.integerLibrary },
-        deps: { Sui: 'Sui' },
+        deps: { Sui: 'Sui_1' },
     },
     IntegerMate: {
         source: { git: INTEGER_MATE_GIT, subdir: 'sui', rev: REV.integerMateBluefin },
-        deps: { Sui: 'Sui' },
+        deps: { Sui: 'Sui_1' },
     },
     IntegerMate_1: {
         source: { git: INTEGER_MATE_GIT, subdir: '.', rev: REV.integerMate },
-        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
+        deps: { std: 'MoveStdlib', sui: 'Sui' },
     },
     MoveSTL: {
         source: { git: MOVE_STL_GIT, subdir: '.', rev: REV.moveStl },
-        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
+        deps: { std: 'MoveStdlib', sui: 'Sui' },
     },
     MoveStdlib: {
-        source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.suiLegacy },
-        deps: {},
-    },
-    MoveStdlib_1: {
-        source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.suiBluefin },
-        deps: {},
-    },
-    MoveStdlib_2: {
         source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.sui },
         deps: {},
     },
+    MoveStdlib_1: {
+        source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.suiLegacy },
+        deps: {},
+    },
+    MoveStdlib_2: {
+        source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.suiBluefin },
+        deps: {},
+    },
     Sui: {
-        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiLegacy },
+        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.sui },
         deps: { MoveStdlib: 'MoveStdlib' },
     },
     Sui_1: {
-        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiBluefin },
+        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiLegacy },
         deps: { MoveStdlib: 'MoveStdlib_1' },
     },
     Sui_2: {
-        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.sui },
+        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiBluefin },
         deps: { MoveStdlib: 'MoveStdlib_2' },
     },
     TurbosCLMM: {
         source: { local: 'interfaces/turbos' },
-        deps: { Sui: 'Sui_2' },
+        deps: { Sui: 'Sui' },
     },
     blast_fun: {
         source: { local: '../launchpad' },
-        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
+        deps: { std: 'MoveStdlib', sui: 'Sui' },
     },
     blast_fun_migrators: {
         source: { root: true },
         deps: {
+            AftermathAmm: 'AftermathAmm',
             BluefinSpot: 'BluefinSpot',
             CetusClmm: 'CetusClmm',
             FullSailCLMM: 'FullSailCLMM',
             FullSailIntegerMate: 'FullSailIntegerMate',
             IntegerLibrary: 'IntegerLibrary',
             IntegerMate: 'IntegerMate_1',
-            Sui: 'Sui_2',
+            Sui: 'Sui',
             TurbosCLMM: 'TurbosCLMM',
             blast_fun: 'blast_fun',
             mmt_v3: 'mmt_v3',
@@ -586,7 +652,7 @@ const LOCK_NODES = {
     },
     mmt_v3: {
         source: { git: MMT_GIT, subdir: 'mmt_v3', rev: REV.mmt },
-        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
+        deps: { std: 'MoveStdlib', sui: 'Sui' },
     },
 };
 
@@ -781,6 +847,40 @@ const ABI = {
         'public fun as_u32(@self::i32::I32): u32',
     'fullsail_integer_mate::i32::neg_from':
         'public fun neg_from(u32): @self::i32::I32',
+    'amm::pool::CreatePoolCapV2':
+        'struct CreatePoolCapV2 has store, key',
+    'amm::pool::Pool':
+        'struct Pool<phantom $0> has store, key',
+    'amm::pool::balance_of':
+        'public fun balance_of<$0, $1>(&@self::pool::Pool<$0>): u64',
+    'amm::pool::fees_deposit_for':
+        'public fun fees_deposit_for<$0, $1>(&@self::pool::Pool<$0>): u64',
+    'amm::pool::fees_swap_in_for':
+        'public fun fees_swap_in_for<$0, $1>(&@self::pool::Pool<$0>): u64',
+    'amm::pool::fees_swap_out_for':
+        'public fun fees_swap_out_for<$0, $1>(&@self::pool::Pool<$0>): u64',
+    'amm::pool::fees_withdraw_for':
+        'public fun fees_withdraw_for<$0, $1>(&@self::pool::Pool<$0>): u64',
+    'amm::pool::flatness':
+        'public fun flatness<$0>(&@self::pool::Pool<$0>): u64',
+    'amm::pool::lp_decimals':
+        'public fun lp_decimals<$0>(&@self::pool::Pool<$0>): u8',
+    'amm::pool::lp_supply_value':
+        'public fun lp_supply_value<$0>(&@self::pool::Pool<$0>): u64',
+    'amm::pool::share':
+        'public fun share<$0>(@self::pool::Pool<$0>)',
+    'amm::pool::size':
+        'public fun size<$0>(&@self::pool::Pool<$0>): u64',
+    'amm::pool::weight_of':
+        'public fun weight_of<$0, $1>(&@self::pool::Pool<$0>): u64',
+    'amm::pool_factory::create_pool_2_coins_v2':
+        'public fun create_pool_2_coins_v2<$0, $1, $2>(@self::pool::CreatePoolCapV2, &mut @self::pool_registry::PoolRegistry, vector<u8>, vector<u64>, u64, vector<u64>, vector<u64>, vector<u64>, vector<u64>, @sui::coin::Coin<$1>, @sui::coin::Coin<$2>, @std::option::Option<vector<u8>>, bool, &mut @sui::tx_context::TxContext): (@self::pool::Pool<$0>, @sui::coin::Coin<$0>)',
+    'amm::pool_registry::PoolRegistry':
+        'struct PoolRegistry has store, key',
+    'amm::pool_registry::contains_lp_coin':
+        'public fun contains_lp_coin<$0>(&@self::pool_registry::PoolRegistry): bool',
+    'amm::pool_registry::lp_type_to_pool_id':
+        'public fun lp_type_to_pool_id<$0>(&@self::pool_registry::PoolRegistry): @sui::object::ID',
 };
 
 // === Failures ===
@@ -1306,10 +1406,14 @@ async function verifyPackage(expected, observed) {
                 const key = `${module.name}::${name}`;
                 const definingId = origins.get(key);
                 if (check(definingId !== undefined, `${label}: missing type origin for ${key}`)) {
+                    const origin = module.structOrigins?.[name];
+                    const expectedOrigin = origin === 'current'
+                        ? expected.currentId
+                        : expected.originalId;
                     checkEqual(
                         definingId,
-                        expected.originalId,
-                        `${label}: ${key} is not defined by the original package`,
+                        expectedOrigin,
+                        `${label}: ${key} has the wrong defining package`,
                     );
                     checkedOrigins += 1;
                 }
@@ -2162,8 +2266,8 @@ function selfTestCases() {
             run: lockCase(
                 mutateSource(
                     lock,
-                    `[pinned.testnet.Sui_2]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.sui}" }`,
-                    `[pinned.testnet.Sui_2]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.suiLegacy}" }`,
+                    `[pinned.testnet.Sui]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.sui}" }`,
+                    `[pinned.testnet.Sui]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.suiLegacy}" }`,
                 ),
             ),
         },
@@ -2175,7 +2279,7 @@ function selfTestCases() {
                     '[pinned.mainnet.TurbosCLMM]\nsource = { local = "interfaces/turbos" }\nuse_environment = "mainnet"',
                     '[pinned.mainnet.TurbosCLMM]\nsource = { local = "interfaces/turbos" }\nuse_environment = "mainnet"',
                 ).replace(
-                    /(\[pinned\.mainnet\.TurbosCLMM\][\s\S]*?deps = \{ Sui = ")Sui_2(" \})/,
+                    /(\[pinned\.mainnet\.TurbosCLMM\][\s\S]*?deps = \{ Sui = ")Sui(" \})/,
                     '$1Sui_1$2',
                 ),
             ),

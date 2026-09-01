@@ -1,0 +1,369 @@
+/// Aftermath migration with complete source reconciliation and locked fungible LP.
+module blast_fun_migrators::aftermath;
+
+use amm::{
+    pool::{Self, CreatePoolCapV2, Pool},
+    pool_factory,
+    pool_registry::{Self, PoolRegistry},
+};
+use blast_fun::{
+    acl::AdminWitness,
+    launch::Launch,
+    package_version::PackageVersion,
+};
+use blast_fun_migrators::{events, vault, venue_config::VenueConfig};
+use std::{option, type_name};
+use sui::{balance, coin::Coin, coin_registry::Currency};
+
+// === Constants ===
+
+/// One half in Aftermath's `1e18` fixed-point weight unit.
+const HALF_WEIGHT: u64 = 500_000_000_000_000_000;
+const FIXED_ONE: u64 = 1_000_000_000_000_000_000;
+const MIN_WEIGHT: u64 = 10_000_000_000_000_000;
+const FLATNESS: u64 = 0;
+const DEFAULT_SWAP_IN_FEE: u64 = 20_000_000_000_000_000;
+const MIN_SWAP_IN_FEE: u64 = 100_000_000_000_000;
+const MAX_SWAP_IN_FEE: u64 = 100_000_000_000_000_000;
+const MIN_ILLIQUID_LP: u64 = 1_000;
+const REQUIRED_LP_DECIMALS: u8 = 9;
+const POOL_NAME: vector<u8> = b"Blast Aftermath Meme Pool";
+
+// === Errors ===
+
+#[error(code = 0)]
+const EInvalidCoinOrder: vector<u8> = b"Selected Aftermath route must match canonical coin order.";
+#[error(code = 1)]
+const ELpTypeAlreadyRegistered: vector<u8> = b"Aftermath LP type must be fresh and unregistered.";
+#[error(code = 2)]
+const EInvalidFeeRate: vector<u8> = b"Aftermath swap-in fee is outside its supported range.";
+#[error(code = 3)]
+const EPoolInvariantMismatch: vector<u8> = b"Aftermath pool state does not match the migration policy.";
+#[error(code = 4)]
+const EBalanceMismatch: vector<u8> = b"Aftermath pool must contain every source asset unit.";
+#[error(code = 5)]
+const ELpSupplyMismatch: vector<u8> = b"Aftermath LP supply or decimals do not match the locked-liquidity policy.";
+#[error(code = 6)]
+const EInvalidWeight: vector<u8> = b"Aftermath weights must each be at least 1% and sum to 100%.";
+#[error(code = 7)]
+const EUnchangedPolicy: vector<u8> = b"Aftermath policy must differ from its currently effective values.";
+
+// === Public Structs ===
+
+/// Sealed adapter identity selected by a Blast launch.
+public struct Witness() has drop;
+
+/// Sealed marker for the Aftermath LP coin attached to the common vault.
+public struct Venue() has drop;
+
+/// Sealed dynamic-field name for Aftermath's future-migration policy.
+public struct PolicyKey() has copy, drop, store;
+
+/// Admin-pinned Aftermath economics applied to future migrations.
+public struct AftermathPolicy has copy, drop, store {
+    meme_weight: u64,
+    quote_weight: u64,
+    swap_in_fee: u64,
+}
+
+// === Public Functions ===
+
+/// Migrates when Aftermath's canonical order places Meme first.
+public fun migrate_meme_first<Lp, Meme, Quote>(
+    launch: &mut Launch<Meme, Quote>,
+    package_version: &PackageVersion,
+    venue_config: &VenueConfig,
+    meme_currency: &mut Currency<Meme>,
+    pool_registry: &mut PoolRegistry,
+    create_pool_cap: CreatePoolCapV2,
+    ctx: &mut TxContext,
+) {
+    assert_canonical_order<Meme, Quote>(true);
+    assert!(!pool_registry.contains_lp_coin<Lp>(), ELpTypeAlreadyRegistered);
+    let policy = effective_policy(venue_config);
+    let launch_id = object::id(launch);
+    let payload = launch.migrate<_, _, Witness>(package_version, meme_currency, ctx);
+    let (meme, quote) = payload.redeem_migration(Witness());
+    let meme_amount = meme.value();
+    let quote_amount = quote.value();
+    let (pool, lp_coin) = create_and_reconcile<Lp, Meme, Quote>(
+        pool_registry,
+        create_pool_cap,
+        meme.into_coin(ctx),
+        quote.into_coin(ctx),
+        meme_amount,
+        quote_amount,
+        policy.meme_weight,
+        policy.quote_weight,
+        policy.swap_in_fee,
+        ctx,
+    );
+
+    lock_and_share<Lp, Meme, Quote>(
+        launch_id,
+        pool,
+        lp_coin,
+        meme_amount,
+        quote_amount,
+        policy,
+        ctx,
+    );
+}
+
+/// Migrates when Aftermath's canonical order places Meme second.
+public fun migrate_meme_second<Lp, Meme, Quote>(
+    launch: &mut Launch<Meme, Quote>,
+    package_version: &PackageVersion,
+    venue_config: &VenueConfig,
+    meme_currency: &mut Currency<Meme>,
+    pool_registry: &mut PoolRegistry,
+    create_pool_cap: CreatePoolCapV2,
+    ctx: &mut TxContext,
+) {
+    assert_canonical_order<Meme, Quote>(false);
+    assert!(!pool_registry.contains_lp_coin<Lp>(), ELpTypeAlreadyRegistered);
+    let policy = effective_policy(venue_config);
+    let launch_id = object::id(launch);
+    let payload = launch.migrate<_, _, Witness>(package_version, meme_currency, ctx);
+    let (meme, quote) = payload.redeem_migration(Witness());
+    let meme_amount = meme.value();
+    let quote_amount = quote.value();
+    let (pool, lp_coin) = create_and_reconcile<Lp, Quote, Meme>(
+        pool_registry,
+        create_pool_cap,
+        quote.into_coin(ctx),
+        meme.into_coin(ctx),
+        quote_amount,
+        meme_amount,
+        policy.quote_weight,
+        policy.meme_weight,
+        policy.swap_in_fee,
+        ctx,
+    );
+
+    lock_and_share<Lp, Meme, Quote>(
+        launch_id,
+        pool,
+        lp_coin,
+        meme_amount,
+        quote_amount,
+        policy,
+        ctx,
+    );
+}
+
+/// Pins Aftermath's role-based weights and symmetric swap-in fee for future migrations.
+public fun set_policy(
+    venue_config: &mut VenueConfig,
+    _: &AdminWitness,
+    meme_weight: u64,
+    quote_weight: u64,
+    swap_in_fee: u64,
+) {
+    let new_policy = AftermathPolicy { meme_weight, quote_weight, swap_in_fee };
+    assert_valid_policy(&new_policy);
+
+    let old_policy = if (venue_config.has_policy(PolicyKey())) {
+        let policy_mut: &mut AftermathPolicy =
+            venue_config.policy_mut(PolicyKey());
+        let old_policy = *policy_mut;
+        assert_policy_changed(&old_policy, &new_policy);
+        *policy_mut = new_policy;
+        old_policy
+    } else {
+        let old_policy = default_policy();
+        assert_policy_changed(&old_policy, &new_policy);
+        venue_config.add_policy(PolicyKey(), new_policy);
+        old_policy
+    };
+
+    events::aftermath_policy_updated(
+        old_policy.meme_weight,
+        old_policy.quote_weight,
+        old_policy.swap_in_fee,
+        new_policy.meme_weight,
+        new_policy.quote_weight,
+        new_policy.swap_in_fee,
+    );
+}
+
+// === Private Functions ===
+
+fun default_policy(): AftermathPolicy {
+    AftermathPolicy {
+        meme_weight: HALF_WEIGHT,
+        quote_weight: HALF_WEIGHT,
+        swap_in_fee: DEFAULT_SWAP_IN_FEE,
+    }
+}
+
+fun effective_policy(venue_config: &VenueConfig): AftermathPolicy {
+    let policy = if (venue_config.has_policy(PolicyKey())) {
+        let policy_override: &AftermathPolicy = venue_config.policy(PolicyKey());
+        *policy_override
+    } else {
+        default_policy()
+    };
+    assert_valid_policy(&policy);
+    policy
+}
+
+fun assert_valid_policy(policy: &AftermathPolicy) {
+    assert!(
+        policy.meme_weight >= MIN_WEIGHT
+            && policy.quote_weight >= MIN_WEIGHT
+            && policy.meme_weight <= FIXED_ONE
+            && policy.quote_weight <= FIXED_ONE
+            && policy.meme_weight + policy.quote_weight == FIXED_ONE,
+        EInvalidWeight,
+    );
+    assert_valid_fee(policy.swap_in_fee);
+}
+
+fun assert_policy_changed(old_policy: &AftermathPolicy, new_policy: &AftermathPolicy) {
+    assert!(
+        old_policy.meme_weight != new_policy.meme_weight
+            || old_policy.quote_weight != new_policy.quote_weight
+            || old_policy.swap_in_fee != new_policy.swap_in_fee,
+        EUnchangedPolicy,
+    );
+}
+
+fun assert_valid_fee(fee_rate: u64) {
+    assert!(
+        fee_rate >= MIN_SWAP_IN_FEE && fee_rate <= MAX_SWAP_IN_FEE,
+        EInvalidFeeRate,
+    );
+}
+
+fun assert_canonical_order<Meme, Quote>(meme_is_first: bool) {
+    let meme_first = is_type_name_less<Meme, Quote>();
+    let meme_second = is_type_name_less<Quote, Meme>();
+    assert!(meme_first != meme_second, EInvalidCoinOrder);
+    assert!(meme_first == meme_is_first, EInvalidCoinOrder);
+}
+
+/// Mirrors Aftermath's defining-ID lexicographic type sorter.
+fun is_type_name_less<A, B>(): bool {
+    let a_name = type_name::with_defining_ids<A>().into_string();
+    let b_name = type_name::with_defining_ids<B>().into_string();
+    let a_bytes = a_name.as_bytes();
+    let b_bytes = b_name.as_bytes();
+    let a_length = a_bytes.length();
+    let b_length = b_bytes.length();
+    let limit = if (a_length < b_length) a_length else b_length;
+    let mut index = 0;
+    while (index < limit) {
+        let a_byte = a_bytes[index];
+        let b_byte = b_bytes[index];
+        if (a_byte < b_byte) return true;
+        if (a_byte > b_byte) return false;
+        index = index + 1;
+    };
+    a_length < b_length
+}
+
+fun create_and_reconcile<Lp, C1, C2>(
+    pool_registry: &mut PoolRegistry,
+    create_pool_cap: CreatePoolCapV2,
+    coin_1: Coin<C1>,
+    coin_2: Coin<C2>,
+    amount_1: u64,
+    amount_2: u64,
+    weight_1: u64,
+    weight_2: u64,
+    fee_rate: u64,
+    ctx: &mut TxContext,
+): (Pool<Lp>, Coin<Lp>) {
+    let (pool, lp_coin) = pool_factory::create_pool_2_coins_v2<Lp, C1, C2>(
+        create_pool_cap,
+        pool_registry,
+        POOL_NAME,
+        vector[weight_1, weight_2],
+        FLATNESS,
+        vector[fee_rate, fee_rate],
+        vector[0, 0],
+        vector[0, 0],
+        vector[0, 0],
+        coin_1,
+        coin_2,
+        option::none(),
+        false,
+        ctx,
+    );
+
+    assert!(pool.size() == 2, EPoolInvariantMismatch);
+    assert!(
+        pool_registry.lp_type_to_pool_id<Lp>() == object::id(&pool),
+        EPoolInvariantMismatch,
+    );
+    assert!(pool.balance_of<Lp, C1>() == amount_1, EBalanceMismatch);
+    assert!(pool.balance_of<Lp, C2>() == amount_2, EBalanceMismatch);
+    assert!(pool.weight_of<Lp, C1>() == weight_1, EPoolInvariantMismatch);
+    assert!(pool.weight_of<Lp, C2>() == weight_2, EPoolInvariantMismatch);
+    assert!(pool.flatness() == FLATNESS, EPoolInvariantMismatch);
+    assert!(pool.fees_swap_in_for<Lp, C1>() == fee_rate, EPoolInvariantMismatch);
+    assert!(pool.fees_swap_in_for<Lp, C2>() == fee_rate, EPoolInvariantMismatch);
+    assert!(pool.fees_swap_out_for<Lp, C1>() == 0, EPoolInvariantMismatch);
+    assert!(pool.fees_swap_out_for<Lp, C2>() == 0, EPoolInvariantMismatch);
+    assert!(pool.fees_deposit_for<Lp, C1>() == 0, EPoolInvariantMismatch);
+    assert!(pool.fees_deposit_for<Lp, C2>() == 0, EPoolInvariantMismatch);
+    assert!(pool.fees_withdraw_for<Lp, C1>() == 0, EPoolInvariantMismatch);
+    assert!(pool.fees_withdraw_for<Lp, C2>() == 0, EPoolInvariantMismatch);
+
+    let locked_lp_amount = lp_coin.value();
+    let lp_supply = pool.lp_supply_value();
+    assert!(pool.lp_decimals() == REQUIRED_LP_DECIMALS, ELpSupplyMismatch);
+    assert!(locked_lp_amount > 0, ELpSupplyMismatch);
+    assert!(lp_supply > locked_lp_amount, ELpSupplyMismatch);
+    assert!(lp_supply - locked_lp_amount == MIN_ILLIQUID_LP, ELpSupplyMismatch);
+
+    (pool, lp_coin)
+}
+
+fun lock_and_share<Lp, Meme, Quote>(
+    launch_id: ID,
+    pool: Pool<Lp>,
+    lp_coin: Coin<Lp>,
+    meme_amount: u64,
+    quote_amount: u64,
+    policy: AftermathPolicy,
+    ctx: &mut TxContext,
+) {
+    let pool_id = object::id(&pool);
+    let locked_lp_amount = lp_coin.value();
+    let vault_id = vault::new<Meme, Quote, Venue, Coin<Lp>>(
+        Venue(),
+        pool_id,
+        lp_coin,
+        balance::zero(),
+        balance::zero(),
+        ctx,
+    );
+    events::aftermath_migration_completed<Lp, Meme, Quote, Venue>(
+        launch_id,
+        vault_id,
+        pool_id,
+        meme_amount,
+        quote_amount,
+        locked_lp_amount,
+        policy.meme_weight,
+        policy.quote_weight,
+        FLATNESS,
+        policy.swap_in_fee,
+    );
+    pool.share();
+}
+
+// === Test-Only Functions ===
+
+#[test_only]
+public fun effective_policy_for_testing(venue_config: &VenueConfig): (u64, u64, u64) {
+    let policy = effective_policy(venue_config);
+    (policy.meme_weight, policy.quote_weight, policy.swap_in_fee)
+}
+
+#[test_only]
+public fun is_type_name_less_for_testing<A, B>(): bool {
+    is_type_name_less<A, B>()
+}

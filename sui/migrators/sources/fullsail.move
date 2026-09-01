@@ -536,8 +536,8 @@ fun assert_adopted_tier(venue_config: &VenueConfig, tick_spacing: u32) {
 }
 
 fun effective_tier(venue_config: &VenueConfig): (u32, u64) {
-    if (venue_config.has_tier_override<Venue>()) {
-        venue_config.tier_override<Venue>()
+    if (venue_config.has_tier<Venue>()) {
+        venue_config.tier<Venue>()
     } else {
         (DEFAULT_TICK_SPACING, DEFAULT_FEE_RATE)
     }

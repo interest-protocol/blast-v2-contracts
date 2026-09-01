@@ -17,6 +17,34 @@ public struct VenueTierUpdated has copy, drop {
     new_fee_rate: u64,
 }
 
+/// Records one Aftermath policy replacing the previously effective policy.
+public struct AftermathPolicyUpdated has copy, drop {
+    old_meme_weight: u64,
+    old_quote_weight: u64,
+    old_swap_in_fee: u64,
+    new_meme_weight: u64,
+    new_quote_weight: u64,
+    new_swap_in_fee: u64,
+}
+
+/// Records a reconciled Aftermath weighted-pool migration.
+public struct AftermathMigrationCompleted has copy, drop {
+    launch_id: ID,
+    vault_id: ID,
+    pool_id: ID,
+    venue: TypeName,
+    lp: TypeName,
+    meme: TypeName,
+    quote: TypeName,
+    meme_amount: u64,
+    quote_amount: u64,
+    locked_lp_amount: u64,
+    meme_weight: u64,
+    quote_weight: u64,
+    flatness: u64,
+    swap_in_fee: u64,
+}
+
 /// Records discovery and typed position custody for one completed vault.
 public struct VaultCreated has copy, drop {
     vault_id: ID,
@@ -104,6 +132,7 @@ public struct ProtocolFeesClaimed has copy, drop {
 
 // === Package Functions ===
 
+/// Emits installation or replacement of one venue's effective tier override.
 public(package) fun venue_tier_updated<Venue>(
     old_tick_spacing: u32,
     new_tick_spacing: u32,
@@ -119,6 +148,57 @@ public(package) fun venue_tier_updated<Venue>(
     });
 }
 
+/// Emits installation or replacement of the effective Aftermath policy.
+public(package) fun aftermath_policy_updated(
+    old_meme_weight: u64,
+    old_quote_weight: u64,
+    old_swap_in_fee: u64,
+    new_meme_weight: u64,
+    new_quote_weight: u64,
+    new_swap_in_fee: u64,
+) {
+    sui::event::emit(AftermathPolicyUpdated {
+        old_meme_weight,
+        old_quote_weight,
+        old_swap_in_fee,
+        new_meme_weight,
+        new_quote_weight,
+        new_swap_in_fee,
+    });
+}
+
+/// Emits one fully reconciled Aftermath weighted-pool migration.
+public(package) fun aftermath_migration_completed<Lp, Meme, Quote, Venue>(
+    launch_id: ID,
+    vault_id: ID,
+    pool_id: ID,
+    meme_amount: u64,
+    quote_amount: u64,
+    locked_lp_amount: u64,
+    meme_weight: u64,
+    quote_weight: u64,
+    flatness: u64,
+    swap_in_fee: u64,
+) {
+    sui::event::emit(AftermathMigrationCompleted {
+        launch_id,
+        vault_id,
+        pool_id,
+        venue: type_name::with_original_ids<Venue>(),
+        lp: type_name::with_original_ids<Lp>(),
+        meme: type_name::with_original_ids<Meme>(),
+        quote: type_name::with_original_ids<Quote>(),
+        meme_amount,
+        quote_amount,
+        locked_lp_amount,
+        meme_weight,
+        quote_weight,
+        flatness,
+        swap_in_fee,
+    });
+}
+
+/// Emits creation of one venue-sealed LP vault and attached position.
 public(package) fun vault_created<Meme, Quote, Venue>(
     vault_id: ID,
     pool_id: ID,
@@ -134,6 +214,7 @@ public(package) fun vault_created<Meme, Quote, Venue>(
     });
 }
 
+/// Emits one completed launch migration with source, usage, residual, and tier facts.
 public(package) fun migration_completed<Meme, Quote, Venue>(
     launch_id: ID,
     vault_id: ID,
@@ -171,6 +252,7 @@ public(package) fun migration_completed<Meme, Quote, Venue>(
     });
 }
 
+/// Emits one LP-fee collection and the resulting ownership totals.
 public(package) fun lp_fees_collected<Meme, Quote, Venue>(
     vault_id: ID,
     pool_id: ID,
@@ -212,6 +294,7 @@ public(package) fun lp_fees_collected<Meme, Quote, Venue>(
     });
 }
 
+/// Emits a creator-owned LP-fee withdrawal and remaining totals.
 public(package) fun creator_fees_claimed<Meme, Quote>(
     vault_id: ID,
     meme_amount: u64,
@@ -234,6 +317,7 @@ public(package) fun creator_fees_claimed<Meme, Quote>(
     });
 }
 
+/// Emits a protocol-owned residual and LP-fee withdrawal and remaining totals.
 public(package) fun protocol_fees_claimed<Meme, Quote>(
     vault_id: ID,
     meme_amount: u64,

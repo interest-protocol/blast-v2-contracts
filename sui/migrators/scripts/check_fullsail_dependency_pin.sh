@@ -37,27 +37,42 @@ lock_section() {
     ' "$LOCKFILE"
 }
 
+dependency_target() {
+    local section="$1"
+    local dependency="$2"
+
+    printf '%s\n' "$section" |
+        rg -o "$dependency = \"[^\"]+\"" |
+        cut -d '"' -f 2 || true
+}
+
 assert_environment() {
     local environment="$1"
-    local fullsail_section integer_section sui_section
+    local fullsail_section fullsail_sui_package fullsail_sui_section
+    local integer_section integer_sui_package integer_sui_section
 
     fullsail_section="$(lock_section "$environment" FullSailCLMM)"
     [[ "$fullsail_section" == *'source = { local = "interfaces/fullsail" }'* ]] || \
         fail "$environment FullSailCLMM must use the normalized local interface"
     [[ "$fullsail_section" == *'FullSailIntegerMate = "FullSailIntegerMate"'* ]] || \
         fail "$environment FullSailCLMM must bind FullSailIntegerMate"
-    [[ "$fullsail_section" == *'Sui = "Sui_2"'* ]] || \
-        fail "$environment FullSailCLMM must bind Sui_2"
+
+    fullsail_sui_package="$(dependency_target "$fullsail_section" Sui)"
+    [[ -n "$fullsail_sui_package" ]] || fail "$environment FullSailCLMM must bind Sui"
+    fullsail_sui_section="$(lock_section "$environment" "$fullsail_sui_package")"
+    [[ "$fullsail_sui_section" == *"rev = \"$EXPECTED_SUI_REV\""* ]] || \
+        fail "$environment FullSailCLMM does not bind the required Sui revision"
 
     integer_section="$(lock_section "$environment" FullSailIntegerMate)"
     [[ "$integer_section" == *'source = { local = "interfaces/fullsail_integer_mate" }'* ]] || \
         fail "$environment FullSailIntegerMate must use its normalized local interface"
-    [[ "$integer_section" == *'Sui = "Sui_2"'* ]] || \
-        fail "$environment FullSailIntegerMate must bind Sui_2"
 
-    sui_section="$(lock_section "$environment" Sui_2)"
-    [[ "$sui_section" == *"rev = \"$EXPECTED_SUI_REV\""* ]] || \
-        fail "$environment Full Sail graph does not bind the required Sui revision"
+    integer_sui_package="$(dependency_target "$integer_section" Sui)"
+    [[ -n "$integer_sui_package" ]] || \
+        fail "$environment FullSailIntegerMate must bind Sui"
+    integer_sui_section="$(lock_section "$environment" "$integer_sui_package")"
+    [[ "$integer_sui_section" == *"rev = \"$EXPECTED_SUI_REV\""* ]] || \
+        fail "$environment FullSailIntegerMate does not bind the required Sui revision"
 }
 
 require_pattern "$MANIFEST" 'FullSailCLMM = { local = "interfaces/fullsail" }' \
