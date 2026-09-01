@@ -15,26 +15,25 @@ use blast_sui::{
     math,
     package_version::PackageVersion,
 };
-use sui::{coin::{Coin, TreasuryCap}, sui::SUI};
+use sui::{coin::{Coin, TreasuryCap}, dynamic_object_field, sui::SUI};
 use sui_system::sui_system::SuiSystemState;
 
 use fun exchange_rate_at as SuiSystemState.exchange_rate_at;
 
 // === Public Structs ===
 
-/// Shared owner of both treasury caps and the two native custody ledgers.
+/// Shared owner of both treasury-cap child objects and the two native custody ledgers.
 ///
 /// `fun_custody` backs only funSUI plus the protocol-funded rounding reserve,
 /// and `blast_custody` backs only blastSUI, including the seed shares locked
 /// at `@0x0` by `create`; both delegate only through `pool_id`.
-/// `blast_cap.total_supply()` is therefore never zero after creation. `rate_epoch`, `rate_sui`, and `rate_pool_tokens` cache
-/// the pool exchange-rate entry last observed for a current epoch; a refresh in
-/// an epoch without an entry keeps this conservative rate instead of scanning
-/// the table. `unwind_only` records that the validator left the active set.
+/// blastSUI supply is therefore never zero after creation. `rate_epoch`,
+/// `rate_sui`, and `rate_pool_tokens` cache the pool exchange-rate entry last
+/// observed for a current epoch; a refresh in an epoch without an entry keeps
+/// this conservative rate instead of scanning the table. `unwind_only` records
+/// that the validator left the active set.
 public struct Vault has key {
     id: UID,
-    fun_cap: TreasuryCap<FUN_SUI>,
-    blast_cap: TreasuryCap<BLAST_SUI>,
     pool_id: ID,
     fun_custody: Custody,
     blast_custody: Custody,
@@ -44,6 +43,9 @@ public struct Vault has key {
     redeem_fee_bps: u64,
     unwind_only: bool,
 }
+
+/// Type-derived key for a treasury cap owned as a discoverable child object.
+public struct TreasuryKey<phantom CoinType>() has copy, drop, store;
 
 // === Public Functions ===
 
@@ -92,8 +94,6 @@ public fun create(
     let bootstrap_sui = seed.value();
     let mut self = Vault {
         id: object::new(ctx),
-        fun_cap,
-        blast_cap,
         pool_id,
         fun_custody: custody::new(),
         blast_custody: custody::new(),
@@ -103,10 +103,12 @@ public fun create(
         redeem_fee_bps: constants::default_redeem_fee_bps!(),
         unwind_only: false,
     };
+    self.add_treasury_cap(fun_cap);
+    self.add_treasury_cap(blast_cap);
     self.fun_custody.deposit(fun_reserve);
     self.blast_custody.deposit(seed);
     self.blast_custody.stake_idle(system_state, validator, &pool_id, 0, ctx);
-    let locked_coin = self.blast_cap.mint(bootstrap_sui, ctx);
+    let locked_coin = self.treasury_cap_mut<BLAST_SUI>().mint(bootstrap_sui, ctx);
 
     events::vault_created(
         self.id.to_inner(),
@@ -137,7 +139,7 @@ public fun mint_fun_sui(
     self.assert_accepts_mints();
 
     self.fun_custody.deposit(sui_in.into_balance());
-    let fun_coin = self.fun_cap.mint(amount, ctx);
+    let fun_coin = self.treasury_cap_mut<FUN_SUI>().mint(amount, ctx);
     self.assert_fun_backed();
     self.stake_idle(system_state, ctx);
 
@@ -165,7 +167,7 @@ public fun redeem_fun_sui(
         self.rate_pool_tokens,
         ctx,
     );
-    self.fun_cap.burn(fun_in);
+    self.treasury_cap_mut<FUN_SUI>().burn(fun_in);
     self.protect_fun_exit_liquidity(system_state, ctx);
     self.stake_idle(system_state, ctx);
     self.assert_fun_backed();
@@ -252,7 +254,7 @@ public fun claim_blast_sui(
     let blast_out = math::blast_shares_out_down(
         contributed_sui,
         self.blast_custody.assets(),
-        self.blast_cap.total_supply(),
+        self.treasury_cap<BLAST_SUI>().total_supply(),
     );
     assert!(blast_out >= min_blast_out, blast_sui::errors::slippage_exceeded!());
 
@@ -261,7 +263,7 @@ public fun claim_blast_sui(
         self.rate_sui,
         self.rate_pool_tokens,
     );
-    let blast_coin = self.blast_cap.mint(blast_out, ctx);
+    let blast_coin = self.treasury_cap_mut<BLAST_SUI>().mint(blast_out, ctx);
     self.stake_idle(system_state, ctx);
 
     events::blast_sui_deposit_claimed(
@@ -322,7 +324,7 @@ public fun redeem_blast_sui(
     let (gross_sui, fee_sui, net_sui) = math::blast_redemption_quote(
         shares,
         self.blast_custody.assets(),
-        self.blast_cap.total_supply(),
+        self.treasury_cap<BLAST_SUI>().total_supply(),
         self.redeem_fee_bps,
     );
     assert!(net_sui > 0, blast_sui::errors::zero_sui_after_fee!());
@@ -335,7 +337,7 @@ public fun redeem_blast_sui(
         self.rate_pool_tokens,
         ctx,
     );
-    self.blast_cap.burn(blast_in);
+    self.treasury_cap_mut<BLAST_SUI>().burn(blast_in);
     self.stake_idle(system_state, ctx);
 
     events::blast_sui_redeemed(shares, gross_sui, fee_sui, net_sui, self.custody());
@@ -381,6 +383,25 @@ public fun sync(
 }
 
 // === Private Functions ===
+
+fun add_treasury_cap<CoinType>(
+    self: &mut Vault,
+    treasury_cap: TreasuryCap<CoinType>,
+) {
+    dynamic_object_field::add(
+        &mut self.id,
+        TreasuryKey<CoinType>(),
+        treasury_cap,
+    );
+}
+
+fun treasury_cap<CoinType>(self: &Vault): &TreasuryCap<CoinType> {
+    dynamic_object_field::borrow(&self.id, TreasuryKey<CoinType>())
+}
+
+fun treasury_cap_mut<CoinType>(self: &mut Vault): &mut TreasuryCap<CoinType> {
+    dynamic_object_field::borrow_mut(&mut self.id, TreasuryKey<CoinType>())
+}
 
 /// Brings both ledgers to the current epoch with exactly one exchange-rate table lookup.
 ///
@@ -524,7 +545,7 @@ fun exchange_rate_at(
 /// principal never moves.
 fun sweep_fun_yield(self: &mut Vault, ctx: &mut TxContext) {
     let reserve = constants::fun_rounding_reserve_mist!();
-    let retained = self.fun_cap.total_supply() + reserve;
+    let retained = self.treasury_cap<FUN_SUI>().total_supply() + reserve;
     let assets = self.fun_custody.assets();
     if (assets <= retained) return;
 
@@ -587,7 +608,10 @@ fun protect_fun_exit_liquidity(
     system_state: &mut SuiSystemState,
     ctx: &mut TxContext,
 ) {
-    if (self.fun_cap.total_supply() == 0 || self.fun_custody.active_pool_tokens() == 0) return;
+    if (
+        self.treasury_cap<FUN_SUI>().total_supply() == 0
+            || self.fun_custody.active_pool_tokens() == 0
+    ) return;
 
     if (self.fun_backing_buffer() > constants::fun_exit_low_water_mist!()) return;
 
@@ -601,7 +625,7 @@ fun assert_accepts_mints(self: &Vault) {
 /// Fun custody's conservative assets must cover the exact 1:1 funSUI claim.
 fun assert_fun_backed(self: &Vault) {
     assert!(
-        self.fun_custody.assets() >= self.fun_cap.total_supply(),
+        self.fun_custody.assets() >= self.treasury_cap<FUN_SUI>().total_supply(),
         blast_sui::errors::fun_backing_below_supply!(),
     );
 }
@@ -609,7 +633,7 @@ fun assert_fun_backed(self: &Vault) {
 fun fun_backing_buffer(self: &Vault): u64 {
     self.fun_custody
         .assets()
-        .saturating_sub(self.fun_cap.total_supply())
+        .saturating_sub(self.treasury_cap<FUN_SUI>().total_supply())
 }
 
 fun custody(self: &Vault): events::VaultCustody {
@@ -617,8 +641,8 @@ fun custody(self: &Vault): events::VaultCustody {
         self.fun_custody.pool_custody(),
         self.blast_custody.pool_custody(),
         events::exchange_rate(self.rate_epoch, self.rate_sui, self.rate_pool_tokens),
-        self.fun_cap.total_supply(),
-        self.blast_cap.total_supply(),
+        self.treasury_cap<FUN_SUI>().total_supply(),
+        self.treasury_cap<BLAST_SUI>().total_supply(),
     )
 }
 
@@ -626,12 +650,12 @@ fun custody(self: &Vault): events::VaultCustody {
 
 #[test_only]
 public fun fun_supply_for_testing(self: &Vault): u64 {
-    self.fun_cap.total_supply()
+    self.treasury_cap<FUN_SUI>().total_supply()
 }
 
 #[test_only]
 public fun blast_supply_for_testing(self: &Vault): u64 {
-    self.blast_cap.total_supply()
+    self.treasury_cap<BLAST_SUI>().total_supply()
 }
 
 #[test_only]

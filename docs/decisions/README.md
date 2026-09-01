@@ -107,8 +107,9 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0059](0059-no-sender-or-unchanged-state-in-event-payloads.md) | No transaction sender or unchanged state in event payloads | **accepted** |
 | [0060](0060-blastsui-metadata-cap-custody.md) | Retain currency and receipt update capabilities in package-admin custody | **accepted** |
 | [0061](0061-blastsui-routine-admin-and-composable-package-custody.md) | Routine administration and composable package custody for blastSUI | **accepted** |
+| [0065](0065-discoverable-blastsui-treasury-caps.md) | Discoverable blastSUI treasury-cap custody | **accepted** |
 
-ADRs 0013–0036 and 0038–0061 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
+ADRs 0013–0036, 0038–0061, and 0065 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -265,6 +266,11 @@ root rotation. Live `AdminCap` sign-in produces the witness for routine fee and
 package operations. Package custody now uses the composable
 construct–attach–finalize lifecycle, with exact-type dynamic object fields for
 current and future child capabilities.
+
+ADR 0065 amends 0053 before the first blastSUI deployment. Both treasury caps
+enter permanent, type-keyed dynamic object field custody under the vault, so
+standard Sui infrastructure can read their canonical supplies without exposing
+mint or burn authority outside vault transitions.
 
 ## Open premises
 

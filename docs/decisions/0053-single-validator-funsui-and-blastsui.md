@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-08-29
-- Amended by: [0056](0056-bounded-pending-stake-vector.md), [0060](0060-blastsui-metadata-cap-custody.md), [0061](0061-blastsui-routine-admin-and-composable-package-custody.md)
+- Amended by: [0056](0056-bounded-pending-stake-vector.md), [0060](0060-blastsui-metadata-cap-custody.md), [0061](0061-blastsui-routine-admin-and-composable-package-custody.md), [0065](0065-discoverable-blastsui-treasury-caps.md)
 
 ## Sources
 
@@ -52,7 +52,8 @@ The package creates two unrestricted nine-decimal currencies:
   receives the native staking rewards produced by blast custody and by the SUI
   backing `funSUI`.
 
-One shared `Vault` owns both treasury caps and two separate custody ledgers,
+One shared `Vault` owns both treasury caps as discoverable dynamic object fields
+under ADR 0065 and owns two separate custody ledgers,
 `fun` and `blast`. Each ledger holds a liquid `Balance<SUI>`, up to three
 activation-ordered pending `StakedSui` receipts, at most one active
 `FungibleStakedSui`, and the conservative SUI valuation of that active position.

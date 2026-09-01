@@ -41,8 +41,9 @@ It depends only on the pinned `SuiSystem` framework package and must not import
   conservative floor valuation of the active tokens at the rate the vault
   applies. Same-epoch requests join; a full queue leaves excess SUI liquid
   instead of aborting. A ledger never reads the pool itself.
-- `vault.move` — one shared `Vault` owning both treasury caps, the `fun` and
-  `blast` ledgers, the immutable pool ID, the cached pool
+- `vault.move` — one shared `Vault` owning both treasury caps as type-keyed
+  dynamic object fields, the `fun` and `blast` ledgers, the immutable pool ID,
+  the cached pool
   exchange-rate entry (`rate_epoch`, `rate_sui`, `rate_pool_tokens`), the live
   `redeem_fee_bps`, and the unwind flag. `create` locks the whole seed
   `blastSUI` coin at `@0x0`.
