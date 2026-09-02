@@ -9,12 +9,12 @@ module blast_fun_migrators::bluefin;
 use blast_fun::{
     acl::AdminWitness,
     launch::Launch,
+    migration_math,
     package_version::PackageVersion,
     runtime_config::RuntimeConfig,
 };
 use blast_fun_migrators::{
     events,
-    migration_math,
     vault::{Self, LpVault},
     venue_config::VenueConfig,
 };
@@ -53,23 +53,23 @@ const MAX_SQRT_PRICE_X64: u128 = 79_226_673_515_401_279_992_447_579_055;
 // === Errors ===
 
 #[error(code = 0)]
-const EInvalidTickSpacing: vector<u8> = b"Bluefin tick spacing must be greater than zero.";
+const EInvalidTickSpacing: vector<u8> = b"Tick spacing must be greater than zero.";
 #[error(code = 1)]
-const EUnsupportedCreationFee: vector<u8> = b"Bluefin pool creation fee configuration is unsupported.";
+const EUnsupportedCreationFee: vector<u8> = b"Quote type must support Bluefin pool creation fees.";
 #[error(code = 2)]
 const ENonzeroCreationFee: vector<u8> = b"Bluefin pool creation fee must be zero.";
 #[error(code = 3)]
-const EInvalidSqrtPrice: vector<u8> = b"Bluefin initial square-root price is outside the supported range.";
+const EInvalidSqrtPrice: vector<u8> = b"Opening sqrt price must be within the pinned Bluefin bounds.";
 #[error(code = 4)]
-const EPositionPoolMismatch: vector<u8> = b"Bluefin position does not belong to the selected pool.";
+const EPositionPoolMismatch: vector<u8> = b"Pool, vault, and position identifiers must match.";
 #[error(code = 5)]
-const EZeroPositionLiquidity: vector<u8> = b"Bluefin position liquidity must be greater than zero.";
+const EZeroPositionLiquidity: vector<u8> = b"Position principal liquidity must be greater than zero.";
 #[error(code = 6)]
-const EPositionLiquidityChanged: vector<u8> = b"Bluefin fee collection must not change position liquidity.";
+const EPositionLiquidityChanged: vector<u8> = b"Fee collection must not change position principal liquidity.";
 #[error(code = 7)]
-const EVenueAmountMismatch: vector<u8> = b"Bluefin reported amounts do not match the consumed balances.";
+const EVenueAmountMismatch: vector<u8> = b"Venue-reported usage must equal each source balance minus its residual.";
 #[error(code = 8)]
-const EMemeBelowQuote: vector<u8> = b"Migration Meme balance must be at least the Quote balance.";
+const EMemeBelowQuote: vector<u8> = b"Meme atom balance must not be below Quote for a Meme-fixed seed.";
 
 // === Public Structs ===
 
@@ -110,7 +110,7 @@ public fun migrate<Meme, Quote>(
     let coin_b_url = quote_currency.icon_url().into_bytes();
     let creation_fee = zero_creation_fee<Quote>(bluefin_config);
 
-    let payload = launch.migrate<Meme, Quote, Witness>(
+    let payload = launch.migrate<_, _, Witness>(
         package_version,
         meme_currency,
         ctx,
@@ -193,7 +193,7 @@ public fun collect_fees<Meme, Quote>(
 
     let venue = Venue();
     let position =
-        self.position_mut<Meme, Quote, Venue, Position>(&venue);
+        self.position_mut<_, _, _, Position>(&venue);
     let position_id = object::id(position);
     assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
     let liquidity_before = position.liquidity();
@@ -216,7 +216,6 @@ public fun collect_fees<Meme, Quote>(
         position_id,
         meme_fee,
         quote_fee,
-        liquidity_before,
         liquidity_after,
         runtime_config,
         ctx,
@@ -264,7 +263,7 @@ fun zero_creation_fee<Quote>(
     assert!(supported, EUnsupportedCreationFee);
     assert!(fee_amount == 0, ENonzeroCreationFee);
 
-    balance::zero<Quote>()
+    balance::zero()
 }
 
 fun pool_name<CoinA, CoinB>(

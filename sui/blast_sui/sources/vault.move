@@ -107,8 +107,10 @@ public fun create(
     self.add_treasury_cap(blast_cap);
     self.fun_custody.deposit(fun_reserve);
     self.blast_custody.deposit(seed);
-    self.blast_custody.stake_idle(system_state, validator, &pool_id, 0, ctx);
+    let vault_pool_id = self.pool_id;
+    self.blast_custody.stake_idle(system_state, validator, &vault_pool_id, 0, ctx);
     let locked_coin = self.treasury_cap_mut<BLAST_SUI>().mint(bootstrap_sui, ctx);
+    let locked_blast_sui = locked_coin.value();
 
     events::vault_created(
         self.id.to_inner(),
@@ -116,7 +118,7 @@ public fun create(
         pool_id,
         fun_reserve_sui,
         bootstrap_sui,
-        locked_coin.value(),
+        locked_blast_sui,
         self.redeem_fee_bps,
         self.custody(),
     );
@@ -189,14 +191,14 @@ public fun request_blast_sui(
     ctx: &mut TxContext,
 ): BlastSuiDepositReceipt {
     package_version.assert_current();
+    let amount = sui_in.value();
     assert!(
-        sui_in.value() >= constants::native_min_stake_mist!(),
+        amount >= constants::native_min_stake_mist!(),
         blast_sui::errors::blast_deposit_below_native_minimum!(),
     );
     self.refresh(system_state, ctx);
     self.assert_accepts_mints();
 
-    // Resolve before the mutable native call; nested shared and mutable system-state borrows conflict.
     let validator = system_state.validator_address_by_pool_id(&self.pool_id);
     let staked_sui = system_state.request_add_stake_non_entry(sui_in, validator, ctx);
     assert!(
@@ -420,34 +422,13 @@ fun refresh(self: &mut Vault, system_state: &mut SuiSystemState, ctx: &mut TxCon
 fun refresh_native(self: &mut Vault, system_state: &mut SuiSystemState, ctx: &mut TxContext) {
     let validator = system_state.validator_address_by_pool_id(&self.pool_id);
     if (!system_state.active_validator_addresses_ref().contains(&validator)) {
-        self.unwind_inactive_validator!(system_state, ctx);
-        return
+        self.unwind_native(system_state, ctx);
+    } else {
+        self.refresh_active_native(system_state, ctx);
     };
-
-    let epoch = ctx.epoch();
-    let (is_current, rate_sui, rate_pool_tokens) =
-        system_state.exchange_rate_at(&self.pool_id, epoch);
-    self.apply_rate_and_revalue!(
-        system_state,
-        epoch,
-        is_current,
-        rate_sui,
-        rate_pool_tokens,
-        ctx,
-    );
-    if (is_current) self.resolve_arrived_fun_receipts!(system_state, epoch, ctx);
 }
 
-/// Enters the terminal unwind mode after the validator address leaves the active set.
-macro fun unwind_inactive_validator(
-    $self: &mut Vault,
-    $system_state: &mut SuiSystemState,
-    $ctx: &mut TxContext,
-) {
-    let self = $self;
-    let system_state = $system_state;
-    let ctx = $ctx;
-
+fun unwind_native(self: &mut Vault, system_state: &mut SuiSystemState, ctx: &mut TxContext) {
     self.fun_custody.unwind(system_state, ctx);
     self.blast_custody.unwind(system_state, ctx);
     self.unwind_only = true;
@@ -455,58 +436,49 @@ macro fun unwind_inactive_validator(
     events::native_stake_unwound(self.custody());
 }
 
-/// Updates a current rate, activates blast receipts, and revalues both native ledgers.
-macro fun apply_rate_and_revalue(
-    $self: &mut Vault,
-    $system_state: &mut SuiSystemState,
-    $epoch: u64,
-    $is_current: bool,
-    $rate_sui: u64,
-    $rate_pool_tokens: u64,
-    $ctx: &mut TxContext,
+fun refresh_active_native(
+    self: &mut Vault,
+    system_state: &mut SuiSystemState,
+    ctx: &mut TxContext,
 ) {
-    let self = $self;
-    let system_state = $system_state;
-    let epoch = $epoch;
-    let is_current = $is_current;
-    let rate_sui = $rate_sui;
-    let rate_pool_tokens = $rate_pool_tokens;
-    let ctx = $ctx;
-
+    let epoch = ctx.epoch();
+    let (is_current, rate_sui, rate_pool_tokens) =
+        system_state.exchange_rate_at(&self.pool_id, epoch);
     if (is_current) {
         self.rate_epoch = epoch;
         self.rate_sui = rate_sui;
         self.rate_pool_tokens = rate_pool_tokens;
-
-        // A current entry proves the immutable pool itself is active. Address
-        // membership alone is insufficient because an address can return with
-        // a different pool.
-        self.blast_custody.activate_pending(system_state, ctx);
     };
+
+    // After the active-address check in `refresh_native`, a current entry proves
+    // that the immutable pool itself is active. Address membership alone is not
+    // enough because an address can return with a different pool.
+    if (is_current) self.blast_custody.activate_pending(system_state, ctx);
     self.fun_custody.revalue(self.rate_sui, self.rate_pool_tokens);
     self.blast_custody.revalue(self.rate_sui, self.rate_pool_tokens);
+
+    if (is_current) self.resolve_fun_receipts(system_state, epoch, ctx);
 }
 
 /// Resolves arrived fun receipts oldest-first while preserving the exit buffer.
-macro fun resolve_arrived_fun_receipts(
-    $self: &mut Vault,
-    $system_state: &mut SuiSystemState,
-    $epoch: u64,
-    $ctx: &mut TxContext,
+///
+/// The pending-ledger cap bounds the loop. It stops at the first retained
+/// receipt because later receipts activate no earlier.
+fun resolve_fun_receipts(
+    self: &mut Vault,
+    system_state: &mut SuiSystemState,
+    epoch: u64,
+    ctx: &mut TxContext,
 ) {
-    let self = $self;
-    let system_state = $system_state;
-    let epoch = $epoch;
-    let ctx = $ctx;
     let loss_bound = math::fun_conversion_loss_bound_up(
         self.rate_sui,
         self.rate_pool_tokens,
     );
-
     loop {
         let fun_activation_epoch = self.fun_custody.oldest_pending_activation_epoch();
-        if (fun_activation_epoch.is_none() || *fun_activation_epoch.borrow() > epoch) break;
-
+        if (fun_activation_epoch.is_none() || *fun_activation_epoch.borrow() > epoch) {
+            break
+        };
         let activation_epoch = *fun_activation_epoch.borrow();
         let buffer = self.fun_backing_buffer();
         if (
@@ -516,8 +488,9 @@ macro fun resolve_arrived_fun_receipts(
             self.fun_custody.activate_oldest_pending(system_state, ctx);
             self.fun_custody.revalue(self.rate_sui, self.rate_pool_tokens);
         } else if (activation_epoch < epoch) {
-            // Waiting past activation avoids forfeiting the activation epoch's
-            // reward or any reward deferred during safe mode.
+            // Withdrawing during the activation epoch forfeits that epoch's
+            // reward. Withdrawing during safe mode can also forfeit deferred
+            // rewards. Recover only after a full epoch with a current rate.
             self.fun_custody.realize_oldest_pending(system_state, ctx);
         } else break;
     };
@@ -608,10 +581,8 @@ fun protect_fun_exit_liquidity(
     system_state: &mut SuiSystemState,
     ctx: &mut TxContext,
 ) {
-    if (
-        self.treasury_cap<FUN_SUI>().total_supply() == 0
-            || self.fun_custody.active_pool_tokens() == 0
-    ) return;
+    let fun_supply = self.treasury_cap<FUN_SUI>().total_supply();
+    if (fun_supply == 0 || self.fun_custody.active_pool_tokens() == 0) return;
 
     if (self.fun_backing_buffer() > constants::fun_exit_low_water_mist!()) return;
 

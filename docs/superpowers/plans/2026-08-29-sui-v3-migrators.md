@@ -29,8 +29,8 @@
 ### Task 1: Core migration price arithmetic
 
 **Files:**
-- Create: `sui/migrators/sources/migration_math.move`
-- Create: `sui/migrators/tests/migration_math_tests.move`
+- Create: `sui/launchpad/sources/migration_math.move`
+- Create: `sui/launchpad/tests/migration_math_tests.move`
 - Modify: `sui/launchpad/sources/lib/errors.move`
 - Modify: `docs/error-codes.md`
 
@@ -46,9 +46,9 @@ Add focused tests for `1:1 -> 2^64`, both reciprocal type orders, the committed 
 
 - [x] **Step 2: Run the focused suite and observe RED**
 
-Run: `cd sui/migrators && sui move test migration_math_tests`
+Run: `cd sui/launchpad && sui move test migration_math_tests`
 
-Expected: compilation fails because `blast_fun_migrators::migration_math` does not exist.
+Expected: compilation fails because `blast_fun::migration_math` does not exist.
 
 - [x] **Step 3: Add append-only errors and bounded `u256` math**
 
@@ -82,7 +82,7 @@ Use a fixed upper-exclusive `2^96` binary-search bound because the numerator and
 
 - [x] **Step 4: Run RED-to-GREEN verification**
 
-Run: `cd sui/migrators && sui move test migration_math_tests`
+Run: `cd sui/launchpad && sui move test migration_math_tests`
 
 Expected: all migration-math tests pass.
 
@@ -95,7 +95,7 @@ Expected: all existing and new tests pass without warnings.
 - [x] **Step 6: Commit only Task 1 files**
 
 ```bash
-git add sui/migrators/sources/migration_math.move sui/migrators/tests/migration_math_tests.move docs/error-codes.md
+git add sui/launchpad/sources/migration_math.move sui/launchpad/tests/migration_math_tests.move sui/launchpad/sources/lib/errors.move docs/error-codes.md
 git commit -m "feat(sui): add exact migration price math"
 ```
 

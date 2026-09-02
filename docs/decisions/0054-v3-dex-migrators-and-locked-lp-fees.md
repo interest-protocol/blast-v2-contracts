@@ -1,5 +1,8 @@
 # 0054: V3 DEX migrators, exact seed pricing, and locked LP fees
 
+> Amended by [ADR 0067](0067-retire-full-sail-migrator.md), which retires all
+> Full Sail routes and dependencies before the first recorded production release.
+
 - Status: accepted
 - Date: 2026-08-29
 - Amends: [0010](0010-migration-and-venue-adapters.md),
@@ -163,9 +166,10 @@ production package must therefore pass every venue's published-package ABI and
 dev-inspect checks and then destroy its single `UpgradeCap`. No deployment may be
 described as permanently locked before this irreversible immutability step.
 
-Fee collection records venue liquidity immediately before and after the
-external collection call and aborts unless they are equal. New Meme and Quote
-fees are split using the current global `protocol_fee_share_bps`. Protocol
+Fee collection reads venue liquidity immediately before and after the external
+collection call and aborts unless they are equal. The completed event records
+only the verified final principal value. New Meme and Quote fees are split
+using the current global `protocol_fee_share_bps`. Protocol
 amounts round up and creator amounts receive the exact remainder, matching
 bonding-curve trade fees. Later changes affect only later collections; already
 accrued ownership never changes.

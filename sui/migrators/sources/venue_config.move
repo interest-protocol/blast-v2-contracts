@@ -24,9 +24,9 @@ const EInvalidTickSpacing: vector<u8> = b"Venue tick spacing must be greater tha
 #[error(code = 1)]
 const EInvalidFeeRate: vector<u8> = b"Venue fee rate must be greater than zero.";
 #[error(code = 2)]
-const EUnchangedTier: vector<u8> = b"Venue tier must differ from its current value.";
+const EUnchangedTier: vector<u8> = b"Venue tier must differ from its current pinned values.";
 #[error(code = 3)]
-const EVenueTierUnset: vector<u8> = b"Venue tier is not configured.";
+const EVenueTierUnset: vector<u8> = b"Venue tier must be pinned before an override-only read.";
 
 // === Public Structs ===
 

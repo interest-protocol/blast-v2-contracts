@@ -11,9 +11,6 @@ mmt_v3 = { git = "https://github.com/mmt-finance/mmt-contract-interface.git", su
 CetusClmm = { local = "interfaces/cetus" }
 # Normalized from turbos-finance/turbos-sui-move-interface@cff693265bfc41c7de2233afe31c9d7428adc9e1.
 TurbosCLMM = { local = "interfaces/turbos" }
-# Normalized from Full Sail mainnet revision 4 and its separate IntegerMate package.
-FullSailCLMM = { local = "interfaces/fullsail" }
-FullSailIntegerMate = { local = "interfaces/fullsail_integer_mate" }
 # Normalized from Aftermath AMM mainnet revision 3.
 AftermathAmm = { local = "interfaces/aftermath" }
 # Normalized from Aftermath DAO-fee pools mainnet revision 2.

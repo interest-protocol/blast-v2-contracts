@@ -471,22 +471,78 @@ if [[ ! -f sources/lib/bps.move ]] \
   failures=$((failures + 1))
 fi
 
+migration_math_facts="$(move_facts sources/migration_math.move)"
+migration_math_source="$(move_normalized_source <<<"$migration_math_facts")"
+
 # Every other module must delegate the inclusive range to bps::new. Both operand
 # orders of the inclusive comparison are rejected, so a reversed spelling cannot
-# reintroduce duplicate validation, while a strictly-below policy check such as
-# the graduation partition sum stays allowed. The scan reads comment-free
-# normalized text, so formatting and comments cannot hide or fake it.
+# reintroduce the duplicate validation, while a strictly-below policy check such
+# as the graduation partition sum stays allowed. The scan reads comment-free
+# normalized text, so formatting and comments cannot hide or fake it, and
+# migration_math is examined separately below.
 for move_file in "${source_files[@]}"; do
   case "$move_file" in
-    sources/lib/bps.move) continue ;;
+    sources/lib/bps.move | sources/migration_math.move) continue ;;
   esac
 
   if move_facts "$move_file" | move_normalized_source \
     | rg -q '<= *constants::basis_points_denominator|constants::basis_points_denominator!\(\) *>='; then
-    echo "${move_file}: the inclusive basis-points range must be validated only by bps::new; owners may add stricter policy checks." >&2
+    echo "${move_file}: the inclusive basis-points range must be validated only by bps::new and the one migration_math rate seam; owners may add stricter policy checks." >&2
     failures=$((failures + 1))
   fi
 done
+
+if [[ ! -f sources/migration_math.move ]] \
+  || [[ "$(move_production_functions <<<"$migration_math_facts")" \
+    != 'assert_price_within_bps:public:0 assert_residual_within_bps:public:0 assert_valid_bps:private:0 integer_sqrt:private:0 maximum_residual_amount:private:0 minimum_utilized_amount:public:0 ratio_q128:private:0 sqrt_price_x64:public:0 ' ]] \
+  || [[ "$(move_production_body assert_valid_bps <<<"$migration_math_facts")" \
+    != 'assert!( value <= constants::basis_points_denominator!(), blast_fun::errors::invalid_bps!(), );' ]] \
+  || rg -q '\b(Bps|bps::|UID|key|Balance|Coin|TxContext|transfer::|events::|RuntimeConfig)\b' \
+    <<<"$migration_math_source"; then
+  echo 'migration_math.move must stay a pure price and utilization module with exactly its four public entries, four private helpers, and one inclusive-bps validator.' >&2
+  failures=$((failures + 1))
+fi
+
+# The validator only protects the module when every rate-taking entry reaches it,
+# so each public path is bound to the helper it must call, and no other body may
+# compare against the denominator.
+migration_math_unbound="$(awk -F'\t' '
+  $1 == "FN" && $6 == 0 && $2 != "assert_valid_bps" \
+    && ($10 ~ /<= *constants::basis_points_denominator/ \
+      || $10 ~ /constants::basis_points_denominator!\(\) *>=/) {
+    print "  " $2 " repeats the inclusive basis-points range outside the one validator"
+  }
+  $1 == "FN" && $2 == "assert_price_within_bps" && $6 == 0 \
+    && $10 !~ /^assert_valid_bps\(max_deviation_bps\);/ {
+    print "  assert_price_within_bps must validate max_deviation_bps before using it"
+  }
+  $1 == "FN" && $2 == "maximum_residual_amount" && $6 == 0 \
+    && $10 !~ /^assert_valid_bps\(max_residual_bps\);/ {
+    print "  maximum_residual_amount must validate max_residual_bps before using it"
+  }
+  $1 == "FN" && $2 == "assert_residual_within_bps" && $6 == 0 \
+    && $10 !~ /maximum_residual_amount\(/ {
+    print "  assert_residual_within_bps must derive its allowance from maximum_residual_amount"
+  }
+  $1 == "FN" && $2 == "minimum_utilized_amount" && $6 == 0 \
+    && $10 !~ /maximum_residual_amount\(/ {
+    print "  minimum_utilized_amount must derive its allowance from maximum_residual_amount"
+  }
+  $1 == "FN" && $2 == "sqrt_price_x64" && $6 == 0 \
+    && $10 !~ /integer_sqrt\(ratio_q128\(/ {
+    print "  sqrt_price_x64 must square-root the exact Q128 ratio"
+  }
+  $1 == "FN" && $2 == "ratio_q128" && $6 == 0 \
+    && $10 !~ /^assert!\( meme_amount > 0 && quote_amount > 0,/ {
+    print "  ratio_q128 must reject a zero seed balance before dividing"
+  }
+' <<<"$migration_math_facts")"
+
+if [[ -n "$migration_math_unbound" ]]; then
+  printf '%s\n' "$migration_math_unbound"
+  echo 'Every migration-math rate path must reach its approved validator and helper.' >&2
+  failures=$((failures + 1))
+fi
 
 if rg -n '^[[:space:]]+[a-z_]+_bps: Bps,' sources/lib/events.move; then
   echo 'Replay events must keep basis-points facts as primitive u64 fields.' >&2
@@ -520,16 +576,6 @@ if rg -U -n 'fun init\([^)]*\) \{[^}]*events::' sources --glob '*.move' \
   || rg -n '\b(ProtocolAuthorityCreated|PackageVersionCreated|RuntimeConfigCreated|LaunchConfigCreated)\b' \
     sources tests; then
   echo 'Package initialization must stay eventless: native publication effects are the discovery fact.' >&2
-  failures=$((failures + 1))
-fi
-
-# Native transaction metadata already carries the sender of every transaction, so
-# no payload may restate it under an actor name, and no call site may pass it into
-# an event. See ADR 0059.
-if rg -n '^[[:space:]]+(buyer|seller|claimant|launcher|migrator|collector|caller|funder):' \
-    sources/lib/events.move \
-  || rg -U -n 'events::[a-z_]+(<[^>]*>)?\([^;]*ctx\.sender\(\)' sources --glob '*.move'; then
-  echo 'Event payloads must not restate the transaction sender under an actor name.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1079,7 +1125,7 @@ launch_config_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources
 
 if [[ ! -f sources/launch_config.move ]] \
   || ! rg -U -q \
-    'public struct LaunchConfig has key \{\s*id: UID,\s*quotes: VecMap<TypeName, QuoteParameters>,\s*quote_fee_bps: Bps,\s*meme_fee_bps: Bps,\s*quote_migration_fee_bps: Bps,\s*protocol_meme_graduation_fee_bps: Bps,\s*meme_liquidity_provision_bps: Bps,\s*migration_witnesses: VecSet<TypeName>,\s*\}' \
+    'public struct LaunchConfig has key \{\s*id: UID,\s*quotes: Table<TypeName, QuoteParameters>,\s*quote_fee_bps: Bps,\s*meme_fee_bps: Bps,\s*quote_migration_fee_bps: Bps,\s*protocol_meme_graduation_fee_bps: Bps,\s*meme_liquidity_provision_bps: Bps,\s*migration_witnesses: VecSet<TypeName>,\s*\}' \
     sources/launch_config.move \
   || ! rg -U -q \
     'public struct QuoteParameters has copy, drop, store \{\s*virtual_quote: u64,\s*migration_quote_target: u64,\s*\}' \
@@ -1100,13 +1146,11 @@ if [[ ! -f sources/launch_config.move ]] \
   || ! rg -U -q \
     'public\(package\) fun snapshot_for_launch<Quote, MigrationWitness: drop>\(\s*self: &LaunchConfig,\s*\): \(u64, u64, Bps, Bps, Bps, Bps, Bps, TypeName\)' \
     sources/launch_config.move; then
-  echo 'launch_config.move must own only bounded future-launch policy and its AdminWitness-gated mutations.' >&2
+  echo 'launch_config.move must own only future-launch policy and its AdminWitness-gated mutations.' >&2
   failures=$((failures + 1))
 fi
 
-if ! rg -U -q 'macro public\(package\) fun max_quote_assets\(\): u64 \{\s*16\s*\}' \
-  sources/lib/constants.move \
-  || ! rg -U -q 'macro public\(package\) fun max_migration_witnesses\(\): u64 \{\s*16\s*\}' \
+if ! rg -U -q 'macro public\(package\) fun max_migration_witnesses\(\): u64 \{\s*16\s*\}' \
     sources/lib/constants.move \
   || ! rg -U -q 'macro public\(package\) fun max_quote_migration_fee_bps\(\): u64 \{\s*500\s*\}' \
     sources/lib/constants.move \
@@ -1120,18 +1164,20 @@ if ! rg -U -q 'macro public\(package\) fun max_quote_assets\(\): u64 \{\s*16\s*\
   || ! rg -Fq 'virtual_quote > 0' sources/launch_config.move \
   || ! rg -Fq 'quote_fee_bps <= constants::max_launch_fee_bps!()' sources/launch_config.move \
   || ! rg -Fq 'meme_fee_bps <= constants::max_launch_fee_bps!()' sources/launch_config.move \
-  || ! rg -Fq 'self.quotes.length() < constants::max_quote_assets!()' \
-    sources/launch_config.move \
+  || ! rg -Fq 'quotes: table::new(ctx)' sources/launch_config.move \
+  || ! rg -Fq 'self.quotes.add(quote, QuoteParameters {' sources/launch_config.move \
+  || rg -n '\b(VecMap|vec_map|max_quote_assets|quote_capacity_reached)\b' \
+    sources/launch_config.move sources/lib/constants.move sources/lib/errors.move \
   || ! rg -Fq 'self.migration_witnesses.length()' sources/launch_config.move \
   || ! rg -U -q \
-    'quote_fee_bps: bps::new\(0\),\s*meme_fee_bps: bps::new\(0\),\s*quote_migration_fee_bps: bps::new\(0\),\s*protocol_meme_graduation_fee_bps: bps::new\(0\),\s*meme_liquidity_provision_bps: bps::new\(0\),\s*migration_witnesses: vec_set::empty\(\)' \
+    'quotes: table::new\(ctx\),\s*quote_fee_bps: bps::new\(0\),\s*meme_fee_bps: bps::new\(0\),\s*quote_migration_fee_bps: bps::new\(0\),\s*protocol_meme_graduation_fee_bps: bps::new\(0\),\s*meme_liquidity_provision_bps: bps::new\(0\),\s*migration_witnesses: vec_set::empty\(\)' \
     sources/launch_config.move \
   || ! rg -U -q \
     'protocol_meme_graduation_fee_bps \+ meme_liquidity_provision_bps\s*< constants::basis_points_denominator!\(\)' \
     sources/launch_config.move \
   || ! rg -Fq 'self.meme_liquidity_provision_bps.value() > 0' sources/launch_config.move \
   || rg -n '\bCurrency<Quote>\b|coin_registry' <<<"$launch_config_production"; then
-  echo 'Launch policy must use approved ceilings, original type identities, fixed bounds, zero defaults, and no Coin Registry dependency.' >&2
+  echo 'Launch policy must use Table-backed quotes, approved economic ceilings, original type identities, zero defaults, a bounded witness registry, and no Coin Registry dependency.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1139,7 +1185,7 @@ if ! rg -U -q \
     'fun init\(ctx: &mut TxContext\) \{\s*transfer::share_object\(new\(ctx\)\);\s*\}' \
     sources/launch_config.move \
   || rg -q '\bLaunchConfigCreated\b' sources/lib/events.move sources/launch_config.move; then
-  echo 'Launch-config initialization must share the one bounded singleton and emit no creation event.' >&2
+  echo 'Launch-config initialization must share the one cold-policy singleton and emit no creation event.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1312,7 +1358,7 @@ launch_created_event_payload="$(sed -n \
   sources/lib/events.move)"
 
 if [[ -z "$launch_created_event_payload" ]] \
-  || [[ "$(rg -c '^[[:space:]]+[a-z_]+:' <<<"$launch_created_event_payload")" != 24 ]] \
+  || [[ "$(rg -c '^[[:space:]]+[a-z_]+:' <<<"$launch_created_event_payload")" != 25 ]] \
   || ! rg -q '^[[:space:]]+ticket_id: ID,' <<<"$launch_created_event_payload" \
   || ! rg -q '^[[:space:]]+metadata_cap_id: ID,' <<<"$launch_created_event_payload" \
   || [[ "$(rg -c '^[[:space:]]+(protocol|creator)_(meme|quote)_trade_fees: u64,' <<<"$launch_created_event_payload")" != 4 ]] \

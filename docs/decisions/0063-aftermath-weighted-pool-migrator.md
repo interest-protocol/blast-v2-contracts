@@ -1,5 +1,10 @@
 # 0063: Aftermath weighted-pool migration with permanently locked LP tokens
 
+> Amended by [ADR 0066](0066-aftermath-dao-fee-pool.md) and
+> [ADR 0067](0067-retire-full-sail-migrator.md). ADR 0066 supersedes the
+> fee-policy and no-collection portions. ADR 0067 retires Full Sail, leaving
+> four CLMM adapters beside Aftermath.
+
 - Status: **accepted**
 - Date: 2026-08-31
 - Amends: [0054](0054-v3-dex-migrators-and-locked-lp-fees.md) and
@@ -82,11 +87,12 @@ the returned state before sharing the pool. Success requires:
 - total LP supply equal to the returned liquid LP plus Aftermath's exact
   `1_000` minimum permanently illiquid LP amount.
 
-Any mismatch aborts the whole Sui transaction. The adapter then attaches the
-entire returned `Coin<Lp>` to the launch's `LpVault` as the sealed Aftermath
-position and stores zero migration residuals. No function can remove, burn,
-split, transfer, or borrow that coin by value. The pool is shared only after
-the vault is constructed.
+Any mismatch aborts the whole Sui transaction. The adapter converts the entire
+returned `Coin<Lp>` into a `Balance<Lp>` and attaches it to the launch's
+`LpVault` as the sealed Aftermath position. It stores zero migration residuals.
+The conversion deletes only the coin wrapper UID and preserves every LP unit.
+No function can remove, burn, split, transfer, or borrow that balance by value.
+The pool is shared only after the vault is constructed.
 
 Aftermath gets dedicated `AftermathPolicyUpdated` and
 `AftermathMigrationCompleted` events. The policy event records complete old and

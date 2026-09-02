@@ -1,4 +1,3 @@
-/// Replay-complete event payloads for blastSUI state transitions.
 module blast_sui::events;
 
 use std::type_name::TypeName;
@@ -97,6 +96,9 @@ public struct PackageAdminCreated has copy, drop {
 
 /// Emitted after the super-admin authorizes an exact package digest.
 public struct UpgradeAuthorized has copy, drop {
+    package_id: ID,
+    package_version: u64,
+    policy: u8,
     digest: vector<u8>,
 }
 
@@ -214,6 +216,7 @@ public struct NativeStakeUnwound has copy, drop {
 
 // === Package Functions ===
 
+/// Constructs one pool-custody snapshot without emitting it.
 public(package) fun pool_custody(
     liquid_sui: u64,
     pending_sui: u64,
@@ -223,10 +226,12 @@ public(package) fun pool_custody(
     PoolCustody { liquid_sui, pending_sui, active_pool_tokens, active_sui }
 }
 
+/// Constructs the applied staking exchange-rate snapshot.
 public(package) fun exchange_rate(epoch: u64, sui_amount: u64, pool_token_amount: u64): ExchangeRate {
     ExchangeRate { epoch, sui_amount, pool_token_amount }
 }
 
+/// Constructs the complete vault-custody snapshot embedded in transition events.
 public(package) fun vault_custody(
     fun_custody: PoolCustody,
     blast_custody: PoolCustody,
@@ -237,6 +242,7 @@ public(package) fun vault_custody(
     VaultCustody { fun_custody, blast_custody, exchange_rate, fun_supply, blast_supply }
 }
 
+/// Emits the staged super-admin recipient and execution boundary.
 public(package) fun super_admin_transfer_started(recipient: address, execute_after_ms: u64) {
     blast_sui::events_wrapper::emit_event(SuperAdminTransferStarted {
         recipient,
@@ -244,10 +250,12 @@ public(package) fun super_admin_transfer_started(recipient: address, execute_aft
     });
 }
 
+/// Emits cancellation of the staged super-admin transfer.
 public(package) fun super_admin_transfer_cancelled(recipient: address) {
     blast_sui::events_wrapper::emit_event(SuperAdminTransferCancelled { recipient });
 }
 
+/// Emits the completed replacement of the root capability.
 public(package) fun super_admin_transferred(
     previous_super_admin_cap_id: ID,
     new_super_admin_cap_id: ID,
@@ -260,6 +268,7 @@ public(package) fun super_admin_transferred(
     });
 }
 
+/// Emits an accepted operational package-generation advance.
 public(package) fun package_version_advanced(previous_version: u64, new_version: u64) {
     blast_sui::events_wrapper::emit_event(PackageVersionAdvanced {
         previous_version,
@@ -267,18 +276,22 @@ public(package) fun package_version_advanced(previous_version: u64, new_version:
     });
 }
 
+/// Emits delivery of one newly active routine-admin capability.
 public(package) fun admin_granted(admin_cap_id: ID, recipient: address) {
     blast_sui::events_wrapper::emit_event(AdminGranted { admin_cap_id, recipient });
 }
 
+/// Emits revocation of one routine-admin capability.
 public(package) fun admin_revoked(admin_cap_id: ID) {
     blast_sui::events_wrapper::emit_event(AdminRevoked { admin_cap_id });
 }
 
+/// Emits destruction of a routine-admin capability and its prior registry state.
 public(package) fun admin_destroyed(admin_cap_id: ID, was_active: bool) {
     blast_sui::events_wrapper::emit_event(AdminDestroyed { admin_cap_id, was_active });
 }
 
+/// Emits attachment of one typed capability to package custody.
 public(package) fun package_capability_added<Capability>(
     package_admin_id: ID,
     capability_id: ID,
@@ -290,6 +303,7 @@ public(package) fun package_capability_added<Capability>(
     });
 }
 
+/// Emits creation of permanent package-capability custody.
 public(package) fun package_admin_created(
     package_admin_id: ID,
     publisher_id: ID,
@@ -308,10 +322,22 @@ public(package) fun package_admin_created(
     });
 }
 
-public(package) fun upgrade_authorized(digest: vector<u8>) {
-    blast_sui::events_wrapper::emit_event(UpgradeAuthorized { digest });
+/// Emits authorization of one exact package digest under the current policy.
+public(package) fun upgrade_authorized(
+    package_id: ID,
+    package_version: u64,
+    policy: u8,
+    digest: vector<u8>,
+) {
+    blast_sui::events_wrapper::emit_event(UpgradeAuthorized {
+        package_id,
+        package_version,
+        policy,
+        digest,
+    });
 }
 
+/// Emits commitment of an authorized package upgrade.
 public(package) fun upgrade_committed(
     new_package_id: ID,
     previous_version: u64,
@@ -324,6 +350,7 @@ public(package) fun upgrade_committed(
     });
 }
 
+/// Emits an irreversible narrowing of the package upgrade policy.
 public(package) fun upgrade_policy_restricted(previous_policy: u8, new_policy: u8) {
     blast_sui::events_wrapper::emit_event(UpgradePolicyRestricted {
         previous_policy,
@@ -331,6 +358,7 @@ public(package) fun upgrade_policy_restricted(previous_policy: u8, new_policy: u
     });
 }
 
+/// Emits vault creation, locked bootstrap supply, and initial custody state.
 public(package) fun vault_created(
     vault_id: ID,
     validator: address,
@@ -353,14 +381,17 @@ public(package) fun vault_created(
     });
 }
 
+/// Emits a one-to-one funSUI mint and the resulting custody state.
 public(package) fun fun_sui_minted(sui_in: u64, custody: VaultCustody) {
     blast_sui::events_wrapper::emit_event(FunSuiMinted { sui_in, custody });
 }
 
+/// Emits a funSUI redemption and the resulting custody state.
 public(package) fun fun_sui_redeemed(fun_in: u64, custody: VaultCustody) {
     blast_sui::events_wrapper::emit_event(FunSuiRedeemed { fun_in, custody });
 }
 
+/// Emits creation of an external native-stake deposit receipt.
 public(package) fun blast_sui_deposit_requested(
     receipt_id: ID,
     vault_id: ID,
@@ -379,6 +410,7 @@ public(package) fun blast_sui_deposit_requested(
     });
 }
 
+/// Emits settlement of an activated receipt into blast custody and shares.
 public(package) fun blast_sui_deposit_claimed(
     receipt_id: ID,
     vault_id: ID,
@@ -399,6 +431,7 @@ public(package) fun blast_sui_deposit_claimed(
     });
 }
 
+/// Emits cancellation of an external receipt back into native SUI.
 public(package) fun blast_sui_deposit_cancelled(
     receipt_id: ID,
     vault_id: ID,
@@ -413,10 +446,12 @@ public(package) fun blast_sui_deposit_cancelled(
     });
 }
 
+/// Emits an uncompensated SUI donation and the resulting custody state.
 public(package) fun blast_sui_donated(sui_in: u64, custody: VaultCustody) {
     blast_sui::events_wrapper::emit_event(BlastSuiDonated { sui_in, custody });
 }
 
+/// Emits a blastSUI redemption quote, fee, payout, and resulting custody state.
 public(package) fun blast_sui_redeemed(
     blast_in: u64,
     gross_sui: u64,
@@ -433,6 +468,7 @@ public(package) fun blast_sui_redeemed(
     });
 }
 
+/// Emits fun-custody yield moved into blast custody.
 public(package) fun fun_yield_swept(
     liquid_sui: u64,
     pool_tokens: u64,
@@ -447,6 +483,7 @@ public(package) fun fun_yield_swept(
     });
 }
 
+/// Emits a completed redemption-fee update.
 public(package) fun redeem_fee_changed(old_redeem_fee_bps: u64, new_redeem_fee_bps: u64) {
     blast_sui::events_wrapper::emit_event(RedeemFeeChanged {
         old_redeem_fee_bps,
@@ -454,10 +491,12 @@ public(package) fun redeem_fee_changed(old_redeem_fee_bps: u64, new_redeem_fee_b
     });
 }
 
+/// Emits the canonical custody snapshot after a permissionless sync.
 public(package) fun vault_synced(custody: VaultCustody) {
     blast_sui::events_wrapper::emit_event(VaultSynced { custody });
 }
 
+/// Emits custody after every native position has been unwound.
 public(package) fun native_stake_unwound(custody: VaultCustody) {
     blast_sui::events_wrapper::emit_event(NativeStakeUnwound { custody });
 }
@@ -573,8 +612,8 @@ public fun package_admin_created_fields(
 }
 
 #[test_only]
-public fun upgrade_authorized_digest(self: &UpgradeAuthorized): vector<u8> {
-    self.digest
+public fun upgrade_authorized_fields(self: &UpgradeAuthorized): (ID, u64, u8, vector<u8>) {
+    (self.package_id, self.package_version, self.policy, self.digest)
 }
 
 #[test_only]

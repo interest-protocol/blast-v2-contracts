@@ -2,7 +2,6 @@
 // macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
 // locations and the stable code map documented in `docs/error-codes.md`.
 #[allow(lint(abort_without_constant))]
-/// Creator identity verification and launch-scoped creator authority.
 module blast_fun::creator_authority;
 
 use blast_fun::{constants, events, runtime_config::RuntimeConfig};
@@ -90,8 +89,36 @@ public(package) fun claim_creator_cap<Meme>(
     ctx: &mut TxContext,
 ): CreatorCap<Meme> {
     let claimant = ctx.sender();
+    let (x_identity_hash, x_claim_expiry_ms) =
+        self.identity.authorize_claim<Meme>(
+            config,
+            x_attestation,
+            claimant,
+            clock,
+        );
 
-    let (x_identity_hash, x_claim_expiry_ms) = match (&self.identity) {
+    let CreatorAuthority { .. } = self;
+    let creator_cap = CreatorCap<Meme> { id: object::new(ctx) };
+
+    events::creator_cap_claimed<Meme>(
+        claimant,
+        x_identity_hash,
+        x_claim_expiry_ms,
+    );
+
+    creator_cap
+}
+
+// === Private Functions ===
+
+fun authorize_claim<Meme>(
+    self: &CreatorIdentity,
+    config: &RuntimeConfig,
+    x_attestation: Option<vector<u8>>,
+    claimant: address,
+    clock: &Clock,
+): (Option<vector<u8>>, Option<u64>) {
+    match (self) {
         CreatorIdentity::Address(creator) => {
             assert!(
                 x_attestation.is_none(),
@@ -126,17 +153,8 @@ public(package) fun claim_creator_cap<Meme>(
             config.verify_x_claim_signature(&message, &signature);
             (option::some(*identity_hash), option::some(expiry_ms))
         },
-    };
-
-    let CreatorAuthority { .. } = self;
-    let creator_cap = CreatorCap<Meme> { id: object::new(ctx) };
-
-    events::creator_cap_claimed<Meme>(x_identity_hash, x_claim_expiry_ms);
-
-    creator_cap
+    }
 }
-
-// === Private Functions ===
 
 /// Produces the exact BCS bytes that the X authentication backend must sign.
 fun x_claim_message_bytes<Meme>(

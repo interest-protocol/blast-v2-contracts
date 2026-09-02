@@ -17,6 +17,9 @@
 > valuation previews move to the SDK; state-changing launch operations recompute
 > required curve results internally from immutable launch state. It also
 > replaces terminal overshoot with an exact-target cap and Quote refund.
+> Amended by [ADR 0062](0062-table-backed-quote-registry.md): the 16-entry
+> `VecMap` limit described below is retired before publication. Quote policies
+> now use a `Table` without a Blast-defined cardinality cap.
 
 ## Sources
 

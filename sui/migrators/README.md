@@ -4,7 +4,7 @@ This directory is one aggregate Move package for all supported liquidity
 venues. Venue modules depend on the launchpad core; the launchpad core never
 imports this package. A launch selects a venue's sealed migration witness.
 
-Bluefin, MMT, Cetus, Turbos, Full Sail, and Aftermath ship together in this one package, so
+Bluefin, MMT, Cetus, Turbos, and Aftermath ship together in this one package, so
 they share one custody surface, one claim surface, one dependency graph, one
 release gate, and one `UpgradeCap`. [DEPENDENCIES.md](DEPENDENCIES.md) owns the
 package-id and dependency matrix, the committed module fingerprints, the
@@ -62,15 +62,13 @@ tier; the defaults below were read from live mainnet registries on 2026-08-30:
 | --- | --- | --- |
 | Bluefin | `(200, 10_000)` — 1% | no venue registry; dominant production meme tier across live pools |
 | Cetus | `(260, 40_000)` — 4% | highest of 16 tiers in the `GlobalConfig` fee-tier registry |
-| Full Sail | `(20, 10_000)` — 1% | highest of 5 tiers in the `GlobalConfig` fee-tier registry |
 | MMT | `(400, 20_000)` — 2% | highest of 10 entries in the `fee_amount_tick_spacing` table |
 | Turbos | `(800, 40_000)` — 4% | highest registered `Fee` tier object (`FEE40000BPS`) |
 
 - Bluefin routes use the effective `(tick_spacing, fee_rate)` pair directly.
-- Cetus and Full Sail new routes use the effective tick spacing and require
-  the venue's registered fee for that spacing to equal the effective fee.
-- Cetus adopted pools must match the effective pair. Full Sail adjusts live
-  pool fees dynamically, so its adopted pools match on tick spacing alone.
+- Cetus new routes use the effective tick spacing and require the venue's
+  registered fee for that spacing to equal the effective fee. Adopted pools
+  must match the effective pair.
 - MMT routes use the effective fee rate and require the venue-derived tick
   spacing of the created pool to equal the effective spacing.
 - Turbos routes require the supplied `Fee<FeeType>` object or adopted pool to
@@ -111,13 +109,13 @@ separate transaction; the cap is then consumed by the atomic Blast migration.
 The adapter prepares the vault first and passes its object address as the DAO
 fee recipient to Aftermath's DAO wrapper. The outer `DaoFeePool<Lp>` is the
 shared pool; it owns the reconciled base pool. The vault position owns every
-liquid `Coin<Lp>` and the wrapper `OwnerCap<Lp>`, with no LP burn or withdrawal
-route. The cap never leaves custody. A live `AdminWitness` can use it by
+liquid LP unit as `Balance<Lp>` and owns the wrapper `OwnerCap<Lp>`, with no LP
+burn or withdrawal route. The cap never leaves custody. A live `AdminWitness` can use it by
 reference to increase or decrease that existing pool's DAO fee while the
 recipient remains fixed to the vault.
 
 DAO swaps, deposits, and withdrawals transfer Meme or Quote fee coins to the
-vault address. `accrue_fees` receives separate typed Meme and Quote vectors
+vault address. `accrue_dao_fees` receives separate typed Meme and Quote vectors
 containing 1 through 100 total child-address coins. Either vector can be empty.
 It deletes the coin wrappers while merging both balances and performs one
 common fee-ledger accrual. It requires the locked LP amount to remain
@@ -243,43 +241,6 @@ custody. Both fee routes call `collect_with_return_`, read
 The Meme-B route reverses Turbos A/B fee coins before shared Meme/Quote
 accrual.
 
-## Full Sail routes
-
-Full Sail has new-pool and adopted-pool routes for both canonical type orders.
-Its canonical order is descending lexical order of coin type names, which
-`clmm_pool::factory::new_pool_key` enforces through the deprecated
-`type_name::get`. That helper returns defining IDs, so the adapter compares
-defining IDs to reproduce the pinned venue rule exactly. Each route verifies
-that order on chain before it redeems the migration payload. Callers do not
-supply an orientation or an economic price.
-
-New routes derive the Q64.64 price from the actual Meme and Quote balances,
-the tick spacing from the effective tier, and call revision 4
-`factory::create_pool_with_liquidity` with Meme as the fixed liquidity side so
-the rounding residual lands on the Quote requirement. They pass both source
-amounts, an empty URI, zero feed IDs, and `false` for automatic volume
-calculation. Thus an arbitrary Meme does not claim an oracle or stable-asset
-feed. The adapter derives both full-range ticks from Full Sail `tick_math`,
-aligns them inward to the pinned tick spacing, and uses the live global
-configuration, rewarder vault, and pool registry.
-
-Adopted routes require the pool to match the pinned tick spacing and its
-venue-registered fee, then redeem the payload and immediately compare the
-balance-derived price with `pool::current_sqrt_price` at exactly 50 bps. The
-one-basis-point residual rule binds far tighter than that coarse gate. The
-fixed liquidity side follows the adopted price — Meme at or above the derived
-price in this orientation-dependent sense, Quote otherwise — so outside a
-boundary sliver of roughly 4e-8 relative price around the derived value, the
-affordable side is the fixed one. Only then do they use Full Sail's open,
-fixed-coin add, payment, and repayment receipt flow. Every route bounds both
-residuals at one basis point and keeps them in protocol-owned vault custody.
-
-The returned `Position` enters the common vault as its sealed dynamic object
-field. Both fee routes call `pool::collect_fee(..., true)`, verify pool and
-position identities before and after collection, and require unchanged
-positive liquidity. The Meme-B route reverses Full Sail A/B fees before common
-Meme/Quote accrual.
-
 ## Replayable events
 
 The dedicated `events` module owns six strongly typed payloads and their
@@ -305,15 +266,13 @@ filter on the payload types below.
   on adoption routes; and the tick and fee inputs, with both tick fields as
   two's-complement `i32` bits on every venue.
 - `LpFeesCollected` records vault, pool, and position IDs; the venue and asset
-  types; gross fees; applied protocol share; creator/protocol deltas and final
-  totals for both assets; and principal liquidity before and after.
-- `CreatorFeesClaimed` and `ProtocolFeesClaimed` record the vault, drained
-  amounts, asset types, and all four post-claim ledger totals.
+  types; collector; gross fees; applied protocol share; creator/protocol deltas
+  and final totals for both assets; and verified final principal liquidity.
+- `CreatorFeesClaimed` and `ProtocolFeesClaimed` record the vault, claimant,
+  drained amounts, asset types, and all four post-claim ledger totals.
 
 The payloads are completed facts and use native Sui event ordering. They contain
-no application sequence, revision, nonce, schema version, or action tag, and no
-field restating the transaction sender: the collector and both claimants are the
-event envelope's sender under ADR 0059.
+no application sequence, revision, nonce, schema version, or action tag.
 
 ## Pinned dependencies
 
@@ -329,10 +288,10 @@ event envelope's sender under ADR 0059.
 | IntegerLibrary | `8a534bd1c0b334cd3937c27987f3147a06ba6a18` |
 | Cetus MoveSTL | `0681fec63a310ae753d03a06f7c05d3e2925bb09` |
 
-Cetus, Turbos, Full Sail, and Full Sail's separate IntegerMate ship as minimal
-local normalized interfaces under `interfaces/`, because Cetus's reviewed source
-manifest has no `published-at`, Turbos's upstream manifest pins a mutable
-`Sui = testnet` reference, and Full Sail publishes no Move sources. Each local
+Cetus, Turbos, Aftermath AMM, and Aftermath DAO Fee ship as minimal local
+normalized interfaces under `interfaces/`. Cetus's reviewed source manifest has
+no `published-at`, Turbos's upstream manifest pins a mutable `Sui = testnet`
+reference, and the Aftermath interfaces bind the reviewed mainnet revisions. Each local
 interface preserves the venue's original type address, sets `published-at` to the
 current mainnet revision, and binds the one Sui framework revision above in both
 lock environments. Their bodies are `abort 0` link stubs.
@@ -355,20 +314,17 @@ sui move test --lint
 sui move build -e mainnet
 bash scripts/check_source_boundaries.sh
 bash scripts/check_turbos_dependency_pin.sh
-bash scripts/check_fullsail_dependency_pin.sh
 ```
 
 `tests/` covers what executes locally: the shared vault's custody and
 live-share fee accounting, the sealed venue-key guards, the pinned tier
 policy's set/read/fail-closed paths, the Turbos two's-complement event
-encoding, and the Full Sail canonical-order comparison. Venue calls remain
-`abort 0` link stubs, so everything venue-facing belongs to the dev-inspect
-matrix.
+encoding, and the Aftermath canonical-order comparison. Venue calls remain
+`abort 0` link stubs, so everything venue-facing belongs to the dev-inspect matrix.
 
 `scripts/check_mainnet_abi.mjs` uses Node built-ins only and the official Sui
-mainnet GraphQL endpoint. For Bluefin, MMT, Cetus, Turbos, Full Sail, Aftermath
-AMM, Aftermath DAO Fee, and Full Sail's separate IntegerMate package it resolves
-the original package id to its
+mainnet GraphQL endpoint. For Bluefin, MMT, Cetus, Turbos, Aftermath AMM, and
+Aftermath DAO Fee it resolves the original package id to its
 current revision, fails when any revision exists beyond the pinned tip, and
 asserts the package id, version, whole-package digest, previous transaction, and
 exact type origins, including Aftermath's revision-3 capability origin. It then asserts a committed SHA-256 over each consumed
@@ -379,7 +335,7 @@ visibility drift, ability drift, phantom drift, or return drift all fail.
 
 Every GraphQL field is shape-validated before it is rendered, so a null,
 partial, or novel response fails instead of normalizing into a passing value.
-The same run parses the root manifest, the six local interface manifests, and
+The same run parses the root manifest, the four local interface manifests, and
 both lock environments with a strict reader and binds every dependency name to
 its exact source, subdirectory, local path, revision, and `override` rule;
 comments are stripped before comparison, and `branch`, `tag`, a missing `rev`, a
@@ -394,10 +350,10 @@ upgrades.
 The interface dependencies contain `abort 0` link stubs, so a local build proves
 type compatibility only. Before production release, run the mainnet dev-inspect
 matrix in [DEPENDENCIES.md](DEPENDENCIES.md) for every route and orientation:
-all 17 migration routes, all 10 fee-accrual or collection routes, the Aftermath
+all 13 migration routes, all eight fee-accrual or collection routes, the Aftermath
 per-pool DAO-fee update, and both vault claims,
 covering exact balance-derived initialization, zero Bluefin creation fee, venue
-canonical order, full-range tick bounds, the 50-bps Cetus, Turbos, and Full Sail
+canonical order, full-range tick bounds, the 50-bps Cetus and Turbos
 adoption checks, one-basis-point residual limits with vault custody, and fee
 collection with unchanged principal liquidity. The matrix must additionally
 prove, against published venue bytecode: that Turbos `collect_with_return_`
@@ -472,20 +428,6 @@ migrations and can never touch custodied principal or accrued ownership.
 | 4 | — | Retired before publication; never reuse. |
 | 5 | `ETierMismatch` | The Turbos fee object or adopted pool does not match the effective tier. |
 | 6 | `EInvalidFeeRate` | A Turbos tier pin exceeds the venue's `u32` fee width. |
-
-## Full Sail errors
-
-| Code | Name | Meaning |
-| --- | --- | --- |
-| 0 | `EInvalidCoinOrder` | The selected Full Sail route does not match canonical order. |
-| 1 | `EInvalidTickSpacing` | The selected Full Sail tick spacing is zero. |
-| 2 | `EPositionPoolMismatch` | The vault, pool, and Full Sail position IDs do not match. |
-| 3 | `EZeroPositionLiquidity` | The created or collected Full Sail position has no principal liquidity. |
-| 4 | `EPositionLiquidityChanged` | Full Sail fee collection changed position principal. |
-| 5 | `EPaymentExceedsBalance` | Full Sail requested more than the redeemed balance. |
-| 6 | `EInsufficientUtilization` | An adopted Full Sail pool consumed less than 99.99% of either balance. |
-| 7 | `ETierMismatch` | The tick spacing does not match the effective tier, or the registered fee disagrees with the effective fee on a new pool. |
-| 8 | `EMemeBelowQuote` | The Meme atom balance is below the Quote atom balance, so a Meme-fixed full-range seed cannot succeed. |
 
 ## Aftermath errors
 

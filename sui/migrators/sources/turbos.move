@@ -8,12 +8,12 @@ module blast_fun_migrators::turbos;
 use blast_fun::{
     acl::AdminWitness,
     launch::Launch,
+    migration_math,
     package_version::PackageVersion,
     runtime_config::RuntimeConfig,
 };
 use blast_fun_migrators::{
     events,
-    migration_math,
     vault::{Self, LpVault},
     venue_config::VenueConfig,
 };
@@ -50,17 +50,18 @@ const MAX_PRICE_DEVIATION_BPS: u64 = 50;
 // === Errors ===
 
 #[error(code = 0)]
-const EInvalidTickSpacing: vector<u8> = b"Turbos tick spacing must be greater than zero.";
+const EInvalidTickSpacing: vector<u8> = b"Selected Turbos tier must have positive tick spacing.";
 #[error(code = 1)]
-const EPositionPoolMismatch: vector<u8> = b"Turbos position does not belong to the selected pool.";
+const EPositionPoolMismatch: vector<u8> = b"Pool, vault, and position identifiers must match.";
 #[error(code = 2)]
-const EZeroPositionLiquidity: vector<u8> = b"Turbos position liquidity must be greater than zero.";
+const EZeroPositionLiquidity: vector<u8> = b"Position principal liquidity must be greater than zero.";
 #[error(code = 3)]
-const EPositionLiquidityChanged: vector<u8> = b"Turbos fee collection must not change position liquidity.";
+const EPositionLiquidityChanged: vector<u8> = b"Fee collection must not change position principal liquidity.";
+// Code 4 was retired before publication and must not be reused.
 #[error(code = 5)]
-const ETierMismatch: vector<u8> = b"Turbos pool tier does not match the configured venue tier.";
+const ETierMismatch: vector<u8> = b"Turbos fee object or adopted pool must match the effective tier.";
 #[error(code = 6)]
-const EInvalidFeeRate: vector<u8> = b"Turbos fee rate exceeds the supported u32 range.";
+const EInvalidFeeRate: vector<u8> = b"Turbos fee rate must fit the venue's u32 width.";
 
 // === Public Structs ===
 
@@ -93,7 +94,7 @@ public fun migrate_new_meme_a<Meme, Quote, FeeType>(
     let upper_tick_bits = tick_bits(upper_magnitude, upper_is_neg);
     let launch_id = object::id(launch);
 
-    let payload = launch.migrate<Meme, Quote, Witness>(
+    let payload = launch.migrate<_, _, Witness>(
         package_version,
         meme_currency,
         ctx,
@@ -176,7 +177,7 @@ public fun migrate_new_meme_b<Meme, Quote, FeeType>(
     let upper_tick_bits = tick_bits(upper_magnitude, upper_is_neg);
     let launch_id = object::id(launch);
 
-    let payload = launch.migrate<Meme, Quote, Witness>(
+    let payload = launch.migrate<_, _, Witness>(
         package_version,
         meme_currency,
         ctx,
@@ -258,7 +259,7 @@ public fun migrate_existing_meme_a<Meme, Quote, FeeType>(
     let upper_tick_bits = tick_bits(upper_magnitude, upper_is_neg);
     let launch_id = object::id(launch);
 
-    let payload = launch.migrate<Meme, Quote, Witness>(
+    let payload = launch.migrate<_, _, Witness>(
         package_version,
         meme_currency,
         ctx,
@@ -340,7 +341,7 @@ public fun migrate_existing_meme_b<Meme, Quote, FeeType>(
     let upper_tick_bits = tick_bits(upper_magnitude, upper_is_neg);
     let launch_id = object::id(launch);
 
-    let payload = launch.migrate<Meme, Quote, Witness>(
+    let payload = launch.migrate<_, _, Witness>(
         package_version,
         meme_currency,
         ctx,
@@ -414,7 +415,7 @@ public fun collect_fees_meme_a<Meme, Quote, FeeType>(
     ctx: &mut TxContext,
 ) {
     let venue = Venue();
-    let (position_id, meme_fee, quote_fee, liquidity_before, liquidity_after) =
+    let (position_id, meme_fee, quote_fee, liquidity_after) =
         collect_position_fees<Meme, Quote, Meme, Quote, FeeType>(
             self,
             &venue,
@@ -431,7 +432,6 @@ public fun collect_fees_meme_a<Meme, Quote, FeeType>(
         position_id,
         meme_fee.into_balance(),
         quote_fee.into_balance(),
-        liquidity_before,
         liquidity_after,
         runtime_config,
         ctx,
@@ -450,7 +450,7 @@ public fun collect_fees_meme_b<Meme, Quote, FeeType>(
     ctx: &mut TxContext,
 ) {
     let venue = Venue();
-    let (position_id, quote_fee, meme_fee, liquidity_before, liquidity_after) =
+    let (position_id, quote_fee, meme_fee, liquidity_after) =
         collect_position_fees<Quote, Meme, Meme, Quote, FeeType>(
             self,
             &venue,
@@ -467,7 +467,6 @@ public fun collect_fees_meme_b<Meme, Quote, FeeType>(
         position_id,
         meme_fee.into_balance(),
         quote_fee.into_balance(),
-        liquidity_before,
         liquidity_after,
         runtime_config,
         ctx,
@@ -620,15 +619,15 @@ fun collect_position_fees<X, Y, Meme, Quote, FeeType>(
     clock: &Clock,
     versioned: &Versioned,
     ctx: &mut TxContext,
-): (ID, Coin<X>, Coin<Y>, u128, u128) {
+): (ID, Coin<X>, Coin<Y>, u128) {
     let pool_id = object::id(pool);
     assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
     let vault_address = object::id(self).to_address();
 
     let position = self.position_mut<
-        Meme,
-        Quote,
-        Venue,
+        _,
+        _,
+        _,
         TurbosPositionNFT,
     >(venue);
     let position_id = object::id(position);
@@ -655,7 +654,7 @@ fun collect_position_fees<X, Y, Meme, Quote, FeeType>(
     assert!(liquidity_after == liquidity_before, EPositionLiquidityChanged);
     assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
 
-    (position_id, fee_a, fee_b, liquidity_before, liquidity_after)
+    (position_id, fee_a, fee_b, liquidity_after)
 }
 
 // === Test-Only Functions ===

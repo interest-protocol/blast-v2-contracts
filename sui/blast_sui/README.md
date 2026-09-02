@@ -154,11 +154,8 @@ published bytecode (ADR 0058). Administration emits `AdminGranted`,
 `AdminRevoked`, `AdminDestroyed`, `SuperAdminTransferStarted`,
 `SuperAdminTransferCancelled`, `SuperAdminTransferred`,
 `PackageCapabilityAdded`, `PackageVersionAdvanced`, `PackageAdminCreated`,
-`UpgradeAuthorized`, `UpgradeCommitted`, and `UpgradePolicyRestricted`.
-`UpgradeAuthorized` carries only the authorized digest; the cap's package ID,
-version, and policy replay from `PackageAdminCreated`, `UpgradeCommitted`, and
-`UpgradePolicyRestricted` (ADR 0059). The receipt and vault flows emit
-`VaultCreated`,
+`UpgradeAuthorized`, `UpgradeCommitted`, and `UpgradePolicyRestricted`. The
+receipt and vault flows emit `VaultCreated`,
 `FunSuiMinted`, `FunSuiRedeemed`, `BlastSuiDepositRequested`,
 `BlastSuiDepositClaimed`, `BlastSuiDepositCancelled`, `BlastSuiRedeemed`,
 `BlastSuiDonated`, `FunYieldSwept`, `RedeemFeeChanged`, `VaultSynced`, and

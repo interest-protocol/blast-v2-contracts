@@ -33,7 +33,9 @@ fun new(
         b"https://www.blast.fun/art/generated/blast-sui-mark-gpt-v4.png".to_string(),
         ctx,
     );
-    (treasury_cap, initializer.finalize(ctx))
+    let metadata_cap = initializer.finalize(ctx);
+
+    (treasury_cap, metadata_cap)
 }
 
 // === Test-Only Functions ===

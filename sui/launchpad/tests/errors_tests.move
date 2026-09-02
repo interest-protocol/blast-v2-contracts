@@ -63,7 +63,6 @@ fun market_and_launch_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::zero_fee_accrual!(), 39);
     assert_eq!(blast_fun::errors::protocol_fee_share_unchanged!(), 41);
     assert_eq!(blast_fun::errors::invalid_migration_quote_target!(), 42);
-    assert_eq!(blast_fun::errors::quote_capacity_reached!(), 44);
     assert_eq!(blast_fun::errors::quote_not_allowed!(), 45);
     assert_eq!(blast_fun::errors::invalid_quote_migration_fee_bps!(), 47);
     assert_eq!(
@@ -97,6 +96,12 @@ fun market_and_launch_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::invalid_meme_quote_pair!(), 76);
     assert_eq!(blast_fun::errors::invalid_initial_meme_supply!(), 77);
     assert_eq!(blast_fun::errors::invalid_migration_witness_type!(), 78);
+    assert_eq!(blast_fun::errors::invalid_migration_seed_balance!(), 79);
+    assert_eq!(
+        blast_fun::errors::migration_price_deviation_exceeded!(),
+        80,
+    );
+    assert_eq!(blast_fun::errors::migration_residual_exceeded!(), 81);
 }
 
 #[test]

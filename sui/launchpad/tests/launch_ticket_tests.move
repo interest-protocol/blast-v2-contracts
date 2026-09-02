@@ -52,6 +52,7 @@ fun address_ticket_mints_fixed_supply_and_emits_replay_complete_event() {
             meme,
             initial_supply,
             metadata_cap_id,
+            launcher,
             creator,
             x_identity_hash,
             burnable,
@@ -63,6 +64,7 @@ fun address_ticket_mints_fixed_supply_and_emits_replay_complete_event() {
             meme,
             std::type_name::with_original_ids<LAUNCH_TICKET_TESTS>(),
         );
+        assert_eq!(launcher, LAUNCHER);
         assert_eq!(creator.destroy_some(), CREATOR);
         assert!(x_identity_hash.is_none());
         assert!(!burnable);
@@ -122,6 +124,7 @@ fun x_ticket_is_composable_and_records_burn_only_selection() {
             _,
             initial_supply,
             metadata_cap_id,
+            launcher,
             creator,
             emitted_x_identity_hash,
             burnable,
@@ -129,6 +132,7 @@ fun x_ticket_is_composable_and_records_burn_only_selection() {
         ) = created.launch_ticket_created_fields();
 
         assert_eq!(ticket_id, created_ticket_id);
+        assert_eq!(launcher, LAUNCHER);
         assert!(creator.is_none());
         assert_eq!(emitted_x_identity_hash.destroy_some(), x_identity_hash);
         assert!(burnable);
@@ -185,7 +189,7 @@ fun ticket_accepts_one_hundred_percent_sell_burn() {
             f.ctx!(),
         );
         let created = events::collect_one<events::LaunchTicketCreated>(0);
-        let (_, _, _, _, _, _, _, sell_burn_bps) =
+        let (_, _, _, _, _, _, _, _, sell_burn_bps) =
             created.launch_ticket_created_fields();
         let (meme, metadata_cap, creator_authority, stored_sell_burn_bps) =
             ticket.destroy();

@@ -2,7 +2,6 @@
 // macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
 // locations and the stable code map documented in `docs/error-codes.md`.
 #[allow(lint(abort_without_constant))]
-/// Delayed root authority and revocable routine administration for Blast.
 module blast_fun::acl;
 
 use blast_fun::{constants, events, package_version::PackageVersion};
@@ -195,14 +194,17 @@ public fun accept_super_admin_transfer(
         blast_fun::errors::no_pending_super_admin_transfer!(),
     );
 
-    let pending = self.pending_super_admin.extract();
+    let (recipient, execute_after_ms) = {
+        let pending = self.pending_super_admin.borrow();
+        (pending.recipient, pending.execute_after_ms)
+    };
 
     assert!(
-        pending.recipient == ctx.sender(),
+        recipient == ctx.sender(),
         blast_fun::errors::not_pending_super_admin_recipient!(),
     );
     assert!(
-        clock.timestamp_ms() >= pending.execute_after_ms,
+        clock.timestamp_ms() >= execute_after_ms,
         blast_fun::errors::super_admin_transfer_not_ready!(),
     );
 
@@ -210,14 +212,15 @@ public fun accept_super_admin_transfer(
     let new_super_admin_cap = SuperAdminCap { id: object::new(ctx) };
     let new_super_admin_cap_id = new_super_admin_cap.id.to_inner();
 
+    let _ = self.pending_super_admin.extract();
     self.super_admin_cap_id = new_super_admin_cap_id;
 
-    transfer::transfer(new_super_admin_cap, pending.recipient);
+    transfer::transfer(new_super_admin_cap, recipient);
 
     events::super_admin_transferred(
         previous_super_admin_cap_id,
         new_super_admin_cap_id,
-        pending.recipient,
+        recipient,
     );
 }
 

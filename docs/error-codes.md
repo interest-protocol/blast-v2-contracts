@@ -1,9 +1,9 @@
 # Blast Fun Sui error codes
 
-This file is the canonical map from a raw Sui Move abort code to its package,
-raising module, and stable meaning. Keep it synchronized with
+This file is the canonical map from a raw Sui Move abort code to its package
+macro, raising module, and stable meaning. Keep it synchronized with
 [`sui/launchpad/sources/lib/errors.move`](../sui/launchpad/sources/lib/errors.move)
-and migrator-owned error constants whenever a code is added.
+whenever a code is added.
 
 ## Strategy
 
@@ -12,18 +12,6 @@ Package-wide protocol errors use zero-argument
 number into the module that owns the invariant, and that module performs the
 `assert!` at the check site. `errors.move` contains no assertions or guard
 wrappers.
-
-An error declared and raised in one module instead uses an attributed string
-constant:
-
-```move
-#[error(code = 0)]
-const EInvalidInput: vector<u8> = b"Input must be greater than zero.";
-```
-
-This is the required form for module-local errors. It preserves the stable abort
-code and supplies a readable diagnostic. Do not create a package error macro
-for an invariant that only one module owns.
 
 Named `EPascalCase` copies are `#[test_only]`. They document the registry for
 source tooling without adding production constants or public ABI. Negative Move
@@ -85,7 +73,7 @@ the next unused value and must not fill a retired gap.
 | 41 | `protocol_fee_share_unchanged` | `runtime_config` | A protocol fee-share update supplied the currently active value. |
 | 42 | `invalid_migration_quote_target` | `launch_config` | A quote migration target was zero. |
 | 43 | *(retired)* | — | Reserved after `allow_quote` absorbed quote-target updates. |
-| 44 | `quote_capacity_reached` | `launch_config` | The bounded active quote whitelist is full. |
+| 44 | *(retired)* | — | Quote admission moved to a Table without a protocol cardinality cap. |
 | 45 | `quote_not_allowed` | `launch_config` | The quote type is not admitted for new launches. |
 | 46 | *(retired)* | — | Quote updates now compare the complete virtual/terminal pair under code 65. |
 | 47 | `invalid_quote_migration_fee_bps` | `launch_config`, `graduation` | The Quote migration-fee rate exceeds 500 basis points. |
@@ -120,23 +108,20 @@ the next unused value and must not fill a retired gap.
 | 76 | `invalid_meme_quote_pair` | `launch` | A launch selected the generated Meme type as its own Quote type. |
 | 77 | `invalid_initial_meme_supply` | `launch` | A launch ticket did not contain the canonical generated Meme supply. |
 | 78 | `invalid_migration_witness_type` | `launch_config` | A migration witness was a primitive or vector type instead of an adapter-defined struct. |
-| 79 | *(retired)* | — | Migration seed validation moved to the migrators package. |
-| 80 | *(retired)* | — | Migration price-deviation validation moved to the migrators package. |
-| 81 | *(retired)* | — | Migration residual validation moved to the migrators package. |
+| 79 | `invalid_migration_seed_balance` | `migration_math` | Migration price derivation received a zero Meme or Quote seed balance. |
+| 80 | `migration_price_deviation_exceeded` | `migration_math` | An observed CLMM price is outside the adapter's accepted deviation from the exact seed ratio. |
+| 81 | `migration_residual_exceeded` | `migration_math` | Venue rounding returned more unseeded migration principal than the allowed residual bound. |
 
 The next new package-wide protocol error must use code **82**.
 
-## Migrators migration-math errors
+## Other Sui packages
 
-These attributed string constants live in
-[`sui/migrators/sources/migration_math.move`](../sui/migrators/sources/migration_math.move).
-The package and module are part of the abort identity, so this new module owns a
-compact local sequence instead of inheriting gaps from the former launchpad
-registry.
+Sui scopes an abort code to the package that raised it, so each independently
+deployed Blast package keeps its own append-only registry with an independent
+numeric space:
 
-| Code | Constant | Raised from | Meaning |
-| ---: | --- | --- | --- |
-| 0 | `EInvalidBps` | `blast_fun_migrators::migration_math` | A migration tolerance exceeds the inclusive 0 through 10,000 range. |
-| 1 | `EInvalidMigrationSeedBalance` | `blast_fun_migrators::migration_math` | Migration price derivation received a zero Meme or Quote seed balance. |
-| 2 | `EMigrationPriceDeviationExceeded` | `blast_fun_migrators::migration_math` | An observed CLMM price is outside the adapter's accepted deviation from the exact seed ratio. |
-| 3 | `EMigrationResidualExceeded` | `blast_fun_migrators::migration_math` | Venue rounding returned more unseeded migration principal than the allowed residual bound. |
+| Package | Registry | Codes in use |
+| --- | --- | ---: |
+| `blast_leverage_coins` | [`sui/leverage_coins/README.md`](../sui/leverage_coins/README.md#error-registry) | 0 through 21 |
+
+A frontend, SDK, or indexer must map an abort by package first and code second.

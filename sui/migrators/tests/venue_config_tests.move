@@ -6,7 +6,6 @@ use blast_fun_migrators::{
     aftermath,
     bluefin,
     cetus,
-    fullsail,
     mmt,
     turbos,
     venue_config::{Self, VenueConfig},
@@ -71,10 +70,6 @@ fun venue_defaults_hold_until_an_admin_pin_replaces_them() {
             cetus::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 260);
         assert_eq!(fee_rate, 40_000);
-        let (tick_spacing, fee_rate) =
-            fullsail::effective_tier_for_testing(&f.config);
-        assert_eq!(tick_spacing, 20);
-        assert_eq!(fee_rate, 10_000);
         let (tick_spacing, fee_rate) = mmt::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 400);
         assert_eq!(fee_rate, 20_000);
@@ -91,7 +86,6 @@ fun venue_defaults_hold_until_an_admin_pin_replaces_them() {
         let admin_witness = f.sign_in();
         bluefin::set_tier(&mut f.config, &admin_witness, 220, 20_000);
         cetus::set_tier(&mut f.config, &admin_witness, 220, 20_000);
-        fullsail::set_tier(&mut f.config, &admin_witness, 40, 2_000);
         mmt::set_tier(&mut f.config, &admin_witness, 200, 10_000);
         turbos::set_tier(&mut f.config, &admin_witness, 220, 20_000);
         aftermath::set_policy(
@@ -115,10 +109,6 @@ fun venue_defaults_hold_until_an_admin_pin_replaces_them() {
             cetus::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 220);
         assert_eq!(fee_rate, 20_000);
-        let (tick_spacing, fee_rate) =
-            fullsail::effective_tier_for_testing(&f.config);
-        assert_eq!(tick_spacing, 40);
-        assert_eq!(fee_rate, 2_000);
         let (tick_spacing, fee_rate) = mmt::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 200);
         assert_eq!(fee_rate, 10_000);

@@ -99,7 +99,7 @@ pre-planted cutover flag exists (ADR 0034).
 
 The decision records cover the Sui package — package layout, Coin
 Registry creation and the three-transaction bootstrap, final fixed/burnable supply,
-the constant-product curve, bounded quote admission and virtual/terminal snapshots,
+the constant-product curve, Table-backed quote admission and virtual/terminal snapshots,
 fees and launch paths, capability ACL and pause, creator identity, referral
 settlement, migration routes and the Cetus/Bluefin/Turbos adapters, the event
 schema, growth-feature dispositions, and the accepted one-time creator-cap claim
@@ -110,7 +110,7 @@ Implementation-independent protocol vectors live in
 [docs/vectors/](docs/vectors/).
 
 The current Sui implementation includes the launch ticket, dual-asset fee
-ledger, consolidated runtime configuration, bounded cold launch configuration,
+ledger, consolidated runtime configuration, cold launch configuration,
 one validated basis-points unit, package-only graduation partitions, and
 versioned `Launch<Meme, Quote>` custody.
 Launch creation consumes one ticket, snapshots all cold and deployer policy,

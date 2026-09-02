@@ -1,4 +1,3 @@
-/// Shared compile-time constants for the Blast launchpad.
 module blast_fun::constants;
 
 // === Package Constants ===
@@ -11,11 +10,6 @@ macro public(package) fun basis_points_denominator(): u64 {
 /// Maximum LaunchConfig trade-fee rate for either the meme or quote asset.
 macro public(package) fun max_launch_fee_bps(): u64 {
     1_000
-}
-
-/// Maximum number of quote assets concurrently admitted for new launches.
-macro public(package) fun max_quote_assets(): u64 {
-    16
 }
 
 /// Maximum number of external migration implementations admitted for new launches.

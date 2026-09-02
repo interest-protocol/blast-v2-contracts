@@ -2,20 +2,13 @@
 
 - Status: proposed
 - Date: 2026-08-22
-- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0032](0032-admin-authorized-upgrade-cap-custody.md), [0035](0035-initializer-finalized-meme-supply.md), [0039](0039-deterministic-quote-valuations.md), [0041](0041-launch-config-owned-trade-fees.md), [0058](0058-eventless-package-initialization.md), [0059](0059-no-sender-or-unchanged-state-in-event-payloads.md)
+- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0032](0032-admin-authorized-upgrade-cap-custody.md), [0035](0035-initializer-finalized-meme-supply.md), [0039](0039-deterministic-quote-valuations.md), [0041](0041-launch-config-owned-trade-fees.md), [0058](0058-eventless-package-initialization.md)
 
 > Amended by [ADR 0058](0058-eventless-package-initialization.md): package
 > initialization emits no events. The `ProtocolAuthorityCreated`,
 > `PackageVersionCreated`, `RuntimeConfigCreated`, and `LaunchConfigCreated`
 > rows below are removed from the catalogue; native publication effects and the
 > published constants carry those facts.
-
-> Amended by [ADR 0059](0059-no-sender-or-unchanged-state-in-event-payloads.md):
-> no payload restates the transaction sender, so the claimant, launcher, buyer,
-> seller, migrator, collector, funder, and caller fields below are removed —
-> consumers read the sender from the event envelope. `UpgradeAuthorized` keeps
-> only its digest. The deliberate delta-plus-total and old/new redundancy
-> described in this record is unaffected and must stay.
 
 ## Sources
 
@@ -95,14 +88,14 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `Bought` | L | supplied/accepted/refunded Quote, `quote_fee`, `quote_in_net`, `meme_out_gross`, `meme_fee`, `meme_out_net`, applied `protocol_fee_share_bps`, meme/quote `protocol_fee_delta` and `creator_fee_delta`, all four final fee-ledger totals, `M'`, `Q'`, `crossed_threshold` |
 | `Sold` | L | `meme_in_gross`, `meme_fee`, `meme_in_after_fee`, `progress_bps`, `burn_bps`, `pending_burn_delta`, `pending_burn_total`, `meme_in_effective`, `quote_out_gross`, `quote_fee`, `quote_out_net`, applied `protocol_fee_share_bps`, meme/quote `protocol_fee_delta` and `creator_fee_delta`, all four final fee-ledger totals, `M'`, `Q'` |
 | `Migrated` | L | selected witness, migration Meme/Quote, terminal disposal, native-burn flag, total supply after, graduation-fee deltas, and final protocol fee totals |
-| `CreatorFeesClaimed` / `ProtocolFeesClaimed` | L | both drained amounts; the claimant is the envelope's transaction sender |
-| `LpFeesCollected` | L | `venue`, `pool_id`, `position_id`, `lp_vault_id`, `meme_collected`, `quote_collected`, `creator_share`, `protocol_share`, `principal_liquidity_before`, `principal_liquidity_after` |
+| `CreatorFeesClaimed` / `ProtocolFeesClaimed` | L | both drained amounts and claimant |
+| `LpFeesCollected` | L | `venue`, `pool_id`, `position_id`, `lp_vault_id`, `meme_collected`, `quote_collected`, `creator_share`, `protocol_share`, `principal_liquidity` |
 | `CreatorContributed` | L | `quote_amount`, `meme_received`, `Q'` — distinguishes creator-supplied progress from market progress |
 | `ContributionClaimRecorded` | L | contributor, asset, amount, claim owner, withdrawal conditions |
 | `MetadataUpdated` | L | field, `old_value`, `new_value` |
 | `MetadataFrozen` | L | metadata cap id |
 | `CreatorCapClaimed` | M | creator address, optional X identity commitment, optional X expiry |
-| `LaunchTicketCreated` | M | ticket id, original meme type, exact initial supply, metadata-cap id, address-or-X creator identity, burnable selection, and `sell_burn_bps` |
+| `LaunchTicketCreated` | M | ticket id, original meme type, exact initial supply, metadata-cap id, launcher, address-or-X creator identity, burnable selection, and `sell_burn_bps` |
 | `AdminGranted` | G | admin-cap id, recipient |
 | `AdminRevoked` | G | admin-cap id; membership removed while the cap object may remain |
 | `AdminDestroyed` | G | admin-cap id, `was_active`; cap deleted and membership absent afterward |
@@ -118,7 +111,7 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `MigrationWitnessAllowed` | G | admitted external migrator witness original type |
 | `MigrationWitnessDisallowed` | G | disallowed external migrator witness original type |
 | `PackageAdminCreated` | G | package-admin, Publisher, and wrapped cap ids; original package id; initial version and policy |
-| `UpgradeAuthorized` | G | the exact package digest authorized by a live admin witness; package id, cap version, and policy come from the surrounding administration stream |
+| `UpgradeAuthorized` | G | package id and version, cap policy, and exact package digest authorized by a live admin witness |
 | `UpgradeCommitted` | G | replacement package id and previous/new cap versions |
 | `PackageVersionAdvanced` | G | previous/new shared package cutover versions after explicit checked activation |
 | `UpgradePolicyRestricted` | G | previous/new irreversible framework policy |
@@ -156,8 +149,7 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
   totals plus the live global percentage applied; no second event describes the same mutation.
 - The fee-share configuration has its own global replay scope. Its update affects the next accrual of
   every launch, while already-accrued balances remain unchanged.
-- Claim events identify neither the claimant nor a payout recipient: the claimant is the envelope's
-  transaction sender under ADR 0059, and the claimed coins are returned.
+- Claim events identify the claimant but not a payout recipient because the claimed coins are returned.
   Final coin routing and current `CreatorCap<Meme>` custody are native transaction/object-ownership
   facts, not protocol event state.
 - Field changes are schema migrations and require a replay test
@@ -180,8 +172,7 @@ cap version.
 Two deliberately non-indexable custody facts remain outside the protocol event reducer: the current
 owner of a transferable `CreatorCap<Meme>` and the final recipients of coins returned by a claim. Both
 are available from native Sui object ownership and transaction effects. The protocol stream records
-cap issuance, claimed amounts, and the resulting accounting state; the claimant is the transaction
-sender.
+cap issuance, claimant identity, claimed amounts, and the resulting accounting state.
 
 Reducers process native Sui event order and partition multi-instance state by the stable identity carried
 in each payload. A typed singleton stream is initialized by the publish transaction's effects and the
@@ -199,7 +190,7 @@ counters to protocol storage. `CreatorCapClaimed` is reduced as one immutable fa
 | `sell` | package version, `Live`, pending-burn allocation, slippage, non-zero out | `Sold` | none | one embedded pending-burn balance | returns `Coin<Quote>` | zero output, slippage, lifecycle |
 | claim fees | capability, accrued only | `*FeesClaimed` | none | none | returns coin | `ENotAuthorized`, `ENothingAccrued` |
 | set protocol fee share | admin witness, valid `Bps` | `ProtocolFeeShareChanged` | none | one scalar | n/a | `EInvalidBps` |
-| mutate quote whitelist | admin witness, target, membership, capacity | `QuoteAllowed`, `QuoteMigrationTargetChanged`, or `QuoteDisallowed` | none | at most 16 entries | n/a | exact errors 42 and 44–46; 43 retired |
+| mutate quote whitelist | admin witness, target, membership | `QuoteAllowed`, `QuoteParametersChanged`, or `QuoteDisallowed` | none | one Table child per admitted Quote; no on-chain iteration | removal remains available | exact errors 42, 45, 64, and 65; 43, 44, and 46 retired |
 | collect LP fees | capability, vault-locked position | `LpFeesCollected` | vendored SHA pin | none | returns coins | `ENotAuthorized`, `EPositionNotInVault` |
 | release reservation | capability, reservation exists | `ReservationReleased` | vendored SHA pin | frees the reservation slot | n/a | `ENoReservation`, `EWrongVenue` |
 | metadata update | capability, bonding only | `MetadataUpdated` | none | none | n/a | `EMetadataFrozen` |
@@ -254,8 +245,9 @@ position already provides the required order.
 - Fee-ledger reducer test: replayed creator/protocol totals in both assets equal object state after each
   accrual and claim across global percentage updates; each trade records its applied percentage, and
   ceiling rounding assigns any indivisible residue to the protocol.
-- LP-fee reducer test: cumulative `LpFeesCollected` reconciles with the vault balances, and
-  `principal_liquidity_before == principal_liquidity_after` in every collection.
+- LP-fee reducer test: cumulative `LpFeesCollected` reconciles with the vault
+  balances and records the verified final `principal_liquidity` from every
+  collection that passed the adapter's before/after equality assertion.
 - Supply-reconstruction test: cumulative burns from events equal the final registry `total_supply` after
   the supply state becomes `BurnOnly`.
 - Schema-migration test: a changed field fails the replay test until the reducer is updated.

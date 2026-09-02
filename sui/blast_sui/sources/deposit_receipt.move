@@ -98,18 +98,22 @@ public(package) fun new(
     }
 }
 
+/// Returns the receipt object identifier.
 public(package) fun id(self: &BlastSuiDepositReceipt): ID {
     self.id.to_inner()
 }
 
+/// Returns the immutable native principal delegated by this receipt.
 public(package) fun principal_sui(self: &BlastSuiDepositReceipt): u64 {
     self.staked_sui.amount()
 }
 
+/// Returns the first epoch in which this receipt can enter blast custody.
 public(package) fun activation_epoch(self: &BlastSuiDepositReceipt): u64 {
     self.staked_sui.activation_epoch()
 }
 
+/// Returns the immutable validator-pool identifier bound to this receipt.
 public(package) fun pool_id(self: &BlastSuiDepositReceipt): ID {
     self.staked_sui.pool_id()
 }

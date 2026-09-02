@@ -111,6 +111,7 @@ fun irrevocable_lifecycle_matches_vectors_and_replays_events() {
         let (
             emitted_id,
             emitted_coin_type,
+            caller,
             emitted_beneficiary,
             amount,
             released_total,
@@ -118,6 +119,7 @@ fun irrevocable_lifecycle_matches_vectors_and_replays_events() {
         ) = claimed.vesting_claimed_fields();
         assert_eq!(emitted_id, vesting_id);
         assert_eq!(emitted_coin_type, coin_type);
+        assert_eq!(caller, CALLER);
         assert_eq!(emitted_beneficiary, BENEFICIARY);
         assert_eq!(amount, 500);
         assert_eq!(released_total, 500);
@@ -133,7 +135,7 @@ fun irrevocable_lifecycle_matches_vectors_and_replays_events() {
         f.claim_at(400);
 
         let claimed = collect_one<VestingClaimed>();
-        let (_, _, _, amount, released_total, remaining_balance) =
+        let (_, _, _, _, amount, released_total, remaining_balance) =
             claimed.vesting_claimed_fields();
         assert_eq!(amount, 250);
         assert_eq!(released_total, 750);
@@ -149,16 +151,17 @@ fun irrevocable_lifecycle_matches_vectors_and_replays_events() {
         f.close_at(500);
 
         let claimed = collect_one<VestingClaimed>();
-        let (_, _, _, amount, released_total, remaining_balance) =
+        let (_, _, _, _, amount, released_total, remaining_balance) =
             claimed.vesting_claimed_fields();
         let closed = collect_one<VestingClosed>();
-        let (closed_id, _, closed_released_total) =
+        let (closed_id, _, caller, closed_released_total) =
             closed.vesting_closed_fields();
 
         assert_eq!(amount, 251);
         assert_eq!(released_total, TOTAL_AMOUNT);
         assert_eq!(remaining_balance, 0);
         assert_eq!(closed_id, f.vesting_id());
+        assert_eq!(caller, CALLER);
         assert_eq!(closed_released_total, TOTAL_AMOUNT);
     });
 
@@ -177,6 +180,7 @@ fun cancelable_schedule_preserves_prior_and_unclaimed_vested_value() {
         let (
             vesting_id,
             _,
+            funder,
             beneficiary,
             refund_recipient,
             cancel_cap_id,
@@ -189,6 +193,7 @@ fun cancelable_schedule_preserves_prior_and_unclaimed_vested_value() {
 
         assert_eq!(vesting_id, f.vesting_id());
         assert_eq!(f.cancel_cap_vesting_id(), vesting_id);
+        assert_eq!(funder, FUNDER);
         assert_eq!(beneficiary, BENEFICIARY);
         assert_eq!(refund_recipient.destroy_some(), REFUND_RECIPIENT);
         assert_eq!(cancel_cap_id.destroy_some(), f.cancel_cap_id());
@@ -197,8 +202,9 @@ fun cancelable_schedule_preserves_prior_and_unclaimed_vested_value() {
         f.claim_at(200);
 
         let claimed = collect_one<VestingClaimed>();
-        let (_, _, _, amount, released_total, remaining_balance) =
+        let (_, _, caller, _, amount, released_total, remaining_balance) =
             claimed.vesting_claimed_fields();
+        assert_eq!(caller, CALLER);
         assert_eq!(amount, 250);
         assert_eq!(released_total, 250);
         assert_eq!(remaining_balance, 751);
@@ -215,6 +221,7 @@ fun cancelable_schedule_preserves_prior_and_unclaimed_vested_value() {
         let (
             vesting_id,
             coin_type,
+            caller,
             beneficiary,
             refund_recipient,
             beneficiary_amount,
@@ -224,6 +231,7 @@ fun cancelable_schedule_preserves_prior_and_unclaimed_vested_value() {
 
         assert_eq!(vesting_id, f.vesting_id());
         assert_eq!(coin_type, std::type_name::with_original_ids<TEST_COIN>());
+        assert_eq!(caller, CANCELER);
         assert_eq!(beneficiary, BENEFICIARY);
         assert_eq!(refund_recipient, REFUND_RECIPIENT);
         assert_eq!(beneficiary_amount, 250);
@@ -250,8 +258,9 @@ fun cancellation_before_the_first_period_returns_the_full_allocation() {
         f.cancel_at(START_MS);
 
         let canceled = collect_one<VestingCanceled>();
-        let (_, _, beneficiary, refund_recipient, beneficiary_amount, refund_amount, released_total) =
+        let (_, _, caller, beneficiary, refund_recipient, beneficiary_amount, refund_amount, released_total) =
             canceled.vesting_canceled_fields();
+        assert_eq!(caller, CANCELER);
         assert_eq!(beneficiary, BENEFICIARY);
         assert_eq!(refund_recipient, REFUND_RECIPIENT);
         assert_eq!(beneficiary_amount, 0);
@@ -274,8 +283,9 @@ fun cancellation_after_full_vesting_has_no_refund() {
         f.cancel_at(START_MS + PERIOD_MS * PERIODS);
 
         let canceled = collect_one<VestingCanceled>();
-        let (_, _, beneficiary, refund_recipient, beneficiary_amount, refund_amount, released_total) =
+        let (_, _, caller, beneficiary, refund_recipient, beneficiary_amount, refund_amount, released_total) =
             canceled.vesting_canceled_fields();
+        assert_eq!(caller, CANCELER);
         assert_eq!(beneficiary, BENEFICIARY);
         assert_eq!(refund_recipient, REFUND_RECIPIENT);
         assert_eq!(beneficiary_amount, TOTAL_AMOUNT);
@@ -754,6 +764,7 @@ fun claim_fixture_assert_created(self: &ClaimFixture) {
     let (
         vesting_id,
         coin_type,
+        funder,
         beneficiary,
         refund_recipient,
         cancel_cap_id,
@@ -766,6 +777,7 @@ fun claim_fixture_assert_created(self: &ClaimFixture) {
 
     assert_eq!(vesting_id, self.vesting_id);
     assert_eq!(coin_type, std::type_name::with_original_ids<TEST_COIN>());
+    assert_eq!(funder, FUNDER);
     assert_eq!(beneficiary, BENEFICIARY);
     assert!(refund_recipient.is_none());
     assert!(cancel_cap_id.is_none());

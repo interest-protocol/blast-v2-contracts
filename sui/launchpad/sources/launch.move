@@ -27,6 +27,8 @@ use sui::{
     coin_registry::{Currency, MetadataCap},
 };
 
+use fun dispose_meme as Balance.dispose_meme;
+
 // === Public Structs ===
 
 /// Consensus lifecycle for one launch market and its terminal handoff.
@@ -129,7 +131,12 @@ public fun new<Meme, Quote, MigrationWitness: drop>(
         creator_authority: option::some(creator_authority),
     };
 
-    launch.emit_created(ticket_id, initial_meme_supply, metadata_cap_id);
+    launch.emit_created(
+        ticket_id,
+        initial_meme_supply,
+        metadata_cap_id,
+        ctx.sender(),
+    );
 
     launch
 }
@@ -224,6 +231,7 @@ public fun buy<Meme, Quote>(
         meme_fee_balance,
         quote_fee_balance,
         runtime_config.protocol_fee_share(),
+        ctx.sender(),
         quote_supplied,
         quote_in_gross,
         quote_refund.value(),
@@ -287,23 +295,12 @@ public fun sell<Meme, Quote>(
     let mut quote_out = self.real_quote_reserve.split(quote_out_gross);
     let quote_fee_balance = quote_out.split(quote_fee);
     let protocol_fee_share_bps = runtime_config.protocol_fee_share();
-    let (
-        protocol_meme_fee_delta,
-        creator_meme_fee_delta,
-        protocol_quote_fee_delta,
-        creator_quote_fee_delta,
-        protocol_meme_fee_total,
-        creator_meme_fee_total,
-        protocol_quote_fee_total,
-        creator_quote_fee_total,
-    ) = self.accrue_trade_fees(
+
+    self.accrue_and_emit_sold(
         meme_fee_balance,
         quote_fee_balance,
         protocol_fee_share_bps,
-    );
-
-    events::sold<Meme, Quote>(
-        self.id.to_inner(),
+        ctx.sender(),
         meme_in_gross,
         meme_fee,
         meme_in_after_fee,
@@ -315,17 +312,6 @@ public fun sell<Meme, Quote>(
         quote_out_gross,
         quote_fee,
         quote_out_net,
-        protocol_fee_share_bps.value(),
-        protocol_meme_fee_delta,
-        creator_meme_fee_delta,
-        protocol_quote_fee_delta,
-        creator_quote_fee_delta,
-        protocol_meme_fee_total,
-        creator_meme_fee_total,
-        protocol_quote_fee_total,
-        creator_quote_fee_total,
-        self.meme_reserve.value(),
-        self.real_quote_reserve.value(),
     );
 
     quote_out.into_coin(ctx)
@@ -344,6 +330,7 @@ public fun claim_creator_fees<Meme, Quote>(
 
     events::creator_fees_claimed<Meme, Quote>(
         self.id.to_inner(),
+        ctx.sender(),
         meme.value(),
         quote.value(),
     );
@@ -364,6 +351,7 @@ public fun claim_protocol_fees<Meme, Quote>(
 
     events::protocol_fees_claimed<Meme, Quote>(
         self.id.to_inner(),
+        ctx.sender(),
         meme.value(),
         quote.value(),
     );
@@ -390,38 +378,24 @@ public fun migrate<Meme, Quote, MigrationWitness: drop>(
     );
     let burnable = currency.is_supply_burn_only();
 
-    let (quote, quote_migration_fee) = graduation::partition_quote(
-        self.real_quote_reserve.withdraw_all(),
-        self.quote_migration_fee_bps,
-    );
-    let protocol_meme_graduation_fee =
-        self.protocol_meme_graduation_fee.withdraw_all();
-    let protocol_meme_graduation_fee_amount =
-        protocol_meme_graduation_fee.value();
-    let quote_migration_fee_amount = quote_migration_fee.value();
     let (
-        _,
-        _,
+        quote,
+        protocol_meme_graduation_fee_amount,
+        quote_migration_fee_amount,
         protocol_meme_fee_total,
         protocol_quote_fee_total,
-    ) = self.fee_ledger.accrue_protocol_fees(
-        protocol_meme_graduation_fee,
-        quote_migration_fee,
-    );
+    ) = self.accrue_graduation_fees();
     let meme = self.meme_liquidity_provision.withdraw_all();
     let mut disposal = self.pending_burn.withdraw_all();
     let disposed_meme = disposal.join(self.meme_reserve.withdraw_all());
 
-    if (burnable) {
-        currency.burn_balance(disposal);
-    } else {
-        transfer::public_transfer(disposal.into_coin(ctx), @0x0);
-    };
+    disposal.dispose_meme(currency, burnable, ctx);
 
     self.lifecycle = Lifecycle::Migrated;
 
     events::migrated<Meme, Quote, MigrationWitness>(
         self.id.to_inner(),
+        ctx.sender(),
         burnable,
         meme.value(),
         quote.value(),
@@ -453,6 +427,50 @@ fun assert_live<Meme, Quote>(self: &Launch<Meme, Quote>) {
         self.lifecycle == Lifecycle::Live,
         blast_fun::errors::invalid_launch_lifecycle!(),
     );
+}
+
+fun accrue_graduation_fees<Meme, Quote>(
+    self: &mut Launch<Meme, Quote>,
+): (Balance<Quote>, u64, u64, u64, u64) {
+    let (quote, quote_migration_fee) = graduation::partition_quote(
+        self.real_quote_reserve.withdraw_all(),
+        self.quote_migration_fee_bps,
+    );
+    let protocol_meme_graduation_fee =
+        self.protocol_meme_graduation_fee.withdraw_all();
+    let protocol_meme_graduation_fee_amount =
+        protocol_meme_graduation_fee.value();
+    let quote_migration_fee_amount = quote_migration_fee.value();
+    let (
+        _,
+        _,
+        protocol_meme_fee_total,
+        protocol_quote_fee_total,
+    ) = self.fee_ledger.accrue_protocol_fees(
+        protocol_meme_graduation_fee,
+        quote_migration_fee,
+    );
+
+    (
+        quote,
+        protocol_meme_graduation_fee_amount,
+        quote_migration_fee_amount,
+        protocol_meme_fee_total,
+        protocol_quote_fee_total,
+    )
+}
+
+fun dispose_meme<Meme>(
+    disposal: Balance<Meme>,
+    currency: &mut Currency<Meme>,
+    burn_supply: bool,
+    ctx: &mut TxContext,
+) {
+    if (burn_supply) {
+        currency.burn_balance(disposal);
+    } else {
+        transfer::public_transfer(disposal.into_coin(ctx), @0x0);
+    };
 }
 
 fun accrue_trade_fees<Meme, Quote>(
@@ -495,6 +513,7 @@ fun accrue_and_emit_bought<Meme, Quote>(
     meme_fee_balance: Balance<Meme>,
     quote_fee_balance: Balance<Quote>,
     protocol_fee_share_bps: Bps,
+    buyer: address,
     quote_supplied: u64,
     quote_in_gross: u64,
     quote_refund: u64,
@@ -522,6 +541,7 @@ fun accrue_and_emit_bought<Meme, Quote>(
 
     events::bought<Meme, Quote>(
         self.id.to_inner(),
+        buyer,
         quote_supplied,
         quote_in_gross,
         quote_refund,
@@ -545,16 +565,79 @@ fun accrue_and_emit_bought<Meme, Quote>(
     );
 }
 
+fun accrue_and_emit_sold<Meme, Quote>(
+    self: &mut Launch<Meme, Quote>,
+    meme_fee_balance: Balance<Meme>,
+    quote_fee_balance: Balance<Quote>,
+    protocol_fee_share_bps: Bps,
+    seller: address,
+    meme_in_gross: u64,
+    meme_fee: u64,
+    meme_in_after_fee: u64,
+    progress_bps: u64,
+    burn_bps: u64,
+    pending_burn_delta: u64,
+    pending_burn_total: u64,
+    meme_in_effective: u64,
+    quote_out_gross: u64,
+    quote_fee: u64,
+    quote_out_net: u64,
+) {
+    let (
+        protocol_meme_fee_delta,
+        creator_meme_fee_delta,
+        protocol_quote_fee_delta,
+        creator_quote_fee_delta,
+        protocol_meme_fee_total,
+        creator_meme_fee_total,
+        protocol_quote_fee_total,
+        creator_quote_fee_total,
+    ) = self.accrue_trade_fees(
+        meme_fee_balance,
+        quote_fee_balance,
+        protocol_fee_share_bps,
+    );
+
+    events::sold<Meme, Quote>(
+        self.id.to_inner(),
+        seller,
+        meme_in_gross,
+        meme_fee,
+        meme_in_after_fee,
+        progress_bps,
+        burn_bps,
+        pending_burn_delta,
+        pending_burn_total,
+        meme_in_effective,
+        quote_out_gross,
+        quote_fee,
+        quote_out_net,
+        protocol_fee_share_bps.value(),
+        protocol_meme_fee_delta,
+        creator_meme_fee_delta,
+        protocol_quote_fee_delta,
+        creator_quote_fee_delta,
+        protocol_meme_fee_total,
+        creator_meme_fee_total,
+        protocol_quote_fee_total,
+        creator_quote_fee_total,
+        self.meme_reserve.value(),
+        self.real_quote_reserve.value(),
+    );
+}
+
 fun emit_created<Meme, Quote>(
     self: &Launch<Meme, Quote>,
     ticket_id: ID,
     initial_meme_supply: u64,
     metadata_cap_id: ID,
+    launcher: address,
 ) {
     events::launch_created<Meme, Quote>(
         self.id.to_inner(),
         ticket_id,
         self.migration_witness,
+        launcher,
         metadata_cap_id,
         self.sell_burn_bps.value(),
         initial_meme_supply,

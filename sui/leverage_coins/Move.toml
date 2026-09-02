@@ -1,0 +1,8 @@
+[package]
+name = "blast_leverage_coins"
+edition = "2024"
+license = "MIT"
+authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
+
+[addresses]
+blast_leverage_coins = "0x0"

@@ -4,6 +4,8 @@ module blast_sui::deposit_receipt_tests;
 use blast_sui::deposit_receipt;
 use std::unit_test::assert_eq;
 
+// === Tests ===
+
 #[test]
 fun receipt_display_v2_has_complete_nonempty_wallet_metadata() {
     let (fields, values) = deposit_receipt::display_metadata_for_testing();

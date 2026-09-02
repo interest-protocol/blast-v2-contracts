@@ -18,7 +18,7 @@ use sui_system::{staking_pool::{FungibleStakedSui, StakedSui}, sui_system::SuiSy
 
 // === Public Structs ===
 
-/// One vault ledger holding liquid, pending, and active native stake.
+/// One internal native-asset ledger with liquid, pending, and active stake layers.
 public struct Custody has store {
     liquid_sui: Balance<SUI>,
     pending_stakes: vector<StakedSui>,
@@ -28,6 +28,7 @@ public struct Custody has store {
 
 // === Package Functions ===
 
+/// Creates an empty custody ledger.
 public(package) fun new(): Custody {
     Custody {
         liquid_sui: balance::zero(),
@@ -37,6 +38,7 @@ public(package) fun new(): Custody {
     }
 }
 
+/// Adds liquid SUI without changing pending or active stake.
 public(package) fun deposit(self: &mut Custody, sui: Balance<SUI>) {
     self.liquid_sui.join(sui);
 }
@@ -46,10 +48,12 @@ public(package) fun assets(self: &Custody): u64 {
     self.liquid_sui.value() + self.pending_sui() + self.active_sui
 }
 
+/// Returns liquid SUI held at face value.
 public(package) fun liquid_sui(self: &Custody): u64 {
     self.liquid_sui.value()
 }
 
+/// Returns the summed principal of all pending native stake receipts.
 public(package) fun pending_sui(self: &Custody): u64 {
     let mut total = 0;
     self.pending_stakes.do_ref!(|stake| total = total + stake.amount());
@@ -66,10 +70,12 @@ public(package) fun oldest_pending_activation_epoch(self: &Custody): Option<u64>
     }
 }
 
+/// Returns active fungible pool-token units, or zero when no active position exists.
 public(package) fun active_pool_tokens(self: &Custody): u64 {
     if (self.active_stake.is_some()) self.active_stake.borrow().value() else 0
 }
 
+/// Returns the canonical event snapshot of this ledger's custody layers.
 public(package) fun pool_custody(self: &Custody): events::PoolCustody {
     events::pool_custody(
         self.liquid_sui.value(),
@@ -227,6 +233,7 @@ public(package) fun unwind(
     };
 }
 
+/// Moves exact liquid SUI between two internal ledgers.
 public(package) fun transfer_liquid(self: &mut Custody, to: &mut Custody, amount: u64) {
     to.liquid_sui.join(self.liquid_sui.split(amount));
 }

@@ -34,27 +34,17 @@ lock_section() {
     ' "$LOCKFILE"
 }
 
-dependency_target() {
-    local section="$1"
-    local dependency="$2"
-
-    printf '%s\n' "$section" |
-        rg -o "$dependency = \"[^\"]+\"" |
-        cut -d '"' -f 2 || true
-}
-
 assert_environment() {
     local environment="$1"
-    local turbos_section sui_package sui_section
+    local turbos_section sui_section
 
     turbos_section="$(lock_section "$environment" TurbosCLMM)"
     [[ "$turbos_section" == *'source = { local = "interfaces/turbos" }'* ]] || \
         fail "$environment TurbosCLMM must use the normalized local interface"
+    [[ "$turbos_section" == *'deps = { Sui = "Sui" }'* ]] || \
+        fail "$environment TurbosCLMM must bind Sui"
 
-    sui_package="$(dependency_target "$turbos_section" Sui)"
-    [[ -n "$sui_package" ]] || fail "$environment TurbosCLMM must bind Sui"
-
-    sui_section="$(lock_section "$environment" "$sui_package")"
+    sui_section="$(lock_section "$environment" Sui)"
     [[ "$sui_section" == *"rev = \"$EXPECTED_SUI_REV\""* ]] || \
         fail "$environment TurbosCLMM does not bind the required Sui revision"
 }

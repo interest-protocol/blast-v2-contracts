@@ -28,18 +28,6 @@ use_environment = "mainnet"
 manifest_digest = "54B7F4BFC60DEA96EA008E3E030DB14787B8F2B4736B40B0550A228917B2039C"
 deps = { IntegerMate = "IntegerMate_1", MoveSTL = "MoveSTL", Sui = "Sui" }
 
-[pinned.mainnet.FullSailCLMM]
-source = { local = "interfaces/fullsail" }
-use_environment = "mainnet"
-manifest_digest = "059BBA7D9CFF987AF33114E83AE402AABC82EB14BF6CC12A6116052C09854279"
-deps = { FullSailIntegerMate = "FullSailIntegerMate", Sui = "Sui" }
-
-[pinned.mainnet.FullSailIntegerMate]
-source = { local = "interfaces/fullsail_integer_mate" }
-use_environment = "mainnet"
-manifest_digest = "294D98BBBEFA7E526C52FD7F30B5691CD30B86738DDC489AC065D612D0E5F9EF"
-deps = { Sui = "Sui" }
-
 [pinned.mainnet.IntegerLibrary]
 source = { git = "https://github.com/fireflyprotocol/integer-library.git", subdir = ".", rev = "8a534bd1c0b334cd3937c27987f3147a06ba6a18" }
 use_environment = "mainnet"
@@ -115,8 +103,8 @@ deps = { std = "MoveStdlib", sui = "Sui" }
 [pinned.mainnet.blast_fun_migrators]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "310A8C1CDC2C1ACE49C1742899ED348AB50D3CE5ED37D75BBC5D364EC7BC7DE6"
-deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", FullSailCLMM = "FullSailCLMM", FullSailIntegerMate = "FullSailIntegerMate", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui", TurbosCLMM = "TurbosCLMM", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
+manifest_digest = "3FE9EC35E766BA78BC0B8877F8462E5C4F96DB65ED838022840BE391F2CADA07"
+deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui", TurbosCLMM = "TurbosCLMM", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
 
 [pinned.mainnet.mmt_v3]
 source = { git = "https://github.com/mmt-finance/mmt-contract-interface.git", subdir = "mmt_v3", rev = "e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82" }
@@ -147,18 +135,6 @@ source = { local = "interfaces/cetus" }
 use_environment = "testnet"
 manifest_digest = "042D999A0B5CE153B367D86006C2F427B0EB6C1AE71D63AF9BBD4FBF3747A3F5"
 deps = { IntegerMate = "IntegerMate_1", MoveSTL = "MoveSTL", Sui = "Sui" }
-
-[pinned.testnet.FullSailCLMM]
-source = { local = "interfaces/fullsail" }
-use_environment = "testnet"
-manifest_digest = "76CC81AB88376DACEFB4439760CD2BE77ABA23C5452751A13A1EED4AA5FD1972"
-deps = { FullSailIntegerMate = "FullSailIntegerMate", Sui = "Sui" }
-
-[pinned.testnet.FullSailIntegerMate]
-source = { local = "interfaces/fullsail_integer_mate" }
-use_environment = "testnet"
-manifest_digest = "B7E2FC3044B807508BDB644524C4ABEA393A1871278966067F470AEAE602C62B"
-deps = { Sui = "Sui" }
 
 [pinned.testnet.IntegerLibrary]
 source = { git = "https://github.com/fireflyprotocol/integer-library.git", subdir = ".", rev = "8a534bd1c0b334cd3937c27987f3147a06ba6a18" }
@@ -235,8 +211,8 @@ deps = { std = "MoveStdlib", sui = "Sui" }
 [pinned.testnet.blast_fun_migrators]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "656C446E12608C9E895630C30D06081B5ECC2504F583E3276433F84D667FAD0C"
-deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", FullSailCLMM = "FullSailCLMM", FullSailIntegerMate = "FullSailIntegerMate", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui", TurbosCLMM = "TurbosCLMM", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
+manifest_digest = "D8127DA50557311DF127FEE67E2AD5FF60C15EBD95C31C287F15E507B071E700"
+deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui", TurbosCLMM = "TurbosCLMM", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
 
 [pinned.testnet.mmt_v3]
 source = { git = "https://github.com/mmt-finance/mmt-contract-interface.git", subdir = "mmt_v3", rev = "e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82" }

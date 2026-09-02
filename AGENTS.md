@@ -21,21 +21,16 @@ designs below `sui/vesting/`. The `sui/` root is not itself a Move package.
    installed.
 6. If the change settles a protocol, authority, upgrade, storage, dependency, or
    cross-chain parity decision, add an ADR under `docs/decisions/` first.
+7. Before implementing or changing anything under `sui/leverage_coins/` or a
+   `blast_leverage_*` adapter, read `docs/leverage-implementation-lessons.md`
+   and the most recent leverage audit under `docs/research/`. The lessons file
+   carries rules that the pure package cannot enforce by itself.
 
 ## Sui Move skill routing
 
-The vendored Sui Move engineering suite is pinned to `v0.5.0` in
-`skills-lock.json`.
 Before writing, changing, refactoring, fixing, reviewing, or testing Sui Move
 code, load `.agents/skills/sui-move-guide/SKILL.md`. Use it to select the
 smallest applicable sequence of Sui Move skills.
-
-Load `.agents/skills/sui-move-patterns/SKILL.md` only when a task explicitly
-asks for a named pattern, compares reusable implementation shapes, or matches
-one of that skill's promoted design problems. After selecting a pattern, apply
-the focused architecture, security, source, event/error, and testing skills
-that own its invariants. Do not load the patterns skill for ordinary standards
-work.
 
 Repository instructions, accepted ADRs, pinned source, target-network support,
 and `ProtocolConfig` take precedence over skill examples. When the installed CLI
@@ -72,7 +67,11 @@ and adopt/adapt/reject decisions live in
 - Never rely on debug-only assertions for economic safety.
 - Do not add blanket lint suppressions. A narrow suppression needs an adjacent
   rationale and a regression test for the risk it permits.
-- Bound every persistent collection and every loop whose input can grow onchain.
+- Bound every loop whose input can grow onchain and every caller-driven
+  persistent collection. An accepted ADR may permit an administrator-only
+  dynamic-field registry without a protocol cardinality cap only when each
+  operation touches one entry, no on-chain path enumerates it, removal reclaims
+  the child, and the parent lifecycle cannot strand children.
 - Treat public types, function signatures, event schemas, error semantics, and
   storage layouts as release commitments.
 - Keep secrets and private transaction material out of source, logs, deployment
@@ -214,8 +213,8 @@ invariant, trustless composition, or reconstructability, keep it in the SDK.
   `destroy` seam may release those stored values to the future launch module.
   See ADRs 0024, 0035, 0036, 0037, and 0038.
 - `launch_config.move` owns cold policy read together only when a launch is
-  created: the 16-entry original-type quote whitelist with nonzero virtual Quote
-  reserves and migration targets, the independently bounded 0–1,000 bps Quote
+  created: the Table-backed original-type quote registry with nonzero virtual
+  Quote reserves and migration targets, the independently bounded 0–1,000 bps Quote
   and Meme trade-fee rates, the zero-safe
   Quote migration-fee and Protocol Meme graduation fee defaults, the nonzero
   1–9,999 bps destination-pool Meme liquidity provision, and a 16-entry
@@ -229,7 +228,7 @@ invariant, trustless composition, or reconstructability, keep it in the SDK.
   not choose trade-fee rates. Do not add live launch-policy reads to trading or
   migration.
   Zero liquidity provision is unconfigured and must not inherit a migrate-all
-  sentinel. See ADRs 0025, 0027, 0033, and 0041.
+  sentinel. See ADRs 0025, 0027, 0033, 0041, and 0062.
 - `launch.move` owns one top-level shared `Launch<Meme, Quote>` per launch. The
   type has `key` as its only ability: do not add `store`, a public transfer path,
   or nesting support. `launch::new` returns the constructed linear value and

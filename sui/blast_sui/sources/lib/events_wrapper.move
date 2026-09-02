@@ -1,4 +1,3 @@
-/// Stable package envelope and emission helper for blastSUI events.
 module blast_sui::events_wrapper;
 
 // === Public Structs ===
@@ -8,6 +7,7 @@ public struct Event<T: copy + drop>(T) has copy, drop;
 
 // === Package Functions ===
 
+/// Emits one package payload through the stable Blast event envelope.
 public(package) fun emit_event<T: copy + drop>(event: T) {
     sui::event::emit(Event(event));
 }

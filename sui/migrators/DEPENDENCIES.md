@@ -7,12 +7,12 @@ be described as permanently locked.
 
 ## Package boundary
 
-All six venues are modules in one independently deployed package. The launchpad
+All five venues are modules in one independently deployed package. The launchpad
 core never imports this package; each venue module depends inward on the narrow
 core interface, owns one sealed `Witness() has drop`, and redeems the core
 migration payload in the same Move call.
 
-- **One aggregate package.** Bluefin, MMT, Cetus, Turbos, Full Sail, and Aftermath ship
+- **One aggregate package.** Bluefin, MMT, Cetus, Turbos, and Aftermath ship
   together, so the release gate, dependency graph, and `UpgradeCap` lifecycle are
   shared. One custody and claim surface is worth one all-venues release gate.
 - **Shared per-launch vault.** `vault::LpVault<Meme, Quote>` is one shared vault
@@ -60,8 +60,7 @@ Node built-ins only, no JSON-RPC. It POSTs to the official Sui mainnet GraphQL
 endpoint `https://graphql.mainnet.sui.io/graphql`, and first asserts
 `chainIdentifier` is the mainnet genesis checkpoint digest
 `4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S` (`35834a8a`). For Bluefin, MMT,
-Cetus, Turbos, Full Sail, Aftermath AMM, Aftermath DAO Fee, and Full Sail's
-separate IntegerMate package it then:
+Cetus, Turbos, Aftermath AMM, and Aftermath DAO Fee it then:
 
 1. resolves the original package id to its current revision, because
    `package(address:)` returns the tip of a lineage;
@@ -103,7 +102,7 @@ phantom drift, and return drift each fail the run.
 
 ### Local pin validation
 
-The same run parses `Move.toml`, the six local interface manifests, and
+The same run parses `Move.toml`, the four local interface manifests, and
 `Move.lock` with a strict reader for exactly the record shapes those files use.
 Comments are removed before any comparison, so commented-out text can never
 satisfy an expectation, and a duplicate key, a duplicate table, an escape, a
@@ -170,15 +169,8 @@ Re-verified on mainnet on 2026-09-02.
 | MMT V3 | `mmt_v3` | `0x70285592c97965e811e0c6f98dccc3a9c2b4ad854b3594faab9597ada267b860` | `0xcf60a40f45d46fc1e828871a647c1e25a0915dec860d2662eb10fdb382c3c1d1` | 5 | `3muHEfy71LYEbjYSuvJ1i8y2XcFJPzctyaTFCkatfEqd` | `9ugrBxCA9yLJ4qrRDFoMnHSLbk1bP3N1A7cZ4DKvos5L` |
 | Cetus CLMM | `cetus_clmm` | `0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb` | `0x25ebb9a7c50eb17b3fa9c5a30fb8b5ad8f97caaf4928943acbcff7153dfee5e3` | 14 | `FEdn2yRh28atu7tANr6gCWQ3gtDSD2EZmyEeryTuokoi` | `9feeN5tyxKLPPt1nRERtddp8xzxMVefNufkhxWAT1Jja` |
 | Turbos CLMM | `turbos_clmm` | `0x91bfbc386a41afcfd9b2533058d7e915a1d3829089cc268ff4333d54d6339ca1` | `0xa5a0c25c79e428eba04fb98b3fb2a34db45ab26d4c8faf0d7e39d66a63891e64` | 22 | `FxTpAy2BbjFLWXF2Ddd4pmiBizrU27us4CwNHo9DtzVn` | `4iZ5nMJbgU6VtoDXg8TsuAEg6K6y4zovDgcMqxNn4diS` |
-| Full Sail CLMM | `clmm_pool` | `0xe74104c66dd9f16b3096db2cc00300e556aa92edc871be4bc052b5dfb80db239` | `0x497a144ba3d93ae44d9fd23d4ff4761c329d87a505136d2269c743b2297fa881` | 4 | `CWkTsBks7SsYsvDQ9QQxkHqgDAKdvuDkh4DAd9DHo3nF` | `3rbk2g4FuuqFGKBLyNYLkqJjv2XKvgnSans6EpPaRCSd` |
-| Full Sail IntegerMate | `fullsail_integer_mate` | `0x6b904ae739b2baad330aae14991abcd3b7354d3dc3db72507ed8dabeeb7a36de` | `0x6b904ae739b2baad330aae14991abcd3b7354d3dc3db72507ed8dabeeb7a36de` | 1 | `sJBBNfgrAEwYvUxzbM8y7yHYdHTE5no2Urg4B3eJR1s` | `CWQ5cMDkAGu6o8nCWDix25KGpnBXRLt2bZdVchacjRVN` |
 | Aftermath AMM | `amm` | `0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c` | `0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29` | 3 | `Gxia3EZSdQeCXGPkmhXRzXWfmV6bnw7oRvSXNxNLQ9T1` | `7qeJhR15a6jqo7xujZMMe5Bcm11vR7cSBiFHypW3VQ3J` |
 | Aftermath DAO Fee | `dao_fee_amm` | `0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d` | `0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2` | 2 | `AeSpba79KZ8Ge8nGk2Li2c2tkLy7eC93wTGhgjEVHVpZ` | `9eMeoFRPGDW1TUvbhtstVu2bAaWCCM7VCgbgkEkCUR4c` |
-
-Full Sail has never published Move sources; revision 4 is confirmed by mainnet
-lineage and `@fullsailfinance/sdk@11.0.0`, while the official contracts page
-still lists revision 3. Full Sail IntegerMate has never been upgraded, so its
-original and current ids are the same object.
 
 ## Committed module fingerprints
 
@@ -211,13 +203,6 @@ Only modules that declare an adapter-consumed type or function are fingerprinted
 | `turbos_clmm` | `pool_factory` | `ea8ef02d0fd0700daa020ba37360ad6a8f8dc8067af3ee99052b530494a53fef` |
 | `turbos_clmm` | `position_manager` | `badc1be2ee1ba12fb56eb8332f412a58ba279b80f85144862656ceea6c0fa5fe` |
 | `turbos_clmm` | `position_nft` | `1c9264b0145915da01c3a072876ffbd753d5697b56d5f2bedb79d92136d3cbea` |
-| `clmm_pool` | `config` | `fa727813c54f77a7c16c4a76d334a5f5477bd785685b3d6539de85fde49de5be` |
-| `clmm_pool` | `factory` | `b13f70d07a91f192045152a367a073b06b520cc71458e3e78ce7b2e82e5f2906` |
-| `clmm_pool` | `pool` | `3332e1a5db68034668dd36acf3b63dd0545d0fc193f251af192842d91b91be59` |
-| `clmm_pool` | `position` | `4d61ff120ba2988afc2dc8c1729ccccb0541adf7e0b0864da09e227ce8301f99` |
-| `clmm_pool` | `rewarder` | `8aec3da2ff2194faf69df8e2e033505dc5a464601514a790075c43ee0aedfe07` |
-| `clmm_pool` | `tick_math` | `25c2ea22ad657e05c8949c5767efcc7b6b8b33e014f2f5999d185d70a7ebaad4` |
-| `fullsail_integer_mate` | `i32` | `9be3bdeba386cf882d90603fa8decbe8a477e5a5d39341bbc940577b4393412f` |
 | `amm` | `pool` | `f952884b3e6ea275911ae488e9d1e3f4b2a4409cdd30e8bed69e98fd7d0f7d78` |
 | `amm` | `pool_factory` | `e2601c8181d142cb10bf10bbbe90adbd9545688238cbc3ba8b1bf9cf0809b17d` |
 | `amm` | `pool_registry` | `9d4f76ef56e619111d94b41bac54641f2012d16a7e796a83436479b319dc6a62` |
@@ -232,19 +217,11 @@ Only modules that declare an adapter-consumed type or function are fingerprinted
 | MMT V3 | 9 | 14 | 5 | 5 |
 | Cetus CLMM | 5 | 15 | 5 | 5 |
 | Turbos CLMM | 7 | 14 | 7 | 7 |
-| Full Sail CLMM | 6 | 14 | 6 | 6 |
-| Full Sail IntegerMate | 1 | 3 | 1 | 1 |
 | Aftermath AMM | 3 | 14 | 3 | 3 |
 | Aftermath DAO Fee | 2 | 4 | 3 | 3 |
-| **Total** | **36** | **84** | **33** | **33** |
+| **Total** | **29** | **67** | **26** | **26** |
 
 The list contains only functions and structs the adapters actually reference.
-`clmm_pool::factory::new_pool_key` is deliberately excluded: `fullsail.move`
-replicates that ordering rule locally with `type_name::with_defining_ids` and
-never calls the venue helper, so its signature is not an authoritative
-dependency. The consumed `clmm_pool::factory` module is still fingerprinted
-byte-for-byte, and `scripts/check_source_boundaries.sh` still owns the
-defining-ID ordering rule.
 
 ## Source pins
 
@@ -257,18 +234,16 @@ Every direct and overridden Git dependency in `Move.toml` is a full commit.
 | `mmt_v3` | git `mmt-finance/mmt-contract-interface`, subdir `mmt_v3` | `e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82` |
 | `CetusClmm` | local `interfaces/cetus` | normalized from mainnet revision 14 |
 | `TurbosCLMM` | local `interfaces/turbos` | normalized from `turbos-finance/turbos-sui-move-interface@cff693265bfc41c7de2233afe31c9d7428adc9e1` |
-| `FullSailCLMM` | local `interfaces/fullsail` | normalized from mainnet revision 4 |
-| `FullSailIntegerMate` | local `interfaces/fullsail_integer_mate` | normalized from mainnet revision 1 |
 | `AftermathAmm` | local `interfaces/aftermath` | normalized from mainnet revision 3; the ABI gate pins the revision-3 `CreatePoolCapV2` origin separately from original AMM types |
 | `AftermathDaoFeePools` | local `interfaces/aftermath_dao_fee` | normalized from mainnet revision 2; the live `Version` object is `0xb4bfb0f917f12ad2a772bea9b4f22431f6f5f9653162c3ae6fae5b99b21392b7`, initial shared version `293243902` |
 | `Sui` (override) | git `MystenLabs/sui`, subdir `crates/sui-framework/packages/sui-framework` | `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` |
 | `IntegerMate` (override) | git `CetusProtocol/integer-mate` | `09a12d9b171122883d9350039d4ed6e8400033b9` |
 | `IntegerLibrary` (override) | git `fireflyprotocol/integer-library` | `8a534bd1c0b334cd3937c27987f3147a06ba6a18` |
 
-Cetus's reviewed source manifest carries no `published-at`, Turbos's upstream
-manifest pins a mutable `Sui = testnet` reference, and Full Sail publishes no
-sources at all, so those three plus Full Sail IntegerMate ship as minimal local
-normalized interfaces. Each one preserves the venue's original type address and
+Cetus's reviewed source manifest carries no `published-at`, and Turbos's
+upstream manifest pins a mutable `Sui = testnet` reference. Cetus, Turbos,
+Aftermath AMM, and Aftermath DAO Fee ship as minimal local normalized
+interfaces. Each one preserves the venue's original type address and
 sets `published-at` to the current mainnet revision. Their bodies are `abort 0`
 link stubs; they exist only to type-check and to bind the runtime package id.
 
@@ -281,12 +256,11 @@ built graph contains no mutable revision.
 ## Resolved graph
 
 `sui move build` for both the `mainnet` and `testnet` environments compiles
-exactly fourteen dependency nodes:
+exactly twelve dependency nodes:
 
 ```text
-AftermathAmm  AftermathDaoFeePools  BluefinSpot  CetusClmm  FullSailCLMM
-FullSailIntegerMate  IntegerLibrary  IntegerMate_1  MoveSTL  MoveStdlib  Sui
-TurbosCLMM  blast_fun  mmt_v3
+AftermathAmm  AftermathDaoFeePools  BluefinSpot  CetusClmm  IntegerLibrary
+IntegerMate_1  MoveSTL  MoveStdlib  Sui  TurbosCLMM  blast_fun  mmt_v3
 ```
 
 `IntegerMate_1` is the single `09a12d9b…` integer package; Bluefin's older
@@ -294,15 +268,14 @@ TurbosCLMM  blast_fun  mmt_v3
 `Sui` are the one `06734f6f…` framework pair, which every local normalized
 interface also binds in both lock environments.
 
-Only thirteen addresses are referenced by the aggregate package's own bytecode, so
+Only eleven addresses are referenced by the aggregate package's own bytecode, so
 only those enter the published linkage table:
 
 | Address | Referenced by `blast_fun_migrators` modules |
 | --- | --- |
 | `blast_fun` and `blast_fun_migrators` | yes |
 | `0x1` MoveStdlib, `0x2` Sui framework | yes |
-| `bluefin_spot`, `mmt_v3`, `cetus_clmm`, `turbos_clmm`, `clmm_pool`, `amm`, `dao_fee_amm` | yes |
-| `fullsail_integer_mate` | yes |
+| `bluefin_spot`, `mmt_v3`, `cetus_clmm`, `turbos_clmm`, `amm`, `dao_fee_amm` | yes |
 | `integer_mate` `0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57` | yes, Bluefin full-range tick math |
 | `integer_library` `0x03637b7b60978ef4389124f7683456f0050ab015a0590d52b6e6cadb342af34a` | no, compile-only transitive |
 | `move_stl` `0xbe21a06129308e0495431d12286127897aff07a8ade3970495a4404d97f9eaaa` | no, compile-only transitive |
@@ -335,7 +308,6 @@ sui move test --lint
 sui move build -e mainnet
 bash scripts/check_source_boundaries.sh
 bash scripts/check_turbos_dependency_pin.sh
-bash scripts/check_fullsail_dependency_pin.sh
 ```
 
 A local build proves type compatibility only. The interface bodies are `abort 0`
@@ -343,11 +315,11 @@ stubs, so nothing about venue behaviour is exercised until the mainnet gate runs
 The Move test suite under `tests/` covers what does execute locally: vault
 custody and live-share fee accounting, the sealed venue-key guards, the pinned
 tier policy's set/read/fail-closed paths, the Turbos two's-complement event
-encoding, and the Full Sail canonical-order comparison.
+encoding, and the Aftermath canonical-order comparison.
 
 ## Mainnet dev-inspect matrix
 
-The aggregate package exposes 17 migration routes, 11 fee-accrual or collection
+The aggregate package exposes 13 migration routes, eight fee-accrual or collection
 routes, one Aftermath per-pool DAO-fee update, and 2 vault claims. Each row is
 one dev-inspect fixture against the published venue packages above, in the
 orientation named by the route. No route may be skipped, and a skipped row is a
@@ -359,8 +331,7 @@ release blocker, not a documentation footnote.
 | MMT | `migrate_meme_x`, `migrate_meme_y` | `collect_fees_meme_x`, `collect_fees_meme_y` |
 | Cetus | `migrate_new_meme_a`, `migrate_new_meme_b`, `migrate_existing_meme_a`, `migrate_existing_meme_b` | `collect_fees_meme_a`, `collect_fees_meme_b` |
 | Turbos | `migrate_new_meme_a`, `migrate_new_meme_b`, `migrate_existing_meme_a`, `migrate_existing_meme_b` | `collect_fees_meme_a`, `collect_fees_meme_b` |
-| Full Sail | `migrate_new_meme_a`, `migrate_new_meme_b`, `migrate_existing_meme_a`, `migrate_existing_meme_b` | `collect_fees_meme_a`, `collect_fees_meme_b` |
-| Aftermath | `migrate_meme_first`, `migrate_meme_second` | `accrue_fees`; also dev-inspect `update_fee` separately |
+| Aftermath | `migrate_meme_first`, `migrate_meme_second` | `accrue_dao_fees`; also dev-inspect `update_dao_fee` separately |
 
 Vault claims: `vault::claim_creator_fees` under `CreatorCap<Meme>` and
 `vault::claim_protocol_fees` under `AdminWitness`. Neither touches the venue or
@@ -380,7 +351,7 @@ Each migration fixture must show:
 - the venue's own canonical-order helper agrees with the selected route;
 - full-range ticks come from the venue's pinned tick helpers and align inward to
   the selected tick spacing;
-- adopted Cetus, Turbos, and Full Sail pools pass the 50-bps deviation check
+- adopted Cetus and Turbos pools pass the 50-bps deviation check
   immediately before liquidity is added;
 - both assets are at least 99.99% utilized and each residual is at most one basis
   point, with both residuals held in the per-launch vault; and
@@ -392,7 +363,8 @@ Each migration fixture must show:
   role-based weights, 0.01% base swap-in fee, and zero other base fees;
   reconciles the 1,000-unit illiquid LP reserve; prepares the vault; wraps the
   base pool with the effective DAO fee and vault recipient; locks the complete
-  returned `Coin<Lp>` and `OwnerCap<Lp>`; and shares only the outer wrapper.
+  returned LP amount as `Balance<Lp>` with the `OwnerCap<Lp>`; and shares only
+  the outer wrapper.
 - The Aftermath accrual route receives separate Meme and Quote vectors and
   merges 1 through 100 total DAO-transferred coins through the vault address.
   Either vector can be empty. It preserves the complete LP principal amount and

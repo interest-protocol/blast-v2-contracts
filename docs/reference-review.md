@@ -25,6 +25,22 @@ and Mysten's Move bytecode template implementation at
 [`1056b789cb3d69250ff41d11dfabb383587e6b0c`](https://github.com/MystenLabs/ts-sdks/tree/1056b789cb3d69250ff41d11dfabb383587e6b0c).
 ADR 0051 records the adapted compile-once, patch, publish, and freeze flow.
 
+Focused Aftermath Perpetuals review on 2026-08-31 checked the public Move
+interfaces at
+[`f62e74a`](https://github.com/AftermathFinance/move-interfaces/tree/f62e74aa862ef65b8950a70d83aac8cb71c19837)
+and TypeScript SDK at
+[`449f8e6`](https://github.com/AftermathFinance/aftermath-ts-sdk/tree/449f8e6e52a7829fd8b2fe3c9d3145beef5316f5).
+The interface bodies are aborting link stubs, so ADR 0064 treats implementation
+semantics as named premises with live falsification tests.
+
+Focused Aftermath Pools review on 2026-09-02 checked the public AMM source at
+[`9431920`](https://github.com/AftermathFinance/move-amm-public/tree/9431920dd04ca3125e8a351a377a4399aa9193ce)
+and the pool and DAO transaction builders in the same pinned TypeScript SDK at
+[`449f8e6`](https://github.com/AftermathFinance/aftermath-ts-sdk/tree/449f8e6e52a7829fd8b2fe3c9d3145beef5316f5).
+The live DAO-fee package has no published source, so ADR 0066 binds its exact
+mainnet lineage, bytecode fingerprints, type origins, and normalized ABI, then
+names the remaining behavior as falsifiable release premises.
+
 Focused authority review on 2026-08-22 additionally checked the Memez lockfile's
 pinned [Interest access-control package](https://github.com/interest-protocol/interest-mvr/tree/91e2f4f83626c1cb924bac246932574501c21bf8/access-control/contracts)
 at `91e2f4f83626c1cb924bac246932574501c21bf8` and OpenZeppelin Contracts
@@ -145,7 +161,7 @@ external ABI claim in those records cites one of these commits as
 
 | Short ref | Repository | Pinned commit | Files read |
 | --- | --- | --- | --- |
-| `sui@06734f6` | [MystenLabs/sui](https://github.com/MystenLabs/sui) | `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` | `crates/sui-framework/packages/move-stdlib/sources/type_name.move`, `crates/sui-framework/packages/sui-framework/sources/object.move`, `.../package.move` |
+| `sui@06734f6` | [MystenLabs/sui](https://github.com/MystenLabs/sui) | `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` | `crates/sui-framework/packages/move-stdlib/sources/type_name.move`, `crates/sui-framework/packages/sui-framework/sources/object.move`, `.../package.move`, `.../transfer.move`, `crates/sui-framework/packages/sui-framework/tests/test_scenario_tests.move` |
 | `walrus@3c1cacc` | [MystenLabs/walrus](https://github.com/MystenLabs/walrus) | `3c1cacc11c9292ed498f01f798cf790f02ea5062` | `contracts/walrus/sources/init.move`, `.../upgrade.move`, `.../display.move`, `contracts/walrus/tests/upgrade_tests.move` |
 | `sui@ae60d06` | [MystenLabs/sui](https://github.com/MystenLabs/sui) | `ae60d065ed27576d25ac1c94145e5ffe3ddcf89e` | `crates/sui-framework/packages/sui-framework/sources/registries/coin_registry.move`, `.../registries/display_registry.move`, `.../derived_object.move`, `.../coin.move`, `crates/sui-framework/packages/sui-framework/tests/registries/coin_registry_tests.move` |
 | `cetus@ddfbdeb` | [CetusProtocol/cetus-contracts](https://github.com/CetusProtocol/cetus-contracts) | `ddfbdeba174319998b012de876ab7ec23c3ab0bc` | `packages/cetus_clmm/sources/pool_creator.move`, `.../factory.move`, `.../math/tick_math.move`, `.../position.move`, `packages/cetus_clmm/Move.toml` |
@@ -156,6 +172,9 @@ external ABI claim in those records cites one of these commits as
 | `openzeppelin-sui@57399c7` | [OpenZeppelin/contracts-sui](https://github.com/OpenZeppelin/contracts-sui) | `57399c7c9bd51c0cf11d5ea8c5e31091198293c4` | `contracts/finance/sources/vesting_wallet.move`, `contracts/finance/sources/vesting_wallet_linear.move`, vesting tests and audit index |
 | `raydium-cpi@115df27` | [raydium-io/raydium-cpi](https://github.com/raydium-io/raydium-cpi) | `115df2779d53bacc7db9d0be2773a4b48a6d372b` | `programs/launch-cpi/src/states.rs` |
 | `solana-rewards@20522ed` | [solana-foundation/rewards](https://github.com/solana-foundation/rewards) | `20522ed0bf7a514fcd50f872de90179e0dbbefe6` | `program/src/utils/vesting_utils.rs`, `program/src/utils/revoke_utils.rs`, `program/src/instructions/definition.rs`, vesting and revocation tests |
+| `interfaces@f62e74a` | [AftermathFinance/move-interfaces](https://github.com/AftermathFinance/move-interfaces) | `f62e74aa862ef65b8950a70d83aac8cb71c19837` | `packages/authority-cap/authority-cap/sources/authority.move`, `packages/iperps/perpetuals/sources/account.move`, `.../clearing_house.move`, `.../market.move`, `packages/iperps/position/sources/position.move`, market-making-vault share interface, published metadata |
+| `amm@9431920` | [AftermathFinance/move-amm-public](https://github.com/AftermathFinance/move-amm-public) | `9431920dd04ca3125e8a351a377a4399aa9193ce` | `packages/amm/sources/pool.move`, base-pool fee bounds and V2 creation flow |
+| `sdk@449f8e6` | [AftermathFinance/aftermath-ts-sdk](https://github.com/AftermathFinance/aftermath-ts-sdk) | `449f8e6e52a7829fd8b2fe3c9d3145beef5316f5` | perpetuals integration plus `src/packages/pools/api/poolsApi.ts`, DAO-fee pool creation, mutation, swap, deposit, and withdrawal builders |
 
 Current documentation additionally consulted on 2026-08-22: the Sui Currency
 Standard, the fungible-token creation guide, and the programmable-transaction-block

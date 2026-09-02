@@ -3,6 +3,7 @@
 - Status: **accepted**
 - Date: 2026-09-02
 - Amends: [0054](0054-v3-dex-migrators-and-locked-lp-fees.md),
+  [0059](0059-production-launchpad-abi-and-sdk-parity.md), and
   [0063](0063-aftermath-weighted-pool-migrator.md)
 
 ## Sources
@@ -49,9 +50,11 @@ principal invariant.
 Every new Aftermath migration must wrap the newly created base pool with
 Aftermath's DAO-fee pool in the same transaction. The per-launch `LpVault`
 object address is the immutable fee recipient. The DAO `OwnerCap` and the
-entire liquid `Coin<Lp>` are stored together in one sealed
+complete liquid `Balance<Lp>` are stored together in one sealed
 `AftermathPosition`; neither has a public removal or by-value borrow path. The
-shared object exposed to traders is the DAO-fee pool, not the inner base pool.
+returned `Coin<Lp>` is converted before storage, which deletes only its wrapper
+UID and preserves every LP unit. The shared object exposed to traders is the
+DAO-fee pool, not the inner base pool.
 
 Vault creation is split into package-only `prepare` and `finish` operations.
 `prepare` creates the key-only, unshared vault with a sentinel pool ID and
@@ -98,9 +101,10 @@ It converts every coin into a balance, merges both asset balances, and performs
 one common `FeeLedger` accrual and one aggregate event. The live
 `RuntimeConfig.protocol_fee_share_bps` applies to that aggregate; protocol
 share rounds up and creator share receives the remainder under ADR 0054. The
-locked LP amount is recorded unchanged before and after collection. A caller
-can donate matching coins to the vault, but can neither withdraw them nor
-redirect their allocation.
+locked LP amount is read before and after collection, and the transition aborts
+unless it is unchanged. The event records only the verified final amount. A
+caller can donate matching coins to the vault, but can neither withdraw them
+nor redirect their allocation.
 
 `AftermathMigrationCompleted` records both the inner base-pool ID and outer
 DAO-fee-pool ID, the DAO fee, and the residual base swap-in fee. The vault's

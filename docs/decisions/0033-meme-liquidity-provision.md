@@ -15,6 +15,9 @@
 > Amended by [ADR 0058](0058-eventless-package-initialization.md): the
 > `LaunchConfigCreated` payload is removed; the initial zero provision is a
 > compiled constant of the published bytecode.
+> Amended by [ADR 0062](0062-table-backed-quote-registry.md): the quote map in
+> the illustrative layout below is now a `Table`; graduation fields and
+> behavior are unchanged.
 
 ## Sources
 
@@ -73,7 +76,7 @@ inventory, or bonding could never begin.
 ```move
 public struct LaunchConfig has key {
     id: UID,
-    quotes: VecMap<TypeName, u64>,
+    quotes: Table<TypeName, u64>,
     quote_migration_fee_bps: u64,
     protocol_meme_graduation_fee_bps: u64,
     meme_liquidity_provision_bps: u64,

@@ -66,7 +66,7 @@ The core package now contains:
 - `fees.move` — embedded four-balance creator/protocol fee accounting for both
   meme and quote assets, live configurable remainder-safe splitting, and composable claims
   authorized by `CreatorCap<Meme>` or `AdminWitness`;
-- `launch_config.move` — bounded original-type quote admission with one
+- `launch_config.move` — Table-backed original-type quote admission with one
   virtual-reserve/terminal-target pair,
   the admin-owned Quote/Meme trade-fee pair snapshotted by each future launch,
   the complete graduation triple (zero-safe Quote fee and protocol Meme fee plus
@@ -91,8 +91,7 @@ The core package now contains:
   initialization emits nothing, because transaction effects natively record
   each shared singleton, its type, the delivered root capability, and the
   publishing sender, and every other initial value is a compiled constant
-  (ADR 0058); no payload restates the transaction sender, so buyers, sellers,
-  launchers, migrators, and claimants come from the event envelope (ADR 0059);
+  (ADR 0058);
 - `creator_authority_tests.move` — interface and integration tests for the ACL,
   shared runtime configuration, and address/X creator-claim seam, including the
   independent Ed25519 fixture and adversarial lifecycle cases.
@@ -123,7 +122,7 @@ The core package now contains:
   replay-complete creation events, and caller-selected ticket delivery.
 - `launch_config_tests.move` and `launch_config_capacity_tests.move` — safe
   initialization, administrative lifecycles, immutable future-launch snapshots,
-  independent graduation boundaries, route-cost replay facts, collection bounds,
+  independent graduation boundaries, quote-table growth, witness collection bounds,
   guard precedence, and exact package-error coverage.
 - `launch_tests.move` — ticket consumption, exact initial and per-trade
   conservation, full-balance buy/sell round trips in zero and configured fee

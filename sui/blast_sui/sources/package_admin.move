@@ -50,8 +50,9 @@ public fun new(
         publisher.from_module<BLAST>(),
         blast_sui::errors::invalid_package_publisher!(),
     );
+    let package_id = upgrade_cap.package();
     assert!(
-        upgrade_cap.package().to_address() == type_name::original_id<BLAST>(),
+        package_id.to_address() == type_name::original_id<BLAST>(),
         blast_sui::errors::invalid_upgrade_cap!(),
     );
 
@@ -117,10 +118,13 @@ public fun authorize_upgrade(
         blast_sui::errors::invalid_package_digest!(),
     );
 
+    // The native cap clears its package id while a ticket is outstanding; read first.
+    let package_id = self.upgrade_cap.package();
+    let cap_version = self.upgrade_cap.version();
     let policy = self.upgrade_cap.policy();
     let ticket = self.upgrade_cap.authorize(policy, digest);
 
-    events::upgrade_authorized(*ticket.digest());
+    events::upgrade_authorized(package_id, cap_version, policy, *ticket.digest());
     ticket
 }
 
@@ -197,7 +201,7 @@ fun attach_capability<Capability: key + store>(
 }
 
 fun has_capability<Capability: key + store>(self: &PackageAdmin): bool {
-    dynamic_object_field::exists_with_type<CapabilityKey<Capability>, Capability>(
+    dynamic_object_field::exists_with_type<_, Capability>(
         &self.id,
         CapabilityKey<Capability>(),
     )

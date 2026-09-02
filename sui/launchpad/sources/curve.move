@@ -2,7 +2,6 @@
 // macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
 // locations and the stable code map documented in `docs/error-codes.md`.
 #[allow(lint(abort_without_constant))]
-/// Integer bonding-curve calculations for launch trades.
 module blast_fun::curve;
 
 use blast_fun::bps::{Self, Bps};

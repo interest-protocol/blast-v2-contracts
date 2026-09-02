@@ -3,6 +3,7 @@
 - Status: **accepted**
 - Date: 2026-08-29
 - Amends: [0054](0054-v3-dex-migrators-and-locked-lp-fees.md)
+- Amended by: [0067](0067-retire-full-sail-migrator.md)
 
 ## Context
 

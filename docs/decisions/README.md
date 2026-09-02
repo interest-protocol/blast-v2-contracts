@@ -104,19 +104,23 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0056](0056-bounded-pending-stake-vector.md) | Bounded pending-stake vector in custody ledgers | **accepted** |
 | [0057](0057-admin-pinned-venue-tiers.md) | Admin-pinned venue tiers for permissionless migration | **accepted** |
 | [0058](0058-eventless-package-initialization.md) | Eventless package initialization | **accepted** |
-| [0059](0059-no-sender-or-unchanged-state-in-event-payloads.md) | No transaction sender or unchanged state in event payloads | **accepted** |
+| [0059](0059-production-launchpad-abi-and-sdk-parity.md) | Production launchpad ABI and first SDK parity boundary | **accepted** |
 | [0060](0060-blastsui-metadata-cap-custody.md) | Retain currency and receipt update capabilities in package-admin custody | **accepted** |
 | [0061](0061-blastsui-routine-admin-and-composable-package-custody.md) | Routine administration and composable package custody for blastSUI | **accepted** |
+| [0062](0062-table-backed-quote-registry.md) | Table-backed quote registry without a protocol cardinality cap | **accepted** |
 | [0063](0063-aftermath-weighted-pool-migrator.md) | Aftermath weighted-pool migration with permanently locked LP tokens | **accepted** |
+| [0064](0064-aftermath-backed-leverage-coins.md) | Aftermath-backed `SUI2L` and `SUI2S` leverage coins | proposed |
 | [0065](0065-discoverable-blastsui-treasury-caps.md) | Discoverable blastSUI treasury-cap custody | **accepted** |
 | [0066](0066-aftermath-dao-fee-pool.md) | Aftermath DAO-fee wrapper and claimable launch revenue | **accepted** |
+| [0067](0067-retire-full-sail-migrator.md) | Retire the Full Sail migrator before release | **accepted** |
 
-ADRs 0013–0036, 0038–0063, 0065, and 0066 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
+ADRs 0013–0036, 0038–0063, and 0065–0067 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
-0024 accepts the generated-coin launch-ticket boundary, ADR 0025 the bounded
-quote whitelist and immutable per-launch target snapshot, and ADR 0026 the
+0024 accepts the generated-coin launch-ticket boundary, ADR 0025 the
+administrator-curated quote whitelist and immutable per-launch target snapshot,
+ADR 0062 moves that whitelist to a Table without a protocol cardinality cap, and ADR 0026 the
 deferred terminal sell-burn lifecycle. Other deployment constants, public ABI,
 and storage commitments still await approval.
 
@@ -237,7 +241,8 @@ and a `blastSUI` share ledger with separate native positions on one immutable
 validator, a yield sweep from fun to blast custody behind a fixed rounding
 reserve, a seed `blastSUI` supply locked at `@0x0` so every redemption is a
 fee-paying partial exit, a bounded redemption fee, and one package-local
-authority boundary for fee changes and upgrades, as amended by ADR 0061.
+package-local authority boundary for fee changes and upgrades, as amended by
+ADR 0061.
 
 ADR 0054 accepts isolated V3 adapter packages, real-balance seed pricing, locked
 LP principal, and the operational recommended SUI lane. Its Memez, Raydium,
@@ -253,10 +258,11 @@ emits an event in any package, because every field those payloads carried is
 either recorded by the publish transaction's native effects or compiled into the
 published bytecode.
 
-ADR 0059 extends that test to individual fields: no payload restates the
-transaction sender, and `UpgradeAuthorized` keeps only its digest. The
-delta-plus-total and old/new redundancy ADR 0011 chose deliberately is preserved
-and explicitly out of scope for future field audits.
+ADR 0059 freezes the production launchpad, generated Meme, and aggregate
+migrator ABI at contract commit `a5ed34ad49c6c001af2db5b9cbcb206075704412`.
+It fixes current-package call targets, original-package type identity,
+shared-object mutability, complete event decoding, and the first SDK migration,
+LP-vault, and replay parity boundary.
 
 ADR 0060 amends 0053 before the first blastSUI deployment. Both currency
 initializers retain their unique native metadata capabilities, the receipt
@@ -269,17 +275,39 @@ package operations. Package custody now uses the composable
 construct–attach–finalize lifecycle, with exact-type dynamic object fields for
 current and future child capabilities.
 
-ADR 0063 adds an Aftermath weighted-pool migrator. ADR 0066 wraps its base pool
-with Aftermath's DAO-fee pool, fixes the unavoidable base fee at 0.01%, sends a
-2% default DAO fee to the vault address, and locks the owner cap beside the LP.
-Admins can change the DAO rate without changing the recipient. Permissionless
-typed receive paths accrue DAO fee coins through the common creator/protocol
-ledger without touching LP principal.
+ADR 0063 adds an Aftermath weighted-pool migrator. It creates a zero-flatness
+pool with admin-pinned role weights, reconciles the complete
+source balances and LP supply, and permanently locks every liquid LP token.
+ADR 0066 wraps it with Aftermath's DAO-fee pool, fixes the unavoidable base fee
+at 0.01%, sends a 2% default DAO fee to the vault address, and locks the DAO
+owner cap beside the LP. Admins can change the DAO rate for future or existing
+pools without changing the recipient. Permissionless typed receive paths accrue
+DAO fee coins through the common creator/protocol ledger without touching LP
+principal.
+
+ADR 0064 proposes standalone `SUI2L` and `SUI2S` fungible coins backed by
+separate, capability-controlled Aftermath SUI-USDC accounts. A sealed adapter
+keeps venue authority outside core share math. Actual post-execution NAV prices
+mint and redemption. Retained USDC fees enter a funding-only maintenance reserve
+that is excluded from shareholder NAV but improves venue margin. Liquidation
+reduces NAV without deleting wallet-held coins. The decision remains proposed
+until its venue, valuation, liquidation, and liveness premises pass live tests.
 
 ADR 0065 amends 0053 before the first blastSUI deployment. Both treasury caps
 enter permanent, type-keyed dynamic object field custody under the vault, so
 standard Sui infrastructure can read their canonical supplies without exposing
 mint or burn authority outside vault transitions.
+
+ADR 0067 retires Full Sail before the aggregate migrators package's first
+recorded production release. It removes the adapter, both local interface
+packages, all six routes, the venue-tier default, release checks, and SDK APIs.
+The remaining five venues expose 13 migration routes and eight fee-accrual or
+collection routes.
+
+ADR 0068 compacts the pre-release `LpFeesCollected` event. Venue adapters still
+read principal before and after collection and abort unless it is unchanged,
+but the completed event records only the verified final `principal_liquidity`
+snapshot. The SDK reducer consumes that one canonical value.
 
 ## Open premises
 
@@ -303,6 +331,11 @@ falsification test.
 | P13 | Can a module's `init` accept a shared object such as `&mut CoinRegistry`? | [0002](0002-coin-creation-and-currency-authority.md) |
 | P14 | Can a transaction command result be a Move reference? | [0002](0002-coin-creation-and-currency-authority.md) |
 | P15 | Does the configured X user-context authentication return the stable id of the currently authenticated user while app-only credentials fail the claim path? | [0013](0013-creator-fee-authority-and-x-claims.md) |
+| P16 | Does the deployed Aftermath ABI support the complete same-transaction account, cap-custody, and session flow? | [0064](0064-aftermath-backed-leverage-coins.md) |
+| P17 | Can the adapter reproduce Aftermath equity, signed fixed-point rounding, and each exact funding settlement in atomic USDC? | [0064](0064-aftermath-backed-leverage-coins.md) |
+| P18 | Does the custom position IMR remain an effective floor through market changes and liquidation? | [0064](0064-aftermath-backed-leverage-coins.md) |
+| P19 | Does the minimum external checkpoint detect every material liquidation, ADL, settlement, order, and collateral mutation? | [0064](0064-aftermath-backed-leverage-coins.md) |
+| P20 | Which risk-reduction and settlement operations remain live in every Aftermath pause, freeze, stale-oracle, and settlement mode? | [0064](0064-aftermath-backed-leverage-coins.md) |
 
 **Load-bearing premises.** P10, P11, P13 and P14 together carry the launch transaction composition:
 P13 forces currency creation into `init` and therefore the OTW path; P14 forces the `TreasuryCap` to move

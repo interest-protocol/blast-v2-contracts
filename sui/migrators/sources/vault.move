@@ -27,7 +27,7 @@ const MAX_RECEIVING_COIN_BATCH_SIZE: u64 = 100;
 // === Errors ===
 
 #[error(code = 0)]
-const EWrongVenue: vector<u8> = b"Venue witness does not match this LP vault.";
+const EWrongVenue: vector<u8> = b"Venue witness must match the vault's attached position marker.";
 #[error(code = 1)]
 const ENothingClaimable: vector<u8> = b"No protocol fees or migration residuals are available to claim.";
 #[error(code = 2)]
@@ -69,6 +69,7 @@ public fun claim_creator_fees<Meme, Quote>(
 
     events::creator_fees_claimed<Meme, Quote>(
         self.id.to_inner(),
+        ctx.sender(),
         meme_amount,
         quote_amount,
         protocol_meme_fee_total,
@@ -124,6 +125,7 @@ public fun claim_protocol_fees<Meme, Quote>(
 
     events::protocol_fees_claimed<Meme, Quote>(
         self.id.to_inner(),
+        ctx.sender(),
         meme_amount,
         quote_amount,
         protocol_meme_fee_total,
@@ -146,50 +148,52 @@ public(package) fun new<Meme, Quote, Venue: drop, Position: key + store>(
     protocol_quote_residual: Balance<Quote>,
     ctx: &mut TxContext,
 ): ID {
-    let (pending, _) = prepare(
+    let pending = prepare(
         protocol_meme_residual,
         protocol_quote_residual,
         ctx,
     );
-    pending.finish(_venue, pool_id, position)
+    finish(pending, _venue, pool_id, position)
 }
 
-/// Creates unshared vault state and returns its future ID for external address binding.
+/// Creates unshared vault state whose address can be bound into an external position.
 public(package) fun prepare<Meme, Quote>(
     protocol_meme_residual: Balance<Meme>,
     protocol_quote_residual: Balance<Quote>,
     ctx: &mut TxContext,
-): (LpVault<Meme, Quote>, ID) {
-    let id = object::new(ctx);
-    let vault_id = id.to_inner();
-    (
-        LpVault {
-            id,
-            pool_id: object::id_from_address(@0x0),
-            protocol_meme_residual,
-            protocol_quote_residual,
-            fee_ledger: fees::new(),
-        },
-        vault_id,
-    )
+): LpVault<Meme, Quote> {
+    LpVault {
+        id: object::new(ctx),
+        pool_id: object::id_from_address(@0x0),
+        protocol_meme_residual,
+        protocol_quote_residual,
+        fee_ledger: fees::new(),
+    }
+}
+
+/// Returns the final vault ID without sharing its construction state.
+public(package) fun pending_id<Meme, Quote>(
+    pending: &LpVault<Meme, Quote>,
+): ID {
+    pending.id.to_inner()
 }
 
 /// Attaches the complete venue position and shares a prepared vault atomically.
 public(package) fun finish<Meme, Quote, Venue: drop, Position: key + store>(
-    mut self: LpVault<Meme, Quote>,
+    mut vault: LpVault<Meme, Quote>,
     _venue: Venue,
     pool_id: ID,
     position: Position,
 ): ID {
     assert!(
-        self.pool_id == object::id_from_address(@0x0),
+        vault.pool_id == object::id_from_address(@0x0),
         EVaultAlreadyInitialized,
     );
     let position_id = object::id(&position);
-    self.pool_id = pool_id;
-    let vault_id = self.id.to_inner();
-    self.id.add_dynamic_object_field(PositionKey<Venue>(), position);
-    transfer::share_object(self);
+    vault.pool_id = pool_id;
+    let vault_id = vault.id.to_inner();
+    vault.id.add_dynamic_object_field(PositionKey<Venue>(), position);
+    transfer::share_object(vault);
     events::vault_created<Meme, Quote, Venue>(
         vault_id,
         pool_id,
@@ -251,10 +255,9 @@ public(package) fun accrue_fees<Meme, Quote, Venue>(
     position_id: ID,
     meme_fee: Balance<Meme>,
     quote_fee: Balance<Quote>,
-    principal_liquidity_before: u128,
-    principal_liquidity_after: u128,
+    principal_liquidity: u128,
     runtime_config: &RuntimeConfig,
-    _: &TxContext,
+    ctx: &TxContext,
 ) {
     assert!(
         self.id.has_dynamic_object_field(PositionKey<Venue>()),
@@ -283,6 +286,7 @@ public(package) fun accrue_fees<Meme, Quote, Venue>(
         self.id.to_inner(),
         self.pool_id,
         position_id,
+        ctx.sender(),
         gross_meme_fee,
         gross_quote_fee,
         protocol_fee_share_bps,
@@ -294,8 +298,7 @@ public(package) fun accrue_fees<Meme, Quote, Venue>(
         creator_meme_fee_total,
         protocol_quote_fee_total,
         creator_quote_fee_total,
-        principal_liquidity_before,
-        principal_liquidity_after,
+        principal_liquidity,
     );
 }
 
@@ -303,14 +306,17 @@ public(package) fun accrue_fees<Meme, Quote, Venue>(
 
 fun receive_coin_batch<CoinType>(
     uid: &mut UID,
-    receivings: vector<Receiving<Coin<CoinType>>>,
+    mut receivings: vector<Receiving<Coin<CoinType>>>,
 ): Balance<CoinType> {
     let mut received = balance::zero();
-    receivings.destroy!(|receiving| {
+    while (!receivings.is_empty()) {
         received.join(
-            transfer::public_receive(uid, receiving).into_balance(),
+            transfer::public_receive(
+                uid,
+                receivings.pop_back(),
+            ).into_balance(),
         );
-    });
+    };
     received
 }
 

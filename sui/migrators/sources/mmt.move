@@ -4,12 +4,12 @@ module blast_fun_migrators::mmt;
 use blast_fun::{
     acl::AdminWitness,
     launch::Launch,
+    migration_math,
     package_version::PackageVersion,
     runtime_config::RuntimeConfig,
 };
 use blast_fun_migrators::{
     events,
-    migration_math,
     vault::{Self, LpVault},
     venue_config::VenueConfig,
 };
@@ -46,15 +46,15 @@ const DEFAULT_FEE_RATE: u64 = 20_000;
 // === Errors ===
 
 #[error(code = 0)]
-const EInvalidCoinOrder: vector<u8> = b"Meme and Quote types do not match the selected MMT pool order.";
+const EInvalidCoinOrder: vector<u8> = b"Selected MMT route must match the canonical coin order.";
 #[error(code = 1)]
-const EPositionPoolMismatch: vector<u8> = b"MMT position does not belong to the selected pool.";
+const EPositionPoolMismatch: vector<u8> = b"Pool, vault, and position identifiers must match.";
 #[error(code = 2)]
-const EZeroPositionLiquidity: vector<u8> = b"MMT position liquidity must be greater than zero.";
+const EZeroPositionLiquidity: vector<u8> = b"Position principal liquidity must be greater than zero.";
 #[error(code = 3)]
-const EPositionLiquidityChanged: vector<u8> = b"MMT fee collection must not change position liquidity.";
+const EPositionLiquidityChanged: vector<u8> = b"Fee collection must not change position principal liquidity.";
 #[error(code = 4)]
-const ETierMismatch: vector<u8> = b"MMT pool tier does not match the configured venue tier.";
+const ETierMismatch: vector<u8> = b"Venue-derived tick spacing must match the effective tier.";
 
 // === Public Structs ===
 
@@ -81,7 +81,7 @@ public fun migrate_meme_x<Meme, Quote>(
     let (pinned_tick_spacing, fee_rate) = effective_tier(venue_config);
 
     let launch_id = object::id(launch);
-    let payload = launch.migrate<Meme, Quote, Witness>(
+    let payload = launch.migrate<_, _, Witness>(
         package_version,
         meme_currency,
         ctx,
@@ -157,7 +157,7 @@ public fun migrate_meme_y<Meme, Quote>(
     let (pinned_tick_spacing, fee_rate) = effective_tier(venue_config);
 
     let launch_id = object::id(launch);
-    let payload = launch.migrate<Meme, Quote, Witness>(
+    let payload = launch.migrate<_, _, Witness>(
         package_version,
         meme_currency,
         ctx,
@@ -232,7 +232,6 @@ public fun collect_fees_meme_x<Meme, Quote>(
         position_id,
         meme_fee,
         quote_fee,
-        liquidity_before,
         liquidity_after,
     ) = collect_position_fees<Meme, Quote, Meme, Quote>(
         self,
@@ -248,7 +247,6 @@ public fun collect_fees_meme_x<Meme, Quote>(
         position_id,
         meme_fee.into_balance(),
         quote_fee.into_balance(),
-        liquidity_before,
         liquidity_after,
         runtime_config,
         ctx,
@@ -269,7 +267,6 @@ public fun collect_fees_meme_y<Meme, Quote>(
         position_id,
         quote_fee,
         meme_fee,
-        liquidity_before,
         liquidity_after,
     ) = collect_position_fees<Quote, Meme, Meme, Quote>(
         self,
@@ -285,7 +282,6 @@ public fun collect_fees_meme_y<Meme, Quote>(
         position_id,
         meme_fee.into_balance(),
         quote_fee.into_balance(),
-        liquidity_before,
         liquidity_after,
         runtime_config,
         ctx,
@@ -446,12 +442,12 @@ fun collect_position_fees<X, Y, Meme, Quote>(
     mmt_version: &Version,
     clock: &Clock,
     ctx: &mut TxContext,
-): (ID, Coin<X>, Coin<Y>, u128, u128) {
+): (ID, Coin<X>, Coin<Y>, u128) {
     let pool_id = object::id(pool);
     assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
 
     let position =
-        self.position_mut<Meme, Quote, Venue, Position>(venue);
+        self.position_mut<_, _, _, Position>(venue);
     let position_id = object::id(position);
     assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
     let liquidity_before = position.liquidity();
@@ -469,7 +465,7 @@ fun collect_position_fees<X, Y, Meme, Quote>(
     assert!(liquidity_after == liquidity_before, EPositionLiquidityChanged);
     assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
 
-    (position_id, fee_x, fee_y, liquidity_before, liquidity_after)
+    (position_id, fee_x, fee_y, liquidity_after)
 }
 
 // === Test-Only Functions ===

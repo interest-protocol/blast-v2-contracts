@@ -17,6 +17,9 @@
 > Amended by [ADR 0043](0043-versioned-launch-trading-and-atomic-migration.md):
 > `launch::migrate` now implements the selected-witness core handoff and the
 > two supply-mode disposal paths; venue adapters remain separate packages.
+> The exact quote registry representation is amended by
+> [ADR 0062](0062-table-backed-quote-registry.md): quotes use an uncapped
+> `Table`, while migration witnesses retain their independent 16-entry bound.
 > Amended by
 > [ADR 0046](0046-witness-authorized-migration-redemption.md): any caller may
 > create the type-bound handoff, while redemption requires the selected sealed
@@ -76,16 +79,17 @@ It stores exactly:
 ```move
 public struct LaunchConfig has key {
     id: UID,
-    quotes: VecMap<TypeName, u64>,
+    quotes: Table<TypeName, u64>,
     quote_migration_fee_bps: u64,
     protocol_meme_graduation_fee_bps: u64,
     migration_witnesses: VecSet<TypeName>,
 }
 ```
 
-The two bounded collections have independent limits of 16 entries. Quote entries
-map an original quote type to its nonzero migration target. Migration-witness
-entries contain original type identities only; they contain no amount, route
+The quote Table has no protocol cardinality cap, while the migration-witness
+set retains its independent limit of 16 entries. Quote entries map an original
+quote type to its nonzero migration target. Migration-witness entries contain
+original type identities only; they contain no amount, route
 configuration, DEX object, or address.
 
 All public mutations borrow `AdminWitness`. Graduation defaults update together,
@@ -308,7 +312,7 @@ to open pools. A fee-charging venue will not be used.
 Implementation proceeds one seam at a time:
 
 1. `LaunchConfig`: zero/one/both graduation defaults, both ceilings and ceiling
-   plus one, unchanged setters, bounded quote and witness registries, duplicate
+   plus one, unchanged setters, Table-backed quote growth, bounded witnesses, duplicate
    and missing types, future-only removal, original type names, complete wrapped
    events, and exact guards.
 2. Pure graduation arithmetic and custody: one-unit and maximum-width rounding,

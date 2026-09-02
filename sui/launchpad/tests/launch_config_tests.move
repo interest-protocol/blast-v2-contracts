@@ -66,7 +66,7 @@ public struct ConfigFixture {
 // === Tests ===
 
 #[test]
-fun package_init_creates_safe_bounded_launch_config() {
+fun package_init_creates_empty_launch_config() {
     let mut fixture = start_init();
 
     fixture.next_tx!(PUBLISHER, |f| {
@@ -296,6 +296,52 @@ fun admin_disallows_quote_from_future_launch_admission() {
         );
         assert_eq!(previous_virtual_quote, VIRTUAL_QUOTE);
         assert_eq!(previous_target, MIGRATION_QUOTE_TARGET);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun admin_can_readd_a_disallowed_quote() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+
+        f.config.allow_quote<TEST_QUOTE>(
+            &f.package_version,
+            &admin_witness,
+            VIRTUAL_QUOTE,
+            MIGRATION_QUOTE_TARGET,
+        );
+        f.config.disallow_quote<TEST_QUOTE>(
+            &f.package_version,
+            &admin_witness,
+        );
+        f.config.allow_quote<TEST_QUOTE>(
+            &f.package_version,
+            &admin_witness,
+            UPDATED_VIRTUAL_QUOTE,
+            UPDATED_MIGRATION_QUOTE_TARGET,
+        );
+        f.config.allow_migration_witness<TEST_MIGRATION_WITNESS>(
+            &f.package_version,
+            &admin_witness,
+        );
+        f.config.set_graduation_defaults(
+            &f.package_version,
+            &admin_witness,
+            0,
+            0,
+            MEME_LIQUIDITY_PROVISION_BPS,
+        );
+
+        let (virtual_quote, target, _, _, _, _, _, _) =
+            f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
+
+        assert_eq!(f.config.allowed_quote_count_for_testing(), 1);
+        assert_eq!(virtual_quote, UPDATED_VIRTUAL_QUOTE);
+        assert_eq!(target, UPDATED_MIGRATION_QUOTE_TARGET);
     });
 
     fixture.end();
@@ -923,11 +969,7 @@ fun allowing_quote_rejects_zero_target_before_type_lookup() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EQuoteCapacityReached,
-    location = blast_fun::launch_config,
-)]
-fun quote_allowlist_is_bounded() {
+fun quote_table_admits_more_than_the_previous_vector_limit() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
@@ -967,6 +1009,8 @@ fun quote_allowlist_is_bounded() {
             &admin_witness, VIRTUAL_QUOTE, 1);
         f.config.allow_quote<QUOTE<Q16>>(&f.package_version,
             &admin_witness, VIRTUAL_QUOTE, 1);
+
+        assert_eq!(f.config.allowed_quote_count_for_testing(), 17);
     });
 
     fixture.end();

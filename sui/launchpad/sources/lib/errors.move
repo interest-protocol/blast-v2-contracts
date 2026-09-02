@@ -1,5 +1,4 @@
 #[allow(unused_const)]
-/// Stable append-only abort codes and package error macros for Blast.
 module blast_fun::errors;
 
 // === Errors ===
@@ -160,9 +159,7 @@ const EInvalidMigrationQuoteTarget: u64 = 42;
 
 // Code 43 retired: `allow_quote` absorbed quote-target updates as an upsert.
 
-#[test_only]
-/// The bounded active quote whitelist is full.
-const EQuoteCapacityReached: u64 = 44;
+// Code 44 retired: Table-backed quote admission has no protocol cardinality cap.
 
 #[test_only]
 /// The quote type is not admitted for new launches.
@@ -287,6 +284,18 @@ const EInvalidInitialMemeSupply: u64 = 77;
 #[test_only]
 /// A migration witness must be a non-primitive adapter-defined struct type.
 const EInvalidMigrationWitnessType: u64 = 78;
+
+#[test_only]
+/// Migration pricing requires positive real Meme and net Quote seed balances.
+const EInvalidMigrationSeedBalance: u64 = 79;
+
+#[test_only]
+/// An existing venue pool is outside the adapter's accepted migration price band.
+const EMigrationPriceDeviationExceeded: u64 = 80;
+
+#[test_only]
+/// Venue rounding returned more migration principal than the allowed residual bound.
+const EMigrationResidualExceeded: u64 = 81;
 
 macro public(package) fun invalid_admin_cap(): u64 {
     0
@@ -430,9 +439,7 @@ macro public(package) fun invalid_migration_quote_target(): u64 {
 
 // Error code 43 is retired and must not be reused.
 
-macro public(package) fun quote_capacity_reached(): u64 {
-    44
-}
+// Error code 44 is retired and must not be reused.
 
 macro public(package) fun quote_not_allowed(): u64 {
     45
@@ -552,4 +559,16 @@ macro public(package) fun invalid_initial_meme_supply(): u64 {
 
 macro public(package) fun invalid_migration_witness_type(): u64 {
     78
+}
+
+macro public(package) fun invalid_migration_seed_balance(): u64 {
+    79
+}
+
+macro public(package) fun migration_price_deviation_exceeded(): u64 {
+    80
+}
+
+macro public(package) fun migration_residual_exceeded(): u64 {
+    81
 }

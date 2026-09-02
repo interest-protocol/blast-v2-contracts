@@ -9,7 +9,7 @@
 > treasury cap into `Fixed` or `BurnOnly`, and places the complete balance plus
 > native metadata cap in the launch ticket. The metadata cap is later returned
 > separately alongside `CreatorCap<Meme>`. ADR 0025 also removes the proposed
-> `Currency<Quote>` launch input: the bounded quote whitelist itself authorizes
+> `Currency<Quote>` launch input: the administrator-curated quote registry itself authorizes
 > the pair and supplies the immutable migration target.
 
 ## Sources

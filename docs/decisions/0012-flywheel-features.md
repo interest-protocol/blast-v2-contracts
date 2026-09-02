@@ -46,7 +46,7 @@ The accepted LP fee feature carries a full authority row, bound and event in
 
 | Feature | Must not break |
 | --- | --- |
-| 1 Creator LP fee stream | LP position stays locked; fee collection cannot withdraw principal; no path returns the position to an EOA; `principal_liquidity_before == principal_liquidity_after` in every `LpFeesCollected` |
+| 1 Creator LP fee stream | LP position stays locked; fee collection cannot withdraw principal; no path returns the position to an EOA; each adapter aborts unless principal is unchanged and `LpFeesCollected.principal_liquidity` records the verified final value |
 | 2 Fee-sharing splits | deferred until a separate allocation module fixes its recipient bound, share conservation, rounding, and update lifecycle |
 | 3 Quote diversity | pair immutability; risk snapshot immutability |
 | 5 RevShare campaigns | `MAX_EPOCH_LEAVES`, `MAX_EPOCH_FUNDED`, `MAX_OPEN_EPOCHS`; funding conservation |

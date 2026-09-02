@@ -87,12 +87,11 @@ sui move test --lint
 sui move build -e mainnet
 bash scripts/check_source_boundaries.sh
 bash scripts/check_turbos_dependency_pin.sh
-bash scripts/check_fullsail_dependency_pin.sh
 ```
 
 `check_mainnet_abi.mjs` uses Node built-ins only and queries the official Sui
 mainnet GraphQL endpoint; retired JSON-RPC is not used. For Bluefin, MMT, Cetus,
-Turbos, Full Sail, and Full Sail's separate IntegerMate package it resolves the
+Turbos, Aftermath AMM, and Aftermath DAO Fee it resolves the
 original package id to its current revision, fails when any revision exists
 beyond the pinned tip and names that newer tip, and asserts the package id,
 version, whole-package digest, previous transaction, and original type origins.
@@ -172,7 +171,7 @@ this is the rule set it is checked against.
 | validation before mutation | the guard order is observable through abort precedence, and each simultaneously-invalid pair asserts which guard fires first |
 | replay-complete events | a reducer over the event stream alone reproduces final state field-by-field |
 | immutable dependencies | the built package resolves no mutable revision; adapters carry a recorded exemption, and `sui/migrators/scripts/check_mainnet_abi.mjs` proves every manifest and lock revision is a full commit |
-| bounded state | no persistent collection and no loop input can grow without a fixed constant bounding it |
+| bounded state | every loop and caller-driven collection has a fixed bound; an ADR-approved admin-only dynamic-field registry may grow without a protocol cap only when operations never enumerate it and remove one child at a time |
 | composability | the function returns owned values rather than self-transferring |
 | exact failures | every negative case asserts a named error, never a bare expected failure |
 
@@ -245,8 +244,8 @@ the decision that owns it. Nothing here may be marked done from prose alone.
 | 3.3 | Terminal ordering preserves already-final supply while routing liquidity, residuals, and deferred burn | [0026](decisions/0026-deferred-sell-burn.md), [0035](decisions/0035-initializer-finalized-meme-supply.md) |
 | 3.4 | Event reducer replay in native Sui order across all entity scopes | [0011](decisions/0011-event-schema-and-replay.md) |
 | 3.5 | Per-venue dependency exemption resolved or the adapter excluded | [0010](decisions/0010-migration-and-venue-adapters.md) |
-| 3.6 | Live mainnet lineage, module fingerprints, and normalized venue ABI for all six venues, Full Sail IntegerMate, and Aftermath DAO Fee, via `sui/migrators/scripts/check_mainnet_abi.mjs`, with its offline `--self-test` green | [0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md), [0066](decisions/0066-aftermath-dao-fee-pool.md) |
-| 3.7 | Mainnet dev-inspect matrix: all 17 migration routes and orientations, all 10 fee-accrual or collection routes, the Aftermath per-pool DAO-fee update, and both vault claims, proving balance-derived initialization, zero Bluefin creation fee, venue canonical order, full-range ticks, the 50-bps adoption checks, one-basis-point residuals held in protocol-owned vault custody, fee collection with unchanged principal liquidity, and Aftermath wrapper creation, combined 100-coin vault-address batch receipt, unchanged LP amount, and fixed recipient; every effective venue policy matches its live package constraints and a mismatch aborts | [0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md), [0066](decisions/0066-aftermath-dao-fee-pool.md) |
+| 3.6 | Live mainnet lineage, module fingerprints, and normalized venue ABI for all five venues plus Aftermath DAO Fee, via `sui/migrators/scripts/check_mainnet_abi.mjs`, with its offline `--self-test` green | [0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md), [0066](decisions/0066-aftermath-dao-fee-pool.md), [0067](decisions/0067-retire-full-sail-migrator.md) |
+| 3.7 | Mainnet dev-inspect matrix: all 13 migration routes and orientations, all eight fee-accrual or collection routes, the Aftermath per-pool DAO-fee update, and both vault claims, proving balance-derived initialization, zero Bluefin creation fee, venue canonical order, full-range ticks, the 50-bps Cetus and Turbos adoption checks, one-basis-point residuals held in protocol-owned vault custody, fee collection with unchanged principal liquidity, and Aftermath wrapper creation, combined 100-coin vault-address batch receipt, unchanged LP amount, and fixed recipient; every effective venue policy matches its live package constraints and a mismatch aborts | [0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md), [0066](decisions/0066-aftermath-dao-fee-pool.md), [0067](decisions/0067-retire-full-sail-migrator.md) |
 | 3.8 | Migration and LP-fee events replay from direct Sui events with no core envelope: per-launch vault creation, inner/outer Aftermath pool relationships, migration and residual amounts, DAO-rate updates, each accrual's live `protocol_fee_share_bps` split, and both claim paths | [0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md), [0066](decisions/0066-aftermath-dao-fee-pool.md) |
 | 3.9 | Aggregate migrators `UpgradeCap` destroyed and the immutable-package evidence recorded under `deployments/sui/mainnet/`; no locked-principal claim is valid before this row passes | [0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md) |
 | 3.10 | **Pending mainnet gate:** create both irrevocable and cancellable checkpoint vestings with the full 256-entry vector; decode every entry through the SDK; claim at the first, middle, and final boundaries; cancel/close successfully; and record transaction digests, gas, serialized object size, and absence of checkpoint dynamic fields under `deployments/sui/mainnet/` before the vesting package is made immutable | [0055](decisions/0055-global-vesting-package-and-checkpoints.md) |

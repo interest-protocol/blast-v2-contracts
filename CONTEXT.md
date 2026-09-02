@@ -204,3 +204,29 @@ terminal curve residual. A `BurnOnly` launch destroys that disposal balance
 through Coin Registry; a `Fixed` launch transfers it to `0x0` while native total
 supply remains unchanged.
 _Avoid_: burned-on-sell, fixed native burn, fee balance
+
+**Production launchpad ABI**:
+The frozen client boundary formed by Blast launchpad, generated Meme, and
+migrator production functions, client-visible objects, type identities, and
+event schemas. Test-only functions and vendored venue interface stubs are not
+part of this boundary.
+_Avoid_: SDK API, venue dependency ABI, source-level API
+
+**LP vault**:
+The per-launch shared `LpVault<Meme, Quote>` that permanently holds one venue
+position and accounts for collected creator and protocol LP fees. The pool and
+position identities are migration facts; the position is not a transferable
+client output.
+_Avoid_: global vault, LP wallet, withdrawable position
+
+**Venue tier**:
+The effective tick-spacing and fee-rate pair that a permissionless migration
+uses for one venue. A compiled venue default applies until an administrator
+pins an override in `VenueConfig`.
+_Avoid_: caller-selected fee tier, launch tier
+
+**Native reconstruction fact**:
+A Sui fact that Blast events deliberately do not duplicate, such as package
+publication effects, current capability ownership, or recipients of returned
+coins. Event projections keep these facts separate from event-derived state.
+_Avoid_: missing event, inferred protocol event

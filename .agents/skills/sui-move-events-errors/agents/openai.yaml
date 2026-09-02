@@ -1,4 +1,0 @@
-interface:
-  display_name: "Sui Move Events and Errors"
-  short_description: "Design replayable events and stable errors"
-  default_prompt: "Use $sui-move-events-errors to design or review this Move event and error ABI."

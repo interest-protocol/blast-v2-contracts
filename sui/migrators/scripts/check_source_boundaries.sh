@@ -8,11 +8,9 @@ BLUEFIN_SOURCE="$SOURCE_DIR/bluefin.move"
 MMT_SOURCE="$SOURCE_DIR/mmt.move"
 CETUS_SOURCE="$SOURCE_DIR/cetus.move"
 TURBOS_SOURCE="$SOURCE_DIR/turbos.move"
-FULLSAIL_SOURCE="$SOURCE_DIR/fullsail.move"
 AFTERMATH_SOURCE="$SOURCE_DIR/aftermath.move"
 EVENTS_SOURCE="$SOURCE_DIR/events.move"
 VENUE_CONFIG_SOURCE="$SOURCE_DIR/venue_config.move"
-MIGRATION_MATH_SOURCE="$SOURCE_DIR/migration_math.move"
 
 fail() {
     echo "Migrator source boundary failed: $1" >&2
@@ -33,19 +31,6 @@ reject_pattern() {
 
     if rg -q "$pattern" "$SOURCE_DIR"; then
         fail "$description"
-    fi
-}
-
-reject_visible_functions_after_private() {
-    local source="$1"
-
-    if awk '
-        /^\/\/ === Private Functions ===$/ { in_private = 1; next }
-        /^\/\/ === Test-Only/ { in_private = 0 }
-        in_private && /^public(\(package\))?[[:space:]]+(entry[[:space:]]+)?fun[[:space:]]+/ { found = 1 }
-        END { exit found ? 0 : 1 }
-    ' "$source"; then
-        fail "$(basename "$source") exposes a visible function after its private section"
     fi
 }
 
@@ -229,148 +214,14 @@ reject_turbos_pre_guard_mutator() {
     done < <(printf '%s' "$before_guard" | rg -o '(pool|position_manager|pool_factory)(::|\.)[[:alnum:]_]+' | sort -u)
 }
 
-fullsail_section() {
-    local name="$1"
-
-    awk -v name="$name" '
-        function declaration(line) {
-            return line ~ /^[[:space:]]*(public(\(package\))?[[:space:]]+)?(entry[[:space:]]+)?fun[[:space:]]+/
-        }
-        function target(line) {
-            return declaration(line) && line ~ ("fun[[:space:]]+" name "[<(]")
-        }
-        target($0) { active = 1 }
-        active && !target($0) && declaration($0) { exit }
-        active { print }
-    ' "$FULLSAIL_SOURCE"
-}
-
-require_fullsail_public() {
-    local route="$1"
-    local expected="$2"
-    local description="$3"
-    local section declaration compact count
-
-    section="$(fullsail_section "$route")"
-    declaration="$(printf '%s\n' "$section" | sed -n '1p' | tr -d '[:space:]')"
-    [[ "$declaration" == "publicfun${route}<"* ]] || \
-        fail "Full Sail $route must be public"
-    compact="$(printf '%s' "$section" | tr -d '[:space:]')"
-    count="$(printf '%s' "$compact" | rg -o -F "$expected" | wc -l || true)"
-    [[ -n "$compact" && "$count" -eq 1 ]] || \
-        fail "Full Sail $route missing $description"
-}
-
-require_fullsail_private() {
-    local function="$1"
-    local expected="$2"
-    local description="$3"
-    local section declaration compact count
-
-    section="$(fullsail_section "$function")"
-    declaration="$(printf '%s\n' "$section" | sed -n '1p' | tr -d '[:space:]')"
-    [[ "$declaration" == "fun${function}<"* || "$declaration" == "fun${function}("* ]] || \
-        fail "Full Sail $function must be private"
-    compact="$(printf '%s' "$section" | tr -d '[:space:]')"
-    count="$(printf '%s' "$compact" | rg -o -F "$expected" | wc -l || true)"
-    [[ -n "$compact" && "$count" -eq 1 ]] || \
-        fail "Full Sail $function missing $description"
-}
-
-require_fullsail_private_count() {
-    local function="$1"
-    local expected="$2"
-    local required_count="$3"
-    local description="$4"
-    local section declaration compact count
-
-    section="$(fullsail_section "$function")"
-    declaration="$(printf '%s\n' "$section" | sed -n '1p' | tr -d '[:space:]')"
-    [[ "$declaration" == "fun${function}<"* || "$declaration" == "fun${function}("* ]] || \
-        fail "Full Sail $function must be private"
-    compact="$(printf '%s' "$section" | tr -d '[:space:]')"
-    count="$(printf '%s' "$compact" | rg -o -F "$expected" | wc -l || true)"
-    [[ -n "$compact" && "$count" -eq "$required_count" ]] || \
-        fail "Full Sail $function missing $description"
-}
-
-reject_fullsail_pre_guard_mutator() {
-    local route="$1"
-    local section before_guard call redemption_count
-
-    section="$(fullsail_section "$route")"
-    before_guard="${section%%migration_math::assert_price_within_bps*}"
-    [[ "$before_guard" != "$section" ]] || \
-        fail "Full Sail $route missing price guard"
-    redemption_count="$(printf '%s' "$section" | rg -o -F 'payload.redeem_migration(Witness())' | wc -l || true)"
-    [[ "$redemption_count" -eq 1 ]] || \
-        fail "Full Sail $route must redeem exactly once"
-    [[ "$before_guard" == *'payload.redeem_migration(Witness())'* ]] || \
-        fail "Full Sail $route must redeem before its price guard"
-
-    while IFS= read -r call; do
-        case "$call" in
-            pool::tick_spacing|pool::fee_rate) ;;
-            pool.tick_spacing|pool.fee_rate|pool.current_sqrt_price) ;;
-            *) fail "Full Sail $route mutates a venue before its price guard" ;;
-        esac
-    done < <(printf '%s' "$before_guard" | rg -o '(pool|factory)(::|\.)[[:alnum:]_]+' | sort -u)
-
-    if printf '%s' "$before_guard" | rg -q 'position::'; then
-        fail "Full Sail $route mutates a position before its price guard"
-    fi
-}
-
 [[ -f "$VAULT_SOURCE" ]] || fail "missing sources/vault.move"
 [[ -f "$BLUEFIN_SOURCE" ]] || fail "missing sources/bluefin.move"
 [[ -f "$MMT_SOURCE" ]] || fail "missing sources/mmt.move"
 [[ -f "$CETUS_SOURCE" ]] || fail "missing sources/cetus.move"
 [[ -f "$TURBOS_SOURCE" ]] || fail "missing sources/turbos.move"
-[[ -f "$FULLSAIL_SOURCE" ]] || fail "missing sources/fullsail.move"
 [[ -f "$AFTERMATH_SOURCE" ]] || fail "missing sources/aftermath.move"
 [[ -f "$EVENTS_SOURCE" ]] || fail "missing sources/events.move"
 [[ -f "$VENUE_CONFIG_SOURCE" ]] || fail "missing sources/venue_config.move"
-[[ -f "$MIGRATION_MATH_SOURCE" ]] || fail "missing sources/migration_math.move"
-[[ ! -e "$PACKAGE_DIR/../launchpad/sources/migration_math.move" ]] || \
-    fail "migration math must be owned by the migrators package"
-
-if ! awk '
-    /^const E[[:alnum:]_]+:/ {
-        if (previous !~ /^#\[error\(code = [0-9]+\)\]$/ \
-                || $0 !~ /^const E[[:alnum:]_]+: vector<u8> = b".*";$/) {
-            print FILENAME ":" FNR ": " $0
-            invalid = 1
-        }
-    }
-    { previous = $0 }
-    END { exit invalid }
-' "$SOURCE_DIR"/*.move; then
-    fail "module-local errors must be attributed descriptive string constants"
-fi
-
-require_pattern "$MIGRATION_MATH_SOURCE" \
-    '^module blast_fun_migrators::migration_math;' \
-    'migrator-owned migration math module'
-[[ "$(rg -c '^public\(package\) fun ' "$MIGRATION_MATH_SOURCE")" -eq 4 ]] || \
-    fail "migration math must expose exactly four package functions"
-[[ "$(rg -c '^fun ' "$MIGRATION_MATH_SOURCE")" -eq 4 ]] || \
-    fail "migration math must keep exactly four private helpers"
-require_pattern "$MIGRATION_MATH_SOURCE" \
-    '^const BASIS_POINTS_DENOMINATOR: u64 = 10_000;' \
-    'local basis-points denominator'
-require_pattern "$MIGRATION_MATH_SOURCE" \
-    'assert_valid_bps\(max_deviation_bps\);' \
-    'price-deviation basis-points validation'
-require_pattern "$MIGRATION_MATH_SOURCE" \
-    'maximum_residual_amount\(source_amount, max_residual_bps\)' \
-    'residual limit derivation'
-require_pattern "$MIGRATION_MATH_SOURCE" \
-    'integer_sqrt\(ratio_q128\(meme_amount, quote_amount, meme_is_coin_a\)\)' \
-    'Q128 square-root derivation'
-if rg -n '\b(UID|key|Balance|Coin|TxContext|transfer::|events::|RuntimeConfig)\b' \
-    "$MIGRATION_MATH_SOURCE"; then
-    fail "migration math must remain pure and stateless"
-fi
 
 require_pattern "$EVENTS_SOURCE" 'public struct VaultCreated' 'vault creation event'
 require_pattern "$EVENTS_SOURCE" 'public struct MigrationCompleted' 'completed migration event'
@@ -382,10 +233,11 @@ require_pattern "$EVENTS_SOURCE" 'type_name::with_original_ids<Meme>' 'Meme type
 require_pattern "$EVENTS_SOURCE" 'type_name::with_original_ids<Quote>' 'Quote type facts'
 require_pattern "$EVENTS_SOURCE" 'position_id: ID' 'stable position identity'
 require_pattern "$EVENTS_SOURCE" 'protocol_fee_share_bps: u64' 'applied protocol fee share'
-require_pattern "$EVENTS_SOURCE" 'principal_liquidity_before: u128' \
-    'principal liquidity before fee collection'
-require_pattern "$EVENTS_SOURCE" 'principal_liquidity_after: u128' \
-    'principal liquidity after fee collection'
+require_pattern "$EVENTS_SOURCE" 'principal_liquidity: u128' \
+    'verified final principal liquidity'
+if rg -q 'principal_liquidity_(before|after)' "$EVENTS_SOURCE" "$VAULT_SOURCE"; then
+    fail "LP fee events and common accrual must carry one final principal value"
+fi
 require_pattern "$EVENTS_SOURCE" 'protocol_meme_fee_total: u64' \
     'final protocol Meme fee total'
 require_pattern "$EVENTS_SOURCE" 'creator_meme_fee_total: u64' \
@@ -437,8 +289,8 @@ require_pattern "$VAULT_SOURCE" 'quote_size <= MAX_RECEIVING_COIN_BATCH_SIZE - m
     'combined Meme and Quote fee coin batch bound'
 require_pattern "$VAULT_SOURCE" 'meme_size \+ quote_size > 0' \
     'nonempty combined fee coin batch guard'
-require_pattern "$VAULT_SOURCE" 'receivings\.destroy!' \
-    'bounded fee coin vector consumption'
+require_pattern "$VAULT_SOURCE" 'while \(!receivings\.is_empty\(\)\)' \
+    'bounded fee coin merge loop'
 require_pattern "$VAULT_SOURCE" '_venue: Venue' 'owned venue witness on vault construction'
 require_pattern "$VAULT_SOURCE" 'dynamic_object_field::add' 'dynamic object-field position attachment'
 require_pattern "$VAULT_SOURCE" 'self\.id\.dynamic_object_field_mut' 'typed mutable position borrow'
@@ -488,7 +340,7 @@ require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun policy<Key:' \
 require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun policy_mut<Key:' \
     'sealed-key package-only policy mutation'
 VENUE_TIER_SETTER_COUNT=0
-for source in "$BLUEFIN_SOURCE" "$CETUS_SOURCE" "$FULLSAIL_SOURCE" "$MMT_SOURCE" "$TURBOS_SOURCE"; do
+for source in "$BLUEFIN_SOURCE" "$CETUS_SOURCE" "$MMT_SOURCE" "$TURBOS_SOURCE"; do
     rg -q 'public fun set_tier' "$source" || \
         fail "every venue module must expose its admin tier pin"
     count="$(rg -c '_: &AdminWitness,' "$source" || true)"
@@ -500,7 +352,7 @@ for source in "$BLUEFIN_SOURCE" "$CETUS_SOURCE" "$FULLSAIL_SOURCE" "$MMT_SOURCE"
     rg -q 'const DEFAULT_FEE_RATE: u64' "$source" || \
         fail "every venue module must compile its researched default fee rate"
 done
-[[ "$VENUE_TIER_SETTER_COUNT" -eq 5 ]] || \
+[[ "$VENUE_TIER_SETTER_COUNT" -eq 4 ]] || \
     fail "every venue tier pin must take a live core admin witness exactly once"
 
 # Aftermath wraps its base pool in a DAO-fee pool and locks LP principal plus policy authority.
@@ -512,7 +364,9 @@ require_pattern "$AFTERMATH_SOURCE" 'public struct AftermathPolicy' \
     'typed Aftermath future-migration policy'
 require_pattern "$AFTERMATH_SOURCE" 'public struct AftermathPosition' \
     'sealed Aftermath LP and DAO-cap position'
-require_pattern "$AFTERMATH_SOURCE" 'owner_cap: OwnerCap<Lp>' \
+require_pattern "$AFTERMATH_SOURCE" 'lp_balance: Balance<Lp>' \
+    'locked LP balance custody'
+require_pattern "$AFTERMATH_SOURCE" 'dao_fee_owner_cap: OwnerCap<Lp>' \
     'locked DAO fee owner capability'
 require_pattern "$AFTERMATH_SOURCE" 'public fun migrate_meme_first' \
     'canonical Meme-first migration route'
@@ -540,7 +394,7 @@ require_pattern "$AFTERMATH_SOURCE" 'pool\.weight_of<Lp, C1>\(\) == weight_1' \
     'first configured weight reconciliation'
 require_pattern "$AFTERMATH_SOURCE" 'pool\.weight_of<Lp, C2>\(\) == weight_2' \
     'second configured weight reconciliation'
-require_pattern "$AFTERMATH_SOURCE" 'pool\.fees_swap_in_for<Lp, C1>\(\) == BASE_SWAP_IN_FEE' \
+require_pattern "$AFTERMATH_SOURCE" 'pool\.fees_swap_in_for<Lp, C1>\(\) == fee_rate' \
     'symmetric swap-in fee reconciliation'
 require_pattern "$AFTERMATH_SOURCE" 'pool\.fees_swap_out_for<Lp, C1>\(\) == 0' \
     'zero swap-out fee reconciliation'
@@ -564,11 +418,13 @@ require_pattern "$AFTERMATH_SOURCE" 'dao_fee_pool\.fee_recipient\(\) == vault_ad
     'DAO recipient reconciliation'
 require_pattern "$AFTERMATH_SOURCE" 'let position = AftermathPosition' \
     'whole LP and DAO-cap position construction'
-require_pattern "$AFTERMATH_SOURCE" 'pending_vault\.finish' \
+require_pattern "$AFTERMATH_SOURCE" 'lp_balance: lp_coin\.into_balance\(\)' \
+    'LP coin wrapper deletion before position custody'
+require_pattern "$AFTERMATH_SOURCE" 'vault::finish' \
     'atomic prepared-vault completion'
 require_pattern "$AFTERMATH_SOURCE" 'transfer::public_share_object\(dao_fee_pool\)' \
     'outer DAO-fee pool sharing'
-require_pattern "$AFTERMATH_SOURCE" 'public fun accrue_fees' \
+require_pattern "$AFTERMATH_SOURCE" 'public fun accrue_dao_fees' \
     'combined Meme and Quote DAO-fee receiving path'
 require_pattern "$AFTERMATH_SOURCE" 'vector<Receiving<Coin<Meme>>>' \
     'batched Meme DAO fee receiving ABI'
@@ -576,7 +432,7 @@ require_pattern "$AFTERMATH_SOURCE" 'vector<Receiving<Coin<Quote>>>' \
     'batched Quote DAO fee receiving ABI'
 require_pattern "$AFTERMATH_SOURCE" 'let \(meme_fee, quote_fee\) = self\.receive_coins' \
     'combined batched object-owned DAO fee receipt'
-if rg -q 'public fun accrue_(meme|quote)_fee' "$AFTERMATH_SOURCE"; then
+if rg -q 'public fun accrue_(meme|quote)_dao_fee' "$AFTERMATH_SOURCE"; then
     fail "Aftermath must expose one combined DAO fee accrual function"
 fi
 require_pattern "$AFTERMATH_SOURCE" 'locked_lp_amount_before == locked_lp_amount_after' \
@@ -587,9 +443,9 @@ require_pattern "$AFTERMATH_SOURCE" 'events::aftermath_migration_completed' \
     'Aftermath-specific migration emission'
 require_pattern "$AFTERMATH_SOURCE" 'public fun set_policy' \
     'admin-pinned Aftermath weighted-pool policy'
-require_pattern "$AFTERMATH_SOURCE" 'public fun update_fee' \
+require_pattern "$AFTERMATH_SOURCE" 'public fun update_dao_fee' \
     'admin-authorized existing-pool DAO fee update'
-require_pattern "$AFTERMATH_SOURCE" 'owner_cap\.set_fee_bps' \
+require_pattern "$AFTERMATH_SOURCE" 'dao_fee_owner_cap\.set_fee_bps' \
     'locked-cap DAO fee mutation call'
 require_pattern "$AFTERMATH_SOURCE" 'self\.pool_id\(\) == dao_fee_pool_id' \
     'DAO fee mutation vault-pool binding'
@@ -599,22 +455,23 @@ require_pattern "$AFTERMATH_SOURCE" 'meme_weight \+ policy\.quote_weight == FIXE
     'normalized Aftermath weight policy'
 require_pattern "$AFTERMATH_SOURCE" 'events::aftermath_policy_updated' \
     'replay-complete Aftermath policy mutation emission'
-if rg -q 'update_fee_recipient|remove_liquidity|withdraw_liquidity|public fun (dao_fee_)?owner_cap' "$AFTERMATH_SOURCE"; then
+if rg -q 'update_fee_recipient|remove_liquidity|withdraw_liquidity|dao_fee_owner_cap\(' "$AFTERMATH_SOURCE"; then
     fail "Aftermath must expose neither recipient mutation nor LP withdrawal"
+fi
+if rg -q 'lint\(coin_field\)' "$AFTERMATH_SOURCE"; then
+    fail "Aftermath position must store LP principal as a Balance"
 fi
 if rg -q 'dao_fee_amm::(pool|version)::(DaoFeePool|OwnerCap|Version)' "$AFTERMATH_SOURCE"; then
     fail "Aftermath signatures and fields must use imported DAO types"
 fi
 AFTERMATH_COMPACT_SOURCE="$(tr -d '[:space:]' < "$AFTERMATH_SOURCE")"
-[[ "$AFTERMATH_COMPACT_SOURCE" == *'publicfunmigrate_meme_first<Lp,Meme,Quote>(launch:&mutLaunch<Meme,Quote>,create_pool_cap:CreatePoolCapV2,'* ]] || \
-    fail "Aftermath Meme-first migration must put its consumed pool capability after the launch"
-[[ "$AFTERMATH_COMPACT_SOURCE" == *'publicfunmigrate_meme_second<Lp,Meme,Quote>(launch:&mutLaunch<Meme,Quote>,create_pool_cap:CreatePoolCapV2,'* ]] || \
-    fail "Aftermath Meme-second migration must put its consumed pool capability after the launch"
-[[ "$AFTERMATH_COMPACT_SOURCE" == *'publicfunupdate_fee<Lp,Meme,Quote>(self:&mutLpVault<Meme,Quote>,_:&AdminWitness,dao_fee_pool:&mutDaoFeePool<Lp>,dao_fee_version:&Version,dao_fee_bps:u16,)'* ]] || \
-    fail "Aftermath fee update parameters must put the admin witness immediately after the vault"
 if [[ "$AFTERMATH_COMPACT_SOURCE" =~ publicfunmigrate[^{]*(weights|flatness|fee_rate|swap_in_fee|name): ]]; then
     fail "caller-supplied Aftermath economic parameters are forbidden"
 fi
+AFTERMATH_VAULT_LINE="$(rg -n -m1 'vault::finish' "$AFTERMATH_SOURCE" | cut -d: -f1)"
+AFTERMATH_SHARE_LINE="$(rg -n -m1 'public_share_object\(dao_fee_pool\)' "$AFTERMATH_SOURCE" | cut -d: -f1)"
+[[ "$AFTERMATH_SHARE_LINE" -gt "$AFTERMATH_VAULT_LINE" ]] || \
+    fail "Aftermath DAO pool sharing must follow LP-and-cap vault custody"
 
 require_pattern "$BLUEFIN_SOURCE" 'public struct Witness' 'sealed Bluefin witness'
 require_pattern "$BLUEFIN_SOURCE" 'public struct Venue' 'sealed Bluefin venue marker'
@@ -622,7 +479,7 @@ require_pattern "$BLUEFIN_SOURCE" 'public fun migrate' 'Bluefin migration'
 require_pattern "$BLUEFIN_SOURCE" 'public fun collect_fees' 'Bluefin fee collection'
 require_pattern "$BLUEFIN_SOURCE" 'bluefin_config\.pool_creation_fee_amount<Quote>' \
     'Quote creation-fee query'
-require_pattern "$BLUEFIN_SOURCE" 'balance::zero<Quote>\(\)' \
+require_pattern "$BLUEFIN_SOURCE" 'balance::zero\(\)' \
     'zero Quote creation-fee balance'
 require_pattern "$BLUEFIN_SOURCE" 'events::migration_completed' \
     'completed migration event emission'
@@ -812,7 +669,7 @@ require_cetus_public 'collect_fees_meme_b' \
 require_cetus_private 'collect_position_fees' 'venue:&Venue' \
     'borrowed private venue'
 require_cetus_private 'collect_position_fees' \
-    'self.position_mut<Meme,Quote,Venue,Position>(venue)' \
+    'self.position_mut<_,_,_,Position>(venue)' \
     'venue-bound position borrow'
 require_cetus_private_count 'collect_position_fees' \
     'assert!(self.pool_id()==pool_id,EPositionPoolMismatch);' 2 \
@@ -963,7 +820,7 @@ require_turbos_public 'collect_fees_meme_b' \
 require_turbos_private 'collect_position_fees' 'venue:&Venue' \
     'borrowed private venue'
 require_turbos_private 'collect_position_fees' \
-    'self.position_mut<Meme,Quote,Venue,TurbosPositionNFT,>(venue)' \
+    'self.position_mut<_,_,_,TurbosPositionNFT,>(venue)' \
     'venue-bound Turbos NFT borrow'
 require_turbos_private_count 'collect_position_fees' \
     'assert!(self.pool_id()==pool_id,EPositionPoolMismatch);' 2 \
@@ -1016,161 +873,6 @@ require_turbos_private 'checked_pool_tier' \
     '(pool.get_pool_fee()asu64)==fee_rate' 'pinned adopted fee'
 require_turbos_private 'tick_bits' \
     '((1u64<<32)-(magnitudeasu64))asu32' 'twos-complement event encoding'
-require_pattern "$FULLSAIL_SOURCE" 'public struct Witness' 'sealed Full Sail witness'
-require_pattern "$FULLSAIL_SOURCE" 'public struct Venue' 'sealed Full Sail venue marker'
-require_pattern "$FULLSAIL_SOURCE" 'const MAX_PRICE_DEVIATION_BPS: u64 = 50;' \
-    'exact 50-bps Full Sail adoption limit'
-
-# New routes own canonical order, balance price, exact revision-4 creation, and lock.
-require_fullsail_public 'migrate_new_meme_a' \
-    'assert_canonical_order<Meme,Quote>(true);' 'Meme-A canonical order'
-require_fullsail_public 'migrate_new_meme_a' \
-    'let(tick_spacing,pinned_fee_rate)=effective_tier(venue_config);' 'Meme-A effective tier'
-require_fullsail_public 'migrate_new_meme_a' \
-    'assert!(source_meme_amount>=source_quote_amount,EMemeBelowQuote);' \
-    'Meme-A fixed-side feasibility guard'
-require_fullsail_public 'migrate_new_meme_a' \
-    'migration_math::sqrt_price_x64(source_meme_amount,source_quote_amount,true,)' \
-    'Meme-A balance-derived price'
-require_fullsail_public 'migrate_new_meme_a' 'full_range_ticks(tick_spacing)' \
-    'Meme-A full-range ticks'
-require_fullsail_public 'migrate_new_meme_a' \
-    'factory::create_pool_with_liquidity<Meme,Quote>(pools,fullsail_config,rewarder_vault,tick_spacing,sqrt_price_x64,b"".to_string(),lower_tick_bits,upper_tick_bits,meme.into_coin(ctx),quote.into_coin(ctx),source_meme_amount,source_quote_amount,true,@0x0,@0x0,false,clock,ctx,)' \
-    'exact Meme-A revision-4 pool creation with zero feed IDs'
-require_fullsail_public 'migrate_new_meme_a' \
-    'lock_and_share<Meme,Quote>(launch_id,position,residual_meme,residual_quote,source_meme_amount,source_quote_amount,sqrt_price_x64,' \
-    'Meme-A shared lock'
-
-require_fullsail_public 'migrate_new_meme_b' \
-    'assert_canonical_order<Meme,Quote>(false);' 'Meme-B canonical order'
-require_fullsail_public 'migrate_new_meme_b' \
-    'let(tick_spacing,pinned_fee_rate)=effective_tier(venue_config);' 'Meme-B effective tier'
-require_fullsail_public 'migrate_new_meme_b' \
-    'assert!(source_meme_amount>=source_quote_amount,EMemeBelowQuote);' \
-    'Meme-B fixed-side feasibility guard'
-require_fullsail_public 'migrate_new_meme_b' \
-    'migration_math::sqrt_price_x64(source_meme_amount,source_quote_amount,false,)' \
-    'Meme-B balance-derived price'
-require_fullsail_public 'migrate_new_meme_b' 'full_range_ticks(tick_spacing)' \
-    'Meme-B full-range ticks'
-require_fullsail_public 'migrate_new_meme_b' \
-    'factory::create_pool_with_liquidity<Quote,Meme>(pools,fullsail_config,rewarder_vault,tick_spacing,sqrt_price_x64,b"".to_string(),lower_tick_bits,upper_tick_bits,quote.into_coin(ctx),meme.into_coin(ctx),source_quote_amount,source_meme_amount,false,@0x0,@0x0,false,clock,ctx,)' \
-    'exact Meme-B revision-4 pool creation with zero feed IDs'
-require_fullsail_public 'migrate_new_meme_b' \
-    'lock_and_share<Meme,Quote>(launch_id,position,residual_meme,residual_quote,source_meme_amount,source_quote_amount,sqrt_price_x64,' \
-    'Meme-B shared lock'
-
-# Adopted routes redeem, enforce the 50-bps guard, then use only open/add/pay/repay.
-require_fullsail_public 'migrate_existing_meme_a' \
-    'migration_math::assert_price_within_bps(source_meme_amount,source_quote_amount,true,pool_sqrt_price,MAX_PRICE_DEVIATION_BPS,)' \
-    'exact Meme-A 50-bps price guard'
-require_fullsail_public 'migrate_existing_meme_a' \
-    'assert_adopted_tier(venue_config,tick_spacing);' \
-    'Meme-A adopted tier pin'
-require_fullsail_public 'migrate_existing_meme_a' \
-    'letpool_sqrt_price=pool.current_sqrt_price();' 'Meme-A adopted-price read'
-require_fullsail_public 'migrate_existing_meme_a' \
-    'letfix_meme=pool_sqrt_price<=derived_sqrt_price;' 'Meme-A affordable side rule'
-require_fullsail_public 'migrate_existing_meme_a' \
-    'if(fix_meme){(source_meme_amount,true)}else{(source_quote_amount,false)};' \
-    'Meme-A fixed-side mapping'
-require_fullsail_public 'migrate_existing_meme_a' \
-    'pool::open_position<Meme,Quote>(fullsail_config,pool,lower_tick_bits,upper_tick_bits,ctx,)' \
-    'exact Meme-A position opening'
-require_fullsail_public 'migrate_existing_meme_a' \
-    'pool::add_liquidity_fix_coin<Meme,Quote>(fullsail_config,rewarder_vault,pool,&mutposition,fixed_amount,fix_amount_a,clock,)' \
-    'exact Meme-A fixed-coin addition'
-require_fullsail_public 'migrate_existing_meme_a' \
-    'pool::repay_add_liquidity<Meme,Quote>(fullsail_config,pool,paid_meme,paid_quote,receipt,)' \
-    'exact Meme-A repayment'
-require_fullsail_public 'migrate_existing_meme_a' \
-    'assert!(position.pool_id()==object::id(pool),EPositionPoolMismatch);' \
-    'Meme-A position-pool identity'
-reject_fullsail_pre_guard_mutator 'migrate_existing_meme_a'
-
-require_fullsail_public 'migrate_existing_meme_b' \
-    'migration_math::assert_price_within_bps(source_meme_amount,source_quote_amount,false,pool_sqrt_price,MAX_PRICE_DEVIATION_BPS,)' \
-    'exact Meme-B 50-bps price guard'
-require_fullsail_public 'migrate_existing_meme_b' \
-    'assert_adopted_tier(venue_config,tick_spacing);' \
-    'Meme-B adopted tier pin'
-require_fullsail_public 'migrate_existing_meme_b' \
-    'letpool_sqrt_price=pool.current_sqrt_price();' 'Meme-B adopted-price read'
-require_fullsail_public 'migrate_existing_meme_b' \
-    'letfix_meme=pool_sqrt_price>=derived_sqrt_price;' 'Meme-B affordable side rule'
-require_fullsail_public 'migrate_existing_meme_b' \
-    'if(fix_meme){(source_meme_amount,false)}else{(source_quote_amount,true)};' \
-    'Meme-B fixed-side mapping'
-require_fullsail_public 'migrate_existing_meme_b' \
-    'pool::open_position<Quote,Meme>(fullsail_config,pool,lower_tick_bits,upper_tick_bits,ctx,)' \
-    'exact Meme-B position opening'
-require_fullsail_public 'migrate_existing_meme_b' \
-    'pool::add_liquidity_fix_coin<Quote,Meme>(fullsail_config,rewarder_vault,pool,&mutposition,fixed_amount,fix_amount_a,clock,)' \
-    'exact Meme-B fixed-coin addition'
-require_fullsail_public 'migrate_existing_meme_b' \
-    'pool::repay_add_liquidity<Quote,Meme>(fullsail_config,pool,paid_quote,paid_meme,receipt,)' \
-    'exact Meme-B repayment'
-require_fullsail_public 'migrate_existing_meme_b' \
-    'assert!(position.pool_id()==object::id(pool),EPositionPoolMismatch);' \
-    'Meme-B position-pool identity'
-reject_fullsail_pre_guard_mutator 'migrate_existing_meme_b'
-
-# Fee routes normalize A/B and compare principal liquidity around collection.
-require_fullsail_public 'collect_fees_meme_a' 'letvenue=Venue();' \
-    'private Meme-A venue construction'
-require_fullsail_public 'collect_fees_meme_a' \
-    'collect_position_fees<Meme,Quote,Meme,Quote>(self,&venue,fullsail_config,pool,)' \
-    'Meme-A collection orientation'
-require_fullsail_public 'collect_fees_meme_b' 'letvenue=Venue();' \
-    'private Meme-B venue construction'
-require_fullsail_public 'collect_fees_meme_b' \
-    'collect_position_fees<Quote,Meme,Meme,Quote>(self,&venue,fullsail_config,pool,)' \
-    'Meme-B collection orientation'
-require_fullsail_private 'collect_position_fees' 'venue:&Venue' \
-    'borrowed private venue'
-require_fullsail_private 'collect_position_fees' \
-    'self.position_mut<Meme,Quote,Venue,Position>(venue)' \
-    'venue-bound position borrow'
-require_fullsail_private_count 'collect_position_fees' \
-    'assert!(position.pool_id()==pool_id,EPositionPoolMismatch);' 2 \
-    'position-pool identity'
-require_fullsail_private 'collect_position_fees' \
-    'pool::collect_fee(fullsail_config,pool,position,true,)' \
-    'exact fee recalculation call'
-require_fullsail_private 'collect_position_fees' \
-    'assert!(liquidity_after==liquidity_before,EPositionLiquidityChanged);' \
-    'unchanged principal liquidity'
-
-# Full Sail-specific private seams fix order, ticks, residuals, and custody.
-require_fullsail_private 'assert_canonical_order' \
-    'is_type_name_greater<Meme,Quote>()' 'venue-exact canonical comparison'
-require_fullsail_private 'is_type_name_greater' \
-    'type_name::with_defining_ids<A>().into_string()' \
-    'left defining-ID venue comparison'
-require_fullsail_private 'is_type_name_greater' \
-    'type_name::with_defining_ids<B>().into_string()' \
-    'right defining-ID venue comparison'
-require_fullsail_private 'full_range_ticks' \
-    'tick_math::min_tick().abs_u32()' 'minimum venue tick'
-require_fullsail_private 'full_range_ticks' \
-    'tick_math::max_tick().as_u32()' 'maximum venue tick'
-require_fullsail_private 'full_range_ticks' \
-    'lower_magnitude/tick_spacing*tick_spacing' 'inward lower-tick alignment'
-require_fullsail_private 'full_range_ticks' \
-    'upper_magnitude/tick_spacing*tick_spacing' 'inward upper-tick alignment'
-require_fullsail_private 'lock_and_share' \
-    'migration_math::assert_residual_within_bps(source_meme_amount,residual_meme_amount,MAX_RESIDUAL_BPS,)' \
-    'Meme residual limit'
-require_fullsail_private 'lock_and_share' \
-    'migration_math::assert_residual_within_bps(source_quote_amount,residual_quote_amount,MAX_RESIDUAL_BPS,)' \
-    'Quote residual limit'
-require_fullsail_private 'lock_and_share' \
-    'vault::new<Meme,Quote,Venue,Position>(Venue(),pool_id,position,residual_meme.into_balance(),residual_quote.into_balance(),ctx,)' \
-    'Full Sail position and residual custody'
-require_fullsail_private 'lock_and_share' \
-    'events::migration_completed<Meme,Quote,Venue>(' 'direct migration event'
-require_fullsail_private 'assert_adopted_tier' \
-    'tick_spacing==pinned_tick_spacing' 'pinned adopted tick spacing'
 MMT_VENUE_CONSTRUCTION_COUNT="$(rg -o 'let venue = Venue\(\)' "$MMT_SOURCE" | wc -l || true)"
 [[ "$MMT_VENUE_CONSTRUCTION_COUNT" -eq 2 ]] || \
     fail "MMT must construct its sealed venue witness for both collection routes"
@@ -1205,10 +907,6 @@ reject_pattern '(position\.(burn|delete|destroy)|((burn|delete|destroy)[[:space:
     'position burn or destruction is forbidden'
 reject_pattern '(sequence|revision|nonce|schema_version|action_tag):' \
     'application-level event ordering fields are forbidden'
-
-for source in "$SOURCE_DIR"/*.move; do
-    reject_visible_functions_after_private "$source"
-done
 
 if rg -q 'sui::event::emit' "$SOURCE_DIR" \
     --glob '*.move' --glob '!events.move'; then
@@ -1302,37 +1000,6 @@ if [[ "$TURBOS_PUBLIC_SIGNATURES" =~ (sqrt_price|orientation|meme_is|tick_spacin
 fi
 if [[ "$TURBOS_COMPACT_SOURCE" =~ position_manager::(decrease_liquidity|burn|increase_liquidity) ]]; then
     fail "Turbos principal mutation is forbidden"
-fi
-
-FULLSAIL_VENUE_CONSTRUCTION_COUNT="$(rg -o 'let venue = Venue\(\)' "$FULLSAIL_SOURCE" | wc -l || true)"
-[[ "$FULLSAIL_VENUE_CONSTRUCTION_COUNT" -eq 2 ]] || \
-    fail "Full Sail must construct its sealed venue witness for both collection routes"
-FULLSAIL_COMPACT_SOURCE="$(tr -d '[:space:]' < "$FULLSAIL_SOURCE")"
-if [[ "$FULLSAIL_COMPACT_SOURCE" =~ abort0 ]]; then
-    fail "production Full Sail abort stubs are forbidden"
-fi
-if [[ "$FULLSAIL_COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*Venue([^C]|$) ]]; then
-    fail "public or package Full Sail venue exposure is forbidden"
-fi
-if [[ "$COMPACT_SOURCE" =~ public(\(package\))?fun[^\{]*fullsail::Venue ]]; then
-    fail "cross-module Full Sail venue exposure is forbidden"
-fi
-if [[ "$FULLSAIL_COMPACT_SOURCE" =~ publicfun[^\{]*Position ]]; then
-    fail "public Full Sail position exposure is forbidden"
-fi
-FULLSAIL_PUBLIC_SIGNATURES="$(rg -U 'public fun (migrate|collect)[^{]+\{' "$FULLSAIL_SOURCE")"
-if [[ "$FULLSAIL_PUBLIC_SIGNATURES" =~ (sqrt_price|orientation|meme_is|tick_spacing:|fee_rate:) ]]; then
-    fail "caller-supplied Full Sail price, orientation, or tier is forbidden"
-fi
-if [[ "$FULLSAIL_COMPACT_SOURCE" =~ pool::(remove_liquidity|close_position) ]]; then
-    fail "Full Sail principal mutation is forbidden"
-fi
-
-# Native transaction metadata carries the sender, so no payload may restate it
-# under an actor name and no call site may pass it into an event. See ADR 0059.
-if rg -n '^[[:space:]]+(claimant|collector|caller|funder|migrator):' "$EVENTS_SOURCE" \
-    || rg -U -n 'events::[a-z_]+(<[^>]*>)?\([^;]*ctx\.sender\(\)' "$SOURCE_DIR"; then
-    fail "event payloads must not restate the transaction sender"
 fi
 
 echo "Migrator source boundaries passed"

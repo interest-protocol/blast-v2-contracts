@@ -14,7 +14,7 @@ use blast_fun::{
 };
 use std::type_name::{Self, TypeName};
 use sui::{
-    vec_map::{Self, VecMap},
+    table::{Self, Table},
     vec_set::{Self, VecSet},
 };
 
@@ -23,7 +23,7 @@ use sui::{
 /// Shared singleton containing cold policy snapshotted by each new launch.
 public struct LaunchConfig has key {
     id: UID,
-    quotes: VecMap<TypeName, QuoteParameters>,
+    quotes: Table<TypeName, QuoteParameters>,
     quote_fee_bps: Bps,
     meme_fee_bps: Bps,
     quote_migration_fee_bps: Bps,
@@ -66,44 +66,15 @@ public fun allow_quote<Quote>(
     );
 
     let quote = type_name::with_original_ids<Quote>();
-    let quote_index = self.quotes.get_idx_opt(&quote);
 
-    if (quote_index.is_some()) {
-        let (_, quote_parameters_mut) = self.quotes.get_entry_by_idx_mut(
-            quote_index.destroy_some(),
-        );
-        let old_virtual_quote = quote_parameters_mut.virtual_quote;
-        let old_migration_quote_target = quote_parameters_mut.migration_quote_target;
-
-        assert!(
-            virtual_quote != old_virtual_quote
-                || migration_quote_target != old_migration_quote_target,
-            blast_fun::errors::quote_parameters_unchanged!(),
-        );
-
-        *quote_parameters_mut = QuoteParameters {
-            virtual_quote,
-            migration_quote_target,
-        };
-
-        events::quote_parameters_changed<Quote>(
-            old_virtual_quote,
-            old_migration_quote_target,
+    if (self.quotes.contains(quote)) {
+        self.update_quote<Quote>(
+            quote,
             virtual_quote,
             migration_quote_target,
         );
     } else {
-        assert!(
-            self.quotes.length() < constants::max_quote_assets!(),
-            blast_fun::errors::quote_capacity_reached!(),
-        );
-
-        self.quotes.insert(quote, QuoteParameters {
-            virtual_quote,
-            migration_quote_target,
-        });
-
-        events::quote_allowed<Quote>(virtual_quote, migration_quote_target);
+        self.insert_quote<Quote>(quote, virtual_quote, migration_quote_target);
     };
 }
 
@@ -115,16 +86,14 @@ public fun disallow_quote<Quote>(
 ) {
     package_version.assert_current();
 
-    let quote_index = self.quotes.get_idx_opt(&type_name::with_original_ids<Quote>());
+    let quote = type_name::with_original_ids<Quote>();
 
     assert!(
-        quote_index.is_some(),
+        self.quotes.contains(quote),
         blast_fun::errors::quote_not_allowed!(),
     );
 
-    let (_, previous_parameters) = self.quotes.remove_entry_by_idx(
-        quote_index.destroy_some(),
-    );
+    let previous_parameters = self.quotes.remove(quote);
 
     events::quote_disallowed<Quote>(
         previous_parameters.virtual_quote,
@@ -141,20 +110,7 @@ public fun set_trade_fees(
     meme_fee_bps: u64,
 ) {
     package_version.assert_current();
-
-    assert!(
-        quote_fee_bps <= constants::max_launch_fee_bps!(),
-        blast_fun::errors::invalid_quote_fee_bps!(),
-    );
-    assert!(
-        meme_fee_bps <= constants::max_launch_fee_bps!(),
-        blast_fun::errors::invalid_meme_fee_bps!(),
-    );
-    assert!(
-        quote_fee_bps != self.quote_fee_bps.value()
-            || meme_fee_bps != self.meme_fee_bps.value(),
-        blast_fun::errors::trade_fee_defaults_unchanged!(),
-    );
+    self.assert_valid_trade_fees(quote_fee_bps, meme_fee_bps);
 
     let old_quote_fee_bps = self.quote_fee_bps.value();
     let old_meme_fee_bps = self.meme_fee_bps.value();
@@ -180,34 +136,10 @@ public fun set_graduation_defaults(
     meme_liquidity_provision_bps: u64,
 ) {
     package_version.assert_current();
-
-    assert!(
-        quote_migration_fee_bps <= constants::max_quote_migration_fee_bps!(),
-        blast_fun::errors::invalid_quote_migration_fee_bps!(),
-    );
-    assert!(
-        protocol_meme_graduation_fee_bps
-            <= constants::max_protocol_meme_graduation_fee_bps!(),
-        blast_fun::errors::invalid_protocol_meme_graduation_fee_bps!(),
-    );
-    assert!(
-        meme_liquidity_provision_bps > 0
-            && meme_liquidity_provision_bps
-                <= constants::max_meme_liquidity_provision_bps!(),
-        blast_fun::errors::invalid_meme_liquidity_provision_bps!(),
-    );
-    assert!(
-        protocol_meme_graduation_fee_bps + meme_liquidity_provision_bps
-            < constants::basis_points_denominator!(),
-        blast_fun::errors::invalid_meme_supply_partition_bps!(),
-    );
-    assert!(
-        quote_migration_fee_bps != self.quote_migration_fee_bps.value()
-            || protocol_meme_graduation_fee_bps
-                != self.protocol_meme_graduation_fee_bps.value()
-            || meme_liquidity_provision_bps
-                != self.meme_liquidity_provision_bps.value(),
-        blast_fun::errors::graduation_defaults_unchanged!(),
+    self.assert_valid_graduation_defaults(
+        quote_migration_fee_bps,
+        protocol_meme_graduation_fee_bps,
+        meme_liquidity_provision_bps,
     );
 
     let old_quote_migration_fee_bps = self.quote_migration_fee_bps.value();
@@ -286,16 +218,14 @@ public fun disallow_migration_witness<MigrationWitness: drop>(
 public(package) fun snapshot_for_launch<Quote, MigrationWitness: drop>(
     self: &LaunchConfig,
 ): (u64, u64, Bps, Bps, Bps, Bps, Bps, TypeName) {
-    let quote_index = self.quotes.get_idx_opt(&type_name::with_original_ids<Quote>());
+    let quote = type_name::with_original_ids<Quote>();
 
     assert!(
-        quote_index.is_some(),
+        self.quotes.contains(quote),
         blast_fun::errors::quote_not_allowed!(),
     );
 
-    let (_, parameters) = self.quotes.get_entry_by_idx(
-        quote_index.destroy_some(),
-    );
+    let parameters = &self.quotes[quote];
     let migration_witness = type_name::with_original_ids<MigrationWitness>();
 
     assert!(
@@ -324,7 +254,7 @@ public(package) fun snapshot_for_launch<Quote, MigrationWitness: drop>(
 fun new(ctx: &mut TxContext): LaunchConfig {
     LaunchConfig {
         id: object::new(ctx),
-        quotes: vec_map::empty(),
+        quotes: table::new(ctx),
         quote_fee_bps: bps::new(0),
         meme_fee_bps: bps::new(0),
         quote_migration_fee_bps: bps::new(0),
@@ -332,6 +262,105 @@ fun new(ctx: &mut TxContext): LaunchConfig {
         meme_liquidity_provision_bps: bps::new(0),
         migration_witnesses: vec_set::empty(),
     }
+}
+
+fun update_quote<Quote>(
+    self: &mut LaunchConfig,
+    quote: TypeName,
+    virtual_quote: u64,
+    migration_quote_target: u64,
+) {
+    let quote_parameters_mut = &mut self.quotes[quote];
+    let old_virtual_quote = quote_parameters_mut.virtual_quote;
+    let old_migration_quote_target = quote_parameters_mut.migration_quote_target;
+
+    assert!(
+        virtual_quote != old_virtual_quote
+            || migration_quote_target != old_migration_quote_target,
+        blast_fun::errors::quote_parameters_unchanged!(),
+    );
+
+    *quote_parameters_mut = QuoteParameters {
+        virtual_quote,
+        migration_quote_target,
+    };
+
+    events::quote_parameters_changed<Quote>(
+        old_virtual_quote,
+        old_migration_quote_target,
+        virtual_quote,
+        migration_quote_target,
+    );
+}
+
+fun insert_quote<Quote>(
+    self: &mut LaunchConfig,
+    quote: TypeName,
+    virtual_quote: u64,
+    migration_quote_target: u64,
+) {
+    self.quotes.add(quote, QuoteParameters {
+        virtual_quote,
+        migration_quote_target,
+    });
+
+    events::quote_allowed<Quote>(virtual_quote, migration_quote_target);
+}
+
+fun assert_valid_trade_fees(
+    self: &LaunchConfig,
+    quote_fee_bps: u64,
+    meme_fee_bps: u64,
+) {
+    assert!(
+        quote_fee_bps <= constants::max_launch_fee_bps!(),
+        blast_fun::errors::invalid_quote_fee_bps!(),
+    );
+    assert!(
+        meme_fee_bps <= constants::max_launch_fee_bps!(),
+        blast_fun::errors::invalid_meme_fee_bps!(),
+    );
+    assert!(
+        quote_fee_bps != self.quote_fee_bps.value()
+            || meme_fee_bps != self.meme_fee_bps.value(),
+        blast_fun::errors::trade_fee_defaults_unchanged!(),
+    );
+}
+
+fun assert_valid_graduation_defaults(
+    self: &LaunchConfig,
+    quote_migration_fee_bps: u64,
+    protocol_meme_graduation_fee_bps: u64,
+    meme_liquidity_provision_bps: u64,
+) {
+    assert!(
+        quote_migration_fee_bps <= constants::max_quote_migration_fee_bps!(),
+        blast_fun::errors::invalid_quote_migration_fee_bps!(),
+    );
+    assert!(
+        protocol_meme_graduation_fee_bps
+            <= constants::max_protocol_meme_graduation_fee_bps!(),
+        blast_fun::errors::invalid_protocol_meme_graduation_fee_bps!(),
+    );
+    assert!(
+        meme_liquidity_provision_bps > 0
+            && meme_liquidity_provision_bps
+                <= constants::max_meme_liquidity_provision_bps!(),
+        blast_fun::errors::invalid_meme_liquidity_provision_bps!(),
+    );
+    assert!(
+        protocol_meme_graduation_fee_bps + meme_liquidity_provision_bps
+            < constants::basis_points_denominator!(),
+        blast_fun::errors::invalid_meme_supply_partition_bps!(),
+    );
+    assert!(
+        quote_migration_fee_bps != self.quote_migration_fee_bps.value()
+            || protocol_meme_graduation_fee_bps
+                != self.protocol_meme_graduation_fee_bps.value()
+            || meme_liquidity_provision_bps
+                != self.meme_liquidity_provision_bps.value(),
+        blast_fun::errors::graduation_defaults_unchanged!(),
+    );
 }
 
 // === Test-Only Functions ===

@@ -58,7 +58,7 @@ without returning to core for its post-conditions.
 | Package administration | validated `Publisher` and raw `UpgradeCap` custody, exact-digest authorization, irreversible policy restriction, receipt commit, and one-way admin retirement | ACL membership storage, feature configuration, or state migration |
 | Protocol ACL | root rotation and revocable routine-admin membership | feature configuration, backend keys, creator identity, or fees |
 | Runtime config | one dedicated X-claim backend key and the live global protocol fee share | admin delegation, creator identity or issuance, cold launch policy, accrued balances, total trade-fee rates, or claim authority |
-| Launch config | cold bounded virtual/terminal Quote parameters, Quote/Meme trade-fee rates, graduation defaults, and external migrator witness admission for future launches | live launch repricing, quote registry objects, DEX costs or dependencies, user balances, derived valuations, or hot trade configuration |
+| Launch config | cold Table-backed virtual/terminal Quote parameters, Quote/Meme trade-fee rates, graduation defaults, and bounded external migrator witness admission for future launches | live launch repricing, quote currency-registry objects, DEX costs or dependencies, user balances, derived valuations, or hot trade configuration |
 | Registry/config | global limits, other fee ceilings, emergency state | user balances or curve math |
 | Launch ticket | generated OTW currency creation and pre-launch capability custody | supply minting, trades, metadata updates, or migration |
 | Launch | key-only top-level shared asset identity, lifecycle, reserves, accounting, and transition guards | owned transfer, nesting, or venue-specific migration code |
@@ -108,13 +108,13 @@ See [ADR 0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md).
 A launch pairs its generated meme coin with a quote `Coin<Quote>`. Stored rates
 use the validated `Bps` unit; public configuration inputs and replay events use
 raw `u64` primitive values. Core admits
-new pairs through the bounded quote portion of `LaunchConfig`, keyed by the
+new pairs through the Table-backed quote portion of `LaunchConfig`, keyed by the
 quote's original `TypeName`. Each entry supplies a nonzero virtual Quote reserve
 and nonzero real-Quote migration target. Launch state copies that pair, both
 administratively configured trade-fee rates, all three graduation rates — the
 Quote migration fee, the protocol Meme graduation fee, and the nonzero
 destination-pool Meme liquidity provision — and the complete
-selected migration witness's original `TypeName` once. Both whitelists are
+selected migration witness's original `TypeName` once. Both registries are
 admission decisions; the snapshot does not add a quote `Currency` shared-object
 dependency or a DEX package dependency. See
 [ADR 0025](decisions/0025-quote-whitelist-and-migration-targets.md) and

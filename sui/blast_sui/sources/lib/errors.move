@@ -1,5 +1,4 @@
 #[allow(unused_const)]
-/// Stable append-only abort codes and package error macros for blastSUI.
 module blast_sui::errors;
 
 // === Errors ===

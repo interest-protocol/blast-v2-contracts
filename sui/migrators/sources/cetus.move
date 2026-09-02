@@ -4,12 +4,12 @@ module blast_fun_migrators::cetus;
 use blast_fun::{
     acl::AdminWitness,
     launch::Launch,
+    migration_math,
     package_version::PackageVersion,
     runtime_config::RuntimeConfig,
 };
 use blast_fun_migrators::{
     events,
-    migration_math,
     vault::{Self, LpVault},
     venue_config::VenueConfig,
 };
@@ -39,21 +39,21 @@ const MAX_PRICE_DEVIATION_BPS: u64 = 50;
 // === Errors ===
 
 #[error(code = 0)]
-const EInvalidCoinOrder: vector<u8> = b"Meme and Quote types do not match the selected Cetus pool order.";
+const EInvalidCoinOrder: vector<u8> = b"Selected Cetus route must match the canonical coin order.";
 #[error(code = 1)]
-const EPositionPoolMismatch: vector<u8> = b"Cetus position does not belong to the selected pool.";
+const EPositionPoolMismatch: vector<u8> = b"Pool, vault, and position identifiers must match.";
 #[error(code = 2)]
-const EZeroPositionLiquidity: vector<u8> = b"Cetus position liquidity must be greater than zero.";
+const EZeroPositionLiquidity: vector<u8> = b"Position principal liquidity must be greater than zero.";
 #[error(code = 3)]
-const EPositionLiquidityChanged: vector<u8> = b"Cetus fee collection must not change position liquidity.";
+const EPositionLiquidityChanged: vector<u8> = b"Fee collection must not change position principal liquidity.";
 #[error(code = 4)]
-const EPaymentExceedsBalance: vector<u8> = b"Cetus payment exceeds the available migration balance.";
+const EPaymentExceedsBalance: vector<u8> = b"Cetus payment request must not exceed the redeemed balance.";
 #[error(code = 5)]
-const EInsufficientUtilization: vector<u8> = b"Cetus migration did not use enough of the supplied balances.";
+const EInsufficientUtilization: vector<u8> = b"Adopted pool must consume the required share of both balances.";
 #[error(code = 6)]
-const ETierMismatch: vector<u8> = b"Cetus pool tier does not match the configured venue tier.";
+const ETierMismatch: vector<u8> = b"Pool and registered venue fee must match the effective tier.";
 #[error(code = 7)]
-const EMemeBelowQuote: vector<u8> = b"Migration Meme balance must be at least the Quote balance.";
+const EMemeBelowQuote: vector<u8> = b"Meme atom balance must not be below Quote for a Meme-fixed seed.";
 
 // === Public Structs ===
 
@@ -87,7 +87,7 @@ public fun migrate_new_meme_a<Meme, Quote>(
         pool_creator::full_range_tick_range(tick_spacing);
     let launch_id = object::id(launch);
 
-    let payload = launch.migrate<Meme, Quote, Witness>(
+    let payload = launch.migrate<_, _, Witness>(
         package_version,
         meme_currency,
         ctx,
@@ -161,7 +161,7 @@ public fun migrate_new_meme_b<Meme, Quote>(
         pool_creator::full_range_tick_range(tick_spacing);
     let launch_id = object::id(launch);
 
-    let payload = launch.migrate<Meme, Quote, Witness>(
+    let payload = launch.migrate<_, _, Witness>(
         package_version,
         meme_currency,
         ctx,
@@ -232,7 +232,7 @@ public fun migrate_existing_meme_a<Meme, Quote>(
         pool_creator::full_range_tick_range(tick_spacing);
     let launch_id = object::id(launch);
 
-    let payload = launch.migrate<Meme, Quote, Witness>(
+    let payload = launch.migrate<_, _, Witness>(
         package_version,
         meme_currency,
         ctx,
@@ -332,7 +332,7 @@ public fun migrate_existing_meme_b<Meme, Quote>(
         pool_creator::full_range_tick_range(tick_spacing);
     let launch_id = object::id(launch);
 
-    let payload = launch.migrate<Meme, Quote, Witness>(
+    let payload = launch.migrate<_, _, Witness>(
         package_version,
         meme_currency,
         ctx,
@@ -422,7 +422,7 @@ public fun collect_fees_meme_a<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     let venue = Venue();
-    let (position_id, meme_fee, quote_fee, liquidity_before, liquidity_after) =
+    let (position_id, meme_fee, quote_fee, liquidity_after) =
         collect_position_fees<Meme, Quote, Meme, Quote>(
             self,
             &venue,
@@ -435,7 +435,6 @@ public fun collect_fees_meme_a<Meme, Quote>(
         position_id,
         meme_fee,
         quote_fee,
-        liquidity_before,
         liquidity_after,
         runtime_config,
         ctx,
@@ -451,7 +450,7 @@ public fun collect_fees_meme_b<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     let venue = Venue();
-    let (position_id, quote_fee, meme_fee, liquidity_before, liquidity_after) =
+    let (position_id, quote_fee, meme_fee, liquidity_after) =
         collect_position_fees<Quote, Meme, Meme, Quote>(
             self,
             &venue,
@@ -464,7 +463,6 @@ public fun collect_fees_meme_b<Meme, Quote>(
         position_id,
         meme_fee,
         quote_fee,
-        liquidity_before,
         liquidity_after,
         runtime_config,
         ctx,
@@ -596,12 +594,12 @@ fun collect_position_fees<X, Y, Meme, Quote>(
     venue: &Venue,
     cetus_config: &GlobalConfig,
     pool: &mut Pool<X, Y>,
-): (ID, Balance<X>, Balance<Y>, u128, u128) {
+): (ID, Balance<X>, Balance<Y>, u128) {
     let pool_id = object::id(pool);
     assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
 
     let position =
-        self.position_mut<Meme, Quote, Venue, Position>(venue);
+        self.position_mut<_, _, _, Position>(venue);
     let position_id = object::id(position);
     assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
     let liquidity_before = position.liquidity();
@@ -619,7 +617,7 @@ fun collect_position_fees<X, Y, Meme, Quote>(
     assert!(liquidity_after == liquidity_before, EPositionLiquidityChanged);
     assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
 
-    (position_id, fee_a, fee_b, liquidity_before, liquidity_after)
+    (position_id, fee_a, fee_b, liquidity_after)
 }
 
 // === Test-Only Functions ===

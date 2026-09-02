@@ -320,87 +320,6 @@ const PACKAGES = [
         ],
     },
     {
-        key: 'fullsail',
-        label: 'Full Sail CLMM',
-        addressName: 'clmm_pool',
-        originalId:
-            '0xe74104c66dd9f16b3096db2cc00300e556aa92edc871be4bc052b5dfb80db239',
-        currentId:
-            '0x497a144ba3d93ae44d9fd23d4ff4761c329d87a505136d2269c743b2297fa881',
-        version: 4,
-        digest: 'CWkTsBks7SsYsvDQ9QQxkHqgDAKdvuDkh4DAd9DHo3nF',
-        previousTransaction: '3rbk2g4FuuqFGKBLyNYLkqJjv2XKvgnSans6EpPaRCSd',
-        manifest: 'interfaces/fullsail/Move.toml',
-        modules: [
-            {
-                name: 'config',
-                sha256: 'fa727813c54f77a7c16c4a76d334a5f5477bd785685b3d6539de85fde49de5be',
-                structs: ['GlobalConfig'],
-                functions: ['get_fee_rate'],
-            },
-            {
-                name: 'factory',
-                sha256: 'b13f70d07a91f192045152a367a073b06b520cc71458e3e78ce7b2e82e5f2906',
-                structs: ['Pools'],
-                functions: ['create_pool_with_liquidity'],
-            },
-            {
-                name: 'pool',
-                sha256: '3332e1a5db68034668dd36acf3b63dd0545d0fc193f251af192842d91b91be59',
-                structs: ['AddLiquidityReceipt', 'Pool'],
-                functions: [
-                    'add_liquidity_fix_coin',
-                    'add_liquidity_pay_amount',
-                    'collect_fee',
-                    'current_sqrt_price',
-                    'fee_rate',
-                    'open_position',
-                    'repay_add_liquidity',
-                    'tick_spacing',
-                ],
-            },
-            {
-                name: 'position',
-                sha256: '4d61ff120ba2988afc2dc8c1729ccccb0541adf7e0b0864da09e227ce8301f99',
-                structs: ['Position'],
-                functions: ['liquidity', 'pool_id'],
-            },
-            {
-                name: 'rewarder',
-                sha256: '8aec3da2ff2194faf69df8e2e033505dc5a464601514a790075c43ee0aedfe07',
-                structs: ['RewarderGlobalVault'],
-                functions: [],
-            },
-            {
-                name: 'tick_math',
-                sha256: '25c2ea22ad657e05c8949c5767efcc7b6b8b33e014f2f5999d185d70a7ebaad4',
-                structs: [],
-                functions: ['max_tick', 'min_tick'],
-            },
-        ],
-    },
-    {
-        key: 'fullsail_integer_mate',
-        label: 'Full Sail IntegerMate',
-        addressName: 'fullsail_integer_mate',
-        originalId:
-            '0x6b904ae739b2baad330aae14991abcd3b7354d3dc3db72507ed8dabeeb7a36de',
-        currentId:
-            '0x6b904ae739b2baad330aae14991abcd3b7354d3dc3db72507ed8dabeeb7a36de',
-        version: 1,
-        digest: 'sJBBNfgrAEwYvUxzbM8y7yHYdHTE5no2Urg4B3eJR1s',
-        previousTransaction: 'CWQ5cMDkAGu6o8nCWDix25KGpnBXRLt2bZdVchacjRVN',
-        manifest: 'interfaces/fullsail_integer_mate/Move.toml',
-        modules: [
-            {
-                name: 'i32',
-                sha256: '9be3bdeba386cf882d90603fa8decbe8a477e5a5d39341bbc940577b4393412f',
-                structs: ['I32'],
-                functions: ['abs_u32', 'as_u32', 'neg_from'],
-            },
-        ],
-    },
-    {
         key: 'aftermath',
         label: 'Aftermath AMM',
         addressName: 'amm',
@@ -504,8 +423,6 @@ const MANIFESTS = [
             mmt_v3: { git: MMT_GIT, subdir: 'mmt_v3', rev: REV.mmt },
             CetusClmm: { local: 'interfaces/cetus' },
             TurbosCLMM: { local: 'interfaces/turbos' },
-            FullSailCLMM: { local: 'interfaces/fullsail' },
-            FullSailIntegerMate: { local: 'interfaces/fullsail_integer_mate' },
             AftermathAmm: { local: 'interfaces/aftermath' },
             AftermathDaoFeePools: { local: 'interfaces/aftermath_dao_fee' },
             Sui: {
@@ -589,25 +506,6 @@ const MANIFESTS = [
             },
         },
     },
-    {
-        path: 'interfaces/fullsail/Move.toml',
-        packageName: 'FullSailCLMM',
-        packageKey: 'fullsail',
-        lockNode: 'FullSailCLMM',
-        dependencies: {
-            FullSailIntegerMate: { local: '../fullsail_integer_mate' },
-            Sui: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.sui },
-        },
-    },
-    {
-        path: 'interfaces/fullsail_integer_mate/Move.toml',
-        packageName: 'FullSailIntegerMate',
-        packageKey: 'fullsail_integer_mate',
-        lockNode: 'FullSailIntegerMate',
-        dependencies: {
-            Sui: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.sui },
-        },
-    },
 ];
 
 /// Every pinned node the lock is allowed to contain, in both environments,
@@ -629,14 +527,6 @@ const LOCK_NODES = {
     CetusClmm: {
         source: { local: 'interfaces/cetus' },
         deps: { IntegerMate: 'IntegerMate_1', MoveSTL: 'MoveSTL', Sui: 'Sui' },
-    },
-    FullSailCLMM: {
-        source: { local: 'interfaces/fullsail' },
-        deps: { FullSailIntegerMate: 'FullSailIntegerMate', Sui: 'Sui' },
-    },
-    FullSailIntegerMate: {
-        source: { local: 'interfaces/fullsail_integer_mate' },
-        deps: { Sui: 'Sui' },
     },
     IntegerLibrary: {
         source: { git: INTEGER_LIBRARY_GIT, subdir: '.', rev: REV.integerLibrary },
@@ -693,8 +583,6 @@ const LOCK_NODES = {
             AftermathDaoFeePools: 'AftermathDaoFeePools',
             BluefinSpot: 'BluefinSpot',
             CetusClmm: 'CetusClmm',
-            FullSailCLMM: 'FullSailCLMM',
-            FullSailIntegerMate: 'FullSailIntegerMate',
             IntegerLibrary: 'IntegerLibrary',
             IntegerMate: 'IntegerMate_1',
             Sui: 'Sui',
@@ -852,54 +740,6 @@ const ABI = {
         'struct TurbosPositionNFT has store, key',
     'turbos_clmm::position_nft::pool_id':
         'public fun pool_id(&@self::position_nft::TurbosPositionNFT): @sui::object::ID',
-    'clmm_pool::config::GlobalConfig':
-        'struct GlobalConfig has store, key',
-    'clmm_pool::config::get_fee_rate':
-        'public fun get_fee_rate(u32, &@self::config::GlobalConfig): u64',
-    'clmm_pool::factory::Pools':
-        'struct Pools has store, key',
-    'clmm_pool::factory::create_pool_with_liquidity':
-        'public fun create_pool_with_liquidity<$0, $1>(&mut @self::factory::Pools, &@self::config::GlobalConfig, &mut @self::rewarder::RewarderGlobalVault, u32, u128, @std::string::String, u32, u32, @sui::coin::Coin<$0>, @sui::coin::Coin<$1>, u64, u64, bool, address, address, bool, &@sui::clock::Clock, &mut @sui::tx_context::TxContext): (@self::position::Position, @sui::coin::Coin<$0>, @sui::coin::Coin<$1>)',
-    'clmm_pool::pool::AddLiquidityReceipt':
-        'struct AddLiquidityReceipt<phantom $0, phantom $1>',
-    'clmm_pool::pool::Pool':
-        'struct Pool<phantom $0, phantom $1> has store, key',
-    'clmm_pool::pool::add_liquidity_fix_coin':
-        'public fun add_liquidity_fix_coin<$0, $1>(&@self::config::GlobalConfig, &mut @self::rewarder::RewarderGlobalVault, &mut @self::pool::Pool<$0, $1>, &mut @self::position::Position, u64, bool, &@sui::clock::Clock): @self::pool::AddLiquidityReceipt<$0, $1>',
-    'clmm_pool::pool::add_liquidity_pay_amount':
-        'public fun add_liquidity_pay_amount<$0, $1>(&@self::pool::AddLiquidityReceipt<$0, $1>): (u64, u64)',
-    'clmm_pool::pool::collect_fee':
-        'public fun collect_fee<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, &@self::position::Position, bool): (@sui::balance::Balance<$0>, @sui::balance::Balance<$1>)',
-    'clmm_pool::pool::current_sqrt_price':
-        'public fun current_sqrt_price<$0, $1>(&@self::pool::Pool<$0, $1>): u128',
-    'clmm_pool::pool::fee_rate':
-        'public fun fee_rate<$0, $1>(&@self::pool::Pool<$0, $1>): u64',
-    'clmm_pool::pool::open_position':
-        'public fun open_position<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, u32, u32, &mut @sui::tx_context::TxContext): @self::position::Position',
-    'clmm_pool::pool::repay_add_liquidity':
-        'public fun repay_add_liquidity<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, @sui::balance::Balance<$0>, @sui::balance::Balance<$1>, @self::pool::AddLiquidityReceipt<$0, $1>)',
-    'clmm_pool::pool::tick_spacing':
-        'public fun tick_spacing<$0, $1>(&@self::pool::Pool<$0, $1>): u32',
-    'clmm_pool::position::Position':
-        'struct Position has store, key',
-    'clmm_pool::position::liquidity':
-        'public fun liquidity(&@self::position::Position): u128',
-    'clmm_pool::position::pool_id':
-        'public fun pool_id(&@self::position::Position): @sui::object::ID',
-    'clmm_pool::rewarder::RewarderGlobalVault':
-        'struct RewarderGlobalVault has store, key',
-    'clmm_pool::tick_math::max_tick':
-        'public fun max_tick(): 0x6b904ae739b2baad330aae14991abcd3b7354d3dc3db72507ed8dabeeb7a36de::i32::I32',
-    'clmm_pool::tick_math::min_tick':
-        'public fun min_tick(): 0x6b904ae739b2baad330aae14991abcd3b7354d3dc3db72507ed8dabeeb7a36de::i32::I32',
-    'fullsail_integer_mate::i32::I32':
-        'struct I32 has copy, drop, store',
-    'fullsail_integer_mate::i32::abs_u32':
-        'public fun abs_u32(@self::i32::I32): u32',
-    'fullsail_integer_mate::i32::as_u32':
-        'public fun as_u32(@self::i32::I32): u32',
-    'fullsail_integer_mate::i32::neg_from':
-        'public fun neg_from(u32): @self::i32::I32',
     'amm::pool::CreatePoolCapV2':
         'struct CreatePoolCapV2 has store, key',
     'amm::pool::Pool':
@@ -2003,7 +1843,6 @@ function mutateSource(source, from, to) {
 function selfTestCases() {
     const rootManifest = readPackageFile('Move.toml');
     const turbosManifest = readPackageFile('interfaces/turbos/Move.toml');
-    const fullsailManifest = readPackageFile('interfaces/fullsail/Move.toml');
     const lock = readPackageFile('Move.lock');
 
     const FIRST_LOCK_DIGEST = lock.match(/manifest_digest = "([^"]*)"/)?.[1];
@@ -2013,10 +1852,6 @@ function selfTestCases() {
     const turbosSpec = MANIFESTS.find(
         (spec) => spec.path === 'interfaces/turbos/Move.toml',
     );
-    const fullsailSpec = MANIFESTS.find(
-        (spec) => spec.path === 'interfaces/fullsail/Move.toml',
-    );
-
     const manifest = (spec, source) => () => validateManifestSource(spec, source);
     const lockCase = (source) => () => validateLockSource(source);
 
@@ -2263,8 +2098,12 @@ function selfTestCases() {
         {
             name: 'added override rule is rejected',
             run: manifest(
-                fullsailSpec,
-                mutateSource(fullsailManifest, `rev = "${REV.sui}" }`, `rev = "${REV.sui}", override = true }`),
+                rootSpec,
+                mutateSource(
+                    rootManifest,
+                    `rev = "${REV.mmt}" }`,
+                    `rev = "${REV.mmt}", override = true }`,
+                ),
             ),
         },
         {

@@ -2,8 +2,8 @@
 
 - Status: **accepted**
 - Date: 2026-08-30
-- Extended by: [0059](0059-no-sender-or-unchanged-state-in-event-payloads.md)
 - Amends: [0011](0011-event-schema-and-replay.md), [0018](0018-authority-module-separation.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0033](0033-meme-liquidity-provision.md), [0049](0049-audit-hardened-package-version-and-launch-intake.md)
+- Amended by: [0062](0062-table-backed-quote-registry.md)
 
 ## Sources
 
@@ -37,8 +37,8 @@ records its sender. That covers `authority_id`, `super_admin_cap_id`,
 **Class 2 — compiled invariants of the bytecode being published.** `init` runs
 only at the original publish, never on upgrade, so every remaining field is the
 constant compiled into the package the indexer is already reading:
-`PACKAGE_VERSION` is `1`; `max_admins`, `max_migration_witnesses`,
-`max_quote_assets`, and `super_admin_transfer_delay_ms` are `constants` macros;
+`PACKAGE_VERSION` is `1`; `max_admins`, `max_migration_witnesses`, and
+`super_admin_transfer_delay_ms` are `constants` macros;
 and all six initial rates — `protocol_fee_share_bps`, `quote_fee_bps`,
 `meme_fee_bps`, `quote_migration_fee_bps`,
 `protocol_meme_graduation_fee_bps`, and `meme_liquidity_provision_bps` — are
@@ -83,7 +83,7 @@ old/new pairs on every singleton mutation:
 | `version` | compiled `PACKAGE_VERSION`; then `PackageVersionAdvanced.previous_version` |
 | `quote_fee_bps`, `meme_fee_bps` | compiled zero; then `LaunchTradeFeesChanged` old pair |
 | `quote_migration_fee_bps`, `protocol_meme_graduation_fee_bps`, `meme_liquidity_provision_bps` | compiled zero; then `GraduationDefaultsChanged` old triple |
-| `max_admins`, `max_quote_assets`, `max_migration_witnesses`, `super_admin_transfer_delay_ms` | `constants` macros in the published bytecode; never mutable |
+| `max_admins`, `max_migration_witnesses`, `super_admin_transfer_delay_ms` | `constants` macros in the published bytecode; never mutable |
 
 A reducer starting at deployment therefore still reconstructs lifecycle,
 accounting, configuration, fee state, allocation state, and migrations without
