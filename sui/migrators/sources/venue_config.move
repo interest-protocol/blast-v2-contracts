@@ -66,8 +66,7 @@ public(package) fun set_tier<Venue: drop>(
     assert!(fee_rate > 0, EInvalidFeeRate);
 
     let (old_tick_spacing, old_fee_rate) = if (self.has_tier<Venue>()) {
-        let tier_mut: &mut Tier =
-            self.id.dynamic_field_mut(TierKey<Venue>());
+        let tier_mut = self.id.dynamic_field_mut<_, Tier>(TierKey<Venue>());
         let old_tick_spacing = tier_mut.tick_spacing;
         let old_fee_rate = tier_mut.fee_rate;
         assert!(
@@ -101,7 +100,7 @@ public(package) fun has_tier<Venue>(self: &VenueConfig): bool {
 public(package) fun tier<Venue>(self: &VenueConfig): (u32, u64) {
     assert!(self.has_tier<Venue>(), EVenueTierUnset);
 
-    let tier: &Tier = self.id.dynamic_field(TierKey<Venue>());
+    let tier = self.id.dynamic_field<_, Tier>(TierKey<Venue>());
 
     (tier.tick_spacing, tier.fee_rate)
 }

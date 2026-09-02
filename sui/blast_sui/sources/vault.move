@@ -18,6 +18,9 @@ use blast_sui::{
 use sui::{coin::{Coin, TreasuryCap}, dynamic_object_field, sui::SUI};
 use sui_system::sui_system::SuiSystemState;
 
+use fun dynamic_object_field::add as UID.add_dynamic_object_field;
+use fun dynamic_object_field::borrow as UID.dynamic_object_field;
+use fun dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut;
 use fun exchange_rate_at as SuiSystemState.exchange_rate_at;
 
 // === Public Structs ===
@@ -390,19 +393,15 @@ fun add_treasury_cap<CoinType>(
     self: &mut Vault,
     treasury_cap: TreasuryCap<CoinType>,
 ) {
-    dynamic_object_field::add(
-        &mut self.id,
-        TreasuryKey<CoinType>(),
-        treasury_cap,
-    );
+    self.id.add_dynamic_object_field(TreasuryKey<CoinType>(), treasury_cap);
 }
 
 fun treasury_cap<CoinType>(self: &Vault): &TreasuryCap<CoinType> {
-    dynamic_object_field::borrow(&self.id, TreasuryKey<CoinType>())
+    self.id.dynamic_object_field(TreasuryKey<CoinType>())
 }
 
 fun treasury_cap_mut<CoinType>(self: &mut Vault): &mut TreasuryCap<CoinType> {
-    dynamic_object_field::borrow_mut(&mut self.id, TreasuryKey<CoinType>())
+    self.id.dynamic_object_field_mut(TreasuryKey<CoinType>())
 }
 
 /// Brings both ledgers to the current epoch with exactly one exchange-rate table lookup.

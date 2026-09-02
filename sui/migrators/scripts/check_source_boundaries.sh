@@ -420,7 +420,7 @@ require_pattern "$AFTERMATH_SOURCE" 'let position = AftermathPosition' \
     'whole LP and DAO-cap position construction'
 require_pattern "$AFTERMATH_SOURCE" 'lp_balance: lp_coin\.into_balance\(\)' \
     'LP coin wrapper deletion before position custody'
-require_pattern "$AFTERMATH_SOURCE" 'vault::finish' \
+require_pattern "$AFTERMATH_SOURCE" 'pending_vault\.finish' \
     'atomic prepared-vault completion'
 require_pattern "$AFTERMATH_SOURCE" 'transfer::public_share_object\(dao_fee_pool\)' \
     'outer DAO-fee pool sharing'
@@ -451,7 +451,7 @@ require_pattern "$AFTERMATH_SOURCE" 'self\.pool_id\(\) == dao_fee_pool_id' \
     'DAO fee mutation vault-pool binding'
 require_pattern "$AFTERMATH_SOURCE" 'events::aftermath_dao_fee_updated' \
     'replay-complete DAO fee mutation emission'
-require_pattern "$AFTERMATH_SOURCE" 'meme_weight \+ policy\.quote_weight == FIXED_ONE' \
+require_pattern "$AFTERMATH_SOURCE" 'self\.meme_weight \+ self\.quote_weight == FIXED_ONE' \
     'normalized Aftermath weight policy'
 require_pattern "$AFTERMATH_SOURCE" 'events::aftermath_policy_updated' \
     'replay-complete Aftermath policy mutation emission'
@@ -468,7 +468,7 @@ AFTERMATH_COMPACT_SOURCE="$(tr -d '[:space:]' < "$AFTERMATH_SOURCE")"
 if [[ "$AFTERMATH_COMPACT_SOURCE" =~ publicfunmigrate[^{]*(weights|flatness|fee_rate|swap_in_fee|name): ]]; then
     fail "caller-supplied Aftermath economic parameters are forbidden"
 fi
-AFTERMATH_VAULT_LINE="$(rg -n -m1 'vault::finish' "$AFTERMATH_SOURCE" | cut -d: -f1)"
+AFTERMATH_VAULT_LINE="$(rg -n -m1 'pending_vault\.finish' "$AFTERMATH_SOURCE" | cut -d: -f1)"
 AFTERMATH_SHARE_LINE="$(rg -n -m1 'public_share_object\(dao_fee_pool\)' "$AFTERMATH_SOURCE" | cut -d: -f1)"
 [[ "$AFTERMATH_SHARE_LINE" -gt "$AFTERMATH_VAULT_LINE" ]] || \
     fail "Aftermath DAO pool sharing must follow LP-and-cap vault custody"
@@ -603,7 +603,7 @@ require_cetus_public 'migrate_existing_meme_a' \
     'pool::add_liquidity_fix_coin<Meme,Quote>(cetus_config,pool,&mutposition,fixed_amount,fix_amount_a,clock,)' \
     'exact Meme-A fixed-coin addition'
 require_cetus_public 'migrate_existing_meme_a' \
-    'pool::add_liquidity_pay_amount(&receipt)' 'Meme-A payment query'
+    'receipt.add_liquidity_pay_amount()' 'Meme-A payment query'
 require_cetus_public 'migrate_existing_meme_a' \
     'pool::repay_add_liquidity<Meme,Quote>(cetus_config,pool,paid_meme,paid_quote,receipt,)' \
     'exact Meme-A repayment'
@@ -637,7 +637,7 @@ require_cetus_public 'migrate_existing_meme_b' \
     'pool::add_liquidity_fix_coin<Quote,Meme>(cetus_config,pool,&mutposition,fixed_amount,fix_amount_a,clock,)' \
     'exact Meme-B fixed-coin addition'
 require_cetus_public 'migrate_existing_meme_b' \
-    'pool::add_liquidity_pay_amount(&receipt)' 'Meme-B payment query'
+    'receipt.add_liquidity_pay_amount()' 'Meme-B payment query'
 require_cetus_public 'migrate_existing_meme_b' \
     'pool::repay_add_liquidity<Quote,Meme>(cetus_config,pool,paid_quote,paid_meme,receipt,)' \
     'exact Meme-B repayment'
@@ -1000,6 +1000,18 @@ if [[ "$TURBOS_PUBLIC_SIGNATURES" =~ (sqrt_price|orientation|meme_is|tick_spacin
 fi
 if [[ "$TURBOS_COMPACT_SOURCE" =~ position_manager::(decrease_liquidity|burn|increase_liquidity) ]]; then
     fail "Turbos principal mutation is forbidden"
+fi
+
+if rg -n \
+    'vault::(pending_id|finish)[[:space:]]*\(|pool::add_liquidity_pay_amount[[:space:]]*\(|coin::from_balance[[:space:]]*\(|(bluefin|cetus|mmt|turbos)::(effective_tier_for_testing|set_tier)[[:space:]]*\(|aftermath::(effective_policy_for_testing|set_policy)[[:space:]]*\(' \
+    "$SOURCE_DIR" "$PACKAGE_DIR/tests"; then
+    fail "functions with a natural first receiver must use Move 2024 dot syntax"
+fi
+
+if rg -n \
+    'let[[:space:]]+[[:alnum:]_]+:[[:space:]]+&(mut[[:space:]]+)?(AftermathPosition|Tier)' \
+    "$SOURCE_DIR" "$PACKAGE_DIR/tests"; then
+    fail "local reference types must be inferred from explicit generic arguments"
 fi
 
 echo "Migrator source boundaries passed"

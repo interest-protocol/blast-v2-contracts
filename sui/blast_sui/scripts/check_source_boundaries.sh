@@ -22,4 +22,20 @@ if grep -rn "sui::event::emit" "$package_dir/sources" | grep -v "sources/lib/eve
   fail "Only events_wrapper may call sui::event::emit."
 fi
 
+# 4. Functions with a natural first receiver use Move 2024 method syntax.
+if rg -n 'dynamic_object_field::(add|borrow|borrow_mut|exists_with_type)\(' \
+  "$package_dir/sources"; then
+  fail "Dynamic-object-field operations must use semantic UID receiver aliases."
+fi
+
+if rg -n 'package::test_upgrade\(|test_scenario::return_to_sender\(|\.has_blast_coin\(' \
+  "$package_dir/tests"; then
+  fail "Test helpers with a natural first receiver must use Move 2024 dot syntax."
+fi
+
+if rg -n 'let[[:space:]]+[[:alnum:]_]+:[[:space:]]+&(mut[[:space:]]+)?Capability' \
+  "$package_dir/sources"; then
+  fail "Local reference types must be inferred from explicit generic arguments."
+fi
+
 printf 'Source boundaries hold.\n'

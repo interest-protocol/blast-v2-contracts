@@ -148,12 +148,12 @@ public(package) fun new<Meme, Quote, Venue: drop, Position: key + store>(
     protocol_quote_residual: Balance<Quote>,
     ctx: &mut TxContext,
 ): ID {
-    let pending = prepare(
+    let pending_vault = prepare(
         protocol_meme_residual,
         protocol_quote_residual,
         ctx,
     );
-    finish(pending, _venue, pool_id, position)
+    pending_vault.finish(_venue, pool_id, position)
 }
 
 /// Creates unshared vault state whose address can be bound into an external position.
@@ -173,27 +173,27 @@ public(package) fun prepare<Meme, Quote>(
 
 /// Returns the final vault ID without sharing its construction state.
 public(package) fun pending_id<Meme, Quote>(
-    pending: &LpVault<Meme, Quote>,
+    self: &LpVault<Meme, Quote>,
 ): ID {
-    pending.id.to_inner()
+    self.id.to_inner()
 }
 
 /// Attaches the complete venue position and shares a prepared vault atomically.
 public(package) fun finish<Meme, Quote, Venue: drop, Position: key + store>(
-    mut vault: LpVault<Meme, Quote>,
+    mut self: LpVault<Meme, Quote>,
     _venue: Venue,
     pool_id: ID,
     position: Position,
 ): ID {
     assert!(
-        vault.pool_id == object::id_from_address(@0x0),
+        self.pool_id == object::id_from_address(@0x0),
         EVaultAlreadyInitialized,
     );
     let position_id = object::id(&position);
-    vault.pool_id = pool_id;
-    let vault_id = vault.id.to_inner();
-    vault.id.add_dynamic_object_field(PositionKey<Venue>(), position);
-    transfer::share_object(vault);
+    self.pool_id = pool_id;
+    let vault_id = self.id.to_inner();
+    self.id.add_dynamic_object_field(PositionKey<Venue>(), position);
+    transfer::share_object(self);
     events::vault_created<Meme, Quote, Venue>(
         vault_id,
         pool_id,

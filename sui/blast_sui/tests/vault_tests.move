@@ -138,8 +138,8 @@ fun create_returns_no_seed_coin_and_locks_every_bootstrap_share_at_the_zero_addr
     let mut fixture = fixture.into_vault_fixture();
 
     fixture.next_tx!(OWNER, |f| {
-        assert!(!f.has_blast_coin(OWNER));
-        assert!(!f.has_blast_coin(USER));
+        assert!(!has_blast_coin(OWNER));
+        assert!(!has_blast_coin(USER));
         assert_eq!(f.locked_blast_sui(), BOOTSTRAP);
         assert_eq!(f.vault!().blast_supply_for_testing(), BOOTSTRAP);
     });
@@ -1229,7 +1229,7 @@ fun activated_receipt_claim_prices_after_a_donation_and_honors_minimum_output() 
             .scenario_mut()
             .take_from_sender<BlastSuiDepositReceipt>();
         contributed_sui = receipt.principal_sui();
-        test_scenario::return_to_sender(f.runner.scenario_mut(), receipt);
+        f.runner.scenario_mut().return_to_sender(receipt);
     });
     let expected = math::blast_shares_out_down(contributed_sui, blast_assets, blast_supply);
     let (shares, custody) = fixture.claim_blast(expected);
@@ -1502,7 +1502,7 @@ fun redeeming_every_user_share_leaves_the_locked_supply_and_its_backing() {
     assert!(fun_tokens > 0);
 
     fixture.next_tx!(USER, |f| {
-        assert!(!f.has_blast_coin(USER));
+        assert!(!has_blast_coin(USER));
         assert_eq!(f.locked_blast_sui(), BOOTSTRAP);
         assert!(!f.vault!().is_unwind_only_for_testing());
     });
@@ -1555,7 +1555,7 @@ fun locked_backing_cannot_be_drained_by_user_redemptions() {
     assert_eq!(blast_supply, BOOTSTRAP);
 
     fixture.next_tx!(USER, |f| {
-        assert!(!f.has_blast_coin(USER));
+        assert!(!has_blast_coin(USER));
         assert_eq!(f.locked_blast_sui(), BOOTSTRAP);
     });
 
@@ -2481,7 +2481,7 @@ fun take_blast_coin(self: &mut VaultFixture): Coin<BLAST_SUI> {
 }
 
 /// Whether `holder` owns any blastSUI coin.
-fun has_blast_coin(_self: &VaultFixture, holder: address): bool {
+fun has_blast_coin(holder: address): bool {
     test_scenario::has_most_recent_for_address<Coin<BLAST_SUI>>(holder)
 }
 

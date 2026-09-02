@@ -208,7 +208,7 @@ fun active_admin_authorizes_exact_digest_and_commits_matching_receipt() {
             &admin_witness,
             digest,
         );
-        let receipt = package::test_upgrade(ticket);
+        let receipt = ticket.test_upgrade();
         let new_package_id = receipt.package();
 
         f.package_admin.commit_upgrade(&f.package_version, receipt);
@@ -257,7 +257,7 @@ fun authorization_rejects_non_digest_length() {
             &admin_witness,
             x"11223344556677889900aabbccddeeffffeeddccbbaa009988776655443322",
         );
-        let receipt = package::test_upgrade(ticket);
+        let receipt = ticket.test_upgrade();
 
         f.package_admin.commit_upgrade(&f.package_version, receipt);
     });
@@ -281,7 +281,7 @@ fun stale_package_version_rejects_package_admin_before_digest_validation() {
             &admin_witness,
             vector[],
         );
-        let receipt = package::test_upgrade(ticket);
+        let receipt = ticket.test_upgrade();
 
         f.package_admin.commit_upgrade(&f.package_version, receipt);
     });
@@ -312,7 +312,7 @@ fun revoked_admin_cannot_reach_upgrade_authorization() {
             &admin_witness,
             package_digest(),
         );
-        let receipt = package::test_upgrade(ticket);
+        let receipt = ticket.test_upgrade();
 
         f.package_admin.commit_upgrade(&f.package_version, receipt);
     });
@@ -338,7 +338,7 @@ fun commit_rejects_receipt_bound_to_another_upgrade_cap() {
                 &admin_witness,
                 package_digest(),
             );
-        let receipt = package::test_upgrade(ticket);
+        let receipt = ticket.test_upgrade();
 
         f.package_admin.commit_upgrade(&f.package_version, receipt);
 

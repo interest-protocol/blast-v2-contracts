@@ -199,17 +199,17 @@ public fun set_policy(
         quote_weight,
         dao_fee_bps,
     };
-    assert_valid_policy(&new_policy);
+    new_policy.assert_valid();
 
     let old_policy = if (venue_config.has_policy(PolicyKey())) {
         let policy_mut = venue_config.policy_mut<_, AftermathPolicy>(PolicyKey());
         let old_policy = *policy_mut;
-        assert_policy_changed(&old_policy, &new_policy);
+        old_policy.assert_changed(&new_policy);
         *policy_mut = new_policy;
         old_policy
     } else {
         let old_policy = default_policy();
-        assert_policy_changed(&old_policy, &new_policy);
+        old_policy.assert_changed(&new_policy);
         venue_config.add_policy(PolicyKey(), new_policy);
         old_policy
     };
@@ -242,7 +242,7 @@ public fun update_dao_fee<Lp, Meme, Quote>(
     let old_dao_fee_bps = dao_fee_pool.fee_bps();
     assert!(old_dao_fee_bps != dao_fee_bps, EUnchangedDaoFee);
 
-    let position: &mut AftermathPosition<Lp> = self.position_mut(&Venue());
+    let position = self.position_mut<_, _, _, AftermathPosition<Lp>>(&Venue());
     position.dao_fee_owner_cap.set_fee_bps(
         dao_fee_pool,
         dao_fee_version,
@@ -281,31 +281,31 @@ fun effective_policy(venue_config: &VenueConfig): AftermathPolicy {
     } else {
         default_policy()
     };
-    assert_valid_policy(&policy);
+    policy.assert_valid();
     policy
 }
 
-fun assert_valid_policy(policy: &AftermathPolicy) {
+fun assert_valid(self: &AftermathPolicy) {
     assert!(
-        policy.meme_weight >= MIN_WEIGHT
-            && policy.quote_weight >= MIN_WEIGHT
-            && policy.meme_weight <= FIXED_ONE
-            && policy.quote_weight <= FIXED_ONE
-            && policy.meme_weight + policy.quote_weight == FIXED_ONE,
+        self.meme_weight >= MIN_WEIGHT
+            && self.quote_weight >= MIN_WEIGHT
+            && self.meme_weight <= FIXED_ONE
+            && self.quote_weight <= FIXED_ONE
+            && self.meme_weight + self.quote_weight == FIXED_ONE,
         EInvalidWeight,
     );
-    assert_valid_dao_fee(policy.dao_fee_bps);
+    assert_valid_dao_fee(self.dao_fee_bps);
 }
 
 fun assert_valid_dao_fee(dao_fee_bps: u16) {
     assert!(dao_fee_bps <= MAX_DAO_FEE_BPS, EInvalidDaoFee);
 }
 
-fun assert_policy_changed(old_policy: &AftermathPolicy, new_policy: &AftermathPolicy) {
+fun assert_changed(self: &AftermathPolicy, new_policy: &AftermathPolicy) {
     assert!(
-        old_policy.meme_weight != new_policy.meme_weight
-            || old_policy.quote_weight != new_policy.quote_weight
-            || old_policy.dao_fee_bps != new_policy.dao_fee_bps,
+        self.meme_weight != new_policy.meme_weight
+            || self.quote_weight != new_policy.quote_weight
+            || self.dao_fee_bps != new_policy.dao_fee_bps,
         EUnchangedPolicy,
     );
 }
@@ -414,7 +414,7 @@ fun lock_and_share<Lp, Meme, Quote>(
         balance::zero(),
         ctx,
     );
-    let vault_id = vault::pending_id(&pending_vault);
+    let vault_id = pending_vault.pending_id();
     let vault_address = vault_id.to_address();
     let (dao_fee_pool, dao_fee_owner_cap) = dao_fee_pool::new(
         pool,
@@ -437,12 +437,8 @@ fun lock_and_share<Lp, Meme, Quote>(
         lp_balance: lp_coin.into_balance(),
         dao_fee_owner_cap,
     };
-    let finished_vault_id = vault::finish(
-        pending_vault,
-        Venue(),
-        dao_fee_pool_id,
-        position,
-    );
+    let finished_vault_id =
+        pending_vault.finish(Venue(), dao_fee_pool_id, position);
     assert!(finished_vault_id == vault_id, EDaoPoolInvariantMismatch);
     events::aftermath_migration_completed<Lp, Meme, Quote, Venue>(
         launch_id,
@@ -470,8 +466,8 @@ public fun accrue_dao_fees<Lp, Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     let (position_id, locked_lp_amount_before) = {
-        let position: &mut AftermathPosition<Lp> = self.position_mut(&Venue());
-        (object::id(position), position.lp_balance.value() as u128)
+        let position = self.position_mut<_, _, _, AftermathPosition<Lp>>(&Venue());
+        (position.id.to_inner(), position.lp_balance.value() as u128)
     };
     let (meme_fee, quote_fee) = self.receive_coins(
         &Venue(),
@@ -479,7 +475,7 @@ public fun accrue_dao_fees<Lp, Meme, Quote>(
         quote_receivings,
     );
     let locked_lp_amount_after = {
-        let position: &mut AftermathPosition<Lp> = self.position_mut(&Venue());
+        let position = self.position_mut<_, _, _, AftermathPosition<Lp>>(&Venue());
         position.lp_balance.value() as u128
     };
     assert!(

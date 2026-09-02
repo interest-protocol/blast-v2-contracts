@@ -22,6 +22,11 @@ use sui::{
     package::{Self, Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket},
 };
 
+use fun dynamic_object_field::add as UID.add_dynamic_object_field;
+#[test_only]
+use fun dynamic_object_field::borrow as UID.dynamic_object_field;
+use fun dynamic_object_field::exists_with_type as UID.has_dynamic_object_field_with_type;
+
 // === Public Structs ===
 
 /// Shared, non-releasable custody for package and update authority.
@@ -192,19 +197,13 @@ fun attach_capability<Capability: key + store>(
         blast_sui::errors::package_capability_already_exists!(),
     );
     let capability_id = object::id(&capability);
-    dynamic_object_field::add(
-        &mut self.id,
-        CapabilityKey<Capability>(),
-        capability,
-    );
+    self.id.add_dynamic_object_field(CapabilityKey<Capability>(), capability);
     capability_id
 }
 
 fun has_capability<Capability: key + store>(self: &PackageAdmin): bool {
-    dynamic_object_field::exists_with_type<_, Capability>(
-        &self.id,
-        CapabilityKey<Capability>(),
-    )
+    self.id
+        .has_dynamic_object_field_with_type<_, Capability>(CapabilityKey<Capability>())
 }
 
 fun assert_policy_can_be_restricted_to(self: &PackageAdmin, new_policy: u8) {
@@ -280,10 +279,9 @@ public fun display_cap_id_for_testing(self: &PackageAdmin): ID {
 public fun capability_id_for_testing<Capability: key + store>(
     self: &PackageAdmin,
 ): ID {
-    let capability: &Capability = dynamic_object_field::borrow(
-        &self.id,
-        CapabilityKey<Capability>(),
-    );
+    let capability = self
+        .id
+        .dynamic_object_field<_, Capability>(CapabilityKey<Capability>());
     object::id(capability)
 }
 

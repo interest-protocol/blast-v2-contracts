@@ -279,7 +279,7 @@ public fun migrate_existing_meme_a<Meme, Quote>(
         fix_amount_a,
         clock,
     );
-    let (paid_meme, paid_quote) = pool::add_liquidity_pay_amount(&receipt);
+    let (paid_meme, paid_quote) = receipt.add_liquidity_pay_amount();
     assert_payment_amounts(
         source_meme_amount,
         source_quote_amount,
@@ -379,7 +379,7 @@ public fun migrate_existing_meme_b<Meme, Quote>(
         fix_amount_a,
         clock,
     );
-    let (paid_quote, paid_meme) = pool::add_liquidity_pay_amount(&receipt);
+    let (paid_quote, paid_meme) = receipt.add_liquidity_pay_amount();
     assert_payment_amounts(
         source_meme_amount,
         source_quote_amount,

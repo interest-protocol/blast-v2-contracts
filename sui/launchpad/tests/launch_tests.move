@@ -30,6 +30,8 @@ use fun launch_sign_in as LaunchFixture.sign_in;
 use fun launch_take_currency as LaunchFixture.take_currency;
 use fun launch_take_fixed_disposal as LaunchFixture.take_fixed_disposal;
 use fun launch_take_shared as LaunchFixture.take_launch;
+use fun assert_launch_snapshot as Launch.assert_snapshot;
+use fun reach_migration_after_sell as Launch.reach_migration_after_sell;
 
 // === Constants ===
 
@@ -154,7 +156,7 @@ fun launch_consumes_ticket_and_emits_complete_initial_state() {
             meme_liquidity_provision_bps,
             MEME_LIQUIDITY_PROVISION_BPS,
         );
-        assert_launch_snapshot(&launch);
+        launch.assert_snapshot();
         assert_eq!(launch.metadata_cap_id_for_testing(), metadata_cap_id);
 
         destroy(launch);
@@ -192,7 +194,7 @@ fun launch_snapshot_does_not_follow_later_config_updates() {
         );
         f.config.set_trade_fees(&f.package_version, &admin_witness, 0, 0);
 
-        assert_launch_snapshot(&launch);
+        launch.assert_snapshot();
 
         destroy(launch);
     });
@@ -219,7 +221,7 @@ fun launch_share_publishes_the_key_only_launch_for_later_transactions() {
     fixture.next_tx!(LAUNCHER, |f| {
         let launch = f.take_launch();
 
-        assert_launch_snapshot(&launch);
+        launch.assert_snapshot();
 
         destroy(launch);
     });
@@ -260,7 +262,7 @@ fun burn_only_ticket_keeps_supply_mode_authoritative_in_coin_registry() {
         assert_eq!(source_ticket_id, ticket_id);
         assert!(burnable);
         assert_eq!(sell_burn_bps, SELL_BURN_BPS);
-        assert_launch_snapshot(&launch);
+        launch.assert_snapshot();
 
         destroy(launch);
     });
@@ -911,8 +913,7 @@ fun fixed_migration_sends_accumulated_sell_burn_to_zero_address() {
             f.ctx!(),
         );
 
-        expected_disposed_meme = reach_migration_after_sell(
-            &mut launch,
+        expected_disposed_meme = launch.reach_migration_after_sell(
             &f.package_version,
             &f.runtime_config,
             f.ctx!(),
@@ -981,8 +982,7 @@ fun burn_only_migration_burns_accumulated_sell_burn_from_native_supply() {
             f.ctx!(),
         );
 
-        expected_disposed_meme = reach_migration_after_sell(
-            &mut launch,
+        expected_disposed_meme = launch.reach_migration_after_sell(
             &f.package_version,
             &f.runtime_config,
             f.ctx!(),

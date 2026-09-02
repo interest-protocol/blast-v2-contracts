@@ -40,18 +40,13 @@ fun prepared_vault_keeps_its_id_when_finished_and_shared() {
     let pool_uid = object::new(scenario.ctx());
     let pool_id = pool_uid.to_inner();
     pool_uid.delete();
-    let pending = vault::prepare<MEME, QUOTE>(
+    let pending_vault = vault::prepare<MEME, QUOTE>(
         balance::zero(),
         balance::zero(),
         scenario.ctx(),
     );
-    let pending_id = vault::pending_id(&pending);
-    let finished_id = vault::finish(
-        pending,
-        TestVenue(),
-        pool_id,
-        position,
-    );
+    let pending_id = pending_vault.pending_id();
+    let finished_id = pending_vault.finish(TestVenue(), pool_id, position);
     assert_eq!(finished_id, pending_id);
 
     scenario.next_tx(PUBLISHER);
@@ -152,18 +147,14 @@ fun receives_and_merges_the_maximum_coin_batch() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let mut count: u64 = 0;
         while (count < 60) {
-            let fee_coin = coin::from_balance(
-                balance::create_for_testing<MEME>(1),
-                f.scenario.ctx(),
-            );
+            let fee_coin =
+                balance::create_for_testing<MEME>(1).into_coin(f.scenario.ctx());
             transfer::public_transfer(fee_coin, vault_id.to_address());
             count = count + 1;
         };
         while (count < 100) {
-            let fee_coin = coin::from_balance(
-                balance::create_for_testing<QUOTE>(1),
-                f.scenario.ctx(),
-            );
+            let fee_coin =
+                balance::create_for_testing<QUOTE>(1).into_coin(f.scenario.ctx());
             transfer::public_transfer(fee_coin, vault_id.to_address());
             count = count + 1;
         };

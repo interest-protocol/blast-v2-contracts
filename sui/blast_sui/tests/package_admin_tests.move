@@ -340,7 +340,7 @@ fun routine_admin_authorization_commit_and_restriction_emit_replay_complete_fact
         assert_eq!(policy, package::compatible_policy());
         assert_eq!(digest, package_digest());
 
-        let receipt = package::test_upgrade(ticket);
+        let receipt = ticket.test_upgrade();
         let upgraded_package_id = receipt.package();
         f.package_admin.commit_upgrade(&f.package_version, receipt);
         let committed = events::collect_one<events::UpgradeCommitted>(0);
@@ -439,7 +439,7 @@ fun admin_registered_in_another_registry_cannot_authorize_an_upgrade() {
             &admin_witness,
             package_digest(),
         );
-        destroy(package::test_upgrade(ticket));
+        destroy(ticket.test_upgrade());
         destroy(foreign_super_admin_cap);
         destroy(foreign_authority);
     });
@@ -455,7 +455,7 @@ fun commit_rejects_a_receipt_bound_to_another_upgrade_cap() {
     fixture.next_tx!(ADMIN, |f| {
         let mut other_upgrade_cap = package::test_publish(OTHER_PACKAGE_ID.to_id(), f.ctx!());
         let ticket = other_upgrade_cap.authorize(package::compatible_policy(), package_digest());
-        let receipt = package::test_upgrade(ticket);
+        let receipt = ticket.test_upgrade();
 
         f.package_admin.commit_upgrade(&f.package_version, receipt);
 
@@ -477,7 +477,7 @@ fun upgrade_authorization_rejects_non_digest_length() {
             &admin_witness,
             vector[],
         );
-        let receipt = package::test_upgrade(ticket);
+        let receipt = ticket.test_upgrade();
         f.package_admin.commit_upgrade(&f.package_version, receipt);
     });
 
@@ -501,7 +501,7 @@ fun stale_shared_version_rejects_old_bytecode() {
             &admin_witness,
             package_digest(),
         );
-        let receipt = package::test_upgrade(ticket);
+        let receipt = ticket.test_upgrade();
         f.package_admin.commit_upgrade(&f.package_version, receipt);
     });
 
