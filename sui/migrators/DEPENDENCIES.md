@@ -360,7 +360,7 @@ release blocker, not a documentation footnote.
 | Cetus | `migrate_new_meme_a`, `migrate_new_meme_b`, `migrate_existing_meme_a`, `migrate_existing_meme_b` | `collect_fees_meme_a`, `collect_fees_meme_b` |
 | Turbos | `migrate_new_meme_a`, `migrate_new_meme_b`, `migrate_existing_meme_a`, `migrate_existing_meme_b` | `collect_fees_meme_a`, `collect_fees_meme_b` |
 | Full Sail | `migrate_new_meme_a`, `migrate_new_meme_b`, `migrate_existing_meme_a`, `migrate_existing_meme_b` | `collect_fees_meme_a`, `collect_fees_meme_b` |
-| Aftermath | `migrate_meme_first`, `migrate_meme_second` | `accrue_dao_fees`; also dev-inspect `update_dao_fee` separately |
+| Aftermath | `migrate_meme_first`, `migrate_meme_second` | `accrue_fees`; also dev-inspect `update_fee` separately |
 
 Vault claims: `vault::claim_creator_fees` under `CreatorCap<Meme>` and
 `vault::claim_protocol_fees` under `AdminWitness`. Neither touches the venue or

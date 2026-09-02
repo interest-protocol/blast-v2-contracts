@@ -89,7 +89,7 @@ public struct AftermathPolicy has copy, drop, store {
 public struct AftermathPosition<phantom Lp> has key, store {
     id: UID,
     lp_coin: Coin<Lp>,
-    dao_fee_owner_cap: OwnerCap<Lp>,
+    owner_cap: OwnerCap<Lp>,
 }
 
 // === Public Functions ===
@@ -97,11 +97,11 @@ public struct AftermathPosition<phantom Lp> has key, store {
 /// Migrates when Aftermath's canonical order places Meme first.
 public fun migrate_meme_first<Lp, Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
+    create_pool_cap: CreatePoolCapV2,
     package_version: &PackageVersion,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     pool_registry: &mut PoolRegistry,
-    create_pool_cap: CreatePoolCapV2,
     dao_fee_version: &Version,
     ctx: &mut TxContext,
 ) {
@@ -122,7 +122,6 @@ public fun migrate_meme_first<Lp, Meme, Quote>(
         quote_amount,
         policy.meme_weight,
         policy.quote_weight,
-        BASE_SWAP_IN_FEE,
         ctx,
     );
 
@@ -141,11 +140,11 @@ public fun migrate_meme_first<Lp, Meme, Quote>(
 /// Migrates when Aftermath's canonical order places Meme second.
 public fun migrate_meme_second<Lp, Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
+    create_pool_cap: CreatePoolCapV2,
     package_version: &PackageVersion,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     pool_registry: &mut PoolRegistry,
-    create_pool_cap: CreatePoolCapV2,
     dao_fee_version: &Version,
     ctx: &mut TxContext,
 ) {
@@ -166,7 +165,6 @@ public fun migrate_meme_second<Lp, Meme, Quote>(
         meme_amount,
         policy.quote_weight,
         policy.meme_weight,
-        BASE_SWAP_IN_FEE,
         ctx,
     );
 
@@ -178,6 +176,45 @@ public fun migrate_meme_second<Lp, Meme, Quote>(
         quote_amount,
         policy,
         dao_fee_version,
+        ctx,
+    );
+}
+
+/// Receives and allocates one bounded batch of Meme and Quote fee coins.
+public fun accrue_fees<Lp, Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    runtime_config: &RuntimeConfig,
+    meme_receivings: vector<Receiving<Coin<Meme>>>,
+    quote_receivings: vector<Receiving<Coin<Quote>>>,
+    ctx: &mut TxContext,
+) {
+    let venue = Venue();
+    let (position_id, locked_lp_amount_before) = {
+        let position: &mut AftermathPosition<Lp> = self.position_mut(&venue);
+        (position.id.to_inner(), position.lp_coin.value() as u128)
+    };
+    let (meme_fee, quote_fee) = self.receive_coins(
+        &venue,
+        meme_receivings,
+        quote_receivings,
+    );
+    let locked_lp_amount_after = {
+        let position: &mut AftermathPosition<Lp> = self.position_mut(&venue);
+        position.lp_coin.value() as u128
+    };
+    assert!(
+        locked_lp_amount_before == locked_lp_amount_after,
+        ELpPrincipalChanged,
+    );
+
+    self.accrue_fees(
+        &venue,
+        position_id,
+        meme_fee,
+        quote_fee,
+        locked_lp_amount_before,
+        locked_lp_amount_after,
+        runtime_config,
         ctx,
     );
 }
@@ -221,26 +258,28 @@ public fun set_policy(
     );
 }
 
-/// Updates one migrated pool's DAO fee while retaining its cap and vault recipient.
-public fun update_dao_fee<Lp, Meme, Quote>(
+/// Updates one migrated pool's fee while retaining its cap and vault recipient.
+public fun update_fee<Lp, Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
+    _: &AdminWitness,
     dao_fee_pool: &mut DaoFeePool<Lp>,
     dao_fee_version: &Version,
-    _: &AdminWitness,
     dao_fee_bps: u16,
 ) {
     assert_valid_dao_fee(dao_fee_bps);
+    let vault_id = object::id(self);
+    let vault_address = vault_id.to_address();
     let dao_fee_pool_id = object::id(dao_fee_pool);
     assert!(self.pool_id() == dao_fee_pool_id, EDaoPoolInvariantMismatch);
     assert!(
-        dao_fee_pool.fee_recipient() == object::id(self).to_address(),
+        dao_fee_pool.fee_recipient() == vault_address,
         EDaoPoolInvariantMismatch,
     );
     let old_dao_fee_bps = dao_fee_pool.fee_bps();
     assert!(old_dao_fee_bps != dao_fee_bps, EUnchangedDaoFee);
 
     let position: &mut AftermathPosition<Lp> = self.position_mut(&Venue());
-    position.dao_fee_owner_cap.set_fee_bps(
+    position.owner_cap.set_fee_bps(
         dao_fee_pool,
         dao_fee_version,
         dao_fee_bps,
@@ -250,11 +289,11 @@ public fun update_dao_fee<Lp, Meme, Quote>(
         EDaoPoolInvariantMismatch,
     );
     assert!(
-        dao_fee_pool.fee_recipient() == object::id(self).to_address(),
+        dao_fee_pool.fee_recipient() == vault_address,
         EDaoPoolInvariantMismatch,
     );
     events::aftermath_dao_fee_updated(
-        object::id(self),
+        vault_id,
         dao_fee_pool_id,
         old_dao_fee_bps,
         dao_fee_bps,
@@ -343,7 +382,6 @@ fun create_and_reconcile<Lp, C1, C2>(
     amount_2: u64,
     weight_1: u64,
     weight_2: u64,
-    fee_rate: u64,
     ctx: &mut TxContext,
 ): (Pool<Lp>, Coin<Lp>) {
     let (pool, lp_coin) = pool_factory::create_pool_2_coins_v2<Lp, C1, C2>(
@@ -352,7 +390,7 @@ fun create_and_reconcile<Lp, C1, C2>(
         POOL_NAME,
         vector[weight_1, weight_2],
         FLATNESS,
-        vector[fee_rate, fee_rate],
+        vector[BASE_SWAP_IN_FEE, BASE_SWAP_IN_FEE],
         vector[0, 0],
         vector[0, 0],
         vector[0, 0],
@@ -373,8 +411,14 @@ fun create_and_reconcile<Lp, C1, C2>(
     assert!(pool.weight_of<Lp, C1>() == weight_1, EPoolInvariantMismatch);
     assert!(pool.weight_of<Lp, C2>() == weight_2, EPoolInvariantMismatch);
     assert!(pool.flatness() == FLATNESS, EPoolInvariantMismatch);
-    assert!(pool.fees_swap_in_for<Lp, C1>() == fee_rate, EPoolInvariantMismatch);
-    assert!(pool.fees_swap_in_for<Lp, C2>() == fee_rate, EPoolInvariantMismatch);
+    assert!(
+        pool.fees_swap_in_for<Lp, C1>() == BASE_SWAP_IN_FEE,
+        EPoolInvariantMismatch,
+    );
+    assert!(
+        pool.fees_swap_in_for<Lp, C2>() == BASE_SWAP_IN_FEE,
+        EPoolInvariantMismatch,
+    );
     assert!(pool.fees_swap_out_for<Lp, C1>() == 0, EPoolInvariantMismatch);
     assert!(pool.fees_swap_out_for<Lp, C2>() == 0, EPoolInvariantMismatch);
     assert!(pool.fees_deposit_for<Lp, C1>() == 0, EPoolInvariantMismatch);
@@ -406,14 +450,13 @@ fun lock_and_share<Lp, Meme, Quote>(
 ) {
     let inner_pool_id = object::id(&pool);
     let locked_lp_amount = lp_coin.value();
-    let pending_vault = vault::prepare<Meme, Quote>(
+    let (pending_vault, vault_id) = vault::prepare<Meme, Quote>(
         balance::zero(),
         balance::zero(),
         ctx,
     );
-    let vault_id = vault::pending_id(&pending_vault);
     let vault_address = vault_id.to_address();
-    let (dao_fee_pool, dao_fee_owner_cap) = dao_fee_pool::new(
+    let (dao_fee_pool, owner_cap) = dao_fee_pool::new(
         pool,
         dao_fee_version,
         policy.dao_fee_bps,
@@ -432,10 +475,9 @@ fun lock_and_share<Lp, Meme, Quote>(
     let position = AftermathPosition {
         id: object::new(ctx),
         lp_coin,
-        dao_fee_owner_cap,
+        owner_cap,
     };
-    let finished_vault_id = vault::finish(
-        pending_vault,
+    let finished_vault_id = pending_vault.finish(
         Venue(),
         dao_fee_pool_id,
         position,
@@ -456,43 +498,6 @@ fun lock_and_share<Lp, Meme, Quote>(
         policy.dao_fee_bps,
     );
     transfer::public_share_object(dao_fee_pool);
-}
-
-/// Receives and allocates one bounded batch of Meme and Quote DAO-fee coins.
-public fun accrue_dao_fees<Lp, Meme, Quote>(
-    self: &mut LpVault<Meme, Quote>,
-    runtime_config: &RuntimeConfig,
-    meme_receivings: vector<Receiving<Coin<Meme>>>,
-    quote_receivings: vector<Receiving<Coin<Quote>>>,
-    ctx: &mut TxContext,
-) {
-    let (position_id, locked_lp_amount_before) = {
-        let position: &mut AftermathPosition<Lp> = self.position_mut(&Venue());
-        (object::id(position), position.lp_coin.value() as u128)
-    };
-    let (meme_fee, quote_fee) = self.receive_coins(
-        &Venue(),
-        meme_receivings,
-        quote_receivings,
-    );
-    let locked_lp_amount_after = {
-        let position: &mut AftermathPosition<Lp> = self.position_mut(&Venue());
-        position.lp_coin.value() as u128
-    };
-    assert!(
-        locked_lp_amount_before == locked_lp_amount_after,
-        ELpPrincipalChanged,
-    );
-    self.accrue_fees(
-        &Venue(),
-        position_id,
-        meme_fee,
-        quote_fee,
-        locked_lp_amount_before,
-        locked_lp_amount_after,
-        runtime_config,
-        ctx,
-    );
 }
 
 // === Test-Only Functions ===

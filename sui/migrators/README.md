@@ -117,7 +117,7 @@ reference to increase or decrease that existing pool's DAO fee while the
 recipient remains fixed to the vault.
 
 DAO swaps, deposits, and withdrawals transfer Meme or Quote fee coins to the
-vault address. `accrue_dao_fees` receives separate typed Meme and Quote vectors
+vault address. `accrue_fees` receives separate typed Meme and Quote vectors
 containing 1 through 100 total child-address coins. Either vector can be empty.
 It deletes the coin wrappers while merging both balances and performs one
 common fee-ledger accrual. It requires the locked LP amount to remain

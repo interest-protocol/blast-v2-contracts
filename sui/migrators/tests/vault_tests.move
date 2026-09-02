@@ -4,7 +4,11 @@ module blast_fun_migrators::vault_tests;
 use blast_fun::{acl, package_version, runtime_config};
 use blast_fun_migrators::vault::{Self, LpVault};
 use std::unit_test::{assert_eq, destroy};
-use sui::{balance, coin, test_scenario::{Self, Scenario}};
+use sui::{
+    balance,
+    coin,
+    test_scenario::{Self, Scenario},
+};
 
 // === Constants ===
 
@@ -31,35 +35,25 @@ public struct VaultFixture {
     position_id: ID,
 }
 
+/// Unshared vault construction state used to verify atomic completion.
+public struct PreparedVaultFixture {
+    scenario: Scenario,
+    pending: Option<LpVault<MEME, QUOTE>>,
+    position: Option<TestPosition>,
+    pool_id: ID,
+    pending_id: ID,
+}
+
 // === Tests ===
 
 #[test]
 fun prepared_vault_keeps_its_id_when_finished_and_shared() {
-    let mut scenario = test_scenario::begin(PUBLISHER);
-    let position = TestPosition { id: object::new(scenario.ctx()) };
-    let pool_uid = object::new(scenario.ctx());
-    let pool_id = pool_uid.to_inner();
-    pool_uid.delete();
-    let pending = vault::prepare<MEME, QUOTE>(
-        balance::zero(),
-        balance::zero(),
-        scenario.ctx(),
-    );
-    let pending_id = vault::pending_id(&pending);
-    let finished_id = vault::finish(
-        pending,
-        TestVenue(),
-        pool_id,
-        position,
-    );
-    assert_eq!(finished_id, pending_id);
+    let mut fixture = start_prepared_vault();
+    let pending_id = fixture.pending_id;
 
-    scenario.next_tx(PUBLISHER);
-    let shared = scenario.take_shared<LpVault<MEME, QUOTE>>();
-    assert_eq!(object::id(&shared), pending_id);
-    assert_eq!(shared.pool_id(), pool_id);
-    test_scenario::return_shared(shared);
-    scenario.end();
+    assert_eq!(fixture.finish_prepared(), pending_id);
+    fixture.assert_shared_vault();
+    fixture.prepared_vault_end();
 }
 
 #[test]
@@ -304,6 +298,47 @@ macro fun accrue($fixture: &mut VaultFixture, $meme: u64, $quote: u64) {
         &fixture.runtime_config,
         fixture.scenario.ctx(),
     );
+}
+
+fun start_prepared_vault(): PreparedVaultFixture {
+    let mut scenario = test_scenario::begin(PUBLISHER);
+    let position = TestPosition { id: object::new(scenario.ctx()) };
+    let pool_uid = object::new(scenario.ctx());
+    let pool_id = pool_uid.to_inner();
+    pool_uid.delete();
+    let (pending, pending_id) = vault::prepare<MEME, QUOTE>(
+        balance::zero(),
+        balance::zero(),
+        scenario.ctx(),
+    );
+
+    PreparedVaultFixture {
+        scenario,
+        pending: option::some(pending),
+        position: option::some(position),
+        pool_id,
+        pending_id,
+    }
+}
+
+fun finish_prepared(self: &mut PreparedVaultFixture): ID {
+    self.pending.extract().finish(
+        TestVenue(),
+        self.pool_id,
+        self.position.extract(),
+    )
+}
+
+fun assert_shared_vault(self: &mut PreparedVaultFixture) {
+    self.scenario.next_tx(PUBLISHER);
+    let shared = self.scenario.take_shared<LpVault<MEME, QUOTE>>();
+    assert_eq!(object::id(&shared), self.pending_id);
+    assert_eq!(shared.pool_id(), self.pool_id);
+    test_scenario::return_shared(shared);
+}
+
+fun prepared_vault_end(self: PreparedVaultFixture) {
+    destroy(self);
 }
 
 fun start(): VaultFixture {
