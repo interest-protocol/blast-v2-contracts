@@ -168,7 +168,7 @@ fi
 # 12. Only Series may consume validated leverage bounds in production. No
 # helper or adapter-facing seam may rebuild or reinterpret the risk ordering.
 if grep_move_sources \
-  '(^|[^[:alnum:]_])leverage_bounds::|::leverage_bounds([^[:alnum:]_]|$)' \
+  '(^|[^[:alnum:]_])leverage_bounds([^[:alnum:]_]|$)' \
   "${non_leverage_bounds_or_series_sources[@]}"; then
   fail "Only series.move may consume the leverage_bounds production API."
 fi
