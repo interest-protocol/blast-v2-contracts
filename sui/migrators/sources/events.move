@@ -21,17 +21,18 @@ public struct VenueTierUpdated has copy, drop {
 public struct AftermathPolicyUpdated has copy, drop {
     old_meme_weight: u64,
     old_quote_weight: u64,
-    old_swap_in_fee: u64,
+    old_dao_fee_bps: u16,
     new_meme_weight: u64,
     new_quote_weight: u64,
-    new_swap_in_fee: u64,
+    new_dao_fee_bps: u16,
 }
 
 /// Records a reconciled Aftermath weighted-pool migration.
 public struct AftermathMigrationCompleted has copy, drop {
     launch_id: ID,
     vault_id: ID,
-    pool_id: ID,
+    inner_pool_id: ID,
+    dao_fee_pool_id: ID,
     venue: TypeName,
     lp: TypeName,
     meme: TypeName,
@@ -43,6 +44,15 @@ public struct AftermathMigrationCompleted has copy, drop {
     quote_weight: u64,
     flatness: u64,
     swap_in_fee: u64,
+    dao_fee_bps: u16,
+}
+
+/// Records an admin-authorized DAO fee change for one migrated Aftermath pool.
+public struct AftermathDaoFeeUpdated has copy, drop {
+    vault_id: ID,
+    dao_fee_pool_id: ID,
+    old_dao_fee_bps: u16,
+    new_dao_fee_bps: u16,
 }
 
 /// Records discovery and typed position custody for one completed vault.
@@ -152,18 +162,18 @@ public(package) fun venue_tier_updated<Venue>(
 public(package) fun aftermath_policy_updated(
     old_meme_weight: u64,
     old_quote_weight: u64,
-    old_swap_in_fee: u64,
+    old_dao_fee_bps: u16,
     new_meme_weight: u64,
     new_quote_weight: u64,
-    new_swap_in_fee: u64,
+    new_dao_fee_bps: u16,
 ) {
     sui::event::emit(AftermathPolicyUpdated {
         old_meme_weight,
         old_quote_weight,
-        old_swap_in_fee,
+        old_dao_fee_bps,
         new_meme_weight,
         new_quote_weight,
-        new_swap_in_fee,
+        new_dao_fee_bps,
     });
 }
 
@@ -171,7 +181,8 @@ public(package) fun aftermath_policy_updated(
 public(package) fun aftermath_migration_completed<Lp, Meme, Quote, Venue>(
     launch_id: ID,
     vault_id: ID,
-    pool_id: ID,
+    inner_pool_id: ID,
+    dao_fee_pool_id: ID,
     meme_amount: u64,
     quote_amount: u64,
     locked_lp_amount: u64,
@@ -179,11 +190,13 @@ public(package) fun aftermath_migration_completed<Lp, Meme, Quote, Venue>(
     quote_weight: u64,
     flatness: u64,
     swap_in_fee: u64,
+    dao_fee_bps: u16,
 ) {
     sui::event::emit(AftermathMigrationCompleted {
         launch_id,
         vault_id,
-        pool_id,
+        inner_pool_id,
+        dao_fee_pool_id,
         venue: type_name::with_original_ids<Venue>(),
         lp: type_name::with_original_ids<Lp>(),
         meme: type_name::with_original_ids<Meme>(),
@@ -195,6 +208,22 @@ public(package) fun aftermath_migration_completed<Lp, Meme, Quote, Venue>(
         quote_weight,
         flatness,
         swap_in_fee,
+        dao_fee_bps,
+    });
+}
+
+/// Emits one admin-authorized DAO fee update for an existing pool.
+public(package) fun aftermath_dao_fee_updated(
+    vault_id: ID,
+    dao_fee_pool_id: ID,
+    old_dao_fee_bps: u16,
+    new_dao_fee_bps: u16,
+) {
+    sui::event::emit(AftermathDaoFeeUpdated {
+        vault_id,
+        dao_fee_pool_id,
+        old_dao_fee_bps,
+        new_dao_fee_bps,
     });
 }
 

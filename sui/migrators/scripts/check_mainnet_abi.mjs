@@ -446,6 +446,38 @@ const PACKAGES = [
             },
         ],
     },
+    {
+        key: 'aftermath_dao_fee',
+        label: 'Aftermath DAO Fee Pools',
+        addressName: 'dao_fee_amm',
+        originalId:
+            '0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d',
+        currentId:
+            '0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2',
+        version: 2,
+        digest: 'AeSpba79KZ8Ge8nGk2Li2c2tkLy7eC93wTGhgjEVHVpZ',
+        previousTransaction: '9eMeoFRPGDW1TUvbhtstVu2bAaWCCM7VCgbgkEkCUR4c',
+        manifest: 'interfaces/aftermath_dao_fee/Move.toml',
+        modules: [
+            {
+                name: 'pool',
+                sha256: '029b3e6e0a11a249147cdd0b7b3ea78556d399e03228cae9424529a06cd58f3e',
+                structs: ['DaoFeePool', 'OwnerCap'],
+                functions: [
+                    'fee_bps',
+                    'fee_recipient',
+                    'new',
+                    'update_fee_bps',
+                ],
+            },
+            {
+                name: 'version',
+                sha256: '6fbb4c1b78af3fa68654af6eb29be6fdbc945e9d715a46ac1ca9bc3f3f8920f2',
+                structs: ['Version'],
+                functions: [],
+            },
+        ],
+    },
 ];
 
 // === Expected Local Pins ===
@@ -475,6 +507,7 @@ const MANIFESTS = [
             FullSailCLMM: { local: 'interfaces/fullsail' },
             FullSailIntegerMate: { local: 'interfaces/fullsail_integer_mate' },
             AftermathAmm: { local: 'interfaces/aftermath' },
+            AftermathDaoFeePools: { local: 'interfaces/aftermath_dao_fee' },
             Sui: {
                 git: SUI_GIT,
                 subdir: SUI_FRAMEWORK_SUBDIR,
@@ -499,6 +532,21 @@ const MANIFESTS = [
         packageKey: 'aftermath',
         lockNode: 'AftermathAmm',
         dependencies: {
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
+                override: true,
+            },
+        },
+    },
+    {
+        path: 'interfaces/aftermath_dao_fee/Move.toml',
+        packageName: 'AftermathDaoFeePools',
+        packageKey: 'aftermath_dao_fee',
+        lockNode: 'AftermathDaoFeePools',
+        dependencies: {
+            AftermathAmm: { local: '../aftermath' },
             Sui: {
                 git: SUI_GIT,
                 subdir: SUI_FRAMEWORK_SUBDIR,
@@ -570,6 +618,10 @@ const LOCK_NODES = {
         source: { local: 'interfaces/aftermath' },
         deps: { Sui: 'Sui' },
     },
+    AftermathDaoFeePools: {
+        source: { local: 'interfaces/aftermath_dao_fee' },
+        deps: { AftermathAmm: 'AftermathAmm', Sui: 'Sui' },
+    },
     BluefinSpot: {
         source: { git: BLUEFIN_GIT, subdir: '.', rev: REV.bluefin },
         deps: { IntegerLibrary: 'IntegerLibrary', IntegerMate: 'IntegerMate', Sui: 'Sui_2' },
@@ -638,6 +690,7 @@ const LOCK_NODES = {
         source: { root: true },
         deps: {
             AftermathAmm: 'AftermathAmm',
+            AftermathDaoFeePools: 'AftermathDaoFeePools',
             BluefinSpot: 'BluefinSpot',
             CetusClmm: 'CetusClmm',
             FullSailCLMM: 'FullSailCLMM',
@@ -881,6 +934,20 @@ const ABI = {
         'public fun contains_lp_coin<$0>(&@self::pool_registry::PoolRegistry): bool',
     'amm::pool_registry::lp_type_to_pool_id':
         'public fun lp_type_to_pool_id<$0>(&@self::pool_registry::PoolRegistry): @sui::object::ID',
+    'dao_fee_amm::pool::DaoFeePool':
+        'struct DaoFeePool<phantom $0> has store, key',
+    'dao_fee_amm::pool::OwnerCap':
+        'struct OwnerCap<phantom $0> has store, key',
+    'dao_fee_amm::pool::fee_bps':
+        'public fun fee_bps<$0>(&@self::pool::DaoFeePool<$0>): u16',
+    'dao_fee_amm::pool::fee_recipient':
+        'public fun fee_recipient<$0>(&@self::pool::DaoFeePool<$0>): address',
+    'dao_fee_amm::pool::new':
+        'public fun new<$0>(0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c::pool::Pool<$0>, &@self::version::Version, u16, address, &mut @sui::tx_context::TxContext): (@self::pool::DaoFeePool<$0>, @self::pool::OwnerCap<$0>)',
+    'dao_fee_amm::pool::update_fee_bps':
+        'public fun update_fee_bps<$0>(&@self::pool::OwnerCap<$0>, &mut @self::pool::DaoFeePool<$0>, &@self::version::Version, u16)',
+    'dao_fee_amm::version::Version':
+        'struct Version has key',
 };
 
 // === Failures ===

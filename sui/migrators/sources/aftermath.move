@@ -10,10 +10,21 @@ use blast_fun::{
     acl::AdminWitness,
     launch::Launch,
     package_version::PackageVersion,
+    runtime_config::RuntimeConfig,
 };
-use blast_fun_migrators::{events, vault, venue_config::VenueConfig};
+use blast_fun_migrators::{
+    events,
+    vault::{Self, LpVault},
+    venue_config::VenueConfig,
+};
+use dao_fee_amm::{
+    pool::{Self as dao_fee_pool, DaoFeePool, OwnerCap},
+    version::Version,
+};
 use std::type_name;
-use sui::{balance, coin::Coin, coin_registry::Currency};
+use sui::{balance, coin::Coin, coin_registry::Currency, transfer::Receiving};
+
+use fun dao_fee_amm::pool::update_fee_bps as OwnerCap.set_fee_bps;
 
 // === Constants ===
 
@@ -22,9 +33,10 @@ const HALF_WEIGHT: u64 = 500_000_000_000_000_000;
 const FIXED_ONE: u64 = 1_000_000_000_000_000_000;
 const MIN_WEIGHT: u64 = 10_000_000_000_000_000;
 const FLATNESS: u64 = 0;
-const DEFAULT_SWAP_IN_FEE: u64 = 20_000_000_000_000_000;
-const MIN_SWAP_IN_FEE: u64 = 100_000_000_000_000;
-const MAX_SWAP_IN_FEE: u64 = 100_000_000_000_000_000;
+/// Aftermath rejects zero; this is its unavoidable 0.01% base-pool minimum.
+const BASE_SWAP_IN_FEE: u64 = 100_000_000_000_000;
+const DEFAULT_DAO_FEE_BPS: u16 = 200;
+const MAX_DAO_FEE_BPS: u16 = 10_000;
 const MIN_ILLIQUID_LP: u64 = 1_000;
 const REQUIRED_LP_DECIMALS: u8 = 9;
 const POOL_NAME: vector<u8> = b"Blast Aftermath Meme Pool";
@@ -35,8 +47,6 @@ const POOL_NAME: vector<u8> = b"Blast Aftermath Meme Pool";
 const EInvalidCoinOrder: vector<u8> = b"Selected Aftermath route must match canonical coin order.";
 #[error(code = 1)]
 const ELpTypeAlreadyRegistered: vector<u8> = b"Aftermath LP type must be fresh and unregistered.";
-#[error(code = 2)]
-const EInvalidFeeRate: vector<u8> = b"Aftermath swap-in fee is outside its supported range.";
 #[error(code = 3)]
 const EPoolInvariantMismatch: vector<u8> = b"Aftermath pool state does not match the migration policy.";
 #[error(code = 4)]
@@ -47,6 +57,14 @@ const ELpSupplyMismatch: vector<u8> = b"Aftermath LP supply or decimals do not m
 const EInvalidWeight: vector<u8> = b"Aftermath weights must each be at least 1% and sum to 100%.";
 #[error(code = 7)]
 const EUnchangedPolicy: vector<u8> = b"Aftermath policy must differ from its currently effective values.";
+#[error(code = 8)]
+const EInvalidDaoFee: vector<u8> = b"Aftermath DAO fee must not exceed 10,000 basis points.";
+#[error(code = 9)]
+const EDaoPoolInvariantMismatch: vector<u8> = b"Aftermath DAO-fee pool does not match the migration policy.";
+#[error(code = 10)]
+const EUnchangedDaoFee: vector<u8> = b"Aftermath DAO fee must differ from its current value.";
+#[error(code = 11)]
+const ELpPrincipalChanged: vector<u8> = b"Aftermath DAO fee accrual must not change locked LP principal.";
 
 // === Public Structs ===
 
@@ -63,7 +81,15 @@ public struct PolicyKey() has copy, drop, store;
 public struct AftermathPolicy has copy, drop, store {
     meme_weight: u64,
     quote_weight: u64,
-    swap_in_fee: u64,
+    dao_fee_bps: u16,
+}
+
+/// Permanently locked fungible LP principal and DAO-fee policy capability.
+#[allow(lint(coin_field))]
+public struct AftermathPosition<phantom Lp> has key, store {
+    id: UID,
+    lp_coin: Coin<Lp>,
+    dao_fee_owner_cap: OwnerCap<Lp>,
 }
 
 // === Public Functions ===
@@ -76,6 +102,7 @@ public fun migrate_meme_first<Lp, Meme, Quote>(
     meme_currency: &mut Currency<Meme>,
     pool_registry: &mut PoolRegistry,
     create_pool_cap: CreatePoolCapV2,
+    dao_fee_version: &Version,
     ctx: &mut TxContext,
 ) {
     assert_canonical_order<Meme, Quote>(true);
@@ -95,7 +122,7 @@ public fun migrate_meme_first<Lp, Meme, Quote>(
         quote_amount,
         policy.meme_weight,
         policy.quote_weight,
-        policy.swap_in_fee,
+        BASE_SWAP_IN_FEE,
         ctx,
     );
 
@@ -106,6 +133,7 @@ public fun migrate_meme_first<Lp, Meme, Quote>(
         meme_amount,
         quote_amount,
         policy,
+        dao_fee_version,
         ctx,
     );
 }
@@ -118,6 +146,7 @@ public fun migrate_meme_second<Lp, Meme, Quote>(
     meme_currency: &mut Currency<Meme>,
     pool_registry: &mut PoolRegistry,
     create_pool_cap: CreatePoolCapV2,
+    dao_fee_version: &Version,
     ctx: &mut TxContext,
 ) {
     assert_canonical_order<Meme, Quote>(false);
@@ -137,7 +166,7 @@ public fun migrate_meme_second<Lp, Meme, Quote>(
         meme_amount,
         policy.quote_weight,
         policy.meme_weight,
-        policy.swap_in_fee,
+        BASE_SWAP_IN_FEE,
         ctx,
     );
 
@@ -148,19 +177,24 @@ public fun migrate_meme_second<Lp, Meme, Quote>(
         meme_amount,
         quote_amount,
         policy,
+        dao_fee_version,
         ctx,
     );
 }
 
-/// Pins Aftermath's role-based weights and symmetric swap-in fee for future migrations.
+/// Pins Aftermath's role-based weights and DAO fee for future migrations.
 public fun set_policy(
     venue_config: &mut VenueConfig,
     _: &AdminWitness,
     meme_weight: u64,
     quote_weight: u64,
-    swap_in_fee: u64,
+    dao_fee_bps: u16,
 ) {
-    let new_policy = AftermathPolicy { meme_weight, quote_weight, swap_in_fee };
+    let new_policy = AftermathPolicy {
+        meme_weight,
+        quote_weight,
+        dao_fee_bps,
+    };
     assert_valid_policy(&new_policy);
 
     let old_policy = if (venue_config.has_policy(PolicyKey())) {
@@ -180,10 +214,50 @@ public fun set_policy(
     events::aftermath_policy_updated(
         old_policy.meme_weight,
         old_policy.quote_weight,
-        old_policy.swap_in_fee,
+        old_policy.dao_fee_bps,
         new_policy.meme_weight,
         new_policy.quote_weight,
-        new_policy.swap_in_fee,
+        new_policy.dao_fee_bps,
+    );
+}
+
+/// Updates one migrated pool's DAO fee while retaining its cap and vault recipient.
+public fun update_dao_fee<Lp, Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    dao_fee_pool: &mut DaoFeePool<Lp>,
+    dao_fee_version: &Version,
+    _: &AdminWitness,
+    dao_fee_bps: u16,
+) {
+    assert_valid_dao_fee(dao_fee_bps);
+    let dao_fee_pool_id = object::id(dao_fee_pool);
+    assert!(self.pool_id() == dao_fee_pool_id, EDaoPoolInvariantMismatch);
+    assert!(
+        dao_fee_pool.fee_recipient() == object::id(self).to_address(),
+        EDaoPoolInvariantMismatch,
+    );
+    let old_dao_fee_bps = dao_fee_pool.fee_bps();
+    assert!(old_dao_fee_bps != dao_fee_bps, EUnchangedDaoFee);
+
+    let position: &mut AftermathPosition<Lp> = self.position_mut(&Venue());
+    position.dao_fee_owner_cap.set_fee_bps(
+        dao_fee_pool,
+        dao_fee_version,
+        dao_fee_bps,
+    );
+    assert!(
+        dao_fee_pool.fee_bps() == dao_fee_bps,
+        EDaoPoolInvariantMismatch,
+    );
+    assert!(
+        dao_fee_pool.fee_recipient() == object::id(self).to_address(),
+        EDaoPoolInvariantMismatch,
+    );
+    events::aftermath_dao_fee_updated(
+        object::id(self),
+        dao_fee_pool_id,
+        old_dao_fee_bps,
+        dao_fee_bps,
     );
 }
 
@@ -193,7 +267,7 @@ fun default_policy(): AftermathPolicy {
     AftermathPolicy {
         meme_weight: HALF_WEIGHT,
         quote_weight: HALF_WEIGHT,
-        swap_in_fee: DEFAULT_SWAP_IN_FEE,
+        dao_fee_bps: DEFAULT_DAO_FEE_BPS,
     }
 }
 
@@ -217,22 +291,19 @@ fun assert_valid_policy(policy: &AftermathPolicy) {
             && policy.meme_weight + policy.quote_weight == FIXED_ONE,
         EInvalidWeight,
     );
-    assert_valid_fee(policy.swap_in_fee);
+    assert_valid_dao_fee(policy.dao_fee_bps);
+}
+
+fun assert_valid_dao_fee(dao_fee_bps: u16) {
+    assert!(dao_fee_bps <= MAX_DAO_FEE_BPS, EInvalidDaoFee);
 }
 
 fun assert_policy_changed(old_policy: &AftermathPolicy, new_policy: &AftermathPolicy) {
     assert!(
         old_policy.meme_weight != new_policy.meme_weight
             || old_policy.quote_weight != new_policy.quote_weight
-            || old_policy.swap_in_fee != new_policy.swap_in_fee,
+            || old_policy.dao_fee_bps != new_policy.dao_fee_bps,
         EUnchangedPolicy,
-    );
-}
-
-fun assert_valid_fee(fee_rate: u64) {
-    assert!(
-        fee_rate >= MIN_SWAP_IN_FEE && fee_rate <= MAX_SWAP_IN_FEE,
-        EInvalidFeeRate,
     );
 }
 
@@ -321,6 +392,8 @@ fun create_and_reconcile<Lp, C1, C2>(
     (pool, lp_coin)
 }
 
+// The wrapper is returned directly by `dao_fee_pool::new` in this transaction.
+#[allow(lint(share_owned))]
 fun lock_and_share<Lp, Meme, Quote>(
     launch_id: ID,
     pool: Pool<Lp>,
@@ -328,39 +401,112 @@ fun lock_and_share<Lp, Meme, Quote>(
     meme_amount: u64,
     quote_amount: u64,
     policy: AftermathPolicy,
+    dao_fee_version: &Version,
     ctx: &mut TxContext,
 ) {
-    let pool_id = object::id(&pool);
+    let inner_pool_id = object::id(&pool);
     let locked_lp_amount = lp_coin.value();
-    let vault_id = vault::new<Meme, Quote, Venue, Coin<Lp>>(
-        Venue(),
-        pool_id,
-        lp_coin,
+    let pending_vault = vault::prepare<Meme, Quote>(
         balance::zero(),
         balance::zero(),
         ctx,
     );
+    let vault_id = vault::pending_id(&pending_vault);
+    let vault_address = vault_id.to_address();
+    let (dao_fee_pool, dao_fee_owner_cap) = dao_fee_pool::new(
+        pool,
+        dao_fee_version,
+        policy.dao_fee_bps,
+        vault_address,
+        ctx,
+    );
+    assert!(
+        dao_fee_pool.fee_bps() == policy.dao_fee_bps,
+        EDaoPoolInvariantMismatch,
+    );
+    assert!(
+        dao_fee_pool.fee_recipient() == vault_address,
+        EDaoPoolInvariantMismatch,
+    );
+    let dao_fee_pool_id = object::id(&dao_fee_pool);
+    let position = AftermathPosition {
+        id: object::new(ctx),
+        lp_coin,
+        dao_fee_owner_cap,
+    };
+    let finished_vault_id = vault::finish(
+        pending_vault,
+        Venue(),
+        dao_fee_pool_id,
+        position,
+    );
+    assert!(finished_vault_id == vault_id, EDaoPoolInvariantMismatch);
     events::aftermath_migration_completed<Lp, Meme, Quote, Venue>(
         launch_id,
         vault_id,
-        pool_id,
+        inner_pool_id,
+        dao_fee_pool_id,
         meme_amount,
         quote_amount,
         locked_lp_amount,
         policy.meme_weight,
         policy.quote_weight,
         FLATNESS,
-        policy.swap_in_fee,
+        BASE_SWAP_IN_FEE,
+        policy.dao_fee_bps,
     );
-    pool.share();
+    transfer::public_share_object(dao_fee_pool);
+}
+
+/// Receives and allocates one bounded batch of Meme and Quote DAO-fee coins.
+public fun accrue_dao_fees<Lp, Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    runtime_config: &RuntimeConfig,
+    meme_receivings: vector<Receiving<Coin<Meme>>>,
+    quote_receivings: vector<Receiving<Coin<Quote>>>,
+    ctx: &mut TxContext,
+) {
+    let (position_id, locked_lp_amount_before) = {
+        let position: &mut AftermathPosition<Lp> = self.position_mut(&Venue());
+        (object::id(position), position.lp_coin.value() as u128)
+    };
+    let (meme_fee, quote_fee) = self.receive_coins(
+        &Venue(),
+        meme_receivings,
+        quote_receivings,
+    );
+    let locked_lp_amount_after = {
+        let position: &mut AftermathPosition<Lp> = self.position_mut(&Venue());
+        position.lp_coin.value() as u128
+    };
+    assert!(
+        locked_lp_amount_before == locked_lp_amount_after,
+        ELpPrincipalChanged,
+    );
+    self.accrue_fees(
+        &Venue(),
+        position_id,
+        meme_fee,
+        quote_fee,
+        locked_lp_amount_before,
+        locked_lp_amount_after,
+        runtime_config,
+        ctx,
+    );
 }
 
 // === Test-Only Functions ===
 
 #[test_only]
-public fun effective_policy_for_testing(venue_config: &VenueConfig): (u64, u64, u64) {
+public fun effective_policy_for_testing(
+    venue_config: &VenueConfig,
+): (u64, u64, u16) {
     let policy = effective_policy(venue_config);
-    (policy.meme_weight, policy.quote_weight, policy.swap_in_fee)
+    (
+        policy.meme_weight,
+        policy.quote_weight,
+        policy.dao_fee_bps,
+    )
 }
 
 #[test_only]

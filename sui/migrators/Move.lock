@@ -10,6 +10,12 @@ use_environment = "mainnet"
 manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
 deps = { Sui = "Sui" }
 
+[pinned.mainnet.AftermathDaoFeePools]
+source = { local = "interfaces/aftermath_dao_fee" }
+use_environment = "mainnet"
+manifest_digest = "E964A3A7B64B8EB32543E0911BC8B244A4F96C0275240A01A605A5B0E71E187B"
+deps = { AftermathAmm = "AftermathAmm", Sui = "Sui" }
+
 [pinned.mainnet.BluefinSpot]
 source = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", subdir = ".", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
 use_environment = "mainnet"
@@ -109,8 +115,8 @@ deps = { std = "MoveStdlib", sui = "Sui" }
 [pinned.mainnet.blast_fun_migrators]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "9E91205923B9CFF271DB2EA3147FA2F84DFA78A9B9D33220751FC1086952ADC4"
-deps = { AftermathAmm = "AftermathAmm", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", FullSailCLMM = "FullSailCLMM", FullSailIntegerMate = "FullSailIntegerMate", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui", TurbosCLMM = "TurbosCLMM", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
+manifest_digest = "310A8C1CDC2C1ACE49C1742899ED348AB50D3CE5ED37D75BBC5D364EC7BC7DE6"
+deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", FullSailCLMM = "FullSailCLMM", FullSailIntegerMate = "FullSailIntegerMate", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui", TurbosCLMM = "TurbosCLMM", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
 
 [pinned.mainnet.mmt_v3]
 source = { git = "https://github.com/mmt-finance/mmt-contract-interface.git", subdir = "mmt_v3", rev = "e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82" }
@@ -123,6 +129,12 @@ source = { local = "interfaces/aftermath" }
 use_environment = "testnet"
 manifest_digest = "271408FC66479D0667DD522595BEB59E742B3EA9CD00ED7395433A07D5595564"
 deps = { Sui = "Sui" }
+
+[pinned.testnet.AftermathDaoFeePools]
+source = { local = "interfaces/aftermath_dao_fee" }
+use_environment = "testnet"
+manifest_digest = "B609F93DB3791EF5BFA38A6AC842AE0D7700BF43BCF922EBBD4D9C55B8A3D682"
+deps = { AftermathAmm = "AftermathAmm", Sui = "Sui" }
 
 [pinned.testnet.BluefinSpot]
 source = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", subdir = ".", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
@@ -223,8 +235,8 @@ deps = { std = "MoveStdlib", sui = "Sui" }
 [pinned.testnet.blast_fun_migrators]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "D27907F20216752D2E8762B2C1F91C1C764638817578C84D2031E9296FAC476B"
-deps = { AftermathAmm = "AftermathAmm", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", FullSailCLMM = "FullSailCLMM", FullSailIntegerMate = "FullSailIntegerMate", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui", TurbosCLMM = "TurbosCLMM", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
+manifest_digest = "656C446E12608C9E895630C30D06081B5ECC2504F583E3276433F84D667FAD0C"
+deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", FullSailCLMM = "FullSailCLMM", FullSailIntegerMate = "FullSailIntegerMate", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui", TurbosCLMM = "TurbosCLMM", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
 
 [pinned.testnet.mmt_v3]
 source = { git = "https://github.com/mmt-finance/mmt-contract-interface.git", subdir = "mmt_v3", rev = "e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82" }

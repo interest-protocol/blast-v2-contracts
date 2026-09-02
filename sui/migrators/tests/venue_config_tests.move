@@ -82,11 +82,11 @@ fun venue_defaults_hold_until_an_admin_pin_replaces_them() {
             turbos::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 800);
         assert_eq!(fee_rate, 40_000);
-        let (meme_weight, quote_weight, swap_in_fee) =
+        let (meme_weight, quote_weight, dao_fee_bps) =
             aftermath::effective_policy_for_testing(&f.config);
         assert_eq!(meme_weight, 500_000_000_000_000_000);
         assert_eq!(quote_weight, 500_000_000_000_000_000);
-        assert_eq!(swap_in_fee, 20_000_000_000_000_000);
+        assert_eq!(dao_fee_bps, 200);
 
         let admin_witness = f.sign_in();
         bluefin::set_tier(&mut f.config, &admin_witness, 220, 20_000);
@@ -99,18 +99,18 @@ fun venue_defaults_hold_until_an_admin_pin_replaces_them() {
             &admin_witness,
             600_000_000_000_000_000,
             400_000_000_000_000_000,
-            3_000_000_000_000_000,
+            300,
         );
 
         let (tick_spacing, fee_rate) =
             bluefin::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 220);
         assert_eq!(fee_rate, 20_000);
-        let (meme_weight, quote_weight, swap_in_fee) =
+        let (meme_weight, quote_weight, dao_fee_bps) =
             aftermath::effective_policy_for_testing(&f.config);
         assert_eq!(meme_weight, 600_000_000_000_000_000);
         assert_eq!(quote_weight, 400_000_000_000_000_000);
-        assert_eq!(swap_in_fee, 3_000_000_000_000_000);
+        assert_eq!(dao_fee_bps, 300);
         let (tick_spacing, fee_rate) =
             cetus::effective_tier_for_testing(&f.config);
         assert_eq!(tick_spacing, 220);
@@ -198,11 +198,7 @@ fun rejects_unchanged_tier() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = aftermath::EInvalidFeeRate,
-    location = blast_fun_migrators::aftermath,
-)]
-fun aftermath_rejects_fee_below_venue_minimum() {
+fun aftermath_accepts_zero_dao_fee() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
@@ -212,8 +208,10 @@ fun aftermath_rejects_fee_below_venue_minimum() {
             &admin_witness,
             500_000_000_000_000_000,
             500_000_000_000_000_000,
-            99_999_999_999_999,
+            0,
         );
+        let (_, _, dao_fee_bps) = aftermath::effective_policy_for_testing(&f.config);
+        assert_eq!(dao_fee_bps, 0);
     });
 
     fixture.end();
@@ -221,10 +219,10 @@ fun aftermath_rejects_fee_below_venue_minimum() {
 
 #[test]
 #[expected_failure(
-    abort_code = aftermath::EInvalidFeeRate,
+    abort_code = aftermath::EInvalidDaoFee,
     location = blast_fun_migrators::aftermath,
 )]
-fun aftermath_rejects_fee_above_venue_maximum() {
+fun aftermath_rejects_dao_fee_above_one_hundred_percent() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
@@ -234,7 +232,7 @@ fun aftermath_rejects_fee_above_venue_maximum() {
             &admin_witness,
             500_000_000_000_000_000,
             500_000_000_000_000_000,
-            100_000_000_000_000_001,
+            10_001,
         );
     });
 
@@ -242,7 +240,7 @@ fun aftermath_rejects_fee_above_venue_maximum() {
 }
 
 #[test]
-fun aftermath_accepts_inclusive_fee_boundaries() {
+fun aftermath_accepts_inclusive_dao_fee_boundaries() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
@@ -252,19 +250,19 @@ fun aftermath_accepts_inclusive_fee_boundaries() {
             &admin_witness,
             500_000_000_000_000_000,
             500_000_000_000_000_000,
-            100_000_000_000_000,
+            0,
         );
-        let (_, _, swap_in_fee) = aftermath::effective_policy_for_testing(&f.config);
-        assert_eq!(swap_in_fee, 100_000_000_000_000);
+        let (_, _, dao_fee_bps) = aftermath::effective_policy_for_testing(&f.config);
+        assert_eq!(dao_fee_bps, 0);
         aftermath::set_policy(
             &mut f.config,
             &admin_witness,
             500_000_000_000_000_000,
             500_000_000_000_000_000,
-            100_000_000_000_000_000,
+            10_000,
         );
-        let (_, _, swap_in_fee) = aftermath::effective_policy_for_testing(&f.config);
-        assert_eq!(swap_in_fee, 100_000_000_000_000_000);
+        let (_, _, dao_fee_bps) = aftermath::effective_policy_for_testing(&f.config);
+        assert_eq!(dao_fee_bps, 10_000);
     });
 
     fixture.end();
@@ -281,7 +279,7 @@ fun aftermath_accepts_inclusive_weight_boundaries() {
             &admin_witness,
             10_000_000_000_000_000,
             990_000_000_000_000_000,
-            20_000_000_000_000_000,
+            200,
         );
         let (meme_weight, quote_weight, _) =
             aftermath::effective_policy_for_testing(&f.config);
@@ -293,7 +291,7 @@ fun aftermath_accepts_inclusive_weight_boundaries() {
             &admin_witness,
             990_000_000_000_000_000,
             10_000_000_000_000_000,
-            20_000_000_000_000_000,
+            201,
         );
         let (meme_weight, quote_weight, _) =
             aftermath::effective_policy_for_testing(&f.config);
@@ -319,7 +317,7 @@ fun aftermath_rejects_weight_below_venue_minimum() {
             &admin_witness,
             9_999_999_999_999_999,
             990_000_000_000_000_001,
-            20_000_000_000_000_000,
+            200,
         );
     });
 
@@ -341,7 +339,7 @@ fun aftermath_rejects_weights_that_do_not_sum_to_one() {
             &admin_witness,
             500_000_000_000_000_000,
             499_000_000_000_000_000,
-            20_000_000_000_000_000,
+            200,
         );
     });
 
@@ -363,7 +361,7 @@ fun aftermath_rejects_a_pin_equal_to_the_compiled_default() {
             &admin_witness,
             500_000_000_000_000_000,
             500_000_000_000_000_000,
-            20_000_000_000_000_000,
+            200,
         );
     });
 
@@ -385,14 +383,14 @@ fun aftermath_rejects_a_repeated_pinned_policy() {
             &admin_witness,
             600_000_000_000_000_000,
             400_000_000_000_000_000,
-            20_000_000_000_000_000,
+            300,
         );
         aftermath::set_policy(
             &mut f.config,
             &admin_witness,
             600_000_000_000_000_000,
             400_000_000_000_000_000,
-            20_000_000_000_000_000,
+            300,
         );
     });
 

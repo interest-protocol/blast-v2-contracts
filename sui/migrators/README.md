@@ -81,11 +81,12 @@ stays correctable on mainnet without a package upgrade, including after the
 `UpgradeCap` is destroyed; changes affect only later migrations.
 
 Aftermath has no tick-spacing dimension. Its module-owned `AftermathPolicy`
-stores role-based Meme and Quote weights plus the symmetric swap-in fee under a
-sealed `aftermath::PolicyKey`. The compiled default is 50/50 with a 2% fee in
-Aftermath's `1e18` unit. Admin pins require each weight to be at least 1%, the
-weights to sum exactly to 100%, and the fee to stay within Aftermath's
-0.01%–10% range.
+stores role-based Meme and Quote weights plus the DAO fee under a sealed
+`aftermath::PolicyKey`. The compiled default is 50/50 with a 200-bps (2%) DAO
+fee. Admin pins for future migrations require each weight to be at least 1%,
+the weights to sum exactly to 100%, and the DAO fee to stay within 0–10,000
+bps. Aftermath's base pool rejects a zero swap-in fee, so every Blast pool uses
+the minimum 0.01% base fee and zero swap-out, deposit, and withdrawal fees.
 
 ## Aftermath routes
 
@@ -95,23 +96,34 @@ route must match Aftermath's defining-ID lexicographic type order before the
 core payload is redeemed. The LP type must also be absent from the live pool
 registry.
 
-Both routes use the effective role-based weights and symmetric swap-in fee while
-fixing zero flatness and zero swap-out, deposit, and withdrawal fees. The
-Meme-first and Meme-second routes reorder the policy weights into Aftermath's
-canonical type order. They send both source coins in full. Before sharing the
-pool, the adapter checks both exact reserves, every curve and fee parameter,
-nine LP decimals, positive liquid LP, and Aftermath's exact 1,000-unit illiquid
-LP reserve. Every returned liquid LP token is attached to the common vault as
-`Coin<Lp>` with zero residuals.
+Both routes use the effective role-based weights and DAO fee while fixing zero
+flatness, the 0.01% base swap-in fee, and zero swap-out, deposit, and withdrawal
+fees. The Meme-first and Meme-second routes reorder the policy weights into
+Aftermath's canonical type order. They send both source coins in full. Before
+wrapping the pool, the adapter checks both exact reserves, every curve and fee
+parameter, nine LP decimals, positive liquid LP, and Aftermath's exact
+1,000-unit illiquid LP reserve.
 
 Operators must first publish a fresh nine-decimal LP currency and create its
 `CreatePoolCapV2` with Aftermath's LP-creation flow. That preparation is a
 separate transaction; the cap is then consumed by the atomic Blast migration.
 
-Aftermath swap fees compound into the fungible LP position and cannot be
-separated from principal safely. This adapter therefore exposes no Aftermath
-fee-collection, LP burn, or withdrawal route. The locked liquidity gains the
-fees, while creator and protocol fee claims remain empty for this venue.
+The adapter prepares the vault first and passes its object address as the DAO
+fee recipient to Aftermath's DAO wrapper. The outer `DaoFeePool<Lp>` is the
+shared pool; it owns the reconciled base pool. The vault position owns every
+liquid `Coin<Lp>` and the wrapper `OwnerCap<Lp>`, with no LP burn or withdrawal
+route. The cap never leaves custody. A live `AdminWitness` can use it by
+reference to increase or decrease that existing pool's DAO fee while the
+recipient remains fixed to the vault.
+
+DAO swaps, deposits, and withdrawals transfer Meme or Quote fee coins to the
+vault address. `accrue_dao_fees` receives separate typed Meme and Quote vectors
+containing 1 through 100 total child-address coins. Either vector can be empty.
+It deletes the coin wrappers while merging both balances and performs one
+common fee-ledger accrual. It requires the locked LP amount to remain
+unchanged. Creator and protocol claims then use the same live split and claim
+paths as every other venue. The base 0.01% fee still compounds into the locked
+LP and is never represented as claimable revenue.
 
 ## Bluefin route
 
@@ -354,8 +366,9 @@ encoding, and the Full Sail canonical-order comparison. Venue calls remain
 matrix.
 
 `scripts/check_mainnet_abi.mjs` uses Node built-ins only and the official Sui
-mainnet GraphQL endpoint. For Bluefin, MMT, Cetus, Turbos, Full Sail, Aftermath,
-and Full Sail's separate IntegerMate package it resolves the original package id to its
+mainnet GraphQL endpoint. For Bluefin, MMT, Cetus, Turbos, Full Sail, Aftermath
+AMM, Aftermath DAO Fee, and Full Sail's separate IntegerMate package it resolves
+the original package id to its
 current revision, fails when any revision exists beyond the pinned tip, and
 asserts the package id, version, whole-package digest, previous transaction, and
 exact type origins, including Aftermath's revision-3 capability origin. It then asserts a committed SHA-256 over each consumed
@@ -366,7 +379,7 @@ visibility drift, ability drift, phantom drift, or return drift all fail.
 
 Every GraphQL field is shape-validated before it is rendered, so a null,
 partial, or novel response fails instead of normalizing into a passing value.
-The same run parses the root manifest, the five local interface manifests, and
+The same run parses the root manifest, the six local interface manifests, and
 both lock environments with a strict reader and binds every dependency name to
 its exact source, subdirectory, local path, revision, and `override` rule;
 comments are stripped before comparison, and `branch`, `tag`, a missing `rev`, a
@@ -381,7 +394,8 @@ upgrades.
 The interface dependencies contain `abort 0` link stubs, so a local build proves
 type compatibility only. Before production release, run the mainnet dev-inspect
 matrix in [DEPENDENCIES.md](DEPENDENCIES.md) for every route and orientation:
-all 17 migration routes, all 9 fee-collection routes, and both vault claims,
+all 17 migration routes, all 10 fee-accrual or collection routes, the Aftermath
+per-pool DAO-fee update, and both vault claims,
 covering exact balance-derived initialization, zero Bluefin creation fee, venue
 canonical order, full-range tick bounds, the 50-bps Cetus, Turbos, and Full Sail
 adoption checks, one-basis-point residual limits with vault custody, and fee
@@ -479,12 +493,16 @@ migrations and can never touch custodied principal or accrued ownership.
 | --- | --- | --- |
 | 0 | `EInvalidCoinOrder` | The selected route does not match Aftermath's canonical type order. |
 | 1 | `ELpTypeAlreadyRegistered` | The supplied LP type already identifies an active pool. |
-| 2 | `EInvalidFeeRate` | The effective swap-in fee is outside Aftermath's supported range. |
+| 2 | — | Retired before publication; never reuse. |
 | 3 | `EPoolInvariantMismatch` | The pool, registry, weights, curve, or fee policy differs from the requested policy. |
 | 4 | `EBalanceMismatch` | The pool does not hold every source Meme and Quote unit. |
 | 5 | `ELpSupplyMismatch` | LP decimals, liquid supply, or the illiquid reserve differs from policy. |
 | 6 | `EInvalidWeight` | Either weight is below 1% or the pair does not sum to 100%. |
 | 7 | `EUnchangedPolicy` | A policy pin repeated the currently effective weights and fee. |
+| 8 | `EInvalidDaoFee` | The DAO fee exceeds 10,000 basis points. |
+| 9 | `EDaoPoolInvariantMismatch` | The wrapper, vault, recipient, or updated rate does not match. |
+| 10 | `EUnchangedDaoFee` | An existing pool update repeated its current DAO fee. |
+| 11 | `ELpPrincipalChanged` | DAO-fee receipt changed the locked LP amount. |
 
 ## Vault errors
 
@@ -492,6 +510,8 @@ migrations and can never touch custodied principal or accrued ownership.
 | --- | --- | --- |
 | 0 | `EWrongVenue` | The supplied venue witness does not match the vault's attached position marker. |
 | 1 | `ENothingClaimable` | No protocol fee balance or migration residual is available to claim. |
+| 2 | `EVaultAlreadyInitialized` | A prepared vault already has a pool before finalization. |
+| 3 | `EInvalidReceivingCoinBatch` | Both receiving vectors are empty or contain more than 100 total coin objects. |
 
 ## Venue config errors
 

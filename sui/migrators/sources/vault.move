@@ -8,11 +8,21 @@ use blast_fun::{
     runtime_config::RuntimeConfig,
 };
 use blast_fun_migrators::events;
-use sui::{balance::{Self, Balance}, coin::Coin, dynamic_object_field};
+use sui::{
+    balance::{Self, Balance},
+    coin::Coin,
+    dynamic_object_field,
+    transfer::Receiving,
+};
 
 use fun dynamic_object_field::add as UID.add_dynamic_object_field;
 use fun dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut;
 use fun dynamic_object_field::exists as UID.has_dynamic_object_field;
+
+// === Constants ===
+
+/// Maximum total child coin objects one receiving call can consume.
+const MAX_RECEIVING_COIN_BATCH_SIZE: u64 = 100;
 
 // === Errors ===
 
@@ -20,6 +30,10 @@ use fun dynamic_object_field::exists as UID.has_dynamic_object_field;
 const EWrongVenue: vector<u8> = b"Venue witness does not match this LP vault.";
 #[error(code = 1)]
 const ENothingClaimable: vector<u8> = b"No protocol fees or migration residuals are available to claim.";
+#[error(code = 2)]
+const EVaultAlreadyInitialized: vector<u8> = b"Prepared vault must not already contain a pool.";
+#[error(code = 3)]
+const EInvalidReceivingCoinBatch: vector<u8> = b"Coin-receiving batches must contain between 1 and 100 total objects.";
 
 // === Public Structs ===
 
@@ -132,14 +146,49 @@ public(package) fun new<Meme, Quote, Venue: drop, Position: key + store>(
     protocol_quote_residual: Balance<Quote>,
     ctx: &mut TxContext,
 ): ID {
-    let position_id = object::id(&position);
-    let mut vault = LpVault {
-        id: object::new(ctx),
-        pool_id,
+    let pending = prepare(
         protocol_meme_residual,
         protocol_quote_residual,
-        fee_ledger: fees::new<Meme, Quote>(),
-    };
+        ctx,
+    );
+    finish(pending, _venue, pool_id, position)
+}
+
+/// Creates unshared vault state whose address can be bound into an external position.
+public(package) fun prepare<Meme, Quote>(
+    protocol_meme_residual: Balance<Meme>,
+    protocol_quote_residual: Balance<Quote>,
+    ctx: &mut TxContext,
+): LpVault<Meme, Quote> {
+    LpVault {
+        id: object::new(ctx),
+        pool_id: object::id_from_address(@0x0),
+        protocol_meme_residual,
+        protocol_quote_residual,
+        fee_ledger: fees::new(),
+    }
+}
+
+/// Returns the final vault ID without sharing its construction state.
+public(package) fun pending_id<Meme, Quote>(
+    pending: &LpVault<Meme, Quote>,
+): ID {
+    pending.id.to_inner()
+}
+
+/// Attaches the complete venue position and shares a prepared vault atomically.
+public(package) fun finish<Meme, Quote, Venue: drop, Position: key + store>(
+    mut vault: LpVault<Meme, Quote>,
+    _venue: Venue,
+    pool_id: ID,
+    position: Position,
+): ID {
+    assert!(
+        vault.pool_id == object::id_from_address(@0x0),
+        EVaultAlreadyInitialized,
+    );
+    let position_id = object::id(&position);
+    vault.pool_id = pool_id;
     let vault_id = vault.id.to_inner();
     vault.id.add_dynamic_object_field(PositionKey<Venue>(), position);
     transfer::share_object(vault);
@@ -149,6 +198,27 @@ public(package) fun new<Meme, Quote, Venue: drop, Position: key + store>(
         position_id,
     );
     vault_id
+}
+
+/// Receives and merges at most 100 total Meme and Quote coins owned by this vault.
+public(package) fun receive_coins<Meme, Quote, Venue>(
+    self: &mut LpVault<Meme, Quote>,
+    _venue: &Venue,
+    meme_receivings: vector<Receiving<Coin<Meme>>>,
+    quote_receivings: vector<Receiving<Coin<Quote>>>,
+): (Balance<Meme>, Balance<Quote>) {
+    assert_valid_receiving_coin_batch_size(
+        meme_receivings.length(),
+        quote_receivings.length(),
+    );
+    assert!(
+        self.id.has_dynamic_object_field(PositionKey<Venue>()),
+        EWrongVenue,
+    );
+
+    let meme = receive_coin_batch(&mut self.id, meme_receivings);
+    let quote = receive_coin_batch(&mut self.id, quote_receivings);
+    (meme, quote)
 }
 
 /// Mutably borrows the venue position without providing a removal path.
@@ -229,4 +299,41 @@ public(package) fun accrue_fees<Meme, Quote, Venue>(
         principal_liquidity_before,
         principal_liquidity_after,
     );
+}
+
+// === Private Functions ===
+
+fun receive_coin_batch<CoinType>(
+    uid: &mut UID,
+    mut receivings: vector<Receiving<Coin<CoinType>>>,
+): Balance<CoinType> {
+    let mut received = balance::zero();
+    while (!receivings.is_empty()) {
+        received.join(
+            transfer::public_receive(
+                uid,
+                receivings.pop_back(),
+            ).into_balance(),
+        );
+    };
+    received
+}
+
+fun assert_valid_receiving_coin_batch_size(meme_size: u64, quote_size: u64) {
+    assert!(
+        meme_size <= MAX_RECEIVING_COIN_BATCH_SIZE
+            && quote_size <= MAX_RECEIVING_COIN_BATCH_SIZE - meme_size
+            && meme_size + quote_size > 0,
+        EInvalidReceivingCoinBatch,
+    );
+}
+
+// === Test-Only Functions ===
+
+#[test_only]
+public fun assert_valid_receiving_coin_batch_size_for_testing(
+    meme_size: u64,
+    quote_size: u64,
+) {
+    assert_valid_receiving_coin_batch_size(meme_size, quote_size);
 }

@@ -396,10 +396,14 @@ require_pattern "$EVENTS_SOURCE" 'public struct AftermathPolicyUpdated' \
     'Aftermath policy mutation event'
 require_pattern "$EVENTS_SOURCE" 'public struct AftermathMigrationCompleted' \
     'Aftermath-specific completed migration event'
+require_pattern "$EVENTS_SOURCE" 'public struct AftermathDaoFeeUpdated' \
+    'Aftermath DAO fee mutation event'
 require_pattern "$EVENTS_SOURCE" 'sui::event::emit\(AftermathPolicyUpdated' \
     'direct strongly typed Aftermath policy event emission'
 require_pattern "$EVENTS_SOURCE" 'sui::event::emit\(AftermathMigrationCompleted' \
     'direct strongly typed Aftermath migration event emission'
+require_pattern "$EVENTS_SOURCE" 'sui::event::emit\(AftermathDaoFeeUpdated' \
+    'direct strongly typed Aftermath DAO fee event emission'
 
 require_pattern "$VAULT_SOURCE" 'public struct LpVault' 'shared LpVault'
 require_pattern "$VAULT_SOURCE" 'protocol_meme_residual: Balance<Meme>' \
@@ -408,13 +412,27 @@ require_pattern "$VAULT_SOURCE" 'protocol_quote_residual: Balance<Quote>' \
     'protocol Quote residual custody'
 require_pattern "$VAULT_SOURCE" 'public struct PositionKey' 'sealed position key type'
 require_pattern "$VAULT_SOURCE" 'public\(package\) fun new' 'package-only vault construction'
+require_pattern "$VAULT_SOURCE" 'public\(package\) fun prepare' \
+    'package-only unshared vault preparation'
+require_pattern "$VAULT_SOURCE" 'public\(package\) fun finish' \
+    'package-only atomic vault completion'
+require_pattern "$VAULT_SOURCE" 'transfer::public_receive' \
+    'object-owned fee coin receive path'
+require_pattern "$VAULT_SOURCE" 'const MAX_RECEIVING_COIN_BATCH_SIZE: u64 = 100' \
+    'bounded fee coin receipt workload'
+require_pattern "$VAULT_SOURCE" 'quote_size <= MAX_RECEIVING_COIN_BATCH_SIZE - meme_size' \
+    'combined Meme and Quote fee coin batch bound'
+require_pattern "$VAULT_SOURCE" 'meme_size \+ quote_size > 0' \
+    'nonempty combined fee coin batch guard'
+require_pattern "$VAULT_SOURCE" 'while \(!receivings\.is_empty\(\)\)' \
+    'bounded fee coin merge loop'
 require_pattern "$VAULT_SOURCE" '_venue: Venue' 'owned venue witness on vault construction'
 require_pattern "$VAULT_SOURCE" 'dynamic_object_field::add' 'dynamic object-field position attachment'
 require_pattern "$VAULT_SOURCE" 'self\.id\.dynamic_object_field_mut' 'typed mutable position borrow'
 require_pattern "$VAULT_SOURCE" '_venue: &Venue' 'borrowed venue witness on position access'
 VAULT_VENUE_GUARD_COUNT="$(rg -o 'self\.id\.has_dynamic_object_field' "$VAULT_SOURCE" | wc -l || true)"
-[[ "$VAULT_VENUE_GUARD_COUNT" -eq 2 ]] || \
-    fail "vault borrow and accrual must both guard the sealed venue key"
+[[ "$VAULT_VENUE_GUARD_COUNT" -eq 3 ]] || \
+    fail "vault borrow, receive, and accrual must guard the sealed venue key"
 require_pattern "$VAULT_SOURCE" 'public fun claim_creator_fees' 'creator fee claim'
 require_pattern "$VAULT_SOURCE" 'public fun claim_protocol_fees' 'protocol fee claim'
 require_pattern "$VAULT_SOURCE" 'has_protocol_fees \|\| has_residuals' \
@@ -472,13 +490,17 @@ done
 [[ "$VENUE_TIER_SETTER_COUNT" -eq 5 ]] || \
     fail "every venue tier pin must take a live core admin witness exactly once"
 
-# Aftermath owns a typed future-migration policy and permanently locks every liquid LP token.
+# Aftermath wraps its base pool in a DAO-fee pool and locks LP principal plus policy authority.
 require_pattern "$AFTERMATH_SOURCE" 'public struct Witness' 'sealed Aftermath witness'
 require_pattern "$AFTERMATH_SOURCE" 'public struct Venue' 'sealed Aftermath venue marker'
 require_pattern "$AFTERMATH_SOURCE" 'public struct PolicyKey' \
     'sealed Aftermath policy key'
 require_pattern "$AFTERMATH_SOURCE" 'public struct AftermathPolicy' \
     'typed Aftermath future-migration policy'
+require_pattern "$AFTERMATH_SOURCE" 'public struct AftermathPosition' \
+    'sealed Aftermath LP and DAO-cap position'
+require_pattern "$AFTERMATH_SOURCE" 'dao_fee_owner_cap: OwnerCap<Lp>' \
+    'locked DAO fee owner capability'
 require_pattern "$AFTERMATH_SOURCE" 'public fun migrate_meme_first' \
     'canonical Meme-first migration route'
 require_pattern "$AFTERMATH_SOURCE" 'public fun migrate_meme_second' \
@@ -493,6 +515,8 @@ require_pattern "$AFTERMATH_SOURCE" 'pool_registry\.contains_lp_coin<Lp>' \
     'fresh LP type precondition'
 require_pattern "$AFTERMATH_SOURCE" 'create_pool_2_coins_v2<Lp, C1, C2>' \
     'Aftermath V2 two-coin creation call'
+require_pattern "$AFTERMATH_SOURCE" 'const BASE_SWAP_IN_FEE: u64 = 100_000_000_000_000' \
+    'fixed minimum base LP fee'
 require_pattern "$AFTERMATH_SOURCE" 'pool_registry\.lp_type_to_pool_id<Lp>\(\) == object::id\(&pool\)' \
     'exact LP-type-to-pool registry reconciliation'
 require_pattern "$AFTERMATH_SOURCE" 'pool\.balance_of<Lp, C1>\(\) == amount_1' \
@@ -515,28 +539,63 @@ require_pattern "$AFTERMATH_SOURCE" 'pool\.lp_decimals\(\) == REQUIRED_LP_DECIMA
     'nine-decimal LP reconciliation'
 require_pattern "$AFTERMATH_SOURCE" 'lp_supply - locked_lp_amount == MIN_ILLIQUID_LP' \
     'exact illiquid LP reserve reconciliation'
-require_pattern "$AFTERMATH_SOURCE" \
-    'vault::new<Meme, Quote, Venue, Coin<Lp>>' \
-    'whole fungible LP coin custody'
+require_pattern "$AFTERMATH_SOURCE" 'vault::prepare<Meme, Quote>' \
+    'pre-wrapper vault address construction'
+require_pattern "$AFTERMATH_SOURCE" 'let vault_address = vault_id\.to_address\(\)' \
+    'vault-address DAO fee recipient'
+require_pattern "$AFTERMATH_SOURCE" 'dao_fee_pool::new' \
+    'DAO-fee wrapper construction'
+require_pattern "$AFTERMATH_SOURCE" 'dao_fee_pool\.fee_bps\(\) == policy\.dao_fee_bps' \
+    'DAO fee reconciliation'
+require_pattern "$AFTERMATH_SOURCE" 'dao_fee_pool\.fee_recipient\(\) == vault_address' \
+    'DAO recipient reconciliation'
+require_pattern "$AFTERMATH_SOURCE" 'let position = AftermathPosition' \
+    'whole LP and DAO-cap position construction'
+require_pattern "$AFTERMATH_SOURCE" 'vault::finish' \
+    'atomic prepared-vault completion'
+require_pattern "$AFTERMATH_SOURCE" 'transfer::public_share_object\(dao_fee_pool\)' \
+    'outer DAO-fee pool sharing'
+require_pattern "$AFTERMATH_SOURCE" 'public fun accrue_dao_fees' \
+    'combined Meme and Quote DAO-fee receiving path'
+require_pattern "$AFTERMATH_SOURCE" 'vector<Receiving<Coin<Meme>>>' \
+    'batched Meme DAO fee receiving ABI'
+require_pattern "$AFTERMATH_SOURCE" 'vector<Receiving<Coin<Quote>>>' \
+    'batched Quote DAO fee receiving ABI'
+require_pattern "$AFTERMATH_SOURCE" 'let \(meme_fee, quote_fee\) = self\.receive_coins' \
+    'combined batched object-owned DAO fee receipt'
+if rg -q 'public fun accrue_(meme|quote)_dao_fee' "$AFTERMATH_SOURCE"; then
+    fail "Aftermath must expose one combined DAO fee accrual function"
+fi
+require_pattern "$AFTERMATH_SOURCE" 'locked_lp_amount_before == locked_lp_amount_after' \
+    'explicit unchanged Aftermath LP principal guard'
+require_pattern "$AFTERMATH_SOURCE" 'self\.accrue_fees\(' \
+    'shared creator/protocol DAO fee accrual'
 require_pattern "$AFTERMATH_SOURCE" 'events::aftermath_migration_completed' \
     'Aftermath-specific migration emission'
 require_pattern "$AFTERMATH_SOURCE" 'public fun set_policy' \
     'admin-pinned Aftermath weighted-pool policy'
+require_pattern "$AFTERMATH_SOURCE" 'public fun update_dao_fee' \
+    'admin-authorized existing-pool DAO fee update'
+require_pattern "$AFTERMATH_SOURCE" 'dao_fee_owner_cap\.set_fee_bps' \
+    'locked-cap DAO fee mutation call'
+require_pattern "$AFTERMATH_SOURCE" 'self\.pool_id\(\) == dao_fee_pool_id' \
+    'DAO fee mutation vault-pool binding'
+require_pattern "$AFTERMATH_SOURCE" 'events::aftermath_dao_fee_updated' \
+    'replay-complete DAO fee mutation emission'
 require_pattern "$AFTERMATH_SOURCE" 'meme_weight \+ policy\.quote_weight == FIXED_ONE' \
     'normalized Aftermath weight policy'
 require_pattern "$AFTERMATH_SOURCE" 'events::aftermath_policy_updated' \
     'replay-complete Aftermath policy mutation emission'
-if rg -q 'public fun collect|accrue_fees|remove_liquidity|withdraw_liquidity' "$AFTERMATH_SOURCE"; then
-    fail "Aftermath must expose no fee collection or LP withdrawal path"
+if rg -q 'update_fee_recipient|remove_liquidity|withdraw_liquidity|dao_fee_owner_cap\(' "$AFTERMATH_SOURCE"; then
+    fail "Aftermath must expose neither recipient mutation nor LP withdrawal"
+fi
+if rg -q 'dao_fee_amm::(pool|version)::(DaoFeePool|OwnerCap|Version)' "$AFTERMATH_SOURCE"; then
+    fail "Aftermath signatures and fields must use imported DAO types"
 fi
 AFTERMATH_COMPACT_SOURCE="$(tr -d '[:space:]' < "$AFTERMATH_SOURCE")"
 if [[ "$AFTERMATH_COMPACT_SOURCE" =~ publicfunmigrate[^{]*(weights|flatness|fee_rate|swap_in_fee|name): ]]; then
     fail "caller-supplied Aftermath economic parameters are forbidden"
 fi
-AFTERMATH_VAULT_LINE="$(rg -n -m1 'vault::new<Meme' "$AFTERMATH_SOURCE" | cut -d: -f1)"
-AFTERMATH_SHARE_LINE="$(rg -n -m1 'pool\.share\(\)' "$AFTERMATH_SOURCE" | cut -d: -f1)"
-[[ "$AFTERMATH_SHARE_LINE" -gt "$AFTERMATH_VAULT_LINE" ]] || \
-    fail "Aftermath pool sharing must follow whole-LP vault custody"
 
 require_pattern "$BLUEFIN_SOURCE" 'public struct Witness' 'sealed Bluefin witness'
 require_pattern "$BLUEFIN_SOURCE" 'public struct Venue' 'sealed Bluefin venue marker'
@@ -1134,8 +1193,8 @@ if rg -q 'sui::event::emit' "$SOURCE_DIR" \
 fi
 
 EVENT_EMISSION_COUNT="$(rg -o 'sui::event::emit' "$EVENTS_SOURCE" | wc -l)"
-[[ "$EVENT_EMISSION_COUNT" -eq 8 ]] || \
-    fail "events.move must emit exactly eight strongly typed payloads"
+[[ "$EVENT_EMISSION_COUNT" -eq 9 ]] || \
+    fail "events.move must emit exactly nine strongly typed payloads"
 
 POSITION_ATTACHMENT_COUNT="$(rg -o 'dynamic_object_field::add' "$SOURCE_DIR" | wc -l)"
 [[ "$POSITION_ATTACHMENT_COUNT" -eq 1 ]] || \

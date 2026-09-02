@@ -4,7 +4,7 @@ module blast_fun_migrators::vault_tests;
 use blast_fun::{acl, package_version, runtime_config};
 use blast_fun_migrators::vault::{Self, LpVault};
 use std::unit_test::{assert_eq, destroy};
-use sui::{balance, test_scenario::{Self, Scenario}};
+use sui::{balance, coin, test_scenario::{Self, Scenario}};
 
 // === Constants ===
 
@@ -32,6 +32,35 @@ public struct VaultFixture {
 }
 
 // === Tests ===
+
+#[test]
+fun prepared_vault_keeps_its_id_when_finished_and_shared() {
+    let mut scenario = test_scenario::begin(PUBLISHER);
+    let position = TestPosition { id: object::new(scenario.ctx()) };
+    let pool_uid = object::new(scenario.ctx());
+    let pool_id = pool_uid.to_inner();
+    pool_uid.delete();
+    let pending = vault::prepare<MEME, QUOTE>(
+        balance::zero(),
+        balance::zero(),
+        scenario.ctx(),
+    );
+    let pending_id = vault::pending_id(&pending);
+    let finished_id = vault::finish(
+        pending,
+        TestVenue(),
+        pool_id,
+        position,
+    );
+    assert_eq!(finished_id, pending_id);
+
+    scenario.next_tx(PUBLISHER);
+    let shared = scenario.take_shared<LpVault<MEME, QUOTE>>();
+    assert_eq!(object::id(&shared), pending_id);
+    assert_eq!(shared.pool_id(), pool_id);
+    test_scenario::return_shared(shared);
+    scenario.end();
+}
 
 #[test]
 fun accrues_with_the_live_share_and_never_resplits_prior_ownership() {
@@ -113,6 +142,94 @@ fun borrow_returns_the_attached_position() {
     });
 
     fixture.end();
+}
+
+#[test]
+fun receives_and_merges_the_maximum_coin_batch() {
+    let mut fixture = start();
+    let vault_id = object::id(&fixture.vault);
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let mut count: u64 = 0;
+        while (count < 60) {
+            let fee_coin = coin::from_balance(
+                balance::create_for_testing<MEME>(1),
+                f.scenario.ctx(),
+            );
+            transfer::public_transfer(fee_coin, vault_id.to_address());
+            count = count + 1;
+        };
+        while (count < 100) {
+            let fee_coin = coin::from_balance(
+                balance::create_for_testing<QUOTE>(1),
+                f.scenario.ctx(),
+            );
+            transfer::public_transfer(fee_coin, vault_id.to_address());
+            count = count + 1;
+        };
+    });
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let mut meme_coin_ids =
+            test_scenario::receivable_object_ids_for_owner_id<coin::Coin<MEME>>(
+                vault_id,
+            );
+        assert_eq!(meme_coin_ids.length(), 60);
+        let mut meme_receivings = vector[];
+        while (!meme_coin_ids.is_empty()) {
+            meme_receivings.push_back(
+                test_scenario::receiving_ticket_by_id<coin::Coin<MEME>>(
+                    meme_coin_ids.pop_back(),
+                ),
+            );
+        };
+        let mut quote_coin_ids =
+            test_scenario::receivable_object_ids_for_owner_id<coin::Coin<QUOTE>>(
+                vault_id,
+            );
+        assert_eq!(quote_coin_ids.length(), 40);
+        let mut quote_receivings = vector[];
+        while (!quote_coin_ids.is_empty()) {
+            quote_receivings.push_back(
+                test_scenario::receiving_ticket_by_id<coin::Coin<QUOTE>>(
+                    quote_coin_ids.pop_back(),
+                ),
+            );
+        };
+        let (meme, quote) = f.vault.receive_coins(
+            &TestVenue(),
+            meme_receivings,
+            quote_receivings,
+        );
+        assert_eq!(meme.destroy_for_testing(), 60);
+        assert_eq!(quote.destroy_for_testing(), 40);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun receiving_coin_batch_accepts_each_one_sided_maximum() {
+    vault::assert_valid_receiving_coin_batch_size_for_testing(100, 0);
+    vault::assert_valid_receiving_coin_batch_size_for_testing(0, 100);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = vault::EInvalidReceivingCoinBatch,
+    location = blast_fun_migrators::vault,
+)]
+fun receiving_coin_batch_rejects_empty() {
+    vault::assert_valid_receiving_coin_batch_size_for_testing(0, 0);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = vault::EInvalidReceivingCoinBatch,
+    location = blast_fun_migrators::vault,
+)]
+fun receiving_coin_batch_rejects_the_first_size_above_maximum() {
+    vault::assert_valid_receiving_coin_batch_size_for_testing(60, 41);
 }
 
 #[test]
