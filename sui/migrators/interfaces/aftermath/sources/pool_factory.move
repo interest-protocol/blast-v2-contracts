@@ -2,7 +2,6 @@
 module amm::pool_factory;
 
 use amm::{pool::{CreatePoolCapV2, Pool}, pool_registry::PoolRegistry};
-use std::option::Option;
 use sui::coin::Coin;
 
 public fun create_pool_2_coins_v2<L, C1, C2>(

@@ -12,7 +12,7 @@ use blast_fun::{
     package_version::PackageVersion,
 };
 use blast_fun_migrators::{events, vault, venue_config::VenueConfig};
-use std::{option, type_name};
+use std::type_name;
 use sui::{balance, coin::Coin, coin_registry::Currency};
 
 // === Constants ===
