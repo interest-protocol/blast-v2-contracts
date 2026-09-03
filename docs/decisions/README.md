@@ -115,8 +115,11 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0067](0067-retire-full-sail-migrator.md) | Retire the Full Sail migrator before release | **accepted** |
 | [0068](0068-compact-lp-fee-principal-snapshot.md) | Compact the LP-fee principal snapshot before release | **accepted** |
 | [0069](0069-consolidate-launch-graduation-and-move-migration-math.md) | Consolidate launch graduation and move migration math into migrators | **accepted** |
+| [0070](0070-series-one-versioning-and-role-administration.md) | Series1 operational version and role administration | **accepted** |
+| [0071](0071-series-one-vault-issuance.md) | Series1 Vault and dynamic share-currency issuance | **accepted** |
+| [0072](0072-series-one-package-capability-custody.md) | Series1 package-capability custody | **accepted** |
 
-ADRs 0013–0036, 0038–0063, and 0065–0069 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
+ADRs 0013–0036, 0038–0063, and 0065–0072 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -315,6 +318,15 @@ ADR 0069 removes the separate graduation helper module and puts its private
 balance partitions in `launch`. It also moves all seed-price, deviation,
 utilization, and residual arithmetic into the aggregate migrators package with
 package-only visibility and migrator-local error codes.
+
+ADR 0070 gives Series1 one package-wide operational cutover and one bounded,
+multi-role administrator registry. ADR 0071 adds authorized, one-per-type
+dynamic share-currency issuance and the inert shared Vault that owns its
+discoverable TreasuryCap and MetadataCap, immutable policy, module bindings,
+and protected adapter storage. ADR 0072 permanently wraps the Series1 Publisher
+and UpgradeCap behind an exact package-admin role, digest authorization, native
+receipt commit, irreversible policy restriction, and separate operational
+activation.
 
 ## Open premises
 

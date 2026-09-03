@@ -1,8 +1,8 @@
 #[test_only]
 /// Fee, mint, and redemption share accounting.
-module blast_leverage_coins::share_math_tests;
+module blast_leverage_series_one::share_math_tests;
 
-use blast_leverage_coins::{accounting_math, errors};
+use blast_leverage_series_one::{accounting_math, errors};
 use std::unit_test::assert_eq;
 
 // === Tests ===
@@ -52,7 +52,7 @@ fun fee_never_exceeds_the_amount_at_the_highest_rate() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EZeroAmount, location = blast_leverage_coins::accounting_math)]
+#[expected_failure(abort_code = errors::EZeroAmount, location = blast_leverage_series_one::accounting_math)]
 fun zero_fee_amount_is_rejected() {
     accounting_math::fee_up_for_testing(0, 1);
 }
@@ -60,7 +60,7 @@ fun zero_fee_amount_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidFeeBps,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_fee_rate_at_the_denominator_is_rejected() {
     accounting_math::fee_up_for_testing(10_000, 10_000);
@@ -69,7 +69,7 @@ fun a_fee_rate_at_the_denominator_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidFeeBps,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun the_maximum_u64_fee_rate_is_rejected() {
     accounting_math::fee_up_for_testing(1, std::u64::max_value!());
@@ -77,7 +77,7 @@ fun the_maximum_u64_fee_rate_is_rejected() {
 
 /// Pins the amount guard ahead of the rate guard when both inputs are invalid.
 #[test]
-#[expected_failure(abort_code = errors::EZeroAmount, location = blast_leverage_coins::accounting_math)]
+#[expected_failure(abort_code = errors::EZeroAmount, location = blast_leverage_series_one::accounting_math)]
 fun a_zero_amount_is_rejected_before_an_invalid_fee_rate() {
     accounting_math::fee_up_for_testing(0, 10_000);
 }
@@ -157,7 +157,7 @@ fun a_one_unit_contribution_can_mint_exactly_one_atomic_share() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_coins::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_series_one::accounting_math)]
 fun a_mint_against_zero_nav_is_rejected() {
     accounting_math::mint_quote_for_testing(10, 0, 100);
 }
@@ -165,7 +165,7 @@ fun a_mint_against_zero_nav_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidShareSupply,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_against_zero_supply_is_rejected() {
     accounting_math::mint_quote_for_testing(10, 100, 0);
@@ -175,7 +175,7 @@ fun a_mint_against_zero_supply_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::ENonpositiveContribution,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_zero_contribution_mint_is_rejected() {
     accounting_math::mint_quote_for_testing(0, 100, 100);
@@ -184,7 +184,7 @@ fun a_zero_contribution_mint_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EZeroSharesOut,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_below_one_atomic_share_is_rejected() {
     accounting_math::mint_quote_for_testing(999, 1_000, 1);
@@ -193,7 +193,7 @@ fun a_mint_below_one_atomic_share_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EArithmeticOverflow,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_of_more_shares_than_u64_is_rejected() {
     accounting_math::mint_quote_for_testing(2, 1, std::u64::max_value!());
@@ -202,7 +202,7 @@ fun a_mint_of_more_shares_than_u64_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EArithmeticOverflow,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_that_overflows_the_supply_is_rejected() {
     accounting_math::mint_quote_for_testing(1, 2, std::u64::max_value!());
@@ -210,7 +210,7 @@ fun a_mint_that_overflows_the_supply_is_rejected() {
 
 /// Pins the NAV guard ahead of the supply guard when both are zero.
 #[test]
-#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_coins::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_series_one::accounting_math)]
 fun zero_nav_is_rejected_before_zero_supply() {
     accounting_math::mint_quote_for_testing(10, 0, 0);
 }
@@ -219,7 +219,7 @@ fun zero_nav_is_rejected_before_zero_supply() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidShareSupply,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun zero_supply_is_rejected_before_a_zero_contribution() {
     accounting_math::mint_quote_for_testing(0, 100, 0);
@@ -425,7 +425,7 @@ fun splitting_a_mint_does_not_create_extra_shares() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_coins::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_series_one::accounting_math)]
 fun a_redemption_against_zero_nav_is_rejected() {
     accounting_math::redemption_quote_for_testing(10, 0, 1_000, 100, 0);
 }
@@ -433,7 +433,7 @@ fun a_redemption_against_zero_nav_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidShareAmount,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_zero_share_redemption_is_rejected() {
     accounting_math::redemption_quote_for_testing(0, 1_000, 1_000, 100, 0);
@@ -443,7 +443,7 @@ fun a_zero_share_redemption_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidShareAmount,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun redeeming_the_complete_supply_is_rejected() {
     accounting_math::redemption_quote_for_testing(100, 1_000, 1_000, 100, 0);
@@ -452,7 +452,7 @@ fun redeeming_the_complete_supply_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidShareAmount,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_redemption_against_zero_supply_is_rejected() {
     accounting_math::redemption_quote_for_testing(1, 1_000, 1_000, 0, 0);
@@ -462,7 +462,7 @@ fun a_redemption_against_zero_supply_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::ENonpositiveGross,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_redemption_without_excess_equity_is_rejected() {
     accounting_math::redemption_quote_for_testing(10, 1_000, 900, 100, 0);
@@ -472,7 +472,7 @@ fun a_redemption_without_excess_equity_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidFeeBps,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun an_invalid_redemption_fee_is_rejected_before_a_nonpositive_gross() {
     accounting_math::redemption_quote_for_testing(10, 1_000, 900, 100, 10_000);
@@ -481,7 +481,7 @@ fun an_invalid_redemption_fee_is_rejected_before_a_nonpositive_gross() {
 #[test]
 #[expected_failure(
     abort_code = errors::ENonpositiveGross,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_redemption_below_the_kept_equity_is_rejected() {
     accounting_math::redemption_quote_for_testing(10, 1_000, 899, 100, 0);
@@ -490,7 +490,7 @@ fun a_redemption_below_the_kept_equity_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidFeeBps,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_redeem_fee_rate_at_the_denominator_is_rejected() {
     accounting_math::redemption_quote_for_testing(10, 1_000, 1_000, 100, 10_000);
@@ -499,7 +499,7 @@ fun a_redeem_fee_rate_at_the_denominator_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EZeroNetPayout,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_redemption_consumed_by_its_fee_is_rejected() {
     accounting_math::redemption_quote_for_testing(10, 1_000, 901, 100, 9_999);
@@ -509,7 +509,7 @@ fun a_redemption_consumed_by_its_fee_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EZeroNetPayout,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_9_999_unit_gross_is_completely_consumed_at_the_highest_fee() {
     accounting_math::redemption_quote_for_testing(9_999, 10_000, 10_000, 10_000, 9_999);
@@ -517,7 +517,7 @@ fun a_9_999_unit_gross_is_completely_consumed_at_the_highest_fee() {
 
 /// Pins the NAV guard ahead of the share-bound guard when both are invalid.
 #[test]
-#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_coins::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_series_one::accounting_math)]
 fun zero_nav_is_rejected_before_an_invalid_share_amount() {
     accounting_math::redemption_quote_for_testing(0, 0, 1_000, 100, 0);
 }
@@ -526,7 +526,7 @@ fun zero_nav_is_rejected_before_an_invalid_share_amount() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidShareAmount,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun an_invalid_share_amount_is_rejected_before_an_invalid_fee_rate() {
     accounting_math::redemption_quote_for_testing(100, 1_000, 1_000, 100, 10_000);

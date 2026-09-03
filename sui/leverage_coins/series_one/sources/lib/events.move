@@ -1,0 +1,402 @@
+module blast_leverage_series_one::events;
+
+use blast_leverage_series_one::{
+    bounded_value::BoundedValue,
+    policy::TierPolicy,
+};
+use std::type_name::TypeName;
+
+// === Public Structs ===
+
+/// Emitted after checked activation advances the shared package cutover.
+public struct PackageVersionAdvanced has copy, drop {
+    previous_version: u64,
+    new_version: u64,
+}
+
+/// Emitted after a role-bearing admin capability is created and delivered.
+public struct AdminGranted has copy, drop {
+    admin_cap_id: ID,
+    roles: u8,
+    recipient: address,
+}
+
+/// Emitted after a complete admin registration is revoked.
+public struct AdminRevoked has copy, drop {
+    admin_cap_id: ID,
+    previous_roles: u8,
+}
+
+/// Emitted after one role is added to a live admin capability.
+public struct AdminRoleGranted has copy, drop {
+    admin_cap_id: ID,
+    role: u8,
+    roles_after: u8,
+}
+
+/// Emitted after one role is removed from a live admin capability.
+public struct AdminRoleRevoked has copy, drop {
+    admin_cap_id: ID,
+    role: u8,
+    roles_after: u8,
+}
+
+/// Emitted after a cap holder deletes an admin cap and any live registration.
+public struct AdminDestroyed has copy, drop {
+    admin_cap_id: ID,
+    previous_roles: u8,
+    was_active: bool,
+}
+
+/// Emitted after a delayed root-authority transfer is scheduled.
+public struct SuperAdminTransferStarted has copy, drop {
+    recipient: address,
+    execute_after_ms: u64,
+}
+
+/// Emitted after a pending root-authority transfer is cancelled or replaced.
+public struct SuperAdminTransferCancelled has copy, drop {
+    recipient: address,
+}
+
+/// Emitted after the proposed recipient accepts root authority.
+public struct SuperAdminTransferred has copy, drop {
+    previous_super_admin_cap_id: ID,
+    new_super_admin_cap_id: ID,
+    recipient: address,
+}
+
+/// Emitted after the package Publisher and UpgradeCap enter permanent custody.
+public struct PackageAdminCreated has copy, drop {
+    package_admin_id: ID,
+    publisher_id: ID,
+    upgrade_cap_id: ID,
+    package_id: ID,
+    package_version: u64,
+    policy: u8,
+}
+
+/// Emitted after one exact package digest is authorized for upgrade.
+public struct UpgradeAuthorized has copy, drop {
+    package_id: ID,
+    package_version: u64,
+    policy: u8,
+    digest: vector<u8>,
+}
+
+/// Emitted after a native upgrade receipt advances the wrapped UpgradeCap.
+public struct UpgradeCommitted has copy, drop {
+    package_id: ID,
+    previous_version: u64,
+    new_version: u64,
+}
+
+/// Emitted after the native upgrade policy is irreversibly narrowed.
+public struct UpgradePolicyRestricted has copy, drop {
+    previous_policy: u8,
+    new_policy: u8,
+}
+
+/// Emitted after one inert Vault and its unique share currency are issued.
+public struct VaultIssued<phantom AdapterRoot> has copy, drop {
+    vault_id: ID,
+    treasury_cap_id: ID,
+    metadata_cap_id: ID,
+    adapter_witness: TypeName,
+    risk_module_witness: TypeName,
+    tier_policy: TierPolicy,
+    notional_cap: BoundedValue,
+    maintenance_reserve: u64,
+}
+
+// === Package Functions ===
+
+/// Emits an accepted operational package-version advance.
+public(package) fun package_version_advanced(previous_version: u64, new_version: u64) {
+    blast_leverage_series_one::events_wrapper::emit_event(PackageVersionAdvanced {
+        previous_version,
+        new_version,
+    });
+}
+
+/// Emits delivery of one newly registered role-bearing admin capability.
+public(package) fun admin_granted(admin_cap_id: ID, roles: u8, recipient: address) {
+    blast_leverage_series_one::events_wrapper::emit_event(AdminGranted {
+        admin_cap_id,
+        roles,
+        recipient,
+    });
+}
+
+/// Emits complete removal of one admin registration.
+public(package) fun admin_revoked(admin_cap_id: ID, previous_roles: u8) {
+    blast_leverage_series_one::events_wrapper::emit_event(AdminRevoked {
+        admin_cap_id,
+        previous_roles,
+    });
+}
+
+/// Emits addition of one role and the resulting complete role set.
+public(package) fun admin_role_granted(admin_cap_id: ID, role: u8, roles_after: u8) {
+    blast_leverage_series_one::events_wrapper::emit_event(AdminRoleGranted {
+        admin_cap_id,
+        role,
+        roles_after,
+    });
+}
+
+/// Emits removal of one role and the resulting complete role set.
+public(package) fun admin_role_revoked(admin_cap_id: ID, role: u8, roles_after: u8) {
+    blast_leverage_series_one::events_wrapper::emit_event(AdminRoleRevoked {
+        admin_cap_id,
+        role,
+        roles_after,
+    });
+}
+
+/// Emits destruction of one admin capability and its prior registry state.
+public(package) fun admin_destroyed(
+    admin_cap_id: ID,
+    previous_roles: u8,
+    was_active: bool,
+) {
+    blast_leverage_series_one::events_wrapper::emit_event(AdminDestroyed {
+        admin_cap_id,
+        previous_roles,
+        was_active,
+    });
+}
+
+/// Emits the staged super-admin recipient and execution boundary.
+public(package) fun super_admin_transfer_started(recipient: address, execute_after_ms: u64) {
+    blast_leverage_series_one::events_wrapper::emit_event(SuperAdminTransferStarted {
+        recipient,
+        execute_after_ms,
+    });
+}
+
+/// Emits cancellation of the staged super-admin transfer.
+public(package) fun super_admin_transfer_cancelled(recipient: address) {
+    blast_leverage_series_one::events_wrapper::emit_event(SuperAdminTransferCancelled {
+        recipient,
+    });
+}
+
+/// Emits the completed replacement of the root capability.
+public(package) fun super_admin_transferred(
+    previous_super_admin_cap_id: ID,
+    new_super_admin_cap_id: ID,
+    recipient: address,
+) {
+    blast_leverage_series_one::events_wrapper::emit_event(SuperAdminTransferred {
+        previous_super_admin_cap_id,
+        new_super_admin_cap_id,
+        recipient,
+    });
+}
+
+/// Emits the complete package-capability custody fact.
+public(package) fun package_admin_created(
+    package_admin_id: ID,
+    publisher_id: ID,
+    upgrade_cap_id: ID,
+    package_id: ID,
+    package_version: u64,
+    policy: u8,
+) {
+    blast_leverage_series_one::events_wrapper::emit_event(PackageAdminCreated {
+        package_admin_id,
+        publisher_id,
+        upgrade_cap_id,
+        package_id,
+        package_version,
+        policy,
+    });
+}
+
+/// Emits the package generation, policy, and exact authorized digest.
+public(package) fun upgrade_authorized(
+    package_id: ID,
+    package_version: u64,
+    policy: u8,
+    digest: vector<u8>,
+) {
+    blast_leverage_series_one::events_wrapper::emit_event(UpgradeAuthorized {
+        package_id,
+        package_version,
+        policy,
+        digest,
+    });
+}
+
+/// Emits the package id and native version transition accepted by the cap.
+public(package) fun upgrade_committed(
+    package_id: ID,
+    previous_version: u64,
+    new_version: u64,
+) {
+    blast_leverage_series_one::events_wrapper::emit_event(UpgradeCommitted {
+        package_id,
+        previous_version,
+        new_version,
+    });
+}
+
+/// Emits the irreversible native upgrade-policy transition.
+public(package) fun upgrade_policy_restricted(previous_policy: u8, new_policy: u8) {
+    blast_leverage_series_one::events_wrapper::emit_event(UpgradePolicyRestricted {
+        previous_policy,
+        new_policy,
+    });
+}
+
+/// Emits every primitive needed to reconstruct the issued Vault state.
+public(package) fun vault_issued<AdapterRoot>(
+    vault_id: ID,
+    treasury_cap_id: ID,
+    metadata_cap_id: ID,
+    adapter_witness: TypeName,
+    risk_module_witness: TypeName,
+    tier_policy: TierPolicy,
+    notional_cap: BoundedValue,
+    maintenance_reserve: u64,
+) {
+    blast_leverage_series_one::events_wrapper::emit_event(VaultIssued<AdapterRoot> {
+        vault_id,
+        treasury_cap_id,
+        metadata_cap_id,
+        adapter_witness,
+        risk_module_witness,
+        tier_policy,
+        notional_cap,
+        maintenance_reserve,
+    });
+}
+
+// === Test-Only Functions ===
+
+#[test_only]
+/// Returns all emitted payloads of type `T`, unwrapped from the Series1 envelope.
+public fun collect<T: copy + drop>(): vector<T> {
+    let mut out = vector[];
+
+    sui::event::events_by_type<blast_leverage_series_one::events_wrapper::Event<T>>().do!(
+        |event| out.push_back(event.unwrap()),
+    );
+
+    out
+}
+
+#[test_only]
+/// Returns exactly one emitted payload of type `T`.
+public fun collect_one<T: copy + drop>(abort_code: u64): T {
+    let mut events = collect<T>();
+
+    assert!(events.length() == 1, abort_code);
+
+    events.pop_back()
+}
+
+#[test_only]
+public fun package_version_advanced_fields(self: &PackageVersionAdvanced): (u64, u64) {
+    (self.previous_version, self.new_version)
+}
+
+#[test_only]
+public fun admin_granted_fields(self: &AdminGranted): (ID, u8, address) {
+    (self.admin_cap_id, self.roles, self.recipient)
+}
+
+#[test_only]
+public fun admin_revoked_fields(self: &AdminRevoked): (ID, u8) {
+    (self.admin_cap_id, self.previous_roles)
+}
+
+#[test_only]
+public fun admin_role_granted_fields(self: &AdminRoleGranted): (ID, u8, u8) {
+    (self.admin_cap_id, self.role, self.roles_after)
+}
+
+#[test_only]
+public fun admin_role_revoked_fields(self: &AdminRoleRevoked): (ID, u8, u8) {
+    (self.admin_cap_id, self.role, self.roles_after)
+}
+
+#[test_only]
+public fun admin_destroyed_fields(self: &AdminDestroyed): (ID, u8, bool) {
+    (self.admin_cap_id, self.previous_roles, self.was_active)
+}
+
+#[test_only]
+public fun super_admin_transfer_started_fields(
+    self: &SuperAdminTransferStarted,
+): (address, u64) {
+    (self.recipient, self.execute_after_ms)
+}
+
+#[test_only]
+public fun super_admin_transfer_cancelled_fields(
+    self: &SuperAdminTransferCancelled,
+): address {
+    self.recipient
+}
+
+#[test_only]
+public fun super_admin_transferred_fields(
+    self: &SuperAdminTransferred,
+): (ID, ID, address) {
+    (
+        self.previous_super_admin_cap_id,
+        self.new_super_admin_cap_id,
+        self.recipient,
+    )
+}
+
+#[test_only]
+public fun package_admin_created_fields(
+    self: &PackageAdminCreated,
+): (ID, ID, ID, ID, u64, u8) {
+    (
+        self.package_admin_id,
+        self.publisher_id,
+        self.upgrade_cap_id,
+        self.package_id,
+        self.package_version,
+        self.policy,
+    )
+}
+
+#[test_only]
+public fun upgrade_authorized_fields(
+    self: &UpgradeAuthorized,
+): (ID, u64, u8, vector<u8>) {
+    (self.package_id, self.package_version, self.policy, self.digest)
+}
+
+#[test_only]
+public fun upgrade_committed_fields(self: &UpgradeCommitted): (ID, u64, u64) {
+    (self.package_id, self.previous_version, self.new_version)
+}
+
+#[test_only]
+public fun upgrade_policy_restricted_fields(
+    self: &UpgradePolicyRestricted,
+): (u8, u8) {
+    (self.previous_policy, self.new_policy)
+}
+
+#[test_only]
+public fun vault_issued_fields<AdapterRoot>(
+    self: &VaultIssued<AdapterRoot>,
+): (ID, ID, ID, TypeName, TypeName, TierPolicy, BoundedValue, u64) {
+    (
+        self.vault_id,
+        self.treasury_cap_id,
+        self.metadata_cap_id,
+        self.adapter_witness,
+        self.risk_module_witness,
+        self.tier_policy,
+        self.notional_cap,
+        self.maintenance_reserve,
+    )
+}

@@ -1,8 +1,8 @@
 #[test_only]
 /// Maintenance-reserve accounting and cross-operation conservation tests.
-module blast_leverage_coins::maintenance_math_tests;
+module blast_leverage_series_one::maintenance_math_tests;
 
-use blast_leverage_coins::{accounting_math, errors};
+use blast_leverage_series_one::{accounting_math, errors};
 use std::unit_test::assert_eq;
 
 // === Tests ===
@@ -60,7 +60,7 @@ fun reserve_backing_and_shareholder_nav_agree_across_the_small_domain() {
 #[test]
 #[expected_failure(
     abort_code = errors::EMaintenanceReserveExceedsEquity,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_reserve_above_venue_equity_is_rejected() {
     accounting_math::shareholder_nav(999, 1_000);
@@ -70,7 +70,7 @@ fun a_reserve_above_venue_equity_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EMaintenanceReserveExceedsEquity,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_maximum_reserve_one_unit_above_equity_is_rejected() {
     accounting_math::shareholder_nav(
@@ -110,7 +110,7 @@ fun fee_credits_conserve_every_unit_across_the_small_domain() {
 #[test]
 #[expected_failure(
     abort_code = errors::EArithmeticOverflow,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_fee_credit_that_overflows_is_rejected() {
     accounting_math::credit_fee_for_testing(std::u64::max_value!(), 1);
@@ -238,6 +238,7 @@ fun canonical_mint_credits_the_actual_nav_gain_net_of_the_retained_fee() {
             0,
             2_000_000_000,
             100,
+            0,
         );
 
     assert_eq!(reserve_after, 10_000);
@@ -257,6 +258,7 @@ fun canonical_mint_credits_the_actual_nav_gain_net_of_the_retained_fee() {
             0,
             2_000_000_000,
             100,
+            0,
         );
 
     assert_eq!(nav_after, 1_000_490_000);
@@ -282,6 +284,7 @@ fun mint_reserve_accounting_does_not_subtract_the_fee_twice() {
             reserve_before,
             9_900_000,
             100,
+            0,
         );
 
     assert_eq!(reserve_after, 110_000);
@@ -303,6 +306,7 @@ fun the_highest_fee_rate_can_mint_exactly_one_atomic_share() {
             0,
             100_000,
             9_999,
+            0,
         );
 
     assert_eq!(reserve_after, 9_999);
@@ -370,6 +374,7 @@ fun canonical_mint_supports_the_highest_fee_near_the_u64_boundary() {
         max - 20_000,
         10_000,
         9_999,
+        0,
     );
 
     assert_eq!(reserve_after, max - 10_001);
@@ -386,37 +391,37 @@ fun canonical_mint_supports_the_highest_fee_near_the_u64_boundary() {
 #[test]
 #[expected_failure(
     abort_code = errors::EMaintenanceReserveExceedsEquity,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_rejects_an_unbacked_pre_mint_reserve_first() {
-    accounting_math::mint_accounting_quote(0, 99, 0, 100, 0, 10_000);
+    accounting_math::mint_accounting_quote(0, 99, 0, 100, 0, 10_000, 0);
 }
 
 /// Pins fee validation before deriving an invalid post-mint reserve checkpoint.
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidFeeBps,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_rejects_an_invalid_fee_before_post_mint_backing() {
-    accounting_math::mint_accounting_quote(1, 100, 0, 0, 0, 10_000);
+    accounting_math::mint_accounting_quote(1, 100, 0, 0, 0, 10_000, 0);
 }
 
 /// Pins fee validation ahead of contribution validation when both are invalid.
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidFeeBps,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_rejects_an_invalid_fee_before_a_nonpositive_contribution() {
-    accounting_math::mint_accounting_quote(10, 1_000, 999, 0, 1_000, 10_000);
+    accounting_math::mint_accounting_quote(10, 1_000, 999, 0, 1_000, 10_000, 0);
 }
 
 /// Catches a maximum-width reserve credit that wraps before post-mint backing is checked.
 #[test]
 #[expected_failure(
     abort_code = errors::EArithmeticOverflow,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_rejects_a_reserve_credit_above_u64() {
     accounting_math::mint_accounting_quote(
@@ -426,6 +431,7 @@ fun a_canonical_mint_rejects_a_reserve_credit_above_u64() {
         std::u64::max_value!(),
         1,
         1,
+        0,
     );
 }
 
@@ -433,66 +439,66 @@ fun a_canonical_mint_rejects_a_reserve_credit_above_u64() {
 #[test]
 #[expected_failure(
     abort_code = errors::EMaintenanceReserveExceedsEquity,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_cannot_credit_more_reserve_than_post_mint_equity_backs() {
-    accounting_math::mint_accounting_quote(100, 100, 99, 0, 100, 9_999);
+    accounting_math::mint_accounting_quote(100, 100, 99, 0, 100, 9_999, 0);
 }
 
 /// Catches accepting a deposit whose fee consumes the complete shareholder NAV gain.
 #[test]
 #[expected_failure(
     abort_code = errors::ENonpositiveContribution,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_without_shareholder_nav_gain_is_rejected() {
-    accounting_math::mint_accounting_quote(10_000, 1_000, 1_000, 0, 1_000, 100);
+    accounting_math::mint_accounting_quote(10_000, 1_000, 1_000, 0, 1_000, 100, 0);
 }
 
 #[test]
 #[expected_failure(
     abort_code = errors::ENonpositiveContribution,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_that_lowers_nav_is_rejected() {
-    accounting_math::mint_accounting_quote(10, 1_000, 999, 0, 1_000, 0);
+    accounting_math::mint_accounting_quote(10, 1_000, 999, 0, 1_000, 0, 0);
 }
 
 /// Pins the contribution guard ahead of the low-level supply guard.
 #[test]
 #[expected_failure(
     abort_code = errors::ENonpositiveContribution,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_rejects_a_nonpositive_contribution_before_zero_supply() {
-    accounting_math::mint_accounting_quote(10, 1_000, 999, 0, 0, 0);
+    accounting_math::mint_accounting_quote(10, 1_000, 999, 0, 0, 0, 0);
 }
 
 /// Pins the low-level supply guard once the canonical path has a positive contribution.
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidShareSupply,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_against_zero_supply_is_rejected() {
-    accounting_math::mint_accounting_quote(10, 1_000, 1_010, 0, 0, 0);
+    accounting_math::mint_accounting_quote(10, 1_000, 1_010, 0, 0, 0, 0);
 }
 
 /// Pins deposit validation before the low-level NAV and supply guards.
 #[test]
 #[expected_failure(
     abort_code = errors::EZeroAmount,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_rejects_zero_deposit_before_zero_nav_and_supply() {
-    accounting_math::mint_accounting_quote(0, 0, 0, 0, 0, 10_000);
+    accounting_math::mint_accounting_quote(0, 0, 0, 0, 0, 10_000, 0);
 }
 
 /// Pins the reserve-backing guard before redemption's low-level input guards.
 #[test]
 #[expected_failure(
     abort_code = errors::EMaintenanceReserveExceedsEquity,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_redemption_rejects_unbacked_reserve_before_share_inputs() {
     accounting_math::redemption_accounting_quote(0, 999, 999, 1_000, 0, 10_000);
@@ -696,7 +702,7 @@ fun reserve_aware_exposure_wrappers_support_maximum_width_values() {
 #[test]
 #[expected_failure(
     abort_code = errors::EMaintenanceReserveExceedsEquity,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun accounting_leverage_rejects_an_unbacked_reserve() {
     accounting_math::accounting_leverage_bps_up(0, 99, 100);
@@ -705,7 +711,7 @@ fun accounting_leverage_rejects_an_unbacked_reserve() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidNav,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun target_notional_rejects_zero_shareholder_nav() {
     accounting_math::target_notional_from_equity_down(100, 100, 0);
@@ -714,7 +720,7 @@ fun target_notional_rejects_zero_shareholder_nav() {
 #[test]
 #[expected_failure(
     abort_code = errors::EMaintenanceReserveExceedsEquity,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun mint_base_delta_rejects_an_unbacked_reserve() {
     accounting_math::mint_base_delta_from_equity_down(0, 0, 99, 100, 0, 0);
@@ -723,7 +729,7 @@ fun mint_base_delta_rejects_an_unbacked_reserve() {
 #[test]
 #[expected_failure(
     abort_code = errors::EMaintenanceReserveExceedsEquity,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun mint_base_bounds_reject_an_unbacked_reserve() {
     accounting_math::mint_base_bounds_from_equity(0, 0, 0, 99, 100, 0, 0);
@@ -732,7 +738,7 @@ fun mint_base_bounds_reject_an_unbacked_reserve() {
 #[test]
 #[expected_failure(
     abort_code = errors::EMaintenanceReserveExceedsEquity,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun mint_base_bound_assertion_rejects_an_unbacked_reserve() {
     accounting_math::assert_mint_base_within_bounds_from_equity(0, 0, 0, 0, 99, 100, 0, 0);
@@ -742,7 +748,7 @@ fun mint_base_bound_assertion_rejects_an_unbacked_reserve() {
 #[test]
 #[expected_failure(
     abort_code = errors::EMintOverExposed,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun mint_base_bound_assertion_propagates_over_exposure() {
     accounting_math::assert_mint_base_within_bounds_from_equity(
@@ -761,7 +767,7 @@ fun mint_base_bound_assertion_propagates_over_exposure() {
 #[test]
 #[expected_failure(
     abort_code = errors::EMintUnderExposed,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun mint_base_bound_assertion_propagates_under_exposure() {
     accounting_math::assert_mint_base_within_bounds_from_equity(
@@ -779,7 +785,7 @@ fun mint_base_bound_assertion_propagates_under_exposure() {
 #[test]
 #[expected_failure(
     abort_code = errors::EArithmeticOverflow,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun reserve_aware_accounting_leverage_propagates_the_ratio_overflow() {
     accounting_math::accounting_leverage_bps_up(
@@ -792,7 +798,7 @@ fun reserve_aware_accounting_leverage_propagates_the_ratio_overflow() {
 #[test]
 #[expected_failure(
     abort_code = errors::EArithmeticOverflow,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun reserve_aware_target_notional_propagates_the_notional_overflow() {
     accounting_math::target_notional_from_equity_down(
@@ -805,7 +811,7 @@ fun reserve_aware_target_notional_propagates_the_notional_overflow() {
 #[test]
 #[expected_failure(
     abort_code = errors::EArithmeticOverflow,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun reserve_aware_mint_base_delta_propagates_the_base_overflow() {
     accounting_math::mint_base_delta_from_equity_down(
@@ -830,6 +836,7 @@ fun canonical_quotes_support_the_maximum_venue_equity() {
             0,
             max - 100,
             0,
+            0,
         );
 
     assert_eq!(reserve_after, 0);
@@ -840,7 +847,7 @@ fun canonical_quotes_support_the_maximum_venue_equity() {
     assert_eq!(shares_out, 100);
     assert_eq!(shares_after, max);
 
-    let (reserve_after, shares_after, equity_keep, gross, fee, net) =
+    let (reserve_after, shares_after, equity_keep, _, gross, fee, net) =
         accounting_math::redemption_accounting_quote(
             1,
             max,
@@ -868,9 +875,10 @@ fun splitting_a_canonical_mint_does_not_create_extra_shares() {
         100,
         333,
         100,
+        0,
     );
     let (reserve_1, _, _, _, _, first_shares, shares_1) =
-        accounting_math::mint_accounting_quote(100, 1_100, 1_200, 100, 333, 100);
+        accounting_math::mint_accounting_quote(100, 1_100, 1_200, 100, 333, 100, 0);
     let (_, _, _, _, _, second_shares, _) = accounting_math::mint_accounting_quote(
         100,
         1_200,
@@ -878,6 +886,7 @@ fun splitting_a_canonical_mint_does_not_create_extra_shares() {
         reserve_1,
         shares_1,
         100,
+        0,
     );
 
     assert_eq!(combined_shares, 65);
@@ -910,7 +919,7 @@ fun redemption_fee_moves_to_the_reserve_without_remaining_in_shareholder_nav() {
     let shares_before = 9_900_000;
     // The proportional unwind charged 10,000 in venue execution costs.
     let venue_equity_unwound = venue_equity_before - 10_000;
-    let (reserve_after, _, equity_keep, _, fee, net) =
+    let (reserve_after, _, equity_keep, _, _, fee, net) =
         accounting_math::redemption_accounting_quote(
             990_000,
             venue_equity_before,
@@ -973,7 +982,7 @@ fun canonical_redemptions_match_independent_accounting_across_the_small_domain()
 #[test]
 fun canonical_redemption_supports_the_highest_fee_near_the_u64_boundary() {
     let max = std::u64::max_value!();
-    let (reserve_after, shares_after, equity_keep, gross, fee, net) =
+    let (reserve_after, shares_after, equity_keep, _, gross, fee, net) =
         accounting_math::redemption_accounting_quote(
             10_000,
             max,
@@ -1008,7 +1017,7 @@ fun canonical_redemption_reconciles_execution_loss_at_both_sides_of_a_rounding_c
 #[test]
 #[expected_failure(
     abort_code = errors::EMaintenanceReserveExceedsEquity,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_redemption_rejects_an_unbacked_unwind_reserve_first() {
     accounting_math::redemption_accounting_quote(0, 100, 99, 100, 0, 10_000);
@@ -1019,7 +1028,7 @@ fun a_canonical_redemption_rejects_an_unbacked_unwind_reserve_first() {
 fun splitting_a_redemption_cannot_recapture_an_earlier_reserve_fee() {
     let venue_equity_0 = 10_000_000;
     let reserve_0 = 0;
-    let (combined_reserve, _, combined_keep, _, _, combined_net) =
+    let (combined_reserve, _, combined_keep, _, _, _, combined_net) =
         accounting_math::redemption_accounting_quote(
             98,
             venue_equity_0,
@@ -1034,7 +1043,7 @@ fun splitting_a_redemption_cannot_recapture_an_earlier_reserve_fee() {
         combined_reserve,
     );
 
-    let (reserve_1, shares_1, keep_1, _, _, net_1) =
+    let (reserve_1, shares_1, keep_1, _, _, _, net_1) =
         accounting_math::redemption_accounting_quote(
             49,
             venue_equity_0,
@@ -1047,7 +1056,7 @@ fun splitting_a_redemption_cannot_recapture_an_earlier_reserve_fee() {
     let nav_1 = accounting_math::shareholder_nav(venue_equity_1, reserve_1);
     assert_eq!(nav_1, keep_1);
 
-    let (reserve_2, _, keep_2, _, _, net_2) =
+    let (reserve_2, _, keep_2, _, _, _, net_2) =
         accounting_math::redemption_accounting_quote(
             49,
             venue_equity_1,
@@ -1112,6 +1121,7 @@ fun a_multi_operation_sequence_preserves_venue_equity_as_nav_plus_reserve() {
             reserve_0,
             nav_0,
             100,
+            0,
         );
     let nav_1 = accounting_math::shareholder_nav(venue_equity_1, reserve_1);
 
@@ -1132,7 +1142,7 @@ fun a_multi_operation_sequence_preserves_venue_equity_as_nav_plus_reserve() {
     assert_eq!(nav_2, nav_1);
     assert_eq!(venue_equity_2, nav_2 + reserve_2);
 
-    let (reserve_3, _, equity_keep, _, _, net) =
+    let (reserve_3, _, equity_keep, _, _, _, net) =
         accounting_math::redemption_accounting_quote(
             minted,
             venue_equity_2,
@@ -1169,6 +1179,7 @@ fun a_sequence_after_reserve_exhaustion_charges_only_uncovered_funding_to_nav() 
             reserve_0,
             nav_0,
             100,
+            0,
         );
 
     assert_eq!(fee, 1_000);
@@ -1187,7 +1198,7 @@ fun a_sequence_after_reserve_exhaustion_charges_only_uncovered_funding_to_nav() 
     assert_eq!(uncovered, 50_000);
     assert_eq!(nav_2, nav_1 - uncovered);
 
-    let (reserve_3, _, equity_keep, gross, fee, net) =
+    let (reserve_3, _, equity_keep, _, gross, fee, net) =
         accounting_math::redemption_accounting_quote(
             minted,
             venue_equity_2,
@@ -1230,6 +1241,7 @@ fun random_accounting_sequences_conserve(seed: u32) {
             reserve_before,
             nav_before,
             fee_bps,
+            0,
         );
     let nav_after = accounting_math::shareholder_nav(
         venue_equity_after,
@@ -1256,6 +1268,135 @@ fun random_accounting_sequences_conserve(seed: u32) {
     assert_eq!(nav_funded + uncovered, nav_after);
     assert_eq!(venue_equity_funded, nav_funded + reserve_funded);
     assert_eq!(shares_after, nav_after);
+}
+
+/// The favorable direction: equity that appears between the two readings is
+/// paid to the redeemer in full, and the quote returns the proportional claim
+/// the policy bound must be applied to.
+#[test]
+fun a_favorable_unwind_pays_the_gain_to_the_redeemer_and_reports_the_claim() {
+    let (reserve_after, shares_after, equity_keep, proportional_claim, gross, fee, net) =
+        accounting_math::redemption_accounting_quote(
+            1,
+            1_000_000,
+            1_000_100,
+            0,
+            1_000_000,
+            0,
+        );
+
+    assert_eq!(reserve_after, 0);
+    assert_eq!(shares_after, 999_999);
+    assert_eq!(equity_keep, 999_999);
+    assert_eq!(proportional_claim, 1);
+    assert_eq!(gross, 101);
+    assert_eq!(fee, 0);
+    assert_eq!(net, 101);
+}
+
+#[test]
+fun the_proportional_claim_is_independent_of_the_unwound_reading() {
+    let (_, _, keep_flat, claim_flat, gross_flat, _, _) =
+        accounting_math::redemption_accounting_quote(250, 10_000, 10_000, 500, 1_000, 30);
+    let (_, _, keep_gain, claim_gain, gross_gain, _, _) =
+        accounting_math::redemption_accounting_quote(250, 10_000, 10_400, 500, 1_000, 30);
+    let (_, _, keep_loss, claim_loss, gross_loss, _, _) =
+        accounting_math::redemption_accounting_quote(250, 10_000, 9_900, 500, 1_000, 30);
+
+    assert_eq!(keep_flat, 7_125);
+    assert_eq!(keep_gain, keep_flat);
+    assert_eq!(keep_loss, keep_flat);
+    assert_eq!(claim_flat, 2_375);
+    assert_eq!(claim_gain, claim_flat);
+    assert_eq!(claim_loss, claim_flat);
+    assert_eq!(gross_flat, 2_375);
+    assert_eq!(gross_gain, 2_775);
+    assert_eq!(gross_loss, 2_275);
+}
+
+#[test]
+fun a_mint_at_its_share_floor_is_accepted() {
+    let (_, _, _, _, _, shares_out, shares_after) =
+        accounting_math::mint_accounting_quote(1_000, 1_000, 2_000, 0, 1_000, 0, 1_000);
+
+    assert_eq!(shares_out, 1_000);
+    assert_eq!(shares_after, 2_000);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::ESharesOutBelowMinimum,
+    location = blast_leverage_series_one::accounting_math,
+)]
+fun a_mint_one_share_below_its_floor_is_rejected() {
+    accounting_math::mint_accounting_quote(1_000, 1_000, 2_000, 0, 1_000, 0, 1_001);
+}
+
+/// The audit case: a one-share pool at NAV 1e9 takes a 1,999,999,999 deposit for
+/// one share, a 25 percent rounding loss. A share floor of two rejects it.
+#[test]
+#[expected_failure(
+    abort_code = errors::ESharesOutBelowMinimum,
+    location = blast_leverage_series_one::accounting_math,
+)]
+fun the_share_floor_bounds_the_seed_inflation_loss() {
+    accounting_math::mint_accounting_quote(
+        1_999_999_999,
+        1_000_000_000,
+        2_999_999_999,
+        0,
+        1,
+        0,
+        2,
+    );
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EZeroSharesOut,
+    location = blast_leverage_series_one::accounting_math,
+)]
+fun zero_shares_are_rejected_before_the_share_floor() {
+    accounting_math::mint_accounting_quote(1, 1_000_000_000, 1_000_000_001, 0, 1, 0, 5);
+}
+
+#[test]
+fun shareholder_nav_positivity_never_aborts_and_agrees_with_shareholder_nav() {
+    0u64.range_do!(8, |venue_equity| {
+        0u64.range_do!(8, |maintenance_reserve| {
+            let positive = accounting_math::is_shareholder_nav_positive(
+                venue_equity,
+                maintenance_reserve,
+            );
+
+            assert_eq!(positive, maintenance_reserve < venue_equity);
+            if (accounting_math::is_reserve_backed(venue_equity, maintenance_reserve)) {
+                assert_eq!(
+                    positive,
+                    accounting_math::shareholder_nav(venue_equity, maintenance_reserve) > 0,
+                );
+            };
+        });
+    });
+}
+
+/// A wiped account is still backed, so the health path must also check
+/// positivity before it prices leverage.
+#[test]
+fun a_wiped_account_is_backed_but_has_no_positive_nav() {
+    assert!(accounting_math::is_reserve_backed(5_000_000, 5_000_000));
+    assert!(!accounting_math::is_shareholder_nav_positive(5_000_000, 5_000_000));
+    assert!(accounting_math::is_shareholder_nav_positive(5_000_001, 5_000_000));
+    assert!(!accounting_math::is_shareholder_nav_positive(4_999_999, 5_000_000));
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EInvalidNav,
+    location = blast_leverage_series_one::accounting_math,
+)]
+fun accounting_leverage_aborts_on_a_backed_account_with_zero_nav() {
+    accounting_math::accounting_leverage_bps_up(10_000_000, 5_000_000, 5_000_000);
 }
 
 // === Private Test Helpers ===
@@ -1299,6 +1440,7 @@ fun assert_canonical_mint_matches_reference(
         reserve_before,
         shares_before,
         mint_fee_bps,
+        0,
     );
 
     assert_eq!(reserve_after, expected_reserve);
@@ -1333,6 +1475,7 @@ fun assert_split_mint(
         reserve_before,
         shares_before,
         mint_fee_bps,
+        0,
     );
     let (reserve_1, _, _, _, _, first_shares, shares_1) =
         accounting_math::mint_accounting_quote(
@@ -1342,6 +1485,7 @@ fun assert_split_mint(
             reserve_before,
             shares_before,
             mint_fee_bps,
+            0,
         );
     let venue_equity_1 = venue_equity_before + first_deposit;
     let (_, _, _, _, _, second_shares, _) = accounting_math::mint_accounting_quote(
@@ -1351,6 +1495,7 @@ fun assert_split_mint(
         reserve_1,
         shares_1,
         mint_fee_bps,
+        0,
     );
 
     assert!(first_shares + second_shares <= combined_shares);
@@ -1375,7 +1520,7 @@ fun assert_canonical_redemption_matches_reference(
     let expected_fee = reference_fee_up(expected_gross, redeem_fee_bps);
     let expected_net = expected_gross - expected_fee;
     let expected_reserve = reserve_before + expected_fee;
-    let (reserve_after, shares_after, equity_keep, gross, fee, net) =
+    let (reserve_after, shares_after, equity_keep, proportional_claim, gross, fee, net) =
         accounting_math::redemption_accounting_quote(
             shares_burned,
             venue_equity_before,
@@ -1385,6 +1530,9 @@ fun assert_canonical_redemption_matches_reference(
             redeem_fee_bps,
         );
     let venue_equity_after = venue_equity_unwound - net;
+
+    assert_eq!(proportional_claim, nav_before - expected_equity_keep);
+    assert_eq!(gross + execution_loss, proportional_claim);
     let nav_after = accounting_math::shareholder_nav(
         venue_equity_after,
         reserve_after,
@@ -1431,7 +1579,7 @@ fun assert_split_redemption(
     redeem_fee_bps: u64,
 ) {
     let venue_equity_before = nav_before + reserve_before;
-    let (combined_reserve, _, combined_keep, _, _, combined_net) =
+    let (combined_reserve, _, combined_keep, _, _, _, combined_net) =
         accounting_math::redemption_accounting_quote(
             shares_burned,
             venue_equity_before,
@@ -1446,7 +1594,7 @@ fun assert_split_redemption(
         combined_reserve,
     );
 
-    let (reserve_1, shares_1, keep_1, _, _, net_1) =
+    let (reserve_1, shares_1, keep_1, _, _, _, net_1) =
         accounting_math::redemption_accounting_quote(
             first_burn,
             venue_equity_before,
@@ -1457,7 +1605,7 @@ fun assert_split_redemption(
         );
     let venue_equity_1 = venue_equity_before - net_1;
     let nav_1 = accounting_math::shareholder_nav(venue_equity_1, reserve_1);
-    let (reserve_2, _, keep_2, _, _, net_2) =
+    let (reserve_2, _, keep_2, _, _, _, net_2) =
         accounting_math::redemption_accounting_quote(
             shares_burned - first_burn,
             venue_equity_1,

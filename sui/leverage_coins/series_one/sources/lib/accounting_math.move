@@ -1,4 +1,4 @@
-// `blast_leverage_coins::errors` centralizes package abort codes through zero-cost macros. This
+// `blast_leverage_series_one::errors` centralizes package abort codes through zero-cost macros. This
 // narrow suppression preserves caller-local abort locations and the stable code map documented in
 // this package's `README.md`.
 #[allow(lint(abort_without_constant))]
@@ -22,22 +22,87 @@
 /// settlement exactly once. A priced operation must reject venue equity below
 /// the stored reserve and use a separate successful health transition for that
 /// loss state.
-module blast_leverage_coins::accounting_math;
+module blast_leverage_series_one::accounting_math;
 
-use blast_leverage_coins::constants;
+use blast_leverage_series_one::constants;
 
-// === Package Functions ===
+// === Package API ===
 
 /// Returns whether venue equity backs the complete recorded reserve.
 ///
 /// Unlike `shareholder_nav`, this predicate never aborts. The later successful
 /// health transition must use it to detect a reserve-underwater account before
-/// it calls priced arithmetic.
+/// it calls priced arithmetic. Backing alone is not enough for priced
+/// arithmetic: equality leaves zero shareholder NAV, and every leverage or
+/// sizing formula aborts on zero NAV. The health transition must also check
+/// `is_shareholder_nav_positive` before it computes accounting leverage.
 public(package) fun is_reserve_backed(
     venue_equity: u64,
     maintenance_reserve: u64,
 ): bool {
     maintenance_reserve <= venue_equity
+}
+
+/// Returns whether shareholder NAV is positive, without aborting.
+///
+/// A false result means the reserve is unbacked or exactly consumes venue
+/// equity. In both cases holders have no priced claim, so the objective health
+/// transition must degrade the lifecycle rather than call
+/// `accounting_leverage_bps_up`, which aborts with the NAV code at zero.
+public(package) fun is_shareholder_nav_positive(
+    venue_equity: u64,
+    maintenance_reserve: u64,
+): bool {
+    maintenance_reserve < venue_equity
+}
+
+/// Returns whether base exposure exceeds the minimum operation size, without aborting.
+///
+/// Ordinary mints and non-flat redemptions both require a proportional
+/// exposure change of at least `lot_size * min_exposure_lots`. When
+/// `base_before` is at or below that product, a mint needs a contribution of
+/// at least the complete shareholder NAV and no non-flat redemption can pass,
+/// so the position is locked for every ordinary holder until it is closed
+/// completely or exposure is reopened. A zero lot or lot multiple returns
+/// false so the caller fails closed. A true result is necessary, not
+/// sufficient, for a legal redemption; `is_redemption_possible` is exact. The
+/// future Vault must treat a false result as an objective health-degradation
+/// trigger, not as an abort.
+public(package) fun is_exposure_above_minimum_operation(
+    base_before: u64,
+    lot_size: u64,
+    min_exposure_lots: u64,
+): bool {
+    lot_size > 0
+        && min_exposure_lots > 0
+        && (base_before as u128) > (lot_size as u128) * (min_exposure_lots as u128)
+}
+
+/// Returns whether any burn count can pass `redemption_base_bounds`, without aborting.
+///
+/// The required reduction is largest when a redemption burns all but one
+/// share, where it equals `base_before - floor(base_before / shares_before)`.
+/// A redemption is possible exactly when that reduction reaches
+/// `lot_size * min_exposure_lots`, or when `base_before < shares_before` so
+/// that burning all but one share reaches flat and the minimum is waived. A
+/// supply below two shares, a zero lot, or a zero lot multiple returns false.
+/// The future Vault must observe a false result as a locked position and
+/// degrade the lifecycle so shutdown can open the guaranteed exit.
+public(package) fun is_redemption_possible(
+    base_before: u64,
+    shares_before: u64,
+    lot_size: u64,
+    min_exposure_lots: u64,
+): bool {
+    if (shares_before < 2 || lot_size == 0 || min_exposure_lots == 0) {
+        false
+    } else if (base_before < shares_before) {
+        true
+    } else {
+        let largest_required = base_before - base_before / shares_before;
+
+        (largest_required as u128) >= (lot_size as u128) * (min_exposure_lots as u128)
+    }
 }
 
 /// Returns shareholder NAV after excluding the complete maintenance reserve.
@@ -51,7 +116,7 @@ public(package) fun shareholder_nav(
 ): u64 {
     assert!(
         is_reserve_backed(venue_equity, maintenance_reserve),
-        blast_leverage_coins::errors::maintenance_reserve_exceeds_equity!(),
+        blast_leverage_series_one::errors::maintenance_reserve_exceeds_equity!(),
     );
 
     venue_equity - maintenance_reserve
@@ -70,9 +135,15 @@ public(package) fun shareholder_nav(
 /// reserve checkpoint, subtract the fee twice, or size exposure from venue
 /// equity.
 ///
+/// `min_shares_out` is the depositor's own floor on `shares_out`. The share
+/// formula floors, so a depositor can lose up to one pre-mint share of NAV to
+/// rounding; that loss is bounded only by the share price, which the locked
+/// seed sets and this package cannot constrain. The floor lets the depositor
+/// bound it themselves, and zero means no floor.
+///
 /// Guard order is pre-mint reserve backing, the deposit and fee rate, the
-/// reserve credit, post-mint reserve backing, the contribution, then the
-/// low-level NAV, supply, and share guards.
+/// reserve credit, post-mint reserve backing, the contribution, the low-level
+/// NAV, supply, and share guards, then the depositor's share floor.
 ///
 /// The later state transition must still prove that `venue_equity_after` is the
 /// authenticated result of depositing `deposit` and executing only the sealed
@@ -84,6 +155,7 @@ public(package) fun mint_accounting_quote(
     reserve_before: u64,
     shares_before: u64,
     mint_fee_bps: u64,
+    min_shares_out: u64,
 ): (u64, u64, u64, u64, u64, u64, u64) {
     let nav_before = shareholder_nav(venue_equity_before, reserve_before);
     let fee = fee_up(deposit, mint_fee_bps);
@@ -91,7 +163,7 @@ public(package) fun mint_accounting_quote(
     let nav_after = shareholder_nav(venue_equity_after, reserve_after);
     assert!(
         nav_after > nav_before,
-        blast_leverage_coins::errors::nonpositive_contribution!(),
+        blast_leverage_series_one::errors::nonpositive_contribution!(),
     );
 
     let contribution = nav_after - nav_before;
@@ -99,6 +171,10 @@ public(package) fun mint_accounting_quote(
         contribution,
         nav_before,
         shares_before,
+    );
+    assert!(
+        shares_out >= min_shares_out,
+        blast_leverage_series_one::errors::shares_out_below_minimum!(),
     );
 
     (
@@ -114,11 +190,20 @@ public(package) fun mint_accounting_quote(
 
 /// Quotes a redemption and credits its reserve fee at the correct checkpoint.
 ///
-/// Returns `(reserve_after, shares_after, equity_keep, gross, fee, net)`.
-/// Both pre-redemption and post-unwind shareholder NAV exclude `reserve_before`.
-/// Only after the gross claim is known does this function credit the fee. Thus
-/// the credited fee cannot re-enter the current or a later redemption's share
-/// pricing base.
+/// Returns `(reserve_after, shares_after, equity_keep, proportional_claim,
+/// gross, fee, net)`. Both pre-redemption and post-unwind shareholder NAV
+/// exclude `reserve_before`. Only after the gross claim is known does this
+/// function credit the fee. Thus the credited fee cannot re-enter the current
+/// or a later redemption's share pricing base.
+///
+/// `proportional_claim` is `nav_before - equity_keep`: the redeemer's share of
+/// pre-unwind NAV after the kept equity rounds up. `gross` measures against
+/// post-unwind NAV instead, so any equity that appears between the two
+/// readings is paid to the redeemer in full. The Series must pass the claim
+/// and the gross to `policy::assert_redemption_gross_within_bound` before it
+/// pays, exactly as the mint path bounds its contribution against the deposit.
+/// This function returns the claim so the Series never derives it from a NAV
+/// of its own.
 ///
 /// The later state transition must still authenticate both venue-equity values,
 /// withdraw exactly `net`, and verify final venue equity and reserve atomically.
@@ -129,7 +214,7 @@ public(package) fun redemption_accounting_quote(
     reserve_before: u64,
     shares_before: u64,
     redeem_fee_bps: u64,
-): (u64, u64, u64, u64, u64, u64) {
+): (u64, u64, u64, u64, u64, u64, u64) {
     let nav_before = shareholder_nav(venue_equity_before, reserve_before);
     let nav_unwound = shareholder_nav(venue_equity_unwound, reserve_before);
     let (shares_after, equity_keep, gross, fee, net) = redemption_quote(
@@ -139,9 +224,18 @@ public(package) fun redemption_accounting_quote(
         shares_before,
         redeem_fee_bps,
     );
+    let proportional_claim = nav_before - equity_keep;
     let reserve_after = credit_fee(reserve_before, fee);
 
-    (reserve_after, shares_after, equity_keep, gross, fee, net)
+    (
+        reserve_after,
+        shares_after,
+        equity_keep,
+        proportional_claim,
+        gross,
+        fee,
+        net,
+    )
 }
 
 /// Returns accounting leverage using shareholder NAV, never venue equity.
@@ -285,6 +379,15 @@ public(package) fun absorb_funding_cost(
 /// Together the two bounds give I26 a two-sided lot tolerance that every
 /// partial fill must satisfy cumulatively.
 ///
+/// The minimum has a sharp lock condition. `required` is largest when the
+/// redemption burns all but one share, where it equals
+/// `base_before - floor(base_before / shares_before)`. When that value is below
+/// `lot_size * min_exposure_lots` and `base_before >= shares_before`, no burn
+/// count is legal and every non-flat redemption aborts; the flat exemption is
+/// unreachable because a proportional keep of zero needs
+/// `base_before < shares_before`. `is_exposure_above_minimum_operation` is the
+/// non-aborting predicate the health transition uses to observe that state.
+///
 /// Preconditions: `0 < shares_burned < shares_before`, positive `lot_size`,
 /// and positive `min_exposure_lots`. A flat Series returns `(0, 0)` and must
 /// stay flat. Guard order is the share bound, `lot_size`, `min_exposure_lots`,
@@ -299,15 +402,15 @@ public(package) fun redemption_base_bounds(
 ): (u64, u64) {
     assert!(
         shares_burned > 0 && shares_burned < shares_before,
-        blast_leverage_coins::errors::invalid_share_amount!(),
+        blast_leverage_series_one::errors::invalid_share_amount!(),
     );
     assert!(
         lot_size > 0,
-        blast_leverage_coins::errors::invalid_lot_size!(),
+        blast_leverage_series_one::errors::invalid_lot_size!(),
     );
     assert!(
         min_exposure_lots > 0,
-        blast_leverage_coins::errors::invalid_min_exposure_lots!(),
+        blast_leverage_series_one::errors::invalid_min_exposure_lots!(),
     );
 
     let max_final_base = base_before.mul_div(
@@ -319,7 +422,7 @@ public(package) fun redemption_base_bounds(
         max_final_base == 0
             || (required_reduction as u128)
                 >= (lot_size as u128) * (min_exposure_lots as u128),
-        blast_leverage_coins::errors::sub_lot_exposure_delta!(),
+        blast_leverage_series_one::errors::sub_lot_exposure_delta!(),
     );
 
     let planned_reduction = (
@@ -356,11 +459,11 @@ public(package) fun assert_redemption_base_within_bounds(
 
     assert!(
         base_final <= max_final_base,
-        blast_leverage_coins::errors::redemption_under_reduced!(),
+        blast_leverage_series_one::errors::redemption_under_reduced!(),
     );
     assert!(
         base_final >= min_final_base,
-        blast_leverage_coins::errors::redemption_over_reduced!(),
+        blast_leverage_series_one::errors::redemption_over_reduced!(),
     );
 }
 
@@ -493,7 +596,7 @@ public(package) fun assert_mint_base_within_bounds_for_testing(
 fun credit_fee(maintenance_reserve: u64, fee: u64): u64 {
     maintenance_reserve
         .checked_add(fee)
-        .destroy_or!(abort blast_leverage_coins::errors::arithmetic_overflow!())
+        .destroy_or!(abort blast_leverage_series_one::errors::arithmetic_overflow!())
 }
 
 /// Returns the fee retained on `amount` at `fee_bps`, rounding up.
@@ -506,10 +609,10 @@ fun credit_fee(maintenance_reserve: u64, fee: u64): u64 {
 /// the only fee-free result. One atomic unit at any positive rate still pays
 /// one unit, and the intermediate `amount * fee_bps` stays below `2^78`.
 fun fee_up(amount: u64, fee_bps: u64): u64 {
-    assert!(amount > 0, blast_leverage_coins::errors::zero_amount!());
+    assert!(amount > 0, blast_leverage_series_one::errors::zero_amount!());
     assert!(
         fee_bps < constants::basis_points_denominator!(),
-        blast_leverage_coins::errors::invalid_fee_bps!(),
+        blast_leverage_series_one::errors::invalid_fee_bps!(),
     );
 
     amount.mul_div_ceil(fee_bps, constants::basis_points_denominator!())
@@ -547,14 +650,14 @@ fun mint_quote(
     nav_before: u64,
     shares_before: u64,
 ): (u64, u64) {
-    assert!(nav_before > 0, blast_leverage_coins::errors::invalid_nav!());
+    assert!(nav_before > 0, blast_leverage_series_one::errors::invalid_nav!());
     assert!(
         shares_before > 0,
-        blast_leverage_coins::errors::invalid_share_supply!(),
+        blast_leverage_series_one::errors::invalid_share_supply!(),
     );
     assert!(
         contribution > 0,
-        blast_leverage_coins::errors::nonpositive_contribution!(),
+        blast_leverage_series_one::errors::nonpositive_contribution!(),
     );
 
     let shares_out = narrow_to_u64(
@@ -562,12 +665,12 @@ fun mint_quote(
     );
     assert!(
         shares_out > 0,
-        blast_leverage_coins::errors::zero_shares_out!(),
+        blast_leverage_series_one::errors::zero_shares_out!(),
     );
 
     let shares_after = shares_before
         .checked_add(shares_out)
-        .destroy_or!(abort blast_leverage_coins::errors::arithmetic_overflow!());
+        .destroy_or!(abort blast_leverage_series_one::errors::arithmetic_overflow!());
 
     (shares_out, shares_after)
 }
@@ -609,27 +712,27 @@ fun redemption_quote(
     shares_before: u64,
     redeem_fee_bps: u64,
 ): (u64, u64, u64, u64, u64) {
-    assert!(nav_before > 0, blast_leverage_coins::errors::invalid_nav!());
+    assert!(nav_before > 0, blast_leverage_series_one::errors::invalid_nav!());
     assert!(
         shares_burned > 0 && shares_burned < shares_before,
-        blast_leverage_coins::errors::invalid_share_amount!(),
+        blast_leverage_series_one::errors::invalid_share_amount!(),
     );
     assert!(
         redeem_fee_bps < constants::basis_points_denominator!(),
-        blast_leverage_coins::errors::invalid_fee_bps!(),
+        blast_leverage_series_one::errors::invalid_fee_bps!(),
     );
 
     let shares_after = shares_before - shares_burned;
     let equity_keep = nav_before.mul_div_ceil(shares_after, shares_before);
     assert!(
         nav_unwound > equity_keep,
-        blast_leverage_coins::errors::nonpositive_gross!(),
+        blast_leverage_series_one::errors::nonpositive_gross!(),
     );
 
     let gross = nav_unwound - equity_keep;
     let fee = fee_up(gross, redeem_fee_bps);
     let net = gross - fee;
-    assert!(net > 0, blast_leverage_coins::errors::zero_net_payout!());
+    assert!(net > 0, blast_leverage_series_one::errors::zero_net_payout!());
 
     (shares_after, equity_keep, gross, fee, net)
 }
@@ -646,7 +749,7 @@ fun redemption_quote(
 /// ratios up to about `1.8 * 10^15` x are representable and anything above that
 /// aborts with the overflow code. The intermediate stays below `2^78`.
 fun leverage_bps_up(notional: u64, nav: u64): u64 {
-    assert!(nav > 0, blast_leverage_coins::errors::invalid_nav!());
+    assert!(nav > 0, blast_leverage_series_one::errors::invalid_nav!());
 
     narrow_to_u64(
         (notional as u128).mul_div_ceil(
@@ -666,10 +769,10 @@ fun leverage_bps_up(notional: u64, nav: u64): u64 {
 /// outside the `u64` range aborts. The post-trade leverage and margin checks
 /// remain authoritative; this pre-trade target is not a guarantee.
 fun target_notional_down(nav: u64, target_leverage_bps: u64): u64 {
-    assert!(nav > 0, blast_leverage_coins::errors::invalid_nav!());
+    assert!(nav > 0, blast_leverage_series_one::errors::invalid_nav!());
     assert!(
         target_leverage_bps > 0,
-        blast_leverage_coins::errors::invalid_target_leverage_bps!(),
+        blast_leverage_series_one::errors::invalid_target_leverage_bps!(),
     );
 
     narrow_to_u64(
@@ -704,7 +807,9 @@ fun target_notional_down(nav: u64, target_leverage_bps: u64): u64 {
 ///
 /// Preconditions: positive `nav_before`, `base_before`, `lot_size`, and
 /// `min_exposure_lots`, and a proportional target of at least the minimum lot
-/// multiple. Rounding down to lots is zero exactly when the target is below
+/// multiple. A flat position cannot be sized proportionally, so once
+/// `base_before` reaches zero with live shares no mint can pass this function;
+/// reopening exposure from flat needs a separate Series primitive. Rounding down to lots is zero exactly when the target is below
 /// one lot, so the single minimum-lot guard also rejects a zero rounded delta
 /// and any dust mint. Guard order is `nav_before`, `base_before`, `lot_size`,
 /// `min_exposure_lots`, then the minimum-lot bound.
@@ -718,18 +823,18 @@ fun mint_base_delta_down(
     lot_size: u64,
     min_exposure_lots: u64,
 ): u64 {
-    assert!(nav_before > 0, blast_leverage_coins::errors::invalid_nav!());
+    assert!(nav_before > 0, blast_leverage_series_one::errors::invalid_nav!());
     assert!(
         base_before > 0,
-        blast_leverage_coins::errors::invalid_base_exposure!(),
+        blast_leverage_series_one::errors::invalid_base_exposure!(),
     );
     assert!(
         lot_size > 0,
-        blast_leverage_coins::errors::invalid_lot_size!(),
+        blast_leverage_series_one::errors::invalid_lot_size!(),
     );
     assert!(
         min_exposure_lots > 0,
-        blast_leverage_coins::errors::invalid_min_exposure_lots!(),
+        blast_leverage_series_one::errors::invalid_min_exposure_lots!(),
     );
 
     let proportional_base = narrow_to_u64(
@@ -737,7 +842,7 @@ fun mint_base_delta_down(
     );
     assert!(
         (proportional_base as u128) >= (lot_size as u128) * (min_exposure_lots as u128),
-        blast_leverage_coins::errors::sub_lot_exposure_delta!(),
+        blast_leverage_series_one::errors::sub_lot_exposure_delta!(),
     );
 
     proportional_base - proportional_base % lot_size
@@ -763,8 +868,12 @@ fun mint_base_delta_down(
 /// contribution is dust aborts even when its plan was not.
 ///
 /// The range does not bound execution-cost over-exposure: `max_delta -
-/// min_delta` grows with the venue cost the depositor paid. The Series' final
-/// leverage gate and the user's slippage bound own that residual.
+/// min_delta` grows with the venue cost the depositor paid, and the admitted
+/// band is wide. From 2.0x with a deposit equal to NAV, a fill that loses half
+/// the deposit to execution still admits the complete plan and leaves the
+/// pool at 2.67x; at 95 percent loss it admits 3.81x. The Series' post-trade
+/// leverage gate is therefore a hard release blocker, not an optional check,
+/// and the user's slippage bound owns the rest.
 fun mint_base_bounds(
     expected_contribution: u64,
     actual_contribution: u64,
@@ -818,15 +927,15 @@ fun assert_mint_base_within_bounds(
     );
     let max_final_base = base_before
         .checked_add(max_delta)
-        .destroy_or!(abort blast_leverage_coins::errors::arithmetic_overflow!());
+        .destroy_or!(abort blast_leverage_series_one::errors::arithmetic_overflow!());
 
     assert!(
         base_final <= max_final_base,
-        blast_leverage_coins::errors::mint_over_exposed!(),
+        blast_leverage_series_one::errors::mint_over_exposed!(),
     );
     assert!(
         base_final >= base_before + min_delta,
-        blast_leverage_coins::errors::mint_under_exposed!(),
+        blast_leverage_series_one::errors::mint_under_exposed!(),
     );
 }
 
@@ -834,7 +943,7 @@ fun assert_mint_base_within_bounds(
 fun narrow_to_u64(wide: u128): u64 {
     assert!(
         wide <= (std::u64::max_value!() as u128),
-        blast_leverage_coins::errors::arithmetic_overflow!(),
+        blast_leverage_series_one::errors::arithmetic_overflow!(),
     );
 
     wide as u64

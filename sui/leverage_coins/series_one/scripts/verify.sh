@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the pinned-toolchain gate for the Blast leverage-coins package.
+# Runs the pinned-toolchain gate for Blast leverage Series1.
 set -euo pipefail
 
 package_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

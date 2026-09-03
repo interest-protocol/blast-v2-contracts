@@ -1,8 +1,8 @@
 #[test_only]
 /// Leverage, target notional, and the two-sided proportional-exposure bounds.
-module blast_leverage_coins::exposure_math_tests;
+module blast_leverage_series_one::exposure_math_tests;
 
-use blast_leverage_coins::{accounting_math, errors};
+use blast_leverage_series_one::{accounting_math, errors};
 use std::unit_test::assert_eq;
 
 // === Tests ===
@@ -28,7 +28,7 @@ fun leverage_supports_its_maximum_representable_ratio() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_coins::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_series_one::accounting_math)]
 fun leverage_against_zero_nav_is_rejected() {
     accounting_math::leverage_bps_up_for_testing(100, 0);
 }
@@ -37,7 +37,7 @@ fun leverage_against_zero_nav_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EArithmeticOverflow,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun leverage_above_the_supported_bound_is_rejected() {
     accounting_math::leverage_bps_up_for_testing(std::u64::max_value!(), 9_999);
@@ -86,7 +86,7 @@ fun target_and_reported_leverage_are_dual_across_the_operating_band() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_coins::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_series_one::accounting_math)]
 fun a_target_notional_against_zero_nav_is_rejected() {
     accounting_math::target_notional_down_for_testing(0, 20_000);
 }
@@ -94,7 +94,7 @@ fun a_target_notional_against_zero_nav_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidTargetLeverageBps,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_zero_target_leverage_is_rejected() {
     accounting_math::target_notional_down_for_testing(100, 0);
@@ -102,7 +102,7 @@ fun a_zero_target_leverage_is_rejected() {
 
 /// Pins the NAV guard ahead of the target guard when both are zero.
 #[test]
-#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_coins::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_series_one::accounting_math)]
 fun zero_nav_is_rejected_before_a_zero_target_leverage() {
     accounting_math::target_notional_down_for_testing(0, 0);
 }
@@ -110,7 +110,7 @@ fun zero_nav_is_rejected_before_a_zero_target_leverage() {
 #[test]
 #[expected_failure(
     abort_code = errors::EArithmeticOverflow,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_target_notional_above_the_supported_bound_is_rejected() {
     accounting_math::target_notional_down_for_testing(std::u64::max_value!(), 10_001);
@@ -241,28 +241,37 @@ fun the_minimum_lot_multiple_bounds_relative_under_exposure() {
 }
 
 /// Regression for cumulative drift: a one-lot minimum lets worst-case mints leave the band.
+///
+/// The exact figures are pinned so `docs/accounting.md` cannot drift from the
+/// harness: the pool first drops below 1.8x on mint 2,229 and ends 3,000 mints
+/// at 1.7397x with NAV up 32 percent.
 #[test]
 fun repeated_worst_case_mints_leave_the_band_with_a_one_lot_minimum() {
-    let (leverage_after_drift, lowest) = drift_after_worst_case_mints(3_000, 1_000, 1);
+    let (leverage_after_drift, lowest, first_breach, nav) =
+        drift_after_worst_case_mints(3_000, 1_000, 1);
 
-    assert!(lowest < 18_000);
-    assert!(leverage_after_drift < 18_000);
+    assert_eq!(first_breach, 2_229);
+    assert_eq!(leverage_after_drift, 17_397);
+    assert_eq!(lowest, 17_397);
+    assert_eq!(nav, 13_221_338);
 }
 
 /// Proves a hundred-lot minimum keeps the same worst-case sequence inside the band.
 #[test]
 fun repeated_worst_case_mints_stay_in_band_with_a_hundred_lot_minimum() {
-    let (leverage_after_drift, lowest) = drift_after_worst_case_mints(3_000, 1_000, 100);
+    let (leverage_after_drift, lowest, first_breach, nav) =
+        drift_after_worst_case_mints(3_000, 1_000, 100);
 
-    assert!(lowest >= 19_300);
-    assert!(leverage_after_drift >= 19_300);
-    assert!(leverage_after_drift < 20_000);
+    assert_eq!(first_breach, 0);
+    assert_eq!(leverage_after_drift, 19_455);
+    assert_eq!(lowest, 19_455);
+    assert_eq!(nav, 164_485_245);
 }
 
 #[test]
 #[expected_failure(
     abort_code = errors::ESubLotExposureDelta,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun the_smallest_dust_mint_is_rejected() {
     accounting_math::mint_base_delta_down_for_testing(1, 1_000_000_000, 1_000_000_000, 1_000, 1);
@@ -271,7 +280,7 @@ fun the_smallest_dust_mint_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::ESubLotExposureDelta,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun the_largest_sub_lot_mint_is_rejected() {
     accounting_math::mint_base_delta_down_for_testing(999, 1_000_000_000, 1_000_000_000, 1_000, 1);
@@ -280,7 +289,7 @@ fun the_largest_sub_lot_mint_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::ESubLotExposureDelta,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mid_range_sub_lot_mint_is_rejected() {
     accounting_math::mint_base_delta_down_for_testing(500, 1_000_000_000, 1_000_000_000, 1_000, 1);
@@ -289,7 +298,7 @@ fun a_mid_range_sub_lot_mint_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::ESubLotExposureDelta,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_zero_contribution_mint_is_rejected() {
     accounting_math::mint_base_delta_down_for_testing(0, 1_000_000_000, 1_000_000_000, 1_000, 1);
@@ -299,14 +308,14 @@ fun a_zero_contribution_mint_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::ESubLotExposureDelta,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_below_the_minimum_lot_multiple_is_rejected() {
     accounting_math::mint_base_delta_down_for_testing(99_999, 1_000_000_000, 1_000_000_000, 1_000, 100);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_coins::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_series_one::accounting_math)]
 fun a_mint_base_delta_against_zero_nav_is_rejected() {
     accounting_math::mint_base_delta_down_for_testing(10, 100, 0, 1, 1);
 }
@@ -314,7 +323,7 @@ fun a_mint_base_delta_against_zero_nav_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidBaseExposure,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_base_delta_from_flat_exposure_is_rejected() {
     accounting_math::mint_base_delta_down_for_testing(10, 0, 100, 1, 1);
@@ -323,7 +332,7 @@ fun a_mint_base_delta_from_flat_exposure_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidLotSize,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_base_delta_with_a_zero_lot_is_rejected() {
     accounting_math::mint_base_delta_down_for_testing(10, 100, 100, 0, 1);
@@ -332,7 +341,7 @@ fun a_mint_base_delta_with_a_zero_lot_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidMinExposureLots,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_base_delta_with_a_zero_minimum_lot_multiple_is_rejected() {
     accounting_math::mint_base_delta_down_for_testing(10, 100, 100, 1, 0);
@@ -340,7 +349,7 @@ fun a_mint_base_delta_with_a_zero_minimum_lot_multiple_is_rejected() {
 
 /// Pins the NAV guard ahead of the exposure and lot guards.
 #[test]
-#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_coins::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_series_one::accounting_math)]
 fun zero_nav_is_rejected_before_flat_exposure_and_a_zero_lot() {
     accounting_math::mint_base_delta_down_for_testing(10, 0, 0, 0, 0);
 }
@@ -349,7 +358,7 @@ fun zero_nav_is_rejected_before_flat_exposure_and_a_zero_lot() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidBaseExposure,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun flat_exposure_is_rejected_before_a_zero_lot() {
     accounting_math::mint_base_delta_down_for_testing(10, 0, 100, 0, 0);
@@ -359,7 +368,7 @@ fun flat_exposure_is_rejected_before_a_zero_lot() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidLotSize,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_zero_lot_is_rejected_before_a_zero_minimum_lot_multiple() {
     accounting_math::mint_base_delta_down_for_testing(10, 100, 100, 0, 0);
@@ -368,7 +377,7 @@ fun a_zero_lot_is_rejected_before_a_zero_minimum_lot_multiple() {
 #[test]
 #[expected_failure(
     abort_code = errors::EArithmeticOverflow,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_base_delta_beyond_u64_is_rejected() {
     accounting_math::mint_base_delta_down_for_testing(3, std::u64::max_value!(), 2, 1, 1);
@@ -448,7 +457,7 @@ fun mint_bounds_match_their_definition_across_the_small_domain() {
 #[test]
 #[expected_failure(
     abort_code = errors::EMintOverExposed,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_fill_above_the_plan_is_rejected() {
     accounting_math::assert_mint_base_within_bounds_for_testing(1_001_001, 1_000_500, 999_000, 1_000_000, 1_000_000_000, 100, 1);
@@ -458,7 +467,7 @@ fun a_mint_fill_above_the_plan_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EMintUnderExposed,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_fill_below_the_actual_contribution_is_rejected() {
     accounting_math::assert_mint_base_within_bounds_for_testing(1_000_899, 1_000_500, 999_000, 1_000_000, 1_000_000_000, 100, 1);
@@ -468,7 +477,7 @@ fun a_mint_fill_below_the_actual_contribution_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::ESubLotExposureDelta,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_whose_actual_contribution_is_dust_is_rejected() {
     accounting_math::mint_base_bounds_for_testing(1_000_500, 99, 1_000_000, 1_000_000_000, 100, 1);
@@ -478,7 +487,7 @@ fun a_mint_whose_actual_contribution_is_dust_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::EArithmeticOverflow,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_bound_beyond_the_maximum_base_is_rejected() {
     let max = std::u64::max_value!();
@@ -607,7 +616,7 @@ fun proportional_exposure_math_supports_the_maximum_live_lot() {
 #[test]
 #[expected_failure(
     abort_code = errors::ERedemptionUnderReduced,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_final_base_above_the_proportional_keep_is_rejected() {
     accounting_math::assert_redemption_base_within_bounds(901, 10, 1_000, 100, 7, 1);
@@ -617,7 +626,7 @@ fun a_final_base_above_the_proportional_keep_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::ERedemptionOverReduced,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_final_base_more_than_one_lot_below_the_keep_is_rejected() {
     accounting_math::assert_redemption_base_within_bounds(894, 10, 1_000, 100, 7, 1);
@@ -627,7 +636,7 @@ fun a_final_base_more_than_one_lot_below_the_keep_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::ERedemptionUnderReduced,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun any_exposure_on_a_flat_series_is_rejected() {
     accounting_math::assert_redemption_base_within_bounds(1, 1, 0, 100, 7, 1);
@@ -637,7 +646,7 @@ fun any_exposure_on_a_flat_series_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::ESubLotExposureDelta,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_dust_redemption_below_one_lot_is_rejected() {
     accounting_math::redemption_base_bounds(1, 100, 1_000_000, 7, 1);
@@ -647,28 +656,111 @@ fun a_dust_redemption_below_one_lot_is_rejected() {
 #[test]
 #[expected_failure(
     abort_code = errors::ESubLotExposureDelta,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_sub_minimum_redemption_reduction_is_rejected() {
     accounting_math::redemption_base_bounds(10, 1_000, 100, 7, 15);
 }
 
-/// Catches partially redeeming a position that is itself a single live lot.
+/// A position that is itself a single live lot cannot be redeemed at any size.
 #[test]
 #[expected_failure(
     abort_code = errors::ESubLotExposureDelta,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
-fun a_one_lot_position_cannot_be_partially_redeemed() {
+fun a_one_lot_position_cannot_be_redeemed_at_any_size() {
     let max = std::u64::max_value!();
 
     accounting_math::redemption_base_bounds(1, max, max, max, 1);
 }
 
+/// The largest legal reduction burns all but one share; when even that is below
+/// the minimum, every burn count aborts and the position is locked.
+#[test]
+#[expected_failure(
+    abort_code = errors::ESubLotExposureDelta,
+    location = blast_leverage_series_one::accounting_math,
+)]
+fun a_position_at_the_minimum_operation_size_locks_the_largest_redemption() {
+    assert!(!accounting_math::is_redemption_possible(100_000, 1_000, 1_000, 100));
+
+    accounting_math::redemption_base_bounds(999, 100_000, 1_000, 1_000, 100);
+}
+
+/// Exposure one unit above the minimum still cannot be redeemed, because the
+/// proportional keep of the last share stays open.
+#[test]
+fun exposure_just_above_the_minimum_is_not_enough_for_a_redemption() {
+    assert!(accounting_math::is_exposure_above_minimum_operation(100_001, 1_000, 100));
+    assert!(!accounting_math::is_redemption_possible(100_001, 1_000, 1_000, 100));
+    assert!(accounting_math::is_redemption_possible(100_100, 1_000, 1_000, 100));
+
+    let (min_final_base, max_final_base) =
+        accounting_math::redemption_base_bounds(999, 100_100, 1_000, 1_000, 100);
+
+    assert_eq!(max_final_base, 100);
+    assert_eq!(min_final_base, 100);
+}
+
+#[test]
+fun a_sub_supply_position_can_always_close_flat() {
+    assert!(accounting_math::is_redemption_possible(999, 1_000, 1_000, 100));
+    assert!(!accounting_math::is_exposure_above_minimum_operation(999, 1_000, 100));
+
+    let (min_final_base, max_final_base) =
+        accounting_math::redemption_base_bounds(999, 999, 1_000, 1_000, 100);
+
+    assert_eq!(max_final_base, 0);
+    assert_eq!(min_final_base, 0);
+}
+
+#[test]
+fun exposure_predicates_never_abort_on_degenerate_inputs() {
+    let max = std::u64::max_value!();
+
+    assert!(!accounting_math::is_exposure_above_minimum_operation(max, 0, 1));
+    assert!(!accounting_math::is_exposure_above_minimum_operation(max, 1, 0));
+    assert!(!accounting_math::is_exposure_above_minimum_operation(max, max, max));
+    assert!(accounting_math::is_exposure_above_minimum_operation(max, max, 1) == false);
+    assert!(accounting_math::is_exposure_above_minimum_operation(max, max - 1, 1));
+    assert!(!accounting_math::is_redemption_possible(max, 1, 1, 1));
+    assert!(!accounting_math::is_redemption_possible(max, max, 0, 1));
+    assert!(!accounting_math::is_redemption_possible(max, max, 1, 0));
+    assert!(accounting_math::is_redemption_possible(max, max, 1, 1));
+    assert!(!accounting_math::is_redemption_possible(max, max, max, max));
+}
+
+/// The exact predicate agrees with brute force over every burn count.
+#[test]
+fun redemption_possibility_matches_the_exhaustive_reference() {
+    0u64.range_do!(16, |base_before| {
+        2u64.range_do!(8, |shares_before| {
+            1u64.range_do!(4, |lot_size| {
+                1u64.range_do!(3, |min_exposure_lots| {
+                    assert_eq!(
+                        accounting_math::is_redemption_possible(
+                            base_before,
+                            shares_before,
+                            lot_size,
+                            min_exposure_lots,
+                        ),
+                        any_redemption_is_legal(
+                            base_before,
+                            shares_before,
+                            lot_size,
+                            min_exposure_lots,
+                        ),
+                    );
+                });
+            });
+        });
+    });
+}
+
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidShareAmount,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun redemption_bounds_reject_a_zero_share_burn() {
     accounting_math::redemption_base_bounds(0, 1_000, 100, 7, 1);
@@ -677,7 +769,7 @@ fun redemption_bounds_reject_a_zero_share_burn() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidShareAmount,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun redemption_bounds_reject_burning_the_complete_supply() {
     accounting_math::redemption_base_bounds(100, 1_000, 100, 7, 1);
@@ -686,7 +778,7 @@ fun redemption_bounds_reject_burning_the_complete_supply() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidLotSize,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun redemption_bounds_reject_a_zero_lot() {
     accounting_math::redemption_base_bounds(10, 1_000, 100, 0, 1);
@@ -695,7 +787,7 @@ fun redemption_bounds_reject_a_zero_lot() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidMinExposureLots,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun redemption_bounds_reject_a_zero_minimum_lot_multiple() {
     accounting_math::redemption_base_bounds(10, 1_000, 100, 7, 0);
@@ -705,7 +797,7 @@ fun redemption_bounds_reject_a_zero_minimum_lot_multiple() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidShareAmount,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun an_invalid_share_amount_is_rejected_before_a_zero_lot() {
     accounting_math::redemption_base_bounds(0, 1_000, 100, 0, 0);
@@ -715,7 +807,7 @@ fun an_invalid_share_amount_is_rejected_before_a_zero_lot() {
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidLotSize,
-    location = blast_leverage_coins::accounting_math,
+    location = blast_leverage_series_one::accounting_math,
 )]
 fun a_zero_lot_is_rejected_before_a_zero_minimum_lot_multiple_in_redemption() {
     accounting_math::redemption_base_bounds(10, 1_000, 100, 0, 0);
@@ -920,19 +1012,48 @@ fun assert_redemption_bounds_hold(
     );
 }
 
+/// Independent reference: whether any burn count passes the redemption minimum-size guard.
+fun any_redemption_is_legal(
+    base_before: u64,
+    shares_before: u64,
+    lot_size: u64,
+    min_exposure_lots: u64,
+): bool {
+    let mut any_legal = false;
+
+    1u64.range_do!(shares_before, |shares_burned| {
+        let max_final_base = base_before.mul_div(
+            shares_before - shares_burned,
+            shares_before,
+        );
+        let required = base_before - max_final_base;
+
+        if (max_final_base == 0 || required >= lot_size * min_exposure_lots) {
+            any_legal = true;
+        };
+    });
+
+    any_legal
+}
+
 /// Runs worst-case legal mints on a 2x pool and returns the final and lowest accounting leverage.
 ///
 /// Every mint targets one unit below the next lot multiple, so it loses the
 /// largest sub-lot remainder the minimum admits. The pool starts at NAV
 /// 10,000,000 and base 20,000,000 with unit price, so notional equals base.
-fun drift_after_worst_case_mints(count: u64, lot_size: u64, min_exposure_lots: u64): (u64, u64) {
+fun drift_after_worst_case_mints(
+    count: u64,
+    lot_size: u64,
+    min_exposure_lots: u64,
+): (u64, u64, u64, u64) {
     let mut nav = 10_000_000u64;
     let mut base = 20_000_000u64;
     let mut lowest = accounting_math::leverage_bps_up_for_testing(base, nav);
+    let mut first_breach = 0;
     let worst_target = (min_exposure_lots + 1) * lot_size - 1;
 
     assert_eq!(lowest, 20_000);
-    count.do!(|_| {
+    count.do!(|index| {
         let contribution = ((worst_target as u128) * (nav as u128) / (base as u128)) as u64;
         let delta = accounting_math::mint_base_delta_down_for_testing(
             contribution,
@@ -945,8 +1066,17 @@ fun drift_after_worst_case_mints(count: u64, lot_size: u64, min_exposure_lots: u
         assert_eq!(delta, min_exposure_lots * lot_size);
         nav = nav + contribution;
         base = base + delta;
-        lowest = lowest.min(accounting_math::leverage_bps_up_for_testing(base, nav));
+        let leverage = accounting_math::leverage_bps_up_for_testing(base, nav);
+        if (leverage < 18_000 && first_breach == 0) {
+            first_breach = index + 1;
+        };
+        lowest = lowest.min(leverage);
     });
 
-    (accounting_math::leverage_bps_up_for_testing(base, nav), lowest)
+    (
+        accounting_math::leverage_bps_up_for_testing(base, nav),
+        lowest,
+        first_breach,
+        nav,
+    )
 }
