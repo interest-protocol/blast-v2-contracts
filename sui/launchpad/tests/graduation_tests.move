@@ -1,7 +1,7 @@
 #[test_only]
 module blast_fun::graduation_tests;
 
-use blast_fun::{bps, graduation};
+use blast_fun::{bps, launch};
 use std::unit_test::{assert_eq, destroy};
 use sui::balance::{Self, Balance};
 
@@ -152,7 +152,7 @@ fun valid_random_meme_partitions_conserve(seed: u32) {
 #[test]
 #[expected_failure(
     abort_code = blast_fun::errors::EInvalidProtocolMemeGraduationFeeBps,
-    location = blast_fun::graduation,
+    location = blast_fun::launch,
 )]
 fun meme_partition_rejects_invalid_protocol_fee_before_invalid_provision() {
     let (curve, protocol_meme_fee, provision) = partition_meme(
@@ -169,7 +169,7 @@ fun meme_partition_rejects_invalid_protocol_fee_before_invalid_provision() {
 #[test]
 #[expected_failure(
     abort_code = blast_fun::errors::EInvalidMemeLiquidityProvisionBps,
-    location = blast_fun::graduation,
+    location = blast_fun::launch,
 )]
 fun meme_partition_rejects_zero_provision_rate() {
     let (curve, protocol_meme_fee, provision) = partition_meme(
@@ -186,7 +186,7 @@ fun meme_partition_rejects_zero_provision_rate() {
 #[test]
 #[expected_failure(
     abort_code = blast_fun::errors::EInvalidMemeSupplyPartitionBps,
-    location = blast_fun::graduation,
+    location = blast_fun::launch,
 )]
 fun meme_partition_rejects_rate_partition_without_curve_share() {
     let (curve, protocol_meme_fee, provision) = partition_meme(
@@ -203,7 +203,7 @@ fun meme_partition_rejects_rate_partition_without_curve_share() {
 #[test]
 #[expected_failure(
     abort_code = blast_fun::errors::EZeroMemeLiquidityProvision,
-    location = blast_fun::graduation,
+    location = blast_fun::launch,
 )]
 fun meme_partition_rejects_positive_rate_that_rounds_to_zero_provision() {
     let (curve, protocol_meme_fee, provision) = partition_meme(
@@ -220,7 +220,7 @@ fun meme_partition_rejects_positive_rate_that_rounds_to_zero_provision() {
 #[test]
 #[expected_failure(
     abort_code = blast_fun::errors::EZeroMemeCurveInventory,
-    location = blast_fun::graduation,
+    location = blast_fun::launch,
 )]
 fun meme_partition_rejects_rounding_that_consumes_curve_inventory() {
     let (curve, protocol_meme_fee, provision) = partition_meme(
@@ -255,7 +255,7 @@ fun partition_meme<Meme>(
     protocol_meme_graduation_fee_bps: u64,
     meme_liquidity_provision_bps: u64,
 ): (Balance<Meme>, Balance<Meme>, Balance<Meme>) {
-    graduation::partition_meme(
+    launch::partition_meme_for_testing(
         meme,
         bps::new(protocol_meme_graduation_fee_bps),
         bps::new(meme_liquidity_provision_bps),
@@ -266,7 +266,7 @@ fun partition_quote<Quote>(
     quote: Balance<Quote>,
     quote_migration_fee_bps: u64,
 ): (Balance<Quote>, Balance<Quote>) {
-    graduation::partition_quote(quote, bps::new(quote_migration_fee_bps))
+    launch::partition_quote_for_testing(quote, bps::new(quote_migration_fee_bps))
 }
 
 fun assert_partition(

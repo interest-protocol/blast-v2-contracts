@@ -113,8 +113,10 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0065](0065-discoverable-blastsui-treasury-caps.md) | Discoverable blastSUI treasury-cap custody | **accepted** |
 | [0066](0066-aftermath-dao-fee-pool.md) | Aftermath DAO-fee wrapper and claimable launch revenue | **accepted** |
 | [0067](0067-retire-full-sail-migrator.md) | Retire the Full Sail migrator before release | **accepted** |
+| [0068](0068-compact-lp-fee-principal-snapshot.md) | Compact the LP-fee principal snapshot before release | **accepted** |
+| [0069](0069-consolidate-launch-graduation-and-move-migration-math.md) | Consolidate launch graduation and move migration math into migrators | **accepted** |
 
-ADRs 0013–0036, 0038–0063, and 0065–0067 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
+ADRs 0013–0036, 0038–0063, and 0065–0069 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -308,6 +310,11 @@ ADR 0068 compacts the pre-release `LpFeesCollected` event. Venue adapters still
 read principal before and after collection and abort unless it is unchanged,
 but the completed event records only the verified final `principal_liquidity`
 snapshot. The SDK reducer consumes that one canonical value.
+
+ADR 0069 removes the separate graduation helper module and puts its private
+balance partitions in `launch`. It also moves all seed-price, deviation,
+utilization, and residual arithmetic into the aggregate migrators package with
+package-only visibility and migrator-local error codes.
 
 ## Open premises
 

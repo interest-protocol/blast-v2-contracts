@@ -11,6 +11,7 @@ TURBOS_SOURCE="$SOURCE_DIR/turbos.move"
 AFTERMATH_SOURCE="$SOURCE_DIR/aftermath.move"
 EVENTS_SOURCE="$SOURCE_DIR/events.move"
 VENUE_CONFIG_SOURCE="$SOURCE_DIR/venue_config.move"
+MIGRATION_MATH_SOURCE="$SOURCE_DIR/migration_math.move"
 
 fail() {
     echo "Migrator source boundary failed: $1" >&2
@@ -222,6 +223,46 @@ reject_turbos_pre_guard_mutator() {
 [[ -f "$AFTERMATH_SOURCE" ]] || fail "missing sources/aftermath.move"
 [[ -f "$EVENTS_SOURCE" ]] || fail "missing sources/events.move"
 [[ -f "$VENUE_CONFIG_SOURCE" ]] || fail "missing sources/venue_config.move"
+[[ -f "$MIGRATION_MATH_SOURCE" ]] || fail "missing sources/migration_math.move"
+
+MIGRATION_MATH_FUNCTION_COUNT="$(rg -c '^public\(package\) fun (sqrt_price_x64|assert_price_within_bps|minimum_utilized_amount|assert_residual_within_bps)\(' "$MIGRATION_MATH_SOURCE" || true)"
+[[ "$MIGRATION_MATH_FUNCTION_COUNT" -eq 4 ]] || \
+    fail "migration math must expose exactly four package-only operations"
+if rg -q '^public fun |^entry fun |^public entry fun ' "$MIGRATION_MATH_SOURCE"; then
+    fail "migration math must not expose a public transaction or composition ABI"
+fi
+require_pattern "$MIGRATION_MATH_SOURCE" \
+    'module blast_fun_migrators::migration_math;' \
+    'migrator-owned migration math module'
+require_pattern "$MIGRATION_MATH_SOURCE" \
+    'const BASIS_POINTS_DENOMINATOR: u64 = 10_000;' \
+    'module-local basis-points denominator'
+if ! rg -U -q '#\[error\(code = 0\)\]\nconst EInvalidBps: vector<u8> = b"Basis points must not exceed 10,000\.";' \
+    "$MIGRATION_MATH_SOURCE" \
+    || ! rg -U -q '#\[error\(code = 1\)\]\nconst EInvalidMigrationSeedBalance: vector<u8> = b"Migration seed balances must both be greater than zero\.";' \
+    "$MIGRATION_MATH_SOURCE" \
+    || ! rg -U -q '#\[error\(code = 2\)\]\nconst EMigrationPriceDeviationExceeded: vector<u8> = b"Observed pool price must remain within the accepted migration seed deviation\.";' \
+    "$MIGRATION_MATH_SOURCE" \
+    || ! rg -U -q '#\[error\(code = 3\)\]\nconst EMigrationResidualExceeded: vector<u8> = b"Venue residual must remain within the accepted share of migration principal\.";' \
+    "$MIGRATION_MATH_SOURCE"; then
+    fail "migration math error codes must remain contiguous and bound to their documented failures"
+fi
+require_pattern "$MIGRATION_MATH_SOURCE" \
+    'integer_sqrt\(ratio_q128\(meme_amount, quote_amount, meme_is_coin_a\)\)' \
+    'exact Q128 price derivation'
+require_pattern "$MIGRATION_MATH_SOURCE" \
+    'assert_valid_bps\(max_deviation_bps\);' \
+    'price-deviation rate validation'
+require_pattern "$MIGRATION_MATH_SOURCE" \
+    'maximum_residual_amount\(source_amount, max_residual_bps\)' \
+    'shared residual allowance'
+if rg -q '\b(blast_fun::(constants|errors)|Bps|UID|key|Balance|Coin|TxContext|transfer::|events::|RuntimeConfig)\b' \
+    "$MIGRATION_MATH_SOURCE"; then
+    fail "migration math must remain a pure migrator-owned arithmetic module"
+fi
+if rg -U -q 'use blast_fun::\{[^}]*migration_math' "$SOURCE_DIR"; then
+    fail "venue modules must use migrator-owned migration math"
+fi
 
 require_pattern "$EVENTS_SOURCE" 'public struct VaultCreated' 'vault creation event'
 require_pattern "$EVENTS_SOURCE" 'public struct MigrationCompleted' 'completed migration event'

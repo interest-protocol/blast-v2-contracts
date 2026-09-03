@@ -10,6 +10,17 @@ release gate, and one `UpgradeCap`. [DEPENDENCIES.md](DEPENDENCIES.md) owns the
 package-id and dependency matrix, the committed module fingerprints, the
 dev-inspect matrix, and the immutable-release gate.
 
+## Shared migration arithmetic
+
+`migration_math.move` owns the exact seed-price, adopted-pool deviation,
+minimum-utilization, and residual checks used by venue adapters. Its four
+operations are package-only. The launchpad only releases witness-bound Meme and
+Quote liquidity; it does not import or publish venue arithmetic.
+
+The module uses atomic balances, `u256` intermediates, and a local 10,000-bps
+denominator. The SDK mirrors these formulas for previews, but the checks in the
+migrator transaction are authoritative.
+
 ## Common vault
 
 Every completed migration creates one shared `vault::LpVault<Meme, Quote>`.
@@ -379,6 +390,17 @@ the retirement mechanism, so exactly one package version can ever exist and
 there is no old bytecode to fence off. The shared `VenueConfig` stays mutable
 under the core `AdminWitness` after immutability; it governs only future
 migrations and can never touch custodied principal or accrued ownership.
+
+## Migration math errors
+
+These codes are local to `blast_fun_migrators::migration_math`:
+
+| Code | Name | Meaning |
+| --- | --- | --- |
+| 0 | `EInvalidBps` | A deviation or residual limit exceeds 10,000 basis points. |
+| 1 | `EInvalidMigrationSeedBalance` | Either migration seed balance is zero. |
+| 2 | `EMigrationPriceDeviationExceeded` | An observed pool price exceeds the accepted seed-price deviation. |
+| 3 | `EMigrationResidualExceeded` | A venue residual exceeds the accepted share of migration principal. |
 
 ## Bluefin errors
 

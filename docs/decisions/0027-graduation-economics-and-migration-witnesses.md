@@ -24,6 +24,10 @@
 > [ADR 0046](0046-witness-authorized-migration-redemption.md): any caller may
 > create the type-bound handoff, while redemption requires the selected sealed
 > witness value.
+> Amended by
+> [ADR 0069](0069-consolidate-launch-graduation-and-move-migration-math.md):
+> the launch lifecycle now owns its two private balance partitions directly;
+> the separate `graduation` module is removed.
 
 ## Sources
 

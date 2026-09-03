@@ -9,12 +9,12 @@ module blast_fun_migrators::bluefin;
 use blast_fun::{
     acl::AdminWitness,
     launch::Launch,
-    migration_math,
     package_version::PackageVersion,
     runtime_config::RuntimeConfig,
 };
 use blast_fun_migrators::{
     events,
+    migration_math,
     vault::{Self, LpVault},
     venue_config::VenueConfig,
 };

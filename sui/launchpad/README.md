@@ -59,10 +59,6 @@ The core package now contains:
   rounded application and exact complement math; its operations are package-only,
   stored rates use the opaque type, and public setter inputs plus replay event
   facts remain raw `u64` values;
-- `graduation.move` — package-only balance partitioning that ceiling-rounds
-  protocol Meme graduation fee and Quote migration revenue, floor-rounds pool Meme
-  principal, and rejects rounded partitions without positive pool or curve
-  inventory; valuation and curve-release forecasts remain off chain;
 - `fees.move` — embedded four-balance creator/protocol fee accounting for both
   meme and quote assets, live configurable remainder-safe splitting, and composable claims
   authorized by `CreatorCap<Meme>` or `AdminWitness`;
@@ -79,7 +75,8 @@ The core package now contains:
   self-quoted markets and noncanonical ticket supply, into key-only pair
   custody, immutable quote/graduation/migrator and sell-burn snapshots, explicit
   lifecycle, exact-target/refunding `buy`, coin-moving `sell`, capability-gated fee
-  claims, permissionless migration, and one atomic payload whose redemption
+  claims, private balance partitioning that preserves positive pool and curve
+  inventory, permissionless migration, and one atomic payload whose redemption
   requires the selected adapter witness. Fixed terminal disposal goes to `0x0`;
   BurnOnly disposal decreases native supply;
 - `errors.move` — the append-only package error registry exposed as zero-cost
@@ -136,8 +133,8 @@ The core package now contains:
   restriction, irreversible admin retirement, native ticket/receipt completion,
   and receipt-to-cap binding.
 
-The launch module owns the public lifecycle while curve, fee-ledger, and
-graduation arithmetic remain package-only helpers.
+The launch module owns the public lifecycle and its private graduation
+partitions. Curve and fee-ledger arithmetic remain package-only helpers.
 
 The cross-language backend fixture is
 [`../../docs/vectors/x-creator-claim.json`](../../docs/vectors/x-creator-claim.json).

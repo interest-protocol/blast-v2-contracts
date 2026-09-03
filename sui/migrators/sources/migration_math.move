@@ -1,24 +1,30 @@
-// `blast_fun::errors` intentionally centralizes package-wide abort codes through zero-cost
-// macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
-// locations and the stable code map documented in `docs/error-codes.md`.
-#[allow(lint(abort_without_constant))]
-/// Venue-neutral concentrated-liquidity price and utilization invariants.
-module blast_fun::migration_math;
-
-use blast_fun::constants;
+/// Shared concentrated-liquidity price and utilization invariants for migrator venues.
+module blast_fun_migrators::migration_math;
 
 // === Constants ===
 
+const BASIS_POINTS_DENOMINATOR: u64 = 10_000;
 const Q128_SHIFT: u8 = 128;
 const SQRT_UPPER_BOUND_SHIFT: u8 = 96;
 
-// === Public Functions ===
+// === Errors ===
+
+#[error(code = 0)]
+const EInvalidBps: vector<u8> = b"Basis points must not exceed 10,000.";
+#[error(code = 1)]
+const EInvalidMigrationSeedBalance: vector<u8> = b"Migration seed balances must both be greater than zero.";
+#[error(code = 2)]
+const EMigrationPriceDeviationExceeded: vector<u8> = b"Observed pool price must remain within the accepted migration seed deviation.";
+#[error(code = 3)]
+const EMigrationResidualExceeded: vector<u8> = b"Venue residual must remain within the accepted share of migration principal.";
+
+// === Package Functions ===
 
 /// Derives floor(sqrt(coin_b / coin_a) * 2^64) from migration atomic units.
 ///
 /// When Meme is coin A, the ratio is Quote/Meme. When Meme is coin B, it is
 /// Meme/Quote. Display decimals never enter this calculation.
-public fun sqrt_price_x64(
+public(package) fun sqrt_price_x64(
     meme_amount: u64,
     quote_amount: u64,
     meme_is_coin_a: bool,
@@ -31,7 +37,7 @@ public fun sqrt_price_x64(
 /// The comparison squares the observed Q64.64 value and compares it with the
 /// exact floor Q128 rational derived from the migration balances. Both products
 /// remain below u256 after first rejecting deviations larger than 100%.
-public fun assert_price_within_bps(
+public(package) fun assert_price_within_bps(
     meme_amount: u64,
     quote_amount: u64,
     meme_is_coin_a: bool,
@@ -55,26 +61,26 @@ public fun assert_price_within_bps(
 
     assert!(
         difference <= expected_ratio_q128
-            && difference * (constants::basis_points_denominator!() as u256)
+            && difference * (BASIS_POINTS_DENOMINATOR as u256)
                 <= expected_ratio_q128 * (max_deviation_bps as u256),
-        blast_fun::errors::migration_price_deviation_exceeded!(),
+        EMigrationPriceDeviationExceeded,
     );
 }
 
 /// Returns the minimum venue-consumed amount after a ceiling-rounded residual allowance.
-public fun minimum_utilized_amount(amount: u64, max_residual_bps: u64): u64 {
+public(package) fun minimum_utilized_amount(amount: u64, max_residual_bps: u64): u64 {
     amount - maximum_residual_amount(amount, max_residual_bps)
 }
 
 /// Rejects a returned venue residual above the ceiling-rounded allowance.
-public fun assert_residual_within_bps(
+public(package) fun assert_residual_within_bps(
     source_amount: u64,
     residual_amount: u64,
     max_residual_bps: u64,
 ) {
     assert!(
         residual_amount <= maximum_residual_amount(source_amount, max_residual_bps),
-        blast_fun::errors::migration_residual_exceeded!(),
+        EMigrationResidualExceeded,
     );
 }
 
@@ -87,7 +93,7 @@ fun ratio_q128(
 ): u256 {
     assert!(
         meme_amount > 0 && quote_amount > 0,
-        blast_fun::errors::invalid_migration_seed_balance!(),
+        EInvalidMigrationSeedBalance,
     );
 
     let (numerator, denominator) = if (meme_is_coin_a) {
@@ -121,14 +127,11 @@ fun maximum_residual_amount(amount: u64, max_residual_bps: u64): u64 {
     assert_valid_bps(max_residual_bps);
 
     let numerator = (amount as u128) * (max_residual_bps as u128);
-    let denominator = constants::basis_points_denominator!() as u128;
+    let denominator = BASIS_POINTS_DENOMINATOR as u128;
 
     ((numerator + denominator - 1) / denominator) as u64
 }
 
 fun assert_valid_bps(value: u64) {
-    assert!(
-        value <= constants::basis_points_denominator!(),
-        blast_fun::errors::invalid_bps!(),
-    );
+    assert!(value <= BASIS_POINTS_DENOMINATOR, EInvalidBps);
 }

@@ -1,7 +1,7 @@
 #[test_only]
-module blast_fun::migration_math_tests;
+module blast_fun_migrators::migration_math_tests;
 
-use blast_fun::migration_math;
+use blast_fun_migrators::migration_math;
 use std::unit_test::assert_eq;
 
 // === Tests ===
@@ -71,8 +71,8 @@ fun integer_square_root_rounds_down() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidMigrationSeedBalance,
-    location = blast_fun::migration_math,
+    abort_code = migration_math::EInvalidMigrationSeedBalance,
+    location = blast_fun_migrators::migration_math,
 )]
 fun zero_meme_seed_is_rejected() {
     migration_math::sqrt_price_x64(0, 1, true);
@@ -80,8 +80,8 @@ fun zero_meme_seed_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidMigrationSeedBalance,
-    location = blast_fun::migration_math,
+    abort_code = migration_math::EInvalidMigrationSeedBalance,
+    location = blast_fun_migrators::migration_math,
 )]
 fun zero_quote_seed_is_rejected() {
     migration_math::sqrt_price_x64(1, 0, true);
@@ -102,8 +102,8 @@ fun exact_fifty_basis_point_price_deviation_is_accepted() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EMigrationPriceDeviationExceeded,
-    location = blast_fun::migration_math,
+    abort_code = migration_math::EMigrationPriceDeviationExceeded,
+    location = blast_fun_migrators::migration_math,
 )]
 fun first_price_unit_above_fifty_basis_points_is_rejected() {
     let outside = migration_math::sqrt_price_x64(10_000, 10_051, true);
@@ -134,8 +134,8 @@ fun one_basis_point_residual_boundary_is_accepted() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EMigrationResidualExceeded,
-    location = blast_fun::migration_math,
+    abort_code = migration_math::EMigrationResidualExceeded,
+    location = blast_fun_migrators::migration_math,
 )]
 fun residual_above_one_basis_point_is_rejected() {
     migration_math::assert_residual_within_bps(10_000, 2, 1);
@@ -143,8 +143,8 @@ fun residual_above_one_basis_point_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidBps,
-    location = blast_fun::migration_math,
+    abort_code = migration_math::EInvalidBps,
+    location = blast_fun_migrators::migration_math,
 )]
 fun residual_limit_rejects_more_than_one_hundred_percent() {
     migration_math::minimum_utilized_amount(10_000, 10_001);

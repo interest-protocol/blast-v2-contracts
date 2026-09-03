@@ -1170,7 +1170,7 @@ Repeat the existing curve vectors with the LT as Quote and add these cases:
 The migration transaction must verify the actual pool balances, supply, price,
 and consumed amounts. Blast's migration math already derives price from the
 terminal balances and bounds price deviation and residuals
-([source](../../sui/launchpad/sources/migration_math.move#L15-L127)). Keep those
+([source](../../sui/migrators/sources/migration_math.move#L21-L132)). Keep those
 checks venue-specific and fail closed.
 
 ### 10.3 Public launch gate

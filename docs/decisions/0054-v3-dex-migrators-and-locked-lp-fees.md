@@ -2,6 +2,10 @@
 
 > Amended by [ADR 0067](0067-retire-full-sail-migrator.md), which retires all
 > Full Sail routes and dependencies before the first recorded production release.
+> Amended by
+> [ADR 0069](0069-consolidate-launch-graduation-and-move-migration-math.md),
+> which moves seed-price, deviation, utilization, and residual arithmetic into
+> the aggregate migrators package as package-only operations.
 
 - Status: accepted
 - Date: 2026-08-29
@@ -79,11 +83,13 @@ not contend on one shared Sui object. The aggregate package accepts the cost of
 an all-venues dependency and release gate in exchange for one custody and claim
 surface.
 
-The core package exposes only two venue-neutral primitives needed
-synchronously by adapters:
+The two packages expose only the venue-neutral primitives needed synchronously
+by adapters:
 
-- exact seed-price and price-deviation arithmetic;
-- the existing dual-asset fee ledger through a live-share accrual seam.
+- the migrators package owns exact seed-price, price-deviation, utilization,
+  and residual arithmetic; and
+- the core package exposes the existing dual-asset fee ledger through a
+  live-share accrual seam.
 
 These primitives authorize or conserve assets during an adapter transition and
 therefore meet the consensus-minimal rule. Forecast valuations remain in the

@@ -471,78 +471,20 @@ if [[ ! -f sources/lib/bps.move ]] \
   failures=$((failures + 1))
 fi
 
-migration_math_facts="$(move_facts sources/migration_math.move)"
-migration_math_source="$(move_normalized_source <<<"$migration_math_facts")"
-
 # Every other module must delegate the inclusive range to bps::new. Both operand
 # orders of the inclusive comparison are rejected, so a reversed spelling cannot
 # reintroduce the duplicate validation, while a strictly-below policy check such
 # as the graduation partition sum stays allowed. The scan reads comment-free
-# normalized text, so formatting and comments cannot hide or fake it, and
-# migration_math is examined separately below.
+# normalized text, so formatting and comments cannot hide or fake it.
 for move_file in "${source_files[@]}"; do
-  case "$move_file" in
-    sources/lib/bps.move | sources/migration_math.move) continue ;;
-  esac
+  [[ "$move_file" == sources/lib/bps.move ]] && continue
 
   if move_facts "$move_file" | move_normalized_source \
     | rg -q '<= *constants::basis_points_denominator|constants::basis_points_denominator!\(\) *>='; then
-    echo "${move_file}: the inclusive basis-points range must be validated only by bps::new and the one migration_math rate seam; owners may add stricter policy checks." >&2
+    echo "${move_file}: the inclusive basis-points range must be validated only by bps::new; owners may add stricter policy checks." >&2
     failures=$((failures + 1))
   fi
 done
-
-if [[ ! -f sources/migration_math.move ]] \
-  || [[ "$(move_production_functions <<<"$migration_math_facts")" \
-    != 'assert_price_within_bps:public:0 assert_residual_within_bps:public:0 assert_valid_bps:private:0 integer_sqrt:private:0 maximum_residual_amount:private:0 minimum_utilized_amount:public:0 ratio_q128:private:0 sqrt_price_x64:public:0 ' ]] \
-  || [[ "$(move_production_body assert_valid_bps <<<"$migration_math_facts")" \
-    != 'assert!( value <= constants::basis_points_denominator!(), blast_fun::errors::invalid_bps!(), );' ]] \
-  || rg -q '\b(Bps|bps::|UID|key|Balance|Coin|TxContext|transfer::|events::|RuntimeConfig)\b' \
-    <<<"$migration_math_source"; then
-  echo 'migration_math.move must stay a pure price and utilization module with exactly its four public entries, four private helpers, and one inclusive-bps validator.' >&2
-  failures=$((failures + 1))
-fi
-
-# The validator only protects the module when every rate-taking entry reaches it,
-# so each public path is bound to the helper it must call, and no other body may
-# compare against the denominator.
-migration_math_unbound="$(awk -F'\t' '
-  $1 == "FN" && $6 == 0 && $2 != "assert_valid_bps" \
-    && ($10 ~ /<= *constants::basis_points_denominator/ \
-      || $10 ~ /constants::basis_points_denominator!\(\) *>=/) {
-    print "  " $2 " repeats the inclusive basis-points range outside the one validator"
-  }
-  $1 == "FN" && $2 == "assert_price_within_bps" && $6 == 0 \
-    && $10 !~ /^assert_valid_bps\(max_deviation_bps\);/ {
-    print "  assert_price_within_bps must validate max_deviation_bps before using it"
-  }
-  $1 == "FN" && $2 == "maximum_residual_amount" && $6 == 0 \
-    && $10 !~ /^assert_valid_bps\(max_residual_bps\);/ {
-    print "  maximum_residual_amount must validate max_residual_bps before using it"
-  }
-  $1 == "FN" && $2 == "assert_residual_within_bps" && $6 == 0 \
-    && $10 !~ /maximum_residual_amount\(/ {
-    print "  assert_residual_within_bps must derive its allowance from maximum_residual_amount"
-  }
-  $1 == "FN" && $2 == "minimum_utilized_amount" && $6 == 0 \
-    && $10 !~ /maximum_residual_amount\(/ {
-    print "  minimum_utilized_amount must derive its allowance from maximum_residual_amount"
-  }
-  $1 == "FN" && $2 == "sqrt_price_x64" && $6 == 0 \
-    && $10 !~ /integer_sqrt\(ratio_q128\(/ {
-    print "  sqrt_price_x64 must square-root the exact Q128 ratio"
-  }
-  $1 == "FN" && $2 == "ratio_q128" && $6 == 0 \
-    && $10 !~ /^assert!\( meme_amount > 0 && quote_amount > 0,/ {
-    print "  ratio_q128 must reject a zero seed balance before dividing"
-  }
-' <<<"$migration_math_facts")"
-
-if [[ -n "$migration_math_unbound" ]]; then
-  printf '%s\n' "$migration_math_unbound"
-  echo 'Every migration-math rate path must reach its approved validator and helper.' >&2
-  failures=$((failures + 1))
-fi
 
 if rg -n '^[[:space:]]+[a-z_]+_bps: Bps,' sources/lib/events.move; then
   echo 'Replay events must keep basis-points facts as primitive u64 fields.' >&2
@@ -1217,37 +1159,6 @@ if [[ -z "$launch_config_event_payloads" ]] \
   failures=$((failures + 1))
 fi
 
-graduation_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/graduation.move)"
-
-if [[ ! -f sources/graduation.move ]] \
-  || [[ "$(rg -c '^public\(package\) fun ' <<<"$graduation_production")" != 2 ]] \
-  || ! rg -U -q \
-    'public\(package\) fun partition_meme<Meme>\(\s*mut meme: Balance<Meme>,\s*protocol_meme_graduation_fee_bps: Bps,\s*meme_liquidity_provision_bps: Bps,\s*\): \(Balance<Meme>, Balance<Meme>, Balance<Meme>\)' \
-    sources/graduation.move \
-  || ! rg -U -q \
-    'public\(package\) fun partition_quote<Quote>\(\s*mut quote: Balance<Quote>,\s*quote_migration_fee_bps: Bps,\s*\): \(Balance<Quote>, Balance<Quote>\)' \
-    sources/graduation.move \
-  || rg -n '^public struct|^public fun|^entry fun|^public entry fun' \
-    <<<"$graduation_production" \
-  || rg -n '\b(events::|transfer::|Coin<|TxContext|UID|ID)\b' \
-    <<<"$graduation_production" \
-  || rg -n '\b(derive_outcome|opening_valuation|curve_terminal_valuation|dex_opening_valuation)\b' \
-    <<<"$graduation_production"; then
-  echo 'graduation.move must expose only package-level balance partitions without forecasts, state, events, transfers, or venue dependencies.' >&2
-  failures=$((failures + 1))
-fi
-
-if ! rg -Fq 'protocol_meme_graduation_fee_bps.apply_up(initial_supply)' sources/graduation.move \
-  || ! rg -Fq 'meme_liquidity_provision_bps.apply_down(initial_supply)' sources/graduation.move \
-  || ! rg -Fq 'quote_migration_fee_bps.apply_up(quote.value())' sources/graduation.move \
-  || ! rg -Fq 'provision_amount > 0' sources/graduation.move \
-  || ! rg -Fq 'protocol_meme_fee_amount + provision_amount < initial_supply' \
-    sources/graduation.move \
-  || [[ "$(rg -c '\.split\(' sources/graduation.move)" != 3 ]]; then
-  echo 'Graduation partitions must preserve the accepted ceil/floor, positive-bucket, and balance-custody rules.' >&2
-  failures=$((failures + 1))
-fi
-
 if [[ ! -f sources/launch_ticket.move ]] \
   || ! rg -U -q \
     'public struct LaunchTicket<phantom Meme> has key, store \{\s*id: UID,\s*meme: Balance<Meme>,\s*metadata_cap: MetadataCap<Meme>,\s*creator_authority: CreatorAuthority<Meme>,\s*sell_burn_bps: Bps,\s*\}' \
@@ -1303,7 +1214,28 @@ if [[ -z "$launch_ticket_event_payload" ]] \
   failures=$((failures + 1))
 fi
 
+launch_facts="$(move_facts sources/launch.move)"
 launch_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/launch.move)"
+partition_meme_body="$(move_production_body partition_meme <<<"$launch_facts")"
+partition_quote_body="$(move_production_body partition_quote <<<"$launch_facts")"
+
+if [[ -e sources/graduation.move ]] \
+  || [[ "$(move_production_signature partition_meme <<<"$launch_facts")" \
+    != 'fun partition_meme<Meme>( mut meme: Balance<Meme>, protocol_meme_graduation_fee_bps: Bps, meme_liquidity_provision_bps: Bps, ): (Balance<Meme>, Balance<Meme>, Balance<Meme>)' ]] \
+  || [[ "$(move_production_signature partition_quote <<<"$launch_facts")" \
+    != 'fun partition_quote<Quote>( mut quote: Balance<Quote>, quote_migration_fee_bps: Bps, ): (Balance<Quote>, Balance<Quote>)' ]] \
+  || [[ "$(count_occurrences 'partition_meme\(' <<<"$launch_production")" != 1 ]] \
+  || [[ "$(count_occurrences 'partition_quote\(' <<<"$launch_production")" != 1 ]] \
+  || ! rg -Fq 'protocol_meme_graduation_fee_bps.apply_up(initial_supply)' <<<"$partition_meme_body" \
+  || ! rg -Fq 'meme_liquidity_provision_bps.apply_down(initial_supply)' <<<"$partition_meme_body" \
+  || ! rg -Fq 'provision_amount > 0' <<<"$partition_meme_body" \
+  || ! rg -Fq 'protocol_meme_fee_amount + provision_amount < initial_supply' \
+    <<<"$partition_meme_body" \
+  || [[ "$(count_occurrences '\.split\(' <<<"${partition_meme_body} ${partition_quote_body}")" != 3 ]] \
+  || ! rg -Fq 'quote_migration_fee_bps.apply_up(quote.value())' <<<"$partition_quote_body"; then
+  echo 'launch.move must privately own the accepted graduation ceil/floor, positive-bucket, and balance-custody rules.' >&2
+  failures=$((failures + 1))
+fi
 
 if [[ ! -f sources/launch.move ]] \
   || ! rg -U -q \
@@ -1338,7 +1270,6 @@ if ! rg -Fq 'config.snapshot_for_launch<Quote, MigrationWitness>()' sources/laun
   || ! rg -Fq 'ticket.destroy();' sources/launch.move \
   || ! rg -Fq 'ticket.initial_supply() == constants::meme_total_supply_atomic_units!()' sources/launch.move \
   || ! rg -Fq 'type_name::with_original_ids<Meme>() != type_name::with_original_ids<Quote>()' sources/launch.move \
-  || ! rg -Fq 'graduation::partition_meme(' sources/launch.move \
   || ! rg -Fq 'fee_ledger: fees::new(),' sources/launch.move \
   || ! rg -Fq 'real_quote_reserve: balance::zero(),' sources/launch.move \
   || ! rg -Fq 'pending_burn: balance::zero(),' sources/launch.move \

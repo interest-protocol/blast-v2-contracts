@@ -8,6 +8,9 @@
 > [ADR 0058](0058-eventless-package-initialization.md) removes the
 > `PackageVersionCreated` and `RuntimeConfigCreated` payloads; publication
 > effects and the compiled constants carry those facts.
+> Module-boundary update (2026-09-03):
+> [ADR 0069](0069-consolidate-launch-graduation-and-move-migration-math.md)
+> moves the graduation partitions into `launch.move` as private functions.
 
 - Status: accepted
 - Date: 2026-08-29
@@ -102,7 +105,7 @@ Administrators must still review each admitted struct and confirm that its
 constructor is sealed inside the approved adapter module; Move does not expose
 constructor visibility through `TypeName`.
 
-`graduation::partition_quote` trusts its immutable validated `Bps` snapshot and
+The private `launch` Quote partition trusts its immutable validated `Bps` snapshot and
 does not compare it with a later package generation's policy ceiling. The
 ceiling remains enforced when `LaunchConfig` is changed.
 

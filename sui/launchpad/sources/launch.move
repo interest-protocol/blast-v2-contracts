@@ -13,7 +13,6 @@ use blast_fun::{
     curve,
     events,
     fees::{Self, FeeLedger},
-    graduation,
     launch_config::LaunchConfig,
     launch_ticket::LaunchTicket,
     package_version::PackageVersion,
@@ -102,7 +101,7 @@ public fun new<Meme, Quote, MigrationWitness: drop>(
         ticket.destroy();
     let initial_meme_supply = meme.value();
     let (meme_reserve, protocol_meme_graduation_fee, meme_liquidity_provision) =
-        graduation::partition_meme(
+        partition_meme(
             meme,
             protocol_meme_graduation_fee_bps,
             meme_liquidity_provision_bps,
@@ -422,6 +421,61 @@ public fun redeem_migration<Meme, Quote, MigrationWitness: drop>(
 
 // === Private Functions ===
 
+/// Partitions the initial Meme balance into curve, protocol, and destination-pool custody.
+fun partition_meme<Meme>(
+    mut meme: Balance<Meme>,
+    protocol_meme_graduation_fee_bps: Bps,
+    meme_liquidity_provision_bps: Bps,
+): (Balance<Meme>, Balance<Meme>, Balance<Meme>) {
+    assert!(
+        protocol_meme_graduation_fee_bps.value()
+            <= constants::max_protocol_meme_graduation_fee_bps!(),
+        blast_fun::errors::invalid_protocol_meme_graduation_fee_bps!(),
+    );
+    assert!(
+        meme_liquidity_provision_bps.value() > 0
+            && meme_liquidity_provision_bps.value()
+                <= constants::max_meme_liquidity_provision_bps!(),
+        blast_fun::errors::invalid_meme_liquidity_provision_bps!(),
+    );
+    assert!(
+        protocol_meme_graduation_fee_bps.value()
+            + meme_liquidity_provision_bps.value()
+            < constants::basis_points_denominator!(),
+        blast_fun::errors::invalid_meme_supply_partition_bps!(),
+    );
+
+    let initial_supply = meme.value();
+    let protocol_meme_fee_amount =
+        protocol_meme_graduation_fee_bps.apply_up(initial_supply);
+    let provision_amount = meme_liquidity_provision_bps.apply_down(initial_supply);
+
+    assert!(
+        provision_amount > 0,
+        blast_fun::errors::zero_meme_liquidity_provision!(),
+    );
+    assert!(
+        protocol_meme_fee_amount + provision_amount < initial_supply,
+        blast_fun::errors::zero_meme_curve_inventory!(),
+    );
+
+    let protocol_meme_fee = meme.split(protocol_meme_fee_amount);
+    let provision = meme.split(provision_amount);
+
+    (meme, protocol_meme_fee, provision)
+}
+
+/// Partitions terminal Quote into migration principal and protocol revenue.
+fun partition_quote<Quote>(
+    mut quote: Balance<Quote>,
+    quote_migration_fee_bps: Bps,
+): (Balance<Quote>, Balance<Quote>) {
+    let fee_amount = quote_migration_fee_bps.apply_up(quote.value());
+    let migration_fee = quote.split(fee_amount);
+
+    (quote, migration_fee)
+}
+
 fun assert_live<Meme, Quote>(self: &Launch<Meme, Quote>) {
     assert!(
         self.lifecycle == Lifecycle::Live,
@@ -432,7 +486,7 @@ fun assert_live<Meme, Quote>(self: &Launch<Meme, Quote>) {
 fun accrue_graduation_fees<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
 ): (Balance<Quote>, u64, u64, u64, u64) {
-    let (quote, quote_migration_fee) = graduation::partition_quote(
+    let (quote, quote_migration_fee) = partition_quote(
         self.real_quote_reserve.withdraw_all(),
         self.quote_migration_fee_bps,
     );
@@ -661,6 +715,29 @@ fun emit_created<Meme, Quote>(
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+/// Exposes the private initial Meme partition to focused arithmetic tests.
+public fun partition_meme_for_testing<Meme>(
+    meme: Balance<Meme>,
+    protocol_meme_graduation_fee_bps: Bps,
+    meme_liquidity_provision_bps: Bps,
+): (Balance<Meme>, Balance<Meme>, Balance<Meme>) {
+    partition_meme(
+        meme,
+        protocol_meme_graduation_fee_bps,
+        meme_liquidity_provision_bps,
+    )
+}
+
+#[test_only]
+/// Exposes the private terminal Quote partition to focused arithmetic tests.
+public fun partition_quote_for_testing<Quote>(
+    quote: Balance<Quote>,
+    quote_migration_fee_bps: Bps,
+): (Balance<Quote>, Balance<Quote>) {
+    partition_quote(quote, quote_migration_fee_bps)
+}
 
 #[test_only]
 public fun initial_balances_for_testing<Meme, Quote>(

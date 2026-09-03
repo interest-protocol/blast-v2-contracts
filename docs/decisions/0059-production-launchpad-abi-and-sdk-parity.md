@@ -7,12 +7,19 @@
   [0057](0057-admin-pinned-venue-tiers.md)
 - Amended by: [0062](0062-table-backed-quote-registry.md),
   [0066](0066-aftermath-dao-fee-pool.md), and
-  [0067](0067-retire-full-sail-migrator.md)
+  [0067](0067-retire-full-sail-migrator.md),
+  [0068](0068-compact-lp-fee-principal-snapshot.md), and
+  [0069](0069-consolidate-launch-graduation-and-move-migration-math.md)
 
 > ADR 0062 changes the pre-publication `LaunchConfig.quotes` field from
 > `VecMap` to `Table`. The ABI artifact and SDK parity baseline must be
 > regenerated before the first release; no deployed object is migrated in
 > place.
+>
+> ADR 0069 removes the empty public `graduation` and `migration_math` launchpad
+> modules from the pre-publication surface. Migration arithmetic now has
+> package-only visibility in `blast_fun_migrators`. The ABI artifact is
+> regenerated as an approved amendment.
 
 ## Context
 

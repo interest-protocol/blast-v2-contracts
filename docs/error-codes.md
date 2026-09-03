@@ -76,8 +76,8 @@ the next unused value and must not fill a retired gap.
 | 44 | *(retired)* | — | Quote admission moved to a Table without a protocol cardinality cap. |
 | 45 | `quote_not_allowed` | `launch_config` | The quote type is not admitted for new launches. |
 | 46 | *(retired)* | — | Quote updates now compare the complete virtual/terminal pair under code 65. |
-| 47 | `invalid_quote_migration_fee_bps` | `launch_config`, `graduation` | The Quote migration-fee rate exceeds 500 basis points. |
-| 48 | `invalid_protocol_meme_graduation_fee_bps` | `launch_config`, `graduation` | The Protocol Meme graduation fee rate exceeds 1,000 basis points. |
+| 47 | `invalid_quote_migration_fee_bps` | `launch_config` | The Quote migration-fee rate exceeds 500 basis points. |
+| 48 | `invalid_protocol_meme_graduation_fee_bps` | `launch_config`, `launch` | The Protocol Meme graduation fee rate exceeds 1,000 basis points. |
 | 49 | `graduation_defaults_unchanged` | `launch_config` | A graduation-default update supplied the complete active triple. |
 | 50 | `migration_witness_already_allowed` | `launch_config` | The migration witness type is already admitted for future launches. |
 | 51 | `migration_witness_capacity_reached` | `launch_config` | The bounded migration-witness whitelist is full. |
@@ -88,11 +88,11 @@ the next unused value and must not fill a retired gap.
 | 56 | `invalid_package_publisher` | `package_admin` | The supplied `Publisher` was not claimed by Blast's canonical package module. |
 | 57 | `upgrade_policy_not_more_restrictive` | `package_admin` | The requested UpgradeCap policy is equal to or looser than the current policy. |
 | 58 | *(retired)* | — | Premature governance cutover removed by ADR 0034. |
-| 59 | `invalid_meme_liquidity_provision_bps` | `launch_config`, `graduation` | The destination-pool Meme provision rate is zero or exceeds 9,999 basis points. |
-| 60 | `invalid_meme_supply_partition_bps` | `launch_config`, `graduation` | Protocol Meme graduation fee plus pool provision leaves no positive rate for curve inventory. |
+| 59 | `invalid_meme_liquidity_provision_bps` | `launch_config`, `launch` | The destination-pool Meme provision rate is zero or exceeds 9,999 basis points. |
+| 60 | `invalid_meme_supply_partition_bps` | `launch_config`, `launch` | Protocol Meme graduation fee plus pool provision leaves no positive rate for curve inventory. |
 | 61 | *(retired)* | — | Caller-configurable Meme decimals removed by ADR 0036; generated currencies always use nine decimals. |
-| 62 | `zero_meme_liquidity_provision` | `graduation` | A positive destination-pool provision rate rounded to zero Meme atomic units. |
-| 63 | `zero_meme_curve_inventory` | `graduation` | Rounded protocol Meme graduation fee and pool provision consumed the complete initial Meme balance. |
+| 62 | `zero_meme_liquidity_provision` | `launch` | A positive destination-pool provision rate rounded to zero Meme atomic units. |
+| 63 | `zero_meme_curve_inventory` | `launch` | Rounded protocol Meme graduation fee and pool provision consumed the complete initial Meme balance. |
 | 64 | `invalid_virtual_quote` | `launch_config` | A Quote policy supplied a zero virtual Quote reserve. |
 | 65 | `quote_parameters_unchanged` | `launch_config` | A Quote-policy update supplied the complete active virtual/terminal parameter pair. |
 | 66 | `creator_authority_unavailable` | `launch` | The launch no longer contains its one-time creator authority and native metadata capability. |
@@ -108,9 +108,9 @@ the next unused value and must not fill a retired gap.
 | 76 | `invalid_meme_quote_pair` | `launch` | A launch selected the generated Meme type as its own Quote type. |
 | 77 | `invalid_initial_meme_supply` | `launch` | A launch ticket did not contain the canonical generated Meme supply. |
 | 78 | `invalid_migration_witness_type` | `launch_config` | A migration witness was a primitive or vector type instead of an adapter-defined struct. |
-| 79 | `invalid_migration_seed_balance` | `migration_math` | Migration price derivation received a zero Meme or Quote seed balance. |
-| 80 | `migration_price_deviation_exceeded` | `migration_math` | An observed CLMM price is outside the adapter's accepted deviation from the exact seed ratio. |
-| 81 | `migration_residual_exceeded` | `migration_math` | Venue rounding returned more unseeded migration principal than the allowed residual bound. |
+| 79 | *(moved)* | — | Seed-balance validation moved to `blast_fun_migrators::migration_math` under ADR 0069; this launchpad code remains reserved. |
+| 80 | *(moved)* | — | Price-deviation validation moved to `blast_fun_migrators::migration_math` under ADR 0069; this launchpad code remains reserved. |
+| 81 | *(moved)* | — | Residual validation moved to `blast_fun_migrators::migration_math` under ADR 0069; this launchpad code remains reserved. |
 
 The next new package-wide protocol error must use code **82**.
 
@@ -122,6 +122,8 @@ numeric space:
 
 | Package | Registry | Codes in use |
 | --- | --- | ---: |
-| `blast_leverage_coins` | [`sui/leverage_coins/README.md`](../sui/leverage_coins/README.md#error-registry) | 0 through 21 |
+| `blast_fun_migrators` | [`sui/migrators/README.md`](../sui/migrators/README.md#migration-math-errors) | Module-local registries; migration math uses 0 through 3 |
+| `blast_leverage_coins` | [`sui/leverage_coins/README.md`](../sui/leverage_coins/README.md#error-registry) | 0 through 31 |
 
-A frontend, SDK, or indexer must map an abort by package first and code second.
+A frontend, SDK, or indexer must map an abort by package and raising module
+first, then by code.
