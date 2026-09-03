@@ -136,8 +136,9 @@ Independent of those final values, every Series leverage policy satisfies:
 ```
 
 The strict upper-to-hard-cap gap ensures the ordinary reduction threshold is
-reached before the terminal risk limit. `leverage_bounds.move` validates this
-relationship without compiling any proposed economic value into the package.
+reached before the terminal risk limit. `series.move` constructs a
+typed `LeverageBounds` value and validates this relationship without compiling
+any proposed economic value into the package.
 
 The planned Move abilities make custody and temporary authority explicit:
 
@@ -146,7 +147,8 @@ The planned Move abilities make custody and temporary authority explicit:
 | `Series<Share, USDC>` | `key` | Shared core supply and lifecycle authority; cannot be wrapped or transferred as a child. |
 | `VenueAccount<Share, USDC>` | `key` | Shared adapter custody for the one Aftermath admin cap; cannot be wrapped or transferred as a child. |
 | `SeriesPolicy` | `copy, drop, store` | Immutable validated numeric and direction values stored inside Series. |
-| `LeverageBounds` | `copy, drop, store` | Strictly ordered lower, target, upper, and hard-cap leverage values stored by the future Series policy. |
+| `LeverageBounds` | `copy, drop, store` | Strictly ordered lower, target, upper, and hard-cap leverage values constructed and stored within the future Series policy. |
+| `ValuationPolicy` | `copy, drop, store` | Immutable validated freshness, confidence, and mark-divergence bounds stored by the future Series policy. |
 | `PositionCheckpoint` | `copy, drop, store` | Venue mutation primitives stored inside VenueAccount. |
 | `Lifecycle` | `drop, store` | Closed non-copyable internal state enum. |
 | `AdapterWitness` | `drop` | Ephemeral package-authentic witness with a package-only constructor. |
@@ -286,6 +288,44 @@ Shareholder NAV must be positive before minting or increasing risk. An
 unrepresentable, zero, or negative result causes an objective transition to
 `ReduceOnly` or `Shutdown` through a separate sync call.
 
+The `ValuationPolicy` type in `series.move` fixes the locally enforceable
+shape of these rules without selecting a value or naming a source. It stores
+four immutable `u64` bounds and applies them through three gates:
+
+- price freshness is the closed interval
+  `[reference - max_price_age_ms, reference + max_price_ahead_ms]` on the
+  operation's single millisecond time reading, so an update is rejected both
+  when it is too old and when it is stamped too far ahead, with a distinct
+  abort code for each side;
+- a source's absolute confidence interval must satisfy
+  `confidence * 10_000 <= max_confidence_bps * price`; and
+- the venue mark must satisfy
+  `abs(mark - index) * 10_000 <= max_mark_divergence_bps * index`.
+
+The first two gates apply to each share-pricing source, so every priced
+operation and every risk increase runs them for both the base index and the
+collateral oracle. The third is a venue margin-safety gate only; its input
+never reaches shareholder NAV, share pricing, or accounting leverage, which the
+package's source-boundary script enforces mechanically.
+
+Every bound is inclusive, `max_price_age_ms` must be positive because the
+structural policy requires nonzero historical-age tolerance, the two relative
+bounds may be zero but must stay below 10,000 so a degenerate observation is
+always rejected, and both gated prices must be positive. Positivity does not
+prove that the selected age supports the deployed source cadence; that remains
+a live integration and simulation gate. Both relative gates cross-multiply
+through `u128`, and the freshness comparison branches on operand order, so
+neither can wrap or underflow at maximum `u64` width.
+
+Three things stay open. The operation-scoped linear valuation carrier that
+would prove one captured pair priced both sides of an operation cannot be built
+before the adapter handoff design is accepted: only the adapter can construct
+such a value, that requires a public core seam the pre-Series package does not
+have, and its field layout depends on the signed fixed-point normalization of
+premise P17. Exact source identity, binding, and authentication remain with
+`VenueAccount` and the adapter. Every millisecond and basis-point value remains
+a simulation and live-market selection.
+
 ### Mint accounting
 
 Let:
@@ -312,7 +352,7 @@ charge the depositor twice. With no venue fee or slippage,
 `N1 = N0 + D - F`. Actual venue fees and slippage reduce `N1` further, so the
 depositor pays them.
 
-The production call path uses `maintenance_math::mint_accounting_quote` with
+The production call path uses `accounting_math::mint_accounting_quote` with
 `E0`, `E1`, and `R0`. It derives `R1`, `N0`, and `N1` together before calling
 the low-level share formula and returns both NAV inputs for the proportional
 exposure and final-leverage checks. A Series transition may not derive both NAV
@@ -434,7 +474,7 @@ longer participates in share pricing. If the book cannot produce the minimum
 safe exit, the transaction aborts instead of silently diluting the Series.
 
 The production call path uses
-`maintenance_math::redemption_accounting_quote`. It derives both pre-redemption
+`accounting_math::redemption_accounting_quote`. It derives both pre-redemption
 and post-unwind NAV with `R0`, calculates the claim, and only then derives
 `R_final`. This ordering is not left to the Series caller.
 
@@ -579,8 +619,8 @@ cash snapshot becomes redeemable:
 | `ShutdownPending` | no | no | close or settle only | no payout | sync; late-inflow policy remains a Series gate |
 | `ShutdownSettled` | no | no | no venue position remains | pro-rata settled cash only | sync; no second settlement snapshot |
 
-`series_lifecycle.move` owns the closed enum, lifecycle predicates, operation
-guards, and only these monotone transitions:
+`series.move` owns the closed enum, lifecycle predicates, operation guards, and
+only these monotone transitions:
 
 ```text
 Active     -> ReduceOnly
@@ -592,10 +632,9 @@ The module deliberately does not expose `ReduceOnly -> Active` or
 `ShutdownPending -> ShutdownSettled`. A source-state check cannot prove the
 cooldown, authority, venue health, cash custody, funding settlement, or reserve
 reclassification required by those upgrades. The future `Series` transitions
-must validate those complete proofs before they add and call the corresponding
-package-only lifecycle operations. No module may construct a lifecycle variant
-directly outside `series_lifecycle`, and only `series.move` may consume its
-production predicates, guards, and transitions.
+must validate those complete proofs before adding the corresponding lifecycle
+operations in the same owner. No other production module may construct a
+lifecycle variant or consume the Series policy and lifecycle rules.
 
 An objective `sync_health` can enter `ReduceOnly` when it observes stale or
 mismatched external state, unsafe market parameters, liquidation, ADL,
@@ -678,11 +717,8 @@ gates rather than assumptions hidden in code.
 blast.move                package OTW and Publisher intake
 sui2l.move                SUI2L OTW, currency, and metadata
 sui2s.move                SUI2S OTW, currency, and metadata
-series.move               Series creation and lifecycle transitions
-series_lifecycle.move     closed lifecycle, degradation, and operation guards
-leverage_bounds.move      immutable validated leverage-band ordering
-share_math.move           pure fee, share, leverage, and exposure math
-maintenance_math.move     pure reserve and shareholder-NAV accounting
+series.move               immutable policy, lifecycle, and future Series transitions
+accounting_math.move      pure share, exposure, reserve, and shareholder-NAV accounting
 venue_handoff.move        no-ability instructions and completion tokens
 acl.move                  routine admin and guardian witnesses
 package_admin.move        Publisher, UpgradeCap, and metadata-cap custody
@@ -796,11 +832,13 @@ site and at least one adversarial test.
 | I22 | Old core or adapter bytecode cannot mutate current state. | Operational version gate at every mutator. |
 | I23 | The launchpad cannot influence NAV, leverage, or venue authority. | No dependency; exact Quote allowlist only. |
 | I24 | Shutdown redemption can distribute only verified cash, including any terminally released reserve, and cannot reopen exposure. | Flat cash-only, empty-order, settled-funding checkpoint; reserve reclassification; floor pro-rata payout; no fee. |
-| I25 | Share pricing cannot use caller-selected or book-only prices. | Fixed market-bound oracle pair for pre/post NAV; separate mark and margin checks. |
+| I25 | Share pricing cannot use caller-selected or book-only prices. | Fixed market-bound oracle pair for pre/post NAV; separate mark and margin checks. The `ValuationPolicy` type in `series.move` enforces the two-sided freshness window, the confidence bound, and the mark-versus-index divergence bound, and the source-boundary script rejects mark-identified inputs in `accounting_math`; semantic review must still trace arbitrarily named numeric inputs. The linear valuation carrier and exact source binding remain open. |
 | I26 | A share-changing operation preserves proportional exposure within the operation-captured live-lot rounding bound, and repeated operations cannot evade the selected cumulative drift limit. | Mint and redemption reject a proportional exposure change below `min_exposure_lots` live lots unless a redemption reaches flat; mint sizes from `D - F` and admits a final base only inside `Q0 + [min(delta(C), delta(D - F)), delta(D - F)]`; redemption admits a final base only inside `Q_min` to `Q_keep`. The relative cap bounds cumulative drift to about `L0 * (N0 / N)^(1 / min_exposure_lots)`. Simulation selects `min_exposure_lots`, and mint must still enforce the final leverage-band gate. |
 | I27 | A total-equity delta cannot masquerade as funding or hide a reserve impairment. | Exact funding-accumulator proof; `R <= E` for priced operations; separate objective loss sync. |
 | I28 | Lifecycle degradation is monotone until a complete Series proof authorizes an upgrade. | Closed four-state enum; only `Active -> ReduceOnly`, `Active -> ShutdownPending`, and `ReduceOnly -> ShutdownPending` exist before Series integration; resume and settlement finalization require their full proofs. |
-| I29 | Every constructed leverage policy has a positive, strictly ordered operating band below its hard cap. | Private `LeverageBounds` fields and its only package constructor enforce `0 < lower < target < upper < hard cap`; only the future `series.move` may consume the type. |
+| I29 | Every constructed leverage policy has a positive, strictly ordered operating band below its hard cap. | `series.move` exclusively constructs private `LeverageBounds` fields while creating `SeriesPolicy` and enforces `0 < lower < target < upper < hard cap` before every other policy guard. |
+| I30 | Every constructed preliminary Series policy fixes a long or short direction, embeds validated leverage bounds, keeps both fee rates below 10,000, and has positive minimum exposure lots and NAV cap. | Private `SeriesPolicy` fields, the closed `PositionSide` enum, its package constructor, and the source-boundary gate; production values and the remaining policy fields stay blocked until their design and simulation gates close. |
+| I31 | Every constructed valuation policy fixes a two-sided freshness window with positive historical-age tolerance, keeps the confidence and mark-divergence bounds below 10,000 basis points, and its gates reject a stale, future-dated, zero-priced, low-confidence, or divergent observation without wrapping or underflowing at `u64` width. | Private `ValuationPolicy` fields, its `series::new_valuation` package constructor, and its three package gates, with every assertion defined on the same non-aborting predicate the objective health transition observes; the source-boundary gate keeps mark-identified inputs out of the shareholder-NAV and share-pricing math. The operation-scoped linear valuation carrier, exact source binding and authentication, selected millisecond and basis-point values, and proof that the age supports the live source cadence stay blocked on the adapter handoff design, premises P16 through P20, and simulation. |
 
 ## Alternatives considered
 

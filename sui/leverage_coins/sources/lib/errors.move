@@ -102,6 +102,42 @@ const EInvalidMinExposureLots: u64 = 21;
 /// Series leverage bounds must satisfy 0 < lower < target < upper < hard cap.
 const EInvalidLeverageBounds: u64 = 22;
 
+#[test_only]
+/// A Series NAV cap must be positive.
+const EInvalidSeriesNavCap: u64 = 23;
+
+#[test_only]
+/// A valuation maximum age must be positive.
+const EInvalidMaxPriceAge: u64 = 24;
+
+#[test_only]
+/// A valuation confidence bound must be below the basis-point denominator.
+const EInvalidMaxConfidenceBps: u64 = 25;
+
+#[test_only]
+/// A mark divergence bound must be below the basis-point denominator.
+const EInvalidMaxMarkDivergenceBps: u64 = 26;
+
+#[test_only]
+/// A valuation observation is older than the policy freshness budget.
+const EStaleValuation: u64 = 27;
+
+#[test_only]
+/// A valuation observation is stamped further ahead than the policy skew budget.
+const EFutureValuation: u64 = 28;
+
+#[test_only]
+/// A gated valuation price must be positive.
+const EInvalidValuationPrice: u64 = 29;
+
+#[test_only]
+/// A valuation confidence interval exceeds the policy bound.
+const EConfidenceExceedsBound: u64 = 30;
+
+#[test_only]
+/// The venue mark diverges from the index beyond the policy bound.
+const EMarkIndexDivergenceExceedsBound: u64 = 31;
+
 macro public(package) fun zero_amount(): u64 {
     0
 }
@@ -192,4 +228,40 @@ macro public(package) fun invalid_min_exposure_lots(): u64 {
 
 macro public(package) fun invalid_leverage_bounds(): u64 {
     22
+}
+
+macro public(package) fun invalid_series_nav_cap(): u64 {
+    23
+}
+
+macro public(package) fun invalid_max_price_age(): u64 {
+    24
+}
+
+macro public(package) fun invalid_max_confidence_bps(): u64 {
+    25
+}
+
+macro public(package) fun invalid_max_mark_divergence_bps(): u64 {
+    26
+}
+
+macro public(package) fun stale_valuation(): u64 {
+    27
+}
+
+macro public(package) fun future_valuation(): u64 {
+    28
+}
+
+macro public(package) fun invalid_valuation_price(): u64 {
+    29
+}
+
+macro public(package) fun confidence_exceeds_bound(): u64 {
+    30
+}
+
+macro public(package) fun mark_index_divergence_exceeds_bound(): u64 {
+    31
 }

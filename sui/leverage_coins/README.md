@@ -20,10 +20,11 @@ that the coins target approximately 2x exposure and can be liquidated.
 
 ## This package is not publishable
 
-The current slice contains pure consensus-critical arithmetic, validated
-immutable leverage bounds, and an isolated Series lifecycle state machine. It
-has no currency, no shared object, no capability custody, no adapter, no event,
-and no asset-moving state transition. Do not publish it.
+The current slice contains pure consensus-critical arithmetic and one
+Series-domain module with locally validated immutable policy carriers and an
+isolated lifecycle state machine. It has no currency, no shared object, no
+capability custody, no adapter, no event, and no asset-moving state transition.
+Do not publish it.
 
 The package deliberately contains none of these:
 
@@ -40,26 +41,25 @@ gates below are met.
 
 ## Modules
 
-- `share_math.move` — pure share, fee, leverage, and proportional-exposure
-  arithmetic. Every domain operation is `public(package)`; the narrowing helper
-  is private. Its mint formula takes an already-derived contribution; its
-  redemption formula takes the valuation pair. Its exposure functions size a
-  mint, bound a mint fill, and bound a redemption unwind.
-- `maintenance_math.move` — pure shareholder-NAV, reserve-credit, and exact
-  negative-funding absorption arithmetic. Its canonical mint and redemption
-  quotes derive reserve checkpoints and shareholder NAV together and compute
-  each fee exactly once. Its leverage, target-notional, mint-exposure, and
-  mint-bound wrappers derive shareholder NAV from venue equity and reserve.
-  The later Series must use these reserve-aware functions. This module cannot
-  authenticate venue funding; the later adapter and Series transition own that
-  obligation.
-- `series_lifecycle.move` — the closed four-state Series lifecycle, monotone
-  degradation, predicates, and operation-permission guards. It cannot resume a
-  Series or finalize shutdown because those upgrades require authority, time,
-  venue, funding, custody, and reserve proofs owned by the future Series.
-- `leverage_bounds.move` — a validated immutable value satisfying
-  `0 < lower < target < upper < hard cap`. It fixes the consensus-critical
-  ordering without selecting the production values that simulation still owns.
+- `accounting_math.move` — pure share, fee, leverage, exposure, shareholder-NAV,
+  reserve-credit, and exact negative-funding absorption arithmetic. Its
+  package-visible mint, redemption, leverage, target-notional, and mint-exposure
+  operations derive shareholder NAV from venue equity and reserve. Raw
+  NAV-taking formulas are private and exposed only through test-only seams, so
+  future state modules cannot bypass reserve accounting. Redemption exposure
+  bounds remain package-visible because they depend only on supply and base
+  exposure. This module cannot authenticate venue funding; the later adapter
+  and Series transition own that obligation.
+- `series.move` — the single Series-domain owner. This pre-custody slice owns
+  the immutable long/short, leverage, fee, operation-size, NAV-cap, freshness,
+  confidence, and mark-divergence policy carriers and their local validation.
+  It also owns the closed four-state lifecycle, monotone degradation,
+  predicates, and operation-permission guards. The policy types remain
+  distinct, but one module controls their construction and is the future home
+  of the shared `Series` object. It contains no production values, binds no
+  valuation source, and cannot resume or settle shutdown before the authority,
+  time, venue, funding, custody, and reserve proofs exist. See
+  [Valuation gates](#valuation-gates).
 - `lib/constants.move` — the basis-point denominator.
 - `lib/errors.move` — the append-only numeric error registry. It is
   diagnostic-only: it has no state, no authority, and no assertion.
@@ -75,6 +75,10 @@ gates below are met.
 | fee rate | basis points below 10,000 | proves `fee <= amount` |
 | leverage rate | basis points of 1x | `20_000` is 2x; no 10,000 ceiling |
 | minimum operation size | live venue lots | `min_exposure_lots`, an immutable Series policy value supplied by the caller; this package holds no value for it |
+| Series NAV cap | atomic collateral (USDC) | immutable positive policy value; simulation selects its value |
+| price freshness window | milliseconds | `max_price_age_ms` and `max_price_ahead_ms`, both immutable policy values on the on-chain millisecond scale |
+| price confidence | absolute interval in the price's own units | bounded by `max_confidence_bps` basis points of that price |
+| mark divergence | absolute difference in the index's own units | bounded by `max_mark_divergence_bps` basis points of the index |
 
 Every input is a `u64`. Every product uses a `u128` or wider intermediate, so a
 `u64` times a `u64` cannot wrap. Every potentially unbounded result passes the
@@ -161,11 +165,11 @@ reserve, then credits the new fee. Final shareholder NAV is exactly
 split-redemption fee-recapture path; the later atomic state transition must use
 these canonical functions and reconcile their outputs.
 
-The source-boundary gate rejects any future production module other than
-`maintenance_math` that directly calls the low-level `share_math` mint or
-redemption quote or its NAV-sensitive leverage, mint-exposure, and mint-bound
-functions. It also rejects any production caller of bare funding-cost
-absorption until the typed funding-completion path exists.
+The raw NAV-taking formulas are private inside `accounting_math`, so the Move
+compiler rejects any future production module that tries to bypass the
+reserve-aware operations. The source-boundary gate separately rejects any
+production caller of bare funding-cost absorption until the typed
+funding-completion path exists.
 
 Only an exact authenticated negative funding settlement may debit the reserve
 during normal operation:
@@ -193,6 +197,76 @@ shutdown transition may reclassify the remaining reserve into distributable
 cash only after it proves a flat account, no pending orders, and no unsettled
 funding. That required release path is not implemented in Phase 1.
 
+## Valuation gates
+
+The `ValuationPolicy` type in `series.move` fixes the locally enforceable shape
+of the freshness,
+confidence, and index-versus-mark rules that ADR 0064 I25 requires. It holds
+four immutable `u64` bounds and applies them through three gates. It selects no
+value, reads no source, and binds no source identity.
+
+| Gate | Rule | Applies to |
+| --- | --- | --- |
+| `assert_price_fresh` | `published_at_ms` lies in the closed interval `[reference - max_price_age_ms, reference + max_price_ahead_ms]` | each share-pricing source, so every priced operation and every risk increase |
+| `assert_confidence_within_bound` | `confidence * 10_000 <= max_confidence_bps * price` | each share-pricing source, so every priced operation and every risk increase |
+| `assert_mark_within_index_divergence` | `abs(mark - index) * 10_000 <= max_mark_divergence_bps * index` | venue margin safety only; never share pricing, NAV, or accounting leverage |
+
+Share pricing stays base-index plus collateral-oracle valuation. The venue mark
+is only the separate margin-safety and divergence check, so the boundary script
+rejects standalone and snake-case `mark` identifiers in `accounting_math`.
+This lexical gate supports review; it does not authenticate the economic origin
+of an arbitrarily named numeric input.
+
+Boundary and width semantics:
+
+- Every bound is inclusive. An observation exactly at a bound is admitted and
+  the first rejected value is one unit past it.
+- Freshness branches on the order of its two operands, so neither subtraction
+  can underflow, and the window saturates instead of wrapping at `u64` width.
+- Both relative bounds cross-multiply through `u128` rather than dividing, so a
+  maximum-width price with a maximum-width interval cannot wrap and no result
+  needs narrowing.
+- A stale update and a future-dated update abort with different codes because an
+  outage and a skewed or misreporting source need different responses.
+- Both gated prices must be positive. A zero price makes a relative bound
+  meaningless and is itself a source failure, so it fails closed before the
+  bound is read.
+
+Zero-policy validity:
+
+- `max_price_age_ms` must be positive because the structural policy requires a
+  nonzero historical-age tolerance. Positivity alone does not prove that the
+  selected value supports the deployed source cadence; that remains a live
+  integration and simulation gate.
+- `max_price_ahead_ms` may be zero. Zero is the strictest clock-skew policy and
+  rejects the first millisecond after the reference time.
+- `max_confidence_bps` and `max_mark_divergence_bps` may be zero, which demands
+  an exact price and an exact mark. Both must stay below 10,000: at or above the
+  denominator a confidence interval may span the complete price and a divergence
+  bound admits a zero mark, so the gate would stop constraining the observation.
+- No upper millisecond bound is structural. The deployed source cadence, keeper
+  latency, venue margin parameters, and simulation select every value.
+
+Each assertion has a matching non-aborting predicate for the future objective
+health transition: `is_price_fresh`, `is_confidence_within_bound`, and
+`is_mark_within_index_divergence`. The transition can therefore observe any
+valuation-policy failure and persist lifecycle degradation instead of rolling
+its own transaction back. Each assertion is defined on its corresponding
+predicate, so the operation gate and health observation cannot disagree.
+
+What this module does not close:
+
+- the operation-scoped linear valuation carrier that would make one captured
+  pair provably the same for the pre- and post-operation checks. It cannot be
+  built here: only the adapter can construct such a value, that requires a
+  `public` core seam this slice forbids, and its field layout depends on the
+  unresolved signed fixed-point normalization of premise P17;
+- exact source identity, binding, and authentication, which stay with the future
+  `VenueAccount` and adapter. Nothing here proves which source produced an
+  observation or that a caller did not choose among historical updates;
+- the numbers. Every millisecond and basis-point value is a simulation and
+  live-market gate.
+
 ## Error registry
 
 Codes are append-only. A retired code stays reserved. Each new code must ship
@@ -205,31 +279,40 @@ independent because Sui scopes abort codes to the raising package.
 
 | Code | Macro | Raised from | Meaning |
 | ---: | --- | --- | --- |
-| 0 | `zero_amount` | `share_math` | A fee calculation requires a positive atomic collateral amount. |
-| 1 | `invalid_fee_bps` | `share_math` | A fee rate must be below the 10,000 basis-point denominator. |
-| 2 | `invalid_nav` | `share_math` | A priced operation requires positive Series NAV. |
-| 3 | `invalid_share_supply` | `share_math` | A priced operation requires positive share supply. |
-| 4 | `invalid_share_amount` | `share_math` | Presented shares must be positive and below the live supply. |
-| 5 | `nonpositive_contribution` | `maintenance_math`, `share_math` | A mint requires a positive shareholder NAV contribution. |
-| 6 | `zero_shares_out` | `share_math` | A positive credited contribution rounded down to zero shares. |
-| 7 | `nonpositive_gross` | `share_math` | Post-unwind NAV does not exceed the equity kept for remaining shares. |
-| 8 | `zero_net_payout` | `share_math` | The redemption fee consumed the complete gross claim. |
-| 9 | `invalid_target_leverage_bps` | `share_math` | A target leverage rate must be positive. |
-| 10 | `invalid_lot_size` | `share_math` | A venue lot size must be positive. |
-| 11 | `invalid_base_exposure` | `share_math` | A proportional mint requires positive pre-mint absolute base. |
-| 12 | `sub_lot_exposure_delta` | `share_math` | A proportional mint or redemption exposure delta is below the required minimum lot multiple. |
-| 13 | `redemption_under_reduced` | `share_math` | The final absolute base exceeds the proportional remaining base. |
-| 14 | `redemption_over_reduced` | `share_math` | The final absolute base is more than one lot below the proportional remaining base without reaching flat. |
-| 15 | `arithmetic_overflow` | `share_math`, `maintenance_math` | A wide intermediate, reserve credit, or mint upper bound exceeds the supported `u64` range. |
-| 16 | `maintenance_reserve_exceeds_equity` | `maintenance_math` | The maintenance reserve exceeds the venue equity that backs it. |
-| 17 | `invalid_lifecycle_transition` | `series_lifecycle` | The current Series lifecycle cannot make the requested state transition. |
-| 18 | `operation_not_permitted_in_lifecycle` | `series_lifecycle` | The current Series lifecycle does not permit the requested operation. |
-| 19 | `mint_over_exposed` | `share_math` | The final absolute base exceeds the pre-mint base plus the planned proportional delta. |
-| 20 | `mint_under_exposed` | `share_math` | The final absolute base is below the pre-mint base plus the delta funded by the actual credited contribution. |
-| 21 | `invalid_min_exposure_lots` | `share_math` | A minimum exposure lot multiple must be positive. |
-| 22 | `invalid_leverage_bounds` | `leverage_bounds` | Series leverage bounds do not satisfy `0 < lower < target < upper < hard cap`. |
+| 0 | `zero_amount` | `accounting_math` | A fee calculation requires a positive atomic collateral amount. |
+| 1 | `invalid_fee_bps` | `accounting_math`, `series` | A fee rate must be below the 10,000 basis-point denominator. |
+| 2 | `invalid_nav` | `accounting_math` | A priced operation requires positive Series NAV. |
+| 3 | `invalid_share_supply` | `accounting_math` | A priced operation requires positive share supply. |
+| 4 | `invalid_share_amount` | `accounting_math` | Presented shares must be positive and below the live supply. |
+| 5 | `nonpositive_contribution` | `accounting_math` | A mint requires a positive shareholder NAV contribution. |
+| 6 | `zero_shares_out` | `accounting_math` | A positive credited contribution rounded down to zero shares. |
+| 7 | `nonpositive_gross` | `accounting_math` | Post-unwind NAV does not exceed the equity kept for remaining shares. |
+| 8 | `zero_net_payout` | `accounting_math` | The redemption fee consumed the complete gross claim. |
+| 9 | `invalid_target_leverage_bps` | `accounting_math` | A target leverage rate must be positive. |
+| 10 | `invalid_lot_size` | `accounting_math` | A venue lot size must be positive. |
+| 11 | `invalid_base_exposure` | `accounting_math` | A proportional mint requires positive pre-mint absolute base. |
+| 12 | `sub_lot_exposure_delta` | `accounting_math` | A proportional mint or redemption exposure delta is below the required minimum lot multiple. |
+| 13 | `redemption_under_reduced` | `accounting_math` | The final absolute base exceeds the proportional remaining base. |
+| 14 | `redemption_over_reduced` | `accounting_math` | The final absolute base is more than one lot below the proportional remaining base without reaching flat. |
+| 15 | `arithmetic_overflow` | `accounting_math` | A wide intermediate, reserve credit, or mint upper bound exceeds the supported `u64` range. |
+| 16 | `maintenance_reserve_exceeds_equity` | `accounting_math` | The maintenance reserve exceeds the venue equity that backs it. |
+| 17 | `invalid_lifecycle_transition` | `series` | The current Series lifecycle cannot make the requested state transition. |
+| 18 | `operation_not_permitted_in_lifecycle` | `series` | The current Series lifecycle does not permit the requested operation. |
+| 19 | `mint_over_exposed` | `accounting_math` | The final absolute base exceeds the pre-mint base plus the planned proportional delta. |
+| 20 | `mint_under_exposed` | `accounting_math` | The final absolute base is below the pre-mint base plus the delta funded by the actual credited contribution. |
+| 21 | `invalid_min_exposure_lots` | `accounting_math`, `series` | A minimum exposure lot multiple must be positive. |
+| 22 | `invalid_leverage_bounds` | `series` | Series leverage bounds do not satisfy `0 < lower < target < upper < hard cap`. |
+| 23 | `invalid_series_nav_cap` | `series` | A Series NAV cap is zero. |
+| 24 | `invalid_max_price_age` | `series` | A valuation maximum age is zero. |
+| 25 | `invalid_max_confidence_bps` | `series` | A confidence bound is not below the 10,000 basis-point denominator. |
+| 26 | `invalid_max_mark_divergence_bps` | `series` | A mark divergence bound is not below the 10,000 basis-point denominator. |
+| 27 | `stale_valuation` | `series` | A source update is older than the policy freshness budget. |
+| 28 | `future_valuation` | `series` | A source update is stamped further ahead than the policy clock-skew budget. |
+| 29 | `invalid_valuation_price` | `series` | A gated valuation price or index is zero. |
+| 30 | `confidence_exceeds_bound` | `series` | A price's confidence interval exceeds the policy bound. |
+| 31 | `mark_index_divergence_exceeds_bound` | `series` | The venue mark diverges from the index beyond the policy bound. |
 
-The next new error must use code 23.
+The next new error must use code 32.
 
 ## Verification
 
@@ -254,21 +337,23 @@ accepted decision, implementation slice, and review.
    [design audit](../../docs/research/claude-opus-5-leverage-design-audit-2026-09-01.md),
    the [Phase 1 code audit](../../docs/research/claude-fable-5-1-leverage-coins-audit-2026-09-02.md),
    and the [implementation lessons](../../docs/leverage-implementation-lessons.md)
-   leave open: the immutable valuation carrier and its freshness, confidence,
-   and index-versus-mark rules; the exhaustive external-mutation checkpoint and
-   `sync_health` refresh rules; permissionless rebalance execution and sizing
-   bounds; emergency deleverage tolerance; construction authority and ACL
-   rotation; maximum supply, minimum NAV per share, minimum seed, and shutdown
-   cash rules.
+   leave open: the operation-scoped linear valuation carrier plus exact source
+   binding and authentication, which `series.move` deliberately does
+   not close; the exhaustive external-mutation checkpoint and `sync_health`
+   refresh rules; permissionless rebalance execution and sizing bounds;
+   emergency deleverage tolerance; construction authority and ACL rotation;
+   maximum supply, minimum NAV per share, minimum seed, and shutdown cash
+   rules.
 2. Resolve premises P16 through P20 against the deployed Aftermath
    implementation and state. The public Aftermath interface aborts in every
    function body, so it proves type layouts and call signatures only. No
    premise is resolved today.
 3. Select the final band, hard leverage cap, margin buffer, fee rates, seed,
-   `min_exposure_lots`, and Series NAV cap from historical and book-depth
-   simulation, separately for the long and the short Series. This package
-   contains no economic parameter, and the 1.8x to 2.2x band in ADR 0064 stays
-   a hypothesis.
+   `min_exposure_lots`, Series NAV cap, price freshness window, confidence
+   bound, and mark divergence bound from historical, book-depth, and source
+   cadence simulation, separately for the long and the short Series. This
+   package contains no economic parameter, and the 1.8x to 2.2x band in
+   ADR 0064 stays a hypothesis.
 4. Add the `Series` object and integrate its lifecycle, currencies, treasury
    custody, package administration, the operational version gate, and wrapped
    events. Resume and shutdown finalization must arrive only with their complete

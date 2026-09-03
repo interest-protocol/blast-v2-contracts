@@ -49,4 +49,25 @@ fun package_error_registry_is_stable() {
         21,
     );
     assert_eq!(blast_leverage_coins::errors::invalid_leverage_bounds!(), 22);
+    assert_eq!(blast_leverage_coins::errors::invalid_series_nav_cap!(), 23);
+    assert_eq!(blast_leverage_coins::errors::invalid_max_price_age!(), 24);
+    assert_eq!(
+        blast_leverage_coins::errors::invalid_max_confidence_bps!(),
+        25,
+    );
+    assert_eq!(
+        blast_leverage_coins::errors::invalid_max_mark_divergence_bps!(),
+        26,
+    );
+    assert_eq!(blast_leverage_coins::errors::stale_valuation!(), 27);
+    assert_eq!(blast_leverage_coins::errors::future_valuation!(), 28);
+    assert_eq!(blast_leverage_coins::errors::invalid_valuation_price!(), 29);
+    assert_eq!(
+        blast_leverage_coins::errors::confidence_exceeds_bound!(),
+        30,
+    );
+    assert_eq!(
+        blast_leverage_coins::errors::mark_index_divergence_exceeds_bound!(),
+        31,
+    );
 }

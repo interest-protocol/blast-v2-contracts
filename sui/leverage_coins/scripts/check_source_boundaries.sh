@@ -1,49 +1,31 @@
 #!/usr/bin/env bash
 # Mechanical boundary gate for the Blast leverage-coins package.
 #
-# The current slice contains consensus-critical arithmetic, immutable leverage
-# bounds, and the closed Series lifecycle state machine. This script fails if
-# the package gains a dependency, external public function, object, custody,
-# currency, transfer, event construct, or venue/launchpad reference before
-# later gates are met.
+# The current slice contains consensus-critical arithmetic and one consolidated
+# Series-domain module for immutable policy and the closed lifecycle state
+# machine. This script fails if the package gains a dependency, external public
+# function, object, custody, currency, transfer, event construct, source binding,
+# or venue/launchpad reference before later gates are met.
 set -euo pipefail
 
 package_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fail() { printf '%s\n' "$1" >&2; exit 1; }
 
-lifecycle_file="$package_dir/sources/series_lifecycle.move"
 series_file="$package_dir/sources/series.move"
-share_math_file="$package_dir/sources/share_math.move"
-maintenance_math_file="$package_dir/sources/maintenance_math.move"
-leverage_bounds_file="$package_dir/sources/leverage_bounds.move"
+accounting_math_file="$package_dir/sources/accounting_math.move"
 
 production_sources=()
-non_lifecycle_sources=()
-non_math_sources=()
-non_maintenance_math_sources=()
-non_lifecycle_or_series_sources=()
-non_leverage_bounds_or_series_sources=()
+non_accounting_math_sources=()
+non_series_sources=()
 
 while IFS= read -r -d '' source_file; do
   production_sources+=("$source_file")
 
-  if [[ "$source_file" != "$lifecycle_file" ]]; then
-    non_lifecycle_sources+=("$source_file")
+  if [[ "$source_file" != "$accounting_math_file" ]]; then
+    non_accounting_math_sources+=("$source_file")
   fi
-  if [[ "$source_file" != "$share_math_file" \
-    && "$source_file" != "$maintenance_math_file" ]]; then
-    non_math_sources+=("$source_file")
-  fi
-  if [[ "$source_file" != "$maintenance_math_file" ]]; then
-    non_maintenance_math_sources+=("$source_file")
-  fi
-  if [[ "$source_file" != "$lifecycle_file" \
-    && "$source_file" != "$series_file" ]]; then
-    non_lifecycle_or_series_sources+=("$source_file")
-  fi
-  if [[ "$source_file" != "$leverage_bounds_file" \
-    && "$source_file" != "$series_file" ]]; then
-    non_leverage_bounds_or_series_sources+=("$source_file")
+  if [[ "$source_file" != "$series_file" ]]; then
+    non_series_sources+=("$source_file")
   fi
 done < <(find "$package_dir/sources" -type f -name '*.move' -print0 | sort -z)
 
@@ -77,6 +59,13 @@ for environment in mainnet testnet; do
     || fail "Move.lock must pin the $environment environment."
 done
 
+[[ -f "$series_file" ]] || fail "The consolidated Series domain must live in series.move."
+for retired_module in series_lifecycle.move series_policy.move valuation_policy.move; do
+  if [[ -e "$package_dir/sources/$retired_module" ]]; then
+    fail "$retired_module must remain consolidated under series.move."
+  fi
+done
+
 # 3. Production code exposes no public ABI: every function is package or private.
 # Inspect the complete declaration before checking modifier tokens so both
 # `public macro fun` and the repository's `macro public fun` order are covered.
@@ -99,78 +88,78 @@ if grep -rniE 'aftermath|blast_fun' "$package_dir/sources" "$package_dir/tests";
   fail "The core package must not reference a venue adapter or the launchpad."
 fi
 
-# 6. Only maintenance_math may compose the low-level shareholder-NAV mint and
-# redemption formulas. Future state modules must use its reserve-aware quotes.
-if grep_move_sources \
-  'share_math::.*(mint_quote|redemption_quote|leverage_bps_up|target_notional_down|mint_base_delta_down|mint_base_bounds|assert_mint_base_within_bounds)' \
-  "${non_math_sources[@]}"; then
-  fail "State modules must use maintenance_math reserve-aware accounting functions."
+# 6. Raw shareholder-NAV formulas are private inside accounting_math, so the
+# Move compiler prevents future state modules from bypassing reserve-aware
+# package functions. The bare funding-cost arithmetic still has no
+# authentication input. A future production caller is forbidden until a typed
+# funding completion owns the path.
+raw_accounting_functions='fee_up|credit_fee|mint_quote|redemption_quote|leverage_bps_up|target_notional_down|mint_base_delta_down|mint_base_bounds|assert_mint_base_within_bounds'
+if grep -nE \
+  "^[[:space:]]*public(\\(package\\))?[[:space:]]+fun[[:space:]]+($raw_accounting_functions)[[:space:]]*[(]" \
+  "$accounting_math_file"; then
+  fail "Raw accounting functions must remain private behind reserve-aware package functions."
 fi
 
-# 7. The bare funding-cost arithmetic has no authentication input. A future
-# production caller is forbidden until a typed funding completion owns the path.
 if grep_move_sources \
-  'maintenance_math::.*absorb_funding_cost' \
-  "${non_maintenance_math_sources[@]}"; then
+  'accounting_math::.*absorb_funding_cost' \
+  "${non_accounting_math_sources[@]}"; then
   fail "A typed funding completion must gate every production reserve debit."
 fi
 
-# 8. Only the lifecycle-owning module constructs lifecycle variants. Future
-# Series code must use its package API so lifecycle legality has one owner.
+# 7. Only the Series-domain module constructs lifecycle variants.
 if grep_move_sources \
   'Lifecycle::(Active|ReduceOnly|ShutdownPending|ShutdownSettled)' \
-  "${non_lifecycle_sources[@]}"; then
-  fail "Only series_lifecycle may construct or inspect lifecycle variants directly."
+  "${non_series_sources[@]}"; then
+  fail "Only series.move may construct or inspect lifecycle variants directly."
 fi
 
-# 9. The lifecycle module is an inert state machine, not Series storage or custody.
+# 8. The current Series-domain slice owns rules, not storage or custody.
 if grep -nE \
   'UID|Balance<|Coin<|TreasuryCap|MetadataCap|TxContext|has[[:space:]][^{;]*(^|[[:space:],])key([[:space:],{]|$)|transfer::|sui::event|event::|sui::[{][^}]*event' \
-  "$lifecycle_file"; then
-  fail "series_lifecycle must not own objects, assets, capabilities, transfers, or events."
+  "$series_file"; then
+  fail "The current series.move slice must not own objects, assets, capabilities, transfers, or events."
 fi
 
-# 10. Lifecycle upgrades require complete Series proofs and do not exist in
-# this isolated state-machine slice.
-if grep -nE '[*][[:space:]]*[[:alnum:]_]+[[:space:]]*=' "$lifecycle_file" \
+# 9. Lifecycle upgrades require complete shared-Series proofs and do not exist
+# in this pre-custody slice.
+if grep -nE '[*][[:space:]]*[[:alnum:]_]+[[:space:]]*=' "$series_file" \
   | grep -vE \
     '^[[:digit:]]+:[[:space:]]*[*][[:space:]]*[[:alnum:]_]+[[:space:]]*=[[:space:]]*Lifecycle::(ReduceOnly|ShutdownPending);[[:space:]]*$'; then
   fail "Lifecycle resume and settlement finalization belong to a proved Series transition."
 fi
 
+# 10. No other production module may consume Series policy or lifecycle rules.
+# Future shared state stays in this owner instead of introducing another module.
 if grep_move_sources \
-  '([.]lifecycle|[*][[:space:]]*[[:alnum:]_]*lifecycle)[[:space:]]*=|[*][[:space:]]*[[:alnum:]_]+[[:space:]]*=[[:space:]]*(Lifecycle::|series_lifecycle::new[(])' \
-  "${non_lifecycle_sources[@]}"; then
-  fail "Production modules must mutate lifecycle only through series_lifecycle."
-fi
-
-# 11. Only Series may consume lifecycle predicates, guards, and transitions in
-# production. Other modules cannot bypass Series-owned authority and proofs.
-if grep_move_sources \
-  'series_lifecycle|[.](is_active|is_reduce_only|is_shutdown_pending|is_shutdown_settled|enter_reduce_only|enter_shutdown_pending|assert_active|assert_normal_redemption_allowed|assert_operating_risk_reduction_allowed|assert_shutdown_close_allowed|assert_shutdown_redemption_allowed)[(]' \
-  "${non_lifecycle_or_series_sources[@]}"; then
-  fail "Only series.move may consume the series_lifecycle production API."
+  'series::|blast_leverage_coins::series|Lifecycle::(Active|ReduceOnly|ShutdownPending|ShutdownSettled)|PositionSide::(Long|Short)' \
+  "${non_series_sources[@]}"; then
+  fail "Only series.move may own or consume Series policy and lifecycle rules."
 fi
 
 # Once Series storage lands, construction must contain exactly one visibly
 # reviewable lifecycle initialization. Any additional call can reset a live
 # lifecycle to Active and must fail this gate until it gains a stronger proof.
-if [[ -f "$series_file" ]]; then
-  lifecycle_new_calls="$(grep -oF 'series_lifecycle::new()' "$series_file" | wc -l)"
-  [[ "$lifecycle_new_calls" == '1' ]] \
+if grep -qE '^[[:space:]]*public[[:space:]]+struct[[:space:]]+Series([<[:space:]])' "$series_file"; then
+  lifecycle_initializers="$(grep -cE '^[[:space:]]*lifecycle:[[:space:]]*new_lifecycle[(][)][,]?[[:space:]]*$' "$series_file" || true)"
+  [[ "$lifecycle_initializers" == '1' ]] \
     || fail "series.move must contain exactly one lifecycle constructor call."
-  grep -qE \
-    '^[[:space:]]*lifecycle:[[:space:]]*series_lifecycle::new[(][)][,]?[[:space:]]*$' \
-    "$series_file" \
-    || fail "Series lifecycle construction must remain a visible struct-field initializer."
 fi
 
-# 12. Only Series may consume validated leverage bounds in production. No
-# helper or adapter-facing seam may rebuild or reinterpret the risk ordering.
+# 11. Valuation policy stays a validated primitive value. Exact source
+# identity and authentication belong to the future VenueAccount and adapter,
+# and reading on-chain time belongs to the future Series transition.
+if grep -nE \
+  '(^|[^[:alnum:]_])(ID|UID|address)([^[:alnum:]_]|$)|&[[:space:]]*(mut[[:space:]]+)?(Clock|TxContext)' \
+  "$series_file"; then
+  fail "The current series.move slice must not bind a source id, a clock, or a transaction context."
+fi
+
+# 12. The venue mark is a margin-safety input only (ADR 0064 I25). It must
+# never reach shareholder NAV, share pricing, or accounting leverage.
 if grep_move_sources \
-  '(^|[^[:alnum:]_])leverage_bounds([^[:alnum:]_]|$)' \
-  "${non_leverage_bounds_or_series_sources[@]}"; then
-  fail "Only series.move may consume the leverage_bounds production API."
+  '(^|[^[:alnum:]])mark([^[:alnum:]]|$)' \
+  "$accounting_math_file"; then
+  fail "A venue mark must never enter shareholder-NAV or share-pricing math."
 fi
 
 printf 'Source boundaries hold.\n'

@@ -18,7 +18,7 @@ the package README or the relevant ADR and delete it here.
 
 The pure sizing formula takes a contribution. Before the trade only the
 expected contribution `deposit - fee` exists, and that is what sizes the sealed
-order through `maintenance_math::mint_base_delta_from_equity_down`. After the
+order through `accounting_math::mint_base_delta_from_equity_down`. After the
 trade the actual contribution `nav_after - nav_before` prices the shares. The
 Series must then call `assert_mint_base_within_bounds_from_equity` with both
 values and the final absolute base. Never pass the post-trade contribution as
@@ -52,7 +52,8 @@ value is a simulation gate, but the shape of the decision is fixed:
 
 ### 1.3 Add a contribution sanity guard once the divergence gate exists
 
-`share_math::mint_quote` accepts any positive contribution. Under one canonical
+The private `accounting_math::mint_quote` formula accepts any positive
+contribution. Under one canonical
 valuation pair the actual contribution can exceed `deposit - fee` only through
 a fill better than the index, which the index-versus-mark divergence gate
 bounds. The Series must therefore reject
@@ -87,13 +88,14 @@ README registry, and, when the code is raised from more than one module, every
 module listed in that row. The launchpad's `docs/error-codes.md` points at the
 package registry; the numeric spaces are independent.
 
-### 1.7 Extend the boundary script with every NAV-taking function
+### 1.7 Keep raw NAV-taking formulas private
 
-`scripts/check_source_boundaries.sh` forbids any production module other than
-`maintenance_math` from calling a `share_math` function that takes shareholder
-NAV. When a new NAV-taking function is added, add its name to that regex in the
-same change and add a reserve-aware wrapper in `maintenance_math`. The Series
-must only ever see venue equity and reserve, never a NAV it derived itself.
+`accounting_math` owns both raw formulas and their reserve-aware package API.
+Every function that accepts already-derived shareholder NAV stays private. A
+new NAV-taking formula must ship with a reserve-aware package function in the
+same module; expose the raw form only through an explicit test-only seam. The
+Series must only ever supply venue equity and reserve, never a NAV it derived
+itself.
 
 ### 1.8 Test shape that the package expects
 
@@ -103,6 +105,33 @@ beneficiary, and, where a sequence matters, a regression that runs the
 sequence. Keep an exhaustive sweep under roughly ten thousand iterations of
 the helper it exercises; the test runner's gas budget times out above that,
 which the audit hit once at twenty-six thousand.
+
+### 1.9 Run every valuation gate at the one operation checkpoint
+
+The `ValuationPolicy` type in `series.move` owns the freshness,
+confidence, and mark-divergence rules, but it cannot see how many times or
+against what a caller applies them. The Series and adapter must:
+
+- capture one on-chain millisecond reading per operation and pass that same
+  value as `reference_time_ms` to every `assert_price_fresh` call, so the two
+  share-pricing sources are judged against one reference;
+- run `assert_price_fresh` and `assert_confidence_within_bound` for both the
+  base index and the collateral oracle before deriving pre-operation
+  shareholder NAV, and prove the post-operation NAV used the same pair;
+- keep `assert_mark_within_index_divergence` on the venue margin path only. Its
+  operands must never reach `accounting_math`; the
+  source-boundary script fails if a standalone or snake-case `mark` identifier
+  appears there, while semantic review still verifies arbitrary numeric inputs;
+  and
+- use `is_price_fresh`, `is_confidence_within_bound`, and
+  `is_mark_within_index_divergence` inside the objective health transition,
+  rather than their aborting guards, so any valuation-policy failure degrades
+  the lifecycle instead of rolling the observing transaction back.
+
+Why: the package proves each rule in isolation. It cannot prove that one
+captured pair priced both sides of an operation, that a caller did not choose
+among historical updates, or that the source is the bound one. Those remain
+carrier, binding, and authentication obligations.
 
 ## 2. Lowering liquidation odds
 
@@ -173,8 +202,13 @@ it is a new deployment decision with its own simulation.
 These remain open from ADR 0064 and both audits and are listed so no reader
 believes the package closes them:
 
-- immutable valuation carrier, freshness, confidence, and index-versus-mark
-  rules;
+- the operation-scoped linear valuation carrier, plus exact source binding and
+  authentication. `series.move` now fixes the freshness, confidence,
+  and index-versus-mark rules through its distinct `ValuationPolicy` type, and
+  the package README records their boundary, unit, and zero-policy semantics.
+  The carrier cannot be built until the adapter handoff design is accepted and
+  premise P17 fixes the normalized field layout, and no value for any bound is
+  selected;
 - exhaustive external-mutation checkpoint and `sync_health` refresh rules;
 - permissionless rebalance sizing bounds and minimum improvement;
 - construction authority, ACL rotation, adapter upgrade delay, and version
