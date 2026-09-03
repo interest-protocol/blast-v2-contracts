@@ -146,7 +146,7 @@ The planned Move abilities make custody and temporary authority explicit:
 | --- | --- | --- |
 | `Series<Share, USDC>` | `key` | Shared core supply and lifecycle authority; cannot be wrapped or transferred as a child. |
 | `VenueAccount<Share, USDC>` | `key` | Shared adapter custody for the one Aftermath admin cap; cannot be wrapped or transferred as a child. |
-| `SeriesPolicy` | `copy, drop, store` | Immutable validated numeric and direction values stored inside Series. |
+| `SeriesPolicy` | `copy, drop, store` | Immutable validated direction, leverage, fee, mint-contribution divergence, operation-size, and NAV-cap values stored inside Series. |
 | `LeverageBounds` | `copy, drop, store` | Strictly ordered lower, target, upper, and hard-cap leverage values constructed and stored within the future Series policy. |
 | `ValuationPolicy` | `copy, drop, store` | Immutable validated freshness, confidence, and mark-divergence bounds stored by the future Series policy. |
 | `PositionCheckpoint` | `copy, drop, store` | Venue mutation primitives stored inside VenueAccount. |
@@ -165,8 +165,9 @@ and invariant enforcement:
 
 - the `TreasuryCap<Share>`;
 - immutable direction and normalized risk bounds;
-- mint and redeem fee rates, the minimum operation size in live venue lots
-  (`min_exposure_lots`), and a hard Series NAV cap;
+- mint and redeem fee rates, the mint-contribution divergence bound, the
+  minimum operation size in live venue lots (`min_exposure_lots`), and a hard
+  Series NAV cap;
 - the separately accounted maintenance-reserve balance;
 - lifecycle: `Active`, `ReduceOnly`, `ShutdownPending`, or `ShutdownSettled`;
 - the approved adapter witness type and exact venue-account binding;
@@ -326,6 +327,12 @@ premise P17. Exact source identity, binding, and authentication remain with
 `VenueAccount` and the adapter. Every millisecond and basis-point value remains
 a simulation and live-market selection.
 
+The venue mark-divergence bound is not an execution-divergence bound and is not
+used to limit mint contribution. `SeriesPolicy` separately owns
+`max_mint_contribution_divergence_bps`, an immutable bound below 10,000 basis
+points. This separation prevents a margin-safety policy from silently becoming
+share-accounting authority.
+
 ### Mint accounting
 
 Let:
@@ -367,6 +374,27 @@ the actual fill and session status. Venue fees are reflected in actual `N1`;
 they are not accepted from the caller. Core mints only after it validates the
 final account, order count, direction, leverage, margin, NAV, and
 `SessionSummary`.
+
+Before minting, core also applies a direct economic postcondition to the actual
+contribution:
+
+```text
+C <= D
+    + floor(
+        D * max_mint_contribution_divergence_bps * target_leverage_bps
+            / 100_000_000,
+    )
+```
+
+The immutable divergence bound is below 10,000 basis points and belongs to
+`SeriesPolicy`; this ADR selects no production value. The comparison is exact
+and cross-multiplied through `u256`, so equality passes, the first unit above
+the bound fails, and no narrowing or intermediate wrap can expand the admitted
+contribution. Flooring the allowance protects existing holders. This guard is
+a final contribution sanity check against a favorable-fill or valuation-pair
+report that would otherwise let a depositor mint against implausible NAV. It is
+not an execution-price oracle and does not replace the separately required
+user slippage and adapter execution-tolerance checks.
 
 Both fee rates are less than 10,000. Fee calculation must prove `F <= D` for a
 mint and `F <= gross` for a redemption before subtraction.
@@ -837,8 +865,9 @@ site and at least one adversarial test.
 | I27 | A total-equity delta cannot masquerade as funding or hide a reserve impairment. | Exact funding-accumulator proof; `R <= E` for priced operations; separate objective loss sync. |
 | I28 | Lifecycle degradation is monotone until a complete Series proof authorizes an upgrade. | Closed four-state enum; only `Active -> ReduceOnly`, `Active -> ShutdownPending`, and `ReduceOnly -> ShutdownPending` exist before Series integration; resume and settlement finalization require their full proofs. |
 | I29 | Every constructed leverage policy has a positive, strictly ordered operating band below its hard cap. | `series.move` exclusively constructs private `LeverageBounds` fields while creating `SeriesPolicy` and enforces `0 < lower < target < upper < hard cap` before every other policy guard. |
-| I30 | Every constructed preliminary Series policy fixes a long or short direction, embeds validated leverage bounds, keeps both fee rates below 10,000, and has positive minimum exposure lots and NAV cap. | Private `SeriesPolicy` fields, the closed `PositionSide` enum, its package constructor, and the source-boundary gate; production values and the remaining policy fields stay blocked until their design and simulation gates close. |
+| I30 | Every constructed preliminary Series policy fixes a long or short direction, embeds validated leverage bounds, keeps both fee rates and the mint-contribution divergence bound below 10,000, and has positive minimum exposure lots and NAV cap. | Private `SeriesPolicy` fields, the closed `PositionSide` enum, its package constructor, and the source-boundary gate; production values and the remaining policy fields stay blocked until their design and simulation gates close. |
 | I31 | Every constructed valuation policy fixes a two-sided freshness window with positive historical-age tolerance, keeps the confidence and mark-divergence bounds below 10,000 basis points, and its gates reject a stale, future-dated, zero-priced, low-confidence, or divergent observation without wrapping or underflowing at `u64` width. | Private `ValuationPolicy` fields, its `series::new_valuation` package constructor, and its three package gates, with every assertion defined on the same non-aborting predicate the objective health transition observes; the source-boundary gate keeps mark-identified inputs out of the shareholder-NAV and share-pricing math. The operation-scoped linear valuation carrier, exact source binding and authentication, selected millisecond and basis-point values, and proof that the age supports the live source cadence stay blocked on the adapter handoff design, premises P16 through P20, and simulation. |
+| I32 | A mint cannot credit an implausibly favorable shareholder-NAV contribution by treating venue mark divergence as share-accounting authority. | `SeriesPolicy` stores a distinct validated `max_mint_contribution_divergence_bps`; `series::assert_mint_contribution_within_bound` applies the exact leveraged `u256` cap to the canonical contribution before share minting. Boundary, width, exhaustive-reference, registry, and precedence tests pin the rule. |
 
 ## Alternatives considered
 
@@ -950,8 +979,9 @@ narrowed to the operations that actually remain available.
 ### Pure and package tests
 
 - Table-test every fee, venue-equity, reserve, shareholder-NAV, share, leverage,
-  funding-absorption, and proportional-unwind formula at zero, one, maximum,
-  threshold, and near-insolvency values with `u256` intermediates.
+  funding-absorption, mint-contribution, and proportional-unwind formula at
+  zero, one, maximum, threshold, and near-insolvency values with `u256`
+  intermediates.
 - Property-test non-dilutive mint and redemption, split/merge equivalence,
   fee-recapture resistance, reserve conservation, repeated tiny operations,
   donation behavior, and round trips that cannot earn value from rounding.
@@ -980,8 +1010,8 @@ narrowed to the operations that actually remain available.
 2. Compile the pinned Aftermath interfaces and execute P16 through P20 against
    a controlled fixture and production dev-inspect.
 3. Run historical SUI, funding, book-depth, gap, and keeper-delay simulations.
-   Select the final band, hard cap, margin buffer, fees, seed, and Series NAV cap
-   from those results.
+   Select the final band, hard cap, margin buffer, fees, seed, mint-contribution
+   divergence, and Series NAV cap from those results.
 4. Deploy `SUI2L` only with a small cap. Observe mint, redemption, funding,
    rebalance, pause, and loss reconciliation before deploying `SUI2S`.
 5. Complete independent core, adapter, economic, and upgrade-authority audits.

@@ -51,14 +51,16 @@ gates below are met.
   exposure. This module cannot authenticate venue funding; the later adapter
   and Series transition own that obligation.
 - `series.move` — the single Series-domain owner. This pre-custody slice owns
-  the immutable long/short, leverage, fee, operation-size, NAV-cap, freshness,
-  confidence, and mark-divergence policy carriers and their local validation.
-  It also owns the closed four-state lifecycle, monotone degradation,
-  predicates, and operation-permission guards. The policy types remain
-  distinct, but one module controls their construction and is the future home
-  of the shared `Series` object. It contains no production values, binds no
-  valuation source, and cannot resume or settle shutdown before the authority,
-  time, venue, funding, custody, and reserve proofs exist. See
+  the immutable long/short, leverage, fee, mint-contribution divergence,
+  operation-size, NAV-cap, freshness, confidence, and mark-divergence policy
+  carriers and their local validation. It also owns the mint-contribution
+  sanity guard, closed four-state lifecycle, monotone degradation, predicates,
+  and operation-permission guards. The policy types remain distinct, but one
+  module controls their construction and is the future home of the shared
+  `Series` object. It contains no production values, binds no valuation source,
+  and cannot resume or settle shutdown before the authority, time, venue,
+  funding, custody, and reserve proofs exist. See
+  [Mint contribution sanity](#mint-contribution-sanity) and
   [Valuation gates](#valuation-gates).
 - `lib/constants.move` — the basis-point denominator.
 - `lib/errors.move` — the append-only numeric error registry. It is
@@ -74,6 +76,7 @@ gates below are met.
 | base exposure | absolute atomic venue base units | direction is never encoded here |
 | fee rate | basis points below 10,000 | proves `fee <= amount` |
 | leverage rate | basis points of 1x | `20_000` is 2x; no 10,000 ceiling |
+| mint contribution divergence | basis points below 10,000 | immutable Series policy bound for favorable excess contribution; distinct from venue mark divergence |
 | minimum operation size | live venue lots | `min_exposure_lots`, an immutable Series policy value supplied by the caller; this package holds no value for it |
 | Series NAV cap | atomic collateral (USDC) | immutable positive policy value; simulation selects its value |
 | price freshness window | milliseconds | `max_price_age_ms` and `max_price_ahead_ms`, both immutable policy values on the on-chain millisecond scale |
@@ -95,10 +98,40 @@ shares. Exposure rounding favors lower risk but can create underexposure:
 | `redemption_quote` kept equity | up | remaining holders |
 | `leverage_bps_up` | up | risk reporting stays conservative |
 | `target_notional_down` | down | the planned order stays under target |
+| `assert_mint_contribution_within_bound` allowance | down | existing holders |
 | `mint_base_delta_down` | down to the live lot | unopened sub-lot exposure, below `1 / min_exposure_lots` of the target |
 | `mint_base_bounds` | `[min(actual, planned), planned]` | a partial fill may leave at most the actual contribution's exposure unopened |
 | `redemption_base_bounds` keep | down | remaining holders |
 | `redemption_base_bounds` planned reduction | up to the live lot, capped at flat | over-reduction below one lot and below `1 / min_exposure_lots` of the required reduction |
+
+### Mint contribution sanity
+
+The immutable `max_mint_contribution_divergence_bps` is the authoritative
+bound for a mint's favorable excess contribution. It is deliberately separate
+from `max_mark_divergence_bps`, which remains a venue margin-safety rule only.
+The future Series mint transition must apply the bound to the actual
+shareholder-NAV contribution from the one canonical reserve-aware accounting
+checkpoint:
+
+```text
+contribution <= deposit
+    + floor(
+        deposit
+            * max_mint_contribution_divergence_bps
+            * target_leverage_bps
+            / 100_000_000,
+    )
+```
+
+The Series guard uses an exact `u256` cross-multiplied comparison. Equality is
+admitted, and the first atomic collateral unit above the bound aborts. The
+allowance rounds down, so an indivisible remainder cannot mint shares against
+existing holders. A contribution at or below the deposit always passes.
+
+This postcondition does not authenticate an execution price and does not
+replace the user's slippage bound or the adapter's strict and emergency
+execution tolerances. Those checks remain separate integration gates. The
+Series selects no production divergence value in this package.
 
 ### Proportional exposure and the minimum operation size
 
@@ -311,8 +344,10 @@ independent because Sui scopes abort codes to the raising package.
 | 29 | `invalid_valuation_price` | `series` | A gated valuation price or index is zero. |
 | 30 | `confidence_exceeds_bound` | `series` | A price's confidence interval exceeds the policy bound. |
 | 31 | `mark_index_divergence_exceeds_bound` | `series` | The venue mark diverges from the index beyond the policy bound. |
+| 32 | `mint_contribution_exceeds_bound` | `series` | A mint's shareholder-NAV contribution exceeds its policy bound. |
+| 33 | `invalid_max_mint_contribution_divergence_bps` | `series` | A mint-contribution divergence bound is not below the 10,000 basis-point denominator. |
 
-The next new error must use code 32.
+The next new error must use code 34.
 
 ## Verification
 
@@ -349,11 +384,11 @@ accepted decision, implementation slice, and review.
    function body, so it proves type layouts and call signatures only. No
    premise is resolved today.
 3. Select the final band, hard leverage cap, margin buffer, fee rates, seed,
-   `min_exposure_lots`, Series NAV cap, price freshness window, confidence
-   bound, and mark divergence bound from historical, book-depth, and source
-   cadence simulation, separately for the long and the short Series. This
-   package contains no economic parameter, and the 1.8x to 2.2x band in
-   ADR 0064 stays a hypothesis.
+   `min_exposure_lots`, Series NAV cap, mint-contribution divergence, price
+   freshness window, confidence bound, and mark divergence bound from
+   historical, book-depth, and source cadence simulation, separately for the
+   long and the short Series. This package contains no economic parameter, and
+   the 1.8x to 2.2x band in ADR 0064 stays a hypothesis.
 4. Add the `Series` object and integrate its lifecycle, currencies, treasury
    custody, package administration, the operational version gate, and wrapped
    events. Resume and shutdown finalization must arrive only with their complete

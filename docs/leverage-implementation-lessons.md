@@ -50,19 +50,6 @@ value is a simulation gate, but the shape of the decision is fixed:
 - A redemption that reaches flat is exempt, so a complete close is always
   possible regardless of size.
 
-### 1.3 Add a contribution sanity guard once the divergence gate exists
-
-The private `accounting_math::mint_quote` formula accepts any positive
-contribution. Under one canonical
-valuation pair the actual contribution can exceed `deposit - fee` only through
-a fill better than the index, which the index-versus-mark divergence gate
-bounds. The Series must therefore reject
-`contribution > deposit + deposit * divergence_bps * target_leverage_bps / 10^8`
-with its own stable error. This is a fail-closed guard against a valuation-pair
-bug that would let a depositor capture existing holders' unrealized gain. It
-cannot be written until the divergence gate parameter exists, which is why it
-lives here and not in the package.
-
 ### 1.4 Compute every economic value once at its canonical checkpoint
 
 `mint_accounting_quote` computes the fee once and passes the derived
@@ -213,6 +200,8 @@ believes the package closes them:
 - permissionless rebalance sizing bounds and minimum improvement;
 - construction authority, ACL rotation, adapter upgrade delay, and version
   activation ordering;
+- the production `max_mint_contribution_divergence_bps` value, which simulation
+  must select separately for the long and short Series;
 - maximum supply, minimum NAV per share, minimum seed, and shutdown cash rules;
 - premises P16 through P20 against deployed Aftermath state.
 

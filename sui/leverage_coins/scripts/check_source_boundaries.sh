@@ -162,4 +162,19 @@ if grep_move_sources \
   fail "A venue mark must never enter shareholder-NAV or share-pricing math."
 fi
 
+# 13. Mint contribution sanity owns a distinct Series policy bound. Venue mark
+# divergence remains margin-only and must not become share-accounting authority.
+mint_contribution_predicate="$(
+  sed -n \
+    '/^fun is_mint_contribution_within_bound(/,/^}/p' \
+    "$series_file" || true
+)"
+[[ -n "$mint_contribution_predicate" ]] \
+  || fail "series.move must own the mint-contribution bound predicate."
+if grep -q 'max_mark_divergence_bps' <<<"$mint_contribution_predicate"; then
+  fail "Mint contribution sanity must not reuse the venue mark-divergence bound."
+fi
+grep -q 'max_mint_contribution_divergence_bps' <<<"$mint_contribution_predicate" \
+  || fail "Mint contribution sanity must use its distinct immutable policy bound."
+
 printf 'Source boundaries hold.\n'

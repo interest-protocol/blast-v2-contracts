@@ -138,6 +138,15 @@ const EConfidenceExceedsBound: u64 = 30;
 /// The venue mark diverges from the index beyond the policy bound.
 const EMarkIndexDivergenceExceedsBound: u64 = 31;
 
+#[test_only]
+/// A mint's shareholder-NAV contribution exceeds its policy bound.
+const EMintContributionExceedsBound: u64 = 32;
+
+#[test_only]
+/// A mint-contribution divergence bound must be below the basis-point
+/// denominator.
+const EInvalidMaxMintContributionDivergenceBps: u64 = 33;
+
 macro public(package) fun zero_amount(): u64 {
     0
 }
@@ -264,4 +273,12 @@ macro public(package) fun confidence_exceeds_bound(): u64 {
 
 macro public(package) fun mark_index_divergence_exceeds_bound(): u64 {
     31
+}
+
+macro public(package) fun mint_contribution_exceeds_bound(): u64 {
+    32
+}
+
+macro public(package) fun invalid_max_mint_contribution_divergence_bps(): u64 {
+    33
 }

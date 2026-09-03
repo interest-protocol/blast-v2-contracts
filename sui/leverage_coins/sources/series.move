@@ -7,8 +7,8 @@
 /// This pre-custody slice owns the Series domain rules whose local validation
 /// is already settled. It does not define the shared `Series` object, select
 /// production values, or authenticate valuation sources. The operation-scoped
-/// valuation carrier, margin buffer, execution tolerances, supply and seed
-/// bounds, and shutdown policy remain later design gates.
+/// valuation carrier, margin buffer, adapter execution tolerances, supply and
+/// seed bounds, and shutdown policy remain later design gates.
 module blast_leverage_coins::series;
 
 use blast_leverage_coins::constants;
@@ -41,6 +41,7 @@ public struct SeriesPolicy has copy, drop, store {
     leverage_bounds: LeverageBounds,
     mint_fee_bps: u64,
     redeem_fee_bps: u64,
+    max_mint_contribution_divergence_bps: u64,
     min_exposure_lots: u64,
     nav_cap: u64,
 }
@@ -99,13 +100,15 @@ public(package) fun short(): PositionSide {
 ///
 /// The leverage values must satisfy
 /// `0 < lower < target < upper < hard cap`. Both fee rates are basis points
-/// and must stay below 10,000. The minimum operation size is a positive number
-/// of live venue lots. `nav_cap` is a positive number of atomic collateral
-/// units. This constructor does not compare policy values with live venue
-/// state or select production values.
+/// and must stay below 10,000. The mint-contribution divergence bound is also
+/// below 10,000 basis points and is distinct from the venue mark-divergence
+/// policy. The minimum operation size is a positive number of live venue lots.
+/// `nav_cap` is a positive number of atomic collateral units. This constructor
+/// does not compare policy values with live venue state or select production
+/// values.
 ///
-/// Guard order is leverage bounds, fee rates, minimum exposure lots, then NAV
-/// cap.
+/// Guard order is leverage bounds, fee rates, mint-contribution divergence,
+/// minimum exposure lots, then NAV cap.
 public(package) fun new_policy(
     side: PositionSide,
     lower_bps: u64,
@@ -114,6 +117,7 @@ public(package) fun new_policy(
     hard_cap_bps: u64,
     mint_fee_bps: u64,
     redeem_fee_bps: u64,
+    max_mint_contribution_divergence_bps: u64,
     min_exposure_lots: u64,
     nav_cap: u64,
 ): SeriesPolicy {
@@ -128,6 +132,11 @@ public(package) fun new_policy(
         mint_fee_bps < constants::basis_points_denominator!()
             && redeem_fee_bps < constants::basis_points_denominator!(),
         blast_leverage_coins::errors::invalid_fee_bps!(),
+    );
+    assert!(
+        max_mint_contribution_divergence_bps
+            < constants::basis_points_denominator!(),
+        blast_leverage_coins::errors::invalid_max_mint_contribution_divergence_bps!(),
     );
     assert!(
         min_exposure_lots > 0,
@@ -150,6 +159,7 @@ public(package) fun new_policy(
         leverage_bounds,
         mint_fee_bps,
         redeem_fee_bps,
+        max_mint_contribution_divergence_bps,
         min_exposure_lots,
         nav_cap,
     }
@@ -203,6 +213,43 @@ public(package) fun min_exposure_lots(self: &SeriesPolicy): u64 {
 /// Returns the hard Series NAV cap in atomic collateral units.
 public(package) fun nav_cap(self: &SeriesPolicy): u64 {
     self.nav_cap
+}
+
+/// Rejects an impossible or overly favorable mint contribution.
+///
+/// `deposit` and `contribution` are atomic collateral units. `contribution` is
+/// the actual post-operation shareholder-NAV contribution returned by the
+/// canonical reserve-aware mint accounting path. A contribution at or below
+/// the deposit always passes. Any excess is bounded by:
+///
+/// ```text
+/// contribution <= deposit
+///     + floor(
+///         deposit
+///             * max_mint_contribution_divergence_bps
+///             * target_leverage_bps
+///             / 100_000_000,
+///     )
+/// ```
+///
+/// The comparison cross-multiplies through `u256`, so it neither narrows the
+/// allowed contribution nor overflows when every input is `u64::MAX` within
+/// its validated policy range. Flooring the allowance protects existing
+/// holders. The bound is inclusive.
+///
+/// This is a Series accounting postcondition, not a share-pricing input or an
+/// execution-price oracle. It deliberately does not reuse the venue
+/// mark-divergence policy. The future mint transition must apply it to the one
+/// canonical contribution before minting shares.
+public(package) fun assert_mint_contribution_within_bound(
+    self: &SeriesPolicy,
+    deposit: u64,
+    contribution: u64,
+) {
+    assert!(
+        is_mint_contribution_within_bound(self, deposit, contribution),
+        blast_leverage_coins::errors::mint_contribution_exceeds_bound!(),
+    );
 }
 
 // --- Valuation Policy ---
@@ -529,7 +576,46 @@ public(package) fun assert_shutdown_redemption_allowed(self: &Lifecycle) {
 // ponytail: Resume and settlement finalization stay absent until the shared Series can prove their
 // authority, cooldown, venue-health, funding, custody, and reserve-reclassification conditions.
 
+// === Private Functions ===
+
+/// Returns whether a mint contribution satisfies its leveraged divergence cap.
+fun is_mint_contribution_within_bound(
+    self: &SeriesPolicy,
+    deposit: u64,
+    contribution: u64,
+): bool {
+    if (contribution <= deposit) {
+        true
+    } else {
+        let denominator = constants::basis_points_denominator!() as u256;
+        let excess = (contribution - deposit) as u256;
+
+        excess * denominator * denominator
+            <= (deposit as u256)
+                * (self.max_mint_contribution_divergence_bps as u256)
+                * (self.leverage_bounds.target_bps as u256)
+    }
+}
+
 // === Test-Only Functions ===
+
+#[test_only]
+/// Returns the mint contribution's maximum favorable divergence in basis points.
+public(package) fun max_mint_contribution_divergence_bps(
+    self: &SeriesPolicy,
+): u64 {
+    self.max_mint_contribution_divergence_bps
+}
+
+#[test_only]
+/// Exposes the mint-contribution predicate for exhaustive reference testing.
+public(package) fun is_mint_contribution_within_bound_for_testing(
+    self: &SeriesPolicy,
+    deposit: u64,
+    contribution: u64,
+): bool {
+    is_mint_contribution_within_bound(self, deposit, contribution)
+}
 
 #[test_only]
 /// Creates ReduceOnly state for exhaustive transition and operation tests.

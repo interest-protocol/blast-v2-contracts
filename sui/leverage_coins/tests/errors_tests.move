@@ -70,4 +70,12 @@ fun package_error_registry_is_stable() {
         blast_leverage_coins::errors::mark_index_divergence_exceeds_bound!(),
         31,
     );
+    assert_eq!(
+        blast_leverage_coins::errors::mint_contribution_exceeds_bound!(),
+        32,
+    );
+    assert_eq!(
+        blast_leverage_coins::errors::invalid_max_mint_contribution_divergence_bps!(),
+        33,
+    );
 }
