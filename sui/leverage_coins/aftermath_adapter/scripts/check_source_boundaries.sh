@@ -8,6 +8,7 @@ fail() { printf '%s\n' "$1" >&2; exit 1; }
 manifest="$package_dir/Move.toml"
 protocol_file="$package_dir/sources/protocol.move"
 vault_file="$package_dir/sources/vault.move"
+venue_account_file="$package_dir/sources/venue_account.move"
 package_admin_file="$package_dir/sources/package_admin.move"
 aftermath_file="$package_dir/sources/aftermath.move"
 series_dir="$(cd "$package_dir/../series_one" && pwd)"
@@ -23,6 +24,7 @@ fi
 for required in \
   "$protocol_file" \
   "$vault_file" \
+  "$venue_account_file" \
   "$package_admin_file" \
   "$aftermath_file" \
   "$package_dir/sources/lib/constants.move" \
@@ -65,6 +67,69 @@ grep -q 'series_state: State<Product>' "$vault_file" \
   || fail "The adapter Vault must wrap the Series1 state value."
 if grep -qE 'adapter_storage|Bag|bag::' "$vault_file"; then
   fail "Vault must not carry speculative extension storage."
+fi
+grep -q '^public struct VenueAccount has store {$' "$venue_account_file" \
+  || fail "VenueAccount must be a non-key, store-only custody value."
+grep -q '^public struct Binding has copy, drop, store {$' "$venue_account_file" \
+  || fail "Binding must remain a copyable stored value."
+grep -q '^public struct Checkpoint has copy, drop, store {$' "$venue_account_file" \
+  || fail "Checkpoint must remain a copyable stored value."
+grep -q 'admin_cap: AuthorityCap<ACCOUNT, ADMIN>' "$venue_account_file" \
+  || fail "VenueAccount must hold the exact Aftermath account admin cap."
+if grep -rqE '\bASSISTANT\b|new_assistant' "$package_dir/sources"; then
+  fail "The adapter must never create or store an Aftermath assistant cap."
+fi
+production_venue_account="$(
+  sed '/^\/\/ === Test-Only Functions ===/,$d' "$venue_account_file"
+)"
+if grep -qE '^public fun .*([Cc]ap|[Vv]enue[Aa]ccount)' \
+  <<<"$production_venue_account"; then
+  fail "Venue capability and custody access must remain package-only."
+fi
+venue_account_fields="$(
+  sed -n '/^public struct VenueAccount has store {$/,/^}$/p' "$venue_account_file" \
+    | sed '1d;$d;s/^[[:space:]]*//'
+)"
+expected_venue_account_fields=$'admin_cap: AuthorityCap<ACCOUNT, ADMIN>,\naccount_object_id: ID,\naccount_number: u64,\nregistry_id: ID,\nclearing_house_id: ID,\nbase_oracle_id: ID,\ncollateral_oracle_id: ID,\ncollateral_type: TypeName,\ncheckpoint: Checkpoint,'
+[[ "$venue_account_fields" == "$expected_venue_account_fields" ]] \
+  || fail "VenueAccount must contain exactly the accepted custody and binding fields."
+binding_fields="$(
+  sed -n '/^public struct Binding has copy, drop, store {$/,/^}$/p' "$venue_account_file" \
+    | sed '1d;$d;s/^[[:space:]]*//'
+)"
+expected_binding_fields=$'account_object_id: ID,\naccount_number: u64,\nregistry_id: ID,\nclearing_house_id: ID,\nbase_oracle_id: ID,\ncollateral_oracle_id: ID,\ncollateral_type: TypeName,'
+[[ "$binding_fields" == "$expected_binding_fields" ]] \
+  || fail "Binding must contain exactly five object ids, the account number, and collateral type."
+checkpoint_fields="$(
+  sed -n '/^public struct Checkpoint has copy, drop, store {$/,/^}$/p' "$venue_account_file" \
+    | sed '1d;$d;s/^[[:space:]]*//'
+)"
+expected_checkpoint_fields=$'free_collateral: u64,\nallocated_collateral: u256,\nsigned_base: u256,\nsigned_quote_notional: u256,\nfunding_snapshot_long: u256,\nfunding_snapshot_short: u256,\nmarket_funding_long: u256,\nmarket_funding_short: u256,\nlot_size: u64,\npending_ask_base: u256,\npending_bid_base: u256,\npending_order_count: u64,\nmarket_pause_mode: u8,\nmarket_frozen: bool,\nposition_initial_margin_ratio: u256,\nmarket_initial_margin_ratio: u256,\nmarket_maintenance_margin_ratio: u256,'
+[[ "$checkpoint_fields" == "$expected_checkpoint_fields" ]] \
+  || fail "Checkpoint must contain exactly the accepted normalized raw fields."
+constructor_block="$(
+  sed -n '/^public(package) fun new($/,/^}/p' "$venue_account_file"
+)"
+[[ "$(grep -Fc 'authority::`for`(&admin_cap)' <<<"$constructor_block")" -eq 1 ]] \
+  || fail "VenueAccount construction must read the cap binding exactly once."
+awk '
+  /assert_admin_cap_binding\(authority::`for`\(&admin_cap\), account_object_id\);/ {
+    getline
+    if ($0 == "    VenueAccount {") found = 1
+  }
+  END { exit !found }
+' <<<"$constructor_block" \
+  || fail "VenueAccount must check authority::for immediately before cap custody."
+if grep -qE '\): *&?(mut )?AuthorityCap<|: *&mut AuthorityCap<' \
+  <<<"$production_venue_account"; then
+  fail "VenueAccount must not return or mutably borrow the admin cap."
+fi
+grep -q 'assert_venue_account_installable(self.venue_account.is_some());' "$vault_file" \
+  || fail "Vault installation must apply the one-time guard immediately before storage."
+grep -q 'venue_account: Option<VenueAccount>' "$vault_file" \
+  || fail "Vault must store one typed optional VenueAccount."
+if grep -qE 'Bag|bag::|dynamic_(object_)?field' "$venue_account_file"; then
+  fail "VenueAccount must use direct typed storage only."
 fi
 grep -q '^public fun issue<Product: drop, RiskModule: drop>($' "$vault_file" \
   || fail "Issuance must be generic over product and risk witnesses."

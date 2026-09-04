@@ -118,6 +118,8 @@ fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
     assert_eq!(vault_5x.metadata_cap_id_for_testing(), metadata_5x_id);
     assert_eq!(vault_2x.share_supply_for_testing(), 0);
     assert_eq!(vault_5x.share_supply_for_testing(), 0);
+    assert!(!vault_2x.has_venue_account_for_testing());
+    assert!(!vault_5x.has_venue_account_for_testing());
     assert_eq!(currency_2x.symbol(), b"SUI2X".to_string());
     assert_eq!(currency_5x.symbol(), b"SUI5X".to_string());
     assert_eq!(currency_2x.treasury_cap_id().destroy_some(), treasury_2x_id);
@@ -423,6 +425,15 @@ fun foreign_product_witness_is_rejected() {
     );
 
     destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = 19,
+    location = blast_leverage_aftermath::vault,
+)]
+fun second_venue_account_installation_is_rejected() {
+    vault::assert_venue_account_installable_for_testing(true);
 }
 
 // === Fixture Setup ===

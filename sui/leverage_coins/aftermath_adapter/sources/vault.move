@@ -9,6 +9,7 @@ use blast_leverage_aftermath::{
     constants,
     events,
     protocol::Protocol,
+    venue_account::{Self as venue_account, Binding, Checkpoint, VenueAccount},
 };
 use blast_leverage_series_one::{
     acl::{Self, AdminWitness},
@@ -35,6 +36,7 @@ public struct Vault<phantom Product> has key {
     id: UID,
     series_state: State<Product>,
     risk_module_witness: TypeName,
+    venue_account: Option<VenueAccount>,
 }
 
 /// Dynamic-object-field key for one Vault's share mint authority.
@@ -105,6 +107,7 @@ public fun issue<Product: drop, RiskModule: drop>(
         id: object::new(ctx),
         series_state,
         risk_module_witness,
+        venue_account: option::none(),
     };
     let vault_id = vault.id.to_inner();
 
@@ -206,7 +209,45 @@ public fun enter_reduce_only<Product>(
     events::reduce_only_entered<Product>(self.id.to_inner());
 }
 
+// === Package Functions ===
+
+/// Installs the one venue account after atomic initialization succeeds.
+public(package) fun install_venue_account<Product>(
+    self: &mut Vault<Product>,
+    venue_account: VenueAccount,
+) {
+    assert_venue_account_installable(self.venue_account.is_some());
+    self.venue_account.fill(venue_account);
+}
+
+/// Copies the immutable venue binding without exposing its custody value.
+public(package) fun venue_binding<Product>(self: &Vault<Product>): Binding {
+    self.venue_account.borrow().binding()
+}
+
+/// Borrows the latest raw venue checkpoint immutably.
+public(package) fun venue_checkpoint<Product>(
+    self: &Vault<Product>,
+): &Checkpoint {
+    self.venue_account.borrow().checkpoint()
+}
+
+/// Replaces the raw venue checkpoint after authenticated reconciliation.
+public(package) fun replace_venue_checkpoint<Product>(
+    self: &mut Vault<Product>,
+    checkpoint: Checkpoint,
+) {
+    self.venue_account.borrow_mut().replace_checkpoint(checkpoint);
+}
+
 // === Private Functions ===
+
+fun assert_venue_account_installable(is_installed: bool) {
+    assert!(
+        !is_installed,
+        blast_leverage_aftermath::errors::venue_account_already_installed!(),
+    );
+}
 
 fun add_treasury_cap<Product>(
     self: &mut Vault<Product>,
@@ -242,6 +283,16 @@ public fun id_for_testing<Product>(self: &Vault<Product>): ID {
 #[test_only]
 public fun is_uninitialized_for_testing<Product>(self: &Vault<Product>): bool {
     self.series_state.is_uninitialized_for_testing()
+}
+
+#[test_only]
+public fun has_venue_account_for_testing<Product>(self: &Vault<Product>): bool {
+    self.venue_account.is_some()
+}
+
+#[test_only]
+public fun assert_venue_account_installable_for_testing(is_installed: bool) {
+    assert_venue_account_installable(is_installed);
 }
 
 #[test_only]
