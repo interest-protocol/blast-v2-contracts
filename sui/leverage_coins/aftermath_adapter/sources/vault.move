@@ -13,7 +13,7 @@ use blast_leverage_aftermath::{
 };
 use blast_leverage_series_one::{
     acl::{Self, AdminWitness},
-    observation::PositionObservation,
+    observation::{Self as observation, PositionObservation},
     policy::{PositionSide, TierPolicy},
     state::{Self as series_state, State},
 };
@@ -313,6 +313,46 @@ public(package) fun venue_checkpoint<Product>(
     self: &Vault<Product>,
 ): &Checkpoint {
     self.venue_account.borrow().checkpoint()
+}
+
+/// Revalidates retained Aftermath authority without exposing the cap.
+public(package) fun assert_venue_custody_binding<Product>(
+    self: &Vault<Product>,
+) {
+    self.venue_account.borrow().assert_custody_binding();
+}
+
+/// Applies one authenticated nonzero funding classification to Series1.
+public(package) fun settle_funding<Product>(
+    self: &mut Vault<Product>,
+    is_cost: bool,
+    amount: u64,
+): (u64, u64, u64) {
+    let (absorbed, uncovered) = self.series_state.settle_funding(if (is_cost) {
+        observation::funding_cost(amount)
+    } else {
+        observation::funding_credit(amount)
+    });
+
+    (
+        absorbed,
+        uncovered,
+        self.series_state.maintenance_reserve(),
+    )
+}
+
+/// Applies one final authenticated health observation to Series1.
+public(package) fun sync_health<Product>(
+    self: &mut Vault<Product>,
+    observation: PositionObservation,
+    reference_time_ms: u64,
+): bool {
+    let share_supply = self.treasury_cap().total_supply();
+    self.series_state.sync_health(
+        observation,
+        share_supply,
+        reference_time_ms,
+    )
 }
 
 /// Replaces the raw venue checkpoint after authenticated reconciliation.

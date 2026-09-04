@@ -275,6 +275,14 @@ public fun settle_funding<Product>(
     }
 }
 
+/// Returns the authoritative funding-only maintenance reserve.
+///
+/// Adapter operations use this value only for replay-complete post-state
+/// events. Reserve mutation remains exclusive to Series1 transitions.
+public fun maintenance_reserve<Product>(self: &State<Product>): u64 {
+    self.maintenance_reserve
+}
+
 /// Synchronizes objective health without increasing risk or moving lifecycle backward.
 ///
 /// Returns true only when this call changes `Active` to `ReduceOnly`. Every

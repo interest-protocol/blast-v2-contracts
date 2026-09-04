@@ -5,6 +5,14 @@ use blast_leverage_aftermath::venue_account::Checkpoint;
 use blast_leverage_series_one::policy::{PositionSide, TierPolicy};
 use std::type_name::TypeName;
 
+// === Constants ===
+
+/// Health policy rejected an otherwise clean authenticated checkpoint.
+const HEALTH_REASON_OBJECTIVE_FAILURE: u8 = 0;
+
+/// Stored or settlement checkpoint comparison found an unrelated mutation.
+const HEALTH_REASON_UNEXPECTED_CHECKPOINT: u8 = 1;
+
 // === Public Structs ===
 
 /// Emitted after checked activation advances the adapter cutover.
@@ -77,6 +85,27 @@ public struct VaultInitialized<phantom Product> has copy, drop {
     lot_size: u64,
     position_side: PositionSide,
     position_imr: u256,
+    checkpoint: Checkpoint,
+}
+
+/// Emitted after one nonzero isolated funding change is reconciled.
+public struct FundingSettled<phantom Product> has copy, drop {
+    vault_id: ID,
+    is_cost: bool,
+    raw_amount: u256,
+    amount: u64,
+    absorbed_by_reserve: u64,
+    uncovered_cost: u64,
+    reserve_after: u64,
+    previous_checkpoint: Checkpoint,
+    checkpoint: Checkpoint,
+}
+
+/// Emitted after health degrades or an unexpected checkpoint is persisted.
+public struct HealthSynchronized<phantom Product> has copy, drop {
+    vault_id: ID,
+    reason: u8,
+    lifecycle_changed: bool,
     checkpoint: Checkpoint,
 }
 
@@ -229,6 +258,56 @@ public(package) fun vault_initialized<Product>(
     );
 }
 
+public(package) fun funding_settled<Product>(
+    vault_id: ID,
+    is_cost: bool,
+    raw_amount: u256,
+    amount: u64,
+    absorbed_by_reserve: u64,
+    uncovered_cost: u64,
+    reserve_after: u64,
+    previous_checkpoint: Checkpoint,
+    checkpoint: Checkpoint,
+) {
+    blast_leverage_aftermath::events_wrapper::emit_event(
+        FundingSettled<Product> {
+            vault_id,
+            is_cost,
+            raw_amount,
+            amount,
+            absorbed_by_reserve,
+            uncovered_cost,
+            reserve_after,
+            previous_checkpoint,
+            checkpoint,
+        },
+    );
+}
+
+public(package) fun health_synchronized<Product>(
+    vault_id: ID,
+    reason: u8,
+    lifecycle_changed: bool,
+    checkpoint: Checkpoint,
+) {
+    blast_leverage_aftermath::events_wrapper::emit_event(
+        HealthSynchronized<Product> {
+            vault_id,
+            reason,
+            lifecycle_changed,
+            checkpoint,
+        },
+    );
+}
+
+public(package) fun objective_failure_reason(): u8 {
+    HEALTH_REASON_OBJECTIVE_FAILURE
+}
+
+public(package) fun unexpected_checkpoint_reason(): u8 {
+    HEALTH_REASON_UNEXPECTED_CHECKPOINT
+}
+
 public(package) fun risk_module_witness_rotated<Product>(
     vault_id: ID,
     previous_witness: TypeName,
@@ -353,6 +432,35 @@ public fun vault_initialized_fields<Product>(
         self.lot_size,
         self.position_side,
         self.position_imr,
+        self.checkpoint,
+    )
+}
+
+#[test_only]
+public fun funding_settled_fields<Product>(
+    self: &FundingSettled<Product>,
+): (ID, bool, u256, u64, u64, u64, u64, Checkpoint, Checkpoint) {
+    (
+        self.vault_id,
+        self.is_cost,
+        self.raw_amount,
+        self.amount,
+        self.absorbed_by_reserve,
+        self.uncovered_cost,
+        self.reserve_after,
+        self.previous_checkpoint,
+        self.checkpoint,
+    )
+}
+
+#[test_only]
+public fun health_synchronized_fields<Product>(
+    self: &HealthSynchronized<Product>,
+): (ID, u8, bool, Checkpoint) {
+    (
+        self.vault_id,
+        self.reason,
+        self.lifecycle_changed,
         self.checkpoint,
     )
 }

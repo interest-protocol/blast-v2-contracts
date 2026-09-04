@@ -16,8 +16,9 @@ use blast_leverage_series_one::policy::{Self, PositionSide};
 use ifixed::ifixed;
 use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 use perpetuals::{
-    account,
+    account::{Self as account, Account},
     clearing_house::{Self, ClearingHouse},
+    market,
     registry::Registry,
 };
 use position::position;
@@ -274,7 +275,156 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
     );
 }
 
+/// Reconciles one bound Aftermath checkpoint and persists objective health.
+///
+/// Any caller may submit the immutable bound objects and exact Pyth updates.
+/// Source or identity authentication failures abort. Authenticated economic
+/// failures persist the newest checkpoint and can only degrade to ReduceOnly.
+public fun sync_health<Product, Collateral>(
+    vault: &mut Vault<Product>,
+    protocol: &Protocol,
+    account: &mut Account<Collateral>,
+    registry: &Registry,
+    clearing_house: &mut ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    base_price_info: &PriceInfoObject,
+    collateral_price_info: &PriceInfoObject,
+    clock: &Clock,
+) {
+    protocol.assert_current();
+    vault.assert_venue_custody_binding();
+
+    let binding = vault.venue_binding();
+    let stored_checkpoint = *vault.venue_checkpoint();
+    let pre_capture = snapshot::capture_health(
+        &binding,
+        account,
+        registry,
+        clearing_house,
+        base_oracle,
+        collateral_oracle,
+        base_price_info,
+        collateral_price_info,
+        clock,
+    );
+    let (pre_checkpoint, collateral_price) =
+        snapshot::into_funding_probe(pre_capture);
+    let position = clearing_house.position(account::account_id(account));
+    let (funding_rate_long, funding_rate_short) =
+        market::cum_funding_rates(clearing_house.market_state());
+    let funding_candidate = position::calculate_position_funding_internal(
+        position,
+        funding_rate_long,
+        funding_rate_short,
+    );
+
+    clearing_house::settle_position_funding(
+        clearing_house,
+        collateral_oracle,
+        account::account_id(account),
+        clock,
+    );
+
+    let post_capture = snapshot::capture_health(
+        &binding,
+        account,
+        registry,
+        clearing_house,
+        base_oracle,
+        collateral_oracle,
+        base_price_info,
+        collateral_price_info,
+        clock,
+    );
+    let post_checkpoint = post_capture.checkpoint();
+    let change = classify_sync_change(
+        &stored_checkpoint,
+        &pre_checkpoint,
+        &post_checkpoint,
+        funding_candidate,
+        collateral_price,
+    );
+    let (has_funding, is_cost, raw_amount, amount, checkpoint_clean) =
+        snapshot::funding_change_fields(&change);
+    let (absorbed_by_reserve, uncovered_cost, reserve_after) = if (has_funding) {
+        vault.settle_funding(is_cost, amount)
+    } else {
+        (0, 0, 0)
+    };
+    let (observation, checkpoint) = snapshot::finish_health(
+        post_capture,
+        checkpoint_clean,
+    );
+
+    vault.replace_venue_checkpoint(checkpoint);
+    let lifecycle_changed = vault.sync_health(
+        observation,
+        clock.timestamp_ms(),
+    );
+
+    let vault_id = vault.id();
+    if (has_funding) {
+        events::funding_settled<Product>(
+            vault_id,
+            is_cost,
+            raw_amount,
+            amount,
+            absorbed_by_reserve,
+            uncovered_cost,
+            reserve_after,
+            stored_checkpoint,
+            checkpoint,
+        );
+    };
+    let (emit_health, health_reason) = health_event_decision(
+        lifecycle_changed,
+        checkpoint_clean,
+    );
+    if (emit_health) {
+        events::health_synchronized<Product>(
+            vault_id,
+            health_reason,
+            lifecycle_changed,
+            checkpoint,
+        );
+    };
+}
+
 // === Private Functions ===
+
+fun classify_sync_change(
+    stored: &venue_account::Checkpoint,
+    before: &venue_account::Checkpoint,
+    after: &venue_account::Checkpoint,
+    funding_candidate: u256,
+    collateral_price: u256,
+): snapshot::Change {
+    if (!snapshot::checkpoint_unchanged(stored, before)) {
+        snapshot::unexpected_change()
+    } else {
+        snapshot::classify_change(
+            before,
+            after,
+            funding_candidate,
+            collateral_price,
+        )
+    }
+}
+
+fun health_event_decision(
+    lifecycle_changed: bool,
+    checkpoint_clean: bool,
+): (bool, u8) {
+    (
+        lifecycle_changed || !checkpoint_clean,
+        if (checkpoint_clean) {
+            events::objective_failure_reason()
+        } else {
+            events::unexpected_checkpoint_reason()
+        },
+    )
+}
 
 fun order_sizes(
     target_notional: u64,
@@ -599,4 +749,39 @@ public fun execution_price_for_testing(
 #[test_only]
 public fun assert_position_imr_for_testing(negative: bool) {
     assert_position_imr_sign(negative);
+}
+
+#[test_only]
+public fun classify_sync_change_for_testing(
+    stored: &venue_account::Checkpoint,
+    before: &venue_account::Checkpoint,
+    after: &venue_account::Checkpoint,
+    candidate_negative: bool,
+    candidate_collateral_magnitude: u256,
+): snapshot::Change {
+    if (!snapshot::checkpoint_unchanged(stored, before)) {
+        snapshot::unexpected_change()
+    } else {
+        snapshot::classify_change_with_candidate_for_testing(
+            before,
+            after,
+            candidate_negative,
+            candidate_collateral_magnitude,
+        )
+    }
+}
+
+#[test_only]
+public fun funding_change_fields_for_testing(
+    change: &snapshot::Change,
+): (bool, bool, u256, u64, bool) {
+    snapshot::funding_change_fields(change)
+}
+
+#[test_only]
+public fun health_event_decision_for_testing(
+    lifecycle_changed: bool,
+    checkpoint_clean: bool,
+): (bool, u8) {
+    health_event_decision(lifecycle_changed, checkpoint_clean)
 }

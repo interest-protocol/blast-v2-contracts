@@ -218,6 +218,14 @@ public(package) fun checkpoint(self: &VenueAccount): &Checkpoint {
     &self.checkpoint
 }
 
+/// Revalidates that retained admin authority still names the bound account.
+public(package) fun assert_custody_binding(self: &VenueAccount) {
+    assert_admin_cap_binding(
+        authority::`for`(&self.admin_cap),
+        self.account_object_id,
+    );
+}
+
 /// Unpacks a copied checkpoint for normalization and change classification.
 public(package) fun unpack(
     self: Checkpoint,

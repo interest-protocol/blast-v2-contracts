@@ -190,14 +190,16 @@ strict_capture_shape="$(
   sed -n '/^public(package) fun capture<Collateral>($/,/^}/p' "$snapshot_file" \
     | tr -d '[:space:]'
 )"
-grep -q 'capture_(binding,account,registry,clearing_house,base_oracle,collateral_oracle,base_price_info,collateral_price_info,clock,false,true,' <<<"$strict_capture_shape" \
+grep -q 'capture_(binding,account,registry,clearing_house,base_oracle,collateral_oracle,base_price_info,collateral_price_info,clock,false,);let(observation,checkpoint,_)=into_observation(captured,false,true)' <<<"$strict_capture_shape" \
   || fail "Strict capture must delegate to the shared authenticated capture path."
 health_capture_shape="$(
   sed -n '/^public(package) fun capture_health<Collateral>($/,/^}/p' "$snapshot_file" \
     | tr -d '[:space:]'
 )"
-grep -q 'capture_(binding,account,registry,clearing_house,base_oracle,collateral_oracle,base_price_info,collateral_price_info,clock,true,!is_unexpected_change(change),' <<<"$health_capture_shape" \
+grep -q '):CapturedSnapshot{capture_(binding,account,registry,clearing_house,base_oracle,collateral_oracle,base_price_info,collateral_price_info,clock,true,)' <<<"$health_capture_shape" \
   || fail "Health capture must delegate to the shared authenticated capture path."
+grep -q '^public struct CapturedSnapshot {$' "$snapshot_file" \
+  || fail "Health capture must remain linear until checkpoint classification."
 [[ "$(grep -Fc 'binding.assert_exact(' "$snapshot_file")" -eq 1 ]] \
   || fail "Strict and health capture must share one binding authentication path."
 grep -q 'base_price_info: &PriceInfoObject,' "$snapshot_file" \
@@ -214,11 +216,12 @@ grep -q 'market::collateral_oracle_price(params, collateral_oracle, clock)' "$sn
   || fail "Snapshot capture must use the bound named collateral oracle getter."
 grep -q 'position::compute_margin_and_requirement' "$snapshot_file" \
   || fail "Snapshot capture must compare the named venue margin and requirement."
-grep -q 'economics_valid && margin_safe(margin, requirement)' "$snapshot_file" \
+grep -q 'margin_safe: margin_safe(margin, requirement)' "$snapshot_file" \
   || fail "Snapshot margin safety must compare margin against its requirement."
 grep -q '!margin_negative && margin >= requirement' "$snapshot_file" \
   || fail "Snapshot margin safety must reject signed-negative margin carriers."
-grep -q 'clearing_house.market_pause_mode() == 0 && !clearing_house.is_frozen()' "$snapshot_file" \
+grep -q 'venue_operational: clearing_house.market_pause_mode() == 0' "$snapshot_file" \
+  && grep -q '&& !clearing_house.is_frozen()' "$snapshot_file" \
   || fail "Venue operation must require allowed pause mode and not-frozen state."
 grep -q 'observation::new_health_price' "$snapshot_file" \
   || fail "Health capture must preserve authenticated zero oracle prices."
@@ -357,6 +360,73 @@ production_operations="$(sed '/^\/\/ === Test-Only Functions ===/,$d' "$operatio
 if grep -qE '^public fun .*order' <<<"$production_operations"; then
   fail "The adapter must not expose a generic public order function."
 fi
+
+grep -q '^public fun sync_health<Product, Collateral>($' "$operations_file" \
+  || fail "The adapter must expose one permissionless health synchronization operation."
+sync_block="$(
+  sed -n '/^public fun sync_health<Product, Collateral>($/,/^}/p' "$operations_file"
+)"
+sync_signature="$(sed -n '1,/^) {$/p' <<<"$sync_block")"
+grep -q 'base_price_info: &PriceInfoObject,' <<<"$sync_signature" \
+  || fail "Health sync must accept the exact base Pyth price object."
+grep -q 'collateral_price_info: &PriceInfoObject,' <<<"$sync_signature" \
+  || fail "Health sync must accept the exact collateral Pyth price object."
+if grep -qE '(^|[[:space:]])(cap|side|direction|order_size|market_id|source_id|share_amount):' \
+  <<<"$sync_signature"; then
+  fail "Permissionless health sync must not accept authority or trade choices."
+fi
+awk '
+  /^\).* \{$/ {
+    getline
+    found = 1
+    valid = ($0 == "    protocol.assert_current();")
+  }
+  END { exit !(found && valid) }
+' <<<"$sync_block" \
+  || fail "Health sync must check the adapter version first."
+sync_shape="$(tr -d '[:space:]' <<<"$sync_block")"
+grep -q 'clearing_house::settle_position_funding(clearing_house,collateral_oracle,account::account_id(account),clock,);' \
+  <<<"$sync_shape" \
+  || fail "Health sync funding settlement must use the bound collateral oracle."
+grep -q 'if(!snapshot::checkpoint_unchanged(stored,before)){snapshot::unexpected_change()}' \
+  <<<"$(sed -n '/^fun classify_sync_change($/,/^}/p' "$operations_file" | tr -d '[:space:]')" \
+  || fail "Stored checkpoint drift must be unexpected and never funding."
+sync_line() {
+  local needle="$1"
+  grep -nF "$needle" <<<"$sync_block" | head -1 | cut -d: -f1
+}
+sync_version_line="$(sync_line 'protocol.assert_current();')"
+sync_cap_line="$(sync_line 'vault.assert_venue_custody_binding();')"
+sync_pre_line="$(grep -nF 'snapshot::capture_health(' <<<"$sync_block" | sed -n '1s/:.*//p')"
+sync_candidate_line="$(sync_line 'let funding_candidate = position::calculate_position_funding_internal(')"
+sync_settle_line="$(sync_line 'clearing_house::settle_position_funding(')"
+sync_post_line="$(grep -nF 'snapshot::capture_health(' <<<"$sync_block" | sed -n '2s/:.*//p')"
+sync_classify_line="$(sync_line 'let change = classify_sync_change(')"
+sync_series_settle_line="$(sync_line 'vault.settle_funding(is_cost, amount)')"
+sync_finish_line="$(sync_line 'let (observation, checkpoint) = snapshot::finish_health(')"
+sync_persist_line="$(sync_line 'vault.replace_venue_checkpoint(checkpoint);')"
+sync_policy_line="$(sync_line 'let lifecycle_changed = vault.sync_health(')"
+sync_funding_event_line="$(sync_line 'events::funding_settled<Product>(')"
+sync_health_event_line="$(sync_line 'events::health_synchronized<Product>(')"
+sync_order=(
+  "$sync_version_line" "$sync_cap_line" "$sync_pre_line"
+  "$sync_candidate_line" "$sync_settle_line" "$sync_post_line"
+  "$sync_classify_line" "$sync_series_settle_line" "$sync_finish_line"
+  "$sync_persist_line" "$sync_policy_line" "$sync_funding_event_line"
+  "$sync_health_event_line"
+)
+for ((i = 1; i < ${#sync_order[@]}; i++)); do
+  if [[ -z "${sync_order[i - 1]}" || -z "${sync_order[i]}" ]] \
+    || (( sync_order[i - 1] >= sync_order[i] )); then
+    fail "Health sync must preserve settlement, classification, persistence, policy, and event order."
+  fi
+done
+[[ "$(grep -Fc 'vault.replace_venue_checkpoint(checkpoint);' <<<"$sync_block")" -eq 1 ]] \
+  || fail "Health sync must persist exactly one authenticated post checkpoint."
+[[ "$(grep -Fc 'events::funding_settled<Product>(' <<<"$sync_block")" -eq 1 ]] \
+  || fail "Health sync must have one nonzero-funding event site."
+[[ "$(grep -Fc 'events::health_synchronized<Product>(' <<<"$sync_block")" -eq 1 ]] \
+  || fail "Health sync must have one degradation event site."
 
 for mutation in \
   'issue<Product: drop, RiskModule: drop>' \

@@ -272,6 +272,57 @@ snapshot movement, any field mutation, or any combined transition is
 Any live lineage, bytecode, ABI, dependency, source-binding, conversion-vector,
 or checkpoint mismatch reopens this decision and blocks publication.
 
+### Permissionless funding and health synchronization
+
+`sync_health` is public and accepts no witness, capability, side, size, market
+identifier, source identifier, or share amount. The caller supplies the bound
+account, Registry, ClearingHouse, oracle storages, and the exact base and
+collateral Pyth `PriceInfoObject` values. The adapter version guard runs first.
+The stored `VenueAccount` then rechecks its sealed admin capability against the
+bound account object, and the shared snapshot path authenticates every object,
+type, storage, source, Pyth identity, price, and timestamp.
+
+After authentication, synchronization has one fixed sequence:
+
+1. Capture a permissive pre-settlement checkpoint and the named Aftermath
+   funding candidate at the captured market rates.
+2. Call `clearing_house::settle_position_funding` with the bound collateral
+   oracle.
+3. Capture the post-settlement facts and classify both stored-to-pre and
+   pre-to-post checkpoint edges.
+4. Apply Series1 reserve settlement only for a nonzero, representable,
+   isolated funding classification. Credits round down and costs round up at
+   the six-decimal collateral boundary.
+5. Finalize the one post-settlement health observation, persist its checkpoint,
+   and then call Series1 health policy with the canonical share supply.
+6. Emit completed accounting and health facts after all state mutation.
+
+Stored-to-pre drift is an authenticated unexpected venue change, not an
+authentication failure. The call succeeds, persists the newest post checkpoint,
+does not count even an otherwise exact pre-to-post funding transition, and sets
+`checkpoint_clean = false` so Series1 can only preserve lifecycle or degrade
+`Active` to `ReduceOnly`. A binding, type, source, Pyth identity, or observation
+agreement failure still aborts. No health path can activate, resume, start
+shutdown, mint, burn, withdraw, place an order, or increase risk.
+
+`FundingSettled<Product>` occurs only for nonzero authenticated funding. It
+records the Vault, credit/cost direction, exact raw collateral-IFixed amount,
+conservative six-decimal amount, reserve absorption, uncovered cost, reserve
+after settlement, and both the previous and post checkpoints.
+`HealthSynchronized<Product>` occurs when lifecycle changes or an unexpected
+checkpoint is persisted. Reason `0` is an objective Series1 health failure and
+reason `1` is an unexpected checkpoint; it also records whether this call
+changed lifecycle and the post checkpoint. Together with issuance, activation,
+maximum-order-notional, risk-module rotation, and explicit reduce-only events,
+these facts reconstruct the immutable bindings, reserve, lifecycle, selected
+risk module, order limit, and latest checkpoint.
+
+The official Aftermath and Pyth ports abort in local unit tests, so local tests
+exercise the exact Blast-owned classification, rounding, event, and reducer
+paths while source gates pin the production call and mutation order. Task 8
+must still execute the complete permissionless path against controlled live
+objects and compare the resulting checkpoint, reserve, lifecycle, and events.
+
 ## Consequences
 
 - The adapter, not Series1 core, owns all volatile Aftermath dependencies.

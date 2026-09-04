@@ -180,6 +180,7 @@ expected_state_public="$(printf '%s\n' \
   initialization_constraints \
   initialization_target_notional \
   initialize \
+  maintenance_reserve \
   new \
   prepare_initialization \
   set_max_order_notional \

@@ -42,6 +42,32 @@ public struct SnapshotFacts has copy, drop {
     collateral_price: u64,
 }
 
+/// One authenticated capture awaiting operation-specific finalization.
+///
+/// The value is linear so a caller must either consume a pre-settlement probe
+/// or finalize a post-settlement health observation. Source authentication and
+/// economic normalization therefore cannot be separated or replayed.
+public struct CapturedSnapshot {
+    venue_equity: u64,
+    absolute_base: u64,
+    absolute_notional: u64,
+    lot_size: u64,
+    side: PositionSide,
+    pending_order_count: u64,
+    margin_safe: bool,
+    venue_operational: bool,
+    economics_valid: bool,
+    base_price: u64,
+    base_confidence: u64,
+    base_timestamp: u64,
+    collateral_price: u64,
+    collateral_confidence: u64,
+    collateral_timestamp: u64,
+    mark_price: u64,
+    checkpoint: Checkpoint,
+    collateral_fixed: u256,
+}
+
 // === Package Functions ===
 
 /// Captures one authenticated venue and Pyth valuation pair.
@@ -60,7 +86,7 @@ public(package) fun capture<Collateral>(
     collateral_price_info: &PriceInfoObject,
     clock: &Clock,
 ): (observation::PositionObservation, Checkpoint) {
-    let (observation, checkpoint, _) = capture_(
+    let captured = capture_(
         binding,
         account,
         registry,
@@ -71,8 +97,8 @@ public(package) fun capture<Collateral>(
         collateral_price_info,
         clock,
         false,
-        true,
     );
+    let (observation, checkpoint, _) = into_observation(captured, false, true);
     (observation, checkpoint)
 }
 
@@ -88,7 +114,7 @@ public(package) fun capture_initialization<Collateral>(
     collateral_price_info: &PriceInfoObject,
     clock: &Clock,
 ): (observation::PositionObservation, Checkpoint, SnapshotFacts) {
-    capture_(
+    let captured = capture_(
         binding,
         account,
         registry,
@@ -99,8 +125,8 @@ public(package) fun capture_initialization<Collateral>(
         collateral_price_info,
         clock,
         false,
-        true,
-    )
+    );
+    into_observation(captured, false, true)
 }
 
 /// Captures authenticated live facts for objective health degradation.
@@ -117,9 +143,8 @@ public(package) fun capture_health<Collateral>(
     base_price_info: &PriceInfoObject,
     collateral_price_info: &PriceInfoObject,
     clock: &Clock,
-    change: &Change,
-): (observation::PositionObservation, Checkpoint) {
-    let (observation, checkpoint, _) = capture_(
+): CapturedSnapshot {
+    capture_(
         binding,
         account,
         registry,
@@ -130,9 +155,7 @@ public(package) fun capture_health<Collateral>(
         collateral_price_info,
         clock,
         true,
-        !is_unexpected_change(change),
-    );
-    (observation, checkpoint)
+    )
 }
 
 fun capture_<Collateral>(
@@ -146,8 +169,7 @@ fun capture_<Collateral>(
     collateral_price_info: &PriceInfoObject,
     clock: &Clock,
     health: bool,
-    checkpoint_clean: bool,
-): (observation::PositionObservation, Checkpoint, SnapshotFacts) {
+): CapturedSnapshot {
     binding.assert_exact(
         object::id(account),
         account::account_id(account),
@@ -190,16 +212,6 @@ fun capture_<Collateral>(
     let (mark_price, mark_representable) = fixed_to_u64_down_health(mark_fixed, 9);
     if (!health) {
         assert!(mark_representable, blast_leverage_aftermath::errors::normalization_overflow!());
-    };
-    let base_index = if (health) {
-        observation::new_health_price(base_price, base_confidence, base_timestamp)
-    } else {
-        observation::new_price(base_price, base_confidence, base_timestamp)
-    };
-    let collateral_index = if (health) {
-        observation::new_health_price(collateral_price, collateral_confidence, collateral_timestamp)
-    } else {
-        observation::new_price(collateral_price, collateral_confidence, collateral_timestamp)
     };
     let position = clearing_house.position(account::account_id(account));
     let (signed_base, signed_quote_notional) = position::base_and_quote_amounts(position);
@@ -256,40 +268,143 @@ fun capture_<Collateral>(
         && mark_representable
         && equity_representable;
 
+    CapturedSnapshot {
+        venue_equity,
+        absolute_base,
+        absolute_notional,
+        lot_size: market::lot_size(params),
+        side,
+        pending_order_count: position.pending_order_count(),
+        margin_safe: margin_safe(margin, requirement),
+        venue_operational: clearing_house.market_pause_mode() == 0
+            && !clearing_house.is_frozen(),
+        economics_valid,
+        base_price,
+        base_confidence,
+        base_timestamp,
+        collateral_price,
+        collateral_confidence,
+        collateral_timestamp,
+        mark_price,
+        checkpoint,
+        collateral_fixed,
+    }
+}
+
+/// Consumes a pre-settlement capture into the exact reconciliation inputs.
+public(package) fun into_funding_probe(
+    self: CapturedSnapshot,
+): (Checkpoint, u256) {
+    let CapturedSnapshot {
+        checkpoint,
+        collateral_fixed,
+        ..
+    } = self;
+
+    (checkpoint, collateral_fixed)
+}
+
+/// Copies the post-settlement checkpoint before consuming the final capture.
+public(package) fun checkpoint(self: &CapturedSnapshot): Checkpoint {
+    self.checkpoint
+}
+
+/// Finalizes one authenticated permissive health observation.
+public(package) fun finish_health(
+    self: CapturedSnapshot,
+    checkpoint_clean: bool,
+): (observation::PositionObservation, Checkpoint) {
+    let (observation, checkpoint, _) = into_observation(
+        self,
+        true,
+        checkpoint_clean,
+    );
+    (observation, checkpoint)
+}
+
+fun into_observation(
+    self: CapturedSnapshot,
+    health: bool,
+    checkpoint_clean: bool,
+): (observation::PositionObservation, Checkpoint, SnapshotFacts) {
+    let CapturedSnapshot {
+        venue_equity,
+        absolute_base,
+        absolute_notional,
+        lot_size,
+        side,
+        pending_order_count,
+        margin_safe,
+        venue_operational,
+        economics_valid,
+        base_price,
+        base_confidence,
+        base_timestamp,
+        collateral_price,
+        collateral_confidence,
+        collateral_timestamp,
+        mark_price,
+        checkpoint,
+        collateral_fixed: _,
+    } = self;
+    let base_index = if (health) {
+        observation::new_health_price(base_price, base_confidence, base_timestamp)
+    } else {
+        observation::new_price(base_price, base_confidence, base_timestamp)
+    };
+    let collateral_index = if (health) {
+        observation::new_health_price(
+            collateral_price,
+            collateral_confidence,
+            collateral_timestamp,
+        )
+    } else {
+        observation::new_price(
+            collateral_price,
+            collateral_confidence,
+            collateral_timestamp,
+        )
+    };
+    let observation = if (health) {
+        observation::new_health_position(
+            venue_equity,
+            absolute_base,
+            absolute_notional,
+            lot_size,
+            side,
+            pending_order_count,
+            economics_valid && margin_safe,
+            venue_operational,
+            checkpoint_clean,
+            base_index,
+            collateral_index,
+            mark_price,
+        )
+    } else {
+        observation::new_position(
+            venue_equity,
+            absolute_base,
+            absolute_notional,
+            lot_size,
+            side,
+            pending_order_count,
+            economics_valid && margin_safe,
+            venue_operational,
+            checkpoint_clean,
+            base_index,
+            collateral_index,
+            mark_price,
+        )
+    };
+
     (
-        if (health) { observation::new_health_position(
-            venue_equity,
-            absolute_base,
-            absolute_notional,
-            market::lot_size(params),
-            side,
-            position.pending_order_count(),
-            economics_valid && margin_safe(margin, requirement),
-            clearing_house.market_pause_mode() == 0 && !clearing_house.is_frozen(),
-            checkpoint_clean,
-            base_index,
-            collateral_index,
-            mark_price,
-        ) } else { observation::new_position(
-            venue_equity,
-            absolute_base,
-            absolute_notional,
-            market::lot_size(params),
-            side,
-            position.pending_order_count(),
-            economics_valid && margin_safe(margin, requirement),
-            clearing_house.market_pause_mode() == 0 && !clearing_house.is_frozen(),
-            checkpoint_clean,
-            base_index,
-            collateral_index,
-            mark_price,
-        ) },
+        observation,
         checkpoint,
         SnapshotFacts {
             venue_equity,
             absolute_base,
             absolute_notional,
-            lot_size: market::lot_size(params),
+            lot_size,
             side,
             base_price,
             collateral_price,
@@ -329,12 +444,63 @@ public(package) fun classify_change(
     funding_candidate: u256,
     collateral_price: u256,
 ): Change {
+    if (checkpoint_unchanged(before, after)) {
+        return Change::Unchanged
+    };
+    let (candidate_collateral_magnitude, representable) =
+        usd_fixed_to_collateral_fixed_health(
+            ifixed::abs(funding_candidate),
+            collateral_price,
+            ifixed::is_neg(funding_candidate),
+        );
+    if (!representable) {
+        return Change::Unexpected
+    };
+
     classify_change_(
         before,
         after,
         ifixed::is_neg(funding_candidate),
-        usd_fixed_to_collateral_fixed(ifixed::abs(funding_candidate), collateral_price, ifixed::is_neg(funding_candidate)),
+        candidate_collateral_magnitude,
     )
+}
+
+/// Returns true only when every stored raw checkpoint field is unchanged.
+public(package) fun checkpoint_unchanged(
+    before: &Checkpoint,
+    after: &Checkpoint,
+): bool {
+    match (classify_change_(before, after, false, 0)) {
+        Change::Unchanged => true,
+        _ => false,
+    }
+}
+
+/// Creates the dirty-checkpoint classification for adapter orchestration.
+public(package) fun unexpected_change(): Change {
+    Change::Unexpected
+}
+
+/// Returns the normalized Series1 settlement and raw event facts for a change.
+///
+/// Funding credits round down and costs round up at the six-decimal collateral
+/// boundary. A width failure is an objective dirty-checkpoint fact rather than
+/// an abort in permissionless health synchronization.
+public(package) fun funding_change_fields(
+    change: &Change,
+): (bool, bool, u256, u64, bool) {
+    match (change) {
+        Change::Unchanged => (false, false, 0, 0, true),
+        Change::Unexpected => (false, false, 0, 0, false),
+        Change::FundingCredit(raw_amount) => {
+            let (amount, representable) = fixed_to_u64_down_health(*raw_amount, 6);
+            (representable, false, *raw_amount, amount, representable)
+        },
+        Change::FundingCost(raw_amount) => {
+            let (amount, representable) = fixed_to_u64_up_health(*raw_amount, 6);
+            (representable, true, *raw_amount, amount, representable)
+        },
+    }
 }
 
 fun classify_change_(
@@ -385,7 +551,7 @@ fun classify_change_(
     Change::Unexpected
 }
 
-fun is_unexpected_change(change: &Change): bool {
+public(package) fun is_unexpected_change(change: &Change): bool {
     match (change) { Change::Unexpected => true, _ => false }
 }
 
@@ -506,6 +672,9 @@ fun fixed_to_u64_up_health(value: u256, decimals: u64): (u64, bool) {
     } else if (value % scale == 0) { (down as u64, true) } else { ((down + 1) as u64, true) }
 }
 
+// The strict variant remains a test-pinned aborting contract for risk-increasing
+// paths; Task 7 production reconciliation uses the non-aborting health variant.
+#[allow(unused_function)]
 fun usd_fixed_to_collateral_fixed(usd: u256, collateral_price: u256, round_up: bool): u256 {
     assert!(collateral_price > 0, blast_leverage_aftermath::errors::normalization_overflow!());
     let whole = usd / collateral_price;
