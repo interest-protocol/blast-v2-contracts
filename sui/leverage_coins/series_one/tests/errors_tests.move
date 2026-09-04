@@ -123,3 +123,11 @@ fun state_error_registry_is_stable() {
     assert_eq!(blast_leverage_series_one::errors::invalid_max_order_notional!(), 64);
     assert_eq!(blast_leverage_series_one::errors::max_order_notional_unchanged!(), 74);
 }
+
+/// Pins the operation-observation codes appended after the state range.
+#[test]
+fun observation_error_registry_is_stable() {
+    assert_eq!(blast_leverage_series_one::errors::invalid_observation_price!(), 75);
+    assert_eq!(blast_leverage_series_one::errors::invalid_observation_lot_size!(), 76);
+    assert_eq!(blast_leverage_series_one::errors::invalid_position_observation!(), 77);
+}

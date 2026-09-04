@@ -9,6 +9,7 @@ acl_file="$package_dir/sources/acl.move"
 state_file="$package_dir/sources/state.move"
 policy_file="$package_dir/sources/policy.move"
 lifecycle_file="$package_dir/sources/lifecycle.move"
+observation_file="$package_dir/sources/observation.move"
 events_wrapper_file="$package_dir/sources/lib/events_wrapper.move"
 
 production_lines() {
@@ -34,6 +35,7 @@ for required in \
   "$state_file" \
   "$policy_file" \
   "$lifecycle_file" \
+  "$observation_file" \
   "$package_dir/sources/lib/accounting_math.move" \
   "$package_dir/sources/lib/bounded_value.move" \
   "$package_dir/sources/lib/events.move" \
@@ -93,6 +95,20 @@ if sed -n '/^public fun enter_reduce_only<Product>($/,/^}/p' "$state_file" \
   | grep -q 'AdminWitness'; then
   fail "Series state transitions after construction must rely on adapter custody."
 fi
+
+grep -q '^public struct PriceObservation {$' "$observation_file" \
+  || fail "PriceObservation must remain an ability-free linear carrier."
+grep -q '^public struct PositionObservation {$' "$observation_file" \
+  || fail "PositionObservation must remain an ability-free linear carrier."
+grep -q '^public enum FundingSettlement {$' "$observation_file" \
+  || fail "FundingSettlement must remain an ability-free linear carrier."
+for unpacker in unpack_price unpack_position unpack_funding; do
+  grep -q "^public(package) fun $unpacker" "$observation_file" \
+    || fail "$unpacker must remain package-only."
+  if production_lines "$observation_file" | grep -q "public fun $unpacker"; then
+    fail "$unpacker must not be exposed outside Series1."
+  fi
+done
 
 if grep -rnE '^[[:space:]]*(public[[:space:]]+entry|entry)[[:space:]]+fun' \
   "$package_dir/sources"; then

@@ -58,6 +58,21 @@ its package version, and the shared Series1 admin role. The adapter also owns
 the Coin Registry call, TreasuryCap, MetadataCap, explicit venue state, and
 risk-module selection.
 
+## Operation observations
+
+`observation::PriceObservation`, `PositionObservation`, and
+`FundingSettlement` are linear, operation-scoped normalized data carriers.
+They authenticate neither a caller nor a venue or oracle source; each adapter
+must establish source identity before it constructs them. The package alone can
+consume their fields, ensuring an observation cannot be duplicated, retained,
+or unpacked by an adapter after it passes into Series1.
+
+| Code | Macro | Raised by | Meaning |
+| ---: | --- | --- | --- |
+| 75 | `invalid_observation_price` | `observation` | A normalized price or mark is zero. |
+| 76 | `invalid_observation_lot_size` | `observation` | A normalized position has zero lot size. |
+| 77 | `invalid_position_observation` | `observation` | Base and notional do not describe a flat or lot-aligned non-flat position. |
+
 ## Current state
 
 This package is not ready to custody user value. It provides the immutable

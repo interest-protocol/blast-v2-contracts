@@ -258,6 +258,18 @@ const EInvalidMaxOrderNotional: u64 = 64;
 /// A maximum-order-notional update repeated the current setting.
 const EMaxOrderNotionalUnchanged: u64 = 74;
 
+#[test_only]
+/// A normalized price observation must be positive.
+const EInvalidObservationPrice: u64 = 75;
+
+#[test_only]
+/// A normalized position observation must use a positive venue lot size.
+const EInvalidObservationLotSize: u64 = 76;
+
+#[test_only]
+/// A normalized position must be flat or use positive, lot-aligned base and notional.
+const EInvalidPositionObservation: u64 = 77;
+
 macro public(package) fun zero_amount(): u64 {
     0
 }
@@ -504,4 +516,16 @@ macro public(package) fun invalid_max_order_notional(): u64 {
 
 macro public(package) fun max_order_notional_unchanged(): u64 {
     74
+}
+
+macro public(package) fun invalid_observation_price(): u64 {
+    75
+}
+
+macro public(package) fun invalid_observation_lot_size(): u64 {
+    76
+}
+
+macro public(package) fun invalid_position_observation(): u64 {
+    77
 }
