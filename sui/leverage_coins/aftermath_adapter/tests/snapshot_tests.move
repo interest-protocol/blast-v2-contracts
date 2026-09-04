@@ -213,6 +213,87 @@ fun health_usd_conversion_keeps_the_same_max_width_input_as_an_invalid_fact() {
 }
 
 #[test]
+fun health_mark_normalization_preserves_an_unrepresentable_mark_as_invalid() {
+    let raw = ((std::u64::max_value!() as u256) + 1) * 1_000_000_000;
+    let (mark, valid) = snapshot::normalize_mark_health_for_testing(raw);
+
+    assert_eq!(mark, 0);
+    assert!(!valid);
+}
+
+#[test]
+#[expected_failure(abort_code = 26, location = blast_leverage_aftermath::snapshot)]
+fun strict_mark_normalization_rejects_the_first_unrepresentable_mark() {
+    let raw = ((std::u64::max_value!() as u256) + 1) * 1_000_000_000;
+    snapshot::normalize_mark_strict_for_testing(raw);
+}
+
+#[test]
+fun negative_pnl_equity_accepts_the_largest_u64_net_value() {
+    let (equity, valid) = snapshot::signed_equity_health_for_testing(
+        std::u64::max_value!(),
+        false,
+        1_000_000_000_000,
+        true,
+        1_000_000_000_000,
+        1_000_000_000_000_000_000,
+    );
+
+    assert_eq!(equity, std::u64::max_value!());
+    assert!(valid);
+}
+
+#[test]
+fun health_negative_pnl_equity_rejects_the_first_net_value_above_u64() {
+    let (equity, valid) = snapshot::signed_equity_health_for_testing(
+        std::u64::max_value!(),
+        false,
+        2_000_000_000_000,
+        true,
+        1_000_000_000_000,
+        1_000_000_000_000_000_000,
+    );
+
+    assert_eq!(equity, 0);
+    assert!(!valid);
+}
+
+#[test]
+#[expected_failure(abort_code = 26, location = blast_leverage_aftermath::snapshot)]
+fun strict_negative_pnl_equity_rejects_the_first_net_value_above_u64() {
+    snapshot::signed_equity_strict_for_testing(
+        std::u64::max_value!(),
+        false,
+        2_000_000_000_000,
+        true,
+        1_000_000_000_000,
+        1_000_000_000_000_000_000,
+    );
+}
+
+#[test]
+fun strict_usd_round_up_accepts_the_largest_representable_result() {
+    assert_eq!(
+        snapshot::usd_fixed_to_collateral_for_testing(
+            115792089237316195307778895771371712429698999656952656186187599342272565600477,
+            999_999_999_999_999_999,
+            true,
+        ),
+        std::u256::max_value!(),
+    );
+}
+
+#[test]
+#[expected_failure(abort_code = 26, location = blast_leverage_aftermath::snapshot)]
+fun strict_usd_round_up_rejects_a_floor_at_u256_max_with_remainder() {
+    snapshot::usd_fixed_to_collateral_for_testing(
+        115792089237316195307778895771371712429698999656952656186187599342272565600478,
+        999_999_999_999_999_999,
+        true,
+    );
+}
+
+#[test]
 #[expected_failure(abort_code = 24, location = blast_leverage_aftermath::snapshot)]
 fun pyth_normalization_rejects_a_component_that_cannot_fit_u64() {
     snapshot::normalize_pyth_for_testing(std::u64::max_value!(), false, 9, false);

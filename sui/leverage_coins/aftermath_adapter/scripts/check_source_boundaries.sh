@@ -222,12 +222,21 @@ grep -q 'assert!(equity_representable && !ifixed::is_neg(allocated_collateral)' 
   || fail "Strict capture must reject unrepresentable equity facts."
 grep -q 'assert!(down < std::u256::max_value!()' "$snapshot_file" \
   || fail "Strict USD ceil conversion must guard its final increment."
-grep -q '&& signs_coherent && base_representable' "$snapshot_file" \
+grep -q '&& signs_coherent' "$snapshot_file" \
   || fail "Health capture must retain incoherent position signs as unhealthy facts."
+grep -q '&& mark_representable' "$snapshot_file" \
+  || fail "Health capture must retain an unrepresentable mark as an unhealthy fact."
 grep -q 'assert_pyth_price_info(base_price_info, base_feed);' "$snapshot_file" \
   || fail "Base Pyth identity must precede named oracle calculation."
 grep -q 'assert_pyth_price_info(collateral_price_info, collateral_feed);' "$snapshot_file" \
   || fail "Collateral Pyth identity must precede named oracle calculation."
+base_pyth_line="$(grep -nF 'assert_pyth_price_info(base_price_info, base_feed);' "$snapshot_file" | cut -d: -f1)"
+collateral_pyth_line="$(grep -nF 'assert_pyth_price_info(collateral_price_info, collateral_feed);' "$snapshot_file" | cut -d: -f1)"
+base_oracle_line="$(grep -nF 'let base_fixed = market::base_oracle_price(params, base_oracle, clock);' "$snapshot_file" | cut -d: -f1)"
+collateral_oracle_line="$(grep -nF 'let collateral_fixed = market::collateral_oracle_price(params, collateral_oracle, clock);' "$snapshot_file" | cut -d: -f1)"
+if (( base_pyth_line >= base_oracle_line || collateral_pyth_line >= collateral_oracle_line )); then
+  fail "Each Pyth identity check must precede its named oracle calculation."
+fi
 if grep -q 'for_testing.*capture' "$snapshot_file"; then
   fail "Snapshot capture must not accept caller-shaped test economics."
 fi

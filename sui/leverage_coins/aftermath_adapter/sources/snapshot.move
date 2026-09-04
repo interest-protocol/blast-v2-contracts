@@ -115,7 +115,10 @@ fun capture_<Collateral>(
     let mark_fixed = clearing_house.mark_price(base_oracle, clock);
     let (base_price, base_confidence, base_timestamp) = pyth_price(base_price_info, base_feed, base_fixed);
     let (collateral_price, collateral_confidence, collateral_timestamp) = pyth_price(collateral_price_info, collateral_feed, collateral_fixed);
-    let mark_price = fixed_to_u64_down_9(mark_fixed);
+    let (mark_price, mark_representable) = fixed_to_u64_down_health(mark_fixed, 9);
+    if (!health) {
+        assert!(mark_representable, blast_leverage_aftermath::errors::normalization_overflow!());
+    };
     let base_index = if (health) {
         observation::new_health_price(base_price, base_confidence, base_timestamp)
     } else {
@@ -175,7 +178,11 @@ fun capture_<Collateral>(
     };
     let signs_coherent = position_signs_coherent(signed_base, signed_quote_notional, position.is_long_or_flat());
     let economics_valid = !ifixed::is_neg(allocated_collateral)
-        && signs_coherent && base_representable && notional_representable && equity_representable;
+        && signs_coherent
+        && base_representable
+        && notional_representable
+        && mark_representable
+        && equity_representable;
 
     (
         if (health) { observation::new_health_position(
@@ -415,14 +422,45 @@ fun usd_fixed_to_collateral_u64_up_health(usd: u256, collateral_price: u256): (u
 }
 
 fun signed_equity_health(free: u64, allocated: u256, pnl_usd: u256, collateral_price: u256): (u64, bool) {
-    if (ifixed::is_neg(allocated) || collateral_price == 0) { return (0, false) };
+    signed_equity_health_from_parts(
+        free,
+        ifixed::is_neg(allocated),
+        allocated,
+        ifixed::is_neg(pnl_usd),
+        ifixed::abs(pnl_usd),
+        collateral_price,
+    )
+}
+
+fun signed_equity_health_from_parts(
+    free: u64,
+    allocated_negative: bool,
+    allocated: u256,
+    pnl_negative: bool,
+    pnl_magnitude_usd: u256,
+    collateral_price: u256,
+): (u64, bool) {
+    if (allocated_negative || collateral_price == 0) { return (0, false) };
     let (allocated_tokens, allocated_ok) = fixed_to_u64_down_health(allocated, 6);
-    let (pnl, collateral_ok) = usd_fixed_to_collateral_fixed_health(ifixed::abs(pnl_usd), collateral_price, ifixed::is_neg(pnl_usd));
-    let (rounded, pnl_ok) = if (ifixed::is_neg(pnl_usd)) { fixed_to_u64_up_health(pnl, 6) } else { fixed_to_u64_down_health(pnl, 6) };
+    let (pnl, collateral_ok) = usd_fixed_to_collateral_fixed_health(
+        pnl_magnitude_usd,
+        collateral_price,
+        pnl_negative,
+    );
+    let (rounded, pnl_ok) = if (pnl_negative) {
+        fixed_to_u64_up_health(pnl, 6)
+    } else {
+        fixed_to_u64_down_health(pnl, 6)
+    };
     if (!allocated_ok || !collateral_ok || !pnl_ok) { return (0, false) };
     let assets = (free as u128) + (allocated_tokens as u128);
-    if (ifixed::is_neg(pnl_usd)) {
-        if (assets < (rounded as u128)) { (0, false) } else { ((assets - (rounded as u128)) as u64, true) }
+    if (pnl_negative) {
+        if (assets < (rounded as u128)) {
+            (0, false)
+        } else {
+            let net = assets - (rounded as u128);
+            if (net > std::u64::max_value!() as u128) { (0, false) } else { (net as u64, true) }
+        }
     } else {
         if (assets > (std::u64::max_value!() as u128) - (rounded as u128)) { (0, false) } else { ((assets + (rounded as u128)) as u64, true) }
     }
@@ -559,4 +597,54 @@ public fun position_signs_coherent_for_testing(base_negative: bool, quote_negati
 #[test_only]
 public fun seconds_to_millis_for_testing(seconds: u64): u64 {
     checked_seconds_to_millis(seconds)
+}
+
+#[test_only]
+public fun normalize_mark_health_for_testing(value: u256): (u64, bool) {
+    fixed_to_u64_down_health(value, 9)
+}
+
+#[test_only]
+public fun normalize_mark_strict_for_testing(value: u256): u64 {
+    fixed_to_u64_down(value, 9)
+}
+
+#[test_only]
+public fun signed_equity_health_for_testing(
+    free: u64,
+    allocated_negative: bool,
+    allocated: u256,
+    pnl_negative: bool,
+    pnl_magnitude_usd: u256,
+    collateral_price: u256,
+): (u64, bool) {
+    signed_equity_health_from_parts(
+        free,
+        allocated_negative,
+        allocated,
+        pnl_negative,
+        pnl_magnitude_usd,
+        collateral_price,
+    )
+}
+
+#[test_only]
+public fun signed_equity_strict_for_testing(
+    free: u64,
+    allocated_negative: bool,
+    allocated: u256,
+    pnl_negative: bool,
+    pnl_magnitude_usd: u256,
+    collateral_price: u256,
+): u64 {
+    let (equity, representable) = signed_equity_health_from_parts(
+        free,
+        allocated_negative,
+        allocated,
+        pnl_negative,
+        pnl_magnitude_usd,
+        collateral_price,
+    );
+    assert!(representable, blast_leverage_aftermath::errors::normalization_overflow!());
+    equity
 }
