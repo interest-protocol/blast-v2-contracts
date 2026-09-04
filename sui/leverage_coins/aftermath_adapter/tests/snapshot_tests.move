@@ -9,11 +9,6 @@ use std::unit_test::assert_eq;
 // === Tests ===
 
 #[test]
-fun normalization_module_is_available() {
-    snapshot::assert_test_seam_for_testing();
-}
-
-#[test]
 fun unchanged_checkpoint_is_not_funding() {
     let before = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
     let after = before;
@@ -24,7 +19,7 @@ fun unchanged_checkpoint_is_not_funding() {
 #[test]
 fun exact_positive_funding_transition_is_credit() {
     let before = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
-    let after = checkpoint(10, 2_000, 7, 6, 7, 8, 9);
+    let after = checkpoint(10, 2_000, 7, 8, 7, 8, 9);
 
     assert!(snapshot::is_credit_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &after, false, 1_000, true)));
 }
@@ -32,7 +27,7 @@ fun exact_positive_funding_transition_is_credit() {
 #[test]
 fun funding_settlement_keeps_the_exact_raw_candidate_amount() {
     let before = checkpoint(10, 4_000, 5, 6, 7, 8, 9);
-    let after = checkpoint(10, 5_337, 7, 6, 7, 8, 9);
+    let after = checkpoint(10, 5_337, 7, 8, 7, 8, 9);
     let change = snapshot::classify_change_with_candidate_for_testing(&before, &after, false, 1_337, true);
 
     assert_eq!(snapshot::funding_amount_for_testing(change), 1_337);
@@ -41,15 +36,15 @@ fun funding_settlement_keeps_the_exact_raw_candidate_amount() {
 #[test]
 fun exact_negative_funding_transition_is_cost() {
     let before = checkpoint(10, 2_000, 5, 6, 7, 8, 9);
-    let after = checkpoint(10, 1_000, 7, 6, 7, 8, 9);
+    let after = checkpoint(10, 1_000, 7, 8, 7, 8, 9);
 
     assert!(snapshot::is_cost_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &after, true, 1_000, true)));
 }
 
 #[test]
-fun short_funding_changes_only_the_short_snapshot() {
+fun funding_settlement_refreshes_both_snapshots_for_short_positions() {
     let before = checkpoint(10, 2_000, 5, 6, 7, 8, 9);
-    let after = checkpoint(10, 3_000, 5, 8, 7, 8, 9);
+    let after = checkpoint(10, 3_000, 7, 8, 7, 8, 9);
 
     assert!(snapshot::is_credit_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &after, false, 1_000, false)));
 }
@@ -95,7 +90,7 @@ fun base_quote_and_pending_order_changes_are_unexpected() {
 #[test]
 fun every_checkpoint_guard_field_blocks_an_otherwise_matching_funding_delta() {
     let before = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
-    let base_funding_after = checkpoint(10, 2_000, 7, 6, 7, 8, 9);
+    let base_funding_after = checkpoint(10, 2_000, 7, 8, 7, 8, 9);
     let pending_ask_changed = venue_account::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 99, 11, 12, 13, false, 14, 15, 16);
     let pending_bid_changed = venue_account::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 10, 99, 12, 13, false, 14, 15, 16);
     let pause_changed = venue_account::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 10, 11, 12, 99, false, 14, 15, 16);
@@ -163,6 +158,25 @@ fun stablecoin_depeg_and_minimum_lot_vectors_keep_the_venue_scales() {
     // One minimum base lot and one quote micro-unit remain distinct scales.
     assert_eq!(snapshot::normalize_raw_fixed_for_testing(1_000_000_000, 9, false), 1);
     assert_eq!(snapshot::normalize_raw_fixed_for_testing(1_000_000_000_000, 6, false), 1);
+}
+
+#[test]
+fun usd_values_convert_to_collateral_units_at_the_authenticated_depeg_price() {
+    // $1 converts to 1.052631578947368421 collateral at $0.95; credits floor
+    // and costs ceil at the raw IFixed unit.
+    assert_eq!(snapshot::usd_fixed_to_collateral_for_testing(1_000_000_000_000_000_000, 950_000_000_000_000_000, false), 1_052_631_578_947_368_421);
+    assert_eq!(snapshot::usd_fixed_to_collateral_for_testing(1_000_000_000_000_000_000, 950_000_000_000_000_000, true), 1_052_631_578_947_368_422);
+    // $1.50 notional at $1.20 collateral is exactly 1.25 collateral.
+    assert_eq!(snapshot::usd_fixed_to_collateral_for_testing(1_500_000_000_000_000_000, 1_200_000_000_000_000_000, true), 1_250_000_000_000_000_000);
+}
+
+#[test]
+fun margin_safety_is_below_equal_and_above_the_named_requirement() {
+    assert!(!snapshot::margin_safe_for_testing(0, 1));
+    assert!(snapshot::margin_safe_for_testing(0, 0));
+    assert!(!snapshot::margin_safe_for_testing(99, 100));
+    assert!(snapshot::margin_safe_for_testing(100, 100));
+    assert!(snapshot::margin_safe_for_testing(101, 100));
 }
 
 #[test]

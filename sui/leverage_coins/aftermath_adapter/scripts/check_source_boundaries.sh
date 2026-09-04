@@ -184,9 +184,9 @@ grep -q '^public(package) fun capture<Collateral>($' "$snapshot_file" \
   || fail "Snapshot capture must remain package-only."
 grep -q '^public(package) fun capture_health<Collateral>($' "$snapshot_file" \
   || fail "Snapshot health capture must remain package-only."
-grep -q 'capture_(binding, account, registry, clearing_house, base_oracle, collateral_oracle, base_price_info, collateral_price_info, clock, false)' "$snapshot_file" \
+grep -q 'capture_(binding, account, registry, clearing_house, base_oracle, collateral_oracle, base_price_info, collateral_price_info, clock, false, true)' "$snapshot_file" \
   || fail "Strict capture must delegate to the shared authenticated capture path."
-grep -q 'capture_(binding, account, registry, clearing_house, base_oracle, collateral_oracle, base_price_info, collateral_price_info, clock, true)' "$snapshot_file" \
+grep -q 'capture_(binding, account, registry, clearing_house, base_oracle, collateral_oracle, base_price_info, collateral_price_info, clock, true, !is_unexpected_change(change))' "$snapshot_file" \
   || fail "Health capture must delegate to the shared authenticated capture path."
 [[ "$(grep -Fc 'binding.assert_exact(' "$snapshot_file")" -eq 1 ]] \
   || fail "Strict and health capture must share one binding authentication path."
@@ -202,8 +202,10 @@ grep -q 'market::base_oracle_price(params, base_oracle, clock)' "$snapshot_file"
   || fail "Snapshot capture must use the bound named base oracle getter."
 grep -q 'market::collateral_oracle_price(params, collateral_oracle, clock)' "$snapshot_file" \
   || fail "Snapshot capture must use the bound named collateral oracle getter."
-grep -q 'position::compute_free_collateral' "$snapshot_file" \
-  || fail "Snapshot capture must use the named venue margin getter."
+grep -q 'position::compute_margin_and_requirement' "$snapshot_file" \
+  || fail "Snapshot capture must compare the named venue margin and requirement."
+grep -q 'economics_valid && margin >= requirement' "$snapshot_file" \
+  || fail "Snapshot margin safety must compare margin against its requirement."
 grep -q 'clearing_house.market_pause_mode() == 0 && !clearing_house.is_frozen()' "$snapshot_file" \
   || fail "Venue operation must require allowed pause mode and not-frozen state."
 grep -q 'observation::new_health_price' "$snapshot_file" \
@@ -212,6 +214,10 @@ grep -q 'observation::new_health_position' "$snapshot_file" \
   || fail "Health capture must preserve malformed live venue facts."
 grep -q 'assert_position_signs(signed_base, signed_quote_notional, position.is_long_or_flat())' "$snapshot_file" \
   || fail "Strict capture must reject incoherent venue position signs."
+grep -q 'assert_pyth_price_info(base_price_info, base_feed);' "$snapshot_file" \
+  || fail "Base Pyth identity must precede named oracle calculation."
+grep -q 'assert_pyth_price_info(collateral_price_info, collateral_feed);' "$snapshot_file" \
+  || fail "Collateral Pyth identity must precede named oracle calculation."
 if grep -q 'for_testing.*capture' "$snapshot_file"; then
   fail "Snapshot capture must not accept caller-shaped test economics."
 fi

@@ -74,9 +74,9 @@ adapter's mutation checkpoint; immutable object/source bindings are stored in
 | Free collateral | `perpetuals::account::collateral_balance<T>` | `u64`, atomic units of `T`; six decimals for the admitted collateral | Exact; no conversion | Yes |
 | Allocated collateral | `position::position::collateral` | nonnegative signed-IFixed carrier, `u256`, 18 decimals | `to_balance(raw, decimal_scalar_from_decimals(6))`; down | Yes |
 | Signed base | first result of `position::position::base_and_quote_amounts` | signed IFixed in `u256`, 18 decimals | Preserve sign with `is_neg`; absolute base converts to 9 decimals, up for risk | Yes, raw signed value |
-| Signed quote notional | second result of `position::position::base_and_quote_amounts` | signed IFixed in `u256`, 18 decimals | Preserve sign; absolute notional converts to 6 decimal collateral units, up for risk | Yes, raw signed value |
-| Realized funding candidate | `position::position::calculate_position_funding_internal(position, long_rate, short_rate)` immediately before settlement; rates come from `perpetuals::market::cum_funding_rates` | signed IFixed in `u256`, 18 decimals | Preserve the signed raw result. Credit rounds down; cost rounds away from zero when converted to six-decimal collateral | No derived amount; store both rate snapshots, both market rates, and collateral before/after |
-| Unrealized PnL | `position::position::unrealized_pnl(position, mark)` | signed IFixed in `u256`, 18 decimals | Positive equity contribution down; negative liability away from zero, then six-decimal collateral | No; derive from stored position primitives and operation mark |
+| Signed quote notional | second result of `position::position::base_and_quote_amounts` | USD-valued signed IFixed in `u256`, 18 decimals | Divide by the authenticated collateral USD price; absolute collateral notional rounds up for risk | Yes, raw signed value |
+| Realized funding candidate | `position::position::calculate_position_funding_internal(position, long_rate, short_rate)` immediately before settlement; rates come from `perpetuals::market::cum_funding_rates` | USD-valued signed IFixed in `u256`, 18 decimals | Divide by authenticated collateral price; credit down and cost up in collateral-token IFixed units | No derived amount; store both rate snapshots, both market rates, and collateral before/after |
+| Unrealized PnL | `position::position::unrealized_pnl(position, mark)` | USD-valued signed IFixed in `u256`, 18 decimals | Divide by authenticated collateral price; positive equity contribution down and negative liability up in collateral units | No; derive from stored position primitives and operation mark |
 | Base index | `perpetuals::market::base_oracle_price(params, base_storage, clock)` after exact storage/source binding | positive IFixed in `u256`, 18 decimals | Convert to 9 decimals; down for shareholder equity and up for absolute risk bounds | No; operation-scoped price |
 | Collateral price | `perpetuals::market::collateral_oracle_price(params, collateral_storage, clock)` after exact storage/source binding | positive IFixed in `u256`, 18 decimals | Convert to 9 decimals; collateral asset value rounds down | No; operation-scoped price |
 | Mark | `perpetuals::clearing_house::mark_price(clearing_house, base_storage, clock)` | positive IFixed in `u256`, 18 decimals | Convert to 9 decimals through IFixed; use only for venue margin and divergence checks | No; operation-scoped price |
@@ -165,8 +165,9 @@ lineage, bytecode and normalized getter signatures.
 Capture checks account, registry, clearing house, oracle objects, collateral
 type, market storage/source IDs, feed source IDs, feed `from` IDs, Pyth object
 IDs, and the one supplied `Clock` before constructing an observation. It uses
-the named effective-IMR and `compute_free_collateral` margin method with the
-bound collateral price, mark, and haircut; a negative result is unsafe. Venue
+the named effective-IMR and `compute_margin_and_requirement` method with the
+bound collateral price, mark, and haircut; margin below requirement is unsafe.
+`compute_free_collateral` is clamped and is not a margin-safety predicate. Venue
 availability is independently an allowed pause mode and not-frozen state.
 
 There are two capture modes over that same authenticated path. Strict capture
@@ -179,12 +180,13 @@ fault can move an active vault to `ReduceOnly` instead of aborting before that
 state transition. It never weakens source identity or accepts caller-shaped
 economics.
 
-`Change` preserves raw IFixed collateral deltas. It recognizes funding only if
-at least one position funding snapshot moves exactly to an otherwise unchanged
-market cumulative rate, allocated collateral changes in the matching direction,
-and every other raw checkpoint field is unchanged. A collateral or equity delta
-alone, a zero-effect snapshot movement, any field mutation, or any combined
-transition is `Unexpected`.
+`Change` preserves raw collateral-token IFixed deltas. Settlement refreshes both
+long and short snapshots, so funding is recognized only when both equal their
+captured market rates, at least one advanced, the USD candidate converts to the
+exact allocated-collateral delta with directional rounding, and every other raw
+checkpoint field is unchanged. A collateral or equity delta alone, a zero-effect
+snapshot movement, any field mutation, or any combined transition is
+`Unexpected`.
 
 Any live lineage, bytecode, ABI, dependency, source-binding, conversion-vector,
 or checkpoint mismatch reopens this decision and blocks publication.
