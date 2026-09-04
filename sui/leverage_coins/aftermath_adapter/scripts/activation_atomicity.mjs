@@ -44,6 +44,7 @@ const ROLE_POINTERS = {
     share_currency: {
         treasuryCapId: '/content/fields/treasury_cap_id/fields/vec/0',
     },
+    collateral_currency: {},
     treasury_cap: { totalSupply: '/content/fields/total_supply/fields/value' },
     locked_share_coin: { balance: '/content/fields/balance' },
     aftermath_admin_cap: {},
@@ -70,10 +71,16 @@ const ROLE_POINTERS = {
 const ROLE_SELECTORS = Object.fromEntries(
     Object.entries(ROLE_POINTERS).map(([role, pointers]) => [role, Object.keys(pointers)]),
 );
+const OPTIONAL_STATE_SELECTORS = new Set([
+    'vault.venueAccount',
+    'vault.checkpoint',
+    'vault.adminCap',
+]);
 const REQUIRED_TRACKED_ROLES = Object.keys(ROLE_SELECTORS);
 const SUCCESS_EFFECT_BY_ROLE = {
     vault: 'mutated',
     share_currency: null,
+    collateral_currency: null,
     treasury_cap: 'mutated',
     locked_share_coin: 'created',
     aftermath_admin_cap: 'wrapped',
@@ -92,6 +99,7 @@ const SUCCESS_EFFECT_BY_ROLE = {
 const BINDING_BY_ROLE = {
     vault: { kind: 'argument' },
     share_currency: { kind: 'originEffect' },
+    collateral_currency: { kind: 'argument' },
     treasury_cap: { kind: 'originEffect' },
     locked_share_coin: { kind: 'derived', creationIndex: 3 },
     aftermath_admin_cap: { kind: 'derived', creationIndex: 2 },
@@ -109,7 +117,7 @@ const BINDING_BY_ROLE = {
 };
 const INITIALIZER_ARGUMENT_ROLE = {
     vault: 0,
-    share_currency: 3,
+    collateral_currency: 3,
     registry: 4,
     clearing_house: 5,
     collateral_price_info: 9,
@@ -299,6 +307,15 @@ function jsonPointer(root, pointer, path) {
     return canonical(value);
 }
 
+function statePointer(root, tracked, name, path) {
+    try {
+        return jsonPointer(root, tracked.selectors[name], path);
+    } catch (error) {
+        if (OPTIONAL_STATE_SELECTORS.has(`${tracked.role}.${name}`)) return null;
+        throw error;
+    }
+}
+
 function validateBinding(binding, path) {
     expectObject(binding, path);
     if (binding.kind === 'argument' || binding.kind === 'effect') {
@@ -340,6 +357,73 @@ function validateTrackedObjects(trackedObjects, path) {
     });
 }
 
+function normalizeTypeTag(value, path) {
+    const type = expectString(value, path);
+    if (/\s/.test(type)) fail(`${path}: type must not contain whitespace`);
+    return type.replace(/0x[0-9a-fA-F]+/g, (address) =>
+        `0x${BigInt(address).toString(16)}`);
+}
+
+function canonicalOwner(owner, path) {
+    if (owner === 'Immutable') return owner;
+    const value = expectObject(owner, path);
+    const keys = Object.keys(value);
+    if (keys.length !== 1) fail(`${path}: expected canonical owner variant`);
+    const variant = keys[0];
+    if (variant === 'AddressOwner' || variant === 'ObjectOwner') {
+        return { [variant]: expectAddress(value[variant], `${path}.${variant}`) };
+    }
+    if (variant === 'Shared') {
+        const shared = expectObject(value.Shared, `${path}.Shared`, ['initial_shared_version']);
+        const version = String(shared.initial_shared_version);
+        if (!/^[1-9][0-9]*$/.test(version)) {
+            fail(`${path}.Shared.initial_shared_version: expected positive integer`);
+        }
+        return { Shared: { initial_shared_version: version } };
+    }
+    fail(`${path}: expected canonical owner variant`);
+}
+
+function validateStateObject(object, tracked, path) {
+    expectObject(object, path);
+    assertEqual(object.role, tracked.role, `${path}.role`);
+    assertEqual(expectAddress(object.id, `${path}.id`), tracked.id, `${path}.id`);
+    if (typeof object.exists !== 'boolean') fail(`${path}.exists: expected boolean`);
+    if (!object.exists) {
+        expectObject(object, path, ['role', 'exists', 'id']);
+        if (!tracked.allowAbsent) fail(`${path}: required object is absent`);
+        return canonical(object);
+    }
+    expectObject(object, path, [
+        'role', 'exists', 'id', 'version', 'digest', 'owner', 'type', 'content', 'selected',
+    ]);
+    const version = String(object.version);
+    if (!/^[1-9][0-9]*$/.test(version) || version !== object.version) {
+        fail(`${path}.version: expected canonical positive integer string`);
+    }
+    expectString(object.digest, `${path}.digest`);
+    const expectedType = normalizeTypeTag(tracked.expectedType, `${path}.expectedType`);
+    const observedType = normalizeTypeTag(object.type, `${path}.type`);
+    if (object.type !== observedType || observedType !== expectedType) {
+        fail(`${path}: expected type ${expectedType}, got ${object.type}`);
+    }
+    const owner = canonicalOwner(object.owner, `${path}.owner`);
+    assertEqual(object.owner, owner, `${path}.owner expected canonical owner`);
+    expectObject(object.selected, `${path}.selected`, ROLE_SELECTORS[tracked.role]);
+    expectObject(object.content, `${path}.content`);
+    const selected = {};
+    for (const name of Object.keys(tracked.selectors)) {
+        selected[name] = statePointer(
+            { content: object.content },
+            tracked,
+            name,
+            `${path}.content.${name}`,
+        );
+    }
+    assertEqual(selected, object.selected, `${path}.content selected fields`);
+    return canonical(object);
+}
+
 function snapshotObject(environment, tracked, path) {
     const result = runSui([
         'client', '--client.env', environment, 'object', tracked.id, '--json',
@@ -347,31 +431,32 @@ function snapshotObject(environment, tracked, path) {
     const output = `${result.stdout}${result.stderr}`;
     if (result.status !== 0) {
         if (tracked.allowAbsent && /not found|requested entity was not found|ObjectNotExists/i.test(output)) {
-            return { role: tracked.role, exists: false, id: tracked.id };
+            return validateStateObject(
+                { role: tracked.role, exists: false, id: tracked.id },
+                tracked,
+                path,
+            );
         }
         fail(`${path}: object read failed: ${output.trim()}`);
     }
     const object = expectObject(parseJson(result.stdout, path), path);
     const id = expectAddress(object.objectId, `${path}.objectId`);
     if (id !== tracked.id) fail(`${path}: returned the wrong object`);
-    if (object.objType !== tracked.expectedType) {
-        fail(`${path}: expected type ${tracked.expectedType}, got ${object.objType}`);
-    }
     const selected = {};
-    for (const [name, pointer] of Object.entries(tracked.selectors)) {
-        selected[name] = jsonPointer(object, pointer, `${path}.${name}`);
+    for (const name of Object.keys(tracked.selectors)) {
+        selected[name] = statePointer(object, tracked, name, `${path}.${name}`);
     }
-    return canonical({
+    return validateStateObject(canonical({
         role: tracked.role,
         exists: true,
         id,
         version: String(object.version),
         digest: expectString(object.digest, `${path}.digest`),
-        owner: object.owner,
-        type: object.objType,
+        owner: canonicalOwner(object.owner, `${path}.owner`),
+        type: normalizeTypeTag(object.objType, `${path}.type`),
         content: object.content,
         selected,
-    });
+    }), tracked, path);
 }
 
 function snapshotState(environment, trackedObjects, path) {
@@ -402,6 +487,7 @@ function assertTrackedTypeBindings(runConfig, inputs, path) {
         vault: leverageType,
         protocol: `${runConfig.packageId}::protocol::Protocol`,
         share_currency: `0x2::coin_registry::Currency<${leverageType}>`,
+        collateral_currency: `0x2::coin_registry::Currency<${inputs.collateralType}>`,
         treasury_cap: `0x2::coin::TreasuryCap<${leverageType}>`,
         locked_share_coin: `0x2::coin::Coin<${leverageType}>`,
         seed_coin: `0x2::coin::Coin<${inputs.collateralType}>`,
@@ -746,7 +832,7 @@ function initializerBindings(initializer, path) {
         collateralType: expectString(initializer.typeArguments[2], `${path}.collateralType`),
         vaultId: addressArgument(0, 'vaultId'),
         protocolId: addressArgument(1, 'protocolId'),
-        currencyId: addressArgument(3, 'currencyId'),
+        collateralCurrencyId: addressArgument(3, 'collateralCurrencyId'),
         registryId: addressArgument(4, 'registryId'),
         clearingHouseId: addressArgument(5, 'clearingHouseId'),
         baseOracleId: addressArgument(6, 'baseOracleId'),
@@ -887,6 +973,7 @@ function assertEffectOutputBindings(evidence, runConfig) {
 function assertSuccessOwnership(evidence) {
     const vault = stateObject(evidence.postState, 'vault', 'success.postState');
     const currency = stateObject(evidence.postState, 'share_currency', 'success.postState');
+    const collateralCurrency = stateObject(evidence.postState, 'collateral_currency', 'success.postState');
     const cap = stateObject(evidence.postState, 'treasury_cap', 'success.postState');
     const locked = stateObject(evidence.postState, 'locked_share_coin', 'success.postState');
     const account = stateObject(evidence.postState, 'aftermath_account', 'success.postState');
@@ -894,6 +981,7 @@ function assertSuccessOwnership(evidence) {
     const clearingHouse = stateObject(evidence.postState, 'clearing_house', 'success.postState');
     assertOwnerKind(vault.owner, 'shared', 'success.vault.owner');
     assertOwnerKind(currency.owner, 'shared', 'success.share_currency.owner');
+    assertOwnerKind(collateralCurrency.owner, 'shared', 'success.collateral_currency.owner');
     assertOwnerKind(cap.owner, 'object', 'success.treasury_cap.owner', vault.id);
     assertOwnerKind(locked.owner, 'address', 'success.locked_share_coin.owner', ZERO_ADDRESS);
     assertOwnerKind(account.owner, 'shared', 'success.aftermath_account.owner');
@@ -1034,10 +1122,8 @@ function assertStateTracksRunConfig(state, runConfig, path) {
     if (!Array.isArray(state.objects) || state.objects.length !== REQUIRED_TRACKED_ROLES.length) {
         fail(`${path}.objects: expected ${REQUIRED_TRACKED_ROLES.length} canonical tracked objects`);
     }
-    for (const tracked of runConfig.trackedObjects) {
-        const object = stateObject(state, tracked.role, path);
-        assertEqual(object.id, tracked.id, `${path}.${tracked.role}.id`);
-    }
+    runConfig.trackedObjects.forEach((tracked, index) =>
+        validateStateObject(state.objects[index], tracked, `${path}.objects[${index}]`));
 }
 
 function assertRollback(entry, baseline) {
@@ -1321,7 +1407,7 @@ function selfTest() {
 
     const wrongFinal = structuredClone(fixture.success);
     wrongFinal.postState.objects.find((item) => item.role === 'treasury_cap').selected.totalSupply = '1';
-    expectFailure('expectedFinal.treasury_cap', () => validateSuccess(wrongFinal, wrongFinal));
+    expectFailure('content selected fields', () => validateSuccess(wrongFinal, wrongFinal));
     passed += 1;
 
     const wrongCheckpoint = structuredClone(fixture.success);
@@ -1404,7 +1490,7 @@ function selfTest() {
     const wrongSelector = structuredClone(fixture.success.trackedObjects);
     wrongSelector.find((tracked) => tracked.role === 'treasury_cap')
         .selectors.totalSupply = '/content/fields/unrelated';
-    expectFailure('wrongSelector[2].selectors', () => validateTrackedObjects(
+    expectFailure('wrongSelector[3].selectors', () => validateTrackedObjects(
         wrongSelector,
         'wrongSelector',
     ));
@@ -1545,6 +1631,65 @@ function selfTest() {
     ));
     passed += 1;
 
+    const collateralArgumentDecoy = structuredClone(fixture.failures[0]);
+    const collateralArgument = collateralArgumentDecoy.runConfig.initializer.arguments[3];
+    collateralArgumentDecoy.runConfig.initializer.arguments[3] =
+        `@${collateralArgumentDecoy.runConfig.trackedObjects.find((item) => item.role === 'share_currency').id}`;
+    collateralArgumentDecoy.runConfig.ptbArgs[
+        collateralArgumentDecoy.runConfig.ptbArgs.indexOf(collateralArgument)
+    ] = collateralArgumentDecoy.runConfig.initializer.arguments[3];
+    collateralArgumentDecoy.runConfig.ptbArgs.push(
+        '--move-call',
+        `${collateralArgumentDecoy.runConfig.packageId}::decoy::mention`,
+        collateralArgument,
+    );
+    expectFailure('initializer role collateral_currency', () => validateOfflineFailure(
+        collateralArgumentDecoy,
+        fixture.baseline,
+        PHASES[0],
+        'collateralArgumentDecoy',
+    ));
+    passed += 1;
+
+    const wrongCollateralType = structuredClone(fixture.failures[0]);
+    wrongCollateralType.runConfig.trackedObjects.find((item) => item.role === 'collateral_currency')
+        .expectedType = wrongCollateralType.runConfig.trackedObjects.find((item) => item.role === 'share_currency')
+            .expectedType;
+    expectFailure('collateral_currency.type', () => validateOfflineFailure(
+        wrongCollateralType,
+        fixture.baseline,
+        PHASES[0],
+        'wrongCollateralType',
+    ));
+    passed += 1;
+
+    const stateCases = [
+        ['field set mismatch', (object) => { delete object.type; }],
+        ['expected type', (object) => { object.type = '0x2::wrong::Wrong'; }],
+        ['field set mismatch', (object) => { delete object.owner; }],
+        ['expected canonical owner', (object) => { object.owner = { AddressOwner: 'not-an-address' }; }],
+        ['field set mismatch', (object) => { delete object.selected.lifecycle; }],
+        ['content selected fields', (object) => { object.selected.lifecycle = 'Active'; }],
+        ['field set mismatch', (object) => { delete object.version; }],
+        ['canonical positive integer string', (object) => { object.version = 7; }],
+        ['field set mismatch', (object) => { delete object.digest; }],
+        ['expected non-empty string', (object) => { object.digest = ''; }],
+        ['field set mismatch', (object) => { delete object.content; }],
+        ['content selected fields', (object) => {
+            object.content.fields.series_state.fields.lifecycle = 'Active';
+        }],
+    ];
+    for (const [message, mutate] of stateCases) {
+        const state = structuredClone(fixture.baseline);
+        mutate(state.objects.find((item) => item.role === 'vault'));
+        expectFailure(message, () => assertStateTracksRunConfig(
+            state,
+            fixture.success,
+            `state.${message}`,
+        ));
+        passed += 1;
+    }
+
     const production = `statement();\n${PHASES[0].marker}\nnext();`;
     const instrumented = `statement();\n${PHASES[0].marker}\nabort 9101;\nnext();`;
     assertInstrumentedSource(production, instrumented, PHASES[0]);
@@ -1556,7 +1701,7 @@ function selfTest() {
     ));
     passed += 1;
 
-    process.stdout.write(`activation_atomicity self-test: PASS ${passed}/32 cases\n`);
+    process.stdout.write(`activation_atomicity self-test: PASS ${passed}/46 cases\n`);
 }
 
 function live(configPath) {

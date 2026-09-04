@@ -5,8 +5,10 @@
 
 import { createHash } from 'node:crypto';
 import {
+    mkdirSync,
     mkdtempSync,
     readFileSync,
+    realpathSync,
     readdirSync,
     rmSync,
     statSync,
@@ -160,6 +162,58 @@ function buildInputs(root) {
         if (path.endsWith('.move')) entries.push([`sources/${path}`, bytes]);
     }
     return entries.sort(([left], [right]) => left.localeCompare(right));
+}
+
+function tomlSection(source, section, path) {
+    const lines = source.split(/\r?\n/);
+    const starts = lines.flatMap((line, index) =>
+        line.trim() === `[${section}]` ? [index] : []);
+    if (starts.length === 0) fail(`${path}: missing [${section}]`);
+    if (starts.length !== 1) fail(`${path}: duplicate [${section}]`);
+    const end = lines.findIndex((line, index) =>
+        index > starts[0] && /^\s*\[[^\]]+\]\s*(?:#.*)?$/.test(line));
+    return lines.slice(starts[0] + 1, end === -1 ? lines.length : end);
+}
+
+function tomlString(lines, key, path) {
+    const matches = lines.flatMap((line) => {
+        const match = new RegExp(`^\\s*${key}\\s*=\\s*"([^"]+)"\\s*(?:#.*)?$`).exec(line);
+        return match === null ? [] : [match[1]];
+    });
+    if (matches.length !== 1) fail(`${path}: expected exactly one ${key} string`);
+    return matches[0];
+}
+
+function controlledFixtureFiles(sourceRoot, publicationFile, environment, packageId) {
+    sourceRoot = realpathSync(resolve(sourceRoot));
+    publicationFile = resolve(publicationFile);
+    const expectedPublicationFile = join(sourceRoot, 'Published.toml');
+    if (publicationFile !== expectedPublicationFile
+        || realpathSync(publicationFile) !== expectedPublicationFile) {
+        fail('config.controlledFixture.publicationFile: must be the reviewed root Published.toml');
+    }
+    const manifest = readFileSync(join(sourceRoot, 'Move.toml'), 'utf8');
+    const packageName = tomlString(
+        tomlSection(manifest, 'package', `${sourceRoot}/Move.toml`),
+        'name',
+        `${sourceRoot}/Move.toml [package]`,
+    );
+    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(packageName)) {
+        fail(`${sourceRoot}/Move.toml [package].name: invalid package name`);
+    }
+    const publication = readFileSync(publicationFile, 'utf8');
+    const publishedAt = expectAddress(tomlString(
+        tomlSection(publication, `published.${environment}`, publicationFile),
+        'published-at',
+        `${publicationFile} [published.${environment}]`,
+    ), `${publicationFile} [published.${environment}].published-at`);
+    if (publishedAt !== packageId) {
+        fail(`${publicationFile} [published.${environment}].published-at does not equal packageId`);
+    }
+    const entries = buildInputs(sourceRoot);
+    entries.push(['Published.toml', readFileSync(publicationFile)]);
+    entries.sort(([left], [right]) => left.localeCompare(right));
+    return { sourceRoot, publicationFile, packageName, entries };
 }
 
 function inputsSha256(entries) {
@@ -638,7 +692,62 @@ function selfTest() {
     expectFailure('post.maintenanceReserve', () => validateFixture(creditReserveDrift));
     passed += 1;
 
-    process.stdout.write(`controlled_health_cases self-test: PASS ${passed}/${CASE_NAMES.length + 20} cases\n`);
+    const provenanceRoot = mkdtempSync(join(tmpdir(), 'blast-controlled-health-self-test-'));
+    try {
+        const packageId = `0x${'c'.repeat(64)}`;
+        mkdirSync(join(provenanceRoot, 'sources'));
+        mkdirSync(join(provenanceRoot, 'build', 'root_fixture', 'bytecode_modules'), { recursive: true });
+        mkdirSync(join(provenanceRoot, 'build', 'dependency', 'bytecode_modules'), { recursive: true });
+        writeFileSync(join(provenanceRoot, 'Move.toml'), '[package]\nname = "root_fixture"\n');
+        writeFileSync(join(provenanceRoot, 'Move.lock'), '');
+        writeFileSync(join(provenanceRoot, 'sources', 'controlled_health_cases.move'), 'module fixture::controlled_health_cases {}\n');
+        writeFileSync(join(provenanceRoot, 'Published.toml'), `[published.testnet]\npublished-at = "${packageId}"\n`);
+        writeFileSync(join(provenanceRoot, 'build', 'root_fixture', 'bytecode_modules', 'controlled_health_cases.mv'), 'root');
+        writeFileSync(join(provenanceRoot, 'build', 'dependency', 'bytecode_modules', 'controlled_health_cases.mv'), 'decoy');
+
+        const files = controlledFixtureFiles(
+            provenanceRoot,
+            join(provenanceRoot, 'Published.toml'),
+            'testnet',
+            packageId,
+        );
+        assertEqual(
+            Object.keys(builtControlledModules(provenanceRoot, files.packageName)),
+            ['controlled_health_cases'],
+            'root package module selection',
+        );
+        passed += 1;
+
+        expectFailure('must be the reviewed root Published.toml', () => controlledFixtureFiles(
+            provenanceRoot,
+            join(tmpdir(), 'Published.toml'),
+            'testnet',
+            packageId,
+        ));
+        passed += 1;
+
+        writeFileSync(join(provenanceRoot, 'Published.toml'), `[published.mainnet]\npublished-at = "${packageId}"\n`);
+        expectFailure('missing [published.testnet]', () => controlledFixtureFiles(
+            provenanceRoot,
+            join(provenanceRoot, 'Published.toml'),
+            'testnet',
+            packageId,
+        ));
+        passed += 1;
+
+        writeFileSync(join(provenanceRoot, 'Published.toml'), `[published.testnet]\npublished-at = "0x${'d'.repeat(64)}"\n`);
+        expectFailure('published-at does not equal packageId', () => controlledFixtureFiles(
+            provenanceRoot,
+            join(provenanceRoot, 'Published.toml'),
+            'testnet',
+            packageId,
+        ));
+        passed += 1;
+    } finally {
+        rmSync(provenanceRoot, { recursive: true, force: true });
+    }
+
+    process.stdout.write(`controlled_health_cases self-test: PASS ${passed}/${CASE_NAMES.length + 24} cases\n`);
 }
 
 function run(command, args, allowFailure = false, cwd = PACKAGE_DIR) {
@@ -696,21 +805,16 @@ function packageModules(object, path) {
     return canonical(modules);
 }
 
-function builtControlledModules(installRoot) {
-    const buildRoot = join(installRoot, 'build');
-    const candidates = readdirSync(buildRoot).filter((name) => {
-        const moduleRoot = join(buildRoot, name, 'bytecode_modules');
-        try {
-            return statSync(moduleRoot).isDirectory()
-                && readdirSync(moduleRoot).includes('controlled_health_cases.mv');
-        } catch {
-            return false;
-        }
-    });
-    if (candidates.length !== 1) {
-        fail(`controlled fixture build: expected one package containing controlled_health_cases.mv, got ${candidates.length}`);
+function builtControlledModules(installRoot, packageName) {
+    const moduleRoot = join(installRoot, 'build', packageName, 'bytecode_modules');
+    try {
+        if (!statSync(moduleRoot).isDirectory()) fail('not a directory');
+    } catch {
+        fail(`controlled fixture build: missing root package output ${packageName}/bytecode_modules`);
     }
-    const moduleRoot = join(buildRoot, candidates[0], 'bytecode_modules');
+    if (!readdirSync(moduleRoot).includes('controlled_health_cases.mv')) {
+        fail('controlled fixture build: root package is missing controlled_health_cases.mv');
+    }
     const modules = {};
     for (const name of readdirSync(moduleRoot).sort()) {
         if (name.endsWith('.mv')) {
@@ -726,8 +830,8 @@ function verifyControlledFixture(environment, value) {
         'reviewedCommit', 'reviewedTree', 'sourcesSha256',
     ]);
     const packageId = expectAddress(value.packageId, 'config.controlledFixture.packageId');
-    const sourceRoot = resolve(expectString(value.sourceRoot, 'config.controlledFixture.sourceRoot'));
-    const publicationFile = resolve(expectString(
+    const requestedSourceRoot = resolve(expectString(value.sourceRoot, 'config.controlledFixture.sourceRoot'));
+    const requestedPublicationFile = resolve(expectString(
         value.publicationFile,
         'config.controlledFixture.publicationFile',
     ));
@@ -735,6 +839,13 @@ function verifyControlledFixture(environment, value) {
         value.packageObjectDigest,
         'config.controlledFixture.packageObjectDigest',
     );
+    const files = controlledFixtureFiles(
+        requestedSourceRoot,
+        requestedPublicationFile,
+        environment,
+        packageId,
+    );
+    const { sourceRoot, publicationFile } = files;
     const repository = run('git', ['-C', sourceRoot, 'rev-parse', '--show-toplevel']).stdout.trim();
     const reviewedCommit = run('git', ['-C', repository, 'rev-parse', 'HEAD']).stdout.trim();
     const reviewedTree = run('git', ['-C', repository, 'rev-parse', 'HEAD^{tree}']).stdout.trim();
@@ -745,12 +856,9 @@ function verifyControlledFixture(environment, value) {
         '-C', repository, 'status', '--porcelain', '--untracked-files=all', '--', sourceRoot,
     ]).stdout.trim();
     if (dirty !== '') fail('config.controlledFixture: reviewed source tree is dirty');
-    const sourcesSha256 = inputsSha256(buildInputs(sourceRoot));
+    const sourcesSha256 = inputsSha256(files.entries);
     if (sourcesSha256 !== value.sourcesSha256) {
         fail('config.controlledFixture: reviewed source hash drift');
-    }
-    if (!readFileSync(publicationFile, 'utf8').toLowerCase().includes(packageId)) {
-        fail(`config.controlledFixture.publicationFile: does not pin ${packageId}`);
     }
     const object = expectObject(parseJson(runSui([
         'client', '--client.env', environment, 'object', packageId, '--json',
@@ -766,7 +874,7 @@ function verifyControlledFixture(environment, value) {
             '--build-env', environment, '--pubfile-path', publicationFile,
             '--install-dir', installRoot, '--force', '--json',
         ]);
-        const compiledModules = builtControlledModules(installRoot);
+        const compiledModules = builtControlledModules(installRoot, files.packageName);
         assertEqual(compiledModules, onChainModules, 'controlled fixture compiled/on-chain modules');
         return canonical({
             packageId,
