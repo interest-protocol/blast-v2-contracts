@@ -1,0 +1,333 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "controlled-health-validator",
+  "eventTypes": {
+    "funding": "0x1111111111111111111111111111111111111111111111111111111111111111::events::FundingSettled<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>",
+    "health": "0x1111111111111111111111111111111111111111111111111111111111111111::events::HealthSynchronized<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>"
+  },
+  "checkpoints": {
+    "long": {
+      "free_collateral": "0",
+      "allocated_collateral": "900",
+      "signed_base": "100",
+      "signed_quote_notional": "200",
+      "funding_snapshot_long": "11",
+      "funding_snapshot_short": "21",
+      "market_funding_long": "11",
+      "market_funding_short": "21",
+      "lot_size": "1",
+      "pending_ask_base": "0",
+      "pending_bid_base": "0",
+      "pending_order_count": "0",
+      "market_pause_mode": 0,
+      "market_frozen": false,
+      "position_initial_margin_ratio": "100",
+      "market_initial_margin_ratio": "50",
+      "market_maintenance_margin_ratio": "30"
+    },
+    "short": {
+      "free_collateral": "0",
+      "allocated_collateral": "900",
+      "signed_base": "201",
+      "signed_quote_notional": "101",
+      "funding_snapshot_long": "11",
+      "funding_snapshot_short": "21",
+      "market_funding_long": "11",
+      "market_funding_short": "21",
+      "lot_size": "1",
+      "pending_ask_base": "0",
+      "pending_bid_base": "0",
+      "pending_order_count": "0",
+      "market_pause_mode": 0,
+      "market_frozen": false,
+      "position_initial_margin_ratio": "100",
+      "market_initial_margin_ratio": "50",
+      "market_maintenance_margin_ratio": "30"
+    },
+    "flat": {
+      "free_collateral": "900",
+      "allocated_collateral": "0",
+      "signed_base": "0",
+      "signed_quote_notional": "0",
+      "funding_snapshot_long": "11",
+      "funding_snapshot_short": "21",
+      "market_funding_long": "11",
+      "market_funding_short": "21",
+      "lot_size": "1",
+      "pending_ask_base": "0",
+      "pending_bid_base": "0",
+      "pending_order_count": "0",
+      "market_pause_mode": 0,
+      "market_frozen": false,
+      "position_initial_margin_ratio": "100",
+      "market_initial_margin_ratio": "50",
+      "market_maintenance_margin_ratio": "30"
+    },
+    "funding_before": {
+      "free_collateral": "0",
+      "allocated_collateral": "900",
+      "signed_base": "100",
+      "signed_quote_notional": "200",
+      "funding_snapshot_long": "10",
+      "funding_snapshot_short": "20",
+      "market_funding_long": "11",
+      "market_funding_short": "21",
+      "lot_size": "1",
+      "pending_ask_base": "0",
+      "pending_bid_base": "0",
+      "pending_order_count": "0",
+      "market_pause_mode": 0,
+      "market_frozen": false,
+      "position_initial_margin_ratio": "100",
+      "market_initial_margin_ratio": "50",
+      "market_maintenance_margin_ratio": "30"
+    },
+    "funding_credit": {
+      "free_collateral": "0",
+      "allocated_collateral": "901",
+      "signed_base": "100",
+      "signed_quote_notional": "200",
+      "funding_snapshot_long": "11",
+      "funding_snapshot_short": "21",
+      "market_funding_long": "11",
+      "market_funding_short": "21",
+      "lot_size": "1",
+      "pending_ask_base": "0",
+      "pending_bid_base": "0",
+      "pending_order_count": "0",
+      "market_pause_mode": 0,
+      "market_frozen": false,
+      "position_initial_margin_ratio": "100",
+      "market_initial_margin_ratio": "50",
+      "market_maintenance_margin_ratio": "30"
+    },
+    "funding_cost": {
+      "free_collateral": "0",
+      "allocated_collateral": "899",
+      "signed_base": "100",
+      "signed_quote_notional": "200",
+      "funding_snapshot_long": "11",
+      "funding_snapshot_short": "21",
+      "market_funding_long": "11",
+      "market_funding_short": "21",
+      "lot_size": "1",
+      "pending_ask_base": "0",
+      "pending_bid_base": "0",
+      "pending_order_count": "0",
+      "market_pause_mode": 0,
+      "market_frozen": false,
+      "position_initial_margin_ratio": "100",
+      "market_initial_margin_ratio": "50",
+      "market_maintenance_margin_ratio": "30"
+    },
+    "liquidation": {
+      "free_collateral": "0",
+      "allocated_collateral": "850",
+      "signed_base": "50",
+      "signed_quote_notional": "100",
+      "funding_snapshot_long": "11",
+      "funding_snapshot_short": "21",
+      "market_funding_long": "11",
+      "market_funding_short": "21",
+      "lot_size": "1",
+      "pending_ask_base": "0",
+      "pending_bid_base": "0",
+      "pending_order_count": "0",
+      "market_pause_mode": 0,
+      "market_frozen": false,
+      "position_initial_margin_ratio": "100",
+      "market_initial_margin_ratio": "50",
+      "market_maintenance_margin_ratio": "30"
+    },
+    "adl": {
+      "free_collateral": "0",
+      "allocated_collateral": "875",
+      "signed_base": "75",
+      "signed_quote_notional": "150",
+      "funding_snapshot_long": "11",
+      "funding_snapshot_short": "21",
+      "market_funding_long": "11",
+      "market_funding_short": "21",
+      "lot_size": "1",
+      "pending_ask_base": "0",
+      "pending_bid_base": "0",
+      "pending_order_count": "0",
+      "market_pause_mode": 0,
+      "market_frozen": false,
+      "position_initial_margin_ratio": "100",
+      "market_initial_margin_ratio": "50",
+      "market_maintenance_margin_ratio": "30"
+    },
+    "collateral": {
+      "free_collateral": "1",
+      "allocated_collateral": "899",
+      "signed_base": "100",
+      "signed_quote_notional": "200",
+      "funding_snapshot_long": "11",
+      "funding_snapshot_short": "21",
+      "market_funding_long": "11",
+      "market_funding_short": "21",
+      "lot_size": "1",
+      "pending_ask_base": "0",
+      "pending_bid_base": "0",
+      "pending_order_count": "0",
+      "market_pause_mode": 0,
+      "market_frozen": false,
+      "position_initial_margin_ratio": "100",
+      "market_initial_margin_ratio": "50",
+      "market_maintenance_margin_ratio": "30"
+    },
+    "pending": {
+      "free_collateral": "0",
+      "allocated_collateral": "900",
+      "signed_base": "100",
+      "signed_quote_notional": "200",
+      "funding_snapshot_long": "11",
+      "funding_snapshot_short": "21",
+      "market_funding_long": "11",
+      "market_funding_short": "21",
+      "lot_size": "1",
+      "pending_ask_base": "1",
+      "pending_bid_base": "0",
+      "pending_order_count": "1",
+      "market_pause_mode": 0,
+      "market_frozen": false,
+      "position_initial_margin_ratio": "100",
+      "market_initial_margin_ratio": "50",
+      "market_maintenance_margin_ratio": "30"
+    },
+    "pause": {
+      "free_collateral": "0",
+      "allocated_collateral": "900",
+      "signed_base": "100",
+      "signed_quote_notional": "200",
+      "funding_snapshot_long": "11",
+      "funding_snapshot_short": "21",
+      "market_funding_long": "11",
+      "market_funding_short": "21",
+      "lot_size": "1",
+      "pending_ask_base": "0",
+      "pending_bid_base": "0",
+      "pending_order_count": "0",
+      "market_pause_mode": 1,
+      "market_frozen": false,
+      "position_initial_margin_ratio": "100",
+      "market_initial_margin_ratio": "50",
+      "market_maintenance_margin_ratio": "30"
+    },
+    "freeze": {
+      "free_collateral": "0",
+      "allocated_collateral": "900",
+      "signed_base": "100",
+      "signed_quote_notional": "200",
+      "funding_snapshot_long": "11",
+      "funding_snapshot_short": "21",
+      "market_funding_long": "11",
+      "market_funding_short": "21",
+      "lot_size": "1",
+      "pending_ask_base": "0",
+      "pending_bid_base": "0",
+      "pending_order_count": "0",
+      "market_pause_mode": 0,
+      "market_frozen": true,
+      "position_initial_margin_ratio": "100",
+      "market_initial_margin_ratio": "50",
+      "market_maintenance_margin_ratio": "30"
+    }
+  },
+  "eventSets": {
+    "none": [],
+    "funding_credit": [
+      {
+        "type": "0x1111111111111111111111111111111111111111111111111111111111111111::events::FundingSettled<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>",
+        "parsedJson": {
+          "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
+          "is_cost": false,
+          "raw_amount": "1000000000000",
+          "amount": "1",
+          "absorbed_by_reserve": "0",
+          "uncovered_cost": "0",
+          "reserve_after": "100",
+          "previous_checkpoint": "funding_before",
+          "checkpoint": "funding_credit"
+        }
+      }
+    ],
+    "funding_cost": [
+      {
+        "type": "0x1111111111111111111111111111111111111111111111111111111111111111::events::FundingSettled<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>",
+        "parsedJson": {
+          "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
+          "is_cost": true,
+          "raw_amount": "1000000000000",
+          "amount": "1",
+          "absorbed_by_reserve": "1",
+          "uncovered_cost": "0",
+          "reserve_after": "99",
+          "previous_checkpoint": "funding_before",
+          "checkpoint": "funding_cost"
+        }
+      }
+    ],
+    "liquidation": [
+      {
+        "type": "0x1111111111111111111111111111111111111111111111111111111111111111::events::HealthSynchronized<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>",
+        "parsedJson": { "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101", "reason": 1, "lifecycle_changed": true, "checkpoint": "liquidation" }
+      }
+    ],
+    "adl": [
+      {
+        "type": "0x1111111111111111111111111111111111111111111111111111111111111111::events::HealthSynchronized<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>",
+        "parsedJson": { "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101", "reason": 1, "lifecycle_changed": true, "checkpoint": "adl" }
+      }
+    ],
+    "collateral": [
+      {
+        "type": "0x1111111111111111111111111111111111111111111111111111111111111111::events::HealthSynchronized<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>",
+        "parsedJson": { "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101", "reason": 1, "lifecycle_changed": true, "checkpoint": "collateral" }
+      }
+    ],
+    "pending": [
+      {
+        "type": "0x1111111111111111111111111111111111111111111111111111111111111111::events::HealthSynchronized<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>",
+        "parsedJson": { "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101", "reason": 1, "lifecycle_changed": true, "checkpoint": "pending" }
+      }
+    ],
+    "pause": [
+      {
+        "type": "0x1111111111111111111111111111111111111111111111111111111111111111::events::HealthSynchronized<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>",
+        "parsedJson": { "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101", "reason": 1, "lifecycle_changed": true, "checkpoint": "pause" }
+      }
+    ],
+    "freeze": [
+      {
+        "type": "0x1111111111111111111111111111111111111111111111111111111111111111::events::HealthSynchronized<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>",
+        "parsedJson": { "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101", "reason": 1, "lifecycle_changed": true, "checkpoint": "freeze" }
+      }
+    ],
+    "objective": [
+      {
+        "type": "0x1111111111111111111111111111111111111111111111111111111111111111::events::HealthSynchronized<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>",
+        "parsedJson": { "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101", "reason": 0, "lifecycle_changed": true, "checkpoint": "long" }
+      }
+    ]
+  },
+  "cases": [
+    { "name": "long", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "events": "none", "expected": { "classification": "unchanged", "lifecycle": "Active", "events": "none" } },
+    { "name": "short", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "short" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "short" }, "events": "none", "expected": { "classification": "unchanged", "lifecycle": "Active", "events": "none" } },
+    { "name": "flat", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "flat" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "flat" }, "events": "none", "expected": { "classification": "unchanged", "lifecycle": "Active", "events": "none" } },
+    { "name": "positive_pnl", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "events": "none", "expected": { "classification": "unchanged", "lifecycle": "Active", "events": "none" } },
+    { "name": "negative_pnl", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "events": "none", "expected": { "classification": "unchanged", "lifecycle": "Active", "events": "none" } },
+    { "name": "funding_credit", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_before" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_credit" }, "events": "funding_credit", "expected": { "classification": "funding_credit", "lifecycle": "Active", "events": "funding_credit" } },
+    { "name": "funding_cost", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_before" }, "post": { "lifecycle": "Active", "maintenanceReserve": "99", "checkpoint": "funding_cost" }, "events": "funding_cost", "expected": { "classification": "funding_cost", "lifecycle": "Active", "events": "funding_cost" } },
+    { "name": "repeated_funding", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_credit" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_credit" }, "events": "none", "expected": { "classification": "unchanged", "lifecycle": "Active", "events": "none" } },
+    { "name": "partial_liquidation", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "liquidation" }, "events": "liquidation", "expected": { "classification": "unexpected", "lifecycle": "ReduceOnly", "events": "liquidation" } },
+    { "name": "adl_settlement", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "adl" }, "events": "adl", "expected": { "classification": "unexpected", "lifecycle": "ReduceOnly", "events": "adl" } },
+    { "name": "collateral_movement", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "collateral" }, "events": "collateral", "expected": { "classification": "unexpected", "lifecycle": "ReduceOnly", "events": "collateral" } },
+    { "name": "pending_order", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "pending" }, "events": "pending", "expected": { "classification": "unexpected", "lifecycle": "ReduceOnly", "events": "pending" } },
+    { "name": "pause", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "pause" }, "events": "pause", "expected": { "classification": "unexpected", "lifecycle": "ReduceOnly", "events": "pause" } },
+    { "name": "freeze", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "freeze" }, "events": "freeze", "expected": { "classification": "unexpected", "lifecycle": "ReduceOnly", "events": "freeze" } },
+    { "name": "stale_oracle", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "long" }, "events": "objective", "expected": { "classification": "unchanged", "lifecycle": "ReduceOnly", "events": "objective" } },
+    { "name": "collateral_depeg", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "long" }, "events": "objective", "expected": { "classification": "unchanged", "lifecycle": "ReduceOnly", "events": "objective" } }
+  ]
+}

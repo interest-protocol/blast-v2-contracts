@@ -187,6 +187,19 @@ captured pair priced both sides of an operation, that a caller did not choose
 among historical updates, or that the source is the bound one. Those remain
 carrier, binding, and authentication obligations.
 
+### 1.13 Evidence tooling is a protocol boundary
+
+Parse only documented Sui command results, effects, typed events, and canonical
+object JSON. Do not add a convenient normalized response shape and then test
+only that shape. A controlled economic matrix has fixed case names and exact
+expected lifecycle, checkpoint, classification, and event sets; configuration
+supplies calls and objects but cannot redefine the cases. Atomic rollback
+failpoints use unique standalone source markers, fixed abort identities, and a
+complete source-to-published-Blast provenance chain. Offline fixtures run the
+same validators but never count as network evidence. Upstream `abort 404` ABI
+ports remain the callable authority and are not mistaken for implementation
+source.
+
 ## 2. Lowering liquidation odds
 
 The pure package makes the product conservative by construction. These are the

@@ -25,17 +25,20 @@ case "${1:-all}" in
     ;;
   proof-self-test)
     node "$package_dir/scripts/dev_inspect_activation.mjs" --self-test
+    node "$package_dir/scripts/controlled_health_cases.mjs" --self-test
     node "$package_dir/scripts/activation_atomicity.mjs" --self-test
     ;;
   proof)
     node "$package_dir/scripts/check_mainnet_abi.mjs"
     node "$package_dir/scripts/dev_inspect_activation.mjs"
+    node "$package_dir/scripts/controlled_health_cases.mjs"
     node "$package_dir/scripts/activation_atomicity.mjs"
     ;;
   local)
     bash "$package_dir/scripts/check_source_boundaries.sh"
     node "$package_dir/scripts/check_mainnet_abi.mjs" --self-test
     node "$package_dir/scripts/dev_inspect_activation.mjs" --self-test
+    node "$package_dir/scripts/controlled_health_cases.mjs" --self-test
     node "$package_dir/scripts/activation_atomicity.mjs" --self-test
     sui move build --path "$package_dir" --build-env testnet
     sui move build --path "$package_dir" --build-env mainnet

@@ -244,13 +244,19 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
         seed_reserve,
         clock.timestamp_ms(),
     );
+    // BLAST_ACTIVATION_BOUNDARY_A1
     let locked_shares = locked_shares(seed_shareholder_nav);
     vault.mint_locked_shares(locked_shares, ctx);
+    // BLAST_ACTIVATION_BOUNDARY_A2
 
     let venue_account = venue_account::new(admin_cap, binding, checkpoint);
+    // BLAST_ACTIVATION_BOUNDARY_A3
     account::consume_policy_and_share_account(account, share_policy);
+    // BLAST_ACTIVATION_BOUNDARY_A4
     vault.install_venue_account(venue_account);
+    // BLAST_ACTIVATION_BOUNDARY_A5
     clearing_house::share(clearing_house);
+    // BLAST_ACTIVATION_BOUNDARY_A6
     emit_vault_initialized<Product>(
         vault,
         seed_amount,
@@ -261,6 +267,7 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
         final_side,
         position_imr,
     );
+    // BLAST_ACTIVATION_BOUNDARY_A7
 }
 
 /// Reconciles one bound Aftermath checkpoint and persists objective health.

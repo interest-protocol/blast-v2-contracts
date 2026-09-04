@@ -205,26 +205,47 @@ boundary, in addition to one successful end-to-end activation.
 
 ### Release evidence protocol
 
-Offline activation vectors test the transaction builder, strict response
-comparison, checkpoint case matrix, and rollback comparator. They are synthetic
-regression inputs and are never deployment or rollback evidence.
+Offline activation vectors exercise the same exact command-result, effect,
+event, checkpoint, final-state, case-classification, and rollback validators as
+the live gates. They are synthetic regression inputs and are never deployment
+or rollback evidence.
 
-The read-only gate must execute `sui client ptb --dev-inspect` on the exact
-mainnet chain, authenticate every configured object type, and reject status-only
-or non-JSON output when it cannot recover canonical normalized results. The
-controlled gate must submit one successful activation and failed A1-A7
-transactions on testnet. It snapshots canonical object references and decoded
-content before and after every submission, permits only the gas object to
-change after a failure, and requires the failed transaction event list to be
-empty. Candidate account, capability, locked-share, and returned
-ClearingHouse object IDs must be tracked even when their required state is
-nonexistence.
+The read-only gate executes `sui client ptb --dev-inspect` on the exact mainnet
+chain and consumes only the standard Sui `results`, `effects`, and typed `events`
+fields. It authenticates every configured input object type and requires one
+exact `VaultInitialized<Product>` schema. It does not accept a tool-specific
+normalized response or infer a return value from `initialize`, which returns
+nothing.
 
-An instrumented failpoint package is admissible only when every Move source is
-byte-for-byte equal to the reviewed production source except for one abort line
-immediately after the named boundary. Evidence records both published package
-object digests and both complete Move-source-tree digests. Neither dev-inspect,
-a fixture comparison, nor an abort code alone proves rollback.
+The controlled health gate submits configured production calls for all sixteen
+P16-P19 cases: long, short, flat, profit, loss, funding credit, funding cost,
+repeated funding settlement, liquidation, ADL, collateral movement, pending
+orders, pause, freeze, stale price, and collateral depeg. Every case records the
+canonical Vault before and after, raw transaction output, checkpoint, lifecycle,
+typed protocol events, and exact expected change classification. A test-only
+target, relabeled case, unexpected event set, or unconfigured state transition
+fails the gate.
+
+The controlled atomicity gate submits one successful activation and failed
+A1-A7 transactions on testnet. Success requires exact lifecycle, reserve,
+supply, locked coin, treasury-cap, VenueAccount, checkpoint, Aftermath Account,
+and ClearingHouse state plus exactly one typed activation event. Every tracked
+identity is bound to a submitted PTB argument, a transaction effect, an origin
+transaction effect, or a transaction-digest creation index. Each failure
+snapshots canonical object references and decoded content before and after,
+permits only the gas object to change, requires no event, and matches the fixed
+package, module, function, and abort code for its boundary.
+
+An instrumented failpoint package is admissible only when the complete build
+input set is byte-for-byte equal to the reviewed production tree except for one
+fixed abort line immediately after its unique standalone A1-A7 source marker.
+The proof pins the reviewed Git commit, tree, and source digest, verifies the
+Blast production and failpoint sources against their published packages, and
+records compiled and on-chain module hashes. The Aftermath named ABI ports and
+their existing package/signature gate remain the authority for upstream calls;
+their deliberate `abort 404` bodies are not compared with venue implementation
+bodies. Neither dev-inspect, a fixture comparison, nor an abort code alone
+proves rollback.
 
 ## Evidence and remaining gates
 

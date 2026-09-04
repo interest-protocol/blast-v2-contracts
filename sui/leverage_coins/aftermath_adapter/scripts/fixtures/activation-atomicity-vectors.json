@@ -1,82 +1,143 @@
 {
-  "schemaVersion": 1,
-  "fixtureKind": "offline-comparator-test",
+  "schemaVersion": 2,
+  "fixtureKind": "canonical-evidence-validator",
   "gasDifferencePolicy": "gas-only",
-  "productionOperationsSha256": "dba756bfb709c2e7aac4e7d7082390841700a3eeb4fab957b9e78488781bf6dc",
+  "productionOperationsSha256": "3371f4a97bbd61d6cec4676fce190f65a8255b8debabf20d157bdae3f51abf3e",
   "baseline": {
     "objects": [
-      {
-        "role": "series_state",
-        "exists": true,
-        "id": "0x0101010101010101010101010101010101010101010101010101010101010101",
-        "version": "7",
-        "digest": "BaselineSeriesStateDigest",
-        "owner": { "Shared": { "initial_shared_version": 3 } },
-        "type": "0x11::vault::Vault<0x11::product::Product<0x11::fixture::TwoX>>",
-        "content": { "lifecycle": "Uninitialized", "maintenance_reserve": "0" }
-      },
-      {
-        "role": "share_currency",
-        "exists": true,
-        "id": "0x0202020202020202020202020202020202020202020202020202020202020202",
-        "version": "5",
-        "digest": "BaselineCurrencyDigest",
-        "owner": { "Shared": { "initial_shared_version": 4 } },
-        "type": "0x2::coin_registry::Currency<0x11::vault::Vault<0x11::product::Product<0x11::fixture::TwoX>>>",
-        "content": { "total_supply": "0" }
-      },
-      {
-        "role": "locked_share_destination",
-        "exists": false,
-        "id": "0x0303030303030303030303030303030303030303030303030303030303030303"
-      },
-      {
-        "role": "aftermath_account",
-        "exists": false,
-        "id": "0x0404040404040404040404040404040404040404040404040404040404040404"
-      },
-      {
-        "role": "returned_clearing_house",
-        "exists": false,
-        "id": "0x0505050505050505050505050505050505050505050505050505050505050505"
-      }
-    ],
-    "custody": {
-      "adminCap": "absent",
-      "venueAccount": "none",
-      "checkpoint": "none"
-    },
-    "supply": {
-      "totalShares": "0",
-      "lockedDestinationBalance": "0"
-    },
-    "events": []
+      { "role": "vault", "exists": true, "id": "0x0101010101010101010101010101010101010101010101010101010101010101", "version": "7", "digest": "BaselineVault", "selected": { "lifecycle": "Uninitialized", "maintenanceReserve": "0", "venueAccount": null, "checkpoint": null, "adminCap": null } },
+      { "role": "share_currency", "exists": true, "id": "0x0202020202020202020202020202020202020202020202020202020202020202", "version": "5", "digest": "BaselineCurrency", "selected": { "treasuryCapId": "0x0303030303030303030303030303030303030303030303030303030303030303" } },
+      { "role": "treasury_cap", "exists": true, "id": "0x0303030303030303030303030303030303030303030303030303030303030303", "version": "5", "digest": "BaselineCap", "selected": { "totalSupply": "0" } },
+      { "role": "locked_share_coin", "exists": false, "id": "0x0404040404040404040404040404040404040404040404040404040404040404" },
+      { "role": "aftermath_admin_cap", "exists": false, "id": "0x0505050505050505050505050505050505050505050505050505050505050505" },
+      { "role": "aftermath_account", "exists": false, "id": "0x0606060606060606060606060606060606060606060606060606060606060606" },
+      { "role": "clearing_house", "exists": true, "id": "0x0707070707070707070707070707070707070707070707070707070707070707", "version": "11", "digest": "BaselineClearingHouse", "selected": { "marketState": { "open_interest": "0" } } }
+    ]
   },
   "success": {
+    "packageId": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "initializer": {
+      "target": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::operations::initialize",
+      "typeArguments": [
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::product::Product<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::fixture::TwoX>",
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::risk::Risk",
+        "0x2::usdc::USDC"
+      ],
+      "arguments": [
+        "@0x0101010101010101010101010101010101010101010101010101010101010101",
+        "@0x0808080808080808080808080808080808080808080808080808080808080808",
+        "risk_module",
+        "@0x0909090909090909090909090909090909090909090909090909090909090909",
+        "@0x0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+        "@0x0707070707070707070707070707070707070707070707070707070707070707",
+        "@0x0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+        "@0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+        "@0x0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+        "@0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+        "@0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "10000000",
+        "100000000000000000",
+        "@0x0000000000000000000000000000000000000000000000000000000000000006"
+      ]
+    },
+    "ptbArgs": [
+      "--move-call",
+      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::risk::new",
+      "--assign",
+      "risk_module",
+      "--move-call",
+      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::operations::initialize",
+      "<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::product::Product<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::fixture::TwoX>,0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::risk::Risk,0x2::usdc::USDC>",
+      "@0x0101010101010101010101010101010101010101010101010101010101010101",
+      "@0x0808080808080808080808080808080808080808080808080808080808080808",
+      "risk_module",
+      "@0x0909090909090909090909090909090909090909090909090909090909090909",
+      "@0x0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+      "@0x0707070707070707070707070707070707070707070707070707070707070707",
+      "@0x0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+      "@0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+      "@0x0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+      "@0x0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+      "@0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "10000000",
+      "100000000000000000",
+      "@0x0000000000000000000000000000000000000000000000000000000000000006"
+    ],
+    "trackedObjects": [
+      { "role": "vault", "id": "0x0101010101010101010101010101010101010101010101010101010101010101", "allowAbsent": false, "expectedType": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::vault::Vault<TwoX>", "selectors": { "lifecycle": "/content/fields/series_state/fields/lifecycle", "maintenanceReserve": "/content/fields/series_state/fields/maintenance_reserve", "venueAccount": "/content/fields/venue_account/fields/vec/0/fields/account_object_id", "checkpoint": "/content/fields/venue_account/fields/vec/0/fields/checkpoint/fields", "adminCap": "/content/fields/venue_account/fields/vec/0/fields/admin_cap/fields/vec/0/fields/id/id" }, "binding": { "kind": "argument" } },
+      { "role": "share_currency", "id": "0x0202020202020202020202020202020202020202020202020202020202020202", "allowAbsent": false, "expectedType": "0x2::coin_registry::Currency<TwoX>", "selectors": { "treasuryCapId": "/content/fields/treasury_cap_id/fields/vec/0" }, "binding": { "kind": "originEffect", "transactionDigest": "SyntheticIssue" } },
+      { "role": "treasury_cap", "id": "0x0303030303030303030303030303030303030303030303030303030303030303", "allowAbsent": false, "expectedType": "0x2::coin::TreasuryCap<TwoX>", "selectors": { "totalSupply": "/content/fields/total_supply/fields/value" }, "binding": { "kind": "originEffect", "transactionDigest": "SyntheticIssue" } },
+      { "role": "locked_share_coin", "id": "0x0404040404040404040404040404040404040404040404040404040404040404", "allowAbsent": true, "expectedType": "0x2::coin::Coin<TwoX>", "selectors": { "balance": "/content/fields/balance" }, "binding": { "kind": "derived", "creationIndex": 3 } },
+      { "role": "aftermath_admin_cap", "id": "0x0505050505050505050505050505050505050505050505050505050505050505", "allowAbsent": true, "expectedType": "0x4::authority::AuthorityCap", "selectors": {}, "binding": { "kind": "derived", "creationIndex": 2 } },
+      { "role": "aftermath_account", "id": "0x0606060606060606060606060606060606060606060606060606060606060606", "allowAbsent": true, "expectedType": "0x3::account::Account<USDC>", "selectors": { "accountId": "/content/fields/account_id", "collateral": "/content/fields/collateral/fields/value" }, "binding": { "kind": "derived", "creationIndex": 0 } },
+      { "role": "clearing_house", "id": "0x0707070707070707070707070707070707070707070707070707070707070707", "allowAbsent": false, "expectedType": "0x3::clearing_house::ClearingHouse<USDC>", "selectors": { "marketState": "/content/fields/market_state/fields" }, "binding": { "kind": "argument" } }
+    ],
+    "expectedFinal": {
+      "vault": { "lifecycle": "Active", "maintenanceReserve": "10000000", "venueAccount": "0x0606060606060606060606060606060606060606060606060606060606060606", "checkpoint": { "free_collateral": "0", "allocated_collateral": "90000000", "signed_base": "500000000000000000", "signed_quote_notional": "-100000000000000000000", "funding_snapshot_long": "0", "funding_snapshot_short": "0", "market_funding_long": "0", "market_funding_short": "0", "lot_size": "1000000", "pending_ask_base": "0", "pending_bid_base": "0", "pending_order_count": "0", "market_pause_mode": 0, "market_frozen": false, "position_initial_margin_ratio": "100000000000000000", "market_initial_margin_ratio": "100000000000000000", "market_maintenance_margin_ratio": "50000000000000000" }, "adminCap": "0x0505050505050505050505050505050505050505050505050505050505050505" },
+      "share_currency": { "treasuryCapId": "0x0303030303030303030303030303030303030303030303030303030303030303" },
+      "treasury_cap": { "totalSupply": "90000000000" },
+      "locked_share_coin": { "balance": "90000000000" },
+      "aftermath_admin_cap": null,
+      "aftermath_account": { "accountId": "42", "collateral": "0" },
+      "clearing_house": { "marketState": { "open_interest": "500000000000000000" } }
+    },
+    "transactionDigest": "SyntheticSuccess",
     "status": "success",
-    "transactionDigest": "SyntheticSuccessDigest",
-    "vaultInitializedEvents": 1,
-    "createdAftermathAccount": true,
-    "sharedClearingHouse": true,
-    "installedVenueAccount": true,
-    "lockedShares": "90000000000"
+    "error": null,
+    "gasId": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "changedObjects": [
+      { "kind": "protocol", "id": "0x0101010101010101010101010101010101010101010101010101010101010101" },
+      { "kind": "protocol", "id": "0x0303030303030303030303030303030303030303030303030303030303030303" },
+      { "kind": "protocol", "id": "0x0404040404040404040404040404040404040404040404040404040404040404" },
+      { "kind": "protocol", "id": "0x0606060606060606060606060606060606060606060606060606060606060606" },
+      { "kind": "protocol", "id": "0x0707070707070707070707070707070707070707070707070707070707070707" }
+    ],
+    "events": [
+      {
+        "type": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::events::VaultInitialized<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::product::Product<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::fixture::TwoX>>",
+        "parsedJson": {
+          "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
+          "account_object_id": "0x0606060606060606060606060606060606060606060606060606060606060606",
+          "account_number": "42",
+          "registry_id": "0x0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+          "clearing_house_id": "0x0707070707070707070707070707070707070707070707070707070707070707",
+          "base_oracle_id": "0x0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+          "collateral_oracle_id": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "collateral_type": "0x2::usdc::USDC",
+          "seed_amount": "100000000",
+          "seed_venue_equity": "90000000",
+          "seed_reserve": "10000000",
+          "seed_shareholder_nav": "90000000",
+          "locked_shares": "90000000000",
+          "absolute_base": "500000000",
+          "absolute_notional": "100000000",
+          "lot_size": "1000000",
+          "position_side": 0,
+          "position_imr": "100000000000000000",
+          "checkpoint": { "free_collateral": "0", "allocated_collateral": "90000000", "signed_base": "500000000000000000", "signed_quote_notional": "-100000000000000000000", "funding_snapshot_long": "0", "funding_snapshot_short": "0", "market_funding_long": "0", "market_funding_short": "0", "lot_size": "1000000", "pending_ask_base": "0", "pending_bid_base": "0", "pending_order_count": "0", "market_pause_mode": 0, "market_frozen": false, "position_initial_margin_ratio": "100000000000000000", "market_initial_margin_ratio": "100000000000000000", "market_maintenance_margin_ratio": "50000000000000000" }
+        }
+      }
+    ],
+    "preState": "baseline",
+    "postState": {
+      "objects": [
+        { "role": "vault", "exists": true, "id": "0x0101010101010101010101010101010101010101010101010101010101010101", "selected": { "lifecycle": "Active", "maintenanceReserve": "10000000", "venueAccount": "0x0606060606060606060606060606060606060606060606060606060606060606", "checkpoint": { "free_collateral": "0", "allocated_collateral": "90000000", "signed_base": "500000000000000000", "signed_quote_notional": "-100000000000000000000", "funding_snapshot_long": "0", "funding_snapshot_short": "0", "market_funding_long": "0", "market_funding_short": "0", "lot_size": "1000000", "pending_ask_base": "0", "pending_bid_base": "0", "pending_order_count": "0", "market_pause_mode": 0, "market_frozen": false, "position_initial_margin_ratio": "100000000000000000", "market_initial_margin_ratio": "100000000000000000", "market_maintenance_margin_ratio": "50000000000000000" }, "adminCap": "0x0505050505050505050505050505050505050505050505050505050505050505" } },
+        { "role": "share_currency", "exists": true, "id": "0x0202020202020202020202020202020202020202020202020202020202020202", "selected": { "treasuryCapId": "0x0303030303030303030303030303030303030303030303030303030303030303" } },
+        { "role": "treasury_cap", "exists": true, "id": "0x0303030303030303030303030303030303030303030303030303030303030303", "selected": { "totalSupply": "90000000000" } },
+        { "role": "locked_share_coin", "exists": true, "id": "0x0404040404040404040404040404040404040404040404040404040404040404", "selected": { "balance": "90000000000" } },
+        { "role": "aftermath_admin_cap", "exists": false, "id": "0x0505050505050505050505050505050505050505050505050505050505050505" },
+        { "role": "aftermath_account", "exists": true, "id": "0x0606060606060606060606060606060606060606060606060606060606060606", "selected": { "accountId": "42", "collateral": "0" } },
+        { "role": "clearing_house", "exists": true, "id": "0x0707070707070707070707070707070707070707070707070707070707070707", "selected": { "marketState": { "open_interest": "500000000000000000" } } }
+      ]
+    }
   },
-  "phaseCases": [
-    { "case": "A1", "lastPhase": "vault.initialize_series", "abortImmediatelyAfter": true },
-    { "case": "A2", "lastPhase": "vault.mint_locked_shares", "abortImmediatelyAfter": true },
-    { "case": "A3", "lastPhase": "venue_account::new", "abortImmediatelyAfter": true },
-    { "case": "A4", "lastPhase": "account::consume_policy_and_share_account", "abortImmediatelyAfter": true },
-    { "case": "A5", "lastPhase": "vault.install_venue_account", "abortImmediatelyAfter": true },
-    { "case": "A6", "lastPhase": "clearing_house::share", "abortImmediatelyAfter": true },
-    { "case": "A7", "lastPhase": "events::vault_initialized", "abortImmediatelyAfter": true }
-  ],
   "failures": [
-    { "case": "A1", "status": "failure", "transactionDigest": "SyntheticA1Digest", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
-    { "case": "A2", "status": "failure", "transactionDigest": "SyntheticA2Digest", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
-    { "case": "A3", "status": "failure", "transactionDigest": "SyntheticA3Digest", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
-    { "case": "A4", "status": "failure", "transactionDigest": "SyntheticA4Digest", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
-    { "case": "A5", "status": "failure", "transactionDigest": "SyntheticA5Digest", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
-    { "case": "A6", "status": "failure", "transactionDigest": "SyntheticA6Digest", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
-    { "case": "A7", "status": "failure", "transactionDigest": "SyntheticA7Digest", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] }
+    { "case": "A1", "packageId": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1", "status": "failure", "error": "MoveAbort in 0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::operations::initialize, code 9101", "transactionDigest": "SyntheticA1", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
+    { "case": "A2", "packageId": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "status": "failure", "error": "MoveAbort in 0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::operations::initialize, code 9102", "transactionDigest": "SyntheticA2", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
+    { "case": "A3", "packageId": "0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3", "status": "failure", "error": "MoveAbort in 0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::operations::initialize, code 9103", "transactionDigest": "SyntheticA3", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
+    { "case": "A4", "packageId": "0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4", "status": "failure", "error": "MoveAbort in 0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::operations::initialize, code 9104", "transactionDigest": "SyntheticA4", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
+    { "case": "A5", "packageId": "0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5", "status": "failure", "error": "MoveAbort in 0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::operations::initialize, code 9105", "transactionDigest": "SyntheticA5", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
+    { "case": "A6", "packageId": "0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6", "status": "failure", "error": "MoveAbort in 0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::operations::initialize, code 9106", "transactionDigest": "SyntheticA6", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
+    { "case": "A7", "packageId": "0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7", "status": "failure", "error": "MoveAbort in 0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::operations::initialize, code 9107", "transactionDigest": "SyntheticA7", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] }
   ]
 }

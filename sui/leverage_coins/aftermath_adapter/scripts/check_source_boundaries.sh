@@ -392,6 +392,40 @@ for ((i = 1; i < ${#initialization_order[@]}; i++)); do
   fi
 done
 
+activation_markers=(
+  BLAST_ACTIVATION_BOUNDARY_A1
+  BLAST_ACTIVATION_BOUNDARY_A2
+  BLAST_ACTIVATION_BOUNDARY_A3
+  BLAST_ACTIVATION_BOUNDARY_A4
+  BLAST_ACTIVATION_BOUNDARY_A5
+  BLAST_ACTIVATION_BOUNDARY_A6
+  BLAST_ACTIVATION_BOUNDARY_A7
+)
+previous_marker_line=0
+for marker in "${activation_markers[@]}"; do
+  [[ "$(grep -Fc "// $marker" <<<"$initialization_block")" -eq 1 ]] \
+    || fail "Initialization evidence marker $marker must occur exactly once."
+  marker_line="$(initialization_line "// $marker")"
+  if (( marker_line <= previous_marker_line )); then
+    fail "Initialization evidence markers must remain in A1-A7 order."
+  fi
+  previous_marker_line="$marker_line"
+done
+awk '
+  /BLAST_ACTIVATION_BOUNDARY_A1/ { if (previous != "    );") exit 1; found[1] = 1 }
+  /BLAST_ACTIVATION_BOUNDARY_A2/ { if (previous != "    vault.mint_locked_shares(locked_shares, ctx);") exit 1; found[2] = 1 }
+  /BLAST_ACTIVATION_BOUNDARY_A3/ { if (previous != "    let venue_account = venue_account::new(admin_cap, binding, checkpoint);") exit 1; found[3] = 1 }
+  /BLAST_ACTIVATION_BOUNDARY_A4/ { if (previous != "    account::consume_policy_and_share_account(account, share_policy);") exit 1; found[4] = 1 }
+  /BLAST_ACTIVATION_BOUNDARY_A5/ { if (previous != "    vault.install_venue_account(venue_account);") exit 1; found[5] = 1 }
+  /BLAST_ACTIVATION_BOUNDARY_A6/ { if (previous != "    clearing_house::share(clearing_house);") exit 1; found[6] = 1 }
+  /BLAST_ACTIVATION_BOUNDARY_A7/ { if (previous != "    );") exit 1; found[7] = 1 }
+  { previous = $0 }
+  END {
+    for (i = 1; i <= 7; i++) if (!found[i]) exit 1
+  }
+' <<<"$initialization_block" \
+  || fail "Each activation evidence marker must immediately follow its complete reviewed statement."
+
 order_sizes_block="$(
   sed -n '/^fun order_sizes($/,/^}/p' "$operations_file"
 )"
