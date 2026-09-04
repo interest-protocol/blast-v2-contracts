@@ -20,6 +20,13 @@ for local and live release gates. The pinned official Move ports own callable
 signatures; live inspection supplies object, effect, and compatibility
 evidence, not new APIs.
 
+The read-only activation proof first serializes the reviewed PTB, then passes
+that exact base64 `TransactionData` to Sui's machine-readable `serialized-tx`
+surface with `--dev-inspect --json`. Controlled health outcomes come from a
+committed oracle, not caller-supplied expectations, and the atomicity gate
+checks the complete expected object/effect/ownership graph for success and
+rollback. All three live proof paths enforce the pinned Sui CLI version.
+
 The package has no public share-mint, redemption, rebalance, shutdown, or
 donation operation. Mint and redemption are a later slice after deployed
 activation and health parity evidence passes.

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// Builds the reviewed activation PTB and validates only standard Sui
-// dev-inspect command results, effects, and typed events.
+// Serializes the reviewed activation PTB, dev-inspects that exact transaction,
+// and validates only standard Sui machine-readable results, effects, and events.
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,8 +12,15 @@ import process from 'node:process';
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = join(SCRIPT_DIR, '..');
 const FIXTURE_PATH = join(SCRIPT_DIR, 'fixtures', 'activation-vectors.json');
+const PINNED_SURFACE_FIXTURE_PATH = join(
+    SCRIPT_DIR,
+    'fixtures',
+    'sui-1.77.2-serialized-tx-dev-inspect.json',
+);
 const OPERATIONS_PATH = join(PACKAGE_DIR, 'sources', 'operations.move');
 const MAINNET_CHAIN = '4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S';
+const PINNED_SUI_VERSION = '1.77.2-51d177ad7d65';
+const PINNED_SURFACE_TRANSACTION = 'AAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgp0eF9jb250ZXh0BnNlbmRlcgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc7oAwAAAAAAAAAgPYh5LQAAAA==';
 const OBJECT_ROLES = [
     'vault',
     'protocol',
@@ -93,15 +101,6 @@ const PHASE_MARKERS = [
     'emit_vault_initialized<Product>(',
     '// BLAST_ACTIVATION_BOUNDARY_A7',
 ];
-const EFFECT_LISTS = [
-    'created',
-    'mutated',
-    'unwrapped',
-    'deleted',
-    'unwrappedThenDeleted',
-    'wrapped',
-];
-
 function fail(message) {
     throw new Error(message);
 }
@@ -168,6 +167,15 @@ function assertEqual(actual, expected, path = 'value') {
 
 function productType(adapterPackage, tagType) {
     return `${adapterPackage}::product::Product<${tagType}>`;
+}
+
+function wrappedEventType(adapterPackage, payloadType) {
+    return `${adapterPackage}::events_wrapper::Event<${payloadType}>`;
+}
+
+function unwrapEventPayload(value, path) {
+    const wrapper = expectObject(value, path, ['pos0']);
+    return expectObject(wrapper.pos0, `${path}.pos0`);
 }
 
 function validateCall(call, path) {
@@ -251,8 +259,36 @@ function renderPtbArgs(input, plan) {
         args.push(...command.arguments);
         if (command.assign !== null) args.push('--assign', command.assign);
     }
-    args.push('--dev-inspect', '--sender', `@${input.sender}`, '--json');
+    args.push(
+        '--serialize-unsigned-transaction',
+        '--sender',
+        `@${input.sender}`,
+    );
     return args;
+}
+
+function renderSerializedInspectArgs(environment, transactionData) {
+    return [
+        'client',
+        '--client.env',
+        environment,
+        'serialized-tx',
+        transactionData,
+        '--dev-inspect',
+        '--json',
+    ];
+}
+
+function parseSerializedTransaction(output, path) {
+    const value = output.trim();
+    if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+        fail(`${path}: expected one canonical base64 TransactionData line`);
+    }
+    const bytes = Buffer.from(value, 'base64');
+    if (bytes.length === 0 || bytes.toString('base64') !== value) {
+        fail(`${path}: invalid base64 TransactionData`);
+    }
+    return value;
 }
 
 function verifyProductionPhaseOrder() {
@@ -290,36 +326,82 @@ function effectBody(raw) {
     return effects;
 }
 
-function effectReference(entry, path) {
-    if (typeof entry === 'string') return { objectId: entry };
-    const value = expectObject(entry, path);
-    const reference = value.reference ?? value.ref ?? value;
-    const ref = expectObject(reference, `${path}.reference`);
-    const objectId = ref.objectId ?? ref.object_id;
-    if (typeof objectId !== 'string') fail(`${path}: missing object id`);
-    const normalized = { objectId };
-    if (ref.version !== undefined) normalized.version = String(ref.version);
-    if (ref.digest !== undefined) normalized.digest = ref.digest;
-    if (value.owner !== undefined) normalized.owner = value.owner;
-    return canonical(normalized);
-}
-
 function normalizeResult(result, path) {
     const value = expectObject(result, path);
-    const mutableReferenceOutputs = value.mutableReferenceOutputs
-        ?? value.mutable_reference_outputs;
-    const returnValues = value.returnValues ?? value.return_values;
+    const mutableReferenceOutputs = value.mutatedByRef
+        ?? value.mutated_by_ref
+        ?? value.mutableReferenceOutputs
+        ?? value.mutable_reference_outputs
+        ?? [];
+    const returnValues = value.returnValues ?? value.return_values ?? [];
     if (!Array.isArray(mutableReferenceOutputs) || !Array.isArray(returnValues)) {
         fail(`${path}: expected standard mutableReferenceOutputs and returnValues`);
     }
     return canonical({ mutableReferenceOutputs, returnValues });
 }
 
+function normalizeEvents(transaction, path) {
+    const eventJson = transaction.event_json;
+    if (!Array.isArray(eventJson)) {
+        fail(`${path}.event_json: expected standard parsed-event list`);
+    }
+    if (transaction.events === null) {
+        if (eventJson.length !== 0) fail(`${path}: event_json exists without events`);
+        return [];
+    }
+    const events = expectObject(transaction.events, `${path}.events`);
+    if (!Array.isArray(events.data) || events.data.length !== eventJson.length) {
+        fail(`${path}: raw and parsed event cardinality mismatch`);
+    }
+    return events.data.map((event, index) => {
+        const raw = expectObject(event, `${path}.events.data[${index}]`);
+        const type = raw.type_ ?? raw.type;
+        expectString(type, `${path}.events.data[${index}].type_`);
+        return canonical({
+            type,
+            parsedJson: expectObject(
+                eventJson[index],
+                `${path}.event_json[${index}]`,
+            ),
+        });
+    });
+}
+
+function normalizeSimulationResponse(response, path = 'devInspect') {
+    expectObject(response, path, [
+        'transaction',
+        'command_outputs',
+        'suggested_gas_price',
+    ]);
+    const transaction = expectObject(response.transaction, `${path}.transaction`);
+    const effects = expectObject(transaction.effects, `${path}.transaction.effects`);
+    const events = normalizeEvents(transaction, `${path}.transaction`);
+    const changedObjects = transaction.changed_objects;
+    if (!Array.isArray(changedObjects)) {
+        fail(`${path}.transaction.changed_objects: expected standard changed-object list`);
+    }
+    if (!Array.isArray(response.command_outputs)) {
+        fail(`${path}.command_outputs: expected standard command-output list`);
+    }
+    return {
+        effects,
+        events,
+        changedObjects: canonical(changedObjects),
+        commandResults: response.command_outputs.map((result, index) =>
+            normalizeResult(result, `${path}.command_outputs[${index}]`)),
+        suggestedGasPrice: response.suggested_gas_price,
+        transaction,
+    };
+}
+
 function initializedEventType(input) {
-    return `${input.adapterPackage}::events::VaultInitialized<${productType(
+    return wrappedEventType(
         input.adapterPackage,
-        input.productTagType,
-    )}>`;
+        `${input.adapterPackage}::events::VaultInitialized<${productType(
+            input.adapterPackage,
+            input.productTagType,
+        )}>`,
+    );
 }
 
 function normalizeInitializedEvent(events, input) {
@@ -330,11 +412,11 @@ function normalizeInitializedEvent(events, input) {
         fail(`devInspect.events: expected exactly one ${expectedType}, got ${matches.length}`);
     }
     const event = expectObject(matches[0], 'VaultInitialized');
-    const parsedJson = expectObject(
+    const parsedJson = unwrapEventPayload(
         event.parsedJson ?? event.parsed_json,
         'VaultInitialized.parsedJson',
-        INITIALIZED_FIELDS,
     );
+    expectObject(parsedJson, 'VaultInitialized.parsedJson.pos0', INITIALIZED_FIELDS);
     expectObject(parsedJson.checkpoint, 'VaultInitialized.checkpoint', CHECKPOINT_FIELDS);
     if (String(parsedJson.vault_id).toLowerCase() !== input.objects.vault) {
         fail('VaultInitialized.vault_id: does not match the initialized Vault');
@@ -343,34 +425,125 @@ function normalizeInitializedEvent(events, input) {
 }
 
 function normalizeDevInspect(response, input, plan, objectTypes) {
-    expectObject(response, 'devInspect');
-    const effects = effectBody(response.effects);
+    const standard = normalizeSimulationResponse(response);
+    const effects = effectBody(standard.effects);
     const status = effects.status?.status ?? effects.status;
     if (String(status).toLowerCase() !== 'success') {
         fail(`devInspect.effects.status: expected success, got ${status}`);
     }
-    if (!Array.isArray(response.results)) {
-        fail('devInspect.results: expected standard command result list');
-    }
-    if (response.results.length !== plan.commands.length) {
-        fail(`devInspect.results: expected ${plan.commands.length} command results, got ${response.results.length}`);
-    }
-    const commandResults = response.results.map((result, index) =>
-        normalizeResult(result, `devInspect.results[${index}]`));
-    const normalizedEffects = {};
-    for (const name of EFFECT_LISTS) {
-        const entries = effects[name] ?? effects[name.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)] ?? [];
-        if (!Array.isArray(entries)) fail(`devInspect.effects.${name}: expected list`);
-        normalizedEffects[name] = entries.map((entry, index) =>
-            effectReference(entry, `devInspect.effects.${name}[${index}]`));
+    if (standard.commandResults.length !== plan.commands.length) {
+        fail(`devInspect.command_outputs: expected ${plan.commands.length} command results, got ${standard.commandResults.length}`);
     }
     return canonical({
         status: 'success',
-        commandResults,
-        effects: normalizedEffects,
-        vaultInitialized: normalizeInitializedEvent(response.events, input),
+        commandResults: standard.commandResults,
+        changedObjects: standard.changedObjects,
+        vaultInitialized: normalizeInitializedEvent(standard.events, input),
         objectTypes,
     });
+}
+
+function validatePinnedSurfaceFixture(fixture) {
+    expectObject(fixture, 'pinnedSurfaceFixture', [
+        'schemaVersion',
+        'fixtureKind',
+        'provenance',
+        'rawResponse',
+    ]);
+    if (fixture.schemaVersion !== 1
+        || fixture.fixtureKind !== 'sui-serialized-tx-dev-inspect') {
+        fail('pinnedSurfaceFixture: unsupported schema or kind');
+    }
+    expectObject(fixture.provenance, 'pinnedSurfaceFixture.provenance', [
+        'suiVersion',
+        'environment',
+        'capturedOutputSha256',
+        'serializedTransaction',
+        'command',
+    ]);
+    if (fixture.provenance.suiVersion !== PINNED_SUI_VERSION
+        || fixture.provenance.environment !== 'testnet'
+        || fixture.provenance.capturedOutputSha256
+            !== '2ad66f247c5175f64e02861dc85af0f9ee1b9491f0e98267a7fde5c2cb19f8c8') {
+        fail('pinnedSurfaceFixture.provenance: pinned capture drift');
+    }
+    const capturedOutputSha256 = createHash('sha256')
+        .update(`${JSON.stringify(fixture.rawResponse, null, 2)}\n`)
+        .digest('hex');
+    if (capturedOutputSha256 !== fixture.provenance.capturedOutputSha256) {
+        fail('pinnedSurfaceFixture.rawResponse: captured output SHA-256 mismatch');
+    }
+    const transactionData = parseSerializedTransaction(
+        fixture.provenance.serializedTransaction,
+        'pinnedSurfaceFixture.provenance.serializedTransaction',
+    );
+    if (transactionData !== PINNED_SURFACE_TRANSACTION) {
+        fail('pinnedSurfaceFixture.provenance: serialized TransactionData drift');
+    }
+    assertEqual(
+        fixture.provenance.command,
+        ['sui', ...renderSerializedInspectArgs('testnet', transactionData)],
+        'pinnedSurfaceFixture.provenance.command',
+    );
+    const standard = normalizeSimulationResponse(
+        fixture.rawResponse,
+        'pinnedSurfaceFixture.rawResponse',
+    );
+    const data = expectObject(
+        standard.transaction.transaction?.V1,
+        'pinnedSurfaceFixture.rawResponse.transaction.transaction.V1',
+    );
+    assertEqual(
+        data.sender,
+        '0x00000000000000000000000000000000000000000000000000000000000a11ce',
+        'pinnedSurfaceFixture.sender',
+    );
+    const programmable = expectObject(
+        data.kind?.ProgrammableTransaction,
+        'pinnedSurfaceFixture.programmableTransaction',
+    );
+    if (!Array.isArray(programmable.commands) || programmable.commands.length !== 1) {
+        fail('pinnedSurfaceFixture.programmableTransaction: expected one command');
+    }
+    const call = expectObject(
+        programmable.commands[0]?.MoveCall,
+        'pinnedSurfaceFixture.moveCall',
+    );
+    assertEqual({
+        package: call.package,
+        module: call.module,
+        function: call.function,
+        typeArguments: call.type_arguments,
+        arguments: call.arguments,
+    }, {
+        package: '0x0000000000000000000000000000000000000000000000000000000000000002',
+        module: 'tx_context',
+        function: 'sender',
+        typeArguments: [],
+        arguments: [],
+    }, 'pinnedSurfaceFixture.moveCall');
+    if (standard.events.length !== 0 || standard.commandResults.length !== 1) {
+        fail('pinnedSurfaceFixture: expected one eventless command result');
+    }
+    assertEqual(
+        standard.commandResults[0],
+        {
+            mutableReferenceOutputs: [],
+            returnValues: [{
+                value: {
+                    name: 'address',
+                    value: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc4=',
+                },
+                json: '0x00000000000000000000000000000000000000000000000000000000000a11ce',
+            }],
+        },
+        'pinnedSurfaceFixture.commandOutput',
+    );
+    const effects = effectBody(standard.effects);
+    const status = effects.status?.status ?? effects.status;
+    if (String(status).toLowerCase() !== 'success') {
+        fail(`pinnedSurfaceFixture.effects.status: expected success, got ${status}`);
+    }
 }
 
 function validateFixture(fixture) {
@@ -412,6 +585,7 @@ function validateFixture(fixture) {
         fixture.objectTypes,
     );
     assertEqual(observed, fixture.expectedObservation, 'expectedObservation');
+    validatePinnedSurfaceFixture(readJson(PINNED_SURFACE_FIXTURE_PATH));
     verifyProductionPhaseOrder();
     return { plan, observed };
 }
@@ -429,10 +603,10 @@ function expectFailure(message, run) {
 function selfTest() {
     const fixture = readJson(FIXTURE_PATH);
     const { plan } = validateFixture(fixture);
-    let passed = 2;
+    let passed = 3;
 
     const malformedResults = structuredClone(fixture.rawDevInspectResponse);
-    malformedResults.results.pop();
+    malformedResults.command_outputs.pop();
     expectFailure('command results', () => normalizeDevInspect(
         malformedResults,
         fixture.builderInput,
@@ -451,7 +625,7 @@ function selfTest() {
     passed += 1;
 
     const wrongEvent = structuredClone(fixture.rawDevInspectResponse);
-    wrongEvent.events[0].parsedJson.absolute_notional = '100000001';
+    wrongEvent.transaction.event_json[0].pos0.absolute_notional = '100000001';
     expectFailure('absolute_notional', () => assertEqual(
         normalizeDevInspect(
             wrongEvent,
@@ -465,7 +639,12 @@ function selfTest() {
     passed += 1;
 
     const duplicateEvent = structuredClone(fixture.rawDevInspectResponse);
-    duplicateEvent.events.push(structuredClone(duplicateEvent.events[0]));
+    duplicateEvent.transaction.events.data.push(structuredClone(
+        duplicateEvent.transaction.events.data[0],
+    ));
+    duplicateEvent.transaction.event_json.push(structuredClone(
+        duplicateEvent.transaction.event_json[0],
+    ));
     expectFailure('exactly one', () => normalizeDevInspect(
         duplicateEvent,
         fixture.builderInput,
@@ -475,16 +654,51 @@ function selfTest() {
     passed += 1;
 
     const missingShape = structuredClone(fixture.rawDevInspectResponse);
-    delete missingShape.results[0].returnValues;
-    expectFailure('standard mutableReferenceOutputs', () => normalizeDevInspect(
+    delete missingShape.command_outputs[0].returnValues;
+    const normalizedMissingShape = normalizeDevInspect(
         missingShape,
         fixture.builderInput,
         plan,
         fixture.objectTypes,
+    );
+    assertEqual(
+        normalizedMissingShape.commandResults[0].returnValues,
+        [],
+        'omitted returnValues',
+    );
+    passed += 1;
+
+    const transactionData = parseSerializedTransaction(
+        'AAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgp0eF9jb250ZXh0BnNlbmRlcgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc7oAwAAAAAAAAAgPYh5LQAAAA==',
+        'serializedTransaction',
+    );
+    const inspectArgs = renderSerializedInspectArgs('mainnet', transactionData);
+    assertEqual(inspectArgs[4], transactionData, 'serialized transaction handoff');
+    passed += 1;
+
+    expectFailure('canonical base64', () => parseSerializedTransaction(
+        'not base64\nsecond line',
+        'serializedTransaction',
     ));
     passed += 1;
 
-    process.stdout.write(`dev_inspect_activation self-test: PASS ${passed}/7 cases\n`);
+    const changedCapture = readJson(PINNED_SURFACE_FIXTURE_PATH);
+    changedCapture.rawResponse.suggested_gas_price = '1';
+    expectFailure('captured output SHA-256 mismatch', () =>
+        validatePinnedSurfaceFixture(changedCapture));
+    passed += 1;
+
+    const changedTransaction = readJson(PINNED_SURFACE_FIXTURE_PATH);
+    changedTransaction.provenance.serializedTransaction = 'AA==';
+    changedTransaction.provenance.command = [
+        'sui',
+        ...renderSerializedInspectArgs('testnet', 'AA=='),
+    ];
+    expectFailure('serialized TransactionData drift', () =>
+        validatePinnedSurfaceFixture(changedTransaction));
+    passed += 1;
+
+    process.stdout.write(`dev_inspect_activation self-test: PASS ${passed}/12 cases\n`);
 }
 
 function runSui(args) {
@@ -497,6 +711,13 @@ function runSui(args) {
     } catch (error) {
         const detail = `${error.stdout ?? ''}${error.stderr ?? ''}`.trim();
         fail(`sui ${args.slice(0, 4).join(' ')} failed: ${detail || error.message}`);
+    }
+}
+
+function assertPinnedSuiVersion() {
+    const observed = runSui(['--version']).trim();
+    if (observed !== `sui ${PINNED_SUI_VERSION}`) {
+        fail(`Sui CLI version mismatch: expected ${PINNED_SUI_VERSION}, got ${observed}`);
     }
 }
 
@@ -526,6 +747,7 @@ function live(configPath) {
     if (!configPath) {
         fail('live mainnet proof requires --config <public-object-config.json> or BLAST_ACTIVATION_CONFIG; no deployed Blast activation objects are recorded');
     }
+    assertPinnedSuiVersion();
     const config = readJson(resolve(configPath));
     expectObject(config, 'config', [
         'schemaVersion',
@@ -571,10 +793,15 @@ function live(configPath) {
         objectTypes[role] = observed.type;
     }
 
-    const response = parseJson(
+    const transactionData = parseSerializedTransaction(
         runSui(renderPtbArgs(config.builderInput, plan)),
-        'devInspect',
+        'serialized activation TransactionData',
     );
+    const inspectArgs = renderSerializedInspectArgs('mainnet', transactionData);
+    if (inspectArgs[4] !== transactionData) {
+        fail('serialized activation TransactionData handoff changed');
+    }
+    const response = parseJson(runSui(inspectArgs), 'devInspect');
     const observed = normalizeDevInspect(
         response,
         config.builderInput,

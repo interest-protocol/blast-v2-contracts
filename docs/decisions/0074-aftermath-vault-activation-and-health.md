@@ -210,28 +210,44 @@ event, checkpoint, final-state, case-classification, and rollback validators as
 the live gates. They are synthetic regression inputs and are never deployment
 or rollback evidence.
 
-The read-only gate executes `sui client ptb --dev-inspect` on the exact mainnet
-chain and consumes only the standard Sui `results`, `effects`, and typed `events`
-fields. It authenticates every configured input object type and requires one
-exact `VaultInitialized<Product>` schema. It does not accept a tool-specific
-normalized response or infer a return value from `initialize`, which returns
-nothing.
+The read-only gate serializes the reviewed PTB, then passes that exact base64
+`TransactionData` to the pinned Sui CLI's machine-readable `serialized-tx`
+surface with `--dev-inspect --json` on the exact mainnet chain. A committed fixture
+captured from that pinned surface fixes its schema; omitted optional result
+arrays normalize to empty arrays. The gate consumes the standard transaction
+effects, raw typed `events_wrapper::Event<T>` values paired with `event_json`,
+changed objects, and command outputs. It authenticates every configured input
+object type and requires one exact wrapped `VaultInitialized<Product>` schema.
+It does not accept a tool-specific normalized response or infer a return value
+from `initialize`, which returns nothing. Every live proof path rejects a Sui
+CLI version other than the pinned revision.
 
 The controlled health gate submits configured production calls for all sixteen
 P16-P19 cases: long, short, flat, profit, loss, funding credit, funding cost,
 repeated funding settlement, liquidation, ADL, collateral movement, pending
 orders, pause, freeze, stale price, and collateral depeg. Every case records the
 canonical Vault before and after, raw transaction output, checkpoint, lifecycle,
-typed protocol events, and exact expected change classification. A test-only
-target, relabeled case, unexpected event set, or unconfigured state transition
-fails the gate.
+typed protocol events, and exact change classification from an immutable
+committed oracle keyed by the fixed case set. Live configuration supplies only
+call targets, object inputs, and preparation resources; it cannot supply event
+types, filters, or expected outcomes. A test-only target, relabeled, missing,
+duplicate, or unknown case, unexpected event set, or unconfigured state
+transition fails the gate. Each case name is also bound to its committed
+scenario-preparation call and `sync_health` must receive that case's Vault as
+its first object argument.
 
 The controlled atomicity gate submits one successful activation and failed
 A1-A7 transactions on testnet. Success requires exact lifecycle, reserve,
 supply, locked coin, treasury-cap, VenueAccount, checkpoint, Aftermath Account,
-and ClearingHouse state plus exactly one typed activation event. Every tracked
-identity is bound to a submitted PTB argument, a transaction effect, an origin
-transaction effect, or a transaction-digest creation index. Each failure
+and ClearingHouse state plus exactly one typed activation event. Every event
+field is bound to the submitted PTB, pre-state, final state, or persisted
+checkpoint; every non-gas success effect must have the exact expected identity
+and category, while every surviving output's version, digest, and owner must
+equal its post-state snapshot. Every tracked identity is bound to a submitted
+PTB argument, a transaction effect, an origin transaction effect, or a
+transaction-digest creation index. Role selectors are fixed by the validator,
+not live configuration. The same identity and state validators check offline
+fixtures and live captures. Each failure
 snapshots canonical object references and decoded content before and after,
 permits only the gas object to change, requires no event, and matches the fixed
 package, module, function, and abort code for its boundary.

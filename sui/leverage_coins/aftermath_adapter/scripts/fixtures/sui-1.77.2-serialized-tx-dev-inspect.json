@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "sui-serialized-tx-dev-inspect",
+  "provenance": {
+    "suiVersion": "1.77.2-51d177ad7d65",
+    "environment": "testnet",
+    "capturedOutputSha256": "2ad66f247c5175f64e02861dc85af0f9ee1b9491f0e98267a7fde5c2cb19f8c8",
+    "serializedTransaction": "AAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgp0eF9jb250ZXh0BnNlbmRlcgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc7oAwAAAAAAAAAgPYh5LQAAAA==",
+    "command": [
+      "sui",
+      "client",
+      "--client.env",
+      "testnet",
+      "serialized-tx",
+      "AAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgp0eF9jb250ZXh0BnNlbmRlcgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc7oAwAAAAAAAAAgPYh5LQAAAA==",
+      "--dev-inspect",
+      "--json"
+    ]
+  },
+  "rawResponse": {
+    "transaction": {
+      "transaction": {
+        "V1": {
+          "kind": {
+            "ProgrammableTransaction": {
+              "inputs": [],
+              "commands": [
+                {
+                  "MoveCall": {
+                    "package": "0x0000000000000000000000000000000000000000000000000000000000000002",
+                    "module": "tx_context",
+                    "function": "sender",
+                    "type_arguments": [],
+                    "arguments": []
+                  }
+                }
+              ]
+            }
+          },
+          "sender": "0x00000000000000000000000000000000000000000000000000000000000a11ce",
+          "gas_data": {
+            "payment": [],
+            "owner": "0x00000000000000000000000000000000000000000000000000000000000a11ce",
+            "price": 1000,
+            "budget": 50000000000000
+          },
+          "expiration": "None"
+        }
+      },
+      "signatures": [],
+      "effects": {
+        "V2": {
+          "status": "Success",
+          "executed_epoch": 1212,
+          "gas_used": {
+            "computationCost": "1000000",
+            "storageCost": "988000",
+            "storageRebate": "0",
+            "nonRefundableStorageFee": "0"
+          },
+          "transaction_digest": "J9RKK1oyw4xSR6KLNumsZFYSzBQbR7KtnfXcpgyy8zTA",
+          "gas_object_index": 0,
+          "events_digest": null,
+          "dependencies": [
+            "J9ky3nueZ3Z9gqC6bGGrmwk8W8pPRas9q5M4SsX2g3vg"
+          ],
+          "lamport_version": 2,
+          "changed_objects": [
+            [
+              "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              {
+                "input_state": {
+                  "Exist": [
+                    [
+                      1,
+                      "Aj27ZUw6PAVXxCDRqnwYQYB4vTczSbgC6RaCYxUCzGe5"
+                    ],
+                    {
+                      "AddressOwner": "0x00000000000000000000000000000000000000000000000000000000000a11ce"
+                    }
+                  ]
+                },
+                "output_state": {
+                  "ObjectWrite": [
+                    "8ar2R9K2if9HEBg6GwckP4ZKw6G2AkRJXkPwWmG6v3qu",
+                    {
+                      "AddressOwner": "0x00000000000000000000000000000000000000000000000000000000000a11ce"
+                    }
+                  ]
+                },
+                "id_operation": "None"
+              }
+            ]
+          ],
+          "unchanged_consensus_objects": [],
+          "aux_data_digest": null
+        }
+      },
+      "clever_error": null,
+      "events": null,
+      "event_json": [],
+      "changed_objects": [
+        {
+          "objectId": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "inputState": "INPUT_OBJECT_STATE_EXISTS",
+          "inputVersion": "1",
+          "inputDigest": "Aj27ZUw6PAVXxCDRqnwYQYB4vTczSbgC6RaCYxUCzGe5",
+          "inputOwner": {
+            "kind": "ADDRESS",
+            "address": "0x00000000000000000000000000000000000000000000000000000000000a11ce"
+          },
+          "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+          "outputVersion": "2",
+          "outputDigest": "8ar2R9K2if9HEBg6GwckP4ZKw6G2AkRJXkPwWmG6v3qu",
+          "outputOwner": {
+            "kind": "ADDRESS",
+            "address": "0x00000000000000000000000000000000000000000000000000000000000a11ce"
+          },
+          "idOperation": "NONE",
+          "objectType": "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI>"
+        }
+      ],
+      "unchanged_loaded_runtime_objects": [],
+      "balance_changes": [
+        {
+          "address": "0x00000000000000000000000000000000000000000000000000000000000a11ce",
+          "coin_type": "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI",
+          "amount": -1988000
+        }
+      ],
+      "checkpoint": null
+    },
+    "command_outputs": [
+      {
+        "returnValues": [
+          {
+            "value": {
+              "name": "address",
+              "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc4="
+            },
+            "json": "0x00000000000000000000000000000000000000000000000000000000000a11ce"
+          }
+        ]
+      }
+    ],
+    "suggested_gas_price": null
+  }
+}

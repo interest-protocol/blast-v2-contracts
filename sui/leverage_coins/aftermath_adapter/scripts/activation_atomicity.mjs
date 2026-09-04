@@ -22,6 +22,7 @@ const PACKAGE_DIR = resolve(SCRIPT_DIR, '..');
 const FIXTURE_PATH = join(SCRIPT_DIR, 'fixtures', 'activation-atomicity-vectors.json');
 const OPERATIONS_PATH = join(PACKAGE_DIR, 'sources', 'operations.move');
 const TESTNET_CHAIN = '69WiPg3DAQiwdxfncX6wYQ2siKwAe6L9BZthQea3JNMD';
+const PINNED_SUI_VERSION = '1.77.2-51d177ad7d65';
 const PHASES = [
     { case: 'A1', phase: 'vault.initialize_series', marker: '// BLAST_ACTIVATION_BOUNDARY_A1', abortCode: '9101' },
     { case: 'A2', phase: 'vault.mint_locked_shares', marker: '// BLAST_ACTIVATION_BOUNDARY_A2', abortCode: '9102' },
@@ -31,16 +32,77 @@ const PHASES = [
     { case: 'A6', phase: 'clearing_house::share', marker: '// BLAST_ACTIVATION_BOUNDARY_A6', abortCode: '9106' },
     { case: 'A7', phase: 'events::vault_initialized', marker: '// BLAST_ACTIVATION_BOUNDARY_A7', abortCode: '9107' },
 ];
-const ROLE_SELECTORS = {
-    vault: ['lifecycle', 'maintenanceReserve', 'venueAccount', 'checkpoint', 'adminCap'],
-    share_currency: ['treasuryCapId'],
-    treasury_cap: ['totalSupply'],
-    locked_share_coin: ['balance'],
-    aftermath_admin_cap: [],
-    aftermath_account: ['accountId', 'collateral'],
-    clearing_house: ['marketState'],
+const ROLE_POINTERS = {
+    vault: {
+        lifecycle: '/content/fields/series_state/fields/lifecycle',
+        maintenanceReserve: '/content/fields/series_state/fields/maintenance_reserve',
+        venueAccount: '/content/fields/venue_account/fields/vec/0/fields/account_object_id',
+        checkpoint: '/content/fields/venue_account/fields/vec/0/fields/checkpoint/fields',
+        adminCap: '/content/fields/venue_account/fields/vec/0/fields/admin_cap/fields/vec/0/fields/id/id',
+    },
+    share_currency: {
+        treasuryCapId: '/content/fields/treasury_cap_id/fields/vec/0',
+    },
+    treasury_cap: { totalSupply: '/content/fields/total_supply/fields/value' },
+    locked_share_coin: { balance: '/content/fields/balance' },
+    aftermath_admin_cap: {},
+    aftermath_transfer_policy: {},
+    aftermath_account: {
+        accountNumber: '/content/fields/account_id',
+        collateral: '/content/fields/collateral/fields/value',
+    },
+    registry: {},
+    seed_coin: { balance: '/content/fields/balance' },
+    collateral_price_info: {
+        priceNegative: '/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/negative',
+        priceMagnitude: '/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/magnitude',
+        exponentNegative: '/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/negative',
+        exponentMagnitude: '/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/magnitude',
+    },
+    clearing_house: { marketState: '/content/fields/market_state/fields' },
 };
+const ROLE_SELECTORS = Object.fromEntries(
+    Object.entries(ROLE_POINTERS).map(([role, pointers]) => [role, Object.keys(pointers)]),
+);
 const REQUIRED_TRACKED_ROLES = Object.keys(ROLE_SELECTORS);
+const SUCCESS_EFFECT_BY_ROLE = {
+    vault: 'mutated',
+    share_currency: null,
+    treasury_cap: 'mutated',
+    locked_share_coin: 'created',
+    aftermath_admin_cap: 'wrapped',
+    aftermath_transfer_policy: 'deleted',
+    aftermath_account: 'created',
+    registry: 'mutated',
+    seed_coin: 'deleted',
+    collateral_price_info: null,
+    clearing_house: 'mutated',
+};
+const BINDING_BY_ROLE = {
+    vault: { kind: 'argument' },
+    share_currency: { kind: 'originEffect' },
+    treasury_cap: { kind: 'originEffect' },
+    locked_share_coin: { kind: 'derived', creationIndex: 3 },
+    aftermath_admin_cap: { kind: 'derived', creationIndex: 2 },
+    aftermath_transfer_policy: { kind: 'derived', creationIndex: 1 },
+    aftermath_account: { kind: 'derived', creationIndex: 0 },
+    registry: { kind: 'argument' },
+    seed_coin: { kind: 'argument' },
+    collateral_price_info: { kind: 'argument' },
+    clearing_house: { kind: 'argument' },
+};
+const INITIALIZER_ARGUMENT_ROLE = {
+    vault: 0,
+    share_currency: 3,
+    registry: 4,
+    clearing_house: 5,
+    collateral_price_info: 9,
+    seed_coin: 10,
+};
+const ZERO_ADDRESS = `0x${'0'.repeat(64)}`;
+const SEED_SHARE_SCALE = 1_000n;
+const U256_MODULUS = 1n << 256n;
+const U256_SIGN_BIT = 1n << 255n;
 const INITIALIZED_FIELDS = [
     'vault_id', 'account_object_id', 'account_number', 'registry_id',
     'clearing_house_id', 'base_oracle_id', 'collateral_oracle_id',
@@ -183,6 +245,13 @@ function runSui(args, allowFailure = false) {
     return run('sui', args, { allowFailure });
 }
 
+function assertPinnedSuiVersion() {
+    const observed = runSui(['--version']).stdout.trim();
+    if (observed !== `sui ${PINNED_SUI_VERSION}`) {
+        fail(`Sui CLI version mismatch: expected ${PINNED_SUI_VERSION}, got ${observed}`);
+    }
+}
+
 function parseJson(output, path) {
     try { return JSON.parse(output); }
     catch { fail(`${path}: expected canonical JSON`); }
@@ -237,11 +306,16 @@ function validateTrackedObjects(trackedObjects, path) {
         if (typeof tracked.allowAbsent !== 'boolean') fail(`${itemPath}.allowAbsent: expected boolean`);
         expectString(tracked.expectedType, `${itemPath}.expectedType`);
         expectObject(tracked.selectors, `${itemPath}.selectors`, ROLE_SELECTORS[role]);
-        for (const key of ROLE_SELECTORS[role]) {
-            const pointer = expectString(tracked.selectors[key], `${itemPath}.selectors.${key}`);
-            if (!pointer.startsWith('/')) fail(`${itemPath}.selectors.${key}: expected JSON pointer`);
-        }
+        assertEqual(tracked.selectors, ROLE_POINTERS[role], `${itemPath}.selectors`);
         validateBinding(tracked.binding, `${itemPath}.binding`);
+        const expectedBinding = BINDING_BY_ROLE[role];
+        if (tracked.binding.kind !== expectedBinding.kind) {
+            fail(`${itemPath}.binding: ${role} must use ${expectedBinding.kind}`);
+        }
+        if (expectedBinding.creationIndex !== undefined
+            && tracked.binding.creationIndex !== expectedBinding.creationIndex) {
+            fail(`${itemPath}.binding: ${role} must use creation index ${expectedBinding.creationIndex}`);
+        }
     });
 }
 
@@ -293,6 +367,39 @@ function stateObject(state, role, path) {
     const matches = state.objects.filter((object) => object.role === role);
     if (matches.length !== 1) fail(`${path}: expected one ${role}`);
     return matches[0];
+}
+
+function trackedObject(runConfig, role, path) {
+    const matches = runConfig.trackedObjects.filter((tracked) => tracked.role === role);
+    if (matches.length !== 1) fail(`${path}: expected one tracked ${role}`);
+    return matches[0];
+}
+
+function assertTrackedTypeBindings(runConfig, inputs) {
+    const leverageType = `${runConfig.packageId}::vault::Vault<${inputs.productType}>`;
+    const exact = {
+        vault: leverageType,
+        share_currency: `0x2::coin_registry::Currency<${leverageType}>`,
+        treasury_cap: `0x2::coin::TreasuryCap<${leverageType}>`,
+        locked_share_coin: `0x2::coin::Coin<${leverageType}>`,
+        seed_coin: `0x2::coin::Coin<${inputs.collateralType}>`,
+    };
+    for (const [role, expectedType] of Object.entries(exact)) {
+        assertEqual(
+            trackedObject(runConfig, role, 'success.trackedObjects').expectedType,
+            expectedType,
+            `success.${role}.type`,
+        );
+    }
+    for (const [role, fragment] of [
+        ['aftermath_account', `::account::Account<${inputs.collateralType}>`],
+        ['clearing_house', `::clearing_house::ClearingHouse<${inputs.collateralType}>`],
+        ['registry', '::registry::Registry'],
+        ['collateral_price_info', '::price_info::PriceInfoObject'],
+    ]) {
+        const actual = trackedObject(runConfig, role, 'success.trackedObjects').expectedType;
+        if (!actual.endsWith(fragment)) fail(`success.${role}.type: expected suffix ${fragment}`);
+    }
 }
 
 function validateExpectedFinal(expectedFinal, postState) {
@@ -357,6 +464,19 @@ function objectIdFromChange(change, path) {
     return expectAddress(id, path);
 }
 
+function effectEntry(change, path) {
+    const id = objectIdFromChange(change, path);
+    if (typeof change === 'string') return { id };
+    const value = expectObject(change, path);
+    const reference = value.reference ?? value.ref ?? value;
+    return canonical({
+        id,
+        ...(reference.version === undefined ? {} : { version: String(reference.version) }),
+        ...(reference.digest === undefined ? {} : { digest: reference.digest }),
+        ...(value.owner === undefined ? {} : { owner: value.owner }),
+    });
+}
+
 function normalizeTransaction(transaction) {
     expectObject(transaction, 'transaction');
     const effects = effectBody(transaction.effects);
@@ -370,11 +490,16 @@ function normalizeTransaction(transaction) {
         ?? null;
     const gasId = gasIdRaw === null ? null : expectAddress(gasIdRaw, 'transaction.gasId');
     const changed = new Set();
+    const effectKinds = {};
     for (const name of EFFECT_LISTS) {
         const snake = name.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
         const entries = effects[name] ?? effects[snake] ?? [];
         if (!Array.isArray(entries)) fail(`transaction.effects.${name}: expected list`);
-        entries.forEach((entry, index) => changed.add(objectIdFromChange(entry, `transaction.effects.${name}[${index}]`)));
+        effectKinds[name] = entries.map((entry, index) => {
+            const normalized = effectEntry(entry, `transaction.effects.${name}[${index}]`);
+            changed.add(normalized.id);
+            return normalized;
+        });
     }
     const objectChanges = transaction.objectChanges ?? transaction.object_changes ?? [];
     if (!Array.isArray(objectChanges)) fail('transaction.objectChanges: expected list');
@@ -389,7 +514,14 @@ function normalizeTransaction(transaction) {
     }));
     const events = transaction.events ?? [];
     if (!Array.isArray(events)) fail('transaction.events: expected list');
-    return { status, error, gasId, changedObjects, events: canonical(events) };
+    return {
+        status,
+        error,
+        gasId,
+        changedObjects,
+        effectKinds: canonical(effectKinds),
+        events: canonical(events),
+    };
 }
 
 function parseTransactionDigest(output) {
@@ -474,8 +606,34 @@ function transactionEffectIds(environment, digest, cache) {
     return cache.get(digest);
 }
 
-function bindTrackedObjects(environment, runConfig, evidence, path, originCache = new Map()) {
+function collectOriginEffects(environment, runConfig, cache = new Map()) {
+    const digests = [...new Set(runConfig.trackedObjects
+        .filter((tracked) => tracked.binding.kind === 'originEffect')
+        .map((tracked) => tracked.binding.transactionDigest))];
+    return digests.map((transactionDigest) => ({
+        transactionDigest,
+        objectIds: [...transactionEffectIds(environment, transactionDigest, cache)].sort(),
+    }));
+}
+
+function originEffectMap(originEffects, path) {
+    if (!Array.isArray(originEffects)) fail(`${path}: expected origin-effect evidence`);
+    const result = new Map();
+    originEffects.forEach((entry, index) => {
+        const itemPath = `${path}[${index}]`;
+        expectObject(entry, itemPath, ['transactionDigest', 'objectIds']);
+        const digest = expectString(entry.transactionDigest, `${itemPath}.transactionDigest`);
+        if (result.has(digest)) fail(`${itemPath}: duplicate transaction digest`);
+        if (!Array.isArray(entry.objectIds)) fail(`${itemPath}.objectIds: expected list`);
+        result.set(digest, new Set(entry.objectIds.map((id, objectIndex) =>
+            expectAddress(id, `${itemPath}.objectIds[${objectIndex}]`))));
+    });
+    return result;
+}
+
+function bindTrackedObjects(runConfig, evidence, path) {
     const effects = changedIds(evidence);
+    const origins = originEffectMap(evidence.originEffects, `${path}.originEffects`);
     for (const tracked of runConfig.trackedObjects) {
         const id = tracked.id;
         const binding = tracked.binding;
@@ -487,20 +645,203 @@ function bindTrackedObjects(environment, runConfig, evidence, path, originCache 
             const derived = deriveObjectId(evidence.transactionDigest, binding.creationIndex);
             if (derived !== id) fail(`${path}.${tracked.role}: creation index derives ${derived}, not ${id}`);
         } else if (binding.kind === 'originEffect') {
-            const ids = transactionEffectIds(environment, binding.transactionDigest, originCache);
+            const ids = origins.get(binding.transactionDigest);
+            if (ids === undefined) {
+                fail(`${path}.${tracked.role}: missing origin transaction evidence`);
+            }
             if (!ids.has(id)) fail(`${path}.${tracked.role}: id is not in origin transaction effects`);
         }
     }
 }
 
+function initializerBindings(initializer, path) {
+    const addressArgument = (index, name) => {
+        const raw = initializer.arguments[index];
+        if (typeof raw !== 'string' || !raw.startsWith('@')) {
+            fail(`${path}.arguments[${index}]: ${name} must be an object argument`);
+        }
+        return expectAddress(raw.slice(1), `${path}.${name}`);
+    };
+    return {
+        productType: expectString(initializer.typeArguments[0], `${path}.productType`),
+        collateralType: expectString(initializer.typeArguments[2], `${path}.collateralType`),
+        vaultId: addressArgument(0, 'vaultId'),
+        protocolId: addressArgument(1, 'protocolId'),
+        currencyId: addressArgument(3, 'currencyId'),
+        registryId: addressArgument(4, 'registryId'),
+        clearingHouseId: addressArgument(5, 'clearingHouseId'),
+        baseOracleId: addressArgument(6, 'baseOracleId'),
+        collateralOracleId: addressArgument(7, 'collateralOracleId'),
+        basePriceInfoId: addressArgument(8, 'basePriceInfoId'),
+        collateralPriceInfoId: addressArgument(9, 'collateralPriceInfoId'),
+        seedCoinId: addressArgument(10, 'seedCoinId'),
+        seedReserve: BigInt(expectString(initializer.arguments[11], `${path}.seedReserve`)),
+        positionImr: BigInt(expectString(initializer.arguments[12], `${path}.positionImr`)),
+        clockId: addressArgument(13, 'clockId'),
+    };
+}
+
+function typeName(value, path) {
+    if (typeof value === 'string') return expectString(value, path);
+    const object = expectObject(value, path, ['name']);
+    return expectString(object.name, `${path}.name`);
+}
+
+function signedMagnitude(value, path) {
+    let raw;
+    try { raw = BigInt(value); }
+    catch { fail(`${path}: expected signed IFixed carrier`); }
+    if (raw < 0n) return { negative: true, magnitude: -raw };
+    if (raw >= U256_MODULUS) fail(`${path}: u256 overflow`);
+    return raw >= U256_SIGN_BIT
+        ? { negative: true, magnitude: U256_MODULUS - raw }
+        : { negative: false, magnitude: raw };
+}
+
+function divideUp(numerator, denominator, path) {
+    if (denominator <= 0n) fail(`${path}: denominator must be positive`);
+    return numerator / denominator + (numerator % denominator === 0n ? 0n : 1n);
+}
+
+function fixedToAtomicUp(value, decimals, path) {
+    return divideUp(value, 10n ** BigInt(18 - decimals), path);
+}
+
+function normalizedPythPrice(selected, path) {
+    const negative = selected.priceNegative;
+    const exponentNegative = selected.exponentNegative;
+    if (typeof negative !== 'boolean' || typeof exponentNegative !== 'boolean') {
+        fail(`${path}: price sign selectors must be boolean`);
+    }
+    if (negative) fail(`${path}: collateral price must be nonnegative`);
+    const magnitude = BigInt(selected.priceMagnitude);
+    const exponent = BigInt(selected.exponentMagnitude);
+    if (exponent > 18n) fail(`${path}: unsupported Pyth exponent`);
+    if (exponentNegative) {
+        return exponent <= 9n
+            ? magnitude * (10n ** (9n - exponent))
+            : magnitude / (10n ** (exponent - 9n));
+    }
+    return magnitude * (10n ** (9n + exponent));
+}
+
+function positionSide(value, path) {
+    if (value === 0 || value === 'Long' || value?.variant === 'Long') return 'long';
+    if (value === 1 || value === 'Short' || value?.variant === 'Short') return 'short';
+    fail(`${path}: unsupported PositionSide JSON`);
+}
+
+function assertOwnerKind(owner, expected, path, expectedId = null) {
+    const value = expectObject(owner, path);
+    const aliases = {
+        shared: ['Shared', 'shared'],
+        address: ['AddressOwner', 'address_owner'],
+        object: ['ObjectOwner', 'object_owner'],
+    };
+    const keys = aliases[expected] ?? [];
+    const found = keys.find((key) => Object.hasOwn(value, key));
+    if (found === undefined) fail(`${path}: expected ${expected} owner`);
+    if (expectedId !== null) {
+        assertEqual(
+            expectAddress(value[found], `${path}.${found}`),
+            expectAddress(expectedId, `${path}.expectedId`),
+            path,
+        );
+    }
+}
+
+function effectIds(evidence, name) {
+    const list = evidence.effectKinds?.[name];
+    if (!Array.isArray(list)) fail(`success.effectKinds.${name}: expected list`);
+    return list;
+}
+
+function assertExactSuccessEffects(evidence, runConfig) {
+    const expectedEffects = [];
+    for (const tracked of runConfig.trackedObjects) {
+        const expectedKind = SUCCESS_EFFECT_BY_ROLE[tracked.role];
+        if (expectedKind === null) continue;
+        expectedEffects.push(`${expectedKind}:${tracked.id}`);
+        const matches = effectIds(evidence, expectedKind).filter((entry) => entry.id === tracked.id);
+        if (matches.length !== 1) {
+            fail(`success.${tracked.role}: expected exactly one ${expectedKind} effect`);
+        }
+    }
+    const observedEffects = [];
+    for (const name of EFFECT_LISTS) {
+        for (const entry of effectIds(evidence, name)) {
+            if (entry.id !== evidence.gasId) observedEffects.push(`${name}:${entry.id}`);
+        }
+    }
+    assertEqual(
+        observedEffects.sort(),
+        expectedEffects.sort(),
+        'success.protocol effects',
+    );
+}
+
+function assertEffectOutputBindings(evidence, runConfig) {
+    for (const tracked of runConfig.trackedObjects) {
+        const kind = SUCCESS_EFFECT_BY_ROLE[tracked.role];
+        if (!['created', 'mutated', 'unwrapped'].includes(kind)) continue;
+        const output = stateObject(evidence.postState, tracked.role, 'success.postState');
+        const effect = effectIds(evidence, kind).find((entry) => entry.id === tracked.id);
+        if (!output.exists || effect === undefined) {
+            fail(`success.${tracked.role}: missing output binding`);
+        }
+        assertEqual(
+            {
+                version: expectString(effect.version, `success.${tracked.role}.effect.version`),
+                digest: expectString(effect.digest, `success.${tracked.role}.effect.digest`),
+                owner: expectObject(effect.owner, `success.${tracked.role}.effect.owner`),
+            },
+            {
+                version: expectString(output.version, `success.${tracked.role}.state.version`),
+                digest: expectString(output.digest, `success.${tracked.role}.state.digest`),
+                owner: expectObject(output.owner, `success.${tracked.role}.state.owner`),
+            },
+            `success.${tracked.role}.effect output`,
+        );
+    }
+}
+
+function assertSuccessOwnership(evidence) {
+    const vault = stateObject(evidence.postState, 'vault', 'success.postState');
+    const currency = stateObject(evidence.postState, 'share_currency', 'success.postState');
+    const cap = stateObject(evidence.postState, 'treasury_cap', 'success.postState');
+    const locked = stateObject(evidence.postState, 'locked_share_coin', 'success.postState');
+    const account = stateObject(evidence.postState, 'aftermath_account', 'success.postState');
+    const registry = stateObject(evidence.postState, 'registry', 'success.postState');
+    const clearingHouse = stateObject(evidence.postState, 'clearing_house', 'success.postState');
+    assertOwnerKind(vault.owner, 'shared', 'success.vault.owner');
+    assertOwnerKind(currency.owner, 'shared', 'success.share_currency.owner');
+    assertOwnerKind(cap.owner, 'object', 'success.treasury_cap.owner', vault.id);
+    assertOwnerKind(locked.owner, 'address', 'success.locked_share_coin.owner', ZERO_ADDRESS);
+    assertOwnerKind(account.owner, 'shared', 'success.aftermath_account.owner');
+    assertOwnerKind(registry.owner, 'shared', 'success.registry.owner');
+    assertOwnerKind(clearingHouse.owner, 'shared', 'success.clearing_house.owner');
+}
+
 function initializedEvent(evidence, runConfig) {
-    const expectedType = `${runConfig.packageId}::events::VaultInitialized<${runConfig.initializer.typeArguments[0]}>`;
-    const matches = evidence.events.filter((event) => event?.type === expectedType);
+    const eventPrefix = `${runConfig.packageId}::events_wrapper::Event<${runConfig.packageId}::events::`;
+    const expectedType = `${eventPrefix}VaultInitialized<${runConfig.initializer.typeArguments[0]}>>`;
+    const protocolEvents = evidence.events.filter((event) =>
+        typeof event?.type === 'string'
+        && event.type.startsWith(eventPrefix));
+    if (protocolEvents.some((event) => event.type !== expectedType)) {
+        fail('success.events: unexpected protocol event');
+    }
+    const matches = protocolEvents.filter((event) => event.type === expectedType);
     if (matches.length !== 1) fail(`success.events: expected exactly one ${expectedType}, got ${matches.length}`);
     const event = expectObject(matches[0], 'success.VaultInitialized');
-    const parsedJson = expectObject(
+    const wrapper = expectObject(
         event.parsedJson ?? event.parsed_json,
         'success.VaultInitialized.parsedJson',
+        ['pos0'],
+    );
+    const parsedJson = expectObject(
+        wrapper.pos0,
+        'success.VaultInitialized.parsedJson.pos0',
         INITIALIZED_FIELDS,
     );
     expectObject(parsedJson.checkpoint, 'success.VaultInitialized.checkpoint', CHECKPOINT_FIELDS);
@@ -510,33 +851,92 @@ function initializedEvent(evidence, runConfig) {
 function validateSuccess(evidence, runConfig) {
     if (evidence.status !== 'success') fail(`success: transaction failed: ${evidence.error}`);
     validateExpectedFinal(runConfig.expectedFinal, evidence.postState);
+    assertExactSuccessEffects(evidence, runConfig);
+    assertEffectOutputBindings(evidence, runConfig);
     const event = initializedEvent(evidence, runConfig);
     const fields = event.parsedJson;
+    const inputs = initializerBindings(runConfig.initializer, 'success.initializer');
+    assertTrackedTypeBindings(runConfig, inputs);
     const vault = stateObject(evidence.postState, 'vault', 'success.postState');
     const currency = stateObject(evidence.postState, 'share_currency', 'success.postState');
     const cap = stateObject(evidence.postState, 'treasury_cap', 'success.postState');
     const locked = stateObject(evidence.postState, 'locked_share_coin', 'success.postState');
     const admin = stateObject(evidence.postState, 'aftermath_admin_cap', 'success.postState');
+    const transferPolicy = stateObject(evidence.postState, 'aftermath_transfer_policy', 'success.postState');
     const account = stateObject(evidence.postState, 'aftermath_account', 'success.postState');
+    const registry = stateObject(evidence.postState, 'registry', 'success.postState');
+    const seed = stateObject(evidence.postState, 'seed_coin', 'success.postState');
+    const seedBefore = stateObject(evidence.preState, 'seed_coin', 'success.preState');
+    const collateralPrice = stateObject(evidence.postState, 'collateral_price_info', 'success.postState');
     const clearingHouse = stateObject(evidence.postState, 'clearing_house', 'success.postState');
     if (!vault.exists || !currency.exists || !cap.exists || !locked.exists
-        || admin.exists || !account.exists || !clearingHouse.exists) {
+        || admin.exists || transferPolicy.exists || !account.exists
+        || !registry.exists || seed.exists || !seedBefore.exists
+        || !collateralPrice.exists || !clearingHouse.exists) {
         fail('success.postState: final custody/object existence mismatch');
     }
+    for (const [role, index] of Object.entries(INITIALIZER_ARGUMENT_ROLE)) {
+        const tracked = stateObject(evidence.postState, role, 'success.postState');
+        const inputId = expectAddress(
+            runConfig.initializer.arguments[index].slice(1),
+            `success.initializer.${role}`,
+        );
+        assertEqual(tracked.id, inputId, `success.${role}.argument`);
+    }
+    const lockedShares = BigInt(cap.selected.totalSupply);
+    if (lockedShares % SEED_SHARE_SCALE !== 0n) {
+        fail('success.locked_shares: supply is not an exact seed-share multiple');
+    }
+    const seedNav = lockedShares / SEED_SHARE_SCALE;
+    const seedVenueEquity = seedNav + inputs.seedReserve;
+    const signedBase = signedMagnitude(fields.checkpoint.signed_base, 'success.checkpoint.signed_base');
+    const signedQuote = signedMagnitude(
+        fields.checkpoint.signed_quote_notional,
+        'success.checkpoint.signed_quote_notional',
+    );
+    const expectedSide = signedBase.negative ? 'short' : 'long';
+    if (signedBase.magnitude > 0n && signedQuote.negative === signedBase.negative) {
+        fail('success.position_side: base and quote signs are incoherent');
+    }
+    const collateralPrice9 = normalizedPythPrice(
+        collateralPrice.selected,
+        'success.collateral_price_info',
+    );
+    const collateralFixed = collateralPrice9 * 1_000_000_000n;
+    const absoluteNotional = divideUp(
+        signedQuote.magnitude * 1_000_000n,
+        collateralFixed,
+        'success.absolute_notional',
+    );
     const relations = [
-        [fields.vault_id, vault.id, 'vault_id'],
+        [fields.vault_id, inputs.vaultId, 'vault_id'],
         [fields.account_object_id, account.id, 'account_object_id'],
-        [fields.clearing_house_id, clearingHouse.id, 'clearing_house_id'],
-        [String(fields.account_number), String(account.selected.accountId), 'account_number'],
-        [String(fields.seed_reserve), String(vault.selected.maintenanceReserve), 'seed_reserve'],
+        [fields.registry_id, inputs.registryId, 'registry_id'],
+        [fields.clearing_house_id, inputs.clearingHouseId, 'clearing_house_id'],
+        [fields.base_oracle_id, inputs.baseOracleId, 'base_oracle_id'],
+        [fields.collateral_oracle_id, inputs.collateralOracleId, 'collateral_oracle_id'],
+        [typeName(fields.collateral_type, 'success.collateral_type'), inputs.collateralType, 'collateral_type'],
+        [String(fields.account_number), String(account.selected.accountNumber), 'account_number'],
+        [String(fields.seed_amount), String(seedBefore.selected.balance), 'seed_amount'],
+        [String(fields.seed_venue_equity), String(seedVenueEquity), 'seed_venue_equity'],
+        [String(fields.seed_reserve), String(inputs.seedReserve), 'seed_reserve input'],
+        [String(fields.seed_reserve), String(vault.selected.maintenanceReserve), 'seed_reserve state'],
+        [String(fields.seed_shareholder_nav), String(seedNav), 'seed_shareholder_nav'],
         [fields.checkpoint, vault.selected.checkpoint, 'checkpoint'],
-        [String(fields.locked_shares), String(cap.selected.totalSupply), 'treasury supply'],
-        [String(fields.locked_shares), String(locked.selected.balance), 'locked balance'],
+        [String(fields.locked_shares), String(lockedShares), 'locked_shares supply'],
+        [String(fields.locked_shares), String(locked.selected.balance), 'locked_shares balance'],
+        [String(fields.absolute_base), String(fixedToAtomicUp(signedBase.magnitude, 9, 'success.absolute_base')), 'absolute_base'],
+        [String(fields.absolute_notional), String(absoluteNotional), 'absolute_notional'],
+        [String(fields.lot_size), String(fields.checkpoint.lot_size), 'lot_size'],
+        [positionSide(fields.position_side, 'success.position_side'), expectedSide, 'position_side'],
+        [String(fields.position_imr), String(inputs.positionImr), 'position_imr input'],
+        [String(fields.position_imr), String(fields.checkpoint.position_initial_margin_ratio), 'position_imr checkpoint'],
         [currency.selected.treasuryCapId, cap.id, 'currency treasury cap'],
         [vault.selected.venueAccount, account.id, 'venue account'],
         [vault.selected.adminCap, admin.id, 'admin cap custody'],
     ];
     for (const [actual, expected, label] of relations) assertEqual(actual, expected, `success.${label}`);
+    assertSuccessOwnership(evidence);
     return event;
 }
 
@@ -747,8 +1147,8 @@ function validateFixture(fixture) {
     if (observedSha !== fixture.productionOperationsSha256) fail('fixture: production operations hash drift');
     expectObject(fixture.success, 'fixture.success', [
         'packageId', 'initializer', 'ptbArgs', 'trackedObjects', 'expectedFinal',
-        'transactionDigest', 'status', 'error', 'gasId', 'changedObjects',
-        'events', 'preState', 'postState',
+        'transactionDigest', 'status', 'error', 'gasId', 'changedObjects', 'effectKinds',
+        'events', 'originEffects', 'preState', 'postState',
     ]);
     validateTrackedObjects(fixture.success.trackedObjects, 'fixture.success.trackedObjects');
     validateInitializer(
@@ -757,7 +1157,12 @@ function validateFixture(fixture) {
         fixture.success.ptbArgs,
         'fixture.success.initializer',
     );
-    validateSuccess(fixture.success, fixture.success);
+    const success = {
+        ...fixture.success,
+        preState: resolveState(fixture.success.preState, fixture.baseline, 'fixture.success.preState'),
+    };
+    bindTrackedObjects(fixture.success, success, 'fixture.success');
+    validateSuccess(success, fixture.success);
     if (!Array.isArray(fixture.failures) || fixture.failures.length !== PHASES.length) {
         fail('fixture.failures: expected A1-A7 exactly once');
     }
@@ -785,6 +1190,11 @@ function expectFailure(message, action) {
 function selfTest() {
     const fixture = readJson(FIXTURE_PATH);
     validateFixture(fixture);
+    fixture.success.preState = resolveState(
+        fixture.success.preState,
+        fixture.baseline,
+        'fixture.success.preState',
+    );
     let passed = 3;
 
     const duplicateEvent = structuredClone(fixture.success);
@@ -798,8 +1208,105 @@ function selfTest() {
     passed += 1;
 
     const wrongCheckpoint = structuredClone(fixture.success);
-    wrongCheckpoint.events[0].parsedJson.checkpoint.free_collateral = '999';
+    wrongCheckpoint.events[0].parsedJson.pos0.checkpoint.free_collateral = '999';
     expectFailure('success.checkpoint', () => validateSuccess(wrongCheckpoint, wrongCheckpoint));
+    passed += 1;
+
+    const wrongRegistry = structuredClone(fixture.success);
+    wrongRegistry.events[0].parsedJson.pos0.registry_id = wrongRegistry.initializer.arguments[6].slice(1);
+    expectFailure('success.registry_id', () => validateSuccess(wrongRegistry, wrongRegistry));
+    passed += 1;
+
+    const wrongSeedAmount = structuredClone(fixture.success);
+    wrongSeedAmount.events[0].parsedJson.pos0.seed_amount = '1';
+    expectFailure('success.seed_amount', () => validateSuccess(wrongSeedAmount, wrongSeedAmount));
+    passed += 1;
+
+    const unexpectedProtocolEvent = structuredClone(fixture.success);
+    unexpectedProtocolEvent.events.push({
+        type: `${fixture.success.packageId}::events_wrapper::Event<${fixture.success.packageId}::events::Unexpected>`,
+        parsedJson: { pos0: {} },
+    });
+    expectFailure('unexpected protocol event', () => validateSuccess(
+        unexpectedProtocolEvent,
+        unexpectedProtocolEvent,
+    ));
+    passed += 1;
+
+    const wrongLockedOwner = structuredClone(fixture.success);
+    wrongLockedOwner.postState.objects.find((item) =>
+        item.role === 'locked_share_coin').owner.AddressOwner = fixture.success.initializer.arguments[1].slice(1);
+    expectFailure('success.locked_share_coin.effect output', () => validateSuccess(
+        wrongLockedOwner,
+        wrongLockedOwner,
+    ));
+    passed += 1;
+
+    const wrongEffect = structuredClone(fixture.success);
+    const lockedEffect = wrongEffect.effectKinds.created.shift();
+    wrongEffect.effectKinds.mutated.push(lockedEffect);
+    expectFailure('locked_share_coin', () => validateSuccess(wrongEffect, wrongEffect));
+    passed += 1;
+
+    const unexpectedEffect = structuredClone(fixture.success);
+    unexpectedEffect.effectKinds.created.push({
+        id: '0x1818181818181818181818181818181818181818181818181818181818181818',
+    });
+    expectFailure('protocol effects', () => validateSuccess(
+        unexpectedEffect,
+        unexpectedEffect,
+    ));
+    passed += 1;
+
+    const duplicateEffectCategory = structuredClone(fixture.success);
+    duplicateEffectCategory.effectKinds.mutated.push(structuredClone(
+        duplicateEffectCategory.effectKinds.created[0],
+    ));
+    expectFailure('protocol effects', () => validateSuccess(
+        duplicateEffectCategory,
+        duplicateEffectCategory,
+    ));
+    passed += 1;
+
+    const wrongEffectOwner = structuredClone(fixture.success);
+    wrongEffectOwner.effectKinds.created[0].owner.AddressOwner = fixture.success.initializer.arguments[1].slice(1);
+    expectFailure('locked_share_coin.effect output', () => validateSuccess(
+        wrongEffectOwner,
+        wrongEffectOwner,
+    ));
+    passed += 1;
+
+    const wrongEffectDigest = structuredClone(fixture.success);
+    wrongEffectDigest.effectKinds.mutated[0].digest = 'WrongVaultDigest';
+    expectFailure('vault.effect output', () => validateSuccess(
+        wrongEffectDigest,
+        wrongEffectDigest,
+    ));
+    passed += 1;
+
+    const wrongSelector = structuredClone(fixture.success.trackedObjects);
+    wrongSelector.find((tracked) => tracked.role === 'treasury_cap')
+        .selectors.totalSupply = '/content/fields/unrelated';
+    expectFailure('wrongSelector[2].selectors', () => validateTrackedObjects(
+        wrongSelector,
+        'wrongSelector',
+    ));
+    passed += 1;
+
+    const wrongDerivedIdentity = structuredClone(fixture.success);
+    wrongDerivedIdentity.trackedObjects.find((tracked) =>
+        tracked.role === 'locked_share_coin').id = fixture.success.initializer.arguments[1].slice(1);
+    expectFailure('creation index derives', () => bindTrackedObjects(
+        wrongDerivedIdentity,
+        wrongDerivedIdentity,
+        'wrongDerivedIdentity',
+    ));
+    passed += 1;
+
+    const missingOriginIdentity = structuredClone(fixture.success);
+    missingOriginIdentity.originEffects[0].objectIds.pop();
+    expectFailure('treasury_cap: id is not in origin transaction effects', () =>
+        bindTrackedObjects(missingOriginIdentity, missingOriginIdentity, 'missingOriginIdentity'));
     passed += 1;
 
     const survivingState = structuredClone(fixture.failures[0]);
@@ -846,13 +1353,14 @@ function selfTest() {
     ));
     passed += 1;
 
-    process.stdout.write(`activation_atomicity self-test: PASS ${passed}/13 cases\n`);
+    process.stdout.write(`activation_atomicity self-test: PASS ${passed}/25 cases\n`);
 }
 
 function live(configPath) {
     if (!configPath) {
         fail('controlled rollback proof requires --config <controlled-submission.json> or BLAST_ATOMICITY_CONFIG; no funded fixture or failpoint deployment is recorded');
     }
+    assertPinnedSuiVersion();
     const config = readJson(resolve(configPath));
     expectObject(config, 'config', [
         'schemaVersion', 'fixtureKind', 'environment', 'chainIdentifier', 'outputPath',
@@ -879,7 +1387,8 @@ function live(configPath) {
     ]);
     if (config.success.packageId !== production.packageId) fail('config.success: initializer must use proven production package');
     const success = submit(config.environment, config.success, 'config.success');
-    bindTrackedObjects(config.environment, config.success, success, 'success');
+    success.originEffects = collectOriginEffects(config.environment, config.success);
+    bindTrackedObjects(config.success, success, 'success');
     const vaultInitialized = validateSuccess(success, config.success);
 
     if (!Array.isArray(config.failures) || config.failures.length !== PHASES.length) {
@@ -903,7 +1412,12 @@ function live(configPath) {
             fail(`${phase.case}: initializer must use proven instrumented package`);
         }
         const evidence = submit(config.environment, runConfig, `config.failures[${index}]`);
-        bindTrackedObjects(config.environment, runConfig, evidence, phase.case, originCache);
+        evidence.originEffects = collectOriginEffects(
+            config.environment,
+            runConfig,
+            originCache,
+        );
+        bindTrackedObjects(runConfig, evidence, phase.case);
         assertExactAbort(evidence.error, runConfig.packageId, phase);
         assertRollback({ case: phase.case, ...evidence }, evidence.preState);
         failures.push(canonical({ phase, instrumentation, ...evidence }));

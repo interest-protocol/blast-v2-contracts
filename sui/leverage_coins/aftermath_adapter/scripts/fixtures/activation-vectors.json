@@ -93,10 +93,9 @@
     "10000000",
     "100000000000000000",
     "@0x0000000000000000000000000000000000000000000000000000000000000006",
-    "--dev-inspect",
+    "--serialize-unsigned-transaction",
     "--sender",
-    "@0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "--json"
+    "@0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   ],
   "objectTypes": {
     "vault": "0x1111111111111111111111111111111111111111111111111111111111111111::vault::Vault<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>",
@@ -112,7 +111,10 @@
     "clock": "0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock"
   },
   "rawDevInspectResponse": {
-    "effects": {
+    "transaction": {
+      "transaction": { "V1": {} },
+      "signatures": [],
+      "effects": {
       "status": { "status": "success" },
       "created": [
         {
@@ -146,11 +148,22 @@
       "deleted": [],
       "unwrappedThenDeleted": [],
       "wrapped": []
-    },
-    "events": [
+      },
+      "clever_error": null,
+      "events": {
+        "data": [
+          {
+            "package_id": "0x1111111111111111111111111111111111111111111111111111111111111111",
+            "transaction_module": "events",
+            "sender": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "type_": "0x1111111111111111111111111111111111111111111111111111111111111111::events_wrapper::Event<0x1111111111111111111111111111111111111111111111111111111111111111::events::VaultInitialized<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>>",
+            "contents": ""
+          }
+        ]
+      },
+      "event_json": [
       {
-        "type": "0x1111111111111111111111111111111111111111111111111111111111111111::events::VaultInitialized<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>",
-        "parsedJson": {
+        "pos0": {
           "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
           "account_object_id": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "account_number": "42",
@@ -190,11 +203,51 @@
           }
         }
       }
-    ],
-    "results": [
+      ],
+      "changed_objects": [
+        {
+          "objectId": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "inputState": "INPUT_OBJECT_STATE_NOT_EXIST",
+          "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+          "outputVersion": "1",
+          "outputDigest": "SyntheticAccountDigest",
+          "outputOwner": { "kind": "SHARED", "version": "1" },
+          "idOperation": "CREATED",
+          "objectType": "0x4444444444444444444444444444444444444444444444444444444444444444::account::Account<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>"
+        },
+        {
+          "objectId": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "inputState": "INPUT_OBJECT_STATE_NOT_EXIST",
+          "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+          "outputVersion": "1",
+          "outputDigest": "SyntheticLockedCoinDigest",
+          "outputOwner": { "kind": "ADDRESS", "address": "0x0000000000000000000000000000000000000000000000000000000000000000" },
+          "idOperation": "CREATED",
+          "objectType": "0x2::coin::Coin<0x1111111111111111111111111111111111111111111111111111111111111111::vault::Vault<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>>"
+        },
+        {
+          "objectId": "0x0101010101010101010101010101010101010101010101010101010101010101",
+          "inputState": "INPUT_OBJECT_STATE_EXISTS",
+          "inputVersion": "7",
+          "inputDigest": "SyntheticVaultBefore",
+          "inputOwner": { "kind": "SHARED", "version": "1" },
+          "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+          "outputVersion": "8",
+          "outputDigest": "SyntheticVaultDigest",
+          "outputOwner": { "kind": "SHARED", "version": "1" },
+          "idOperation": "NONE",
+          "objectType": "0x1111111111111111111111111111111111111111111111111111111111111111::vault::Vault<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>"
+        }
+      ],
+      "unchanged_loaded_runtime_objects": [],
+      "balance_changes": [],
+      "checkpoint": null
+    },
+    "command_outputs": [
       { "mutableReferenceOutputs": [], "returnValues": [] },
       { "mutableReferenceOutputs": [], "returnValues": [] }
-    ]
+    ],
+    "suggested_gas_price": null
   },
   "expectedObservation": {
     "status": "success",
@@ -202,36 +255,43 @@
       { "mutableReferenceOutputs": [], "returnValues": [] },
       { "mutableReferenceOutputs": [], "returnValues": [] }
     ],
-    "effects": {
-      "created": [
-        {
-          "objectId": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-          "version": "1",
-          "digest": "SyntheticAccountDigest",
-          "owner": { "Shared": { "initial_shared_version": 1 } }
-        },
-        {
-          "objectId": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-          "version": "1",
-          "digest": "SyntheticLockedCoinDigest",
-          "owner": { "AddressOwner": "0x0000000000000000000000000000000000000000000000000000000000000000" }
-        }
-      ],
-      "mutated": [
-        {
-          "objectId": "0x0101010101010101010101010101010101010101010101010101010101010101",
-          "version": "8",
-          "digest": "SyntheticVaultDigest",
-          "owner": { "Shared": { "initial_shared_version": 1 } }
-        }
-      ],
-      "unwrapped": [],
-      "deleted": [],
-      "unwrappedThenDeleted": [],
-      "wrapped": []
-    },
+    "changedObjects": [
+      {
+        "objectId": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "inputState": "INPUT_OBJECT_STATE_NOT_EXIST",
+        "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+        "outputVersion": "1",
+        "outputDigest": "SyntheticAccountDigest",
+        "outputOwner": { "kind": "SHARED", "version": "1" },
+        "idOperation": "CREATED",
+        "objectType": "0x4444444444444444444444444444444444444444444444444444444444444444::account::Account<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>"
+      },
+      {
+        "objectId": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "inputState": "INPUT_OBJECT_STATE_NOT_EXIST",
+        "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+        "outputVersion": "1",
+        "outputDigest": "SyntheticLockedCoinDigest",
+        "outputOwner": { "kind": "ADDRESS", "address": "0x0000000000000000000000000000000000000000000000000000000000000000" },
+        "idOperation": "CREATED",
+        "objectType": "0x2::coin::Coin<0x1111111111111111111111111111111111111111111111111111111111111111::vault::Vault<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>>"
+      },
+      {
+        "objectId": "0x0101010101010101010101010101010101010101010101010101010101010101",
+        "inputState": "INPUT_OBJECT_STATE_EXISTS",
+        "inputVersion": "7",
+        "inputDigest": "SyntheticVaultBefore",
+        "inputOwner": { "kind": "SHARED", "version": "1" },
+        "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+        "outputVersion": "8",
+        "outputDigest": "SyntheticVaultDigest",
+        "outputOwner": { "kind": "SHARED", "version": "1" },
+        "idOperation": "NONE",
+        "objectType": "0x1111111111111111111111111111111111111111111111111111111111111111::vault::Vault<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>"
+      }
+    ],
     "vaultInitialized": {
-      "type": "0x1111111111111111111111111111111111111111111111111111111111111111::events::VaultInitialized<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>",
+      "type": "0x1111111111111111111111111111111111111111111111111111111111111111::events_wrapper::Event<0x1111111111111111111111111111111111111111111111111111111111111111::events::VaultInitialized<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>>",
       "parsedJson": {
         "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
         "account_object_id": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
