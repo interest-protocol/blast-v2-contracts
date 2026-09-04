@@ -233,8 +233,26 @@ call targets, object inputs, and preparation resources; it cannot supply event
 types, filters, or expected outcomes. A test-only target, relabeled, missing,
 duplicate, or unknown case, unexpected event set, or unconfigured state
 transition fails the gate. Each case name is also bound to its committed
-scenario-preparation call and `sync_health` must receive that case's Vault as
-its first object argument.
+scenario-preparation call. The preparation package is accepted only after its
+reviewed Git commit, tree, build-input digest, published package digest, and
+compiled/on-chain module hashes agree. The gate parses PTB command boundaries;
+it requires the exact full
+`package::controlled_health_cases::prepare_<case>` target and the exact
+production `package::operations::sync_health` target, with the same case Vault
+as the first object argument to both. A duplicate call, suffix match, target
+string used as an argument, or decoy object elsewhere in the PTB cannot satisfy
+that binding.
+
+Canonical pre/post evidence includes the stored maintenance reserve. A call
+without an isolated funding cost must preserve it exactly. Funding credit must
+increase allocated collateral by the event's raw IFixed amount, emit the exact
+down-rounded atomic amount, preserve the reserve, and report zero absorbed and
+uncovered values. Funding cost must decrease allocated collateral by the raw
+amount, emit the exact up-rounded atomic amount, absorb
+`min(reserve_before, amount)`, persist `reserve_before - absorbed`, and report
+the exact uncovered remainder. The committed validator covers cost below,
+equal to, and above the available reserve and rejects inconsistent raw amounts,
+rounding, reserve movement, checkpoints, or event accounting.
 
 The controlled atomicity gate submits one successful activation and failed
 A1-A7 transactions on testnet. Success requires exact lifecycle, reserve,
@@ -246,8 +264,14 @@ and category, while every surviving output's version, digest, and owner must
 equal its post-state snapshot. Every tracked identity is bound to a submitted
 PTB argument, a transaction effect, an origin transaction effect, or a
 transaction-digest creation index. Role selectors are fixed by the validator,
-not live configuration. The same identity and state validators check offline
-fixtures and live captures. Each failure
+not live configuration. The initializer is parsed as one exact move-call
+record: its package target, three type arguments, and fourteen explicit
+arguments must equal the reviewed run configuration. Vault, Protocol,
+Currency, Registry, ClearingHouse, both oracle stores, both Pyth price objects,
+seed coin, and Clock are each bound to their fixed initializer argument index
+and exact tracked type; mentioning an ID in another call is not a binding. The
+same identity and state validators check offline fixtures and live captures.
+Each failure
 snapshots canonical object references and decoded content before and after,
 permits only the gas object to change, requires no event, and matches the fixed
 package, module, function, and abort code for its boundary.
@@ -262,6 +286,15 @@ their existing package/signature gate remain the authority for upstream calls;
 their deliberate `abort 404` bodies are not compared with venue implementation
 bodies. Neither dev-inspect, a fixture comparison, nor an abort code alone
 proves rollback.
+
+Each offline A1-A7 regression vector carries the same synthetic initializer,
+structural PTB, complete tracked-object set, origin-effect evidence,
+transaction-derived identities, canonical pre/post state, and one-line
+instrumentation proof consumed by the live validator's non-network checks.
+Wrong initializer positions, decoy objects, duplicate or argument-shaped
+targets, relabeled markers/codes, and extra instrumentation mutations therefore
+fail locally before any funded deployment is trusted. Compilation,
+publication, and submission remain the only live-only portions of the proof.
 
 ## Evidence and remaining gates
 

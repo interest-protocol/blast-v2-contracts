@@ -16,6 +16,7 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
+import { parseMoveCalls } from './lib/ptb.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = resolve(SCRIPT_DIR, '..');
@@ -60,6 +61,11 @@ const ROLE_POINTERS = {
         exponentMagnitude: '/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/magnitude',
     },
     clearing_house: { marketState: '/content/fields/market_state/fields' },
+    protocol: {},
+    base_oracle: {},
+    collateral_oracle: {},
+    base_price_info: {},
+    clock: {},
 };
 const ROLE_SELECTORS = Object.fromEntries(
     Object.entries(ROLE_POINTERS).map(([role, pointers]) => [role, Object.keys(pointers)]),
@@ -77,6 +83,11 @@ const SUCCESS_EFFECT_BY_ROLE = {
     seed_coin: 'deleted',
     collateral_price_info: null,
     clearing_house: 'mutated',
+    protocol: null,
+    base_oracle: null,
+    collateral_oracle: null,
+    base_price_info: null,
+    clock: null,
 };
 const BINDING_BY_ROLE = {
     vault: { kind: 'argument' },
@@ -90,6 +101,11 @@ const BINDING_BY_ROLE = {
     seed_coin: { kind: 'argument' },
     collateral_price_info: { kind: 'argument' },
     clearing_house: { kind: 'argument' },
+    protocol: { kind: 'argument' },
+    base_oracle: { kind: 'argument' },
+    collateral_oracle: { kind: 'argument' },
+    base_price_info: { kind: 'argument' },
+    clock: { kind: 'argument' },
 };
 const INITIALIZER_ARGUMENT_ROLE = {
     vault: 0,
@@ -98,6 +114,11 @@ const INITIALIZER_ARGUMENT_ROLE = {
     clearing_house: 5,
     collateral_price_info: 9,
     seed_coin: 10,
+    protocol: 1,
+    base_oracle: 6,
+    collateral_oracle: 7,
+    base_price_info: 8,
+    clock: 13,
 };
 const ZERO_ADDRESS = `0x${'0'.repeat(64)}`;
 const SEED_SHARE_SCALE = 1_000n;
@@ -375,31 +396,88 @@ function trackedObject(runConfig, role, path) {
     return matches[0];
 }
 
-function assertTrackedTypeBindings(runConfig, inputs) {
+function assertTrackedTypeBindings(runConfig, inputs, path) {
     const leverageType = `${runConfig.packageId}::vault::Vault<${inputs.productType}>`;
     const exact = {
         vault: leverageType,
+        protocol: `${runConfig.packageId}::protocol::Protocol`,
         share_currency: `0x2::coin_registry::Currency<${leverageType}>`,
         treasury_cap: `0x2::coin::TreasuryCap<${leverageType}>`,
         locked_share_coin: `0x2::coin::Coin<${leverageType}>`,
         seed_coin: `0x2::coin::Coin<${inputs.collateralType}>`,
+        clock: '0x2::clock::Clock',
     };
     for (const [role, expectedType] of Object.entries(exact)) {
         assertEqual(
-            trackedObject(runConfig, role, 'success.trackedObjects').expectedType,
+            trackedObject(runConfig, role, `${path}.trackedObjects`).expectedType,
             expectedType,
-            `success.${role}.type`,
+            `${path}.${role}.type`,
         );
     }
-    for (const [role, fragment] of [
-        ['aftermath_account', `::account::Account<${inputs.collateralType}>`],
-        ['clearing_house', `::clearing_house::ClearingHouse<${inputs.collateralType}>`],
-        ['registry', '::registry::Registry'],
-        ['collateral_price_info', '::price_info::PriceInfoObject'],
-    ]) {
-        const actual = trackedObject(runConfig, role, 'success.trackedObjects').expectedType;
-        if (!actual.endsWith(fragment)) fail(`success.${role}.type: expected suffix ${fragment}`);
+    const registryType = trackedObject(runConfig, 'registry', `${path}.trackedObjects`).expectedType;
+    const registrySuffix = '::registry::Registry';
+    if (!registryType.endsWith(registrySuffix)) fail(`${path}.registry.type: expected ${registrySuffix}`);
+    const perpetualsPackage = registryType.slice(0, -registrySuffix.length);
+    assertEqual(
+        trackedObject(runConfig, 'clearing_house', `${path}.trackedObjects`).expectedType,
+        `${perpetualsPackage}::clearing_house::ClearingHouse<${inputs.collateralType}>`,
+        `${path}.clearing_house.type`,
+    );
+    assertEqual(
+        trackedObject(runConfig, 'aftermath_account', `${path}.trackedObjects`).expectedType,
+        `${perpetualsPackage}::account::Account<${inputs.collateralType}>`,
+        `${path}.aftermath_account.type`,
+    );
+    const baseOracleType = trackedObject(runConfig, 'base_oracle', `${path}.trackedObjects`).expectedType;
+    if (!baseOracleType.endsWith('::price_feed_storage::PriceFeedStorage')) {
+        fail(`${path}.base_oracle.type: expected PriceFeedStorage`);
     }
+    assertEqual(
+        trackedObject(runConfig, 'collateral_oracle', `${path}.trackedObjects`).expectedType,
+        baseOracleType,
+        `${path}.collateral_oracle.type`,
+    );
+    const basePriceInfoType = trackedObject(runConfig, 'base_price_info', `${path}.trackedObjects`).expectedType;
+    if (!basePriceInfoType.endsWith('::price_info::PriceInfoObject')) {
+        fail(`${path}.base_price_info.type: expected PriceInfoObject`);
+    }
+    assertEqual(
+        trackedObject(runConfig, 'collateral_price_info', `${path}.trackedObjects`).expectedType,
+        basePriceInfoType,
+        `${path}.collateral_price_info.type`,
+    );
+}
+
+function assertInitializerRoleBindings(runConfig, path) {
+    for (const [role, index] of Object.entries(INITIALIZER_ARGUMENT_ROLE)) {
+        const argument = runConfig.initializer.arguments[index];
+        if (typeof argument !== 'string' || !argument.startsWith('@')) {
+            fail(`${path}.initializer.arguments[${index}]: ${role} must be an object argument`);
+        }
+        assertEqual(
+            trackedObject(runConfig, role, `${path}.trackedObjects`).id,
+            expectAddress(argument.slice(1), `${path}.initializer.${role}`),
+            `${path}.initializer role ${role}`,
+        );
+    }
+}
+
+function validateRunConfig(runConfig, path) {
+    const packageId = expectAddress(runConfig.packageId, `${path}.packageId`);
+    validateTrackedObjects(runConfig.trackedObjects, `${path}.trackedObjects`);
+    validateInitializer(runConfig.initializer, packageId, runConfig.ptbArgs, `${path}.initializer`);
+    const inputs = initializerBindings(runConfig.initializer, `${path}.initializer`);
+    if (!inputs.productType.startsWith(`${packageId}::product::Product<`)
+        || !inputs.productType.endsWith('>')) {
+        fail(`${path}.initializer.productType: must be an exact Product from the initialized package`);
+    }
+    const riskType = expectString(runConfig.initializer.typeArguments[1], `${path}.initializer.riskType`);
+    if (!riskType.startsWith(`${packageId}::`)) {
+        fail(`${path}.initializer.riskType: must originate from the initialized package`);
+    }
+    assertInitializerRoleBindings(runConfig, path);
+    assertTrackedTypeBindings(runConfig, inputs, path);
+    return inputs;
 }
 
 function validateExpectedFinal(expectedFinal, postState) {
@@ -431,19 +509,13 @@ function validateInitializer(initializer, packageId, ptbArgs, path) {
     ]) {
         if (ptbArgs.includes(forbidden)) fail(`${path}.ptbArgs: submitted proof forbids ${forbidden}`);
     }
-    const targetIndices = ptbArgs.flatMap((token, index) => token === expectedTarget ? [index] : []);
-    if (targetIndices.length !== 1) fail(`${path}.ptbArgs: expected exactly one ${expectedTarget}`);
-    const targetIndex = targetIndices[0];
-    if (ptbArgs[targetIndex - 1] !== '--move-call') fail(`${path}.ptbArgs: initializer is not a move call`);
-    const expected = [
-        `<${initializer.typeArguments.join(',')}>`,
-        ...initializer.arguments,
-    ];
-    assertEqual(
-        ptbArgs.slice(targetIndex + 1, targetIndex + 1 + expected.length),
-        expected,
-        `${path}.ptbArgs.initializer`,
-    );
+    const calls = parseMoveCalls(ptbArgs, `${path}.ptbArgs`);
+    const initializers = calls.filter((call) => call.target === expectedTarget);
+    if (initializers.length !== 1) {
+        fail(`${path}.ptbArgs: expected exactly one ${expectedTarget}`);
+    }
+    assertEqual(initializers[0].typeArguments, initializer.typeArguments, `${path}.ptbArgs.initializer.typeArguments`);
+    assertEqual(initializers[0].arguments, initializer.arguments, `${path}.ptbArgs.initializer.arguments`);
 }
 
 function effectBody(raw) {
@@ -536,7 +608,7 @@ function parseTransactionDigest(output) {
 }
 
 function submit(environment, runConfig, path) {
-    validateInitializer(runConfig.initializer, runConfig.packageId, runConfig.ptbArgs, `${path}.initializer`);
+    validateRunConfig(runConfig, path);
     const preState = snapshotState(environment, runConfig.trackedObjects, `${path}.trackedObjects`);
     const args = ['client', '--client.env', environment, 'ptb', ...runConfig.ptbArgs];
     if (!args.includes('--json')) args.push('--json');
@@ -638,7 +710,14 @@ function bindTrackedObjects(runConfig, evidence, path) {
         const id = tracked.id;
         const binding = tracked.binding;
         if (binding.kind === 'argument') {
-            if (!runConfig.ptbArgs.includes(`@${id}`)) fail(`${path}.${tracked.role}: id is not a PTB argument`);
+            const argumentIndex = INITIALIZER_ARGUMENT_ROLE[tracked.role];
+            if (argumentIndex === undefined) {
+                fail(`${path}.${tracked.role}: no canonical initializer argument role`);
+            }
+            const expected = runConfig.initializer.arguments[argumentIndex];
+            if (expected !== `@${id}`) {
+                fail(`${path}.${tracked.role}: id is not the canonical initializer argument`);
+            }
         } else if (binding.kind === 'effect') {
             if (!effects.has(id)) fail(`${path}.${tracked.role}: id is not in transaction effects`);
         } else if (binding.kind === 'derived') {
@@ -849,6 +928,10 @@ function initializedEvent(evidence, runConfig) {
 }
 
 function validateSuccess(evidence, runConfig) {
+    validateRunConfig(runConfig, 'success.runConfig');
+    assertStateTracksRunConfig(evidence.preState, runConfig, 'success.preState');
+    assertStateTracksRunConfig(evidence.postState, runConfig, 'success.postState');
+    bindTrackedObjects(runConfig, evidence, 'success');
     if (evidence.status !== 'success') fail(`success: transaction failed: ${evidence.error}`);
     validateExpectedFinal(runConfig.expectedFinal, evidence.postState);
     assertExactSuccessEffects(evidence, runConfig);
@@ -856,7 +939,7 @@ function validateSuccess(evidence, runConfig) {
     const event = initializedEvent(evidence, runConfig);
     const fields = event.parsedJson;
     const inputs = initializerBindings(runConfig.initializer, 'success.initializer');
-    assertTrackedTypeBindings(runConfig, inputs);
+    assertTrackedTypeBindings(runConfig, inputs, 'success');
     const vault = stateObject(evidence.postState, 'vault', 'success.postState');
     const currency = stateObject(evidence.postState, 'share_currency', 'success.postState');
     const cap = stateObject(evidence.postState, 'treasury_cap', 'success.postState');
@@ -946,6 +1029,17 @@ function resolveState(value, baseline, path) {
     return value;
 }
 
+function assertStateTracksRunConfig(state, runConfig, path) {
+    expectObject(state, path, ['objects']);
+    if (!Array.isArray(state.objects) || state.objects.length !== REQUIRED_TRACKED_ROLES.length) {
+        fail(`${path}.objects: expected ${REQUIRED_TRACKED_ROLES.length} canonical tracked objects`);
+    }
+    for (const tracked of runConfig.trackedObjects) {
+        const object = stateObject(state, tracked.role, path);
+        assertEqual(object.id, tracked.id, `${path}.${tracked.role}.id`);
+    }
+}
+
 function assertRollback(entry, baseline) {
     if (entry.status !== 'failure') fail(`${entry.case}: transaction did not fail`);
     const preState = resolveState(entry.preState, baseline, `${entry.case}.preState`);
@@ -988,6 +1082,42 @@ function assertInstrumentedSource(production, instrumented, phase) {
     const restored = [...instrumentedLines];
     restored.splice(insertion, 1);
     assertEqual(restored, productionLines, `${phase.case}.instrumentedOperations`);
+}
+
+function validateOfflineFailure(entry, baseline, phase, path) {
+    expectObject(entry, path, ['runConfig', 'evidence']);
+    const runConfig = expectObject(entry.runConfig, `${path}.runConfig`, [
+        'case', 'packageId', 'initializer', 'ptbArgs', 'trackedObjects',
+        'instrumentation',
+    ]);
+    if (runConfig.case !== phase.case) fail(`${path}.runConfig.case: expected ${phase.case}`);
+    validateRunConfig(runConfig, `${path}.runConfig`);
+    const instrumentation = expectObject(
+        runConfig.instrumentation,
+        `${path}.runConfig.instrumentation`,
+        ['productionSource', 'instrumentedSource'],
+    );
+    assertInstrumentedSource(
+        expectString(instrumentation.productionSource, `${path}.instrumentation.productionSource`),
+        expectString(instrumentation.instrumentedSource, `${path}.instrumentation.instrumentedSource`),
+        phase,
+    );
+    const evidence = expectObject(entry.evidence, `${path}.evidence`, [
+        'status', 'error', 'transactionDigest', 'originEffects', 'preState',
+        'postState', 'changedObjects', 'events',
+    ]);
+    validateFailureEvidence(runConfig, evidence, baseline, phase, `${path}.evidence`);
+}
+
+function validateFailureEvidence(runConfig, evidence, baseline, phase, path) {
+    validateRunConfig(runConfig, `${path}.runConfig`);
+    const preState = resolveState(evidence.preState, baseline, `${path}.preState`);
+    const postState = resolveState(evidence.postState, baseline, `${path}.postState`);
+    assertStateTracksRunConfig(preState, runConfig, `${path}.preState`);
+    assertStateTracksRunConfig(postState, runConfig, `${path}.postState`);
+    bindTrackedObjects(runConfig, evidence, path);
+    assertExactAbort(evidence.error, runConfig.packageId, phase);
+    assertRollback({ case: phase.case, ...evidence, preState, postState }, preState);
 }
 
 function assertInstrumentedTree(instrumentedRoot, phase) {
@@ -1139,7 +1269,7 @@ function validateFixture(fixture) {
         'schemaVersion', 'fixtureKind', 'gasDifferencePolicy',
         'productionOperationsSha256', 'baseline', 'success', 'failures',
     ]);
-    if (fixture.schemaVersion !== 2 || fixture.fixtureKind !== 'canonical-evidence-validator') {
+    if (fixture.schemaVersion !== 3 || fixture.fixtureKind !== 'canonical-evidence-validator') {
         fail('fixture: unsupported schema or kind');
     }
     if (fixture.gasDifferencePolicy !== 'gas-only') fail('fixture: rollback may allow gas changes only');
@@ -1150,31 +1280,18 @@ function validateFixture(fixture) {
         'transactionDigest', 'status', 'error', 'gasId', 'changedObjects', 'effectKinds',
         'events', 'originEffects', 'preState', 'postState',
     ]);
-    validateTrackedObjects(fixture.success.trackedObjects, 'fixture.success.trackedObjects');
-    validateInitializer(
-        fixture.success.initializer,
-        fixture.success.packageId,
-        fixture.success.ptbArgs,
-        'fixture.success.initializer',
-    );
+    validateRunConfig(fixture.success, 'fixture.success');
     const success = {
         ...fixture.success,
         preState: resolveState(fixture.success.preState, fixture.baseline, 'fixture.success.preState'),
     };
-    bindTrackedObjects(fixture.success, success, 'fixture.success');
     validateSuccess(success, fixture.success);
     if (!Array.isArray(fixture.failures) || fixture.failures.length !== PHASES.length) {
         fail('fixture.failures: expected A1-A7 exactly once');
     }
     fixture.failures.forEach((entry, index) => {
-        expectObject(entry, `fixture.failures[${index}]`, [
-            'case', 'packageId', 'status', 'error', 'transactionDigest', 'preState',
-            'postState', 'changedObjects', 'events',
-        ]);
         const phase = PHASES[index];
-        if (entry.case !== phase.case) fail(`fixture.failures[${index}]: expected ${phase.case}`);
-        assertExactAbort(entry.error, expectAddress(entry.packageId, `fixture.failures[${index}].packageId`), phase);
-        assertRollback(entry, fixture.baseline);
+        validateOfflineFailure(entry, fixture.baseline, phase, `fixture.failures[${index}]`);
     });
 }
 
@@ -1310,35 +1427,121 @@ function selfTest() {
     passed += 1;
 
     const survivingState = structuredClone(fixture.failures[0]);
-    survivingState.postState = structuredClone(fixture.baseline);
-    survivingState.postState.objects[0].digest = 'changed';
-    expectFailure('.state', () => assertRollback(survivingState, fixture.baseline));
+    survivingState.evidence.postState.objects[0].digest = 'changed';
+    expectFailure('.state', () => validateOfflineFailure(
+        survivingState, fixture.baseline, PHASES[0], 'survivingState',
+    ));
     passed += 1;
 
     const event = structuredClone(fixture.failures[1]);
-    event.events.push({ type: 'VaultInitialized' });
-    expectFailure('emitted an event', () => assertRollback(event, fixture.baseline));
+    event.evidence.events.push({ type: 'VaultInitialized' });
+    expectFailure('emitted an event', () => validateOfflineFailure(
+        event, fixture.baseline, PHASES[1], 'event',
+    ));
     passed += 1;
 
     const nonGas = structuredClone(fixture.failures[2]);
-    nonGas.changedObjects.push({ kind: 'protocol', id: fixture.baseline.objects[0].id });
-    expectFailure('non-gas object', () => assertRollback(nonGas, fixture.baseline));
+    nonGas.evidence.changedObjects.push({ kind: 'protocol', id: fixture.baseline.objects[0].id });
+    expectFailure('non-gas object', () => validateOfflineFailure(
+        nonGas, fixture.baseline, PHASES[2], 'nonGas',
+    ));
     passed += 1;
 
     const relabeled = structuredClone(fixture.failures[3]);
-    relabeled.case = 'A5';
-    expectFailure('expected A4', () => {
-        const index = 3;
-        if (relabeled.case !== PHASES[index].case) fail(`fixture.failures[${index}]: expected ${PHASES[index].case}`);
-    });
+    relabeled.runConfig.case = 'A5';
+    expectFailure('expected A4', () => validateOfflineFailure(
+        relabeled, fixture.baseline, PHASES[3], 'relabeled',
+    ));
     passed += 1;
 
     const wrongAbort = structuredClone(fixture.failures[4]);
-    wrongAbort.error = wrongAbort.error.replace('9105', '9106');
-    expectFailure('exact abort code 9105', () => assertExactAbort(
-        wrongAbort.error,
-        wrongAbort.packageId,
-        PHASES[4],
+    wrongAbort.evidence.error = wrongAbort.evidence.error.replace('9105', '9106');
+    expectFailure('exact abort code 9105', () => validateOfflineFailure(
+        wrongAbort, fixture.baseline, PHASES[4], 'wrongAbort',
+    ));
+    passed += 1;
+
+    const wrongInitializerArgument = structuredClone(fixture.failures[0]);
+    const wrongVault = `0x${'e'.repeat(64)}`;
+    const originalVault = wrongInitializerArgument.runConfig.initializer.arguments[0];
+    wrongInitializerArgument.runConfig.initializer.arguments[0] = `@${wrongVault}`;
+    const initializerVaultIndex = wrongInitializerArgument.runConfig.ptbArgs.indexOf(originalVault);
+    wrongInitializerArgument.runConfig.ptbArgs[initializerVaultIndex] = `@${wrongVault}`;
+    wrongInitializerArgument.runConfig.ptbArgs.push(
+        '--move-call',
+        `${wrongInitializerArgument.runConfig.packageId}::decoy::mention`,
+        originalVault,
+    );
+    expectFailure('initializer role vault', () => validateOfflineFailure(
+        wrongInitializerArgument, fixture.baseline, PHASES[0], 'wrongInitializerArgument',
+    ));
+    passed += 1;
+
+    const decoyRegistry = structuredClone(fixture.failures[1]);
+    const originalRegistry = decoyRegistry.runConfig.initializer.arguments[4];
+    const wrongRegistryId = `@0x${'d'.repeat(64)}`;
+    decoyRegistry.runConfig.initializer.arguments[4] = wrongRegistryId;
+    decoyRegistry.runConfig.ptbArgs[decoyRegistry.runConfig.ptbArgs.indexOf(originalRegistry)] = wrongRegistryId;
+    decoyRegistry.runConfig.ptbArgs.push(
+        '--move-call',
+        `${decoyRegistry.runConfig.packageId}::decoy::mention`,
+        originalRegistry,
+    );
+    expectFailure('initializer role registry', () => validateOfflineFailure(
+        decoyRegistry, fixture.baseline, PHASES[1], 'decoyRegistry',
+    ));
+    passed += 1;
+
+    const duplicateInitializer = structuredClone(fixture.failures[2]);
+    duplicateInitializer.runConfig.ptbArgs.push(
+        '--move-call',
+        duplicateInitializer.runConfig.initializer.target,
+        `<${duplicateInitializer.runConfig.initializer.typeArguments.join(',')}>`,
+        ...duplicateInitializer.runConfig.initializer.arguments,
+    );
+    expectFailure('expected exactly one', () => validateOfflineFailure(
+        duplicateInitializer, fixture.baseline, PHASES[2], 'duplicateInitializer',
+    ));
+    passed += 1;
+
+    const initializerTargetArgument = structuredClone(fixture.failures[3]);
+    initializerTargetArgument.runConfig.ptbArgs.push(
+        initializerTargetArgument.runConfig.initializer.target,
+    );
+    expectFailure('target-shaped argument', () => validateOfflineFailure(
+        initializerTargetArgument, fixture.baseline, PHASES[3], 'initializerTargetArgument',
+    ));
+    passed += 1;
+
+    const relabeledMarker = structuredClone(fixture.failures[5]);
+    relabeledMarker.runConfig.instrumentation.productionSource =
+        relabeledMarker.runConfig.instrumentation.productionSource.replace(
+            PHASES[5].marker,
+            PHASES[6].marker,
+        );
+    expectFailure('marker must be one standalone line', () => validateOfflineFailure(
+        relabeledMarker, fixture.baseline, PHASES[5], 'relabeledMarker',
+    ));
+    passed += 1;
+
+    const relabeledInstrumentationCode = structuredClone(fixture.failures[5]);
+    relabeledInstrumentationCode.runConfig.instrumentation.instrumentedSource =
+        relabeledInstrumentationCode.runConfig.instrumentation.instrumentedSource.replace(
+            'abort 9106;',
+            'abort 9107;',
+        );
+    expectFailure('expected abort 9106;', () => validateOfflineFailure(
+        relabeledInstrumentationCode,
+        fixture.baseline,
+        PHASES[5],
+        'relabeledInstrumentationCode',
+    ));
+    passed += 1;
+
+    const invalidInstrumentation = structuredClone(fixture.failures[6]);
+    invalidInstrumentation.runConfig.instrumentation.instrumentedSource += '\nextra();';
+    expectFailure('add exactly one line', () => validateOfflineFailure(
+        invalidInstrumentation, fixture.baseline, PHASES[6], 'invalidInstrumentation',
     ));
     passed += 1;
 
@@ -1353,7 +1556,7 @@ function selfTest() {
     ));
     passed += 1;
 
-    process.stdout.write(`activation_atomicity self-test: PASS ${passed}/25 cases\n`);
+    process.stdout.write(`activation_atomicity self-test: PASS ${passed}/32 cases\n`);
 }
 
 function live(configPath) {
@@ -1388,7 +1591,6 @@ function live(configPath) {
     if (config.success.packageId !== production.packageId) fail('config.success: initializer must use proven production package');
     const success = submit(config.environment, config.success, 'config.success');
     success.originEffects = collectOriginEffects(config.environment, config.success);
-    bindTrackedObjects(config.success, success, 'success');
     const vaultInitialized = validateSuccess(success, config.success);
 
     if (!Array.isArray(config.failures) || config.failures.length !== PHASES.length) {
@@ -1417,9 +1619,13 @@ function live(configPath) {
             runConfig,
             originCache,
         );
-        bindTrackedObjects(runConfig, evidence, phase.case);
-        assertExactAbort(evidence.error, runConfig.packageId, phase);
-        assertRollback({ case: phase.case, ...evidence }, evidence.preState);
+        validateFailureEvidence(
+            runConfig,
+            evidence,
+            evidence.preState,
+            phase,
+            phase.case,
+        );
         failures.push(canonical({ phase, instrumentation, ...evidence }));
     });
 

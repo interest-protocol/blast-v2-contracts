@@ -64,7 +64,7 @@
     },
     "funding_before": {
       "free_collateral": "0",
-      "allocated_collateral": "900",
+      "allocated_collateral": "900000000000000000000",
       "signed_base": "100",
       "signed_quote_notional": "200",
       "funding_snapshot_long": "10",
@@ -83,7 +83,7 @@
     },
     "funding_credit": {
       "free_collateral": "0",
-      "allocated_collateral": "901",
+      "allocated_collateral": "900000001000000000000",
       "signed_base": "100",
       "signed_quote_notional": "200",
       "funding_snapshot_long": "11",
@@ -102,7 +102,7 @@
     },
     "funding_cost": {
       "free_collateral": "0",
-      "allocated_collateral": "899",
+      "allocated_collateral": "899999999000000000000",
       "signed_base": "100",
       "signed_quote_notional": "200",
       "funding_snapshot_long": "11",

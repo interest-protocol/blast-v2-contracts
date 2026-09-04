@@ -3,11 +3,21 @@
 // Every case submits production calls, reads the resulting Vault through the
 // standard object API, and classifies canonical raw checkpoints and events.
 
-import { readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+import {
+    mkdtempSync,
+    readFileSync,
+    readdirSync,
+    rmSync,
+    statSync,
+    writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
+import { parseMoveCalls } from './lib/ptb.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = join(SCRIPT_DIR, '..');
@@ -130,10 +140,61 @@ function canonical(value) {
     return value;
 }
 
+function sha256(value) {
+    return createHash('sha256').update(value).digest('hex');
+}
+
+function walkFiles(root, current = root) {
+    const files = [];
+    for (const name of readdirSync(current).sort()) {
+        const path = join(current, name);
+        if (statSync(path).isDirectory()) files.push(...walkFiles(root, path));
+        else files.push([relative(root, path).replaceAll('\\', '/'), readFileSync(path)]);
+    }
+    return files;
+}
+
+function buildInputs(root) {
+    const entries = ['Move.toml', 'Move.lock'].map((name) => [name, readFileSync(join(root, name))]);
+    for (const [path, bytes] of walkFiles(join(root, 'sources'))) {
+        if (path.endsWith('.move')) entries.push([`sources/${path}`, bytes]);
+    }
+    return entries.sort(([left], [right]) => left.localeCompare(right));
+}
+
+function inputsSha256(entries) {
+    const hash = createHash('sha256');
+    for (const [path, bytes] of entries) {
+        hash.update(path);
+        hash.update(Buffer.from([0]));
+        hash.update(bytes);
+        hash.update(Buffer.from([0]));
+    }
+    return hash.digest('hex');
+}
+
 function assertEqual(actual, expected, path = 'value') {
     const left = JSON.stringify(canonical(actual));
     const right = JSON.stringify(canonical(expected));
     if (left !== right) fail(`${path}: expected ${right}, got ${left}`);
+}
+
+function unsigned(value, bits, path) {
+    const text = typeof value === 'number' && Number.isSafeInteger(value)
+        ? String(value)
+        : value;
+    if (typeof text !== 'string' || !/^(0|[1-9][0-9]*)$/.test(text)) {
+        fail(`${path}: expected unsigned integer`);
+    }
+    const parsed = BigInt(text);
+    if (parsed >= (1n << BigInt(bits))) fail(`${path}: exceeds u${bits}`);
+    return parsed;
+}
+
+function atomicFundingAmount(rawAmount, isCost) {
+    const scale = 1_000_000_000_000n;
+    const down = rawAmount / scale;
+    return isCost && rawAmount % scale !== 0n ? down + 1n : down;
 }
 
 function checkpoint(value, path) {
@@ -234,6 +295,16 @@ function validateEvidence(evidence, oracle, types, vaultId, path) {
     assertEqual(observed, oracle, `${path}.outcome`);
 
     const normalizedVaultId = expectAddress(vaultId, `${path}.vaultId`);
+    const preReserve = unsigned(
+        evidence.pre.maintenanceReserve,
+        64,
+        `${path}.pre.maintenanceReserve`,
+    );
+    const postReserve = unsigned(
+        evidence.post.maintenanceReserve,
+        64,
+        `${path}.post.maintenanceReserve`,
+    );
     for (const event of events) {
         assertEqual(
             expectAddress(event.parsedJson.vault_id, `${path}.event.vault_id`),
@@ -243,10 +314,56 @@ function validateEvidence(evidence, oracle, types, vaultId, path) {
     }
     if (funding.length === 1) {
         const parsed = funding[0].parsedJson;
+        const isCost = parsed.is_cost;
+        const preAllocated = unsigned(
+            preCheckpoint.allocated_collateral,
+            256,
+            `${path}.pre.checkpoint.allocated_collateral`,
+        );
+        const postAllocated = unsigned(
+            postCheckpoint.allocated_collateral,
+            256,
+            `${path}.post.checkpoint.allocated_collateral`,
+        );
+        if (isCost ? postAllocated >= preAllocated : postAllocated <= preAllocated) {
+            fail(`${path}.funding.raw_amount: allocated-collateral direction mismatch`);
+        }
+        const rawAmount = isCost
+            ? preAllocated - postAllocated
+            : postAllocated - preAllocated;
+        const amount = atomicFundingAmount(rawAmount, isCost);
+        const observedRaw = unsigned(parsed.raw_amount, 256, `${path}.funding.raw_amount`);
+        const observedAmount = unsigned(parsed.amount, 64, `${path}.funding.amount`);
+        assertEqual(observedRaw.toString(), rawAmount.toString(), `${path}.funding.raw_amount`);
+        assertEqual(observedAmount.toString(), amount.toString(), `${path}.funding.amount`);
         assertEqual(parsed.previous_checkpoint, preCheckpoint, `${path}.funding.previous_checkpoint`);
         assertEqual(parsed.checkpoint, postCheckpoint, `${path}.funding.checkpoint`);
-        assertEqual(String(parsed.reserve_after), String(evidence.post.maintenanceReserve), `${path}.funding.reserve_after`);
+        const absorbed = isCost && amount < preReserve ? amount : isCost ? preReserve : 0n;
+        const uncovered = isCost ? amount - absorbed : 0n;
+        const expectedReserve = isCost ? preReserve - absorbed : preReserve;
+        assertEqual(
+            unsigned(parsed.absorbed_by_reserve, 64, `${path}.funding.absorbed_by_reserve`).toString(),
+            absorbed.toString(),
+            `${path}.funding.absorbed_by_reserve`,
+        );
+        assertEqual(
+            unsigned(parsed.uncovered_cost, 64, `${path}.funding.uncovered_cost`).toString(),
+            uncovered.toString(),
+            `${path}.funding.uncovered_cost`,
+        );
+        assertEqual(postReserve.toString(), expectedReserve.toString(), `${path}.post.maintenanceReserve`);
+        assertEqual(
+            unsigned(parsed.reserve_after, 64, `${path}.funding.reserve_after`).toString(),
+            postReserve.toString(),
+            `${path}.funding.reserve_after`,
+        );
         assertEqual(parsed.is_cost, observed.classification === 'funding_cost', `${path}.funding.is_cost`);
+    } else {
+        assertEqual(
+            postReserve.toString(),
+            preReserve.toString(),
+            `${path}: reserve must remain unchanged without funding cost`,
+        );
     }
     if (health.length === 1) {
         const parsed = health[0].parsedJson;
@@ -399,7 +516,8 @@ function selfTest() {
     passed += 1;
 
     const liveConfig = sampleLiveConfig(fixture);
-    validateLiveConfig(liveConfig, oracleByCase);
+    const controlledFixtureProof = sampleControlledFixtureProof(liveConfig);
+    validateLiveConfig(liveConfig, oracleByCase, controlledFixtureProof);
     passed += 1;
 
     const lyingConfig = structuredClone(liveConfig);
@@ -410,6 +528,7 @@ function selfTest() {
     expectFailure('field set mismatch', () => validateLiveConfig(
         lyingConfig,
         oracleByCase,
+        controlledFixtureProof,
     ));
     passed += 1;
 
@@ -426,7 +545,7 @@ function selfTest() {
         `@${liveConfig.cases[0].vaultId}`,
     );
     expectFailure('sync_health must receive the case Vault first', () =>
-        validateLiveConfig(wrongSyncVault, oracleByCase));
+        validateLiveConfig(wrongSyncVault, oracleByCase, controlledFixtureProof));
     passed += 1;
 
     const swappedCases = structuredClone(liveConfig);
@@ -434,24 +553,110 @@ function selfTest() {
         swappedCases.cases[1].name,
         swappedCases.cases[0].name,
     ];
-    expectFailure('scenario call', () => validateLiveConfig(swappedCases, oracleByCase));
+    expectFailure('scenario call', () => validateLiveConfig(
+        swappedCases, oracleByCase, controlledFixtureProof,
+    ));
     passed += 1;
 
-    process.stdout.write(`controlled_health_cases self-test: PASS ${passed}/${CASE_NAMES.length + 9} cases\n`);
+    const wrongPreparePackage = structuredClone(liveConfig);
+    wrongPreparePackage.cases[0].prepare.ptbArgs[1] =
+        `0x${'f'.repeat(64)}::controlled_health_cases::prepare_long`;
+    expectFailure('scenario call', () =>
+        validateLiveConfig(wrongPreparePackage, oracleByCase, controlledFixtureProof));
+    passed += 1;
+
+    const wrongPrepareVault = structuredClone(liveConfig);
+    wrongPrepareVault.cases[0].prepare.ptbArgs[2] =
+        `@${liveConfig.cases[1].vaultId}`;
+    wrongPrepareVault.cases[0].prepare.ptbArgs.push(
+        '--move-call',
+        `${fixture.adapterPackage}::some_module::mention`,
+        `@${liveConfig.cases[0].vaultId}`,
+    );
+    expectFailure('scenario call must receive the case Vault first', () =>
+        validateLiveConfig(wrongPrepareVault, oracleByCase, controlledFixtureProof));
+    passed += 1;
+
+    const targetAsArgument = structuredClone(liveConfig);
+    targetAsArgument.cases[0].transition.ptbArgs.push(
+        `${fixture.adapterPackage}::operations::sync_health`,
+    );
+    expectFailure('target-shaped argument', () =>
+        validateLiveConfig(targetAsArgument, oracleByCase, controlledFixtureProof));
+    passed += 1;
+
+    const duplicateSync = structuredClone(liveConfig);
+    duplicateSync.cases[0].transition.ptbArgs.push(
+        '--move-call',
+        `${fixture.adapterPackage}::operations::sync_health`,
+        `@${liveConfig.cases[0].vaultId}`,
+    );
+    expectFailure('expected exactly one production', () =>
+        validateLiveConfig(duplicateSync, oracleByCase, controlledFixtureProof));
+    passed += 1;
+
+    const reserveDrift = structuredClone(fixture);
+    reserveDrift.cases[0].post.maintenanceReserve = '99';
+    expectFailure('reserve must remain unchanged', () => validateFixture(reserveDrift));
+    passed += 1;
+
+    const wrongFundingAmount = structuredClone(fixture);
+    wrongFundingAmount.eventSets.funding_credit[0].parsedJson.pos0.amount = '2';
+    expectFailure('funding.amount', () => validateFixture(wrongFundingAmount));
+    passed += 1;
+
+    const wrongFundingAccounting = structuredClone(fixture);
+    wrongFundingAccounting.eventSets.funding_cost[0].parsedJson.pos0.absorbed_by_reserve = '0';
+    wrongFundingAccounting.eventSets.funding_cost[0].parsedJson.pos0.uncovered_cost = '1';
+    expectFailure('funding.absorbed_by_reserve', () => validateFixture(wrongFundingAccounting));
+    passed += 1;
+
+    const equalReserveCost = structuredClone(fixture);
+    equalReserveCost.cases[6].pre.maintenanceReserve = '1';
+    equalReserveCost.cases[6].post.maintenanceReserve = '0';
+    equalReserveCost.eventSets.funding_cost[0].parsedJson.pos0.reserve_after = '0';
+    validateFixture(equalReserveCost);
+    passed += 1;
+
+    const aboveReserveCost = structuredClone(fixture);
+    aboveReserveCost.cases[6].pre.maintenanceReserve = '0';
+    aboveReserveCost.cases[6].post.maintenanceReserve = '0';
+    aboveReserveCost.eventSets.funding_cost[0].parsedJson.pos0.absorbed_by_reserve = '0';
+    aboveReserveCost.eventSets.funding_cost[0].parsedJson.pos0.uncovered_cost = '1';
+    aboveReserveCost.eventSets.funding_cost[0].parsedJson.pos0.reserve_after = '0';
+    validateFixture(aboveReserveCost);
+    passed += 1;
+
+    const wrongRawAmount = structuredClone(fixture);
+    wrongRawAmount.eventSets.funding_credit[0].parsedJson.pos0.raw_amount = '1';
+    expectFailure('funding.raw_amount', () => validateFixture(wrongRawAmount));
+    passed += 1;
+
+    const creditReserveDrift = structuredClone(fixture);
+    creditReserveDrift.cases[5].post.maintenanceReserve = '99';
+    creditReserveDrift.eventSets.funding_credit[0].parsedJson.pos0.reserve_after = '99';
+    expectFailure('post.maintenanceReserve', () => validateFixture(creditReserveDrift));
+    passed += 1;
+
+    process.stdout.write(`controlled_health_cases self-test: PASS ${passed}/${CASE_NAMES.length + 20} cases\n`);
 }
 
-function runSui(args, allowFailure = false) {
-    const result = spawnSync('sui', args, {
-        cwd: PACKAGE_DIR,
+function run(command, args, allowFailure = false, cwd = PACKAGE_DIR) {
+    const result = spawnSync(command, args, {
+        cwd,
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
     });
-    if (result.error) fail(`sui invocation failed: ${result.error.message}`);
+    if (result.error) fail(`${command} invocation failed: ${result.error.message}`);
     const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
     if (!allowFailure && result.status !== 0) {
-        fail(`sui ${args.slice(0, 4).join(' ')} failed: ${output.trim()}`);
+        fail(`${command} ${args.slice(0, 4).join(' ')} failed: ${output.trim()}`);
     }
-    return { status: result.status, output };
+    return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '', output };
+}
+
+function runSui(args, allowFailure = false) {
+    return run('sui', args, allowFailure);
 }
 
 function assertPinnedSuiVersion() {
@@ -473,6 +678,108 @@ function parseChainIdentifier(output) {
     const match = /^Base58:\s+(\S+)$/m.exec(output);
     if (!match) fail('sui chain-identifier: missing Base58 chain identity');
     return match[1];
+}
+
+function packageModules(object, path) {
+    if (object.objType !== 'package') fail(`${path}: expected package object`);
+    const packageContent = object.content?.Package ?? object.content?.package;
+    const moduleMap = packageContent?.module_map ?? packageContent?.moduleMap;
+    expectObject(moduleMap, `${path}.moduleMap`);
+    const modules = {};
+    for (const [name, value] of Object.entries(moduleMap)) {
+        let bytes;
+        if (Array.isArray(value)) bytes = Buffer.from(value);
+        else if (typeof value === 'string') bytes = Buffer.from(value, 'base64');
+        else fail(`${path}.moduleMap.${name}: expected bytes`);
+        modules[name] = sha256(bytes);
+    }
+    return canonical(modules);
+}
+
+function builtControlledModules(installRoot) {
+    const buildRoot = join(installRoot, 'build');
+    const candidates = readdirSync(buildRoot).filter((name) => {
+        const moduleRoot = join(buildRoot, name, 'bytecode_modules');
+        try {
+            return statSync(moduleRoot).isDirectory()
+                && readdirSync(moduleRoot).includes('controlled_health_cases.mv');
+        } catch {
+            return false;
+        }
+    });
+    if (candidates.length !== 1) {
+        fail(`controlled fixture build: expected one package containing controlled_health_cases.mv, got ${candidates.length}`);
+    }
+    const moduleRoot = join(buildRoot, candidates[0], 'bytecode_modules');
+    const modules = {};
+    for (const name of readdirSync(moduleRoot).sort()) {
+        if (name.endsWith('.mv')) {
+            modules[basename(name, '.mv')] = sha256(readFileSync(join(moduleRoot, name)));
+        }
+    }
+    return canonical(modules);
+}
+
+function verifyControlledFixture(environment, value) {
+    expectObject(value, 'config.controlledFixture', [
+        'packageId', 'packageObjectDigest', 'sourceRoot', 'publicationFile',
+        'reviewedCommit', 'reviewedTree', 'sourcesSha256',
+    ]);
+    const packageId = expectAddress(value.packageId, 'config.controlledFixture.packageId');
+    const sourceRoot = resolve(expectString(value.sourceRoot, 'config.controlledFixture.sourceRoot'));
+    const publicationFile = resolve(expectString(
+        value.publicationFile,
+        'config.controlledFixture.publicationFile',
+    ));
+    const packageObjectDigest = expectString(
+        value.packageObjectDigest,
+        'config.controlledFixture.packageObjectDigest',
+    );
+    const repository = run('git', ['-C', sourceRoot, 'rev-parse', '--show-toplevel']).stdout.trim();
+    const reviewedCommit = run('git', ['-C', repository, 'rev-parse', 'HEAD']).stdout.trim();
+    const reviewedTree = run('git', ['-C', repository, 'rev-parse', 'HEAD^{tree}']).stdout.trim();
+    if (reviewedCommit !== value.reviewedCommit || reviewedTree !== value.reviewedTree) {
+        fail('config.controlledFixture: reviewed Git commit/tree drift');
+    }
+    const dirty = run('git', [
+        '-C', repository, 'status', '--porcelain', '--untracked-files=all', '--', sourceRoot,
+    ]).stdout.trim();
+    if (dirty !== '') fail('config.controlledFixture: reviewed source tree is dirty');
+    const sourcesSha256 = inputsSha256(buildInputs(sourceRoot));
+    if (sourcesSha256 !== value.sourcesSha256) {
+        fail('config.controlledFixture: reviewed source hash drift');
+    }
+    if (!readFileSync(publicationFile, 'utf8').toLowerCase().includes(packageId)) {
+        fail(`config.controlledFixture.publicationFile: does not pin ${packageId}`);
+    }
+    const object = expectObject(parseJson(runSui([
+        'client', '--client.env', environment, 'object', packageId, '--json',
+    ]).stdout, 'controlled fixture package'), 'controlled fixture package');
+    if (object.digest !== packageObjectDigest) {
+        fail('config.controlledFixture: deployed package digest drift');
+    }
+    const onChainModules = packageModules(object, 'controlled fixture package');
+    const installRoot = mkdtempSync(join(tmpdir(), 'blast-controlled-health-proof-'));
+    try {
+        runSui([
+            'client', '--client.env', environment, 'verify-source', sourceRoot,
+            '--build-env', environment, '--pubfile-path', publicationFile,
+            '--install-dir', installRoot, '--force', '--json',
+        ]);
+        const compiledModules = builtControlledModules(installRoot);
+        assertEqual(compiledModules, onChainModules, 'controlled fixture compiled/on-chain modules');
+        return canonical({
+            packageId,
+            packageObjectDigest,
+            reviewedCommit,
+            reviewedTree,
+            sourcesSha256,
+            compiledModules,
+            onChainModules,
+        });
+    } finally {
+        rmSync(installRoot, { recursive: true, force: true });
+    }
 }
 
 function jsonPointer(root, pointer, path) {
@@ -516,10 +823,7 @@ function snapshotVault(environment, vaultId, expectedType, path) {
     return canonical({ raw, selected });
 }
 
-function ptbTargets(args, path) {
-    if (!Array.isArray(args) || args.some((arg) => typeof arg !== 'string')) {
-        fail(`${path}: expected string list`);
-    }
+function ptbCalls(args, path) {
     for (const forbidden of [
         '--dev-inspect',
         '--dry-run',
@@ -529,30 +833,63 @@ function ptbTargets(args, path) {
     ]) {
         if (args.includes(forbidden)) fail(`${path}: forbids ${forbidden}`);
     }
-    const targets = [];
-    args.forEach((arg, index) => {
-        if (arg === '--move-call') {
-            const target = expectString(args[index + 1], `${path}[${index + 1}]`);
-            if (/_tests?::|for_testing/.test(target)) {
-                fail(`${path}: test-only call ${target}`);
-            }
-            targets.push(target);
+    const calls = parseMoveCalls(args, path);
+    for (const call of calls) {
+        if (/_tests?::|for_testing/.test(call.target)) {
+            fail(`${path}: test-only call ${call.target}`);
         }
-    });
-    if (targets.length === 0) fail(`${path}: expected executed production calls`);
-    return targets;
-}
-
-function validateRunArgs(run, vaultId, path) {
-    expectObject(run, path, ['ptbArgs']);
-    const targets = ptbTargets(run.ptbArgs, `${path}.ptbArgs`);
-    if (!run.ptbArgs.includes(`@${vaultId}`)) {
-        fail(`${path}: does not bind the case Vault`);
     }
-    return targets;
+    return calls;
 }
 
-function validateLiveConfig(config, oracleByCase) {
+function validateRunArgs(run, path) {
+    expectObject(run, path, ['ptbArgs']);
+    return ptbCalls(run.ptbArgs, `${path}.ptbArgs`);
+}
+
+function validateControlledFixture(value, proof, path) {
+    expectObject(value, path, [
+        'packageId', 'packageObjectDigest', 'sourceRoot', 'publicationFile',
+        'reviewedCommit', 'reviewedTree', 'sourcesSha256',
+    ]);
+    const packageId = expectAddress(value.packageId, `${path}.packageId`);
+    for (const key of ['packageObjectDigest', 'sourceRoot', 'publicationFile']) {
+        expectString(value[key], `${path}.${key}`);
+    }
+    if (!/^[0-9a-f]{40}$/.test(value.reviewedCommit)) {
+        fail(`${path}.reviewedCommit: expected full Git commit`);
+    }
+    if (!/^[0-9a-f]{40}$/.test(value.reviewedTree)) {
+        fail(`${path}.reviewedTree: expected full Git tree`);
+    }
+    if (!/^[0-9a-f]{64}$/.test(value.sourcesSha256)) {
+        fail(`${path}.sourcesSha256: expected SHA-256`);
+    }
+    expectObject(proof, `${path}.proof`, [
+        'packageId', 'packageObjectDigest', 'reviewedCommit', 'reviewedTree',
+        'sourcesSha256', 'compiledModules', 'onChainModules',
+    ]);
+    assertEqual({
+        packageId,
+        packageObjectDigest: value.packageObjectDigest,
+        reviewedCommit: value.reviewedCommit,
+        reviewedTree: value.reviewedTree,
+        sourcesSha256: value.sourcesSha256,
+    }, {
+        packageId: proof.packageId,
+        packageObjectDigest: proof.packageObjectDigest,
+        reviewedCommit: proof.reviewedCommit,
+        reviewedTree: proof.reviewedTree,
+        sourcesSha256: proof.sourcesSha256,
+    }, `${path}: controlled fixture package provenance`);
+    assertEqual(proof.compiledModules, proof.onChainModules, `${path}.proof.modules`);
+    if (!Object.hasOwn(proof.compiledModules, 'controlled_health_cases')) {
+        fail(`${path}.proof: controlled_health_cases bytecode is missing`);
+    }
+    return packageId;
+}
+
+function validateConfigEnvelope(config) {
     expectObject(config, 'config', [
         'schemaVersion',
         'fixtureKind',
@@ -560,18 +897,28 @@ function validateLiveConfig(config, oracleByCase) {
         'chainIdentifier',
         'adapterPackage',
         'productType',
+        'controlledFixture',
         'outputPath',
         'cases',
     ]);
-    if (config.schemaVersion !== 2
+    if (config.schemaVersion !== 3
         || config.fixtureKind !== 'controlled-health-cases'
         || config.environment !== 'testnet'
         || config.chainIdentifier !== TESTNET_CHAIN) {
         fail('config: unsupported schema, kind, environment, or chain');
     }
+}
+
+function validateLiveConfig(config, oracleByCase, controlledFixtureProof) {
+    validateConfigEnvelope(config);
     const adapterPackage = expectAddress(config.adapterPackage, 'config.adapterPackage');
     const types = eventTypes(adapterPackage, config.productType);
     const expectedVaultType = vaultType(adapterPackage, config.productType);
+    const controlledFixturePackage = validateControlledFixture(
+        config.controlledFixture,
+        controlledFixtureProof,
+        'config.controlledFixture',
+    );
     expectString(config.outputPath, 'config.outputPath');
     validateCaseNames(config.cases, 'config.cases');
     const vaultIds = new Set();
@@ -582,28 +929,25 @@ function validateLiveConfig(config, oracleByCase) {
         const vaultId = expectAddress(entry.vaultId, `${path}.vaultId`);
         if (vaultIds.has(vaultId)) fail(`${path}: Vault reused across cases`);
         vaultIds.add(vaultId);
-        const prepareTargets = validateRunArgs(entry.prepare, vaultId, `${path}.prepare`);
-        const scenarioTarget = `::controlled_health_cases::prepare_${entry.name}`;
-        if (prepareTargets.filter((target) => target.endsWith(scenarioTarget)).length !== 1) {
+        const prepareCalls = validateRunArgs(entry.prepare, `${path}.prepare`);
+        const scenarioTarget = `${controlledFixturePackage}::controlled_health_cases::prepare_${entry.name}`;
+        const scenarioCalls = prepareCalls.filter((call) => call.target === scenarioTarget);
+        if (scenarioCalls.length !== 1) {
             fail(`${path}.prepare: expected exactly one ${scenarioTarget} scenario call`);
         }
-        const transitionTargets = validateRunArgs(
+        if (scenarioCalls[0].arguments[0] !== `@${vaultId}`) {
+            fail(`${path}.prepare: scenario call must receive the case Vault first`);
+        }
+        const transitionCalls = validateRunArgs(
             entry.transition,
-            vaultId,
             `${path}.transition`,
         );
         const syncTarget = `${adapterPackage}::operations::sync_health`;
-        if (transitionTargets.filter((target) => target === syncTarget).length !== 1) {
+        const syncCalls = transitionCalls.filter((call) => call.target === syncTarget);
+        if (syncCalls.length !== 1) {
             fail(`${path}.transition: expected exactly one production ${syncTarget}`);
         }
-        const syncIndex = entry.transition.ptbArgs.indexOf(syncTarget);
-        const possibleTypeArguments = entry.transition.ptbArgs[syncIndex + 1];
-        const vaultArgumentIndex = typeof possibleTypeArguments === 'string'
-            && possibleTypeArguments.startsWith('<')
-            && possibleTypeArguments.endsWith('>')
-            ? syncIndex + 2
-            : syncIndex + 1;
-        if (entry.transition.ptbArgs[vaultArgumentIndex] !== `@${vaultId}`) {
+        if (syncCalls[0].arguments[0] !== `@${vaultId}`) {
             fail(`${path}.transition: sync_health must receive the case Vault first`);
         }
     });
@@ -611,13 +955,23 @@ function validateLiveConfig(config, oracleByCase) {
 }
 
 function sampleLiveConfig(fixture) {
+    const controlledPackage = `0x${'c'.repeat(64)}`;
     return {
-        schemaVersion: 2,
+        schemaVersion: 3,
         fixtureKind: 'controlled-health-cases',
         environment: 'testnet',
         chainIdentifier: TESTNET_CHAIN,
         adapterPackage: fixture.adapterPackage,
         productType: fixture.productType,
+        controlledFixture: {
+            packageId: controlledPackage,
+            packageObjectDigest: 'SyntheticControlledFixtureDigest',
+            sourceRoot: '/synthetic/controlled-health-fixture',
+            publicationFile: '/synthetic/controlled-health-fixture/Published.toml',
+            reviewedCommit: 'a'.repeat(40),
+            reviewedTree: 'b'.repeat(40),
+            sourcesSha256: 'c'.repeat(64),
+        },
         outputPath: '/tmp/controlled-health-evidence.json',
         cases: CASE_NAMES.map((name, index) => {
             const vaultId = `0x${(index + 1).toString(16).padStart(64, '0')}`;
@@ -627,7 +981,7 @@ function sampleLiveConfig(fixture) {
                 prepare: {
                     ptbArgs: [
                         '--move-call',
-                        `${fixture.adapterPackage}::controlled_health_cases::prepare_${name}`,
+                        `${controlledPackage}::controlled_health_cases::prepare_${name}`,
                         `@${vaultId}`,
                     ],
                 },
@@ -640,6 +994,19 @@ function sampleLiveConfig(fixture) {
                 },
             };
         }),
+    };
+}
+
+function sampleControlledFixtureProof(config) {
+    const value = config.controlledFixture;
+    return {
+        packageId: value.packageId,
+        packageObjectDigest: value.packageObjectDigest,
+        reviewedCommit: value.reviewedCommit,
+        reviewedTree: value.reviewedTree,
+        sourcesSha256: value.sourcesSha256,
+        compiledModules: { controlled_health_cases: 'synthetic' },
+        onChainModules: { controlled_health_cases: 'synthetic' },
     };
 }
 
@@ -688,11 +1055,17 @@ function live(configPath) {
     }
     assertPinnedSuiVersion();
     const config = readJson(resolve(configPath));
+    validateConfigEnvelope(config);
     const fixture = readJson(FIXTURE_PATH);
     const { oracleByCase } = validateFixture(fixture);
+    const controlledFixtureProof = verifyControlledFixture(
+        config.environment,
+        config.controlledFixture,
+    );
     const { adapterPackage, expectedVaultType, types } = validateLiveConfig(
         config,
         oracleByCase,
+        controlledFixtureProof,
     );
     const chain = parseChainIdentifier(runSui([
         'client',
@@ -746,6 +1119,7 @@ function live(configPath) {
         schemaVersion: 1,
         evidenceKind: 'submitted-controlled-health-cases',
         chainIdentifier: chain,
+        controlledFixtureProof,
         evidence,
     }), null, 2)}\n`, { flag: 'wx', mode: 0o600 });
     process.stdout.write(`controlled_health_cases: PASS ${CASE_NAMES.length}/${CASE_NAMES.length} submitted cases; evidence ${outputPath}\n`);
