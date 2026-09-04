@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "fixtureKind": "canonical-evidence-validator",
   "gasDifferencePolicy": "gas-only",
   "productionOperationsSha256": "3371f4a97bbd61d6cec4676fce190f65a8255b8debabf20d157bdae3f51abf3e",
@@ -25,19 +25,11 @@
         },
         "type": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::vault::Vault<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::product::Product<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::fixture::TwoX>>",
         "content": {
-          "fields": {
-            "series_state": {
-              "fields": {
-                "lifecycle": "Uninitialized",
-                "maintenance_reserve": "0"
-              }
-            },
-            "venue_account": {
-              "fields": {
-                "vec": []
-              }
-            }
-          }
+          "series_state": {
+            "lifecycle": "Uninitialized",
+            "maintenance_reserve": "0"
+          },
+          "venue_account": null
         }
       },
       {
@@ -56,15 +48,7 @@
         },
         "type": "0x2::coin_registry::Currency<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::vault::Vault<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::product::Product<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::fixture::TwoX>>>",
         "content": {
-          "fields": {
-            "treasury_cap_id": {
-              "fields": {
-                "vec": [
-                  "0x0303030303030303030303030303030303030303030303030303030303030303"
-                ]
-              }
-            }
-          }
+          "treasury_cap_id": "0x0303030303030303030303030303030303030303030303030303030303030303"
         }
       },
       {
@@ -96,12 +80,8 @@
         },
         "type": "0x2::coin::TreasuryCap<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::vault::Vault<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::product::Product<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::fixture::TwoX>>>",
         "content": {
-          "fields": {
-            "total_supply": {
-              "fields": {
-                "value": "0"
-              }
-            }
+          "total_supply": {
+            "value": "0"
           }
         }
       },
@@ -154,9 +134,7 @@
         },
         "type": "0x2::coin::Coin<0x2::usdc::USDC>",
         "content": {
-          "fields": {
-            "balance": "100000000"
-          }
+          "balance": "100000000"
         }
       },
       {
@@ -178,28 +156,16 @@
         },
         "type": "0x6::price_info::PriceInfoObject",
         "content": {
-          "fields": {
-            "price_info": {
-              "fields": {
-                "price_feed": {
-                  "fields": {
-                    "price": {
-                      "fields": {
-                        "price": {
-                          "fields": {
-                            "negative": false,
-                            "magnitude": "100000000"
-                          }
-                        },
-                        "expo": {
-                          "fields": {
-                            "negative": true,
-                            "magnitude": "8"
-                          }
-                        }
-                      }
-                    }
-                  }
+          "price_info": {
+            "price_feed": {
+              "price": {
+                "price": {
+                  "negative": false,
+                  "magnitude": "100000000"
+                },
+                "expo": {
+                  "negative": true,
+                  "magnitude": "8"
                 }
               }
             }
@@ -224,12 +190,8 @@
         },
         "type": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
         "content": {
-          "fields": {
-            "market_state": {
-              "fields": {
-                "open_interest": "0"
-              }
-            }
+          "market_state": {
+            "open_interest": "0"
           }
         }
       },
@@ -366,11 +328,11 @@
         "allowAbsent": false,
         "expectedType": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::vault::Vault<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::product::Product<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::fixture::TwoX>>",
         "selectors": {
-          "lifecycle": "/content/fields/series_state/fields/lifecycle",
-          "maintenanceReserve": "/content/fields/series_state/fields/maintenance_reserve",
-          "venueAccount": "/content/fields/venue_account/fields/vec/0/fields/account_object_id",
-          "checkpoint": "/content/fields/venue_account/fields/vec/0/fields/checkpoint/fields",
-          "adminCap": "/content/fields/venue_account/fields/vec/0/fields/admin_cap/fields/vec/0/fields/id/id"
+          "lifecycle": "/content/series_state/lifecycle",
+          "maintenanceReserve": "/content/series_state/maintenance_reserve",
+          "venueAccount": "/content/venue_account/account_object_id",
+          "checkpoint": "/content/venue_account/checkpoint",
+          "adminCap": "/content/venue_account/admin_cap/id"
         },
         "binding": {
           "kind": "argument"
@@ -382,7 +344,7 @@
         "allowAbsent": false,
         "expectedType": "0x2::coin_registry::Currency<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::vault::Vault<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::product::Product<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::fixture::TwoX>>>",
         "selectors": {
-          "treasuryCapId": "/content/fields/treasury_cap_id/fields/vec/0"
+          "treasuryCapId": "/content/treasury_cap_id"
         },
         "binding": {
           "kind": "originEffect",
@@ -405,7 +367,7 @@
         "allowAbsent": false,
         "expectedType": "0x2::coin::TreasuryCap<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::vault::Vault<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::product::Product<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::fixture::TwoX>>>",
         "selectors": {
-          "totalSupply": "/content/fields/total_supply/fields/value"
+          "totalSupply": "/content/total_supply/value"
         },
         "binding": {
           "kind": "originEffect",
@@ -418,7 +380,7 @@
         "allowAbsent": true,
         "expectedType": "0x2::coin::Coin<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::vault::Vault<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::product::Product<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::fixture::TwoX>>>",
         "selectors": {
-          "balance": "/content/fields/balance"
+          "balance": "/content/balance"
         },
         "binding": {
           "kind": "derived",
@@ -453,8 +415,8 @@
         "allowAbsent": true,
         "expectedType": "0x3::account::Account<0x2::usdc::USDC>",
         "selectors": {
-          "accountNumber": "/content/fields/account_id",
-          "collateral": "/content/fields/collateral/fields/value"
+          "accountNumber": "/content/account_id",
+          "collateral": "/content/collateral/value"
         },
         "binding": {
           "kind": "derived",
@@ -477,7 +439,7 @@
         "allowAbsent": true,
         "expectedType": "0x2::coin::Coin<0x2::usdc::USDC>",
         "selectors": {
-          "balance": "/content/fields/balance"
+          "balance": "/content/balance"
         },
         "binding": {
           "kind": "argument"
@@ -489,10 +451,10 @@
         "allowAbsent": false,
         "expectedType": "0x6::price_info::PriceInfoObject",
         "selectors": {
-          "priceNegative": "/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/negative",
-          "priceMagnitude": "/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/magnitude",
-          "exponentNegative": "/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/negative",
-          "exponentMagnitude": "/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/magnitude"
+          "priceNegative": "/content/price_info/price_feed/price/price/negative",
+          "priceMagnitude": "/content/price_info/price_feed/price/price/magnitude",
+          "exponentNegative": "/content/price_info/price_feed/price/expo/negative",
+          "exponentMagnitude": "/content/price_info/price_feed/price/expo/magnitude"
         },
         "binding": {
           "kind": "argument"
@@ -504,7 +466,7 @@
         "allowAbsent": false,
         "expectedType": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
         "selectors": {
-          "marketState": "/content/fields/market_state/fields"
+          "marketState": "/content/market_state"
         },
         "binding": {
           "kind": "argument"
@@ -837,57 +799,33 @@
           },
           "type": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::vault::Vault<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::product::Product<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::fixture::TwoX>>",
           "content": {
-            "fields": {
-              "series_state": {
-                "fields": {
-                  "lifecycle": "Active",
-                  "maintenance_reserve": "10000000"
-                }
+            "series_state": {
+              "lifecycle": "Active",
+              "maintenance_reserve": "10000000"
+            },
+            "venue_account": {
+              "account_object_id": "0x034401905bebdf8c04f3cd5f04f442a39372c8dc321c29edfb4f9cb30b23ab96",
+              "checkpoint": {
+                "free_collateral": "0",
+                "allocated_collateral": "90000000",
+                "signed_base": "500000000000000000",
+                "signed_quote_notional": "-100000000000000000000",
+                "funding_snapshot_long": "0",
+                "funding_snapshot_short": "0",
+                "market_funding_long": "0",
+                "market_funding_short": "0",
+                "lot_size": "1000000",
+                "pending_ask_base": "0",
+                "pending_bid_base": "0",
+                "pending_order_count": "0",
+                "market_pause_mode": 0,
+                "market_frozen": false,
+                "position_initial_margin_ratio": "100000000000000000",
+                "market_initial_margin_ratio": "100000000000000000",
+                "market_maintenance_margin_ratio": "50000000000000000"
               },
-              "venue_account": {
-                "fields": {
-                  "vec": [
-                    {
-                      "fields": {
-                        "account_object_id": "0x034401905bebdf8c04f3cd5f04f442a39372c8dc321c29edfb4f9cb30b23ab96",
-                        "checkpoint": {
-                          "fields": {
-                            "free_collateral": "0",
-                            "allocated_collateral": "90000000",
-                            "signed_base": "500000000000000000",
-                            "signed_quote_notional": "-100000000000000000000",
-                            "funding_snapshot_long": "0",
-                            "funding_snapshot_short": "0",
-                            "market_funding_long": "0",
-                            "market_funding_short": "0",
-                            "lot_size": "1000000",
-                            "pending_ask_base": "0",
-                            "pending_bid_base": "0",
-                            "pending_order_count": "0",
-                            "market_pause_mode": 0,
-                            "market_frozen": false,
-                            "position_initial_margin_ratio": "100000000000000000",
-                            "market_initial_margin_ratio": "100000000000000000",
-                            "market_maintenance_margin_ratio": "50000000000000000"
-                          }
-                        },
-                        "admin_cap": {
-                          "fields": {
-                            "vec": [
-                              {
-                                "fields": {
-                                  "id": {
-                                    "id": "0x5ef2fcf809fb9535ea0aeaea421f683026f06c34569aafc42bcde652ef6dd270"
-                                  }
-                                }
-                              }
-                            ]
-                          }
-                        }
-                      }
-                    }
-                  ]
-                }
+              "admin_cap": {
+                "id": "0x5ef2fcf809fb9535ea0aeaea421f683026f06c34569aafc42bcde652ef6dd270"
               }
             }
           }
@@ -908,15 +846,7 @@
           "digest": "BaselineCurrency",
           "type": "0x2::coin_registry::Currency<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::vault::Vault<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::product::Product<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::fixture::TwoX>>>",
           "content": {
-            "fields": {
-              "treasury_cap_id": {
-                "fields": {
-                  "vec": [
-                    "0x0303030303030303030303030303030303030303030303030303030303030303"
-                  ]
-                }
-              }
-            }
+            "treasury_cap_id": "0x0303030303030303030303030303030303030303030303030303030303030303"
           }
         },
         {
@@ -948,12 +878,8 @@
           },
           "type": "0x2::coin::TreasuryCap<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::vault::Vault<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::product::Product<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::fixture::TwoX>>>",
           "content": {
-            "fields": {
-              "total_supply": {
-                "fields": {
-                  "value": "90000000000"
-                }
-              }
+            "total_supply": {
+              "value": "90000000000"
             }
           }
         },
@@ -971,9 +897,7 @@
           },
           "type": "0x2::coin::Coin<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::vault::Vault<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::product::Product<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::fixture::TwoX>>>",
           "content": {
-            "fields": {
-              "balance": "90000000000"
-            }
+            "balance": "90000000000"
           }
         },
         {
@@ -1003,13 +927,9 @@
           },
           "type": "0x3::account::Account<0x2::usdc::USDC>",
           "content": {
-            "fields": {
-              "account_id": "42",
-              "collateral": {
-                "fields": {
-                  "value": "0"
-                }
-              }
+            "account_id": "42",
+            "collateral": {
+              "value": "0"
             }
           }
         },
@@ -1052,28 +972,16 @@
           "digest": "BaselineCollateralPrice",
           "type": "0x6::price_info::PriceInfoObject",
           "content": {
-            "fields": {
-              "price_info": {
-                "fields": {
-                  "price_feed": {
-                    "fields": {
-                      "price": {
-                        "fields": {
-                          "price": {
-                            "fields": {
-                              "negative": false,
-                              "magnitude": "100000000"
-                            }
-                          },
-                          "expo": {
-                            "fields": {
-                              "negative": true,
-                              "magnitude": "8"
-                            }
-                          }
-                        }
-                      }
-                    }
+            "price_info": {
+              "price_feed": {
+                "price": {
+                  "price": {
+                    "negative": false,
+                    "magnitude": "100000000"
+                  },
+                  "expo": {
+                    "negative": true,
+                    "magnitude": "8"
                   }
                 }
               }
@@ -1098,12 +1006,8 @@
           },
           "type": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
           "content": {
-            "fields": {
-              "market_state": {
-                "fields": {
-                  "open_interest": "500000000000000000"
-                }
-              }
+            "market_state": {
+              "open_interest": "500000000000000000"
             }
           }
         },
@@ -1244,11 +1148,11 @@
             "allowAbsent": false,
             "expectedType": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::vault::Vault<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::product::Product<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::fixture::TwoX>>",
             "selectors": {
-              "lifecycle": "/content/fields/series_state/fields/lifecycle",
-              "maintenanceReserve": "/content/fields/series_state/fields/maintenance_reserve",
-              "venueAccount": "/content/fields/venue_account/fields/vec/0/fields/account_object_id",
-              "checkpoint": "/content/fields/venue_account/fields/vec/0/fields/checkpoint/fields",
-              "adminCap": "/content/fields/venue_account/fields/vec/0/fields/admin_cap/fields/vec/0/fields/id/id"
+              "lifecycle": "/content/series_state/lifecycle",
+              "maintenanceReserve": "/content/series_state/maintenance_reserve",
+              "venueAccount": "/content/venue_account/account_object_id",
+              "checkpoint": "/content/venue_account/checkpoint",
+              "adminCap": "/content/venue_account/admin_cap/id"
             },
             "binding": {
               "kind": "argument"
@@ -1260,7 +1164,7 @@
             "allowAbsent": false,
             "expectedType": "0x2::coin_registry::Currency<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::vault::Vault<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::product::Product<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::fixture::TwoX>>>",
             "selectors": {
-              "treasuryCapId": "/content/fields/treasury_cap_id/fields/vec/0"
+              "treasuryCapId": "/content/treasury_cap_id"
             },
             "binding": {
               "kind": "originEffect",
@@ -1283,7 +1187,7 @@
             "allowAbsent": false,
             "expectedType": "0x2::coin::TreasuryCap<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::vault::Vault<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::product::Product<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::fixture::TwoX>>>",
             "selectors": {
-              "totalSupply": "/content/fields/total_supply/fields/value"
+              "totalSupply": "/content/total_supply/value"
             },
             "binding": {
               "kind": "originEffect",
@@ -1296,7 +1200,7 @@
             "allowAbsent": true,
             "expectedType": "0x2::coin::Coin<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::vault::Vault<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::product::Product<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::fixture::TwoX>>>",
             "selectors": {
-              "balance": "/content/fields/balance"
+              "balance": "/content/balance"
             },
             "binding": {
               "kind": "derived",
@@ -1331,8 +1235,8 @@
             "allowAbsent": true,
             "expectedType": "0x3::account::Account<0x2::usdc::USDC>",
             "selectors": {
-              "accountNumber": "/content/fields/account_id",
-              "collateral": "/content/fields/collateral/fields/value"
+              "accountNumber": "/content/account_id",
+              "collateral": "/content/collateral/value"
             },
             "binding": {
               "kind": "derived",
@@ -1355,7 +1259,7 @@
             "allowAbsent": true,
             "expectedType": "0x2::coin::Coin<0x2::usdc::USDC>",
             "selectors": {
-              "balance": "/content/fields/balance"
+              "balance": "/content/balance"
             },
             "binding": {
               "kind": "argument"
@@ -1367,10 +1271,10 @@
             "allowAbsent": false,
             "expectedType": "0x6::price_info::PriceInfoObject",
             "selectors": {
-              "priceNegative": "/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/negative",
-              "priceMagnitude": "/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/magnitude",
-              "exponentNegative": "/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/negative",
-              "exponentMagnitude": "/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/magnitude"
+              "priceNegative": "/content/price_info/price_feed/price/price/negative",
+              "priceMagnitude": "/content/price_info/price_feed/price/price/magnitude",
+              "exponentNegative": "/content/price_info/price_feed/price/expo/negative",
+              "exponentMagnitude": "/content/price_info/price_feed/price/expo/magnitude"
             },
             "binding": {
               "kind": "argument"
@@ -1382,7 +1286,7 @@
             "allowAbsent": false,
             "expectedType": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
             "selectors": {
-              "marketState": "/content/fields/market_state/fields"
+              "marketState": "/content/market_state"
             },
             "binding": {
               "kind": "argument"
@@ -1479,19 +1383,11 @@
               },
               "type": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::vault::Vault<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::product::Product<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::fixture::TwoX>>",
               "content": {
-                "fields": {
-                  "series_state": {
-                    "fields": {
-                      "lifecycle": "Uninitialized",
-                      "maintenance_reserve": "0"
-                    }
-                  },
-                  "venue_account": {
-                    "fields": {
-                      "vec": []
-                    }
-                  }
-                }
+                "series_state": {
+                  "lifecycle": "Uninitialized",
+                  "maintenance_reserve": "0"
+                },
+                "venue_account": null
               }
             },
             {
@@ -1510,15 +1406,7 @@
               },
               "type": "0x2::coin_registry::Currency<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::vault::Vault<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::product::Product<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "treasury_cap_id": {
-                    "fields": {
-                      "vec": [
-                        "0x0303030303030303030303030303030303030303030303030303030303030303"
-                      ]
-                    }
-                  }
-                }
+                "treasury_cap_id": "0x0303030303030303030303030303030303030303030303030303030303030303"
               }
             },
             {
@@ -1550,12 +1438,8 @@
               },
               "type": "0x2::coin::TreasuryCap<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::vault::Vault<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::product::Product<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "total_supply": {
-                    "fields": {
-                      "value": "0"
-                    }
-                  }
+                "total_supply": {
+                  "value": "0"
                 }
               }
             },
@@ -1608,9 +1492,7 @@
               },
               "type": "0x2::coin::Coin<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "balance": "100000000"
-                }
+                "balance": "100000000"
               }
             },
             {
@@ -1632,28 +1514,16 @@
               },
               "type": "0x6::price_info::PriceInfoObject",
               "content": {
-                "fields": {
-                  "price_info": {
-                    "fields": {
-                      "price_feed": {
-                        "fields": {
-                          "price": {
-                            "fields": {
-                              "price": {
-                                "fields": {
-                                  "negative": false,
-                                  "magnitude": "100000000"
-                                }
-                              },
-                              "expo": {
-                                "fields": {
-                                  "negative": true,
-                                  "magnitude": "8"
-                                }
-                              }
-                            }
-                          }
-                        }
+                "price_info": {
+                  "price_feed": {
+                    "price": {
+                      "price": {
+                        "negative": false,
+                        "magnitude": "100000000"
+                      },
+                      "expo": {
+                        "negative": true,
+                        "magnitude": "8"
                       }
                     }
                   }
@@ -1678,12 +1548,8 @@
               },
               "type": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "market_state": {
-                    "fields": {
-                      "open_interest": "0"
-                    }
-                  }
+                "market_state": {
+                  "open_interest": "0"
                 }
               }
             },
@@ -1786,19 +1652,11 @@
               },
               "type": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::vault::Vault<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::product::Product<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::fixture::TwoX>>",
               "content": {
-                "fields": {
-                  "series_state": {
-                    "fields": {
-                      "lifecycle": "Uninitialized",
-                      "maintenance_reserve": "0"
-                    }
-                  },
-                  "venue_account": {
-                    "fields": {
-                      "vec": []
-                    }
-                  }
-                }
+                "series_state": {
+                  "lifecycle": "Uninitialized",
+                  "maintenance_reserve": "0"
+                },
+                "venue_account": null
               }
             },
             {
@@ -1817,15 +1675,7 @@
               },
               "type": "0x2::coin_registry::Currency<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::vault::Vault<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::product::Product<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "treasury_cap_id": {
-                    "fields": {
-                      "vec": [
-                        "0x0303030303030303030303030303030303030303030303030303030303030303"
-                      ]
-                    }
-                  }
-                }
+                "treasury_cap_id": "0x0303030303030303030303030303030303030303030303030303030303030303"
               }
             },
             {
@@ -1857,12 +1707,8 @@
               },
               "type": "0x2::coin::TreasuryCap<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::vault::Vault<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::product::Product<0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "total_supply": {
-                    "fields": {
-                      "value": "0"
-                    }
-                  }
+                "total_supply": {
+                  "value": "0"
                 }
               }
             },
@@ -1915,9 +1761,7 @@
               },
               "type": "0x2::coin::Coin<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "balance": "100000000"
-                }
+                "balance": "100000000"
               }
             },
             {
@@ -1939,28 +1783,16 @@
               },
               "type": "0x6::price_info::PriceInfoObject",
               "content": {
-                "fields": {
-                  "price_info": {
-                    "fields": {
-                      "price_feed": {
-                        "fields": {
-                          "price": {
-                            "fields": {
-                              "price": {
-                                "fields": {
-                                  "negative": false,
-                                  "magnitude": "100000000"
-                                }
-                              },
-                              "expo": {
-                                "fields": {
-                                  "negative": true,
-                                  "magnitude": "8"
-                                }
-                              }
-                            }
-                          }
-                        }
+                "price_info": {
+                  "price_feed": {
+                    "price": {
+                      "price": {
+                        "negative": false,
+                        "magnitude": "100000000"
+                      },
+                      "expo": {
+                        "negative": true,
+                        "magnitude": "8"
                       }
                     }
                   }
@@ -1985,12 +1817,8 @@
               },
               "type": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "market_state": {
-                    "fields": {
-                      "open_interest": "0"
-                    }
-                  }
+                "market_state": {
+                  "open_interest": "0"
                 }
               }
             },
@@ -2138,11 +1966,11 @@
             "allowAbsent": false,
             "expectedType": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::vault::Vault<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::product::Product<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::fixture::TwoX>>",
             "selectors": {
-              "lifecycle": "/content/fields/series_state/fields/lifecycle",
-              "maintenanceReserve": "/content/fields/series_state/fields/maintenance_reserve",
-              "venueAccount": "/content/fields/venue_account/fields/vec/0/fields/account_object_id",
-              "checkpoint": "/content/fields/venue_account/fields/vec/0/fields/checkpoint/fields",
-              "adminCap": "/content/fields/venue_account/fields/vec/0/fields/admin_cap/fields/vec/0/fields/id/id"
+              "lifecycle": "/content/series_state/lifecycle",
+              "maintenanceReserve": "/content/series_state/maintenance_reserve",
+              "venueAccount": "/content/venue_account/account_object_id",
+              "checkpoint": "/content/venue_account/checkpoint",
+              "adminCap": "/content/venue_account/admin_cap/id"
             },
             "binding": {
               "kind": "argument"
@@ -2154,7 +1982,7 @@
             "allowAbsent": false,
             "expectedType": "0x2::coin_registry::Currency<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::vault::Vault<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::product::Product<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::fixture::TwoX>>>",
             "selectors": {
-              "treasuryCapId": "/content/fields/treasury_cap_id/fields/vec/0"
+              "treasuryCapId": "/content/treasury_cap_id"
             },
             "binding": {
               "kind": "originEffect",
@@ -2177,7 +2005,7 @@
             "allowAbsent": false,
             "expectedType": "0x2::coin::TreasuryCap<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::vault::Vault<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::product::Product<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::fixture::TwoX>>>",
             "selectors": {
-              "totalSupply": "/content/fields/total_supply/fields/value"
+              "totalSupply": "/content/total_supply/value"
             },
             "binding": {
               "kind": "originEffect",
@@ -2190,7 +2018,7 @@
             "allowAbsent": true,
             "expectedType": "0x2::coin::Coin<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::vault::Vault<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::product::Product<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::fixture::TwoX>>>",
             "selectors": {
-              "balance": "/content/fields/balance"
+              "balance": "/content/balance"
             },
             "binding": {
               "kind": "derived",
@@ -2225,8 +2053,8 @@
             "allowAbsent": true,
             "expectedType": "0x3::account::Account<0x2::usdc::USDC>",
             "selectors": {
-              "accountNumber": "/content/fields/account_id",
-              "collateral": "/content/fields/collateral/fields/value"
+              "accountNumber": "/content/account_id",
+              "collateral": "/content/collateral/value"
             },
             "binding": {
               "kind": "derived",
@@ -2249,7 +2077,7 @@
             "allowAbsent": true,
             "expectedType": "0x2::coin::Coin<0x2::usdc::USDC>",
             "selectors": {
-              "balance": "/content/fields/balance"
+              "balance": "/content/balance"
             },
             "binding": {
               "kind": "argument"
@@ -2261,10 +2089,10 @@
             "allowAbsent": false,
             "expectedType": "0x6::price_info::PriceInfoObject",
             "selectors": {
-              "priceNegative": "/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/negative",
-              "priceMagnitude": "/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/magnitude",
-              "exponentNegative": "/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/negative",
-              "exponentMagnitude": "/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/magnitude"
+              "priceNegative": "/content/price_info/price_feed/price/price/negative",
+              "priceMagnitude": "/content/price_info/price_feed/price/price/magnitude",
+              "exponentNegative": "/content/price_info/price_feed/price/expo/negative",
+              "exponentMagnitude": "/content/price_info/price_feed/price/expo/magnitude"
             },
             "binding": {
               "kind": "argument"
@@ -2276,7 +2104,7 @@
             "allowAbsent": false,
             "expectedType": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
             "selectors": {
-              "marketState": "/content/fields/market_state/fields"
+              "marketState": "/content/market_state"
             },
             "binding": {
               "kind": "argument"
@@ -2373,19 +2201,11 @@
               },
               "type": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::vault::Vault<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::product::Product<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::fixture::TwoX>>",
               "content": {
-                "fields": {
-                  "series_state": {
-                    "fields": {
-                      "lifecycle": "Uninitialized",
-                      "maintenance_reserve": "0"
-                    }
-                  },
-                  "venue_account": {
-                    "fields": {
-                      "vec": []
-                    }
-                  }
-                }
+                "series_state": {
+                  "lifecycle": "Uninitialized",
+                  "maintenance_reserve": "0"
+                },
+                "venue_account": null
               }
             },
             {
@@ -2404,15 +2224,7 @@
               },
               "type": "0x2::coin_registry::Currency<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::vault::Vault<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::product::Product<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "treasury_cap_id": {
-                    "fields": {
-                      "vec": [
-                        "0x0303030303030303030303030303030303030303030303030303030303030303"
-                      ]
-                    }
-                  }
-                }
+                "treasury_cap_id": "0x0303030303030303030303030303030303030303030303030303030303030303"
               }
             },
             {
@@ -2444,12 +2256,8 @@
               },
               "type": "0x2::coin::TreasuryCap<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::vault::Vault<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::product::Product<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "total_supply": {
-                    "fields": {
-                      "value": "0"
-                    }
-                  }
+                "total_supply": {
+                  "value": "0"
                 }
               }
             },
@@ -2502,9 +2310,7 @@
               },
               "type": "0x2::coin::Coin<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "balance": "100000000"
-                }
+                "balance": "100000000"
               }
             },
             {
@@ -2526,28 +2332,16 @@
               },
               "type": "0x6::price_info::PriceInfoObject",
               "content": {
-                "fields": {
-                  "price_info": {
-                    "fields": {
-                      "price_feed": {
-                        "fields": {
-                          "price": {
-                            "fields": {
-                              "price": {
-                                "fields": {
-                                  "negative": false,
-                                  "magnitude": "100000000"
-                                }
-                              },
-                              "expo": {
-                                "fields": {
-                                  "negative": true,
-                                  "magnitude": "8"
-                                }
-                              }
-                            }
-                          }
-                        }
+                "price_info": {
+                  "price_feed": {
+                    "price": {
+                      "price": {
+                        "negative": false,
+                        "magnitude": "100000000"
+                      },
+                      "expo": {
+                        "negative": true,
+                        "magnitude": "8"
                       }
                     }
                   }
@@ -2572,12 +2366,8 @@
               },
               "type": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "market_state": {
-                    "fields": {
-                      "open_interest": "0"
-                    }
-                  }
+                "market_state": {
+                  "open_interest": "0"
                 }
               }
             },
@@ -2680,19 +2470,11 @@
               },
               "type": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::vault::Vault<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::product::Product<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::fixture::TwoX>>",
               "content": {
-                "fields": {
-                  "series_state": {
-                    "fields": {
-                      "lifecycle": "Uninitialized",
-                      "maintenance_reserve": "0"
-                    }
-                  },
-                  "venue_account": {
-                    "fields": {
-                      "vec": []
-                    }
-                  }
-                }
+                "series_state": {
+                  "lifecycle": "Uninitialized",
+                  "maintenance_reserve": "0"
+                },
+                "venue_account": null
               }
             },
             {
@@ -2711,15 +2493,7 @@
               },
               "type": "0x2::coin_registry::Currency<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::vault::Vault<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::product::Product<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "treasury_cap_id": {
-                    "fields": {
-                      "vec": [
-                        "0x0303030303030303030303030303030303030303030303030303030303030303"
-                      ]
-                    }
-                  }
-                }
+                "treasury_cap_id": "0x0303030303030303030303030303030303030303030303030303030303030303"
               }
             },
             {
@@ -2751,12 +2525,8 @@
               },
               "type": "0x2::coin::TreasuryCap<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::vault::Vault<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::product::Product<0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "total_supply": {
-                    "fields": {
-                      "value": "0"
-                    }
-                  }
+                "total_supply": {
+                  "value": "0"
                 }
               }
             },
@@ -2809,9 +2579,7 @@
               },
               "type": "0x2::coin::Coin<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "balance": "100000000"
-                }
+                "balance": "100000000"
               }
             },
             {
@@ -2833,28 +2601,16 @@
               },
               "type": "0x6::price_info::PriceInfoObject",
               "content": {
-                "fields": {
-                  "price_info": {
-                    "fields": {
-                      "price_feed": {
-                        "fields": {
-                          "price": {
-                            "fields": {
-                              "price": {
-                                "fields": {
-                                  "negative": false,
-                                  "magnitude": "100000000"
-                                }
-                              },
-                              "expo": {
-                                "fields": {
-                                  "negative": true,
-                                  "magnitude": "8"
-                                }
-                              }
-                            }
-                          }
-                        }
+                "price_info": {
+                  "price_feed": {
+                    "price": {
+                      "price": {
+                        "negative": false,
+                        "magnitude": "100000000"
+                      },
+                      "expo": {
+                        "negative": true,
+                        "magnitude": "8"
                       }
                     }
                   }
@@ -2879,12 +2635,8 @@
               },
               "type": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "market_state": {
-                    "fields": {
-                      "open_interest": "0"
-                    }
-                  }
+                "market_state": {
+                  "open_interest": "0"
                 }
               }
             },
@@ -3032,11 +2784,11 @@
             "allowAbsent": false,
             "expectedType": "0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::vault::Vault<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::product::Product<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::fixture::TwoX>>",
             "selectors": {
-              "lifecycle": "/content/fields/series_state/fields/lifecycle",
-              "maintenanceReserve": "/content/fields/series_state/fields/maintenance_reserve",
-              "venueAccount": "/content/fields/venue_account/fields/vec/0/fields/account_object_id",
-              "checkpoint": "/content/fields/venue_account/fields/vec/0/fields/checkpoint/fields",
-              "adminCap": "/content/fields/venue_account/fields/vec/0/fields/admin_cap/fields/vec/0/fields/id/id"
+              "lifecycle": "/content/series_state/lifecycle",
+              "maintenanceReserve": "/content/series_state/maintenance_reserve",
+              "venueAccount": "/content/venue_account/account_object_id",
+              "checkpoint": "/content/venue_account/checkpoint",
+              "adminCap": "/content/venue_account/admin_cap/id"
             },
             "binding": {
               "kind": "argument"
@@ -3048,7 +2800,7 @@
             "allowAbsent": false,
             "expectedType": "0x2::coin_registry::Currency<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::vault::Vault<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::product::Product<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::fixture::TwoX>>>",
             "selectors": {
-              "treasuryCapId": "/content/fields/treasury_cap_id/fields/vec/0"
+              "treasuryCapId": "/content/treasury_cap_id"
             },
             "binding": {
               "kind": "originEffect",
@@ -3071,7 +2823,7 @@
             "allowAbsent": false,
             "expectedType": "0x2::coin::TreasuryCap<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::vault::Vault<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::product::Product<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::fixture::TwoX>>>",
             "selectors": {
-              "totalSupply": "/content/fields/total_supply/fields/value"
+              "totalSupply": "/content/total_supply/value"
             },
             "binding": {
               "kind": "originEffect",
@@ -3084,7 +2836,7 @@
             "allowAbsent": true,
             "expectedType": "0x2::coin::Coin<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::vault::Vault<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::product::Product<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::fixture::TwoX>>>",
             "selectors": {
-              "balance": "/content/fields/balance"
+              "balance": "/content/balance"
             },
             "binding": {
               "kind": "derived",
@@ -3119,8 +2871,8 @@
             "allowAbsent": true,
             "expectedType": "0x3::account::Account<0x2::usdc::USDC>",
             "selectors": {
-              "accountNumber": "/content/fields/account_id",
-              "collateral": "/content/fields/collateral/fields/value"
+              "accountNumber": "/content/account_id",
+              "collateral": "/content/collateral/value"
             },
             "binding": {
               "kind": "derived",
@@ -3143,7 +2895,7 @@
             "allowAbsent": true,
             "expectedType": "0x2::coin::Coin<0x2::usdc::USDC>",
             "selectors": {
-              "balance": "/content/fields/balance"
+              "balance": "/content/balance"
             },
             "binding": {
               "kind": "argument"
@@ -3155,10 +2907,10 @@
             "allowAbsent": false,
             "expectedType": "0x6::price_info::PriceInfoObject",
             "selectors": {
-              "priceNegative": "/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/negative",
-              "priceMagnitude": "/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/magnitude",
-              "exponentNegative": "/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/negative",
-              "exponentMagnitude": "/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/magnitude"
+              "priceNegative": "/content/price_info/price_feed/price/price/negative",
+              "priceMagnitude": "/content/price_info/price_feed/price/price/magnitude",
+              "exponentNegative": "/content/price_info/price_feed/price/expo/negative",
+              "exponentMagnitude": "/content/price_info/price_feed/price/expo/magnitude"
             },
             "binding": {
               "kind": "argument"
@@ -3170,7 +2922,7 @@
             "allowAbsent": false,
             "expectedType": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
             "selectors": {
-              "marketState": "/content/fields/market_state/fields"
+              "marketState": "/content/market_state"
             },
             "binding": {
               "kind": "argument"
@@ -3267,19 +3019,11 @@
               },
               "type": "0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::vault::Vault<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::product::Product<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::fixture::TwoX>>",
               "content": {
-                "fields": {
-                  "series_state": {
-                    "fields": {
-                      "lifecycle": "Uninitialized",
-                      "maintenance_reserve": "0"
-                    }
-                  },
-                  "venue_account": {
-                    "fields": {
-                      "vec": []
-                    }
-                  }
-                }
+                "series_state": {
+                  "lifecycle": "Uninitialized",
+                  "maintenance_reserve": "0"
+                },
+                "venue_account": null
               }
             },
             {
@@ -3298,15 +3042,7 @@
               },
               "type": "0x2::coin_registry::Currency<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::vault::Vault<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::product::Product<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "treasury_cap_id": {
-                    "fields": {
-                      "vec": [
-                        "0x0303030303030303030303030303030303030303030303030303030303030303"
-                      ]
-                    }
-                  }
-                }
+                "treasury_cap_id": "0x0303030303030303030303030303030303030303030303030303030303030303"
               }
             },
             {
@@ -3338,12 +3074,8 @@
               },
               "type": "0x2::coin::TreasuryCap<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::vault::Vault<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::product::Product<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "total_supply": {
-                    "fields": {
-                      "value": "0"
-                    }
-                  }
+                "total_supply": {
+                  "value": "0"
                 }
               }
             },
@@ -3396,9 +3128,7 @@
               },
               "type": "0x2::coin::Coin<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "balance": "100000000"
-                }
+                "balance": "100000000"
               }
             },
             {
@@ -3420,28 +3150,16 @@
               },
               "type": "0x6::price_info::PriceInfoObject",
               "content": {
-                "fields": {
-                  "price_info": {
-                    "fields": {
-                      "price_feed": {
-                        "fields": {
-                          "price": {
-                            "fields": {
-                              "price": {
-                                "fields": {
-                                  "negative": false,
-                                  "magnitude": "100000000"
-                                }
-                              },
-                              "expo": {
-                                "fields": {
-                                  "negative": true,
-                                  "magnitude": "8"
-                                }
-                              }
-                            }
-                          }
-                        }
+                "price_info": {
+                  "price_feed": {
+                    "price": {
+                      "price": {
+                        "negative": false,
+                        "magnitude": "100000000"
+                      },
+                      "expo": {
+                        "negative": true,
+                        "magnitude": "8"
                       }
                     }
                   }
@@ -3466,12 +3184,8 @@
               },
               "type": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "market_state": {
-                    "fields": {
-                      "open_interest": "0"
-                    }
-                  }
+                "market_state": {
+                  "open_interest": "0"
                 }
               }
             },
@@ -3574,19 +3288,11 @@
               },
               "type": "0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::vault::Vault<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::product::Product<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::fixture::TwoX>>",
               "content": {
-                "fields": {
-                  "series_state": {
-                    "fields": {
-                      "lifecycle": "Uninitialized",
-                      "maintenance_reserve": "0"
-                    }
-                  },
-                  "venue_account": {
-                    "fields": {
-                      "vec": []
-                    }
-                  }
-                }
+                "series_state": {
+                  "lifecycle": "Uninitialized",
+                  "maintenance_reserve": "0"
+                },
+                "venue_account": null
               }
             },
             {
@@ -3605,15 +3311,7 @@
               },
               "type": "0x2::coin_registry::Currency<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::vault::Vault<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::product::Product<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "treasury_cap_id": {
-                    "fields": {
-                      "vec": [
-                        "0x0303030303030303030303030303030303030303030303030303030303030303"
-                      ]
-                    }
-                  }
-                }
+                "treasury_cap_id": "0x0303030303030303030303030303030303030303030303030303030303030303"
               }
             },
             {
@@ -3645,12 +3343,8 @@
               },
               "type": "0x2::coin::TreasuryCap<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::vault::Vault<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::product::Product<0xb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "total_supply": {
-                    "fields": {
-                      "value": "0"
-                    }
-                  }
+                "total_supply": {
+                  "value": "0"
                 }
               }
             },
@@ -3703,9 +3397,7 @@
               },
               "type": "0x2::coin::Coin<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "balance": "100000000"
-                }
+                "balance": "100000000"
               }
             },
             {
@@ -3727,28 +3419,16 @@
               },
               "type": "0x6::price_info::PriceInfoObject",
               "content": {
-                "fields": {
-                  "price_info": {
-                    "fields": {
-                      "price_feed": {
-                        "fields": {
-                          "price": {
-                            "fields": {
-                              "price": {
-                                "fields": {
-                                  "negative": false,
-                                  "magnitude": "100000000"
-                                }
-                              },
-                              "expo": {
-                                "fields": {
-                                  "negative": true,
-                                  "magnitude": "8"
-                                }
-                              }
-                            }
-                          }
-                        }
+                "price_info": {
+                  "price_feed": {
+                    "price": {
+                      "price": {
+                        "negative": false,
+                        "magnitude": "100000000"
+                      },
+                      "expo": {
+                        "negative": true,
+                        "magnitude": "8"
                       }
                     }
                   }
@@ -3773,12 +3453,8 @@
               },
               "type": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "market_state": {
-                    "fields": {
-                      "open_interest": "0"
-                    }
-                  }
+                "market_state": {
+                  "open_interest": "0"
                 }
               }
             },
@@ -3926,11 +3602,11 @@
             "allowAbsent": false,
             "expectedType": "0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::vault::Vault<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::product::Product<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::fixture::TwoX>>",
             "selectors": {
-              "lifecycle": "/content/fields/series_state/fields/lifecycle",
-              "maintenanceReserve": "/content/fields/series_state/fields/maintenance_reserve",
-              "venueAccount": "/content/fields/venue_account/fields/vec/0/fields/account_object_id",
-              "checkpoint": "/content/fields/venue_account/fields/vec/0/fields/checkpoint/fields",
-              "adminCap": "/content/fields/venue_account/fields/vec/0/fields/admin_cap/fields/vec/0/fields/id/id"
+              "lifecycle": "/content/series_state/lifecycle",
+              "maintenanceReserve": "/content/series_state/maintenance_reserve",
+              "venueAccount": "/content/venue_account/account_object_id",
+              "checkpoint": "/content/venue_account/checkpoint",
+              "adminCap": "/content/venue_account/admin_cap/id"
             },
             "binding": {
               "kind": "argument"
@@ -3942,7 +3618,7 @@
             "allowAbsent": false,
             "expectedType": "0x2::coin_registry::Currency<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::vault::Vault<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::product::Product<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::fixture::TwoX>>>",
             "selectors": {
-              "treasuryCapId": "/content/fields/treasury_cap_id/fields/vec/0"
+              "treasuryCapId": "/content/treasury_cap_id"
             },
             "binding": {
               "kind": "originEffect",
@@ -3965,7 +3641,7 @@
             "allowAbsent": false,
             "expectedType": "0x2::coin::TreasuryCap<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::vault::Vault<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::product::Product<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::fixture::TwoX>>>",
             "selectors": {
-              "totalSupply": "/content/fields/total_supply/fields/value"
+              "totalSupply": "/content/total_supply/value"
             },
             "binding": {
               "kind": "originEffect",
@@ -3978,7 +3654,7 @@
             "allowAbsent": true,
             "expectedType": "0x2::coin::Coin<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::vault::Vault<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::product::Product<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::fixture::TwoX>>>",
             "selectors": {
-              "balance": "/content/fields/balance"
+              "balance": "/content/balance"
             },
             "binding": {
               "kind": "derived",
@@ -4013,8 +3689,8 @@
             "allowAbsent": true,
             "expectedType": "0x3::account::Account<0x2::usdc::USDC>",
             "selectors": {
-              "accountNumber": "/content/fields/account_id",
-              "collateral": "/content/fields/collateral/fields/value"
+              "accountNumber": "/content/account_id",
+              "collateral": "/content/collateral/value"
             },
             "binding": {
               "kind": "derived",
@@ -4037,7 +3713,7 @@
             "allowAbsent": true,
             "expectedType": "0x2::coin::Coin<0x2::usdc::USDC>",
             "selectors": {
-              "balance": "/content/fields/balance"
+              "balance": "/content/balance"
             },
             "binding": {
               "kind": "argument"
@@ -4049,10 +3725,10 @@
             "allowAbsent": false,
             "expectedType": "0x6::price_info::PriceInfoObject",
             "selectors": {
-              "priceNegative": "/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/negative",
-              "priceMagnitude": "/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/magnitude",
-              "exponentNegative": "/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/negative",
-              "exponentMagnitude": "/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/magnitude"
+              "priceNegative": "/content/price_info/price_feed/price/price/negative",
+              "priceMagnitude": "/content/price_info/price_feed/price/price/magnitude",
+              "exponentNegative": "/content/price_info/price_feed/price/expo/negative",
+              "exponentMagnitude": "/content/price_info/price_feed/price/expo/magnitude"
             },
             "binding": {
               "kind": "argument"
@@ -4064,7 +3740,7 @@
             "allowAbsent": false,
             "expectedType": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
             "selectors": {
-              "marketState": "/content/fields/market_state/fields"
+              "marketState": "/content/market_state"
             },
             "binding": {
               "kind": "argument"
@@ -4161,19 +3837,11 @@
               },
               "type": "0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::vault::Vault<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::product::Product<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::fixture::TwoX>>",
               "content": {
-                "fields": {
-                  "series_state": {
-                    "fields": {
-                      "lifecycle": "Uninitialized",
-                      "maintenance_reserve": "0"
-                    }
-                  },
-                  "venue_account": {
-                    "fields": {
-                      "vec": []
-                    }
-                  }
-                }
+                "series_state": {
+                  "lifecycle": "Uninitialized",
+                  "maintenance_reserve": "0"
+                },
+                "venue_account": null
               }
             },
             {
@@ -4192,15 +3860,7 @@
               },
               "type": "0x2::coin_registry::Currency<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::vault::Vault<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::product::Product<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "treasury_cap_id": {
-                    "fields": {
-                      "vec": [
-                        "0x0303030303030303030303030303030303030303030303030303030303030303"
-                      ]
-                    }
-                  }
-                }
+                "treasury_cap_id": "0x0303030303030303030303030303030303030303030303030303030303030303"
               }
             },
             {
@@ -4232,12 +3892,8 @@
               },
               "type": "0x2::coin::TreasuryCap<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::vault::Vault<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::product::Product<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "total_supply": {
-                    "fields": {
-                      "value": "0"
-                    }
-                  }
+                "total_supply": {
+                  "value": "0"
                 }
               }
             },
@@ -4290,9 +3946,7 @@
               },
               "type": "0x2::coin::Coin<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "balance": "100000000"
-                }
+                "balance": "100000000"
               }
             },
             {
@@ -4314,28 +3968,16 @@
               },
               "type": "0x6::price_info::PriceInfoObject",
               "content": {
-                "fields": {
-                  "price_info": {
-                    "fields": {
-                      "price_feed": {
-                        "fields": {
-                          "price": {
-                            "fields": {
-                              "price": {
-                                "fields": {
-                                  "negative": false,
-                                  "magnitude": "100000000"
-                                }
-                              },
-                              "expo": {
-                                "fields": {
-                                  "negative": true,
-                                  "magnitude": "8"
-                                }
-                              }
-                            }
-                          }
-                        }
+                "price_info": {
+                  "price_feed": {
+                    "price": {
+                      "price": {
+                        "negative": false,
+                        "magnitude": "100000000"
+                      },
+                      "expo": {
+                        "negative": true,
+                        "magnitude": "8"
                       }
                     }
                   }
@@ -4360,12 +4002,8 @@
               },
               "type": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "market_state": {
-                    "fields": {
-                      "open_interest": "0"
-                    }
-                  }
+                "market_state": {
+                  "open_interest": "0"
                 }
               }
             },
@@ -4468,19 +4106,11 @@
               },
               "type": "0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::vault::Vault<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::product::Product<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::fixture::TwoX>>",
               "content": {
-                "fields": {
-                  "series_state": {
-                    "fields": {
-                      "lifecycle": "Uninitialized",
-                      "maintenance_reserve": "0"
-                    }
-                  },
-                  "venue_account": {
-                    "fields": {
-                      "vec": []
-                    }
-                  }
-                }
+                "series_state": {
+                  "lifecycle": "Uninitialized",
+                  "maintenance_reserve": "0"
+                },
+                "venue_account": null
               }
             },
             {
@@ -4499,15 +4129,7 @@
               },
               "type": "0x2::coin_registry::Currency<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::vault::Vault<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::product::Product<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "treasury_cap_id": {
-                    "fields": {
-                      "vec": [
-                        "0x0303030303030303030303030303030303030303030303030303030303030303"
-                      ]
-                    }
-                  }
-                }
+                "treasury_cap_id": "0x0303030303030303030303030303030303030303030303030303030303030303"
               }
             },
             {
@@ -4539,12 +4161,8 @@
               },
               "type": "0x2::coin::TreasuryCap<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::vault::Vault<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::product::Product<0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "total_supply": {
-                    "fields": {
-                      "value": "0"
-                    }
-                  }
+                "total_supply": {
+                  "value": "0"
                 }
               }
             },
@@ -4597,9 +4215,7 @@
               },
               "type": "0x2::coin::Coin<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "balance": "100000000"
-                }
+                "balance": "100000000"
               }
             },
             {
@@ -4621,28 +4237,16 @@
               },
               "type": "0x6::price_info::PriceInfoObject",
               "content": {
-                "fields": {
-                  "price_info": {
-                    "fields": {
-                      "price_feed": {
-                        "fields": {
-                          "price": {
-                            "fields": {
-                              "price": {
-                                "fields": {
-                                  "negative": false,
-                                  "magnitude": "100000000"
-                                }
-                              },
-                              "expo": {
-                                "fields": {
-                                  "negative": true,
-                                  "magnitude": "8"
-                                }
-                              }
-                            }
-                          }
-                        }
+                "price_info": {
+                  "price_feed": {
+                    "price": {
+                      "price": {
+                        "negative": false,
+                        "magnitude": "100000000"
+                      },
+                      "expo": {
+                        "negative": true,
+                        "magnitude": "8"
                       }
                     }
                   }
@@ -4667,12 +4271,8 @@
               },
               "type": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "market_state": {
-                    "fields": {
-                      "open_interest": "0"
-                    }
-                  }
+                "market_state": {
+                  "open_interest": "0"
                 }
               }
             },
@@ -4820,11 +4420,11 @@
             "allowAbsent": false,
             "expectedType": "0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::vault::Vault<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::product::Product<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::fixture::TwoX>>",
             "selectors": {
-              "lifecycle": "/content/fields/series_state/fields/lifecycle",
-              "maintenanceReserve": "/content/fields/series_state/fields/maintenance_reserve",
-              "venueAccount": "/content/fields/venue_account/fields/vec/0/fields/account_object_id",
-              "checkpoint": "/content/fields/venue_account/fields/vec/0/fields/checkpoint/fields",
-              "adminCap": "/content/fields/venue_account/fields/vec/0/fields/admin_cap/fields/vec/0/fields/id/id"
+              "lifecycle": "/content/series_state/lifecycle",
+              "maintenanceReserve": "/content/series_state/maintenance_reserve",
+              "venueAccount": "/content/venue_account/account_object_id",
+              "checkpoint": "/content/venue_account/checkpoint",
+              "adminCap": "/content/venue_account/admin_cap/id"
             },
             "binding": {
               "kind": "argument"
@@ -4836,7 +4436,7 @@
             "allowAbsent": false,
             "expectedType": "0x2::coin_registry::Currency<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::vault::Vault<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::product::Product<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::fixture::TwoX>>>",
             "selectors": {
-              "treasuryCapId": "/content/fields/treasury_cap_id/fields/vec/0"
+              "treasuryCapId": "/content/treasury_cap_id"
             },
             "binding": {
               "kind": "originEffect",
@@ -4859,7 +4459,7 @@
             "allowAbsent": false,
             "expectedType": "0x2::coin::TreasuryCap<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::vault::Vault<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::product::Product<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::fixture::TwoX>>>",
             "selectors": {
-              "totalSupply": "/content/fields/total_supply/fields/value"
+              "totalSupply": "/content/total_supply/value"
             },
             "binding": {
               "kind": "originEffect",
@@ -4872,7 +4472,7 @@
             "allowAbsent": true,
             "expectedType": "0x2::coin::Coin<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::vault::Vault<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::product::Product<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::fixture::TwoX>>>",
             "selectors": {
-              "balance": "/content/fields/balance"
+              "balance": "/content/balance"
             },
             "binding": {
               "kind": "derived",
@@ -4907,8 +4507,8 @@
             "allowAbsent": true,
             "expectedType": "0x3::account::Account<0x2::usdc::USDC>",
             "selectors": {
-              "accountNumber": "/content/fields/account_id",
-              "collateral": "/content/fields/collateral/fields/value"
+              "accountNumber": "/content/account_id",
+              "collateral": "/content/collateral/value"
             },
             "binding": {
               "kind": "derived",
@@ -4931,7 +4531,7 @@
             "allowAbsent": true,
             "expectedType": "0x2::coin::Coin<0x2::usdc::USDC>",
             "selectors": {
-              "balance": "/content/fields/balance"
+              "balance": "/content/balance"
             },
             "binding": {
               "kind": "argument"
@@ -4943,10 +4543,10 @@
             "allowAbsent": false,
             "expectedType": "0x6::price_info::PriceInfoObject",
             "selectors": {
-              "priceNegative": "/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/negative",
-              "priceMagnitude": "/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/magnitude",
-              "exponentNegative": "/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/negative",
-              "exponentMagnitude": "/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/magnitude"
+              "priceNegative": "/content/price_info/price_feed/price/price/negative",
+              "priceMagnitude": "/content/price_info/price_feed/price/price/magnitude",
+              "exponentNegative": "/content/price_info/price_feed/price/expo/negative",
+              "exponentMagnitude": "/content/price_info/price_feed/price/expo/magnitude"
             },
             "binding": {
               "kind": "argument"
@@ -4958,7 +4558,7 @@
             "allowAbsent": false,
             "expectedType": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
             "selectors": {
-              "marketState": "/content/fields/market_state/fields"
+              "marketState": "/content/market_state"
             },
             "binding": {
               "kind": "argument"
@@ -5055,19 +4655,11 @@
               },
               "type": "0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::vault::Vault<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::product::Product<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::fixture::TwoX>>",
               "content": {
-                "fields": {
-                  "series_state": {
-                    "fields": {
-                      "lifecycle": "Uninitialized",
-                      "maintenance_reserve": "0"
-                    }
-                  },
-                  "venue_account": {
-                    "fields": {
-                      "vec": []
-                    }
-                  }
-                }
+                "series_state": {
+                  "lifecycle": "Uninitialized",
+                  "maintenance_reserve": "0"
+                },
+                "venue_account": null
               }
             },
             {
@@ -5086,15 +4678,7 @@
               },
               "type": "0x2::coin_registry::Currency<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::vault::Vault<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::product::Product<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "treasury_cap_id": {
-                    "fields": {
-                      "vec": [
-                        "0x0303030303030303030303030303030303030303030303030303030303030303"
-                      ]
-                    }
-                  }
-                }
+                "treasury_cap_id": "0x0303030303030303030303030303030303030303030303030303030303030303"
               }
             },
             {
@@ -5126,12 +4710,8 @@
               },
               "type": "0x2::coin::TreasuryCap<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::vault::Vault<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::product::Product<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "total_supply": {
-                    "fields": {
-                      "value": "0"
-                    }
-                  }
+                "total_supply": {
+                  "value": "0"
                 }
               }
             },
@@ -5184,9 +4764,7 @@
               },
               "type": "0x2::coin::Coin<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "balance": "100000000"
-                }
+                "balance": "100000000"
               }
             },
             {
@@ -5208,28 +4786,16 @@
               },
               "type": "0x6::price_info::PriceInfoObject",
               "content": {
-                "fields": {
-                  "price_info": {
-                    "fields": {
-                      "price_feed": {
-                        "fields": {
-                          "price": {
-                            "fields": {
-                              "price": {
-                                "fields": {
-                                  "negative": false,
-                                  "magnitude": "100000000"
-                                }
-                              },
-                              "expo": {
-                                "fields": {
-                                  "negative": true,
-                                  "magnitude": "8"
-                                }
-                              }
-                            }
-                          }
-                        }
+                "price_info": {
+                  "price_feed": {
+                    "price": {
+                      "price": {
+                        "negative": false,
+                        "magnitude": "100000000"
+                      },
+                      "expo": {
+                        "negative": true,
+                        "magnitude": "8"
                       }
                     }
                   }
@@ -5254,12 +4820,8 @@
               },
               "type": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "market_state": {
-                    "fields": {
-                      "open_interest": "0"
-                    }
-                  }
+                "market_state": {
+                  "open_interest": "0"
                 }
               }
             },
@@ -5362,19 +4924,11 @@
               },
               "type": "0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::vault::Vault<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::product::Product<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::fixture::TwoX>>",
               "content": {
-                "fields": {
-                  "series_state": {
-                    "fields": {
-                      "lifecycle": "Uninitialized",
-                      "maintenance_reserve": "0"
-                    }
-                  },
-                  "venue_account": {
-                    "fields": {
-                      "vec": []
-                    }
-                  }
-                }
+                "series_state": {
+                  "lifecycle": "Uninitialized",
+                  "maintenance_reserve": "0"
+                },
+                "venue_account": null
               }
             },
             {
@@ -5393,15 +4947,7 @@
               },
               "type": "0x2::coin_registry::Currency<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::vault::Vault<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::product::Product<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "treasury_cap_id": {
-                    "fields": {
-                      "vec": [
-                        "0x0303030303030303030303030303030303030303030303030303030303030303"
-                      ]
-                    }
-                  }
-                }
+                "treasury_cap_id": "0x0303030303030303030303030303030303030303030303030303030303030303"
               }
             },
             {
@@ -5433,12 +4979,8 @@
               },
               "type": "0x2::coin::TreasuryCap<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::vault::Vault<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::product::Product<0xb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "total_supply": {
-                    "fields": {
-                      "value": "0"
-                    }
-                  }
+                "total_supply": {
+                  "value": "0"
                 }
               }
             },
@@ -5491,9 +5033,7 @@
               },
               "type": "0x2::coin::Coin<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "balance": "100000000"
-                }
+                "balance": "100000000"
               }
             },
             {
@@ -5515,28 +5055,16 @@
               },
               "type": "0x6::price_info::PriceInfoObject",
               "content": {
-                "fields": {
-                  "price_info": {
-                    "fields": {
-                      "price_feed": {
-                        "fields": {
-                          "price": {
-                            "fields": {
-                              "price": {
-                                "fields": {
-                                  "negative": false,
-                                  "magnitude": "100000000"
-                                }
-                              },
-                              "expo": {
-                                "fields": {
-                                  "negative": true,
-                                  "magnitude": "8"
-                                }
-                              }
-                            }
-                          }
-                        }
+                "price_info": {
+                  "price_feed": {
+                    "price": {
+                      "price": {
+                        "negative": false,
+                        "magnitude": "100000000"
+                      },
+                      "expo": {
+                        "negative": true,
+                        "magnitude": "8"
                       }
                     }
                   }
@@ -5561,12 +5089,8 @@
               },
               "type": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "market_state": {
-                    "fields": {
-                      "open_interest": "0"
-                    }
-                  }
+                "market_state": {
+                  "open_interest": "0"
                 }
               }
             },
@@ -5714,11 +5238,11 @@
             "allowAbsent": false,
             "expectedType": "0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::vault::Vault<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::product::Product<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::fixture::TwoX>>",
             "selectors": {
-              "lifecycle": "/content/fields/series_state/fields/lifecycle",
-              "maintenanceReserve": "/content/fields/series_state/fields/maintenance_reserve",
-              "venueAccount": "/content/fields/venue_account/fields/vec/0/fields/account_object_id",
-              "checkpoint": "/content/fields/venue_account/fields/vec/0/fields/checkpoint/fields",
-              "adminCap": "/content/fields/venue_account/fields/vec/0/fields/admin_cap/fields/vec/0/fields/id/id"
+              "lifecycle": "/content/series_state/lifecycle",
+              "maintenanceReserve": "/content/series_state/maintenance_reserve",
+              "venueAccount": "/content/venue_account/account_object_id",
+              "checkpoint": "/content/venue_account/checkpoint",
+              "adminCap": "/content/venue_account/admin_cap/id"
             },
             "binding": {
               "kind": "argument"
@@ -5730,7 +5254,7 @@
             "allowAbsent": false,
             "expectedType": "0x2::coin_registry::Currency<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::vault::Vault<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::product::Product<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::fixture::TwoX>>>",
             "selectors": {
-              "treasuryCapId": "/content/fields/treasury_cap_id/fields/vec/0"
+              "treasuryCapId": "/content/treasury_cap_id"
             },
             "binding": {
               "kind": "originEffect",
@@ -5753,7 +5277,7 @@
             "allowAbsent": false,
             "expectedType": "0x2::coin::TreasuryCap<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::vault::Vault<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::product::Product<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::fixture::TwoX>>>",
             "selectors": {
-              "totalSupply": "/content/fields/total_supply/fields/value"
+              "totalSupply": "/content/total_supply/value"
             },
             "binding": {
               "kind": "originEffect",
@@ -5766,7 +5290,7 @@
             "allowAbsent": true,
             "expectedType": "0x2::coin::Coin<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::vault::Vault<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::product::Product<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::fixture::TwoX>>>",
             "selectors": {
-              "balance": "/content/fields/balance"
+              "balance": "/content/balance"
             },
             "binding": {
               "kind": "derived",
@@ -5801,8 +5325,8 @@
             "allowAbsent": true,
             "expectedType": "0x3::account::Account<0x2::usdc::USDC>",
             "selectors": {
-              "accountNumber": "/content/fields/account_id",
-              "collateral": "/content/fields/collateral/fields/value"
+              "accountNumber": "/content/account_id",
+              "collateral": "/content/collateral/value"
             },
             "binding": {
               "kind": "derived",
@@ -5825,7 +5349,7 @@
             "allowAbsent": true,
             "expectedType": "0x2::coin::Coin<0x2::usdc::USDC>",
             "selectors": {
-              "balance": "/content/fields/balance"
+              "balance": "/content/balance"
             },
             "binding": {
               "kind": "argument"
@@ -5837,10 +5361,10 @@
             "allowAbsent": false,
             "expectedType": "0x6::price_info::PriceInfoObject",
             "selectors": {
-              "priceNegative": "/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/negative",
-              "priceMagnitude": "/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/magnitude",
-              "exponentNegative": "/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/negative",
-              "exponentMagnitude": "/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/magnitude"
+              "priceNegative": "/content/price_info/price_feed/price/price/negative",
+              "priceMagnitude": "/content/price_info/price_feed/price/price/magnitude",
+              "exponentNegative": "/content/price_info/price_feed/price/expo/negative",
+              "exponentMagnitude": "/content/price_info/price_feed/price/expo/magnitude"
             },
             "binding": {
               "kind": "argument"
@@ -5852,7 +5376,7 @@
             "allowAbsent": false,
             "expectedType": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
             "selectors": {
-              "marketState": "/content/fields/market_state/fields"
+              "marketState": "/content/market_state"
             },
             "binding": {
               "kind": "argument"
@@ -5949,19 +5473,11 @@
               },
               "type": "0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::vault::Vault<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::product::Product<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::fixture::TwoX>>",
               "content": {
-                "fields": {
-                  "series_state": {
-                    "fields": {
-                      "lifecycle": "Uninitialized",
-                      "maintenance_reserve": "0"
-                    }
-                  },
-                  "venue_account": {
-                    "fields": {
-                      "vec": []
-                    }
-                  }
-                }
+                "series_state": {
+                  "lifecycle": "Uninitialized",
+                  "maintenance_reserve": "0"
+                },
+                "venue_account": null
               }
             },
             {
@@ -5980,15 +5496,7 @@
               },
               "type": "0x2::coin_registry::Currency<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::vault::Vault<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::product::Product<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "treasury_cap_id": {
-                    "fields": {
-                      "vec": [
-                        "0x0303030303030303030303030303030303030303030303030303030303030303"
-                      ]
-                    }
-                  }
-                }
+                "treasury_cap_id": "0x0303030303030303030303030303030303030303030303030303030303030303"
               }
             },
             {
@@ -6020,12 +5528,8 @@
               },
               "type": "0x2::coin::TreasuryCap<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::vault::Vault<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::product::Product<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "total_supply": {
-                    "fields": {
-                      "value": "0"
-                    }
-                  }
+                "total_supply": {
+                  "value": "0"
                 }
               }
             },
@@ -6078,9 +5582,7 @@
               },
               "type": "0x2::coin::Coin<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "balance": "100000000"
-                }
+                "balance": "100000000"
               }
             },
             {
@@ -6102,28 +5604,16 @@
               },
               "type": "0x6::price_info::PriceInfoObject",
               "content": {
-                "fields": {
-                  "price_info": {
-                    "fields": {
-                      "price_feed": {
-                        "fields": {
-                          "price": {
-                            "fields": {
-                              "price": {
-                                "fields": {
-                                  "negative": false,
-                                  "magnitude": "100000000"
-                                }
-                              },
-                              "expo": {
-                                "fields": {
-                                  "negative": true,
-                                  "magnitude": "8"
-                                }
-                              }
-                            }
-                          }
-                        }
+                "price_info": {
+                  "price_feed": {
+                    "price": {
+                      "price": {
+                        "negative": false,
+                        "magnitude": "100000000"
+                      },
+                      "expo": {
+                        "negative": true,
+                        "magnitude": "8"
                       }
                     }
                   }
@@ -6148,12 +5638,8 @@
               },
               "type": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "market_state": {
-                    "fields": {
-                      "open_interest": "0"
-                    }
-                  }
+                "market_state": {
+                  "open_interest": "0"
                 }
               }
             },
@@ -6256,19 +5742,11 @@
               },
               "type": "0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::vault::Vault<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::product::Product<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::fixture::TwoX>>",
               "content": {
-                "fields": {
-                  "series_state": {
-                    "fields": {
-                      "lifecycle": "Uninitialized",
-                      "maintenance_reserve": "0"
-                    }
-                  },
-                  "venue_account": {
-                    "fields": {
-                      "vec": []
-                    }
-                  }
-                }
+                "series_state": {
+                  "lifecycle": "Uninitialized",
+                  "maintenance_reserve": "0"
+                },
+                "venue_account": null
               }
             },
             {
@@ -6287,15 +5765,7 @@
               },
               "type": "0x2::coin_registry::Currency<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::vault::Vault<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::product::Product<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "treasury_cap_id": {
-                    "fields": {
-                      "vec": [
-                        "0x0303030303030303030303030303030303030303030303030303030303030303"
-                      ]
-                    }
-                  }
-                }
+                "treasury_cap_id": "0x0303030303030303030303030303030303030303030303030303030303030303"
               }
             },
             {
@@ -6327,12 +5797,8 @@
               },
               "type": "0x2::coin::TreasuryCap<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::vault::Vault<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::product::Product<0xb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "total_supply": {
-                    "fields": {
-                      "value": "0"
-                    }
-                  }
+                "total_supply": {
+                  "value": "0"
                 }
               }
             },
@@ -6385,9 +5851,7 @@
               },
               "type": "0x2::coin::Coin<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "balance": "100000000"
-                }
+                "balance": "100000000"
               }
             },
             {
@@ -6409,28 +5873,16 @@
               },
               "type": "0x6::price_info::PriceInfoObject",
               "content": {
-                "fields": {
-                  "price_info": {
-                    "fields": {
-                      "price_feed": {
-                        "fields": {
-                          "price": {
-                            "fields": {
-                              "price": {
-                                "fields": {
-                                  "negative": false,
-                                  "magnitude": "100000000"
-                                }
-                              },
-                              "expo": {
-                                "fields": {
-                                  "negative": true,
-                                  "magnitude": "8"
-                                }
-                              }
-                            }
-                          }
-                        }
+                "price_info": {
+                  "price_feed": {
+                    "price": {
+                      "price": {
+                        "negative": false,
+                        "magnitude": "100000000"
+                      },
+                      "expo": {
+                        "negative": true,
+                        "magnitude": "8"
                       }
                     }
                   }
@@ -6455,12 +5907,8 @@
               },
               "type": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "market_state": {
-                    "fields": {
-                      "open_interest": "0"
-                    }
-                  }
+                "market_state": {
+                  "open_interest": "0"
                 }
               }
             },
@@ -6608,11 +6056,11 @@
             "allowAbsent": false,
             "expectedType": "0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::vault::Vault<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::product::Product<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::fixture::TwoX>>",
             "selectors": {
-              "lifecycle": "/content/fields/series_state/fields/lifecycle",
-              "maintenanceReserve": "/content/fields/series_state/fields/maintenance_reserve",
-              "venueAccount": "/content/fields/venue_account/fields/vec/0/fields/account_object_id",
-              "checkpoint": "/content/fields/venue_account/fields/vec/0/fields/checkpoint/fields",
-              "adminCap": "/content/fields/venue_account/fields/vec/0/fields/admin_cap/fields/vec/0/fields/id/id"
+              "lifecycle": "/content/series_state/lifecycle",
+              "maintenanceReserve": "/content/series_state/maintenance_reserve",
+              "venueAccount": "/content/venue_account/account_object_id",
+              "checkpoint": "/content/venue_account/checkpoint",
+              "adminCap": "/content/venue_account/admin_cap/id"
             },
             "binding": {
               "kind": "argument"
@@ -6624,7 +6072,7 @@
             "allowAbsent": false,
             "expectedType": "0x2::coin_registry::Currency<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::vault::Vault<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::product::Product<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::fixture::TwoX>>>",
             "selectors": {
-              "treasuryCapId": "/content/fields/treasury_cap_id/fields/vec/0"
+              "treasuryCapId": "/content/treasury_cap_id"
             },
             "binding": {
               "kind": "originEffect",
@@ -6647,7 +6095,7 @@
             "allowAbsent": false,
             "expectedType": "0x2::coin::TreasuryCap<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::vault::Vault<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::product::Product<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::fixture::TwoX>>>",
             "selectors": {
-              "totalSupply": "/content/fields/total_supply/fields/value"
+              "totalSupply": "/content/total_supply/value"
             },
             "binding": {
               "kind": "originEffect",
@@ -6660,7 +6108,7 @@
             "allowAbsent": true,
             "expectedType": "0x2::coin::Coin<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::vault::Vault<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::product::Product<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::fixture::TwoX>>>",
             "selectors": {
-              "balance": "/content/fields/balance"
+              "balance": "/content/balance"
             },
             "binding": {
               "kind": "derived",
@@ -6695,8 +6143,8 @@
             "allowAbsent": true,
             "expectedType": "0x3::account::Account<0x2::usdc::USDC>",
             "selectors": {
-              "accountNumber": "/content/fields/account_id",
-              "collateral": "/content/fields/collateral/fields/value"
+              "accountNumber": "/content/account_id",
+              "collateral": "/content/collateral/value"
             },
             "binding": {
               "kind": "derived",
@@ -6719,7 +6167,7 @@
             "allowAbsent": true,
             "expectedType": "0x2::coin::Coin<0x2::usdc::USDC>",
             "selectors": {
-              "balance": "/content/fields/balance"
+              "balance": "/content/balance"
             },
             "binding": {
               "kind": "argument"
@@ -6731,10 +6179,10 @@
             "allowAbsent": false,
             "expectedType": "0x6::price_info::PriceInfoObject",
             "selectors": {
-              "priceNegative": "/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/negative",
-              "priceMagnitude": "/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/magnitude",
-              "exponentNegative": "/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/negative",
-              "exponentMagnitude": "/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/magnitude"
+              "priceNegative": "/content/price_info/price_feed/price/price/negative",
+              "priceMagnitude": "/content/price_info/price_feed/price/price/magnitude",
+              "exponentNegative": "/content/price_info/price_feed/price/expo/negative",
+              "exponentMagnitude": "/content/price_info/price_feed/price/expo/magnitude"
             },
             "binding": {
               "kind": "argument"
@@ -6746,7 +6194,7 @@
             "allowAbsent": false,
             "expectedType": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
             "selectors": {
-              "marketState": "/content/fields/market_state/fields"
+              "marketState": "/content/market_state"
             },
             "binding": {
               "kind": "argument"
@@ -6843,19 +6291,11 @@
               },
               "type": "0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::vault::Vault<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::product::Product<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::fixture::TwoX>>",
               "content": {
-                "fields": {
-                  "series_state": {
-                    "fields": {
-                      "lifecycle": "Uninitialized",
-                      "maintenance_reserve": "0"
-                    }
-                  },
-                  "venue_account": {
-                    "fields": {
-                      "vec": []
-                    }
-                  }
-                }
+                "series_state": {
+                  "lifecycle": "Uninitialized",
+                  "maintenance_reserve": "0"
+                },
+                "venue_account": null
               }
             },
             {
@@ -6874,15 +6314,7 @@
               },
               "type": "0x2::coin_registry::Currency<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::vault::Vault<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::product::Product<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "treasury_cap_id": {
-                    "fields": {
-                      "vec": [
-                        "0x0303030303030303030303030303030303030303030303030303030303030303"
-                      ]
-                    }
-                  }
-                }
+                "treasury_cap_id": "0x0303030303030303030303030303030303030303030303030303030303030303"
               }
             },
             {
@@ -6914,12 +6346,8 @@
               },
               "type": "0x2::coin::TreasuryCap<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::vault::Vault<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::product::Product<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "total_supply": {
-                    "fields": {
-                      "value": "0"
-                    }
-                  }
+                "total_supply": {
+                  "value": "0"
                 }
               }
             },
@@ -6972,9 +6400,7 @@
               },
               "type": "0x2::coin::Coin<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "balance": "100000000"
-                }
+                "balance": "100000000"
               }
             },
             {
@@ -6996,28 +6422,16 @@
               },
               "type": "0x6::price_info::PriceInfoObject",
               "content": {
-                "fields": {
-                  "price_info": {
-                    "fields": {
-                      "price_feed": {
-                        "fields": {
-                          "price": {
-                            "fields": {
-                              "price": {
-                                "fields": {
-                                  "negative": false,
-                                  "magnitude": "100000000"
-                                }
-                              },
-                              "expo": {
-                                "fields": {
-                                  "negative": true,
-                                  "magnitude": "8"
-                                }
-                              }
-                            }
-                          }
-                        }
+                "price_info": {
+                  "price_feed": {
+                    "price": {
+                      "price": {
+                        "negative": false,
+                        "magnitude": "100000000"
+                      },
+                      "expo": {
+                        "negative": true,
+                        "magnitude": "8"
                       }
                     }
                   }
@@ -7042,12 +6456,8 @@
               },
               "type": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "market_state": {
-                    "fields": {
-                      "open_interest": "0"
-                    }
-                  }
+                "market_state": {
+                  "open_interest": "0"
                 }
               }
             },
@@ -7150,19 +6560,11 @@
               },
               "type": "0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::vault::Vault<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::product::Product<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::fixture::TwoX>>",
               "content": {
-                "fields": {
-                  "series_state": {
-                    "fields": {
-                      "lifecycle": "Uninitialized",
-                      "maintenance_reserve": "0"
-                    }
-                  },
-                  "venue_account": {
-                    "fields": {
-                      "vec": []
-                    }
-                  }
-                }
+                "series_state": {
+                  "lifecycle": "Uninitialized",
+                  "maintenance_reserve": "0"
+                },
+                "venue_account": null
               }
             },
             {
@@ -7181,15 +6583,7 @@
               },
               "type": "0x2::coin_registry::Currency<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::vault::Vault<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::product::Product<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "treasury_cap_id": {
-                    "fields": {
-                      "vec": [
-                        "0x0303030303030303030303030303030303030303030303030303030303030303"
-                      ]
-                    }
-                  }
-                }
+                "treasury_cap_id": "0x0303030303030303030303030303030303030303030303030303030303030303"
               }
             },
             {
@@ -7221,12 +6615,8 @@
               },
               "type": "0x2::coin::TreasuryCap<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::vault::Vault<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::product::Product<0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7::fixture::TwoX>>>",
               "content": {
-                "fields": {
-                  "total_supply": {
-                    "fields": {
-                      "value": "0"
-                    }
-                  }
+                "total_supply": {
+                  "value": "0"
                 }
               }
             },
@@ -7279,9 +6669,7 @@
               },
               "type": "0x2::coin::Coin<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "balance": "100000000"
-                }
+                "balance": "100000000"
               }
             },
             {
@@ -7303,28 +6691,16 @@
               },
               "type": "0x6::price_info::PriceInfoObject",
               "content": {
-                "fields": {
-                  "price_info": {
-                    "fields": {
-                      "price_feed": {
-                        "fields": {
-                          "price": {
-                            "fields": {
-                              "price": {
-                                "fields": {
-                                  "negative": false,
-                                  "magnitude": "100000000"
-                                }
-                              },
-                              "expo": {
-                                "fields": {
-                                  "negative": true,
-                                  "magnitude": "8"
-                                }
-                              }
-                            }
-                          }
-                        }
+                "price_info": {
+                  "price_feed": {
+                    "price": {
+                      "price": {
+                        "negative": false,
+                        "magnitude": "100000000"
+                      },
+                      "expo": {
+                        "negative": true,
+                        "magnitude": "8"
                       }
                     }
                   }
@@ -7349,12 +6725,8 @@
               },
               "type": "0x3::clearing_house::ClearingHouse<0x2::usdc::USDC>",
               "content": {
-                "fields": {
-                  "market_state": {
-                    "fields": {
-                      "open_interest": "0"
-                    }
-                  }
+                "market_state": {
+                  "open_interest": "0"
                 }
               }
             },

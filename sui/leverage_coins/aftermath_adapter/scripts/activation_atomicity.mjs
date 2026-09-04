@@ -35,33 +35,33 @@ const PHASES = [
 ];
 const ROLE_POINTERS = {
     vault: {
-        lifecycle: '/content/fields/series_state/fields/lifecycle',
-        maintenanceReserve: '/content/fields/series_state/fields/maintenance_reserve',
-        venueAccount: '/content/fields/venue_account/fields/vec/0/fields/account_object_id',
-        checkpoint: '/content/fields/venue_account/fields/vec/0/fields/checkpoint/fields',
-        adminCap: '/content/fields/venue_account/fields/vec/0/fields/admin_cap/fields/vec/0/fields/id/id',
+        lifecycle: '/content/series_state/lifecycle',
+        maintenanceReserve: '/content/series_state/maintenance_reserve',
+        venueAccount: '/content/venue_account/account_object_id',
+        checkpoint: '/content/venue_account/checkpoint',
+        adminCap: '/content/venue_account/admin_cap/id',
     },
     share_currency: {
-        treasuryCapId: '/content/fields/treasury_cap_id/fields/vec/0',
+        treasuryCapId: '/content/treasury_cap_id',
     },
     collateral_currency: {},
-    treasury_cap: { totalSupply: '/content/fields/total_supply/fields/value' },
-    locked_share_coin: { balance: '/content/fields/balance' },
+    treasury_cap: { totalSupply: '/content/total_supply/value' },
+    locked_share_coin: { balance: '/content/balance' },
     aftermath_admin_cap: {},
     aftermath_transfer_policy: {},
     aftermath_account: {
-        accountNumber: '/content/fields/account_id',
-        collateral: '/content/fields/collateral/fields/value',
+        accountNumber: '/content/account_id',
+        collateral: '/content/collateral/value',
     },
     registry: {},
-    seed_coin: { balance: '/content/fields/balance' },
+    seed_coin: { balance: '/content/balance' },
     collateral_price_info: {
-        priceNegative: '/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/negative',
-        priceMagnitude: '/content/fields/price_info/fields/price_feed/fields/price/fields/price/fields/magnitude',
-        exponentNegative: '/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/negative',
-        exponentMagnitude: '/content/fields/price_info/fields/price_feed/fields/price/fields/expo/fields/magnitude',
+        priceNegative: '/content/price_info/price_feed/price/price/negative',
+        priceMagnitude: '/content/price_info/price_feed/price/price/magnitude',
+        exponentNegative: '/content/price_info/price_feed/price/expo/negative',
+        exponentMagnitude: '/content/price_info/price_feed/price/expo/magnitude',
     },
-    clearing_house: { marketState: '/content/fields/market_state/fields' },
+    clearing_house: { marketState: '/content/market_state' },
     protocol: {},
     base_oracle: {},
     collateral_oracle: {},
@@ -71,11 +71,18 @@ const ROLE_POINTERS = {
 const ROLE_SELECTORS = Object.fromEntries(
     Object.entries(ROLE_POINTERS).map(([role, pointers]) => [role, Object.keys(pointers)]),
 );
-const OPTIONAL_STATE_SELECTORS = new Set([
-    'vault.venueAccount',
-    'vault.checkpoint',
-    'vault.adminCap',
-]);
+const OPTION_ROOTS_BY_SELECTOR = {
+    'vault.venueAccount': ['/content/venue_account'],
+    'vault.checkpoint': ['/content/venue_account'],
+    'vault.adminCap': ['/content/venue_account', '/content/venue_account/admin_cap'],
+    'share_currency.treasuryCapId': ['/content/treasury_cap_id'],
+};
+const SELECTOR_VALUE_KIND = {
+    'vault.venueAccount': 'address',
+    'vault.checkpoint': 'object',
+    'vault.adminCap': 'address',
+    'share_currency.treasuryCapId': 'address',
+};
 const REQUIRED_TRACKED_ROLES = Object.keys(ROLE_SELECTORS);
 const SUCCESS_EFFECT_BY_ROLE = {
     vault: 'mutated',
@@ -308,12 +315,23 @@ function jsonPointer(root, pointer, path) {
 }
 
 function statePointer(root, tracked, name, path) {
-    try {
-        return jsonPointer(root, tracked.selectors[name], path);
-    } catch (error) {
-        if (OPTIONAL_STATE_SELECTORS.has(`${tracked.role}.${name}`)) return null;
-        throw error;
+    const selector = `${tracked.role}.${name}`;
+    for (const pointer of OPTION_ROOTS_BY_SELECTOR[selector] ?? []) {
+        const option = jsonPointer(root, pointer, path);
+        if (option === null) return null;
+        if (pointer !== tracked.selectors[name]
+            && (typeof option !== 'object' || Array.isArray(option))) {
+            fail(`${path}: malformed Option; expected null or decoded object`);
+        }
     }
+    const value = jsonPointer(root, tracked.selectors[name], path);
+    if (SELECTOR_VALUE_KIND[selector] === 'address') {
+        const address = expectAddress(value, path);
+        if (value !== address) fail(`${path}: expected canonical address`);
+        return address;
+    }
+    if (SELECTOR_VALUE_KIND[selector] === 'object') return canonical(expectObject(value, path));
+    return value;
 }
 
 function validateBinding(binding, path) {
@@ -1355,7 +1373,7 @@ function validateFixture(fixture) {
         'schemaVersion', 'fixtureKind', 'gasDifferencePolicy',
         'productionOperationsSha256', 'baseline', 'success', 'failures',
     ]);
-    if (fixture.schemaVersion !== 3 || fixture.fixtureKind !== 'canonical-evidence-validator') {
+    if (fixture.schemaVersion !== 4 || fixture.fixtureKind !== 'canonical-evidence-validator') {
         fail('fixture: unsupported schema or kind');
     }
     if (fixture.gasDifferencePolicy !== 'gas-only') fail('fixture: rollback may allow gas changes only');
@@ -1676,7 +1694,7 @@ function selfTest() {
         ['expected non-empty string', (object) => { object.digest = ''; }],
         ['field set mismatch', (object) => { delete object.content; }],
         ['content selected fields', (object) => {
-            object.content.fields.series_state.fields.lifecycle = 'Active';
+            object.content.series_state.lifecycle = 'Active';
         }],
     ];
     for (const [message, mutate] of stateCases) {
@@ -1690,6 +1708,65 @@ function selfTest() {
         passed += 1;
     }
 
+    const optionTracked = {
+        role: 'vault',
+        selectors: {
+            venueAccount: '/content/venue_account/account_object_id',
+            adminCap: '/content/venue_account/admin_cap/id',
+        },
+    };
+    const optionAccountId = '0x034401905bebdf8c04f3cd5f04f442a39372c8dc321c29edfb4f9cb30b23ab96';
+    const optionAdminCapId = '0x5ef2fcf809fb9535ea0aeaea421f683026f06c34569aafc42bcde652ef6dd270';
+    const optionSome = {
+        content: {
+            venue_account: {
+                account_object_id: optionAccountId,
+                admin_cap: { id: optionAdminCapId },
+            },
+        },
+    };
+    assertEqual(
+        statePointer(optionSome, optionTracked, 'venueAccount', 'option.some'),
+        optionAccountId,
+        'option.some',
+    );
+    passed += 1;
+    assertEqual(
+        statePointer({ content: { venue_account: null } }, optionTracked, 'venueAccount', 'option.none'),
+        null,
+        'option.none',
+    );
+    passed += 1;
+    assertEqual(
+        statePointer(
+            { content: { venue_account: { account_object_id: optionAccountId, admin_cap: null } } },
+            optionTracked,
+            'adminCap',
+            'option.nestedNone',
+        ),
+        null,
+        'option.nestedNone',
+    );
+    passed += 1;
+    expectFailure('does not exist', () => statePointer(
+        { content: {} }, optionTracked, 'venueAccount', 'option.missing',
+    ));
+    passed += 1;
+    expectFailure('does not exist', () => statePointer(
+        { content: { venue_account: { fields: { vec: [] } } } },
+        optionTracked,
+        'venueAccount',
+        'option.malformed',
+    ));
+    passed += 1;
+    expectFailure('does not exist', () => statePointer(
+        { content: { venue_account: { account_object_id: optionAccountId } } },
+        optionTracked,
+        'adminCap',
+        'option.missingNested',
+    ));
+    passed += 1;
+
     const production = `statement();\n${PHASES[0].marker}\nnext();`;
     const instrumented = `statement();\n${PHASES[0].marker}\nabort 9101;\nnext();`;
     assertInstrumentedSource(production, instrumented, PHASES[0]);
@@ -1701,7 +1778,7 @@ function selfTest() {
     ));
     passed += 1;
 
-    process.stdout.write(`activation_atomicity self-test: PASS ${passed}/46 cases\n`);
+    process.stdout.write(`activation_atomicity self-test: PASS ${passed}/52 cases\n`);
 }
 
 function live(configPath) {
