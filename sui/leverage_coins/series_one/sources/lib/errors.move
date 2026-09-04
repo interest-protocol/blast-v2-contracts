@@ -270,6 +270,14 @@ const EInvalidObservationLotSize: u64 = 76;
 /// A normalized position must be flat or use positive, lot-aligned base and notional.
 const EInvalidPositionObservation: u64 = 77;
 
+#[test_only]
+/// An order exceeds the live per-order maximum notional.
+const EOrderNotionalExceedsMaximum: u64 = 78;
+
+#[test_only]
+/// A structurally valid position observation does not satisfy activation policy.
+const EInvalidInitializationObservation: u64 = 79;
+
 macro public(package) fun zero_amount(): u64 {
     0
 }
@@ -528,4 +536,12 @@ macro public(package) fun invalid_observation_lot_size(): u64 {
 
 macro public(package) fun invalid_position_observation(): u64 {
     77
+}
+
+macro public(package) fun order_notional_exceeds_maximum(): u64 {
+    78
+}
+
+macro public(package) fun invalid_initialization_observation(): u64 {
+    79
 }

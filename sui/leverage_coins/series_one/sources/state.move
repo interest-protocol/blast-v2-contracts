@@ -9,10 +9,12 @@
 module blast_leverage_series_one::state;
 
 use blast_leverage_series_one::{
+    accounting_math,
     acl::AdminWitness,
     bounded_value::{Self, BoundedValue},
     constants,
     lifecycle::{Self, Lifecycle},
+    observation::{FundingSettlement, PositionObservation},
     policy::TierPolicy,
 };
 
@@ -60,6 +62,260 @@ public fun new<Product>(
     }
 }
 
+/// Returns the seed position's target notional from reserve-excluded shareholder NAV.
+///
+/// Both inputs and the result use atomic collateral units. The target rounds
+/// down so the planned opening order never exceeds the fixed target because of
+/// integer remainder. This read is available only before activation and checks
+/// reserve backing, positive NAV, and the immutable NAV cap before sizing.
+public fun initialization_target_notional<Product>(
+    self: &State<Product>,
+    seed_venue_equity: u64,
+    seed_reserve: u64,
+): u64 {
+    self.lifecycle.assert_can_activate();
+    assert!(
+        accounting_math::is_reserve_backed(seed_venue_equity, seed_reserve),
+        blast_leverage_series_one::errors::maintenance_reserve_exceeds_equity!(),
+    );
+    assert!(
+        accounting_math::is_shareholder_nav_positive(seed_venue_equity, seed_reserve),
+        blast_leverage_series_one::errors::invalid_nav!(),
+    );
+
+    let seed_nav = accounting_math::shareholder_nav(seed_venue_equity, seed_reserve);
+    self.tier_policy.assert_within_nav_cap(seed_nav);
+
+    accounting_math::target_notional_from_equity_down(
+        seed_venue_equity,
+        seed_reserve,
+        self.tier_policy.rebalance_policy().target_bps(),
+    )
+}
+
+/// Rejects one adapter order above the live atomic-collateral notional limit.
+public fun assert_order_notional_allowed<Product>(
+    self: &State<Product>,
+    order_notional: u64,
+) {
+    assert!(
+        order_notional <= self.max_order_notional.current(),
+        blast_leverage_series_one::errors::order_notional_exceeds_maximum!(),
+    );
+}
+
+/// Activates one fully observed long or short seed.
+///
+/// Returns the seed's reserve-excluded shareholder NAV in atomic collateral
+/// units. The adapter must authenticate the linear observation before calling
+/// this function. Every lifecycle, accounting, valuation, position, venue,
+/// capacity, leverage, and minimum-operation guard runs before reserve or
+/// lifecycle mutation. No administrative witness is accepted after State
+/// construction.
+public fun initialize<Product>(
+    self: &mut State<Product>,
+    observation: PositionObservation,
+    seed_reserve: u64,
+    reference_time_ms: u64,
+): u64 {
+    self.lifecycle.assert_can_activate();
+
+    let (
+        venue_equity,
+        absolute_base,
+        absolute_notional,
+        lot_size,
+        observed_side,
+        pending_order_count,
+        margin_safe,
+        venue_operational,
+        checkpoint_clean,
+        base_index,
+        collateral_oracle,
+        mark_price,
+    ) = observation.unpack_position();
+    let (base_index_price, base_confidence, base_publish_time_ms) =
+        base_index.unpack_price();
+    let (collateral_price, collateral_confidence, collateral_publish_time_ms) =
+        collateral_oracle.unpack_price();
+
+    assert!(
+        accounting_math::is_reserve_backed(venue_equity, seed_reserve),
+        blast_leverage_series_one::errors::maintenance_reserve_exceeds_equity!(),
+    );
+    assert!(
+        accounting_math::is_shareholder_nav_positive(venue_equity, seed_reserve),
+        blast_leverage_series_one::errors::invalid_nav!(),
+    );
+
+    let valuation_policy = self.tier_policy.valuation_policy();
+    valuation_policy.assert_price_fresh(base_publish_time_ms, reference_time_ms);
+    valuation_policy.assert_confidence_within_bound(base_confidence, base_index_price);
+    valuation_policy.assert_price_fresh(collateral_publish_time_ms, reference_time_ms);
+    valuation_policy.assert_confidence_within_bound(collateral_confidence, collateral_price);
+    valuation_policy.assert_mark_within_index_divergence(mark_price, base_index_price);
+    assert!(
+        observed_side == self.tier_policy.side(),
+        blast_leverage_series_one::errors::invalid_initialization_observation!(),
+    );
+    assert!(
+        pending_order_count == 0,
+        blast_leverage_series_one::errors::invalid_initialization_observation!(),
+    );
+    assert!(
+        venue_operational,
+        blast_leverage_series_one::errors::invalid_initialization_observation!(),
+    );
+    assert!(
+        checkpoint_clean,
+        blast_leverage_series_one::errors::invalid_initialization_observation!(),
+    );
+    assert!(
+        margin_safe,
+        blast_leverage_series_one::errors::invalid_initialization_observation!(),
+    );
+
+    let seed_nav = accounting_math::shareholder_nav(venue_equity, seed_reserve);
+    self.tier_policy.assert_within_nav_cap(seed_nav);
+    let rebalance_policy = self.tier_policy.rebalance_policy();
+    let leverage_bps = accounting_math::accounting_leverage_bps_up(
+        absolute_notional,
+        venue_equity,
+        seed_reserve,
+    );
+    assert!(
+        rebalance_policy.is_healthy(leverage_bps),
+        blast_leverage_series_one::errors::invalid_initialization_observation!(),
+    );
+    assert!(
+        accounting_math::is_exposure_above_minimum_operation(
+            absolute_base,
+            lot_size,
+            self.tier_policy.min_exposure_lots(),
+        ),
+        blast_leverage_series_one::errors::invalid_initialization_observation!(),
+    );
+
+    self.lifecycle.activate();
+    self.maintenance_reserve = seed_reserve;
+
+    seed_nav
+}
+
+/// Applies one adapter-authenticated funding classification to the reserve.
+///
+/// Returns `(absorbed_by_reserve, uncovered_cost)` in atomic collateral units.
+/// A credit or no-funding classification leaves the reserve unchanged. The
+/// adapter owns exact-once funding checkpoint authentication; Series1 stores
+/// no venue cursor and never infers funding from an equity delta.
+public fun settle_funding<Product>(
+    self: &mut State<Product>,
+    settlement: FundingSettlement,
+): (u64, u64) {
+    let (_, is_cost, amount) = settlement.unpack_funding();
+
+    if (is_cost) {
+        let (reserve_after, absorbed, uncovered) = accounting_math::absorb_funding_cost(
+            self.maintenance_reserve,
+            amount,
+        );
+        self.maintenance_reserve = reserve_after;
+
+        (absorbed, uncovered)
+    } else {
+        (0, 0)
+    }
+}
+
+/// Synchronizes objective health without increasing risk or moving lifecycle backward.
+///
+/// Returns true only when this call changes `Active` to `ReduceOnly`. Every
+/// observation is consumed once. Objective failures use non-aborting
+/// predicates so degradation commits instead of rolling back. An uninitialized
+/// State aborts; `ReduceOnly`, `ShutdownPending`, and `ShutdownSettled` can only
+/// remain unchanged.
+public fun sync_health<Product>(
+    self: &mut State<Product>,
+    observation: PositionObservation,
+    share_supply: u64,
+    reference_time_ms: u64,
+): bool {
+    self.lifecycle.assert_initialized();
+    let was_active = self.lifecycle.is_active();
+
+    let (
+        venue_equity,
+        absolute_base,
+        absolute_notional,
+        lot_size,
+        observed_side,
+        pending_order_count,
+        margin_safe,
+        venue_operational,
+        checkpoint_clean,
+        base_index,
+        collateral_oracle,
+        mark_price,
+    ) = observation.unpack_position();
+    let (base_index_price, base_confidence, base_publish_time_ms) =
+        base_index.unpack_price();
+    let (collateral_price, collateral_confidence, collateral_publish_time_ms) =
+        collateral_oracle.unpack_price();
+    let valuation_policy = self.tier_policy.valuation_policy();
+    let rebalance_policy = self.tier_policy.rebalance_policy();
+    let min_exposure_lots = self.tier_policy.min_exposure_lots();
+
+    let is_healthy = accounting_math::is_reserve_backed(
+        venue_equity,
+        self.maintenance_reserve,
+    ) && accounting_math::is_shareholder_nav_positive(
+        venue_equity,
+        self.maintenance_reserve,
+    ) && valuation_policy.is_price_fresh(
+        base_publish_time_ms,
+        reference_time_ms,
+    ) && valuation_policy.is_confidence_within_bound(
+        base_confidence,
+        base_index_price,
+    ) && valuation_policy.is_price_fresh(
+        collateral_publish_time_ms,
+        reference_time_ms,
+    ) && valuation_policy.is_confidence_within_bound(
+        collateral_confidence,
+        collateral_price,
+    ) && valuation_policy.is_mark_within_index_divergence(
+        mark_price,
+        base_index_price,
+    ) && observed_side == self.tier_policy.side()
+        && pending_order_count == 0
+        && venue_operational
+        && checkpoint_clean
+        && margin_safe
+        && accounting_math::is_accounting_leverage_below_limit(
+            absolute_notional,
+            venue_equity,
+            self.maintenance_reserve,
+            rebalance_policy.hard_cap_bps(),
+        )
+        && accounting_math::is_exposure_above_minimum_operation(
+            absolute_base,
+            lot_size,
+            min_exposure_lots,
+        )
+        && accounting_math::is_redemption_possible(
+            absolute_base,
+            share_supply,
+            lot_size,
+            min_exposure_lots,
+        );
+
+    if (!is_healthy) {
+        self.lifecycle.degrade_to_reduce_only();
+    };
+
+    was_active && !is_healthy
+}
+
 /// Updates the live per-call maximum order notional within its frozen bounds.
 ///
 /// This value limits the absolute atomic-USDC notional of one adapter order.
@@ -102,6 +358,12 @@ public fun is_uninitialized_for_testing<Product>(self: &State<Product>): bool {
 }
 
 #[test_only]
+/// Returns whether the embedded lifecycle is active.
+public fun is_active_for_testing<Product>(self: &State<Product>): bool {
+    self.lifecycle.is_active()
+}
+
+#[test_only]
 /// Returns the initial and live maintenance reserve.
 public fun maintenance_reserve_for_testing<Product>(self: &State<Product>): u64 {
     self.maintenance_reserve
@@ -133,6 +395,18 @@ public fun set_shutdown_pending_for_testing<Product>(self: &mut State<Product>) 
 /// Returns whether the lifecycle is shutdown-pending.
 public fun is_shutdown_pending_for_testing<Product>(self: &State<Product>): bool {
     self.lifecycle.is_shutdown_pending()
+}
+
+#[test_only]
+/// Forces shutdown-settled state for focused monotonicity tests.
+public fun set_shutdown_settled_for_testing<Product>(self: &mut State<Product>) {
+    self.lifecycle = lifecycle::shutdown_settled_for_testing();
+}
+
+#[test_only]
+/// Returns whether the lifecycle is shutdown-settled.
+public fun is_shutdown_settled_for_testing<Product>(self: &State<Product>): bool {
+    self.lifecycle.is_shutdown_settled()
 }
 
 #[test_only]

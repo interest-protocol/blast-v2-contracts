@@ -131,3 +131,16 @@ fun observation_error_registry_is_stable() {
     assert_eq!(blast_leverage_series_one::errors::invalid_observation_lot_size!(), 76);
     assert_eq!(blast_leverage_series_one::errors::invalid_position_observation!(), 77);
 }
+
+/// Pins the activation and per-order State diagnostics appended after observations.
+#[test]
+fun state_kernel_error_registry_is_stable() {
+    assert_eq!(
+        blast_leverage_series_one::errors::order_notional_exceeds_maximum!(),
+        78,
+    );
+    assert_eq!(
+        blast_leverage_series_one::errors::invalid_initialization_observation!(),
+        79,
+    );
+}

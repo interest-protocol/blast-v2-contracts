@@ -1,6 +1,5 @@
 // `blast_leverage_series_one::errors` centralizes package abort codes through zero-cost macros.
-// This narrow suppression preserves caller-local abort locations and the stable code map in
-// `README.md`.
+// This narrow suppression preserves caller-local abort locations and stable codes pinned by tests.
 #[allow(lint(abort_without_constant))]
 /// Closed lifecycle and operation permissions for one future Series1 Vault.
 module blast_leverage_series_one::lifecycle;
@@ -9,10 +8,10 @@ module blast_leverage_series_one::lifecycle;
 
 /// Consensus lifecycle for one Series1 Vault.
 ///
-/// The value is non-copyable. New Vaults start uninitialized. This pure slice
-/// exposes no activation, resume, or settlement-finalization transition because
-/// those operations require authority, venue, and custody proofs from the
-/// future Vault owner.
+/// The value is non-copyable. New Vaults start uninitialized. Activation is
+/// available only to `State` after it proves the complete seed
+/// observation. Resume and settlement finalization remain absent because they
+/// require later authority, venue, and custody proofs.
 ///
 /// The value is droppable so transitions can assign through `&mut`, which means
 /// the type system alone cannot stop an in-package module from overwriting a
@@ -73,6 +72,29 @@ public(package) fun is_shutdown_settled(self: &Lifecycle): bool {
         Lifecycle::ShutdownSettled => true,
         _ => false,
     }
+}
+
+/// Rejects any lifecycle that cannot begin the one-time activation proof.
+public(package) fun assert_can_activate(self: &Lifecycle) {
+    assert!(
+        self.is_uninitialized(),
+        blast_leverage_series_one::errors::invalid_lifecycle_transition!(),
+    );
+}
+
+/// Rejects health synchronization before the product has activated.
+public(package) fun assert_initialized(self: &Lifecycle) {
+    assert!(
+        !self.is_uninitialized(),
+        blast_leverage_series_one::errors::invalid_lifecycle_transition!(),
+    );
+}
+
+/// Activates a fully proved seed exactly once.
+public(package) fun activate(self: &mut Lifecycle) {
+    self.assert_can_activate();
+
+    *self = Lifecycle::Active;
 }
 
 /// Disables new risk from the active lifecycle.
@@ -169,8 +191,8 @@ public(package) fun assert_shutdown_redemption_allowed(self: &Lifecycle) {
     );
 }
 
-// ponytail: Activation, resume, and settlement finalization stay absent until the shared Vault can
-// prove their complete authority, valuation, venue-health, and custody conditions.
+// ponytail: Resume and settlement finalization stay absent until the adapter can prove their
+// complete authority, valuation, venue-health, and custody conditions.
 
 // === Test-Only Functions ===
 

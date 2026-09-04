@@ -32,6 +32,43 @@ fun reserve_backing_detection_never_aborts() {
     assert!(!accounting_math::is_reserve_backed(max - 1, max));
 }
 
+/// Pins the non-aborting conservative leverage predicate at every unsafe width boundary.
+#[test]
+fun accounting_leverage_limit_detection_never_aborts() {
+    let max = std::u64::max_value!();
+
+    assert!(accounting_math::is_accounting_leverage_below_limit(
+        259_990,
+        100_000,
+        0,
+        26_000,
+    ));
+    assert!(!accounting_math::is_accounting_leverage_below_limit(
+        260_000,
+        100_000,
+        0,
+        26_000,
+    ));
+    assert!(!accounting_math::is_accounting_leverage_below_limit(
+        1,
+        100,
+        100,
+        26_000,
+    ));
+    assert!(!accounting_math::is_accounting_leverage_below_limit(
+        1,
+        99,
+        100,
+        26_000,
+    ));
+    assert!(!accounting_math::is_accounting_leverage_below_limit(
+        max,
+        1,
+        0,
+        26_000,
+    ));
+}
+
 /// Exhausts the small domain and ties the non-aborting health predicate to the NAV identity.
 #[test]
 fun reserve_backing_and_shareholder_nav_agree_across_the_small_domain() {

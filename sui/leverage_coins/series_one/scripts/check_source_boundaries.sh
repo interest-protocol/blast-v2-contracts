@@ -91,10 +91,19 @@ grep -q '^public fun set_max_order_notional<Product>($' "$state_file" \
   || fail "Series state must own bounded maximum-order-notional mutation."
 grep -q '^public fun enter_reduce_only<Product>($' "$state_file" \
   || fail "Series state must own the ReduceOnly lifecycle transition."
-if sed -n '/^public fun enter_reduce_only<Product>($/,/^}/p' "$state_file" \
-  | grep -q 'AdminWitness'; then
-  fail "Series state transitions after construction must rely on adapter custody."
-fi
+for state_operation in \
+  initialization_target_notional \
+  assert_order_notional_allowed \
+  initialize \
+  settle_funding \
+  sync_health \
+  set_max_order_notional \
+  enter_reduce_only; do
+  if sed -n "/^public fun $state_operation<Product>(\$/,/^}/p" "$state_file" \
+    | grep -q 'AdminWitness'; then
+    fail "Series state operations after construction must rely on adapter custody."
+  fi
+done
 
 grep -q '^public struct PriceObservation {$' "$observation_file" \
   || fail "PriceObservation must remain an ability-free linear carrier."
@@ -154,10 +163,50 @@ expected_policy_public="$(printf '%s\n' \
 [[ "$actual_policy_public" == "$expected_policy_public" ]] \
   || fail "The public policy-construction surface changed without boundary review."
 
-if production_lines "$lifecycle_file" \
-  | grep -vE '=>' \
-  | grep -E 'Lifecycle::(Active|ShutdownSettled)'; then
-  fail "Only test seams may construct Active or ShutdownSettled directly."
-fi
+actual_state_public="$({
+  production_lines "$state_file" \
+    | sed -nE 's/^[0-9]+:[[:space:]]*public[[:space:]]+fun[[:space:]]+([a-zA-Z0-9_]+).*/\1/p'
+} | sort)"
+expected_state_public="$(printf '%s\n' \
+  assert_order_notional_allowed \
+  enter_reduce_only \
+  initialization_target_notional \
+  initialize \
+  new \
+  set_max_order_notional \
+  settle_funding \
+  sync_health \
+  | sort)"
+[[ "$actual_state_public" == "$expected_state_public" ]] \
+  || fail "The production Series1 State surface changed without boundary review."
+
+actual_lifecycle_construction="$(
+  production_lines "$lifecycle_file" \
+    | grep -vE '=>' \
+    | sed -nE 's/^[0-9]+:[[:space:]]*(.*Lifecycle::(Active|ShutdownSettled).*)$/\1/p'
+)"
+[[ "$actual_lifecycle_construction" == '*self = Lifecycle::Active;' ]] \
+  || fail "Only lifecycle activation may construct Active; ShutdownSettled stays test-only."
+
+activation_calls=0
+for source_file in $(find "$package_dir/sources" -type f -name '*.move' | sort); do
+  if [[ "$source_file" != "$lifecycle_file" ]]; then
+    count="$(
+      production_lines "$source_file" \
+        | grep -Ec '(\.activate|lifecycle::activate)\(' \
+        || true
+    )"
+    activation_calls=$((activation_calls + count))
+    if production_lines "$source_file" \
+      | grep -Eq 'Lifecycle::(Uninitialized|Active|ReduceOnly|ShutdownPending|ShutdownSettled)'; then
+      fail "Only lifecycle.move may construct a production Lifecycle variant."
+    fi
+  fi
+  if production_lines "$source_file" | grep -Eq '\.lifecycle[[:space:]]*='; then
+    fail "Stored lifecycle fields may change only through lifecycle transitions."
+  fi
+done
+[[ "$activation_calls" -eq 1 ]] \
+  || fail "Exactly one production State call may invoke lifecycle activation."
 
 printf '%s\n' "Series1 source boundaries: OK"

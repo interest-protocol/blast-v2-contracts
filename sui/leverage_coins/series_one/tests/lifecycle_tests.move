@@ -48,6 +48,61 @@ fun lifecycle_variants_are_distinct() {
     assert!(shutdown_settled.is_shutdown_settled());
 }
 
+// --- Activation ---
+
+#[test]
+fun uninitialized_can_activate() {
+    let mut lifecycle = lifecycle::new();
+
+    lifecycle.activate();
+
+    assert!(lifecycle.is_active());
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EInvalidLifecycleTransition,
+    location = blast_leverage_series_one::lifecycle,
+)]
+fun active_cannot_activate_again() {
+    let mut lifecycle = lifecycle::active_for_testing();
+
+    lifecycle.activate();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EInvalidLifecycleTransition,
+    location = blast_leverage_series_one::lifecycle,
+)]
+fun reduce_only_cannot_activate() {
+    let mut lifecycle = lifecycle::reduce_only_for_testing();
+
+    lifecycle.activate();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EInvalidLifecycleTransition,
+    location = blast_leverage_series_one::lifecycle,
+)]
+fun shutdown_pending_cannot_activate() {
+    let mut lifecycle = lifecycle::shutdown_pending_for_testing();
+
+    lifecycle.activate();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EInvalidLifecycleTransition,
+    location = blast_leverage_series_one::lifecycle,
+)]
+fun shutdown_settled_cannot_activate() {
+    let mut lifecycle = lifecycle::shutdown_settled_for_testing();
+
+    lifecycle.activate();
+}
+
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidLifecycleTransition,

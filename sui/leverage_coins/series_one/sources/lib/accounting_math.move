@@ -1,6 +1,5 @@
 // `blast_leverage_series_one::errors` centralizes package abort codes through zero-cost macros. This
-// narrow suppression preserves caller-local abort locations and the stable code map documented in
-// this package's `README.md`.
+// narrow suppression preserves caller-local abort locations and stable codes pinned by tests.
 #[allow(lint(abort_without_constant))]
 /// Pure share, exposure, and maintenance-reserve accounting for one leverage Series.
 ///
@@ -17,11 +16,10 @@
 /// module cannot accidentally price shares or size exposure from venue equity.
 ///
 /// This module owns no state and cannot authenticate a funding settlement.
-/// The later Series transition must reconcile the authoritative venue funding
-/// accumulator, mutate the reserve and checkpoint atomically, and call each
-/// settlement exactly once. A priced operation must reject venue equity below
-/// the stored reserve and use a separate successful health transition for that
-/// loss state.
+/// The adapter must reconcile the authoritative venue funding accumulator and
+/// its checkpoint before it passes one linear settlement into Series1. A
+/// priced operation must reject venue equity below the stored reserve and use
+/// a separate successful health transition for that loss state.
 module blast_leverage_series_one::accounting_math;
 
 use blast_leverage_series_one::constants;
@@ -54,6 +52,34 @@ public(package) fun is_shareholder_nav_positive(
     maintenance_reserve: u64,
 ): bool {
     maintenance_reserve < venue_equity
+}
+
+/// Returns whether conservative accounting leverage is below a limit, without aborting.
+///
+/// `absolute_notional`, `venue_equity`, and `maintenance_reserve` use atomic
+/// collateral units. `leverage_limit_bps` uses leverage basis points, where
+/// 10,000 is 1x. The ratio rounds up before the strict comparison, matching
+/// `accounting_leverage_bps_up`: equality is unsafe. An unbacked reserve, zero
+/// shareholder NAV, or zero limit returns false. The widened numerator is at
+/// most `u64::MAX * 10_000`, so every `u64` input is supported without
+/// narrowing or aborting.
+public(package) fun is_accounting_leverage_below_limit(
+    absolute_notional: u64,
+    venue_equity: u64,
+    maintenance_reserve: u64,
+    leverage_limit_bps: u64,
+): bool {
+    if (maintenance_reserve >= venue_equity || leverage_limit_bps == 0) {
+        false
+    } else {
+        let nav = (venue_equity - maintenance_reserve) as u128;
+        let leverage_bps = (absolute_notional as u128).mul_div_ceil(
+            constants::basis_points_denominator!() as u128,
+            nav,
+        );
+
+        leverage_bps < (leverage_limit_bps as u128)
+    }
 }
 
 /// Returns whether base exposure exceeds the minimum operation size, without aborting.
