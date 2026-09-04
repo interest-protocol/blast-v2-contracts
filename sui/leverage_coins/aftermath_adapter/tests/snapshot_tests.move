@@ -24,17 +24,35 @@ fun unchanged_checkpoint_is_not_funding() {
 #[test]
 fun exact_positive_funding_transition_is_credit() {
     let before = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
-    let after = checkpoint(10, 2_000, 7, 8, 7, 8, 9);
+    let after = checkpoint(10, 2_000, 7, 6, 7, 8, 9);
 
-    assert!(snapshot::is_credit_for_testing(snapshot::classify_change_for_testing(&before, &after)));
+    assert!(snapshot::is_credit_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &after, false, 1_000, true)));
 }
 
 #[test]
 fun exact_negative_funding_transition_is_cost() {
     let before = checkpoint(10, 2_000, 5, 6, 7, 8, 9);
-    let after = checkpoint(10, 1_000, 7, 8, 7, 8, 9);
+    let after = checkpoint(10, 1_000, 7, 6, 7, 8, 9);
 
-    assert!(snapshot::is_cost_for_testing(snapshot::classify_change_for_testing(&before, &after)));
+    assert!(snapshot::is_cost_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &after, true, 1_000, true)));
+}
+
+#[test]
+fun short_funding_changes_only_the_short_snapshot() {
+    let before = checkpoint(10, 2_000, 5, 6, 7, 8, 9);
+    let after = checkpoint(10, 3_000, 5, 8, 7, 8, 9);
+
+    assert!(snapshot::is_credit_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &after, false, 1_000, false)));
+}
+
+#[test]
+fun wrong_funding_delta_and_inactive_snapshot_transition_are_unexpected() {
+    let before = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
+    let wrong_delta = checkpoint(10, 2_000, 7, 6, 7, 8, 9);
+    let wrong_side = checkpoint(10, 2_000, 5, 8, 7, 8, 9);
+
+    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &wrong_delta, false, 999, true)));
+    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &wrong_side, false, 1_000, true)));
 }
 
 #[test]

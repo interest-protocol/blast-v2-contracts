@@ -188,12 +188,16 @@ grep -q 'collateral_price_info: &PriceInfoObject,' "$snapshot_file" \
   || fail "Snapshot capture must authenticate the exact collateral Pyth object."
 grep -q 'price_feed::from(aftermath_feed)' "$snapshot_file" \
   || fail "Snapshot capture must bind the Aftermath feed to Pyth from()."
+grep -q 'normalize_feed_price(aftermath_price) == normalized_price' "$snapshot_file" \
+  || fail "Snapshot capture must require normalized feed/Pyth equality."
 grep -q 'market::base_oracle_price(params, base_oracle, clock)' "$snapshot_file" \
   || fail "Snapshot capture must use the bound named base oracle getter."
 grep -q 'market::collateral_oracle_price(params, collateral_oracle, clock)' "$snapshot_file" \
   || fail "Snapshot capture must use the bound named collateral oracle getter."
 grep -q 'position::compute_free_collateral' "$snapshot_file" \
   || fail "Snapshot capture must use the named venue margin getter."
+grep -q 'clearing_house.market_pause_mode() == 0 && !clearing_house.is_frozen()' "$snapshot_file" \
+  || fail "Venue operation must require allowed pause mode and not-frozen state."
 if grep -q 'for_testing.*capture' "$snapshot_file"; then
   fail "Snapshot capture must not accept caller-shaped test economics."
 fi

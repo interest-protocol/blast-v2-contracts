@@ -125,7 +125,7 @@ public(package) fun capture<Collateral>(
             side,
             position.pending_order_count(),
             !ifixed::is_neg(free_margin),
-            clearing_house.market_pause_mode() == 0,
+            clearing_house.market_pause_mode() == 0 && !clearing_house.is_frozen(),
             true,
             base_index,
             collateral_index,
@@ -136,7 +136,22 @@ public(package) fun capture<Collateral>(
 }
 
 /// Classifies only an isolated funding-snapshot and allocated-collateral change.
-public(package) fun classify_change(before: &Checkpoint, after: &Checkpoint): Change {
+public(package) fun classify_change(
+    before: &Checkpoint,
+    after: &Checkpoint,
+    funding_candidate: u256,
+    active_long: bool,
+): Change {
+    classify_change_(before, after, ifixed::is_neg(funding_candidate), ifixed::abs(funding_candidate), active_long)
+}
+
+fun classify_change_(
+    before: &Checkpoint,
+    after: &Checkpoint,
+    candidate_negative: bool,
+    candidate_magnitude: u256,
+    active_long: bool,
+): Change {
     let before = *before;
     let after = *after;
     let (
@@ -163,16 +178,20 @@ public(package) fun classify_change(before: &Checkpoint, after: &Checkpoint): Ch
         || lot_before != lot_after || ask_before != ask_after || bid_before != bid_after
         || orders_before != orders_after || pause_before != pause_after || frozen_before != frozen_after
         || imr_before != imr_after || market_imr_before != market_imr_after
-        || market_mmr_before != market_mmr_after || (long_before == long_after && short_before == short_after)
-        || long_after != market_long_before
-        || short_after != market_short_before) {
+        || market_mmr_before != market_mmr_after || candidate_magnitude == 0) {
         return Change::Unexpected
     };
-    if (allocated_after > allocated_before) {
-        return Change::FundingCredit(allocated_after - allocated_before)
+    let active_transition = if (active_long) {
+        long_before != long_after && long_after == market_long_before && short_before == short_after
+    } else {
+        short_before != short_after && short_after == market_short_before && long_before == long_after
     };
-    if (allocated_after < allocated_before) {
-        return Change::FundingCost(allocated_before - allocated_after)
+    if (!active_transition) { return Change::Unexpected };
+    if (!candidate_negative && allocated_after > allocated_before && allocated_after - allocated_before == candidate_magnitude) {
+        return Change::FundingCredit(candidate_magnitude)
+    };
+    if (candidate_negative && allocated_after < allocated_before && allocated_before - allocated_after == candidate_magnitude) {
+        return Change::FundingCost(candidate_magnitude)
     };
     Change::Unexpected
 }
@@ -196,13 +215,22 @@ fun pyth_price(price_info_object: &PriceInfoObject, aftermath_feed: &price_feed:
     let normalized_confidence = normalize_pyth_component(price::get_conf(&pyth_price), &expo, true);
     let (aftermath_price, aftermath_timestamp) = price_feed::price_and_timestamp_ms(aftermath_feed);
     assert!(
-        aftermath_price <= (std::u64::max_value!() as u128)
+        normalize_feed_price(aftermath_price) == normalized_price
             && fixed_to_u64_down_9(venue_price) == normalized_price
             && aftermath_timestamp == checked_seconds_to_millis(price::get_timestamp(&pyth_price)),
         blast_leverage_aftermath::errors::oracle_observation_mismatch!(),
     );
 
     (normalized_price, normalized_confidence, aftermath_timestamp)
+}
+
+/// Aftermath feeds at the bound source use the adapter's 9-decimal price unit.
+fun normalize_feed_price(raw_price: u128): u64 {
+    assert!(
+        raw_price <= std::u64::max_value!() as u128,
+        blast_leverage_aftermath::errors::normalization_overflow!(),
+    );
+    raw_price as u64
 }
 
 fun normalize_pyth_component(component: u64, expo: &i64::I64, round_up: bool): u64 {
@@ -317,7 +345,18 @@ public fun assert_test_seam_for_testing() {}
 
 #[test_only]
 public fun classify_change_for_testing(before: &Checkpoint, after: &Checkpoint): Change {
-    classify_change(before, after)
+    classify_change_(before, after, false, 0, true)
+}
+
+#[test_only]
+public fun classify_change_with_candidate_for_testing(
+    before: &Checkpoint,
+    after: &Checkpoint,
+    candidate_negative: bool,
+    candidate_magnitude: u256,
+    active_long: bool,
+): Change {
+    classify_change_(before, after, candidate_negative, candidate_magnitude, active_long)
 }
 
 #[test_only]
