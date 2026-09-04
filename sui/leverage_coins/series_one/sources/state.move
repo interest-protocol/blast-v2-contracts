@@ -14,7 +14,7 @@ use blast_leverage_series_one::{
     bounded_value::{Self, BoundedValue},
     constants,
     lifecycle::{Self, Lifecycle},
-    observation::{FundingSettlement, PositionObservation},
+    observation::{Self, FundingSettlement, PositionObservation},
     policy::TierPolicy,
 };
 
@@ -120,80 +120,11 @@ public fun initialize<Product>(
 ): u64 {
     self.lifecycle.assert_can_activate();
 
-    let (
-        venue_equity,
-        absolute_base,
-        absolute_notional,
-        lot_size,
-        observed_side,
-        pending_order_count,
-        margin_safe,
-        venue_operational,
-        checkpoint_clean,
-        base_index,
-        collateral_oracle,
-        mark_price,
-    ) = observation.unpack_position();
-    let (base_index_price, base_confidence, base_publish_time_ms) =
-        base_index.unpack_price();
-    let (collateral_price, collateral_confidence, collateral_publish_time_ms) =
-        collateral_oracle.unpack_price();
-
-    assert!(
-        accounting_math::is_reserve_backed(venue_equity, seed_reserve),
-        blast_leverage_series_one::errors::maintenance_reserve_exceeds_equity!(),
-    );
-    assert!(
-        accounting_math::is_shareholder_nav_positive(venue_equity, seed_reserve),
-        blast_leverage_series_one::errors::invalid_nav!(),
-    );
-
-    let valuation_policy = self.tier_policy.valuation_policy();
-    valuation_policy.assert_price_fresh(base_publish_time_ms, reference_time_ms);
-    valuation_policy.assert_confidence_within_bound(base_confidence, base_index_price);
-    valuation_policy.assert_price_fresh(collateral_publish_time_ms, reference_time_ms);
-    valuation_policy.assert_confidence_within_bound(collateral_confidence, collateral_price);
-    valuation_policy.assert_mark_within_index_divergence(mark_price, base_index_price);
-    assert!(
-        observed_side == self.tier_policy.side(),
-        blast_leverage_series_one::errors::invalid_initialization_observation!(),
-    );
-    assert!(
-        pending_order_count == 0,
-        blast_leverage_series_one::errors::invalid_initialization_observation!(),
-    );
-    assert!(
-        venue_operational,
-        blast_leverage_series_one::errors::invalid_initialization_observation!(),
-    );
-    assert!(
-        checkpoint_clean,
-        blast_leverage_series_one::errors::invalid_initialization_observation!(),
-    );
-    assert!(
-        margin_safe,
-        blast_leverage_series_one::errors::invalid_initialization_observation!(),
-    );
-
-    let seed_nav = accounting_math::shareholder_nav(venue_equity, seed_reserve);
-    self.tier_policy.assert_within_nav_cap(seed_nav);
-    let rebalance_policy = self.tier_policy.rebalance_policy();
-    let leverage_bps = accounting_math::accounting_leverage_bps_up(
-        absolute_notional,
-        venue_equity,
+    let seed_nav = validated_initialization_nav(
+        self,
+        observation,
         seed_reserve,
-    );
-    assert!(
-        rebalance_policy.is_healthy(leverage_bps),
-        blast_leverage_series_one::errors::invalid_initialization_observation!(),
-    );
-    assert!(
-        accounting_math::is_exposure_above_minimum_operation(
-            absolute_base,
-            lot_size,
-            self.tier_policy.min_exposure_lots(),
-        ),
-        blast_leverage_series_one::errors::invalid_initialization_observation!(),
+        reference_time_ms,
     );
 
     self.lifecycle.activate();
@@ -286,6 +217,10 @@ public fun sync_health<Product>(
     ) && valuation_policy.is_mark_within_index_divergence(
         mark_price,
         base_index_price,
+    ) && observation::is_position_structurally_valid(
+        absolute_base,
+        absolute_notional,
+        lot_size,
     ) && observed_side == self.tier_policy.side()
         && pending_order_count == 0
         && venue_operational
@@ -347,6 +282,102 @@ public fun enter_reduce_only<Product>(
     self: &mut State<Product>,
 ) {
     self.lifecycle.enter_reduce_only();
+}
+
+// === Private Functions ===
+
+/// Consumes and validates a complete seed without mutable access to State.
+fun validated_initialization_nav<Product>(
+    self: &State<Product>,
+    observation: PositionObservation,
+    seed_reserve: u64,
+    reference_time_ms: u64,
+): u64 {
+    let (
+        venue_equity,
+        absolute_base,
+        absolute_notional,
+        lot_size,
+        observed_side,
+        pending_order_count,
+        margin_safe,
+        venue_operational,
+        checkpoint_clean,
+        base_index,
+        collateral_oracle,
+        mark_price,
+    ) = observation.unpack_position();
+    let (base_index_price, base_confidence, base_publish_time_ms) =
+        base_index.unpack_price();
+    let (collateral_price, collateral_confidence, collateral_publish_time_ms) =
+        collateral_oracle.unpack_price();
+
+    assert!(
+        accounting_math::is_reserve_backed(venue_equity, seed_reserve),
+        blast_leverage_series_one::errors::maintenance_reserve_exceeds_equity!(),
+    );
+    assert!(
+        accounting_math::is_shareholder_nav_positive(venue_equity, seed_reserve),
+        blast_leverage_series_one::errors::invalid_nav!(),
+    );
+
+    let valuation_policy = self.tier_policy.valuation_policy();
+    valuation_policy.assert_price_fresh(base_publish_time_ms, reference_time_ms);
+    valuation_policy.assert_confidence_within_bound(base_confidence, base_index_price);
+    valuation_policy.assert_price_fresh(collateral_publish_time_ms, reference_time_ms);
+    valuation_policy.assert_confidence_within_bound(collateral_confidence, collateral_price);
+    valuation_policy.assert_mark_within_index_divergence(mark_price, base_index_price);
+    assert!(
+        observed_side == self.tier_policy.side(),
+        blast_leverage_series_one::errors::invalid_initialization_observation!(),
+    );
+    assert!(
+        pending_order_count == 0,
+        blast_leverage_series_one::errors::initialization_orders_not_empty!(),
+    );
+    assert!(
+        venue_operational,
+        blast_leverage_series_one::errors::initialization_venue_not_operational!(),
+    );
+    assert!(
+        checkpoint_clean,
+        blast_leverage_series_one::errors::initialization_checkpoint_dirty!(),
+    );
+    assert!(
+        margin_safe,
+        blast_leverage_series_one::errors::initialization_margin_unsafe!(),
+    );
+
+    let seed_nav = accounting_math::shareholder_nav(venue_equity, seed_reserve);
+    self.tier_policy.assert_within_nav_cap(seed_nav);
+    let rebalance_policy = self.tier_policy.rebalance_policy();
+    let leverage_bps = accounting_math::accounting_leverage_bps_up(
+        absolute_notional,
+        venue_equity,
+        seed_reserve,
+    );
+    assert!(
+        rebalance_policy.is_healthy(leverage_bps),
+        blast_leverage_series_one::errors::initialization_leverage_unhealthy!(),
+    );
+    assert!(
+        observation::is_position_structurally_valid(
+            absolute_base,
+            absolute_notional,
+            lot_size,
+        ),
+        blast_leverage_series_one::errors::invalid_position_observation!(),
+    );
+    assert!(
+        accounting_math::is_exposure_above_minimum_operation(
+            absolute_base,
+            lot_size,
+            self.tier_policy.min_exposure_lots(),
+        ),
+        blast_leverage_series_one::errors::initialization_exposure_below_minimum!(),
+    );
+
+    seed_nav
 }
 
 // === Test-Only Functions ===

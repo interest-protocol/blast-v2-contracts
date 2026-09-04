@@ -337,6 +337,27 @@ fun valid_short_seed_activates() {
 }
 
 #[test]
+#[expected_failure(
+    abort_code = errors::EInvalidPositionObservation,
+    location = blast_leverage_series_one::state,
+)]
+fun initialization_rejects_a_permissive_structurally_invalid_observation() {
+    let fixture = start(constants::vault_issuer_role!());
+    let mut state = new_state(&fixture, policy::long());
+
+    state.initialize(
+        standard_observation(policy::long())
+            .with_absolute_base(SEED_BASE + 1)
+            .into_health_position_observation(),
+        SEED_RESERVE,
+        REFERENCE_TIME_MS,
+    );
+
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
 fun initialization_admits_nav_cap_equality() {
     let fixture = start(constants::vault_issuer_role!());
     let mut state = new_state(&fixture, policy::long());
@@ -390,7 +411,7 @@ fun initialization_admits_both_healthy_leverage_boundaries() {
     abort_code = errors::EMaintenanceReserveExceedsEquity,
     location = blast_leverage_series_one::state,
 )]
-fun initialization_rejects_a_reserve_above_equity_first() {
+fun initialization_guard_order_checks_reserve_before_nav() {
     initialize_once(
         standard_observation(policy::long()).with_venue_equity(SEED_RESERVE - 1),
         policy::long(),
@@ -441,7 +462,7 @@ fun initialization_rejects_the_wrong_side() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidInitializationObservation,
+    abort_code = errors::EInitializationOrdersNotEmpty,
     location = blast_leverage_series_one::state,
 )]
 fun initialization_rejects_pending_orders() {
@@ -545,7 +566,7 @@ fun initialization_rejects_mark_divergence() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidInitializationObservation,
+    abort_code = errors::EInitializationVenueNotOperational,
     location = blast_leverage_series_one::state,
 )]
 fun initialization_rejects_a_paused_or_frozen_venue() {
@@ -558,7 +579,7 @@ fun initialization_rejects_a_paused_or_frozen_venue() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidInitializationObservation,
+    abort_code = errors::EInitializationCheckpointDirty,
     location = blast_leverage_series_one::state,
 )]
 fun initialization_rejects_a_dirty_checkpoint() {
@@ -571,7 +592,7 @@ fun initialization_rejects_a_dirty_checkpoint() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidInitializationObservation,
+    abort_code = errors::EInitializationMarginUnsafe,
     location = blast_leverage_series_one::state,
 )]
 fun initialization_rejects_unsafe_margin() {
@@ -584,7 +605,7 @@ fun initialization_rejects_unsafe_margin() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidInitializationObservation,
+    abort_code = errors::EInitializationLeverageUnhealthy,
     location = blast_leverage_series_one::state,
 )]
 fun initialization_rejects_leverage_one_unit_below_healthy() {
@@ -597,7 +618,7 @@ fun initialization_rejects_leverage_one_unit_below_healthy() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidInitializationObservation,
+    abort_code = errors::EInitializationLeverageUnhealthy,
     location = blast_leverage_series_one::state,
 )]
 fun initialization_rejects_leverage_one_unit_above_healthy() {
@@ -610,7 +631,7 @@ fun initialization_rejects_leverage_one_unit_above_healthy() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidInitializationObservation,
+    abort_code = errors::EInitializationExposureBelowMinimum,
     location = blast_leverage_series_one::state,
 )]
 fun initialization_rejects_base_below_the_immutable_lot_minimum() {
@@ -621,16 +642,125 @@ fun initialization_rejects_base_below_the_immutable_lot_minimum() {
     );
 }
 
-/// Pins valuation before side, pending orders before venue state, and margin before NAV.
+#[test]
+#[expected_failure(
+    abort_code = errors::EInvalidLifecycleTransition,
+    location = blast_leverage_series_one::lifecycle,
+)]
+fun initialization_guard_order_checks_lifecycle_before_reserve() {
+    let fixture = start(constants::vault_issuer_role!());
+    let mut state = initialized_state(&fixture, policy::long());
+
+    state.initialize(
+        standard_observation(policy::long())
+            .with_venue_equity(SEED_RESERVE - 1)
+            .into_position_observation(),
+        SEED_RESERVE,
+        REFERENCE_TIME_MS,
+    );
+
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EInvalidNav,
+    location = blast_leverage_series_one::state,
+)]
+fun initialization_guard_order_checks_nav_before_base_freshness() {
+    initialize_once(
+        standard_observation(policy::long())
+            .with_venue_equity(SEED_RESERVE)
+            .with_base_publish_time_ms(69_999),
+        policy::long(),
+        SEED_RESERVE,
+    );
+}
+
 #[test]
 #[expected_failure(
     abort_code = errors::EStaleValuation,
     location = blast_leverage_series_one::policy,
 )]
-fun initialization_guard_order_checks_valuation_before_position_state() {
+fun initialization_guard_order_checks_base_freshness_before_base_confidence() {
     initialize_once(
         standard_observation(policy::long())
             .with_base_publish_time_ms(69_999)
+            .with_base_confidence(10_000_001),
+        policy::long(),
+        SEED_RESERVE,
+    );
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EConfidenceExceedsBound,
+    location = blast_leverage_series_one::policy,
+)]
+fun initialization_guard_order_checks_base_before_collateral_valuation() {
+    initialize_once(
+        standard_observation(policy::long())
+            .with_base_confidence(10_000_001)
+            .with_collateral_publish_time_ms(69_999),
+        policy::long(),
+        SEED_RESERVE,
+    );
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EStaleValuation,
+    location = blast_leverage_series_one::policy,
+)]
+fun initialization_guard_order_checks_collateral_freshness_before_confidence() {
+    initialize_once(
+        standard_observation(policy::long())
+            .with_collateral_publish_time_ms(69_999)
+            .with_collateral_confidence(10_000_001),
+        policy::long(),
+        SEED_RESERVE,
+    );
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EConfidenceExceedsBound,
+    location = blast_leverage_series_one::policy,
+)]
+fun initialization_guard_order_checks_collateral_confidence_before_mark() {
+    initialize_once(
+        standard_observation(policy::long())
+            .with_collateral_confidence(10_000_001)
+            .with_mark_price(1_050_000_001),
+        policy::long(),
+        SEED_RESERVE,
+    );
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EMarkIndexDivergenceExceedsBound,
+    location = blast_leverage_series_one::policy,
+)]
+fun initialization_guard_order_checks_mark_before_side() {
+    initialize_once(
+        standard_observation(policy::long())
+            .with_mark_price(1_050_000_001)
+            .with_observed_side(policy::short()),
+        policy::long(),
+        SEED_RESERVE,
+    );
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EInvalidInitializationObservation,
+    location = blast_leverage_series_one::state,
+)]
+fun initialization_guard_order_checks_side_before_orders() {
+    initialize_once(
+        standard_observation(policy::long())
             .with_observed_side(policy::short())
             .with_pending_order_count(1),
         policy::long(),
@@ -640,14 +770,43 @@ fun initialization_guard_order_checks_valuation_before_position_state() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidInitializationObservation,
+    abort_code = errors::EInitializationOrdersNotEmpty,
     location = blast_leverage_series_one::state,
 )]
-fun initialization_guard_order_checks_orders_before_venue_and_margin() {
+fun initialization_guard_order_checks_orders_before_venue() {
     initialize_once(
         standard_observation(policy::long())
             .with_pending_order_count(1)
+            .with_venue_operational(false),
+        policy::long(),
+        SEED_RESERVE,
+    );
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EInitializationVenueNotOperational,
+    location = blast_leverage_series_one::state,
+)]
+fun initialization_guard_order_checks_venue_before_checkpoint() {
+    initialize_once(
+        standard_observation(policy::long())
             .with_venue_operational(false)
+            .with_checkpoint_clean(false),
+        policy::long(),
+        SEED_RESERVE,
+    );
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EInitializationCheckpointDirty,
+    location = blast_leverage_series_one::state,
+)]
+fun initialization_guard_order_checks_checkpoint_before_margin() {
+    initialize_once(
+        standard_observation(policy::long())
+            .with_checkpoint_clean(false)
             .with_margin_safe(false),
         policy::long(),
         SEED_RESERVE,
@@ -656,15 +815,29 @@ fun initialization_guard_order_checks_orders_before_venue_and_margin() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidInitializationObservation,
+    abort_code = errors::EInitializationMarginUnsafe,
     location = blast_leverage_series_one::state,
 )]
-fun initialization_guard_order_checks_margin_before_nav_cap_and_leverage() {
+fun initialization_guard_order_checks_margin_before_nav_cap() {
+    initialize_once(
+        standard_observation(policy::long())
+            .with_margin_safe(false)
+            .with_venue_equity(NAV_CAP + SEED_RESERVE + 1),
+        policy::long(),
+        SEED_RESERVE,
+    );
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::ESeriesNavCapExceeded,
+    location = blast_leverage_series_one::policy,
+)]
+fun initialization_guard_order_checks_nav_cap_before_leverage() {
     initialize_once(
         standard_observation(policy::long())
             .with_venue_equity(NAV_CAP + SEED_RESERVE + 1)
-            .with_absolute_notional(std::u64::max_value!())
-            .with_margin_safe(false),
+            .with_absolute_notional(std::u64::max_value!()),
         policy::long(),
         SEED_RESERVE,
     );
@@ -672,7 +845,7 @@ fun initialization_guard_order_checks_margin_before_nav_cap_and_leverage() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidInitializationObservation,
+    abort_code = errors::EInitializationLeverageUnhealthy,
     location = blast_leverage_series_one::state,
 )]
 fun initialization_guard_order_checks_leverage_before_minimum_exposure() {
@@ -817,6 +990,46 @@ fun stale_oracle_degrades_health_once() {
 fun low_confidence_oracle_degrades_health_once() {
     assert_health_degrades(
         standard_observation(policy::long()).with_collateral_confidence(10_000_001),
+        HEALTH_SHARE_SUPPLY,
+    );
+}
+
+#[test]
+fun zero_base_price_degrades_health_once() {
+    assert_health_degrades(
+        standard_observation(policy::long()).with_base_price(0),
+        HEALTH_SHARE_SUPPLY,
+    );
+}
+
+#[test]
+fun zero_collateral_price_degrades_health_once() {
+    assert_health_degrades(
+        standard_observation(policy::long()).with_collateral_price(0),
+        HEALTH_SHARE_SUPPLY,
+    );
+}
+
+#[test]
+fun zero_mark_price_degrades_health_once() {
+    assert_health_degrades(
+        standard_observation(policy::long()).with_mark_price(0),
+        HEALTH_SHARE_SUPPLY,
+    );
+}
+
+#[test]
+fun zero_lot_size_degrades_health_once() {
+    assert_health_degrades(
+        standard_observation(policy::long()).with_lot_size(0),
+        HEALTH_SHARE_SUPPLY,
+    );
+}
+
+#[test]
+fun structurally_invalid_health_position_degrades_health_once() {
+    assert_health_degrades(
+        standard_observation(policy::long()).with_absolute_notional(0),
         HEALTH_SHARE_SUPPLY,
     );
 }
@@ -1063,13 +1276,13 @@ fun assert_health_degrades(spec: ObservationSpec, share_supply: u64) {
     let mut state = initialized_state(&fixture, policy::long());
 
     assert!(state.sync_health(
-        spec.into_position_observation(),
+        spec.into_health_position_observation(),
         share_supply,
         REFERENCE_TIME_MS,
     ));
     assert!(state.is_reduce_only_for_testing());
     assert!(!state.sync_health(
-        spec.into_position_observation(),
+        spec.into_health_position_observation(),
         share_supply,
         REFERENCE_TIME_MS,
     ));
@@ -1139,6 +1352,46 @@ fun into_position_observation(self: ObservationSpec): PositionObservation {
     )
 }
 
+fun into_health_position_observation(self: ObservationSpec): PositionObservation {
+    let ObservationSpec {
+        venue_equity,
+        absolute_base,
+        absolute_notional,
+        lot_size,
+        observed_side,
+        pending_order_count,
+        margin_safe,
+        venue_operational,
+        checkpoint_clean,
+        base_price,
+        base_confidence,
+        base_publish_time_ms,
+        collateral_price,
+        collateral_confidence,
+        collateral_publish_time_ms,
+        mark_price,
+    } = self;
+
+    observation::new_health_position(
+        venue_equity,
+        absolute_base,
+        absolute_notional,
+        lot_size,
+        observed_side,
+        pending_order_count,
+        margin_safe,
+        venue_operational,
+        checkpoint_clean,
+        observation::new_health_price(base_price, base_confidence, base_publish_time_ms),
+        observation::new_health_price(
+            collateral_price,
+            collateral_confidence,
+            collateral_publish_time_ms,
+        ),
+        mark_price,
+    )
+}
+
 fun with_venue_equity(mut self: ObservationSpec, venue_equity: u64): ObservationSpec {
     self.venue_equity = venue_equity;
     self
@@ -1151,6 +1404,11 @@ fun with_absolute_base(mut self: ObservationSpec, absolute_base: u64): Observati
 
 fun with_absolute_notional(mut self: ObservationSpec, absolute_notional: u64): ObservationSpec {
     self.absolute_notional = absolute_notional;
+    self
+}
+
+fun with_lot_size(mut self: ObservationSpec, lot_size: u64): ObservationSpec {
+    self.lot_size = lot_size;
     self
 }
 
@@ -1193,6 +1451,11 @@ fun with_base_confidence(mut self: ObservationSpec, base_confidence: u64): Obser
     self
 }
 
+fun with_base_price(mut self: ObservationSpec, base_price: u64): ObservationSpec {
+    self.base_price = base_price;
+    self
+}
+
 fun with_base_publish_time_ms(
     mut self: ObservationSpec,
     base_publish_time_ms: u64,
@@ -1206,6 +1469,14 @@ fun with_collateral_confidence(
     collateral_confidence: u64,
 ): ObservationSpec {
     self.collateral_confidence = collateral_confidence;
+    self
+}
+
+fun with_collateral_price(
+    mut self: ObservationSpec,
+    collateral_price: u64,
+): ObservationSpec {
+    self.collateral_price = collateral_price;
     self
 }
 

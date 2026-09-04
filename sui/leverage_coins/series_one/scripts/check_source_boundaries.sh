@@ -91,19 +91,25 @@ grep -q '^public fun set_max_order_notional<Product>($' "$state_file" \
   || fail "Series state must own bounded maximum-order-notional mutation."
 grep -q '^public fun enter_reduce_only<Product>($' "$state_file" \
   || fail "Series state must own the ReduceOnly lifecycle transition."
-for state_operation in \
-  initialization_target_notional \
-  assert_order_notional_allowed \
-  initialize \
-  settle_funding \
-  sync_health \
-  set_max_order_notional \
-  enter_reduce_only; do
-  if sed -n "/^public fun $state_operation<Product>(\$/,/^}/p" "$state_file" \
-    | grep -q 'AdminWitness'; then
-    fail "Series state operations after construction must rely on adapter custody."
-  fi
-done
+grep -q '^    acl::AdminWitness,$' "$state_file" \
+  || fail "State must import AdminWitness without an alias."
+if production_lines "$state_file" | grep -Eq 'AdminWitness[[:space:]]+as[[:space:]]'; then
+  fail "State must not alias AdminWitness around the function scanner."
+fi
+state_admin_witness_violations="$(
+  production_lines "$state_file" \
+    | awk '
+      /^[0-9]+:[[:space:]]*(macro[[:space:]]+)?(public(\(package\))?[[:space:]]+)?fun[[:space:]]+/ {
+        declaration = $0
+        sub(/^[0-9]+:[[:space:]]*(macro[[:space:]]+)?(public(\(package\))?[[:space:]]+)?fun[[:space:]]+/, "", declaration)
+        sub(/[<(].*$/, "", declaration)
+        function_name = declaration
+      }
+      function_name != "" && function_name != "new" && /AdminWitness/ { print }
+    '
+)"
+[[ -z "$state_admin_witness_violations" ]] \
+  || fail "Only State::new may accept or reference AdminWitness."
 
 grep -q '^public struct PriceObservation {$' "$observation_file" \
   || fail "PriceObservation must remain an ability-free linear carrier."
@@ -179,6 +185,22 @@ expected_state_public="$(printf '%s\n' \
   | sort)"
 [[ "$actual_state_public" == "$expected_state_public" ]] \
   || fail "The production Series1 State surface changed without boundary review."
+
+actual_initialize_shape="$(
+  sed -n '/^public fun initialize<Product>($/,/^}/p' "$state_file" \
+    | tr -d '[:space:]'
+)"
+expected_initialize_shape='publicfuninitialize<Product>(self:&mutState<Product>,observation:PositionObservation,seed_reserve:u64,reference_time_ms:u64,):u64{self.lifecycle.assert_can_activate();letseed_nav=validated_initialization_nav(self,observation,seed_reserve,reference_time_ms,);self.lifecycle.activate();self.maintenance_reserve=seed_reserve;seed_nav}'
+[[ "$actual_initialize_shape" == "$expected_initialize_shape" ]] \
+  || fail "State initialization must validate immutably before its final activation and reserve writes."
+
+actual_initialization_validator_signature="$(
+  sed -n '/^fun validated_initialization_nav<Product>($/,/): u64 {/p' "$state_file" \
+    | tr -d '[:space:]'
+)"
+expected_initialization_validator_signature='funvalidated_initialization_nav<Product>(self:&State<Product>,observation:PositionObservation,seed_reserve:u64,reference_time_ms:u64,):u64{'
+[[ "$actual_initialization_validator_signature" == "$expected_initialization_validator_signature" ]] \
+  || fail "Initialization validation must consume its observation through immutable State access."
 
 actual_lifecycle_construction="$(
   production_lines "$lifecycle_file" \

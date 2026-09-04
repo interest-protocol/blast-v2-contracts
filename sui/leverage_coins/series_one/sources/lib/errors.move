@@ -275,8 +275,32 @@ const EInvalidPositionObservation: u64 = 77;
 const EOrderNotionalExceedsMaximum: u64 = 78;
 
 #[test_only]
-/// A structurally valid position observation does not satisfy activation policy.
+/// A seed observation's position side differs from the immutable product side.
 const EInvalidInitializationObservation: u64 = 79;
+
+#[test_only]
+/// Seed activation observed one or more pending venue orders.
+const EInitializationOrdersNotEmpty: u64 = 80;
+
+#[test_only]
+/// Seed activation observed a paused, frozen, or otherwise unavailable venue.
+const EInitializationVenueNotOperational: u64 = 81;
+
+#[test_only]
+/// Seed activation observed an unreconciled venue checkpoint.
+const EInitializationCheckpointDirty: u64 = 82;
+
+#[test_only]
+/// Seed activation observed unsafe venue margin.
+const EInitializationMarginUnsafe: u64 = 83;
+
+#[test_only]
+/// Seed activation leverage lies outside the immutable healthy band.
+const EInitializationLeverageUnhealthy: u64 = 84;
+
+#[test_only]
+/// Seed activation exposure cannot support the immutable minimum operation.
+const EInitializationExposureBelowMinimum: u64 = 85;
 
 macro public(package) fun zero_amount(): u64 {
     0
@@ -544,4 +568,28 @@ macro public(package) fun order_notional_exceeds_maximum(): u64 {
 
 macro public(package) fun invalid_initialization_observation(): u64 {
     79
+}
+
+macro public(package) fun initialization_orders_not_empty(): u64 {
+    80
+}
+
+macro public(package) fun initialization_venue_not_operational(): u64 {
+    81
+}
+
+macro public(package) fun initialization_checkpoint_dirty(): u64 {
+    82
+}
+
+macro public(package) fun initialization_margin_unsafe(): u64 {
+    83
+}
+
+macro public(package) fun initialization_leverage_unhealthy(): u64 {
+    84
+}
+
+macro public(package) fun initialization_exposure_below_minimum(): u64 {
+    85
 }

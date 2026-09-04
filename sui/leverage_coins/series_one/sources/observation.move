@@ -1,6 +1,5 @@
 // `blast_leverage_series_one::errors` centralizes package-wide abort codes through zero-cost macros.
-// This narrow suppression preserves caller-local abort locations and the stable code map documented
-// in this package's `README.md`.
+// This narrow suppression preserves caller-local abort locations and stable codes pinned by tests.
 #[allow(lint(abort_without_constant))]
 /// Linear, operation-scoped observations supplied by a venue adapter.
 ///
@@ -13,14 +12,21 @@ use blast_leverage_series_one::policy::PositionSide;
 
 // === Public Types ===
 
-/// One positive normalized price and its source confidence and publication time.
+/// One normalized price and its source confidence and publication time.
+///
+/// Priced-operation constructors require a positive price. Health snapshots
+/// may carry zero so objective invalidity reaches the non-aborting degradation
+/// path instead of aborting before the State consumes the observation.
 public struct PriceObservation {
     price: u64,
     confidence: u64,
     publish_time_ms: u64,
 }
 
-/// One normalized venue-position and valuation snapshot for a single operation.
+/// One venue-position and valuation snapshot for a single operation.
+///
+/// Strict constructors normalize the fields for priced operations. The health
+/// constructor can preserve invalid live values for non-aborting degradation.
 public struct PositionObservation {
     venue_equity: u64,
     absolute_base: u64,
@@ -56,11 +62,20 @@ public fun new_price(
         blast_leverage_series_one::errors::invalid_observation_price!(),
     );
 
-    PriceObservation {
-        price,
-        confidence,
-        publish_time_ms,
-    }
+    new_health_price(price, confidence, publish_time_ms)
+}
+
+/// Creates a price snapshot for objective health synchronization.
+///
+/// Zero is preserved intentionally. `sync_health` uses non-aborting valuation
+/// predicates and must be able to persist `Active -> ReduceOnly` when an oracle
+/// source returns an invalid live value.
+public fun new_health_price(
+    price: u64,
+    confidence: u64,
+    publish_time_ms: u64,
+): PriceObservation {
+    PriceObservation { price, confidence, publish_time_ms }
 }
 
 /// Creates one structurally consistent normalized position observation.
@@ -91,13 +106,47 @@ public fun new_position(
         blast_leverage_series_one::errors::invalid_observation_price!(),
     );
     assert!(
-        (absolute_base == 0 && absolute_notional == 0)
-            || (absolute_base > 0
-                && absolute_notional > 0
-                && absolute_base % lot_size == 0),
+        is_position_structurally_valid(absolute_base, absolute_notional, lot_size),
         blast_leverage_series_one::errors::invalid_position_observation!(),
     );
 
+    new_health_position(
+        venue_equity,
+        absolute_base,
+        absolute_notional,
+        lot_size,
+        observed_side,
+        pending_order_count,
+        margin_safe,
+        venue_operational,
+        checkpoint_clean,
+        base_index,
+        collateral_oracle,
+        mark_price,
+    )
+}
+
+/// Creates a raw objective-health snapshot without aborting on invalid values.
+///
+/// The adapter must use this path only after authenticating the live venue and
+/// oracle sources. Zero price, mark, or lot values and structurally invalid
+/// exposure are preserved so `sync_health` can degrade the lifecycle. Every
+/// risk-increasing Series1 operation still validates the complete observation
+/// before mutation.
+public fun new_health_position(
+    venue_equity: u64,
+    absolute_base: u64,
+    absolute_notional: u64,
+    lot_size: u64,
+    observed_side: PositionSide,
+    pending_order_count: u64,
+    margin_safe: bool,
+    venue_operational: bool,
+    checkpoint_clean: bool,
+    base_index: PriceObservation,
+    collateral_oracle: PriceObservation,
+    mark_price: u64,
+): PositionObservation {
     PositionObservation {
         venue_equity,
         absolute_base,
@@ -130,6 +179,23 @@ public fun funding_cost(amount: u64): FundingSettlement {
 }
 
 // === Package Functions ===
+
+/// Returns whether base, notional, and lot size form a normalized position.
+///
+/// This predicate never aborts, including for a zero lot. Strict operation
+/// constructors assert it; objective health consumes it as a degradation
+/// signal when using the permissive health-observation path.
+public(package) fun is_position_structurally_valid(
+    absolute_base: u64,
+    absolute_notional: u64,
+    lot_size: u64,
+): bool {
+    lot_size > 0
+        && ((absolute_base == 0 && absolute_notional == 0)
+            || (absolute_base > 0
+                && absolute_notional > 0
+                && absolute_base % lot_size == 0))
+}
 
 /// Consumes one price observation inside Series1.
 public(package) fun unpack_price(self: PriceObservation): (u64, u64, u64) {

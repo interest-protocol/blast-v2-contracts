@@ -143,4 +143,28 @@ fun state_kernel_error_registry_is_stable() {
         blast_leverage_series_one::errors::invalid_initialization_observation!(),
         79,
     );
+    assert_eq!(
+        blast_leverage_series_one::errors::initialization_orders_not_empty!(),
+        80,
+    );
+    assert_eq!(
+        blast_leverage_series_one::errors::initialization_venue_not_operational!(),
+        81,
+    );
+    assert_eq!(
+        blast_leverage_series_one::errors::initialization_checkpoint_dirty!(),
+        82,
+    );
+    assert_eq!(
+        blast_leverage_series_one::errors::initialization_margin_unsafe!(),
+        83,
+    );
+    assert_eq!(
+        blast_leverage_series_one::errors::initialization_leverage_unhealthy!(),
+        84,
+    );
+    assert_eq!(
+        blast_leverage_series_one::errors::initialization_exposure_below_minimum!(),
+        85,
+    );
 }
