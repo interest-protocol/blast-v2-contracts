@@ -1,9 +1,13 @@
 // `errors` intentionally centralizes package-wide abort codes through zero-cost macros.
 // W04005 sees the expanded literal; this suppression preserves stable codes and local checks.
 #[allow(lint(abort_without_constant))]
+/// Series1-wide role state and capability validation.
+///
+/// One shared authority is created when Series1 is published. Its AdminCaps
+/// authorize every adapter built on this Series1 package.
 module blast_leverage_series_one::acl;
 
-use blast_leverage_series_one::{constants, events, package_version::PackageVersion};
+use blast_leverage_series_one::{constants, events};
 use sui::{clock::Clock, vec_map::{Self, VecMap}};
 
 // === Public Structs ===
@@ -14,7 +18,7 @@ public struct PendingSuperAdminTransfer has drop, store {
     execute_after_ms: u64,
 }
 
-/// Singleton registry for the active root and role-bearing administrators.
+/// Singleton Series1 registry for the active root and routine administrators.
 public struct ProtocolAuthority has key {
     id: UID,
     super_admin_cap_id: ID,
@@ -27,12 +31,12 @@ public struct SuperAdminCap has key {
     id: UID,
 }
 
-/// Revocable protocol-wide authority carrying one or more registry-held roles.
+/// Revocable Series1-wide authority carrying one or more roles.
 public struct AdminCap has key, store {
     id: UID,
 }
 
-/// Ephemeral snapshot of every role held by one live AdminCap at sign-in.
+/// Ephemeral snapshot of one live AdminCap's complete role bitmap.
 public struct AdminWitness(u8) has drop;
 
 // === Private Initialization ===
@@ -49,13 +53,11 @@ fun init(ctx: &mut TxContext) {
 /// Creates and deliberately delivers one role-bearing routine administrator.
 public fun grant_admin(
     self: &mut ProtocolAuthority,
-    package_version: &PackageVersion,
     super_admin_cap: &SuperAdminCap,
     roles: u8,
     recipient: address,
     ctx: &mut TxContext,
 ) {
-    package_version.assert_current();
     self.assert_super_admin(super_admin_cap);
     assert_valid_roles(roles);
 
@@ -79,11 +81,9 @@ public fun grant_admin(
 /// Revokes one complete administrator registration without possessing its cap.
 public fun revoke_admin(
     self: &mut ProtocolAuthority,
-    package_version: &PackageVersion,
     super_admin_cap: &SuperAdminCap,
     admin_cap_id: ID,
 ) {
-    package_version.assert_current();
     self.assert_super_admin(super_admin_cap);
 
     assert!(
@@ -98,12 +98,10 @@ public fun revoke_admin(
 /// Adds one exact role to a live administrator.
 public fun grant_role(
     self: &mut ProtocolAuthority,
-    package_version: &PackageVersion,
     super_admin_cap: &SuperAdminCap,
     admin_cap_id: ID,
     role: u8,
 ) {
-    package_version.assert_current();
     self.assert_super_admin(super_admin_cap);
     assert_valid_role(role);
 
@@ -125,12 +123,10 @@ public fun grant_role(
 /// Removes one exact role while leaving the admin registration live.
 public fun revoke_role(
     self: &mut ProtocolAuthority,
-    package_version: &PackageVersion,
     super_admin_cap: &SuperAdminCap,
     admin_cap_id: ID,
     role: u8,
 ) {
-    package_version.assert_current();
     self.assert_super_admin(super_admin_cap);
     assert_valid_role(role);
 
@@ -149,14 +145,11 @@ public fun revoke_role(
     events::admin_role_revoked(admin_cap_id, role, *roles);
 }
 
-/// Renounces administration and deletes the caller-owned cap for its storage rebate.
+/// Renounces administration and deletes the caller-owned cap.
 public fun destroy_admin_cap(
     self: &mut ProtocolAuthority,
-    package_version: &PackageVersion,
     admin_cap: AdminCap,
 ) {
-    package_version.assert_current();
-
     let AdminCap { id } = admin_cap;
     let admin_cap_id = id.to_inner();
     let was_active = self.admins.contains(&admin_cap_id);
@@ -174,13 +167,11 @@ public fun destroy_admin_cap(
 /// Starts or replaces a delayed transfer of the singleton root authority.
 public fun begin_super_admin_transfer(
     self: &mut ProtocolAuthority,
-    package_version: &PackageVersion,
     super_admin_cap: &SuperAdminCap,
     recipient: address,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    package_version.assert_current();
     self.assert_super_admin(super_admin_cap);
 
     assert!(
@@ -219,10 +210,8 @@ public fun begin_super_admin_transfer(
 /// Cancels a pending root transfer while the current root remains active.
 public fun cancel_super_admin_transfer(
     self: &mut ProtocolAuthority,
-    package_version: &PackageVersion,
     super_admin_cap: &SuperAdminCap,
 ) {
-    package_version.assert_current();
     self.assert_super_admin(super_admin_cap);
 
     assert!(
@@ -238,19 +227,15 @@ public fun cancel_super_admin_transfer(
 /// Accepts a root transfer after its delay and invalidates the previous root cap.
 public fun accept_super_admin_transfer(
     self: &mut ProtocolAuthority,
-    package_version: &PackageVersion,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    package_version.assert_current();
-
     assert!(
         self.pending_super_admin.is_some(),
         blast_leverage_series_one::errors::no_pending_super_admin_transfer!(),
     );
 
     let pending = self.pending_super_admin.borrow();
-
     assert!(
         pending.recipient == ctx.sender(),
         blast_leverage_series_one::errors::not_pending_super_admin_recipient!(),
@@ -291,11 +276,8 @@ public fun destroy_retired_super_admin_cap(
 /// Authenticates a live administrator and snapshots its complete role bitmap.
 public fun sign_in(
     self: &ProtocolAuthority,
-    package_version: &PackageVersion,
     admin_cap: &AdminCap,
 ): AdminWitness {
-    package_version.assert_current();
-
     let admin_cap_id = admin_cap.id.to_inner();
     assert!(
         self.admins.contains(&admin_cap_id),
@@ -305,9 +287,19 @@ public fun sign_in(
     AdminWitness(self.admins[&admin_cap_id])
 }
 
+/// Checks the risk-administrator role shared by every Series1 adapter.
+public fun assert_risk_admin(self: &AdminWitness) {
+    self.assert_role(constants::risk_admin_role!());
+}
+
+/// Checks the package-administrator role shared by every Series1 adapter.
+public fun assert_package_admin(self: &AdminWitness) {
+    self.assert_role(constants::package_admin_role!());
+}
+
 // === Package Functions ===
 
-/// Checks that an ephemeral admin proof contains the role required by its consumer.
+/// Checks that an ephemeral admin proof contains the role required by Series1.
 public(package) fun assert_role(self: &AdminWitness, role: u8) {
     assert_valid_role(role);
     assert!(
@@ -330,7 +322,10 @@ fun new_protocol(ctx: &mut TxContext): (SuperAdminCap, ProtocolAuthority) {
     (super_admin_cap, authority)
 }
 
-fun assert_super_admin(self: &ProtocolAuthority, super_admin_cap: &SuperAdminCap) {
+fun assert_super_admin(
+    self: &ProtocolAuthority,
+    super_admin_cap: &SuperAdminCap,
+) {
     assert!(
         super_admin_cap.id.to_inner() == self.super_admin_cap_id,
         blast_leverage_series_one::errors::invalid_super_admin_cap!(),
@@ -339,7 +334,7 @@ fun assert_super_admin(self: &ProtocolAuthority, super_admin_cap: &SuperAdminCap
 
 fun assert_valid_roles(roles: u8) {
     assert!(
-        roles > 0 && roles <= constants::all_admin_roles!(),
+        roles > 0 && roles & constants::all_admin_roles!() == roles,
         blast_leverage_series_one::errors::invalid_admin_roles!(),
     );
 }
@@ -348,7 +343,6 @@ fun assert_valid_role(role: u8) {
     assert!(
         role == constants::vault_issuer_role!()
             || role == constants::risk_admin_role!()
-            || role == constants::adapter_admin_role!()
             || role == constants::shutdown_admin_role!()
             || role == constants::package_admin_role!(),
         blast_leverage_series_one::errors::invalid_admin_role!(),
@@ -362,43 +356,48 @@ fun has_role(roles: u8, role: u8): bool {
 // === Test-Only Functions ===
 
 #[test_only]
-/// Runs ACL initialization under `test_scenario`.
+/// Runs complete Series1 ACL initialization under `test_scenario`.
 public fun init_for_testing(ctx: &mut TxContext) {
     init(ctx);
 }
 
 #[test_only]
-/// Creates unshared authority state for focused tests.
-public fun new_protocol_for_testing(ctx: &mut TxContext): (SuperAdminCap, ProtocolAuthority) {
+/// Creates isolated Series1 ACL state without sharing or transferring it.
+public fun new_protocol_for_testing(
+    ctx: &mut TxContext,
+): (SuperAdminCap, ProtocolAuthority) {
     new_protocol(ctx)
 }
 
 #[test_only]
-/// Returns an AdminCap id for registry and event assertions.
+public fun authority_id_for_testing(self: &ProtocolAuthority): ID {
+    self.id.to_inner()
+}
+
+#[test_only]
 public fun admin_cap_id_for_testing(self: &AdminCap): ID {
     self.id.to_inner()
 }
 
 #[test_only]
-/// Returns the active root id for transfer assertions.
 public fun super_admin_cap_id_for_testing(self: &SuperAdminCap): ID {
     self.id.to_inner()
 }
 
 #[test_only]
-/// Returns the root id currently accepted by the singleton authority.
 public fun active_super_admin_cap_id_for_testing(self: &ProtocolAuthority): ID {
     self.super_admin_cap_id
 }
 
 #[test_only]
-/// Returns the registry-held roles for one active capability id.
-public fun admin_roles_for_testing(self: &ProtocolAuthority, admin_cap_id: ID): u8 {
+public fun admin_roles_for_testing(
+    self: &ProtocolAuthority,
+    admin_cap_id: ID,
+): u8 {
     self.admins[&admin_cap_id]
 }
 
 #[test_only]
-/// Returns the complete role bitmap captured by an ephemeral witness.
 public fun witness_roles_for_testing(self: &AdminWitness): u8 {
     self.0
 }

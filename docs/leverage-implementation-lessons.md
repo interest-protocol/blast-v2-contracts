@@ -267,15 +267,15 @@ believes the package closes them:
   authentication. `series_one/sources/policy.move` now fixes the freshness, confidence,
   and index-versus-mark rules through its distinct `ValuationPolicy` type, and
   the package README records their boundary, unit, and zero-policy semantics.
-  The carrier cannot be built until the adapter handoff design is accepted and
-  premise P17 fixes the normalized field layout, and no value for any bound is
-  selected;
+  The adapter now wraps `State<Product>` directly, so the future operation must
+  capture and validate the valuation inside one adapter call. Premise P17 must
+  still fix its normalized fields, and no value for any bound is selected;
 - exhaustive external-mutation checkpoint and `sync_health` refresh rules;
 - permissionless rebalance sizing bounds; the minimum-improvement gate exists
   but the Vault must still bound the size of a permissionless order;
-- risk/adapter witness rotation and adapter upgrade delay. Vault issuance now
-  requires `VAULT_ISSUER` and leaves both currency capabilities under the
-  Vault;
+- operation-specific adapter code that authenticates the selected risk-module
+  witness and Aftermath account. Adapter versioning, package custody, product
+  issuance, and risk-module rotation are implemented under ADR 0073;
 - the production `max_mint_contribution_divergence_bps` value, which simulation
   must select separately for the long and short Series;
 - maximum supply, minimum NAV per share, minimum seed, the open-from-flat

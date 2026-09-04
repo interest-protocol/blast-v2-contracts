@@ -14,7 +14,7 @@ and the latest audit record under `docs/research/`.
 
 The intended public display names are `SUI 2x Bull` for `SUI2L` and
 `SUI 2x Bear` for `SUI2S`. The symbols remain `SUI2L` and `SUI2S`; their Move
-currency types are distinct Series1 `Vault<AdapterRoot>` instantiations.
+currency types are distinct adapter-owned `Vault<Product>` instantiations.
 Protocol code uses `long` and `short` for the immutable position side. Bull and
 Bear are metadata and UI terms only. Product descriptions must say that the
 coins target approximately 2x exposure and can be liquidated.
@@ -372,6 +372,6 @@ What this module does not close:
 
 The package error registry, verification commands, and deferred stateful work
 are recorded in the parent [Series1 README](../README.md). The future financial
-transitions in `vault.move` are the only production consumers of these
+transitions in `state.move` are the only production consumers of these
 calculations. Venue adapters provide authenticated execution facts; they do
 not price shares or select accounting inputs.

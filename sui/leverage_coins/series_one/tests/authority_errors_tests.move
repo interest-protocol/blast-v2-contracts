@@ -5,11 +5,9 @@ use std::unit_test::assert_eq;
 
 // === Tests ===
 
-/// Pins the appended version and authority codes without overflowing one bytecode table.
+/// Pins the Series1-wide authority codes without overflowing one bytecode table.
 #[test]
-fun version_and_authority_error_registry_is_stable() {
-    assert_eq!(blast_leverage_series_one::errors::package_version_mismatch!(), 38);
-    assert_eq!(blast_leverage_series_one::errors::package_version_overflow!(), 39);
+fun authority_error_registry_is_stable() {
     assert_eq!(blast_leverage_series_one::errors::invalid_super_admin_cap!(), 40);
     assert_eq!(blast_leverage_series_one::errors::invalid_admin_cap!(), 41);
     assert_eq!(blast_leverage_series_one::errors::invalid_admin_recipient!(), 42);

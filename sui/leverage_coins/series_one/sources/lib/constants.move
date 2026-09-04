@@ -38,24 +38,14 @@ macro public(package) fun super_admin_transfer_delay_ms(): u64 {
     7 * 24 * 60 * 60 * 1_000
 }
 
-/// Role that authorizes future Vault and share-currency issuance.
+/// Role that authorizes adapter-owned Vault and share-currency issuance.
 macro public(package) fun vault_issuer_role(): u8 {
     1
-}
-
-/// Fixed decimals for every Series1 leveraged share currency.
-macro public(package) fun share_decimals(): u8 {
-    9
 }
 
 /// Role that authorizes future risk-module witness rotation.
 macro public(package) fun risk_admin_role(): u8 {
     2
-}
-
-/// Role that authorizes future adapter-witness rotation.
-macro public(package) fun adapter_admin_role(): u8 {
-    4
 }
 
 /// Role that authorizes future shutdown initiation.
@@ -70,10 +60,5 @@ macro public(package) fun package_admin_role(): u8 {
 
 /// Complete bit set of roles recognized by this package generation.
 macro public(package) fun all_admin_roles(): u8 {
-    31
-}
-
-/// Exact byte length of a Sui package digest.
-macro public(package) fun package_digest_length(): u64 {
-    32
+    27
 }

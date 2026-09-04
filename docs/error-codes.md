@@ -123,7 +123,8 @@ numeric space:
 | Package | Registry | Codes in use |
 | --- | --- | ---: |
 | `blast_fun_migrators` | [`sui/migrators/README.md`](../sui/migrators/README.md#migration-math-errors) | Module-local registries; migration math uses 0 through 3 |
-| `blast_leverage_series_one` | [`sui/leverage_coins/series_one/README.md`](../sui/leverage_coins/series_one/README.md#error-registry) | 0 through 68 |
+| `blast_leverage_series_one` | [`sui/leverage_coins/series_one/README.md`](../sui/leverage_coins/series_one/README.md) | 0–37, 40–61, 64, and 74; retired gaps remain reserved |
+| `blast_leverage_aftermath` | [`sui/leverage_coins/aftermath_adapter/README.md`](../sui/leverage_coins/aftermath_adapter/README.md) | 0 through 10 |
 
 A frontend, SDK, or indexer must map an abort by package and raising module
 first, then by code.

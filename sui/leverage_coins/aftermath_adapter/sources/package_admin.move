@@ -1,22 +1,22 @@
-// `errors` intentionally centralizes package abort codes through zero-cost macros.
+// `errors` intentionally centralizes package-wide abort codes through zero-cost macros.
 // W04005 sees the expanded literal; this suppression preserves stable codes and local checks.
 #[allow(lint(abort_without_constant))]
-/// Permanent shared custody for the Series1 Publisher and UpgradeCap.
-module blast_leverage_series_one::package_admin;
+/// Permanent shared custody for the adapter Publisher and UpgradeCap.
+module blast_leverage_aftermath::package_admin;
 
-use blast_leverage_series_one::{
-    acl::AdminWitness,
+use blast_leverage_aftermath::{
+    aftermath::AFTERMATH,
     constants,
     events,
-    package_version::PackageVersion,
-    series_one::SERIES_ONE,
+    protocol::Protocol,
 };
+use blast_leverage_series_one::acl::{Self, AdminWitness};
 use std::type_name;
 use sui::package::{Self, Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};
 
 // === Public Structs ===
 
-/// Shared, non-releasable custody for package provenance and upgrade authority.
+/// Shared, non-releasable adapter package authority.
 public struct PackageAdmin has key {
     id: UID,
     publisher: Publisher,
@@ -25,19 +25,19 @@ public struct PackageAdmin has key {
 
 // === Public Functions ===
 
-/// Validates the Series1 capabilities and returns composable unshared custody.
+/// Validates adapter capabilities and returns composable unshared custody.
 public fun new(
     publisher: Publisher,
     upgrade_cap: UpgradeCap,
     ctx: &mut TxContext,
 ): PackageAdmin {
     assert!(
-        publisher.from_module<SERIES_ONE>(),
-        blast_leverage_series_one::errors::invalid_package_publisher!(),
+        publisher.from_module<AFTERMATH>(),
+        blast_leverage_aftermath::errors::invalid_package_publisher!(),
     );
     assert!(
-        upgrade_cap.package().to_address() == type_name::original_id<SERIES_ONE>(),
-        blast_leverage_series_one::errors::invalid_upgrade_cap!(),
+        upgrade_cap.package().to_address() == type_name::original_id<AFTERMATH>(),
+        blast_leverage_aftermath::errors::invalid_upgrade_cap!(),
     );
 
     new_unchecked(publisher, upgrade_cap, ctx)
@@ -63,21 +63,20 @@ public fun share(self: PackageAdmin) {
     );
 }
 
-/// Authorizes one exact package digest under the wrapped cap's current policy.
+/// Authorizes one exact adapter digest under the wrapped cap's policy.
 public fun authorize_upgrade(
     self: &mut PackageAdmin,
-    package_version: &PackageVersion,
+    protocol: &Protocol,
     admin_witness: &AdminWitness,
     digest: vector<u8>,
 ): UpgradeTicket {
-    package_version.assert_current();
-    admin_witness.assert_role(constants::package_admin_role!());
+    protocol.assert_current();
+    admin_witness.assert_package_admin();
     assert!(
         digest.length() == constants::package_digest_length!(),
-        blast_leverage_series_one::errors::invalid_package_digest!(),
+        blast_leverage_aftermath::errors::invalid_package_digest!(),
     );
 
-    // Native authorization clears the cap's package id until the receipt is committed.
     let package_id = self.upgrade_cap.package();
     let cap_version = self.upgrade_cap.version();
     let policy = self.upgrade_cap.policy();
@@ -87,13 +86,13 @@ public fun authorize_upgrade(
     ticket
 }
 
-/// Commits a native receipt into the same wrapped UpgradeCap.
+/// Commits a native receipt into the wrapped adapter UpgradeCap.
 public fun commit_upgrade(
     self: &mut PackageAdmin,
-    package_version: &PackageVersion,
+    protocol: &Protocol,
     receipt: UpgradeReceipt,
 ) {
-    package_version.assert_current();
+    protocol.assert_current();
     let new_package_id = receipt.package();
     let previous_version = self.upgrade_cap.version();
 
@@ -105,14 +104,14 @@ public fun commit_upgrade(
     );
 }
 
-/// Irreversibly narrows upgrades to additive changes.
+/// Irreversibly narrows adapter upgrades to additive changes.
 public fun restrict_to_additive(
     self: &mut PackageAdmin,
-    package_version: &PackageVersion,
+    protocol: &Protocol,
     admin_witness: &AdminWitness,
 ) {
-    package_version.assert_current();
-    admin_witness.assert_role(constants::package_admin_role!());
+    protocol.assert_current();
+    admin_witness.assert_package_admin();
     let previous_policy = self.upgrade_cap.policy();
     self.assert_policy_can_be_restricted_to(package::additive_policy());
 
@@ -120,31 +119,19 @@ public fun restrict_to_additive(
     events::upgrade_policy_restricted(previous_policy, self.upgrade_cap.policy());
 }
 
-/// Irreversibly narrows upgrades to dependency-only changes.
+/// Irreversibly narrows adapter upgrades to dependency-only changes.
 public fun restrict_to_dependency_only(
     self: &mut PackageAdmin,
-    package_version: &PackageVersion,
+    protocol: &Protocol,
     admin_witness: &AdminWitness,
 ) {
-    package_version.assert_current();
-    admin_witness.assert_role(constants::package_admin_role!());
+    protocol.assert_current();
+    admin_witness.assert_package_admin();
     let previous_policy = self.upgrade_cap.policy();
     self.assert_policy_can_be_restricted_to(package::dep_only_policy());
 
     self.upgrade_cap.only_dep_upgrades();
     events::upgrade_policy_restricted(previous_policy, self.upgrade_cap.policy());
-}
-
-/// Activates bytecode exactly one operational generation after shared state.
-///
-/// The activation transaction signs in through the old active bytecode before
-/// invoking this function from the newly published package generation.
-public fun activate_package_version(
-    package_version: &mut PackageVersion,
-    admin_witness: &AdminWitness,
-) {
-    admin_witness.assert_role(constants::package_admin_role!());
-    package_version.activate();
 }
 
 // === Private Functions ===
@@ -160,11 +147,11 @@ fun new_unchecked(
 fun assert_policy_can_be_restricted_to(self: &PackageAdmin, new_policy: u8) {
     assert!(
         new_policy > self.upgrade_cap.policy(),
-        blast_leverage_series_one::errors::upgrade_policy_not_more_restrictive!(),
+        blast_leverage_aftermath::errors::upgrade_policy_not_more_restrictive!(),
     );
 }
 
-// === Test-Only Types ===
+// === Test-Only Structs ===
 
 #[test_only]
 public struct TEST_PACKAGE_ADMIN() has drop;

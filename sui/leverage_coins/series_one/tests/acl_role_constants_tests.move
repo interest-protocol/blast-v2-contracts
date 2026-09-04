@@ -11,8 +11,7 @@ use std::unit_test::assert_eq;
 fun role_bits_are_stable_and_compose_to_the_complete_set() {
     assert_eq!(constants::vault_issuer_role!(), 1);
     assert_eq!(constants::risk_admin_role!(), 2);
-    assert_eq!(constants::adapter_admin_role!(), 4);
     assert_eq!(constants::shutdown_admin_role!(), 8);
     assert_eq!(constants::package_admin_role!(), 16);
-    assert_eq!(constants::all_admin_roles!(), 31);
+    assert_eq!(constants::all_admin_roles!(), 27);
 }

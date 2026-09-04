@@ -1,11 +1,16 @@
 # 0072: Series1 package-capability custody
 
-- Status: **accepted**
+- Status: **superseded** by
+  [0073](0073-series-one-adapter-owned-vaults.md)
 - Date: 2026-09-03
 - Amends: [0064](0064-aftermath-backed-leverage-coins.md) and
   [0070](0070-series-one-versioning-and-role-administration.md)
 
 ## Sources
+
+> Historical decision. ADR 0073 moves versioning, Publisher custody, and
+> UpgradeCap custody into each adapter package. Series1 is the stable core and
+> Series2 will be a new package.
 
 | Short ref | Full commit | Repository |
 | --- | --- | --- |

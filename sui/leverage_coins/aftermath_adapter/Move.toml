@@ -1,0 +1,11 @@
+[package]
+name = "blast_leverage_aftermath"
+edition = "2024"
+license = "MIT"
+authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
+
+[dependencies]
+blast_leverage_series_one = { local = "../series_one" }
+
+[addresses]
+blast_leverage_aftermath = "0x0"

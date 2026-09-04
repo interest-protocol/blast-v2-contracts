@@ -4,7 +4,7 @@ module blast_leverage_series_one::errors;
 // === Errors ===
 
 // Append-only package error registry. Never reuse a retired numeric code.
-// `README.md` maps every code to its macro, raising module, and meaning.
+// Codes 38-39, 62-63, and 65-73 are retired by ADR 0073 and remain reserved.
 
 #[test_only]
 /// A fee calculation requires a positive atomic collateral amount.
@@ -163,14 +163,6 @@ const EInvalidEmergencyToleranceBps: u64 = 36;
 const EInvalidMinimumImprovementBps: u64 = 37;
 
 #[test_only]
-/// Shared operational state does not match this package generation.
-const EPackageVersionMismatch: u64 = 38;
-
-#[test_only]
-/// Advancing the shared operational version would overflow `u64`.
-const EPackageVersionOverflow: u64 = 39;
-
-#[test_only]
 /// The supplied super-admin capability is no longer active.
 const EInvalidSuperAdminCap: u64 = 40;
 
@@ -259,32 +251,12 @@ const EExecutionOutsideTolerance: u64 = 60;
 const EInvalidFreshnessWindow: u64 = 61;
 
 #[test_only]
-/// The adapter root is a primitive type and cannot identify a sealed module.
-const EInvalidAdapterWitnessType: u64 = 62;
+/// The maximum-order-notional minimum must be positive.
+const EInvalidMaxOrderNotional: u64 = 64;
 
 #[test_only]
-/// The risk-module witness is a primitive type and cannot identify a sealed module.
-const EInvalidRiskModuleWitnessType: u64 = 63;
-
-#[test_only]
-/// The notional-cap minimum must be positive.
-const EInvalidNotionalCap: u64 = 64;
-
-#[test_only]
-/// A Publisher was not claimed by the canonical Series1 package module.
-const EInvalidPackagePublisher: u64 = 65;
-
-#[test_only]
-/// An UpgradeCap does not belong to the original Series1 package.
-const EInvalidUpgradeCap: u64 = 66;
-
-#[test_only]
-/// A package-upgrade digest is not exactly 32 bytes.
-const EInvalidPackageDigest: u64 = 67;
-
-#[test_only]
-/// A requested upgrade policy is unchanged or less restrictive.
-const EUpgradePolicyNotMoreRestrictive: u64 = 68;
+/// A maximum-order-notional update repeated the current setting.
+const EMaxOrderNotionalUnchanged: u64 = 74;
 
 macro public(package) fun zero_amount(): u64 {
     0
@@ -438,14 +410,6 @@ macro public(package) fun invalid_minimum_improvement_bps(): u64 {
     37
 }
 
-macro public(package) fun package_version_mismatch(): u64 {
-    38
-}
-
-macro public(package) fun package_version_overflow(): u64 {
-    39
-}
-
 macro public(package) fun invalid_super_admin_cap(): u64 {
     40
 }
@@ -534,30 +498,10 @@ macro public(package) fun invalid_freshness_window(): u64 {
     61
 }
 
-macro public(package) fun invalid_adapter_witness_type(): u64 {
-    62
-}
-
-macro public(package) fun invalid_risk_module_witness_type(): u64 {
-    63
-}
-
-macro public(package) fun invalid_notional_cap(): u64 {
+macro public(package) fun invalid_max_order_notional(): u64 {
     64
 }
 
-macro public(package) fun invalid_package_publisher(): u64 {
-    65
-}
-
-macro public(package) fun invalid_upgrade_cap(): u64 {
-    66
-}
-
-macro public(package) fun invalid_package_digest(): u64 {
-    67
-}
-
-macro public(package) fun upgrade_policy_not_more_restrictive(): u64 {
-    68
+macro public(package) fun max_order_notional_unchanged(): u64 {
+    74
 }

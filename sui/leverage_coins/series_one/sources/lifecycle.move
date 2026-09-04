@@ -193,3 +193,8 @@ public(package) fun shutdown_pending_for_testing(): Lifecycle {
 public(package) fun shutdown_settled_for_testing(): Lifecycle {
     Lifecycle::ShutdownSettled
 }
+
+#[test_only]
+public(package) fun set_shutdown_pending_for_testing(self: &mut Lifecycle) {
+    *self = Lifecycle::ShutdownPending;
+}

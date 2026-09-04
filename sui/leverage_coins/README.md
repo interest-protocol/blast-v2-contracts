@@ -6,10 +6,17 @@ It is not itself a Move package.
 ```text
 leverage_coins/
 ├── series_one/           blast_leverage_series_one
-└── aftermath_adapter/    blast_leverage_aftermath (future)
+└── aftermath_adapter/    blast_leverage_aftermath
 ```
 
-Series1 contains its accounting and bounded-value libraries, immutable policy,
-lifecycle, operational-version gate, and role administration. Each venue
-adapter depends inward on the Series package it executes. A future `series_two`
-will be a sibling package with its own currency type and policy family.
+Series1 contains venue-neutral accounting, immutable policy, lifecycle, and one
+shared administrator registry. Its `AdminCap` works across every Series1
+adapter. Each adapter depends inward on Series1, owns its own versioning and
+venue custody, and defines `Vault<Product>` as its leverage currency type.
+
+The product witness distinguishes currencies inside one adapter. For example,
+the same Aftermath package can issue both `Vault<Sui2x>` and `Vault<Sui5x>`.
+Coin Registry permits each concrete product type once.
+
+A future `series_two` is a separate sibling package and coin family, not an
+upgrade of Series1.

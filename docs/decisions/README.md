@@ -115,11 +115,12 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0067](0067-retire-full-sail-migrator.md) | Retire the Full Sail migrator before release | **accepted** |
 | [0068](0068-compact-lp-fee-principal-snapshot.md) | Compact the LP-fee principal snapshot before release | **accepted** |
 | [0069](0069-consolidate-launch-graduation-and-move-migration-math.md) | Consolidate launch graduation and move migration math into migrators | **accepted** |
-| [0070](0070-series-one-versioning-and-role-administration.md) | Series1 operational version and role administration | **accepted** |
-| [0071](0071-series-one-vault-issuance.md) | Series1 Vault and dynamic share-currency issuance | **accepted** |
-| [0072](0072-series-one-package-capability-custody.md) | Series1 package-capability custody | **accepted** |
+| [0070](0070-series-one-versioning-and-role-administration.md) | Series1 operational version and role administration | **superseded** |
+| [0071](0071-series-one-vault-issuance.md) | Series1 Vault and dynamic share-currency issuance | **superseded** |
+| [0072](0072-series-one-package-capability-custody.md) | Series1 package-capability custody | **superseded** |
+| [0073](0073-series-one-adapter-owned-vaults.md) | Series1 core with adapter-owned product Vaults | **accepted** |
 
-ADRs 0013–0036, 0038–0063, and 0065–0072 are accepted; ADR 0037 is superseded by 0043. ADR 0021 accepts the pure curve formulas and
+ADRs 0013–0036, 0038–0063, 0065–0069, and 0073 are accepted; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -319,14 +320,12 @@ balance partitions in `launch`. It also moves all seed-price, deviation,
 utilization, and residual arithmetic into the aggregate migrators package with
 package-only visibility and migrator-local error codes.
 
-ADR 0070 gives Series1 one package-wide operational cutover and one bounded,
-multi-role administrator registry. ADR 0071 adds authorized, one-per-type
-dynamic share-currency issuance and the inert shared Vault that owns its
-discoverable TreasuryCap and MetadataCap, immutable policy, module bindings,
-and protected adapter storage. ADR 0072 permanently wraps the Series1 Publisher
-and UpgradeCap behind an exact package-admin role, digest authorization, native
-receipt commit, irreversible policy restriction, and separate operational
-activation.
+ADR 0073 supersedes ADRs 0070 through 0072. Series1 owns one global multi-role
+administrator registry plus venue-neutral policy, lifecycle, accounting, and
+`State<Product>`. Each adapter owns its version, upgrade custody, outer
+`Vault<Product>`, currency capabilities, risk-module selection, and venue
+state. Runtime product witnesses let one adapter package issue several distinct
+currencies without an adapter root or generic handoff.
 
 ## Open premises
 

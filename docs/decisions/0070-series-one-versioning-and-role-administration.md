@@ -1,10 +1,15 @@
 # 0070: Series1 operational version and role administration
 
-- Status: **accepted**
+- Status: **superseded** by
+  [0073](0073-series-one-adapter-owned-vaults.md)
 - Date: 2026-09-03
 - Amends: [0064](0064-aftermath-backed-leverage-coins.md)
 
 ## Context
+
+> Historical decision. ADR 0073 keeps one global Series1 authority and role
+> bitmap, removes `ADAPTER_ADMIN`, and moves operational versioning into each
+> adapter package.
 
 Series1 will own long-lived shared Vault state. The old-bytecode posture already
 accepted in [ADR 0045](0045-single-package-version.md) requires each future

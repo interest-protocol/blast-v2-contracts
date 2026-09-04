@@ -117,28 +117,9 @@ fun series_gate_error_registry_is_stable() {
     assert_eq!(blast_leverage_series_one::errors::invalid_freshness_window!(), 61);
 }
 
-/// Pins the Vault issuance errors in their append-only range.
+/// Pins the Series state-construction error in its reserved range.
 #[test]
-fun vault_issuance_error_registry_is_stable() {
-    assert_eq!(
-        blast_leverage_series_one::errors::invalid_adapter_witness_type!(),
-        62,
-    );
-    assert_eq!(
-        blast_leverage_series_one::errors::invalid_risk_module_witness_type!(),
-        63,
-    );
-    assert_eq!(blast_leverage_series_one::errors::invalid_notional_cap!(), 64);
-}
-
-/// Pins package-capability custody errors in their append-only range.
-#[test]
-fun package_admin_error_registry_is_stable() {
-    assert_eq!(blast_leverage_series_one::errors::invalid_package_publisher!(), 65);
-    assert_eq!(blast_leverage_series_one::errors::invalid_upgrade_cap!(), 66);
-    assert_eq!(blast_leverage_series_one::errors::invalid_package_digest!(), 67);
-    assert_eq!(
-        blast_leverage_series_one::errors::upgrade_policy_not_more_restrictive!(),
-        68,
-    );
+fun state_error_registry_is_stable() {
+    assert_eq!(blast_leverage_series_one::errors::invalid_max_order_notional!(), 64);
+    assert_eq!(blast_leverage_series_one::errors::max_order_notional_unchanged!(), 74);
 }

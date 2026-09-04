@@ -3,6 +3,12 @@
 - Status: proposed
 - Date: 2026-08-31
 
+> **Boundary update (2026-09-04):** ADR
+> [0073](0073-series-one-adapter-owned-vaults.md) supersedes this draft's
+> package layout, adapter-root identity, Vault ownership, versioning, and
+> handoff design. The economic and venue research below remains input to the
+> future operation modules.
+
 ## Sources
 
 | Short ref | Full commit | Repository |
@@ -64,19 +70,19 @@ contracts/sui/leverage_coins/
 └── aftermath_adapter/    blast_leverage_aftermath (future)
 
 blast_fun
-  accepts an exact Coin<Vault<AdapterRoot>> type only after quote allowlisting
+  accepts an exact adapter Coin<Vault<Product>> type only after quote allowlisting
   imports no leverage package
 
 blast_leverage_series_one
   defines package-private accounting and bounded-value libraries
-  defines the Series1 policy, lifecycle, package version, role ACL, and events
-  owns Vault issuance, share-currency mint authority, and protected adapter storage
-  will add future adapter handoffs, financial transitions, and package administration
+  defines the Series1 policy, lifecycle, global role ACL, and State<Product>
+  will add future consensus-critical financial state transitions
   imports no venue
 
 blast_leverage_aftermath
+  owns versioning, Vault<Product>, currency capabilities, and venue state
   owns the Aftermath account capability and exact venue binding
-  translates Aftermath state into normalized Series1 receipts
+  invokes Series1 state transitions after venue validation
   imports blast_leverage_series_one and pinned Aftermath interfaces
 ```
 
@@ -87,13 +93,11 @@ extracted only if multiple live Series prove a stable cross-package ABI is
 worth maintaining. Venue adapters depend inward on the Series package whose
 protocol they execute.
 
-The future stateful design remains a Bind-Handoff-Redeem adapter. Series1 records the original defining type
-of the approved adapter witness. A public adapter operation obtains its
-package-only witness, asks Series1 for a no-ability instruction, performs the
-exact Aftermath calls, and returns the no-ability completion token plus the
-actual result to Series1. The operation completes inside one Move call and one
-Sui transaction. Nothing can copy, drop, store, or carry an in-flight handoff
-into another transaction.
+The adapter owns the outer shared Vault and stores the ability-restricted
+`State<Product>` inside it. A public adapter operation authenticates the venue,
+performs the exact Aftermath calls, and invokes Series1 mutation functions in
+the same transaction. Private fields prevent callers from borrowing the Series
+state directly. No generic request/receipt handoff is needed.
 
 Directly importing Aftermath into Series1 is rejected. It would make
 coin supply, share math, and lifecycle depend on venue ABI and licensing. A cross-transaction
@@ -104,7 +108,7 @@ same-transaction market execution and settlement.
 
 Public coin metadata and product surfaces use `SUI 2x Bull` with symbol
 `SUI2L`, and `SUI 2x Bear` with symbol `SUI2S`. Their Move currency types are
-distinct `Vault<AdapterRoot>` instantiations. Contract code, events, risk
+distinct adapter `Vault<Product>` instantiations. Contract code, events, risk
 policy, and technical documentation use `long` and `short` for position
 direction because those terms define the immutable venue-side invariant. Bull
 and Bear are presentation names only and must never select or authorize a
@@ -116,21 +120,20 @@ against venue loss.
 
 ### Coin and Series topology
 
-Series1 issues each leverage coin dynamically through Coin Registry as
-`Coin<blast_leverage_series_one::Vault<AdapterRoot>>`. Each currency has one
-shared `Vault<AdapterRoot>` and one separately isolated Aftermath account. The
-phantom `AdapterRoot` is the permanent currency and adapter-family identity;
-it is also the initial adapter witness. A later active adapter witness may
-change only to a type with the same original package ID. ADR 0071 implements
-issuance and treasury-cap custody; witness rotation remains a follow-up slice.
+The adapter issues each leverage coin dynamically through Coin Registry as
+`Coin<blast_leverage_aftermath::vault::Vault<Product>>`. Each currency has one
+shared `Vault<Product>` and one separately isolated Aftermath account. A sealed
+runtime product witness such as `Sui2x` or `Sui5x` fixes the concrete currency
+type. The witness must originate from the adapter's original package. Coin
+Registry permits each concrete product type once.
 
 ```text
-Vault<AftermathLongRoot>            Vault<AftermathShortRoot>
+Vault<Sui2xLong>                    Vault<Sui2xShort>
   TreasuryCap<Vault<...>>             TreasuryCap<Vault<...>>
   side = long                        side = short
   target = 20_000 leverage-bps       target = 20_000 leverage-bps
   one immutable TierPolicy           one immutable TierPolicy
-  replaceable adapter witness         replaceable adapter witness
+  selected risk-module type           selected risk-module type
         |                                  |
 VenueAccount<Vault<...>, USDC>      VenueAccount<Vault<...>, USDC>
   Account admin cap A                Account admin cap B
@@ -162,48 +165,44 @@ The planned Move abilities make custody and temporary authority explicit:
 
 | Type | Abilities | Ownership and purpose |
 | --- | --- | --- |
-| `Vault<AdapterRoot>` | `key` | Shared Series1 supply and lifecycle authority; cannot be wrapped or transferred as a child. |
+| adapter `Vault<Product>` | `key` | Shared adapter custody for one product's Series state, currency caps, and venue extension data. |
+| Series1 `State<Product>` | `store` | Ability-restricted policy, lifecycle, and accounting state stored only inside its adapter Vault. |
 | `VenueAccount<Share, USDC>` | `key` | Shared adapter custody for the one Aftermath admin cap; cannot be wrapped or transferred as a child. |
 | `TierPolicy` | `copy, drop, store` | One immutable validated direction, rebalance, valuation, fee, mint-contribution divergence, operation-size, and NAV-cap policy stored inside a Vault. |
 | `RebalancePolicy` | `copy, drop, store` | Strictly ordered public, module, target, and hard-cap leverage thresholds plus fixed execution tolerances and minimum improvement. |
 | `ValuationPolicy` | `copy, drop, store` | Immutable validated freshness, confidence, and mark-divergence bounds stored by the future Series policy. |
 | `PositionCheckpoint` | `copy, drop, store` | Venue mutation primitives stored inside VenueAccount. |
 | `Lifecycle` | `drop, store` | Closed non-copyable internal state enum. |
-| `AdapterWitness` | `drop` | Ephemeral package-authentic witness with a package-only constructor. |
-| operation handoffs and completions | none | Linear same-call obligations that cannot escape. |
+| `Product` witness | `drop` | Ephemeral adapter-package witness selecting one concrete Vault and currency type. |
+| risk-module witness | `drop` | Ephemeral proof accepted by future adapter operation routes. |
 | `AdminWitness(u8)` | `drop` | Ephemeral snapshot of the current package-global ACL role bitmap. |
 
 Dynamic Vault currencies use Coin Registry uniqueness instead of a currency
-one-time witness. No public wrapper gives `store` to Vault, VenueAccount, or a
-handoff.
+one-time witness. No public wrapper exposes the private embedded Series state.
 
 ### Consensus state
 
-The `Vault<AdapterRoot>` owns only facts required for supply, authorization,
-and invariant enforcement:
+The adapter `Vault<Product>` owns only facts required for supply,
+authorization, venue custody, and invariant enforcement:
 
 - the `TreasuryCap<Share>` and `MetadataCap<Share>` as discoverable dynamic
   object children;
-- one immutable `TierPolicy`;
-- one bounded live per-call atomic-USDC notional cap;
-- the separately accounted maintenance-reserve balance;
-- lifecycle: `Uninitialized`, `Active`, `ReduceOnly`, `ShutdownPending`, or
-  `ShutdownSettled`;
-- the approved adapter witness type and exact venue-account binding;
-- protected adapter storage in a dedicated `Bag`, never direct access to the
-  Vault's raw `UID`.
+- one embedded Series1 `State<Product>` containing the immutable `TierPolicy`,
+  bounded maximum order notional, maintenance reserve, and lifecycle;
+- the selected risk-module type and exact venue-account binding.
+
+Future venue state is added as explicit typed fields only when required by a
+consensus-critical transition. The Vault does not reserve a generic extension
+container.
 
 It does not store display NAV, token price, current leverage, a SUI price, or a
 market-cap projection. These are derived from current venue state. The
 contract calculates them during a transition, and the SDK mirrors the same
 integer math for previews.
 
-Series1 package versioning and role administration are accepted in
-[ADR 0070](0070-series-one-versioning-and-role-administration.md), and its
-package-capability custody is accepted in
-[ADR 0072](0072-series-one-package-capability-custody.md). A Vault does not
-duplicate the global package version. Adapter versioning and administration
-remain stateful follow-up work. Mint fees, redemption fees, the
+The global Series1 role registry and adapter-owned versioning and package
+custody are accepted in
+[ADR 0073](0073-series-one-adapter-owned-vaults.md). Mint fees, redemption fees, the
 target band, hard leverage limit, margin buffer, and hard NAV cap are immutable
 for the first Series deployment. `RISK_ADMIN` can stop new risk but cannot edit
 economics. Any later mutability requires a new accepted ADR with explicit
@@ -240,9 +239,10 @@ liquidation, or socialized loss.
 ### Construction and permanent seed
 
 ADR 0071 amends the original no-bootstrap-state decision. Authorized issuance
-creates a publicly shared but inert Vault with zero share supply, zero reserve,
-no asset balance, an uninitialized lifecycle, and immediate TreasuryCap and
-MetadataCap custody. It cannot accept funds or mint shares. A later
+returns an inert key-only Vault with zero share supply, zero reserve, no asset
+balance, an uninitialized lifecycle, and immediate TreasuryCap and MetadataCap
+custody. The creation transaction publishes it through the separate consuming
+`share` function. It cannot accept funds or mint shares. A later
 initialization must atomically bind the adapter and complete the economic
 bootstrap. That flow
 must still:
@@ -347,14 +347,11 @@ a live integration and simulation gate. Both relative gates cross-multiply
 through `u128`, and the freshness comparison branches on operand order, so
 neither can wrap or underflow at maximum `u64` width.
 
-Three things stay open. The operation-scoped linear valuation carrier that
-would prove one captured pair priced both sides of an operation cannot be built
-before the adapter handoff design is accepted. Series1 must construct it from
-its bound Pyth sources and carry it through the atomic adapter handoff; its
-field layout also depends on the signed fixed-point normalization of premise
-P17. Series1 owns oracle identity and authentication, while the adapter owns
-venue-state authentication. Every millisecond and basis-point value remains a
-simulation and live-market selection.
+Three things stay open. The operation-scoped valuation inputs and outputs
+cannot be built before premise P17 fixes their normalized field layout. The
+adapter must carry the authenticated Pyth and venue observations through one
+atomic operation before it calls the Series state transition. Every millisecond
+and basis-point value remains a simulation and live-market selection.
 
 The venue mark-divergence bound is not an execution-divergence bound and is not
 used to limit mint contribution. `TierPolicy` separately owns
@@ -829,25 +826,21 @@ lib/constants.move        immutable product and numeric bounds
 lib/errors.move           stable Series1 numeric abort registry
 policy.move               immutable TierPolicy, rebalance, and valuation rules
 lifecycle.move            closed Series1 lifecycle and operation guards
-vault.move                inert Vault state, dynamic currency issuance, and capability custody
-venue_handoff.move        future no-ability instructions and completion tokens
 acl.move                  package-global multi-role administration and witnesses
-series_one.move           canonical package witness and Publisher claim
-package_admin.move        permanent Publisher and UpgradeCap custody
-package_version.move      package-global old-bytecode gate
-lib/events.move           Series1 version, ACL, package-admin, and Vault-issuance payloads
+state.move                adapter-storable State<Product>
+lib/events.move           Series1 ACL payloads
 lib/events_wrapper.move   stable Series1 event envelope
 ```
 
 `blast_leverage_aftermath`:
 
 ```text
-aftermath_adapter.move    mint, redeem, rebalance, donate, sync, settle
+vault.move                Vault<Product>, currency capabilities, and venue state
+protocol.move             adapter version state and activation
+aftermath_adapter.move    future mint, redeem, rebalance, donate, sync, settle
 venue_account.move        cap custody and exact one-Series binding
 snapshot.move             private Aftermath fixed-point normalization
-acl.move                  adapter administration witnesses
 package_admin.move        adapter upgrade custody
-package_version.move      adapter old-bytecode gate
 lib/errors.move           adapter and venue error registry
 lib/events.move           venue execution payloads
 lib/events_wrapper.move   adapter event envelope
@@ -930,7 +923,7 @@ site and at least one adversarial test.
 | I9 | Mint cannot lower existing NAV per share or subtract its reserve fee twice. | Credit fee to reserve, derive `N1`, use `C = N1 - N0`, and floor share mint. |
 | I10 | Redemption cannot lower remaining NAV per share or let a redeemer recapture reserve fees. | ceil `equity_keep`; credit fee to reserve; final shareholder NAV equals `equity_keep`. |
 | I11 | Redemption removes at least proportional exposure. | floor remaining base target; risk-reducing rounding. |
-| I12 | A risk-increasing trade cannot reverse direction or exceed its computed size. | Series1 instruction plus sealed adapter witness. |
+| I12 | A risk-increasing trade cannot reverse direction or exceed its computed size. | Adapter-held State plus Series1 sizing and post-fill validation. |
 | I13 | A risk-reducing trade cannot cross flat. | Reduce-only venue flag and final signed-position check. |
 | I14 | Share-changing operations start and finish with no pending order. | Pre-check and `SessionSummary` post-check. |
 | I15 | User slippage and minimum-output bounds hold on actual execution. | Post-session reconciliation before mint, burn, or payout. |
@@ -939,8 +932,8 @@ site and at least one adversarial test.
 | I18 | Out-of-band liquidation, ADL, settlement, collateral, or order mutation cannot be treated as an ordinary mint state. | Mutation checkpoint plus objective health sync. |
 | I19 | Mint and redemption fees are collateral credited to a reserve excluded from share pricing, target exposure, and every external claim path. | Stored reserve, fee reconciliation, no reserve withdrawal API, and split-redemption tests. |
 | I20 | Burning Share tokens cannot manufacture collateral. | USDC movement is independently reconciled. |
-| I21 | No in-flight adapter instruction can escape its transaction. | No-ability handoff and completion types. |
-| I22 | Old Series1 or adapter bytecode cannot mutate current state. | Operational version gate at every mutator. |
+| I21 | Callers cannot bypass the adapter and mutate Series state directly. | Adapter-owned outer Vault plus private embedded `State<Product>` fields. |
+| I22 | Old adapter bytecode cannot mutate current adapter state. | Adapter operational-version gate at every adapter mutator; Series1 is the stable core. |
 | I23 | The launchpad cannot influence NAV, leverage, or venue authority. | No dependency; exact Quote allowlist only. |
 | I24 | Shutdown redemption can distribute only verified cash, including any terminally released reserve, and cannot reopen exposure. | Flat cash-only, empty-order, settled-funding checkpoint; reserve reclassification; floor pro-rata payout; no fee. |
 | I25 | Share pricing cannot use caller-selected or book-only prices. | Fixed market-bound oracle pair for pre/post NAV; separate mark and margin checks. The `ValuationPolicy` type in `blast_leverage_series_one::policy` enforces the two-sided freshness window, the confidence bound, and the mark-versus-index divergence bound, and the source-boundary script rejects mark-identified inputs in `accounting_math`; semantic review must still trace arbitrarily named numeric inputs. The linear valuation carrier and exact source binding remain open. |
@@ -949,7 +942,7 @@ site and at least one adversarial test.
 | I28 | Lifecycle degradation is monotone until a complete Vault proof authorizes an upgrade. | Closed five-state enum; initialization is one-way, only `Active -> ReduceOnly`, `Active -> ShutdownPending`, and `ReduceOnly -> ShutdownPending` exist in the pure slice, and shutdown is irreversible. Resume and settlement finalization require their full proofs. |
 | I29 | Every constructed rebalance policy has strictly ordered public, module, target, and hard-cap thresholds. | `blast_leverage_series_one::policy` exclusively constructs private `RebalancePolicy` fields and enforces `public lower < module lower < target < module upper < public upper < hard cap` before tolerance and improvement checks. |
 | I30 | Every constructed preliminary Tier policy fixes a long or short direction, embeds validated rebalance and valuation policies, keeps both fee rates and the mint-contribution divergence bound below 10,000, and has positive minimum exposure lots and NAV cap. | Private `TierPolicy` fields, the closed `PositionSide` enum, package constructors, and the Series1 source-boundary gate; production values and stateful policy use stay blocked until their design and simulation gates close. |
-| I31 | Every constructed valuation policy fixes a two-sided freshness window with positive historical-age tolerance, keeps the confidence and mark-divergence bounds below 10,000 basis points, and its gates reject a stale, future-dated, zero-priced, low-confidence, or divergent observation without wrapping or underflowing at `u64` width. | Private `ValuationPolicy` fields, its `blast_leverage_series_one::policy::new_valuation` package constructor, and its three package gates, with every assertion defined on the same non-aborting predicate the objective health transition observes; the source-boundary gate keeps mark-identified inputs out of the shareholder-NAV and share-pricing math. The operation-scoped linear valuation carrier, exact source binding and authentication, selected millisecond and basis-point values, and proof that the age supports the live source cadence stay blocked on the adapter handoff design, premises P16 through P20, and simulation. |
+| I31 | Every constructed valuation policy fixes a two-sided freshness window with positive historical-age tolerance, keeps the confidence and mark-divergence bounds below 10,000 basis points, and its gates reject a stale, future-dated, zero-priced, low-confidence, or divergent observation without wrapping or underflowing at `u64` width. | Private `ValuationPolicy` fields and Series1 gates. The adapter must carry operation-scoped authenticated oracle and venue inputs through one call; exact normalized fields and selected bounds remain blocked on premises P16 through P20 and simulation. |
 | I32 | A mint cannot credit an implausibly favorable shareholder-NAV contribution by treating venue mark divergence as share-accounting authority. | `TierPolicy` stores a distinct validated `max_mint_contribution_divergence_bps`; `blast_leverage_series_one::policy::assert_mint_contribution_within_bound` applies the exact leveraged `u256` cap to the canonical contribution before share minting. Boundary, width, exhaustive-reference, registry, and precedence tests pin the rule. |
 
 ## Alternatives considered
@@ -964,9 +957,9 @@ the vault supports multi-market strategies and delayed withdrawals
 
 **Store the Aftermath cap as a typed Series1 field.** Rejected. It makes
 Series1 import the venue and gives venue ABI or licensing changes a direct path
-into share and currency authority. Adapter-specific state remains
-protocol-custodied through the Vault's protected adapter `Bag`; Series1 never
-exposes the Vault's raw `UID`.
+into share and currency authority. Venue-specific state remains in explicit
+private fields of the adapter Vault; Series1 never exposes that Vault's raw
+`UID`.
 
 **Maintain exact 2x after every price change.** Rejected. A shared object cannot
 update itself. Permissionless keepers rebalance only when called, and constant
@@ -1081,10 +1074,10 @@ narrowed to the operations that actually remain available.
 - Inject full, partial, and zero fills, bad debt, liquidation, ADL, socialized
   loss, and an adapter abort after every external call. Any failure before final
   completion must roll back coins, caps, shares, and venue state.
-- Prove no-ability handoffs cannot copy, drop, store, or escape, and that a
-  different package cannot construct the adapter witness.
-- Alternate old and new package call targets around upgrades and require old
-  Series1 and adapter mutators to fail after operational activation.
+- Prove callers cannot extract mutable `State<Product>` from the adapter Vault,
+  and that product witnesses from a different package cannot issue currencies.
+- Alternate old and new adapter call targets around upgrades and require old
+  adapter mutators to fail after operational activation.
 - Replay wrapped Series1 and adapter events and compare the reducer's supply,
   lifecycle, bindings, and checkpoints with final object state.
 

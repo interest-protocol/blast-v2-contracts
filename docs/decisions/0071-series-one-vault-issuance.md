@@ -1,11 +1,16 @@
 # 0071: Series1 Vault and dynamic share-currency issuance
 
-- Status: **accepted**
+- Status: **superseded** by
+  [0073](0073-series-one-adapter-owned-vaults.md)
 - Date: 2026-09-03
 - Amends: [0064](0064-aftermath-backed-leverage-coins.md) and
   [0070](0070-series-one-versioning-and-role-administration.md)
 
 ## Sources
+
+> Historical decision. ADR 0073 moves the outer Vault, Coin Registry call,
+> currency capabilities, and runtime product witness into the adapter package.
+> Series1 now returns only `State<Product>`.
 
 | Short ref | Full commit | Repository |
 | --- | --- | --- |
@@ -35,10 +40,13 @@ Its `finalize` path shares the dynamic `Currency`, returns the unique
 ## Decision
 
 Add `vault.move` as the owner of `Vault<phantom AdapterRoot>`. The type has
-`key` only and is shared at issuance. Its initial state contains:
+`key` only. `issue` returns the owned Vault, and a separate consuming `share`
+function publishes it as shared state in the same transaction. Its initial
+state contains:
 
 - one immutable `TierPolicy`;
-- one positive `BoundedValue` for the live per-call atomic-USDC notional cap;
+- one positive `BoundedValue` for the absolute atomic-USDC notional limit on
+  one adapter order;
 - `Lifecycle::Uninitialized`;
 - the original type names of the initial adapter and risk-module witnesses;
 - zero maintenance-reserve accounting;
@@ -51,15 +59,19 @@ Issuance is the only transition in this slice. It takes the singleton
 The authorized issuer selects the adapter-root and risk-module identities as
 type arguments; issuance does not require runtime values of either type. It
 checks the package version first, requires `VAULT_ISSUER`, rejects primitive or
-vector identities, and requires a positive notional-cap minimum before any
-registry or object mutation. The issuer role is the authority for both initial
-type selections. The later operation path must still authenticate the active
-module before accepting an adapter or risk-module action.
+vector identities, requires both type arguments to have `drop`, and requires a
+positive maximum-order-notional minimum before any registry or object mutation. The
+issuer role is the authority for both initial type selections. The later
+operation path must still authenticate the active module before accepting an
+adapter or risk-module action.
 
 A private `new<AdapterRoot, RiskModule>` validates and returns the unshared
 Vault. The public `issue` transition separately registers the currency,
 finalizes metadata, attaches both returned capabilities, emits the issuance
-event, and shares the completed Vault.
+event, and returns the completed Vault. The public `share` function is its only
+publication sink. Because the Vault has `key` but not `store`, a successful
+creation transaction must consume it through `share`; future initialization can
+compose between `issue` and `share` without changing issuance.
 
 The immutable policy constructors become public pure functions. They create no
 authority or state and let an issuer compose one validated `TierPolicy` before
@@ -76,8 +88,9 @@ discoverable live object
 (`sui@06734f6:crates/sui-framework/packages/sui-framework/sources/dynamic_object_field.move:4-7,24-40`).
 Coin Registry remains the one-per-type replay guard.
 
-Issuance shares a zero-supply, zero-reserve, uninitialized Vault. No operation
-can mint, accept funds, or change exposure in this state. A later risk-module
+Issuance creates a zero-supply, zero-reserve, uninitialized Vault, which the
+creation transaction publishes through `share`. No operation can mint, accept
+funds, or change exposure in this state. A later risk-module
 initialization must atomically bind the venue, fund and open the seed position,
 mint and lock seed shares, and activate the lifecycle. This resolves the
 uninitialized-state liveness requirement by forbidding value before activation,
@@ -85,7 +98,7 @@ instead of making issuance depend on the unfinished venue adapter.
 
 After final local mutation, `VaultIssued<AdapterRoot>` records the Vault,
 TreasuryCap, and MetadataCap ids, both selected witness types, the immutable
-policy, the notional-cap bounds, and the zero initial reserve. Coin Registry
+policy, the maximum-order-notional bounds, and the zero initial reserve. Coin Registry
 state remains the authority for currency metadata and both capability bindings.
 
 ## Alternatives considered
@@ -108,14 +121,16 @@ required Aftermath bindings, normalized checkpoint, oracle carrier, and
 post-execution proofs remain open. The uninitialized lifecycle exists to keep
 the zero-value shell inert until those proofs are available.
 
-**Add witness rotation and financial transitions now.** Deferred. They require
-their own no-op, package-origin, lifecycle, event, and adapter-handoff rules.
-Issuance only stores the initial selections needed by those later transitions.
+**Add witness rotation and financial transitions now.** Deferred from this
+issuance slice. ADR 0073 subsequently adds the no-op-rejecting,
+package-origin-aware witness rotations. Financial transitions still require
+their lifecycle, event, and adapter-handoff rules.
 
 ## Consequences
 
 - One authorized issuer can permanently claim each `AdapterRoot` currency type.
 - The share-currency type does not change when the active adapter later rotates.
+- Vault construction remains composable before the dedicated publication step.
 - The Vault exclusively controls mint and metadata authority while standard Sui
   tooling can still discover both child capabilities and their canonical
   registry bindings.
