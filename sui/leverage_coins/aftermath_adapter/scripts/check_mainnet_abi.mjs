@@ -398,6 +398,7 @@ function validateManifestSource(source) {
     const unknownPackage = [...packageTable.keys()].filter((key) => !allowedPackage.includes(key));
     if (unknownPackage.length > 0) fail(`${label}: unknown [package] key(s) ${unknownPackage.join(', ')}`);
     equal(packageTable.get('name'), 'blast_leverage_aftermath', `${label}: package name drift`);
+    equal(packageTable.get('published-at') ?? null, null, `${label}: published-at drift`);
     const dependencies = tables.get('dependencies');
     equal([...dependencies.keys()].sort().join(','), Object.keys(DIRECT_DEPENDENCIES).sort().join(','), `${label}: dependency name set drift`);
     for (const [name, expected] of Object.entries(DIRECT_DEPENDENCIES)) {
@@ -567,6 +568,12 @@ function selfTest() {
         const observed = validateModuleData(expected, module, changed, true).abi['fixture::f'];
         equal(observed, 'public fun f(): u64', `${expected.label}: fixture::f signature drift`);
     });
+    const publishedAt = `0x${'b'.repeat(64)}`;
+    const publishedManifest = readFileSync(join(PACKAGE_DIR, 'Move.toml'), 'utf8').replace(
+        '[dependencies]',
+        `published-at = "${publishedAt}"\n\n[dependencies]`,
+    );
+    reject('unexpected published-at', `Move.toml: published-at drift\n    expected: null\n    actual:   ${publishedAt}`, () => validateManifestSource(publishedManifest));
     const manifest = readFileSync(join(PACKAGE_DIR, 'Move.toml'), 'utf8').replace(`rev = "${AFTERMATH_REV}"`, 'rev = "main"');
     reject('mutable Git revision', 'Move.toml: perpetuals must pin an immutable 40-hex commit, got "main"', () => validateManifestSource(manifest));
     const lock = `${readFileSync(join(PACKAGE_DIR, 'Move.lock'), 'utf8')}\n[pinned.mainnet.Rogue]\nsource = { root = true }\nuse_environment = "mainnet"\nmanifest_digest = "${'A'.repeat(64)}"\ndeps = {}\n`;
