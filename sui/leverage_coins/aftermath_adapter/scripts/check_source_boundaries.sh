@@ -9,6 +9,7 @@ manifest="$package_dir/Move.toml"
 protocol_file="$package_dir/sources/protocol.move"
 vault_file="$package_dir/sources/vault.move"
 venue_account_file="$package_dir/sources/venue_account.move"
+snapshot_file="$package_dir/sources/snapshot.move"
 package_admin_file="$package_dir/sources/package_admin.move"
 aftermath_file="$package_dir/sources/aftermath.move"
 series_dir="$(cd "$package_dir/../series_one" && pwd)"
@@ -25,6 +26,7 @@ for required in \
   "$protocol_file" \
   "$vault_file" \
   "$venue_account_file" \
+  "$snapshot_file" \
   "$package_admin_file" \
   "$aftermath_file" \
   "$package_dir/sources/lib/constants.move" \
@@ -176,6 +178,24 @@ grep -q 'sui::package::claim_and_keep(otw, ctx);' "$aftermath_file" \
 if grep -rnE '^[[:space:]]*(public[[:space:]]+entry|entry)[[:space:]]+fun' \
   "$package_dir/sources"; then
   fail "Adapter functions remain composable and must not become entry wrappers."
+fi
+
+grep -q '^public(package) fun capture<Collateral>($' "$snapshot_file" \
+  || fail "Snapshot capture must remain package-only."
+grep -q 'base_price_info: &PriceInfoObject,' "$snapshot_file" \
+  || fail "Snapshot capture must authenticate the exact base Pyth object."
+grep -q 'collateral_price_info: &PriceInfoObject,' "$snapshot_file" \
+  || fail "Snapshot capture must authenticate the exact collateral Pyth object."
+grep -q 'price_feed::from(aftermath_feed)' "$snapshot_file" \
+  || fail "Snapshot capture must bind the Aftermath feed to Pyth from()."
+grep -q 'market::base_oracle_price(params, base_oracle, clock)' "$snapshot_file" \
+  || fail "Snapshot capture must use the bound named base oracle getter."
+grep -q 'market::collateral_oracle_price(params, collateral_oracle, clock)' "$snapshot_file" \
+  || fail "Snapshot capture must use the bound named collateral oracle getter."
+grep -q 'position::compute_free_collateral' "$snapshot_file" \
+  || fail "Snapshot capture must use the named venue margin getter."
+if grep -q 'for_testing.*capture' "$snapshot_file"; then
+  fail "Snapshot capture must not accept caller-shaped test economics."
 fi
 
 printf '%s\n' "Aftermath adapter source boundaries: OK"

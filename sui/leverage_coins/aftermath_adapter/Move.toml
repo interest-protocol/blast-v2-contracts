@@ -11,6 +11,7 @@ position = { git = "https://github.com/AftermathFinance/move-interfaces.git", su
 authority_cap = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/authority-cap/authority-cap", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
 oracle_aggregator = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/oracle-aggregator/oracle-aggregator", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
 ifixed = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/ifixed/ifixed", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
+pyth = { local = "interfaces/pyth" }
 
 [addresses]
 blast_leverage_aftermath = "0x0"

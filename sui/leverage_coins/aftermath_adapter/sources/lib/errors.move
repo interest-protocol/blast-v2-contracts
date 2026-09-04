@@ -84,6 +84,38 @@ const ECollateralTypeMismatch: u64 = 18;
 /// A Vault already contains its one Aftermath venue account.
 const EVenueAccountAlreadyInstalled: u64 = 19;
 
+#[test_only]
+/// An oracle storage id differs from the bound market parameter.
+const EOracleStorageMismatch: u64 = 20;
+
+#[test_only]
+/// An oracle source id differs from the bound market parameter.
+const EOracleSourceMismatch: u64 = 21;
+
+#[test_only]
+/// An Aftermath feed does not originate from the presented Pyth object.
+const EPythPriceInfoMismatch: u64 = 22;
+
+#[test_only]
+/// A Pyth price is negative or cannot normalize into the adapter unit.
+const EInvalidPythPrice: u64 = 23;
+
+#[test_only]
+/// A Pyth exponent or normalized value cannot fit the adapter unit.
+const EPythNormalizationOverflow: u64 = 24;
+
+#[test_only]
+/// Pyth and Aftermath observations do not describe one price update.
+const EOracleObservationMismatch: u64 = 25;
+
+#[test_only]
+/// A normalized venue value cannot fit its declared atomic unit.
+const ENormalizationOverflow: u64 = 26;
+
+#[test_only]
+/// Position base and quote signs do not express one coherent direction.
+const EIncoherentPositionSigns: u64 = 27;
+
 macro public(package) fun package_version_mismatch(): u64 {
     0
 }
@@ -163,3 +195,19 @@ macro public(package) fun collateral_type_mismatch(): u64 {
 macro public(package) fun venue_account_already_installed(): u64 {
     19
 }
+
+macro public(package) fun oracle_storage_mismatch(): u64 { 20 }
+
+macro public(package) fun oracle_source_mismatch(): u64 { 21 }
+
+macro public(package) fun pyth_price_info_mismatch(): u64 { 22 }
+
+macro public(package) fun invalid_pyth_price(): u64 { 23 }
+
+macro public(package) fun pyth_normalization_overflow(): u64 { 24 }
+
+macro public(package) fun oracle_observation_mismatch(): u64 { 25 }
+
+macro public(package) fun normalization_overflow(): u64 { 26 }
+
+macro public(package) fun incoherent_position_signs(): u64 { 27 }

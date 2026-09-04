@@ -55,7 +55,9 @@ IFixed remainder exists; positive assets round down. Absolute risk quantities
 round up under the same remainder rule.
 
 The raw checkpoint stores IFixed values unchanged. The normalized operation
-observation uses nine-decimal base/price/notional units and six-decimal atomic
+observation uses nine-decimal base quantity, base index, collateral price,
+mark, and confidence units. Free and allocated collateral, signed PnL, venue
+equity, quote notional, funding amounts, and reserve use six-decimal atomic
 collateral units. Activation separately requires the bound collateral
 `Currency` to have six decimals.
 
@@ -72,7 +74,7 @@ adapter's mutation checkpoint; immutable object/source bindings are stored in
 | Free collateral | `perpetuals::account::collateral_balance<T>` | `u64`, atomic units of `T`; six decimals for the admitted collateral | Exact; no conversion | Yes |
 | Allocated collateral | `position::position::collateral` | nonnegative signed-IFixed carrier, `u256`, 18 decimals | `to_balance(raw, decimal_scalar_from_decimals(6))`; down | Yes |
 | Signed base | first result of `position::position::base_and_quote_amounts` | signed IFixed in `u256`, 18 decimals | Preserve sign with `is_neg`; absolute base converts to 9 decimals, up for risk | Yes, raw signed value |
-| Signed quote notional | second result of `position::position::base_and_quote_amounts` | signed IFixed in `u256`, 18 decimals | Preserve sign; absolute notional converts to 9 decimals, up for risk | Yes, raw signed value |
+| Signed quote notional | second result of `position::position::base_and_quote_amounts` | signed IFixed in `u256`, 18 decimals | Preserve sign; absolute notional converts to 6 decimal collateral units, up for risk | Yes, raw signed value |
 | Realized funding candidate | `position::position::calculate_position_funding_internal(position, long_rate, short_rate)` immediately before settlement; rates come from `perpetuals::market::cum_funding_rates` | signed IFixed in `u256`, 18 decimals | Preserve the signed raw result. Credit rounds down; cost rounds away from zero when converted to six-decimal collateral | No derived amount; store both rate snapshots, both market rates, and collateral before/after |
 | Unrealized PnL | `position::position::unrealized_pnl(position, mark)` | signed IFixed in `u256`, 18 decimals | Positive equity contribution down; negative liability away from zero, then six-decimal collateral | No; derive from stored position primitives and operation mark |
 | Base index | `perpetuals::market::base_oracle_price(params, base_storage, clock)` after exact storage/source binding | positive IFixed in `u256`, 18 decimals | Convert to 9 decimals; down for shareholder equity and up for absolute risk bounds | No; operation-scoped price |
@@ -138,10 +140,41 @@ not claim that a Vault can hold value. Before activation:
 - The selected SUI-USDC market, registry, oracle objects, source IDs, lot size,
   IMR, MMR, pause/freeze behavior, and usable owned collateral remain deployment
   inputs that must be recorded and verified.
-- Confidence is not present in the normalized `PriceFeed` interface consumed
-  here. A later valuation observation must not invent it; Task 5 must bind an
-  approved source that supplies the required confidence or revise the policy
-  through a separate accepted decision before activation.
+- Confidence is not present in Aftermath's normalized `PriceFeed`. Task 5
+  therefore binds the exact official Pyth `PriceInfoObject` named by the
+  Aftermath feed's `from` ID. It reads price, confidence, exponent, and source
+  seconds from that same object; price rounds down and confidence rounds up at
+  the same normalized 9-decimal scale. Pyth seconds multiply to milliseconds
+  with a checked conversion, and both normalized named Aftermath market-oracle
+  values and the feed timestamp must equal that one Pyth update. No caller can
+  provide confidence or combine two updates.
+
+### Pyth ABI port and snapshot classification amendment
+
+The official `pyth-network/pyth-crosschain` source is pinned at
+`6c1c9138e71a62629232607e252b12bcaa38356a`, subdirectory
+`target_chains/sui/contracts`. Its legacy package manifest cannot be linked by
+the pinned package manager because it depends on a new-style Wormhole package.
+The adapter consequently carries the smallest local ABI port of the official
+Pyth declarations, with the official mainnet/testnet `Published.toml` lineage.
+The port exposes only `PriceInfoObject`, `PriceInfo`, `PriceFeed`, `Price`,
+`I64`, and the named getters used by capture; its `abort 404` bodies are link
+stubs and are never used in unit tests. The ABI checker pins the deployed Pyth
+lineage, bytecode and normalized getter signatures.
+
+Capture checks account, registry, clearing house, oracle objects, collateral
+type, market storage/source IDs, feed source IDs, feed `from` IDs, Pyth object
+IDs, and the one supplied `Clock` before constructing an observation. It uses
+the named effective-IMR and `compute_free_collateral` margin method with the
+bound collateral price, mark, and haircut; a negative result is unsafe. Venue
+availability is independently an allowed pause mode and not-frozen state.
+
+`Change` preserves raw IFixed collateral deltas. It recognizes funding only if
+at least one position funding snapshot moves exactly to an otherwise unchanged
+market cumulative rate, allocated collateral changes in the matching direction,
+and every other raw checkpoint field is unchanged. A collateral or equity delta
+alone, a zero-effect snapshot movement, any field mutation, or any combined
+transition is `Unexpected`.
 
 Any live lineage, bytecode, ABI, dependency, source-binding, conversion-vector,
 or checkpoint mismatch reopens this decision and blocks publication.

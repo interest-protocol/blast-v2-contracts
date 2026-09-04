@@ -37,8 +37,8 @@ deps = { std = "MoveStdlib", sui = "Sui" }
 [pinned.mainnet.blast_leverage_aftermath]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "48DFFC061E68FEA48979C4061848515BFFD1859C9612D31A369FC7EE8A953D5D"
-deps = { authority_cap = "authority_cap", blast_leverage_series_one = "blast_leverage_series_one", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "4BEF119A041926F25E8ED628A9F725019F7B5C8219E941BD57786B4F860BF532"
+deps = { authority_cap = "authority_cap", blast_leverage_series_one = "blast_leverage_series_one", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", pyth = "pyth", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.blast_leverage_series_one]
 source = { local = "../series_one" }
@@ -69,6 +69,12 @@ source = { git = "https://github.com/AftermathFinance/move-interfaces.git", subd
 use_environment = "mainnet"
 manifest_digest = "01FEE8DFDC5A09C4846BDD936E552D87DBF24A3F7727423CCD4F5A397B1AFDCB"
 deps = { control_flow = "AftermathControlFlow", ifixed = "ifixed", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.pyth]
+source = { local = "interfaces/pyth" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.vendor]
 source = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/vendor/vendor", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
@@ -109,8 +115,8 @@ deps = { std = "MoveStdlib", sui = "Sui" }
 [pinned.testnet.blast_leverage_aftermath]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "EF1AC6DA0F0A1C0A83B7567B24CF17265E2F1F11AFDDDF3910AB55C976D2E552"
-deps = { authority_cap = "authority_cap", blast_leverage_series_one = "blast_leverage_series_one", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "5E4D57D6900037F6CA7BE2E96C45BFA8F39DD358E37BF5FC88C2DFB999141638"
+deps = { authority_cap = "authority_cap", blast_leverage_series_one = "blast_leverage_series_one", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", pyth = "pyth", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.blast_leverage_series_one]
 source = { local = "../series_one" }
@@ -141,6 +147,12 @@ source = { git = "https://github.com/AftermathFinance/move-interfaces.git", subd
 use_environment = "testnet"
 manifest_digest = "73B9AA235CF82D45B86D246566B3280A5A2E95D72A6CCB94CA259EC60B8564A7"
 deps = { control_flow = "AftermathControlFlow", ifixed = "ifixed", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.testnet.pyth]
+source = { local = "interfaces/pyth" }
+use_environment = "testnet"
+manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
+deps = { std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.vendor]
 source = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/vendor/vendor", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }

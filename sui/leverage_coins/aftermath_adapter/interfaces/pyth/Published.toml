@@ -1,0 +1,11 @@
+[published.mainnet]
+chain-id = "35834a8a"
+original-id = "0x8d97f1cd6ac663735be08d1d2b6d02a159e711586461306ce60a2b7a6a565a9e"
+published-at = "0x04e20ddf36af412a4096f9014f4a565af9e812db9a05cc40254846cf6ed0ad91"
+version = 2
+
+[published.testnet]
+chain-id = "4c78adac"
+original-id = "0xabf837e98c26087cba0883c0a7a28326b1fa3c5e1e2c5abdb486f9e8f594c837"
+published-at = "0xabf837e98c26087cba0883c0a7a28326b1fa3c5e1e2c5abdb486f9e8f594c837"
+version = 1

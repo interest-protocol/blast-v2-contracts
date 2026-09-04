@@ -1,0 +1,6 @@
+[package]
+name = "pyth"
+edition = "legacy"
+
+[addresses]
+pyth = "0x0"
