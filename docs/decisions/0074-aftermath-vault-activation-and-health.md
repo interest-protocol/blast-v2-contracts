@@ -169,6 +169,13 @@ the named effective-IMR and `compute_margin_and_requirement` method with the
 bound collateral price, mark, and haircut; margin below requirement is unsafe.
 `compute_free_collateral` is clamped and is not a margin-safety predicate. Venue
 availability is independently an allowed pause mode and not-frozen state.
+Margin uses a signed IFixed carrier: a negative margin is unsafe even if its
+raw `u256` encoding compares above the requirement. Strict capture rejects
+incoherent base/quote signs; health capture preserves the authenticated facts
+but makes the same shared sign predicate unhealthy. USD-to-collateral
+conversion checks multiplication and final-addition width before every result;
+strict operations abort on overflow while health capture degrades without an
+economic-state abort.
 
 There are two capture modes over that same authenticated path. Strict capture
 constructs strict Series1 observations and is used by priced or risk-increasing

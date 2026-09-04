@@ -172,11 +172,33 @@ fun usd_values_convert_to_collateral_units_at_the_authenticated_depeg_price() {
 
 #[test]
 fun margin_safety_is_below_equal_and_above_the_named_requirement() {
-    assert!(!snapshot::margin_safe_for_testing(0, 1));
-    assert!(snapshot::margin_safe_for_testing(0, 0));
-    assert!(!snapshot::margin_safe_for_testing(99, 100));
-    assert!(snapshot::margin_safe_for_testing(100, 100));
-    assert!(snapshot::margin_safe_for_testing(101, 100));
+    assert!(!snapshot::margin_safe_for_testing(true, 999, 1));
+    assert!(snapshot::margin_safe_for_testing(false, 0, 0));
+    assert!(!snapshot::margin_safe_for_testing(false, 0, 1));
+    assert!(!snapshot::margin_safe_for_testing(false, 99, 100));
+    assert!(snapshot::margin_safe_for_testing(false, 100, 100));
+    assert!(snapshot::margin_safe_for_testing(false, 101, 100));
+}
+
+#[test]
+fun sign_coherence_covers_long_short_flat_and_all_bad_combinations() {
+    assert!(snapshot::position_signs_coherent_for_testing(false, true, false, false, true));
+    assert!(snapshot::position_signs_coherent_for_testing(true, false, false, false, false));
+    assert!(snapshot::position_signs_coherent_for_testing(false, false, true, true, true));
+    assert!(!snapshot::position_signs_coherent_for_testing(false, false, false, false, true));
+    assert!(!snapshot::position_signs_coherent_for_testing(true, true, false, false, false));
+    assert!(!snapshot::position_signs_coherent_for_testing(false, true, true, false, true));
+    assert!(!snapshot::position_signs_coherent_for_testing(true, false, false, false, true));
+}
+
+#[test]
+#[expected_failure(abort_code = 26, location = blast_leverage_aftermath::snapshot)]
+fun usd_conversion_rejects_the_max_width_fractional_addition_vector() {
+    snapshot::usd_fixed_to_collateral_for_testing(
+        57896044618658097595993403267027758503064007324132374166459015334359435960541,
+        499_999_999_999_999_999,
+        false,
+    );
 }
 
 #[test]

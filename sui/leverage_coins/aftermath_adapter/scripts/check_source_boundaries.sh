@@ -204,8 +204,10 @@ grep -q 'market::collateral_oracle_price(params, collateral_oracle, clock)' "$sn
   || fail "Snapshot capture must use the bound named collateral oracle getter."
 grep -q 'position::compute_margin_and_requirement' "$snapshot_file" \
   || fail "Snapshot capture must compare the named venue margin and requirement."
-grep -q 'economics_valid && margin >= requirement' "$snapshot_file" \
+grep -q 'economics_valid && margin_safe(margin, requirement)' "$snapshot_file" \
   || fail "Snapshot margin safety must compare margin against its requirement."
+grep -q '!margin_negative && margin >= requirement' "$snapshot_file" \
+  || fail "Snapshot margin safety must reject signed-negative margin carriers."
 grep -q 'clearing_house.market_pause_mode() == 0 && !clearing_house.is_frozen()' "$snapshot_file" \
   || fail "Venue operation must require allowed pause mode and not-frozen state."
 grep -q 'observation::new_health_price' "$snapshot_file" \
@@ -214,6 +216,8 @@ grep -q 'observation::new_health_position' "$snapshot_file" \
   || fail "Health capture must preserve malformed live venue facts."
 grep -q 'assert_position_signs(signed_base, signed_quote_notional, position.is_long_or_flat())' "$snapshot_file" \
   || fail "Strict capture must reject incoherent venue position signs."
+grep -q '&& signs_coherent && base_representable' "$snapshot_file" \
+  || fail "Health capture must retain incoherent position signs as unhealthy facts."
 grep -q 'assert_pyth_price_info(base_price_info, base_feed);' "$snapshot_file" \
   || fail "Base Pyth identity must precede named oracle calculation."
 grep -q 'assert_pyth_price_info(collateral_price_info, collateral_feed);' "$snapshot_file" \

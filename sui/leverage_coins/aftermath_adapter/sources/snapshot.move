@@ -167,8 +167,9 @@ fun capture_<Collateral>(
         pnl,
         collateral_fixed,
     );
+    let signs_coherent = position_signs_coherent(signed_base, signed_quote_notional, position.is_long_or_flat());
     let economics_valid = !ifixed::is_neg(allocated_collateral)
-        && base_representable && notional_representable && equity_representable;
+        && signs_coherent && base_representable && notional_representable && equity_representable;
 
     (
         if (health) { observation::new_health_position(
@@ -178,7 +179,7 @@ fun capture_<Collateral>(
             market::lot_size(params),
             side,
             position.pending_order_count(),
-            economics_valid && margin >= requirement,
+            economics_valid && margin_safe(margin, requirement),
             clearing_house.market_pause_mode() == 0 && !clearing_house.is_frozen(),
             checkpoint_clean,
             base_index,
@@ -191,7 +192,7 @@ fun capture_<Collateral>(
             market::lot_size(params),
             side,
             position.pending_order_count(),
-            economics_valid && margin >= requirement,
+            economics_valid && margin_safe(margin, requirement),
             clearing_house.market_pause_mode() == 0 && !clearing_house.is_frozen(),
             checkpoint_clean,
             base_index,
@@ -392,7 +393,10 @@ fun usd_fixed_to_collateral_fixed(usd: u256, collateral_price: u256, round_up: b
     let remainder = usd % collateral_price;
     assert!(whole <= std::u256::max_value!() / pow10(18), blast_leverage_aftermath::errors::normalization_overflow!());
     assert!(remainder == 0 || remainder <= std::u256::max_value!() / pow10(18), blast_leverage_aftermath::errors::normalization_overflow!());
-    let down = whole * pow10(18) + remainder * pow10(18) / collateral_price;
+    let whole_scaled = whole * pow10(18);
+    let fraction = remainder * pow10(18) / collateral_price;
+    assert!(whole_scaled <= std::u256::max_value!() - fraction, blast_leverage_aftermath::errors::normalization_overflow!());
+    let down = whole_scaled + fraction;
     if (round_up && remainder * pow10(18) % collateral_price != 0) { down + 1 } else { down }
 }
 
@@ -422,28 +426,45 @@ fun usd_fixed_to_collateral_fixed_health(usd: u256, collateral_price: u256, roun
     let remainder = usd % collateral_price;
     if (whole > std::u256::max_value!() / scalar || (remainder != 0 && remainder > std::u256::max_value!() / scalar)) { return (0, false) };
     let fractional_scaled = remainder * scalar;
-    let down = whole * scalar + fractional_scaled / collateral_price;
+    let whole_scaled = whole * scalar;
+    let fraction = fractional_scaled / collateral_price;
+    if (whole_scaled > std::u256::max_value!() - fraction) { return (0, false) };
+    let down = whole_scaled + fraction;
     if (round_up && fractional_scaled % collateral_price != 0) {
         if (down == std::u256::max_value!()) { (0, false) } else { (down + 1, true) }
     } else { (down, true) }
 }
 
-fun assert_position_signs(base: u256, quote: u256, long_or_flat: bool): PositionSide {
+fun margin_safe(margin: u256, requirement: u256): bool {
+    margin_safe_from_parts(ifixed::is_neg(margin), margin, requirement)
+}
+
+fun margin_safe_from_parts(margin_negative: bool, margin: u256, requirement: u256): bool {
+    !margin_negative && margin >= requirement
+}
+
+fun position_signs_coherent(base: u256, quote: u256, long_or_flat: bool): bool {
     let base_negative = ifixed::is_neg(base);
     let quote_negative = ifixed::is_neg(quote);
     let base_zero = ifixed::abs(base) == 0;
     let quote_zero = ifixed::abs(quote) == 0;
+    position_signs_coherent_from_parts(base_negative, quote_negative, base_zero, quote_zero, long_or_flat)
+}
+
+fun position_signs_coherent_from_parts(base_negative: bool, quote_negative: bool, base_zero: bool, quote_zero: bool, long_or_flat: bool): bool {
     if (base_zero || quote_zero) {
-        assert!(base_zero && quote_zero, blast_leverage_aftermath::errors::incoherent_position_signs!());
-        return policy::long()
+        return base_zero && quote_zero
     };
     if (long_or_flat) {
-        assert!(!base_negative && quote_negative, blast_leverage_aftermath::errors::incoherent_position_signs!());
-        policy::long()
+        !base_negative && quote_negative
     } else {
-        assert!(base_negative && !quote_negative, blast_leverage_aftermath::errors::incoherent_position_signs!());
-        policy::short()
+        base_negative && !quote_negative
     }
+}
+
+fun assert_position_signs(base: u256, quote: u256, long_or_flat: bool): PositionSide {
+    assert!(position_signs_coherent(base, quote, long_or_flat), blast_leverage_aftermath::errors::incoherent_position_signs!());
+    if (long_or_flat) { policy::long() } else { policy::short() }
 }
 
 // === Test-Only Functions ===
@@ -516,7 +537,12 @@ public fun usd_fixed_to_collateral_for_testing(usd: u256, collateral_price: u256
 }
 
 #[test_only]
-public fun margin_safe_for_testing(margin: u256, requirement: u256): bool { margin >= requirement }
+public fun margin_safe_for_testing(margin_negative: bool, margin: u256, requirement: u256): bool { margin_safe_from_parts(margin_negative, margin, requirement) }
+
+#[test_only]
+public fun position_signs_coherent_for_testing(base_negative: bool, quote_negative: bool, base_zero: bool, quote_zero: bool, long_or_flat: bool): bool {
+    position_signs_coherent_from_parts(base_negative, quote_negative, base_zero, quote_zero, long_or_flat)
+}
 
 #[test_only]
 public fun seconds_to_millis_for_testing(seconds: u64): u64 {
