@@ -317,11 +317,31 @@ maximum-order-notional, risk-module rotation, and explicit reduce-only events,
 these facts reconstruct the immutable bindings, reserve, lifecycle, selected
 risk module, order limit, and latest checkpoint.
 
+One package-private production helper owns the complete Blast post-capture
+phase: funding normalization and reserve settlement, final health-observation
+construction, exactly-one checkpoint persistence, lifecycle synchronization,
+and conditional event emission. Local connected tests invoke that same helper
+against real issued and Series-initialized Vault state; they do not duplicate
+the reserve, lifecycle, persistence, or event formulas.
+
+`VenueAccount` represents its retained account-admin cap as an `Option` solely
+because the authoritative external cap constructor is an aborting ABI stub in
+local tests. The only production constructor authenticates the cap and always
+stores `some(cap)`. Published code has no path to create `none`, clear, take, or
+replace the option, and every production borrow first asserts `is_some`. The
+`none` constructor is `#[test_only]`; it retains a real Binding and Checkpoint
+inside the real VenueAccount/Vault fixture and is absent from published
+bytecode. It does not weaken live custody authentication.
+
 The official Aftermath and Pyth ports abort in local unit tests, so local tests
-exercise the exact Blast-owned classification, rounding, event, and reducer
-paths while source gates pin the production call and mutation order. Task 8
-must still execute the complete permissionless path against controlled live
-objects and compare the resulting checkpoint, reserve, lifecycle, and events.
+exercise the exact Blast-owned classification, rounding, real Vault/Series
+post-capture transition, event, and reducer paths while source gates pin the
+production call and mutation order. The replay test drives issuance,
+activation, funding/health, order-limit, risk-rotation, and explicit-reduce-only
+events through real package mutation seams, then compares every reconstructed
+canonical fact to the resulting Vault. Task 8 must still execute the complete
+permissionless path against controlled live objects and compare the resulting
+checkpoint, reserve, lifecycle, and events.
 
 ## Consequences
 

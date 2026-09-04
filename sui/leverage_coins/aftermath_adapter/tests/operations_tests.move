@@ -2,20 +2,61 @@
 /// Tests for atomic Aftermath Vault initialization seams.
 module blast_leverage_aftermath::operations_tests;
 
-use blast_leverage_aftermath::{events, operations, snapshot, venue_account};
-use blast_leverage_series_one::policy;
-use std::type_name;
-use std::unit_test::assert_eq;
+use blast_leverage_aftermath::{
+    events,
+    operations,
+    protocol::{Self, Protocol},
+    snapshot,
+    vault::{Self as vault, Vault},
+    venue_account,
+};
+use blast_leverage_series_one::{
+    acl::{Self, AdminCap, ProtocolAuthority, SuperAdminCap},
+    observation,
+    policy,
+};
+use std::{
+    string::String,
+    type_name,
+    unit_test::{assert_eq, destroy},
+};
+use sui::{
+    coin_registry::{Self, CoinRegistry},
+    test_scenario::{Self, Scenario},
+};
+
+// === Constants ===
+
+const SYSTEM: address = @0x0;
+const ADMIN: address = @0xA11CE;
+const REFERENCE_TIME_MS: u64 = 1_000;
+const SEED_EQUITY: u64 = 1_000;
+const SEED_RESERVE: u64 = 100;
+const ABSOLUTE_BASE: u64 = 1_800;
+const ABSOLUTE_NOTIONAL: u64 = 1_800;
+const LOT_SIZE: u64 = 1;
+const PRICE: u64 = 1_000_000_000;
+const ALLOCATED_FIXED: u256 = 1_000_000_000_000_000;
+const ATOM_FIXED: u256 = 1_000_000_000_000;
 
 // === Test-Only Types ===
 
-public struct Product {}
+public struct Product() has drop;
 
 public struct Collateral {}
 
-public struct RiskModule {}
+public struct RiskModule() has drop;
 
-public struct RiskModuleV2 {}
+public struct RiskModuleV2() has drop;
+
+public struct Fixture {
+    scenario: Scenario,
+    registry: CoinRegistry,
+    protocol: Protocol,
+    authority: ProtocolAuthority,
+    super_admin_cap: SuperAdminCap,
+    admin_cap: AdminCap,
+}
 
 public struct ReplayState has drop {
     vault_id: ID,
@@ -30,7 +71,7 @@ public struct ReplayState has drop {
     lifecycle: u8,
     risk_module_witness: type_name::TypeName,
     max_order_notional: u64,
-    checkpoint: venue_account::Checkpoint,
+    checkpoint: Option<venue_account::Checkpoint>,
 }
 
 // === Tests ===
@@ -461,7 +502,7 @@ fun synchronization_accepts_only_an_isolated_funding_credit() {
         10_000_000_000_000,
     );
     let (has_funding, is_cost, raw_amount, amount, checkpoint_clean) =
-        operations::funding_change_fields_for_testing(&change);
+        snapshot::funding_change_fields(&change);
 
     assert!(has_funding);
     assert!(!is_cost);
@@ -484,7 +525,7 @@ fun synchronization_rounds_an_isolated_funding_cost_against_the_reserve() {
         999_999_999_999,
     );
     let (has_funding, is_cost, raw_amount, amount, checkpoint_clean) =
-        operations::funding_change_fields_for_testing(&change);
+        snapshot::funding_change_fields(&change);
 
     assert!(has_funding);
     assert!(is_cost);
@@ -577,119 +618,289 @@ fun health_event_records_stable_reason_and_latest_checkpoint() {
 }
 
 #[test]
-fun health_event_decision_is_quiet_when_healthy_and_stable_when_degraded() {
-    let (emit_healthy, healthy_reason) =
-        operations::health_event_decision_for_testing(false, true);
-    let (emit_objective, objective_reason) =
-        operations::health_event_decision_for_testing(true, true);
-    let (emit_unexpected, unexpected_reason) =
-        operations::health_event_decision_for_testing(false, false);
-
-    assert!(!emit_healthy);
-    assert_eq!(healthy_reason, events::objective_failure_reason());
-    assert!(emit_objective);
-    assert_eq!(objective_reason, events::objective_failure_reason());
-    assert!(emit_unexpected);
-    assert_eq!(unexpected_reason, events::unexpected_checkpoint_reason());
+fun connected_cost_below_reserve_is_applied_once_and_emitted_from_real_state() {
+    assert_connected_cost(10, 90, 10, 0);
 }
 
 #[test]
-fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
-    let vault_id = @0xA.to_id();
-    let initial_checkpoint = sync_checkpoint(
-        1_000,
-        100_000_000_000_000,
+fun connected_cost_equal_to_reserve_exhausts_it_exactly() {
+    assert_connected_cost(100, 0, 100, 0);
+}
+
+#[test]
+fun connected_cost_above_reserve_reports_the_uncovered_remainder() {
+    assert_connected_cost(120, 0, 100, 20);
+}
+
+#[test]
+fun connected_credit_and_no_change_leave_the_real_reserve_unchanged() {
+    let mut fixture = start();
+    let initial = initial_checkpoint();
+    let mut vault = issue_and_activate(&mut fixture, initial);
+    let credited = funding_checkpoint(10, false);
+    let credit = operations::classify_sync_change_for_testing(
+        &initial,
+        &initial,
+        &credited,
+        false,
+        10 * ATOM_FIXED,
+    );
+
+    apply_connected_change(
+        &mut vault,
+        credited,
+        credit,
+        SEED_EQUITY + 10,
+        true,
+    );
+    let unchanged = operations::classify_sync_change_for_testing(
+        &credited,
+        &credited,
+        &credited,
+        false,
+        0,
+    );
+    apply_connected_change(
+        &mut vault,
+        credited,
+        unchanged,
+        SEED_EQUITY + 10,
+        true,
+    );
+
+    assert_eq!(vault.maintenance_reserve_for_testing(), SEED_RESERVE);
+    assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 1);
+    assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 0);
+    assert_eq!(*vault.venue_checkpoint(), credited);
+    destroy(vault);
+    destroy(fixture);
+}
+
+#[test]
+fun connected_second_call_at_the_same_checkpoint_is_exactly_once() {
+    let mut fixture = start();
+    let initial = initial_checkpoint();
+    let mut vault = issue_and_activate(&mut fixture, initial);
+    let funded = funding_checkpoint(10, true);
+    let cost = operations::classify_sync_change_for_testing(
+        &initial,
+        &initial,
+        &funded,
+        true,
+        10 * ATOM_FIXED,
+    );
+    apply_connected_change(
+        &mut vault,
+        funded,
+        cost,
+        SEED_EQUITY - 10,
+        true,
+    );
+
+    let replay = operations::classify_sync_change_for_testing(
+        &funded,
+        &funded,
+        &funded,
+        false,
+        0,
+    );
+    apply_connected_change(
+        &mut vault,
+        funded,
+        replay,
+        SEED_EQUITY - 10,
+        true,
+    );
+
+    assert_eq!(vault.maintenance_reserve_for_testing(), 90);
+    assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 1);
+    assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 0);
+    assert_eq!(*vault.venue_checkpoint(), funded);
+    destroy(vault);
+    destroy(fixture);
+}
+
+#[test]
+fun connected_stored_drift_never_debits_reserve_and_unexpected_reason_wins() {
+    let mut fixture = start();
+    let initial = initial_checkpoint();
+    let mut vault = issue_and_activate(&mut fixture, initial);
+    let before = checkpoint_with_market_imr(
+        0,
+        ALLOCATED_FIXED,
         10,
         20,
         11,
         21,
-        0,
-        0,
-        0,
+        2,
     );
-    let funded_checkpoint = sync_checkpoint(
-        1_000,
-        90_000_000_000_000,
+    let after = checkpoint_with_market_imr(
+        0,
+        ALLOCATED_FIXED - 10 * ATOM_FIXED,
         11,
         21,
         11,
         21,
-        0,
-        0,
-        0,
+        2,
     );
-    let final_checkpoint = sync_checkpoint(
-        999,
-        90_000_000_000_000,
-        11,
-        21,
-        11,
-        21,
-        0,
-        0,
-        0,
+    let unexpected = operations::classify_sync_change_for_testing(
+        &initial,
+        &before,
+        &after,
+        true,
+        10 * ATOM_FIXED,
     );
 
-    events::vault_issued<Product>(
-        vault_id,
-        @0x1.to_id(),
-        @0x2.to_id(),
-        type_name::with_original_ids<RiskModule>(),
-        standard_tier_policy(),
-        100,
-        250,
-        1_000,
-        0,
-    );
-    events::vault_initialized<Product>(
-        vault_id,
-        @0xB.to_id(),
-        7,
-        @0xC.to_id(),
-        @0xD.to_id(),
-        @0xE.to_id(),
-        @0xF.to_id(),
-        type_name::with_original_ids<Collateral>(),
-        1_000,
-        1_000,
-        100,
-        900,
-        900_000,
-        1_000,
-        1_800,
-        1,
-        policy::long(),
-        1,
-        initial_checkpoint,
-    );
-    events::funding_settled<Product>(
-        vault_id,
+    apply_connected_change(
+        &mut vault,
+        after,
+        unexpected,
+        SEED_EQUITY - 10,
         true,
-        10_000_000_000_000,
-        10,
-        10,
-        0,
-        90,
-        initial_checkpoint,
-        funded_checkpoint,
     );
-    events::max_order_notional_updated<Product>(vault_id, 250, 300);
-    events::risk_module_witness_rotated<Product>(
-        vault_id,
-        type_name::with_original_ids<RiskModule>(),
-        type_name::with_original_ids<RiskModuleV2>(),
-    );
-    events::reduce_only_entered<Product>(vault_id);
-    events::health_synchronized<Product>(
-        vault_id,
-        events::unexpected_checkpoint_reason(),
+
+    assert_eq!(vault.maintenance_reserve_for_testing(), SEED_RESERVE);
+    assert!(vault.is_reduce_only_for_testing());
+    assert!(!vault.is_shutdown_pending_for_testing());
+    assert_eq!(*vault.venue_checkpoint(), after);
+    assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 0);
+    let synchronized = events::collect_one<events::HealthSynchronized<Product>>(0);
+    let (_, reason, lifecycle_changed, checkpoint) =
+        synchronized.health_synchronized_fields();
+    assert_eq!(reason, events::unexpected_checkpoint_reason());
+    assert!(lifecycle_changed);
+    assert_eq!(checkpoint, after);
+
+    let replay = operations::classify_sync_change_for_testing(
+        &after,
+        &after,
+        &after,
         false,
+        0,
+    );
+    apply_connected_change(
+        &mut vault,
+        after,
+        replay,
+        SEED_EQUITY - 10,
+        true,
+    );
+    assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 1);
+    assert_eq!(vault.maintenance_reserve_for_testing(), SEED_RESERVE);
+    destroy(vault);
+    destroy(fixture);
+}
+
+#[test]
+fun connected_objective_health_degrades_once_and_persists_the_checkpoint() {
+    let mut fixture = start();
+    let checkpoint = initial_checkpoint();
+    let mut vault = issue_and_activate(&mut fixture, checkpoint);
+    let unchanged = operations::classify_sync_change_for_testing(
+        &checkpoint,
+        &checkpoint,
+        &checkpoint,
+        false,
+        0,
+    );
+    apply_connected_change(
+        &mut vault,
+        checkpoint,
+        unchanged,
+        SEED_EQUITY,
+        false,
+    );
+
+    assert!(vault.is_reduce_only_for_testing());
+    assert!(!vault.is_shutdown_pending_for_testing());
+    assert_eq!(*vault.venue_checkpoint(), checkpoint);
+    let first = events::collect_one<events::HealthSynchronized<Product>>(0);
+    let (_, reason, lifecycle_changed, event_checkpoint) =
+        first.health_synchronized_fields();
+    assert_eq!(reason, events::objective_failure_reason());
+    assert!(lifecycle_changed);
+    assert_eq!(event_checkpoint, checkpoint);
+
+    let repeated = operations::classify_sync_change_for_testing(
+        &checkpoint,
+        &checkpoint,
+        &checkpoint,
+        false,
+        0,
+    );
+    apply_connected_change(
+        &mut vault,
+        checkpoint,
+        repeated,
+        SEED_EQUITY,
+        false,
+    );
+    assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 1);
+    assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 0);
+    destroy(vault);
+    destroy(fixture);
+}
+
+#[test]
+fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
+    let mut fixture = start();
+    let initial_checkpoint = initial_checkpoint();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint);
+    let vault_id = vault.id_for_testing();
+
+    let funded_checkpoint = funding_checkpoint(10, true);
+    let funding = operations::classify_sync_change_for_testing(
+        &initial_checkpoint,
+        &initial_checkpoint,
+        &funded_checkpoint,
+        true,
+        10 * ATOM_FIXED,
+    );
+    apply_connected_change(
+        &mut vault,
+        funded_checkpoint,
+        funding,
+        SEED_EQUITY - 10,
+        true,
+    );
+    vault.set_max_order_notional(
+        &fixture.protocol,
+        RiskModule(),
+        300,
+    );
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
+    vault.rotate_risk_module<Product, RiskModuleV2>(
+        &fixture.protocol,
+        &admin_witness,
+    );
+    vault.enter_reduce_only(&fixture.protocol, &admin_witness);
+
+    let final_checkpoint = checkpoint_with_market_imr(
+        1,
+        ALLOCATED_FIXED - 10 * ATOM_FIXED,
+        11,
+        21,
+        11,
+        21,
+        1,
+    );
+    let unexpected = operations::classify_sync_change_for_testing(
+        &funded_checkpoint,
+        &final_checkpoint,
+        &final_checkpoint,
+        false,
+        0,
+    );
+    apply_connected_change(
+        &mut vault,
         final_checkpoint,
+        unexpected,
+        SEED_EQUITY - 9,
+        true,
     );
 
     let mut replay = replay_issued(
         events::collect_one<events::VaultIssued<Product>>(0),
-        initial_checkpoint,
     );
     replay_initialized(
         &mut replay,
@@ -716,22 +927,278 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
         events::collect_one<events::HealthSynchronized<Product>>(0),
     );
 
+    let actual_binding = vault.venue_binding();
+    actual_binding.assert_exact(
+        replay.account_object_id,
+        replay.account_number,
+        replay.registry_id,
+        replay.clearing_house_id,
+        replay.base_oracle_id,
+        replay.collateral_oracle_id,
+        replay.collateral_type,
+    );
     assert_eq!(replay.vault_id, vault_id);
-    assert_eq!(replay.account_object_id, @0xB.to_id());
-    assert_eq!(replay.account_number, 7);
-    assert_eq!(replay.registry_id, @0xC.to_id());
-    assert_eq!(replay.clearing_house_id, @0xD.to_id());
-    assert_eq!(replay.base_oracle_id, @0xE.to_id());
-    assert_eq!(replay.collateral_oracle_id, @0xF.to_id());
-    assert_eq!(replay.collateral_type, type_name::with_original_ids<Collateral>());
-    assert_eq!(replay.maintenance_reserve, 90);
-    assert_eq!(replay.lifecycle, 2);
-    assert_eq!(replay.risk_module_witness, type_name::with_original_ids<RiskModuleV2>());
-    assert_eq!(replay.max_order_notional, 300);
-    assert_eq!(replay.checkpoint, final_checkpoint);
+    assert_eq!(replay.maintenance_reserve, vault.maintenance_reserve_for_testing());
+    assert_eq!(replay.lifecycle == 2, vault.is_reduce_only_for_testing());
+    assert_eq!(
+        replay.risk_module_witness,
+        vault.risk_module_witness_for_testing(),
+    );
+    let (_, actual_order_notional, _) = vault.max_order_notional_for_testing();
+    assert_eq!(replay.max_order_notional, actual_order_notional);
+    assert_eq!(*replay.checkpoint.borrow(), *vault.venue_checkpoint());
+    assert_eq!(*vault.venue_checkpoint(), final_checkpoint);
+
+    destroy(vault);
+    destroy(fixture);
 }
 
 // === Test Helpers ===
+
+fun start(): Fixture {
+    let mut scenario = test_scenario::begin(SYSTEM);
+    let registry = coin_registry::create_coin_data_registry_for_testing(
+        scenario.ctx(),
+    );
+    let protocol = protocol::new_for_testing(scenario.ctx());
+    let (super_admin_cap, mut authority) =
+        acl::new_protocol_for_testing(scenario.ctx());
+    authority.grant_admin(
+        &super_admin_cap,
+        1 | 2,
+        ADMIN,
+        scenario.ctx(),
+    );
+    scenario.next_tx(ADMIN);
+    let admin_cap = scenario.take_from_sender<AdminCap>();
+
+    Fixture {
+        scenario,
+        registry,
+        protocol,
+        authority,
+        super_admin_cap,
+        admin_cap,
+    }
+}
+
+fun issue_and_activate(
+    fixture: &mut Fixture,
+    checkpoint: venue_account::Checkpoint,
+): Vault<Product> {
+    let Fixture {
+        scenario,
+        registry,
+        protocol,
+        authority,
+        admin_cap,
+        ..
+    } = fixture;
+    let admin_witness = authority.sign_in(admin_cap);
+    let mut vault = vault::issue<Product, RiskModule>(
+        protocol,
+        &admin_witness,
+        Product(),
+        registry,
+        standard_tier_policy(),
+        100,
+        250,
+        1_000,
+        b"SYNC".to_string(),
+        b"Sync Vault".to_string(),
+        b"Connected Task 7 fixture".to_string(),
+        b"".to_string(),
+        scenario.ctx(),
+    );
+    let seed_nav = vault.initialize_series(
+        position_observation(SEED_EQUITY, true),
+        SEED_RESERVE,
+        REFERENCE_TIME_MS,
+    );
+    vault.mint_locked_shares_for_testing(
+        seed_nav * 1_000,
+        scenario.ctx(),
+    );
+    let binding = venue_account::new_binding(
+        @0xB.to_id(),
+        7,
+        @0xC.to_id(),
+        @0xD.to_id(),
+        @0xE.to_id(),
+        @0xF.to_id(),
+        type_name::with_original_ids<Collateral>(),
+    );
+    let venue = venue_account::new_for_testing(binding, checkpoint);
+    vault.install_venue_account(venue);
+    operations::emit_vault_initialized<Product>(
+        &vault,
+        SEED_EQUITY,
+        SEED_EQUITY,
+        ABSOLUTE_BASE,
+        ABSOLUTE_NOTIONAL,
+        LOT_SIZE,
+        policy::long(),
+        1,
+    );
+
+    vault
+}
+
+fun position_observation(
+    venue_equity: u64,
+    margin_safe: bool,
+): observation::PositionObservation {
+    observation::new_position(
+        venue_equity,
+        ABSOLUTE_BASE,
+        ABSOLUTE_NOTIONAL,
+        LOT_SIZE,
+        policy::long(),
+        0,
+        margin_safe,
+        true,
+        true,
+        observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
+        observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
+        PRICE,
+    )
+}
+
+fun initial_checkpoint(): venue_account::Checkpoint {
+    checkpoint_with_market_imr(
+        0,
+        ALLOCATED_FIXED,
+        10,
+        20,
+        11,
+        21,
+        1,
+    )
+}
+
+fun funding_checkpoint(
+    amount: u64,
+    is_cost: bool,
+): venue_account::Checkpoint {
+    checkpoint_with_market_imr(
+        0,
+        if (is_cost) {
+            ALLOCATED_FIXED - (amount as u256) * ATOM_FIXED
+        } else {
+            ALLOCATED_FIXED + (amount as u256) * ATOM_FIXED
+        },
+        11,
+        21,
+        11,
+        21,
+        1,
+    )
+}
+
+fun checkpoint_with_market_imr(
+    free_collateral: u64,
+    allocated_collateral: u256,
+    funding_snapshot_long: u256,
+    funding_snapshot_short: u256,
+    market_funding_long: u256,
+    market_funding_short: u256,
+    market_initial_margin_ratio: u256,
+): venue_account::Checkpoint {
+    venue_account::checkpoint_for_testing(
+        free_collateral,
+        allocated_collateral,
+        1,
+        1,
+        funding_snapshot_long,
+        funding_snapshot_short,
+        market_funding_long,
+        market_funding_short,
+        LOT_SIZE,
+        0,
+        0,
+        0,
+        0,
+        false,
+        1,
+        market_initial_margin_ratio,
+        1,
+    )
+}
+
+fun apply_connected_change(
+    vault: &mut Vault<Product>,
+    checkpoint: venue_account::Checkpoint,
+    change: snapshot::Change,
+    venue_equity: u64,
+    margin_safe: bool,
+) {
+    operations::apply_post_capture_for_testing(
+        vault,
+        snapshot::captured_health_for_testing(
+            checkpoint,
+            venue_equity,
+            margin_safe,
+        ),
+        change,
+        REFERENCE_TIME_MS,
+    );
+}
+
+fun assert_connected_cost(
+    amount: u64,
+    expected_reserve: u64,
+    expected_absorbed: u64,
+    expected_uncovered: u64,
+) {
+    let mut fixture = start();
+    let initial = initial_checkpoint();
+    let mut vault = issue_and_activate(&mut fixture, initial);
+    let funded = funding_checkpoint(amount, true);
+    let change = operations::classify_sync_change_for_testing(
+        &initial,
+        &initial,
+        &funded,
+        true,
+        (amount as u256) * ATOM_FIXED,
+    );
+    apply_connected_change(
+        &mut vault,
+        funded,
+        change,
+        SEED_EQUITY - amount,
+        true,
+    );
+
+    assert_eq!(vault.maintenance_reserve_for_testing(), expected_reserve);
+    assert_eq!(*vault.venue_checkpoint(), funded);
+    assert!(!vault.is_reduce_only_for_testing());
+    assert!(!vault.is_shutdown_pending_for_testing());
+    assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 0);
+    let event = events::collect_one<events::FundingSettled<Product>>(0);
+    let (
+        vault_id,
+        is_cost,
+        raw_amount,
+        normalized_amount,
+        absorbed,
+        uncovered,
+        reserve_after,
+        previous_checkpoint,
+        checkpoint,
+    ) = event.funding_settled_fields();
+    assert_eq!(vault_id, vault.id_for_testing());
+    assert!(is_cost);
+    assert_eq!(raw_amount, (amount as u256) * ATOM_FIXED);
+    assert_eq!(normalized_amount, amount);
+    assert_eq!(absorbed, expected_absorbed);
+    assert_eq!(uncovered, expected_uncovered);
+    assert_eq!(reserve_after, expected_reserve);
+    assert_eq!(previous_checkpoint, initial);
+    assert_eq!(checkpoint, funded);
+
+    destroy(vault);
+    destroy(fixture);
+}
 
 fun sync_checkpoint(
     free_collateral: u64,
@@ -778,7 +1245,7 @@ fun assert_unexpected_sync_change(
         10_000_000_000_000,
     );
     let (has_funding, _, _, _, checkpoint_clean) =
-        operations::funding_change_fields_for_testing(&change);
+        snapshot::funding_change_fields(&change);
 
     assert!(!has_funding);
     assert!(!checkpoint_clean);
@@ -809,10 +1276,7 @@ fun standard_tier_policy(): policy::TierPolicy {
     )
 }
 
-fun replay_issued(
-    event: events::VaultIssued<Product>,
-    checkpoint: venue_account::Checkpoint,
-): ReplayState {
+fun replay_issued(event: events::VaultIssued<Product>): ReplayState {
     let (
         vault_id,
         _,
@@ -838,7 +1302,7 @@ fun replay_issued(
         lifecycle: 0,
         risk_module_witness,
         max_order_notional,
-        checkpoint,
+        checkpoint: option::none(),
     }
 }
 
@@ -878,7 +1342,7 @@ fun replay_initialized(
     replay.collateral_type = collateral_type;
     replay.maintenance_reserve = maintenance_reserve;
     replay.lifecycle = 1;
-    replay.checkpoint = checkpoint;
+    replay.checkpoint = option::some(checkpoint);
 }
 
 fun replay_funding(
@@ -888,11 +1352,11 @@ fun replay_funding(
     let (vault_id, _, _, _, absorbed, _, reserve_after, previous_checkpoint, checkpoint) =
         event.funding_settled_fields();
     assert_eq!(vault_id, replay.vault_id);
-    assert_eq!(previous_checkpoint, replay.checkpoint);
+    assert_eq!(previous_checkpoint, *replay.checkpoint.borrow());
 
     assert_eq!(reserve_after, replay.maintenance_reserve - absorbed);
     replay.maintenance_reserve = reserve_after;
-    replay.checkpoint = checkpoint;
+    replay.checkpoint = option::some(checkpoint);
 }
 
 fun replay_max_order_notional(
@@ -933,5 +1397,5 @@ fun replay_health(
     if (lifecycle_changed) {
         replay.lifecycle = 2;
     };
-    replay.checkpoint = checkpoint;
+    replay.checkpoint = option::some(checkpoint);
 }

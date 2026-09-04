@@ -44,7 +44,7 @@ public struct Checkpoint has copy, drop, store {
 
 /// Store-only custody for the sole admin authority of one bound Aftermath account.
 public struct VenueAccount has store {
-    admin_cap: AuthorityCap<ACCOUNT, ADMIN>,
+    admin_cap: Option<AuthorityCap<ACCOUNT, ADMIN>>,
     account_object_id: ID,
     account_number: u64,
     registry_id: ID,
@@ -176,6 +176,7 @@ public(package) fun new(
         collateral_type,
     } = binding;
     assert_admin_cap_binding(authority::`for`(&admin_cap), account_object_id);
+    let admin_cap = option::some(admin_cap);
     VenueAccount {
         admin_cap,
         account_object_id,
@@ -213,6 +214,31 @@ public(package) fun binding(self: &VenueAccount): Binding {
     }
 }
 
+/// Unpacks a copied immutable binding for replay-complete adapter events.
+public(package) fun unpack_binding(
+    self: Binding,
+): (ID, u64, ID, ID, ID, ID, TypeName) {
+    let Binding {
+        account_object_id,
+        account_number,
+        registry_id,
+        clearing_house_id,
+        base_oracle_id,
+        collateral_oracle_id,
+        collateral_type,
+    } = self;
+
+    (
+        account_object_id,
+        account_number,
+        registry_id,
+        clearing_house_id,
+        base_oracle_id,
+        collateral_oracle_id,
+        collateral_type,
+    )
+}
+
 /// Borrows the latest authenticated raw checkpoint immutably.
 public(package) fun checkpoint(self: &VenueAccount): &Checkpoint {
     &self.checkpoint
@@ -220,8 +246,12 @@ public(package) fun checkpoint(self: &VenueAccount): &Checkpoint {
 
 /// Revalidates that retained admin authority still names the bound account.
 public(package) fun assert_custody_binding(self: &VenueAccount) {
+    assert!(
+        self.admin_cap.is_some(),
+        blast_leverage_aftermath::errors::admin_cap_account_mismatch!(),
+    );
     assert_admin_cap_binding(
-        authority::`for`(&self.admin_cap),
+        authority::`for`(self.admin_cap.borrow()),
         self.account_object_id,
     );
 }
@@ -298,6 +328,38 @@ public(package) fun replace_checkpoint(
 }
 
 // === Test-Only Functions ===
+
+/// Builds real binding/checkpoint custody around the unavailable local cap.
+///
+/// The authoritative external AuthorityCap constructor is an aborting ABI
+/// stub in local tests. Published code has no path that can create `none`.
+#[test_only]
+public fun new_for_testing(
+    binding: Binding,
+    checkpoint: Checkpoint,
+): VenueAccount {
+    let Binding {
+        account_object_id,
+        account_number,
+        registry_id,
+        clearing_house_id,
+        base_oracle_id,
+        collateral_oracle_id,
+        collateral_type,
+    } = binding;
+
+    VenueAccount {
+        admin_cap: option::none(),
+        account_object_id,
+        account_number,
+        registry_id,
+        clearing_house_id,
+        base_oracle_id,
+        collateral_oracle_id,
+        collateral_type,
+        checkpoint,
+    }
+}
 
 #[test_only]
 public fun assert_admin_cap_binding_for_testing(

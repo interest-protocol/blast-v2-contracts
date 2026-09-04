@@ -77,7 +77,6 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
     );
     assert_position_imr(position_imr);
 
-    let vault_id = vault.id();
     let registry_id = object::id(registry);
     let clearing_house_id = object::id(&clearing_house);
     let base_oracle_id = object::id(base_oracle);
@@ -252,26 +251,15 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
     account::consume_policy_and_share_account(account, share_policy);
     vault.install_venue_account(venue_account);
     clearing_house::share(clearing_house);
-    events::vault_initialized<Product>(
-        vault_id,
-        account_object_id,
-        account_number,
-        registry_id,
-        clearing_house_id,
-        base_oracle_id,
-        collateral_oracle_id,
-        collateral_type,
+    emit_vault_initialized<Product>(
+        vault,
         seed_amount,
         seed_venue_equity,
-        seed_reserve,
-        seed_shareholder_nav,
-        locked_shares,
         absolute_base,
         absolute_notional,
         final_lot_size,
         final_side,
         position_imr,
-        checkpoint,
     );
 }
 
@@ -345,6 +333,24 @@ public fun sync_health<Product, Collateral>(
         funding_candidate,
         collateral_price,
     );
+    apply_post_capture(
+        vault,
+        post_capture,
+        change,
+        clock.timestamp_ms(),
+    );
+}
+
+// === Package Functions ===
+
+/// Applies the complete Blast-owned post-capture synchronization phase.
+public(package) fun apply_post_capture<Product>(
+    vault: &mut Vault<Product>,
+    post_capture: snapshot::CapturedSnapshot,
+    change: snapshot::Change,
+    reference_time_ms: u64,
+) {
+    let stored_checkpoint = *vault.venue_checkpoint();
     let (has_funding, is_cost, raw_amount, amount, checkpoint_clean) =
         snapshot::funding_change_fields(&change);
     let (absorbed_by_reserve, uncovered_cost, reserve_after) = if (has_funding) {
@@ -360,7 +366,7 @@ public fun sync_health<Product, Collateral>(
     vault.replace_venue_checkpoint(checkpoint);
     let lifecycle_changed = vault.sync_health(
         observation,
-        clock.timestamp_ms(),
+        reference_time_ms,
     );
 
     let vault_id = vault.id();
@@ -389,6 +395,53 @@ public fun sync_health<Product, Collateral>(
             checkpoint,
         );
     };
+}
+
+/// Emits activation facts read back from the resulting real Vault state.
+public(package) fun emit_vault_initialized<Product>(
+    vault: &Vault<Product>,
+    seed_amount: u64,
+    seed_venue_equity: u64,
+    absolute_base: u64,
+    absolute_notional: u64,
+    lot_size: u64,
+    position_side: PositionSide,
+    position_imr: u256,
+) {
+    let (
+        account_object_id,
+        account_number,
+        registry_id,
+        clearing_house_id,
+        base_oracle_id,
+        collateral_oracle_id,
+        collateral_type,
+    ) = vault.venue_binding().unpack_binding();
+    let checkpoint = *vault.venue_checkpoint();
+    let locked_shares = vault.share_supply();
+    let seed_reserve = vault.maintenance_reserve();
+
+    events::vault_initialized<Product>(
+        vault.id(),
+        account_object_id,
+        account_number,
+        registry_id,
+        clearing_house_id,
+        base_oracle_id,
+        collateral_oracle_id,
+        collateral_type,
+        seed_amount,
+        seed_venue_equity,
+        seed_reserve,
+        locked_shares / SEED_SHARE_SCALE,
+        locked_shares,
+        absolute_base,
+        absolute_notional,
+        lot_size,
+        position_side,
+        position_imr,
+        checkpoint,
+    );
 }
 
 // === Private Functions ===
@@ -772,16 +825,16 @@ public fun classify_sync_change_for_testing(
 }
 
 #[test_only]
-public fun funding_change_fields_for_testing(
-    change: &snapshot::Change,
-): (bool, bool, u256, u64, bool) {
-    snapshot::funding_change_fields(change)
-}
-
-#[test_only]
-public fun health_event_decision_for_testing(
-    lifecycle_changed: bool,
-    checkpoint_clean: bool,
-): (bool, u8) {
-    health_event_decision(lifecycle_changed, checkpoint_clean)
+public fun apply_post_capture_for_testing<Product>(
+    vault: &mut Vault<Product>,
+    post_capture: snapshot::CapturedSnapshot,
+    change: snapshot::Change,
+    reference_time_ms: u64,
+) {
+    apply_post_capture(
+        vault,
+        post_capture,
+        change,
+        reference_time_ms,
+    );
 }

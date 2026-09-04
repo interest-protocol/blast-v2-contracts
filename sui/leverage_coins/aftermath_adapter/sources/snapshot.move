@@ -551,10 +551,6 @@ fun classify_change_(
     Change::Unexpected
 }
 
-public(package) fun is_unexpected_change(change: &Change): bool {
-    match (change) { Change::Unexpected => true, _ => false }
-}
-
 // === Private Functions ===
 
 fun pyth_price(price_info_object: &PriceInfoObject, aftermath_feed: &price_feed::PriceFeed, venue_price: u256): (u64, u64, u64) {
@@ -790,6 +786,37 @@ fun assert_position_signs(base: u256, quote: u256, long_or_flat: bool): Position
 }
 
 // === Test-Only Functions ===
+
+/// Builds a normalized authenticated post-capture fixture around a real raw
+/// checkpoint. Tests vary only equity and margin; all other objective facts
+/// are the standard healthy 2x long fixture used by connected Vault tests.
+#[test_only]
+public fun captured_health_for_testing(
+    checkpoint: Checkpoint,
+    venue_equity: u64,
+    margin_safe: bool,
+): CapturedSnapshot {
+    CapturedSnapshot {
+        venue_equity,
+        absolute_base: 1_800,
+        absolute_notional: 1_800,
+        lot_size: 1,
+        side: policy::long(),
+        pending_order_count: 0,
+        margin_safe,
+        venue_operational: true,
+        economics_valid: true,
+        base_price: 1_000_000_000,
+        base_confidence: 0,
+        base_timestamp: 1_000,
+        collateral_price: 1_000_000_000,
+        collateral_confidence: 0,
+        collateral_timestamp: 1_000,
+        mark_price: 1_000_000_000,
+        checkpoint,
+        collateral_fixed: 1_000_000_000_000_000_000,
+    }
+}
 
 #[test_only]
 public fun classify_change_for_testing(before: &Checkpoint, after: &Checkpoint): Change {

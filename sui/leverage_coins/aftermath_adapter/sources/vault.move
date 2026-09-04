@@ -284,6 +284,11 @@ public(package) fun share_supply<Product>(self: &Vault<Product>): u64 {
     self.treasury_cap().total_supply()
 }
 
+/// Returns the authoritative funding-only reserve for state-derived events.
+public(package) fun maintenance_reserve<Product>(self: &Vault<Product>): u64 {
+    self.series_state.maintenance_reserve()
+}
+
 /// Mints the one locked seed position and makes it permanently inaccessible.
 public(package) fun mint_locked_shares<Product>(
     self: &mut Vault<Product>,

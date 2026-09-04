@@ -78,8 +78,8 @@ grep -q '^public struct Binding has copy, drop, store {$' "$venue_account_file" 
   || fail "Binding must remain a copyable stored value."
 grep -q '^public struct Checkpoint has copy, drop, store {$' "$venue_account_file" \
   || fail "Checkpoint must remain a copyable stored value."
-grep -q 'admin_cap: AuthorityCap<ACCOUNT, ADMIN>' "$venue_account_file" \
-  || fail "VenueAccount must hold the exact Aftermath account admin cap."
+grep -q 'admin_cap: Option<AuthorityCap<ACCOUNT, ADMIN>>' "$venue_account_file" \
+  || fail "VenueAccount must hold the exact optional Aftermath account admin cap."
 if grep -rqE '\bASSISTANT\b|new_assistant' "$package_dir/sources"; then
   fail "The adapter must never create or store an Aftermath assistant cap."
 fi
@@ -94,7 +94,7 @@ venue_account_fields="$(
   sed -n '/^public struct VenueAccount has store {$/,/^}$/p' "$venue_account_file" \
     | sed '1d;$d;s/^[[:space:]]*//'
 )"
-expected_venue_account_fields=$'admin_cap: AuthorityCap<ACCOUNT, ADMIN>,\naccount_object_id: ID,\naccount_number: u64,\nregistry_id: ID,\nclearing_house_id: ID,\nbase_oracle_id: ID,\ncollateral_oracle_id: ID,\ncollateral_type: TypeName,\ncheckpoint: Checkpoint,'
+expected_venue_account_fields=$'admin_cap: Option<AuthorityCap<ACCOUNT, ADMIN>>,\naccount_object_id: ID,\naccount_number: u64,\nregistry_id: ID,\nclearing_house_id: ID,\nbase_oracle_id: ID,\ncollateral_oracle_id: ID,\ncollateral_type: TypeName,\ncheckpoint: Checkpoint,'
 [[ "$venue_account_fields" == "$expected_venue_account_fields" ]] \
   || fail "VenueAccount must contain exactly the accepted custody and binding fields."
 binding_fields="$(
@@ -119,11 +119,41 @@ constructor_block="$(
 awk '
   /assert_admin_cap_binding\(authority::`for`\(&admin_cap\), account_object_id\);/ {
     getline
-    if ($0 == "    VenueAccount {") found = 1
+    if ($0 == "    let admin_cap = option::some(admin_cap);") {
+      getline
+      if ($0 == "    VenueAccount {") found = 1
+    }
   }
   END { exit !found }
 ' <<<"$constructor_block" \
-  || fail "VenueAccount must check authority::for immediately before cap custody."
+  || fail "VenueAccount must check authority::for immediately before wrapping and retaining the cap."
+[[ "$(grep -Fc 'option::some(admin_cap)' <<<"$constructor_block")" -eq 1 ]] \
+  || fail "Production VenueAccount construction must always retain some admin cap."
+if grep -q 'option::none' <<<"$production_venue_account"; then
+  fail "Published VenueAccount code must have no path that constructs a missing admin cap."
+fi
+if grep -qE 'admin_cap\.(destroy|extract|take|fill|swap|replace)|self\.admin_cap[[:space:]]*=|self\.admin_cap\.borrow_mut\(' \
+  <<<"$production_venue_account"; then
+  fail "Published VenueAccount code must never clear, take, or replace the retained admin cap."
+fi
+if grep -qE 'option::(destroy|extract|take|fill|swap|replace)[^(]*\([^)]*admin_cap' \
+  <<<"$production_venue_account"; then
+  fail "Published VenueAccount code must never mutate the retained admin-cap option through a free function."
+fi
+custody_binding_block="$(
+  sed -n '/^public(package) fun assert_custody_binding(/,/^}/p' "$venue_account_file"
+)"
+custody_some_line="$(grep -nF 'self.admin_cap.is_some()' <<<"$custody_binding_block" | cut -d: -f1)"
+custody_borrow_line="$(grep -nF 'authority::`for`(self.admin_cap.borrow())' <<<"$custody_binding_block" | cut -d: -f1)"
+if [[ -z "$custody_some_line" || -z "$custody_borrow_line" ]] \
+  || (( custody_some_line >= custody_borrow_line )); then
+  fail "Every production admin-cap borrow must first assert that the retained option is some."
+fi
+[[ "$(grep -Fc 'self.admin_cap.borrow()' <<<"$production_venue_account")" -eq 1 ]] \
+  || fail "VenueAccount must have one checked production borrow of the retained admin cap."
+grep -A1 '^#\[test_only\]$' "$venue_account_file" \
+  | grep -q '^public fun new_for_testing(' \
+  || fail "The missing-cap VenueAccount constructor must remain test-only."
 if grep -qE '\): *&?(mut )?AuthorityCap<|: *&mut AuthorityCap<' \
   <<<"$production_venue_account"; then
   fail "VenueAccount must not return or mutably borrow the admin cap."
@@ -297,8 +327,19 @@ grep -q 'clearing_house::settle_position_funding(&mutclearing_house,collateral_o
   || fail "Initialization must return the ClearingHouse through its defining share port."
 [[ "$(grep -Fc 'account::consume_policy_and_share_account(account, share_policy);' <<<"$initialization_block")" -eq 1 ]] \
   || fail "Initialization must consume the account share policy and share the account."
-[[ "$(grep -Fc 'events::vault_initialized<Product>(' <<<"$initialization_block")" -eq 1 ]] \
-  || fail "Initialization must emit one replay-complete activation event."
+[[ "$(grep -Fc 'emit_vault_initialized<Product>(' <<<"$initialization_block")" -eq 1 ]] \
+  || fail "Initialization must call one state-derived activation event helper."
+activation_event_block="$(
+  sed -n '/^public(package) fun emit_vault_initialized<Product>($/,/^}/p' "$operations_file"
+)"
+[[ "$(grep -Fc 'events::vault_initialized<Product>(' <<<"$activation_event_block")" -eq 1 ]] \
+  || fail "The state-derived activation helper must emit exactly one activation event."
+grep -q 'vault.venue_binding().unpack_binding()' <<<"$activation_event_block" \
+  || fail "Activation events must read immutable binding fields from the resulting Vault."
+grep -q 'let checkpoint = \*vault.venue_checkpoint();' <<<"$activation_event_block" \
+  || fail "Activation events must read the resulting Vault checkpoint."
+grep -q 'let seed_reserve = vault.maintenance_reserve();' <<<"$activation_event_block" \
+  || fail "Activation events must read the resulting Series reserve."
 grep -q 'position_side == policy::short()' "$operations_file" \
   || fail "Initialization must map Aftermath true to ask/short and false to bid/long."
 grep -q 'aftermath_order_side,' <<<"$initialization_block" \
@@ -327,7 +368,7 @@ seal_line="$(initialization_line 'venue_account::new(admin_cap, binding, checkpo
 account_share_line="$(initialization_line 'account::consume_policy_and_share_account(account, share_policy);')"
 install_line="$(initialization_line 'vault.install_venue_account(venue_account);')"
 clearing_share_line="$(initialization_line 'clearing_house::share(clearing_house);')"
-event_line="$(initialization_line 'events::vault_initialized<Product>(')"
+event_line="$(initialization_line 'emit_vault_initialized<Product>(')"
 initialization_order=(
   "$version_line" "$risk_line" "$create_line" "$binding_line" "$deposit_line"
   "$allocate_line" "$position_line" "$imr_line" "$pre_capture_line"
@@ -402,18 +443,11 @@ sync_candidate_line="$(sync_line 'let funding_candidate = position::calculate_po
 sync_settle_line="$(sync_line 'clearing_house::settle_position_funding(')"
 sync_post_line="$(grep -nF 'snapshot::capture_health(' <<<"$sync_block" | sed -n '2s/:.*//p')"
 sync_classify_line="$(sync_line 'let change = classify_sync_change(')"
-sync_series_settle_line="$(sync_line 'vault.settle_funding(is_cost, amount)')"
-sync_finish_line="$(sync_line 'let (observation, checkpoint) = snapshot::finish_health(')"
-sync_persist_line="$(sync_line 'vault.replace_venue_checkpoint(checkpoint);')"
-sync_policy_line="$(sync_line 'let lifecycle_changed = vault.sync_health(')"
-sync_funding_event_line="$(sync_line 'events::funding_settled<Product>(')"
-sync_health_event_line="$(sync_line 'events::health_synchronized<Product>(')"
+sync_apply_line="$(sync_line 'apply_post_capture(')"
 sync_order=(
   "$sync_version_line" "$sync_cap_line" "$sync_pre_line"
   "$sync_candidate_line" "$sync_settle_line" "$sync_post_line"
-  "$sync_classify_line" "$sync_series_settle_line" "$sync_finish_line"
-  "$sync_persist_line" "$sync_policy_line" "$sync_funding_event_line"
-  "$sync_health_event_line"
+  "$sync_classify_line" "$sync_apply_line"
 )
 for ((i = 1; i < ${#sync_order[@]}; i++)); do
   if [[ -z "${sync_order[i - 1]}" || -z "${sync_order[i]}" ]] \
@@ -421,12 +455,46 @@ for ((i = 1; i < ${#sync_order[@]}; i++)); do
     fail "Health sync must preserve settlement, classification, persistence, policy, and event order."
   fi
 done
-[[ "$(grep -Fc 'vault.replace_venue_checkpoint(checkpoint);' <<<"$sync_block")" -eq 1 ]] \
-  || fail "Health sync must persist exactly one authenticated post checkpoint."
-[[ "$(grep -Fc 'events::funding_settled<Product>(' <<<"$sync_block")" -eq 1 ]] \
-  || fail "Health sync must have one nonzero-funding event site."
-[[ "$(grep -Fc 'events::health_synchronized<Product>(' <<<"$sync_block")" -eq 1 ]] \
-  || fail "Health sync must have one degradation event site."
+[[ "$(grep -Fc 'apply_post_capture(' <<<"$sync_block")" -eq 1 ]] \
+  || fail "Health sync must delegate exactly once to the connected post-capture phase."
+post_capture_block="$(
+  sed -n '/^public(package) fun apply_post_capture<Product>($/,/^}/p' "$operations_file"
+)"
+post_capture_line() {
+  local needle="$1"
+  grep -nF "$needle" <<<"$post_capture_block" | head -1 | cut -d: -f1
+}
+post_stored_line="$(post_capture_line 'let stored_checkpoint = *vault.venue_checkpoint();')"
+post_fields_line="$(post_capture_line 'snapshot::funding_change_fields(&change)')"
+post_settle_line="$(post_capture_line 'vault.settle_funding(is_cost, amount)')"
+post_finish_line="$(post_capture_line 'let (observation, checkpoint) = snapshot::finish_health(')"
+post_persist_line="$(post_capture_line 'vault.replace_venue_checkpoint(checkpoint);')"
+post_policy_line="$(post_capture_line 'let lifecycle_changed = vault.sync_health(')"
+post_funding_event_line="$(post_capture_line 'events::funding_settled<Product>(')"
+post_health_decision_line="$(post_capture_line 'let (emit_health, health_reason) = health_event_decision(')"
+post_health_event_line="$(post_capture_line 'events::health_synchronized<Product>(')"
+post_capture_order=(
+  "$post_stored_line" "$post_fields_line" "$post_settle_line" "$post_finish_line"
+  "$post_persist_line" "$post_policy_line" "$post_funding_event_line"
+  "$post_health_decision_line" "$post_health_event_line"
+)
+for ((i = 1; i < ${#post_capture_order[@]}; i++)); do
+  if [[ -z "${post_capture_order[i - 1]}" || -z "${post_capture_order[i]}" ]] \
+    || (( post_capture_order[i - 1] >= post_capture_order[i] )); then
+    fail "The connected post-capture helper must preserve settlement, persistence, policy, and event order."
+  fi
+done
+[[ "$(grep -Fc 'vault.replace_venue_checkpoint(checkpoint);' <<<"$post_capture_block")" -eq 1 ]] \
+  || fail "The post-capture helper must persist exactly one authenticated checkpoint."
+[[ "$(grep -Fc 'events::funding_settled<Product>(' <<<"$post_capture_block")" -eq 1 ]] \
+  || fail "The post-capture helper must have one exact-funding event site."
+[[ "$(grep -Fc 'events::health_synchronized<Product>(' <<<"$post_capture_block")" -eq 1 ]] \
+  || fail "The post-capture helper must have one degradation event site."
+test_post_capture_block="$(
+  sed -n '/^public fun apply_post_capture_for_testing<Product>($/,/^}/p' "$operations_file"
+)"
+[[ "$(grep -Fc 'apply_post_capture(' <<<"$test_post_capture_block")" -eq 1 ]] \
+  || fail "The test-only post-capture seam must invoke the exact production helper once."
 
 for mutation in \
   'issue<Product: drop, RiskModule: drop>' \
