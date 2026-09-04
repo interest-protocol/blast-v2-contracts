@@ -183,14 +183,15 @@ Aftermath interface. The source-boundary gate pins the exact argument and call
 order so this distinction cannot regress behind two values of the same Move
 type.
 
-Local tests also carry a stateful rollback model for the Blast-owned mutation
-phases: Series activation/reserve, locked-share supply, cap/checkpoint sealing,
-VenueAccount installation, and activation event emission. Injecting a modeled
-abort after each phase restores the complete pre-transaction facts, including
-uninitialized Series state, zero supply, absent cap/VenueAccount, and absent
-checkpoint. The structural gate binds those modeled phases to production
-order. The official external ports still abort locally, so Task 8 retains the
-deployed end-to-end and external-phase failure execution evidence.
+Local unit tests prove the individual Blast-owned guards and mutation seams.
+The source-boundary gate pins their production order: Series activation and
+reserve, locked-share minting, cap/checkpoint sealing, VenueAccount
+installation, account and ClearingHouse sharing, and event emission. These
+tests do not prove transaction rollback. Move unit tests cannot catch an abort
+and then inspect the aborted transaction's object effects, and the official
+external ports abort locally. Task 8 must therefore prove activation atomicity
+with controlled submitted local or testnet transactions at every named phase
+boundary, in addition to one successful end-to-end activation.
 
 ## Evidence and remaining gates
 
@@ -200,7 +201,11 @@ not claim that a Vault can hold value. Before activation:
 - Task 5 must implement independent long, short, flat, PnL, funding, depeg,
   minimum-lot, width, and rounding vectors for this table.
 - Task 8 must compare the named interface results and funding checkpoint effect
-  against live inspection and controlled mutation fixtures.
+  against live inspection and controlled mutation fixtures. It must also
+  observe failed submitted local or testnet transactions at every activation
+  phase boundary and prove that no protocol-owned mutation, supply, custody,
+  or event effect survives; read-only mainnet dev-inspect is not rollback
+  evidence.
 - The selected SUI-USDC market, registry, oracle objects, source IDs, lot size,
   IMR, MMR, pause/freeze behavior, and usable owned collateral remain deployment
   inputs that must be recorded and verified.
