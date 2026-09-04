@@ -15,7 +15,7 @@ use blast_leverage_series_one::{
     constants,
     lifecycle::{Self, Lifecycle},
     observation::{Self, FundingSettlement, PositionObservation},
-    policy::TierPolicy,
+    policy::{PositionSide, TierPolicy},
 };
 
 // === Public Types ===
@@ -62,6 +62,91 @@ public fun new<Product>(
     }
 }
 
+/// Validates one flat seed observation and returns policy-owned sizing inputs.
+///
+/// The target uses atomic collateral units. Prices and lot size come from the
+/// same consumed strict observation that the adapter uses for the opening
+/// session; direction and the live order cap are read by the earlier
+/// initialization-constraints guard.
+public fun prepare_initialization<Product>(
+    self: &State<Product>,
+    observation: PositionObservation,
+    seed_reserve: u64,
+    reference_time_ms: u64,
+): (u64, u64, u64, u64) {
+    self.lifecycle.assert_can_activate();
+
+    let (
+        venue_equity,
+        absolute_base,
+        absolute_notional,
+        lot_size,
+        _,
+        pending_order_count,
+        margin_safe,
+        venue_operational,
+        checkpoint_clean,
+        base_index,
+        collateral_oracle,
+        mark_price,
+    ) = observation.unpack_position();
+    let (base_index_price, base_confidence, base_publish_time_ms) =
+        base_index.unpack_price();
+    let (collateral_price, collateral_confidence, collateral_publish_time_ms) =
+        collateral_oracle.unpack_price();
+
+    assert!(
+        accounting_math::is_reserve_backed(venue_equity, seed_reserve),
+        blast_leverage_series_one::errors::maintenance_reserve_exceeds_equity!(),
+    );
+    assert!(
+        accounting_math::is_shareholder_nav_positive(venue_equity, seed_reserve),
+        blast_leverage_series_one::errors::invalid_nav!(),
+    );
+
+    let valuation_policy = self.tier_policy.valuation_policy();
+    valuation_policy.assert_price_fresh(base_publish_time_ms, reference_time_ms);
+    valuation_policy.assert_confidence_within_bound(base_confidence, base_index_price);
+    valuation_policy.assert_price_fresh(collateral_publish_time_ms, reference_time_ms);
+    valuation_policy.assert_confidence_within_bound(collateral_confidence, collateral_price);
+    valuation_policy.assert_mark_within_index_divergence(mark_price, base_index_price);
+    assert!(
+        absolute_base == 0 && absolute_notional == 0,
+        blast_leverage_series_one::errors::invalid_initialization_observation!(),
+    );
+    assert!(
+        pending_order_count == 0,
+        blast_leverage_series_one::errors::initialization_orders_not_empty!(),
+    );
+    assert!(
+        venue_operational,
+        blast_leverage_series_one::errors::initialization_venue_not_operational!(),
+    );
+    assert!(
+        checkpoint_clean,
+        blast_leverage_series_one::errors::initialization_checkpoint_dirty!(),
+    );
+    assert!(
+        margin_safe,
+        blast_leverage_series_one::errors::initialization_margin_unsafe!(),
+    );
+
+    let seed_nav = accounting_math::shareholder_nav(venue_equity, seed_reserve);
+    self.tier_policy.assert_within_nav_cap(seed_nav);
+    let target_notional = accounting_math::target_notional_from_equity_down(
+        venue_equity,
+        seed_reserve,
+        self.tier_policy.rebalance_policy().target_bps(),
+    );
+
+    (
+        target_notional,
+        base_index_price,
+        collateral_price,
+        lot_size,
+    )
+}
+
 /// Returns the seed position's target notional from reserve-excluded shareholder NAV.
 ///
 /// Both inputs and the result use atomic collateral units. The target rounds
@@ -91,6 +176,38 @@ public fun initialization_target_notional<Product>(
         seed_reserve,
         self.tier_policy.rebalance_policy().target_bps(),
     )
+}
+
+/// Returns the immutable position side and live per-order notional bound used by activation.
+///
+/// The adapter calls this before any venue mutation. The lifecycle guard makes
+/// an installed or otherwise activated State ineligible for a second seed.
+public fun initialization_constraints<Product>(
+    self: &State<Product>,
+): (PositionSide, u64) {
+    self.lifecycle.assert_can_activate();
+    (
+        self.tier_policy.side(),
+        self.max_order_notional.current(),
+    )
+}
+
+/// Rejects a seed session whose execution diverges beyond strict tolerance.
+///
+/// Initialization always increases risk, so the wider emergency tolerance is
+/// never available on this edge.
+public fun assert_initialization_execution<Product>(
+    self: &State<Product>,
+    reference_price: u64,
+    execution_price: u64,
+) {
+    self.lifecycle.assert_can_activate();
+    self.tier_policy
+        .rebalance_policy()
+        .assert_execution_within_strict_tolerance(
+            reference_price,
+            execution_price,
+        );
 }
 
 /// Rejects one adapter order above the live atomic-collateral notional limit.

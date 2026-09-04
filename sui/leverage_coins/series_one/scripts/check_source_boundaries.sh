@@ -174,17 +174,45 @@ actual_state_public="$({
     | sed -nE 's/^[0-9]+:[[:space:]]*public[[:space:]]+fun[[:space:]]+([a-zA-Z0-9_]+).*/\1/p'
 } | sort)"
 expected_state_public="$(printf '%s\n' \
+  assert_initialization_execution \
   assert_order_notional_allowed \
   enter_reduce_only \
+  initialization_constraints \
   initialization_target_notional \
   initialize \
   new \
+  prepare_initialization \
   set_max_order_notional \
   settle_funding \
   sync_health \
   | sort)"
 [[ "$actual_state_public" == "$expected_state_public" ]] \
   || fail "The production Series1 State surface changed without boundary review."
+
+prepare_initialization_block="$(
+  sed -n '/^public fun prepare_initialization<Product>($/,/^}/p' "$state_file"
+)"
+grep -q 'self.lifecycle.assert_can_activate();' <<<"$prepare_initialization_block" \
+  || fail "Seed preflight must require an uninitialized lifecycle."
+grep -q ') = observation.unpack_position();' <<<"$prepare_initialization_block" \
+  || fail "Seed preflight must consume one linear position observation."
+grep -q 'absolute_base == 0 && absolute_notional == 0' <<<"$prepare_initialization_block" \
+  || fail "Seed preflight must require an exactly flat position."
+initialization_constraints_block="$(
+  sed -n '/^public fun initialization_constraints<Product>($/,/^}/p' "$state_file"
+)"
+grep -q 'self.lifecycle.assert_can_activate();' <<<"$initialization_constraints_block" \
+  || fail "Initialization constraints must reject an activated State before venue mutation."
+grep -q 'self.tier_policy.side(),' <<<"$initialization_constraints_block" \
+  || fail "Initialization constraints must return the immutable Series side."
+grep -q 'self.max_order_notional.current(),' <<<"$initialization_constraints_block" \
+  || fail "Initialization constraints must return the live per-order notional cap."
+
+initialization_execution_block="$(
+  sed -n '/^public fun assert_initialization_execution<Product>($/,/^}/p' "$state_file"
+)"
+grep -q 'assert_execution_within_strict_tolerance' <<<"$initialization_execution_block" \
+  || fail "Initialization must use the immutable strict execution tolerance."
 
 actual_initialize_shape="$(
   sed -n '/^public fun initialize<Product>($/,/^}/p' "$state_file" \

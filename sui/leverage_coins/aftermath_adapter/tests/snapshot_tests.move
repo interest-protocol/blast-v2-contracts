@@ -4,9 +4,40 @@ module blast_leverage_aftermath::snapshot_tests;
 
 use blast_leverage_aftermath::snapshot;
 use blast_leverage_aftermath::venue_account;
+use blast_leverage_series_one::policy;
 use std::unit_test::assert_eq;
 
 // === Tests ===
+
+#[test]
+fun initialization_facts_carrier_preserves_normalized_fields() {
+    let facts = snapshot::facts_for_testing(
+        1_100_000,
+        2_000_000_000,
+        2_000_000,
+        1_000,
+        policy::short(),
+        1_000_000_000,
+        999_000_000,
+    );
+    let (
+        venue_equity,
+        absolute_base,
+        absolute_notional,
+        lot_size,
+        side,
+        base_price,
+        collateral_price,
+    ) = facts.unpack_facts();
+
+    assert_eq!(venue_equity, 1_100_000);
+    assert_eq!(absolute_base, 2_000_000_000);
+    assert_eq!(absolute_notional, 2_000_000);
+    assert_eq!(lot_size, 1_000);
+    assert_eq!(side, policy::short());
+    assert_eq!(base_price, 1_000_000_000);
+    assert_eq!(collateral_price, 999_000_000);
+}
 
 #[test]
 fun unchanged_checkpoint_is_not_funding() {

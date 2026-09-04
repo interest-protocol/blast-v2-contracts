@@ -7,7 +7,12 @@ use blast_leverage_aftermath::venue_account::{Self as venue_account, Binding, Ch
 use blast_leverage_series_one::{observation, policy::{Self, PositionSide}};
 use ifixed::ifixed;
 use oracle_aggregator::{price_feed, price_feed_storage::{Self, PriceFeedStorage}};
-use perpetuals::{account::{Self, Account}, clearing_house::{Self, ClearingHouse}, market, registry::Registry};
+use perpetuals::{
+    account::{Self, Account},
+    clearing_house::{Self, ClearingHouse},
+    market,
+    registry::Registry,
+};
 use position::position;
 use pyth::{i64, price, price_feed as pyth_price_feed, price_info::{Self, PriceInfoObject}};
 use sui::clock::Clock;
@@ -21,6 +26,20 @@ public enum Change has drop {
     FundingCredit(u256),
     FundingCost(u256),
     Unexpected,
+}
+
+/// Normalized primitives needed by the enclosing adapter operation.
+///
+/// This value is operation-scoped and is never stored. It lets the caller use
+/// the same authenticated capture for sizing, postconditions, and events.
+public struct SnapshotFacts has copy, drop {
+    venue_equity: u64,
+    absolute_base: u64,
+    absolute_notional: u64,
+    lot_size: u64,
+    side: PositionSide,
+    base_price: u64,
+    collateral_price: u64,
 }
 
 // === Package Functions ===
@@ -41,7 +60,47 @@ public(package) fun capture<Collateral>(
     collateral_price_info: &PriceInfoObject,
     clock: &Clock,
 ): (observation::PositionObservation, Checkpoint) {
-    capture_(binding, account, registry, clearing_house, base_oracle, collateral_oracle, base_price_info, collateral_price_info, clock, false, true)
+    let (observation, checkpoint, _) = capture_(
+        binding,
+        account,
+        registry,
+        clearing_house,
+        base_oracle,
+        collateral_oracle,
+        base_price_info,
+        collateral_price_info,
+        clock,
+        false,
+        true,
+    );
+    (observation, checkpoint)
+}
+
+/// Captures strict seed facts for atomic Vault initialization.
+public(package) fun capture_initialization<Collateral>(
+    binding: &Binding,
+    account: &Account<Collateral>,
+    registry: &Registry,
+    clearing_house: &ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    base_price_info: &PriceInfoObject,
+    collateral_price_info: &PriceInfoObject,
+    clock: &Clock,
+): (observation::PositionObservation, Checkpoint, SnapshotFacts) {
+    capture_(
+        binding,
+        account,
+        registry,
+        clearing_house,
+        base_oracle,
+        collateral_oracle,
+        base_price_info,
+        collateral_price_info,
+        clock,
+        false,
+        true,
+    )
 }
 
 /// Captures authenticated live facts for objective health degradation.
@@ -60,7 +119,20 @@ public(package) fun capture_health<Collateral>(
     clock: &Clock,
     change: &Change,
 ): (observation::PositionObservation, Checkpoint) {
-    capture_(binding, account, registry, clearing_house, base_oracle, collateral_oracle, base_price_info, collateral_price_info, clock, true, !is_unexpected_change(change))
+    let (observation, checkpoint, _) = capture_(
+        binding,
+        account,
+        registry,
+        clearing_house,
+        base_oracle,
+        collateral_oracle,
+        base_price_info,
+        collateral_price_info,
+        clock,
+        true,
+        !is_unexpected_change(change),
+    );
+    (observation, checkpoint)
 }
 
 fun capture_<Collateral>(
@@ -75,7 +147,7 @@ fun capture_<Collateral>(
     clock: &Clock,
     health: bool,
     checkpoint_clean: bool,
-): (observation::PositionObservation, Checkpoint) {
+): (observation::PositionObservation, Checkpoint, SnapshotFacts) {
     binding.assert_exact(
         object::id(account),
         account::account_id(account),
@@ -213,6 +285,40 @@ fun capture_<Collateral>(
             mark_price,
         ) },
         checkpoint,
+        SnapshotFacts {
+            venue_equity,
+            absolute_base,
+            absolute_notional,
+            lot_size: market::lot_size(params),
+            side,
+            base_price,
+            collateral_price,
+        },
+    )
+}
+
+/// Unpacks operation-scoped normalized facts after one authenticated capture.
+public(package) fun unpack_facts(
+    self: SnapshotFacts,
+): (u64, u64, u64, u64, PositionSide, u64, u64) {
+    let SnapshotFacts {
+        venue_equity,
+        absolute_base,
+        absolute_notional,
+        lot_size,
+        side,
+        base_price,
+        collateral_price,
+    } = self;
+
+    (
+        venue_equity,
+        absolute_base,
+        absolute_notional,
+        lot_size,
+        side,
+        base_price,
+        collateral_price,
     )
 }
 
@@ -597,6 +703,27 @@ public fun position_signs_coherent_for_testing(base_negative: bool, quote_negati
 #[test_only]
 public fun seconds_to_millis_for_testing(seconds: u64): u64 {
     checked_seconds_to_millis(seconds)
+}
+
+#[test_only]
+public fun facts_for_testing(
+    venue_equity: u64,
+    absolute_base: u64,
+    absolute_notional: u64,
+    lot_size: u64,
+    side: PositionSide,
+    base_price: u64,
+    collateral_price: u64,
+): SnapshotFacts {
+    SnapshotFacts {
+        venue_equity,
+        absolute_base,
+        absolute_notional,
+        lot_size,
+        side,
+        base_price,
+        collateral_price,
+    }
 }
 
 #[test_only]

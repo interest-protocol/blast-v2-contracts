@@ -37,4 +37,14 @@ fun adapter_error_registry_is_stable() {
     assert_eq!(errors::oracle_observation_mismatch!(), 25);
     assert_eq!(errors::normalization_overflow!(), 26);
     assert_eq!(errors::incoherent_position_signs!(), 27);
+    assert_eq!(errors::invalid_collateral_decimals!(), 28);
+    assert_eq!(errors::invalid_seed!(), 29);
+    assert_eq!(errors::invalid_seed_reserve!(), 30);
+    assert_eq!(errors::share_supply_not_zero!(), 31);
+    assert_eq!(errors::invalid_initialization_order_size!(), 32);
+    assert_eq!(errors::initialization_fill_mismatch!(), 33);
+    assert_eq!(errors::initialization_orders_posted!(), 34);
+    assert_eq!(errors::initialization_liquidation!(), 35);
+    assert_eq!(errors::initialization_imr_mismatch!(), 36);
+    assert_eq!(errors::locked_shares_overflow!(), 37);
 }

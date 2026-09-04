@@ -13,12 +13,13 @@ use blast_leverage_aftermath::{
 };
 use blast_leverage_series_one::{
     acl::{Self, AdminWitness},
-    policy::TierPolicy,
+    observation::PositionObservation,
+    policy::{PositionSide, TierPolicy},
     state::{Self as series_state, State},
 };
 use std::{string::String, type_name::{Self, TypeName}};
 use sui::{
-    coin::TreasuryCap,
+    coin::{Self, Coin, TreasuryCap},
     coin_registry::{CoinRegistry, MetadataCap},
     dynamic_object_field,
 };
@@ -220,6 +221,88 @@ public(package) fun install_venue_account<Product>(
     self.venue_account.fill(venue_account);
 }
 
+/// Authenticates the selected risk module and returns the seed-side constraints.
+public(package) fun initialization_constraints<Product, RiskModule: drop>(
+    self: &Vault<Product>,
+    _: &RiskModule,
+): (PositionSide, u64) {
+    self.assert_selected_risk_module<_, RiskModule>();
+    assert_venue_account_installable(self.venue_account.is_some());
+    self.series_state.initialization_constraints()
+}
+
+/// Consumes a strict flat-position observation and returns authenticated sizing inputs.
+public(package) fun prepare_initialization<Product>(
+    self: &Vault<Product>,
+    observation: PositionObservation,
+    seed_reserve: u64,
+    reference_time_ms: u64,
+): (u64, u64, u64, u64) {
+    self.series_state.prepare_initialization(
+        observation,
+        seed_reserve,
+        reference_time_ms,
+    )
+}
+
+/// Applies the immutable strict execution tolerance before activation.
+public(package) fun assert_initialization_execution<Product>(
+    self: &Vault<Product>,
+    reference_price: u64,
+    execution_price: u64,
+) {
+    self.series_state.assert_initialization_execution(
+        reference_price,
+        execution_price,
+    );
+}
+
+/// Applies the live Series1 order-notional cap to one planned seed order.
+public(package) fun assert_order_notional_allowed<Product>(
+    self: &Vault<Product>,
+    order_notional: u64,
+) {
+    self.series_state.assert_order_notional_allowed(order_notional);
+}
+
+/// Activates Series1 after the adapter proves the complete final observation.
+public(package) fun initialize_series<Product>(
+    self: &mut Vault<Product>,
+    observation: PositionObservation,
+    seed_reserve: u64,
+    reference_time_ms: u64,
+): u64 {
+    self.series_state.initialize(
+        observation,
+        seed_reserve,
+        reference_time_ms,
+    )
+}
+
+/// Returns the authoritative leverage-currency supply from the retained cap.
+public(package) fun share_supply<Product>(self: &Vault<Product>): u64 {
+    self.treasury_cap().total_supply()
+}
+
+/// Mints the one locked seed position and makes it permanently inaccessible.
+public(package) fun mint_locked_shares<Product>(
+    self: &mut Vault<Product>,
+    amount: u64,
+    ctx: &mut TxContext,
+) {
+    let treasury_cap = dynamic_object_field::borrow_mut(
+        &mut self.id,
+        TreasuryKey<Product>(),
+    );
+    let locked_shares: Coin<Vault<Product>> = coin::mint(treasury_cap, amount, ctx);
+    transfer::public_transfer(locked_shares, @0x0);
+}
+
+/// Returns the stable Vault identity used by adapter events.
+public(package) fun id<Product>(self: &Vault<Product>): ID {
+    self.id.to_inner()
+}
+
 /// Copies the immutable venue binding without exposing its custody value.
 public(package) fun venue_binding<Product>(self: &Vault<Product>): Binding {
     self.venue_account.borrow().binding()
@@ -249,6 +332,20 @@ fun assert_venue_account_installable(is_installed: bool) {
     );
 }
 
+fun assert_selected_risk_module<Product, RiskModule: drop>(
+    self: &Vault<Product>,
+) {
+    let presented_witness = type_name::with_original_ids<RiskModule>();
+    assert!(
+        !presented_witness.is_primitive(),
+        blast_leverage_aftermath::errors::invalid_risk_module_witness_type!(),
+    );
+    assert!(
+        presented_witness == self.risk_module_witness,
+        blast_leverage_aftermath::errors::risk_module_witness_mismatch!(),
+    );
+}
+
 fun add_treasury_cap<Product>(
     self: &mut Vault<Product>,
     treasury_cap: TreasuryCap<Vault<Product>>,
@@ -263,12 +360,11 @@ fun add_metadata_cap<Product>(
     self.id.add_dynamic_object_field(MetadataKey<Product>(), metadata_cap);
 }
 
-// === Test-Only Functions ===
-
-#[test_only]
 fun treasury_cap<Product>(self: &Vault<Product>): &TreasuryCap<Vault<Product>> {
     dynamic_object_field::borrow(&self.id, TreasuryKey<Product>())
 }
+
+// === Test-Only Functions ===
 
 #[test_only]
 fun metadata_cap<Product>(self: &Vault<Product>): &MetadataCap<Vault<Product>> {
@@ -347,6 +443,23 @@ public fun share_supply_for_testing<Product>(self: &Vault<Product>): u64 {
 #[test_only]
 public fun set_shutdown_pending_for_testing<Product>(self: &mut Vault<Product>) {
     self.series_state.set_shutdown_pending_for_testing();
+}
+
+#[test_only]
+public fun initialization_constraints_for_testing<Product, RiskModule: drop>(
+    self: &Vault<Product>,
+    risk_module: &RiskModule,
+): (PositionSide, u64) {
+    self.initialization_constraints(risk_module)
+}
+
+#[test_only]
+public fun mint_locked_shares_for_testing<Product>(
+    self: &mut Vault<Product>,
+    amount: u64,
+    ctx: &mut TxContext,
+) {
+    self.mint_locked_shares(amount, ctx);
 }
 
 #[test_only]

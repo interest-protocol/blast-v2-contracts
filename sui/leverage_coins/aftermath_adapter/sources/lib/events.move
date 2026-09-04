@@ -1,7 +1,8 @@
 /// Replay-complete Aftermath adapter events.
 module blast_leverage_aftermath::events;
 
-use blast_leverage_series_one::policy::TierPolicy;
+use blast_leverage_aftermath::venue_account::Checkpoint;
+use blast_leverage_series_one::policy::{PositionSide, TierPolicy};
 use std::type_name::TypeName;
 
 // === Public Structs ===
@@ -54,6 +55,29 @@ public struct VaultIssued<phantom Product> has copy, drop {
     max_order_notional_current: u64,
     max_order_notional_maximum: u64,
     maintenance_reserve: u64,
+}
+
+/// Emitted after one atomic seed activates a bound Aftermath Vault.
+public struct VaultInitialized<phantom Product> has copy, drop {
+    vault_id: ID,
+    account_object_id: ID,
+    account_number: u64,
+    registry_id: ID,
+    clearing_house_id: ID,
+    base_oracle_id: ID,
+    collateral_oracle_id: ID,
+    collateral_type: TypeName,
+    seed_amount: u64,
+    seed_venue_equity: u64,
+    seed_reserve: u64,
+    seed_shareholder_nav: u64,
+    locked_shares: u64,
+    absolute_base: u64,
+    absolute_notional: u64,
+    lot_size: u64,
+    position_side: PositionSide,
+    position_imr: u256,
+    checkpoint: Checkpoint,
 }
 
 /// Emitted after the trusted risk-module witness changes.
@@ -159,6 +183,52 @@ public(package) fun vault_issued<Product>(
     });
 }
 
+public(package) fun vault_initialized<Product>(
+    vault_id: ID,
+    account_object_id: ID,
+    account_number: u64,
+    registry_id: ID,
+    clearing_house_id: ID,
+    base_oracle_id: ID,
+    collateral_oracle_id: ID,
+    collateral_type: TypeName,
+    seed_amount: u64,
+    seed_venue_equity: u64,
+    seed_reserve: u64,
+    seed_shareholder_nav: u64,
+    locked_shares: u64,
+    absolute_base: u64,
+    absolute_notional: u64,
+    lot_size: u64,
+    position_side: PositionSide,
+    position_imr: u256,
+    checkpoint: Checkpoint,
+) {
+    blast_leverage_aftermath::events_wrapper::emit_event(
+        VaultInitialized<Product> {
+            vault_id,
+            account_object_id,
+            account_number,
+            registry_id,
+            clearing_house_id,
+            base_oracle_id,
+            collateral_oracle_id,
+            collateral_type,
+            seed_amount,
+            seed_venue_equity,
+            seed_reserve,
+            seed_shareholder_nav,
+            locked_shares,
+            absolute_base,
+            absolute_notional,
+            lot_size,
+            position_side,
+            position_imr,
+            checkpoint,
+        },
+    );
+}
+
 public(package) fun risk_module_witness_rotated<Product>(
     vault_id: ID,
     previous_witness: TypeName,
@@ -237,6 +307,53 @@ public fun vault_issued_fields<Product>(
         self.max_order_notional_current,
         self.max_order_notional_maximum,
         self.maintenance_reserve,
+    )
+}
+
+#[test_only]
+public fun vault_initialized_fields<Product>(
+    self: &VaultInitialized<Product>,
+): (
+    ID,
+    ID,
+    u64,
+    ID,
+    ID,
+    ID,
+    ID,
+    TypeName,
+    u64,
+    u64,
+    u64,
+    u64,
+    u64,
+    u64,
+    u64,
+    u64,
+    PositionSide,
+    u256,
+    Checkpoint,
+) {
+    (
+        self.vault_id,
+        self.account_object_id,
+        self.account_number,
+        self.registry_id,
+        self.clearing_house_id,
+        self.base_oracle_id,
+        self.collateral_oracle_id,
+        self.collateral_type,
+        self.seed_amount,
+        self.seed_venue_equity,
+        self.seed_reserve,
+        self.seed_shareholder_nav,
+        self.locked_shares,
+        self.absolute_base,
+        self.absolute_notional,
+        self.lot_size,
+        self.position_side,
+        self.position_imr,
+        self.checkpoint,
     )
 }
 

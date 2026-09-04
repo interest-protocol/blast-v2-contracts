@@ -64,6 +64,93 @@ public struct ObservationSpec has copy, drop {
 // === Tests ===
 
 #[test]
+fun initialization_constraints_return_the_frozen_side_and_live_order_cap() {
+    let fixture = start(constants::vault_issuer_role!());
+    let state = new_state(&fixture, policy::short());
+
+    let (side, max_order_notional) = state.initialization_constraints();
+
+    assert_eq!(side, policy::short());
+    assert_eq!(max_order_notional, MAX_ORDER_NOTIONAL_CURRENT);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+fun flat_seed_preflight_returns_authenticated_order_inputs() {
+    let fixture = start(constants::vault_issuer_role!());
+    let state = new_state(&fixture, policy::short());
+    let observation = standard_observation(policy::long())
+        .with_absolute_base(0)
+        .with_absolute_notional(0)
+        .into_position_observation();
+
+    let (
+        target_notional,
+        base_price,
+        collateral_price,
+        lot_size,
+    ) = state.prepare_initialization(
+        observation,
+        SEED_RESERVE,
+        REFERENCE_TIME_MS,
+    );
+
+    assert_eq!(target_notional, SEED_NOTIONAL);
+    assert_eq!(base_price, 1_000_000_000);
+    assert_eq!(collateral_price, 1_000_000_000);
+    assert_eq!(lot_size, LOT_SIZE);
+    assert!(state.is_uninitialized_for_testing());
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EInvalidInitializationObservation,
+    location = blast_leverage_series_one::state,
+)]
+fun seed_preflight_rejects_a_preexisting_position() {
+    let fixture = start(constants::vault_issuer_role!());
+    let state = new_state(&fixture, policy::long());
+
+    state.prepare_initialization(
+        standard_observation(policy::long()).into_position_observation(),
+        SEED_RESERVE,
+        REFERENCE_TIME_MS,
+    );
+
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+fun initialization_strict_execution_uses_the_frozen_tolerance() {
+    let fixture = start(constants::vault_issuer_role!());
+    let state = new_state(&fixture, policy::long());
+
+    state.assert_initialization_execution(1_000_000, 1_010_000);
+
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EExecutionOutsideTolerance,
+    location = blast_leverage_series_one::policy,
+)]
+fun initialization_strict_execution_rejects_one_unit_past_tolerance() {
+    let fixture = start(constants::vault_issuer_role!());
+    let state = new_state(&fixture, policy::long());
+
+    state.assert_initialization_execution(1_000_000, 1_010_001);
+
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
 fun authorized_constructor_returns_valid_uninitialized_state() {
     let fixture = start(constants::vault_issuer_role!());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);

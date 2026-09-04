@@ -116,6 +116,46 @@ const ENormalizationOverflow: u64 = 26;
 /// Position base and quote signs do not express one coherent direction.
 const EIncoherentPositionSigns: u64 = 27;
 
+#[test_only]
+/// Initialization collateral must use six atomic decimals.
+const EInvalidCollateralDecimals: u64 = 28;
+
+#[test_only]
+/// Initialization seed collateral must be positive.
+const EInvalidSeed: u64 = 29;
+
+#[test_only]
+/// The maintenance reserve must leave positive seed shareholder NAV.
+const EInvalidSeedReserve: u64 = 30;
+
+#[test_only]
+/// Initialization requires the leverage currency to have zero supply.
+const EShareSupplyNotZero: u64 = 31;
+
+#[test_only]
+/// The target or order cap cannot fund one complete base lot.
+const EInvalidInitializationOrderSize: u64 = 32;
+
+#[test_only]
+/// Initialization did not fill the exact planned base on the required side.
+const EInitializationFillMismatch: u64 = 33;
+
+#[test_only]
+/// Initialization left one or more posted orders.
+const EInitializationOrdersPosted: u64 = 34;
+
+#[test_only]
+/// Initialization observed liquidation or bad debt in its session.
+const EInitializationLiquidation: u64 = 35;
+
+#[test_only]
+/// The selected IMR is negative or the final position IMR differs from it.
+const EInitializationImrMismatch: u64 = 36;
+
+#[test_only]
+/// Scaling seed NAV into nine-decimal locked shares overflowed `u64`.
+const ELockedSharesOverflow: u64 = 37;
+
 macro public(package) fun package_version_mismatch(): u64 {
     0
 }
@@ -211,3 +251,23 @@ macro public(package) fun oracle_observation_mismatch(): u64 { 25 }
 macro public(package) fun normalization_overflow(): u64 { 26 }
 
 macro public(package) fun incoherent_position_signs(): u64 { 27 }
+
+macro public(package) fun invalid_collateral_decimals(): u64 { 28 }
+
+macro public(package) fun invalid_seed(): u64 { 29 }
+
+macro public(package) fun invalid_seed_reserve(): u64 { 30 }
+
+macro public(package) fun share_supply_not_zero(): u64 { 31 }
+
+macro public(package) fun invalid_initialization_order_size(): u64 { 32 }
+
+macro public(package) fun initialization_fill_mismatch(): u64 { 33 }
+
+macro public(package) fun initialization_orders_posted(): u64 { 34 }
+
+macro public(package) fun initialization_liquidation(): u64 { 35 }
+
+macro public(package) fun initialization_imr_mismatch(): u64 { 36 }
+
+macro public(package) fun locked_shares_overflow(): u64 { 37 }

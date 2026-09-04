@@ -128,6 +128,42 @@ against the bound account object and must never create, store, or accept an
 assistant cap. The later `VenueAccount` permanently contains the admin cap and
 exposes no borrow or release API.
 
+### Atomic activation and order-side amendment
+
+The official Move ports are the authoritative callable interface. Their
+function names, parameter types, and return types define the adapter boundary;
+their `abort 404` bodies are not dependency implementations. When a named
+interface leaves a safety-critical representation ambiguous, Blast inspects
+the immutable deployed bytecode rather than importing or copying the venue
+implementation.
+
+That inspection fixes Aftermath's order-side boolean as `false = bid` and
+`true = ask`: the deployed `filled_base_and_quote` and `execution_price`
+branches select ask fields for `true` and bid fields for `false`. Atomic
+activation therefore maps Series1 long to `false` and Series1 short to `true`.
+Unit and source-boundary gates pin that mapping.
+
+Initialization accepts the exact base and collateral Pyth `PriceInfoObject`
+values in addition to the original activation interface. Those two read-only
+arguments are required because strict capture must prove the Aftermath feeds
+and named market prices describe the same Pyth update. They do not let the
+caller supply a price, source ID, market ID, side, order size, or share amount.
+
+One selected risk-module witness can atomically activate an issued Vault once.
+The adapter creates and binds the account authority, deposits and allocates the
+seed, creates one position, sets and later rechecks its IMR, and captures a
+strict flat pre-trade observation. Series1 derives the target, direction, and
+live per-order notional cap. The adapter rounds the target down to whole live
+lots, splits it into cap-compliant market orders inside one session, requires
+the exact aggregate fill on the required side with no posted order,
+liquidation, or bad debt, settles funding, and captures the final observation.
+Only after strict execution and all Series1 activation gates pass does it mint
+the reserve-excluded seed NAV at the fixed 1,000 share scale, lock those shares
+at `@0x0`, seal the sole admin capability and checkpoint into the Vault, share
+the account and returned clearing house through their defining modules, and
+emit the replay-complete activation event. Any abort rolls back the complete
+transaction.
+
 ## Evidence and remaining gates
 
 Task 1 establishes immutable linkage and callable raw semantics only. It does

@@ -196,6 +196,53 @@ fun selected_risk_module_updates_max_order_notional_and_emits_the_change() {
 }
 
 #[test]
+fun selected_risk_module_reads_uninitialized_seed_constraints() {
+    let mut fixture = start(1);
+    fixture.issue_and_share<Sui2x, RiskModule>(Sui2x(), b"SUI2X".to_string());
+    fixture.scenario.next_tx(ISSUER);
+    let vault = fixture.scenario.take_shared<Vault<Sui2x>>();
+
+    let (side, max_order_notional) =
+        vault.initialization_constraints_for_testing(&RiskModule());
+
+    assert_eq!(side, policy::long());
+    assert_eq!(max_order_notional, MAX_ORDER_NOTIONAL_CURRENT);
+    test_scenario::return_shared(vault);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = 10,
+    location = blast_leverage_aftermath::vault,
+)]
+fun unselected_risk_module_cannot_read_seed_constraints() {
+    let mut fixture = start(1);
+    fixture.issue_and_share<Sui2x, RiskModule>(Sui2x(), b"SUI2X".to_string());
+    fixture.scenario.next_tx(ISSUER);
+    let vault = fixture.scenario.take_shared<Vault<Sui2x>>();
+
+    vault.initialization_constraints_for_testing(&RiskModuleV2());
+
+    test_scenario::return_shared(vault);
+    destroy(fixture);
+}
+
+#[test]
+fun locked_seed_share_mint_updates_the_canonical_supply_once() {
+    let mut fixture = start(1);
+    fixture.issue_and_share<Sui2x, RiskModule>(Sui2x(), b"SUI2X".to_string());
+    fixture.scenario.next_tx(ISSUER);
+    let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
+
+    vault.mint_locked_shares_for_testing(1_000_000, fixture.scenario.ctx());
+
+    assert_eq!(vault.share_supply_for_testing(), 1_000_000);
+    test_scenario::return_shared(vault);
+    destroy(fixture);
+}
+
+#[test]
 #[expected_failure(
     abort_code = 10,
     location = blast_leverage_aftermath::vault,

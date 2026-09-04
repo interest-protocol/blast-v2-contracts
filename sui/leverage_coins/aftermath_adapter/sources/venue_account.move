@@ -189,6 +189,17 @@ public(package) fun new(
     }
 }
 
+/// Rejects an admin cap that does not belong to the created account object.
+public(package) fun assert_admin_cap_binding(
+    cap_account_object_id: ID,
+    account_object_id: ID,
+) {
+    assert!(
+        cap_account_object_id == account_object_id,
+        blast_leverage_aftermath::errors::admin_cap_account_mismatch!(),
+    );
+}
+
 /// Copies the immutable binding without exposing venue custody.
 public(package) fun binding(self: &VenueAccount): Binding {
     Binding {
@@ -276,18 +287,6 @@ public(package) fun replace_checkpoint(
     checkpoint: Checkpoint,
 ) {
     self.checkpoint = checkpoint;
-}
-
-// === Private Functions ===
-
-fun assert_admin_cap_binding(
-    cap_account_object_id: ID,
-    account_object_id: ID,
-) {
-    assert!(
-        cap_account_object_id == account_object_id,
-        blast_leverage_aftermath::errors::admin_cap_account_mismatch!(),
-    );
 }
 
 // === Test-Only Functions ===

@@ -10,6 +10,7 @@ protocol_file="$package_dir/sources/protocol.move"
 vault_file="$package_dir/sources/vault.move"
 venue_account_file="$package_dir/sources/venue_account.move"
 snapshot_file="$package_dir/sources/snapshot.move"
+operations_file="$package_dir/sources/operations.move"
 package_admin_file="$package_dir/sources/package_admin.move"
 aftermath_file="$package_dir/sources/aftermath.move"
 series_dir="$(cd "$package_dir/../series_one" && pwd)"
@@ -27,6 +28,7 @@ for required in \
   "$vault_file" \
   "$venue_account_file" \
   "$snapshot_file" \
+  "$operations_file" \
   "$package_admin_file" \
   "$aftermath_file" \
   "$package_dir/sources/lib/constants.move" \
@@ -184,9 +186,17 @@ grep -q '^public(package) fun capture<Collateral>($' "$snapshot_file" \
   || fail "Snapshot capture must remain package-only."
 grep -q '^public(package) fun capture_health<Collateral>($' "$snapshot_file" \
   || fail "Snapshot health capture must remain package-only."
-grep -q 'capture_(binding, account, registry, clearing_house, base_oracle, collateral_oracle, base_price_info, collateral_price_info, clock, false, true)' "$snapshot_file" \
+strict_capture_shape="$(
+  sed -n '/^public(package) fun capture<Collateral>($/,/^}/p' "$snapshot_file" \
+    | tr -d '[:space:]'
+)"
+grep -q 'capture_(binding,account,registry,clearing_house,base_oracle,collateral_oracle,base_price_info,collateral_price_info,clock,false,true,' <<<"$strict_capture_shape" \
   || fail "Strict capture must delegate to the shared authenticated capture path."
-grep -q 'capture_(binding, account, registry, clearing_house, base_oracle, collateral_oracle, base_price_info, collateral_price_info, clock, true, !is_unexpected_change(change))' "$snapshot_file" \
+health_capture_shape="$(
+  sed -n '/^public(package) fun capture_health<Collateral>($/,/^}/p' "$snapshot_file" \
+    | tr -d '[:space:]'
+)"
+grep -q 'capture_(binding,account,registry,clearing_house,base_oracle,collateral_oracle,base_price_info,collateral_price_info,clock,true,!is_unexpected_change(change),' <<<"$health_capture_shape" \
   || fail "Health capture must delegate to the shared authenticated capture path."
 [[ "$(grep -Fc 'binding.assert_exact(' "$snapshot_file")" -eq 1 ]] \
   || fail "Strict and health capture must share one binding authentication path."
@@ -240,5 +250,119 @@ fi
 if grep -q 'for_testing.*capture' "$snapshot_file"; then
   fail "Snapshot capture must not accept caller-shaped test economics."
 fi
+
+grep -q '^public fun initialize<Product, RiskModule: drop, Collateral>($' "$operations_file" \
+  || fail "The adapter must expose one atomic generic initialization operation."
+initialization_block="$(
+  sed -n '/^public fun initialize<Product, RiskModule: drop, Collateral>($/,/^}/p' "$operations_file"
+)"
+initialization_signature="$(sed -n '1,/^) {$/p' <<<"$initialization_block")"
+grep -q 'base_price_info: &PriceInfoObject,' <<<"$initialization_signature" \
+  || fail "Initialization must accept the exact base Pyth price object."
+grep -q 'collateral_price_info: &PriceInfoObject,' <<<"$initialization_signature" \
+  || fail "Initialization must accept the exact collateral Pyth price object."
+if grep -qE '(^|[[:space:]])(side|direction|order_size|market_id|source_id|share_amount):' \
+  <<<"$initialization_signature"; then
+  fail "Initialization must not accept caller-selected trade or share parameters."
+fi
+awk '
+  /^\).* \{$/ {
+    getline
+    found = 1
+    valid = ($0 == "    protocol.assert_current();")
+  }
+  END { exit !(found && valid) }
+' <<<"$initialization_block" \
+  || fail "Initialization must check the adapter version first."
+[[ "$(grep -Fc 'vault.initialization_constraints(&risk_module)' <<<"$initialization_block")" -eq 1 ]] \
+  || fail "Initialization must authenticate the selected risk witness exactly once."
+[[ "$(grep -Fc 'vault.install_venue_account(venue_account);' <<<"$initialization_block")" -eq 1 ]] \
+  || fail "Initialization must install exactly one VenueAccount."
+[[ "$(grep -Fc 'snapshot::capture_initialization(' <<<"$initialization_block")" -eq 2 ]] \
+  || fail "Initialization must capture exactly one pre-trade and one final snapshot."
+[[ "$(grep -Fc 'clearing_house::start_session(' <<<"$initialization_block")" -eq 1 ]] \
+  || fail "Initialization must use one Aftermath session."
+[[ "$(grep -Fc 'clearing_house::end_session(' <<<"$initialization_block")" -eq 1 ]] \
+  || fail "Initialization must end its one Aftermath session."
+[[ "$(grep -Fc 'clearing_house::share(clearing_house);' <<<"$initialization_block")" -eq 1 ]] \
+  || fail "Initialization must return the ClearingHouse through its defining share port."
+[[ "$(grep -Fc 'account::consume_policy_and_share_account(account, share_policy);' <<<"$initialization_block")" -eq 1 ]] \
+  || fail "Initialization must consume the account share policy and share the account."
+[[ "$(grep -Fc 'events::vault_initialized<Product>(' <<<"$initialization_block")" -eq 1 ]] \
+  || fail "Initialization must emit one replay-complete activation event."
+grep -q 'position_side == policy::short()' "$operations_file" \
+  || fail "Initialization must map Aftermath true to ask/short and false to bid/long."
+grep -q 'aftermath_order_side,' <<<"$initialization_block" \
+  || fail "Initialization must use only the policy-derived Aftermath order side."
+
+initialization_line() {
+  local needle="$1"
+  grep -nF "$needle" <<<"$initialization_block" | head -1 | cut -d: -f1
+}
+version_line="$(initialization_line 'protocol.assert_current();')"
+risk_line="$(initialization_line 'vault.initialization_constraints(&risk_module)')"
+create_line="$(initialization_line 'account::create_account<Collateral>(registry, ctx)')"
+binding_line="$(initialization_line 'venue_account::assert_admin_cap_binding(')"
+deposit_line="$(initialization_line 'account::deposit_collateral(')"
+allocate_line="$(initialization_line 'clearing_house::allocate_collateral(')"
+position_line="$(initialization_line 'clearing_house::create_market_position(')"
+imr_line="$(initialization_line 'clearing_house::set_position_initial_margin_ratio(')"
+pre_capture_line="$(grep -nF 'snapshot::capture_initialization(' <<<"$initialization_block" | sed -n '1s/:.*//p')"
+session_start_line="$(initialization_line 'clearing_house::start_session(')"
+session_end_line="$(initialization_line 'clearing_house::end_session(')"
+settle_line="$(initialization_line 'clearing_house::settle_position_funding(')"
+final_capture_line="$(grep -nF 'snapshot::capture_initialization(' <<<"$initialization_block" | sed -n '2s/:.*//p')"
+activate_line="$(initialization_line 'vault.initialize_series(')"
+mint_line="$(initialization_line 'vault.mint_locked_shares(')"
+account_share_line="$(initialization_line 'account::consume_policy_and_share_account(account, share_policy);')"
+install_line="$(initialization_line 'vault.install_venue_account(venue_account);')"
+clearing_share_line="$(initialization_line 'clearing_house::share(clearing_house);')"
+event_line="$(initialization_line 'events::vault_initialized<Product>(')"
+initialization_order=(
+  "$version_line" "$risk_line" "$create_line" "$binding_line" "$deposit_line"
+  "$allocate_line" "$position_line" "$imr_line" "$pre_capture_line"
+  "$session_start_line" "$session_end_line" "$settle_line" "$final_capture_line"
+  "$activate_line" "$mint_line" "$account_share_line" "$install_line"
+  "$clearing_share_line" "$event_line"
+)
+for ((i = 1; i < ${#initialization_order[@]}; i++)); do
+  if (( initialization_order[i - 1] >= initialization_order[i] )); then
+    fail "Initialization must preserve the authenticated atomic call sequence."
+  fi
+done
+
+production_operations="$(sed '/^\/\/ === Test-Only Functions ===/,$d' "$operations_file")"
+if grep -qE '^public fun .*order' <<<"$production_operations"; then
+  fail "The adapter must not expose a generic public order function."
+fi
+
+for mutation in \
+  'issue<Product: drop, RiskModule: drop>' \
+  'rotate_risk_module<Product, RiskModule: drop>' \
+  'set_max_order_notional<Product, RiskModule: drop>' \
+  'enter_reduce_only<Product>'; do
+  mutation_block="$(sed -n "/^public fun ${mutation//\//\\/}(/,/^}/p" "$vault_file")"
+  awk '
+    /^\).* \{$/ {
+      getline
+      found = 1
+      valid = ($0 == "    protocol.assert_current();")
+    }
+    END { exit !(found && valid) }
+  ' <<<"$mutation_block" \
+    || fail "Public Vault mutation $mutation must check the adapter version first."
+done
+for mutation in authorize_upgrade commit_upgrade restrict_to_additive restrict_to_dependency_only; do
+  mutation_block="$(sed -n "/^public fun $mutation(/,/^}/p" "$package_admin_file")"
+  awk '
+    /^\).* \{$/ {
+      getline
+      found = 1
+      valid = ($0 == "    protocol.assert_current();")
+    }
+    END { exit !(found && valid) }
+  ' <<<"$mutation_block" \
+    || fail "Public PackageAdmin mutation $mutation must check the adapter version first."
+done
 
 printf '%s\n' "Aftermath adapter source boundaries: OK"
