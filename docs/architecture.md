@@ -6,21 +6,7 @@ Blast V2 currently has one Sui Move implementation. Other chain implementations
 are deferred. Future parity is defined by observable behavior and economic
 invariants, not by identical module or storage structure.
 
-## Repository boundary
-
-```text
-contracts/
-├── docs/                 shared protocol and engineering specification
-├── deployments/          normalized public deployment records (when present)
-└── sui/
-│   ├── launchpad/        core blast_fun Move package
-│   │   ├── sources/      core Move domain modules
-│   │   │   └── lib/      package diagnostics and indexing infrastructure
-│   │   ├── tests/
-│   │   └── scripts/
-│   ├── migrators/        independently deployed venue adapter packages
-│   └── vesting/          independent global vesting package
-```
+## Package boundary
 
 Start with one core package/project per chain. A new package is justified only
 by one of these boundaries:
@@ -33,11 +19,9 @@ by one of these boundaries:
 This keeps V2 smaller than the historical collection of interdependent packages
 without forcing unrelated dependencies into the trusted core.
 
-The Sui package set that follows from those boundaries is decided in
+The package boundaries are decided in
 [decisions/0001-sui-package-and-module-layout.md](decisions/0001-sui-package-and-module-layout.md):
-`blast_fun` core, one package per venue adapter, independently deployed vesting
-packages, a separately governed settlement package, and a generated per-launch
-coin package.
+keep external dependencies and independently governed custody outside core.
 
 ### Dependency direction
 

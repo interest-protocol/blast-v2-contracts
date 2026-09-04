@@ -75,8 +75,8 @@ state or capability, but not in the diagnostic module.
 
 The pinned linter sees the literal after macro expansion and reports
 `abort_without_constant`. Each calling module therefore suppresses only that
-named lint with an adjacent rationale and a pointer to the canonical numeric map
-in `docs/error-codes.md`. The error module owns no storage or authority.
+named lint with an adjacent rationale. The append-only `errors.move` registry
+owns no storage or authority.
 
 `blast_fun::events_wrapper` owns the public generic `Event<T>` envelope and the
 single package-only function that calls `sui::event::emit`. Every Blast event is

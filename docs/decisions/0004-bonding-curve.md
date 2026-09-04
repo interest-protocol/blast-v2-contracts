@@ -121,8 +121,7 @@ This invariant is now backed by the deterministic property suite accepted in
   the test, so any reviewer can re-run it and obtain the identical sequence;
 - the algebraically equivalent pre-call invariant, so an impossible generated state is identified before
   the production no-clamp guard aborts; and
-- an `assert_eq!` trace containing the operation index and all six generated/state inputs on failure, per
-  `../testing.md`;
+- an `assert_eq!` trace containing the operation index and all six generated/state inputs on failure;
 - the parameters are those in [`../vectors/curve.json`](../vectors/curve.json).
 
 If a parameter set can violate the invariant, the correct response is a named abort, not a silent
@@ -207,5 +206,4 @@ the entire inventory.
 - Property test: the sell-back invariant over 256 reachable buy-then-sell scenarios from fixed seed
   `314159`, with the complete failing scenario printed by the assertion.
 - Boundary enumeration: zero, one atomic unit, `T - 1`, `T`, `T + 1`, and maximum supported reserve.
-- Width test: executable maximum-`u64` checks for `u256` intermediates and checked reserve narrowing,
-  per `../engineering-principles.md` requiring toolchain-backed evidence rather than prose.
+- Width test: executable maximum-`u64` checks for `u256` intermediates and checked reserve narrowing.

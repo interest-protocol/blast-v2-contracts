@@ -15,6 +15,10 @@ Every record must contain at least:
 - constructor/init parameters and post-deploy verification results.
 
 Raw simulator or broadcast output stays generated and ignored. Public
-normalized records must not contain secrets. See the "Deployment and release
-records" section of `AGENTS.md` for the governing rules and each package's
-README runbook for the package-specific verification steps.
+normalized records must not contain secrets.
+
+Package-specific procedures are loaded only for the operation being performed.
+Blast SUI uses its [deployment](../sui/blast_sui/DEPLOYING.md) and
+[upgrade](../sui/blast_sui/UPGRADING.md) runbooks. Other packages record the
+same normalized evidence while following their accepted ADRs and verification
+scripts.

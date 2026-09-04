@@ -229,8 +229,8 @@ position already provides the required order.
 - Indexers can rebuild all protocol accounting and lifecycle state from events; native object reads and
   transaction effects remain authoritative for the two explicitly documented custody facts.
 - Adding or changing any field above is a schema migration requiring a replay test.
-- The event stream is wide; that cost is accepted because `../engineering-principles.md` treats events as
-  the accounting interface rather than as notifications.
+- The event stream is wide; that cost is accepted because events are the accounting
+  interface rather than notifications.
 
 ## Verification
 

@@ -18,7 +18,7 @@ used, and no contract-side claim below rests on it. Every feasibility claim cite
 
 ## Context
 
-`../engineering-principles.md` gives complexity a budget: no mode, role, setter, adapter, or abstraction
+Complexity has a budget: no mode, role, setter, adapter, or abstraction exists
 without the invariant or product requirement it serves. This ADR ranks candidate growth features and
 disposes of each. A feature with no measurable metric, or one requiring unbounded state, is **rejected**,
 not deferred.

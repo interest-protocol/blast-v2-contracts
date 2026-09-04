@@ -1,251 +1,55 @@
-# Testing standard
+# Release verification
 
-Tests are organized around risk, not only function names.
+The vendored Sui Move testing skill owns generic test design and local quality
+practice. This document owns only Blast-specific cross-package and release
+evidence.
 
-## Required layers
+## Package gates
 
-| Layer | Required evidence |
-| --- | --- |
-| Pure math | tables, boundary cases, monotonicity, inverse/dust bounds, randomized/property tests |
-| State transitions | every legal lifecycle edge and rejection of every illegal source state |
-| Authorization | each role's allowed and forbidden actions, rotation/revocation, pause/version precedence |
-| Accounting | reserve/fee/allocation/vesting conservation after every operation and sequence |
-| Adversarial | X-claim replay, expired backend attestation, wrong claim domain or sender, slippage, reentrancy/callback, duplicate migration, hostile token/coin assumptions |
-| Events | field-level assertions plus full reducer replay against final state |
-| Upgrade | old-version rejection, state migration, ABI/storage compatibility, initializer and authority checks |
-| Deployment | simulation/dry run, execution status, finality, normalized artifact schema, post-deploy smoke assertions |
-| Protocol vectors | implementation-independent cases for quotes, fees, thresholds, vesting, X-claim attestations, and lifecycle |
+Run every applicable verification script in the package being changed. Where a
+package has no wrapper, run the pinned toolchain's build, warning-as-error lint,
+tests, and source-boundary check directly from that package. Generated traces
+and coverage artifacts are not committed.
 
-## Test rules
+## Protocol vectors
 
-- Assert exact named errors/abort codes for negative cases, pinning
-  `location` to the raising module. A bare expected failure
-  is prohibited because an unrelated abort can make it pass.
-- Assert guard precedence when more than one condition is invalid.
-- Prefer `assert_eq!` for values and plain boolean assertions without arbitrary
-  test abort codes.
-- Import frequently used `std::unit_test::{assert_eq, destroy}` members in test
-  modules so assertions and teardown remain visually direct.
-- Keep test builders deterministic and explicit about sender, clock/time,
-  balances, state, and authority.
-- Stateful Sui suites use small, purpose-specific hot-potato fixtures: one
-  ability-free fixture type per setup family, named for what it provides
-  (`ClaimFixture`, `UpgradeFixture`, …), storing the scenario plus only the
-  objects that family actually uses. A uniquely named `start` variant per
-  fixture owns all scenario choreography and shared or sender-owned object
-  take/return. Receiver-style `next_tx!` macros — `use fun`-aliased onto each
-  fixture type when a module defines several — advance the sender and pass the
-  single named fixture handle to the closure, never a positional reference
-  list or underscore placeholders. A fixture `ctx!` macro is the only
-  transaction-context access a body may use. `Option<T>` fields exist only for
-  consuming or replacement flows behind narrowly named
-  `take_*`/`replace_*`/`retake_*` helpers. Test bodies orchestrate only
-  starts, transaction macros, fixture helpers and field reads, assertions, and
-  one consuming `end`; they never touch `test_scenario`, the scenario field,
-  or fixture `Option` internals directly, and pure math or error-registry
-  tests stay fixture-free.
-- Random tests use fixed seeds in CI and print enough input to reproduce failure.
-- Fuzz domains must include zero, one, maximum supported values, just below/at/
-  above thresholds, and values that stress intermediate multiplication.
-- Tests must not call production-only cleanup or add public API solely to destroy
-  fixtures.
-- If a coverage tool cannot represent a branch accurately, enumerate the branch
-  in named tests and document the tool limitation. Do not invent a false coverage
-  gate.
+The chain-neutral vectors under [`vectors/`](vectors/) are the numerical
+compatibility boundary for curve quotes, fees, graduation, quote decimals,
+vesting, and creator attestations. Regenerate vectors from the formula that
+owns them; do not hand-edit expected results. An unexplained difference is a
+release blocker.
 
-## Sui gate
+## External venue gate
 
-From `sui/launchpad/` for the core package:
+The migrators package contains local interface stubs, so a local build proves
+type compatibility only. Before release:
 
-```bash
-sui move build
-sui move lint --warnings-are-errors
-sui move test --lint
-```
+1. Run its offline ABI self-test and live mainnet ABI check.
+2. Run the dev-inspect matrix in
+   [`sui/migrators/DEPENDENCIES.md`](../sui/migrators/DEPENDENCIES.md).
+3. Record the reviewed venue revisions, module fingerprints, normalized ABI,
+   route results, residual bounds, and fee-collection results.
+4. Describe LP principal as permanently locked only after the aggregate
+   migrators `UpgradeCap` is destroyed and that evidence is committed.
 
-Add gas/trace/coverage jobs only when the pinned Sui CLI supports stable output.
-Generated traces and coverage maps are not committed.
+## Blast SUI gate
 
-The vesting package pins a 100% Move coverage gate:
+Run the complete `sui/blast_sui/scripts/verify.sh` gate. Publishing and
+upgrading additionally follow the package's
+[deployment](../sui/blast_sui/DEPLOYING.md) or
+[upgrade](../sui/blast_sui/UPGRADING.md) runbook.
 
-```bash
-cd sui/vesting
-bash scripts/check_coverage.sh
-```
+## Vesting mainnet gate
 
-The aggregate migrators package adds a live mainnet gate before its local gate,
-because its venue interface bodies are `abort 0` link stubs and a local build
-proves type compatibility only:
+Before making vesting immutable on mainnet, create irrevocable and cancellable
+schedules with the full 256-checkpoint vector. Decode the complete vectors,
+exercise first, middle, and final claims plus cancellation and closure, and
+record transaction digests, gas, serialized object size, and the absence of
+checkpoint dynamic fields.
 
-```bash
-cd sui/migrators
-node scripts/check_mainnet_abi.mjs --self-test
-node scripts/check_mainnet_abi.mjs
-sui move build
-sui move lint --warnings-are-errors
-sui move test --lint
-sui move build -e mainnet
-bash scripts/check_source_boundaries.sh
-bash scripts/check_turbos_dependency_pin.sh
-```
+## Evidence
 
-`check_mainnet_abi.mjs` uses Node built-ins only and queries the official Sui
-mainnet GraphQL endpoint; retired JSON-RPC is not used. For Bluefin, MMT, Cetus,
-Turbos, Aftermath AMM, and Aftermath DAO Fee it resolves the
-original package id to its current revision, fails when any revision exists
-beyond the pinned tip and names that newer tip, and asserts the package id,
-version, whole-package digest, previous transaction, and original type origins.
-It then asserts a committed SHA-256 over each consumed module's decoded on-chain
-bytecode and the normalized public ABI of every consumed function and struct.
-The ABI comparison uses structured signatures, not display prose, so a missing or
-extra parameter, `&` versus `&mut`, a type-parameter or phantom change, a return
-change, a visibility change, or an ability change each fail. Every GraphQL field
-is shape-validated first, so a null list, a missing `isEntry`, an unknown or
-duplicated ability or constraint, an unknown visibility or reference kind, or any
-novel type body fails rather than normalizing into a passing value.
-
-The same run parses the root manifest, the four local interface manifests, and
-both lock environments with a strict reader that removes comments before any
-comparison. Each dependency name is bound to its exact source, subdirectory,
-local path, revision, and `override` rule; every Git record must carry an
-immutable 40-hex `rev` and no `branch` or `tag`; and a duplicate key, a duplicate
-table, an unexpected record, a wrong repository or subdirectory, a rebound edge,
-or any Sui revision other than the one exact pin fails in both the mainnet and
-testnet lock graphs.
-
-It fails closed on GraphQL errors and on missing packages, modules, or functions,
-and each request has a whole-request timeout covering the body read.
-
-`node scripts/check_mainnet_abi.mjs --self-test` is the offline regression check
-for those fail-closed paths. It makes no network request and mutates no file: it
-renders well-formed fixtures, validates the committed manifests and lock, and
-asserts that mutated inputs are rejected — null lists, a missing `isEntry`,
-unknown and duplicate abilities and constraints, a commented-out dependency, a
-missing `rev`, `branch` and `tag` selectors, duplicate keys and tables, wrong
-repositories and subdirectories, and a wrong-but-40-hex Sui revision among them.
-Run it before the live check; it is fast and needs no network.
-
-A committed expectation is never updated to match a newer venue revision without
-re-review. When mainnet moves ahead, the run fails and reports the newer tip;
-adopting it is a reviewed change to the pinned interface, the fingerprints, and
-the ABI table.
-
-## Differential vectors
-
-Shared vectors should be chain-neutral data with explicit units and expected
-results. Any future chain implementation must consume the same cases. At minimum
-include:
-
-- quote input/output and post-trade reserves;
-- fee split and rounding remainder;
-- threshold crossing and final migration amounts;
-- vesting claim at every time boundary;
-- X-claim attestation domain, sender-binding, expiry, and replay cases.
-
-A difference caused by chain representation must be documented; an unexplained
-numeric difference is a release blocker.
-
-The committed vector files live in [vectors/](vectors/):
-
-| File | Covers |
-| --- | --- |
-| [vectors/curve.json](vectors/curve.json) | buys, sells, threshold crossing, both burn moments, one-atomic-unit boundaries, round-trip dust, and the sell-back property |
-| [vectors/fees.json](vectors/fees.json) | configurable protocol/creator shares, rounding, update sequences, and maximum-width boundaries |
-| [vectors/graduation.json](vectors/graduation.json) | On-chain Meme/Quote partitions plus off-chain exact-target release and native-Quote preview vectors |
-| [vectors/quote-decimals.json](vectors/quote-decimals.json) | decimal combinations, both pair orientations, exact `sqrt_price_x64`, venue range bounds |
-| [vectors/x-creator-claim.json](vectors/x-creator-claim.json) | canonical X claim BCS bytes, original meme-type domain, and Ed25519 fixture |
-
-Vector files are generated from the formulas in their owning decision record with
-exact integer arithmetic. They are regenerated, never hand-edited, when a proposed
-constant changes.
-
-## Operation-to-rule checklist
-
-Every public operation must be shown to satisfy all six standing invariants. The
-per-operation table lives in
-[decisions/0011-event-schema-and-replay.md](decisions/0011-event-schema-and-replay.md);
-this is the rule set it is checked against.
-
-| Rule | What the test must show |
-| --- | --- |
-| validation before mutation | the guard order is observable through abort precedence, and each simultaneously-invalid pair asserts which guard fires first |
-| replay-complete events | a reducer over the event stream alone reproduces final state field-by-field |
-| immutable dependencies | the built package resolves no mutable revision; adapters carry a recorded exemption, and `sui/migrators/scripts/check_mainnet_abi.mjs` proves every manifest and lock revision is a full commit |
-| bounded state | every loop and caller-driven collection has a fixed bound; an ADR-approved admin-only dynamic-field registry may grow without a protocol cap only when operations never enumerate it and remove one child at a time |
-| composability | the function returns owned values rather than self-transferring |
-| exact failures | every negative case asserts a named error, never a bare expected failure |
-
-## Additional required suites
-
-- **Replay reducer.** One reducer, exercised over a sequence covering launch, many
-  trades, both burn moments, threshold crossing, a failed migration with retry, a
-  successful migration, and a full settlement epoch.
-- **Display resolution.** For each displayed type, every required field resolves to
-  a non-empty string.
-- **No post-initializer mint.** Structural and lifecycle tests prove the OTW-only
-  `launch_ticket::new` constructor is the sole mint site and consumes supply
-  authority before returning, so no later public path can mint the coin type.
-- **Pair immutability.** No transition, route, retry, or recovery path changes the
-  selected `(Meme, Quote)` pair.
-- **Premise conversion.** Each open premise in
-  [decisions/README.md](decisions/README.md) has a compile or localnet test that
-  converts it into evidence. An ADR cannot be accepted while a premise it depends on
-  is unconverted.
-
-## Implementation and release checklist
-
-This is the single agent-operable list. Work through it in order; each row links to
-the decision that owns it. Nothing here may be marked done from prose alone.
-
-### Gate 0 — premises, before any ABI is written
-
-| # | Test | Owner |
-| --- | --- | --- |
-| 0.1 | P10 cross-package hot-potato threading compile fixture | [0002](decisions/0002-coin-creation-and-currency-authority.md) |
-| 0.2 | Retired: initializer-finalized supply removes `TreasuryCap` command threading | [0035](decisions/0035-initializer-finalized-meme-supply.md) |
-| 0.3 | P6 generated-package initializer calls Blast and transfers the returned ticket | [0051](decisions/0051-generated-meme-package-template.md) |
-| 0.4 | P13 `init` accepting a shared object | [0002](decisions/0002-coin-creation-and-currency-authority.md) |
-| 0.5 | P14 command result as a Move reference | [0002](decisions/0002-coin-creation-and-currency-authority.md) |
-| 0.6 | P1 type argument naming a package published in the same transaction | [0002](decisions/0002-coin-creation-and-currency-authority.md) |
-| 0.7 | P2 `&mut Currency<T>` shared-input only | [0003](decisions/0003-treasury-cap-lifetime-and-burn.md) |
-| 0.8 | P3 Cetus canonical ordering direction | [0010](decisions/0010-migration-and-venue-adapters.md) |
-| 0.9 | P8 Display freeze semantics, P12 generic instantiation | [0001](decisions/0001-sui-package-and-module-layout.md) |
-| 0.10 | P4, P5, P7, P9 live venue reads | [0006](decisions/0006-fees-and-launch-paths.md), [0010](decisions/0010-migration-and-venue-adapters.md) |
-
-### Gate 1 — core invariants
-
-| # | Test | Owner |
-| --- | --- | --- |
-| 1.1 | The OTW ticket constructor is the sole mint site and no treasury cap survives it | [0035](decisions/0035-initializer-finalized-meme-supply.md) |
-| 1.2 | Pair immutability across every transition, route, retry and recovery | [0005](decisions/0005-quote-asset-generalisation.md) |
-| 1.3 | Both conservation identities, meme units and quote units, after every operation | [0003](decisions/0003-treasury-cap-lifetime-and-burn.md) |
-| 1.4 | Curve vectors and both burn moments | [0004](decisions/0004-bonding-curve.md), [vectors/curve.json](vectors/curve.json) |
-| 1.5 | Sell-back invariant, seeded property test with a committed generator | [0004](decisions/0004-bonding-curve.md) |
-| 1.6 | Decimal and orientation vectors, exact rationals only | [0005](decisions/0005-quote-asset-generalisation.md), [vectors/quote-decimals.json](vectors/quote-decimals.json) |
-| 1.7 | Initializer supply suite: canonical nine-decimal billion, both modes, and no surviving treasury cap | [0035](decisions/0035-initializer-finalized-meme-supply.md), [0036](decisions/0036-fixed-nine-decimal-generated-memes.md) |
-
-### Gate 2 — authority, identity, settlement
-
-| # | Test | Owner |
-| --- | --- | --- |
-| 2.1 | Authority matrix and negative transition matrix as test tables | [0007](decisions/0007-acl-pause-and-versioning.md) |
-| 2.2 | Guard precedence, including witness-membership as input validation | [0007](decisions/0007-acl-pause-and-versioning.md), [0002](decisions/0002-coin-creation-and-currency-authority.md) |
-| 2.3 | Fee-split and LP-fee authority, bounds and events | [0007](decisions/0007-acl-pause-and-versioning.md), [0012](decisions/0012-flywheel-features.md) |
-| 2.4 | Address/SuiNS and X one-time creator-cap claims, coin-type isolation, threat table, backend integration P15, and attestation vectors | [0013](decisions/0013-creator-fee-authority-and-x-claims.md), [0016](decisions/0016-unified-creator-cap-claim-and-suins-periphery.md), [0017](decisions/0017-coin-type-domain-for-x-creator-claims.md) |
-| 2.5 | RevShare bounds, claimable cap, challenge, sweep, double-claim | [0009](decisions/0009-referrals-and-revshare.md) |
-| 2.6 | Vesting time boundaries, rounding, permissionless fixed-recipient claims, fair cancellation, cap binding, conservation, and replay | [0052](decisions/0052-stepped-linear-vesting.md), [vectors/vesting.json](vectors/vesting.json) |
-
-### Gate 3 — migration and release
-
-| # | Test | Owner |
-| --- | --- | --- |
-| 3.1 | Route A/B/C decision table and acceptance-band boundaries | [0010](decisions/0010-migration-and-venue-adapters.md) |
-| 3.2 | Reservation cleanup before any venue switch | [0010](decisions/0010-migration-and-venue-adapters.md) |
-| 3.3 | Terminal ordering preserves already-final supply while routing liquidity, residuals, and deferred burn | [0026](decisions/0026-deferred-sell-burn.md), [0035](decisions/0035-initializer-finalized-meme-supply.md) |
-| 3.4 | Event reducer replay in native Sui order across all entity scopes | [0011](decisions/0011-event-schema-and-replay.md) |
-| 3.5 | Per-venue dependency exemption resolved or the adapter excluded | [0010](decisions/0010-migration-and-venue-adapters.md) |
-| 3.6 | Live mainnet lineage, module fingerprints, and normalized venue ABI for all five venues plus Aftermath DAO Fee, via `sui/migrators/scripts/check_mainnet_abi.mjs`, with its offline `--self-test` green | [0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md), [0066](decisions/0066-aftermath-dao-fee-pool.md), [0067](decisions/0067-retire-full-sail-migrator.md) |
-| 3.7 | Mainnet dev-inspect matrix: all 13 migration routes and orientations, all eight fee-accrual or collection routes, the Aftermath per-pool DAO-fee update, and both vault claims, proving balance-derived initialization, zero Bluefin creation fee, venue canonical order, full-range ticks, the 50-bps Cetus and Turbos adoption checks, one-basis-point residuals held in protocol-owned vault custody, fee collection with unchanged principal liquidity, and Aftermath wrapper creation, combined 100-coin vault-address batch receipt, unchanged LP amount, and fixed recipient; every effective venue policy matches its live package constraints and a mismatch aborts | [0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md), [0066](decisions/0066-aftermath-dao-fee-pool.md), [0067](decisions/0067-retire-full-sail-migrator.md) |
-| 3.8 | Migration and LP-fee events replay from direct Sui events with no core envelope: per-launch vault creation, inner/outer Aftermath pool relationships, migration and residual amounts, DAO-rate updates, each accrual's live `protocol_fee_share_bps` split, and both claim paths | [0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md), [0066](decisions/0066-aftermath-dao-fee-pool.md) |
-| 3.9 | Aggregate migrators `UpgradeCap` destroyed and the immutable-package evidence recorded under `deployments/sui/mainnet/`; no locked-principal claim is valid before this row passes | [0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md) |
-| 3.10 | **Pending mainnet gate:** create both irrevocable and cancellable checkpoint vestings with the full 256-entry vector; decode every entry through the SDK; claim at the first, middle, and final boundaries; cancel/close successfully; and record transaction digests, gas, serialized object size, and absence of checkpoint dynamic fields under `deployments/sui/mainnet/` before the vesting package is made immutable | [0055](decisions/0055-global-vesting-package-and-checkpoints.md) |
+Store normalized public evidence under `deployments/<chain>/<network>/` using
+[`deployments/README.md`](../deployments/README.md). A passing statement must
+name the exact command or live check, its target revision/environment, and its
+result. Console output alone is not a release record.

@@ -67,8 +67,7 @@ burn_amount  = ceil(meme_in * burn_bps / 10_000)                     // ceil
 Proposed `MAX_BURN_BPS = 100` (1 %). **The constant is proposed, not accepted.**
 
 Rounding beneficiaries, stated per division: both ramp terms round **down**, so the ramp never overstates
-progress; the final burn amount rounds **up**, because a burn is a seller obligation and
-`../engineering-principles.md` sets obligations to round up. A sell whose post-burn effective amount is
+progress; the final burn amount rounds **up**, because a burn is a seller obligation. A sell whose post-burn effective amount is
 zero is rejected with a named error rather than silently accepted.
 
 **The historical behaviour, stated precisely.** `memez_burner::calculate(self, liquidity)`
@@ -175,7 +174,7 @@ then buy nothing.
 progress interpretation.
 
 **Copy the historical double round-up.** Rejected: compounding two round-ups is a value transfer with no
-stated beneficiary, which `../engineering-principles.md` forbids.
+stated beneficiary.
 
 ## Consequences
 

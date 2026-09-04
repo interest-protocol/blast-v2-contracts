@@ -105,7 +105,7 @@ types; every adapter depends **inward** on core. Composition between core and an
 the programmable transaction block, not in core code**: a transaction threads core-defined values
 through an adapter call and back into core.
 
-This is the composable-API rule of `../engineering-principles.md` applied literally, and it is why the
+This composable boundary is why the
 launch transaction in [ADR 0002](0002-coin-creation-and-currency-authority.md) can perform venue
 preflight without core ever naming Cetus, Bluefin, or Turbos.
 

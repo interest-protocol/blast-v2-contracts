@@ -36,9 +36,9 @@ An ADR records a decision; it does not replace executable invariants or tests.
 
 ## Citation rule
 
-Every ADR must cite external ABI facts as `repo@commit:path:line`, resolvable through the pin table in
-[../reference-review.md](../reference-review.md). A claim about an external package that cannot be cited
-that way must be written as a **named premise with a falsification test**, never as an assertion.
+Every ADR must cite external ABI facts at an immutable repository revision and
+path. A claim that cannot be pinned must be a **named premise with a
+falsification test**, never an assertion.
 
 Each ADR carries a `## Sources` table mapping the short refs it uses to full commit hashes.
 
@@ -359,8 +359,8 @@ falsification test.
 P13 forces currency creation into `init` and therefore the OTW path; P14 forces the `TreasuryCap` to move
 by value rather than by reference; P10 and P11 make the core-adapter-core threading expressible. Each has
 a stated fallback — reservation in its own transaction with a persisted single-use record — so a failure
-costs a transaction, not the architecture. They are the **first four compile fixtures** of the
-implementation stage, ordered in [../testing.md](../testing.md) gate 0.
+costs a transaction, not the architecture. Their owning ADRs define the
+required compile fixtures.
 
 None is treated as established until its named compile, localnet, or integration
 test passes, and none is asserted as a cited fact in the records.

@@ -19,39 +19,11 @@
 > the illustrative layout below is now a `Table`; graduation fields and
 > behavior are unchanged.
 
-## Sources
-
-| Ref | Full commit | Repository |
-| --- | --- | --- |
-| Memez.Fun migration liquidity selection | `00596fdac4dd11f427c7bc594e566ce36160db93` | [`interest-protocol/memez-gg`](https://github.com/interest-protocol/memez-gg/tree/00596fdac4dd11f427c7bc594e566ce36160db93) |
-
-The pinned handoff pattern is traced in
-[`docs/research/memez-fun-migration-pattern.md`](../research/memez-fun-migration-pattern.md):
-core selects the Meme liquidity balance before constructing the single-use
-migration payload
-(`fun/sources/pump.move:L194-L217`). The full partition comparison, including
-every Memez.Fun bucket this ADR deliberately does not adopt, is
-[`docs/research/memez-fun-migration-meme-partition.md`](../research/memez-fun-migration-meme-partition.md).
-
-Memez.Fun keeps four economically distinct lines: the per-launch
-`liquidity_provision` (destination-pool Meme principal), a configured
-stakeholder Meme `allocation` distributed only after migration, a
-Quote-denominated `migration` fee deducted before the handoff, and
-adapter-owned XPump policy (migration caller reward, residual treasury, and
-LP-fee routing). Blast adopts only the first of these as this provision. The
-protocol Meme graduation fee and the Quote migration fee remain the two
-separate protocol-revenue lines fixed by ADR 0027 — Blast's protocol Meme graduation fee is
-protocol revenue, not a Memez-style stakeholder distribution — Blast grants no
-creator or stakeholder supply allocation (ADR 0012), and any venue-side
-reward, treasury, or LP-fee policy belongs to the future external migrator
-package, never to core (ADRs 0010 and 0027).
-
-Blast rejects the overloaded sentinel in which a zero liquidity value means
-"provide the complete terminal curve inventory": zero is exclusively the
-unconfigured state and can never be snapshotted into a launch. This ADR
-originally rejected Memez.Fun's terminal `@0x0` transfer. ADR 0043 supersedes
-that part for Fixed launches with explicit disposal semantics and unchanged
-native total supply; BurnOnly still uses genuine Coin Registry destruction.
+The protocol Meme graduation fee and Quote migration fee remain the two
+protocol-revenue lines fixed by ADR 0027. Blast grants no creator or
+stakeholder supply allocation, and venue-side reward, treasury, or LP-fee
+policy belongs to the external migrator package. Zero provision means
+unconfigured; it never means the complete terminal curve inventory.
 
 ## Context
 

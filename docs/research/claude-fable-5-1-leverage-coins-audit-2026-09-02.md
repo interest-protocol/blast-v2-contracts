@@ -144,10 +144,9 @@ suite.
 `redemption_quote` now checks the fee rate before computing the kept equity.
 Pinned precedence (share bound, then fee, then gross) is unchanged.
 
-### L4. The cross-package error map did not list this registry (fixed)
+### L4. Package error registries are independent (fixed)
 
-`docs/error-codes.md` now points at the package registry and states that the
-numeric spaces are independent.
+Each package's `errors.move` owns its numeric space.
 
 ## Rounding and width inventory after remediation
 
@@ -198,6 +197,6 @@ further, with owners, are section 2 of
 - `sui/leverage_coins/scripts/check_source_boundaries.sh`: new functions
   fenced.
 - `sui/leverage_coins/tests/*`: 194 tests, up from 167.
-- `sui/leverage_coins/README.md`, `docs/error-codes.md`, `AGENTS.md`,
+- `sui/leverage_coins/README.md`, `AGENTS.md`,
   `docs/decisions/0064-aftermath-backed-leverage-coins.md`,
   `docs/leverage-implementation-lessons.md`.

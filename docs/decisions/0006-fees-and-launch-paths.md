@@ -108,7 +108,7 @@ corresponding asset; either or both may be positive up to the independently
 enforced 1,000-basis-point ceiling accepted by [ADR 0022](0022-dual-asset-fee-ledger-and-claims.md). Fees
 **accrue** into separate named balances of their charged assets and are **claimed** separately; they are
 never routed to an arbitrary recipient during a trade. Every fee division rounds **up** in the
-protocol's favour, per `../engineering-principles.md`, and the rounding beneficiary is named at each
+protocol's favour, and the rounding beneficiary is named at each
 division site.
 
 Proposed vector fixture: `QUOTE_FEE_BPS = 100` and `MEME_FEE_BPS = 0`. These are examples, not launch

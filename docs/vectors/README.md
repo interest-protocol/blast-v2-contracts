@@ -1,8 +1,7 @@
 # Shared differential vectors
 
 Implementation-independent test data consumed by Sui and reserved for any future
-chain implementation. `../testing.md` requires that an unexplained numeric
-difference is a release blocker.
+chain implementation. An unexplained numeric difference is a release blocker.
 
 ## Files
 
@@ -53,9 +52,9 @@ The arithmetic vector files are JSON objects with:
 - `parameters` — the accepted or proposed constants and bounds the cases were generated from;
 - `cases` — an array of objects, each with `name`, `kind`, `given`, `expect`, and `notes`.
 
-A case's `expect` block is the assertion target. A case whose `expect` contains `abort` names the exact
-expected error rather than asserting a bare failure, because `../testing.md` prohibits a bare expected
-failure that an unrelated abort could satisfy.
+A case's `expect` block is the assertion target. A case whose `expect` contains
+`abort` names the exact expected error; a bare failure could be satisfied by an
+unrelated abort.
 
 `properties` entries are not per-case oracles. They are invariants the implementation must prove by test;
 one carries a `status` field recording that it is asserted rather than yet evidenced.

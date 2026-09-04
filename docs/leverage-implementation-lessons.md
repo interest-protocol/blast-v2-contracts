@@ -90,13 +90,11 @@ and authority, object binding, lifecycle, input bounds, external health,
 arithmetic, then post-execution reconciliation. Add a precedence test for each
 new pair of overlapping invalid inputs.
 
-### 1.6 Every new error code ships with four things
+### 1.6 Keep one error registry
 
-A registry assertion in `errors_tests.move`, at least one `expected_failure`
-test that pins both the code and the raising module, a row in the package
-README registry, and, when the code is raised from more than one module, every
-module listed in that row. The launchpad's `docs/error-codes.md` points at the
-package registry; the numeric spaces are independent.
+The package's `errors.move` is the sole registry. Every new code ships with a
+registry assertion and at least one `expected_failure` test that pins both the
+code and raising module. Package numeric spaces are independent.
 
 ### 1.7 Keep raw NAV-taking formulas private
 

@@ -29,19 +29,6 @@
 > the launch lifecycle now owns its two private balance partitions directly;
 > the separate `graduation` module is removed.
 
-## Sources
-
-| Ref | Full commit | Repository |
-| --- | --- | --- |
-| Memez.Fun migration authorization | `00596fdac4dd11f427c7bc594e566ce36160db93` | [`interest-protocol/memez-gg`](https://github.com/interest-protocol/memez-gg/tree/00596fdac4dd11f427c7bc594e566ce36160db93) |
-
-The pinned pattern is traced in
-[`docs/research/memez-fun-migration-pattern.md`](../research/memez-fun-migration-pattern.md).
-It confirms that core can allowlist an external package's sealed witness type,
-snapshot exactly one selected `TypeName` into each launch, and later require a
-value of that type to unlock a linear migration payload. The DEX migrator is a
-separate package depending inward on core.
-
 ## Context
 
 Graduation needs two independent protocol policies: how much terminal Quote

@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 .sui-client/
+.superpowers/
+/docs/superpowers/
+/skills-lock.json
 
 # Sui Move build artifacts in any package below sui/
 sui/**/.move/

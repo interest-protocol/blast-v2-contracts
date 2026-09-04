@@ -17,10 +17,8 @@ pool that produces the vault's entire LP revenue stream. A griefer could
 graduate and migrate in one transaction into the venue's lowest or highest
 registered tier with no recovery path.
 
-Independent research (`docs/research/meme-launchpad-features-and-migration-fees-2026.md`)
-deliberately declines to copy competitor tier percentages, and venue fee units
-differ per venue, so compile-time tier constants would encode unverified
-values and freeze them at `UpgradeCap` destruction.
+Venue fee units differ per venue, so compile-time tier constants require
+venue-specific evidence and would freeze at `UpgradeCap` destruction.
 
 ## Decision
 
