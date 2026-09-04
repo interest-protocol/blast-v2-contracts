@@ -21,14 +21,14 @@ fun exact_positive_funding_transition_is_credit() {
     let before = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
     let after = checkpoint(10, 2_000, 7, 8, 7, 8, 9);
 
-    assert!(snapshot::is_credit_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &after, false, 1_000, true)));
+    assert!(snapshot::is_credit_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &after, false, 1_000)));
 }
 
 #[test]
 fun funding_settlement_keeps_the_exact_raw_candidate_amount() {
     let before = checkpoint(10, 4_000, 5, 6, 7, 8, 9);
     let after = checkpoint(10, 5_337, 7, 8, 7, 8, 9);
-    let change = snapshot::classify_change_with_candidate_for_testing(&before, &after, false, 1_337, true);
+    let change = snapshot::classify_change_with_candidate_for_testing(&before, &after, false, 1_337);
 
     assert_eq!(snapshot::funding_amount_for_testing(change), 1_337);
 }
@@ -38,7 +38,7 @@ fun exact_negative_funding_transition_is_cost() {
     let before = checkpoint(10, 2_000, 5, 6, 7, 8, 9);
     let after = checkpoint(10, 1_000, 7, 8, 7, 8, 9);
 
-    assert!(snapshot::is_cost_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &after, true, 1_000, true)));
+    assert!(snapshot::is_cost_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &after, true, 1_000)));
 }
 
 #[test]
@@ -46,7 +46,7 @@ fun funding_settlement_refreshes_both_snapshots_for_short_positions() {
     let before = checkpoint(10, 2_000, 5, 6, 7, 8, 9);
     let after = checkpoint(10, 3_000, 7, 8, 7, 8, 9);
 
-    assert!(snapshot::is_credit_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &after, false, 1_000, false)));
+    assert!(snapshot::is_credit_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &after, false, 1_000)));
 }
 
 #[test]
@@ -55,8 +55,8 @@ fun wrong_funding_delta_and_inactive_snapshot_transition_are_unexpected() {
     let wrong_delta = checkpoint(10, 2_000, 7, 6, 7, 8, 9);
     let wrong_side = checkpoint(10, 2_000, 5, 8, 7, 8, 9);
 
-    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &wrong_delta, false, 999, true)));
-    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &wrong_side, false, 1_000, true)));
+    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &wrong_delta, false, 999)));
+    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &wrong_side, false, 1_000)));
 }
 
 #[test]
@@ -99,14 +99,14 @@ fun every_checkpoint_guard_field_blocks_an_otherwise_matching_funding_delta() {
     let market_imr_changed = venue_account::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 10, 11, 12, 13, false, 14, 99, 16);
     let market_mmr_changed = venue_account::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 10, 11, 12, 13, false, 14, 15, 99);
 
-    assert!(snapshot::is_credit_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &base_funding_after, false, 1_000, true)));
-    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &pending_ask_changed, false, 1_000, true)));
-    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &pending_bid_changed, false, 1_000, true)));
-    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &pause_changed, false, 1_000, true)));
-    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &frozen_changed, false, 1_000, true)));
-    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &position_imr_changed, false, 1_000, true)));
-    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &market_imr_changed, false, 1_000, true)));
-    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &market_mmr_changed, false, 1_000, true)));
+    assert!(snapshot::is_credit_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &base_funding_after, false, 1_000)));
+    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &pending_ask_changed, false, 1_000)));
+    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &pending_bid_changed, false, 1_000)));
+    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &pause_changed, false, 1_000)));
+    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &frozen_changed, false, 1_000)));
+    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &position_imr_changed, false, 1_000)));
+    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &market_imr_changed, false, 1_000)));
+    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &market_mmr_changed, false, 1_000)));
 }
 
 #[test]
@@ -115,8 +115,8 @@ fun market_rate_or_lot_change_blocks_funding_even_when_the_delta_matches() {
     let market_rate_changed = venue_account::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 99, 8, 9, 10, 11, 12, 13, false, 14, 15, 16);
     let lot_changed = venue_account::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 99, 10, 11, 12, 13, false, 14, 15, 16);
 
-    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &market_rate_changed, false, 1_000, true)));
-    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &lot_changed, false, 1_000, true)));
+    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &market_rate_changed, false, 1_000)));
+    assert!(snapshot::is_unexpected_for_testing(snapshot::classify_change_with_candidate_for_testing(&before, &lot_changed, false, 1_000)));
 }
 
 #[test]
@@ -199,6 +199,17 @@ fun usd_conversion_rejects_the_max_width_fractional_addition_vector() {
         499_999_999_999_999_999,
         false,
     );
+}
+
+#[test]
+fun health_usd_conversion_keeps_the_same_max_width_input_as_an_invalid_fact() {
+    let (value, valid) = snapshot::usd_fixed_to_collateral_health_for_testing(
+        57896044618658097595993403267027758503064007324132374166459015334359435960541,
+        499_999_999_999_999_999,
+        false,
+    );
+    assert_eq!(value, 0);
+    assert!(!valid);
 }
 
 #[test]

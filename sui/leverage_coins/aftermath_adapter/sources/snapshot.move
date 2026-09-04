@@ -130,6 +130,9 @@ fun capture_<Collateral>(
     let (signed_base, signed_quote_notional) = position::base_and_quote_amounts(position);
     let (absolute_base, base_representable) = fixed_to_u64_up_health(ifixed::abs(signed_base), 9);
     let (absolute_notional, notional_representable) = usd_fixed_to_collateral_u64_up_health(ifixed::abs(signed_quote_notional), collateral_fixed);
+    if (!health) {
+        assert!(base_representable && notional_representable, blast_leverage_aftermath::errors::normalization_overflow!());
+    };
     let side = if (health) {
         if (position.is_long_or_flat()) { policy::long() } else { policy::short() }
     } else {
@@ -167,6 +170,9 @@ fun capture_<Collateral>(
         pnl,
         collateral_fixed,
     );
+    if (!health) {
+        assert!(equity_representable && !ifixed::is_neg(allocated_collateral), blast_leverage_aftermath::errors::normalization_overflow!());
+    };
     let signs_coherent = position_signs_coherent(signed_base, signed_quote_notional, position.is_long_or_flat());
     let economics_valid = !ifixed::is_neg(allocated_collateral)
         && signs_coherent && base_representable && notional_representable && equity_representable;
@@ -397,7 +403,10 @@ fun usd_fixed_to_collateral_fixed(usd: u256, collateral_price: u256, round_up: b
     let fraction = remainder * pow10(18) / collateral_price;
     assert!(whole_scaled <= std::u256::max_value!() - fraction, blast_leverage_aftermath::errors::normalization_overflow!());
     let down = whole_scaled + fraction;
-    if (round_up && remainder * pow10(18) % collateral_price != 0) { down + 1 } else { down }
+    if (round_up && remainder * pow10(18) % collateral_price != 0) {
+        assert!(down < std::u256::max_value!(), blast_leverage_aftermath::errors::normalization_overflow!());
+        down + 1
+    } else { down }
 }
 
 fun usd_fixed_to_collateral_u64_up_health(usd: u256, collateral_price: u256): (u64, bool) {
@@ -480,9 +489,7 @@ public fun classify_change_with_candidate_for_testing(
     after: &Checkpoint,
     candidate_negative: bool,
     candidate_magnitude: u256,
-    active_long: bool,
 ): Change {
-    let _ = active_long;
     classify_change_(before, after, candidate_negative, candidate_magnitude)
 }
 
@@ -534,6 +541,11 @@ public fun normalize_pyth_for_testing(component: u64, expo_negative: bool, expo_
 #[test_only]
 public fun usd_fixed_to_collateral_for_testing(usd: u256, collateral_price: u256, round_up: bool): u256 {
     usd_fixed_to_collateral_fixed(usd, collateral_price, round_up)
+}
+
+#[test_only]
+public fun usd_fixed_to_collateral_health_for_testing(usd: u256, collateral_price: u256, round_up: bool): (u256, bool) {
+    usd_fixed_to_collateral_fixed_health(usd, collateral_price, round_up)
 }
 
 #[test_only]

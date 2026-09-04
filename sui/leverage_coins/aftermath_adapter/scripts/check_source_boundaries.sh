@@ -216,6 +216,12 @@ grep -q 'observation::new_health_position' "$snapshot_file" \
   || fail "Health capture must preserve malformed live venue facts."
 grep -q 'assert_position_signs(signed_base, signed_quote_notional, position.is_long_or_flat())' "$snapshot_file" \
   || fail "Strict capture must reject incoherent venue position signs."
+grep -q 'assert!(base_representable && notional_representable' "$snapshot_file" \
+  || fail "Strict capture must reject unrepresentable base and notional facts."
+grep -q 'assert!(equity_representable && !ifixed::is_neg(allocated_collateral)' "$snapshot_file" \
+  || fail "Strict capture must reject unrepresentable equity facts."
+grep -q 'assert!(down < std::u256::max_value!()' "$snapshot_file" \
+  || fail "Strict USD ceil conversion must guard its final increment."
 grep -q '&& signs_coherent && base_representable' "$snapshot_file" \
   || fail "Health capture must retain incoherent position signs as unhealthy facts."
 grep -q 'assert_pyth_price_info(base_price_info, base_feed);' "$snapshot_file" \

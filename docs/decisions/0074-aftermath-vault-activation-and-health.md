@@ -176,6 +176,11 @@ but makes the same shared sign predicate unhealthy. USD-to-collateral
 conversion checks multiplication and final-addition width before every result;
 strict operations abort on overflow while health capture degrades without an
 economic-state abort.
+Strict capture also rejects any unrepresentable base, collateral-denominated
+notional, allocated/PnL equity, or normalized economic input with the adapter
+normalization error; it must never turn that failure into a zero-valued priced
+observation. The permissive health path alone maps that condition to an
+unhealthy fact.
 
 There are two capture modes over that same authenticated path. Strict capture
 constructs strict Series1 observations and is used by priced or risk-increasing
