@@ -47,4 +47,5 @@ fun adapter_error_registry_is_stable() {
     assert_eq!(errors::initialization_liquidation!(), 35);
     assert_eq!(errors::initialization_imr_mismatch!(), 36);
     assert_eq!(errors::locked_shares_overflow!(), 37);
+    assert_eq!(errors::initialization_order_count_exceeded!(), 38);
 }

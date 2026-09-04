@@ -164,6 +164,34 @@ the account and returned clearing house through their defining modules, and
 emit the replay-complete activation event. Any abort rolls back the complete
 transaction.
 
+One initialization may place at most 16 market orders. The adapter computes
+the exact ceiling of `target_base / max_order_base` through quotient and
+remainder before it constructs the order vector or enters the loop, then
+rejects a count above 16 with a dedicated append-only abort. Sixteen is the
+smallest fixed bound accepted for this generation: it keeps the only venue
+order loop small while allowing a launch target to be split across materially
+smaller risk-module order caps. The value is adapter bytecode, not configurable
+Vault state; a policy/cap pair that needs more calls cannot initialize. Zero
+remaining base, the inclusive maximum, the first value above it, and a
+maximum-width ceil vector are pinned independently. The completed vector must
+still sum to the exact whole-lot target and every order must independently pass
+the live notional cap.
+
+After the session, `settle_position_funding` receives the bound collateral
+oracle, not the base oracle. Funding is collateral-denominated in the named
+Aftermath interface. The source-boundary gate pins the exact argument and call
+order so this distinction cannot regress behind two values of the same Move
+type.
+
+Local tests also carry a stateful rollback model for the Blast-owned mutation
+phases: Series activation/reserve, locked-share supply, cap/checkpoint sealing,
+VenueAccount installation, and activation event emission. Injecting a modeled
+abort after each phase restores the complete pre-transaction facts, including
+uninitialized Series state, zero supply, absent cap/VenueAccount, and absent
+checkpoint. The structural gate binds those modeled phases to production
+order. The official external ports still abort locally, so Task 8 retains the
+deployed end-to-end and external-phase failure execution evidence.
+
 ## Evidence and remaining gates
 
 Task 1 establishes immutable linkage and callable raw semantics only. It does

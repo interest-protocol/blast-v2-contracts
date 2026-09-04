@@ -253,6 +253,8 @@ fi
 
 grep -q '^public fun initialize<Product, RiskModule: drop, Collateral>($' "$operations_file" \
   || fail "The adapter must expose one atomic generic initialization operation."
+grep -q '^const MAX_INITIALIZATION_ORDERS: u64 = 16;$' "$operations_file" \
+  || fail "Initialization must keep its reviewed 16-order work bound."
 initialization_block="$(
   sed -n '/^public fun initialize<Product, RiskModule: drop, Collateral>($/,/^}/p' "$operations_file"
 )"
@@ -284,6 +286,10 @@ awk '
   || fail "Initialization must use one Aftermath session."
 [[ "$(grep -Fc 'clearing_house::end_session(' <<<"$initialization_block")" -eq 1 ]] \
   || fail "Initialization must end its one Aftermath session."
+initialization_shape="$(tr -d '[:space:]' <<<"$initialization_block")"
+grep -q 'clearing_house::settle_position_funding(&mutclearing_house,collateral_oracle,account_number,clock,);' \
+  <<<"$initialization_shape" \
+  || fail "Initialization funding settlement must use the bound collateral oracle."
 [[ "$(grep -Fc 'clearing_house::share(clearing_house);' <<<"$initialization_block")" -eq 1 ]] \
   || fail "Initialization must return the ClearingHouse through its defining share port."
 [[ "$(grep -Fc 'account::consume_policy_and_share_account(account, share_policy);' <<<"$initialization_block")" -eq 1 ]] \
@@ -314,6 +320,7 @@ settle_line="$(initialization_line 'clearing_house::settle_position_funding(')"
 final_capture_line="$(grep -nF 'snapshot::capture_initialization(' <<<"$initialization_block" | sed -n '2s/:.*//p')"
 activate_line="$(initialization_line 'vault.initialize_series(')"
 mint_line="$(initialization_line 'vault.mint_locked_shares(')"
+seal_line="$(initialization_line 'venue_account::new(admin_cap, binding, checkpoint)')"
 account_share_line="$(initialization_line 'account::consume_policy_and_share_account(account, share_policy);')"
 install_line="$(initialization_line 'vault.install_venue_account(venue_account);')"
 clearing_share_line="$(initialization_line 'clearing_house::share(clearing_house);')"
@@ -322,7 +329,7 @@ initialization_order=(
   "$version_line" "$risk_line" "$create_line" "$binding_line" "$deposit_line"
   "$allocate_line" "$position_line" "$imr_line" "$pre_capture_line"
   "$session_start_line" "$session_end_line" "$settle_line" "$final_capture_line"
-  "$activate_line" "$mint_line" "$account_share_line" "$install_line"
+  "$activate_line" "$mint_line" "$seal_line" "$account_share_line" "$install_line"
   "$clearing_share_line" "$event_line"
 )
 for ((i = 1; i < ${#initialization_order[@]}; i++)); do
@@ -330,6 +337,21 @@ for ((i = 1; i < ${#initialization_order[@]}; i++)); do
     fail "Initialization must preserve the authenticated atomic call sequence."
   fi
 done
+
+order_sizes_block="$(
+  sed -n '/^fun order_sizes($/,/^}/p' "$operations_file"
+)"
+order_count_line="$(grep -nF 'let order_count = initialization_order_count(' <<<"$order_sizes_block" | cut -d: -f1)"
+vector_line="$(grep -nF 'let mut orders = vector[];' <<<"$order_sizes_block" | cut -d: -f1)"
+bounded_loop_line="$(grep -nF 'while (orders.length() < order_count) {' <<<"$order_sizes_block" | cut -d: -f1)"
+if [[ -z "$order_count_line" || -z "$vector_line" || -z "$bounded_loop_line" ]] \
+  || (( order_count_line >= vector_line || vector_line >= bounded_loop_line )); then
+  fail "Initialization must prove its order count before vector construction and bounded looping."
+fi
+grep -q 'count <= MAX_INITIALIZATION_ORDERS' "$operations_file" \
+  || fail "Initialization order count must enforce the fixed adapter work bound."
+grep -q 'initialization_order_count_exceeded!' "$operations_file" \
+  || fail "Initialization order-count overflow must keep its dedicated abort identity."
 
 production_operations="$(sed '/^\/\/ === Test-Only Functions ===/,$d' "$operations_file")"
 if grep -qE '^public fun .*order' <<<"$production_operations"; then

@@ -7,11 +7,37 @@ use blast_leverage_series_one::policy;
 use std::type_name;
 use std::unit_test::assert_eq;
 
+// === Constants ===
+
+const NO_ABORT: u8 = 0;
+const AFTER_SERIES_ACTIVATION: u8 = 1;
+const AFTER_LOCKED_SHARE_MINT: u8 = 2;
+const AFTER_CAP_AND_CHECKPOINT_SEAL: u8 = 3;
+const AFTER_VENUE_ACCOUNT_INSTALL: u8 = 4;
+const AFTER_ACTIVATION_EVENT: u8 = 5;
+const SEED_RESERVE: u64 = 10;
+const LOCKED_SHARE_SUPPLY: u64 = 90_000;
+
 // === Test-Only Types ===
 
 public struct Product {}
 
 public struct Collateral {}
+
+/// Stateful model of only the Blast-owned activation mutations.
+///
+/// Official Aftermath ports abort locally, so this harness models the values
+/// Sui would restore when a transaction aborts after each local phase. The
+/// source-boundary gate separately pins these phases to production order.
+public struct LocalActivationState has copy, drop {
+    series_active: bool,
+    maintenance_reserve: u64,
+    share_supply: u64,
+    cap_custodied: bool,
+    venue_account_installed: bool,
+    checkpoint: Option<venue_account::Checkpoint>,
+    activation_event_emitted: bool,
+}
 
 // === Tests ===
 
@@ -75,6 +101,78 @@ fun a_zero_order_cap_is_rejected_as_an_invalid_order_size() {
         1_000_000_000,
         1,
     );
+}
+
+#[test]
+fun initialization_order_count_accepts_zero_remaining_and_the_fixed_maximum() {
+    assert_eq!(operations::max_initialization_orders_for_testing(), 16);
+    assert_eq!(operations::order_count_for_testing(0, 1), 0);
+    assert_eq!(operations::order_count_for_testing(16, 1), 16);
+}
+
+#[test]
+fun maximum_order_count_preserves_the_exact_total_and_per_order_cap() {
+    let orders = operations::order_sizes_for_testing(
+        16,
+        1,
+        1_000_000_000,
+        1_000_000_000,
+        1,
+    );
+    let mut total = 0;
+    let mut index = 0;
+    while (index < orders.length()) {
+        let order = *orders.borrow(index);
+        assert_eq!(order, 1_000);
+        total = total + order;
+        index = index + 1;
+    };
+
+    assert_eq!(orders.length(), 16);
+    assert_eq!(total, 16_000);
+}
+
+#[test]
+#[expected_failure(abort_code = 38, location = blast_leverage_aftermath::operations)]
+fun initialization_order_count_rejects_the_first_value_above_the_maximum() {
+    operations::order_count_for_testing(17, 1);
+}
+
+#[test]
+fun initialization_order_count_ceil_does_not_add_before_dividing() {
+    assert_eq!(
+        operations::order_count_for_testing(
+            std::u64::max_value!(),
+            std::u64::max_value!() - 1,
+        ),
+        2,
+    );
+}
+
+#[test]
+fun local_activation_model_reaches_every_committed_state() {
+    let (state, aborted) = run_local_activation(NO_ABORT);
+
+    assert!(!aborted, 0);
+    assert!(state.series_active, 0);
+    assert_eq!(state.maintenance_reserve, SEED_RESERVE);
+    assert_eq!(state.share_supply, LOCKED_SHARE_SUPPLY);
+    assert!(state.cap_custodied, 0);
+    assert!(state.venue_account_installed, 0);
+    assert_eq!(*state.checkpoint.borrow(), activation_checkpoint());
+    assert!(state.activation_event_emitted, 0);
+}
+
+#[test]
+fun modeled_abort_after_each_local_phase_restores_every_pretransaction_fact() {
+    let mut phase = AFTER_SERIES_ACTIVATION;
+    while (phase <= AFTER_ACTIVATION_EVENT) {
+        let (state, aborted) = run_local_activation(phase);
+
+        assert!(aborted, 0);
+        assert_pretransaction_state(&state);
+        phase = phase + 1;
+    };
 }
 
 #[test]
@@ -356,4 +454,74 @@ fun vault_initialized_event_records_every_activation_primitive() {
     assert_eq!(side, policy::short());
     assert_eq!(position_imr, 36);
     assert_eq!(event_checkpoint, checkpoint);
+}
+
+// === Test-Only Helpers ===
+
+fun run_local_activation(abort_after: u8): (LocalActivationState, bool) {
+    let before = pretransaction_state();
+    let mut state = before;
+
+    state.series_active = true;
+    state.maintenance_reserve = SEED_RESERVE;
+    if (abort_after == AFTER_SERIES_ACTIVATION) { return (before, true) };
+
+    state.share_supply = LOCKED_SHARE_SUPPLY;
+    if (abort_after == AFTER_LOCKED_SHARE_MINT) { return (before, true) };
+
+    state.cap_custodied = true;
+    state.checkpoint.fill(activation_checkpoint());
+    if (abort_after == AFTER_CAP_AND_CHECKPOINT_SEAL) { return (before, true) };
+
+    state.venue_account_installed = true;
+    if (abort_after == AFTER_VENUE_ACCOUNT_INSTALL) { return (before, true) };
+
+    state.activation_event_emitted = true;
+    if (abort_after == AFTER_ACTIVATION_EVENT) { return (before, true) };
+
+    (state, false)
+}
+
+fun pretransaction_state(): LocalActivationState {
+    LocalActivationState {
+        series_active: false,
+        maintenance_reserve: 0,
+        share_supply: 0,
+        cap_custodied: false,
+        venue_account_installed: false,
+        checkpoint: option::none(),
+        activation_event_emitted: false,
+    }
+}
+
+fun assert_pretransaction_state(state: &LocalActivationState) {
+    assert!(!state.series_active, 0);
+    assert_eq!(state.maintenance_reserve, 0);
+    assert_eq!(state.share_supply, 0);
+    assert!(!state.cap_custodied, 0);
+    assert!(!state.venue_account_installed, 0);
+    assert!(state.checkpoint.is_none(), 0);
+    assert!(!state.activation_event_emitted, 0);
+}
+
+fun activation_checkpoint(): venue_account::Checkpoint {
+    venue_account::checkpoint_for_testing(
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        false,
+        14,
+        15,
+        16,
+    )
 }

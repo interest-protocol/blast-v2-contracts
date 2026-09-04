@@ -36,6 +36,9 @@ const BASE_ATOM_TO_IFIXED_SCALE: u256 = 1_000_000_000;
 /// Converts six-decimal seed NAV atoms to nine-decimal share atoms.
 const SEED_SHARE_SCALE: u64 = 1_000;
 
+/// Maximum market-order calls permitted in one atomic initialization session.
+const MAX_INITIALIZATION_ORDERS: u64 = 16;
+
 // === Public Functions ===
 
 /// Atomically seeds and activates one issued Aftermath leverage Vault.
@@ -204,7 +207,7 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
 
     clearing_house::settle_position_funding(
         &mut clearing_house,
-        base_oracle,
+        collateral_oracle,
         account_number,
         clock,
     );
@@ -300,10 +303,11 @@ fun order_sizes(
         target_base > 0 && max_order_base > 0,
         blast_leverage_aftermath::errors::invalid_initialization_order_size!(),
     );
+    let order_count = initialization_order_count(target_base, max_order_base);
 
     let mut remaining = target_base;
     let mut orders = vector[];
-    while (remaining > 0) {
+    while (orders.length() < order_count) {
         let order_base = if (remaining < max_order_base) {
             remaining
         } else {
@@ -322,8 +326,35 @@ fun order_sizes(
         orders.push_back(order_base);
         remaining = remaining - order_base;
     };
+    assert!(
+        remaining == 0,
+        blast_leverage_aftermath::errors::normalization_overflow!(),
+    );
 
     orders
+}
+
+fun initialization_order_count(
+    target_base: u64,
+    max_order_base: u64,
+): u64 {
+    assert!(
+        max_order_base > 0,
+        blast_leverage_aftermath::errors::invalid_initialization_order_size!(),
+    );
+    let quotient = target_base / max_order_base;
+    let remainder = target_base % max_order_base;
+    let count = quotient
+        .checked_add(if (remainder == 0) { 0 } else { 1 })
+        .destroy_or!(
+            abort blast_leverage_aftermath::errors::initialization_order_count_exceeded!()
+        );
+    assert!(
+        count <= MAX_INITIALIZATION_ORDERS,
+        blast_leverage_aftermath::errors::initialization_order_count_exceeded!(),
+    );
+
+    count
 }
 
 /// Aftermath encodes ask as true and bid as false in its deployed bytecode.
@@ -491,6 +522,19 @@ public fun order_sizes_for_testing(
         collateral_price,
         lot_size,
     )
+}
+
+#[test_only]
+public fun max_initialization_orders_for_testing(): u64 {
+    MAX_INITIALIZATION_ORDERS
+}
+
+#[test_only]
+public fun order_count_for_testing(
+    target_base: u64,
+    max_order_base: u64,
+): u64 {
+    initialization_order_count(target_base, max_order_base)
 }
 
 #[test_only]

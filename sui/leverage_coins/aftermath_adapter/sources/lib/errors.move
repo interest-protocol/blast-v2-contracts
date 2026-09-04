@@ -156,6 +156,10 @@ const EInitializationImrMismatch: u64 = 36;
 /// Scaling seed NAV into nine-decimal locked shares overflowed `u64`.
 const ELockedSharesOverflow: u64 = 37;
 
+#[test_only]
+/// Atomic initialization requires more venue orders than the adapter permits.
+const EInitializationOrderCountExceeded: u64 = 38;
+
 macro public(package) fun package_version_mismatch(): u64 {
     0
 }
@@ -271,3 +275,5 @@ macro public(package) fun initialization_liquidation(): u64 { 35 }
 macro public(package) fun initialization_imr_mismatch(): u64 { 36 }
 
 macro public(package) fun locked_shares_overflow(): u64 { 37 }
+
+macro public(package) fun initialization_order_count_exceeded(): u64 { 38 }
