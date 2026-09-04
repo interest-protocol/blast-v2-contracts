@@ -169,6 +169,16 @@ the named effective-IMR and `compute_free_collateral` margin method with the
 bound collateral price, mark, and haircut; a negative result is unsafe. Venue
 availability is independently an allowed pause mode and not-frozen state.
 
+There are two capture modes over that same authenticated path. Strict capture
+constructs strict Series1 observations and is used by priced or risk-increasing
+operations. Health capture performs every binding, storage/source, feed/Pyth,
+named-price, and timestamp check first, but then preserves zero price, mark, or
+lot values and malformed exposure in Series1's permissive health observation.
+It exists only for objective health synchronization, so an authenticated live
+fault can move an active vault to `ReduceOnly` instead of aborting before that
+state transition. It never weakens source identity or accepts caller-shaped
+economics.
+
 `Change` preserves raw IFixed collateral deltas. It recognizes funding only if
 at least one position funding snapshot moves exactly to an otherwise unchanged
 market cumulative rate, allocated collateral changes in the matching direction,

@@ -41,6 +41,39 @@ public(package) fun capture<Collateral>(
     collateral_price_info: &PriceInfoObject,
     clock: &Clock,
 ): (observation::PositionObservation, Checkpoint) {
+    capture_(binding, account, registry, clearing_house, base_oracle, collateral_oracle, base_price_info, collateral_price_info, clock, false)
+}
+
+/// Captures authenticated live facts for objective health degradation.
+///
+/// Authentication and source agreement remain strict; only structural venue
+/// values are retained instead of aborting so Series1 can enter ReduceOnly.
+public(package) fun capture_health<Collateral>(
+    binding: &Binding,
+    account: &Account<Collateral>,
+    registry: &Registry,
+    clearing_house: &ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    base_price_info: &PriceInfoObject,
+    collateral_price_info: &PriceInfoObject,
+    clock: &Clock,
+): (observation::PositionObservation, Checkpoint) {
+    capture_(binding, account, registry, clearing_house, base_oracle, collateral_oracle, base_price_info, collateral_price_info, clock, true)
+}
+
+fun capture_<Collateral>(
+    binding: &Binding,
+    account: &Account<Collateral>,
+    registry: &Registry,
+    clearing_house: &ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    base_price_info: &PriceInfoObject,
+    collateral_price_info: &PriceInfoObject,
+    clock: &Clock,
+    health: bool,
+): (observation::PositionObservation, Checkpoint) {
     binding.assert_exact(
         object::id(account),
         account::account_id(account),
@@ -77,13 +110,25 @@ public(package) fun capture<Collateral>(
     let (base_price, base_confidence, base_timestamp) = pyth_price(base_price_info, base_feed, base_fixed);
     let (collateral_price, collateral_confidence, collateral_timestamp) = pyth_price(collateral_price_info, collateral_feed, collateral_fixed);
     let mark_price = fixed_to_u64_down_9(mark_fixed);
-    let base_index = observation::new_price(base_price, base_confidence, base_timestamp);
-    let collateral_index = observation::new_price(collateral_price, collateral_confidence, collateral_timestamp);
+    let base_index = if (health) {
+        observation::new_health_price(base_price, base_confidence, base_timestamp)
+    } else {
+        observation::new_price(base_price, base_confidence, base_timestamp)
+    };
+    let collateral_index = if (health) {
+        observation::new_health_price(collateral_price, collateral_confidence, collateral_timestamp)
+    } else {
+        observation::new_price(collateral_price, collateral_confidence, collateral_timestamp)
+    };
     let position = clearing_house.position(account::account_id(account));
     let (signed_base, signed_quote_notional) = position::base_and_quote_amounts(position);
     let absolute_base = fixed_to_u64_up_9(ifixed::abs(signed_base));
     let absolute_notional = fixed_to_u64_up_6(ifixed::abs(signed_quote_notional));
-    let side = assert_position_signs(signed_base, signed_quote_notional, position.is_long_or_flat());
+    let side = if (health) {
+        if (position.is_long_or_flat()) { policy::long() } else { policy::short() }
+    } else {
+        assert_position_signs(signed_base, signed_quote_notional, position.is_long_or_flat())
+    };
     let allocated_collateral = position.collateral();
     let (funding_snapshot_long, funding_snapshot_short) = position.funding_rate_snapshots();
     let (market_funding_long, market_funding_short) = market::cum_funding_rates(clearing_house.market_state());
@@ -117,7 +162,7 @@ public(package) fun capture<Collateral>(
     );
 
     (
-        observation::new_position(
+        if (health) { observation::new_health_position(
             venue_equity,
             absolute_base,
             absolute_notional,
@@ -130,7 +175,20 @@ public(package) fun capture<Collateral>(
             base_index,
             collateral_index,
             mark_price,
-        ),
+        ) } else { observation::new_position(
+            venue_equity,
+            absolute_base,
+            absolute_notional,
+            market::lot_size(params),
+            side,
+            position.pending_order_count(),
+            !ifixed::is_neg(free_margin),
+            clearing_house.market_pause_mode() == 0 && !clearing_house.is_frozen(),
+            true,
+            base_index,
+            collateral_index,
+            mark_price,
+        ) },
         checkpoint,
     )
 }
@@ -372,6 +430,15 @@ public fun is_credit_for_testing(change: Change): bool {
 #[test_only]
 public fun is_cost_for_testing(change: Change): bool {
     match (change) { Change::FundingCost(_) => true, _ => false }
+}
+
+#[test_only]
+public fun funding_amount_for_testing(change: Change): u256 {
+    match (change) {
+        Change::FundingCredit(amount) => amount,
+        Change::FundingCost(amount) => amount,
+        _ => 0,
+    }
 }
 
 #[test_only]
