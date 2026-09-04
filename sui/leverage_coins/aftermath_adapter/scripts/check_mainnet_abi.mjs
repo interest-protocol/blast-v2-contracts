@@ -635,9 +635,25 @@ function emit(observations) {
     process.stdout.write('const ABI = ' + JSON.stringify(Object.fromEntries(Object.entries(abi).sort()), null, 4) + ';\n');
 }
 
+function printJson(observations) {
+    process.stdout.write(`${JSON.stringify({
+        schemaVersion: 1,
+        chainIdentifier: CHAIN_IDENTIFIER,
+        packages: observations.map(({ label, currentId, version, digest, previousTransaction, modules }) => ({
+            label,
+            currentId,
+            version,
+            digest,
+            previousTransaction,
+            modules,
+        })),
+        functionCount: Object.keys(ABI).length,
+    }, null, 2)}\n`);
+}
+
 async function main() {
     const args = process.argv.slice(2);
-    if (args.some((arg) => !['--self-test', '--emit'].includes(arg)) || args.length > 1) fail('usage: check_mainnet_abi.mjs [--self-test|--emit]');
+    if (args.some((arg) => !['--self-test', '--emit', '--json'].includes(arg)) || args.length > 1) fail('usage: check_mainnet_abi.mjs [--self-test|--emit|--json]');
     if (args[0] === '--self-test') selfTest();
     validateManifestSource(readFileSync(join(PACKAGE_DIR, 'Move.toml'), 'utf8'));
     validateLockSource(readFileSync(join(PACKAGE_DIR, 'Move.lock'), 'utf8'));
@@ -654,6 +670,7 @@ async function main() {
         observations.push(observation);
     }
     if (args[0] === '--emit') emit(observations);
+    else if (args[0] === '--json') printJson(observations);
     else process.stdout.write(`check_mainnet_abi: PASS ${PACKAGES.length} packages, ${Object.keys(ABI).length} functions\n`);
 }
 

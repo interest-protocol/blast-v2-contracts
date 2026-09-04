@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "offline-comparator-test",
+  "gasDifferencePolicy": "gas-only",
+  "productionOperationsSha256": "dba756bfb709c2e7aac4e7d7082390841700a3eeb4fab957b9e78488781bf6dc",
+  "baseline": {
+    "objects": [
+      {
+        "role": "series_state",
+        "exists": true,
+        "id": "0x0101010101010101010101010101010101010101010101010101010101010101",
+        "version": "7",
+        "digest": "BaselineSeriesStateDigest",
+        "owner": { "Shared": { "initial_shared_version": 3 } },
+        "type": "0x11::vault::Vault<0x11::product::Product<0x11::fixture::TwoX>>",
+        "content": { "lifecycle": "Uninitialized", "maintenance_reserve": "0" }
+      },
+      {
+        "role": "share_currency",
+        "exists": true,
+        "id": "0x0202020202020202020202020202020202020202020202020202020202020202",
+        "version": "5",
+        "digest": "BaselineCurrencyDigest",
+        "owner": { "Shared": { "initial_shared_version": 4 } },
+        "type": "0x2::coin_registry::Currency<0x11::vault::Vault<0x11::product::Product<0x11::fixture::TwoX>>>",
+        "content": { "total_supply": "0" }
+      },
+      {
+        "role": "locked_share_destination",
+        "exists": false,
+        "id": "0x0303030303030303030303030303030303030303030303030303030303030303"
+      },
+      {
+        "role": "aftermath_account",
+        "exists": false,
+        "id": "0x0404040404040404040404040404040404040404040404040404040404040404"
+      },
+      {
+        "role": "returned_clearing_house",
+        "exists": false,
+        "id": "0x0505050505050505050505050505050505050505050505050505050505050505"
+      }
+    ],
+    "custody": {
+      "adminCap": "absent",
+      "venueAccount": "none",
+      "checkpoint": "none"
+    },
+    "supply": {
+      "totalShares": "0",
+      "lockedDestinationBalance": "0"
+    },
+    "events": []
+  },
+  "success": {
+    "status": "success",
+    "transactionDigest": "SyntheticSuccessDigest",
+    "vaultInitializedEvents": 1,
+    "createdAftermathAccount": true,
+    "sharedClearingHouse": true,
+    "installedVenueAccount": true,
+    "lockedShares": "90000000000"
+  },
+  "phaseCases": [
+    { "case": "A1", "lastPhase": "vault.initialize_series", "abortImmediatelyAfter": true },
+    { "case": "A2", "lastPhase": "vault.mint_locked_shares", "abortImmediatelyAfter": true },
+    { "case": "A3", "lastPhase": "venue_account::new", "abortImmediatelyAfter": true },
+    { "case": "A4", "lastPhase": "account::consume_policy_and_share_account", "abortImmediatelyAfter": true },
+    { "case": "A5", "lastPhase": "vault.install_venue_account", "abortImmediatelyAfter": true },
+    { "case": "A6", "lastPhase": "clearing_house::share", "abortImmediatelyAfter": true },
+    { "case": "A7", "lastPhase": "events::vault_initialized", "abortImmediatelyAfter": true }
+  ],
+  "failures": [
+    { "case": "A1", "status": "failure", "transactionDigest": "SyntheticA1Digest", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
+    { "case": "A2", "status": "failure", "transactionDigest": "SyntheticA2Digest", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
+    { "case": "A3", "status": "failure", "transactionDigest": "SyntheticA3Digest", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
+    { "case": "A4", "status": "failure", "transactionDigest": "SyntheticA4Digest", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
+    { "case": "A5", "status": "failure", "transactionDigest": "SyntheticA5Digest", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
+    { "case": "A6", "status": "failure", "transactionDigest": "SyntheticA6Digest", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] },
+    { "case": "A7", "status": "failure", "transactionDigest": "SyntheticA7Digest", "preState": "baseline", "postState": "baseline", "changedObjects": [{ "kind": "gas", "id": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }], "events": [] }
+  ]
+}

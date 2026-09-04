@@ -261,28 +261,22 @@ million lots are structural fences, not selected values.
 These remain open from ADR 0064 and both audits and are listed so no reader
 believes the package closes them:
 
-- the operation-scoped linear valuation carrier, plus exact source binding and
-  authentication. `series_one/sources/policy.move` now fixes the freshness, confidence,
-  and index-versus-mark rules through its distinct `ValuationPolicy` type, and
-  the package README records their boundary, unit, and zero-policy semantics.
-  The adapter now wraps `State<Product>` directly, so the future operation must
-  capture and validate the valuation inside one adapter call. Premise P17 must
-  still fix its normalized fields, and no value for any bound is selected;
-- exhaustive external-mutation checkpoint and `sync_health` refresh rules;
+- production values for the immutable valuation bounds. The adapter now owns
+  operation-scoped source binding, strict activation capture, permissive health
+  capture, the raw checkpoint, and permissionless exact-once health and funding
+  synchronization under ADR 0074, but simulation has not selected launch
+  values for every bound;
 - permissionless rebalance sizing bounds; the minimum-improvement gate exists
   but the Vault must still bound the size of a permissionless order;
-- operation-specific adapter code that authenticates the selected risk-module
-  witness and Aftermath account. Adapter versioning, package custody, product
-  issuance, and risk-module rotation are implemented under ADR 0073;
 - the production `max_mint_contribution_divergence_bps` value, which simulation
   must select separately for the long and short Series;
 - maximum supply, minimum NAV per share, minimum seed, the open-from-flat
   primitive, the reserve release path, a loss lifecycle state or an accepted
-  decision that shutdown is the answer, the atomic initialization path out of
-  `Uninitialized`, and shutdown cash rules. Issuance resolves the bootstrap
-  trap by creating zero supply, zero reserve, and no asset custody, so no value
-  can exist before that initialization succeeds;
-- premises P16 through P20 against deployed Aftermath state.
+  decision that shutdown is the answer, and shutdown cash rules. Issuance
+  resolves the bootstrap trap by creating zero supply, zero reserve, and no
+  asset custody, and ADR 0074 defines the atomic initialization path;
+- submitted controlled-network and read-only mainnet evidence for premises P16
+  through P20. Offline fixtures and Move unit tests do not close this gate.
 
 ## 4. Definition of done for the Series slice
 

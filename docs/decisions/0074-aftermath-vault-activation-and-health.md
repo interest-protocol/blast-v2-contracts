@@ -17,8 +17,10 @@ package still has the reviewed lineage or ABI.
 The official `AftermathFinance/move-interfaces` package is the callable
 semantic and ABI contract. Its local `abort 404` bodies are link stubs, not
 implementations for unit tests. Blast calls the named getters and IFixed
-conversion functions directly. It does not reproduce hidden Aftermath math.
-Later live inspection must compare their returned values and state effects.
+conversion functions directly. It does not reproduce hidden Aftermath math or
+inspect an upstream implementation to invent calls. The pinned ports are
+sufficient to design and compile the adapter. Later live inspection verifies
+real object values and transaction effects; it is not an API-discovery step.
 
 ## Decision
 
@@ -149,6 +151,14 @@ arguments are required because strict capture must prove the Aftermath feeds
 and named market prices describe the same Pyth update. They do not let the
 caller supply a price, source ID, market ID, side, order size, or share amount.
 
+The adapter exposes a stateless `product::Product<phantom Tag>` witness with a
+public zero-state constructor. The witness carries only type identity and no
+authority. A Series1 administrator still authorizes `vault::issue`, and Coin
+Registry uniqueness prevents a second currency for the same
+`Vault<Product<Tag>>` type. Different tag types let one adapter package issue
+distinct 2x, 5x, long, short, or future product currencies without hard-coding
+their economic policy into the witness constructor.
+
 One selected risk-module witness can atomically activate an issued Vault once.
 The adapter creates and binds the account authority, deposits and allocates the
 seed, creates one position, sets and later rechecks its IMR, and captures a
@@ -192,6 +202,29 @@ and then inspect the aborted transaction's object effects, and the official
 external ports abort locally. Task 8 must therefore prove activation atomicity
 with controlled submitted local or testnet transactions at every named phase
 boundary, in addition to one successful end-to-end activation.
+
+### Release evidence protocol
+
+Offline activation vectors test the transaction builder, strict response
+comparison, checkpoint case matrix, and rollback comparator. They are synthetic
+regression inputs and are never deployment or rollback evidence.
+
+The read-only gate must execute `sui client ptb --dev-inspect` on the exact
+mainnet chain, authenticate every configured object type, and reject status-only
+or non-JSON output when it cannot recover canonical normalized results. The
+controlled gate must submit one successful activation and failed A1-A7
+transactions on testnet. It snapshots canonical object references and decoded
+content before and after every submission, permits only the gas object to
+change after a failure, and requires the failed transaction event list to be
+empty. Candidate account, capability, locked-share, and returned
+ClearingHouse object IDs must be tracked even when their required state is
+nonexistence.
+
+An instrumented failpoint package is admissible only when every Move source is
+byte-for-byte equal to the reviewed production source except for one abort line
+immediately after the named boundary. Evidence records both published package
+object digests and both complete Move-source-tree digests. Neither dev-inspect,
+a fixture comparison, nor an abort code alone proves rollback.
 
 ## Evidence and remaining gates
 

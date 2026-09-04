@@ -11,3 +11,8 @@ Read the accepted Series1 ADRs from the
 before changing this package. Run `scripts/verify.sh` for local gates. Source,
 tests, `Move.toml`, and `Move.lock` own current behavior, errors, and dependency
 facts.
+
+Series1 exposes no public user mint or redemption. Adapter activation may mint
+only the fixed seed supply and permanently deliver it to `@0x0`; user-facing
+mint and redemption remain a later adapter slice after deployed activation and
+health parity evidence passes.

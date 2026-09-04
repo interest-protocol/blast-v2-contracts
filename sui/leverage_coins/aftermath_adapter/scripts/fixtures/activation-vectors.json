@@ -1,0 +1,207 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "offline-comparator-test",
+  "network": {
+    "environment": "mainnet",
+    "chainIdentifier": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+  },
+  "builderInput": {
+    "sender": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "adapterPackage": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "productTagType": "0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX",
+    "riskWitness": {
+      "target": "0x3333333333333333333333333333333333333333333333333333333333333333::risk_module::new",
+      "type": "0x3333333333333333333333333333333333333333333333333333333333333333::risk_module::KeeperWitness",
+      "typeArguments": [],
+      "arguments": []
+    },
+    "collateralType": "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC",
+    "objects": {
+      "vault": "0x0101010101010101010101010101010101010101010101010101010101010101",
+      "protocol": "0x0202020202020202020202020202020202020202020202020202020202020202",
+      "currency": "0x0303030303030303030303030303030303030303030303030303030303030303",
+      "registry": "0x0404040404040404040404040404040404040404040404040404040404040404",
+      "clearingHouse": "0x0505050505050505050505050505050505050505050505050505050505050505",
+      "baseOracle": "0x0606060606060606060606060606060606060606060606060606060606060606",
+      "collateralOracle": "0x0707070707070707070707070707070707070707070707070707070707070707",
+      "basePriceInfo": "0x0808080808080808080808080808080808080808080808080808080808080808",
+      "collateralPriceInfo": "0x0909090909090909090909090909090909090909090909090909090909090909",
+      "seedCoin": "0x1010101010101010101010101010101010101010101010101010101010101010",
+      "clock": "0x0000000000000000000000000000000000000000000000000000000000000006"
+    },
+    "seedReserve": "10000000",
+    "positionImr": "100000000000000000"
+  },
+  "expectedPlan": {
+    "commands": [
+      {
+        "index": 0,
+        "target": "0x3333333333333333333333333333333333333333333333333333333333333333::risk_module::new",
+        "typeArguments": [],
+        "arguments": [],
+        "assign": "risk_module"
+      },
+      {
+        "index": 1,
+        "target": "0x1111111111111111111111111111111111111111111111111111111111111111::operations::initialize",
+        "typeArguments": [
+          "0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>",
+          "0x3333333333333333333333333333333333333333333333333333333333333333::risk_module::KeeperWitness",
+          "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC"
+        ],
+        "arguments": [
+          "@0x0101010101010101010101010101010101010101010101010101010101010101",
+          "@0x0202020202020202020202020202020202020202020202020202020202020202",
+          "risk_module",
+          "@0x0303030303030303030303030303030303030303030303030303030303030303",
+          "@0x0404040404040404040404040404040404040404040404040404040404040404",
+          "@0x0505050505050505050505050505050505050505050505050505050505050505",
+          "@0x0606060606060606060606060606060606060606060606060606060606060606",
+          "@0x0707070707070707070707070707070707070707070707070707070707070707",
+          "@0x0808080808080808080808080808080808080808080808080808080808080808",
+          "@0x0909090909090909090909090909090909090909090909090909090909090909",
+          "@0x1010101010101010101010101010101010101010101010101010101010101010",
+          "10000000",
+          "100000000000000000",
+          "@0x0000000000000000000000000000000000000000000000000000000000000006"
+        ],
+        "assign": null
+      }
+    ],
+    "phaseOrder": [
+      "account.create",
+      "collateral.deposit",
+      "collateral.allocate",
+      "position.create",
+      "position.set_imr",
+      "snapshot.pre",
+      "session.start",
+      "session.multi_order",
+      "session.end",
+      "funding.settle",
+      "snapshot.final",
+      "series.activate",
+      "shares.lock",
+      "venue_account.seal",
+      "account.share",
+      "venue_account.install",
+      "clearing_house.share",
+      "event.vault_initialized"
+    ]
+  },
+  "expectedPtbArgs": [
+    "client",
+    "--client.env",
+    "mainnet",
+    "ptb",
+    "--move-call",
+    "0x3333333333333333333333333333333333333333333333333333333333333333::risk_module::new",
+    "--assign",
+    "risk_module",
+    "--move-call",
+    "0x1111111111111111111111111111111111111111111111111111111111111111::operations::initialize",
+    "<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>,0x3333333333333333333333333333333333333333333333333333333333333333::risk_module::KeeperWitness,0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
+    "@0x0101010101010101010101010101010101010101010101010101010101010101",
+    "@0x0202020202020202020202020202020202020202020202020202020202020202",
+    "risk_module",
+    "@0x0303030303030303030303030303030303030303030303030303030303030303",
+    "@0x0404040404040404040404040404040404040404040404040404040404040404",
+    "@0x0505050505050505050505050505050505050505050505050505050505050505",
+    "@0x0606060606060606060606060606060606060606060606060606060606060606",
+    "@0x0707070707070707070707070707070707070707070707070707070707070707",
+    "@0x0808080808080808080808080808080808080808080808080808080808080808",
+    "@0x0909090909090909090909090909090909090909090909090909090909090909",
+    "@0x1010101010101010101010101010101010101010101010101010101010101010",
+    "10000000",
+    "100000000000000000",
+    "@0x0000000000000000000000000000000000000000000000000000000000000006",
+    "--dev-inspect",
+    "--sender",
+    "@0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "--json"
+  ],
+  "expectedObservation": {
+    "status": "success",
+    "commandResultCount": 2,
+    "objectTypes": {
+      "vault": "0x1111111111111111111111111111111111111111111111111111111111111111::vault::Vault<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>",
+      "protocol": "0x1111111111111111111111111111111111111111111111111111111111111111::protocol::Protocol",
+      "currency": "0x0000000000000000000000000000000000000000000000000000000000000002::coin_registry::Currency<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
+      "registry": "0x4444444444444444444444444444444444444444444444444444444444444444::registry::Registry",
+      "clearingHouse": "0x4444444444444444444444444444444444444444444444444444444444444444::clearing_house::ClearingHouse<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
+      "baseOracle": "0x5555555555555555555555555555555555555555555555555555555555555555::price_feed_storage::PriceFeedStorage",
+      "collateralOracle": "0x5555555555555555555555555555555555555555555555555555555555555555::price_feed_storage::PriceFeedStorage",
+      "basePriceInfo": "0x6666666666666666666666666666666666666666666666666666666666666666::price_info::PriceInfoObject",
+      "collateralPriceInfo": "0x6666666666666666666666666666666666666666666666666666666666666666::price_info::PriceInfoObject",
+      "seedCoin": "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
+      "clock": "0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock"
+    },
+    "normalized": {
+      "accountNumber": "42",
+      "freeCollateral": "10000000",
+      "allocatedCollateral": "90000000",
+      "absoluteBase": "50000000000",
+      "absoluteNotional": "100000000",
+      "basePrice": "2000000000",
+      "collateralPrice": "1000000000",
+      "markPrice": "2000000000",
+      "lotSize": "100000000",
+      "positionImr": "100000000000000000",
+      "marketImr": "50000000000000000",
+      "marketMmr": "30000000000000000",
+      "lockedShareSupply": "90000000000",
+      "maintenanceReserve": "10000000"
+    }
+  },
+  "mockObservation": {
+    "status": "success",
+    "commandResultCount": 2,
+    "objectTypes": {
+      "vault": "0x1111111111111111111111111111111111111111111111111111111111111111::vault::Vault<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>",
+      "protocol": "0x1111111111111111111111111111111111111111111111111111111111111111::protocol::Protocol",
+      "currency": "0x0000000000000000000000000000000000000000000000000000000000000002::coin_registry::Currency<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
+      "registry": "0x4444444444444444444444444444444444444444444444444444444444444444::registry::Registry",
+      "clearingHouse": "0x4444444444444444444444444444444444444444444444444444444444444444::clearing_house::ClearingHouse<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
+      "baseOracle": "0x5555555555555555555555555555555555555555555555555555555555555555::price_feed_storage::PriceFeedStorage",
+      "collateralOracle": "0x5555555555555555555555555555555555555555555555555555555555555555::price_feed_storage::PriceFeedStorage",
+      "basePriceInfo": "0x6666666666666666666666666666666666666666666666666666666666666666::price_info::PriceInfoObject",
+      "collateralPriceInfo": "0x6666666666666666666666666666666666666666666666666666666666666666::price_info::PriceInfoObject",
+      "seedCoin": "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
+      "clock": "0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock"
+    },
+    "normalized": {
+      "accountNumber": "42",
+      "freeCollateral": "10000000",
+      "allocatedCollateral": "90000000",
+      "absoluteBase": "50000000000",
+      "absoluteNotional": "100000000",
+      "basePrice": "2000000000",
+      "collateralPrice": "1000000000",
+      "markPrice": "2000000000",
+      "lotSize": "100000000",
+      "positionImr": "100000000000000000",
+      "marketImr": "50000000000000000",
+      "marketMmr": "30000000000000000",
+      "lockedShareSupply": "90000000000",
+      "maintenanceReserve": "10000000"
+    }
+  },
+  "checkpointCases": [
+    { "name": "long", "materialCheckpointTransition": false, "checkpointChanged": false, "classification": "unchanged", "health": "active" },
+    { "name": "short", "materialCheckpointTransition": false, "checkpointChanged": false, "classification": "unchanged", "health": "active" },
+    { "name": "flat", "materialCheckpointTransition": false, "checkpointChanged": false, "classification": "unchanged", "health": "active" },
+    { "name": "positive_pnl", "materialCheckpointTransition": false, "checkpointChanged": false, "classification": "unchanged", "health": "active" },
+    { "name": "negative_pnl", "materialCheckpointTransition": false, "checkpointChanged": false, "classification": "unchanged", "health": "active" },
+    { "name": "funding_credit", "materialCheckpointTransition": true, "checkpointChanged": true, "classification": "funding_credit", "health": "active" },
+    { "name": "funding_cost", "materialCheckpointTransition": true, "checkpointChanged": true, "classification": "funding_cost", "health": "active" },
+    { "name": "repeated_funding", "materialCheckpointTransition": false, "checkpointChanged": false, "classification": "unchanged", "health": "active" },
+    { "name": "partial_liquidation", "materialCheckpointTransition": true, "checkpointChanged": true, "classification": "unexpected", "health": "reduce_only" },
+    { "name": "adl_settlement", "materialCheckpointTransition": true, "checkpointChanged": true, "classification": "unexpected", "health": "reduce_only" },
+    { "name": "collateral_movement", "materialCheckpointTransition": true, "checkpointChanged": true, "classification": "unexpected", "health": "reduce_only" },
+    { "name": "pending_order", "materialCheckpointTransition": true, "checkpointChanged": true, "classification": "unexpected", "health": "reduce_only" },
+    { "name": "pause", "materialCheckpointTransition": true, "checkpointChanged": true, "classification": "unexpected", "health": "reduce_only" },
+    { "name": "freeze", "materialCheckpointTransition": true, "checkpointChanged": true, "classification": "unexpected", "health": "reduce_only" },
+    { "name": "stale_oracle", "materialCheckpointTransition": false, "checkpointChanged": false, "classification": "unchanged", "health": "reduce_only" },
+    { "name": "collateral_depeg", "materialCheckpointTransition": false, "checkpointChanged": false, "classification": "unchanged", "health": "reduce_only" }
+  ]
+}

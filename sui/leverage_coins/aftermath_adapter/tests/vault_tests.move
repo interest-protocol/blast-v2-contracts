@@ -2,7 +2,12 @@
 /// Stateful tests for multi-product issuance from one Aftermath adapter.
 module blast_leverage_aftermath::vault_tests;
 
-use blast_leverage_aftermath::{events, protocol::{Self, Protocol}, vault::{Self, Vault}};
+use blast_leverage_aftermath::{
+    events,
+    product::{Self, Product},
+    protocol::{Self, Protocol},
+    vault::{Self, Vault},
+};
 use blast_leverage_series_one::{
     acl::{Self, AdminCap, ProtocolAuthority, SuperAdminCap},
     policy::{Self, TierPolicy},
@@ -32,6 +37,12 @@ public struct Sui2x() has drop;
 
 /// Sealed product witness for the 5x currency.
 public struct Sui5x() has drop;
+
+/// Tag for a production-constructible 2x product witness.
+public struct TaggedSui2x() has drop;
+
+/// Tag for a production-constructible 5x product witness.
+public struct TaggedSui5x() has drop;
 
 /// Initially selected risk implementation.
 public struct RiskModule() has drop;
@@ -131,6 +142,25 @@ fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
     test_scenario::return_shared(vault_5x);
     test_scenario::return_shared(currency_2x);
     test_scenario::return_shared(currency_5x);
+    destroy(fixture);
+}
+
+#[test]
+fun generic_product_tags_issue_distinct_currencies() {
+    let mut fixture = start(1);
+
+    fixture.issue_and_share<Product<TaggedSui2x>, RiskModule>(
+        product::new<TaggedSui2x>(),
+        b"SUI2XT".to_string(),
+    );
+    fixture.issue_and_share<Product<TaggedSui5x>, RiskModule>(
+        product::new<TaggedSui5x>(),
+        b"SUI5XT".to_string(),
+    );
+
+    assert!(fixture.registry.exists<Vault<Product<TaggedSui2x>>>());
+    assert!(fixture.registry.exists<Vault<Product<TaggedSui5x>>>());
+
     destroy(fixture);
 }
 
@@ -441,6 +471,26 @@ fun one_product_witness_cannot_issue_twice() {
 
     fixture.issue_and_share<Sui2x, RiskModule>(Sui2x(), b"SUI2XA".to_string());
     fixture.issue_and_share<Sui2x, RiskModule>(Sui2x(), b"SUI2XB".to_string());
+
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = sui::coin_registry::ECurrencyAlreadyExists,
+    location = sui::coin_registry,
+)]
+fun one_generic_product_tag_cannot_issue_twice() {
+    let mut fixture = start(1);
+
+    fixture.issue_and_share<Product<TaggedSui2x>, RiskModule>(
+        product::new<TaggedSui2x>(),
+        b"SUI2XTA".to_string(),
+    );
+    fixture.issue_and_share<Product<TaggedSui2x>, RiskModule>(
+        product::new<TaggedSui2x>(),
+        b"SUI2XTB".to_string(),
+    );
 
     destroy(fixture);
 }

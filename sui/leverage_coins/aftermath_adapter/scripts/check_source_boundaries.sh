@@ -13,6 +13,7 @@ snapshot_file="$package_dir/sources/snapshot.move"
 operations_file="$package_dir/sources/operations.move"
 package_admin_file="$package_dir/sources/package_admin.move"
 aftermath_file="$package_dir/sources/aftermath.move"
+product_file="$package_dir/sources/product.move"
 series_dir="$(cd "$package_dir/../series_one" && pwd)"
 
 grep -q '^name = "blast_leverage_aftermath"$' "$manifest" \
@@ -31,6 +32,7 @@ for required in \
   "$operations_file" \
   "$package_admin_file" \
   "$aftermath_file" \
+  "$product_file" \
   "$package_dir/sources/lib/constants.move" \
   "$package_dir/sources/lib/errors.move" \
   "$package_dir/sources/lib/events.move" \
@@ -40,6 +42,14 @@ done
 
 if grep -rniE 'AdapterRoot|AdapterDomain|venue_handoff' "$package_dir/sources"; then
   fail "The adapter must not reintroduce a per-adapter ACL root or handoff layer."
+fi
+
+grep -q '^public struct Product<phantom Tag>() has drop;$' "$product_file" \
+  || fail "Product witnesses must be stateless, droppable, and tag-scoped."
+grep -q '^public fun new<Tag>(): Product<Tag> {$' "$product_file" \
+  || fail "Product tags must have one public stateless constructor."
+if grep -Eq '\b(TxContext|AdminWitness|AdminCap|UID|key|store|copy)\b' "$product_file"; then
+  fail "Product witnesses must carry no state or authority."
 fi
 if grep -rniE '^(public )?struct [A-Za-z0-9_]*AdminCap' "$package_dir/sources"; then
   fail "The adapter must not define an adapter-local AdminCap."

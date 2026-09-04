@@ -560,7 +560,7 @@ fun initialization_order_count(
     count
 }
 
-/// Aftermath encodes ask as true and bid as false in its deployed bytecode.
+/// Maps the Series side to the Aftermath port's bid/ask boolean convention.
 fun order_side(position_side: PositionSide): bool {
     position_side == policy::short()
 }

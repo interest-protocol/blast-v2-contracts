@@ -219,7 +219,7 @@ fun exact_long_and_short_full_fills_are_accepted() {
 }
 
 #[test]
-fun series_side_maps_to_the_deployed_aftermath_order_side() {
+fun series_side_maps_to_the_aftermath_port_convention() {
     assert_eq!(operations::order_side_for_testing(policy::long()), false);
     assert_eq!(operations::order_side_for_testing(policy::short()), true);
 }
