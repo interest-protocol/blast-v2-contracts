@@ -180,6 +180,15 @@ grep -q '^public fun issue<Product: drop, RiskModule: drop>($' "$vault_file" \
 sed -n '/^public fun issue</,/^)/p' "$vault_file" \
   | grep -q '_: Product,' \
   || fail "Issuance must consume a runtime product witness."
+sed -n '/^public fun issue</,/^)/p' "$vault_file" \
+  | grep -q '_risk_module: RiskModule,' \
+  || fail "Issuance must consume the initially selected runtime risk witness."
+sed -n '/^public fun issue</,/^)/p' "$vault_file" \
+  | grep -q 'package_admin: &PackageAdmin,' \
+  || fail "Vault issuance must prove adapter upgrade capabilities are already in PackageAdmin custody."
+sed -n '/^public fun issue</,/^}/p' "$vault_file" \
+  | grep -q 'package_admin.assert_adapter_custody();' \
+  || fail "Vault issuance must revalidate the presented PackageAdmin custody object."
 grep -q 'type_name::original_id<Product>()' "$vault_file" \
   || fail "Issuance must inspect the product witness origin."
 grep -q 'type_name::original_id<AFTERMATH>()' "$vault_file" \
@@ -204,6 +213,12 @@ grep -q '^public fun set_max_order_notional<Product, RiskModule: drop>($' "$vaul
 sed -n '/^public fun set_max_order_notional</,/^}/p' "$vault_file" \
   | grep -q 'presented_witness == self.risk_module_witness' \
   || fail "Notional-cap control must authenticate the selected risk module."
+grep -q 'type_name::original_id<RiskModule>()' "$vault_file" \
+  && grep -q '!= type_name::original_id<AFTERMATH>()' "$vault_file" \
+  || fail "Risk witnesses must originate outside the adapter's public Product package."
+sed -n '/^public fun rotate_risk_module</,/^)/p' "$vault_file" \
+  | grep -q '_risk_module: RiskModule,' \
+  || fail "Risk rotation must consume the newly selected runtime witness."
 grep -q '^public fun enter_reduce_only<Product>($' "$vault_file" \
   || fail "The adapter must expose the Series1 risk-admin degradation route."
 sed -n '/^public fun enter_reduce_only<Product>($/,/^}/p' "$vault_file" \
@@ -214,6 +229,16 @@ grep -q 'publisher.from_module<AFTERMATH>()' "$package_admin_file" \
   || fail "PackageAdmin must validate the canonical adapter Publisher."
 grep -q 'type_name::original_id<AFTERMATH>()' "$package_admin_file" \
   || fail "PackageAdmin must validate the original adapter package id."
+adapter_custody_block="$(
+  sed -n '/^public(package) fun assert_adapter_custody(/,/^}/p' "$package_admin_file" \
+    | tr -d '[:space:]'
+)"
+grep -q 'self.upgrade_cap.package().to_address()!=@0x0' \
+  <<<"$adapter_custody_block" \
+  || fail "Vault issuance must reject PackageAdmin while an upgrade ticket is outstanding."
+if grep -q 'type_name::original_id<AFTERMATH>()' <<<"$adapter_custody_block"; then
+  fail "Repeated custody checks must admit a committed adapter upgrade's new package id."
+fi
 grep -q 'sui::package::claim_and_keep(otw, ctx);' "$aftermath_file" \
   || fail "Adapter initialization must claim and keep its Publisher."
 
@@ -256,6 +281,22 @@ grep -q 'market::collateral_oracle_price(params, collateral_oracle, clock)' "$sn
   || fail "Snapshot capture must use the bound named collateral oracle getter."
 grep -q 'position::compute_margin_and_requirement' "$snapshot_file" \
   || fail "Snapshot capture must compare the named venue margin and requirement."
+grep -q 'let pnl = position.unrealized_pnl(base_fixed);' "$snapshot_file" \
+  || fail "Shareholder NAV must anchor unrealized PnL to the authenticated Pyth index."
+if grep -q 'position.unrealized_pnl(mark_fixed)' "$snapshot_file"; then
+  fail "Mark price may affect venue margin and divergence, not shareholder NAV."
+fi
+grep -q 'let (absolute_notional, notional_representable) = base_notional_health(' "$snapshot_file" \
+  || fail "Current leverage notional must use base size and the authenticated Pyth index."
+snapshot_shape="$(tr -d '[:space:]' < "$snapshot_file")"
+grep -q 'base_notional_health(absolute_base,base_risk_price,collateral_price,)' \
+  <<<"$snapshot_shape" \
+  && grep -q 'normalize_pyth_component_health(price_magnitude,&expo,true)' \
+  <<<"$snapshot_shape" \
+  || fail "Current leverage notional must ceil the Pyth base numerator."
+if grep -q 'usd_fixed_to_collateral_u64_up_health(ifixed::abs(signed_quote_notional)' "$snapshot_file"; then
+  fail "Historical quote cost basis must not determine current leverage notional."
+fi
 grep -q 'margin_safe: margin_safe(margin, requirement)' "$snapshot_file" \
   || fail "Snapshot margin safety must compare margin against its requirement."
 grep -q '!margin_negative && margin >= requirement' "$snapshot_file" \
@@ -325,10 +366,17 @@ awk '
   || fail "Initialization must install exactly one VenueAccount."
 [[ "$(grep -Fc 'snapshot::capture_initialization(' <<<"$initialization_block")" -eq 2 ]] \
   || fail "Initialization must capture exactly one pre-trade and one final snapshot."
+allocation_shape="$(
+  sed -n '/clearing_house::allocate_collateral(/,/);/p' <<<"$initialization_block" \
+    | tr -d '[:space:]'
+)"
+grep -q 'clearing_house::allocate_collateral(&mutclearing_house,&admin_cap,&mutaccount,seed_amount,);' \
+  <<<"$allocation_shape" \
+  || fail "The whole seed, including the accounting reserve, must remain position margin."
 [[ "$(grep -Fc 'clearing_house::start_session(' <<<"$initialization_block")" -eq 1 ]] \
-  || fail "Initialization must use one Aftermath session."
+  || fail "Initialization must keep one session call site inside its bounded order loop."
 [[ "$(grep -Fc 'clearing_house::end_session(' <<<"$initialization_block")" -eq 1 ]] \
-  || fail "Initialization must end its one Aftermath session."
+  || fail "Initialization must keep one matching end-session call site."
 initialization_shape="$(tr -d '[:space:]' <<<"$initialization_block")"
 grep -q 'clearing_house::settle_position_funding(&mutclearing_house,collateral_oracle,account_number,clock,);' \
   <<<"$initialization_shape" \
@@ -440,6 +488,18 @@ grep -q 'count <= MAX_INITIALIZATION_ORDERS' "$operations_file" \
   || fail "Initialization order count must enforce the fixed adapter work bound."
 grep -q 'initialization_order_count_exceeded!' "$operations_file" \
   || fail "Initialization order-count overflow must keep its dedicated abort identity."
+session_loop="$(
+  sed -n '/while (!orders.is_empty()) {/,/^    };/p' <<<"$initialization_block"
+)"
+[[ "$(grep -Fc 'clearing_house::start_session(' <<<"$session_loop")" -eq 1 ]] \
+  && [[ "$(grep -Fc 'clearing_house::place_market_order(' <<<"$session_loop")" -eq 1 ]] \
+  && [[ "$(grep -Fc 'clearing_house::end_session(' <<<"$session_loop")" -eq 1 ]] \
+  || fail "Every bounded initialization order must use its own complete Aftermath session."
+grep -q 'clearing_house::filled_base_and_quote(' <<<"$session_loop" \
+  && grep -q 'vault.assert_order_notional_allowed(actual_fill_notional(' <<<"$session_loop" \
+  || fail "Each session must enforce the live cap against its actual filled quote."
+grep -q 'vault.assert_initialization_execution(' <<<"$session_loop" \
+  || fail "Strict execution tolerance must be enforced for every individual order."
 
 production_operations="$(sed '/^\/\/ === Test-Only Functions ===/,$d' "$operations_file")"
 if grep -qE '^public fun .*order' <<<"$production_operations"; then
@@ -473,9 +533,18 @@ sync_shape="$(tr -d '[:space:]' <<<"$sync_block")"
 grep -q 'clearing_house::settle_position_funding(clearing_house,collateral_oracle,account::account_id(account),clock,);' \
   <<<"$sync_shape" \
   || fail "Health sync funding settlement must use the bound collateral oracle."
-grep -q 'if(!snapshot::checkpoint_unchanged(stored,before)){snapshot::unexpected_change()}' \
-  <<<"$(sed -n '/^fun classify_sync_change($/,/^}/p' "$operations_file" | tr -d '[:space:]')" \
-  || fail "Stored checkpoint drift must be unexpected and never funding."
+classification_shape="$(
+  sed -n '/^fun classify_sync_changes($/,/^}/p' "$operations_file" \
+    | tr -d '[:space:]'
+)"
+grep -q 'snapshot::checkpoint_ready_for_settlement(stored,before)' \
+  <<<"$classification_shape" \
+  || fail "Market funding-rate advancement must remain eligible for exact settlement."
+grep -q 'snapshot::classify_preexisting_funding(stored,before)' \
+  <<<"$classification_shape" \
+  && grep -q 'snapshot::classify_change(before,after,funding_candidate,collateral_price,)' \
+  <<<"$classification_shape" \
+  || fail "Preexisting and local funding must be classified as two ordered edges."
 sync_line() {
   local needle="$1"
   grep -nF "$needle" <<<"$sync_block" | head -1 | cut -d: -f1
@@ -486,7 +555,7 @@ sync_pre_line="$(grep -nF 'snapshot::capture_health(' <<<"$sync_block" | sed -n 
 sync_candidate_line="$(sync_line 'let funding_candidate = position::calculate_position_funding_internal(')"
 sync_settle_line="$(sync_line 'clearing_house::settle_position_funding(')"
 sync_post_line="$(grep -nF 'snapshot::capture_health(' <<<"$sync_block" | sed -n '2s/:.*//p')"
-sync_classify_line="$(sync_line 'let change = classify_sync_change(')"
+sync_classify_line="$(sync_line 'let (preexisting_change, local_change) = classify_sync_changes(')"
 sync_apply_line="$(sync_line 'apply_post_capture(')"
 sync_order=(
   "$sync_version_line" "$sync_cap_line" "$sync_pre_line"
@@ -509,8 +578,10 @@ post_capture_line() {
   grep -nF "$needle" <<<"$post_capture_block" | head -1 | cut -d: -f1
 }
 post_stored_line="$(post_capture_line 'let stored_checkpoint = *vault.venue_checkpoint();')"
-post_fields_line="$(post_capture_line 'snapshot::funding_change_fields(&change)')"
-post_settle_line="$(post_capture_line 'vault.settle_funding(is_cost, amount)')"
+post_preexisting_fields_line="$(post_capture_line 'snapshot::funding_change_fields(&preexisting_change)')"
+post_local_fields_line="$(post_capture_line 'snapshot::funding_change_fields(&local_change)')"
+post_preexisting_settle_line="$(post_capture_line 'vault.settle_funding(preexisting_is_cost, preexisting_amount)')"
+post_local_settle_line="$(post_capture_line 'vault.settle_funding(local_is_cost, local_amount)')"
 post_finish_line="$(post_capture_line 'let (observation, checkpoint) = snapshot::finish_health(')"
 post_persist_line="$(post_capture_line 'vault.replace_venue_checkpoint(checkpoint);')"
 post_policy_line="$(post_capture_line 'let lifecycle_changed = vault.sync_health(')"
@@ -518,7 +589,8 @@ post_funding_event_line="$(post_capture_line 'events::funding_settled<Product>('
 post_health_decision_line="$(post_capture_line 'let (emit_health, health_reason) = health_event_decision(')"
 post_health_event_line="$(post_capture_line 'events::health_synchronized<Product>(')"
 post_capture_order=(
-  "$post_stored_line" "$post_fields_line" "$post_settle_line" "$post_finish_line"
+  "$post_stored_line" "$post_preexisting_fields_line" "$post_local_fields_line"
+  "$post_preexisting_settle_line" "$post_local_settle_line" "$post_finish_line"
   "$post_persist_line" "$post_policy_line" "$post_funding_event_line"
   "$post_health_decision_line" "$post_health_event_line"
 )
@@ -530,8 +602,8 @@ for ((i = 1; i < ${#post_capture_order[@]}; i++)); do
 done
 [[ "$(grep -Fc 'vault.replace_venue_checkpoint(checkpoint);' <<<"$post_capture_block")" -eq 1 ]] \
   || fail "The post-capture helper must persist exactly one authenticated checkpoint."
-[[ "$(grep -Fc 'events::funding_settled<Product>(' <<<"$post_capture_block")" -eq 1 ]] \
-  || fail "The post-capture helper must have one exact-funding event site."
+[[ "$(grep -Fc 'events::funding_settled<Product>(' <<<"$post_capture_block")" -eq 2 ]] \
+  || fail "The post-capture helper must emit each ordered funding edge independently."
 [[ "$(grep -Fc 'events::health_synchronized<Product>(' <<<"$post_capture_block")" -eq 1 ]] \
   || fail "The post-capture helper must have one degradation event site."
 test_post_capture_block="$(

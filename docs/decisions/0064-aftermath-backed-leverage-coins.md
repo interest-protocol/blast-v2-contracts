@@ -793,14 +793,14 @@ asset and cannot change lifecycle.
 
 ### Upgrade posture
 
-The pure accounting library is part of Series1 rather than an independently
-published package. Series1 and each stateful venue adapter are evolving
-shared-state packages. Series1 now has one package-version cutover, permanent
-Publisher and UpgradeCap custody, exact-digest authorization, and separate
-operational activation under ADRs 0070 and 0072. Each adapter still requires
-the equivalent package-local posture as stateful follow-up work. Before
-publication, every shared-state mutator must check its own package's current
-version because old Sui bytecode remains callable after an upgrade.
+This draft's Series1 upgrade design is superseded by ADR 0073. The pure
+accounting library remains inside Series1, but Series1 is published immutably:
+its publication PTB consumes the returned `UpgradeCap` with
+`0x2::package::make_immutable`, and Series2 is a distinct package and coin
+family. Venue adapters remain evolving shared-state packages with their own
+version and upgrade custody. Before adapter publication, every shared-state
+adapter mutator must check the adapter package's current version because old
+Sui bytecode remains callable after an upgrade.
 
 The adapter upgrade authority is as sensitive as the Series1 authority: upgraded
 adapter code could misuse the account admin capability. Production custody

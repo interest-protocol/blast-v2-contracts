@@ -183,6 +183,38 @@ fun pyth_positive_exponent_and_seconds_conversion_are_literal() {
 }
 
 #[test]
+fun health_pyth_normalization_preserves_unrepresentable_values_as_invalid() {
+    let (exponent_value, exponent_valid) =
+        snapshot::normalize_pyth_health_for_testing(1, false, 19, false);
+    let (width_value, width_valid) = snapshot::normalize_pyth_health_for_testing(
+        std::u64::max_value!(),
+        false,
+        9,
+        false,
+    );
+
+    assert_eq!(exponent_value, 0);
+    assert!(!exponent_valid);
+    assert_eq!(width_value, 0);
+    assert!(!width_valid);
+}
+
+#[test]
+fun health_feed_and_timestamp_width_failures_are_invalid_not_aborts() {
+    let (feed, feed_valid) = snapshot::normalize_feed_health_for_testing(
+        (std::u64::max_value!() as u128) + 1,
+    );
+    let (timestamp, timestamp_valid) = snapshot::seconds_to_millis_health_for_testing(
+        std::u64::max_value!() / 1_000 + 1,
+    );
+
+    assert_eq!(feed, 0);
+    assert!(!feed_valid);
+    assert_eq!(timestamp, 0);
+    assert!(!timestamp_valid);
+}
+
+#[test]
 fun stablecoin_depeg_and_minimum_lot_vectors_keep_the_venue_scales() {
     // Pyth -9 inputs are already in adapter price units: $0.95 remains exact.
     assert_eq!(snapshot::normalize_pyth_for_testing(950_000_000, true, 9, false), 950_000_000);
@@ -199,6 +231,48 @@ fun usd_values_convert_to_collateral_units_at_the_authenticated_depeg_price() {
     assert_eq!(snapshot::usd_fixed_to_collateral_for_testing(1_000_000_000_000_000_000, 950_000_000_000_000_000, true), 1_052_631_578_947_368_422);
     // $1.50 notional at $1.20 collateral is exactly 1.25 collateral.
     assert_eq!(snapshot::usd_fixed_to_collateral_for_testing(1_500_000_000_000_000_000, 1_200_000_000_000_000_000, true), 1_250_000_000_000_000_000);
+}
+
+#[test]
+fun current_notional_uses_base_size_and_pyth_index_instead_of_quote_cost_basis() {
+    let (notional, valid) = snapshot::base_notional_health_for_testing(
+        2_000_000_000,
+        3_000_000_000,
+        1_000_000_000,
+    );
+
+    assert_eq!(notional, 6_000_000);
+    assert!(valid);
+}
+
+#[test]
+fun current_notional_ceil_rounds_a_sub_nine_decimal_pyth_base_price() {
+    let (notional, valid) = snapshot::base_notional_from_pyth_for_testing(
+        1_000_000_000,
+        10_000_000_001,
+        true,
+        10,
+        1_000_000_000,
+    );
+
+    assert_eq!(notional, 1_000_001);
+    assert!(valid);
+}
+
+#[test]
+fun health_current_notional_rejects_zero_or_unrepresentable_prices() {
+    let (zero_price, zero_price_valid) =
+        snapshot::base_notional_health_for_testing(1, 1, 0);
+    let (too_wide, too_wide_valid) = snapshot::base_notional_health_for_testing(
+        std::u64::max_value!(),
+        std::u64::max_value!(),
+        1,
+    );
+
+    assert_eq!(zero_price, 0);
+    assert!(!zero_price_valid);
+    assert_eq!(too_wide, 0);
+    assert!(!too_wide_valid);
 }
 
 #[test]

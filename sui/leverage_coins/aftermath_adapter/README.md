@@ -11,6 +11,13 @@ corresponding `Vault<Product<Tag>>` currency, and Coin Registry rejects a second
 currency with the same tag. Different tags let this package issue multiple
 independent leverage products.
 
+The selected risk-module type is an external authorization boundary. The
+adapter requires a runtime witness and rejects adapter-origin types, but Move
+cannot infer whether a foreign constructor is capability-gated or whether its
+package is immutable. Do not issue or activate a production Vault until the
+exact risk package source, protected constructor path, immutable publication
+digest, and selected market/oracle object IDs are recorded and reviewed.
+
 Read [ADR 0064](../../../docs/decisions/0064-aftermath-backed-leverage-coins.md),
 the later Series1 ADRs in the
 [decision index](../../../docs/decisions/README.md), and the

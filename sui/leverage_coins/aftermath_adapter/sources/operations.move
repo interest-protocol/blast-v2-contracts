@@ -106,7 +106,7 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
         &mut clearing_house,
         &admin_cap,
         &mut account,
-        seed_amount - seed_reserve,
+        seed_amount,
     );
     clearing_house::create_market_position(
         &mut clearing_house,
@@ -150,7 +150,6 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
         collateral_price,
         lot_size,
     );
-    let mut expected_base: u64 = 0;
     let mut order_index = 0;
     while (order_index < orders.length()) {
         let order_base = *orders.borrow(order_index);
@@ -160,50 +159,61 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
             collateral_price,
         );
         vault.assert_order_notional_allowed(order_notional);
-        expected_base = expected_base
-            .checked_add(order_base)
-            .destroy_or!(abort blast_leverage_aftermath::errors::normalization_overflow!());
         order_index = order_index + 1;
     };
 
-    let mut session = clearing_house::start_session(
-        clearing_house,
-        &admin_cap,
-        &mut account,
-        base_oracle,
-        collateral_oracle,
-        option::none(),
-        clock,
-        ctx,
-    );
     while (!orders.is_empty()) {
+        let order_base = orders.pop_back();
+        let mut session = clearing_house::start_session(
+            clearing_house,
+            &admin_cap,
+            &mut account,
+            base_oracle,
+            collateral_oracle,
+            option::none(),
+            clock,
+            ctx,
+        );
         clearing_house::place_market_order(
             &mut session,
             aftermath_order_side,
-            orders.pop_back(),
+            order_base,
             false,
         );
+        let (next_clearing_house, summary) = clearing_house::end_session(
+            session,
+            &admin_cap,
+            &mut account,
+            false,
+            false,
+        );
+        clearing_house = next_clearing_house;
+        assert_session_result(
+            is_long,
+            order_base,
+            clearing_house::base_filled_bid(&summary),
+            clearing_house::base_filled_ask(&summary),
+            clearing_house::posted_orders(&summary),
+            clearing_house::liquidated_size(&summary),
+            clearing_house::liquidation_bad_debt(&summary),
+        );
+        let execution_price = execution_price(
+            clearing_house::execution_price(&summary, aftermath_order_side),
+            is_long,
+        );
+        vault.assert_initialization_execution(
+            reference_base_price,
+            execution_price,
+        );
+        let (_, filled_quote) = clearing_house::filled_base_and_quote(
+            &summary,
+            aftermath_order_side,
+        );
+        vault.assert_order_notional_allowed(actual_fill_notional(
+            filled_quote,
+            collateral_price,
+        ));
     };
-    let (mut clearing_house, summary) = clearing_house::end_session(
-        session,
-        &admin_cap,
-        &mut account,
-        false,
-        false,
-    );
-    assert_session_result(
-        is_long,
-        expected_base,
-        clearing_house::base_filled_bid(&summary),
-        clearing_house::base_filled_ask(&summary),
-        clearing_house::posted_orders(&summary),
-        clearing_house::liquidated_size(&summary),
-        clearing_house::liquidation_bad_debt(&summary),
-    );
-    let execution_price = execution_price(
-        clearing_house::execution_price(&summary, aftermath_order_side),
-        is_long,
-    );
 
     clearing_house::settle_position_funding(
         &mut clearing_house,
@@ -222,7 +232,6 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
         collateral_price_info,
         clock,
     );
-    vault.assert_initialization_execution(reference_base_price, execution_price);
     let final_imr = position::initial_margin_ratio(
         clearing_house::position(&clearing_house, account_number),
     );
@@ -333,7 +342,7 @@ public fun sync_health<Product, Collateral>(
         clock,
     );
     let post_checkpoint = post_capture.checkpoint();
-    let change = classify_sync_change(
+    let (preexisting_change, local_change) = classify_sync_changes(
         &stored_checkpoint,
         &pre_checkpoint,
         &post_checkpoint,
@@ -342,8 +351,10 @@ public fun sync_health<Product, Collateral>(
     );
     apply_post_capture(
         vault,
+        pre_checkpoint,
         post_capture,
-        change,
+        preexisting_change,
+        local_change,
         clock.timestamp_ms(),
     );
 }
@@ -353,18 +364,43 @@ public fun sync_health<Product, Collateral>(
 /// Applies the complete Blast-owned post-capture synchronization phase.
 public(package) fun apply_post_capture<Product>(
     vault: &mut Vault<Product>,
+    pre_checkpoint: venue_account::Checkpoint,
     post_capture: snapshot::CapturedSnapshot,
-    change: snapshot::Change,
+    preexisting_change: snapshot::Change,
+    local_change: snapshot::Change,
     reference_time_ms: u64,
 ) {
     let stored_checkpoint = *vault.venue_checkpoint();
-    let (has_funding, is_cost, raw_amount, amount, checkpoint_clean) =
-        snapshot::funding_change_fields(&change);
-    let (absorbed_by_reserve, uncovered_cost, reserve_after) = if (has_funding) {
-        vault.settle_funding(is_cost, amount)
+    let (
+        has_preexisting_funding,
+        preexisting_is_cost,
+        preexisting_raw_amount,
+        preexisting_amount,
+        preexisting_clean,
+    ) = snapshot::funding_change_fields(&preexisting_change);
+    let (
+        has_local_funding,
+        local_is_cost,
+        local_raw_amount,
+        local_amount,
+        local_clean,
+    ) = snapshot::funding_change_fields(&local_change);
+    let (
+        preexisting_absorbed,
+        preexisting_uncovered,
+        preexisting_reserve_after,
+    ) = if (has_preexisting_funding) {
+        vault.settle_funding(preexisting_is_cost, preexisting_amount)
     } else {
         (0, 0, 0)
     };
+    let (local_absorbed, local_uncovered, local_reserve_after) =
+        if (has_local_funding) {
+            vault.settle_funding(local_is_cost, local_amount)
+        } else {
+            (0, 0, 0)
+        };
+    let checkpoint_clean = preexisting_clean && local_clean;
     let (observation, checkpoint) = snapshot::finish_health(
         post_capture,
         checkpoint_clean,
@@ -377,16 +413,33 @@ public(package) fun apply_post_capture<Product>(
     );
 
     let vault_id = vault.id();
-    if (has_funding) {
+    if (has_preexisting_funding) {
         events::funding_settled<Product>(
             vault_id,
-            is_cost,
-            raw_amount,
-            amount,
-            absorbed_by_reserve,
-            uncovered_cost,
-            reserve_after,
+            preexisting_is_cost,
+            preexisting_raw_amount,
+            preexisting_amount,
+            preexisting_absorbed,
+            preexisting_uncovered,
+            preexisting_reserve_after,
             stored_checkpoint,
+            pre_checkpoint,
+        );
+    };
+    if (has_local_funding) {
+        events::funding_settled<Product>(
+            vault_id,
+            local_is_cost,
+            local_raw_amount,
+            local_amount,
+            local_absorbed,
+            local_uncovered,
+            local_reserve_after,
+            if (has_preexisting_funding) {
+                pre_checkpoint
+            } else {
+                stored_checkpoint
+            },
             checkpoint,
         );
     };
@@ -453,23 +506,45 @@ public(package) fun emit_vault_initialized<Product>(
 
 // === Private Functions ===
 
-fun classify_sync_change(
+fun classify_sync_changes(
     stored: &venue_account::Checkpoint,
     before: &venue_account::Checkpoint,
     after: &venue_account::Checkpoint,
     funding_candidate: u256,
     collateral_price: u256,
-): snapshot::Change {
-    if (!snapshot::checkpoint_unchanged(stored, before)) {
-        snapshot::unexpected_change()
+): (snapshot::Change, snapshot::Change) {
+    let preexisting_change = if (
+        snapshot::checkpoint_ready_for_settlement(stored, before)
+    ) {
+        snapshot::unchanged_change()
     } else {
-        snapshot::classify_change(
-            before,
-            after,
-            funding_candidate,
-            collateral_price,
+        snapshot::classify_preexisting_funding(stored, before)
+    };
+    let (_, _, _, _, preexisting_clean) =
+        snapshot::funding_change_fields(&preexisting_change);
+    if (!preexisting_clean) {
+        return (
+            snapshot::unexpected_change(),
+            snapshot::unchanged_change(),
         )
-    }
+    };
+
+    let local_change = snapshot::classify_change(
+        before,
+        after,
+        funding_candidate,
+        collateral_price,
+    );
+    let (_, _, _, _, local_clean) =
+        snapshot::funding_change_fields(&local_change);
+    if (!local_clean) {
+        return (
+            snapshot::unexpected_change(),
+            snapshot::unchanged_change(),
+        )
+    };
+
+    (preexisting_change, local_change)
 }
 
 fun health_event_decision(
@@ -614,6 +689,29 @@ fun notional_for_base_up(
         blast_leverage_aftermath::errors::normalization_overflow!(),
     );
 
+    notional as u64
+}
+
+/// Converts one session's actual filled quote into atomic collateral notional.
+///
+/// The fill is checked separately for every order so allowed execution
+/// slippage cannot make an individual order exceed the live Series1 cap.
+fun actual_fill_notional(
+    filled_quote: u256,
+    collateral_price: u64,
+): u64 {
+    assert!(
+        collateral_price > 0,
+        blast_leverage_aftermath::errors::normalization_overflow!(),
+    );
+    let denominator = (collateral_price as u256)
+        .checked_mul(COLLATERAL_TO_BASE_SCALE)
+        .destroy_or!(abort blast_leverage_aftermath::errors::normalization_overflow!());
+    let notional = filled_quote.div_ceil(denominator);
+    assert!(
+        notional <= std::u64::max_value!() as u256,
+        blast_leverage_aftermath::errors::normalization_overflow!(),
+    );
     notional as u64
 }
 
@@ -807,6 +905,14 @@ public fun execution_price_for_testing(
 }
 
 #[test_only]
+public fun actual_fill_notional_for_testing(
+    filled_quote: u256,
+    collateral_price: u64,
+): u64 {
+    actual_fill_notional(filled_quote, collateral_price)
+}
+
+#[test_only]
 public fun assert_position_imr_for_testing(negative: bool) {
     assert_position_imr_sign(negative);
 }
@@ -819,16 +925,69 @@ public fun classify_sync_change_for_testing(
     candidate_negative: bool,
     candidate_collateral_magnitude: u256,
 ): snapshot::Change {
-    if (!snapshot::checkpoint_unchanged(stored, before)) {
-        snapshot::unexpected_change()
-    } else {
-        snapshot::classify_change_with_candidate_for_testing(
+    let (preexisting_change, local_change) =
+        classify_sync_changes_for_testing(
+            stored,
             before,
             after,
             candidate_negative,
             candidate_collateral_magnitude,
-        )
+        );
+    let (has_preexisting_funding, _, _, _, preexisting_clean) =
+        snapshot::funding_change_fields(&preexisting_change);
+    let (_, _, _, _, local_clean) =
+        snapshot::funding_change_fields(&local_change);
+    if (!preexisting_clean) {
+        preexisting_change
+    } else if (!local_clean) {
+        local_change
+    } else if (has_preexisting_funding) {
+        preexisting_change
+    } else {
+        local_change
     }
+}
+
+#[test_only]
+public fun classify_sync_changes_for_testing(
+    stored: &venue_account::Checkpoint,
+    before: &venue_account::Checkpoint,
+    after: &venue_account::Checkpoint,
+    candidate_negative: bool,
+    candidate_collateral_magnitude: u256,
+): (snapshot::Change, snapshot::Change) {
+    let preexisting_change = if (
+        snapshot::checkpoint_ready_for_settlement(stored, before)
+    ) {
+        snapshot::unchanged_change()
+    } else {
+        snapshot::classify_preexisting_funding_for_testing(stored, before)
+    };
+    let (_, _, _, _, preexisting_clean) =
+        snapshot::funding_change_fields(&preexisting_change);
+    if (!preexisting_clean) {
+        return (
+            snapshot::unexpected_change(),
+            snapshot::unchanged_change(),
+        )
+    };
+
+    let local_change = snapshot::classify_change_with_candidate_for_testing(
+        before,
+        after,
+        candidate_negative,
+        candidate_collateral_magnitude,
+    );
+    let (_, _, _, _, local_clean) =
+        snapshot::funding_change_fields(&local_change);
+    if (!local_clean) {
+        return (
+            snapshot::unexpected_change(),
+            snapshot::unchanged_change(),
+        )
+    };
+
+    (preexisting_change, local_change)
 }
 
 #[test_only]
@@ -838,10 +997,32 @@ public fun apply_post_capture_for_testing<Product>(
     change: snapshot::Change,
     reference_time_ms: u64,
 ) {
+    let pre_checkpoint = *vault.venue_checkpoint();
     apply_post_capture(
         vault,
+        pre_checkpoint,
         post_capture,
+        snapshot::unchanged_change(),
         change,
+        reference_time_ms,
+    );
+}
+
+#[test_only]
+public fun apply_post_captures_for_testing<Product>(
+    vault: &mut Vault<Product>,
+    pre_checkpoint: venue_account::Checkpoint,
+    post_capture: snapshot::CapturedSnapshot,
+    preexisting_change: snapshot::Change,
+    local_change: snapshot::Change,
+    reference_time_ms: u64,
+) {
+    apply_post_capture(
+        vault,
+        pre_checkpoint,
+        post_capture,
+        preexisting_change,
+        local_change,
         reference_time_ms,
     );
 }

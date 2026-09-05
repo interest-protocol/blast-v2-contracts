@@ -63,6 +63,22 @@ public fun share(self: PackageAdmin) {
     );
 }
 
+/// Proves custody is canonical and no native upgrade ticket is outstanding.
+///
+/// `new` permanently authenticates the private Publisher and UpgradeCap fields.
+/// The cap's package ID changes after every committed upgrade, so later checks
+/// require a live ID rather than incorrectly comparing it to the original ID.
+public(package) fun assert_adapter_custody(self: &PackageAdmin) {
+    assert!(
+        self.publisher.from_module<AFTERMATH>(),
+        blast_leverage_aftermath::errors::invalid_package_publisher!(),
+    );
+    assert!(
+        self.upgrade_cap.package().to_address() != @0x0,
+        blast_leverage_aftermath::errors::invalid_upgrade_cap!(),
+    );
+}
+
 /// Authorizes one exact adapter digest under the wrapped cap's policy.
 public fun authorize_upgrade(
     self: &mut PackageAdmin,
@@ -151,18 +167,13 @@ fun assert_policy_can_be_restricted_to(self: &PackageAdmin, new_policy: u8) {
     );
 }
 
-// === Test-Only Structs ===
-
-#[test_only]
-public struct TEST_PACKAGE_ADMIN() has drop;
-
 // === Test-Only Functions ===
 
 #[test_only]
 /// Creates unshared administration around simulated package capabilities.
 public fun new_for_testing(package_id: ID, ctx: &mut TxContext): PackageAdmin {
     new_unchecked(
-        package::test_claim(TEST_PACKAGE_ADMIN(), ctx),
+        blast_leverage_aftermath::aftermath::publisher_for_testing(ctx),
         package::test_publish(package_id, ctx),
         ctx,
     )

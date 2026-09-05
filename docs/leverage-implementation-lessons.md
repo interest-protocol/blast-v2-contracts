@@ -163,9 +163,11 @@ outside `lifecycle.move`, and whitelists the variant construction sites. Keep
 that rule: construct the lifecycle once during Vault issuance and change it
 only through `lifecycle.move`. Because a package upgrade adds modules to the
 same package, raw upgrade authority must not remain address-owned once a Vault
-can hold value. Series1 now permanently wraps its `UpgradeCap` and Publisher in
-`PackageAdmin`; it exposes exact-digest authorization and no capability release
-or mutable-borrow path.
+can hold value. Series1 is therefore published with
+`series_one/scripts/publish_immutable.sh`, which consumes the returned
+`UpgradeCap` through `0x2::package::make_immutable` in the same PTB. It has no
+Publisher, package administrator, version cutover, or post-publication upgrade
+path. Series2 is a new immutable package and coin family.
 
 ### 1.12 Wire every policy gate, and mind same-typed parameter order
 

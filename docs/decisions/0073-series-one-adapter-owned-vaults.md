@@ -68,6 +68,8 @@ public fun issue<Product: drop, RiskModule: drop>(
     protocol: &Protocol,
     admin_witness: &AdminWitness,
     product_witness: Product,
+    risk_module: RiskModule,
+    package_admin: &PackageAdmin,
     registry: &mut CoinRegistry,
     // immutable policy, bounds, metadata, and context
 ): Vault<Product>
@@ -85,12 +87,32 @@ Registry rejects another issuance of `Vault<Sui2x>`.
 Issuance returns the owned Vault. A separate adapter `share` function publishes
 it. The adapter retains its TreasuryCap and MetadataCap as dynamic object
 children and starts the embedded Series state uninitialized with zero reserve.
+Issuance also requires the adapter's `PackageAdmin` object and revalidates that
+it contains this adapter's Publisher and UpgradeCap. A Vault therefore cannot
+be issued while either raw package capability remains outside permanent
+package custody. `PackageAdmin::new` authenticates the cap's original package
+once; later issuance requires a nonzero live cap package ID rather than the
+original ID because every successful native upgrade commits a new package ID
+into that same retained cap.
 
 ### Risk module and versioning
 
 The outer adapter Vault stores the selected risk-module `TypeName`. The global
 Series1 `RISK_ADMIN` can replace it in any lifecycle state, including shutdown.
 Rotation changes no immutable Series policy or product currency type.
+
+Issuance and rotation also consume a runtime value of the selected witness
+type. A generic type argument alone is not authority because a caller can name
+any public type. An admitted risk witness must be non-primitive and originate
+outside the adapter's original package, which prevents the adapter's publicly
+constructible `Product<Tag>` wrapper from becoming risk authority. Production
+risk packages must expose only their intended sealed witness constructor and
+must be published immutably. The adapter cannot prove constructor visibility or
+upgrade posture from `TypeName`; reviewed production risk-package source and
+immutable publication evidence are therefore a release prerequisite, not an
+invariant inferred from the foreign-package check. The Vault continues to store
+only `TypeName`, so `RISK_ADMIN` retains the immediate witness-replacement
+model.
 
 The selected risk module can raise or lower the current
 `max_order_notional` within the immutable minimum and maximum selected at
@@ -111,6 +133,14 @@ Only the adapter is versioned. Its public operational and administrative routes
 check the adapter version. The stable Series1 state and ACL do not carry an
 adapter version.
 
+Series1 publication is one atomic PTB: publish the package, bind the returned
+`UpgradeCap`, and consume it with `0x2::package::make_immutable`. No transaction
+may expose or transfer that capability between publication and destruction.
+The transaction digest, package ID, chain identifier, reviewed source commit
+and tree, bytecode verification, and absence of a created `UpgradeCap` are
+release evidence required before any adapter publication or Vault issuance.
+The executable runbook is `sui/leverage_coins/series_one/DEPLOYING.md`.
+
 ## Consequences
 
 - One Series1 AdminCap works across Aftermath, Bluefin, and later Series1
@@ -127,9 +157,13 @@ adapter version.
 - Prove one adapter issues both `Vault<Sui2x>` and `Vault<Sui5x>`.
 - Prove Coin Registry rejects a second issuance for the same product witness.
 - Reject primitive and foreign-package product witnesses.
+- Reject primitive and same-adapter-package risk witnesses, including
+  `Product<Tag>`, and require actual witness values at issuance and rotation.
 - Prove issuance and risk rotation accept witnesses issued by the global
   Series1 authority and cap.
 - Prove an issued Vault wraps one uninitialized Series state, retains both coin
   capabilities, and has zero supply and reserve.
 - Pin the one-way Series1-to-adapter dependency and custody split in source
   boundary gates.
+- Preview the atomic Series1 publication PTB and verify the executed digest
+  proves same-transaction `make_immutable` with no surviving `UpgradeCap`.

@@ -8,6 +8,7 @@ use blast_leverage_aftermath::{
     aftermath::AFTERMATH,
     constants,
     events,
+    package_admin::{Self as package_admin, PackageAdmin},
     protocol::Protocol,
     venue_account::{Self as venue_account, Binding, Checkpoint, VenueAccount},
 };
@@ -56,6 +57,8 @@ public fun issue<Product: drop, RiskModule: drop>(
     protocol: &Protocol,
     admin_witness: &AdminWitness,
     _: Product,
+    _risk_module: RiskModule,
+    package_admin: &PackageAdmin,
     registry: &mut CoinRegistry,
     tier_policy: TierPolicy,
     max_order_notional_minimum: u64,
@@ -68,6 +71,7 @@ public fun issue<Product: drop, RiskModule: drop>(
     ctx: &mut TxContext,
 ): Vault<Product> {
     protocol.assert_current();
+    package_admin.assert_adapter_custody();
     let series_state = series_state::new<Product>(
         admin_witness,
         tier_policy,
@@ -87,11 +91,7 @@ public fun issue<Product: drop, RiskModule: drop>(
         blast_leverage_aftermath::errors::product_witness_package_mismatch!(),
     );
 
-    let risk_module_witness = type_name::with_original_ids<RiskModule>();
-    assert!(
-        !risk_module_witness.is_primitive(),
-        blast_leverage_aftermath::errors::invalid_risk_module_witness_type!(),
-    );
+    let risk_module_witness = valid_risk_module_type<RiskModule>();
 
     let (initializer, treasury_cap) = registry.new_currency<Vault<Product>>(
         constants::share_decimals!(),
@@ -142,15 +142,12 @@ public fun rotate_risk_module<Product, RiskModule: drop>(
     self: &mut Vault<Product>,
     protocol: &Protocol,
     admin_witness: &AdminWitness,
+    _risk_module: RiskModule,
 ) {
     protocol.assert_current();
     admin_witness.assert_risk_admin();
 
-    let new_witness = type_name::with_original_ids<RiskModule>();
-    assert!(
-        !new_witness.is_primitive(),
-        blast_leverage_aftermath::errors::invalid_risk_module_witness_type!(),
-    );
+    let new_witness = valid_risk_module_type<RiskModule>();
     assert!(
         new_witness != self.risk_module_witness,
         blast_leverage_aftermath::errors::risk_module_witness_unchanged!(),
@@ -310,6 +307,7 @@ public(package) fun id<Product>(self: &Vault<Product>): ID {
 
 /// Copies the immutable venue binding without exposing its custody value.
 public(package) fun venue_binding<Product>(self: &Vault<Product>): Binding {
+    assert_venue_account_installed(self.venue_account.is_some());
     self.venue_account.borrow().binding()
 }
 
@@ -317,6 +315,7 @@ public(package) fun venue_binding<Product>(self: &Vault<Product>): Binding {
 public(package) fun venue_checkpoint<Product>(
     self: &Vault<Product>,
 ): &Checkpoint {
+    assert_venue_account_installed(self.venue_account.is_some());
     self.venue_account.borrow().checkpoint()
 }
 
@@ -324,6 +323,7 @@ public(package) fun venue_checkpoint<Product>(
 public(package) fun assert_venue_custody_binding<Product>(
     self: &Vault<Product>,
 ) {
+    assert_venue_account_installed(self.venue_account.is_some());
     self.venue_account.borrow().assert_custody_binding();
 }
 
@@ -365,6 +365,7 @@ public(package) fun replace_venue_checkpoint<Product>(
     self: &mut Vault<Product>,
     checkpoint: Checkpoint,
 ) {
+    assert_venue_account_installed(self.venue_account.is_some());
     self.venue_account.borrow_mut().replace_checkpoint(checkpoint);
 }
 
@@ -377,18 +378,35 @@ fun assert_venue_account_installable(is_installed: bool) {
     );
 }
 
+fun assert_venue_account_installed(is_installed: bool) {
+    assert!(
+        is_installed,
+        blast_leverage_aftermath::errors::venue_account_not_installed!(),
+    );
+}
+
 fun assert_selected_risk_module<Product, RiskModule: drop>(
     self: &Vault<Product>,
 ) {
-    let presented_witness = type_name::with_original_ids<RiskModule>();
-    assert!(
-        !presented_witness.is_primitive(),
-        blast_leverage_aftermath::errors::invalid_risk_module_witness_type!(),
-    );
+    let presented_witness = valid_risk_module_type<RiskModule>();
     assert!(
         presented_witness == self.risk_module_witness,
         blast_leverage_aftermath::errors::risk_module_witness_mismatch!(),
     );
+}
+
+/// Admits only runtime-constructible witnesses from a separate risk package.
+/// The package-origin check excludes this adapter's public Product wrapper
+/// from accidentally becoming administrative risk authority.
+fun valid_risk_module_type<RiskModule: drop>(): TypeName {
+    let witness = type_name::with_original_ids<RiskModule>();
+    assert!(
+        !witness.is_primitive()
+            && type_name::original_id<RiskModule>()
+                != type_name::original_id<AFTERMATH>(),
+        blast_leverage_aftermath::errors::invalid_risk_module_witness_type!(),
+    );
+    witness
 }
 
 fun add_treasury_cap<Product>(
@@ -434,6 +452,11 @@ public fun has_venue_account_for_testing<Product>(self: &Vault<Product>): bool {
 #[test_only]
 public fun assert_venue_account_installable_for_testing(is_installed: bool) {
     assert_venue_account_installable(is_installed);
+}
+
+#[test_only]
+public fun assert_venue_account_installed_for_testing(is_installed: bool) {
+    assert_venue_account_installed(is_installed);
 }
 
 #[test_only]

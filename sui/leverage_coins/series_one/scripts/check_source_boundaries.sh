@@ -5,6 +5,17 @@ set -euo pipefail
 package_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fail() { printf '%s\n' "$1" >&2; exit 1; }
 
+publication_script="$package_dir/scripts/publish_immutable.sh"
+[[ -f "$publication_script" ]] \
+  || fail "Series1 must include its atomic immutable-publication script."
+grep -q -- '--publish "$package_dir"' "$publication_script" \
+  && grep -q -- '--assign series_upgrade_cap' "$publication_script" \
+  && grep -q -- '--move-call 0x2::package::make_immutable series_upgrade_cap' "$publication_script" \
+  || fail "Series1 publication must atomically consume the returned UpgradeCap."
+if grep -qE -- 'transfer-objects|public_transfer|transfer::' "$publication_script"; then
+  fail "Series1 publication must never transfer its UpgradeCap."
+fi
+
 acl_file="$package_dir/sources/acl.move"
 state_file="$package_dir/sources/state.move"
 policy_file="$package_dir/sources/policy.move"
@@ -178,7 +189,6 @@ expected_state_public="$(printf '%s\n' \
   assert_order_notional_allowed \
   enter_reduce_only \
   initialization_constraints \
-  initialization_target_notional \
   initialize \
   maintenance_reserve \
   new \

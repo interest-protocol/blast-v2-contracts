@@ -375,20 +375,6 @@ fun uninitialized_state_cannot_enter_reduce_only() {
 // --- Initialization ---
 
 #[test]
-fun initialization_target_excludes_the_seed_reserve() {
-    let fixture = start(constants::vault_issuer_role!());
-    let state = new_state(&fixture, policy::long());
-
-    assert_eq!(
-        state.initialization_target_notional(SEED_VENUE_EQUITY, SEED_RESERVE),
-        SEED_NOTIONAL,
-    );
-
-    state.destroy_for_testing();
-    destroy(fixture);
-}
-
-#[test]
 fun valid_long_seed_activates_and_records_only_the_reserve() {
     let fixture = start(constants::vault_issuer_role!());
     let mut state = new_state(&fixture, policy::long());

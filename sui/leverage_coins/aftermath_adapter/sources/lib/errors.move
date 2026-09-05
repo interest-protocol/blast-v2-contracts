@@ -13,7 +13,7 @@ const EPackageVersionMismatch: u64 = 0;
 const EPackageVersionOverflow: u64 = 1;
 
 #[test_only]
-/// A risk-module witness is primitive and cannot identify a sealed module.
+/// A risk-module witness is primitive or originates from the adapter package.
 const EInvalidRiskModuleWitnessType: u64 = 2;
 
 #[test_only]
@@ -25,7 +25,7 @@ const ERiskModuleWitnessUnchanged: u64 = 3;
 const EInvalidPackagePublisher: u64 = 4;
 
 #[test_only]
-/// An UpgradeCap does not belong to the original adapter package.
+/// An UpgradeCap is invalid for adapter custody or has an outstanding ticket.
 const EInvalidUpgradeCap: u64 = 5;
 
 #[test_only]
@@ -160,6 +160,9 @@ const ELockedSharesOverflow: u64 = 37;
 /// Atomic initialization requires more venue orders than the adapter permits.
 const EInitializationOrderCountExceeded: u64 = 38;
 
+/// A venue-dependent operation ran before atomic initialization installed it.
+const EVenueAccountNotInstalled: u64 = 39;
+
 macro public(package) fun package_version_mismatch(): u64 {
     0
 }
@@ -277,3 +280,5 @@ macro public(package) fun initialization_imr_mismatch(): u64 { 36 }
 macro public(package) fun locked_shares_overflow(): u64 { 37 }
 
 macro public(package) fun initialization_order_count_exceeded(): u64 { 38 }
+
+macro public(package) fun venue_account_not_installed(): u64 { 39 }

@@ -76,9 +76,10 @@ adapter's mutation checkpoint; immutable object/source bindings are stored in
 | Free collateral | `perpetuals::account::collateral_balance<T>` | `u64`, atomic units of `T`; six decimals for the admitted collateral | Exact; no conversion | Yes |
 | Allocated collateral | `position::position::collateral` | nonnegative signed-IFixed carrier, `u256`, 18 decimals | `to_balance(raw, decimal_scalar_from_decimals(6))`; down | Yes |
 | Signed base | first result of `position::position::base_and_quote_amounts` | signed IFixed in `u256`, 18 decimals | Preserve sign with `is_neg`; absolute base converts to 9 decimals, up for risk | Yes, raw signed value |
-| Signed quote notional | second result of `position::position::base_and_quote_amounts` | USD-valued signed IFixed in `u256`, 18 decimals | Divide by the authenticated collateral USD price; absolute collateral notional rounds up for risk | Yes, raw signed value |
+| Signed quote cost basis | second result of `position::position::base_and_quote_amounts` | USD-valued signed IFixed in `u256`, 18 decimals | Preserve only for direction coherence and raw transition guards; it is historical cost basis, not current leverage notional | Yes, raw signed value |
 | Realized funding candidate | `position::position::calculate_position_funding_internal(position, long_rate, short_rate)` immediately before settlement; rates come from `perpetuals::market::cum_funding_rates` | USD-valued signed IFixed in `u256`, 18 decimals | Divide by authenticated collateral price; credit down and cost up in collateral-token IFixed units | No derived amount; store both rate snapshots, both market rates, and collateral before/after |
-| Unrealized PnL | `position::position::unrealized_pnl(position, mark)` | USD-valued signed IFixed in `u256`, 18 decimals | Divide by authenticated collateral price; positive equity contribution down and negative liability up in collateral units | No; derive from stored position primitives and operation mark |
+| Current absolute notional | absolute normalized base multiplied by the authenticated Pyth base index | USD value converted through the authenticated collateral price | Base size and the Pyth base numerator round up; the collateral-price denominator rounds down and final collateral notional rounds up. Historical quote cost basis is not used | No; operation-scoped leverage input |
+| Unrealized PnL | `position::position::unrealized_pnl(position, base_index)` | USD-valued signed IFixed in `u256`, 18 decimals | Pyth index anchors shareholder accounting; divide by authenticated collateral price, flooring positive equity and ceiling negative liability | No; derive at the operation index |
 | Base index | `perpetuals::market::base_oracle_price(params, base_storage, clock)` after exact storage/source binding | positive IFixed in `u256`, 18 decimals | Convert to 9 decimals; down for shareholder equity and up for absolute risk bounds | No; operation-scoped price |
 | Collateral price | `perpetuals::market::collateral_oracle_price(params, collateral_storage, clock)` after exact storage/source binding | positive IFixed in `u256`, 18 decimals | Convert to 9 decimals; collateral asset value rounds down | No; operation-scoped price |
 | Mark | `perpetuals::clearing_house::mark_price(clearing_house, base_storage, clock)` | positive IFixed in `u256`, 18 decimals | Convert to 9 decimals through IFixed; use only for venue margin and divergence checks | No; operation-scoped price |
@@ -161,12 +162,16 @@ their economic policy into the witness constructor.
 
 One selected risk-module witness can atomically activate an issued Vault once.
 The adapter creates and binds the account authority, deposits and allocates the
-seed, creates one position, sets and later rechecks its IMR, and captures a
-strict flat pre-trade observation. Series1 derives the target, direction, and
-live per-order notional cap. The adapter rounds the target down to whole live
-lots, splits it into cap-compliant market orders inside one session, requires
-the exact aggregate fill on the required side with no posted order,
-liquidation, or bad debt, settles funding, and captures the final observation.
+whole seed as real position margin, including the reserve that Series1 excludes
+from shareholder NAV, creates one position, sets and later rechecks its IMR,
+and captures a strict flat pre-trade observation. Series1 derives the target,
+direction, and live per-order notional cap. The adapter rounds the target down
+to whole live lots and splits it into reference-price cap-compliant market
+orders. Each order runs in its own Aftermath session so the adapter can require
+the exact fill on the required side, no posted order, liquidation, or bad debt,
+strict execution tolerance, and actual filled-quote notional at or below the
+live cap before the next order begins. It then settles funding and captures the
+final observation.
 Only after strict execution and all Series1 activation gates pass does it mint
 the reserve-excluded seed NAV at the fixed 1,000 share scale, lock those shares
 at `@0x0`, seal the sole admin capability and checkpoint into the Vault, share
@@ -185,7 +190,8 @@ Vault state; a policy/cap pair that needs more calls cannot initialize. Zero
 remaining base, the inclusive maximum, the first value above it, and a
 maximum-width ceil vector are pinned independently. The completed vector must
 still sum to the exact whole-lot target and every order must independently pass
-the live notional cap.
+the live notional cap both when planned at the Pyth reference price and after
+execution using that session's actual filled quote.
 
 After the session, `settle_position_funding` receives the bound collateral
 oracle, not the base oracle. Funding is collateral-denominated in the named
@@ -348,7 +354,7 @@ but makes the same shared sign predicate unhealthy. USD-to-collateral
 conversion checks multiplication and final-addition width before every result;
 strict operations abort on overflow while health capture degrades without an
 economic-state abort.
-Strict capture also rejects any unrepresentable base, collateral-denominated
+Strict capture also rejects any unrepresentable base, Pyth-valued current
 notional, allocated/PnL equity, or normalized economic input with the adapter
 normalization error; it must never turn that failure into a zero-valued priced
 observation. The permissive health path alone maps that condition to an
@@ -356,21 +362,34 @@ unhealthy fact.
 
 There are two capture modes over that same authenticated path. Strict capture
 constructs strict Series1 observations and is used by priced or risk-increasing
-operations. Health capture performs every binding, storage/source, feed/Pyth,
-named-price, and timestamp check first, but then preserves zero price, mark, or
-lot values and malformed exposure in Series1's permissive health observation.
+operations. Health capture performs every binding, storage/source, and
+Pyth-object identity check first. A representable feed/Pyth/named-price or
+timestamp disagreement still aborts. An authenticated negative or
+unrepresentable Pyth component, feed width, named-price width, exponent, or
+seconds-to-milliseconds conversion instead becomes an invalid economic fact,
+alongside zero price, mark, lot, or malformed exposure, in Series1's permissive
+health observation.
 It exists only for objective health synchronization, so an authenticated live
 fault can move an active vault to `ReduceOnly` instead of aborting before that
 state transition. It never weakens source identity or accepts caller-shaped
 economics.
 
-`Change` preserves raw collateral-token IFixed deltas. Settlement refreshes both
-long and short snapshots, so funding is recognized only when both equal their
+`Change` preserves raw collateral-token IFixed deltas. The ordinary
+stored-to-pre edge may advance only the market cumulative rates while the
+position snapshots and every other field remain unchanged. Settlement then
+refreshes both snapshots, so funding is recognized only when both equal the
 captured market rates, at least one advanced, the USD candidate converts to the
 exact allocated-collateral delta with directional rounding, and every other raw
-checkpoint field is unchanged. A collateral or equity delta alone, a zero-effect
-snapshot movement, any field mutation, or any combined transition is
-`Unexpected`.
+checkpoint field is unchanged. Because Aftermath settlement is permissionless,
+the adapter independently classifies the stored-to-pre and pre-to-post edges.
+The first may contain one externally completed snapshot refresh plus
+allocated-collateral delta while market rates advance again; the second may
+contain the adapter's settlement to those newer rates. When both occur,
+Series1 applies and emits them in chronological order and never nets them,
+because reserve absorption is order-sensitive. Persisting the final checkpoint
+makes both classifications exactly once. Any other collateral or equity delta,
+zero-effect snapshot movement, or field mutation makes the complete
+synchronization `Unexpected` and debits no reserve.
 
 Any live lineage, bytecode, ABI, dependency, source-binding, conversion-vector,
 or checkpoint mismatch reopens this decision and blocks publication.
@@ -400,13 +419,18 @@ After authentication, synchronization has one fixed sequence:
    and then call Series1 health policy with the canonical share supply.
 6. Emit completed accounting and health facts after all state mutation.
 
-Stored-to-pre drift is an authenticated unexpected venue change, not an
-authentication failure. The call succeeds, persists the newest post checkpoint,
-does not count even an otherwise exact pre-to-post funding transition, and sets
-`checkpoint_clean = false` so Series1 can only preserve lifecycle or degrade
-`Active` to `ReduceOnly`. A binding, type, source, Pyth identity, or observation
-agreement failure still aborts. No health path can activate, resume, start
-shutdown, mint, burn, withdraw, place an order, or increase risk.
+Stored-to-pre market-rate advancement is the expected precursor to local
+funding settlement. A permissionless settlement already completed before this
+call is accepted exactly once when its snapshot and collateral transition is
+isolated. If rates advanced again afterward, the adapter also recognizes its
+own pre-to-post settlement and applies the two funding effects in order without
+netting. Every other stored-to-pre drift is an authenticated unexpected venue
+change: the call persists the newest post checkpoint, does not debit the
+reserve, and sets `checkpoint_clean = false` so Series1 can only preserve
+lifecycle or degrade `Active` to `ReduceOnly`. A binding, type, storage/source,
+Pyth identity, or representable observation agreement failure still aborts. No
+health path can activate, resume, start shutdown, mint, burn, withdraw, place
+an order, or increase risk.
 
 `FundingSettled<Product>` occurs only for nonzero authenticated funding. It
 records the Vault, credit/cost direction, exact raw collateral-IFixed amount,

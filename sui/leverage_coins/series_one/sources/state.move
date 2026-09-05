@@ -147,37 +147,6 @@ public fun prepare_initialization<Product>(
     )
 }
 
-/// Returns the seed position's target notional from reserve-excluded shareholder NAV.
-///
-/// Both inputs and the result use atomic collateral units. The target rounds
-/// down so the planned opening order never exceeds the fixed target because of
-/// integer remainder. This read is available only before activation and checks
-/// reserve backing, positive NAV, and the immutable NAV cap before sizing.
-public fun initialization_target_notional<Product>(
-    self: &State<Product>,
-    seed_venue_equity: u64,
-    seed_reserve: u64,
-): u64 {
-    self.lifecycle.assert_can_activate();
-    assert!(
-        accounting_math::is_reserve_backed(seed_venue_equity, seed_reserve),
-        blast_leverage_series_one::errors::maintenance_reserve_exceeds_equity!(),
-    );
-    assert!(
-        accounting_math::is_shareholder_nav_positive(seed_venue_equity, seed_reserve),
-        blast_leverage_series_one::errors::invalid_nav!(),
-    );
-
-    let seed_nav = accounting_math::shareholder_nav(seed_venue_equity, seed_reserve);
-    self.tier_policy.assert_within_nav_cap(seed_nav);
-
-    accounting_math::target_notional_from_equity_down(
-        seed_venue_equity,
-        seed_reserve,
-        self.tier_policy.rebalance_policy().target_bps(),
-    )
-}
-
 /// Returns the immutable position side and live per-order notional bound used by activation.
 ///
 /// The adapter calls this before any venue mutation. The lifecycle guard makes

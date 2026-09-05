@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 4,
   "fixtureKind": "controlled-health-validator",
   "adapterPackage": "0x1111111111111111111111111111111111111111111111111111111111111111",
   "productType": "0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>",
@@ -62,6 +62,25 @@
       "market_initial_margin_ratio": "50",
       "market_maintenance_margin_ratio": "30"
     },
+    "funding_stored": {
+      "free_collateral": "0",
+      "allocated_collateral": "900000000000000000000",
+      "signed_base": "100",
+      "signed_quote_notional": "200",
+      "funding_snapshot_long": "10",
+      "funding_snapshot_short": "20",
+      "market_funding_long": "10",
+      "market_funding_short": "20",
+      "lot_size": "1",
+      "pending_ask_base": "0",
+      "pending_bid_base": "0",
+      "pending_order_count": "0",
+      "market_pause_mode": 0,
+      "market_frozen": false,
+      "position_initial_margin_ratio": "100",
+      "market_initial_margin_ratio": "50",
+      "market_maintenance_margin_ratio": "30"
+    },
     "funding_before": {
       "free_collateral": "0",
       "allocated_collateral": "900000000000000000000",
@@ -109,6 +128,44 @@
       "funding_snapshot_short": "21",
       "market_funding_long": "11",
       "market_funding_short": "21",
+      "lot_size": "1",
+      "pending_ask_base": "0",
+      "pending_bid_base": "0",
+      "pending_order_count": "0",
+      "market_pause_mode": 0,
+      "market_frozen": false,
+      "position_initial_margin_ratio": "100",
+      "market_initial_margin_ratio": "50",
+      "market_maintenance_margin_ratio": "30"
+    },
+    "two_epoch_pre": {
+      "free_collateral": "0",
+      "allocated_collateral": "899999998000000000000",
+      "signed_base": "100",
+      "signed_quote_notional": "200",
+      "funding_snapshot_long": "11",
+      "funding_snapshot_short": "21",
+      "market_funding_long": "12",
+      "market_funding_short": "22",
+      "lot_size": "1",
+      "pending_ask_base": "0",
+      "pending_bid_base": "0",
+      "pending_order_count": "0",
+      "market_pause_mode": 0,
+      "market_frozen": false,
+      "position_initial_margin_ratio": "100",
+      "market_initial_margin_ratio": "50",
+      "market_maintenance_margin_ratio": "30"
+    },
+    "two_epoch_post": {
+      "free_collateral": "0",
+      "allocated_collateral": "899999999000000000000",
+      "signed_base": "100",
+      "signed_quote_notional": "200",
+      "funding_snapshot_long": "12",
+      "funding_snapshot_short": "22",
+      "market_funding_long": "12",
+      "market_funding_short": "22",
       "lot_size": "1",
       "pending_ask_base": "0",
       "pending_bid_base": "0",
@@ -248,7 +305,7 @@
           "absorbed_by_reserve": "0",
           "uncovered_cost": "0",
           "reserve_after": "100",
-          "previous_checkpoint": "funding_before",
+          "previous_checkpoint": "funding_stored",
           "checkpoint": "funding_credit"
           }
         }
@@ -266,8 +323,42 @@
           "absorbed_by_reserve": "1",
           "uncovered_cost": "0",
           "reserve_after": "99",
-          "previous_checkpoint": "funding_before",
+          "previous_checkpoint": "funding_stored",
           "checkpoint": "funding_cost"
+          }
+        }
+      }
+    ],
+    "two_epoch_funding": [
+      {
+        "type": "0x1111111111111111111111111111111111111111111111111111111111111111::events_wrapper::Event<0x1111111111111111111111111111111111111111111111111111111111111111::events::FundingSettled<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>>",
+        "parsedJson": {
+          "pos0": {
+            "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
+            "is_cost": true,
+            "raw_amount": "2000000000000",
+            "amount": "2",
+            "absorbed_by_reserve": "2",
+            "uncovered_cost": "0",
+            "reserve_after": "98",
+            "previous_checkpoint": "funding_stored",
+            "checkpoint": "two_epoch_pre"
+          }
+        }
+      },
+      {
+        "type": "0x1111111111111111111111111111111111111111111111111111111111111111::events_wrapper::Event<0x1111111111111111111111111111111111111111111111111111111111111111::events::FundingSettled<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>>",
+        "parsedJson": {
+          "pos0": {
+            "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
+            "is_cost": false,
+            "raw_amount": "1000000000000",
+            "amount": "1",
+            "absorbed_by_reserve": "0",
+            "uncovered_cost": "0",
+            "reserve_after": "98",
+            "previous_checkpoint": "two_epoch_pre",
+            "checkpoint": "two_epoch_post"
           }
         }
       }
@@ -316,21 +407,22 @@
     ]
   },
   "cases": [
-    { "name": "long", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "events": "none", "oracle": { "classification": "unchanged", "lifecycle": "Active", "fundingEvents": 0, "healthEvents": 0, "reason": null } },
-    { "name": "short", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "short" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "short" }, "events": "none", "oracle": { "classification": "unchanged", "lifecycle": "Active", "fundingEvents": 0, "healthEvents": 0, "reason": null } },
-    { "name": "flat", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "flat" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "flat" }, "events": "none", "oracle": { "classification": "unchanged", "lifecycle": "Active", "fundingEvents": 0, "healthEvents": 0, "reason": null } },
-    { "name": "positive_pnl", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "events": "none", "oracle": { "classification": "unchanged", "lifecycle": "Active", "fundingEvents": 0, "healthEvents": 0, "reason": null } },
-    { "name": "negative_pnl", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "events": "none", "oracle": { "classification": "unchanged", "lifecycle": "Active", "fundingEvents": 0, "healthEvents": 0, "reason": null } },
-    { "name": "funding_credit", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_before" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_credit" }, "events": "funding_credit", "oracle": { "classification": "funding_credit", "lifecycle": "Active", "fundingEvents": 1, "healthEvents": 0, "reason": null } },
-    { "name": "funding_cost", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_before" }, "post": { "lifecycle": "Active", "maintenanceReserve": "99", "checkpoint": "funding_cost" }, "events": "funding_cost", "oracle": { "classification": "funding_cost", "lifecycle": "Active", "fundingEvents": 1, "healthEvents": 0, "reason": null } },
-    { "name": "repeated_funding", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_credit" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_credit" }, "events": "none", "oracle": { "classification": "unchanged", "lifecycle": "Active", "fundingEvents": 0, "healthEvents": 0, "reason": null } },
-    { "name": "partial_liquidation", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "liquidation" }, "events": "liquidation", "oracle": { "classification": "unexpected", "lifecycle": "ReduceOnly", "fundingEvents": 0, "healthEvents": 1, "reason": 1 } },
-    { "name": "adl_settlement", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "adl" }, "events": "adl", "oracle": { "classification": "unexpected", "lifecycle": "ReduceOnly", "fundingEvents": 0, "healthEvents": 1, "reason": 1 } },
-    { "name": "collateral_movement", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "collateral" }, "events": "collateral", "oracle": { "classification": "unexpected", "lifecycle": "ReduceOnly", "fundingEvents": 0, "healthEvents": 1, "reason": 1 } },
-    { "name": "pending_order", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "pending" }, "events": "pending", "oracle": { "classification": "unexpected", "lifecycle": "ReduceOnly", "fundingEvents": 0, "healthEvents": 1, "reason": 1 } },
-    { "name": "pause", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "pause" }, "events": "pause", "oracle": { "classification": "unexpected", "lifecycle": "ReduceOnly", "fundingEvents": 0, "healthEvents": 1, "reason": 1 } },
-    { "name": "freeze", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "freeze" }, "events": "freeze", "oracle": { "classification": "unexpected", "lifecycle": "ReduceOnly", "fundingEvents": 0, "healthEvents": 1, "reason": 1 } },
-    { "name": "stale_oracle", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "long" }, "events": "objective", "oracle": { "classification": "unchanged", "lifecycle": "ReduceOnly", "fundingEvents": 0, "healthEvents": 1, "reason": 0 } },
-    { "name": "collateral_depeg", "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "long" }, "events": "objective", "oracle": { "classification": "unchanged", "lifecycle": "ReduceOnly", "fundingEvents": 0, "healthEvents": 1, "reason": 0 } }
+    { "name": "long", "stored": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "events": "none", "oracle": { "classification": "unchanged", "lifecycle": "Active", "fundingEvents": 0, "healthEvents": 0, "reason": null } },
+    { "name": "short", "stored": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "short" }, "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "short" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "short" }, "events": "none", "oracle": { "classification": "unchanged", "lifecycle": "Active", "fundingEvents": 0, "healthEvents": 0, "reason": null } },
+    { "name": "flat", "stored": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "flat" }, "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "flat" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "flat" }, "events": "none", "oracle": { "classification": "unchanged", "lifecycle": "Active", "fundingEvents": 0, "healthEvents": 0, "reason": null } },
+    { "name": "positive_pnl", "stored": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "events": "none", "oracle": { "classification": "unchanged", "lifecycle": "Active", "fundingEvents": 0, "healthEvents": 0, "reason": null } },
+    { "name": "negative_pnl", "stored": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "events": "none", "oracle": { "classification": "unchanged", "lifecycle": "Active", "fundingEvents": 0, "healthEvents": 0, "reason": null } },
+    { "name": "funding_credit", "stored": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_stored" }, "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_before" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_credit" }, "events": "funding_credit", "oracle": { "classification": "funding_credit", "lifecycle": "Active", "fundingEvents": 1, "healthEvents": 0, "reason": null } },
+    { "name": "funding_cost", "stored": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_stored" }, "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_before" }, "post": { "lifecycle": "Active", "maintenanceReserve": "99", "checkpoint": "funding_cost" }, "events": "funding_cost", "oracle": { "classification": "funding_cost", "lifecycle": "Active", "fundingEvents": 1, "healthEvents": 0, "reason": null } },
+    { "name": "two_epoch_funding", "stored": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_stored" }, "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "two_epoch_pre" }, "post": { "lifecycle": "Active", "maintenanceReserve": "98", "checkpoint": "two_epoch_post" }, "events": "two_epoch_funding", "oracle": { "classification": "funding_sequence", "lifecycle": "Active", "fundingEvents": 2, "healthEvents": 0, "reason": null } },
+    { "name": "repeated_funding", "stored": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_credit" }, "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_credit" }, "post": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "funding_credit" }, "events": "none", "oracle": { "classification": "unchanged", "lifecycle": "Active", "fundingEvents": 0, "healthEvents": 0, "reason": null } },
+    { "name": "partial_liquidation", "stored": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "liquidation" }, "events": "liquidation", "oracle": { "classification": "unexpected", "lifecycle": "ReduceOnly", "fundingEvents": 0, "healthEvents": 1, "reason": 1 } },
+    { "name": "adl_settlement", "stored": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "adl" }, "events": "adl", "oracle": { "classification": "unexpected", "lifecycle": "ReduceOnly", "fundingEvents": 0, "healthEvents": 1, "reason": 1 } },
+    { "name": "collateral_movement", "stored": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "collateral" }, "events": "collateral", "oracle": { "classification": "unexpected", "lifecycle": "ReduceOnly", "fundingEvents": 0, "healthEvents": 1, "reason": 1 } },
+    { "name": "pending_order", "stored": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "pending" }, "events": "pending", "oracle": { "classification": "unexpected", "lifecycle": "ReduceOnly", "fundingEvents": 0, "healthEvents": 1, "reason": 1 } },
+    { "name": "pause", "stored": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "pause" }, "events": "pause", "oracle": { "classification": "unexpected", "lifecycle": "ReduceOnly", "fundingEvents": 0, "healthEvents": 1, "reason": 1 } },
+    { "name": "freeze", "stored": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "freeze" }, "events": "freeze", "oracle": { "classification": "unexpected", "lifecycle": "ReduceOnly", "fundingEvents": 0, "healthEvents": 1, "reason": 1 } },
+    { "name": "stale_oracle", "stored": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "long" }, "events": "objective", "oracle": { "classification": "unchanged", "lifecycle": "ReduceOnly", "fundingEvents": 0, "healthEvents": 1, "reason": 0 } },
+    { "name": "collateral_depeg", "stored": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "pre": { "lifecycle": "Active", "maintenanceReserve": "100", "checkpoint": "long" }, "post": { "lifecycle": "ReduceOnly", "maintenanceReserve": "100", "checkpoint": "long" }, "events": "objective", "oracle": { "classification": "unchanged", "lifecycle": "ReduceOnly", "fundingEvents": 0, "healthEvents": 1, "reason": 0 } }
   ]
 }
