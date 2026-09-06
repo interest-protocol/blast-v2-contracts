@@ -8,6 +8,7 @@ chain implementation. An unexplained numeric difference is a release blocker.
 | File | Covers | Owning decision |
 | --- | --- | --- |
 | [`curve.json`](curve.json) | buy, sell, threshold crossing, both burn moments, boundaries, round trip | [`../decisions/0004-bonding-curve.md`](../decisions/0004-bonding-curve.md), [`../decisions/0003-treasury-cap-lifetime-and-burn.md`](../decisions/0003-treasury-cap-lifetime-and-burn.md) |
+| [`dex-fees.json`](dex-fees.json) | integrated volume fees, full-width bounds, exponential decay and cadence | [`../decisions/0076-native-v2-and-auto-lp.md`](../decisions/0076-native-v2-and-auto-lp.md) |
 | [`fees.json`](fees.json) | configurable protocol/creator shares, rounding, update sequences, maximum width | [`../decisions/0022-dual-asset-fee-ledger-and-claims.md`](../decisions/0022-dual-asset-fee-ledger-and-claims.md) |
 | [`quote-decimals.json`](quote-decimals.json) | decimal combinations, both pair orientations, `sqrt_price_x64`, display price | [`../decisions/0005-quote-asset-generalisation.md`](../decisions/0005-quote-asset-generalisation.md), [`../decisions/0010-migration-and-venue-adapters.md`](../decisions/0010-migration-and-venue-adapters.md) |
 | [`x-creator-claim.json`](x-creator-claim.json) | canonical coin-type-bound X claim BCS encoding and Ed25519 verification fixture | [`../decisions/0017-coin-type-domain-for-x-creator-claims.md`](../decisions/0017-coin-type-domain-for-x-creator-claims.md) |
@@ -79,3 +80,7 @@ sqrt_price_x64 = isqrt( (numerator_atomic << 128) / denominator_atomic )
 ```
 
 where the numerator is the asset that is coin B and the denominator the asset that is coin A.
+
+Regenerate the native DEX cases with `python3 docs/vectors/generate_dex_fees.py`
+from the repository root. The generator checks every fractional half-life
+exponent against an independent 110-digit Decimal calculation.

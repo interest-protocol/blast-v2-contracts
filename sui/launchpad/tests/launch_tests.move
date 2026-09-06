@@ -1424,6 +1424,44 @@ fun migration_rejects_a_witness_type_not_selected_at_launch() {
     fixture.end();
 }
 
+#[test]
+#[expected_failure(abort_code = blast_fun::errors::ENoMigrationQuotePrincipal, location = blast_fun::launch)]
+fun launch_rejects_a_migration_target_consumed_entirely_by_rounded_fee() {
+    let mut fixture = start();
+    fixture.next_tx!(LAUNCHER, |f| {
+        let witness = f.sign_in();
+        f.config.allow_quote<TEST_QUOTE>(&f.package_version, &witness, VIRTUAL_QUOTE, 1);
+        let ticket = f.new_ticket(CREATOR);
+        let launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+        destroy(launch);
+    });
+    fixture.end();
+}
+
+#[test]
+fun a_one_atom_migration_target_is_valid_when_its_fee_is_zero() {
+    let mut fixture = start();
+    fixture.next_tx!(LAUNCHER, |f| {
+        let witness = f.sign_in();
+        f.config.allow_quote<TEST_QUOTE>(&f.package_version, &witness, VIRTUAL_QUOTE, 1);
+        f.config.set_graduation_defaults(&f.package_version, &witness, 0, 0, 2_000);
+        let ticket = f.new_ticket(CREATOR);
+        let launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+        destroy(launch);
+    });
+    fixture.end();
+}
+
 // === Private Test Helpers ===
 
 macro fun launch_next_tx(

@@ -1,0 +1,99 @@
+{
+  "taskStartedDate": "2026-09-05",
+  "recordedDate": "2026-09-06",
+  "suiCli": "1.77.2-51d177ad7d65",
+  "checks": [
+    {
+      "cwd": "contracts",
+      "command": "sui move build -p sui/dex --lint --warnings-are-errors",
+      "exitCode": 0
+    },
+    {
+      "cwd": "contracts",
+      "command": "sui move build -p sui/auto_lp --lint --warnings-are-errors",
+      "exitCode": 0
+    },
+    {
+      "cwd": "contracts",
+      "command": "sui move build -p sui/launchpad --lint --warnings-are-errors",
+      "exitCode": 0
+    },
+    {
+      "cwd": "contracts",
+      "command": "sui move test -p sui/dex --lint --warnings-are-errors",
+      "exitCode": 0,
+      "passed": 69
+    },
+    {
+      "cwd": "contracts",
+      "command": "sui move test -p sui/auto_lp --lint --warnings-are-errors",
+      "exitCode": 0,
+      "passed": 23
+    },
+    {
+      "cwd": "contracts",
+      "command": "sui move test -p sui/migrators --lint --warnings-are-errors",
+      "exitCode": 0,
+      "passed": 39
+    },
+    {
+      "cwd": "contracts",
+      "command": "sui move test -p sui/launchpad",
+      "exitCode": 0,
+      "passed": 210
+    },
+    {
+      "cwd": "contracts",
+      "command": "sui move test -p sui/launchpad --lint --warnings-are-errors migration_target",
+      "exitCode": 0,
+      "passed": 2,
+      "note": "Targeted repeat after replacing a numeric expected error with its named constant; no production behavior changed."
+    },
+    {
+      "cwd": "contracts/sui/launchpad",
+      "command": "bash scripts/check_source_boundaries.sh",
+      "exitCode": 0
+    },
+    {
+      "cwd": "contracts/sui/migrators",
+      "command": "bash scripts/check_source_boundaries.sh",
+      "exitCode": 0
+    },
+    {
+      "cwd": "contracts/sui/migrators",
+      "command": "bash scripts/check_turbos_dependency_pin.sh",
+      "exitCode": 0
+    },
+    {
+      "cwd": "contracts/sui/migrators",
+      "command": "node scripts/check_mainnet_abi.mjs --self-test",
+      "exitCode": 0,
+      "passed": 61,
+      "note": "Offline self-test only."
+    },
+    {
+      "cwd": "sdk",
+      "command": "npm run check",
+      "exitCode": 0,
+      "passed": 214,
+      "note": "Includes ABI, format, lint, types and full tests. Lint warnings remain; none is an error."
+    },
+    {
+      "cwd": "sdk",
+      "command": "npm run typecheck; node --test test/dex-transactions.test.ts",
+      "exitCode": 0,
+      "passed": 4,
+      "note": "Targeted repeat after strengthening the signed maximum-input argument-order assertions."
+    },
+    {
+      "cwd": "sdk",
+      "command": "cmp test/fixtures/dex-fees.json ../contracts/docs/vectors/dex-fees.json",
+      "exitCode": 0
+    },
+    {
+      "cwd": "contracts and sdk",
+      "command": "git diff --check",
+      "exitCode": 0
+    }
+  ]
+}

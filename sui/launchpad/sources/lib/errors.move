@@ -287,6 +287,10 @@ const EInvalidMigrationWitnessType: u64 = 78;
 
 // Codes 79 through 81 moved with migration arithmetic to blast_fun_migrators by ADR 0069.
 
+#[test_only]
+/// The rounded migration fee leaves no Quote to seed liquidity.
+const ENoMigrationQuotePrincipal: u64 = 82;
+
 macro public(package) fun invalid_admin_cap(): u64 {
     0
 }
@@ -549,4 +553,8 @@ macro public(package) fun invalid_initial_meme_supply(): u64 {
 
 macro public(package) fun invalid_migration_witness_type(): u64 {
     78
+}
+
+macro public(package) fun no_migration_quote_principal(): u64 {
+    82
 }

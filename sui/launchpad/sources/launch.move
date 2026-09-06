@@ -95,6 +95,10 @@ public fun new<Meme, Quote, MigrationWitness: drop>(
         meme_liquidity_provision_bps,
         migration_witness,
     ) = config.snapshot_for_launch<Quote, MigrationWitness>();
+    assert!(
+        migration_quote_target > quote_migration_fee_bps.apply_up(migration_quote_target),
+        blast_fun::errors::no_migration_quote_principal!(),
+    );
     let ticket_id = object::id(&ticket);
     // LaunchTicket construction already finalized Currency<Meme> as Fixed or BurnOnly.
     let (meme, metadata_cap, creator_authority, sell_burn_bps) =
@@ -407,6 +411,14 @@ public fun migrate<Meme, Quote, MigrationWitness: drop>(
     );
 
     MigrationPayload { meme, quote }
+}
+
+/// Allows fee destinations to reject creation before the selected migration completes.
+public fun assert_migrated<Meme, Quote>(self: &Launch<Meme, Quote>) {
+    assert!(
+        self.lifecycle == Lifecycle::Migrated,
+        blast_fun::errors::invalid_launch_lifecycle!(),
+    );
 }
 
 /// Opens the linear handoff with the witness owned by the selected adapter.

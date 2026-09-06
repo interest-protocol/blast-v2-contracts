@@ -338,3 +338,18 @@ public fun assert_valid_receiving_coin_batch_size_for_testing(
 ) {
     assert_valid_receiving_coin_batch_size(meme_size, quote_size);
 }
+
+/// Creates a funded ledger fixture without introducing a production custody entrypoint.
+#[test_only]
+public fun funded_for_testing<Meme, Quote>(
+    pool_id: ID,
+    meme_fee: Balance<Meme>,
+    quote_fee: Balance<Quote>,
+    runtime: &RuntimeConfig,
+    ctx: &mut TxContext,
+): LpVault<Meme, Quote> {
+    let mut vault = prepare(balance::zero(), balance::zero(), ctx);
+    vault.pool_id = pool_id;
+    vault.fee_ledger.accrue_from_runtime(meme_fee, quote_fee, runtime);
+    vault
+}
