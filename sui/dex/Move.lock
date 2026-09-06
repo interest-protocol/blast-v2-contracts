@@ -16,14 +16,20 @@ use_environment = "testnet"
 manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
 deps = { MoveStdlib = "MoveStdlib" }
 
+[pinned.testnet.blast_admin]
+source = { local = "../admin" }
+use_environment = "testnet"
+manifest_digest = "B7E2FC3044B807508BDB644524C4ABEA393A1871278966067F470AEAE602C62B"
+deps = { Sui = "Sui" }
+
 [pinned.testnet.blast_fun]
 source = { local = "../launchpad" }
 use_environment = "testnet"
-manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
-deps = { std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "B9BC26466630CEB8A3C2BE1A745F7338CFDF92C219AC0FF7F363DA750C2676C3"
+deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.blast_fun_dex]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "4C746A1C8E466FD2D0FF283681F9D40A4AF6355349EBDE73849ECCCD7B1D89EF"
-deps = { Sui = "Sui", blast_fun = "blast_fun" }
+manifest_digest = "72C371A43883A11D74B53BDB236EB9FBA0E61ED37800E467E6852E6650CDFC3D"
+deps = { Sui = "Sui", blast_admin = "blast_admin", blast_fun = "blast_fun" }

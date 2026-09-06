@@ -4,6 +4,20 @@ Full-range Meme/Quote constant-product pools with separately claimable Quote
 fees. The accepted policy and trust boundaries are in
 [ADR 0076](../../docs/decisions/0076-native-v2-and-auto-lp.md).
 
+The DEX administers itself. It creates its own domain through the immutable
+shared administration package and governs the factory, pool policy, and its own
+sealed package custody with that domain's capabilities; a Launchpad, Blast SUI,
+or Series One capability is a different type and reaches nothing here. Pool
+policy is generic administration, so a live administrator with no role may set
+it, while upgrade custody additionally requires the exported package-admin role.
+The single deliberate exception is `migration::claim_protocol_fees`, which
+drains a Launchpad-owned fee ledger and therefore stays under Launchpad
+product-fee custody.
+
+Its operational generation is independent too: advancing the DEX leaves
+Launchpad, Migrators, and Distributor on their own generations, and a governed
+upgrade commits its receipt and advances the generation in one transaction.
+
 A pool starts with a zero-to-200-bps volume fee ramp. Protocol administrators
 can change its maximum up to 500 bps. Recent Quote principal decays with a
 30-minute half-life; the initial Quote seed fixes the volume target. Each trade
@@ -46,9 +60,9 @@ supported paired balances. It makes no balancing swaps.
 Verify locally from the repository root:
 
 ```sh
-sui move build --path sui/dex
-sui move lint --path sui/dex --warnings-are-errors
+sui move build --path sui/dex --lint --warnings-are-errors
 sui move test --path sui/dex --lint
+bash sui/dex/scripts/check_source_boundaries.sh
 python3 docs/vectors/generate_dex_fees.py
 ```
 

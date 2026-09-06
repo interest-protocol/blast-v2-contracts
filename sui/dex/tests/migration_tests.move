@@ -1,16 +1,18 @@
 #[test_only]
 module blast_fun_dex::migration_tests;
 
+use blast_admin::acl::{Authority, AdminCap};
 use blast_fun::{
-    acl,
     creator_authority::{Self, CreatorCap},
     launch::{Self, Launch},
     launch_config,
     launch_ticket,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
     package_version::{Self, PackageVersion},
     runtime_config::{Self, RuntimeConfig}
 };
 use blast_fun_dex::{
+    domain_fixture,
     math,
     migration::{Self, LockedLpVault, Witness},
     pool::{Self, Factory, Pool, Position}
@@ -27,8 +29,8 @@ public struct OtherWitness() has drop;
 public struct MigrationFixture {
     scenario: Scenario,
     version: PackageVersion,
-    authority: acl::ProtocolAuthority,
-    admin: acl::AdminCap,
+    authority: Authority<LAUNCHPAD_DOMAIN>,
+    admin: AdminCap<LAUNCHPAD_DOMAIN>,
     cap: CreatorCap<MIGRATION_TESTS>,
     launch: Launch<MIGRATION_TESTS, QUOTE>,
     factory: Factory,
@@ -114,7 +116,7 @@ fun collected_quote_is_split_and_claimed_without_changing_locked_principal() {
         assert_eq!(quote.value(), creator);
         destroy(meme);
         destroy(quote);
-        let witness = f.authority.sign_in(&f.version, &f.admin);
+        let witness = f.authority.sign_in(&f.admin);
         let (meme, quote) = vault.claim_protocol_fees(&witness, &f.factory, f.ctx!());
         assert_eq!(meme.value(), 0);
         assert_eq!(quote.value(), protocol);
@@ -198,7 +200,10 @@ fun native_route_cannot_redeem_another_selected_witness() {
 }
 
 #[test]
-#[expected_failure(abort_code = pool::EWrongVersion, location = blast_fun_dex::pool)]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
 fun stale_factory_precedes_live_launch_lifecycle_failure() {
     let mut f = start(false);
     f.factory.set_version_for_testing(2);
@@ -207,7 +212,10 @@ fun stale_factory_precedes_live_launch_lifecycle_failure() {
 }
 
 #[test]
-#[expected_failure(abort_code = pool::EWrongVersion, location = blast_fun_dex::pool)]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
 fun stale_factory_stops_native_fee_claims_before_empty_ledger_failure() {
     let mut f = start(true);
     f.migrate!();
@@ -233,7 +241,7 @@ fun native_route_preserves_terminal_quote_fee_and_burn_only_disposal() {
         assert_eq!(quote, 24_750_000);
         let (_, burn, _, _) = pool.policy_for_testing();
         assert_eq!(burn, 0);
-        let witness = f.authority.sign_in(&f.version, &f.admin);
+        let witness = f.authority.sign_in(&f.admin);
         let (meme_fees, quote_fees) = f.launch.claim_protocol_fees(&f.version, &witness, f.ctx!());
         // Curve fees remain in core alongside its terminal migration fee.
         assert!(quote_fees.value() >= 250_000);
@@ -257,7 +265,7 @@ fun changing_runtime_split_never_resplits_already_collected_native_fees() {
         destroy(refund);
         vault.collect(&mut pool, &f.factory, &f.runtime, f.ctx!());
         let (_, _, first_protocol, first_creator) = vault.snapshot_for_testing();
-        let witness = f.authority.sign_in(&f.version, &f.admin);
+        let witness = f.authority.sign_in(&f.admin);
         f.runtime.set_protocol_fee_share(&f.version, &witness, 10_000);
         let input = coin::mint_for_testing<QUOTE>(1_000_000, f.ctx!());
         let (bought, refund) = pool.buy(&f.factory, input, 1, 500, 0, &f.clock, f.ctx!());
@@ -344,7 +352,10 @@ fun creator_funded_pool_accepts_bounded_burn_only_currency_policy() {
 }
 
 #[test]
-#[expected_failure(abort_code = pool::EWrongVersion, location = blast_fun_dex::pool)]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
 fun creator_constructor_checks_generation_before_live_launch_and_burn_policy() {
     let mut f = start(false);
     f.factory.set_version_for_testing(2);
@@ -421,12 +432,12 @@ fun start_with_policy<SelectedWitness: drop>(
 ): MigrationFixture {
     let mut scenario = test_scenario::begin(@0xA);
     let version = package_version::new_for_testing(scenario.ctx());
-    let (root, mut authority) = acl::new_protocol_for_testing(scenario.ctx());
-    authority.grant_admin(&version, &root, @0xA, scenario.ctx());
+    let (root, mut authority) = domain_fixture::new_launchpad_authority(scenario.ctx());
+    authority.grant_admin(&root, 0, @0xA, scenario.ctx());
     launch_config::init_for_testing(scenario.ctx());
     scenario.next_tx(@0xA);
-    let admin = scenario.take_from_sender<acl::AdminCap>();
-    let witness = authority.sign_in(&version, &admin);
+    let admin = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let witness = authority.sign_in(&admin);
     let mut config = scenario.take_shared<launch_config::LaunchConfig>();
     config.allow_quote<QUOTE>(&version, &witness, 5_000_000, 25_000_000);
     config.allow_migration_witness<SelectedWitness>(&version, &witness);

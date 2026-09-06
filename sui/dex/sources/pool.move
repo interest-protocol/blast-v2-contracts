@@ -1,8 +1,12 @@
 /// Canonical full-range pools, separate LP fees and owned liquidity positions.
 module blast_fun_dex::pool;
 
-use blast_fun::{acl::AdminWitness, creator_authority::CreatorCap, launch::Launch};
-use blast_fun_dex::math;
+use blast_admin::{
+    acl::AdminWitness,
+    operational_version::{Self, OperationalVersion}
+};
+use blast_fun::{creator_authority::CreatorCap, launch::Launch};
+use blast_fun_dex::{dex_domain::DEX_DOMAIN, math, package_marker::PACKAGE_MARKER};
 use std::type_name::{Self, TypeName};
 use sui::{
     balance::{Self, Balance},
@@ -15,7 +19,10 @@ use sui::{
 
 // === Constants ===
 
-const VERSION: u64 = 1;
+/// Current DEX generation accepted by every economic and administrative path.
+const PACKAGE_VERSION: u64 = 1;
+/// The generation this bytecode hands over to in a governed upgrade.
+const NEXT_PACKAGE_VERSION: u64 = 2;
 const MINIMUM_SHARES: u128 = 1_000;
 const DEFAULT_MAX_FEE_BPS: u64 = 200;
 const MAX_FEE_BPS: u64 = 500;
@@ -24,8 +31,8 @@ const X64: u256 = 18_446_744_073_709_551_616;
 
 // === Errors ===
 
-#[error(code = 0)]
-const EWrongVersion: vector<u8> = b"DEX generation must match the active factory.";
+// Code 0 retired: generation checking moved to
+// `blast_admin::operational_version`, which raises its own code.
 #[error(code = 1)]
 const EIdenticalAssets: vector<u8> = b"Meme and Quote must have different original types.";
 #[error(code = 2)]
@@ -62,15 +69,15 @@ const EAccountingOverflow: vector<u8> = b"Fee accounting must remain representab
 #[error(code = 16)]
 const EClockReversed: vector<u8> = b"Clock must not precede the last successful trade.";
 
-#[error(code = 17)]
-const EVersionOverflow: vector<u8> = b"DEX generation cannot overflow.";
+// Code 17 retired: generation overflow is raised by
+// `blast_admin::operational_version`.
 
 // === Public Types ===
 
 /// Publication-only uniqueness registry and operational generation authority.
 public struct Factory has key {
     id: UID,
-    version: u64,
+    generation: OperationalVersion<PACKAGE_MARKER>,
     pools: Table<TypeName, ID>,
 }
 
@@ -152,8 +159,8 @@ public struct LiquidityChanged has copy, drop {
 public struct FeesClaimed has copy, drop { pool_id: ID, position_id: ID, quote: u64 }
 /// Only the future marginal fee maximum changes.
 public struct MaximumFeeChanged has copy, drop { pool_id: ID, previous_bps: u64, maximum_bps: u64 }
-/// The factory advances by exactly one compiled operational generation.
-public struct VersionActivated has copy, drop { previous_version: u64, version: u64 }
+// The generation-advance fact is emitted by `blast_admin::operational_version`
+// for every consumer package; no copy belongs here.
 
 // === Private Initialization ===
 
@@ -162,16 +169,23 @@ fun init(ctx: &mut TxContext) { transfer::share_object(new_factory(ctx)); }
 // === Public Functions ===
 
 /// Rejects stale bytecode at every economic path, including adapter no-op paths.
-public fun assert_current(self: &Factory) { assert!(self.version == VERSION, EWrongVersion); }
+public fun assert_current(self: &Factory) { self.generation.assert_current(PACKAGE_VERSION); }
 
-/// Activates only the next compiled generation under live protocol administration.
-public fun activate(self: &mut Factory, _: &AdminWitness) {
-    let previous_version = self.version;
-    let version = previous_version.checked_add(1).destroy_or!(abort EVersionOverflow);
-    assert!(version == VERSION, EWrongVersion);
-    self.version = version;
-    event::emit(VersionActivated { previous_version, version });
+// === Package Functions ===
+
+/// Proves the cutover target is exactly next before any upgrade finalizer effect.
+public(package) fun assert_next(self: &Factory) {
+    self.generation.assert_next(NEXT_PACKAGE_VERSION);
 }
+
+/// Advances the generation to the exact bytecode this upgrade installs.
+public(package) fun advance(self: &mut Factory) {
+    let container_id = self.id.to_inner();
+
+    self.generation.advance(container_id, NEXT_PACKAGE_VERSION);
+}
+
+// === Public Functions ===
 
 /// Creates the post-migration fee destination under the original creator cap.
 /// The immutable burn applies in both swap directions; fees always use Quote.
@@ -215,7 +229,7 @@ public fun new_position<Meme, Quote>(
 public fun set_max_fee<Meme, Quote>(
     self: &mut Pool<Meme, Quote>,
     factory: &Factory,
-    _: &AdminWitness,
+    _: &AdminWitness<DEX_DOMAIN>,
     maximum_bps: u64,
 ) {
     factory.assert_current();
@@ -483,7 +497,11 @@ public(package) fun create_from_balances<Meme, Quote>(
 // === Private Functions ===
 
 fun new_factory(ctx: &mut TxContext): Factory {
-    Factory { id: object::new(ctx), version: VERSION, pools: table::new(ctx) }
+    Factory {
+        id: object::new(ctx),
+        generation: operational_version::new(),
+        pools: table::new(ctx),
+    }
 }
 
 fun position<Meme, Quote>(
@@ -675,7 +693,19 @@ public fun foreign_position_for_testing<Meme, Quote>(ctx: &mut TxContext): Posit
     position(object::id_from_address(@0x99), 1, 0, ctx)
 }
 #[test_only]
-public fun set_version_for_testing(self: &mut Factory, version: u64) { self.version = version; }
+public fun init_for_testing(ctx: &mut TxContext) { init(ctx); }
+#[test_only]
+public fun set_version_for_testing(self: &mut Factory, version: u64) {
+    self.generation.set_generation_for_testing(version);
+}
+#[test_only]
+public fun version_for_testing(self: &Factory): u64 { self.generation.generation_for_testing() }
+#[test_only]
+/// Exercises the compiled cutover target without a native upgrade fixture.
+public fun advance_for_testing(self: &mut Factory) { self.advance(); }
+#[test_only]
+/// Exercises the finalizer's pre-commit proof without a native upgrade fixture.
+public fun assert_next_for_testing(self: &Factory) { self.assert_next(); }
 #[test_only]
 public fun policy_for_testing<Meme, Quote>(self: &Pool<Meme, Quote>): (u64, u64, u128, u64) {
     (self.max_fee_bps, self.burn_bps, self.volume_x32, self.last_trade_seconds)

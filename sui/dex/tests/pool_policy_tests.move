@@ -1,8 +1,13 @@
 #[test_only]
 module blast_fun_dex::pool_policy_tests;
 
-use blast_fun::{acl::{Self, AdminCap, ProtocolAuthority}, package_version::{Self, PackageVersion}};
-use blast_fun_dex::pool::{Self, Factory, Pool, Position};
+use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
+use blast_fun_dex::{
+    dex_domain::{Self, DEX_DOMAIN},
+    domain_fixture,
+    package_marker::PACKAGE_MARKER,
+    pool::{Self, Factory, Pool, Position}
+};
 use std::{bcs, unit_test::{assert_eq, destroy}};
 use sui::{
     balance,
@@ -18,10 +23,9 @@ public struct POOL_POLICY_TESTS() has drop;
 public struct QUOTE() has drop;
 public struct PolicyFixture {
     scenario: Scenario,
-    authority: ProtocolAuthority,
-    version: PackageVersion,
-    admin: AdminCap,
-    root: acl::SuperAdminCap,
+    authority: Authority<DEX_DOMAIN>,
+    admin: AdminCap<DEX_DOMAIN>,
+    root: SuperAdminCap<DEX_DOMAIN>,
     factory: Factory,
     pool: Pool<POOL_POLICY_TESTS, QUOTE>,
     position: Position<POOL_POLICY_TESTS, QUOTE>,
@@ -171,7 +175,10 @@ fun one_millisecond_after_deadline_rejects_trade() {
 }
 
 #[test]
-#[expected_failure(abort_code = pool::EWrongVersion, location = pool)]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
 fun stale_generation_rejects_fee_claims() {
     let mut f = start(0);
     f.factory.set_version_for_testing(2);
@@ -180,25 +187,86 @@ fun stale_generation_rejects_fee_claims() {
 }
 
 #[test]
-fun administrator_activates_only_next_generation() {
+/// The factory advances to exactly the generation this bytecode hands over to,
+/// and the shared package emits the only cutover fact.
+fun the_factory_advances_to_the_next_compiled_generation() {
     let mut f = start(0);
-    f.factory.set_version_for_testing(0);
-    f.activate();
-    f.factory.assert_current();
-    let activated = sui::event::events_by_type<pool::VersionActivated>();
-    assert_eq!(activated.length(), 1);
-    let mut expected = bcs::to_bytes(&0u64);
-    expected.append(bcs::to_bytes(&1u64));
-    assert_eq!(bcs::to_bytes(&activated[0]), expected);
+    assert_eq!(f.factory.version_for_testing(), 1);
+
+    f.factory.advance_for_testing();
+
+    let advanced = blast_admin::events::collect_one<
+        blast_admin::events::OperationalVersionAdvanced<PACKAGE_MARKER>,
+    >(0);
+    let (_, _, previous_generation, new_generation) =
+        advanced.operational_version_advanced_fields();
+    assert_eq!(previous_generation, 1);
+    assert_eq!(new_generation, 2);
+    assert_eq!(new_generation, f.factory.version_for_testing());
     f.end();
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun::errors::EInvalidAdminCap, location = blast_fun::acl)]
+/// The finalizer proves the exact next generation before it commits a receipt.
+fun the_finalizer_accepts_the_exact_next_generation_before_committing() {
+    let f = start(0);
+    f.factory.assert_next_for_testing();
+    assert_eq!(f.factory.version_for_testing(), 1);
+    f.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun the_cutover_rejects_a_skipped_generation() {
+    let mut f = start(0);
+    f.factory.set_version_for_testing(5);
+    f.factory.advance_for_testing();
+    f.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EInvalidAdminCap,
+    location = blast_admin::acl,
+)]
 fun revoked_administrator_cannot_change_pool_cap() {
     let mut f = start(0);
     f.revoke_admin();
     f.next_tx!(@0xA, |f| f.set_max_fee(300));
+    f.end();
+}
+
+#[test]
+/// Pool policy is generic DEX administration: a live zero-role witness is enough
+/// and no package-admin role is required.
+fun a_zero_role_dex_administrator_may_change_the_pool_cap() {
+    let mut f = start(0);
+
+    f.set_max_fee(300);
+
+    let (max_fee_bps, _, _, _) = f.pool.policy_for_testing();
+    assert_eq!(max_fee_bps, 300);
+    f.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EAdminRoleNotGranted,
+    location = blast_admin::acl,
+)]
+/// The exported package-admin role is a real, separately granted bit; a generic
+/// administrator does not carry it.
+fun a_zero_role_dex_administrator_does_not_carry_the_package_admin_role() {
+    let mut f = start(0);
+
+    f.next_tx!(@0xA, |f| {
+        let PolicyFixture { authority, admin, .. } = f;
+        authority.sign_in(admin).assert_role(dex_domain::package_admin_role());
+    });
+
     f.end();
 }
 
@@ -213,11 +281,14 @@ fun empty_fee_claim_returns_zero_without_emitting_an_economic_event() {
 }
 
 #[test]
-#[expected_failure(abort_code = pool::EVersionOverflow, location = blast_fun_dex::pool)]
-fun activation_overflow_has_a_distinct_diagnostic() {
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionOverflow,
+    location = blast_admin::operational_version,
+)]
+fun the_cutover_rejects_a_generation_overflow() {
     let mut f = start(0);
     f.factory.set_version_for_testing(std::u64::max_value!());
-    f.activate();
+    f.factory.advance_for_testing();
     f.end();
 }
 
@@ -315,11 +386,10 @@ fun swap_deadline_precedes_zero_input() {
 
 fun start(burn: u64): PolicyFixture {
     let mut scenario = test_scenario::begin(@0xA);
-    let version = package_version::new_for_testing(scenario.ctx());
-    let (root, mut authority) = acl::new_protocol_for_testing(scenario.ctx());
-    authority.grant_admin(&version, &root, @0xA, scenario.ctx());
+    let (root, mut authority) = domain_fixture::new_dex_authority(scenario.ctx());
+    authority.grant_admin(&root, 0, @0xA, scenario.ctx());
     scenario.next_tx(@0xA);
-    let admin = scenario.take_from_sender<AdminCap>();
+    let admin = scenario.take_from_sender<AdminCap<DEX_DOMAIN>>();
     let (mut initializer, mut treasury) = coin_registry::new_currency_with_otw(
         POOL_POLICY_TESTS(),
         6,
@@ -346,7 +416,6 @@ fun start(burn: u64): PolicyFixture {
     PolicyFixture {
         scenario,
         authority,
-        version,
         admin,
         root,
         factory,
@@ -362,7 +431,6 @@ fun end(f: PolicyFixture) {
     let PolicyFixture {
         scenario,
         authority,
-        version,
         admin,
         root,
         factory,
@@ -374,7 +442,6 @@ fun end(f: PolicyFixture) {
     } = f;
     destroy(root);
     destroy(authority);
-    destroy(version);
     destroy(admin);
     destroy(factory);
     destroy(pool);
@@ -432,13 +499,8 @@ fun sell_and_burn(
 }
 
 fun set_max_fee(f: &mut PolicyFixture, maximum: u64) {
-    let PolicyFixture { authority, version, admin, factory, pool, .. } = f;
-    pool.set_max_fee(factory, &authority.sign_in(version, admin), maximum);
-}
-
-fun activate(f: &mut PolicyFixture) {
-    let PolicyFixture { authority, version, admin, factory, .. } = f;
-    factory.activate(&authority.sign_in(version, admin));
+    let PolicyFixture { authority, admin, factory, pool, .. } = f;
+    pool.set_max_fee(factory, &authority.sign_in(admin), maximum);
 }
 
 fun claim_fees(f: &mut PolicyFixture): Coin<QUOTE> {
@@ -459,8 +521,8 @@ macro fun next_tx($f: &mut PolicyFixture, $sender: address, $body: |&mut PolicyF
 }
 
 fun revoke_admin(f: &mut PolicyFixture) {
-    let PolicyFixture { authority, version, root, admin, .. } = f;
-    authority.revoke_admin(version, root, object::id(admin));
+    let PolicyFixture { authority, root, admin, .. } = f;
+    authority.revoke_admin(root, object::id(admin));
 }
 
 fun fee_change_bytes(pool_id: ID, previous: u64, maximum: u64): vector<u8> {

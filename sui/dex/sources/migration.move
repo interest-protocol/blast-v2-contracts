@@ -1,11 +1,12 @@
 /// Native migration and sealed custody of its complete issued LP position.
 module blast_fun_dex::migration;
 
+use blast_admin::acl::AdminWitness;
 use blast_fun::{
-    acl::AdminWitness,
     creator_authority::CreatorCap,
     fees::{Self, FeeLedger},
     launch::Launch,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
     package_version::PackageVersion,
     runtime_config::RuntimeConfig
 };
@@ -145,10 +146,15 @@ public fun claim_creator_fees<Meme, Quote>(
     (meme, quote)
 }
 
-/// Returns only protocol-owned fees under a live launchpad admin witness.
+/// Returns only protocol-owned fees under a live Launchpad admin witness.
+///
+/// This is the single deliberate Launchpad-domain exception in this package. The
+/// balances drained here live in a Launchpad-owned `FeeLedger`, so they stay
+/// under Launchpad product-fee custody; DEX factory, pool-policy, and package
+/// administration all use the independent DEX domain instead.
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut LockedLpVault<Meme, Quote>,
-    witness: &AdminWitness,
+    witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
     factory: &Factory,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
