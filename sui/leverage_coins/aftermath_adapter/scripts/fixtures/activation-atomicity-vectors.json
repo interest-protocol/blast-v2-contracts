@@ -2,7 +2,7 @@
   "schemaVersion": 4,
   "fixtureKind": "canonical-evidence-validator",
   "gasDifferencePolicy": "gas-only",
-  "productionOperationsSha256": "d46debf306ea3f6cac3bac30d226cc1c07ca2e3d4934ae396d6b1df17827bcca",
+  "productionOperationsSha256": "36ecc567eeaf27b4bfffdf272ce26fab0075142a59d2bea7d1b6fb83b21bacc6",
   "baseline": {
     "objects": [
       {

@@ -334,7 +334,7 @@ strict_capture_shape="$(
   sed -n '/^public(package) fun capture<Collateral>($/,/^}/p' "$snapshot_file" \
     | tr -d '[:space:]'
 )"
-grep -q 'capture_(binding,account,registry,clearing_house,base_oracle,collateral_oracle,base_price_info,collateral_price_info,clock,false,);let(observation,checkpoint,_)=into_observation(captured,false,true)' <<<"$strict_capture_shape" \
+grep -q 'capture_(binding,account,registry,clearing_house,base_oracle,collateral_oracle,base_price_info,collateral_price_info,clock,false,);let(observation,checkpoint,_)=into_observation(captured)' <<<"$strict_capture_shape" \
   || fail "Strict capture must delegate to the shared authenticated capture path."
 health_capture_shape="$(
   sed -n '/^public(package) fun capture_health<Collateral>($/,/^}/p' "$snapshot_file" \
@@ -383,10 +383,6 @@ grep -q '!margin_negative && margin >= requirement' "$snapshot_file" \
 grep -q 'venue_operational: clearing_house.market_pause_mode() == 0' "$snapshot_file" \
   && grep -q '&& !clearing_house.is_frozen()' "$snapshot_file" \
   || fail "Venue operation must require allowed pause mode and not-frozen state."
-grep -q 'observation::new_health_price' "$snapshot_file" \
-  || fail "Health capture must preserve authenticated zero oracle prices."
-grep -q 'observation::new_health_position' "$snapshot_file" \
-  || fail "Health capture must preserve malformed live venue facts."
 grep -q 'assert_position_signs(signed_base, signed_quote_notional, position.is_long_or_flat())' "$snapshot_file" \
   || fail "Strict capture must reject incoherent venue position signs."
 grep -q 'assert!(base_representable && notional_representable' "$snapshot_file" \
@@ -660,22 +656,21 @@ post_stored_line="$(post_capture_line 'let stored_checkpoint = *vault.venue_chec
 post_net_line="$(post_capture_line 'let net = snapshot::net_funding(preexisting_change, local_change);')"
 post_fields_line="$(post_capture_line 'snapshot::funding_change_fields(&net)')"
 post_settle_line="$(post_capture_line 'vault.settle_funding(is_cost, amount)')"
-post_finish_line="$(post_capture_line 'let (observation, checkpoint) = snapshot::finish_health(')"
+post_finish_line="$(post_capture_line 'let checkpoint = snapshot::finish_health(')"
 post_persist_line="$(post_capture_line 'vault.replace_venue_checkpoint(checkpoint);')"
-post_policy_line="$(post_capture_line 'vault.consume_health_observation(')"
 post_funding_event_line="$(post_capture_line 'events::funding_settled<Product>(')"
 post_health_decision_line="$(post_capture_line 'if (diagnostic_changed) {')"
 post_health_event_line="$(post_capture_line 'events::health_synchronized<Product>(')"
 post_capture_order=(
   "$post_stored_line" "$post_net_line" "$post_fields_line"
   "$post_settle_line" "$post_finish_line"
-  "$post_persist_line" "$post_policy_line" "$post_funding_event_line"
+  "$post_persist_line" "$post_funding_event_line"
   "$post_health_decision_line" "$post_health_event_line"
 )
 for ((i = 1; i < ${#post_capture_order[@]}; i++)); do
   if [[ -z "${post_capture_order[i - 1]}" || -z "${post_capture_order[i]}" ]] \
     || (( post_capture_order[i - 1] >= post_capture_order[i] )); then
-    fail "The connected post-capture helper must preserve settlement, persistence, policy, and event order."
+    fail "The connected post-capture helper must preserve settlement, persistence, and event order."
   fi
 done
 [[ "$(grep -Fc 'vault.replace_venue_checkpoint(checkpoint);' <<<"$post_capture_block")" -eq 1 ]] \

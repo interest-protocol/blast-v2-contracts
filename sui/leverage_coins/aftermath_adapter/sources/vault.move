@@ -644,14 +644,6 @@ public(package) fun settle_funding<Product>(
     )
 }
 
-/// Consumes the authenticated diagnostic observation without repricing the vault.
-public(package) fun consume_health_observation<Product>(
-    self: &Vault<Product>,
-    observation: PositionObservation,
-) {
-    self.series_state.consume_health_observation(observation);
-}
-
 /// Replaces the raw venue checkpoint after authenticated reconciliation.
 public(package) fun replace_venue_checkpoint<Product>(
     self: &mut Vault<Product>,

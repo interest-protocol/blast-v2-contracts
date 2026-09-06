@@ -47,10 +47,10 @@ value is a simulation gate, but the shape of the decision is fixed:
   1.9455x after 3,000 mints and sixteen times NAV growth. Both facts are
   pinned exactly by package tests.
 - The minimum has a sharp lock condition, recorded in `docs/accounting.md`.
-  The Vault must evaluate `accounting_math::is_redemption_possible` and
-  `is_exposure_above_minimum_operation` in its health transition and degrade
-  on a false result, and it must ship a primitive that reopens exposure from
-  flat, because a flat position with live shares can never mint again.
+  Initialization requires exposure above the minimum operation size; priced
+  redemptions enforce their exact proportional bounds. Health synchronization
+  does not degrade lifecycle for unavailable ordinary redemption. Explicit
+  terminal handling belongs to its separately authorized lifecycle path.
 - `lot_size * min_exposure_lots` must stay small in collateral terms so a
   small holder can still exit. Compute it against the live Aftermath lot size
   for the SUI-USDC market (premise P16) and state the resulting minimum mint
@@ -141,17 +141,12 @@ against what a caller applies them. The Series and adapter must:
   source-boundary script fails if a standalone or snake-case `mark` identifier
   appears there, while semantic review still verifies arbitrary numeric inputs;
   and
-- use `is_price_fresh`, `is_confidence_within_bound`, and
-  `is_mark_within_index_divergence` inside the objective health transition,
-  rather than their aborting guards, so any valuation-policy failure degrades
-  the lifecycle instead of rolling the observing transaction back;
-- evaluate the health predicates in the documented order, `is_reserve_backed`,
-  then `is_shareholder_nav_positive`, then valuation, then leverage against
-  `is_hard_emergency`, then `is_redemption_possible`, and persist the result
-  through `lifecycle::degrade_to_reduce_only` or `degrade_to_shutdown_pending`.
-  The strict `enter_*` transitions abort on an already-degraded Vault and are
-  for explicit action only; a wiped account is still reserve-backed, and
-  leverage math aborts at zero NAV, so the positivity check is not optional.
+- validate priced observations with their aborting guards before financial
+  mutation. Authenticated health captures remain adapter-local and yield raw
+  checkpoints, not an unused Series1 economic observation. Temporary economic
+  faults do not change lifecycle; checkpoint drift is reported through the
+  unresolved/reconciled diagnostic identity. Funding settlement alone changes
+  the buffer during synchronization.
 
 ### 1.11 Never assign to a stored lifecycle
 

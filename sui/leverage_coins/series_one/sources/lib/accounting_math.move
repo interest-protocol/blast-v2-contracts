@@ -90,8 +90,8 @@ public(package) fun is_accounting_leverage_below_limit(
 /// so the position is locked for every ordinary holder until it is closed
 /// completely or exposure is reopened. A zero lot or lot multiple returns
 /// false so the caller fails closed. A true result is necessary, not
-/// sufficient, for a legal redemption; `is_redemption_possible` is exact. The
-/// Vault reports a false result as invalid health without changing lifecycle.
+/// sufficient, for a legal redemption. Initialization requires this minimum
+/// exposure; ordinary redemptions enforce their exact proportional bounds.
 public(package) fun is_exposure_above_minimum_operation(
     base_before: u64,
     lot_size: u64,
@@ -100,33 +100,6 @@ public(package) fun is_exposure_above_minimum_operation(
     lot_size > 0
         && min_exposure_lots > 0
         && (base_before as u128) > (lot_size as u128) * (min_exposure_lots as u128)
-}
-
-/// Returns whether any burn count can pass `redemption_base_bounds`, without aborting.
-///
-/// The required reduction is largest when a redemption burns all but one
-/// share, where it equals `base_before - floor(base_before / shares_before)`.
-/// A redemption is possible exactly when that reduction reaches
-/// `lot_size * min_exposure_lots`, or when `base_before < shares_before` so
-/// that burning all but one share reaches flat and the minimum is waived. A
-/// supply below two shares, a zero lot, or a zero lot multiple returns false.
-/// A false result reports unavailable ordinary redemption; only a separate
-/// authorized lifecycle operation can begin terminal handling.
-public(package) fun is_redemption_possible(
-    base_before: u64,
-    shares_before: u64,
-    lot_size: u64,
-    min_exposure_lots: u64,
-): bool {
-    if (shares_before < 2 || lot_size == 0 || min_exposure_lots == 0) {
-        false
-    } else if (base_before < shares_before) {
-        true
-    } else {
-        let largest_required = base_before - base_before / shares_before;
-
-        (largest_required as u128) >= (lot_size as u128) * (min_exposure_lots as u128)
-    }
 }
 
 /// Returns shareholder NAV after excluding the complete maintenance reserve.

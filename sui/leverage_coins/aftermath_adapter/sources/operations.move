@@ -821,16 +821,12 @@ public(package) fun apply_post_capture<Product>(
     } else {
         (0, 0, vault.maintenance_reserve())
     };
-    let (observation, checkpoint) = snapshot::finish_health(
-        post_capture,
-        checkpoint_clean,
-    );
+    let checkpoint = snapshot::finish_health(post_capture);
 
     let diagnostic_changed = vault.note_checkpoint_health(&checkpoint, checkpoint_clean);
     if (checkpoint_clean) {
         vault.replace_venue_checkpoint(checkpoint);
     };
-    vault.consume_health_observation(observation);
 
     let vault_id = vault.id();
     // A zero-net interval still advances authenticated source identity and

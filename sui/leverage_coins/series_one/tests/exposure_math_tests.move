@@ -682,19 +682,12 @@ fun a_one_lot_position_cannot_be_redeemed_at_any_size() {
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_position_at_the_minimum_operation_size_locks_the_largest_redemption() {
-    assert!(!accounting_math::is_redemption_possible(100_000, 1_000, 1_000, 100));
-
     accounting_math::redemption_base_bounds(999, 100_000, 1_000, 1_000, 100);
 }
 
-/// Exposure one unit above the minimum still cannot be redeemed, because the
-/// proportional keep of the last share stays open.
+/// Sufficient exposure leaves the exact proportional keep of the last share.
 #[test]
-fun exposure_just_above_the_minimum_is_not_enough_for_a_redemption() {
-    assert!(accounting_math::is_exposure_above_minimum_operation(100_001, 1_000, 100));
-    assert!(!accounting_math::is_redemption_possible(100_001, 1_000, 1_000, 100));
-    assert!(accounting_math::is_redemption_possible(100_100, 1_000, 1_000, 100));
-
+fun sufficient_exposure_gives_exact_bounds_for_the_largest_redemption() {
     let (min_final_base, max_final_base) =
         accounting_math::redemption_base_bounds(999, 100_100, 1_000, 1_000, 100);
 
@@ -704,7 +697,6 @@ fun exposure_just_above_the_minimum_is_not_enough_for_a_redemption() {
 
 #[test]
 fun a_sub_supply_position_can_always_close_flat() {
-    assert!(accounting_math::is_redemption_possible(999, 1_000, 1_000, 100));
     assert!(!accounting_math::is_exposure_above_minimum_operation(999, 1_000, 100));
 
     let (min_final_base, max_final_base) =
@@ -723,38 +715,6 @@ fun exposure_predicates_never_abort_on_degenerate_inputs() {
     assert!(!accounting_math::is_exposure_above_minimum_operation(max, max, max));
     assert!(accounting_math::is_exposure_above_minimum_operation(max, max, 1) == false);
     assert!(accounting_math::is_exposure_above_minimum_operation(max, max - 1, 1));
-    assert!(!accounting_math::is_redemption_possible(max, 1, 1, 1));
-    assert!(!accounting_math::is_redemption_possible(max, max, 0, 1));
-    assert!(!accounting_math::is_redemption_possible(max, max, 1, 0));
-    assert!(accounting_math::is_redemption_possible(max, max, 1, 1));
-    assert!(!accounting_math::is_redemption_possible(max, max, max, max));
-}
-
-/// The exact predicate agrees with brute force over every burn count.
-#[test]
-fun redemption_possibility_matches_the_exhaustive_reference() {
-    0u64.range_do!(16, |base_before| {
-        2u64.range_do!(8, |shares_before| {
-            1u64.range_do!(4, |lot_size| {
-                1u64.range_do!(3, |min_exposure_lots| {
-                    assert_eq!(
-                        accounting_math::is_redemption_possible(
-                            base_before,
-                            shares_before,
-                            lot_size,
-                            min_exposure_lots,
-                        ),
-                        any_redemption_is_legal(
-                            base_before,
-                            shares_before,
-                            lot_size,
-                            min_exposure_lots,
-                        ),
-                    );
-                });
-            });
-        });
-    });
 }
 
 #[test]
@@ -1010,30 +970,6 @@ fun assert_redemption_bounds_hold(
         lot_size,
         min_exposure_lots,
     );
-}
-
-/// Independent reference: whether any burn count passes the redemption minimum-size guard.
-fun any_redemption_is_legal(
-    base_before: u64,
-    shares_before: u64,
-    lot_size: u64,
-    min_exposure_lots: u64,
-): bool {
-    let mut any_legal = false;
-
-    1u64.range_do!(shares_before, |shares_burned| {
-        let max_final_base = base_before.mul_div(
-            shares_before - shares_burned,
-            shares_before,
-        );
-        let required = base_before - max_final_base;
-
-        if (max_final_base == 0 || required >= lot_size * min_exposure_lots) {
-            any_legal = true;
-        };
-    });
-
-    any_legal
 }
 
 /// Runs worst-case legal mints on a 2x pool and returns the final and lowest accounting leverage.

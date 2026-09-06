@@ -372,12 +372,12 @@ Pyth-object identity check first. A representable feed/Pyth/named-price or
 timestamp disagreement still aborts. An authenticated negative or
 unrepresentable Pyth component, feed width, named-price width, exponent, or
 seconds-to-milliseconds conversion instead becomes an invalid economic fact,
-alongside zero price, mark, lot, or malformed exposure, in Series1's permissive
-health observation.
-It exists for authenticated health reporting. A temporary economic-data fault
-does not retire or degrade an active Vault. Consuming the linear observation
-does not compute a discarded healthy predicate or mutate lifecycle. This path
-never weakens source identity or accepts caller-shaped economics.
+alongside zero price, mark, lot, or malformed exposure, in the adapter's
+linear capture. After checkpoint classification, the adapter consumes that
+capture and retains only its authenticated checkpoint; it does not construct a
+Series1 position observation for health. A temporary economic-data fault does
+not retire or degrade an active Vault. This path never weakens source identity
+or accepts caller-shaped economics.
 
 `Change` preserves raw collateral-token IFixed deltas. The ordinary
 stored-to-pre edge may advance only the market cumulative rates while the
@@ -423,8 +423,8 @@ After authentication, synchronization has one fixed sequence:
 4. Aggregate both authenticated signed effects before rounding. Credits round
    down and increase reserve; costs round up and consume reserve, with any
    uncovered cost borne by holder NAV.
-5. Consume the finalized linear health observation without a lifecycle
-   mutation. Accept the economic checkpoint only for a reconciled interval;
+5. Consume the final linear capture and extract its checkpoint without a
+   lifecycle mutation. Accept the economic checkpoint only for a reconciled interval;
    unresolved observations update only the diagnostic fingerprint.
 6. Emit accepted funding facts (including zero-net advancement) and new
    unresolved/reconciled diagnostics after their mutations. Unchanged repeats
@@ -458,7 +458,7 @@ lifecycle, selected risk module and both checkpoint/reporting identities.
 
 One package-private production helper owns the complete Blast post-capture
 phase: aggregate funding normalization and reserve settlement, linear
-health-observation consumption, conditional accepted-checkpoint persistence,
+capture consumption, conditional accepted-checkpoint persistence,
 diagnostic novelty tracking and conditional event emission. Local connected tests
 invoke that same helper against real issued and Series-initialized Vault state;
 they do not duplicate

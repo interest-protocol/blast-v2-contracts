@@ -744,19 +744,6 @@ public fun maintenance_reserve<Product>(self: &State<Product>): u64 {
     self.maintenance_reserve
 }
 
-/// Consumes an authenticated diagnostic observation without pricing or changing lifecycle.
-/// Financial operations validate their own fresh observations before using them.
-public fun consume_health_observation<Product>(
-    self: &State<Product>,
-    observation: PositionObservation,
-) {
-    self.lifecycle.assert_initialized();
-    let (_, _, _, _, _, _, _, _, _, base_index, collateral_oracle, _) =
-        observation.unpack_position();
-    let (_, _, _) = base_index.unpack_price();
-    let (_, _, _) = collateral_oracle.unpack_price();
-}
-
 /// Updates the live per-call maximum order notional within its frozen bounds.
 ///
 /// This value limits the absolute atomic-USDC notional of one adapter order.

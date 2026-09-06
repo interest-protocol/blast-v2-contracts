@@ -14,9 +14,7 @@ use blast_leverage_series_one::policy::PositionSide;
 
 /// One normalized price and its source confidence and publication time.
 ///
-/// Priced-operation constructors require a positive price. Health snapshots
-/// may carry zero so objective invalidity reaches the non-aborting degradation
-/// path instead of aborting before the State consumes the observation.
+/// Constructors require a positive price for priced operations.
 public struct PriceObservation {
     price: u64,
     confidence: u64,
@@ -25,8 +23,7 @@ public struct PriceObservation {
 
 /// One venue-position and valuation snapshot for a single operation.
 ///
-/// Strict constructors normalize the fields for priced operations. The health
-/// constructor can preserve invalid live values for non-aborting degradation.
+/// Constructors validate the structural fields before priced operations.
 public struct PositionObservation {
     venue_equity: u64,
     absolute_base: u64,
@@ -62,19 +59,6 @@ public fun new_price(
         blast_leverage_series_one::errors::invalid_observation_price!(),
     );
 
-    new_health_price(price, confidence, publish_time_ms)
-}
-
-/// Creates a price snapshot for objective health synchronization.
-///
-/// Zero is preserved intentionally for authenticated diagnostics. Consuming a
-/// health observation never changes lifecycle; priced operations still reject
-/// invalid economic inputs.
-public fun new_health_price(
-    price: u64,
-    confidence: u64,
-    publish_time_ms: u64,
-): PriceObservation {
     PriceObservation { price, confidence, publish_time_ms }
 }
 
@@ -110,43 +94,6 @@ public fun new_position(
         blast_leverage_series_one::errors::invalid_position_observation!(),
     );
 
-    new_health_position(
-        venue_equity,
-        absolute_base,
-        absolute_notional,
-        lot_size,
-        observed_side,
-        pending_order_count,
-        margin_safe,
-        venue_operational,
-        checkpoint_clean,
-        base_index,
-        collateral_oracle,
-        mark_price,
-    )
-}
-
-/// Creates a raw objective-health snapshot without aborting on invalid values.
-///
-/// The adapter must use this path only after authenticating the live venue and
-/// oracle sources. Zero price, mark, or lot values and structurally invalid
-/// exposure are preserved for diagnostics without a lifecycle transition. Every
-/// priced Series1 operation still validates the complete observation
-/// before mutation.
-public fun new_health_position(
-    venue_equity: u64,
-    absolute_base: u64,
-    absolute_notional: u64,
-    lot_size: u64,
-    observed_side: PositionSide,
-    pending_order_count: u64,
-    margin_safe: bool,
-    venue_operational: bool,
-    checkpoint_clean: bool,
-    base_index: PriceObservation,
-    collateral_oracle: PriceObservation,
-    mark_price: u64,
-): PositionObservation {
     PositionObservation {
         venue_equity,
         absolute_base,
@@ -183,8 +130,7 @@ public fun funding_cost(amount: u64): FundingSettlement {
 /// Returns whether base, notional, and lot size form a normalized position.
 ///
 /// This predicate never aborts, including for a zero lot. Strict operation
-/// constructors assert it; objective health consumes it as a degradation
-/// signal when using the permissive health-observation path.
+/// constructors and Series1 initialization assert it.
 public(package) fun is_position_structurally_valid(
     absolute_base: u64,
     absolute_notional: u64,
@@ -266,6 +212,16 @@ public(package) fun unpack_funding(self: FundingSettlement): (bool, bool, u64) {
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+/// Injects malformed exposure to exercise State's independent initialization guard.
+public fun with_absolute_base_for_testing(
+    mut self: PositionObservation,
+    absolute_base: u64,
+): PositionObservation {
+    self.absolute_base = absolute_base;
+    self
+}
 
 #[test_only]
 /// Consumes an isolated price observation at the end of a unit test.

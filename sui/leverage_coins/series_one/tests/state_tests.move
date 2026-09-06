@@ -195,21 +195,6 @@ fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
 }
 
 #[test]
-fun temporary_health_fault_recovers_without_a_lifecycle_transition() {
-    let fixture = start(series_one_domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
-    let mut invalid = standard_observation(policy::long());
-    invalid.venue_operational = false;
-    state.consume_health_observation(invalid.into_position_observation());
-    assert!(state.is_active_for_testing());
-    state.consume_health_observation(standard_observation(policy::long()).into_position_observation());
-    destroy(state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1_000_000, HEALTH_SHARE_SUPPLY, 1, 10, REFERENCE_TIME_MS));
-    assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
-    state.destroy_for_testing();
-    destroy(fixture);
-}
-
-#[test]
 #[expected_failure(abort_code = errors::EActiveObservationUnusable, location = blast_leverage_series_one::state)]
 fun active_mint_rejects_a_temporary_venue_pause() {
     let fixture = start(series_one_domain::vault_issuer_role());
@@ -842,14 +827,14 @@ fun valid_short_seed_activates() {
     abort_code = errors::EInvalidPositionObservation,
     location = blast_leverage_series_one::state,
 )]
-fun initialization_rejects_a_permissive_structurally_invalid_observation() {
+fun initialization_rejects_a_structurally_invalid_observation() {
     let fixture = start(series_one_domain::vault_issuer_role());
     let mut state = new_state(&fixture, policy::long());
 
     state.initialize(
         standard_observation(policy::long())
-            .with_absolute_base(SEED_BASE + 1)
-            .into_health_position_observation(),
+            .into_position_observation()
+            .with_absolute_base_for_testing(SEED_BASE + 1),
         SEED_RESERVE,
         REFERENCE_TIME_MS,
     );
@@ -1439,191 +1424,6 @@ fun the_maximum_funding_cost_cannot_wrap() {
     );
 }
 
-// --- Objective Health ---
-
-#[test]
-fun healthy_active_state_stays_active() {
-    let fixture = start(series_one_domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
-
-    state.consume_health_observation(standard_observation(policy::long()).into_position_observation());
-    assert!(state.is_active_for_testing());
-
-    state.destroy_for_testing();
-    destroy(fixture);
-}
-
-#[test]
-fun reserve_impairment_keeps_active_with_invalid_health() {
-    assert_invalid_health_preserves_active(
-        standard_observation(policy::long()).with_venue_equity(SEED_RESERVE - 1),
-    );
-}
-
-#[test]
-fun zero_nav_keeps_active_with_invalid_health() {
-    assert_invalid_health_preserves_active(
-        standard_observation(policy::long()).with_venue_equity(SEED_RESERVE),
-    );
-}
-
-#[test]
-fun stale_oracle_preserves_active_and_fresh_data_restores_health() {
-    let fixture = start(series_one_domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
-    state.consume_health_observation(standard_observation(policy::long())
-            .with_base_publish_time_ms(69_999)
-            .into_health_position_observation());
-    assert!(state.is_active_for_testing());
-    state.consume_health_observation(standard_observation(policy::long()).into_health_position_observation());
-    assert!(state.is_active_for_testing());
-    state.destroy_for_testing();
-    destroy(fixture);
-}
-
-#[test]
-fun low_confidence_oracle_keeps_active_with_invalid_health() {
-    assert_invalid_health_preserves_active(
-        standard_observation(policy::long()).with_collateral_confidence(10_000_001),
-    );
-}
-
-#[test]
-fun zero_base_price_keeps_active_with_invalid_health() {
-    assert_invalid_health_preserves_active(
-        standard_observation(policy::long()).with_base_price(0),
-    );
-}
-
-#[test]
-fun zero_collateral_price_keeps_active_with_invalid_health() {
-    assert_invalid_health_preserves_active(
-        standard_observation(policy::long()).with_collateral_price(0),
-    );
-}
-
-#[test]
-fun zero_mark_price_keeps_active_with_invalid_health() {
-    assert_invalid_health_preserves_active(
-        standard_observation(policy::long()).with_mark_price(0),
-    );
-}
-
-#[test]
-fun zero_lot_size_keeps_active_with_invalid_health() {
-    assert_invalid_health_preserves_active(
-        standard_observation(policy::long()).with_lot_size(0),
-    );
-}
-
-#[test]
-fun structurally_invalid_health_position_keeps_active_with_invalid_health() {
-    assert_invalid_health_preserves_active(
-        standard_observation(policy::long()).with_absolute_notional(0),
-    );
-}
-
-#[test]
-fun mark_divergence_keeps_active_with_invalid_health() {
-    assert_invalid_health_preserves_active(
-        standard_observation(policy::long()).with_mark_price(1_050_000_001),
-    );
-}
-
-#[test]
-fun wrong_side_keeps_active_with_invalid_health() {
-    assert_invalid_health_preserves_active(
-        standard_observation(policy::long()).with_observed_side(policy::short()),
-    );
-}
-
-#[test]
-fun pending_order_keeps_active_with_invalid_health() {
-    assert_invalid_health_preserves_active(
-        standard_observation(policy::long()).with_pending_order_count(1),
-    );
-}
-
-#[test]
-fun unsafe_margin_keeps_active_with_invalid_health() {
-    assert_invalid_health_preserves_active(
-        standard_observation(policy::long()).with_margin_safe(false),
-    );
-}
-
-#[test]
-fun paused_or_frozen_venue_keeps_active_with_invalid_health() {
-    assert_invalid_health_preserves_active(
-        standard_observation(policy::long()).with_venue_operational(false),
-    );
-}
-
-#[test]
-fun dirty_checkpoint_keeps_active_with_invalid_health() {
-    assert_invalid_health_preserves_active(
-        standard_observation(policy::long()).with_checkpoint_clean(false),
-    );
-}
-
-#[test]
-fun hard_cap_leverage_keeps_active_with_invalid_health() {
-    assert_invalid_health_preserves_active(
-        standard_observation(policy::long()).with_absolute_notional(3_000_000),
-    );
-}
-
-#[test]
-fun minimum_operation_exposure_keeps_active_with_invalid_health() {
-    assert_invalid_health_preserves_active(
-        standard_observation(policy::long()).with_absolute_base(MIN_EXPOSURE_LOTS * LOT_SIZE),
-    );
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EInvalidLifecycleTransition,
-    location = blast_leverage_series_one::lifecycle,
-)]
-fun uninitialized_state_cannot_synchronize_health() {
-    let fixture = start(series_one_domain::vault_issuer_role());
-    let state = new_state(&fixture, policy::long());
-
-    state.consume_health_observation(standard_observation(policy::long()).into_position_observation());
-
-    state.destroy_for_testing();
-    destroy(fixture);
-}
-
-#[test]
-fun shutdown_pending_health_never_moves_backward() {
-    let fixture = start(series_one_domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
-    state.set_shutdown_pending_for_testing();
-
-    state.consume_health_observation(standard_observation(policy::long())
-            .with_venue_equity(SEED_RESERVE - 1)
-            .into_position_observation());
-    assert!(state.is_shutdown_pending_for_testing());
-
-    state.destroy_for_testing();
-    destroy(fixture);
-}
-
-#[test]
-fun shutdown_settled_health_never_moves_backward() {
-    let fixture = start(series_one_domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
-    state.set_shutdown_settled_for_testing();
-
-    state.consume_health_observation(standard_observation(policy::long())
-            .with_venue_equity(SEED_RESERVE - 1)
-            .into_position_observation());
-    assert!(state.is_shutdown_settled_for_testing());
-
-    state.destroy_for_testing();
-    destroy(fixture);
-}
-
 // === Fixture Setup ===
 
 fun rebalance_state(fixture: &Fixture, side: PositionSide): State<Product> {
@@ -1754,18 +1554,6 @@ fun assert_funding_settlement(
     destroy(fixture);
 }
 
-fun assert_invalid_health_preserves_active(spec: ObservationSpec) {
-    let fixture = start(series_one_domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
-
-    state.consume_health_observation(spec.into_health_position_observation());
-    assert!(state.is_active_for_testing());
-    state.consume_health_observation(spec.into_health_position_observation());
-    assert!(state.is_active_for_testing());
-    state.destroy_for_testing();
-    destroy(fixture);
-}
-
 fun standard_observation(side: PositionSide): ObservationSpec {
     ObservationSpec {
         venue_equity: SEED_VENUE_EQUITY,
@@ -1827,46 +1615,6 @@ fun into_position_observation(self: ObservationSpec): PositionObservation {
     )
 }
 
-fun into_health_position_observation(self: ObservationSpec): PositionObservation {
-    let ObservationSpec {
-        venue_equity,
-        absolute_base,
-        absolute_notional,
-        lot_size,
-        observed_side,
-        pending_order_count,
-        margin_safe,
-        venue_operational,
-        checkpoint_clean,
-        base_price,
-        base_confidence,
-        base_publish_time_ms,
-        collateral_price,
-        collateral_confidence,
-        collateral_publish_time_ms,
-        mark_price,
-    } = self;
-
-    observation::new_health_position(
-        venue_equity,
-        absolute_base,
-        absolute_notional,
-        lot_size,
-        observed_side,
-        pending_order_count,
-        margin_safe,
-        venue_operational,
-        checkpoint_clean,
-        observation::new_health_price(base_price, base_confidence, base_publish_time_ms),
-        observation::new_health_price(
-            collateral_price,
-            collateral_confidence,
-            collateral_publish_time_ms,
-        ),
-        mark_price,
-    )
-}
-
 fun with_venue_equity(mut self: ObservationSpec, venue_equity: u64): ObservationSpec {
     self.venue_equity = venue_equity;
     self
@@ -1879,11 +1627,6 @@ fun with_absolute_base(mut self: ObservationSpec, absolute_base: u64): Observati
 
 fun with_absolute_notional(mut self: ObservationSpec, absolute_notional: u64): ObservationSpec {
     self.absolute_notional = absolute_notional;
-    self
-}
-
-fun with_lot_size(mut self: ObservationSpec, lot_size: u64): ObservationSpec {
-    self.lot_size = lot_size;
     self
 }
 
@@ -1926,11 +1669,6 @@ fun with_base_confidence(mut self: ObservationSpec, base_confidence: u64): Obser
     self
 }
 
-fun with_base_price(mut self: ObservationSpec, base_price: u64): ObservationSpec {
-    self.base_price = base_price;
-    self
-}
-
 fun with_base_publish_time_ms(
     mut self: ObservationSpec,
     base_publish_time_ms: u64,
@@ -1944,14 +1682,6 @@ fun with_collateral_confidence(
     collateral_confidence: u64,
 ): ObservationSpec {
     self.collateral_confidence = collateral_confidence;
-    self
-}
-
-fun with_collateral_price(
-    mut self: ObservationSpec,
-    collateral_price: u64,
-): ObservationSpec {
-    self.collateral_price = collateral_price;
     self
 }
 

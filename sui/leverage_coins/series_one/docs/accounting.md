@@ -189,11 +189,11 @@ flat exemption is unreachable because a zero proportional keep needs
 a hundred-lot minimum, none of the 999 burn counts is legal. The state is
 reachable: a leveraged long that rebalances after a drawdown shrinks base
 toward zero, and once base is zero with live shares no mint can pass
-`mint_base_delta_down` either. `is_redemption_possible` is the exact
-non-aborting predicate and `is_exposure_above_minimum_operation` the sufficient
-mint-side one; the Vault must observe them in the health transition and
-degrade the lifecycle so shutdown opens the guaranteed exit, and it needs a
-separate primitive to reopen exposure from flat.
+`mint_base_delta_down` either. Initialization uses
+`is_exposure_above_minimum_operation`; ordinary redemptions enforce the exact
+bounds in `redemption_base_bounds`. Health synchronization does not change
+lifecycle for unavailable ordinary operations. Explicit terminal handling is
+a separate lifecycle contract.
 
 The minimum operation size is what turns the per-operation lot tolerance into
 a cumulative bound. With relative under-exposure below
@@ -280,19 +280,14 @@ account the integrator chooses between those two; `shareholder_nav` failing
 closed with code 16 is what stops redemptions at an unimpaired price until the
 Series adds a loss state or accepts the shutdown path as the answer.
 
-### Health-path predicates
+### Priced-operation predicates and health synchronization
 
-Every gate that the objective health transition observes has a non-aborting
-form, so a keeper transaction can persist degradation instead of rolling
-itself back. The transition must evaluate them in this order and degrade on
-the first failure: `is_reserve_backed`, then `is_shareholder_nav_positive`
-(a wiped account is still backed, and every leverage or sizing formula aborts
-with code 2 at zero NAV), then the valuation predicates, then accounting
-leverage against `is_hard_emergency`, then `is_redemption_possible` and
-`is_exposure_above_minimum_operation`. It persists the result through the
-idempotent `lifecycle::degrade_to_reduce_only` or `degrade_to_shutdown_pending`,
-which leave an already-degraded lifecycle unchanged; the strict `enter_*`
-transitions abort on a repeated call and are for explicit action.
+Reserve backing, positive shareholder NAV, valuation, and proportional exposure
+bounds are enforced by priced operations. Health synchronization consumes its
+authenticated capture inside the adapter and uses the checkpoint for aggregate
+funding settlement and unresolved/reconciled diagnostics. It does not construct
+a Series1 position observation or persist lifecycle degradation on temporary
+economic faults.
 
 A redemption whose proportional claim is smaller than its unwind cost aborts
 with code 7 rather than a size code, because the minimum-size guard lives in
@@ -349,12 +344,11 @@ Zero-policy validity:
 - No upper millisecond bound is structural. The deployed source cadence, keeper
   latency, venue margin parameters, and simulation select every value.
 
-Each assertion has a matching non-aborting predicate for the future objective
-health transition: `is_price_fresh`, `is_confidence_within_bound`, and
-`is_mark_within_index_divergence`. The transition can therefore observe any
-valuation-policy failure and persist lifecycle degradation instead of rolling
-its own transaction back. Each assertion is defined on its corresponding
-predicate, so the operation gate and health observation cannot disagree.
+Each assertion uses its matching non-aborting predicate:
+`is_price_fresh`, `is_confidence_within_bound`, and
+`is_mark_within_index_divergence`. Priced operations reject failures before
+financial mutation; health synchronization does not use these predicates to
+change lifecycle.
 
 What this module does not close:
 

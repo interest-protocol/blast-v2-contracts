@@ -101,7 +101,7 @@ public(package) fun capture<Collateral>(
         clock,
         false,
     );
-    let (observation, checkpoint, _) = into_observation(captured, false, true);
+    let (observation, checkpoint, _) = into_observation(captured);
     (observation, checkpoint)
 }
 
@@ -129,7 +129,7 @@ public(package) fun capture_initialization<Collateral>(
         clock,
         false,
     );
-    into_observation(captured, false, true)
+    into_observation(captured)
 }
 
 /// Captures authenticated live facts for fail-closed health reporting.
@@ -355,23 +355,14 @@ public(package) fun checkpoint(self: &CapturedSnapshot): Checkpoint {
     self.checkpoint
 }
 
-/// Finalizes one authenticated permissive health observation.
-public(package) fun finish_health(
-    self: CapturedSnapshot,
-    checkpoint_clean: bool,
-): (observation::PositionObservation, Checkpoint) {
-    let (observation, checkpoint, _) = into_observation(
-        self,
-        true,
-        checkpoint_clean,
-    );
-    (observation, checkpoint)
+/// Consumes the authenticated health capture after checkpoint classification.
+public(package) fun finish_health(self: CapturedSnapshot): Checkpoint {
+    let CapturedSnapshot { checkpoint, .. } = self;
+    checkpoint
 }
 
 fun into_observation(
     self: CapturedSnapshot,
-    health: bool,
-    checkpoint_clean: bool,
 ): (observation::PositionObservation, Checkpoint, SnapshotFacts) {
     let CapturedSnapshot {
         venue_equity,
@@ -393,55 +384,26 @@ fun into_observation(
         checkpoint,
         collateral_fixed: _,
     } = self;
-    let base_index = if (health) {
-        observation::new_health_price(base_price, base_confidence, base_timestamp)
-    } else {
-        observation::new_price(base_price, base_confidence, base_timestamp)
-    };
-    let collateral_index = if (health) {
-        observation::new_health_price(
-            collateral_price,
-            collateral_confidence,
-            collateral_timestamp,
-        )
-    } else {
-        observation::new_price(
-            collateral_price,
-            collateral_confidence,
-            collateral_timestamp,
-        )
-    };
-    let observation = if (health) {
-        observation::new_health_position(
-            venue_equity,
-            absolute_base,
-            absolute_notional,
-            lot_size,
-            side,
-            pending_order_count,
-            economics_valid && margin_safe,
-            venue_operational,
-            checkpoint_clean,
-            base_index,
-            collateral_index,
-            mark_price,
-        )
-    } else {
-        observation::new_position(
-            venue_equity,
-            absolute_base,
-            absolute_notional,
-            lot_size,
-            side,
-            pending_order_count,
-            economics_valid && margin_safe,
-            venue_operational,
-            checkpoint_clean,
-            base_index,
-            collateral_index,
-            mark_price,
-        )
-    };
+    let base_index = observation::new_price(base_price, base_confidence, base_timestamp);
+    let collateral_index = observation::new_price(
+        collateral_price,
+        collateral_confidence,
+        collateral_timestamp,
+    );
+    let observation = observation::new_position(
+        venue_equity,
+        absolute_base,
+        absolute_notional,
+        lot_size,
+        side,
+        pending_order_count,
+        economics_valid && margin_safe,
+        venue_operational,
+        true,
+        base_index,
+        collateral_index,
+        mark_price,
+    );
 
     (
         observation,

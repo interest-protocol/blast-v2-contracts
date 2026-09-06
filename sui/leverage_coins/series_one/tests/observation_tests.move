@@ -19,45 +19,6 @@ fun price_construction_preserves_normalized_fields() {
 }
 
 #[test]
-fun health_observation_construction_preserves_objective_invalidity() {
-    let observation = observation::new_health_position(
-        100,
-        20,
-        40,
-        0,
-        policy::long(),
-        0,
-        true,
-        true,
-        true,
-        observation::new_health_price(0, 4, 5),
-        observation::new_health_price(0, 7, 8),
-        0,
-    );
-    let (
-        _,
-        _,
-        _,
-        lot_size,
-        _,
-        _,
-        _,
-        _,
-        _,
-        base_index,
-        collateral_oracle,
-        mark_price,
-    ) = observation::unpack_position(observation);
-    let (base_price, _, _) = observation::unpack_price(base_index);
-    let (collateral_price, _, _) = observation::unpack_price(collateral_oracle);
-
-    assert_eq!(lot_size, 0);
-    assert_eq!(base_price, 0);
-    assert_eq!(collateral_price, 0);
-    assert_eq!(mark_price, 0);
-}
-
-#[test]
 #[expected_failure(
     abort_code = errors::EInvalidObservationPrice,
     location = blast_leverage_series_one::observation,
