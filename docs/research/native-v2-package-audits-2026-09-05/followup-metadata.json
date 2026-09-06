@@ -1,0 +1,60 @@
+{
+  "dex": {
+    "is_error": false,
+    "duration_ms": 1532634,
+    "modelUsage": {
+      "claude-fable-5": {
+        "inputTokens": 4,
+        "outputTokens": 115740,
+        "cacheReadInputTokens": 3953,
+        "cacheCreationInputTokens": 563422,
+        "webSearchRequests": 0,
+        "costUSD": 17.059433000000002,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 64000,
+        "thinkingTokens": 113141,
+        "canonicalModel": "claude-fable-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "usage": {
+      "input_tokens": 4,
+      "cache_creation_input_tokens": 563422,
+      "cache_read_input_tokens": 3953,
+      "output_tokens": 115740,
+      "output_tokens_details": {
+        "thinking_tokens": 113141
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 563422,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "not_available",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 51740,
+          "cache_read_input_tokens": 3953,
+          "cache_creation_input_tokens": 279773,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 279773
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard"
+    }
+  },
+  "auto_lp": {
+    "status": "cancelled",
+    "elapsedSeconds": 3024,
+    "reason": "Bounded the optional extra follow-up at 50 minutes without a report. The original Auto-LP audit completed, and the completed DEX follow-up reviewed both SDK adapters and verified the Auto-LP fixes."
+  }
+}

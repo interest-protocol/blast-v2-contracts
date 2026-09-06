@@ -1,0 +1,378 @@
+{
+  "observed_at_utc": "2026-09-05T21:00:43.653432+00:00",
+  "endpoint": "https://graphql.mainnet.sui.io/graphql",
+  "method": "Read-only package lineage, normalized public function signatures, and module bytecode disassembled with sui move disassemble. No transactions or dev-inspect fixtures executed.",
+  "lineage": {
+    "aftermath": {
+      "address": "0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29",
+      "version": 3,
+      "digest": "Gxia3EZSdQeCXGPkmhXRzXWfmV6bnw7oRvSXNxNLQ9T1",
+      "previousTransaction": {
+        "digest": "7qeJhR15a6jqo7xujZMMe5Bcm11vR7cSBiFHypW3VQ3J"
+      }
+    },
+    "aftermath_dao_fee": {
+      "address": "0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2",
+      "version": 2,
+      "digest": "AeSpba79KZ8Ge8nGk2Li2c2tkLy7eC93wTGhgjEVHVpZ",
+      "previousTransaction": {
+        "digest": "9eMeoFRPGDW1TUvbhtstVu2bAaWCCM7VCgbgkEkCUR4c"
+      }
+    },
+    "bluefin": {
+      "address": "0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c",
+      "version": 17,
+      "digest": "4tyboYqrPbZzN6V5Lh2TccW8j9nbH65mJeQFynoQGxut",
+      "previousTransaction": {
+        "digest": "CShZDVqJQrXm4SYiCgDe49kKnFzadwhFV5viqHLgRfaX"
+      }
+    },
+    "cetus": {
+      "address": "0x25ebb9a7c50eb17b3fa9c5a30fb8b5ad8f97caaf4928943acbcff7153dfee5e3",
+      "version": 14,
+      "digest": "FEdn2yRh28atu7tANr6gCWQ3gtDSD2EZmyEeryTuokoi",
+      "previousTransaction": {
+        "digest": "9feeN5tyxKLPPt1nRERtddp8xzxMVefNufkhxWAT1Jja"
+      }
+    },
+    "mmt": {
+      "address": "0xcf60a40f45d46fc1e828871a647c1e25a0915dec860d2662eb10fdb382c3c1d1",
+      "version": 5,
+      "digest": "3muHEfy71LYEbjYSuvJ1i8y2XcFJPzctyaTFCkatfEqd",
+      "previousTransaction": {
+        "digest": "9ugrBxCA9yLJ4qrRDFoMnHSLbk1bP3N1A7cZ4DKvos5L"
+      }
+    },
+    "turbos": {
+      "address": "0xa5a0c25c79e428eba04fb98b3fb2a34db45ab26d4c8faf0d7e39d66a63891e64",
+      "version": 22,
+      "digest": "FxTpAy2BbjFLWXF2Ddd4pmiBizrU27us4CwNHo9DtzVn",
+      "previousTransaction": {
+        "digest": "4iZ5nMJbgU6VtoDXg8TsuAEg6K6y4zovDgcMqxNn4diS"
+      }
+    }
+  },
+  "modules": {
+    "aftermath-deposit": {
+      "package": "0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29",
+      "version": 3,
+      "module": "deposit",
+      "sha256": "a9b023fea6cab42ccfa06b1c5edb93bf56b62f1d10487a7a576fc299d0981f75",
+      "functions": {
+        "deposit_2_coins": {
+          "visibility": "PUBLIC",
+          "entry": false,
+          "parameters": [
+            "&mut0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c::pool::Pool<T0>",
+            "&0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c::pool_registry::PoolRegistry",
+            "&0x2d9316f1f1a95f6d7c85a4e690ef7c359e6649773ef2c37ad7d9857adb6bef06::vault::ProtocolFeeVault",
+            "&mut0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a::treasury::Treasury",
+            "&mut0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f::insurance_fund::InsuranceFund",
+            "&0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf::referral_vault::ReferralVault",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T1>",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T2>",
+            "u128",
+            "u64",
+            "&mut0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+          ],
+          "returns": [
+            "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T0>"
+          ]
+        },
+        "deposit_2_coins_direct": {
+          "visibility": "PUBLIC",
+          "entry": false,
+          "parameters": [
+            "&mut0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c::pool::Pool<T0>",
+            "&0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c::pool_registry::PoolRegistry",
+            "&0x2d9316f1f1a95f6d7c85a4e690ef7c359e6649773ef2c37ad7d9857adb6bef06::vault::ProtocolFeeVault",
+            "&mut0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a::treasury::Treasury",
+            "&mut0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f::insurance_fund::InsuranceFund",
+            "&0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf::referral_vault::ReferralVault",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T1>",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T2>",
+            "u64",
+            "&mut0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+          ],
+          "returns": [
+            "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T0>"
+          ]
+        },
+        "all_coin_deposit_2_coins": {
+          "visibility": "PUBLIC",
+          "entry": false,
+          "parameters": [
+            "&mut0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c::pool::Pool<T0>",
+            "&0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c::pool_registry::PoolRegistry",
+            "&0x2d9316f1f1a95f6d7c85a4e690ef7c359e6649773ef2c37ad7d9857adb6bef06::vault::ProtocolFeeVault",
+            "&mut0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a::treasury::Treasury",
+            "&mut0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f::insurance_fund::InsuranceFund",
+            "&0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf::referral_vault::ReferralVault",
+            "&mut0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T1>",
+            "&mut0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T2>",
+            "&mut0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+          ],
+          "returns": [
+            "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T0>"
+          ]
+        }
+      }
+    },
+    "aftermath_dao_fee-deposit": {
+      "package": "0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2",
+      "version": 2,
+      "module": "deposit",
+      "sha256": "4e87e948cf92a7ae906ddce177598499284ee372a39988e6bed145d6708785aa",
+      "functions": {
+        "deposit_2_coins": {
+          "visibility": "PUBLIC",
+          "entry": false,
+          "parameters": [
+            "&mut0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d::pool::DaoFeePool<T0>",
+            "&0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d::version::Version",
+            "&0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c::pool_registry::PoolRegistry",
+            "&0x2d9316f1f1a95f6d7c85a4e690ef7c359e6649773ef2c37ad7d9857adb6bef06::vault::ProtocolFeeVault",
+            "&mut0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a::treasury::Treasury",
+            "&mut0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f::insurance_fund::InsuranceFund",
+            "&0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf::referral_vault::ReferralVault",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T1>",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T2>",
+            "u128",
+            "u64",
+            "&mut0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+          ],
+          "returns": [
+            "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T0>"
+          ]
+        },
+        "all_coin_deposit_2_coins": {
+          "visibility": "PUBLIC",
+          "entry": false,
+          "parameters": [
+            "&mut0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d::pool::DaoFeePool<T0>",
+            "&0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d::version::Version",
+            "&0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c::pool_registry::PoolRegistry",
+            "&0x2d9316f1f1a95f6d7c85a4e690ef7c359e6649773ef2c37ad7d9857adb6bef06::vault::ProtocolFeeVault",
+            "&mut0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a::treasury::Treasury",
+            "&mut0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f::insurance_fund::InsuranceFund",
+            "&0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf::referral_vault::ReferralVault",
+            "&mut0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T1>",
+            "&mut0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T2>",
+            "&mut0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+          ],
+          "returns": [
+            "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T0>"
+          ]
+        }
+      }
+    },
+    "aftermath_dao_fee-pool": {
+      "package": "0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2",
+      "version": 2,
+      "module": "pool",
+      "sha256": "029b3e6e0a11a249147cdd0b7b3ea78556d399e03228cae9424529a06cd58f3e",
+      "functions": {
+        "fee_bps": {
+          "visibility": "PUBLIC",
+          "entry": false,
+          "parameters": [
+            "&0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d::pool::DaoFeePool<T0>"
+          ],
+          "returns": [
+            "u16"
+          ]
+        },
+        "borrow_pool": {
+          "visibility": "FRIEND",
+          "entry": false,
+          "parameters": [
+            "&0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d::pool::DaoFeePool<T0>"
+          ],
+          "returns": [
+            "&0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c::pool::Pool<T0>"
+          ]
+        }
+      }
+    },
+    "bluefin-pool": {
+      "package": "0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c",
+      "version": 17,
+      "module": "pool",
+      "sha256": "d1436b0837eab8912797b91ed68755ad6e4228243f188a43c42ea040e844e97c",
+      "functions": {
+        "add_liquidity": {
+          "visibility": "PUBLIC",
+          "entry": false,
+          "parameters": [
+            "&0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock",
+            "&0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267::config::GlobalConfig",
+            "&mut0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267::pool::Pool<T0,T1>",
+            "&mut0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267::position::Position",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::balance::Balance<T0>",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::balance::Balance<T1>",
+            "u128"
+          ],
+          "returns": [
+            "u64",
+            "u64",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::balance::Balance<T0>",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::balance::Balance<T1>"
+          ]
+        },
+        "add_liquidity_with_fixed_amount": {
+          "visibility": "PUBLIC",
+          "entry": false,
+          "parameters": [
+            "&0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock",
+            "&0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267::config::GlobalConfig",
+            "&mut0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267::pool::Pool<T0,T1>",
+            "&mut0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267::position::Position",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::balance::Balance<T0>",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::balance::Balance<T1>",
+            "u64",
+            "bool"
+          ],
+          "returns": [
+            "u64",
+            "u64",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::balance::Balance<T0>",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::balance::Balance<T1>"
+          ]
+        }
+      }
+    },
+    "cetus-pool": {
+      "package": "0x25ebb9a7c50eb17b3fa9c5a30fb8b5ad8f97caaf4928943acbcff7153dfee5e3",
+      "version": 14,
+      "module": "pool",
+      "sha256": "aba0e2edaa3769e752a44acf314e8ac10850129e1cc7732ed93a6d4e2b9f35b5",
+      "functions": {
+        "add_liquidity": {
+          "visibility": "PUBLIC",
+          "entry": false,
+          "parameters": [
+            "&0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb::config::GlobalConfig",
+            "&mut0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb::pool::Pool<T0,T1>",
+            "&mut0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb::position::Position",
+            "u128",
+            "&0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock"
+          ],
+          "returns": [
+            "0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb::pool::AddLiquidityReceipt<T0,T1>"
+          ]
+        },
+        "add_liquidity_fix_coin": {
+          "visibility": "PUBLIC",
+          "entry": false,
+          "parameters": [
+            "&0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb::config::GlobalConfig",
+            "&mut0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb::pool::Pool<T0,T1>",
+            "&mut0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb::position::Position",
+            "u64",
+            "bool",
+            "&0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock"
+          ],
+          "returns": [
+            "0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb::pool::AddLiquidityReceipt<T0,T1>"
+          ]
+        },
+        "add_liquidity_pay_amount": {
+          "visibility": "PUBLIC",
+          "entry": false,
+          "parameters": [
+            "&0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb::pool::AddLiquidityReceipt<T0,T1>"
+          ],
+          "returns": [
+            "u64",
+            "u64"
+          ]
+        },
+        "repay_add_liquidity": {
+          "visibility": "PUBLIC",
+          "entry": false,
+          "parameters": [
+            "&0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb::config::GlobalConfig",
+            "&mut0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb::pool::Pool<T0,T1>",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::balance::Balance<T0>",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::balance::Balance<T1>",
+            "0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb::pool::AddLiquidityReceipt<T0,T1>"
+          ],
+          "returns": []
+        }
+      }
+    },
+    "mmt-liquidity": {
+      "package": "0xcf60a40f45d46fc1e828871a647c1e25a0915dec860d2662eb10fdb382c3c1d1",
+      "version": 5,
+      "module": "liquidity",
+      "sha256": "3c9b457444c43b8ebea2f1ba3daf9a370400d9ad3149654ea11123d3e9447bdb",
+      "functions": {
+        "add_liquidity": {
+          "visibility": "PUBLIC",
+          "entry": false,
+          "parameters": [
+            "&mut0x70285592c97965e811e0c6f98dccc3a9c2b4ad854b3594faab9597ada267b860::pool::Pool<T0,T1>",
+            "&mut0x70285592c97965e811e0c6f98dccc3a9c2b4ad854b3594faab9597ada267b860::position::Position",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T0>",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T1>",
+            "u64",
+            "u64",
+            "&0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock",
+            "&0x70285592c97965e811e0c6f98dccc3a9c2b4ad854b3594faab9597ada267b860::version::Version",
+            "&mut0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+          ],
+          "returns": [
+            "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T0>",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T1>"
+          ]
+        }
+      }
+    },
+    "turbos-position_manager": {
+      "package": "0xa5a0c25c79e428eba04fb98b3fb2a34db45ab26d4c8faf0d7e39d66a63891e64",
+      "version": 22,
+      "module": "position_manager",
+      "sha256": "badc1be2ee1ba12fb56eb8332f412a58ba279b80f85144862656ceea6c0fa5fe",
+      "functions": {
+        "increase_liquidity_with_return_": {
+          "visibility": "PUBLIC",
+          "entry": false,
+          "parameters": [
+            "&mut0x91bfbc386a41afcfd9b2533058d7e915a1d3829089cc268ff4333d54d6339ca1::pool::Pool<T0,T1,T2>",
+            "&mut0x91bfbc386a41afcfd9b2533058d7e915a1d3829089cc268ff4333d54d6339ca1::position_manager::Positions",
+            "vector<0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T0>>",
+            "vector<0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T1>>",
+            "&mut0x91bfbc386a41afcfd9b2533058d7e915a1d3829089cc268ff4333d54d6339ca1::position_nft::TurbosPositionNFT",
+            "u64",
+            "u64",
+            "u64",
+            "u64",
+            "u64",
+            "&0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock",
+            "&0x91bfbc386a41afcfd9b2533058d7e915a1d3829089cc268ff4333d54d6339ca1::pool::Versioned",
+            "&mut0x0000000000000000000000000000000000000000000000000000000000000002::tx_context::TxContext"
+          ],
+          "returns": [
+            "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T0>",
+            "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<T1>"
+          ]
+        }
+      }
+    },
+    "bluefin-clmm_math": {
+      "sha256": "8534491315414c5bf52cdd33f4d54f9ad61f038333a1090121642f4ec1332eeb"
+    },
+    "turbos-math_swap": {
+      "sha256": "098994511b97e2a4cf3f7586550d862ad3f253f8482c4bdc8b2d2d6b67f7dfc1"
+    }
+  },
+  "bytecode_excerpts": {
+    "aftermath_dao_fee-deposit::all_coin_deposit_2_coins": "public all_coin_deposit_2_coins<Ty0, Ty1, Ty2>(Arg0: &mut DaoFeePool<Ty0>, Arg1: &Version, Arg2: &PoolRegistry, Arg3: &ProtocolFeeVault, Arg4: &mut Treasury, Arg5: &mut InsuranceFund, Arg6: &ReferralVault, Arg7: &mut Coin<Ty1>, Arg8: &mut Coin<Ty2>, Arg9: &mut TxContext): Coin<Ty0> {\nB0:\n\t0: MoveLoc[1](Arg1: &Version)\n\t1: Call version::assert_interacting_with_most_up_to_date_package(&Version)\n\t2: CopyLoc[0](Arg0: &mut DaoFeePool<Ty0>)\n\t3: FreezeRef\n\t4: CopyLoc[7](Arg7: &mut Coin<Ty1>)\n\t5: CopyLoc[9](Arg9: &mut TxContext)\n\t6: Call 0pool::collect_dao_fee<Ty0, Ty1>(&DaoFeePool<Ty0>, &mut Coin<Ty1>, &mut TxContext)\n\t7: CopyLoc[0](Arg0: &mut DaoFeePool<Ty0>)\n\t8: FreezeRef\n\t9: CopyLoc[8](Arg8: &mut Coin<Ty2>)\n\t10: CopyLoc[9](Arg9: &mut TxContext)\n\t11: Call 0pool::collect_dao_fee<Ty0, Ty2>(&DaoFeePool<Ty0>, &mut Coin<Ty2>, &mut TxContext)\n\t12: MoveLoc[0](Arg0: &mut DaoFeePool<Ty0>)\n\t13: Call 0pool::borrow_mut_pool<Ty0>(&mut DaoFeePool<Ty0>): &mut Pool<Ty0>\n\t14: MoveLoc[2](Arg2: &PoolRegistry)\n\t15: MoveLoc[3](Arg3: &ProtocolFeeVault)\n\t16: MoveLoc[4](Arg4: &mut Treasury)\n\t17: MoveLoc[5](Arg5: &mut InsuranceFund)\n\t18: MoveLoc[6](Arg6: &ReferralVault)\n\t19: MoveLoc[7](Arg7: &mut Coin<Ty1>)\n\t20: MoveLoc[8](Arg8: &mut Coin<Ty2>)\n\t21: MoveLoc[9](Arg9: &mut TxContext)\n\t22: Call 1deposit::all_coin_deposit_2_coins<Ty0, Ty1, Ty2>(&mut Pool<Ty0>, &PoolRegistry, &ProtocolFeeVault, &mut Treasury, &mut InsuranceFund, &ReferralVault, &mut Coin<Ty1>, &mut Coin<Ty2>, &mut TxContext): Coin<Ty0>\n\t23: Ret\n}",
+    "aftermath_dao_fee-pool::calculate_dao_fee": "public(friend) calculate_dao_fee<Ty0, Ty1>(Arg0: &DaoFeePool<Ty0>, Arg1: &Coin<Ty1>): u64 {\nB0:\n\t0: MoveLoc[1](Arg1: &Coin<Ty1>)\n\t1: Call coin::value<Ty1>(&Coin<Ty1>): u64\n\t2: CastU128\n\t3: MoveLoc[0](Arg0: &DaoFeePool<Ty0>)\n\t4: ImmBorrowFieldGeneric[2](DaoFeePool.fee_bps: u16)\n\t5: ReadRef\n\t6: CastU128\n\t7: Mul\n\t8: LdConst[1](u128: 10000)\n\t9: Div\n\t10: CastU64\n\t11: Ret\n}",
+    "aftermath_dao_fee-pool::collect_dao_fee": "public(friend) collect_dao_fee<Ty0, Ty1>(Arg0: &DaoFeePool<Ty0>, Arg1: &mut Coin<Ty1>, Arg2: &mut TxContext) {\nL3:\tloc0: u64\nB0:\n\t0: CopyLoc[0](Arg0: &DaoFeePool<Ty0>)\n\t1: CopyLoc[1](Arg1: &mut Coin<Ty1>)\n\t2: FreezeRef\n\t3: Call calculate_dao_fee<Ty0, Ty1>(&DaoFeePool<Ty0>, &Coin<Ty1>): u64\n\t4: StLoc[3](loc0: u64)\n\t5: CopyLoc[3](loc0: u64)\n\t6: LdU64(0)\n\t7: Eq\n\t8: BrFalse(16)\nB1:\n\t9: MoveLoc[0](Arg0: &DaoFeePool<Ty0>)\n\t10: Pop\n\t11: MoveLoc[2](Arg2: &mut TxContext)\n\t12: Pop\n\t13: MoveLoc[1](Arg1: &mut Coin<Ty1>)\n\t14: Pop\n\t15: Ret\nB2:\n\t16: MoveLoc[1](Arg1: &mut Coin<Ty1>)\n\t17: MoveLoc[3](loc0: u64)\n\t18: MoveLoc[2](Arg2: &mut TxContext)\n\t19: Call coin::split<Ty1>(&mut Coin<Ty1>, u64, &mut TxContext): Coin<Ty1>\n\t20: MoveLoc[0](Arg0: &DaoFeePool<Ty0>)\n\t21: ImmBorrowFieldGeneric[3](DaoFeePool.fee_recipient: address)\n\t22: ReadRef\n\t23: Call transfer::public_transfer<Coin<Ty1>>(Coin<Ty1>, address)\n\t24: Ret\n}",
+    "aftermath-deposit::all_coin_deposit_2_coins": "public all_coin_deposit_2_coins<Ty0, Ty1, Ty2>(Arg0: &mut Pool<Ty0>, Arg1: &PoolRegistry, Arg2: &ProtocolFeeVault, Arg3: &mut Treasury, Arg4: &mut InsuranceFund, Arg5: &ReferralVault, Arg6: &mut Coin<Ty1>, Arg7: &mut Coin<Ty2>, Arg8: &mut TxContext): Coin<Ty0> {\nL9:\tloc0: vector<u64>\nL10:\tloc1: vector<u64>\nL11:\tloc2: Coin<Ty0>\nL12:\tloc3: u64\nL13:\tloc4: vector<u64>\nL14:\tloc5: address\nL15:\tloc6: vector<String>\nB0:\n\t0: MoveLoc[1](Arg1: &PoolRegistry)\n\t1: Call pool_registry::assert_correct_package(&PoolRegistry)\n\t2: CopyLoc[0](Arg0: &mut Pool<Ty0>)\n\t3: FreezeRef\n\t4: Call pool::size<Ty0>(&Pool<Ty0>): u64\n\t5: LdConst[1](u64: 2)\n\t6: Call assert_pool_size_is(u64, u64)\n\t7: CopyLoc[6](Arg6: &mut Coin<Ty1>)\n\t8: FreezeRef\n\t9: Call coin::value<Ty1>(&Coin<Ty1>): u64\n\t10: Call assert_non_zero(u64)\n\t11: CopyLoc[7](Arg7: &mut Coin<Ty2>)\n\t12: FreezeRef\n\t13: Call coin::value<Ty2>(&Coin<Ty2>): u64\n\t14: Call assert_non_zero(u64)\n\t15: CopyLoc[8](Arg8: &mut TxContext)\n\t16: FreezeRef\n\t17: Call tx_context::sender(&TxContext): address\n\t18: StLoc[14](loc5: address)\n\t19: Call keys::type_to_string<Ty1>(): String\n\t20: Call keys::type_to_string<Ty2>(): String\n\t21: VecPack(40, 2)\n\t22: StLoc[15](loc6: vector<String>)\n\t23: ImmBorrowLoc[15](loc6: vector<String>)\n\t24: Call assert_no_duplicates<String>(&vector<String>)\n\t25: MoveLoc[2](Arg2: &ProtocolFeeVault)\n\t26: MoveLoc[3](Arg3: &mut Treasury)\n\t27: MoveLoc[4](Arg4: &mut InsuranceFund)\n\t28: CopyLoc[5](Arg5: &ReferralVault)\n\t29: CopyLoc[6](Arg6: &mut Coin<Ty1>)\n\t30: CopyLoc[7](Arg7: &mut Coin<Ty2>)\n\t31: CopyLoc[14](loc5: address)\n\t32: CopyLoc[8](Arg8: &mut TxContext)\n\t33: Call protocol_fees::collect_fees_2_coins<Ty1, Ty2>(&ProtocolFeeVault, &mut Treasury, &mut InsuranceFund, &ReferralVault, &mut Coin<Ty1>, &mut Coin<Ty2>, address, &mut TxContext)\n\t34: CopyLoc[6](Arg6: &mut Coin<Ty1>)\n\t35: FreezeRef\n\t36: Call coin::value<Ty1>(&Coin<Ty1>): u64\n\t37: CopyLoc[7](Arg7: &mut Coin<Ty2>)\n\t38: FreezeRef\n\t39: Call coin::value<Ty2>(&Coin<Ty2>): u64\n\t40: VecPack(27, 2)\n\t41: StLoc[10](loc1: vector<u64>)\n\t42: CopyLoc[0](Arg0: &mut Pool<Ty0>)\n\t43: FreezeRef\n\t44: ImmBorrowLoc[15](loc6: vector<String>)\n\t45: ImmBorrowLoc[10](loc1: vector<u64>)\n\t46: Call math::calc_all_coin_deposit<Ty0>(&Pool<Ty0>, &vector<String>, &vector<u64>): u64 * vector<u64>\n\t47: StLoc[9](loc0: vector<u64>)\n\t48: StLoc[12](loc3: u64)\n\t49: CopyLoc[0](Arg0: &mut Pool<Ty0>)\n\t50: MoveLoc[6](Arg6: &mut Coin<Ty1>)\n\t51: ImmBorrowLoc[9](loc0: vector<u64>)\n\t52: LdU64(0)\n\t53: VecImmBorrow(27)\n\t54: ReadRef\n\t55: CopyLoc[8](Arg8: &mut TxContext)\n\t56: Call deposit<Ty0, Ty1>(&mut Pool<Ty0>, &mut Coin<Ty1>, u64, &mut TxContext)\n\t57: CopyLoc[0](Arg0: &mut Pool<Ty0>)\n\t58: MoveLoc[7](Arg7: &mut Coin<Ty2>)\n\t59: ImmBorrowLoc[9](loc0: vector<u64>)\n\t60: LdU64(1)\n\t61: VecImmBorrow(27)\n\t62: ReadRef\n\t63: CopyLoc[8](Arg8: &mut TxContext)\n\t64: Call deposit<Ty0, Ty2>(&mut Pool<Ty0>, &mut Coin<Ty2>, u64, &mut TxContext)\n\t65: CopyLoc[0](Arg0: &mut Pool<Ty0>)\n\t66: CopyLoc[12](loc3: u64)\n\t67: MoveLoc[8](Arg8: &mut TxContext)\n\t68: Call pool::mint_lp_coins<Ty0>(&mut Pool<Ty0>, u64, &mut TxContext): Coin<Ty0>\n\t69: StLoc[11](loc2: Coin<Ty0>)\n\t70: CopyLoc[0](Arg0: &mut Pool<Ty0>)\n\t71: FreezeRef\n\t72: Call pool::balances<Ty0>(&Pool<Ty0>): vector<u64>\n\t73: StLoc[13](loc4: vector<u64>)\n\t74: MoveLoc[0](Arg0: &mut Pool<Ty0>)\n\t75: FreezeRef\n\t76: CopyLoc[14](loc5: address)\n\t77: MoveLoc[5](Arg5: &ReferralVault)\n\t78: MoveLoc[14](loc5: address)\n\t79: Call referral_vault::referrer_for(&ReferralVault, address): Option<address>\n\t80: MoveLoc[15](loc6: vector<String>)\n\t81: MoveLoc[9](loc0: vector<u64>)\n\t82: MoveLoc[13](loc4: vector<u64>)\n\t83: MoveLoc[12](loc3: u64)\n\t84: Call events::emit_deposit_event<Ty0>(&Pool<Ty0>, address, Option<address>, vector<String>, vector<u64>, vector<u64>, u64)\n\t85: MoveLoc[11](loc2: Coin<Ty0>)\n\t86: Ret\n}",
+    "bluefin-clmm_math::fee_rate_denominator": "public fee_rate_denominator(): u64 {\nB0:\n\t0: LdConst[5](u64: 1000..)\n\t1: Ret\n}",
+    "bluefin-clmm_math::constant_5": "5 => u64: 1000000",
+    "turbos-math_swap::compute_swap_fee": "B3:\n\t24: CopyLoc[3](Arg3: u128)\n\t25: LdU32(1000000)\n\t26: CopyLoc[5](Arg5: u32)\n\t27: Sub\n\t28: CastU128\n\t29: LdU128(1000000)\n\t30: Call full_math_u128::mul_div_floor(u128, u128, u128): u128\n\t31: StLoc[12](loc6: u128)\nB4:\n\t32: CopyLoc[12](loc6: u128)\n\t33: CopyLoc[13](loc7: u128)\n\t34: Ge"
+  }
+}

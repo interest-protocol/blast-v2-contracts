@@ -1241,8 +1241,8 @@ if [[ ! -f sources/launch.move ]] \
   || ! rg -U -q \
     'public struct Launch<phantom Meme, phantom Quote> has key \{\s*id: UID,\s*lifecycle: Lifecycle,\s*sell_burn_bps: Bps,\s*virtual_quote: u64,\s*migration_quote_target: u64,\s*quote_fee_bps: Bps,\s*meme_fee_bps: Bps,\s*quote_migration_fee_bps: Bps,\s*protocol_meme_graduation_fee_bps: Bps,\s*meme_liquidity_provision_bps: Bps,\s*migration_witness: TypeName,\s*meme_reserve: Balance<Meme>,\s*real_quote_reserve: Balance<Quote>,\s*pending_burn: Balance<Meme>,\s*protocol_meme_graduation_fee: Balance<Meme>,\s*meme_liquidity_provision: Balance<Meme>,\s*fee_ledger: FeeLedger<Meme, Quote>,\s*metadata_cap: Option<MetadataCap<Meme>>,\s*creator_authority: Option<CreatorAuthority<Meme>>,\s*\}' \
     sources/launch.move \
-  || [[ "$(rg -c '^public fun ' <<<"$launch_production")" != 9 ]] \
-  || [[ "$(rg -c '^public fun (new|share|claim_creator_cap|buy|sell|claim_creator_fees|claim_protocol_fees|migrate|redeem_migration)(<|\()' <<<"$launch_production")" != 9 ]] \
+  || [[ "$(rg -c '^public fun ' <<<"$launch_production")" != 10 ]] \
+  || [[ "$(rg -c '^public fun (new|share|claim_creator_cap|buy|sell|claim_creator_fees|claim_protocol_fees|migrate|assert_migrated|redeem_migration)(<|\()' <<<"$launch_production")" != 10 ]] \
   || ! rg -U -q \
     'public fun new<Meme, Quote, MigrationWitness: drop>\(\s*ticket: LaunchTicket<Meme>,\s*package_version: &PackageVersion,\s*config: &LaunchConfig,\s*ctx: &mut TxContext,\s*\): Launch<Meme, Quote>' \
     sources/launch.move \
@@ -1254,6 +1254,9 @@ if [[ ! -f sources/launch.move ]] \
     sources/launch.move \
   || ! rg -U -q \
     'public fun migrate<Meme, Quote, MigrationWitness: drop>\(\s*self: &mut Launch<Meme, Quote>,\s*package_version: &PackageVersion,\s*currency: &mut Currency<Meme>,\s*ctx: &mut TxContext,\s*\): MigrationPayload<Meme, Quote, MigrationWitness>' \
+    sources/launch.move \
+  || ! rg -U -q \
+    'public fun assert_migrated<Meme, Quote>\(self: &Launch<Meme, Quote>\) \{\s*assert!\(\s*self\.lifecycle == Lifecycle::Migrated,\s*blast_fun::errors::invalid_launch_lifecycle!\(\),\s*\);\s*\}' \
     sources/launch.move \
   || ! rg -U -q \
     'public fun redeem_migration<Meme, Quote, MigrationWitness: drop>\(\s*self: MigrationPayload<Meme, Quote, MigrationWitness>,\s*_: MigrationWitness,\s*\): \(Balance<Meme>, Balance<Quote>\)' \

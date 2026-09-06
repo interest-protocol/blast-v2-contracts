@@ -1,0 +1,13 @@
+[package]
+name = "blast_fun_auto_lp"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+blast_fun = { local = "../launchpad" }
+blast_fun_dex = { local = "../dex" }
+blast_fun_migrators = { local = "../migrators" }
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2", override = true }
+
+[addresses]
+blast_fun_auto_lp = "0x0"
