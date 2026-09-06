@@ -55,7 +55,10 @@ input. It irreversibly moves Active to Unwinding. Permissionless
 prices and the immutable emergency tolerance. A frozen market instead uses only
 the pinned direct settlement operation and authenticated settlement prices.
 `operations::finalize_shutdown` requires exact flat/no-order/settled-funding
-state, no negative or fractional collateral, and complete actual cash recovery.
+state, no negative collateral, and complete whole-atom cash recovery. The exact
+nonnegative allocated raw remainder below one collateral atom remains in the
+final checkpoint and `ShutdownFinalized`; callers cannot choose a tolerance or
+write-off, and free collateral must be zero.
 It seals Settled once; no terminal path reopens leverage.
 
 `vault::redeem_shutdown` burns native eligible shares and returns local

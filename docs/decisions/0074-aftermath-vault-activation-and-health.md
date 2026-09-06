@@ -452,7 +452,7 @@ observation and reason `2` when that diagnostic clears. It contains the Vault,
 reason and observed checkpoint, not a constant lifecycle-change flag. The
 diagnostic is distinct from the accepted economic checkpoint. Together with
 issuance, activation, active economic, fee-setting, order-limit, risk-module
-rotation and explicit reduce-only events, the stream reconstructs native
+rotation and terminal lifecycle events, the stream reconstructs native
 supply, locked seed/funder, reserve, separate admin cash, settings, bindings,
 lifecycle, selected risk module and both checkpoint/reporting identities.
 
@@ -478,11 +478,67 @@ exercise the exact Blast-owned classification, rounding, real Vault/Series
 post-capture transition, event, and reducer paths while source gates pin the
 production call and mutation order. Replay tests drive issuance, activation,
 funding/health, active economics, fee settings, order-limit, risk-rotation and
-explicit-reduce-only events through real package mutation seams, including two
+terminal lifecycle events through real package mutation seams, including two
 product types, and compare reconstructed canonical facts to the resulting
 Vaults. An authorized combined verifier must still execute the complete
 permissionless path against controlled live objects and compare the resulting
 checkpoint, reserve, lifecycle, and events.
+
+### Terminal finality and event ABI amendment (2026-09-06)
+
+This amendment defines the current pre-publication contract with ADR 0073's
+four states and shutdown-only authority. It changes the source event ABI; it is
+not a claim of compatibility with a previously published payload or permission
+to publish, upgrade, or execute a live venue transaction.
+
+Finalization captures the bound account at full precision. Raw base and entry
+quote, pending ask/bid base and order count must be exactly zero, and both
+position funding snapshots must equal the captured market rates. Named IFixed
+`is_neg` and `abs` reject any negative allocated collateral before conversion.
+For the admitted six-decimal collateral, one atomic coin unit is `10^12` raw
+collateral-token IFixed units. Recoverable cash is free collateral plus the
+whole-atom floor of the nonnegative allocated magnitude, with a checked `u64`
+sum. A fractional positive remainder does not block this irreversible exit.
+
+The returned native coin must equal that entire recoverable amount. The final
+checkpoint must equal the captured pre-withdrawal checkpoint in every field
+except free collateral, which must be zero, and allocated collateral, which
+must equal the exact original magnitude modulo `10^12`. Thus the remainder is
+nonnegative and strictly below one atom; neither a liability, one recoverable
+atom, an erased raw unit, nor an unrelated venue mutation can be accepted.
+This raw residual remains in the venue checkpoint and is explicitly reported;
+it is not local backing, a fee, a synthetic coin, or a caller-selected loss.
+An unstorable package-constructed `TerminalWithdrawal` binds the actual returned
+coin to that verified final checkpoint until Vault finalization consumes it.
+
+Completed terminal payloads share the existing event envelope and stable Vault
+identity. Their primitives supplement native transaction effects and ordered
+events; there is no event-only replay guard or extra on-chain claim ledger:
+
+- `ShutdownBegun`: Vault and administrator-declared shutdown reason, emitted
+  after Active becomes Unwinding without a venue/oracle call.
+- `UnwindProgress`: Vault, before/optional isolated-funding/after checkpoints,
+  market-order count and optional actual filled quote. Direct frozen settlement
+  has no invented order, quote fill, or funding attribution.
+- `ShutdownFinalized`: Vault, actual recovered atomic cash, eligible native
+  supply, optional recorded seed-funder payment beneficiary, final checkpoint,
+  and `unrecoverable_collateral_raw: u256`. The final primitive deliberately
+  reports the exact bounded raw residual also preserved in the checkpoint for
+  resynchronization and loss visibility. It is never counted as claim cash.
+- `ShutdownRedeemed`: Vault, burned native shares, paid and remaining atomic
+  cash, and remaining eligible native supply. Claims charge no fee; the last
+  eligible holder receives local rounding dust. Zero eligibility at finalization
+  instead transfers all recovered holder cash once to the recorded funder.
+
+Successful finalization clears a pending unresolved diagnostic through the
+existing reconciled event. It preserves the distinction between the accepted
+economic checkpoint and deduplicated diagnostic identity. Long and short local
+reducers include the raw residual, terminal cash, native supply, locked seed,
+recorded funder, and reconciliation. Local tests substitute only unavailable
+IFixed decoding outputs and venue facts; named ports still abort locally, so
+they do not prove deployed deallocation, settlement, or transaction effects.
+Publication, live ABI, funded submissions and whole-feature rehearsal remain
+separately authorized evidence under A-003.
 
 ## Consequences
 

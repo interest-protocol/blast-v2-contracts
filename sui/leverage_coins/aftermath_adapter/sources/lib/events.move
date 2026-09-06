@@ -35,6 +35,8 @@ public struct ShutdownFinalized<phantom Product> has copy, drop {
     eligible_supply: u64,
     seed_funder_payment: Option<address>,
     checkpoint: Checkpoint,
+    // Nonnegative collateral-token IFixed, strictly below 10^12 raw units (one USDC atom).
+    unrecoverable_collateral_raw: u256,
 }
 
 /// Completed native share burn and fee-free local collateral payout.
@@ -425,9 +427,10 @@ public(package) fun max_order_notional_updated<Product>(
 
 public(package) fun shutdown_finalized<Product>(
     vault_id: ID, recovered_cash: u64, eligible_supply: u64, seed_funder_payment: Option<address>, checkpoint: Checkpoint,
+    unrecoverable_collateral_raw: u256,
 ) {
     blast_leverage_aftermath::events_wrapper::emit_event(ShutdownFinalized<Product> {
-        vault_id, recovered_cash, eligible_supply, seed_funder_payment, checkpoint,
+        vault_id, recovered_cash, eligible_supply, seed_funder_payment, checkpoint, unrecoverable_collateral_raw,
     });
 }
 
@@ -462,8 +465,8 @@ public fun unwind_progress_fields<Product>(self: &UnwindProgress<Product>): (ID,
 }
 
 #[test_only]
-public fun shutdown_finalized_fields<Product>(self: &ShutdownFinalized<Product>): (ID, u64, u64, Option<address>, Checkpoint) {
-    (self.vault_id, self.recovered_cash, self.eligible_supply, self.seed_funder_payment, self.checkpoint)
+public fun shutdown_finalized_fields<Product>(self: &ShutdownFinalized<Product>): (ID, u64, u64, Option<address>, Checkpoint, u256) {
+    (self.vault_id, self.recovered_cash, self.eligible_supply, self.seed_funder_payment, self.checkpoint, self.unrecoverable_collateral_raw)
 }
 
 #[test_only]

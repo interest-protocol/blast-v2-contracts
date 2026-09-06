@@ -972,8 +972,7 @@ fun complete_unwind<Product>(
 fun complete_finalization<Product, Collateral>(
     vault: &mut Vault<Product>, recovered: Coin<Collateral>, before: venue_account::Checkpoint, after: venue_account::Checkpoint,
 ) {
-    venue_account::assert_terminal_withdrawal(&before, &after, recovered.value());
-    vault.complete_shutdown(recovered, after);
+    vault.complete_shutdown(venue_account::terminal_withdrawal(&before, after, recovered));
 }
 
 /// The venue's direct frozen settlement is not a market order or a stale-price fallback.

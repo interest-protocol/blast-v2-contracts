@@ -80,6 +80,7 @@ public struct ReplayState has drop {
     seed_funder: address,
     fees: vector<u64>,
     terminal_cash: u64,
+    unrecoverable_collateral_raw: u256,
 }
 
 // === Tests ===
@@ -130,7 +131,7 @@ fun expired_terminal_claim_cannot_burn_shares_or_pay_cash() {
     let shares = vault.mint_eligible_shares_for_testing(5, fixture.ctx!());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_leverage_series_one::lifecycle::emergency_reason());
-    vault.complete_shutdown(sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()), terminal_checkpoint());
+    vault.complete_shutdown(terminal_withdrawal(sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!())));
     let mut clock = sui::clock::create_for_testing(fixture.ctx!());
     clock.set_for_testing(1);
     destroy(vault.redeem_shutdown<Product, Collateral>(&fixture.protocol, shares, 0, 0, &clock, fixture.ctx!()));
@@ -190,7 +191,7 @@ fun short_terminal_claims_allow_changed_order_and_split_merge_without_fees() {
     shares.join(split);
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_leverage_series_one::lifecycle::emergency_reason());
-    vault.complete_shutdown(sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()), terminal_checkpoint());
+    vault.complete_shutdown(terminal_withdrawal(sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!())));
     let clock = sui::clock::create_for_testing(fixture.ctx!());
     let first_out = vault.redeem_shutdown<OtherProduct, Collateral>(&fixture.protocol, first, 7, 0, &clock, fixture.ctx!());
     let last_out = vault.redeem_shutdown<OtherProduct, Collateral>(&fixture.protocol, shares, 6, 0, &clock, fixture.ctx!());
@@ -228,7 +229,7 @@ fun terminal_zero_cash_burns_native_shares_and_returns_composable_zero_coin() {
     shares.join(split);
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_leverage_series_one::lifecycle::emergency_reason());
-    vault.complete_shutdown(sui::coin::zero<Collateral>(fixture.ctx!()), terminal_checkpoint());
+    vault.complete_shutdown(terminal_withdrawal(sui::coin::zero<Collateral>(fixture.ctx!())));
     let clock = sui::clock::create_for_testing(fixture.ctx!());
     let output = vault.redeem_shutdown<Product, Collateral>(&fixture.protocol, shares, 0, 0, &clock, fixture.ctx!());
     assert_eq!(output.value(), 0);
@@ -258,8 +259,8 @@ fun finalization_cannot_recover_or_pay_the_seed_funder_twice() {
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_leverage_series_one::lifecycle::emergency_reason());
-    vault.complete_shutdown(sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()), terminal_checkpoint());
-    vault.complete_shutdown(sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()), terminal_checkpoint());
+    vault.complete_shutdown(terminal_withdrawal(sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!())));
+    vault.complete_shutdown(terminal_withdrawal(sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!())));
     destroy(vault);
     fixture.end();
 }
@@ -333,7 +334,7 @@ fun terminal_claims_exclude_locked_seed_burn_native_shares_and_give_last_claiman
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_leverage_series_one::lifecycle::emergency_reason());
     let recovered = sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!());
-    vault.complete_shutdown(recovered, terminal_checkpoint());
+    vault.complete_shutdown(terminal_withdrawal(recovered));
     let clock = sui::clock::create_for_testing(fixture.ctx!());
     let first_out = vault.redeem_shutdown<Product, Collateral>(&fixture.protocol, first, 5, 0, &clock, fixture.ctx!());
     assert_eq!(first_out.value(), 5);
@@ -343,7 +344,8 @@ fun terminal_claims_exclude_locked_seed_burn_native_shares_and_give_last_claiman
     assert_eq!(vault.maintenance_reserve_for_testing(), 0);
     assert_eq!(vault.admin_cash_balance<Product, Collateral>(), 7);
     let finalization = events::collect_one<events::ShutdownFinalized<Product>>(0);
-    let (_, recovered, eligible, fallback, checkpoint) = finalization.shutdown_finalized_fields();
+    let (_, recovered, eligible, fallback, checkpoint, remainder) = finalization.shutdown_finalized_fields();
+    assert_eq!(remainder, 0);
     assert_eq!(recovered, 13);
     assert_eq!(eligible, 5);
     assert!(fallback.is_none());
@@ -369,9 +371,10 @@ fun zero_eligible_supply_sends_all_terminal_cash_to_recorded_funder_not_finalize
     vault.begin_shutdown(&fixture.protocol, &witness, blast_leverage_series_one::lifecycle::observed_venue_change_reason());
     fixture.next_tx!(@0xBEEF, |fixture| {
         let recovered = sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!());
-        vault.complete_shutdown(recovered, terminal_checkpoint());
+        vault.complete_shutdown(terminal_withdrawal(recovered));
         assert_eq!(vault.maintenance_reserve_for_testing(), 0);
-        let (_, cash, eligible, beneficiary, _) = events::collect_one<events::ShutdownFinalized<Product>>(0).shutdown_finalized_fields();
+        let (_, cash, eligible, beneficiary, _, remainder) = events::collect_one<events::ShutdownFinalized<Product>>(0).shutdown_finalized_fields();
+        assert_eq!(remainder, 0);
         assert_eq!(vector[cash, eligible], vector[13, 0]);
         assert_eq!(beneficiary, option::some(ADMIN));
         destroy(vault);
@@ -408,6 +411,24 @@ fun finalization_rejects_a_short_actual_coin_even_when_the_venue_is_empty() {
         0, 0, 0, 0, false, 1, 1, 1);
     let recovered = sui::coin::mint_for_testing<Collateral>(12, fixture.ctx!());
     operations::complete_finalization_for_testing(&mut vault, recovered, before, terminal_checkpoint());
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = 54, location = blast_leverage_aftermath::venue_account)]
+fun finalization_rejects_a_short_actual_coin_with_exact_sub_atomic_remainder() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    vault.begin_shutdown(&fixture.protocol, &witness, blast_leverage_series_one::lifecycle::emergency_reason());
+    let before = venue_account::new_checkpoint(12, 1_000_000_000_001, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+        0, 0, 0, 0, false, 1, 1, 1);
+    let after = venue_account::new_checkpoint(0, 1, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+        0, 0, 0, 0, false, 1, 1, 1);
+    let recovered = sui::coin::mint_for_testing<Collateral>(12, fixture.ctx!());
+    vault.complete_shutdown(venue_account::terminal_withdrawal_for_testing(
+        &before, after, recovered, false, 1_000_000_000_001));
     destroy(vault);
     fixture.end();
 }
@@ -2040,6 +2061,12 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
 
 // === Test Helpers ===
 
+fun terminal_withdrawal(recovered: sui::coin::Coin<Collateral>): venue_account::TerminalWithdrawal<Collateral> {
+    let before = venue_account::new_checkpoint(recovered.value(), 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+        0, 0, 0, 0, false, 1, 1, 1);
+    venue_account::terminal_withdrawal(&before, terminal_checkpoint(), recovered)
+}
+
 fun terminal_checkpoint(): venue_account::Checkpoint {
     venue_account::new_checkpoint(0, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, false, 1, 1, 1)
@@ -2467,7 +2494,7 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: policy::PositionSid
     let shutdown = events::collect_one<events::ShutdownBegun<Tag>>(0);
     assert_eq!(shutdown.shutdown_reason(), blast_leverage_series_one::lifecycle::observed_venue_change_reason());
     replay_shutdown(&mut replay, shutdown);
-    let flat = venue_account::new_checkpoint(13, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    let flat = venue_account::new_checkpoint(12, 1_000_000_000_001, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, true, 1, 1, 1);
     operations::complete_unwind_for_testing(&mut vault, dirty, option::none(), flat, 0, option::none());
     let (_, before, _, after, orders, quote) = events::collect_one<events::UnwindProgress<Tag>>(0).unwind_progress_fields();
@@ -2475,19 +2502,23 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: policy::PositionSid
     assert_eq!(orders, 0);
     assert!(quote.is_none());
     replay.checkpoint = option::some(after);
-    let empty = venue_account::new_checkpoint(0, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    let final_checkpoint = venue_account::new_checkpoint(0, 1, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, true, 1, 1, 1);
-    operations::complete_finalization_for_testing(&mut vault,
-        sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()), flat, empty);
+    let withdrawal = venue_account::terminal_withdrawal_for_testing(&flat, final_checkpoint,
+        sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()), false, 1_000_000_000_001);
+    vault.complete_shutdown(withdrawal);
     replay_health(&mut replay, events::collect<events::HealthSynchronized<Tag>>()[1]);
-    let (id, cash, eligible, fallback, checkpoint) = events::collect_one<events::ShutdownFinalized<Tag>>(0).shutdown_finalized_fields();
+    let (id, cash, eligible, fallback, checkpoint, remainder) = events::collect_one<events::ShutdownFinalized<Tag>>(0).shutdown_finalized_fields();
     assert_eq!(id, replay.vault_id);
     assert_eq!(eligible, replay.supply - replay.locked_shares);
     assert!(fallback.is_none());
     replay.lifecycle = 3;
     replay.maintenance_reserve = 0;
     replay.terminal_cash = cash;
+    replay.unrecoverable_collateral_raw = remainder;
     replay.checkpoint = option::some(checkpoint);
+    assert_eq!(replay.unrecoverable_collateral_raw, 1);
+    assert_eq!(*vault.venue_checkpoint(), final_checkpoint);
     assert_eq!(replay.terminal_cash, vault.terminal_cash_for_testing<Tag, Collateral>());
     let first = shares.split(2_000_000, fixture.ctx!());
     let clock = sui::clock::create_for_testing(fixture.ctx!());
@@ -2713,6 +2744,7 @@ fun replay_issued<Tag>(event: events::VaultIssued<Tag>): ReplayState {
         seed_funder: @0x0,
         fees: vector[mint, redeem, admin],
         terminal_cash: 0,
+        unrecoverable_collateral_raw: 0,
     }
 }
 

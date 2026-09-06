@@ -37,11 +37,14 @@ finalization. Unsupported or paused venue actions remain fail-closed.
 ## Cash, claims and replay
 
 Finalization requires exact zero raw base and entry quote; zero ask/bid/order
-count; both funding snapshots current; nonnegative integral recoverable
-collateral; an exact returned native coin; and a post-withdrawal checkpoint
-with both collateral locations zero and all other fields unchanged. Named
-IFixed helpers decode signed collateral before atom conversion. There is no
-write-off of fractional units and no synthetic recovered balance.
+count; both funding snapshots current; nonnegative allocated collateral; and an
+exact returned native coin equal to free cash plus the whole-atom floor of the
+allocation. Named IFixed helpers decode signed collateral before conversion.
+The final checkpoint requires zero free cash and the exact allocated raw
+remainder modulo `10^12`, strictly below one six-decimal collateral atom, with
+all other fields unchanged. The state-derived remainder stays at the venue and
+is reported explicitly; no caller tolerance, liability forgiveness, erased raw
+units or synthetic recovered balance is accepted.
 
 Actual recovered holder cash occupies a private typed native Balance field,
 separate from earned admin cash. Finalization zeros the buffer book entry.
@@ -59,7 +62,7 @@ venue access, reactivation, cross-product payment or transfer restriction exists
 Completed events are ShutdownBegun (declared reason), UnwindProgress (actual
 before/funding/after checkpoints and actual market-fill quote when available),
 ShutdownFinalized (actual recovered cash, eligible supply, optional seed-funder
-payment and final checkpoint), and ShutdownRedeemed (burn, payout, remaining
+payment, final checkpoint and raw unrecoverable collateral remainder), and ShutdownRedeemed (burn, payout, remaining
 cash and eligible supply). Existing unresolved/reconciled diagnostics remain
 deduplicated; successful finalization reconciles a pending diagnostic. Local
 reducers consume same-transaction events and compare native supply, cash,

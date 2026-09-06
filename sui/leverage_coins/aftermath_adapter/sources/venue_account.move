@@ -50,6 +50,16 @@ public struct Checkpoint has copy, drop, store {
     market_maintenance_margin_ratio: u256,
 }
 
+// This unstorable, same-call value preserves the returned Coin for the seed-funder endpoint.
+// Pinned ESL99003 otherwise suggests Balance, which would require a new Coin/TxContext there.
+#[allow(lint(coin_field))]
+/// Actual recovered coin bound to its exact final venue checkpoint.
+/// Package-only construction proves finality; Vault custody must consume it.
+public struct TerminalWithdrawal<phantom Collateral> {
+    recovered: Coin<Collateral>,
+    checkpoint: Checkpoint,
+}
+
 /// Store-only custody for the sole admin authority of one bound Aftermath account.
 public struct VenueAccount has store {
     admin_cap: Option<AuthorityCap<ACCOUNT, ADMIN>>,
@@ -66,24 +76,32 @@ public struct VenueAccount has store {
 // === Package Functions ===
 
 /// Returns every recoverable atomic USDC unit only after exact venue finality.
-/// Named IFixed decoding excludes liabilities before exact atom conversion.
+/// Named IFixed decoding excludes liabilities before whole-atom floor conversion.
 public(package) fun recoverable_terminal_cash(self: &Checkpoint): u64 {
-    let (negative, magnitude) = if (self.allocated_collateral == 0) {
-        (false, 0)
-    } else {
-        (ifixed::is_neg(self.allocated_collateral), ifixed::abs(self.allocated_collateral))
-    };
+    let (negative, magnitude) = self.allocated_collateral_sign_and_magnitude();
     recoverable_cash_from_parts(self, negative, magnitude)
 }
 
 /// Complete recovery changes only the two collateral locations, by the actual returned coin.
 public(package) fun assert_terminal_withdrawal(before: &Checkpoint, after: &Checkpoint, amount: u64) {
-    assert!(before.recoverable_terminal_cash() == amount,
-        blast_leverage_aftermath::errors::terminal_venue_unsettled!());
-    let mut expected = *before;
-    expected.free_collateral = 0;
-    expected.allocated_collateral = 0;
-    assert!(&expected == after, blast_leverage_aftermath::errors::terminal_venue_unsettled!());
+    let (negative, magnitude) = before.allocated_collateral_sign_and_magnitude();
+    assert_terminal_withdrawal_from_parts(before, after, amount, negative, magnitude);
+}
+
+/// Binds native cash to finality before the Vault can seal terminal custody.
+public(package) fun terminal_withdrawal<Collateral>(
+    before: &Checkpoint, after: Checkpoint, recovered: Coin<Collateral>,
+): TerminalWithdrawal<Collateral> {
+    assert_terminal_withdrawal(before, &after, recovered.value());
+    TerminalWithdrawal { recovered, checkpoint: after }
+}
+
+/// Consumes the verified withdrawal, including the raw sub-atomic remainder for replay.
+public(package) fun into_recovered_cash<Collateral>(
+    self: TerminalWithdrawal<Collateral>,
+): (Coin<Collateral>, Checkpoint, u256) {
+    let TerminalWithdrawal { recovered, checkpoint } = self;
+    (recovered, checkpoint, checkpoint.allocated_collateral)
 }
 
 /// A venue-enabled frozen settlement can realize cash, but must finish exactly flat and order-free.
@@ -504,6 +522,26 @@ public(package) fun replace_checkpoint(
 
 // === Private Functions ===
 
+fun allocated_collateral_sign_and_magnitude(self: &Checkpoint): (bool, u256) {
+    if (self.allocated_collateral == 0) {
+        (false, 0)
+    } else {
+        (ifixed::is_neg(self.allocated_collateral), ifixed::abs(self.allocated_collateral))
+    }
+}
+
+fun assert_terminal_withdrawal_from_parts(
+    before: &Checkpoint, after: &Checkpoint, amount: u64, negative: bool, magnitude: u256,
+) {
+    assert!(recoverable_cash_from_parts(before, negative, magnitude) == amount,
+        blast_leverage_aftermath::errors::terminal_venue_unsettled!());
+    let mut expected = *before;
+    expected.free_collateral = 0;
+    // Magnitude is nonnegative and validated above; the exact raw remainder is < one atom.
+    expected.allocated_collateral = magnitude % 1_000_000_000_000;
+    assert!(&expected == after, blast_leverage_aftermath::errors::terminal_venue_unsettled!());
+}
+
 fun recoverable_cash_from_parts(self: &Checkpoint, negative: bool, magnitude: u256): u64 {
     assert!(
         self.signed_base == 0 && self.signed_quote_notional == 0
@@ -514,8 +552,7 @@ fun recoverable_cash_from_parts(self: &Checkpoint, negative: bool, magnitude: u2
         blast_leverage_aftermath::errors::terminal_venue_unsettled!(),
     );
     let capacity = (std::u64::max_value!() - self.free_collateral) as u256;
-    assert!(!negative && magnitude <= capacity * 1_000_000_000_000
-        && magnitude % 1_000_000_000_000 == 0,
+    assert!(!negative && magnitude / 1_000_000_000_000 <= capacity,
         blast_leverage_aftermath::errors::terminal_venue_unsettled!());
     self.free_collateral + ((magnitude / 1_000_000_000_000) as u64)
 }
@@ -554,6 +591,22 @@ fun assert_market_account<Collateral>(
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+public(package) fun assert_terminal_withdrawal_for_testing(
+    before: &Checkpoint, after: &Checkpoint, amount: u64, negative: bool, magnitude: u256,
+) {
+    assert_terminal_withdrawal_from_parts(before, after, amount, negative, magnitude);
+}
+
+/// Substitutes only named IFixed decoding; cash and checkpoint guards remain production code.
+#[test_only]
+public(package) fun terminal_withdrawal_for_testing<Collateral>(
+    before: &Checkpoint, after: Checkpoint, recovered: Coin<Collateral>, negative: bool, magnitude: u256,
+): TerminalWithdrawal<Collateral> {
+    assert_terminal_withdrawal_from_parts(before, &after, recovered.value(), negative, magnitude);
+    TerminalWithdrawal { recovered, checkpoint: after }
+}
 
 /// Decoded dependency-port values; the production wrapper always uses named IFixed decoding.
 #[test_only]

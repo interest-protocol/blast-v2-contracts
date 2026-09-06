@@ -1,5 +1,5 @@
 #[test_only]
-/// Exact terminal venue finality; no dust forgiveness or synthetic collateral.
+/// Exact terminal venue finality and state-derived sub-atomic collateral remainder.
 module blast_leverage_aftermath::terminal_checkpoint_tests;
 
 use blast_leverage_aftermath::venue_account::{Self, Checkpoint};
@@ -88,9 +88,59 @@ fun unsettled_funding_prevents_terminal_finality_even_when_flat() {
 }
 
 #[test]
+fun terminal_cash_floors_only_nonnegative_allocated_collateral() {
+    assert_eq!(checkpoint(0, 0, 0, 0, 9, 5).recoverable_cash_for_testing(false, 0), 5);
+    assert_eq!(checkpoint(0, 0, 1, 0, 9, 5).recoverable_cash_for_testing(false, 1), 5);
+    assert_eq!(checkpoint(0, 0, 999_999_999_999, 0, 9, 5)
+        .recoverable_cash_for_testing(false, 999_999_999_999), 5);
+    assert_eq!(checkpoint(0, 0, 1_000_000_000_000, 0, 9, 5)
+        .recoverable_cash_for_testing(false, 1_000_000_000_000), 6);
+}
+
+#[test]
+fun terminal_withdrawal_preserves_the_exact_unrecoverable_raw_remainder() {
+    venue_account::assert_terminal_withdrawal_for_testing(
+        &checkpoint(0, 0, 0, 0, 9, 5),
+        &checkpoint(0, 0, 0, 0, 9, 0), 5, false, 0);
+    venue_account::assert_terminal_withdrawal_for_testing(
+        &checkpoint(0, 0, 1_000_000_000_000, 0, 9, 5),
+        &checkpoint(0, 0, 0, 0, 9, 0), 6, false, 1_000_000_000_000);
+    venue_account::assert_terminal_withdrawal_for_testing(
+        &checkpoint(0, 0, 1_000_000_000_001, 0, 9, 5),
+        &checkpoint(0, 0, 1, 0, 9, 0), 6, false, 1_000_000_000_001);
+    venue_account::assert_terminal_withdrawal_for_testing(
+        &checkpoint(0, 0, 999_999_999_999, 0, 9, 5),
+        &checkpoint(0, 0, 999_999_999_999, 0, 9, 0), 5, false, 999_999_999_999);
+}
+
+#[test]
+fun maximum_free_cash_does_not_make_sub_atomic_remainder_overflow() {
+    assert_eq!(checkpoint(0, 0, 999_999_999_999, 0, 9, std::u64::max_value!())
+        .recoverable_cash_for_testing(false, 999_999_999_999), std::u64::max_value!());
+}
+
+#[test]
 #[expected_failure(abort_code = 54, location = blast_leverage_aftermath::venue_account)]
-fun sub_atomic_collateral_is_not_forgiven_at_finalization() {
-    checkpoint(0, 0, 1, 0, 9, 0).recoverable_cash_for_testing(false, 1);
+fun terminal_withdrawal_cannot_erase_one_raw_unit() {
+    venue_account::assert_terminal_withdrawal_for_testing(
+        &checkpoint(0, 0, 1, 0, 9, 5),
+        &checkpoint(0, 0, 0, 0, 9, 0), 5, false, 1);
+}
+
+#[test]
+#[expected_failure(abort_code = 54, location = blast_leverage_aftermath::venue_account)]
+fun terminal_withdrawal_cannot_leave_one_recoverable_atom() {
+    venue_account::assert_terminal_withdrawal_for_testing(
+        &checkpoint(0, 0, 1_000_000_000_000, 0, 9, 5),
+        &checkpoint(0, 0, 1_000_000_000_000, 0, 9, 0), 6, false, 1_000_000_000_000);
+}
+
+#[test]
+#[expected_failure(abort_code = 54, location = blast_leverage_aftermath::venue_account)]
+fun terminal_withdrawal_rejects_negative_raw_remainder() {
+    venue_account::assert_terminal_withdrawal_for_testing(
+        &checkpoint(0, 0, 1, 0, 9, 5),
+        &checkpoint(0, 0, std::u256::max_value!(), 0, 9, 0), 5, false, 1);
 }
 
 #[test]

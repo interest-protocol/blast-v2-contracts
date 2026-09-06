@@ -131,15 +131,35 @@ live position and remains available during shutdown. Series1 owns the bounded
 value mutation; the adapter authenticates the runtime risk-module witness and
 emits the Vault-identified update event.
 
-The Series1 `RISK_ADMIN` can separately move an `Active` State to `ReduceOnly`.
-The adapter checks its version and the Series1 role. Series1 checks the
-lifecycle transition. The adapter emits the Vault-identified transition event
-only after the core mutation succeeds. Permissionless health synchronization
-does not invoke that transition: temporary data faults and unresolved venue
-changes preserve lifecycle and the accepted economic checkpoint. Active
-activation, funding, mint, redemption, rebalance, donation, fee withdrawal and
-buffer release use the same custody boundary. Terminal shutdown and claims
-remain a separate contract.
+The current four-state lifecycle is `Uninitialized → Active → Unwinding →
+Settled`. Only a live Series1 shutdown-role witness (role bit `8`) can call
+`vault::begin_shutdown` from Active. Risk administration alone cannot retire a
+product. The adapter checks its version and shutdown role; Series1 owns the
+irreversible lifecycle transition. The call requires no oracle or venue data.
+Its Emergency or ObservedVenueChange reason records an administrator's decision,
+not an on-chain liquidation verdict. Off-chain observers can report liquidation
+or ADL candidates but cannot automatically trigger retirement. Permissionless
+health synchronization preserves lifecycle and the accepted economic checkpoint
+on unresolved changes. There is no ReduceOnly or reactivation surface.
+
+Unwinding permits only bounded close-only venue recovery, not minting or ordinary
+redemption. Normal closes require fresh authenticated prices; a frozen-market
+close uses only the pinned direct settlement operation. Permissionless
+finalization requires exact flat exposure, no orders, current funding snapshots,
+no liability, and recovery of every whole collateral atom. The only admitted
+venue remainder is the exact nonnegative allocated-collateral remainder below
+one collateral atom, derived from the full-precision checkpoint, never a caller
+tolerance or write-off. ADR 0074 specifies its units and event ABI.
+
+The adapter retains terminal holder cash in a private typed native `Balance`,
+separate from admin cash. Finalization removes the reserve book entry and seals
+Settled once. Native TreasuryCap supply minus immutable locked seed determines
+eligible supply; no parallel mutable claim ledger exists. If eligibility is
+zero at finalization, all recovered holder cash transfers once to the nonzero
+seed funder recorded at activation. Otherwise claims burn native shares and pay
+the floor-rounded fraction of remaining local cash without fees or venue/oracle
+access; the last eligible claimant receives dust. Retirement neither freezes
+coin transfers nor controls external Quote markets.
 
 Only the adapter is versioned. Its public operational and administrative routes
 check the adapter version. The stable Series1 state and ACL do not carry an

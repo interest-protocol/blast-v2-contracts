@@ -10,7 +10,7 @@ use blast_leverage_aftermath::{
     constants,
     events,
     protocol::Protocol,
-    venue_account::{Self as venue_account, Binding, Checkpoint, VenueAccount},
+    venue_account::{Self as venue_account, Binding, Checkpoint, TerminalWithdrawal, VenueAccount},
 };
 use blast_leverage_series_one::{
     observation::{Self as observation, PositionObservation, PriceObservation},
@@ -295,13 +295,13 @@ public fun redeem_shutdown<Product, Collateral>(
 
 // === Package Functions ===
 
-/// Seals actual recovered holder cash only after an empty final venue checkpoint.
+/// Consumes verified venue finality and seals the actual recovered holder cash.
 public(package) fun complete_shutdown<Product, Collateral>(
-    self: &mut Vault<Product>, recovered: Coin<Collateral>, checkpoint: Checkpoint,
+    self: &mut Vault<Product>, withdrawal: TerminalWithdrawal<Collateral>,
 ) {
     self.series_state.assert_unwinding();
     self.assert_collateral_type<Product, Collateral>();
-    assert!(checkpoint.recoverable_terminal_cash() == 0, blast_leverage_aftermath::errors::terminal_venue_unsettled!());
+    let (recovered, checkpoint, unrecoverable_collateral_raw) = withdrawal.into_recovered_cash();
 
     let (locked, funder) = self.seed_facts();
     let supply = self.share_supply();
@@ -320,7 +320,7 @@ public(package) fun complete_shutdown<Product, Collateral>(
         events::health_synchronized<Product>(self.id.to_inner(), events::checkpoint_reconciled_reason(), checkpoint);
     };
     events::shutdown_finalized<Product>(self.id.to_inner(), recovered_amount, eligible,
-        if (eligible == 0) { option::some(funder) } else { option::none() }, checkpoint);
+        if (eligible == 0) { option::some(funder) } else { option::none() }, checkpoint, unrecoverable_collateral_raw);
 }
 
 /// Checks the caller's rate ceiling without treating share atoms as collateral.
