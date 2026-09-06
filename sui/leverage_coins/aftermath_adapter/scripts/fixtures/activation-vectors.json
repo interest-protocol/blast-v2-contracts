@@ -30,7 +30,8 @@
       "clock": "0x0000000000000000000000000000000000000000000000000000000000000006"
     },
     "seedReserve": "10000000",
-    "positionImr": "100000000000000000"
+    "positionImr": "100000000000000000",
+    "seedFunder": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   },
   "expectedPlan": {
     "commands": [
@@ -60,6 +61,7 @@
           "@0x0909090909090909090909090909090909090909090909090909090909090909",
           "@0x1010101010101010101010101010101010101010101010101010101010101010",
           "10000000",
+          "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "100000000000000000",
           "@0x0000000000000000000000000000000000000000000000000000000000000006"
         ],
@@ -91,6 +93,7 @@
     "@0x0909090909090909090909090909090909090909090909090909090909090909",
     "@0x1010101010101010101010101010101010101010101010101010101010101010",
     "10000000",
+    "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     "100000000000000000",
     "@0x0000000000000000000000000000000000000000000000000000000000000006",
     "--serialize-unsigned-transaction",
@@ -112,42 +115,56 @@
   },
   "rawDevInspectResponse": {
     "transaction": {
-      "transaction": { "V1": {} },
+      "transaction": {
+        "V1": {}
+      },
       "signatures": [],
       "effects": {
-      "status": { "status": "success" },
-      "created": [
-        {
-          "owner": { "Shared": { "initial_shared_version": 1 } },
-          "reference": {
-            "objectId": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            "version": 1,
-            "digest": "SyntheticAccountDigest"
-          }
+        "status": {
+          "status": "success"
         },
-        {
-          "owner": { "AddressOwner": "0x0000000000000000000000000000000000000000000000000000000000000000" },
-          "reference": {
-            "objectId": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-            "version": 1,
-            "digest": "SyntheticLockedCoinDigest"
+        "created": [
+          {
+            "owner": {
+              "Shared": {
+                "initial_shared_version": 1
+              }
+            },
+            "reference": {
+              "objectId": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "version": 1,
+              "digest": "SyntheticAccountDigest"
+            }
+          },
+          {
+            "owner": {
+              "AddressOwner": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            "reference": {
+              "objectId": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "version": 1,
+              "digest": "SyntheticLockedCoinDigest"
+            }
           }
-        }
-      ],
-      "mutated": [
-        {
-          "owner": { "Shared": { "initial_shared_version": 1 } },
-          "reference": {
-            "objectId": "0x0101010101010101010101010101010101010101010101010101010101010101",
-            "version": 8,
-            "digest": "SyntheticVaultDigest"
+        ],
+        "mutated": [
+          {
+            "owner": {
+              "Shared": {
+                "initial_shared_version": 1
+              }
+            },
+            "reference": {
+              "objectId": "0x0101010101010101010101010101010101010101010101010101010101010101",
+              "version": 8,
+              "digest": "SyntheticVaultDigest"
+            }
           }
-        }
-      ],
-      "unwrapped": [],
-      "deleted": [],
-      "unwrappedThenDeleted": [],
-      "wrapped": []
+        ],
+        "unwrapped": [],
+        "deleted": [],
+        "unwrappedThenDeleted": [],
+        "wrapped": []
       },
       "clever_error": null,
       "events": {
@@ -162,47 +179,52 @@
         ]
       },
       "event_json": [
-      {
-        "pos0": {
-          "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
-          "account_object_id": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-          "account_number": "42",
-          "registry_id": "0x0404040404040404040404040404040404040404040404040404040404040404",
-          "clearing_house_id": "0x0505050505050505050505050505050505050505050505050505050505050505",
-          "base_oracle_id": "0x0606060606060606060606060606060606060606060606060606060606060606",
-          "collateral_oracle_id": "0x0707070707070707070707070707070707070707070707070707070707070707",
-          "collateral_type": { "name": "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC" },
-          "seed_amount": "100000000",
-          "seed_venue_equity": "100000000",
-          "seed_reserve": "10000000",
-          "seed_shareholder_nav": "90000000",
-          "locked_shares": "90000000000",
-          "absolute_base": "50000000000",
-          "absolute_notional": "100000000",
-          "lot_size": "100000000",
-          "position_side": { "variant": "Long" },
-          "position_imr": "100000000000000000",
-          "checkpoint": {
-            "free_collateral": "10000000",
-            "allocated_collateral": "90000000000000000000",
-            "signed_base": "50000000000000000000",
-            "signed_quote_notional": "100000000000000000000",
-            "funding_snapshot_long": "11",
-            "funding_snapshot_short": "21",
-            "market_funding_long": "11",
-            "market_funding_short": "21",
+        {
+          "pos0": {
+            "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
+            "account_object_id": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "account_number": "42",
+            "registry_id": "0x0404040404040404040404040404040404040404040404040404040404040404",
+            "clearing_house_id": "0x0505050505050505050505050505050505050505050505050505050505050505",
+            "base_oracle_id": "0x0606060606060606060606060606060606060606060606060606060606060606",
+            "collateral_oracle_id": "0x0707070707070707070707070707070707070707070707070707070707070707",
+            "collateral_type": {
+              "name": "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC"
+            },
+            "seed_amount": "100000000",
+            "seed_venue_equity": "100000000",
+            "seed_reserve": "10000000",
+            "seed_shareholder_nav": "90000000",
+            "locked_shares": "90000000000",
+            "absolute_base": "50000000000",
+            "absolute_notional": "100000000",
             "lot_size": "100000000",
-            "pending_ask_base": "0",
-            "pending_bid_base": "0",
-            "pending_order_count": "0",
-            "market_pause_mode": 0,
-            "market_frozen": false,
-            "position_initial_margin_ratio": "100000000000000000",
-            "market_initial_margin_ratio": "50000000000000000",
-            "market_maintenance_margin_ratio": "30000000000000000"
+            "position_side": {
+              "variant": "Long"
+            },
+            "position_imr": "100000000000000000",
+            "checkpoint": {
+              "free_collateral": "10000000",
+              "allocated_collateral": "90000000000000000000",
+              "signed_base": "50000000000000000000",
+              "signed_quote_notional": "100000000000000000000",
+              "funding_snapshot_long": "11",
+              "funding_snapshot_short": "21",
+              "market_funding_long": "11",
+              "market_funding_short": "21",
+              "lot_size": "100000000",
+              "pending_ask_base": "0",
+              "pending_bid_base": "0",
+              "pending_order_count": "0",
+              "market_pause_mode": 0,
+              "market_frozen": false,
+              "position_initial_margin_ratio": "100000000000000000",
+              "market_initial_margin_ratio": "50000000000000000",
+              "market_maintenance_margin_ratio": "30000000000000000"
+            },
+            "seed_funder": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
           }
         }
-      }
       ],
       "changed_objects": [
         {
@@ -211,7 +233,10 @@
           "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
           "outputVersion": "1",
           "outputDigest": "SyntheticAccountDigest",
-          "outputOwner": { "kind": "SHARED", "version": "1" },
+          "outputOwner": {
+            "kind": "SHARED",
+            "version": "1"
+          },
           "idOperation": "CREATED",
           "objectType": "0x4444444444444444444444444444444444444444444444444444444444444444::account::Account<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>"
         },
@@ -221,7 +246,10 @@
           "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
           "outputVersion": "1",
           "outputDigest": "SyntheticLockedCoinDigest",
-          "outputOwner": { "kind": "ADDRESS", "address": "0x0000000000000000000000000000000000000000000000000000000000000000" },
+          "outputOwner": {
+            "kind": "ADDRESS",
+            "address": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          },
           "idOperation": "CREATED",
           "objectType": "0x2::coin::Coin<0x1111111111111111111111111111111111111111111111111111111111111111::vault::Vault<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>>"
         },
@@ -230,11 +258,17 @@
           "inputState": "INPUT_OBJECT_STATE_EXISTS",
           "inputVersion": "7",
           "inputDigest": "SyntheticVaultBefore",
-          "inputOwner": { "kind": "SHARED", "version": "1" },
+          "inputOwner": {
+            "kind": "SHARED",
+            "version": "1"
+          },
           "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
           "outputVersion": "8",
           "outputDigest": "SyntheticVaultDigest",
-          "outputOwner": { "kind": "SHARED", "version": "1" },
+          "outputOwner": {
+            "kind": "SHARED",
+            "version": "1"
+          },
           "idOperation": "NONE",
           "objectType": "0x1111111111111111111111111111111111111111111111111111111111111111::vault::Vault<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>"
         }
@@ -244,16 +278,28 @@
       "checkpoint": null
     },
     "command_outputs": [
-      { "mutableReferenceOutputs": [], "returnValues": [] },
-      { "mutableReferenceOutputs": [], "returnValues": [] }
+      {
+        "mutableReferenceOutputs": [],
+        "returnValues": []
+      },
+      {
+        "mutableReferenceOutputs": [],
+        "returnValues": []
+      }
     ],
     "suggested_gas_price": null
   },
   "expectedObservation": {
     "status": "success",
     "commandResults": [
-      { "mutableReferenceOutputs": [], "returnValues": [] },
-      { "mutableReferenceOutputs": [], "returnValues": [] }
+      {
+        "mutableReferenceOutputs": [],
+        "returnValues": []
+      },
+      {
+        "mutableReferenceOutputs": [],
+        "returnValues": []
+      }
     ],
     "changedObjects": [
       {
@@ -262,7 +308,10 @@
         "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
         "outputVersion": "1",
         "outputDigest": "SyntheticAccountDigest",
-        "outputOwner": { "kind": "SHARED", "version": "1" },
+        "outputOwner": {
+          "kind": "SHARED",
+          "version": "1"
+        },
         "idOperation": "CREATED",
         "objectType": "0x4444444444444444444444444444444444444444444444444444444444444444::account::Account<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>"
       },
@@ -272,7 +321,10 @@
         "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
         "outputVersion": "1",
         "outputDigest": "SyntheticLockedCoinDigest",
-        "outputOwner": { "kind": "ADDRESS", "address": "0x0000000000000000000000000000000000000000000000000000000000000000" },
+        "outputOwner": {
+          "kind": "ADDRESS",
+          "address": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
         "idOperation": "CREATED",
         "objectType": "0x2::coin::Coin<0x1111111111111111111111111111111111111111111111111111111111111111::vault::Vault<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>>"
       },
@@ -281,11 +333,17 @@
         "inputState": "INPUT_OBJECT_STATE_EXISTS",
         "inputVersion": "7",
         "inputDigest": "SyntheticVaultBefore",
-        "inputOwner": { "kind": "SHARED", "version": "1" },
+        "inputOwner": {
+          "kind": "SHARED",
+          "version": "1"
+        },
         "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
         "outputVersion": "8",
         "outputDigest": "SyntheticVaultDigest",
-        "outputOwner": { "kind": "SHARED", "version": "1" },
+        "outputOwner": {
+          "kind": "SHARED",
+          "version": "1"
+        },
         "idOperation": "NONE",
         "objectType": "0x1111111111111111111111111111111111111111111111111111111111111111::vault::Vault<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>"
       }
@@ -300,7 +358,9 @@
         "clearing_house_id": "0x0505050505050505050505050505050505050505050505050505050505050505",
         "base_oracle_id": "0x0606060606060606060606060606060606060606060606060606060606060606",
         "collateral_oracle_id": "0x0707070707070707070707070707070707070707070707070707070707070707",
-        "collateral_type": { "name": "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC" },
+        "collateral_type": {
+          "name": "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC"
+        },
         "seed_amount": "100000000",
         "seed_venue_equity": "100000000",
         "seed_reserve": "10000000",
@@ -309,7 +369,9 @@
         "absolute_base": "50000000000",
         "absolute_notional": "100000000",
         "lot_size": "100000000",
-        "position_side": { "variant": "Long" },
+        "position_side": {
+          "variant": "Long"
+        },
         "position_imr": "100000000000000000",
         "checkpoint": {
           "free_collateral": "10000000",
@@ -329,7 +391,8 @@
           "position_initial_margin_ratio": "100000000000000000",
           "market_initial_margin_ratio": "50000000000000000",
           "market_maintenance_margin_ratio": "30000000000000000"
-        }
+        },
+        "seed_funder": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       }
     },
     "objectTypes": {

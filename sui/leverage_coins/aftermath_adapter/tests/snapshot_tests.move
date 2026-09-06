@@ -10,6 +10,49 @@ use std::unit_test::assert_eq;
 // === Tests ===
 
 #[test]
+fun signed_funding_cost_crosses_allocated_zero_without_becoming_unresolved() {
+    let before = checkpoint(10, 5, 5, 6, 7, 8, 9);
+    let after = checkpoint(10, 3, 7, 8, 7, 8, 9);
+    let change = snapshot::classify_signed_funding_for_testing(&before, &after, false, 5, true, 3);
+    let (has, cost, raw, _, clean) = snapshot::funding_change_fields(&change);
+    assert!(has && cost && clean);
+    assert_eq!(raw, 8);
+}
+
+#[test]
+fun signed_funding_credit_crosses_allocated_zero_without_becoming_unresolved() {
+    let before = checkpoint(10, 5, 5, 6, 7, 8, 9);
+    let after = checkpoint(10, 3, 7, 8, 7, 8, 9);
+    let change = snapshot::classify_signed_funding_for_testing(&before, &after, true, 5, false, 3);
+    let (has, cost, raw, _, clean) = snapshot::funding_change_fields(&change);
+    assert!(has && !cost && clean);
+    assert_eq!(raw, 8);
+}
+
+#[test]
+fun signed_funding_less_negative_allocation_is_a_credit() {
+    let before = checkpoint(10, 5, 5, 6, 7, 8, 9);
+    let after = checkpoint(10, 3, 7, 8, 7, 8, 9);
+    let change = snapshot::classify_signed_funding_for_testing(&before, &after, true, 5, true, 3);
+    let (has, cost, raw, _, clean) = snapshot::funding_change_fields(&change);
+    assert!(has && !cost && clean);
+    assert_eq!(raw, 2);
+}
+
+#[test]
+fun zero_net_funding_refresh_is_clean_but_not_an_identical_checkpoint() {
+    let before = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
+    let after = checkpoint(10, 1_000, 7, 8, 7, 8, 9);
+    assert!(!snapshot::checkpoint_unchanged(&before, &after));
+    assert!(snapshot::is_unchanged_for_testing(
+        snapshot::classify_change_with_candidate_for_testing(&before, &after, false, 0),
+    ));
+    assert!(snapshot::is_unchanged_for_testing(
+        snapshot::classify_preexisting_funding_for_testing(&before, &after),
+    ));
+}
+
+#[test]
 fun initialization_facts_carrier_preserves_normalized_fields() {
     let facts = snapshot::facts_for_testing(
         1_100_000,
@@ -331,6 +374,31 @@ fun health_mark_normalization_preserves_an_unrepresentable_mark_as_invalid() {
 fun strict_mark_normalization_rejects_the_first_unrepresentable_mark() {
     let raw = ((std::u64::max_value!() as u256) + 1) * 1_000_000_000;
     snapshot::normalize_mark_strict_for_testing(raw);
+}
+
+#[test]
+fun negative_allocated_collateral_is_a_liability_not_an_invalid_observation() {
+    let (equity, valid) = snapshot::signed_equity_health_for_testing(
+        10, true, 2_000_000_000_001, false, 5_000_000_000_000,
+        1_000_000_000_000_000_000,
+    );
+    assert!(valid);
+    // Round the liability up and the favorable PnL down.
+    assert_eq!(equity, 12);
+    assert_eq!(snapshot::signed_equity_strict_for_testing(
+        0, true, 2_000_000_000_000, false, 5_000_000_000_000,
+        1_000_000_000_000_000_000,
+    ), 3);
+}
+
+#[test]
+fun negative_allocated_collateral_and_negative_pnl_cannot_create_equity() {
+    let (equity, valid) = snapshot::signed_equity_health_for_testing(
+        4, true, 2_000_000_000_000, true, 3_000_000_000_000,
+        1_000_000_000_000_000_000,
+    );
+    assert!(!valid);
+    assert_eq!(equity, 0);
 }
 
 #[test]

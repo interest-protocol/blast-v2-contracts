@@ -289,15 +289,16 @@ function protocolEvent(event, path, types) {
 
 function classify(preCheckpoint, postCheckpoint, events, eventTypes) {
     const funding = events.filter((event) => event.type === eventTypes.funding);
-    if (funding.length > 2) fail('case: more than two FundingSettled events');
-    if (funding.length === 2) return 'funding_sequence';
+    if (funding.length > 1) fail('case: more than one aggregate FundingSettled event');
     if (funding.length === 1) {
         const isCost = funding[0].parsedJson.is_cost;
         if (typeof isCost !== 'boolean') {
             fail('case: FundingSettled.is_cost must be boolean');
         }
+        if (BigInt(funding[0].parsedJson.raw_amount) === 0n) return 'funding_zero';
         return isCost ? 'funding_cost' : 'funding_credit';
     }
+    if (events.some((event) => event.type === eventTypes.health && event.parsedJson.reason === 1)) return 'unexpected';
     return JSON.stringify(canonical(preCheckpoint))
         === JSON.stringify(canonical(postCheckpoint))
         ? 'unchanged'
@@ -326,7 +327,7 @@ function validateEvidence(evidence, oracle, types, vaultId, path) {
         protocolEvent(event, `${path}.events[${index}]`, types));
     const funding = events.filter((event) => event.type === types.funding);
     const health = events.filter((event) => event.type === types.health);
-    if (funding.length > 2) fail(`${path}: more than two FundingSettled events`);
+    if (funding.length > 1) fail(`${path}: more than one aggregate FundingSettled event`);
     if (health.length > 1) fail(`${path}: more than one HealthSynchronized event`);
     expectObject(oracle, `${path}.oracle`, [
         'classification',
@@ -353,6 +354,7 @@ function validateEvidence(evidence, oracle, types, vaultId, path) {
         healthEvents: health.length,
         reason: health.length === 0 ? null : health[0].parsedJson.reason,
     };
+    assertEqual(evidence.post.lifecycle, evidence.pre.lifecycle, `${path}: ordinary health must preserve lifecycle`);
     assertEqual(observed, oracle, `${path}.outcome`);
 
     const normalizedVaultId = expectAddress(vaultId, `${path}.vaultId`);
@@ -374,33 +376,25 @@ function validateEvidence(evidence, oracle, types, vaultId, path) {
         );
     }
     if (funding.length > 0) {
-        const localSettlement = JSON.stringify(canonical(preCheckpoint))
-            !== JSON.stringify(canonical(postCheckpoint));
-        const fundingEdges = funding.length === 2
-            ? [
-                [storedCheckpoint, preCheckpoint],
-                [preCheckpoint, postCheckpoint],
-            ]
-            : [[
-                localSettlement ? preCheckpoint : storedCheckpoint,
-                localSettlement ? postCheckpoint : preCheckpoint,
-            ]];
+        const fundingEdges = [[storedCheckpoint, postCheckpoint]];
         let expectedReserve = preReserve;
         funding.forEach((event, index) => {
             const parsed = event.parsedJson;
             const [fundingBefore, fundingAfter] = fundingEdges[index];
             const isCost = parsed.is_cost;
-            const preAllocated = unsigned(
+            // Decode the same signed u256 IFixed carrier as activation_atomicity;
+            // never order raw negative carriers as collateral assets.
+            const preAllocated = BigInt.asIntN(256, unsigned(
                 fundingBefore.allocated_collateral,
                 256,
                 `${path}.funding[${index}].before.allocated_collateral`,
-            );
-            const postAllocated = unsigned(
+            ));
+            const postAllocated = BigInt.asIntN(256, unsigned(
                 fundingAfter.allocated_collateral,
                 256,
                 `${path}.funding[${index}].after.allocated_collateral`,
-            );
-            if (isCost ? postAllocated >= preAllocated : postAllocated <= preAllocated) {
+            ));
+            if (isCost ? postAllocated >= preAllocated : postAllocated < preAllocated) {
                 fail(`${path}.funding.raw_amount: allocated-collateral direction mismatch`);
             }
             const rawAmount = isCost
@@ -412,19 +406,16 @@ function validateEvidence(evidence, oracle, types, vaultId, path) {
             const observedAmount = unsigned(parsed.amount, 64, `${eventPath}.amount`);
             assertEqual(observedRaw.toString(), rawAmount.toString(), `${eventPath}.raw_amount`);
             assertEqual(observedAmount.toString(), amount.toString(), `${eventPath}.amount`);
-            const expectedPrevious = funding.length === 2 && index === 1
-                ? preCheckpoint
-                : storedCheckpoint;
-            const expectedCheckpoint = funding.length === 2 && index === 0
-                ? preCheckpoint
-                : postCheckpoint;
+            const expectedPrevious = storedCheckpoint;
+            const expectedCheckpoint = postCheckpoint;
             assertEqual(parsed.previous_checkpoint, expectedPrevious, `${eventPath}.previous_checkpoint`);
             assertEqual(parsed.checkpoint, expectedCheckpoint, `${eventPath}.checkpoint`);
             const absorbed = isCost && amount < expectedReserve
                 ? amount
                 : isCost ? expectedReserve : 0n;
             const uncovered = isCost ? amount - absorbed : 0n;
-            expectedReserve = isCost ? expectedReserve - absorbed : expectedReserve;
+            expectedReserve = isCost ? expectedReserve - absorbed : expectedReserve + amount;
+            if (expectedReserve > (1n << 64n) - 1n) fail(`${path}: reserve width overflow`);
             assertEqual(
                 unsigned(parsed.absorbed_by_reserve, 64, `${eventPath}.absorbed_by_reserve`).toString(),
                 absorbed.toString(),
@@ -452,7 +443,16 @@ function validateEvidence(evidence, oracle, types, vaultId, path) {
     }
     if (health.length === 1) {
         const parsed = health[0].parsedJson;
-        assertEqual(parsed.checkpoint, postCheckpoint, `${path}.health.checkpoint`);
+        if (parsed.reason === 1) {
+            assertEqual(postCheckpoint, storedCheckpoint, `${path}: unresolved observation must preserve accepted checkpoint`);
+            if (JSON.stringify(canonical(parsed.checkpoint)) === JSON.stringify(canonical(storedCheckpoint))) {
+                fail(`${path}: unresolved observation must identify a changed checkpoint`);
+            }
+        } else if (parsed.reason === 2) {
+            assertEqual(parsed.checkpoint, postCheckpoint, `${path}.health.checkpoint`);
+        } else {
+            fail(`${path}: unsupported health reason`);
+        }
         assertEqual(
             parsed.lifecycle_changed,
             evidence.pre.lifecycle !== evidence.post.lifecycle,
@@ -489,7 +489,7 @@ function validateFixture(fixture) {
         'eventSets',
         'cases',
     ]);
-    if (fixture.schemaVersion !== 4
+    if (fixture.schemaVersion !== 5
         || fixture.fixtureKind !== 'controlled-health-validator') {
         fail('fixture: unsupported schema or kind');
     }
@@ -629,7 +629,7 @@ function selfTest() {
     passed += 1;
 
     const wrongLifecycle = structuredClone(fixture);
-    wrongLifecycle.cases[14].oracle.lifecycle = 'Active';
+    wrongLifecycle.cases[14].oracle.lifecycle = 'ReduceOnly';
     expectFailure('.outcome', () => validateFixture(wrongLifecycle));
     passed += 1;
 
@@ -761,6 +761,43 @@ function selfTest() {
     expectFailure('funding[0].reserve_after', () => validateFixture(creditReserveDrift));
     passed += 1;
 
+    const doubleSettlement = structuredClone(fixture);
+    doubleSettlement.eventSets.two_epoch_funding.push(structuredClone(doubleSettlement.eventSets.two_epoch_funding[0]));
+    expectFailure('more than one aggregate', () => validateFixture(doubleSettlement));
+    passed += 1;
+
+    const automaticRetirement = structuredClone(fixture);
+    automaticRetirement.cases[15].post.lifecycle = 'ReduceOnly';
+    automaticRetirement.cases[15].oracle.lifecycle = 'ReduceOnly';
+    expectFailure('ordinary health must preserve lifecycle', () => validateFixture(automaticRetirement));
+    passed += 1;
+
+    const overwrittenCheckpoint = structuredClone(fixture);
+    overwrittenCheckpoint.cases[9].post.checkpoint = 'liquidation';
+    expectFailure('preserve accepted checkpoint', () => validateFixture(overwrittenCheckpoint));
+    passed += 1;
+
+    for (const name of ['funding_credit', 'funding_cost']) {
+        const entry = fixture.cases.find((item) => item.name === name);
+        const stored = structuredClone(fixture.checkpoints[entry.stored.checkpoint]);
+        const before = structuredClone(fixture.checkpoints[entry.pre.checkpoint]);
+        const after = structuredClone(fixture.checkpoints[entry.post.checkpoint]);
+        const halfAtom = 500_000_000_000n;
+        const starting = name === 'funding_credit' ? -halfAtom : halfAtom;
+        stored.allocated_collateral = BigInt.asUintN(256, starting).toString();
+        before.allocated_collateral = stored.allocated_collateral;
+        after.allocated_collateral = BigInt.asUintN(256, -starting).toString();
+        const events = structuredClone(fixture.eventSets[name]);
+        events[0].parsedJson.pos0.previous_checkpoint = stored;
+        events[0].parsedJson.pos0.checkpoint = after;
+        validateEvidence({
+            stored: {...entry.stored, checkpoint: stored},
+            pre: {...entry.pre, checkpoint: before},
+            post: {...entry.post, checkpoint: after}, events,
+        }, entry.oracle, eventTypes(fixture.adapterPackage, fixture.productType), fixture.vaultId, `signed-zero-crossing.${name}`);
+        passed += 1;
+    }
+
     const provenanceRoot = mkdtempSync(join(tmpdir(), 'blast-controlled-health-self-test-'));
     try {
         const packageId = `0x${'c'.repeat(64)}`;
@@ -816,7 +853,7 @@ function selfTest() {
         rmSync(provenanceRoot, { recursive: true, force: true });
     }
 
-    process.stdout.write(`controlled_health_cases self-test: PASS ${passed}/${CASE_NAMES.length + 26} cases\n`);
+    process.stdout.write(`controlled_health_cases self-test: PASS ${passed}/${CASE_NAMES.length + 31} cases\n`);
 }
 
 function run(command, args, allowFailure = false, cwd = PACKAGE_DIR) {

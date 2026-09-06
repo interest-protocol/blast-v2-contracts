@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "status": "UNVALIDATED_TEMPLATE_NOT_FOR_SUBMISSION",
+  "sourceRevision": null,
+  "network": null,
+  "chainIdentifier": null,
+  "suiCliVersion": null,
+  "aftermathInterfacesRevision": "f62e74aa862ef65b8950a70d83aac8cb71c19837",
+  "packages": {"seriesOne": null, "adapter": null, "immutableRiskModule": null, "launchpad": null},
+  "roles": {"issuer": null, "riskAdmin": null, "keeper": null, "seedFunder": null},
+  "bindings": {
+    "collateralType": null, "collateralDecimals": 6,
+    "registryId": null, "clearingHouseId": null,
+    "baseOracleStorageId": null, "baseOracleSourceId": null, "basePythPriceInfoId": null,
+    "collateralOracleStorageId": null, "collateralOracleSourceId": null, "collateralPythPriceInfoId": null
+  },
+  "commonPolicyCandidates": {
+    "targetLeverageBps": 20000, "mintFeeBps": 30, "redeemFeeBps": 30,
+    "mintFeeCapBps": 100, "redeemFeeCapBps": 100,
+    "adminAllocationBps": 2000, "adminAllocationCapBps": 3000,
+    "minimumImprovementLeverageBps": 10, "maxPriceAheadMs": 0,
+    "minExposureLots": 100, "maxAtomicSessions": 16
+  },
+  "products": [
+    {"direction": "long", "productType": null, "vaultId": null, "accountObjectId": null,
+     "accountNumber": null, "treasuryCapId": null, "metadataCapId": null,
+     "publicLowerLeverageBps": 18000, "publicUpperLeverageBps": 22000, "hardThresholdLeverageBps": 25000,
+     "strictToleranceBps": 30, "emergencyToleranceBps": 100, "maxPriceAgeMs": 30000,
+     "maxConfidenceBps": 50, "maxMarkDivergenceBps": 100,
+     "maxMintContributionDivergenceBps": 30, "maxRedemptionGrossDivergenceBps": 30,
+     "navCapAtomicCollateral": null, "orderNotionalMinCurrentMaxAtomicCollateral": null,
+     "seedAtomicCollateral": null, "seedBufferAtomicCollateral": null, "lockedSeedShares": null},
+    {"direction": "short", "productType": null, "vaultId": null, "accountObjectId": null,
+     "accountNumber": null, "treasuryCapId": null, "metadataCapId": null,
+     "publicLowerLeverageBps": 18500, "publicUpperLeverageBps": 21500, "hardThresholdLeverageBps": 23500,
+     "strictToleranceBps": 20, "emergencyToleranceBps": 75, "maxPriceAgeMs": 15000,
+     "maxConfidenceBps": 25, "maxMarkDivergenceBps": 75,
+     "maxMintContributionDivergenceBps": 20, "maxRedemptionGrossDivergenceBps": 20,
+     "navCapAtomicCollateral": null, "orderNotionalMinCurrentMaxAtomicCollateral": null,
+     "seedAtomicCollateral": null, "seedBufferAtomicCollateral": null, "lockedSeedShares": null}
+  ],
+  "evidence": {"marketDepthAndMargin": null, "minimumExit": null, "fullBoundGas": null,
+    "liveAbi": null, "submittedScenarios": [], "keeperTriggerDigest": null,
+    "publicationRecords": [], "mainnetSubmission": "NOT_AUTHORIZED"}
+}

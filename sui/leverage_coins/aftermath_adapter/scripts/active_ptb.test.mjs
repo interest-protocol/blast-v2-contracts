@@ -1,0 +1,81 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { buildActivePlan, renderUnsignedPtbArgs, keeperDecision } from './active_ptb.mjs';
+
+const address = (n) => `0x${n.toString(16).padStart(64, '0')}`;
+const input = (operation) => ({
+    operation, adapterPackage: address(1), sender: address(2), network: 'testnet',
+    productType: `${address(1)}::product::Product<${address(1)}::tags::Long2x>`,
+    collateralType: `${address(3)}::usdc::USDC`,
+    objects: Object.fromEntries(['vault', 'protocol', 'account', 'registry', 'clearingHouse',
+        'baseOracle', 'collateralOracle', 'basePriceInfo', 'collateralPriceInfo', 'clock', 'inputCoin']
+        .map((role, i) => [role, address(10 + i)])),
+    minimumOutput: '1', maximumFeeBps: '30', deadlineMs: '100000',
+});
+
+test('mint and redemption bind public argument order and transfer only the returned native coin', () => {
+    for (const operation of ['mint', 'redeem']) {
+        const value = input(operation);
+        const plan = buildActivePlan(value);
+        assert.equal(plan.commands[0].target, `${address(1)}::operations::${operation}`);
+        assert.deepEqual(plan.commands[0].arguments.slice(-5), [`@${value.objects.inputCoin}`, '1', '30', '100000', `@${value.objects.clock}`]);
+        assert.deepEqual(plan.commands[0].arguments.slice(0, 9),
+            ['vault', 'protocol', 'account', 'registry', 'clearingHouse', 'baseOracle',
+                'collateralOracle', 'basePriceInfo', 'collateralPriceInfo'].map((key) => `@${value.objects[key]}`));
+        const args = renderUnsignedPtbArgs(value);
+        assert.deepEqual(args.slice(-3), ['--serialize-unsigned-transaction', '--sender', `@${address(2)}`]);
+        assert(!args.includes('--gas-budget'));
+        assert(args.includes('[result]'));
+    }
+});
+
+test('rebalance contains only bound objects, not witness, trade side, size or fee choices', () => {
+    const value = input('rebalance');
+    const plan = buildActivePlan(value);
+    assert.equal(plan.commands[0].arguments.length, 10);
+    assert.equal(plan.commands[0].assign, null);
+    assert.deepEqual(plan.transfers, []);
+    assert.throws(() => buildActivePlan({...value, side: 'short'}), /unexpected field/);
+});
+
+test('both direction types compose returned values through mint-buy and sell-redeem', () => {
+    for (const direction of ['Long2x', 'Short2x']) {
+        for (const operation of ['mint_buy', 'sell_redeem']) {
+            const value = input(operation);
+            value.productType = `${address(1)}::product::Product<${address(1)}::tags::${direction}>`;
+            value.launch = { package: address(30), memeType: `${address(31)}::meme::MEME`,
+                launch: address(32), version: address(33), runtime: address(34), minimumOutput: '2' };
+            const plan = buildActivePlan(value);
+            assert.equal(plan.commands.length, 2);
+            if (operation === 'mint_buy') {
+                assert.equal(plan.commands[1].arguments[3], 'shares');
+                assert.deepEqual(plan.transfers, ['purchase.0', 'purchase.1']);
+            } else {
+                assert.equal(plan.commands[1].arguments[9], 'shares');
+                assert.deepEqual(plan.transfers, ['result']);
+            }
+            assert(plan.commands.some((c) => c.typeArguments.includes(`${address(1)}::vault::Vault<${value.productType}>`)));
+        }
+    }
+});
+
+test('builders reject unsafe or unrepresentable input instead of emitting submission arguments', () => {
+    assert.throws(() => buildActivePlan({...input('mint'), minimumOutput: '18446744073709551616'}), /u64/);
+    assert.throws(() => buildActivePlan({...input('mint'), adapterPackage: '--gas-budget'}), /address/);
+    assert.throws(() => buildActivePlan({...input('mint'), productType: 'type; injected'}), /type/);
+    assert.throws(() => buildActivePlan({...input('shutdown')}), /operation/);
+});
+
+test('keeper trigger uses exact rational endpoints and fails closed on missing economic validity', () => {
+    const facts = {active: true, pricingValid: true, checkpointClean: true,
+        equity: '1000000', reserve: '0', notional: '1800000', lowerBps: '18000', upperBps: '22000'};
+    assert.equal(keeperDecision(facts), 'no_change');
+    assert.equal(keeperDecision({...facts, notional: '2200000'}), 'no_change');
+    assert.equal(keeperDecision({...facts, notional: '1799999'}), 'rebalance');
+    assert.equal(keeperDecision({...facts, notional: '2200001'}), 'rebalance');
+    assert.equal(keeperDecision({...facts, equity: '1000001'}), 'rebalance');
+    assert.equal(keeperDecision({...facts, pricingValid: false}), 'blocked');
+    assert.equal(keeperDecision({...facts, checkpointClean: false}), 'blocked');
+    assert.equal(keeperDecision({...facts, active: false}), 'blocked');
+    assert.equal(keeperDecision({...facts, reserve: '1000000'}), 'blocked');
+});

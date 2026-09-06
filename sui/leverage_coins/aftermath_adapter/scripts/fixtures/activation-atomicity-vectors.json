@@ -2,7 +2,7 @@
   "schemaVersion": 4,
   "fixtureKind": "canonical-evidence-validator",
   "gasDifferencePolicy": "gas-only",
-  "productionOperationsSha256": "a86abc0b7ba6387fc9af97c50adb88f2114506378534d343e7bbecb13ea643df",
+  "productionOperationsSha256": "cd5fed63839d96490334d37da8b14ce5a8e6705211fc80264d4322f69f52a775",
   "baseline": {
     "objects": [
       {
@@ -16,7 +16,8 @@
           "maintenanceReserve": "0",
           "venueAccount": null,
           "checkpoint": null,
-          "adminCap": null
+          "adminCap": null,
+          "seedFacts": null
         },
         "owner": {
           "Shared": {
@@ -29,7 +30,8 @@
             "lifecycle": "Uninitialized",
             "maintenance_reserve": "0"
           },
-          "venue_account": null
+          "venue_account": null,
+          "seed_facts": null
         }
       },
       {
@@ -294,6 +296,7 @@
         "@0x1616161616161616161616161616161616161616161616161616161616161616",
         "@0x1717171717171717171717171717171717171717171717171717171717171717",
         "10000000",
+        "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "100000000000000000",
         "@0x0000000000000000000000000000000000000000000000000000000000000006"
       ]
@@ -318,6 +321,7 @@
       "@0x1616161616161616161616161616161616161616161616161616161616161616",
       "@0x1717171717171717171717171717171717171717171717171717171717171717",
       "10000000",
+      "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "100000000000000000",
       "@0x0000000000000000000000000000000000000000000000000000000000000006"
     ],
@@ -332,7 +336,8 @@
           "maintenanceReserve": "/content/series_state/maintenance_reserve",
           "venueAccount": "/content/venue_account/account_object_id",
           "checkpoint": "/content/venue_account/checkpoint",
-          "adminCap": "/content/venue_account/admin_cap/id"
+          "adminCap": "/content/venue_account/admin_cap/id",
+          "seedFacts": "/content/seed_facts"
         },
         "binding": {
           "kind": "argument"
@@ -547,7 +552,11 @@
           "market_initial_margin_ratio": "100000000000000000",
           "market_maintenance_margin_ratio": "50000000000000000"
         },
-        "adminCap": "0x5ef2fcf809fb9535ea0aeaea421f683026f06c34569aafc42bcde652ef6dd270"
+        "adminCap": "0x5ef2fcf809fb9535ea0aeaea421f683026f06c34569aafc42bcde652ef6dd270",
+        "seedFacts": {
+          "locked_shares": "90000000000",
+          "funder": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
       },
       "share_currency": {
         "treasuryCapId": "0x0303030303030303030303030303030303030303030303030303030303030303"
@@ -744,7 +753,8 @@
               "position_initial_margin_ratio": "100000000000000000",
               "market_initial_margin_ratio": "100000000000000000",
               "market_maintenance_margin_ratio": "50000000000000000"
-            }
+            },
+            "seed_funder": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
           }
         }
       }
@@ -795,7 +805,11 @@
               "market_initial_margin_ratio": "100000000000000000",
               "market_maintenance_margin_ratio": "50000000000000000"
             },
-            "adminCap": "0x5ef2fcf809fb9535ea0aeaea421f683026f06c34569aafc42bcde652ef6dd270"
+            "adminCap": "0x5ef2fcf809fb9535ea0aeaea421f683026f06c34569aafc42bcde652ef6dd270",
+            "seedFacts": {
+              "locked_shares": "90000000000",
+              "funder": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            }
           },
           "type": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::vault::Vault<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::product::Product<0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa::fixture::TwoX>>",
           "content": {
@@ -827,6 +841,10 @@
               "admin_cap": {
                 "id": "0x5ef2fcf809fb9535ea0aeaea421f683026f06c34569aafc42bcde652ef6dd270"
               }
+            },
+            "seed_facts": {
+              "locked_shares": "90000000000",
+              "funder": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
             }
           }
         },
@@ -1114,6 +1132,7 @@
             "@0x1616161616161616161616161616161616161616161616161616161616161616",
             "@0x1717171717171717171717171717171717171717171717171717171717171717",
             "10000000",
+            "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "100000000000000000",
             "@0x0000000000000000000000000000000000000000000000000000000000000006"
           ]
@@ -1138,6 +1157,7 @@
           "@0x1616161616161616161616161616161616161616161616161616161616161616",
           "@0x1717171717171717171717171717171717171717171717171717171717171717",
           "10000000",
+          "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "100000000000000000",
           "@0x0000000000000000000000000000000000000000000000000000000000000006"
         ],
@@ -1152,7 +1172,8 @@
               "maintenanceReserve": "/content/series_state/maintenance_reserve",
               "venueAccount": "/content/venue_account/account_object_id",
               "checkpoint": "/content/venue_account/checkpoint",
-              "adminCap": "/content/venue_account/admin_cap/id"
+              "adminCap": "/content/venue_account/admin_cap/id",
+              "seedFacts": "/content/seed_facts"
             },
             "binding": {
               "kind": "argument"
@@ -1374,7 +1395,8 @@
                 "maintenanceReserve": "0",
                 "venueAccount": null,
                 "checkpoint": null,
-                "adminCap": null
+                "adminCap": null,
+                "seedFacts": null
               },
               "owner": {
                 "Shared": {
@@ -1387,7 +1409,8 @@
                   "lifecycle": "Uninitialized",
                   "maintenance_reserve": "0"
                 },
-                "venue_account": null
+                "venue_account": null,
+                "seed_facts": null
               }
             },
             {
@@ -1643,7 +1666,8 @@
                 "maintenanceReserve": "0",
                 "venueAccount": null,
                 "checkpoint": null,
-                "adminCap": null
+                "adminCap": null,
+                "seedFacts": null
               },
               "owner": {
                 "Shared": {
@@ -1656,7 +1680,8 @@
                   "lifecycle": "Uninitialized",
                   "maintenance_reserve": "0"
                 },
-                "venue_account": null
+                "venue_account": null,
+                "seed_facts": null
               }
             },
             {
@@ -1932,6 +1957,7 @@
             "@0x1616161616161616161616161616161616161616161616161616161616161616",
             "@0x1717171717171717171717171717171717171717171717171717171717171717",
             "10000000",
+            "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "100000000000000000",
             "@0x0000000000000000000000000000000000000000000000000000000000000006"
           ]
@@ -1956,6 +1982,7 @@
           "@0x1616161616161616161616161616161616161616161616161616161616161616",
           "@0x1717171717171717171717171717171717171717171717171717171717171717",
           "10000000",
+          "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "100000000000000000",
           "@0x0000000000000000000000000000000000000000000000000000000000000006"
         ],
@@ -1970,7 +1997,8 @@
               "maintenanceReserve": "/content/series_state/maintenance_reserve",
               "venueAccount": "/content/venue_account/account_object_id",
               "checkpoint": "/content/venue_account/checkpoint",
-              "adminCap": "/content/venue_account/admin_cap/id"
+              "adminCap": "/content/venue_account/admin_cap/id",
+              "seedFacts": "/content/seed_facts"
             },
             "binding": {
               "kind": "argument"
@@ -2192,7 +2220,8 @@
                 "maintenanceReserve": "0",
                 "venueAccount": null,
                 "checkpoint": null,
-                "adminCap": null
+                "adminCap": null,
+                "seedFacts": null
               },
               "owner": {
                 "Shared": {
@@ -2205,7 +2234,8 @@
                   "lifecycle": "Uninitialized",
                   "maintenance_reserve": "0"
                 },
-                "venue_account": null
+                "venue_account": null,
+                "seed_facts": null
               }
             },
             {
@@ -2461,7 +2491,8 @@
                 "maintenanceReserve": "0",
                 "venueAccount": null,
                 "checkpoint": null,
-                "adminCap": null
+                "adminCap": null,
+                "seedFacts": null
               },
               "owner": {
                 "Shared": {
@@ -2474,7 +2505,8 @@
                   "lifecycle": "Uninitialized",
                   "maintenance_reserve": "0"
                 },
-                "venue_account": null
+                "venue_account": null,
+                "seed_facts": null
               }
             },
             {
@@ -2750,6 +2782,7 @@
             "@0x1616161616161616161616161616161616161616161616161616161616161616",
             "@0x1717171717171717171717171717171717171717171717171717171717171717",
             "10000000",
+            "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "100000000000000000",
             "@0x0000000000000000000000000000000000000000000000000000000000000006"
           ]
@@ -2774,6 +2807,7 @@
           "@0x1616161616161616161616161616161616161616161616161616161616161616",
           "@0x1717171717171717171717171717171717171717171717171717171717171717",
           "10000000",
+          "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "100000000000000000",
           "@0x0000000000000000000000000000000000000000000000000000000000000006"
         ],
@@ -2788,7 +2822,8 @@
               "maintenanceReserve": "/content/series_state/maintenance_reserve",
               "venueAccount": "/content/venue_account/account_object_id",
               "checkpoint": "/content/venue_account/checkpoint",
-              "adminCap": "/content/venue_account/admin_cap/id"
+              "adminCap": "/content/venue_account/admin_cap/id",
+              "seedFacts": "/content/seed_facts"
             },
             "binding": {
               "kind": "argument"
@@ -3010,7 +3045,8 @@
                 "maintenanceReserve": "0",
                 "venueAccount": null,
                 "checkpoint": null,
-                "adminCap": null
+                "adminCap": null,
+                "seedFacts": null
               },
               "owner": {
                 "Shared": {
@@ -3023,7 +3059,8 @@
                   "lifecycle": "Uninitialized",
                   "maintenance_reserve": "0"
                 },
-                "venue_account": null
+                "venue_account": null,
+                "seed_facts": null
               }
             },
             {
@@ -3279,7 +3316,8 @@
                 "maintenanceReserve": "0",
                 "venueAccount": null,
                 "checkpoint": null,
-                "adminCap": null
+                "adminCap": null,
+                "seedFacts": null
               },
               "owner": {
                 "Shared": {
@@ -3292,7 +3330,8 @@
                   "lifecycle": "Uninitialized",
                   "maintenance_reserve": "0"
                 },
-                "venue_account": null
+                "venue_account": null,
+                "seed_facts": null
               }
             },
             {
@@ -3568,6 +3607,7 @@
             "@0x1616161616161616161616161616161616161616161616161616161616161616",
             "@0x1717171717171717171717171717171717171717171717171717171717171717",
             "10000000",
+            "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "100000000000000000",
             "@0x0000000000000000000000000000000000000000000000000000000000000006"
           ]
@@ -3592,6 +3632,7 @@
           "@0x1616161616161616161616161616161616161616161616161616161616161616",
           "@0x1717171717171717171717171717171717171717171717171717171717171717",
           "10000000",
+          "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "100000000000000000",
           "@0x0000000000000000000000000000000000000000000000000000000000000006"
         ],
@@ -3606,7 +3647,8 @@
               "maintenanceReserve": "/content/series_state/maintenance_reserve",
               "venueAccount": "/content/venue_account/account_object_id",
               "checkpoint": "/content/venue_account/checkpoint",
-              "adminCap": "/content/venue_account/admin_cap/id"
+              "adminCap": "/content/venue_account/admin_cap/id",
+              "seedFacts": "/content/seed_facts"
             },
             "binding": {
               "kind": "argument"
@@ -3828,7 +3870,8 @@
                 "maintenanceReserve": "0",
                 "venueAccount": null,
                 "checkpoint": null,
-                "adminCap": null
+                "adminCap": null,
+                "seedFacts": null
               },
               "owner": {
                 "Shared": {
@@ -3841,7 +3884,8 @@
                   "lifecycle": "Uninitialized",
                   "maintenance_reserve": "0"
                 },
-                "venue_account": null
+                "venue_account": null,
+                "seed_facts": null
               }
             },
             {
@@ -4097,7 +4141,8 @@
                 "maintenanceReserve": "0",
                 "venueAccount": null,
                 "checkpoint": null,
-                "adminCap": null
+                "adminCap": null,
+                "seedFacts": null
               },
               "owner": {
                 "Shared": {
@@ -4110,7 +4155,8 @@
                   "lifecycle": "Uninitialized",
                   "maintenance_reserve": "0"
                 },
-                "venue_account": null
+                "venue_account": null,
+                "seed_facts": null
               }
             },
             {
@@ -4386,6 +4432,7 @@
             "@0x1616161616161616161616161616161616161616161616161616161616161616",
             "@0x1717171717171717171717171717171717171717171717171717171717171717",
             "10000000",
+            "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "100000000000000000",
             "@0x0000000000000000000000000000000000000000000000000000000000000006"
           ]
@@ -4410,6 +4457,7 @@
           "@0x1616161616161616161616161616161616161616161616161616161616161616",
           "@0x1717171717171717171717171717171717171717171717171717171717171717",
           "10000000",
+          "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "100000000000000000",
           "@0x0000000000000000000000000000000000000000000000000000000000000006"
         ],
@@ -4424,7 +4472,8 @@
               "maintenanceReserve": "/content/series_state/maintenance_reserve",
               "venueAccount": "/content/venue_account/account_object_id",
               "checkpoint": "/content/venue_account/checkpoint",
-              "adminCap": "/content/venue_account/admin_cap/id"
+              "adminCap": "/content/venue_account/admin_cap/id",
+              "seedFacts": "/content/seed_facts"
             },
             "binding": {
               "kind": "argument"
@@ -4646,7 +4695,8 @@
                 "maintenanceReserve": "0",
                 "venueAccount": null,
                 "checkpoint": null,
-                "adminCap": null
+                "adminCap": null,
+                "seedFacts": null
               },
               "owner": {
                 "Shared": {
@@ -4659,7 +4709,8 @@
                   "lifecycle": "Uninitialized",
                   "maintenance_reserve": "0"
                 },
-                "venue_account": null
+                "venue_account": null,
+                "seed_facts": null
               }
             },
             {
@@ -4915,7 +4966,8 @@
                 "maintenanceReserve": "0",
                 "venueAccount": null,
                 "checkpoint": null,
-                "adminCap": null
+                "adminCap": null,
+                "seedFacts": null
               },
               "owner": {
                 "Shared": {
@@ -4928,7 +4980,8 @@
                   "lifecycle": "Uninitialized",
                   "maintenance_reserve": "0"
                 },
-                "venue_account": null
+                "venue_account": null,
+                "seed_facts": null
               }
             },
             {
@@ -5204,6 +5257,7 @@
             "@0x1616161616161616161616161616161616161616161616161616161616161616",
             "@0x1717171717171717171717171717171717171717171717171717171717171717",
             "10000000",
+            "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "100000000000000000",
             "@0x0000000000000000000000000000000000000000000000000000000000000006"
           ]
@@ -5228,6 +5282,7 @@
           "@0x1616161616161616161616161616161616161616161616161616161616161616",
           "@0x1717171717171717171717171717171717171717171717171717171717171717",
           "10000000",
+          "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "100000000000000000",
           "@0x0000000000000000000000000000000000000000000000000000000000000006"
         ],
@@ -5242,7 +5297,8 @@
               "maintenanceReserve": "/content/series_state/maintenance_reserve",
               "venueAccount": "/content/venue_account/account_object_id",
               "checkpoint": "/content/venue_account/checkpoint",
-              "adminCap": "/content/venue_account/admin_cap/id"
+              "adminCap": "/content/venue_account/admin_cap/id",
+              "seedFacts": "/content/seed_facts"
             },
             "binding": {
               "kind": "argument"
@@ -5464,7 +5520,8 @@
                 "maintenanceReserve": "0",
                 "venueAccount": null,
                 "checkpoint": null,
-                "adminCap": null
+                "adminCap": null,
+                "seedFacts": null
               },
               "owner": {
                 "Shared": {
@@ -5477,7 +5534,8 @@
                   "lifecycle": "Uninitialized",
                   "maintenance_reserve": "0"
                 },
-                "venue_account": null
+                "venue_account": null,
+                "seed_facts": null
               }
             },
             {
@@ -5733,7 +5791,8 @@
                 "maintenanceReserve": "0",
                 "venueAccount": null,
                 "checkpoint": null,
-                "adminCap": null
+                "adminCap": null,
+                "seedFacts": null
               },
               "owner": {
                 "Shared": {
@@ -5746,7 +5805,8 @@
                   "lifecycle": "Uninitialized",
                   "maintenance_reserve": "0"
                 },
-                "venue_account": null
+                "venue_account": null,
+                "seed_facts": null
               }
             },
             {
@@ -6022,6 +6082,7 @@
             "@0x1616161616161616161616161616161616161616161616161616161616161616",
             "@0x1717171717171717171717171717171717171717171717171717171717171717",
             "10000000",
+            "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "100000000000000000",
             "@0x0000000000000000000000000000000000000000000000000000000000000006"
           ]
@@ -6046,6 +6107,7 @@
           "@0x1616161616161616161616161616161616161616161616161616161616161616",
           "@0x1717171717171717171717171717171717171717171717171717171717171717",
           "10000000",
+          "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "100000000000000000",
           "@0x0000000000000000000000000000000000000000000000000000000000000006"
         ],
@@ -6060,7 +6122,8 @@
               "maintenanceReserve": "/content/series_state/maintenance_reserve",
               "venueAccount": "/content/venue_account/account_object_id",
               "checkpoint": "/content/venue_account/checkpoint",
-              "adminCap": "/content/venue_account/admin_cap/id"
+              "adminCap": "/content/venue_account/admin_cap/id",
+              "seedFacts": "/content/seed_facts"
             },
             "binding": {
               "kind": "argument"
@@ -6282,7 +6345,8 @@
                 "maintenanceReserve": "0",
                 "venueAccount": null,
                 "checkpoint": null,
-                "adminCap": null
+                "adminCap": null,
+                "seedFacts": null
               },
               "owner": {
                 "Shared": {
@@ -6295,7 +6359,8 @@
                   "lifecycle": "Uninitialized",
                   "maintenance_reserve": "0"
                 },
-                "venue_account": null
+                "venue_account": null,
+                "seed_facts": null
               }
             },
             {
@@ -6551,7 +6616,8 @@
                 "maintenanceReserve": "0",
                 "venueAccount": null,
                 "checkpoint": null,
-                "adminCap": null
+                "adminCap": null,
+                "seedFacts": null
               },
               "owner": {
                 "Shared": {
@@ -6564,7 +6630,8 @@
                   "lifecycle": "Uninitialized",
                   "maintenance_reserve": "0"
                 },
-                "venue_account": null
+                "venue_account": null,
+                "seed_facts": null
               }
             },
             {

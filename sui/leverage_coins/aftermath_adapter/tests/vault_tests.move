@@ -48,6 +48,10 @@ public struct TaggedSui2x() has drop;
 /// Tag for a production-constructible 5x product witness.
 public struct TaggedSui5x() has drop;
 
+public struct Sui2xShort() has drop;
+public struct Sui4x() has drop;
+public struct Sui6xShort() has drop;
+
 // === Test Fixture ===
 
 public struct Fixture {
@@ -60,6 +64,62 @@ public struct Fixture {
 }
 
 // === Tests ===
+
+#[test]
+fun distinct_issued_products_freeze_actual_long_short_2x_and_generic_4x_6x_policy() {
+    let mut fixture = start(series_one_domain::vault_issuer_role());
+    let long2 = configured_tier(policy::long(), 20_000);
+    let short2 = configured_tier(policy::short(), 20_000);
+    let long4 = configured_tier(policy::long(), 40_000);
+    let short6 = configured_tier(policy::short(), 60_000);
+    fixture.issue_and_share_with_policy(Sui2x(), b"LONG2".to_string(), long2);
+    fixture.issue_and_share_with_policy(Sui2xShort(), b"SHORT2".to_string(), short2);
+    fixture.issue_and_share_with_policy(Sui4x(), b"LONG4".to_string(), long4);
+    fixture.issue_and_share_with_policy(Sui6xShort(), b"SHORT6".to_string(), short6);
+    fixture.scenario.next_tx(ISSUER);
+    fixture.assert_issued_policy<Sui2x>(long2);
+    fixture.assert_issued_policy<Sui2xShort>(short2);
+    fixture.assert_issued_policy<Sui4x>(long4);
+    fixture.assert_issued_policy<Sui6xShort>(short6);
+    destroy(fixture);
+}
+
+#[test]
+fun risk_admin_updates_live_fees_with_a_completed_event_and_no_asset_movement() {
+    let mut fixture = start(
+        series_one_domain::vault_issuer_role() | series_one_domain::risk_admin_role(),
+    );
+    fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
+    fixture.scenario.next_tx(ISSUER);
+    let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
+    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
+    let event = events::collect_one<events::FeesUpdated<Sui2x>>(0);
+    let (id, old_mint, old_redeem, old_admin, mint, redeem, admin) = event.fees_updated_fields();
+    assert_eq!(id, vault.id_for_testing());
+    assert_eq!(vector[old_mint, old_redeem, old_admin, mint, redeem, admin], vector[10, 10, 0, 0, 0, 0]);
+    assert_eq!(vault.share_supply_for_testing(), 0);
+    assert_eq!(vault.maintenance_reserve_for_testing(), 0);
+    assert!(!vault.has_venue_account_for_testing());
+    test_scenario::return_shared(vault);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EAdminRoleNotGranted,
+    location = blast_admin::acl,
+)]
+fun issuer_without_risk_role_cannot_change_fees_even_to_zero() {
+    let mut fixture = start(series_one_domain::vault_issuer_role());
+    fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
+    fixture.scenario.next_tx(ISSUER);
+    let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
+    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
+    test_scenario::return_shared(vault);
+    destroy(fixture);
+}
 
 #[test]
 fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
@@ -266,9 +326,25 @@ fun locked_seed_share_mint_updates_the_canonical_supply_once() {
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
 
-    vault.mint_locked_shares_for_testing(1_000_000, fixture.scenario.ctx());
+    vault.mint_locked_shares_for_testing(1_000_000, ISSUER, fixture.scenario.ctx());
 
     assert_eq!(vault.share_supply_for_testing(), 1_000_000);
+    let (locked, funder) = vault.seed_facts();
+    assert_eq!(locked, 1_000_000);
+    assert_eq!(funder, ISSUER);
+    test_scenario::return_shared(vault);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = 51, location = blast_leverage_aftermath::vault)]
+fun locked_seed_funder_and_amount_cannot_be_replaced() {
+    let mut fixture = start(series_one_domain::vault_issuer_role());
+    fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
+    fixture.scenario.next_tx(ISSUER);
+    let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
+    vault.mint_locked_shares_for_testing(1_000_000, ISSUER, fixture.scenario.ctx());
+    vault.mint_locked_shares_for_testing(1, @0xB, fixture.scenario.ctx());
     test_scenario::return_shared(vault);
     destroy(fixture);
 }
@@ -635,6 +711,12 @@ fun issue_and_share<Product: drop>(
     product_witness: Product,
     symbol: String,
 ) {
+    self.issue_and_share_with_policy(product_witness, symbol, standard_tier_policy());
+}
+
+fun issue_and_share_with_policy<Product: drop>(
+    self: &mut Fixture, product_witness: Product, symbol: String, tier: TierPolicy,
+) {
     let Fixture {
         scenario,
         registry,
@@ -650,7 +732,7 @@ fun issue_and_share<Product: drop>(
         product_witness,
         test_risk_module::new(),
         registry,
-        standard_tier_policy(),
+        tier,
         MAX_ORDER_NOTIONAL_MINIMUM,
         MAX_ORDER_NOTIONAL_CURRENT,
         MAX_ORDER_NOTIONAL_MAXIMUM,
@@ -663,14 +745,26 @@ fun issue_and_share<Product: drop>(
     vault.share();
 }
 
+fun assert_issued_policy<Product>(self: &Fixture, expected: TierPolicy) {
+    let vault = self.scenario.take_shared<Vault<Product>>();
+    assert_eq!(vault.tier_policy_for_testing(), expected);
+    assert!(self.registry.exists<Vault<Product>>());
+    test_scenario::return_shared(vault);
+}
+
+fun configured_tier(side: policy::PositionSide, target: u64): TierPolicy {
+    policy::new_tier_policy(
+        side, policy::new_rebalance_policy(target - 2_000, target, target + 2_000, target + 10_000, 100, 500, 10),
+        policy::new_valuation(30_000, 2_000, 100, 500), 30, 30, 30, 30, 100, 1_000_000_000,
+    ).with_fee_limits(100, 100, 3_000, 2_000)
+}
+
 fun standard_tier_policy(): TierPolicy {
     policy::new_tier_policy(
         policy::long(),
         policy::new_rebalance_policy(
             16_000,
-            18_000,
             20_000,
-            22_000,
             26_000,
             30_000,
             100,

@@ -27,9 +27,7 @@ public enum PositionSide has copy, drop, store {
 /// module does not select production values.
 public struct RebalancePolicy has copy, drop, store {
     public_lower_bps: u64,
-    module_lower_bps: u64,
     target_bps: u64,
-    module_upper_bps: u64,
     public_upper_bps: u64,
     hard_cap_bps: u64,
     strict_tolerance_bps: u64,
@@ -63,6 +61,10 @@ public struct TierPolicy has copy, drop, store {
     valuation_policy: ValuationPolicy,
     mint_fee_bps: u64,
     redeem_fee_bps: u64,
+    mint_fee_cap_bps: u64,
+    redeem_fee_cap_bps: u64,
+    admin_allocation_cap_bps: u64,
+    initial_admin_allocation_bps: u64,
     max_mint_contribution_divergence_bps: u64,
     max_redemption_gross_divergence_bps: u64,
     min_exposure_lots: u64,
@@ -85,8 +87,8 @@ public fun short(): PositionSide {
 
 /// Creates one immutable rebalance policy from structurally valid values.
 ///
-/// Thresholds must satisfy `public lower < module lower < target < module
-/// upper < public upper < hard cap`, and the hard cap must not exceed the
+/// Thresholds must satisfy `public lower < target < public upper < hard cap`,
+/// and the hard cap must not exceed the
 /// structural `max_leverage_bps` ceiling, which bounds every threshold below
 /// it and so bounds the mint-contribution allowance. A zero public lower
 /// threshold is valid and means no caller may rebalance from below; leverage
@@ -96,9 +98,7 @@ public fun short(): PositionSide {
 /// must be positive.
 public fun new_rebalance_policy(
     public_lower_bps: u64,
-    module_lower_bps: u64,
     target_bps: u64,
-    module_upper_bps: u64,
     public_upper_bps: u64,
     hard_cap_bps: u64,
     strict_tolerance_bps: u64,
@@ -106,10 +106,8 @@ public fun new_rebalance_policy(
     minimum_improvement_bps: u64,
 ): RebalancePolicy {
     assert!(
-        public_lower_bps < module_lower_bps
-            && module_lower_bps < target_bps
-            && target_bps < module_upper_bps
-            && module_upper_bps < public_upper_bps
+        public_lower_bps < target_bps
+            && target_bps < public_upper_bps
             && public_upper_bps < hard_cap_bps
             && hard_cap_bps <= constants::max_leverage_bps!(),
         blast_leverage_series_one::errors::invalid_rebalance_policy!(),
@@ -130,9 +128,7 @@ public fun new_rebalance_policy(
 
     RebalancePolicy {
         public_lower_bps,
-        module_lower_bps,
         target_bps,
-        module_upper_bps,
         public_upper_bps,
         hard_cap_bps,
         strict_tolerance_bps,
@@ -145,16 +141,8 @@ public(package) fun public_lower_bps(self: &RebalancePolicy): u64 {
     self.public_lower_bps
 }
 
-public(package) fun module_lower_bps(self: &RebalancePolicy): u64 {
-    self.module_lower_bps
-}
-
 public(package) fun target_bps(self: &RebalancePolicy): u64 {
     self.target_bps
-}
-
-public(package) fun module_upper_bps(self: &RebalancePolicy): u64 {
-    self.module_upper_bps
 }
 
 public(package) fun public_upper_bps(self: &RebalancePolicy): u64 {
@@ -177,24 +165,15 @@ public(package) fun minimum_improvement_bps(self: &RebalancePolicy): u64 {
     self.minimum_improvement_bps
 }
 
-/// Returns whether leverage lies inside the smallest healthy range.
+/// Returns whether reported leverage lies inside the one inclusive public band.
 public(package) fun is_healthy(self: &RebalancePolicy, leverage_bps: u64): bool {
-    self.module_lower_bps <= leverage_bps
-        && leverage_bps < self.module_upper_bps
-}
-
-/// Returns whether the risk module may rebalance toward the fixed target.
-public(package) fun is_risk_module_allowed(
-    self: &RebalancePolicy,
-    leverage_bps: u64,
-): bool {
-    leverage_bps < self.module_lower_bps
-        || leverage_bps >= self.module_upper_bps
+    self.public_lower_bps <= leverage_bps
+        && leverage_bps <= self.public_upper_bps
 }
 
 /// Returns whether any caller may rebalance toward the fixed target.
 ///
-/// Both public threshold equalities are excluded and remain risk-module-only.
+/// Both public threshold equalities are inside; every caller uses this band.
 public(package) fun is_public_allowed(
     self: &RebalancePolicy,
     leverage_bps: u64,
@@ -203,12 +182,12 @@ public(package) fun is_public_allowed(
         || leverage_bps > self.public_upper_bps
 }
 
-/// Returns whether leverage has reached the inclusive hard emergency cap.
+/// Returns whether leverage is strictly above the hard wider-tolerance threshold.
 public(package) fun is_hard_emergency(
     self: &RebalancePolicy,
     leverage_bps: u64,
 ): bool {
-    leverage_bps >= self.hard_cap_bps
+    leverage_bps > self.hard_cap_bps
 }
 
 /// Returns whether a rebalance moved leverage toward target by the minimum.
@@ -260,8 +239,8 @@ public(package) fun is_execution_within_strict_tolerance(
 /// Returns whether an executed value stays within emergency tolerance.
 ///
 /// Same gate as the strict form with the wider emergency bound. Reduce-only
-/// execution at or above the hard cap uses it so a crash with wide spreads is
-/// never the reason deleveraging fails.
+/// execution strictly above the hard cap may use it. This finite wider bound
+/// does not guarantee executable liquidity or successful deleveraging.
 public(package) fun is_execution_within_emergency_tolerance(
     self: &RebalancePolicy,
     reference: u64,
@@ -366,11 +345,55 @@ public fun new_tier_policy(
         valuation_policy,
         mint_fee_bps,
         redeem_fee_bps,
+        mint_fee_cap_bps: mint_fee_bps,
+        redeem_fee_cap_bps: redeem_fee_bps,
+        admin_allocation_cap_bps: 0,
+        initial_admin_allocation_bps: 0,
         max_mint_contribution_divergence_bps,
         max_redemption_gross_divergence_bps,
         min_exposure_lots,
         nav_cap,
     }
+}
+
+/// Configures immutable fee ceilings before this policy is consumed at issuance.
+/// The initial allocation belongs to future collected fees, never prior assets.
+public fun with_fee_limits(
+    mut self: TierPolicy,
+    mint_cap_bps: u64,
+    redeem_cap_bps: u64,
+    admin_cap_bps: u64,
+    initial_admin_bps: u64,
+): TierPolicy {
+    assert!(
+        self.mint_fee_bps <= mint_cap_bps && mint_cap_bps < 10_000
+            && self.redeem_fee_bps <= redeem_cap_bps && redeem_cap_bps < 10_000
+            && initial_admin_bps <= admin_cap_bps && admin_cap_bps <= 10_000,
+        blast_leverage_series_one::errors::fee_cap_exceeded!(),
+    );
+    self.mint_fee_cap_bps = mint_cap_bps;
+    self.redeem_fee_cap_bps = redeem_cap_bps;
+    self.admin_allocation_cap_bps = admin_cap_bps;
+    self.initial_admin_allocation_bps = initial_admin_bps;
+    self
+}
+
+public(package) fun initial_admin_allocation_bps(self: &TierPolicy): u64 {
+    self.initial_admin_allocation_bps
+}
+
+public(package) fun assert_fee_limits(
+    self: &TierPolicy,
+    mint_bps: u64,
+    redeem_bps: u64,
+    admin_bps: u64,
+) {
+    assert!(
+        mint_bps <= self.mint_fee_cap_bps
+            && redeem_bps <= self.redeem_fee_cap_bps
+            && admin_bps <= self.admin_allocation_cap_bps,
+        blast_leverage_series_one::errors::fee_cap_exceeded!(),
+    );
 }
 
 /// Returns the immutable position direction.
@@ -447,7 +470,7 @@ public(package) fun assert_within_nav_cap(self: &TierPolicy, nav: u64) {
 ///
 /// This is a Series accounting postcondition, not a share-pricing input or an
 /// execution-price oracle. It deliberately does not reuse the venue
-/// mark-divergence policy. The future mint transition must apply it to the one
+/// mark-divergence policy. The mint transition applies it to the one
 /// canonical contribution before minting shares.
 public(package) fun assert_mint_contribution_within_bound(
     self: &TierPolicy,
@@ -483,7 +506,7 @@ public(package) fun assert_mint_contribution_within_bound(
 /// A zero claim admits only a zero gross, which the quote already rejects, so
 /// a dust redeemer can never be paid a gain that is not proportionally theirs.
 /// The comparison cross-multiplies through `u256` and the bound is inclusive.
-/// The future redemption transition must apply it before paying `net`.
+/// The redemption transition applies it before paying `net`.
 public(package) fun assert_redemption_gross_within_bound(
     self: &TierPolicy,
     proportional_claim: u64,
@@ -576,10 +599,8 @@ public(package) fun max_mark_divergence_bps(self: &ValuationPolicy): u64 {
 ///
 /// The admitted window is the closed interval
 /// `[reference_time_ms - max_price_age_ms, reference_time_ms + max_price_ahead_ms]`.
-/// Unlike `assert_price_fresh`, this predicate never aborts: the later
-/// objective health transition must observe a stale or future-stamped source
-/// and degrade the Series lifecycle instead of rolling its own transaction
-/// back.
+/// Unlike `assert_price_fresh`, this predicate never aborts: health may report
+/// a stale or future-stamped source without changing lifecycle.
 public(package) fun is_price_fresh(
     self: &ValuationPolicy,
     published_at_ms: u64,
@@ -625,7 +646,7 @@ public(package) fun assert_price_fresh(
 /// Returns whether a positive share-pricing price has an admitted confidence.
 ///
 /// A zero price returns false instead of aborting so the future objective
-/// health transition can observe the failure and persist lifecycle degradation.
+/// health check can report the failure without changing lifecycle.
 /// `assert_confidence_within_bound` remains the priced-operation guard that
 /// reports a zero price separately from an excessive confidence interval.
 public(package) fun is_confidence_within_bound(
@@ -671,7 +692,7 @@ public(package) fun assert_confidence_within_bound(
 /// Returns whether a venue mark is inside the admitted base-index band.
 ///
 /// A zero index returns false instead of aborting so the future objective
-/// health transition can persist lifecycle degradation. The mark may be zero
+/// health check can report invalid data. The mark may be zero
 /// at the type level, but every valid policy rejects it against a positive
 /// index because the divergence bound stays below 10,000 basis points.
 public(package) fun is_mark_within_index_divergence(

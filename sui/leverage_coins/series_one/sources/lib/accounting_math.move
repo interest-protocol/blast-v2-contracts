@@ -44,8 +44,7 @@ public(package) fun is_reserve_backed(
 /// Returns whether shareholder NAV is positive, without aborting.
 ///
 /// A false result means the reserve is unbacked or exactly consumes venue
-/// equity. In both cases holders have no priced claim, so the objective health
-/// transition must degrade the lifecycle rather than call
+/// equity. In both cases health reports invalid priced state rather than call
 /// `accounting_leverage_bps_up`, which aborts with the NAV code at zero.
 public(package) fun is_shareholder_nav_positive(
     venue_equity: u64,
@@ -92,8 +91,7 @@ public(package) fun is_accounting_leverage_below_limit(
 /// completely or exposure is reopened. A zero lot or lot multiple returns
 /// false so the caller fails closed. A true result is necessary, not
 /// sufficient, for a legal redemption; `is_redemption_possible` is exact. The
-/// future Vault must treat a false result as an objective health-degradation
-/// trigger, not as an abort.
+/// Vault reports a false result as invalid health without changing lifecycle.
 public(package) fun is_exposure_above_minimum_operation(
     base_before: u64,
     lot_size: u64,
@@ -112,8 +110,8 @@ public(package) fun is_exposure_above_minimum_operation(
 /// `lot_size * min_exposure_lots`, or when `base_before < shares_before` so
 /// that burning all but one share reaches flat and the minimum is waived. A
 /// supply below two shares, a zero lot, or a zero lot multiple returns false.
-/// The future Vault must observe a false result as a locked position and
-/// degrade the lifecycle so shutdown can open the guaranteed exit.
+/// A false result reports unavailable ordinary redemption; only a separate
+/// authorized lifecycle operation can begin terminal handling.
 public(package) fun is_redemption_possible(
     base_before: u64,
     shares_before: u64,
@@ -212,6 +210,32 @@ public(package) fun mint_accounting_quote(
         shares_out,
         shares_after,
     )
+}
+
+/// Splits one ceiling-rounded fee; its allocation remainder belongs to buffer.
+public(package) fun fee_allocation(amount: u64, rate_bps: u64, admin_bps: u64): (u64, u64, u64) {
+    assert!(admin_bps <= 10_000, blast_leverage_series_one::errors::invalid_fee_bps!());
+    let fee = fee_up(amount, rate_bps);
+    let admin = fee.mul_div(admin_bps, 10_000);
+    (fee, admin, fee - admin)
+}
+
+/// Prices shares after the separately allocated fee has left shareholder NAV.
+public(package) fun allocated_mint_quote(
+    equity_before: u64,
+    equity_after: u64,
+    reserve_before: u64,
+    reserve_after: u64,
+    supply: u64,
+    minimum: u64,
+): (u64, u64, u64) {
+    let before = shareholder_nav(equity_before, reserve_before);
+    let after = shareholder_nav(equity_after, reserve_after);
+    assert!(after > before, blast_leverage_series_one::errors::nonpositive_contribution!());
+    let contribution = after - before;
+    let (shares, _) = mint_quote(contribution, before, supply);
+    assert!(shares >= minimum, blast_leverage_series_one::errors::shares_out_below_minimum!());
+    (after, contribution, shares)
 }
 
 /// Quotes a redemption and credits its reserve fee at the correct checkpoint.
@@ -361,7 +385,7 @@ public(package) fun assert_mint_base_within_bounds_from_equity(
 /// Thus both conservation identities hold exactly. If venue equity has already
 /// fallen by `funding_cost`, shareholder NAV falls only by `uncovered`. A zero
 /// cost is a valid no-op. Positive funding is not a cost and must not call this
-/// function; it leaves the reserve unchanged and increases shareholder NAV.
+/// function; State credits positive net funding to the reserve instead.
 public(package) fun absorb_funding_cost(
     maintenance_reserve: u64,
     funding_cost: u64,

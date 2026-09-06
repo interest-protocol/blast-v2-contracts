@@ -48,6 +48,7 @@ const INITIALIZED_FIELDS = [
     'seed_reserve',
     'seed_shareholder_nav',
     'locked_shares',
+    'seed_funder',
     'absolute_base',
     'absolute_notional',
     'lot_size',
@@ -195,6 +196,7 @@ function buildPlan(input) {
         'collateralType',
         'objects',
         'seedReserve',
+        'seedFunder',
         'positionImr',
     ]);
     const adapterPackage = expectAddress(
@@ -202,6 +204,7 @@ function buildPlan(input) {
         'builderInput.adapterPackage',
     );
     expectAddress(input.sender, 'builderInput.sender');
+    expectAddress(input.seedFunder, 'builderInput.seedFunder');
     expectString(input.productTagType, 'builderInput.productTagType');
     validateCall(input.riskWitness, 'builderInput.riskWitness');
     expectString(input.collateralType, 'builderInput.collateralType');
@@ -240,6 +243,7 @@ function buildPlan(input) {
                     `@${input.objects.collateralPriceInfo}`,
                     `@${input.objects.seedCoin}`,
                     input.seedReserve,
+                    `@${input.seedFunder}`,
                     input.positionImr,
                     `@${input.objects.clock}`,
                 ],
@@ -421,6 +425,8 @@ function normalizeInitializedEvent(events, input) {
     if (String(parsedJson.vault_id).toLowerCase() !== input.objects.vault) {
         fail('VaultInitialized.vault_id: does not match the initialized Vault');
     }
+    assertEqual(expectAddress(parsedJson.seed_funder, 'VaultInitialized.seed_funder'),
+        input.seedFunder, 'VaultInitialized.seed_funder');
     return canonical({ type: event.type, parsedJson });
 }
 

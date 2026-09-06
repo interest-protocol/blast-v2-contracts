@@ -19,7 +19,14 @@ before changing this package. Run `scripts/verify.sh` for local gates. Source,
 tests, `Move.toml`, and `Move.lock` own current behavior, errors, and dependency
 facts.
 
-Series1 exposes no public user mint or redemption. Adapter activation may mint
-only the fixed seed supply and permanently deliver it to `@0x0`; user-facing
-mint and redemption remain a later adapter slice after deployed activation and
-health parity evidence passes.
+Series1 provides sealed, transaction-local plans for active mint, proportional
+redemption, donation and permissionless rebalance. Adapters authenticate venue
+facts and own native cash and share custody. Positive net funding credits the
+buffer; costs consume buffer before backing. Ordinary health observation never
+retires a product. The single public maintenance band has inclusive healthy
+endpoints and strict outside-band eligibility.
+
+This is pre-publication source preparation, not a deployment or live-parity
+claim. Series1 remains immutable after publication. The
+[active release-candidate record](../../../docs/leverage-active-release-candidate.md)
+separates local evidence from outstanding market, ABI and submitted-transaction gates.

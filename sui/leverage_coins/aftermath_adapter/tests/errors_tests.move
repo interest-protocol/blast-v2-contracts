@@ -44,3 +44,19 @@ fun adapter_error_registry_is_stable() {
     assert_eq!(errors::initialization_order_count_exceeded!(), 38);
     assert_eq!(errors::venue_account_not_installed!(), 39);
 }
+
+#[test]
+fun active_lifecycle_error_registry_is_stable() {
+    assert_eq!(errors::zero_amount!(), 40);
+    assert_eq!(errors::insufficient_admin_cash!(), 41);
+    assert_eq!(errors::cash_checkpoint_mismatch!(), 42);
+    assert_eq!(errors::active_fill_mismatch!(), 43);
+    assert_eq!(errors::active_orders_posted!(), 44);
+    assert_eq!(errors::active_liquidation!(), 45);
+    assert_eq!(errors::active_order_count_exceeded!(), 46);
+    assert_eq!(errors::deadline_expired!(), 47);
+    assert_eq!(errors::active_checkpoint_mismatch!(), 48);
+    assert_eq!(errors::redemption_share_mismatch!(), 49);
+    assert_eq!(errors::venue_fee_unusable!(), 50);
+    assert_eq!(errors::seed_already_recorded!(), 51);
+}

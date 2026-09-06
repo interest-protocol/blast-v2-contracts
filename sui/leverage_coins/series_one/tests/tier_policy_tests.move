@@ -31,9 +31,7 @@ fun the_largest_locally_valid_short_policy_is_preserved() {
         policy::short(),
         policy::new_rebalance_policy(
             0,
-            1,
             2,
-            999_998,
             999_999,
             1_000_000,
             9_999,
@@ -138,9 +136,7 @@ fun maximum_width_mint_contribution_comparison_does_not_wrap() {
         policy::long(),
         policy::new_rebalance_policy(
             0,
-            1,
             999_997,
-            999_998,
             999_999,
             1_000_000,
             0,
@@ -304,7 +300,7 @@ fun a_nav_cap_whose_hard_cap_notional_overflows_is_rejected() {
 
     policy::new_tier_policy(
         policy::long(),
-        policy::new_rebalance_policy(0, 1, 2, 999_998, 999_999, 1_000_000, 0, 0, 1),
+        policy::new_rebalance_policy(0, 2, 999_999, 1_000_000, 0, 0, 1),
         standard_valuation(),
         0,
         0,
@@ -320,7 +316,7 @@ fun a_nav_cap_whose_hard_cap_notional_overflows_is_rejected() {
 fun redemption_gross_divergence_at_the_denominator_is_rejected() {
     policy::new_tier_policy(
         policy::long(),
-        policy::new_rebalance_policy(0, 1, 3, 4, 5, 6, 0, 0, 1),
+        policy::new_rebalance_policy(0, 3, 5, 6, 0, 0, 1),
         standard_valuation(),
         0,
         0,
@@ -336,7 +332,7 @@ fun redemption_gross_divergence_at_the_denominator_is_rejected() {
 fun redemption_divergence_validation_precedes_lot_and_nav_validation() {
     policy::new_tier_policy(
         policy::long(),
-        policy::new_rebalance_policy(0, 1, 3, 4, 5, 6, 0, 0, 1),
+        policy::new_rebalance_policy(0, 3, 5, 6, 0, 0, 1),
         standard_valuation(),
         0,
         0,
@@ -407,7 +403,7 @@ fun new_tier(
 ): policy::TierPolicy {
     policy::new_tier_policy(
         if (is_long) policy::long() else policy::short(),
-        policy::new_rebalance_policy(0, 1, 3, 4, 5, 6, 0, 0, 1),
+        policy::new_rebalance_policy(0, 3, 5, 6, 0, 0, 1),
         standard_valuation(),
         mint_fee_bps,
         redeem_fee_bps,
@@ -430,9 +426,7 @@ fun mint_contribution_tier(
         policy::long(),
         policy::new_rebalance_policy(
             0,
-            1,
             target_bps,
-            target_bps + 1,
             target_bps + 2,
             target_bps + 3,
             0,

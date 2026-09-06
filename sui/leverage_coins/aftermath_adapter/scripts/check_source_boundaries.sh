@@ -151,7 +151,7 @@ awk '
   || fail "VenueAccount must check authority::for immediately before wrapping and retaining the cap."
 [[ "$(grep -Fc 'option::some(admin_cap)' <<<"$constructor_block")" -eq 1 ]] \
   || fail "Production VenueAccount construction must always retain some admin cap."
-if grep -q 'option::none' <<<"$production_venue_account"; then
+if grep -qE 'admin_cap[^;]*option::none|admin_cap:[[:space:]]*option::none' <<<"$production_venue_account"; then
   fail "Published VenueAccount code must have no path that constructs a missing admin cap."
 fi
 if grep -qE 'admin_cap\.(destroy|extract|take|fill|swap|replace)|self\.admin_cap[[:space:]]*=|self\.admin_cap\.borrow_mut\(' \
@@ -171,8 +171,15 @@ if [[ -z "$custody_some_line" || -z "$custody_borrow_line" ]] \
   || (( custody_some_line >= custody_borrow_line )); then
   fail "Every production admin-cap borrow must first assert that the retained option is some."
 fi
-[[ "$(grep -Fc 'self.admin_cap.borrow()' <<<"$production_venue_account")" -eq 1 ]] \
-  || fail "VenueAccount must have one checked production borrow of the retained admin cap."
+[[ "$(grep -Fo 'self.admin_cap.borrow()' <<<"$production_venue_account" | wc -l)" -eq 7 ]] \
+  || fail "Retained authority may be borrowed only by its guard and four narrow venue operations."
+for operation in deposit allocate withdraw execute_order; do
+  operation_block="$(sed -n "/^public(package) fun $operation</,/^}/p" "$venue_account_file")"
+  guard_line="$(grep -nE 'self.assert_(custody_binding|market_account)\(' <<<"$operation_block" | head -1 | cut -d: -f1)"
+  borrow_line="$(grep -nF 'self.admin_cap.borrow()' <<<"$operation_block" | head -1 | cut -d: -f1)"
+  [[ -n "$guard_line" && -n "$borrow_line" ]] && (( guard_line < borrow_line )) \
+    || fail "$operation must authenticate retained custody before its first native capability use."
+done
 grep -A1 '^#\[test_only\]$' "$venue_account_file" \
   | grep -q '^public fun new_for_testing(' \
   || fail "The missing-cap VenueAccount constructor must remain test-only."
@@ -239,8 +246,12 @@ sed -n '/^public fun enter_reduce_only<Product>($/,/^}/p' "$vault_file" \
 sed -n '/^public fun rotate_risk_module</,/^}/p' "$vault_file" \
   | grep -q 'admin_witness.assert_role(series_one_domain::risk_admin_role());' \
   || fail "Risk rotation must require the Series1 risk-admin role."
-[[ "$(grep -c 'admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,' "$vault_file")" -eq 3 ]] \
-  || fail "Every administered Vault operation must take the typed Series1-domain witness."
+grep -q 'admin_witness: &AdminWitness,' "$vault_file" \
+  && fail "Every administered Vault operation must take the typed Series1-domain witness."
+witness_params="$(grep -c 'admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,' "$vault_file")"
+role_checks="$(grep -c 'admin_witness.assert_role(series_one_domain::' "$vault_file")"
+[[ "$witness_params" -eq $((role_checks + 1)) ]] \
+  || fail "Every administered Vault operation except issuance, whose issuer role Series1 asserts, must assert its own Series1-domain role."
 
 # Custody wraps the shared sealed value. Provenance is proved once, by this
 # package for the Publisher module and by blast_admin for the cap.
@@ -380,11 +391,11 @@ grep -q 'assert_position_signs(signed_base, signed_quote_notional, position.is_l
   || fail "Strict capture must reject incoherent venue position signs."
 grep -q 'assert!(base_representable && notional_representable' "$snapshot_file" \
   || fail "Strict capture must reject unrepresentable base and notional facts."
-grep -q 'assert!(equity_representable && !ifixed::is_neg(allocated_collateral)' "$snapshot_file" \
+grep -q 'assert!(equity_representable,' "$snapshot_file" \
   || fail "Strict capture must reject unrepresentable equity facts."
 grep -q 'assert!(down < std::u256::max_value!()' "$snapshot_file" \
   || fail "Strict USD ceil conversion must guard its final increment."
-grep -q '&& signs_coherent' "$snapshot_file" \
+grep -q 'let economics_valid = signs_coherent' "$snapshot_file" \
   || fail "Health capture must retain incoherent position signs as unhealthy facts."
 grep -q '&& mark_representable' "$snapshot_file" \
   || fail "Health capture must retain an unrepresentable mark as an unhealthy fact."
@@ -529,7 +540,7 @@ for marker in "${activation_markers[@]}"; do
 done
 awk '
   /BLAST_ACTIVATION_BOUNDARY_A1/ { if (previous != "    );") exit 1; found[1] = 1 }
-  /BLAST_ACTIVATION_BOUNDARY_A2/ { if (previous != "    vault.mint_locked_shares(locked_shares, ctx);") exit 1; found[2] = 1 }
+  /BLAST_ACTIVATION_BOUNDARY_A2/ { if (previous != "    vault.mint_locked_shares(locked_shares, seed_funder, ctx);") exit 1; found[2] = 1 }
   /BLAST_ACTIVATION_BOUNDARY_A3/ { if (previous != "    let venue_account = venue_account::new(admin_cap, binding, checkpoint);") exit 1; found[3] = 1 }
   /BLAST_ACTIVATION_BOUNDARY_A4/ { if (previous != "    account::consume_policy_and_share_account(account, share_policy);") exit 1; found[4] = 1 }
   /BLAST_ACTIVATION_BOUNDARY_A5/ { if (previous != "    vault.install_venue_account(venue_account);") exit 1; found[5] = 1 }
@@ -646,19 +657,18 @@ post_capture_line() {
   grep -nF "$needle" <<<"$post_capture_block" | head -1 | cut -d: -f1
 }
 post_stored_line="$(post_capture_line 'let stored_checkpoint = *vault.venue_checkpoint();')"
-post_preexisting_fields_line="$(post_capture_line 'snapshot::funding_change_fields(&preexisting_change)')"
-post_local_fields_line="$(post_capture_line 'snapshot::funding_change_fields(&local_change)')"
-post_preexisting_settle_line="$(post_capture_line 'vault.settle_funding(preexisting_is_cost, preexisting_amount)')"
-post_local_settle_line="$(post_capture_line 'vault.settle_funding(local_is_cost, local_amount)')"
+post_net_line="$(post_capture_line 'let net = snapshot::net_funding(preexisting_change, local_change);')"
+post_fields_line="$(post_capture_line 'snapshot::funding_change_fields(&net)')"
+post_settle_line="$(post_capture_line 'vault.settle_funding(is_cost, amount)')"
 post_finish_line="$(post_capture_line 'let (observation, checkpoint) = snapshot::finish_health(')"
 post_persist_line="$(post_capture_line 'vault.replace_venue_checkpoint(checkpoint);')"
-post_policy_line="$(post_capture_line 'let lifecycle_changed = vault.sync_health(')"
+post_policy_line="$(post_capture_line 'let _healthy = vault.sync_health(')"
 post_funding_event_line="$(post_capture_line 'events::funding_settled<Product>(')"
-post_health_decision_line="$(post_capture_line 'let (emit_health, health_reason) = health_event_decision(')"
+post_health_decision_line="$(post_capture_line 'if (diagnostic_changed) {')"
 post_health_event_line="$(post_capture_line 'events::health_synchronized<Product>(')"
 post_capture_order=(
-  "$post_stored_line" "$post_preexisting_fields_line" "$post_local_fields_line"
-  "$post_preexisting_settle_line" "$post_local_settle_line" "$post_finish_line"
+  "$post_stored_line" "$post_net_line" "$post_fields_line"
+  "$post_settle_line" "$post_finish_line"
   "$post_persist_line" "$post_policy_line" "$post_funding_event_line"
   "$post_health_decision_line" "$post_health_event_line"
 )
@@ -670,10 +680,41 @@ for ((i = 1; i < ${#post_capture_order[@]}; i++)); do
 done
 [[ "$(grep -Fc 'vault.replace_venue_checkpoint(checkpoint);' <<<"$post_capture_block")" -eq 1 ]] \
   || fail "The post-capture helper must persist exactly one authenticated checkpoint."
-[[ "$(grep -Fc 'events::funding_settled<Product>(' <<<"$post_capture_block")" -eq 2 ]] \
-  || fail "The post-capture helper must emit each ordered funding edge independently."
+[[ "$(grep -Fc 'events::funding_settled<Product>(' <<<"$post_capture_block")" -eq 1 ]] \
+  || fail "One accepted checkpoint must emit exactly one aggregate net-funding fact."
 [[ "$(grep -Fc 'events::health_synchronized<Product>(' <<<"$post_capture_block")" -eq 1 ]] \
-  || fail "The post-capture helper must have one degradation event site."
+  || fail "The post-capture helper must have one diagnostic-novelty event site."
+grep -q 'if (checkpoint_clean) {' <<<"$post_capture_block" \
+  && grep -q 'let lifecycle_changed = false;' <<<"$post_capture_block" \
+  && grep -q 'vault.note_checkpoint_health(&checkpoint, checkpoint_clean)' <<<"$post_capture_block" \
+  || fail "Ordinary health must preserve lifecycle and distinguish accepted from diagnostic identities."
+
+for operation in mint redeem rebalance donate release_buffer; do
+  operation_block="$(sed -n "/^public fun $operation</,/^}/p" "$operations_file")"
+  grep -q 'protocol.assert_current();' <<<"$operation_block" \
+    && grep -q 'vault.assert_active();' <<<"$operation_block" \
+    && grep -q 'sync_health(' <<<"$operation_block" \
+    || fail "$operation must check version and active lifecycle and reconcile funding."
+done
+rebalance_block="$(sed -n '/^public fun rebalance</,/^}/p' "$operations_file")"
+redemption_block="$(sed -n '/^public fun redeem</,/^}/p' "$operations_file")"
+withdrawal_proof_line="$(grep -nF 'venue_account::assert_withdrawal_checkpoint(&receipt.unwound_checkpoint, &final_checkpoint, receipt.redemption_cash_required());' <<<"$redemption_block" | cut -d: -f1)"
+redemption_completion_line="$(grep -nF 'let cash = complete_redemption(' <<<"$redemption_block" | cut -d: -f1)"
+[[ -n "$withdrawal_proof_line" && -n "$redemption_completion_line" ]] \
+  && (( withdrawal_proof_line < redemption_completion_line )) \
+  || fail "Public redemption must prove its signed withdrawal before native completion/burn."
+rebalance_signature="$(sed -n '1,/^) {$/p' <<<"$rebalance_block")"
+if grep -qE 'AdminWitness|RiskModule|order_size:|side:|target:|tolerance:|fee:' <<<"$rebalance_signature"; then
+  fail "Permissionless rebalance must expose no privileged access or caller economic choices."
+fi
+grep -q 'while (index < MAX_ACTIVE_ORDERS)' <<<"$rebalance_block" \
+  && grep -q 'vault.rebalance_order(&plan)' <<<"$rebalance_block" \
+  && grep -q 'vault.accept_rebalance_fill' <<<"$rebalance_block" \
+  && grep -q 'actual_fill_notional(filled_quote, collateral_price)' <<<"$rebalance_block" \
+  || fail "Rebalance must bound work, recompute from accepted fills, and cap actual quote."
+grep -q 'seed_funder: address,' <<<"$initialization_signature" \
+  && grep -q 'vault.seed_facts()' <<<"$activation_event_block" \
+  || fail "Activation must record immutable seed ownership and emit the stored facts."
 test_post_capture_block="$(
   sed -n '/^public fun apply_post_capture_for_testing<Product>($/,/^}/p' "$operations_file"
 )"

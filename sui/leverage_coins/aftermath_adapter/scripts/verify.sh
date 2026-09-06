@@ -36,6 +36,7 @@ case "${1:-all}" in
     ;;
   local)
     bash "$package_dir/scripts/check_source_boundaries.sh"
+    node --test "$package_dir/scripts/active_ptb.test.mjs"
     node "$package_dir/scripts/check_mainnet_abi.mjs" --self-test
     node "$package_dir/scripts/dev_inspect_activation.mjs" --self-test
     node "$package_dir/scripts/controlled_health_cases.mjs" --self-test

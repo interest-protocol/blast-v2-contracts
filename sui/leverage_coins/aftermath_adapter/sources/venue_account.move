@@ -5,8 +5,16 @@
 module blast_leverage_aftermath::venue_account;
 
 use authority_cap::authority::{Self, ADMIN, AuthorityCap};
-use perpetuals::authority::ACCOUNT;
+use ifixed::ifixed;
+use oracle_aggregator::price_feed_storage::PriceFeedStorage;
+use perpetuals::{
+    account::{Self, Account},
+    authority::ACCOUNT,
+    clearing_house::{Self, ClearingHouse, SessionSummary},
+    registry::Registry,
+};
 use std::type_name::TypeName;
+use sui::{clock::Clock, coin::Coin};
 
 // === Public Types ===
 
@@ -56,6 +64,122 @@ public struct VenueAccount has store {
 }
 
 // === Package Functions ===
+
+/// Withdraws the exact payout, using free collateral before a bounded deallocation.
+public(package) fun withdraw<Collateral>(
+    self: &VenueAccount, account: &mut Account<Collateral>, registry: &Registry,
+    clearing_house: &mut ClearingHouse<Collateral>, base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage, amount: u64, clock: &Clock, ctx: &mut TxContext,
+): Coin<Collateral> {
+    self.assert_market_account(account, clearing_house);
+    assert!(object::id(registry) == self.registry_id, blast_leverage_aftermath::errors::registry_mismatch!());
+    assert!(object::id(base_oracle) == self.base_oracle_id, blast_leverage_aftermath::errors::base_oracle_mismatch!());
+    assert!(object::id(collateral_oracle) == self.collateral_oracle_id, blast_leverage_aftermath::errors::collateral_oracle_mismatch!());
+    let free = account::collateral_balance(account);
+    if (free < amount) {
+        let required = amount - free;
+        let deallocated = clearing_house::deallocate_collateral(
+            clearing_house, self.admin_cap.borrow(), account, base_oracle, collateral_oracle, required, clock,
+        );
+        assert!(deallocated == required, blast_leverage_aftermath::errors::cash_checkpoint_mismatch!());
+    };
+    account::withdraw_collateral(account, self.admin_cap.borrow(), registry, amount, ctx)
+}
+
+/// Allocates deposited cash into the sole bound market without lending its authority.
+public(package) fun allocate<Collateral>(
+    self: &VenueAccount, account: &mut Account<Collateral>, clearing_house: &mut ClearingHouse<Collateral>, amount: u64,
+) {
+    self.assert_market_account(account, clearing_house);
+    clearing_house::allocate_collateral(clearing_house, self.admin_cap.borrow(), account, amount);
+}
+
+/// Executes one bounded market order under retained authority and returns its venue facts.
+public(package) fun execute_order<Collateral>(
+    self: &VenueAccount,
+    account: &mut Account<Collateral>,
+    clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    is_ask: bool,
+    base: u64,
+    reduce_only: bool,
+    clock: &Clock,
+    ctx: &TxContext,
+): (ClearingHouse<Collateral>, SessionSummary) {
+    self.assert_market_account(account, &clearing_house);
+    assert!(object::id(base_oracle) == self.base_oracle_id, blast_leverage_aftermath::errors::base_oracle_mismatch!());
+    assert!(object::id(collateral_oracle) == self.collateral_oracle_id, blast_leverage_aftermath::errors::collateral_oracle_mismatch!());
+
+    let mut session = clearing_house::start_session(
+        clearing_house, self.admin_cap.borrow(), account, base_oracle, collateral_oracle,
+        option::none(), clock, ctx,
+    );
+    clearing_house::place_market_order(&mut session, is_ask, base, reduce_only);
+    clearing_house::end_session(session, self.admin_cap.borrow(), account, false, false)
+}
+
+/// Deposits only into the retained account under its private admin authority.
+public(package) fun deposit<Collateral>(
+    self: &VenueAccount,
+    account: &mut Account<Collateral>,
+    registry: &Registry,
+    cash: Coin<Collateral>,
+) {
+    self.assert_custody_binding();
+    assert!(object::id(account) == self.account_object_id, blast_leverage_aftermath::errors::account_object_mismatch!());
+    assert!(account::account_id(account) == self.account_number, blast_leverage_aftermath::errors::account_number_mismatch!());
+    assert!(object::id(registry) == self.registry_id, blast_leverage_aftermath::errors::registry_mismatch!());
+    assert!(std::type_name::with_original_ids<Collateral>() == self.collateral_type, blast_leverage_aftermath::errors::collateral_type_mismatch!());
+    account::deposit_collateral(account, self.admin_cap.borrow(), registry, cash);
+}
+
+/// A cash-only deposit may change exactly free collateral and no other raw field.
+public(package) fun assert_deposit_checkpoint(before: &Checkpoint, after: &Checkpoint, amount: u64) {
+    let mut expected = *before;
+    expected.free_collateral = expected.free_collateral.checked_add(amount)
+        .destroy_or!(abort blast_leverage_aftermath::errors::cash_checkpoint_mismatch!());
+    assert!(&expected == after, blast_leverage_aftermath::errors::cash_checkpoint_mismatch!());
+}
+
+/// A deposited-and-allocated input changes exactly allocated six-decimal collateral.
+public(package) fun assert_allocated_deposit_checkpoint(before: &Checkpoint, after: &Checkpoint, amount: u64) {
+    assert_signed_cash_change(
+        ifixed::is_neg(before.allocated_collateral), ifixed::abs(before.allocated_collateral),
+        ifixed::is_neg(after.allocated_collateral), ifixed::abs(after.allocated_collateral), amount, true,
+    );
+    assert_cash_checkpoint(before, after, before.free_collateral);
+}
+
+/// Payout spends free cash first, then exactly deallocates the remaining amount.
+public(package) fun assert_withdrawal_checkpoint(before: &Checkpoint, after: &Checkpoint, amount: u64) {
+    let from_free = before.free_collateral.min(amount);
+    let from_position = amount - from_free;
+    assert_signed_cash_change(
+        ifixed::is_neg(before.allocated_collateral), ifixed::abs(before.allocated_collateral),
+        ifixed::is_neg(after.allocated_collateral), ifixed::abs(after.allocated_collateral), from_position, false,
+    );
+    assert_cash_checkpoint(before, after, before.free_collateral - from_free);
+}
+
+/// An isolated session may change only its proved position and allocated trading cost.
+/// Expected signed position values must derive from authenticated venue fill facts.
+public(package) fun assert_trade_checkpoint(
+    before: &Checkpoint, after: &Checkpoint, expected_base: u256, expected_quote: u256,
+) {
+    let mut expected = *before;
+    expected.signed_base = expected_base;
+    expected.signed_quote_notional = expected_quote;
+    expected.allocated_collateral = after.allocated_collateral;
+    assert!(&expected == after, blast_leverage_aftermath::errors::active_checkpoint_mismatch!());
+}
+
+/// Isolates a reduce-only session's actual realized-PnL/entry-quote effects.
+/// The venue does not expose those deltas separately. Exact filled base, strict
+/// post-position validity and actual kept-NAV pricing complete the adapter proof.
+public(package) fun assert_reduction_checkpoint(before: &Checkpoint, after: &Checkpoint, expected_base: u256) {
+    assert_trade_checkpoint(before, after, expected_base, after.signed_quote_notional);
+}
 
 /// Creates a value used to authenticate one complete external object graph.
 public(package) fun new_binding(
@@ -327,6 +451,41 @@ public(package) fun replace_checkpoint(
     self.checkpoint = checkpoint;
 }
 
+// === Private Functions ===
+
+/// Checks every unrelated field after the caller proves the signed collateral delta.
+fun assert_cash_checkpoint(before: &Checkpoint, after: &Checkpoint, free: u64) {
+    let mut expected = *before;
+    expected.free_collateral = free;
+    expected.allocated_collateral = after.allocated_collateral;
+    assert!(&expected == after, blast_leverage_aftermath::errors::cash_checkpoint_mismatch!());
+}
+
+/// Exact signed change in decoded IFixed magnitudes, with no raw-carrier ordering.
+fun assert_signed_cash_change(
+    before_negative: bool, before: u256, after_negative: bool, after: u256,
+    amount: u64, increase: bool,
+) {
+    let required = (amount as u256) * 1_000_000_000_000;
+    let (actual, credit) = if (before_negative == after_negative) {
+        (before.diff(after), if (before_negative) { before > after } else { after > before })
+    } else {
+        (before.checked_add(after).destroy_or!(abort blast_leverage_aftermath::errors::cash_checkpoint_mismatch!()), !after_negative)
+    };
+    assert!(actual == required && (actual == 0 || credit == increase), blast_leverage_aftermath::errors::cash_checkpoint_mismatch!());
+}
+
+/// Verifies every authority-bearing account/market component before a session.
+fun assert_market_account<Collateral>(
+    self: &VenueAccount, account: &Account<Collateral>, clearing_house: &ClearingHouse<Collateral>,
+) {
+    self.assert_custody_binding();
+    assert!(object::id(account) == self.account_object_id, blast_leverage_aftermath::errors::account_object_mismatch!());
+    assert!(account::account_id(account) == self.account_number, blast_leverage_aftermath::errors::account_number_mismatch!());
+    assert!(object::id(clearing_house) == self.clearing_house_id, blast_leverage_aftermath::errors::clearing_house_mismatch!());
+    assert!(std::type_name::with_original_ids<Collateral>() == self.collateral_type, blast_leverage_aftermath::errors::collateral_type_mismatch!());
+}
+
 // === Test-Only Functions ===
 
 /// Builds real binding/checkpoint custody around the unavailable local cap.
@@ -367,6 +526,24 @@ public fun assert_admin_cap_binding_for_testing(
     account_object_id: ID,
 ) {
     assert_admin_cap_binding(cap_account_object_id, account_object_id);
+}
+
+#[test_only]
+public fun assert_signed_cash_change_for_testing(
+    before_negative: bool, before: u256, after_negative: bool, after: u256,
+    amount: u64, increase: bool,
+) {
+    assert_signed_cash_change(before_negative, before, after_negative, after, amount, increase);
+}
+
+/// Exercises the pure cash proof with explicitly nonnegative decoded fixture collateral.
+#[test_only]
+public fun assert_nonnegative_cash_checkpoint_for_testing(
+    before: &Checkpoint, after: &Checkpoint, amount: u64, deposit: bool,
+) {
+    let from_free = if (deposit) { 0 } else { before.free_collateral.min(amount) };
+    assert_signed_cash_change(false, before.allocated_collateral, false, after.allocated_collateral, amount - from_free, deposit);
+    assert_cash_checkpoint(before, after, before.free_collateral - from_free);
 }
 
 #[test_only]

@@ -40,6 +40,7 @@ const ROLE_POINTERS = {
         venueAccount: '/content/venue_account/account_object_id',
         checkpoint: '/content/venue_account/checkpoint',
         adminCap: '/content/venue_account/admin_cap/id',
+        seedFacts: '/content/seed_facts',
     },
     share_currency: {
         treasuryCapId: '/content/treasury_cap_id',
@@ -75,12 +76,14 @@ const OPTION_ROOTS_BY_SELECTOR = {
     'vault.venueAccount': ['/content/venue_account'],
     'vault.checkpoint': ['/content/venue_account'],
     'vault.adminCap': ['/content/venue_account', '/content/venue_account/admin_cap'],
+    'vault.seedFacts': ['/content/seed_facts'],
     'share_currency.treasuryCapId': ['/content/treasury_cap_id'],
 };
 const SELECTOR_VALUE_KIND = {
     'vault.venueAccount': 'address',
     'vault.checkpoint': 'object',
     'vault.adminCap': 'address',
+    'vault.seedFacts': 'object',
     'share_currency.treasuryCapId': 'address',
 };
 const REQUIRED_TRACKED_ROLES = Object.keys(ROLE_SELECTORS);
@@ -133,7 +136,7 @@ const INITIALIZER_ARGUMENT_ROLE = {
     base_oracle: 6,
     collateral_oracle: 7,
     base_price_info: 8,
-    clock: 13,
+    clock: 14,
 };
 const ZERO_ADDRESS = `0x${'0'.repeat(64)}`;
 const SEED_SHARE_SCALE = 1_000n;
@@ -143,7 +146,7 @@ const INITIALIZED_FIELDS = [
     'vault_id', 'account_object_id', 'account_number', 'registry_id',
     'clearing_house_id', 'base_oracle_id', 'collateral_oracle_id',
     'collateral_type', 'seed_amount', 'seed_venue_equity', 'seed_reserve',
-    'seed_shareholder_nav', 'locked_shares', 'absolute_base',
+    'seed_shareholder_nav', 'locked_shares', 'seed_funder', 'absolute_base',
     'absolute_notional', 'lot_size', 'position_side', 'position_imr', 'checkpoint',
 ];
 const CHECKPOINT_FIELDS = [
@@ -605,7 +608,7 @@ function validateInitializer(initializer, packageId, ptbArgs, path) {
     expectStringList(initializer.typeArguments, `${path}.typeArguments`);
     if (initializer.typeArguments.length !== 3) fail(`${path}.typeArguments: expected Product, RiskModule, Collateral`);
     expectStringList(initializer.arguments, `${path}.arguments`);
-    if (initializer.arguments.length !== 14) fail(`${path}.arguments: expected 14 explicit arguments`);
+    if (initializer.arguments.length !== 15) fail(`${path}.arguments: expected 15 explicit arguments`);
     expectStringList(ptbArgs, `${path}.ptbArgs`);
     for (const forbidden of [
         '--dev-inspect', '--dry-run', '--preview',
@@ -859,8 +862,9 @@ function initializerBindings(initializer, path) {
         collateralPriceInfoId: addressArgument(9, 'collateralPriceInfoId'),
         seedCoinId: addressArgument(10, 'seedCoinId'),
         seedReserve: BigInt(expectString(initializer.arguments[11], `${path}.seedReserve`)),
-        positionImr: BigInt(expectString(initializer.arguments[12], `${path}.positionImr`)),
-        clockId: addressArgument(13, 'clockId'),
+        seedFunder: addressArgument(12, 'seedFunder'),
+        positionImr: BigInt(expectString(initializer.arguments[13], `${path}.positionImr`)),
+        clockId: addressArgument(14, 'clockId'),
     };
 }
 
@@ -1114,6 +1118,8 @@ function validateSuccess(evidence, runConfig) {
         [fields.checkpoint, vault.selected.checkpoint, 'checkpoint'],
         [String(fields.locked_shares), String(lockedShares), 'locked_shares supply'],
         [String(fields.locked_shares), String(locked.selected.balance), 'locked_shares balance'],
+        [fields.seed_funder, inputs.seedFunder, 'seed_funder input'],
+        [vault.selected.seedFacts, { locked_shares: String(lockedShares), funder: inputs.seedFunder }, 'immutable seed ownership'],
         [String(fields.absolute_base), String(fixedToAtomicUp(signedBase.magnitude, 9, 'success.absolute_base')), 'absolute_base'],
         [String(fields.absolute_notional), String(absoluteNotional), 'absolute_notional'],
         [String(fields.lot_size), String(fields.checkpoint.lot_size), 'lot_size'],

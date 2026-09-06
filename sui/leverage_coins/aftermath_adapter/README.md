@@ -41,6 +41,19 @@ committed oracle, not caller-supplied expectations, and the atomicity gate
 checks the complete expected object/effect/ownership graph for success and
 rollback. All three live proof paths enforce the pinned Sui CLI version.
 
-The package has no public share-mint, redemption, rebalance, shutdown, or
-donation operation. Mint and redemption are a later slice after deployed
-activation and health parity evidence passes.
+Public active operations are `initialize`, `mint`, `redeem`, `rebalance`,
+`sync_health`, `donate`, and `release_buffer`; Vault also exposes authorized
+fee settings and earned-admin cash withdrawal. Mint/redeem return ordinary
+native coins and finish atomically. Rebalance has no privileged keeper path,
+caller trade sizing or reward. An unresolved external change preserves the
+accepted economic checkpoint and emits a deduplicated diagnostic.
+
+Activation records the exact locked seed amount and explicit funder. Shutdown
+and terminal claims are not implemented by this active-lifecycle slice.
+
+Run **`bash scripts/verify.sh local`** for offline gates. The default/all lane
+includes external evidence gates and is not interchangeable with local testing.
+Local official venue ports contain aborting implementations: compilation and
+pure/native-custody tests do not prove venue execution or submitted rollback.
+See the [active release-candidate record](../../../docs/leverage-active-release-candidate.md)
+for parameters, keeper behavior, T-002 handoff facts and outstanding release evidence.

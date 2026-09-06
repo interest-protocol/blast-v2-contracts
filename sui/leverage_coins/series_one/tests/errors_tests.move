@@ -167,4 +167,17 @@ fun state_kernel_error_registry_is_stable() {
         blast_leverage_series_one::errors::initialization_exposure_below_minimum!(),
         85,
     );
+    assert_eq!(blast_leverage_series_one::errors::fee_cap_exceeded!(), 86);
+    assert_eq!(blast_leverage_series_one::errors::fee_settings_unchanged!(), 87);
+    assert_eq!(blast_leverage_series_one::errors::user_fee_limit_exceeded!(), 88);
+    assert_eq!(blast_leverage_series_one::errors::mint_outside_public_band!(), 89);
+    assert_eq!(blast_leverage_series_one::errors::active_checkpoint_changed!(), 90);
+    assert_eq!(blast_leverage_series_one::errors::active_fill_incomplete!(), 91);
+    assert_eq!(blast_leverage_series_one::errors::active_leverage_above_cap!(), 92);
+    assert_eq!(blast_leverage_series_one::errors::active_observation_unusable!(), 93);
+    assert_eq!(blast_leverage_series_one::errors::redemption_output_below_minimum!(), 94);
+    assert_eq!(blast_leverage_series_one::errors::buffer_release_exceeds_balance!(), 95);
+    assert_eq!(blast_leverage_series_one::errors::rebalance_inside_public_band!(), 96);
+    assert_eq!(blast_leverage_series_one::errors::rebalance_no_progress!(), 97);
+    assert_eq!(blast_leverage_series_one::errors::venue_fee_unusable!(), 98);
 }

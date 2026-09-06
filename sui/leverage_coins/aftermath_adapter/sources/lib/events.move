@@ -7,13 +7,60 @@ use std::type_name::TypeName;
 
 // === Constants ===
 
-/// Health policy rejected an otherwise clean authenticated checkpoint.
-const HEALTH_REASON_OBJECTIVE_FAILURE: u8 = 0;
+/// An earlier unresolved diagnostic has returned to a clean authenticated checkpoint.
+const HEALTH_REASON_CHECKPOINT_RECONCILED: u8 = 2;
 
 /// Stored or settlement checkpoint comparison found an unrelated mutation.
 const HEALTH_REASON_UNEXPECTED_CHECKPOINT: u8 = 1;
 
 // === Public Structs ===
+
+/// Completed native share burn and exact collateral payout after attributable unwind.
+public struct Redeemed<phantom Product> has copy, drop {
+    vault_id: ID,
+    shares: u64,
+    net: u64,
+    fee: u64,
+    admin_fee: u64,
+    buffer_fee: u64,
+    fee_bps: u64,
+    admin_bps: u64,
+    reserve_after: u64,
+    admin_cash_after: u64,
+    supply_after: u64,
+    checkpoint: Checkpoint,
+}
+
+/// Completed maintenance with actual equity/exposure effects and unchanged allocations.
+public struct Rebalanced<phantom Product> has copy, drop {
+    vault_id: ID,
+    equity_before: u64,
+    equity_after: u64,
+    base_before: u64,
+    base_after: u64,
+    increase: bool,
+    reserve_after: u64,
+    admin_cash_after: u64,
+    supply_after: u64,
+    checkpoint: Checkpoint,
+}
+
+/// Completed active mint, including its actual contribution and both fee allocations.
+public struct Minted<phantom Product> has copy, drop {
+    vault_id: ID,
+    deposit: u64,
+    shares: u64,
+    contribution: u64,
+    fee: u64,
+    admin_fee: u64,
+    buffer_fee: u64,
+    fee_bps: u64,
+    admin_bps: u64,
+    reserve_after: u64,
+    admin_cash_after: u64,
+    supply_after: u64,
+    checkpoint: Checkpoint,
+}
 
 // Custody creation, upgrade authorization, receipt commit, policy restriction,
 // immutability, and generation advance are emitted by `blast_admin` for every
@@ -47,6 +94,7 @@ public struct VaultInitialized<phantom Product> has copy, drop {
     seed_reserve: u64,
     seed_shareholder_nav: u64,
     locked_shares: u64,
+    seed_funder: address,
     absolute_base: u64,
     absolute_notional: u64,
     lot_size: u64,
@@ -68,7 +116,7 @@ public struct FundingSettled<phantom Product> has copy, drop {
     checkpoint: Checkpoint,
 }
 
-/// Emitted after health degrades or an unexpected checkpoint is persisted.
+/// Diagnostic novelty or reconciliation; ordinary health never changes lifecycle.
 public struct HealthSynchronized<phantom Product> has copy, drop {
     vault_id: ID,
     reason: u8,
@@ -95,7 +143,106 @@ public struct ReduceOnlyEntered<phantom Product> has copy, drop {
     vault_id: ID,
 }
 
+/// Completed live-setting update; immutable caps and existing balances do not change.
+public struct FeesUpdated<phantom Product> has copy, drop {
+    vault_id: ID,
+    previous_mint_bps: u64,
+    previous_redeem_bps: u64,
+    previous_admin_bps: u64,
+    mint_bps: u64,
+    redeem_bps: u64,
+    admin_bps: u64,
+}
+
+/// Completed withdrawal from native admin cash; no holder or buffer claim is created.
+public struct AdminFeesWithdrawn<phantom Product> has copy, drop {
+    vault_id: ID,
+    amount: u64,
+    remaining: u64,
+}
+
+/// Completed venue cash deposit allocated entirely to the funding buffer.
+public struct Donated<phantom Product> has copy, drop {
+    vault_id: ID,
+    amount: u64,
+    reserve_after: u64,
+    checkpoint: Checkpoint,
+}
+
+/// Completed buffer-to-backing relabeling with no cash movement or supply change.
+public struct BufferReleased<phantom Product> has copy, drop {
+    vault_id: ID,
+    amount: u64,
+    reserve_after: u64,
+}
+
 // === Package Functions ===
+
+/// The signed equity delta is the actual net execution effect at the fixed oracle pair.
+public(package) fun rebalanced<Product>(
+    vault_id: ID, equity_before: u64, equity_after: u64, base_before: u64, base_after: u64,
+    increase: bool, reserve_after: u64, admin_cash_after: u64, supply_after: u64, checkpoint: Checkpoint,
+) {
+    blast_leverage_aftermath::events_wrapper::emit_event(Rebalanced<Product> {
+        vault_id, equity_before, equity_after, base_before, base_after, increase,
+        reserve_after, admin_cash_after, supply_after, checkpoint,
+    });
+}
+
+public(package) fun redeemed<Product>(
+    vault_id: ID, shares: u64, net: u64, fee: u64, admin_fee: u64, buffer_fee: u64,
+    fee_bps: u64, admin_bps: u64, reserve_after: u64, admin_cash_after: u64,
+    supply_after: u64, checkpoint: Checkpoint,
+) {
+    blast_leverage_aftermath::events_wrapper::emit_event(Redeemed<Product> {
+        vault_id, shares, net, fee, admin_fee, buffer_fee, fee_bps, admin_bps,
+        reserve_after, admin_cash_after, supply_after, checkpoint,
+    });
+}
+
+public(package) fun minted<Product>(
+    vault_id: ID, deposit: u64, shares: u64, contribution: u64, fee: u64, admin_fee: u64,
+    buffer_fee: u64, fee_bps: u64, admin_bps: u64, reserve_after: u64, admin_cash_after: u64,
+    supply_after: u64, checkpoint: Checkpoint,
+) {
+    blast_leverage_aftermath::events_wrapper::emit_event(Minted<Product> {
+        vault_id, deposit, shares, contribution, fee, admin_fee, buffer_fee, fee_bps, admin_bps,
+        reserve_after, admin_cash_after, supply_after, checkpoint,
+    });
+}
+
+public(package) fun buffer_released<Product>(vault_id: ID, amount: u64, reserve_after: u64) {
+    blast_leverage_aftermath::events_wrapper::emit_event(BufferReleased<Product> {
+        vault_id, amount, reserve_after,
+    });
+}
+
+public(package) fun donated<Product>(vault_id: ID, amount: u64, reserve_after: u64, checkpoint: Checkpoint) {
+    blast_leverage_aftermath::events_wrapper::emit_event(Donated<Product> {
+        vault_id, amount, reserve_after, checkpoint,
+    });
+}
+
+public(package) fun admin_fees_withdrawn<Product>(vault_id: ID, amount: u64, remaining: u64) {
+    blast_leverage_aftermath::events_wrapper::emit_event(AdminFeesWithdrawn<Product> {
+        vault_id, amount, remaining,
+    });
+}
+
+public(package) fun fees_updated<Product>(
+    vault_id: ID,
+    previous_mint_bps: u64,
+    previous_redeem_bps: u64,
+    previous_admin_bps: u64,
+    mint_bps: u64,
+    redeem_bps: u64,
+    admin_bps: u64,
+) {
+    blast_leverage_aftermath::events_wrapper::emit_event(FeesUpdated<Product> {
+        vault_id, previous_mint_bps, previous_redeem_bps, previous_admin_bps,
+        mint_bps, redeem_bps, admin_bps,
+    });
+}
 
 public(package) fun vault_issued<Product>(
     vault_id: ID,
@@ -135,6 +282,7 @@ public(package) fun vault_initialized<Product>(
     seed_reserve: u64,
     seed_shareholder_nav: u64,
     locked_shares: u64,
+    seed_funder: address,
     absolute_base: u64,
     absolute_notional: u64,
     lot_size: u64,
@@ -157,6 +305,7 @@ public(package) fun vault_initialized<Product>(
             seed_reserve,
             seed_shareholder_nav,
             locked_shares,
+            seed_funder,
             absolute_base,
             absolute_notional,
             lot_size,
@@ -209,8 +358,8 @@ public(package) fun health_synchronized<Product>(
     );
 }
 
-public(package) fun objective_failure_reason(): u8 {
-    HEALTH_REASON_OBJECTIVE_FAILURE
+public(package) fun checkpoint_reconciled_reason(): u8 {
+    HEALTH_REASON_CHECKPOINT_RECONCILED
 }
 
 public(package) fun unexpected_checkpoint_reason(): u8 {
@@ -252,6 +401,28 @@ public(package) fun reduce_only_entered<Product>(vault_id: ID) {
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+public fun redeemed_amounts<Product>(self: &Redeemed<Product>): vector<u64> {
+    vector[self.shares, self.net, self.fee, self.admin_fee, self.buffer_fee,
+        self.fee_bps, self.admin_bps, self.reserve_after, self.admin_cash_after, self.supply_after]
+}
+
+#[test_only]
+public fun vault_initialized_seed_funder<Product>(self: &VaultInitialized<Product>): address {
+    self.seed_funder
+}
+
+#[test_only]
+public fun minted_amounts<Product>(self: &Minted<Product>): (u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64) {
+    (self.deposit, self.shares, self.contribution, self.fee, self.admin_fee, self.buffer_fee,
+        self.fee_bps, self.admin_bps, self.reserve_after, self.admin_cash_after, self.supply_after)
+}
+
+#[test_only]
+public fun rebalanced_amounts<Product>(self: &Rebalanced<Product>): (u64, u64, u64, u64, bool) {
+    (self.equity_before, self.equity_after, self.base_before, self.base_after, self.increase)
+}
 
 #[test_only]
 public fun collect<T: copy + drop>(): vector<T> {
@@ -386,4 +557,25 @@ public fun reduce_only_entered_vault_id<Product>(
     self: &ReduceOnlyEntered<Product>,
 ): ID {
     self.vault_id
+}
+
+#[test_only]
+public fun fees_updated_fields<Product>(self: &FeesUpdated<Product>): (ID, u64, u64, u64, u64, u64, u64) {
+    (self.vault_id, self.previous_mint_bps, self.previous_redeem_bps, self.previous_admin_bps,
+        self.mint_bps, self.redeem_bps, self.admin_bps)
+}
+
+#[test_only]
+public fun admin_fees_withdrawn_fields<Product>(self: &AdminFeesWithdrawn<Product>): (ID, u64, u64) {
+    (self.vault_id, self.amount, self.remaining)
+}
+
+#[test_only]
+public fun donated_fields<Product>(self: &Donated<Product>): (ID, u64, u64, Checkpoint) {
+    (self.vault_id, self.amount, self.reserve_after, self.checkpoint)
+}
+
+#[test_only]
+public fun buffer_released_fields<Product>(self: &BufferReleased<Product>): (ID, u64, u64) {
+    (self.vault_id, self.amount, self.reserve_after)
 }

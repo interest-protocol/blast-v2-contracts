@@ -215,6 +215,7 @@ expected_policy_public="$(printf '%s\n' \
   new_tier_policy \
   new_valuation \
   short \
+  with_fee_limits \
   | sort)"
 [[ "$actual_policy_public" == "$expected_policy_public" ]] \
   || fail "The public policy-construction surface changed without boundary review."
@@ -224,20 +225,66 @@ actual_state_public="$({
     | sed -nE 's/^[0-9]+:[[:space:]]*public[[:space:]]+fun[[:space:]]+([a-zA-Z0-9_]+).*/\1/p'
 } | sort)"
 expected_state_public="$(printf '%s\n' \
+  accept_rebalance_fill \
+  active_constraints \
+  admin_fee \
+  assert_active \
+  assert_active_execution \
+  assert_active_observation \
   assert_initialization_execution \
   assert_order_notional_allowed \
+  assert_rebalance_execution \
+  assert_redemption_cash_out \
+  assert_user_fee_limit \
+  complete_donation \
+  complete_mint \
+  complete_rebalance \
+  complete_redemption \
+  donate \
   enter_reduce_only \
+  fee_allocation \
+  fee_settings \
   initialization_constraints \
   initialize \
   maintenance_reserve \
+  mint_deposit \
+  mint_valuation \
   new \
+  order_base \
+  prepare_donation \
   prepare_initialization \
+  prepare_mint \
+  prepare_rebalance \
+  prepare_redemption \
+  rebalance_order \
+  rebalance_valuation \
+  redemption_order_base \
+  redemption_terms \
+  redemption_valuation \
+  release_buffer \
+  set_fees \
   set_max_order_notional \
   settle_funding \
   sync_health \
   | sort)"
 [[ "$actual_state_public" == "$expected_state_public" ]] \
   || fail "The production Series1 State surface changed without boundary review."
+
+for plan in MintPlan RedemptionPlan RebalancePlan DonationPlan; do
+  grep -q "^public struct $plan<phantom Product> {" "$state_file" \
+    || fail "$plan must remain a linear transaction-local carrier."
+done
+if grep -qE 'module_lower_bps|module_upper_bps|is_risk_module_allowed' "$policy_file"; then
+  fail "Maintenance must have exactly one public band, without a privileged inner window."
+fi
+rebalance_prepare="$(sed -n '/^public fun prepare_rebalance</,/^}/p' "$state_file")"
+grep -q 'scaled < (nav as u128) \* (risk.public_lower_bps() as u128)' <<<"$rebalance_prepare" \
+  && grep -q 'scaled > (nav as u128) \* (risk.public_upper_bps() as u128)' <<<"$rebalance_prepare" \
+  || fail "Rebalance triggers must use strict exact-ratio cross products."
+health_block="$(sed -n '/^public fun sync_health</,/^}/p' "$state_file")"
+if grep -Eq 'self.lifecycle\.(degrade|enter_|activate)|self.maintenance_reserve[[:space:]]*=' <<<"$health_block"; then
+  fail "Ordinary health validation must not change lifecycle or reserve allocation."
+fi
 
 prepare_initialization_block="$(
   sed -n '/^public fun prepare_initialization<Product>($/,/^}/p' "$state_file"

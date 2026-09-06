@@ -132,10 +132,10 @@ public(package) fun capture_initialization<Collateral>(
     into_observation(captured, false, true)
 }
 
-/// Captures authenticated live facts for objective health degradation.
+/// Captures authenticated live facts for fail-closed health reporting.
 ///
 /// Authentication and source agreement remain strict; only structural venue
-/// values are retained instead of aborting so Series1 can enter ReduceOnly.
+/// values are retained instead of aborting; ordinary sync never changes lifecycle.
 public(package) fun capture_health<Collateral>(
     binding: &Binding,
     account: &Account<Collateral>,
@@ -299,11 +299,10 @@ fun capture_<Collateral>(
         collateral_fixed,
     );
     if (!health) {
-        assert!(equity_representable && !ifixed::is_neg(allocated_collateral), blast_leverage_aftermath::errors::normalization_overflow!());
+        assert!(equity_representable, blast_leverage_aftermath::errors::normalization_overflow!());
     };
     let signs_coherent = position_signs_coherent(signed_base, signed_quote_notional, position.is_long_or_flat());
-    let economics_valid = !ifixed::is_neg(allocated_collateral)
-        && signs_coherent
+    let economics_valid = signs_coherent
         && base_oracle_representable
         && collateral_oracle_representable
         && base_representable
@@ -509,6 +508,7 @@ public(package) fun classify_change(
         after,
         ifixed::is_neg(funding_candidate),
         candidate_collateral_magnitude,
+        allocated_delta(before, after),
     )
 }
 
@@ -517,10 +517,7 @@ public(package) fun checkpoint_unchanged(
     before: &Checkpoint,
     after: &Checkpoint,
 ): bool {
-    match (classify_change_(before, after, false, 0)) {
-        Change::Unchanged => true,
-        _ => false,
-    }
+    before == after
 }
 
 /// Returns true when only the market's cumulative funding rates advanced.
@@ -572,34 +569,26 @@ public(package) fun classify_preexisting_funding(
     stored: &Checkpoint,
     before: &Checkpoint,
 ): Change {
-    let (
-        _, stored_allocated, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _,
-    ) = (*stored).unpack();
-    let (
-        _, before_allocated, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _,
-    ) = (*before).unpack();
     classify_preexisting_funding_(
         stored,
         before,
-        ifixed::is_neg(stored_allocated),
-        ifixed::is_neg(before_allocated),
+        allocated_delta(stored, before),
     )
 }
 
 fun classify_preexisting_funding_(
     stored: &Checkpoint,
     before: &Checkpoint,
-    stored_allocated_negative: bool,
-    before_allocated_negative: bool,
+    allocated_change: Change,
 ): Change {
     let (
-        stored_free, stored_allocated, stored_base, stored_quote,
+        stored_free, _, stored_base, stored_quote,
         stored_long, stored_short, _, _, stored_lot, stored_ask, stored_bid,
         stored_orders, stored_pause, stored_frozen, stored_imr,
         stored_market_imr, stored_market_mmr,
     ) = (*stored).unpack();
     let (
-        before_free, before_allocated, before_base, before_quote,
+        before_free, _, before_base, before_quote,
         before_long, before_short, _, _,
         before_lot, before_ask, before_bid, before_orders, before_pause,
         before_frozen, before_imr, before_market_imr, before_market_mmr,
@@ -622,18 +611,10 @@ fun classify_preexisting_funding_(
     // synchronized, so equality with the current market rates is not required.
     let snapshots_refreshed = stored_long != before_long
         || stored_short != before_short;
-    if (!unrelated_unchanged
-        || !snapshots_refreshed
-        || stored_allocated_negative
-        || before_allocated_negative
-        || stored_allocated == before_allocated) {
+    if (!unrelated_unchanged || !snapshots_refreshed) {
         return Change::Unexpected
     };
-    if (before_allocated > stored_allocated) {
-        Change::FundingCredit(before_allocated - stored_allocated)
-    } else {
-        Change::FundingCost(stored_allocated - before_allocated)
-    }
+    allocated_change
 }
 
 /// Creates the dirty-checkpoint classification for adapter orchestration.
@@ -668,11 +649,39 @@ public(package) fun funding_change_fields(
     }
 }
 
+/// Nets authenticated settlement edges before rounding or buffer allocation.
+/// No gross ordering inside one Blast checkpoint is an entitlement boundary.
+public(package) fun net_funding(first: Change, second: Change): Change {
+    let (first_cost, a) = match (first) {
+        Change::Unexpected => return Change::Unexpected,
+        Change::Unchanged => (false, 0),
+        Change::FundingCredit(amount) => (false, amount),
+        Change::FundingCost(amount) => (true, amount),
+    };
+    let (second_cost, b) = match (second) {
+        Change::Unexpected => return Change::Unexpected,
+        Change::Unchanged => (false, 0),
+        Change::FundingCredit(amount) => (false, amount),
+        Change::FundingCost(amount) => (true, amount),
+    };
+    let (is_cost, amount) = if (first_cost == second_cost) {
+        (first_cost, a.checked_add(b).destroy_or!(return Change::Unexpected))
+    } else if (a >= b) {
+        (first_cost, a - b)
+    } else {
+        (second_cost, b - a)
+    };
+    if (amount == 0) { Change::Unchanged }
+    else if (is_cost) { Change::FundingCost(amount) }
+    else { Change::FundingCredit(amount) }
+}
+
 fun classify_change_(
     before: &Checkpoint,
     after: &Checkpoint,
     candidate_negative: bool,
     candidate_collateral_magnitude: u256,
+    allocated_change: Change,
 ): Change {
     let before = *before;
     let after = *after;
@@ -700,23 +709,49 @@ fun classify_change_(
         || lot_before != lot_after || ask_before != ask_after || bid_before != bid_after
         || orders_before != orders_after || pause_before != pause_after || frozen_before != frozen_after
         || imr_before != imr_after || market_imr_before != market_imr_after
-        || market_mmr_before != market_mmr_after || candidate_collateral_magnitude == 0) {
+        || market_mmr_before != market_mmr_after) {
         return Change::Unexpected
     };
     let snapshots_refreshed = long_after == market_long_before
         && short_after == market_short_before
         && (long_before != long_after || short_before != short_after);
     if (!snapshots_refreshed) { return Change::Unexpected };
-    if (!candidate_negative && allocated_after > allocated_before && allocated_after - allocated_before == candidate_collateral_magnitude) {
-        return Change::FundingCredit(candidate_collateral_magnitude)
+    if (candidate_collateral_magnitude == 0 && allocated_before == allocated_after) {
+        return Change::Unchanged
     };
-    if (candidate_negative && allocated_after < allocated_before && allocated_before - allocated_after == candidate_collateral_magnitude) {
-        return Change::FundingCost(candidate_collateral_magnitude)
+    let matched = match (&allocated_change) {
+        Change::FundingCredit(amount) => !candidate_negative && *amount == candidate_collateral_magnitude,
+        Change::FundingCost(amount) => candidate_negative && *amount == candidate_collateral_magnitude,
+        Change::Unchanged => candidate_collateral_magnitude == 0,
+        Change::Unexpected => false,
     };
-    Change::Unexpected
+    if (matched) { allocated_change } else { Change::Unexpected }
 }
 
 // === Private Functions ===
+
+/// Named IFixed operations decode signed collateral; raw checkpoint bits are never ordered.
+fun allocated_delta(before: &Checkpoint, after: &Checkpoint): Change {
+    let (_, b, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) = (*before).unpack();
+    let (_, a, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) = (*after).unpack();
+    signed_delta(ifixed::is_neg(b), ifixed::abs(b), ifixed::is_neg(a), ifixed::abs(a))
+}
+
+/// Computes after-minus-before in sign/magnitude facts, including a zero crossing.
+fun signed_delta(before_negative: bool, before: u256, after_negative: bool, after: u256): Change {
+    if (before_negative == after_negative) {
+        if (before == after) { return Change::Unchanged };
+        let credit = if (before_negative) { before > after } else { after > before };
+        let amount = before.diff(after);
+        if (credit) { Change::FundingCredit(amount) } else { Change::FundingCost(amount) }
+    } else {
+        if (before > std::u256::max_value!() - after) { return Change::Unexpected };
+        let amount = before + after;
+        if (amount == 0) { Change::Unchanged }
+        else if (after_negative) { Change::FundingCost(amount) }
+        else { Change::FundingCredit(amount) }
+    }
+}
 
 fun pyth_price(
     price_info_object: &PriceInfoObject,
@@ -753,7 +788,7 @@ fun pyth_price(
 /// Normalizes authenticated oracle values without aborting on representation.
 /// A representable disagreement is still an authentication failure and aborts;
 /// only width, exponent, sign, or timestamp-domain failures become invalid
-/// economic facts for permissionless health degradation.
+/// economic facts for permissionless health reporting.
 fun pyth_price_health(
     price_info_object: &PriceInfoObject,
     aftermath_feed: &price_feed::PriceFeed,
@@ -999,7 +1034,7 @@ fun signed_equity_health(free: u64, allocated: u256, pnl_usd: u256, collateral_p
     signed_equity_health_from_parts(
         free,
         ifixed::is_neg(allocated),
-        allocated,
+        ifixed::abs(allocated),
         ifixed::is_neg(pnl_usd),
         ifixed::abs(pnl_usd),
         collateral_price,
@@ -1014,8 +1049,12 @@ fun signed_equity_health_from_parts(
     pnl_magnitude_usd: u256,
     collateral_price: u256,
 ): (u64, bool) {
-    if (allocated_negative || collateral_price == 0) { return (0, false) };
-    let (allocated_tokens, allocated_ok) = fixed_to_u64_down_health(allocated, 6);
+    if (collateral_price == 0) { return (0, false) };
+    let (allocated_tokens, allocated_ok) = if (allocated_negative) {
+        fixed_to_u64_up_health(allocated, 6)
+    } else {
+        fixed_to_u64_down_health(allocated, 6)
+    };
     let (pnl, collateral_ok) = usd_fixed_to_collateral_fixed_health(
         pnl_magnitude_usd,
         collateral_price,
@@ -1027,17 +1066,14 @@ fun signed_equity_health_from_parts(
         fixed_to_u64_down_health(pnl, 6)
     };
     if (!allocated_ok || !collateral_ok || !pnl_ok) { return (0, false) };
-    let assets = (free as u128) + (allocated_tokens as u128);
-    if (pnl_negative) {
-        if (assets < (rounded as u128)) {
-            (0, false)
-        } else {
-            let net = assets - (rounded as u128);
-            if (net > std::u64::max_value!() as u128) { (0, false) } else { (net as u64, true) }
-        }
-    } else {
-        if (assets > (std::u64::max_value!() as u128) - (rounded as u128)) { (0, false) } else { ((assets + (rounded as u128)) as u64, true) }
-    }
+    let assets = (free as u128)
+        + (if (allocated_negative) { 0 } else { allocated_tokens } as u128)
+        + (if (pnl_negative) { 0 } else { rounded } as u128);
+    let liabilities = (if (allocated_negative) { allocated_tokens } else { 0 } as u128)
+        + (if (pnl_negative) { rounded } else { 0 } as u128);
+    if (assets < liabilities) { return (0, false) };
+    let net = assets - liabilities;
+    if (net > std::u64::max_value!() as u128) { (0, false) } else { (net as u64, true) }
 }
 
 fun usd_fixed_to_collateral_fixed_health(usd: u256, collateral_price: u256, round_up: bool): (u256, bool) {
@@ -1123,7 +1159,7 @@ public fun captured_health_for_testing(
 
 #[test_only]
 public fun classify_change_for_testing(before: &Checkpoint, after: &Checkpoint): Change {
-    classify_change_(before, after, false, 0)
+    classify_change_with_candidate_for_testing(before, after, false, 0)
 }
 
 #[test_only]
@@ -1133,7 +1169,9 @@ public fun classify_change_with_candidate_for_testing(
     candidate_negative: bool,
     candidate_magnitude: u256,
 ): Change {
-    classify_change_(before, after, candidate_negative, candidate_magnitude)
+    let (_, b, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) = (*before).unpack();
+    let (_, a, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) = (*after).unpack();
+    classify_change_(before, after, candidate_negative, candidate_magnitude, signed_delta(false, b, false, a))
 }
 
 #[test_only]
@@ -1141,7 +1179,17 @@ public fun classify_preexisting_funding_for_testing(
     stored: &Checkpoint,
     before: &Checkpoint,
 ): Change {
-    classify_preexisting_funding_(stored, before, false, false)
+    let (_, b, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) = (*stored).unpack();
+    let (_, a, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) = (*before).unpack();
+    classify_preexisting_funding_(stored, before, signed_delta(false, b, false, a))
+}
+
+#[test_only]
+public fun classify_signed_funding_for_testing(
+    stored: &Checkpoint, before: &Checkpoint, stored_negative: bool, stored_magnitude: u256,
+    before_negative: bool, before_magnitude: u256,
+): Change {
+    classify_preexisting_funding_(stored, before, signed_delta(stored_negative, stored_magnitude, before_negative, before_magnitude))
 }
 
 #[test_only]

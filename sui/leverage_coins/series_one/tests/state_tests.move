@@ -65,6 +65,331 @@ public struct ObservationSpec has copy, drop {
 // === Tests ===
 
 #[test]
+fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    vector[20_000, 40_000, 60_000].do!(|target| {
+        vector[policy::long(), policy::short()].do!(|side| {
+            let witness = fixture.authority.sign_in(&fixture.admin_cap);
+            let tier = policy::new_tier_policy(
+                side, policy::new_rebalance_policy(target - 2_000, target, target + 2_000, target + 10_000, 100, 500, 10),
+                policy::new_valuation(30_000, 2_000, 100, 500), 0, 0, 100, 100, 100, NAV_CAP,
+            );
+            let mut state = state::new<Product>(&witness, tier, 1, 2_000_000, 5_000_000);
+            let notional = target * 100;
+            state.initialize(rebalance_observation(1_100_000, notional, side), 100_000, REFERENCE_TIME_MS);
+            let plan = state.prepare_mint(rebalance_observation(1_100_000, notional, side), 1_000_000, 1_000_000, 1_000_000, 0, REFERENCE_TIME_MS);
+            assert_eq!(plan.order_base(), notional * 1_000);
+            let (shares, contribution) = state.complete_mint(plan, rebalance_observation(2_100_000, notional * 2, side), REFERENCE_TIME_MS);
+            assert_eq!(vector[shares, contribution, state.maintenance_reserve()], vector[1_000_000, 1_000_000, 100_000]);
+            let plan = state.prepare_redemption(rebalance_observation(2_100_000, notional * 2, side), 500_000, 2_000_000, 500_000, 0, REFERENCE_TIME_MS);
+            assert_eq!(plan.redemption_order_base(), notional * 500);
+            let (net, admin, equity, fee) = state.complete_redemption(plan, rebalance_observation(2_100_000, notional * 3 / 2, side), REFERENCE_TIME_MS);
+            assert_eq!(vector[net, admin, equity, fee], vector[500_000, 0, 1_600_000, 0]);
+            state.assert_redemption_cash_out(rebalance_observation(equity, notional * 3 / 2, side), equity, notional * 1_500, 1_000_000_000, 1_000_000_000, REFERENCE_TIME_MS);
+            state.destroy_for_testing();
+        });
+    });
+    destroy(fixture);
+}
+
+#[test]
+fun temporary_health_fault_recovers_without_a_lifecycle_transition() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::long());
+    let mut invalid = standard_observation(policy::long());
+    invalid.venue_operational = false;
+    assert!(!state.sync_health(invalid.into_position_observation(), HEALTH_SHARE_SUPPLY, REFERENCE_TIME_MS));
+    assert!(state.is_active_for_testing());
+    assert!(state.sync_health(standard_observation(policy::long()).into_position_observation(), HEALTH_SHARE_SUPPLY, REFERENCE_TIME_MS));
+    destroy(state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1_000_000, HEALTH_SHARE_SUPPLY, 1, 10, REFERENCE_TIME_MS));
+    assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EActiveObservationUnusable, location = blast_leverage_series_one::state)]
+fun active_mint_rejects_a_temporary_venue_pause() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let state = initialized_state(&fixture, policy::long());
+    let mut invalid = standard_observation(policy::long());
+    invalid.venue_operational = false;
+    destroy(state.prepare_mint(invalid.into_position_observation(), 1_000_000, HEALTH_SHARE_SUPPLY, 1, 10, REFERENCE_TIME_MS));
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EStaleValuation, location = blast_leverage_series_one::policy)]
+fun active_redemption_rejects_a_stale_price() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let state = initialized_state(&fixture, policy::short());
+    let mut invalid = standard_observation(policy::short());
+    invalid.base_publish_time_ms = 0;
+    destroy(state.prepare_redemption(invalid.into_position_observation(), 500_000, HEALTH_SHARE_SUPPLY, 1, 10, REFERENCE_TIME_MS));
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EUserFeeLimitExceeded, location = blast_leverage_series_one::state)]
+fun active_mint_rejects_the_first_fee_above_the_user_ceiling() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let state = initialized_state(&fixture, policy::long());
+    destroy(state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1_000_000, HEALTH_SHARE_SUPPLY, 1, 9, REFERENCE_TIME_MS));
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_leverage_series_one::policy)]
+fun fee_update_cannot_raise_the_immutable_cap() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::long());
+    state.set_fees(11, 10, 0);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EFeeSettingsUnchanged, location = blast_leverage_series_one::state)]
+fun fee_update_rejects_an_unchanged_tuple() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::long());
+    state.set_fees(10, 10, 0);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ENonpositiveContribution, location = blast_leverage_series_one::state)]
+fun mint_rejects_input_consumed_by_rounded_fee_before_sizing_exposure() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let state = initialized_state(&fixture, policy::long());
+    destroy(state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1, HEALTH_SHARE_SUPPLY, 0, 10, REFERENCE_TIME_MS));
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+fun rebalance_increase_reserves_cost_and_keeps_buffer_unchanged() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let state = rebalance_state(&fixture, policy::long());
+    let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 1_000_000, policy::long()), 10, REFERENCE_TIME_MS);
+    let (base, increase, wide) = state.rebalance_order(&plan);
+    assert_eq!(base, 978_452_000);
+    assert!(increase && !wide);
+    state.accept_rebalance_fill(&mut plan, rebalance_observation(1_089_226, 1_978_452, policy::long()), base, REFERENCE_TIME_MS);
+    let (next, _, _) = state.rebalance_order(&plan);
+    assert_eq!(next, 0);
+    let (before_equity, after_equity, before_base, after_base, increased) = state.complete_rebalance(plan);
+    assert_eq!(before_equity, 1_100_000);
+    assert_eq!(after_equity, 1_089_226);
+    assert_eq!(before_base, 1_000_000_000);
+    assert_eq!(after_base, 1_978_452_000);
+    assert!(increased);
+    assert_eq!(state.maintenance_reserve_for_testing(), SEED_RESERVE);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+fun rebalance_short_reduction_recomputes_wide_permission_after_partial_progress() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let state = rebalance_state(&fixture, policy::short());
+    let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_200_000, policy::short()), 10, REFERENCE_TIME_MS);
+    let (base, increase, wide) = state.rebalance_order(&plan);
+    assert_eq!(base, 1_200_000_000);
+    assert!(!increase && wide);
+    state.assert_rebalance_execution(&plan, 100, 104);
+    state.accept_rebalance_fill(&mut plan, rebalance_observation(1_099_500, 2_900_000, policy::short()), 300_000_000, REFERENCE_TIME_MS);
+    let (next, _, next_wide) = state.rebalance_order(&plan);
+    assert_eq!(next, 901_000_000);
+    assert!(!next_wide);
+    state.complete_rebalance(plan);
+    assert_eq!(state.maintenance_reserve_for_testing(), SEED_RESERVE);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ERebalanceInsidePublicBand, location = blast_leverage_series_one::state)]
+fun rebalance_exact_lower_endpoint_rejects() { rebalance_endpoint(1_600_000); }
+
+#[test]
+#[expected_failure(abort_code = errors::ERebalanceInsidePublicBand, location = blast_leverage_series_one::state)]
+fun rebalance_exact_upper_endpoint_rejects() { rebalance_endpoint(2_600_000); }
+
+#[test]
+fun rebalance_one_rational_atom_below_lower_is_not_hidden_by_report_rounding() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let state = rebalance_state(&fixture, policy::long());
+    let mut plan = state.prepare_rebalance(rebalance_observation(1_100_001, 1_600_001, policy::long()), 10, REFERENCE_TIME_MS);
+    let (base, increase, wide) = state.rebalance_order(&plan);
+    assert!(base > 0 && increase && !wide);
+    state.accept_rebalance_fill(&mut plan, rebalance_observation(1_100_001, 1_600_002, policy::long()), 1_000, REFERENCE_TIME_MS);
+    state.complete_rebalance(plan);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ERebalanceNoProgress, location = blast_leverage_series_one::state)]
+fun rebalance_reduction_without_leverage_improvement_rejects() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let state = rebalance_state(&fixture, policy::long());
+    let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_TIME_MS);
+    state.accept_rebalance_fill(&mut plan, rebalance_observation(1_000_000, 2_700_000, policy::long()), 300_000_000, REFERENCE_TIME_MS);
+    state.complete_rebalance(plan);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = 92, location = blast_leverage_series_one::state)]
+fun rebalance_increase_rejects_post_cost_target_overshoot() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let state = rebalance_state(&fixture, policy::long());
+    let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 1_000_000, policy::long()), 10, REFERENCE_TIME_MS);
+    state.accept_rebalance_fill(&mut plan, rebalance_observation(1_089_225, 1_978_452, policy::long()), 978_452_000, REFERENCE_TIME_MS);
+    state.complete_rebalance(plan);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EExecutionOutsideTolerance, location = blast_leverage_series_one::policy)]
+fun rebalance_hard_threshold_equality_does_not_enable_wide_tolerance() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let state = rebalance_state(&fixture, policy::long());
+    let plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_TIME_MS);
+    state.assert_rebalance_execution(&plan, 100, 102);
+    state.complete_rebalance(plan);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+fun a_flat_short_product_redeems_without_inventing_a_long_position() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::short());
+    let flat = standard_observation(policy::long())
+        .with_absolute_base(0).with_absolute_notional(0);
+    let plan = state.prepare_redemption(flat.into_position_observation(), 500_000, 1_000_000, 499_500, 10, REFERENCE_TIME_MS);
+    assert_eq!(plan.redemption_order_base(), 0);
+    let (net, admin, final_equity, fee) = state.complete_redemption(
+        plan, flat.into_position_observation(), REFERENCE_TIME_MS,
+    );
+    assert_eq!(vector[net, admin, final_equity], vector[499_500, 0, 600_500]);
+    assert_eq!(fee, 500);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+fun donation_and_full_release_preserve_venue_equity_and_shareholder_accounting() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::long());
+    state.donate(
+        standard_observation(policy::long()).into_position_observation(),
+        standard_observation(policy::long()).with_venue_equity(1_150_000).into_position_observation(),
+        50_000, REFERENCE_TIME_MS,
+    );
+    assert_eq!(state.maintenance_reserve(), 150_000);
+    let nav = state.release_buffer(
+        standard_observation(policy::long())
+            .with_venue_equity(NAV_CAP + 150_000)
+            .with_absolute_notional(1_000_000)
+            .into_position_observation(),
+        150_000, REFERENCE_TIME_MS,
+    );
+    assert_eq!(state.maintenance_reserve(), 0);
+    assert_eq!(nav, NAV_CAP + 150_000);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+fun redemption_keeps_remaining_nav_and_allocates_its_own_fee() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::short());
+    let plan = state.prepare_redemption(
+        standard_observation(policy::short()).into_position_observation(),
+        500_000, 1_000_000, 497_502, 10, REFERENCE_TIME_MS,
+    );
+    assert_eq!(plan.redemption_order_base(), 100_000);
+    let (net, admin, final_equity, fee) = state.complete_redemption(
+        plan,
+        standard_observation(policy::short())
+            .with_venue_equity(1_098_000)
+            .with_absolute_base(100_000)
+            .with_absolute_notional(1_000_000)
+            .into_position_observation(),
+        REFERENCE_TIME_MS,
+    );
+    assert_eq!(vector[net, admin, final_equity], vector[497_502, 0, 600_498]);
+    assert_eq!(fee, 498);
+    assert_eq!(state.maintenance_reserve(), 100_498);
+    assert_eq!(final_equity - state.maintenance_reserve(), 500_000);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+fun mint_prices_actual_contribution_after_the_attributable_cost() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::long());
+    let plan = state.prepare_mint(
+        standard_observation(policy::long()).into_position_observation(),
+        1_000_000,
+        1_000_000,
+        997_000,
+        10,
+        REFERENCE_TIME_MS,
+    );
+    assert_eq!(plan.order_base(), 199_000);
+    let (shares, contribution) = state.complete_mint(
+        plan,
+        standard_observation(policy::long())
+            .with_venue_equity(2_098_000)
+            .with_absolute_base(399_000)
+            .with_absolute_notional(3_990_000)
+            .into_position_observation(),
+        REFERENCE_TIME_MS,
+    );
+    assert_eq!(shares, 997_000);
+    assert_eq!(contribution, 997_000);
+    assert_eq!(state.maintenance_reserve(), 101_000);
+    assert!((1_997_000u128) * 1_000_000 >= 1_000_000u128 * (1_000_000 + shares as u128));
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+fun fee_updates_change_future_allocations_without_relabeling_the_buffer() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let mut state = state::new<Product>(
+        &witness,
+        tier_policy(policy::long()).with_fee_limits(100, 100, 3_000, 2_000),
+        100,
+        250,
+        1_000,
+    );
+    let (fee, admin, buffer) = state.fee_allocation(1_000_000, true);
+    assert_eq!(vector[fee, admin, buffer], vector[1_000, 200, 800]);
+    let (mint, redeem, allocation) = state.set_fees(30, 40, 3_000);
+    assert_eq!(vector[mint, redeem, allocation], vector[10, 10, 2_000]);
+    let (fee, admin, buffer) = state.fee_allocation(1_000_000, true);
+    assert_eq!(vector[fee, admin, buffer], vector[3_000, 900, 2_100]);
+    let (fee, admin, buffer) = state.fee_allocation(1_000_000, false);
+    assert_eq!(vector[fee, admin, buffer], vector[4_000, 1_200, 2_800]);
+    assert_eq!(state.maintenance_reserve(), 0);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
 fun initialization_constraints_return_the_frozen_side_and_live_order_cap() {
     let fixture = start(series_one_domain::vault_issuer_role());
     let state = new_state(&fixture, policy::short());
@@ -460,14 +785,14 @@ fun initialization_admits_both_healthy_leverage_boundaries() {
 
     lower.initialize(
         standard_observation(policy::long())
-            .with_absolute_notional(1_800_000)
+            .with_absolute_notional(1_600_000)
             .into_position_observation(),
         SEED_RESERVE,
         REFERENCE_TIME_MS,
     );
     upper.initialize(
         standard_observation(policy::long())
-            .with_absolute_notional(2_199_900)
+            .with_absolute_notional(2_600_000)
             .into_position_observation(),
         SEED_RESERVE,
         REFERENCE_TIME_MS,
@@ -684,7 +1009,7 @@ fun initialization_rejects_unsafe_margin() {
 )]
 fun initialization_rejects_leverage_one_unit_below_healthy() {
     initialize_once(
-        standard_observation(policy::long()).with_absolute_notional(1_799_900),
+        standard_observation(policy::long()).with_absolute_notional(1_599_999),
         policy::long(),
         SEED_RESERVE,
     );
@@ -697,7 +1022,7 @@ fun initialization_rejects_leverage_one_unit_below_healthy() {
 )]
 fun initialization_rejects_leverage_one_unit_above_healthy() {
     initialize_once(
-        standard_observation(policy::long()).with_absolute_notional(2_200_000),
+        standard_observation(policy::long()).with_absolute_notional(2_600_001),
         policy::long(),
         SEED_RESERVE,
     );
@@ -968,14 +1293,8 @@ fun no_funding_leaves_the_reserve_unchanged() {
 }
 
 #[test]
-fun positive_funding_leaves_the_reserve_unchanged() {
-    assert_funding_settlement(observation::funding_credit(1), 0, 0, SEED_RESERVE);
-    assert_funding_settlement(
-        observation::funding_credit(std::u64::max_value!()),
-        0,
-        0,
-        SEED_RESERVE,
-    );
+fun positive_funding_credits_only_the_buffer() {
+    assert_funding_settlement(observation::funding_credit(1), 0, 0, SEED_RESERVE + 1);
 }
 
 #[test]
@@ -1025,7 +1344,7 @@ fun healthy_active_state_stays_active() {
     let fixture = start(series_one_domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
 
-    assert!(!state.sync_health(
+    assert!(state.sync_health(
         standard_observation(policy::long()).into_position_observation(),
         HEALTH_SHARE_SUPPLY,
         REFERENCE_TIME_MS,
@@ -1037,144 +1356,158 @@ fun healthy_active_state_stays_active() {
 }
 
 #[test]
-fun reserve_impairment_degrades_health_once() {
-    assert_health_degrades(
+fun reserve_impairment_keeps_active_with_invalid_health() {
+    assert_invalid_health_preserves_active(
         standard_observation(policy::long()).with_venue_equity(SEED_RESERVE - 1),
         HEALTH_SHARE_SUPPLY,
     );
 }
 
 #[test]
-fun zero_nav_degrades_health_once() {
-    assert_health_degrades(
+fun zero_nav_keeps_active_with_invalid_health() {
+    assert_invalid_health_preserves_active(
         standard_observation(policy::long()).with_venue_equity(SEED_RESERVE),
         HEALTH_SHARE_SUPPLY,
     );
 }
 
 #[test]
-fun stale_oracle_degrades_health_once() {
-    assert_health_degrades(
-        standard_observation(policy::long()).with_base_publish_time_ms(69_999),
+fun stale_oracle_preserves_active_and_fresh_data_restores_health() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::long());
+    assert!(!state.sync_health(
+        standard_observation(policy::long())
+            .with_base_publish_time_ms(69_999)
+            .into_health_position_observation(),
         HEALTH_SHARE_SUPPLY,
-    );
+        REFERENCE_TIME_MS,
+    ));
+    assert!(state.is_active_for_testing());
+    assert!(state.sync_health(
+        standard_observation(policy::long()).into_health_position_observation(),
+        HEALTH_SHARE_SUPPLY,
+        REFERENCE_TIME_MS,
+    ));
+    assert!(state.is_active_for_testing());
+    state.destroy_for_testing();
+    destroy(fixture);
 }
 
 #[test]
-fun low_confidence_oracle_degrades_health_once() {
-    assert_health_degrades(
+fun low_confidence_oracle_keeps_active_with_invalid_health() {
+    assert_invalid_health_preserves_active(
         standard_observation(policy::long()).with_collateral_confidence(10_000_001),
         HEALTH_SHARE_SUPPLY,
     );
 }
 
 #[test]
-fun zero_base_price_degrades_health_once() {
-    assert_health_degrades(
+fun zero_base_price_keeps_active_with_invalid_health() {
+    assert_invalid_health_preserves_active(
         standard_observation(policy::long()).with_base_price(0),
         HEALTH_SHARE_SUPPLY,
     );
 }
 
 #[test]
-fun zero_collateral_price_degrades_health_once() {
-    assert_health_degrades(
+fun zero_collateral_price_keeps_active_with_invalid_health() {
+    assert_invalid_health_preserves_active(
         standard_observation(policy::long()).with_collateral_price(0),
         HEALTH_SHARE_SUPPLY,
     );
 }
 
 #[test]
-fun zero_mark_price_degrades_health_once() {
-    assert_health_degrades(
+fun zero_mark_price_keeps_active_with_invalid_health() {
+    assert_invalid_health_preserves_active(
         standard_observation(policy::long()).with_mark_price(0),
         HEALTH_SHARE_SUPPLY,
     );
 }
 
 #[test]
-fun zero_lot_size_degrades_health_once() {
-    assert_health_degrades(
+fun zero_lot_size_keeps_active_with_invalid_health() {
+    assert_invalid_health_preserves_active(
         standard_observation(policy::long()).with_lot_size(0),
         HEALTH_SHARE_SUPPLY,
     );
 }
 
 #[test]
-fun structurally_invalid_health_position_degrades_health_once() {
-    assert_health_degrades(
+fun structurally_invalid_health_position_keeps_active_with_invalid_health() {
+    assert_invalid_health_preserves_active(
         standard_observation(policy::long()).with_absolute_notional(0),
         HEALTH_SHARE_SUPPLY,
     );
 }
 
 #[test]
-fun mark_divergence_degrades_health_once() {
-    assert_health_degrades(
+fun mark_divergence_keeps_active_with_invalid_health() {
+    assert_invalid_health_preserves_active(
         standard_observation(policy::long()).with_mark_price(1_050_000_001),
         HEALTH_SHARE_SUPPLY,
     );
 }
 
 #[test]
-fun wrong_side_degrades_health_once() {
-    assert_health_degrades(
+fun wrong_side_keeps_active_with_invalid_health() {
+    assert_invalid_health_preserves_active(
         standard_observation(policy::long()).with_observed_side(policy::short()),
         HEALTH_SHARE_SUPPLY,
     );
 }
 
 #[test]
-fun pending_order_degrades_health_once() {
-    assert_health_degrades(
+fun pending_order_keeps_active_with_invalid_health() {
+    assert_invalid_health_preserves_active(
         standard_observation(policy::long()).with_pending_order_count(1),
         HEALTH_SHARE_SUPPLY,
     );
 }
 
 #[test]
-fun unsafe_margin_degrades_health_once() {
-    assert_health_degrades(
+fun unsafe_margin_keeps_active_with_invalid_health() {
+    assert_invalid_health_preserves_active(
         standard_observation(policy::long()).with_margin_safe(false),
         HEALTH_SHARE_SUPPLY,
     );
 }
 
 #[test]
-fun paused_or_frozen_venue_degrades_health_once() {
-    assert_health_degrades(
+fun paused_or_frozen_venue_keeps_active_with_invalid_health() {
+    assert_invalid_health_preserves_active(
         standard_observation(policy::long()).with_venue_operational(false),
         HEALTH_SHARE_SUPPLY,
     );
 }
 
 #[test]
-fun dirty_checkpoint_degrades_health_once() {
-    assert_health_degrades(
+fun dirty_checkpoint_keeps_active_with_invalid_health() {
+    assert_invalid_health_preserves_active(
         standard_observation(policy::long()).with_checkpoint_clean(false),
         HEALTH_SHARE_SUPPLY,
     );
 }
 
 #[test]
-fun hard_cap_leverage_degrades_health_once() {
-    assert_health_degrades(
+fun hard_cap_leverage_keeps_active_with_invalid_health() {
+    assert_invalid_health_preserves_active(
         standard_observation(policy::long()).with_absolute_notional(3_000_000),
         HEALTH_SHARE_SUPPLY,
     );
 }
 
 #[test]
-fun minimum_operation_exposure_degrades_health_once() {
-    assert_health_degrades(
+fun minimum_operation_exposure_keeps_active_with_invalid_health() {
+    assert_invalid_health_preserves_active(
         standard_observation(policy::long()).with_absolute_base(MIN_EXPOSURE_LOTS * LOT_SIZE),
         1_000,
     );
 }
 
 #[test]
-fun redemption_impossible_share_supply_degrades_health_once() {
-    assert_health_degrades(
+fun redemption_impossible_share_supply_keeps_active_with_invalid_health() {
+    assert_invalid_health_preserves_active(
         standard_observation(policy::long()),
         1,
     );
@@ -1239,6 +1572,30 @@ fun shutdown_settled_health_never_moves_backward() {
 
 // === Fixture Setup ===
 
+fun rebalance_state(fixture: &Fixture, side: PositionSide): State<Product> {
+    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let mut state = state::new<Product>(&witness, tier_policy(side), 1, 2_000_000, 5_000_000);
+    state.initialize(rebalance_observation(SEED_VENUE_EQUITY, SEED_NOTIONAL, side), SEED_RESERVE, REFERENCE_TIME_MS);
+    state
+}
+
+fun rebalance_observation(equity: u64, notional: u64, side: PositionSide): PositionObservation {
+    let mut spec = standard_observation(side);
+    spec.venue_equity = equity;
+    spec.absolute_notional = notional;
+    spec.absolute_base = notional * 1_000;
+    spec.into_position_observation()
+}
+
+fun rebalance_endpoint(notional: u64) {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let state = rebalance_state(&fixture, policy::long());
+    let plan = state.prepare_rebalance(rebalance_observation(1_100_000, notional, policy::long()), 10, REFERENCE_TIME_MS);
+    state.complete_rebalance(plan);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
 fun start(roles: u64): Fixture {
     let mut scenario = test_scenario::begin(ROOT);
     let (super_admin_cap, mut authority) =
@@ -1265,9 +1622,7 @@ fun tier_policy(side: PositionSide): TierPolicy {
         side,
         policy::new_rebalance_policy(
             16_000,
-            18_000,
             20_000,
-            22_000,
             26_000,
             30_000,
             100,
@@ -1345,22 +1700,22 @@ fun assert_funding_settlement(
     destroy(fixture);
 }
 
-fun assert_health_degrades(spec: ObservationSpec, share_supply: u64) {
+fun assert_invalid_health_preserves_active(spec: ObservationSpec, share_supply: u64) {
     let fixture = start(series_one_domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
 
-    assert!(state.sync_health(
-        spec.into_health_position_observation(),
-        share_supply,
-        REFERENCE_TIME_MS,
-    ));
-    assert!(state.is_reduce_only_for_testing());
     assert!(!state.sync_health(
         spec.into_health_position_observation(),
         share_supply,
         REFERENCE_TIME_MS,
     ));
-    assert!(state.is_reduce_only_for_testing());
+    assert!(state.is_active_for_testing());
+    assert!(!state.sync_health(
+        spec.into_health_position_observation(),
+        share_supply,
+        REFERENCE_TIME_MS,
+    ));
+    assert!(state.is_active_for_testing());
     state.destroy_for_testing();
     destroy(fixture);
 }

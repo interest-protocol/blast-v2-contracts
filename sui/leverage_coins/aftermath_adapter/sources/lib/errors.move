@@ -248,3 +248,71 @@ macro public(package) fun locked_shares_overflow(): u64 { 37 }
 macro public(package) fun initialization_order_count_exceeded(): u64 { 38 }
 
 macro public(package) fun venue_account_not_installed(): u64 { 39 }
+
+#[test_only]
+/// A collateral input or withdrawal must be positive.
+const EZeroAmount: u64 = 40;
+
+#[test_only]
+/// Earned local admin collateral cannot cover this withdrawal.
+const EInsufficientAdminCash: u64 = 41;
+
+macro public(package) fun zero_amount(): u64 { 40 }
+macro public(package) fun insufficient_admin_cash(): u64 { 41 }
+
+#[test_only]
+/// A cash operation changed more or less than its exact authenticated collateral delta.
+const ECashCheckpointMismatch: u64 = 42;
+
+macro public(package) fun cash_checkpoint_mismatch(): u64 { 42 }
+
+#[test_only]
+/// An active session failed to make a positive whole-lot fill on the selected side.
+const EActiveFillMismatch: u64 = 43;
+
+#[test_only]
+/// An active market session left posted orders.
+const EActiveOrdersPosted: u64 = 44;
+
+#[test_only]
+/// An active market session reported liquidation or bad debt.
+const EActiveLiquidation: u64 = 45;
+
+macro public(package) fun active_fill_mismatch(): u64 { 43 }
+macro public(package) fun active_orders_posted(): u64 { 44 }
+macro public(package) fun active_liquidation(): u64 { 45 }
+
+#[test_only]
+/// The active atomic operation exhausted its market-session bound.
+const EActiveOrderCountExceeded: u64 = 46;
+
+#[test_only]
+/// The caller's deadline has passed.
+const EDeadlineExpired: u64 = 47;
+
+macro public(package) fun active_order_count_exceeded(): u64 { 46 }
+macro public(package) fun deadline_expired(): u64 { 47 }
+
+#[test_only]
+/// An active venue session changed a field outside its authenticated execution.
+const EActiveCheckpointMismatch: u64 = 48;
+
+macro public(package) fun active_checkpoint_mismatch(): u64 { 48 }
+
+#[test_only]
+/// The held native share coin differs from the sealed redemption amount.
+const ERedemptionShareMismatch: u64 = 49;
+
+macro public(package) fun redemption_share_mismatch(): u64 { 49 }
+
+#[test_only]
+/// Authenticated ordinary plus priority fees exceed a representable conservative rate.
+const EVenueFeeUnusable: u64 = 50;
+
+macro public(package) fun venue_fee_unusable(): u64 { 50 }
+
+#[test_only]
+/// Activation ownership is immutable and can be recorded only before any shares exist.
+const ESeedAlreadyRecorded: u64 = 51;
+
+macro public(package) fun seed_already_recorded(): u64 { 51 }

@@ -476,3 +476,55 @@ macro public(package) fun initialization_leverage_unhealthy(): u64 {
 macro public(package) fun initialization_exposure_below_minimum(): u64 {
     85
 }
+
+/// A live fee or allocation exceeds its immutable issuance ceiling.
+#[test_only]
+const EFeeCapExceeded: u64 = 86;
+#[test_only]
+const EFeeSettingsUnchanged: u64 = 87;
+#[test_only]
+const EUserFeeLimitExceeded: u64 = 88;
+#[test_only]
+const EMintOutsidePublicBand: u64 = 89;
+#[test_only]
+const EActiveCheckpointChanged: u64 = 90;
+#[test_only]
+const EActiveFillIncomplete: u64 = 91;
+#[test_only]
+const EActiveLeverageAboveCap: u64 = 92;
+#[test_only]
+const EActiveObservationUnusable: u64 = 93;
+#[test_only]
+const ERedemptionOutputBelowMinimum: u64 = 94;
+#[test_only]
+const EBufferReleaseExceedsBalance: u64 = 95;
+
+macro public(package) fun fee_cap_exceeded(): u64 { 86 }
+
+/// All three requested fee settings already apply.
+macro public(package) fun fee_settings_unchanged(): u64 { 87 }
+
+macro public(package) fun user_fee_limit_exceeded(): u64 { 88 }
+macro public(package) fun mint_outside_public_band(): u64 { 89 }
+macro public(package) fun active_checkpoint_changed(): u64 { 90 }
+macro public(package) fun active_fill_incomplete(): u64 { 91 }
+macro public(package) fun active_leverage_above_cap(): u64 { 92 }
+macro public(package) fun active_observation_unusable(): u64 { 93 }
+macro public(package) fun redemption_output_below_minimum(): u64 { 94 }
+macro public(package) fun buffer_release_exceeds_balance(): u64 { 95 }
+
+#[test_only]
+/// An active rebalance was requested at or inside the one public band.
+const ERebalanceInsidePublicBand: u64 = 96;
+
+#[test_only]
+/// No admissible whole-lot rebalance progress was completed.
+const ERebalanceNoProgress: u64 = 97;
+
+#[test_only]
+/// A venue fee or execution bound cannot be represented conservatively.
+const EVenueFeeUnusable: u64 = 98;
+
+macro public(package) fun rebalance_inside_public_band(): u64 { 96 }
+macro public(package) fun rebalance_no_progress(): u64 { 97 }
+macro public(package) fun venue_fee_unusable(): u64 { 98 }
