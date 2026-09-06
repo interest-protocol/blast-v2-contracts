@@ -867,11 +867,9 @@ public fun creator_fees_claimed_fields(
 ): (ID, address, u64, u64) {
     (self.launch_id, self.claimant, self.meme_amount, self.quote_amount)
 }
-
 #[test_only]
 public fun protocol_fees_claimed_fields(
     self: &ProtocolFeesClaimed,
 ): (ID, address, u64, u64) {
     (self.launch_id, self.claimant, self.meme_amount, self.quote_amount)
 }
-

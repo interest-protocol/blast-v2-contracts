@@ -235,4 +235,3 @@ bash sui/auto_lp/scripts/check_source_boundaries.sh
 Record the exact command, revision, status, and test counts for every package. Inspect the final diff for unchanged economics/accounting surfaces, forbidden copied administration, generated artifacts, secret material, and accidental live-network calls.
 
 **Commit:** `docs(admin): reconcile consumer administration runbooks` (only if documentation was not naturally included in the slice commits).
-

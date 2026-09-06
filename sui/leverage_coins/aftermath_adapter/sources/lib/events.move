@@ -387,4 +387,3 @@ public fun reduce_only_entered_vault_id<Product>(
 ): ID {
     self.vault_id
 }
-
