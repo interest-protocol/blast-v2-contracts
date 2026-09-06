@@ -35,8 +35,9 @@ reject_pattern() {
     fi
 }
 
-cetus_section() {
-    local name="$1"
+move_function_section() {
+    local source="$1"
+    local name="$2"
 
     awk -v name="$name" '
         function declaration(line) {
@@ -48,7 +49,13 @@ cetus_section() {
         target($0) { active = 1 }
         active && !target($0) && declaration($0) { exit }
         active { print }
-    ' "$CETUS_SOURCE"
+    ' "$source"
+}
+
+cetus_section() {
+    local name="$1"
+
+    move_function_section "$CETUS_SOURCE" "$name"
 }
 
 require_cetus_public() {
@@ -130,17 +137,7 @@ reject_cetus_pre_guard_mutator() {
 turbos_section() {
     local name="$1"
 
-    awk -v name="$name" '
-        function declaration(line) {
-            return line ~ /^[[:space:]]*(public(\(package\))?[[:space:]]+)?(entry[[:space:]]+)?fun[[:space:]]+/
-        }
-        function target(line) {
-            return declaration(line) && line ~ ("fun[[:space:]]+" name "[<(]")
-        }
-        target($0) { active = 1 }
-        active && !target($0) && declaration($0) { exit }
-        active { print }
-    ' "$TURBOS_SOURCE"
+    move_function_section "$TURBOS_SOURCE" "$name"
 }
 
 require_turbos_public() {
@@ -1108,22 +1105,49 @@ CUSTODY_ROLE_ASSERTIONS="$(rg -c 'admin_witness\.assert_role\(launchpad_domain::
 [[ "${CUSTODY_ROLE_ASSERTIONS:-0}" -eq 5 ]] || \
     fail "every governed custody transition must assert Launchpad's exported role"
 
-# Every protected public mutation checks this package's own generation, and the
-# guard is the first statement of its body. Per module: vault 2 (both fee
-# claims), bluefin 3, aftermath 5, cetus 6, turbos 7, mmt 5 - covering every
-# venue migration and fee collection, the four tier pins, the Aftermath policy
-# pin, the DAO-fee update, and the DAO-fee accrual.
-for guard_spec in 'vault:2' 'bluefin:3' 'aftermath:5' 'cetus:6' 'turbos:7' 'mmt:5'; do
-    IFS=: read -r guard_module expected_guards <<<"$guard_spec"
+# Every production public function in these modules is a protected mutation.
+# Derive the expected total from declarations so adding a route cannot silently
+# inherit a stale hand-maintained count, then prove each function takes this
+# package's generation and checks it before doing anything else.
+for guard_module in vault bluefin aftermath cetus turbos mmt; do
+    guard_source="$SOURCE_DIR/${guard_module}.move"
+    mapfile -t guarded_functions < <(
+        rg -o '^public fun [[:alnum:]_]+' "$guard_source" \
+            | awk '{ print $3 }' \
+            | rg -v '_for_testing$'
+    )
+    expected_guards="${#guarded_functions[@]}"
     actual_guards="$(rg -c '^[[:space:]]+migrators_version\.assert_current\(\);' \
-        "$SOURCE_DIR/${guard_module}.move" || true)"
+        "$guard_source" || true)"
     [[ "${actual_guards:-0}" -eq "$expected_guards" ]] || \
         fail "${guard_module}.move must assert this package's generation on every protected mutation (found ${actual_guards:-0}, expected $expected_guards)"
 
     actual_parameters="$(rg -c '^[[:space:]]+migrators_version: &MigratorsVersion,' \
-        "$SOURCE_DIR/${guard_module}.move" || true)"
+        "$guard_source" || true)"
     [[ "${actual_parameters:-0}" -eq "$expected_guards" ]] || \
         fail "${guard_module}.move must take the Migrators version under that exact name on every guarded mutation"
+
+    for guarded_function in "${guarded_functions[@]}"; do
+        guard_section="$(move_function_section "$guard_source" "$guarded_function")"
+        guard_signature="${guard_section%%\{*}"
+        printf '%s' "$guard_signature" | rg -q \
+            'migrators_version:[[:space:]]*&MigratorsVersion,' || \
+            fail "${guard_module}::${guarded_function} must take the Migrators version"
+
+        first_statement="$(printf '%s\n' "$guard_section" | awk '
+            !body && /\{/ { body = 1; next }
+            body {
+                line = $0
+                sub(/^[[:space:]]+/, "", line)
+                sub(/[[:space:]]+$/, "", line)
+                if (line == "" || line ~ /^\/\//) next
+                print line
+                exit
+            }
+        ')"
+        [[ "$first_statement" == 'migrators_version.assert_current();' ]] || \
+            fail "${guard_module}::${guarded_function} must assert this package's generation first"
+    done
 done
 
 # In the venue and vault modules `package_version` names the Launchpad object.

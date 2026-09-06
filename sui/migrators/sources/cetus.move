@@ -456,11 +456,13 @@ public fun collect_fees_meme_a<Meme, Quote>(
 /// Collects normalized Meme-B and Quote-A fees without changing principal.
 public fun collect_fees_meme_b<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
     runtime_config: &RuntimeConfig,
     cetus_config: &GlobalConfig,
     pool: &mut Pool<Quote, Meme>,
     ctx: &mut TxContext,
 ) {
+    migrators_version.assert_current();
     let venue = Venue();
     let (position_id, quote_fee, meme_fee, liquidity_after) =
         collect_position_fees<Quote, Meme, Meme, Quote>(

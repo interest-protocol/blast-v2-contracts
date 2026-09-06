@@ -114,25 +114,8 @@ fun intake_rejects_an_upgrade_cap_for_another_package() {
 
 #[test]
 #[expected_failure(abort_code = errors::EInvalidUpgradeCap, location = blast_admin::upgrade_custody)]
-fun intake_rejects_a_pre_upgraded_cap() {
-    let mut ctx = tx_context::dummy();
-    let publisher = canonical_publisher(&mut ctx);
-    let mut upgrade_cap = canonical_upgrade_cap(&mut ctx);
-    let ticket = upgrade_cap.authorize(package::compatible_policy(), digest());
-    upgrade_cap.commit(ticket.test_upgrade());
-
-    let custody = upgrade_custody::new<package_marker::PACKAGE_MARKER>(
-        CUSTODIAN_ID.to_id(),
-        publisher,
-        upgrade_cap,
-    );
-
-    destroy(ctx);
-    destroy(custody);
-}
-
-#[test]
-#[expected_failure(abort_code = errors::EInvalidUpgradeCap, location = blast_admin::upgrade_custody)]
+/// Native test upgrades also rewrite the package ID; the boundary gate
+/// separately requires the fresh-version conjunct in production intake.
 fun intake_rejects_a_cap_whose_native_version_already_advanced() {
     let mut ctx = tx_context::dummy();
     let publisher = canonical_publisher(&mut ctx);
