@@ -7,9 +7,11 @@ result in the format required by [`deployments/README.md`](../../deployments/REA
    package-admin intake changes its package ID and makes intake fail.
 2. Finalize Coin Registry registration for the `funSUI` and `blastSUI`
    `Currency` objects created during initialization.
-3. From the publication effects, verify the shared `ProtocolAuthority`, owned
-   `SuperAdminCap`, and shared `PackageVersion`. Grant and retain the operator's
-   routine `AdminCap`.
+3. From the publication effects, verify the shared
+   `blast_admin::acl::Authority<BLAST_SUI_DOMAIN>`, the owned
+   `SuperAdminCap<BLAST_SUI_DOMAIN>`, and the shared `PackageVersion`. Grant and
+   retain the operator's routine `AdminCap<BLAST_SUI_DOMAIN>`; grant this
+   domain's package-admin role to whoever will authorize upgrades.
 4. In one PTB, sign in, create the deposit-receipt Display, create
    `PackageAdmin` with the original `Publisher` and `UpgradeCap`, attach both
    metadata capabilities and the Display capability, and share

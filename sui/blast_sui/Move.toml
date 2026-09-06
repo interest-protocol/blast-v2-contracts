@@ -5,6 +5,7 @@ license = "MIT"
 authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
 
 [dependencies]
+blast_admin = { local = "../admin" }
 SuiSystem = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-system", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
 
 [addresses]

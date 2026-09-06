@@ -1,21 +1,27 @@
-// `blast_sui::errors` centralizes package abort codes through zero-cost macros. This narrow
-// suppression preserves caller-local abort locations and stable package error codes.
-#[allow(lint(abort_without_constant))]
 /// Shared cutover that prevents stale package generations from mutating protocol state.
+///
+/// The generation value, its checked arithmetic, and its replay event belong to
+/// `blast_admin::operational_version`. This module owns only the canonical
+/// shared container and the two compiled constants that identify this bytecode
+/// and the bytecode a governed upgrade cuts over to.
 module blast_sui::package_version;
 
-use blast_sui::events;
+use blast_admin::operational_version::{Self, OperationalVersion};
+use blast_sui::blast::BLAST;
 
 // === Constants ===
 
 const PACKAGE_VERSION: u64 = 1;
+
+/// The generation this bytecode hands over to in a governed upgrade.
+const NEXT_PACKAGE_VERSION: u64 = 2;
 
 // === Public Structs ===
 
 /// Singleton operational package generation.
 public struct PackageVersion has key {
     id: UID,
-    version: u64,
+    generation: OperationalVersion<BLAST>,
 }
 
 // === Private Initialization ===
@@ -28,33 +34,28 @@ fun init(ctx: &mut TxContext) {
 
 /// Rejects bytecode whose generation does not match shared state.
 public(package) fun assert_current(self: &PackageVersion) {
-    assert!(
-        self.version == PACKAGE_VERSION,
-        blast_sui::errors::package_version_mismatch!(),
-    );
+    self.generation.assert_current(PACKAGE_VERSION);
 }
 
-/// Activates bytecode exactly one generation after shared state.
-public(package) fun activate(self: &mut PackageVersion) {
-    let previous_version = self.version;
-    let new_version = previous_version
-        .checked_add(1)
-        .destroy_or!(abort blast_sui::errors::package_version_overflow!());
+/// Proves the cutover target is exactly next before any upgrade finalizer effect.
+public(package) fun assert_next(self: &PackageVersion) {
+    self.generation.assert_next(NEXT_PACKAGE_VERSION);
+}
 
-    assert!(
-        new_version == PACKAGE_VERSION,
-        blast_sui::errors::package_version_mismatch!(),
-    );
+/// Advances the shared generation to the exact bytecode this upgrade installs.
+public(package) fun advance(self: &mut PackageVersion) {
+    let container_id = self.id.to_inner();
 
-    self.version = new_version;
-
-    events::package_version_advanced(previous_version, new_version);
+    self.generation.advance(container_id, NEXT_PACKAGE_VERSION);
 }
 
 // === Private Functions ===
 
 fun new(ctx: &mut TxContext): PackageVersion {
-    PackageVersion { id: object::new(ctx), version: PACKAGE_VERSION }
+    PackageVersion {
+        id: object::new(ctx),
+        generation: operational_version::new(),
+    }
 }
 
 // === Test-Only Functions ===
@@ -71,10 +72,22 @@ public fun init_for_testing(ctx: &mut TxContext) {
 
 #[test_only]
 public fun set_for_testing(self: &mut PackageVersion, version: u64) {
-    self.version = version;
+    self.generation.set_generation_for_testing(version);
 }
 
 #[test_only]
 public fun version_for_testing(self: &PackageVersion): u64 {
-    self.version
+    self.generation.generation_for_testing()
+}
+
+#[test_only]
+/// Exercises the compiled cutover target without a native upgrade fixture.
+public fun advance_for_testing(self: &mut PackageVersion) {
+    self.advance();
+}
+
+#[test_only]
+/// Exercises the finalizer's pre-commit proof without a native upgrade fixture.
+public fun assert_next_for_testing(self: &PackageVersion) {
+    self.assert_next();
 }

@@ -22,11 +22,17 @@ use_environment = "mainnet"
 manifest_digest = "CCBB2DE961DACC94644C65D54E808DEF86BC7E9C42A494D5250CC5F99392E069"
 deps = { MoveStdlib = "MoveStdlib", Sui = "Sui" }
 
+[pinned.mainnet.blast_admin]
+source = { local = "../admin" }
+use_environment = "mainnet"
+manifest_digest = "294D98BBBEFA7E526C52FD7F30B5691CD30B86738DDC489AC065D612D0E5F9EF"
+deps = { Sui = "Sui" }
+
 [pinned.mainnet.blast_sui]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "CF895C05064012BAF52447D45CC8B11AB8EC3AC9E341CB6412C933F5C8189434"
-deps = { SuiSystem = "SuiSystem" }
+manifest_digest = "6BBE4B9458412776508081D986D639FC247EFB14EEA74422AC4E5A26D84A390C"
+deps = { SuiSystem = "SuiSystem", blast_admin = "blast_admin" }
 
 [pinned.testnet.MoveStdlib]
 source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
@@ -46,8 +52,14 @@ use_environment = "testnet"
 manifest_digest = "F1655B9F9B8ECE67FDBA648266DD75B48852F63BF2515856E822586882D1CA2A"
 deps = { MoveStdlib = "MoveStdlib", Sui = "Sui" }
 
+[pinned.testnet.blast_admin]
+source = { local = "../admin" }
+use_environment = "testnet"
+manifest_digest = "B7E2FC3044B807508BDB644524C4ABEA393A1871278966067F470AEAE602C62B"
+deps = { Sui = "Sui" }
+
 [pinned.testnet.blast_sui]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "F02B964A0E153441FE166EBE63BEE27E391FA9A0E974FDAE9CE6900DFD79DFDF"
-deps = { SuiSystem = "SuiSystem" }
+manifest_digest = "5825E6766C501A4AC4021055049AD8235E547DA10CBEAB924AC82CE7BDA81CA0"
+deps = { SuiSystem = "SuiSystem", blast_admin = "blast_admin" }

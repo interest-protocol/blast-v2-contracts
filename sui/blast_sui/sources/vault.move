@@ -4,9 +4,10 @@
 /// Single-validator custody of the 1:1 funSUI ledger and the blastSUI share ledger.
 module blast_sui::vault;
 
+use blast_admin::acl::AdminWitness;
 use blast_sui::{
-    acl::AdminWitness,
     blast_sui::BLAST_SUI,
+    blast_sui_domain::BLAST_SUI_DOMAIN,
     constants,
     custody::{Self, Custody},
     deposit_receipt::{Self, BlastSuiDepositReceipt},
@@ -353,7 +354,7 @@ public fun redeem_blast_sui(
 public fun set_redeem_fee(
     self: &mut Vault,
     package_version: &PackageVersion,
-    _: &AdminWitness,
+    _: &AdminWitness<BLAST_SUI_DOMAIN>,
     redeem_fee_bps: u64,
 ) {
     package_version.assert_current();

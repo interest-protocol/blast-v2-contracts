@@ -1,9 +1,10 @@
 #[test_only]
 module blast_sui::vault_tests;
 
+use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
 use blast_sui::{
-    acl,
     blast_sui::{Self as blast_coin, BLAST_SUI},
+    blast_sui_domain::BLAST_SUI_DOMAIN,
     constants,
     deposit_receipt::{Self, BlastSuiDepositReceipt},
     errors,
@@ -61,8 +62,8 @@ public struct CreateFixture {
 public struct VaultFixture {
     runner: TestRunner,
     version: PackageVersion,
-    authority: acl::ProtocolAuthority,
-    admin_cap: acl::AdminCap,
+    authority: Authority<BLAST_SUI_DOMAIN>,
+    admin_cap: AdminCap<BLAST_SUI_DOMAIN>,
     vault: Option<Vault>,
     system_state: Option<SuiSystemState>,
 }
@@ -1251,8 +1252,8 @@ fun zero_donation_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EPackageVersionMismatch,
-    location = blast_sui::package_version,
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
 )]
 fun stale_package_version_rejects_donation() {
     let mut fixture = start_vault();
@@ -1918,8 +1919,8 @@ fun one_mist_blast_redemption_cannot_burn_for_zero_sui_after_fee() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EPackageVersionMismatch,
-    location = blast_sui::package_version,
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
 )]
 fun stale_package_version_rejects_vault_mutation() {
     let mut fixture = start_vault();
@@ -2002,14 +2003,16 @@ fun routine_admin_updates_the_fee_and_later_exits_use_and_retain_it() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidAdminCap, location = blast_sui::acl)]
+#[expected_failure(
+    abort_code = blast_admin::errors::EInvalidAdminCap,
+    location = blast_admin::acl,
+)]
 fun admin_registered_in_another_registry_cannot_change_the_fee() {
     let mut fixture = start_vault();
 
     fixture.next_tx!(OWNER, |f| {
-        let (foreign_super_admin_cap, foreign_authority) =
-            acl::new_protocol_for_testing(f.ctx!());
-        let admin_witness = foreign_authority.sign_in(&f.version, &f.admin_cap);
+        let (foreign_super_admin_cap, foreign_authority) = new_authority(f.ctx!());
+        let admin_witness = foreign_authority.sign_in(&f.admin_cap);
         f.vault!().set_redeem_fee(
             &f.version,
             &admin_witness,
@@ -2058,8 +2061,8 @@ fun unchanged_fee_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EPackageVersionMismatch,
-    location = blast_sui::package_version,
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
 )]
 fun stale_package_version_rejects_fee_changes() {
     let mut fixture = start_vault();
@@ -2451,10 +2454,10 @@ fun create_vault(
 fun into_vault_fixture(self: CreateFixture): VaultFixture {
     let CreateFixture { mut runner, version, system_state } = self;
     system_state.destroy_none();
-    let (super_admin_cap, mut authority) = acl::new_protocol_for_testing(runner.ctx());
-    authority.grant_admin(&version, &super_admin_cap, OWNER, runner.ctx());
+    let (super_admin_cap, mut authority) = new_authority(runner.ctx());
+    authority.grant_admin(&super_admin_cap, 0, OWNER, runner.ctx());
     runner.set_sender(OWNER);
-    let admin_cap = runner.scenario_mut().take_from_sender<acl::AdminCap>();
+    let admin_cap = runner.scenario_mut().take_from_sender<AdminCap<BLAST_SUI_DOMAIN>>();
     destroy(super_admin_cap);
 
     VaultFixture {
@@ -2467,8 +2470,15 @@ fun into_vault_fixture(self: CreateFixture): VaultFixture {
     }
 }
 
-fun sign_in(self: &VaultFixture): acl::AdminWitness {
-    self.authority.sign_in(&self.version, &self.admin_cap)
+fun sign_in(self: &VaultFixture): AdminWitness<BLAST_SUI_DOMAIN> {
+    self.authority.sign_in(&self.admin_cap)
+}
+
+/// Unshared Blast SUI authority state using this package's real constants.
+fun new_authority(
+    ctx: &mut TxContext,
+): (blast_admin::acl::SuperAdminCap<BLAST_SUI_DOMAIN>, Authority<BLAST_SUI_DOMAIN>) {
+    acl::new_for_testing<BLAST_SUI_DOMAIN>(16, 7 * 24 * 60 * 60 * 1_000, ctx)
 }
 
 fun take_fun_coin(self: &mut VaultFixture): Coin<FUN_SUI> {

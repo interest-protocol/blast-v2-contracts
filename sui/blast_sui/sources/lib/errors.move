@@ -29,29 +29,16 @@ const EZeroSuiRedemption: u64 = 4;
 
 // Code 7 retired: the package-specific UpgradeAdminCap was replaced by the local ACL.
 
-#[test_only]
-/// A Sui package digest must contain exactly 32 bytes.
-const EInvalidPackageDigest: u64 = 8;
+// Code 8 retired: digest validation moved to blast_admin::upgrade_custody.
 
 #[test_only]
 /// The supplied Publisher was not claimed by this package's canonical module.
 const EInvalidPackagePublisher: u64 = 9;
 
-#[test_only]
-/// The supplied UpgradeCap does not authorize the original blast_sui package.
-const EInvalidUpgradeCap: u64 = 10;
-
-#[test_only]
-/// Shared package state does not accept this bytecode generation.
-const EPackageVersionMismatch: u64 = 11;
-
-#[test_only]
-/// Advancing the package generation would overflow u64.
-const EPackageVersionOverflow: u64 = 12;
-
-#[test_only]
-/// An upgrade policy can only become more restrictive.
-const EUpgradePolicyNotMoreRestrictive: u64 = 13;
+// Code 10 retired: native capability intake moved to blast_admin::upgrade_custody.
+// Codes 11 and 12 retired: generation comparison and arithmetic moved to
+// blast_admin::operational_version.
+// Code 13 retired: policy narrowing moved to blast_admin::upgrade_custody.
 
 #[test_only]
 /// The validator left the active set, so the vault accepts redemptions only.
@@ -87,41 +74,8 @@ const EBlastAssetsDepleted: u64 = 22;
 /// The protocol bootstrap deposit is below the native one-SUI stake minimum.
 const EBootstrapBelowNativeMinimum: u64 = 23;
 
-// Code 24 retired: an earlier routine-admin error assignment was removed.
-
-#[test_only]
-/// The supplied SuperAdminCap is no longer the active root capability.
-const EInvalidSuperAdminCap: u64 = 25;
-
-// Codes 26-29 retired: an earlier role-specific administrator design was removed.
-
-#[test_only]
-/// The root authority cannot be transferred to the zero address or to its current holder.
-const EInvalidSuperAdminRecipient: u64 = 30;
-
-#[test_only]
-/// No pending super-admin transfer exists.
-const ENoPendingSuperAdminTransfer: u64 = 31;
-
-#[test_only]
-/// The transaction sender is not the proposed super-admin recipient.
-const ENotPendingSuperAdminRecipient: u64 = 32;
-
-#[test_only]
-/// The pending super-admin transfer delay has not elapsed.
-const ESuperAdminTransferNotReady: u64 = 33;
-
-#[test_only]
-/// The transfer execution timestamp would overflow u64.
-const ESuperAdminTransferTimeOverflow: u64 = 34;
-
-#[test_only]
-/// A super-admin cap can be destroyed only after a replacement made it inert.
-const ESuperAdminCapStillActive: u64 = 35;
-
-#[test_only]
-/// The pending super-admin transfer already names this recipient.
-const ESuperAdminTransferUnchanged: u64 = 36;
+// Codes 24 through 36 retired: the root capability lifecycle moved to
+// blast_admin::acl, which owns its own append-only error registry.
 
 #[test_only]
 /// The requested redemption fee exceeds the immutable maximum.
@@ -165,17 +119,8 @@ const EZeroSuiAfterFee: u64 = 45;
 /// Native delegation returned stake from a pool other than the vault's immutable pool.
 const EWrongDelegationPool: u64 = 47;
 
-#[test_only]
-/// A routine administrator cannot be delivered to the zero address.
-const EInvalidAdminRecipient: u64 = 48;
-
-#[test_only]
-/// The bounded active-admin registry is full.
-const EAdminCapacityReached: u64 = 49;
-
-#[test_only]
-/// The supplied AdminCap is not active in this protocol registry.
-const EInvalidAdminCap: u64 = 50;
+// Codes 48, 49 and 50 retired: administrator membership moved to
+// blast_admin::acl.
 
 #[test_only]
 /// PackageAdmin cannot be shared before every required capability is attached.
@@ -205,29 +150,16 @@ macro public(package) fun zero_sui_redemption(): u64 {
 
 // Error codes 5, 6, and 7 are retired and must not be reused.
 
-macro public(package) fun invalid_package_digest(): u64 {
-    8
-}
+// Code 8 retired: digest validation moved to blast_admin::upgrade_custody.
 
 macro public(package) fun invalid_package_publisher(): u64 {
     9
 }
 
-macro public(package) fun invalid_upgrade_cap(): u64 {
-    10
-}
-
-macro public(package) fun package_version_mismatch(): u64 {
-    11
-}
-
-macro public(package) fun package_version_overflow(): u64 {
-    12
-}
-
-macro public(package) fun upgrade_policy_not_more_restrictive(): u64 {
-    13
-}
+// Code 10 retired: native capability intake moved to blast_admin::upgrade_custody.
+// Codes 11 and 12 retired: generation comparison and arithmetic moved to
+// blast_admin::operational_version.
+// Code 13 retired: policy narrowing moved to blast_admin::upgrade_custody.
 
 macro public(package) fun unwind_only(): u64 {
     14
@@ -263,41 +195,9 @@ macro public(package) fun bootstrap_below_native_minimum(): u64 {
     23
 }
 
-// Error code 24 is retired and must not be reused.
-
-macro public(package) fun invalid_super_admin_cap(): u64 {
-    25
-}
-
-// Error codes 26-29 are retired and must not be reused.
-
-macro public(package) fun invalid_super_admin_recipient(): u64 {
-    30
-}
-
-macro public(package) fun no_pending_super_admin_transfer(): u64 {
-    31
-}
-
-macro public(package) fun not_pending_super_admin_recipient(): u64 {
-    32
-}
-
-macro public(package) fun super_admin_transfer_not_ready(): u64 {
-    33
-}
-
-macro public(package) fun super_admin_transfer_time_overflow(): u64 {
-    34
-}
-
-macro public(package) fun super_admin_cap_still_active(): u64 {
-    35
-}
-
-macro public(package) fun super_admin_transfer_unchanged(): u64 {
-    36
-}
+// Error codes 24 through 36 are retired and must not be reused: the root
+// capability lifecycle moved to blast_admin::acl, which owns its own
+// append-only error registry.
 
 macro public(package) fun redeem_fee_above_maximum(): u64 {
     37
@@ -341,17 +241,8 @@ macro public(package) fun wrong_delegation_pool(): u64 {
     47
 }
 
-macro public(package) fun invalid_admin_recipient(): u64 {
-    48
-}
-
-macro public(package) fun admin_capacity_reached(): u64 {
-    49
-}
-
-macro public(package) fun invalid_admin_cap(): u64 {
-    50
-}
+// Error codes 48, 49 and 50 are retired and must not be reused: administrator
+// membership moved to blast_admin::acl.
 
 macro public(package) fun missing_package_capability(): u64 {
     51
