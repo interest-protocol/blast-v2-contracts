@@ -1,7 +1,7 @@
 #[test_only]
 module blast_fun::blast_tests;
 
-use blast_fun::{acl, blast};
+use blast_fun::blast;
 use std::unit_test::destroy;
 use sui::{package::Publisher, test_scenario::{Self, Scenario}};
 
@@ -25,7 +25,7 @@ fun package_init_claims_and_keeps_publisher() {
 
     fixture.next_tx!(PUBLISHER, |f| {
         assert!(f.publisher.from_module<blast::BLAST>());
-        assert!(f.publisher.from_package<acl::ProtocolAuthority>());
+        assert!(f.publisher.from_package<blast::BLAST>());
     });
 
     fixture.end();

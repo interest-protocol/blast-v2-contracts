@@ -7,7 +7,6 @@ use std::unit_test::assert_eq;
 
 #[test]
 fun authority_and_claim_error_registry_is_stable() {
-    assert_eq!(blast_fun::errors::invalid_admin_cap!(), 0);
     assert_eq!(blast_fun::errors::invalid_x_claim_public_key!(), 2);
     assert_eq!(blast_fun::errors::x_claim_signer_inactive!(), 3);
     assert_eq!(blast_fun::errors::invalid_x_claim_signature!(), 6);
@@ -15,35 +14,10 @@ fun authority_and_claim_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::invalid_x_identity_hash!(), 10);
     assert_eq!(blast_fun::errors::unexpected_x_claim_attestation!(), 11);
     assert_eq!(blast_fun::errors::x_claim_expired!(), 14);
-    assert_eq!(blast_fun::errors::invalid_super_admin_cap!(), 15);
-    assert_eq!(blast_fun::errors::invalid_admin_recipient!(), 16);
-    assert_eq!(blast_fun::errors::admin_capacity_reached!(), 17);
-    assert_eq!(
-        blast_fun::errors::invalid_super_admin_recipient!(),
-        18,
-    );
-    assert_eq!(
-        blast_fun::errors::no_pending_super_admin_transfer!(),
-        19,
-    );
-    assert_eq!(
-        blast_fun::errors::not_pending_super_admin_recipient!(),
-        20,
-    );
-    assert_eq!(
-        blast_fun::errors::super_admin_transfer_not_ready!(),
-        21,
-    );
-    assert_eq!(
-        blast_fun::errors::super_admin_transfer_time_overflow!(),
-        22,
-    );
-    assert_eq!(blast_fun::errors::super_admin_cap_still_active!(), 23);
     assert_eq!(blast_fun::errors::x_claim_signer_unchanged!(), 24);
     assert_eq!(blast_fun::errors::missing_x_claim_attestation!(), 25);
     assert_eq!(blast_fun::errors::creator_not_sender!(), 26);
     assert_eq!(blast_fun::errors::invalid_x_claim_attestation!(), 27);
-    assert_eq!(blast_fun::errors::super_admin_transfer_unchanged!(), 28);
 }
 
 #[test]
@@ -87,11 +61,9 @@ fun market_and_launch_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::quote_parameters_unchanged!(), 65);
     assert_eq!(blast_fun::errors::creator_authority_unavailable!(), 66);
     assert_eq!(blast_fun::errors::trade_fee_defaults_unchanged!(), 67);
-    assert_eq!(blast_fun::errors::package_version_mismatch!(), 68);
     assert_eq!(blast_fun::errors::invalid_launch_lifecycle!(), 70);
     assert_eq!(blast_fun::errors::slippage_exceeded!(), 71);
     assert_eq!(blast_fun::errors::invalid_migration_witness!(), 72);
-    assert_eq!(blast_fun::errors::package_version_overflow!(), 74);
     assert_eq!(blast_fun::errors::invalid_bps!(), 75);
     assert_eq!(blast_fun::errors::invalid_meme_quote_pair!(), 76);
     assert_eq!(blast_fun::errors::invalid_initial_meme_supply!(), 77);
@@ -99,12 +71,8 @@ fun market_and_launch_error_registry_is_stable() {
 }
 
 #[test]
+/// Only Blast's own module-provenance rule remains local; every reusable
+/// custody, policy, and generation code now belongs to `blast_admin`.
 fun package_admin_error_registry_is_stable() {
-    assert_eq!(blast_fun::errors::invalid_upgrade_cap!(), 53);
-    assert_eq!(blast_fun::errors::invalid_package_digest!(), 54);
     assert_eq!(blast_fun::errors::invalid_package_publisher!(), 56);
-    assert_eq!(
-        blast_fun::errors::upgrade_policy_not_more_restrictive!(),
-        57,
-    );
 }

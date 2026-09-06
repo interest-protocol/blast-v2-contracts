@@ -4,6 +4,126 @@
 [move]
 version = 4
 
+[pinned.mainnet.AftermathAmm]
+source = { local = "../migrators/interfaces/aftermath" }
+use_environment = "mainnet"
+manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
+deps = { Sui = "Sui" }
+
+[pinned.mainnet.AftermathDaoFeePools]
+source = { local = "../migrators/interfaces/aftermath_dao_fee" }
+use_environment = "mainnet"
+manifest_digest = "E964A3A7B64B8EB32543E0911BC8B244A4F96C0275240A01A605A5B0E71E187B"
+deps = { AftermathAmm = "AftermathAmm", Sui = "Sui" }
+
+[pinned.mainnet.BluefinSpot]
+source = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", subdir = ".", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
+use_environment = "mainnet"
+manifest_digest = "67D4E1B535FABDFEDB3819F51EB0C2B3DA218B2BBFC283417427867F4565AFFD"
+deps = { IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate", Sui = "Sui_2" }
+
+[pinned.mainnet.CetusClmm]
+source = { local = "../migrators/interfaces/cetus" }
+use_environment = "mainnet"
+manifest_digest = "54B7F4BFC60DEA96EA008E3E030DB14787B8F2B4736B40B0550A228917B2039C"
+deps = { IntegerMate = "IntegerMate_1", MoveSTL = "MoveSTL", Sui = "Sui" }
+
+[pinned.mainnet.IntegerLibrary]
+source = { git = "https://github.com/fireflyprotocol/integer-library.git", subdir = ".", rev = "8a534bd1c0b334cd3937c27987f3147a06ba6a18" }
+use_environment = "mainnet"
+manifest_digest = "7AF3E6BDD80570B066831AC1D2C79EC7DF74BB5F48F30183D9CE56C08F817641"
+deps = { Sui = "Sui_1" }
+
+[pinned.mainnet.IntegerMate]
+source = { git = "https://github.com/CetusProtocol/integer-mate.git", subdir = "sui", rev = "06660f704c4ac1d443ab62346a46b5b60d49df33" }
+use_environment = "mainnet"
+manifest_digest = "7AF3E6BDD80570B066831AC1D2C79EC7DF74BB5F48F30183D9CE56C08F817641"
+deps = { Sui = "Sui_1" }
+
+[pinned.mainnet.IntegerMate_1]
+source = { git = "https://github.com/CetusProtocol/integer-mate.git", subdir = ".", rev = "09a12d9b171122883d9350039d4ed6e8400033b9" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.MoveSTL]
+source = { git = "https://github.com/CetusProtocol/move-stl.git", subdir = ".", rev = "0681fec63a310ae753d03a06f7c05d3e2925bb09" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.MoveStdlib]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
+use_environment = "mainnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.mainnet.MoveStdlib_1]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "17a9eb8e19146cac2f1fd8921c85911054d29e50" }
+use_environment = "mainnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.mainnet.MoveStdlib_2]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "4e46da89efd5c5e59fe2b8e877bd960896601ec9" }
+use_environment = "mainnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.mainnet.Sui]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
+use_environment = "mainnet"
+manifest_digest = "CD547CB1ACCE0880C835DAED2D8FFCB91D56C833AE5240D3AA5B918398263195"
+deps = { MoveStdlib = "MoveStdlib" }
+
+[pinned.mainnet.Sui_1]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "17a9eb8e19146cac2f1fd8921c85911054d29e50" }
+use_environment = "mainnet"
+manifest_digest = "CD547CB1ACCE0880C835DAED2D8FFCB91D56C833AE5240D3AA5B918398263195"
+deps = { MoveStdlib = "MoveStdlib_1" }
+
+[pinned.mainnet.Sui_2]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "4e46da89efd5c5e59fe2b8e877bd960896601ec9" }
+use_environment = "mainnet"
+manifest_digest = "CD547CB1ACCE0880C835DAED2D8FFCB91D56C833AE5240D3AA5B918398263195"
+deps = { MoveStdlib = "MoveStdlib_2" }
+
+[pinned.mainnet.TurbosCLMM]
+source = { local = "../migrators/interfaces/turbos" }
+use_environment = "mainnet"
+manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
+deps = { Sui = "Sui" }
+
+[pinned.mainnet.blast_admin]
+source = { local = "../admin" }
+use_environment = "mainnet"
+manifest_digest = "294D98BBBEFA7E526C52FD7F30B5691CD30B86738DDC489AC065D612D0E5F9EF"
+deps = { Sui = "Sui" }
+
+[pinned.mainnet.blast_fun]
+source = { local = "../launchpad" }
+use_environment = "mainnet"
+manifest_digest = "2EE0BE6CC23D1718E36913BC8AFF07AB623F8E972B9E6253C5BE9AFEE9962448"
+deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.blast_fun_distributor]
+source = { root = true }
+use_environment = "mainnet"
+manifest_digest = "C7A5EDE06333C1A8EF448B7A71BC1F6EA9CB5A2434EFBF375DD9399B82E777B3"
+deps = { Sui = "Sui", blast_admin = "blast_admin", blast_fun = "blast_fun", blast_fun_migrators = "blast_fun_migrators" }
+
+[pinned.mainnet.blast_fun_migrators]
+source = { local = "../migrators" }
+use_environment = "mainnet"
+manifest_digest = "52838C43C536098F58C37694167EA5E5AD9A47F00E1B6554BBF7C6BAF63807F1"
+deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui", TurbosCLMM = "TurbosCLMM", blast_admin = "blast_admin", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
+
+[pinned.mainnet.mmt_v3]
+source = { git = "https://github.com/mmt-finance/mmt-contract-interface.git", subdir = "mmt_v3", rev = "e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
 [pinned.testnet.AftermathAmm]
 source = { local = "../migrators/interfaces/aftermath" }
 use_environment = "testnet"
@@ -94,23 +214,29 @@ use_environment = "testnet"
 manifest_digest = "271408FC66479D0667DD522595BEB59E742B3EA9CD00ED7395433A07D5595564"
 deps = { Sui = "Sui" }
 
+[pinned.testnet.blast_admin]
+source = { local = "../admin" }
+use_environment = "testnet"
+manifest_digest = "B7E2FC3044B807508BDB644524C4ABEA393A1871278966067F470AEAE602C62B"
+deps = { Sui = "Sui" }
+
 [pinned.testnet.blast_fun]
 source = { local = "../launchpad" }
 use_environment = "testnet"
-manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
-deps = { std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "B9BC26466630CEB8A3C2BE1A745F7338CFDF92C219AC0FF7F363DA750C2676C3"
+deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.blast_fun_distributor]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "789E155DAA3276296C0CB13ACDA83D9B022BB5AA27A1574B1D352977004DAD29"
-deps = { Sui = "Sui", blast_fun = "blast_fun", blast_fun_migrators = "blast_fun_migrators" }
+manifest_digest = "D736E4E2C31A7F1182BA485DD22F06294281ED353594D43C77A939533CBE9059"
+deps = { Sui = "Sui", blast_admin = "blast_admin", blast_fun = "blast_fun", blast_fun_migrators = "blast_fun_migrators" }
 
 [pinned.testnet.blast_fun_migrators]
 source = { local = "../migrators" }
 use_environment = "testnet"
-manifest_digest = "D8127DA50557311DF127FEE67E2AD5FF60C15EBD95C31C287F15E507B071E700"
-deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui", TurbosCLMM = "TurbosCLMM", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
+manifest_digest = "117CA8052873A0733BC25D78373BEB458D02480E8AC4C86584EB17FCEC9659FC"
+deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui", TurbosCLMM = "TurbosCLMM", blast_admin = "blast_admin", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
 
 [pinned.testnet.mmt_v3]
 source = { git = "https://github.com/mmt-finance/mmt-contract-interface.git", subdir = "mmt_v3", rev = "e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82" }

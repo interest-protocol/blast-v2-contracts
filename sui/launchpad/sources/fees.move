@@ -4,10 +4,11 @@
 #[allow(lint(abort_without_constant))]
 module blast_fun::fees;
 
+use blast_admin::acl::AdminWitness;
 use blast_fun::{
-    acl::AdminWitness,
     bps::Bps,
     creator_authority::CreatorCap,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
     runtime_config::RuntimeConfig,
 };
 use sui::{balance::{Self, Balance}, coin::Coin};
@@ -80,7 +81,7 @@ public fun claim_creator_fees<Meme, Quote>(
 /// Drains both protocol balances after an active administrator signs in.
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut FeeLedger<Meme, Quote>,
-    _: &AdminWitness,
+    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     assert!(

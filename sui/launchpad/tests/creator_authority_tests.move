@@ -1,22 +1,21 @@
 #[test_only]
 module blast_fun::creator_authority_tests;
 
+use blast_admin::acl::{Authority, SuperAdminCap, AdminCap, AdminWitness};
 use blast_fun::{
-    acl,
-    constants,
     creator_authority,
+    domain_fixture,
     events,
     launch_config::{Self, LaunchConfig},
+    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
     package_version::{Self, PackageVersion},
     runtime_config,
 };
 use std::unit_test::{assert_eq, destroy};
 use sui::{clock::{Self, Clock}, event, test_scenario::{Self, Scenario}};
 
-use fun acl_cancel_super_admin_transfer as AclFixture.cancel_super_admin_transfer;
 use fun acl_ctx as AclFixture.ctx;
 use fun acl_end as AclFixture.end;
-use fun acl_grant_admin as AclFixture.grant_admin;
 use fun acl_next_tx as AclFixture.next_tx;
 use fun claim_end as ClaimFixture.end;
 use fun claim_next_tx as ClaimFixture.next_tx;
@@ -28,25 +27,18 @@ use fun event_take_authority as EventFixture.take_authority;
 use fun event_take_launch_config as EventFixture.take_launch_config;
 use fun event_take_package_version as EventFixture.take_package_version;
 use fun event_take_runtime_config as EventFixture.take_runtime_config;
-use fun init_end as InitFixture.end;
 use fun signer_claim_end as SignerClaimFixture.end;
 use fun signer_claim_next_tx as SignerClaimFixture.next_tx;
 use fun signer_claim_sign_in as SignerClaimFixture.sign_in;
 use fun signer_end as SignerFixture.end;
 use fun signer_next_tx as SignerFixture.next_tx;
 use fun signer_sign_in as SignerFixture.sign_in;
-use fun transfer_cancel_super_admin_transfer as TransferFixture.cancel_super_admin_transfer;
-use fun transfer_end as TransferFixture.end;
-use fun transfer_grant_admin as TransferFixture.grant_admin;
-use fun transfer_next_tx as TransferFixture.next_tx;
 
 // === Constants ===
 
 const LAUNCHER: address = @0xA11CE;
 const CREATOR: address = @0xC0FFEE;
 const PROTOCOL_ADMIN: address = @0xAD;
-const SECOND_ADMIN: address = @0xDAD;
-const NEW_SUPER_ADMIN: address = @0xB0B;
 const X_CLAIMANT: address = @0xC0FFEE;
 const NOW_MS: u64 = 1_000_000;
 const EXPIRY_MS: u64 = 2_000_000;
@@ -61,14 +53,6 @@ public struct EventFixture {
     scenario: Scenario,
 }
 
-/// Observed facts from one production ACL package initialization.
-public struct InitFixture {
-    scenario: Scenario,
-    user_event_count: u64,
-    super_admin_cap_delivered: bool,
-    admin_cap_delivered: bool,
-}
-
 /// Creator-claim seam only: a runtime configuration and clock, no ACL state.
 public struct ClaimFixture {
     scenario: Scenario,
@@ -76,31 +60,22 @@ public struct ClaimFixture {
     clock: Clock,
 }
 
-/// ACL registry and membership only; needs no runtime config or clock.
+/// Launchpad-domain membership only; needs no runtime config or clock.
 public struct AclFixture {
     scenario: Scenario,
     package_version: PackageVersion,
-    super_admin_cap: Option<acl::SuperAdminCap>,
-    authority: acl::ProtocolAuthority,
-    admin_cap: Option<acl::AdminCap>,
+    super_admin_cap: Option<SuperAdminCap<LAUNCHPAD_DOMAIN>>,
+    authority: Authority<LAUNCHPAD_DOMAIN>,
+    admin_cap: Option<AdminCap<LAUNCHPAD_DOMAIN>>,
 }
 
-/// Delayed root-transfer choreography: ACL rotation state plus the clock.
-public struct TransferFixture {
-    scenario: Scenario,
-    package_version: PackageVersion,
-    super_admin_cap: Option<acl::SuperAdminCap>,
-    authority: acl::ProtocolAuthority,
-    clock: Clock,
-}
-
-/// Live signer/config administration through the ACL sign-in seam.
+/// Live signer/config administration through the shared sign-in seam.
 public struct SignerFixture {
     scenario: Scenario,
     package_version: PackageVersion,
-    super_admin_cap: acl::SuperAdminCap,
-    authority: acl::ProtocolAuthority,
-    admin_cap: acl::AdminCap,
+    super_admin_cap: SuperAdminCap<LAUNCHPAD_DOMAIN>,
+    authority: Authority<LAUNCHPAD_DOMAIN>,
+    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
     config: runtime_config::RuntimeConfig,
 }
 
@@ -108,8 +83,8 @@ public struct SignerFixture {
 public struct SignerClaimFixture {
     scenario: Scenario,
     package_version: PackageVersion,
-    authority: acl::ProtocolAuthority,
-    admin_cap: acl::AdminCap,
+    authority: Authority<LAUNCHPAD_DOMAIN>,
+    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
     config: runtime_config::RuntimeConfig,
     clock: Clock,
 }
@@ -117,16 +92,28 @@ public struct SignerClaimFixture {
 // === Tests ===
 
 #[test]
-fun package_initialization_shares_singletons_without_events() {
+/// Initialization emits only the shared authority-creation fact; every Launchpad
+/// product singleton is still created silently.
+fun package_initialization_shares_singletons_with_only_the_authority_fact() {
     let mut fixture = start_event();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        acl::init_for_testing(f.ctx!());
+        launchpad_domain::init_for_testing(f.ctx!());
+        let created = blast_admin::events::collect_one<
+            blast_admin::events::AuthorityCreated<LAUNCHPAD_DOMAIN>,
+        >(0);
+        let (_, _, recipient, max_admins, root_transfer_delay_ms) =
+            created.authority_created_fields();
+        assert_eq!(recipient, LAUNCHER);
+        assert_eq!(max_admins, 16);
+        assert_eq!(root_transfer_delay_ms, 7 * 24 * 60 * 60 * 1_000);
+
         package_version::init_for_testing(f.ctx!());
         runtime_config::init_for_testing(f.ctx!());
         launch_config::init_for_testing(f.ctx!());
 
-        assert_eq!(event::num_events(), 0);
+        // Only the shared authority-creation fact; no product singleton emits.
+        assert_eq!(event::num_events(), 1);
     });
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -156,50 +143,6 @@ fun super_admin_grants_global_admin_that_configures_x_signer() {
             &admin_witness,
             x_signer_public_key(),
         );
-    });
-
-    fixture.end();
-}
-
-#[test]
-fun super_admin_grant_is_replay_complete_and_delivers_the_cap() {
-    let mut fixture = start_acl();
-    let granted_admin_cap_id;
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        f.grant_admin(SECOND_ADMIN);
-
-        let granted = events::collect_one<events::AdminGranted>(0);
-        let (emitted_admin_cap_id, recipient) = granted.admin_granted_fields();
-        assert_eq!(recipient, SECOND_ADMIN);
-        granted_admin_cap_id = emitted_admin_cap_id;
-    });
-
-    fixture.next_tx!(SECOND_ADMIN, |f| {
-        let delivered_admin_cap = f.take_delivered_admin_cap();
-
-        assert_eq!(
-            granted_admin_cap_id,
-            delivered_admin_cap.admin_cap_id_for_testing(),
-        );
-
-        destroy(delivered_admin_cap);
-    });
-
-    fixture.end();
-}
-
-#[test]
-fun super_admin_revocation_identifies_only_the_removed_admin() {
-    let mut fixture = start_acl();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let admin_cap_id = f.admin_cap_id();
-
-        f.revoke_admin(admin_cap_id);
-
-        let revoked = events::collect_one<events::AdminRevoked>(0);
-        assert_eq!(revoked.admin_revoked_fields(), admin_cap_id);
     });
 
     fixture.end();
@@ -286,19 +229,15 @@ fun x_claim_signer_cannot_revoke_while_disabled() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidAdminCap,
-    location = blast_fun::acl,
+    abort_code = blast_admin::errors::EInvalidAdminCap,
+    location = blast_admin::acl,
 )]
 fun revoked_admin_cannot_configure_x_signer() {
     let mut fixture = start_signer(LAUNCHER);
 
     fixture.next_tx!(LAUNCHER, |f| {
         let admin_cap_id = f.admin_cap.admin_cap_id_for_testing();
-        f.authority.revoke_admin(
-            &f.package_version,
-            &f.super_admin_cap,
-            admin_cap_id,
-        );
+        f.authority.revoke_admin(&f.super_admin_cap, admin_cap_id);
         let admin_witness = f.sign_in();
 
         f.config.set_x_claim_signer(
@@ -312,67 +251,9 @@ fun revoked_admin_cannot_configure_x_signer() {
 }
 
 #[test]
-fun active_admin_can_destroy_cap_and_renounce_membership() {
-    let mut fixture = start_acl();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let admin_cap = f.take_admin_cap();
-        let admin_cap_id = admin_cap.admin_cap_id_for_testing();
-
-        f.authority.destroy_admin_cap(&f.package_version, admin_cap);
-
-        let destroyed = events::collect_one<events::AdminDestroyed>(0);
-        let (emitted_admin_cap_id, was_active) = destroyed.admin_destroyed_fields();
-        assert_eq!(emitted_admin_cap_id, admin_cap_id);
-        assert!(was_active);
-    });
-
-    fixture.end();
-}
-
-#[test]
-fun revoked_admin_can_destroy_inert_cap() {
-    let mut fixture = start_acl();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let admin_cap = f.take_admin_cap();
-        let admin_cap_id = admin_cap.admin_cap_id_for_testing();
-
-        f.revoke_admin(admin_cap_id);
-        f.authority.destroy_admin_cap(&f.package_version, admin_cap);
-
-        let destroyed = events::collect_one<events::AdminDestroyed>(0);
-        let (emitted_admin_cap_id, was_active) = destroyed.admin_destroyed_fields();
-        assert_eq!(emitted_admin_cap_id, admin_cap_id);
-        assert!(!was_active);
-    });
-
-    fixture.end();
-}
-
-#[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidAdminCap,
-    location = blast_fun::acl,
-)]
-fun destroyed_active_admin_is_removed_from_registry() {
-    let mut fixture = start_acl();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let admin_cap = f.take_admin_cap();
-        let admin_cap_id = admin_cap.admin_cap_id_for_testing();
-
-        f.authority.destroy_admin_cap(&f.package_version, admin_cap);
-        f.revoke_admin(admin_cap_id);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EInvalidAdminCap,
-    location = blast_fun::acl,
+    abort_code = blast_admin::errors::EInvalidAdminCap,
+    location = blast_admin::acl,
 )]
 fun admin_registered_in_another_protocol_registry_is_rejected() {
     let mut fixture = start_acl();
@@ -393,340 +274,6 @@ fun admin_registered_in_another_protocol_registry_is_rejected() {
         destroy(second_config);
         destroy(second_package_version);
     });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EAdminCapacityReached,
-    location = blast_fun::acl,
-)]
-fun active_admin_registry_is_bounded() {
-    let mut fixture = start_acl();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let mut index = 1u64;
-        while (index < constants::max_admins!()) {
-            f.grant_admin(PROTOCOL_ADMIN);
-            index = index + 1;
-        };
-        f.grant_admin(PROTOCOL_ADMIN);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EInvalidAdminRecipient,
-    location = blast_fun::acl,
-)]
-fun super_admin_cannot_grant_zero_address_admin() {
-    let mut fixture = start_acl();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        f.grant_admin(@0x0);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EPackageVersionMismatch,
-    location = blast_fun::package_version,
-)]
-fun stale_package_version_rejects_acl_before_recipient_validation() {
-    let mut fixture = start_acl();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        f.package_version.set_for_testing(2);
-        f.grant_admin(@0x0);
-    });
-
-    fixture.end();
-}
-
-#[test]
-fun super_admin_transfer_requires_delay_and_recipient_acceptance() {
-    let mut fixture = start_transfer();
-    let new_super_admin_cap_id;
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        f.clock.set_for_testing(NOW_MS);
-
-        f.begin_super_admin_transfer(NEW_SUPER_ADMIN);
-
-        let started = events::collect_one<events::SuperAdminTransferStarted>(0);
-        let (started_recipient, execute_after_ms) =
-            started.super_admin_transfer_started_fields();
-        assert_eq!(started_recipient, NEW_SUPER_ADMIN);
-        assert_eq!(
-            execute_after_ms,
-            NOW_MS + constants::super_admin_transfer_delay_ms!(),
-        );
-
-        f.clock.set_for_testing(NOW_MS + constants::super_admin_transfer_delay_ms!());
-    });
-
-    fixture.next_tx!(NEW_SUPER_ADMIN, |f| {
-        f.accept_super_admin_transfer();
-
-        let transferred = events::collect_one<events::SuperAdminTransferred>(0);
-        let (previous_super_admin_cap_id, emitted_new_super_admin_cap_id, recipient) =
-            transferred.super_admin_transferred_fields();
-        assert_eq!(
-            previous_super_admin_cap_id,
-            f.super_admin_cap_id(),
-        );
-        assert_eq!(recipient, NEW_SUPER_ADMIN);
-        new_super_admin_cap_id = emitted_new_super_admin_cap_id;
-    });
-
-    fixture.next_tx!(NEW_SUPER_ADMIN, |f| {
-        let retired_super_admin_cap = f.replace_super_admin_cap();
-
-        assert_eq!(
-            new_super_admin_cap_id,
-            f.super_admin_cap_id(),
-        );
-        f.grant_admin(PROTOCOL_ADMIN);
-
-        f.authority.destroy_retired_super_admin_cap(retired_super_admin_cap);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::ESuperAdminCapStillActive,
-    location = blast_fun::acl,
-)]
-fun active_super_admin_cap_cannot_be_destroyed() {
-    let mut fixture = start_acl();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let super_admin_cap = f.take_super_admin_cap();
-
-        f.authority.destroy_retired_super_admin_cap(super_admin_cap);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::ESuperAdminTransferTimeOverflow,
-    location = blast_fun::acl,
-)]
-fun super_admin_transfer_rejects_timestamp_overflow() {
-    let mut fixture = start_transfer();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        f.clock.set_for_testing(std::u64::max_value!());
-
-        f.begin_super_admin_transfer(NEW_SUPER_ADMIN);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::ESuperAdminTransferUnchanged,
-    location = blast_fun::acl,
-)]
-fun super_admin_transfer_rejects_unchanged_pending_recipient_before_timestamp_work() {
-    let mut fixture = start_transfer();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        f.clock.set_for_testing(NOW_MS);
-        f.begin_super_admin_transfer(NEW_SUPER_ADMIN);
-
-        f.clock.set_for_testing(std::u64::max_value!());
-        f.begin_super_admin_transfer(NEW_SUPER_ADMIN);
-    });
-
-    fixture.end();
-}
-
-#[test]
-fun super_admin_transfer_replaces_different_pending_recipient() {
-    let mut fixture = start_transfer();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        f.clock.set_for_testing(NOW_MS);
-        f.begin_super_admin_transfer(NEW_SUPER_ADMIN);
-        f.clock.set_for_testing(NOW_MS + 1);
-        f.begin_super_admin_transfer(PROTOCOL_ADMIN);
-
-        let cancelled = events::collect_one<events::SuperAdminTransferCancelled>(0);
-        assert_eq!(
-            cancelled.super_admin_transfer_cancelled_fields(),
-            NEW_SUPER_ADMIN,
-        );
-        let mut started = events::collect<events::SuperAdminTransferStarted>();
-        assert_eq!(started.length(), 2);
-        let second_started = started.pop_back();
-        let first_started = started.pop_back();
-        let (first_recipient, first_execute_after_ms) =
-            first_started.super_admin_transfer_started_fields();
-        let (second_recipient, second_execute_after_ms) =
-            second_started.super_admin_transfer_started_fields();
-        assert_eq!(first_recipient, NEW_SUPER_ADMIN);
-        assert_eq!(
-            first_execute_after_ms,
-            NOW_MS + constants::super_admin_transfer_delay_ms!(),
-        );
-        assert_eq!(second_recipient, PROTOCOL_ADMIN);
-        assert_eq!(
-            second_execute_after_ms,
-            NOW_MS + 1 + constants::super_admin_transfer_delay_ms!(),
-        );
-
-        f.clock.set_for_testing(
-            NOW_MS + 1 + constants::super_admin_transfer_delay_ms!(),
-        );
-    });
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        f.accept_super_admin_transfer();
-    });
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let retired_super_admin_cap = f.replace_super_admin_cap();
-
-        f.authority.destroy_retired_super_admin_cap(retired_super_admin_cap);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EInvalidSuperAdminCap,
-    location = blast_fun::acl,
-)]
-fun accepted_super_admin_transfer_invalidates_previous_root_cap() {
-    let mut fixture = start_transfer();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        f.clock.set_for_testing(NOW_MS);
-        f.begin_super_admin_transfer(NEW_SUPER_ADMIN);
-        f.clock.set_for_testing(NOW_MS + constants::super_admin_transfer_delay_ms!());
-    });
-
-    fixture.next_tx!(NEW_SUPER_ADMIN, |f| {
-        f.accept_super_admin_transfer();
-
-        f.grant_admin(PROTOCOL_ADMIN);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EInvalidSuperAdminRecipient,
-    location = blast_fun::acl,
-)]
-fun super_admin_transfer_rejects_zero_recipient() {
-    let mut fixture = start_transfer();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        f.begin_super_admin_transfer(@0x0);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::ESuperAdminTransferNotReady,
-    location = blast_fun::acl,
-)]
-fun super_admin_transfer_rejects_early_acceptance() {
-    let mut fixture = start_transfer();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        f.clock.set_for_testing(NOW_MS);
-        f.begin_super_admin_transfer(NEW_SUPER_ADMIN);
-    });
-
-    fixture.next_tx!(NEW_SUPER_ADMIN, |f| {
-        f.accept_super_admin_transfer();
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::ENotPendingSuperAdminRecipient,
-    location = blast_fun::acl,
-)]
-fun super_admin_transfer_rejects_wrong_recipient() {
-    let mut fixture = start_transfer();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        f.clock.set_for_testing(NOW_MS);
-        f.begin_super_admin_transfer(NEW_SUPER_ADMIN);
-        f.clock.set_for_testing(NOW_MS + constants::super_admin_transfer_delay_ms!());
-    });
-
-    fixture.next_tx!(@0xBAD, |f| {
-        f.accept_super_admin_transfer();
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::ENoPendingSuperAdminTransfer,
-    location = blast_fun::acl,
-)]
-fun cancelled_super_admin_transfer_cannot_be_accepted() {
-    let mut fixture = start_transfer();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        f.clock.set_for_testing(NOW_MS);
-        f.begin_super_admin_transfer(NEW_SUPER_ADMIN);
-        f.cancel_super_admin_transfer();
-        f.clock.set_for_testing(NOW_MS + constants::super_admin_transfer_delay_ms!());
-    });
-
-    fixture.next_tx!(NEW_SUPER_ADMIN, |f| {
-        f.accept_super_admin_transfer();
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::ENoPendingSuperAdminTransfer,
-    location = blast_fun::acl,
-)]
-fun super_admin_cannot_cancel_without_pending_transfer() {
-    let mut fixture = start_acl();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        f.cancel_super_admin_transfer();
-    });
-
-    fixture.end();
-}
-
-#[test]
-fun package_init_delivers_only_root() {
-    let fixture = start_package_init();
-
-    assert_eq!(fixture.user_event_count, 0);
-    assert!(fixture.super_admin_cap_delivered);
-    assert!(!fixture.admin_cap_delivered);
 
     fixture.end();
 }
@@ -1162,17 +709,6 @@ macro fun acl_next_tx(
     $fn(fixture);
 }
 
-macro fun transfer_next_tx(
-    $fixture: &mut TransferFixture,
-    $sender: address,
-    $fn: |&mut TransferFixture|,
-) {
-    let fixture = $fixture;
-
-    fixture.scenario.next_tx($sender);
-    $fn(fixture);
-}
-
 macro fun signer_next_tx(
     $fixture: &mut SignerFixture,
     $sender: address,
@@ -1211,27 +747,6 @@ fun start_event(): EventFixture {
     EventFixture { scenario: test_scenario::begin(LAUNCHER) }
 }
 
-/// Runs production package initialization and records only the delivery facts
-/// the initialization test asserts; the delivered root capability and shared
-/// registry stay in scenario custody until fixture teardown.
-fun start_package_init(): InitFixture {
-    let mut scenario = test_scenario::begin(LAUNCHER);
-    acl::init_for_testing(scenario.ctx());
-
-    let effects = scenario.next_tx(LAUNCHER);
-    let user_event_count = effects.num_user_events();
-    let super_admin_cap_delivered =
-        scenario.has_most_recent_for_sender<acl::SuperAdminCap>();
-    let admin_cap_delivered = scenario.has_most_recent_for_sender<acl::AdminCap>();
-
-    InitFixture {
-        scenario,
-        user_event_count,
-        super_admin_cap_delivered,
-        admin_cap_delivered,
-    }
-}
-
 /// A disabled-signer runtime configuration for address-claim behavior.
 fun start_claim(): ClaimFixture {
     let mut scenario = test_scenario::begin(LAUNCHER);
@@ -1268,17 +783,11 @@ fun start_runtime_init(): ClaimFixture {
 fun start_acl(): AclFixture {
     let mut scenario = test_scenario::begin(LAUNCHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) =
-        acl::new_protocol_for_testing(scenario.ctx());
-    authority.grant_admin(
-        &package_version,
-        &super_admin_cap,
-        LAUNCHER,
-        scenario.ctx(),
-    );
+    let (super_admin_cap, mut authority) = new_authority(scenario.ctx());
+    authority.grant_admin(&super_admin_cap, 0, LAUNCHER, scenario.ctx());
 
     scenario.next_tx(LAUNCHER);
-    let admin_cap = scenario.take_from_sender<acl::AdminCap>();
+    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
 
     AclFixture {
         scenario,
@@ -1289,35 +798,14 @@ fun start_acl(): AclFixture {
     }
 }
 
-fun start_transfer(): TransferFixture {
-    let mut scenario = test_scenario::begin(LAUNCHER);
-    let package_version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin_cap, authority) =
-        acl::new_protocol_for_testing(scenario.ctx());
-    let clock = clock::create_for_testing(scenario.ctx());
-
-    TransferFixture {
-        scenario,
-        package_version,
-        super_admin_cap: option::some(super_admin_cap),
-        authority,
-        clock,
-    }
-}
-
 fun start_signer(admin: address): SignerFixture {
     let mut scenario = test_scenario::begin(LAUNCHER);
     let (package_version, super_admin_cap, mut authority, config) =
         new_protocol(scenario.ctx());
-    authority.grant_admin(
-        &package_version,
-        &super_admin_cap,
-        admin,
-        scenario.ctx(),
-    );
+    authority.grant_admin(&super_admin_cap, 0, admin, scenario.ctx());
 
     scenario.next_tx(admin);
-    let admin_cap = scenario.take_from_sender<acl::AdminCap>();
+    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
 
     SignerFixture {
         scenario,
@@ -1333,17 +821,12 @@ fun start_signer_claim(): SignerClaimFixture {
     let mut scenario = test_scenario::begin(LAUNCHER);
     let (package_version, super_admin_cap, mut authority, config) =
         new_protocol(scenario.ctx());
-    authority.grant_admin(
-        &package_version,
-        &super_admin_cap,
-        LAUNCHER,
-        scenario.ctx(),
-    );
+    authority.grant_admin(&super_admin_cap, 0, LAUNCHER, scenario.ctx());
     destroy(super_admin_cap);
     let clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(LAUNCHER);
-    let admin_cap = scenario.take_from_sender<acl::AdminCap>();
+    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
 
     SignerClaimFixture {
         scenario,
@@ -1355,102 +838,19 @@ fun start_signer_claim(): SignerClaimFixture {
     }
 }
 
-fun acl_grant_admin(self: &mut AclFixture, recipient: address) {
-    self.authority.grant_admin(
-        &self.package_version,
-        self.super_admin_cap.borrow(),
-        recipient,
-        self.scenario.ctx(),
-    );
-}
-
-fun revoke_admin(self: &mut AclFixture, admin_cap_id: ID) {
-    self.authority.revoke_admin(
-        &self.package_version,
-        self.super_admin_cap.borrow(),
-        admin_cap_id,
-    );
-}
-
-fun acl_cancel_super_admin_transfer(self: &mut AclFixture) {
-    self.authority.cancel_super_admin_transfer(
-        &self.package_version,
-        self.super_admin_cap.borrow(),
-    );
-}
-
-fun admin_cap_id(self: &AclFixture): ID {
-    self.admin_cap.borrow().admin_cap_id_for_testing()
-}
-
 fun sign_in_to(
     self: &AclFixture,
-    authority: &acl::ProtocolAuthority,
-): acl::AdminWitness {
-    authority.sign_in(&self.package_version, self.admin_cap.borrow())
+    authority: &Authority<LAUNCHPAD_DOMAIN>,
+): AdminWitness<LAUNCHPAD_DOMAIN> {
+    authority.sign_in(self.admin_cap.borrow())
 }
 
-fun take_admin_cap(self: &mut AclFixture): acl::AdminCap {
-    self.admin_cap.extract()
+fun signer_sign_in(self: &SignerFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+    self.authority.sign_in(&self.admin_cap)
 }
 
-fun take_super_admin_cap(self: &mut AclFixture): acl::SuperAdminCap {
-    self.super_admin_cap.extract()
-}
-
-fun take_delivered_admin_cap(self: &AclFixture): acl::AdminCap {
-    self.scenario.take_from_sender()
-}
-
-fun transfer_grant_admin(self: &mut TransferFixture, recipient: address) {
-    self.authority.grant_admin(
-        &self.package_version,
-        self.super_admin_cap.borrow(),
-        recipient,
-        self.scenario.ctx(),
-    );
-}
-
-fun begin_super_admin_transfer(self: &mut TransferFixture, recipient: address) {
-    self.authority.begin_super_admin_transfer(
-        &self.package_version,
-        self.super_admin_cap.borrow(),
-        recipient,
-        &self.clock,
-        self.scenario.ctx(),
-    );
-}
-
-fun accept_super_admin_transfer(self: &mut TransferFixture) {
-    self.authority.accept_super_admin_transfer(
-        &self.package_version,
-        &self.clock,
-        self.scenario.ctx(),
-    );
-}
-
-fun transfer_cancel_super_admin_transfer(self: &mut TransferFixture) {
-    self.authority.cancel_super_admin_transfer(
-        &self.package_version,
-        self.super_admin_cap.borrow(),
-    );
-}
-
-fun super_admin_cap_id(self: &TransferFixture): ID {
-    object::id(self.super_admin_cap.borrow())
-}
-
-fun replace_super_admin_cap(self: &mut TransferFixture): acl::SuperAdminCap {
-    let new_super_admin_cap = self.scenario.take_from_sender<acl::SuperAdminCap>();
-    self.super_admin_cap.swap(new_super_admin_cap)
-}
-
-fun signer_sign_in(self: &SignerFixture): acl::AdminWitness {
-    self.authority.sign_in(&self.package_version, &self.admin_cap)
-}
-
-fun signer_claim_sign_in(self: &SignerClaimFixture): acl::AdminWitness {
-    self.authority.sign_in(&self.package_version, &self.admin_cap)
+fun signer_claim_sign_in(self: &SignerClaimFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+    self.authority.sign_in(&self.admin_cap)
 }
 
 fun claim_x(
@@ -1496,8 +896,8 @@ fun event_take_package_version(self: &EventFixture): PackageVersion {
     self.scenario.take_shared<PackageVersion>()
 }
 
-fun event_take_authority(self: &EventFixture): acl::ProtocolAuthority {
-    self.scenario.take_shared<acl::ProtocolAuthority>()
+fun event_take_authority(self: &EventFixture): Authority<LAUNCHPAD_DOMAIN> {
+    self.scenario.take_shared<Authority<LAUNCHPAD_DOMAIN>>()
 }
 
 fun event_take_runtime_config(self: &EventFixture): runtime_config::RuntimeConfig {
@@ -1509,19 +909,11 @@ fun event_take_launch_config(self: &EventFixture): LaunchConfig {
 }
 
 
-fun init_end(self: InitFixture) {
-    destroy(self);
-}
-
 fun claim_end(self: ClaimFixture) {
     destroy(self);
 }
 
 fun acl_end(self: AclFixture) {
-    destroy(self);
-}
-
-fun transfer_end(self: TransferFixture) {
     destroy(self);
 }
 
@@ -1537,15 +929,21 @@ fun new_protocol(
     ctx: &mut TxContext,
 ): (
     PackageVersion,
-    acl::SuperAdminCap,
-    acl::ProtocolAuthority,
+    SuperAdminCap<LAUNCHPAD_DOMAIN>,
+    Authority<LAUNCHPAD_DOMAIN>,
     runtime_config::RuntimeConfig,
 ) {
     let package_version = package_version::new_for_testing(ctx);
-    let (super_admin_cap, authority) =
-        acl::new_protocol_for_testing(ctx);
+    let (super_admin_cap, authority) = new_authority(ctx);
     let config = runtime_config::new_disabled_for_testing(ctx);
     (package_version, super_admin_cap, authority, config)
+}
+
+/// Unshared Launchpad-domain authority state with this package's real constants.
+fun new_authority(
+    ctx: &mut TxContext,
+): (SuperAdminCap<LAUNCHPAD_DOMAIN>, Authority<LAUNCHPAD_DOMAIN>) {
+    domain_fixture::new_authority(ctx)
 }
 
 fun new_x_authority(): creator_authority::CreatorAuthority<TEST_MEME> {

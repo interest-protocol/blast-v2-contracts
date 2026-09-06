@@ -1,15 +1,17 @@
 #[test_only]
 module blast_fun::launch_tests;
 
+use blast_admin::acl::{Authority, AdminCap, AdminWitness};
 use blast_fun::{
-    acl,
     bps,
     creator_authority,
     curve,
+    domain_fixture,
     events,
     launch::{Self, Launch},
     launch_config,
     launch_ticket::{Self, LaunchTicket},
+    launchpad_domain::LAUNCHPAD_DOMAIN,
     package_version::{Self, PackageVersion},
     runtime_config,
 };
@@ -66,8 +68,8 @@ public struct OTHER_MIGRATION_WITNESS() has drop;
 public struct LaunchFixture {
     scenario: Scenario,
     package_version: PackageVersion,
-    authority: acl::ProtocolAuthority,
-    admin_cap: acl::AdminCap,
+    authority: Authority<LAUNCHPAD_DOMAIN>,
+    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
     config: launch_config::LaunchConfig,
     runtime_config: runtime_config::RuntimeConfig,
     clock: Clock,
@@ -1305,8 +1307,8 @@ fun sell_rejects_minimum_above_exact_returned_coin() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EPackageVersionMismatch,
-    location = blast_fun::package_version,
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
 )]
 fun stale_package_version_aborts_before_zero_trade_validation() {
     let mut fixture = start();
@@ -1334,8 +1336,8 @@ fun stale_package_version_aborts_before_zero_trade_validation() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EPackageVersionMismatch,
-    location = blast_fun::package_version,
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
 )]
 fun stale_package_version_aborts_migration_before_lifecycle_and_witness_validation() {
     let mut fixture = start();
@@ -1484,23 +1486,17 @@ macro fun launch_ctx($fixture: &mut LaunchFixture): &mut TxContext {
 fun start(): LaunchFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) =
-        acl::new_protocol_for_testing(scenario.ctx());
-    authority.grant_admin(
-        &package_version,
-        &super_admin_cap,
-        PROTOCOL_ADMIN,
-        scenario.ctx(),
-    );
+    let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
+    authority.grant_admin(&super_admin_cap, 0, PROTOCOL_ADMIN, scenario.ctx());
     destroy(super_admin_cap);
     launch_config::init_for_testing(scenario.ctx());
     let runtime_config = runtime_config::new_disabled_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<acl::AdminCap>();
+    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
     let mut config = scenario.take_shared<launch_config::LaunchConfig>();
-    let admin_witness = authority.sign_in(&package_version, &admin_cap);
+    let admin_witness = authority.sign_in(&admin_cap);
 
     config.allow_quote<TEST_QUOTE>(
         &package_version,
@@ -1562,8 +1558,8 @@ fun launch_new_ticket_with_mode(
     )
 }
 
-fun launch_sign_in(self: &LaunchFixture): acl::AdminWitness {
-    self.authority.sign_in(&self.package_version, &self.admin_cap)
+fun launch_sign_in(self: &LaunchFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+    self.authority.sign_in(&self.admin_cap)
 }
 
 fun launch_take_currency(self: &LaunchFixture): Currency<LAUNCH_TESTS> {

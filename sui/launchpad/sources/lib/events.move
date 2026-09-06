@@ -4,12 +4,6 @@ use std::type_name::{Self, TypeName};
 
 // === Public Structs ===
 
-/// Emitted after checked activation advances the shared bytecode cutover.
-public struct PackageVersionAdvanced has copy, drop {
-    previous_version: u64,
-    new_version: u64,
-}
-
 /// Emitted after the trade-fee pair snapshotted by future launches changes.
 public struct LaunchTradeFeesChanged has copy, drop {
     old_quote_fee_bps: u64,
@@ -65,41 +59,6 @@ public struct MigrationWitnessDisallowed has copy, drop {
 public struct ProtocolFeeShareChanged has copy, drop {
     old_protocol_fee_share_bps: u64,
     new_protocol_fee_share_bps: u64,
-}
-
-/// Emitted after routine protocol administration is granted and its cap is delivered.
-public struct AdminGranted has copy, drop {
-    admin_cap_id: ID,
-    recipient: address,
-}
-
-/// Emitted after a routine protocol administrator is revoked.
-public struct AdminRevoked has copy, drop {
-    admin_cap_id: ID,
-}
-
-/// Emitted after a cap holder deletes an admin cap; records whether live membership was removed.
-public struct AdminDestroyed has copy, drop {
-    admin_cap_id: ID,
-    was_active: bool,
-}
-
-/// Emitted after a delayed root-authority transfer is scheduled.
-public struct SuperAdminTransferStarted has copy, drop {
-    recipient: address,
-    execute_after_ms: u64,
-}
-
-/// Emitted after a pending root-authority transfer is cancelled or replaced.
-public struct SuperAdminTransferCancelled has copy, drop {
-    recipient: address,
-}
-
-/// Emitted after the proposed recipient accepts root authority.
-public struct SuperAdminTransferred has copy, drop {
-    previous_super_admin_cap_id: ID,
-    new_super_admin_cap_id: ID,
-    recipient: address,
 }
 
 /// Emitted after the X claim signer is initially set or rotated.
@@ -259,46 +218,7 @@ public struct ProtocolFeesClaimed has copy, drop {
     quote_amount: u64,
 }
 
-/// Emitted after Blast's package capabilities are validated and placed in shared custody.
-public struct PackageAdminCreated has copy, drop {
-    package_admin_id: ID,
-    publisher_id: ID,
-    upgrade_cap_id: ID,
-    package_id: ID,
-    package_version: u64,
-    policy: u8,
-}
-
-/// Emitted after an active protocol admin authorizes an exact package digest.
-public struct UpgradeAuthorized has copy, drop {
-    package_id: ID,
-    package_version: u64,
-    policy: u8,
-    digest: vector<u8>,
-}
-
-/// Emitted after the native upgrade receipt advances the wrapped UpgradeCap.
-public struct UpgradeCommitted has copy, drop {
-    new_package_id: ID,
-    previous_version: u64,
-    new_version: u64,
-}
-
-/// Emitted after an active protocol admin irreversibly narrows upgrade policy.
-public struct UpgradePolicyRestricted has copy, drop {
-    previous_policy: u8,
-    new_policy: u8,
-}
-
 // === Package Functions ===
-
-/// Emits an accepted operational package-generation advance.
-public(package) fun package_version_advanced(previous_version: u64, new_version: u64) {
-    blast_fun::events_wrapper::emit_event(PackageVersionAdvanced {
-        previous_version,
-        new_version,
-    });
-}
 
 /// Emits replacement of the launch trade-fee defaults.
 public(package) fun launch_trade_fees_changed(
@@ -396,55 +316,6 @@ public(package) fun protocol_fee_share_changed(
     blast_fun::events_wrapper::emit_event(ProtocolFeeShareChanged {
         old_protocol_fee_share_bps,
         new_protocol_fee_share_bps,
-    });
-}
-
-/// Emits delivery of one newly active routine-admin capability.
-public(package) fun admin_granted(admin_cap_id: ID, recipient: address) {
-    blast_fun::events_wrapper::emit_event(AdminGranted { admin_cap_id, recipient });
-}
-
-/// Emits revocation of one routine-admin capability.
-public(package) fun admin_revoked(admin_cap_id: ID) {
-    blast_fun::events_wrapper::emit_event(AdminRevoked { admin_cap_id });
-}
-
-/// Emits destruction of a routine-admin capability and its prior registry state.
-public(package) fun admin_destroyed(admin_cap_id: ID, was_active: bool) {
-    blast_fun::events_wrapper::emit_event(AdminDestroyed {
-        admin_cap_id,
-        was_active,
-    });
-}
-
-/// Emits the staged super-admin recipient and execution boundary.
-public(package) fun super_admin_transfer_started(
-    recipient: address,
-    execute_after_ms: u64,
-) {
-    blast_fun::events_wrapper::emit_event(SuperAdminTransferStarted {
-        recipient,
-        execute_after_ms,
-    });
-}
-
-/// Emits cancellation of the staged super-admin transfer.
-public(package) fun super_admin_transfer_cancelled(
-    recipient: address,
-) {
-    blast_fun::events_wrapper::emit_event(SuperAdminTransferCancelled { recipient });
-}
-
-/// Emits the completed replacement of the root capability.
-public(package) fun super_admin_transferred(
-    previous_super_admin_cap_id: ID,
-    new_super_admin_cap_id: ID,
-    recipient: address,
-) {
-    blast_fun::events_wrapper::emit_event(SuperAdminTransferred {
-        previous_super_admin_cap_id,
-        new_super_admin_cap_id,
-        recipient,
     });
 }
 
@@ -737,61 +608,6 @@ public(package) fun protocol_fees_claimed<Meme, Quote>(
     });
 }
 
-/// Emits creation of permanent package-capability custody.
-public(package) fun package_admin_created(
-    package_admin_id: ID,
-    publisher_id: ID,
-    upgrade_cap_id: ID,
-    package_id: ID,
-    package_version: u64,
-    policy: u8,
-) {
-    blast_fun::events_wrapper::emit_event(PackageAdminCreated {
-        package_admin_id,
-        publisher_id,
-        upgrade_cap_id,
-        package_id,
-        package_version,
-        policy,
-    });
-}
-
-/// Emits authorization of one exact package digest under the current policy.
-public(package) fun upgrade_authorized(
-    package_id: ID,
-    package_version: u64,
-    policy: u8,
-    digest: vector<u8>,
-) {
-    blast_fun::events_wrapper::emit_event(UpgradeAuthorized {
-        package_id,
-        package_version,
-        policy,
-        digest,
-    });
-}
-
-/// Emits commitment of an authorized package upgrade.
-public(package) fun upgrade_committed(
-    new_package_id: ID,
-    previous_version: u64,
-    new_version: u64,
-) {
-    blast_fun::events_wrapper::emit_event(UpgradeCommitted {
-        new_package_id,
-        previous_version,
-        new_version,
-    });
-}
-
-/// Emits an irreversible narrowing of the package upgrade policy.
-public(package) fun upgrade_policy_restricted(previous_policy: u8, new_policy: u8) {
-    blast_fun::events_wrapper::emit_event(UpgradePolicyRestricted {
-        previous_policy,
-        new_policy,
-    });
-}
-
 // === Test-Only Functions ===
 
 /// Every `T` payload emitted so far, unwrapped from the package `Event<T>` envelope.
@@ -814,13 +630,6 @@ public fun collect_one<T: copy + drop>(abort_code: u64): T {
     assert!(events.length() == 1, abort_code);
 
     events.pop_back()
-}
-
-#[test_only]
-public fun package_version_advanced_fields(
-    self: &PackageVersionAdvanced,
-): (u64, u64) {
-    (self.previous_version, self.new_version)
 }
 
 #[test_only]
@@ -897,46 +706,6 @@ public fun protocol_fee_share_changed_fields(
     (
         self.old_protocol_fee_share_bps,
         self.new_protocol_fee_share_bps,
-    )
-}
-
-#[test_only]
-public fun admin_granted_fields(self: &AdminGranted): (ID, address) {
-    (self.admin_cap_id, self.recipient)
-}
-
-#[test_only]
-public fun admin_revoked_fields(self: &AdminRevoked): ID {
-    self.admin_cap_id
-}
-
-#[test_only]
-public fun admin_destroyed_fields(self: &AdminDestroyed): (ID, bool) {
-    (self.admin_cap_id, self.was_active)
-}
-
-#[test_only]
-public fun super_admin_transfer_started_fields(
-    self: &SuperAdminTransferStarted,
-): (address, u64) {
-    (self.recipient, self.execute_after_ms)
-}
-
-#[test_only]
-public fun super_admin_transfer_cancelled_fields(
-    self: &SuperAdminTransferCancelled,
-): address {
-    self.recipient
-}
-
-#[test_only]
-public fun super_admin_transferred_fields(
-    self: &SuperAdminTransferred,
-): (ID, ID, address) {
-    (
-        self.previous_super_admin_cap_id,
-        self.new_super_admin_cap_id,
-        self.recipient,
     )
 }
 
@@ -1106,44 +875,3 @@ public fun protocol_fees_claimed_fields(
     (self.launch_id, self.claimant, self.meme_amount, self.quote_amount)
 }
 
-#[test_only]
-public fun package_admin_created_fields(
-    self: &PackageAdminCreated,
-): (ID, ID, ID, ID, u64, u8) {
-    (
-        self.package_admin_id,
-        self.publisher_id,
-        self.upgrade_cap_id,
-        self.package_id,
-        self.package_version,
-        self.policy,
-    )
-}
-
-#[test_only]
-public fun upgrade_policy_restricted_fields(self: &UpgradePolicyRestricted): (u8, u8) {
-    (self.previous_policy, self.new_policy)
-}
-
-#[test_only]
-public fun upgrade_authorized_fields(
-    self: &UpgradeAuthorized,
-): (ID, u64, u8, vector<u8>) {
-    (
-        self.package_id,
-        self.package_version,
-        self.policy,
-        self.digest,
-    )
-}
-
-#[test_only]
-public fun upgrade_committed_fields(
-    self: &UpgradeCommitted,
-): (ID, u64, u64) {
-    (
-        self.new_package_id,
-        self.previous_version,
-        self.new_version,
-    )
-}

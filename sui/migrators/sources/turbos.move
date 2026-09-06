@@ -5,15 +5,17 @@
 /// routes. The admin-pinned tier makes the venue fee object deterministic.
 module blast_fun_migrators::turbos;
 
+use blast_admin::acl::AdminWitness;
 use blast_fun::{
-    acl::AdminWitness,
     launch::Launch,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
     package_version::PackageVersion,
     runtime_config::RuntimeConfig,
 };
 use blast_fun_migrators::{
     events,
     migration_math,
+    package_version::PackageVersion as MigratorsVersion,
     vault::{Self, LpVault},
     venue_config::VenueConfig,
 };
@@ -77,6 +79,7 @@ public struct Venue() has drop;
 public fun migrate_new_meme_a<Meme, Quote, FeeType>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
+    migrators_version: &MigratorsVersion,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     pool_config: &mut PoolConfig,
@@ -87,6 +90,7 @@ public fun migrate_new_meme_a<Meme, Quote, FeeType>(
     versioned: &Versioned,
     ctx: &mut TxContext,
 ) {
+    migrators_version.assert_current();
     let (tick_spacing, fee_rate) = checked_fee_tier(venue_config, fee);
     let (lower_magnitude, lower_is_neg, upper_magnitude, upper_is_neg) =
         full_range_ticks(tick_spacing);
@@ -160,6 +164,7 @@ public fun migrate_new_meme_a<Meme, Quote, FeeType>(
 public fun migrate_new_meme_b<Meme, Quote, FeeType>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
+    migrators_version: &MigratorsVersion,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     pool_config: &mut PoolConfig,
@@ -170,6 +175,7 @@ public fun migrate_new_meme_b<Meme, Quote, FeeType>(
     versioned: &Versioned,
     ctx: &mut TxContext,
 ) {
+    migrators_version.assert_current();
     let (tick_spacing, fee_rate) = checked_fee_tier(venue_config, fee);
     let (lower_magnitude, lower_is_neg, upper_magnitude, upper_is_neg) =
         full_range_ticks(tick_spacing);
@@ -243,6 +249,7 @@ public fun migrate_new_meme_b<Meme, Quote, FeeType>(
 public fun migrate_existing_meme_a<Meme, Quote, FeeType>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
+    migrators_version: &MigratorsVersion,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     pool: &mut Pool<Meme, Quote, FeeType>,
@@ -252,6 +259,7 @@ public fun migrate_existing_meme_a<Meme, Quote, FeeType>(
     versioned: &Versioned,
     ctx: &mut TxContext,
 ) {
+    migrators_version.assert_current();
     let (tick_spacing, fee_rate) = checked_pool_tier(venue_config, pool);
     let (lower_magnitude, lower_is_neg, upper_magnitude, upper_is_neg) =
         full_range_ticks(tick_spacing);
@@ -325,6 +333,7 @@ public fun migrate_existing_meme_a<Meme, Quote, FeeType>(
 public fun migrate_existing_meme_b<Meme, Quote, FeeType>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
+    migrators_version: &MigratorsVersion,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     pool: &mut Pool<Quote, Meme, FeeType>,
@@ -334,6 +343,7 @@ public fun migrate_existing_meme_b<Meme, Quote, FeeType>(
     versioned: &Versioned,
     ctx: &mut TxContext,
 ) {
+    migrators_version.assert_current();
     let (tick_spacing, fee_rate) = checked_pool_tier(venue_config, pool);
     let (lower_magnitude, lower_is_neg, upper_magnitude, upper_is_neg) =
         full_range_ticks(tick_spacing);
@@ -406,6 +416,7 @@ public fun migrate_existing_meme_b<Meme, Quote, FeeType>(
 /// Collects normalized Meme-A and Quote-B fees without changing principal.
 public fun collect_fees_meme_a<Meme, Quote, FeeType>(
     self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
     runtime_config: &RuntimeConfig,
     pool: &mut Pool<Meme, Quote, FeeType>,
     positions: &mut Positions,
@@ -414,6 +425,7 @@ public fun collect_fees_meme_a<Meme, Quote, FeeType>(
     versioned: &Versioned,
     ctx: &mut TxContext,
 ) {
+    migrators_version.assert_current();
     let venue = Venue();
     let (position_id, meme_fee, quote_fee, liquidity_after) =
         collect_position_fees<Meme, Quote, Meme, Quote, FeeType>(
@@ -441,6 +453,7 @@ public fun collect_fees_meme_a<Meme, Quote, FeeType>(
 /// Collects normalized Meme-B and Quote-A fees without changing principal.
 public fun collect_fees_meme_b<Meme, Quote, FeeType>(
     self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
     runtime_config: &RuntimeConfig,
     pool: &mut Pool<Quote, Meme, FeeType>,
     positions: &mut Positions,
@@ -449,6 +462,7 @@ public fun collect_fees_meme_b<Meme, Quote, FeeType>(
     versioned: &Versioned,
     ctx: &mut TxContext,
 ) {
+    migrators_version.assert_current();
     let venue = Venue();
     let (position_id, quote_fee, meme_fee, liquidity_after) =
         collect_position_fees<Quote, Meme, Meme, Quote, FeeType>(
@@ -479,10 +493,12 @@ public fun collect_fees_meme_b<Meme, Quote, FeeType>(
 /// `u32`; a larger pin could never match any tier.
 public fun set_tier(
     venue_config: &mut VenueConfig,
-    _: &AdminWitness,
+    migrators_version: &MigratorsVersion,
+    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
     tick_spacing: u32,
     fee_rate: u64,
 ) {
+    migrators_version.assert_current();
     assert!(fee_rate <= (std::u32::max_value!() as u64), EInvalidFeeRate);
 
     venue_config.set_tier(Venue(), tick_spacing, fee_rate);

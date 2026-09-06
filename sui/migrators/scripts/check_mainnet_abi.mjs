@@ -418,6 +418,7 @@ const MANIFESTS = [
         publishedAt: null,
         addresses: { blast_fun_migrators: '0x0' },
         dependencies: {
+            blast_admin: { local: '../admin' },
             blast_fun: { local: '../launchpad' },
             BluefinSpot: { git: BLUEFIN_GIT, rev: REV.bluefin },
             mmt_v3: { git: MMT_GIT, subdir: 'mmt_v3', rev: REV.mmt },
@@ -572,9 +573,15 @@ const LOCK_NODES = {
         source: { local: 'interfaces/turbos' },
         deps: { Sui: 'Sui' },
     },
+    // The immutable shared administration package is a local, inward-only edge:
+    // it pins the same framework revision and adds no venue dependency.
+    blast_admin: {
+        source: { local: '../admin' },
+        deps: { Sui: 'Sui' },
+    },
     blast_fun: {
         source: { local: '../launchpad' },
-        deps: { std: 'MoveStdlib', sui: 'Sui' },
+        deps: { blast_admin: 'blast_admin', std: 'MoveStdlib', sui: 'Sui' },
     },
     blast_fun_migrators: {
         source: { root: true },
@@ -587,6 +594,7 @@ const LOCK_NODES = {
             IntegerMate: 'IntegerMate_1',
             Sui: 'Sui',
             TurbosCLMM: 'TurbosCLMM',
+            blast_admin: 'blast_admin',
             blast_fun: 'blast_fun',
             mmt_v3: 'mmt_v3',
         },

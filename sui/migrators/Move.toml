@@ -5,6 +5,7 @@ license = "MIT"
 authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
 
 [dependencies]
+blast_admin = { local = "../admin" }
 blast_fun = { local = "../launchpad" }
 BluefinSpot = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
 mmt_v3 = { git = "https://github.com/mmt-finance/mmt-contract-interface.git", subdir = "mmt_v3", rev = "e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82" }

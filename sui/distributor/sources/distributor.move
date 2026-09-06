@@ -3,7 +3,10 @@ module blast_fun_distributor::distributor;
 
 use blast_fun::{creator_authority::CreatorCap, launch::Launch, package_version::PackageVersion};
 use blast_fun_distributor::{merkle, package_version::{Self, PackageVersion as RewardsVersion}};
-use blast_fun_migrators::vault::LpVault;
+use blast_fun_migrators::{
+    package_version::PackageVersion as MigratorsVersion,
+    vault::LpVault,
+};
 use sui::{balance::{Self, Balance}, coin::Coin, dynamic_object_field, event};
 
 // === Constants ===
@@ -177,12 +180,13 @@ public fun collect_lp_fees<Meme, Quote>(
     self: &mut Distributor<Meme, Quote>,
     rewards_version: &RewardsVersion,
     vault: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
     ctx: &mut TxContext,
 ) {
     rewards_version.assert_enabled();
 
     let cap = dynamic_object_field::borrow<_, CreatorCap<Meme>>(&self.id, CreatorCapKey());
-    let (meme, quote) = vault.claim_creator_fees(cap, ctx);
+    let (meme, quote) = vault.claim_creator_fees(migrators_version, cap, ctx);
     self.accrue(object::id(vault), meme, quote);
 }
 

@@ -505,9 +505,42 @@ if [[ ! -f sources/blast.move ]] \
   failures=$((failures + 1))
 fi
 
-if rg -n '^public struct ACL' sources/acl.move \
-  || ! rg -Fq 'fun init(ctx: &mut TxContext) {' sources/acl.move; then
-  echo 'acl.move must use a context-only initializer and must not own the package OTW.' >&2
+# The reusable ACL lifecycle belongs to the immutable blast_admin package. This
+# package may own only its domain marker, its governance constants, and the one
+# exported role value.
+if [[ -e sources/acl.move ]]; then
+  echo 'Launchpad must not reintroduce a local ACL implementation.' >&2
+  failures=$((failures + 1))
+fi
+
+if rg -n '^public struct (ProtocolAuthority|Authority|SuperAdminCap|AdminCap|AdminWitness)\b' \
+  sources --glob '*.move'; then
+  echo 'Administration types must come from blast_admin, never from a local copy.' >&2
+  failures=$((failures + 1))
+fi
+
+launchpad_domain_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' \
+  sources/launchpad_domain.move)"
+
+if [[ ! -f sources/launchpad_domain.move ]] \
+  || ! rg -Fq 'public struct LAUNCHPAD_DOMAIN has drop {}' sources/launchpad_domain.move \
+  || ! rg -Fq 'fun init(otw: LAUNCHPAD_DOMAIN, ctx: &mut TxContext) {' \
+    sources/launchpad_domain.move \
+  || ! rg -Fq 'blast_admin::acl::new(otw, MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, ctx);' \
+    sources/launchpad_domain.move \
+  || ! rg -q '^const MAX_ADMINS: u64 = 16;$' sources/launchpad_domain.move \
+  || ! rg -q '^const ROOT_TRANSFER_DELAY_MS: u64 = 7 \* 24 \* 60 \* 60 \* 1_000;$' \
+    sources/launchpad_domain.move \
+  || ! rg -q '^const PACKAGE_ADMIN_ROLE: u64 = 1;$' sources/launchpad_domain.move \
+  || [[ "$(rg -c '^public fun ' <<<"$launchpad_domain_production")" != 1 ]] \
+  || ! rg -Fq 'public fun package_admin_role(): u64 {' sources/launchpad_domain.move; then
+  echo 'launchpad_domain.move must create exactly one typed domain from module constants and export one role.' >&2
+  failures=$((failures + 1))
+fi
+
+# Exactly one call site may create the shared authority.
+if [[ "$(rg -c 'acl::new\(' sources --glob '*.move' | wc -l)" != 1 ]]; then
+  echo 'Exactly one module may call the shared ACL constructor.' >&2
   failures=$((failures + 1))
 fi
 
@@ -525,68 +558,55 @@ package_admin_production="$(sed '/^\/\/ === Test-Only Types ===/,$d' sources/pac
 
 if [[ ! -f sources/package_admin.move || -f sources/upgrade.move ]] \
   || ! rg -U -q \
-    'public struct PackageAdmin has key \{\s*id: UID,\s*publisher: Publisher,\s*upgrade_cap: UpgradeCap,\s*\}' \
+    'public struct PackageAdmin has key \{\s*id: UID,\s*custody: UpgradeCustody<BLAST>,\s*\}' \
     sources/package_admin.move \
-  || [[ "$(rg -c '^public fun ' <<<"$package_admin_production")" != 6 ]] \
-  || [[ "$(rg -c '^public fun (wrap|authorize_upgrade|restrict_to_additive|restrict_to_dependency_only|commit_upgrade|activate_package_version)\(' <<<"$package_admin_production")" != 6 ]] \
+  || [[ "$(rg -c '^public fun ' <<<"$package_admin_production")" != 7 ]] \
+  || [[ "$(rg -c '^public fun (wrap|authorize_upgrade|restrict_to_additive|restrict_to_dependency_only|commit_upgrade_and_advance|make_immutable|has_upgrade_cap)\(' <<<"$package_admin_production")" != 7 ]] \
   || rg -n '^public\(package\) fun ' <<<"$package_admin_production" \
-  || [[ "$(rg -o '_: &AdminWitness' <<<"$package_admin_production" | wc -l)" != 4 ]] \
+  || rg -n '^public fun commit_upgrade\(|^public fun activate' <<<"$package_admin_production" \
+  || [[ "$(rg -o 'admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>' <<<"$package_admin_production" | wc -l)" != 5 ]] \
   || ! rg -U -q \
     'public fun wrap\(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext\)' \
     sources/package_admin.move \
   || ! rg -U -q \
-    'public fun authorize_upgrade\(\s*self: &mut PackageAdmin,\s*package_version: &PackageVersion,\s*_: &AdminWitness,\s*digest: vector<u8>,\s*\): UpgradeTicket' \
+    'public fun authorize_upgrade\(\s*self: &mut PackageAdmin,\s*package_version: &PackageVersion,\s*admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*digest: vector<u8>,\s*\): UpgradeTicket' \
     sources/package_admin.move \
   || ! rg -U -q \
-    'public fun commit_upgrade\(\s*self: &mut PackageAdmin,\s*package_version: &PackageVersion,\s*receipt: UpgradeReceipt,\s*\)' \
-    sources/package_admin.move \
-  || ! rg -U -q \
-    'public fun activate_package_version\(\s*package_version: &mut PackageVersion,\s*_: &AdminWitness,\s*\)' \
+    'public fun commit_upgrade_and_advance\(\s*self: &mut PackageAdmin,\s*package_version: &mut PackageVersion,\s*admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*receipt: UpgradeReceipt,\s*\)' \
     sources/package_admin.move; then
-  echo 'package_admin.move must expose only validated capability wrapping, gated native administration, and explicit checked activation.' >&2
+  echo 'package_admin.move must expose only validated wrapping, role-gated native administration, and one atomic commit-and-advance finalizer.' >&2
   failures=$((failures + 1))
 fi
 
-if ! rg -Fq 'publisher.from_package<BLAST>() && publisher.from_module<BLAST>()' \
+# Every governed custody transition asserts the current generation, then the one
+# exported role, before it reaches the shared custody value. Commit-and-advance
+# is the post-upgrade finalizer and instead proves the exact next generation.
+if ! rg -Fq 'publisher.from_module<BLAST>()' sources/package_admin.move \
+  || ! rg -Fq 'upgrade_custody::new<BLAST>(id.to_inner(), publisher, upgrade_cap)' \
     sources/package_admin.move \
-  || ! rg -Fq 'package_id.to_address() == type_name::original_id<BLAST>()' \
-    sources/package_admin.move \
-  || ! rg -Fq 'digest.length() == constants::package_digest_length!()' \
-    sources/package_admin.move \
-  || ! rg -Fq 'self.upgrade_cap.authorize(policy, digest)' sources/package_admin.move \
-  || ! rg -Fq 'self.upgrade_cap.commit(receipt)' sources/package_admin.move \
-  || ! rg -Fq 'self.upgrade_cap.only_additive_upgrades();' sources/package_admin.move \
-  || ! rg -Fq 'self.upgrade_cap.only_dep_upgrades();' sources/package_admin.move \
-  || ! rg -Fq 'new_policy > self.upgrade_cap.policy()' sources/package_admin.move \
-  || rg -n '\bpackage::(version|only_(additive|dep)_upgrades)\(' \
+  || [[ "$(rg -c 'package_version\.assert_current\(\);' <<<"$package_admin_production")" != 4 ]] \
+  || [[ "$(rg -c 'admin_witness\.assert_role\(launchpad_domain::package_admin_role\(\)\);' <<<"$package_admin_production")" != 5 ]] \
+  || ! rg -Fq 'package_version.assert_next();' sources/package_admin.move \
+  || ! rg -Fq 'self.custody.commit_upgrade(custodian_id, receipt);' sources/package_admin.move \
+  || ! rg -Fq 'package_version.advance();' sources/package_admin.move \
+  || rg -n '\bpackage::(version|only_(additive|dep)_upgrades|make_immutable)\(' \
     <<<"$package_admin_production" \
   || rg -n 'admin_authorization|governance_cutover' sources/package_admin.move \
   || rg -U -n '^(public|entry|public\(package\)) fun [^(]+\([^)]*\): (&)?(Publisher|UpgradeCap)' \
     <<<"$package_admin_production" \
-  || rg -n 'transfer::(public_)?transfer|burn_publisher|make_immutable' \
-    <<<"$package_admin_production" \
-  || rg -n '\b(ProtocolAuthority|SuperAdminCap|AdminCap)\b' \
+  || rg -n 'transfer::(public_)?transfer|burn_publisher' \
     <<<"$package_admin_production"; then
-  echo 'Package administration must retain both validated capabilities, use receiver syntax, narrow policy only, and stay free of premature governance state.' >&2
+  echo 'Package administration must seal custody, keep version-then-role guard order, and expose no capability escape.' >&2
   failures=$((failures + 1))
 fi
 
-package_admin_creation_event="$(sed -n \
-  '/^public struct PackageAdminCreated/,/^}/p' \
-  sources/lib/events.move)"
-package_admin_mutation_event_payloads="$(sed -n \
-  -e '/^public struct UpgradeAuthorized/,/^}/p' \
-  -e '/^public struct UpgradeCommitted/,/^}/p' \
-  -e '/^public struct UpgradePolicyRestricted/,/^}/p' \
-  sources/lib/events.move)"
-
-if [[ -z "$package_admin_creation_event" || -z "$package_admin_mutation_event_payloads" ]] \
-  || [[ "$(rg -c '^[[:space:]]+(package_admin_id|publisher_id|upgrade_cap_id|package_id|package_version|policy):' <<<"$package_admin_creation_event")" != 6 ]] \
+# Reusable custody, generation, policy, and immutability facts are emitted by
+# blast_admin. No copy may reappear in this package's event registry.
+if rg -n '^public struct (PackageAdminCreated|UpgradeAuthorized|UpgradeCommitted|UpgradePolicyRestricted|UpgradeCapDestroyed|PackageVersionAdvanced)\b' \
+  sources/lib/events.move \
   || rg -n 'PackageAdminAuthorizationDisabled|admin_authorization_enabled' \
-    sources/lib/events.move \
-  || rg -n '\b(manager_id|upgrade_cap_id|sequence|schema_version|action_tag|nonce)\b' \
-    <<<"$package_admin_mutation_event_payloads"; then
-  echo 'Package-administration mutations must use typed facts without repeated custody, ordering, or schema fields.' >&2
+    sources/lib/events.move; then
+  echo 'Reusable administration events must come from blast_admin, not a consumer copy.' >&2
   failures=$((failures + 1))
 fi
 
@@ -861,7 +881,7 @@ check_fee_function claim_creator_fees \
   'assert!( self.creator_meme.value() > 0 || self.creator_quote.value() > 0, blast_fun::errors::nothing_accrued!(), ); ( self.creator_meme.withdraw_all().into_coin(ctx), self.creator_quote.withdraw_all().into_coin(ctx), )'
 
 check_fee_function claim_protocol_fees \
-  'fun claim_protocol_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, _: &AdminWitness, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
+  'fun claim_protocol_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, _: &AdminWitness<LAUNCHPAD_DOMAIN>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
   'protocol_meme.value protocol_meme.withdraw_all protocol_quote.value protocol_quote.withdraw_all ' \
   'assert!( self.protocol_meme.value() > 0 || self.protocol_quote.value() > 0, blast_fun::errors::nothing_accrued!(), ); ( self.protocol_meme.withdraw_all().into_coin(ctx), self.protocol_quote.withdraw_all().into_coin(ctx), )'
 
@@ -903,20 +923,25 @@ fi
 
 package_version_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/package_version.move)"
 
+# The container owns only its compiled constants; the generation value, its
+# checked arithmetic, and its replay event belong to blast_admin.
 if [[ ! -f sources/package_version.move ]] \
   || ! rg -U -q \
-    'public struct PackageVersion has key \{\s*id: UID,\s*version: u64,\s*\}' \
+    'public struct PackageVersion has key \{\s*id: UID,\s*generation: OperationalVersion<BLAST>,\s*\}' \
     sources/package_version.move \
   || ! rg -q '^const PACKAGE_VERSION: u64 = 1;$' sources/package_version.move \
+  || ! rg -q '^const NEXT_PACKAGE_VERSION: u64 = 2;$' sources/package_version.move \
   || rg -n 'package_version|PACKAGE_VERSION' sources/lib/constants.move \
-  || [[ "$(rg -c '^public\(package\) fun (assert_current|activate)\(' <<<"$package_version_production")" != 2 ]] \
+  || [[ "$(rg -c '^public\(package\) fun (assert_current|assert_next|advance)\(' <<<"$package_version_production")" != 3 ]] \
   || rg -n '^(public|entry|public entry) fun ' <<<"$package_version_production" \
-  || ! rg -Fq 'self.version == PACKAGE_VERSION' sources/package_version.move \
-  || ! rg -Fq 'new_version == PACKAGE_VERSION' sources/package_version.move \
-  || ! rg -Fq 'version: PACKAGE_VERSION' sources/package_version.move \
-  || ! rg -Fq '.checked_add(1)' sources/package_version.move \
-  || ! rg -Fq 'events::package_version_advanced(previous_version, new_version);' sources/package_version.move; then
-  echo 'package_version.move must own the one shared cutover and exact consecutive activation.' >&2
+  || rg -n '^public\(package\) fun activate\(' <<<"$package_version_production" \
+  || ! rg -Fq 'self.generation.assert_current(PACKAGE_VERSION);' sources/package_version.move \
+  || ! rg -Fq 'self.generation.assert_next(NEXT_PACKAGE_VERSION);' sources/package_version.move \
+  || ! rg -Fq 'self.generation.advance(container_id, NEXT_PACKAGE_VERSION);' \
+    sources/package_version.move \
+  || ! rg -Fq 'generation: operational_version::new(),' sources/package_version.move \
+  || rg -n '\.checked_add\(|events::' <<<"$package_version_production"; then
+  echo 'package_version.move must own only the shared generation container and its two compiled constants.' >&2
   failures=$((failures + 1))
 fi
 
@@ -988,15 +1013,15 @@ check_runtime_function verify_x_claim_signature \
   'self.assert_x_claim_active(); assert!( sui::ed25519::ed25519_verify( signature, &self.x_claim_signer_public_key, message, ), blast_fun::errors::invalid_x_claim_signature!(), );'
 
 check_runtime_function set_x_claim_signer \
-  'fun set_x_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness, signer_public_key: vector<u8>, )' \
+  'fun set_x_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<LAUNCHPAD_DOMAIN>, signer_public_key: vector<u8>, )' \
   'package_version.assert_current(); validate_x_claim_public_key(&signer_public_key); assert!( self.x_claim_signer_public_key != signer_public_key, blast_fun::errors::x_claim_signer_unchanged!(), ); let previous_public_key = self.x_claim_signer_public_key; self.x_claim_signer_public_key = signer_public_key; events::x_claim_signer_set( previous_public_key, self.x_claim_signer_public_key, );'
 
 check_runtime_function revoke_x_claim_signer \
-  'fun revoke_x_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness, )' \
+  'fun revoke_x_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<LAUNCHPAD_DOMAIN>, )' \
   'package_version.assert_current(); self.assert_x_claim_active(); let previous_public_key = self.x_claim_signer_public_key; self.x_claim_signer_public_key = vector[]; events::x_claim_signer_revoked(previous_public_key);'
 
 check_runtime_function set_protocol_fee_share \
-  'fun set_protocol_fee_share( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness, protocol_fee_share_bps: u64, )' \
+  'fun set_protocol_fee_share( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<LAUNCHPAD_DOMAIN>, protocol_fee_share_bps: u64, )' \
   'package_version.assert_current(); assert!( protocol_fee_share_bps != self.protocol_fee_share_bps.value(), blast_fun::errors::protocol_fee_share_unchanged!(), ); let old_protocol_fee_share_bps = self.protocol_fee_share_bps.value(); self.protocol_fee_share_bps = bps::new(protocol_fee_share_bps); events::protocol_fee_share_changed( old_protocol_fee_share_bps, protocol_fee_share_bps, );'
 
 # The three named mutations are the complete set of RuntimeConfig transitions, and
@@ -1023,7 +1048,7 @@ runtime_config_ungated="$(awk -F'\t' '
     if ($10 !~ /^package_version\.assert_current\(\);/) {
       print "  " $2 " must check the live package version as its first statement"
     }
-    if ($9 !~ /[(,] _: &AdminWitness,/) {
+    if ($9 !~ /[(,] _: &AdminWitness<LAUNCHPAD_DOMAIN>,/) {
       print "  " $2 " must be authorized by a borrowed AdminWitness"
     }
   }
@@ -1058,8 +1083,8 @@ fi
 
 if [[ -f sources/x_claim_config.move || -f sources/trade_fee_config.move ]] \
   || rg -n '\b(XClaimConfig|TradeFeeConfig)\b' sources tests \
-  || [[ "$(rg -o 'transfer::share_object' sources --glob '*.move' --glob '!launch.move' | wc -l)" != 5 ]]; then
-  echo 'Core must keep exactly five protocol-wide shared singletons, including the one package cutover.' >&2
+  || [[ "$(rg -o 'transfer::share_object' sources --glob '*.move' --glob '!launch.move' | wc -l)" != 4 ]]; then
+  echo 'Core must keep exactly four locally shared protocol singletons; the domain authority is shared by blast_admin.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1074,15 +1099,15 @@ if [[ ! -f sources/launch_config.move ]] \
     sources/launch_config.move \
   || rg -n '\b(AdminCap|ProtocolAuthority)\b' <<<"$launch_config_production" \
   || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' <<<"$launch_config_production" \
-  || [[ "$(rg -o '_: &AdminWitness' <<<"$launch_config_production" | wc -l)" != 6 ]] \
+  || [[ "$(rg -o '_: &AdminWitness<LAUNCHPAD_DOMAIN>' <<<"$launch_config_production" | wc -l)" != 6 ]] \
   || [[ "$(rg -c '^public fun ' <<<"$launch_config_production")" != 6 ]] \
   || [[ "$(rg -c '^public fun (allow_quote|disallow_quote|allow_migration_witness|disallow_migration_witness)<' <<<"$launch_config_production")" != 4 ]] \
   || [[ "$(rg -c '^public fun set_graduation_defaults\(' <<<"$launch_config_production")" != 1 ]] \
   || ! rg -U -q \
-    'public fun set_trade_fees\(\s*self: &mut LaunchConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness,\s*quote_fee_bps: u64,\s*meme_fee_bps: u64,\s*\)' \
+    'public fun set_trade_fees\(\s*self: &mut LaunchConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*quote_fee_bps: u64,\s*meme_fee_bps: u64,\s*\)' \
     sources/launch_config.move \
   || ! rg -U -q \
-    'public fun set_graduation_defaults\(\s*self: &mut LaunchConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness,\s*quote_migration_fee_bps: u64,\s*protocol_meme_graduation_fee_bps: u64,\s*meme_liquidity_provision_bps: u64,\s*\)' \
+    'public fun set_graduation_defaults\(\s*self: &mut LaunchConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*quote_migration_fee_bps: u64,\s*protocol_meme_graduation_fee_bps: u64,\s*meme_liquidity_provision_bps: u64,\s*\)' \
     sources/launch_config.move \
   || [[ "$(rg -c '^public\(package\) fun ' <<<"$launch_config_production")" != 1 ]] \
   || ! rg -U -q \
@@ -1318,7 +1343,10 @@ if rg -n '\bstate_version\b|launch_state_version' sources tests; then
   failures=$((failures + 1))
 fi
 
-for gate_spec in 'acl:7:7' 'launch_config:6:6' 'runtime_config:3:3' 'package_admin:4:5' 'launch:7:7'; do
+# `package_admin` keeps four `assert_current` guards across authorize, both
+# restrictions, and immutability; commit-and-advance instead proves the exact
+# next generation, so it contributes the fifth PackageVersion parameter only.
+for gate_spec in 'launch_config:6:6' 'runtime_config:3:3' 'package_admin:4:5' 'launch:7:7'; do
   IFS=: read -r gate_module expected_guards expected_parameters <<<"$gate_spec"
   actual_guards="$(rg -c '^[[:space:]]+package_version\.assert_current\(\);' "sources/${gate_module}.move" || true)"
   actual_parameters="$(rg -c '^[[:space:]]+package_version: &(mut )?PackageVersion,' "sources/${gate_module}.move" || true)"
@@ -1360,54 +1388,35 @@ if rg -n '^[[:space:]]+assert_launch_snapshot\(&|=[[:space:]]*reach_migration_af
   failures=$((failures + 1))
 fi
 
-if rg -n '^[[:space:]]+assert_super_admin\(' sources/acl.move \
-  || rg -n '\bsui::tx_context::TxContext\b' sources tests; then
+if rg -n '\bsui::tx_context::TxContext\b' sources tests; then
   echo 'Natural framework and private receivers must use implicit types and dot syntax.' >&2
   failures=$((failures + 1))
 fi
 
 if rg -n \
   'RuntimeConfig|ed25519|x_claim_signer|verify_x_claim|CreatorCap|issue_creator_cap' \
-  sources/acl.move; then
-  echo 'acl.move must own only protocol-admin membership and root rotation.' >&2
+  sources/launchpad_domain.move; then
+  echo 'launchpad_domain.move must own only the domain marker, its constants, and its role.' >&2
   failures=$((failures + 1))
 fi
 
-if ! rg -q '^public struct AdminWitness\(\) has drop;' sources/acl.move \
-  || ! rg -q '^public fun sign_in\(' sources/acl.move; then
-  echo 'acl.move must expose sign_in through an unforgeable drop-only AdminWitness.' >&2
-  failures=$((failures + 1))
-fi
-
-if ! rg -q '^public fun grant_admin\(' sources/acl.move \
-  || rg -n '\b(add_admin|AdminAdded|QuoteRemoved|MigrationWitnessRemoved)\b' sources tests \
+if rg -n '\b(add_admin|AdminAdded|QuoteRemoved|MigrationWitnessRemoved)\b' sources tests \
   || rg -n '\b(active_quote_count_for_testing|migration_witness_count_for_testing)\b' sources tests; then
   echo 'Package interfaces must use grant/revoke authority and allow/disallow whitelist vocabulary.' >&2
   failures=$((failures + 1))
 fi
 
-if ! rg -q '^public fun destroy_admin_cap\(' sources/acl.move \
-  || rg -n 'destroy_admin_cap_for_testing' sources tests; then
+if rg -n 'destroy_admin_cap_for_testing' sources tests; then
   echo 'AdminCap holders must use the production self-destruction path.' >&2
   failures=$((failures + 1))
 fi
 
-acl_mutation_event_payloads="$(sed -n \
-  -e '/^public struct AdminGranted/,/^}/p' \
-  -e '/^public struct AdminRevoked/,/^}/p' \
-  -e '/^public struct AdminDestroyed/,/^}/p' \
-  -e '/^public struct SuperAdminTransferStarted/,/^}/p' \
-  -e '/^public struct SuperAdminTransferCancelled/,/^}/p' \
-  -e '/^public struct SuperAdminTransferred/,/^}/p' \
-  sources/lib/events.move)"
-
-if [[ -z "$acl_mutation_event_payloads" ]] \
-  || rg -n '\b(authority_id|current_super_admin_cap_id)\b' \
-    <<<"$acl_mutation_event_payloads" \
-  || ! rg -U -q \
-    '(?s)events::super_admin_transfer_cancelled\(\s*self\.pending_super_admin\.extract\(\)\.recipient,\s*\);.*self\.pending_super_admin = option::some\(PendingSuperAdminTransfer.*events::super_admin_transfer_started\(' \
-    sources/acl.move; then
-  echo 'ACL mutations must omit repeated singleton ids and emit replacement cancellation before the new transfer starts.' >&2
+# The reusable ACL replay schema now belongs to blast_admin; this package must
+# not re-declare or re-emit any part of it.
+if rg -n '^public struct (AdminGranted|AdminRevoked|AdminDestroyed|SuperAdminTransferStarted|SuperAdminTransferCancelled|SuperAdminTransferred|AuthorityCreated)\b' \
+  sources/lib/events.move \
+  || rg -n 'events::(admin_granted|admin_revoked|admin_destroyed|super_admin_)' sources; then
+  echo 'Reusable ACL events must come from blast_admin, not a consumer copy.' >&2
   failures=$((failures + 1))
 fi
 

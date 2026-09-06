@@ -5,11 +5,12 @@
 /// Small live protocol settings read by trades, migrators, and X creator claims.
 module blast_fun::runtime_config;
 
+use blast_admin::acl::AdminWitness;
 use blast_fun::{
-    acl::AdminWitness,
     bps::{Self, Bps},
     constants,
     events,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
     package_version::PackageVersion,
 };
 
@@ -34,7 +35,7 @@ fun init(ctx: &mut TxContext) {
 public fun set_x_claim_signer(
     self: &mut RuntimeConfig,
     package_version: &PackageVersion,
-    _: &AdminWitness,
+    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
     signer_public_key: vector<u8>,
 ) {
     package_version.assert_current();
@@ -57,7 +58,7 @@ public fun set_x_claim_signer(
 public fun revoke_x_claim_signer(
     self: &mut RuntimeConfig,
     package_version: &PackageVersion,
-    _: &AdminWitness,
+    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
 ) {
     package_version.assert_current();
     self.assert_x_claim_active();
@@ -72,7 +73,7 @@ public fun revoke_x_claim_signer(
 public fun set_protocol_fee_share(
     self: &mut RuntimeConfig,
     package_version: &PackageVersion,
-    _: &AdminWitness,
+    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
     protocol_fee_share_bps: u64,
 ) {
     package_version.assert_current();

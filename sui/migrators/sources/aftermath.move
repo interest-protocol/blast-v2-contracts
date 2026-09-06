@@ -6,14 +6,16 @@ use amm::{
     pool_factory,
     pool_registry::{Self, PoolRegistry},
 };
+use blast_admin::acl::AdminWitness;
 use blast_fun::{
-    acl::AdminWitness,
     launch::Launch,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
     package_version::PackageVersion,
     runtime_config::RuntimeConfig,
 };
 use blast_fun_migrators::{
     events,
+    package_version::PackageVersion as MigratorsVersion,
     vault::{Self, LpVault},
     venue_config::VenueConfig,
 };
@@ -102,6 +104,7 @@ public struct AftermathPosition<phantom Lp> has key, store {
 public fun migrate_meme_first<Lp, Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
+    migrators_version: &MigratorsVersion,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     pool_registry: &mut PoolRegistry,
@@ -109,6 +112,7 @@ public fun migrate_meme_first<Lp, Meme, Quote>(
     dao_fee_version: &Version,
     ctx: &mut TxContext,
 ) {
+    migrators_version.assert_current();
     assert_canonical_order<Meme, Quote>(true);
     assert!(!pool_registry.contains_lp_coin<Lp>(), ELpTypeAlreadyRegistered);
     let policy = effective_policy(venue_config);
@@ -146,6 +150,7 @@ public fun migrate_meme_first<Lp, Meme, Quote>(
 public fun migrate_meme_second<Lp, Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
+    migrators_version: &MigratorsVersion,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     pool_registry: &mut PoolRegistry,
@@ -153,6 +158,7 @@ public fun migrate_meme_second<Lp, Meme, Quote>(
     dao_fee_version: &Version,
     ctx: &mut TxContext,
 ) {
+    migrators_version.assert_current();
     assert_canonical_order<Meme, Quote>(false);
     assert!(!pool_registry.contains_lp_coin<Lp>(), ELpTypeAlreadyRegistered);
     let policy = effective_policy(venue_config);
@@ -189,11 +195,13 @@ public fun migrate_meme_second<Lp, Meme, Quote>(
 /// Pins Aftermath's role-based weights and DAO fee for future migrations.
 public fun set_policy(
     venue_config: &mut VenueConfig,
-    _: &AdminWitness,
+    migrators_version: &MigratorsVersion,
+    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
     meme_weight: u64,
     quote_weight: u64,
     dao_fee_bps: u16,
 ) {
+    migrators_version.assert_current();
     let new_policy = AftermathPolicy {
         meme_weight,
         quote_weight,
@@ -227,11 +235,13 @@ public fun set_policy(
 /// Updates one migrated pool's DAO fee while retaining its cap and vault recipient.
 public fun update_dao_fee<Lp, Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
     dao_fee_pool: &mut DaoFeePool<Lp>,
     dao_fee_version: &Version,
-    _: &AdminWitness,
+    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
     dao_fee_bps: u16,
 ) {
+    migrators_version.assert_current();
     assert_valid_dao_fee(dao_fee_bps);
     let dao_fee_pool_id = object::id(dao_fee_pool);
     assert!(self.pool_id() == dao_fee_pool_id, EDaoPoolInvariantMismatch);
@@ -460,11 +470,13 @@ fun lock_and_share<Lp, Meme, Quote>(
 /// Receives and allocates one bounded batch of Meme and Quote DAO-fee coins.
 public fun accrue_dao_fees<Lp, Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
     runtime_config: &RuntimeConfig,
     meme_receivings: vector<Receiving<Coin<Meme>>>,
     quote_receivings: vector<Receiving<Coin<Quote>>>,
     ctx: &mut TxContext,
 ) {
+    migrators_version.assert_current();
     let (position_id, locked_lp_amount_before) = {
         let position = self.position_mut<_, _, _, AftermathPosition<Lp>>(&Venue());
         (position.id.to_inner(), position.lp_balance.value() as u128)

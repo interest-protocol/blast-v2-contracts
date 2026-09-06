@@ -1,7 +1,15 @@
 #[test_only]
 module blast_fun::launch_config_tests;
 
-use blast_fun::{acl, constants, events, launch_config, package_version};
+use blast_admin::acl::{Authority, AdminCap, AdminWitness};
+use blast_fun::{
+    constants,
+    domain_fixture,
+    events,
+    launch_config,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
+    package_version,
+};
 use std::unit_test::{assert_eq, destroy};
 use sui::{event, test_scenario::{Self, Scenario}};
 
@@ -57,8 +65,8 @@ public struct InitFixture {
 /// Cold-policy administration through the ACL sign-in seam.
 public struct ConfigFixture {
     scenario: Scenario,
-    authority: acl::ProtocolAuthority,
-    admin_cap: acl::AdminCap,
+    authority: Authority<LAUNCHPAD_DOMAIN>,
+    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
     package_version: package_version::PackageVersion,
     config: launch_config::LaunchConfig,
 }
@@ -1060,8 +1068,8 @@ fun allowing_quote_rejects_zero_virtual_quote_before_target() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EPackageVersionMismatch,
-    location = blast_fun::package_version,
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
 )]
 fun stale_package_version_rejects_launch_config_before_policy_validation() {
     let mut fixture = start();
@@ -1180,26 +1188,20 @@ fun start_init(): InitFixture {
 fun start(): ConfigFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) =
-        acl::new_protocol_for_testing(scenario.ctx());
-    authority.grant_admin(
-        &package_version,
-        &super_admin_cap,
-        PROTOCOL_ADMIN,
-        scenario.ctx(),
-    );
+    let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
+    authority.grant_admin(&super_admin_cap, 0, PROTOCOL_ADMIN, scenario.ctx());
     destroy(super_admin_cap);
     launch_config::init_for_testing(scenario.ctx());
 
     scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<acl::AdminCap>();
+    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
     let config = scenario.take_shared<launch_config::LaunchConfig>();
 
     ConfigFixture { scenario, authority, admin_cap, package_version, config }
 }
 
-fun sign_in(self: &ConfigFixture): acl::AdminWitness {
-    self.authority.sign_in(&self.package_version, &self.admin_cap)
+fun sign_in(self: &ConfigFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+    self.authority.sign_in(&self.admin_cap)
 }
 
 fun init_end(self: InitFixture) {

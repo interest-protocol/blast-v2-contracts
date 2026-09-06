@@ -5,8 +5,8 @@
 /// Normalized launch construction, custody, and one-time creator claim.
 module blast_fun::launch;
 
+use blast_admin::acl::AdminWitness;
 use blast_fun::{
-    acl::AdminWitness,
     bps::Bps,
     constants,
     creator_authority::{CreatorAuthority, CreatorCap},
@@ -15,6 +15,7 @@ use blast_fun::{
     fees::{Self, FeeLedger},
     launch_config::LaunchConfig,
     launch_ticket::LaunchTicket,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
     package_version::PackageVersion,
     runtime_config::RuntimeConfig,
 };
@@ -345,7 +346,7 @@ public fun claim_creator_fees<Meme, Quote>(
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness,
+    admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     package_version.assert_current();

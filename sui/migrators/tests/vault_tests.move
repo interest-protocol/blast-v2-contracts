@@ -1,8 +1,12 @@
 #[test_only]
 module blast_fun_migrators::vault_tests;
 
-use blast_fun::{acl, package_version, runtime_config};
-use blast_fun_migrators::vault::{Self, LpVault};
+use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
+use blast_fun::{launchpad_domain::LAUNCHPAD_DOMAIN, package_version, runtime_config};
+use blast_fun_migrators::{
+    package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
+    vault::{Self, LpVault},
+};
 use std::unit_test::{assert_eq, destroy};
 use sui::{balance, coin, test_scenario::{Self, Scenario}};
 
@@ -10,6 +14,8 @@ use sui::{balance, coin, test_scenario::{Self, Scenario}};
 
 const PUBLISHER: address = @0xA11CE;
 const PROTOCOL_ADMIN: address = @0xAD;
+const MAX_ADMINS: u64 = 16;
+const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 // === Test-Only Types ===
 
@@ -22,9 +28,10 @@ public struct TestPosition has key, store { id: UID }
 /// Shared custody and live-share fee accounting through the vault seam.
 public struct VaultFixture {
     scenario: Scenario,
-    authority: acl::ProtocolAuthority,
-    admin_cap: acl::AdminCap,
+    authority: Authority<LAUNCHPAD_DOMAIN>,
+    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
     package_version: package_version::PackageVersion,
+    migrators_version: MigratorsVersion,
     runtime_config: runtime_config::RuntimeConfig,
     vault: LpVault<MEME, QUOTE>,
     pool_id: ID,
@@ -72,7 +79,11 @@ fun accrues_with_the_live_share_and_never_resplits_prior_ownership() {
         f.accrue!(10, 10);
 
         let (meme, quote) =
-            f.vault.claim_protocol_fees(&admin_witness, f.scenario.ctx());
+            f.vault.claim_protocol_fees(
+                &f.migrators_version,
+                &admin_witness,
+                f.scenario.ctx(),
+            );
         assert_eq!(meme.value(), 2);
         assert_eq!(quote.value(), 2);
         destroy(meme);
@@ -92,7 +103,11 @@ fun accrues_with_the_live_share_and_never_resplits_prior_ownership() {
         // Only the new accrual follows the raised share; the eight units the
         // creator already owns from the first accrual are never re-split.
         let (meme, quote) =
-            f.vault.claim_protocol_fees(&admin_witness, f.scenario.ctx());
+            f.vault.claim_protocol_fees(
+                &f.migrators_version,
+                &admin_witness,
+                f.scenario.ctx(),
+            );
         assert_eq!(meme.value(), 10);
         assert_eq!(quote.value(), 10);
         destroy(meme);
@@ -109,7 +124,11 @@ fun protocol_claim_drains_migration_residuals_without_accrued_fees() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
         let (meme, quote) =
-            f.vault.claim_protocol_fees(&admin_witness, f.scenario.ctx());
+            f.vault.claim_protocol_fees(
+                &f.migrators_version,
+                &admin_witness,
+                f.scenario.ctx(),
+            );
 
         assert_eq!(meme.value(), 3);
         assert_eq!(quote.value(), 4);
@@ -305,14 +324,13 @@ fun start_with_residuals(
 ): VaultFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) =
-        acl::new_protocol_for_testing(scenario.ctx());
-    authority.grant_admin(
-        &package_version,
-        &super_admin_cap,
-        PROTOCOL_ADMIN,
+    let migrators_version = migrators_version::new_for_testing(scenario.ctx());
+    let (super_admin_cap, mut authority) = acl::new_for_testing<LAUNCHPAD_DOMAIN>(
+        MAX_ADMINS,
+        ROOT_TRANSFER_DELAY_MS,
         scenario.ctx(),
     );
+    authority.grant_admin(&super_admin_cap, 0, PROTOCOL_ADMIN, scenario.ctx());
     destroy(super_admin_cap);
     let runtime_config =
         runtime_config::new_disabled_for_testing(scenario.ctx());
@@ -331,7 +349,7 @@ fun start_with_residuals(
     );
 
     scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<acl::AdminCap>();
+    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
     let vault = scenario.take_shared<LpVault<MEME, QUOTE>>();
 
     VaultFixture {
@@ -339,6 +357,7 @@ fun start_with_residuals(
         authority,
         admin_cap,
         package_version,
+        migrators_version,
         runtime_config,
         vault,
         pool_id,
@@ -346,8 +365,8 @@ fun start_with_residuals(
     }
 }
 
-fun sign_in(self: &VaultFixture): acl::AdminWitness {
-    self.authority.sign_in(&self.package_version, &self.admin_cap)
+fun sign_in(self: &VaultFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+    self.authority.sign_in(&self.admin_cap)
 }
 
 fun end(self: VaultFixture) {

@@ -6,15 +6,17 @@
 /// every allowlisted Quote.
 module blast_fun_migrators::bluefin;
 
+use blast_admin::acl::AdminWitness;
 use blast_fun::{
-    acl::AdminWitness,
     launch::Launch,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
     package_version::PackageVersion,
     runtime_config::RuntimeConfig,
 };
 use blast_fun_migrators::{
     events,
     migration_math,
+    package_version::PackageVersion as MigratorsVersion,
     vault::{Self, LpVault},
     venue_config::VenueConfig,
 };
@@ -90,6 +92,7 @@ public struct Venue() has drop;
 public fun migrate<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
+    migrators_version: &MigratorsVersion,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     quote_currency: &Currency<Quote>,
@@ -97,6 +100,7 @@ public fun migrate<Meme, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    migrators_version.assert_current();
     let launch_id = object::id(launch);
     let (tick_spacing, fee_rate) = effective_tier(venue_config);
     let (lower_tick_bits, upper_tick_bits) =
@@ -182,12 +186,14 @@ public fun migrate<Meme, Quote>(
 /// Collects Meme and Quote fees without changing the position principal.
 public fun collect_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
     runtime_config: &RuntimeConfig,
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    migrators_version.assert_current();
     let pool_id = object::id(pool);
     assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
 
@@ -225,10 +231,12 @@ public fun collect_fees<Meme, Quote>(
 /// Pins the Bluefin tier under a live core admin witness, replacing the default.
 public fun set_tier(
     venue_config: &mut VenueConfig,
-    _: &AdminWitness,
+    migrators_version: &MigratorsVersion,
+    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
     tick_spacing: u32,
     fee_rate: u64,
 ) {
+    migrators_version.assert_current();
     venue_config.set_tier(Venue(), tick_spacing, fee_rate);
 }
 

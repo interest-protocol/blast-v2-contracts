@@ -1,13 +1,14 @@
 /// Shared fee accounting and sealed dynamic-object custody for migration positions.
 module blast_fun_migrators::vault;
 
+use blast_admin::acl::AdminWitness;
 use blast_fun::{
-    acl::AdminWitness,
     creator_authority::CreatorCap,
     fees::{Self, FeeLedger},
+    launchpad_domain::LAUNCHPAD_DOMAIN,
     runtime_config::RuntimeConfig,
 };
-use blast_fun_migrators::events;
+use blast_fun_migrators::{events, package_version::PackageVersion as MigratorsVersion};
 use sui::{
     balance::{Self, Balance},
     coin::Coin,
@@ -54,9 +55,11 @@ public struct LpVault<phantom Meme, phantom Quote> has key {
 /// Drains only creator-owned LP fees as composable coins.
 public fun claim_creator_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
     creator_cap: &CreatorCap<Meme>,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
+    migrators_version.assert_current();
     let (meme, quote) = self.fee_ledger.claim_creator_fees(creator_cap, ctx);
     let meme_amount = meme.value();
     let quote_amount = quote.value();
@@ -84,9 +87,11 @@ public fun claim_creator_fees<Meme, Quote>(
 /// Drains protocol-owned migration residuals and LP fees under a live admin witness.
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
-    admin_witness: &AdminWitness,
+    migrators_version: &MigratorsVersion,
+    admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
+    migrators_version.assert_current();
     let (
         protocol_meme_fee_total,
         _,

@@ -1,15 +1,17 @@
 /// MMT migration with canonically ordered, custodied concentrated-liquidity principal.
 module blast_fun_migrators::mmt;
 
+use blast_admin::acl::AdminWitness;
 use blast_fun::{
-    acl::AdminWitness,
     launch::Launch,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
     package_version::PackageVersion,
     runtime_config::RuntimeConfig,
 };
 use blast_fun_migrators::{
     events,
     migration_math,
+    package_version::PackageVersion as MigratorsVersion,
     vault::{Self, LpVault},
     venue_config::VenueConfig,
 };
@@ -70,6 +72,7 @@ public struct Venue() has drop;
 public fun migrate_meme_x<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
+    migrators_version: &MigratorsVersion,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     global_config: &mut GlobalConfig,
@@ -77,6 +80,7 @@ public fun migrate_meme_x<Meme, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    migrators_version.assert_current();
     assert_coin_order<Meme, Quote>(true);
     let (pinned_tick_spacing, fee_rate) = effective_tier(venue_config);
 
@@ -146,6 +150,7 @@ public fun migrate_meme_x<Meme, Quote>(
 public fun migrate_meme_y<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
+    migrators_version: &MigratorsVersion,
     venue_config: &VenueConfig,
     meme_currency: &mut Currency<Meme>,
     global_config: &mut GlobalConfig,
@@ -153,6 +158,7 @@ public fun migrate_meme_y<Meme, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    migrators_version.assert_current();
     assert_coin_order<Meme, Quote>(false);
     let (pinned_tick_spacing, fee_rate) = effective_tier(venue_config);
 
@@ -221,12 +227,14 @@ public fun migrate_meme_y<Meme, Quote>(
 /// Collects normalized Meme-X and Quote-Y fees without changing principal.
 public fun collect_fees_meme_x<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
     runtime_config: &RuntimeConfig,
     pool: &mut Pool<Meme, Quote>,
     mmt_version: &Version,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    migrators_version.assert_current();
     let venue = Venue();
     let (
         position_id,
@@ -256,12 +264,14 @@ public fun collect_fees_meme_x<Meme, Quote>(
 /// Collects normalized Meme-Y and Quote-X fees without changing principal.
 public fun collect_fees_meme_y<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
     runtime_config: &RuntimeConfig,
     pool: &mut Pool<Quote, Meme>,
     mmt_version: &Version,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    migrators_version.assert_current();
     let venue = Venue();
     let (
         position_id,
@@ -291,10 +301,12 @@ public fun collect_fees_meme_y<Meme, Quote>(
 /// Pins the MMT tier under a live core admin witness, replacing the default.
 public fun set_tier(
     venue_config: &mut VenueConfig,
-    _: &AdminWitness,
+    migrators_version: &MigratorsVersion,
+    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
     tick_spacing: u32,
     fee_rate: u64,
 ) {
+    migrators_version.assert_current();
     venue_config.set_tier(Venue(), tick_spacing, fee_rate);
 }
 

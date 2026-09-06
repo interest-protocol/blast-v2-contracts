@@ -1,7 +1,16 @@
 #[test_only]
 module blast_fun::fees_tests;
 
-use blast_fun::{acl, bps, creator_authority, fees, package_version, runtime_config};
+use blast_admin::acl::{Authority, AdminCap, AdminWitness};
+use blast_fun::{
+    bps,
+    creator_authority,
+    domain_fixture,
+    fees,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
+    package_version,
+    runtime_config,
+};
 use std::unit_test::{assert_eq, destroy};
 use sui::{balance::{Self, Balance}, clock, coin::Coin, test_scenario::{Self, Scenario}};
 
@@ -27,8 +36,8 @@ public struct TEST_QUOTE() has drop;
 /// Fee-claim authorities: the live protocol share plus one claimed creator cap.
 public struct FeesFixture {
     scenario: Scenario,
-    authority: acl::ProtocolAuthority,
-    admin_cap: acl::AdminCap,
+    authority: Authority<LAUNCHPAD_DOMAIN>,
+    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
     package_version: package_version::PackageVersion,
     runtime_config: runtime_config::RuntimeConfig,
     creator_cap: Option<creator_authority::CreatorCap<TEST_MEME>>,
@@ -489,17 +498,12 @@ macro fun creator_ctx($fixture: &mut CreatorFixture): &mut TxContext {
 fun start(): FeesFixture {
     let mut scenario = test_scenario::begin(CREATOR);
     let package_version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) =
-        acl::new_protocol_for_testing(scenario.ctx());
-    authority.grant_admin(
-        &package_version,
-        &super_admin_cap,
-        CREATOR,
-        scenario.ctx(),
-    );
+    let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
+    authority.grant_admin(&super_admin_cap, 0, CREATOR, scenario.ctx());
     destroy(super_admin_cap);
+
     scenario.next_tx(CREATOR);
-    let admin_cap = scenario.take_from_sender<acl::AdminCap>();
+    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
     let runtime_config = runtime_config::new_disabled_for_testing(scenario.ctx());
     let creator_cap = new_creator_cap(&runtime_config, scenario.ctx());
 
@@ -540,8 +544,8 @@ fun new_creator_cap(
     creator_cap
 }
 
-fun sign_in(self: &FeesFixture): acl::AdminWitness {
-    self.authority.sign_in(&self.package_version, &self.admin_cap)
+fun sign_in(self: &FeesFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+    self.authority.sign_in(&self.admin_cap)
 }
 
 fun claim_creator_fees(

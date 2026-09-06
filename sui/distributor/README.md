@@ -81,35 +81,46 @@ no cap borrow, mutable UID, or coin-returning withdrawal.
 
 ## Pause and upgrades
 
-The package creates one shared `package_version::PackageVersion` at publication.
-An active launchpad admin signs in through core's `acl::sign_in`, then passes the
-returned `AdminWitness` to `set_paused` or `activate`. Pause blocks enrollment,
-fee collection, new rounds, and existing claims. Resume leaves all claim roots,
-funds, and replay bits intact. Every economic transition rejects retired bytecode
-before checking pause or touching funds. The version singleton has no public
-constructor or reset path.
+This package implements no administration of its own. It reuses the Launchpad
+administration domain for membership and owns only its operational generation,
+its pause policy, and its sealed framework custody. One revocation in the
+Launchpad authority removes this package's pause authority immediately.
 
-The owner keeps the native UpgradeCap. There is no wrapped package-admin object
-or additional governance layer. A compatible upgrade preserves existing objects;
-a fresh package does not inherit their creator caps or balances. For a behavior
-cutover, increment the private compiled version by one, publish a compatible
-upgrade, then have a launchpad admin activate it through the new package. Activation
-preserves pause and requires exactly the next compiled generation. Dependency-only
-relinking can retain the operational version. Test the upgraded routes before
-activation and resume.
+The package creates one shared `package_version::PackageVersion` at publication,
+holding the generation value beside `paused`. A live Launchpad-domain admin
+signs in through `blast_admin::acl::sign_in` and passes the returned
+`AdminWitness<LAUNCHPAD_DOMAIN>` to `set_paused`; generic membership is enough
+and no role is required. Pause blocks enrollment, both fee-collection paths, new
+rounds, and existing claims. Resume leaves all claim roots, funds, and replay
+bits intact. Every economic transition rejects retired bytecode **before** it
+checks pause or touches funds, so stale code never reports a pause error. The
+version singleton has no public constructor or reset path.
 
-The upgrade owner can change custody behavior in future code. Display verifiable
-current custody, without promising irrevocability. Admin availability is required
-to resume a pause or activate a repair. See the SDK runbook for transaction
-composition and the distinction between original and callable package IDs.
+The native UpgradeCap is not owner-held. `package_admin::wrap` seals this
+package's Publisher and its never-upgraded cap in `UpgradeCustody`, and no path
+returns, transfers, or borrows either capability. Upgrade authorization, policy
+narrowing, immutability, and the commit-and-advance finalizer additionally
+require the package-admin role that Launchpad exports.
+
+A governed upgrade is one transaction: authorize the digest, run the native
+Upgrade command, then call `package_admin::commit_upgrade_and_advance`, which
+commits the receipt to the same sealed cap and advances to exactly the next
+compiled generation. There is no separate activation step. The advance preserves
+the pause value, and package custody stays reachable while rewards are paused so
+an emergency stop never blocks the upgrade that repairs it.
+
+The product `PublisherCap` that authorizes round publication is a separate,
+transferable capability. It never enters framework custody, and round
+authorization stays independent of Launchpad administration.
 
 This package is **unpublished**. Before accepting real creator caps:
 
 - Verify the selected deployed launchpad/migrator generation and every venue route
   with live simulation. Interface link stubs do not establish live LP compatibility.
-- Verify compatible upgrades, admin activation, and resumption on the target
-  network. Record the owner-held UpgradeCap and singleton IDs. Coordinate core
-  cutovers with a tested dependency relink for creator-fee collection.
+- Verify compatible upgrades, commit-and-advance cutover, and resumption on the
+  target network. Record the shared authority, PackageVersion, and PackageAdmin
+  IDs. Coordinate core cutovers with a tested dependency relink for creator-fee
+  collection.
 - Verify child custody in an explorer, measure maximum-round transaction gas and
   object size under target-chain limits, and publish manifests/accounting durably.
 

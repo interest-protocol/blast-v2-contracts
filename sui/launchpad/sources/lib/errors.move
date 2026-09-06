@@ -7,9 +7,7 @@ module blast_fun::errors;
 // These names exist only in test builds and source tooling; production callers use the
 // package macros below so the numeric code is inlined at the owning assertion.
 
-#[test_only]
-/// The supplied AdminCap is not active in the singleton protocol authority.
-const EInvalidAdminCap: u64 = 0;
+// Code 0 retired: administrator membership moved to `blast_admin::acl`.
 
 // Code 1 retired: mutable chain-id validation was removed by ADR 0015.
 
@@ -49,41 +47,8 @@ const EUnexpectedXClaimAttestation: u64 = 11;
 /// The X claim attestation has expired.
 const EXClaimExpired: u64 = 14;
 
-#[test_only]
-/// The supplied SuperAdminCap is no longer the active root capability.
-const EInvalidSuperAdminCap: u64 = 15;
-
-#[test_only]
-/// A routine administrator cannot be delivered to the zero address.
-const EInvalidAdminRecipient: u64 = 16;
-
-#[test_only]
-/// The bounded active-admin registry is full.
-const EAdminCapacityReached: u64 = 17;
-
-#[test_only]
-/// A root transfer must target a nonzero address other than the current sender.
-const EInvalidSuperAdminRecipient: u64 = 18;
-
-#[test_only]
-/// No pending super-admin transfer exists.
-const ENoPendingSuperAdminTransfer: u64 = 19;
-
-#[test_only]
-/// The transaction sender is not the proposed super-admin recipient.
-const ENotPendingSuperAdminRecipient: u64 = 20;
-
-#[test_only]
-/// The root transfer's seven-day delay has not elapsed.
-const ESuperAdminTransferNotReady: u64 = 21;
-
-#[test_only]
-/// The root-transfer ready timestamp would overflow u64.
-const ESuperAdminTransferTimeOverflow: u64 = 22;
-
-#[test_only]
-/// The currently active root capability cannot be destroyed.
-const ESuperAdminCapStillActive: u64 = 23;
+// Codes 15 through 23 retired: the root-capability lifecycle moved to
+// `blast_admin::acl`, which owns its own append-only error registry.
 
 #[test_only]
 /// Signer rotation must provide a key different from the current key.
@@ -101,9 +66,7 @@ const ECreatorNotSender: u64 = 26;
 /// X claim call data is not canonical BCS `(u64, vector<u8>)` for a 64-byte signature.
 const EInvalidXClaimAttestation: u64 = 27;
 
-#[test_only]
-/// A root-transfer proposal targeted the already pending recipient.
-const ESuperAdminTransferUnchanged: u64 = 28;
+// Code 28 retired with the rest of the root-transfer lifecycle.
 
 #[test_only]
 /// Meme inventory or virtual quote reserve cannot represent a valid constant-product market.
@@ -191,13 +154,8 @@ const EMigrationWitnessCapacityReached: u64 = 51;
 /// The migration witness type is not admitted for future launches.
 const EMigrationWitnessNotAllowed: u64 = 52;
 
-#[test_only]
-/// The supplied UpgradeCap does not authorize the original Blast package.
-const EInvalidUpgradeCap: u64 = 53;
-
-#[test_only]
-/// A Sui package digest must contain exactly 32 bytes.
-const EInvalidPackageDigest: u64 = 54;
+// Codes 53 and 54 retired: native capability intake and digest validation moved
+// to `blast_admin::upgrade_custody`.
 
 // Code 55 retired: the premature governance cutover was removed by ADR 0034.
 
@@ -205,9 +163,7 @@ const EInvalidPackageDigest: u64 = 54;
 /// The supplied Publisher was not claimed by Blast's canonical package module.
 const EInvalidPackagePublisher: u64 = 56;
 
-#[test_only]
-/// An upgrade-policy request was equal to or looser than the current policy.
-const EUpgradePolicyNotMoreRestrictive: u64 = 57;
+// Code 57 retired: policy narrowing moved to `blast_admin::upgrade_custody`.
 
 // Code 58 retired: the premature governance cutover was removed by ADR 0034.
 
@@ -245,9 +201,8 @@ const ECreatorAuthorityUnavailable: u64 = 66;
 /// A trade-fee update supplied the complete active rate pair.
 const ETradeFeeDefaultsUnchanged: u64 = 67;
 
-#[test_only]
-/// Shared runtime state rejects this package generation.
-const EPackageVersionMismatch: u64 = 68;
+// Code 68 retired: generation comparison moved to
+// `blast_admin::operational_version`.
 
 // Code 69 retired: the redundant per-Launch version was removed by ADR 0045.
 
@@ -265,9 +220,8 @@ const EInvalidMigrationWitness: u64 = 72;
 
 // Code 73 retired: LaunchTicket construction makes an unknown supply mode unreachable.
 
-#[test_only]
-/// The global package-version counter cannot advance beyond u64.
-const EPackageVersionOverflow: u64 = 74;
+// Code 74 retired: generation arithmetic moved to
+// `blast_admin::operational_version`.
 
 #[test_only]
 /// A basis-points value exceeds one hundred percent.
@@ -290,10 +244,6 @@ const EInvalidMigrationWitnessType: u64 = 78;
 #[test_only]
 /// The rounded migration fee leaves no Quote to seed liquidity.
 const ENoMigrationQuotePrincipal: u64 = 82;
-
-macro public(package) fun invalid_admin_cap(): u64 {
-    0
-}
 
 macro public(package) fun invalid_x_claim_public_key(): u64 {
     2
@@ -323,42 +273,6 @@ macro public(package) fun x_claim_expired(): u64 {
     14
 }
 
-macro public(package) fun invalid_super_admin_cap(): u64 {
-    15
-}
-
-macro public(package) fun invalid_admin_recipient(): u64 {
-    16
-}
-
-macro public(package) fun admin_capacity_reached(): u64 {
-    17
-}
-
-macro public(package) fun invalid_super_admin_recipient(): u64 {
-    18
-}
-
-macro public(package) fun no_pending_super_admin_transfer(): u64 {
-    19
-}
-
-macro public(package) fun not_pending_super_admin_recipient(): u64 {
-    20
-}
-
-macro public(package) fun super_admin_transfer_not_ready(): u64 {
-    21
-}
-
-macro public(package) fun super_admin_transfer_time_overflow(): u64 {
-    22
-}
-
-macro public(package) fun super_admin_cap_still_active(): u64 {
-    23
-}
-
 macro public(package) fun x_claim_signer_unchanged(): u64 {
     24
 }
@@ -373,10 +287,6 @@ macro public(package) fun creator_not_sender(): u64 {
 
 macro public(package) fun invalid_x_claim_attestation(): u64 {
     27
-}
-
-macro public(package) fun super_admin_transfer_unchanged(): u64 {
-    28
 }
 
 macro public(package) fun invalid_curve_reserve(): u64 {
@@ -465,25 +375,13 @@ macro public(package) fun migration_witness_not_allowed(): u64 {
     52
 }
 
-macro public(package) fun invalid_upgrade_cap(): u64 {
-    53
-}
-
-macro public(package) fun invalid_package_digest(): u64 {
-    54
-}
-
-// Error code 55 is retired and must not be reused.
+// Error codes 53, 54 and 55 are retired and must not be reused.
 
 macro public(package) fun invalid_package_publisher(): u64 {
     56
 }
 
-macro public(package) fun upgrade_policy_not_more_restrictive(): u64 {
-    57
-}
-
-// Error code 58 is retired and must not be reused.
+// Error codes 57 and 58 are retired and must not be reused.
 
 macro public(package) fun invalid_meme_liquidity_provision_bps(): u64 {
     59
@@ -519,10 +417,6 @@ macro public(package) fun trade_fee_defaults_unchanged(): u64 {
     67
 }
 
-macro public(package) fun package_version_mismatch(): u64 {
-    68
-}
-
 macro public(package) fun invalid_launch_lifecycle(): u64 {
     70
 }
@@ -533,10 +427,6 @@ macro public(package) fun slippage_exceeded(): u64 {
 
 macro public(package) fun invalid_migration_witness(): u64 {
     72
-}
-
-macro public(package) fun package_version_overflow(): u64 {
-    74
 }
 
 macro public(package) fun invalid_bps(): u64 {

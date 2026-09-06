@@ -1,12 +1,14 @@
 #[test_only]
 module blast_fun_migrators::venue_config_tests;
 
-use blast_fun::{acl, package_version};
+use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
+use blast_fun::launchpad_domain::LAUNCHPAD_DOMAIN;
 use blast_fun_migrators::{
     aftermath,
     bluefin,
     cetus,
     mmt,
+    package_version,
     turbos,
     venue_config::{Self, VenueConfig},
 };
@@ -28,6 +30,8 @@ use fun turbos::set_tier as VenueConfig.set_turbos_tier;
 
 const PUBLISHER: address = @0xA11CE;
 const PROTOCOL_ADMIN: address = @0xAD;
+const MAX_ADMINS: u64 = 16;
+const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 // === Test-Only Types ===
 
@@ -36,8 +40,8 @@ public struct TestVenue() has drop;
 /// Admin-pinned tier policy through the core ACL sign-in seam.
 public struct TierFixture {
     scenario: Scenario,
-    authority: acl::ProtocolAuthority,
-    admin_cap: acl::AdminCap,
+    authority: Authority<LAUNCHPAD_DOMAIN>,
+    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
     package_version: package_version::PackageVersion,
     config: VenueConfig,
 }
@@ -92,11 +96,12 @@ fun venue_defaults_hold_until_an_admin_pin_replaces_them() {
         assert_eq!(dao_fee_bps, 200);
 
         let admin_witness = f.sign_in();
-        f.config.set_bluefin_tier(&admin_witness, 220, 20_000);
-        f.config.set_cetus_tier(&admin_witness, 220, 20_000);
-        f.config.set_mmt_tier(&admin_witness, 200, 10_000);
-        f.config.set_turbos_tier(&admin_witness, 220, 20_000);
+        f.config.set_bluefin_tier(&f.package_version, &admin_witness, 220, 20_000);
+        f.config.set_cetus_tier(&f.package_version, &admin_witness, 220, 20_000);
+        f.config.set_mmt_tier(&f.package_version, &admin_witness, 200, 10_000);
+        f.config.set_turbos_tier(&f.package_version, &admin_witness, 220, 20_000);
         f.config.set_aftermath_policy(
+            &f.package_version,
             &admin_witness,
             600_000_000_000_000_000,
             400_000_000_000_000_000,
@@ -132,7 +137,7 @@ fun venue_pins_stay_sealed_per_witness_type() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_bluefin_tier(&admin_witness, 220, 20_000);
+        f.config.set_bluefin_tier(&f.package_version, &admin_witness, 220, 20_000);
 
         // Only the Bluefin entry changed; every other venue keeps its default.
         let (tick_spacing, fee_rate) = f.config.cetus_tier_for_testing();
@@ -197,6 +202,7 @@ fun aftermath_accepts_zero_dao_fee() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
         f.config.set_aftermath_policy(
+            &f.package_version,
             &admin_witness,
             500_000_000_000_000_000,
             500_000_000_000_000_000,
@@ -220,6 +226,7 @@ fun aftermath_rejects_dao_fee_above_one_hundred_percent() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
         f.config.set_aftermath_policy(
+            &f.package_version,
             &admin_witness,
             500_000_000_000_000_000,
             500_000_000_000_000_000,
@@ -237,6 +244,7 @@ fun aftermath_accepts_inclusive_dao_fee_boundaries() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
         f.config.set_aftermath_policy(
+            &f.package_version,
             &admin_witness,
             500_000_000_000_000_000,
             500_000_000_000_000_000,
@@ -245,6 +253,7 @@ fun aftermath_accepts_inclusive_dao_fee_boundaries() {
         let (_, _, dao_fee_bps) = f.config.aftermath_policy_for_testing();
         assert_eq!(dao_fee_bps, 0);
         f.config.set_aftermath_policy(
+            &f.package_version,
             &admin_witness,
             500_000_000_000_000_000,
             500_000_000_000_000_000,
@@ -264,6 +273,7 @@ fun aftermath_accepts_inclusive_weight_boundaries() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
         f.config.set_aftermath_policy(
+            &f.package_version,
             &admin_witness,
             10_000_000_000_000_000,
             990_000_000_000_000_000,
@@ -274,6 +284,7 @@ fun aftermath_accepts_inclusive_weight_boundaries() {
         assert_eq!(quote_weight, 990_000_000_000_000_000);
 
         f.config.set_aftermath_policy(
+            &f.package_version,
             &admin_witness,
             990_000_000_000_000_000,
             10_000_000_000_000_000,
@@ -298,6 +309,7 @@ fun aftermath_rejects_weight_below_venue_minimum() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
         f.config.set_aftermath_policy(
+            &f.package_version,
             &admin_witness,
             9_999_999_999_999_999,
             990_000_000_000_000_001,
@@ -319,6 +331,7 @@ fun aftermath_rejects_weights_that_do_not_sum_to_one() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
         f.config.set_aftermath_policy(
+            &f.package_version,
             &admin_witness,
             500_000_000_000_000_000,
             499_000_000_000_000_000,
@@ -340,6 +353,7 @@ fun aftermath_rejects_a_pin_equal_to_the_compiled_default() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
         f.config.set_aftermath_policy(
+            &f.package_version,
             &admin_witness,
             500_000_000_000_000_000,
             500_000_000_000_000_000,
@@ -361,12 +375,14 @@ fun aftermath_rejects_a_repeated_pinned_policy() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
         f.config.set_aftermath_policy(
+            &f.package_version,
             &admin_witness,
             600_000_000_000_000_000,
             400_000_000_000_000_000,
             300,
         );
         f.config.set_aftermath_policy(
+            &f.package_version,
             &admin_witness,
             600_000_000_000_000_000,
             400_000_000_000_000_000,
@@ -404,6 +420,7 @@ fun turbos_pin_rejects_a_fee_no_venue_tier_can_carry() {
         let admin_witness = f.sign_in();
 
         f.config.set_turbos_tier(
+            &f.package_version,
             &admin_witness,
             800,
             (std::u32::max_value!() as u64) + 1,
@@ -430,25 +447,20 @@ fun start(): TierFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
     let (super_admin_cap, mut authority) =
-        acl::new_protocol_for_testing(scenario.ctx());
-    authority.grant_admin(
-        &package_version,
-        &super_admin_cap,
-        PROTOCOL_ADMIN,
-        scenario.ctx(),
-    );
+        acl::new_for_testing<LAUNCHPAD_DOMAIN>(MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, scenario.ctx());
+    authority.grant_admin(&super_admin_cap, 0, PROTOCOL_ADMIN, scenario.ctx());
     destroy(super_admin_cap);
     venue_config::init_for_testing(scenario.ctx());
 
     scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<acl::AdminCap>();
+    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
     let config = scenario.take_shared<VenueConfig>();
 
     TierFixture { scenario, authority, admin_cap, package_version, config }
 }
 
-fun sign_in(self: &TierFixture): acl::AdminWitness {
-    self.authority.sign_in(&self.package_version, &self.admin_cap)
+fun sign_in(self: &TierFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+    self.authority.sign_in(&self.admin_cap)
 }
 
 fun end(self: TierFixture) {

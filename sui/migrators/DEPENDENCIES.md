@@ -38,8 +38,9 @@ migration payload in the same Move call.
   instead of trusting caller parameters. Each venue module compiles a
   researched highest-tier default (see the README table, sourced from live
   mainnet registries on 2026-08-30) and falls back to it while no pin exists;
-  only that module's sealed witness can write its entry, behind a live
-  `AdminWitness`. The singleton stays adjustable after the package
+  only that module's sealed witness can write its entry, behind this package's
+  own current generation and a live `AdminWitness<LAUNCHPAD_DOMAIN>` from the
+  shared Launchpad authority. The singleton stays adjustable after the package
   `UpgradeCap` is destroyed and affects only later migrations.
 - **Direct events, no wrapper.** `events.move` owns nine typed payloads,
   including `AftermathPolicyUpdated`, `AftermathMigrationCompleted`, and
@@ -334,8 +335,9 @@ release blocker, not a documentation footnote.
 | Aftermath | `migrate_meme_first`, `migrate_meme_second` | `accrue_dao_fees`; also dev-inspect `update_dao_fee` separately |
 
 Vault claims: `vault::claim_creator_fees` under `CreatorCap<Meme>` and
-`vault::claim_protocol_fees` under `AdminWitness`. Neither touches the venue or
-the position.
+`vault::claim_protocol_fees` under `AdminWitness<LAUNCHPAD_DOMAIN>`. Both also
+require this package's current generation. Neither touches the venue or the
+position.
 
 The compiled defaults are active from publication, so no tier setup
 transaction is required before the fixtures run; a fixture that overrides a

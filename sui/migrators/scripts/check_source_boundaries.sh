@@ -384,7 +384,7 @@ VENUE_TIER_SETTER_COUNT=0
 for source in "$BLUEFIN_SOURCE" "$CETUS_SOURCE" "$MMT_SOURCE" "$TURBOS_SOURCE"; do
     rg -q 'public fun set_tier' "$source" || \
         fail "every venue module must expose its admin tier pin"
-    count="$(rg -c '_: &AdminWitness,' "$source" || true)"
+    count="$(rg -c '_: &AdminWitness<LAUNCHPAD_DOMAIN>,' "$source" || true)"
     VENUE_TIER_SETTER_COUNT=$((VENUE_TIER_SETTER_COUNT + ${count:-0}))
     rg -q 'fun effective_tier\(venue_config: &VenueConfig\)' "$source" || \
         fail "every venue module must own its default-tier fallback read"
@@ -1054,5 +1054,87 @@ if rg -n \
     "$SOURCE_DIR" "$PACKAGE_DIR/tests"; then
     fail "local reference types must be inferred from explicit generic arguments"
 fi
+
+# === Shared administration boundary ===
+#
+# Migrators reuses the Launchpad domain for membership only. It must never
+# reimplement the reusable ACL, generation arithmetic, or native custody, and it
+# must stop treating the Launchpad generation as its own.
+
+for forbidden in acl.move; do
+    [[ -e "$SOURCE_DIR/$forbidden" ]] && \
+        fail "Migrators must not define a local $forbidden"
+done
+
+if rg -n '^public struct (Authority|ProtocolAuthority|SuperAdminCap|AdminCap|AdminWitness)\b' \
+    "$SOURCE_DIR"; then
+    fail "administration types must come from blast_admin, never from a local copy"
+fi
+
+if rg -n 'acl::new\(|fun (grant_admin|revoke_admin|sign_in)\(' "$SOURCE_DIR"; then
+    fail "Migrators must not create or manage its own administration domain"
+fi
+
+for required in package_marker.move package_version.move package_admin.move; do
+    [[ -f "$SOURCE_DIR/$required" ]] || \
+        fail "Migrators must own $required"
+done
+
+rg -q '^public struct PackageVersion has key \{$' "$SOURCE_DIR/package_version.move" || \
+    fail "Migrators must own one canonical generation container"
+rg -q 'generation: OperationalVersion<PACKAGE_MARKER>,' "$SOURCE_DIR/package_version.move" || \
+    fail "the generation value must be the shared typed value"
+rg -q '^const PACKAGE_VERSION: u64 = 1;$' "$SOURCE_DIR/package_version.move" || \
+    fail "Migrators must compile its current generation constant"
+rg -q '^const NEXT_PACKAGE_VERSION: u64 = 2;$' "$SOURCE_DIR/package_version.move" || \
+    fail "Migrators must compile its cutover target constant"
+if rg -n '\.checked_add\(|fun activate\(' "$SOURCE_DIR/package_version.move"; then
+    fail "generation arithmetic and separate activation belong to blast_admin"
+fi
+
+rg -q 'custody: UpgradeCustody<PACKAGE_MARKER>,' "$SOURCE_DIR/package_admin.move" || \
+    fail "Migrators custody must hold the shared typed value"
+rg -q 'public fun commit_upgrade_and_advance\(' "$SOURCE_DIR/package_admin.move" || \
+    fail "Migrators must expose one atomic commit-and-advance finalizer"
+if rg -n '^public fun commit_upgrade\(|^public fun activate' "$SOURCE_DIR/package_admin.move"; then
+    fail "a separate receipt commit or activation entry point is forbidden"
+fi
+if rg -U -n '^public fun [^(]+\([^)]*\): (&)?(Publisher|UpgradeCap)' \
+    "$SOURCE_DIR/package_admin.move"; then
+    fail "no custody path may release the sealed Publisher or UpgradeCap"
+fi
+CUSTODY_ROLE_ASSERTIONS="$(rg -c 'admin_witness\.assert_role\(launchpad_domain::package_admin_role\(\)\);' \
+    "$SOURCE_DIR/package_admin.move" || true)"
+[[ "${CUSTODY_ROLE_ASSERTIONS:-0}" -eq 5 ]] || \
+    fail "every governed custody transition must assert Launchpad's exported role"
+
+# Every protected public mutation checks this package's own generation, and the
+# guard is the first statement of its body. Per module: vault 2 (both fee
+# claims), bluefin 3, aftermath 5, cetus 6, turbos 7, mmt 5 - covering every
+# venue migration and fee collection, the four tier pins, the Aftermath policy
+# pin, the DAO-fee update, and the DAO-fee accrual.
+for guard_spec in 'vault:2' 'bluefin:3' 'aftermath:5' 'cetus:6' 'turbos:7' 'mmt:5'; do
+    IFS=: read -r guard_module expected_guards <<<"$guard_spec"
+    actual_guards="$(rg -c '^[[:space:]]+migrators_version\.assert_current\(\);' \
+        "$SOURCE_DIR/${guard_module}.move" || true)"
+    [[ "${actual_guards:-0}" -eq "$expected_guards" ]] || \
+        fail "${guard_module}.move must assert this package's generation on every protected mutation (found ${actual_guards:-0}, expected $expected_guards)"
+
+    actual_parameters="$(rg -c '^[[:space:]]+migrators_version: &MigratorsVersion,' \
+        "$SOURCE_DIR/${guard_module}.move" || true)"
+    [[ "${actual_parameters:-0}" -eq "$expected_guards" ]] || \
+        fail "${guard_module}.move must take the Migrators version under that exact name on every guarded mutation"
+done
+
+# In the venue and vault modules `package_version` names the Launchpad object.
+# It may be passed through to a composed Launchpad call, but it may never stand
+# in for this package's own guard. (`package_admin.move` owns no Launchpad
+# input: its `package_version` parameter is this package's own container.)
+for guard_module in vault bluefin aftermath cetus turbos mmt; do
+    if rg -n '^[[:space:]]+package_version\.assert_current\(\);' \
+        "$SOURCE_DIR/${guard_module}.move"; then
+        fail "${guard_module}.move must not assert the Launchpad generation as if it were its own"
+    fi
+done
 
 echo "Migrator source boundaries passed"
