@@ -91,4 +91,10 @@ printf '\nentry fun rogue<PackageMarker: drop>(self: &mut UpgradeCustody<Package
   >> "$case_dir/sources/upgrade_custody.move"
 expect_rejected "$case_dir"
 
+case_dir="$(new_case uses_named_admin_witness)"
+sed -i \
+  's/public struct AdminWitness<phantom Domain: drop>(u64) has drop;/public struct AdminWitness<phantom Domain: drop> has drop { roles: u64 }/' \
+  "$case_dir/sources/acl.move"
+expect_rejected "$case_dir"
+
 printf 'blast_admin boundary checker self-tests passed\n'

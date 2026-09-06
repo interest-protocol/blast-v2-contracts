@@ -36,9 +36,7 @@ public struct AdminCap<phantom Domain: drop> has key, store {
 }
 
 /// Transaction-local snapshot of one live administrator's complete role bitmap.
-public struct AdminWitness<phantom Domain: drop> has drop {
-    roles: u64,
-}
+public struct AdminWitness<phantom Domain: drop>(u64) has drop;
 
 // === Public Functions ===
 
@@ -309,13 +307,13 @@ public fun sign_in<Domain: drop>(
     let admin_cap_id = admin_cap.id.to_inner();
     assert!(self.admins.contains(&admin_cap_id), blast_admin::errors::invalid_admin_cap!());
 
-    AdminWitness<Domain> { roles: self.admins[&admin_cap_id] }
+    AdminWitness<Domain>(self.admins[&admin_cap_id])
 }
 
 /// Requires exactly one nonzero role bit and proves that the snapshot contains it.
 public fun assert_role<Domain: drop>(self: &AdminWitness<Domain>, role: u64) {
     assert_valid_role(role);
-    assert!(has_role(self.roles, role), blast_admin::errors::admin_role_not_granted!());
+    assert!(has_role(self.0, role), blast_admin::errors::admin_role_not_granted!());
 }
 
 // === Private Functions ===
@@ -413,7 +411,7 @@ public fun admin_roles_for_testing<Domain: drop>(
 
 #[test_only]
 public fun roles_for_testing<Domain: drop>(self: &AdminWitness<Domain>): u64 {
-    self.roles
+    self.0
 }
 
 #[test_only]

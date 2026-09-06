@@ -140,7 +140,7 @@ grep -q '^public struct SuperAdminCap<phantom Domain: drop> has key {$' "$acl_fi
   || fail "SuperAdminCap must not have store."
 grep -q '^public struct AdminCap<phantom Domain: drop> has key, store {$' "$acl_file" \
   || fail "AdminCap must remain transferable and domain separated."
-grep -q '^public struct AdminWitness<phantom Domain: drop> has drop {$' "$acl_file" \
+grep -Fqx 'public struct AdminWitness<phantom Domain: drop>(u64) has drop;' "$acl_file" \
   || fail "AdminWitness must be a drop-only domain-typed snapshot."
 grep -q 'admins: VecMap<ID, u64>,' "$acl_file" \
   || fail "Authority must keep bounded u64 role bitmaps in VecMap."
