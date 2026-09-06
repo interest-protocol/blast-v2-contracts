@@ -65,6 +65,115 @@ public struct ObservationSpec has copy, drop {
 // === Tests ===
 
 #[test]
+fun terminal_claim_quote_conserves_zero_dust_and_maximum_cash_for_both_sides() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    vector[policy::long(), policy::short()].do!(|side| {
+        let mut state = initialized_state(&fixture, side);
+        state.begin_shutdown();
+        assert_eq!(state.finalize_shutdown(7, 2), 5);
+        assert_eq!(state.shutdown_claim_quote(13, 7, 2, 2, 5), 5);
+        assert_eq!(state.shutdown_claim_quote(8, 5, 2, 3, 8), 8);
+        assert_eq!(state.shutdown_claim_quote(0, 7, 2, 5, 0), 0);
+        let maximum = std::u64::max_value!();
+        assert_eq!(state.shutdown_claim_quote(maximum, maximum, 0, maximum, maximum), maximum);
+        state.destroy_for_testing();
+    });
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = 8, location = blast_leverage_series_one::state)]
+fun terminal_partial_dust_requires_combining_native_shares() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::long());
+    state.begin_shutdown();
+    state.finalize_shutdown(7, 2);
+    state.shutdown_claim_quote(1, 7, 2, 1, 0);
+    destroy(state);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = 94, location = blast_leverage_series_one::state)]
+fun terminal_zero_pool_requires_explicit_zero_minimum() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::short());
+    state.begin_shutdown();
+    state.finalize_shutdown(7, 2);
+    state.shutdown_claim_quote(0, 7, 2, 5, 1);
+    destroy(state);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = 4, location = blast_leverage_series_one::state)]
+fun terminal_claim_cannot_include_locked_seed() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::long());
+    state.begin_shutdown();
+    state.finalize_shutdown(7, 2);
+    state.shutdown_claim_quote(13, 7, 2, 6, 0);
+    destroy(state);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = 3, location = blast_leverage_series_one::state)]
+fun terminal_supply_below_locked_seed_fails_closed() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::long());
+    state.begin_shutdown();
+    state.finalize_shutdown(1, 2);
+    destroy(state);
+    destroy(fixture);
+}
+
+#[test]
+fun unwind_uses_the_frozen_emergency_bound_without_a_nav_input_for_both_sides() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    vector[policy::long(), policy::short()].do!(|side| {
+        let mut state = initialized_state(&fixture, side);
+        state.begin_shutdown();
+        let (actual_side, cap, base_price, collateral_price) = state.unwind_constraints(
+            observation::new_price(1_000_000_000, 0, REFERENCE_TIME_MS),
+            observation::new_price(1_000_000_000, 0, REFERENCE_TIME_MS), REFERENCE_TIME_MS,
+        );
+        assert_eq!(actual_side, side);
+        assert_eq!(cap, 250);
+        assert_eq!(base_price, 1_000_000_000);
+        assert_eq!(collateral_price, 1_000_000_000);
+        state.assert_unwind_execution(1_000_000_000, 1_050_000_000);
+        state.assert_unwind_execution(1_000_000_000, 950_000_000);
+        state.destroy_for_testing();
+    });
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EStaleValuation, location = blast_leverage_series_one::policy)]
+fun ordinary_unwind_never_falls_back_to_a_stale_price() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::short());
+    state.begin_shutdown();
+    state.unwind_constraints(observation::new_price(1_000_000_000, 0, 0),
+        observation::new_price(1_000_000_000, 0, 0), REFERENCE_TIME_MS);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_leverage_series_one::lifecycle)]
+fun settled_cash_cannot_reopen_a_funding_buffer() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::long());
+    state.begin_shutdown();
+    state.finalize_shutdown(5, 2);
+    state.settle_funding(observation::funding_credit(1));
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
 #[expected_failure(abort_code = errors::EVenueFeeUnusable, location = blast_leverage_series_one::state)]
 fun invalid_rebalance_fee_precedes_invalid_observation() {
     let fixture = start(series_one_domain::vault_issuer_role());
@@ -744,7 +853,7 @@ fun max_order_notional_rejects_one_above_the_frozen_maximum() {
 }
 
 #[test]
-fun active_state_enters_reduce_only() {
+fun active_state_begins_shutdown() {
     let fixture = start(series_one_domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let mut state = state::new<Product>(
@@ -756,9 +865,9 @@ fun active_state_enters_reduce_only() {
     );
     state.set_active_for_testing();
 
-    state.enter_reduce_only();
+    state.begin_shutdown();
 
-    assert!(state.is_reduce_only_for_testing());
+    assert!(state.is_unwinding_for_testing());
     state.destroy_for_testing();
     destroy(fixture);
 }
@@ -768,7 +877,7 @@ fun active_state_enters_reduce_only() {
     abort_code = 17,
     location = blast_leverage_series_one::lifecycle,
 )]
-fun uninitialized_state_cannot_enter_reduce_only() {
+fun uninitialized_state_cannot_begin_shutdown() {
     let fixture = start(series_one_domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let mut state = state::new<Product>(
@@ -779,7 +888,7 @@ fun uninitialized_state_cannot_enter_reduce_only() {
         MAX_ORDER_NOTIONAL_MAXIMUM,
     );
 
-    state.enter_reduce_only();
+    state.begin_shutdown();
 
     state.destroy_for_testing();
     destroy(fixture);

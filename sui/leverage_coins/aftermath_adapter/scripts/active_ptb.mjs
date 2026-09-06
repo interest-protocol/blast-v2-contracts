@@ -77,7 +77,8 @@ export function buildActivePlan(input) {
 }
 
 export function renderUnsignedPtbArgs(input) {
-    const plan = buildActivePlan(input);
+    const plan = ['begin_shutdown', 'unwind', 'finalize_shutdown', 'redeem_shutdown'].includes(input.operation)
+        ? buildTerminalPlan(input) : buildActivePlan(input);
     const args = ['client', '--client.env', input.network, 'ptb'];
     for (const command of plan.commands) {
         args.push('--move-call', command.target, `<${command.typeArguments.join(',')}>`, ...command.arguments);
@@ -85,6 +86,48 @@ export function renderUnsignedPtbArgs(input) {
     }
     if (plan.transfers.length) args.push('--transfer-objects', `[${plan.transfers.join(',')}]`, `@${input.sender}`);
     return [...args, '--serialize-unsigned-transaction', '--sender', `@${input.sender}`];
+}
+
+// Current terminal ABI. These plans are inert descriptions, not authorization or submission.
+export function buildTerminalPlan(input) {
+    const allowed = new Set(['operation', 'adapterPackage', 'corePackage', 'sender', 'network',
+        'productType', 'collateralType', 'objects', 'minimumOutput', 'deadlineMs', 'reason']);
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('input object required');
+    for (const key of Object.keys(input)) if (!allowed.has(key)) throw Error(`unexpected field ${key}`);
+    const operation = input.operation;
+    if (!['begin_shutdown', 'unwind', 'finalize_shutdown', 'redeem_shutdown'].includes(operation)) throw Error('unsupported terminal operation');
+    const adapter = address(input.adapterPackage), product = type(input.productType);
+    address(input.sender);
+    if (!['testnet', 'mainnet'].includes(input.network)) throw Error('explicit network required');
+    const roles = operation === 'begin_shutdown' ? ['vault', 'protocol', 'authority', 'adminCap']
+        : operation === 'redeem_shutdown' ? ['vault', 'protocol', 'inputCoin', 'clock']
+        : operation === 'finalize_shutdown' ? [...BOUND_OBJECTS.slice(0, 7), 'clock']
+        : [...BOUND_OBJECTS, 'clock'];
+    const objects = input.objects;
+    if (!objects || typeof objects !== 'object' || Array.isArray(objects)) throw Error('bound objects required');
+    for (const key of Object.keys(objects)) if (!roles.includes(key)) throw Error(`unexpected object field ${key}`);
+    const args = roles.map((role) => `@${address(objects[role])}`);
+    if (operation === 'begin_shutdown') {
+        const core = address(input.corePackage);
+        if (!['emergency', 'observed_venue_change'].includes(input.reason)) throw Error('explicit declared reason required');
+        return {commands: [
+            call(`${core}::acl::sign_in`, [], args.slice(2), 'witness'),
+            call(`${core}::lifecycle::${input.reason}_reason`, [], [], 'reason'),
+            call(`${adapter}::vault::begin_shutdown`, [product], [...args.slice(0, 2), 'witness', 'reason'], null),
+        ], transfers: []};
+    }
+    const types = [product, type(input.collateralType)];
+    if (operation === 'redeem_shutdown') {
+        return {commands: [call(`${adapter}::vault::redeem_shutdown`, types,
+            [...args.slice(0, 3), u64(input.minimumOutput), u64(input.deadlineMs), args[3]], 'result')], transfers: ['result']};
+    }
+    return {commands: [call(`${adapter}::operations::${operation}`, types, args, null)], transfers: []};
+}
+
+// Observer classifications are advisory. Only a shutdown-role witness can retire a Vault.
+export function emergencyDecision(facts) {
+    return facts.active === true && facts.authenticatedUnexpectedChange === true
+        ? 'shutdown_role_review' : 'no_change';
 }
 
 // Observation-side trigger only. The on-chain public call independently authenticates

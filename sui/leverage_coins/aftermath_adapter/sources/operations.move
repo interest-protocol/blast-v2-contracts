@@ -69,6 +69,48 @@ public struct RedemptionReceipt<phantom Product> {
 
 // === Public Functions ===
 
+/// Permissionless bounded close-only progress, never caller-sized or dependent on positive NAV.
+public fun unwind<Product, Collateral>(
+    vault: &mut Vault<Product>, protocol: &Protocol, account: &mut Account<Collateral>,
+    registry: &Registry, mut clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
+    base_price_info: &PriceInfoObject, collateral_price_info: &PriceInfoObject,
+    clock: &Clock, ctx: &mut TxContext,
+) {
+    protocol.assert_current();
+    vault.assert_unwinding();
+    vault.assert_collateral_type<Product, Collateral>();
+    if (clearing_house.is_frozen()) {
+        unwind_frozen(vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle);
+    } else {
+        clearing_house = unwind_market(vault, account, registry, clearing_house, base_oracle,
+            collateral_oracle, base_price_info, collateral_price_info, clock, ctx);
+    };
+    clearing_house::share(clearing_house);
+}
+
+/// Recovers all actual holder collateral only from an exactly settled bound account.
+public fun finalize_shutdown<Product, Collateral>(
+    vault: &mut Vault<Product>, protocol: &Protocol, account: &mut Account<Collateral>,
+    registry: &Registry, clearing_house: &mut ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
+    clock: &Clock, ctx: &mut TxContext,
+) {
+    protocol.assert_current();
+    vault.assert_unwinding();
+    vault.assert_collateral_type<Product, Collateral>();
+    let binding = vault.venue_binding();
+    let before = snapshot::capture_checkpoint(&binding, account, registry, clearing_house, base_oracle, collateral_oracle);
+    let amount = before.recoverable_terminal_cash();
+    let recovered = if (amount == 0) {
+        sui::coin::zero(ctx)
+    } else {
+        vault.withdraw_collateral(account, registry, clearing_house, base_oracle, collateral_oracle, amount, clock, ctx)
+    };
+    let after = snapshot::capture_checkpoint(&binding, account, registry, clearing_house, base_oracle, collateral_oracle);
+    complete_finalization(vault, recovered, before, after);
+}
+
 /// Permissionless, policy-sized maintenance with no caller reward or trade parameters.
 public fun rebalance<Product, Collateral>(
     vault: &mut Vault<Product>, protocol: &Protocol, account: &mut Account<Collateral>,
@@ -642,6 +684,7 @@ public fun sync_health<Product, Collateral>(
     clock: &Clock,
 ) {
     protocol.assert_current();
+    vault.assert_can_sync();
     vault.assert_venue_custody_binding();
 
     let binding = vault.venue_binding();
@@ -906,6 +949,116 @@ public(package) fun emit_vault_initialized<Product>(
 }
 
 // === Private Functions ===
+
+/// Advances terminal checkpoint/event state only after an attributable close has completed.
+fun complete_unwind<Product>(
+    vault: &mut Vault<Product>, before: venue_account::Checkpoint, funded: Option<venue_account::Checkpoint>,
+    after: venue_account::Checkpoint, orders: u64, filled_quote: Option<u256>,
+) {
+    vault.assert_unwinding();
+    after.assert_no_orders();
+    if (filled_quote.is_none()) {
+        assert!(funded.is_none() && orders == 0, blast_leverage_aftermath::errors::terminal_venue_unsettled!());
+        venue_account::assert_direct_settlement_close(&before, &after);
+    } else {
+        assert!(funded.is_some() && orders > 0 && orders <= MAX_ACTIVE_ORDERS,
+            blast_leverage_aftermath::errors::terminal_venue_unsettled!());
+    };
+    vault.replace_venue_checkpoint(after);
+    events::unwind_progress<Product>(vault.id(), before, funded, after, orders, filled_quote);
+}
+
+/// Verifies actual withdrawal effects before sealing custody and native claim rules.
+fun complete_finalization<Product, Collateral>(
+    vault: &mut Vault<Product>, recovered: Coin<Collateral>, before: venue_account::Checkpoint, after: venue_account::Checkpoint,
+) {
+    venue_account::assert_terminal_withdrawal(&before, &after, recovered.value());
+    vault.complete_shutdown(recovered, after);
+}
+
+/// The venue's direct frozen settlement is not a market order or a stale-price fallback.
+fun unwind_frozen<Product, Collateral>(
+    vault: &mut Vault<Product>, account: &mut Account<Collateral>, registry: &Registry,
+    clearing_house: &mut ClearingHouse<Collateral>, base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
+) {
+    let binding = vault.venue_binding();
+    let before = snapshot::capture_checkpoint(&binding, account, registry, clearing_house, base_oracle, collateral_oracle);
+    before.assert_no_orders();
+    let (enabled, base_price, collateral_price) = clearing_house.settlement_valuation_prices();
+    assert!(enabled && base_price != 0 && collateral_price != 0,
+        blast_leverage_aftermath::errors::terminal_venue_unsettled!());
+    assert!(!ifixed::is_neg(base_price) && !ifixed::is_neg(collateral_price),
+        blast_leverage_aftermath::errors::terminal_venue_unsettled!());
+    clearing_house::close_position_at_settlement_prices(clearing_house, account, &vector[]);
+    let after = snapshot::capture_checkpoint(&binding, account, registry, clearing_house, base_oracle, collateral_oracle);
+    complete_unwind(vault, before, option::none(), after, 0, option::none());
+}
+
+/// Authenticates prices and isolates actual funding before up to sixteen policy-sized market closes.
+fun unwind_market<Product, Collateral>(
+    vault: &mut Vault<Product>, account: &mut Account<Collateral>, registry: &Registry,
+    mut clearing_house: ClearingHouse<Collateral>, base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
+    base_price_info: &PriceInfoObject, collateral_price_info: &PriceInfoObject, clock: &Clock, ctx: &TxContext,
+): ClearingHouse<Collateral> {
+    let binding = vault.venue_binding();
+    let capture = snapshot::capture_health(&binding, account, registry, &clearing_house,
+        base_oracle, collateral_oracle, base_price_info, collateral_price_info, clock);
+    let (base, collateral, before, collateral_fixed) = snapshot::unwind_prices(capture);
+    let (side, cap, base_price, collateral_price) = vault.unwind_constraints(base, collateral, clock.timestamp_ms());
+    before.assert_no_orders();
+    let mut remaining = unwind_base(&before, side);
+    let (long_rate, short_rate) = market::cum_funding_rates(clearing_house.market_state());
+    let candidate = position::calculate_position_funding_internal(clearing_house.position(account::account_id(account)), long_rate, short_rate);
+    clearing_house::settle_position_funding(&mut clearing_house, collateral_oracle, account::account_id(account), clock);
+    let funded = snapshot::capture_checkpoint(&binding, account, registry, &clearing_house, base_oracle, collateral_oracle);
+    let funding = snapshot::classify_change(&before, &funded, candidate, collateral_fixed);
+    snapshot::assert_clean_funding(funding);
+    let (_, _, _, _, _, _, _, _, lot, _, _, _, _, _, _, _, _) = funded.unpack();
+    let mut checkpoint = funded;
+    let mut orders = 0;
+    let mut filled_quote_total: u256 = 0;
+    let is_ask = !order_side(side);
+    while (orders < MAX_ACTIVE_ORDERS && remaining > 0) {
+        let requested = active_order_size(remaining, cap, base_price, collateral_price, lot, orders);
+        vault.assert_order_notional_allowed(notional_for_base_up(requested, base_price, collateral_price));
+        let (next_market, summary) = vault.execute_order(account, clearing_house, base_oracle, collateral_oracle,
+            is_ask, requested, true, clock, ctx);
+        clearing_house = next_market;
+        let filled = active_fill(!is_ask, requested, lot, clearing_house::base_filled_bid(&summary),
+            clearing_house::base_filled_ask(&summary), clearing_house::posted_orders(&summary),
+            clearing_house::liquidated_size(&summary), clearing_house::liquidation_bad_debt(&summary));
+        let (filled_base, filled_quote) = clearing_house::filled_base_and_quote(&summary, is_ask);
+        vault.assert_unwind_execution(base_price, execution_price(clearing_house::execution_price(&summary, is_ask), !is_ask));
+        vault.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
+        let (_, _, previous_base, _, _, _, _, _, _, _, _, _, _, _, _, _, _) = checkpoint.unpack();
+        let expected_base = if (is_ask) { ifixed::sub(previous_base, filled_base) } else { ifixed::add(previous_base, filled_base) };
+        let after = snapshot::capture_checkpoint(&binding, account, registry, &clearing_house, base_oracle, collateral_oracle);
+        venue_account::assert_reduction_checkpoint(&checkpoint, &after, expected_base);
+        after.assert_no_orders();
+        remaining = remaining - filled;
+        checkpoint = after;
+        filled_quote_total = filled_quote_total.checked_add(filled_quote)
+            .destroy_or!(abort blast_leverage_aftermath::errors::normalization_overflow!());
+        orders = orders + 1;
+    };
+    complete_unwind(vault, before, option::some(funded), checkpoint, orders, option::some(filled_quote_total));
+    clearing_house
+}
+
+/// Named IFixed decoding precedes exact base-atom and lot validation.
+fun unwind_base(checkpoint: &venue_account::Checkpoint, side: PositionSide): u64 {
+    let (_, _, base, _, _, _, _, _, lot, _, _, _, _, _, _, _, _) = (*checkpoint).unpack();
+    unwind_base_from_parts(ifixed::abs(base), !ifixed::is_neg(base), lot, side)
+}
+
+fun unwind_base_from_parts(magnitude: u256, is_long: bool, lot: u64, side: PositionSide): u64 {
+    assert!(lot > 0 && magnitude > 0
+        && magnitude <= (std::u64::max_value!() as u256) * BASE_ATOM_TO_IFIXED_SCALE
+        && magnitude % ((lot as u256) * BASE_ATOM_TO_IFIXED_SCALE) == 0
+        && is_long == (side == policy::long()),
+        blast_leverage_aftermath::errors::invalid_unwind_exposure!());
+    (magnitude / BASE_ATOM_TO_IFIXED_SCALE) as u64
+}
 
 /// Aftermath's priority rate is an additional surcharge, not an alternative fee.
 /// Negative rebates are ignored conservatively; callers provide no fee input.
@@ -1228,6 +1381,26 @@ fun assert_position_imr_sign(negative: bool) {
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+public(package) fun complete_unwind_for_testing<Product>(
+    vault: &mut Vault<Product>, before: venue_account::Checkpoint, funded: Option<venue_account::Checkpoint>,
+    after: venue_account::Checkpoint, orders: u64, filled_quote: Option<u256>,
+) {
+    complete_unwind(vault, before, funded, after, orders, filled_quote);
+}
+
+#[test_only]
+public(package) fun complete_finalization_for_testing<Product, Collateral>(
+    vault: &mut Vault<Product>, recovered: Coin<Collateral>, before: venue_account::Checkpoint, after: venue_account::Checkpoint,
+) {
+    complete_finalization(vault, recovered, before, after);
+}
+
+#[test_only]
+public fun unwind_base_for_testing(magnitude: u256, is_long: bool, lot: u64, side: PositionSide): u64 {
+    unwind_base_from_parts(magnitude, is_long, lot, side)
+}
 
 #[test_only]
 public fun venue_fee_bound_for_testing(ordinary: u256, priority: u256): u64 { venue_fee_bound(ordinary, priority) }

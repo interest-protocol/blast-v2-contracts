@@ -65,6 +65,24 @@ public struct Fixture {
 // === Tests ===
 
 #[test]
+fun shutdown_admin_stops_an_active_vault_without_any_venue_or_oracle_input() {
+    let mut fixture = start(
+        series_one_domain::vault_issuer_role() | series_one_domain::shutdown_admin_role(),
+    );
+    fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
+    fixture.scenario.next_tx(ISSUER);
+    let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
+    vault.set_active_for_testing();
+    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    vault.begin_shutdown(&fixture.protocol, &witness, blast_leverage_series_one::lifecycle::emergency_reason());
+    assert!(vault.is_unwinding_for_testing());
+    assert_eq!(vault.share_supply_for_testing(), 0);
+    assert!(!vault.has_venue_account_for_testing());
+    test_scenario::return_shared(vault);
+    destroy(fixture);
+}
+
+#[test]
 #[expected_failure(abort_code = blast_leverage_aftermath::errors::EInvalidSeedFunder, location = blast_leverage_aftermath::vault)]
 fun seed_funder_rejects_zero_before_activation() {
     vault::assert_seed_funder(@0x0);
@@ -243,7 +261,7 @@ fun a_global_series_admin_rotates_risk_after_shutdown_starts() {
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
 
-    vault.set_shutdown_pending_for_testing();
+    vault.set_unwinding_for_testing();
     vault.rotate_risk_module<Sui2x, RiskModuleV2>(
         &fixture.protocol,
         &admin_witness,
@@ -255,7 +273,7 @@ fun a_global_series_admin_rotates_risk_after_shutdown_starts() {
         MAX_ORDER_NOTIONAL_MINIMUM,
     );
 
-    assert!(vault.is_shutdown_pending_for_testing());
+    assert!(vault.is_unwinding_for_testing());
     assert_eq!(
         vault.risk_module_witness_for_testing(),
         type_name::with_original_ids<RiskModuleV2>(),
@@ -496,9 +514,9 @@ fun rotated_out_risk_module_cannot_update_max_order_notional() {
 }
 
 #[test]
-fun global_risk_admin_moves_an_active_vault_to_reduce_only() {
+fun shutdown_admin_moves_an_active_vault_to_unwinding() {
     let mut fixture = start(
-        series_one_domain::vault_issuer_role() | series_one_domain::risk_admin_role(),
+        series_one_domain::vault_issuer_role() | series_one_domain::shutdown_admin_role(),
     );
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
@@ -507,11 +525,11 @@ fun global_risk_admin_moves_an_active_vault_to_reduce_only() {
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.set_active_for_testing();
 
-    vault.enter_reduce_only(&fixture.protocol, &admin_witness);
+    vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_leverage_series_one::lifecycle::emergency_reason());
 
-    assert!(vault.is_reduce_only_for_testing());
-    let entered = events::collect_one<events::ReduceOnlyEntered<Sui2x>>(0);
-    assert_eq!(entered.reduce_only_entered_vault_id(), vault_id);
+    assert!(vault.is_unwinding_for_testing());
+    let entered = events::collect_one<events::ShutdownBegun<Sui2x>>(0);
+    assert_eq!(entered.shutdown_begun_vault_id(), vault_id);
 
     test_scenario::return_shared(vault);
     destroy(fixture);
@@ -522,15 +540,17 @@ fun global_risk_admin_moves_an_active_vault_to_reduce_only() {
     abort_code = blast_admin::errors::EAdminRoleNotGranted,
     location = blast_admin::acl,
 )]
-fun issuer_without_risk_role_cannot_enter_reduce_only() {
-    let mut fixture = start(series_one_domain::vault_issuer_role());
+fun issuer_and_risk_admin_without_shutdown_role_cannot_begin_shutdown() {
+    let mut fixture = start(
+        series_one_domain::vault_issuer_role() | series_one_domain::risk_admin_role(),
+    );
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.set_active_for_testing();
 
-    vault.enter_reduce_only(&fixture.protocol, &admin_witness);
+    vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_leverage_series_one::lifecycle::emergency_reason());
 
     test_scenario::return_shared(vault);
     destroy(fixture);
@@ -541,16 +561,16 @@ fun issuer_without_risk_role_cannot_enter_reduce_only() {
     abort_code = 17,
     location = blast_leverage_series_one::lifecycle,
 )]
-fun global_risk_admin_cannot_reduce_an_uninitialized_vault() {
+fun shutdown_admin_cannot_stop_an_uninitialized_vault() {
     let mut fixture = start(
-        series_one_domain::vault_issuer_role() | series_one_domain::risk_admin_role(),
+        series_one_domain::vault_issuer_role() | series_one_domain::shutdown_admin_role(),
     );
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
 
-    vault.enter_reduce_only(&fixture.protocol, &admin_witness);
+    vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_leverage_series_one::lifecycle::emergency_reason());
 
     test_scenario::return_shared(vault);
     destroy(fixture);

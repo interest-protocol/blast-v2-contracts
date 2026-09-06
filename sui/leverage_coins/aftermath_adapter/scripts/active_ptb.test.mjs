@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildActivePlan, renderUnsignedPtbArgs, keeperDecision } from './active_ptb.mjs';
+import { buildActivePlan, buildTerminalPlan, emergencyDecision, renderUnsignedPtbArgs, keeperDecision } from './active_ptb.mjs';
 
 const address = (n) => `0x${n.toString(16).padStart(64, '0')}`;
 const input = (operation) => ({
@@ -11,6 +11,56 @@ const input = (operation) => ({
         'baseOracle', 'collateralOracle', 'basePriceInfo', 'collateralPriceInfo', 'clock', 'inputCoin']
         .map((role, i) => [role, address(10 + i)])),
     minimumOutput: '1', maximumFeeBps: '30', deadlineMs: '100000',
+});
+
+const terminal = (operation) => {
+    const value = input(operation);
+    delete value.maximumFeeBps;
+    value.corePackage = address(40);
+    value.reason = 'observed_venue_change';
+    value.objects.authority = address(41);
+    value.objects.adminCap = address(42);
+    const keys = operation === 'begin_shutdown' ? ['vault', 'protocol', 'authority', 'adminCap']
+        : operation === 'redeem_shutdown' ? ['vault', 'protocol', 'inputCoin', 'clock']
+        : operation === 'finalize_shutdown' ? ['vault', 'protocol', 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle', 'clock']
+        : ['vault', 'protocol', 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle', 'basePriceInfo', 'collateralPriceInfo', 'clock'];
+    value.objects = Object.fromEntries(keys.map((key) => [key, value.objects[key]]));
+    return value;
+};
+
+test('shutdown requires an explicit role witness and declared reason, without venue data', () => {
+    const value = terminal('begin_shutdown');
+    const plan = buildTerminalPlan(value);
+    assert.deepEqual(plan.commands.map((command) => command.target.split('::').slice(1).join('::')),
+        ['acl::sign_in', 'lifecycle::observed_venue_change_reason', 'vault::begin_shutdown']);
+    assert.deepEqual(plan.commands[2].arguments, [`@${value.objects.vault}`, `@${value.objects.protocol}`, 'witness', 'reason']);
+    assert.throws(() => buildTerminalPlan({...value, reason: 'liquidation'}), /declared reason/);
+});
+
+test('permissionless terminal plans exclude caller direction, size, dust write-off and claim fees', () => {
+    for (const operation of ['unwind', 'finalize_shutdown', 'redeem_shutdown']) {
+        const value = terminal(operation);
+        const plan = buildTerminalPlan(value);
+        assert.equal(plan.commands.length, 1);
+        assert.equal(plan.commands[0].target.split('::').at(-1), operation);
+        assert.throws(() => buildTerminalPlan({...value, side: 'short'}), /unexpected field/);
+        assert.throws(() => buildTerminalPlan({...value, maximumFeeBps: '1'}), /unexpected field/);
+        const args = renderUnsignedPtbArgs(value);
+        assert(args.includes('--serialize-unsigned-transaction'));
+        assert(!args.includes('--gas-budget'));
+        if (operation === 'redeem_shutdown') {
+            assert.equal(plan.commands[0].arguments.length, 6);
+            assert.deepEqual(plan.transfers, ['result']);
+        }
+    }
+});
+
+test('full liquidation, partial liquidation and ADL observations require human witness review, never automatic shutdown', () => {
+    for (const classification of ['full_liquidation', 'partial_liquidation', 'adl', 'unknown']) {
+        assert.equal(emergencyDecision({active: true, authenticatedUnexpectedChange: true, classification}), 'shutdown_role_review');
+    }
+    assert.equal(emergencyDecision({active: true, authenticatedUnexpectedChange: false, classification: 'full_liquidation'}), 'no_change');
+    assert.equal(emergencyDecision({active: false, authenticatedUnexpectedChange: true}), 'no_change');
 });
 
 test('mint and redemption bind public argument order and transfer only the returned native coin', () => {

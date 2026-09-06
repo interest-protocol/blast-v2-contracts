@@ -73,6 +73,17 @@ public struct CapturedSnapshot {
 
 // === Package Functions ===
 
+/// Authenticates raw terminal state without requiring a live price or positive equity.
+public(package) fun capture_checkpoint<Collateral>(
+    binding: &Binding, account: &Account<Collateral>, registry: &Registry,
+    clearing_house: &ClearingHouse<Collateral>, base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
+): Checkpoint {
+    binding.assert_exact(object::id(account), account::account_id(account), object::id(registry),
+        object::id(clearing_house), object::id(base_oracle), object::id(collateral_oracle),
+        type_name::with_original_ids<Collateral>());
+    read_checkpoint(account, clearing_house)
+}
+
 /// Captures one authenticated venue and Pyth valuation pair.
 ///
 /// The two Pyth objects are exact sources for the corresponding Aftermath
@@ -173,15 +184,7 @@ fun capture_<Collateral>(
     clock: &Clock,
     health: bool,
 ): CapturedSnapshot {
-    binding.assert_exact(
-        object::id(account),
-        account::account_id(account),
-        object::id(registry),
-        object::id(clearing_house),
-        object::id(base_oracle),
-        object::id(collateral_oracle),
-        type_name::with_original_ids<Collateral>(),
-    );
+    let checkpoint = capture_checkpoint(binding, account, registry, clearing_house, base_oracle, collateral_oracle);
 
     let params = clearing_house.market_params();
     let base_source_id = market::base_source_id(params);
@@ -267,28 +270,6 @@ fun capture_<Collateral>(
         assert_position_signs(signed_base, signed_quote_notional, position.is_long_or_flat())
     };
     let allocated_collateral = position.collateral();
-    let (funding_snapshot_long, funding_snapshot_short) = position.funding_rate_snapshots();
-    let (market_funding_long, market_funding_short) = market::cum_funding_rates(clearing_house.market_state());
-    let (pending_ask_base, pending_bid_base) = position.pending_base_amounts_by_side();
-    let checkpoint = venue_account::new_checkpoint(
-        account.collateral_balance(),
-        allocated_collateral,
-        signed_base,
-        signed_quote_notional,
-        funding_snapshot_long,
-        funding_snapshot_short,
-        market_funding_long,
-        market_funding_short,
-        market::lot_size(params),
-        pending_ask_base,
-        pending_bid_base,
-        position.pending_order_count(),
-        clearing_house.market_pause_mode(),
-        clearing_house.is_frozen(),
-        position.initial_margin_ratio(),
-        market::margin_ratio_initial(params),
-        market::margin_ratio_maintenance(params),
-    );
     let effective_imr = position::effective_initial_margin_ratio(position, market::margin_ratio_initial(params));
     let (margin, requirement) = position::compute_margin_and_requirement(position, collateral_fixed, mark_fixed, effective_imr, market::collateral_haircut(params));
     let pnl = position.unrealized_pnl(base_fixed);
@@ -359,6 +340,22 @@ public(package) fun checkpoint(self: &CapturedSnapshot): Checkpoint {
 public(package) fun finish_health(self: CapturedSnapshot): Checkpoint {
     let CapturedSnapshot { checkpoint, .. } = self;
     checkpoint
+}
+
+/// Supplies only authenticated prices and raw venue facts to insolvency-safe close policy.
+public(package) fun unwind_prices(self: CapturedSnapshot): (
+    observation::PriceObservation, observation::PriceObservation, Checkpoint, u256,
+) {
+    let CapturedSnapshot { base_price, base_confidence, base_timestamp,
+        collateral_price, collateral_confidence, collateral_timestamp, checkpoint, collateral_fixed, .. } = self;
+    (observation::new_price(base_price, base_confidence, base_timestamp),
+        observation::new_price(collateral_price, collateral_confidence, collateral_timestamp), checkpoint, collateral_fixed)
+}
+
+/// A terminal market close may realize losses, but cannot misattribute an unrelated funding mutation.
+public(package) fun assert_clean_funding(change: Change) {
+    assert!(match (change) { Change::Unexpected => false, _ => true },
+        blast_leverage_aftermath::errors::unresolved_checkpoint!());
 }
 
 fun into_observation(
@@ -691,6 +688,20 @@ fun classify_change_(
 }
 
 // === Private Functions ===
+
+/// Reads the one canonical raw position/account field inventory after source authentication.
+fun read_checkpoint<Collateral>(account: &Account<Collateral>, clearing_house: &ClearingHouse<Collateral>): Checkpoint {
+    let params = clearing_house.market_params();
+    let position = clearing_house.position(account::account_id(account));
+    let (base, quote) = position::base_and_quote_amounts(position);
+    let (snapshot_long, snapshot_short) = position.funding_rate_snapshots();
+    let (market_long, market_short) = market::cum_funding_rates(clearing_house.market_state());
+    let (ask, bid) = position.pending_base_amounts_by_side();
+    venue_account::new_checkpoint(account.collateral_balance(), position.collateral(), base, quote,
+        snapshot_long, snapshot_short, market_long, market_short, market::lot_size(params), ask, bid,
+        position.pending_order_count(), clearing_house.market_pause_mode(), clearing_house.is_frozen(),
+        position.initial_margin_ratio(), market::margin_ratio_initial(params), market::margin_ratio_maintenance(params))
+}
 
 /// Named IFixed operations decode signed collateral; raw checkpoint bits are never ordered.
 fun allocated_delta(before: &Checkpoint, after: &Checkpoint): Change {

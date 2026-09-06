@@ -48,8 +48,25 @@ native coins and finish atomically. Rebalance has no privileged keeper path,
 caller trade sizing or reward. An unresolved external change preserves the
 accepted economic checkpoint and emits a deduplicated diagnostic.
 
-Activation records the exact locked seed amount and explicit funder. Shutdown
-and terminal claims are not implemented by this active-lifecycle slice.
+Activation records the exact locked seed amount and explicit funder.
+`vault::begin_shutdown` requires a shutdown-role witness and no venue or oracle
+input. It irreversibly moves Active to Unwinding. Permissionless
+`operations::unwind` makes up to 16 bounded close-only market orders using fresh
+prices and the immutable emergency tolerance. A frozen market instead uses only
+the pinned direct settlement operation and authenticated settlement prices.
+`operations::finalize_shutdown` requires exact flat/no-order/settled-funding
+state, no negative or fractional collateral, and complete actual cash recovery.
+It seals Settled once; no terminal path reopens leverage.
+
+`vault::redeem_shutdown` burns native eligible shares and returns local
+`Coin<Collateral>` without venue access or fees. Locked seed is excluded from
+the denominator. Claims floor the fraction of remaining cash; the last gets
+all dust. A wholly zero cash pool permits an explicit zero-minimum burn, but a
+partial claim rounded to zero while cash remains aborts. With no eligible
+holders, all recovered cash goes once to the recorded seed funder, never the
+finalizer. Admin cash remains separate. See the
+[terminal local record](../../../docs/leverage-terminal-local.md) for events,
+observer-to-witness operation and the boundary of local evidence.
 
 Run **`bash scripts/verify.sh local`** for offline gates. The default/all lane
 includes external evidence gates and is not interchangeable with local testing.

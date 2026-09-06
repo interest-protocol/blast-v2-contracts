@@ -14,7 +14,7 @@ use blast_leverage_series_one::{
     bounded_value::{Self, BoundedValue},
     constants,
     lifecycle::{Self, Lifecycle},
-    observation::{Self, FundingSettlement, PositionObservation},
+    observation::{Self, FundingSettlement, PositionObservation, PriceObservation},
     policy::{PositionSide, TierPolicy},
     rebalance_math,
     series_one_domain::{Self, SERIES_ONE_DOMAIN},
@@ -718,6 +718,7 @@ public fun settle_funding<Product>(
     self: &mut State<Product>,
     settlement: FundingSettlement,
 ): (u64, u64) {
+    self.lifecycle.assert_can_sync();
     let (_, is_cost, amount) = settlement.unpack_funding();
 
     if (is_cost) {
@@ -766,15 +767,67 @@ public fun set_max_order_notional<Product>(
     previous
 }
 
-/// Disables new risk for an active Series1 product.
-///
-/// The adapter that owns this State must authorize the operation before this
-/// call. This transition cannot activate an uninitialized product, resume a
-/// reduced product, or begin shutdown.
-public fun enter_reduce_only<Product>(
-    self: &mut State<Product>,
-) {
-    self.lifecycle.enter_reduce_only();
+/// Irreversibly stops ordinary operations. The owning adapter authenticates shutdown authority.
+public fun begin_shutdown<Product>(self: &mut State<Product>) {
+    self.lifecycle.begin_shutdown();
+}
+
+/// Consumes the buffer book entry only after the adapter proves complete local cash recovery.
+public fun finalize_shutdown<Product>(self: &mut State<Product>, native_supply: u64, locked: u64): u64 {
+    assert!(native_supply >= locked, blast_leverage_series_one::errors::invalid_share_supply!());
+    self.lifecycle.finalize_shutdown();
+    self.maintenance_reserve = 0;
+    native_supply - locked
+}
+
+/// Fee-free claim against current cash and native supply, excluding the immutable seed.
+public fun shutdown_claim_quote<Product>(
+    self: &State<Product>, cash: u64, native_supply: u64, locked: u64, shares: u64, minimum: u64,
+): u64 {
+    self.lifecycle.assert_shutdown_redemption_allowed();
+    assert!(native_supply >= locked, blast_leverage_series_one::errors::invalid_share_supply!());
+    let eligible = native_supply - locked;
+    assert!(shares > 0 && shares <= eligible, blast_leverage_series_one::errors::invalid_share_amount!());
+    let output = cash.mul_div(shares, eligible);
+    assert!(cash == 0 || output > 0, blast_leverage_series_one::errors::zero_net_payout!());
+    assert!(output >= minimum, blast_leverage_series_one::errors::redemption_output_below_minimum!());
+    output
+}
+
+/// Authorizes only close-only venue progress before finalization.
+public fun assert_unwinding<Product>(self: &State<Product>) {
+    self.lifecycle.assert_shutdown_close_allowed();
+}
+
+/// Prices only a close-only order; insolvency and the buffer do not gate an exit.
+public fun unwind_constraints<Product>(
+    self: &State<Product>, base_index: PriceObservation, collateral_oracle: PriceObservation, now: u64,
+): (PositionSide, u64, u64, u64) {
+    self.assert_unwinding();
+    let (base_price, base_confidence, base_time) = base_index.unpack_price();
+    let (collateral_price, collateral_confidence, collateral_time) = collateral_oracle.unpack_price();
+    let valuation = self.tier_policy.valuation_policy();
+    valuation.assert_price_fresh(base_time, now);
+    valuation.assert_confidence_within_bound(base_confidence, base_price);
+    valuation.assert_price_fresh(collateral_time, now);
+    valuation.assert_confidence_within_bound(collateral_confidence, collateral_price);
+    (self.tier_policy.side(), self.max_order_notional.current(), base_price, collateral_price)
+}
+
+/// Shutdown uses its immutable wider bound without an active leverage/NAV prerequisite.
+public fun assert_unwind_execution<Product>(self: &State<Product>, reference: u64, executed: u64) {
+    self.assert_unwinding();
+    self.tier_policy.rebalance_policy().assert_execution_within_emergency_tolerance(reference, executed);
+}
+
+/// Rejects terminal claims before any adapter cash-field access.
+public fun assert_settled<Product>(self: &State<Product>) {
+    self.lifecycle.assert_shutdown_redemption_allowed();
+}
+
+/// Rejects venue synchronization after the local cash pool has been sealed.
+public fun assert_can_sync<Product>(self: &State<Product>) {
+    self.lifecycle.assert_can_sync();
 }
 
 // === Private Functions ===
@@ -932,39 +985,33 @@ public fun max_order_notional_for_testing<Product>(self: &State<Product>): (u64,
 }
 
 #[test_only]
-/// Forces shutdown-pending state for focused adapter tests.
-public fun set_shutdown_pending_for_testing<Product>(self: &mut State<Product>) {
-    self.lifecycle.set_shutdown_pending_for_testing();
+/// Forces Unwinding for focused adapter tests.
+public fun set_unwinding_for_testing<Product>(self: &mut State<Product>) {
+    self.lifecycle.set_unwinding_for_testing();
 }
 
 #[test_only]
-/// Returns whether the lifecycle is shutdown-pending.
-public fun is_shutdown_pending_for_testing<Product>(self: &State<Product>): bool {
-    self.lifecycle.is_shutdown_pending()
+/// Returns whether the lifecycle is Unwinding.
+public fun is_unwinding_for_testing<Product>(self: &State<Product>): bool {
+    self.lifecycle.is_unwinding()
 }
 
 #[test_only]
-/// Forces shutdown-settled state for focused monotonicity tests.
-public fun set_shutdown_settled_for_testing<Product>(self: &mut State<Product>) {
-    self.lifecycle = lifecycle::shutdown_settled_for_testing();
+/// Forces Settled for focused monotonicity tests.
+public fun set_settled_for_testing<Product>(self: &mut State<Product>) {
+    self.lifecycle = lifecycle::settled_for_testing();
 }
 
 #[test_only]
-/// Returns whether the lifecycle is shutdown-settled.
-public fun is_shutdown_settled_for_testing<Product>(self: &State<Product>): bool {
-    self.lifecycle.is_shutdown_settled()
+/// Returns whether the lifecycle is Settled.
+public fun is_settled_for_testing<Product>(self: &State<Product>): bool {
+    self.lifecycle.is_settled()
 }
 
 #[test_only]
 /// Forces active state for focused transition and adapter tests.
 public fun set_active_for_testing<Product>(self: &mut State<Product>) {
     self.lifecycle = lifecycle::active_for_testing();
-}
-
-#[test_only]
-/// Returns whether the lifecycle is reduce-only.
-public fun is_reduce_only_for_testing<Product>(self: &State<Product>): bool {
-    self.lifecycle.is_reduce_only()
 }
 
 #[test_only]

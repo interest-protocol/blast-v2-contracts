@@ -238,11 +238,11 @@ grep -q 'type_name::original_id<RiskModule>()' "$vault_file" \
 sed -n '/^public fun rotate_risk_module</,/^)/p' "$vault_file" \
   | grep -q '_risk_module: RiskModule,' \
   || fail "Risk rotation must consume the newly selected runtime witness."
-grep -q '^public fun enter_reduce_only<Product>($' "$vault_file" \
-  || fail "The adapter must expose the Series1 risk-admin degradation route."
-sed -n '/^public fun enter_reduce_only<Product>($/,/^}/p' "$vault_file" \
-  | grep -q 'admin_witness.assert_role(series_one_domain::risk_admin_role());' \
-  || fail "The adapter must authorize ReduceOnly before mutating Series1 state."
+grep -q '^public fun begin_shutdown<Product>($' "$vault_file" \
+  || fail "The adapter must expose irreversible shutdown."
+sed -n '/^public fun begin_shutdown<Product>($/,/^}/p' "$vault_file" \
+  | grep -q 'admin_witness.assert_role(series_one_domain::shutdown_admin_role());' \
+  || fail "Only shutdown-role authority may begin shutdown."
 sed -n '/^public fun rotate_risk_module</,/^}/p' "$vault_file" \
   | grep -q 'admin_witness.assert_role(series_one_domain::risk_admin_role());' \
   || fail "Risk rotation must require the Series1 risk-admin role."
@@ -690,6 +690,51 @@ for operation in mint redeem rebalance donate release_buffer; do
     && grep -q 'sync_health(' <<<"$operation_block" \
     || fail "$operation must check version and active lifecycle and reconcile funding."
 done
+for operation in unwind finalize_shutdown; do
+  operation_block="$(sed -n "/^public fun $operation</,/^}/p" "$operations_file")"
+  grep -q 'protocol.assert_current();' <<<"$operation_block" \
+    && grep -q 'vault.assert_unwinding();' <<<"$operation_block" \
+    && grep -q 'vault.assert_collateral_type<Product, Collateral>();' <<<"$operation_block" \
+    || fail "$operation must enforce version, irreversible lifecycle and exact collateral."
+  first_statement="$(sed -n '/^) {$/,$p' <<<"$operation_block" | sed -n '2p')"
+  [[ "$first_statement" == '    protocol.assert_current();' ]] \
+    || fail "$operation must check version before external access."
+  signature="$(sed -n '1,/^) {$/p' <<<"$operation_block")"
+  if grep -Eq 'AdminWitness|RiskModule|side:|size:|tolerance:|write_off:|amount:' <<<"$signature"; then
+    fail "$operation may expose no authority or caller economic choices."
+  fi
+done
+shutdown_block="$(sed -n '/^public fun begin_shutdown</,/^}/p' "$vault_file")"
+if grep -Eq 'Price|Oracle|Account|ClearingHouse|snapshot::|settle_' <<<"$shutdown_block"; then
+  fail "Beginning shutdown must not depend on venue or valuation availability."
+fi
+unwind_market_block="$(sed -n '/^fun unwind_market</,/^}/p' "$operations_file")"
+grep -Fq 'while (orders < MAX_ACTIVE_ORDERS && remaining > 0)' <<<"$unwind_market_block" \
+  && grep -Fq 'is_ask, requested, true, clock, ctx' <<<"$unwind_market_block" \
+  && grep -Fq 'actual_fill_notional(filled_quote, collateral_price)' <<<"$unwind_market_block" \
+  && grep -Fq 'vault.assert_unwind_execution' <<<"$unwind_market_block" \
+  && grep -Fq 'assert_reduction_checkpoint' <<<"$unwind_market_block" \
+  && grep -Fq 'remaining = remaining - filled;' <<<"$unwind_market_block" \
+  || fail "Normal unwind must be bounded, exact close-only, freshly priced and actual-fill capped."
+frozen_block="$(sed -n '/^fun unwind_frozen</,/^}/p' "$operations_file")"
+grep -Fq 'settlement_valuation_prices()' <<<"$frozen_block" \
+  && grep -Fq 'close_position_at_settlement_prices' <<<"$frozen_block" \
+  || fail "Frozen unwind must use only the pinned direct settlement operation."
+if grep -Eq 'execute_order|market_order|capture_health|PriceInfo' <<<"$frozen_block"; then
+  fail "Direct settlement must not masquerade as a market order or require a live Pyth object."
+fi
+claim_block="$(sed -n '/^public fun redeem_shutdown</,/^}/p' "$vault_file")"
+grep -Fq 'burn_redeemed_shares(shares)' <<<"$claim_block" \
+  && grep -Fq 'TerminalCashKey()' <<<"$claim_block" \
+  && grep -Fq 'self.share_supply() - locked' <<<"$claim_block" \
+  || fail "Terminal claims must consume native shares and actual local cash with locked seed excluded."
+if grep -Eq 'snapshot::|clearing_house|withdraw_collateral|retain_admin_cash|fee_bps' <<<"$claim_block"; then
+  fail "Terminal claims must require no venue and charge no protocol fee."
+fi
+for helper in complete_unwind complete_finalization; do
+  grep -q "^fun $helper<" "$operations_file" \
+    || fail "$helper is an operation-private completion boundary."
+done
 rebalance_block="$(sed -n '/^public fun rebalance</,/^}/p' "$operations_file")"
 redemption_block="$(sed -n '/^public fun redeem</,/^}/p' "$operations_file")"
 withdrawal_proof_line="$(grep -nF 'venue_account::assert_withdrawal_checkpoint(&receipt.unwound_checkpoint, &final_checkpoint, receipt.redemption_cash_required());' <<<"$redemption_block" | cut -d: -f1)"
@@ -719,7 +764,8 @@ for mutation in \
   'issue<Product: drop, RiskModule: drop>' \
   'rotate_risk_module<Product, RiskModule: drop>' \
   'set_max_order_notional<Product, RiskModule: drop>' \
-  'enter_reduce_only<Product>'; do
+  'begin_shutdown<Product>' \
+  'redeem_shutdown<Product, Collateral>'; do
   mutation_block="$(sed -n "/^public fun ${mutation//\//\\/}(/,/^}/p" "$vault_file")"
   awk '
     /^\).* \{$/ {

@@ -13,7 +13,7 @@ use blast_leverage_aftermath::{
     venue_account::{Self as venue_account, Binding, Checkpoint, VenueAccount},
 };
 use blast_leverage_series_one::{
-    observation::{Self as observation, PositionObservation},
+    observation::{Self as observation, PositionObservation, PriceObservation},
     policy::{PositionSide, TierPolicy},
     series_one_domain::{Self, SERIES_ONE_DOMAIN},
     state::{Self as series_state, DonationPlan, MintPlan, RebalancePlan, RedemptionPlan, State},
@@ -62,6 +62,9 @@ public struct MetadataKey<phantom Product>() has copy, drop, store;
 
 /// One native balance of the exact bound collateral, separate from venue equity.
 public struct AdminCashKey() has copy, drop, store;
+
+/// Native terminal holder cash, never mixed with the administrator's balance.
+public struct TerminalCashKey() has copy, drop, store;
 
 // === Public Functions ===
 
@@ -253,20 +256,72 @@ public fun set_max_order_notional<Product, RiskModule: drop>(
     );
 }
 
-/// Disables new risk through the Series1-wide risk administrator role.
-public fun enter_reduce_only<Product>(
+/// Irreversibly stops ordinary operations without requiring venue or oracle availability.
+public fun begin_shutdown<Product>(
     self: &mut Vault<Product>,
     protocol: &Protocol,
     admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
+    reason: blast_leverage_series_one::lifecycle::ShutdownReason,
 ) {
     protocol.assert_current();
-    admin_witness.assert_role(series_one_domain::risk_admin_role());
+    admin_witness.assert_role(series_one_domain::shutdown_admin_role());
 
-    self.series_state.enter_reduce_only();
-    events::reduce_only_entered<Product>(self.id.to_inner());
+    self.series_state.begin_shutdown();
+    events::shutdown_begun<Product>(self.id.to_inner(), reason);
+}
+
+/// Burns native eligible shares for local terminal collateral; no venue or oracle access.
+public fun redeem_shutdown<Product, Collateral>(
+    self: &mut Vault<Product>, protocol: &Protocol, shares: Coin<Vault<Product>>,
+    minimum_collateral: u64, deadline_ms: u64, clock: &Clock, ctx: &mut TxContext,
+): Coin<Collateral> {
+    protocol.assert_current();
+    self.series_state.assert_settled();
+    assert!(clock.timestamp_ms() <= deadline_ms, blast_leverage_aftermath::errors::deadline_expired!());
+    self.assert_collateral_type<Product, Collateral>();
+
+    let (locked, _) = self.seed_facts();
+    let cash: &Balance<Collateral> = dynamic_field::borrow(&self.id, TerminalCashKey());
+    let output = self.series_state.shutdown_claim_quote(cash.value(), self.share_supply(), locked, shares.value(), minimum_collateral);
+
+    let burned = self.burn_redeemed_shares(shares);
+    let cash: &mut Balance<Collateral> = dynamic_field::borrow_mut(&mut self.id, TerminalCashKey());
+    let output_coin = coin::from_balance(cash.split(output), ctx);
+    let remaining = cash.value();
+
+    events::shutdown_redeemed<Product>(self.id.to_inner(), burned, output, remaining, self.share_supply() - locked);
+    output_coin
 }
 
 // === Package Functions ===
+
+/// Seals actual recovered holder cash only after an empty final venue checkpoint.
+public(package) fun complete_shutdown<Product, Collateral>(
+    self: &mut Vault<Product>, recovered: Coin<Collateral>, checkpoint: Checkpoint,
+) {
+    self.series_state.assert_unwinding();
+    self.assert_collateral_type<Product, Collateral>();
+    assert!(checkpoint.recoverable_terminal_cash() == 0, blast_leverage_aftermath::errors::terminal_venue_unsettled!());
+
+    let (locked, funder) = self.seed_facts();
+    let supply = self.share_supply();
+
+    let eligible = self.series_state.finalize_shutdown(supply, locked);
+    self.replace_venue_checkpoint(checkpoint);
+    let recovered_amount = recovered.value();
+    let cash = if (eligible == 0) {
+        transfer::public_transfer(recovered, funder);
+        balance::zero()
+    } else {
+        recovered.into_balance()
+    };
+    dynamic_field::add(&mut self.id, TerminalCashKey(), cash);
+    if (self.note_checkpoint_health(&checkpoint, true)) {
+        events::health_synchronized<Product>(self.id.to_inner(), events::checkpoint_reconciled_reason(), checkpoint);
+    };
+    events::shutdown_finalized<Product>(self.id.to_inner(), recovered_amount, eligible,
+        if (eligible == 0) { option::some(funder) } else { option::none() }, checkpoint);
+}
 
 /// Checks the caller's rate ceiling without treating share atoms as collateral.
 public(package) fun assert_user_fee_limit<Product>(self: &Vault<Product>, mint: bool, maximum: u64) {
@@ -405,6 +460,28 @@ public(package) fun complete_mint<Product>(
 /// Cheap active lifecycle guard shared by public financial operations.
 public(package) fun assert_active<Product>(self: &Vault<Product>) {
     self.series_state.assert_active();
+}
+
+/// Synchronization can reconcile only an active or unwinding venue account.
+public(package) fun assert_can_sync<Product>(self: &Vault<Product>) {
+    self.series_state.assert_can_sync();
+}
+
+/// Stops every terminal venue call outside the irreversible unwind phase.
+public(package) fun assert_unwinding<Product>(self: &Vault<Product>) {
+    self.series_state.assert_unwinding();
+}
+
+/// Consumes authenticated oracle facts through the terminal Series1 policy.
+public(package) fun unwind_constraints<Product>(
+    self: &Vault<Product>, base: PriceObservation, collateral: PriceObservation, now: u64,
+): (PositionSide, u64, u64, u64) {
+    self.series_state.unwind_constraints(base, collateral, now)
+}
+
+/// Enforces the immutable emergency bound on an actual venue fill price.
+public(package) fun assert_unwind_execution<Product>(self: &Vault<Product>, reference: u64, executed: u64) {
+    self.series_state.assert_unwind_execution(reference, executed);
 }
 
 /// Validates pre-donation pricing before any asset-bearing venue interaction.
@@ -714,6 +791,12 @@ fun treasury_cap<Product>(self: &Vault<Product>): &TreasuryCap<Vault<Product>> {
 // === Test-Only Functions ===
 
 #[test_only]
+public fun terminal_cash_for_testing<Product, Collateral>(self: &Vault<Product>): u64 {
+    let cash: &Balance<Collateral> = dynamic_field::borrow(&self.id, TerminalCashKey());
+    cash.value()
+}
+
+#[test_only]
 fun metadata_cap<Product>(self: &Vault<Product>): &MetadataCap<Vault<Product>> {
     dynamic_object_field::borrow(&self.id, MetadataKey<Product>())
 }
@@ -751,11 +834,6 @@ public fun assert_venue_account_installed_for_testing(is_installed: bool) {
 #[test_only]
 public fun set_active_for_testing<Product>(self: &mut Vault<Product>) {
     self.series_state.set_active_for_testing();
-}
-
-#[test_only]
-public fun is_reduce_only_for_testing<Product>(self: &Vault<Product>): bool {
-    self.series_state.is_reduce_only_for_testing()
 }
 
 #[test_only]
@@ -803,8 +881,8 @@ public fun share_supply_for_testing<Product>(self: &Vault<Product>): u64 {
 }
 
 #[test_only]
-public fun set_shutdown_pending_for_testing<Product>(self: &mut Vault<Product>) {
-    self.series_state.set_shutdown_pending_for_testing();
+public fun set_unwinding_for_testing<Product>(self: &mut Vault<Product>) {
+    self.series_state.set_unwinding_for_testing();
 }
 
 #[test_only]
@@ -826,6 +904,15 @@ public fun mint_locked_shares_for_testing<Product>(
 }
 
 #[test_only]
-public fun is_shutdown_pending_for_testing<Product>(self: &Vault<Product>): bool {
-    self.series_state.is_shutdown_pending_for_testing()
+/// Issues fixture shares through the same retained native TreasuryCap as production mints.
+public fun mint_eligible_shares_for_testing<Product>(
+    self: &mut Vault<Product>, amount: u64, ctx: &mut TxContext,
+): Coin<Vault<Product>> {
+    let treasury_cap = dynamic_object_field::borrow_mut(&mut self.id, TreasuryKey<Product>());
+    coin::mint(treasury_cap, amount, ctx)
+}
+
+#[test_only]
+public fun is_unwinding_for_testing<Product>(self: &Vault<Product>): bool {
+    self.series_state.is_unwinding_for_testing()
 }

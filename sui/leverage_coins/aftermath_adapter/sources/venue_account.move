@@ -65,6 +65,52 @@ public struct VenueAccount has store {
 
 // === Package Functions ===
 
+/// Returns every recoverable atomic USDC unit only after exact venue finality.
+/// Named IFixed decoding excludes liabilities before exact atom conversion.
+public(package) fun recoverable_terminal_cash(self: &Checkpoint): u64 {
+    let (negative, magnitude) = if (self.allocated_collateral == 0) {
+        (false, 0)
+    } else {
+        (ifixed::is_neg(self.allocated_collateral), ifixed::abs(self.allocated_collateral))
+    };
+    recoverable_cash_from_parts(self, negative, magnitude)
+}
+
+/// Complete recovery changes only the two collateral locations, by the actual returned coin.
+public(package) fun assert_terminal_withdrawal(before: &Checkpoint, after: &Checkpoint, amount: u64) {
+    assert!(before.recoverable_terminal_cash() == amount,
+        blast_leverage_aftermath::errors::terminal_venue_unsettled!());
+    let mut expected = *before;
+    expected.free_collateral = 0;
+    expected.allocated_collateral = 0;
+    assert!(&expected == after, blast_leverage_aftermath::errors::terminal_venue_unsettled!());
+}
+
+/// A venue-enabled frozen settlement can realize cash, but must finish exactly flat and order-free.
+public(package) fun assert_direct_settlement_close(before: &Checkpoint, after: &Checkpoint) {
+    before.assert_no_orders();
+    after.assert_no_orders();
+    assert!(before.market_frozen && before.signed_base != 0
+        && after.signed_base == 0 && after.signed_quote_notional == 0
+        && after.funding_snapshot_long == after.market_funding_long
+        && after.funding_snapshot_short == after.market_funding_short,
+        blast_leverage_aftermath::errors::terminal_venue_unsettled!());
+    let mut expected = *before;
+    expected.signed_base = 0;
+    expected.signed_quote_notional = 0;
+    expected.free_collateral = after.free_collateral;
+    expected.allocated_collateral = after.allocated_collateral;
+    expected.funding_snapshot_long = after.funding_snapshot_long;
+    expected.funding_snapshot_short = after.funding_snapshot_short;
+    assert!(&expected == after, blast_leverage_aftermath::errors::terminal_venue_unsettled!());
+}
+
+/// Neither an ordinary close nor a direct settlement may adopt standing orders.
+public(package) fun assert_no_orders(self: &Checkpoint) {
+    assert!(self.pending_ask_base == 0 && self.pending_bid_base == 0 && self.pending_order_count == 0,
+        blast_leverage_aftermath::errors::terminal_venue_unsettled!());
+}
+
 /// Withdraws the exact payout, using free collateral before a bounded deallocation.
 public(package) fun withdraw<Collateral>(
     self: &VenueAccount, account: &mut Account<Collateral>, registry: &Registry,
@@ -458,6 +504,22 @@ public(package) fun replace_checkpoint(
 
 // === Private Functions ===
 
+fun recoverable_cash_from_parts(self: &Checkpoint, negative: bool, magnitude: u256): u64 {
+    assert!(
+        self.signed_base == 0 && self.signed_quote_notional == 0
+            && self.pending_ask_base == 0 && self.pending_bid_base == 0
+            && self.pending_order_count == 0
+            && self.funding_snapshot_long == self.market_funding_long
+            && self.funding_snapshot_short == self.market_funding_short,
+        blast_leverage_aftermath::errors::terminal_venue_unsettled!(),
+    );
+    let capacity = (std::u64::max_value!() - self.free_collateral) as u256;
+    assert!(!negative && magnitude <= capacity * 1_000_000_000_000
+        && magnitude % 1_000_000_000_000 == 0,
+        blast_leverage_aftermath::errors::terminal_venue_unsettled!());
+    self.free_collateral + ((magnitude / 1_000_000_000_000) as u64)
+}
+
 /// Checks every unrelated field after the caller proves the signed collateral delta.
 fun assert_cash_checkpoint(before: &Checkpoint, after: &Checkpoint, free: u64) {
     let mut expected = *before;
@@ -492,6 +554,12 @@ fun assert_market_account<Collateral>(
 }
 
 // === Test-Only Functions ===
+
+/// Decoded dependency-port values; the production wrapper always uses named IFixed decoding.
+#[test_only]
+public(package) fun recoverable_cash_for_testing(self: &Checkpoint, negative: bool, magnitude: u256): u64 {
+    recoverable_cash_from_parts(self, negative, magnitude)
+}
 
 /// Builds real binding/checkpoint custody around the unavailable local cap.
 ///

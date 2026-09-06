@@ -328,3 +328,15 @@ macro public(package) fun invalid_seed_funder(): u64 { 52 }
 const EUnresolvedCheckpoint: u64 = 53;
 
 macro public(package) fun unresolved_checkpoint(): u64 { 53 }
+
+#[test_only]
+/// Terminal recovery requires exact flat exposure, settled liabilities and integral cash.
+const ETerminalVenueUnsettled: u64 = 54;
+
+macro public(package) fun terminal_venue_unsettled(): u64 { 54 }
+
+#[test_only]
+/// A close requires positive exact whole-lot base in the bound product direction.
+const EInvalidUnwindExposure: u64 = 55;
+
+macro public(package) fun invalid_unwind_exposure(): u64 { 55 }

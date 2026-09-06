@@ -15,6 +15,37 @@ const HEALTH_REASON_UNEXPECTED_CHECKPOINT: u8 = 1;
 
 // === Public Structs ===
 
+/// Completed close-only progress with exact raw venue effects.
+/// Ordinary market closes expose the isolated funding checkpoint and filled quote.
+/// Direct frozen settlement has neither a market order nor a synthetic funding/fill attribution.
+public struct UnwindProgress<phantom Product> has copy, drop {
+    vault_id: ID,
+    before: Checkpoint,
+    after_funding: Option<Checkpoint>,
+    after: Checkpoint,
+    market_orders: u64,
+    filled_quote: Option<u256>,
+}
+
+/// Actual recovered holder cash and frozen eligible supply after venue finality.
+/// A beneficiary is present only for the zero-eligible-supply fallback transfer.
+public struct ShutdownFinalized<phantom Product> has copy, drop {
+    vault_id: ID,
+    recovered_cash: u64,
+    eligible_supply: u64,
+    seed_funder_payment: Option<address>,
+    checkpoint: Checkpoint,
+}
+
+/// Completed native share burn and fee-free local collateral payout.
+public struct ShutdownRedeemed<phantom Product> has copy, drop {
+    vault_id: ID,
+    shares: u64,
+    cash_paid: u64,
+    cash_remaining: u64,
+    eligible_remaining: u64,
+}
+
 /// Completed native share burn and exact collateral payout after attributable unwind.
 public struct Redeemed<phantom Product> has copy, drop {
     vault_id: ID,
@@ -137,9 +168,10 @@ public struct MaxOrderNotionalUpdated<phantom Product> has copy, drop {
     new_current: u64,
 }
 
-/// Emitted after the Series1 risk administrator disables new risk.
-public struct ReduceOnlyEntered<phantom Product> has copy, drop {
+/// Emitted after shutdown-role authorization permanently stops ordinary operations.
+public struct ShutdownBegun<phantom Product> has copy, drop {
     vault_id: ID,
+    reason: blast_leverage_series_one::lifecycle::ShutdownReason,
 }
 
 /// Completed live-setting update; immutable caps and existing balances do not change.
@@ -391,13 +423,53 @@ public(package) fun max_order_notional_updated<Product>(
     );
 }
 
-public(package) fun reduce_only_entered<Product>(vault_id: ID) {
+public(package) fun shutdown_finalized<Product>(
+    vault_id: ID, recovered_cash: u64, eligible_supply: u64, seed_funder_payment: Option<address>, checkpoint: Checkpoint,
+) {
+    blast_leverage_aftermath::events_wrapper::emit_event(ShutdownFinalized<Product> {
+        vault_id, recovered_cash, eligible_supply, seed_funder_payment, checkpoint,
+    });
+}
+
+public(package) fun unwind_progress<Product>(
+    vault_id: ID, before: Checkpoint, after_funding: Option<Checkpoint>, after: Checkpoint,
+    market_orders: u64, filled_quote: Option<u256>,
+) {
+    blast_leverage_aftermath::events_wrapper::emit_event(UnwindProgress<Product> {
+        vault_id, before, after_funding, after, market_orders, filled_quote,
+    });
+}
+
+public(package) fun shutdown_redeemed<Product>(
+    vault_id: ID, shares: u64, cash_paid: u64, cash_remaining: u64, eligible_remaining: u64,
+) {
+    blast_leverage_aftermath::events_wrapper::emit_event(ShutdownRedeemed<Product> {
+        vault_id, shares, cash_paid, cash_remaining, eligible_remaining,
+    });
+}
+
+public(package) fun shutdown_begun<Product>(vault_id: ID, reason: blast_leverage_series_one::lifecycle::ShutdownReason) {
     blast_leverage_aftermath::events_wrapper::emit_event(
-        ReduceOnlyEntered<Product> { vault_id },
+        ShutdownBegun<Product> { vault_id, reason },
     );
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+public fun unwind_progress_fields<Product>(self: &UnwindProgress<Product>): (ID, Checkpoint, Option<Checkpoint>, Checkpoint, u64, Option<u256>) {
+    (self.vault_id, self.before, self.after_funding, self.after, self.market_orders, self.filled_quote)
+}
+
+#[test_only]
+public fun shutdown_finalized_fields<Product>(self: &ShutdownFinalized<Product>): (ID, u64, u64, Option<address>, Checkpoint) {
+    (self.vault_id, self.recovered_cash, self.eligible_supply, self.seed_funder_payment, self.checkpoint)
+}
+
+#[test_only]
+public fun shutdown_redeemed_fields<Product>(self: &ShutdownRedeemed<Product>): (ID, u64, u64, u64, u64) {
+    (self.vault_id, self.shares, self.cash_paid, self.cash_remaining, self.eligible_remaining)
+}
 
 #[test_only]
 public fun minted_checkpoint_fields<Product>(self: &Minted<Product>): (ID, Checkpoint) {
@@ -564,8 +636,13 @@ public fun max_order_notional_updated_fields<Product>(
 }
 
 #[test_only]
-public fun reduce_only_entered_vault_id<Product>(
-    self: &ReduceOnlyEntered<Product>,
+public fun shutdown_reason<Product>(self: &ShutdownBegun<Product>): blast_leverage_series_one::lifecycle::ShutdownReason {
+    self.reason
+}
+
+#[test_only]
+public fun shutdown_begun_vault_id<Product>(
+    self: &ShutdownBegun<Product>,
 ): ID {
     self.vault_id
 }

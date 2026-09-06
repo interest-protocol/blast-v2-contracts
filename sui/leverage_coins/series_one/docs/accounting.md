@@ -264,21 +264,19 @@ and exactly once.
 The reserve is bookkeeping inside a margin account, not bankruptcy-remote
 custody. A non-funding loss can physically impair the account. Ordinary priced
 operations require `maintenance_reserve <= venue_equity`; an observed breach
-must degrade the lifecycle through a separate successful health transition,
-not clamp NAV and continue. The reserve is senior to the whole of shareholder
-NAV: a loss that consumes NAV exactly leaves holders at zero while the reserve,
-funded by their own mint and redemption fees, remains in the account with no
-release path. No admin or keeper can claim the reserve. A future shutdown
-transition may reclassify the remaining reserve into distributable cash only
-after it proves a flat account, no pending orders, and no unsettled funding.
-That required release path is not implemented in Phase 1 and is a release
-gate, not deferred work.
+fails priced operations closed, without clamping NAV or changing lifecycle.
+Health reports authenticated checkpoint faults without declaring liquidation.
+Only a shutdown-role witness starts the irreversible Active → Unwinding →
+Settled path. No admin or keeper can claim the buffer book entry.
 
-No lifecycle state models an impaired vault. `ReduceOnly` still permits
-full-NAV redemption and `ShutdownPending` halts it, so on a reserve-underwater
-account the integrator chooses between those two; `shareholder_nav` failing
-closed with code 16 is what stops redemptions at an unimpaired price until the
-Series adds a loss state or accepts the shutdown path as the answer.
+Finalization consumes that entry into actual recovered holder cash only after
+the adapter proves exact flat exposure, no orders, settled funding and
+liabilities, and complete cash withdrawal. Final claims use native treasury
+supply minus locked seed, not active shareholder NAV or a second supply ledger.
+They floor each remaining-cash fraction, charge no fee and give the final
+eligible claimant all remaining cash. No eligible supply sends all holder cash
+to the immutable seed funder. Admin collateral is separate and never enters
+the holder pool.
 
 ### Priced-operation predicates and health synchronization
 

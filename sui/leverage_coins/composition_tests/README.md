@@ -12,3 +12,12 @@ execute and are not deployed entrypoints.
 
 Submitted both-direction venue composition, downstream-failure rollback and
 terminal trading evidence remain outside the local suite; see the release record.
+
+## Terminal consumer boundary
+
+`sell_and_redeem_shutdown` compiles the launchpad's returned native Vault Quote
+directly into the terminal claim ABI, with no venue or oracle objects. The
+native long/short buy-sell tests exercise launch custody independently of Vault
+lifecycle. Retirement does not add transfer restrictions or alter Quote
+admission, pools, or launchpad authority. The helper is a compile-only consumer
+contract, not submitted venue evidence.

@@ -157,8 +157,8 @@ grep -q 'lifecycle: lifecycle::new(),' "$state_file" \
   || fail "Every new Series state must start uninitialized."
 grep -q '^public fun set_max_order_notional<Product>($' "$state_file" \
   || fail "Series state must own bounded maximum-order-notional mutation."
-grep -q '^public fun enter_reduce_only<Product>($' "$state_file" \
-  || fail "Series state must own the ReduceOnly lifecycle transition."
+grep -Fq 'public fun begin_shutdown<Product>(' "$state_file" \
+  || fail "Series state must own the irreversible shutdown transition."
 grep -q '^use blast_admin::acl::AdminWitness;$' "$state_file" \
   || fail "State must import the shared AdminWitness without an alias."
 grep -q 'admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,' "$state_file" \
@@ -240,7 +240,14 @@ expected_state_public="$(printf '%s\n' \
   complete_mint \
   complete_rebalance \
   complete_redemption \
-  enter_reduce_only \
+  begin_shutdown \
+  finalize_shutdown \
+  shutdown_claim_quote \
+  assert_unwinding \
+  assert_unwind_execution \
+  assert_settled \
+  assert_can_sync \
+  unwind_constraints \
   fee_allocation \
   fee_settings \
   initialization_constraints \
@@ -323,10 +330,10 @@ expected_initialization_validator_signature='funvalidated_initialization_nav<Pro
 actual_lifecycle_construction="$(
   production_lines "$lifecycle_file" \
     | grep -vE '=>' \
-    | sed -nE 's/^[0-9]+:[[:space:]]*(.*Lifecycle::(Active|ShutdownSettled).*)$/\1/p'
+    | sed -nE 's/^[0-9]+:[[:space:]]*(.*Lifecycle::(Active|Unwinding|Settled).*)$/\1/p'
 )"
-[[ "$actual_lifecycle_construction" == '*self = Lifecycle::Active;' ]] \
-  || fail "Only lifecycle activation may construct Active; ShutdownSettled stays test-only."
+[[ "$actual_lifecycle_construction" == $'*self = Lifecycle::Active;\n*self = Lifecycle::Unwinding;\n*self = Lifecycle::Settled;' ]] \
+  || fail "Only the three forward transitions may construct initialized lifecycle variants."
 
 activation_calls=0
 for source_file in $(find "$package_dir/sources" -type f -name '*.move' | sort); do
@@ -338,7 +345,7 @@ for source_file in $(find "$package_dir/sources" -type f -name '*.move' | sort);
     )"
     activation_calls=$((activation_calls + count))
     if production_lines "$source_file" \
-      | grep -Eq 'Lifecycle::(Uninitialized|Active|ReduceOnly|ShutdownPending|ShutdownSettled)'; then
+      | grep -Eq 'Lifecycle::(Uninitialized|Active|Unwinding|Settled)'; then
       fail "Only lifecycle.move may construct a production Lifecycle variant."
     fi
   fi

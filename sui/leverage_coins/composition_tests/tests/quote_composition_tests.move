@@ -97,6 +97,18 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
 
 // === Compile-Only Composition Contracts ===
 
+/// External Quote trading is independent of retirement; returned shares can enter a local claim.
+/// This typechecks the actual terminal ABI without requiring a venue or oracle object.
+public fun sell_and_redeem_shutdown<Product, Collateral, Meme>(
+    market: &mut Launch<Meme, Vault<Product>>, version: &PackageVersion,
+    runtime: &RuntimeConfig, meme: Coin<Meme>, minimum_shares: u64,
+    vault: &mut Vault<Product>, protocol: &Protocol,
+    minimum_cash: u64, deadline: u64, clock: &Clock, ctx: &mut TxContext,
+): Coin<Collateral> {
+    let shares = market.sell(version, runtime, meme, minimum_shares, ctx);
+    vault.redeem_shutdown(protocol, shares, minimum_cash, deadline, clock, ctx)
+}
+
 /// Typechecks the atomic mint -> launch buy handoff; requires authorized live objects to run.
 public fun mint_and_buy<Product, Collateral, Meme>(
     vault: &mut Vault<Product>, protocol: &Protocol, account: &mut Account<Collateral>,

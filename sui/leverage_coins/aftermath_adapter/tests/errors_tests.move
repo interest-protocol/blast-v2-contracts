@@ -61,4 +61,6 @@ fun active_lifecycle_error_registry_is_stable() {
     assert_eq!(errors::seed_already_recorded!(), 51);
     assert_eq!(errors::invalid_seed_funder!(), 52);
     assert_eq!(errors::unresolved_checkpoint!(), 53);
+    assert_eq!(errors::terminal_venue_unsettled!(), 54);
+    assert_eq!(errors::invalid_unwind_exposure!(), 55);
 }
