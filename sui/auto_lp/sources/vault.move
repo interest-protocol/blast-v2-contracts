@@ -1,26 +1,25 @@
 /// Irrevocable creator-cap custody, public fee collection and executor-authorized deposits.
+///
+/// This package has no administration of its own. It is published immutably in
+/// one transaction that consumes its `UpgradeCap`, so there is no local
+/// generation to advance, no control object, and no witness that reaches
+/// anything here. Every version input is the external package's own: each
+/// upstream package still refuses to serve stale bytecode.
 module blast_fun_auto_lp::vault;
 
 use blast_fun::{
-    acl::AdminWitness,
     creator_authority::CreatorCap,
     launch::Launch,
     package_version::PackageVersion
 };
 use blast_fun_dex::{migration::LockedLpVault, pool::{Self, Factory, Pool, Position}};
-use blast_fun_migrators::vault::LpVault;
+use blast_fun_migrators::{package_version::PackageVersion as MigratorsVersion, vault::LpVault};
 use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, dynamic_object_field, event};
-
-// === Constants ===
-
-const PACKAGE_VERSION: u64 = 1;
 
 // === Errors ===
 
-#[error(code = 0)]
-const EWrongVersion: vector<u8> = b"AutoLP generation must match the active package version.";
-#[error(code = 1)]
-const EVersionOverflow: vector<u8> = b"AutoLP generation cannot overflow.";
+// Codes 0 and 1 retired: this package holds no generation of its own, so it
+// raises neither a local mismatch nor a local overflow.
 #[error(code = 2)]
 const EWrongPool: vector<u8> = b"AutoLP can operate only on its enrolled native pool.";
 #[error(code = 3)]
@@ -35,9 +34,6 @@ const EUnauthorizedExecutor: vector<u8> =
 const EMaximumInput: vector<u8> = b"Actual paired deposit exceeds the executor maximum input.";
 
 // === Public Types ===
-
-/// Publication-only singleton controlling operational generation, with no pause authority.
-public struct Control has key { id: UID, version: u64 }
 
 /// Sealed child names preserve discoverability without exposing either authority.
 public struct CreatorCapKey() has copy, drop, store;
@@ -90,28 +86,17 @@ public struct Compounded has copy, drop {
     quote_total: u64,
 }
 
-/// Activates only the exact next compiled generation after an upgrade.
-public struct VersionActivated has copy, drop { previous_version: u64, version: u64 }
-
-// === Private Initialization ===
-
-fun init(ctx: &mut TxContext) {
-    transfer::share_object(new_control(ctx));
-}
-
 // === Public Functions ===
 
 /// Permanently consumes creator authority and pins the executor controlling deposit timing.
 /// The executor receives no principal, fee, position or creator-cap withdrawal right.
 public fun new<Meme, Quote>(
-    control: &Control,
     creator_cap: CreatorCap<Meme>,
     pool: &Pool<Meme, Quote>,
     factory: &Factory,
     executor: address,
     ctx: &mut TxContext,
 ): Vault<Meme, Quote> {
-    control.assert_current();
     factory.assert_current();
     assert!(executor != @0x0, EInvalidExecutor);
     let pool_id = object::id(pool);
@@ -144,12 +129,10 @@ public fun share<Meme, Quote>(self: Vault<Meme, Quote>) { transfer::share_object
 /// Collects only the launch's creator fees; upstream version and nonempty checks apply.
 public fun collect_curve<Meme, Quote>(
     self: &mut Vault<Meme, Quote>,
-    control: &Control,
     launch: &mut Launch<Meme, Quote>,
     version: &PackageVersion,
     ctx: &mut TxContext,
 ) {
-    control.assert_current();
     let cap = dynamic_object_field::borrow<_, CreatorCap<Meme>>(&self.id, CreatorCapKey());
     let (meme, quote) = launch.claim_creator_fees(version, cap, ctx);
     self.accept_fees(object::id(launch), meme, quote);
@@ -157,27 +140,25 @@ public fun collect_curve<Meme, Quote>(
 
 /// Collects accrued creator fees from the existing external LP vault.
 /// Venue harvesting remains upstream and may be composed before this call.
+/// The Migrators generation is that package's own, checked by that package.
 public fun collect_external_lp<Meme, Quote>(
     self: &mut Vault<Meme, Quote>,
-    control: &Control,
     source: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
     ctx: &mut TxContext,
 ) {
-    control.assert_current();
     let cap = dynamic_object_field::borrow<_, CreatorCap<Meme>>(&self.id, CreatorCapKey());
-    let (meme, quote) = source.claim_creator_fees(cap, ctx);
+    let (meme, quote) = source.claim_creator_fees(migrators_version, cap, ctx);
     self.accept_fees(object::id(source), meme, quote);
 }
 
 /// Collects accrued creator fees from the native migration's locked position.
 public fun collect_native_lp<Meme, Quote>(
     self: &mut Vault<Meme, Quote>,
-    control: &Control,
     source: &mut LockedLpVault<Meme, Quote>,
     factory: &Factory,
     ctx: &mut TxContext,
 ) {
-    control.assert_current();
     let cap = dynamic_object_field::borrow<_, CreatorCap<Meme>>(&self.id, CreatorCapKey());
     let (meme, quote) = source.claim_creator_fees(cap, factory, ctx);
     self.accept_fees(object::id(source), meme, quote);
@@ -186,12 +167,10 @@ public fun collect_native_lp<Meme, Quote>(
 /// Collects this vault's own position fees; an empty claim is a safe no-op.
 public fun collect_own_lp<Meme, Quote>(
     self: &mut Vault<Meme, Quote>,
-    control: &Control,
     pool: &mut Pool<Meme, Quote>,
     factory: &Factory,
     ctx: &mut TxContext,
 ) {
-    control.assert_current();
     factory.assert_current();
     self.assert_pool(pool);
     let position = dynamic_object_field::borrow_mut<_, Position<Meme, Quote>>(
@@ -205,11 +184,9 @@ public fun collect_own_lp<Meme, Quote>(
 /// Contributes either asset without creating a withdrawal right.
 public fun contribute<Meme, Quote>(
     self: &mut Vault<Meme, Quote>,
-    control: &Control,
     meme: Coin<Meme>,
     quote: Coin<Quote>,
 ) {
-    control.assert_current();
     let meme_amount = meme.value();
     let quote_amount = quote.value();
     self.meme.join(meme.into_balance());
@@ -230,7 +207,6 @@ public fun contribute<Meme, Quote>(
 /// One-sided and sub-share balances stay in custody. No balancing swap is performed.
 public fun compound<Meme, Quote>(
     self: &mut Vault<Meme, Quote>,
-    control: &Control,
     pool: &mut Pool<Meme, Quote>,
     factory: &Factory,
     max_meme: u64,
@@ -240,12 +216,11 @@ public fun compound<Meme, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    control.assert_current();
     factory.assert_current();
     self.assert_pool(pool);
     assert!(ctx.sender() == self.executor, EUnauthorizedExecutor);
     assert!(clock.timestamp_ms() <= deadline_ms, EDeadlineExpired);
-    self.collect_own_lp(control, pool, factory, ctx);
+    self.collect_own_lp(pool, factory, ctx);
     let (meme_used, quote_used, shares) = pool.deposit_amounts(
         self.meme.value(),
         self.quote.value(),
@@ -279,22 +254,7 @@ public fun compound<Meme, Quote>(
     });
 }
 
-/// Live launchpad administration activates exactly the next generation this code implements.
-public fun activate(self: &mut Control, _: &AdminWitness) {
-    let previous_version = self.version;
-    let version = previous_version.checked_add(1).destroy_or!(abort EVersionOverflow);
-    assert!(version == PACKAGE_VERSION, EWrongVersion);
-    self.version = version;
-    event::emit(VersionActivated { previous_version, version });
-}
-
 // === Private Functions ===
-
-fun assert_current(self: &Control) { assert!(self.version == PACKAGE_VERSION, EWrongVersion) }
-
-fun new_control(ctx: &mut TxContext): Control {
-    Control { id: object::new(ctx), version: PACKAGE_VERSION }
-}
 
 fun assert_pool<Meme, Quote>(self: &Vault<Meme, Quote>, pool: &Pool<Meme, Quote>) {
     assert!(self.pool_id == object::id(pool), EWrongPool);
@@ -323,12 +283,6 @@ fun accept_fees<Meme, Quote>(
 }
 
 // === Test-Only Functions ===
-
-#[test_only]
-public fun new_control_for_testing(ctx: &mut TxContext): Control { new_control(ctx) }
-
-#[test_only]
-public fun set_version_for_testing(self: &mut Control, version: u64) { self.version = version }
 
 #[test_only]
 public fun snapshot_for_testing<Meme, Quote>(self: &Vault<Meme, Quote>): (ID, ID, u64, u64) {

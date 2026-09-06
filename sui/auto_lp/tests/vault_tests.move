@@ -1,17 +1,22 @@
 #[test_only]
 module blast_fun_auto_lp::vault_tests;
 
+use blast_admin::acl::{AdminCap, SuperAdminCap};
 use blast_fun::{
-    acl,
     creator_authority,
     launch::{Self, Launch},
     launch_config,
     launch_ticket,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
     package_version::{Self, PackageVersion},
     runtime_config
 };
-use blast_fun_auto_lp::vault::{Self, Control, Vault};
+use blast_fun_auto_lp::vault::{Self, Vault};
 use blast_fun_dex::{migration::{Self, LockedLpVault, Witness}, pool::{Self, Factory, Pool}};
+use blast_fun_migrators::package_version::{
+    Self as migrators_package_version,
+    PackageVersion as MigratorsVersion
+};
 use std::{bcs, unit_test::{assert_eq, destroy}};
 use sui::{clock::{Self, Clock}, coin, coin_registry::Currency, test_scenario::{Self, Scenario}};
 
@@ -24,7 +29,7 @@ public struct EXTERNAL_WITNESS() has drop;
 public struct AutoLpFixture {
     scenario: Scenario,
     version: PackageVersion,
-    control: Control,
+    migrators_version: MigratorsVersion,
     factory: Factory,
     pool: Pool<VAULT_TESTS, QUOTE>,
     vault: Vault<VAULT_TESTS, QUOTE>,
@@ -33,9 +38,8 @@ public struct AutoLpFixture {
     cap_id: ID,
     locked: Option<LockedLpVault<VAULT_TESTS, QUOTE>>,
     runtime: runtime_config::RuntimeConfig,
-    authority: acl::ProtocolAuthority,
-    admin: acl::AdminCap,
-    root: acl::SuperAdminCap,
+    admin: AdminCap<LAUNCHPAD_DOMAIN>,
+    root: SuperAdminCap<LAUNCHPAD_DOMAIN>,
 }
 
 // === Tests ===
@@ -99,21 +103,42 @@ fun quote_only_contributions_wait_and_dust_compound_preserves_every_atom() {
 }
 
 #[test]
-#[expected_failure(abort_code = vault::EWrongVersion, location = blast_fun_auto_lp::vault)]
-fun stale_generation_rejects_collection() {
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+/// AutoLP holds no generation, but every external package still refuses stale
+/// bytecode. A retired Launchpad generation blocks curve-fee collection.
+fun a_stale_launchpad_generation_rejects_curve_collection() {
     let mut f = start();
-    f.control.set_version_for_testing(2);
+    f.version.set_for_testing(2);
     f.collect!();
     f.end();
 }
 
 #[test]
-#[expected_failure(abort_code = vault::EWrongVersion, location = blast_fun_auto_lp::vault)]
-fun stale_generation_precedes_expired_deadline_and_dust() {
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+/// The Migrators generation reaches this package only as an explicit input to
+/// external LP collection, and Migrators checks it.
+fun a_stale_migrators_generation_rejects_external_lp_collection() {
     let mut f = start();
-    f.control.set_version_for_testing(2);
-    f.clock.increment_for_testing(1);
-    f.compound!(0, 0);
+    f.migrators_version.set_for_testing(2);
+    let meme = coin::mint_for_testing<VAULT_TESTS>(1000, f.ctx!()).into_balance();
+    let quote = coin::mint_for_testing<QUOTE>(1000, f.ctx!()).into_balance();
+    let mut source = blast_fun_migrators::vault::funded_for_testing(
+        object::id(&f.pool),
+        meme,
+        quote,
+        &f.runtime,
+        f.ctx!(),
+    );
+
+    f.collect_external!(&mut source);
+
+    destroy(source);
     f.end();
 }
 
@@ -127,25 +152,22 @@ fun expired_deadline_rejects_even_an_empty_deposit() {
 }
 
 #[test]
-fun activation_restores_access_only_to_the_compiled_next_generation() {
+/// The complete permissionless flow runs with no local witness and no control
+/// object: anyone collects, anyone contributes, and only the fixed executor
+/// times the deposit.
+fun the_complete_flow_runs_without_any_local_administration() {
     let mut f = start();
-    f.control.set_version_for_testing(0);
-    let witness = f.authority.sign_in(&f.version, &f.admin);
-    f.control.activate(&witness);
-    f.collect!();
-    let events = sui::event::events_by_type<vault::VersionActivated>();
-    let mut expected = bcs::to_bytes(&0u64);
-    expected.append(bcs::to_bytes(&1u64));
-    assert_eq!(bcs::to_bytes(&events[0]), expected);
-    f.end();
-}
 
-#[test]
-#[expected_failure(abort_code = vault::EWrongVersion, location = blast_fun_auto_lp::vault)]
-fun activation_cannot_select_an_unimplemented_generation() {
-    let mut f = start();
-    let witness = f.authority.sign_in(&f.version, &f.admin);
-    f.control.activate(&witness);
+    f.next_tx!(@0xB, |f| f.collect!());
+    f.next_tx!(@0xB, |f| f.contribute!(1_000, 1_000));
+    f.next_tx!(@0xC, |f| {
+        let (_, _, meme, quote) = f.vault.snapshot_for_testing();
+        let (_, _, shares) = f.pool.deposit_amounts(meme, quote);
+        assert!(shares > 0);
+        f.compound!(shares, 0);
+    });
+
+    assert_eq!(sui::event::events_by_type<vault::Compounded>().length(), 1);
     f.end();
 }
 
@@ -205,21 +227,14 @@ fun compound_enforces_minimum_shares_for_a_positive_deposit() {
 }
 
 #[test]
-#[expected_failure(abort_code = pool::EWrongVersion, location = blast_fun_dex::pool)]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
 fun retired_dex_generation_rejects_even_empty_compound() {
     let mut f = start();
     f.factory.set_version_for_testing(2);
     f.compound!(0, 0);
-    f.end();
-}
-
-#[test]
-#[expected_failure(abort_code = vault::EVersionOverflow, location = blast_fun_auto_lp::vault)]
-fun activation_rejects_generation_overflow() {
-    let mut f = start();
-    f.control.set_version_for_testing(std::u64::max_value!());
-    let witness = f.authority.sign_in(&f.version, &f.admin);
-    f.control.activate(&witness);
     f.end();
 }
 
@@ -251,14 +266,7 @@ fun wrong_pool_is_rejected_even_when_balances_are_empty() {
 #[test]
 #[expected_failure(abort_code = vault::EInvalidExecutor, location = blast_fun_auto_lp::vault)]
 fun enrollment_rejects_an_unusable_zero_executor() {
-    let f = start_with_control(1, @0x0);
-    f.end();
-}
-
-#[test]
-#[expected_failure(abort_code = vault::EWrongVersion, location = blast_fun_auto_lp::vault)]
-fun enrollment_rejects_retired_generation_before_consuming_creator_authority() {
-    let f = start_with_control(2, @0xC);
+    let f = start_with_executor(@0x0);
     f.end();
 }
 
@@ -304,7 +312,7 @@ fun external_creator_fees_enter_custody_with_the_correct_source_and_amounts() {
         f.ctx!(),
     );
     f.next_tx!(@0xB, |f| {
-        f.vault.collect_external_lp(&f.control, &mut source, f.ctx!());
+        f.collect_external!(&mut source);
     });
     let (_, _, retained_meme, retained_quote) = f.vault.snapshot_for_testing();
     assert_eq!(retained_meme, expected_meme);
@@ -353,19 +361,8 @@ fun compound_accepts_the_exact_deadline() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun::errors::EInvalidAdminCap, location = blast_fun::acl)]
-fun revoked_administrator_cannot_activate_auto_lp() {
-    let mut f = start();
-    f.control.set_version_for_testing(0);
-    revoke_admin(&mut f);
-    let witness = f.authority.sign_in(&f.version, &f.admin);
-    f.control.activate(&witness);
-    f.end();
-}
-
-#[test]
 fun external_witness_creator_funded_pool_supports_enrollment_and_fee_collection() {
-    let mut f = start_with_route(1, @0xC, true);
+    let mut f = start_with_route(@0xC, true);
     assert!(sui::event::events_by_type<migration::Migrated>().is_empty());
     assert!(f.locked.is_none());
     let meme = coin::mint_for_testing<VAULT_TESTS>(1000, f.ctx!()).into_balance();
@@ -378,7 +375,7 @@ fun external_witness_creator_funded_pool_supports_enrollment_and_fee_collection(
         f.ctx!(),
     );
     f.next_tx!(@0xB, |f| {
-        f.vault.collect_external_lp(&f.control, &mut source, f.ctx!());
+        f.collect_external!(&mut source);
     });
     let (_, _, meme, quote) = f.vault.snapshot_for_testing();
     assert!(meme > 0 && quote > 0);
@@ -411,17 +408,25 @@ macro fun harvest_native($f: &mut AutoLpFixture) {
 
 macro fun collect_native($f: &mut AutoLpFixture) {
     let f = $f;
-    f.vault.collect_native_lp(&f.control, f.locked.borrow_mut(), &f.factory, f.ctx!());
+    f.vault.collect_native_lp(f.locked.borrow_mut(), &f.factory, f.ctx!());
 }
 
 macro fun collect_own($f: &mut AutoLpFixture) {
     let f = $f;
-    f.vault.collect_own_lp(&f.control, &mut f.pool, &f.factory, f.ctx!());
+    f.vault.collect_own_lp(&mut f.pool, &f.factory, f.ctx!());
 }
 
 macro fun collect($f: &mut AutoLpFixture) {
     let f = $f;
-    f.vault.collect_curve(&f.control, &mut f.launch, &f.version, f.ctx!());
+    f.vault.collect_curve(&mut f.launch, &f.version, f.ctx!());
+}
+
+macro fun collect_external(
+    $f: &mut AutoLpFixture,
+    $source: &mut blast_fun_migrators::vault::LpVault<VAULT_TESTS, QUOTE>,
+) {
+    let f = $f;
+    f.vault.collect_external_lp($source, &f.migrators_version, f.ctx!());
 }
 
 macro fun compound($f: &mut AutoLpFixture, $minimum: u128, $deadline: u64) {
@@ -429,7 +434,6 @@ macro fun compound($f: &mut AutoLpFixture, $minimum: u128, $deadline: u64) {
     f
         .vault
         .compound(
-            &f.control,
             &mut f.pool,
             &f.factory,
             std::u64::max_value!(),
@@ -445,24 +449,25 @@ macro fun contribute($f: &mut AutoLpFixture, $meme: u64, $quote: u64) {
     let f = $f;
     let meme = coin::mint_for_testing<VAULT_TESTS>($meme, f.ctx!());
     let quote = coin::mint_for_testing<QUOTE>($quote, f.ctx!());
-    f.vault.contribute(&f.control, meme, quote);
+    f.vault.contribute(meme, quote);
 }
 
-fun start(): AutoLpFixture { start_with_control(1, @0xC) }
+fun start(): AutoLpFixture { start_with_executor(@0xC) }
 
-fun start_with_control(generation: u64, executor: address): AutoLpFixture {
-    start_with_route(generation, executor, false)
+fun start_with_executor(executor: address): AutoLpFixture {
+    start_with_route(executor, false)
 }
 
-fun start_with_route(generation: u64, executor: address, external: bool): AutoLpFixture {
+fun start_with_route(executor: address, external: bool): AutoLpFixture {
     let mut scenario = test_scenario::begin(@0xA);
     let version = package_version::new_for_testing(scenario.ctx());
-    let (root, mut authority) = acl::new_protocol_for_testing(scenario.ctx());
-    authority.grant_admin(&version, &root, @0xA, scenario.ctx());
+    let migrators_version = migrators_package_version::new_for_testing(scenario.ctx());
+    let (root, mut authority) = launchpad_authority(scenario.ctx());
+    authority.grant_admin(&root, 0, @0xA, scenario.ctx());
     launch_config::init_for_testing(scenario.ctx());
     scenario.next_tx(@0xA);
-    let admin = scenario.take_from_sender<acl::AdminCap>();
-    let witness = authority.sign_in(&version, &admin);
+    let admin = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let witness = authority.sign_in(&admin);
     let mut config = scenario.take_shared<launch_config::LaunchConfig>();
     config.allow_quote<QUOTE>(&version, &witness, 5_000_000, 25_000_000);
     if (external) {
@@ -539,9 +544,7 @@ fun start_with_route(generation: u64, executor: address, external: bool): AutoLp
     };
     scenario.next_tx(@0xA);
     let pool = scenario.take_shared<Pool<VAULT_TESTS, QUOTE>>();
-    let mut control = vault::new_control_for_testing(scenario.ctx());
-    control.set_version_for_testing(generation);
-    let vault = vault::new(&control, cap, &pool, &factory, executor, scenario.ctx());
+    let vault = vault::new(cap, &pool, &factory, executor, scenario.ctx());
     let (_, position_id, _, _) = vault.snapshot_for_testing();
     let events = sui::event::events_by_type<vault::Enrolled>();
     let mut expected = bcs::to_bytes(&object::id(&vault));
@@ -562,10 +565,11 @@ fun start_with_route(generation: u64, executor: address, external: bool): AutoLp
     };
     test_scenario::return_shared(config);
     destroy(currency);
+    destroy(authority);
     AutoLpFixture {
         scenario,
         version,
-        control,
+        migrators_version,
         factory,
         pool,
         vault,
@@ -574,7 +578,6 @@ fun start_with_route(generation: u64, executor: address, external: bool): AutoLp
         cap_id,
         locked,
         runtime,
-        authority,
         admin,
         root,
     }
@@ -584,7 +587,7 @@ fun end(f: AutoLpFixture) {
     let AutoLpFixture {
         scenario,
         version,
-        control,
+        migrators_version,
         factory,
         pool,
         vault,
@@ -593,7 +596,6 @@ fun end(f: AutoLpFixture) {
         cap_id: _,
         locked,
         runtime,
-        authority,
         admin,
         root,
     } = f;
@@ -603,9 +605,8 @@ fun end(f: AutoLpFixture) {
     destroy(runtime);
     destroy(launch);
     destroy(version);
-    destroy(control);
+    destroy(migrators_version);
     destroy(factory);
-    destroy(authority);
     destroy(admin);
     destroy(root);
     clock.destroy_for_testing();
@@ -623,7 +624,6 @@ macro fun compound_bounded(
     f
         .vault
         .compound(
-            &f.control,
             &mut f.pool,
             &f.factory,
             $meme,
@@ -635,7 +635,14 @@ macro fun compound_bounded(
         );
 }
 
-fun revoke_admin(f: &mut AutoLpFixture) {
-    let AutoLpFixture { authority, version, root, admin, .. } = f;
-    authority.revoke_admin(version, root, object::id(admin));
+/// The Launchpad authority exists only to configure the launch this fixture
+/// funds; AutoLP itself accepts no administration capability of any domain.
+fun launchpad_authority(
+    ctx: &mut TxContext,
+): (SuperAdminCap<LAUNCHPAD_DOMAIN>, blast_admin::acl::Authority<LAUNCHPAD_DOMAIN>) {
+    blast_admin::acl::new_for_testing<LAUNCHPAD_DOMAIN>(
+        16,
+        7 * 24 * 60 * 60 * 1_000,
+        ctx,
+    )
 }

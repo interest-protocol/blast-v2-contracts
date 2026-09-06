@@ -94,11 +94,17 @@ use_environment = "testnet"
 manifest_digest = "271408FC66479D0667DD522595BEB59E742B3EA9CD00ED7395433A07D5595564"
 deps = { Sui = "Sui" }
 
+[pinned.testnet.blast_admin]
+source = { local = "../admin" }
+use_environment = "testnet"
+manifest_digest = "B7E2FC3044B807508BDB644524C4ABEA393A1871278966067F470AEAE602C62B"
+deps = { Sui = "Sui" }
+
 [pinned.testnet.blast_fun]
 source = { local = "../launchpad" }
 use_environment = "testnet"
-manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
-deps = { std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "B9BC26466630CEB8A3C2BE1A745F7338CFDF92C219AC0FF7F363DA750C2676C3"
+deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.blast_fun_auto_lp]
 source = { root = true }
@@ -109,14 +115,14 @@ deps = { Sui = "Sui", blast_fun = "blast_fun", blast_fun_dex = "blast_fun_dex", 
 [pinned.testnet.blast_fun_dex]
 source = { local = "../dex" }
 use_environment = "testnet"
-manifest_digest = "4C746A1C8E466FD2D0FF283681F9D40A4AF6355349EBDE73849ECCCD7B1D89EF"
-deps = { Sui = "Sui", blast_fun = "blast_fun" }
+manifest_digest = "72C371A43883A11D74B53BDB236EB9FBA0E61ED37800E467E6852E6650CDFC3D"
+deps = { Sui = "Sui", blast_admin = "blast_admin", blast_fun = "blast_fun" }
 
 [pinned.testnet.blast_fun_migrators]
 source = { local = "../migrators" }
 use_environment = "testnet"
-manifest_digest = "D8127DA50557311DF127FEE67E2AD5FF60C15EBD95C31C287F15E507B071E700"
-deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui", TurbosCLMM = "TurbosCLMM", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
+manifest_digest = "117CA8052873A0733BC25D78373BEB458D02480E8AC4C86584EB17FCEC9659FC"
+deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui", TurbosCLMM = "TurbosCLMM", blast_admin = "blast_admin", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }
 
 [pinned.testnet.mmt_v3]
 source = { git = "https://github.com/mmt-finance/mmt-contract-interface.git", subdir = "mmt_v3", rev = "e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82" }
