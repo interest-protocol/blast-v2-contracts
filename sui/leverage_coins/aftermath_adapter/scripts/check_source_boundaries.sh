@@ -662,7 +662,7 @@ post_fields_line="$(post_capture_line 'snapshot::funding_change_fields(&net)')"
 post_settle_line="$(post_capture_line 'vault.settle_funding(is_cost, amount)')"
 post_finish_line="$(post_capture_line 'let (observation, checkpoint) = snapshot::finish_health(')"
 post_persist_line="$(post_capture_line 'vault.replace_venue_checkpoint(checkpoint);')"
-post_policy_line="$(post_capture_line 'let _healthy = vault.sync_health(')"
+post_policy_line="$(post_capture_line 'vault.consume_health_observation(')"
 post_funding_event_line="$(post_capture_line 'events::funding_settled<Product>(')"
 post_health_decision_line="$(post_capture_line 'if (diagnostic_changed) {')"
 post_health_event_line="$(post_capture_line 'events::health_synchronized<Product>(')"
@@ -685,7 +685,6 @@ done
 [[ "$(grep -Fc 'events::health_synchronized<Product>(' <<<"$post_capture_block")" -eq 1 ]] \
   || fail "The post-capture helper must have one diagnostic-novelty event site."
 grep -q 'if (checkpoint_clean) {' <<<"$post_capture_block" \
-  && grep -q 'let lifecycle_changed = false;' <<<"$post_capture_block" \
   && grep -q 'vault.note_checkpoint_health(&checkpoint, checkpoint_clean)' <<<"$post_capture_block" \
   || fail "Ordinary health must preserve lifecycle and distinguish accepted from diagnostic identities."
 

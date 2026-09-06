@@ -59,4 +59,6 @@ fun active_lifecycle_error_registry_is_stable() {
     assert_eq!(errors::redemption_share_mismatch!(), 49);
     assert_eq!(errors::venue_fee_unusable!(), 50);
     assert_eq!(errors::seed_already_recorded!(), 51);
+    assert_eq!(errors::invalid_seed_funder!(), 52);
+    assert_eq!(errors::unresolved_checkpoint!(), 53);
 }

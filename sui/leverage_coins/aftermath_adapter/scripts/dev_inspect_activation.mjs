@@ -205,6 +205,7 @@ function buildPlan(input) {
     );
     expectAddress(input.sender, 'builderInput.sender');
     expectAddress(input.seedFunder, 'builderInput.seedFunder');
+    if (BigInt(input.seedFunder) === 0n) fail('seedFunder must not be zero');
     expectString(input.productTagType, 'builderInput.productTagType');
     validateCall(input.riskWitness, 'builderInput.riskWitness');
     expectString(input.collateralType, 'builderInput.collateralType');
@@ -611,6 +612,11 @@ function selfTest() {
     const { plan } = validateFixture(fixture);
     let passed = 3;
 
+    const zeroFunder = structuredClone(fixture.builderInput);
+    zeroFunder.seedFunder = `0x${'0'.repeat(64)}`;
+    expectFailure('seedFunder must not be zero', () => buildPlan(zeroFunder));
+    passed += 1;
+
     const malformedResults = structuredClone(fixture.rawDevInspectResponse);
     malformedResults.command_outputs.pop();
     expectFailure('command results', () => normalizeDevInspect(
@@ -704,7 +710,7 @@ function selfTest() {
         validatePinnedSurfaceFixture(changedTransaction));
     passed += 1;
 
-    process.stdout.write(`dev_inspect_activation self-test: PASS ${passed}/12 cases\n`);
+    process.stdout.write(`dev_inspect_activation self-test: PASS ${passed}/13 cases\n`);
 }
 
 function runSui(args) {

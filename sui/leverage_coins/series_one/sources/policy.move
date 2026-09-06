@@ -839,3 +839,9 @@ public(package) fun is_redemption_gross_within_bound_for_testing(
 ): bool {
     is_redemption_gross_within_bound(self, proportional_claim, gross)
 }
+
+#[test_only]
+/// Exposes issuance rates to the test event reducer without widening production ABI.
+public fun initial_fee_settings_for_testing(self: &TierPolicy): (u64, u64, u64) {
+    (self.mint_fee_bps, self.redeem_fee_bps, self.initial_admin_allocation_bps)
+}

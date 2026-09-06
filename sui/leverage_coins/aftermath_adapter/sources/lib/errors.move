@@ -316,3 +316,15 @@ macro public(package) fun venue_fee_unusable(): u64 { 50 }
 const ESeedAlreadyRecorded: u64 = 51;
 
 macro public(package) fun seed_already_recorded(): u64 { 51 }
+
+#[test_only]
+/// The immutable seed cash beneficiary must not be the zero address.
+const EInvalidSeedFunder: u64 = 52;
+
+macro public(package) fun invalid_seed_funder(): u64 { 52 }
+
+#[test_only]
+/// A financial operation observed a venue change not reconciled into the accepted checkpoint.
+const EUnresolvedCheckpoint: u64 = 53;
+
+macro public(package) fun unresolved_checkpoint(): u64 { 53 }

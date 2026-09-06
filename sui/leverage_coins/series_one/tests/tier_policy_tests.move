@@ -9,6 +9,50 @@ use blast_leverage_series_one::{errors, policy};
 // === Tests ===
 
 #[test]
+#[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_leverage_series_one::policy)]
+fun fee_limits_reject_mint_cap_below_initial_rate() {
+    new_tier(true, 10, 20, 0, 1, 1).with_fee_limits(9, 20, 0, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_leverage_series_one::policy)]
+fun fee_limits_reject_redeem_cap_below_initial_rate() {
+    new_tier(true, 10, 20, 0, 1, 1).with_fee_limits(10, 19, 0, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_leverage_series_one::policy)]
+fun fee_limits_reject_mint_cap_at_full_principal() {
+    new_tier(true, 10, 20, 0, 1, 1).with_fee_limits(10_000, 20, 0, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_leverage_series_one::policy)]
+fun fee_limits_reject_redeem_cap_at_full_principal() {
+    new_tier(true, 10, 20, 0, 1, 1).with_fee_limits(10, 10_000, 0, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_leverage_series_one::policy)]
+fun fee_limits_reject_allocation_cap_above_full_fee() {
+    new_tier(true, 10, 20, 0, 1, 1).with_fee_limits(10, 20, 10_001, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_leverage_series_one::policy)]
+fun fee_limits_reject_initial_allocation_above_cap() {
+    new_tier(true, 10, 20, 0, 1, 1).with_fee_limits(10, 20, 2_000, 2_001);
+}
+
+#[test]
+fun fee_limits_accept_zero_exact_initial_and_largest_legal_caps() {
+    new_tier(true, 0, 0, 0, 1, 1).with_fee_limits(0, 0, 0, 0).assert_fee_limits(0, 0, 0);
+    new_tier(true, 10, 20, 0, 1, 1).with_fee_limits(10, 20, 2_000, 2_000).assert_fee_limits(10, 20, 2_000);
+    new_tier(true, 9_999, 9_999, 0, 1, 1).with_fee_limits(9_999, 9_999, 10_000, 10_000).assert_fee_limits(9_999, 9_999, 10_000);
+}
+
+
+#[test]
 fun a_complete_long_policy_is_composed_and_preserved() {
     let tier = new_tier(true, 0, 0, 0, 1, 1);
     let rebalance = tier.rebalance_policy();

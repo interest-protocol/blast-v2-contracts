@@ -279,7 +279,6 @@ function protocolEvent(event, path, types) {
         expectObject(parsed, `${path}.parsedJson`, [
             'vault_id',
             'reason',
-            'lifecycle_changed',
             'checkpoint',
         ]);
         checkpoint(parsed.checkpoint, `${path}.checkpoint`);
@@ -453,11 +452,6 @@ function validateEvidence(evidence, oracle, types, vaultId, path) {
         } else {
             fail(`${path}: unsupported health reason`);
         }
-        assertEqual(
-            parsed.lifecycle_changed,
-            evidence.pre.lifecycle !== evidence.post.lifecycle,
-            `${path}.health.lifecycle_changed`,
-        );
     }
     return observed;
 }

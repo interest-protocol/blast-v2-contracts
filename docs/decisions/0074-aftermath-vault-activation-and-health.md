@@ -1,5 +1,8 @@
 # 0074: Aftermath Vault activation and health evidence
 
+Active-contract amendment: 2026-09-06. This is the pre-publication source
+contract; local evidence does not establish publication or live release readiness.
+
 - Status: **accepted for dependency and raw-field normalization**
 - Date: 2026-09-04
 - Extends: [0064](0064-aftermath-backed-leverage-coins.md)
@@ -52,7 +55,7 @@ Aftermath IFixed is a signed two's-complement value carried in `u256` with
 `ifixed::ifixed::{is_neg, abs, decimal_scalar_from_decimals, to_balance}` for
 sign extraction and conversion. It must not cast a signed raw value or copy an
 unpublished formula. `to_balance` rounds toward zero. For a negative liability,
-Task 5 must conservatively add one destination atomic unit when discarded
+normalization conservatively adds one destination atomic unit when discarded
 IFixed remainder exists; positive assets round down. Absolute risk quantities
 round up under the same remainder rule.
 
@@ -74,7 +77,7 @@ adapter's mutation checkpoint; immutable object/source bindings are stored in
 | Blast primitive | Exact Aftermath source | Raw representation and scale | Normalization and rounding | Stored checkpoint field |
 | --- | --- | --- | --- | --- |
 | Free collateral | `perpetuals::account::collateral_balance<T>` | `u64`, atomic units of `T`; six decimals for the admitted collateral | Exact; no conversion | Yes |
-| Allocated collateral | `position::position::collateral` | nonnegative signed-IFixed carrier, `u256`, 18 decimals | `to_balance(raw, decimal_scalar_from_decimals(6))`; down | Yes |
+| Allocated collateral | `position::position::collateral` | signed-IFixed carrier, `u256`, 18 decimals | Asset magnitudes round down; liability magnitudes round up before equity netting | Yes |
 | Signed base | first result of `position::position::base_and_quote_amounts` | signed IFixed in `u256`, 18 decimals | Preserve sign with `is_neg`; absolute base converts to 9 decimals, up for risk | Yes, raw signed value |
 | Signed quote cost basis | second result of `position::position::base_and_quote_amounts` | USD-valued signed IFixed in `u256`, 18 decimals | Preserve only for direction coherence and raw transition guards; it is historical cost basis, not current leverage notional | Yes, raw signed value |
 | Realized funding candidate | `position::position::calculate_position_funding_internal(position, long_rate, short_rate)` immediately before settlement; rates come from `perpetuals::market::cum_funding_rates` | USD-valued signed IFixed in `u256`, 18 decimals | Divide by authenticated collateral price; credit down and cost up in collateral-token IFixed units | No derived amount; store both rate snapshots, both market rates, and collateral before/after |
@@ -174,7 +177,8 @@ live cap before the next order begins. It then settles funding and captures the
 final observation.
 Only after strict execution and all Series1 activation gates pass does it mint
 the reserve-excluded seed NAV at the fixed 1,000 share scale, lock those shares
-at `@0x0`, seal the sole admin capability and checkpoint into the Vault, share
+at `@0x0`, retain that exact locked amount and the explicit nonzero seed funder,
+seal the sole admin capability and checkpoint into the Vault, share
 the account and returned clearing house through their defining modules, and
 emit the replay-complete activation event. Any abort rolls back the complete
 transaction.
@@ -205,8 +209,8 @@ reserve, locked-share minting, cap/checkpoint sealing, VenueAccount
 installation, account and ClearingHouse sharing, and event emission. These
 tests do not prove transaction rollback. Move unit tests cannot catch an abort
 and then inspect the aborted transaction's object effects, and the official
-external ports abort locally. Task 8 must therefore prove activation atomicity
-with controlled submitted local or testnet transactions at every named phase
+external ports abort locally. An authorized verifier must therefore prove
+activation atomicity with controlled submitted local or testnet transactions at every named phase
 boundary, in addition to one successful end-to-end activation.
 
 ### Release evidence protocol
@@ -250,10 +254,10 @@ string used as an argument, or decoy object elsewhere in the PTB cannot satisfy
 that binding.
 
 Canonical pre/post evidence includes the stored maintenance reserve. A call
-without an isolated funding cost must preserve it exactly. Funding credit must
-increase allocated collateral by the event's raw IFixed amount, emit the exact
-down-rounded atomic amount, preserve the reserve, and report zero absorbed and
-uncovered values. Funding cost must decrease allocated collateral by the raw
+without an accepted net funding effect preserves it exactly. Net funding credit
+must increase allocated collateral by the event's raw IFixed amount, emit the
+exact down-rounded atomic amount, increase the reserve by that amount, and
+report zero absorbed and uncovered values. Funding cost must decrease allocated collateral by the raw
 amount, emit the exact up-rounded atomic amount, absorb
 `min(reserve_before, amount)`, persist `reserve_before - absorbed`, and report
 the exact uncovered remainder. The committed validator covers cost below,
@@ -271,11 +275,12 @@ equal its post-state snapshot. Every tracked identity is bound to a submitted
 PTB argument, a transaction effect, an origin transaction effect, or a
 transaction-digest creation index. Role selectors are fixed by the validator,
 not live configuration. The initializer is parsed as one exact move-call
-record: its package target, three type arguments, and fourteen explicit
+record: its package target, three type arguments, and fifteen explicit
 arguments must equal the reviewed run configuration. Vault, Protocol,
 Currency, Registry, ClearingHouse, both oracle stores, both Pyth price objects,
 seed coin, and Clock are each bound to their fixed initializer argument index
 and exact tracked type; mentioning an ID in another call is not a binding. The
+explicit funder address must match the reviewed nonzero beneficiary. The
 same identity and state validators check offline fixtures and live captures.
 Each failure
 snapshots canonical object references and decoded content before and after,
@@ -304,13 +309,13 @@ publication, and submission remain the only live-only portions of the proof.
 
 ## Evidence and remaining gates
 
-Task 1 establishes immutable linkage and callable raw semantics only. It does
-not claim that a Vault can hold value. Before activation:
+Local source and fixture evidence establishes the implemented Blast boundary,
+not deployed venue execution. Release still requires:
 
-- Task 5 must implement independent long, short, flat, PnL, funding, depeg,
-  minimum-lot, width, and rounding vectors for this table.
-- Task 8 must compare the named interface results and funding checkpoint effect
-  against live inspection and controlled mutation fixtures. It must also
+- Preserve independent local long, short, flat, PnL, funding, depeg,
+  minimum-lot, width, and rounding regressions for this table.
+- An authorized verifier must compare the named interface results and funding
+  checkpoint effect against live inspection and controlled mutation fixtures. It must also
   observe failed submitted local or testnet transactions at every activation
   phase boundary and prove that no protocol-owned mutation, supply, custody,
   or event effect survives; read-only mainnet dev-inspect is not rollback
@@ -318,7 +323,7 @@ not claim that a Vault can hold value. Before activation:
 - The selected SUI-USDC market, registry, oracle objects, source IDs, lot size,
   IMR, MMR, pause/freeze behavior, and usable owned collateral remain deployment
   inputs that must be recorded and verified.
-- Confidence is not present in Aftermath's normalized `PriceFeed`. Task 5
+- Confidence is not present in Aftermath's normalized `PriceFeed`. Capture
   therefore binds the exact official Pyth `PriceInfoObject` named by the
   Aftermath feed's `from` ID. It reads price, confidence, exponent, and source
   seconds from that same object; price rounds down and confidence rounds up at
@@ -331,7 +336,7 @@ not claim that a Vault can hold value. Before activation:
 
 The official `pyth-network/pyth-crosschain` source is pinned at
 `6c1c9138e71a62629232607e252b12bcaa38356a`, subdirectory
-`target_chains/sui/contracts`. Its legacy package manifest cannot be linked by
+`target_chains/sui/contracts`. Its upstream package manifest cannot be linked by
 the pinned package manager because it depends on a new-style Wormhole package.
 The adapter consequently carries the smallest local ABI port of the official
 Pyth declarations, with the official mainnet/testnet `Published.toml` lineage.
@@ -369,10 +374,10 @@ unrepresentable Pyth component, feed width, named-price width, exponent, or
 seconds-to-milliseconds conversion instead becomes an invalid economic fact,
 alongside zero price, mark, lot, or malformed exposure, in Series1's permissive
 health observation.
-It exists only for objective health synchronization, so an authenticated live
-fault can move an active vault to `ReduceOnly` instead of aborting before that
-state transition. It never weakens source identity or accepts caller-shaped
-economics.
+It exists for authenticated health reporting. A temporary economic-data fault
+does not retire or degrade an active Vault. Consuming the linear observation
+does not compute a discarded healthy predicate or mutate lifecycle. This path
+never weakens source identity or accepts caller-shaped economics.
 
 `Change` preserves raw collateral-token IFixed deltas. The ordinary
 stored-to-pre edge may advance only the market cumulative rates while the
@@ -385,11 +390,14 @@ the adapter independently classifies the stored-to-pre and pre-to-post edges.
 The first may contain one externally completed snapshot refresh plus
 allocated-collateral delta while market rates advance again; the second may
 contain the adapter's settlement to those newer rates. When both occur,
-Series1 applies and emits them in chronological order and never nets them,
-because reserve absorption is order-sensitive. Persisting the final checkpoint
-makes both classifications exactly once. Any other collateral or equity delta,
-zero-effect snapshot movement, or field mutation makes the complete
-synchronization `Unexpected` and debits no reserve.
+the adapter aggregates their authenticated signed collateral-IFixed effects
+before one conservative normalization and one Series1 settlement. Net credits
+increase the reserve; net costs consume it before holder NAV. An authenticated
+zero-net snapshot advancement is accepted and emitted once. Persisting the
+final accepted checkpoint makes the complete interval exactly once. Any
+unexplained collateral, exposure, order, or parameter mutation makes the
+synchronization unresolved: preserve the accepted checkpoint and reserve,
+and record only a distinct diagnostic fingerprint.
 
 Any live lineage, bytecode, ABI, dependency, source-binding, conversion-vector,
 or checkpoint mismatch reopens this decision and blocks publication.
@@ -412,43 +420,48 @@ After authentication, synchronization has one fixed sequence:
    oracle.
 3. Capture the post-settlement facts and classify both stored-to-pre and
    pre-to-post checkpoint edges.
-4. Apply Series1 reserve settlement only for a nonzero, representable,
-   isolated funding classification. Credits round down and costs round up at
-   the six-decimal collateral boundary.
-5. Finalize the one post-settlement health observation, persist its checkpoint,
-   and then call Series1 health policy with the canonical share supply.
-6. Emit completed accounting and health facts after all state mutation.
+4. Aggregate both authenticated signed effects before rounding. Credits round
+   down and increase reserve; costs round up and consume reserve, with any
+   uncovered cost borne by holder NAV.
+5. Consume the finalized linear health observation without a lifecycle
+   mutation. Accept the economic checkpoint only for a reconciled interval;
+   unresolved observations update only the diagnostic fingerprint.
+6. Emit accepted funding facts (including zero-net advancement) and new
+   unresolved/reconciled diagnostics after their mutations. Unchanged repeats
+   emit nothing.
 
 Stored-to-pre market-rate advancement is the expected precursor to local
 funding settlement. A permissionless settlement already completed before this
 call is accepted exactly once when its snapshot and collateral transition is
 isolated. If rates advanced again afterward, the adapter also recognizes its
-own pre-to-post settlement and applies the two funding effects in order without
-netting. Every other stored-to-pre drift is an authenticated unexpected venue
-change: the call persists the newest post checkpoint, does not debit the
-reserve, and sets `checkpoint_clean = false` so Series1 can only preserve
-lifecycle or degrade `Active` to `ReduceOnly`. A binding, type, storage/source,
+own pre-to-post settlement and nets the interval before rounding. Every other
+stored-to-pre drift is an authenticated unexpected venue change: the call
+preserves the accepted economic checkpoint, reserve and lifecycle. Priced
+operations remain blocked until reconciliation. A binding, type, storage/source,
 Pyth identity, or representable observation agreement failure still aborts. No
 health path can activate, resume, start shutdown, mint, burn, withdraw, place
 an order, or increase risk.
 
-`FundingSettled<Product>` occurs only for nonzero authenticated funding. It
-records the Vault, credit/cost direction, exact raw collateral-IFixed amount,
+`FundingSettled<Product>` occurs for each accepted funding checkpoint advancement,
+including a zero-net interval. It records the Vault, credit/cost direction,
+exact raw collateral-IFixed amount,
 conservative six-decimal amount, reserve absorption, uncovered cost, reserve
 after settlement, and both the previous and post checkpoints.
-`HealthSynchronized<Product>` occurs when lifecycle changes or an unexpected
-checkpoint is persisted. Reason `0` is an objective Series1 health failure and
-reason `1` is an unexpected checkpoint; it also records whether this call
-changed lifecycle and the post checkpoint. Together with issuance, activation,
-maximum-order-notional, risk-module rotation, and explicit reduce-only events,
-these facts reconstruct the immutable bindings, reserve, lifecycle, selected
-risk module, order limit, and latest checkpoint.
+`HealthSynchronized<Product>` reports reason `1` for a distinct unresolved
+observation and reason `2` when that diagnostic clears. It contains the Vault,
+reason and observed checkpoint, not a constant lifecycle-change flag. The
+diagnostic is distinct from the accepted economic checkpoint. Together with
+issuance, activation, active economic, fee-setting, order-limit, risk-module
+rotation and explicit reduce-only events, the stream reconstructs native
+supply, locked seed/funder, reserve, separate admin cash, settings, bindings,
+lifecycle, selected risk module and both checkpoint/reporting identities.
 
 One package-private production helper owns the complete Blast post-capture
-phase: funding normalization and reserve settlement, final health-observation
-construction, exactly-one checkpoint persistence, lifecycle synchronization,
-and conditional event emission. Local connected tests invoke that same helper
-against real issued and Series-initialized Vault state; they do not duplicate
+phase: aggregate funding normalization and reserve settlement, linear
+health-observation consumption, conditional accepted-checkpoint persistence,
+diagnostic novelty tracking and conditional event emission. Local connected tests
+invoke that same helper against real issued and Series-initialized Vault state;
+they do not duplicate
 the reserve, lifecycle, persistence, or event formulas.
 
 `VenueAccount` represents its retained account-admin cap as an `Option` solely
@@ -463,10 +476,11 @@ bytecode. It does not weaken live custody authentication.
 The official Aftermath and Pyth ports abort in local unit tests, so local tests
 exercise the exact Blast-owned classification, rounding, real Vault/Series
 post-capture transition, event, and reducer paths while source gates pin the
-production call and mutation order. The replay test drives issuance,
-activation, funding/health, order-limit, risk-rotation, and explicit-reduce-only
-events through real package mutation seams, then compares every reconstructed
-canonical fact to the resulting Vault. Task 8 must still execute the complete
+production call and mutation order. Replay tests drive issuance, activation,
+funding/health, active economics, fee settings, order-limit, risk-rotation and
+explicit-reduce-only events through real package mutation seams, including two
+product types, and compare reconstructed canonical facts to the resulting
+Vaults. An authorized combined verifier must still execute the complete
 permissionless path against controlled live objects and compare the resulting
 checkpoint, reserve, lifecycle, and events.
 

@@ -120,7 +120,6 @@ public struct FundingSettled<phantom Product> has copy, drop {
 public struct HealthSynchronized<phantom Product> has copy, drop {
     vault_id: ID,
     reason: u8,
-    lifecycle_changed: bool,
     checkpoint: Checkpoint,
 }
 
@@ -345,14 +344,12 @@ public(package) fun funding_settled<Product>(
 public(package) fun health_synchronized<Product>(
     vault_id: ID,
     reason: u8,
-    lifecycle_changed: bool,
     checkpoint: Checkpoint,
 ) {
     blast_leverage_aftermath::events_wrapper::emit_event(
         HealthSynchronized<Product> {
             vault_id,
             reason,
-            lifecycle_changed,
             checkpoint,
         },
     );
@@ -401,6 +398,21 @@ public(package) fun reduce_only_entered<Product>(vault_id: ID) {
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+public fun minted_checkpoint_fields<Product>(self: &Minted<Product>): (ID, Checkpoint) {
+    (self.vault_id, self.checkpoint)
+}
+
+#[test_only]
+public fun redeemed_checkpoint_fields<Product>(self: &Redeemed<Product>): (ID, Checkpoint) {
+    (self.vault_id, self.checkpoint)
+}
+
+#[test_only]
+public fun rebalanced_checkpoint_fields<Product>(self: &Rebalanced<Product>): (ID, u64, u64, u64, Checkpoint) {
+    (self.vault_id, self.reserve_after, self.admin_cash_after, self.supply_after, self.checkpoint)
+}
 
 #[test_only]
 public fun redeemed_amounts<Product>(self: &Redeemed<Product>): vector<u64> {
@@ -529,11 +541,10 @@ public fun funding_settled_fields<Product>(
 #[test_only]
 public fun health_synchronized_fields<Product>(
     self: &HealthSynchronized<Product>,
-): (ID, u8, bool, Checkpoint) {
+): (ID, u8, Checkpoint) {
     (
         self.vault_id,
         self.reason,
-        self.lifecycle_changed,
         self.checkpoint,
     )
 }

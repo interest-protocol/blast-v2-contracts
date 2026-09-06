@@ -293,7 +293,7 @@ public(package) fun prepare_redemption<Product>(
 /// Prices only the attributable completed unwind, before any withdrawal or burn.
 public(package) fun price_redemption<Product>(
     self: &mut Vault<Product>, plan: RedemptionPlan<Product>, observation: PositionObservation, now: u64,
-): (u64, u64, u64, u64) {
+): (u64, u64, u64, u64, u64) {
     self.series_state.complete_redemption(plan, observation, now)
 }
 
@@ -309,14 +309,6 @@ public(package) fun assert_redemption_cash_out<Product>(
 public(package) fun burn_redeemed_shares<Product>(self: &mut Vault<Product>, shares: Coin<Vault<Product>>): u64 {
     let treasury_cap = dynamic_object_field::borrow_mut(&mut self.id, TreasuryKey<Product>());
     coin::burn(treasury_cap, shares)
-}
-
-/// Exposes applied fee facts without duplicating the core's ceiling or rounding.
-public(package) fun fee_facts<Product>(self: &Vault<Product>, amount: u64, mint: bool, maximum: u64): (u64, u64, u64, u64, u64) {
-    self.series_state.assert_user_fee_limit(mint, maximum);
-    let (mint_rate, redeem_rate, admin_rate) = self.series_state.fee_settings();
-    let (fee, admin, buffer) = self.series_state.fee_allocation(amount, mint);
-    (fee, admin, buffer, if (mint) { mint_rate } else { redeem_rate }, admin_rate)
 }
 
 /// Allocates only the bound account's deposited cash into its retained market.
@@ -404,10 +396,10 @@ public(package) fun complete_mint<Product>(
     after: PositionObservation,
     now: u64,
     ctx: &mut TxContext,
-): (Coin<Vault<Product>>, u64) {
-    let (amount, contribution) = self.series_state.complete_mint(plan, after, now);
+): (Coin<Vault<Product>>, u64, u64, u64, u64, u64, u64) {
+    let (amount, contribution, fee, admin, buffer, rate, admin_rate) = self.series_state.complete_mint(plan, after, now);
     let treasury_cap = dynamic_object_field::borrow_mut(&mut self.id, TreasuryKey<Product>());
-    (coin::mint(treasury_cap, amount, ctx), contribution)
+    (coin::mint(treasury_cap, amount, ctx), contribution, fee, admin, buffer, rate, admin_rate)
 }
 
 /// Cheap active lifecycle guard shared by public financial operations.
@@ -575,6 +567,11 @@ public(package) fun maintenance_reserve<Product>(self: &Vault<Product>): u64 {
     self.series_state.maintenance_reserve()
 }
 
+/// Rejects an unusable immutable beneficiary before activation touches the venue.
+public(package) fun assert_seed_funder(funder: address) {
+    assert!(funder != @0x0, blast_leverage_aftermath::errors::invalid_seed_funder!());
+}
+
 /// Mints the one locked seed position and makes it permanently inaccessible.
 public(package) fun mint_locked_shares<Product>(
     self: &mut Vault<Product>,
@@ -584,6 +581,7 @@ public(package) fun mint_locked_shares<Product>(
 ) {
     assert!(self.seed_facts.is_none() && self.share_supply() == 0,
         blast_leverage_aftermath::errors::seed_already_recorded!());
+    assert_seed_funder(funder);
     assert!(amount > 0, blast_leverage_aftermath::errors::zero_amount!());
     let treasury_cap = dynamic_object_field::borrow_mut(
         &mut self.id,
@@ -646,18 +644,12 @@ public(package) fun settle_funding<Product>(
     )
 }
 
-/// Applies one final authenticated health observation to Series1.
-public(package) fun sync_health<Product>(
-    self: &mut Vault<Product>,
+/// Consumes the authenticated diagnostic observation without repricing the vault.
+public(package) fun consume_health_observation<Product>(
+    self: &Vault<Product>,
     observation: PositionObservation,
-    reference_time_ms: u64,
-): bool {
-    let share_supply = self.treasury_cap().total_supply();
-    self.series_state.sync_health(
-        observation,
-        share_supply,
-        reference_time_ms,
-    )
+) {
+    self.series_state.consume_health_observation(observation);
 }
 
 /// Replaces the raw venue checkpoint after authenticated reconciliation.
@@ -789,6 +781,11 @@ public fun max_order_notional_for_testing<Product>(
 #[test_only]
 public fun tier_policy_for_testing<Product>(self: &Vault<Product>): TierPolicy {
     self.series_state.tier_policy_for_testing()
+}
+
+#[test_only]
+public fun fee_settings_for_testing<Product>(self: &Vault<Product>): (u64, u64, u64) {
+    self.series_state.fee_settings()
 }
 
 #[test_only]

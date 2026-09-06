@@ -49,6 +49,8 @@ public struct MintPlan<phantom Product> {
     expected_contribution: u64,
     buffer_fee: u64,
     admin_fee: u64,
+    fee_bps: u64,
+    admin_bps: u64,
     supply: u64,
     minimum_shares: u64,
     order_base: u64,
@@ -308,6 +310,8 @@ public fun prepare_mint<Product>(
         expected_contribution,
         buffer_fee,
         admin_fee,
+        fee_bps: self.mint_fee_bps,
+        admin_bps: self.admin_allocation_bps,
         supply,
         minimum_shares,
         order_base,
@@ -352,16 +356,17 @@ public fun assert_active_observation<Product>(
 
 /// Completes a full proportional fill and credits only its buffer allocation.
 /// The returned shares are minted through the adapter's native share authority.
+/// Returns shares, contribution, fee, admin, buffer and the two sealed rates.
 public fun complete_mint<Product>(
     self: &mut State<Product>,
     plan: MintPlan<Product>,
     observation: PositionObservation,
     reference_time_ms: u64,
-): (u64, u64) {
+): (u64, u64, u64, u64, u64, u64, u64) {
     self.lifecycle.assert_active();
     let MintPlan {
         before, reserve_before, deposit, expected_contribution, buffer_fee,
-        admin_fee: _, supply, minimum_shares, order_base,
+        admin_fee, fee_bps, admin_bps, supply, minimum_shares, order_base,
     } = plan;
     assert!(self.maintenance_reserve == reserve_before, blast_leverage_series_one::errors::active_checkpoint_changed!());
     let after = validated_active_position(self, observation, reference_time_ms);
@@ -393,7 +398,7 @@ public fun complete_mint<Product>(
         blast_leverage_series_one::errors::active_leverage_above_cap!(),
     );
     self.maintenance_reserve = reserve_after;
-    (shares, contribution)
+    (shares, contribution, admin_fee + buffer_fee, admin_fee, buffer_fee, fee_bps, admin_bps)
 }
 
 /// Seals a rounded-up attributable close and the redeemer's output/fee limits.
@@ -453,7 +458,7 @@ public fun complete_redemption<Product>(
     plan: RedemptionPlan<Product>,
     observation: PositionObservation,
     reference_time_ms: u64,
-): (u64, u64, u64, u64) {
+): (u64, u64, u64, u64, u64) {
     self.lifecycle.assert_active();
     let RedemptionPlan {
         before, reserve_before, shares, supply, minimum_output, fee_bps, admin_bps, order_base,
@@ -482,20 +487,7 @@ public fun complete_redemption<Product>(
     let final_equity = keep.checked_add(reserve_after)
         .destroy_or!(abort blast_leverage_series_one::errors::arithmetic_overflow!());
     self.maintenance_reserve = reserve_after;
-    (net, admin, final_equity, fee)
-}
-
-/// Credits only authenticated newly deposited collateral to the active buffer.
-/// This edge creates no shares and no admin entitlement.
-public fun donate<Product>(
-    self: &mut State<Product>,
-    before: PositionObservation,
-    after: PositionObservation,
-    amount: u64,
-    reference_time_ms: u64,
-) {
-    let plan = self.prepare_donation(before, amount, reference_time_ms);
-    self.complete_donation(plan, after, reference_time_ms);
+    (net, admin, final_equity, fee, fee - admin)
 }
 
 /// Rejects unavailable active lifecycle before the adapter touches the venue.
@@ -752,89 +744,17 @@ public fun maintenance_reserve<Product>(self: &State<Product>): u64 {
     self.maintenance_reserve
 }
 
-/// Returns current active health without changing economic lifecycle.
-/// Temporary invalid observations cannot retire a product. Fresh observations
-/// restore validity without a resume call; terminal states never become healthy.
-public fun sync_health<Product>(
-    self: &mut State<Product>,
+/// Consumes an authenticated diagnostic observation without pricing or changing lifecycle.
+/// Financial operations validate their own fresh observations before using them.
+public fun consume_health_observation<Product>(
+    self: &State<Product>,
     observation: PositionObservation,
-    share_supply: u64,
-    reference_time_ms: u64,
-): bool {
+) {
     self.lifecycle.assert_initialized();
-    let is_active = self.lifecycle.is_active();
-
-    let (
-        venue_equity,
-        absolute_base,
-        absolute_notional,
-        lot_size,
-        observed_side,
-        pending_order_count,
-        margin_safe,
-        venue_operational,
-        checkpoint_clean,
-        base_index,
-        collateral_oracle,
-        mark_price,
-    ) = observation.unpack_position();
-    let (base_index_price, base_confidence, base_publish_time_ms) =
-        base_index.unpack_price();
-    let (collateral_price, collateral_confidence, collateral_publish_time_ms) =
-        collateral_oracle.unpack_price();
-    let valuation_policy = self.tier_policy.valuation_policy();
-    let rebalance_policy = self.tier_policy.rebalance_policy();
-    let min_exposure_lots = self.tier_policy.min_exposure_lots();
-
-    let is_healthy = accounting_math::is_reserve_backed(
-        venue_equity,
-        self.maintenance_reserve,
-    ) && accounting_math::is_shareholder_nav_positive(
-        venue_equity,
-        self.maintenance_reserve,
-    ) && valuation_policy.is_price_fresh(
-        base_publish_time_ms,
-        reference_time_ms,
-    ) && valuation_policy.is_confidence_within_bound(
-        base_confidence,
-        base_index_price,
-    ) && valuation_policy.is_price_fresh(
-        collateral_publish_time_ms,
-        reference_time_ms,
-    ) && valuation_policy.is_confidence_within_bound(
-        collateral_confidence,
-        collateral_price,
-    ) && valuation_policy.is_mark_within_index_divergence(
-        mark_price,
-        base_index_price,
-    ) && observation::is_position_structurally_valid(
-        absolute_base,
-        absolute_notional,
-        lot_size,
-    ) && observed_side == self.tier_policy.side()
-        && pending_order_count == 0
-        && venue_operational
-        && checkpoint_clean
-        && margin_safe
-        && accounting_math::is_accounting_leverage_below_limit(
-            absolute_notional,
-            venue_equity,
-            self.maintenance_reserve,
-            rebalance_policy.hard_cap_bps(),
-        )
-        && accounting_math::is_exposure_above_minimum_operation(
-            absolute_base,
-            lot_size,
-            min_exposure_lots,
-        )
-        && accounting_math::is_redemption_possible(
-            absolute_base,
-            share_supply,
-            lot_size,
-            min_exposure_lots,
-        );
-
-    is_active && is_healthy
+    let (_, _, _, _, _, _, _, _, _, base_index, collateral_oracle, _) =
+        observation.unpack_position();
+    let (_, _, _) = base_index.unpack_price();
+    let (_, _, _) = collateral_oracle.unpack_price();
 }
 
 /// Updates the live per-call maximum order notional within its frozen bounds.
@@ -1072,4 +992,18 @@ public fun destroy_for_testing<Product>(self: State<Product>) {
         redeem_fee_bps: _,
         admin_allocation_bps: _,
     } = self;
+}
+
+#[test_only]
+/// Credits only authenticated newly deposited collateral to the active buffer.
+/// This edge creates no shares and no admin entitlement.
+public fun donate<Product>(
+    self: &mut State<Product>,
+    before: PositionObservation,
+    after: PositionObservation,
+    amount: u64,
+    reference_time_ms: u64,
+) {
+    let plan = self.prepare_donation(before, amount, reference_time_ms);
+    self.complete_donation(plan, after, reference_time_ms);
 }

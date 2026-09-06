@@ -57,6 +57,7 @@ public struct RedemptionReceipt<phantom Product> {
     net: u64,
     admin: u64,
     fee: u64,
+    buffer: u64,
     fee_bps: u64,
     admin_bps: u64,
     final_equity: u64,
@@ -84,7 +85,7 @@ public fun rebalance<Product, Collateral>(
     let binding = vault.venue_binding();
     let (before, mut checkpoint) = snapshot::capture(&binding, account, registry, &clearing_house,
         base_oracle, collateral_oracle, base_price_info, collateral_price_info, clock);
-    venue_account::assert_deposit_checkpoint(vault.venue_checkpoint(), &checkpoint, 0);
+    venue_account::assert_accepted_checkpoint(vault.venue_checkpoint(), &checkpoint);
     let params = clearing_house.market_params();
     let ordinary = market::taker_fee(params);
     let priority = market::resolve_priority_taker_fee(market::priority_taker_fee(params));
@@ -163,7 +164,7 @@ public fun redeem<Product, Collateral>(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    venue_account::assert_deposit_checkpoint(vault.venue_checkpoint(), &checkpoint, 0);
+    venue_account::assert_accepted_checkpoint(vault.venue_checkpoint(), &checkpoint);
     let plan = vault.prepare_redemption(before, &shares, minimum_collateral, maximum_fee_bps, clock.timestamp_ms());
     let (base_price, collateral_price, lot) = plan.redemption_valuation();
     let (side, cap) = vault.active_constraints();
@@ -244,7 +245,7 @@ public fun mint<Product, Collateral>(
     let deposit = cash.value();
     assert!(deposit > 0, blast_leverage_aftermath::errors::zero_amount!());
     assert_deadline(clock.timestamp_ms(), deadline_ms);
-    let (_, admin_fee, _, _, _) = vault.fee_facts(deposit, true, maximum_fee_bps);
+    vault.assert_user_fee_limit(true, maximum_fee_bps);
 
     sync_health(
         vault, protocol, account, registry, &mut clearing_house, base_oracle, collateral_oracle,
@@ -255,14 +256,14 @@ public fun mint<Product, Collateral>(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    venue_account::assert_deposit_checkpoint(vault.venue_checkpoint(), &before_checkpoint, 0);
+    venue_account::assert_accepted_checkpoint(vault.venue_checkpoint(), &before_checkpoint);
     let plan = vault.prepare_mint(before, deposit, minimum_shares, maximum_fee_bps, clock.timestamp_ms());
     let (base_price, collateral_price, lot) = plan.mint_valuation();
     let (side, cap) = vault.active_constraints();
     let is_ask = order_side(side);
     let mut remaining = plan.order_base();
 
-    let admin_cash = cash.split(admin_fee, ctx);
+    let admin_cash = cash.split(plan.admin_fee(), ctx);
     vault.retain_admin_cash(admin_cash);
     let venue_deposit = cash.value();
     vault.deposit_collateral(account, registry, cash);
@@ -373,7 +374,7 @@ public fun donate<Product, Collateral>(
         &binding, account, registry, clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    venue_account::assert_deposit_checkpoint(vault.venue_checkpoint(), &before_checkpoint, 0);
+    venue_account::assert_accepted_checkpoint(vault.venue_checkpoint(), &before_checkpoint);
     let plan = vault.prepare_donation(before, amount, clock.timestamp_ms());
     vault.deposit_collateral(account, registry, cash);
     let (after, checkpoint) = snapshot::capture(
@@ -411,6 +412,7 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
         vault.initialization_constraints(&risk_module);
 
     let seed_amount = seed.value();
+    vault::assert_seed_funder(seed_funder);
     assert_initialization_inputs(
         currency.decimals(),
         seed_amount,
@@ -694,11 +696,9 @@ public fun sync_health<Product, Collateral>(
     );
     apply_post_capture(
         vault,
-        pre_checkpoint,
         post_capture,
         preexisting_change,
         local_change,
-        clock.timestamp_ms(),
     );
 }
 
@@ -721,10 +721,10 @@ public(package) fun price_redemption<Product>(
 ): RedemptionReceipt<Product> {
     let (amount, final_base, base_price, collateral_price, fee_bps, admin_bps) = plan.redemption_terms();
     assert!(shares.value() == amount, blast_leverage_aftermath::errors::redemption_share_mismatch!());
-    let (net, admin, final_equity, fee) = vault.price_redemption(plan, unwound, now);
+    let (net, admin, final_equity, fee, buffer) = vault.price_redemption(plan, unwound, now);
     let shares = shares.into_balance();
     RedemptionReceipt {
-        shares, net, admin, fee, fee_bps, admin_bps, final_equity, final_base,
+        shares, net, admin, fee, buffer, fee_bps, admin_bps, final_equity, final_base,
         base_price, collateral_price, unwound_checkpoint,
     }
 }
@@ -741,7 +741,7 @@ public(package) fun complete_redemption<Product, Collateral>(
     after: PositionObservation, checkpoint: venue_account::Checkpoint, now: u64, ctx: &mut TxContext,
 ): Coin<Collateral> {
     let RedemptionReceipt {
-        shares, net, admin, fee, fee_bps, admin_bps, final_equity, final_base,
+        shares, net, admin, fee, buffer, fee_bps, admin_bps, final_equity, final_base,
         base_price, collateral_price, unwound_checkpoint: _,
     } = receipt;
     vault.assert_collateral_type<Product, Collateral>();
@@ -753,7 +753,7 @@ public(package) fun complete_redemption<Product, Collateral>(
     let burned = vault.burn_redeemed_shares(shares.into_coin(ctx));
     vault.replace_venue_checkpoint(checkpoint);
     events::redeemed<Product>(
-        vault.id(), burned, net, fee, admin, fee - admin, fee_bps, admin_bps,
+        vault.id(), burned, net, fee, admin, buffer, fee_bps, admin_bps,
         vault.maintenance_reserve(), vault.admin_cash_balance<Product, Collateral>(), vault.share_supply(), checkpoint,
     );
     cash
@@ -765,8 +765,7 @@ public(package) fun complete_mint<Product, Collateral>(
     checkpoint: venue_account::Checkpoint, now: u64, ctx: &mut TxContext,
 ): Coin<Vault<Product>> {
     let deposit = plan.mint_deposit();
-    let (fee, admin, buffer, rate, admin_rate) = vault.fee_facts(deposit, true, std::u64::max_value!());
-    let (shares, contribution) = vault.complete_mint(plan, after, now, ctx);
+    let (shares, contribution, fee, admin, buffer, rate, admin_rate) = vault.complete_mint(plan, after, now, ctx);
     vault.replace_venue_checkpoint(checkpoint);
     events::minted<Product>(
         vault.id(), deposit, shares.value(), contribution, fee, admin, buffer, rate, admin_rate,
@@ -786,7 +785,7 @@ public(package) fun complete_buffer_release<Product>(
     reference_time_ms: u64,
 ) {
     admin_witness.assert_role(series_one_domain::risk_admin_role());
-    venue_account::assert_deposit_checkpoint(vault.venue_checkpoint(), &checkpoint, 0);
+    venue_account::assert_accepted_checkpoint(vault.venue_checkpoint(), &checkpoint);
     vault.release_buffer(admin_witness, observation, amount, reference_time_ms);
     events::buffer_released<Product>(vault.id(), amount, vault.maintenance_reserve());
 }
@@ -809,11 +808,9 @@ public(package) fun complete_donation<Product>(
 /// Applies the complete Blast-owned post-capture synchronization phase.
 public(package) fun apply_post_capture<Product>(
     vault: &mut Vault<Product>,
-    _pre_checkpoint: venue_account::Checkpoint,
     post_capture: snapshot::CapturedSnapshot,
     preexisting_change: snapshot::Change,
     local_change: snapshot::Change,
-    reference_time_ms: u64,
 ) {
     let stored_checkpoint = *vault.venue_checkpoint();
     let net = snapshot::net_funding(preexisting_change, local_change);
@@ -833,11 +830,7 @@ public(package) fun apply_post_capture<Product>(
     if (checkpoint_clean) {
         vault.replace_venue_checkpoint(checkpoint);
     };
-    let _healthy = vault.sync_health(
-        observation,
-        reference_time_ms,
-    );
-    let lifecycle_changed = false;
+    vault.consume_health_observation(observation);
 
     let vault_id = vault.id();
     // A zero-net interval still advances authenticated source identity and
@@ -863,7 +856,6 @@ public(package) fun apply_post_capture<Product>(
             } else {
                 events::unexpected_checkpoint_reason()
             },
-            lifecycle_changed,
             checkpoint,
         );
     };
@@ -1412,34 +1404,26 @@ public fun apply_post_capture_for_testing<Product>(
     vault: &mut Vault<Product>,
     post_capture: snapshot::CapturedSnapshot,
     change: snapshot::Change,
-    reference_time_ms: u64,
 ) {
-    let pre_checkpoint = *vault.venue_checkpoint();
     apply_post_capture(
         vault,
-        pre_checkpoint,
         post_capture,
         snapshot::unchanged_change(),
         change,
-        reference_time_ms,
     );
 }
 
 #[test_only]
 public fun apply_post_captures_for_testing<Product>(
     vault: &mut Vault<Product>,
-    pre_checkpoint: venue_account::Checkpoint,
     post_capture: snapshot::CapturedSnapshot,
     preexisting_change: snapshot::Change,
     local_change: snapshot::Change,
-    reference_time_ms: u64,
 ) {
     apply_post_capture(
         vault,
-        pre_checkpoint,
         post_capture,
         preexisting_change,
         local_change,
-        reference_time_ms,
     );
 }

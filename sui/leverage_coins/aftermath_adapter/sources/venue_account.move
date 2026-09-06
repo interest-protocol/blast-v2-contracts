@@ -134,6 +134,11 @@ public(package) fun deposit<Collateral>(
     account::deposit_collateral(account, self.admin_cap.borrow(), registry, cash);
 }
 
+/// Rejects unresolved venue drift before a priced operation uses the accepted checkpoint.
+public(package) fun assert_accepted_checkpoint(accepted: &Checkpoint, observed: &Checkpoint) {
+    assert!(accepted == observed, blast_leverage_aftermath::errors::unresolved_checkpoint!());
+}
+
 /// A cash-only deposit may change exactly free collateral and no other raw field.
 public(package) fun assert_deposit_checkpoint(before: &Checkpoint, after: &Checkpoint, amount: u64) {
     let mut expected = *before;

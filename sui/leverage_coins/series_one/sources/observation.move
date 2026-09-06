@@ -67,9 +67,9 @@ public fun new_price(
 
 /// Creates a price snapshot for objective health synchronization.
 ///
-/// Zero is preserved intentionally. `sync_health` uses non-aborting valuation
-/// predicates and must be able to persist `Active -> ReduceOnly` when an oracle
-/// source returns an invalid live value.
+/// Zero is preserved intentionally for authenticated diagnostics. Consuming a
+/// health observation never changes lifecycle; priced operations still reject
+/// invalid economic inputs.
 public fun new_health_price(
     price: u64,
     confidence: u64,
@@ -130,8 +130,8 @@ public fun new_position(
 ///
 /// The adapter must use this path only after authenticating the live venue and
 /// oracle sources. Zero price, mark, or lot values and structurally invalid
-/// exposure are preserved so `sync_health` can degrade the lifecycle. Every
-/// risk-increasing Series1 operation still validates the complete observation
+/// exposure are preserved for diagnostics without a lifecycle transition. Every
+/// priced Series1 operation still validates the complete observation
 /// before mutation.
 public fun new_health_position(
     venue_equity: u64,

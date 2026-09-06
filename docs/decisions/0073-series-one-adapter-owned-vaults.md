@@ -2,6 +2,7 @@
 
 - Status: **accepted**
 - Date: 2026-09-04
+- Active-contract amendment: 2026-09-06 (pre-publication source contract)
 - Supersedes the package-boundary, versioning, issuance, and adapter-handoff
   portions of [0064](0064-aftermath-backed-leverage-coins.md),
   [0070](0070-series-one-versioning-and-role-administration.md),
@@ -33,6 +34,13 @@ Series1 also owns policy, lifecycle, accounting math, bounded values, and
 `state::State<Product>`. `State<Product>` has `store` only. Its fields are
 private, so adapters can store it but cannot directly modify its policy,
 notional bound, reserve, or lifecycle.
+
+Each product has one immutable public maintenance band, target, and hard
+threshold. There is no privileged inner band. Fee and admin-allocation ceilings
+are immutable; authorized future settings remain within those ceilings. The
+adapter retains native TreasuryCap supply, separate native admin collateral,
+and the immutable locked-share amount and nonzero seed funder. Core State does
+not duplicate these native balances.
 
 Only State construction accepts an `AdminWitness`. After construction, the
 custodial adapter authenticates each operation before it calls a Series1 state
@@ -126,8 +134,12 @@ emits the Vault-identified update event.
 The Series1 `RISK_ADMIN` can separately move an `Active` State to `ReduceOnly`.
 The adapter checks its version and the Series1 role. Series1 checks the
 lifecycle transition. The adapter emits the Vault-identified transition event
-only after the core mutation succeeds. This slice adds no activation, resume,
-objective health sync, shutdown start, or settlement path.
+only after the core mutation succeeds. Permissionless health synchronization
+does not invoke that transition: temporary data faults and unresolved venue
+changes preserve lifecycle and the accepted economic checkpoint. Active
+activation, funding, mint, redemption, rebalance, donation, fee withdrawal and
+buffer release use the same custody boundary. Terminal shutdown and claims
+remain a separate contract.
 
 Only the adapter is versioned. Its public operational and administrative routes
 check the adapter version. The stable Series1 state and ACL do not carry an

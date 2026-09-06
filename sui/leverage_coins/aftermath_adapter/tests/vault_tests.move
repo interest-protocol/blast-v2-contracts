@@ -35,7 +35,6 @@ const MAX_ORDER_NOTIONAL_CURRENT: u64 = 250;
 const MAX_ORDER_NOTIONAL_MAXIMUM: u64 = 1_000;
 
 // === Product Witnesses ===
-
 /// Sealed product witness for the 2x currency.
 public struct Sui2x() has drop;
 
@@ -64,6 +63,18 @@ public struct Fixture {
 }
 
 // === Tests ===
+
+#[test]
+#[expected_failure(abort_code = blast_leverage_aftermath::errors::EInvalidSeedFunder, location = blast_leverage_aftermath::vault)]
+fun seed_funder_rejects_zero_before_activation() {
+    vault::assert_seed_funder(@0x0);
+}
+
+#[test]
+fun seed_funder_accepts_the_first_nonzero_address() {
+    vault::assert_seed_funder(@0x1);
+}
+
 
 #[test]
 fun distinct_issued_products_freeze_actual_long_short_2x_and_generic_4x_6x_policy() {

@@ -848,6 +848,8 @@ function initializerBindings(initializer, path) {
         }
         return expectAddress(raw.slice(1), `${path}.${name}`);
     };
+    const seedFunder = addressArgument(12, 'seedFunder');
+    if (BigInt(seedFunder) === 0n) fail('seedFunder must not be zero');
     return {
         productType: expectString(initializer.typeArguments[0], `${path}.productType`),
         collateralType: expectString(initializer.typeArguments[2], `${path}.collateralType`),
@@ -862,7 +864,7 @@ function initializerBindings(initializer, path) {
         collateralPriceInfoId: addressArgument(9, 'collateralPriceInfoId'),
         seedCoinId: addressArgument(10, 'seedCoinId'),
         seedReserve: BigInt(expectString(initializer.arguments[11], `${path}.seedReserve`)),
-        seedFunder: addressArgument(12, 'seedFunder'),
+        seedFunder,
         positionImr: BigInt(expectString(initializer.arguments[13], `${path}.positionImr`)),
         clockId: addressArgument(14, 'clockId'),
     };
@@ -1424,6 +1426,11 @@ function selfTest() {
     );
     let passed = 3;
 
+    const zeroFunder = structuredClone(fixture.success.initializer);
+    zeroFunder.arguments[12] = `@0x${'0'.repeat(64)}`;
+    expectFailure('seedFunder must not be zero', () => initializerBindings(zeroFunder, 'zeroFunder'));
+    passed += 1;
+
     const duplicateEvent = structuredClone(fixture.success);
     duplicateEvent.events.push(structuredClone(duplicateEvent.events[0]));
     expectFailure('exactly one', () => validateSuccess(duplicateEvent, duplicateEvent));
@@ -1784,7 +1791,7 @@ function selfTest() {
     ));
     passed += 1;
 
-    process.stdout.write(`activation_atomicity self-test: PASS ${passed}/52 cases\n`);
+    process.stdout.write(`activation_atomicity self-test: PASS ${passed}/53 cases\n`);
 }
 
 function live(configPath) {

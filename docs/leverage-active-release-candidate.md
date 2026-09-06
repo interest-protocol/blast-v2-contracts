@@ -15,25 +15,10 @@ mutation. Position direction, target/public band/hard threshold, valuation rules
 fee ceilings, allocation ceiling, lot minimum and NAV cap are frozen at issuance.
 Only bounded current order notional and capped future fee settings can change.
 
-Section 8 candidates are reproduced below for validation, not asserted market
-facts. Basis-point fields retain their distinct leverage, fee and allocation units.
-
-| Parameter | Long 2x | Short 2x |
-| --- | ---: | ---: |
-| Public lower / target / upper | 18000 / 20000 / 22000 | 18500 / 20000 / 21500 |
-| Hard threshold | 25000 | 23500 |
-| Mint / redeem fees; respective caps | 30 / 30; 100 / 100 | 30 / 30; 100 / 100 |
-| Initial admin allocation; cap | 2000; 3000 | 2000; 3000 |
-| Strict / wider execution tolerance | 30 / 100 | 20 / 75 |
-| Minimum leverage improvement | 10 | 10 |
-| Price age / future skew (ms) | 30000 / 0 | 15000 / 0 |
-| Confidence / mark divergence | 50 / 100 | 25 / 75 |
-| Favorable mint / redeem divergence | 30 / 30 | 20 / 20 |
-| Minimum exposure change (venue lots) | 100 | 100 |
-| Maximum sessions per atomic call | 16 | 16 |
-
-NAV cap, seed/reserve and minimum/current/maximum order notional are deliberately
-unset in the [normalized input template](../sui/leverage_coins/aftermath_adapter/release/active-input.template.json).
+The candidate policy values and deliberately unset NAV, seed/reserve and order
+bounds live in the [normalized input template](../sui/leverage_coins/aftermath_adapter/release/active-input.template.json).
+It is the single candidate-value record; the governing accounting and health
+contract is [ADR 0074](decisions/0074-aftermath-vault-activation-and-health.md).
 They require exact market depth, lot, fees, margin, smallest exit and bounded-call
 gas evidence. Generic 4x/6x tests prove generic arithmetic and type isolation,
 not that either tier is a validated launch configuration.
@@ -82,13 +67,11 @@ After a competing success, rebuild only from current objects. If submission is
 uncertain, resolve that digest before retrying; never use a numerical shadow
 checkpoint. Read-only observation requires no database, queue or new service.
 
-The pure `scripts/active_ptb.mjs` module exports `keeperDecision`,
-`buildActivePlan` and `renderUnsignedPtbArgs`. It covers mint, redeem, rebalance,
-mint-buy and sell-redeem, with canonical addresses, decimal u64 limits and exact
-return-value references. Its fixture constructors and independent boundary
-expectations are in `active_ptb.test.mjs`, included in the local gate. The module
-never opens RPC, signs or submits. Rendered call plans/CLI arguments are not BCS
-TransactionData: resolving live objects and running the generated unsigned
+The [offline client planner](../sui/leverage_coins/aftermath_adapter/scripts/active_ptb.mjs)
+constructs typed active and composition calls with exact native return-value
+references. Its adjacent tests and package-local gate are the executable
+contract. It never opens RPC, signs or submits. Rendered call plans/CLI arguments
+are not BCS TransactionData: resolving live objects and running the generated unsigned
 serialization command belong to the authorized rehearsal and remain unrun.
 
 Mint/redeem clients provide a native input coin, minimum output, maximum protocol
@@ -101,10 +84,9 @@ and downstream rollback still require the submitted rehearsal below.
 
 ## Evidence and release rehearsal
 
-Local commands are Series1 `bash scripts/verify.sh all`, adapter **explicit**
-`bash scripts/verify.sh local`, launchpad source boundaries/tests, and consumer
-composition `sui move test --lint --warnings-are-errors`. Official pinned Aftermath
-ports abort 404 locally. Offline activation/health/atomicity fixtures are
+Package verification scripts define the local gates; the implementation handoff
+records their exact invocation and outcomes. Official pinned Aftermath ports
+abort 404 locally. Offline activation/health/atomicity fixtures are
 synthetic oracles/validators, not chain transaction evidence. The implementation
 handoff records exact commands, source revision, logs and limitations.
 

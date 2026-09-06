@@ -354,7 +354,6 @@
           "pos0": {
             "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
             "reason": 1,
-            "lifecycle_changed": false,
             "checkpoint": "liquidation"
           }
         }
@@ -367,7 +366,6 @@
           "pos0": {
             "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
             "reason": 1,
-            "lifecycle_changed": false,
             "checkpoint": "adl"
           }
         }
@@ -380,7 +378,6 @@
           "pos0": {
             "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
             "reason": 1,
-            "lifecycle_changed": false,
             "checkpoint": "collateral"
           }
         }
@@ -393,7 +390,6 @@
           "pos0": {
             "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
             "reason": 1,
-            "lifecycle_changed": false,
             "checkpoint": "pending"
           }
         }
@@ -406,7 +402,6 @@
           "pos0": {
             "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
             "reason": 1,
-            "lifecycle_changed": false,
             "checkpoint": "pause"
           }
         }
@@ -419,7 +414,6 @@
           "pos0": {
             "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
             "reason": 1,
-            "lifecycle_changed": false,
             "checkpoint": "freeze"
           }
         }

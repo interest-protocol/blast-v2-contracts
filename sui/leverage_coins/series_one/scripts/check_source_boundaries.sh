@@ -240,7 +240,6 @@ expected_state_public="$(printf '%s\n' \
   complete_mint \
   complete_rebalance \
   complete_redemption \
-  donate \
   enter_reduce_only \
   fee_allocation \
   fee_settings \
@@ -265,7 +264,7 @@ expected_state_public="$(printf '%s\n' \
   set_fees \
   set_max_order_notional \
   settle_funding \
-  sync_health \
+  consume_health_observation \
   | sort)"
 [[ "$actual_state_public" == "$expected_state_public" ]] \
   || fail "The production Series1 State surface changed without boundary review."
@@ -281,7 +280,7 @@ rebalance_prepare="$(sed -n '/^public fun prepare_rebalance</,/^}/p' "$state_fil
 grep -q 'scaled < (nav as u128) \* (risk.public_lower_bps() as u128)' <<<"$rebalance_prepare" \
   && grep -q 'scaled > (nav as u128) \* (risk.public_upper_bps() as u128)' <<<"$rebalance_prepare" \
   || fail "Rebalance triggers must use strict exact-ratio cross products."
-health_block="$(sed -n '/^public fun sync_health</,/^}/p' "$state_file")"
+health_block="$(sed -n '/^public fun consume_health_observation</,/^}/p' "$state_file")"
 if grep -Eq 'self.lifecycle\.(degrade|enter_|activate)|self.maintenance_reserve[[:space:]]*=' <<<"$health_block"; then
   fail "Ordinary health validation must not change lifecycle or reserve allocation."
 fi
