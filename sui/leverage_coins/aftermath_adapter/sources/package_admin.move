@@ -2,204 +2,171 @@
 // W04005 sees the expanded literal; this suppression preserves stable codes and local checks.
 #[allow(lint(abort_without_constant))]
 /// Permanent shared custody for the adapter Publisher and UpgradeCap.
+///
+/// The adapter shares the Series1 administration domain, so its governed
+/// transitions accept `AdminWitness<SERIES_ONE_DOMAIN>` and assert the role that
+/// Series1 exports. Custody itself stays package-local: this adapter's
+/// generation advances without touching Series1, which is immutable and has no
+/// generation of its own.
 module blast_leverage_aftermath::package_admin;
 
-use blast_leverage_aftermath::{
-    aftermath::AFTERMATH,
-    constants,
-    events,
-    protocol::Protocol,
+use blast_admin::{
+    acl::AdminWitness,
+    upgrade_custody::{Self, UpgradeCustody},
 };
-use blast_leverage_series_one::acl::{Self, AdminWitness};
-use std::type_name;
-use sui::package::{Self, Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};
+use blast_leverage_aftermath::{aftermath::AFTERMATH, protocol::Protocol};
+use blast_leverage_series_one::series_one_domain::{Self, SERIES_ONE_DOMAIN};
+use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};
 
 // === Public Structs ===
 
 /// Shared, non-releasable adapter package authority.
 public struct PackageAdmin has key {
     id: UID,
-    publisher: Publisher,
-    upgrade_cap: UpgradeCap,
+    custody: UpgradeCustody<AFTERMATH>,
 }
 
 // === Public Functions ===
 
-/// Validates adapter capabilities and returns composable unshared custody.
-public fun new(
-    publisher: Publisher,
-    upgrade_cap: UpgradeCap,
-    ctx: &mut TxContext,
-): PackageAdmin {
+/// Validates the canonical adapter capabilities and seals them into custody.
+///
+/// `upgrade_custody::new` owns the complete provenance check: the Publisher must
+/// belong to this package and the cap must be this package's never-upgraded one.
+/// No later call re-reads those fields, because the sealed value cannot hold
+/// anything else.
+public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext) {
+    // from_module compares both the package address and the canonical module name.
     assert!(
         publisher.from_module<AFTERMATH>(),
         blast_leverage_aftermath::errors::invalid_package_publisher!(),
     );
-    assert!(
-        upgrade_cap.package().to_address() == type_name::original_id<AFTERMATH>(),
-        blast_leverage_aftermath::errors::invalid_upgrade_cap!(),
-    );
 
-    new_unchecked(publisher, upgrade_cap, ctx)
+    let id = object::new(ctx);
+    let custody = upgrade_custody::new<AFTERMATH>(id.to_inner(), publisher, upgrade_cap);
+
+    transfer::share_object(PackageAdmin { id, custody });
 }
 
-/// Irreversibly shares custody and emits its complete creation fact.
-public fun share(self: PackageAdmin) {
-    let package_admin_id = self.id.to_inner();
-    let publisher_id = object::id(&self.publisher);
-    let upgrade_cap_id = object::id(&self.upgrade_cap);
-    let package_id = self.upgrade_cap.package();
-    let package_version = self.upgrade_cap.version();
-    let policy = self.upgrade_cap.policy();
-
-    transfer::share_object(self);
-    events::package_admin_created(
-        package_admin_id,
-        publisher_id,
-        upgrade_cap_id,
-        package_id,
-        package_version,
-        policy,
-    );
-}
-
-/// Proves custody is canonical and no native upgrade ticket is outstanding.
-///
-/// `new` permanently authenticates the private Publisher and UpgradeCap fields.
-/// The cap's package ID changes after every committed upgrade, so later checks
-/// require a live ID rather than incorrectly comparing it to the original ID.
-public(package) fun assert_adapter_custody(self: &PackageAdmin) {
-    assert!(
-        self.publisher.from_module<AFTERMATH>(),
-        blast_leverage_aftermath::errors::invalid_package_publisher!(),
-    );
-    assert!(
-        self.upgrade_cap.package().to_address() != @0x0,
-        blast_leverage_aftermath::errors::invalid_upgrade_cap!(),
-    );
-}
-
-/// Authorizes one exact adapter digest under the wrapped cap's policy.
+/// Authorizes one exact adapter digest under the sealed cap's current policy.
 public fun authorize_upgrade(
     self: &mut PackageAdmin,
     protocol: &Protocol,
-    admin_witness: &AdminWitness,
+    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
     digest: vector<u8>,
 ): UpgradeTicket {
     protocol.assert_current();
-    admin_witness.assert_package_admin();
-    assert!(
-        digest.length() == constants::package_digest_length!(),
-        blast_leverage_aftermath::errors::invalid_package_digest!(),
-    );
+    admin_witness.assert_role(series_one_domain::package_admin_role());
+    let custodian_id = self.id.to_inner();
 
-    let package_id = self.upgrade_cap.package();
-    let cap_version = self.upgrade_cap.version();
-    let policy = self.upgrade_cap.policy();
-    let ticket = self.upgrade_cap.authorize(policy, digest);
-
-    events::upgrade_authorized(package_id, cap_version, policy, *ticket.digest());
-    ticket
+    self.custody.authorize_upgrade(custodian_id, digest)
 }
 
-/// Commits a native receipt into the wrapped adapter UpgradeCap.
-public fun commit_upgrade(
+/// Commits the native receipt and advances one operational generation at once.
+///
+/// This is the only upgrade finalizer. Both mutations belong to the same
+/// transaction, so a failure at either step rolls back the whole upgrade.
+public fun commit_upgrade_and_advance(
     self: &mut PackageAdmin,
-    protocol: &Protocol,
+    protocol: &mut Protocol,
+    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
     receipt: UpgradeReceipt,
 ) {
-    protocol.assert_current();
-    let new_package_id = receipt.package();
-    let previous_version = self.upgrade_cap.version();
+    admin_witness.assert_role(series_one_domain::package_admin_role());
+    protocol.assert_next();
+    let custodian_id = self.id.to_inner();
 
-    self.upgrade_cap.commit(receipt);
-    events::upgrade_committed(
-        new_package_id,
-        previous_version,
-        self.upgrade_cap.version(),
-    );
+    self.custody.commit_upgrade(custodian_id, receipt);
+    protocol.advance();
 }
 
 /// Irreversibly narrows adapter upgrades to additive changes.
 public fun restrict_to_additive(
     self: &mut PackageAdmin,
     protocol: &Protocol,
-    admin_witness: &AdminWitness,
+    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
 ) {
     protocol.assert_current();
-    admin_witness.assert_package_admin();
-    let previous_policy = self.upgrade_cap.policy();
-    self.assert_policy_can_be_restricted_to(package::additive_policy());
+    admin_witness.assert_role(series_one_domain::package_admin_role());
+    let custodian_id = self.id.to_inner();
 
-    self.upgrade_cap.only_additive_upgrades();
-    events::upgrade_policy_restricted(previous_policy, self.upgrade_cap.policy());
+    self.custody.restrict_to_additive(custodian_id);
 }
 
 /// Irreversibly narrows adapter upgrades to dependency-only changes.
 public fun restrict_to_dependency_only(
     self: &mut PackageAdmin,
     protocol: &Protocol,
-    admin_witness: &AdminWitness,
+    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
 ) {
     protocol.assert_current();
-    admin_witness.assert_package_admin();
-    let previous_policy = self.upgrade_cap.policy();
-    self.assert_policy_can_be_restricted_to(package::dep_only_policy());
+    admin_witness.assert_role(series_one_domain::package_admin_role());
+    let custodian_id = self.id.to_inner();
 
-    self.upgrade_cap.only_dep_upgrades();
-    events::upgrade_policy_restricted(previous_policy, self.upgrade_cap.policy());
+    self.custody.restrict_to_dependency_only(custodian_id);
 }
 
-// === Private Functions ===
+/// Irreversibly destroys native upgrade authority for this adapter.
+public fun make_immutable(
+    self: &mut PackageAdmin,
+    protocol: &Protocol,
+    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
+) {
+    protocol.assert_current();
+    admin_witness.assert_role(series_one_domain::package_admin_role());
+    let custodian_id = self.id.to_inner();
 
-fun new_unchecked(
-    publisher: Publisher,
-    upgrade_cap: UpgradeCap,
-    ctx: &mut TxContext,
-): PackageAdmin {
-    PackageAdmin { id: object::new(ctx), publisher, upgrade_cap }
+    self.custody.make_immutable(custodian_id);
 }
 
-fun assert_policy_can_be_restricted_to(self: &PackageAdmin, new_policy: u8) {
-    assert!(
-        new_policy > self.upgrade_cap.policy(),
-        blast_leverage_aftermath::errors::upgrade_policy_not_more_restrictive!(),
-    );
+/// Reports whether native upgrade authority remains sealed in custody.
+public fun has_upgrade_cap(self: &PackageAdmin): bool {
+    self.custody.has_upgrade_cap()
 }
 
 // === Test-Only Functions ===
 
 #[test_only]
-/// Creates unshared administration around simulated package capabilities.
-public fun new_for_testing(package_id: ID, ctx: &mut TxContext): PackageAdmin {
-    new_unchecked(
+/// Creates unshared custody around this package's simulated capabilities.
+public fun new_for_testing(ctx: &mut TxContext): PackageAdmin {
+    let id = object::new(ctx);
+    let custody = upgrade_custody::new<AFTERMATH>(
+        id.to_inner(),
         blast_leverage_aftermath::aftermath::publisher_for_testing(ctx),
-        package::test_publish(package_id, ctx),
-        ctx,
-    )
+        sui::package::test_publish(
+            std::type_name::original_id<AFTERMATH>().to_id(),
+            ctx,
+        ),
+    );
+
+    PackageAdmin { id, custody }
+}
+
+#[test_only]
+public fun id_for_testing(self: &PackageAdmin): ID {
+    self.id.to_inner()
 }
 
 #[test_only]
 public fun publisher_id_for_testing(self: &PackageAdmin): ID {
-    object::id(&self.publisher)
+    self.custody.publisher_id_for_testing()
 }
 
 #[test_only]
 public fun upgrade_cap_id_for_testing(self: &PackageAdmin): ID {
-    object::id(&self.upgrade_cap)
+    self.custody.upgrade_cap_id_for_testing()
 }
 
 #[test_only]
 public fun package_id_for_testing(self: &PackageAdmin): ID {
-    self.upgrade_cap.package()
+    self.custody.current_package_id_for_testing()
 }
 
 #[test_only]
 public fun version_for_testing(self: &PackageAdmin): u64 {
-    self.upgrade_cap.version()
+    self.custody.native_version_for_testing()
 }
 
 #[test_only]
 public fun policy_for_testing(self: &PackageAdmin): u8 {
-    self.upgrade_cap.policy()
+    self.custody.policy_for_testing()
 }

@@ -55,24 +55,36 @@ if grep -rniE '^(public )?struct [A-Za-z0-9_]*AdminCap' "$package_dir/sources"; 
   fail "The adapter must not define an adapter-local AdminCap."
 fi
 
+# The generation value, its checked arithmetic, and its replay event belong to
+# blast_admin. This container owns only its compiled constants.
+protocol_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' "$protocol_file")"
+
 grep -q '^public struct Protocol has key {$' "$protocol_file" \
-  || fail "The adapter must own one shared version object."
-if sed -n '/^public struct Protocol has key {$/,/^}$/p' "$protocol_file" \
-  | grep -q 'authority:'; then
-  fail "Series1 authority must remain global, not nested in this adapter."
-fi
+  || fail "The adapter must own one shared generation object."
+protocol_fields="$(
+  sed -n '/^public struct Protocol has key {$/,/^}$/p' "$protocol_file" \
+    | tr -d '[:space:]'
+)"
+[[ "$protocol_fields" == 'publicstructProtocolhaskey{id:UID,generation:OperationalVersion<AFTERMATH>,}' ]] \
+  || fail "The adapter generation must be the shared typed value and nothing else."
 grep -q '^const PACKAGE_VERSION: u64 = 1;$' "$protocol_file" \
   || fail "The adapter must own its compiled package version."
-if grep -rEq '\b(ProtocolAuthority|AdminCap)\b' "$package_dir/sources"; then
+grep -q '^const NEXT_PACKAGE_VERSION: u64 = 2;$' "$protocol_file" \
+  || fail "The adapter must own the generation a governed upgrade cuts over to."
+grep -q '^fun init(ctx: &mut TxContext) {$' "$protocol_file" \
+  || fail "The adapter generation must be shared by its own initializer."
+if grep -rEq '\b(ProtocolAuthority|SuperAdminCap|AdminCap)\b' "$package_dir/sources"; then
   fail "Adapter functions must accept a Series1 AdminWitness, not ACL state or caps."
 fi
-grep -q 'admin_witness: &AdminWitness' "$protocol_file" \
-  || fail "Adapter version activation must accept a Series1 AdminWitness."
-if grep -Eq '^public fun (grant_admin|revoke_admin|grant_role|revoke_role|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap)\(' "$protocol_file"; then
-  fail "Adapter protocol must not proxy Series1 ACL management."
+if grep -rnE '^public struct (Authority|SuperAdminCap|AdminCap|AdminWitness|OperationalVersion|UpgradeCustody)\b' \
+  "$package_dir/sources"; then
+  fail "Administration types must come from blast_admin, never from a local copy."
 fi
-if grep -Eq 'fun sign_in\(' "$protocol_file"; then
-  fail "Adapter protocol must not wrap Series1 sign-in."
+if grep -Eq 'AdminWitness|activate' <<<"$protocol_production"; then
+  fail "The adapter generation container must not carry administration or a separate activation."
+fi
+if grep -rEq 'fun sign_in\(|(grant|revoke)_(admin|role)' "$package_dir/sources"; then
+  fail "The adapter must not proxy or reimplement Series1 ACL management."
 fi
 
 grep -q '^public struct Vault<phantom Product> has key {$' "$vault_file" \
@@ -183,12 +195,12 @@ sed -n '/^public fun issue</,/^)/p' "$vault_file" \
 sed -n '/^public fun issue</,/^)/p' "$vault_file" \
   | grep -q '_risk_module: RiskModule,' \
   || fail "Issuance must consume the initially selected runtime risk witness."
-sed -n '/^public fun issue</,/^)/p' "$vault_file" \
-  | grep -q 'package_admin: &PackageAdmin,' \
-  || fail "Vault issuance must prove adapter upgrade capabilities are already in PackageAdmin custody."
-sed -n '/^public fun issue</,/^}/p' "$vault_file" \
-  | grep -q 'package_admin.assert_adapter_custody();' \
-  || fail "Vault issuance must revalidate the presented PackageAdmin custody object."
+# Custody is sealed at construction by the shared typed constructor, so no later
+# call may re-read the Publisher or UpgradeCap to reprove provenance.
+if sed -n '/^public fun issue</,/^}/p' "$vault_file" \
+  | grep -qE 'PackageAdmin|assert_adapter_custody'; then
+  fail "Vault issuance must not re-read sealed package custody."
+fi
 grep -q 'type_name::original_id<Product>()' "$vault_file" \
   || fail "Issuance must inspect the product witness origin."
 grep -q 'type_name::original_id<AFTERMATH>()' "$vault_file" \
@@ -222,23 +234,79 @@ sed -n '/^public fun rotate_risk_module</,/^)/p' "$vault_file" \
 grep -q '^public fun enter_reduce_only<Product>($' "$vault_file" \
   || fail "The adapter must expose the Series1 risk-admin degradation route."
 sed -n '/^public fun enter_reduce_only<Product>($/,/^}/p' "$vault_file" \
-  | grep -q 'admin_witness.assert_risk_admin();' \
+  | grep -q 'admin_witness.assert_role(series_one_domain::risk_admin_role());' \
   || fail "The adapter must authorize ReduceOnly before mutating Series1 state."
+sed -n '/^public fun rotate_risk_module</,/^}/p' "$vault_file" \
+  | grep -q 'admin_witness.assert_role(series_one_domain::risk_admin_role());' \
+  || fail "Risk rotation must require the Series1 risk-admin role."
+[[ "$(grep -c 'admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,' "$vault_file")" -eq 3 ]] \
+  || fail "Every administered Vault operation must take the typed Series1-domain witness."
 
-grep -q 'publisher.from_module<AFTERMATH>()' "$package_admin_file" \
-  || fail "PackageAdmin must validate the canonical adapter Publisher."
-grep -q 'type_name::original_id<AFTERMATH>()' "$package_admin_file" \
-  || fail "PackageAdmin must validate the original adapter package id."
-adapter_custody_block="$(
-  sed -n '/^public(package) fun assert_adapter_custody(/,/^}/p' "$package_admin_file" \
+# Custody wraps the shared sealed value. Provenance is proved once, by this
+# package for the Publisher module and by blast_admin for the cap.
+package_admin_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' "$package_admin_file")"
+
+package_admin_fields="$(
+  sed -n '/^public struct PackageAdmin has key {$/,/^}$/p' "$package_admin_file" \
     | tr -d '[:space:]'
 )"
-grep -q 'self.upgrade_cap.package().to_address()!=@0x0' \
-  <<<"$adapter_custody_block" \
-  || fail "Vault issuance must reject PackageAdmin while an upgrade ticket is outstanding."
-if grep -q 'type_name::original_id<AFTERMATH>()' <<<"$adapter_custody_block"; then
-  fail "Repeated custody checks must admit a committed adapter upgrade's new package id."
+[[ "$package_admin_fields" == 'publicstructPackageAdminhaskey{id:UID,custody:UpgradeCustody<AFTERMATH>,}' ]] \
+  || fail "Adapter custody must be the shared sealed value and nothing else."
+grep -q 'publisher.from_module<AFTERMATH>()' "$package_admin_file" \
+  || fail "PackageAdmin must validate the canonical adapter Publisher."
+grep -q 'upgrade_custody::new<AFTERMATH>(id.to_inner(), publisher, upgrade_cap)' \
+  "$package_admin_file" \
+  || fail "PackageAdmin must seal both capabilities through the shared constructor."
+if grep -qE 'assert_adapter_custody|self\.publisher|self\.upgrade_cap' \
+  <<<"$package_admin_production"; then
+  fail "Sealed custody must not be reopened for field-peeking checks."
 fi
+if grep -qE '^public fun (commit_upgrade\(|activate)' <<<"$package_admin_production"; then
+  fail "The only upgrade finalizer is one atomic commit-and-advance."
+fi
+actual_package_admin_public="$(
+  printf '%s\n' "$package_admin_production" \
+    | sed -nE 's/^public[[:space:]]+fun[[:space:]]+([a-zA-Z0-9_]+).*/\1/p' \
+    | sort
+)"
+expected_package_admin_public="$(printf '%s\n' \
+  authorize_upgrade \
+  commit_upgrade_and_advance \
+  has_upgrade_cap \
+  make_immutable \
+  restrict_to_additive \
+  restrict_to_dependency_only \
+  wrap \
+  | sort)"
+[[ "$actual_package_admin_public" == "$expected_package_admin_public" ]] \
+  || fail "The adapter package-administration surface changed without boundary review."
+[[ "$(grep -c 'protocol.assert_current();' <<<"$package_admin_production")" -eq 4 ]] \
+  || fail "Every non-finalizer custody transition must check the current generation first."
+[[ "$(grep -c 'admin_witness.assert_role(series_one_domain::package_admin_role());' \
+  <<<"$package_admin_production")" -eq 5 ]] \
+  || fail "Every custody transition must assert the Series1 package-admin role."
+grep -q 'protocol.assert_next();' "$package_admin_file" \
+  || fail "The finalizer must prove the exact next generation before committing."
+grep -q 'self.custody.commit_upgrade(custodian_id, receipt);' "$package_admin_file" \
+  || fail "The finalizer must commit the receipt into the same sealed capability."
+grep -q 'protocol.advance();' "$package_admin_file" \
+  || fail "The finalizer must advance the generation in the same transaction."
+if grep -qE '\bpackage::(version|only_(additive|dep)_upgrades|make_immutable)\(' \
+  <<<"$package_admin_production"; then
+  fail "Native upgrade transitions belong to blast_admin, not to this package."
+fi
+if grep -nE '^(public|entry|public\(package\)) fun [^(]+\([^)]*\): (&)?(Publisher|UpgradeCap)' \
+  <<<"$package_admin_production" \
+  || grep -nE 'transfer::(public_)?transfer|burn_publisher' <<<"$package_admin_production"; then
+  fail "Package administration must expose no capability escape."
+fi
+
+# Reusable custody, generation, and policy facts are emitted by blast_admin.
+if grep -nE '^public struct (PackageAdminCreated|UpgradeAuthorized|UpgradeCommitted|UpgradePolicyRestricted|UpgradeCapDestroyed|PackageVersionAdvanced)\b' \
+  "$package_dir/sources/lib/events.move"; then
+  fail "Reusable administration events must come from blast_admin, not a consumer copy."
+fi
+
 grep -q 'sui::package::claim_and_keep(otw, ctx);' "$aftermath_file" \
   || fail "Adapter initialization must claim and keep its Publisher."
 
@@ -628,7 +696,11 @@ for mutation in \
   ' <<<"$mutation_block" \
     || fail "Public Vault mutation $mutation must check the adapter version first."
 done
-for mutation in authorize_upgrade commit_upgrade restrict_to_additive restrict_to_dependency_only; do
+for mutation in \
+  authorize_upgrade \
+  restrict_to_additive \
+  restrict_to_dependency_only \
+  make_immutable; do
   mutation_block="$(sed -n "/^public fun $mutation(/,/^}/p" "$package_admin_file")"
   awk '
     /^\).* \{$/ {
@@ -640,5 +712,23 @@ for mutation in authorize_upgrade commit_upgrade restrict_to_additive restrict_t
   ' <<<"$mutation_block" \
     || fail "Public PackageAdmin mutation $mutation must check the adapter version first."
 done
+
+# The post-upgrade finalizer runs against bytecode the current generation has
+# not accepted yet, so it proves the exact next generation instead.
+finalizer_block="$(
+  sed -n '/^public fun commit_upgrade_and_advance(/,/^}/p' "$package_admin_file"
+)"
+awk '
+  /^\).* \{$/ {
+    getline
+    found = 1
+    valid = ($0 == "    admin_witness.assert_role(series_one_domain::package_admin_role());")
+  }
+  END { exit !(found && valid) }
+' <<<"$finalizer_block" \
+  || fail "The finalizer must assert the package-admin role before any other effect."
+if grep -q 'protocol.assert_current();' <<<"$finalizer_block"; then
+  fail "The finalizer must prove the next generation, not the current one."
+fi
 
 printf '%s\n' "Aftermath adapter source boundaries: OK"

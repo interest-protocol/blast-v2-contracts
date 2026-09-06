@@ -28,37 +28,6 @@ macro public(package) fun max_min_exposure_lots(): u64 {
     1_000_000
 }
 
-/// Maximum number of simultaneously registered routine administrators.
-macro public(package) fun max_admins(): u64 {
-    16
-}
-
-/// Fixed delay before a proposed super administrator may accept root custody.
-macro public(package) fun super_admin_transfer_delay_ms(): u64 {
-    7 * 24 * 60 * 60 * 1_000
-}
-
-/// Role that authorizes adapter-owned Vault and share-currency issuance.
-macro public(package) fun vault_issuer_role(): u8 {
-    1
-}
-
-/// Role that authorizes future risk-module witness rotation.
-macro public(package) fun risk_admin_role(): u8 {
-    2
-}
-
-/// Role that authorizes future shutdown initiation.
-macro public(package) fun shutdown_admin_role(): u8 {
-    8
-}
-
-/// Role that authorizes package upgrades and operational-version activation.
-macro public(package) fun package_admin_role(): u8 {
-    16
-}
-
-/// Complete bit set of roles recognized by this package generation.
-macro public(package) fun all_admin_roles(): u8 {
-    27
-}
+// Administration configuration and role bits moved to
+// `blast_leverage_series_one::series_one_domain`, which owns the typed
+// `blast_admin` domain shared with every Series1 adapter.

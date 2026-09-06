@@ -4,13 +4,8 @@ module blast_leverage_aftermath::errors;
 
 // === Errors ===
 
-#[test_only]
-/// Shared adapter state does not match this package generation.
-const EPackageVersionMismatch: u64 = 0;
-
-#[test_only]
-/// Advancing the adapter version would overflow `u64`.
-const EPackageVersionOverflow: u64 = 1;
+// Codes 0 and 1 retired: operational-generation checking and its checked
+// arithmetic moved to `blast_admin::operational_version`.
 
 #[test_only]
 /// A risk-module witness is primitive or originates from the adapter package.
@@ -24,17 +19,8 @@ const ERiskModuleWitnessUnchanged: u64 = 3;
 /// A Publisher was not claimed by the canonical adapter module.
 const EInvalidPackagePublisher: u64 = 4;
 
-#[test_only]
-/// An UpgradeCap is invalid for adapter custody or has an outstanding ticket.
-const EInvalidUpgradeCap: u64 = 5;
-
-#[test_only]
-/// A package-upgrade digest is not exactly 32 bytes.
-const EInvalidPackageDigest: u64 = 6;
-
-#[test_only]
-/// An upgrade policy is unchanged or less restrictive.
-const EUpgradePolicyNotMoreRestrictive: u64 = 7;
+// Codes 5, 6, and 7 retired: UpgradeCap provenance, digest length, and policy
+// narrowing moved to `blast_admin::upgrade_custody`.
 
 #[test_only]
 /// A product witness is primitive and cannot identify a sealed product module.
@@ -163,14 +149,6 @@ const EInitializationOrderCountExceeded: u64 = 38;
 /// A venue-dependent operation ran before atomic initialization installed it.
 const EVenueAccountNotInstalled: u64 = 39;
 
-macro public(package) fun package_version_mismatch(): u64 {
-    0
-}
-
-macro public(package) fun package_version_overflow(): u64 {
-    1
-}
-
 macro public(package) fun invalid_risk_module_witness_type(): u64 {
     2
 }
@@ -181,18 +159,6 @@ macro public(package) fun risk_module_witness_unchanged(): u64 {
 
 macro public(package) fun invalid_package_publisher(): u64 {
     4
-}
-
-macro public(package) fun invalid_upgrade_cap(): u64 {
-    5
-}
-
-macro public(package) fun invalid_package_digest(): u64 {
-    6
-}
-
-macro public(package) fun upgrade_policy_not_more_restrictive(): u64 {
-    7
 }
 
 macro public(package) fun invalid_product_witness_type(): u64 {

@@ -8,7 +8,5 @@ macro public(package) fun share_decimals(): u8 {
     9
 }
 
-/// Exact byte length of a Sui package digest.
-macro public(package) fun package_digest_length(): u64 {
-    32
-}
+// The package-digest length moved to `blast_admin::upgrade_custody`, which owns
+// the authorization check that reads it.

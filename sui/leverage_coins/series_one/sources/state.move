@@ -8,14 +8,15 @@
 /// Currency, venue custody, ACL routing, and versioning belong to the adapter.
 module blast_leverage_series_one::state;
 
+use blast_admin::acl::AdminWitness;
 use blast_leverage_series_one::{
     accounting_math,
-    acl::AdminWitness,
     bounded_value::{Self, BoundedValue},
     constants,
     lifecycle::{Self, Lifecycle},
     observation::{Self, FundingSettlement, PositionObservation},
     policy::{PositionSide, TierPolicy},
+    series_one_domain::{Self, SERIES_ONE_DOMAIN},
 };
 
 // === Public Types ===
@@ -38,13 +39,13 @@ public struct State<phantom Product> has store {
 /// The adapter must store the returned value inside its Vault. The caller's
 /// live admin witness must contain the Vault issuer role.
 public fun new<Product>(
-    admin_witness: &AdminWitness,
+    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
     tier_policy: TierPolicy,
     max_order_notional_minimum: u64,
     max_order_notional_current: u64,
     max_order_notional_maximum: u64,
 ): State<Product> {
-    admin_witness.assert_role(constants::vault_issuer_role!());
+    admin_witness.assert_role(series_one_domain::vault_issuer_role());
     assert!(
         max_order_notional_minimum > 0,
         blast_leverage_series_one::errors::invalid_max_order_notional!(),

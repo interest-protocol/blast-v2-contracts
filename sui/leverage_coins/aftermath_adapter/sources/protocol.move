@@ -1,72 +1,67 @@
-// `errors` intentionally centralizes package-wide abort codes through zero-cost macros.
-// W04005 sees the expanded literal; this suppression preserves stable codes and local checks.
-#[allow(lint(abort_without_constant))]
-/// Aftermath adapter version state.
+/// Aftermath adapter operational generation.
+///
+/// The generation value, its checked arithmetic, and its replay event belong to
+/// `blast_admin::operational_version`. This module owns only the shared
+/// container and the two compiled constants that identify this bytecode and the
+/// bytecode a governed upgrade cuts over to.
 module blast_leverage_aftermath::protocol;
 
-use blast_leverage_aftermath::events;
-use blast_leverage_series_one::acl::{
-    Self,
-    AdminWitness,
-};
+use blast_admin::operational_version::{Self, OperationalVersion};
+use blast_leverage_aftermath::aftermath::AFTERMATH;
 
 // === Constants ===
 
-/// Current adapter generation accepted by shared protocol state.
+/// Current adapter generation accepted by every protected mutation.
 const PACKAGE_VERSION: u64 = 1;
+
+/// The generation this bytecode hands over to in a governed upgrade.
+const NEXT_PACKAGE_VERSION: u64 = 2;
 
 // === Public Structs ===
 
-/// Shared version state for the Aftermath adapter package.
+/// Shared operational generation for the Aftermath adapter package.
 public struct Protocol has key {
     id: UID,
-    version: u64,
+    generation: OperationalVersion<AFTERMATH>,
 }
 
-// === Public Functions ===
+// === Private Initialization ===
 
-/// Activates this adapter bytecode after an exact next-generation upgrade.
-public fun activate_package_version(
-    self: &mut Protocol,
-    admin_witness: &AdminWitness,
-) {
-    admin_witness.assert_package_admin();
-
-    let previous_version = self.version;
-    let new_version = previous_version
-        .checked_add(1)
-        .destroy_or!(abort blast_leverage_aftermath::errors::package_version_overflow!());
-
-    assert!(
-        new_version == PACKAGE_VERSION,
-        blast_leverage_aftermath::errors::package_version_mismatch!(),
-    );
-
-    self.version = new_version;
-    events::package_version_advanced(previous_version, new_version);
+fun init(ctx: &mut TxContext) {
+    transfer::share_object(new(ctx));
 }
 
 // === Package Functions ===
 
-/// Creates unshared Aftermath adapter version state.
-public(package) fun new(ctx: &mut TxContext): Protocol {
-    Protocol { id: object::new(ctx), version: PACKAGE_VERSION }
-}
-
-/// Shares the adapter protocol object.
-public(package) fun share(self: Protocol) {
-    transfer::share_object(self);
-}
-
 /// Rejects bytecode that is not the active adapter generation.
 public(package) fun assert_current(self: &Protocol) {
-    assert!(
-        self.version == PACKAGE_VERSION,
-        blast_leverage_aftermath::errors::package_version_mismatch!(),
-    );
+    self.generation.assert_current(PACKAGE_VERSION);
+}
+
+/// Proves the cutover target is exactly next before any upgrade finalizer effect.
+public(package) fun assert_next(self: &Protocol) {
+    self.generation.assert_next(NEXT_PACKAGE_VERSION);
+}
+
+/// Advances the generation to the exact bytecode this upgrade installs.
+public(package) fun advance(self: &mut Protocol) {
+    let container_id = self.id.to_inner();
+
+    self.generation.advance(container_id, NEXT_PACKAGE_VERSION);
+}
+
+// === Private Functions ===
+
+fun new(ctx: &mut TxContext): Protocol {
+    Protocol { id: object::new(ctx), generation: operational_version::new() }
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+public fun init_for_testing(ctx: &mut TxContext) {
+    init(ctx);
+}
 
 #[test_only]
 public fun new_for_testing(ctx: &mut TxContext): Protocol {
@@ -80,10 +75,28 @@ public fun id_for_testing(self: &Protocol): ID {
 
 #[test_only]
 public fun version_for_testing(self: &Protocol): u64 {
-    self.version
+    self.generation.generation_for_testing()
 }
 
 #[test_only]
 public fun set_version_for_testing(self: &mut Protocol, version: u64) {
-    self.version = version;
+    self.generation.set_generation_for_testing(version);
+}
+
+#[test_only]
+/// Exercises the compiled cutover target without a native upgrade fixture.
+public fun advance_for_testing(self: &mut Protocol) {
+    self.advance();
+}
+
+#[test_only]
+/// Exercises the finalizer's pre-commit proof without a native upgrade fixture.
+public fun assert_next_for_testing(self: &Protocol) {
+    self.assert_next();
+}
+
+#[test_only]
+/// Exercises the generation guard every protected mutation runs first.
+public fun assert_current_for_testing(self: &Protocol) {
+    self.assert_current();
 }

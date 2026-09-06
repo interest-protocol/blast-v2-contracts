@@ -34,17 +34,23 @@ use_environment = "mainnet"
 manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
 deps = { std = "MoveStdlib", sui = "Sui" }
 
+[pinned.mainnet.blast_admin]
+source = { local = "../../admin" }
+use_environment = "mainnet"
+manifest_digest = "294D98BBBEFA7E526C52FD7F30B5691CD30B86738DDC489AC065D612D0E5F9EF"
+deps = { Sui = "Sui" }
+
 [pinned.mainnet.blast_leverage_aftermath]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "4BEF119A041926F25E8ED628A9F725019F7B5C8219E941BD57786B4F860BF532"
-deps = { authority_cap = "authority_cap", blast_leverage_series_one = "blast_leverage_series_one", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", pyth = "pyth", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "A45CC83D9FF46DABFAEE9DFB29222FCCECA6A005EAEA05B2906DC1DD5EB5556F"
+deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_leverage_series_one = "blast_leverage_series_one", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", pyth = "pyth", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.blast_leverage_series_one]
 source = { local = "../series_one" }
 use_environment = "mainnet"
-manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
-deps = { std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "1D81A242A868996BDA2D034470EFF798AACC5958CF9958C94BAAACC9C2C92DC8"
+deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.ifixed]
 source = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/ifixed/ifixed", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
@@ -112,17 +118,23 @@ use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib", sui = "Sui" }
 
+[pinned.testnet.blast_admin]
+source = { local = "../../admin" }
+use_environment = "testnet"
+manifest_digest = "B7E2FC3044B807508BDB644524C4ABEA393A1871278966067F470AEAE602C62B"
+deps = { Sui = "Sui" }
+
 [pinned.testnet.blast_leverage_aftermath]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "5E4D57D6900037F6CA7BE2E96C45BFA8F39DD358E37BF5FC88C2DFB999141638"
-deps = { authority_cap = "authority_cap", blast_leverage_series_one = "blast_leverage_series_one", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", pyth = "pyth", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "4C728650EB118BF18F5A9E768A1D642F9957A4092E94DEF24FAC420ABE7563D8"
+deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_leverage_series_one = "blast_leverage_series_one", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", pyth = "pyth", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.blast_leverage_series_one]
 source = { local = "../series_one" }
 use_environment = "testnet"
-manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
-deps = { std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "D22569635345AD81636092AAA074AE3A61666325E24EA5D65B1CB4BFC9BCEE3F"
+deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.ifixed]
 source = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/ifixed/ifixed", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }

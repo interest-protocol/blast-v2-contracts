@@ -4,18 +4,18 @@
 /// Adapter-owned Vault, leverage currency, and venue storage.
 module blast_leverage_aftermath::vault;
 
+use blast_admin::acl::AdminWitness;
 use blast_leverage_aftermath::{
     aftermath::AFTERMATH,
     constants,
     events,
-    package_admin::{Self as package_admin, PackageAdmin},
     protocol::Protocol,
     venue_account::{Self as venue_account, Binding, Checkpoint, VenueAccount},
 };
 use blast_leverage_series_one::{
-    acl::{Self, AdminWitness},
     observation::{Self as observation, PositionObservation},
     policy::{PositionSide, TierPolicy},
+    series_one_domain::{Self, SERIES_ONE_DOMAIN},
     state::{Self as series_state, State},
 };
 use std::{string::String, type_name::{Self, TypeName}};
@@ -51,14 +51,16 @@ public struct MetadataKey<phantom Product>() has copy, drop, store;
 
 /// Issues one owned adapter Vault and its unique leverage currency.
 ///
-/// The adapter version and Series1 issuer role are checked before Coin Registry
-/// mutation. The returned key-only Vault must pass to `share` in this package.
+/// The adapter generation and Series1 issuer role are checked before Coin
+/// Registry mutation. The returned key-only Vault must pass to `share` in this
+/// package. Package custody is not an input: `package_admin` seals a validated
+/// Publisher and UpgradeCap that no other object can hold, so re-reading those
+/// fields here would prove nothing this package does not already own.
 public fun issue<Product: drop, RiskModule: drop>(
     protocol: &Protocol,
-    admin_witness: &AdminWitness,
+    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
     _: Product,
     _risk_module: RiskModule,
-    package_admin: &PackageAdmin,
     registry: &mut CoinRegistry,
     tier_policy: TierPolicy,
     max_order_notional_minimum: u64,
@@ -71,7 +73,6 @@ public fun issue<Product: drop, RiskModule: drop>(
     ctx: &mut TxContext,
 ): Vault<Product> {
     protocol.assert_current();
-    package_admin.assert_adapter_custody();
     let series_state = series_state::new<Product>(
         admin_witness,
         tier_policy,
@@ -141,11 +142,11 @@ public fun share<Product>(self: Vault<Product>) {
 public fun rotate_risk_module<Product, RiskModule: drop>(
     self: &mut Vault<Product>,
     protocol: &Protocol,
-    admin_witness: &AdminWitness,
+    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
     _risk_module: RiskModule,
 ) {
     protocol.assert_current();
-    admin_witness.assert_risk_admin();
+    admin_witness.assert_role(series_one_domain::risk_admin_role());
 
     let new_witness = valid_risk_module_type<RiskModule>();
     assert!(
@@ -198,10 +199,10 @@ public fun set_max_order_notional<Product, RiskModule: drop>(
 public fun enter_reduce_only<Product>(
     self: &mut Vault<Product>,
     protocol: &Protocol,
-    admin_witness: &AdminWitness,
+    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
 ) {
     protocol.assert_current();
-    admin_witness.assert_risk_admin();
+    admin_witness.assert_role(series_one_domain::risk_admin_role());
 
     self.series_state.enter_reduce_only();
     events::reduce_only_entered<Product>(self.id.to_inner());

@@ -2,16 +2,17 @@
 /// Stateful tests for multi-product issuance from one Aftermath adapter.
 module blast_leverage_aftermath::vault_tests;
 
+use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
 use blast_leverage_aftermath::{
+    domain_fixture,
     events,
-    package_admin::{Self as package_admin, PackageAdmin},
     product::{Self, Product},
     protocol::{Self, Protocol},
     vault::{Self, Vault},
 };
 use blast_leverage_series_one::{
-    acl::{Self, AdminCap, ProtocolAuthority, SuperAdminCap},
     policy::{Self, TierPolicy},
+    series_one_domain::{Self, SERIES_ONE_DOMAIN},
     test_risk_module::{Self, RiskModule, RiskModuleV2},
 };
 use std::{
@@ -53,17 +54,16 @@ public struct Fixture {
     scenario: Scenario,
     registry: CoinRegistry,
     protocol: Protocol,
-    authority: ProtocolAuthority,
-    super_admin_cap: SuperAdminCap,
-    admin_cap: AdminCap,
-    package_admin: PackageAdmin,
+    authority: Authority<SERIES_ONE_DOMAIN>,
+    super_admin_cap: SuperAdminCap<SERIES_ONE_DOMAIN>,
+    admin_cap: AdminCap<SERIES_ONE_DOMAIN>,
 }
 
 // === Tests ===
 
 #[test]
 fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
-    let mut fixture = start(1);
+    let mut fixture = start(series_one_domain::vault_issuer_role());
     let expected_policy = standard_tier_policy();
 
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
@@ -145,7 +145,7 @@ fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
 
 #[test]
 fun generic_product_tags_issue_distinct_currencies() {
-    let mut fixture = start(1);
+    let mut fixture = start(series_one_domain::vault_issuer_role());
 
     fixture.issue_and_share<Product<TaggedSui2x>>(
         product::new<TaggedSui2x>(),
@@ -164,7 +164,9 @@ fun generic_product_tags_issue_distinct_currencies() {
 
 #[test]
 fun a_global_series_admin_rotates_risk_after_shutdown_starts() {
-    let mut fixture = start(1 | 2);
+    let mut fixture = start(
+        series_one_domain::vault_issuer_role() | series_one_domain::risk_admin_role(),
+    );
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
@@ -198,7 +200,7 @@ fun a_global_series_admin_rotates_risk_after_shutdown_starts() {
 
 #[test]
 fun selected_risk_module_updates_max_order_notional_and_emits_the_change() {
-    let mut fixture = start(1);
+    let mut fixture = start(series_one_domain::vault_issuer_role());
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
@@ -226,7 +228,7 @@ fun selected_risk_module_updates_max_order_notional_and_emits_the_change() {
 
 #[test]
 fun selected_risk_module_reads_uninitialized_seed_constraints() {
-    let mut fixture = start(1);
+    let mut fixture = start(series_one_domain::vault_issuer_role());
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let vault = fixture.scenario.take_shared<Vault<Sui2x>>();
@@ -246,7 +248,7 @@ fun selected_risk_module_reads_uninitialized_seed_constraints() {
     location = blast_leverage_aftermath::vault,
 )]
 fun unselected_risk_module_cannot_read_seed_constraints() {
-    let mut fixture = start(1);
+    let mut fixture = start(series_one_domain::vault_issuer_role());
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let vault = fixture.scenario.take_shared<Vault<Sui2x>>();
@@ -259,7 +261,7 @@ fun unselected_risk_module_cannot_read_seed_constraints() {
 
 #[test]
 fun locked_seed_share_mint_updates_the_canonical_supply_once() {
-    let mut fixture = start(1);
+    let mut fixture = start(series_one_domain::vault_issuer_role());
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
@@ -277,7 +279,7 @@ fun locked_seed_share_mint_updates_the_canonical_supply_once() {
     location = blast_leverage_aftermath::vault,
 )]
 fun unselected_risk_module_cannot_update_max_order_notional() {
-    let mut fixture = start(1);
+    let mut fixture = start(series_one_domain::vault_issuer_role());
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
@@ -298,7 +300,7 @@ fun unselected_risk_module_cannot_update_max_order_notional() {
     location = blast_leverage_aftermath::vault,
 )]
 fun primitive_risk_module_cannot_update_max_order_notional() {
-    let mut fixture = start(1);
+    let mut fixture = start(series_one_domain::vault_issuer_role());
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
@@ -319,7 +321,7 @@ fun primitive_risk_module_cannot_update_max_order_notional() {
     location = blast_leverage_series_one::state,
 )]
 fun risk_module_cannot_repeat_the_current_max_order_notional() {
-    let mut fixture = start(1);
+    let mut fixture = start(series_one_domain::vault_issuer_role());
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
@@ -340,7 +342,7 @@ fun risk_module_cannot_repeat_the_current_max_order_notional() {
     location = blast_leverage_series_one::bounded_value,
 )]
 fun risk_module_cannot_exceed_the_frozen_max_order_notional_bounds() {
-    let mut fixture = start(1);
+    let mut fixture = start(series_one_domain::vault_issuer_role());
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
@@ -357,11 +359,11 @@ fun risk_module_cannot_exceed_the_frozen_max_order_notional_bounds() {
 
 #[test]
 #[expected_failure(
-    abort_code = 0,
-    location = blast_leverage_aftermath::protocol,
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
 )]
 fun stale_adapter_version_precedes_risk_witness_and_max_order_notional_validation() {
-    let mut fixture = start(1);
+    let mut fixture = start(series_one_domain::vault_issuer_role());
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
@@ -383,7 +385,9 @@ fun stale_adapter_version_precedes_risk_witness_and_max_order_notional_validatio
     location = blast_leverage_aftermath::vault,
 )]
 fun rotated_out_risk_module_cannot_update_max_order_notional() {
-    let mut fixture = start(1 | 2);
+    let mut fixture = start(
+        series_one_domain::vault_issuer_role() | series_one_domain::risk_admin_role(),
+    );
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
@@ -406,7 +410,9 @@ fun rotated_out_risk_module_cannot_update_max_order_notional() {
 
 #[test]
 fun global_risk_admin_moves_an_active_vault_to_reduce_only() {
-    let mut fixture = start(1 | 2);
+    let mut fixture = start(
+        series_one_domain::vault_issuer_role() | series_one_domain::risk_admin_role(),
+    );
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
@@ -426,11 +432,11 @@ fun global_risk_admin_moves_an_active_vault_to_reduce_only() {
 
 #[test]
 #[expected_failure(
-    abort_code = 47,
-    location = blast_leverage_series_one::acl,
+    abort_code = blast_admin::errors::EAdminRoleNotGranted,
+    location = blast_admin::acl,
 )]
 fun issuer_without_risk_role_cannot_enter_reduce_only() {
-    let mut fixture = start(1);
+    let mut fixture = start(series_one_domain::vault_issuer_role());
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
@@ -449,7 +455,9 @@ fun issuer_without_risk_role_cannot_enter_reduce_only() {
     location = blast_leverage_series_one::lifecycle,
 )]
 fun global_risk_admin_cannot_reduce_an_uninitialized_vault() {
-    let mut fixture = start(1 | 2);
+    let mut fixture = start(
+        series_one_domain::vault_issuer_role() | series_one_domain::risk_admin_role(),
+    );
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
@@ -467,7 +475,7 @@ fun global_risk_admin_cannot_reduce_an_uninitialized_vault() {
     location = sui::coin_registry,
 )]
 fun one_product_witness_cannot_issue_twice() {
-    let mut fixture = start(1);
+    let mut fixture = start(series_one_domain::vault_issuer_role());
 
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2XA".to_string());
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2XB".to_string());
@@ -481,7 +489,7 @@ fun one_product_witness_cannot_issue_twice() {
     location = sui::coin_registry,
 )]
 fun one_generic_product_tag_cannot_issue_twice() {
-    let mut fixture = start(1);
+    let mut fixture = start(series_one_domain::vault_issuer_role());
 
     fixture.issue_and_share<Product<TaggedSui2x>>(
         product::new<TaggedSui2x>(),
@@ -501,7 +509,7 @@ fun one_generic_product_tag_cannot_issue_twice() {
     location = blast_leverage_aftermath::vault,
 )]
 fun primitive_product_witness_is_rejected() {
-    let mut fixture = start(1);
+    let mut fixture = start(series_one_domain::vault_issuer_role());
 
     fixture.issue_and_share<u64>(0, b"BAD".to_string());
 
@@ -514,7 +522,7 @@ fun primitive_product_witness_is_rejected() {
     location = blast_leverage_aftermath::vault,
 )]
 fun foreign_product_witness_is_rejected() {
-    let mut fixture = start(1);
+    let mut fixture = start(series_one_domain::vault_issuer_role());
 
     fixture.issue_and_share<TypeName>(
         type_name::with_original_ids<u64>(),
@@ -530,7 +538,7 @@ fun foreign_product_witness_is_rejected() {
     location = blast_leverage_aftermath::vault,
 )]
 fun adapter_product_constructor_cannot_be_selected_as_a_risk_module() {
-    let mut fixture = start(1);
+    let mut fixture = start(series_one_domain::vault_issuer_role());
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
 
     let vault = vault::issue<Product<TaggedSui2x>, Product<TaggedSui5x>>(
@@ -538,7 +546,6 @@ fun adapter_product_constructor_cannot_be_selected_as_a_risk_module() {
         &admin_witness,
         product::new<TaggedSui2x>(),
         product::new<TaggedSui5x>(),
-        &fixture.package_admin,
         &mut fixture.registry,
         standard_tier_policy(),
         MAX_ORDER_NOTIONAL_MINIMUM,
@@ -556,9 +563,17 @@ fun adapter_product_constructor_cannot_be_selected_as_a_risk_module() {
 }
 
 #[test]
-fun vault_issuance_remains_available_after_adapter_upgrade_commit() {
-    let mut fixture = start(17);
-    fixture.simulate_adapter_upgrade();
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+/// Issuance is a protected mutation, so it stops serving the moment a governed
+/// upgrade advances the adapter generation past this bytecode.
+fun vault_issuance_stops_after_the_adapter_generation_advances() {
+    let mut fixture = start(
+        series_one_domain::vault_issuer_role() | series_one_domain::package_admin_role(),
+    );
+    fixture.protocol.advance_for_testing();
 
     fixture.issue_and_share<Sui2x>(Sui2x(), b"SUI2X".to_string());
 
@@ -585,15 +600,14 @@ fun venue_operations_before_initialization_use_the_stable_adapter_error() {
 
 // === Fixture Setup ===
 
-fun start(roles: u8): Fixture {
+fun start(roles: u64): Fixture {
     let mut scenario = test_scenario::begin(SYSTEM);
     let registry = coin_registry::create_coin_data_registry_for_testing(
         scenario.ctx(),
     );
     let protocol = protocol::new_for_testing(scenario.ctx());
-    let package_admin = package_admin::new_for_testing(@0xB1A57.to_id(), scenario.ctx());
     let (super_admin_cap, mut authority) =
-        acl::new_protocol_for_testing(scenario.ctx());
+        domain_fixture::new_authority(scenario.ctx());
 
     authority.grant_admin(
         &super_admin_cap,
@@ -602,7 +616,7 @@ fun start(roles: u8): Fixture {
         scenario.ctx(),
     );
     scenario.next_tx(ISSUER);
-    let admin_cap = scenario.take_from_sender<AdminCap>();
+    let admin_cap = scenario.take_from_sender<AdminCap<SERIES_ONE_DOMAIN>>();
 
     Fixture {
         scenario,
@@ -611,7 +625,6 @@ fun start(roles: u8): Fixture {
         authority,
         super_admin_cap,
         admin_cap,
-        package_admin,
     }
 }
 
@@ -628,7 +641,6 @@ fun issue_and_share<Product: drop>(
         protocol,
         authority,
         admin_cap,
-        package_admin,
         ..
     } = self;
     let admin_witness = authority.sign_in(admin_cap);
@@ -637,7 +649,6 @@ fun issue_and_share<Product: drop>(
         &admin_witness,
         product_witness,
         test_risk_module::new(),
-        package_admin,
         registry,
         standard_tier_policy(),
         MAX_ORDER_NOTIONAL_MINIMUM,
@@ -650,24 +661,6 @@ fun issue_and_share<Product: drop>(
         scenario.ctx(),
     );
     vault.share();
-}
-
-fun simulate_adapter_upgrade(self: &mut Fixture) {
-    let Fixture {
-        protocol,
-        authority,
-        admin_cap,
-        package_admin,
-        ..
-    } = self;
-    let admin_witness = authority.sign_in(admin_cap);
-    let ticket = package_admin.authorize_upgrade(
-        protocol,
-        &admin_witness,
-        x"11223344556677889900aabbccddeeffffeeddccbbaa00998877665544332211",
-    );
-    let receipt = ticket.test_upgrade();
-    package_admin.commit_upgrade(protocol, receipt);
 }
 
 fun standard_tier_policy(): TierPolicy {

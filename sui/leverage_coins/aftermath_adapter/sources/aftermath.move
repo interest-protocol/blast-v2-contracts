@@ -12,15 +12,16 @@ public struct AFTERMATH() has drop;
 
 fun init(otw: AFTERMATH, ctx: &mut TxContext) {
     sui::package::claim_and_keep(otw, ctx);
-
-    let protocol = blast_leverage_aftermath::protocol::new(ctx);
-    protocol.share();
 }
 
 // === Test-Only Functions ===
 
 #[test_only]
-/// Runs complete adapter initialization under `test_scenario`.
+/// Runs package-marker initialization with a genuine test one-time witness.
+///
+/// The shared operational generation is created by `protocol::init`, which owns
+/// the container that names this marker. Keeping the two initializers apart is
+/// what lets the container type this marker without a module cycle.
 public fun init_for_testing(ctx: &mut TxContext) {
     init(sui::test_utils::create_one_time_witness<AFTERMATH>(), ctx);
 }

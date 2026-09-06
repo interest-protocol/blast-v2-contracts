@@ -1,9 +1,17 @@
 #[test_only]
-/// Tests for adapter versioning against the shared Series1 authority.
+/// Tests for the adapter's own operational generation.
+///
+/// The checked arithmetic and the replay event belong to
+/// `blast_admin::operational_version`. These tests prove only that this
+/// package's container carries the compiled constants it claims and that
+/// Series1 administration is independent of the adapter generation.
 module blast_leverage_aftermath::protocol_tests;
 
-use blast_leverage_aftermath::{events, protocol};
-use blast_leverage_series_one::acl;
+use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
+use blast_leverage_aftermath::{aftermath::AFTERMATH, domain_fixture, protocol};
+use blast_leverage_series_one::{
+    series_one_domain::{Self, SERIES_ONE_DOMAIN},
+};
 use std::unit_test::{assert_eq, destroy};
 use sui::test_scenario;
 
@@ -17,72 +25,146 @@ const ADMIN: address = @0xAD;
 public struct Fixture {
     scenario: test_scenario::Scenario,
     protocol: protocol::Protocol,
-    authority: acl::ProtocolAuthority,
-    super_admin_cap: acl::SuperAdminCap,
-    admin_cap: Option<acl::AdminCap>,
+    authority: Authority<SERIES_ONE_DOMAIN>,
+    super_admin_cap: SuperAdminCap<SERIES_ONE_DOMAIN>,
+    admin_cap: AdminCap<SERIES_ONE_DOMAIN>,
 }
 
 // === Tests ===
 
 #[test]
-fun global_series_package_admin_activates_the_exact_next_adapter_version() {
+/// Production initialization shares one adapter generation at generation one.
+fun init_shares_the_adapter_generation_at_its_first_generation() {
     let mut scenario = test_scenario::begin(ROOT);
-    let mut protocol = protocol::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) =
-        acl::new_protocol_for_testing(scenario.ctx());
+    protocol::init_for_testing(scenario.ctx());
 
-    authority.grant_admin(
-        &super_admin_cap,
-        16,
-        ADMIN,
-        scenario.ctx(),
-    );
-    scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<acl::AdminCap>();
-    let admin_witness = authority.sign_in(&admin_cap);
-    protocol.set_version_for_testing(0);
+    scenario.next_tx(ROOT);
+    let container = scenario.take_shared<protocol::Protocol>();
+    assert_eq!(container.version_for_testing(), 1);
+    container.assert_current_for_testing();
 
-    protocol.activate_package_version(&admin_witness);
-
-    let advanced = events::collect_one<events::PackageVersionAdvanced>(0);
-    let (previous_version, new_version) = advanced.package_version_advanced_fields();
-    assert_eq!(previous_version, 0);
-    assert_eq!(new_version, 1);
-    assert_eq!(protocol.version_for_testing(), 1);
-
-    destroy(Fixture {
-        scenario,
-        protocol,
-        authority,
-        super_admin_cap,
-        admin_cap: option::some(admin_cap),
-    });
+    test_scenario::return_shared(container);
+    scenario.end();
 }
 
 #[test]
-fun series_acl_management_does_not_depend_on_adapter_version() {
+/// The container advances to exactly the generation this bytecode hands over
+/// to, and the shared package emits the only cutover fact.
+fun the_generation_advances_to_the_next_compiled_generation() {
+    let mut fixture = start(series_one_domain::package_admin_role());
+
+    assert_eq!(fixture.protocol.version_for_testing(), 1);
+
+    fixture.protocol.advance_for_testing();
+
+    let advanced = blast_admin::events::collect_one<
+        blast_admin::events::OperationalVersionAdvanced<AFTERMATH>,
+    >(0);
+    let (_, _, previous_generation, new_generation) =
+        advanced.operational_version_advanced_fields();
+    assert_eq!(previous_generation, 1);
+    assert_eq!(new_generation, 2);
+    assert_eq!(new_generation, fixture.protocol.version_for_testing());
+
+    destroy(fixture);
+}
+
+#[test]
+/// The finalizer proves the exact next generation before it commits a receipt.
+fun the_finalizer_accepts_the_exact_next_generation_before_committing() {
+    let fixture = start(series_one_domain::package_admin_role());
+
+    fixture.protocol.assert_next_for_testing();
+
+    assert_eq!(fixture.protocol.version_for_testing(), 1);
+
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun the_finalizer_rejects_a_skipped_generation_before_committing() {
+    let mut fixture = start(series_one_domain::package_admin_role());
+
+    fixture.protocol.set_version_for_testing(5);
+
+    fixture.protocol.assert_next_for_testing();
+
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun the_cutover_rejects_a_skipped_generation() {
+    let mut fixture = start(series_one_domain::package_admin_role());
+
+    fixture.protocol.set_version_for_testing(5);
+
+    fixture.protocol.advance_for_testing();
+
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionOverflow,
+    location = blast_admin::operational_version,
+)]
+fun the_cutover_rejects_a_generation_overflow() {
+    let mut fixture = start(series_one_domain::package_admin_role());
+
+    fixture.protocol.set_version_for_testing(std::u64::max_value!());
+
+    fixture.protocol.advance_for_testing();
+
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun a_stale_generation_rejects_this_bytecode() {
+    let mut fixture = start(series_one_domain::package_admin_role());
+
+    fixture.protocol.set_version_for_testing(2);
+
+    fixture.protocol.assert_current_for_testing();
+
+    destroy(fixture);
+}
+
+#[test]
+/// Series1 membership is shared state; the adapter generation is not. A stale
+/// adapter generation never blocks signing in or checking a Series1 role.
+fun series_domain_administration_does_not_depend_on_the_adapter_generation() {
+    let mut fixture = start(series_one_domain::package_admin_role());
+    fixture.protocol.set_version_for_testing(2);
+
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
+    admin_witness.assert_role(series_one_domain::package_admin_role());
+
+    destroy(fixture);
+}
+
+// === Fixture Setup ===
+
+fun start(roles: u64): Fixture {
     let mut scenario = test_scenario::begin(ROOT);
-    let mut protocol = protocol::new_for_testing(scenario.ctx());
+    let protocol = protocol::new_for_testing(scenario.ctx());
     let (super_admin_cap, mut authority) =
-        acl::new_protocol_for_testing(scenario.ctx());
-    protocol.set_version_for_testing(2);
+        domain_fixture::new_authority(scenario.ctx());
 
-    authority.grant_admin(
-        &super_admin_cap,
-        16,
-        ADMIN,
-        scenario.ctx(),
-    );
+    authority.grant_admin(&super_admin_cap, roles, ADMIN, scenario.ctx());
     scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<acl::AdminCap>();
-    let admin_witness = authority.sign_in(&admin_cap);
-    admin_witness.assert_package_admin();
+    let admin_cap = scenario.take_from_sender<AdminCap<SERIES_ONE_DOMAIN>>();
 
-    destroy(Fixture {
-        scenario,
-        protocol,
-        authority,
-        super_admin_cap,
-        admin_cap: option::some(admin_cap),
-    });
+    Fixture { scenario, protocol, authority, super_admin_cap, admin_cap }
 }

@@ -1,9 +1,16 @@
 # Blast Series1 Aftermath adapter
 
 `blast_leverage_aftermath` connects Series1 policy and accounting to
-Aftermath-owned venue state. It owns product currencies, adapter versioning,
-package capabilities, and `Vault<Product>` custody while relying on the shared
-Series1 administrator domain.
+Aftermath-owned venue state. It owns product currencies, its own operational
+generation, sealed package custody, and `Vault<Product>` custody while relying on
+the shared Series1 administration domain.
+
+Membership is shared, custody is not: administrators authenticate against the
+Series1 authority, but this package's generation and `UpgradeCap` belong only to
+it, and advancing them leaves Series1 untouched. Its Publisher and `UpgradeCap`
+are validated once and sealed inside `blast_admin` custody, from which no call
+returns them; a governed upgrade commits its receipt and advances the generation
+in one transaction, so a failure at either step rolls the whole upgrade back.
 
 `product::new<Tag>()` creates a stateless `Product<Tag>` identity. It grants no
 authority: a live Series1 issuer witness is still required to issue the

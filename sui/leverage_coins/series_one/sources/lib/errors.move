@@ -162,65 +162,8 @@ const EInvalidEmergencyToleranceBps: u64 = 36;
 /// Minimum leverage improvement must be positive.
 const EInvalidMinimumImprovementBps: u64 = 37;
 
-#[test_only]
-/// The supplied super-admin capability is no longer active.
-const EInvalidSuperAdminCap: u64 = 40;
-
-#[test_only]
-/// The supplied admin capability is not registered in this authority.
-const EInvalidAdminCap: u64 = 41;
-
-#[test_only]
-/// A new admin capability targeted the zero address.
-const EInvalidAdminRecipient: u64 = 42;
-
-#[test_only]
-/// The bounded live-admin registry is full.
-const EAdminCapacityReached: u64 = 43;
-
-#[test_only]
-/// An initial admin role set is empty or contains an unknown bit.
-const EInvalidAdminRoles: u64 = 44;
-
-#[test_only]
-/// An operation did not select exactly one recognized admin role.
-const EInvalidAdminRole: u64 = 45;
-
-#[test_only]
-/// The selected role is already assigned to the admin capability.
-const EAdminRoleAlreadyGranted: u64 = 46;
-
-#[test_only]
-/// The admin role bitmap does not contain the required role.
-const EAdminRoleNotGranted: u64 = 47;
-
-#[test_only]
-/// A root transfer targeted zero or the current sender.
-const EInvalidSuperAdminRecipient: u64 = 48;
-
-#[test_only]
-/// No pending root transfer exists.
-const ENoPendingSuperAdminTransfer: u64 = 49;
-
-#[test_only]
-/// The sender is not the proposed root recipient.
-const ENotPendingSuperAdminRecipient: u64 = 50;
-
-#[test_only]
-/// The root-transfer acceptance delay has not elapsed.
-const ESuperAdminTransferNotReady: u64 = 51;
-
-#[test_only]
-/// The root-transfer ready timestamp would overflow `u64`.
-const ESuperAdminTransferTimeOverflow: u64 = 52;
-
-#[test_only]
-/// The active root capability cannot be destroyed.
-const ESuperAdminCapStillActive: u64 = 53;
-
-#[test_only]
-/// A root-transfer proposal repeated the pending recipient.
-const ESuperAdminTransferUnchanged: u64 = 54;
+// Codes 40 through 54 retired: administrator membership, role validation, and
+// delayed root rotation moved to `blast_admin::acl`, which raises its own codes.
 
 #[test_only]
 /// Redemption gross claim exceeds its favorable-divergence bound.
@@ -452,66 +395,6 @@ macro public(package) fun invalid_emergency_tolerance_bps(): u64 {
 
 macro public(package) fun invalid_minimum_improvement_bps(): u64 {
     37
-}
-
-macro public(package) fun invalid_super_admin_cap(): u64 {
-    40
-}
-
-macro public(package) fun invalid_admin_cap(): u64 {
-    41
-}
-
-macro public(package) fun invalid_admin_recipient(): u64 {
-    42
-}
-
-macro public(package) fun admin_capacity_reached(): u64 {
-    43
-}
-
-macro public(package) fun invalid_admin_roles(): u64 {
-    44
-}
-
-macro public(package) fun invalid_admin_role(): u64 {
-    45
-}
-
-macro public(package) fun admin_role_already_granted(): u64 {
-    46
-}
-
-macro public(package) fun admin_role_not_granted(): u64 {
-    47
-}
-
-macro public(package) fun invalid_super_admin_recipient(): u64 {
-    48
-}
-
-macro public(package) fun no_pending_super_admin_transfer(): u64 {
-    49
-}
-
-macro public(package) fun not_pending_super_admin_recipient(): u64 {
-    50
-}
-
-macro public(package) fun super_admin_transfer_not_ready(): u64 {
-    51
-}
-
-macro public(package) fun super_admin_transfer_time_overflow(): u64 {
-    52
-}
-
-macro public(package) fun super_admin_cap_still_active(): u64 {
-    53
-}
-
-macro public(package) fun super_admin_transfer_unchanged(): u64 {
-    54
 }
 
 macro public(package) fun redemption_gross_exceeds_bound(): u64 {

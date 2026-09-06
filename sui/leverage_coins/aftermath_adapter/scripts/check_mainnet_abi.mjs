@@ -169,6 +169,7 @@ const ABI = {
 };
 
 const DIRECT_DEPENDENCIES = {
+    blast_admin: { local: '../../admin' },
     blast_leverage_series_one: { local: '../series_one' },
     perpetuals: { git: AFTERMATH_GIT, subdir: 'packages/iperps/perpetuals', rev: AFTERMATH_REV },
     position: { git: AFTERMATH_GIT, subdir: 'packages/iperps/position', rev: AFTERMATH_REV },
@@ -184,6 +185,9 @@ const LOCK_SOURCES = {
     MoveStdlib: { git: SUI_GIT, subdir: 'crates/sui-framework/packages/move-stdlib', rev: SUI_REV },
     Sui: { git: SUI_GIT, subdir: 'crates/sui-framework/packages/sui-framework', rev: SUI_REV },
     authority_cap: DIRECT_DEPENDENCIES.authority_cap,
+    // The immutable shared administration package is a local, inward-only edge:
+    // it pins the same framework revision and adds no venue dependency.
+    blast_admin: DIRECT_DEPENDENCIES.blast_admin,
     blast_leverage_aftermath: { root: true },
     blast_leverage_series_one: DIRECT_DEPENDENCIES.blast_leverage_series_one,
     ifixed: DIRECT_DEPENDENCIES.ifixed,
@@ -200,8 +204,9 @@ const LOCK_DEPS = {
     MoveStdlib: {},
     Sui: { MoveStdlib: 'MoveStdlib' },
     authority_cap: { std: 'MoveStdlib', sui: 'Sui' },
-    blast_leverage_aftermath: { authority_cap: 'authority_cap', blast_leverage_series_one: 'blast_leverage_series_one', ifixed: 'ifixed', oracle_aggregator: 'oracle_aggregator', perpetuals: 'perpetuals', position: 'position', pyth: 'pyth', std: 'MoveStdlib', sui: 'Sui' },
-    blast_leverage_series_one: { std: 'MoveStdlib', sui: 'Sui' },
+    blast_admin: { Sui: 'Sui' },
+    blast_leverage_aftermath: { authority_cap: 'authority_cap', blast_admin: 'blast_admin', blast_leverage_series_one: 'blast_leverage_series_one', ifixed: 'ifixed', oracle_aggregator: 'oracle_aggregator', perpetuals: 'perpetuals', position: 'position', pyth: 'pyth', std: 'MoveStdlib', sui: 'Sui' },
+    blast_leverage_series_one: { blast_admin: 'blast_admin', std: 'MoveStdlib', sui: 'Sui' },
     ifixed: { std: 'MoveStdlib', sui: 'Sui' },
     pyth: { std: 'MoveStdlib', sui: 'Sui' },
     oracle_aggregator: { authority_cap: 'authority_cap', std: 'MoveStdlib', sui: 'Sui', vendor: 'vendor' },

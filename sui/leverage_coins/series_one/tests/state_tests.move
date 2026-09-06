@@ -2,12 +2,13 @@
 /// Tests for construction of adapter-custodied Series1 state.
 module blast_leverage_series_one::state_tests;
 
+use blast_admin::acl::{Authority, SuperAdminCap, AdminCap};
 use blast_leverage_series_one::{
-    acl,
-    constants,
+    domain_fixture,
     errors,
     observation::{Self, FundingSettlement, PositionObservation},
     policy::{Self, PositionSide, TierPolicy},
+    series_one_domain::{Self, SERIES_ONE_DOMAIN},
     state::{Self, State},
 };
 use std::unit_test::{assert_eq, destroy};
@@ -37,9 +38,9 @@ public struct Product {}
 
 public struct Fixture {
     scenario: Scenario,
-    authority: acl::ProtocolAuthority,
-    super_admin_cap: acl::SuperAdminCap,
-    admin_cap: acl::AdminCap,
+    authority: Authority<SERIES_ONE_DOMAIN>,
+    super_admin_cap: SuperAdminCap<SERIES_ONE_DOMAIN>,
+    admin_cap: AdminCap<SERIES_ONE_DOMAIN>,
 }
 
 public struct ObservationSpec has copy, drop {
@@ -65,7 +66,7 @@ public struct ObservationSpec has copy, drop {
 
 #[test]
 fun initialization_constraints_return_the_frozen_side_and_live_order_cap() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let state = new_state(&fixture, policy::short());
 
     let (side, max_order_notional) = state.initialization_constraints();
@@ -78,7 +79,7 @@ fun initialization_constraints_return_the_frozen_side_and_live_order_cap() {
 
 #[test]
 fun flat_seed_preflight_returns_authenticated_order_inputs() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let state = new_state(&fixture, policy::short());
     let observation = standard_observation(policy::long())
         .with_absolute_base(0)
@@ -111,7 +112,7 @@ fun flat_seed_preflight_returns_authenticated_order_inputs() {
     location = blast_leverage_series_one::state,
 )]
 fun seed_preflight_rejects_a_preexisting_position() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let state = new_state(&fixture, policy::long());
 
     state.prepare_initialization(
@@ -126,7 +127,7 @@ fun seed_preflight_rejects_a_preexisting_position() {
 
 #[test]
 fun initialization_strict_execution_uses_the_frozen_tolerance() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let state = new_state(&fixture, policy::long());
 
     state.assert_initialization_execution(1_000_000, 1_010_000);
@@ -141,7 +142,7 @@ fun initialization_strict_execution_uses_the_frozen_tolerance() {
     location = blast_leverage_series_one::policy,
 )]
 fun initialization_strict_execution_rejects_one_unit_past_tolerance() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let state = new_state(&fixture, policy::long());
 
     state.assert_initialization_execution(1_000_000, 1_010_001);
@@ -152,7 +153,7 @@ fun initialization_strict_execution_rejects_one_unit_past_tolerance() {
 
 #[test]
 fun authorized_constructor_returns_valid_uninitialized_state() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let expected_policy = standard_tier_policy();
     let state = state::new<Product>(
@@ -177,11 +178,11 @@ fun authorized_constructor_returns_valid_uninitialized_state() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EAdminRoleNotGranted,
-    location = blast_leverage_series_one::acl,
+    abort_code = blast_admin::errors::EAdminRoleNotGranted,
+    location = blast_admin::acl,
 )]
 fun constructor_requires_the_vault_issuer_role() {
-    let fixture = start(constants::risk_admin_role!());
+    let fixture = start(series_one_domain::risk_admin_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let state = state::new<Product>(
         &witness,
@@ -201,7 +202,7 @@ fun constructor_requires_the_vault_issuer_role() {
     location = blast_leverage_series_one::state,
 )]
 fun max_order_notional_minimum_must_be_positive() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let state = state::new<Product>(
         &witness,
@@ -221,7 +222,7 @@ fun max_order_notional_minimum_must_be_positive() {
     location = blast_leverage_series_one::bounded_value,
 )]
 fun max_order_notional_values_must_be_ordered() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let state = state::new<Product>(
         &witness,
@@ -237,7 +238,7 @@ fun max_order_notional_values_must_be_ordered() {
 
 #[test]
 fun max_order_notional_moves_both_directions_inside_frozen_bounds() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let mut state = state::new<Product>(
         &witness,
@@ -270,7 +271,7 @@ fun max_order_notional_moves_both_directions_inside_frozen_bounds() {
     location = blast_leverage_series_one::state,
 )]
 fun max_order_notional_rejects_the_current_value() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let mut state = state::new<Product>(
         &witness,
@@ -292,7 +293,7 @@ fun max_order_notional_rejects_the_current_value() {
     location = blast_leverage_series_one::bounded_value,
 )]
 fun max_order_notional_rejects_one_below_the_frozen_minimum() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let mut state = state::new<Product>(
         &witness,
@@ -314,7 +315,7 @@ fun max_order_notional_rejects_one_below_the_frozen_minimum() {
     location = blast_leverage_series_one::bounded_value,
 )]
 fun max_order_notional_rejects_one_above_the_frozen_maximum() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let mut state = state::new<Product>(
         &witness,
@@ -332,7 +333,7 @@ fun max_order_notional_rejects_one_above_the_frozen_maximum() {
 
 #[test]
 fun active_state_enters_reduce_only() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let mut state = state::new<Product>(
         &witness,
@@ -356,7 +357,7 @@ fun active_state_enters_reduce_only() {
     location = blast_leverage_series_one::lifecycle,
 )]
 fun uninitialized_state_cannot_enter_reduce_only() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let mut state = state::new<Product>(
         &witness,
@@ -376,7 +377,7 @@ fun uninitialized_state_cannot_enter_reduce_only() {
 
 #[test]
 fun valid_long_seed_activates_and_records_only_the_reserve() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let mut state = new_state(&fixture, policy::long());
 
     let seed_nav = state.initialize(
@@ -394,7 +395,7 @@ fun valid_long_seed_activates_and_records_only_the_reserve() {
 
 #[test]
 fun valid_short_seed_activates() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let mut state = new_state(&fixture, policy::short());
 
     let seed_nav = state.initialize(
@@ -415,7 +416,7 @@ fun valid_short_seed_activates() {
     location = blast_leverage_series_one::state,
 )]
 fun initialization_rejects_a_permissive_structurally_invalid_observation() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let mut state = new_state(&fixture, policy::long());
 
     state.initialize(
@@ -432,7 +433,7 @@ fun initialization_rejects_a_permissive_structurally_invalid_observation() {
 
 #[test]
 fun initialization_admits_nav_cap_equality() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let mut state = new_state(&fixture, policy::long());
     let spec = standard_observation(policy::long())
         .with_venue_equity(NAV_CAP + SEED_RESERVE)
@@ -453,7 +454,7 @@ fun initialization_admits_nav_cap_equality() {
 
 #[test]
 fun initialization_admits_both_healthy_leverage_boundaries() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let mut lower = new_state(&fixture, policy::long());
     let mut upper = new_state(&fixture, policy::long());
 
@@ -721,7 +722,7 @@ fun initialization_rejects_base_below_the_immutable_lot_minimum() {
     location = blast_leverage_series_one::lifecycle,
 )]
 fun initialization_guard_order_checks_lifecycle_before_reserve() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
 
     state.initialize(
@@ -935,7 +936,7 @@ fun initialization_guard_order_checks_leverage_before_minimum_exposure() {
 
 #[test]
 fun an_order_at_the_live_maximum_is_allowed() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let state = new_state(&fixture, policy::long());
 
     state.assert_order_notional_allowed(MAX_ORDER_NOTIONAL_CURRENT);
@@ -950,7 +951,7 @@ fun an_order_at_the_live_maximum_is_allowed() {
     location = blast_leverage_series_one::state,
 )]
 fun an_order_one_unit_above_the_live_maximum_is_rejected() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let state = new_state(&fixture, policy::long());
 
     state.assert_order_notional_allowed(MAX_ORDER_NOTIONAL_CURRENT + 1);
@@ -1021,7 +1022,7 @@ fun the_maximum_funding_cost_cannot_wrap() {
 
 #[test]
 fun healthy_active_state_stays_active() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
 
     assert!(!state.sync_health(
@@ -1185,7 +1186,7 @@ fun redemption_impossible_share_supply_degrades_health_once() {
     location = blast_leverage_series_one::lifecycle,
 )]
 fun uninitialized_state_cannot_synchronize_health() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let mut state = new_state(&fixture, policy::long());
 
     state.sync_health(
@@ -1200,7 +1201,7 @@ fun uninitialized_state_cannot_synchronize_health() {
 
 #[test]
 fun shutdown_pending_health_never_moves_backward() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
     state.set_shutdown_pending_for_testing();
 
@@ -1219,7 +1220,7 @@ fun shutdown_pending_health_never_moves_backward() {
 
 #[test]
 fun shutdown_settled_health_never_moves_backward() {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
     state.set_shutdown_settled_for_testing();
 
@@ -1238,10 +1239,10 @@ fun shutdown_settled_health_never_moves_backward() {
 
 // === Fixture Setup ===
 
-fun start(roles: u8): Fixture {
+fun start(roles: u64): Fixture {
     let mut scenario = test_scenario::begin(ROOT);
     let (super_admin_cap, mut authority) =
-        acl::new_protocol_for_testing(scenario.ctx());
+        domain_fixture::new_authority(scenario.ctx());
     authority.grant_admin(
         &super_admin_cap,
         roles,
@@ -1250,7 +1251,7 @@ fun start(roles: u8): Fixture {
     );
 
     scenario.next_tx(ISSUER);
-    let admin_cap = scenario.take_from_sender<acl::AdminCap>();
+    let admin_cap = scenario.take_from_sender<AdminCap<SERIES_ONE_DOMAIN>>();
 
     Fixture { scenario, authority, super_admin_cap, admin_cap }
 }
@@ -1312,7 +1313,7 @@ fun initialize_once(
     side: PositionSide,
     seed_reserve: u64,
 ) {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let mut state = new_state(&fixture, side);
 
     state.initialize(
@@ -1331,7 +1332,7 @@ fun assert_funding_settlement(
     expected_uncovered: u64,
     expected_reserve: u64,
 ) {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
 
     let (absorbed, uncovered) = state.settle_funding(settlement);
@@ -1345,7 +1346,7 @@ fun assert_funding_settlement(
 }
 
 fun assert_health_degrades(spec: ObservationSpec, share_supply: u64) {
-    let fixture = start(constants::vault_issuer_role!());
+    let fixture = start(series_one_domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
 
     assert!(state.sync_health(

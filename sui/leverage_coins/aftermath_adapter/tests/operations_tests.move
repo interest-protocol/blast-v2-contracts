@@ -2,19 +2,20 @@
 /// Tests for atomic Aftermath Vault initialization seams.
 module blast_leverage_aftermath::operations_tests;
 
+use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
 use blast_leverage_aftermath::{
+    domain_fixture,
     events,
     operations,
-    package_admin::{Self as package_admin, PackageAdmin},
     protocol::{Self, Protocol},
     snapshot,
     vault::{Self as vault, Vault},
     venue_account,
 };
 use blast_leverage_series_one::{
-    acl::{Self, AdminCap, ProtocolAuthority, SuperAdminCap},
     observation,
     policy,
+    series_one_domain::{Self, SERIES_ONE_DOMAIN},
     test_risk_module::{Self, RiskModule, RiskModuleV2},
 };
 use std::{
@@ -51,10 +52,9 @@ public struct Fixture {
     scenario: Scenario,
     registry: CoinRegistry,
     protocol: Protocol,
-    authority: ProtocolAuthority,
-    super_admin_cap: SuperAdminCap,
-    admin_cap: AdminCap,
-    package_admin: PackageAdmin,
+    authority: Authority<SERIES_ONE_DOMAIN>,
+    super_admin_cap: SuperAdminCap<SERIES_ONE_DOMAIN>,
+    admin_cap: AdminCap<SERIES_ONE_DOMAIN>,
 }
 
 public struct ReplayState has drop {
@@ -1167,17 +1167,16 @@ fun start(): Fixture {
         scenario.ctx(),
     );
     let protocol = protocol::new_for_testing(scenario.ctx());
-    let package_admin = package_admin::new_for_testing(@0xB1A57.to_id(), scenario.ctx());
     let (super_admin_cap, mut authority) =
-        acl::new_protocol_for_testing(scenario.ctx());
+        domain_fixture::new_authority(scenario.ctx());
     authority.grant_admin(
         &super_admin_cap,
-        1 | 2,
+        series_one_domain::vault_issuer_role() | series_one_domain::risk_admin_role(),
         ADMIN,
         scenario.ctx(),
     );
     scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap>();
+    let admin_cap = scenario.take_from_sender<AdminCap<SERIES_ONE_DOMAIN>>();
 
     Fixture {
         scenario,
@@ -1186,7 +1185,6 @@ fun start(): Fixture {
         authority,
         super_admin_cap,
         admin_cap,
-        package_admin,
     }
 }
 
@@ -1200,7 +1198,6 @@ fun issue_and_activate(
         protocol,
         authority,
         admin_cap,
-        package_admin,
         ..
     } = fixture;
     let admin_witness = authority.sign_in(admin_cap);
@@ -1209,7 +1206,6 @@ fun issue_and_activate(
         &admin_witness,
         Product(),
         test_risk_module::new(),
-        package_admin,
         registry,
         standard_tier_policy(),
         100,
