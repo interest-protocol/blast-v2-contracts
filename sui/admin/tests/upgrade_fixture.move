@@ -1,0 +1,88 @@
+#[test_only]
+/// Minimal consumer wrapper proving the shared custody/version composition boundary.
+module blast_admin::upgrade_fixture;
+
+use 0xa::package_marker;
+use blast_admin::{acl, operational_version, upgrade_custody};
+use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};
+
+// === Constants ===
+
+const COMPILED_GENERATION: u64 = 1;
+const PACKAGE_ADMIN_ROLE: u64 = 1;
+
+// === Test-Only Structs ===
+
+public struct PackageAdmin has key {
+    id: UID,
+    operational_version: operational_version::OperationalVersion<package_marker::PACKAGE_MARKER>,
+    custody: upgrade_custody::UpgradeCustody<package_marker::PACKAGE_MARKER>,
+}
+
+// === Test-Only Functions ===
+
+public fun new(
+    publisher: Publisher,
+    upgrade_cap: UpgradeCap,
+    ctx: &mut TxContext,
+): PackageAdmin {
+    assert!(
+        publisher.from_module<package_marker::PACKAGE_MARKER>(),
+        blast_admin::errors::invalid_package_publisher!(),
+    );
+
+    let id = object::new(ctx);
+    let custodian_id = id.to_inner();
+    let custody = upgrade_custody::new_for_testing<package_marker::PACKAGE_MARKER>(
+        custodian_id,
+        publisher,
+        upgrade_cap,
+    );
+
+    PackageAdmin {
+        id,
+        operational_version: operational_version::new(),
+        custody,
+    }
+}
+
+public fun authorize_upgrade(
+    self: &mut PackageAdmin,
+    witness: &acl::AdminWitness<blast_admin::test_domain::TEST_DOMAIN>,
+    digest: vector<u8>,
+): UpgradeTicket {
+    self.operational_version.assert_current(COMPILED_GENERATION);
+    witness.assert_role(PACKAGE_ADMIN_ROLE);
+    let custodian_id = self.id.to_inner();
+    self.custody.authorize_upgrade(custodian_id, digest)
+}
+
+public fun commit_and_advance(
+    self: &mut PackageAdmin,
+    witness: &acl::AdminWitness<blast_admin::test_domain::TEST_DOMAIN>,
+    receipt: UpgradeReceipt,
+    next_compiled_generation: u64,
+) {
+    witness.assert_role(PACKAGE_ADMIN_ROLE);
+    self.operational_version.assert_next(next_compiled_generation);
+    let custodian_id = self.id.to_inner();
+
+    self.custody.commit_upgrade(custodian_id, receipt);
+    self.operational_version.advance(custodian_id, next_compiled_generation);
+}
+
+public fun custodian_id(self: &PackageAdmin): ID {
+    self.id.to_inner()
+}
+
+public fun custody(self: &PackageAdmin): &upgrade_custody::UpgradeCustody<package_marker::PACKAGE_MARKER> {
+    &self.custody
+}
+
+public fun generation(self: &PackageAdmin): u64 {
+    self.operational_version.generation_for_testing()
+}
+
+public fun set_generation(self: &mut PackageAdmin, generation: u64) {
+    self.operational_version.set_generation_for_testing(generation);
+}

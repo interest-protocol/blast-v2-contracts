@@ -1,0 +1,11 @@
+[package]
+name = "blast_admin"
+edition = "2024"
+license = "MIT"
+authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
+
+[addresses]
+blast_admin = "0x0"
