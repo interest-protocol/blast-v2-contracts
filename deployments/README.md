@@ -10,8 +10,8 @@ Every record must contain at least:
 - repository commit, clean/dirty state, compiler and toolchain versions;
 - package/contract identifiers and dependency identifiers;
 - deployer, transaction digest, status, and the created shared/admin objects,
-  including the `Publisher`, `UpgradeCap`/`PackageAdmin`, `ProtocolAuthority`,
-  `SuperAdminCap`, and `PackageVersion` object IDs;
+  including the `Publisher`, `UpgradeCap`/`PackageAdmin`, `Authority<Domain>`,
+  `SuperAdminCap<Domain>`, and operational-generation object IDs;
 - constructor/init parameters and post-deploy verification results.
 
 Raw simulator or broadcast output stays generated and ignored. Public

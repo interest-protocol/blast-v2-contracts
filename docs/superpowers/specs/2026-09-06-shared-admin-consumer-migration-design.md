@@ -8,7 +8,7 @@ Scope: `blast_admin` ABI correction plus workflow tickets T-002 through T-006
 
 ## Authority
 
-The authoritative requirements remain the `blast-administration` workflow specification and tickets T-002 through T-006 under `/home/ubuntu/blast-v2/.coding-workflow/blast-v2-contracts/workflows/blast-administration/`. This document records the approved implementation shape and one deliberate ABI correction: every workflow reference to `blast_admin::acl::bootstrap` means `blast_admin::acl::new`.
+The authoritative requirements remain the `blast-administration` workflow specification and tickets T-002 through T-006 under `/home/ubuntu/blast-v2/.coding-workflow/blast-v2-contracts/workflows/blast-administration/`. Those workflow sources now name `blast_admin::acl::new`; this document records the approved implementation shape and the same deliberate ABI correction.
 
 The owner confirmed that none of the affected packages or administration objects is deployed. Breaking object layouts and public transaction signatures are therefore permitted. If deployment evidence appears, stop and design a compatible on-chain migration before changing layouts.
 
@@ -17,6 +17,8 @@ The owner confirmed that none of the affected packages or administration objects
 Every reusable ACL lifecycle is implemented only by the immutable `blast_admin` package. Consumer packages own only their domain marker, role meanings, operational generation container, upgrade-custody wrapper, and product policy. No consumer retains a copied authority registry, administrator capability, witness, root-transfer implementation, operational-version arithmetic, or raw UpgradeCap state machine.
 
 Product economics, balances, permissions unrelated to administration, and external protocol behavior remain unchanged.
+
+A newly published Sui `UpgradeCap` starts at native version 1. The foundational custody intake must therefore require version 1, not version 0; otherwise every real consumer custody constructor aborts. The consumer batch corrects that constant and adds a rejection test for an already-upgraded version-2 cap.
 
 ## Shared ACL ABI
 
@@ -106,6 +108,8 @@ Series One creates an independent domain, widens its existing role bitmap values
 ### DEX
 
 DEX creates an independent domain and package marker. Its `Factory` embeds the DEX operational generation. Administrative mutations use `AdminWitness<DEX_DOMAIN>`; economic and migration formulas remain unchanged.
+
+`migration::claim_protocol_fees` is the single deliberate Launchpad-witness exception because it drains the Launchpad `FeeLedger` held by the migration vault. It is Launchpad product-fee custody, not DEX factory, pool-policy, or package administration. The DEX source-boundary gate permits that exact call and rejects any other Launchpad witness use.
 
 ### AutoLP
 

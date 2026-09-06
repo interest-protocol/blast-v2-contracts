@@ -107,6 +107,37 @@ fun one_launchpad_admin_governs_the_slice_until_shared_revocation() {
     destroy(fixture);
 }
 
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+/// The other half of independence: the same live membership that still governs
+/// Launchpad and Distributor is refused by Migrators alone, because the advance
+/// really did retire this bytecode there and nowhere else.
+fun advancing_migrators_alone_stops_only_migrators() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PUBLISHER, |f| {
+        f.migrators_version.advance_for_testing();
+    });
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let witness = f.sign_in();
+
+        // Still current, still served by the same membership.
+        f.runtime_config.set_protocol_fee_share(&f.launchpad_version, &witness, 2_500);
+        f.distributor_version.set_paused(&witness, true);
+        assert_eq!(f.runtime_config.protocol_fee_share_bps(), 2_500);
+        assert!(f.distributor_version.paused_for_testing());
+
+        // Retired, and no membership can substitute for the generation.
+        cetus::set_tier(&mut f.venue_config, &f.migrators_version, &witness, 220, 20_000);
+    });
+
+    destroy(fixture);
+}
+
 macro fun next_tx(
     $fixture: &mut Fixture,
     $sender: address,
