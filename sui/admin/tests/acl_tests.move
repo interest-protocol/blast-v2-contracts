@@ -26,10 +26,10 @@ public struct Fixture {
 // === Tests ===
 
 #[test]
-fun bootstrap_shares_one_authority_delivers_one_root_and_emits_complete_identity() {
+fun new_shares_one_authority_delivers_one_root_and_emits_complete_identity() {
     let mut scenario = test_scenario::begin(ROOT);
 
-    acl::bootstrap(test_domain::otw(), MAX_ADMINS, TRANSFER_DELAY_MS, scenario.ctx());
+    acl::new(test_domain::otw(), MAX_ADMINS, TRANSFER_DELAY_MS, scenario.ctx());
 
     let created = events::collect_one<events::AuthorityCreated<test_domain::TEST_DOMAIN>>(0);
     let (authority_id, root_cap_id, recipient, max_admins, root_transfer_delay_ms) =
@@ -58,10 +58,10 @@ fun bootstrap_shares_one_authority_delivers_one_root_and_emits_complete_identity
 
 #[test]
 #[expected_failure(abort_code = errors::EInvalidDomainWitness, location = blast_admin::acl)]
-fun bootstrap_rejects_a_non_otw_before_creating_state() {
+fun new_rejects_a_non_otw_before_creating_state() {
     let mut scenario = test_scenario::begin(ROOT);
 
-    acl::bootstrap(
+    acl::new(
         test_domain::invalid_witness(),
         MAX_ADMINS,
         TRANSFER_DELAY_MS,
@@ -73,20 +73,20 @@ fun bootstrap_rejects_a_non_otw_before_creating_state() {
 
 #[test]
 #[expected_failure(abort_code = errors::EInvalidMaxAdmins, location = blast_admin::acl)]
-fun bootstrap_rejects_zero_capacity() {
+fun new_rejects_zero_capacity() {
     let mut scenario = test_scenario::begin(ROOT);
 
-    acl::bootstrap(test_domain::otw(), 0, TRANSFER_DELAY_MS, scenario.ctx());
+    acl::new(test_domain::otw(), 0, TRANSFER_DELAY_MS, scenario.ctx());
 
     scenario.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EInvalidRootTransferDelay, location = blast_admin::acl)]
-fun bootstrap_rejects_zero_transfer_delay() {
+fun new_rejects_zero_transfer_delay() {
     let mut scenario = test_scenario::begin(ROOT);
 
-    acl::bootstrap(test_domain::otw(), MAX_ADMINS, 0, scenario.ctx());
+    acl::new(test_domain::otw(), MAX_ADMINS, 0, scenario.ctx());
 
     scenario.end();
 }

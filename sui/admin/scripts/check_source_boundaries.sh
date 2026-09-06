@@ -127,8 +127,12 @@ if grep -nE 'transfer::(public_)?transfer|burn_publisher' "$package_dir/sources/
 fi
 grep -q '^    upgrade_cap: Option<UpgradeCap>,$' "$package_dir/sources/upgrade_custody.move" \
   || fail "UpgradeCustody must record irreversible cap absence with Option<UpgradeCap>."
-grep -q '^const INITIAL_NATIVE_VERSION: u64 = 0;$' "$package_dir/sources/upgrade_custody.move" \
-  || fail "Production intake must require a never-upgraded native cap."
+grep -q '^const INITIAL_NATIVE_VERSION: u64 = 1;$' "$package_dir/sources/upgrade_custody.move" \
+  || fail "Production intake must require a freshly published, never-upgraded native cap."
+if production_lines "$package_dir/sources/upgrade_custody.move" \
+  | grep -Eq 'fun[[:space:]]+new_checked'; then
+  fail "Custody intake must have exactly one constructor path."
+fi
 
 acl_file="$package_dir/sources/acl.move"
 if grep -q 'operational_version\|OperationalVersion' "$acl_file"; then
@@ -145,7 +149,10 @@ grep -Fqx 'public struct AdminWitness<phantom Domain: drop>(u64) has drop;' "$ac
 grep -q 'admins: VecMap<ID, u64>,' "$acl_file" \
   || fail "Authority must keep bounded u64 role bitmaps in VecMap."
 grep -q 'types::is_one_time_witness(&otw)' "$acl_file" \
-  || fail "ACL bootstrap must authenticate a genuine domain OTW."
+  || fail "The ACL constructor must authenticate a genuine domain OTW."
+if grep -q 'fun bootstrap' "$acl_file"; then
+  fail "The renamed ACL constructor must be the only production entry point."
+fi
 
 actual_acl_public="$({
   externally_callable_function_names "$acl_file"
@@ -154,12 +161,12 @@ expected_acl_public="$(printf '%s\n' \
   accept_super_admin_transfer \
   assert_role \
   begin_super_admin_transfer \
-  bootstrap \
   cancel_super_admin_transfer \
   destroy_admin_cap \
   destroy_retired_super_admin_cap \
   grant_admin \
   grant_role \
+  new \
   revoke_admin \
   revoke_role \
   sign_in \

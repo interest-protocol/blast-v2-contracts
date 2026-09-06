@@ -33,7 +33,7 @@ public fun new(
 
     let id = object::new(ctx);
     let custodian_id = id.to_inner();
-    let custody = upgrade_custody::new_for_testing<package_marker::PACKAGE_MARKER>(
+    let custody = upgrade_custody::new<package_marker::PACKAGE_MARKER>(
         custodian_id,
         publisher,
         upgrade_cap,

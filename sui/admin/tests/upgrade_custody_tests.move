@@ -32,7 +32,7 @@ fun canonical_capabilities_enter_sealed_custody_with_complete_identity() {
     let upgrade_cap = canonical_upgrade_cap(&mut ctx);
     let upgrade_cap_id = object::id(&upgrade_cap);
 
-    let custody = upgrade_custody::new_for_testing<package_marker::PACKAGE_MARKER>(
+    let custody = upgrade_custody::new<package_marker::PACKAGE_MARKER>(
         CUSTODIAN_ID.to_id(),
         publisher,
         upgrade_cap,
@@ -72,7 +72,7 @@ fun intake_rejects_a_publisher_from_another_package_before_the_cap() {
     let publisher = foreign_package_marker::publisher(&mut ctx);
     let upgrade_cap = package::test_publish(@0xBAD.to_id(), &mut ctx);
 
-    let custody = upgrade_custody::new_for_testing<package_marker::PACKAGE_MARKER>(
+    let custody = upgrade_custody::new<package_marker::PACKAGE_MARKER>(
         CUSTODIAN_ID.to_id(),
         publisher,
         upgrade_cap,
@@ -102,7 +102,7 @@ fun intake_rejects_an_upgrade_cap_for_another_package() {
     let publisher = canonical_publisher(&mut ctx);
     let upgrade_cap = package::test_publish(@0xBAD.to_id(), &mut ctx);
 
-    let custody = upgrade_custody::new_for_testing<package_marker::PACKAGE_MARKER>(
+    let custody = upgrade_custody::new<package_marker::PACKAGE_MARKER>(
         CUSTODIAN_ID.to_id(),
         publisher,
         upgrade_cap,
@@ -121,7 +121,28 @@ fun intake_rejects_a_pre_upgraded_cap() {
     let ticket = upgrade_cap.authorize(package::compatible_policy(), digest());
     upgrade_cap.commit(ticket.test_upgrade());
 
-    let custody = upgrade_custody::new_for_testing<package_marker::PACKAGE_MARKER>(
+    let custody = upgrade_custody::new<package_marker::PACKAGE_MARKER>(
+        CUSTODIAN_ID.to_id(),
+        publisher,
+        upgrade_cap,
+    );
+
+    destroy(ctx);
+    destroy(custody);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidUpgradeCap, location = blast_admin::upgrade_custody)]
+fun intake_rejects_a_cap_whose_native_version_already_advanced() {
+    let mut ctx = tx_context::dummy();
+    let publisher = canonical_publisher(&mut ctx);
+    let mut upgrade_cap = canonical_upgrade_cap(&mut ctx);
+    assert_eq!(upgrade_cap.version(), 1);
+    let ticket = upgrade_cap.authorize(package::compatible_policy(), digest());
+    upgrade_cap.commit(ticket.test_upgrade());
+    assert_eq!(upgrade_cap.version(), 2);
+
+    let custody = upgrade_custody::new<package_marker::PACKAGE_MARKER>(
         CUSTODIAN_ID.to_id(),
         publisher,
         upgrade_cap,
@@ -139,7 +160,7 @@ fun intake_rejects_a_cap_with_an_outstanding_authorization() {
     let mut upgrade_cap = canonical_upgrade_cap(&mut ctx);
     let ticket = upgrade_cap.authorize(package::compatible_policy(), digest());
 
-    let custody = upgrade_custody::new_for_testing<package_marker::PACKAGE_MARKER>(
+    let custody = upgrade_custody::new<package_marker::PACKAGE_MARKER>(
         CUSTODIAN_ID.to_id(),
         publisher,
         upgrade_cap,
@@ -558,7 +579,7 @@ fun canonical_custody_with_id(
     custodian_id: ID,
     ctx: &mut TxContext,
 ): upgrade_custody::UpgradeCustody<package_marker::PACKAGE_MARKER> {
-    upgrade_custody::new_for_testing<package_marker::PACKAGE_MARKER>(
+    upgrade_custody::new<package_marker::PACKAGE_MARKER>(
         custodian_id,
         canonical_publisher(ctx),
         canonical_upgrade_cap(ctx),

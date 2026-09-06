@@ -41,7 +41,7 @@ public struct AdminWitness<phantom Domain: drop>(u64) has drop;
 // === Public Functions ===
 
 /// Creates, shares, and delivers the only authority state constructible from a domain OTW.
-public fun bootstrap<Domain: drop>(
+public fun new<Domain: drop>(
     otw: Domain,
     max_admins: u64,
     root_transfer_delay_ms: u64,
@@ -51,7 +51,7 @@ public fun bootstrap<Domain: drop>(
     assert!(max_admins > 0, blast_admin::errors::invalid_max_admins!());
     assert!(root_transfer_delay_ms > 0, blast_admin::errors::invalid_root_transfer_delay!());
 
-    let (root, authority) = new<Domain>(max_admins, root_transfer_delay_ms, ctx);
+    let (root, authority) = new_objects<Domain>(max_admins, root_transfer_delay_ms, ctx);
     let authority_id = authority.id.to_inner();
     let super_admin_cap_id = root.id.to_inner();
     let recipient = ctx.sender();
@@ -318,7 +318,7 @@ public fun assert_role<Domain: drop>(self: &AdminWitness<Domain>, role: u64) {
 
 // === Private Functions ===
 
-fun new<Domain: drop>(
+fun new_objects<Domain: drop>(
     max_admins: u64,
     root_transfer_delay_ms: u64,
     ctx: &mut TxContext,
@@ -364,7 +364,7 @@ public fun new_for_testing<Domain: drop>(
 ): (SuperAdminCap<Domain>, Authority<Domain>) {
     assert!(max_admins > 0, blast_admin::errors::invalid_max_admins!());
     assert!(root_transfer_delay_ms > 0, blast_admin::errors::invalid_root_transfer_delay!());
-    new<Domain>(max_admins, root_transfer_delay_ms, ctx)
+    new_objects<Domain>(max_admins, root_transfer_delay_ms, ctx)
 }
 
 #[test_only]

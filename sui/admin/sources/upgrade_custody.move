@@ -10,7 +10,8 @@ use sui::package::{Self, Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};
 // === Constants ===
 
 const PACKAGE_DIGEST_LENGTH: u64 = 32;
-const INITIAL_NATIVE_VERSION: u64 = 0;
+/// The framework stamps a freshly published package's `UpgradeCap` with version one.
+const INITIAL_NATIVE_VERSION: u64 = 1;
 
 // === Public Structs ===
 
@@ -28,12 +29,36 @@ public fun new<PackageMarker: drop>(
     publisher: Publisher,
     upgrade_cap: UpgradeCap,
 ): UpgradeCustody<PackageMarker> {
-    new_checked<PackageMarker>(
-        custodian_id,
+    assert!(
+        publisher.from_package<PackageMarker>(),
+        blast_admin::errors::invalid_package_publisher!(),
+    );
+    let package_id = upgrade_cap.package();
+    assert!(
+        package_id.to_address() == type_name::original_id<PackageMarker>()
+            && upgrade_cap.version() == INITIAL_NATIVE_VERSION,
+        blast_admin::errors::invalid_upgrade_cap!(),
+    );
+
+    let publisher_id = object::id(&publisher);
+    let upgrade_cap_id = object::id(&upgrade_cap);
+    let native_version = upgrade_cap.version();
+    let policy = upgrade_cap.policy();
+    let custody = UpgradeCustody<PackageMarker> {
         publisher,
-        upgrade_cap,
-        INITIAL_NATIVE_VERSION,
-    )
+        upgrade_cap: option::some(upgrade_cap),
+    };
+
+    events::upgrade_custody_created<PackageMarker>(
+        custodian_id,
+        publisher_id,
+        upgrade_cap_id,
+        package_id,
+        native_version,
+        policy,
+    );
+
+    custody
 }
 
 /// Reports whether native upgrade authority remains sealed in custody.
@@ -180,57 +205,7 @@ public fun make_immutable<PackageMarker: drop>(
     );
 }
 
-// === Private Functions ===
-
-fun new_checked<PackageMarker: drop>(
-    custodian_id: ID,
-    publisher: Publisher,
-    upgrade_cap: UpgradeCap,
-    expected_native_version: u64,
-): UpgradeCustody<PackageMarker> {
-    assert!(
-        publisher.from_package<PackageMarker>(),
-        blast_admin::errors::invalid_package_publisher!(),
-    );
-    let package_id = upgrade_cap.package();
-    assert!(
-        package_id.to_address() == type_name::original_id<PackageMarker>()
-            && upgrade_cap.version() == expected_native_version,
-        blast_admin::errors::invalid_upgrade_cap!(),
-    );
-
-    let publisher_id = object::id(&publisher);
-    let upgrade_cap_id = object::id(&upgrade_cap);
-    let native_version = upgrade_cap.version();
-    let policy = upgrade_cap.policy();
-    let custody = UpgradeCustody<PackageMarker> {
-        publisher,
-        upgrade_cap: option::some(upgrade_cap),
-    };
-
-    events::upgrade_custody_created<PackageMarker>(
-        custodian_id,
-        publisher_id,
-        upgrade_cap_id,
-        package_id,
-        native_version,
-        policy,
-    );
-
-    custody
-}
-
 // === Test-Only Functions ===
-
-#[test_only]
-/// Uses the framework harness's simulated initial native version of one.
-public fun new_for_testing<PackageMarker: drop>(
-    custodian_id: ID,
-    publisher: Publisher,
-    upgrade_cap: UpgradeCap,
-): UpgradeCustody<PackageMarker> {
-    new_checked<PackageMarker>(custodian_id, publisher, upgrade_cap, 1)
-}
 
 #[test_only]
 public fun publisher_id_for_testing<PackageMarker: drop>(
