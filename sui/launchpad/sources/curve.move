@@ -106,7 +106,7 @@ public(package) fun quote_sell(
     meme_in_gross: u64,
     quote_fee_bps: Bps,
     meme_fee_bps: Bps,
-    max_burn_bps: Bps,
+    sell_burn_bps: Bps,
 ): (u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64) {
     assert!(
         meme_reserve > 0 && virtual_quote > 0,
@@ -130,8 +130,8 @@ public(package) fun quote_sell(
             terminal_threshold,
         )
     };
-    let burn_bps = bps::new(progress_bps).apply_down(max_burn_bps.value());
-    let meme_pending_burn = bps::new(burn_bps).apply_up(meme_in_after_fee);
+    let burn_bps = sell_burn_bps.value();
+    let meme_pending_burn = sell_burn_bps.apply_up(meme_in_after_fee);
     let meme_in_effective = meme_in_after_fee - meme_pending_burn;
     assert!(meme_in_effective > 0, blast_fun::errors::zero_trade_output!());
 

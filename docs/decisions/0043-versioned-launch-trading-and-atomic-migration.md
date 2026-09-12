@@ -13,6 +13,9 @@
 > [ADR 0049](0049-audit-hardened-package-version-and-launch-intake.md) moves the
 > only operational version to `PackageVersion`, gates every mutable core shared
 > object, and separates native receipt commit from checked activation.
+> Sell-burn update (2026-09-12):
+> [ADR 0077](0077-fixed-creator-selected-sell-burn.md) replaces the progress ramp
+> with a fixed creator-selected rate capped at 5,000 basis points.
 
 - Status: accepted
 - Date: 2026-08-28
@@ -38,7 +41,7 @@ successful native package-upgrade commit advances it exactly once; the wrapped
 
 Each `Launch` snapshots the deployer-selected `sell_burn_bps` carried by its
 `LaunchTicket`. The ticket constructor irreversibly selects native `Fixed` or
-`BurnOnly` supply and accepts any sell-burn rate through 10,000 basis points,
+`BurnOnly` supply and accepts any sell-burn rate through 5,000 basis points,
 including zero. Coin Registry is the only supply-mode authority. Ticket
 redemption copies only the rate into the launch, so the launcher cannot
 substitute another rate.
@@ -70,7 +73,7 @@ fee-ledger, and graduation calculations remain package-only helpers.
 ## Verification
 
 - Package-version mismatch aborts before launch lifecycle and economic checks.
-- Ticket construction rejects a sell-burn rate above 10,000 bps. BurnOnly
+- Ticket construction rejects a sell-burn rate above 5,000 bps. BurnOnly
   terminal supply destruction and Fixed terminal `0x0` disposal each conserve
   the complete Meme balance under their distinct native supply semantics.
 - Buy and sell tests pin coin movement, slippage, fee accrual, reserves, and the

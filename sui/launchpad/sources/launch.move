@@ -448,7 +448,7 @@ fun partition_meme<Meme>(
     assert!(
         meme_liquidity_provision_bps.value() > 0
             && meme_liquidity_provision_bps.value()
-                <= constants::max_meme_liquidity_provision_bps!(),
+                < constants::basis_points_denominator!(),
         blast_fun::errors::invalid_meme_liquidity_provision_bps!(),
     );
     assert!(

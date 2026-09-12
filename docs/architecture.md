@@ -122,7 +122,7 @@ The generated package's Blast constructor fixes precision at nine decimals,
 mints exactly one billion whole coins, and consumes the treasury cap into
 owner-selected `Fixed` or `BurnOnly` state
 before finalizing the initializer. Its launch ticket holds the complete
-`Balance<Meme>`, `MetadataCap<Meme>`, and bounded sell-burn rate; no mint authority survives in Blast core
+`Balance<Meme>`, `MetadataCap<Meme>`, and creator-selected fixed sell-burn rate capped at 50%; no mint authority survives in Blast core
 or an adapter, and launch intake does not need the shared Meme currency merely to
 finalize supply. The native metadata cap remains in Blast-defined custody until
 the one-time creator claim returns it separately alongside `CreatorCap<Meme>`.

@@ -576,7 +576,7 @@ fun graduation_defaults_accept_fee_zeros_and_liquidity_provision_boundaries() {
             &admin_witness,
             constants::max_quote_migration_fee_bps!(),
             0,
-            constants::max_meme_liquidity_provision_bps!(),
+            constants::basis_points_denominator!() - 1,
         );
         f.config.set_graduation_defaults(&f.package_version,
             &admin_witness, 0, 0, 1);
@@ -783,7 +783,7 @@ fun graduation_defaults_reject_liquidity_provision_above_ceiling() {
             &admin_witness,
             0,
             0,
-            constants::max_meme_liquidity_provision_bps!() + 1,
+            constants::basis_points_denominator!(),
         );
     });
 
@@ -806,7 +806,7 @@ fun graduation_defaults_reject_provision_ceiling_before_partition() {
             &admin_witness,
             0,
             constants::max_protocol_meme_graduation_fee_bps!(),
-            constants::max_meme_liquidity_provision_bps!() + 1,
+            constants::basis_points_denominator!(),
         );
     });
 

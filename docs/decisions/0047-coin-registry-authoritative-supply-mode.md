@@ -86,7 +86,7 @@ launches can use any valid sell-burn rate, including zero.
   with both empty and nonempty accumulated sell-burn escrow.
 - Guard-order tests cover stale package versions, invalid lifecycle, invalid
   migration witness, and repeated migration.
-- Launch-ticket tests cover sell-burn rates at zero, 100%, and the first invalid
+- Launch-ticket tests cover sell-burn rates at zero, 50%, and the first invalid
   value above 100%.
 - Structural checks reject `burnable` storage in LaunchTicket and Launch.
 - Build, lint, full tests, coverage, source-boundary checks, and diff checks pass.

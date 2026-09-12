@@ -12,6 +12,11 @@ macro public(package) fun max_launch_fee_bps(): u64 {
     1_000
 }
 
+/// Maximum creator-selected share of post-fee Meme sell input reserved for burn.
+macro public(package) fun max_sell_burn_bps(): u64 {
+    5_000
+}
+
 /// Maximum number of external migration implementations admitted for new launches.
 macro public(package) fun max_migration_witnesses(): u64 {
     16
@@ -25,11 +30,6 @@ macro public(package) fun max_quote_migration_fee_bps(): u64 {
 /// Maximum initial Meme supply reserved for the protocol at graduation.
 macro public(package) fun max_protocol_meme_graduation_fee_bps(): u64 {
     1_000
-}
-
-/// Maximum initial Meme supply reservable for destination-pool liquidity.
-macro public(package) fun max_meme_liquidity_provision_bps(): u64 {
-    9_999
 }
 
 /// Canonical decimal precision for every generated Meme currency.

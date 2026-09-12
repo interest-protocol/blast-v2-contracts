@@ -1,10 +1,12 @@
 {
   "schema_version": 2,
-  "description": "Constant-product bonding curve with virtual quote liquidity: buys, sells, progress-dependent sell-side burn, terminal disposition burn, threshold crossing, and boundary cases.",
+  "description": "Constant-product bonding curve with virtual quote liquidity: buys, sells, creator-selected fixed sell-side burn, terminal disposition burn, threshold crossing, and boundary cases.",
   "source_decisions": [
-    "docs/decisions/0004-bonding-curve.md",
-    "docs/decisions/0003-treasury-cap-lifetime-and-burn.md",
-    "docs/decisions/0006-fees-and-launch-paths.md"
+    "docs/decisions/0021-pure-constant-product-curve-quotes.md",
+    "docs/decisions/0026-deferred-sell-burn.md",
+    "docs/decisions/0041-launch-config-owned-trade-fees.md",
+    "docs/decisions/0006-fees-and-launch-paths.md",
+    "docs/decisions/0077-fixed-creator-selected-sell-burn.md"
   ],
   "status": "proposed",
   "units": {
@@ -18,25 +20,25 @@
       "quote_out_gross": "floor - user payout rounds down",
       "quote_fee": "ceil - protocol fee rounds up",
       "progress_bps": "floor - never overstates progress",
-      "burn_bps": "floor - never overstates the ramp",
+      "burn_bps": "the immutable creator-selected rate applied to post-fee Meme input",
       "meme_pending_burn": "ceil - seller obligation rounds up"
     }
   },
   "parameters": {
-    "note": "Every value here is proposed, not accepted, and sourced from docs/decisions/0004-bonding-curve.md (curve and LaunchConfig-owned asset fees), docs/decisions/0003-treasury-cap-lifetime-and-burn.md (max_burn_bps) and docs/decisions/0006-fees-and-launch-paths.md (migration fee and its ceiling). Changing one invalidates every case below.",
+    "note": "Deployment values remain proposed. The fixed sell-burn formula and hard 5,000 bps creator ceiling are accepted by docs/decisions/0077-fixed-creator-selected-sell-burn.md. Changing an economic input invalidates every affected case below.",
     "meme_total_supply_atomic": 1000000000000000000,
     "curve_meme_inventory_M0_atomic": 800000000000000000,
     "virtual_quote_V_atomic": 1000000000000,
     "terminal_threshold_T_atomic": 3000000000000,
     "quote_fee_bps": 100,
     "meme_fee_bps": 0,
-    "max_burn_bps": 100,
+    "sell_burn_bps": 100,
     "migration_fee_bps": 100,
     "migration_fee_ceiling_bps": 300
   },
   "formulas": {
     "buy": "quote_fee=ceil(q*quote_fee_bps/10000); q_net=q-quote_fee; meme_gross=floor(M*q_net/(V+Q+q_net)); meme_fee=ceil(meme_gross*meme_fee_bps/10000); meme_net=meme_gross-meme_fee; M'=M-meme_gross; Q'=Q+q_net",
-    "sell": "meme_fee=ceil(m*meme_fee_bps/10000); m_after_fee=m-meme_fee; progress_bps=min(floor(Q*10000/T),10000); burn_bps=floor(max_burn_bps*progress_bps/10000); burned=ceil(m_after_fee*burn_bps/10000); eff=m_after_fee-burned; gross=floor((V+Q)*eff/(M+eff)); quote_fee=ceil(gross*quote_fee_bps/10000); net=gross-quote_fee; M'=M+eff; Q'=Q-gross"
+    "sell": "meme_fee=ceil(m*meme_fee_bps/10000); m_after_fee=m-meme_fee; progress_bps=min(floor(Q*10000/T),10000) as telemetry; burn_bps=sell_burn_bps; burned=ceil(m_after_fee*burn_bps/10000); eff=m_after_fee-burned; gross=floor((V+Q)*eff/(M+eff)); quote_fee=ceil(gross*quote_fee_bps/10000); net=gross-quote_fee; M'=M+eff; Q'=Q-gross"
   },
   "cases": [
     {
@@ -124,7 +126,7 @@
       "notes": "Continues from buy_first_one_quote_unit."
     },
     {
-      "name": "sell_mid_with_progress_burn",
+      "name": "sell_mid_with_fixed_burn",
       "kind": "sell",
       "given": {
         "meme_reserve": 534762932907305531,
@@ -135,17 +137,17 @@
         "meme_fee": 0,
         "meme_in_after_fee": 1000000000000000,
         "progress_bps": 1653,
-        "burn_bps": 16,
-        "meme_pending_burn": 1600000000000,
-        "meme_in_effective": 998400000000000,
-        "quote_out_gross": 2787801814,
-        "quote_fee": 27878019,
-        "quote_out_net": 2759923795,
-        "meme_reserve_after": 535761332907305531,
-        "real_quote_after": 493202198186,
+        "burn_bps": 100,
+        "meme_pending_burn": 10000000000000,
+        "meme_in_effective": 990000000000000,
+        "quote_out_gross": 2764390092,
+        "quote_fee": 27643901,
+        "quote_out_net": 2736746191,
+        "meme_reserve_after": 535752932907305531,
+        "real_quote_after": 493225609908,
         "clamp_would_bind": false
       },
-      "notes": "Burn moment 1 at partial progress. quote_out_gross <= real_quote holds without a clamp."
+      "notes": "The creator-selected 100 bps rate applies unchanged at partial progress. quote_out_gross <= real_quote holds without a clamp."
     },
     {
       "name": "sell_both_asset_fees",
@@ -161,17 +163,46 @@
         "meme_fee": 10000000000000,
         "meme_in_after_fee": 990000000000000,
         "progress_bps": 1653,
-        "burn_bps": 16,
-        "meme_pending_burn": 1584000000000,
-        "meme_in_effective": 988416000000000,
-        "quote_out_gross": 2759975228,
-        "quote_fee": 27599753,
-        "quote_out_net": 2732375475,
-        "meme_reserve_after": 535751348907305531,
-        "real_quote_after": 493230024772,
+        "burn_bps": 100,
+        "meme_pending_burn": 9900000000000,
+        "meme_in_effective": 980100000000000,
+        "quote_out_gross": 2736796764,
+        "quote_fee": 27367968,
+        "quote_out_net": 2709428796,
+        "meme_reserve_after": 535743032907305531,
+        "real_quote_after": 493253203236,
         "clamp_would_bind": false
       },
       "notes": "Meme fee precedes the burn and curve; quote fee follows the curve."
+    },
+    {
+      "name": "sell_max_burn_after_meme_fee",
+      "kind": "sell",
+      "given": {
+        "meme_reserve": 1000,
+        "real_quote": 500,
+        "virtual_quote": 1000,
+        "terminal_threshold": 1000,
+        "meme_in": 1000,
+        "quote_fee_bps": 0,
+        "meme_fee_bps": 100,
+        "sell_burn_bps": 5000
+      },
+      "expect": {
+        "meme_fee": 10,
+        "meme_in_after_fee": 990,
+        "progress_bps": 5000,
+        "burn_bps": 5000,
+        "meme_pending_burn": 495,
+        "meme_in_effective": 495,
+        "quote_out_gross": 496,
+        "quote_fee": 0,
+        "quote_out_net": 496,
+        "meme_reserve_after": 1495,
+        "real_quote_after": 4,
+        "clamp_would_bind": false
+      },
+      "notes": "A gross Meme input of 1000 pays the 1% Meme fee first, then reserves 50% of the remaining 990 for burn, so the curve prices 495."
     },
     {
       "name": "buy_to_below_threshold",
@@ -214,7 +245,7 @@
       "notes": "Crossing happens on a buy only. Terminal state feeds the migration price."
     },
     {
-      "name": "sell_at_full_progress_max_burn_unreachable",
+      "name": "sell_at_full_progress_unreachable",
       "kind": "sell",
       "given": {
         "meme_reserve": 196608503317768494,
@@ -236,7 +267,7 @@
         "clamp_would_bind": false,
         "abort": "EUnreachableByConstruction"
       },
-      "notes": "Pure-math boundary, UNREACHABLE through the lifecycle. progress_bps reaches 10000 only when real_quote >= T, and crossing T closes trading, so no sell can execute in this state. Retained to pin the arithmetic at the top of the ramp; it must never be presented as an executable trade. See the sell_at_max_live_progress case for the highest burn a live sell can actually incur."
+      "notes": "Pure-math boundary, UNREACHABLE through the lifecycle. progress_bps reaches 10000 only when real_quote >= T, and crossing T closes trading. The fixed burn remains 100 bps; progress is telemetry only."
     },
     {
       "name": "sell_at_max_live_progress",
@@ -250,17 +281,17 @@
         "meme_fee": 0,
         "meme_in_after_fee": 1000000000000000,
         "progress_bps": 9999,
-        "burn_bps": 99,
-        "meme_pending_burn": 9900000000000,
-        "meme_in_effective": 990100000000000,
-        "quote_out_gross": 19704453104,
-        "quote_fee": 197044532,
-        "quote_out_net": 19507408572,
-        "meme_reserve_after": 200990100000050001,
-        "real_quote_after": 2980295546895,
+        "burn_bps": 100,
+        "meme_pending_burn": 10000000000000,
+        "meme_in_effective": 990000000000000,
+        "quote_out_gross": 19702472759,
+        "quote_fee": 197024728,
+        "quote_out_net": 19505448031,
+        "meme_reserve_after": 200990000000050001,
+        "real_quote_after": 2980297527240,
         "clamp_would_bind": false
       },
-      "notes": "Highest burn attainable on an executable sell: real_quote = T-1 gives progress_bps 9999 and burn_bps 99, one basis point below the configured max_burn_bps of 100. The state is constructed directly rather than reached by a buy, because the ceiling fee makes the net-quote map non-surjective and no single gross amount yields net exactly T-1; the sell function is a pure function of state, so the vector is well-defined regardless."
+      "notes": "At real_quote = T-1, progress telemetry is 9999 while the creator-selected burn remains exactly 100 bps."
     },
     {
       "name": "sell_round_trip_immediately_after_first_buy",
@@ -274,17 +305,17 @@
         "meme_fee": 0,
         "meme_in_after_fee": 791216695471483,
         "progress_bps": 3,
-        "burn_bps": 0,
-        "meme_pending_burn": 0,
-        "meme_in_effective": 791216695471483,
-        "quote_out_gross": 989999999,
-        "quote_fee": 9900000,
-        "quote_out_net": 980099999,
-        "meme_reserve_after": 800000000000000000,
-        "real_quote_after": 1,
+        "burn_bps": 100,
+        "meme_pending_burn": 7912166954715,
+        "meme_in_effective": 783304528516768,
+        "quote_out_gross": 980109693,
+        "quote_fee": 9801097,
+        "quote_out_net": 970308596,
+        "meme_reserve_after": 799992087833045285,
+        "real_quote_after": 9890307,
         "clamp_would_bind": false
       },
-      "notes": "Inverse/dust bound. Spent 1000000000, recovered 980099999; 19900001 lost, of which 1 atomic unit is curve-retained rounding dust and 19900000 is the two fees. progress_bps is 3, which floors to burn_bps 0 - the ramp does not round a negligible progress up into a burn."
+      "notes": "The fixed 100 bps burn applies immediately after the opening buy; progress_bps is informational and does not scale it."
     },
     {
       "name": "buy_one_atomic_unit",
@@ -312,7 +343,7 @@
       },
       "expect": {
         "abort": "EUnreachableByConstruction",
-        "quote_out_gross_if_unguarded": 1249,
+        "quote_out_gross_if_unguarded": 1237,
         "real_quote_available": 0
       },
       "notes": "Unreachable in practice: no meme exists outside the curve at M0, so no caller can hold this Coin<Meme>. Recorded because it is exactly the state in which the historical .min() clamp would bind. Blast asserts the sell-back invariant instead of clamping."
@@ -355,8 +386,8 @@
       "statement": "quote_in_total = quote_out_total + Q + accrued_fees_quote + quote_named_claims + migration_fee_quote + quote_deployed_to_venue"
     },
     {
-      "name": "burn_ramp_top_is_an_asymptote",
-      "statement": "burn_bps == max_burn_bps requires progress_bps == 10000, which requires real_quote >= T, at which point trading is closed. The maximum burn on an executable sell is max_burn_bps - 1."
+      "name": "sell_burn_is_progress_independent",
+      "statement": "For every executable sell, burn_bps equals the immutable creator-selected sell_burn_bps; progress_bps is telemetry and does not change the burn rate."
     },
     {
       "name": "intermediate_width",

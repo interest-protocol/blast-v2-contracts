@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-24
 - Amends: [0003](0003-treasury-cap-lifetime-and-burn.md), [0004](0004-bonding-curve.md), [0023](0023-generated-coin-supply-and-metadata-custody.md)
-- Amended by: [0043](0043-versioned-launch-trading-and-atomic-migration.md)
+- Amended by: [0043](0043-versioned-launch-trading-and-atomic-migration.md), [0077](0077-fixed-creator-selected-sell-burn.md)
 
 ## Sources
 
@@ -13,7 +13,7 @@
 
 ## Context
 
-The sell curve designates a progress-dependent portion of meme input for burn
+The sell curve designates a creator-selected fixed portion of meme input for burn
 before calculating how much input is effective against the curve. Destroying
 that amount on every sell would require a mutable shared `Currency<Meme>` input
 on every sell and would add repeated Coin Registry writes to the hot trading
@@ -41,7 +41,7 @@ inaccessible, but the event records fixed disposal rather than native supply
 destruction and total supply remains unchanged.
 
 The curve arithmetic and seller outcome do not change: the meme fee is removed
-first, the progress burn allocation is removed second, and only the effective
+first, the fixed burn allocation is removed second, and only the effective
 meme amount is priced and joined to the curve reserve. Until terminal burn, the
 Coin Registry total supply remains unchanged.
 

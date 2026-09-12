@@ -398,7 +398,7 @@ fun buy_rejects_post_trade_real_quote_overflow() {
 }
 
 #[test]
-fun sell_mid_with_progress_burn_matches_the_committed_vector() {
+fun sell_mid_with_fixed_burn_matches_the_committed_vector() {
     let (
         _,
         _,
@@ -423,14 +423,14 @@ fun sell_mid_with_progress_burn_matches_the_committed_vector() {
     );
 
     assert_eq!(progress_bps, 1_653);
-    assert_eq!(burn_bps, 16);
-    assert_eq!(meme_pending_burn, 1_600_000_000_000);
-    assert_eq!(meme_in_effective, 998_400_000_000_000);
-    assert_eq!(quote_out_gross, 2_787_801_814);
-    assert_eq!(quote_fee, 27_878_019);
-    assert_eq!(quote_out_net, 2_759_923_795);
-    assert_eq!(meme_reserve_after, 535_761_332_907_305_531);
-    assert_eq!(real_quote_after, 493_202_198_186);
+    assert_eq!(burn_bps, 100);
+    assert_eq!(meme_pending_burn, 10_000_000_000_000);
+    assert_eq!(meme_in_effective, 990_000_000_000_000);
+    assert_eq!(quote_out_gross, 2_764_390_092);
+    assert_eq!(quote_fee, 27_643_901);
+    assert_eq!(quote_out_net, 2_736_746_191);
+    assert_eq!(meme_reserve_after, 535_752_932_907_305_531);
+    assert_eq!(real_quote_after, 493_225_609_908);
 }
 
 #[test]
@@ -461,18 +461,47 @@ fun sell_can_charge_both_asset_fees_before_and_after_curve_math() {
     assert_eq!(meme_fee, 10_000_000_000_000);
     assert_eq!(meme_in_after_fee, 990_000_000_000_000);
     assert_eq!(progress_bps, 1_653);
-    assert_eq!(burn_bps, 16);
-    assert_eq!(meme_pending_burn, 1_584_000_000_000);
-    assert_eq!(meme_in_effective, 988_416_000_000_000);
-    assert_eq!(quote_out_gross, 2_759_975_228);
-    assert_eq!(quote_fee, 27_599_753);
-    assert_eq!(quote_out_net, 2_732_375_475);
-    assert_eq!(meme_reserve_after, 535_751_348_907_305_531);
-    assert_eq!(real_quote_after, 493_230_024_772);
+    assert_eq!(burn_bps, 100);
+    assert_eq!(meme_pending_burn, 9_900_000_000_000);
+    assert_eq!(meme_in_effective, 980_100_000_000_000);
+    assert_eq!(quote_out_gross, 2_736_796_764);
+    assert_eq!(quote_fee, 27_367_968);
+    assert_eq!(quote_out_net, 2_709_428_796);
+    assert_eq!(meme_reserve_after, 535_743_032_907_305_531);
+    assert_eq!(real_quote_after, 493_253_203_236);
 }
 
 #[test]
-fun sell_progress_boundaries_match_the_committed_vectors() {
+fun sell_max_burn_applies_to_post_fee_input() {
+    let (
+        meme_fee,
+        meme_in_after_fee,
+        progress_bps,
+        burn_bps,
+        meme_pending_burn,
+        meme_in_effective,
+        quote_out_gross,
+        quote_fee,
+        quote_out_net,
+        meme_reserve_after,
+        real_quote_after,
+    ) = quote_sell(1_000, 500, 1_000, 1_000, 1_000, 0, 100, 5_000);
+
+    assert_eq!(meme_fee, 10);
+    assert_eq!(meme_in_after_fee, 990);
+    assert_eq!(progress_bps, 5_000);
+    assert_eq!(burn_bps, 5_000);
+    assert_eq!(meme_pending_burn, 495);
+    assert_eq!(meme_in_effective, 495);
+    assert_eq!(quote_out_gross, 496);
+    assert_eq!(quote_fee, 0);
+    assert_eq!(quote_out_net, 496);
+    assert_eq!(meme_reserve_after, 1_495);
+    assert_eq!(real_quote_after, 4);
+}
+
+#[test]
+fun sell_burn_is_fixed_across_progress_boundaries() {
     let (
         _,
         _,
@@ -527,18 +556,18 @@ fun sell_progress_boundaries_match_the_committed_vectors() {
     );
 
     assert_eq!(live_progress_bps, 9_999);
-    assert_eq!(live_burn_bps, 99);
-    assert_eq!(live_meme_pending_burn, 9_900_000_000_000);
-    assert_eq!(live_meme_in_effective, 990_100_000_000_000);
-    assert_eq!(live_quote_out_gross, 19_704_453_104);
-    assert_eq!(live_quote_fee, 197_044_532);
-    assert_eq!(live_quote_out_net, 19_507_408_572);
-    assert_eq!(live_meme_reserve_after, 200_990_100_000_050_001);
-    assert_eq!(live_real_quote_after, 2_980_295_546_895);
+    assert_eq!(live_burn_bps, 100);
+    assert_eq!(live_meme_pending_burn, 10_000_000_000_000);
+    assert_eq!(live_meme_in_effective, 990_000_000_000_000);
+    assert_eq!(live_quote_out_gross, 19_702_472_759);
+    assert_eq!(live_quote_fee, 197_024_728);
+    assert_eq!(live_quote_out_net, 19_505_448_031);
+    assert_eq!(live_meme_reserve_after, 200_990_000_000_050_001);
+    assert_eq!(live_real_quote_after, 2_980_297_527_240);
 }
 
 #[test]
-fun immediate_round_trip_pins_fees_and_one_atomic_unit_of_curve_dust() {
+fun immediate_round_trip_applies_fixed_burn_after_fees() {
     let (
         _,
         _,
@@ -581,14 +610,14 @@ fun immediate_round_trip_pins_fees_and_one_atomic_unit_of_curve_dust() {
     );
 
     assert_eq!(progress_bps, 3);
-    assert_eq!(burn_bps, 0);
-    assert_eq!(meme_pending_burn, 0);
-    assert_eq!(quote_out_gross, 989_999_999);
-    assert_eq!(quote_fee, 9_900_000);
-    assert_eq!(quote_out_net, 980_099_999);
-    assert_eq!(meme_reserve_after_sell, MEME_RESERVE);
-    assert_eq!(real_quote_after_sell, 1);
-    assert_eq!(1_000_000_000 - quote_out_net, 19_900_001);
+    assert_eq!(burn_bps, 100);
+    assert_eq!(meme_pending_burn, 7_912_166_954_715);
+    assert_eq!(quote_out_gross, 980_109_693);
+    assert_eq!(quote_fee, 9_801_097);
+    assert_eq!(quote_out_net, 970_308_596);
+    assert_eq!(meme_reserve_after_sell, 799_992_087_833_045_285);
+    assert_eq!(real_quote_after_sell, 9_890_307);
+    assert_eq!(1_000_000_000 - quote_out_net, 29_691_404);
 }
 
 #[test]
@@ -903,7 +932,7 @@ fun quote_sell(
     meme_in_gross: u64,
     quote_fee_bps: u64,
     meme_fee_bps: u64,
-    max_burn_bps: u64,
+    sell_burn_bps: u64,
 ): (u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64) {
     curve::quote_sell(
         meme_reserve,
@@ -913,7 +942,7 @@ fun quote_sell(
         meme_in_gross,
         bps::new(quote_fee_bps),
         bps::new(meme_fee_bps),
-        bps::new(max_burn_bps),
+        bps::new(sell_burn_bps),
     )
 }
 

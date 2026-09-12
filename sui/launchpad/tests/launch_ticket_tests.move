@@ -172,7 +172,7 @@ fun x_ticket_is_composable_and_records_burn_only_selection() {
 }
 
 #[test]
-fun ticket_accepts_one_hundred_percent_sell_burn() {
+fun ticket_accepts_fifty_percent_sell_burn() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -185,7 +185,7 @@ fun ticket_accepts_one_hundred_percent_sell_burn() {
             b"".to_string(),
             creator_identity,
             false,
-            10_000,
+            5_000,
             f.ctx!(),
         );
         let created = events::collect_one<events::LaunchTicketCreated>(0);
@@ -194,8 +194,8 @@ fun ticket_accepts_one_hundred_percent_sell_burn() {
         let (meme, metadata_cap, creator_authority, stored_sell_burn_bps) =
             ticket.destroy();
 
-        assert_eq!(sell_burn_bps, 10_000);
-        assert_eq!(stored_sell_burn_bps.value(), 10_000);
+        assert_eq!(sell_burn_bps, 5_000);
+        assert_eq!(stored_sell_burn_bps.value(), 5_000);
         destroy(meme);
         destroy(metadata_cap);
         destroy(creator_authority);
@@ -297,10 +297,10 @@ fun ticket_rejects_a_non_otw_type() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidBps,
-    location = blast_fun::bps,
+    abort_code = blast_fun::errors::EInvalidSellBurnBps,
+    location = blast_fun::launch_ticket,
 )]
-fun ticket_delegates_sell_burn_range_validation_to_bps() {
+fun ticket_rejects_the_first_sell_burn_above_fifty_percent() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -313,7 +313,7 @@ fun ticket_delegates_sell_burn_range_validation_to_bps() {
             b"".to_string(),
             creator_identity,
             false,
-            10_001,
+            5_001,
             f.ctx!(),
         );
 

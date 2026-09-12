@@ -66,8 +66,8 @@ or claims.
 
 ### Bounds and the unconfigured sentinel
 
-- The configured range is **1 through 9,999 basis points** inclusive
-  (`constants::max_meme_liquidity_provision_bps!()` = 9,999).
+- The configured range is **1 through 9,999 basis points** inclusive: the
+  provision must be positive and less than the 10,000 basis-point denominator.
 - Initialization writes **0**, which means only "not configured yet". A zero
   provision must never be interpreted as "migrate all terminal curve
   inventory"; that overloaded sentinel is rejected by design.

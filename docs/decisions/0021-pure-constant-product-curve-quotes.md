@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-23
 - Partially accepts: [0004](0004-bonding-curve.md)
-- Amended by: [0041](0041-launch-config-owned-trade-fees.md)
+- Amended by: [0041](0041-launch-config-owned-trade-fees.md), [0077](0077-fixed-creator-selected-sell-burn.md)
 
 ## Sources
 
@@ -45,7 +45,8 @@ The accepted formulas and rounding are:
 - buy meme fee: `ceil(meme_out_gross * meme_fee_bps / 10_000)`, after curve math;
 - buy user output: gross meme output minus meme fee;
 - sell meme fee: `ceil(meme_in_gross * meme_fee_bps / 10_000)`, before burn and curve math;
-- sell progress and burn rate: floor, capped at 10,000 basis points;
+- sell progress telemetry: floor, capped at 10,000 basis points;
+- sell burn rate: the immutable creator-selected rate, capped at 5,000 basis points by ADR 0077;
 - sell pending-burn allocation: ceiling on the post-fee meme input, because it is the seller's obligation;
 - sell gross quote output: `floor((V + Q) * meme_in_effective / (M + meme_in_effective))`;
 - sell quote fee: `ceil(quote_out_gross * quote_fee_bps / 10_000)`, after curve math; and

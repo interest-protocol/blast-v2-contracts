@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-24
 - Implements: [0023](0023-generated-coin-supply-and-metadata-custody.md)
-- Amended by: [0035](0035-initializer-finalized-meme-supply.md), [0036](0036-fixed-nine-decimal-generated-memes.md), [0037](0037-remove-redundant-ticket-burn-mode.md), [0038](0038-standard-method-names.md), [0043](0043-versioned-launch-trading-and-atomic-migration.md), [0047](0047-coin-registry-authoritative-supply-mode.md)
+- Amended by: [0035](0035-initializer-finalized-meme-supply.md), [0036](0036-fixed-nine-decimal-generated-memes.md), [0037](0037-remove-redundant-ticket-burn-mode.md), [0038](0038-standard-method-names.md), [0043](0043-versioned-launch-trading-and-atomic-migration.md), [0047](0047-coin-registry-authoritative-supply-mode.md), [0077](0077-fixed-creator-selected-sell-burn.md)
 
 ## Context
 
@@ -47,8 +47,8 @@ package remains responsible for deliberate delivery from its non-composable
 - the launcher's `sell_burn_bps`.
 
 The constructor input selects Coin Registry `BurnOnly` or `Fixed` but is not
-stored in the ticket. The separate rate fixes the sell-burn ramp through 10,000
-basis points. Launch redemption copies the rate and cannot override it.
+stored in the ticket. The separate rate fixes sell burn through the 5,000
+basis-point ceiling accepted by ADR 0077. Launch redemption copies the rate and cannot override it.
 Migration reads the native `Currency<Meme>` state directly.
 
 The ticket does not update metadata, claim creator authority, or perform

@@ -346,7 +346,7 @@ fun assert_valid_graduation_defaults(
     assert!(
         meme_liquidity_provision_bps > 0
             && meme_liquidity_provision_bps
-                <= constants::max_meme_liquidity_provision_bps!(),
+                < constants::basis_points_denominator!(),
         blast_fun::errors::invalid_meme_liquidity_provision_bps!(),
     );
     assert!(

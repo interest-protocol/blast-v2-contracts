@@ -799,7 +799,7 @@ fi
 
 if [[ "$(rg -c '^[[:space:]]+quote_fee_bps: Bps,' sources/curve.move)" != 3 ]] \
   || [[ "$(rg -c '^[[:space:]]+meme_fee_bps: Bps,' sources/curve.move)" != 2 ]] \
-  || [[ "$(rg -c '^[[:space:]]+max_burn_bps: Bps,' sources/curve.move)" != 1 ]] \
+  || [[ "$(rg -c '^[[:space:]]+sell_burn_bps: Bps,' sources/curve.move)" != 1 ]] \
   || rg -n 'trade_fee_bps|fee_asset|fee_mode' sources/curve.move; then
   echo 'Each curve quote must use independent quote/meme rates; zero rates encode fee-asset choice.' >&2
   failures=$((failures + 1))
@@ -1123,8 +1123,6 @@ if ! rg -U -q 'macro public\(package\) fun max_migration_witnesses\(\): u64 \{\s
     sources/lib/constants.move \
   || ! rg -U -q 'macro public\(package\) fun max_protocol_meme_graduation_fee_bps\(\): u64 \{\s*1_000\s*\}' \
   sources/lib/constants.move \
-  || ! rg -U -q 'macro public\(package\) fun max_meme_liquidity_provision_bps\(\): u64 \{\s*9_999\s*\}' \
-  sources/lib/constants.move \
   || ! rg -Fq 'type_name::with_original_ids<Quote>()' sources/launch_config.move \
   || ! rg -Fq 'type_name::with_original_ids<MigrationWitness>()' sources/launch_config.move \
   || ! rg -Fq '!migration_witness.is_primitive()' sources/launch_config.move \
@@ -1141,6 +1139,9 @@ if ! rg -U -q 'macro public\(package\) fun max_migration_witnesses\(\): u64 \{\s
     sources/launch_config.move \
   || ! rg -U -q \
     'protocol_meme_graduation_fee_bps \+ meme_liquidity_provision_bps\s*< constants::basis_points_denominator!\(\)' \
+    sources/launch_config.move \
+  || ! rg -U -q \
+    'meme_liquidity_provision_bps > 0\s*&& meme_liquidity_provision_bps\s*< constants::basis_points_denominator!\(\)' \
     sources/launch_config.move \
   || ! rg -Fq 'self.meme_liquidity_provision_bps.value() > 0' sources/launch_config.move \
   || rg -n '\bCurrency<Quote>\b|coin_registry' <<<"$launch_config_production"; then
@@ -1199,6 +1200,7 @@ if [[ ! -f sources/launch_ticket.move ]] \
   || ! rg -U -q \
     'if \(burnable\) \{\s*initializer\.make_supply_burn_only\(treasury_cap\);\s*\} else \{\s*initializer\.make_supply_fixed\(treasury_cap\);\s*\};\s*let metadata_cap = initializer\.finalize\(ctx\);' \
     sources/launch_ticket.move \
+  || ! rg -Fq 'sell_burn_bps <= constants::max_sell_burn_bps!(),' sources/launch_ticket.move \
   || ! rg -Fq 'let sell_burn_bps = bps::new(sell_burn_bps);' sources/launch_ticket.move \
   || ! rg -Fq 'constants::meme_decimals!(),' sources/launch_ticket.move \
   || rg -n '\bdecimals: u8\b' sources/launch_ticket.move \

@@ -245,6 +245,10 @@ const EInvalidMigrationWitnessType: u64 = 78;
 /// The rounded migration fee leaves no Quote to seed liquidity.
 const ENoMigrationQuotePrincipal: u64 = 82;
 
+#[test_only]
+/// The creator-selected sell burn exceeds fifty percent.
+const EInvalidSellBurnBps: u64 = 83;
+
 macro public(package) fun invalid_x_claim_public_key(): u64 {
     2
 }
@@ -447,4 +451,8 @@ macro public(package) fun invalid_migration_witness_type(): u64 {
 
 macro public(package) fun no_migration_quote_principal(): u64 {
     82
+}
+
+macro public(package) fun invalid_sell_burn_bps(): u64 {
+    83
 }

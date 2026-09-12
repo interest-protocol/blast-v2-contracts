@@ -68,6 +68,7 @@ fun market_and_launch_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::invalid_meme_quote_pair!(), 76);
     assert_eq!(blast_fun::errors::invalid_initial_meme_supply!(), 77);
     assert_eq!(blast_fun::errors::invalid_migration_witness_type!(), 78);
+    assert_eq!(blast_fun::errors::invalid_sell_burn_bps!(), 83);
 }
 
 #[test]
