@@ -139,16 +139,11 @@ initial_meme_supply
   + every_other_approved_meme_bucket
 ```
 
-Boundary behavior: the floor means a positive configured rate can still
-reserve zero atomic units — the provision is zero whenever
-`initial_meme_supply * meme_liquidity_provision_bps < 10_000` (at 1 bps, any
-atomic supply below 10,000 units). The setter validates policy, not per-launch
-supplies, and the BPS-level partition bounds alone do not guarantee a positive
-rounded curve inventory for every small atomic supply once the ceiling-rounded
-protocol Meme graduation fee is applied. The launch design must therefore
-enforce both a positive atomic provision and a positive atomic curve
-inventory — or an explicit minimum initial supply — after rounding. At 9,999
-bps with a zero protocol Meme graduation fee the identity is exact:
+The launch intake requires the canonical `1_000_000_000_000_000_000` atomic
+supply, which is divisible by 10,000. The configured nonzero provision rate and
+combined-rate bound therefore guarantee positive atomic provision and positive
+curve inventory without revalidating the partition. At 9,999 bps with a zero
+protocol Meme graduation fee the identity is exact:
 
 ```text
 curve_inventory
@@ -157,7 +152,7 @@ curve_inventory
 ```
 
 The floor remainder is already inside that ceiling, not additional to it. The
-partition guard makes 10,000 bps combined unreachable.
+configuration bound makes 10,000 bps combined unreachable.
 
 A snapshotted percentage makes the pool's Meme principal predictable and
 reservable before bonding, but it does not by itself preserve the terminal
@@ -199,7 +194,7 @@ policy, making launch economics unpredictable and unreplayable from
 configuration facts.
 
 **A separate setter for the provision.** Rejected: the three graduation
-rates are validated against each other (the partition guard) and snapshotted
+rates are validated against each other (the configuration bound) and snapshotted
 together; independent setters would allow transiently inconsistent triples
 and double the privileged surface.
 

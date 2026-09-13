@@ -2,7 +2,10 @@
 
 - Status: accepted
 - Date: 2026-08-28
-- Amended by: [0041](0041-launch-config-owned-trade-fees.md), [0042](0042-key-only-shared-launch.md), [0043](0043-versioned-launch-trading-and-atomic-migration.md), [0047](0047-coin-registry-authoritative-supply-mode.md)
+- Amended by: [0041](0041-launch-config-owned-trade-fees.md), [0042](0042-key-only-shared-launch.md), [0043](0043-versioned-launch-trading-and-atomic-migration.md), [0047](0047-coin-registry-authoritative-supply-mode.md), and [0079](0079-compact-launch-state-and-events.md)
+
+> ADR 0079 removes constructor-only graduation rates from stored launch state
+> and removes ticket-derived and initial-zero fields from `LaunchCreated`.
 - Implements: [0016](0016-unified-creator-cap-claim-and-suins-periphery.md),
   [0019](0019-consuming-creator-authority-and-cap-return.md),
   [0022](0022-dual-asset-fee-ledger-and-claims.md),

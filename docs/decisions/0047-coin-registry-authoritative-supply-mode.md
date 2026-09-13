@@ -7,6 +7,10 @@
   [0037](0037-remove-redundant-ticket-burn-mode.md),
   [0040](0040-normalized-launch-state-intake.md), and
   [0043](0043-versioned-launch-trading-and-atomic-migration.md)
+- Amended by: [0079](0079-compact-launch-state-and-events.md)
+
+> ADR 0079 keeps `sell_burn_bps` on the ticket and launch object but no longer
+> duplicates it in `LaunchCreated`; reducers join the referenced ticket.
 
 ## Context
 

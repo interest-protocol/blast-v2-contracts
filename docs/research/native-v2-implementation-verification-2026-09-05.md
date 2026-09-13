@@ -64,10 +64,11 @@ cap updates without repricing accrued fees, revoked administration, stale
 generations, exact deadline boundaries, native terminal fees/burns, shared
 custody IDs, retained leftovers, and attacker-compound rejection.
 
-Core adds a read-only migrated-lifecycle assertion and rejects a target whose
-rounded migration fee would leave zero Quote principal. Its boundary
-gate admits exactly the extra signature and verifies its body. No existing
-migration interface or venue dependency revision changed.
+Core adds a read-only migrated-lifecycle assertion. Quote admission rejects
+targets below two atomic units; together with the 500-bps migration-fee ceiling,
+this guarantees positive Quote principal before launch construction. The
+boundary gate admits exactly the extra signature and verifies its body. No
+existing migration interface or venue dependency revision changed.
 
 ## Evidence limits
 

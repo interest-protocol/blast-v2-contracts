@@ -113,8 +113,6 @@ public(package) fun verify_x_claim_signature(
     message: &vector<u8>,
     signature: &vector<u8>,
 ) {
-    self.assert_x_claim_active();
-
     assert!(
         sui::ed25519::ed25519_verify(
             signature,

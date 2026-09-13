@@ -2,7 +2,11 @@
 
 - Status: proposed
 - Date: 2026-08-22
-- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0032](0032-admin-authorized-upgrade-cap-custody.md), [0035](0035-initializer-finalized-meme-supply.md), [0039](0039-deterministic-quote-valuations.md), [0041](0041-launch-config-owned-trade-fees.md), [0058](0058-eventless-package-initialization.md)
+- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0032](0032-admin-authorized-upgrade-cap-custody.md), [0035](0035-initializer-finalized-meme-supply.md), [0039](0039-deterministic-quote-valuations.md), [0041](0041-launch-config-owned-trade-fees.md), [0058](0058-eventless-package-initialization.md), and [0079](0079-compact-launch-state-and-events.md)
+
+> ADR 0079 replaces the launch-event field catalogue below with compact,
+> replay-complete payloads and uses native sender plus prior ticket/launch facts
+> instead of duplicated actor, type, and initial-zero fields.
 
 > Amended by [ADR 0058](0058-eventless-package-initialization.md): package
 > initialization emits no events. The `ProtocolAuthorityCreated`,

@@ -94,11 +94,11 @@ use the validated `Bps` unit; public configuration inputs and replay events use
 raw `u64` primitive values. Core admits
 new pairs through the Table-backed quote portion of `LaunchConfig`, keyed by the
 quote's original `TypeName`. Each entry supplies a nonzero virtual Quote reserve
-and nonzero real-Quote migration target. Launch state copies that pair, both
-administratively configured trade-fee rates, all three graduation rates — the
-Quote migration fee, the protocol Meme graduation fee, and the nonzero
-destination-pool Meme liquidity provision — and the complete
-selected migration witness's original `TypeName` once. Both registries are
+and a real-Quote migration target of at least two atomic units. Launch state
+copies that pair, both administratively configured trade-fee rates, the Quote
+migration fee, and the selected migration witness's original `TypeName`. The
+constructor applies the two Meme graduation rates immediately and stores only
+their resulting balances. Both registries are
 admission decisions; the snapshot does not add a quote `Currency` shared-object
 dependency or a DEX package dependency. See
 [ADR 0025](decisions/0025-quote-whitelist-and-migration-targets.md) and

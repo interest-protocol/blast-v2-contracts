@@ -184,24 +184,6 @@
         "net_quote": "17524406870024074034",
         "quote_migration_fee": "922337203685477581"
       }
-    },
-    {
-      "name": "positive_provision_rate_rounds_to_zero",
-      "given": {
-        "initial_meme_supply": "9999",
-        "protocol_meme_graduation_fee_bps": 0,
-        "meme_liquidity_provision_bps": 1
-      },
-      "expect_error": "zero_meme_liquidity_provision"
-    },
-    {
-      "name": "rounding_consumes_curve_inventory",
-      "given": {
-        "initial_meme_supply": "2",
-        "protocol_meme_graduation_fee_bps": 1,
-        "meme_liquidity_provision_bps": 5000
-      },
-      "expect_error": "zero_meme_curve_inventory"
     }
   ],
   "properties": [

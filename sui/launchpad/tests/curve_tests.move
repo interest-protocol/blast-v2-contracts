@@ -17,6 +17,53 @@ const PROPERTY_OPERATION_COUNT: u64 = 256;
 // === Tests ===
 
 #[test]
+fun amount_out_rounds_down() {
+    assert_eq!(curve::get_amount_out(1, 3, 10), 2);
+}
+
+#[test]
+fun invariant_product_uses_widened_reserves() {
+    let max = std::u64::max_value!() as u256;
+
+    assert_eq!(curve::k(max, max + max), max * (max + max));
+}
+
+#[test]
+fun buy_and_sell_quotes_do_not_decrease_the_constant_product() {
+    let k_before_buy = curve::k(MEME_RESERVE as u256, VIRTUAL_QUOTE as u256);
+    let (_, _, _, _, meme_out, meme_reserve, real_quote, _) = quote_buy(
+        MEME_RESERVE,
+        0,
+        VIRTUAL_QUOTE,
+        TERMINAL_THRESHOLD,
+        1_000_000_000,
+        QUOTE_FEE_BPS,
+        0,
+    );
+    let k_after_buy = curve::k(
+        meme_reserve as u256,
+        (VIRTUAL_QUOTE as u256) + (real_quote as u256),
+    );
+    let (_, _, _, _, _, _, _, _, _, meme_reserve, real_quote) = quote_sell(
+        meme_reserve,
+        real_quote,
+        VIRTUAL_QUOTE,
+        TERMINAL_THRESHOLD,
+        meme_out,
+        QUOTE_FEE_BPS,
+        0,
+        100,
+    );
+    let k_after_sell = curve::k(
+        meme_reserve as u256,
+        (VIRTUAL_QUOTE as u256) + (real_quote as u256),
+    );
+
+    assert!(k_after_buy >= k_before_buy);
+    assert!(k_after_sell >= k_after_buy);
+}
+
+#[test]
 fun buy_input_cap_accepts_a_nonterminal_coin_without_refund() {
     let (quote_in_gross, quote_refund) = cap_buy_quote_input(
         0,
@@ -40,15 +87,6 @@ fun buy_input_cap_reaches_the_exact_post_fee_target_and_refunds_excess() {
 
     assert_eq!(quote_in_gross, 1_010_101_011);
     assert_eq!(quote_refund, 989_898_989);
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EInvalidTerminalThreshold,
-    location = blast_fun::curve,
-)]
-fun buy_input_cap_rejects_zero_target() {
-    cap_buy_quote_input(0, 0, 1, 0);
 }
 
 #[test]
@@ -301,15 +339,6 @@ fun buy_validates_reserves_before_every_other_guard() {
 )]
 fun buy_rejects_zero_virtual_quote_reserve() {
     quote_buy(MEME_RESERVE, 0, 0, TERMINAL_THRESHOLD, 1, 0, 0);
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EInvalidTerminalThreshold,
-    location = blast_fun::curve,
-)]
-fun buy_rejects_zero_terminal_threshold() {
-    quote_buy(MEME_RESERVE, 0, VIRTUAL_QUOTE, 0, 1, 0, 0);
 }
 
 #[test]
@@ -764,15 +793,6 @@ fun sell_rejects_zero_virtual_quote_reserve() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidTerminalThreshold,
-    location = blast_fun::curve,
-)]
-fun sell_rejects_zero_terminal_threshold() {
-    quote_sell(MEME_RESERVE, 1, VIRTUAL_QUOTE, 0, 1, 0, 0, 0);
-}
-
-#[test]
-#[expected_failure(
     abort_code = blast_fun::errors::EZeroTradeInput,
     location = blast_fun::curve,
 )]
@@ -913,14 +933,26 @@ fun quote_buy(
     quote_fee_bps: u64,
     meme_fee_bps: u64,
 ): (u64, u64, u64, u64, u64, u64, u64, bool) {
-    curve::quote_buy(
+    let (quote_fee, meme_out_gross, meme_fee, meme_out_net) = curve::quote_buy(
         meme_reserve,
         real_quote,
         virtual_quote,
-        terminal_threshold,
         quote_in_gross,
         bps::new(quote_fee_bps),
         bps::new(meme_fee_bps),
+    );
+    let quote_in_net = quote_in_gross - quote_fee;
+    let real_quote_after = real_quote + quote_in_net;
+
+    (
+        quote_fee,
+        quote_in_net,
+        meme_out_gross,
+        meme_fee,
+        meme_out_net,
+        meme_reserve - meme_out_gross,
+        real_quote_after,
+        real_quote_after >= terminal_threshold,
     )
 }
 
@@ -934,15 +966,36 @@ fun quote_sell(
     meme_fee_bps: u64,
     sell_burn_bps: u64,
 ): (u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64) {
-    curve::quote_sell(
+    let (meme_fee, pending_burn, quote_out_gross, quote_fee, quote_out_net) =
+        curve::quote_sell(
         meme_reserve,
         real_quote,
         virtual_quote,
-        terminal_threshold,
         meme_in_gross,
         bps::new(quote_fee_bps),
         bps::new(meme_fee_bps),
         bps::new(sell_burn_bps),
+        );
+    let meme_after_fee = meme_in_gross - meme_fee;
+    let meme_to_curve = meme_after_fee - pending_burn;
+    let progress_bps = if (real_quote >= terminal_threshold) {
+        10_000
+    } else {
+        ((real_quote as u128) * 10_000 / (terminal_threshold as u128)) as u64
+    };
+
+    (
+        meme_fee,
+        meme_after_fee,
+        progress_bps,
+        sell_burn_bps,
+        pending_burn,
+        meme_to_curve,
+        quote_out_gross,
+        quote_fee,
+        quote_out_net,
+        meme_reserve + meme_to_curve,
+        real_quote - quote_out_gross,
     )
 }
 

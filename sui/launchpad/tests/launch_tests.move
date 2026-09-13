@@ -95,24 +95,11 @@ fun launch_consumes_ticket_and_emits_complete_initial_state() {
         let (
             emitted_launch_id,
             emitted_ticket_id,
-            meme,
             quote,
             migration_witness,
-            launcher,
-            metadata_cap_id,
         ) = created.launch_created_identity_fields();
-        let (
-            initial_meme_supply,
-            curve_meme,
-            real_quote,
-            pending_burn,
-            protocol_meme,
-            pool_meme,
-            protocol_meme_trade_fees,
-            creator_meme_trade_fees,
-            protocol_quote_trade_fees,
-            creator_quote_trade_fees,
-        ) = created.launch_created_balance_fields();
+        let (curve_meme, protocol_meme, pool_meme) =
+            created.launch_created_balance_fields();
         let (
             virtual_quote,
             migration_quote_target,
@@ -122,29 +109,19 @@ fun launch_consumes_ticket_and_emits_complete_initial_state() {
             protocol_meme_graduation_fee_bps,
             meme_liquidity_provision_bps,
         ) = created.launch_created_policy_fields();
-        let sell_burn_bps = created.launch_created_sell_burn_bps();
 
         assert_eq!(emitted_launch_id, launch_id);
         assert_eq!(emitted_ticket_id, ticket_id);
-        assert_eq!(meme, type_name::with_original_ids<LAUNCH_TESTS>());
         assert_eq!(quote, type_name::with_original_ids<TEST_QUOTE>());
         assert_eq!(
             migration_witness,
             type_name::with_original_ids<TEST_MIGRATION_WITNESS>(),
         );
-        assert_eq!(launcher, LAUNCHER);
-        assert_eq!(sell_burn_bps, SELL_BURN_BPS);
-        assert_eq!(launch.sell_burn_bps_for_testing(), sell_burn_bps);
-        assert_eq!(initial_meme_supply, INITIAL_MEME_SUPPLY);
+        assert_eq!(launch.sell_burn_bps_for_testing(), SELL_BURN_BPS);
         assert_eq!(curve_meme, EXPECTED_CURVE_MEME);
-        assert_eq!(real_quote, 0);
-        assert_eq!(pending_burn, 0);
         assert_eq!(protocol_meme, EXPECTED_PROTOCOL_MEME);
         assert_eq!(pool_meme, EXPECTED_POOL_MEME);
-        assert_eq!(protocol_meme_trade_fees, 0);
-        assert_eq!(creator_meme_trade_fees, 0);
-        assert_eq!(protocol_quote_trade_fees, 0);
-        assert_eq!(creator_quote_trade_fees, 0);
+        assert_eq!(curve_meme + protocol_meme + pool_meme, INITIAL_MEME_SUPPLY);
         assert_eq!(virtual_quote, VIRTUAL_QUOTE);
         assert_eq!(migration_quote_target, MIGRATION_QUOTE_TARGET);
         assert_eq!(quote_fee_bps, QUOTE_FEE_BPS);
@@ -159,7 +136,6 @@ fun launch_consumes_ticket_and_emits_complete_initial_state() {
             MEME_LIQUIDITY_PROVISION_BPS,
         );
         launch.assert_snapshot();
-        assert_eq!(launch.metadata_cap_id_for_testing(), metadata_cap_id);
 
         destroy(launch);
     });
@@ -252,12 +228,11 @@ fun burn_only_ticket_keeps_supply_mode_authoritative_in_coin_registry() {
             _,
             _,
             _,
-            _,
             burnable,
             sell_burn_bps,
         ) = ticket_created.launch_ticket_created_fields();
         let launch_created = events::collect_one<events::LaunchCreated>(0);
-        let (_, source_ticket_id, _, _, _, _, _) =
+        let (_, source_ticket_id, _, _) =
             launch_created.launch_created_identity_fields();
 
         assert_eq!(emitted_ticket_id, ticket_id);
@@ -455,20 +430,10 @@ fun buy_and_sell_all_bought_meme_move_exact_coins_and_accounting() {
             f.ctx!(),
         );
         let quote_in_gross = 10_000_000;
-        let (
-            quote_fee,
-            quote_in_net,
-            meme_out_gross,
-            meme_fee,
-            meme_out_net,
-            meme_reserve_after_buy,
-            real_quote_after_buy,
-            crossed_threshold,
-        ) = curve::quote_buy(
+        let (quote_fee, meme_out_gross, meme_fee, meme_out_net) = curve::quote_buy(
             EXPECTED_CURVE_MEME,
             0,
             VIRTUAL_QUOTE,
-            MIGRATION_QUOTE_TARGET,
             quote_in_gross,
             bps::new(QUOTE_FEE_BPS),
             bps::new(MEME_FEE_BPS),
@@ -484,41 +449,28 @@ fun buy_and_sell_all_bought_meme_move_exact_coins_and_accounting() {
 
         assert_eq!(meme_bought.value(), meme_out_net);
         assert_eq!(quote_refund.value(), 0);
-        assert!(!crossed_threshold);
         let bought = events::collect_one<events::Bought>(0);
         assert_bought_event(
             &bought,
             object::id(&launch),
-            LAUNCHER,
-            quote_in_gross,
             quote_in_gross,
             0,
-            quote_fee,
-            quote_in_net,
             meme_out_gross,
-            meme_fee,
-            meme_out_net,
-            false,
         );
 
         let meme_in_gross = meme_out_net;
+        let (meme_reserve_after_buy, real_quote_after_buy, _, _, _) =
+            launch.initial_balances_for_testing();
         let (
             sell_meme_fee,
-            meme_in_after_fee,
-            progress_bps,
-            burn_bps,
             pending_burn_delta,
-            _,
             quote_out_gross,
             sell_quote_fee,
             quote_out_net,
-            meme_reserve_after_sell,
-            real_quote_after_sell,
         ) = curve::quote_sell(
             meme_reserve_after_buy,
             real_quote_after_buy,
             VIRTUAL_QUOTE,
-            MIGRATION_QUOTE_TARGET,
             meme_in_gross,
             bps::new(QUOTE_FEE_BPS),
             bps::new(MEME_FEE_BPS),
@@ -536,35 +488,26 @@ fun buy_and_sell_all_bought_meme_move_exact_coins_and_accounting() {
         let sold = events::collect_one<events::Sold>(0);
         let (
             sold_launch_id,
-            seller,
             emitted_meme_in_gross,
-            emitted_sell_meme_fee,
-            emitted_meme_in_after_fee,
-            emitted_progress_bps,
-            emitted_burn_bps,
             emitted_pending_burn_delta,
             emitted_pending_burn_total,
             emitted_quote_out_gross,
-            emitted_sell_quote_fee,
-            emitted_quote_out_net,
+            protocol_fee_share_bps,
         ) = sold.sold_trade_fields();
         assert_eq!(sold_launch_id, object::id(&launch));
-        assert_eq!(seller, LAUNCHER);
         assert_eq!(emitted_meme_in_gross, meme_in_gross);
-        assert_eq!(emitted_sell_meme_fee, sell_meme_fee);
-        assert_eq!(emitted_meme_in_after_fee, meme_in_after_fee);
-        assert_eq!(emitted_progress_bps, progress_bps);
-        assert_eq!(emitted_burn_bps, burn_bps);
         assert_eq!(emitted_pending_burn_delta, pending_burn_delta);
         assert_eq!(emitted_pending_burn_total, pending_burn_delta);
         assert_eq!(emitted_quote_out_gross, quote_out_gross);
-        assert_eq!(emitted_sell_quote_fee, sell_quote_fee);
-        assert_eq!(emitted_quote_out_net, quote_out_net);
+        assert_eq!(protocol_fee_share_bps, 0);
 
         let (meme_reserve, real_quote, pending_burn, _, _) =
             launch.initial_balances_for_testing();
-        assert_eq!(meme_reserve, meme_reserve_after_sell);
-        assert_eq!(real_quote, real_quote_after_sell);
+        assert_eq!(
+            meme_reserve,
+            meme_reserve_after_buy + meme_in_gross - sell_meme_fee - pending_burn_delta,
+        );
+        assert_eq!(real_quote, real_quote_after_buy - quote_out_gross);
         assert_eq!(pending_burn, pending_burn_delta);
 
         let (protocol_meme, creator_meme, protocol_quote, creator_quote) =
@@ -668,10 +611,9 @@ fun creator_claim_drains_trade_fees_as_composable_coins() {
         assert_eq!(meme_fees.value(), creator_meme_before);
         assert_eq!(quote_fees.value(), creator_quote_before);
         let claimed = events::collect_one<events::CreatorFeesClaimed>(0);
-        let (launch_id, claimant, meme_amount, quote_amount) =
+        let (launch_id, meme_amount, quote_amount) =
             claimed.creator_fees_claimed_fields();
         assert_eq!(launch_id, object::id(&launch));
-        assert_eq!(claimant, CREATOR);
         assert_eq!(meme_amount, creator_meme_before);
         assert_eq!(quote_amount, creator_quote_before);
 
@@ -721,10 +663,9 @@ fun live_protocol_share_routes_and_claims_launch_trade_fees() {
         assert_eq!(quote_fees.value(), protocol_quote);
 
         let claimed = events::collect_one<events::ProtocolFeesClaimed>(0);
-        let (launch_id, claimant, meme_amount, quote_amount) =
+        let (launch_id, meme_amount, quote_amount) =
             claimed.protocol_fees_claimed_fields();
         assert_eq!(launch_id, object::id(&launch));
-        assert_eq!(claimant, PROTOCOL_ADMIN);
         assert_eq!(meme_amount, protocol_meme);
         assert_eq!(quote_amount, protocol_quote);
 
@@ -1232,11 +1173,10 @@ fun buy_rejects_minimum_above_exact_returned_coin() {
             f.ctx!(),
         );
         let quote_in = coin::mint_for_testing<TEST_QUOTE>(10_000_000, f.ctx!());
-        let (_, _, _, _, meme_out_net, _, _, _) = curve::quote_buy(
+        let (_, _, _, meme_out_net) = curve::quote_buy(
             EXPECTED_CURVE_MEME,
             0,
             VIRTUAL_QUOTE,
-            MIGRATION_QUOTE_TARGET,
             10_000_000,
             bps::new(QUOTE_FEE_BPS),
             bps::new(MEME_FEE_BPS),
@@ -1280,11 +1220,10 @@ fun sell_rejects_minimum_above_exact_returned_coin() {
         let meme_in_gross = meme.value();
         let (meme_reserve, real_quote, _, _, _) =
             launch.initial_balances_for_testing();
-        let (_, _, _, _, _, _, _, _, quote_out_net, _, _) = curve::quote_sell(
+        let (_, _, _, _, quote_out_net) = curve::quote_sell(
             meme_reserve,
             real_quote,
             VIRTUAL_QUOTE,
-            MIGRATION_QUOTE_TARGET,
             meme_in_gross,
             bps::new(QUOTE_FEE_BPS),
             bps::new(MEME_FEE_BPS),
@@ -1426,44 +1365,6 @@ fun migration_rejects_a_witness_type_not_selected_at_launch() {
     fixture.end();
 }
 
-#[test]
-#[expected_failure(abort_code = blast_fun::errors::ENoMigrationQuotePrincipal, location = blast_fun::launch)]
-fun launch_rejects_a_migration_target_consumed_entirely_by_rounded_fee() {
-    let mut fixture = start();
-    fixture.next_tx!(LAUNCHER, |f| {
-        let witness = f.sign_in();
-        f.config.allow_quote<TEST_QUOTE>(&f.package_version, &witness, VIRTUAL_QUOTE, 1);
-        let ticket = f.new_ticket(CREATOR);
-        let launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
-            ticket,
-            &f.package_version,
-            &f.config,
-            f.ctx!(),
-        );
-        destroy(launch);
-    });
-    fixture.end();
-}
-
-#[test]
-fun a_one_atom_migration_target_is_valid_when_its_fee_is_zero() {
-    let mut fixture = start();
-    fixture.next_tx!(LAUNCHER, |f| {
-        let witness = f.sign_in();
-        f.config.allow_quote<TEST_QUOTE>(&f.package_version, &witness, VIRTUAL_QUOTE, 1);
-        f.config.set_graduation_defaults(&f.package_version, &witness, 0, 0, 2_000);
-        let ticket = f.new_ticket(CREATOR);
-        let launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
-            ticket,
-            &f.package_version,
-            &f.config,
-            f.ctx!(),
-        );
-        destroy(launch);
-    });
-    fixture.end();
-}
-
 // === Private Test Helpers ===
 
 macro fun launch_next_tx(
@@ -1590,8 +1491,6 @@ fun assert_launch_snapshot(launch: &Launch<LAUNCH_TESTS, TEST_QUOTE>) {
         quote_fee_bps,
         meme_fee_bps,
         quote_migration_fee_bps,
-        protocol_meme_graduation_fee_bps,
-        meme_liquidity_provision_bps,
         migration_witness,
     ) = launch.policy_for_testing();
 
@@ -1606,14 +1505,6 @@ fun assert_launch_snapshot(launch: &Launch<LAUNCH_TESTS, TEST_QUOTE>) {
     assert_eq!(meme_fee_bps, MEME_FEE_BPS);
     assert_eq!(quote_migration_fee_bps, QUOTE_MIGRATION_FEE_BPS);
     assert_eq!(
-        protocol_meme_graduation_fee_bps,
-        PROTOCOL_MEME_GRADUATION_FEE_BPS,
-    );
-    assert_eq!(
-        meme_liquidity_provision_bps,
-        MEME_LIQUIDITY_PROVISION_BPS,
-    );
-    assert_eq!(
         migration_witness,
         type_name::with_original_ids<TEST_MIGRATION_WITNESS>(),
     );
@@ -1622,42 +1513,23 @@ fun assert_launch_snapshot(launch: &Launch<LAUNCH_TESTS, TEST_QUOTE>) {
 fun assert_bought_event(
     bought: &events::Bought,
     launch_id: ID,
-    buyer: address,
-    quote_supplied: u64,
     quote_in_gross: u64,
     quote_refund: u64,
-    quote_fee: u64,
-    quote_in_net: u64,
     meme_out_gross: u64,
-    meme_fee: u64,
-    meme_out_net: u64,
-    crossed_threshold: bool,
 ) {
     let (
         emitted_launch_id,
-        emitted_buyer,
-        emitted_quote_supplied,
         emitted_quote_in_gross,
         emitted_quote_refund,
-        emitted_quote_fee,
-        emitted_quote_in_net,
         emitted_meme_out_gross,
-        emitted_meme_fee,
-        emitted_meme_out_net,
-        emitted_crossed_threshold,
+        protocol_fee_share_bps,
     ) = bought.bought_trade_fields();
 
     assert_eq!(emitted_launch_id, launch_id);
-    assert_eq!(emitted_buyer, buyer);
-    assert_eq!(emitted_quote_supplied, quote_supplied);
     assert_eq!(emitted_quote_in_gross, quote_in_gross);
     assert_eq!(emitted_quote_refund, quote_refund);
-    assert_eq!(emitted_quote_fee, quote_fee);
-    assert_eq!(emitted_quote_in_net, quote_in_net);
     assert_eq!(emitted_meme_out_gross, meme_out_gross);
-    assert_eq!(emitted_meme_fee, meme_fee);
-    assert_eq!(emitted_meme_out_net, meme_out_net);
-    assert_eq!(emitted_crossed_threshold, crossed_threshold);
+    assert_eq!(protocol_fee_share_bps, 0);
 }
 
 fun assert_terminal_bought_event(
@@ -1665,26 +1537,12 @@ fun assert_terminal_bought_event(
     launch_id: ID,
     quote_refund: u64,
 ) {
-    let (
-        emitted_launch_id,
-        _,
-        quote_supplied,
-        quote_in_gross,
-        emitted_quote_refund,
-        _,
-        quote_in_net,
-        _,
-        _,
-        _,
-        crossed_threshold,
-    ) = bought.bought_trade_fields();
+    let (emitted_launch_id, quote_in_gross, emitted_quote_refund, _, _) =
+        bought.bought_trade_fields();
 
     assert_eq!(emitted_launch_id, launch_id);
-    assert_eq!(quote_supplied, 30_000_000);
-    assert_eq!(quote_in_gross + emitted_quote_refund, quote_supplied);
+    assert_eq!(quote_in_gross + emitted_quote_refund, 30_000_000);
     assert_eq!(emitted_quote_refund, quote_refund);
-    assert_eq!(quote_in_net, MIGRATION_QUOTE_TARGET);
-    assert!(crossed_threshold);
 }
 
 fun reach_migration_after_sell(

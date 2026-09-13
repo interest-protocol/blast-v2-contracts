@@ -79,9 +79,9 @@ public struct LaunchConfig has key {
 
 The quote Table has no protocol cardinality cap, while the migration-witness
 set retains its independent limit of 16 entries. Quote entries map an original
-quote type to its nonzero migration target. Migration-witness entries contain
-original type identities only; they contain no amount, route
-configuration, DEX object, or address.
+quote type to its migration target of at least two atomic units.
+Migration-witness entries contain original type identities only; they contain
+no amount, route configuration, DEX object, or address.
 
 All public mutations borrow `AdminWitness`. Graduation defaults update together,
 reject either value above its hard ceiling, reject an unchanged pair, and allow
@@ -162,9 +162,9 @@ new explicit product decision replaces this one.
 At launch, the complete initial Meme supply is divided into explicitly named
 buckets. The protocol Meme graduation fee is calculated before curve construction and
 held in its own `Balance<Meme>`. It never enters curve inventory, pending burn,
-trade fees, migration inventory, or creator claims. Launch creation rejects a
-configuration that leaves zero valid curve inventory after all approved supply
-buckets.
+trade fees, migration inventory, or creator claims. Configuration admission and
+the canonical launch supply guarantee positive curve inventory after all
+approved supply buckets.
 
 ### Arithmetic and rounding
 

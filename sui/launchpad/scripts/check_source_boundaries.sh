@@ -792,8 +792,18 @@ fi
 
 if rg -n '\b(Coin|Balance|UID|TxContext|transfer::|event::|object::)\b' sources/curve.move \
   || rg -n '^(public|entry) fun ' sources/curve.move \
-  || [[ "$(rg -c '^public\(package\) fun (cap_buy_quote_input|quote_buy|quote_sell)\(' sources/curve.move)" != 3 ]]; then
-  echo 'curve.move must remain a pure package-only numeric quote module.' >&2
+  || [[ "$(rg -c '^public\(package\) fun (get_amount_out|k|cap_buy_quote_input|quote_buy|quote_sell)\(' sources/curve.move)" != 5 ]] \
+  || rg -n '\bget_amount_in\b' sources/curve.move; then
+  echo 'curve.move must remain a pure package-only numeric curve module.' >&2
+  failures=$((failures + 1))
+fi
+
+if [[ "$(rg -c '\bget_amount_out\(' sources/curve.move)" != 3 ]] \
+  || [[ "$(rg -c '\bcurve::k\(' sources/launch.move)" != 1 ]] \
+  || [[ "$(rg -c '\blet k_before = self\.curve_k\(\);' sources/launch.move)" != 2 ]] \
+  || [[ "$(rg -c '\bself\.curve_k\(\) >= k_before' sources/launch.move)" != 2 ]] \
+  || [[ "$(rg -c '\bconstant_product_invariant_decreased!\(' sources/launch.move)" != 2 ]]; then
+  echo 'Buy and sell must share exact-input math and reconcile actual reserve products.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1010,7 +1020,7 @@ check_runtime_function validate_x_claim_public_key \
 
 check_runtime_function verify_x_claim_signature \
   'fun verify_x_claim_signature( self: &RuntimeConfig, message: &vector<u8>, signature: &vector<u8>, )' \
-  'self.assert_x_claim_active(); assert!( sui::ed25519::ed25519_verify( signature, &self.x_claim_signer_public_key, message, ), blast_fun::errors::invalid_x_claim_signature!(), );'
+  'assert!( sui::ed25519::ed25519_verify( signature, &self.x_claim_signer_public_key, message, ), blast_fun::errors::invalid_x_claim_signature!(), );'
 
 check_runtime_function set_x_claim_signer \
   'fun set_x_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<LAUNCHPAD_DOMAIN>, signer_public_key: vector<u8>, )' \
@@ -1255,18 +1265,16 @@ if [[ -e sources/graduation.move ]] \
   || [[ "$(count_occurrences 'partition_quote\(' <<<"$launch_production")" != 1 ]] \
   || ! rg -Fq 'protocol_meme_graduation_fee_bps.apply_up(initial_supply)' <<<"$partition_meme_body" \
   || ! rg -Fq 'meme_liquidity_provision_bps.apply_down(initial_supply)' <<<"$partition_meme_body" \
-  || ! rg -Fq 'provision_amount > 0' <<<"$partition_meme_body" \
-  || ! rg -Fq 'protocol_meme_fee_amount + provision_amount < initial_supply' \
-    <<<"$partition_meme_body" \
+  || rg -q 'assert!' <<<"$partition_meme_body" \
   || [[ "$(count_occurrences '\.split\(' <<<"${partition_meme_body} ${partition_quote_body}")" != 3 ]] \
   || ! rg -Fq 'quote_migration_fee_bps.apply_up(quote.value())' <<<"$partition_quote_body"; then
-  echo 'launch.move must privately own the accepted graduation ceil/floor, positive-bucket, and balance-custody rules.' >&2
+  echo 'launch.move must privately own graduation rounding and balance custody without revalidating snapshotted policy.' >&2
   failures=$((failures + 1))
 fi
 
 if [[ ! -f sources/launch.move ]] \
   || ! rg -U -q \
-    'public struct Launch<phantom Meme, phantom Quote> has key \{\s*id: UID,\s*lifecycle: Lifecycle,\s*sell_burn_bps: Bps,\s*virtual_quote: u64,\s*migration_quote_target: u64,\s*quote_fee_bps: Bps,\s*meme_fee_bps: Bps,\s*quote_migration_fee_bps: Bps,\s*protocol_meme_graduation_fee_bps: Bps,\s*meme_liquidity_provision_bps: Bps,\s*migration_witness: TypeName,\s*meme_reserve: Balance<Meme>,\s*real_quote_reserve: Balance<Quote>,\s*pending_burn: Balance<Meme>,\s*protocol_meme_graduation_fee: Balance<Meme>,\s*meme_liquidity_provision: Balance<Meme>,\s*fee_ledger: FeeLedger<Meme, Quote>,\s*metadata_cap: Option<MetadataCap<Meme>>,\s*creator_authority: Option<CreatorAuthority<Meme>>,\s*\}' \
+    'public struct Launch<phantom Meme, phantom Quote> has key \{\s*id: UID,\s*lifecycle: Lifecycle,\s*sell_burn_bps: Bps,\s*virtual_quote: u64,\s*migration_quote_target: u64,\s*quote_fee_bps: Bps,\s*meme_fee_bps: Bps,\s*quote_migration_fee_bps: Bps,\s*migration_witness: TypeName,\s*meme_reserve: Balance<Meme>,\s*real_quote_reserve: Balance<Quote>,\s*pending_burn: Balance<Meme>,\s*protocol_meme_graduation_fee: Balance<Meme>,\s*meme_liquidity_provision: Balance<Meme>,\s*fee_ledger: FeeLedger<Meme, Quote>,\s*metadata_cap: Option<MetadataCap<Meme>>,\s*creator_authority: Option<CreatorAuthority<Meme>>,\s*\}' \
     sources/launch.move \
   || [[ "$(rg -c '^public fun ' <<<"$launch_production")" != 10 ]] \
   || [[ "$(rg -c '^public fun (new|share|claim_creator_cap|buy|sell|claim_creator_fees|claim_protocol_fees|migrate|assert_migrated|redeem_migration)(<|\()' <<<"$launch_production")" != 10 ]] \
@@ -1319,13 +1327,13 @@ launch_created_event_payload="$(sed -n \
   sources/lib/events.move)"
 
 if [[ -z "$launch_created_event_payload" ]] \
-  || [[ "$(rg -c '^[[:space:]]+[a-z_]+:' <<<"$launch_created_event_payload")" != 25 ]] \
+  || [[ "$(rg -c '^[[:space:]]+[a-z_]+:' <<<"$launch_created_event_payload")" != 14 ]] \
   || ! rg -q '^[[:space:]]+ticket_id: ID,' <<<"$launch_created_event_payload" \
-  || ! rg -q '^[[:space:]]+metadata_cap_id: ID,' <<<"$launch_created_event_payload" \
-  || [[ "$(rg -c '^[[:space:]]+(protocol|creator)_(meme|quote)_trade_fees: u64,' <<<"$launch_created_event_payload")" != 4 ]] \
+  || rg -n '^[[:space:]]+(meme|launcher|metadata_cap_id|sell_burn_bps|initial_meme_supply|real_quote_reserve|pending_burn):' <<<"$launch_created_event_payload" \
+  || rg -n '^[[:space:]]+(protocol|creator)_(meme|quote)_trade_fees:' <<<"$launch_created_event_payload" \
   || rg -n '\b(burnable|state_version|supply_mode|sequence|schema_version|action_tag|nonce|valuation|expected_release)\b' \
     <<<"$launch_created_event_payload"; then
-  echo 'LaunchCreated must expose source identity, primitive policy, named balances, and zero ledger totals without duplicated or derived state.' >&2
+  echo 'LaunchCreated must keep only replay-complete launch facts; ticket-derived and initial-zero fields are forbidden.' >&2
   failures=$((failures + 1))
 fi
 

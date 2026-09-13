@@ -54,10 +54,10 @@ An active `AdminWitness` may allow a quote with a target, use that same operatio
 to update the target of an already-allowed quote, or disallow a quote from
 admission for future launches.
 
-The module rejects missing disallows, zero and unchanged targets, and inserts
-beyond the active bound. Every successful mutation emits the full old/new fact
-needed for event-only replay. Events rely on native Sui event order and add no
-application sequence.
+The module rejects missing disallows, targets below two atomic units, unchanged
+targets, and inserts beyond the active bound. Every successful mutation emits
+the full old/new fact needed for event-only replay. Events rely on native Sui
+event order and add no application sequence.
 
 ### Launch-time snapshot
 

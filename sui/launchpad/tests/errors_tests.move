@@ -23,7 +23,6 @@ fun authority_and_claim_error_registry_is_stable() {
 #[test]
 fun market_and_launch_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::invalid_curve_reserve!(), 29);
-    assert_eq!(blast_fun::errors::invalid_terminal_threshold!(), 30);
     assert_eq!(blast_fun::errors::invalid_quote_fee_bps!(), 31);
     assert_eq!(blast_fun::errors::zero_trade_input!(), 33);
     assert_eq!(blast_fun::errors::zero_trade_output!(), 34);
@@ -55,8 +54,6 @@ fun market_and_launch_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::migration_witness_not_allowed!(), 52);
     assert_eq!(blast_fun::errors::invalid_meme_liquidity_provision_bps!(), 59);
     assert_eq!(blast_fun::errors::invalid_meme_supply_partition_bps!(), 60);
-    assert_eq!(blast_fun::errors::zero_meme_liquidity_provision!(), 62);
-    assert_eq!(blast_fun::errors::zero_meme_curve_inventory!(), 63);
     assert_eq!(blast_fun::errors::invalid_virtual_quote!(), 64);
     assert_eq!(blast_fun::errors::quote_parameters_unchanged!(), 65);
     assert_eq!(blast_fun::errors::creator_authority_unavailable!(), 66);
@@ -69,6 +66,10 @@ fun market_and_launch_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::invalid_initial_meme_supply!(), 77);
     assert_eq!(blast_fun::errors::invalid_migration_witness_type!(), 78);
     assert_eq!(blast_fun::errors::invalid_sell_burn_bps!(), 83);
+    assert_eq!(
+        blast_fun::errors::constant_product_invariant_decreased!(),
+        84,
+    );
 }
 
 #[test]

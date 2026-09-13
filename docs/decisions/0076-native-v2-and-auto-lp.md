@@ -20,8 +20,10 @@ Quote; Meme is always the first type parameter. Creator-funded pools require
 the creator capability and an already-migrated launch. The native migration
 witness creates a fresh pool atomically and locks its complete issued position.
 That route cannot be preempted by the creator-funded constructor during bonding.
-Launch creation rejects a snapshotted Quote target whose rounded migration fee
-would consume the entire target, preserving positive seed principal.
+Quote admission requires a migration target of at least two atomic units. With
+the existing 500-bps Quote migration-fee ceiling enforced when graduation
+defaults are set, this guarantees positive seed principal without rechecking
+configuration during launch creation.
 
 Use full-range constant-product principal reserves. Initial shares are the
 integer square root of the seed product, with 1,000 shares permanently

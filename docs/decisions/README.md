@@ -123,8 +123,10 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0075](0075-independent-holder-fee-distributor.md) | Independent holder fee distributor | **accepted; live release gates remain** |
 | [0076](0076-native-v2-and-auto-lp.md) | Native V2 and automatic liquidity deposits | **accepted for implementation; live release gates remain** |
 | [0077](0077-fixed-creator-selected-sell-burn.md) | Fixed creator-selected sell burn | **accepted** |
+| [0078](0078-explicit-curve-invariant-primitives.md) | Explicit curve invariant primitives | **accepted** |
+| [0079](0079-compact-launch-state-and-events.md) | Compact launch state and events before publication | **accepted** |
 
-ADRs 0013–0036, 0038–0063, 0065–0069, 0073, and 0077 are accepted; ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
+ADRs 0013–0036, 0038–0063, 0065–0069, 0073, and 0077–0079 are accepted; ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR

@@ -54,8 +54,6 @@ public struct Launch<phantom Meme, phantom Quote> has key {
     quote_fee_bps: Bps,
     meme_fee_bps: Bps,
     quote_migration_fee_bps: Bps,
-    protocol_meme_graduation_fee_bps: Bps,
-    meme_liquidity_provision_bps: Bps,
     migration_witness: TypeName,
     meme_reserve: Balance<Meme>,
     real_quote_reserve: Balance<Quote>,
@@ -96,22 +94,16 @@ public fun new<Meme, Quote, MigrationWitness: drop>(
         meme_liquidity_provision_bps,
         migration_witness,
     ) = config.snapshot_for_launch<Quote, MigrationWitness>();
-    assert!(
-        migration_quote_target > quote_migration_fee_bps.apply_up(migration_quote_target),
-        blast_fun::errors::no_migration_quote_principal!(),
-    );
     let ticket_id = object::id(&ticket);
     // LaunchTicket construction already finalized Currency<Meme> as Fixed or BurnOnly.
     let (meme, metadata_cap, creator_authority, sell_burn_bps) =
         ticket.destroy();
-    let initial_meme_supply = meme.value();
     let (meme_reserve, protocol_meme_graduation_fee, meme_liquidity_provision) =
         partition_meme(
             meme,
             protocol_meme_graduation_fee_bps,
             meme_liquidity_provision_bps,
         );
-    let metadata_cap_id = object::id(&metadata_cap);
 
     let launch = Launch {
         id: object::new(ctx),
@@ -122,8 +114,6 @@ public fun new<Meme, Quote, MigrationWitness: drop>(
         quote_fee_bps,
         meme_fee_bps,
         quote_migration_fee_bps,
-        protocol_meme_graduation_fee_bps,
-        meme_liquidity_provision_bps,
         migration_witness,
         meme_reserve,
         real_quote_reserve: balance::zero(),
@@ -135,11 +125,20 @@ public fun new<Meme, Quote, MigrationWitness: drop>(
         creator_authority: option::some(creator_authority),
     };
 
-    launch.emit_created(
+    events::launch_created<Quote>(
+        launch.id.to_inner(),
         ticket_id,
-        initial_meme_supply,
-        metadata_cap_id,
-        ctx.sender(),
+        launch.migration_witness,
+        launch.meme_reserve.value(),
+        launch.protocol_meme_graduation_fee.value(),
+        launch.meme_liquidity_provision.value(),
+        launch.virtual_quote,
+        launch.migration_quote_target,
+        launch.quote_fee_bps.value(),
+        launch.meme_fee_bps.value(),
+        launch.quote_migration_fee_bps.value(),
+        protocol_meme_graduation_fee_bps.value(),
+        meme_liquidity_provision_bps.value(),
     );
 
     launch
@@ -189,27 +188,16 @@ public fun buy<Meme, Quote>(
     package_version.assert_current();
     self.assert_live();
 
-    let quote_supplied = quote_in.value();
     let (quote_in_gross, quote_refund) = curve::cap_buy_quote_input(
         self.real_quote_reserve.value(),
         self.migration_quote_target,
-        quote_supplied,
+        quote_in.value(),
         self.quote_fee_bps,
     );
-    let (
-        quote_fee,
-        quote_in_net,
-        meme_out_gross,
-        meme_fee,
-        meme_out_net,
-        _,
-        _,
-        crossed_threshold,
-    ) = curve::quote_buy(
+    let (quote_fee, meme_out_gross, meme_fee, meme_out_net) = curve::quote_buy(
         self.meme_reserve.value(),
         self.real_quote_reserve.value(),
         self.virtual_quote,
-        self.migration_quote_target,
         quote_in_gross,
         self.quote_fee_bps,
         self.meme_fee_bps,
@@ -220,6 +208,7 @@ public fun buy<Meme, Quote>(
         blast_fun::errors::slippage_exceeded!(),
     );
 
+    let k_before = self.curve_k();
     let mut quote_in = quote_in.into_balance();
     let quote_refund = quote_in.split(quote_refund);
     let quote_fee_balance = quote_in.split(quote_fee);
@@ -227,7 +216,11 @@ public fun buy<Meme, Quote>(
 
     let mut meme_out = self.meme_reserve.split(meme_out_gross);
     let meme_fee_balance = meme_out.split(meme_fee);
-    if (crossed_threshold) {
+    assert!(
+        self.curve_k() >= k_before,
+        blast_fun::errors::constant_product_invariant_decreased!(),
+    );
+    if (self.real_quote_reserve.value() >= self.migration_quote_target) {
         self.lifecycle = Lifecycle::MigrationReady;
     };
 
@@ -235,16 +228,9 @@ public fun buy<Meme, Quote>(
         meme_fee_balance,
         quote_fee_balance,
         runtime_config.protocol_fee_share(),
-        ctx.sender(),
-        quote_supplied,
         quote_in_gross,
         quote_refund.value(),
-        quote_fee,
-        quote_in_net,
         meme_out_gross,
-        meme_fee,
-        meme_out_net,
-        crossed_threshold,
     );
 
     (meme_out.into_coin(ctx), quote_refund.into_coin(ctx))
@@ -263,59 +249,43 @@ public fun sell<Meme, Quote>(
     self.assert_live();
 
     let meme_in_gross = meme_in.value();
-    let (
-        meme_fee,
-        meme_in_after_fee,
-        progress_bps,
-        burn_bps,
-        pending_burn_delta,
-        meme_in_effective,
-        quote_out_gross,
-        quote_fee,
-        quote_out_net,
-        _,
-        _,
-    ) = curve::quote_sell(
-        self.meme_reserve.value(),
-        self.real_quote_reserve.value(),
-        self.virtual_quote,
-        self.migration_quote_target,
-        meme_in_gross,
-        self.quote_fee_bps,
-        self.meme_fee_bps,
-        self.sell_burn_bps,
-    );
+    let (meme_fee, pending_burn_delta, quote_out_gross, quote_fee, quote_out_net) =
+        curve::quote_sell(
+            self.meme_reserve.value(),
+            self.real_quote_reserve.value(),
+            self.virtual_quote,
+            meme_in_gross,
+            self.quote_fee_bps,
+            self.meme_fee_bps,
+            self.sell_burn_bps,
+        );
 
     assert!(
         quote_out_net >= min_quote_out,
         blast_fun::errors::slippage_exceeded!(),
     );
 
+    let k_before = self.curve_k();
     let mut meme_in = meme_in.into_balance();
     let meme_fee_balance = meme_in.split(meme_fee);
     let pending_burn_total = self.pending_burn.join(meme_in.split(pending_burn_delta));
     self.meme_reserve.join(meme_in);
 
     let mut quote_out = self.real_quote_reserve.split(quote_out_gross);
+    assert!(
+        self.curve_k() >= k_before,
+        blast_fun::errors::constant_product_invariant_decreased!(),
+    );
     let quote_fee_balance = quote_out.split(quote_fee);
-    let protocol_fee_share_bps = runtime_config.protocol_fee_share();
 
     self.accrue_and_emit_sold(
         meme_fee_balance,
         quote_fee_balance,
-        protocol_fee_share_bps,
-        ctx.sender(),
+        runtime_config.protocol_fee_share(),
         meme_in_gross,
-        meme_fee,
-        meme_in_after_fee,
-        progress_bps,
-        burn_bps,
         pending_burn_delta,
         pending_burn_total,
-        meme_in_effective,
         quote_out_gross,
-        quote_fee,
-        quote_out_net,
     );
 
     quote_out.into_coin(ctx)
@@ -332,9 +302,8 @@ public fun claim_creator_fees<Meme, Quote>(
 
     let (meme, quote) = self.fee_ledger.claim_creator_fees(creator_cap, ctx);
 
-    events::creator_fees_claimed<Meme, Quote>(
+    events::creator_fees_claimed(
         self.id.to_inner(),
-        ctx.sender(),
         meme.value(),
         quote.value(),
     );
@@ -353,9 +322,8 @@ public fun claim_protocol_fees<Meme, Quote>(
 
     let (meme, quote) = self.fee_ledger.claim_protocol_fees(admin_witness, ctx);
 
-    events::protocol_fees_claimed<Meme, Quote>(
+    events::protocol_fees_claimed(
         self.id.to_inner(),
-        ctx.sender(),
         meme.value(),
         quote.value(),
     );
@@ -397,9 +365,8 @@ public fun migrate<Meme, Quote, MigrationWitness: drop>(
 
     self.lifecycle = Lifecycle::Migrated;
 
-    events::migrated<Meme, Quote, MigrationWitness>(
+    events::migrated(
         self.id.to_inner(),
-        ctx.sender(),
         burnable,
         meme.value(),
         quote.value(),
@@ -440,37 +407,10 @@ fun partition_meme<Meme>(
     protocol_meme_graduation_fee_bps: Bps,
     meme_liquidity_provision_bps: Bps,
 ): (Balance<Meme>, Balance<Meme>, Balance<Meme>) {
-    assert!(
-        protocol_meme_graduation_fee_bps.value()
-            <= constants::max_protocol_meme_graduation_fee_bps!(),
-        blast_fun::errors::invalid_protocol_meme_graduation_fee_bps!(),
-    );
-    assert!(
-        meme_liquidity_provision_bps.value() > 0
-            && meme_liquidity_provision_bps.value()
-                < constants::basis_points_denominator!(),
-        blast_fun::errors::invalid_meme_liquidity_provision_bps!(),
-    );
-    assert!(
-        protocol_meme_graduation_fee_bps.value()
-            + meme_liquidity_provision_bps.value()
-            < constants::basis_points_denominator!(),
-        blast_fun::errors::invalid_meme_supply_partition_bps!(),
-    );
-
     let initial_supply = meme.value();
     let protocol_meme_fee_amount =
         protocol_meme_graduation_fee_bps.apply_up(initial_supply);
     let provision_amount = meme_liquidity_provision_bps.apply_down(initial_supply);
-
-    assert!(
-        provision_amount > 0,
-        blast_fun::errors::zero_meme_liquidity_provision!(),
-    );
-    assert!(
-        protocol_meme_fee_amount + provision_amount < initial_supply,
-        blast_fun::errors::zero_meme_curve_inventory!(),
-    );
 
     let protocol_meme_fee = meme.split(protocol_meme_fee_amount);
     let provision = meme.split(provision_amount);
@@ -494,6 +434,13 @@ fun assert_live<Meme, Quote>(self: &Launch<Meme, Quote>) {
         self.lifecycle == Lifecycle::Live,
         blast_fun::errors::invalid_launch_lifecycle!(),
     );
+}
+
+fun curve_k<Meme, Quote>(self: &Launch<Meme, Quote>): u256 {
+    curve::k(
+        self.meme_reserve.value() as u256,
+        (self.virtual_quote as u256) + (self.real_quote_reserve.value() as u256),
+    )
 }
 
 fun accrue_graduation_fees<Meme, Quote>(
@@ -580,16 +527,9 @@ fun accrue_and_emit_bought<Meme, Quote>(
     meme_fee_balance: Balance<Meme>,
     quote_fee_balance: Balance<Quote>,
     protocol_fee_share_bps: Bps,
-    buyer: address,
-    quote_supplied: u64,
     quote_in_gross: u64,
     quote_refund: u64,
-    quote_fee: u64,
-    quote_in_net: u64,
     meme_out_gross: u64,
-    meme_fee: u64,
-    meme_out_net: u64,
-    crossed_threshold: bool,
 ) {
     let (
         protocol_meme_fee_delta,
@@ -606,17 +546,11 @@ fun accrue_and_emit_bought<Meme, Quote>(
         protocol_fee_share_bps,
     );
 
-    events::bought<Meme, Quote>(
+    events::bought(
         self.id.to_inner(),
-        buyer,
-        quote_supplied,
         quote_in_gross,
         quote_refund,
-        quote_fee,
-        quote_in_net,
         meme_out_gross,
-        meme_fee,
-        meme_out_net,
         protocol_fee_share_bps.value(),
         protocol_meme_fee_delta,
         creator_meme_fee_delta,
@@ -628,7 +562,6 @@ fun accrue_and_emit_bought<Meme, Quote>(
         creator_quote_fee_total,
         self.meme_reserve.value(),
         self.real_quote_reserve.value(),
-        crossed_threshold,
     );
 }
 
@@ -637,18 +570,10 @@ fun accrue_and_emit_sold<Meme, Quote>(
     meme_fee_balance: Balance<Meme>,
     quote_fee_balance: Balance<Quote>,
     protocol_fee_share_bps: Bps,
-    seller: address,
     meme_in_gross: u64,
-    meme_fee: u64,
-    meme_in_after_fee: u64,
-    progress_bps: u64,
-    burn_bps: u64,
     pending_burn_delta: u64,
     pending_burn_total: u64,
-    meme_in_effective: u64,
     quote_out_gross: u64,
-    quote_fee: u64,
-    quote_out_net: u64,
 ) {
     let (
         protocol_meme_fee_delta,
@@ -665,20 +590,12 @@ fun accrue_and_emit_sold<Meme, Quote>(
         protocol_fee_share_bps,
     );
 
-    events::sold<Meme, Quote>(
+    events::sold(
         self.id.to_inner(),
-        seller,
         meme_in_gross,
-        meme_fee,
-        meme_in_after_fee,
-        progress_bps,
-        burn_bps,
         pending_burn_delta,
         pending_burn_total,
-        meme_in_effective,
         quote_out_gross,
-        quote_fee,
-        quote_out_net,
         protocol_fee_share_bps.value(),
         protocol_meme_fee_delta,
         creator_meme_fee_delta,
@@ -690,40 +607,6 @@ fun accrue_and_emit_sold<Meme, Quote>(
         creator_quote_fee_total,
         self.meme_reserve.value(),
         self.real_quote_reserve.value(),
-    );
-}
-
-fun emit_created<Meme, Quote>(
-    self: &Launch<Meme, Quote>,
-    ticket_id: ID,
-    initial_meme_supply: u64,
-    metadata_cap_id: ID,
-    launcher: address,
-) {
-    events::launch_created<Meme, Quote>(
-        self.id.to_inner(),
-        ticket_id,
-        self.migration_witness,
-        launcher,
-        metadata_cap_id,
-        self.sell_burn_bps.value(),
-        initial_meme_supply,
-        self.meme_reserve.value(),
-        self.real_quote_reserve.value(),
-        self.pending_burn.value(),
-        self.protocol_meme_graduation_fee.value(),
-        self.meme_liquidity_provision.value(),
-        0,
-        0,
-        0,
-        0,
-        self.virtual_quote,
-        self.migration_quote_target,
-        self.quote_fee_bps.value(),
-        self.meme_fee_bps.value(),
-        self.quote_migration_fee_bps.value(),
-        self.protocol_meme_graduation_fee_bps.value(),
-        self.meme_liquidity_provision_bps.value(),
     );
 }
 
@@ -768,15 +651,13 @@ public fun initial_balances_for_testing<Meme, Quote>(
 #[test_only]
 public fun policy_for_testing<Meme, Quote>(
     self: &Launch<Meme, Quote>,
-): (u64, u64, u64, u64, u64, u64, u64, TypeName) {
+): (u64, u64, u64, u64, u64, TypeName) {
     (
         self.virtual_quote,
         self.migration_quote_target,
         self.quote_fee_bps.value(),
         self.meme_fee_bps.value(),
         self.quote_migration_fee_bps.value(),
-        self.protocol_meme_graduation_fee_bps.value(),
-        self.meme_liquidity_provision_bps.value(),
         self.migration_witness,
     )
 }

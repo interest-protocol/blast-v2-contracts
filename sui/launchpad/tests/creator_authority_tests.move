@@ -308,14 +308,13 @@ fun address_creator_claim_returns_composable_cap_without_attestation() {
         transfer::public_transfer(cap, PROTOCOL_ADMIN);
 
         let claimed = events::collect_one<events::CreatorCapClaimed>(0);
-        let (meme, x_identity_hash, creator, x_claim_expiry_ms) =
+        let (meme, x_identity_hash, x_claim_expiry_ms) =
             claimed.creator_cap_claimed_fields();
         assert_eq!(
             meme,
             std::type_name::with_original_ids<TEST_MEME>(),
         );
         assert!(x_identity_hash.is_none());
-        assert_eq!(creator, CREATOR);
         assert!(x_claim_expiry_ms.is_none());
     });
 

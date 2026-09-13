@@ -72,9 +72,7 @@ const EInvalidXClaimAttestation: u64 = 27;
 /// Meme inventory or virtual quote reserve cannot represent a valid constant-product market.
 const EInvalidCurveReserve: u64 = 29;
 
-#[test_only]
-/// The real-quote terminal threshold must be nonzero.
-const EInvalidTerminalThreshold: u64 = 30;
+// Code 30 retired: quote admission owns the minimum migration target.
 
 #[test_only]
 /// The quote-asset launch fee exceeds ten percent.
@@ -117,7 +115,7 @@ const EZeroFeeAccrual: u64 = 39;
 const EProtocolFeeShareUnchanged: u64 = 41;
 
 #[test_only]
-/// A quote migration target must be nonzero.
+/// A quote migration target must contain at least two atomic units.
 const EInvalidMigrationQuoteTarget: u64 = 42;
 
 // Code 43 retired: `allow_quote` absorbed quote-target updates as an upsert.
@@ -177,13 +175,8 @@ const EInvalidMemeSupplyPartitionBps: u64 = 60;
 
 // Code 61 retired: caller-configurable Meme decimals were removed by ADR 0036.
 
-#[test_only]
-/// A positive pool-provision rate rounded to zero Meme atomic units.
-const EZeroMemeLiquidityProvision: u64 = 62;
-
-#[test_only]
-/// Rounded graduation buckets consumed every Meme atomic unit before curve creation.
-const EZeroMemeCurveInventory: u64 = 63;
+// Codes 62 and 63 retired: configured partition bounds plus canonical supply
+// guarantee positive provision and curve inventory.
 
 #[test_only]
 /// A Quote policy's virtual reserve must be nonzero.
@@ -241,13 +234,15 @@ const EInvalidMigrationWitnessType: u64 = 78;
 
 // Codes 79 through 81 moved with migration arithmetic to blast_fun_migrators by ADR 0069.
 
-#[test_only]
-/// The rounded migration fee leaves no Quote to seed liquidity.
-const ENoMigrationQuotePrincipal: u64 = 82;
+// Code 82 retired when positive migration principal moved to quote admission.
 
 #[test_only]
 /// The creator-selected sell burn exceeds fifty percent.
 const EInvalidSellBurnBps: u64 = 83;
+
+#[test_only]
+/// A completed trade reduced the curve's constant product.
+const EConstantProductInvariantDecreased: u64 = 84;
 
 macro public(package) fun invalid_x_claim_public_key(): u64 {
     2
@@ -295,10 +290,6 @@ macro public(package) fun invalid_x_claim_attestation(): u64 {
 
 macro public(package) fun invalid_curve_reserve(): u64 {
     29
-}
-
-macro public(package) fun invalid_terminal_threshold(): u64 {
-    30
 }
 
 macro public(package) fun invalid_quote_fee_bps(): u64 {
@@ -397,14 +388,6 @@ macro public(package) fun invalid_meme_supply_partition_bps(): u64 {
 
 // Error code 61 is retired and must not be reused.
 
-macro public(package) fun zero_meme_liquidity_provision(): u64 {
-    62
-}
-
-macro public(package) fun zero_meme_curve_inventory(): u64 {
-    63
-}
-
 macro public(package) fun invalid_virtual_quote(): u64 {
     64
 }
@@ -449,10 +432,10 @@ macro public(package) fun invalid_migration_witness_type(): u64 {
     78
 }
 
-macro public(package) fun no_migration_quote_principal(): u64 {
-    82
-}
-
 macro public(package) fun invalid_sell_burn_bps(): u64 {
     83
+}
+
+macro public(package) fun constant_product_invariant_decreased(): u64 {
+    84
 }

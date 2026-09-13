@@ -47,7 +47,7 @@ fun init(ctx: &mut TxContext) {
 
 // === Public Functions ===
 
-/// Admits one quote type or updates its curve parameters for launches created afterward.
+/// Admits one quote with a migration target of at least two atomic units.
 public fun allow_quote<Quote>(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
@@ -62,7 +62,7 @@ public fun allow_quote<Quote>(
         blast_fun::errors::invalid_virtual_quote!(),
     );
     assert!(
-        migration_quote_target > 0,
+        migration_quote_target > 1,
         blast_fun::errors::invalid_migration_quote_target!(),
     );
 

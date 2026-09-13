@@ -977,6 +977,24 @@ fun allowing_quote_rejects_zero_target_before_type_lookup() {
 }
 
 #[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidMigrationQuoteTarget,
+    location = blast_fun::launch_config,
+)]
+fun allowing_quote_rejects_one_atom_target() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+
+        f.config.allow_quote<TEST_QUOTE>(&f.package_version,
+            &admin_witness, VIRTUAL_QUOTE, 1);
+    });
+
+    fixture.end();
+}
+
+#[test]
 fun quote_table_admits_more_than_the_previous_vector_limit() {
     let mut fixture = start();
 
@@ -984,39 +1002,39 @@ fun quote_table_admits_more_than_the_previous_vector_limit() {
         let admin_witness = f.sign_in();
 
         f.config.allow_quote<QUOTE<Q0>>(&f.package_version,
-            &admin_witness, VIRTUAL_QUOTE, 1);
+            &admin_witness, VIRTUAL_QUOTE, 2);
         f.config.allow_quote<QUOTE<Q1>>(&f.package_version,
-            &admin_witness, VIRTUAL_QUOTE, 1);
+            &admin_witness, VIRTUAL_QUOTE, 2);
         f.config.allow_quote<QUOTE<Q2>>(&f.package_version,
-            &admin_witness, VIRTUAL_QUOTE, 1);
+            &admin_witness, VIRTUAL_QUOTE, 2);
         f.config.allow_quote<QUOTE<Q3>>(&f.package_version,
-            &admin_witness, VIRTUAL_QUOTE, 1);
+            &admin_witness, VIRTUAL_QUOTE, 2);
         f.config.allow_quote<QUOTE<Q4>>(&f.package_version,
-            &admin_witness, VIRTUAL_QUOTE, 1);
+            &admin_witness, VIRTUAL_QUOTE, 2);
         f.config.allow_quote<QUOTE<Q5>>(&f.package_version,
-            &admin_witness, VIRTUAL_QUOTE, 1);
+            &admin_witness, VIRTUAL_QUOTE, 2);
         f.config.allow_quote<QUOTE<Q6>>(&f.package_version,
-            &admin_witness, VIRTUAL_QUOTE, 1);
+            &admin_witness, VIRTUAL_QUOTE, 2);
         f.config.allow_quote<QUOTE<Q7>>(&f.package_version,
-            &admin_witness, VIRTUAL_QUOTE, 1);
+            &admin_witness, VIRTUAL_QUOTE, 2);
         f.config.allow_quote<QUOTE<Q8>>(&f.package_version,
-            &admin_witness, VIRTUAL_QUOTE, 1);
+            &admin_witness, VIRTUAL_QUOTE, 2);
         f.config.allow_quote<QUOTE<Q9>>(&f.package_version,
-            &admin_witness, VIRTUAL_QUOTE, 1);
+            &admin_witness, VIRTUAL_QUOTE, 2);
         f.config.allow_quote<QUOTE<Q10>>(&f.package_version,
-            &admin_witness, VIRTUAL_QUOTE, 1);
+            &admin_witness, VIRTUAL_QUOTE, 2);
         f.config.allow_quote<QUOTE<Q11>>(&f.package_version,
-            &admin_witness, VIRTUAL_QUOTE, 1);
+            &admin_witness, VIRTUAL_QUOTE, 2);
         f.config.allow_quote<QUOTE<Q12>>(&f.package_version,
-            &admin_witness, VIRTUAL_QUOTE, 1);
+            &admin_witness, VIRTUAL_QUOTE, 2);
         f.config.allow_quote<QUOTE<Q13>>(&f.package_version,
-            &admin_witness, VIRTUAL_QUOTE, 1);
+            &admin_witness, VIRTUAL_QUOTE, 2);
         f.config.allow_quote<QUOTE<Q14>>(&f.package_version,
-            &admin_witness, VIRTUAL_QUOTE, 1);
+            &admin_witness, VIRTUAL_QUOTE, 2);
         f.config.allow_quote<QUOTE<Q15>>(&f.package_version,
-            &admin_witness, VIRTUAL_QUOTE, 1);
+            &admin_witness, VIRTUAL_QUOTE, 2);
         f.config.allow_quote<QUOTE<Q16>>(&f.package_version,
-            &admin_witness, VIRTUAL_QUOTE, 1);
+            &admin_witness, VIRTUAL_QUOTE, 2);
 
         assert_eq!(f.config.allowed_quote_count_for_testing(), 17);
     });

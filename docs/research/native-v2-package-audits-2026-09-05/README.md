@@ -23,7 +23,7 @@ The two original reports are preserved verbatim:
 | --- | --- |
 | DEX F1: zero fee-claim events | Keep the composable zero coin; emit only for positive Quote. Empty-claim regression verifies no economic event. |
 | DEX F2: generation overflow diagnostic | Dedicated `EVersionOverflow`; exact-error regression. |
-| DEX F3: zero migration Quote seed | Core launch creation validates the snapshotted target against the rounded terminal fee before consuming the ticket. Target=1/nonzero-fee rejects; target=1/zero-fee remains valid. |
+| DEX F3: zero migration Quote seed | Quote admission rejects targets below two atomic units; the 500-bps fee ceiling then guarantees positive migration principal. |
 | DEX F4: zero-burn aliases | Retained deliberately. Both registry burn entrypoints have a positive zero-policy test verifying unchanged supply. |
 | DEX F5: public type documentation | Added event documentation and documented the native ledger's structurally empty Meme side. Inert position creation remains ungated; economic use is gated. No numeric error renumbering was necessary. |
 | Auto-LP F1: signed maximum input absent | Added maximum Meme and Quote arguments. Actual paired consumption must fit both before withdrawal/deposit. The attack regression first failed against the old code, then passes by requiring `EMaximumInput`. Exact unskewed caps succeed; an independent Meme-cap test rejects excess. SDK requires all input, share and deadline limits explicitly. |

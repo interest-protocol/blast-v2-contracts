@@ -9,7 +9,11 @@
   [0066](0066-aftermath-dao-fee-pool.md), and
   [0067](0067-retire-full-sail-migrator.md),
   [0068](0068-compact-lp-fee-principal-snapshot.md), and
-  [0069](0069-consolidate-launch-graduation-and-move-migration-math.md)
+  [0069](0069-consolidate-launch-graduation-and-move-migration-math.md), and
+  [0079](0079-compact-launch-state-and-events.md)
+
+> ADR 0079 regenerates the pre-publication launchpad object and event ABI with
+> compact, replay-complete layouts.
 
 > ADR 0062 changes the pre-publication `LaunchConfig.quotes` field from
 > `VecMap` to `Table`. The ABI artifact and SDK parity baseline must be

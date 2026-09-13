@@ -3,6 +3,10 @@
 - Status: accepted
 - Date: 2026-09-12
 - Amends: [0021](0021-pure-constant-product-curve-quotes.md), [0024](0024-generated-coin-launch-ticket.md), [0026](0026-deferred-sell-burn.md), [0043](0043-versioned-launch-trading-and-atomic-migration.md), and [0051](0051-generated-meme-package-template.md)
+- Amended by: [0079](0079-compact-launch-state-and-events.md)
+
+> ADR 0079 removes the derivable `progress_bps` and `burn_bps` fields from
+> `Sold`; the fixed rate remains on the launch and its source ticket.
 
 ## Sources
 

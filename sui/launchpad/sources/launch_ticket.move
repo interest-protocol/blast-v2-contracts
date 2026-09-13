@@ -75,12 +75,14 @@ public fun new<Meme: drop>(
         sell_burn_bps,
     };
 
-    ticket.emit_created(
+    events::launch_ticket_created<Meme>(
+        ticket.id.to_inner(),
+        ticket.meme.value(),
+        object::id(&ticket.metadata_cap),
         creator,
         x_identity_hash,
         burnable,
         sell_burn_bps.value(),
-        ctx.sender(),
     );
 
     ticket
@@ -113,26 +115,6 @@ public(package) fun destroy<Meme>(
     id.delete();
 
     (meme, metadata_cap, creator_authority, sell_burn_bps)
-}
-
-fun emit_created<Meme>(
-    self: &LaunchTicket<Meme>,
-    creator: Option<address>,
-    x_identity_hash: Option<vector<u8>>,
-    burnable: bool,
-    sell_burn_bps: u64,
-    launcher: address,
-) {
-    events::launch_ticket_created<Meme>(
-        self.id.to_inner(),
-        self.meme.value(),
-        object::id(&self.metadata_cap),
-        launcher,
-        creator,
-        x_identity_hash,
-        burnable,
-        sell_burn_bps,
-    );
 }
 
 // === Test-Only Functions ===
