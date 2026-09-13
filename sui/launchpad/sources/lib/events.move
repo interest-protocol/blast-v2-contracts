@@ -61,22 +61,22 @@ public struct ProtocolFeeShareChanged has copy, drop {
     new_protocol_fee_share_bps: u64,
 }
 
-/// Emitted after the X claim signer is initially set or rotated.
-public struct XClaimSignerSet has copy, drop {
+/// Emitted after the creator-claim signer is initially set or rotated.
+public struct CreatorClaimSignerSet has copy, drop {
     previous_public_key: vector<u8>,
     signer_public_key: vector<u8>,
 }
 
-/// Emitted after the current X claim signer is revoked.
-public struct XClaimSignerRevoked has copy, drop {
+/// Emitted after the current creator-claim signer is revoked.
+public struct CreatorClaimSignerRevoked has copy, drop {
     previous_public_key: vector<u8>,
 }
 
-/// Emitted after either creator identity claims the meme type's single creator capability.
+/// Emitted after either recipient kind claims the meme type's single creator capability.
 public struct CreatorCapClaimed has copy, drop {
     meme: TypeName,
-    x_identity_hash: Option<vector<u8>>,
-    x_claim_expiry_ms: Option<u64>,
+    account_commitment: Option<vector<u8>>,
+    claim_expiry_ms: Option<u64>,
 }
 
 /// Emitted after a generated OTW currency and its launch ticket are created.
@@ -85,8 +85,8 @@ public struct LaunchTicketCreated has copy, drop {
     meme: TypeName,
     initial_supply: u64,
     metadata_cap_id: ID,
-    creator: Option<address>,
-    x_identity_hash: Option<vector<u8>>,
+    creator_address: Option<address>,
+    account_commitment: Option<vector<u8>>,
     burnable: bool,
     sell_burn_bps: u64,
 }
@@ -277,35 +277,35 @@ public(package) fun protocol_fee_share_changed(
     });
 }
 
-/// Emits installation or rotation of the X-claim signer key.
-public(package) fun x_claim_signer_set(
+/// Emits installation or rotation of the creator-claim signer key.
+public(package) fun creator_claim_signer_set(
     previous_public_key: vector<u8>,
     signer_public_key: vector<u8>,
 ) {
-    blast_fun::events_wrapper::emit_event(XClaimSignerSet {
+    blast_fun::events_wrapper::emit_event(CreatorClaimSignerSet {
         previous_public_key,
         signer_public_key,
     });
 }
 
-/// Emits revocation of the X-claim signer key.
-public(package) fun x_claim_signer_revoked(
+/// Emits revocation of the creator-claim signer key.
+public(package) fun creator_claim_signer_revoked(
     previous_public_key: vector<u8>,
 ) {
-    blast_fun::events_wrapper::emit_event(XClaimSignerRevoked {
+    blast_fun::events_wrapper::emit_event(CreatorClaimSignerRevoked {
         previous_public_key,
     });
 }
 
-/// Emits the one-time creator-cap claim and its resolved identity facts.
+/// Emits the one-time creator-cap claim and its account-claim facts.
 public(package) fun creator_cap_claimed<Meme>(
-    x_identity_hash: Option<vector<u8>>,
-    x_claim_expiry_ms: Option<u64>,
+    account_commitment: Option<vector<u8>>,
+    claim_expiry_ms: Option<u64>,
 ) {
     blast_fun::events_wrapper::emit_event(CreatorCapClaimed {
         meme: type_name::with_original_ids<Meme>(),
-        x_identity_hash,
-        x_claim_expiry_ms,
+        account_commitment,
+        claim_expiry_ms,
     });
 }
 
@@ -314,8 +314,8 @@ public(package) fun launch_ticket_created<Meme>(
     ticket_id: ID,
     initial_supply: u64,
     metadata_cap_id: ID,
-    creator: Option<address>,
-    x_identity_hash: Option<vector<u8>>,
+    creator_address: Option<address>,
+    account_commitment: Option<vector<u8>>,
     burnable: bool,
     sell_burn_bps: u64,
 ) {
@@ -324,8 +324,8 @@ public(package) fun launch_ticket_created<Meme>(
         meme: type_name::with_original_ids<Meme>(),
         initial_supply,
         metadata_cap_id,
-        creator,
-        x_identity_hash,
+        creator_address,
+        account_commitment,
         burnable,
         sell_burn_bps,
     });
@@ -596,8 +596,8 @@ public fun protocol_fee_share_changed_fields(
 }
 
 #[test_only]
-public fun x_claim_signer_set_fields(
-    self: &XClaimSignerSet,
+public fun creator_claim_signer_set_fields(
+    self: &CreatorClaimSignerSet,
 ): (vector<u8>, vector<u8>) {
     (
         self.previous_public_key,
@@ -606,7 +606,9 @@ public fun x_claim_signer_set_fields(
 }
 
 #[test_only]
-public fun x_claim_signer_revoked_fields(self: &XClaimSignerRevoked): vector<u8> {
+public fun creator_claim_signer_revoked_fields(
+    self: &CreatorClaimSignerRevoked,
+): vector<u8> {
     self.previous_public_key
 }
 
@@ -616,8 +618,8 @@ public fun creator_cap_claimed_fields(
 ): (TypeName, Option<vector<u8>>, Option<u64>) {
     (
         self.meme,
-        self.x_identity_hash,
-        self.x_claim_expiry_ms,
+        self.account_commitment,
+        self.claim_expiry_ms,
     )
 }
 
@@ -630,8 +632,8 @@ public fun launch_ticket_created_fields(
         self.meme,
         self.initial_supply,
         self.metadata_cap_id,
-        self.creator,
-        self.x_identity_hash,
+        self.creator_address,
+        self.account_commitment,
         self.burnable,
         self.sell_burn_bps,
     )

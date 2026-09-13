@@ -12,59 +12,59 @@ module blast_fun::errors;
 // Code 1 retired: mutable chain-id validation was removed by ADR 0015.
 
 #[test_only]
-/// The X claim signer public key is not 32 bytes.
-const EInvalidXClaimPublicKey: u64 = 2;
+/// The creator-claim signer public key is not 32 bytes.
+const EInvalidCreatorClaimPublicKey: u64 = 2;
 
 #[test_only]
-/// X claims are disabled because no signer public key is configured.
-const EXClaimSignerInactive: u64 = 3;
+/// Account claims are disabled because no signer public key is configured.
+const ECreatorClaimSignerInactive: u64 = 3;
 
 // Codes 4 and 5 retired with first-config and signer-generation state.
 
 #[test_only]
 /// The Ed25519 signature does not verify against the canonical claim bytes.
-const EInvalidXClaimSignature: u64 = 6;
+const EInvalidCreatorClaimSignature: u64 = 6;
 
 // Codes 7 and 8 retired with first-config and signer-generation state.
 
 #[test_only]
-/// An address creator identity cannot target the zero address.
-const EInvalidCreator: u64 = 9;
+/// An address creator recipient cannot target the zero address.
+const EInvalidCreatorRecipient: u64 = 9;
 
 #[test_only]
-/// An X identity commitment must be exactly 32 bytes.
-const EInvalidXIdentityHash: u64 = 10;
+/// A Blast account commitment must be exactly 32 bytes.
+const EInvalidAccountCommitment: u64 = 10;
 
 #[test_only]
-/// An address creator claim included an X attestation.
-const EUnexpectedXClaimAttestation: u64 = 11;
+/// An address creator claim included an account attestation.
+const EUnexpectedCreatorClaimAttestation: u64 = 11;
 
 // Code 12 retired: consuming CreatorAuthority makes a repeat claim unrepresentable.
 
-// Code 13 retired: the X claimant is now always TxContext::sender.
+// Code 13 retired: the claimant is now always TxContext::sender.
 
 #[test_only]
-/// The X claim attestation has expired.
-const EXClaimExpired: u64 = 14;
+/// The creator claim attestation has expired.
+const ECreatorClaimExpired: u64 = 14;
 
 // Codes 15 through 23 retired: the root-capability lifecycle moved to
 // `blast_admin::acl`, which owns its own append-only error registry.
 
 #[test_only]
 /// Signer rotation must provide a key different from the current key.
-const EXClaimSignerUnchanged: u64 = 24;
+const ECreatorClaimSignerUnchanged: u64 = 24;
 
 #[test_only]
-/// An X creator claim did not include its required attestation.
-const EMissingXClaimAttestation: u64 = 25;
+/// An account creator claim did not include its required attestation.
+const EMissingCreatorClaimAttestation: u64 = 25;
 
 #[test_only]
 /// The transaction sender is not the address creator recorded by the launch.
 const ECreatorNotSender: u64 = 26;
 
 #[test_only]
-/// X claim call data is not canonical BCS `(u64, vector<u8>)` for a 64-byte signature.
-const EInvalidXClaimAttestation: u64 = 27;
+/// Creator claim data is not canonical BCS `(u64, vector<u8>)` for a 64-byte signature.
+const EInvalidCreatorClaimAttestation: u64 = 27;
 
 // Code 28 retired with the rest of the root-transfer lifecycle.
 
@@ -244,39 +244,39 @@ const EInvalidSellBurnBps: u64 = 83;
 /// A completed trade reduced the curve's constant product.
 const EConstantProductInvariantDecreased: u64 = 84;
 
-macro public(package) fun invalid_x_claim_public_key(): u64 {
+macro public(package) fun invalid_creator_claim_public_key(): u64 {
     2
 }
 
-macro public(package) fun x_claim_signer_inactive(): u64 {
+macro public(package) fun creator_claim_signer_inactive(): u64 {
     3
 }
 
-macro public(package) fun invalid_x_claim_signature(): u64 {
+macro public(package) fun invalid_creator_claim_signature(): u64 {
     6
 }
 
-macro public(package) fun invalid_creator(): u64 {
+macro public(package) fun invalid_creator_recipient(): u64 {
     9
 }
 
-macro public(package) fun invalid_x_identity_hash(): u64 {
+macro public(package) fun invalid_account_commitment(): u64 {
     10
 }
 
-macro public(package) fun unexpected_x_claim_attestation(): u64 {
+macro public(package) fun unexpected_creator_claim_attestation(): u64 {
     11
 }
 
-macro public(package) fun x_claim_expired(): u64 {
+macro public(package) fun creator_claim_expired(): u64 {
     14
 }
 
-macro public(package) fun x_claim_signer_unchanged(): u64 {
+macro public(package) fun creator_claim_signer_unchanged(): u64 {
     24
 }
 
-macro public(package) fun missing_x_claim_attestation(): u64 {
+macro public(package) fun missing_creator_claim_attestation(): u64 {
     25
 }
 
@@ -284,7 +284,7 @@ macro public(package) fun creator_not_sender(): u64 {
     26
 }
 
-macro public(package) fun invalid_x_claim_attestation(): u64 {
+macro public(package) fun invalid_creator_claim_attestation(): u64 {
     27
 }
 

@@ -2,7 +2,7 @@
 // macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
 // locations while retaining one append-only registry in `blast_fun::errors`.
 #[allow(lint(abort_without_constant))]
-/// Small live protocol settings read by trades, migrators, and X creator claims.
+/// Small live protocol settings read by trades, migrators, and creator claims.
 module blast_fun::runtime_config;
 
 use blast_admin::acl::AdminWitness;
@@ -19,7 +19,7 @@ use blast_fun::{
 /// Shared singleton for immediately effective protocol-wide runtime settings.
 public struct RuntimeConfig has key {
     id: UID,
-    x_claim_signer_public_key: vector<u8>,
+    creator_claim_signer_public_key: vector<u8>,
     protocol_fee_share_bps: Bps,
 }
 
@@ -31,42 +31,42 @@ fun init(ctx: &mut TxContext) {
 
 // === Public Functions ===
 
-/// Sets the current X claim signer, replacing any previously configured key.
-public fun set_x_claim_signer(
+/// Sets the current creator-claim signer, replacing any previously configured key.
+public fun set_creator_claim_signer(
     self: &mut RuntimeConfig,
     package_version: &PackageVersion,
     _: &AdminWitness<LAUNCHPAD_DOMAIN>,
     signer_public_key: vector<u8>,
 ) {
     package_version.assert_current();
-    validate_x_claim_public_key(&signer_public_key);
+    validate_creator_claim_public_key(&signer_public_key);
     assert!(
-        self.x_claim_signer_public_key != signer_public_key,
-        blast_fun::errors::x_claim_signer_unchanged!(),
+        self.creator_claim_signer_public_key != signer_public_key,
+        blast_fun::errors::creator_claim_signer_unchanged!(),
     );
 
-    let previous_public_key = self.x_claim_signer_public_key;
-    self.x_claim_signer_public_key = signer_public_key;
+    let previous_public_key = self.creator_claim_signer_public_key;
+    self.creator_claim_signer_public_key = signer_public_key;
 
-    events::x_claim_signer_set(
+    events::creator_claim_signer_set(
         previous_public_key,
-        self.x_claim_signer_public_key,
+        self.creator_claim_signer_public_key,
     );
 }
 
-/// Revokes the X claim signer immediately by clearing the only active key.
-public fun revoke_x_claim_signer(
+/// Revokes the creator-claim signer immediately by clearing the only active key.
+public fun revoke_creator_claim_signer(
     self: &mut RuntimeConfig,
     package_version: &PackageVersion,
     _: &AdminWitness<LAUNCHPAD_DOMAIN>,
 ) {
     package_version.assert_current();
-    self.assert_x_claim_active();
+    self.assert_creator_claim_active();
 
-    let previous_public_key = self.x_claim_signer_public_key;
-    self.x_claim_signer_public_key = vector[];
+    let previous_public_key = self.creator_claim_signer_public_key;
+    self.creator_claim_signer_public_key = vector[];
 
-    events::x_claim_signer_revoked(previous_public_key);
+    events::creator_claim_signer_revoked(previous_public_key);
 }
 
 /// Updates the live protocol share used by every subsequent trade-fee accrual.
@@ -99,16 +99,16 @@ public fun protocol_fee_share_bps(self: &RuntimeConfig): u64 {
 
 // === Package Functions ===
 
-/// Rejects use of the X claim path while no backend signer is authorized.
-public(package) fun assert_x_claim_active(self: &RuntimeConfig) {
+/// Rejects use of the account claim path while no backend signer is authorized.
+public(package) fun assert_creator_claim_active(self: &RuntimeConfig) {
     assert!(
-        !self.x_claim_signer_public_key.is_empty(),
-        blast_fun::errors::x_claim_signer_inactive!(),
+        !self.creator_claim_signer_public_key.is_empty(),
+        blast_fun::errors::creator_claim_signer_inactive!(),
     );
 }
 
 /// Verifies that `signature` came from the one currently authorized Blast backend key.
-public(package) fun verify_x_claim_signature(
+public(package) fun verify_creator_claim_signature(
     self: &RuntimeConfig,
     message: &vector<u8>,
     signature: &vector<u8>,
@@ -116,10 +116,10 @@ public(package) fun verify_x_claim_signature(
     assert!(
         sui::ed25519::ed25519_verify(
             signature,
-            &self.x_claim_signer_public_key,
+            &self.creator_claim_signer_public_key,
             message,
         ),
-        blast_fun::errors::invalid_x_claim_signature!(),
+        blast_fun::errors::invalid_creator_claim_signature!(),
     );
 }
 
@@ -130,19 +130,19 @@ public(package) fun protocol_fee_share(self: &RuntimeConfig): Bps {
 
 // === Private Functions ===
 
-/// Starts with no X signer and zero protocol fee share.
+/// Starts with no creator-claim signer and zero protocol fee share.
 fun new(ctx: &mut TxContext): RuntimeConfig {
     RuntimeConfig {
         id: object::new(ctx),
-        x_claim_signer_public_key: vector[],
+        creator_claim_signer_public_key: vector[],
         protocol_fee_share_bps: bps::new(0),
     }
 }
 
-fun validate_x_claim_public_key(signer_public_key: &vector<u8>) {
+fun validate_creator_claim_public_key(signer_public_key: &vector<u8>) {
     assert!(
         signer_public_key.length() == constants::ed25519_public_key_length!(),
-        blast_fun::errors::invalid_x_claim_public_key!(),
+        blast_fun::errors::invalid_creator_claim_public_key!(),
     );
 }
 
@@ -166,11 +166,11 @@ public fun new_for_testing(
     signer_public_key: vector<u8>,
     ctx: &mut TxContext,
 ): RuntimeConfig {
-    validate_x_claim_public_key(&signer_public_key);
+    validate_creator_claim_public_key(&signer_public_key);
 
     RuntimeConfig {
         id: object::new(ctx),
-        x_claim_signer_public_key: signer_public_key,
+        creator_claim_signer_public_key: signer_public_key,
         protocol_fee_share_bps: bps::new(0),
     }
 }

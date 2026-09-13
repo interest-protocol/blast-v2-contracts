@@ -40,8 +40,8 @@ without returning to core for its post-conditions.
 | --- | --- | --- |
 | Package bootstrap | canonical OTW and one-time framework `Publisher` claim | protocol administration, feature state, or upgrade authority |
 | Package administration | validated `Publisher` and raw `UpgradeCap` custody, exact-digest authorization, irreversible policy restriction, receipt commit, and one-way admin retirement | ACL membership storage, feature configuration, or state migration |
-| Protocol ACL | root rotation and revocable routine-admin membership | feature configuration, backend keys, creator identity, or fees |
-| Runtime config | one dedicated X-claim backend key and the live global protocol fee share | admin delegation, creator identity or issuance, cold launch policy, accrued balances, total trade-fee rates, or claim authority |
+| Protocol ACL | root rotation and revocable routine-admin membership | feature configuration, backend keys, creator recipients, or fees |
+| Runtime config | one dedicated creator-claim backend key and the live global protocol fee share | admin delegation, creator recipient or issuance, cold launch policy, accrued balances, total trade-fee rates, or claim authority |
 | Launch config | cold Table-backed virtual/terminal Quote parameters, Quote/Meme trade-fee rates, graduation defaults, and bounded external migrator witness admission for future launches | live launch repricing, quote currency-registry objects, DEX costs or dependencies, user balances, derived valuations, or hot trade configuration |
 | Registry/config | global limits, other fee ceilings, emergency state | user balances or curve math |
 | Launch ticket | generated OTW currency creation and pre-launch capability custody | supply minting, trades, metadata updates, or migration |
@@ -124,11 +124,14 @@ owner-selected `Fixed` or `BurnOnly` state
 before finalizing the initializer. Its launch ticket holds the complete
 `Balance<Meme>`, `MetadataCap<Meme>`, and creator-selected fixed sell-burn rate capped at 50%; no mint authority survives in Blast core
 or an adapter, and launch intake does not need the shared Meme currency merely to
-finalize supply. The native metadata cap remains in Blast-defined custody until
+finalize supply. The creator recipient may be a wallet address or an opaque
+Blast account commitment and may differ from the launcher. The native metadata
+cap remains in Blast-defined custody until
 the one-time creator claim returns it separately alongside `CreatorCap<Meme>`.
 See [ADR 0035](decisions/0035-initializer-finalized-meme-supply.md),
 [ADR 0036](decisions/0036-fixed-nine-decimal-generated-memes.md), and
-[ADR 0047](decisions/0047-coin-registry-authoritative-supply-mode.md).
+[ADR 0047](decisions/0047-coin-registry-authoritative-supply-mode.md), and
+[ADR 0080](decisions/0080-provider-independent-creator-recipient.md).
 The ticket binds sell-burn policy only. Terminal migration reads the
 authoritative supply mode from Coin Registry.
 

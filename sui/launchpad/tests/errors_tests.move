@@ -7,17 +7,17 @@ use std::unit_test::assert_eq;
 
 #[test]
 fun authority_and_claim_error_registry_is_stable() {
-    assert_eq!(blast_fun::errors::invalid_x_claim_public_key!(), 2);
-    assert_eq!(blast_fun::errors::x_claim_signer_inactive!(), 3);
-    assert_eq!(blast_fun::errors::invalid_x_claim_signature!(), 6);
-    assert_eq!(blast_fun::errors::invalid_creator!(), 9);
-    assert_eq!(blast_fun::errors::invalid_x_identity_hash!(), 10);
-    assert_eq!(blast_fun::errors::unexpected_x_claim_attestation!(), 11);
-    assert_eq!(blast_fun::errors::x_claim_expired!(), 14);
-    assert_eq!(blast_fun::errors::x_claim_signer_unchanged!(), 24);
-    assert_eq!(blast_fun::errors::missing_x_claim_attestation!(), 25);
+    assert_eq!(blast_fun::errors::invalid_creator_claim_public_key!(), 2);
+    assert_eq!(blast_fun::errors::creator_claim_signer_inactive!(), 3);
+    assert_eq!(blast_fun::errors::invalid_creator_claim_signature!(), 6);
+    assert_eq!(blast_fun::errors::invalid_creator_recipient!(), 9);
+    assert_eq!(blast_fun::errors::invalid_account_commitment!(), 10);
+    assert_eq!(blast_fun::errors::unexpected_creator_claim_attestation!(), 11);
+    assert_eq!(blast_fun::errors::creator_claim_expired!(), 14);
+    assert_eq!(blast_fun::errors::creator_claim_signer_unchanged!(), 24);
+    assert_eq!(blast_fun::errors::missing_creator_claim_attestation!(), 25);
     assert_eq!(blast_fun::errors::creator_not_sender!(), 26);
-    assert_eq!(blast_fun::errors::invalid_x_claim_attestation!(), 27);
+    assert_eq!(blast_fun::errors::invalid_creator_claim_attestation!(), 27);
 }
 
 #[test]

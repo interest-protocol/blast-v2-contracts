@@ -10,15 +10,15 @@ use sui::clock::Clock;
 
 // === Public Types ===
 
-/// Validated caller input selecting who may claim the creator capability.
-public enum CreatorIdentity has drop, store {
+/// Validated recipient selecting who may claim the creator capability.
+public enum CreatorRecipient has drop, store {
     Address(address),
-    X(vector<u8>),
+    Account(vector<u8>),
 }
 
 /// Protected one-time, coin-typed creator claim authorization stored until consumed.
 public struct CreatorAuthority<phantom Meme> has store {
-    identity: CreatorIdentity,
+    recipient: CreatorRecipient,
 }
 
 /// Authority over creator-controlled settings and accrued fees for one coin type.
@@ -26,57 +26,59 @@ public struct CreatorCap<phantom Meme> has key, store {
     id: UID,
 }
 
-/// Canonical BCS message signed by the Blast backend after authenticated X verification.
-public struct XClaimMessage has copy, drop {
+/// Canonical BCS message signed after a login resolves to the designated Blast account.
+public struct CreatorClaimMessage has copy, drop {
     meme: TypeName,
-    x_identity_hash: vector<u8>,
+    account_commitment: vector<u8>,
     claimant: address,
     expiry_ms: u64,
 }
 
 // === Public Functions ===
 
-/// Validates a concrete wallet or SuiNS-resolved creator identity.
-public fun new_address(creator: address): CreatorIdentity {
-    assert!(creator != @0x0, blast_fun::errors::invalid_creator!());
+/// Designates a concrete wallet or SuiNS-resolved address as creator recipient.
+public fun new_address(recipient: address): CreatorRecipient {
+    assert!(recipient != @0x0, blast_fun::errors::invalid_creator_recipient!());
 
-    CreatorIdentity::Address(creator)
+    CreatorRecipient::Address(recipient)
 }
 
-/// Validates an immutable stable X user-id commitment as a creator identity.
-public fun new_x(x_identity_hash: vector<u8>): CreatorIdentity {
+/// Designates an immutable Blast account commitment as creator recipient.
+public fun new_account(account_commitment: vector<u8>): CreatorRecipient {
     assert!(
-        x_identity_hash.length() == constants::x_identity_hash_length!(),
-        blast_fun::errors::invalid_x_identity_hash!(),
+        account_commitment.length() == constants::account_commitment_length!(),
+        blast_fun::errors::invalid_account_commitment!(),
     );
 
-    CreatorIdentity::X(x_identity_hash)
+    CreatorRecipient::Account(account_commitment)
 }
 
 // === Package Functions ===
 
 /// Converts validated caller input into one linear, coin-typed claim authorization.
 public(package) fun into_authority<Meme>(
-    self: CreatorIdentity,
+    self: CreatorRecipient,
 ): CreatorAuthority<Meme> {
     CreatorAuthority {
-        identity: self,
+        recipient: self,
     }
 }
 
-/// Returns the validated address identity, if this is the address variant.
-public(package) fun creator(self: &CreatorIdentity): Option<address> {
+/// Returns the designated address, if this is the address variant.
+public(package) fun recipient_address(self: &CreatorRecipient): Option<address> {
     match (self) {
-        CreatorIdentity::Address(creator) => option::some(*creator),
-        CreatorIdentity::X(_) => option::none(),
+        CreatorRecipient::Address(recipient) => option::some(*recipient),
+        CreatorRecipient::Account(_) => option::none(),
     }
 }
 
-/// Returns the validated X identity commitment, if this is the X variant.
-public(package) fun x_identity_hash(self: &CreatorIdentity): Option<vector<u8>> {
+/// Returns the designated account commitment, if this is the account variant.
+public(package) fun account_commitment(
+    self: &CreatorRecipient,
+): Option<vector<u8>> {
     match (self) {
-        CreatorIdentity::Address(_) => option::none(),
-        CreatorIdentity::X(x_identity_hash) => option::some(*x_identity_hash),
+        CreatorRecipient::Address(_) => option::none(),
+        CreatorRecipient::Account(account_commitment) => option::some(*account_commitment),
     }
 }
 
@@ -84,15 +86,15 @@ public(package) fun x_identity_hash(self: &CreatorIdentity): Option<vector<u8>> 
 public(package) fun claim_creator_cap<Meme>(
     self: CreatorAuthority<Meme>,
     config: &RuntimeConfig,
-    x_attestation: Option<vector<u8>>,
+    account_attestation: Option<vector<u8>>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): CreatorCap<Meme> {
     let claimant = ctx.sender();
-    let (x_identity_hash, x_claim_expiry_ms) =
-        self.identity.authorize_claim<Meme>(
+    let (account_commitment, claim_expiry_ms) =
+        self.recipient.authorize_claim<Meme>(
             config,
-            x_attestation,
+            account_attestation,
             claimant,
             clock,
         );
@@ -100,7 +102,7 @@ public(package) fun claim_creator_cap<Meme>(
     let CreatorAuthority { .. } = self;
     let creator_cap = CreatorCap<Meme> { id: object::new(ctx) };
 
-    events::creator_cap_claimed<Meme>(x_identity_hash, x_claim_expiry_ms);
+    events::creator_cap_claimed<Meme>(account_commitment, claim_expiry_ms);
 
     creator_cap
 }
@@ -108,98 +110,98 @@ public(package) fun claim_creator_cap<Meme>(
 // === Private Functions ===
 
 fun authorize_claim<Meme>(
-    self: &CreatorIdentity,
+    self: &CreatorRecipient,
     config: &RuntimeConfig,
-    x_attestation: Option<vector<u8>>,
+    account_attestation: Option<vector<u8>>,
     claimant: address,
     clock: &Clock,
 ): (Option<vector<u8>>, Option<u64>) {
     match (self) {
-        CreatorIdentity::Address(creator) => {
+        CreatorRecipient::Address(recipient) => {
             assert!(
-                x_attestation.is_none(),
-                blast_fun::errors::unexpected_x_claim_attestation!(),
+                account_attestation.is_none(),
+                blast_fun::errors::unexpected_creator_claim_attestation!(),
             );
-            assert!(claimant == *creator, blast_fun::errors::creator_not_sender!());
+            assert!(claimant == *recipient, blast_fun::errors::creator_not_sender!());
 
-            x_attestation.destroy_none();
+            account_attestation.destroy_none();
             (option::none(), option::none())
         },
-        CreatorIdentity::X(identity_hash) => {
+        CreatorRecipient::Account(account_commitment) => {
             assert!(
-                x_attestation.is_some(),
-                blast_fun::errors::missing_x_claim_attestation!(),
+                account_attestation.is_some(),
+                blast_fun::errors::missing_creator_claim_attestation!(),
             );
-            config.assert_x_claim_active();
+            config.assert_creator_claim_active();
 
-            let (expiry_ms, signature) = parse_x_claim_attestation(
-                x_attestation.destroy_some(),
+            let (expiry_ms, signature) = parse_creator_claim_attestation(
+                account_attestation.destroy_some(),
             );
 
             assert!(
                 clock.timestamp_ms() <= expiry_ms,
-                blast_fun::errors::x_claim_expired!(),
+                blast_fun::errors::creator_claim_expired!(),
             );
 
-            let message = x_claim_message_bytes<Meme>(
-                *identity_hash,
+            let message = creator_claim_message_bytes<Meme>(
+                *account_commitment,
                 claimant,
                 expiry_ms,
             );
-            config.verify_x_claim_signature(&message, &signature);
-            (option::some(*identity_hash), option::some(expiry_ms))
+            config.verify_creator_claim_signature(&message, &signature);
+            (option::some(*account_commitment), option::some(expiry_ms))
         },
     }
 }
 
-/// Produces the exact BCS bytes that the X authentication backend must sign.
-fun x_claim_message_bytes<Meme>(
-    x_identity_hash: vector<u8>,
+/// Produces the exact BCS bytes that the account-authentication backend must sign.
+fun creator_claim_message_bytes<Meme>(
+    account_commitment: vector<u8>,
     claimant: address,
     expiry_ms: u64,
 ): vector<u8> {
-    bcs::to_bytes(&XClaimMessage {
+    bcs::to_bytes(&CreatorClaimMessage {
         meme: type_name::with_original_ids<Meme>(),
-        x_identity_hash,
+        account_commitment,
         claimant,
         expiry_ms,
     })
 }
 
 /// Parses canonical BCS `(expiry_ms: u64, signature: vector<u8>)` call data.
-fun parse_x_claim_attestation(attestation: vector<u8>): (u64, vector<u8>) {
+fun parse_creator_claim_attestation(attestation: vector<u8>): (u64, vector<u8>) {
     assert!(
-        attestation.length() == constants::x_claim_attestation_length!()
-            && attestation[constants::x_claim_expiry_bcs_length!()]
+        attestation.length() == constants::creator_claim_attestation_length!()
+            && attestation[constants::creator_claim_expiry_bcs_length!()]
                 == constants::ed25519_signature_length!(),
-        blast_fun::errors::invalid_x_claim_attestation!(),
+        blast_fun::errors::invalid_creator_claim_attestation!(),
     );
 
     let mut expiry_ms = 0u64;
-    let mut index = constants::x_claim_expiry_bcs_length!();
+    let mut index = constants::creator_claim_expiry_bcs_length!();
     while (index > 0) {
         index = index - 1;
         expiry_ms = (expiry_ms << 8) | (attestation[index] as u64);
     };
 
-    (expiry_ms, attestation.skip(constants::x_claim_signature_offset!()))
+    (expiry_ms, attestation.skip(constants::creator_claim_signature_offset!()))
 }
 
 // === Test-Only Functions ===
 
 #[test_only]
 /// Produces canonical claim bytes for the independent signature fixture test.
-public fun x_claim_attestation_bytes_for_testing<Meme>(
-    x_identity_hash: vector<u8>,
+public fun creator_claim_message_bytes_for_testing<Meme>(
+    account_commitment: vector<u8>,
     claimant: address,
     expiry_ms: u64,
 ): vector<u8> {
-    x_claim_message_bytes<Meme>(x_identity_hash, claimant, expiry_ms)
+    creator_claim_message_bytes<Meme>(account_commitment, claimant, expiry_ms)
 }
 
 #[test_only]
-/// Constructs X-only call data without adding a production constructor to the interface.
-public fun new_x_claim_attestation_for_testing(
+/// Constructs account-claim call data without adding a production constructor to the interface.
+public fun new_creator_claim_attestation_for_testing(
     expiry_ms: u64,
     signature: vector<u8>,
 ): vector<u8> {

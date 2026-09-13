@@ -3,7 +3,10 @@
 - Status: accepted
 - Date: 2026-08-22
 - Supersedes: [0008](0008-creator-identity-and-claims.md)
-- Amended by: [0014](0014-typed-creator-cap-and-diagnostic-modules.md), [0015](0015-protocol-authority-and-x-signer-state.md), [0016](0016-unified-creator-cap-claim-and-suins-periphery.md), [0017](0017-coin-type-domain-for-x-creator-claims.md), [0019](0019-consuming-creator-authority-and-cap-return.md), [0023](0023-generated-coin-supply-and-metadata-custody.md)
+- Amended by: [0014](0014-typed-creator-cap-and-diagnostic-modules.md), [0015](0015-protocol-authority-and-x-signer-state.md), [0016](0016-unified-creator-cap-claim-and-suins-periphery.md), [0017](0017-coin-type-domain-for-x-creator-claims.md), [0019](0019-consuming-creator-authority-and-cap-return.md), [0023](0023-generated-coin-supply-and-metadata-custody.md), [0080](0080-provider-independent-creator-recipient.md)
+
+> ADR 0080 replaces the provider-specific X identity with an opaque Blast
+> account recipient whose securely linked login methods remain off chain.
 
 ## Sources
 

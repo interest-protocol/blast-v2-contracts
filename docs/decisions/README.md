@@ -125,8 +125,9 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0077](0077-fixed-creator-selected-sell-burn.md) | Fixed creator-selected sell burn | **accepted** |
 | [0078](0078-explicit-curve-invariant-primitives.md) | Explicit curve invariant primitives | **accepted** |
 | [0079](0079-compact-launch-state-and-events.md) | Compact launch state and events before publication | **accepted** |
+| [0080](0080-provider-independent-creator-recipient.md) | Provider-independent creator recipients | **accepted** |
 
-ADRs 0013–0036, 0038–0063, 0065–0069, 0073, and 0077–0079 are accepted; ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
+ADRs 0013–0036, 0038–0063, 0065–0069, 0073, and 0077–0080 are accepted; ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -145,9 +146,14 @@ checkpoint schedules. A linear builder stores up to 256 entries in an inline
 vector; claims use binary search and retain ADR 0052's fixed-beneficiary and
 fair-cancellation policy.
 
-ADR 0028 consolidates the dedicated X signer and live protocol fee share into
+ADR 0028 consolidates the dedicated creator-claim signer and live protocol fee share into
 one small `RuntimeConfig`, while preserving separate `ProtocolAuthority` and
 cold `LaunchConfig` shared objects.
+
+ADR 0080 separates the launcher from the designated creator recipient and
+replaces provider-specific social identity with an opaque Blast account
+commitment. Securely linked login methods remain off chain, so new providers do
+not change the contract ABI.
 
 ADR 0041 places the bounded Quote/Meme total trade-fee pair in cold
 `LaunchConfig`. Admins update the pair atomically, each future launch snapshots it,
@@ -354,7 +360,7 @@ falsification test.
 | P12 | Does `display_registry::new_with_publisher<T>` accept a generic instantiation? | [0001](0001-sui-package-and-module-layout.md) |
 | P13 | Can a module's `init` accept a shared object such as `&mut CoinRegistry`? | [0002](0002-coin-creation-and-currency-authority.md) |
 | P14 | Can a transaction command result be a Move reference? | [0002](0002-coin-creation-and-currency-authority.md) |
-| P15 | Does the configured X user-context authentication return the stable id of the currently authenticated user while app-only credentials fail the claim path? | [0013](0013-creator-fee-authority-and-x-claims.md) |
+| P15 | Can every supported login return an immutable provider subject that the backend securely maps to exactly one Blast account without email-based auto-linking? | [0080](0080-provider-independent-creator-recipient.md) |
 | P16 | Does the deployed Aftermath ABI support the complete same-transaction account, cap-custody, and session flow? | [0064](0064-aftermath-backed-leverage-coins.md) |
 | P17 | Can the adapter reproduce Aftermath equity, signed fixed-point rounding, and each exact funding settlement in atomic USDC? | [0064](0064-aftermath-backed-leverage-coins.md) |
 | P18 | Does the custom position IMR remain an effective floor through market changes and liquidation? | [0064](0064-aftermath-backed-leverage-coins.md) |

@@ -32,14 +32,14 @@ fun address_ticket_mints_fixed_supply_and_emits_replay_complete_event() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let creator_identity = creator_authority::new_address(CREATOR);
+        let creator_recipient = creator_authority::new_address(CREATOR);
         let ticket = launch_ticket::new(
             LAUNCH_TICKET_TESTS(),
             b"TICKET".to_string(),
             b"Ticket Test".to_string(),
             b"Address launch ticket".to_string(),
             b"https://blast.fun/ticket.png".to_string(),
-            creator_identity,
+            creator_recipient,
             false,
             0,
             f.ctx!(),
@@ -53,7 +53,7 @@ fun address_ticket_mints_fixed_supply_and_emits_replay_complete_event() {
             initial_supply,
             metadata_cap_id,
             creator,
-            x_identity_hash,
+            account_commitment,
             burnable,
             sell_burn_bps,
         ) = created.launch_ticket_created_fields();
@@ -64,7 +64,7 @@ fun address_ticket_mints_fixed_supply_and_emits_replay_complete_event() {
             std::type_name::with_original_ids<LAUNCH_TICKET_TESTS>(),
         );
         assert_eq!(creator.destroy_some(), CREATOR);
-        assert!(x_identity_hash.is_none());
+        assert!(account_commitment.is_none());
         assert!(!burnable);
         assert_eq!(sell_burn_bps, 0);
         assert_eq!(initial_supply, MEME_TOTAL_SUPPLY);
@@ -95,22 +95,22 @@ fun address_ticket_mints_fixed_supply_and_emits_replay_complete_event() {
 }
 
 #[test]
-fun x_ticket_is_composable_and_records_burn_only_selection() {
+fun account_ticket_is_composable_and_records_burn_only_selection() {
     let mut fixture = start();
-    let x_identity_hash =
+    let account_commitment =
         x"11223344556677889900aabbccddeeffffeeddccbbaa00998877665544332211";
     let expected_ticket_id;
     let expected_metadata_cap_id;
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let creator_identity = creator_authority::new_x(x_identity_hash);
+        let creator_recipient = creator_authority::new_account(account_commitment);
         let ticket = launch_ticket::new(
             LAUNCH_TICKET_TESTS(),
-            b"XTICKET".to_string(),
-            b"X Ticket Test".to_string(),
-            b"X launch ticket".to_string(),
+            b"ACCOUNT".to_string(),
+            b"Account Ticket Test".to_string(),
+            b"Account launch ticket".to_string(),
             b"".to_string(),
-            creator_identity,
+            creator_recipient,
             true,
             SELL_BURN_BPS,
             f.ctx!(),
@@ -123,14 +123,14 @@ fun x_ticket_is_composable_and_records_burn_only_selection() {
             initial_supply,
             metadata_cap_id,
             creator,
-            emitted_x_identity_hash,
+            emitted_account_commitment,
             burnable,
             sell_burn_bps,
         ) = created.launch_ticket_created_fields();
 
         assert_eq!(ticket_id, created_ticket_id);
         assert!(creator.is_none());
-        assert_eq!(emitted_x_identity_hash.destroy_some(), x_identity_hash);
+        assert_eq!(emitted_account_commitment.destroy_some(), account_commitment);
         assert!(burnable);
         assert_eq!(sell_burn_bps, SELL_BURN_BPS);
         assert_eq!(initial_supply, MEME_TOTAL_SUPPLY);
@@ -172,14 +172,14 @@ fun ticket_accepts_fifty_percent_sell_burn() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let creator_identity = creator_authority::new_address(CREATOR);
+        let creator_recipient = creator_authority::new_address(CREATOR);
         let ticket = launch_ticket::new(
             LAUNCH_TICKET_TESTS(),
             b"MAXBURN".to_string(),
             b"Maximum Burn".to_string(),
             b"Maximum valid sell burn".to_string(),
             b"".to_string(),
-            creator_identity,
+            creator_recipient,
             false,
             5_000,
             f.ctx!(),
@@ -209,21 +209,21 @@ fun ticket_accepts_fifty_percent_sell_burn() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidCreator,
+    abort_code = blast_fun::errors::EInvalidCreatorRecipient,
     location = blast_fun::creator_authority,
 )]
 fun address_ticket_rejects_zero_creator_before_currency_creation() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let creator_identity = creator_authority::new_address(@0x0);
+        let creator_recipient = creator_authority::new_address(@0x0);
         let ticket = launch_ticket::new(
             LAUNCH_TICKET_TESTS(),
             b"TICKET".to_string(),
             b"Ticket Test".to_string(),
             b"Invalid creator".to_string(),
             b"".to_string(),
-            creator_identity,
+            creator_recipient,
             false,
             0,
             f.ctx!(),
@@ -237,21 +237,21 @@ fun address_ticket_rejects_zero_creator_before_currency_creation() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidXIdentityHash,
+    abort_code = blast_fun::errors::EInvalidAccountCommitment,
     location = blast_fun::creator_authority,
 )]
-fun x_ticket_rejects_invalid_identity_before_currency_creation() {
+fun account_ticket_rejects_invalid_commitment_before_currency_creation() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let creator_identity = creator_authority::new_x(x"1122");
+        let creator_recipient = creator_authority::new_account(x"1122");
         let ticket = launch_ticket::new(
             LAUNCH_TICKET_TESTS(),
-            b"XTICKET".to_string(),
-            b"X Ticket Test".to_string(),
-            b"Invalid X identity".to_string(),
+            b"ACCOUNT".to_string(),
+            b"Account Ticket Test".to_string(),
+            b"Invalid account commitment".to_string(),
             b"".to_string(),
-            creator_identity,
+            creator_recipient,
             true,
             SELL_BURN_BPS,
             f.ctx!(),
@@ -272,14 +272,14 @@ fun ticket_rejects_a_non_otw_type() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let creator_identity = creator_authority::new_address(CREATOR);
+        let creator_recipient = creator_authority::new_address(CREATOR);
         let ticket = launch_ticket::new(
             INVALID_OTW(false),
             b"INVALID".to_string(),
             b"Invalid OTW".to_string(),
             b"Not a one-time witness".to_string(),
             b"".to_string(),
-            creator_identity,
+            creator_recipient,
             false,
             0,
             f.ctx!(),
@@ -300,14 +300,14 @@ fun ticket_rejects_the_first_sell_burn_above_fifty_percent() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let creator_identity = creator_authority::new_address(CREATOR);
+        let creator_recipient = creator_authority::new_address(CREATOR);
         let ticket = launch_ticket::new(
             LAUNCH_TICKET_TESTS(),
             b"TICKET".to_string(),
             b"Ticket Test".to_string(),
             b"Invalid sell burn".to_string(),
             b"".to_string(),
-            creator_identity,
+            creator_recipient,
             false,
             5_001,
             f.ctx!(),

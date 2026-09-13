@@ -39,7 +39,7 @@ use fun signer_sign_in as SignerFixture.sign_in;
 const LAUNCHER: address = @0xA11CE;
 const CREATOR: address = @0xC0FFEE;
 const PROTOCOL_ADMIN: address = @0xAD;
-const X_CLAIMANT: address = @0xC0FFEE;
+const ACCOUNT_CLAIMANT: address = @0xC0FFEE;
 const NOW_MS: u64 = 1_000_000;
 const EXPIRY_MS: u64 = 2_000_000;
 
@@ -132,16 +132,16 @@ fun package_initialization_shares_singletons_with_only_the_authority_fact() {
 }
 
 #[test]
-fun super_admin_grants_global_admin_that_configures_x_signer() {
+fun super_admin_grants_global_admin_that_configures_creator_claim_signer() {
     let mut fixture = start_signer(PROTOCOL_ADMIN);
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_x_claim_signer(
+        f.config.set_creator_claim_signer(
             &f.package_version,
             &admin_witness,
-            x_signer_public_key(),
+            creator_claim_signer_public_key(),
         );
     });
 
@@ -149,45 +149,45 @@ fun super_admin_grants_global_admin_that_configures_x_signer() {
 }
 
 #[test]
-fun x_claim_signer_set_event_is_replay_complete() {
+fun creator_claim_signer_set_event_is_replay_complete() {
     let mut fixture = start_signer(LAUNCHER);
 
     fixture.next_tx!(LAUNCHER, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_x_claim_signer(
+        f.config.set_creator_claim_signer(
             &f.package_version,
             &admin_witness,
-            x_signer_public_key(),
+            creator_claim_signer_public_key(),
         );
 
-        let signer_set = events::collect_one<events::XClaimSignerSet>(0);
+        let signer_set = events::collect_one<events::CreatorClaimSignerSet>(0);
         let (previous_public_key, signer_public_key) =
-            signer_set.x_claim_signer_set_fields();
+            signer_set.creator_claim_signer_set_fields();
         assert!(previous_public_key.is_empty());
-        assert_eq!(signer_public_key, x_signer_public_key());
+        assert_eq!(signer_public_key, creator_claim_signer_public_key());
     });
 
     fixture.end();
 }
 
 #[test]
-fun x_claim_signer_revoked_event_is_replay_complete() {
+fun creator_claim_signer_revoked_event_is_replay_complete() {
     let mut fixture = start_signer(LAUNCHER);
 
     fixture.next_tx!(LAUNCHER, |f| {
         let admin_witness = f.sign_in();
-        f.config.set_x_claim_signer(
+        f.config.set_creator_claim_signer(
             &f.package_version,
             &admin_witness,
-            x_signer_public_key(),
+            creator_claim_signer_public_key(),
         );
 
-        f.config.revoke_x_claim_signer(&f.package_version, &admin_witness);
+        f.config.revoke_creator_claim_signer(&f.package_version, &admin_witness);
 
-        let signer_revoked = events::collect_one<events::XClaimSignerRevoked>(0);
-        let previous_public_key = signer_revoked.x_claim_signer_revoked_fields();
-        assert_eq!(previous_public_key, x_signer_public_key());
+        let signer_revoked = events::collect_one<events::CreatorClaimSignerRevoked>(0);
+        let previous_public_key = signer_revoked.creator_claim_signer_revoked_fields();
+        assert_eq!(previous_public_key, creator_claim_signer_public_key());
     });
 
     fixture.end();
@@ -195,16 +195,16 @@ fun x_claim_signer_revoked_event_is_replay_complete() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidXClaimPublicKey,
+    abort_code = blast_fun::errors::EInvalidCreatorClaimPublicKey,
     location = blast_fun::runtime_config,
 )]
-fun x_claim_signer_rejects_invalid_public_key_length() {
+fun creator_claim_signer_rejects_invalid_public_key_length() {
     let mut fixture = start_signer(LAUNCHER);
 
     fixture.next_tx!(LAUNCHER, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_x_claim_signer(&f.package_version, &admin_witness, x"00");
+        f.config.set_creator_claim_signer(&f.package_version, &admin_witness, x"00");
     });
 
     fixture.end();
@@ -212,16 +212,16 @@ fun x_claim_signer_rejects_invalid_public_key_length() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EXClaimSignerInactive,
+    abort_code = blast_fun::errors::ECreatorClaimSignerInactive,
     location = blast_fun::runtime_config,
 )]
-fun x_claim_signer_cannot_revoke_while_disabled() {
+fun creator_claim_signer_cannot_revoke_while_disabled() {
     let mut fixture = start_signer(LAUNCHER);
 
     fixture.next_tx!(LAUNCHER, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.revoke_x_claim_signer(&f.package_version, &admin_witness);
+        f.config.revoke_creator_claim_signer(&f.package_version, &admin_witness);
     });
 
     fixture.end();
@@ -232,7 +232,7 @@ fun x_claim_signer_cannot_revoke_while_disabled() {
     abort_code = blast_admin::errors::EInvalidAdminCap,
     location = blast_admin::acl,
 )]
-fun revoked_admin_cannot_configure_x_signer() {
+fun revoked_admin_cannot_configure_creator_claim_signer() {
     let mut fixture = start_signer(LAUNCHER);
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -240,10 +240,10 @@ fun revoked_admin_cannot_configure_x_signer() {
         f.authority.revoke_admin(&f.super_admin_cap, admin_cap_id);
         let admin_witness = f.sign_in();
 
-        f.config.set_x_claim_signer(
+        f.config.set_creator_claim_signer(
             &f.package_version,
             &admin_witness,
-            x_signer_public_key(),
+            creator_claim_signer_public_key(),
         );
     });
 
@@ -263,10 +263,10 @@ fun admin_registered_in_another_protocol_registry_is_rejected() {
             new_protocol(f.ctx!());
         let admin_witness = f.sign_in_to(&second_authority);
 
-        second_config.set_x_claim_signer(
+        second_config.set_creator_claim_signer(
             &second_package_version,
             &admin_witness,
-            x_signer_public_key(),
+            creator_claim_signer_public_key(),
         );
 
         destroy(second_super_admin);
@@ -280,16 +280,16 @@ fun admin_registered_in_another_protocol_registry_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EXClaimSignerInactive,
+    abort_code = blast_fun::errors::ECreatorClaimSignerInactive,
     location = blast_fun::runtime_config,
 )]
-fun package_init_starts_x_signer_disabled() {
+fun package_init_starts_creator_claim_signer_disabled() {
     let mut fixture = start_runtime_init();
 
-    fixture.next_tx!(X_CLAIMANT, |f| {
+    fixture.next_tx!(ACCOUNT_CLAIMANT, |f| {
         f.clock.set_for_testing(NOW_MS);
 
-        let cap = f.claim(new_x_authority(), option::some(x_claim_attestation()));
+        let cap = f.claim(new_account_authority(), option::some(creator_claim_attestation()));
 
         destroy(cap);
     });
@@ -308,14 +308,14 @@ fun address_creator_claim_returns_composable_cap_without_attestation() {
         transfer::public_transfer(cap, PROTOCOL_ADMIN);
 
         let claimed = events::collect_one<events::CreatorCapClaimed>(0);
-        let (meme, x_identity_hash, x_claim_expiry_ms) =
+        let (meme, account_commitment, claim_expiry_ms) =
             claimed.creator_cap_claimed_fields();
         assert_eq!(
             meme,
             std::type_name::with_original_ids<TEST_MEME>(),
         );
-        assert!(x_identity_hash.is_none());
-        assert!(x_claim_expiry_ms.is_none());
+        assert!(account_commitment.is_none());
+        assert!(claim_expiry_ms.is_none());
     });
 
     fixture.next_tx_expecting_events!(PROTOCOL_ADMIN, 1, |f| {
@@ -332,12 +332,12 @@ fun address_creator_claim_returns_composable_cap_without_attestation() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidCreator,
+    abort_code = blast_fun::errors::EInvalidCreatorRecipient,
     location = blast_fun::creator_authority,
 )]
-fun address_identity_rejects_zero_creator_address() {
-    let creator_identity = creator_authority::new_address(@0x0);
-    destroy(creator_identity);
+fun address_recipient_rejects_zero_creator_address() {
+    let creator_recipient = creator_authority::new_address(@0x0);
+    destroy(creator_recipient);
 }
 
 #[test]
@@ -362,17 +362,17 @@ fun address_creator_claim_rejects_different_sender() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EUnexpectedXClaimAttestation,
+    abort_code = blast_fun::errors::EUnexpectedCreatorClaimAttestation,
     location = blast_fun::creator_authority,
 )]
-fun address_creator_claim_rejects_x_attestation() {
+fun address_creator_claim_rejects_account_attestation() {
     let mut fixture = start_claim();
 
     fixture.next_tx!(CREATOR, |f| {
         let creator_state = creator_authority::new_address(CREATOR)
             .into_authority<TEST_MEME>();
 
-        let cap = f.claim(creator_state, option::some(x_claim_attestation()));
+        let cap = f.claim(creator_state, option::some(creator_claim_attestation()));
 
         destroy(cap);
     });
@@ -382,23 +382,23 @@ fun address_creator_claim_rejects_x_attestation() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidXIdentityHash,
+    abort_code = blast_fun::errors::EInvalidAccountCommitment,
     location = blast_fun::creator_authority,
 )]
-fun x_identity_rejects_non_32_byte_identity_commitment() {
-    let creator_identity = creator_authority::new_x(x"1122");
-    destroy(creator_identity);
+fun account_recipient_rejects_non_32_byte_commitment() {
+    let creator_recipient = creator_authority::new_account(x"1122");
+    destroy(creator_recipient);
 }
 
 #[test]
-fun valid_x_attestation_consumes_authority_and_returns_creator_cap() {
-    let mut fixture = start_x_claim();
+fun valid_account_attestation_consumes_authority_and_returns_creator_cap() {
+    let mut fixture = start_creator_claim();
 
-    fixture.next_tx!(X_CLAIMANT, |f| {
+    fixture.next_tx!(ACCOUNT_CLAIMANT, |f| {
         let message =
-            creator_authority::x_claim_attestation_bytes_for_testing<TEST_MEME>(
-                x_identity_hash(),
-                X_CLAIMANT,
+            creator_authority::creator_claim_message_bytes_for_testing<TEST_MEME>(
+                account_commitment(),
+                ACCOUNT_CLAIMANT,
                 EXPIRY_MS,
             );
         assert_eq!(
@@ -408,7 +408,7 @@ fun valid_x_attestation_consumes_authority_and_returns_creator_cap() {
 
         f.clock.set_for_testing(NOW_MS);
 
-        let cap = f.claim(new_x_authority(), option::some(x_claim_attestation()));
+        let cap = f.claim(new_account_authority(), option::some(creator_claim_attestation()));
 
         destroy(cap);
     });
@@ -418,16 +418,16 @@ fun valid_x_attestation_consumes_authority_and_returns_creator_cap() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidXClaimSignature,
+    abort_code = blast_fun::errors::EInvalidCreatorClaimSignature,
     location = blast_fun::runtime_config,
 )]
-fun x_claim_rejects_signature_bound_to_another_sender() {
-    let mut fixture = start_x_claim();
+fun creator_claim_rejects_signature_bound_to_another_sender() {
+    let mut fixture = start_creator_claim();
 
     fixture.next_tx!(@0xBAD, |f| {
         f.clock.set_for_testing(NOW_MS);
 
-        let cap = f.claim(new_x_authority(), option::some(x_claim_attestation()));
+        let cap = f.claim(new_account_authority(), option::some(creator_claim_attestation()));
 
         destroy(cap);
     });
@@ -437,14 +437,14 @@ fun x_claim_rejects_signature_bound_to_another_sender() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EMissingXClaimAttestation,
+    abort_code = blast_fun::errors::EMissingCreatorClaimAttestation,
     location = blast_fun::creator_authority,
 )]
-fun x_creator_claim_requires_attestation() {
-    let mut fixture = start_x_claim();
+fun account_creator_claim_requires_attestation() {
+    let mut fixture = start_creator_claim();
 
-    fixture.next_tx!(X_CLAIMANT, |f| {
-        let cap = f.claim(new_x_authority(), option::none());
+    fixture.next_tx!(ACCOUNT_CLAIMANT, |f| {
+        let cap = f.claim(new_account_authority(), option::none());
 
         destroy(cap);
     });
@@ -454,14 +454,14 @@ fun x_creator_claim_requires_attestation() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidXClaimAttestation,
+    abort_code = blast_fun::errors::EInvalidCreatorClaimAttestation,
     location = blast_fun::creator_authority,
 )]
-fun x_creator_claim_rejects_malformed_attestation() {
-    let mut fixture = start_x_claim();
+fun account_creator_claim_rejects_malformed_attestation() {
+    let mut fixture = start_creator_claim();
 
-    fixture.next_tx!(X_CLAIMANT, |f| {
-        let cap = f.claim(new_x_authority(), option::some(x"00"));
+    fixture.next_tx!(ACCOUNT_CLAIMANT, |f| {
+        let cap = f.claim(new_account_authority(), option::some(x"00"));
 
         destroy(cap);
     });
@@ -471,14 +471,14 @@ fun x_creator_claim_rejects_malformed_attestation() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EXClaimSignerInactive,
+    abort_code = blast_fun::errors::ECreatorClaimSignerInactive,
     location = blast_fun::runtime_config,
 )]
-fun disabled_x_signer_rejects_before_attestation_parsing() {
+fun disabled_creator_claim_signer_rejects_before_attestation_parsing() {
     let mut fixture = start_claim();
 
-    fixture.next_tx!(X_CLAIMANT, |f| {
-        let cap = f.claim(new_x_authority(), option::some(x"00"));
+    fixture.next_tx!(ACCOUNT_CLAIMANT, |f| {
+        let cap = f.claim(new_account_authority(), option::some(x"00"));
 
         destroy(cap);
     });
@@ -488,16 +488,16 @@ fun disabled_x_signer_rejects_before_attestation_parsing() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EXClaimExpired,
+    abort_code = blast_fun::errors::ECreatorClaimExpired,
     location = blast_fun::creator_authority,
 )]
-fun x_claim_rejects_expired_attestation() {
-    let mut fixture = start_x_claim();
+fun creator_claim_rejects_expired_attestation() {
+    let mut fixture = start_creator_claim();
 
-    fixture.next_tx!(X_CLAIMANT, |f| {
+    fixture.next_tx!(ACCOUNT_CLAIMANT, |f| {
         f.clock.set_for_testing(EXPIRY_MS + 1);
 
-        let cap = f.claim(new_x_authority(), option::some(x_claim_attestation()));
+        let cap = f.claim(new_account_authority(), option::some(creator_claim_attestation()));
 
         destroy(cap);
     });
@@ -507,18 +507,18 @@ fun x_claim_rejects_expired_attestation() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidXClaimSignature,
+    abort_code = blast_fun::errors::EInvalidCreatorClaimSignature,
     location = blast_fun::runtime_config,
 )]
-fun x_claim_rejects_signature_for_another_meme_type() {
-    let mut fixture = start_x_claim();
+fun creator_claim_rejects_signature_for_another_meme_type() {
+    let mut fixture = start_creator_claim();
 
-    fixture.next_tx!(X_CLAIMANT, |f| {
+    fixture.next_tx!(ACCOUNT_CLAIMANT, |f| {
         f.clock.set_for_testing(NOW_MS);
-        let creator_state = creator_authority::new_x(x_identity_hash())
+        let creator_state = creator_authority::new_account(account_commitment())
             .into_authority<OTHER_MEME>();
 
-        let cap = f.claim(creator_state, option::some(x_claim_attestation()));
+        let cap = f.claim(creator_state, option::some(creator_claim_attestation()));
 
         destroy(cap);
     });
@@ -528,19 +528,19 @@ fun x_claim_rejects_signature_for_another_meme_type() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidXClaimSignature,
+    abort_code = blast_fun::errors::EInvalidCreatorClaimSignature,
     location = blast_fun::runtime_config,
 )]
-fun x_claim_rejects_signature_for_another_x_identity() {
-    let mut fixture = start_x_claim();
+fun creator_claim_rejects_signature_for_another_account() {
+    let mut fixture = start_creator_claim();
 
-    fixture.next_tx!(X_CLAIMANT, |f| {
+    fixture.next_tx!(ACCOUNT_CLAIMANT, |f| {
         f.clock.set_for_testing(NOW_MS);
-        let creator_state = creator_authority::new_x(
+        let creator_state = creator_authority::new_account(
             x"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
         ).into_authority<TEST_MEME>();
 
-        let cap = f.claim(creator_state, option::some(x_claim_attestation()));
+        let cap = f.claim(creator_state, option::some(creator_claim_attestation()));
 
         destroy(cap);
     });
@@ -550,25 +550,25 @@ fun x_claim_rejects_signature_for_another_x_identity() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidXClaimSignature,
+    abort_code = blast_fun::errors::EInvalidCreatorClaimSignature,
     location = blast_fun::runtime_config,
 )]
-fun x_claim_rejects_attestation_from_rotated_signer_key() {
+fun creator_claim_rejects_attestation_from_rotated_signer_key() {
     let mut fixture = start_signer_claim();
 
     fixture.next_tx!(LAUNCHER, |f| {
         let admin_witness = f.sign_in();
-        f.config.set_x_claim_signer(
+        f.config.set_creator_claim_signer(
             &f.package_version,
             &admin_witness,
             x"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
         );
     });
 
-    fixture.next_tx!(X_CLAIMANT, |f| {
+    fixture.next_tx!(ACCOUNT_CLAIMANT, |f| {
         f.clock.set_for_testing(NOW_MS);
 
-        let cap = f.claim_x(new_x_authority());
+        let cap = f.claim_account(new_account_authority());
 
         destroy(cap);
     });
@@ -578,26 +578,26 @@ fun x_claim_rejects_attestation_from_rotated_signer_key() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EXClaimSignerInactive,
+    abort_code = blast_fun::errors::ECreatorClaimSignerInactive,
     location = blast_fun::runtime_config,
 )]
-fun x_claim_rejects_attestation_after_signer_revocation() {
+fun creator_claim_rejects_attestation_after_signer_revocation() {
     let mut fixture = start_signer_claim();
 
     fixture.next_tx!(LAUNCHER, |f| {
         let admin_witness = f.sign_in();
-        f.config.set_x_claim_signer(
+        f.config.set_creator_claim_signer(
             &f.package_version,
             &admin_witness,
-            x_signer_public_key(),
+            creator_claim_signer_public_key(),
         );
-        f.config.revoke_x_claim_signer(&f.package_version, &admin_witness);
+        f.config.revoke_creator_claim_signer(&f.package_version, &admin_witness);
     });
 
-    fixture.next_tx!(X_CLAIMANT, |f| {
+    fixture.next_tx!(ACCOUNT_CLAIMANT, |f| {
         f.clock.set_for_testing(NOW_MS);
 
-        let cap = f.claim_x(new_x_authority());
+        let cap = f.claim_account(new_account_authority());
 
         destroy(cap);
     });
@@ -606,28 +606,28 @@ fun x_claim_rejects_attestation_after_signer_revocation() {
 }
 
 #[test]
-fun signer_rotation_reenables_x_claims_after_revocation() {
+fun signer_rotation_reenables_creator_claims_after_revocation() {
     let mut fixture = start_signer_claim();
 
     fixture.next_tx!(LAUNCHER, |f| {
         let admin_witness = f.sign_in();
-        f.config.set_x_claim_signer(
+        f.config.set_creator_claim_signer(
             &f.package_version,
             &admin_witness,
             x"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
         );
-        f.config.revoke_x_claim_signer(&f.package_version, &admin_witness);
-        f.config.set_x_claim_signer(
+        f.config.revoke_creator_claim_signer(&f.package_version, &admin_witness);
+        f.config.set_creator_claim_signer(
             &f.package_version,
             &admin_witness,
-            x_signer_public_key(),
+            creator_claim_signer_public_key(),
         );
     });
 
-    fixture.next_tx!(X_CLAIMANT, |f| {
+    fixture.next_tx!(ACCOUNT_CLAIMANT, |f| {
         f.clock.set_for_testing(NOW_MS);
 
-        let cap = f.claim_x(new_x_authority());
+        let cap = f.claim_account(new_account_authority());
 
         destroy(cap);
     });
@@ -637,7 +637,7 @@ fun signer_rotation_reenables_x_claims_after_revocation() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EXClaimSignerUnchanged,
+    abort_code = blast_fun::errors::ECreatorClaimSignerUnchanged,
     location = blast_fun::runtime_config,
 )]
 fun signer_rotation_rejects_current_public_key() {
@@ -646,15 +646,15 @@ fun signer_rotation_rejects_current_public_key() {
     fixture.next_tx!(LAUNCHER, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_x_claim_signer(
+        f.config.set_creator_claim_signer(
             &f.package_version,
             &admin_witness,
-            x_signer_public_key(),
+            creator_claim_signer_public_key(),
         );
-        f.config.set_x_claim_signer(
+        f.config.set_creator_claim_signer(
             &f.package_version,
             &admin_witness,
-            x_signer_public_key(),
+            creator_claim_signer_public_key(),
         );
     });
 
@@ -755,11 +755,11 @@ fun start_claim(): ClaimFixture {
     ClaimFixture { scenario, config, clock }
 }
 
-/// A runtime configuration whose X signer is live for attested-claim behavior.
-fun start_x_claim(): ClaimFixture {
+/// A runtime configuration whose creator-claim signer is live for attested claims.
+fun start_creator_claim(): ClaimFixture {
     let mut scenario = test_scenario::begin(LAUNCHER);
     let config = runtime_config::new_for_testing(
-        x_signer_public_key(),
+        creator_claim_signer_public_key(),
         scenario.ctx(),
     );
     let clock = clock::create_for_testing(scenario.ctx());
@@ -852,13 +852,13 @@ fun signer_claim_sign_in(self: &SignerClaimFixture): AdminWitness<LAUNCHPAD_DOMA
     self.authority.sign_in(&self.admin_cap)
 }
 
-fun claim_x(
+fun claim_account(
     self: &mut SignerClaimFixture,
     creator_state: creator_authority::CreatorAuthority<TEST_MEME>,
 ): creator_authority::CreatorCap<TEST_MEME> {
     creator_state.claim_creator_cap(
         &self.config,
-        option::some(x_claim_attestation()),
+        option::some(creator_claim_attestation()),
         &self.clock,
         self.scenario.ctx(),
     )
@@ -867,11 +867,11 @@ fun claim_x(
 fun claim<Meme>(
     self: &mut ClaimFixture,
     creator_state: creator_authority::CreatorAuthority<Meme>,
-    x_claim_attestation: Option<vector<u8>>,
+    creator_claim_attestation: Option<vector<u8>>,
 ): creator_authority::CreatorCap<Meme> {
     creator_state.claim_creator_cap(
         &self.config,
-        x_claim_attestation,
+        creator_claim_attestation,
         &self.clock,
         self.scenario.ctx(),
     )
@@ -945,22 +945,25 @@ fun new_authority(
     domain_fixture::new_authority(ctx)
 }
 
-fun new_x_authority(): creator_authority::CreatorAuthority<TEST_MEME> {
-    creator_authority::new_x(x_identity_hash()).into_authority<TEST_MEME>()
+fun new_account_authority(): creator_authority::CreatorAuthority<TEST_MEME> {
+    creator_authority::new_account(account_commitment()).into_authority<TEST_MEME>()
 }
 
-fun x_claim_attestation(): vector<u8> {
-    creator_authority::new_x_claim_attestation_for_testing(EXPIRY_MS, valid_x_signature())
+fun creator_claim_attestation(): vector<u8> {
+    creator_authority::new_creator_claim_attestation_for_testing(
+        EXPIRY_MS,
+        valid_creator_claim_signature(),
+    )
 }
 
-fun x_identity_hash(): vector<u8> {
+fun account_commitment(): vector<u8> {
     x"11223344556677889900aabbccddeeffffeeddccbbaa00998877665544332211"
 }
 
-fun x_signer_public_key(): vector<u8> {
+fun creator_claim_signer_public_key(): vector<u8> {
     x"0ca5b32f943a1d9f119adc9b45615a06bbf0ab9f46ccbcc62d167d7d5e55ce47"
 }
 
-fun valid_x_signature(): vector<u8> {
+fun valid_creator_claim_signature(): vector<u8> {
     x"9ad5e8a47856b8080b3105c805c3555bcfbdf28889ffe3fc54bc54700ff308e495e6dd1b014c9e2316bc98f0ec55c08293065ccee444aa96b1f5e107004a9a02"
 }

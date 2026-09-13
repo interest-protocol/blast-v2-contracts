@@ -208,6 +208,40 @@ fun launch_share_publishes_the_key_only_launch_for_later_transactions() {
 }
 
 #[test]
+fun launcher_can_designate_another_address_as_creator() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+
+        launch.share();
+    });
+
+    fixture.next_tx!(CREATOR, |f| {
+        let mut launch = f.take_launch();
+        let (creator_cap, metadata_cap) = launch.claim_creator_cap(
+            &f.package_version,
+            &f.runtime_config,
+            option::none(),
+            &f.clock,
+            f.ctx!(),
+        );
+
+        destroy(creator_cap);
+        destroy(metadata_cap);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
 fun burn_only_ticket_keeps_supply_mode_authoritative_in_coin_registry() {
     let mut fixture = start();
 

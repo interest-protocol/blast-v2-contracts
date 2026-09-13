@@ -154,7 +154,7 @@ public fun claim_creator_cap<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
     config: &RuntimeConfig,
-    x_attestation: Option<vector<u8>>,
+    account_attestation: Option<vector<u8>>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (CreatorCap<Meme>, MetadataCap<Meme>) {
@@ -168,7 +168,7 @@ public fun claim_creator_cap<Meme, Quote>(
     let metadata_cap = self.metadata_cap.extract();
     let creator_cap = authority.claim_creator_cap(
         config,
-        x_attestation,
+        account_attestation,
         clock,
         ctx,
     );

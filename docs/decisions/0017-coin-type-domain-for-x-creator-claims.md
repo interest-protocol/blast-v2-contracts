@@ -3,7 +3,10 @@
 - Status: accepted
 - Date: 2026-08-23
 - Amends: [0013](0013-creator-fee-authority-and-x-claims.md), [0014](0014-typed-creator-cap-and-diagnostic-modules.md), [0015](0015-protocol-authority-and-x-signer-state.md), [0016](0016-unified-creator-cap-claim-and-suins-periphery.md)
-- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0028](0028-hot-cold-runtime-configuration.md)
+- Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0028](0028-hot-cold-runtime-configuration.md), [0080](0080-provider-independent-creator-recipient.md)
+
+> ADR 0080 preserves this coin-type claim domain while replacing the X
+> commitment with an opaque Blast account commitment.
 
 ## Sources
 

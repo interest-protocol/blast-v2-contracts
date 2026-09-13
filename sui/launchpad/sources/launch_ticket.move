@@ -4,7 +4,7 @@ module blast_fun::launch_ticket;
 use blast_fun::{
     bps::{Self, Bps},
     constants,
-    creator_authority::{CreatorAuthority, CreatorIdentity},
+    creator_authority::{CreatorAuthority, CreatorRecipient},
     events,
 };
 use std::string::String;
@@ -26,14 +26,14 @@ public struct LaunchTicket<phantom Meme> has key, store {
 
 // === Public Functions ===
 
-/// Creates an OTW currency ticket for one validated creator identity.
+/// Creates an OTW currency ticket for one validated creator recipient.
 public fun new<Meme: drop>(
     otw: Meme,
     symbol: String,
     name: String,
     description: String,
     icon_url: String,
-    creator_identity: CreatorIdentity,
+    creator_recipient: CreatorRecipient,
     burnable: bool,
     sell_burn_bps: u64,
     ctx: &mut TxContext,
@@ -45,9 +45,9 @@ public fun new<Meme: drop>(
     );
     let sell_burn_bps = bps::new(sell_burn_bps);
 
-    let creator = creator_identity.creator();
-    let x_identity_hash = creator_identity.x_identity_hash();
-    let creator_authority = creator_identity.into_authority<Meme>();
+    let creator_address = creator_recipient.recipient_address();
+    let account_commitment = creator_recipient.account_commitment();
+    let creator_authority = creator_recipient.into_authority<Meme>();
     let (mut initializer, mut treasury_cap) = coin_registry::new_currency_with_otw(
         otw,
         constants::meme_decimals!(),
@@ -79,8 +79,8 @@ public fun new<Meme: drop>(
         ticket.id.to_inner(),
         ticket.meme.value(),
         object::id(&ticket.metadata_cap),
-        creator,
-        x_identity_hash,
+        creator_address,
+        account_commitment,
         burnable,
         sell_burn_bps.value(),
     );

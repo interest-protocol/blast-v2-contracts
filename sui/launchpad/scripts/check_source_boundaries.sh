@@ -823,7 +823,7 @@ if [[ ! -f sources/fees.move ]] \
     != 'accrue:package:0 accrue_from_runtime:public:0 accrue_protocol_fees:package:0 claim_creator_fees:public:0 claim_protocol_fees:public:0 new:public:0 totals:public:0 ' ]] \
   || [[ "$(move_production_type FeeLedger <<<"$fees_facts")" \
     != 'struct FeeLedger<phantom Meme, phantom Quote> has store { protocol_meme: Balance<Meme>, creator_meme: Balance<Meme>, protocol_quote: Balance<Quote>, creator_quote: Balance<Quote>, }' ]] \
-  || rg -q '\b(UID|key|transfer::|XClaim|ed25519|recipient|launch_id)\b' <<<"$fees_source" \
+  || rg -q '\b(UID|key|transfer::|CreatorClaim|ed25519|recipient|launch_id)\b' <<<"$fees_source" \
   || rg -q 'fee_balance_overflow|std::u64::max_value|max_balance' <<<"$fees_source" \
   || rg -q 'set_creator_fee_split|sui::event|events::' <<<"$fees_source"; then
   echo 'fees.move must remain an embedded supply-conserved four-balance ledger exposing only its five approved cross-package functions and two package seams.' >&2
@@ -960,13 +960,13 @@ runtime_config_source="$(move_normalized_source <<<"$runtime_config_facts")"
 
 if [[ ! -f sources/runtime_config.move ]] \
   || [[ "$(move_production_functions <<<"$runtime_config_facts")" \
-    != 'assert_x_claim_active:package:0 init:private:0 new:private:0 protocol_fee_share:package:0 protocol_fee_share_bps:public:0 revoke_x_claim_signer:public:0 set_protocol_fee_share:public:0 set_x_claim_signer:public:0 validate_x_claim_public_key:private:0 verify_x_claim_signature:package:0 ' ]] \
+    != 'assert_creator_claim_active:package:0 init:private:0 new:private:0 protocol_fee_share:package:0 protocol_fee_share_bps:public:0 revoke_creator_claim_signer:public:0 set_creator_claim_signer:public:0 set_protocol_fee_share:public:0 validate_creator_claim_public_key:private:0 verify_creator_claim_signature:package:0 ' ]] \
   || [[ "$(move_production_type RuntimeConfig <<<"$runtime_config_facts")" \
-    != 'struct RuntimeConfig has key { id: UID, x_claim_signer_public_key: vector<u8>, protocol_fee_share_bps: Bps, }' ]] \
+    != 'struct RuntimeConfig has key { id: UID, creator_claim_signer_public_key: vector<u8>, protocol_fee_share_bps: Bps, }' ]] \
   || rg -q '\b(AdminCap|ProtocolAuthority|LaunchConfig|VecMap|VecSet|TypeName)\b' \
     <<<"$runtime_config_source" \
   || rg -q '\b(sequence|schema_version|action_tag|nonce)\b' <<<"$runtime_config_source"; then
-  echo 'runtime_config.move must own only version-gated X signer and protocol fee share state.' >&2
+  echo 'runtime_config.move must own only the version-gated creator-claim signer and protocol fee share.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1000,7 +1000,7 @@ check_runtime_function init \
 
 check_runtime_function new \
   'fun new(ctx: &mut TxContext): RuntimeConfig' \
-  'RuntimeConfig { id: object::new(ctx), x_claim_signer_public_key: vector[], protocol_fee_share_bps: bps::new(0), }'
+  'RuntimeConfig { id: object::new(ctx), creator_claim_signer_public_key: vector[], protocol_fee_share_bps: bps::new(0), }'
 
 check_runtime_function protocol_fee_share_bps \
   'fun protocol_fee_share_bps(self: &RuntimeConfig): u64' \
@@ -1010,25 +1010,25 @@ check_runtime_function protocol_fee_share \
   'fun protocol_fee_share(self: &RuntimeConfig): Bps' \
   'self.protocol_fee_share_bps'
 
-check_runtime_function assert_x_claim_active \
-  'fun assert_x_claim_active(self: &RuntimeConfig)' \
-  'assert!( !self.x_claim_signer_public_key.is_empty(), blast_fun::errors::x_claim_signer_inactive!(), );'
+check_runtime_function assert_creator_claim_active \
+  'fun assert_creator_claim_active(self: &RuntimeConfig)' \
+  'assert!( !self.creator_claim_signer_public_key.is_empty(), blast_fun::errors::creator_claim_signer_inactive!(), );'
 
-check_runtime_function validate_x_claim_public_key \
-  'fun validate_x_claim_public_key(signer_public_key: &vector<u8>)' \
-  'assert!( signer_public_key.length() == constants::ed25519_public_key_length!(), blast_fun::errors::invalid_x_claim_public_key!(), );'
+check_runtime_function validate_creator_claim_public_key \
+  'fun validate_creator_claim_public_key(signer_public_key: &vector<u8>)' \
+  'assert!( signer_public_key.length() == constants::ed25519_public_key_length!(), blast_fun::errors::invalid_creator_claim_public_key!(), );'
 
-check_runtime_function verify_x_claim_signature \
-  'fun verify_x_claim_signature( self: &RuntimeConfig, message: &vector<u8>, signature: &vector<u8>, )' \
-  'assert!( sui::ed25519::ed25519_verify( signature, &self.x_claim_signer_public_key, message, ), blast_fun::errors::invalid_x_claim_signature!(), );'
+check_runtime_function verify_creator_claim_signature \
+  'fun verify_creator_claim_signature( self: &RuntimeConfig, message: &vector<u8>, signature: &vector<u8>, )' \
+  'assert!( sui::ed25519::ed25519_verify( signature, &self.creator_claim_signer_public_key, message, ), blast_fun::errors::invalid_creator_claim_signature!(), );'
 
-check_runtime_function set_x_claim_signer \
-  'fun set_x_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<LAUNCHPAD_DOMAIN>, signer_public_key: vector<u8>, )' \
-  'package_version.assert_current(); validate_x_claim_public_key(&signer_public_key); assert!( self.x_claim_signer_public_key != signer_public_key, blast_fun::errors::x_claim_signer_unchanged!(), ); let previous_public_key = self.x_claim_signer_public_key; self.x_claim_signer_public_key = signer_public_key; events::x_claim_signer_set( previous_public_key, self.x_claim_signer_public_key, );'
+check_runtime_function set_creator_claim_signer \
+  'fun set_creator_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<LAUNCHPAD_DOMAIN>, signer_public_key: vector<u8>, )' \
+  'package_version.assert_current(); validate_creator_claim_public_key(&signer_public_key); assert!( self.creator_claim_signer_public_key != signer_public_key, blast_fun::errors::creator_claim_signer_unchanged!(), ); let previous_public_key = self.creator_claim_signer_public_key; self.creator_claim_signer_public_key = signer_public_key; events::creator_claim_signer_set( previous_public_key, self.creator_claim_signer_public_key, );'
 
-check_runtime_function revoke_x_claim_signer \
-  'fun revoke_x_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<LAUNCHPAD_DOMAIN>, )' \
-  'package_version.assert_current(); self.assert_x_claim_active(); let previous_public_key = self.x_claim_signer_public_key; self.x_claim_signer_public_key = vector[]; events::x_claim_signer_revoked(previous_public_key);'
+check_runtime_function revoke_creator_claim_signer \
+  'fun revoke_creator_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<LAUNCHPAD_DOMAIN>, )' \
+  'package_version.assert_current(); self.assert_creator_claim_active(); let previous_public_key = self.creator_claim_signer_public_key; self.creator_claim_signer_public_key = vector[]; events::creator_claim_signer_revoked(previous_public_key);'
 
 check_runtime_function set_protocol_fee_share \
   'fun set_protocol_fee_share( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<LAUNCHPAD_DOMAIN>, protocol_fee_share_bps: u64, )' \
@@ -1038,19 +1038,19 @@ check_runtime_function set_protocol_fee_share \
 # each one must check the live package version as its first statement rather than
 # relying on any aggregate count.
 runtime_config_mutations="$(awk -F'\t' '
-  $1 == "FN" && $6 == 0 && $10 ~ /self\.(x_claim_signer_public_key|protocol_fee_share_bps) = / {
+  $1 == "FN" && $6 == 0 && $10 ~ /self\.(creator_claim_signer_public_key|protocol_fee_share_bps) = / {
     print $2
   }
 ' <<<"$runtime_config_facts" | sort | tr '\n' ' ')"
 
 if [[ "$runtime_config_mutations" \
-  != 'revoke_x_claim_signer set_protocol_fee_share set_x_claim_signer ' ]]; then
+  != 'revoke_creator_claim_signer set_creator_claim_signer set_protocol_fee_share ' ]]; then
   runtime_config_violations+="  runtime state is mutated by '${runtime_config_mutations}' instead of the three approved setters"$'\n'
 fi
 
 runtime_config_ungated="$(awk -F'\t' '
   $1 == "FN" && $6 == 0 \
-    && ($2 == "set_x_claim_signer" || $2 == "revoke_x_claim_signer" \
+    && ($2 == "set_creator_claim_signer" || $2 == "revoke_creator_claim_signer" \
       || $2 == "set_protocol_fee_share") {
     if ($9 !~ /[(,] package_version: &PackageVersion,/) {
       print "  " $2 " must take the shared PackageVersion under that exact name"
@@ -1079,7 +1079,7 @@ events_facts="$(move_facts sources/lib/events.move)"
 runtime_config_mutation_event_payloads="$(awk -F'\t' '
   $1 == "TYPE" && $5 == 0 \
     && ($2 == "ProtocolFeeShareChanged" \
-      || $2 == "XClaimSignerSet" || $2 == "XClaimSignerRevoked") { print $8 }
+      || $2 == "CreatorClaimSignerSet" || $2 == "CreatorClaimSignerRevoked") { print $8 }
 ' <<<"$events_facts")"
 
 if [[ "$(wc -l <<<"$runtime_config_mutation_event_payloads")" != 3 ]] \
@@ -1091,8 +1091,8 @@ if [[ "$(wc -l <<<"$runtime_config_mutation_event_payloads")" != 3 ]] \
   failures=$((failures + 1))
 fi
 
-if [[ -f sources/x_claim_config.move || -f sources/trade_fee_config.move ]] \
-  || rg -n '\b(XClaimConfig|TradeFeeConfig)\b' sources tests \
+if [[ -f sources/creator_claim_config.move || -f sources/trade_fee_config.move ]] \
+  || rg -n '\b(CreatorClaimConfig|TradeFeeConfig)\b' sources tests \
   || [[ "$(rg -o 'transfer::share_object' sources --glob '*.move' --glob '!launch.move' | wc -l)" != 4 ]]; then
   echo 'Core must keep exactly four locally shared protocol singletons; the domain authority is shared by blast_admin.' >&2
   failures=$((failures + 1))
@@ -1200,7 +1200,7 @@ if [[ ! -f sources/launch_ticket.move ]] \
     'public struct LaunchTicket<phantom Meme> has key, store \{\s*id: UID,\s*meme: Balance<Meme>,\s*metadata_cap: MetadataCap<Meme>,\s*creator_authority: CreatorAuthority<Meme>,\s*sell_burn_bps: Bps,\s*\}' \
     sources/launch_ticket.move \
   || [[ "$(rg -c '^public fun new<Meme: drop>\(' sources/launch_ticket.move)" != 1 ]] \
-  || [[ "$(rg -c 'creator_identity: CreatorIdentity' sources/launch_ticket.move)" != 1 ]] \
+  || [[ "$(rg -c 'creator_recipient: CreatorRecipient' sources/launch_ticket.move)" != 1 ]] \
   || rg -n '^public fun new_(address|x)<Meme: drop>\(' sources/launch_ticket.move \
   || ! rg -U -q \
     'public\(package\) fun destroy<Meme>\(\s*self: LaunchTicket<Meme>,\s*\): \(\s*Balance<Meme>,\s*MetadataCap<Meme>,\s*CreatorAuthority<Meme>,\s*Bps,\s*\)' \
@@ -1285,7 +1285,7 @@ if [[ ! -f sources/launch.move ]] \
     'public fun share<Meme, Quote>\(self: Launch<Meme, Quote>\)' \
     sources/launch.move \
   || ! rg -U -q \
-    'public fun claim_creator_cap<Meme, Quote>\(\s*self: &mut Launch<Meme, Quote>,\s*package_version: &PackageVersion,\s*config: &RuntimeConfig,\s*x_attestation: Option<vector<u8>>,\s*clock: &Clock,\s*ctx: &mut TxContext,\s*\): \(CreatorCap<Meme>, MetadataCap<Meme>\)' \
+    'public fun claim_creator_cap<Meme, Quote>\(\s*self: &mut Launch<Meme, Quote>,\s*package_version: &PackageVersion,\s*config: &RuntimeConfig,\s*account_attestation: Option<vector<u8>>,\s*clock: &Clock,\s*ctx: &mut TxContext,\s*\): \(CreatorCap<Meme>, MetadataCap<Meme>\)' \
     sources/launch.move \
   || ! rg -U -q \
     'public fun migrate<Meme, Quote, MigrationWitness: drop>\(\s*self: &mut Launch<Meme, Quote>,\s*package_version: &PackageVersion,\s*currency: &mut Currency<Meme>,\s*ctx: &mut TxContext,\s*\): MigrationPayload<Meme, Quote, MigrationWitness>' \
@@ -1381,7 +1381,7 @@ receiver_syntax_violations="$(
       | move_normalized_source \
       | sed 's/ *:: */::/g; s/ *(/(/g' \
       | rg -o \
-        '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_x_claim_signer|revoke_x_claim_signer|set_protocol_fee_share|assert_x_claim_active|verify_x_claim_signature|protocol_fee_share|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_trade_fees|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|launch::(share|migrate|redeem_migration)|creator_authority::(into_authority|creator|x_identity_hash|claim_creator_cap)|launch_ticket::destroy|fees::(accrue|accrue_from_runtime|accrue_protocol_fees|totals|claim_creator_fees|claim_protocol_fees)|package::test_upgrade|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
+        '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_creator_claim_signer|revoke_creator_claim_signer|set_protocol_fee_share|assert_creator_claim_active|verify_creator_claim_signature|protocol_fee_share|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_trade_fees|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|launch::(share|migrate|redeem_migration)|creator_authority::(into_authority|recipient_address|account_commitment|claim_creator_cap)|launch_ticket::destroy|fees::(accrue|accrue_from_runtime|accrue_protocol_fees|totals|claim_creator_fees|claim_protocol_fees)|package::test_upgrade|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
       || true; } | sed "s|^|  ${move_file}: |"
   done
 )"
@@ -1404,7 +1404,7 @@ if rg -n '\bsui::tx_context::TxContext\b' sources tests; then
 fi
 
 if rg -n \
-  'RuntimeConfig|ed25519|x_claim_signer|verify_x_claim|CreatorCap|issue_creator_cap' \
+  'RuntimeConfig|ed25519|creator_claim_signer|verify_creator_claim|CreatorCap|issue_creator_cap' \
   sources/launchpad_domain.move; then
   echo 'launchpad_domain.move must own only the domain marker, its constants, and its role.' >&2
   failures=$((failures + 1))
@@ -1437,23 +1437,23 @@ if ! rg -q '^public struct CreatorCap<phantom Meme> has key, store' \
 fi
 
 if ! rg -U -q \
-  'public enum CreatorIdentity has drop, store \{\s*Address\(address\),\s*X\(vector<u8>\),\s*\}' \
+  'public enum CreatorRecipient has drop, store \{\s*Address\(address\),\s*Account\(vector<u8>\),\s*\}' \
   sources/creator_authority.move \
   || ! rg -U -q \
-    'public struct CreatorAuthority<phantom Meme> has store \{\s*identity: CreatorIdentity,\s*\}' \
+    'public struct CreatorAuthority<phantom Meme> has store \{\s*recipient: CreatorRecipient,\s*\}' \
     sources/creator_authority.move \
   || ! rg -U -q \
-    'public fun new_address\(creator: address\): CreatorIdentity' \
+    'public fun new_address\(recipient: address\): CreatorRecipient' \
     sources/creator_authority.move \
   || ! rg -U -q \
-    'public fun new_x\(x_identity_hash: vector<u8>\): CreatorIdentity' \
+    'public fun new_account\(account_commitment: vector<u8>\): CreatorRecipient' \
     sources/creator_authority.move \
   || ! rg -U -q \
-    'public\(package\) fun into_authority<Meme>\(\s*self: CreatorIdentity,\s*\): CreatorAuthority<Meme>' \
+    'public\(package\) fun into_authority<Meme>\(\s*self: CreatorRecipient,\s*\): CreatorAuthority<Meme>' \
     sources/creator_authority.move \
-  || rg -U -n 'public fun new_(address|x).*CreatorAuthority' \
+  || rg -U -n 'public fun new_(address|account).*CreatorAuthority' \
     sources/creator_authority.move; then
-  echo 'Public creator constructors must create freely composable identities; only package code may mint linear coin-typed creator authority.' >&2
+  echo 'Public creator constructors must create composable recipients; only package code may mint linear coin-typed creator authority.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1474,7 +1474,7 @@ if rg -n '\bcreator_cap_claimed:[[:space:]]*bool|\bissue_creator_cap\b|\btransfe
 fi
 
 if rg -n 'schema_version|action_tag|nonce' sources/creator_authority.move; then
-  echo 'The one-time X creator claim must not duplicate its fixed type and consumed marker.' >&2
+  echo 'The one-time creator claim must not duplicate its fixed type and consumed marker.' >&2
   failures=$((failures + 1))
 fi
 

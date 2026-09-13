@@ -67,22 +67,22 @@ macro public(package) fun ed25519_signature_length(): u8 {
     64
 }
 
-/// Byte length of the stable X user-id commitment.
-macro public(package) fun x_identity_hash_length(): u64 {
+/// Byte length of an opaque Blast account commitment.
+macro public(package) fun account_commitment_length(): u64 {
     32
 }
 
-/// BCS byte length of the leading `u64` X-claim expiry.
-macro public(package) fun x_claim_expiry_bcs_length(): u64 {
+/// BCS byte length of the leading `u64` creator-claim expiry.
+macro public(package) fun creator_claim_expiry_bcs_length(): u64 {
     8
 }
 
 /// Offset at which the raw Ed25519 signature starts after BCS `vector<u8>` length encoding.
-macro public(package) fun x_claim_signature_offset(): u64 {
-    x_claim_expiry_bcs_length!() + 1
+macro public(package) fun creator_claim_signature_offset(): u64 {
+    creator_claim_expiry_bcs_length!() + 1
 }
 
 /// Exact byte length of canonical BCS `(expiry_ms: u64, signature: vector<u8>)` call data.
-macro public(package) fun x_claim_attestation_length(): u64 {
-    x_claim_signature_offset!() + (ed25519_signature_length!() as u64)
+macro public(package) fun creator_claim_attestation_length(): u64 {
+    creator_claim_signature_offset!() + (ed25519_signature_length!() as u64)
 }

@@ -82,16 +82,16 @@ fun one_runtime_config_and_admin_witness_update_both_live_settings() {
         let signer_public_key =
             x"11223344556677889900aabbccddeeffffeeddccbbaa00998877665544332211";
 
-        f.config.set_x_claim_signer(
+        f.config.set_creator_claim_signer(
             &f.package_version,
             &admin_witness,
             signer_public_key,
         );
         f.config.set_protocol_fee_share(&f.package_version, &admin_witness, 2_500);
 
-        let signer_set = events::collect_one<events::XClaimSignerSet>(0);
+        let signer_set = events::collect_one<events::CreatorClaimSignerSet>(0);
         let (previous_public_key, emitted_public_key) =
-            signer_set.x_claim_signer_set_fields();
+            signer_set.creator_claim_signer_set_fields();
         let fee_share_changed =
             events::collect_one<events::ProtocolFeeShareChanged>(0);
         let (old_share_bps, new_share_bps) =
