@@ -229,7 +229,6 @@ public fun buy<Meme, Quote>(
         quote_fee_balance,
         runtime_config.protocol_fee_share(),
         quote_in_gross,
-        quote_refund.value(),
         meme_out_gross,
     );
 
@@ -354,8 +353,6 @@ public fun migrate<Meme, Quote, MigrationWitness: drop>(
         quote,
         protocol_meme_graduation_fee_amount,
         quote_migration_fee_amount,
-        protocol_meme_fee_total,
-        protocol_quote_fee_total,
     ) = self.accrue_graduation_fees();
     let meme = self.meme_liquidity_provision.withdraw_all();
     let mut disposal = self.pending_burn.withdraw_all();
@@ -374,8 +371,6 @@ public fun migrate<Meme, Quote, MigrationWitness: drop>(
         currency.total_supply().destroy_some(),
         protocol_meme_graduation_fee_amount,
         quote_migration_fee_amount,
-        protocol_meme_fee_total,
-        protocol_quote_fee_total,
     );
 
     MigrationPayload { meme, quote }
@@ -445,7 +440,7 @@ fun curve_k<Meme, Quote>(self: &Launch<Meme, Quote>): u256 {
 
 fun accrue_graduation_fees<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
-): (Balance<Quote>, u64, u64, u64, u64) {
+): (Balance<Quote>, u64, u64) {
     let (quote, quote_migration_fee) = partition_quote(
         self.real_quote_reserve.withdraw_all(),
         self.quote_migration_fee_bps,
@@ -455,12 +450,7 @@ fun accrue_graduation_fees<Meme, Quote>(
     let protocol_meme_graduation_fee_amount =
         protocol_meme_graduation_fee.value();
     let quote_migration_fee_amount = quote_migration_fee.value();
-    let (
-        _,
-        _,
-        protocol_meme_fee_total,
-        protocol_quote_fee_total,
-    ) = self.fee_ledger.accrue_protocol_fees(
+    self.fee_ledger.accrue_protocol_fees(
         protocol_meme_graduation_fee,
         quote_migration_fee,
     );
@@ -469,8 +459,6 @@ fun accrue_graduation_fees<Meme, Quote>(
         quote,
         protocol_meme_graduation_fee_amount,
         quote_migration_fee_amount,
-        protocol_meme_fee_total,
-        protocol_quote_fee_total,
     )
 }
 
@@ -492,33 +480,13 @@ fun accrue_trade_fees<Meme, Quote>(
     meme_fee: Balance<Meme>,
     quote_fee: Balance<Quote>,
     protocol_fee_share_bps: Bps,
-): (u64, u64, u64, u64, u64, u64, u64, u64) {
+): (u64, u64, u64, u64) {
     if (meme_fee.value() == 0 && quote_fee.value() == 0) {
         meme_fee.destroy_zero();
         quote_fee.destroy_zero();
-        let (
-            protocol_meme_fee_total,
-            creator_meme_fee_total,
-            protocol_quote_fee_total,
-            creator_quote_fee_total,
-        ) = self.fee_ledger.totals();
-
-        (
-            0,
-            0,
-            0,
-            0,
-            protocol_meme_fee_total,
-            creator_meme_fee_total,
-            protocol_quote_fee_total,
-            creator_quote_fee_total,
-        )
+        (0, 0, 0, 0)
     } else {
-        self.fee_ledger.accrue(
-            meme_fee,
-            quote_fee,
-            protocol_fee_share_bps,
-        )
+        self.fee_ledger.accrue(meme_fee, quote_fee, protocol_fee_share_bps)
     }
 }
 
@@ -527,8 +495,7 @@ fun accrue_and_emit_bought<Meme, Quote>(
     meme_fee_balance: Balance<Meme>,
     quote_fee_balance: Balance<Quote>,
     protocol_fee_share_bps: Bps,
-    quote_in_gross: u64,
-    quote_refund: u64,
+    quote_in: u64,
     meme_out_gross: u64,
 ) {
     let (
@@ -536,10 +503,6 @@ fun accrue_and_emit_bought<Meme, Quote>(
         creator_meme_fee_delta,
         protocol_quote_fee_delta,
         creator_quote_fee_delta,
-        protocol_meme_fee_total,
-        creator_meme_fee_total,
-        protocol_quote_fee_total,
-        creator_quote_fee_total,
     ) = self.accrue_trade_fees(
         meme_fee_balance,
         quote_fee_balance,
@@ -548,18 +511,12 @@ fun accrue_and_emit_bought<Meme, Quote>(
 
     events::bought(
         self.id.to_inner(),
-        quote_in_gross,
-        quote_refund,
+        quote_in,
         meme_out_gross,
-        protocol_fee_share_bps.value(),
         protocol_meme_fee_delta,
         creator_meme_fee_delta,
         protocol_quote_fee_delta,
         creator_quote_fee_delta,
-        protocol_meme_fee_total,
-        creator_meme_fee_total,
-        protocol_quote_fee_total,
-        creator_quote_fee_total,
         self.meme_reserve.value(),
         self.real_quote_reserve.value(),
     );
@@ -580,10 +537,6 @@ fun accrue_and_emit_sold<Meme, Quote>(
         creator_meme_fee_delta,
         protocol_quote_fee_delta,
         creator_quote_fee_delta,
-        protocol_meme_fee_total,
-        creator_meme_fee_total,
-        protocol_quote_fee_total,
-        creator_quote_fee_total,
     ) = self.accrue_trade_fees(
         meme_fee_balance,
         quote_fee_balance,
@@ -596,15 +549,10 @@ fun accrue_and_emit_sold<Meme, Quote>(
         pending_burn_delta,
         pending_burn_total,
         quote_out_gross,
-        protocol_fee_share_bps.value(),
         protocol_meme_fee_delta,
         creator_meme_fee_delta,
         protocol_quote_fee_delta,
         creator_quote_fee_delta,
-        protocol_meme_fee_total,
-        creator_meme_fee_total,
-        protocol_quote_fee_total,
-        creator_quote_fee_total,
         self.meme_reserve.value(),
         self.real_quote_reserve.value(),
     );

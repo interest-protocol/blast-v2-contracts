@@ -109,18 +109,10 @@ public fun set_trade_fees(
     package_version.assert_current();
     self.assert_valid_trade_fees(quote_fee_bps, meme_fee_bps);
 
-    let old_quote_fee_bps = self.quote_fee_bps.value();
-    let old_meme_fee_bps = self.meme_fee_bps.value();
-
     self.quote_fee_bps = bps::new(quote_fee_bps);
     self.meme_fee_bps = bps::new(meme_fee_bps);
 
-    events::launch_trade_fees_changed(
-        old_quote_fee_bps,
-        old_meme_fee_bps,
-        quote_fee_bps,
-        meme_fee_bps,
-    );
+    events::launch_trade_fees_changed(quote_fee_bps, meme_fee_bps);
 }
 
 /// Changes the graduation economics snapshotted by launches created afterward.
@@ -139,21 +131,12 @@ public fun set_graduation_defaults(
         meme_liquidity_provision_bps,
     );
 
-    let old_quote_migration_fee_bps = self.quote_migration_fee_bps.value();
-    let old_protocol_meme_graduation_fee_bps =
-        self.protocol_meme_graduation_fee_bps.value();
-    let old_meme_liquidity_provision_bps =
-        self.meme_liquidity_provision_bps.value();
-
     self.quote_migration_fee_bps = bps::new(quote_migration_fee_bps);
     self.protocol_meme_graduation_fee_bps =
         bps::new(protocol_meme_graduation_fee_bps);
     self.meme_liquidity_provision_bps = bps::new(meme_liquidity_provision_bps);
 
     events::graduation_defaults_changed(
-        old_quote_migration_fee_bps,
-        old_protocol_meme_graduation_fee_bps,
-        old_meme_liquidity_provision_bps,
         quote_migration_fee_bps,
         protocol_meme_graduation_fee_bps,
         meme_liquidity_provision_bps,
@@ -283,8 +266,6 @@ fun update_quote<Quote>(
     };
 
     events::quote_parameters_changed<Quote>(
-        old_virtual_quote,
-        old_migration_quote_target,
         virtual_quote,
         migration_quote_target,
     );

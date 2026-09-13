@@ -42,10 +42,32 @@ public fun accrue_from_runtime<Meme, Quote>(
     quote_fee: Balance<Quote>,
     runtime_config: &RuntimeConfig,
 ): (u64, u64, u64, u64, u64, u64, u64, u64) {
-    self.accrue(
+    let (
+        protocol_meme_delta,
+        creator_meme_delta,
+        protocol_quote_delta,
+        creator_quote_delta,
+    ) = self.accrue(
         meme_fee,
         quote_fee,
         runtime_config.protocol_fee_share(),
+    );
+    let (
+        protocol_meme_total,
+        creator_meme_total,
+        protocol_quote_total,
+        creator_quote_total,
+    ) = self.totals();
+
+    (
+        protocol_meme_delta,
+        creator_meme_delta,
+        protocol_quote_delta,
+        creator_quote_delta,
+        protocol_meme_total,
+        creator_meme_total,
+        protocol_quote_total,
+        creator_quote_total,
     )
 }
 
@@ -102,14 +124,13 @@ public fun claim_protocol_fees<Meme, Quote>(
 /// `protocol_fee_share_bps` is the current validated value from the shared runtime
 /// configuration. The enclosing launch operation must read it for every trade.
 ///
-/// Returns the protocol and creator deltas for each asset, followed by the four final
-/// ledger totals, so the enclosing launch operation can emit one replay-complete event.
+/// Returns the protocol and creator deltas for each asset.
 public(package) fun accrue<Meme, Quote>(
     self: &mut FeeLedger<Meme, Quote>,
     mut meme_fee: Balance<Meme>,
     mut quote_fee: Balance<Quote>,
     protocol_fee_share_bps: Bps,
-): (u64, u64, u64, u64, u64, u64, u64, u64) {
+): (u64, u64, u64, u64) {
     let meme_fee_amount = meme_fee.value();
     let quote_fee_amount = quote_fee.value();
 
@@ -126,20 +147,16 @@ public(package) fun accrue<Meme, Quote>(
     let protocol_meme = meme_fee.split(protocol_meme_amount);
     let protocol_quote = quote_fee.split(protocol_quote_amount);
 
-    let protocol_meme_total = self.protocol_meme.join(protocol_meme);
-    let creator_meme_total = self.creator_meme.join(meme_fee);
-    let protocol_quote_total = self.protocol_quote.join(protocol_quote);
-    let creator_quote_total = self.creator_quote.join(quote_fee);
+    self.protocol_meme.join(protocol_meme);
+    self.creator_meme.join(meme_fee);
+    self.protocol_quote.join(protocol_quote);
+    self.creator_quote.join(quote_fee);
 
     (
         protocol_meme_amount,
         creator_meme_amount,
         protocol_quote_amount,
         creator_quote_amount,
-        protocol_meme_total,
-        creator_meme_total,
-        protocol_quote_total,
-        creator_quote_total,
     )
 }
 
@@ -148,16 +165,7 @@ public(package) fun accrue_protocol_fees<Meme, Quote>(
     self: &mut FeeLedger<Meme, Quote>,
     meme_fee: Balance<Meme>,
     quote_fee: Balance<Quote>,
-): (u64, u64, u64, u64) {
-    let meme_delta = meme_fee.value();
-    let quote_delta = quote_fee.value();
-    let protocol_meme_total = self.protocol_meme.join(meme_fee);
-    let protocol_quote_total = self.protocol_quote.join(quote_fee);
-
-    (
-        meme_delta,
-        quote_delta,
-        protocol_meme_total,
-        protocol_quote_total,
-    )
+) {
+    self.protocol_meme.join(meme_fee);
+    self.protocol_quote.join(quote_fee);
 }

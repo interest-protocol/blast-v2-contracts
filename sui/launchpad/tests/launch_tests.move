@@ -488,7 +488,6 @@ fun buy_and_sell_all_bought_meme_move_exact_coins_and_accounting() {
             &bought,
             object::id(&launch),
             quote_in_gross,
-            0,
             meme_out_gross,
         );
 
@@ -526,14 +525,12 @@ fun buy_and_sell_all_bought_meme_move_exact_coins_and_accounting() {
             emitted_pending_burn_delta,
             emitted_pending_burn_total,
             emitted_quote_out_gross,
-            protocol_fee_share_bps,
         ) = sold.sold_trade_fields();
         assert_eq!(sold_launch_id, object::id(&launch));
         assert_eq!(emitted_meme_in_gross, meme_in_gross);
         assert_eq!(emitted_pending_burn_delta, pending_burn_delta);
         assert_eq!(emitted_pending_burn_total, pending_burn_delta);
         assert_eq!(emitted_quote_out_gross, quote_out_gross);
-        assert_eq!(protocol_fee_share_bps, 0);
 
         let (meme_reserve, real_quote, pending_burn, _, _) =
             launch.initial_balances_for_testing();
@@ -1548,22 +1545,14 @@ fun assert_bought_event(
     bought: &events::Bought,
     launch_id: ID,
     quote_in_gross: u64,
-    quote_refund: u64,
     meme_out_gross: u64,
 ) {
-    let (
-        emitted_launch_id,
-        emitted_quote_in_gross,
-        emitted_quote_refund,
-        emitted_meme_out_gross,
-        protocol_fee_share_bps,
-    ) = bought.bought_trade_fields();
+    let (emitted_launch_id, emitted_quote_in, emitted_meme_out_gross) =
+        bought.bought_trade_fields();
 
     assert_eq!(emitted_launch_id, launch_id);
-    assert_eq!(emitted_quote_in_gross, quote_in_gross);
-    assert_eq!(emitted_quote_refund, quote_refund);
+    assert_eq!(emitted_quote_in, quote_in_gross);
     assert_eq!(emitted_meme_out_gross, meme_out_gross);
-    assert_eq!(protocol_fee_share_bps, 0);
 }
 
 fun assert_terminal_bought_event(
@@ -1571,12 +1560,11 @@ fun assert_terminal_bought_event(
     launch_id: ID,
     quote_refund: u64,
 ) {
-    let (emitted_launch_id, quote_in_gross, emitted_quote_refund, _, _) =
+    let (emitted_launch_id, quote_in, _) =
         bought.bought_trade_fields();
 
     assert_eq!(emitted_launch_id, launch_id);
-    assert_eq!(quote_in_gross + emitted_quote_refund, 30_000_000);
-    assert_eq!(emitted_quote_refund, quote_refund);
+    assert_eq!(quote_in + quote_refund, 30_000_000);
 }
 
 fun reach_migration_after_sell(

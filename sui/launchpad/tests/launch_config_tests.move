@@ -204,13 +204,8 @@ fun allowing_an_existing_quote_updates_only_the_next_launch_snapshot() {
         let (next_virtual_quote, next_target, _, _, _, _, _, _) =
             f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
         let changed = events::collect_one<events::QuoteParametersChanged>(0);
-        let (
-            quote,
-            old_virtual_quote,
-            old_target,
-            new_virtual_quote,
-            new_target,
-        ) = changed.quote_parameters_changed_fields();
+        let (quote, new_virtual_quote, new_target) =
+            changed.quote_parameters_changed_fields();
 
         assert_eq!(first_virtual_quote, VIRTUAL_QUOTE);
         assert_eq!(first_target, MIGRATION_QUOTE_TARGET);
@@ -220,8 +215,6 @@ fun allowing_an_existing_quote_updates_only_the_next_launch_snapshot() {
             quote,
             std::type_name::with_original_ids<TEST_QUOTE>(),
         );
-        assert_eq!(old_virtual_quote, VIRTUAL_QUOTE);
-        assert_eq!(old_target, MIGRATION_QUOTE_TARGET);
         assert_eq!(new_virtual_quote, VIRTUAL_QUOTE);
         assert_eq!(new_target, UPDATED_MIGRATION_QUOTE_TARGET);
     });
@@ -263,13 +256,11 @@ fun allowing_an_existing_quote_can_update_only_virtual_quote() {
         let (virtual_quote, target, _, _, _, _, _, _) =
             f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
         let changed = events::collect_one<events::QuoteParametersChanged>(0);
-        let (_, old_virtual_quote, old_target, new_virtual_quote, new_target) =
+        let (_, new_virtual_quote, new_target) =
             changed.quote_parameters_changed_fields();
 
         assert_eq!(virtual_quote, UPDATED_VIRTUAL_QUOTE);
         assert_eq!(target, MIGRATION_QUOTE_TARGET);
-        assert_eq!(old_virtual_quote, VIRTUAL_QUOTE);
-        assert_eq!(old_target, MIGRATION_QUOTE_TARGET);
         assert_eq!(new_virtual_quote, UPDATED_VIRTUAL_QUOTE);
         assert_eq!(new_target, MIGRATION_QUOTE_TARGET);
     });
@@ -384,9 +375,6 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
         ) = f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
         let changed = events::collect_one<events::GraduationDefaultsChanged>(0);
         let (
-            old_quote_migration_fee_bps,
-            old_protocol_meme_graduation_fee_bps,
-            old_meme_liquidity_provision_bps,
             new_quote_migration_fee_bps,
             new_protocol_meme_graduation_fee_bps,
             new_meme_liquidity_provision_bps,
@@ -409,9 +397,6 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
             migration_witness,
             std::type_name::with_original_ids<TEST_MIGRATION_WITNESS>(),
         );
-        assert_eq!(old_quote_migration_fee_bps, 0);
-        assert_eq!(old_protocol_meme_graduation_fee_bps, 0);
-        assert_eq!(old_meme_liquidity_provision_bps, 0);
         assert_eq!(new_quote_migration_fee_bps, QUOTE_MIGRATION_FEE_BPS);
         assert_eq!(
             new_protocol_meme_graduation_fee_bps,
@@ -462,17 +447,11 @@ fun admin_sets_trade_fees_for_future_launch_snapshots() {
             _,
         ) = f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
         let changed = events::collect_one<events::LaunchTradeFeesChanged>(0);
-        let (
-            old_quote_fee_bps,
-            old_meme_fee_bps,
-            new_quote_fee_bps,
-            new_meme_fee_bps,
-        ) = changed.launch_trade_fees_changed_fields();
+        let (new_quote_fee_bps, new_meme_fee_bps) =
+            changed.launch_trade_fees_changed_fields();
 
         assert_eq!(quote_fee_bps.value(), QUOTE_FEE_BPS);
         assert_eq!(meme_fee_bps.value(), MEME_FEE_BPS);
-        assert_eq!(old_quote_fee_bps, 0);
-        assert_eq!(old_meme_fee_bps, 0);
         assert_eq!(new_quote_fee_bps, QUOTE_FEE_BPS);
         assert_eq!(new_meme_fee_bps, MEME_FEE_BPS);
     });

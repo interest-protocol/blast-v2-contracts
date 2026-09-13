@@ -4,9 +4,10 @@
 - Date: 2026-08-22
 - Amended by: [0019](0019-consuming-creator-authority-and-cap-return.md), [0020](0020-admin-cap-self-destruction.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0032](0032-admin-authorized-upgrade-cap-custody.md), [0035](0035-initializer-finalized-meme-supply.md), [0039](0039-deterministic-quote-valuations.md), [0041](0041-launch-config-owned-trade-fees.md), [0058](0058-eventless-package-initialization.md), and [0079](0079-compact-launch-state-and-events.md)
 
-> ADR 0079 replaces the launch-event field catalogue below with compact,
+> ADR 0079 replaces the launchpad entries in the event catalogue below with compact,
 > replay-complete payloads and uses native sender plus prior ticket/launch facts
-> instead of duplicated actor, type, and initial-zero fields.
+> instead of duplicated actor, type, old state, accumulated totals, and
+> initial-zero fields.
 
 > Amended by [ADR 0058](0058-eventless-package-initialization.md): package
 > initialization emits no events. The `ProtocolAuthorityCreated`,
@@ -88,17 +89,17 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 
 | Event | Env | Key fields beyond the envelope |
 | --- | :---: | --- |
-| `LaunchCreated` | L | source ticket, original Meme/Quote and migration-witness types, `sell_burn_bps`, `V`, `T`, total supply, fixed fee/graduation policy, named initial balances, metadata-cap id, and all four zero fee-ledger totals |
-| `Bought` | L | supplied/accepted/refunded Quote, `quote_fee`, `quote_in_net`, `meme_out_gross`, `meme_fee`, `meme_out_net`, applied `protocol_fee_share_bps`, meme/quote `protocol_fee_delta` and `creator_fee_delta`, all four final fee-ledger totals, `M'`, `Q'`, `crossed_threshold` |
-| `Sold` | L | `meme_in_gross`, `meme_fee`, `meme_in_after_fee`, `progress_bps`, `burn_bps`, `pending_burn_delta`, `pending_burn_total`, `meme_in_effective`, `quote_out_gross`, `quote_fee`, `quote_out_net`, applied `protocol_fee_share_bps`, meme/quote `protocol_fee_delta` and `creator_fee_delta`, all four final fee-ledger totals, `M'`, `Q'` |
-| `Migrated` | L | selected witness, migration Meme/Quote, terminal disposal, native-burn flag, total supply after, graduation-fee deltas, and final protocol fee totals |
+| `LaunchCreated` | L | source ticket, Quote and migration-witness types, `V`, `T`, fixed fee/graduation policy, and named nonzero initial balances; Meme identity, supply, metadata, creator, and sell burn come from the ticket |
+| `Bought` | L | accepted Quote, gross Meme output, meme/quote protocol and creator fee deltas, `M'`, `Q'` |
+| `Sold` | L | gross Meme input, pending-burn delta and total, gross Quote output, meme/quote protocol and creator fee deltas, `M'`, `Q'` |
+| `Migrated` | L | migration Meme/Quote, terminal disposal, native-burn flag, total supply after, and graduation-fee deltas |
 | `CreatorFeesClaimed` / `ProtocolFeesClaimed` | L | both drained amounts and claimant |
 | `LpFeesCollected` | L | `venue`, `pool_id`, `position_id`, `lp_vault_id`, `meme_collected`, `quote_collected`, `creator_share`, `protocol_share`, `principal_liquidity` |
 | `CreatorContributed` | L | `quote_amount`, `meme_received`, `Q'` — distinguishes creator-supplied progress from market progress |
 | `ContributionClaimRecorded` | L | contributor, asset, amount, claim owner, withdrawal conditions |
 | `MetadataUpdated` | L | field, `old_value`, `new_value` |
 | `MetadataFrozen` | L | metadata cap id |
-| `CreatorCapClaimed` | M | creator address, optional X identity commitment, optional X expiry |
+| `CreatorCapClaimed` | M | original Meme type; native sender identifies the claimant |
 | `LaunchTicketCreated` | M | ticket id, original meme type, exact initial supply, metadata-cap id, launcher, address-or-X creator identity, burnable selection, and `sell_burn_bps` |
 | `AdminGranted` | G | admin-cap id, recipient |
 | `AdminRevoked` | G | admin-cap id; membership removed while the cap object may remain |
@@ -106,12 +107,12 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `SuperAdminTransferStarted` | G | recipient and `execute_after_ms` |
 | `SuperAdminTransferCancelled` | G | removed pending recipient |
 | `SuperAdminTransferred` | G | previous/new super-admin-cap ids and recipient |
-| `ProtocolFeeShareChanged` | G | old/new `protocol_fee_share_bps` |
+| `ProtocolFeeShareChanged` | G | resulting `protocol_fee_share_bps` |
 | `QuoteAllowed` | G | original quote type, initial migration quote target |
-| `QuoteMigrationTargetChanged` | G | original quote type, old/new migration quote target |
+| `QuoteParametersChanged` | G | original quote type and resulting curve parameters |
 | `QuoteDisallowed` | G | original quote type |
-| `LaunchTradeFeesChanged` | G | complete old/new Quote and Meme trade-fee rate pairs |
-| `GraduationDefaultsChanged` | G | complete old/new Quote-fee, Meme-allocation, and Meme-liquidity-provision triples |
+| `LaunchTradeFeesChanged` | G | resulting Quote and Meme trade-fee rate pair |
+| `GraduationDefaultsChanged` | G | resulting Quote-fee, Meme-allocation, and Meme-liquidity-provision triple |
 | `MigrationWitnessAllowed` | G | admitted external migrator witness original type |
 | `MigrationWitnessDisallowed` | G | disallowed external migrator witness original type |
 | `PackageAdminCreated` | G | package-admin, Publisher, and wrapped cap ids; original package id; initial version and policy |
@@ -140,8 +141,8 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 ### Rules the catalogue enforces
 
 - Events are named as **completed facts in past tense** and emitted **after** the final state is known.
-- An X identity commitment appears only in `LaunchTicketCreated`, `LaunchCreated`, and
-  `CreatorCapClaimed`. No economic path reads a handle, and no raw X credential
+- An account identity commitment appears only in `LaunchTicketCreated`. No
+  economic path reads a provider handle, and no raw provider credential
   enters state or events ([ADR 0013](0013-creator-fee-authority-and-x-claims.md)).
 - Each event carries exactly one primary envelope; the two dual-domain events above repeat the secondary
   identifier as an ordinary field. Payloads do not duplicate Sui's native event position. The meme fact
@@ -149,8 +150,9 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 - During bonding, `Sold` records pending-burn custody rather than claiming that
   supply decreased. `Migrated` distinguishes BurnOnly native destruction from
   Fixed `0x0` disposal and records resulting total supply.
-- `Bought` and `Sold` are the sole fee-accrual facts. Each contains the split deltas and post-accrual
-  totals plus the live global percentage applied; no second event describes the same mutation.
+- `Bought` and `Sold` are the sole trade-fee accrual facts. Their split deltas,
+  the migration graduation deltas, and claim amounts reconstruct every fee
+  balance; accumulated totals and the global percentage are not repeated.
 - The fee-share configuration has its own global replay scope. Its update affects the next accrual of
   every launch, while already-accrued balances remain unchanged.
 - Claim events identify the claimant but not a payout recipient because the claimed coins are returned.
@@ -210,8 +212,8 @@ counters to protocol storage. `CreatorCapClaimed` is reduced as one immutable fa
 
 ## Alternatives considered
 
-**Emit deltas only.** Rejected: an indexer joining late, or one that drops a message, cannot recover.
-Final totals make each event self-reconciling.
+**Emit accumulated fee totals.** Rejected by ADR 0079: they duplicate the
+ordered accrual and claim stream and make every high-volume trade payload wider.
 
 **Store social handles on-chain for indexer convenience.** Rejected: mutable identity in economic state
 ([ADR 0008](0008-creator-identity-and-claims.md)). Discovery events serve the same purpose.
@@ -233,8 +235,8 @@ position already provides the required order.
 - Indexers can rebuild all protocol accounting and lifecycle state from events; native object reads and
   transaction effects remain authoritative for the two explicitly documented custody facts.
 - Adding or changing any field above is a schema migration requiring a replay test.
-- The event stream is wide; that cost is accepted because events are the accounting
-  interface rather than notifications.
+- The event stream retains canonical settlement and reconciliation facts while
+  omitting values already represented by its ordered deltas.
 
 ## Verification
 

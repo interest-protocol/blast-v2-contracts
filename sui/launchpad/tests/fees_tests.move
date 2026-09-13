@@ -454,10 +454,32 @@ fun accrue<Meme, Quote>(
     quote_fee: Balance<Quote>,
     protocol_fee_share_bps: u64,
 ): (u64, u64, u64, u64, u64, u64, u64, u64) {
-    ledger.accrue(
+    let (
+        protocol_meme_delta,
+        creator_meme_delta,
+        protocol_quote_delta,
+        creator_quote_delta,
+    ) = ledger.accrue(
         meme_fee,
         quote_fee,
         bps::new(protocol_fee_share_bps),
+    );
+    let (
+        protocol_meme_total,
+        creator_meme_total,
+        protocol_quote_total,
+        creator_quote_total,
+    ) = ledger.totals();
+
+    (
+        protocol_meme_delta,
+        creator_meme_delta,
+        protocol_quote_delta,
+        creator_quote_delta,
+        protocol_meme_total,
+        creator_meme_total,
+        protocol_quote_total,
+        creator_quote_total,
     )
 }
 

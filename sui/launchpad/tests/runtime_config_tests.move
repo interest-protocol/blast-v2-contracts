@@ -53,7 +53,7 @@ fun package_init_creates_disabled_zero_share_runtime_config() {
 }
 
 #[test]
-fun active_admin_updates_live_share_and_emits_old_and_new_values() {
+fun active_admin_updates_live_share_and_emits_new_value() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
@@ -62,10 +62,8 @@ fun active_admin_updates_live_share_and_emits_old_and_new_values() {
         f.config.set_protocol_fee_share(&f.package_version, &admin_witness, 7_000);
 
         let changed = events::collect_one<events::ProtocolFeeShareChanged>(0);
-        let (old_share_bps, new_share_bps) =
-            changed.protocol_fee_share_changed_fields();
+        let new_share_bps = changed.protocol_fee_share_changed_fields();
         assert_eq!(f.config.protocol_fee_share_bps(), 7_000);
-        assert_eq!(old_share_bps, 0);
         assert_eq!(new_share_bps, 7_000);
         assert!(event::events_by_type<events::ProtocolFeeShareChanged>().is_empty());
     });
@@ -90,16 +88,12 @@ fun one_runtime_config_and_admin_witness_update_both_live_settings() {
         f.config.set_protocol_fee_share(&f.package_version, &admin_witness, 2_500);
 
         let signer_set = events::collect_one<events::CreatorClaimSignerSet>(0);
-        let (previous_public_key, emitted_public_key) =
-            signer_set.creator_claim_signer_set_fields();
+        let emitted_public_key = signer_set.creator_claim_signer_set_fields();
         let fee_share_changed =
             events::collect_one<events::ProtocolFeeShareChanged>(0);
-        let (old_share_bps, new_share_bps) =
-            fee_share_changed.protocol_fee_share_changed_fields();
+        let new_share_bps = fee_share_changed.protocol_fee_share_changed_fields();
 
-        assert!(previous_public_key.is_empty());
         assert_eq!(emitted_public_key, signer_public_key);
-        assert_eq!(old_share_bps, 0);
         assert_eq!(new_share_bps, 2_500);
         assert_eq!(f.config.protocol_fee_share_bps(), 2_500);
     });
@@ -180,12 +174,10 @@ fun protocol_fee_share_accepts_both_percentage_boundaries() {
         assert_eq!(changes.length(), 2);
         let second = changes.pop_back();
         let first = changes.pop_back();
-        let (first_old, first_new) = first.protocol_fee_share_changed_fields();
-        let (second_old, second_new) = second.protocol_fee_share_changed_fields();
+        let first_new = first.protocol_fee_share_changed_fields();
+        let second_new = second.protocol_fee_share_changed_fields();
 
-        assert_eq!(first_old, 0);
         assert_eq!(first_new, 10_000);
-        assert_eq!(second_old, 10_000);
         assert_eq!(second_new, 0);
     });
 

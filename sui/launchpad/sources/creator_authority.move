@@ -91,18 +91,17 @@ public(package) fun claim_creator_cap<Meme>(
     ctx: &mut TxContext,
 ): CreatorCap<Meme> {
     let claimant = ctx.sender();
-    let (account_commitment, claim_expiry_ms) =
-        self.recipient.authorize_claim<Meme>(
-            config,
-            account_attestation,
-            claimant,
-            clock,
-        );
+    self.recipient.authorize_claim<Meme>(
+        config,
+        account_attestation,
+        claimant,
+        clock,
+    );
 
     let CreatorAuthority { .. } = self;
     let creator_cap = CreatorCap<Meme> { id: object::new(ctx) };
 
-    events::creator_cap_claimed<Meme>(account_commitment, claim_expiry_ms);
+    events::creator_cap_claimed<Meme>();
 
     creator_cap
 }
@@ -115,7 +114,7 @@ fun authorize_claim<Meme>(
     account_attestation: Option<vector<u8>>,
     claimant: address,
     clock: &Clock,
-): (Option<vector<u8>>, Option<u64>) {
+) {
     match (self) {
         CreatorRecipient::Address(recipient) => {
             assert!(
@@ -125,7 +124,6 @@ fun authorize_claim<Meme>(
             assert!(claimant == *recipient, blast_fun::errors::creator_not_sender!());
 
             account_attestation.destroy_none();
-            (option::none(), option::none())
         },
         CreatorRecipient::Account(account_commitment) => {
             assert!(
@@ -149,7 +147,6 @@ fun authorize_claim<Meme>(
                 expiry_ms,
             );
             config.verify_creator_claim_signature(&message, &signature);
-            (option::some(*account_commitment), option::some(expiry_ms))
         },
     }
 }

@@ -72,17 +72,18 @@ by ordinary public functions, not `init`.
 ### Replay stays complete
 
 Each removed initial value is either read from publication effects or re-supplied
-by the first mutation that changes it, because ADR 0030 already requires
-old/new pairs on every singleton mutation:
+by the first mutation that changes it. ADR 0079 later removed redundant old
+values from launchpad mutation events; their resulting values remain enough
+when replay begins at deployment:
 
 | Removed initial value | Recovered from |
 | --- | --- |
 | every singleton object id | publish transaction effects |
 | `super_admin_cap_id`, `super_admin_recipient` | publish effects; then `SuperAdminTransferred.previous_super_admin_cap_id` / `new_super_admin_cap_id` |
-| `protocol_fee_share_bps` | compiled zero; then `ProtocolFeeShareChanged.old_protocol_fee_share_bps` |
+| `protocol_fee_share_bps` | compiled zero; then `ProtocolFeeShareChanged` |
 | `version` | compiled `PACKAGE_VERSION`; then `PackageVersionAdvanced.previous_version` |
-| `quote_fee_bps`, `meme_fee_bps` | compiled zero; then `LaunchTradeFeesChanged` old pair |
-| `quote_migration_fee_bps`, `protocol_meme_graduation_fee_bps`, `meme_liquidity_provision_bps` | compiled zero; then `GraduationDefaultsChanged` old triple |
+| `quote_fee_bps`, `meme_fee_bps` | compiled zero; then `LaunchTradeFeesChanged` |
+| `quote_migration_fee_bps`, `protocol_meme_graduation_fee_bps`, `meme_liquidity_provision_bps` | compiled zero; then `GraduationDefaultsChanged` |
 | `max_admins`, `max_migration_witnesses`, `super_admin_transfer_delay_ms` | `constants` macros in the published bytecode; never mutable |
 
 A reducer starting at deployment therefore still reconstructs lifecycle,

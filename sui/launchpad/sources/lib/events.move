@@ -6,10 +6,8 @@ use std::type_name::{Self, TypeName};
 
 /// Emitted after the trade-fee pair snapshotted by future launches changes.
 public struct LaunchTradeFeesChanged has copy, drop {
-    old_quote_fee_bps: u64,
-    old_meme_fee_bps: u64,
-    new_quote_fee_bps: u64,
-    new_meme_fee_bps: u64,
+    quote_fee_bps: u64,
+    meme_fee_bps: u64,
 }
 
 /// Emitted after a quote and its initial curve parameters are admitted.
@@ -22,10 +20,8 @@ public struct QuoteAllowed has copy, drop {
 /// Emitted after either curve parameter used by future launches for one Quote changes.
 public struct QuoteParametersChanged has copy, drop {
     quote: TypeName,
-    old_virtual_quote: u64,
-    old_migration_quote_target: u64,
-    new_virtual_quote: u64,
-    new_migration_quote_target: u64,
+    virtual_quote: u64,
+    migration_quote_target: u64,
 }
 
 /// Emitted after a quote is disallowed from future launch admission.
@@ -33,12 +29,9 @@ public struct QuoteDisallowed(TypeName) has copy, drop;
 
 /// Emitted after the graduation defaults snapshotted by future launches change.
 public struct GraduationDefaultsChanged has copy, drop {
-    old_quote_migration_fee_bps: u64,
-    old_protocol_meme_graduation_fee_bps: u64,
-    old_meme_liquidity_provision_bps: u64,
-    new_quote_migration_fee_bps: u64,
-    new_protocol_meme_graduation_fee_bps: u64,
-    new_meme_liquidity_provision_bps: u64,
+    quote_migration_fee_bps: u64,
+    protocol_meme_graduation_fee_bps: u64,
+    meme_liquidity_provision_bps: u64,
 }
 
 /// Emitted after an external migrator witness type is admitted for future launches.
@@ -48,26 +41,16 @@ public struct MigrationWitnessAllowed(TypeName) has copy, drop;
 public struct MigrationWitnessDisallowed(TypeName) has copy, drop;
 
 /// Emitted after the live global protocol fee share is changed.
-public struct ProtocolFeeShareChanged has copy, drop {
-    old_protocol_fee_share_bps: u64,
-    new_protocol_fee_share_bps: u64,
-}
+public struct ProtocolFeeShareChanged(u64) has copy, drop;
 
 /// Emitted after the creator-claim signer is initially set or rotated.
-public struct CreatorClaimSignerSet has copy, drop {
-    previous_public_key: vector<u8>,
-    signer_public_key: vector<u8>,
-}
+public struct CreatorClaimSignerSet(vector<u8>) has copy, drop;
 
 /// Emitted after the current creator-claim signer is revoked.
-public struct CreatorClaimSignerRevoked(vector<u8>) has copy, drop;
+public struct CreatorClaimSignerRevoked has copy, drop {}
 
 /// Emitted after either recipient kind claims the meme type's single creator capability.
-public struct CreatorCapClaimed has copy, drop {
-    meme: TypeName,
-    account_commitment: Option<vector<u8>>,
-    claim_expiry_ms: Option<u64>,
-}
+public struct CreatorCapClaimed(TypeName) has copy, drop;
 
 /// Emitted after a generated OTW currency and its launch ticket are created.
 public struct LaunchTicketCreated has copy, drop {
@@ -102,18 +85,12 @@ public struct LaunchCreated has copy, drop {
 /// Emitted after a completed Quote-for-Meme curve purchase.
 public struct Bought has copy, drop {
     launch_id: ID,
-    quote_in_gross: u64,
-    quote_refund: u64,
+    quote_in: u64,
     meme_out_gross: u64,
-    protocol_fee_share_bps: u64,
     protocol_meme_fee_delta: u64,
     creator_meme_fee_delta: u64,
     protocol_quote_fee_delta: u64,
     creator_quote_fee_delta: u64,
-    protocol_meme_fee_total: u64,
-    creator_meme_fee_total: u64,
-    protocol_quote_fee_total: u64,
-    creator_quote_fee_total: u64,
     meme_reserve: u64,
     real_quote_reserve: u64,
 }
@@ -125,15 +102,10 @@ public struct Sold has copy, drop {
     pending_burn_delta: u64,
     pending_burn_total: u64,
     quote_out_gross: u64,
-    protocol_fee_share_bps: u64,
     protocol_meme_fee_delta: u64,
     creator_meme_fee_delta: u64,
     protocol_quote_fee_delta: u64,
     creator_quote_fee_delta: u64,
-    protocol_meme_fee_total: u64,
-    creator_meme_fee_total: u64,
-    protocol_quote_fee_total: u64,
-    creator_quote_fee_total: u64,
     meme_reserve: u64,
     real_quote_reserve: u64,
 }
@@ -148,8 +120,6 @@ public struct Migrated has copy, drop {
     total_supply_after: u64,
     protocol_meme_graduation_fee: u64,
     quote_migration_fee: u64,
-    protocol_meme_fee_total: u64,
-    protocol_quote_fee_total: u64,
 }
 
 /// Emitted after a creator drains both accrued trade-fee balances.
@@ -170,16 +140,12 @@ public struct ProtocolFeesClaimed has copy, drop {
 
 /// Emits replacement of the launch trade-fee defaults.
 public(package) fun launch_trade_fees_changed(
-    old_quote_fee_bps: u64,
-    old_meme_fee_bps: u64,
-    new_quote_fee_bps: u64,
-    new_meme_fee_bps: u64,
+    quote_fee_bps: u64,
+    meme_fee_bps: u64,
 ) {
     blast_fun::events_wrapper::emit_event(LaunchTradeFeesChanged {
-        old_quote_fee_bps,
-        old_meme_fee_bps,
-        new_quote_fee_bps,
-        new_meme_fee_bps,
+        quote_fee_bps,
+        meme_fee_bps,
     });
 }
 
@@ -197,17 +163,13 @@ public(package) fun quote_allowed<Quote>(
 
 /// Emits replacement of one admitted quote type's curve parameters.
 public(package) fun quote_parameters_changed<Quote>(
-    old_virtual_quote: u64,
-    old_migration_quote_target: u64,
-    new_virtual_quote: u64,
-    new_migration_quote_target: u64,
+    virtual_quote: u64,
+    migration_quote_target: u64,
 ) {
     blast_fun::events_wrapper::emit_event(QuoteParametersChanged {
         quote: type_name::with_original_ids<Quote>(),
-        old_virtual_quote,
-        old_migration_quote_target,
-        new_virtual_quote,
-        new_migration_quote_target,
+        virtual_quote,
+        migration_quote_target,
     });
 }
 
@@ -220,20 +182,14 @@ public(package) fun quote_disallowed<Quote>() {
 
 /// Emits replacement of the launch graduation defaults.
 public(package) fun graduation_defaults_changed(
-    old_quote_migration_fee_bps: u64,
-    old_protocol_meme_graduation_fee_bps: u64,
-    old_meme_liquidity_provision_bps: u64,
-    new_quote_migration_fee_bps: u64,
-    new_protocol_meme_graduation_fee_bps: u64,
-    new_meme_liquidity_provision_bps: u64,
+    quote_migration_fee_bps: u64,
+    protocol_meme_graduation_fee_bps: u64,
+    meme_liquidity_provision_bps: u64,
 ) {
     blast_fun::events_wrapper::emit_event(GraduationDefaultsChanged {
-        old_quote_migration_fee_bps,
-        old_protocol_meme_graduation_fee_bps,
-        old_meme_liquidity_provision_bps,
-        new_quote_migration_fee_bps,
-        new_protocol_meme_graduation_fee_bps,
-        new_meme_liquidity_provision_bps,
+        quote_migration_fee_bps,
+        protocol_meme_graduation_fee_bps,
+        meme_liquidity_provision_bps,
     });
 }
 
@@ -252,44 +208,27 @@ public(package) fun migration_witness_disallowed<MigrationWitness>() {
 }
 
 /// Emits replacement of the runtime protocol fee share.
-public(package) fun protocol_fee_share_changed(
-    old_protocol_fee_share_bps: u64,
-    new_protocol_fee_share_bps: u64,
-) {
-    blast_fun::events_wrapper::emit_event(ProtocolFeeShareChanged {
-        old_protocol_fee_share_bps,
-        new_protocol_fee_share_bps,
-    });
+public(package) fun protocol_fee_share_changed(protocol_fee_share_bps: u64) {
+    blast_fun::events_wrapper::emit_event(ProtocolFeeShareChanged(
+        protocol_fee_share_bps,
+    ));
 }
 
 /// Emits installation or rotation of the creator-claim signer key.
-public(package) fun creator_claim_signer_set(
-    previous_public_key: vector<u8>,
-    signer_public_key: vector<u8>,
-) {
-    blast_fun::events_wrapper::emit_event(CreatorClaimSignerSet {
-        previous_public_key,
-        signer_public_key,
-    });
+public(package) fun creator_claim_signer_set(signer_public_key: vector<u8>) {
+    blast_fun::events_wrapper::emit_event(CreatorClaimSignerSet(signer_public_key));
 }
 
 /// Emits revocation of the creator-claim signer key.
-public(package) fun creator_claim_signer_revoked(
-    previous_public_key: vector<u8>,
-) {
-    blast_fun::events_wrapper::emit_event(CreatorClaimSignerRevoked(previous_public_key));
+public(package) fun creator_claim_signer_revoked() {
+    blast_fun::events_wrapper::emit_event(CreatorClaimSignerRevoked {});
 }
 
-/// Emits the one-time creator-cap claim and its account-claim facts.
-public(package) fun creator_cap_claimed<Meme>(
-    account_commitment: Option<vector<u8>>,
-    claim_expiry_ms: Option<u64>,
-) {
-    blast_fun::events_wrapper::emit_event(CreatorCapClaimed {
-        meme: type_name::with_original_ids<Meme>(),
-        account_commitment,
-        claim_expiry_ms,
-    });
+/// Emits the one-time creator-cap claim.
+public(package) fun creator_cap_claimed<Meme>() {
+    blast_fun::events_wrapper::emit_event(CreatorCapClaimed(
+        type_name::with_original_ids<Meme>(),
+    ));
 }
 
 /// Emits creation of one generated-coin launch ticket.
@@ -351,35 +290,23 @@ public(package) fun launch_created<Quote>(
 /// Emits one completed Quote-for-Meme trade and resulting accounting state.
 public(package) fun bought(
     launch_id: ID,
-    quote_in_gross: u64,
-    quote_refund: u64,
+    quote_in: u64,
     meme_out_gross: u64,
-    protocol_fee_share_bps: u64,
     protocol_meme_fee_delta: u64,
     creator_meme_fee_delta: u64,
     protocol_quote_fee_delta: u64,
     creator_quote_fee_delta: u64,
-    protocol_meme_fee_total: u64,
-    creator_meme_fee_total: u64,
-    protocol_quote_fee_total: u64,
-    creator_quote_fee_total: u64,
     meme_reserve: u64,
     real_quote_reserve: u64,
 ) {
     blast_fun::events_wrapper::emit_event(Bought {
         launch_id,
-        quote_in_gross,
-        quote_refund,
+        quote_in,
         meme_out_gross,
-        protocol_fee_share_bps,
         protocol_meme_fee_delta,
         creator_meme_fee_delta,
         protocol_quote_fee_delta,
         creator_quote_fee_delta,
-        protocol_meme_fee_total,
-        creator_meme_fee_total,
-        protocol_quote_fee_total,
-        creator_quote_fee_total,
         meme_reserve,
         real_quote_reserve,
     });
@@ -392,15 +319,10 @@ public(package) fun sold(
     pending_burn_delta: u64,
     pending_burn_total: u64,
     quote_out_gross: u64,
-    protocol_fee_share_bps: u64,
     protocol_meme_fee_delta: u64,
     creator_meme_fee_delta: u64,
     protocol_quote_fee_delta: u64,
     creator_quote_fee_delta: u64,
-    protocol_meme_fee_total: u64,
-    creator_meme_fee_total: u64,
-    protocol_quote_fee_total: u64,
-    creator_quote_fee_total: u64,
     meme_reserve: u64,
     real_quote_reserve: u64,
 ) {
@@ -410,15 +332,10 @@ public(package) fun sold(
         pending_burn_delta,
         pending_burn_total,
         quote_out_gross,
-        protocol_fee_share_bps,
         protocol_meme_fee_delta,
         creator_meme_fee_delta,
         protocol_quote_fee_delta,
         creator_quote_fee_delta,
-        protocol_meme_fee_total,
-        creator_meme_fee_total,
-        protocol_quote_fee_total,
-        creator_quote_fee_total,
         meme_reserve,
         real_quote_reserve,
     });
@@ -434,8 +351,6 @@ public(package) fun migrated(
     total_supply_after: u64,
     protocol_meme_graduation_fee: u64,
     quote_migration_fee: u64,
-    protocol_meme_fee_total: u64,
-    protocol_quote_fee_total: u64,
 ) {
     blast_fun::events_wrapper::emit_event(Migrated {
         launch_id,
@@ -446,8 +361,6 @@ public(package) fun migrated(
         total_supply_after,
         protocol_meme_graduation_fee,
         quote_migration_fee,
-        protocol_meme_fee_total,
-        protocol_quote_fee_total,
     });
 }
 
@@ -504,13 +417,8 @@ public fun collect_one<T: copy + drop>(abort_code: u64): T {
 #[test_only]
 public fun launch_trade_fees_changed_fields(
     self: &LaunchTradeFeesChanged,
-): (u64, u64, u64, u64) {
-    (
-        self.old_quote_fee_bps,
-        self.old_meme_fee_bps,
-        self.new_quote_fee_bps,
-        self.new_meme_fee_bps,
-    )
+): (u64, u64) {
+    (self.quote_fee_bps, self.meme_fee_bps)
 }
 
 #[test_only]
@@ -521,14 +429,8 @@ public fun quote_allowed_fields(self: &QuoteAllowed): (TypeName, u64, u64) {
 #[test_only]
 public fun quote_parameters_changed_fields(
     self: &QuoteParametersChanged,
-): (TypeName, u64, u64, u64, u64) {
-    (
-        self.quote,
-        self.old_virtual_quote,
-        self.old_migration_quote_target,
-        self.new_virtual_quote,
-        self.new_migration_quote_target,
-    )
+): (TypeName, u64, u64) {
+    (self.quote, self.virtual_quote, self.migration_quote_target)
 }
 
 #[test_only]
@@ -539,14 +441,11 @@ public fun quote_disallowed_fields(self: &QuoteDisallowed): TypeName {
 #[test_only]
 public fun graduation_defaults_changed_fields(
     self: &GraduationDefaultsChanged,
-): (u64, u64, u64, u64, u64, u64) {
+): (u64, u64, u64) {
     (
-        self.old_quote_migration_fee_bps,
-        self.old_protocol_meme_graduation_fee_bps,
-        self.old_meme_liquidity_provision_bps,
-        self.new_quote_migration_fee_bps,
-        self.new_protocol_meme_graduation_fee_bps,
-        self.new_meme_liquidity_provision_bps,
+        self.quote_migration_fee_bps,
+        self.protocol_meme_graduation_fee_bps,
+        self.meme_liquidity_provision_bps,
     )
 }
 
@@ -567,26 +466,13 @@ public fun migration_witness_disallowed_fields(
 #[test_only]
 public fun protocol_fee_share_changed_fields(
     self: &ProtocolFeeShareChanged,
-): (u64, u64) {
-    (
-        self.old_protocol_fee_share_bps,
-        self.new_protocol_fee_share_bps,
-    )
+): u64 {
+    self.0
 }
 
 #[test_only]
 public fun creator_claim_signer_set_fields(
     self: &CreatorClaimSignerSet,
-): (vector<u8>, vector<u8>) {
-    (
-        self.previous_public_key,
-        self.signer_public_key,
-    )
-}
-
-#[test_only]
-public fun creator_claim_signer_revoked_fields(
-    self: &CreatorClaimSignerRevoked,
 ): vector<u8> {
     self.0
 }
@@ -594,12 +480,8 @@ public fun creator_claim_signer_revoked_fields(
 #[test_only]
 public fun creator_cap_claimed_fields(
     self: &CreatorCapClaimed,
-): (TypeName, Option<vector<u8>>, Option<u64>) {
-    (
-        self.meme,
-        self.account_commitment,
-        self.claim_expiry_ms,
-    )
+): TypeName {
+    self.0
 }
 
 #[test_only]
@@ -659,29 +541,19 @@ public fun launch_created_policy_fields(
 #[test_only]
 public fun bought_trade_fields(
     self: &Bought,
-): (ID, u64, u64, u64, u64) {
-    (
-        self.launch_id,
-        self.quote_in_gross,
-        self.quote_refund,
-        self.meme_out_gross,
-        self.protocol_fee_share_bps,
-    )
+): (ID, u64, u64) {
+    (self.launch_id, self.quote_in, self.meme_out_gross)
 }
 
 #[test_only]
 public fun bought_accounting_fields(
     self: &Bought,
-): (u64, u64, u64, u64, u64, u64, u64, u64, u64, u64) {
+): (u64, u64, u64, u64, u64, u64) {
     (
         self.protocol_meme_fee_delta,
         self.creator_meme_fee_delta,
         self.protocol_quote_fee_delta,
         self.creator_quote_fee_delta,
-        self.protocol_meme_fee_total,
-        self.creator_meme_fee_total,
-        self.protocol_quote_fee_total,
-        self.creator_quote_fee_total,
         self.meme_reserve,
         self.real_quote_reserve,
     )
@@ -690,30 +562,25 @@ public fun bought_accounting_fields(
 #[test_only]
 public fun sold_trade_fields(
     self: &Sold,
-): (ID, u64, u64, u64, u64, u64) {
+): (ID, u64, u64, u64, u64) {
     (
         self.launch_id,
         self.meme_in_gross,
         self.pending_burn_delta,
         self.pending_burn_total,
         self.quote_out_gross,
-        self.protocol_fee_share_bps,
     )
 }
 
 #[test_only]
 public fun sold_accounting_fields(
     self: &Sold,
-): (u64, u64, u64, u64, u64, u64, u64, u64, u64, u64) {
+): (u64, u64, u64, u64, u64, u64) {
     (
         self.protocol_meme_fee_delta,
         self.creator_meme_fee_delta,
         self.protocol_quote_fee_delta,
         self.creator_quote_fee_delta,
-        self.protocol_meme_fee_total,
-        self.creator_meme_fee_total,
-        self.protocol_quote_fee_total,
-        self.creator_quote_fee_total,
         self.meme_reserve,
         self.real_quote_reserve,
     )

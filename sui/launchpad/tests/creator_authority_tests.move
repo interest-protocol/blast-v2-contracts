@@ -149,7 +149,7 @@ fun super_admin_grants_global_admin_that_configures_creator_claim_signer() {
 }
 
 #[test]
-fun creator_claim_signer_set_event_is_replay_complete() {
+fun creator_claim_signer_set_event_emits_current_key() {
     let mut fixture = start_signer(LAUNCHER);
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -162,9 +162,7 @@ fun creator_claim_signer_set_event_is_replay_complete() {
         );
 
         let signer_set = events::collect_one<events::CreatorClaimSignerSet>(0);
-        let (previous_public_key, signer_public_key) =
-            signer_set.creator_claim_signer_set_fields();
-        assert!(previous_public_key.is_empty());
+        let signer_public_key = signer_set.creator_claim_signer_set_fields();
         assert_eq!(signer_public_key, creator_claim_signer_public_key());
     });
 
@@ -172,7 +170,7 @@ fun creator_claim_signer_set_event_is_replay_complete() {
 }
 
 #[test]
-fun creator_claim_signer_revoked_event_is_replay_complete() {
+fun creator_claim_signer_revoked_event_is_emitted() {
     let mut fixture = start_signer(LAUNCHER);
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -185,9 +183,7 @@ fun creator_claim_signer_revoked_event_is_replay_complete() {
 
         f.config.revoke_creator_claim_signer(&f.package_version, &admin_witness);
 
-        let signer_revoked = events::collect_one<events::CreatorClaimSignerRevoked>(0);
-        let previous_public_key = signer_revoked.creator_claim_signer_revoked_fields();
-        assert_eq!(previous_public_key, creator_claim_signer_public_key());
+        let _ = events::collect_one<events::CreatorClaimSignerRevoked>(0);
     });
 
     fixture.end();
@@ -308,14 +304,11 @@ fun address_creator_claim_returns_composable_cap_without_attestation() {
         transfer::public_transfer(cap, PROTOCOL_ADMIN);
 
         let claimed = events::collect_one<events::CreatorCapClaimed>(0);
-        let (meme, account_commitment, claim_expiry_ms) =
-            claimed.creator_cap_claimed_fields();
+        let meme = claimed.creator_cap_claimed_fields();
         assert_eq!(
             meme,
             std::type_name::with_original_ids<TEST_MEME>(),
         );
-        assert!(account_commitment.is_none());
-        assert!(claim_expiry_ms.is_none());
     });
 
     fixture.next_tx_expecting_events!(PROTOCOL_ADMIN, 1, |f| {

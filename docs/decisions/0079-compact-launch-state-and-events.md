@@ -31,12 +31,19 @@ Events contain the smallest replay-complete mutation facts:
   curve parameters, and applied rates. Meme identity, launcher, metadata cap,
   sell burn, and initial supply come from the ticket. Initial Quote, pending
   burn, and fee-ledger balances are defined as zero.
-- `Bought` and `Sold` record the launch, gross amounts, refund or pending-burn
-  movement, applied protocol split, both-asset fee deltas and totals, and final
-  reserves. Net amounts and threshold state are derived exactly.
+- `Bought` records accepted Quote rather than both supplied Quote and its
+  refund. `Bought` and `Sold` record gross output/input, pending-burn custody,
+  both-asset fee deltas, and final reserve snapshots. Fee totals are the sum of
+  accrual deltas less claim amounts; the global protocol split is not repeated.
 - Event actors and claimants use the native event sender. Launch type arguments
   come from the referenced launch. `Migrated` likewise omits repeated types,
-  witness, and migrator.
+  witness, migrator, and accumulated protocol fee totals; it retains only the
+  graduation-fee deltas accrued by that transition.
+- Configuration events contain the resulting values only. Native event order
+  supplies their history, so old values and previous signer keys are omitted.
+  `CreatorCapClaimed` contains only the Meme type because the ticket already
+  records the designated recipient and the native sender identifies the
+  claimant.
 
 Reducers must process tickets before launches and launches before mutations.
 They reject a `LaunchCreated` whose ticket has not been observed. A buy reaches
@@ -46,7 +53,8 @@ stored target.
 ## Consequences
 
 - No fee is lost: all five applied launch rates are present in
-  `LaunchCreated`; the two removed object fields were constructor-only inputs.
+  `LaunchCreated`; accrual deltas and claim amounts reconstruct every ledger
+  balance, and the two removed object fields were constructor-only inputs.
 - Zero-valued initial accounting is a schema rule rather than event payload.
 - Event and object layouts change before first publication. SDK and indexer
   schemas must change atomically with the Move package.

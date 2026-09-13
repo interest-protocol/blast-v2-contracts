@@ -878,7 +878,7 @@ check_fee_function new \
 check_fee_function accrue_from_runtime \
   'fun accrue_from_runtime<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, meme_fee: Balance<Meme>, quote_fee: Balance<Quote>, runtime_config: &RuntimeConfig, ): (u64, u64, u64, u64, u64, u64, u64, u64)' \
   '' \
-  'self.accrue( meme_fee, quote_fee, runtime_config.protocol_fee_share(), )'
+  'let ( protocol_meme_delta, creator_meme_delta, protocol_quote_delta, creator_quote_delta, ) = self.accrue( meme_fee, quote_fee, runtime_config.protocol_fee_share(), ); let ( protocol_meme_total, creator_meme_total, protocol_quote_total, creator_quote_total, ) = self.totals(); ( protocol_meme_delta, creator_meme_delta, protocol_quote_delta, creator_quote_delta, protocol_meme_total, creator_meme_total, protocol_quote_total, creator_quote_total, )'
 
 check_fee_function totals \
   'fun totals<Meme, Quote>( self: &FeeLedger<Meme, Quote>, ): (u64, u64, u64, u64)' \
@@ -896,16 +896,16 @@ check_fee_function claim_protocol_fees \
   'assert!( self.protocol_meme.value() > 0 || self.protocol_quote.value() > 0, blast_fun::errors::nothing_accrued!(), ); ( self.protocol_meme.withdraw_all().into_coin(ctx), self.protocol_quote.withdraw_all().into_coin(ctx), )'
 
 check_fee_function accrue_protocol_fees \
-  'fun accrue_protocol_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, meme_fee: Balance<Meme>, quote_fee: Balance<Quote>, ): (u64, u64, u64, u64)' \
+  'fun accrue_protocol_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, meme_fee: Balance<Meme>, quote_fee: Balance<Quote>, )' \
   'protocol_meme.join protocol_quote.join ' \
-  'let meme_delta = meme_fee.value(); let quote_delta = quote_fee.value(); let protocol_meme_total = self.protocol_meme.join(meme_fee); let protocol_quote_total = self.protocol_quote.join(quote_fee); ( meme_delta, quote_delta, protocol_meme_total, protocol_quote_total, )'
+  'self.protocol_meme.join(meme_fee); self.protocol_quote.join(quote_fee);'
 
 # The raw accrual keeps a longer body, so it is bound to its guard and to one
 # contiguous rounding and custody sequence instead: the protocol share rounds up,
 # the creator receives the exact remainder, the protocol amount leaves the
 # incoming balances, and each half joins only its own bucket.
 check_fee_function accrue \
-  'fun accrue<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, mut meme_fee: Balance<Meme>, mut quote_fee: Balance<Quote>, protocol_fee_share_bps: Bps, ): (u64, u64, u64, u64, u64, u64, u64, u64)' \
+  'fun accrue<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, mut meme_fee: Balance<Meme>, mut quote_fee: Balance<Quote>, protocol_fee_share_bps: Bps, ): (u64, u64, u64, u64)' \
   'creator_meme.join creator_quote.join protocol_meme.join protocol_quote.join ' \
   ''
 
@@ -913,7 +913,7 @@ fees_accrue_body="$(move_production_body accrue <<<"$fees_facts")"
 
 if ! rg -Fq 'assert!( meme_fee_amount > 0 || quote_fee_amount > 0, blast_fun::errors::zero_fee_accrual!(), );' \
     <<<"$fees_accrue_body" \
-  || ! rg -Fq 'let protocol_meme_amount = protocol_fee_share_bps.apply_up(meme_fee_amount); let protocol_quote_amount = protocol_fee_share_bps.apply_up(quote_fee_amount); let creator_meme_amount = meme_fee_amount - protocol_meme_amount; let creator_quote_amount = quote_fee_amount - protocol_quote_amount; let protocol_meme = meme_fee.split(protocol_meme_amount); let protocol_quote = quote_fee.split(protocol_quote_amount); let protocol_meme_total = self.protocol_meme.join(protocol_meme); let creator_meme_total = self.creator_meme.join(meme_fee); let protocol_quote_total = self.protocol_quote.join(protocol_quote); let creator_quote_total = self.creator_quote.join(quote_fee);' \
+  || ! rg -Fq 'let protocol_meme_amount = protocol_fee_share_bps.apply_up(meme_fee_amount); let protocol_quote_amount = protocol_fee_share_bps.apply_up(quote_fee_amount); let creator_meme_amount = meme_fee_amount - protocol_meme_amount; let creator_quote_amount = quote_fee_amount - protocol_quote_amount; let protocol_meme = meme_fee.split(protocol_meme_amount); let protocol_quote = quote_fee.split(protocol_quote_amount); self.protocol_meme.join(protocol_meme); self.creator_meme.join(meme_fee); self.protocol_quote.join(protocol_quote); self.creator_quote.join(quote_fee);' \
     <<<"$fees_accrue_body"; then
   fee_ledger_violations+='  accrue is not bound to the approved guard, round-up split, and per-owner joins'$'\n'
 fi
@@ -1024,15 +1024,15 @@ check_runtime_function verify_creator_claim_signature \
 
 check_runtime_function set_creator_claim_signer \
   'fun set_creator_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<LAUNCHPAD_DOMAIN>, signer_public_key: vector<u8>, )' \
-  'package_version.assert_current(); validate_creator_claim_public_key(&signer_public_key); assert!( self.creator_claim_signer_public_key != signer_public_key, blast_fun::errors::creator_claim_signer_unchanged!(), ); let previous_public_key = self.creator_claim_signer_public_key; self.creator_claim_signer_public_key = signer_public_key; events::creator_claim_signer_set( previous_public_key, self.creator_claim_signer_public_key, );'
+  'package_version.assert_current(); validate_creator_claim_public_key(&signer_public_key); assert!( self.creator_claim_signer_public_key != signer_public_key, blast_fun::errors::creator_claim_signer_unchanged!(), ); self.creator_claim_signer_public_key = signer_public_key; events::creator_claim_signer_set(self.creator_claim_signer_public_key);'
 
 check_runtime_function revoke_creator_claim_signer \
   'fun revoke_creator_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<LAUNCHPAD_DOMAIN>, )' \
-  'package_version.assert_current(); self.assert_creator_claim_active(); let previous_public_key = self.creator_claim_signer_public_key; self.creator_claim_signer_public_key = vector[]; events::creator_claim_signer_revoked(previous_public_key);'
+  'package_version.assert_current(); self.assert_creator_claim_active(); self.creator_claim_signer_public_key = vector[]; events::creator_claim_signer_revoked();'
 
 check_runtime_function set_protocol_fee_share \
   'fun set_protocol_fee_share( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<LAUNCHPAD_DOMAIN>, protocol_fee_share_bps: u64, )' \
-  'package_version.assert_current(); assert!( protocol_fee_share_bps != self.protocol_fee_share_bps.value(), blast_fun::errors::protocol_fee_share_unchanged!(), ); let old_protocol_fee_share_bps = self.protocol_fee_share_bps.value(); self.protocol_fee_share_bps = bps::new(protocol_fee_share_bps); events::protocol_fee_share_changed( old_protocol_fee_share_bps, protocol_fee_share_bps, );'
+  'package_version.assert_current(); assert!( protocol_fee_share_bps != self.protocol_fee_share_bps.value(), blast_fun::errors::protocol_fee_share_unchanged!(), ); self.protocol_fee_share_bps = bps::new(protocol_fee_share_bps); events::protocol_fee_share_changed(protocol_fee_share_bps);'
 
 # The three named mutations are the complete set of RuntimeConfig transitions, and
 # each one must check the live package version as its first statement rather than

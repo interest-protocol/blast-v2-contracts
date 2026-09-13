@@ -45,13 +45,9 @@ public fun set_creator_claim_signer(
         blast_fun::errors::creator_claim_signer_unchanged!(),
     );
 
-    let previous_public_key = self.creator_claim_signer_public_key;
     self.creator_claim_signer_public_key = signer_public_key;
 
-    events::creator_claim_signer_set(
-        previous_public_key,
-        self.creator_claim_signer_public_key,
-    );
+    events::creator_claim_signer_set(self.creator_claim_signer_public_key);
 }
 
 /// Revokes the creator-claim signer immediately by clearing the only active key.
@@ -63,10 +59,9 @@ public fun revoke_creator_claim_signer(
     package_version.assert_current();
     self.assert_creator_claim_active();
 
-    let previous_public_key = self.creator_claim_signer_public_key;
     self.creator_claim_signer_public_key = vector[];
 
-    events::creator_claim_signer_revoked(previous_public_key);
+    events::creator_claim_signer_revoked();
 }
 
 /// Updates the live protocol share used by every subsequent trade-fee accrual.
@@ -82,14 +77,9 @@ public fun set_protocol_fee_share(
         blast_fun::errors::protocol_fee_share_unchanged!(),
     );
 
-    let old_protocol_fee_share_bps = self.protocol_fee_share_bps.value();
-
     self.protocol_fee_share_bps = bps::new(protocol_fee_share_bps);
 
-    events::protocol_fee_share_changed(
-        old_protocol_fee_share_bps,
-        protocol_fee_share_bps,
-    );
+    events::protocol_fee_share_changed(protocol_fee_share_bps);
 }
 
 /// Returns the raw live protocol share used by subsequent fee accruals.
