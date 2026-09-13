@@ -94,12 +94,8 @@ public fun disallow_quote<Quote>(
         blast_fun::errors::quote_not_allowed!(),
     );
 
-    let previous_parameters = self.quotes.remove(quote);
-
-    events::quote_disallowed<Quote>(
-        previous_parameters.virtual_quote,
-        previous_parameters.migration_quote_target,
-    );
+    self.quotes.remove(quote);
+    events::quote_disallowed<Quote>();
 }
 
 /// Changes the trade-fee pair snapshotted by launches created afterward.

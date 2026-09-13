@@ -29,11 +29,7 @@ public struct QuoteParametersChanged has copy, drop {
 }
 
 /// Emitted after a quote is disallowed from future launch admission.
-public struct QuoteDisallowed has copy, drop {
-    quote: TypeName,
-    previous_virtual_quote: u64,
-    previous_migration_quote_target: u64,
-}
+public struct QuoteDisallowed(TypeName) has copy, drop;
 
 /// Emitted after the graduation defaults snapshotted by future launches change.
 public struct GraduationDefaultsChanged has copy, drop {
@@ -46,14 +42,10 @@ public struct GraduationDefaultsChanged has copy, drop {
 }
 
 /// Emitted after an external migrator witness type is admitted for future launches.
-public struct MigrationWitnessAllowed has copy, drop {
-    migration_witness: TypeName,
-}
+public struct MigrationWitnessAllowed(TypeName) has copy, drop;
 
 /// Emitted after an external migrator witness type is disallowed for future launches.
-public struct MigrationWitnessDisallowed has copy, drop {
-    migration_witness: TypeName,
-}
+public struct MigrationWitnessDisallowed(TypeName) has copy, drop;
 
 /// Emitted after the live global protocol fee share is changed.
 public struct ProtocolFeeShareChanged has copy, drop {
@@ -68,9 +60,7 @@ public struct CreatorClaimSignerSet has copy, drop {
 }
 
 /// Emitted after the current creator-claim signer is revoked.
-public struct CreatorClaimSignerRevoked has copy, drop {
-    previous_public_key: vector<u8>,
-}
+public struct CreatorClaimSignerRevoked(vector<u8>) has copy, drop;
 
 /// Emitted after either recipient kind claims the meme type's single creator capability.
 public struct CreatorCapClaimed has copy, drop {
@@ -221,16 +211,11 @@ public(package) fun quote_parameters_changed<Quote>(
     });
 }
 
-/// Emits removal of one quote type and its previous curve parameters.
-public(package) fun quote_disallowed<Quote>(
-    previous_virtual_quote: u64,
-    previous_migration_quote_target: u64,
-) {
-    blast_fun::events_wrapper::emit_event(QuoteDisallowed {
-        quote: type_name::with_original_ids<Quote>(),
-        previous_virtual_quote,
-        previous_migration_quote_target,
-    });
+/// Emits removal of one quote type.
+public(package) fun quote_disallowed<Quote>() {
+    blast_fun::events_wrapper::emit_event(QuoteDisallowed(
+        type_name::with_original_ids<Quote>(),
+    ));
 }
 
 /// Emits replacement of the launch graduation defaults.
@@ -254,16 +239,16 @@ public(package) fun graduation_defaults_changed(
 
 /// Emits admission of one sealed migration-witness type.
 public(package) fun migration_witness_allowed<MigrationWitness>() {
-    blast_fun::events_wrapper::emit_event(MigrationWitnessAllowed {
-        migration_witness: type_name::with_original_ids<MigrationWitness>(),
-    });
+    blast_fun::events_wrapper::emit_event(MigrationWitnessAllowed(
+        type_name::with_original_ids<MigrationWitness>(),
+    ));
 }
 
 /// Emits removal of one sealed migration-witness type.
 public(package) fun migration_witness_disallowed<MigrationWitness>() {
-    blast_fun::events_wrapper::emit_event(MigrationWitnessDisallowed {
-        migration_witness: type_name::with_original_ids<MigrationWitness>(),
-    });
+    blast_fun::events_wrapper::emit_event(MigrationWitnessDisallowed(
+        type_name::with_original_ids<MigrationWitness>(),
+    ));
 }
 
 /// Emits replacement of the runtime protocol fee share.
@@ -292,9 +277,7 @@ public(package) fun creator_claim_signer_set(
 public(package) fun creator_claim_signer_revoked(
     previous_public_key: vector<u8>,
 ) {
-    blast_fun::events_wrapper::emit_event(CreatorClaimSignerRevoked {
-        previous_public_key,
-    });
+    blast_fun::events_wrapper::emit_event(CreatorClaimSignerRevoked(previous_public_key));
 }
 
 /// Emits the one-time creator-cap claim and its account-claim facts.
@@ -549,12 +532,8 @@ public fun quote_parameters_changed_fields(
 }
 
 #[test_only]
-public fun quote_disallowed_fields(self: &QuoteDisallowed): (TypeName, u64, u64) {
-    (
-        self.quote,
-        self.previous_virtual_quote,
-        self.previous_migration_quote_target,
-    )
+public fun quote_disallowed_fields(self: &QuoteDisallowed): TypeName {
+    self.0
 }
 
 #[test_only]
@@ -575,14 +554,14 @@ public fun graduation_defaults_changed_fields(
 public fun migration_witness_allowed_fields(
     self: &MigrationWitnessAllowed,
 ): TypeName {
-    self.migration_witness
+    self.0
 }
 
 #[test_only]
 public fun migration_witness_disallowed_fields(
     self: &MigrationWitnessDisallowed,
 ): TypeName {
-    self.migration_witness
+    self.0
 }
 
 #[test_only]
@@ -609,7 +588,7 @@ public fun creator_claim_signer_set_fields(
 public fun creator_claim_signer_revoked_fields(
     self: &CreatorClaimSignerRevoked,
 ): vector<u8> {
-    self.previous_public_key
+    self.0
 }
 
 #[test_only]

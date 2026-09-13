@@ -294,16 +294,13 @@ fun admin_disallows_quote_from_future_launch_admission() {
             &admin_witness);
 
         let disallowed = events::collect_one<events::QuoteDisallowed>(0);
-        let (quote, previous_virtual_quote, previous_target) =
-            disallowed.quote_disallowed_fields();
+        let quote = disallowed.quote_disallowed_fields();
 
         assert_eq!(f.config.allowed_quote_count_for_testing(), 0);
         assert_eq!(
             quote,
             std::type_name::with_original_ids<TEST_QUOTE>(),
         );
-        assert_eq!(previous_virtual_quote, VIRTUAL_QUOTE);
-        assert_eq!(previous_target, MIGRATION_QUOTE_TARGET);
     });
 
     fixture.end();

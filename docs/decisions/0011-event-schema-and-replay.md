@@ -109,7 +109,7 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `ProtocolFeeShareChanged` | G | old/new `protocol_fee_share_bps` |
 | `QuoteAllowed` | G | original quote type, initial migration quote target |
 | `QuoteMigrationTargetChanged` | G | original quote type, old/new migration quote target |
-| `QuoteDisallowed` | G | original quote type, previous migration quote target |
+| `QuoteDisallowed` | G | original quote type |
 | `LaunchTradeFeesChanged` | G | complete old/new Quote and Meme trade-fee rate pairs |
 | `GraduationDefaultsChanged` | G | complete old/new Quote-fee, Meme-allocation, and Meme-liquidity-provision triples |
 | `MigrationWitnessAllowed` | G | admitted external migrator witness original type |
