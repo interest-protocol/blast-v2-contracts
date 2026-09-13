@@ -88,9 +88,7 @@ const EZeroTradeInput: u64 = 33;
 /// Rounding or fees reduced the user's quoted output to zero.
 const EZeroTradeOutput: u64 = 34;
 
-#[test_only]
-/// A post-trade curve reserve cannot be represented as u64.
-const ECurveReserveOverflow: u64 = 35;
+// Code 35 retired: reachable launch reserves are bounded by the migration target or Meme supply.
 
 #[test_only]
 /// A sell quote requested more real quote than the curve holds.
@@ -306,9 +304,7 @@ macro public(package) fun zero_trade_output(): u64 {
     34
 }
 
-macro public(package) fun curve_reserve_overflow(): u64 {
-    35
-}
+// Error code 35 is retired and must not be reused.
 
 macro public(package) fun sell_back_invariant_violated(): u64 {
     36
@@ -346,7 +342,7 @@ macro public(package) fun quote_not_allowed(): u64 {
 
 // Error code 46 is retired and must not be reused.
 
-macro public(package) fun invalid_quote_migration_fee_bps(): u64 {
+macro public(package) fun invalid_protocol_quote_migration_fee_bps(): u64 {
     47
 }
 

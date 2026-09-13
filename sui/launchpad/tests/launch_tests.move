@@ -48,7 +48,7 @@ const VIRTUAL_QUOTE: u64 = 5_000_000;
 const MIGRATION_QUOTE_TARGET: u64 = 25_000_000;
 const QUOTE_FEE_BPS: u64 = 100;
 const MEME_FEE_BPS: u64 = 250;
-const QUOTE_MIGRATION_FEE_BPS: u64 = 250;
+const PROTOCOL_QUOTE_MIGRATION_FEE_BPS: u64 = 250;
 const PROTOCOL_MEME_GRADUATION_FEE_BPS: u64 = 750;
 const MEME_LIQUIDITY_PROVISION_BPS: u64 = 2_000;
 const SELL_BURN_BPS: u64 = 1_000;
@@ -105,7 +105,7 @@ fun launch_consumes_ticket_and_emits_complete_initial_state() {
             migration_quote_target,
             quote_fee_bps,
             meme_fee_bps,
-            quote_migration_fee_bps,
+            protocol_quote_migration_fee_bps,
             protocol_meme_graduation_fee_bps,
             meme_liquidity_provision_bps,
         ) = created.launch_created_policy_fields();
@@ -126,7 +126,7 @@ fun launch_consumes_ticket_and_emits_complete_initial_state() {
         assert_eq!(migration_quote_target, MIGRATION_QUOTE_TARGET);
         assert_eq!(quote_fee_bps, QUOTE_FEE_BPS);
         assert_eq!(meme_fee_bps, MEME_FEE_BPS);
-        assert_eq!(quote_migration_fee_bps, QUOTE_MIGRATION_FEE_BPS);
+        assert_eq!(protocol_quote_migration_fee_bps, PROTOCOL_QUOTE_MIGRATION_FEE_BPS);
         assert_eq!(
             protocol_meme_graduation_fee_bps,
             PROTOCOL_MEME_GRADUATION_FEE_BPS,
@@ -768,7 +768,7 @@ fun fixed_migration_sends_terminal_disposal_to_zero_without_reducing_supply() {
             native_supply_burned,
             total_supply_after,
             protocol_meme_fee,
-            quote_migration_fee,
+            protocol_quote_migration_fee,
         ) = migration.migrated_balance_fields();
 
         assert!(migrated);
@@ -780,7 +780,7 @@ fun fixed_migration_sends_terminal_disposal_to_zero_without_reducing_supply() {
         assert!(disposed_meme > 0);
         expected_disposed_meme = disposed_meme;
         assert_eq!(protocol_meme_fee, EXPECTED_PROTOCOL_MEME);
-        assert!(quote_migration_fee > 0);
+        assert!(protocol_quote_migration_fee > 0);
         assert_eq!(total_supply_after, initial_supply);
         assert_eq!(currency.total_supply().destroy_some(), initial_supply);
 
@@ -790,7 +790,7 @@ fun fixed_migration_sends_terminal_disposal_to_zero_without_reducing_supply() {
             f.ctx!(),
         );
         assert_eq!(protocol_meme.value(), protocol_meme_fee);
-        assert_eq!(protocol_quote.value(), quote_migration_fee);
+        assert_eq!(protocol_quote.value(), protocol_quote_migration_fee);
 
         destroy(meme);
         destroy(quote);
@@ -1449,7 +1449,7 @@ fun start(): LaunchFixture {
     config.set_graduation_defaults(
         &package_version,
         &admin_witness,
-        QUOTE_MIGRATION_FEE_BPS,
+        PROTOCOL_QUOTE_MIGRATION_FEE_BPS,
         PROTOCOL_MEME_GRADUATION_FEE_BPS,
         MEME_LIQUIDITY_PROVISION_BPS,
     );
@@ -1521,7 +1521,7 @@ fun assert_launch_snapshot(launch: &Launch<LAUNCH_TESTS, TEST_QUOTE>) {
         migration_quote_target,
         quote_fee_bps,
         meme_fee_bps,
-        quote_migration_fee_bps,
+        protocol_quote_migration_fee_bps,
         migration_witness,
     ) = launch.policy_for_testing();
 
@@ -1534,7 +1534,7 @@ fun assert_launch_snapshot(launch: &Launch<LAUNCH_TESTS, TEST_QUOTE>) {
     assert_eq!(migration_quote_target, MIGRATION_QUOTE_TARGET);
     assert_eq!(quote_fee_bps, QUOTE_FEE_BPS);
     assert_eq!(meme_fee_bps, MEME_FEE_BPS);
-    assert_eq!(quote_migration_fee_bps, QUOTE_MIGRATION_FEE_BPS);
+    assert_eq!(protocol_quote_migration_fee_bps, PROTOCOL_QUOTE_MIGRATION_FEE_BPS);
     assert_eq!(
         migration_witness,
         type_name::with_original_ids<TEST_MIGRATION_WITNESS>(),

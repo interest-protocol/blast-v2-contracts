@@ -64,10 +64,6 @@ fun dual_asset_accrual_splits_and_claims_exactly() {
             creator_meme_delta,
             protocol_quote_delta,
             creator_quote_delta,
-            protocol_meme_total,
-            creator_meme_total,
-            protocol_quote_total,
-            creator_quote_total,
         ) = accrue(&mut ledger,
             balance::create_for_testing<TEST_MEME>(9),
             balance::create_for_testing<TEST_QUOTE>(10),
@@ -78,11 +74,6 @@ fun dual_asset_accrual_splits_and_claims_exactly() {
         assert_eq!(creator_meme_delta, 2);
         assert_eq!(protocol_quote_delta, 7);
         assert_eq!(creator_quote_delta, 3);
-        assert_eq!(protocol_meme_total, 7);
-        assert_eq!(creator_meme_total, 2);
-        assert_eq!(protocol_quote_total, 7);
-        assert_eq!(creator_quote_total, 3);
-
         let (creator_meme, creator_quote) = f.claim_creator_fees(&mut ledger);
         let (protocol_meme, protocol_quote) =
             ledger.claim_protocol_fees(&admin_witness, f.ctx!());
@@ -115,10 +106,6 @@ fun protocol_fee_share_boundaries_route_every_accrued_unit() {
             creator_meme_delta,
             protocol_quote_delta,
             creator_quote_delta,
-            protocol_meme_total,
-            creator_meme_total,
-            protocol_quote_total,
-            creator_quote_total,
         ) = accrue(&mut ledger,
             balance::create_for_testing<TEST_MEME>(9),
             balance::create_for_testing<TEST_QUOTE>(10),
@@ -129,20 +116,11 @@ fun protocol_fee_share_boundaries_route_every_accrued_unit() {
         assert_eq!(creator_meme_delta, 9);
         assert_eq!(protocol_quote_delta, 0);
         assert_eq!(creator_quote_delta, 10);
-        assert_eq!(protocol_meme_total, 0);
-        assert_eq!(creator_meme_total, 9);
-        assert_eq!(protocol_quote_total, 0);
-        assert_eq!(creator_quote_total, 10);
-
         let (
             protocol_meme_delta,
             creator_meme_delta,
             protocol_quote_delta,
             creator_quote_delta,
-            protocol_meme_total,
-            creator_meme_total,
-            protocol_quote_total,
-            creator_quote_total,
         ) = accrue(&mut ledger,
             balance::create_for_testing<TEST_MEME>(5),
             balance::create_for_testing<TEST_QUOTE>(6),
@@ -153,11 +131,6 @@ fun protocol_fee_share_boundaries_route_every_accrued_unit() {
         assert_eq!(creator_meme_delta, 0);
         assert_eq!(protocol_quote_delta, 6);
         assert_eq!(creator_quote_delta, 0);
-        assert_eq!(protocol_meme_total, 5);
-        assert_eq!(creator_meme_total, 9);
-        assert_eq!(protocol_quote_total, 6);
-        assert_eq!(creator_quote_total, 10);
-
         let (creator_meme, creator_quote) = f.claim_creator_fees(&mut ledger);
         let (protocol_meme, protocol_quote) =
             ledger.claim_protocol_fees(&admin_witness, f.ctx!());
@@ -298,10 +271,6 @@ fun changed_protocol_fee_share_applies_to_the_next_accrual() {
             creator_meme_delta,
             protocol_quote_delta,
             creator_quote_delta,
-            protocol_meme_total,
-            creator_meme_total,
-            protocol_quote_total,
-            creator_quote_total,
         ) = ledger.accrue_from_runtime(
             balance::create_for_testing<TEST_MEME>(5),
             balance::create_for_testing<TEST_QUOTE>(6),
@@ -312,11 +281,6 @@ fun changed_protocol_fee_share_applies_to_the_next_accrual() {
         assert_eq!(creator_meme_delta, 1);
         assert_eq!(protocol_quote_delta, 5);
         assert_eq!(creator_quote_delta, 1);
-        assert_eq!(protocol_meme_total, 6);
-        assert_eq!(creator_meme_total, 2);
-        assert_eq!(protocol_quote_total, 7);
-        assert_eq!(creator_quote_total, 3);
-
         let (protocol_meme, protocol_quote) =
             ledger.claim_protocol_fees(&admin_witness, f.ctx!());
         let (creator_meme, creator_quote) = f.claim_creator_fees(&mut ledger);
@@ -453,33 +417,11 @@ fun accrue<Meme, Quote>(
     meme_fee: Balance<Meme>,
     quote_fee: Balance<Quote>,
     protocol_fee_share_bps: u64,
-): (u64, u64, u64, u64, u64, u64, u64, u64) {
-    let (
-        protocol_meme_delta,
-        creator_meme_delta,
-        protocol_quote_delta,
-        creator_quote_delta,
-    ) = ledger.accrue(
+): (u64, u64, u64, u64) {
+    ledger.accrue(
         meme_fee,
         quote_fee,
         bps::new(protocol_fee_share_bps),
-    );
-    let (
-        protocol_meme_total,
-        creator_meme_total,
-        protocol_quote_total,
-        creator_quote_total,
-    ) = ledger.totals();
-
-    (
-        protocol_meme_delta,
-        creator_meme_delta,
-        protocol_quote_delta,
-        creator_quote_delta,
-        protocol_meme_total,
-        creator_meme_total,
-        protocol_quote_total,
-        creator_quote_total,
     )
 }
 

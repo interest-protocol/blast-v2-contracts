@@ -28,7 +28,7 @@ const MIGRATION_QUOTE_TARGET: u64 = 25_000_000;
 const UPDATED_MIGRATION_QUOTE_TARGET: u64 = 40_000_000;
 const QUOTE_FEE_BPS: u64 = 100;
 const MEME_FEE_BPS: u64 = 250;
-const QUOTE_MIGRATION_FEE_BPS: u64 = 250;
+const PROTOCOL_QUOTE_MIGRATION_FEE_BPS: u64 = 250;
 const PROTOCOL_MEME_GRADUATION_FEE_BPS: u64 = 750;
 const MEME_LIQUIDITY_PROVISION_BPS: u64 = 2_000;
 
@@ -81,14 +81,14 @@ fun package_init_creates_empty_launch_config() {
         let (
             quote_fee_bps,
             meme_fee_bps,
-            quote_migration_fee_bps,
+            protocol_quote_migration_fee_bps,
             protocol_meme_graduation_fee_bps,
             meme_liquidity_provision_bps,
         ) = f.config.rate_defaults_for_testing();
 
         assert_eq!(quote_fee_bps, 0);
         assert_eq!(meme_fee_bps, 0);
-        assert_eq!(quote_migration_fee_bps, 0);
+        assert_eq!(protocol_quote_migration_fee_bps, 0);
         assert_eq!(protocol_meme_graduation_fee_bps, 0);
         assert_eq!(meme_liquidity_provision_bps, 0);
         assert_eq!(f.config.allowed_quote_count_for_testing(), 0);
@@ -358,7 +358,7 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            QUOTE_MIGRATION_FEE_BPS,
+            PROTOCOL_QUOTE_MIGRATION_FEE_BPS,
             PROTOCOL_MEME_GRADUATION_FEE_BPS,
             MEME_LIQUIDITY_PROVISION_BPS,
         );
@@ -368,14 +368,14 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
             migration_quote_target,
             quote_fee_bps,
             meme_fee_bps,
-            quote_migration_fee_bps,
+            protocol_quote_migration_fee_bps,
             protocol_meme_graduation_fee_bps,
             meme_liquidity_provision_bps,
             migration_witness,
         ) = f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
         let changed = events::collect_one<events::GraduationDefaultsChanged>(0);
         let (
-            new_quote_migration_fee_bps,
+            new_protocol_quote_migration_fee_bps,
             new_protocol_meme_graduation_fee_bps,
             new_meme_liquidity_provision_bps,
         ) = changed.graduation_defaults_changed_fields();
@@ -384,7 +384,7 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
         assert_eq!(migration_quote_target, MIGRATION_QUOTE_TARGET);
         assert_eq!(quote_fee_bps.value(), 0);
         assert_eq!(meme_fee_bps.value(), 0);
-        assert_eq!(quote_migration_fee_bps.value(), QUOTE_MIGRATION_FEE_BPS);
+        assert_eq!(protocol_quote_migration_fee_bps.value(), PROTOCOL_QUOTE_MIGRATION_FEE_BPS);
         assert_eq!(
             protocol_meme_graduation_fee_bps.value(),
             PROTOCOL_MEME_GRADUATION_FEE_BPS,
@@ -397,7 +397,7 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
             migration_witness,
             std::type_name::with_original_ids<TEST_MIGRATION_WITNESS>(),
         );
-        assert_eq!(new_quote_migration_fee_bps, QUOTE_MIGRATION_FEE_BPS);
+        assert_eq!(new_protocol_quote_migration_fee_bps, PROTOCOL_QUOTE_MIGRATION_FEE_BPS);
         assert_eq!(
             new_protocol_meme_graduation_fee_bps,
             PROTOCOL_MEME_GRADUATION_FEE_BPS,
@@ -523,7 +523,7 @@ fun graduation_defaults_accept_fee_zeros_and_liquidity_provision_boundaries() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            constants::max_quote_migration_fee_bps!(),
+            constants::max_protocol_quote_migration_fee_bps!(),
             constants::max_protocol_meme_graduation_fee_bps!(),
             constants::basis_points_denominator!()
                 - constants::max_protocol_meme_graduation_fee_bps!()
@@ -532,7 +532,7 @@ fun graduation_defaults_accept_fee_zeros_and_liquidity_provision_boundaries() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            constants::max_quote_migration_fee_bps!(),
+            constants::max_protocol_quote_migration_fee_bps!(),
             0,
             constants::basis_points_denominator!()
                 - constants::max_protocol_meme_graduation_fee_bps!()
@@ -550,7 +550,7 @@ fun graduation_defaults_accept_fee_zeros_and_liquidity_provision_boundaries() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            constants::max_quote_migration_fee_bps!(),
+            constants::max_protocol_quote_migration_fee_bps!(),
             0,
             constants::basis_points_denominator!() - 1,
         );
@@ -562,14 +562,14 @@ fun graduation_defaults_accept_fee_zeros_and_liquidity_provision_boundaries() {
             _,
             _,
             _,
-            quote_migration_fee_bps,
+            protocol_quote_migration_fee_bps,
             protocol_meme_graduation_fee_bps,
             meme_liquidity_provision_bps,
             _,
         ) = f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
         let changes = events::collect<events::GraduationDefaultsChanged>();
 
-        assert_eq!(quote_migration_fee_bps.value(), 0);
+        assert_eq!(protocol_quote_migration_fee_bps.value(), 0);
         assert_eq!(protocol_meme_graduation_fee_bps.value(), 0);
         assert_eq!(meme_liquidity_provision_bps.value(), 1);
         assert_eq!(changes.length(), 5);
@@ -693,7 +693,7 @@ fun graduation_defaults_reject_quote_rate_above_ceiling_first() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            constants::max_quote_migration_fee_bps!() + 1,
+            constants::max_protocol_quote_migration_fee_bps!() + 1,
             constants::max_protocol_meme_graduation_fee_bps!() + 1,
             0,
         );

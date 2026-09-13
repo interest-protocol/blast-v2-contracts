@@ -20,7 +20,7 @@ const PACKAGE_ADMIN_ROLE: u64 = 1;
 // === Public Structs ===
 
 /// One-time witness that names this administration domain at the type level.
-public struct LAUNCHPAD_DOMAIN has drop {}
+public struct LAUNCHPAD_DOMAIN() has drop;
 
 // === Private Initialization ===
 

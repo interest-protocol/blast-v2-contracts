@@ -26,7 +26,6 @@ fun market_and_launch_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::invalid_quote_fee_bps!(), 31);
     assert_eq!(blast_fun::errors::zero_trade_input!(), 33);
     assert_eq!(blast_fun::errors::zero_trade_output!(), 34);
-    assert_eq!(blast_fun::errors::curve_reserve_overflow!(), 35);
     assert_eq!(
         blast_fun::errors::sell_back_invariant_violated!(),
         36,
@@ -37,7 +36,7 @@ fun market_and_launch_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::protocol_fee_share_unchanged!(), 41);
     assert_eq!(blast_fun::errors::invalid_migration_quote_target!(), 42);
     assert_eq!(blast_fun::errors::quote_not_allowed!(), 45);
-    assert_eq!(blast_fun::errors::invalid_quote_migration_fee_bps!(), 47);
+    assert_eq!(blast_fun::errors::invalid_protocol_quote_migration_fee_bps!(), 47);
     assert_eq!(
         blast_fun::errors::invalid_protocol_meme_graduation_fee_bps!(),
         48,

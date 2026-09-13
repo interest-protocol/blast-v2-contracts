@@ -40,7 +40,7 @@ constant compiled into the package the indexer is already reading:
 `PACKAGE_VERSION` is `1`; `max_admins`, `max_migration_witnesses`, and
 `super_admin_transfer_delay_ms` are `constants` macros;
 and all six initial rates — `protocol_fee_share_bps`, `quote_fee_bps`,
-`meme_fee_bps`, `quote_migration_fee_bps`,
+`meme_fee_bps`, `protocol_quote_migration_fee_bps`,
 `protocol_meme_graduation_fee_bps`, and `meme_liquidity_provision_bps` — are
 literal zero.
 
@@ -83,7 +83,7 @@ when replay begins at deployment:
 | `protocol_fee_share_bps` | compiled zero; then `ProtocolFeeShareChanged` |
 | `version` | compiled `PACKAGE_VERSION`; then `PackageVersionAdvanced.previous_version` |
 | `quote_fee_bps`, `meme_fee_bps` | compiled zero; then `LaunchTradeFeesChanged` |
-| `quote_migration_fee_bps`, `protocol_meme_graduation_fee_bps`, `meme_liquidity_provision_bps` | compiled zero; then `GraduationDefaultsChanged` |
+| `protocol_quote_migration_fee_bps`, `protocol_meme_graduation_fee_bps`, `meme_liquidity_provision_bps` | compiled zero; then `GraduationDefaultsChanged` |
 | `max_admins`, `max_migration_witnesses`, `super_admin_transfer_delay_ms` | `constants` macros in the published bytecode; never mutable |
 
 A reducer starting at deployment therefore still reconstructs lifecycle,

@@ -108,8 +108,6 @@ fun collected_quote_is_split_and_claimed_without_changing_locked_principal() {
         expected.append(bcs::to_bytes(&f.runtime.protocol_fee_share_bps()));
         expected.append(bcs::to_bytes(&protocol));
         expected.append(bcs::to_bytes(&creator));
-        expected.append(bcs::to_bytes(&protocol));
-        expected.append(bcs::to_bytes(&creator));
         assert_eq!(bcs::to_bytes(&events[0]), expected);
         let (meme, quote) = vault.claim_creator_fees(&f.cap, &f.factory, f.ctx!());
         assert_eq!(meme.value(), 0);

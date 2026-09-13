@@ -820,7 +820,7 @@ fees_source="$(move_normalized_source <<<"$fees_facts")"
 
 if [[ ! -f sources/fees.move ]] \
   || [[ "$(move_production_functions <<<"$fees_facts")" \
-    != 'accrue:package:0 accrue_from_runtime:public:0 accrue_protocol_fees:package:0 claim_creator_fees:public:0 claim_protocol_fees:public:0 new:public:0 totals:public:0 ' ]] \
+    != 'accrue:package:0 accrue_from_runtime:public:0 accrue_protocol_fees:package:0 claim_creator_fees:public:0 claim_protocol_fees:public:0 has_protocol_fees:public:0 new:public:0 ' ]] \
   || [[ "$(move_production_type FeeLedger <<<"$fees_facts")" \
     != 'struct FeeLedger<phantom Meme, phantom Quote> has store { protocol_meme: Balance<Meme>, creator_meme: Balance<Meme>, protocol_quote: Balance<Quote>, creator_quote: Balance<Quote>, }' ]] \
   || rg -q '\b(UID|key|transfer::|CreatorClaim|ed25519|recipient|launch_id)\b' <<<"$fees_source" \
@@ -876,14 +876,14 @@ check_fee_function new \
   'FeeLedger { protocol_meme: balance::zero(), creator_meme: balance::zero(), protocol_quote: balance::zero(), creator_quote: balance::zero(), }'
 
 check_fee_function accrue_from_runtime \
-  'fun accrue_from_runtime<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, meme_fee: Balance<Meme>, quote_fee: Balance<Quote>, runtime_config: &RuntimeConfig, ): (u64, u64, u64, u64, u64, u64, u64, u64)' \
+  'fun accrue_from_runtime<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, meme_fee: Balance<Meme>, quote_fee: Balance<Quote>, runtime_config: &RuntimeConfig, ): (u64, u64, u64, u64)' \
   '' \
-  'let ( protocol_meme_delta, creator_meme_delta, protocol_quote_delta, creator_quote_delta, ) = self.accrue( meme_fee, quote_fee, runtime_config.protocol_fee_share(), ); let ( protocol_meme_total, creator_meme_total, protocol_quote_total, creator_quote_total, ) = self.totals(); ( protocol_meme_delta, creator_meme_delta, protocol_quote_delta, creator_quote_delta, protocol_meme_total, creator_meme_total, protocol_quote_total, creator_quote_total, )'
+  'self.accrue( meme_fee, quote_fee, runtime_config.protocol_fee_share(), )'
 
-check_fee_function totals \
-  'fun totals<Meme, Quote>( self: &FeeLedger<Meme, Quote>, ): (u64, u64, u64, u64)' \
-  'creator_meme.value creator_quote.value protocol_meme.value protocol_quote.value ' \
-  '( self.protocol_meme.value(), self.creator_meme.value(), self.protocol_quote.value(), self.creator_quote.value(), )'
+check_fee_function has_protocol_fees \
+  'fun has_protocol_fees<Meme, Quote>(self: &FeeLedger<Meme, Quote>): bool' \
+  'protocol_meme.value protocol_quote.value ' \
+  'self.protocol_meme.value() > 0 || self.protocol_quote.value() > 0'
 
 check_fee_function claim_creator_fees \
   'fun claim_creator_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, _: &CreatorCap<Meme>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
@@ -892,8 +892,8 @@ check_fee_function claim_creator_fees \
 
 check_fee_function claim_protocol_fees \
   'fun claim_protocol_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, _: &AdminWitness<LAUNCHPAD_DOMAIN>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
-  'protocol_meme.value protocol_meme.withdraw_all protocol_quote.value protocol_quote.withdraw_all ' \
-  'assert!( self.protocol_meme.value() > 0 || self.protocol_quote.value() > 0, blast_fun::errors::nothing_accrued!(), ); ( self.protocol_meme.withdraw_all().into_coin(ctx), self.protocol_quote.withdraw_all().into_coin(ctx), )'
+  'protocol_meme.withdraw_all protocol_quote.withdraw_all ' \
+  'assert!( self.has_protocol_fees(), blast_fun::errors::nothing_accrued!(), ); ( self.protocol_meme.withdraw_all().into_coin(ctx), self.protocol_quote.withdraw_all().into_coin(ctx), )'
 
 check_fee_function accrue_protocol_fees \
   'fun accrue_protocol_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, meme_fee: Balance<Meme>, quote_fee: Balance<Quote>, )' \
@@ -960,7 +960,7 @@ runtime_config_source="$(move_normalized_source <<<"$runtime_config_facts")"
 
 if [[ ! -f sources/runtime_config.move ]] \
   || [[ "$(move_production_functions <<<"$runtime_config_facts")" \
-    != 'assert_creator_claim_active:package:0 init:private:0 new:private:0 protocol_fee_share:package:0 protocol_fee_share_bps:public:0 revoke_creator_claim_signer:public:0 set_creator_claim_signer:public:0 set_protocol_fee_share:public:0 validate_creator_claim_public_key:private:0 verify_creator_claim_signature:package:0 ' ]] \
+    != 'assert_creator_claim_active:package:0 assert_creator_claim_signature:package:0 init:private:0 new:private:0 protocol_fee_share:package:0 protocol_fee_share_bps:public:0 revoke_creator_claim_signer:public:0 set_creator_claim_signer:public:0 set_protocol_fee_share:public:0 validate_creator_claim_public_key:private:0 ' ]] \
   || [[ "$(move_production_type RuntimeConfig <<<"$runtime_config_facts")" \
     != 'struct RuntimeConfig has key { id: UID, creator_claim_signer_public_key: vector<u8>, protocol_fee_share_bps: Bps, }' ]] \
   || rg -q '\b(AdminCap|ProtocolAuthority|LaunchConfig|VecMap|VecSet|TypeName)\b' \
@@ -1018,8 +1018,8 @@ check_runtime_function validate_creator_claim_public_key \
   'fun validate_creator_claim_public_key(signer_public_key: &vector<u8>)' \
   'assert!( signer_public_key.length() == constants::ed25519_public_key_length!(), blast_fun::errors::invalid_creator_claim_public_key!(), );'
 
-check_runtime_function verify_creator_claim_signature \
-  'fun verify_creator_claim_signature( self: &RuntimeConfig, message: &vector<u8>, signature: &vector<u8>, )' \
+check_runtime_function assert_creator_claim_signature \
+  'fun assert_creator_claim_signature( self: &RuntimeConfig, message: &vector<u8>, signature: &vector<u8>, )' \
   'assert!( sui::ed25519::ed25519_verify( signature, &self.creator_claim_signer_public_key, message, ), blast_fun::errors::invalid_creator_claim_signature!(), );'
 
 check_runtime_function set_creator_claim_signer \
@@ -1102,7 +1102,7 @@ launch_config_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources
 
 if [[ ! -f sources/launch_config.move ]] \
   || ! rg -U -q \
-    'public struct LaunchConfig has key \{\s*id: UID,\s*quotes: Table<TypeName, QuoteParameters>,\s*quote_fee_bps: Bps,\s*meme_fee_bps: Bps,\s*quote_migration_fee_bps: Bps,\s*protocol_meme_graduation_fee_bps: Bps,\s*meme_liquidity_provision_bps: Bps,\s*migration_witnesses: VecSet<TypeName>,\s*\}' \
+    'public struct LaunchConfig has key \{\s*id: UID,\s*quotes: Table<TypeName, QuoteParameters>,\s*quote_fee_bps: Bps,\s*meme_fee_bps: Bps,\s*protocol_quote_migration_fee_bps: Bps,\s*protocol_meme_graduation_fee_bps: Bps,\s*meme_liquidity_provision_bps: Bps,\s*migration_witnesses: VecSet<TypeName>,\s*\}' \
     sources/launch_config.move \
   || ! rg -U -q \
     'public struct QuoteParameters has copy, drop, store \{\s*virtual_quote: u64,\s*migration_quote_target: u64,\s*\}' \
@@ -1117,7 +1117,7 @@ if [[ ! -f sources/launch_config.move ]] \
     'public fun set_trade_fees\(\s*self: &mut LaunchConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*quote_fee_bps: u64,\s*meme_fee_bps: u64,\s*\)' \
     sources/launch_config.move \
   || ! rg -U -q \
-    'public fun set_graduation_defaults\(\s*self: &mut LaunchConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*quote_migration_fee_bps: u64,\s*protocol_meme_graduation_fee_bps: u64,\s*meme_liquidity_provision_bps: u64,\s*\)' \
+    'public fun set_graduation_defaults\(\s*self: &mut LaunchConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*protocol_quote_migration_fee_bps: u64,\s*protocol_meme_graduation_fee_bps: u64,\s*meme_liquidity_provision_bps: u64,\s*\)' \
     sources/launch_config.move \
   || [[ "$(rg -c '^public\(package\) fun ' <<<"$launch_config_production")" != 1 ]] \
   || ! rg -U -q \
@@ -1129,7 +1129,7 @@ fi
 
 if ! rg -U -q 'macro public\(package\) fun max_migration_witnesses\(\): u64 \{\s*16\s*\}' \
     sources/lib/constants.move \
-  || ! rg -U -q 'macro public\(package\) fun max_quote_migration_fee_bps\(\): u64 \{\s*500\s*\}' \
+  || ! rg -U -q 'macro public\(package\) fun max_protocol_quote_migration_fee_bps\(\): u64 \{\s*500\s*\}' \
     sources/lib/constants.move \
   || ! rg -U -q 'macro public\(package\) fun max_protocol_meme_graduation_fee_bps\(\): u64 \{\s*1_000\s*\}' \
   sources/lib/constants.move \
@@ -1145,7 +1145,7 @@ if ! rg -U -q 'macro public\(package\) fun max_migration_witnesses\(\): u64 \{\s
     sources/launch_config.move sources/lib/constants.move sources/lib/errors.move \
   || ! rg -Fq 'self.migration_witnesses.length()' sources/launch_config.move \
   || ! rg -U -q \
-    'quotes: table::new\(ctx\),\s*quote_fee_bps: bps::new\(0\),\s*meme_fee_bps: bps::new\(0\),\s*quote_migration_fee_bps: bps::new\(0\),\s*protocol_meme_graduation_fee_bps: bps::new\(0\),\s*meme_liquidity_provision_bps: bps::new\(0\),\s*migration_witnesses: vec_set::empty\(\)' \
+    'quotes: table::new\(ctx\),\s*quote_fee_bps: bps::new\(0\),\s*meme_fee_bps: bps::new\(0\),\s*protocol_quote_migration_fee_bps: bps::new\(0\),\s*protocol_meme_graduation_fee_bps: bps::new\(0\),\s*meme_liquidity_provision_bps: bps::new\(0\),\s*migration_witnesses: vec_set::empty\(\)' \
     sources/launch_config.move \
   || ! rg -U -q \
     'protocol_meme_graduation_fee_bps \+ meme_liquidity_provision_bps\s*< constants::basis_points_denominator!\(\)' \
@@ -1260,21 +1260,21 @@ if [[ -e sources/graduation.move ]] \
   || [[ "$(move_production_signature partition_meme <<<"$launch_facts")" \
     != 'fun partition_meme<Meme>( mut meme: Balance<Meme>, protocol_meme_graduation_fee_bps: Bps, meme_liquidity_provision_bps: Bps, ): (Balance<Meme>, Balance<Meme>, Balance<Meme>)' ]] \
   || [[ "$(move_production_signature partition_quote <<<"$launch_facts")" \
-    != 'fun partition_quote<Quote>( mut quote: Balance<Quote>, quote_migration_fee_bps: Bps, ): (Balance<Quote>, Balance<Quote>)' ]] \
+    != 'fun partition_quote<Quote>( mut quote: Balance<Quote>, protocol_quote_migration_fee_bps: Bps, ): (Balance<Quote>, Balance<Quote>)' ]] \
   || [[ "$(count_occurrences 'partition_meme\(' <<<"$launch_production")" != 1 ]] \
   || [[ "$(count_occurrences 'partition_quote\(' <<<"$launch_production")" != 1 ]] \
   || ! rg -Fq 'protocol_meme_graduation_fee_bps.apply_up(initial_supply)' <<<"$partition_meme_body" \
   || ! rg -Fq 'meme_liquidity_provision_bps.apply_down(initial_supply)' <<<"$partition_meme_body" \
   || rg -q 'assert!' <<<"$partition_meme_body" \
   || [[ "$(count_occurrences '\.split\(' <<<"${partition_meme_body} ${partition_quote_body}")" != 3 ]] \
-  || ! rg -Fq 'quote_migration_fee_bps.apply_up(quote.value())' <<<"$partition_quote_body"; then
+  || ! rg -Fq 'protocol_quote_migration_fee_bps.apply_up(quote.value())' <<<"$partition_quote_body"; then
   echo 'launch.move must privately own graduation rounding and balance custody without revalidating snapshotted policy.' >&2
   failures=$((failures + 1))
 fi
 
 if [[ ! -f sources/launch.move ]] \
   || ! rg -U -q \
-    'public struct Launch<phantom Meme, phantom Quote> has key \{\s*id: UID,\s*lifecycle: Lifecycle,\s*sell_burn_bps: Bps,\s*virtual_quote: u64,\s*migration_quote_target: u64,\s*quote_fee_bps: Bps,\s*meme_fee_bps: Bps,\s*quote_migration_fee_bps: Bps,\s*migration_witness: TypeName,\s*meme_reserve: Balance<Meme>,\s*real_quote_reserve: Balance<Quote>,\s*pending_burn: Balance<Meme>,\s*protocol_meme_graduation_fee: Balance<Meme>,\s*meme_liquidity_provision: Balance<Meme>,\s*fee_ledger: FeeLedger<Meme, Quote>,\s*metadata_cap: Option<MetadataCap<Meme>>,\s*creator_authority: Option<CreatorAuthority<Meme>>,\s*\}' \
+    'public struct Launch<phantom Meme, phantom Quote> has key \{\s*id: UID,\s*lifecycle: Lifecycle,\s*sell_burn_bps: Bps,\s*virtual_quote: u64,\s*migration_quote_target: u64,\s*quote_fee_bps: Bps,\s*meme_fee_bps: Bps,\s*protocol_quote_migration_fee_bps: Bps,\s*migration_witness: TypeName,\s*meme_reserve: Balance<Meme>,\s*real_quote_reserve: Balance<Quote>,\s*pending_burn: Balance<Meme>,\s*protocol_meme_graduation_fee: Balance<Meme>,\s*meme_liquidity_provision: Balance<Meme>,\s*fee_ledger: FeeLedger<Meme, Quote>,\s*metadata_cap: Option<MetadataCap<Meme>>,\s*creator_authority: Option<CreatorAuthority<Meme>>,\s*\}' \
     sources/launch.move \
   || [[ "$(rg -c '^public fun ' <<<"$launch_production")" != 10 ]] \
   || [[ "$(rg -c '^public fun (new|share|claim_creator_cap|buy|sell|claim_creator_fees|claim_protocol_fees|migrate|assert_migrated|redeem_migration)(<|\()' <<<"$launch_production")" != 10 ]] \
@@ -1381,7 +1381,7 @@ receiver_syntax_violations="$(
       | move_normalized_source \
       | sed 's/ *:: */::/g; s/ *(/(/g' \
       | rg -o \
-        '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_creator_claim_signer|revoke_creator_claim_signer|set_protocol_fee_share|assert_creator_claim_active|verify_creator_claim_signature|protocol_fee_share|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_trade_fees|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|launch::(share|migrate|redeem_migration)|creator_authority::(into_authority|recipient_address|account_commitment|claim_creator_cap)|launch_ticket::destroy|fees::(accrue|accrue_from_runtime|accrue_protocol_fees|totals|claim_creator_fees|claim_protocol_fees)|package::test_upgrade|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
+        '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_creator_claim_signer|revoke_creator_claim_signer|set_protocol_fee_share|assert_creator_claim_active|assert_creator_claim_signature|protocol_fee_share|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_trade_fees|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|launch::(share|migrate|redeem_migration)|creator_authority::(into_authority|recipient_address|account_commitment|claim_creator_cap)|launch_ticket::destroy|fees::(accrue|accrue_from_runtime|accrue_protocol_fees|has_protocol_fees|claim_creator_fees|claim_protocol_fees)|package::test_upgrade|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
       || true; } | sed "s|^|  ${move_file}: |"
   done
 )"

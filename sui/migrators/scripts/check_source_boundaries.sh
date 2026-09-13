@@ -276,14 +276,8 @@ require_pattern "$EVENTS_SOURCE" 'principal_liquidity: u128' \
 if rg -q 'principal_liquidity_(before|after)' "$EVENTS_SOURCE" "$VAULT_SOURCE"; then
     fail "LP fee events and common accrual must carry one final principal value"
 fi
-require_pattern "$EVENTS_SOURCE" 'protocol_meme_fee_total: u64' \
-    'final protocol Meme fee total'
-require_pattern "$EVENTS_SOURCE" 'creator_meme_fee_total: u64' \
-    'final creator Meme fee total'
-require_pattern "$EVENTS_SOURCE" 'protocol_quote_fee_total: u64' \
-    'final protocol Quote fee total'
-require_pattern "$EVENTS_SOURCE" 'creator_quote_fee_total: u64' \
-    'final creator Quote fee total'
+reject_pattern 'protocol_meme_fee_total|creator_meme_fee_total|protocol_quote_fee_total|creator_quote_fee_total' \
+    'derivable fee totals are forbidden in migrator events'
 require_pattern "$EVENTS_SOURCE" 'sui::event::emit\(VaultCreated' \
     'direct strongly typed vault event emission'
 require_pattern "$EVENTS_SOURCE" 'sui::event::emit\(MigrationCompleted' \

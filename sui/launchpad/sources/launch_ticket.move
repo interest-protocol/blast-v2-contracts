@@ -38,7 +38,6 @@ public fun new<Meme: drop>(
     sell_burn_bps: u64,
     ctx: &mut TxContext,
 ): LaunchTicket<Meme> {
-    // ponytail: keep this cap immutable until ticket creation can safely read launch config.
     assert!(
         sell_burn_bps <= constants::max_sell_burn_bps!(),
         blast_fun::errors::invalid_sell_burn_bps!(),

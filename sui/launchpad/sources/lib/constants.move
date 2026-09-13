@@ -23,7 +23,7 @@ macro public(package) fun max_migration_witnesses(): u64 {
 }
 
 /// Maximum protocol share of gross terminal Quote collected at graduation.
-macro public(package) fun max_quote_migration_fee_bps(): u64 {
+macro public(package) fun max_protocol_quote_migration_fee_bps(): u64 {
     500
 }
 

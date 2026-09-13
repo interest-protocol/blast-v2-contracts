@@ -27,7 +27,7 @@ public struct LaunchConfig has key {
     quotes: Table<TypeName, QuoteParameters>,
     quote_fee_bps: Bps,
     meme_fee_bps: Bps,
-    quote_migration_fee_bps: Bps,
+    protocol_quote_migration_fee_bps: Bps,
     protocol_meme_graduation_fee_bps: Bps,
     meme_liquidity_provision_bps: Bps,
     migration_witnesses: VecSet<TypeName>,
@@ -120,24 +120,24 @@ public fun set_graduation_defaults(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
     _: &AdminWitness<LAUNCHPAD_DOMAIN>,
-    quote_migration_fee_bps: u64,
+    protocol_quote_migration_fee_bps: u64,
     protocol_meme_graduation_fee_bps: u64,
     meme_liquidity_provision_bps: u64,
 ) {
     package_version.assert_current();
     self.assert_valid_graduation_defaults(
-        quote_migration_fee_bps,
+        protocol_quote_migration_fee_bps,
         protocol_meme_graduation_fee_bps,
         meme_liquidity_provision_bps,
     );
 
-    self.quote_migration_fee_bps = bps::new(quote_migration_fee_bps);
+    self.protocol_quote_migration_fee_bps = bps::new(protocol_quote_migration_fee_bps);
     self.protocol_meme_graduation_fee_bps =
         bps::new(protocol_meme_graduation_fee_bps);
     self.meme_liquidity_provision_bps = bps::new(meme_liquidity_provision_bps);
 
     events::graduation_defaults_changed(
-        quote_migration_fee_bps,
+        protocol_quote_migration_fee_bps,
         protocol_meme_graduation_fee_bps,
         meme_liquidity_provision_bps,
     );
@@ -222,7 +222,7 @@ public(package) fun snapshot_for_launch<Quote, MigrationWitness: drop>(
         parameters.migration_quote_target,
         self.quote_fee_bps,
         self.meme_fee_bps,
-        self.quote_migration_fee_bps,
+        self.protocol_quote_migration_fee_bps,
         self.protocol_meme_graduation_fee_bps,
         self.meme_liquidity_provision_bps,
         migration_witness,
@@ -237,7 +237,7 @@ fun new(ctx: &mut TxContext): LaunchConfig {
         quotes: table::new(ctx),
         quote_fee_bps: bps::new(0),
         meme_fee_bps: bps::new(0),
-        quote_migration_fee_bps: bps::new(0),
+        protocol_quote_migration_fee_bps: bps::new(0),
         protocol_meme_graduation_fee_bps: bps::new(0),
         meme_liquidity_provision_bps: bps::new(0),
         migration_witnesses: vec_set::empty(),
@@ -307,13 +307,13 @@ fun assert_valid_trade_fees(
 
 fun assert_valid_graduation_defaults(
     self: &LaunchConfig,
-    quote_migration_fee_bps: u64,
+    protocol_quote_migration_fee_bps: u64,
     protocol_meme_graduation_fee_bps: u64,
     meme_liquidity_provision_bps: u64,
 ) {
     assert!(
-        quote_migration_fee_bps <= constants::max_quote_migration_fee_bps!(),
-        blast_fun::errors::invalid_quote_migration_fee_bps!(),
+        protocol_quote_migration_fee_bps <= constants::max_protocol_quote_migration_fee_bps!(),
+        blast_fun::errors::invalid_protocol_quote_migration_fee_bps!(),
     );
     assert!(
         protocol_meme_graduation_fee_bps
@@ -332,7 +332,7 @@ fun assert_valid_graduation_defaults(
         blast_fun::errors::invalid_meme_supply_partition_bps!(),
     );
     assert!(
-        quote_migration_fee_bps != self.quote_migration_fee_bps.value()
+        protocol_quote_migration_fee_bps != self.protocol_quote_migration_fee_bps.value()
             || protocol_meme_graduation_fee_bps
                 != self.protocol_meme_graduation_fee_bps.value()
             || meme_liquidity_provision_bps
@@ -361,7 +361,7 @@ public fun rate_defaults_for_testing(self: &LaunchConfig): (u64, u64, u64, u64, 
     (
         self.quote_fee_bps.value(),
         self.meme_fee_bps.value(),
-        self.quote_migration_fee_bps.value(),
+        self.protocol_quote_migration_fee_bps.value(),
         self.protocol_meme_graduation_fee_bps.value(),
         self.meme_liquidity_provision_bps.value(),
     )

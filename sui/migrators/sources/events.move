@@ -91,7 +91,7 @@ public struct MigrationCompleted has copy, drop {
     fee_rate: u64,
 }
 
-/// Records one venue fee collection, allocation, and final ledger snapshot.
+/// Records one venue fee collection and allocation.
 public struct LpFeesCollected has copy, drop {
     vault_id: ID,
     pool_id: ID,
@@ -107,14 +107,10 @@ public struct LpFeesCollected has copy, drop {
     creator_meme_fee_delta: u64,
     protocol_quote_fee_delta: u64,
     creator_quote_fee_delta: u64,
-    protocol_meme_fee_total: u64,
-    creator_meme_fee_total: u64,
-    protocol_quote_fee_total: u64,
-    creator_quote_fee_total: u64,
     principal_liquidity: u128,
 }
 
-/// Records a creator drain and the complete post-claim ledger snapshot.
+/// Records a creator fee drain.
 public struct CreatorFeesClaimed has copy, drop {
     vault_id: ID,
     meme: TypeName,
@@ -122,13 +118,9 @@ public struct CreatorFeesClaimed has copy, drop {
     claimant: address,
     meme_amount: u64,
     quote_amount: u64,
-    protocol_meme_fee_total: u64,
-    creator_meme_fee_total: u64,
-    protocol_quote_fee_total: u64,
-    creator_quote_fee_total: u64,
 }
 
-/// Records a protocol drain and the complete post-claim ledger snapshot.
+/// Records a protocol fee and residual drain.
 public struct ProtocolFeesClaimed has copy, drop {
     vault_id: ID,
     meme: TypeName,
@@ -136,10 +128,6 @@ public struct ProtocolFeesClaimed has copy, drop {
     claimant: address,
     meme_amount: u64,
     quote_amount: u64,
-    protocol_meme_fee_total: u64,
-    creator_meme_fee_total: u64,
-    protocol_quote_fee_total: u64,
-    creator_quote_fee_total: u64,
 }
 
 // === Package Functions ===
@@ -283,7 +271,7 @@ public(package) fun migration_completed<Meme, Quote, Venue>(
     });
 }
 
-/// Emits one LP-fee collection and the resulting ownership totals.
+/// Emits one LP-fee collection and allocation.
 public(package) fun lp_fees_collected<Meme, Quote, Venue>(
     vault_id: ID,
     pool_id: ID,
@@ -296,10 +284,6 @@ public(package) fun lp_fees_collected<Meme, Quote, Venue>(
     creator_meme_fee_delta: u64,
     protocol_quote_fee_delta: u64,
     creator_quote_fee_delta: u64,
-    protocol_meme_fee_total: u64,
-    creator_meme_fee_total: u64,
-    protocol_quote_fee_total: u64,
-    creator_quote_fee_total: u64,
     principal_liquidity: u128,
 ) {
     sui::event::emit(LpFeesCollected {
@@ -317,24 +301,16 @@ public(package) fun lp_fees_collected<Meme, Quote, Venue>(
         creator_meme_fee_delta,
         protocol_quote_fee_delta,
         creator_quote_fee_delta,
-        protocol_meme_fee_total,
-        creator_meme_fee_total,
-        protocol_quote_fee_total,
-        creator_quote_fee_total,
         principal_liquidity,
     });
 }
 
-/// Emits a creator-owned LP-fee withdrawal and remaining totals.
+/// Emits a creator-owned LP-fee withdrawal.
 public(package) fun creator_fees_claimed<Meme, Quote>(
     vault_id: ID,
     claimant: address,
     meme_amount: u64,
     quote_amount: u64,
-    protocol_meme_fee_total: u64,
-    creator_meme_fee_total: u64,
-    protocol_quote_fee_total: u64,
-    creator_quote_fee_total: u64,
 ) {
     sui::event::emit(CreatorFeesClaimed {
         vault_id,
@@ -343,23 +319,15 @@ public(package) fun creator_fees_claimed<Meme, Quote>(
         claimant,
         meme_amount,
         quote_amount,
-        protocol_meme_fee_total,
-        creator_meme_fee_total,
-        protocol_quote_fee_total,
-        creator_quote_fee_total,
     });
 }
 
-/// Emits a protocol-owned residual and LP-fee withdrawal and remaining totals.
+/// Emits a protocol-owned residual and LP-fee withdrawal.
 public(package) fun protocol_fees_claimed<Meme, Quote>(
     vault_id: ID,
     claimant: address,
     meme_amount: u64,
     quote_amount: u64,
-    protocol_meme_fee_total: u64,
-    creator_meme_fee_total: u64,
-    protocol_quote_fee_total: u64,
-    creator_quote_fee_total: u64,
 ) {
     sui::event::emit(ProtocolFeesClaimed {
         vault_id,
@@ -368,9 +336,5 @@ public(package) fun protocol_fees_claimed<Meme, Quote>(
         claimant,
         meme_amount,
         quote_amount,
-        protocol_meme_fee_total,
-        creator_meme_fee_total,
-        protocol_quote_fee_total,
-        creator_quote_fee_total,
     });
 }

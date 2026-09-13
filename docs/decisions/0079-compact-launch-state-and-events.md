@@ -20,7 +20,7 @@ the contract and created multiple representations of the same fact.
 ## Decision
 
 Store a value only while a later transition needs it. `Launch` therefore keeps
-the Quote migration fee rate, which migration consumes, but not the protocol
+the protocol Quote migration fee rate, which migration consumes, but not the protocol
 Meme graduation or liquidity-provision rates after construction. Their applied
 rates and resulting balances remain in `LaunchCreated`.
 

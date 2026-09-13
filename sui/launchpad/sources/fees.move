@@ -41,46 +41,17 @@ public fun accrue_from_runtime<Meme, Quote>(
     meme_fee: Balance<Meme>,
     quote_fee: Balance<Quote>,
     runtime_config: &RuntimeConfig,
-): (u64, u64, u64, u64, u64, u64, u64, u64) {
-    let (
-        protocol_meme_delta,
-        creator_meme_delta,
-        protocol_quote_delta,
-        creator_quote_delta,
-    ) = self.accrue(
+): (u64, u64, u64, u64) {
+    self.accrue(
         meme_fee,
         quote_fee,
         runtime_config.protocol_fee_share(),
-    );
-    let (
-        protocol_meme_total,
-        creator_meme_total,
-        protocol_quote_total,
-        creator_quote_total,
-    ) = self.totals();
-
-    (
-        protocol_meme_delta,
-        creator_meme_delta,
-        protocol_quote_delta,
-        creator_quote_delta,
-        protocol_meme_total,
-        creator_meme_total,
-        protocol_quote_total,
-        creator_quote_total,
     )
 }
 
-/// Returns the four canonical ledger totals without exposing the balances.
-public fun totals<Meme, Quote>(
-    self: &FeeLedger<Meme, Quote>,
-): (u64, u64, u64, u64) {
-    (
-        self.protocol_meme.value(),
-        self.creator_meme.value(),
-        self.protocol_quote.value(),
-        self.creator_quote.value(),
-    )
+/// Returns whether either protocol-owned balance contains fees.
+public fun has_protocol_fees<Meme, Quote>(self: &FeeLedger<Meme, Quote>): bool {
+    self.protocol_meme.value() > 0 || self.protocol_quote.value() > 0
 }
 
 /// Drains both creator balances into composable coins.
@@ -107,7 +78,7 @@ public fun claim_protocol_fees<Meme, Quote>(
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     assert!(
-        self.protocol_meme.value() > 0 || self.protocol_quote.value() > 0,
+        self.has_protocol_fees(),
         blast_fun::errors::nothing_accrued!(),
     );
 
@@ -168,4 +139,18 @@ public(package) fun accrue_protocol_fees<Meme, Quote>(
 ) {
     self.protocol_meme.join(meme_fee);
     self.protocol_quote.join(quote_fee);
+}
+
+// === Test-Only Functions ===
+
+#[test_only]
+public fun totals_for_testing<Meme, Quote>(
+    self: &FeeLedger<Meme, Quote>,
+): (u64, u64, u64, u64) {
+    (
+        self.protocol_meme.value(),
+        self.creator_meme.value(),
+        self.protocol_quote.value(),
+        self.creator_quote.value(),
+    )
 }

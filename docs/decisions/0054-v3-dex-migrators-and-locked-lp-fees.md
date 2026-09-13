@@ -265,7 +265,7 @@ The recommended SUI production lane is therefore:
 ```text
 virtual_quote = 8_000 SUI
 migration_quote_target = 8_000 SUI
-quote_migration_fee_bps = 0
+protocol_quote_migration_fee_bps = 0
 protocol_meme_graduation_fee_bps = 0
 meme_liquidity_provision_bps = 2_000
 
@@ -276,7 +276,7 @@ curve-released supply = 40%
 locked LP Meme supply = 20%
 ```
 
-With zero Quote migration fee, the lane makes up to 8,000 SUI of Quote-side
+With zero protocol Quote migration fee, the lane makes up to 8,000 SUI of Quote-side
 pool principal available before venue rounding and residuals. The comparison is
 operational guidance, not an oracle rule. The admin must review the
 Quote-denominated preset before enabling a production Quote lane, and the UI

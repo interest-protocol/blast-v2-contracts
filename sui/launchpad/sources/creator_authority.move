@@ -146,7 +146,7 @@ fun authorize_claim<Meme>(
                 claimant,
                 expiry_ms,
             );
-            config.verify_creator_claim_signature(&message, &signature);
+            config.assert_creator_claim_signature(&message, &signature);
         },
     }
 }

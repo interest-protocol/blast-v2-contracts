@@ -7,7 +7,7 @@ use sui::balance::{Self, Balance};
 
 // === Constants ===
 
-const QUOTE_MIGRATION_FEE_BPS: u64 = 250;
+const PROTOCOL_QUOTE_MIGRATION_FEE_BPS: u64 = 250;
 const PROTOCOL_MEME_GRADUATION_FEE_BPS: u64 = 750;
 const MEME_LIQUIDITY_PROVISION_BPS: u64 = 2_000;
 
@@ -56,7 +56,7 @@ fun quote_only_protocol_line_rounds_up_without_meme_revenue() {
     );
     assert_quote_partition(
         1_000_001,
-        QUOTE_MIGRATION_FEE_BPS,
+        PROTOCOL_QUOTE_MIGRATION_FEE_BPS,
         975_000,
         25_001,
     );
@@ -74,7 +74,7 @@ fun both_protocol_lines_round_up_while_pool_provision_rounds_down() {
     );
     assert_quote_partition(
         1_000_001,
-        QUOTE_MIGRATION_FEE_BPS,
+        PROTOCOL_QUOTE_MIGRATION_FEE_BPS,
         975_000,
         25_001,
     );
@@ -179,9 +179,9 @@ fun partition_meme<Meme>(
 
 fun partition_quote<Quote>(
     quote: Balance<Quote>,
-    quote_migration_fee_bps: u64,
+    protocol_quote_migration_fee_bps: u64,
 ): (Balance<Quote>, Balance<Quote>) {
-    launch::partition_quote_for_testing(quote, bps::new(quote_migration_fee_bps))
+    launch::partition_quote_for_testing(quote, bps::new(protocol_quote_migration_fee_bps))
 }
 
 fun assert_partition(

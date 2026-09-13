@@ -5,6 +5,9 @@
 - Amends: [0006](0006-fees-and-launch-paths.md), [0010](0010-migration-and-venue-adapters.md), [0011](0011-event-schema-and-replay.md), [0022](0022-dual-asset-fee-ledger-and-claims.md), [0025](0025-quote-whitelist-and-migration-targets.md)
 - Preserved by: [0028](0028-hot-cold-runtime-configuration.md)
 
+> Amended 2026-09-13: the Quote protocol-revenue identifiers now use the
+> `protocol_quote_migration_fee` prefix so both graduation fee lines state
+> their owner explicitly. Economics and custody are unchanged.
 > Amended by [ADR 0033](0033-meme-liquidity-provision.md): `LaunchConfig` gains a
 > third cold rate, the nonzero destination-pool
 > `meme_liquidity_provision_bps`. The graduation setter updates the complete
@@ -50,7 +53,7 @@ refund lifecycle.
 
 ### Two graduation accounting lines
 
-1. **Quote migration fee.** A percentage of gross real terminal `Quote`, stored
+1. **protocol Quote migration fee.** A percentage of gross real terminal `Quote`, stored
    as protocol revenue only after successful migration. It is SUI only when
    `Quote` is SUI. Zero disables it.
 2. **Protocol Meme graduation fee.** A percentage of initial `Meme` supply,
@@ -71,7 +74,7 @@ It stores exactly:
 public struct LaunchConfig has key {
     id: UID,
     quotes: Table<TypeName, u64>,
-    quote_migration_fee_bps: u64,
+    protocol_quote_migration_fee_bps: u64,
     protocol_meme_graduation_fee_bps: u64,
     migration_witnesses: VecSet<TypeName>,
 }
@@ -155,7 +158,7 @@ new explicit product decision replaces this one.
 `Launch<Meme, Quote>` stores immutable copies of:
 
 - `migration_quote_target`;
-- `quote_migration_fee_bps`;
+- `protocol_quote_migration_fee_bps`;
 - `protocol_meme_graduation_fee_bps`; and
 - selected migration-witness original `TypeName`.
 
@@ -174,8 +177,8 @@ The approved formulas are:
 protocol_meme_graduation_fee
   = ceil(initial_meme_supply * protocol_meme_graduation_fee_bps / 10_000)
 
-quote_migration_fee
-  = ceil(gross_terminal_quote * quote_migration_fee_bps / 10_000)
+protocol_quote_migration_fee
+  = ceil(gross_terminal_quote * protocol_quote_migration_fee_bps / 10_000)
 ```
 
 Both products widen before division. Ceiling rounding assigns an indivisible
@@ -199,7 +202,7 @@ performs these conceptual steps:
 
 An adapter abort rolls back the entire transaction. The Blast fee does not become
 claimable, pending burn is not destroyed, and no second migration right is
-created. The Quote migration fee is committed exactly once, on the successful
+created. The protocol Quote migration fee is committed exactly once, on the successful
 transition to `Migrated`.
 
 ### Claims
@@ -220,7 +223,7 @@ least:
 
 - original Meme, Quote, and migration-witness types;
 - gross terminal Meme and Quote balances;
-- Quote migration fee and final protocol-claimable Quote total;
+- protocol Quote migration fee and final protocol-claimable Quote total;
 - reserved Protocol Meme graduation fee and final protocol-claimable Meme total;
 - pending Meme burned and resulting supply;
 - net Meme and Quote seeded;
@@ -235,7 +238,7 @@ version, action tag, or nonce is added.
 Every successful launch and migration satisfies separate asset identities:
 
 ```text
-gross_terminal_quote - quote_migration_fee
+gross_terminal_quote - protocol_quote_migration_fee
   = quote_seeded + quote_residual
 
 initial_meme_supply

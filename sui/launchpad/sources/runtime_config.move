@@ -97,8 +97,8 @@ public(package) fun assert_creator_claim_active(self: &RuntimeConfig) {
     );
 }
 
-/// Verifies that `signature` came from the one currently authorized Blast backend key.
-public(package) fun verify_creator_claim_signature(
+/// Asserts that `signature` came from the one currently authorized Blast backend key.
+public(package) fun assert_creator_claim_signature(
     self: &RuntimeConfig,
     message: &vector<u8>,
     signature: &vector<u8>,

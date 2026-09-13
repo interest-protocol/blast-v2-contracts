@@ -410,23 +410,6 @@ fun buy_rejects_an_output_consumed_entirely_by_the_meme_fee() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::ECurveReserveOverflow,
-    location = blast_fun::curve,
-)]
-fun buy_rejects_post_trade_real_quote_overflow() {
-    quote_buy(
-        std::u64::max_value!(),
-        std::u64::max_value!(),
-        1,
-        std::u64::max_value!(),
-        2,
-        0,
-        0,
-    );
-}
-
-#[test]
 fun sell_mid_with_fixed_burn_matches_the_committed_vector() {
     let (
         _,
@@ -870,24 +853,6 @@ fun sell_rejects_a_gross_output_rounded_to_zero() {
 )]
 fun sell_rejects_a_net_output_consumed_entirely_by_the_fee() {
     quote_sell(1, 1, 1, 1, 1, 10_000, 0, 0);
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::ECurveReserveOverflow,
-    location = blast_fun::curve,
-)]
-fun sell_rejects_post_trade_meme_reserve_overflow() {
-    quote_sell(
-        std::u64::max_value!(),
-        std::u64::max_value!(),
-        1,
-        std::u64::max_value!(),
-        1,
-        0,
-        0,
-        0,
-    );
 }
 
 #[test]

@@ -29,7 +29,7 @@ public struct QuoteDisallowed(TypeName) has copy, drop;
 
 /// Emitted after the graduation defaults snapshotted by future launches change.
 public struct GraduationDefaultsChanged has copy, drop {
-    quote_migration_fee_bps: u64,
+    protocol_quote_migration_fee_bps: u64,
     protocol_meme_graduation_fee_bps: u64,
     meme_liquidity_provision_bps: u64,
 }
@@ -77,7 +77,7 @@ public struct LaunchCreated has copy, drop {
     migration_quote_target: u64,
     quote_fee_bps: u64,
     meme_fee_bps: u64,
-    quote_migration_fee_bps: u64,
+    protocol_quote_migration_fee_bps: u64,
     protocol_meme_graduation_fee_bps: u64,
     meme_liquidity_provision_bps: u64,
 }
@@ -119,7 +119,7 @@ public struct Migrated has copy, drop {
     native_supply_burned: bool,
     total_supply_after: u64,
     protocol_meme_graduation_fee: u64,
-    quote_migration_fee: u64,
+    protocol_quote_migration_fee: u64,
 }
 
 /// Emitted after a creator drains both accrued trade-fee balances.
@@ -182,12 +182,12 @@ public(package) fun quote_disallowed<Quote>() {
 
 /// Emits replacement of the launch graduation defaults.
 public(package) fun graduation_defaults_changed(
-    quote_migration_fee_bps: u64,
+    protocol_quote_migration_fee_bps: u64,
     protocol_meme_graduation_fee_bps: u64,
     meme_liquidity_provision_bps: u64,
 ) {
     blast_fun::events_wrapper::emit_event(GraduationDefaultsChanged {
-        quote_migration_fee_bps,
+        protocol_quote_migration_fee_bps,
         protocol_meme_graduation_fee_bps,
         meme_liquidity_provision_bps,
     });
@@ -265,7 +265,7 @@ public(package) fun launch_created<Quote>(
     migration_quote_target: u64,
     quote_fee_bps: u64,
     meme_fee_bps: u64,
-    quote_migration_fee_bps: u64,
+    protocol_quote_migration_fee_bps: u64,
     protocol_meme_graduation_fee_bps: u64,
     meme_liquidity_provision_bps: u64,
 ) {
@@ -281,7 +281,7 @@ public(package) fun launch_created<Quote>(
         migration_quote_target,
         quote_fee_bps,
         meme_fee_bps,
-        quote_migration_fee_bps,
+        protocol_quote_migration_fee_bps,
         protocol_meme_graduation_fee_bps,
         meme_liquidity_provision_bps,
     });
@@ -350,7 +350,7 @@ public(package) fun migrated(
     disposed_meme: u64,
     total_supply_after: u64,
     protocol_meme_graduation_fee: u64,
-    quote_migration_fee: u64,
+    protocol_quote_migration_fee: u64,
 ) {
     blast_fun::events_wrapper::emit_event(Migrated {
         launch_id,
@@ -360,7 +360,7 @@ public(package) fun migrated(
         native_supply_burned,
         total_supply_after,
         protocol_meme_graduation_fee,
-        quote_migration_fee,
+        protocol_quote_migration_fee,
     });
 }
 
@@ -443,7 +443,7 @@ public fun graduation_defaults_changed_fields(
     self: &GraduationDefaultsChanged,
 ): (u64, u64, u64) {
     (
-        self.quote_migration_fee_bps,
+        self.protocol_quote_migration_fee_bps,
         self.protocol_meme_graduation_fee_bps,
         self.meme_liquidity_provision_bps,
     )
@@ -532,7 +532,7 @@ public fun launch_created_policy_fields(
         self.migration_quote_target,
         self.quote_fee_bps,
         self.meme_fee_bps,
-        self.quote_migration_fee_bps,
+        self.protocol_quote_migration_fee_bps,
         self.protocol_meme_graduation_fee_bps,
         self.meme_liquidity_provision_bps,
     )
@@ -598,7 +598,7 @@ public fun migrated_balance_fields(
         self.native_supply_burned,
         self.total_supply_after,
         self.protocol_meme_graduation_fee,
-        self.quote_migration_fee,
+        self.protocol_quote_migration_fee,
     )
 }
 

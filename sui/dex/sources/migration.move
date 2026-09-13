@@ -51,8 +51,6 @@ public struct FeesCollected has copy, drop {
     protocol_share_bps: u64,
     protocol_delta: u64,
     creator_delta: u64,
-    protocol_total: u64,
-    creator_total: u64,
 }
 
 /// Creator claims drain only accrued Quote, never the locked LP principal.
@@ -118,7 +116,7 @@ public fun collect<Meme, Quote>(
         quote.destroy_zero();
         return
     };
-    let (_, _, protocol_delta, creator_delta, _, _, protocol_total, creator_total) = self
+    let (_, _, protocol_delta, creator_delta) = self
         .fees
         .accrue_from_runtime(balance::zero(), quote.into_balance(), runtime);
 
@@ -128,8 +126,6 @@ public fun collect<Meme, Quote>(
         protocol_share_bps: runtime.protocol_fee_share_bps(),
         protocol_delta,
         creator_delta,
-        protocol_total,
-        creator_total,
     });
 }
 
@@ -171,7 +167,7 @@ public fun snapshot_for_testing<Meme, Quote>(
     self: &LockedLpVault<Meme, Quote>,
 ): (ID, ID, u64, u64) {
     let position = dynamic_object_field::borrow<_, Position<Meme, Quote>>(&self.id, PositionKey());
-    let (_, _, protocol, creator) = self.fees.totals();
+    let (_, _, protocol, creator) = self.fees.totals_for_testing();
     (self.pool_id, object::id(position), protocol, creator)
 }
 

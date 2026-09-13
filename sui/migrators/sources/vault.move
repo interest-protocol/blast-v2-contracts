@@ -63,22 +63,12 @@ public fun claim_creator_fees<Meme, Quote>(
     let (meme, quote) = self.fee_ledger.claim_creator_fees(creator_cap, ctx);
     let meme_amount = meme.value();
     let quote_amount = quote.value();
-    let (
-        protocol_meme_fee_total,
-        creator_meme_fee_total,
-        protocol_quote_fee_total,
-        creator_quote_fee_total,
-    ) = self.fee_ledger.totals();
 
     events::creator_fees_claimed<Meme, Quote>(
         self.id.to_inner(),
         ctx.sender(),
         meme_amount,
         quote_amount,
-        protocol_meme_fee_total,
-        creator_meme_fee_total,
-        protocol_quote_fee_total,
-        creator_quote_fee_total,
     );
 
     (meme, quote)
@@ -92,14 +82,7 @@ public fun claim_protocol_fees<Meme, Quote>(
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     migrators_version.assert_current();
-    let (
-        protocol_meme_fee_total,
-        _,
-        protocol_quote_fee_total,
-        _,
-    ) = self.fee_ledger.totals();
-    let has_protocol_fees =
-        protocol_meme_fee_total > 0 || protocol_quote_fee_total > 0;
+    let has_protocol_fees = self.fee_ledger.has_protocol_fees();
     let has_residuals =
         self.protocol_meme_residual.value() > 0
             || self.protocol_quote_residual.value() > 0;
@@ -121,22 +104,12 @@ public fun claim_protocol_fees<Meme, Quote>(
     let quote = quote.into_coin(ctx);
     let meme_amount = meme.value();
     let quote_amount = quote.value();
-    let (
-        protocol_meme_fee_total,
-        creator_meme_fee_total,
-        protocol_quote_fee_total,
-        creator_quote_fee_total,
-    ) = self.fee_ledger.totals();
 
     events::protocol_fees_claimed<Meme, Quote>(
         self.id.to_inner(),
         ctx.sender(),
         meme_amount,
         quote_amount,
-        protocol_meme_fee_total,
-        creator_meme_fee_total,
-        protocol_quote_fee_total,
-        creator_quote_fee_total,
     );
 
     (meme, quote)
@@ -277,10 +250,6 @@ public(package) fun accrue_fees<Meme, Quote, Venue>(
         creator_meme_fee_delta,
         protocol_quote_fee_delta,
         creator_quote_fee_delta,
-        protocol_meme_fee_total,
-        creator_meme_fee_total,
-        protocol_quote_fee_total,
-        creator_quote_fee_total,
     ) = self.fee_ledger.accrue_from_runtime(
         meme_fee,
         quote_fee,
@@ -299,10 +268,6 @@ public(package) fun accrue_fees<Meme, Quote, Venue>(
         creator_meme_fee_delta,
         protocol_quote_fee_delta,
         creator_quote_fee_delta,
-        protocol_meme_fee_total,
-        creator_meme_fee_total,
-        protocol_quote_fee_total,
-        creator_quote_fee_total,
         principal_liquidity,
     );
 }

@@ -19,7 +19,7 @@
 > the illustrative layout below is now a `Table`; graduation fields and
 > behavior are unchanged.
 
-The protocol Meme graduation fee and Quote migration fee remain the two
+The protocol Meme graduation fee and protocol Quote migration fee remain the two
 protocol-revenue lines fixed by ADR 0027. Blast grants no creator or
 stakeholder supply allocation, and venue-side reward, treasury, or LP-fee
 policy belongs to the external migrator package. Zero provision means
@@ -27,7 +27,7 @@ unconfigured; it never means the complete terminal curve inventory.
 
 ## Context
 
-ADR 0027 fixed two graduation accounting lines: the Quote migration fee
+ADR 0027 fixed two graduation accounting lines: the protocol Quote migration fee
 (protocol revenue) and the protocol Meme graduation fee (protocol
 revenue in Meme units). Neither line answers how much initial Meme supply is
 reserved as the destination pool's Meme principal at migration. Without an
@@ -49,7 +49,7 @@ inventory, or bonding could never begin.
 public struct LaunchConfig has key {
     id: UID,
     quotes: Table<TypeName, u64>,
-    quote_migration_fee_bps: u64,
+    protocol_quote_migration_fee_bps: u64,
     protocol_meme_graduation_fee_bps: u64,
     meme_liquidity_provision_bps: u64,
     migration_witnesses: VecSet<TypeName>,
@@ -73,17 +73,17 @@ or claims.
   inventory"; that overloaded sentinel is rejected by design.
 - The supply partition must keep curve inventory nonempty:
   `protocol_meme_graduation_fee_bps + meme_liquidity_provision_bps < 10_000`.
-- The Quote migration fee and protocol Meme graduation fee stay independently
+- The protocol Quote migration fee and protocol Meme graduation fee stay independently
   zero-safe under their existing 500 and 1,000 bps ceilings.
 
 ### One setter for the complete triple
 
-`set_graduation_defaults` now updates the Quote migration fee, the protocol
+`set_graduation_defaults` now updates the protocol Quote migration fee, the protocol
 Meme graduation fee, and the Meme liquidity provision together, under
 a borrowed `AdminWitness`, with this guard order:
 
-1. Quote migration fee above its ceiling
-   (`invalid_quote_migration_fee_bps`, code 47);
+1. protocol Quote migration fee above its ceiling
+   (`invalid_protocol_quote_migration_fee_bps`, code 47);
 2. Protocol Meme graduation fee above its ceiling
    (`invalid_protocol_meme_graduation_fee_bps`, code 48);
 3. Meme liquidity provision zero or above 9,999
@@ -102,7 +102,7 @@ The package-only `snapshot_for_launch<Quote, MigrationWitness>` returns the
 complete cold policy in one read:
 
 ```move
-(migration_quote_target, quote_migration_fee_bps,
+(migration_quote_target, protocol_quote_migration_fee_bps,
  protocol_meme_graduation_fee_bps, meme_liquidity_provision_bps,
  migration_witness_type_name)
 ```

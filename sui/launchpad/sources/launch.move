@@ -53,7 +53,7 @@ public struct Launch<phantom Meme, phantom Quote> has key {
     migration_quote_target: u64,
     quote_fee_bps: Bps,
     meme_fee_bps: Bps,
-    quote_migration_fee_bps: Bps,
+    protocol_quote_migration_fee_bps: Bps,
     migration_witness: TypeName,
     meme_reserve: Balance<Meme>,
     real_quote_reserve: Balance<Quote>,
@@ -89,7 +89,7 @@ public fun new<Meme, Quote, MigrationWitness: drop>(
         migration_quote_target,
         quote_fee_bps,
         meme_fee_bps,
-        quote_migration_fee_bps,
+        protocol_quote_migration_fee_bps,
         protocol_meme_graduation_fee_bps,
         meme_liquidity_provision_bps,
         migration_witness,
@@ -113,7 +113,7 @@ public fun new<Meme, Quote, MigrationWitness: drop>(
         migration_quote_target,
         quote_fee_bps,
         meme_fee_bps,
-        quote_migration_fee_bps,
+        protocol_quote_migration_fee_bps,
         migration_witness,
         meme_reserve,
         real_quote_reserve: balance::zero(),
@@ -136,7 +136,7 @@ public fun new<Meme, Quote, MigrationWitness: drop>(
         launch.migration_quote_target,
         launch.quote_fee_bps.value(),
         launch.meme_fee_bps.value(),
-        launch.quote_migration_fee_bps.value(),
+        launch.protocol_quote_migration_fee_bps.value(),
         protocol_meme_graduation_fee_bps.value(),
         meme_liquidity_provision_bps.value(),
     );
@@ -352,7 +352,7 @@ public fun migrate<Meme, Quote, MigrationWitness: drop>(
     let (
         quote,
         protocol_meme_graduation_fee_amount,
-        quote_migration_fee_amount,
+        protocol_quote_migration_fee_amount,
     ) = self.accrue_graduation_fees();
     let meme = self.meme_liquidity_provision.withdraw_all();
     let mut disposal = self.pending_burn.withdraw_all();
@@ -370,7 +370,7 @@ public fun migrate<Meme, Quote, MigrationWitness: drop>(
         disposed_meme,
         currency.total_supply().destroy_some(),
         protocol_meme_graduation_fee_amount,
-        quote_migration_fee_amount,
+        protocol_quote_migration_fee_amount,
     );
 
     MigrationPayload { meme, quote }
@@ -416,9 +416,9 @@ fun partition_meme<Meme>(
 /// Partitions terminal Quote into migration principal and protocol revenue.
 fun partition_quote<Quote>(
     mut quote: Balance<Quote>,
-    quote_migration_fee_bps: Bps,
+    protocol_quote_migration_fee_bps: Bps,
 ): (Balance<Quote>, Balance<Quote>) {
-    let fee_amount = quote_migration_fee_bps.apply_up(quote.value());
+    let fee_amount = protocol_quote_migration_fee_bps.apply_up(quote.value());
     let migration_fee = quote.split(fee_amount);
 
     (quote, migration_fee)
@@ -441,24 +441,24 @@ fun curve_k<Meme, Quote>(self: &Launch<Meme, Quote>): u256 {
 fun accrue_graduation_fees<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
 ): (Balance<Quote>, u64, u64) {
-    let (quote, quote_migration_fee) = partition_quote(
+    let (quote, protocol_quote_migration_fee) = partition_quote(
         self.real_quote_reserve.withdraw_all(),
-        self.quote_migration_fee_bps,
+        self.protocol_quote_migration_fee_bps,
     );
     let protocol_meme_graduation_fee =
         self.protocol_meme_graduation_fee.withdraw_all();
     let protocol_meme_graduation_fee_amount =
         protocol_meme_graduation_fee.value();
-    let quote_migration_fee_amount = quote_migration_fee.value();
+    let protocol_quote_migration_fee_amount = protocol_quote_migration_fee.value();
     self.fee_ledger.accrue_protocol_fees(
         protocol_meme_graduation_fee,
-        quote_migration_fee,
+        protocol_quote_migration_fee,
     );
 
     (
         quote,
         protocol_meme_graduation_fee_amount,
-        quote_migration_fee_amount,
+        protocol_quote_migration_fee_amount,
     )
 }
 
@@ -578,9 +578,9 @@ public fun partition_meme_for_testing<Meme>(
 /// Exposes the private terminal Quote partition to focused arithmetic tests.
 public fun partition_quote_for_testing<Quote>(
     quote: Balance<Quote>,
-    quote_migration_fee_bps: Bps,
+    protocol_quote_migration_fee_bps: Bps,
 ): (Balance<Quote>, Balance<Quote>) {
-    partition_quote(quote, quote_migration_fee_bps)
+    partition_quote(quote, protocol_quote_migration_fee_bps)
 }
 
 #[test_only]
@@ -605,7 +605,7 @@ public fun policy_for_testing<Meme, Quote>(
         self.migration_quote_target,
         self.quote_fee_bps.value(),
         self.meme_fee_bps.value(),
-        self.quote_migration_fee_bps.value(),
+        self.protocol_quote_migration_fee_bps.value(),
         self.migration_witness,
     )
 }
@@ -653,5 +653,5 @@ public fun sell_burn_bps_for_testing<Meme, Quote>(
 public fun fee_totals_for_testing<Meme, Quote>(
     self: &Launch<Meme, Quote>,
 ): (u64, u64, u64, u64) {
-    self.fee_ledger.totals()
+    self.fee_ledger.totals_for_testing()
 }

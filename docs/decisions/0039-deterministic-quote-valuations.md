@@ -82,7 +82,7 @@ L = floor(S * meme_liquidity_provision_bps / 10_000)
 C = S - A - L
 V = virtual Quote reserve
 T = real-Quote migration target
-F = quote migration fee in basis points
+F = protocol Quote migration fee in basis points
 ```
 
 At the exact target, the SDK's canonical constant-product preview is:

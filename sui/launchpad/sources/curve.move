@@ -83,10 +83,6 @@ public(package) fun quote_buy(
     let meme_out_net = meme_out_gross - meme_fee;
     assert!(meme_out_net > 0, blast_fun::errors::zero_trade_output!());
 
-    let _ = real_quote
-        .checked_add(quote_after_fee)
-        .destroy_or!(abort blast_fun::errors::curve_reserve_overflow!());
-
     (quote_fee, meme_out_gross, meme_fee, meme_out_net)
 }
 
@@ -116,9 +112,6 @@ public(package) fun quote_sell(
     let meme_to_curve = meme_after_fee - pending_burn;
     assert!(meme_to_curve > 0, blast_fun::errors::zero_trade_output!());
 
-    let _ = meme_reserve
-        .checked_add(meme_to_curve)
-        .destroy_or!(abort blast_fun::errors::curve_reserve_overflow!());
     let effective_quote = (virtual_quote as u256) + (real_quote as u256);
     let quote_out_gross_wide = get_amount_out(
         meme_to_curve as u256,
