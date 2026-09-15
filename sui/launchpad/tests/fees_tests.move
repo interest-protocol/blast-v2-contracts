@@ -40,13 +40,13 @@ public struct FeesFixture {
     admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
     package_version: package_version::PackageVersion,
     runtime_config: runtime_config::RuntimeConfig,
-    creator_cap: Option<creator_authority::CreatorCap<TEST_MEME>>,
+    creator_cap: Option<creator_authority::CurveFeeCap<TEST_MEME>>,
 }
 
 /// Creator-claim authority only: one claimed creator cap, no ACL or live settings.
 public struct CreatorFixture {
     scenario: Scenario,
-    creator_cap: creator_authority::CreatorCap<TEST_MEME>,
+    creator_cap: creator_authority::CurveFeeCap<TEST_MEME>,
 }
 
 // === Tests ===
@@ -183,7 +183,7 @@ fun creator_cannot_claim_when_nothing_is_accrued() {
     fixture.next_tx!(CREATOR, |f| {
         let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>();
         let (meme, quote) =
-            ledger.claim_creator_fees(&f.creator_cap, f.ctx!());
+            ledger.claim_creator_fees(f.ctx!());
 
         destroy(meme);
         destroy(quote);
@@ -493,16 +493,17 @@ fun start_creator(): CreatorFixture {
 fun new_creator_cap(
     runtime_config: &runtime_config::RuntimeConfig,
     ctx: &mut TxContext,
-): creator_authority::CreatorCap<TEST_MEME> {
+): creator_authority::CurveFeeCap<TEST_MEME> {
     let creator_authority = creator_authority::new_address(CREATOR)
         .into_authority<TEST_MEME>();
     let clock = clock::create_for_testing(ctx);
-    let creator_cap = creator_authority.claim_creator_cap(
+    let (creator_cap, metadata_cap) = creator_authority.claim_creator_caps(
         runtime_config,
         option::none(),
         &clock,
         ctx,
     );
+    destroy(metadata_cap);
     destroy(clock);
 
     creator_cap
@@ -516,10 +517,10 @@ fun claim_creator_fees(
     self: &mut FeesFixture,
     ledger: &mut fees::FeeLedger<TEST_MEME, TEST_QUOTE>,
 ): (Coin<TEST_MEME>, Coin<TEST_QUOTE>) {
-    ledger.claim_creator_fees(self.creator_cap.borrow(), self.scenario.ctx())
+    ledger.claim_creator_fees(self.scenario.ctx())
 }
 
-fun take_creator_cap(self: &mut FeesFixture): creator_authority::CreatorCap<TEST_MEME> {
+fun take_creator_cap(self: &mut FeesFixture): creator_authority::CurveFeeCap<TEST_MEME> {
     self.creator_cap.extract()
 }
 

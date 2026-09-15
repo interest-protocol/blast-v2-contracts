@@ -1,6 +1,6 @@
 module blast_fun::events;
 
-use std::type_name::{Self, TypeName};
+use std::{string::String, type_name::{Self, TypeName}};
 
 // === Public Structs ===
 
@@ -61,8 +61,43 @@ public struct CreatorClaimSignerSet(vector<u8>) has copy, drop;
 /// Emitted after the current creator-claim signer is revoked.
 public struct CreatorClaimSignerRevoked has copy, drop {}
 
-/// Emitted after either recipient kind claims the meme type's single creator capability.
-public struct CreatorCapClaimed(TypeName) has copy, drop;
+/// Emitted after either recipient kind claims the launch's curve-fee and metadata capabilities.
+public struct CreatorCapsClaimed has copy, drop {
+    meme: TypeName,
+    curve_fee_cap_id: ID,
+    metadata_cap_id: ID,
+}
+
+/// Emitted after an administrator retires curve-fee authority and issues a new capability.
+public struct CurveFeeCapReassigned has copy, drop {
+    launch_id: ID,
+    revoked_curve_fee_cap_id: Option<ID>,
+    curve_fee_cap_id: ID,
+    recipient: address,
+}
+
+/// Emitted after an administrator retires metadata authority and issues a new capability.
+public struct MetadataCapReassigned has copy, drop {
+    launch_id: ID,
+    revoked_metadata_cap_id: Option<ID>,
+    metadata_cap_id: ID,
+    recipient: address,
+}
+
+/// Emitted after a curve-fee cap is destroyed and curve fees are bound to a custodian forever.
+public struct CreatorFeesLocked has copy, drop {
+    launch_id: ID,
+    curve_fee_cap_id: ID,
+    custodian_id: ID,
+}
+
+/// Emitted after the metadata-cap holder updates coin metadata through the launch.
+public struct MemeMetadataUpdated has copy, drop {
+    launch_id: ID,
+    name: String,
+    description: String,
+    icon_url: String,
+}
 
 /// Emitted after a generated OTW currency and its launch ticket are created.
 public struct LaunchTicketCreated has copy, drop {
@@ -258,11 +293,67 @@ public(package) fun creator_claim_signer_revoked() {
     blast_fun::events_wrapper::emit_event(CreatorClaimSignerRevoked {});
 }
 
-/// Emits the one-time creator-cap claim.
-public(package) fun creator_cap_claimed<Meme>() {
-    blast_fun::events_wrapper::emit_event(CreatorCapClaimed(
-        type_name::with_original_ids<Meme>(),
-    ));
+/// Emits a creator claim that consumed pending authority and issued both capabilities.
+public(package) fun creator_caps_claimed<Meme>(curve_fee_cap_id: ID, metadata_cap_id: ID) {
+    blast_fun::events_wrapper::emit_event(CreatorCapsClaimed {
+        meme: type_name::with_original_ids<Meme>(),
+        curve_fee_cap_id,
+        metadata_cap_id,
+    });
+}
+
+/// Emits an administrative curve-fee reassignment and the newly live capability.
+public(package) fun curve_fee_cap_reassigned(
+    launch_id: ID,
+    revoked_curve_fee_cap_id: Option<ID>,
+    curve_fee_cap_id: ID,
+    recipient: address,
+) {
+    blast_fun::events_wrapper::emit_event(CurveFeeCapReassigned {
+        launch_id,
+        revoked_curve_fee_cap_id,
+        curve_fee_cap_id,
+        recipient,
+    });
+}
+
+/// Emits an administrative metadata reassignment and the newly live capability.
+public(package) fun metadata_cap_reassigned(
+    launch_id: ID,
+    revoked_metadata_cap_id: Option<ID>,
+    metadata_cap_id: ID,
+    recipient: address,
+) {
+    blast_fun::events_wrapper::emit_event(MetadataCapReassigned {
+        launch_id,
+        revoked_metadata_cap_id,
+        metadata_cap_id,
+        recipient,
+    });
+}
+
+/// Emits the permanent binding of creator fees to a custodian object.
+public(package) fun creator_fees_locked(launch_id: ID, curve_fee_cap_id: ID, custodian_id: ID) {
+    blast_fun::events_wrapper::emit_event(CreatorFeesLocked {
+        launch_id,
+        curve_fee_cap_id,
+        custodian_id,
+    });
+}
+
+/// Emits the complete coin metadata snapshot after a creator update.
+public(package) fun meme_metadata_updated(
+    launch_id: ID,
+    name: String,
+    description: String,
+    icon_url: String,
+) {
+    blast_fun::events_wrapper::emit_event(MemeMetadataUpdated {
+        launch_id,
+        name,
+        description,
+        icon_url,
+    });
 }
 
 /// Emits creation of one generated-coin launch ticket.
@@ -533,10 +624,36 @@ public fun creator_claim_signer_set_fields(
 }
 
 #[test_only]
-public fun creator_cap_claimed_fields(
-    self: &CreatorCapClaimed,
-): TypeName {
-    self.0
+public fun creator_caps_claimed_fields(
+    self: &CreatorCapsClaimed,
+): (TypeName, ID, ID) {
+    (self.meme, self.curve_fee_cap_id, self.metadata_cap_id)
+}
+
+#[test_only]
+public fun curve_fee_cap_reassigned_fields(
+    self: &CurveFeeCapReassigned,
+): (ID, Option<ID>, ID, address) {
+    (self.launch_id, self.revoked_curve_fee_cap_id, self.curve_fee_cap_id, self.recipient)
+}
+
+#[test_only]
+public fun metadata_cap_reassigned_fields(
+    self: &MetadataCapReassigned,
+): (ID, Option<ID>, ID, address) {
+    (self.launch_id, self.revoked_metadata_cap_id, self.metadata_cap_id, self.recipient)
+}
+
+#[test_only]
+public fun creator_fees_locked_fields(self: &CreatorFeesLocked): (ID, ID, ID) {
+    (self.launch_id, self.curve_fee_cap_id, self.custodian_id)
+}
+
+#[test_only]
+public fun meme_metadata_updated_fields(
+    self: &MemeMetadataUpdated,
+): (ID, String, String, String) {
+    (self.launch_id, self.name, self.description, self.icon_url)
 }
 
 #[test_only]

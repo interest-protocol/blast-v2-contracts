@@ -1,9 +1,9 @@
 /// The Launchpad-owned administration domain shared with Migrators and Distributor.
 ///
 /// This module owns the domain one-time witness, the governance configuration,
-/// and the single exported role bit. Reusing packages import
-/// `AdminWitness<LAUNCHPAD_DOMAIN>` and `package_admin_role`; they never create
-/// another authority and never restate the numeric role.
+/// and the exported role bits. Reusing packages import
+/// `AdminWitness<LAUNCHPAD_DOMAIN>` and the role accessors; they never create
+/// another authority and never restate a numeric role.
 module blast_fun::launchpad_domain;
 
 // === Constants ===
@@ -16,6 +16,9 @@ const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 /// Role that authorizes package upgrade custody in every package of this domain.
 const PACKAGE_ADMIN_ROLE: u64 = 1;
+
+/// Role that authorizes revoking and reissuing creator fee authority in every package.
+const CREATOR_ADMIN_ROLE: u64 = 2;
 
 // === Public Structs ===
 
@@ -33,6 +36,11 @@ fun init(otw: LAUNCHPAD_DOMAIN, ctx: &mut TxContext) {
 /// The role a witness must carry to authorize, cut over, restrict, or seal an upgrade.
 public fun package_admin_role(): u64 {
     PACKAGE_ADMIN_ROLE
+}
+
+/// The role a witness must carry to revoke and reissue creator or LP-fee capabilities.
+public fun creator_admin_role(): u64 {
+    CREATOR_ADMIN_ROLE
 }
 
 // === Test-Only Functions ===

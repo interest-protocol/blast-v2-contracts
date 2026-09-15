@@ -4,7 +4,14 @@
 #[allow(lint(abort_without_constant))]
 module blast_fun::creator_authority;
 
-use blast_fun::{constants, events, runtime_config::RuntimeConfig};
+use blast_admin::acl::AdminWitness;
+use blast_fun::{
+    constants,
+    events,
+    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
+    package_version::PackageVersion,
+    runtime_config::RuntimeConfig,
+};
 use std::{bcs, type_name::{Self, TypeName}};
 use sui::clock::Clock;
 
@@ -21,8 +28,26 @@ public struct CreatorAuthority<phantom Meme> has store {
     recipient: CreatorRecipient,
 }
 
-/// Authority over creator-controlled settings and accrued fees for one coin type.
-public struct CreatorCap<phantom Meme> has key, store {
+/// Revocable authority over one launch's bonding-curve creator fees.
+///
+/// A cap authorizes nothing by itself: `Launch` honors only the cap ID it records, a creator
+/// administrator's reassignment retires it, and locking destroys it for a permanent custodian.
+public struct CurveFeeCap<phantom Meme> has key, store {
+    id: UID,
+}
+
+/// Revocable authority to update one coin's metadata through its launch.
+///
+/// Independent of fee authority: `Launch` honors only the metadata cap ID it records.
+public struct BlastMetadataCap<phantom Meme> has key, store {
+    id: UID,
+}
+
+/// Revocable authority over creator LP fees accrued by one post-migration fee vault.
+///
+/// Only a creator administrator issues it. Each vault honors only the cap ID it records,
+/// so reissuing retires the previous cap without touching the launch's `CurveFeeCap`.
+public struct LpFeeCap<phantom Meme> has key, store {
     id: UID,
 }
 
@@ -51,6 +76,39 @@ public fun new_account(account_commitment: vector<u8>): CreatorRecipient {
     );
 
     CreatorRecipient::Account(account_commitment)
+}
+
+/// Issues one LP-fee capability for a post-migration vault to record as live.
+public fun new_lp_fee_cap<Meme>(
+    package_version: &PackageVersion,
+    admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    ctx: &mut TxContext,
+): LpFeeCap<Meme> {
+    package_version.assert_current();
+    admin_witness.assert_role(launchpad_domain::creator_admin_role());
+
+    LpFeeCap { id: object::new(ctx) }
+}
+
+/// Deletes a curve-fee capability; destroying the live cap forfeits it until reassignment.
+public fun destroy_curve_fee_cap<Meme>(self: CurveFeeCap<Meme>) {
+    let CurveFeeCap { id } = self;
+
+    id.delete();
+}
+
+/// Deletes a metadata capability; destroying the live cap forfeits it until reassignment.
+public fun destroy_metadata_cap<Meme>(self: BlastMetadataCap<Meme>) {
+    let BlastMetadataCap { id } = self;
+
+    id.delete();
+}
+
+/// Deletes an LP-fee capability; destroying the live cap forfeits it until reissue.
+public fun destroy_lp_fee_cap<Meme>(self: LpFeeCap<Meme>) {
+    let LpFeeCap { id } = self;
+
+    id.delete();
 }
 
 // === Package Functions ===
@@ -82,14 +140,14 @@ public(package) fun account_commitment(
     }
 }
 
-/// Consumes the launch's creator authority and returns its creator capability.
-public(package) fun claim_creator_cap<Meme>(
+/// Consumes the launch's creator authority and returns its fee and metadata capabilities.
+public(package) fun claim_creator_caps<Meme>(
     self: CreatorAuthority<Meme>,
     config: &RuntimeConfig,
     account_attestation: Option<vector<u8>>,
     clock: &Clock,
     ctx: &mut TxContext,
-): CreatorCap<Meme> {
+): (CurveFeeCap<Meme>, BlastMetadataCap<Meme>) {
     let claimant = ctx.sender();
     self.recipient.authorize_claim<Meme>(
         config,
@@ -99,11 +157,27 @@ public(package) fun claim_creator_cap<Meme>(
     );
 
     let CreatorAuthority { .. } = self;
-    let creator_cap = CreatorCap<Meme> { id: object::new(ctx) };
+    let curve_fee_cap = new_curve_fee_cap<Meme>(ctx);
+    let metadata_cap = new_metadata_cap<Meme>(ctx);
 
-    events::creator_cap_claimed<Meme>();
+    events::creator_caps_claimed<Meme>(object::id(&curve_fee_cap), object::id(&metadata_cap));
 
-    creator_cap
+    (curve_fee_cap, metadata_cap)
+}
+
+/// Creates a curve-fee capability that the calling launch must record as live.
+public(package) fun new_curve_fee_cap<Meme>(ctx: &mut TxContext): CurveFeeCap<Meme> {
+    CurveFeeCap { id: object::new(ctx) }
+}
+
+/// Creates a metadata capability that the calling launch must record as live.
+public(package) fun new_metadata_cap<Meme>(ctx: &mut TxContext): BlastMetadataCap<Meme> {
+    BlastMetadataCap { id: object::new(ctx) }
+}
+
+/// Discards pending creator authority during an administrative reassignment.
+public(package) fun revoke<Meme>(self: CreatorAuthority<Meme>) {
+    let CreatorAuthority { .. } = self;
 }
 
 // === Private Functions ===
@@ -185,6 +259,12 @@ fun parse_creator_claim_attestation(attestation: vector<u8>): (u64, vector<u8>) 
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+/// Creates an LP-fee capability that downstream vault fixtures record without an ACL.
+public fun new_lp_fee_cap_for_testing<Meme>(ctx: &mut TxContext): LpFeeCap<Meme> {
+    LpFeeCap { id: object::new(ctx) }
+}
 
 #[test_only]
 /// Produces canonical claim bytes for the independent signature fixture test.

@@ -8,6 +8,7 @@ use blast_fun::{
     launch_config,
     launch_ticket,
     launchpad_domain::LAUNCHPAD_DOMAIN,
+    lp_fee_policy,
     package_version,
     runtime_config
 };
@@ -63,9 +64,10 @@ fun init_sends_admin_cap_to_publisher_and_shares_current_unpaused_version() {
 }
 
 #[test]
-fun enrollment_preserves_creator_cap_identity_in_sealed_child_custody() {
+fun enrollment_destroys_the_creator_cap_and_binds_curve_fees_forever() {
     let f = start();
-    assert_eq!(f.distributor.creator_cap_id_for_testing(), f.creator_cap_id);
+    assert_eq!(f.launch.fee_custodian_id_for_testing(), option::some(object::id(&f.distributor)));
+    assert!(f.launch.curve_fee_cap_id_for_testing().is_none());
     {
         let (meme, quote) = f.distributor.balances_for_testing();
         assert_eq!(meme, 0);
@@ -702,6 +704,93 @@ fun retired_code_cannot_resume_paused_rewards() {
     f.end();
 }
 
+
+#[test]
+fun locked_lp_fees_collect_only_creator_lp_fees() {
+    let mut f = start();
+    let lp_fee_policy = lp_fee_policy::new_for_testing(f.scenario.ctx());
+    let share = lp_fee_policy.protocol_fee_share<DISTRIBUTOR_TESTS>().value();
+    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.scenario.ctx()).into_balance();
+    let quote = coin::mint_for_testing<QUOTE>(2000, f.scenario.ctx()).into_balance();
+    let mut source = blast_fun_migrators::vault::funded_for_testing(
+        object::id_from_address(@0xF00),
+        meme,
+        quote,
+        &lp_fee_policy,
+        f.scenario.ctx(),
+    );
+    let lp_fee_cap = source.issue_lp_fee_cap_for_testing(f.scenario.ctx());
+    f.next_tx!(BOT, |f| {
+        f.distributor.lock_lp_fees(&f.control, &mut source, &f.migrators_version, lp_fee_cap);
+        assert_eq!(source.custodian_id_for_testing(), option::some(object::id(&f.distributor)));
+        assert!(source.lp_fee_cap_id_for_testing().is_none());
+        f.distributor.collect_lp_fees(&f.control, &mut source, &f.migrators_version, f.scenario.ctx());
+    });
+    let (meme, quote) = f.distributor.balances_for_testing();
+    assert_eq!(meme, 1000 - (1000 * share + 9999) / 10000);
+    assert_eq!(quote, 2000 - (2000 * share + 9999) / 10000);
+    destroy(source);
+    destroy(lp_fee_policy);
+    f.end();
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = blast_fun_migrators::vault::ELpFeeCustodianMismatch,
+        location = blast_fun_migrators::vault,
+    ),
+]
+fun lp_collection_requires_lp_fees_bound_to_the_distributor() {
+    let mut f = start();
+    let lp_fee_policy = lp_fee_policy::new_for_testing(f.scenario.ctx());
+    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.scenario.ctx()).into_balance();
+    let quote = coin::mint_for_testing<QUOTE>(2000, f.scenario.ctx()).into_balance();
+    let mut source = blast_fun_migrators::vault::funded_for_testing(
+        object::id_from_address(@0xF00),
+        meme,
+        quote,
+        &lp_fee_policy,
+        f.scenario.ctx(),
+    );
+    f.next_tx!(BOT, |f| {
+        f.distributor.collect_lp_fees(&f.control, &mut source, &f.migrators_version, f.scenario.ctx());
+    });
+    destroy(source);
+    destroy(lp_fee_policy);
+    f.end();
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = blast_fun_migrators::vault::ELpFeeCapNotLive,
+        location = blast_fun_migrators::vault,
+    ),
+]
+fun retired_lp_fee_cap_cannot_lock_lp_fees() {
+    let mut f = start();
+    let lp_fee_policy = lp_fee_policy::new_for_testing(f.scenario.ctx());
+    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1, f.scenario.ctx()).into_balance();
+    let quote = coin::mint_for_testing<QUOTE>(1, f.scenario.ctx()).into_balance();
+    let mut source = blast_fun_migrators::vault::funded_for_testing(
+        object::id_from_address(@0xF00),
+        meme,
+        quote,
+        &lp_fee_policy,
+        f.scenario.ctx(),
+    );
+    let retired = source.issue_lp_fee_cap_for_testing(f.scenario.ctx());
+    let live = source.issue_lp_fee_cap_for_testing(f.scenario.ctx());
+    f.next_tx!(BOT, |f| {
+        f.distributor.lock_lp_fees(&f.control, &mut source, &f.migrators_version, retired);
+    });
+    destroy(live);
+    destroy(source);
+    destroy(lp_fee_policy);
+    f.end();
+}
+
 // === Private Test Helpers ===
 
 fun complete_shared_round(f: DistributionFixture) {
@@ -714,13 +803,14 @@ fun complete_shared_round(f: DistributionFixture) {
         admin,
         distributor,
         publisher,
-        creator_cap_id,
+        creator_cap_id: _,
     } = f;
+    let distributor_id = object::id(&distributor);
     distributor.share();
     transfer::public_transfer(publisher, BOT);
     scenario.next_tx(BOT);
     let mut distributor = scenario.take_shared<Distributor<DISTRIBUTOR_TESTS, QUOTE>>();
-    assert_eq!(distributor.creator_cap_id_for_testing(), creator_cap_id);
+    assert_eq!(launch.fee_custodian_id_for_testing(), option::some(distributor_id));
     let publisher = scenario.take_from_sender<PublisherCap>();
     let root = merkle::leaf(object::id(&distributor), 0, 0, ALICE, 1, 1);
     let round = distributor.publish_round(
@@ -908,15 +998,15 @@ fun start_with_control(paused: bool, version_number: u64): DistributionFixture {
         &config,
         scenario.ctx(),
     );
-    let (creator_cap, metadata_cap) = launch.claim_creator_cap(
+    let (creator_cap, metadata_cap) = launch.claim_creator_caps(
         &version,
         &runtime,
         option::none(),
         &clock,
         scenario.ctx(),
     );
+    destroy(metadata_cap);
     let creator_cap_id = object::id(&creator_cap);
-    transfer::public_transfer(metadata_cap, CREATOR);
     let quote = coin::mint_for_testing<QUOTE>(1_000_000, scenario.ctx());
     let (meme, refund) = launch.buy(&version, &runtime, quote, 1, scenario.ctx());
     destroy(meme);
@@ -925,7 +1015,13 @@ fun start_with_control(paused: bool, version_number: u64): DistributionFixture {
     let mut control = distributor::new_version_for_testing(scenario.ctx());
     if (paused) control.set_paused(&admin, true);
     control.set_version_for_testing(version_number);
-    let (distributor, publisher) = distributor::new(&control, creator_cap, &launch, scenario.ctx());
+    let (distributor, publisher) = distributor::new(
+        &control,
+        creator_cap,
+        &mut launch,
+        &version,
+        scenario.ctx(),
+    );
     destroy(witness);
     destroy(launchpad_admin);
     destroy(authority);

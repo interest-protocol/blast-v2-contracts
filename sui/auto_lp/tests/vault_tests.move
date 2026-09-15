@@ -49,8 +49,8 @@ public struct AutoLpFixture {
 #[test]
 fun third_party_collects_and_authorized_executor_compounds_without_extracting_children() {
     let mut f = start();
-    let (cap_id, position_id, meme, quote) = f.vault.snapshot_for_testing();
-    assert_eq!(cap_id, f.cap_id);
+    let (pool_id, position_id, meme, quote) = f.vault.snapshot_for_testing();
+    assert_eq!(pool_id, object::id(&f.pool));
     assert!(position_id != object::id_from_address(@0x0));
     assert_eq!(meme, 0);
     assert_eq!(quote, 0);
@@ -61,10 +61,10 @@ fun third_party_collects_and_authorized_executor_compounds_without_extracting_ch
     let (meme_used, quote_used, shares) = f.pool.deposit_amounts(meme, quote);
     assert!(shares > 0);
     f.compound_bounded!(shares, meme_used, quote_used, 0);
-    let (after_cap, after_position, remaining_meme, remaining_quote) = f
+    let (after_pool, after_position, remaining_meme, remaining_quote) = f
         .vault
         .snapshot_for_testing();
-    assert_eq!(after_cap, cap_id);
+    assert_eq!(after_pool, pool_id);
     assert_eq!(after_position, position_id);
     assert_eq!(remaining_meme + meme_used, meme);
     assert_eq!(remaining_quote + quote_used, quote);
@@ -176,9 +176,8 @@ fun the_complete_flow_runs_without_any_local_administration() {
 #[test]
 fun enrollment_and_collection_events_reconcile_all_custody_fields() {
     let mut f = start();
-    // Enrollment occurred in a prior transaction; the preserved children prove identity.
-    let (cap_id, _, _, _) = f.vault.snapshot_for_testing();
-    assert_eq!(cap_id, f.cap_id);
+    // Enrollment occurred in a prior transaction; the launch binding proves identity.
+    assert_eq!(f.launch.fee_custodian_id_for_testing(), option::some(object::id(&f.vault)));
     f.collect!();
     let (_, _, meme, quote) = f.vault.snapshot_for_testing();
     let events = sui::event::events_by_type<vault::FeesCollected>();
@@ -385,6 +384,66 @@ fun external_witness_creator_funded_pool_supports_enrollment_and_fee_collection(
     f.end();
 }
 
+
+#[test]
+fun enrollment_destroys_the_creator_cap_and_binds_every_fee_stream_forever() {
+    let f = start();
+    let vault_id = object::id(&f.vault);
+    assert_eq!(f.launch.fee_custodian_id_for_testing(), option::some(vault_id));
+    assert!(f.launch.curve_fee_cap_id_for_testing().is_none());
+    assert_eq!(f.locked.borrow().custodian_id_for_testing(), option::some(vault_id));
+    f.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun_migrators::vault::ELpFeeCapNotLive,
+    location = blast_fun_migrators::vault,
+)]
+fun locked_lp_fees_cannot_be_locked_again() {
+    let mut f = start_with_route(@0xC, true);
+    let meme = coin::mint_for_testing<VAULT_TESTS>(1000, f.ctx!()).into_balance();
+    let quote = coin::mint_for_testing<QUOTE>(1000, f.ctx!()).into_balance();
+    let mut source = blast_fun_migrators::vault::funded_for_testing(
+        object::id(&f.pool),
+        meme,
+        quote,
+        &f.lp_fee_policy,
+        f.ctx!(),
+    );
+    let lp_fee_cap = source.issue_lp_fee_cap_for_testing(f.ctx!());
+    f.vault.lock_external_lp_fees(&mut source, &f.migrators_version, lp_fee_cap);
+    let other = blast_fun::creator_authority::new_lp_fee_cap_for_testing<VAULT_TESTS>(f.ctx!());
+    f.next_tx!(@0xB, |f| {
+        f.vault.lock_external_lp_fees(&mut source, &f.migrators_version, other);
+    });
+    destroy(source);
+    f.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun_migrators::vault::ELpFeeCustodianMismatch,
+    location = blast_fun_migrators::vault,
+)]
+fun external_lp_collection_before_locking_is_rejected() {
+    let mut f = start_with_route(@0xC, true);
+    let meme = coin::mint_for_testing<VAULT_TESTS>(1000, f.ctx!()).into_balance();
+    let quote = coin::mint_for_testing<QUOTE>(1000, f.ctx!()).into_balance();
+    let mut source = blast_fun_migrators::vault::funded_for_testing(
+        object::id(&f.pool),
+        meme,
+        quote,
+        &f.lp_fee_policy,
+        f.ctx!(),
+    );
+    f.next_tx!(@0xB, |f| {
+        f.vault.collect_external_lp(&mut source, &f.migrators_version, f.ctx!());
+    });
+    destroy(source);
+    f.end();
+}
+
 // === Private Test Helpers ===
 
 macro fun ctx($f: &mut AutoLpFixture): &mut TxContext { let f = $f; f.scenario.ctx() }
@@ -428,7 +487,10 @@ macro fun collect_external(
     $source: &mut blast_fun_migrators::vault::LpVault<VAULT_TESTS, QUOTE>,
 ) {
     let f = $f;
-    f.vault.collect_external_lp($source, &f.migrators_version, f.ctx!());
+    let source = $source;
+    let lp_fee_cap = source.issue_lp_fee_cap_for_testing(f.ctx!());
+    f.vault.lock_external_lp_fees(source, &f.migrators_version, lp_fee_cap);
+    f.vault.collect_external_lp(source, &f.migrators_version, f.ctx!());
 }
 
 macro fun compound($f: &mut AutoLpFixture, $minimum: u128, $deadline: u64) {
@@ -498,15 +560,15 @@ fun start_with_route(executor: address, external: bool): AutoLpFixture {
     } else {
         launch::new<VAULT_TESTS, QUOTE, Witness>(ticket, &version, &config, scenario.ctx())
     };
-    let (cap, metadata) = launch.claim_creator_cap(
+    let (cap, metadata_cap) = launch.claim_creator_caps(
         &version,
         &runtime,
         option::none(),
         &clock,
         scenario.ctx(),
     );
+    destroy(metadata_cap);
     let cap_id = object::id(&cap);
-    transfer::public_transfer(metadata, @0xA);
     let quote = coin::mint_for_testing<QUOTE>(30_000_000, scenario.ctx());
     let (bought, refund) = launch.buy(&version, &runtime, quote, 1, scenario.ctx());
     destroy(bought);
@@ -547,7 +609,15 @@ fun start_with_route(executor: address, external: bool): AutoLpFixture {
     };
     scenario.next_tx(@0xA);
     let pool = scenario.take_shared<Pool<VAULT_TESTS, QUOTE>>();
-    let vault = vault::new(cap, &pool, &factory, executor, scenario.ctx());
+    let vault = vault::new(
+        cap,
+        &mut launch,
+        &version,
+        &pool,
+        &factory,
+        executor,
+        scenario.ctx(),
+    );
     let (_, position_id, _, _) = vault.snapshot_for_testing();
     let events = sui::event::events_by_type<vault::Enrolled>();
     let mut expected = bcs::to_bytes(&object::id(&vault));
@@ -564,7 +634,10 @@ fun start_with_route(executor: address, external: bool): AutoLpFixture {
     let locked = if (external) {
         option::none()
     } else {
-        option::some(scenario.take_shared<LockedLpVault<VAULT_TESTS, QUOTE>>())
+        let mut locked = scenario.take_shared<LockedLpVault<VAULT_TESTS, QUOTE>>();
+        let lp_fee_cap = locked.issue_lp_fee_cap_for_testing(scenario.ctx());
+        vault.lock_native_lp_fees(&mut locked, &factory, lp_fee_cap);
+        option::some(locked)
     };
     test_scenario::return_shared(config);
     destroy(currency);

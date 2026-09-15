@@ -51,7 +51,7 @@ without returning to core for its post-conditions.
 | Curve math | pure quote and reserve transition formulas | authority, storage, transfers |
 | Graduation math | pre-curve protocol Meme fee/liquidity provision and terminal Quote-fee balance partitioning | forecast valuations, lifecycle state, claims, venue costs, transfers, or DEX dependencies |
 | Off-chain SDK | deterministic curve-release and native-Quote valuation previews from immutable launch facts | contract authority, balance mutation, migration permission, or a second source of truth |
-| Fees | creator/protocol fee splitting, accrued accounting, and capability claims | arbitrary recipient execution or referral attribution |
+| Fees | creator/protocol fee splitting and accrued accounting; the embedding launch or vault checks its live creator or LP-fee capability | arbitrary recipient execution or referral attribution |
 | Allocation/vesting | bounded stakeholder schedules and claims | launch pricing |
 | Migration interface | one-time handoff payload and settlement proof | DEX-specific object/storage details |
 | Adapter | prepare and complete a migration for one venue | changing core economics |
@@ -127,8 +127,13 @@ before finalizing the initializer. Its launch ticket holds the complete
 or an adapter, and launch intake does not need the shared Meme currency merely to
 finalize supply. The creator recipient may be a wallet address or an opaque
 Blast account commitment and may differ from the launcher. The native metadata
-cap remains in Blast-defined custody until
-the one-time creator claim returns it separately alongside `CreatorCap<Meme>`.
+cap never leaves `Launch`. The creator claim issues a `CurveFeeCap<Meme>` for
+curve fees and a `BlastMetadataCap<Meme>` for metadata updates through the
+launch; a creator administrator can reassign each independently. Post-migration
+fee vaults honor a separately issued, revocable `LpFeeCap<Meme>`. A holder may
+destroy a curve-fee or LP-fee cap to bind that fee stream permanently to a custodian object such as Auto-LP or the
+distributor, after which it can never be reassigned
+([ADR 0082](decisions/0082-revocable-creator-and-lp-fee-capabilities.md)).
 See [ADR 0035](decisions/0035-initializer-finalized-meme-supply.md),
 [ADR 0036](decisions/0036-fixed-nine-decimal-generated-memes.md), and
 [ADR 0047](decisions/0047-coin-registry-authoritative-supply-mode.md), and

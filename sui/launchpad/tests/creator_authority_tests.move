@@ -301,14 +301,16 @@ fun address_creator_claim_returns_composable_cap_without_attestation() {
         let creator_state = creator_authority::new_address(CREATOR)
             .into_authority<TEST_MEME>();
         let cap = f.claim(creator_state, option::none());
+        let cap_id = object::id(&cap);
         transfer::public_transfer(cap, PROTOCOL_ADMIN);
 
-        let claimed = events::collect_one<events::CreatorCapClaimed>(0);
-        let meme = claimed.creator_cap_claimed_fields();
+        let claimed = events::collect_one<events::CreatorCapsClaimed>(0);
+        let (meme, creator_cap_id, _) = claimed.creator_caps_claimed_fields();
         assert_eq!(
             meme,
             std::type_name::with_original_ids<TEST_MEME>(),
         );
+        assert_eq!(creator_cap_id, cap_id);
     });
 
     fixture.next_tx_expecting_events!(PROTOCOL_ADMIN, 1, |f| {
@@ -848,36 +850,42 @@ fun signer_claim_sign_in(self: &SignerClaimFixture): AdminWitness<LAUNCHPAD_DOMA
 fun claim_account(
     self: &mut SignerClaimFixture,
     creator_state: creator_authority::CreatorAuthority<TEST_MEME>,
-): creator_authority::CreatorCap<TEST_MEME> {
-    creator_state.claim_creator_cap(
+): creator_authority::CurveFeeCap<TEST_MEME> {
+    let (curve_fee_cap, metadata_cap) = creator_state.claim_creator_caps(
         &self.config,
         option::some(creator_claim_attestation()),
         &self.clock,
         self.scenario.ctx(),
-    )
+    );
+    destroy(metadata_cap);
+
+    curve_fee_cap
 }
 
 fun claim<Meme>(
     self: &mut ClaimFixture,
     creator_state: creator_authority::CreatorAuthority<Meme>,
     creator_claim_attestation: Option<vector<u8>>,
-): creator_authority::CreatorCap<Meme> {
-    creator_state.claim_creator_cap(
+): creator_authority::CurveFeeCap<Meme> {
+    let (curve_fee_cap, metadata_cap) = creator_state.claim_creator_caps(
         &self.config,
         creator_claim_attestation,
         &self.clock,
         self.scenario.ctx(),
-    )
+    );
+    destroy(metadata_cap);
+
+    curve_fee_cap
 }
 
 fun take_delivered_creator_cap(
     self: &ClaimFixture,
-): creator_authority::CreatorCap<TEST_MEME> {
+): creator_authority::CurveFeeCap<TEST_MEME> {
     self.scenario.take_from_sender()
 }
 
 fun creator_cap_delivered<Meme>(self: &ClaimFixture): bool {
-    self.scenario.has_most_recent_for_sender<creator_authority::CreatorCap<Meme>>()
+    self.scenario.has_most_recent_for_sender<creator_authority::CurveFeeCap<Meme>>()
 }
 
 fun event_end(self: EventFixture) {

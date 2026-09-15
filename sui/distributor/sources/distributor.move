@@ -1,13 +1,17 @@
 /// Creator-fee custody, authorized funded rounds and permissionless direct payouts.
 module blast_fun_distributor::distributor;
 
-use blast_fun::{creator_authority::CreatorCap, launch::Launch, package_version::PackageVersion};
+use blast_fun::{
+    creator_authority::{CurveFeeCap, LpFeeCap},
+    launch::Launch,
+    package_version::PackageVersion
+};
 use blast_fun_distributor::merkle;
 use blast_fun_migrators::{
     package_version::PackageVersion as MigratorsVersion,
     vault::LpVault,
 };
-use sui::{balance::{Self, Balance}, coin::Coin, dynamic_object_field, event};
+use sui::{balance::{Self, Balance}, coin::Coin, event};
 
 // === Constants ===
 
@@ -65,9 +69,6 @@ public struct Version has key {
     paused: bool,
 }
 
-/// Sealed dynamic-object key; the stored cap stays independently discoverable.
-public struct CreatorCapKey() has copy, drop, store;
-
 /// Custodies the per-coin creator entitlement and unallocated fee balances.
 public struct Distributor<phantom Meme, phantom Quote> has key {
     id: UID,
@@ -108,7 +109,8 @@ public struct PauseChanged has copy, drop {
 public struct Enrolled has copy, drop {
     distributor: ID,
     launch: ID,
-    creator_cap: ID,
+
+    curve_fee_cap: ID,
     publisher_cap: ID,
 }
 
@@ -177,17 +179,19 @@ public fun migrate(self: &mut Version, _: &AdminCap) {
 
 // === Public Functions ===
 
-/// Consumes the creator cap; the publisher cap cannot extract or borrow it.
+/// Destroys the curve-fee cap and binds the launch's creator fees to this distributor forever.
+/// No fee capability survives, so no administrator can reassign them; metadata is untouched.
 public fun new<Meme, Quote>(
     version: &Version,
-    creator_cap: CreatorCap<Meme>,
-    launch: &Launch<Meme, Quote>,
+    curve_fee_cap: CurveFeeCap<Meme>,
+    launch: &mut Launch<Meme, Quote>,
+    package_version: &PackageVersion,
     ctx: &mut TxContext,
 ): (Distributor<Meme, Quote>, PublisherCap) {
     version.assert_enabled();
 
-    let creator_cap_id = object::id(&creator_cap);
-    let mut distributor = Distributor {
+    let curve_fee_cap_id = object::id(&curve_fee_cap);
+    let distributor = Distributor {
         id: object::new(ctx),
         launch: object::id(launch),
         meme: balance::zero(),
@@ -195,13 +199,13 @@ public fun new<Meme, Quote>(
         next_round: 0,
         last_checkpoint: option::none(),
     };
-    dynamic_object_field::add(&mut distributor.id, CreatorCapKey(), creator_cap);
+    launch.lock_creator_fees(package_version, curve_fee_cap, &distributor.id);
     let publisher = PublisherCap { id: object::new(ctx), distributor: distributor.id.to_inner() };
 
     event::emit(Enrolled {
         distributor: distributor.id.to_inner(),
         launch: distributor.launch,
-        creator_cap: creator_cap_id,
+        curve_fee_cap: curve_fee_cap_id,
         publisher_cap: publisher.id.to_inner(),
     });
 
@@ -211,7 +215,7 @@ public fun new<Meme, Quote>(
 /// Publishes custody as a shared top-level object.
 public fun share<Meme, Quote>(self: Distributor<Meme, Quote>) { transfer::share_object(self); }
 
-/// Anyone can collect; the cap reference and all proceeds stay inside this call.
+/// Anyone can collect; the launch pays only this bound custodian and proceeds stay inside.
 public fun collect_curve_fees<Meme, Quote>(
     self: &mut Distributor<Meme, Quote>,
     version: &Version,
@@ -222,8 +226,7 @@ public fun collect_curve_fees<Meme, Quote>(
     version.assert_enabled();
     assert!(object::id(launch) == self.launch, EWrongSource);
 
-    let cap = dynamic_object_field::borrow<_, CreatorCap<Meme>>(&self.id, CreatorCapKey());
-    let (meme, quote) = launch.claim_creator_fees(package_version, cap, ctx);
+    let (meme, quote) = launch.claim_custodied_creator_fees(package_version, &self.id, ctx);
     self.accrue(object::id(launch), meme, quote);
 }
 
@@ -237,9 +240,21 @@ public fun collect_lp_fees<Meme, Quote>(
 ) {
     version.assert_enabled();
 
-    let cap = dynamic_object_field::borrow<_, CreatorCap<Meme>>(&self.id, CreatorCapKey());
-    let (meme, quote) = vault.claim_creator_fees(migrators_version, cap, ctx);
+    let (meme, quote) = vault.claim_custodied_creator_fees(migrators_version, &self.id, ctx);
     self.accrue(object::id(vault), meme, quote);
+}
+
+/// Destroys the vault's live LP-fee cap and binds its creator LP fees here forever.
+public fun lock_lp_fees<Meme, Quote>(
+    self: &Distributor<Meme, Quote>,
+    version: &Version,
+    vault: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
+    lp_fee_cap: LpFeeCap<Meme>,
+) {
+    version.assert_enabled();
+
+    vault.lock_creator_fees(migrators_version, lp_fee_cap, &self.id);
 }
 
 /// Reserves existing funds for an allocation authorized by this distributor's cap.
@@ -411,10 +426,6 @@ public fun version_for_testing(self: &Version): u64 { self.version }
 #[test_only]
 public fun paused_for_testing(self: &Version): bool { self.paused }
 #[test_only]
-public fun creator_cap_id_for_testing<Meme, Quote>(self: &Distributor<Meme, Quote>): ID {
-    object::id(dynamic_object_field::borrow<_, CreatorCap<Meme>>(&self.id, CreatorCapKey()))
-}
-#[test_only]
 public fun balances_for_testing<Meme, Quote>(self: &Distributor<Meme, Quote>): (u64, u64) {
     (self.meme.value(), self.quote.value())
 }
@@ -429,10 +440,6 @@ public fun is_claimed_for_testing<Meme, Quote>(self: &Round<Meme, Quote>, index:
     self.claimed[index / 256] & (1u256 << ((index % 256) as u8)) != 0
 }
 
-#[test]
-fun creator_cap_key_bcs_matches_sdk() {
-    assert!(std::bcs::to_bytes(&CreatorCapKey()) == vector[0u8]);
-}
 
 #[test]
 #[expected_failure(abort_code = EWrongPublisher, location = blast_fun_distributor::distributor)]

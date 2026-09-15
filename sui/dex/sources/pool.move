@@ -5,7 +5,7 @@ use blast_admin::{
     acl::AdminWitness,
     operational_version::{Self, OperationalVersion}
 };
-use blast_fun::{creator_authority::CreatorCap, launch::Launch};
+use blast_fun::{creator_authority::CurveFeeCap, launch::Launch};
 use blast_fun_dex::{dex_domain::DEX_DOMAIN, math, package_marker::PACKAGE_MARKER};
 use std::type_name::{Self, TypeName};
 use sui::{
@@ -187,11 +187,11 @@ public(package) fun advance(self: &mut Factory) {
 
 // === Public Functions ===
 
-/// Creates the post-migration fee destination under the original creator cap.
+/// Creates the post-migration fee destination under the launch's live curve-fee cap.
 /// The immutable burn applies in both swap directions; fees always use Quote.
 public fun create<Meme, Quote>(
     self: &mut Factory,
-    _: &CreatorCap<Meme>,
+    curve_fee_cap: &CurveFeeCap<Meme>,
     launch: &Launch<Meme, Quote>,
     currency: &Currency<Meme>,
     meme: Coin<Meme>,
@@ -202,6 +202,7 @@ public fun create<Meme, Quote>(
 ): (Pool<Meme, Quote>, Position<Meme, Quote>) {
     self.assert_available<Meme, Quote>();
     launch.assert_migrated();
+    launch.assert_curve_fee_cap(curve_fee_cap);
     assert!(
         burn_bps <= MAX_BURN_BPS && (burn_bps == 0 || currency.is_supply_burn_only()),
         EBurnPolicy,

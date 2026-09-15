@@ -55,6 +55,25 @@ public struct AftermathDaoFeeUpdated has copy, drop {
     new_dao_fee_bps: u16,
 }
 
+/// Records the LP-fee capability a vault honors after an administrative issue.
+public struct LpFeeCapIssued has copy, drop {
+    vault_id: ID,
+    meme: TypeName,
+    quote: TypeName,
+    revoked_lp_fee_cap_id: Option<ID>,
+    lp_fee_cap_id: ID,
+    recipient: address,
+}
+
+/// Records an LP-fee capability destroyed to bind creator LP fees to a custodian forever.
+public struct LpFeesLocked has copy, drop {
+    vault_id: ID,
+    meme: TypeName,
+    quote: TypeName,
+    lp_fee_cap_id: ID,
+    custodian_id: ID,
+}
+
 /// Records discovery and typed position custody for one completed vault.
 public struct VaultCreated has copy, drop {
     vault_id: ID,
@@ -302,6 +321,38 @@ public(package) fun lp_fees_collected<Meme, Quote, Venue>(
         protocol_quote_fee_delta,
         creator_quote_fee_delta,
         principal_liquidity,
+    });
+}
+
+/// Emits an administrative LP-fee capability issue and any retired predecessor.
+public(package) fun lp_fee_cap_issued<Meme, Quote>(
+    vault_id: ID,
+    revoked_lp_fee_cap_id: Option<ID>,
+    lp_fee_cap_id: ID,
+    recipient: address,
+) {
+    sui::event::emit(LpFeeCapIssued {
+        vault_id,
+        meme: type_name::with_original_ids<Meme>(),
+        quote: type_name::with_original_ids<Quote>(),
+        revoked_lp_fee_cap_id,
+        lp_fee_cap_id,
+        recipient,
+    });
+}
+
+/// Emits the permanent binding of creator LP fees to a custodian object.
+public(package) fun lp_fees_locked<Meme, Quote>(
+    vault_id: ID,
+    lp_fee_cap_id: ID,
+    custodian_id: ID,
+) {
+    sui::event::emit(LpFeesLocked {
+        vault_id,
+        meme: type_name::with_original_ids<Meme>(),
+        quote: type_name::with_original_ids<Quote>(),
+        lp_fee_cap_id,
+        custodian_id,
     });
 }
 

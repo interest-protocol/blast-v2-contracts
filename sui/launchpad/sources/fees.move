@@ -5,7 +5,7 @@
 module blast_fun::fees;
 
 use blast_admin::acl::AdminWitness;
-use blast_fun::{bps::Bps, creator_authority::CreatorCap, launchpad_domain::LAUNCHPAD_DOMAIN};
+use blast_fun::{bps::Bps, launchpad_domain::LAUNCHPAD_DOMAIN};
 use sui::{balance::{Self, Balance}, coin::Coin};
 
 // === Public Structs ===
@@ -79,9 +79,11 @@ public fun has_protocol_fees<Meme, Quote>(self: &FeeLedger<Meme, Quote>): bool {
 }
 
 /// Drains both creator balances into composable coins.
+///
+/// The object embedding the ledger authorizes the claim with the creator capability it
+/// currently honors: `Launch` checks `CurveFeeCap`, post-migration vaults check `LpFeeCap`.
 public fun claim_creator_fees<Meme, Quote>(
     self: &mut FeeLedger<Meme, Quote>,
-    _: &CreatorCap<Meme>,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     assert!(

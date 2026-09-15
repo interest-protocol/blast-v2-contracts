@@ -11,7 +11,7 @@ use blast_fun::{
     launch::{Self, Launch},
     launch_config,
     launch_ticket::{Self, LaunchTicket},
-    launchpad_domain::LAUNCHPAD_DOMAIN,
+    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
     package_version::{Self, PackageVersion},
     runtime_config,
 };
@@ -41,6 +41,8 @@ const PUBLISHER: address = @0xA11CE;
 const LAUNCHER: address = @0xB1A57;
 const CREATOR: address = @0xC0FFEE;
 const PROTOCOL_ADMIN: address = @0xAD;
+const NEW_CREATOR: address = @0xC7;
+const ROLE_LESS_ADMIN: address = @0xBAD;
 /// `sui::object::SUI_COIN_REGISTRY_OBJECT_ID` at the pinned framework revision.
 const COIN_REGISTRY: address = @0xc;
 const INITIAL_MEME_SUPPLY: u64 = 1_000_000_000__000_000_000;
@@ -225,16 +227,16 @@ fun launcher_can_designate_another_address_as_creator() {
 
     fixture.next_tx!(CREATOR, |f| {
         let mut launch = f.take_launch();
-        let (creator_cap, metadata_cap) = launch.claim_creator_cap(
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
+        destroy(metadata_cap);
 
         destroy(creator_cap);
-        destroy(metadata_cap);
         destroy(launch);
     });
 
@@ -291,7 +293,7 @@ fun burn_only_ticket_keeps_supply_mode_authoritative_in_coin_registry() {
 }
 
 #[test]
-fun creator_claim_returns_cap_and_native_metadata_cap_separately() {
+fun creator_claim_returns_both_creator_caps_and_retains_native_metadata_cap() {
     let mut fixture = start();
 
     fixture.next_tx!(CREATOR, |f| {
@@ -303,20 +305,21 @@ fun creator_claim_returns_cap_and_native_metadata_cap_separately() {
             f.ctx!(),
         );
         let expected_metadata_cap_id = launch.metadata_cap_id_for_testing();
-        let (creator_cap, metadata_cap) = launch.claim_creator_cap(
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
+        destroy(metadata_cap);
 
-        assert_eq!(object::id(&metadata_cap), expected_metadata_cap_id);
+        assert_eq!(launch.metadata_cap_id_for_testing(), expected_metadata_cap_id);
         assert!(!launch.has_creator_authority_for_testing());
-        assert!(!launch.has_metadata_cap_for_testing());
+        assert_eq!(launch.curve_fee_cap_id_for_testing(), option::some(object::id(&creator_cap)));
+        assert!(launch.blast_metadata_cap_id_for_testing().is_some());
 
         destroy(creator_cap);
-        destroy(metadata_cap);
         destroy(launch);
     });
 
@@ -339,27 +342,27 @@ fun creator_claim_cannot_be_repeated() {
             &f.config,
             f.ctx!(),
         );
-        let (creator_cap, metadata_cap) = launch.claim_creator_cap(
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
-
-        destroy(creator_cap);
         destroy(metadata_cap);
 
-        let (creator_cap, metadata_cap) = launch.claim_creator_cap(
+        destroy(creator_cap);
+
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
+        destroy(metadata_cap);
 
         destroy(creator_cap);
-        destroy(metadata_cap);
         destroy(launch);
     });
 
@@ -456,13 +459,14 @@ fun buy_and_sell_all_bought_meme_move_exact_coins_and_accounting() {
             &f.config,
             f.ctx!(),
         );
-        let (creator_cap, metadata_cap) = launch.claim_creator_cap(
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
+        destroy(metadata_cap);
         let quote_in_gross = 10_000_000;
         let (quote_fee, meme_out_gross, meme_fee, meme_out_net) = curve::quote_buy(
             EXPECTED_CURVE_MEME,
@@ -563,7 +567,6 @@ fun buy_and_sell_all_bought_meme_move_exact_coins_and_accounting() {
         assert_eq!(creator_quote, 0);
 
         destroy(creator_cap);
-        destroy(metadata_cap);
         destroy(quote_refund);
         destroy(quote_out);
         destroy(claimed_meme);
@@ -621,13 +624,14 @@ fun creator_claim_drains_trade_fees_as_composable_coins() {
             &f.config,
             f.ctx!(),
         );
-        let (creator_cap, metadata_cap) = launch.claim_creator_cap(
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
+        destroy(metadata_cap);
         let quote_in = coin::mint_for_testing<TEST_QUOTE>(10_000_000, f.ctx!());
         let (meme_bought, quote_refund) =
             launch.buy(&f.package_version, &f.runtime_config, quote_in, 1, f.ctx!());
@@ -649,7 +653,6 @@ fun creator_claim_drains_trade_fees_as_composable_coins() {
         assert_eq!(quote_amount, creator_quote_before);
 
         destroy(creator_cap);
-        destroy(metadata_cap);
         destroy(meme_bought);
         destroy(quote_refund);
         destroy(meme_fees);
@@ -1396,6 +1399,711 @@ fun migration_rejects_a_witness_type_not_selected_at_launch() {
     fixture.end();
 }
 
+
+#[test]
+fun admin_reassigns_claimed_creator_and_the_new_cap_claims_prior_fees() {
+    let mut fixture = start();
+
+    fixture.next_tx!(CREATOR, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
+            &f.package_version,
+            &f.runtime_config,
+            option::none(),
+            &f.clock,
+            f.ctx!(),
+        );
+        destroy(metadata_cap);
+        let quote_in = coin::mint_for_testing<TEST_QUOTE>(10_000_000, f.ctx!());
+        let (meme_bought, quote_refund) =
+            launch.buy(&f.package_version, &f.runtime_config, quote_in, 1, f.ctx!());
+
+        transfer::public_transfer(creator_cap, CREATOR);
+        destroy(meme_bought);
+        destroy(quote_refund);
+        launch.share();
+    });
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let mut launch = f.take_launch();
+        let admin_witness = f.sign_in();
+        let retired_creator_cap_id = launch.curve_fee_cap_id_for_testing();
+
+        launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
+
+        let reassigned = events::collect_one<events::CurveFeeCapReassigned>(0);
+        let (launch_id, revoked_creator_cap_id, creator_cap_id, recipient) =
+            reassigned.curve_fee_cap_reassigned_fields();
+        assert!(retired_creator_cap_id.is_some());
+        assert_eq!(launch_id, object::id(&launch));
+        assert_eq!(revoked_creator_cap_id, retired_creator_cap_id);
+        assert_eq!(launch.curve_fee_cap_id_for_testing(), option::some(creator_cap_id));
+        assert_eq!(recipient, NEW_CREATOR);
+
+        test_scenario::return_shared(launch);
+    });
+
+    fixture.next_tx!(NEW_CREATOR, |f| {
+        let mut launch = f.take_launch();
+        let creator_cap =
+            f.scenario.take_from_sender<creator_authority::CurveFeeCap<LAUNCH_TESTS>>();
+        let (_, creator_meme, _, creator_quote) = launch.fee_totals_for_testing();
+        let (meme_fees, quote_fees) =
+            launch.claim_creator_fees(&f.package_version, &creator_cap, f.ctx!());
+
+        assert!(creator_meme > 0 && creator_quote > 0);
+        assert_eq!(meme_fees.value(), creator_meme);
+        assert_eq!(quote_fees.value(), creator_quote);
+
+        destroy(creator_cap);
+        destroy(meme_fees);
+        destroy(quote_fees);
+        test_scenario::return_shared(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::ECurveFeeCapNotLive,
+    location = blast_fun::launch,
+)]
+fun retired_creator_cap_is_rejected_before_the_empty_fee_ledger_check() {
+    let mut fixture = start();
+
+    fixture.next_tx!(CREATOR, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
+            &f.package_version,
+            &f.runtime_config,
+            option::none(),
+            &f.clock,
+            f.ctx!(),
+        );
+        destroy(metadata_cap);
+        let admin_witness = f.sign_in();
+
+        launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
+        let (meme_fees, quote_fees) =
+            launch.claim_creator_fees(&f.package_version, &creator_cap, f.ctx!());
+
+        destroy(creator_cap);
+        destroy(meme_fees);
+        destroy(quote_fees);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun admin_reassigns_an_unclaimed_creator_and_removes_the_pending_claim() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+        let admin_witness = f.sign_in();
+
+        launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
+
+        let reassigned = events::collect_one<events::CurveFeeCapReassigned>(0);
+        let (_, revoked_creator_cap_id, creator_cap_id, _) =
+            reassigned.curve_fee_cap_reassigned_fields();
+        assert!(revoked_creator_cap_id.is_none());
+        assert!(!launch.has_creator_authority_for_testing());
+        assert_eq!(launch.curve_fee_cap_id_for_testing(), option::some(creator_cap_id));
+
+        destroy(launch);
+    });
+
+    fixture.next_tx!(NEW_CREATOR, |f| {
+        assert!(
+            f.scenario.has_most_recent_for_sender<creator_authority::CurveFeeCap<LAUNCH_TESTS>>(),
+        );
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::ECreatorAuthorityUnavailable,
+    location = blast_fun::launch,
+)]
+fun reassignment_prevents_the_original_recipient_from_claiming() {
+    let mut fixture = start();
+
+    fixture.next_tx!(CREATOR, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+        let admin_witness = f.sign_in();
+
+        launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
+            &f.package_version,
+            &f.runtime_config,
+            option::none(),
+            &f.clock,
+            f.ctx!(),
+        );
+        destroy(metadata_cap);
+
+        destroy(creator_cap);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidCreatorRecipient,
+    location = blast_fun::launch,
+)]
+fun reassignment_rejects_the_zero_recipient() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+        let admin_witness = f.sign_in();
+
+        launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, @0x0, f.ctx!());
+
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EAdminRoleNotGranted,
+    location = blast_admin::acl,
+)]
+fun reassignment_requires_the_creator_admin_role() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+        let (authority, admin_cap) = f.new_role_less_admin();
+        let admin_witness = authority.sign_in(&admin_cap);
+
+        launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
+
+        destroy(authority);
+        destroy(admin_cap);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun metadata_cap_holder_updates_coin_metadata_through_the_launch() {
+    let mut fixture = start();
+
+    fixture.next_tx!(CREATOR, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+
+        launch.share();
+    });
+
+    fixture.next_tx!(CREATOR, |f| {
+        let mut launch = f.take_launch();
+        let mut currency = f.take_currency();
+        let native_metadata_cap_id = launch.metadata_cap_id_for_testing();
+        let (curve_fee_cap, metadata_cap) = launch.claim_creator_caps(
+            &f.package_version,
+            &f.runtime_config,
+            option::none(),
+            &f.clock,
+            f.ctx!(),
+        );
+
+        launch.set_name(
+            &f.package_version,
+            &metadata_cap,
+            &mut currency,
+            b"Renamed Launch".to_string(),
+        );
+
+        let updated = events::collect_one<events::MemeMetadataUpdated>(0);
+        let (launch_id, name, description, icon_url) = updated.meme_metadata_updated_fields();
+        assert_eq!(launch_id, object::id(&launch));
+        assert_eq!(name, b"Renamed Launch".to_string());
+        assert_eq!(description, b"Normalized launch state".to_string());
+        assert_eq!(icon_url, b"".to_string());
+
+        launch.set_description(
+            &f.package_version,
+            &metadata_cap,
+            &mut currency,
+            b"Community owned".to_string(),
+        );
+        launch.set_icon_url(
+            &f.package_version,
+            &metadata_cap,
+            &mut currency,
+            b"https://blast.fun/icon.png".to_string(),
+        );
+
+        assert_eq!(currency.name(), b"Renamed Launch".to_string());
+        assert_eq!(currency.description(), b"Community owned".to_string());
+        assert_eq!(currency.icon_url(), b"https://blast.fun/icon.png".to_string());
+        assert_eq!(launch.metadata_cap_id_for_testing(), native_metadata_cap_id);
+
+        destroy(curve_fee_cap);
+        destroy(metadata_cap);
+        destroy(currency);
+        test_scenario::return_shared(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EMetadataUnchanged,
+    location = blast_fun::launch,
+)]
+fun metadata_update_rejects_the_current_value() {
+    let mut fixture = start();
+
+    fixture.next_tx!(CREATOR, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+
+        launch.share();
+    });
+
+    fixture.next_tx!(CREATOR, |f| {
+        let mut launch = f.take_launch();
+        let mut currency = f.take_currency();
+        let (curve_fee_cap, metadata_cap) = launch.claim_creator_caps(
+            &f.package_version,
+            &f.runtime_config,
+            option::none(),
+            &f.clock,
+            f.ctx!(),
+        );
+
+        launch.set_name(&f.package_version, &metadata_cap, &mut currency, b"Launch Test".to_string());
+
+        destroy(curve_fee_cap);
+        destroy(metadata_cap);
+        destroy(currency);
+        test_scenario::return_shared(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EMetadataCapNotLive,
+    location = blast_fun::launch,
+)]
+fun retired_metadata_cap_is_rejected_before_unchanged_metadata() {
+    let mut fixture = start();
+
+    fixture.next_tx!(CREATOR, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+
+        launch.share();
+    });
+
+    fixture.next_tx!(CREATOR, |f| {
+        let mut launch = f.take_launch();
+        let mut currency = f.take_currency();
+        let (curve_fee_cap, metadata_cap) = launch.claim_creator_caps(
+            &f.package_version,
+            &f.runtime_config,
+            option::none(),
+            &f.clock,
+            f.ctx!(),
+        );
+        let admin_witness = f.sign_in();
+
+        launch.reassign_metadata_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
+        launch.set_name(&f.package_version, &metadata_cap, &mut currency, b"Launch Test".to_string());
+
+        destroy(curve_fee_cap);
+        destroy(metadata_cap);
+        destroy(currency);
+        test_scenario::return_shared(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun metadata_stays_editable_and_reassignable_after_curve_fees_are_locked() {
+    let mut fixture = start();
+
+    fixture.next_tx!(CREATOR, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+
+        launch.share();
+    });
+
+    fixture.next_tx!(CREATOR, |f| {
+        let mut launch = f.take_launch();
+        let mut currency = f.take_currency();
+        let (curve_fee_cap, metadata_cap) = launch.claim_creator_caps(
+            &f.package_version,
+            &f.runtime_config,
+            option::none(),
+            &f.clock,
+            f.ctx!(),
+        );
+        let custodian = object::new(f.ctx!());
+        let admin_witness = f.sign_in();
+        let retired_metadata_cap_id = object::id(&metadata_cap);
+
+        launch.lock_creator_fees(&f.package_version, curve_fee_cap, &custodian);
+        launch.set_name(&f.package_version, &metadata_cap, &mut currency, b"Locked Fees".to_string());
+        assert_eq!(currency.name(), b"Locked Fees".to_string());
+
+        launch.reassign_metadata_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
+
+        let reassigned = events::collect_one<events::MetadataCapReassigned>(0);
+        let (launch_id, revoked_metadata_cap_id, metadata_cap_id, recipient) =
+            reassigned.metadata_cap_reassigned_fields();
+        assert_eq!(launch_id, object::id(&launch));
+        assert_eq!(revoked_metadata_cap_id, option::some(retired_metadata_cap_id));
+        assert_eq!(launch.blast_metadata_cap_id_for_testing(), option::some(metadata_cap_id));
+        assert_eq!(recipient, NEW_CREATOR);
+        assert_eq!(launch.fee_custodian_id_for_testing(), option::some(custodian.to_inner()));
+
+        custodian.delete();
+        destroy(metadata_cap);
+        destroy(currency);
+        test_scenario::return_shared(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun creator_admin_issues_lp_fee_caps_and_holders_destroy_capabilities() {
+    let mut fixture = start();
+
+    fixture.next_tx!(CREATOR, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
+            &f.package_version,
+            &f.runtime_config,
+            option::none(),
+            &f.clock,
+            f.ctx!(),
+        );
+        destroy(metadata_cap);
+        let admin_witness = f.sign_in();
+        let lp_fee_cap = creator_authority::new_lp_fee_cap<LAUNCH_TESTS>(
+            &f.package_version,
+            &admin_witness,
+            f.ctx!(),
+        );
+
+        lp_fee_cap.destroy_lp_fee_cap();
+        creator_cap.destroy_curve_fee_cap();
+
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EAdminRoleNotGranted,
+    location = blast_admin::acl,
+)]
+fun lp_fee_cap_issue_requires_the_creator_admin_role() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let (authority, admin_cap) = f.new_role_less_admin();
+        let admin_witness = authority.sign_in(&admin_cap);
+        let lp_fee_cap = creator_authority::new_lp_fee_cap<LAUNCH_TESTS>(
+            &f.package_version,
+            &admin_witness,
+            f.ctx!(),
+        );
+
+        destroy(lp_fee_cap);
+        destroy(authority);
+        destroy(admin_cap);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun stale_package_version_rejects_lp_fee_cap_issue_before_role_validation() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let (authority, admin_cap) = f.new_role_less_admin();
+        let admin_witness = authority.sign_in(&admin_cap);
+
+        f.package_version.set_for_testing(2);
+        let lp_fee_cap = creator_authority::new_lp_fee_cap<LAUNCH_TESTS>(
+            &f.package_version,
+            &admin_witness,
+            f.ctx!(),
+        );
+
+        destroy(lp_fee_cap);
+        destroy(authority);
+        destroy(admin_cap);
+    });
+
+    fixture.end();
+}
+
+
+#[test]
+fun locking_destroys_the_cap_and_binds_creator_fees_to_the_custodian() {
+    let mut fixture = start();
+
+    fixture.next_tx!(CREATOR, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
+            &f.package_version,
+            &f.runtime_config,
+            option::none(),
+            &f.clock,
+            f.ctx!(),
+        );
+        destroy(metadata_cap);
+        let creator_cap_id = object::id(&creator_cap);
+        let custodian = object::new(f.ctx!());
+        let quote_in = coin::mint_for_testing<TEST_QUOTE>(10_000_000, f.ctx!());
+        let (meme_bought, quote_refund) =
+            launch.buy(&f.package_version, &f.runtime_config, quote_in, 1, f.ctx!());
+
+        launch.lock_creator_fees(&f.package_version, creator_cap, &custodian);
+
+        let locked = events::collect_one<events::CreatorFeesLocked>(0);
+        let (launch_id, locked_cap_id, custodian_id) = locked.creator_fees_locked_fields();
+        assert_eq!(launch_id, object::id(&launch));
+        assert_eq!(locked_cap_id, creator_cap_id);
+        assert_eq!(custodian_id, custodian.to_inner());
+        assert_eq!(launch.fee_custodian_id_for_testing(), option::some(custodian.to_inner()));
+        assert!(launch.curve_fee_cap_id_for_testing().is_none());
+
+        let (_, creator_meme, _, creator_quote) = launch.fee_totals_for_testing();
+        let (meme_fees, quote_fees) =
+            launch.claim_custodied_creator_fees(&f.package_version, &custodian, f.ctx!());
+        assert!(creator_meme > 0 && creator_quote > 0);
+        assert_eq!(meme_fees.value(), creator_meme);
+        assert_eq!(quote_fees.value(), creator_quote);
+
+        custodian.delete();
+        destroy(meme_bought);
+        destroy(quote_refund);
+        destroy(meme_fees);
+        destroy(quote_fees);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::ECreatorFeesLocked,
+    location = blast_fun::launch,
+)]
+fun locked_creator_fees_reject_reassignment_before_the_role_check() {
+    let mut fixture = start();
+
+    fixture.next_tx!(CREATOR, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
+            &f.package_version,
+            &f.runtime_config,
+            option::none(),
+            &f.clock,
+            f.ctx!(),
+        );
+        destroy(metadata_cap);
+        let custodian = object::new(f.ctx!());
+        launch.lock_creator_fees(&f.package_version, creator_cap, &custodian);
+        let (authority, admin_cap) = f.new_role_less_admin();
+        let admin_witness = authority.sign_in(&admin_cap);
+
+        launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
+
+        custodian.delete();
+        destroy(authority);
+        destroy(admin_cap);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::ECreatorCustodianMismatch,
+    location = blast_fun::launch,
+)]
+fun wrong_custodian_is_rejected_before_the_empty_fee_ledger_check() {
+    let mut fixture = start();
+
+    fixture.next_tx!(CREATOR, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
+            &f.package_version,
+            &f.runtime_config,
+            option::none(),
+            &f.clock,
+            f.ctx!(),
+        );
+        destroy(metadata_cap);
+        let custodian = object::new(f.ctx!());
+        let impostor = object::new(f.ctx!());
+        launch.lock_creator_fees(&f.package_version, creator_cap, &custodian);
+
+        let (meme_fees, quote_fees) =
+            launch.claim_custodied_creator_fees(&f.package_version, &impostor, f.ctx!());
+
+        custodian.delete();
+        impostor.delete();
+        destroy(meme_fees);
+        destroy(quote_fees);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::ECurveFeeCapNotLive,
+    location = blast_fun::launch,
+)]
+fun retired_creator_cap_cannot_lock_creator_fees() {
+    let mut fixture = start();
+
+    fixture.next_tx!(CREATOR, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
+            &f.package_version,
+            &f.runtime_config,
+            option::none(),
+            &f.clock,
+            f.ctx!(),
+        );
+        destroy(metadata_cap);
+        let admin_witness = f.sign_in();
+        let custodian = object::new(f.ctx!());
+        launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
+
+        launch.lock_creator_fees(&f.package_version, creator_cap, &custodian);
+
+        custodian.delete();
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
 // === Private Test Helpers ===
 
 macro fun launch_next_tx(
@@ -1419,7 +2127,12 @@ fun start(): LaunchFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
     let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
-    authority.grant_admin(&super_admin_cap, 0, PROTOCOL_ADMIN, scenario.ctx());
+    authority.grant_admin(
+        &super_admin_cap,
+        launchpad_domain::creator_admin_role(),
+        PROTOCOL_ADMIN,
+        scenario.ctx(),
+    );
     destroy(super_admin_cap);
     launch_config::init_for_testing(scenario.ctx());
     let runtime_config = runtime_config::new_disabled_for_testing(scenario.ctx());
@@ -1488,6 +2201,24 @@ fun launch_new_ticket_with_mode(
         SELL_BURN_BPS,
         self.scenario.ctx(),
     )
+}
+
+/// Live administration holding every role except the creator-admin role.
+fun new_role_less_admin(
+    self: &mut LaunchFixture,
+): (Authority<LAUNCHPAD_DOMAIN>, AdminCap<LAUNCHPAD_DOMAIN>) {
+    let (super_admin_cap, mut authority) = domain_fixture::new_authority(self.scenario.ctx());
+    authority.grant_admin(
+        &super_admin_cap,
+        launchpad_domain::package_admin_role(),
+        ROLE_LESS_ADMIN,
+        self.scenario.ctx(),
+    );
+    destroy(super_admin_cap);
+    self.scenario.next_tx(ROLE_LESS_ADMIN);
+    let admin_cap = self.scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+
+    (authority, admin_cap)
 }
 
 fun launch_sign_in(self: &LaunchFixture): AdminWitness<LAUNCHPAD_DOMAIN> {

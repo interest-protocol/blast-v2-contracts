@@ -3,11 +3,11 @@ module blast_fun_dex::migration_tests;
 
 use blast_admin::acl::{Authority, AdminCap};
 use blast_fun::{
-    creator_authority::{Self, CreatorCap},
+    creator_authority::{Self, CurveFeeCap, LpFeeCap},
     launch::{Self, Launch},
     launch_config,
     launch_ticket,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
+    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
     lp_fee_policy::{Self, LpFeePolicy},
     package_version::{Self, PackageVersion},
     runtime_config::{Self, RuntimeConfig}
@@ -32,7 +32,7 @@ public struct MigrationFixture {
     version: PackageVersion,
     authority: Authority<LAUNCHPAD_DOMAIN>,
     admin: AdminCap<LAUNCHPAD_DOMAIN>,
-    cap: CreatorCap<MIGRATION_TESTS>,
+    cap: CurveFeeCap<MIGRATION_TESTS>,
     launch: Launch<MIGRATION_TESTS, QUOTE>,
     factory: Factory,
     currency: Currency<MIGRATION_TESTS>,
@@ -111,9 +111,11 @@ fun collected_quote_is_split_and_claimed_without_changing_locked_principal() {
         expected.append(bcs::to_bytes(&protocol));
         expected.append(bcs::to_bytes(&creator));
         assert_eq!(bcs::to_bytes(&events[0]), expected);
-        let (meme, quote) = vault.claim_creator_fees(&f.cap, &f.factory, f.ctx!());
+        let lp_fee_cap = vault.issue_lp_fee_cap_for_testing(f.ctx!());
+        let (meme, quote) = vault.claim_creator_fees(&lp_fee_cap, &f.factory, f.ctx!());
         assert_eq!(meme.value(), 0);
         assert_eq!(quote.value(), creator);
+        destroy(lp_fee_cap);
         destroy(meme);
         destroy(quote);
         let witness = f.authority.sign_in(&f.admin);
@@ -222,7 +224,9 @@ fun stale_factory_stops_native_fee_claims_before_empty_ledger_failure() {
     f.next_tx!(@0xB, |f| {
         let mut vault = f.take_vault();
         f.factory.set_version_for_testing(2);
-        let (meme, quote) = vault.claim_creator_fees(&f.cap, &f.factory, f.ctx!());
+        let lp_fee_cap = creator_authority::new_lp_fee_cap_for_testing<MIGRATION_TESTS>(f.ctx!());
+        let (meme, quote) = vault.claim_creator_fees(&lp_fee_cap, &f.factory, f.ctx!());
+        destroy(lp_fee_cap);
         destroy(meme);
         destroy(quote);
         return_vault(vault);
@@ -396,6 +400,168 @@ fun creator_constructor_checks_generation_before_live_launch_and_burn_policy() {
     f.end();
 }
 
+
+#[test]
+fun admin_issues_lp_fee_caps_and_each_reissue_retires_the_previous_cap() {
+    let mut f = start(true);
+    f.migrate!();
+    f.next_tx!(@0xA, |f| {
+        let mut vault = f.take_vault();
+        let witness = f.authority.sign_in(&f.admin);
+        vault.issue_lp_fee_cap(&witness, &f.factory, &f.version, @0xB, f.ctx!());
+        let events = sui::event::events_by_type<migration::LpFeeCapIssued>();
+        let mut expected = bcs::to_bytes(&object::id(&vault));
+        expected.append(bcs::to_bytes(&option::none<ID>()));
+        expected.append(bcs::to_bytes(&vault.lp_fee_cap_id_for_testing().destroy_some()));
+        expected.append(bcs::to_bytes(&@0xB));
+        assert_eq!(events.length(), 1);
+        assert_eq!(bcs::to_bytes(&events[0]), expected);
+        return_vault(vault);
+    });
+    f.next_tx!(@0xB, |f| {
+        let mut vault = f.take_vault();
+        let retired = f.scenario.take_from_sender<LpFeeCap<MIGRATION_TESTS>>();
+        vault.assert_lp_fee_cap(&retired);
+        let witness = f.authority.sign_in(&f.admin);
+        vault.issue_lp_fee_cap(&witness, &f.factory, &f.version, @0xC, f.ctx!());
+        let events = sui::event::events_by_type<migration::LpFeeCapIssued>();
+        let mut expected = bcs::to_bytes(&object::id(&vault));
+        expected.append(bcs::to_bytes(&option::some(object::id(&retired))));
+        expected.append(bcs::to_bytes(&vault.lp_fee_cap_id_for_testing().destroy_some()));
+        expected.append(bcs::to_bytes(&@0xC));
+        assert_eq!(bcs::to_bytes(&events[0]), expected);
+        destroy(retired);
+        return_vault(vault);
+    });
+    f.end();
+}
+
+#[test]
+#[expected_failure(abort_code = migration::ELpFeeCapNotLive, location = blast_fun_dex::migration)]
+fun retired_lp_fee_cap_is_rejected_before_the_empty_ledger_check() {
+    let mut f = start(true);
+    f.migrate!();
+    f.next_tx!(@0xB, |f| {
+        let mut vault = f.take_vault();
+        let retired = vault.issue_lp_fee_cap_for_testing(f.ctx!());
+        let live = vault.issue_lp_fee_cap_for_testing(f.ctx!());
+        let (meme, quote) = vault.claim_creator_fees(&retired, &f.factory, f.ctx!());
+        destroy(meme);
+        destroy(quote);
+        destroy(retired);
+        destroy(live);
+        return_vault(vault);
+    });
+    f.end();
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = migration::EInvalidLpFeeCapRecipient,
+        location = blast_fun_dex::migration,
+    ),
+]
+fun lp_fee_cap_issue_rejects_the_zero_recipient() {
+    let mut f = start(true);
+    f.migrate!();
+    f.next_tx!(@0xA, |f| {
+        let mut vault = f.take_vault();
+        let witness = f.authority.sign_in(&f.admin);
+        vault.issue_lp_fee_cap(&witness, &f.factory, &f.version, @0x0, f.ctx!());
+        return_vault(vault);
+    });
+    f.end();
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = blast_fun::errors::ECurveFeeCapNotLive,
+        location = blast_fun::launch,
+    ),
+]
+fun creator_funded_pool_rejects_a_retired_creator_cap() {
+    let mut f = start_with_witness<OtherWitness>(true);
+    f.finish_external!();
+    f.next_tx!(@0xA, |f| {
+        let witness = f.authority.sign_in(&f.admin);
+        f.launch.reassign_curve_fee_cap(&f.version, &witness, @0xC, f.ctx!());
+        let (pool, position) = f.create_pool!(0);
+        destroy(pool);
+        destroy(position);
+    });
+    f.end();
+}
+
+
+#[test]
+fun locking_destroys_the_lp_fee_cap_and_binds_native_fees_forever() {
+    let mut f = start(true);
+    f.migrate!();
+    f.next_tx!(@0xB, |f| {
+        let mut vault = f.take_vault();
+        let custodian = object::new(f.ctx!());
+        let lp_fee_cap = vault.issue_lp_fee_cap_for_testing(f.ctx!());
+        let lp_fee_cap_id = object::id(&lp_fee_cap);
+        vault.lock_creator_fees(lp_fee_cap, &custodian, &f.factory);
+        let events = sui::event::events_by_type<migration::LpFeesLocked>();
+        let mut expected = bcs::to_bytes(&object::id(&vault));
+        expected.append(bcs::to_bytes(&lp_fee_cap_id));
+        expected.append(bcs::to_bytes(&custodian.to_inner()));
+        assert_eq!(bcs::to_bytes(&events[0]), expected);
+        assert_eq!(vault.custodian_id_for_testing(), option::some(custodian.to_inner()));
+        assert!(vault.lp_fee_cap_id_for_testing().is_none());
+        custodian.delete();
+        return_vault(vault);
+    });
+    f.end();
+}
+
+#[test]
+#[expected_failure(abort_code = migration::ELpFeesLocked, location = blast_fun_dex::migration)]
+fun locked_native_fees_reject_reissue_before_the_recipient_check() {
+    let mut f = start(true);
+    f.migrate!();
+    f.next_tx!(@0xA, |f| {
+        let mut vault = f.take_vault();
+        let custodian = object::new(f.ctx!());
+        let lp_fee_cap = vault.issue_lp_fee_cap_for_testing(f.ctx!());
+        vault.lock_creator_fees(lp_fee_cap, &custodian, &f.factory);
+        let witness = f.authority.sign_in(&f.admin);
+        vault.issue_lp_fee_cap(&witness, &f.factory, &f.version, @0x0, f.ctx!());
+        custodian.delete();
+        return_vault(vault);
+    });
+    f.end();
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = migration::ELpFeeCustodianMismatch,
+        location = blast_fun_dex::migration,
+    ),
+]
+fun wrong_custodian_is_rejected_before_the_empty_native_ledger_check() {
+    let mut f = start(true);
+    f.migrate!();
+    f.next_tx!(@0xB, |f| {
+        let mut vault = f.take_vault();
+        let custodian = object::new(f.ctx!());
+        let impostor = object::new(f.ctx!());
+        let lp_fee_cap = vault.issue_lp_fee_cap_for_testing(f.ctx!());
+        vault.lock_creator_fees(lp_fee_cap, &custodian, &f.factory);
+        let (meme, quote) = vault.claim_custodied_creator_fees(&impostor, &f.factory, f.ctx!());
+        destroy(meme);
+        destroy(quote);
+        custodian.delete();
+        impostor.delete();
+        return_vault(vault);
+    });
+    f.end();
+}
+
 // === Private Test Helpers ===
 
 fun return_pool(pool: Pool<MIGRATION_TESTS, QUOTE>) {
@@ -464,7 +630,7 @@ fun start_with_policy<SelectedWitness: drop>(
     let mut scenario = test_scenario::begin(@0xA);
     let version = package_version::new_for_testing(scenario.ctx());
     let (root, mut authority) = domain_fixture::new_launchpad_authority(scenario.ctx());
-    authority.grant_admin(&root, 0, @0xA, scenario.ctx());
+    authority.grant_admin(&root, launchpad_domain::creator_admin_role(), @0xA, scenario.ctx());
     launch_config::init_for_testing(scenario.ctx());
     scenario.next_tx(@0xA);
     let admin = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
@@ -496,14 +662,14 @@ fun start_with_policy<SelectedWitness: drop>(
         &config,
         scenario.ctx(),
     );
-    let (cap, metadata) = launch.claim_creator_cap(
+    let (cap, metadata_cap) = launch.claim_creator_caps(
         &version,
         &runtime,
         option::none(),
         &clock,
         scenario.ctx(),
     );
-    transfer::public_transfer(metadata, @0xA);
+    destroy(metadata_cap);
     if (ready) {
         let quote = coin::mint_for_testing<QUOTE>(30_000_000, scenario.ctx());
         let (bought, refund) = launch.buy(&version, &runtime, quote, 1, scenario.ctx());

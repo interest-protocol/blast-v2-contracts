@@ -185,7 +185,7 @@ const EInvalidVirtualQuote: u64 = 64;
 const EQuoteParametersUnchanged: u64 = 65;
 
 #[test_only]
-/// The launch no longer contains its one-time creator authority and metadata capability.
+/// The launch has no pending creator authority to claim.
 const ECreatorAuthorityUnavailable: u64 = 66;
 
 #[test_only]
@@ -253,6 +253,26 @@ const EProjectLpProtocolFeeShareUnchanged: u64 = 86;
 #[test_only]
 /// A project LP-fee share clear targeted a project with no pinned share.
 const EProjectLpProtocolFeeShareMissing: u64 = 87;
+
+#[test_only]
+/// The curve-fee capability is not the one the launch currently honors.
+const ECurveFeeCapNotLive: u64 = 88;
+
+#[test_only]
+/// A coin metadata update supplied the current value.
+const EMetadataUnchanged: u64 = 89;
+
+#[test_only]
+/// Creator fees are permanently bound to a custodian and cannot be reassigned.
+const ECreatorFeesLocked: u64 = 90;
+
+#[test_only]
+/// The supplied custodian is not the one the launch's creator fees are bound to.
+const ECreatorCustodianMismatch: u64 = 91;
+
+#[test_only]
+/// The metadata capability is not the one the launch currently honors.
+const EMetadataCapNotLive: u64 = 92;
 
 macro public(package) fun invalid_creator_claim_public_key(): u64 {
     2
@@ -458,4 +478,24 @@ macro public(package) fun project_lp_protocol_fee_share_unchanged(): u64 {
 
 macro public(package) fun project_lp_protocol_fee_share_missing(): u64 {
     87
+}
+
+macro public(package) fun curve_fee_cap_not_live(): u64 {
+    88
+}
+
+macro public(package) fun metadata_unchanged(): u64 {
+    89
+}
+
+macro public(package) fun creator_fees_locked(): u64 {
+    90
+}
+
+macro public(package) fun creator_custodian_mismatch(): u64 {
+    91
+}
+
+macro public(package) fun metadata_cap_not_live(): u64 {
+    92
 }

@@ -3,10 +3,11 @@ module blast_fun_migrators::vault;
 
 use blast_admin::acl::AdminWitness;
 use blast_fun::{
-    creator_authority::CreatorCap,
+    creator_authority::{Self, LpFeeCap},
     fees::{Self, FeeLedger},
     launchpad_domain::LAUNCHPAD_DOMAIN,
     lp_fee_policy::LpFeePolicy,
+    package_version::PackageVersion,
 };
 use blast_fun_migrators::{events, package_version::PackageVersion as MigratorsVersion};
 use sui::{
@@ -35,16 +36,36 @@ const ENothingClaimable: vector<u8> = b"No protocol fees or migration residuals 
 const EVaultAlreadyInitialized: vector<u8> = b"Prepared vault must not already contain a pool.";
 #[error(code = 3)]
 const EInvalidReceivingCoinBatch: vector<u8> = b"Coin-receiving batches must contain between 1 and 100 total objects.";
+#[error(code = 4)]
+const ELpFeeCapNotLive: vector<u8> = b"LP-fee capability must be the one this vault currently honors.";
+#[error(code = 5)]
+const EInvalidLpFeeCapRecipient: vector<u8> = b"LP-fee capability recipient must be a nonzero address.";
+#[error(code = 6)]
+const ELpFeesLocked: vector<u8> = b"Creator LP fees are permanently bound to a custodian.";
+#[error(code = 7)]
+const ELpFeeCustodianMismatch: vector<u8> = b"Custodian must be the one creator LP fees are bound to.";
 
 // === Public Structs ===
 
 /// A sealed field name that binds one venue position type to one vault.
 public struct PositionKey<phantom Venue>() has copy, drop, store;
 
+/// Who may drain creator LP fees: nobody until issue, the live `LpFeeCap`, or terminally
+/// the custodian object a cap was destroyed to bind them to.
+public enum LpFeeAuthority has copy, drop, store {
+    Unassigned,
+    Cap(ID),
+    Custodian(ID),
+}
+
 /// Shared per-launch custody for one position, protocol residuals, and LP fees.
+///
+/// Migration leaves creator LP fees `Unassigned`; they accrue until an administrator issues
+/// an `LpFeeCap`, and a cap holder may bind them to a custodian permanently.
 public struct LpVault<phantom Meme, phantom Quote> has key {
     id: UID,
     pool_id: ID,
+    lp_fee_authority: LpFeeAuthority,
     protocol_meme_residual: Balance<Meme>,
     protocol_quote_residual: Balance<Quote>,
     fee_ledger: FeeLedger<Meme, Quote>,
@@ -52,26 +73,89 @@ public struct LpVault<phantom Meme, phantom Quote> has key {
 
 // === Public Functions ===
 
-/// Drains only creator-owned LP fees as composable coins.
+/// Delivers a fresh LP-fee capability to `recipient` and retires any previous one.
+///
+/// This is the only issuance path, and it is independent of the launch's `CurveFeeCap`:
+/// community takeovers reassign LP-fee rights here without touching bonding-curve state.
+public fun issue_lp_fee_cap<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
+    package_version: &PackageVersion,
+    admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    recipient: address,
+    ctx: &mut TxContext,
+) {
+    migrators_version.assert_current();
+    assert!(!self.lp_fee_authority.is_custodian(), ELpFeesLocked);
+    assert!(recipient != @0x0, EInvalidLpFeeCapRecipient);
+
+    let lp_fee_cap = creator_authority::new_lp_fee_cap<Meme>(
+        package_version,
+        admin_witness,
+        ctx,
+    );
+    let lp_fee_cap_id = object::id(&lp_fee_cap);
+    let revoked_lp_fee_cap_id = match (self.lp_fee_authority) {
+        LpFeeAuthority::Cap(revoked_id) => option::some(revoked_id),
+        _ => option::none(),
+    };
+    self.lp_fee_authority = LpFeeAuthority::Cap(lp_fee_cap_id);
+    transfer::public_transfer(lp_fee_cap, recipient);
+
+    events::lp_fee_cap_issued<Meme, Quote>(
+        self.id.to_inner(),
+        revoked_lp_fee_cap_id,
+        lp_fee_cap_id,
+        recipient,
+    );
+}
+
+/// Drains only creator-owned LP fees under the vault's live LP-fee capability.
 public fun claim_creator_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    creator_cap: &CreatorCap<Meme>,
+    lp_fee_cap: &LpFeeCap<Meme>,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     migrators_version.assert_current();
-    let (meme, quote) = self.fee_ledger.claim_creator_fees(creator_cap, ctx);
-    let meme_amount = meme.value();
-    let quote_amount = quote.value();
+    self.assert_lp_fee_cap(lp_fee_cap);
+    self.drain_creator_fees(ctx)
+}
 
-    events::creator_fees_claimed<Meme, Quote>(
-        self.id.to_inner(),
-        ctx.sender(),
-        meme_amount,
-        quote_amount,
+/// Destroys the live LP-fee capability and binds creator LP fees to `custodian` permanently.
+///
+/// Irreversible: `issue_lp_fee_cap` aborts afterward. Only `custodian`'s defining module can
+/// borrow its `UID`, so only it can claim.
+public fun lock_creator_fees<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
+    lp_fee_cap: LpFeeCap<Meme>,
+    custodian: &UID,
+) {
+    migrators_version.assert_current();
+    self.assert_lp_fee_cap(&lp_fee_cap);
+
+    let lp_fee_cap_id = object::id(&lp_fee_cap);
+    let custodian_id = custodian.to_inner();
+    lp_fee_cap.destroy_lp_fee_cap();
+    self.lp_fee_authority = LpFeeAuthority::Custodian(custodian_id);
+
+    events::lp_fees_locked<Meme, Quote>(self.id.to_inner(), lp_fee_cap_id, custodian_id);
+}
+
+/// Drains creator LP fees for the custodian they are permanently bound to.
+public fun claim_custodied_creator_fees<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
+    custodian: &UID,
+    ctx: &mut TxContext,
+): (Coin<Meme>, Coin<Quote>) {
+    migrators_version.assert_current();
+    assert!(
+        self.lp_fee_authority == LpFeeAuthority::Custodian(custodian.to_inner()),
+        ELpFeeCustodianMismatch,
     );
-
-    (meme, quote)
+    self.drain_creator_fees(ctx)
 }
 
 /// Drains protocol-owned migration residuals and LP fees under a live admin witness.
@@ -115,6 +199,14 @@ public fun claim_protocol_fees<Meme, Quote>(
     (meme, quote)
 }
 
+/// Aborts unless `lp_fee_cap` is the capability this vault currently honors.
+public fun assert_lp_fee_cap<Meme, Quote>(
+    self: &LpVault<Meme, Quote>,
+    lp_fee_cap: &LpFeeCap<Meme>,
+) {
+    assert!(self.lp_fee_authority == LpFeeAuthority::Cap(object::id(lp_fee_cap)), ELpFeeCapNotLive);
+}
+
 // === Package Functions ===
 
 /// Creates and shares one vault with its only venue position as a child object.
@@ -143,6 +235,7 @@ public(package) fun prepare<Meme, Quote>(
     LpVault {
         id: object::new(ctx),
         pool_id: object::id_from_address(@0x0),
+        lp_fee_authority: LpFeeAuthority::Unassigned,
         protocol_meme_residual,
         protocol_quote_residual,
         fee_ledger: fees::new(),
@@ -275,6 +368,31 @@ public(package) fun accrue_fees<Meme, Quote, Venue>(
 
 // === Private Functions ===
 
+fun is_custodian(self: &LpFeeAuthority): bool {
+    match (self) {
+        LpFeeAuthority::Custodian(_) => true,
+        _ => false,
+    }
+}
+
+fun drain_creator_fees<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    ctx: &mut TxContext,
+): (Coin<Meme>, Coin<Quote>) {
+    let (meme, quote) = self.fee_ledger.claim_creator_fees(ctx);
+    let meme_amount = meme.value();
+    let quote_amount = quote.value();
+
+    events::creator_fees_claimed<Meme, Quote>(
+        self.id.to_inner(),
+        ctx.sender(),
+        meme_amount,
+        quote_amount,
+    );
+
+    (meme, quote)
+}
+
 fun receive_coin_batch<CoinType>(
     uid: &mut UID,
     mut receivings: vector<Receiving<Coin<CoinType>>>,
@@ -301,6 +419,33 @@ fun assert_valid_receiving_coin_batch_size(meme_size: u64, quote_size: u64) {
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+/// Records and returns a fresh live LP-fee capability without administrative authority.
+public fun issue_lp_fee_cap_for_testing<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    ctx: &mut TxContext,
+): LpFeeCap<Meme> {
+    let lp_fee_cap = creator_authority::new_lp_fee_cap_for_testing<Meme>(ctx);
+    self.lp_fee_authority = LpFeeAuthority::Cap(object::id(&lp_fee_cap));
+    lp_fee_cap
+}
+
+#[test_only]
+public fun lp_fee_cap_id_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): Option<ID> {
+    match (self.lp_fee_authority) {
+        LpFeeAuthority::Cap(lp_fee_cap_id) => option::some(lp_fee_cap_id),
+        _ => option::none(),
+    }
+}
+
+#[test_only]
+public fun custodian_id_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): Option<ID> {
+    match (self.lp_fee_authority) {
+        LpFeeAuthority::Custodian(custodian_id) => option::some(custodian_id),
+        _ => option::none(),
+    }
+}
 
 #[test_only]
 public fun assert_valid_receiving_coin_batch_size_for_testing(
