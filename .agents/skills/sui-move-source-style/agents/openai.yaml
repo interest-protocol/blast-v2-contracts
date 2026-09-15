@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sui Move Source Style"
+  short_description: "Apply Move source, API, and error conventions"
+  default_prompt: "Use $sui-move-source-style to implement or review this Move source, including its API and error conventions."

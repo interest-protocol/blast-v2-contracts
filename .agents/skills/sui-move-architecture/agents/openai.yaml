@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sui Move Architecture"
+  short_description: "Design Move packages, state, events, and seams"
+  default_prompt: "Use $sui-move-architecture to design or assess this Move package's structure, state, event/replay contract, and module boundaries."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sui Move Security"
+  short_description: "Secure Move authority, state, and economics"
+  default_prompt: "Use $sui-move-security to harden this Move transition, authority, or economic path."

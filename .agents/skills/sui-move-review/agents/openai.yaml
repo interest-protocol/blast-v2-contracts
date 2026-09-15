@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sui Move Review"
+  short_description: "Audit Move code against the full standard"
+  default_prompt: "Use $sui-move-review to audit this Move change against the full Sui Move engineering standard."
