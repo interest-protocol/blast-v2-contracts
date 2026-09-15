@@ -198,7 +198,7 @@ fun project_share_overrides_the_default_and_is_the_emitted_split_input() {
 }
 
 #[test]
-fun protocol_claim_drains_migration_residuals_without_accrued_fees() {
+fun protocol_claim_returns_migration_residuals_without_accrued_fees() {
     let mut fixture = start_with_residuals(3, 4);
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {

@@ -34,7 +34,7 @@ public struct Witness() has drop;
 /// Sealed name keeps the position discoverable without a public borrowing path.
 public struct PositionKey() has copy, drop, store;
 
-/// Who may drain creator fees: nobody until issue, the live `LpFeeCap`, or terminally
+/// Who may claim creator fees: nobody until issue, the live `LpFeeCap`, or terminally
 /// the custodian object a cap was destroyed to bind them to.
 public enum LpFeeAuthority has copy, drop, store {
     Unassigned,
@@ -85,10 +85,10 @@ public struct LpFeesLocked has copy, drop {
     custodian_id: ID,
 }
 
-/// Creator claims drain only accrued Quote, never the locked LP principal.
+/// Creator claims take only accrued Quote, never the locked LP principal.
 public struct CreatorFeesClaimed has copy, drop { vault_id: ID, quote: u64 }
 
-/// Protocol claims drain only accrued Quote, never the locked LP principal.
+/// Protocol claims take only accrued Quote, never the locked LP principal.
 public struct ProtocolFeesClaimed has copy, drop { vault_id: ID, quote: u64 }
 
 // === Public Functions ===
@@ -210,7 +210,7 @@ public fun claim_creator_fees<Meme, Quote>(
 ): (Coin<Meme>, Coin<Quote>) {
     factory.assert_current();
     self.assert_lp_fee_cap(lp_fee_cap);
-    self.drain_creator_fees(ctx)
+    self.claim_ledger_creator_fees(ctx)
 }
 
 /// Destroys the live LP-fee capability and binds creator fees to `custodian` permanently.
@@ -242,7 +242,7 @@ public fun claim_custodied_creator_fees<Meme, Quote>(
         self.lp_fee_authority == LpFeeAuthority::Custodian(custodian.to_inner()),
         ELpFeeCustodianMismatch,
     );
-    self.drain_creator_fees(ctx)
+    self.claim_ledger_creator_fees(ctx)
 }
 
 /// Returns only protocol-owned fees under a live Launchpad admin witness.
@@ -280,7 +280,7 @@ fun is_custodian(self: &LpFeeAuthority): bool {
     }
 }
 
-fun drain_creator_fees<Meme, Quote>(
+fun claim_ledger_creator_fees<Meme, Quote>(
     self: &mut LockedLpVault<Meme, Quote>,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {

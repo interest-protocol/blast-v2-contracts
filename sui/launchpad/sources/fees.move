@@ -78,7 +78,7 @@ public fun has_protocol_fees<Meme, Quote>(self: &FeeLedger<Meme, Quote>): bool {
     self.protocol_meme.value() > 0 || self.protocol_quote.value() > 0
 }
 
-/// Drains both creator balances into composable coins.
+/// Claims both creator balances as composable coins.
 ///
 /// The object embedding the ledger authorizes the claim with the creator capability it
 /// currently honors: `Launch` checks `CurveFeeCap`, post-migration vaults check `LpFeeCap`.
@@ -97,7 +97,7 @@ public fun claim_creator_fees<Meme, Quote>(
     )
 }
 
-/// Drains both protocol balances after an active administrator signs in.
+/// Claims both protocol balances after an active administrator signs in.
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut FeeLedger<Meme, Quote>,
     _: &AdminWitness<LAUNCHPAD_DOMAIN>,

@@ -616,7 +616,7 @@ fun zero_launch_trade_fees_sell_all_bought_meme_without_fee_balances() {
 }
 
 #[test]
-fun creator_claim_drains_trade_fees_as_composable_coins() {
+fun creator_claim_returns_trade_fees_as_composable_coins() {
     let mut fixture = start();
 
     fixture.next_tx!(CREATOR, |f| {

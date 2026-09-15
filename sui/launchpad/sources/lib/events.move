@@ -157,14 +157,14 @@ public struct Migrated has copy, drop {
     protocol_quote_migration_fee: u64,
 }
 
-/// Emitted after a creator drains both accrued trade-fee balances.
+/// Emitted after a creator claims both accrued trade-fee balances.
 public struct CreatorFeesClaimed has copy, drop {
     launch_id: ID,
     meme_amount: u64,
     quote_amount: u64,
 }
 
-/// Emitted after an administrator drains both accrued protocol balances.
+/// Emitted after an administrator claims both accrued protocol balances.
 public struct ProtocolFeesClaimed has copy, drop {
     launch_id: ID,
     meme_amount: u64,

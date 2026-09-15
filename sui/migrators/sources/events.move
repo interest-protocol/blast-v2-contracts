@@ -151,7 +151,7 @@ public struct LpFeesCollected has copy, drop {
     principal_liquidity: u128,
 }
 
-/// Records a creator fee drain.
+/// Records a creator fee claim.
 public struct CreatorFeesClaimed has copy, drop {
     vault_id: ID,
     meme: TypeName,
@@ -161,7 +161,7 @@ public struct CreatorFeesClaimed has copy, drop {
     quote_amount: u64,
 }
 
-/// Records a protocol fee and residual drain.
+/// Records a protocol fee and residual claim.
 public struct ProtocolFeesClaimed has copy, drop {
     vault_id: ID,
     meme: TypeName,

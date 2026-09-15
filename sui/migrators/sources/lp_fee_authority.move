@@ -36,7 +36,7 @@ public struct LpFeeCap<phantom Meme> has key, store {
     id: UID,
 }
 
-/// Who may drain creator LP fees in the one vault that embeds this value.
+/// Who may claim creator LP fees in the one vault that embeds this value.
 ///
 /// `Pending` from migration until the first claim, bind, or reissue; `Cap` for the live
 /// revocable capability; terminal `Custodian` once fees are bound to one object forever.

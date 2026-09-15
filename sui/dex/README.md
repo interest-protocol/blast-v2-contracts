@@ -11,7 +11,7 @@ or Series One capability is a different type and reaches nothing here. Pool
 policy is generic administration, so a live administrator with no role may set
 it, while upgrade custody additionally requires the exported package-admin role.
 The single deliberate exception is `migration::claim_protocol_fees`, which
-drains a Launchpad-owned fee ledger and therefore stays under Launchpad
+claims from a Launchpad-owned fee ledger and therefore stays under Launchpad
 product-fee custody.
 
 Its operational generation is independent too: advancing the DEX leaves

@@ -63,12 +63,12 @@ can claim protocol fees cannot redirect creator fee streams without it.
 on a launch (with `CurveFeeCap`) or a post-migration vault (with `LpFeeCap`),
 passing the custodian object's `&UID`. The cap is destroyed and the fee stream
 moves to the terminal `Custodian(ID)` state. Afterward only
-`claim_custodied_creator_fees` with that same `&UID` drains it, and
+`claim_custodied_creator_fees` with that same `&UID` claims it, and
 `reassign_curve_fee_cap` or `issue_lp_fee_cap` abort before any role or
 recipient check. A `&UID` proves the call comes from a module that can borrow
 the custodian's UID, which is normally only its defining module. Objects that
 expose a public `&UID` getter (for example `sui::kiosk::uid`) let any caller
-drain fees locked to them, so a cap holder must only lock to custodians that
+claim fees locked to them, so a cap holder must only lock to custodians that
 keep their UID private; Auto-LP, the distributor, migrators, and the DEX do.
 Auto-LP enrollment and distributor
 creation lock the launch's creator fees to the new object, and

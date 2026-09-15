@@ -394,7 +394,7 @@ for policy_event in \
         "$LP_FEE_POLICY_SOURCE"
 done
 require_exact_count 'events::creator_fees_claimed<Meme, Quote>(' 1 \
-    "creator LP-fee claims must be emitted only by the shared private drain" \
+    "creator LP-fee claims must be emitted only by the shared private ledger claim" \
     "$SOURCE_DIR"/*.move
 
 require_pattern "$VAULT_SOURCE" 'public struct LpVault' 'shared LpVault'
@@ -430,9 +430,9 @@ require_pattern "$VAULT_SOURCE" 'public fun claim_protocol_fees' 'protocol fee c
 require_pattern "$VAULT_SOURCE" 'has_protocol_fees \|\| has_residuals' \
     'protocol claim availability across both custody sources'
 require_pattern "$VAULT_SOURCE" 'protocol_meme_residual\.withdraw_all' \
-    'protocol Meme residual drain'
+    'protocol Meme residual claim'
 require_pattern "$VAULT_SOURCE" 'protocol_quote_residual\.withdraw_all' \
-    'protocol Quote residual drain'
+    'protocol Quote residual claim'
 require_pattern "$VAULT_SOURCE" 'public\(package\) fun accrue_fees' \
     'witness-gated shared fee accrual'
 require_pattern "$VAULT_SOURCE" 'events::vault_created' 'vault creation event emission'
@@ -444,7 +444,7 @@ require_pattern "$VAULT_SOURCE" 'events::protocol_fees_claimed' 'protocol claim 
 # `Pending` authority from the witness-typed payload and hands it to the vault; the
 # launch's curve-fee cap holder claims it, a launch custodian binds pending fees, or a
 # creator admin reissues it unless pending fees are reserved for the launch's custodian. Only `lp_fee_authority.move` constructs or writes it, only
-# the live cap drains or locks, and a custodian bind is terminal.
+# the live cap claims or locks, and a custodian bind is terminal.
 require_pattern "$VAULT_SOURCE" '^    lp_fee_authority: LpFeeAuthority<Meme>,$' \
     'embedded LP-fee authority on the shared vault'
 require_pattern "$VAULT_SOURCE" '^    lp_fee_authority::\{LpFeeAuthority, LpFeeCap\},$' \
@@ -504,11 +504,11 @@ require_exact_count 'self.lp_fee_authority.reissue(launch, admin_witness, ctx)' 
 require_exact_count 'self.fee_ledger.claim_protocol_fees(admin_witness, ctx)' 1 \
     "vault::claim_protocol_fees must be the only admin-authorized ledger claim" \
     "$SOURCE_DIR"/*.move
-require_exact_count 'self.drain_creator_fees(ctx)' 2 \
-    "creator LP fees may drain only through the live-cap and custodian claims" \
+require_exact_count 'self.claim_ledger_creator_fees(ctx)' 2 \
+    "creator LP fees may be claimed only through the live-cap and custodian paths" \
     "$VAULT_SOURCE"
 require_exact_count 'self.fee_ledger.claim_creator_fees(ctx)' 1 \
-    "creator ledger withdrawal must stay inside the private drain" \
+    "creator ledger withdrawal must stay inside the private ledger claim" \
     "$SOURCE_DIR"/*.move
 VAULT_PUBLIC_FUNCTIONS="$(rg -o '^public fun [[:alnum:]_]+' <<<"$VAULT_PRODUCTION" | awk '{ print $3 }' | sort | tr '\n' ' ')"
 [[ "$VAULT_PUBLIC_FUNCTIONS" == 'assert_lp_fee_cap claim_creator_fees claim_custodied_creator_fees claim_lp_fee_cap claim_protocol_fees issue_lp_fee_cap lock_creator_fees lock_pending_creator_fees ' ]] || \
@@ -532,17 +532,17 @@ require_function_body "$VAULT_SOURCE" 'lock_creator_fees' \
     'publicfunlock_creator_fees<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,lp_fee_cap:LpFeeCap<Meme>,custodian:&UID,){migrators_version.assert_current();let(lp_fee_cap_id,custodian_id)=self.lp_fee_authority.lock(lp_fee_cap,custodian);events::lp_fees_locked<Meme,Quote>(self.id.to_inner(),option::some(lp_fee_cap_id),custodian_id,);}' \
     "vault::lock_creator_fees must check generation, lock through the authority, and emit the destroyed cap"
 require_function_body "$VAULT_SOURCE" 'claim_creator_fees' \
-    'publicfunclaim_creator_fees<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,lp_fee_cap:&LpFeeCap<Meme>,ctx:&mutTxContext,):(Coin<Meme>,Coin<Quote>){migrators_version.assert_current();self.lp_fee_authority.assert_cap(lp_fee_cap);self.drain_creator_fees(ctx)}' \
-    "vault::claim_creator_fees must assert the live LP-fee cap before draining"
+    'publicfunclaim_creator_fees<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,lp_fee_cap:&LpFeeCap<Meme>,ctx:&mutTxContext,):(Coin<Meme>,Coin<Quote>){migrators_version.assert_current();self.lp_fee_authority.assert_cap(lp_fee_cap);self.claim_ledger_creator_fees(ctx)}' \
+    "vault::claim_creator_fees must assert the live LP-fee cap before claiming"
 require_function_body "$VAULT_SOURCE" 'claim_custodied_creator_fees' \
-    'publicfunclaim_custodied_creator_fees<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,custodian:&UID,ctx:&mutTxContext,):(Coin<Meme>,Coin<Quote>){migrators_version.assert_current();self.lp_fee_authority.assert_custodian(custodian);self.drain_creator_fees(ctx)}' \
-    "vault::claim_custodied_creator_fees must match the bound custodian before draining"
+    'publicfunclaim_custodied_creator_fees<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,custodian:&UID,ctx:&mutTxContext,):(Coin<Meme>,Coin<Quote>){migrators_version.assert_current();self.lp_fee_authority.assert_custodian(custodian);self.claim_ledger_creator_fees(ctx)}' \
+    "vault::claim_custodied_creator_fees must match the bound custodian before claiming"
 require_function_body "$VAULT_SOURCE" 'assert_lp_fee_cap' \
     'publicfunassert_lp_fee_cap<Meme,Quote>(self:&LpVault<Meme,Quote>,lp_fee_cap:&LpFeeCap<Meme>,){self.lp_fee_authority.assert_cap(lp_fee_cap);}' \
     "vault::assert_lp_fee_cap must be a read-only exact live-cap identity assertion"
-require_function_body "$VAULT_SOURCE" 'drain_creator_fees' \
-    'fundrain_creator_fees<Meme,Quote>(self:&mutLpVault<Meme,Quote>,ctx:&mutTxContext,):(Coin<Meme>,Coin<Quote>){' \
-    "vault::drain_creator_fees must stay private"
+require_function_body "$VAULT_SOURCE" 'claim_ledger_creator_fees' \
+    'funclaim_ledger_creator_fees<Meme,Quote>(self:&mutLpVault<Meme,Quote>,ctx:&mutTxContext,):(Coin<Meme>,Coin<Quote>){' \
+    "vault::claim_ledger_creator_fees must stay private"
 rg -q '^// Code 4 retired: ' "$VAULT_SOURCE" \
     && rg -q '^// Codes 6 and 7 retired: ' "$VAULT_SOURCE" \
     && rg -U -q '#\[error\(code = 5\)\]\nconst EInvalidLpFeeCapRecipient: vector<u8> = b"LP-fee capability recipient must be a nonzero address\.";' "$VAULT_SOURCE" \

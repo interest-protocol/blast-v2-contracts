@@ -141,27 +141,27 @@ rg -U -q \
   <<<"$migration_production" \
   || fail "LP-fee issuance must retire the previous cap, deliver the new one, and emit both identities"
 rg -U -q \
-  'public fun claim_creator_fees<Meme, Quote>\(\s*self: &mut LockedLpVault<Meme, Quote>,\s*lp_fee_cap: &LpFeeCap<Meme>,\s*factory: &Factory,\s*ctx: &mut TxContext,\s*\): \(Coin<Meme>, Coin<Quote>\) \{\s*factory\.assert_current\(\);\s*self\.assert_lp_fee_cap\(lp_fee_cap\);\s*self\.drain_creator_fees\(ctx\)\s*\}' \
+  'public fun claim_creator_fees<Meme, Quote>\(\s*self: &mut LockedLpVault<Meme, Quote>,\s*lp_fee_cap: &LpFeeCap<Meme>,\s*factory: &Factory,\s*ctx: &mut TxContext,\s*\): \(Coin<Meme>, Coin<Quote>\) \{\s*factory\.assert_current\(\);\s*self\.assert_lp_fee_cap\(lp_fee_cap\);\s*self\.claim_ledger_creator_fees\(ctx\)\s*\}' \
   <<<"$migration_production" \
-  || fail "migration::claim_creator_fees must assert the live LP-fee cap before draining"
+  || fail "migration::claim_creator_fees must assert the live LP-fee cap before claiming"
 rg -U -q \
   'public fun lock_creator_fees<Meme, Quote>\(\s*self: &mut LockedLpVault<Meme, Quote>,\s*lp_fee_cap: LpFeeCap<Meme>,\s*custodian: &UID,\s*factory: &Factory,\s*\) \{\s*factory\.assert_current\(\);\s*self\.assert_lp_fee_cap\(&lp_fee_cap\);\s*let lp_fee_cap_id = object::id\(&lp_fee_cap\);\s*let custodian_id = custodian\.to_inner\(\);\s*lp_fee_cap\.destroy_lp_fee_cap\(\);\s*self\.lp_fee_authority = LpFeeAuthority::Custodian\(custodian_id\);\s*event::emit\(LpFeesLocked \{ vault_id: self\.id\.to_inner\(\), lp_fee_cap_id, custodian_id \}\);\s*\}' \
   <<<"$migration_production" \
   || fail "migration::lock_creator_fees must assert and destroy the live LP-fee cap before binding a terminal custodian"
 rg -U -q \
-  'public fun claim_custodied_creator_fees<Meme, Quote>\(\s*self: &mut LockedLpVault<Meme, Quote>,\s*custodian: &UID,\s*factory: &Factory,\s*ctx: &mut TxContext,\s*\): \(Coin<Meme>, Coin<Quote>\) \{\s*factory\.assert_current\(\);\s*assert!\(\s*self\.lp_fee_authority == LpFeeAuthority::Custodian\(custodian\.to_inner\(\)\),\s*ELpFeeCustodianMismatch,\s*\);\s*self\.drain_creator_fees\(ctx\)\s*\}' \
+  'public fun claim_custodied_creator_fees<Meme, Quote>\(\s*self: &mut LockedLpVault<Meme, Quote>,\s*custodian: &UID,\s*factory: &Factory,\s*ctx: &mut TxContext,\s*\): \(Coin<Meme>, Coin<Quote>\) \{\s*factory\.assert_current\(\);\s*assert!\(\s*self\.lp_fee_authority == LpFeeAuthority::Custodian\(custodian\.to_inner\(\)\),\s*ELpFeeCustodianMismatch,\s*\);\s*self\.claim_ledger_creator_fees\(ctx\)\s*\}' \
   <<<"$migration_production" \
-  || fail "migration::claim_custodied_creator_fees must match the bound custodian before draining"
+  || fail "migration::claim_custodied_creator_fees must match the bound custodian before claiming"
 rg -U -q \
   'public fun assert_lp_fee_cap<Meme, Quote>\(\s*self: &LockedLpVault<Meme, Quote>,\s*lp_fee_cap: &LpFeeCap<Meme>,\s*\) \{\s*assert!\(self\.lp_fee_authority == LpFeeAuthority::Cap\(object::id\(lp_fee_cap\)\), ELpFeeCapNotLive\);\s*\}' \
   <<<"$migration_production" \
   || fail "migration::assert_lp_fee_cap must be a read-only exact live-cap identity assertion"
-rg -q '^fun drain_creator_fees<Meme, Quote>\($' <<<"$migration_production" \
-  || fail "migration::drain_creator_fees must stay private"
-[[ "$(rg -o -F 'self.drain_creator_fees(ctx)' <<<"$migration_production" | wc -l)" -eq 2 ]] \
-  || fail "creator fees may drain only through the live-cap and custodian claims"
+rg -q '^fun claim_ledger_creator_fees<Meme, Quote>\($' <<<"$migration_production" \
+  || fail "migration::claim_ledger_creator_fees must stay private"
+[[ "$(rg -o -F 'self.claim_ledger_creator_fees(ctx)' <<<"$migration_production" | wc -l)" -eq 2 ]] \
+  || fail "creator fees may be claimed only through the live-cap and custodian paths"
 [[ "$(rg -o -F '.claim_creator_fees(ctx)' "$sources" | wc -l)" -eq 1 ]] \
-  || fail "creator ledger withdrawal must stay inside the private drain"
+  || fail "creator ledger withdrawal must stay inside the private ledger claim"
 
 # --- Sealed custody, atomic finalizer, no capability escape ---
 

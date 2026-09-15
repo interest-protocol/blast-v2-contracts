@@ -155,7 +155,7 @@ public fun lock_creator_fees<Meme, Quote>(
     );
 }
 
-/// Drains only creator-owned LP fees under the vault's live LP-fee capability.
+/// Claims only creator-owned LP fees under the vault's live LP-fee capability.
 public fun claim_creator_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
@@ -164,10 +164,10 @@ public fun claim_creator_fees<Meme, Quote>(
 ): (Coin<Meme>, Coin<Quote>) {
     migrators_version.assert_current();
     self.lp_fee_authority.assert_cap(lp_fee_cap);
-    self.drain_creator_fees(ctx)
+    self.claim_ledger_creator_fees(ctx)
 }
 
-/// Drains creator LP fees for the custodian they are permanently bound to.
+/// Claims creator LP fees for the custodian they are permanently bound to.
 public fun claim_custodied_creator_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
@@ -176,10 +176,10 @@ public fun claim_custodied_creator_fees<Meme, Quote>(
 ): (Coin<Meme>, Coin<Quote>) {
     migrators_version.assert_current();
     self.lp_fee_authority.assert_custodian(custodian);
-    self.drain_creator_fees(ctx)
+    self.claim_ledger_creator_fees(ctx)
 }
 
-/// Drains protocol-owned migration residuals and LP fees under a live admin witness.
+/// Claims protocol-owned migration residuals and LP fees under a live admin witness.
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
@@ -392,7 +392,7 @@ public(package) fun accrue_fees<Meme, Quote, Venue>(
 
 // === Private Functions ===
 
-fun drain_creator_fees<Meme, Quote>(
+fun claim_ledger_creator_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {

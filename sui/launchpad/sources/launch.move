@@ -38,7 +38,7 @@ public enum Lifecycle has copy, drop, store {
     Migrated,
 }
 
-/// Who may drain bonding-curve creator fees.
+/// Who may claim bonding-curve creator fees.
 ///
 /// `Unassigned` until a claim or administrator issues a cap, `Cap` for the live revocable
 /// curve-fee cap, and terminal `Custodian` once a cap was destroyed to bind the fees
@@ -219,7 +219,7 @@ public fun reassign_curve_fee_cap<Meme, Quote>(
         CurveFeeAuthority::Cap(curve_fee_cap_id) => option::some(curve_fee_cap_id),
         _ => option::none(),
     };
-    self.revoke_pending_claim();
+    self.revoke_creator_authority();
     let curve_fee_cap = creator_authority::new_curve_fee_cap<Meme>(ctx);
     let curve_fee_cap_id = object::id(&curve_fee_cap);
     self.curve_fee_authority = CurveFeeAuthority::Cap(curve_fee_cap_id);
@@ -249,7 +249,7 @@ public fun reassign_metadata_cap<Meme, Quote>(
     assert!(recipient != @0x0, blast_fun::errors::invalid_creator_recipient!());
 
     let revoked_metadata_cap_id = self.blast_metadata_cap_id;
-    self.revoke_pending_claim();
+    self.revoke_creator_authority();
     let blast_metadata_cap = creator_authority::new_metadata_cap<Meme>(ctx);
     let metadata_cap_id = object::id(&blast_metadata_cap);
     self.blast_metadata_cap_id = option::some(metadata_cap_id);
@@ -285,7 +285,7 @@ public fun lock_creator_fees<Meme, Quote>(
     events::creator_fees_locked(self.id.to_inner(), curve_fee_cap_id, custodian_id);
 }
 
-/// Drains creator trade fees for the custodian they are permanently bound to.
+/// Claims creator trade fees for the custodian they are permanently bound to.
 public fun claim_custodied_creator_fees<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
@@ -295,7 +295,7 @@ public fun claim_custodied_creator_fees<Meme, Quote>(
     package_version.assert_current();
     self.assert_fee_custodian(custodian);
 
-    self.drain_creator_fees(ctx)
+    self.claim_ledger_creator_fees(ctx)
 }
 
 /// Replaces the coin name through the launch-held native metadata capability.
@@ -466,7 +466,7 @@ public fun sell<Meme, Quote>(
     quote_out.into_coin(ctx)
 }
 
-/// Drains creator trade fees under the launch's live curve-fee capability.
+/// Claims creator trade fees under the launch's live curve-fee capability.
 public fun claim_creator_fees<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
@@ -476,10 +476,10 @@ public fun claim_creator_fees<Meme, Quote>(
     package_version.assert_current();
     self.assert_curve_fee_cap(curve_fee_cap);
 
-    self.drain_creator_fees(ctx)
+    self.claim_ledger_creator_fees(ctx)
 }
 
-/// Drains protocol trade and graduation fees under live admin authority.
+/// Claims protocol trade and graduation fees under live admin authority.
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
@@ -634,13 +634,13 @@ fun assert_blast_metadata_cap<Meme, Quote>(
     );
 }
 
-fun revoke_pending_claim<Meme, Quote>(self: &mut Launch<Meme, Quote>) {
+fun revoke_creator_authority<Meme, Quote>(self: &mut Launch<Meme, Quote>) {
     if (self.creator_authority.is_some()) {
         self.creator_authority.extract().revoke();
     };
 }
 
-fun drain_creator_fees<Meme, Quote>(
+fun claim_ledger_creator_fees<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {

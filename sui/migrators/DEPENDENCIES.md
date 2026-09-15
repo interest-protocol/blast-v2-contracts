@@ -22,7 +22,7 @@ migration payload in the same Move call.
   `vault::PositionKey<Venue>` name, with no removal, transfer, or immutable
   borrow path.
 - **Protocol residual custody.** Every venue residual stays in its per-launch
-  vault and is drained only by the existing admin-gated protocol claim. No
+  vault and is claimed only by the existing admin-gated protocol claim. No
   adapter stores a payout address, burns a nonzero residual, or sends one to
   `0x0`.
 - **Live LP protocol fee share.** `vault::accrue_fees` reads the project-pinned
