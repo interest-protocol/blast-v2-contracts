@@ -133,7 +133,7 @@ launch; a creator administrator can reassign each independently. Each migration 
 migrators-owned `LpFeeCap<Meme>` right that the live curve-fee holder claims or
 a creator-fee custodian binds, and creator administrators may reissue
 ([ADR 0083](decisions/0083-migrators-own-lp-fee-policy-and-authority.md)). A holder may
-destroy a curve-fee or LP-fee cap to bind that fee stream permanently to a custodian object such as Auto-LP or the
+destroy a curve-fee or LP-fee cap to bind that fee stream permanently to a custodian object such as the
 distributor, after which it can never be reassigned
 ([ADR 0082](decisions/0082-revocable-creator-and-lp-fee-capabilities.md)).
 See [ADR 0035](decisions/0035-initializer-finalized-meme-supply.md),

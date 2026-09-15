@@ -5,13 +5,13 @@
 version = 4
 
 [pinned.testnet.AftermathAmm]
-source = { local = "../migrators/interfaces/aftermath" }
+source = { local = "../../sui/migrators/interfaces/aftermath" }
 use_environment = "testnet"
 manifest_digest = "271408FC66479D0667DD522595BEB59E742B3EA9CD00ED7395433A07D5595564"
 deps = { Sui = "Sui" }
 
 [pinned.testnet.AftermathDaoFeePools]
-source = { local = "../migrators/interfaces/aftermath_dao_fee" }
+source = { local = "../../sui/migrators/interfaces/aftermath_dao_fee" }
 use_environment = "testnet"
 manifest_digest = "B609F93DB3791EF5BFA38A6AC842AE0D7700BF43BCF922EBBD4D9C55B8A3D682"
 deps = { AftermathAmm = "AftermathAmm", Sui = "Sui" }
@@ -23,7 +23,7 @@ manifest_digest = "4B292678F1A2E238C5F1CEDEE1B2CD3D400B365365883184580DE43F16AF9
 deps = { IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate", Sui = "Sui_2" }
 
 [pinned.testnet.CetusClmm]
-source = { local = "../migrators/interfaces/cetus" }
+source = { local = "../../sui/migrators/interfaces/cetus" }
 use_environment = "testnet"
 manifest_digest = "042D999A0B5CE153B367D86006C2F427B0EB6C1AE71D63AF9BBD4FBF3747A3F5"
 deps = { IntegerMate = "IntegerMate_1", MoveSTL = "MoveSTL", Sui = "Sui" }
@@ -89,19 +89,19 @@ manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D
 deps = { MoveStdlib = "MoveStdlib_2" }
 
 [pinned.testnet.TurbosCLMM]
-source = { local = "../migrators/interfaces/turbos" }
+source = { local = "../../sui/migrators/interfaces/turbos" }
 use_environment = "testnet"
 manifest_digest = "271408FC66479D0667DD522595BEB59E742B3EA9CD00ED7395433A07D5595564"
 deps = { Sui = "Sui" }
 
 [pinned.testnet.blast_admin]
-source = { local = "../admin" }
+source = { local = "../../sui/admin" }
 use_environment = "testnet"
 manifest_digest = "B7E2FC3044B807508BDB644524C4ABEA393A1871278966067F470AEAE602C62B"
 deps = { Sui = "Sui" }
 
 [pinned.testnet.blast_fun]
-source = { local = "../launchpad" }
+source = { local = "../../sui/launchpad" }
 use_environment = "testnet"
 manifest_digest = "B9BC26466630CEB8A3C2BE1A745F7338CFDF92C219AC0FF7F363DA750C2676C3"
 deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
@@ -119,7 +119,7 @@ manifest_digest = "72C371A43883A11D74B53BDB236EB9FBA0E61ED37800E467E6852E6650CDF
 deps = { Sui = "Sui", blast_admin = "blast_admin", blast_fun = "blast_fun" }
 
 [pinned.testnet.blast_fun_migrators]
-source = { local = "../migrators" }
+source = { local = "../../sui/migrators" }
 use_environment = "testnet"
 manifest_digest = "117CA8052873A0733BC25D78373BEB458D02480E8AC4C86584EB17FCEC9659FC"
 deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui", TurbosCLMM = "TurbosCLMM", blast_admin = "blast_admin", blast_fun = "blast_fun", mmt_v3 = "mmt_v3" }

@@ -68,8 +68,9 @@ Events are `LpFeeCapClaimed`, `LpFeeCapIssued`, and `LpFeesLocked`, whose
 
 **Consumers.** The distributor's `lock_lp_fees` binds pending fees through the
 enrolled launch, and `lock_lp_fees_with_cap` keeps the destroy-a-claimed-cap
-path. The native DEX migration and Auto-LP are on hold. They still target the
-ADR 0082 launchpad ABI and do not build until their redesign lands.
+path. The native DEX and Auto-LP are parked in `scratch-sui/`, outside every
+build and gate. They still target the ADR 0082 launchpad ABI and return to
+`sui/` only after their redesign.
 
 ## Alternatives considered
 
@@ -91,7 +92,8 @@ ADR 0082 launchpad ABI and do not build until their redesign lands.
   enrolled before migration bind them directly.
 - `issue_lp_fee_cap` drops the launchpad `PackageVersion` argument.
 - Indexers read LP-fee policy and authority events from migrators.
-- Dex and Auto-LP remain non-building until the native migration is redesigned.
+- Dex and Auto-LP are parked in `scratch-sui/` until the native migration is
+  redesigned; the distributor is the only enrolled fee custodian meanwhile.
 
 ## Verification
 

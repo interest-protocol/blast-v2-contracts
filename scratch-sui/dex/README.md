@@ -1,6 +1,3 @@
-> **On hold:** the native DEX Move sources and tests are commented out until they are
-> redesigned against the migrators-owned LP-fee policy and authority (ADR 0083).
-
 # Native V2
 
 Full-range Meme/Quote constant-product pools with separately claimable Quote

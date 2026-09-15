@@ -121,7 +121,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0073](0073-series-one-adapter-owned-vaults.md) | Series1 core with adapter-owned product Vaults | **accepted** |
 | [0074](0074-aftermath-vault-activation-and-health.md) | Aftermath Vault activation and health evidence | **accepted for dependency and raw-field normalization** |
 | [0075](0075-independent-holder-fee-distributor.md) | Independent holder fee distributor | **accepted; live release gates remain** |
-| [0076](0076-native-v2-and-auto-lp.md) | Native V2 and automatic liquidity deposits | **accepted for implementation; live release gates remain** |
+| [0076](0076-native-v2-and-auto-lp.md) | Native V2 and automatic liquidity deposits | **accepted; packages parked in `scratch-sui/` pending redesign ([0083](0083-migrators-own-lp-fee-policy-and-authority.md))** |
 | [0077](0077-fixed-creator-selected-sell-burn.md) | Fixed creator-selected sell burn | **accepted** |
 | [0078](0078-explicit-curve-invariant-primitives.md) | Explicit curve invariant primitives | **accepted** |
 | [0079](0079-compact-launch-state-and-events.md) | Compact launch state and events before publication | **accepted** |
