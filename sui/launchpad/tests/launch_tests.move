@@ -1844,7 +1844,7 @@ fun metadata_stays_editable_and_reassignable_after_curve_fees_are_locked() {
 }
 
 #[test]
-fun creator_admin_issues_lp_fee_caps_and_holders_destroy_capabilities() {
+fun holders_destroy_curve_fee_and_metadata_capabilities() {
     let mut fixture = start();
 
     fixture.next_tx!(CREATOR, |f| {
@@ -1855,77 +1855,18 @@ fun creator_admin_issues_lp_fee_caps_and_holders_destroy_capabilities() {
             &f.config,
             f.ctx!(),
         );
-        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
+        let (curve_fee_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
-        destroy(metadata_cap);
-        let admin_witness = f.sign_in();
-        let lp_fee_cap = creator_authority::new_lp_fee_cap<LAUNCH_TESTS>(
-            &f.package_version,
-            &admin_witness,
-            f.ctx!(),
-        );
 
-        lp_fee_cap.destroy_lp_fee_cap();
-        creator_cap.destroy_curve_fee_cap();
+        curve_fee_cap.destroy_curve_fee_cap();
+        metadata_cap.destroy_metadata_cap();
 
         destroy(launch);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_admin::errors::EAdminRoleNotGranted,
-    location = blast_admin::acl,
-)]
-fun lp_fee_cap_issue_requires_the_creator_admin_role() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let (authority, admin_cap) = f.new_role_less_admin();
-        let admin_witness = authority.sign_in(&admin_cap);
-        let lp_fee_cap = creator_authority::new_lp_fee_cap<LAUNCH_TESTS>(
-            &f.package_version,
-            &admin_witness,
-            f.ctx!(),
-        );
-
-        destroy(lp_fee_cap);
-        destroy(authority);
-        destroy(admin_cap);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
-)]
-fun stale_package_version_rejects_lp_fee_cap_issue_before_role_validation() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let (authority, admin_cap) = f.new_role_less_admin();
-        let admin_witness = authority.sign_in(&admin_cap);
-
-        f.package_version.set_for_testing(2);
-        let lp_fee_cap = creator_authority::new_lp_fee_cap<LAUNCH_TESTS>(
-            &f.package_version,
-            &admin_witness,
-            f.ctx!(),
-        );
-
-        destroy(lp_fee_cap);
-        destroy(authority);
-        destroy(admin_cap);
     });
 
     fixture.end();

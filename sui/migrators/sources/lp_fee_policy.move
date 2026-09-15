@@ -1,23 +1,27 @@
-// `blast_fun::errors` intentionally centralizes package-wide abort codes through zero-cost
-// macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
-// locations while retaining one append-only registry in `blast_fun::errors`.
-#[allow(lint(abort_without_constant))]
 /// Live protocol share of fees collected from migrated liquidity positions.
 ///
 /// Bonding-curve trades read the runtime configuration's share; every migrator that
 /// locks launch liquidity reads this object instead, so the two splits change independently.
 /// Partner projects may carry a unique share keyed by their Meme type.
-module blast_fun::lp_fee_policy;
+module blast_fun_migrators::lp_fee_policy;
 
 use blast_admin::acl::AdminWitness;
-use blast_fun::{
-    bps::{Self, Bps},
-    events,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
-    package_version::PackageVersion,
-};
+use blast_fun::{bps::{Self, Bps}, launchpad_domain::LAUNCHPAD_DOMAIN};
+use blast_fun_migrators::{events, package_version::PackageVersion};
 use std::type_name::{Self, TypeName};
 use sui::table::{Self, Table};
+
+// === Errors ===
+
+#[error(code = 0)]
+const EProtocolFeeShareUnchanged: vector<u8> =
+    b"A migrator-wide LP-fee share update must change the active share.";
+#[error(code = 1)]
+const EProjectProtocolFeeShareUnchanged: vector<u8> =
+    b"A project LP-fee share update must change the project's pinned share.";
+#[error(code = 2)]
+const EProjectProtocolFeeShareMissing: vector<u8> =
+    b"A project LP-fee share clear requires a pinned share.";
 
 // === Public Structs ===
 
@@ -49,7 +53,7 @@ public fun set_protocol_fee_share(
     package_version.assert_current();
     assert!(
         protocol_fee_share_bps != self.protocol_fee_share_bps,
-        blast_fun::errors::lp_protocol_fee_share_unchanged!(),
+        EProtocolFeeShareUnchanged,
     );
 
     self.protocol_fee_share_bps = protocol_fee_share_bps;
@@ -77,7 +81,7 @@ public fun set_project_protocol_fee_share<Meme>(
 
         assert!(
             protocol_fee_share_bps != *share_mut,
-            blast_fun::errors::project_lp_protocol_fee_share_unchanged!(),
+            EProjectProtocolFeeShareUnchanged,
         );
 
         *share_mut = protocol_fee_share_bps;
@@ -100,7 +104,7 @@ public fun clear_project_protocol_fee_share<Meme>(
 
     assert!(
         self.project_protocol_fee_shares.contains(meme),
-        blast_fun::errors::project_lp_protocol_fee_share_missing!(),
+        EProjectProtocolFeeShareMissing,
     );
 
     self.project_protocol_fee_shares.remove(meme);

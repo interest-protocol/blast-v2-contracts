@@ -55,6 +55,27 @@ public struct AftermathDaoFeeUpdated has copy, drop {
     new_dao_fee_bps: u16,
 }
 
+/// Records a replacement of the migrator-wide LP-fee protocol share.
+public struct LpProtocolFeeShareChanged(u64) has copy, drop;
+
+/// Records one project's newly pinned LP-fee protocol share.
+public struct ProjectLpProtocolFeeShareSet has copy, drop {
+    meme: TypeName,
+    protocol_fee_share_bps: u64,
+}
+
+/// Records removal of one project's pinned LP-fee protocol share.
+public struct ProjectLpProtocolFeeShareCleared(TypeName) has copy, drop;
+
+/// Records the live curve-fee holder claiming a vault's migration-born LP-fee capability.
+public struct LpFeeCapClaimed has copy, drop {
+    vault_id: ID,
+    meme: TypeName,
+    quote: TypeName,
+    lp_fee_cap_id: ID,
+    claimant: address,
+}
+
 /// Records the LP-fee capability a vault honors after an administrative issue.
 public struct LpFeeCapIssued has copy, drop {
     vault_id: ID,
@@ -65,12 +86,13 @@ public struct LpFeeCapIssued has copy, drop {
     recipient: address,
 }
 
-/// Records an LP-fee capability destroyed to bind creator LP fees to a custodian forever.
+/// Records creator LP fees bound to a custodian forever; `lp_fee_cap_id` is the destroyed
+/// capability, or none when pending fees were bound without one.
 public struct LpFeesLocked has copy, drop {
     vault_id: ID,
     meme: TypeName,
     quote: TypeName,
-    lp_fee_cap_id: ID,
+    lp_fee_cap_id: Option<ID>,
     custodian_id: ID,
 }
 
@@ -324,6 +346,39 @@ public(package) fun lp_fees_collected<Meme, Quote, Venue>(
     });
 }
 
+/// Emits replacement of the migrator-wide LP-fee protocol share.
+public(package) fun lp_protocol_fee_share_changed(protocol_fee_share_bps: u64) {
+    sui::event::emit(LpProtocolFeeShareChanged(protocol_fee_share_bps));
+}
+
+/// Emits one project's newly pinned LP-fee protocol share.
+public(package) fun project_lp_protocol_fee_share_set<Meme>(protocol_fee_share_bps: u64) {
+    sui::event::emit(ProjectLpProtocolFeeShareSet {
+        meme: type_name::with_original_ids<Meme>(),
+        protocol_fee_share_bps,
+    });
+}
+
+/// Emits removal of one project's pinned LP-fee protocol share.
+public(package) fun project_lp_protocol_fee_share_cleared<Meme>() {
+    sui::event::emit(ProjectLpProtocolFeeShareCleared(type_name::with_original_ids<Meme>()));
+}
+
+/// Emits the one-time claim of a migration-born LP-fee capability.
+public(package) fun lp_fee_cap_claimed<Meme, Quote>(
+    vault_id: ID,
+    lp_fee_cap_id: ID,
+    claimant: address,
+) {
+    sui::event::emit(LpFeeCapClaimed {
+        vault_id,
+        meme: type_name::with_original_ids<Meme>(),
+        quote: type_name::with_original_ids<Quote>(),
+        lp_fee_cap_id,
+        claimant,
+    });
+}
+
 /// Emits an administrative LP-fee capability issue and any retired predecessor.
 public(package) fun lp_fee_cap_issued<Meme, Quote>(
     vault_id: ID,
@@ -344,7 +399,7 @@ public(package) fun lp_fee_cap_issued<Meme, Quote>(
 /// Emits the permanent binding of creator LP fees to a custodian object.
 public(package) fun lp_fees_locked<Meme, Quote>(
     vault_id: ID,
-    lp_fee_cap_id: ID,
+    lp_fee_cap_id: Option<ID>,
     custodian_id: ID,
 ) {
     sui::event::emit(LpFeesLocked {
@@ -388,4 +443,25 @@ public(package) fun protocol_fees_claimed<Meme, Quote>(
         meme_amount,
         quote_amount,
     });
+}
+
+// === Test-Only Functions ===
+
+#[test_only]
+public fun lp_protocol_fee_share_changed_fields(self: &LpProtocolFeeShareChanged): u64 {
+    self.0
+}
+
+#[test_only]
+public fun project_lp_protocol_fee_share_set_fields(
+    self: &ProjectLpProtocolFeeShareSet,
+): (TypeName, u64) {
+    (self.meme, self.protocol_fee_share_bps)
+}
+
+#[test_only]
+public fun project_lp_protocol_fee_share_cleared_fields(
+    self: &ProjectLpProtocolFeeShareCleared,
+): TypeName {
+    self.0
 }

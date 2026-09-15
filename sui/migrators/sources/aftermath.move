@@ -10,11 +10,12 @@ use blast_admin::acl::AdminWitness;
 use blast_fun::{
     launch::Launch,
     launchpad_domain::LAUNCHPAD_DOMAIN,
-    lp_fee_policy::LpFeePolicy,
     package_version::PackageVersion,
 };
 use blast_fun_migrators::{
     events,
+    lp_fee_authority::{Self, LpFeeAuthority},
+    lp_fee_policy::LpFeePolicy,
     package_version::PackageVersion as MigratorsVersion,
     vault::{Self, LpVault},
     venue_config::VenueConfig,
@@ -118,6 +119,7 @@ public fun migrate_meme_first<Lp, Meme, Quote>(
     let policy = effective_policy(venue_config);
     let launch_id = object::id(launch);
     let payload = launch.migrate<_, _, Witness>(package_version, meme_currency, ctx);
+    let lp_fee_authority = lp_fee_authority::new(&payload, Witness());
     let (meme, quote) = payload.redeem_migration(Witness());
     let meme_amount = meme.value();
     let quote_amount = quote.value();
@@ -136,6 +138,7 @@ public fun migrate_meme_first<Lp, Meme, Quote>(
 
     lock_and_share<Lp, Meme, Quote>(
         launch_id,
+        lp_fee_authority,
         pool,
         lp_coin,
         meme_amount,
@@ -164,6 +167,7 @@ public fun migrate_meme_second<Lp, Meme, Quote>(
     let policy = effective_policy(venue_config);
     let launch_id = object::id(launch);
     let payload = launch.migrate<_, _, Witness>(package_version, meme_currency, ctx);
+    let lp_fee_authority = lp_fee_authority::new(&payload, Witness());
     let (meme, quote) = payload.redeem_migration(Witness());
     let meme_amount = meme.value();
     let quote_amount = quote.value();
@@ -182,6 +186,7 @@ public fun migrate_meme_second<Lp, Meme, Quote>(
 
     lock_and_share<Lp, Meme, Quote>(
         launch_id,
+        lp_fee_authority,
         pool,
         lp_coin,
         meme_amount,
@@ -409,6 +414,7 @@ fun create_and_reconcile<Lp, C1, C2>(
 #[allow(lint(share_owned))]
 fun lock_and_share<Lp, Meme, Quote>(
     launch_id: ID,
+    lp_fee_authority: LpFeeAuthority<Meme>,
     pool: Pool<Lp>,
     lp_coin: Coin<Lp>,
     meme_amount: u64,
@@ -420,6 +426,7 @@ fun lock_and_share<Lp, Meme, Quote>(
     let inner_pool_id = object::id(&pool);
     let locked_lp_amount = lp_coin.value();
     let pending_vault = vault::prepare<Meme, Quote>(
+        lp_fee_authority,
         balance::zero(),
         balance::zero(),
         ctx,

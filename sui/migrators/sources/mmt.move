@@ -6,11 +6,12 @@ use blast_fun::{
     bps,
     launch::Launch,
     launchpad_domain::LAUNCHPAD_DOMAIN,
-    lp_fee_policy::LpFeePolicy,
     package_version::PackageVersion,
 };
 use blast_fun_migrators::{
     events,
+    lp_fee_authority::{Self, LpFeeAuthority},
+    lp_fee_policy::LpFeePolicy,
     migration_math,
     package_version::PackageVersion as MigratorsVersion,
     vault::{Self, LpVault},
@@ -91,6 +92,7 @@ public fun migrate_meme_x<Meme, Quote>(
         meme_currency,
         ctx,
     );
+    let lp_fee_authority = lp_fee_authority::new(&payload, Witness());
     let (meme, quote) = payload.redeem_migration(Witness());
     let source_meme_amount = meme.value();
     let source_quote_amount = quote.value();
@@ -132,6 +134,7 @@ public fun migrate_meme_x<Meme, Quote>(
 
     lock_and_share<Meme, Quote, Meme, Quote>(
         launch_id,
+        lp_fee_authority,
         pool,
         position,
         residual_meme,
@@ -169,6 +172,7 @@ public fun migrate_meme_y<Meme, Quote>(
         meme_currency,
         ctx,
     );
+    let lp_fee_authority = lp_fee_authority::new(&payload, Witness());
     let (meme, quote) = payload.redeem_migration(Witness());
     let source_meme_amount = meme.value();
     let source_quote_amount = quote.value();
@@ -210,6 +214,7 @@ public fun migrate_meme_y<Meme, Quote>(
 
     lock_and_share<Meme, Quote, Quote, Meme>(
         launch_id,
+        lp_fee_authority,
         pool,
         position,
         residual_meme,
@@ -388,6 +393,7 @@ fun create_and_seed_pool<X, Y>(
 
 fun lock_and_share<Meme, Quote, X, Y>(
     launch_id: ID,
+    lp_fee_authority: LpFeeAuthority<Meme>,
     pool: Pool<X, Y>,
     position: Position,
     residual_meme: Coin<Meme>,
@@ -422,6 +428,7 @@ fun lock_and_share<Meme, Quote, X, Y>(
 
     let vault_id = vault::new<Meme, Quote, Venue, Position>(
         Venue(),
+        lp_fee_authority,
         pool_id,
         position,
         residual_meme.into_balance(),

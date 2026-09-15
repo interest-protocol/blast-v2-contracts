@@ -242,17 +242,7 @@ const EInvalidSellBurnBps: u64 = 83;
 /// A completed trade reduced the curve's constant product.
 const EConstantProductInvariantDecreased: u64 = 84;
 
-#[test_only]
-/// A migrator-wide LP-fee share update supplied the currently active value.
-const ELpProtocolFeeShareUnchanged: u64 = 85;
-
-#[test_only]
-/// A project LP-fee share update supplied the project's currently pinned value.
-const EProjectLpProtocolFeeShareUnchanged: u64 = 86;
-
-#[test_only]
-/// A project LP-fee share clear targeted a project with no pinned share.
-const EProjectLpProtocolFeeShareMissing: u64 = 87;
+// Codes 85 through 87 moved with the LP-fee policy to `blast_fun_migrators` by ADR 0083.
 
 #[test_only]
 /// The curve-fee capability is not the one the launch currently honors.
@@ -466,18 +456,6 @@ macro public(package) fun invalid_sell_burn_bps(): u64 {
 
 macro public(package) fun constant_product_invariant_decreased(): u64 {
     84
-}
-
-macro public(package) fun lp_protocol_fee_share_unchanged(): u64 {
-    85
-}
-
-macro public(package) fun project_lp_protocol_fee_share_unchanged(): u64 {
-    86
-}
-
-macro public(package) fun project_lp_protocol_fee_share_missing(): u64 {
-    87
 }
 
 macro public(package) fun curve_fee_cap_not_live(): u64 {

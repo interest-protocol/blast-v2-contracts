@@ -42,7 +42,7 @@ without returning to core for its post-conditions.
 | Package administration | validated `Publisher` and raw `UpgradeCap` custody, exact-digest authorization, irreversible policy restriction, receipt commit, and one-way admin retirement | ACL membership storage, feature configuration, or state migration |
 | Protocol ACL | root rotation and revocable routine-admin membership | feature configuration, backend keys, creator recipients, or fees |
 | Runtime config | one dedicated creator-claim backend key and the live bonding-curve trade protocol fee share | admin delegation, creator recipient or issuance, cold launch policy, accrued balances, total trade-fee rates, or claim authority |
-| LP fee policy | the live protocol share of fees collected from migrated liquidity, with Meme-keyed partner pins, read by every migrator | trade fee shares, accrued balances, vault custody, or claim authority |
+| LP fee policy | migrators-owned live protocol share of fees collected from migrated liquidity, with Meme-keyed partner pins | trade fee shares, accrued balances, vault custody, or claim authority |
 | Launch config | cold Table-backed virtual/terminal Quote parameters, Quote/Meme trade-fee rates, graduation defaults, and bounded external migrator witness admission for future launches | live launch repricing, quote currency-registry objects, DEX costs or dependencies, user balances, derived valuations, or hot trade configuration |
 | Registry/config | global limits, other fee ceilings, emergency state | user balances or curve math |
 | Launch ticket | generated OTW currency creation and pre-launch capability custody | supply minting, trades, metadata updates, or migration |
@@ -129,8 +129,10 @@ finalize supply. The creator recipient may be a wallet address or an opaque
 Blast account commitment and may differ from the launcher. The native metadata
 cap never leaves `Launch`. The creator claim issues a `CurveFeeCap<Meme>` for
 curve fees and a `BlastMetadataCap<Meme>` for metadata updates through the
-launch; a creator administrator can reassign each independently. Post-migration
-fee vaults honor a separately issued, revocable `LpFeeCap<Meme>`. A holder may
+launch; a creator administrator can reassign each independently. Each migration gives its fee vault a pending,
+migrators-owned `LpFeeCap<Meme>` right that the live curve-fee holder claims or
+a creator-fee custodian binds, and creator administrators may reissue
+([ADR 0083](decisions/0083-migrators-own-lp-fee-policy-and-authority.md)). A holder may
 destroy a curve-fee or LP-fee cap to bind that fee stream permanently to a custodian object such as Auto-LP or the
 distributor, after which it can never be reassigned
 ([ADR 0082](decisions/0082-revocable-creator-and-lp-fee-capabilities.md)).

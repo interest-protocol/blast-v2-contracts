@@ -9,7 +9,6 @@ use blast_fun::{
     launch_config,
     launch_ticket,
     launchpad_domain::LAUNCHPAD_DOMAIN,
-    lp_fee_policy,
     package_version,
     runtime_config
 };
@@ -17,9 +16,9 @@ use blast_fun_distributor::{
     distributor::{Self, AdminCap, Distributor, PublisherCap, Round, Version},
     merkle
 };
-use blast_fun_migrators::package_version::{
-    Self as migrators_version,
-    PackageVersion as MigratorsVersion,
+use blast_fun_migrators::{
+    lp_fee_policy,
+    package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
 };
 use std::{bcs, unit_test::{assert_eq, destroy}};
 use sui::{clock, coin::{Self, Coin}, test_scenario::{Self, Scenario}};
@@ -722,7 +721,7 @@ fun locked_lp_fees_collect_only_creator_lp_fees() {
     );
     let lp_fee_cap = source.issue_lp_fee_cap_for_testing(f.scenario.ctx());
     f.next_tx!(BOT, |f| {
-        f.distributor.lock_lp_fees(&f.control, &mut source, &f.migrators_version, lp_fee_cap);
+        f.distributor.lock_lp_fees_with_cap(&f.control, &mut source, &f.migrators_version, lp_fee_cap);
         assert_eq!(source.custodian_id_for_testing(), option::some(object::id(&f.distributor)));
         assert!(source.lp_fee_cap_id_for_testing().is_none());
         f.distributor.collect_lp_fees(&f.control, &mut source, &f.migrators_version, f.scenario.ctx());
@@ -738,8 +737,8 @@ fun locked_lp_fees_collect_only_creator_lp_fees() {
 #[test]
 #[
     expected_failure(
-        abort_code = blast_fun_migrators::vault::ELpFeeCustodianMismatch,
-        location = blast_fun_migrators::vault,
+        abort_code = blast_fun_migrators::lp_fee_authority::ELpFeeCustodianMismatch,
+        location = blast_fun_migrators::lp_fee_authority,
     ),
 ]
 fun lp_collection_requires_lp_fees_bound_to_the_distributor() {
@@ -765,8 +764,8 @@ fun lp_collection_requires_lp_fees_bound_to_the_distributor() {
 #[test]
 #[
     expected_failure(
-        abort_code = blast_fun_migrators::vault::ELpFeeCapNotLive,
-        location = blast_fun_migrators::vault,
+        abort_code = blast_fun_migrators::lp_fee_authority::ELpFeeCapNotLive,
+        location = blast_fun_migrators::lp_fee_authority,
     ),
 ]
 fun retired_lp_fee_cap_cannot_lock_lp_fees() {
@@ -784,9 +783,37 @@ fun retired_lp_fee_cap_cannot_lock_lp_fees() {
     let retired = source.issue_lp_fee_cap_for_testing(f.scenario.ctx());
     let live = source.issue_lp_fee_cap_for_testing(f.scenario.ctx());
     f.next_tx!(BOT, |f| {
-        f.distributor.lock_lp_fees(&f.control, &mut source, &f.migrators_version, retired);
+        f.distributor.lock_lp_fees_with_cap(&f.control, &mut source, &f.migrators_version, retired);
     });
     destroy(live);
+    destroy(source);
+    destroy(lp_fee_policy);
+    f.end();
+}
+
+
+#[test]
+fun pending_lp_fees_bind_to_the_enrolled_distributor_without_a_cap() {
+    let mut f = start();
+    let lp_fee_policy = lp_fee_policy::new_for_testing(f.scenario.ctx());
+    let share = lp_fee_policy.protocol_fee_share<DISTRIBUTOR_TESTS>().value();
+    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.scenario.ctx()).into_balance();
+    let quote = coin::mint_for_testing<QUOTE>(2000, f.scenario.ctx()).into_balance();
+    let mut source = blast_fun_migrators::vault::funded_for_testing(
+        object::id_from_address(@0xF00),
+        meme,
+        quote,
+        &lp_fee_policy,
+        f.scenario.ctx(),
+    );
+    f.next_tx!(BOT, |f| {
+        f.distributor.lock_lp_fees(&f.control, &mut source, &f.migrators_version, &f.launch);
+        assert_eq!(source.custodian_id_for_testing(), option::some(object::id(&f.distributor)));
+        f.distributor.collect_lp_fees(&f.control, &mut source, &f.migrators_version, f.scenario.ctx());
+    });
+    let (meme, quote) = f.distributor.balances_for_testing();
+    assert_eq!(meme, 1000 - (1000 * share + 9999) / 10000);
+    assert_eq!(quote, 2000 - (2000 * share + 9999) / 10000);
     destroy(source);
     destroy(lp_fee_policy);
     f.end();

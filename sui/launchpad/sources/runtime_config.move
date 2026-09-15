@@ -4,7 +4,7 @@
 #[allow(lint(abort_without_constant))]
 /// Small live protocol settings read by bonding-curve trades and creator claims.
 ///
-/// Fees collected from migrated liquidity use `lp_fee_policy::LpFeePolicy` instead.
+/// Fees collected from migrated liquidity use `blast_fun_migrators::lp_fee_policy::LpFeePolicy` instead.
 module blast_fun::runtime_config;
 
 use blast_admin::acl::AdminWitness;

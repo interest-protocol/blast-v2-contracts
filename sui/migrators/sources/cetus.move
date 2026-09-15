@@ -6,11 +6,12 @@ use blast_fun::{
     bps,
     launch::Launch,
     launchpad_domain::LAUNCHPAD_DOMAIN,
-    lp_fee_policy::LpFeePolicy,
     package_version::PackageVersion,
 };
 use blast_fun_migrators::{
     events,
+    lp_fee_authority::{Self, LpFeeAuthority},
+    lp_fee_policy::LpFeePolicy,
     migration_math,
     package_version::PackageVersion as MigratorsVersion,
     vault::{Self, LpVault},
@@ -97,6 +98,7 @@ public fun migrate_new_meme_a<Meme, Quote>(
         meme_currency,
         ctx,
     );
+    let lp_fee_authority = lp_fee_authority::new(&payload, Witness());
     let (meme, quote) = payload.redeem_migration(Witness());
     let source_meme_amount = meme.value();
     let source_quote_amount = quote.value();
@@ -130,6 +132,7 @@ public fun migrate_new_meme_a<Meme, Quote>(
 
     lock_and_share<Meme, Quote>(
         launch_id,
+        lp_fee_authority,
         position,
         residual_meme,
         residual_quote,
@@ -173,6 +176,7 @@ public fun migrate_new_meme_b<Meme, Quote>(
         meme_currency,
         ctx,
     );
+    let lp_fee_authority = lp_fee_authority::new(&payload, Witness());
     let (meme, quote) = payload.redeem_migration(Witness());
     let source_meme_amount = meme.value();
     let source_quote_amount = quote.value();
@@ -206,6 +210,7 @@ public fun migrate_new_meme_b<Meme, Quote>(
 
     lock_and_share<Meme, Quote>(
         launch_id,
+        lp_fee_authority,
         position,
         residual_meme,
         residual_quote,
@@ -246,6 +251,7 @@ public fun migrate_existing_meme_a<Meme, Quote>(
         meme_currency,
         ctx,
     );
+    let lp_fee_authority = lp_fee_authority::new(&payload, Witness());
     let (mut meme, mut quote) = payload.redeem_migration(Witness());
     let source_meme_amount = meme.value();
     let source_quote_amount = quote.value();
@@ -308,6 +314,7 @@ public fun migrate_existing_meme_a<Meme, Quote>(
 
     lock_and_share<Meme, Quote>(
         launch_id,
+        lp_fee_authority,
         position,
         meme.into_coin(ctx),
         quote.into_coin(ctx),
@@ -348,6 +355,7 @@ public fun migrate_existing_meme_b<Meme, Quote>(
         meme_currency,
         ctx,
     );
+    let lp_fee_authority = lp_fee_authority::new(&payload, Witness());
     let (mut meme, mut quote) = payload.redeem_migration(Witness());
     let source_meme_amount = meme.value();
     let source_quote_amount = quote.value();
@@ -410,6 +418,7 @@ public fun migrate_existing_meme_b<Meme, Quote>(
 
     lock_and_share<Meme, Quote>(
         launch_id,
+        lp_fee_authority,
         position,
         meme.into_coin(ctx),
         quote.into_coin(ctx),
@@ -549,6 +558,7 @@ fun assert_payment_amounts(
 
 fun lock_and_share<Meme, Quote>(
     launch_id: ID,
+    lp_fee_authority: LpFeeAuthority<Meme>,
     position: Position,
     residual_meme: Coin<Meme>,
     residual_quote: Coin<Quote>,
@@ -581,6 +591,7 @@ fun lock_and_share<Meme, Quote>(
 
     let vault_id = vault::new<Meme, Quote, Venue, Position>(
         Venue(),
+        lp_fee_authority,
         pool_id,
         position,
         residual_meme.into_balance(),

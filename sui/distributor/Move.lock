@@ -229,8 +229,8 @@ deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
 [pinned.testnet.blast_fun_distributor]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "D736E4E2C31A7F1182BA485DD22F06294281ED353594D43C77A939533CBE9059"
-deps = { Sui = "Sui", blast_admin = "blast_admin", blast_fun = "blast_fun", blast_fun_migrators = "blast_fun_migrators" }
+manifest_digest = "789E155DAA3276296C0CB13ACDA83D9B022BB5AA27A1574B1D352977004DAD29"
+deps = { Sui = "Sui", blast_fun = "blast_fun", blast_fun_migrators = "blast_fun_migrators" }
 
 [pinned.testnet.blast_fun_migrators]
 source = { local = "../migrators" }

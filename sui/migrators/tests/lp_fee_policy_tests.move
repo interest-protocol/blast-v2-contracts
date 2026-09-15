@@ -1,15 +1,9 @@
 #[test_only]
-module blast_fun::lp_fee_policy_tests;
+module blast_fun_migrators::lp_fee_policy_tests;
 
-use blast_admin::acl::{Authority, AdminCap, AdminWitness};
-use blast_fun::{
-    bps,
-    domain_fixture,
-    events,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
-    lp_fee_policy::{Self, LpFeePolicy},
-    package_version,
-};
+use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
+use blast_fun::{bps, launchpad_domain::LAUNCHPAD_DOMAIN};
+use blast_fun_migrators::{events, lp_fee_policy::{Self, LpFeePolicy}, package_version};
 use std::{type_name, unit_test::{assert_eq, destroy}};
 use sui::{event, test_scenario::{Self, Scenario}};
 
@@ -22,6 +16,8 @@ use fun policy_next_tx as PolicyFixture.next_tx;
 
 const PUBLISHER: address = @0xA11CE;
 const PROTOCOL_ADMIN: address = @0xAD;
+const MAX_ADMINS: u64 = 16;
+const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 // === Test-Only Types ===
 
@@ -66,10 +62,10 @@ fun active_admin_updates_default_share_and_emits_new_value() {
 
         f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(3_000));
 
-        let changed = events::collect_one<events::LpProtocolFeeShareChanged>(0);
-        assert_eq!(changed.lp_protocol_fee_share_changed_fields(), 3_000);
+        let changed = event::events_by_type<events::LpProtocolFeeShareChanged>();
+        assert_eq!(changed.length(), 1);
+        assert_eq!(changed[0].lp_protocol_fee_share_changed_fields(), 3_000);
         assert_eq!(f.policy.protocol_fee_share<PARTNER_MEME>().value(), 3_000);
-        assert!(events::collect<events::ProtocolFeeShareChanged>().is_empty());
     });
 
     fixture.end();
@@ -87,7 +83,7 @@ fun default_share_accepts_both_percentage_boundaries() {
 
         f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(0));
         assert_eq!(f.policy.protocol_fee_share<PARTNER_MEME>().value(), 0);
-        assert_eq!(events::collect<events::LpProtocolFeeShareChanged>().length(), 2);
+        assert_eq!(event::events_by_type<events::LpProtocolFeeShareChanged>().length(), 2);
     });
 
     fixture.end();
@@ -95,8 +91,8 @@ fun default_share_accepts_both_percentage_boundaries() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::ELpProtocolFeeShareUnchanged,
-    location = blast_fun::lp_fee_policy,
+    abort_code = lp_fee_policy::EProtocolFeeShareUnchanged,
+    location = blast_fun_migrators::lp_fee_policy,
 )]
 fun default_share_rejects_unchanged_value() {
     let mut fixture = start();
@@ -159,8 +155,9 @@ fun project_share_takes_precedence_over_default_and_emits_its_meme() {
             bps::new(1_000),
         );
 
-        let set = events::collect_one<events::ProjectLpProtocolFeeShareSet>(0);
-        let (meme, share_bps) = set.project_lp_protocol_fee_share_set_fields();
+        let set = event::events_by_type<events::ProjectLpProtocolFeeShareSet>();
+        assert_eq!(set.length(), 1);
+        let (meme, share_bps) = set[0].project_lp_protocol_fee_share_set_fields();
         assert_eq!(meme, type_name::with_original_ids<PARTNER_MEME>());
         assert_eq!(share_bps, 1_000);
         assert_eq!(f.policy.protocol_fee_share<PARTNER_MEME>().value(), 1_000);
@@ -212,7 +209,7 @@ fun project_share_repins_to_a_different_value() {
 
         assert_eq!(f.policy.protocol_fee_share<PARTNER_MEME>().value(), 10_000);
         assert_eq!(f.policy.project_count_for_testing(), 1);
-        assert_eq!(events::collect<events::ProjectLpProtocolFeeShareSet>().length(), 2);
+        assert_eq!(event::events_by_type<events::ProjectLpProtocolFeeShareSet>().length(), 2);
     });
 
     fixture.end();
@@ -220,8 +217,8 @@ fun project_share_repins_to_a_different_value() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EProjectLpProtocolFeeShareUnchanged,
-    location = blast_fun::lp_fee_policy,
+    abort_code = lp_fee_policy::EProjectProtocolFeeShareUnchanged,
+    location = blast_fun_migrators::lp_fee_policy,
 )]
 fun project_share_rejects_repinning_its_current_value() {
     let mut fixture = start();
@@ -284,9 +281,10 @@ fun cleared_project_follows_the_default_again_and_emits_its_meme() {
             &admin_witness,
         );
 
-        let cleared = events::collect_one<events::ProjectLpProtocolFeeShareCleared>(0);
+        let cleared = event::events_by_type<events::ProjectLpProtocolFeeShareCleared>();
+        assert_eq!(cleared.length(), 1);
         assert_eq!(
-            cleared.project_lp_protocol_fee_share_cleared_fields(),
+            cleared[0].project_lp_protocol_fee_share_cleared_fields(),
             type_name::with_original_ids<PARTNER_MEME>(),
         );
         assert_eq!(f.policy.protocol_fee_share<PARTNER_MEME>().value(), 2_500);
@@ -298,8 +296,8 @@ fun cleared_project_follows_the_default_again_and_emits_its_meme() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EProjectLpProtocolFeeShareMissing,
-    location = blast_fun::lp_fee_policy,
+    abort_code = lp_fee_policy::EProjectProtocolFeeShareMissing,
+    location = blast_fun_migrators::lp_fee_policy,
 )]
 fun clear_rejects_a_project_without_a_pinned_share() {
     let mut fixture = start();
@@ -381,7 +379,11 @@ fun start_init(): InitFixture {
 fun start(): PolicyFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
+    let (super_admin_cap, mut authority) = acl::new_for_testing<LAUNCHPAD_DOMAIN>(
+        MAX_ADMINS,
+        ROOT_TRANSFER_DELAY_MS,
+        scenario.ctx(),
+    );
     authority.grant_admin(&super_admin_cap, 0, PROTOCOL_ADMIN, scenario.ctx());
     destroy(super_admin_cap);
     let policy = lp_fee_policy::new_for_testing(scenario.ctx());

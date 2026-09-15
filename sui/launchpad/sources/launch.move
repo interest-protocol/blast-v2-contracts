@@ -293,10 +293,7 @@ public fun claim_custodied_creator_fees<Meme, Quote>(
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     package_version.assert_current();
-    assert!(
-        self.curve_fee_authority == CurveFeeAuthority::Custodian(custodian.to_inner()),
-        blast_fun::errors::creator_custodian_mismatch!(),
-    );
+    self.assert_fee_custodian(custodian);
 
     self.drain_creator_fees(ctx)
 }
@@ -546,6 +543,14 @@ public fun migrate<Meme, Quote, MigrationWitness: drop>(
     );
 
     MigrationPayload { meme, quote }
+}
+
+/// Aborts unless `custodian` is the object this launch's creator fees are permanently bound to.
+public fun assert_fee_custodian<Meme, Quote>(self: &Launch<Meme, Quote>, custodian: &UID) {
+    assert!(
+        self.curve_fee_authority == CurveFeeAuthority::Custodian(custodian.to_inner()),
+        blast_fun::errors::creator_custodian_mismatch!(),
+    );
 }
 
 /// Aborts unless `curve_fee_cap` is the curve-fee capability this launch currently honors.

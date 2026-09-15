@@ -2,12 +2,13 @@
 module blast_fun_distributor::distributor;
 
 use blast_fun::{
-    creator_authority::{CurveFeeCap, LpFeeCap},
+    creator_authority::CurveFeeCap,
     launch::Launch,
     package_version::PackageVersion
 };
 use blast_fun_distributor::merkle;
 use blast_fun_migrators::{
+    lp_fee_authority::LpFeeCap,
     package_version::PackageVersion as MigratorsVersion,
     vault::LpVault,
 };
@@ -244,8 +245,23 @@ public fun collect_lp_fees<Meme, Quote>(
     self.accrue(object::id(vault), meme, quote);
 }
 
-/// Destroys the vault's live LP-fee cap and binds its creator LP fees here forever.
+/// Binds the vault's pending creator LP fees here forever without any capability.
+/// The enrolled launch proves this distributor already custodies its creator fees.
 public fun lock_lp_fees<Meme, Quote>(
+    self: &Distributor<Meme, Quote>,
+    version: &Version,
+    vault: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
+    launch: &Launch<Meme, Quote>,
+) {
+    version.assert_enabled();
+    assert!(object::id(launch) == self.launch, EWrongSource);
+
+    vault.lock_pending_creator_fees(migrators_version, launch, &self.id);
+}
+
+/// Destroys an already claimed live LP-fee cap and binds its creator LP fees here forever.
+public fun lock_lp_fees_with_cap<Meme, Quote>(
     self: &Distributor<Meme, Quote>,
     version: &Version,
     vault: &mut LpVault<Meme, Quote>,

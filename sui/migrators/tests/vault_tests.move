@@ -2,15 +2,11 @@
 module blast_fun_migrators::vault_tests;
 
 use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
-use blast_fun::{
-    bps,
-    creator_authority::{Self, LpFeeCap},
-    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
-    lp_fee_policy::{Self, LpFeePolicy},
-    package_version,
-};
+use blast_fun::{bps, launchpad_domain::{Self, LAUNCHPAD_DOMAIN}, package_version};
 use blast_fun_migrators::{
     events,
+    lp_fee_authority::{Self, LpFeeCap},
+    lp_fee_policy::{Self, LpFeePolicy},
     package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
     vault::{Self, LpVault},
 };
@@ -58,6 +54,7 @@ fun prepared_vault_keeps_its_id_when_finished_and_shared() {
     let pool_id = pool_uid.to_inner();
     pool_uid.delete();
     let pending_vault = vault::prepare<MEME, QUOTE>(
+        lp_fee_authority::new_for_testing(),
         balance::zero(),
         balance::zero(),
         scenario.ctx(),
@@ -82,7 +79,7 @@ fun accrues_with_the_lp_policy_share_and_never_resplits_prior_ownership() {
         let admin_witness = f.sign_in();
 
         f.lp_fee_policy.set_protocol_fee_share(
-            &f.package_version,
+            &f.migrators_version,
             &admin_witness,
             bps::new(2_000),
         );
@@ -104,7 +101,7 @@ fun accrues_with_the_lp_policy_share_and_never_resplits_prior_ownership() {
         let admin_witness = f.sign_in();
 
         f.lp_fee_policy.set_protocol_fee_share(
-            &f.package_version,
+            &f.migrators_version,
             &admin_witness,
             bps::new(10_000),
         );
@@ -135,12 +132,12 @@ fun project_share_overrides_the_default_and_is_the_emitted_split_input() {
         let admin_witness = f.sign_in();
 
         f.lp_fee_policy.set_protocol_fee_share(
-            &f.package_version,
+            &f.migrators_version,
             &admin_witness,
             bps::new(2_000),
         );
         f.lp_fee_policy.set_project_protocol_fee_share<OTHER_MEME>(
-            &f.package_version,
+            &f.migrators_version,
             &admin_witness,
             bps::new(9_000),
         );
@@ -163,7 +160,7 @@ fun project_share_overrides_the_default_and_is_the_emitted_split_input() {
         let admin_witness = f.sign_in();
 
         f.lp_fee_policy.set_project_protocol_fee_share<MEME>(
-            &f.package_version,
+            &f.migrators_version,
             &admin_witness,
             bps::new(5_000),
         );
@@ -380,7 +377,6 @@ fun issued_lp_fee_cap_claims_creator_fees_until_a_reissue_retires_it() {
         f.accrue!(10, 20);
         f.vault.issue_lp_fee_cap(
             &f.migrators_version,
-            &f.package_version,
             &admin_witness,
             CREATOR,
             f.scenario.ctx(),
@@ -420,7 +416,6 @@ fun issued_lp_fee_cap_claims_creator_fees_until_a_reissue_retires_it() {
 
         f.vault.issue_lp_fee_cap(
             &f.migrators_version,
-            &f.package_version,
             &admin_witness,
             NEW_CREATOR,
             f.scenario.ctx(),
@@ -445,8 +440,8 @@ fun issued_lp_fee_cap_claims_creator_fees_until_a_reissue_retires_it() {
 
 #[test]
 #[expected_failure(
-    abort_code = vault::ELpFeeCapNotLive,
-    location = blast_fun_migrators::vault,
+    abort_code = lp_fee_authority::ELpFeeCapNotLive,
+    location = blast_fun_migrators::lp_fee_authority,
 )]
 fun retired_lp_fee_cap_is_rejected_before_the_empty_ledger_check() {
     let mut fixture = start();
@@ -471,14 +466,14 @@ fun retired_lp_fee_cap_is_rejected_before_the_empty_ledger_check() {
 
 #[test]
 #[expected_failure(
-    abort_code = vault::ELpFeeCapNotLive,
-    location = blast_fun_migrators::vault,
+    abort_code = lp_fee_authority::ELpFeeCapNotLive,
+    location = blast_fun_migrators::lp_fee_authority,
 )]
-fun migrated_vault_honors_no_lp_fee_cap_until_one_is_issued() {
+fun pending_vault_honors_no_lp_fee_cap() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let lp_fee_cap = creator_authority::new_lp_fee_cap_for_testing<MEME>(f.scenario.ctx());
+        let lp_fee_cap = lp_fee_authority::new_lp_fee_cap_for_testing<MEME>(f.scenario.ctx());
 
         f.accrue!(10, 20);
         let (meme, quote) = f.vault.claim_creator_fees(
@@ -508,7 +503,6 @@ fun lp_fee_cap_issue_rejects_the_zero_recipient() {
 
         f.vault.issue_lp_fee_cap(
             &f.migrators_version,
-            &f.package_version,
             &admin_witness,
             @0x0,
             f.scenario.ctx(),
@@ -535,7 +529,7 @@ fun locked_lp_fees_are_claimed_only_by_the_bound_custodian() {
         let mut expected = bcs::to_bytes(&object::id(&f.vault));
         expected.append(bcs::to_bytes(&type_name::with_original_ids<MEME>()));
         expected.append(bcs::to_bytes(&type_name::with_original_ids<QUOTE>()));
-        expected.append(bcs::to_bytes(&lp_fee_cap_id));
+        expected.append(bcs::to_bytes(&option::some(lp_fee_cap_id)));
         expected.append(bcs::to_bytes(&custodian.to_inner()));
         assert_eq!(events.length(), 1);
         assert_eq!(bcs::to_bytes(&events[0]), expected);
@@ -559,8 +553,8 @@ fun locked_lp_fees_are_claimed_only_by_the_bound_custodian() {
 
 #[test]
 #[expected_failure(
-    abort_code = vault::ELpFeesLocked,
-    location = blast_fun_migrators::vault,
+    abort_code = lp_fee_authority::ELpFeesLocked,
+    location = blast_fun_migrators::lp_fee_authority,
 )]
 fun locked_lp_fees_reject_reissue_before_the_recipient_check() {
     let mut fixture = start();
@@ -573,7 +567,6 @@ fun locked_lp_fees_reject_reissue_before_the_recipient_check() {
         f.vault.lock_creator_fees(&f.migrators_version, lp_fee_cap, &custodian);
         f.vault.issue_lp_fee_cap(
             &f.migrators_version,
-            &f.package_version,
             &admin_witness,
             @0x0,
             f.scenario.ctx(),
@@ -587,8 +580,8 @@ fun locked_lp_fees_reject_reissue_before_the_recipient_check() {
 
 #[test]
 #[expected_failure(
-    abort_code = vault::ELpFeeCustodianMismatch,
-    location = blast_fun_migrators::vault,
+    abort_code = lp_fee_authority::ELpFeeCustodianMismatch,
+    location = blast_fun_migrators::lp_fee_authority,
 )]
 fun wrong_custodian_is_rejected_before_the_empty_lp_ledger_check() {
     let mut fixture = start();
@@ -673,6 +666,7 @@ fun start_with_residuals(
     pool_uid.delete();
     vault::new<MEME, QUOTE, TestVenue, TestPosition>(
         TestVenue(),
+        lp_fee_authority::new_for_testing(),
         pool_id,
         position,
         balance::create_for_testing<MEME>(protocol_meme_residual),
