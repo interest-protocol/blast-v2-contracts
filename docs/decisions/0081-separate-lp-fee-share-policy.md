@@ -91,10 +91,11 @@ round-up split, and claim-authority rules, so moving or duplicating it would
 add a deployment boundary or triplicate an invariant without a security gain.
 
 `accrue_from_runtime` is removed. `fees::accrue(ledger, meme_fee, quote_fee,
-Bps)` becomes public. `Bps` has no public constructor, so an external package
-can only pass a share issued by a Blast policy object. `bps::value` becomes
-public so collection events can record the applied share. Every other `Bps`
-operation remains package-visible.
+Bps)` becomes public. Every `bps` operation is public, so dependent packages
+validate and apply rates with the shared unit instead of re-implementing it. A
+caller-built share cannot redirect fees: only the module that embeds a ledger
+can reach it mutably, and each embedding module reads its share from its
+accepted policy object on every accrual.
 
 ### Collections
 

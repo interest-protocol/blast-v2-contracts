@@ -457,9 +457,8 @@ fi
 
 if [[ ! -f sources/lib/bps.move ]] \
   || ! rg -q '^public struct Bps\(u64\) has copy, drop, store;' sources/lib/bps.move \
-  || [[ "$(rg -c '^public\(package\) fun (new|apply_down|apply_up|complement)\(' sources/lib/bps.move)" != 4 ]] \
-  || [[ "$(rg -c '^public fun ' sources/lib/bps.move)" != 1 ]] \
-  || ! rg -q '^public fun value\(self: Bps\): u64 \{' sources/lib/bps.move \
+  || [[ "$(rg -c '^public fun (new|value|apply_down|apply_up|complement)\(' sources/lib/bps.move)" != 5 ]] \
+  || [[ "$(rg -c '^public(\(package\))? fun ' sources/lib/bps.move)" != 5 ]] \
   || rg -n '^(entry|public entry) fun |\b(UID|key|Balance|Coin|TxContext|transfer::|events::)\b' \
     sources/lib/bps.move \
   || ! rg -Fq 'value <= constants::basis_points_denominator!()' sources/lib/bps.move \
@@ -469,7 +468,7 @@ if [[ ! -f sources/lib/bps.move ]] \
     sources/lib/bps.move \
   || ! rg -Fq 'Bps(constants::basis_points_denominator!() - self.value())' \
     sources/lib/bps.move; then
-  echo 'bps.move must keep only a public opaque type, a public raw value read, and package-visible validation, rounded application, and complement operations.' >&2
+  echo 'bps.move must keep only a public validated opaque type and its five public validation, value, rounded application, and complement operations.' >&2
   failures=$((failures + 1))
 fi
 

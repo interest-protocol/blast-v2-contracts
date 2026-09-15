@@ -5,7 +5,7 @@ use blast_admin::{
     acl::AdminWitness,
     operational_version::{Self, OperationalVersion}
 };
-use blast_fun::{creator_authority::CurveFeeCap, launch::Launch};
+use blast_fun::{bps, creator_authority::CurveFeeCap, launch::Launch};
 use blast_fun_dex::{dex_domain::DEX_DOMAIN, math, package_marker::PACKAGE_MARKER};
 use std::type_name::{Self, TypeName};
 use sui::{
@@ -549,7 +549,7 @@ fun aged_volume<Meme, Quote>(
 
 fun assert_fee_limit(quote: u64, fee: u64, maximum_bps: u64) {
     assert!(
-        maximum_bps <= 10_000 && (fee as u128) * 10_000 <= (quote as u128) * (maximum_bps as u128),
+        maximum_bps <= 10_000 && fee <= bps::new(maximum_bps).apply_down(quote),
         EFeeLimit,
     );
 }
@@ -568,7 +568,7 @@ fun prepare_buy<Meme, Quote>(
     assert!(quote > 0, EZeroAmount);
     assert_fee_limit(quote, fee, maximum_fee);
     let meme = math::amount_out(quote, self.quote.value(), self.meme.value());
-    let burn = meme.mul_div_ceil(self.burn_bps, 10_000);
+    let burn = bps::new(self.burn_bps).apply_up(meme);
     assert!(meme > burn, EZeroAmount);
     assert!(meme - burn >= minimum, EMinimumOutput);
     Trade {
@@ -590,7 +590,7 @@ fun prepare_sell<Meme, Quote>(
     clock: &Clock,
 ): Trade {
     let (volume, timestamp_seconds) = self.aged_volume(deadline, clock);
-    let burn = input.mul_div_ceil(self.burn_bps, 10_000);
+    let burn = bps::new(self.burn_bps).apply_up(input);
     assert!(input > burn, EZeroAmount);
     let meme = input - burn;
     let quote = math::amount_out(meme, self.meme.value(), self.quote.value());

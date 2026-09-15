@@ -9,16 +9,16 @@ use blast_fun::constants;
 
 // === Public Structs ===
 
-// Move does not support package-visible struct declarations. The type must be public so sibling
-// modules can store it; its field, constructor, and arithmetic remain inaccessible outside this package; only
-// the raw value read is public so other packages can record an applied rate.
+// The type and every operation are public so dependent packages share one rate unit. The tuple
+// field stays private and `new` validates the inclusive range, so no caller can hold an
+// out-of-range rate.
 /// A rate in the inclusive range zero through 10,000 basis points.
 public struct Bps(u64) has copy, drop, store;
 
 // === Public Functions ===
 
 /// Validates and wraps one raw basis-points value.
-public(package) fun new(value: u64): Bps {
+public fun new(value: u64): Bps {
     assert!(
         value <= constants::basis_points_denominator!(),
         blast_fun::errors::invalid_bps!(),
@@ -38,7 +38,7 @@ public fun value(self: Bps): u64 {
 ///
 /// The standard method widens the `u64` product to `u128`. Because the rate is
 /// at most 10,000, the result is representable and no larger than `amount`.
-public(package) fun apply_down(self: Bps, amount: u64): u64 {
+public fun apply_down(self: Bps, amount: u64): u64 {
     amount.mul_div(self.value(), constants::basis_points_denominator!())
 }
 
@@ -46,11 +46,11 @@ public(package) fun apply_down(self: Bps, amount: u64): u64 {
 ///
 /// The standard method widens the `u64` product to `u128`. Because the rate is
 /// at most 10,000, the result is representable and no larger than `amount`.
-public(package) fun apply_up(self: Bps, amount: u64): u64 {
+public fun apply_up(self: Bps, amount: u64): u64 {
     amount.mul_div_ceil(self.value(), constants::basis_points_denominator!())
 }
 
 /// Returns the exact remaining rate through 10,000 basis points.
-public(package) fun complement(self: Bps): Bps {
+public fun complement(self: Bps): Bps {
     Bps(constants::basis_points_denominator!() - self.value())
 }

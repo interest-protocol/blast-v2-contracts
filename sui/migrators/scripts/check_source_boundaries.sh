@@ -234,8 +234,7 @@ require_pattern "$MIGRATION_MATH_SOURCE" \
 require_pattern "$MIGRATION_MATH_SOURCE" \
     'const BASIS_POINTS_DENOMINATOR: u64 = 10_000;' \
     'module-local basis-points denominator'
-if ! rg -U -q '#\[error\(code = 0\)\]\nconst EInvalidBps: vector<u8> = b"Basis points must not exceed 10,000\.";' \
-    "$MIGRATION_MATH_SOURCE" \
+if rg -q '\bEInvalidBps\b|assert_valid_bps' "$MIGRATION_MATH_SOURCE" \
     || ! rg -U -q '#\[error\(code = 1\)\]\nconst EInvalidMigrationSeedBalance: vector<u8> = b"Migration seed balances must both be greater than zero\.";' \
     "$MIGRATION_MATH_SOURCE" \
     || ! rg -U -q '#\[error\(code = 2\)\]\nconst EMigrationPriceDeviationExceeded: vector<u8> = b"Observed pool price must remain within the accepted migration seed deviation\.";' \
@@ -248,8 +247,11 @@ require_pattern "$MIGRATION_MATH_SOURCE" \
     'integer_sqrt\(ratio_q128\(meme_amount, quote_amount, meme_is_coin_a\)\)' \
     'exact Q128 price derivation'
 require_pattern "$MIGRATION_MATH_SOURCE" \
-    'assert_valid_bps\(max_deviation_bps\);' \
-    'price-deviation rate validation'
+    'let max_deviation_bps = bps::new\(max_deviation_bps\)\.value\(\);' \
+    'price-deviation rate validation through the shared Bps unit'
+require_pattern "$MIGRATION_MATH_SOURCE" \
+    'bps::new\(max_residual_bps\)\.apply_up\(amount\)' \
+    'ceiling residual allowance through the shared Bps unit'
 require_pattern "$MIGRATION_MATH_SOURCE" \
     'maximum_residual_amount\(source_amount, max_residual_bps\)' \
     'shared residual allowance'

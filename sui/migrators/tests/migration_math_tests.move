@@ -143,9 +143,20 @@ fun residual_above_one_basis_point_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = migration_math::EInvalidBps,
-    location = blast_fun_migrators::migration_math,
+    abort_code = blast_fun::errors::EInvalidBps,
+    location = blast_fun::bps,
 )]
 fun residual_limit_rejects_more_than_one_hundred_percent() {
     migration_math::minimum_utilized_amount(10_000, 10_001);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidBps,
+    location = blast_fun::bps,
+)]
+fun price_deviation_limit_rejects_more_than_one_hundred_percent() {
+    let price = migration_math::sqrt_price_x64(10_000, 10_000, true);
+
+    migration_math::assert_price_within_bps(10_000, 10_000, true, price, 10_001);
 }

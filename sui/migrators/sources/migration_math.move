@@ -1,16 +1,18 @@
 /// Shared concentrated-liquidity price and utilization invariants for migrator venues.
 module blast_fun_migrators::migration_math;
 
+use blast_fun::bps;
+
 // === Constants ===
 
+/// Only the exact u256 price-deviation comparison needs the raw denominator.
 const BASIS_POINTS_DENOMINATOR: u64 = 10_000;
 const Q128_SHIFT: u8 = 128;
 const SQRT_UPPER_BOUND_SHIFT: u8 = 96;
 
 // === Errors ===
 
-#[error(code = 0)]
-const EInvalidBps: vector<u8> = b"Basis points must not exceed 10,000.";
+// Code 0 retired: `blast_fun::bps::new` owns the inclusive basis-points range.
 #[error(code = 1)]
 const EInvalidMigrationSeedBalance: vector<u8> = b"Migration seed balances must both be greater than zero.";
 #[error(code = 2)]
@@ -44,7 +46,7 @@ public(package) fun assert_price_within_bps(
     actual_sqrt_price_x64: u128,
     max_deviation_bps: u64,
 ) {
-    assert_valid_bps(max_deviation_bps);
+    let max_deviation_bps = bps::new(max_deviation_bps).value();
 
     let expected_ratio_q128 = ratio_q128(
         meme_amount,
@@ -124,14 +126,5 @@ fun integer_sqrt(value: u256): u128 {
 }
 
 fun maximum_residual_amount(amount: u64, max_residual_bps: u64): u64 {
-    assert_valid_bps(max_residual_bps);
-
-    let numerator = (amount as u128) * (max_residual_bps as u128);
-    let denominator = BASIS_POINTS_DENOMINATOR as u128;
-
-    ((numerator + denominator - 1) / denominator) as u64
-}
-
-fun assert_valid_bps(value: u64) {
-    assert!(value <= BASIS_POINTS_DENOMINATOR, EInvalidBps);
+    bps::new(max_residual_bps).apply_up(amount)
 }
