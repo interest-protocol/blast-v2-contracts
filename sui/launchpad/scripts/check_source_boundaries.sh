@@ -520,22 +520,34 @@ if rg -n '^public struct (ProtocolAuthority|Authority|SuperAdminCap|AdminCap|Adm
   failures=$((failures + 1))
 fi
 
-launchpad_domain_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' \
-  sources/launchpad_domain.move)"
+launchpad_domain_facts="$(move_facts sources/launchpad_domain.move)"
 
+# The domain exports exactly two distinct role bits: package administration and
+# the creator administration that alone may reassign creator fee authority.
 if [[ ! -f sources/launchpad_domain.move ]] \
-  || ! rg -Fq 'public struct LAUNCHPAD_DOMAIN has drop {}' sources/launchpad_domain.move \
-  || ! rg -Fq 'fun init(otw: LAUNCHPAD_DOMAIN, ctx: &mut TxContext) {' \
-    sources/launchpad_domain.move \
-  || ! rg -Fq 'blast_admin::acl::new(otw, MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, ctx);' \
-    sources/launchpad_domain.move \
+  || [[ "$(move_production_type LAUNCHPAD_DOMAIN <<<"$launchpad_domain_facts")" \
+    != 'struct LAUNCHPAD_DOMAIN() has drop;' ]] \
+  || [[ "$(move_production_functions <<<"$launchpad_domain_facts")" \
+    != 'creator_admin_role:public:0 init:private:0 package_admin_role:public:0 ' ]] \
+  || [[ "$(move_production_signature init <<<"$launchpad_domain_facts")" \
+    != 'fun init(otw: LAUNCHPAD_DOMAIN, ctx: &mut TxContext)' ]] \
+  || [[ "$(move_production_body init <<<"$launchpad_domain_facts")" \
+    != 'blast_admin::acl::new(otw, MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, ctx);' ]] \
+  || [[ "$(move_production_signature package_admin_role <<<"$launchpad_domain_facts")" \
+    != 'fun package_admin_role(): u64' ]] \
+  || [[ "$(move_production_body package_admin_role <<<"$launchpad_domain_facts")" \
+    != 'PACKAGE_ADMIN_ROLE' ]] \
+  || [[ "$(move_production_signature creator_admin_role <<<"$launchpad_domain_facts")" \
+    != 'fun creator_admin_role(): u64' ]] \
+  || [[ "$(move_production_body creator_admin_role <<<"$launchpad_domain_facts")" \
+    != 'CREATOR_ADMIN_ROLE' ]] \
   || ! rg -q '^const MAX_ADMINS: u64 = 16;$' sources/launchpad_domain.move \
   || ! rg -q '^const ROOT_TRANSFER_DELAY_MS: u64 = 7 \* 24 \* 60 \* 60 \* 1_000;$' \
     sources/launchpad_domain.move \
   || ! rg -q '^const PACKAGE_ADMIN_ROLE: u64 = 1;$' sources/launchpad_domain.move \
-  || [[ "$(rg -c '^public fun ' <<<"$launchpad_domain_production")" != 1 ]] \
-  || ! rg -Fq 'public fun package_admin_role(): u64 {' sources/launchpad_domain.move; then
-  echo 'launchpad_domain.move must create exactly one typed domain from module constants and export one role.' >&2
+  || ! rg -q '^const CREATOR_ADMIN_ROLE: u64 = 2;$' sources/launchpad_domain.move \
+  || [[ "$(rg -c '^const ' sources/launchpad_domain.move)" != 4 ]]; then
+  echo 'launchpad_domain.move must create exactly one typed domain from module constants and export exactly the package-admin and creator-admin role bits.' >&2
   failures=$((failures + 1))
 fi
 
@@ -825,6 +837,7 @@ if [[ ! -f sources/fees.move ]] \
   || [[ "$(move_production_type FeeLedger <<<"$fees_facts")" \
     != 'struct FeeLedger<phantom Meme, phantom Quote> has store { protocol_meme: Balance<Meme>, creator_meme: Balance<Meme>, protocol_quote: Balance<Quote>, creator_quote: Balance<Quote>, }' ]] \
   || rg -q '\b(UID|key|transfer::|CreatorClaim|ed25519|recipient|launch_id)\b' <<<"$fees_source" \
+  || rg -q '\b(creator_authority|CreatorCap|CurveFeeCap|BlastMetadataCap|LpFeeCap)\b' <<<"$fees_source" \
   || rg -q 'fee_balance_overflow|std::u64::max_value|max_balance' <<<"$fees_source" \
   || rg -q 'set_creator_fee_split|sui::event|events::' <<<"$fees_source"; then
   echo 'fees.move must remain an embedded supply-conserved four-balance ledger exposing only its five approved cross-package functions and one package seam.' >&2
@@ -846,6 +859,10 @@ fi
 
 # Each authorized transition is bound to its own named body, so a capability, an
 # emptiness test, or a drained balance cannot be swapped between the two owners.
+# Creator authority is revocable per embedding owner (ADR 0082): the ledger's
+# creator drain takes no capability, stays unreachable without `&mut` access to
+# its store-only embedding, and each owner checks the capability or custodian it
+# currently records before draining. The launch side is pinned further below.
 fee_ledger_violations=''
 
 check_fee_function() {
@@ -882,7 +899,7 @@ check_fee_function has_protocol_fees \
   'self.protocol_meme.value() > 0 || self.protocol_quote.value() > 0'
 
 check_fee_function claim_creator_fees \
-  'fun claim_creator_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, _: &CreatorCap<Meme>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
+  'fun claim_creator_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
   'creator_meme.value creator_meme.withdraw_all creator_quote.value creator_quote.withdraw_all ' \
   'assert!( self.creator_meme.value() > 0 || self.creator_quote.value() > 0, blast_fun::errors::nothing_accrued!(), ); ( self.creator_meme.withdraw_all().into_coin(ctx), self.creator_quote.withdraw_all().into_coin(ctx), )'
 
@@ -916,7 +933,7 @@ fi
 
 if [[ -n "$fee_ledger_violations" ]]; then
   printf '%s' "$fee_ledger_violations"
-  echo 'Fee state stays capability-gated per owner, splits on a sealed policy-issued protocol share, and releases balances only through the two authorized full drains.' >&2
+  echo 'Fee state releases creator balances only under its embedding owner authorization and protocol balances only under AdminWitness, splits on a sealed policy-issued protocol share, and drains only through the two full drains.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1289,21 +1306,25 @@ if [[ -e sources/graduation.move ]] \
   failures=$((failures + 1))
 fi
 
+# The native MetadataCap is held inline for the launch lifetime; the pending claim
+# is the only optional linear resource; live creator authority is recorded per
+# concern as IDs, never as stored capabilities (ADR 0082).
 if [[ ! -f sources/launch.move ]] \
-  || ! rg -U -q \
-    'public struct Launch<phantom Meme, phantom Quote> has key \{\s*id: UID,\s*lifecycle: Lifecycle,\s*sell_burn_bps: Bps,\s*virtual_quote: u64,\s*migration_quote_target: u64,\s*quote_fee_bps: Bps,\s*meme_fee_bps: Bps,\s*protocol_quote_migration_fee_bps: Bps,\s*migration_witness: TypeName,\s*meme_reserve: Balance<Meme>,\s*real_quote_reserve: Balance<Quote>,\s*pending_burn: Balance<Meme>,\s*protocol_meme_graduation_fee: Balance<Meme>,\s*meme_liquidity_provision: Balance<Meme>,\s*fee_ledger: FeeLedger<Meme, Quote>,\s*metadata_cap: Option<MetadataCap<Meme>>,\s*creator_authority: Option<CreatorAuthority<Meme>>,\s*\}' \
-    sources/launch.move \
-  || [[ "$(rg -c '^public fun ' <<<"$launch_production")" != 10 ]] \
-  || [[ "$(rg -c '^public fun (new|share|claim_creator_cap|buy|sell|claim_creator_fees|claim_protocol_fees|migrate|assert_migrated|redeem_migration)(<|\()' <<<"$launch_production")" != 10 ]] \
+  || [[ "$(move_production_type Launch <<<"$launch_facts")" \
+    != 'struct Launch<phantom Meme, phantom Quote> has key { id: UID, lifecycle: Lifecycle, sell_burn_bps: Bps, virtual_quote: u64, migration_quote_target: u64, quote_fee_bps: Bps, meme_fee_bps: Bps, protocol_quote_migration_fee_bps: Bps, migration_witness: TypeName, meme_reserve: Balance<Meme>, real_quote_reserve: Balance<Quote>, pending_burn: Balance<Meme>, protocol_meme_graduation_fee: Balance<Meme>, meme_liquidity_provision: Balance<Meme>, fee_ledger: FeeLedger<Meme, Quote>, metadata_cap: MetadataCap<Meme>, creator_authority: Option<CreatorAuthority<Meme>>, curve_fee_authority: CurveFeeAuthority, blast_metadata_cap_id: Option<ID>, }' ]] \
+  || [[ "$(move_production_type CurveFeeAuthority <<<"$launch_facts")" \
+    != 'enum CurveFeeAuthority has copy, drop, store { Unassigned, Cap(ID), Custodian(ID), }' ]] \
+  || [[ "$(move_production_functions <<<"$launch_facts")" \
+    != 'accrue_and_emit_bought:private:0 accrue_and_emit_sold:private:0 accrue_graduation_fees:private:0 accrue_trade_fees:private:0 assert_blast_metadata_cap:private:0 assert_curve_fee_cap:public:0 assert_live:private:0 assert_migrated:public:0 buy:public:0 claim_creator_caps:public:0 claim_creator_fees:public:0 claim_custodied_creator_fees:public:0 claim_protocol_fees:public:0 curve_k:private:0 dispose_meme:private:0 drain_creator_fees:private:0 emit_metadata_updated:private:0 is_custodian:private:0 lock_creator_fees:public:0 migrate:public:0 new:public:0 partition_meme:private:0 partition_quote:private:0 reassign_curve_fee_cap:public:0 reassign_metadata_cap:public:0 redeem_migration:public:0 revoke_pending_claim:private:0 sell:public:0 set_description:public:0 set_icon_url:public:0 set_name:public:0 share:public:0 ' ]] \
+  || [[ "$(rg -c '^public fun ' <<<"$launch_production")" != 18 ]] \
   || ! rg -U -q \
     'public fun new<Meme, Quote, MigrationWitness: drop>\(\s*ticket: LaunchTicket<Meme>,\s*package_version: &PackageVersion,\s*config: &LaunchConfig,\s*ctx: &mut TxContext,\s*\): Launch<Meme, Quote>' \
     sources/launch.move \
   || ! rg -U -q \
     'public fun share<Meme, Quote>\(self: Launch<Meme, Quote>\)' \
     sources/launch.move \
-  || ! rg -U -q \
-    'public fun claim_creator_cap<Meme, Quote>\(\s*self: &mut Launch<Meme, Quote>,\s*package_version: &PackageVersion,\s*config: &RuntimeConfig,\s*account_attestation: Option<vector<u8>>,\s*clock: &Clock,\s*ctx: &mut TxContext,\s*\): \(CreatorCap<Meme>, MetadataCap<Meme>\)' \
-    sources/launch.move \
+  || [[ "$(move_production_signature claim_creator_caps <<<"$launch_facts")" \
+    != 'fun claim_creator_caps<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, config: &RuntimeConfig, account_attestation: Option<vector<u8>>, clock: &Clock, ctx: &mut TxContext, ): (CurveFeeCap<Meme>, BlastMetadataCap<Meme>)' ]] \
   || ! rg -U -q \
     'public fun migrate<Meme, Quote, MigrationWitness: drop>\(\s*self: &mut Launch<Meme, Quote>,\s*package_version: &PackageVersion,\s*currency: &mut Currency<Meme>,\s*ctx: &mut TxContext,\s*\): MigrationPayload<Meme, Quote, MigrationWitness>' \
     sources/launch.move \
@@ -1315,8 +1336,12 @@ if [[ ! -f sources/launch.move ]] \
     sources/launch.move \
   || rg -n '\b(creation_fee|max_burn_bps|route|venue|Display|valuation|expected_release)\b' \
     <<<"$launch_production" \
-  || [[ "$(rg -o '\btransfer::' <<<"$launch_production" | wc -l)" != 2 ]]; then
-  echo 'launch.move must own versioned key-only custody, trading, claims, and the witness-bound terminal handoff.' >&2
+  || [[ "$(rg -o '\btransfer::' <<<"$launch_production" | wc -l)" != 4 ]] \
+  || [[ "$(count_occurrences 'transfer::share_object\(self\);' <<<"$launch_production")" != 1 ]] \
+  || [[ "$(count_occurrences 'transfer::public_transfer\(disposal\.into_coin\(ctx\), @0x0\);' <<<"$launch_production")" != 1 ]] \
+  || [[ "$(count_occurrences 'transfer::public_transfer\(curve_fee_cap, recipient\);' <<<"$launch_production")" != 1 ]] \
+  || [[ "$(count_occurrences 'transfer::public_transfer\(blast_metadata_cap, recipient\);' <<<"$launch_production")" != 1 ]]; then
+  echo 'launch.move must own versioned key-only custody, trading, claims, per-concern revocable creator authority, and the witness-bound terminal handoff.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1328,14 +1353,151 @@ if ! rg -Fq 'config.snapshot_for_launch<Quote, MigrationWitness>()' sources/laun
   || ! rg -Fq 'fee_ledger: fees::new(),' sources/launch.move \
   || ! rg -Fq 'real_quote_reserve: balance::zero(),' sources/launch.move \
   || ! rg -Fq 'pending_burn: balance::zero(),' sources/launch.move \
-  || ! rg -Fq 'self.creator_authority.extract()' sources/launch.move \
-  || ! rg -Fq 'self.metadata_cap.extract()' sources/launch.move \
+  || ! rg -Fq 'metadata_cap, creator_authority: option::some(creator_authority), curve_fee_authority: CurveFeeAuthority::Unassigned, blast_metadata_cap_id: option::none(), };' \
+    <<<"$(move_production_body new <<<"$launch_facts")" \
+  || [[ "$(count_occurrences 'self\.creator_authority\.extract\(\)' <<<"$(move_normalized_source <<<"$launch_facts")")" != 2 ]] \
+  || [[ "$(count_occurrences 'self\.metadata_cap\b' <<<"$(move_normalized_source <<<"$launch_facts")")" \
+    != "$(count_occurrences '&self\.metadata_cap\b' <<<"$(move_normalized_source <<<"$launch_facts")")" ]] \
+  || rg -q '\bmetadata_cap\.(extract|swap|fill)\(|option::(some|none)\(metadata_cap\)|\bMetadataCap<Meme>\)' \
+    <<<"$(move_normalized_source <<<"$launch_facts")" \
   || rg -n '\bbps::new\(' sources/launch.move \
   || ! rg -Fq 'let burnable = currency.is_supply_burn_only();' sources/launch.move \
   || rg -n 'is_supply_fixed|supply_mode_mismatch' <<<"$launch_production" \
   || rg -n 'self\.burnable|^[[:space:]]+burnable: bool,' <<<"$launch_production" \
   || rg -n 'max_launch_fee_bps|invalid_(quote|meme)_fee_bps' sources/launch.move; then
-  echo 'Launch construction must snapshot configured fees, consume reviewed seams, initialize zero balances, and remove both claim resources.' >&2
+  echo 'Launch construction must snapshot configured fees, consume reviewed seams, initialize zero balances, retain the native MetadataCap by reference only, and start with only the pending creator claim and no live creator capability.' >&2
+  failures=$((failures + 1))
+fi
+
+# Every creator-authority transition on a launch is bound to its own named body,
+# so the recorded-cap checks, the locked-fees precedence over the creator-admin
+# role, the per-concern ID record, and the recipient transfer cannot be dropped,
+# reordered, or swapped between the fee and metadata concerns (ADR 0082).
+launch_authority_violations=''
+
+check_launch_function() {
+  local name="$1" expected_signature="$2" expected_body="$3"
+  local signature body
+
+  signature="$(move_production_signature "$name" <<<"$launch_facts")"
+  body="$(move_production_body "$name" <<<"$launch_facts")"
+
+  if [[ -z "$signature" || -z "$body" ]]; then
+    launch_authority_violations+="  ${name} has no single production declaration"$'\n'
+    return
+  fi
+  if [[ "$signature" != "$expected_signature" ]]; then
+    launch_authority_violations+="  ${name} does not keep its approved authorization and result signature"$'\n'
+  fi
+  if [[ "$body" != "$expected_body" ]]; then
+    launch_authority_violations+="  ${name} body is not the approved transition"$'\n'
+  fi
+}
+
+# Sorted names of production launch functions whose body contains one fixed string.
+launch_functions_containing() {
+  awk -F'\t' -v needle="$1" '
+    $1 == "FN" && $6 == 0 && index($10, needle) > 0 { print $2 }
+  ' <<<"$launch_facts" | sort | tr '\n' ' '
+}
+
+check_launch_function claim_creator_caps \
+  'fun claim_creator_caps<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, config: &RuntimeConfig, account_attestation: Option<vector<u8>>, clock: &Clock, ctx: &mut TxContext, ): (CurveFeeCap<Meme>, BlastMetadataCap<Meme>)' \
+  'package_version.assert_current(); assert!( self.creator_authority.is_some(), blast_fun::errors::creator_authority_unavailable!(), ); let (curve_fee_cap, blast_metadata_cap) = self.creator_authority.extract().claim_creator_caps( config, account_attestation, clock, ctx, ); self.curve_fee_authority = CurveFeeAuthority::Cap(object::id(&curve_fee_cap)); self.blast_metadata_cap_id = option::some(object::id(&blast_metadata_cap)); (curve_fee_cap, blast_metadata_cap)'
+
+check_launch_function reassign_curve_fee_cap \
+  'fun reassign_curve_fee_cap<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>, recipient: address, ctx: &mut TxContext, )' \
+  'package_version.assert_current(); assert!( !self.curve_fee_authority.is_custodian(), blast_fun::errors::creator_fees_locked!(), ); admin_witness.assert_role(launchpad_domain::creator_admin_role()); assert!(recipient != @0x0, blast_fun::errors::invalid_creator_recipient!()); let revoked_curve_fee_cap_id = match (self.curve_fee_authority) { CurveFeeAuthority::Cap(curve_fee_cap_id) => option::some(curve_fee_cap_id), _ => option::none(), }; self.revoke_pending_claim(); let curve_fee_cap = creator_authority::new_curve_fee_cap<Meme>(ctx); let curve_fee_cap_id = object::id(&curve_fee_cap); self.curve_fee_authority = CurveFeeAuthority::Cap(curve_fee_cap_id); transfer::public_transfer(curve_fee_cap, recipient); events::curve_fee_cap_reassigned( self.id.to_inner(), revoked_curve_fee_cap_id, curve_fee_cap_id, recipient, );'
+
+check_launch_function reassign_metadata_cap \
+  'fun reassign_metadata_cap<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>, recipient: address, ctx: &mut TxContext, )' \
+  'package_version.assert_current(); admin_witness.assert_role(launchpad_domain::creator_admin_role()); assert!(recipient != @0x0, blast_fun::errors::invalid_creator_recipient!()); let revoked_metadata_cap_id = self.blast_metadata_cap_id; self.revoke_pending_claim(); let blast_metadata_cap = creator_authority::new_metadata_cap<Meme>(ctx); let metadata_cap_id = object::id(&blast_metadata_cap); self.blast_metadata_cap_id = option::some(metadata_cap_id); transfer::public_transfer(blast_metadata_cap, recipient); events::metadata_cap_reassigned( self.id.to_inner(), revoked_metadata_cap_id, metadata_cap_id, recipient, );'
+
+check_launch_function lock_creator_fees \
+  'fun lock_creator_fees<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, curve_fee_cap: CurveFeeCap<Meme>, custodian: &UID, )' \
+  'package_version.assert_current(); self.assert_curve_fee_cap(&curve_fee_cap); let curve_fee_cap_id = object::id(&curve_fee_cap); let custodian_id = custodian.to_inner(); curve_fee_cap.destroy_curve_fee_cap(); self.curve_fee_authority = CurveFeeAuthority::Custodian(custodian_id); events::creator_fees_locked(self.id.to_inner(), curve_fee_cap_id, custodian_id);'
+
+check_launch_function claim_custodied_creator_fees \
+  'fun claim_custodied_creator_fees<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, custodian: &UID, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
+  'package_version.assert_current(); assert!( self.curve_fee_authority == CurveFeeAuthority::Custodian(custodian.to_inner()), blast_fun::errors::creator_custodian_mismatch!(), ); self.drain_creator_fees(ctx)'
+
+check_launch_function claim_creator_fees \
+  'fun claim_creator_fees<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, curve_fee_cap: &CurveFeeCap<Meme>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
+  'package_version.assert_current(); self.assert_curve_fee_cap(curve_fee_cap); self.drain_creator_fees(ctx)'
+
+check_launch_function assert_curve_fee_cap \
+  'fun assert_curve_fee_cap<Meme, Quote>( self: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, )' \
+  'assert!( self.curve_fee_authority == CurveFeeAuthority::Cap(object::id(curve_fee_cap)), blast_fun::errors::curve_fee_cap_not_live!(), );'
+
+check_launch_function assert_blast_metadata_cap \
+  'fun assert_blast_metadata_cap<Meme, Quote>( self: &Launch<Meme, Quote>, blast_metadata_cap: &BlastMetadataCap<Meme>, )' \
+  'assert!( self.blast_metadata_cap_id.contains(&object::id(blast_metadata_cap)), blast_fun::errors::metadata_cap_not_live!(), );'
+
+check_launch_function is_custodian \
+  'fun is_custodian(self: &CurveFeeAuthority): bool' \
+  'match (self) { CurveFeeAuthority::Custodian(_) => true, _ => false, }'
+
+check_launch_function revoke_pending_claim \
+  'fun revoke_pending_claim<Meme, Quote>(self: &mut Launch<Meme, Quote>)' \
+  'if (self.creator_authority.is_some()) { self.creator_authority.extract().revoke(); };'
+
+check_launch_function drain_creator_fees \
+  'fun drain_creator_fees<Meme, Quote>( self: &mut Launch<Meme, Quote>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
+  'let (meme, quote) = self.fee_ledger.claim_creator_fees(ctx); events::creator_fees_claimed( self.id.to_inner(), meme.value(), quote.value(), ); (meme, quote)'
+
+check_launch_function set_name \
+  'fun set_name<Meme, Quote>( self: &Launch<Meme, Quote>, package_version: &PackageVersion, blast_metadata_cap: &BlastMetadataCap<Meme>, currency: &mut Currency<Meme>, name: String, )' \
+  'package_version.assert_current(); self.assert_blast_metadata_cap(blast_metadata_cap); assert!(currency.name() != name, blast_fun::errors::metadata_unchanged!()); currency.set_name(&self.metadata_cap, name); self.emit_metadata_updated(currency);'
+
+check_launch_function set_description \
+  'fun set_description<Meme, Quote>( self: &Launch<Meme, Quote>, package_version: &PackageVersion, blast_metadata_cap: &BlastMetadataCap<Meme>, currency: &mut Currency<Meme>, description: String, )' \
+  'package_version.assert_current(); self.assert_blast_metadata_cap(blast_metadata_cap); assert!( currency.description() != description, blast_fun::errors::metadata_unchanged!(), ); currency.set_description(&self.metadata_cap, description); self.emit_metadata_updated(currency);'
+
+check_launch_function set_icon_url \
+  'fun set_icon_url<Meme, Quote>( self: &Launch<Meme, Quote>, package_version: &PackageVersion, blast_metadata_cap: &BlastMetadataCap<Meme>, currency: &mut Currency<Meme>, icon_url: String, )' \
+  'package_version.assert_current(); self.assert_blast_metadata_cap(blast_metadata_cap); assert!(currency.icon_url() != icon_url, blast_fun::errors::metadata_unchanged!()); currency.set_icon_url(&self.metadata_cap, icon_url); self.emit_metadata_updated(currency);'
+
+check_launch_function emit_metadata_updated \
+  'fun emit_metadata_updated<Meme, Quote>( self: &Launch<Meme, Quote>, currency: &Currency<Meme>, )' \
+  'events::meme_metadata_updated( self.id.to_inner(), currency.name(), currency.description(), currency.icon_url(), );'
+
+# The same bodies are also the complete writer and reader sets, so a new sibling
+# or helper cannot record authority, drain the creator ledger, revoke the pending
+# claim, or reach the native MetadataCap outside the approved paths.
+for authority_spec in \
+  'self.curve_fee_authority = |claim_creator_caps lock_creator_fees reassign_curve_fee_cap ' \
+  'self.blast_metadata_cap_id = |claim_creator_caps reassign_metadata_cap ' \
+  'self.creator_authority.extract()|claim_creator_caps revoke_pending_claim ' \
+  'self.revoke_pending_claim()|reassign_curve_fee_cap reassign_metadata_cap ' \
+  'self.fee_ledger.claim_creator_fees(|drain_creator_fees ' \
+  'self.drain_creator_fees(|claim_creator_fees claim_custodied_creator_fees ' \
+  'self.assert_curve_fee_cap(|claim_creator_fees lock_creator_fees ' \
+  'self.assert_blast_metadata_cap(|set_description set_icon_url set_name ' \
+  '&self.metadata_cap|set_description set_icon_url set_name ' \
+  'transfer::public_transfer(|dispose_meme reassign_curve_fee_cap reassign_metadata_cap '; do
+  authority_needle="${authority_spec%%|*}"
+  authority_expected="${authority_spec#*|}"
+  authority_actual="$(launch_functions_containing "$authority_needle")"
+
+  if [[ "$authority_actual" != "$authority_expected" ]]; then
+    launch_authority_violations+="  '${authority_needle}' is used by '${authority_actual}' instead of '${authority_expected}'"$'\n'
+  fi
+done
+
+# The package-only cap constructors and claim revocation are reached only from the
+# owning module and the launch that records the resulting authority.
+if [[ "$(rg -l '\bnew_curve_fee_cap\b' sources | sort | tr '\n' ' ')" \
+    != 'sources/creator_authority.move sources/launch.move ' ]] \
+  || [[ "$(rg -l '\bnew_metadata_cap\b' sources | sort | tr '\n' ' ')" \
+    != 'sources/creator_authority.move sources/launch.move ' ]] \
+  || [[ "$(rg -o '\.revoke\(\)' sources | wc -l | tr -d ' ')" != 1 ]] \
+  || [[ "$(rg -l '\.claim_creator_fees\(ctx\)' sources | tr '\n' ' ')" != 'sources/launch.move ' ]]; then
+  launch_authority_violations+='  package-only creator capability constructors, claim revocation, or the ledger creator drain are reachable outside creator_authority.move and launch.move'$'\n'
+fi
+
+if [[ -n "$launch_authority_violations" ]]; then
+  printf '%s' "$launch_authority_violations"
+  echo 'Launch creator authority must stay split per concern: only the recorded CurveFeeCap or bound custodian drains creator fees, only the recorded BlastMetadataCap edits metadata through the retained MetadataCap, and only a version-gated creator admin reassigns, rejecting locked fees first.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1373,7 +1535,9 @@ fi
 # `package_admin` keeps four `assert_current` guards across authorize, both
 # restrictions, and immutability; commit-and-advance instead proves the exact
 # next generation, so it contributes the fifth PackageVersion parameter only.
-for gate_spec in 'launch_config:6:6' 'runtime_config:3:3' 'lp_fee_policy:3:3' 'package_admin:4:5' 'launch:7:7'; do
+# `launch` gates construction, eleven Launch mutations, and the three metadata
+# edits; `creator_authority` gates role-checked LP-fee capability issuance.
+for gate_spec in 'launch_config:6:6' 'runtime_config:3:3' 'lp_fee_policy:3:3' 'package_admin:4:5' 'launch:14:14' 'creator_authority:1:1'; do
   IFS=: read -r gate_module expected_guards expected_parameters <<<"$gate_spec"
   actual_guards="$(rg -c '^[[:space:]]+package_version\.assert_current\(\);' "sources/${gate_module}.move" || true)"
   actual_parameters="$(rg -c '^[[:space:]]+package_version: &(mut )?PackageVersion,' "sources/${gate_module}.move" || true)"
@@ -1385,8 +1549,29 @@ for gate_spec in 'launch_config:6:6' 'runtime_config:3:3' 'lp_fee_policy:3:3' 'p
   fi
 done
 
-if [[ "$(rg -c '^[[:space:]]+package_version\.assert_current\(\);' sources/launch.move)" != 7 ]]; then
-  echo 'Launch construction and every Launch mutation must check the one PackageVersion before other work.' >&2
+# Bound per named production function rather than by an aggregate count: the
+# versioned set is exact, each member checks the version as its first statement,
+# and no public function reaching `&mut Launch` or `&mut Currency` escapes it.
+launch_versioned_functions="$(awk -F'\t' '
+  $1 == "FN" && $6 == 0 && $9 ~ /[(,] package_version: &PackageVersion,/ { print $2 }
+' <<<"$launch_facts" | sort | tr '\n' ' ')"
+
+launch_version_violations="$(awk -F'\t' '
+  $1 == "FN" && $6 == 0 && $9 ~ /[(,] package_version: &PackageVersion,/ \
+    && $10 !~ /^package_version\.assert_current\(\);/ {
+    print "  " $2 " must check the live package version as its first statement"
+  }
+  $1 == "FN" && $6 == 0 && $3 == "public" \
+    && $9 ~ /: &mut (Launch|Currency)</ && $9 !~ /[(,] package_version: &PackageVersion,/ {
+    print "  " $2 " reaches mutable launch or currency state without PackageVersion"
+  }
+' <<<"$launch_facts")"
+
+if [[ "$launch_versioned_functions" \
+    != 'buy claim_creator_caps claim_creator_fees claim_custodied_creator_fees claim_protocol_fees lock_creator_fees migrate new reassign_curve_fee_cap reassign_metadata_cap sell set_description set_icon_url set_name ' ]] \
+  || [[ -n "$launch_version_violations" ]]; then
+  [[ -n "$launch_version_violations" ]] && printf '%s\n' "$launch_version_violations"
+  echo 'Launch construction, every public Launch mutation, and every launch-held metadata edit must check the one PackageVersion as its first statement.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1398,7 +1583,7 @@ receiver_syntax_violations="$(
       | move_normalized_source \
       | sed 's/ *:: */::/g; s/ *(/(/g' \
       | rg -o \
-        '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_creator_claim_signer|revoke_creator_claim_signer|set_protocol_fee_share|assert_creator_claim_active|assert_creator_claim_signature|protocol_fee_share|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_trade_fees|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|launch::(share|migrate|redeem_migration)|creator_authority::(into_authority|recipient_address|account_commitment|claim_creator_cap)|launch_ticket::destroy|lp_fee_policy::(set_protocol_fee_share|set_project_protocol_fee_share|clear_project_protocol_fee_share|protocol_fee_share)|fees::(accrue|accrue_protocol_fees|has_protocol_fees|claim_creator_fees|claim_protocol_fees)|package::test_upgrade|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
+        '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_creator_claim_signer|revoke_creator_claim_signer|set_protocol_fee_share|assert_creator_claim_active|assert_creator_claim_signature|protocol_fee_share|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_trade_fees|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|launch::(share|migrate|redeem_migration|claim_creator_caps|reassign_curve_fee_cap|reassign_metadata_cap|lock_creator_fees|claim_custodied_creator_fees|assert_curve_fee_cap|set_name|set_description|set_icon_url)|creator_authority::(into_authority|recipient_address|account_commitment|claim_creator_caps|revoke|destroy_curve_fee_cap|destroy_metadata_cap|destroy_lp_fee_cap)|launch_ticket::destroy|lp_fee_policy::(set_protocol_fee_share|set_project_protocol_fee_share|clear_project_protocol_fee_share|protocol_fee_share)|fees::(accrue|accrue_protocol_fees|has_protocol_fees|claim_creator_fees|claim_protocol_fees)|package::test_upgrade|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
       || true; } | sed "s|^|  ${move_file}: |"
   done
 )"
@@ -1421,7 +1606,7 @@ if rg -n '\bsui::tx_context::TxContext\b' sources tests; then
 fi
 
 if rg -n \
-  'RuntimeConfig|ed25519|creator_claim_signer|verify_creator_claim|CreatorCap|issue_creator_cap' \
+  'RuntimeConfig|ed25519|creator_claim_signer|verify_creator_claim|CreatorCap|CurveFeeCap|BlastMetadataCap|LpFeeCap|issue_creator_cap' \
   sources/launchpad_domain.move; then
   echo 'launchpad_domain.move must own only the domain marker, its constants, and its role.' >&2
   failures=$((failures + 1))
@@ -1447,9 +1632,37 @@ if rg -n '^public struct (AdminGranted|AdminRevoked|AdminDestroyed|SuperAdminTra
   failures=$((failures + 1))
 fi
 
-if ! rg -q '^public struct CreatorCap<phantom Meme> has key, store' \
-  sources/creator_authority.move; then
-  echo 'creator_authority.move must own CreatorCap<Meme> construction.' >&2
+creator_authority_facts="$(move_facts sources/creator_authority.move)"
+
+# Each creator capability is an identity-only object whose one production
+# constructor and one destructor live in this module (ADR 0082).
+creator_capability_violations=''
+for capability_spec in \
+  'CurveFeeCap|new_curve_fee_cap|destroy_curve_fee_cap' \
+  'BlastMetadataCap|new_metadata_cap|destroy_metadata_cap' \
+  'LpFeeCap|new_lp_fee_cap|destroy_lp_fee_cap'; do
+  IFS='|' read -r capability_type capability_constructor capability_destructor <<<"$capability_spec"
+
+  if [[ "$(move_production_type "$capability_type" <<<"$creator_authority_facts")" \
+      != "struct ${capability_type}<phantom Meme> has key, store { id: UID, }" ]]; then
+    creator_capability_violations+="  ${capability_type} is not an identity-only key, store capability"$'\n'
+  fi
+  if [[ "$(awk -F'\t' -v needle="${capability_type} { id: object::new(ctx) }" '
+      $1 == "FN" && $6 == 0 && index($10, needle) > 0 { print $2 }
+    ' <<<"$creator_authority_facts" | tr '\n' ' ')" != "${capability_constructor} " ]]; then
+    creator_capability_violations+="  ${capability_type} is not constructed only by ${capability_constructor}"$'\n'
+  fi
+  if [[ "$(move_production_signature "$capability_destructor" <<<"$creator_authority_facts")" \
+      != "fun ${capability_destructor}<Meme>(self: ${capability_type}<Meme>)" ]] \
+    || [[ "$(move_production_body "$capability_destructor" <<<"$creator_authority_facts")" \
+      != "let ${capability_type} { id } = self; id.delete();" ]]; then
+    creator_capability_violations+="  ${capability_destructor} is not the approved holder self-destruction"$'\n'
+  fi
+done
+
+if [[ -n "$creator_capability_violations" ]]; then
+  printf '%s' "$creator_capability_violations"
+  echo 'creator_authority.move must own CurveFeeCap<Meme>, BlastMetadataCap<Meme>, and LpFeeCap<Meme> construction and holder destruction.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1476,17 +1689,29 @@ fi
 
 creator_authority_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/creator_authority.move)"
 
-if rg -n '\bcreator_cap_claimed:[[:space:]]*bool|\bissue_creator_cap\b|\btransfer::' \
+if rg -n '\b[a-z_]*claimed:[[:space:]]*bool|\bissue_creator_cap\b|\btransfer::' \
   <<<"$creator_authority_production" \
-  || ! rg -U -q \
-    '(?s)public\(package\) fun claim_creator_cap<Meme>\(\s*self: CreatorAuthority<Meme>,.*\): CreatorCap<Meme> \{' \
-    sources/creator_authority.move \
-  || ! rg -U -q \
-    'public struct CreatorCap<phantom Meme> has key, store \{\s*id: UID,\s*\}' \
-    sources/creator_authority.move \
-  || rg -n '\bMetadataCap\b|\bmetadata_cap\b' \
-    sources/creator_authority.move; then
-  echo 'Creator-authority claims must consume CreatorAuthority and return only CreatorCap without unrelated capability pass-through, a flag, wrapper, or transfer.' >&2
+  || rg -q '\bMetadataCap\b|\bcoin_registry\b' <<<"$(move_normalized_source <<<"$creator_authority_facts")" \
+  || [[ "$(move_production_functions <<<"$creator_authority_facts")" \
+    != 'account_commitment:package:0 authorize_claim:private:0 claim_creator_caps:package:0 creator_claim_message_bytes:private:0 destroy_curve_fee_cap:public:0 destroy_lp_fee_cap:public:0 destroy_metadata_cap:public:0 into_authority:package:0 new_account:public:0 new_address:public:0 new_curve_fee_cap:package:0 new_lp_fee_cap:public:0 new_metadata_cap:package:0 parse_creator_claim_attestation:private:0 recipient_address:package:0 revoke:package:0 ' ]] \
+  || [[ "$(move_production_signature claim_creator_caps <<<"$creator_authority_facts")" \
+    != 'fun claim_creator_caps<Meme>( self: CreatorAuthority<Meme>, config: &RuntimeConfig, account_attestation: Option<vector<u8>>, clock: &Clock, ctx: &mut TxContext, ): (CurveFeeCap<Meme>, BlastMetadataCap<Meme>)' ]] \
+  || [[ "$(move_production_body claim_creator_caps <<<"$creator_authority_facts")" \
+    != 'let claimant = ctx.sender(); self.recipient.authorize_claim<Meme>( config, account_attestation, claimant, clock, ); let CreatorAuthority { .. } = self; let curve_fee_cap = new_curve_fee_cap<Meme>(ctx); let metadata_cap = new_metadata_cap<Meme>(ctx); events::creator_caps_claimed<Meme>(object::id(&curve_fee_cap), object::id(&metadata_cap)); (curve_fee_cap, metadata_cap)' ]] \
+  || [[ "$(move_production_signature new_curve_fee_cap <<<"$creator_authority_facts")" \
+    != 'fun new_curve_fee_cap<Meme>(ctx: &mut TxContext): CurveFeeCap<Meme>' ]] \
+  || [[ "$(move_production_signature new_metadata_cap <<<"$creator_authority_facts")" \
+    != 'fun new_metadata_cap<Meme>(ctx: &mut TxContext): BlastMetadataCap<Meme>' ]] \
+  || [[ "$(move_production_signature revoke <<<"$creator_authority_facts")" \
+    != 'fun revoke<Meme>(self: CreatorAuthority<Meme>)' ]] \
+  || [[ "$(move_production_body revoke <<<"$creator_authority_facts")" \
+    != 'let CreatorAuthority { .. } = self;' ]] \
+  || [[ "$(move_production_signature new_lp_fee_cap <<<"$creator_authority_facts")" \
+    != 'fun new_lp_fee_cap<Meme>( package_version: &PackageVersion, admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>, ctx: &mut TxContext, ): LpFeeCap<Meme>' ]] \
+  || [[ "$(move_production_body new_lp_fee_cap <<<"$creator_authority_facts")" \
+    != 'package_version.assert_current(); admin_witness.assert_role(launchpad_domain::creator_admin_role()); LpFeeCap { id: object::new(ctx) }' ]] \
+  || [[ "$(count_occurrences 'let CreatorAuthority \{' <<<"$(move_normalized_source <<<"$creator_authority_facts")")" != 2 ]]; then
+  echo 'Creator-authority claims must consume CreatorAuthority and return exactly one CurveFeeCap and one BlastMetadataCap, revocation must only consume the claim, and LP-fee issuance must be version- then creator-admin-gated, without native MetadataCap pass-through, a flag, wrapper, or transfer.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1501,9 +1726,10 @@ if rg -l '^public struct RuntimeConfig has key' sources \
   failures=$((failures + 1))
 fi
 
-if rg -l '^public struct CreatorCap<phantom Meme> has key, store' sources \
-  | rg -v '^sources/creator_authority\.move$'; then
-  echo 'CreatorCap<Meme> is declared outside its owning module.' >&2
+if rg -l '^public struct (CurveFeeCap|BlastMetadataCap|LpFeeCap)\b' sources \
+  | rg -v '^sources/creator_authority\.move$' \
+  || rg -n '\bCreatorCap\b|\bclaim_creator_cap\b|\bcreator_cap_claimed\b|\bCreatorCapClaimed\b' sources; then
+  echo 'Creator capabilities are declared outside their owning module, or the irrevocable possession-only CreatorCap was reintroduced.' >&2
   failures=$((failures + 1))
 fi
 

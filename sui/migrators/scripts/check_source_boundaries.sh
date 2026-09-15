@@ -52,6 +52,33 @@ move_function_section() {
     ' "$source"
 }
 
+production_section() {
+    sed '/^\/\/ === Test-Only Functions ===/,$d' "$1"
+}
+
+# Pins one whole function, from declaration through its closing brace, in order.
+require_function_body() {
+    local source="$1"
+    local name="$2"
+    local expected="$3"
+    local description="$4"
+    local compact
+
+    compact="$(move_function_section "$source" "$name" | tr -d '[:space:]')"
+    [[ -n "$compact" && "$compact" == "$expected"* ]] || fail "$description"
+}
+
+require_exact_count() {
+    local pattern="$1"
+    local required_count="$2"
+    local description="$3"
+    shift 3
+    local count
+
+    count="$(cat "$@" | rg -o -F "$pattern" | wc -l || true)"
+    [[ "$count" -eq "$required_count" ]] || fail "$description"
+}
+
 cetus_section() {
     local name="$1"
 
@@ -303,6 +330,28 @@ require_pattern "$EVENTS_SOURCE" 'sui::event::emit\(AftermathMigrationCompleted'
     'direct strongly typed Aftermath migration event emission'
 require_pattern "$EVENTS_SOURCE" 'sui::event::emit\(AftermathDaoFeeUpdated' \
     'direct strongly typed Aftermath DAO fee event emission'
+# LP-fee authority transitions replay from their own events (ADR 0082).
+require_pattern "$EVENTS_SOURCE" 'public struct LpFeeCapIssued' \
+    'LP-fee capability issuance event'
+require_pattern "$EVENTS_SOURCE" 'revoked_lp_fee_cap_id: Option<ID>' \
+    'retired LP-fee capability identity on issuance'
+require_pattern "$EVENTS_SOURCE" 'public struct LpFeesLocked' \
+    'LP-fee custodian lock event'
+require_pattern "$EVENTS_SOURCE" 'custodian_id: ID' \
+    'terminal LP-fee custodian identity'
+require_pattern "$EVENTS_SOURCE" 'sui::event::emit\(LpFeeCapIssued' \
+    'direct strongly typed LP-fee capability issuance emission'
+require_pattern "$EVENTS_SOURCE" 'sui::event::emit\(LpFeesLocked' \
+    'direct strongly typed LP-fee lock emission'
+require_exact_count 'events::lp_fee_cap_issued<Meme, Quote>(' 1 \
+    "LP-fee capability issuance must be emitted only by vault::issue_lp_fee_cap" \
+    "$SOURCE_DIR"/*.move
+require_exact_count 'events::lp_fees_locked<Meme, Quote>(' 1 \
+    "LP-fee locks must be emitted only by vault::lock_creator_fees" \
+    "$SOURCE_DIR"/*.move
+require_exact_count 'events::creator_fees_claimed<Meme, Quote>(' 1 \
+    "creator LP-fee claims must be emitted only by the shared private drain" \
+    "$SOURCE_DIR"/*.move
 
 require_pattern "$VAULT_SOURCE" 'public struct LpVault' 'shared LpVault'
 require_pattern "$VAULT_SOURCE" 'protocol_meme_residual: Balance<Meme>' \
@@ -346,6 +395,48 @@ require_pattern "$VAULT_SOURCE" 'events::vault_created' 'vault creation event em
 require_pattern "$VAULT_SOURCE" 'events::lp_fees_collected' 'LP-fee event emission'
 require_pattern "$VAULT_SOURCE" 'events::creator_fees_claimed' 'creator claim event emission'
 require_pattern "$VAULT_SOURCE" 'events::protocol_fees_claimed' 'protocol claim event emission'
+
+# LP-fee authority: migration leaves it unassigned; only an admin issue installs a
+# live cap (retiring any predecessor), only that cap drains or locks, and a lock
+# is terminal (ADR 0082).
+require_pattern "$VAULT_SOURCE" 'lp_fee_authority: LpFeeAuthority::Unassigned,' \
+    'unassigned LP-fee authority at vault preparation'
+require_exact_count 'lp_fee_authority: LpFeeAuthority::' 1 \
+    "vault preparation must be the only LP-fee authority initializer" \
+    <(production_section "$VAULT_SOURCE")
+require_exact_count 'self.lp_fee_authority = LpFeeAuthority::' 2 \
+    "only LP-fee issuance and custodian locking may write LP-fee authority" \
+    <(production_section "$VAULT_SOURCE")
+require_exact_count 'creator_authority::new_lp_fee_cap<' 1 \
+    "vault::issue_lp_fee_cap must be the only LP-fee capability issuance path" \
+    "$SOURCE_DIR"/*.move
+require_exact_count '&AdminWitness<LAUNCHPAD_DOMAIN>' 2 \
+    "vault Launchpad authority must be exactly protocol claims and LP-fee capability issuance" \
+    <(production_section "$VAULT_SOURCE")
+require_exact_count 'self.drain_creator_fees(ctx)' 2 \
+    "creator LP fees may drain only through the live-cap and custodian claims" \
+    "$VAULT_SOURCE"
+require_exact_count 'self.fee_ledger.claim_creator_fees(ctx)' 1 \
+    "creator ledger withdrawal must stay inside the private drain" \
+    "$SOURCE_DIR"/*.move
+require_function_body "$VAULT_SOURCE" 'issue_lp_fee_cap' \
+    'publicfunissue_lp_fee_cap<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,package_version:&PackageVersion,admin_witness:&AdminWitness<LAUNCHPAD_DOMAIN>,recipient:address,ctx:&mutTxContext,){migrators_version.assert_current();assert!(!self.lp_fee_authority.is_custodian(),ELpFeesLocked);assert!(recipient!=@0x0,EInvalidLpFeeCapRecipient);letlp_fee_cap=creator_authority::new_lp_fee_cap<Meme>(package_version,admin_witness,ctx,);letlp_fee_cap_id=object::id(&lp_fee_cap);letrevoked_lp_fee_cap_id=match(self.lp_fee_authority){LpFeeAuthority::Cap(revoked_id)=>option::some(revoked_id),_=>option::none(),};self.lp_fee_authority=LpFeeAuthority::Cap(lp_fee_cap_id);transfer::public_transfer(lp_fee_cap,recipient);events::lp_fee_cap_issued<Meme,Quote>(self.id.to_inner(),revoked_lp_fee_cap_id,lp_fee_cap_id,recipient,);}' \
+    "vault::issue_lp_fee_cap must check generation, terminal lock, and nonzero recipient before role-gated minting, then retire the previous cap, deliver, and emit"
+require_function_body "$VAULT_SOURCE" 'claim_creator_fees' \
+    'publicfunclaim_creator_fees<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,lp_fee_cap:&LpFeeCap<Meme>,ctx:&mutTxContext,):(Coin<Meme>,Coin<Quote>){migrators_version.assert_current();self.assert_lp_fee_cap(lp_fee_cap);self.drain_creator_fees(ctx)}' \
+    "vault::claim_creator_fees must assert the live LP-fee cap before draining"
+require_function_body "$VAULT_SOURCE" 'lock_creator_fees' \
+    'publicfunlock_creator_fees<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,lp_fee_cap:LpFeeCap<Meme>,custodian:&UID,){migrators_version.assert_current();self.assert_lp_fee_cap(&lp_fee_cap);letlp_fee_cap_id=object::id(&lp_fee_cap);letcustodian_id=custodian.to_inner();lp_fee_cap.destroy_lp_fee_cap();self.lp_fee_authority=LpFeeAuthority::Custodian(custodian_id);events::lp_fees_locked<Meme,Quote>(self.id.to_inner(),lp_fee_cap_id,custodian_id);}' \
+    "vault::lock_creator_fees must assert and destroy the live LP-fee cap before binding a terminal custodian"
+require_function_body "$VAULT_SOURCE" 'claim_custodied_creator_fees' \
+    'publicfunclaim_custodied_creator_fees<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,custodian:&UID,ctx:&mutTxContext,):(Coin<Meme>,Coin<Quote>){migrators_version.assert_current();assert!(self.lp_fee_authority==LpFeeAuthority::Custodian(custodian.to_inner()),ELpFeeCustodianMismatch,);self.drain_creator_fees(ctx)}' \
+    "vault::claim_custodied_creator_fees must match the bound custodian before draining"
+require_function_body "$VAULT_SOURCE" 'assert_lp_fee_cap' \
+    'publicfunassert_lp_fee_cap<Meme,Quote>(self:&LpVault<Meme,Quote>,lp_fee_cap:&LpFeeCap<Meme>,){assert!(self.lp_fee_authority==LpFeeAuthority::Cap(object::id(lp_fee_cap)),ELpFeeCapNotLive);}' \
+    "vault::assert_lp_fee_cap must be a read-only exact live-cap identity assertion"
+require_function_body "$VAULT_SOURCE" 'drain_creator_fees' \
+    'fundrain_creator_fees<Meme,Quote>(self:&mutLpVault<Meme,Quote>,ctx:&mutTxContext,):(Coin<Meme>,Coin<Quote>){' \
+    "vault::drain_creator_fees must stay private"
 
 require_pattern "$VENUE_CONFIG_SOURCE" 'public struct VenueConfig has key' \
     'shared venue tier policy singleton'
@@ -948,8 +1039,8 @@ if rg -q 'sui::event::emit' "$SOURCE_DIR" \
 fi
 
 EVENT_EMISSION_COUNT="$(rg -o 'sui::event::emit' "$EVENTS_SOURCE" | wc -l)"
-[[ "$EVENT_EMISSION_COUNT" -eq 9 ]] || \
-    fail "events.move must emit exactly nine strongly typed payloads"
+[[ "$EVENT_EMISSION_COUNT" -eq 11 ]] || \
+    fail "events.move must emit exactly eleven strongly typed payloads"
 
 POSITION_ATTACHMENT_COUNT="$(rg -o 'dynamic_object_field::add' "$SOURCE_DIR" | wc -l)"
 [[ "$POSITION_ATTACHMENT_COUNT" -eq 1 ]] || \
@@ -1101,16 +1192,21 @@ CUSTODY_ROLE_ASSERTIONS="$(rg -c 'admin_witness\.assert_role\(launchpad_domain::
 [[ "${CUSTODY_ROLE_ASSERTIONS:-0}" -eq 5 ]] || \
     fail "every governed custody transition must assert Launchpad's exported role"
 
-# Every production public function in these modules is a protected mutation.
-# Derive the expected total from declarations so adding a route cannot silently
-# inherit a stale hand-maintained count, then prove each function takes this
-# package's generation and checks it before doing anything else.
+# Every production public function in these modules is a protected mutation,
+# except the one read-only live-cap assertion `vault::assert_lp_fee_cap`, whose
+# whole body is pinned above as a `&LpVault` identity check. Derive the expected
+# total from declarations so adding a route cannot silently inherit a stale
+# hand-maintained count, then prove each function takes this package's
+# generation and checks it before doing anything else.
 for guard_module in vault bluefin aftermath cetus turbos mmt; do
     guard_source="$SOURCE_DIR/${guard_module}.move"
     mapfile -t guarded_functions < <(
         rg -o '^public fun [[:alnum:]_]+' "$guard_source" \
-            | awk '{ print $3 }' \
-            | rg -v '_for_testing$'
+            | awk -v module="$guard_module" '
+                $3 ~ /_for_testing$/ { next }
+                module == "vault" && $3 == "assert_lp_fee_cap" { next }
+                { print $3 }
+            '
     )
     expected_guards="${#guarded_functions[@]}"
     actual_guards="$(rg -c '^[[:space:]]+migrators_version\.assert_current\(\);' \

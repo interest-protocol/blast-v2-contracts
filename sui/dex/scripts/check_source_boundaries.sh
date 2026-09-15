@@ -2,8 +2,9 @@
 # Mechanical boundary gate for the native DEX.
 #
 # The DEX owns an independent administration domain, an independent operational
-# generation, and sealed framework custody. The one deliberate Launchpad-witness
-# call is product-fee custody, not DEX administration.
+# generation, and sealed framework custody. The two deliberate Launchpad-witness
+# calls (protocol-fee claims and LP-fee capability issuance) are product-fee
+# custody, not DEX administration.
 set -euo pipefail
 
 package_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -94,22 +95,73 @@ rg -U -q \
   "$sources/pool.move" \
   || fail "pool-policy administration must be generic DEX administration after the generation check"
 
-# --- The single deliberate Launchpad-witness exception ---
+# --- The two deliberate Launchpad-witness exceptions ---
 #
-# claim_protocol_fees drains a Launchpad-owned FeeLedger, so it stays under
-# Launchpad product-fee custody. Every other Launchpad-witness use is rejected.
+# claim_protocol_fees and issue_lp_fee_cap govern balances in a Launchpad-owned
+# FeeLedger, so they stay under Launchpad product-fee custody (ADR 0082). Every
+# other Launchpad-witness use is rejected, and each exception may forward the
+# witness only to its single Launchpad call.
+migration_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' "$sources/migration.move")"
+
 launchpad_witness_uses="$(rg -o --no-filename '&AdminWitness<LAUNCHPAD_DOMAIN>' "$sources" \
   | wc -l)"
-[[ "${launchpad_witness_uses:-0}" -eq 1 ]] \
-  || fail "exactly one call may accept a Launchpad witness"
+[[ "${launchpad_witness_uses:-0}" -eq 2 ]] \
+  || fail "exactly two calls may accept a Launchpad witness"
+[[ "$(rg -o -F '&AdminWitness<LAUNCHPAD_DOMAIN>' <<<"$migration_production" | wc -l)" -eq 2 ]] \
+  || fail "both Launchpad-witness exceptions must live in production migration.move"
 rg -U -q \
-  'public fun claim_protocol_fees<Meme, Quote>\(\s*self: &mut LockedLpVault<Meme, Quote>,\s*witness: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*factory: &Factory,' \
-  "$sources/migration.move" \
-  || fail "the Launchpad witness is permitted only on migration::claim_protocol_fees"
+  'public fun claim_protocol_fees<Meme, Quote>\(\s*self: &mut LockedLpVault<Meme, Quote>,\s*witness: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*factory: &Factory,\s*ctx: &mut TxContext,\s*\): \(Coin<Meme>, Coin<Quote>\) \{\s*factory\.assert_current\(\);\s*let \(meme, quote\) = self\.fees\.claim_protocol_fees\(witness, ctx\);' \
+  <<<"$migration_production" \
+  || fail "migration::claim_protocol_fees must take the Launchpad witness with its exact signature and forward it only to the ledger claim after the generation check"
+rg -U -q \
+  'public fun issue_lp_fee_cap<Meme, Quote>\(\s*self: &mut LockedLpVault<Meme, Quote>,\s*witness: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*factory: &Factory,\s*version: &PackageVersion,\s*recipient: address,\s*ctx: &mut TxContext,\s*\) \{\s*factory\.assert_current\(\);\s*assert!\(!self\.lp_fee_authority\.is_custodian\(\), ELpFeesLocked\);\s*assert!\(recipient != @0x0, EInvalidLpFeeCapRecipient\);\s*let lp_fee_cap = creator_authority::new_lp_fee_cap<Meme>\(version, witness, ctx\);' \
+  <<<"$migration_production" \
+  || fail "migration::issue_lp_fee_cap must take the Launchpad witness with its exact signature and check generation, terminal lock, and nonzero recipient before role-gated minting"
+for forwarded in 'self.fees.claim_protocol_fees(witness, ctx)' \
+  'creator_authority::new_lp_fee_cap<Meme>(version, witness, ctx)'; do
+  [[ "$(rg -o -F "$forwarded" "$sources" | wc -l)" -eq 1 ]] \
+    || fail "the Launchpad witness must reach each Launchpad call from exactly one exception"
+done
+[[ "$(rg -o -F 'new_lp_fee_cap<' "$sources" | wc -l)" -eq 1 ]] \
+  || fail "migration::issue_lp_fee_cap must be the only LP-fee capability issuance path"
 if rg -n 'AdminWitness<LAUNCHPAD_DOMAIN>' "$sources/pool.move" "$sources/package_admin.move" \
-  "$sources/dex_domain.move" "$sources/package_marker.move"; then
+  "$sources/dex_domain.move" "$sources/package_marker.move" "$sources/math.move"; then
   fail "factory, pool-policy, and package administration must never take a Launchpad witness"
 fi
+
+# --- LP-fee authority: unassigned at migration, one live cap, terminal custodian ---
+
+[[ "$(rg -o -F 'lp_fee_authority: LpFeeAuthority::' <<<"$migration_production" | wc -l)" -eq 1 ]] \
+  && rg -Fq 'lp_fee_authority: LpFeeAuthority::Unassigned,' <<<"$migration_production" \
+  || fail "migration must be the only LP-fee authority initializer and must leave it unassigned"
+[[ "$(rg -o -F 'self.lp_fee_authority = LpFeeAuthority::' <<<"$migration_production" | wc -l)" -eq 2 ]] \
+  || fail "only LP-fee issuance and custodian locking may write LP-fee authority"
+rg -U -q \
+  'let lp_fee_cap_id = object::id\(&lp_fee_cap\);\s*let revoked_lp_fee_cap_id = match \(self\.lp_fee_authority\) \{\s*LpFeeAuthority::Cap\(revoked_id\) => option::some\(revoked_id\),\s*_ => option::none\(\),\s*\};\s*self\.lp_fee_authority = LpFeeAuthority::Cap\(lp_fee_cap_id\);\s*transfer::public_transfer\(lp_fee_cap, recipient\);\s*event::emit\(LpFeeCapIssued \{\s*vault_id: self\.id\.to_inner\(\),\s*revoked_lp_fee_cap_id,\s*lp_fee_cap_id,\s*recipient,\s*\}\);\s*\}' \
+  <<<"$migration_production" \
+  || fail "LP-fee issuance must retire the previous cap, deliver the new one, and emit both identities"
+rg -U -q \
+  'public fun claim_creator_fees<Meme, Quote>\(\s*self: &mut LockedLpVault<Meme, Quote>,\s*lp_fee_cap: &LpFeeCap<Meme>,\s*factory: &Factory,\s*ctx: &mut TxContext,\s*\): \(Coin<Meme>, Coin<Quote>\) \{\s*factory\.assert_current\(\);\s*self\.assert_lp_fee_cap\(lp_fee_cap\);\s*self\.drain_creator_fees\(ctx\)\s*\}' \
+  <<<"$migration_production" \
+  || fail "migration::claim_creator_fees must assert the live LP-fee cap before draining"
+rg -U -q \
+  'public fun lock_creator_fees<Meme, Quote>\(\s*self: &mut LockedLpVault<Meme, Quote>,\s*lp_fee_cap: LpFeeCap<Meme>,\s*custodian: &UID,\s*factory: &Factory,\s*\) \{\s*factory\.assert_current\(\);\s*self\.assert_lp_fee_cap\(&lp_fee_cap\);\s*let lp_fee_cap_id = object::id\(&lp_fee_cap\);\s*let custodian_id = custodian\.to_inner\(\);\s*lp_fee_cap\.destroy_lp_fee_cap\(\);\s*self\.lp_fee_authority = LpFeeAuthority::Custodian\(custodian_id\);\s*event::emit\(LpFeesLocked \{ vault_id: self\.id\.to_inner\(\), lp_fee_cap_id, custodian_id \}\);\s*\}' \
+  <<<"$migration_production" \
+  || fail "migration::lock_creator_fees must assert and destroy the live LP-fee cap before binding a terminal custodian"
+rg -U -q \
+  'public fun claim_custodied_creator_fees<Meme, Quote>\(\s*self: &mut LockedLpVault<Meme, Quote>,\s*custodian: &UID,\s*factory: &Factory,\s*ctx: &mut TxContext,\s*\): \(Coin<Meme>, Coin<Quote>\) \{\s*factory\.assert_current\(\);\s*assert!\(\s*self\.lp_fee_authority == LpFeeAuthority::Custodian\(custodian\.to_inner\(\)\),\s*ELpFeeCustodianMismatch,\s*\);\s*self\.drain_creator_fees\(ctx\)\s*\}' \
+  <<<"$migration_production" \
+  || fail "migration::claim_custodied_creator_fees must match the bound custodian before draining"
+rg -U -q \
+  'public fun assert_lp_fee_cap<Meme, Quote>\(\s*self: &LockedLpVault<Meme, Quote>,\s*lp_fee_cap: &LpFeeCap<Meme>,\s*\) \{\s*assert!\(self\.lp_fee_authority == LpFeeAuthority::Cap\(object::id\(lp_fee_cap\)\), ELpFeeCapNotLive\);\s*\}' \
+  <<<"$migration_production" \
+  || fail "migration::assert_lp_fee_cap must be a read-only exact live-cap identity assertion"
+rg -q '^fun drain_creator_fees<Meme, Quote>\($' <<<"$migration_production" \
+  || fail "migration::drain_creator_fees must stay private"
+[[ "$(rg -o -F 'self.drain_creator_fees(ctx)' <<<"$migration_production" | wc -l)" -eq 2 ]] \
+  || fail "creator fees may drain only through the live-cap and custodian claims"
+[[ "$(rg -o -F '.claim_creator_fees(ctx)' "$sources" | wc -l)" -eq 1 ]] \
+  || fail "creator ledger withdrawal must stay inside the private drain"
 
 # --- Sealed custody, atomic finalizer, no capability escape ---
 

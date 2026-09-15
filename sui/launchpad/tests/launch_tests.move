@@ -32,7 +32,10 @@ use fun launch_sign_in as LaunchFixture.sign_in;
 use fun launch_take_currency as LaunchFixture.take_currency;
 use fun launch_take_fixed_disposal as LaunchFixture.take_fixed_disposal;
 use fun launch_take_shared as LaunchFixture.take_launch;
+use fun launch_take_curve_fee_cap as LaunchFixture.take_curve_fee_cap;
+use fun launch_has_curve_fee_cap as LaunchFixture.has_curve_fee_cap;
 use fun assert_launch_snapshot as Launch.assert_snapshot;
+use fun launch_put_back as Launch.put_back;
 use fun reach_migration_after_sell as Launch.reach_migration_after_sell;
 
 // === Constants ===
@@ -1446,13 +1449,12 @@ fun admin_reassigns_claimed_creator_and_the_new_cap_claims_prior_fees() {
         assert_eq!(launch.curve_fee_cap_id_for_testing(), option::some(creator_cap_id));
         assert_eq!(recipient, NEW_CREATOR);
 
-        test_scenario::return_shared(launch);
+        launch.put_back();
     });
 
     fixture.next_tx!(NEW_CREATOR, |f| {
         let mut launch = f.take_launch();
-        let creator_cap =
-            f.scenario.take_from_sender<creator_authority::CurveFeeCap<LAUNCH_TESTS>>();
+        let creator_cap = f.take_curve_fee_cap();
         let (_, creator_meme, _, creator_quote) = launch.fee_totals_for_testing();
         let (meme_fees, quote_fees) =
             launch.claim_creator_fees(&f.package_version, &creator_cap, f.ctx!());
@@ -1464,7 +1466,7 @@ fun admin_reassigns_claimed_creator_and_the_new_cap_claims_prior_fees() {
         destroy(creator_cap);
         destroy(meme_fees);
         destroy(quote_fees);
-        test_scenario::return_shared(launch);
+        launch.put_back();
     });
 
     fixture.end();
@@ -1536,9 +1538,7 @@ fun admin_reassigns_an_unclaimed_creator_and_removes_the_pending_claim() {
     });
 
     fixture.next_tx!(NEW_CREATOR, |f| {
-        assert!(
-            f.scenario.has_most_recent_for_sender<creator_authority::CurveFeeCap<LAUNCH_TESTS>>(),
-        );
+        assert!(f.has_curve_fee_cap());
     });
 
     fixture.end();
@@ -1697,7 +1697,7 @@ fun metadata_cap_holder_updates_coin_metadata_through_the_launch() {
         destroy(curve_fee_cap);
         destroy(metadata_cap);
         destroy(currency);
-        test_scenario::return_shared(launch);
+        launch.put_back();
     });
 
     fixture.end();
@@ -1739,7 +1739,7 @@ fun metadata_update_rejects_the_current_value() {
         destroy(curve_fee_cap);
         destroy(metadata_cap);
         destroy(currency);
-        test_scenario::return_shared(launch);
+        launch.put_back();
     });
 
     fixture.end();
@@ -1783,7 +1783,7 @@ fun retired_metadata_cap_is_rejected_before_unchanged_metadata() {
         destroy(curve_fee_cap);
         destroy(metadata_cap);
         destroy(currency);
-        test_scenario::return_shared(launch);
+        launch.put_back();
     });
 
     fixture.end();
@@ -1837,7 +1837,7 @@ fun metadata_stays_editable_and_reassignable_after_curve_fees_are_locked() {
         custodian.delete();
         destroy(metadata_cap);
         destroy(currency);
-        test_scenario::return_shared(launch);
+        launch.put_back();
     });
 
     fixture.end();
@@ -2237,6 +2237,21 @@ fun launch_take_shared(
     self: &LaunchFixture,
 ): Launch<LAUNCH_TESTS, TEST_QUOTE> {
     self.scenario.take_shared<Launch<LAUNCH_TESTS, TEST_QUOTE>>()
+}
+
+fun launch_take_curve_fee_cap(
+    self: &LaunchFixture,
+): creator_authority::CurveFeeCap<LAUNCH_TESTS> {
+    self.scenario.take_from_sender<creator_authority::CurveFeeCap<LAUNCH_TESTS>>()
+}
+
+fun launch_has_curve_fee_cap(self: &LaunchFixture): bool {
+    self.scenario.has_most_recent_for_sender<creator_authority::CurveFeeCap<LAUNCH_TESTS>>()
+}
+
+/// Returns a taken launch to shared storage for a later transaction.
+fun launch_put_back(launch: Launch<LAUNCH_TESTS, TEST_QUOTE>) {
+    test_scenario::return_shared(launch);
 }
 
 fun assert_launch_snapshot(launch: &Launch<LAUNCH_TESTS, TEST_QUOTE>) {

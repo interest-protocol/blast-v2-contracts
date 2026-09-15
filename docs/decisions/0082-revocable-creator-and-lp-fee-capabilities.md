@@ -47,13 +47,13 @@ snapshot. Symbol and decimals have no framework setter; metadata-cap deletion is
 not exposed.
 
 **Post-migration fee authority.** `LpFeeCap<Meme>` is defined beside
-`CreatorCap` in `blast_fun::creator_authority` so that both the migrators and
+`CurveFeeCap` and `BlastMetadataCap` in `blast_fun::creator_authority` so that both the migrators and
 native DEX packages depend inward on it. Every post-migration fee vault
 (`blast_fun_migrators::vault::LpVault` and `blast_fun_dex::migration::LockedLpVault`)
 records `lp_fee_authority`, an `Unassigned | Cap(ID) | Custodian(ID)` enum.
 Migration records `Unassigned`, so creator LP fees accrue until the first issue. `issue_lp_fee_cap` mints a cap through the
 role-gated `new_lp_fee_cap`, retires any previous ID, and transfers the cap to a
-nonzero address. It is the only issuance path and never reads `CreatorCap`.
+nonzero address. It is the only issuance path and never reads `CurveFeeCap`.
 
 **Authority.** Every reassignment and LP-fee issue path requires the new
 `launchpad_domain::creator_admin_role()` (bit 2). A routine administrator that
@@ -65,8 +65,12 @@ passing the custodian object's `&UID`. The cap is destroyed and the fee stream
 moves to the terminal `Custodian(ID)` state. Afterward only
 `claim_custodied_creator_fees` with that same `&UID` drains it, and
 `reassign_curve_fee_cap` or `issue_lp_fee_cap` abort before any role or
-recipient check. A `&UID` proves the call comes from the custodian's defining module,
-because no other module can borrow it. Auto-LP enrollment and distributor
+recipient check. A `&UID` proves the call comes from a module that can borrow
+the custodian's UID, which is normally only its defining module. Objects that
+expose a public `&UID` getter (for example `sui::kiosk::uid`) let any caller
+drain fees locked to them, so a cap holder must only lock to custodians that
+keep their UID private; Auto-LP, the distributor, migrators, and the DEX do.
+Auto-LP enrollment and distributor
 creation lock the launch's creator fees to the new object, and
 `lock_external_lp_fees`, `lock_native_lp_fees`, and `lock_lp_fees` lock LP
 fees once an administrator has issued the cap. Locking never touches `BlastMetadataCap`, so metadata stays editable and
@@ -111,5 +115,5 @@ Tests prove, per owner, that retired caps are rejected before empty-ledger
 checks, that reissue retires the previous cap and replays through events, that
 zero recipients and missing roles abort, that unassigned vaults honor no cap,
 that metadata updates keep the cap in `Launch` and reject unchanged values, that
-pool creation rejects a retired `CreatorCap`, and that custody consumers reject
+pool creation rejects a retired `CurveFeeCap`, and that custody consumers reject
 retired deposits, replace retired caps, and require a deposited cap to collect.

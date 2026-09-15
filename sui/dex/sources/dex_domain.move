@@ -5,9 +5,9 @@
 /// witness from any other domain is a different type and cannot reach these
 /// operations.
 ///
-/// The single deliberate exception is `migration::claim_protocol_fees`, which
-/// drains a Launchpad-owned `FeeLedger` and therefore stays under Launchpad
-/// product-fee custody rather than DEX administration.
+/// The two deliberate exceptions are `migration::claim_protocol_fees` and
+/// `migration::issue_lp_fee_cap`. Both govern a Launchpad-owned `FeeLedger`, so they
+/// stay under Launchpad product-fee custody rather than DEX administration.
 module blast_fun_dex::dex_domain;
 
 // === Constants ===
