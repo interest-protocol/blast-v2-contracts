@@ -254,7 +254,7 @@ fun changed_protocol_fee_share_applies_to_the_next_accrual() {
         f.runtime_config.set_protocol_fee_share(
             &f.package_version,
             &admin_witness,
-            PROTOCOL_FEE_SHARE_BPS,
+            bps::new(PROTOCOL_FEE_SHARE_BPS),
         );
         ledger.accrue(
             balance::create_for_testing<TEST_MEME>(3),
@@ -264,7 +264,7 @@ fun changed_protocol_fee_share_applies_to_the_next_accrual() {
         f.runtime_config.set_protocol_fee_share(
             &f.package_version,
             &admin_witness,
-            8_000,
+            bps::new(8_000),
         );
         let (
             protocol_meme_delta,

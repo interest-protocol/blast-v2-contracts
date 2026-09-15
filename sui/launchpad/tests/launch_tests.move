@@ -168,11 +168,11 @@ fun launch_snapshot_does_not_follow_later_config_updates() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            0,
-            0,
-            1_000,
+            bps::new(0),
+            bps::new(0),
+            bps::new(1_000),
         );
-        f.config.set_trade_fees(&f.package_version, &admin_witness, 0, 0);
+        f.config.set_trade_fees(&f.package_version, &admin_witness, bps::new(0), bps::new(0));
 
         launch.assert_snapshot();
 
@@ -583,7 +583,7 @@ fun zero_launch_trade_fees_sell_all_bought_meme_without_fee_balances() {
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
-        f.config.set_trade_fees(&f.package_version, &admin_witness, 0, 0);
+        f.config.set_trade_fees(&f.package_version, &admin_witness, bps::new(0), bps::new(0));
         let ticket = f.new_ticket(CREATOR);
         let mut launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
             ticket,
@@ -669,7 +669,7 @@ fun live_protocol_share_routes_and_claims_launch_trade_fees() {
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
-        f.runtime_config.set_protocol_fee_share(&f.package_version, &admin_witness, 2_500);
+        f.runtime_config.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(2_500));
         let ticket = f.new_ticket(CREATOR);
         let mut launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
             ticket,
@@ -2156,15 +2156,15 @@ fun start(): LaunchFixture {
     config.set_trade_fees(
         &package_version,
         &admin_witness,
-        QUOTE_FEE_BPS,
-        MEME_FEE_BPS,
+        bps::new(QUOTE_FEE_BPS),
+        bps::new(MEME_FEE_BPS),
     );
     config.set_graduation_defaults(
         &package_version,
         &admin_witness,
-        PROTOCOL_QUOTE_MIGRATION_FEE_BPS,
-        PROTOCOL_MEME_GRADUATION_FEE_BPS,
-        MEME_LIQUIDITY_PROVISION_BPS,
+        bps::new(PROTOCOL_QUOTE_MIGRATION_FEE_BPS),
+        bps::new(PROTOCOL_MEME_GRADUATION_FEE_BPS),
+        bps::new(MEME_LIQUIDITY_PROVISION_BPS),
     );
 
     LaunchFixture {

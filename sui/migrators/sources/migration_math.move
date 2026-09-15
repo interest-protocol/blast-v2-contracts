@@ -1,7 +1,7 @@
 /// Shared concentrated-liquidity price and utilization invariants for migrator venues.
 module blast_fun_migrators::migration_math;
 
-use blast_fun::bps;
+use blast_fun::bps::Bps;
 
 // === Constants ===
 
@@ -44,9 +44,9 @@ public(package) fun assert_price_within_bps(
     quote_amount: u64,
     meme_is_coin_a: bool,
     actual_sqrt_price_x64: u128,
-    max_deviation_bps: u64,
+    max_deviation_bps: Bps,
 ) {
-    let max_deviation_bps = bps::new(max_deviation_bps).value();
+    let max_deviation_bps = max_deviation_bps.value();
 
     let expected_ratio_q128 = ratio_q128(
         meme_amount,
@@ -70,7 +70,7 @@ public(package) fun assert_price_within_bps(
 }
 
 /// Returns the minimum venue-consumed amount after a ceiling-rounded residual allowance.
-public(package) fun minimum_utilized_amount(amount: u64, max_residual_bps: u64): u64 {
+public(package) fun minimum_utilized_amount(amount: u64, max_residual_bps: Bps): u64 {
     amount - maximum_residual_amount(amount, max_residual_bps)
 }
 
@@ -78,7 +78,7 @@ public(package) fun minimum_utilized_amount(amount: u64, max_residual_bps: u64):
 public(package) fun assert_residual_within_bps(
     source_amount: u64,
     residual_amount: u64,
-    max_residual_bps: u64,
+    max_residual_bps: Bps,
 ) {
     assert!(
         residual_amount <= maximum_residual_amount(source_amount, max_residual_bps),
@@ -125,6 +125,6 @@ fun integer_sqrt(value: u256): u128 {
     low as u128
 }
 
-fun maximum_residual_amount(amount: u64, max_residual_bps: u64): u64 {
-    bps::new(max_residual_bps).apply_up(amount)
+fun maximum_residual_amount(amount: u64, max_residual_bps: Bps): u64 {
+    max_residual_bps.apply_up(amount)
 }

@@ -3,6 +3,7 @@ module blast_fun_auto_lp::vault_tests;
 
 use blast_admin::acl::{AdminCap, SuperAdminCap};
 use blast_fun::{
+    bps,
     creator_authority,
     launch::{Self, Launch},
     launch_config,
@@ -539,8 +540,8 @@ fun start_with_route(executor: address, external: bool): AutoLpFixture {
     } else {
         config.allow_migration_witness<Witness>(&version, &witness);
     };
-    config.set_trade_fees(&version, &witness, 100, 100);
-    config.set_graduation_defaults(&version, &witness, 0, 0, 2_000);
+    config.set_trade_fees(&version, &witness, bps::new(100), bps::new(100));
+    config.set_graduation_defaults(&version, &witness, bps::new(0), bps::new(0), bps::new(2_000));
     let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
     let lp_fee_policy = lp_fee_policy::new_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());

@@ -10,7 +10,7 @@
   [0041](0041-launch-config-owned-trade-fees.md), and
   [0043](0043-versioned-launch-trading-and-atomic-migration.md)
 - Amended by: [0081](0081-separate-lp-fee-share-policy.md), which makes every
-  `Bps` operation public
+  `Bps` operation public and makes fee-rate setters take `Bps`
 
 ## Context
 

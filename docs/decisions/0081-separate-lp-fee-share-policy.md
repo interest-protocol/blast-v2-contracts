@@ -76,8 +76,8 @@ All three mutations take the launchpad `PackageVersion` and
 
 | Function | Rejects | Event |
 | --- | --- | --- |
-| `set_protocol_fee_share` | unchanged value (85), then out-of-range `Bps` (75) | `LpProtocolFeeShareChanged(u64)` |
-| `set_project_protocol_fee_share<Meme>` | re-pin of the project's current value (86), then out-of-range `Bps` (75) | `ProjectLpProtocolFeeShareSet { meme, protocol_fee_share_bps }` |
+| `set_protocol_fee_share` | unchanged value (85) | `LpProtocolFeeShareChanged(u64)` |
+| `set_project_protocol_fee_share<Meme>` | re-pin of the project's current value (86) | `ProjectLpProtocolFeeShareSet { meme, protocol_fee_share_bps }` |
 | `clear_project_protocol_fee_share<Meme>` | project without a pin (87) | `ProjectLpProtocolFeeShareCleared(TypeName)` |
 
 A first pin equal to the current migrator-wide share is a real transition
@@ -96,6 +96,19 @@ validate and apply rates with the shared unit instead of re-implementing it. A
 caller-built share cannot redirect fees: only the module that embeds a ledger
 can reach it mutably, and each embedding module reads its share from its
 accepted policy object on every accrual.
+
+### Rate parameters
+
+A public or package function that accepted a basis-points `u64` only to wrap it
+takes `Bps` instead: `RuntimeConfig::set_protocol_fee_share`, both
+`LpFeePolicy` setters, `LaunchConfig::set_trade_fees`,
+`LaunchConfig::set_graduation_defaults`, and the migrators `migration_math`
+limits. Callers construct the rate with `bps::new` in the same transaction, so
+the inclusive range check always precedes the callee's guards. Domain ceilings,
+nonzero requirements, and cross-field sums read `value()`, unchanged-value
+checks compare `Bps` directly, and events still carry raw `u64` facts.
+`launch_ticket::new` keeps its raw sell-burn input because generated template
+bytecode patches it as a `u64` constant.
 
 ### Collections
 
@@ -139,8 +152,7 @@ identity.
 ## Verification
 
 - `lp_fee_policy_tests` cover eventless zero initialization, default and pin
-  events, boundaries, unchanged and missing rejection, `Bps` range delegation,
-  version precedence over value checks, pin precedence, pin survival across
+  events, boundaries, unchanged and missing rejection, version precedence over unchanged and missing checks, pin precedence, pin survival across
   default changes, clear fallback, and per-Meme isolation.
 - Migrators vault tests prove the policy share is prospective, that another
   project's pin never reaches a vault, and that `LpFeesCollected` records the

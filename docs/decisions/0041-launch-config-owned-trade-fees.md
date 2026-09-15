@@ -3,6 +3,8 @@
 > Storage-type update (2026-08-28): [ADR 0044](0044-validated-basis-points-unit.md)
 > wraps both stored rates in `Bps`; the setter inputs, launch snapshot values,
 > and event fields remain raw `u64` values.
+> Setter-input update (2026-09-15): [ADR 0081](0081-separate-lp-fee-share-policy.md)
+> makes both setters take `Bps`; snapshot values and event fields stay as before.
 
 - Status: accepted
 - Date: 2026-08-28

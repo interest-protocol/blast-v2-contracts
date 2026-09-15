@@ -3,6 +3,7 @@ module blast_fun_migrators::vault_tests;
 
 use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
 use blast_fun::{
+    bps,
     creator_authority::{Self, LpFeeCap},
     launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
     lp_fee_policy::{Self, LpFeePolicy},
@@ -83,7 +84,7 @@ fun accrues_with_the_lp_policy_share_and_never_resplits_prior_ownership() {
         f.lp_fee_policy.set_protocol_fee_share(
             &f.package_version,
             &admin_witness,
-            2_000,
+            bps::new(2_000),
         );
         f.accrue!(10, 10);
 
@@ -105,7 +106,7 @@ fun accrues_with_the_lp_policy_share_and_never_resplits_prior_ownership() {
         f.lp_fee_policy.set_protocol_fee_share(
             &f.package_version,
             &admin_witness,
-            10_000,
+            bps::new(10_000),
         );
         f.accrue!(10, 10);
 
@@ -136,12 +137,12 @@ fun project_share_overrides_the_default_and_is_the_emitted_split_input() {
         f.lp_fee_policy.set_protocol_fee_share(
             &f.package_version,
             &admin_witness,
-            2_000,
+            bps::new(2_000),
         );
         f.lp_fee_policy.set_project_protocol_fee_share<OTHER_MEME>(
             &f.package_version,
             &admin_witness,
-            9_000,
+            bps::new(9_000),
         );
         f.accrue!(10, 10);
 
@@ -164,7 +165,7 @@ fun project_share_overrides_the_default_and_is_the_emitted_split_input() {
         f.lp_fee_policy.set_project_protocol_fee_share<MEME>(
             &f.package_version,
             &admin_witness,
-            5_000,
+            bps::new(5_000),
         );
         f.accrue!(10, 10);
 

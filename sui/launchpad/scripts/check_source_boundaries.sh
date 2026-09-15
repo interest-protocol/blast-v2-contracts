@@ -1027,8 +1027,8 @@ check_runtime_function revoke_creator_claim_signer \
   'package_version.assert_current(); self.assert_creator_claim_active(); self.creator_claim_signer_public_key = vector[]; events::creator_claim_signer_revoked();'
 
 check_runtime_function set_protocol_fee_share \
-  'fun set_protocol_fee_share( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<LAUNCHPAD_DOMAIN>, protocol_fee_share_bps: u64, )' \
-  'package_version.assert_current(); assert!( protocol_fee_share_bps != self.protocol_fee_share_bps.value(), blast_fun::errors::protocol_fee_share_unchanged!(), ); self.protocol_fee_share_bps = bps::new(protocol_fee_share_bps); events::protocol_fee_share_changed(protocol_fee_share_bps);'
+  'fun set_protocol_fee_share( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<LAUNCHPAD_DOMAIN>, protocol_fee_share_bps: Bps, )' \
+  'package_version.assert_current(); assert!( protocol_fee_share_bps != self.protocol_fee_share_bps, blast_fun::errors::protocol_fee_share_unchanged!(), ); self.protocol_fee_share_bps = protocol_fee_share_bps; events::protocol_fee_share_changed(protocol_fee_share_bps.value());'
 
 # The three named mutations are the complete set of RuntimeConfig transitions, and
 # each one must check the live package version as its first statement rather than
@@ -1131,10 +1131,10 @@ if [[ ! -f sources/launch_config.move ]] \
   || [[ "$(rg -c '^public fun (allow_quote|disallow_quote|allow_migration_witness|disallow_migration_witness)<' <<<"$launch_config_production")" != 4 ]] \
   || [[ "$(rg -c '^public fun set_graduation_defaults\(' <<<"$launch_config_production")" != 1 ]] \
   || ! rg -U -q \
-    'public fun set_trade_fees\(\s*self: &mut LaunchConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*quote_fee_bps: u64,\s*meme_fee_bps: u64,\s*\)' \
+    'public fun set_trade_fees\(\s*self: &mut LaunchConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*quote_fee_bps: Bps,\s*meme_fee_bps: Bps,\s*\)' \
     sources/launch_config.move \
   || ! rg -U -q \
-    'public fun set_graduation_defaults\(\s*self: &mut LaunchConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*protocol_quote_migration_fee_bps: u64,\s*protocol_meme_graduation_fee_bps: u64,\s*meme_liquidity_provision_bps: u64,\s*\)' \
+    'public fun set_graduation_defaults\(\s*self: &mut LaunchConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*protocol_quote_migration_fee_bps: Bps,\s*protocol_meme_graduation_fee_bps: Bps,\s*meme_liquidity_provision_bps: Bps,\s*\)' \
     sources/launch_config.move \
   || [[ "$(rg -c '^public\(package\) fun ' <<<"$launch_config_production")" != 1 ]] \
   || ! rg -U -q \
@@ -1154,8 +1154,8 @@ if ! rg -U -q 'macro public\(package\) fun max_migration_witnesses\(\): u64 \{\s
   || ! rg -Fq 'type_name::with_original_ids<MigrationWitness>()' sources/launch_config.move \
   || ! rg -Fq '!migration_witness.is_primitive()' sources/launch_config.move \
   || ! rg -Fq 'virtual_quote > 0' sources/launch_config.move \
-  || ! rg -Fq 'quote_fee_bps <= constants::max_launch_fee_bps!()' sources/launch_config.move \
-  || ! rg -Fq 'meme_fee_bps <= constants::max_launch_fee_bps!()' sources/launch_config.move \
+  || ! rg -Fq 'quote_fee_bps.value() <= constants::max_launch_fee_bps!()' sources/launch_config.move \
+  || ! rg -Fq 'meme_fee_bps.value() <= constants::max_launch_fee_bps!()' sources/launch_config.move \
   || ! rg -Fq 'quotes: table::new(ctx)' sources/launch_config.move \
   || ! rg -Fq 'self.quotes.add(quote, QuoteParameters {' sources/launch_config.move \
   || rg -n '\b(VecMap|vec_map|max_quote_assets|quote_capacity_reached)\b' \
@@ -1165,10 +1165,10 @@ if ! rg -U -q 'macro public\(package\) fun max_migration_witnesses\(\): u64 \{\s
     'quotes: table::new\(ctx\),\s*quote_fee_bps: bps::new\(0\),\s*meme_fee_bps: bps::new\(0\),\s*protocol_quote_migration_fee_bps: bps::new\(0\),\s*protocol_meme_graduation_fee_bps: bps::new\(0\),\s*meme_liquidity_provision_bps: bps::new\(0\),\s*migration_witnesses: vec_set::empty\(\)' \
     sources/launch_config.move \
   || ! rg -U -q \
-    'protocol_meme_graduation_fee_bps \+ meme_liquidity_provision_bps\s*< constants::basis_points_denominator!\(\)' \
+    'protocol_meme_graduation_fee_bps\.value\(\) \+ meme_liquidity_provision_bps\.value\(\)\s*< constants::basis_points_denominator!\(\)' \
     sources/launch_config.move \
   || ! rg -U -q \
-    'meme_liquidity_provision_bps > 0\s*&& meme_liquidity_provision_bps\s*< constants::basis_points_denominator!\(\)' \
+    'meme_liquidity_provision_bps\.value\(\) > 0\s*&& meme_liquidity_provision_bps\.value\(\)\s*< constants::basis_points_denominator!\(\)' \
     sources/launch_config.move \
   || ! rg -Fq 'self.meme_liquidity_provision_bps.value() > 0' sources/launch_config.move \
   || rg -n '\bCurrency<Quote>\b|coin_registry' <<<"$launch_config_production"; then

@@ -8,6 +8,7 @@ module blast_fun_migrators::bluefin;
 
 use blast_admin::acl::AdminWitness;
 use blast_fun::{
+    bps,
     launch::Launch,
     launchpad_domain::LAUNCHPAD_DOMAIN,
     lp_fee_policy::LpFeePolicy,
@@ -317,12 +318,12 @@ fun lock_and_share<Meme, Quote>(
     migration_math::assert_residual_within_bps(
         source_meme_amount,
         residual_meme_amount,
-        MAX_RESIDUAL_BPS,
+        bps::new(MAX_RESIDUAL_BPS),
     );
     migration_math::assert_residual_within_bps(
         source_quote_amount,
         residual_quote_amount,
-        MAX_RESIDUAL_BPS,
+        bps::new(MAX_RESIDUAL_BPS),
     );
     assert!(
         used_meme_amount == source_meme_amount - residual_meme_amount

@@ -3,6 +3,7 @@ module blast_fun::runtime_config_tests;
 
 use blast_admin::acl::{Authority, AdminCap, AdminWitness};
 use blast_fun::{
+    bps,
     domain_fixture,
     events,
     launchpad_domain::LAUNCHPAD_DOMAIN,
@@ -59,7 +60,7 @@ fun active_admin_updates_live_share_and_emits_new_value() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, 7_000);
+        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(7_000));
 
         let changed = events::collect_one<events::ProtocolFeeShareChanged>(0);
         let new_share_bps = changed.protocol_fee_share_changed_fields();
@@ -85,7 +86,7 @@ fun one_runtime_config_and_admin_witness_update_both_live_settings() {
             &admin_witness,
             signer_public_key,
         );
-        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, 2_500);
+        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(2_500));
 
         let signer_set = events::collect_one<events::CreatorClaimSignerSet>(0);
         let emitted_public_key = signer_set.creator_claim_signer_set_fields();
@@ -106,13 +107,13 @@ fun one_runtime_config_and_admin_witness_update_both_live_settings() {
     abort_code = blast_fun::errors::EInvalidBps,
     location = blast_fun::bps,
 )]
-fun protocol_fee_share_delegates_range_validation_to_bps() {
+fun protocol_fee_share_input_cannot_exceed_one_hundred_percent() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, 10_001);
+        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(10_001));
     });
 
     fixture.end();
@@ -123,7 +124,7 @@ fun protocol_fee_share_delegates_range_validation_to_bps() {
     abort_code = blast_admin::errors::EOperationalVersionMismatch,
     location = blast_admin::operational_version,
 )]
-fun stale_package_version_rejects_runtime_config_before_value_validation() {
+fun stale_package_version_rejects_runtime_config_before_unchanged_check() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
@@ -133,7 +134,7 @@ fun stale_package_version_rejects_runtime_config_before_value_validation() {
         f.config.set_protocol_fee_share(
             &f.package_version,
             &admin_witness,
-            10_001,
+            bps::new(0),
         );
     });
 
@@ -151,7 +152,7 @@ fun protocol_fee_share_rejects_unchanged_value() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, 0);
+        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(0));
     });
 
     fixture.end();
@@ -164,10 +165,10 @@ fun protocol_fee_share_accepts_both_percentage_boundaries() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, 10_000);
+        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(10_000));
         assert_eq!(f.config.protocol_fee_share_bps(), 10_000);
 
-        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, 0);
+        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(0));
         assert_eq!(f.config.protocol_fee_share_bps(), 0);
 
         let mut changes = events::collect<events::ProtocolFeeShareChanged>();

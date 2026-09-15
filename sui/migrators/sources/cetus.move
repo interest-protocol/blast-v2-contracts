@@ -3,6 +3,7 @@ module blast_fun_migrators::cetus;
 
 use blast_admin::acl::AdminWitness;
 use blast_fun::{
+    bps,
     launch::Launch,
     launchpad_domain::LAUNCHPAD_DOMAIN,
     lp_fee_policy::LpFeePolicy,
@@ -254,7 +255,7 @@ public fun migrate_existing_meme_a<Meme, Quote>(
         source_quote_amount,
         true,
         pool_sqrt_price,
-        MAX_PRICE_DEVIATION_BPS,
+        bps::new(MAX_PRICE_DEVIATION_BPS),
     );
 
     // Fix the side the adopted price leaves affordable: at or below the
@@ -356,7 +357,7 @@ public fun migrate_existing_meme_b<Meme, Quote>(
         source_quote_amount,
         false,
         pool_sqrt_price,
-        MAX_PRICE_DEVIATION_BPS,
+        bps::new(MAX_PRICE_DEVIATION_BPS),
     );
 
     // Meme is coin B here, so the affordable fixed side flips: at or above
@@ -533,14 +534,14 @@ fun assert_payment_amounts(
     assert!(
         paid_meme >= migration_math::minimum_utilized_amount(
             source_meme_amount,
-            MAX_RESIDUAL_BPS,
+            bps::new(MAX_RESIDUAL_BPS),
         ),
         EInsufficientUtilization,
     );
     assert!(
         paid_quote >= migration_math::minimum_utilized_amount(
             source_quote_amount,
-            MAX_RESIDUAL_BPS,
+            bps::new(MAX_RESIDUAL_BPS),
         ),
         EInsufficientUtilization,
     );
@@ -567,12 +568,12 @@ fun lock_and_share<Meme, Quote>(
     migration_math::assert_residual_within_bps(
         source_meme_amount,
         residual_meme_amount,
-        MAX_RESIDUAL_BPS,
+        bps::new(MAX_RESIDUAL_BPS),
     );
     migration_math::assert_residual_within_bps(
         source_quote_amount,
         residual_quote_amount,
-        MAX_RESIDUAL_BPS,
+        bps::new(MAX_RESIDUAL_BPS),
     );
 
     let used_meme_amount = source_meme_amount - residual_meme_amount;

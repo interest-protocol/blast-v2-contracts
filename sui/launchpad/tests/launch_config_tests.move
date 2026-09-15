@@ -3,6 +3,7 @@ module blast_fun::launch_config_tests;
 
 use blast_admin::acl::{Authority, AdminCap, AdminWitness};
 use blast_fun::{
+    bps,
     constants,
     domain_fixture,
     events,
@@ -112,9 +113,9 @@ fun admin_allows_migration_witness_for_launch_snapshot() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            0,
-            0,
-            MEME_LIQUIDITY_PROVISION_BPS,
+            bps::new(0),
+            bps::new(0),
+            bps::new(MEME_LIQUIDITY_PROVISION_BPS),
         );
 
         let (_, _, _, _, _, _, _, migration_witness) =
@@ -147,9 +148,9 @@ fun admin_allows_quote_and_launch_snapshot_uses_its_parameters() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            0,
-            0,
-            MEME_LIQUIDITY_PROVISION_BPS,
+            bps::new(0),
+            bps::new(0),
+            bps::new(MEME_LIQUIDITY_PROVISION_BPS),
         );
 
         let (virtual_quote, target, _, _, _, _, _, _) =
@@ -186,9 +187,9 @@ fun allowing_an_existing_quote_updates_only_the_next_launch_snapshot() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            0,
-            0,
-            MEME_LIQUIDITY_PROVISION_BPS,
+            bps::new(0),
+            bps::new(0),
+            bps::new(MEME_LIQUIDITY_PROVISION_BPS),
         );
         let _ = events::collect_one<events::QuoteAllowed>(0);
         let (first_virtual_quote, first_target, _, _, _, _, _, _) =
@@ -240,9 +241,9 @@ fun allowing_an_existing_quote_can_update_only_virtual_quote() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            0,
-            0,
-            MEME_LIQUIDITY_PROVISION_BPS,
+            bps::new(0),
+            bps::new(0),
+            bps::new(MEME_LIQUIDITY_PROVISION_BPS),
         );
         let _ = events::collect_one<events::QuoteAllowed>(0);
 
@@ -327,9 +328,9 @@ fun admin_can_readd_a_disallowed_quote() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            0,
-            0,
-            MEME_LIQUIDITY_PROVISION_BPS,
+            bps::new(0),
+            bps::new(0),
+            bps::new(MEME_LIQUIDITY_PROVISION_BPS),
         );
 
         let (virtual_quote, target, _, _, _, _, _, _) =
@@ -358,9 +359,9 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            PROTOCOL_QUOTE_MIGRATION_FEE_BPS,
-            PROTOCOL_MEME_GRADUATION_FEE_BPS,
-            MEME_LIQUIDITY_PROVISION_BPS,
+            bps::new(PROTOCOL_QUOTE_MIGRATION_FEE_BPS),
+            bps::new(PROTOCOL_MEME_GRADUATION_FEE_BPS),
+            bps::new(MEME_LIQUIDITY_PROVISION_BPS),
         );
 
         let (
@@ -429,12 +430,12 @@ fun admin_sets_trade_fees_for_future_launch_snapshots() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            0,
-            0,
-            MEME_LIQUIDITY_PROVISION_BPS,
+            bps::new(0),
+            bps::new(0),
+            bps::new(MEME_LIQUIDITY_PROVISION_BPS),
         );
         f.config.set_trade_fees(&f.package_version,
-            &admin_witness, QUOTE_FEE_BPS, MEME_FEE_BPS);
+            &admin_witness, bps::new(QUOTE_FEE_BPS), bps::new(MEME_FEE_BPS));
 
         let (
             _,
@@ -469,13 +470,13 @@ fun trade_fees_accept_zero_and_launch_ceiling_boundaries() {
         f.config.set_trade_fees(
             &f.package_version,
             &admin_witness,
-            constants::max_launch_fee_bps!(),
-            constants::max_launch_fee_bps!(),
+            bps::new(constants::max_launch_fee_bps!()),
+            bps::new(constants::max_launch_fee_bps!()),
         );
         f.config.set_trade_fees(&f.package_version,
-            &admin_witness, 0, 0);
+            &admin_witness, bps::new(0), bps::new(0));
         f.config.set_trade_fees(&f.package_version,
-            &admin_witness, 0, 1);
+            &admin_witness, bps::new(0), bps::new(1));
 
         let changes = events::collect<events::LaunchTradeFeesChanged>();
 
@@ -523,39 +524,39 @@ fun graduation_defaults_accept_fee_zeros_and_liquidity_provision_boundaries() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            constants::max_protocol_quote_migration_fee_bps!(),
-            constants::max_protocol_meme_graduation_fee_bps!(),
-            constants::basis_points_denominator!()
+            bps::new(constants::max_protocol_quote_migration_fee_bps!()),
+            bps::new(constants::max_protocol_meme_graduation_fee_bps!()),
+            bps::new(constants::basis_points_denominator!()
                 - constants::max_protocol_meme_graduation_fee_bps!()
-                - 1,
+                - 1),
         );
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            constants::max_protocol_quote_migration_fee_bps!(),
-            0,
-            constants::basis_points_denominator!()
+            bps::new(constants::max_protocol_quote_migration_fee_bps!()),
+            bps::new(0),
+            bps::new(constants::basis_points_denominator!()
                 - constants::max_protocol_meme_graduation_fee_bps!()
-                - 1,
+                - 1),
         );
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            0,
-            constants::max_protocol_meme_graduation_fee_bps!(),
-            constants::basis_points_denominator!()
+            bps::new(0),
+            bps::new(constants::max_protocol_meme_graduation_fee_bps!()),
+            bps::new(constants::basis_points_denominator!()
                 - constants::max_protocol_meme_graduation_fee_bps!()
-                - 1,
+                - 1),
         );
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            constants::max_protocol_quote_migration_fee_bps!(),
-            0,
-            constants::basis_points_denominator!() - 1,
+            bps::new(constants::max_protocol_quote_migration_fee_bps!()),
+            bps::new(0),
+            bps::new(constants::basis_points_denominator!() - 1),
         );
         f.config.set_graduation_defaults(&f.package_version,
-            &admin_witness, 0, 0, 1);
+            &admin_witness, bps::new(0), bps::new(0), bps::new(1));
 
         let (
             _,
@@ -592,9 +593,9 @@ fun disallowing_migration_witness_does_not_change_an_existing_launch_snapshot() 
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            0,
-            0,
-            MEME_LIQUIDITY_PROVISION_BPS,
+            bps::new(0),
+            bps::new(0),
+            bps::new(MEME_LIQUIDITY_PROVISION_BPS),
         );
         let (_, _, _, _, _, _, _, snapshotted_migration_witness) =
             f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
@@ -631,8 +632,8 @@ fun trade_fees_reject_quote_rate_above_ceiling_first() {
         f.config.set_trade_fees(
             &f.package_version,
             &admin_witness,
-            constants::max_launch_fee_bps!() + 1,
-            constants::max_launch_fee_bps!() + 1,
+            bps::new(constants::max_launch_fee_bps!() + 1),
+            bps::new(constants::max_launch_fee_bps!() + 1),
         );
     });
 
@@ -653,8 +654,8 @@ fun trade_fees_reject_meme_rate_above_ceiling() {
         f.config.set_trade_fees(
             &f.package_version,
             &admin_witness,
-            0,
-            constants::max_launch_fee_bps!() + 1,
+            bps::new(0),
+            bps::new(constants::max_launch_fee_bps!() + 1),
         );
     });
 
@@ -673,7 +674,7 @@ fun trade_fees_reject_unchanged_pair() {
         let admin_witness = f.sign_in();
 
         f.config.set_trade_fees(&f.package_version,
-            &admin_witness, 0, 0);
+            &admin_witness, bps::new(0), bps::new(0));
     });
 
     fixture.end();
@@ -693,9 +694,9 @@ fun graduation_defaults_reject_quote_rate_above_ceiling_first() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            constants::max_protocol_quote_migration_fee_bps!() + 1,
-            constants::max_protocol_meme_graduation_fee_bps!() + 1,
-            0,
+            bps::new(constants::max_protocol_quote_migration_fee_bps!() + 1),
+            bps::new(constants::max_protocol_meme_graduation_fee_bps!() + 1),
+            bps::new(0),
         );
     });
 
@@ -716,9 +717,9 @@ fun graduation_defaults_reject_meme_rate_above_ceiling_before_provision() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            0,
-            constants::max_protocol_meme_graduation_fee_bps!() + 1,
-            0,
+            bps::new(0),
+            bps::new(constants::max_protocol_meme_graduation_fee_bps!() + 1),
+            bps::new(0),
         );
     });
 
@@ -737,7 +738,7 @@ fun graduation_defaults_reject_zero_liquidity_provision() {
         let admin_witness = f.sign_in();
 
         f.config.set_graduation_defaults(&f.package_version,
-            &admin_witness, 0, 0, 0);
+            &admin_witness, bps::new(0), bps::new(0), bps::new(0));
     });
 
     fixture.end();
@@ -757,9 +758,9 @@ fun graduation_defaults_reject_liquidity_provision_above_ceiling() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            0,
-            0,
-            constants::basis_points_denominator!(),
+            bps::new(0),
+            bps::new(0),
+            bps::new(constants::basis_points_denominator!()),
         );
     });
 
@@ -780,9 +781,9 @@ fun graduation_defaults_reject_provision_ceiling_before_partition() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            0,
-            constants::max_protocol_meme_graduation_fee_bps!(),
-            constants::basis_points_denominator!(),
+            bps::new(0),
+            bps::new(constants::max_protocol_meme_graduation_fee_bps!()),
+            bps::new(constants::basis_points_denominator!()),
         );
     });
 
@@ -803,10 +804,10 @@ fun graduation_defaults_reject_partition_without_curve_inventory() {
         f.config.set_graduation_defaults(
             &f.package_version,
             &admin_witness,
-            0,
-            constants::max_protocol_meme_graduation_fee_bps!(),
-            constants::basis_points_denominator!()
-                - constants::max_protocol_meme_graduation_fee_bps!(),
+            bps::new(0),
+            bps::new(constants::max_protocol_meme_graduation_fee_bps!()),
+            bps::new(constants::basis_points_denominator!()
+                - constants::max_protocol_meme_graduation_fee_bps!()),
         );
     });
 
@@ -847,10 +848,10 @@ fun graduation_defaults_reject_unchanged_triple() {
         let admin_witness = f.sign_in();
 
         f.config.set_graduation_defaults(&f.package_version,
-            &admin_witness, 0, 0, 1);
+            &admin_witness, bps::new(0), bps::new(0), bps::new(1));
         let _ = events::collect_one<events::GraduationDefaultsChanged>(0);
         f.config.set_graduation_defaults(&f.package_version,
-            &admin_witness, 0, 0, 1);
+            &admin_witness, bps::new(0), bps::new(0), bps::new(1));
     });
 
     fixture.end();

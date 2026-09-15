@@ -3,6 +3,7 @@ module blast_fun::lp_fee_policy_tests;
 
 use blast_admin::acl::{Authority, AdminCap, AdminWitness};
 use blast_fun::{
+    bps,
     domain_fixture,
     events,
     launchpad_domain::LAUNCHPAD_DOMAIN,
@@ -63,7 +64,7 @@ fun active_admin_updates_default_share_and_emits_new_value() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, 3_000);
+        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(3_000));
 
         let changed = events::collect_one<events::LpProtocolFeeShareChanged>(0);
         assert_eq!(changed.lp_protocol_fee_share_changed_fields(), 3_000);
@@ -81,10 +82,10 @@ fun default_share_accepts_both_percentage_boundaries() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, 10_000);
+        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(10_000));
         assert_eq!(f.policy.protocol_fee_share<PARTNER_MEME>().value(), 10_000);
 
-        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, 0);
+        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(0));
         assert_eq!(f.policy.protocol_fee_share<PARTNER_MEME>().value(), 0);
         assert_eq!(events::collect<events::LpProtocolFeeShareChanged>().length(), 2);
     });
@@ -103,7 +104,7 @@ fun default_share_rejects_unchanged_value() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, 0);
+        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(0));
     });
 
     fixture.end();
@@ -114,13 +115,13 @@ fun default_share_rejects_unchanged_value() {
     abort_code = blast_fun::errors::EInvalidBps,
     location = blast_fun::bps,
 )]
-fun default_share_delegates_range_validation_to_bps() {
+fun share_inputs_cannot_exceed_one_hundred_percent() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, 10_001);
+        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(10_001));
     });
 
     fixture.end();
@@ -138,7 +139,7 @@ fun stale_package_version_rejects_default_share_before_unchanged_check() {
         let admin_witness = f.sign_in();
         f.package_version.set_for_testing(2);
 
-        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, 0);
+        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(0));
     });
 
     fixture.end();
@@ -151,11 +152,11 @@ fun project_share_takes_precedence_over_default_and_emits_its_meme() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, 5_000);
+        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(5_000));
         f.policy.set_project_protocol_fee_share<PARTNER_MEME>(
             &f.package_version,
             &admin_witness,
-            1_000,
+            bps::new(1_000),
         );
 
         let set = events::collect_one<events::ProjectLpProtocolFeeShareSet>(0);
@@ -180,9 +181,9 @@ fun project_share_equal_to_default_is_a_pin_that_survives_default_changes() {
         f.policy.set_project_protocol_fee_share<PARTNER_MEME>(
             &f.package_version,
             &admin_witness,
-            0,
+            bps::new(0),
         );
-        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, 4_000);
+        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(4_000));
 
         assert_eq!(f.policy.protocol_fee_share<PARTNER_MEME>().value(), 0);
         assert_eq!(f.policy.protocol_fee_share<OTHER_MEME>().value(), 4_000);
@@ -201,12 +202,12 @@ fun project_share_repins_to_a_different_value() {
         f.policy.set_project_protocol_fee_share<PARTNER_MEME>(
             &f.package_version,
             &admin_witness,
-            1_000,
+            bps::new(1_000),
         );
         f.policy.set_project_protocol_fee_share<PARTNER_MEME>(
             &f.package_version,
             &admin_witness,
-            10_000,
+            bps::new(10_000),
         );
 
         assert_eq!(f.policy.protocol_fee_share<PARTNER_MEME>().value(), 10_000);
@@ -231,59 +232,12 @@ fun project_share_rejects_repinning_its_current_value() {
         f.policy.set_project_protocol_fee_share<PARTNER_MEME>(
             &f.package_version,
             &admin_witness,
-            1_000,
+            bps::new(1_000),
         );
         f.policy.set_project_protocol_fee_share<PARTNER_MEME>(
             &f.package_version,
             &admin_witness,
-            1_000,
-        );
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EInvalidBps,
-    location = blast_fun::bps,
-)]
-fun project_share_delegates_first_pin_range_validation_to_bps() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.policy.set_project_protocol_fee_share<PARTNER_MEME>(
-            &f.package_version,
-            &admin_witness,
-            10_001,
-        );
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EInvalidBps,
-    location = blast_fun::bps,
-)]
-fun project_share_delegates_repin_range_validation_to_bps() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.policy.set_project_protocol_fee_share<PARTNER_MEME>(
-            &f.package_version,
-            &admin_witness,
-            1_000,
-        );
-        f.policy.set_project_protocol_fee_share<PARTNER_MEME>(
-            &f.package_version,
-            &admin_witness,
-            10_001,
+            bps::new(1_000),
         );
     });
 
@@ -295,7 +249,7 @@ fun project_share_delegates_repin_range_validation_to_bps() {
     abort_code = blast_admin::errors::EOperationalVersionMismatch,
     location = blast_admin::operational_version,
 )]
-fun stale_package_version_rejects_project_share_before_value_validation() {
+fun stale_package_version_rejects_project_share() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
@@ -305,7 +259,7 @@ fun stale_package_version_rejects_project_share_before_value_validation() {
         f.policy.set_project_protocol_fee_share<PARTNER_MEME>(
             &f.package_version,
             &admin_witness,
-            10_001,
+            bps::new(1_000),
         );
     });
 
@@ -319,11 +273,11 @@ fun cleared_project_follows_the_default_again_and_emits_its_meme() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, 2_500);
+        f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(2_500));
         f.policy.set_project_protocol_fee_share<PARTNER_MEME>(
             &f.package_version,
             &admin_witness,
-            500,
+            bps::new(500),
         );
         f.policy.clear_project_protocol_fee_share<PARTNER_MEME>(
             &f.package_version,
@@ -356,7 +310,7 @@ fun clear_rejects_a_project_without_a_pinned_share() {
         f.policy.set_project_protocol_fee_share<OTHER_MEME>(
             &f.package_version,
             &admin_witness,
-            500,
+            bps::new(500),
         );
         f.policy.clear_project_protocol_fee_share<PARTNER_MEME>(
             &f.package_version,

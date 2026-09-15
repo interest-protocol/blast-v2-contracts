@@ -103,16 +103,16 @@ public fun set_trade_fees(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
     _: &AdminWitness<LAUNCHPAD_DOMAIN>,
-    quote_fee_bps: u64,
-    meme_fee_bps: u64,
+    quote_fee_bps: Bps,
+    meme_fee_bps: Bps,
 ) {
     package_version.assert_current();
     self.assert_valid_trade_fees(quote_fee_bps, meme_fee_bps);
 
-    self.quote_fee_bps = bps::new(quote_fee_bps);
-    self.meme_fee_bps = bps::new(meme_fee_bps);
+    self.quote_fee_bps = quote_fee_bps;
+    self.meme_fee_bps = meme_fee_bps;
 
-    events::launch_trade_fees_changed(quote_fee_bps, meme_fee_bps);
+    events::launch_trade_fees_changed(quote_fee_bps.value(), meme_fee_bps.value());
 }
 
 /// Changes the graduation economics snapshotted by launches created afterward.
@@ -120,9 +120,9 @@ public fun set_graduation_defaults(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
     _: &AdminWitness<LAUNCHPAD_DOMAIN>,
-    protocol_quote_migration_fee_bps: u64,
-    protocol_meme_graduation_fee_bps: u64,
-    meme_liquidity_provision_bps: u64,
+    protocol_quote_migration_fee_bps: Bps,
+    protocol_meme_graduation_fee_bps: Bps,
+    meme_liquidity_provision_bps: Bps,
 ) {
     package_version.assert_current();
     self.assert_valid_graduation_defaults(
@@ -131,15 +131,14 @@ public fun set_graduation_defaults(
         meme_liquidity_provision_bps,
     );
 
-    self.protocol_quote_migration_fee_bps = bps::new(protocol_quote_migration_fee_bps);
-    self.protocol_meme_graduation_fee_bps =
-        bps::new(protocol_meme_graduation_fee_bps);
-    self.meme_liquidity_provision_bps = bps::new(meme_liquidity_provision_bps);
+    self.protocol_quote_migration_fee_bps = protocol_quote_migration_fee_bps;
+    self.protocol_meme_graduation_fee_bps = protocol_meme_graduation_fee_bps;
+    self.meme_liquidity_provision_bps = meme_liquidity_provision_bps;
 
     events::graduation_defaults_changed(
-        protocol_quote_migration_fee_bps,
-        protocol_meme_graduation_fee_bps,
-        meme_liquidity_provision_bps,
+        protocol_quote_migration_fee_bps.value(),
+        protocol_meme_graduation_fee_bps.value(),
+        meme_liquidity_provision_bps.value(),
     );
 }
 
@@ -287,56 +286,54 @@ fun insert_quote<Quote>(
 
 fun assert_valid_trade_fees(
     self: &LaunchConfig,
-    quote_fee_bps: u64,
-    meme_fee_bps: u64,
+    quote_fee_bps: Bps,
+    meme_fee_bps: Bps,
 ) {
     assert!(
-        quote_fee_bps <= constants::max_launch_fee_bps!(),
+        quote_fee_bps.value() <= constants::max_launch_fee_bps!(),
         blast_fun::errors::invalid_quote_fee_bps!(),
     );
     assert!(
-        meme_fee_bps <= constants::max_launch_fee_bps!(),
+        meme_fee_bps.value() <= constants::max_launch_fee_bps!(),
         blast_fun::errors::invalid_meme_fee_bps!(),
     );
     assert!(
-        quote_fee_bps != self.quote_fee_bps.value()
-            || meme_fee_bps != self.meme_fee_bps.value(),
+        quote_fee_bps != self.quote_fee_bps
+            || meme_fee_bps != self.meme_fee_bps,
         blast_fun::errors::trade_fee_defaults_unchanged!(),
     );
 }
 
 fun assert_valid_graduation_defaults(
     self: &LaunchConfig,
-    protocol_quote_migration_fee_bps: u64,
-    protocol_meme_graduation_fee_bps: u64,
-    meme_liquidity_provision_bps: u64,
+    protocol_quote_migration_fee_bps: Bps,
+    protocol_meme_graduation_fee_bps: Bps,
+    meme_liquidity_provision_bps: Bps,
 ) {
     assert!(
-        protocol_quote_migration_fee_bps <= constants::max_protocol_quote_migration_fee_bps!(),
+        protocol_quote_migration_fee_bps.value() <= constants::max_protocol_quote_migration_fee_bps!(),
         blast_fun::errors::invalid_protocol_quote_migration_fee_bps!(),
     );
     assert!(
-        protocol_meme_graduation_fee_bps
+        protocol_meme_graduation_fee_bps.value()
             <= constants::max_protocol_meme_graduation_fee_bps!(),
         blast_fun::errors::invalid_protocol_meme_graduation_fee_bps!(),
     );
     assert!(
-        meme_liquidity_provision_bps > 0
-            && meme_liquidity_provision_bps
+        meme_liquidity_provision_bps.value() > 0
+            && meme_liquidity_provision_bps.value()
                 < constants::basis_points_denominator!(),
         blast_fun::errors::invalid_meme_liquidity_provision_bps!(),
     );
     assert!(
-        protocol_meme_graduation_fee_bps + meme_liquidity_provision_bps
+        protocol_meme_graduation_fee_bps.value() + meme_liquidity_provision_bps.value()
             < constants::basis_points_denominator!(),
         blast_fun::errors::invalid_meme_supply_partition_bps!(),
     );
     assert!(
-        protocol_quote_migration_fee_bps != self.protocol_quote_migration_fee_bps.value()
-            || protocol_meme_graduation_fee_bps
-                != self.protocol_meme_graduation_fee_bps.value()
-            || meme_liquidity_provision_bps
-                != self.meme_liquidity_provision_bps.value(),
+        protocol_quote_migration_fee_bps != self.protocol_quote_migration_fee_bps
+            || protocol_meme_graduation_fee_bps != self.protocol_meme_graduation_fee_bps
+            || meme_liquidity_provision_bps != self.meme_liquidity_provision_bps,
         blast_fun::errors::graduation_defaults_unchanged!(),
     );
 }

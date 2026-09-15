@@ -71,17 +71,17 @@ public fun set_protocol_fee_share(
     self: &mut RuntimeConfig,
     package_version: &PackageVersion,
     _: &AdminWitness<LAUNCHPAD_DOMAIN>,
-    protocol_fee_share_bps: u64,
+    protocol_fee_share_bps: Bps,
 ) {
     package_version.assert_current();
     assert!(
-        protocol_fee_share_bps != self.protocol_fee_share_bps.value(),
+        protocol_fee_share_bps != self.protocol_fee_share_bps,
         blast_fun::errors::protocol_fee_share_unchanged!(),
     );
 
-    self.protocol_fee_share_bps = bps::new(protocol_fee_share_bps);
+    self.protocol_fee_share_bps = protocol_fee_share_bps;
 
-    events::protocol_fee_share_changed(protocol_fee_share_bps);
+    events::protocol_fee_share_changed(protocol_fee_share_bps.value());
 }
 
 /// Returns the raw live protocol share used by subsequent fee accruals.

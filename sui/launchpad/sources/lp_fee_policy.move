@@ -44,17 +44,17 @@ public fun set_protocol_fee_share(
     self: &mut LpFeePolicy,
     package_version: &PackageVersion,
     _: &AdminWitness<LAUNCHPAD_DOMAIN>,
-    protocol_fee_share_bps: u64,
+    protocol_fee_share_bps: Bps,
 ) {
     package_version.assert_current();
     assert!(
-        protocol_fee_share_bps != self.protocol_fee_share_bps.value(),
+        protocol_fee_share_bps != self.protocol_fee_share_bps,
         blast_fun::errors::lp_protocol_fee_share_unchanged!(),
     );
 
-    self.protocol_fee_share_bps = bps::new(protocol_fee_share_bps);
+    self.protocol_fee_share_bps = protocol_fee_share_bps;
 
-    events::lp_protocol_fee_share_changed(protocol_fee_share_bps);
+    events::lp_protocol_fee_share_changed(protocol_fee_share_bps.value());
 }
 
 /// Pins one project's LP share, which then ignores later migrator-wide changes.
@@ -66,7 +66,7 @@ public fun set_project_protocol_fee_share<Meme>(
     self: &mut LpFeePolicy,
     package_version: &PackageVersion,
     _: &AdminWitness<LAUNCHPAD_DOMAIN>,
-    protocol_fee_share_bps: u64,
+    protocol_fee_share_bps: Bps,
 ) {
     package_version.assert_current();
 
@@ -76,16 +76,16 @@ public fun set_project_protocol_fee_share<Meme>(
         let share_mut = &mut self.project_protocol_fee_shares[meme];
 
         assert!(
-            protocol_fee_share_bps != (*share_mut).value(),
+            protocol_fee_share_bps != *share_mut,
             blast_fun::errors::project_lp_protocol_fee_share_unchanged!(),
         );
 
-        *share_mut = bps::new(protocol_fee_share_bps);
+        *share_mut = protocol_fee_share_bps;
     } else {
-        self.project_protocol_fee_shares.add(meme, bps::new(protocol_fee_share_bps));
+        self.project_protocol_fee_shares.add(meme, protocol_fee_share_bps);
     };
 
-    events::project_lp_protocol_fee_share_set<Meme>(protocol_fee_share_bps);
+    events::project_lp_protocol_fee_share_set<Meme>(protocol_fee_share_bps.value());
 }
 
 /// Removes one project's pinned share so it follows the migrator-wide share again.

@@ -247,15 +247,15 @@ require_pattern "$MIGRATION_MATH_SOURCE" \
     'integer_sqrt\(ratio_q128\(meme_amount, quote_amount, meme_is_coin_a\)\)' \
     'exact Q128 price derivation'
 require_pattern "$MIGRATION_MATH_SOURCE" \
-    'let max_deviation_bps = bps::new\(max_deviation_bps\)\.value\(\);' \
-    'price-deviation rate validation through the shared Bps unit'
+    'let max_deviation_bps = max_deviation_bps\.value\(\);' \
+    'price-deviation rate read from its validated Bps'
 require_pattern "$MIGRATION_MATH_SOURCE" \
-    'bps::new\(max_residual_bps\)\.apply_up\(amount\)' \
+    'max_residual_bps\.apply_up\(amount\)' \
     'ceiling residual allowance through the shared Bps unit'
 require_pattern "$MIGRATION_MATH_SOURCE" \
     'maximum_residual_amount\(source_amount, max_residual_bps\)' \
     'shared residual allowance'
-if rg -q '\b(blast_fun::(constants|errors)|Bps|UID|key|Balance|Coin|TxContext|transfer::|events::|RuntimeConfig)\b' \
+if rg -q '\b(blast_fun::(constants|errors)|UID|key|Balance|Coin|TxContext|transfer::|events::|RuntimeConfig)\b' \
     "$MIGRATION_MATH_SOURCE"; then
     fail "migration math must remain a pure migrator-owned arithmetic module"
 fi
@@ -628,7 +628,7 @@ require_cetus_public 'migrate_existing_meme_a' \
     'if(fix_meme){(source_meme_amount,true)}else{(source_quote_amount,false)};' \
     'Meme-A fixed-side mapping'
 require_cetus_public 'migrate_existing_meme_a' \
-    'migration_math::assert_price_within_bps(source_meme_amount,source_quote_amount,true,pool_sqrt_price,MAX_PRICE_DEVIATION_BPS,)' \
+    'migration_math::assert_price_within_bps(source_meme_amount,source_quote_amount,true,pool_sqrt_price,bps::new(MAX_PRICE_DEVIATION_BPS),)' \
     'exact Meme-A 50-bps price guard'
 require_cetus_public 'migrate_existing_meme_a' \
     'pool::open_position<Meme,Quote>(cetus_config,pool,lower_tick_bits,upper_tick_bits,ctx,)' \
@@ -662,7 +662,7 @@ require_cetus_public 'migrate_existing_meme_b' \
     'if(fix_meme){(source_meme_amount,false)}else{(source_quote_amount,true)};' \
     'Meme-B fixed-side mapping'
 require_cetus_public 'migrate_existing_meme_b' \
-    'migration_math::assert_price_within_bps(source_meme_amount,source_quote_amount,false,pool_sqrt_price,MAX_PRICE_DEVIATION_BPS,)' \
+    'migration_math::assert_price_within_bps(source_meme_amount,source_quote_amount,false,pool_sqrt_price,bps::new(MAX_PRICE_DEVIATION_BPS),)' \
     'exact Meme-B 50-bps price guard'
 require_cetus_public 'migrate_existing_meme_b' \
     'pool::open_position<Quote,Meme>(cetus_config,pool,lower_tick_bits,upper_tick_bits,ctx,)' \
@@ -723,10 +723,10 @@ require_cetus_private 'collect_position_fees' \
 
 # Shared lock is the sole utilization, residual-custody, and event seam.
 require_cetus_private 'lock_and_share' \
-    'migration_math::assert_residual_within_bps(source_meme_amount,residual_meme_amount,MAX_RESIDUAL_BPS,)' \
+    'migration_math::assert_residual_within_bps(source_meme_amount,residual_meme_amount,bps::new(MAX_RESIDUAL_BPS),)' \
     'Meme residual limit'
 require_cetus_private 'lock_and_share' \
-    'migration_math::assert_residual_within_bps(source_quote_amount,residual_quote_amount,MAX_RESIDUAL_BPS,)' \
+    'migration_math::assert_residual_within_bps(source_quote_amount,residual_quote_amount,bps::new(MAX_RESIDUAL_BPS),)' \
     'Quote residual limit'
 require_cetus_private 'lock_and_share' \
     'vault::new<Meme,Quote,Venue,Position>(Venue(),pool_id,position,residual_meme.into_balance(),residual_quote.into_balance(),ctx,)' \
@@ -793,7 +793,7 @@ require_turbos_public 'migrate_new_meme_b' \
 
 # Existing routes redeem, guard at 50 bps, then call only the mint return path.
 require_turbos_public 'migrate_existing_meme_a' \
-    'migration_math::assert_price_within_bps(source_meme_amount,source_quote_amount,true,pool_sqrt_price,MAX_PRICE_DEVIATION_BPS,)' \
+    'migration_math::assert_price_within_bps(source_meme_amount,source_quote_amount,true,pool_sqrt_price,bps::new(MAX_PRICE_DEVIATION_BPS),)' \
     'exact Meme-A 50-bps price guard'
 require_turbos_public 'migrate_existing_meme_a' \
     'checked_pool_tier(venue_config,pool);' 'Meme-A adopted tier check'
@@ -814,7 +814,7 @@ require_turbos_public 'migrate_existing_meme_a' \
 reject_turbos_pre_guard_mutator 'migrate_existing_meme_a'
 
 require_turbos_public 'migrate_existing_meme_b' \
-    'migration_math::assert_price_within_bps(source_meme_amount,source_quote_amount,false,pool_sqrt_price,MAX_PRICE_DEVIATION_BPS,)' \
+    'migration_math::assert_price_within_bps(source_meme_amount,source_quote_amount,false,pool_sqrt_price,bps::new(MAX_PRICE_DEVIATION_BPS),)' \
     'exact Meme-B 50-bps price guard'
 require_turbos_public 'migrate_existing_meme_b' \
     'checked_pool_tier(venue_config,pool);' 'Meme-B adopted tier check'
@@ -887,10 +887,10 @@ require_turbos_private 'assert_positive_liquidity' \
     'assert!(liquidity>0,EZeroPositionLiquidity);' \
     'created-position liquidity guard'
 require_turbos_private 'lock_and_share' \
-    'migration_math::assert_residual_within_bps(source_meme_amount,residual_meme_amount,MAX_RESIDUAL_BPS,)' \
+    'migration_math::assert_residual_within_bps(source_meme_amount,residual_meme_amount,bps::new(MAX_RESIDUAL_BPS),)' \
     'Meme residual limit'
 require_turbos_private 'lock_and_share' \
-    'migration_math::assert_residual_within_bps(source_quote_amount,residual_quote_amount,MAX_RESIDUAL_BPS,)' \
+    'migration_math::assert_residual_within_bps(source_quote_amount,residual_quote_amount,bps::new(MAX_RESIDUAL_BPS),)' \
     'Quote residual limit'
 require_turbos_private 'lock_and_share' \
     'vault::new<Meme,Quote,Venue,TurbosPositionNFT>(Venue(),pool_id,position,residual_meme.into_balance(),residual_quote.into_balance(),ctx,)' \

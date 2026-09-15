@@ -1,6 +1,7 @@
 #[test_only]
 module blast_fun_migrators::migration_math_tests;
 
+use blast_fun::bps;
 use blast_fun_migrators::migration_math;
 use std::unit_test::assert_eq;
 
@@ -96,7 +97,7 @@ fun exact_fifty_basis_point_price_deviation_is_accepted() {
         10_000,
         true,
         at_boundary,
-        50,
+        bps::new(50),
     );
 }
 
@@ -113,23 +114,23 @@ fun first_price_unit_above_fifty_basis_points_is_rejected() {
         10_000,
         true,
         outside,
-        50,
+        bps::new(50),
     );
 }
 
 #[test]
 fun one_basis_point_residual_boundary_is_accepted() {
     assert_eq!(
-        migration_math::minimum_utilized_amount(10_000, 1),
+        migration_math::minimum_utilized_amount(10_000, bps::new(1)),
         9_999,
     );
     assert_eq!(
-        migration_math::minimum_utilized_amount(10_001, 1),
+        migration_math::minimum_utilized_amount(10_001, bps::new(1)),
         9_999,
     );
 
-    migration_math::assert_residual_within_bps(10_000, 1, 1);
-    migration_math::assert_residual_within_bps(10_001, 2, 1);
+    migration_math::assert_residual_within_bps(10_000, 1, bps::new(1));
+    migration_math::assert_residual_within_bps(10_001, 2, bps::new(1));
 }
 
 #[test]
@@ -138,7 +139,7 @@ fun one_basis_point_residual_boundary_is_accepted() {
     location = blast_fun_migrators::migration_math,
 )]
 fun residual_above_one_basis_point_is_rejected() {
-    migration_math::assert_residual_within_bps(10_000, 2, 1);
+    migration_math::assert_residual_within_bps(10_000, 2, bps::new(1));
 }
 
 #[test]
@@ -147,7 +148,7 @@ fun residual_above_one_basis_point_is_rejected() {
     location = blast_fun::bps,
 )]
 fun residual_limit_rejects_more_than_one_hundred_percent() {
-    migration_math::minimum_utilized_amount(10_000, 10_001);
+    migration_math::minimum_utilized_amount(10_000, bps::new(10_001));
 }
 
 #[test]
@@ -158,5 +159,5 @@ fun residual_limit_rejects_more_than_one_hundred_percent() {
 fun price_deviation_limit_rejects_more_than_one_hundred_percent() {
     let price = migration_math::sqrt_price_x64(10_000, 10_000, true);
 
-    migration_math::assert_price_within_bps(10_000, 10_000, true, price, 10_001);
+    migration_math::assert_price_within_bps(10_000, 10_000, true, price, bps::new(10_001));
 }

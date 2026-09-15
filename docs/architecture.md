@@ -91,8 +91,8 @@ See [ADR 0054](decisions/0054-v3-dex-migrators-and-locked-lp-fees.md).
 ## Asset pair
 
 A launch pairs its generated meme coin with a quote `Coin<Quote>`. Stored rates
-use the validated `Bps` unit; public configuration inputs and replay events use
-raw `u64` primitive values. Core admits
+and public fee-rate configuration inputs use the validated `Bps` unit; replay
+events use raw `u64` primitive values. Core admits
 new pairs through the Table-backed quote portion of `LaunchConfig`, keyed by the
 quote's original `TypeName`. Each entry supplies a nonzero virtual Quote reserve
 and a real-Quote migration target of at least two atomic units. Launch state

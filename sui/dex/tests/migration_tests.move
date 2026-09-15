@@ -3,6 +3,7 @@ module blast_fun_dex::migration_tests;
 
 use blast_admin::acl::{Authority, AdminCap};
 use blast_fun::{
+    bps,
     creator_authority::{Self, CurveFeeCap, LpFeeCap},
     launch::{Self, Launch},
     launch_config,
@@ -270,7 +271,7 @@ fun changing_lp_policy_never_resplits_already_collected_native_fees() {
         vault.collect(&mut pool, &f.factory, &f.lp_fee_policy, f.ctx!());
         let (_, _, first_protocol, first_creator) = vault.snapshot_for_testing();
         let witness = f.authority.sign_in(&f.admin);
-        f.lp_fee_policy.set_protocol_fee_share(&f.version, &witness, 10_000);
+        f.lp_fee_policy.set_protocol_fee_share(&f.version, &witness, bps::new(10_000));
         let input = coin::mint_for_testing<QUOTE>(1_000_000, f.ctx!());
         let (bought, refund) = pool.buy(&f.factory, input, 1, 500, 0, &f.clock, f.ctx!());
         destroy(bought);
@@ -293,7 +294,7 @@ fun native_collection_applies_the_project_lp_share_instead_of_the_trade_share() 
         let mut pool = f.take_pool();
         let mut vault = f.take_vault();
         let witness = f.authority.sign_in(&f.admin);
-        f.lp_fee_policy.set_project_protocol_fee_share<MIGRATION_TESTS>(&f.version, &witness, 10_000);
+        f.lp_fee_policy.set_project_protocol_fee_share<MIGRATION_TESTS>(&f.version, &witness, bps::new(10_000));
         let input = coin::mint_for_testing<QUOTE>(1_000_000, f.ctx!());
         let (bought, refund) = pool.buy(&f.factory, input, 1, 500, 0, &f.clock, f.ctx!());
         destroy(bought);
@@ -638,12 +639,12 @@ fun start_with_policy<SelectedWitness: drop>(
     let mut config = scenario.take_shared<launch_config::LaunchConfig>();
     config.allow_quote<QUOTE>(&version, &witness, 5_000_000, 25_000_000);
     config.allow_migration_witness<SelectedWitness>(&version, &witness);
-    config.set_trade_fees(&version, &witness, 100, 100);
-    config.set_graduation_defaults(&version, &witness, migration_fee, 0, 2_000);
+    config.set_trade_fees(&version, &witness, bps::new(100), bps::new(100));
+    config.set_graduation_defaults(&version, &witness, bps::new(migration_fee), bps::new(0), bps::new(2_000));
     let mut runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
-    runtime.set_protocol_fee_share(&version, &witness, 5_000);
+    runtime.set_protocol_fee_share(&version, &witness, bps::new(5_000));
     let mut lp_fee_policy = lp_fee_policy::new_for_testing(scenario.ctx());
-    lp_fee_policy.set_protocol_fee_share(&version, &witness, 2_500);
+    lp_fee_policy.set_protocol_fee_share(&version, &witness, bps::new(2_500));
     let clock = clock::create_for_testing(scenario.ctx());
     let ticket = launch_ticket::new(
         MIGRATION_TESTS(),

@@ -3,6 +3,8 @@
 > Storage-type update (2026-08-28): [ADR 0044](0044-validated-basis-points-unit.md)
 > wraps `protocol_fee_share_bps` in `Bps`; the public setter and event fields
 > remain raw `u64` values.
+> Setter-input update (2026-09-15): [ADR 0081](0081-separate-lp-fee-share-policy.md)
+> makes the setter take `Bps`; event fields remain raw `u64` values.
 > Version ownership update (2026-08-29):
 > [ADR 0049](0049-audit-hardened-package-version-and-launch-intake.md) keeps
 > `RuntimeConfig` limited to its two live settings and adds a separate shared

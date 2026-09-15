@@ -3,6 +3,7 @@ module blast_fun_migrators::mmt;
 
 use blast_admin::acl::AdminWitness;
 use blast_fun::{
+    bps,
     launch::Launch,
     launchpad_domain::LAUNCHPAD_DOMAIN,
     lp_fee_policy::LpFeePolicy,
@@ -100,11 +101,11 @@ public fun migrate_meme_x<Meme, Quote>(
     );
     let minimum_meme_amount = migration_math::minimum_utilized_amount(
         source_meme_amount,
-        MAX_RESIDUAL_BPS,
+        bps::new(MAX_RESIDUAL_BPS),
     );
     let minimum_quote_amount = migration_math::minimum_utilized_amount(
         source_quote_amount,
-        MAX_RESIDUAL_BPS,
+        bps::new(MAX_RESIDUAL_BPS),
     );
 
     let (
@@ -178,11 +179,11 @@ public fun migrate_meme_y<Meme, Quote>(
     );
     let minimum_meme_amount = migration_math::minimum_utilized_amount(
         source_meme_amount,
-        MAX_RESIDUAL_BPS,
+        bps::new(MAX_RESIDUAL_BPS),
     );
     let minimum_quote_amount = migration_math::minimum_utilized_amount(
         source_quote_amount,
-        MAX_RESIDUAL_BPS,
+        bps::new(MAX_RESIDUAL_BPS),
     );
 
     let (
@@ -408,12 +409,12 @@ fun lock_and_share<Meme, Quote, X, Y>(
     migration_math::assert_residual_within_bps(
         source_meme_amount,
         residual_meme_amount,
-        MAX_RESIDUAL_BPS,
+        bps::new(MAX_RESIDUAL_BPS),
     );
     migration_math::assert_residual_within_bps(
         source_quote_amount,
         residual_quote_amount,
-        MAX_RESIDUAL_BPS,
+        bps::new(MAX_RESIDUAL_BPS),
     );
 
     let used_meme_amount = source_meme_amount - residual_meme_amount;

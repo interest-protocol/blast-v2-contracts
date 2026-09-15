@@ -3,6 +3,7 @@ module blast_fun_distributor::distributor_tests;
 
 use blast_admin::acl::{Self, Authority, AdminCap as LaunchpadAdminCap, SuperAdminCap};
 use blast_fun::{
+    bps,
     creator_authority,
     launch::{Self, Launch},
     launch_config,
@@ -977,8 +978,8 @@ fun start_with_control(paused: bool, version_number: u64): DistributionFixture {
     let mut config = scenario.take_shared<launch_config::LaunchConfig>();
     config.allow_quote<QUOTE>(&version, &witness, 5_000_000, 25_000_000);
     config.allow_migration_witness<Venue>(&version, &witness);
-    config.set_trade_fees(&version, &witness, 100, 100);
-    config.set_graduation_defaults(&version, &witness, 0, 0, 2_000);
+    config.set_trade_fees(&version, &witness, bps::new(100), bps::new(100));
+    config.set_graduation_defaults(&version, &witness, bps::new(0), bps::new(0), bps::new(2_000));
     let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     let ticket = launch_ticket::new(
