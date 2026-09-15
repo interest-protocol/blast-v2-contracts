@@ -26,10 +26,10 @@ independently of the migration it governs.
 - `lp_fee_authority`: `LpFeeCap<Meme>` and
   `LpFeeAuthority<Meme> = Pending | Cap(ID) | Custodian(ID)`, with every
   transition `public(package)`. Only `destroy_lp_fee_cap` is public. Errors are
-  module-local codes 0–3.
+  module-local codes 0–4.
 
 Launchpad keeps no LP-fee code. Its codes 85–87 are retired, and it adds only
-the read `Launch::assert_fee_custodian`.
+the reads `Launch::assert_fee_custodian` and `Launch::has_fee_custodian`.
 
 **Migration-born authority.** Every venue entry creates the vault's authority
 with `lp_fee_authority::new(&payload, Witness())` before redeeming the
@@ -49,9 +49,19 @@ capability.
 - `lock_creator_fees`: the live cap is destroyed to bind a custodian, moving
   `Cap` to `Custodian`.
 - `issue_lp_fee_cap`: a community-takeover reissue from `Pending` or `Cap`. It
-  checks the migrators version, then that fees are not locked, then a nonzero
-  recipient, then `creator_admin_role`. It mints, retires the previous ID,
-  transfers, and emits.
+  takes the vault's `Launch` and checks the migrators version, then that fees
+  are not locked, then a nonzero recipient, then that pending fees are not
+  reserved (`ELpFeesReservedForCustodian`, code 4), then `creator_admin_role`.
+  It mints, retires the previous ID, transfers, and emits.
+
+**Custodied launches need no LP-fee cap.** An LP-fee cap exists only for a
+creator who still holds curve-fee rights. When the launch's creator fees are
+bound to a custodian such as Auto-LP or the distributor, the pending LP fees
+belong to that same custodian: `claim_lp_fee_cap` fails because no curve-fee
+cap is live, and `issue_lp_fee_cap` aborts from `Pending` while
+`Launch::has_fee_custodian` holds, so no administrator can redirect them before
+the custodian binds them. Once a creator has claimed the cap, reissue stays
+available because the claimed cap, not the launch, then governs those fees.
 
 Events are `LpFeeCapClaimed`, `LpFeeCapIssued`, and `LpFeesLocked`, whose
 `lp_fee_cap_id` is `Option<ID>` and is none for pending binds.
@@ -92,6 +102,8 @@ Tests prove the following:
   cap is rejected.
 - A launch custodian binds pending fees, and a non-custodian cannot.
 - A claimed cap blocks capless binding.
+- Pending fees of a custodied launch reject reissue before the role check, while
+  a claimed cap stays reissuable.
 - Reissue retires the claimed cap before the empty-ledger check and requires the
   creator-admin role.
 - The moved policy keeps its default, pin, re-pin, clear, and guard-order

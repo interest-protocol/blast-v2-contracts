@@ -1315,8 +1315,8 @@ if [[ ! -f sources/launch.move ]] \
   || [[ "$(move_production_type CurveFeeAuthority <<<"$launch_facts")" \
     != 'enum CurveFeeAuthority has copy, drop, store { Unassigned, Cap(ID), Custodian(ID), }' ]] \
   || [[ "$(move_production_functions <<<"$launch_facts")" \
-    != 'accrue_and_emit_bought:private:0 accrue_and_emit_sold:private:0 accrue_graduation_fees:private:0 accrue_trade_fees:private:0 assert_blast_metadata_cap:private:0 assert_curve_fee_cap:public:0 assert_fee_custodian:public:0 assert_live:private:0 assert_migrated:public:0 buy:public:0 claim_creator_caps:public:0 claim_creator_fees:public:0 claim_custodied_creator_fees:public:0 claim_protocol_fees:public:0 curve_k:private:0 dispose_meme:private:0 drain_creator_fees:private:0 emit_metadata_updated:private:0 is_custodian:private:0 lock_creator_fees:public:0 migrate:public:0 new:public:0 partition_meme:private:0 partition_quote:private:0 reassign_curve_fee_cap:public:0 reassign_metadata_cap:public:0 redeem_migration:public:0 revoke_pending_claim:private:0 sell:public:0 set_description:public:0 set_icon_url:public:0 set_name:public:0 share:public:0 ' ]] \
-  || [[ "$(rg -c '^public fun ' <<<"$launch_production")" != 19 ]] \
+    != 'accrue_and_emit_bought:private:0 accrue_and_emit_sold:private:0 accrue_graduation_fees:private:0 accrue_trade_fees:private:0 assert_blast_metadata_cap:private:0 assert_curve_fee_cap:public:0 assert_fee_custodian:public:0 assert_live:private:0 assert_migrated:public:0 buy:public:0 claim_creator_caps:public:0 claim_creator_fees:public:0 claim_custodied_creator_fees:public:0 claim_protocol_fees:public:0 curve_k:private:0 dispose_meme:private:0 drain_creator_fees:private:0 emit_metadata_updated:private:0 has_fee_custodian:public:0 is_custodian:private:0 lock_creator_fees:public:0 migrate:public:0 new:public:0 partition_meme:private:0 partition_quote:private:0 reassign_curve_fee_cap:public:0 reassign_metadata_cap:public:0 redeem_migration:public:0 revoke_pending_claim:private:0 sell:public:0 set_description:public:0 set_icon_url:public:0 set_name:public:0 share:public:0 ' ]] \
+  || [[ "$(rg -c '^public fun ' <<<"$launch_production")" != 20 ]] \
   || ! rg -U -q \
     'public fun new<Meme, Quote, MigrationWitness: drop>\(\s*ticket: LaunchTicket<Meme>,\s*package_version: &PackageVersion,\s*config: &LaunchConfig,\s*ctx: &mut TxContext,\s*\): Launch<Meme, Quote>' \
     sources/launch.move \
@@ -1424,6 +1424,10 @@ check_launch_function claim_custodied_creator_fees \
 check_launch_function assert_fee_custodian \
   'fun assert_fee_custodian<Meme, Quote>(self: &Launch<Meme, Quote>, custodian: &UID)' \
   'assert!( self.curve_fee_authority == CurveFeeAuthority::Custodian(custodian.to_inner()), blast_fun::errors::creator_custodian_mismatch!(), );'
+
+check_launch_function has_fee_custodian \
+  'fun has_fee_custodian<Meme, Quote>(self: &Launch<Meme, Quote>): bool' \
+  'self.curve_fee_authority.is_custodian()'
 
 check_launch_function claim_creator_fees \
   'fun claim_creator_fees<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, curve_fee_cap: &CurveFeeCap<Meme>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
@@ -1590,7 +1594,7 @@ receiver_syntax_violations="$(
       | move_normalized_source \
       | sed 's/ *:: */::/g; s/ *(/(/g' \
       | rg -o \
-        '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_creator_claim_signer|revoke_creator_claim_signer|set_protocol_fee_share|assert_creator_claim_active|assert_creator_claim_signature|protocol_fee_share|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_trade_fees|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|launch::(share|migrate|redeem_migration|claim_creator_caps|reassign_curve_fee_cap|reassign_metadata_cap|lock_creator_fees|claim_custodied_creator_fees|assert_fee_custodian|assert_curve_fee_cap|set_name|set_description|set_icon_url)|creator_authority::(into_authority|recipient_address|account_commitment|claim_creator_caps|revoke|destroy_curve_fee_cap|destroy_metadata_cap)|launch_ticket::destroy|fees::(accrue|accrue_protocol_fees|has_protocol_fees|claim_creator_fees|claim_protocol_fees)|package::test_upgrade|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
+        '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_creator_claim_signer|revoke_creator_claim_signer|set_protocol_fee_share|assert_creator_claim_active|assert_creator_claim_signature|protocol_fee_share|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_trade_fees|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|launch::(share|migrate|redeem_migration|claim_creator_caps|reassign_curve_fee_cap|reassign_metadata_cap|lock_creator_fees|claim_custodied_creator_fees|assert_fee_custodian|has_fee_custodian|assert_curve_fee_cap|set_name|set_description|set_icon_url)|creator_authority::(into_authority|recipient_address|account_commitment|claim_creator_caps|revoke|destroy_curve_fee_cap|destroy_metadata_cap)|launch_ticket::destroy|fees::(accrue|accrue_protocol_fees|has_protocol_fees|claim_creator_fees|claim_protocol_fees)|package::test_upgrade|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
       || true; } | sed "s|^|  ${move_file}: |"
   done
 )"

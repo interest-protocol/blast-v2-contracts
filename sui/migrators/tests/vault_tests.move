@@ -368,34 +368,13 @@ fun wrong_venue_accrual_fails_closed() {
 
 
 #[test]
-fun issued_lp_fee_cap_claims_creator_fees_until_a_reissue_retires_it() {
+fun live_lp_fee_cap_claims_only_creator_fees() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let lp_fee_cap = f.vault.issue_lp_fee_cap_for_testing(f.scenario.ctx());
 
         f.accrue!(10, 20);
-        f.vault.issue_lp_fee_cap(
-            &f.migrators_version,
-            &admin_witness,
-            CREATOR,
-            f.scenario.ctx(),
-        );
-
-        let events = sui::event::events_by_type<events::LpFeeCapIssued>();
-        let mut expected = bcs::to_bytes(&object::id(&f.vault));
-        expected.append(bcs::to_bytes(&type_name::with_original_ids<MEME>()));
-        expected.append(bcs::to_bytes(&type_name::with_original_ids<QUOTE>()));
-        expected.append(bcs::to_bytes(&option::none<ID>()));
-        expected.append(bcs::to_bytes(&f.vault.lp_fee_cap_id_for_testing().destroy_some()));
-        let creator = CREATOR;
-        expected.append(bcs::to_bytes(&creator));
-        assert_eq!(events.length(), 1);
-        assert_eq!(bcs::to_bytes(&events[0]), expected);
-    });
-
-    fixture.next_tx!(CREATOR, |f| {
-        let lp_fee_cap = f.scenario.take_from_sender<LpFeeCap<MEME>>();
         let (meme, quote) = f.vault.claim_creator_fees(
             &f.migrators_version,
             &lp_fee_cap,
@@ -407,32 +386,7 @@ fun issued_lp_fee_cap_claims_creator_fees_until_a_reissue_retires_it() {
 
         destroy(meme);
         destroy(quote);
-        f.scenario.return_to_sender(lp_fee_cap);
-    });
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-        let retired_lp_fee_cap_id = f.vault.lp_fee_cap_id_for_testing();
-
-        f.vault.issue_lp_fee_cap(
-            &f.migrators_version,
-            &admin_witness,
-            NEW_CREATOR,
-            f.scenario.ctx(),
-        );
-
-        let live_lp_fee_cap_id = f.vault.lp_fee_cap_id_for_testing();
-        let events = sui::event::events_by_type<events::LpFeeCapIssued>();
-        let mut expected = bcs::to_bytes(&object::id(&f.vault));
-        expected.append(bcs::to_bytes(&type_name::with_original_ids<MEME>()));
-        expected.append(bcs::to_bytes(&type_name::with_original_ids<QUOTE>()));
-        expected.append(bcs::to_bytes(&retired_lp_fee_cap_id));
-        expected.append(bcs::to_bytes(&live_lp_fee_cap_id.destroy_some()));
-        let new_creator = NEW_CREATOR;
-        expected.append(bcs::to_bytes(&new_creator));
-        assert!(retired_lp_fee_cap_id.is_some());
-        assert!(retired_lp_fee_cap_id != live_lp_fee_cap_id);
-        assert_eq!(bcs::to_bytes(&events[0]), expected);
+        destroy(lp_fee_cap);
     });
 
     fixture.end();
@@ -491,29 +445,6 @@ fun pending_vault_honors_no_lp_fee_cap() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = vault::EInvalidLpFeeCapRecipient,
-    location = blast_fun_migrators::vault,
-)]
-fun lp_fee_cap_issue_rejects_the_zero_recipient() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.vault.issue_lp_fee_cap(
-            &f.migrators_version,
-            &admin_witness,
-            @0x0,
-            f.scenario.ctx(),
-        );
-    });
-
-    fixture.end();
-}
-
-
-#[test]
 fun locked_lp_fees_are_claimed_only_by_the_bound_custodian() {
     let mut fixture = start();
 
@@ -546,33 +477,6 @@ fun locked_lp_fees_are_claimed_only_by_the_bound_custodian() {
         custodian.delete();
         destroy(meme);
         destroy(quote);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = lp_fee_authority::ELpFeesLocked,
-    location = blast_fun_migrators::lp_fee_authority,
-)]
-fun locked_lp_fees_reject_reissue_before_the_recipient_check() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-        let custodian = object::new(f.scenario.ctx());
-        let lp_fee_cap = f.vault.issue_lp_fee_cap_for_testing(f.scenario.ctx());
-
-        f.vault.lock_creator_fees(&f.migrators_version, lp_fee_cap, &custodian);
-        f.vault.issue_lp_fee_cap(
-            &f.migrators_version,
-            &admin_witness,
-            @0x0,
-            f.scenario.ctx(),
-        );
-
-        custodian.delete();
     });
 
     fixture.end();

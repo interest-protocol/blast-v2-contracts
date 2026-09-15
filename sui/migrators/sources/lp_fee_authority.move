@@ -3,7 +3,8 @@
 /// Every migration creates exactly one `Pending` authority from the witness-typed launch
 /// payload, so no administrator mints the first capability. The launch's live curve-fee cap
 /// holder claims it once, a launch custodian binds pending fees without any cap, and a
-/// creator administrator may reissue it for community takeovers until fees are bound.
+/// creator administrator may reissue it for community takeovers until fees are bound. Pending
+/// fees of a launch whose creator fees are already custodied are reserved for that custodian.
 module blast_fun_migrators::lp_fee_authority;
 
 use blast_admin::acl::AdminWitness;
@@ -24,6 +25,9 @@ const ELpFeeCustodianMismatch: vector<u8> = b"Custodian must be the one creator 
 #[error(code = 3)]
 const ELpFeeAuthorityNotPending: vector<u8> =
     b"Only a pending LP-fee authority can be claimed or bound without a capability.";
+#[error(code = 4)]
+const ELpFeesReservedForCustodian: vector<u8> =
+    b"Pending creator LP fees are reserved for the launch's creator-fee custodian.";
 
 // === Public Structs ===
 
@@ -109,12 +113,17 @@ public(package) fun lock<Meme>(
 }
 
 /// Mints a replacement capability under creator-admin authority and retires any live one.
-public(package) fun reissue<Meme>(
+///
+/// Pending fees of a launch whose creator fees are custodied belong to that custodian, which
+/// binds them with `lock_pending`; no administrator may redirect them first.
+public(package) fun reissue<Meme, Quote>(
     self: &mut LpFeeAuthority<Meme>,
+    launch: &Launch<Meme, Quote>,
     admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
     ctx: &mut TxContext,
 ): (Option<ID>, LpFeeCap<Meme>) {
     self.assert_not_locked();
+    assert!(!self.is_pending() || !launch.has_fee_custodian(), ELpFeesReservedForCustodian);
     admin_witness.assert_role(launchpad_domain::creator_admin_role());
 
     let revoked_lp_fee_cap_id = self.cap_id();
@@ -142,13 +151,14 @@ public(package) fun assert_custodian<Meme>(self: &LpFeeAuthority<Meme>, custodia
 // === Private Functions ===
 
 fun assert_pending<Meme>(self: &LpFeeAuthority<Meme>) {
-    assert!(
-        match (self) {
-            LpFeeAuthority::Pending => true,
-            _ => false,
-        },
-        ELpFeeAuthorityNotPending,
-    );
+    assert!(self.is_pending(), ELpFeeAuthorityNotPending);
+}
+
+fun is_pending<Meme>(self: &LpFeeAuthority<Meme>): bool {
+    match (self) {
+        LpFeeAuthority::Pending => true,
+        _ => false,
+    }
 }
 
 fun cap_id<Meme>(self: &LpFeeAuthority<Meme>): Option<ID> {
@@ -199,8 +209,5 @@ public fun custodian_id_for_testing<Meme>(self: &LpFeeAuthority<Meme>): Option<I
 
 #[test_only]
 public fun is_pending_for_testing<Meme>(self: &LpFeeAuthority<Meme>): bool {
-    match (self) {
-        LpFeeAuthority::Pending => true,
-        _ => false,
-    }
+    self.is_pending()
 }

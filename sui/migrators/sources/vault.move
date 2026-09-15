@@ -90,10 +90,12 @@ public fun claim_lp_fee_cap<Meme, Quote>(
 /// Delivers a replacement LP-fee capability to `recipient` and retires any previous one.
 ///
 /// Community takeovers use this path under creator-admin authority. It aborts once fees
-/// are permanently bound to a custodian.
+/// are permanently bound to a custodian, and while pending fees are reserved for the launch's
+/// creator-fee custodian.
 public fun issue_lp_fee_cap<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
+    launch: &Launch<Meme, Quote>,
     admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
     recipient: address,
     ctx: &mut TxContext,
@@ -102,7 +104,8 @@ public fun issue_lp_fee_cap<Meme, Quote>(
     self.lp_fee_authority.assert_not_locked();
     assert!(recipient != @0x0, EInvalidLpFeeCapRecipient);
 
-    let (revoked_lp_fee_cap_id, lp_fee_cap) = self.lp_fee_authority.reissue(admin_witness, ctx);
+    let (revoked_lp_fee_cap_id, lp_fee_cap) =
+        self.lp_fee_authority.reissue(launch, admin_witness, ctx);
     let lp_fee_cap_id = object::id(&lp_fee_cap);
     transfer::public_transfer(lp_fee_cap, recipient);
 
@@ -116,7 +119,8 @@ public fun issue_lp_fee_cap<Meme, Quote>(
 
 /// Binds pending creator LP fees forever to the launch's creator-fee custodian.
 ///
-/// No capability is ever minted. Only `custodian`'s defining module can borrow its `UID`.
+/// No capability is ever minted. Claims require `custodian`'s `&UID`, so custodians must never
+/// expose it.
 public fun lock_pending_creator_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
@@ -132,8 +136,8 @@ public fun lock_pending_creator_fees<Meme, Quote>(
 
 /// Destroys the live LP-fee capability and binds creator LP fees to `custodian` permanently.
 ///
-/// Irreversible: `issue_lp_fee_cap` aborts afterward. Only `custodian`'s defining module can
-/// borrow its `UID`, so only it can claim.
+/// Irreversible: `issue_lp_fee_cap` aborts afterward. Claims require `custodian`'s `&UID`, so
+/// lock only to objects whose module never exposes it.
 public fun lock_creator_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,

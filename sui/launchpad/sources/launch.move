@@ -266,8 +266,8 @@ public fun reassign_metadata_cap<Meme, Quote>(
 /// Destroys the live curve-fee cap and binds curve fees to `custodian` permanently.
 ///
 /// Irreversible: no curve-fee cap exists afterward, so `reassign_curve_fee_cap` aborts.
-/// Metadata authority is unaffected. Only `custodian`'s defining module can borrow its
-/// `UID`, so only it can claim.
+/// Metadata authority is unaffected. Claims require `custodian`'s `&UID`, so lock only to
+/// objects whose module never exposes it.
 public fun lock_creator_fees<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
@@ -551,6 +551,11 @@ public fun assert_fee_custodian<Meme, Quote>(self: &Launch<Meme, Quote>, custodi
         self.curve_fee_authority == CurveFeeAuthority::Custodian(custodian.to_inner()),
         blast_fun::errors::creator_custodian_mismatch!(),
     );
+}
+
+/// Reports whether this launch's creator fees are permanently bound to a custodian.
+public fun has_fee_custodian<Meme, Quote>(self: &Launch<Meme, Quote>): bool {
+    self.curve_fee_authority.is_custodian()
 }
 
 /// Aborts unless `curve_fee_cap` is the curve-fee capability this launch currently honors.

@@ -1819,7 +1819,9 @@ fun metadata_stays_editable_and_reassignable_after_curve_fees_are_locked() {
         let admin_witness = f.sign_in();
         let retired_metadata_cap_id = object::id(&metadata_cap);
 
+        assert!(!launch.has_fee_custodian());
         launch.lock_creator_fees(&f.package_version, curve_fee_cap, &custodian);
+        assert!(launch.has_fee_custodian());
         launch.set_name(&f.package_version, &metadata_cap, &mut currency, b"Locked Fees".to_string());
         assert_eq!(currency.name(), b"Locked Fees".to_string());
 

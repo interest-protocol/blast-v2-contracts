@@ -443,7 +443,7 @@ require_pattern "$VAULT_SOURCE" 'events::protocol_fees_claimed' 'protocol claim 
 # LP-fee authority is migration-born (ADR 0082): every venue migration creates one
 # `Pending` authority from the witness-typed payload and hands it to the vault; the
 # launch's curve-fee cap holder claims it, a launch custodian binds pending fees, or a
-# creator admin reissues it. Only `lp_fee_authority.move` constructs or writes it, only
+# creator admin reissues it unless pending fees are reserved for the launch's custodian. Only `lp_fee_authority.move` constructs or writes it, only
 # the live cap drains or locks, and a custodian bind is terminal.
 require_pattern "$VAULT_SOURCE" '^    lp_fee_authority: LpFeeAuthority<Meme>,$' \
     'embedded LP-fee authority on the shared vault'
@@ -498,7 +498,7 @@ require_exact_count '&AdminWitness<LAUNCHPAD_DOMAIN>' 2 \
 require_exact_count 'admin_witness' 4 \
     "vault admin witnesses may flow only into the protocol-fee ledger claim and LP-fee reissue" \
     <(production_section "$VAULT_SOURCE")
-require_exact_count 'self.lp_fee_authority.reissue(admin_witness, ctx)' 1 \
+require_exact_count 'self.lp_fee_authority.reissue(launch, admin_witness, ctx)' 1 \
     "vault::issue_lp_fee_cap must be the only LP-fee reissue path" \
     "$SOURCE_DIR"/*.move
 require_exact_count 'self.fee_ledger.claim_protocol_fees(admin_witness, ctx)' 1 \
@@ -523,7 +523,7 @@ require_function_body "$VAULT_SOURCE" 'claim_lp_fee_cap' \
     'publicfunclaim_lp_fee_cap<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,launch:&Launch<Meme,Quote>,curve_fee_cap:&CurveFeeCap<Meme>,ctx:&mutTxContext,):LpFeeCap<Meme>{migrators_version.assert_current();letlp_fee_cap=self.lp_fee_authority.claim(launch,curve_fee_cap,ctx);events::lp_fee_cap_claimed<Meme,Quote>(self.id.to_inner(),object::id(&lp_fee_cap),ctx.sender(),);lp_fee_cap}' \
     "vault::claim_lp_fee_cap must check generation, claim through the authority, emit, and return the cap"
 require_function_body "$VAULT_SOURCE" 'issue_lp_fee_cap' \
-    'publicfunissue_lp_fee_cap<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,admin_witness:&AdminWitness<LAUNCHPAD_DOMAIN>,recipient:address,ctx:&mutTxContext,){migrators_version.assert_current();self.lp_fee_authority.assert_not_locked();assert!(recipient!=@0x0,EInvalidLpFeeCapRecipient);let(revoked_lp_fee_cap_id,lp_fee_cap)=self.lp_fee_authority.reissue(admin_witness,ctx);letlp_fee_cap_id=object::id(&lp_fee_cap);transfer::public_transfer(lp_fee_cap,recipient);events::lp_fee_cap_issued<Meme,Quote>(self.id.to_inner(),revoked_lp_fee_cap_id,lp_fee_cap_id,recipient,);}' \
+    'publicfunissue_lp_fee_cap<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,launch:&Launch<Meme,Quote>,admin_witness:&AdminWitness<LAUNCHPAD_DOMAIN>,recipient:address,ctx:&mutTxContext,){migrators_version.assert_current();self.lp_fee_authority.assert_not_locked();assert!(recipient!=@0x0,EInvalidLpFeeCapRecipient);let(revoked_lp_fee_cap_id,lp_fee_cap)=self.lp_fee_authority.reissue(launch,admin_witness,ctx);letlp_fee_cap_id=object::id(&lp_fee_cap);transfer::public_transfer(lp_fee_cap,recipient);events::lp_fee_cap_issued<Meme,Quote>(self.id.to_inner(),revoked_lp_fee_cap_id,lp_fee_cap_id,recipient,);}' \
     "vault::issue_lp_fee_cap must check generation, terminal lock, and nonzero recipient before role-gated reissue, then deliver and emit"
 require_function_body "$VAULT_SOURCE" 'lock_pending_creator_fees' \
     'publicfunlock_pending_creator_fees<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,launch:&Launch<Meme,Quote>,custodian:&UID,){migrators_version.assert_current();letcustodian_id=self.lp_fee_authority.lock_pending(launch,custodian);events::lp_fees_locked<Meme,Quote>(self.id.to_inner(),option::none(),custodian_id);}' \
@@ -558,17 +558,18 @@ require_pattern "$LP_FEE_AUTHORITY_SOURCE" '^module blast_fun_migrators::lp_fee_
 [[ "$(tr -d '[:space:]' <<<"$LP_FEE_AUTHORITY_PRODUCTION")" == *'useblast_admin::acl::AdminWitness;useblast_fun::{creator_authority::CurveFeeCap,launch::{Launch,MigrationPayload},launchpad_domain::{Self,LAUNCHPAD_DOMAIN},};//===Errors==='* ]] || \
     fail "lp_fee_authority.move must import only AdminWitness, CurveFeeCap, Launch, MigrationPayload, and the Launchpad domain"
 LP_FEE_AUTHORITY_FUNCTIONS="$(rg -o '^(public(\(package\))? )?(entry )?fun [[:alnum:]_]+' <<<"$LP_FEE_AUTHORITY_PRODUCTION" | sort | tr '\n' ';')"
-[[ "$LP_FEE_AUTHORITY_FUNCTIONS" == 'fun assert_pending;fun cap_id;fun custodian_id;public fun destroy_lp_fee_cap;public(package) fun assert_cap;public(package) fun assert_custodian;public(package) fun assert_not_locked;public(package) fun claim;public(package) fun lock;public(package) fun lock_pending;public(package) fun new;public(package) fun reissue;' ]] || \
-    fail "lp_fee_authority.move must expose only destroy_lp_fee_cap publicly, its eight package transitions, and three private helpers"
+[[ "$LP_FEE_AUTHORITY_FUNCTIONS" == 'fun assert_pending;fun cap_id;fun custodian_id;fun is_pending;public fun destroy_lp_fee_cap;public(package) fun assert_cap;public(package) fun assert_custodian;public(package) fun assert_not_locked;public(package) fun claim;public(package) fun lock;public(package) fun lock_pending;public(package) fun new;public(package) fun reissue;' ]] || \
+    fail "lp_fee_authority.move must expose only destroy_lp_fee_cap publicly, its eight package transitions, and four private helpers"
 if rg -q 'events::|transfer::|assert_current|PackageVersion|\bentry\b' "$LP_FEE_AUTHORITY_SOURCE"; then
     fail "lp_fee_authority.move must stay an eventless, transferless state module under the vault's guards"
 fi
-[[ "$(rg -c '#\[error\(code = ' "$LP_FEE_AUTHORITY_SOURCE" || true)" -eq 4 ]] \
+[[ "$(rg -c '#\[error\(code = ' "$LP_FEE_AUTHORITY_SOURCE" || true)" -eq 5 ]] \
     && rg -U -q '#\[error\(code = 0\)\]\nconst ELpFeeCapNotLive: vector<u8> = b"LP-fee capability must be the one this vault currently honors\.";' "$LP_FEE_AUTHORITY_SOURCE" \
     && rg -U -q '#\[error\(code = 1\)\]\nconst ELpFeesLocked: vector<u8> = b"Creator LP fees are permanently bound to a custodian\.";' "$LP_FEE_AUTHORITY_SOURCE" \
     && rg -U -q '#\[error\(code = 2\)\]\nconst ELpFeeCustodianMismatch: vector<u8> = b"Custodian must be the one creator LP fees are bound to\.";' "$LP_FEE_AUTHORITY_SOURCE" \
-    && rg -U -q '#\[error\(code = 3\)\]\nconst ELpFeeAuthorityNotPending: vector<u8> =\n    b"Only a pending LP-fee authority can be claimed or bound without a capability\.";' "$LP_FEE_AUTHORITY_SOURCE" || \
-    fail "lp_fee_authority error codes must remain contiguous 0-3 and bound to their documented failures"
+    && rg -U -q '#\[error\(code = 3\)\]\nconst ELpFeeAuthorityNotPending: vector<u8> =\n    b"Only a pending LP-fee authority can be claimed or bound without a capability\.";' "$LP_FEE_AUTHORITY_SOURCE" \
+    && rg -U -q '#\[error\(code = 4\)\]\nconst ELpFeesReservedForCustodian: vector<u8> =\n    b"Pending creator LP fees are reserved for the launch.s creator-fee custodian\.";' "$LP_FEE_AUTHORITY_SOURCE" || \
+    fail "lp_fee_authority error codes must remain contiguous 0-4 and bound to their documented failures"
 require_function_body "$LP_FEE_AUTHORITY_SOURCE" 'destroy_lp_fee_cap' \
     'publicfundestroy_lp_fee_cap<Meme>(self:LpFeeCap<Meme>){letLpFeeCap{id}=self;id.delete();}' \
     "lp_fee_authority::destroy_lp_fee_cap must only delete the capability"
@@ -585,8 +586,8 @@ require_function_body "$LP_FEE_AUTHORITY_SOURCE" 'lock' \
     'public(package)funlock<Meme>(self:&mutLpFeeAuthority<Meme>,lp_fee_cap:LpFeeCap<Meme>,custodian:&UID,):(ID,ID){self.assert_cap(&lp_fee_cap);letlp_fee_cap_id=object::id(&lp_fee_cap);letcustodian_id=custodian.to_inner();lp_fee_cap.destroy_lp_fee_cap();*self=LpFeeAuthority::Custodian(custodian_id);(lp_fee_cap_id,custodian_id)}' \
     "lp_fee_authority::lock must assert and destroy the live cap before binding a terminal custodian"
 require_function_body "$LP_FEE_AUTHORITY_SOURCE" 'reissue' \
-    'public(package)funreissue<Meme>(self:&mutLpFeeAuthority<Meme>,admin_witness:&AdminWitness<LAUNCHPAD_DOMAIN>,ctx:&mutTxContext,):(Option<ID>,LpFeeCap<Meme>){self.assert_not_locked();admin_witness.assert_role(launchpad_domain::creator_admin_role());letrevoked_lp_fee_cap_id=self.cap_id();letlp_fee_cap=LpFeeCap{id:object::new(ctx)};*self=LpFeeAuthority::Cap(object::id(&lp_fee_cap));(revoked_lp_fee_cap_id,lp_fee_cap)}' \
-    "lp_fee_authority::reissue must assert not-locked, then the creator-admin role, before retiring and minting"
+    'public(package)funreissue<Meme,Quote>(self:&mutLpFeeAuthority<Meme>,launch:&Launch<Meme,Quote>,admin_witness:&AdminWitness<LAUNCHPAD_DOMAIN>,ctx:&mutTxContext,):(Option<ID>,LpFeeCap<Meme>){self.assert_not_locked();assert!(!self.is_pending()||!launch.has_fee_custodian(),ELpFeesReservedForCustodian);admin_witness.assert_role(launchpad_domain::creator_admin_role());letrevoked_lp_fee_cap_id=self.cap_id();letlp_fee_cap=LpFeeCap{id:object::new(ctx)};*self=LpFeeAuthority::Cap(object::id(&lp_fee_cap));(revoked_lp_fee_cap_id,lp_fee_cap)}' \
+    "lp_fee_authority::reissue must assert not-locked, then that pending fees are not reserved for a launch custodian, then the creator-admin role, before retiring and minting"
 require_function_body "$LP_FEE_AUTHORITY_SOURCE" 'assert_not_locked' \
     'public(package)funassert_not_locked<Meme>(self:&LpFeeAuthority<Meme>){assert!(self.custodian_id().is_none(),ELpFeesLocked);}' \
     "lp_fee_authority::assert_not_locked must reject only a bound custodian"
@@ -597,8 +598,11 @@ require_function_body "$LP_FEE_AUTHORITY_SOURCE" 'assert_custodian' \
     'public(package)funassert_custodian<Meme>(self:&LpFeeAuthority<Meme>,custodian:&UID){assert!(self.custodian_id().contains(&custodian.to_inner()),ELpFeeCustodianMismatch);}' \
     "lp_fee_authority::assert_custodian must be an exact bound-custodian identity assertion"
 require_function_body "$LP_FEE_AUTHORITY_SOURCE" 'assert_pending' \
-    'funassert_pending<Meme>(self:&LpFeeAuthority<Meme>){assert!(match(self){LpFeeAuthority::Pending=>true,_=>false,},ELpFeeAuthorityNotPending,);}' \
+    'funassert_pending<Meme>(self:&LpFeeAuthority<Meme>){assert!(self.is_pending(),ELpFeeAuthorityNotPending);}' \
     "lp_fee_authority::assert_pending must stay a private Pending-only assertion"
+require_function_body "$LP_FEE_AUTHORITY_SOURCE" 'is_pending' \
+    'funis_pending<Meme>(self:&LpFeeAuthority<Meme>):bool{match(self){LpFeeAuthority::Pending=>true,_=>false,}}' \
+    "lp_fee_authority::is_pending must stay a private Pending-only read"
 require_function_body "$LP_FEE_AUTHORITY_SOURCE" 'cap_id' \
     'funcap_id<Meme>(self:&LpFeeAuthority<Meme>):Option<ID>{match(self){LpFeeAuthority::Cap(lp_fee_cap_id)=>option::some(*lp_fee_cap_id),_=>option::none(),}}' \
     "lp_fee_authority::cap_id must stay a private Cap-only read"

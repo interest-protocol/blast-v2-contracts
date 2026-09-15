@@ -176,7 +176,13 @@ fun admin_reissue_retires_the_claimed_cap() {
     let claimed = f.claim();
     let admin_witness = f.sign_in();
 
-    f.vault.issue_lp_fee_cap(&f.migrators_version, &admin_witness, NEW_CREATOR, f.scenario.ctx());
+    f.vault.issue_lp_fee_cap(
+        &f.migrators_version,
+        &f.launch,
+        &admin_witness,
+        NEW_CREATOR,
+        f.scenario.ctx(),
+    );
 
     let issued = sui::event::events_by_type<events::LpFeeCapIssued>();
     let recipient = NEW_CREATOR;
@@ -204,7 +210,13 @@ fun a_reissue_rejects_the_previously_claimed_cap_before_the_empty_ledger_check()
     let claimed = f.claim();
     let admin_witness = f.sign_in();
 
-    f.vault.issue_lp_fee_cap(&f.migrators_version, &admin_witness, NEW_CREATOR, f.scenario.ctx());
+    f.vault.issue_lp_fee_cap(
+        &f.migrators_version,
+        &f.launch,
+        &admin_witness,
+        NEW_CREATOR,
+        f.scenario.ctx(),
+    );
     let (meme, quote) = f.vault.claim_creator_fees(
         &f.migrators_version,
         &claimed,
@@ -225,26 +237,147 @@ fun a_reissue_rejects_the_previously_claimed_cap_before_the_empty_ledger_check()
 fun reissue_requires_the_creator_admin_role() {
     let mut fixture = start();
     let f = &mut fixture;
-    let (root, mut other) = acl::new_for_testing<LAUNCHPAD_DOMAIN>(
-        MAX_ADMINS,
-        ROOT_TRANSFER_DELAY_MS,
-        f.scenario.ctx(),
-    );
-
-    other.grant_admin(
-        &root,
-        launchpad_domain::package_admin_role(),
-        ROLE_LESS_ADMIN,
-        f.scenario.ctx(),
-    );
-    f.scenario.next_tx(ROLE_LESS_ADMIN);
-    let role_less_cap = f.scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let (other, role_less_cap) = f.new_role_less_admin();
     let admin_witness = other.sign_in(&role_less_cap);
-    f.vault.issue_lp_fee_cap(&f.migrators_version, &admin_witness, NEW_CREATOR, f.scenario.ctx());
+    f.vault.issue_lp_fee_cap(
+        &f.migrators_version,
+        &f.launch,
+        &admin_witness,
+        NEW_CREATOR,
+        f.scenario.ctx(),
+    );
 
-    destroy(root);
     destroy(other);
     destroy(role_less_cap);
+    fixture.end();
+}
+
+#[test]
+fun admin_reissues_a_pending_vault_whose_launch_fees_are_not_custodied() {
+    let mut fixture = start();
+    let f = &mut fixture;
+    let admin_witness = f.sign_in();
+
+    f.vault.issue_lp_fee_cap(
+        &f.migrators_version,
+        &f.launch,
+        &admin_witness,
+        NEW_CREATOR,
+        f.scenario.ctx(),
+    );
+
+    let issued = sui::event::events_by_type<events::LpFeeCapIssued>();
+    let recipient = NEW_CREATOR;
+    let mut expected = bcs::to_bytes(&object::id(&f.vault));
+    expected.append(bcs::to_bytes(&type_name::with_original_ids<LP_FEE_AUTHORITY_TESTS>()));
+    expected.append(bcs::to_bytes(&type_name::with_original_ids<QUOTE>()));
+    expected.append(bcs::to_bytes(&option::none<ID>()));
+    expected.append(bcs::to_bytes(&f.vault.lp_fee_cap_id_for_testing().destroy_some()));
+    expected.append(bcs::to_bytes(&recipient));
+    assert_eq!(issued.length(), 1);
+    assert_eq!(bcs::to_bytes(&issued[0]), expected);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = lp_fee_authority::ELpFeesReservedForCustodian,
+    location = blast_fun_migrators::lp_fee_authority,
+)]
+fun pending_fees_of_a_custodied_launch_reject_reissue_before_the_role_check() {
+    let mut fixture = start();
+    let f = &mut fixture;
+    let custodian = object::new(f.scenario.ctx());
+    let curve_fee_cap = f.curve_fee_cap.extract();
+
+    f.launch.lock_creator_fees(&f.version, curve_fee_cap, &custodian);
+    let (other, role_less_cap) = f.new_role_less_admin();
+    let admin_witness = other.sign_in(&role_less_cap);
+    f.vault.issue_lp_fee_cap(
+        &f.migrators_version,
+        &f.launch,
+        &admin_witness,
+        NEW_CREATOR,
+        f.scenario.ctx(),
+    );
+
+    custodian.delete();
+    destroy(other);
+    destroy(role_less_cap);
+    fixture.end();
+}
+
+#[test]
+fun a_claimed_cap_stays_reissuable_after_launch_fees_are_custodied() {
+    let mut fixture = start();
+    let f = &mut fixture;
+    let claimed = f.claim();
+    let custodian = object::new(f.scenario.ctx());
+    let curve_fee_cap = f.curve_fee_cap.extract();
+    let admin_witness = f.sign_in();
+
+    f.launch.lock_creator_fees(&f.version, curve_fee_cap, &custodian);
+    f.vault.issue_lp_fee_cap(
+        &f.migrators_version,
+        &f.launch,
+        &admin_witness,
+        NEW_CREATOR,
+        f.scenario.ctx(),
+    );
+
+    let live_lp_fee_cap_id = f.vault.lp_fee_cap_id_for_testing();
+    assert!(live_lp_fee_cap_id.is_some());
+    assert!(live_lp_fee_cap_id != option::some(object::id(&claimed)));
+
+    custodian.delete();
+    destroy(claimed);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = vault::EInvalidLpFeeCapRecipient,
+    location = blast_fun_migrators::vault,
+)]
+fun reissue_rejects_the_zero_recipient() {
+    let mut fixture = start();
+    let f = &mut fixture;
+    let admin_witness = f.sign_in();
+
+    f.vault.issue_lp_fee_cap(
+        &f.migrators_version,
+        &f.launch,
+        &admin_witness,
+        @0x0,
+        f.scenario.ctx(),
+    );
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = lp_fee_authority::ELpFeesLocked,
+    location = blast_fun_migrators::lp_fee_authority,
+)]
+fun locked_lp_fees_reject_reissue_before_the_recipient_check() {
+    let mut fixture = start();
+    let f = &mut fixture;
+    let custodian = object::new(f.scenario.ctx());
+    let lp_fee_cap = f.claim();
+    let admin_witness = f.sign_in();
+
+    f.vault.lock_creator_fees(&f.migrators_version, lp_fee_cap, &custodian);
+    f.vault.issue_lp_fee_cap(
+        &f.migrators_version,
+        &f.launch,
+        &admin_witness,
+        @0x0,
+        f.scenario.ctx(),
+    );
+
+    custodian.delete();
     fixture.end();
 }
 
@@ -340,6 +473,28 @@ fun claim(self: &mut AuthorityFixture): LpFeeCap<LP_FEE_AUTHORITY_TESTS> {
         self.curve_fee_cap.borrow(),
         self.scenario.ctx(),
     )
+}
+
+/// Separate live administration whose only admin lacks the creator-admin role.
+fun new_role_less_admin(
+    self: &mut AuthorityFixture,
+): (Authority<LAUNCHPAD_DOMAIN>, AdminCap<LAUNCHPAD_DOMAIN>) {
+    let (root, mut other) = acl::new_for_testing<LAUNCHPAD_DOMAIN>(
+        MAX_ADMINS,
+        ROOT_TRANSFER_DELAY_MS,
+        self.scenario.ctx(),
+    );
+    other.grant_admin(
+        &root,
+        launchpad_domain::package_admin_role(),
+        ROLE_LESS_ADMIN,
+        self.scenario.ctx(),
+    );
+    destroy(root);
+    self.scenario.next_tx(ROLE_LESS_ADMIN);
+    let role_less_cap = self.scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+
+    (other, role_less_cap)
 }
 
 fun sign_in(self: &AuthorityFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
