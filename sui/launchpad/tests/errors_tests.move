@@ -72,6 +72,16 @@ fun market_and_launch_error_registry_is_stable() {
 }
 
 #[test]
+fun creator_authority_error_registry_is_stable() {
+    assert_eq!(blast_fun::errors::curve_fee_cap_not_live!(), 88);
+    assert_eq!(blast_fun::errors::metadata_unchanged!(), 89);
+    assert_eq!(blast_fun::errors::creator_fees_locked!(), 90);
+    assert_eq!(blast_fun::errors::creator_custodian_mismatch!(), 91);
+    assert_eq!(blast_fun::errors::metadata_cap_not_live!(), 92);
+    assert_eq!(blast_fun::errors::invalid_fee_custodian!(), 93);
+}
+
+#[test]
 /// Only Blast's own module-provenance rule remains local; every reusable
 /// custody, policy, and generation code now belongs to `blast_admin`.
 fun package_admin_error_registry_is_stable() {

@@ -24,9 +24,9 @@ independently of the migration it governs.
   migrators `PackageVersion` and `AdminWitness<LAUNCHPAD_DOMAIN>`. Events are
   direct migrators events, and errors are module-local codes 0–2.
 - `lp_fee_authority`: `LpFeeCap<Meme>` and
-  `LpFeeAuthority<Meme> = Pending | Cap(ID) | Custodian(ID)`, with every
+  `LpFeeAuthority<Meme> = Pending | Cap(ID) | Custodian(TypeName)`, with every
   transition `public(package)`. Only `destroy_lp_fee_cap` is public. Errors are
-  module-local codes 0–4.
+  module-local codes 0–5.
 
 Launchpad keeps no LP-fee code. Its codes 85–87 are retired, and it adds only
 the reads `Launch::assert_fee_custodian` and `Launch::has_fee_custodian`.
@@ -43,11 +43,13 @@ capability.
 - `claim_lp_fee_cap`: the launch's live `CurveFeeCap` holder mints the
   capability once, moving `Pending` to `Cap`.
 - `lock_pending_creator_fees`: the launch's creator-fee custodian proves itself
-  with its `&UID` and binds pending fees with no capability, moving `Pending` to
-  `Custodian`. Auto-LP or distributor enrollment before migration therefore
+  with its drop-only witness and binds pending fees with no capability, moving
+  `Pending` to `Custodian`. It records the launch's already validated witness
+  type, so it needs no separate primitive-witness check. Auto-LP or distributor enrollment before migration therefore
   needs neither an administrator nor a cap holder.
-- `lock_creator_fees`: the live cap is destroyed to bind a custodian, moving
-  `Cap` to `Custodian`.
+- `lock_creator_fees`: the live cap is destroyed to bind the custodian named by
+  its witness type, moving `Cap` to `Custodian`. A primitive or vector witness
+  is rejected with `EInvalidLpFeeCustodian` (code 5).
 - `issue_lp_fee_cap`: a community-takeover reissue from `Pending` or `Cap`. It
   takes the vault's `Launch` and checks the migrators version, then that fees
   are not locked, then a nonzero recipient, then that pending fees are not
@@ -64,11 +66,13 @@ the custodian binds them. Once a creator has claimed the cap, reissue stays
 available because the claimed cap, not the launch, then governs those fees.
 
 Events are `LpFeeCapClaimed`, `LpFeeCapIssued`, and `LpFeesLocked`, whose
-`lp_fee_cap_id` is `Option<ID>` and is none for pending binds.
+`lp_fee_cap_id` is `Option<ID>` and is none for pending binds and whose
+`custodian` is the witness `TypeName`.
 
-**Consumers.** The distributor's `lock_lp_fees` binds pending fees through the
-enrolled launch, and `lock_lp_fees_with_cap` keeps the destroy-a-claimed-cap
-path. The native DEX and Auto-LP are parked in `scratch-sui/`, outside every
+**Consumers.** The distributor declares one `Witness` for its custody. Both
+`lock_lp_fees`, which binds pending fees, and `lock_lp_fees_with_cap`, which
+destroys a claimed cap, take the enrolled launch and reject any other, so fees
+can only bind to a distributor that exists for that launch. The native DEX and Auto-LP are parked in `scratch-sui/`, outside every
 build and gate. They still target the ADR 0082 launchpad ABI and return to
 `sui/` only after their redesign.
 

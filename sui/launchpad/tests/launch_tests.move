@@ -67,6 +67,8 @@ public struct LAUNCH_TESTS() has drop;
 public struct TEST_QUOTE() has drop;
 public struct OTHER_QUOTE() has drop;
 public struct TEST_MIGRATION_WITNESS() has drop;
+public struct TestCustodian() has drop;
+public struct OtherCustodian() has drop;
 public struct OTHER_MIGRATION_WITNESS() has drop;
 
 /// Launch construction through configured cold policy and creator custody.
@@ -1815,12 +1817,11 @@ fun metadata_stays_editable_and_reassignable_after_curve_fees_are_locked() {
             &f.clock,
             f.ctx!(),
         );
-        let custodian = object::new(f.ctx!());
         let admin_witness = f.sign_in();
         let retired_metadata_cap_id = object::id(&metadata_cap);
 
         assert!(!launch.has_fee_custodian());
-        launch.lock_creator_fees(&f.package_version, curve_fee_cap, &custodian);
+        launch.lock_creator_fees(&f.package_version, curve_fee_cap, TestCustodian());
         assert!(launch.has_fee_custodian());
         launch.set_name(&f.package_version, &metadata_cap, &mut currency, b"Locked Fees".to_string());
         assert_eq!(currency.name(), b"Locked Fees".to_string());
@@ -1834,9 +1835,11 @@ fun metadata_stays_editable_and_reassignable_after_curve_fees_are_locked() {
         assert_eq!(revoked_metadata_cap_id, option::some(retired_metadata_cap_id));
         assert_eq!(launch.blast_metadata_cap_id_for_testing(), option::some(metadata_cap_id));
         assert_eq!(recipient, NEW_CREATOR);
-        assert_eq!(launch.fee_custodian_id_for_testing(), option::some(custodian.to_inner()));
+        assert_eq!(
+            launch.fee_custodian_for_testing(),
+            option::some(type_name::with_original_ids<TestCustodian>()),
+        );
 
-        custodian.delete();
         destroy(metadata_cap);
         destroy(currency);
         launch.put_back();
@@ -1896,29 +1899,30 @@ fun locking_destroys_the_cap_and_binds_creator_fees_to_the_custodian() {
         );
         destroy(metadata_cap);
         let creator_cap_id = object::id(&creator_cap);
-        let custodian = object::new(f.ctx!());
         let quote_in = coin::mint_for_testing<TEST_QUOTE>(10_000_000, f.ctx!());
         let (meme_bought, quote_refund) =
             launch.buy(&f.package_version, &f.runtime_config, quote_in, 1, f.ctx!());
 
-        launch.lock_creator_fees(&f.package_version, creator_cap, &custodian);
+        launch.lock_creator_fees(&f.package_version, creator_cap, TestCustodian());
 
         let locked = events::collect_one<events::CreatorFeesLocked>(0);
-        let (launch_id, locked_cap_id, custodian_id) = locked.creator_fees_locked_fields();
+        let (launch_id, locked_cap_id, custodian) = locked.creator_fees_locked_fields();
         assert_eq!(launch_id, object::id(&launch));
         assert_eq!(locked_cap_id, creator_cap_id);
-        assert_eq!(custodian_id, custodian.to_inner());
-        assert_eq!(launch.fee_custodian_id_for_testing(), option::some(custodian.to_inner()));
+        assert_eq!(custodian, type_name::with_original_ids<TestCustodian>());
+        assert_eq!(
+            launch.fee_custodian_for_testing(),
+            option::some(type_name::with_original_ids<TestCustodian>()),
+        );
         assert!(launch.curve_fee_cap_id_for_testing().is_none());
 
         let (_, creator_meme, _, creator_quote) = launch.fee_totals_for_testing();
         let (meme_fees, quote_fees) =
-            launch.claim_custodied_creator_fees(&f.package_version, &custodian, f.ctx!());
+            launch.claim_custodied_creator_fees(&f.package_version, TestCustodian(), f.ctx!());
         assert!(creator_meme > 0 && creator_quote > 0);
         assert_eq!(meme_fees.value(), creator_meme);
         assert_eq!(quote_fees.value(), creator_quote);
 
-        custodian.delete();
         destroy(meme_bought);
         destroy(quote_refund);
         destroy(meme_fees);
@@ -1953,14 +1957,12 @@ fun locked_creator_fees_reject_reassignment_before_the_role_check() {
             f.ctx!(),
         );
         destroy(metadata_cap);
-        let custodian = object::new(f.ctx!());
-        launch.lock_creator_fees(&f.package_version, creator_cap, &custodian);
+        launch.lock_creator_fees(&f.package_version, creator_cap, TestCustodian());
         let (authority, admin_cap) = f.new_role_less_admin();
         let admin_witness = authority.sign_in(&admin_cap);
 
         launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
 
-        custodian.delete();
         destroy(authority);
         destroy(admin_cap);
         destroy(launch);
@@ -1993,15 +1995,11 @@ fun wrong_custodian_is_rejected_before_the_empty_fee_ledger_check() {
             f.ctx!(),
         );
         destroy(metadata_cap);
-        let custodian = object::new(f.ctx!());
-        let impostor = object::new(f.ctx!());
-        launch.lock_creator_fees(&f.package_version, creator_cap, &custodian);
+        launch.lock_creator_fees(&f.package_version, creator_cap, TestCustodian());
 
         let (meme_fees, quote_fees) =
-            launch.claim_custodied_creator_fees(&f.package_version, &impostor, f.ctx!());
+            launch.claim_custodied_creator_fees(&f.package_version, OtherCustodian(), f.ctx!());
 
-        custodian.delete();
-        impostor.delete();
         destroy(meme_fees);
         destroy(quote_fees);
         destroy(launch);
@@ -2035,12 +2033,43 @@ fun retired_creator_cap_cannot_lock_creator_fees() {
         );
         destroy(metadata_cap);
         let admin_witness = f.sign_in();
-        let custodian = object::new(f.ctx!());
         launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
 
-        launch.lock_creator_fees(&f.package_version, creator_cap, &custodian);
+        launch.lock_creator_fees(&f.package_version, creator_cap, TestCustodian());
 
-        custodian.delete();
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidFeeCustodian,
+    location = blast_fun::launch,
+)]
+fun locking_rejects_a_primitive_custodian_witness() {
+    let mut fixture = start();
+
+    fixture.next_tx!(CREATOR, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
+            &f.package_version,
+            &f.runtime_config,
+            option::none(),
+            &f.clock,
+            f.ctx!(),
+        );
+        destroy(metadata_cap);
+
+        launch.lock_creator_fees(&f.package_version, creator_cap, 0u64);
+
         destroy(launch);
     });
 

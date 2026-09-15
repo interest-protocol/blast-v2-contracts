@@ -35,6 +35,8 @@ const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 public struct LP_FEE_AUTHORITY_TESTS() has drop;
 public struct QUOTE() has drop;
 public struct TestWitness() has drop;
+public struct TestCustodian() has drop;
+public struct OtherCustodian() has drop;
 
 /// A migrated launch whose payload created the pending authority of one unshared vault.
 public struct AuthorityFixture {
@@ -112,24 +114,25 @@ fun a_retired_curve_fee_cap_cannot_claim_the_lp_fee_cap() {
 fun a_launch_custodian_binds_pending_lp_fees_without_a_cap() {
     let mut fixture = start();
     let f = &mut fixture;
-    let custodian = object::new(f.scenario.ctx());
     let curve_fee_cap = f.curve_fee_cap.extract();
 
-    f.launch.lock_creator_fees(&f.version, curve_fee_cap, &custodian);
-    f.vault.lock_pending_creator_fees(&f.migrators_version, &f.launch, &custodian);
+    f.launch.lock_creator_fees(&f.version, curve_fee_cap, TestCustodian());
+    f.vault.lock_pending_creator_fees(&f.migrators_version, &f.launch, TestCustodian());
 
     let locked = sui::event::events_by_type<events::LpFeesLocked>();
     let mut expected = bcs::to_bytes(&object::id(&f.vault));
     expected.append(bcs::to_bytes(&type_name::with_original_ids<LP_FEE_AUTHORITY_TESTS>()));
     expected.append(bcs::to_bytes(&type_name::with_original_ids<QUOTE>()));
     expected.append(bcs::to_bytes(&option::none<ID>()));
-    expected.append(bcs::to_bytes(&custodian.to_inner()));
+    expected.append(bcs::to_bytes(&type_name::with_original_ids<TestCustodian>()));
     assert_eq!(locked.length(), 1);
     assert_eq!(bcs::to_bytes(&locked[0]), expected);
-    assert_eq!(f.vault.custodian_id_for_testing(), option::some(custodian.to_inner()));
+    assert_eq!(
+        f.vault.custodian_for_testing(),
+        option::some(type_name::with_original_ids<TestCustodian>()),
+    );
     assert!(f.vault.lp_fee_cap_id_for_testing().is_none());
 
-    custodian.delete();
     fixture.end();
 }
 
@@ -141,11 +144,9 @@ fun a_launch_custodian_binds_pending_lp_fees_without_a_cap() {
 fun an_object_that_does_not_custody_curve_fees_cannot_bind_pending_lp_fees() {
     let mut fixture = start();
     let f = &mut fixture;
-    let impostor = object::new(f.scenario.ctx());
 
-    f.vault.lock_pending_creator_fees(&f.migrators_version, &f.launch, &impostor);
+    f.vault.lock_pending_creator_fees(&f.migrators_version, &f.launch, OtherCustodian());
 
-    impostor.delete();
     fixture.end();
 }
 
@@ -157,14 +158,12 @@ fun an_object_that_does_not_custody_curve_fees_cannot_bind_pending_lp_fees() {
 fun a_claimed_cap_prevents_binding_pending_fees_without_it() {
     let mut fixture = start();
     let f = &mut fixture;
-    let custodian = object::new(f.scenario.ctx());
     let lp_fee_cap = f.claim();
     let curve_fee_cap = f.curve_fee_cap.extract();
 
-    f.launch.lock_creator_fees(&f.version, curve_fee_cap, &custodian);
-    f.vault.lock_pending_creator_fees(&f.migrators_version, &f.launch, &custodian);
+    f.launch.lock_creator_fees(&f.version, curve_fee_cap, TestCustodian());
+    f.vault.lock_pending_creator_fees(&f.migrators_version, &f.launch, TestCustodian());
 
-    custodian.delete();
     destroy(lp_fee_cap);
     fixture.end();
 }
@@ -288,10 +287,9 @@ fun admin_reissues_a_pending_vault_whose_launch_fees_are_not_custodied() {
 fun pending_fees_of_a_custodied_launch_reject_reissue_before_the_role_check() {
     let mut fixture = start();
     let f = &mut fixture;
-    let custodian = object::new(f.scenario.ctx());
     let curve_fee_cap = f.curve_fee_cap.extract();
 
-    f.launch.lock_creator_fees(&f.version, curve_fee_cap, &custodian);
+    f.launch.lock_creator_fees(&f.version, curve_fee_cap, TestCustodian());
     let (other, role_less_cap) = f.new_role_less_admin();
     let admin_witness = other.sign_in(&role_less_cap);
     f.vault.issue_lp_fee_cap(
@@ -302,7 +300,6 @@ fun pending_fees_of_a_custodied_launch_reject_reissue_before_the_role_check() {
         f.scenario.ctx(),
     );
 
-    custodian.delete();
     destroy(other);
     destroy(role_less_cap);
     fixture.end();
@@ -313,11 +310,10 @@ fun a_claimed_cap_stays_reissuable_after_launch_fees_are_custodied() {
     let mut fixture = start();
     let f = &mut fixture;
     let claimed = f.claim();
-    let custodian = object::new(f.scenario.ctx());
     let curve_fee_cap = f.curve_fee_cap.extract();
     let admin_witness = f.sign_in();
 
-    f.launch.lock_creator_fees(&f.version, curve_fee_cap, &custodian);
+    f.launch.lock_creator_fees(&f.version, curve_fee_cap, TestCustodian());
     f.vault.issue_lp_fee_cap(
         &f.migrators_version,
         &f.launch,
@@ -330,7 +326,6 @@ fun a_claimed_cap_stays_reissuable_after_launch_fees_are_custodied() {
     assert!(live_lp_fee_cap_id.is_some());
     assert!(live_lp_fee_cap_id != option::some(object::id(&claimed)));
 
-    custodian.delete();
     destroy(claimed);
     fixture.end();
 }
@@ -364,11 +359,10 @@ fun reissue_rejects_the_zero_recipient() {
 fun locked_lp_fees_reject_reissue_before_the_recipient_check() {
     let mut fixture = start();
     let f = &mut fixture;
-    let custodian = object::new(f.scenario.ctx());
     let lp_fee_cap = f.claim();
     let admin_witness = f.sign_in();
 
-    f.vault.lock_creator_fees(&f.migrators_version, lp_fee_cap, &custodian);
+    f.vault.lock_creator_fees(&f.migrators_version, lp_fee_cap, TestCustodian());
     f.vault.issue_lp_fee_cap(
         &f.migrators_version,
         &f.launch,
@@ -377,7 +371,21 @@ fun locked_lp_fees_reject_reissue_before_the_recipient_check() {
         f.scenario.ctx(),
     );
 
-    custodian.delete();
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = lp_fee_authority::EInvalidLpFeeCustodian,
+    location = blast_fun_migrators::lp_fee_authority,
+)]
+fun locking_rejects_a_primitive_custodian_witness() {
+    let mut fixture = start();
+    let f = &mut fixture;
+    let lp_fee_cap = f.claim();
+
+    f.vault.lock_creator_fees(&f.migrators_version, lp_fee_cap, 0u64);
+
     fixture.end();
 }
 

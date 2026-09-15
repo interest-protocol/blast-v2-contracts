@@ -13,6 +13,7 @@ use blast_fun::{
     launch::{Launch, MigrationPayload},
     launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
 };
+use std::type_name::{Self, TypeName};
 
 // === Errors ===
 
@@ -28,6 +29,9 @@ const ELpFeeAuthorityNotPending: vector<u8> =
 #[error(code = 4)]
 const ELpFeesReservedForCustodian: vector<u8> =
     b"Pending creator LP fees are reserved for the launch's creator-fee custodian.";
+#[error(code = 5)]
+const EInvalidLpFeeCustodian: vector<u8> =
+    b"Custodian witness must be a struct type only its module can construct.";
 
 // === Public Structs ===
 
@@ -39,11 +43,12 @@ public struct LpFeeCap<phantom Meme> has key, store {
 /// Who may claim creator LP fees in the one vault that embeds this value.
 ///
 /// `Pending` from migration until the first claim, bind, or reissue; `Cap` for the live
-/// revocable capability; terminal `Custodian` once fees are bound to one object forever.
+/// revocable capability; terminal `Custodian` once fees are bound forever to the module
+/// named by the witness type only it can construct.
 public enum LpFeeAuthority<phantom Meme> has drop, store {
     Pending,
     Cap(ID),
-    Custodian(ID),
+    Custodian(TypeName),
 }
 
 // === Public Functions ===
@@ -82,34 +87,34 @@ public(package) fun claim<Meme, Quote>(
 }
 
 /// Binds pending fees forever to the object the launch's creator fees are bound to.
-public(package) fun lock_pending<Meme, Quote>(
+public(package) fun lock_pending<Meme, Quote, Custodian: drop>(
     self: &mut LpFeeAuthority<Meme>,
     launch: &Launch<Meme, Quote>,
-    custodian: &UID,
-): ID {
+    custodian: Custodian,
+): TypeName {
     self.assert_pending();
     launch.assert_fee_custodian(custodian);
 
-    let custodian_id = custodian.to_inner();
-    *self = LpFeeAuthority::Custodian(custodian_id);
+    let custodian = type_name::with_original_ids<Custodian>();
+    *self = LpFeeAuthority::Custodian(custodian);
 
-    custodian_id
+    custodian
 }
 
 /// Destroys the live capability and binds fees forever to `custodian`.
-public(package) fun lock<Meme>(
+public(package) fun lock<Meme, Custodian: drop>(
     self: &mut LpFeeAuthority<Meme>,
     lp_fee_cap: LpFeeCap<Meme>,
-    custodian: &UID,
-): (ID, ID) {
+    _: Custodian,
+): (ID, TypeName) {
     self.assert_cap(&lp_fee_cap);
 
     let lp_fee_cap_id = object::id(&lp_fee_cap);
-    let custodian_id = custodian.to_inner();
+    let custodian = custodian_type<Custodian>();
     lp_fee_cap.destroy_lp_fee_cap();
-    *self = LpFeeAuthority::Custodian(custodian_id);
+    *self = LpFeeAuthority::Custodian(custodian);
 
-    (lp_fee_cap_id, custodian_id)
+    (lp_fee_cap_id, custodian)
 }
 
 /// Mints a replacement capability under creator-admin authority and retires any live one.
@@ -135,7 +140,7 @@ public(package) fun reissue<Meme, Quote>(
 
 /// Aborts once fees are permanently bound to a custodian.
 public(package) fun assert_not_locked<Meme>(self: &LpFeeAuthority<Meme>) {
-    assert!(self.custodian_id().is_none(), ELpFeesLocked);
+    assert!(self.custodian().is_none(), ELpFeesLocked);
 }
 
 /// Aborts unless `lp_fee_cap` is the live capability.
@@ -143,15 +148,32 @@ public(package) fun assert_cap<Meme>(self: &LpFeeAuthority<Meme>, lp_fee_cap: &L
     assert!(self.cap_id().contains(&object::id(lp_fee_cap)), ELpFeeCapNotLive);
 }
 
-/// Aborts unless `custodian` is the object fees are bound to.
-public(package) fun assert_custodian<Meme>(self: &LpFeeAuthority<Meme>, custodian: &UID) {
-    assert!(self.custodian_id().contains(&custodian.to_inner()), ELpFeeCustodianMismatch);
+/// Aborts unless `Custodian` is the witness fees are bound to.
+public(package) fun assert_custodian<Meme, Custodian: drop>(
+    self: &LpFeeAuthority<Meme>,
+    _: Custodian,
+) {
+    assert!(
+        self.custodian().contains(&type_name::with_original_ids<Custodian>()),
+        ELpFeeCustodianMismatch,
+    );
 }
 
 // === Private Functions ===
 
 fun assert_pending<Meme>(self: &LpFeeAuthority<Meme>) {
     assert!(self.is_pending(), ELpFeeAuthorityNotPending);
+}
+
+/// Names the custodian module, rejecting a primitive or vector witness anyone could construct.
+///
+/// `lock_pending` needs no such check: it copies the launch's already validated custodian.
+fun custodian_type<Custodian>(): TypeName {
+    let custodian = type_name::with_original_ids<Custodian>();
+
+    assert!(!custodian.is_primitive(), EInvalidLpFeeCustodian);
+
+    custodian
 }
 
 fun is_pending<Meme>(self: &LpFeeAuthority<Meme>): bool {
@@ -168,9 +190,9 @@ fun cap_id<Meme>(self: &LpFeeAuthority<Meme>): Option<ID> {
     }
 }
 
-fun custodian_id<Meme>(self: &LpFeeAuthority<Meme>): Option<ID> {
+fun custodian<Meme>(self: &LpFeeAuthority<Meme>): Option<TypeName> {
     match (self) {
-        LpFeeAuthority::Custodian(custodian_id) => option::some(*custodian_id),
+        LpFeeAuthority::Custodian(custodian) => option::some(*custodian),
         _ => option::none(),
     }
 }
@@ -203,8 +225,8 @@ public fun cap_id_for_testing<Meme>(self: &LpFeeAuthority<Meme>): Option<ID> {
 }
 
 #[test_only]
-public fun custodian_id_for_testing<Meme>(self: &LpFeeAuthority<Meme>): Option<ID> {
-    self.custodian_id()
+public fun custodian_for_testing<Meme>(self: &LpFeeAuthority<Meme>): Option<TypeName> {
+    self.custodian()
 }
 
 #[test_only]

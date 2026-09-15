@@ -1313,9 +1313,9 @@ if [[ ! -f sources/launch.move ]] \
   || [[ "$(move_production_type Launch <<<"$launch_facts")" \
     != 'struct Launch<phantom Meme, phantom Quote> has key { id: UID, lifecycle: Lifecycle, sell_burn_bps: Bps, virtual_quote: u64, migration_quote_target: u64, quote_fee_bps: Bps, meme_fee_bps: Bps, protocol_quote_migration_fee_bps: Bps, migration_witness: TypeName, meme_reserve: Balance<Meme>, real_quote_reserve: Balance<Quote>, pending_burn: Balance<Meme>, protocol_meme_graduation_fee: Balance<Meme>, meme_liquidity_provision: Balance<Meme>, fee_ledger: FeeLedger<Meme, Quote>, metadata_cap: MetadataCap<Meme>, creator_authority: Option<CreatorAuthority<Meme>>, curve_fee_authority: CurveFeeAuthority, blast_metadata_cap_id: Option<ID>, }' ]] \
   || [[ "$(move_production_type CurveFeeAuthority <<<"$launch_facts")" \
-    != 'enum CurveFeeAuthority has copy, drop, store { Unassigned, Cap(ID), Custodian(ID), }' ]] \
+    != 'enum CurveFeeAuthority has copy, drop, store { Unassigned, Cap(ID), Custodian(TypeName), }' ]] \
   || [[ "$(move_production_functions <<<"$launch_facts")" \
-    != 'accrue_and_emit_bought:private:0 accrue_and_emit_sold:private:0 accrue_graduation_fees:private:0 accrue_trade_fees:private:0 assert_blast_metadata_cap:private:0 assert_curve_fee_cap:public:0 assert_fee_custodian:public:0 assert_live:private:0 assert_migrated:public:0 buy:public:0 claim_creator_caps:public:0 claim_creator_fees:public:0 claim_custodied_creator_fees:public:0 claim_ledger_creator_fees:private:0 claim_protocol_fees:public:0 curve_k:private:0 dispose_meme:private:0 emit_metadata_updated:private:0 has_fee_custodian:public:0 is_custodian:private:0 lock_creator_fees:public:0 migrate:public:0 new:public:0 partition_meme:private:0 partition_quote:private:0 reassign_curve_fee_cap:public:0 reassign_metadata_cap:public:0 redeem_migration:public:0 revoke_creator_authority:private:0 sell:public:0 set_description:public:0 set_icon_url:public:0 set_name:public:0 share:public:0 ' ]] \
+    != 'accrue_and_emit_bought:private:0 accrue_and_emit_sold:private:0 accrue_graduation_fees:private:0 accrue_trade_fees:private:0 assert_blast_metadata_cap:private:0 assert_curve_fee_cap:public:0 assert_fee_custodian:public:0 assert_live:private:0 assert_migrated:public:0 buy:public:0 claim_creator_caps:public:0 claim_creator_fees:public:0 claim_custodied_creator_fees:public:0 claim_ledger_creator_fees:private:0 claim_protocol_fees:public:0 curve_k:private:0 custodian_type:private:0 dispose_meme:private:0 emit_metadata_updated:private:0 has_fee_custodian:public:0 is_custodian:private:0 lock_creator_fees:public:0 migrate:public:0 new:public:0 partition_meme:private:0 partition_quote:private:0 reassign_curve_fee_cap:public:0 reassign_metadata_cap:public:0 redeem_migration:public:0 revoke_creator_authority:private:0 sell:public:0 set_description:public:0 set_icon_url:public:0 set_name:public:0 share:public:0 ' ]] \
   || [[ "$(rg -c '^public fun ' <<<"$launch_production")" != 20 ]] \
   || ! rg -U -q \
     'public fun new<Meme, Quote, MigrationWitness: drop>\(\s*ticket: LaunchTicket<Meme>,\s*package_version: &PackageVersion,\s*config: &LaunchConfig,\s*ctx: &mut TxContext,\s*\): Launch<Meme, Quote>' \
@@ -1414,16 +1414,16 @@ check_launch_function reassign_metadata_cap \
   'package_version.assert_current(); admin_witness.assert_role(launchpad_domain::creator_admin_role()); assert!(recipient != @0x0, blast_fun::errors::invalid_creator_recipient!()); let revoked_metadata_cap_id = self.blast_metadata_cap_id; self.revoke_creator_authority(); let blast_metadata_cap = creator_authority::new_metadata_cap<Meme>(ctx); let metadata_cap_id = object::id(&blast_metadata_cap); self.blast_metadata_cap_id = option::some(metadata_cap_id); transfer::public_transfer(blast_metadata_cap, recipient); events::metadata_cap_reassigned( self.id.to_inner(), revoked_metadata_cap_id, metadata_cap_id, recipient, );'
 
 check_launch_function lock_creator_fees \
-  'fun lock_creator_fees<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, curve_fee_cap: CurveFeeCap<Meme>, custodian: &UID, )' \
-  'package_version.assert_current(); self.assert_curve_fee_cap(&curve_fee_cap); let curve_fee_cap_id = object::id(&curve_fee_cap); let custodian_id = custodian.to_inner(); curve_fee_cap.destroy_curve_fee_cap(); self.curve_fee_authority = CurveFeeAuthority::Custodian(custodian_id); events::creator_fees_locked(self.id.to_inner(), curve_fee_cap_id, custodian_id);'
+  'fun lock_creator_fees<Meme, Quote, Custodian: drop>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, curve_fee_cap: CurveFeeCap<Meme>, _: Custodian, )' \
+  'package_version.assert_current(); self.assert_curve_fee_cap(&curve_fee_cap); let curve_fee_cap_id = object::id(&curve_fee_cap); let custodian = custodian_type<Custodian>(); curve_fee_cap.destroy_curve_fee_cap(); self.curve_fee_authority = CurveFeeAuthority::Custodian(custodian); events::creator_fees_locked(self.id.to_inner(), curve_fee_cap_id, custodian);'
 
 check_launch_function claim_custodied_creator_fees \
-  'fun claim_custodied_creator_fees<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, custodian: &UID, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
+  'fun claim_custodied_creator_fees<Meme, Quote, Custodian: drop>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, custodian: Custodian, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
   'package_version.assert_current(); self.assert_fee_custodian(custodian); self.claim_ledger_creator_fees(ctx)'
 
 check_launch_function assert_fee_custodian \
-  'fun assert_fee_custodian<Meme, Quote>(self: &Launch<Meme, Quote>, custodian: &UID)' \
-  'assert!( self.curve_fee_authority == CurveFeeAuthority::Custodian(custodian.to_inner()), blast_fun::errors::creator_custodian_mismatch!(), );'
+  'fun assert_fee_custodian<Meme, Quote, Custodian: drop>( self: &Launch<Meme, Quote>, _: Custodian, )' \
+  'assert!( self.curve_fee_authority == CurveFeeAuthority::Custodian(type_name::with_original_ids<Custodian>()), blast_fun::errors::creator_custodian_mismatch!(), );'
 
 check_launch_function has_fee_custodian \
   'fun has_fee_custodian<Meme, Quote>(self: &Launch<Meme, Quote>): bool' \
@@ -1440,6 +1440,10 @@ check_launch_function assert_curve_fee_cap \
 check_launch_function assert_blast_metadata_cap \
   'fun assert_blast_metadata_cap<Meme, Quote>( self: &Launch<Meme, Quote>, blast_metadata_cap: &BlastMetadataCap<Meme>, )' \
   'assert!( self.blast_metadata_cap_id.contains(&object::id(blast_metadata_cap)), blast_fun::errors::metadata_cap_not_live!(), );'
+
+check_launch_function custodian_type \
+  'fun custodian_type<Custodian>(): TypeName' \
+  'let custodian = type_name::with_original_ids<Custodian>(); assert!(!custodian.is_primitive(), blast_fun::errors::invalid_fee_custodian!()); custodian'
 
 check_launch_function is_custodian \
   'fun is_custodian(self: &CurveFeeAuthority): bool' \
@@ -1481,7 +1485,8 @@ for authority_spec in \
   'self.claim_ledger_creator_fees(|claim_creator_fees claim_custodied_creator_fees ' \
   'self.assert_curve_fee_cap(|claim_creator_fees lock_creator_fees ' \
   'self.assert_fee_custodian(|claim_custodied_creator_fees ' \
-  'CurveFeeAuthority::Custodian(custodian.to_inner())|assert_fee_custodian ' \
+  'CurveFeeAuthority::Custodian(|assert_fee_custodian is_custodian lock_creator_fees ' \
+  'custodian_type<Custodian>()|lock_creator_fees ' \
   'self.assert_blast_metadata_cap(|set_description set_icon_url set_name ' \
   '&self.metadata_cap|set_description set_icon_url set_name ' \
   'transfer::public_transfer(|dispose_meme reassign_curve_fee_cap reassign_metadata_cap '; do

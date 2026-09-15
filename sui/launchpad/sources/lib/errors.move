@@ -264,6 +264,10 @@ const ECreatorCustodianMismatch: u64 = 91;
 /// The metadata capability is not the one the launch currently honors.
 const EMetadataCapNotLive: u64 = 92;
 
+#[test_only]
+/// A custodian witness was a primitive or vector type that anyone can construct.
+const EInvalidFeeCustodian: u64 = 93;
+
 macro public(package) fun invalid_creator_claim_public_key(): u64 {
     2
 }
@@ -476,4 +480,8 @@ macro public(package) fun creator_custodian_mismatch(): u64 {
 
 macro public(package) fun metadata_cap_not_live(): u64 {
     92
+}
+
+macro public(package) fun invalid_fee_custodian(): u64 {
+    93
 }

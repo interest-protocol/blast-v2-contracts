@@ -59,6 +59,9 @@ const ENotUpgrade: vector<u8> = b"Version object is already migrated.";
 // === Public Types ===
 
 /// Singleton administrator capability created at publication.
+/// Proves a call originates in this module when binding or claiming custodied creator fees.
+public struct Witness() has drop;
+
 public struct AdminCap has key, store {
     id: UID,
 }
@@ -200,7 +203,7 @@ public fun new<Meme, Quote>(
         next_round: 0,
         last_checkpoint: option::none(),
     };
-    launch.lock_creator_fees(package_version, curve_fee_cap, &distributor.id);
+    launch.lock_creator_fees(package_version, curve_fee_cap, Witness());
     let publisher = PublisherCap { id: object::new(ctx), distributor: distributor.id.to_inner() };
 
     event::emit(Enrolled {
@@ -227,7 +230,7 @@ public fun collect_curve_fees<Meme, Quote>(
     version.assert_enabled();
     assert!(object::id(launch) == self.launch, EWrongSource);
 
-    let (meme, quote) = launch.claim_custodied_creator_fees(package_version, &self.id, ctx);
+    let (meme, quote) = launch.claim_custodied_creator_fees(package_version, Witness(), ctx);
     self.accrue(object::id(launch), meme, quote);
 }
 
@@ -241,7 +244,7 @@ public fun collect_lp_fees<Meme, Quote>(
 ) {
     version.assert_enabled();
 
-    let (meme, quote) = vault.claim_custodied_creator_fees(migrators_version, &self.id, ctx);
+    let (meme, quote) = vault.claim_custodied_creator_fees(migrators_version, Witness(), ctx);
     self.accrue(object::id(vault), meme, quote);
 }
 
@@ -257,20 +260,23 @@ public fun lock_lp_fees<Meme, Quote>(
     version.assert_enabled();
     assert!(object::id(launch) == self.launch, EWrongSource);
 
-    vault.lock_pending_creator_fees(migrators_version, launch, &self.id);
+    vault.lock_pending_creator_fees(migrators_version, launch, Witness());
 }
 
 /// Destroys an already claimed live LP-fee cap and binds its creator LP fees here forever.
+/// The enrolled launch proves this distributor is the custodian those fees can reach.
 public fun lock_lp_fees_with_cap<Meme, Quote>(
     self: &Distributor<Meme, Quote>,
     version: &Version,
     vault: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
+    launch: &Launch<Meme, Quote>,
     lp_fee_cap: LpFeeCap<Meme>,
 ) {
     version.assert_enabled();
+    assert!(object::id(launch) == self.launch, EWrongSource);
 
-    vault.lock_creator_fees(migrators_version, lp_fee_cap, &self.id);
+    vault.lock_creator_fees(migrators_version, lp_fee_cap, Witness());
 }
 
 /// Reserves existing funds for an allocation authorized by this distributor's cap.

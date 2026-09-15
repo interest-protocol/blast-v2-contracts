@@ -20,7 +20,7 @@ use blast_fun_migrators::{
     lp_fee_policy,
     package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
 };
-use std::{bcs, unit_test::{assert_eq, destroy}};
+use std::{bcs, type_name, unit_test::{assert_eq, destroy}};
 use sui::{clock, coin::{Self, Coin}, test_scenario::{Self, Scenario}};
 
 // === Constants ===
@@ -66,7 +66,10 @@ fun init_sends_admin_cap_to_publisher_and_shares_current_unpaused_version() {
 #[test]
 fun enrollment_destroys_the_creator_cap_and_binds_curve_fees_forever() {
     let f = start();
-    assert_eq!(f.launch.fee_custodian_id_for_testing(), option::some(object::id(&f.distributor)));
+    assert_eq!(
+        f.launch.fee_custodian_for_testing(),
+        option::some(type_name::with_original_ids<distributor::Witness>()),
+    );
     assert!(f.launch.curve_fee_cap_id_for_testing().is_none());
     {
         let (meme, quote) = f.distributor.balances_for_testing();
@@ -721,8 +724,17 @@ fun locked_lp_fees_collect_only_creator_lp_fees() {
     );
     let lp_fee_cap = source.issue_lp_fee_cap_for_testing(f.scenario.ctx());
     f.next_tx!(BOT, |f| {
-        f.distributor.lock_lp_fees_with_cap(&f.control, &mut source, &f.migrators_version, lp_fee_cap);
-        assert_eq!(source.custodian_id_for_testing(), option::some(object::id(&f.distributor)));
+        f.distributor.lock_lp_fees_with_cap(
+            &f.control,
+            &mut source,
+            &f.migrators_version,
+            &f.launch,
+            lp_fee_cap,
+        );
+        assert_eq!(
+            source.custodian_for_testing(),
+            option::some(type_name::with_original_ids<distributor::Witness>()),
+        );
         assert!(source.lp_fee_cap_id_for_testing().is_none());
         f.distributor.collect_lp_fees(&f.control, &mut source, &f.migrators_version, f.scenario.ctx());
     });
@@ -783,7 +795,13 @@ fun retired_lp_fee_cap_cannot_lock_lp_fees() {
     let retired = source.issue_lp_fee_cap_for_testing(f.scenario.ctx());
     let live = source.issue_lp_fee_cap_for_testing(f.scenario.ctx());
     f.next_tx!(BOT, |f| {
-        f.distributor.lock_lp_fees_with_cap(&f.control, &mut source, &f.migrators_version, retired);
+        f.distributor.lock_lp_fees_with_cap(
+            &f.control,
+            &mut source,
+            &f.migrators_version,
+            &f.launch,
+            retired,
+        );
     });
     destroy(live);
     destroy(source);
@@ -808,7 +826,10 @@ fun pending_lp_fees_bind_to_the_enrolled_distributor_without_a_cap() {
     );
     f.next_tx!(BOT, |f| {
         f.distributor.lock_lp_fees(&f.control, &mut source, &f.migrators_version, &f.launch);
-        assert_eq!(source.custodian_id_for_testing(), option::some(object::id(&f.distributor)));
+        assert_eq!(
+            source.custodian_for_testing(),
+            option::some(type_name::with_original_ids<distributor::Witness>()),
+        );
         f.distributor.collect_lp_fees(&f.control, &mut source, &f.migrators_version, f.scenario.ctx());
     });
     let (meme, quote) = f.distributor.balances_for_testing();
@@ -838,7 +859,10 @@ fun complete_shared_round(f: DistributionFixture) {
     transfer::public_transfer(publisher, BOT);
     scenario.next_tx(BOT);
     let mut distributor = scenario.take_shared<Distributor<DISTRIBUTOR_TESTS, QUOTE>>();
-    assert_eq!(launch.fee_custodian_id_for_testing(), option::some(distributor_id));
+    assert_eq!(
+        launch.fee_custodian_for_testing(),
+        option::some(type_name::with_original_ids<distributor::Witness>()),
+    );
     let publisher = scenario.take_from_sender<PublisherCap>();
     let root = merkle::leaf(object::id(&distributor), 0, 0, ALICE, 1, 1);
     let round = distributor.publish_round(

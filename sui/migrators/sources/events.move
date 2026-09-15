@@ -93,7 +93,7 @@ public struct LpFeesLocked has copy, drop {
     meme: TypeName,
     quote: TypeName,
     lp_fee_cap_id: Option<ID>,
-    custodian_id: ID,
+    custodian: TypeName,
 }
 
 /// Records discovery and typed position custody for one completed vault.
@@ -400,14 +400,14 @@ public(package) fun lp_fee_cap_issued<Meme, Quote>(
 public(package) fun lp_fees_locked<Meme, Quote>(
     vault_id: ID,
     lp_fee_cap_id: Option<ID>,
-    custodian_id: ID,
+    custodian: TypeName,
 ) {
     sui::event::emit(LpFeesLocked {
         vault_id,
         meme: type_name::with_original_ids<Meme>(),
         quote: type_name::with_original_ids<Quote>(),
         lp_fee_cap_id,
-        custodian_id,
+        custodian,
     });
 }
 

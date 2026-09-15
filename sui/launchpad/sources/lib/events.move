@@ -76,7 +76,7 @@ public struct MetadataCapReassigned has copy, drop {
 public struct CreatorFeesLocked has copy, drop {
     launch_id: ID,
     curve_fee_cap_id: ID,
-    custodian_id: ID,
+    custodian: TypeName,
 }
 
 /// Emitted after the metadata-cap holder updates coin metadata through the launch.
@@ -299,11 +299,15 @@ public(package) fun metadata_cap_reassigned(
 }
 
 /// Emits the permanent binding of creator fees to a custodian object.
-public(package) fun creator_fees_locked(launch_id: ID, curve_fee_cap_id: ID, custodian_id: ID) {
+public(package) fun creator_fees_locked(
+    launch_id: ID,
+    curve_fee_cap_id: ID,
+    custodian: TypeName,
+) {
     blast_fun::events_wrapper::emit_event(CreatorFeesLocked {
         launch_id,
         curve_fee_cap_id,
-        custodian_id,
+        custodian,
     });
 }
 
@@ -590,8 +594,8 @@ public fun metadata_cap_reassigned_fields(
 }
 
 #[test_only]
-public fun creator_fees_locked_fields(self: &CreatorFeesLocked): (ID, ID, ID) {
-    (self.launch_id, self.curve_fee_cap_id, self.custodian_id)
+public fun creator_fees_locked_fields(self: &CreatorFeesLocked): (ID, ID, TypeName) {
+    (self.launch_id, self.curve_fee_cap_id, self.custodian)
 }
 
 #[test_only]

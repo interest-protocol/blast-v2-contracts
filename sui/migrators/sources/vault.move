@@ -119,39 +119,39 @@ public fun issue_lp_fee_cap<Meme, Quote>(
 
 /// Binds pending creator LP fees forever to the launch's creator-fee custodian.
 ///
-/// No capability is ever minted. Claims require `custodian`'s `&UID`, so custodians must never
-/// expose it.
-public fun lock_pending_creator_fees<Meme, Quote>(
+/// No capability is ever minted. Only the module declaring `Custodian` can construct it, and
+/// it must already hold the launch's creator fees.
+public fun lock_pending_creator_fees<Meme, Quote, Custodian: drop>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
     launch: &Launch<Meme, Quote>,
-    custodian: &UID,
+    custodian: Custodian,
 ) {
     migrators_version.assert_current();
 
-    let custodian_id = self.lp_fee_authority.lock_pending(launch, custodian);
+    let custodian = self.lp_fee_authority.lock_pending(launch, custodian);
 
-    events::lp_fees_locked<Meme, Quote>(self.id.to_inner(), option::none(), custodian_id);
+    events::lp_fees_locked<Meme, Quote>(self.id.to_inner(), option::none(), custodian);
 }
 
-/// Destroys the live LP-fee capability and binds creator LP fees to `custodian` permanently.
+/// Destroys the live LP-fee capability and binds creator LP fees to `Custodian` permanently.
 ///
-/// Irreversible: `issue_lp_fee_cap` aborts afterward. Claims require `custodian`'s `&UID`, so
-/// lock only to objects whose module never exposes it.
-public fun lock_creator_fees<Meme, Quote>(
+/// Irreversible: `issue_lp_fee_cap` aborts afterward. Only the module declaring `Custodian`
+/// can construct it, so only that module can claim afterward.
+public fun lock_creator_fees<Meme, Quote, Custodian: drop>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
     lp_fee_cap: LpFeeCap<Meme>,
-    custodian: &UID,
+    custodian: Custodian,
 ) {
     migrators_version.assert_current();
 
-    let (lp_fee_cap_id, custodian_id) = self.lp_fee_authority.lock(lp_fee_cap, custodian);
+    let (lp_fee_cap_id, custodian) = self.lp_fee_authority.lock(lp_fee_cap, custodian);
 
     events::lp_fees_locked<Meme, Quote>(
         self.id.to_inner(),
         option::some(lp_fee_cap_id),
-        custodian_id,
+        custodian,
     );
 }
 
@@ -167,11 +167,11 @@ public fun claim_creator_fees<Meme, Quote>(
     self.claim_ledger_creator_fees(ctx)
 }
 
-/// Claims creator LP fees for the custodian they are permanently bound to.
-public fun claim_custodied_creator_fees<Meme, Quote>(
+/// Claims creator LP fees for the custodian module they are permanently bound to.
+public fun claim_custodied_creator_fees<Meme, Quote, Custodian: drop>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    custodian: &UID,
+    custodian: Custodian,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     migrators_version.assert_current();
@@ -459,8 +459,10 @@ public fun is_lp_fee_authority_pending_for_testing<Meme, Quote>(
 }
 
 #[test_only]
-public fun custodian_id_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): Option<ID> {
-    self.lp_fee_authority.custodian_id_for_testing()
+public fun custodian_for_testing<Meme, Quote>(
+    self: &LpVault<Meme, Quote>,
+): Option<std::type_name::TypeName> {
+    self.lp_fee_authority.custodian_for_testing()
 }
 
 #[test_only]

@@ -42,11 +42,11 @@ public enum Lifecycle has copy, drop, store {
 ///
 /// `Unassigned` until a claim or administrator issues a cap, `Cap` for the live revocable
 /// curve-fee cap, and terminal `Custodian` once a cap was destroyed to bind the fees
-/// permanently to one object.
+/// permanently to one custodian module, named by the witness type only it can construct.
 public enum CurveFeeAuthority has copy, drop, store {
     Unassigned,
     Cap(ID),
-    Custodian(ID),
+    Custodian(TypeName),
 }
 
 /// Linear terminal balances that an authenticated external adapter must consume.
@@ -263,33 +263,33 @@ public fun reassign_metadata_cap<Meme, Quote>(
     );
 }
 
-/// Destroys the live curve-fee cap and binds curve fees to `custodian` permanently.
+/// Destroys the live curve-fee cap and binds curve fees to the `Custodian` witness permanently.
 ///
 /// Irreversible: no curve-fee cap exists afterward, so `reassign_curve_fee_cap` aborts.
-/// Metadata authority is unaffected. Claims require `custodian`'s `&UID`, so lock only to
-/// objects whose module never exposes it.
-public fun lock_creator_fees<Meme, Quote>(
+/// Metadata authority is unaffected. Only the module declaring `Custodian` can construct it,
+/// so only that module can claim afterward.
+public fun lock_creator_fees<Meme, Quote, Custodian: drop>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
     curve_fee_cap: CurveFeeCap<Meme>,
-    custodian: &UID,
+    _: Custodian,
 ) {
     package_version.assert_current();
     self.assert_curve_fee_cap(&curve_fee_cap);
 
     let curve_fee_cap_id = object::id(&curve_fee_cap);
-    let custodian_id = custodian.to_inner();
+    let custodian = custodian_type<Custodian>();
     curve_fee_cap.destroy_curve_fee_cap();
-    self.curve_fee_authority = CurveFeeAuthority::Custodian(custodian_id);
+    self.curve_fee_authority = CurveFeeAuthority::Custodian(custodian);
 
-    events::creator_fees_locked(self.id.to_inner(), curve_fee_cap_id, custodian_id);
+    events::creator_fees_locked(self.id.to_inner(), curve_fee_cap_id, custodian);
 }
 
-/// Claims creator trade fees for the custodian they are permanently bound to.
-public fun claim_custodied_creator_fees<Meme, Quote>(
+/// Claims creator trade fees for the custodian module they are permanently bound to.
+public fun claim_custodied_creator_fees<Meme, Quote, Custodian: drop>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    custodian: &UID,
+    custodian: Custodian,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     package_version.assert_current();
@@ -545,10 +545,14 @@ public fun migrate<Meme, Quote, MigrationWitness: drop>(
     MigrationPayload { meme, quote }
 }
 
-/// Aborts unless `custodian` is the object this launch's creator fees are permanently bound to.
-public fun assert_fee_custodian<Meme, Quote>(self: &Launch<Meme, Quote>, custodian: &UID) {
+/// Aborts unless `Custodian` is the witness this launch's creator fees are permanently bound to.
+public fun assert_fee_custodian<Meme, Quote, Custodian: drop>(
+    self: &Launch<Meme, Quote>,
+    _: Custodian,
+) {
     assert!(
-        self.curve_fee_authority == CurveFeeAuthority::Custodian(custodian.to_inner()),
+        self.curve_fee_authority
+            == CurveFeeAuthority::Custodian(type_name::with_original_ids<Custodian>()),
         blast_fun::errors::creator_custodian_mismatch!(),
     );
 }
@@ -615,6 +619,15 @@ fun partition_quote<Quote>(
     let migration_fee = quote.split(fee_amount);
 
     (quote, migration_fee)
+}
+
+/// Names the custodian module, rejecting a primitive or vector witness anyone could construct.
+fun custodian_type<Custodian>(): TypeName {
+    let custodian = type_name::with_original_ids<Custodian>();
+
+    assert!(!custodian.is_primitive(), blast_fun::errors::invalid_fee_custodian!());
+
+    custodian
 }
 
 fun is_custodian(self: &CurveFeeAuthority): bool {
@@ -885,11 +898,11 @@ public fun blast_metadata_cap_id_for_testing<Meme, Quote>(
 }
 
 #[test_only]
-public fun fee_custodian_id_for_testing<Meme, Quote>(
+public fun fee_custodian_for_testing<Meme, Quote>(
     self: &Launch<Meme, Quote>,
-): Option<ID> {
+): Option<TypeName> {
     match (self.curve_fee_authority) {
-        CurveFeeAuthority::Custodian(custodian_id) => option::some(custodian_id),
+        CurveFeeAuthority::Custodian(custodian) => option::some(custodian),
         _ => option::none(),
     }
 }

@@ -28,6 +28,8 @@ public struct MEME has drop {}
 public struct QUOTE has drop {}
 public struct OTHER_MEME has drop {}
 public struct TestVenue() has drop;
+public struct TestCustodian() has drop;
+public struct OtherCustodian() has drop;
 public struct OtherVenue() has drop;
 public struct TestPosition has key, store { id: UID }
 
@@ -449,32 +451,33 @@ fun locked_lp_fees_are_claimed_only_by_the_bound_custodian() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let custodian = object::new(f.scenario.ctx());
         let lp_fee_cap = f.vault.issue_lp_fee_cap_for_testing(f.scenario.ctx());
         let lp_fee_cap_id = object::id(&lp_fee_cap);
 
         f.accrue!(10, 20);
-        f.vault.lock_creator_fees(&f.migrators_version, lp_fee_cap, &custodian);
+        f.vault.lock_creator_fees(&f.migrators_version, lp_fee_cap, TestCustodian());
 
         let events = sui::event::events_by_type<events::LpFeesLocked>();
         let mut expected = bcs::to_bytes(&object::id(&f.vault));
         expected.append(bcs::to_bytes(&type_name::with_original_ids<MEME>()));
         expected.append(bcs::to_bytes(&type_name::with_original_ids<QUOTE>()));
         expected.append(bcs::to_bytes(&option::some(lp_fee_cap_id)));
-        expected.append(bcs::to_bytes(&custodian.to_inner()));
+        expected.append(bcs::to_bytes(&type_name::with_original_ids<TestCustodian>()));
         assert_eq!(events.length(), 1);
         assert_eq!(bcs::to_bytes(&events[0]), expected);
-        assert_eq!(f.vault.custodian_id_for_testing(), option::some(custodian.to_inner()));
+        assert_eq!(
+            f.vault.custodian_for_testing(),
+            option::some(type_name::with_original_ids<TestCustodian>()),
+        );
 
         let (meme, quote) = f.vault.claim_custodied_creator_fees(
             &f.migrators_version,
-            &custodian,
+            TestCustodian(),
             f.scenario.ctx(),
         );
         assert_eq!(meme.value(), 10);
         assert_eq!(quote.value(), 20);
 
-        custodian.delete();
         destroy(meme);
         destroy(quote);
     });
@@ -491,19 +494,15 @@ fun wrong_custodian_is_rejected_before_the_empty_lp_ledger_check() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let custodian = object::new(f.scenario.ctx());
-        let impostor = object::new(f.scenario.ctx());
         let lp_fee_cap = f.vault.issue_lp_fee_cap_for_testing(f.scenario.ctx());
 
-        f.vault.lock_creator_fees(&f.migrators_version, lp_fee_cap, &custodian);
+        f.vault.lock_creator_fees(&f.migrators_version, lp_fee_cap, TestCustodian());
         let (meme, quote) = f.vault.claim_custodied_creator_fees(
             &f.migrators_version,
-            &impostor,
+            OtherCustodian(),
             f.scenario.ctx(),
         );
 
-        custodian.delete();
-        impostor.delete();
         destroy(meme);
         destroy(quote);
     });

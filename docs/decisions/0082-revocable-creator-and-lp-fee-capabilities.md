@@ -61,15 +61,17 @@ can claim protocol fees cannot redirect creator fee streams without it.
 
 **Irrevocable custodians.** The live cap holder may call `lock_creator_fees`
 on a launch (with `CurveFeeCap`) or a post-migration vault (with `LpFeeCap`),
-passing the custodian object's `&UID`. The cap is destroyed and the fee stream
-moves to the terminal `Custodian(ID)` state. Afterward only
-`claim_custodied_creator_fees` with that same `&UID` claims it, and
-`reassign_curve_fee_cap` or `issue_lp_fee_cap` abort before any role or
-recipient check. A `&UID` proves the call comes from a module that can borrow
-the custodian's UID, which is normally only its defining module. Objects that
-expose a public `&UID` getter (for example `sui::kiosk::uid`) let any caller
-claim fees locked to them, so a cap holder must only lock to custodians that
-keep their UID private; Auto-LP, the distributor, migrators, and the DEX do.
+passing a drop-only `Custodian` witness value. The cap is destroyed and the fee
+stream moves to the terminal `Custodian(TypeName)` state, naming that witness
+type. Afterward only `claim_custodied_creator_fees` with the same witness
+claims it, and `reassign_curve_fee_cap` or `issue_lp_fee_cap` abort before any
+role or recipient check. Only the module declaring the witness can construct
+it, and each lock rejects a primitive or vector witness that anyone could
+supply (`EInvalidFeeCustodian`, launchpad code 93, and `EInvalidLpFeeCustodian`,
+`lp_fee_authority` code 5). Every authority is generic over `Meme`, and a
+launch consumes its curve-fee cap when it locks, so the witness type together
+with `Meme` names exactly one custodian. An earlier revision took the custodian
+object's `&UID`, which any module exposing a public UID getter could supply.
 Auto-LP enrollment and distributor
 creation lock the launch's creator fees to the new object, and
 `lock_external_lp_fees`, `lock_native_lp_fees`, and `lock_lp_fees` lock LP
@@ -104,6 +106,8 @@ until an administrator reassigns them.
 - Enrolling in Auto-LP or the distributor is irreversible for fees: neither the
   creator nor any administrator can later redirect those fee streams, while
   metadata authority remains independent.
+- `CreatorFeesLocked` and `LpFeesLocked` name the custodian by witness
+  `TypeName` rather than object ID.
 - Indexers track live authority from `CreatorCapsClaimed`, `CurveFeeCapReassigned`,
   `MetadataCapReassigned`,
   `LpFeeCapIssued`, `CreatorFeesLocked`, and `LpFeesLocked` rather than object
