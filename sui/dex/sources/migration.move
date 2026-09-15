@@ -7,8 +7,8 @@ use blast_fun::{
     fees::{Self, FeeLedger},
     launch::Launch,
     launchpad_domain::LAUNCHPAD_DOMAIN,
-    package_version::PackageVersion,
-    runtime_config::RuntimeConfig
+    lp_fee_policy::LpFeePolicy,
+    package_version::PackageVersion
 };
 use blast_fun_dex::pool::{Self, Factory, Pool, Position};
 use sui::{balance, clock::Clock, coin::Coin, coin_registry::Currency, dynamic_object_field, event};
@@ -95,13 +95,16 @@ public fun migrate<Meme, Quote>(
     });
 }
 
-/// Permissionlessly claims position fees into the existing live protocol/creator split.
+/// Permissionlessly claims position fees into the live LP protocol/creator split.
+///
+/// The split is the Meme project's pinned LP share, or the migrator-wide LP share
+/// when none is pinned; the bonding-curve trade share never applies here.
 /// Empty collections are safe and do not attempt a zero accrual in the core ledger.
 public fun collect<Meme, Quote>(
     self: &mut LockedLpVault<Meme, Quote>,
     pool: &mut Pool<Meme, Quote>,
     factory: &Factory,
-    runtime: &RuntimeConfig,
+    lp_fee_policy: &LpFeePolicy,
     ctx: &mut TxContext,
 ) {
     factory.assert_current();
@@ -116,14 +119,15 @@ public fun collect<Meme, Quote>(
         quote.destroy_zero();
         return
     };
+    let protocol_share = lp_fee_policy.protocol_fee_share<Meme>();
     let (_, _, protocol_delta, creator_delta) = self
         .fees
-        .accrue_from_runtime(balance::zero(), quote.into_balance(), runtime);
+        .accrue(balance::zero(), quote.into_balance(), protocol_share);
 
     event::emit(FeesCollected {
         vault_id: self.id.to_inner(),
         quote: amount,
-        protocol_share_bps: runtime.protocol_fee_share_bps(),
+        protocol_share_bps: protocol_share.value(),
         protocol_delta,
         creator_delta,
     });

@@ -10,7 +10,8 @@ use blast_fun::constants;
 // === Public Structs ===
 
 // Move does not support package-visible struct declarations. The type must be public so sibling
-// modules can store it; its field and every operation remain inaccessible outside this package.
+// modules can store it; its field, constructor, and arithmetic remain inaccessible outside this package; only
+// the raw value read is public so other packages can record an applied rate.
 /// A rate in the inclusive range zero through 10,000 basis points.
 public struct Bps(u64) has copy, drop, store;
 
@@ -27,7 +28,7 @@ public(package) fun new(value: u64): Bps {
 }
 
 /// Returns the raw basis-points value for primitive ABI and event fields.
-public(package) fun value(self: Bps): u64 {
+public fun value(self: Bps): u64 {
     let Bps(value) = self;
 
     value

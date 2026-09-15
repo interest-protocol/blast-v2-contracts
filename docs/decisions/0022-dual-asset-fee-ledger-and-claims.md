@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-23
 - Partially accepts: [0006](0006-fees-and-launch-paths.md), [0007](0007-acl-pause-and-versioning.md), [0011](0011-event-schema-and-replay.md)
-- Amended by: [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0041](0041-launch-config-owned-trade-fees.md), [0058](0058-eventless-package-initialization.md), and [0079](0079-compact-launch-state-and-events.md)
+- Amended by: [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0041](0041-launch-config-owned-trade-fees.md), [0058](0058-eventless-package-initialization.md), [0079](0079-compact-launch-state-and-events.md), and [0081](0081-separate-lp-fee-share-policy.md)
 
 > ADR 0079 removes initial zero fee totals and sender/type aliases from launch
 > events. Trade events retain the fee deltas and final totals needed for replay.

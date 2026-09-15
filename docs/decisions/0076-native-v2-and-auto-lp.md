@@ -2,6 +2,7 @@
 
 - Status: accepted for implementation; live release gates remain
 - Date: 2026-09-05
+- Amended by: [0081](0081-separate-lp-fee-share-policy.md)
 
 ## Context
 

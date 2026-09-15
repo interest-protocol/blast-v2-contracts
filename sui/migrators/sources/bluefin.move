@@ -10,8 +10,8 @@ use blast_admin::acl::AdminWitness;
 use blast_fun::{
     launch::Launch,
     launchpad_domain::LAUNCHPAD_DOMAIN,
+    lp_fee_policy::LpFeePolicy,
     package_version::PackageVersion,
-    runtime_config::RuntimeConfig,
 };
 use blast_fun_migrators::{
     events,
@@ -187,7 +187,7 @@ public fun migrate<Meme, Quote>(
 public fun collect_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    runtime_config: &RuntimeConfig,
+    lp_fee_policy: &LpFeePolicy,
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
     clock: &Clock,
@@ -223,7 +223,7 @@ public fun collect_fees<Meme, Quote>(
         meme_fee,
         quote_fee,
         liquidity_after,
-        runtime_config,
+        lp_fee_policy,
         ctx,
     );
 }

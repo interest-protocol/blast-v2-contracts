@@ -457,8 +457,10 @@ fi
 
 if [[ ! -f sources/lib/bps.move ]] \
   || ! rg -q '^public struct Bps\(u64\) has copy, drop, store;' sources/lib/bps.move \
-  || [[ "$(rg -c '^public\(package\) fun (new|value|apply_down|apply_up|complement)\(' sources/lib/bps.move)" != 5 ]] \
-  || rg -n '^(public|entry|public entry) fun |\b(UID|key|Balance|Coin|TxContext|transfer::|events::)\b' \
+  || [[ "$(rg -c '^public\(package\) fun (new|apply_down|apply_up|complement)\(' sources/lib/bps.move)" != 4 ]] \
+  || [[ "$(rg -c '^public fun ' sources/lib/bps.move)" != 1 ]] \
+  || ! rg -q '^public fun value\(self: Bps\): u64 \{' sources/lib/bps.move \
+  || rg -n '^(entry|public entry) fun |\b(UID|key|Balance|Coin|TxContext|transfer::|events::)\b' \
     sources/lib/bps.move \
   || ! rg -Fq 'value <= constants::basis_points_denominator!()' sources/lib/bps.move \
   || ! rg -Fq 'amount.mul_div(self.value(), constants::basis_points_denominator!())' \
@@ -467,7 +469,7 @@ if [[ ! -f sources/lib/bps.move ]] \
     sources/lib/bps.move \
   || ! rg -Fq 'Bps(constants::basis_points_denominator!() - self.value())' \
     sources/lib/bps.move; then
-  echo 'bps.move must keep only a public opaque type and package-visible validation, value, rounded application, and complement operations.' >&2
+  echo 'bps.move must keep only a public opaque type, a public raw value read, and package-visible validation, rounded application, and complement operations.' >&2
   failures=$((failures + 1))
 fi
 
@@ -820,13 +822,13 @@ fees_source="$(move_normalized_source <<<"$fees_facts")"
 
 if [[ ! -f sources/fees.move ]] \
   || [[ "$(move_production_functions <<<"$fees_facts")" \
-    != 'accrue:package:0 accrue_from_runtime:public:0 accrue_protocol_fees:package:0 claim_creator_fees:public:0 claim_protocol_fees:public:0 has_protocol_fees:public:0 new:public:0 ' ]] \
+    != 'accrue:public:0 accrue_protocol_fees:package:0 claim_creator_fees:public:0 claim_protocol_fees:public:0 has_protocol_fees:public:0 new:public:0 ' ]] \
   || [[ "$(move_production_type FeeLedger <<<"$fees_facts")" \
     != 'struct FeeLedger<phantom Meme, phantom Quote> has store { protocol_meme: Balance<Meme>, creator_meme: Balance<Meme>, protocol_quote: Balance<Quote>, creator_quote: Balance<Quote>, }' ]] \
   || rg -q '\b(UID|key|transfer::|CreatorClaim|ed25519|recipient|launch_id)\b' <<<"$fees_source" \
   || rg -q 'fee_balance_overflow|std::u64::max_value|max_balance' <<<"$fees_source" \
   || rg -q 'set_creator_fee_split|sui::event|events::' <<<"$fees_source"; then
-  echo 'fees.move must remain an embedded supply-conserved four-balance ledger exposing only its five approved cross-package functions and two package seams.' >&2
+  echo 'fees.move must remain an embedded supply-conserved four-balance ledger exposing only its five approved cross-package functions and one package seam.' >&2
   failures=$((failures + 1))
 fi
 
@@ -875,11 +877,6 @@ check_fee_function new \
   '' \
   'FeeLedger { protocol_meme: balance::zero(), creator_meme: balance::zero(), protocol_quote: balance::zero(), creator_quote: balance::zero(), }'
 
-check_fee_function accrue_from_runtime \
-  'fun accrue_from_runtime<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, meme_fee: Balance<Meme>, quote_fee: Balance<Quote>, runtime_config: &RuntimeConfig, ): (u64, u64, u64, u64)' \
-  '' \
-  'self.accrue( meme_fee, quote_fee, runtime_config.protocol_fee_share(), )'
-
 check_fee_function has_protocol_fees \
   'fun has_protocol_fees<Meme, Quote>(self: &FeeLedger<Meme, Quote>): bool' \
   'protocol_meme.value protocol_quote.value ' \
@@ -920,7 +917,7 @@ fi
 
 if [[ -n "$fee_ledger_violations" ]]; then
   printf '%s' "$fee_ledger_violations"
-  echo 'Fee state stays capability-gated per owner, splits on the live runtime protocol share, and releases balances only through the two authorized full drains.' >&2
+  echo 'Fee state stays capability-gated per owner, splits on a sealed policy-issued protocol share, and releases balances only through the two authorized full drains.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1093,8 +1090,29 @@ fi
 
 if [[ -f sources/creator_claim_config.move || -f sources/trade_fee_config.move ]] \
   || rg -n '\b(CreatorClaimConfig|TradeFeeConfig)\b' sources tests \
-  || [[ "$(rg -o 'transfer::share_object' sources --glob '*.move' --glob '!launch.move' | wc -l)" != 4 ]]; then
-  echo 'Core must keep exactly four locally shared protocol singletons; the domain authority is shared by blast_admin.' >&2
+  || [[ "$(rg -o 'transfer::share_object' sources --glob '*.move' --glob '!launch.move' | wc -l)" != 5 ]]; then
+  echo 'Core must keep exactly five locally shared protocol singletons; the domain authority is shared by blast_admin.' >&2
+  failures=$((failures + 1))
+fi
+
+lp_fee_policy_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/lp_fee_policy.move)"
+
+# LP-fee policy is a separate live singleton: migrators read it, trades never do.
+if [[ ! -f sources/lp_fee_policy.move ]] \
+  || ! rg -U -q \
+    'public struct LpFeePolicy has key \{\s*id: UID,\s*protocol_fee_share_bps: Bps,\s*project_protocol_fee_shares: Table<TypeName, Bps>,\s*\}' \
+    sources/lp_fee_policy.move \
+  || ! rg -U -q \
+    'fun init\(ctx: &mut TxContext\) \{\s*transfer::share_object\(new\(ctx\)\);\s*\}' \
+    sources/lp_fee_policy.move \
+  || [[ "$(rg -c '^public fun ' <<<"$lp_fee_policy_production")" != 4 ]] \
+  || [[ "$(rg -o '_: &AdminWitness<LAUNCHPAD_DOMAIN>' <<<"$lp_fee_policy_production" | wc -l)" != 3 ]] \
+  || [[ "$(rg -o 'type_name::with_original_ids<Meme>\(\)' <<<"$lp_fee_policy_production" | wc -l)" != 3 ]] \
+  || rg -n '\b(AdminCap|ProtocolAuthority|RuntimeConfig|FeeLedger|Balance|sequence|schema_version|action_tag|nonce)\b' \
+    <<<"$lp_fee_policy_production" \
+  || rg -q '\bLpFeePolicyCreated\b' sources/lib/events.move \
+  || rg -n 'runtime_config::' sources/fees.move; then
+  echo 'lp_fee_policy.move must own only the eventless LP-fee share singleton, its Meme-keyed project shares, and three AdminWitness-gated setters.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1356,7 +1374,7 @@ fi
 # `package_admin` keeps four `assert_current` guards across authorize, both
 # restrictions, and immutability; commit-and-advance instead proves the exact
 # next generation, so it contributes the fifth PackageVersion parameter only.
-for gate_spec in 'launch_config:6:6' 'runtime_config:3:3' 'package_admin:4:5' 'launch:7:7'; do
+for gate_spec in 'launch_config:6:6' 'runtime_config:3:3' 'lp_fee_policy:3:3' 'package_admin:4:5' 'launch:7:7'; do
   IFS=: read -r gate_module expected_guards expected_parameters <<<"$gate_spec"
   actual_guards="$(rg -c '^[[:space:]]+package_version\.assert_current\(\);' "sources/${gate_module}.move" || true)"
   actual_parameters="$(rg -c '^[[:space:]]+package_version: &(mut )?PackageVersion,' "sources/${gate_module}.move" || true)"
@@ -1381,7 +1399,7 @@ receiver_syntax_violations="$(
       | move_normalized_source \
       | sed 's/ *:: */::/g; s/ *(/(/g' \
       | rg -o \
-        '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_creator_claim_signer|revoke_creator_claim_signer|set_protocol_fee_share|assert_creator_claim_active|assert_creator_claim_signature|protocol_fee_share|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_trade_fees|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|launch::(share|migrate|redeem_migration)|creator_authority::(into_authority|recipient_address|account_commitment|claim_creator_cap)|launch_ticket::destroy|fees::(accrue|accrue_from_runtime|accrue_protocol_fees|has_protocol_fees|claim_creator_fees|claim_protocol_fees)|package::test_upgrade|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
+        '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_creator_claim_signer|revoke_creator_claim_signer|set_protocol_fee_share|assert_creator_claim_active|assert_creator_claim_signature|protocol_fee_share|protocol_fee_share_bps)|launch_config::(allow_quote|disallow_quote|set_trade_fees|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|launch::(share|migrate|redeem_migration)|creator_authority::(into_authority|recipient_address|account_commitment|claim_creator_cap)|launch_ticket::destroy|lp_fee_policy::(set_protocol_fee_share|set_project_protocol_fee_share|clear_project_protocol_fee_share|protocol_fee_share)|fees::(accrue|accrue_protocol_fees|has_protocol_fees|claim_creator_fees|claim_protocol_fees)|package::test_upgrade|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
       || true; } | sed "s|^|  ${move_file}: |"
   done
 )"

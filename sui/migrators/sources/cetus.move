@@ -5,8 +5,8 @@ use blast_admin::acl::AdminWitness;
 use blast_fun::{
     launch::Launch,
     launchpad_domain::LAUNCHPAD_DOMAIN,
+    lp_fee_policy::LpFeePolicy,
     package_version::PackageVersion,
-    runtime_config::RuntimeConfig,
 };
 use blast_fun_migrators::{
     events,
@@ -427,7 +427,7 @@ public fun migrate_existing_meme_b<Meme, Quote>(
 public fun collect_fees_meme_a<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    runtime_config: &RuntimeConfig,
+    lp_fee_policy: &LpFeePolicy,
     cetus_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
     ctx: &mut TxContext,
@@ -448,7 +448,7 @@ public fun collect_fees_meme_a<Meme, Quote>(
         meme_fee,
         quote_fee,
         liquidity_after,
-        runtime_config,
+        lp_fee_policy,
         ctx,
     );
 }
@@ -457,7 +457,7 @@ public fun collect_fees_meme_a<Meme, Quote>(
 public fun collect_fees_meme_b<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    runtime_config: &RuntimeConfig,
+    lp_fee_policy: &LpFeePolicy,
     cetus_config: &GlobalConfig,
     pool: &mut Pool<Quote, Meme>,
     ctx: &mut TxContext,
@@ -478,7 +478,7 @@ public fun collect_fees_meme_b<Meme, Quote>(
         meme_fee,
         quote_fee,
         liquidity_after,
-        runtime_config,
+        lp_fee_policy,
         ctx,
     );
 }

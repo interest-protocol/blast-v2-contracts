@@ -25,11 +25,11 @@ migration payload in the same Move call.
   vault and is drained only by the existing admin-gated protocol claim. No
   adapter stores a payout address, burns a nonzero residual, or sends one to
   `0x0`.
-- **Same live protocol fee share.** `vault::accrue_fees` reads
-  `runtime_config::protocol_fee_share_bps` at each collection and splits new fees
-  through the same core `FeeLedger` used by bonding-curve trade fees. Protocol
-  amounts round up, creators receive the exact remainder, and already accrued
-  ownership never changes.
+- **Live LP protocol fee share.** `vault::accrue_fees` reads the project-pinned
+  or migrator-wide share from `lp_fee_policy::LpFeePolicy` at each collection
+  (ADR 0081) and splits new fees through the same core `FeeLedger` used by
+  bonding-curve trade fees. Protocol amounts round up, creators receive the
+  exact remainder, and already accrued ownership never changes.
 - **Sealed venue tiers with compiled defaults.** `venue_config::VenueConfig`
   is one shared singleton holding one `(tick_spacing, fee_rate)` entry per
   venue as a dynamic field keyed by `TierKey<Venue>`, so an upgrade-added

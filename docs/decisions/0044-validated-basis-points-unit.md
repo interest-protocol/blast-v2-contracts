@@ -9,6 +9,8 @@
   [0028](0028-hot-cold-runtime-configuration.md),
   [0041](0041-launch-config-owned-trade-fees.md), and
   [0043](0043-versioned-launch-trading-and-atomic-migration.md)
+- Amended by: [0081](0081-separate-lp-fee-share-policy.md), which makes the raw
+  value read public
 
 ## Context
 

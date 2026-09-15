@@ -6,7 +6,7 @@ use blast_fun::{
     creator_authority::CreatorCap,
     fees::{Self, FeeLedger},
     launchpad_domain::LAUNCHPAD_DOMAIN,
-    runtime_config::RuntimeConfig,
+    lp_fee_policy::LpFeePolicy,
 };
 use blast_fun_migrators::{events, package_version::PackageVersion as MigratorsVersion};
 use sui::{
@@ -234,7 +234,7 @@ public(package) fun accrue_fees<Meme, Quote, Venue>(
     meme_fee: Balance<Meme>,
     quote_fee: Balance<Quote>,
     principal_liquidity: u128,
-    runtime_config: &RuntimeConfig,
+    lp_fee_policy: &LpFeePolicy,
     ctx: &TxContext,
 ) {
     assert!(
@@ -244,17 +244,18 @@ public(package) fun accrue_fees<Meme, Quote, Venue>(
 
     let gross_meme_fee = meme_fee.value();
     let gross_quote_fee = quote_fee.value();
-    let protocol_fee_share_bps = runtime_config.protocol_fee_share_bps();
+    let protocol_fee_share = lp_fee_policy.protocol_fee_share<Meme>();
     let (
         protocol_meme_fee_delta,
         creator_meme_fee_delta,
         protocol_quote_fee_delta,
         creator_quote_fee_delta,
-    ) = self.fee_ledger.accrue_from_runtime(
+    ) = self.fee_ledger.accrue(
         meme_fee,
         quote_fee,
-        runtime_config,
+        protocol_fee_share,
     );
+    let protocol_fee_share_bps = protocol_fee_share.value();
 
     events::lp_fees_collected<Meme, Quote, Venue>(
         self.id.to_inner(),
@@ -315,11 +316,15 @@ public fun funded_for_testing<Meme, Quote>(
     pool_id: ID,
     meme_fee: Balance<Meme>,
     quote_fee: Balance<Quote>,
-    runtime: &RuntimeConfig,
+    lp_fee_policy: &LpFeePolicy,
     ctx: &mut TxContext,
 ): LpVault<Meme, Quote> {
     let mut vault = prepare(balance::zero(), balance::zero(), ctx);
     vault.pool_id = pool_id;
-    vault.fee_ledger.accrue_from_runtime(meme_fee, quote_fee, runtime);
+    vault.fee_ledger.accrue(
+        meme_fee,
+        quote_fee,
+        lp_fee_policy.protocol_fee_share<Meme>(),
+    );
     vault
 }

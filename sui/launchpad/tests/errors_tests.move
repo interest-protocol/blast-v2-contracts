@@ -72,6 +72,13 @@ fun market_and_launch_error_registry_is_stable() {
 }
 
 #[test]
+fun lp_fee_policy_error_registry_is_stable() {
+    assert_eq!(blast_fun::errors::lp_protocol_fee_share_unchanged!(), 85);
+    assert_eq!(blast_fun::errors::project_lp_protocol_fee_share_unchanged!(), 86);
+    assert_eq!(blast_fun::errors::project_lp_protocol_fee_share_missing!(), 87);
+}
+
+#[test]
 /// Only Blast's own module-provenance rule remains local; every reusable
 /// custody, policy, and generation code now belongs to `blast_admin`.
 fun package_admin_error_registry_is_stable() {

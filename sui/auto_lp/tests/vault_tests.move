@@ -8,6 +8,7 @@ use blast_fun::{
     launch_config,
     launch_ticket,
     launchpad_domain::LAUNCHPAD_DOMAIN,
+    lp_fee_policy::{Self, LpFeePolicy},
     package_version::{Self, PackageVersion},
     runtime_config
 };
@@ -38,6 +39,7 @@ public struct AutoLpFixture {
     cap_id: ID,
     locked: Option<LockedLpVault<VAULT_TESTS, QUOTE>>,
     runtime: runtime_config::RuntimeConfig,
+    lp_fee_policy: LpFeePolicy,
     admin: AdminCap<LAUNCHPAD_DOMAIN>,
     root: SuperAdminCap<LAUNCHPAD_DOMAIN>,
 }
@@ -132,7 +134,7 @@ fun a_stale_migrators_generation_rejects_external_lp_collection() {
         object::id(&f.pool),
         meme,
         quote,
-        &f.runtime,
+        &f.lp_fee_policy,
         f.ctx!(),
     );
 
@@ -301,14 +303,14 @@ fun external_creator_fees_enter_custody_with_the_correct_source_and_amounts() {
     let mut f = start();
     let meme = coin::mint_for_testing<VAULT_TESTS>(1000, f.ctx!()).into_balance();
     let quote = coin::mint_for_testing<QUOTE>(2000, f.ctx!()).into_balance();
-    let share = f.runtime.protocol_fee_share_bps();
+    let share = f.lp_fee_policy.protocol_fee_share<VAULT_TESTS>().value();
     let expected_meme = 1000 - (1000 * share + 9999) / 10000;
     let expected_quote = 2000 - (2000 * share + 9999) / 10000;
     let mut source = blast_fun_migrators::vault::funded_for_testing(
         object::id(&f.pool),
         meme,
         quote,
-        &f.runtime,
+        &f.lp_fee_policy,
         f.ctx!(),
     );
     f.next_tx!(@0xB, |f| {
@@ -371,7 +373,7 @@ fun external_witness_creator_funded_pool_supports_enrollment_and_fee_collection(
         object::id(&f.pool),
         meme,
         quote,
-        &f.runtime,
+        &f.lp_fee_policy,
         f.ctx!(),
     );
     f.next_tx!(@0xB, |f| {
@@ -403,7 +405,7 @@ macro fun buy(
 
 macro fun harvest_native($f: &mut AutoLpFixture) {
     let f = $f;
-    f.locked.borrow_mut().collect(&mut f.pool, &f.factory, &f.runtime, f.ctx!());
+    f.locked.borrow_mut().collect(&mut f.pool, &f.factory, &f.lp_fee_policy, f.ctx!());
 }
 
 macro fun collect_native($f: &mut AutoLpFixture) {
@@ -478,6 +480,7 @@ fun start_with_route(executor: address, external: bool): AutoLpFixture {
     config.set_trade_fees(&version, &witness, 100, 100);
     config.set_graduation_defaults(&version, &witness, 0, 0, 2_000);
     let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
+    let lp_fee_policy = lp_fee_policy::new_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     let ticket = launch_ticket::new(
         VAULT_TESTS(),
@@ -578,6 +581,7 @@ fun start_with_route(executor: address, external: bool): AutoLpFixture {
         cap_id,
         locked,
         runtime,
+        lp_fee_policy,
         admin,
         root,
     }
@@ -596,6 +600,7 @@ fun end(f: AutoLpFixture) {
         cap_id: _,
         locked,
         runtime,
+        lp_fee_policy,
         admin,
         root,
     } = f;
@@ -603,6 +608,7 @@ fun end(f: AutoLpFixture) {
     test_scenario::return_shared(vault);
     locked.do!(|locked| test_scenario::return_shared(locked));
     destroy(runtime);
+    destroy(lp_fee_policy);
     destroy(launch);
     destroy(version);
     destroy(migrators_version);

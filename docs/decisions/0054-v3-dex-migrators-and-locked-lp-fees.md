@@ -6,6 +6,9 @@
 > [ADR 0069](0069-consolidate-launch-graduation-and-move-migration-math.md),
 > which moves seed-price, deviation, utilization, and residual arithmetic into
 > the aggregate migrators package as package-only operations.
+> Amended by [ADR 0081](0081-separate-lp-fee-share-policy.md), which splits LP
+> fees on a separate `LpFeePolicy` with per-project pins instead of the trade
+> share in `RuntimeConfig`.
 
 - Status: accepted
 - Date: 2026-08-29

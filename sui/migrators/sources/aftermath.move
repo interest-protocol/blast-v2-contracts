@@ -10,8 +10,8 @@ use blast_admin::acl::AdminWitness;
 use blast_fun::{
     launch::Launch,
     launchpad_domain::LAUNCHPAD_DOMAIN,
+    lp_fee_policy::LpFeePolicy,
     package_version::PackageVersion,
-    runtime_config::RuntimeConfig,
 };
 use blast_fun_migrators::{
     events,
@@ -471,7 +471,7 @@ fun lock_and_share<Lp, Meme, Quote>(
 public fun accrue_dao_fees<Lp, Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    runtime_config: &RuntimeConfig,
+    lp_fee_policy: &LpFeePolicy,
     meme_receivings: vector<Receiving<Coin<Meme>>>,
     quote_receivings: vector<Receiving<Coin<Quote>>>,
     ctx: &mut TxContext,
@@ -500,7 +500,7 @@ public fun accrue_dao_fees<Lp, Meme, Quote>(
         meme_fee,
         quote_fee,
         locked_lp_amount_after,
-        runtime_config,
+        lp_fee_policy,
         ctx,
     );
 }

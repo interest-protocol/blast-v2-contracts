@@ -8,6 +8,7 @@ use blast_fun::{
     launch_config,
     launch_ticket,
     launchpad_domain::LAUNCHPAD_DOMAIN,
+    lp_fee_policy::{Self, LpFeePolicy},
     package_version::{Self, PackageVersion},
     runtime_config::{Self, RuntimeConfig}
 };
@@ -37,6 +38,7 @@ public struct MigrationFixture {
     currency: Currency<MIGRATION_TESTS>,
     clock: Clock,
     runtime: RuntimeConfig,
+    lp_fee_policy: LpFeePolicy,
 }
 
 // === Tests ===
@@ -70,7 +72,7 @@ fun permissionless_native_migration_locks_complete_position_and_empty_collection
         expected.append(bcs::to_bytes(&meme));
         expected.append(bcs::to_bytes(&quote));
         assert_eq!(bcs::to_bytes(&events[0]), expected);
-        vault.collect(&mut pool, &f.factory, &f.runtime, f.ctx!());
+        vault.collect(&mut pool, &f.factory, &f.lp_fee_policy, f.ctx!());
         let (_, _, protocol, creator) = vault.snapshot_for_testing();
         assert_eq!(protocol, 0);
         assert_eq!(creator, 0);
@@ -94,7 +96,7 @@ fun collected_quote_is_split_and_claimed_without_changing_locked_principal() {
         destroy(bought);
         destroy(refund);
         let (meme_reserve, quote_reserve, fees_before) = pool.balances_for_testing();
-        vault.collect(&mut pool, &f.factory, &f.runtime, f.ctx!());
+        vault.collect(&mut pool, &f.factory, &f.lp_fee_policy, f.ctx!());
         let (_, _, protocol, creator) = vault.snapshot_for_testing();
         let (meme_after, quote_after, fees_after) = pool.balances_for_testing();
         assert_eq!(meme_reserve, meme_after);
@@ -105,7 +107,7 @@ fun collected_quote_is_split_and_claimed_without_changing_locked_principal() {
         let events = sui::event::events_by_type<migration::FeesCollected>();
         let mut expected = bcs::to_bytes(&object::id(&vault));
         expected.append(bcs::to_bytes(&(protocol + creator)));
-        expected.append(bcs::to_bytes(&f.runtime.protocol_fee_share_bps()));
+        expected.append(bcs::to_bytes(&f.lp_fee_policy.protocol_fee_share<MIGRATION_TESTS>().value()));
         expected.append(bcs::to_bytes(&protocol));
         expected.append(bcs::to_bytes(&creator));
         assert_eq!(bcs::to_bytes(&events[0]), expected);
@@ -175,7 +177,7 @@ fun locked_position_rejects_a_different_pool_before_claiming_fees() {
             &f.clock,
             f.ctx!(),
         );
-        vault.collect(&mut other_pool, &f.factory, &f.runtime, f.ctx!());
+        vault.collect(&mut other_pool, &f.factory, &f.lp_fee_policy, f.ctx!());
         destroy(position);
         destroy(other_pool);
         destroy(other_factory);
@@ -251,7 +253,7 @@ fun native_route_preserves_terminal_quote_fee_and_burn_only_disposal() {
 }
 
 #[test]
-fun changing_runtime_split_never_resplits_already_collected_native_fees() {
+fun changing_lp_policy_never_resplits_already_collected_native_fees() {
     let mut f = start(true);
     f.migrate!();
     f.next_tx!(@0xB, |f| {
@@ -261,18 +263,49 @@ fun changing_runtime_split_never_resplits_already_collected_native_fees() {
         let (bought, refund) = pool.buy(&f.factory, input, 1, 500, 0, &f.clock, f.ctx!());
         destroy(bought);
         destroy(refund);
-        vault.collect(&mut pool, &f.factory, &f.runtime, f.ctx!());
+        vault.collect(&mut pool, &f.factory, &f.lp_fee_policy, f.ctx!());
         let (_, _, first_protocol, first_creator) = vault.snapshot_for_testing();
         let witness = f.authority.sign_in(&f.admin);
-        f.runtime.set_protocol_fee_share(&f.version, &witness, 10_000);
+        f.lp_fee_policy.set_protocol_fee_share(&f.version, &witness, 10_000);
         let input = coin::mint_for_testing<QUOTE>(1_000_000, f.ctx!());
         let (bought, refund) = pool.buy(&f.factory, input, 1, 500, 0, &f.clock, f.ctx!());
         destroy(bought);
         destroy(refund);
-        vault.collect(&mut pool, &f.factory, &f.runtime, f.ctx!());
+        vault.collect(&mut pool, &f.factory, &f.lp_fee_policy, f.ctx!());
         let (_, _, second_protocol, second_creator) = vault.snapshot_for_testing();
         assert!(second_protocol > first_protocol);
         assert_eq!(second_creator, first_creator);
+        return_pool(pool);
+        return_vault(vault);
+    });
+    f.end();
+}
+
+#[test]
+fun native_collection_applies_the_project_lp_share_instead_of_the_trade_share() {
+    let mut f = start(true);
+    f.migrate!();
+    f.next_tx!(@0xB, |f| {
+        let mut pool = f.take_pool();
+        let mut vault = f.take_vault();
+        let witness = f.authority.sign_in(&f.admin);
+        f.lp_fee_policy.set_project_protocol_fee_share<MIGRATION_TESTS>(&f.version, &witness, 10_000);
+        let input = coin::mint_for_testing<QUOTE>(1_000_000, f.ctx!());
+        let (bought, refund) = pool.buy(&f.factory, input, 1, 500, 0, &f.clock, f.ctx!());
+        destroy(bought);
+        destroy(refund);
+        vault.collect(&mut pool, &f.factory, &f.lp_fee_policy, f.ctx!());
+        let (_, _, protocol, creator) = vault.snapshot_for_testing();
+        assert!(protocol > 0);
+        assert_eq!(creator, 0);
+        assert_eq!(f.runtime.protocol_fee_share_bps(), 5_000);
+        let events = sui::event::events_by_type<migration::FeesCollected>();
+        let mut expected = bcs::to_bytes(&object::id(&vault));
+        expected.append(bcs::to_bytes(&protocol));
+        expected.append(bcs::to_bytes(&10_000u64));
+        expected.append(bcs::to_bytes(&protocol));
+        expected.append(bcs::to_bytes(&0u64));
+        assert_eq!(bcs::to_bytes(&events[0]), expected);
         return_pool(pool);
         return_vault(vault);
     });
@@ -443,6 +476,8 @@ fun start_with_policy<SelectedWitness: drop>(
     config.set_graduation_defaults(&version, &witness, migration_fee, 0, 2_000);
     let mut runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
     runtime.set_protocol_fee_share(&version, &witness, 5_000);
+    let mut lp_fee_policy = lp_fee_policy::new_for_testing(scenario.ctx());
+    lp_fee_policy.set_protocol_fee_share(&version, &witness, 2_500);
     let clock = clock::create_for_testing(scenario.ctx());
     let ticket = launch_ticket::new(
         MIGRATION_TESTS(),
@@ -491,6 +526,7 @@ fun start_with_policy<SelectedWitness: drop>(
         currency,
         clock,
         runtime,
+        lp_fee_policy,
     }
 }
 
@@ -506,12 +542,14 @@ fun end(f: MigrationFixture) {
         currency,
         clock,
         runtime,
+        lp_fee_policy,
     } = f;
     destroy(currency);
     destroy(factory);
     destroy(launch);
     destroy(version);
     destroy(runtime);
+    destroy(lp_fee_policy);
     destroy(authority);
     destroy(admin);
     destroy(cap);

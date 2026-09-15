@@ -11,7 +11,7 @@
 - Status: accepted
 - Date: 2026-08-24
 - Amends: [0001](0001-sui-package-and-module-layout.md), [0011](0011-event-schema-and-replay.md), [0015](0015-protocol-authority-and-x-signer-state.md), [0017](0017-coin-type-domain-for-x-creator-claims.md), [0018](0018-authority-module-separation.md), [0022](0022-dual-asset-fee-ledger-and-claims.md)
-- Amended by: [0030](0030-singleton-event-identity.md), [0041](0041-launch-config-owned-trade-fees.md), [0049](0049-audit-hardened-package-version-and-launch-intake.md), [0058](0058-eventless-package-initialization.md), [0062](0062-table-backed-quote-registry.md)
+- Amended by: [0030](0030-singleton-event-identity.md), [0041](0041-launch-config-owned-trade-fees.md), [0049](0049-audit-hardened-package-version-and-launch-intake.md), [0058](0058-eventless-package-initialization.md), [0062](0062-table-backed-quote-registry.md), [0081](0081-separate-lp-fee-share-policy.md)
 - Preserves: [0027](0027-graduation-economics-and-migration-witnesses.md)
 
 ## Sources

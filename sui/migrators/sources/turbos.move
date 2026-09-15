@@ -9,8 +9,8 @@ use blast_admin::acl::AdminWitness;
 use blast_fun::{
     launch::Launch,
     launchpad_domain::LAUNCHPAD_DOMAIN,
+    lp_fee_policy::LpFeePolicy,
     package_version::PackageVersion,
-    runtime_config::RuntimeConfig,
 };
 use blast_fun_migrators::{
     events,
@@ -417,7 +417,7 @@ public fun migrate_existing_meme_b<Meme, Quote, FeeType>(
 public fun collect_fees_meme_a<Meme, Quote, FeeType>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    runtime_config: &RuntimeConfig,
+    lp_fee_policy: &LpFeePolicy,
     pool: &mut Pool<Meme, Quote, FeeType>,
     positions: &mut Positions,
     deadline: u64,
@@ -445,7 +445,7 @@ public fun collect_fees_meme_a<Meme, Quote, FeeType>(
         meme_fee.into_balance(),
         quote_fee.into_balance(),
         liquidity_after,
-        runtime_config,
+        lp_fee_policy,
         ctx,
     );
 }
@@ -454,7 +454,7 @@ public fun collect_fees_meme_a<Meme, Quote, FeeType>(
 public fun collect_fees_meme_b<Meme, Quote, FeeType>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    runtime_config: &RuntimeConfig,
+    lp_fee_policy: &LpFeePolicy,
     pool: &mut Pool<Quote, Meme, FeeType>,
     positions: &mut Positions,
     deadline: u64,
@@ -482,7 +482,7 @@ public fun collect_fees_meme_b<Meme, Quote, FeeType>(
         meme_fee.into_balance(),
         quote_fee.into_balance(),
         liquidity_after,
-        runtime_config,
+        lp_fee_policy,
         ctx,
     );
 }

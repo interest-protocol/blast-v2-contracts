@@ -2,7 +2,9 @@
 // macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
 // locations while retaining one append-only registry in `blast_fun::errors`.
 #[allow(lint(abort_without_constant))]
-/// Small live protocol settings read by trades, migrators, and creator claims.
+/// Small live protocol settings read by bonding-curve trades and creator claims.
+///
+/// Fees collected from migrated liquidity use `lp_fee_policy::LpFeePolicy` instead.
 module blast_fun::runtime_config;
 
 use blast_admin::acl::AdminWitness;
@@ -64,7 +66,7 @@ public fun revoke_creator_claim_signer(
     events::creator_claim_signer_revoked();
 }
 
-/// Updates the live protocol share used by every subsequent trade-fee accrual.
+/// Updates the live protocol share used by every subsequent bonding-curve trade-fee accrual.
 public fun set_protocol_fee_share(
     self: &mut RuntimeConfig,
     package_version: &PackageVersion,

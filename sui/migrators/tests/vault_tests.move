@@ -2,12 +2,12 @@
 module blast_fun_migrators::vault_tests;
 
 use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
-use blast_fun::{launchpad_domain::LAUNCHPAD_DOMAIN, package_version, runtime_config};
+use blast_fun::{launchpad_domain::LAUNCHPAD_DOMAIN, lp_fee_policy::{Self, LpFeePolicy}, package_version};
 use blast_fun_migrators::{
     package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
     vault::{Self, LpVault},
 };
-use std::unit_test::{assert_eq, destroy};
+use std::{bcs, type_name, unit_test::{assert_eq, destroy}};
 use sui::{balance, coin, test_scenario::{Self, Scenario}};
 
 // === Constants ===
@@ -21,18 +21,19 @@ const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 public struct MEME has drop {}
 public struct QUOTE has drop {}
+public struct OTHER_MEME has drop {}
 public struct TestVenue() has drop;
 public struct OtherVenue() has drop;
 public struct TestPosition has key, store { id: UID }
 
-/// Shared custody and live-share fee accounting through the vault seam.
+/// Shared custody and LP-policy fee accounting through the vault seam.
 public struct VaultFixture {
     scenario: Scenario,
     authority: Authority<LAUNCHPAD_DOMAIN>,
     admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
     package_version: package_version::PackageVersion,
     migrators_version: MigratorsVersion,
-    runtime_config: runtime_config::RuntimeConfig,
+    lp_fee_policy: LpFeePolicy,
     vault: LpVault<MEME, QUOTE>,
     pool_id: ID,
     position_id: ID,
@@ -65,13 +66,13 @@ fun prepared_vault_keeps_its_id_when_finished_and_shared() {
 }
 
 #[test]
-fun accrues_with_the_live_share_and_never_resplits_prior_ownership() {
+fun accrues_with_the_lp_policy_share_and_never_resplits_prior_ownership() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.runtime_config.set_protocol_fee_share(
+        f.lp_fee_policy.set_protocol_fee_share(
             &f.package_version,
             &admin_witness,
             2_000,
@@ -93,7 +94,7 @@ fun accrues_with_the_live_share_and_never_resplits_prior_ownership() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.runtime_config.set_protocol_fee_share(
+        f.lp_fee_policy.set_protocol_fee_share(
             &f.package_version,
             &admin_witness,
             10_000,
@@ -110,6 +111,79 @@ fun accrues_with_the_live_share_and_never_resplits_prior_ownership() {
             );
         assert_eq!(meme.value(), 10);
         assert_eq!(quote.value(), 10);
+        destroy(meme);
+        destroy(quote);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun project_share_overrides_the_default_and_is_the_emitted_split_input() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+
+        f.lp_fee_policy.set_protocol_fee_share(
+            &f.package_version,
+            &admin_witness,
+            2_000,
+        );
+        f.lp_fee_policy.set_project_protocol_fee_share<OTHER_MEME>(
+            &f.package_version,
+            &admin_witness,
+            9_000,
+        );
+        f.accrue!(10, 10);
+
+        // Another project's pin never reaches this vault.
+        let (meme, quote) =
+            f.vault.claim_protocol_fees(
+                &f.migrators_version,
+                &admin_witness,
+                f.scenario.ctx(),
+            );
+        assert_eq!(meme.value(), 2);
+        assert_eq!(quote.value(), 2);
+        destroy(meme);
+        destroy(quote);
+    });
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+
+        f.lp_fee_policy.set_project_protocol_fee_share<MEME>(
+            &f.package_version,
+            &admin_witness,
+            5_000,
+        );
+        f.accrue!(10, 10);
+
+        let events = sui::event::events_by_type<blast_fun_migrators::events::LpFeesCollected>();
+        let mut expected = bcs::to_bytes(&object::id(&f.vault));
+        expected.append(bcs::to_bytes(&f.pool_id));
+        expected.append(bcs::to_bytes(&f.position_id));
+        expected.append(bcs::to_bytes(&type_name::with_original_ids<TestVenue>()));
+        expected.append(bcs::to_bytes(&type_name::with_original_ids<MEME>()));
+        expected.append(bcs::to_bytes(&type_name::with_original_ids<QUOTE>()));
+        let collector = PROTOCOL_ADMIN;
+        expected.append(bcs::to_bytes(&collector));
+        vector[10u64, 10, 5_000, 5, 5, 5, 5].do!(|value| {
+            expected.append(bcs::to_bytes(&value));
+        });
+        expected.append(bcs::to_bytes(&5u128));
+        assert_eq!(events.length(), 1);
+        assert_eq!(bcs::to_bytes(&events[0]), expected);
+
+        let (meme, quote) =
+            f.vault.claim_protocol_fees(
+                &f.migrators_version,
+                &admin_witness,
+                f.scenario.ctx(),
+            );
+        assert_eq!(meme.value(), 5);
+        assert_eq!(quote.value(), 5);
         destroy(meme);
         destroy(quote);
     });
@@ -278,7 +352,7 @@ fun wrong_venue_accrual_fails_closed() {
             balance::create_for_testing<MEME>(1),
             balance::create_for_testing<QUOTE>(1),
             5,
-            &f.runtime_config,
+            &f.lp_fee_policy,
             f.scenario.ctx(),
         );
     });
@@ -309,7 +383,7 @@ macro fun accrue($fixture: &mut VaultFixture, $meme: u64, $quote: u64) {
         balance::create_for_testing<MEME>($meme),
         balance::create_for_testing<QUOTE>($quote),
         5,
-        &fixture.runtime_config,
+        &fixture.lp_fee_policy,
         fixture.scenario.ctx(),
     );
 }
@@ -332,8 +406,7 @@ fun start_with_residuals(
     );
     authority.grant_admin(&super_admin_cap, 0, PROTOCOL_ADMIN, scenario.ctx());
     destroy(super_admin_cap);
-    let runtime_config =
-        runtime_config::new_disabled_for_testing(scenario.ctx());
+    let lp_fee_policy = lp_fee_policy::new_for_testing(scenario.ctx());
     let position = TestPosition { id: object::new(scenario.ctx()) };
     let position_id = object::id(&position);
     let pool_uid = object::new(scenario.ctx());
@@ -358,7 +431,7 @@ fun start_with_residuals(
         admin_cap,
         package_version,
         migrators_version,
-        runtime_config,
+        lp_fee_policy,
         vault,
         pool_id,
         position_id,

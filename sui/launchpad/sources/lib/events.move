@@ -40,8 +40,20 @@ public struct MigrationWitnessAllowed(TypeName) has copy, drop;
 /// Emitted after an external migrator witness type is disallowed for future launches.
 public struct MigrationWitnessDisallowed(TypeName) has copy, drop;
 
-/// Emitted after the live global protocol fee share is changed.
+/// Emitted after the live bonding-curve trade protocol fee share is changed.
 public struct ProtocolFeeShareChanged(u64) has copy, drop;
+
+/// Emitted after the migrator-wide LP-fee protocol share is changed.
+public struct LpProtocolFeeShareChanged(u64) has copy, drop;
+
+/// Emitted after one project's LP-fee protocol share is pinned or re-pinned.
+public struct ProjectLpProtocolFeeShareSet has copy, drop {
+    meme: TypeName,
+    protocol_fee_share_bps: u64,
+}
+
+/// Emitted after one project's pinned LP-fee protocol share is removed.
+public struct ProjectLpProtocolFeeShareCleared(TypeName) has copy, drop;
 
 /// Emitted after the creator-claim signer is initially set or rotated.
 public struct CreatorClaimSignerSet(vector<u8>) has copy, drop;
@@ -211,6 +223,28 @@ public(package) fun migration_witness_disallowed<MigrationWitness>() {
 public(package) fun protocol_fee_share_changed(protocol_fee_share_bps: u64) {
     blast_fun::events_wrapper::emit_event(ProtocolFeeShareChanged(
         protocol_fee_share_bps,
+    ));
+}
+
+/// Emits replacement of the migrator-wide LP-fee protocol share.
+public(package) fun lp_protocol_fee_share_changed(protocol_fee_share_bps: u64) {
+    blast_fun::events_wrapper::emit_event(LpProtocolFeeShareChanged(
+        protocol_fee_share_bps,
+    ));
+}
+
+/// Emits one project's newly pinned LP-fee protocol share.
+public(package) fun project_lp_protocol_fee_share_set<Meme>(protocol_fee_share_bps: u64) {
+    blast_fun::events_wrapper::emit_event(ProjectLpProtocolFeeShareSet {
+        meme: type_name::with_original_ids<Meme>(),
+        protocol_fee_share_bps,
+    });
+}
+
+/// Emits removal of one project's pinned LP-fee protocol share.
+public(package) fun project_lp_protocol_fee_share_cleared<Meme>() {
+    blast_fun::events_wrapper::emit_event(ProjectLpProtocolFeeShareCleared(
+        type_name::with_original_ids<Meme>(),
     ));
 }
 
@@ -467,6 +501,27 @@ public fun migration_witness_disallowed_fields(
 public fun protocol_fee_share_changed_fields(
     self: &ProtocolFeeShareChanged,
 ): u64 {
+    self.0
+}
+
+#[test_only]
+public fun lp_protocol_fee_share_changed_fields(
+    self: &LpProtocolFeeShareChanged,
+): u64 {
+    self.0
+}
+
+#[test_only]
+public fun project_lp_protocol_fee_share_set_fields(
+    self: &ProjectLpProtocolFeeShareSet,
+): (TypeName, u64) {
+    (self.meme, self.protocol_fee_share_bps)
+}
+
+#[test_only]
+public fun project_lp_protocol_fee_share_cleared_fields(
+    self: &ProjectLpProtocolFeeShareCleared,
+): TypeName {
     self.0
 }
 
