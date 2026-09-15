@@ -81,45 +81,26 @@ no cap borrow, mutable UID, or coin-returning withdrawal.
 
 ## Pause and upgrades
 
-This package implements no administration of its own. It reuses the Launchpad
-administration domain for membership and owns only its operational generation,
-its pause policy, and its sealed framework custody. One revocation in the
-Launchpad authority removes this package's pause authority immediately.
+Publication `init` sends one `distributor::AdminCap` to the publisher and shares
+one `distributor::Version` holding the version beside `paused`. The AdminCap
+holder calls `set_paused` to stop or resume enrollment, both fee-collection
+paths, new rounds, and existing claims. Resume leaves all claim roots, funds, and
+replay bits intact. Every economic transition rejects a version mismatch
+**before** it checks pause or touches funds.
 
-The package creates one shared `package_version::PackageVersion` at publication,
-holding the generation value beside `paused`. A live Launchpad-domain admin
-signs in through `blast_admin::acl::sign_in` and passes the returned
-`AdminWitness<LAUNCHPAD_DOMAIN>` to `set_paused`; generic membership is enough
-and no role is required. Pause blocks enrollment, both fee-collection paths, new
-rounds, and existing claims. Resume leaves all claim roots, funds, and replay
-bits intact. Every economic transition rejects retired bytecode **before** it
-checks pause or touches funds, so stale code never reports a pause error. The
-version singleton has no public constructor or reset path.
-
-The native UpgradeCap is not owner-held. `package_admin::wrap` seals this
-package's Publisher and its never-upgraded cap in `UpgradeCustody`, and no path
-returns, transfers, or borrows either capability. Upgrade authorization, policy
-narrowing, immutability, and the commit-and-advance finalizer additionally
-require the package-admin role that Launchpad exports.
-
-A governed upgrade is one transaction: authorize the digest, run the native
-Upgrade command, then call `package_admin::commit_upgrade_and_advance`, which
-commits the receipt to the same sealed cap and advances to exactly the next
-compiled generation. There is no separate activation step. The advance preserves
-the pause value, and package custody stays reachable while rewards are paused so
-an emergency stop never blocks the upgrade that repairs it.
+The publisher keeps the native UpgradeCap. After an upgrade that bumps `VERSION`,
+the AdminCap holder calls `migrate` through the new package; it moves the shared
+version forward, preserves pause, and rejects rollback or a repeat call.
 
 The product `PublisherCap` that authorizes round publication is a separate,
-transferable capability. It never enters framework custody, and round
-authorization stays independent of Launchpad administration.
+transferable capability, independent of the AdminCap.
 
 This package is **unpublished**. Before accepting real creator caps:
 
 - Verify the selected deployed launchpad/migrator generation and every venue route
   with live simulation. Interface link stubs do not establish live LP compatibility.
 - Verify compatible upgrades, commit-and-advance cutover, and resumption on the
-  target network. Record the shared authority, PackageVersion, and PackageAdmin
-  IDs. Coordinate core cutovers with a tested dependency relink for creator-fee
+  target network. Record the AdminCap, Version, and UpgradeCap IDs. Coordinate core cutovers with a tested dependency relink for creator-fee
   collection.
 - Verify child custody in an explorer, measure maximum-round transaction gas and
   object size under target-chain limits, and publish manifests/accounting durably.

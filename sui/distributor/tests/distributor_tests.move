@@ -1,7 +1,7 @@
 #[test_only]
 module blast_fun_distributor::distributor_tests;
 
-use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
+use blast_admin::acl::{Self, Authority, AdminCap as LaunchpadAdminCap, SuperAdminCap};
 use blast_fun::{
     creator_authority,
     launch::{Self, Launch},
@@ -12,9 +12,8 @@ use blast_fun::{
     runtime_config
 };
 use blast_fun_distributor::{
-    distributor::{Self, Distributor, PublisherCap, Round},
-    merkle,
-    package_version as rewards_version
+    distributor::{Self, AdminCap, Distributor, PublisherCap, Round, Version},
+    merkle
 };
 use blast_fun_migrators::package_version::{
     Self as migrators_version,
@@ -40,15 +39,28 @@ public struct DistributionFixture {
     launch: Launch<DISTRIBUTOR_TESTS, QUOTE>,
     version: package_version::PackageVersion,
     migrators_version: MigratorsVersion,
-    control: rewards_version::PackageVersion,
-    authority: Authority<LAUNCHPAD_DOMAIN>,
-    admin: AdminCap<LAUNCHPAD_DOMAIN>,
+    control: Version,
+    admin: AdminCap,
     distributor: Distributor<DISTRIBUTOR_TESTS, QUOTE>,
     publisher: PublisherCap,
     creator_cap_id: ID,
 }
 
 // === Tests ===
+
+#[test]
+fun init_sends_admin_cap_to_publisher_and_shares_current_unpaused_version() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    distributor::init_for_testing(scenario.ctx());
+    scenario.next_tx(CREATOR);
+    let admin = scenario.take_from_sender<AdminCap>();
+    let version = scenario.take_shared<Version>();
+    assert_eq!(version.version_for_testing(), 1);
+    assert!(!version.paused_for_testing());
+    scenario.return_to_sender(admin);
+    test_scenario::return_shared(version);
+    scenario.end();
+}
 
 #[test]
 fun enrollment_preserves_creator_cap_identity_in_sealed_child_custody() {
@@ -373,8 +385,8 @@ fun first_over_capacity_leaf_set_aborts() {
 #[test]
 #[
     expected_failure(
-        abort_code = rewards_version::EPaused,
-        location = blast_fun_distributor::package_version,
+        abort_code = distributor::EPaused,
+        location = blast_fun_distributor::distributor,
     ),
 ]
 fun pause_stops_collection_before_fees_move() {
@@ -387,8 +399,8 @@ fun pause_stops_collection_before_fees_move() {
 #[test]
 #[
     expected_failure(
-        abort_code = rewards_version::EPaused,
-        location = blast_fun_distributor::package_version,
+        abort_code = distributor::EPaused,
+        location = blast_fun_distributor::distributor,
     ),
 ]
 fun pause_stops_new_rounds() {
@@ -401,8 +413,8 @@ fun pause_stops_new_rounds() {
 #[test]
 #[
     expected_failure(
-        abort_code = rewards_version::EPaused,
-        location = blast_fun_distributor::package_version,
+        abort_code = distributor::EPaused,
+        location = blast_fun_distributor::distributor,
     ),
 ]
 fun pause_stops_existing_claims_before_proof_validation() {
@@ -415,7 +427,7 @@ fun pause_stops_existing_claims_before_proof_validation() {
 }
 
 #[test]
-fun launchpad_admin_can_resume_existing_funded_claims() {
+fun admin_can_resume_existing_funded_claims() {
     let mut f = start_funded();
     let mut round = f.round!(0, 1, 1);
     f.pause!(true);
@@ -429,8 +441,8 @@ fun launchpad_admin_can_resume_existing_funded_claims() {
 #[test]
 #[
     expected_failure(
-        abort_code = blast_admin::errors::EOperationalVersionMismatch,
-        location = blast_admin::operational_version,
+        abort_code = distributor::EWrongVersion,
+        location = blast_fun_distributor::distributor,
     ),
 ]
 fun retired_code_cannot_pay_existing_claims_even_if_also_paused() {
@@ -446,8 +458,8 @@ fun retired_code_cannot_pay_existing_claims_even_if_also_paused() {
 #[test]
 #[
     expected_failure(
-        abort_code = blast_admin::errors::EOperationalVersionMismatch,
-        location = blast_admin::operational_version,
+        abort_code = distributor::EWrongVersion,
+        location = blast_fun_distributor::distributor,
     ),
 ]
 fun retired_code_cannot_collect() {
@@ -460,8 +472,8 @@ fun retired_code_cannot_collect() {
 #[test]
 #[
     expected_failure(
-        abort_code = blast_admin::errors::EOperationalVersionMismatch,
-        location = blast_admin::operational_version,
+        abort_code = distributor::EWrongVersion,
+        location = blast_fun_distributor::distributor,
     ),
 ]
 fun retired_code_cannot_publish() {
@@ -472,19 +484,32 @@ fun retired_code_cannot_publish() {
 }
 
 #[test]
-/// A governed cutover advances the generation and leaves the pause value
-/// untouched; the resumed round is still claimable with its state intact.
-fun a_generation_advance_preserves_pause_and_round_state() {
+#[
+    expected_failure(
+        abort_code = distributor::EWrongVersion,
+        location = blast_fun_distributor::distributor,
+    ),
+]
+fun unmigrated_version_rejects_claims_until_admin_migrates() {
+    let mut f = start_funded();
+    let mut round = f.round!(0, 1, 1);
+    f.control.set_version_for_testing(0);
+    f.claim!(&mut round, 0, ALICE, 1, 1, vector[]);
+    destroy(round);
+    f.end();
+}
+
+#[test]
+fun migration_preserves_pause_and_round_state() {
     let mut f = start_funded();
     let mut round = f.round!(0, 1, 1);
     f.pause!(true);
+    f.control.set_version_for_testing(0);
 
-    f.activate!();
+    f.migrate!();
 
+    assert_eq!(f.control.version_for_testing(), 1);
     assert!(f.control.paused_for_testing());
-    assert_eq!(f.control.version_for_testing(), 2);
-    // The next bytecode generation is now the current one.
-    f.control.set_version_for_testing(1);
     f.pause!(false);
     f.claim!(&mut round, 0, ALICE, 1, 1, vector[]);
     assert!(round.is_claimed_for_testing(0));
@@ -498,22 +523,35 @@ fun a_generation_advance_preserves_pause_and_round_state() {
 #[test]
 #[
     expected_failure(
-        abort_code = blast_admin::errors::EOperationalVersionMismatch,
-        location = blast_admin::operational_version,
+        abort_code = distributor::ENotUpgrade,
+        location = blast_fun_distributor::distributor,
     ),
 ]
-fun a_cutover_rejects_a_skipped_generation() {
+fun migration_rejects_a_current_version() {
     let mut f = start();
-    f.control.set_version_for_testing(5);
-    f.activate!();
+    f.migrate!();
     f.end();
 }
 
 #[test]
 #[
     expected_failure(
-        abort_code = rewards_version::EPaused,
-        location = blast_fun_distributor::package_version,
+        abort_code = distributor::ENotUpgrade,
+        location = blast_fun_distributor::distributor,
+    ),
+]
+fun migration_rejects_a_rollback() {
+    let mut f = start();
+    f.control.set_version_for_testing(2);
+    f.migrate!();
+    f.end();
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = distributor::EPaused,
+        location = blast_fun_distributor::distributor,
     ),
 ]
 fun pause_rejects_enrollment_before_taking_creator_cap() {
@@ -523,8 +561,8 @@ fun pause_rejects_enrollment_before_taking_creator_cap() {
 #[test]
 #[
     expected_failure(
-        abort_code = blast_admin::errors::EOperationalVersionMismatch,
-        location = blast_admin::operational_version,
+        abort_code = distributor::EWrongVersion,
+        location = blast_fun_distributor::distributor,
     ),
 ]
 fun retired_code_rejects_enrollment() {
@@ -534,8 +572,8 @@ fun retired_code_rejects_enrollment() {
 #[test]
 #[
     expected_failure(
-        abort_code = rewards_version::EUnchangedPause,
-        location = blast_fun_distributor::package_version,
+        abort_code = distributor::EUnchangedPause,
+        location = blast_fun_distributor::distributor,
     ),
 ]
 fun no_op_pause_does_not_emit_a_false_transition() {
@@ -545,53 +583,14 @@ fun no_op_pause_does_not_emit_a_false_transition() {
 }
 
 #[test]
-#[
-    expected_failure(
-        abort_code = blast_admin::errors::EOperationalVersionOverflow,
-        location = blast_admin::operational_version,
-    ),
-]
-fun activation_rejects_overflow() {
-    let mut f = start();
-    f.control.set_version_for_testing(std::u64::max_value!());
-    f.activate!();
-    f.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_admin::errors::EInvalidAdminCap,
-    location = blast_admin::acl,
-)]
-fun unrelated_admin_cannot_obtain_pause_authority() {
-    let mut f = start();
-    f.invalid_admin_pause!();
-    f.end();
-}
-
-#[test]
-/// Pause remains a local product fact; the generation advance is replayed by
-/// the shared `blast_admin` event, phantom-typed by this package's marker.
-fun pause_and_generation_advance_emit_replayable_state_changes() {
+fun pause_changes_emit_replayable_events() {
     let mut f = start();
     f.pause!(true);
-    f.activate!();
-    f.control.set_version_for_testing(1);
     f.pause!(false);
-    let pauses = sui::event::events_by_type<rewards_version::PauseChanged>();
+    let pauses = sui::event::events_by_type<distributor::PauseChanged>();
     assert_eq!(pauses.length(), 2);
     assert_eq!(bcs::to_bytes(&pauses[0]), vector[1u8]);
     assert_eq!(bcs::to_bytes(&pauses[1]), vector[0u8]);
-    let advances = sui::event::events_by_type<
-        blast_admin::events::OperationalVersionAdvanced<
-            blast_fun_distributor::package_marker::PACKAGE_MARKER,
-        >,
-    >();
-    assert_eq!(advances.length(), 1);
-    let (_, _, previous_generation, new_generation) =
-        advances[0].operational_version_advanced_fields();
-    assert_eq!(previous_generation, 1);
-    assert_eq!(new_generation, 2);
     assert!(!f.control.paused_for_testing());
     f.end();
 }
@@ -691,8 +690,8 @@ fun claim_cannot_exceed_its_reserved_budget() {
 #[test]
 #[
     expected_failure(
-        abort_code = blast_admin::errors::EOperationalVersionMismatch,
-        location = blast_admin::operational_version,
+        abort_code = distributor::EWrongVersion,
+        location = blast_fun_distributor::distributor,
     ),
 ]
 fun retired_code_cannot_resume_paused_rewards() {
@@ -712,7 +711,6 @@ fun complete_shared_round(f: DistributionFixture) {
         version,
         migrators_version,
         control,
-        authority,
         admin,
         distributor,
         publisher,
@@ -752,31 +750,18 @@ fun complete_shared_round(f: DistributionFixture) {
     destroy(version);
     destroy(migrators_version);
     destroy(control);
-    destroy(authority);
     destroy(admin);
     scenario.end();
 }
 
-macro fun invalid_admin_pause($f: &mut DistributionFixture) {
-    let f = $f;
-    let (root, unrelated) = new_authority(f.ctx!());
-    let witness = unrelated.sign_in(&f.admin);
-    f.control.set_paused(&witness, true);
-    destroy(root);
-    destroy(unrelated);
-}
-
 macro fun pause($f: &mut DistributionFixture, $paused: bool) {
     let f = $f;
-    let witness = f.authority.sign_in(&f.admin);
-    f.control.set_paused(&witness, $paused);
+    f.control.set_paused(&f.admin, $paused);
 }
 
-/// Stands in for the post-upgrade half of a governed cutover: the generation
-/// advances while the pause value must survive untouched.
-macro fun activate($f: &mut DistributionFixture) {
+macro fun migrate($f: &mut DistributionFixture) {
     let f = $f;
-    f.control.advance_for_testing();
+    f.control.migrate(&f.admin);
 }
 
 macro fun claim(
@@ -889,7 +874,7 @@ fun start_funded(): DistributionFixture {
 
 fun start(): DistributionFixture { start_with_control(false, 1) }
 
-fun start_with_control(paused: bool, generation: u64): DistributionFixture {
+fun start_with_control(paused: bool, version_number: u64): DistributionFixture {
     let mut scenario = test_scenario::begin(CREATOR);
     let version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
@@ -897,8 +882,8 @@ fun start_with_control(paused: bool, generation: u64): DistributionFixture {
     authority.grant_admin(&root, 0, CREATOR, scenario.ctx());
     launch_config::init_for_testing(scenario.ctx());
     scenario.next_tx(CREATOR);
-    let admin = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
-    let witness = authority.sign_in(&admin);
+    let launchpad_admin = scenario.take_from_sender<LaunchpadAdminCap<LAUNCHPAD_DOMAIN>>();
+    let witness = authority.sign_in(&launchpad_admin);
     let mut config = scenario.take_shared<launch_config::LaunchConfig>();
     config.allow_quote<QUOTE>(&version, &witness, 5_000_000, 25_000_000);
     config.allow_migration_witness<Venue>(&version, &witness);
@@ -936,10 +921,14 @@ fun start_with_control(paused: bool, generation: u64): DistributionFixture {
     let (meme, refund) = launch.buy(&version, &runtime, quote, 1, scenario.ctx());
     destroy(meme);
     destroy(refund);
-    let mut control = rewards_version::new_for_testing(scenario.ctx());
-    if (paused) control.set_paused(&witness, true);
-    control.set_version_for_testing(generation);
+    let admin = distributor::new_admin_cap_for_testing(scenario.ctx());
+    let mut control = distributor::new_version_for_testing(scenario.ctx());
+    if (paused) control.set_paused(&admin, true);
+    control.set_version_for_testing(version_number);
     let (distributor, publisher) = distributor::new(&control, creator_cap, &launch, scenario.ctx());
+    destroy(witness);
+    destroy(launchpad_admin);
+    destroy(authority);
     destroy(root);
     test_scenario::return_shared(config);
     destroy(runtime);
@@ -950,7 +939,6 @@ fun start_with_control(paused: bool, generation: u64): DistributionFixture {
         version,
         migrators_version,
         control,
-        authority,
         admin,
         distributor,
         publisher,
@@ -958,10 +946,8 @@ fun start_with_control(paused: bool, generation: u64): DistributionFixture {
     }
 }
 
-/// Unshared Launchpad-domain authority state using that package's constants.
-fun new_authority(
-    ctx: &mut TxContext,
-): (blast_admin::acl::SuperAdminCap<LAUNCHPAD_DOMAIN>, Authority<LAUNCHPAD_DOMAIN>) {
+/// Unshared Launchpad-domain authority used only to configure the test launch.
+fun new_authority(ctx: &mut TxContext): (SuperAdminCap<LAUNCHPAD_DOMAIN>, Authority<LAUNCHPAD_DOMAIN>) {
     acl::new_for_testing<LAUNCHPAD_DOMAIN>(16, 7 * 24 * 60 * 60 * 1_000, ctx)
 }
 
@@ -972,7 +958,6 @@ fun end(f: DistributionFixture) {
         version,
         migrators_version,
         control,
-        authority,
         admin,
         distributor,
         publisher,
@@ -982,7 +967,6 @@ fun end(f: DistributionFixture) {
     destroy(version);
     destroy(migrators_version);
     destroy(control);
-    destroy(authority);
     destroy(admin);
     destroy(distributor);
     destroy(publisher);

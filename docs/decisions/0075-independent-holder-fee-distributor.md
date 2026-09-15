@@ -71,22 +71,22 @@ availability remain operational assumptions.
 
 This is a new, unpublished package. On 2026-09-05 the user superseded the
 initial immutable-release proposal with simple upgradeability: the owner keeps
-the native UpgradeCap; existing launchpad admins control a separate distributor
-version-and-pause singleton. There is no package-admin wrapper, policy-management
+the native UpgradeCap; a distributor AdminCap controls a version-and-pause
+singleton. There is no package-admin wrapper, policy-management
 API, second ACL, timelock, or custom signature mechanism. This explicitly differs
 from core's wrapped upgrade-cap policy. The owner can upgrade custody behavior;
 cap custody is visible but must not be advertised as irrevocable.
 
-A single key-only PackageVersion object is created by the publication initializer.
-Enrollment, collection, round funding, and claims first check the compiled
-operational version, then pause. A launchpad AdminWitness authorizes pause/resume
-and activation. The witness is obtained from the active core ACL in the same PTB;
-the distributor does not link its own administrative recovery to core's old
-package-version guard. Activation accepts only stored version + 1 equal to the
-new build's compiled constant, preserving pause. It cannot choose an arbitrary
-version, skip a generation, or roll back. Native upgrade completion and operational
-activation remain separate steps. Additive/dependency-only upgrades that leave
-guarded semantics unchanged retain the operational version.
+Amended 2026-09-15 at the user's request: the shared Launchpad administration
+domain, separate version module, package marker, and sealed upgrade custody are
+removed. The distributor module's initializer sends one singleton `AdminCap` to
+the publisher and shares one key-only `Version` object. Enrollment, collection,
+round funding, and claims first require the stored version to equal the compiled
+`VERSION`, then check pause. The AdminCap authorizes pause/resume and `migrate`,
+which moves an older stored version to the new build's `VERSION`, preserving
+pause and rejecting rollback or repetition. Native upgrade completion and
+migration remain separate steps. Upgrades that leave guarded semantics unchanged
+keep `VERSION`.
 
 Pause deliberately stops all economic transitions, including existing funded
 claims, to contain a payout bug. Resuming restores those claims without altering
@@ -96,7 +96,7 @@ active distributor generation being unpaused. The admin can withhold resumption;
 this liveness trust is explicit.
 
 Repair uses a compatible upgrade of the same package lineage, followed by admin
-activation when guarded behavior changes. Deploying a fresh independent package
+migration when guarded behavior changes. Deploying a fresh independent package
 does not move existing creator caps or funded rounds. Existing stored layouts and
 public signatures must be preserved by future compatible upgrades. Before a core
 version cutover, relink and verify distributor curve collection against that core
@@ -108,7 +108,7 @@ No live publication, upgrade, or capability transfer is part of this task.
 Require actual creator-cap enrollment and curve collection tests; cap binding,
 funding conservation, proof domain, recipient, replay, bounds and event tests;
 SDK/Move vectors; holder transfer and checkpoint replay tests; transaction
-construction and state-decoding tests; package build/lint/tests and SDK checks; pause/resume, admin authentication,
-version precedence, overflow and exact-next activation tests.
+construction and state-decoding tests; package build/lint/tests and SDK checks; pause/resume,
+version precedence, and migration tests.
 Mainnet LP collection and explorer-visible child custody need live release
 evidence because venue interfaces contain link stubs.

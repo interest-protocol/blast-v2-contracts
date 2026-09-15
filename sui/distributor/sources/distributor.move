@@ -2,7 +2,7 @@
 module blast_fun_distributor::distributor;
 
 use blast_fun::{creator_authority::CreatorCap, launch::Launch, package_version::PackageVersion};
-use blast_fun_distributor::{merkle, package_version::{Self, PackageVersion as RewardsVersion}};
+use blast_fun_distributor::merkle;
 use blast_fun_migrators::{
     package_version::PackageVersion as MigratorsVersion,
     vault::LpVault,
@@ -11,6 +11,7 @@ use sui::{balance::{Self, Balance}, coin::Coin, dynamic_object_field, event};
 
 // === Constants ===
 
+const VERSION: u64 = 1;
 const MAX_LEAVES: u64 = 65_536;
 
 // === Errors ===
@@ -41,8 +42,28 @@ const EAlreadyClaimed: vector<u8> = b"This allocation has already been paid.";
 const EInvalidBeneficiary: vector<u8> = b"Beneficiary must not be the zero address.";
 #[error(code = 11)]
 const EInvalidProof: vector<u8> = b"Proof must match the committed recipient, amounts and domain.";
+#[error(code = 12)]
+const EWrongVersion: vector<u8> = b"Version object must match this package version.";
+#[error(code = 13)]
+const EPaused: vector<u8> = b"Holder rewards are paused.";
+#[error(code = 14)]
+const EUnchangedPause: vector<u8> = b"Pause status must change.";
+#[error(code = 15)]
+const ENotUpgrade: vector<u8> = b"Version object is already migrated.";
 
 // === Public Types ===
+
+/// Singleton administrator capability created at publication.
+public struct AdminCap has key, store {
+    id: UID,
+}
+
+/// Shared version and pause switch for every distributor and round.
+public struct Version has key {
+    id: UID,
+    version: u64,
+    paused: bool,
+}
 
 /// Sealed dynamic-object key; the stored cap stays independently discoverable.
 public struct CreatorCapKey() has copy, drop, store;
@@ -76,6 +97,11 @@ public struct Round<phantom Meme, phantom Quote> has key {
     claimed: vector<u256>,
     meme: Balance<Meme>,
     quote: Balance<Quote>,
+}
+
+/// Records an administrator's emergency stop or resumption.
+public struct PauseChanged has copy, drop {
+    paused: bool,
 }
 
 /// Native events intentionally use this independent package's direct type namespace.
@@ -123,16 +149,42 @@ public struct RewardPaid has copy, drop {
     quote_remaining: u64,
 }
 
+// === Private Initialization ===
+
+fun init(ctx: &mut TxContext) {
+    transfer::transfer(AdminCap { id: object::new(ctx) }, ctx.sender());
+    transfer::share_object(Version { id: object::new(ctx), version: VERSION, paused: false });
+}
+
+// === Admin Functions ===
+
+/// Stops or resumes enrollment, collection, publication and claims.
+public fun set_paused(self: &mut Version, _: &AdminCap, paused: bool) {
+    assert!(self.version == VERSION, EWrongVersion);
+    assert!(self.paused != paused, EUnchangedPause);
+
+    self.paused = paused;
+
+    event::emit(PauseChanged { paused });
+}
+
+/// Moves the shared version to this package version after an upgrade, preserving pause.
+public fun migrate(self: &mut Version, _: &AdminCap) {
+    assert!(self.version < VERSION, ENotUpgrade);
+
+    self.version = VERSION;
+}
+
 // === Public Functions ===
 
 /// Consumes the creator cap; the publisher cap cannot extract or borrow it.
 public fun new<Meme, Quote>(
-    rewards_version: &RewardsVersion,
+    version: &Version,
     creator_cap: CreatorCap<Meme>,
     launch: &Launch<Meme, Quote>,
     ctx: &mut TxContext,
 ): (Distributor<Meme, Quote>, PublisherCap) {
-    rewards_version.assert_enabled();
+    version.assert_enabled();
 
     let creator_cap_id = object::id(&creator_cap);
     let mut distributor = Distributor {
@@ -162,12 +214,12 @@ public fun share<Meme, Quote>(self: Distributor<Meme, Quote>) { transfer::share_
 /// Anyone can collect; the cap reference and all proceeds stay inside this call.
 public fun collect_curve_fees<Meme, Quote>(
     self: &mut Distributor<Meme, Quote>,
-    rewards_version: &RewardsVersion,
+    version: &Version,
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
     ctx: &mut TxContext,
 ) {
-    rewards_version.assert_enabled();
+    version.assert_enabled();
     assert!(object::id(launch) == self.launch, EWrongSource);
 
     let cap = dynamic_object_field::borrow<_, CreatorCap<Meme>>(&self.id, CreatorCapKey());
@@ -178,12 +230,12 @@ public fun collect_curve_fees<Meme, Quote>(
 /// Collects already-accounted LP fees; venue fee collection can precede it in a PTB.
 public fun collect_lp_fees<Meme, Quote>(
     self: &mut Distributor<Meme, Quote>,
-    rewards_version: &RewardsVersion,
+    version: &Version,
     vault: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
     ctx: &mut TxContext,
 ) {
-    rewards_version.assert_enabled();
+    version.assert_enabled();
 
     let cap = dynamic_object_field::borrow<_, CreatorCap<Meme>>(&self.id, CreatorCapKey());
     let (meme, quote) = vault.claim_creator_fees(migrators_version, cap, ctx);
@@ -194,7 +246,7 @@ public fun collect_lp_fees<Meme, Quote>(
 public fun publish_round<Meme, Quote>(
     self: &mut Distributor<Meme, Quote>,
     publisher: &PublisherCap,
-    rewards_version: &RewardsVersion,
+    version: &Version,
     number: u64,
     start_checkpoint: u64,
     end_checkpoint: u64,
@@ -205,7 +257,7 @@ public fun publish_round<Meme, Quote>(
     quote_amount: u64,
     ctx: &mut TxContext,
 ): Round<Meme, Quote> {
-    rewards_version.assert_enabled();
+    version.assert_enabled();
     assert!(publisher.distributor == self.id.to_inner(), EWrongPublisher);
     assert!(number == self.next_round, EWrongRound);
     assert!(
@@ -264,7 +316,7 @@ public fun share_round<Meme, Quote>(self: Round<Meme, Quote>) { transfer::share_
 /// Anyone may relay a proof; delivery is only to its committed beneficiary.
 public fun claim<Meme, Quote>(
     self: &mut Round<Meme, Quote>,
-    rewards_version: &RewardsVersion,
+    version: &Version,
     index: u64,
     beneficiary: address,
     meme_amount: u64,
@@ -272,7 +324,7 @@ public fun claim<Meme, Quote>(
     proof: vector<vector<u8>>,
     ctx: &mut TxContext,
 ) {
-    rewards_version.assert_enabled();
+    version.assert_enabled();
     assert!(index < self.leaf_count, EInvalidIndex);
     let word = index / 256;
     let bit = 1u256 << ((index % 256) as u8);
@@ -313,6 +365,12 @@ public fun claim<Meme, Quote>(
 
 // === Private Functions ===
 
+/// Rejects retired bytecode before reporting a pause.
+fun assert_enabled(self: &Version) {
+    assert!(self.version == VERSION, EWrongVersion);
+    assert!(!self.paused, EPaused);
+}
+
 fun accrue<Meme, Quote>(
     self: &mut Distributor<Meme, Quote>,
     source: ID,
@@ -336,6 +394,22 @@ fun accrue<Meme, Quote>(
 
 // === Test-Only Functions ===
 
+#[test_only]
+public fun init_for_testing(ctx: &mut TxContext) { init(ctx); }
+#[test_only]
+public fun new_version_for_testing(ctx: &mut TxContext): Version {
+    Version { id: object::new(ctx), version: VERSION, paused: false }
+}
+#[test_only]
+public fun new_admin_cap_for_testing(ctx: &mut TxContext): AdminCap {
+    AdminCap { id: object::new(ctx) }
+}
+#[test_only]
+public fun set_version_for_testing(self: &mut Version, version: u64) { self.version = version; }
+#[test_only]
+public fun version_for_testing(self: &Version): u64 { self.version }
+#[test_only]
+public fun paused_for_testing(self: &Version): bool { self.paused }
 #[test_only]
 public fun creator_cap_id_for_testing<Meme, Quote>(self: &Distributor<Meme, Quote>): ID {
     object::id(dynamic_object_field::borrow<_, CreatorCap<Meme>>(&self.id, CreatorCapKey()))
@@ -376,7 +450,7 @@ fun publisher_cap_is_bound_to_one_distributor() {
         id: object::new(&mut ctx),
         distributor: object::id_from_address(@0x2),
     };
-    let version = package_version::new_for_testing(&mut ctx);
+    let version = new_version_for_testing(&mut ctx);
     let round = distributor.publish_round(
         &publisher,
         &version,
