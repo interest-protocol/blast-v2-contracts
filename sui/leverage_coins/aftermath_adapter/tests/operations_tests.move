@@ -792,6 +792,24 @@ fun a_not_due_market_receives_no_funding_update_call() {
     assert!(operations::is_time_to_update_funding_for_testing(now, last, frequency));
 }
 
+/// The funding update authenticates the bound market and base oracle before touching either.
+#[test]
+fun funding_update_inputs_accept_the_bound_market_and_base_oracle() {
+    funding_binding().assert_funding_update_inputs(@0xD.to_id(), @0xE.to_id());
+}
+
+#[test]
+#[expected_failure(abort_code = blast_leverage_aftermath::errors::EClearingHouseMismatch, location = blast_leverage_aftermath::venue_account)]
+fun funding_update_rejects_an_unbound_market_before_the_oracle() {
+    funding_binding().assert_funding_update_inputs(@0xDD.to_id(), @0xEE.to_id());
+}
+
+#[test]
+#[expected_failure(abort_code = blast_leverage_aftermath::errors::EBaseOracleMismatch, location = blast_leverage_aftermath::venue_account)]
+fun funding_update_rejects_the_collateral_oracle_as_its_storage() {
+    funding_binding().assert_funding_update_inputs(@0xD.to_id(), @0xF.to_id());
+}
+
 /// A zero frequency is never due, so the adapter never asks the venue to divide by it.
 #[test]
 fun a_market_without_a_funding_cadence_is_never_due() {
@@ -2155,6 +2173,13 @@ macro fun next_tx($self: &mut Fixture, $sender: address, $body: |&mut Fixture|) 
 
 fun take_collateral(fixture: &Fixture): sui::coin::Coin<Collateral> {
     fixture.scenario.take_from_sender()
+}
+
+fun funding_binding(): venue_account::Binding {
+    venue_account::new_binding(
+        @0xB.to_id(), 7, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id(),
+        type_name::with_original_ids<sui::sui::SUI>(),
+    )
 }
 
 fun end(fixture: Fixture) {

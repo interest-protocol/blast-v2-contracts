@@ -312,6 +312,23 @@ public(package) fun new_checkpoint(
     }
 }
 
+/// Rejects a market or base oracle that is not the bound one before the venue
+/// funding update mutates it; the later capture re-authenticates everything.
+public(package) fun assert_funding_update_inputs(
+    self: &Binding,
+    clearing_house_id: ID,
+    base_oracle_id: ID,
+) {
+    assert!(
+        self.clearing_house_id == clearing_house_id,
+        blast_leverage_aftermath::errors::clearing_house_mismatch!(),
+    );
+    assert!(
+        self.base_oracle_id == base_oracle_id,
+        blast_leverage_aftermath::errors::base_oracle_mismatch!(),
+    );
+}
+
 /// Rejects the first external component that differs from this binding.
 public(package) fun assert_exact(
     self: &Binding,

@@ -490,7 +490,7 @@ deposit_line="$(initialization_line 'account::deposit_collateral(')"
 allocate_line="$(initialization_line 'clearing_house::allocate_collateral(')"
 position_line="$(initialization_line 'clearing_house::create_market_position(')"
 imr_line="$(initialization_line 'clearing_house::set_position_initial_margin_ratio(')"
-update_line="$(initialization_line 'update_funding_when_due(&mut clearing_house, base_oracle, clock);')"
+update_line="$(initialization_line 'update_funding_when_due(&binding, &mut clearing_house, base_oracle, clock);')"
 pre_capture_line="$(grep -nF 'snapshot::capture_initialization(' <<<"$initialization_block" | sed -n '1s/:.*//p')"
 session_start_line="$(initialization_line 'clearing_house::start_session(')"
 session_end_line="$(initialization_line 'clearing_house::end_session(')"
@@ -627,7 +627,7 @@ sync_line() {
 }
 sync_version_line="$(sync_line 'protocol.assert_current();')"
 sync_cap_line="$(sync_line 'vault.assert_venue_custody_binding();')"
-sync_update_line="$(sync_line 'update_funding_when_due(clearing_house, base_oracle, clock);')"
+sync_update_line="$(sync_line 'update_funding_when_due(&binding, clearing_house, base_oracle, clock);')"
 sync_pre_line="$(grep -nF 'snapshot::capture_health(' <<<"$sync_block" | sed -n '1s/:.*//p')"
 sync_candidate_line="$(sync_line 'let funding_candidate = position::calculate_position_funding_internal(')"
 sync_settle_line="$(sync_line 'clearing_house::settle_position_funding(')"
@@ -819,6 +819,8 @@ update_helper_block="$(sed -n '/^fun update_funding_when_due<Collateral>($/,/^}/
 [[ -n "$update_helper_block" ]] \
   || fail "The adapter must own one package-private guarded funding update helper."
 update_shape="$(tr -d '[:space:]' <<<"$update_helper_block")"
+grep -q 'binding.assert_funding_update_inputs(object::id(clearing_house),object::id(base_oracle));let(funding_frequency_ms' <<<"$update_shape" \
+  || fail "The funding update must authenticate the bound market and base oracle before reading or mutating them."
 grep -q 'let(funding_frequency_ms,_)=market::funding_params(clearing_house.market_params());' <<<"$update_shape" \
   || fail "The funding update guard must read the frequency as the first funding parameter of the bound market."
 grep -q 'letfunding_last_upd_ms=market::funding_last_upd_ms(clearing_house.market_state());' <<<"$update_shape" \
