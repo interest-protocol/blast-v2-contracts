@@ -2,6 +2,7 @@
 // macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
 // locations while retaining one append-only registry in `blast_fun::errors`.
 #[allow(lint(abort_without_constant))]
+/// Pure constant-product quotes and the terminal-target input cap; owns no state.
 module blast_fun::curve;
 
 use blast_fun::bps::{Self, Bps};

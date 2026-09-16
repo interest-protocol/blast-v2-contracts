@@ -85,6 +85,9 @@ public struct Launch<phantom Meme, phantom Quote> has key {
 // === Public Functions ===
 
 /// Consumes one generated-coin ticket and returns normalized launch custody.
+///
+/// A ticket may come from an older package generation, so intake re-validates every policy it
+/// carries against this bytecode's ceilings instead of trusting its constructor.
 public fun new<Meme, Quote, MigrationWitness: drop>(
     ticket: LaunchTicket<Meme>,
     package_version: &PackageVersion,
@@ -99,6 +102,10 @@ public fun new<Meme, Quote, MigrationWitness: drop>(
     assert!(
         ticket.initial_supply() == constants::meme_total_supply_atomic_units!(),
         blast_fun::errors::invalid_initial_meme_supply!(),
+    );
+    assert!(
+        ticket.sell_burn_bps().value() <= constants::max_sell_burn_bps!(),
+        blast_fun::errors::invalid_sell_burn_bps!(),
     );
 
     let (

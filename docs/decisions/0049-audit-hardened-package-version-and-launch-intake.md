@@ -109,6 +109,13 @@ The private `launch` Quote partition trusts its immutable validated `Bps` snapsh
 does not compare it with a later package generation's policy ceiling. The
 ceiling remains enforced when `LaunchConfig` is changed.
 
+Intake re-validates every policy the ticket carries, not only its supply: the
+creator-selected sell-burn rate must satisfy this bytecode's ceiling
+(`EInvalidSellBurnBps`, raised by `launch`). `launch_ticket::new` runs inside a
+generated coin's `init`, which cannot receive the shared `PackageVersion`, so the
+ticket constructor can never be generation-gated; the launch is therefore the only
+place an old-generation ticket's policy can be checked against current rules.
+
 ### Deferred product policies
 
 This audit change does not invent pause or migration-recovery behavior. Those
@@ -145,7 +152,8 @@ not constructor visibility. Admission review remains a privileged release step.
 - Old bytecode cannot mutate any Blast shared protocol object after activation.
 - Trades add one immutable shared `PackageVersion` input. This is the minimum
   state needed to break the ACL dependency cycle while keeping one version.
-- Old tickets with incompatible supply cannot enter current launch custody.
+- Old tickets with incompatible supply or an over-ceiling sell burn cannot enter
+  current launch custody.
 - A self-quoted launch cannot lock its complete generated supply in an inert
   market.
 - Obvious publicly constructible migration witness categories cannot be
@@ -161,7 +169,8 @@ not constructor visibility. Admission review remains a privileged release step.
 - Every shared-object mutator has a version-first structural check, with
   behavioral precedence tests across ACL, policy, runtime, package-admin, and
   launch operation classes.
-- Launch intake rejects equal Meme/Quote types and a noncanonical ticket supply.
+- Launch intake rejects equal Meme/Quote types, a noncanonical ticket supply, and a
+  ticket sell burn above the current ceiling.
 - Migration-witness admission rejects a primitive and a vector type.
 - A migration snapshot above a later compile-time ceiling remains partitionable.
 - The actual initializer `finalize` path is exercised for both Fixed and

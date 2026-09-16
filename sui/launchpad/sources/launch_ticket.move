@@ -94,6 +94,11 @@ public(package) fun initial_supply<Meme>(self: &LaunchTicket<Meme>): u64 {
     self.meme.value()
 }
 
+/// Returns the creator-selected sell-burn rate for launch intake to re-validate.
+public(package) fun sell_burn_bps<Meme>(self: &LaunchTicket<Meme>): Bps {
+    self.sell_burn_bps
+}
+
 /// Destroys the ticket and releases its stored launch resources.
 public(package) fun destroy<Meme>(
     self: LaunchTicket<Meme>,
@@ -125,4 +130,10 @@ public fun truncate_supply_for_testing<Meme>(
     amount: u64,
 ) {
     self.meme.split(amount).destroy_for_testing();
+}
+
+#[test_only]
+/// Overrides the sell-burn rate past this package's ceiling to model an old-generation ticket.
+public fun set_sell_burn_bps_for_testing<Meme>(self: &mut LaunchTicket<Meme>, value: u64) {
+    self.sell_burn_bps = bps::new(value);
 }

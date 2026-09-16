@@ -1,3 +1,4 @@
+/// Package-wide protocol constants exposed as zero-cost macros.
 module blast_fun::constants;
 
 // === Package Constants ===
@@ -42,23 +43,8 @@ macro public(package) fun meme_total_supply_atomic_units(): u64 {
     1_000_000_000__000_000_000
 }
 
-/// Maximum number of simultaneously active routine protocol administrators.
-macro public(package) fun max_admins(): u64 {
-    16
-}
-
-/// Fixed delay before a proposed super-admin recipient may accept, in milliseconds.
-macro public(package) fun super_admin_transfer_delay_ms(): u64 {
-    7 * 24 * 60 * 60 * 1_000
-}
-
 /// Canonical Ed25519 public-key length.
 macro public(package) fun ed25519_public_key_length(): u64 {
-    32
-}
-
-/// Exact byte length of a Sui package upgrade digest.
-macro public(package) fun package_digest_length(): u64 {
     32
 }
 

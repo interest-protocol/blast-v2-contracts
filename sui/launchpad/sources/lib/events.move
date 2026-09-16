@@ -1,3 +1,4 @@
+/// Replay-complete event payloads and the package-only emitters that publish them.
 module blast_fun::events;
 
 use std::{string::String, type_name::{Self, TypeName}};

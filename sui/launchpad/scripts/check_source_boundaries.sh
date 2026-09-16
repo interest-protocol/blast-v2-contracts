@@ -1349,6 +1349,7 @@ if ! rg -Fq 'config.snapshot_for_launch<Quote, MigrationWitness>()' sources/laun
   || ! rg -Fq 'transfer::share_object(self);' sources/launch.move \
   || ! rg -Fq 'ticket.destroy();' sources/launch.move \
   || ! rg -Fq 'ticket.initial_supply() == constants::meme_total_supply_atomic_units!()' sources/launch.move \
+  || ! rg -Fq 'ticket.sell_burn_bps().value() <= constants::max_sell_burn_bps!()' sources/launch.move \
   || ! rg -Fq 'type_name::with_original_ids<Meme>() != type_name::with_original_ids<Quote>()' sources/launch.move \
   || ! rg -Fq 'fee_ledger: fees::new(),' sources/launch.move \
   || ! rg -Fq 'real_quote_reserve: balance::zero(),' sources/launch.move \

@@ -453,6 +453,34 @@ fun launch_rejects_a_ticket_that_does_not_hold_the_canonical_supply() {
 }
 
 #[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidSellBurnBps,
+    location = blast_fun::launch,
+)]
+fun launch_rejects_a_ticket_whose_sell_burn_exceeds_this_generations_ceiling() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let mut ticket = f.new_ticket(CREATOR);
+        ticket.set_sell_burn_bps_for_testing(5_001);
+        let launch = launch::new<
+            LAUNCH_TESTS,
+            TEST_QUOTE,
+            TEST_MIGRATION_WITNESS,
+        >(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
 fun buy_and_sell_all_bought_meme_move_exact_coins_and_accounting() {
     let mut fixture = start();
 

@@ -2,6 +2,7 @@
 // macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
 // locations while retaining one append-only registry in `blast_fun::errors`.
 #[allow(lint(abort_without_constant))]
+/// Creator recipients, the one-time claim they authorize, and the revocable caps it issues.
 module blast_fun::creator_authority;
 
 use blast_fun::{constants, events, runtime_config::RuntimeConfig};

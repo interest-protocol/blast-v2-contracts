@@ -1,4 +1,5 @@
 #[allow(unused_const)]
+/// Append-only package error registry: numeric codes as macros, named only in tests.
 module blast_fun::errors;
 
 // === Errors ===
