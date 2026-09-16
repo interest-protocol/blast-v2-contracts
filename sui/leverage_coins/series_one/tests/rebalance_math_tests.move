@@ -122,6 +122,96 @@ fun reduction_improvement_uses_exact_ratios_and_one_lot_tolerance() {
     assert!(!rebalance_math::reduction_is_sufficient(300, 100, 270, 90, 20_000, 1, 1));
 }
 
+/// The improvement clause is inclusive at exactly the minimum and exclusive one
+/// basis point below it: 3.00x to 2.99x is a 100 bps improvement.
+#[test]
+fun reduction_improvement_is_inclusive_at_exactly_the_minimum() {
+    assert!(rebalance_math::reduction_is_sufficient(300, 100, 299, 100, 20_000, 100, 1));
+    assert!(!rebalance_math::reduction_is_sufficient(300, 100, 299, 100, 20_000, 101, 1));
+}
+
+/// The one-lot clause is inclusive at exactly one lot's notional from target and
+/// exclusive one atom farther when the improvement clause cannot rescue it.
+#[test]
+fun one_lot_tolerance_is_inclusive_at_exactly_one_lot() {
+    // Target notional 200 at 2x on 100 NAV; lot notional 1.
+    assert!(rebalance_math::reduction_is_sufficient(300, 100, 201, 100, 20_000, 20_000, 1));
+    assert!(!rebalance_math::reduction_is_sufficient(300, 100, 202, 100, 20_000, 20_000, 1));
+    // Landing exactly on target passes with any minimum.
+    assert!(rebalance_math::reduction_is_sufficient(300, 100, 200, 100, 20_000, 20_000, 1));
+}
+
+/// A reduction whose NAV rose is measured in leverage terms, not notional terms.
+#[test]
+fun reduction_improvement_credits_a_nav_gain() {
+    // 3.00x to 2.636x although notional fell only 10: a 3_636 bps improvement.
+    assert!(rebalance_math::reduction_is_sufficient(300, 100, 290, 110, 20_000, 3_636, 1));
+    assert!(!rebalance_math::reduction_is_sufficient(300, 100, 290, 110, 20_000, 3_637, 1));
+}
+
+/// Crossing the target is admitted only while the landing is closer than the
+/// start; production sizing floors every reduction at the target, so this is a
+/// property of the predicate alone.
+#[test]
+fun a_crossing_reduction_passes_only_while_it_is_closer_than_the_start() {
+    // 3.0x to 1.5x with target 2x: 10_000 bps away became 5_000 bps away.
+    assert!(rebalance_math::reduction_is_sufficient(300, 100, 150, 100, 20_000, 5_000, 1));
+    assert!(!rebalance_math::reduction_is_sufficient(300, 100, 150, 100, 20_000, 5_001, 1));
+    // 3.0x to 0.5x: 10_000 bps away became 15_000 bps away.
+    assert!(!rebalance_math::reduction_is_sufficient(300, 100, 50, 100, 20_000, 1, 1));
+}
+
+/// A lot larger than the distance to target cannot excuse a landing farther
+/// from target than the start, even within one lot.
+#[test]
+fun one_lot_tolerance_never_admits_moving_away_from_target() {
+    // Target notional 1_000 at 2x on 500 NAV; lot notional 600.
+    assert!(!rebalance_math::reduction_is_sufficient(1_150, 500, 550, 500, 20_000, 1, 600));
+    assert!(rebalance_math::reduction_is_sufficient(1_150, 500, 950, 500, 20_000, 1, 600));
+    assert!(rebalance_math::reduction_is_sufficient(1_150, 500, 1_000, 500, 20_000, 1, 600));
+}
+
+/// Exhausts small positions against an independent rational reference and the
+/// invariant that a sufficient reduction never ends farther from target.
+#[test]
+fun reduction_predicate_matches_the_small_domain_reference() {
+    vector[10_000u64, 20_000].do!(|target_bps| {
+        vector[1u64, 5_000].do!(|minimum_improvement_bps| {
+            vector[1u64, 3].do!(|lot| {
+                1u64.range_do!(5, |before_nav| {
+                    1u64.range_do!(5, |after_nav| {
+                        0u64.range_do!(8, |before_notional| {
+                            0u64.range_do!(8, |after_notional| {
+                                let observed = rebalance_math::reduction_is_sufficient(
+                                    before_notional, before_nav, after_notional, after_nav,
+                                    target_bps, minimum_improvement_bps, lot,
+                                );
+                                let before_bps = leverage_distance_bps(before_notional, before_nav, target_bps);
+                                let after_bps = leverage_distance_bps(after_notional, after_nav, target_bps);
+                                let not_farther = ratio_le(after_bps, before_bps);
+                                let improved = ratio_le(
+                                    Ratio {
+                                        numerator: after_bps.numerator * before_bps.denominator
+                                            + (minimum_improvement_bps as u128) * after_bps.denominator * before_bps.denominator,
+                                        denominator: after_bps.denominator * before_bps.denominator,
+                                    },
+                                    before_bps,
+                                );
+                                let within_lot = ratio_le(
+                                    after_bps,
+                                    Ratio { numerator: (lot as u128) * 10_000, denominator: after_nav as u128 },
+                                );
+                                assert_eq!(observed, (within_lot && not_farther) || improved);
+                                if (observed) { assert!(not_farther) };
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    });
+}
+
 #[test]
 fun increase_reserves_adverse_execution_and_fee_headroom() {
     let base = rebalance_math::increase_base_down(
@@ -180,4 +270,24 @@ fun generic_four_and_six_times_use_the_same_maximal_integer_search() {
     );
     assert_eq!(four, 300_000_000);
     assert_eq!(six, 500_000_000);
+}
+
+// === Reference Helpers ===
+
+/// One exact positive-denominator rational for the independent reference.
+public struct Ratio has copy, drop { numerator: u128, denominator: u128 }
+
+/// Leverage distance from target as an exact rational in basis points.
+fun leverage_distance_bps(notional: u64, nav: u64, target_bps: u64): Ratio {
+    let scaled = (notional as u128) * 10_000;
+    let target = (target_bps as u128) * (nav as u128);
+    Ratio {
+        numerator: if (scaled >= target) { scaled - target } else { target - scaled },
+        denominator: nav as u128,
+    }
+}
+
+/// Returns whether `left <= right`.
+fun ratio_le(left: Ratio, right: Ratio): bool {
+    left.numerator * right.denominator <= right.numerator * left.denominator
 }

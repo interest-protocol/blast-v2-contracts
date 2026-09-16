@@ -11,6 +11,15 @@ const BASE_TO_COLLATERAL_SCALE: u256 = 1_000;
 // === Package Functions ===
 
 /// Compares exact leverage-distance improvement, or admits a one-lot target remainder.
+///
+/// With `d = |notional * 10_000 - target_bps * nav|`, `d / nav` is the exact
+/// leverage distance from target in basis points. The reduction is sufficient
+/// when that distance fell by at least `minimum_improvement_bps`, or when the
+/// after-position sits within one lot's notional of the target and is no
+/// farther from it, in leverage terms, than the start. Neither clause admits a
+/// landing farther from target than the start, so the predicate stays safe
+/// even if a caller sized past the target. Every comparison cross-multiplies
+/// exact integers; nothing rounds.
 public(package) fun reduction_is_sufficient(
     before_notional: u64, before_nav: u64, after_notional: u64, after_nav: u64,
     target_bps: u64, minimum_improvement_bps: u64, one_lot_notional: u64,
@@ -18,10 +27,11 @@ public(package) fun reduction_is_sufficient(
     assert!(before_nav > 0 && after_nav > 0, blast_leverage_series_one::errors::invalid_nav!());
     let before_distance = ((before_notional as u256) * 10_000).diff((target_bps as u256) * (before_nav as u256));
     let after_distance = ((after_notional as u256) * 10_000).diff((target_bps as u256) * (after_nav as u256));
-    after_distance <= (one_lot_notional as u256) * 10_000
-        || before_distance * (after_nav as u256)
-            >= after_distance * (before_nav as u256)
-                + (minimum_improvement_bps as u256) * (before_nav as u256) * (after_nav as u256)
+    let scaled_before = before_distance * (after_nav as u256);
+    let scaled_after = after_distance * (before_nav as u256);
+    (after_distance <= (one_lot_notional as u256) * 10_000 && scaled_after <= scaled_before)
+        || scaled_before
+            >= scaled_after + (minimum_improvement_bps as u256) * (before_nav as u256) * (after_nav as u256)
 }
 
 /// Prices index exposure conservatively in six-decimal collateral atoms.
