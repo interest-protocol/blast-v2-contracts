@@ -404,6 +404,33 @@ fun mint_bounds_span_the_actual_contribution_and_the_planned_fill() {
     accounting_math::assert_mint_base_within_bounds_for_testing(1_000_950, 1_000_500, 999_000, 1_000_000, 1_000_000_000, 100, 1);
 }
 
+/// Pins the range the capped contribution produces: `[delta(actual), delta(expected)]`
+/// with `actual <= expected`, collapsing to the planned fill when the cap binds.
+#[test]
+fun a_capped_contribution_never_widens_the_planned_fill() {
+    vector[999_000u64, 1_000_000, 1_000_500].do!(|expected| {
+        let planned = accounting_math::mint_base_delta_down_for_testing(
+            expected, 1_000_000, 1_000_000_000, 100, 1,
+        );
+
+        vector[100_000u64, 500_000, expected - 1, expected].do!(|actual| {
+            let (min_delta, max_delta) = accounting_math::mint_base_bounds_for_testing(
+                expected, actual, 1_000_000, 1_000_000_000, 100, 1,
+            );
+            let actual_delta = accounting_math::mint_base_delta_down_for_testing(
+                actual, 1_000_000, 1_000_000_000, 100, 1,
+            );
+
+            assert_eq!(max_delta, planned);
+            assert_eq!(min_delta, actual_delta);
+            assert!(min_delta <= max_delta);
+            if (actual == expected) {
+                assert_eq!(min_delta, max_delta);
+            };
+        });
+    });
+}
+
 /// Catches an empty range when a favorable fill credits more than the plan expected.
 #[test]
 fun a_favorable_fill_demands_the_complete_planned_fill() {

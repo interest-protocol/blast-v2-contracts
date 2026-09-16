@@ -786,7 +786,7 @@ fun assert_issued_policy<Product>(self: &Fixture, expected: TierPolicy) {
 fun configured_tier(side: policy::PositionSide, target: u64): TierPolicy {
     policy::new_tier_policy(
         side, policy::new_rebalance_policy(target - 2_000, target, target + 2_000, target + 10_000, 100, 500, 10),
-        policy::new_valuation(30_000, 2_000, 100, 500), 30, 30, 30, 30, 100, 1_000_000_000,
+        policy::new_valuation(30_000, 2_000, 100, 500), 30, 30, 100, 1_000_000_000,
     ).with_fee_limits(100, 100, 3_000, 2_000)
 }
 
@@ -805,8 +805,6 @@ fun standard_tier_policy(): TierPolicy {
         policy::new_valuation(30_000, 2_000, 100, 500),
         10,
         10,
-        100,
-        100,
         100,
         1_000_000_000,
     )

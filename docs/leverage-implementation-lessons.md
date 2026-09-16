@@ -58,20 +58,22 @@ value is a simulation gate, but the shape of the decision is fixed:
 - A redemption that reaches flat is exempt, so a complete close is always
   possible regardless of size.
 
-### 1.3 Bound the redemption gross exactly as the mint contribution
+### 1.3 Cap the redemption gross at the proportional claim, as the mint caps its contribution
 
-`redemption_accounting_quote` returns `proportional_claim` beside `gross`. The
-redemption transition must call
-`policy::assert_redemption_gross_within_bound(proportional_claim, gross)` with
-those two values before it pays `net`, never with a claim it derived itself.
-Without the call, every unit by which the post-unwind reading exceeds the
-pre-unwind one is paid to the redeemer in full, however few shares they burn,
-and no non-dilution invariant can see it. The production
-`max_redemption_gross_divergence_bps` is a simulation gate selected separately
-for the long and short Series, like its mint twin.
+`redemption_quote` pays `min(nav_unwound, nav_before) - equity_keep`, so the
+gross never exceeds the redeemer's proportional claim, and
+`allocated_mint_quote` credits `min(nav_after - nav_before, deposit - fee)`,
+so a depositor never receives shares for more than they paid. Both caps live
+inside the quotes; a Series transition cannot bypass them and must not
+re-derive either value from a NAV of its own. Any favorable difference between
+the two readings stays with the remaining holders. There is no divergence
+policy value to select (ADR 0084 D3).
 
 Why: the 2026-09-03 audit showed one share of a million capturing a 100-unit
-pool-wide gain, and the canonical suite had never exercised a favorable unwind.
+pool-wide gain, and the canonical suite had never exercised a favorable
+unwind. The first remedy was a leveraged divergence allowance with two
+simulation-selected bounds; the Perpsplexity review replaced it with the exact
+cap, which needs no bound and is what the venue's own accounting does.
 
 ### 1.4 Compute every economic value once at its canonical checkpoint
 
@@ -166,18 +168,16 @@ path. Series2 is a new immutable package and coin family.
 
 ### 1.12 Wire every policy gate, and mind same-typed parameter order
 
-`policy.move` now has a predicate and an assertion for every stored value:
-improvement, strict and emergency execution tolerance, the NAV cap, the mint
-contribution, and the redemption gross. The Vault and adapter must call each
-one at its checkpoint; the package cannot force the call. Two guards fail open
-when their same-typed `u64` arguments are transposed:
-`assert_mint_contribution_within_bound(deposit, contribution)` and
-`assert_redemption_gross_within_bound(proportional_claim, gross)` both pass
-whenever the second argument is at most the first, and
-`assert_mark_within_index_divergence(mark, index)` widens instead of aborting.
-Pass the quote outputs positionally from the same tuple, add a call-site test
-that swaps each pair and expects the abort, and prefer single-field wrapper
-types when the Vault's own API is designed.
+`policy.move` has a predicate and an assertion for every stored value:
+improvement, strict and emergency execution tolerance, and the NAV cap. The
+Vault and adapter must call each one at its checkpoint; the package cannot
+force the call. One guard fails open when its same-typed `u64` arguments are
+transposed: `assert_mark_within_index_divergence(mark, index)` widens instead
+of aborting. Pass the observation outputs positionally from the same tuple,
+add a call-site test that swaps the pair and expects the abort, and prefer
+single-field wrapper types when the Vault's own API is designed. The mint
+contribution and redemption gross caps are applied inside the quotes and have
+no call-site arguments to transpose.
 
 Why: the package proves each rule in isolation. It cannot prove that one
 captured pair priced both sides of an operation, that a caller did not choose
@@ -278,8 +278,6 @@ believes the package closes them:
   values for every bound;
 - permissionless rebalance sizing bounds; the minimum-improvement gate exists
   but the Vault must still bound the size of a permissionless order;
-- the production `max_mint_contribution_divergence_bps` value, which simulation
-  must select separately for the long and short Series;
 - maximum supply, minimum NAV per share, minimum seed, the open-from-flat
   primitive, the reserve release path, a loss lifecycle state or an accepted
   decision that shutdown is the answer, and shutdown cash rules. Issuance

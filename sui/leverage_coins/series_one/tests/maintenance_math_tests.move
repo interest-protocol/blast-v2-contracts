@@ -1307,12 +1307,12 @@ fun random_accounting_sequences_conserve(seed: u32) {
     assert_eq!(shares_after, nav_after);
 }
 
-/// The favorable direction: equity that appears between the two readings is
-/// paid to the redeemer in full, and the quote returns the proportional claim
-/// the policy bound must be applied to.
+/// The favorable direction: equity that appears between the two readings stays
+/// with the remaining holders; the redeemer is paid exactly the proportional
+/// claim and the quote reports the NAV that actually remains (ADR 0084 D3).
 #[test]
-fun a_favorable_unwind_pays_the_gain_to_the_redeemer_and_reports_the_claim() {
-    let (reserve_after, shares_after, equity_keep, proportional_claim, gross, fee, net) =
+fun a_favorable_unwind_pays_exactly_the_claim_and_keeps_the_gain_for_holders() {
+    let (reserve_after, shares_after, nav_kept, proportional_claim, gross, fee, net) =
         accounting_math::redemption_accounting_quote(
             1,
             1_000_000,
@@ -1324,31 +1324,171 @@ fun a_favorable_unwind_pays_the_gain_to_the_redeemer_and_reports_the_claim() {
 
     assert_eq!(reserve_after, 0);
     assert_eq!(shares_after, 999_999);
-    assert_eq!(equity_keep, 999_999);
+    assert_eq!(nav_kept, 1_000_099);
     assert_eq!(proportional_claim, 1);
-    assert_eq!(gross, 101);
+    assert_eq!(gross, 1);
     assert_eq!(fee, 0);
-    assert_eq!(net, 101);
+    assert_eq!(net, 1);
 }
 
+/// Pins the three unwound readings: a gain pays the claim, a loss pays less, and
+/// the NAV kept for the remaining holders is never below the proportional keep.
 #[test]
 fun the_proportional_claim_is_independent_of_the_unwound_reading() {
-    let (_, _, keep_flat, claim_flat, gross_flat, _, _) =
+    let (_, _, kept_flat, claim_flat, gross_flat, _, _) =
         accounting_math::redemption_accounting_quote(250, 10_000, 10_000, 500, 1_000, 30);
-    let (_, _, keep_gain, claim_gain, gross_gain, _, _) =
+    let (_, _, kept_gain, claim_gain, gross_gain, _, _) =
         accounting_math::redemption_accounting_quote(250, 10_000, 10_400, 500, 1_000, 30);
-    let (_, _, keep_loss, claim_loss, gross_loss, _, _) =
+    let (_, _, kept_loss, claim_loss, gross_loss, _, _) =
         accounting_math::redemption_accounting_quote(250, 10_000, 9_900, 500, 1_000, 30);
 
-    assert_eq!(keep_flat, 7_125);
-    assert_eq!(keep_gain, keep_flat);
-    assert_eq!(keep_loss, keep_flat);
+    assert_eq!(kept_flat, 7_125);
+    assert_eq!(kept_gain, 7_525);
+    assert_eq!(kept_loss, 7_125);
     assert_eq!(claim_flat, 2_375);
     assert_eq!(claim_gain, claim_flat);
     assert_eq!(claim_loss, claim_flat);
     assert_eq!(gross_flat, 2_375);
-    assert_eq!(gross_gain, 2_775);
+    assert_eq!(gross_gain, 2_375);
     assert_eq!(gross_loss, 2_275);
+}
+
+/// A canonical mint whose NAV rises by more than `deposit - fee` credits exactly that.
+#[test]
+fun canonical_mint_credits_at_most_the_deposit_net_of_the_fee() {
+    // The venue gained 5,000 during the proportional position increase.
+    let (reserve_after, nav_before, nav_after, fee, contribution, shares_out, shares_after) =
+        accounting_math::mint_accounting_quote(
+            1_000_000,
+            10_000_000,
+            10_000_000 + 1_000_000 + 5_000,
+            100_000,
+            9_900_000,
+            100,
+            0,
+        );
+
+    assert_eq!(reserve_after, 110_000);
+    assert_eq!(nav_before, 9_900_000);
+    assert_eq!(nav_after, 10_895_000);
+    assert_eq!(fee, 10_000);
+    assert_eq!(contribution, 990_000);
+    assert_eq!(shares_out, 990_000);
+    assert_eq!(shares_after, 10_890_000);
+    // The 5,000-unit excess raises NAV per share for every holder.
+    assert!((nav_after as u128) * 9_900_000 > (nav_before as u128) * (shares_after as u128));
+}
+
+/// The allocated quote credits `min(rise, expected)`, favorable or costly, and
+/// still rejects a mint whose NAV does not rise.
+#[test]
+fun allocated_mint_quote_credits_the_capped_contribution() {
+    let (nav_after, contribution, shares) =
+        accounting_math::allocated_mint_quote(1_100_000, 2_102_000, 100_000, 101_000, 999_000, 1_000_000, 1);
+    assert_eq!(vector[nav_after, contribution, shares], vector[2_001_000, 999_000, 999_000]);
+
+    let (nav_after, contribution, shares) =
+        accounting_math::allocated_mint_quote(1_100_000, 2_098_000, 100_000, 101_000, 999_000, 1_000_000, 1);
+    assert_eq!(vector[nav_after, contribution, shares], vector[1_997_000, 997_000, 997_000]);
+
+    let (nav_after, contribution, shares) =
+        accounting_math::allocated_mint_quote(1_100_000, 2_100_000, 100_000, 101_000, 999_000, 1_000_000, 1);
+    assert_eq!(vector[nav_after, contribution, shares], vector[1_999_000, 999_000, 999_000]);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ENonpositiveContribution, location = blast_leverage_series_one::accounting_math)]
+fun allocated_mint_quote_rejects_a_flat_nav_before_the_cap() {
+    accounting_math::allocated_mint_quote(1_100_000, 1_101_000, 100_000, 101_000, 999_000, 1_000_000, 1);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ESharesOutBelowMinimum, location = blast_leverage_series_one::accounting_math)]
+fun allocated_mint_quote_applies_the_share_floor_to_the_capped_contribution() {
+    accounting_math::allocated_mint_quote(1_100_000, 2_102_000, 100_000, 101_000, 999_000, 1_000_000, 999_001);
+}
+
+/// A maximum-width favorable rise is capped without widening or wrapping.
+#[test]
+fun allocated_mint_quote_caps_a_maximum_width_favorable_rise() {
+    let max = std::u64::max_value!();
+    let (nav_after, contribution, shares) =
+        accounting_math::allocated_mint_quote(1, max, 0, 0, 1, 1, 1);
+    assert_eq!(vector[nav_after, contribution, shares], vector[max, 1, 1]);
+}
+
+/// Exhausts deposits, fees, favorable and costly rises, and supplies: the
+/// credited contribution is `min(rise, deposit - fee)` and the NAV per share of
+/// existing holders never falls at the fixed valuation pair.
+#[test]
+fun capped_mints_never_lower_existing_holders_nav_per_share_across_the_small_domain() {
+    1u64.range_do!(7, |nav_before| {
+        1u64.range_do!(6, |shares_before| {
+            1u64.range_do!(11, |deposit| {
+                vector[0u64, 5_000].do!(|mint_fee_bps| {
+                    0u64.range_do!(11, |rise| {
+                        let fee = reference_fee_up(deposit, mint_fee_bps);
+                        if (deposit > fee && rise > 0) {
+                            let expected_contribution = (deposit - fee).min(rise);
+                            let expected_shares = (
+                                (shares_before as u128) * (expected_contribution as u128)
+                                    / (nav_before as u128),
+                            ) as u64;
+                            if (expected_shares > 0) {
+                                let (nav_after, contribution, shares) =
+                                    accounting_math::allocated_mint_quote(
+                                        nav_before, nav_before + rise, 0, 0,
+                                        deposit - fee, shares_before, 0,
+                                    );
+                                assert_eq!(nav_after, nav_before + rise);
+                                assert_eq!(contribution, expected_contribution);
+                                assert_eq!(shares, expected_shares);
+                                assert!(
+                                    (nav_after as u128) * (shares_before as u128)
+                                        >= (nav_before as u128) * ((shares_before + shares) as u128),
+                                );
+                            };
+                        };
+                    });
+                });
+            });
+        });
+    });
+}
+
+/// Exhausts unwound readings below, at, and above the pre-unwind NAV: the gross
+/// never exceeds the proportional claim and the NAV kept for the remaining
+/// holders never prices below the pre-unwind share price.
+#[test]
+fun capped_redemptions_never_lower_remaining_holders_nav_per_share_across_the_small_domain() {
+    1u64.range_do!(9, |nav_before| {
+        2u64.range_do!(7, |shares_before| {
+            1u64.range_do!(shares_before, |shares_burned| {
+                0u64.range_do!(17, |nav_unwound| {
+                    let shares_after = shares_before - shares_burned;
+                    let equity_keep = ((nav_before as u128) * (shares_after as u128))
+                        .div_ceil(shares_before as u128) as u64;
+                    if (nav_unwound.min(nav_before) > equity_keep) {
+                        let (_, quoted_after, nav_kept, claim, gross, fee, net) =
+                            accounting_math::redemption_accounting_quote(
+                                shares_burned, nav_before, nav_unwound, 0, shares_before, 0,
+                            );
+                        assert_eq!(quoted_after, shares_after);
+                        assert_eq!(claim, nav_before - equity_keep);
+                        assert_eq!(gross, nav_unwound.min(nav_before) - equity_keep);
+                        assert!(gross <= claim);
+                        assert_eq!(fee, 0);
+                        assert_eq!(nav_kept + net, nav_unwound);
+                        assert!(nav_kept >= equity_keep);
+                        assert!(
+                            (nav_kept as u128) * (shares_before as u128)
+                                >= (nav_before as u128) * (shares_after as u128),
+                        );
+                    };
+                });
+            });
+        });
+    });
 }
 
 #[test]

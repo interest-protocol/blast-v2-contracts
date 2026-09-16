@@ -45,8 +45,6 @@ coins target approximately 2x exposure and can be liquidated.
 | base exposure | absolute atomic venue base units | direction is never encoded here |
 | fee rate | basis points below 10,000 | proves `fee <= amount` |
 | leverage rate | basis points of 1x | `20_000` is 2x; no 10,000 ceiling |
-| mint contribution divergence | basis points below 10,000 | immutable Series policy bound for favorable excess contribution; distinct from venue mark divergence |
-| redemption gross divergence | basis points below 10,000 | immutable Series policy bound for favorable excess gross over the proportional claim; the redemption twin of the mint bound |
 | depositor share floor | atomic Share units | `min_shares_out`, supplied per mint by the depositor; zero means no floor |
 | minimum operation size | live venue lots | `min_exposure_lots`, an immutable Series policy value at most 1,000,000 lots; this package selects no value for it |
 | Series NAV cap | atomic collateral (USDC) | immutable positive policy value whose hard-cap notional fits in `u64`; simulation selects its value |
@@ -69,71 +67,67 @@ shares. Exposure rounding favors lower risk but can create underexposure:
 | `redemption_quote` kept equity | up | remaining holders |
 | `leverage_bps_up` | up | risk reporting stays conservative |
 | `target_notional_down` | down | the planned order stays under target |
-| `assert_mint_contribution_within_bound` allowance | down | existing holders |
-| `assert_redemption_gross_within_bound` allowance | down | remaining holders |
+| `allocated_mint_quote` contribution cap | `min(NAV rise, deposit - fee)` | existing holders keep a favorable fill's excess |
+| `redemption_quote` gross cap | `min(nav_unwound, nav_before) - equity_keep` | remaining holders keep a favorable unwind's excess |
 | `mint_base_delta_down` | down to the live lot | unopened sub-lot exposure, below `1 / min_exposure_lots` of the target |
-| `mint_base_bounds` | `[min(actual, planned), planned]` | a partial fill may leave at most the actual contribution's exposure unopened |
+| `mint_base_bounds` | `[actual, planned]`; the capped contribution keeps `actual <= planned` | a partial fill may leave at most the actual contribution's exposure unopened |
 | `redemption_base_bounds` keep | down | remaining holders |
 | `redemption_base_bounds` planned reduction | up to the live lot, capped at flat | over-reduction below one lot and below `1 / min_exposure_lots` of the required reduction |
 
-### Mint contribution sanity
+### Mint contribution cap
 
-Series1's immutable `max_mint_contribution_divergence_bps` is the authoritative
-bound for a mint's favorable excess contribution. It is deliberately separate
-from `max_mark_divergence_bps`, which remains a venue margin-safety rule only.
-The future Series mint transition must apply the bound to the actual
-shareholder-NAV contribution from the one canonical reserve-aware accounting
-checkpoint:
-
-```text
-contribution <= deposit
-    + floor(
-        deposit
-            * max_mint_contribution_divergence_bps
-            * target_leverage_bps
-            / 100_000_000,
-    )
-```
-
-The Series1 guard uses an exact `u256` cross-multiplied comparison. Equality is
-admitted, and the first atomic collateral unit above the bound aborts. The
-allowance rounds down, so an indivisible remainder cannot mint shares against
-existing holders. A contribution at or below the deposit always passes.
-
-This postcondition does not authenticate an execution price and does not
-replace the user's slippage bound or the adapter's strict and emergency
-execution tolerances. Those checks remain separate integration gates. The
-Series selects no production divergence value in this package.
-
-### Redemption gross sanity
-
-`redemption_quote` anchors the kept equity to pre-unwind NAV and measures the
-gross claim against post-unwind NAV, so every unit by which the second reading
-exceeds the first is paid to the redeemer however few shares they burn. With
-one share of a million burned against a 100-unit gain the proportional claim
-is 1 and the gross is 101. Remaining holders are pinned at `equity_keep`
-either way, so the non-dilution invariants cannot see the transfer.
-
-`redemption_accounting_quote` therefore returns `proportional_claim =
-nav_before - equity_keep` beside `gross`, and the immutable
-`max_redemption_gross_divergence_bps` bounds the excess with the same
-leveraged allowance as the mint side:
+A depositor is credited at most what they paid. With `D` the deposit,
+`protocol_fee` the ceiling-rounded fee on `D` (its admin allocation is retained
+locally and its buffer allocation is credited to the reserve), `N0` and `N1`
+the shareholder NAV before and after the mint at one valuation pair, and `S0`
+the supply, `allocated_mint_quote` credits:
 
 ```text
-gross <= proportional_claim
-    + floor(
-        proportional_claim
-            * max_redemption_gross_divergence_bps
-            * target_leverage_bps
-            / 100_000_000,
-    )
+contribution = min(N1 - N0, D - protocol_fee)
+shares_out   = floor(S0 * contribution / N0)
 ```
 
-The future redemption transition must call
-`policy::assert_redemption_gross_within_bound(proportional_claim, gross)` with
-the two values from the one canonical quote before it pays `net`. A zero claim
-admits no positive gross. An unwind loss larger than the claim already aborts
-with code 7, so the redeemer's payoff is bounded on both sides.
+`N1 <= N0` still aborts with the nonpositive-contribution code, so execution
+cost reaches the depositor exactly as before. When a venue fill is better than
+the index price, the excess `N1 - N0 - (D - protocol_fee)` mints no shares and
+stays with the existing holders, whose NAV per share rises. The cap lives
+inside the quote, so no Series transition can bypass it, and it needs no
+policy value (ADR 0084 D3). `mint_accounting_quote` applies the same cap as
+`min(N1 - N0, D - F)`.
+
+Because the credited contribution can no longer exceed the expected one, the
+mint exposure range `mint_base_bounds` is `[delta(actual), delta(expected)]`
+with `actual <= expected`; when the cap binds the range collapses to the
+planned fill.
+
+This cap does not authenticate an execution price and does not replace the
+user's slippage bound or the adapter's strict and emergency execution
+tolerances. Those checks remain separate integration gates.
+
+### Redemption gross cap
+
+A redeemer is paid at most their proportional share. For `x` burned shares
+with `keep = ceil(N0 * (S0 - x) / S0)`, `claim = N0 - keep`, and `Nu` the
+shareholder NAV after the proportional unwind at the same valuation pair,
+`redemption_quote` pays:
+
+```text
+gross = min(Nu, N0) - keep
+fee   = ceil(gross * redeem_fee_bps / 10_000)
+net   = gross - fee
+```
+
+so `gross <= claim`. An unwind that costs the Series pays `Nu - keep`; one
+that gains pays exactly `claim`, and the gain stays with the remaining holders.
+With one share of a million burned against a 100-unit pool-wide gain the claim
+is 1 and the gross is 1, not 101. `min(Nu, N0) <= keep` aborts with the
+nonpositive-gross code, so the redeemer's payoff is bounded on both sides and a
+favorable unwind cannot rescue a claim the rounded-up kept equity consumed.
+
+`redemption_accounting_quote` returns `nav_kept = Nu - gross`, the shareholder
+NAV that actually remains, beside `proportional_claim`; `nav_kept` is at least
+`keep`, and the Series derives the required final venue equity from it. Fee,
+net, buffer credit, and `min_usdc_out` apply to the capped gross unchanged.
 
 ### Depositor share floor and seed sizing
 

@@ -138,13 +138,8 @@ const EConfidenceExceedsBound: u64 = 30;
 /// Venue mark diverges too far from its index.
 const EMarkIndexDivergenceExceedsBound: u64 = 31;
 
-#[test_only]
-/// Mint contribution exceeds its favorable-divergence bound.
-const EMintContributionExceedsBound: u64 = 32;
-
-#[test_only]
-/// Mint-contribution divergence must be below the basis-point denominator.
-const EInvalidMaxMintContributionDivergenceBps: u64 = 33;
+// Codes 32 and 33 retired: the favorable-divergence mint gate and its policy
+// bound gave way to the exact `deposit - fee` contribution cap (ADR 0084 D3).
 
 #[test_only]
 /// A bounded value must satisfy minimum <= current <= maximum.
@@ -165,13 +160,8 @@ const EInvalidMinimumImprovementBps: u64 = 37;
 // Codes 40 through 54 retired: administrator membership, role validation, and
 // delayed root rotation moved to `blast_admin::acl`, which raises its own codes.
 
-#[test_only]
-/// Redemption gross claim exceeds its favorable-divergence bound.
-const ERedemptionGrossExceedsBound: u64 = 55;
-
-#[test_only]
-/// Redemption-gross divergence must be below the basis-point denominator.
-const EInvalidMaxRedemptionGrossDivergenceBps: u64 = 56;
+// Codes 55 and 56 retired: the favorable-divergence redemption gate and its
+// policy bound gave way to the exact proportional-claim gross cap (ADR 0084 D3).
 
 #[test_only]
 /// A mint produced fewer shares than the caller's stated minimum.
@@ -373,14 +363,6 @@ macro public(package) fun mark_index_divergence_exceeds_bound(): u64 {
     31
 }
 
-macro public(package) fun mint_contribution_exceeds_bound(): u64 {
-    32
-}
-
-macro public(package) fun invalid_max_mint_contribution_divergence_bps(): u64 {
-    33
-}
-
 macro public(package) fun invalid_bounded_value(): u64 {
     34
 }
@@ -395,14 +377,6 @@ macro public(package) fun invalid_emergency_tolerance_bps(): u64 {
 
 macro public(package) fun invalid_minimum_improvement_bps(): u64 {
     37
-}
-
-macro public(package) fun redemption_gross_exceeds_bound(): u64 {
-    55
-}
-
-macro public(package) fun invalid_max_redemption_gross_divergence_bps(): u64 {
-    56
 }
 
 macro public(package) fun shares_out_below_minimum(): u64 {

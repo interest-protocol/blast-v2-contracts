@@ -132,6 +132,13 @@ public(package) fun shareholder_nav(
 /// reserve checkpoint, subtract the fee twice, or size exposure from venue
 /// equity.
 ///
+/// `contribution` is `min(nav_after - nav_before, deposit - fee)`. A fill that
+/// raises shareholder NAV by more than the depositor paid net of the fee
+/// credits exactly `deposit - fee`; the favorable excess stays with existing
+/// holders instead of minting shares for the depositor (ADR 0084 D3). A fill
+/// that raises NAV by less credits the actual rise, so execution cost still
+/// reaches the depositor.
+///
 /// `min_shares_out` is the depositor's own floor on `shares_out`. The share
 /// formula floors, so a depositor can lose up to one pre-mint share of NAV to
 /// rounding; that loss is bounded only by the share price, which the locked
@@ -163,7 +170,7 @@ public(package) fun mint_accounting_quote(
         blast_leverage_series_one::errors::nonpositive_contribution!(),
     );
 
-    let contribution = nav_after - nav_before;
+    let contribution = (nav_after - nav_before).min(deposit - fee);
     let (shares_out, shares_after) = mint_quote(
         contribution,
         nav_before,
@@ -194,18 +201,26 @@ public(package) fun fee_allocation(amount: u64, rate_bps: u64, admin_bps: u64): 
 }
 
 /// Prices shares after the separately allocated fee has left shareholder NAV.
+///
+/// Returns `(nav_after, contribution, shares)`. `expected_contribution` is the
+/// deposit net of the whole protocol fee, and the credited contribution is
+/// `min(nav_after - nav_before, expected_contribution)`: a favorable fill
+/// credits at most what the depositor paid and its excess stays with existing
+/// holders, while a costly fill credits the actual rise (ADR 0084 D3). A
+/// mint whose NAV does not rise still aborts as a nonpositive contribution.
 public(package) fun allocated_mint_quote(
     equity_before: u64,
     equity_after: u64,
     reserve_before: u64,
     reserve_after: u64,
+    expected_contribution: u64,
     supply: u64,
     minimum: u64,
 ): (u64, u64, u64) {
     let before = shareholder_nav(equity_before, reserve_before);
     let after = shareholder_nav(equity_after, reserve_after);
     assert!(after > before, blast_leverage_series_one::errors::nonpositive_contribution!());
-    let contribution = after - before;
+    let contribution = (after - before).min(expected_contribution);
     let (shares, _) = mint_quote(contribution, before, supply);
     assert!(shares >= minimum, blast_leverage_series_one::errors::shares_out_below_minimum!());
     (after, contribution, shares)
@@ -213,20 +228,20 @@ public(package) fun allocated_mint_quote(
 
 /// Quotes a redemption and credits its reserve fee at the correct checkpoint.
 ///
-/// Returns `(reserve_after, shares_after, equity_keep, proportional_claim,
+/// Returns `(reserve_after, shares_after, nav_kept, proportional_claim,
 /// gross, fee, net)`. Both pre-redemption and post-unwind shareholder NAV
 /// exclude `reserve_before`. Only after the gross claim is known does this
 /// function credit the fee. Thus the credited fee cannot re-enter the current
 /// or a later redemption's share pricing base.
 ///
 /// `proportional_claim` is `nav_before - equity_keep`: the redeemer's share of
-/// pre-unwind NAV after the kept equity rounds up. `gross` measures against
-/// post-unwind NAV instead, so any equity that appears between the two
-/// readings is paid to the redeemer in full. The Series must pass the claim
-/// and the gross to `policy::assert_redemption_gross_within_bound` before it
-/// pays, exactly as the mint path bounds its contribution against the deposit.
-/// This function returns the claim so the Series never derives it from a NAV
-/// of its own.
+/// pre-unwind NAV after the kept equity rounds up. `gross` is
+/// `min(nav_unwound, nav_before) - equity_keep`, so it never exceeds the
+/// claim: an unwind that costs the Series pays less, and one that gains keeps
+/// the gain with the remaining holders (ADR 0084 D3). `nav_kept` is the
+/// shareholder NAV that actually remains, `nav_unwound - gross`, which is at
+/// least `equity_keep`; the Series derives the required final venue equity
+/// from it and never from a NAV of its own.
 ///
 /// The later state transition must still authenticate both venue-equity values,
 /// withdraw exactly `net`, and verify final venue equity and reserve atomically.
@@ -248,12 +263,13 @@ public(package) fun redemption_accounting_quote(
         redeem_fee_bps,
     );
     let proportional_claim = nav_before - equity_keep;
+    let nav_kept = nav_unwound - gross;
     let reserve_after = credit_fee(reserve_before, fee);
 
     (
         reserve_after,
         shares_after,
-        equity_keep,
+        nav_kept,
         proportional_claim,
         gross,
         fee,
@@ -705,7 +721,7 @@ fun mint_quote(
 ///
 /// ```text
 /// equity_keep = ceil(nav_before * S1 / shares_before)
-/// gross       = nav_unwound - equity_keep
+/// gross       = min(nav_unwound, nav_before) - equity_keep
 /// fee         = ceil(gross * redeem_fee_bps / 10_000)
 /// net         = gross - fee
 /// ```
@@ -714,13 +730,16 @@ fun mint_quote(
 /// the payout or reserve credit, at the same valuation pair as `nav_before`.
 /// Production state transitions must use
 /// `accounting_math::redemption_accounting_quote`, which pins that checkpoint
-/// and credits the fee afterward. Final shareholder NAV is exactly
-/// `equity_keep`. Rounding it up gives
+/// and credits the fee afterward. The gross is capped at the proportional
+/// claim `nav_before - equity_keep`: a favorable unwind pays exactly the
+/// claim and its excess stays with the remaining holders (ADR 0084 D3).
+/// Final shareholder NAV is `nav_unwound - gross`, at least `equity_keep`.
+/// Rounding the kept equity up gives
 /// `equity_keep / S1 >= nav_before / shares_before` (ADR 0064 I10).
 ///
 /// Preconditions: positive `nav_before`, `0 < shares_burned < shares_before`, a
-/// fee rate below 10,000, `nav_unwound > equity_keep`, and a positive net
-/// payout. The function enforces the share bound directly; the future locked
+/// fee rate below 10,000, `min(nav_unwound, nav_before) > equity_keep`, and a
+/// positive net payout. The function enforces the share bound directly; the future locked
 /// seed makes the complete production supply unpresentable. A zero supply
 /// cannot satisfy the bound and aborts with the share-amount code. Guard order
 /// is `nav_before`, the share bound, the fee rate, the gross claim, then the net
@@ -747,12 +766,13 @@ fun redemption_quote(
 
     let shares_after = shares_before - shares_burned;
     let equity_keep = nav_before.mul_div_ceil(shares_after, shares_before);
+    let claimable = nav_unwound.min(nav_before);
     assert!(
-        nav_unwound > equity_keep,
+        claimable > equity_keep,
         blast_leverage_series_one::errors::nonpositive_gross!(),
     );
 
-    let gross = nav_unwound - equity_keep;
+    let gross = claimable - equity_keep;
     let fee = fee_up(gross, redeem_fee_bps);
     let net = gross - fee;
     assert!(net > 0, blast_leverage_series_one::errors::zero_net_payout!());

@@ -70,14 +70,6 @@ fun package_error_registry_is_stable() {
         blast_leverage_series_one::errors::mark_index_divergence_exceeds_bound!(),
         31,
     );
-    assert_eq!(
-        blast_leverage_series_one::errors::mint_contribution_exceeds_bound!(),
-        32,
-    );
-    assert_eq!(
-        blast_leverage_series_one::errors::invalid_max_mint_contribution_divergence_bps!(),
-        33,
-    );
     assert_eq!(blast_leverage_series_one::errors::invalid_bounded_value!(), 34);
     assert_eq!(
         blast_leverage_series_one::errors::invalid_strict_tolerance_bps!(),
@@ -96,14 +88,6 @@ fun package_error_registry_is_stable() {
 /// Pins the Series gate codes added by the 2026-09-03 remediation.
 #[test]
 fun series_gate_error_registry_is_stable() {
-    assert_eq!(
-        blast_leverage_series_one::errors::redemption_gross_exceeds_bound!(),
-        55,
-    );
-    assert_eq!(
-        blast_leverage_series_one::errors::invalid_max_redemption_gross_divergence_bps!(),
-        56,
-    );
     assert_eq!(blast_leverage_series_one::errors::shares_out_below_minimum!(), 57);
     assert_eq!(
         blast_leverage_series_one::errors::insufficient_leverage_improvement!(),

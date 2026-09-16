@@ -65,8 +65,6 @@ public struct TierPolicy has copy, drop, store {
     redeem_fee_cap_bps: u64,
     admin_allocation_cap_bps: u64,
     initial_admin_allocation_bps: u64,
-    max_mint_contribution_divergence_bps: u64,
-    max_redemption_gross_divergence_bps: u64,
     min_exposure_lots: u64,
     nav_cap: u64,
 }
@@ -289,7 +287,7 @@ public(package) fun assert_execution_within_emergency_tolerance(
 
 /// Composes one complete immutable policy for one future Vault.
 ///
-/// Both divergence bounds and both fee rates stay below 10,000 bps.
+/// Both fee rates stay below 10,000 bps.
 /// `min_exposure_lots` is positive and at most `max_min_exposure_lots`.
 /// `nav_cap` is positive and small enough that
 /// `nav_cap * hard_cap_bps / 10_000` fits in `u64`, so a target notional can be
@@ -298,16 +296,13 @@ public(package) fun assert_execution_within_emergency_tolerance(
 /// ceilings also fence a transposed lot multiple and NAV cap, which would
 /// otherwise brick every mint of the deployed Vault.
 ///
-/// Guard order is the fee rates, the mint divergence bound, the redemption
-/// divergence bound, the lot multiple, then the NAV cap.
+/// Guard order is the fee rates, the lot multiple, then the NAV cap.
 public fun new_tier_policy(
     side: PositionSide,
     rebalance_policy: RebalancePolicy,
     valuation_policy: ValuationPolicy,
     mint_fee_bps: u64,
     redeem_fee_bps: u64,
-    max_mint_contribution_divergence_bps: u64,
-    max_redemption_gross_divergence_bps: u64,
     min_exposure_lots: u64,
     nav_cap: u64,
 ): TierPolicy {
@@ -315,16 +310,6 @@ public fun new_tier_policy(
         mint_fee_bps < constants::basis_points_denominator!()
             && redeem_fee_bps < constants::basis_points_denominator!(),
         blast_leverage_series_one::errors::invalid_fee_bps!(),
-    );
-    assert!(
-        max_mint_contribution_divergence_bps
-            < constants::basis_points_denominator!(),
-        blast_leverage_series_one::errors::invalid_max_mint_contribution_divergence_bps!(),
-    );
-    assert!(
-        max_redemption_gross_divergence_bps
-            < constants::basis_points_denominator!(),
-        blast_leverage_series_one::errors::invalid_max_redemption_gross_divergence_bps!(),
     );
     assert!(
         min_exposure_lots > 0
@@ -349,8 +334,6 @@ public fun new_tier_policy(
         redeem_fee_cap_bps: redeem_fee_bps,
         admin_allocation_cap_bps: 0,
         initial_admin_allocation_bps: 0,
-        max_mint_contribution_divergence_bps,
-        max_redemption_gross_divergence_bps,
         min_exposure_lots,
         nav_cap,
     }
@@ -443,78 +426,6 @@ public(package) fun assert_within_nav_cap(self: &TierPolicy, nav: u64) {
     assert!(
         self.is_within_nav_cap(nav),
         blast_leverage_series_one::errors::series_nav_cap_exceeded!(),
-    );
-}
-
-/// Rejects an impossible or overly favorable mint contribution.
-///
-/// `deposit` and `contribution` are atomic collateral units. `contribution` is
-/// the actual post-operation shareholder-NAV contribution returned by the
-/// canonical reserve-aware mint accounting path. A contribution at or below
-/// the deposit always passes. Any excess is bounded by:
-///
-/// ```text
-/// contribution <= deposit
-///     + floor(
-///         deposit
-///             * max_mint_contribution_divergence_bps
-///             * target_leverage_bps
-///             / 100_000_000,
-///     )
-/// ```
-///
-/// The comparison cross-multiplies through `u256`, so it neither narrows the
-/// allowed contribution nor overflows when every input is `u64::MAX` within
-/// its validated policy range. Flooring the allowance protects existing
-/// holders. The bound is inclusive.
-///
-/// This is a Series accounting postcondition, not a share-pricing input or an
-/// execution-price oracle. It deliberately does not reuse the venue
-/// mark-divergence policy. The mint transition applies it to the one
-/// canonical contribution before minting shares.
-public(package) fun assert_mint_contribution_within_bound(
-    self: &TierPolicy,
-    deposit: u64,
-    contribution: u64,
-) {
-    assert!(
-        is_mint_contribution_within_bound(self, deposit, contribution),
-        blast_leverage_series_one::errors::mint_contribution_exceeds_bound!(),
-    );
-}
-
-/// Rejects an overly favorable redemption gross claim.
-///
-/// `proportional_claim` and `gross` are atomic collateral units returned
-/// together by `accounting_math::redemption_accounting_quote`. The claim is
-/// the redeemer's share of pre-unwind NAV; the gross measures against
-/// post-unwind NAV and receives every unit by which the second reading exceeds
-/// the first, however few shares were burned. A gross at or below the claim
-/// always passes. Any excess is bounded by the same leveraged allowance the
-/// mint side applies to its contribution:
-///
-/// ```text
-/// gross <= proportional_claim
-///     + floor(
-///         proportional_claim
-///             * max_redemption_gross_divergence_bps
-///             * target_leverage_bps
-///             / 100_000_000,
-///     )
-/// ```
-///
-/// A zero claim admits only a zero gross, which the quote already rejects, so
-/// a dust redeemer can never be paid a gain that is not proportionally theirs.
-/// The comparison cross-multiplies through `u256` and the bound is inclusive.
-/// The redemption transition applies it before paying `net`.
-public(package) fun assert_redemption_gross_within_bound(
-    self: &TierPolicy,
-    proportional_claim: u64,
-    gross: u64,
-) {
-    assert!(
-        is_redemption_gross_within_bound(self, proportional_claim, gross),
-        blast_leverage_series_one::errors::redemption_gross_exceeds_bound!(),
     );
 }
 
@@ -739,57 +650,6 @@ public(package) fun assert_mark_within_index_divergence(
 
 // === Private Functions ===
 
-/// Returns whether a mint contribution satisfies its leveraged divergence cap.
-fun is_mint_contribution_within_bound(
-    self: &TierPolicy,
-    deposit: u64,
-    contribution: u64,
-): bool {
-    is_within_leveraged_allowance(
-        deposit,
-        contribution,
-        self.max_mint_contribution_divergence_bps,
-        self.rebalance_policy.target_bps,
-    )
-}
-
-/// Returns whether a redemption gross satisfies its leveraged divergence cap.
-fun is_redemption_gross_within_bound(
-    self: &TierPolicy,
-    proportional_claim: u64,
-    gross: u64,
-): bool {
-    is_within_leveraged_allowance(
-        proportional_claim,
-        gross,
-        self.max_redemption_gross_divergence_bps,
-        self.rebalance_policy.target_bps,
-    )
-}
-
-/// Returns whether `actual` exceeds `expected` by at most the leveraged allowance.
-///
-/// The allowance is `floor(expected * divergence_bps * target_bps /
-/// 100_000_000)`; an actual at or below the expected value always passes. The
-/// comparison cross-multiplies through `u256`, so it neither narrows the
-/// allowance nor overflows at `u64::MAX` inputs within the validated ranges.
-fun is_within_leveraged_allowance(
-    expected: u64,
-    actual: u64,
-    divergence_bps: u64,
-    target_bps: u64,
-): bool {
-    if (actual <= expected) {
-        true
-    } else {
-        let denominator = constants::basis_points_denominator!() as u256;
-        let excess = (actual - expected) as u256;
-
-        excess * denominator * denominator
-            <= (expected as u256) * (divergence_bps as u256) * (target_bps as u256)
-    }
-}
-
 /// Returns whether `executed` is within `tolerance_bps` of a positive `reference`.
 fun is_within_relative_tolerance(
     tolerance_bps: u64,
@@ -803,42 +663,6 @@ fun is_within_relative_tolerance(
 }
 
 // === Test-Only Functions ===
-
-#[test_only]
-/// Returns the mint contribution's maximum favorable divergence in basis points.
-public(package) fun max_mint_contribution_divergence_bps(
-    self: &TierPolicy,
-): u64 {
-    self.max_mint_contribution_divergence_bps
-}
-
-#[test_only]
-/// Exposes the mint-contribution predicate for exhaustive reference testing.
-public(package) fun is_mint_contribution_within_bound_for_testing(
-    self: &TierPolicy,
-    deposit: u64,
-    contribution: u64,
-): bool {
-    is_mint_contribution_within_bound(self, deposit, contribution)
-}
-
-#[test_only]
-/// Returns the redemption gross claim's maximum favorable divergence in basis points.
-public(package) fun max_redemption_gross_divergence_bps(
-    self: &TierPolicy,
-): u64 {
-    self.max_redemption_gross_divergence_bps
-}
-
-#[test_only]
-/// Exposes the redemption-gross predicate for exhaustive reference testing.
-public(package) fun is_redemption_gross_within_bound_for_testing(
-    self: &TierPolicy,
-    proportional_claim: u64,
-    gross: u64,
-): bool {
-    is_redemption_gross_within_bound(self, proportional_claim, gross)
-}
 
 #[test_only]
 /// Exposes issuance rates to the test event reducer without widening production ABI.

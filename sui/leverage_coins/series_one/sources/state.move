@@ -355,6 +355,8 @@ public fun assert_active_observation<Product>(
 }
 
 /// Completes a full proportional fill and credits only its buffer allocation.
+/// The credited contribution is capped at the deposit net of the whole fee, so
+/// a favorable fill accrues to existing holders (ADR 0084 D3).
 /// The returned shares are minted through the adapter's native share authority.
 /// Returns shares, contribution, fee, admin, buffer and the two sealed rates.
 public fun complete_mint<Product>(
@@ -365,7 +367,7 @@ public fun complete_mint<Product>(
 ): (u64, u64, u64, u64, u64, u64, u64) {
     self.lifecycle.assert_active();
     let MintPlan {
-        before, reserve_before, deposit, expected_contribution, buffer_fee,
+        before, reserve_before, deposit: _, expected_contribution, buffer_fee,
         admin_fee, fee_bps, admin_bps, supply, minimum_shares, order_base,
     } = plan;
     assert!(self.maintenance_reserve == reserve_before, blast_leverage_series_one::errors::active_checkpoint_changed!());
@@ -382,9 +384,9 @@ public fun complete_mint<Product>(
     let reserve_after = reserve_before.checked_add(buffer_fee)
         .destroy_or!(abort blast_leverage_series_one::errors::arithmetic_overflow!());
     let (nav_after, contribution, shares) = accounting_math::allocated_mint_quote(
-        before.equity, after.equity, reserve_before, reserve_after, supply, minimum_shares,
+        before.equity, after.equity, reserve_before, reserve_after, expected_contribution,
+        supply, minimum_shares,
     );
-    self.tier_policy.assert_mint_contribution_within_bound(deposit, contribution);
     accounting_math::assert_mint_base_within_bounds_from_equity(
         after.base, expected_contribution, contribution, before.base, before.equity,
         reserve_before, before.lot, self.tier_policy.min_exposure_lots(),
@@ -451,6 +453,8 @@ public fun assert_redemption_cash_out<Product>(
 }
 
 /// Computes payout after unwind and credits the fee once, excluding admin cash.
+/// The gross is capped at the proportional claim, so a favorable unwind accrues
+/// to the remaining holders (ADR 0084 D3).
 /// Returns user payout, locally retained admin cash, and required final venue equity.
 /// The adapter must withdraw exactly their sum and prove the final cash checkpoint.
 public fun complete_redemption<Product>(
@@ -477,14 +481,13 @@ public fun complete_redemption<Product>(
     accounting_math::assert_redemption_base_within_bounds(
         after.base, shares, before.base, supply, before.lot, self.tier_policy.min_exposure_lots(),
     );
-    let (reserve_with_fee, _, keep, claim, gross, fee, net) = accounting_math::redemption_accounting_quote(
+    let (reserve_with_fee, _, nav_kept, _, _, fee, net) = accounting_math::redemption_accounting_quote(
         shares, before.equity, after.equity, reserve_before, supply, fee_bps,
     );
-    self.tier_policy.assert_redemption_gross_within_bound(claim, gross);
     assert!(net >= minimum_output, blast_leverage_series_one::errors::redemption_output_below_minimum!());
     let admin = fee.mul_div(admin_bps, 10_000);
     let reserve_after = reserve_with_fee - admin;
-    let final_equity = keep.checked_add(reserve_after)
+    let final_equity = nav_kept.checked_add(reserve_after)
         .destroy_or!(abort blast_leverage_series_one::errors::arithmetic_overflow!());
     self.maintenance_reserve = reserve_after;
     (net, admin, final_equity, fee, fee - admin)

@@ -283,7 +283,7 @@ fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
             let witness = fixture.authority.sign_in(&fixture.admin_cap);
             let tier = policy::new_tier_policy(
                 side, policy::new_rebalance_policy(target - 2_000, target, target + 2_000, target + 10_000, 100, 500, 10),
-                policy::new_valuation(30_000, 2_000, 100, 500), 0, 0, 100, 100, 100, NAV_CAP,
+                policy::new_valuation(30_000, 2_000, 100, 500), 0, 0, 100, NAV_CAP,
             );
             let mut state = state::new<Product>(&witness, tier, 1, 2_000_000, 5_000_000);
             let notional = target * 100;
@@ -527,6 +527,67 @@ fun redemption_keeps_remaining_nav_and_allocates_its_own_fee() {
     assert_eq!(fee, 498);
     assert_eq!(state.maintenance_reserve(), 100_498);
     assert_eq!(final_equity - state.maintenance_reserve(), 500_000);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+/// A fill that raises NAV by more than the deposit net of the fee credits exactly
+/// `deposit - protocol_fee`; the 2,000-unit excess stays with existing holders.
+#[test]
+fun mint_credits_at_most_the_deposit_net_of_fee_when_the_fill_is_favorable() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::long());
+    let plan = state.prepare_mint(
+        standard_observation(policy::long()).into_position_observation(),
+        1_000_000,
+        1_000_000,
+        999_000,
+        10,
+        REFERENCE_TIME_MS,
+    );
+    assert_eq!(plan.order_base(), 199_000);
+    let (shares, contribution, fee, admin, buffer, _, _) = state.complete_mint(
+        plan,
+        standard_observation(policy::long())
+            .with_venue_equity(2_102_000)
+            .with_absolute_base(399_000)
+            .with_absolute_notional(3_990_000)
+            .into_position_observation(),
+        REFERENCE_TIME_MS,
+    );
+    assert_eq!(vector[shares, contribution, fee, admin, buffer], vector[999_000, 999_000, 1_000, 0, 1_000]);
+    assert_eq!(state.maintenance_reserve(), 101_000);
+    // Remaining NAV per share rose: 2_001_000 / 1_999_000 > 1_000_000 / 1_000_000.
+    assert!((2_001_000u128) * 1_000_000 > 1_000_000u128 * 1_999_000);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+/// An unwind that leaves more NAV than the pre-unwind reading pays exactly the
+/// proportional claim; the 2,000-unit gain stays with the remaining holders.
+#[test]
+fun redemption_pays_at_most_the_proportional_claim_when_the_unwind_is_favorable() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::long());
+    let plan = state.prepare_redemption(
+        standard_observation(policy::long()).into_position_observation(),
+        500_000, 1_000_000, 499_500, 10, REFERENCE_TIME_MS,
+    );
+    assert_eq!(plan.redemption_order_base(), 100_000);
+    let (net, admin, final_equity, fee, buffer) = state.complete_redemption(
+        plan,
+        standard_observation(policy::long())
+            .with_venue_equity(1_102_000)
+            .with_absolute_base(100_000)
+            .with_absolute_notional(1_000_000)
+            .into_position_observation(),
+        REFERENCE_TIME_MS,
+    );
+    assert_eq!(vector[net, admin, fee, buffer], vector[499_500, 0, 500, 500]);
+    assert_eq!(state.maintenance_reserve(), 100_500);
+    assert_eq!(final_equity, 602_500);
+    // Remaining holders keep 502_000 over 500_000 shares, above the 500_000 proportional keep.
+    assert_eq!(final_equity - state.maintenance_reserve(), 502_000);
     state.destroy_for_testing();
     destroy(fixture);
 }
@@ -1595,8 +1656,6 @@ fun tier_policy(side: PositionSide): TierPolicy {
         policy::new_valuation(30_000, 2_000, 100, 500),
         10,
         10,
-        100,
-        100,
         MIN_EXPOSURE_LOTS,
         NAV_CAP,
     )

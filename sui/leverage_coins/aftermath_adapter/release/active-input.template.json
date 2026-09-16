@@ -27,7 +27,6 @@
      "publicLowerLeverageBps": 18000, "publicUpperLeverageBps": 22000, "hardThresholdLeverageBps": 25000,
      "strictToleranceBps": 30, "emergencyToleranceBps": 100, "maxPriceAgeMs": 30000,
      "maxConfidenceBps": 50, "maxMarkDivergenceBps": 100,
-     "maxMintContributionDivergenceBps": 30, "maxRedemptionGrossDivergenceBps": 30,
      "navCapAtomicCollateral": null, "orderNotionalMinCurrentMaxAtomicCollateral": null,
      "seedAtomicCollateral": null, "seedBufferAtomicCollateral": null, "lockedSeedShares": null},
     {"direction": "short", "productType": null, "vaultId": null, "accountObjectId": null,
@@ -35,7 +34,6 @@
      "publicLowerLeverageBps": 18500, "publicUpperLeverageBps": 21500, "hardThresholdLeverageBps": 23500,
      "strictToleranceBps": 20, "emergencyToleranceBps": 75, "maxPriceAgeMs": 15000,
      "maxConfidenceBps": 25, "maxMarkDivergenceBps": 75,
-     "maxMintContributionDivergenceBps": 20, "maxRedemptionGrossDivergenceBps": 20,
      "navCapAtomicCollateral": null, "orderNotionalMinCurrentMaxAtomicCollateral": null,
      "seedAtomicCollateral": null, "seedBufferAtomicCollateral": null, "lockedSeedShares": null}
   ],

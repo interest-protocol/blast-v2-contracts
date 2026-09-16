@@ -2468,8 +2468,6 @@ fun standard_tier_policy_for_side(side: policy::PositionSide): policy::TierPolic
         10,
         10,
         100,
-        100,
-        100,
         1_000_000_000,
     )
 }
