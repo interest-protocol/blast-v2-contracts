@@ -21,6 +21,8 @@ use blast_fun_migrators::{
 use std::{bcs, type_name, unit_test::{assert_eq, destroy}};
 use sui::{clock, coin, coin_registry::Currency, test_scenario::{Self, Scenario}};
 
+use fun authority_take_curve_fee_cap as AuthorityFixture.take_curve_fee_cap;
+
 // === Constants ===
 
 const CREATOR: address = @0xC0FFEE;
@@ -114,7 +116,7 @@ fun a_retired_curve_fee_cap_cannot_claim_the_lp_fee_cap() {
 fun a_launch_custodian_binds_pending_lp_fees_without_a_cap() {
     let mut fixture = start();
     let f = &mut fixture;
-    let curve_fee_cap = f.curve_fee_cap.extract();
+    let curve_fee_cap = f.take_curve_fee_cap();
 
     f.launch.lock_creator_fees(&f.version, curve_fee_cap, TestCustodian());
     f.vault.lock_pending_creator_fees(&f.migrators_version, &f.launch, TestCustodian());
@@ -159,7 +161,7 @@ fun a_claimed_cap_prevents_binding_pending_fees_without_it() {
     let mut fixture = start();
     let f = &mut fixture;
     let lp_fee_cap = f.claim();
-    let curve_fee_cap = f.curve_fee_cap.extract();
+    let curve_fee_cap = f.take_curve_fee_cap();
 
     f.launch.lock_creator_fees(&f.version, curve_fee_cap, TestCustodian());
     f.vault.lock_pending_creator_fees(&f.migrators_version, &f.launch, TestCustodian());
@@ -287,7 +289,7 @@ fun admin_reissues_a_pending_vault_whose_launch_fees_are_not_custodied() {
 fun pending_fees_of_a_custodied_launch_reject_reissue_before_the_role_check() {
     let mut fixture = start();
     let f = &mut fixture;
-    let curve_fee_cap = f.curve_fee_cap.extract();
+    let curve_fee_cap = f.take_curve_fee_cap();
 
     f.launch.lock_creator_fees(&f.version, curve_fee_cap, TestCustodian());
     let (other, role_less_cap) = f.new_role_less_admin();
@@ -310,7 +312,7 @@ fun a_claimed_cap_stays_reissuable_after_launch_fees_are_custodied() {
     let mut fixture = start();
     let f = &mut fixture;
     let claimed = f.claim();
-    let curve_fee_cap = f.curve_fee_cap.extract();
+    let curve_fee_cap = f.take_curve_fee_cap();
     let admin_witness = f.sign_in();
 
     f.launch.lock_creator_fees(&f.version, curve_fee_cap, TestCustodian());
@@ -389,7 +391,82 @@ fun locking_rejects_a_primitive_custodian_witness() {
     fixture.end();
 }
 
+#[test]
+#[expected_failure(
+    abort_code = lp_fee_authority::EInvalidLpFeeCustodian,
+    location = blast_fun_migrators::lp_fee_authority,
+)]
+fun locking_rejects_a_vector_custodian_witness() {
+    let mut fixture = start();
+    let f = &mut fixture;
+    let lp_fee_cap = f.claim();
+
+    f.vault.lock_creator_fees(&f.migrators_version, lp_fee_cap, vector[0u8]);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = lp_fee_authority::EInvalidLpFeeCustodian,
+    location = blast_fun_migrators::lp_fee_authority,
+)]
+fun locking_rejects_a_publicly_constructible_framework_witness() {
+    let mut fixture = start();
+    let f = &mut fixture;
+    let lp_fee_cap = f.claim();
+
+    f.vault.lock_creator_fees(&f.migrators_version, lp_fee_cap, option::none<TestCustodian>());
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::ECreatorCustodianMismatch,
+    location = blast_fun::launch,
+)]
+fun a_primitive_witness_cannot_bind_pending_lp_fees() {
+    let mut fixture = start();
+    let f = &mut fixture;
+    let curve_fee_cap = f.take_curve_fee_cap();
+
+    f.launch.lock_creator_fees(&f.version, curve_fee_cap, TestCustodian());
+    f.vault.lock_pending_creator_fees(&f.migrators_version, &f.launch, 0u64);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = vault::EInvalidLpFeeCapRecipient,
+    location = blast_fun_migrators::vault,
+)]
+fun reissue_rejects_the_zero_recipient_before_the_custodian_reservation() {
+    let mut fixture = start();
+    let f = &mut fixture;
+    let curve_fee_cap = f.take_curve_fee_cap();
+    let admin_witness = f.sign_in();
+
+    f.launch.lock_creator_fees(&f.version, curve_fee_cap, TestCustodian());
+    f.vault.issue_lp_fee_cap(
+        &f.migrators_version,
+        &f.launch,
+        &admin_witness,
+        @0x0,
+        f.scenario.ctx(),
+    );
+
+    fixture.end();
+}
+
 // === Private Test Helpers ===
+
+fun authority_take_curve_fee_cap(
+    self: &mut AuthorityFixture,
+): CurveFeeCap<LP_FEE_AUTHORITY_TESTS> {
+    self.curve_fee_cap.extract()
+}
 
 fun start(): AuthorityFixture {
     let mut scenario = test_scenario::begin(ADMIN);

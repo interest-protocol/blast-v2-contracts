@@ -569,7 +569,7 @@ fi
     && rg -U -q '#\[error\(code = 2\)\]\nconst ELpFeeCustodianMismatch: vector<u8> = b"Custodian must be the one creator LP fees are bound to\.";' "$LP_FEE_AUTHORITY_SOURCE" \
     && rg -U -q '#\[error\(code = 3\)\]\nconst ELpFeeAuthorityNotPending: vector<u8> =\n    b"Only a pending LP-fee authority can be claimed or bound without a capability\.";' "$LP_FEE_AUTHORITY_SOURCE" \
     && rg -U -q '#\[error\(code = 4\)\]\nconst ELpFeesReservedForCustodian: vector<u8> =\n    b"Pending creator LP fees are reserved for the launch.s creator-fee custodian\.";' "$LP_FEE_AUTHORITY_SOURCE" \
-    && rg -U -q '#\[error\(code = 5\)\]\nconst EInvalidLpFeeCustodian: vector<u8> =\n    b"Custodian witness must be a struct type only its module can construct\.";' "$LP_FEE_AUTHORITY_SOURCE" || \
+    && rg -U -q '#\[error\(code = 5\)\]\nconst EInvalidLpFeeCustodian: vector<u8> =\n    b"Custodian witness must be a struct type from a package outside the frameworks\.";' "$LP_FEE_AUTHORITY_SOURCE" || \
     fail "lp_fee_authority error codes must remain contiguous 0-5 and bound to their documented failures"
 require_function_body "$LP_FEE_AUTHORITY_SOURCE" 'destroy_lp_fee_cap' \
     'publicfundestroy_lp_fee_cap<Meme>(self:LpFeeCap<Meme>){letLpFeeCap{id}=self;id.delete();}' \
@@ -611,7 +611,7 @@ require_function_body "$LP_FEE_AUTHORITY_SOURCE" 'custodian' \
     'funcustodian<Meme>(self:&LpFeeAuthority<Meme>):Option<TypeName>{match(self){LpFeeAuthority::Custodian(custodian)=>option::some(*custodian),_=>option::none(),}}' \
     "lp_fee_authority::custodian must stay a private Custodian-only read"
 require_function_body "$LP_FEE_AUTHORITY_SOURCE" 'custodian_type' \
-    'funcustodian_type<Custodian>():TypeName{letcustodian=type_name::with_original_ids<Custodian>();assert!(!custodian.is_primitive(),EInvalidLpFeeCustodian);custodian}' \
+    'funcustodian_type<Custodian>():TypeName{letcustodian=type_name::with_original_ids<Custodian>();assert!(!custodian.is_primitive(),EInvalidLpFeeCustodian);letorigin=type_name::original_id<Custodian>();assert!(origin!=@0x1&&origin!=@0x2,EInvalidLpFeeCustodian);custodian}' \
     "lp_fee_authority::custodian_type must reject a primitive or vector custodian witness"
 
 # Every venue migration route creates the pending authority immediately before it

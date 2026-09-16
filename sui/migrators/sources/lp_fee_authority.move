@@ -31,7 +31,7 @@ const ELpFeesReservedForCustodian: vector<u8> =
     b"Pending creator LP fees are reserved for the launch's creator-fee custodian.";
 #[error(code = 5)]
 const EInvalidLpFeeCustodian: vector<u8> =
-    b"Custodian witness must be a struct type only its module can construct.";
+    b"Custodian witness must be a struct type from a package outside the frameworks.";
 
 // === Public Structs ===
 
@@ -86,7 +86,7 @@ public(package) fun claim<Meme, Quote>(
     lp_fee_cap
 }
 
-/// Binds pending fees forever to the object the launch's creator fees are bound to.
+/// Binds pending fees forever to the custodian module the launch's creator fees are bound to.
 public(package) fun lock_pending<Meme, Quote, Custodian: drop>(
     self: &mut LpFeeAuthority<Meme>,
     launch: &Launch<Meme, Quote>,
@@ -165,13 +165,19 @@ fun assert_pending<Meme>(self: &LpFeeAuthority<Meme>) {
     assert!(self.is_pending(), ELpFeeAuthorityNotPending);
 }
 
-/// Names the custodian module, rejecting a primitive or vector witness anyone could construct.
+/// Names the custodian module, rejecting witnesses anyone could construct.
 ///
-/// `lock_pending` needs no such check: it copies the launch's already validated custodian.
+/// Primitives and vectors are constructible by every caller, and so are framework types such as
+/// `Option`, `String`, and `VecMap`, so a witness must come from a package outside `0x1` and
+/// `0x2`. `lock_pending` needs no such check: it copies the launch's already validated custodian.
 fun custodian_type<Custodian>(): TypeName {
     let custodian = type_name::with_original_ids<Custodian>();
 
     assert!(!custodian.is_primitive(), EInvalidLpFeeCustodian);
+
+    let origin = type_name::original_id<Custodian>();
+
+    assert!(origin != @0x1 && origin != @0x2, EInvalidLpFeeCustodian);
 
     custodian
 }

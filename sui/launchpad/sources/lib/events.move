@@ -298,7 +298,7 @@ public(package) fun metadata_cap_reassigned(
     });
 }
 
-/// Emits the permanent binding of creator fees to a custodian object.
+/// Emits the permanent binding of creator fees to a custodian module.
 public(package) fun creator_fees_locked(
     launch_id: ID,
     curve_fee_cap_id: ID,

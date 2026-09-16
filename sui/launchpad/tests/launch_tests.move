@@ -2076,6 +2076,72 @@ fun locking_rejects_a_primitive_custodian_witness() {
     fixture.end();
 }
 
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidFeeCustodian,
+    location = blast_fun::launch,
+)]
+fun locking_rejects_a_vector_custodian_witness() {
+    let mut fixture = start();
+
+    fixture.next_tx!(CREATOR, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
+            &f.package_version,
+            &f.runtime_config,
+            option::none(),
+            &f.clock,
+            f.ctx!(),
+        );
+        destroy(metadata_cap);
+
+        launch.lock_creator_fees(&f.package_version, creator_cap, vector[0u8]);
+
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidFeeCustodian,
+    location = blast_fun::launch,
+)]
+fun locking_rejects_a_publicly_constructible_framework_witness() {
+    let mut fixture = start();
+
+    fixture.next_tx!(CREATOR, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = launch::new<LAUNCH_TESTS, TEST_QUOTE, TEST_MIGRATION_WITNESS>(
+            ticket,
+            &f.package_version,
+            &f.config,
+            f.ctx!(),
+        );
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
+            &f.package_version,
+            &f.runtime_config,
+            option::none(),
+            &f.clock,
+            f.ctx!(),
+        );
+        destroy(metadata_cap);
+
+        launch.lock_creator_fees(&f.package_version, creator_cap, option::none<TestCustodian>());
+
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
 // === Private Test Helpers ===
 
 macro fun launch_next_tx(

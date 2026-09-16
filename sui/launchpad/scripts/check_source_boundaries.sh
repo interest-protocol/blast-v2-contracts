@@ -1401,6 +1401,12 @@ launch_functions_containing() {
   ' <<<"$launch_facts" | sort | tr '\n' ' '
 }
 
+# The custodian binding is published indexing API: the payload names the witness type.
+if ! rg -U -q 'public struct CreatorFeesLocked has copy, drop \{\n    launch_id: ID,\n    curve_fee_cap_id: ID,\n    custodian: TypeName,\n\}' sources/lib/events.move; then
+  echo 'CreatorFeesLocked must publish the launch, the destroyed curve-fee cap, and the custodian witness type.' >&2
+  failures=$((failures + 1))
+fi
+
 check_launch_function claim_creator_caps \
   'fun claim_creator_caps<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, config: &RuntimeConfig, account_attestation: Option<vector<u8>>, clock: &Clock, ctx: &mut TxContext, ): (CurveFeeCap<Meme>, BlastMetadataCap<Meme>)' \
   'package_version.assert_current(); assert!( self.creator_authority.is_some(), blast_fun::errors::creator_authority_unavailable!(), ); let (curve_fee_cap, blast_metadata_cap) = self.creator_authority.extract().claim_creator_caps( config, account_attestation, clock, ctx, ); self.curve_fee_authority = CurveFeeAuthority::Cap(object::id(&curve_fee_cap)); self.blast_metadata_cap_id = option::some(object::id(&blast_metadata_cap)); (curve_fee_cap, blast_metadata_cap)'
@@ -1443,7 +1449,7 @@ check_launch_function assert_blast_metadata_cap \
 
 check_launch_function custodian_type \
   'fun custodian_type<Custodian>(): TypeName' \
-  'let custodian = type_name::with_original_ids<Custodian>(); assert!(!custodian.is_primitive(), blast_fun::errors::invalid_fee_custodian!()); custodian'
+  'let custodian = type_name::with_original_ids<Custodian>(); assert!(!custodian.is_primitive(), blast_fun::errors::invalid_fee_custodian!()); let origin = type_name::original_id<Custodian>(); assert!( origin != @0x1 && origin != @0x2, blast_fun::errors::invalid_fee_custodian!(), ); custodian'
 
 check_launch_function is_custodian \
   'fun is_custodian(self: &CurveFeeAuthority): bool' \

@@ -65,10 +65,14 @@ passing a drop-only `Custodian` witness value. The cap is destroyed and the fee
 stream moves to the terminal `Custodian(TypeName)` state, naming that witness
 type. Afterward only `claim_custodied_creator_fees` with the same witness
 claims it, and `reassign_curve_fee_cap` or `issue_lp_fee_cap` abort before any
-role or recipient check. Only the module declaring the witness can construct
-it, and each lock rejects a primitive or vector witness that anyone could
-supply (`EInvalidFeeCustodian`, launchpad code 93, and `EInvalidLpFeeCustodian`,
-`lp_fee_authority` code 5). Every authority is generic over `Meme`, and a
+role or recipient check. Each lock rejects a witness anyone can construct: a
+primitive, a vector, or a framework type such as `Option`, `String`, or
+`VecMap`, whose package is `0x1` or `0x2` (`EInvalidFeeCustodian`, launchpad
+code 93, and `EInvalidLpFeeCustodian`, `lp_fee_authority` code 5). Move cannot
+prove that any other package keeps its witness constructor private, so the
+enforced property is that the witness is not publicly constructible by
+construction rules the chain can check; the locking cap holder chooses the type
+and bears that choice. Every authority is generic over `Meme`, and a
 launch consumes its curve-fee cap when it locks, so the witness type together
 with `Meme` names exactly one custodian. An earlier revision took the custodian
 object's `&UID`, which any module exposing a public UID getter could supply.

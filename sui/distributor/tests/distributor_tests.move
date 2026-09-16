@@ -840,7 +840,68 @@ fun pending_lp_fees_bind_to_the_enrolled_distributor_without_a_cap() {
     f.end();
 }
 
+#[test]
+#[expected_failure(
+    abort_code = distributor::EWrongSource,
+    location = blast_fun_distributor::distributor,
+)]
+fun locking_a_claimed_lp_cap_rejects_an_unenrolled_launch() {
+    let mut f = start();
+    let lp_fee_policy = lp_fee_policy::new_for_testing(f.scenario.ctx());
+    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.scenario.ctx()).into_balance();
+    let quote = coin::mint_for_testing<QUOTE>(2000, f.scenario.ctx()).into_balance();
+    let mut source = blast_fun_migrators::vault::funded_for_testing(
+        object::id_from_address(@0xF00),
+        meme,
+        quote,
+        &lp_fee_policy,
+        f.scenario.ctx(),
+    );
+    let lp_fee_cap = source.issue_lp_fee_cap_for_testing(f.scenario.ctx());
+    let unenrolled = f.new_unenrolled_launch();
+
+    f.distributor.lock_lp_fees_with_cap(
+        &f.control,
+        &mut source,
+        &f.migrators_version,
+        &unenrolled,
+        lp_fee_cap,
+    );
+
+    destroy(unenrolled);
+    destroy(source);
+    destroy(lp_fee_policy);
+    f.end();
+}
+
 // === Private Test Helpers ===
+
+/// A second launch of the same pair that no distributor custodies.
+fun new_unenrolled_launch(self: &mut DistributionFixture): Launch<DISTRIBUTOR_TESTS, QUOTE> {
+    self.scenario.next_tx(CREATOR);
+
+    let config = self.scenario.take_shared<launch_config::LaunchConfig>();
+    let ticket = launch_ticket::new(
+        DISTRIBUTOR_TESTS(),
+        b"OTHER".to_string(),
+        b"Other".to_string(),
+        b"".to_string(),
+        b"".to_string(),
+        creator_authority::new_address(CREATOR),
+        false,
+        0,
+        self.scenario.ctx(),
+    );
+    let launch = launch::new<DISTRIBUTOR_TESTS, QUOTE, Venue>(
+        ticket,
+        &self.version,
+        &config,
+        self.scenario.ctx(),
+    );
+    test_scenario::return_shared(config);
+
+    launch
+}
 
 fun complete_shared_round(f: DistributionFixture) {
     let DistributionFixture {
@@ -854,7 +915,6 @@ fun complete_shared_round(f: DistributionFixture) {
         publisher,
         creator_cap_id: _,
     } = f;
-    let distributor_id = object::id(&distributor);
     distributor.share();
     transfer::public_transfer(publisher, BOT);
     scenario.next_tx(BOT);

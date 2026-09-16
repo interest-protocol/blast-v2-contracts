@@ -58,10 +58,10 @@ const ENotUpgrade: vector<u8> = b"Version object is already migrated.";
 
 // === Public Types ===
 
-/// Singleton administrator capability created at publication.
 /// Proves a call originates in this module when binding or claiming custodied creator fees.
 public struct Witness() has drop;
 
+/// Singleton administrator capability created at publication.
 public struct AdminCap has key, store {
     id: UID,
 }
@@ -195,15 +195,17 @@ public fun new<Meme, Quote>(
     version.assert_enabled();
 
     let curve_fee_cap_id = object::id(&curve_fee_cap);
+    let launch_id = object::id(launch);
+    launch.lock_creator_fees(package_version, curve_fee_cap, Witness());
+
     let distributor = Distributor {
         id: object::new(ctx),
-        launch: object::id(launch),
+        launch: launch_id,
         meme: balance::zero(),
         quote: balance::zero(),
         next_round: 0,
         last_checkpoint: option::none(),
     };
-    launch.lock_creator_fees(package_version, curve_fee_cap, Witness());
     let publisher = PublisherCap { id: object::new(ctx), distributor: distributor.id.to_inner() };
 
     event::emit(Enrolled {

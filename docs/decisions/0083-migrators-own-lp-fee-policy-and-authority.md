@@ -48,8 +48,8 @@ capability.
   type, so it needs no separate primitive-witness check. Auto-LP or distributor enrollment before migration therefore
   needs neither an administrator nor a cap holder.
 - `lock_creator_fees`: the live cap is destroyed to bind the custodian named by
-  its witness type, moving `Cap` to `Custodian`. A primitive or vector witness
-  is rejected with `EInvalidLpFeeCustodian` (code 5).
+  its witness type, moving `Cap` to `Custodian`. A primitive, vector, or
+  framework witness is rejected with `EInvalidLpFeeCustodian` (code 5).
 - `issue_lp_fee_cap`: a community-takeover reissue from `Pending` or `Cap`. It
   takes the vault's `Launch` and checks the migrators version, then that fees
   are not locked, then a nonzero recipient, then that pending fees are not
@@ -89,6 +89,14 @@ build and gate. They still target the ADR 0082 launchpad ABI and return to
   the object indexer-visible from creation.
 - **Keep the admin-issued first capability.** Rejected: an operational step per
   migration and authority not bound to the migration.
+
+**Custodian obligation.** A `Pending` vault whose launch is already custodied
+has exactly one reachable transition: `lock_pending_creator_fees` by that
+custodian's own witness. `claim_lp_fee_cap` is impossible because no live
+`CurveFeeCap` survives the launch lock, and `issue_lp_fee_cap` aborts. Every
+custodian that locks launch creator fees must therefore expose a path that
+binds pending LP fees, or those fees stay unclaimable with no administrative
+recovery. The distributor exposes `lock_lp_fees`.
 
 ## Consequences
 

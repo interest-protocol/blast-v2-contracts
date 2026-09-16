@@ -119,8 +119,7 @@ public fun issue_lp_fee_cap<Meme, Quote>(
 
 /// Binds pending creator LP fees forever to the launch's creator-fee custodian.
 ///
-/// No capability is ever minted. Only the module declaring `Custodian` can construct it, and
-/// it must already hold the launch's creator fees.
+/// No capability is ever minted, and the witness must already hold the launch's creator fees.
 public fun lock_pending_creator_fees<Meme, Quote, Custodian: drop>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
@@ -136,8 +135,8 @@ public fun lock_pending_creator_fees<Meme, Quote, Custodian: drop>(
 
 /// Destroys the live LP-fee capability and binds creator LP fees to `Custodian` permanently.
 ///
-/// Irreversible: `issue_lp_fee_cap` aborts afterward. Only the module declaring `Custodian`
-/// can construct it, so only that module can claim afterward.
+/// Irreversible: `issue_lp_fee_cap` aborts afterward. Afterward only a caller that can construct
+/// `Custodian` claims these fees; primitive, vector, and framework witnesses are rejected.
 public fun lock_creator_fees<Meme, Quote, Custodian: drop>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,

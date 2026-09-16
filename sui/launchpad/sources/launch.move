@@ -266,8 +266,9 @@ public fun reassign_metadata_cap<Meme, Quote>(
 /// Destroys the live curve-fee cap and binds curve fees to the `Custodian` witness permanently.
 ///
 /// Irreversible: no curve-fee cap exists afterward, so `reassign_curve_fee_cap` aborts.
-/// Metadata authority is unaffected. Only the module declaring `Custodian` can construct it,
-/// so only that module can claim afterward.
+/// Metadata authority is unaffected. Afterward only a caller that can construct `Custodian`
+/// claims these fees, so lock only to a witness whose package keeps its constructor private;
+/// primitive, vector, and framework witnesses are rejected.
 public fun lock_creator_fees<Meme, Quote, Custodian: drop>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
@@ -621,11 +622,23 @@ fun partition_quote<Quote>(
     (quote, migration_fee)
 }
 
-/// Names the custodian module, rejecting a primitive or vector witness anyone could construct.
+/// Names the custodian module, rejecting witnesses anyone could construct.
+///
+/// Primitives and vectors are constructible by every caller, and so are framework types such as
+/// `Option`, `String`, and `VecMap`, so a witness must come from a package outside `0x1` and
+/// `0x2`. Move cannot prove that package keeps its constructor private; the locking cap holder
+/// chooses the type and bears that choice.
 fun custodian_type<Custodian>(): TypeName {
     let custodian = type_name::with_original_ids<Custodian>();
 
     assert!(!custodian.is_primitive(), blast_fun::errors::invalid_fee_custodian!());
+
+    let origin = type_name::original_id<Custodian>();
+
+    assert!(
+        origin != @0x1 && origin != @0x2,
+        blast_fun::errors::invalid_fee_custodian!(),
+    );
 
     custodian
 }
