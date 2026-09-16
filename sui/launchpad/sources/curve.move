@@ -29,6 +29,10 @@ public(package) fun k(reserve_x: u256, reserve_y: u256): u256 {
 ///
 /// Returns `(quote_in_gross, quote_refund)`. The accepted gross amount is the
 /// smallest amount whose post-fee value reaches the remaining target.
+///
+/// The complement of `quote_fee_bps` is the divisor, so the rate must stay below one hundred
+/// percent. `launch_config` owns that bound by capping trade fees at ten percent, and every
+/// launch snapshots the capped value; this module does not re-check it.
 public(package) fun cap_buy_quote_input(
     real_quote: u64,
     terminal_threshold: u64,

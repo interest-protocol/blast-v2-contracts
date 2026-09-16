@@ -11,7 +11,7 @@ use blast_fun::{
     launchpad_domain::LAUNCHPAD_DOMAIN,
     package_version,
 };
-use std::unit_test::{assert_eq, destroy};
+use std::{bcs, unit_test::{assert_eq, destroy}};
 use sui::{event, test_scenario::{Self, Scenario}};
 
 use fun config_end as ConfigFixture.end;
@@ -156,17 +156,13 @@ fun admin_allows_quote_and_launch_snapshot_uses_its_parameters() {
         let (virtual_quote, target, _, _, _, _, _, _) =
             f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
         let allowed = events::collect_one<events::QuoteAllowed>(0);
-        let (quote, emitted_virtual_quote, migration_quote_target) =
-            allowed.quote_allowed_fields();
 
         assert_eq!(virtual_quote, VIRTUAL_QUOTE);
         assert_eq!(target, MIGRATION_QUOTE_TARGET);
         assert_eq!(
-            quote,
-            std::type_name::with_original_ids<TEST_QUOTE>(),
+            bcs::to_bytes(&allowed),
+            quote_parameter_bytes(VIRTUAL_QUOTE, MIGRATION_QUOTE_TARGET),
         );
-        assert_eq!(emitted_virtual_quote, VIRTUAL_QUOTE);
-        assert_eq!(migration_quote_target, MIGRATION_QUOTE_TARGET);
         assert!(event::events_by_type<events::QuoteAllowed>().is_empty());
     });
 
@@ -205,19 +201,15 @@ fun allowing_an_existing_quote_updates_only_the_next_launch_snapshot() {
         let (next_virtual_quote, next_target, _, _, _, _, _, _) =
             f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
         let changed = events::collect_one<events::QuoteParametersChanged>(0);
-        let (quote, new_virtual_quote, new_target) =
-            changed.quote_parameters_changed_fields();
 
         assert_eq!(first_virtual_quote, VIRTUAL_QUOTE);
         assert_eq!(first_target, MIGRATION_QUOTE_TARGET);
         assert_eq!(next_virtual_quote, VIRTUAL_QUOTE);
         assert_eq!(next_target, UPDATED_MIGRATION_QUOTE_TARGET);
         assert_eq!(
-            quote,
-            std::type_name::with_original_ids<TEST_QUOTE>(),
+            bcs::to_bytes(&changed),
+            quote_parameter_bytes(VIRTUAL_QUOTE, UPDATED_MIGRATION_QUOTE_TARGET),
         );
-        assert_eq!(new_virtual_quote, VIRTUAL_QUOTE);
-        assert_eq!(new_target, UPDATED_MIGRATION_QUOTE_TARGET);
     });
 
     fixture.end();
@@ -257,13 +249,13 @@ fun allowing_an_existing_quote_can_update_only_virtual_quote() {
         let (virtual_quote, target, _, _, _, _, _, _) =
             f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
         let changed = events::collect_one<events::QuoteParametersChanged>(0);
-        let (_, new_virtual_quote, new_target) =
-            changed.quote_parameters_changed_fields();
 
         assert_eq!(virtual_quote, UPDATED_VIRTUAL_QUOTE);
         assert_eq!(target, MIGRATION_QUOTE_TARGET);
-        assert_eq!(new_virtual_quote, UPDATED_VIRTUAL_QUOTE);
-        assert_eq!(new_target, MIGRATION_QUOTE_TARGET);
+        assert_eq!(
+            bcs::to_bytes(&changed),
+            quote_parameter_bytes(UPDATED_VIRTUAL_QUOTE, MIGRATION_QUOTE_TARGET),
+        );
     });
 
     fixture.end();
@@ -286,12 +278,11 @@ fun admin_disallows_quote_from_future_launch_admission() {
             &admin_witness);
 
         let disallowed = events::collect_one<events::QuoteDisallowed>(0);
-        let quote = disallowed.quote_disallowed_fields();
 
         assert_eq!(f.config.allowed_quote_count_for_testing(), 0);
         assert_eq!(
-            quote,
-            std::type_name::with_original_ids<TEST_QUOTE>(),
+            bcs::to_bytes(&disallowed),
+            bcs::to_bytes(&std::type_name::with_original_ids<TEST_QUOTE>()),
         );
     });
 
@@ -375,11 +366,6 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
             migration_witness,
         ) = f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
         let changed = events::collect_one<events::GraduationDefaultsChanged>(0);
-        let (
-            new_protocol_quote_migration_fee_bps,
-            new_protocol_meme_graduation_fee_bps,
-            new_meme_liquidity_provision_bps,
-        ) = changed.graduation_defaults_changed_fields();
 
         assert_eq!(virtual_quote, VIRTUAL_QUOTE);
         assert_eq!(migration_quote_target, MIGRATION_QUOTE_TARGET);
@@ -398,15 +384,10 @@ fun admin_sets_graduation_defaults_for_future_launch_snapshots() {
             migration_witness,
             std::type_name::with_original_ids<TEST_MIGRATION_WITNESS>(),
         );
-        assert_eq!(new_protocol_quote_migration_fee_bps, PROTOCOL_QUOTE_MIGRATION_FEE_BPS);
-        assert_eq!(
-            new_protocol_meme_graduation_fee_bps,
-            PROTOCOL_MEME_GRADUATION_FEE_BPS,
-        );
-        assert_eq!(
-            new_meme_liquidity_provision_bps,
-            MEME_LIQUIDITY_PROVISION_BPS,
-        );
+        let mut expected = u64_bytes(PROTOCOL_QUOTE_MIGRATION_FEE_BPS);
+        expected.append(u64_bytes(PROTOCOL_MEME_GRADUATION_FEE_BPS));
+        expected.append(u64_bytes(MEME_LIQUIDITY_PROVISION_BPS));
+        assert_eq!(bcs::to_bytes(&changed), expected);
     });
 
     fixture.end();
@@ -448,13 +429,12 @@ fun admin_sets_trade_fees_for_future_launch_snapshots() {
             _,
         ) = f.config.snapshot_for_launch<TEST_QUOTE, TEST_MIGRATION_WITNESS>();
         let changed = events::collect_one<events::LaunchTradeFeesChanged>(0);
-        let (new_quote_fee_bps, new_meme_fee_bps) =
-            changed.launch_trade_fees_changed_fields();
 
         assert_eq!(quote_fee_bps.value(), QUOTE_FEE_BPS);
         assert_eq!(meme_fee_bps.value(), MEME_FEE_BPS);
-        assert_eq!(new_quote_fee_bps, QUOTE_FEE_BPS);
-        assert_eq!(new_meme_fee_bps, MEME_FEE_BPS);
+        let mut expected = u64_bytes(QUOTE_FEE_BPS);
+        expected.append(u64_bytes(MEME_FEE_BPS));
+        assert_eq!(bcs::to_bytes(&changed), expected);
     });
 
     fixture.end();
@@ -497,12 +477,11 @@ fun admin_allows_migration_witness_and_emits_its_original_type_name() {
             &admin_witness);
 
         let allowed = events::collect_one<events::MigrationWitnessAllowed>(0);
-        let emitted_migration_witness = allowed.migration_witness_allowed_fields();
         let migration_witness =
             std::type_name::with_original_ids<TEST_MIGRATION_WITNESS>();
 
         assert_eq!(f.config.allowed_migration_witness_count_for_testing(), 1);
-        assert_eq!(emitted_migration_witness, migration_witness);
+        assert_eq!(bcs::to_bytes(&allowed), bcs::to_bytes(&migration_witness));
     });
 
     fixture.end();
@@ -605,13 +584,11 @@ fun disallowing_migration_witness_does_not_change_an_existing_launch_snapshot() 
             &admin_witness);
 
         let disallowed = events::collect_one<events::MigrationWitnessDisallowed>(0);
-        let emitted_migration_witness =
-            disallowed.migration_witness_disallowed_fields();
 
         assert_eq!(f.config.allowed_migration_witness_count_for_testing(), 0);
         assert_eq!(
-            emitted_migration_witness,
-            snapshotted_migration_witness,
+            bcs::to_bytes(&disallowed),
+            bcs::to_bytes(&snapshotted_migration_witness),
         );
     });
 
@@ -1145,6 +1122,19 @@ fun launch_snapshot_rejects_unlisted_migration_witness() {
 }
 
 // === Private Test Helpers ===
+
+/// Serializes one protocol constant by value, so no test borrows a constant in place.
+fun u64_bytes(value: u64): vector<u8> {
+    bcs::to_bytes(&value)
+}
+
+/// Expected bytes shared by `QuoteAllowed` and `QuoteParametersChanged` for the test quote.
+fun quote_parameter_bytes(virtual_quote: u64, migration_quote_target: u64): vector<u8> {
+    let mut expected = bcs::to_bytes(&std::type_name::with_original_ids<TEST_QUOTE>());
+    expected.append(bcs::to_bytes(&virtual_quote));
+    expected.append(bcs::to_bytes(&migration_quote_target));
+    expected
+}
 
 macro fun init_next_tx(
     $fixture: &mut InitFixture,

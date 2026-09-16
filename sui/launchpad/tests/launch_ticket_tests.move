@@ -2,7 +2,7 @@
 module blast_fun::launch_ticket_tests;
 
 use blast_fun::{creator_authority, events, launch_ticket::{Self, LaunchTicket}};
-use std::unit_test::{assert_eq, destroy};
+use std::{bcs, unit_test::{assert_eq, destroy}};
 use sui::{coin_registry::Currency, test_scenario::{Self, Scenario}};
 
 // === Constants ===
@@ -47,32 +47,20 @@ fun address_ticket_mints_fixed_supply_and_emits_replay_complete_event() {
         let ticket_id = object::id(&ticket);
 
         let created = events::collect_one<events::LaunchTicketCreated>(0);
-        let (
-            emitted_ticket_id,
-            meme,
-            initial_supply,
-            metadata_cap_id,
-            creator,
-            account_commitment,
-            burnable,
-            sell_burn_bps,
-        ) = created.launch_ticket_created_fields();
-
-        assert_eq!(emitted_ticket_id, ticket_id);
-        assert_eq!(
-            meme,
-            std::type_name::with_original_ids<LAUNCH_TICKET_TESTS>(),
-        );
-        assert_eq!(creator.destroy_some(), CREATOR);
-        assert!(account_commitment.is_none());
-        assert!(!burnable);
-        assert_eq!(sell_burn_bps, 0);
-        assert_eq!(initial_supply, MEME_TOTAL_SUPPLY);
-
         let (meme, metadata_cap, creator_authority, sell_burn_bps) =
             ticket.destroy();
 
-        assert_eq!(object::id(&metadata_cap), metadata_cap_id);
+        assert_eq!(
+            bcs::to_bytes(&created),
+            ticket_created_bytes(
+                ticket_id,
+                object::id(&metadata_cap),
+                option::some(CREATOR),
+                option::none(),
+                false,
+                0,
+            ),
+        );
         assert_eq!(meme.value(), MEME_TOTAL_SUPPLY);
         assert_eq!(sell_burn_bps.value(), 0);
         destroy(meme);
@@ -117,25 +105,21 @@ fun account_ticket_is_composable_and_records_burn_only_selection() {
         );
         let created_ticket_id = object::id(&ticket);
         let created = events::collect_one<events::LaunchTicketCreated>(0);
-        let (
-            ticket_id,
-            _,
-            initial_supply,
-            metadata_cap_id,
-            creator,
-            emitted_account_commitment,
-            burnable,
-            sell_burn_bps,
-        ) = created.launch_ticket_created_fields();
+        let metadata_cap_id = ticket.metadata_cap_id_for_testing();
 
-        assert_eq!(ticket_id, created_ticket_id);
-        assert!(creator.is_none());
-        assert_eq!(emitted_account_commitment.destroy_some(), account_commitment);
-        assert!(burnable);
-        assert_eq!(sell_burn_bps, SELL_BURN_BPS);
-        assert_eq!(initial_supply, MEME_TOTAL_SUPPLY);
+        assert_eq!(
+            bcs::to_bytes(&created),
+            ticket_created_bytes(
+                created_ticket_id,
+                metadata_cap_id,
+                option::none(),
+                option::some(account_commitment),
+                true,
+                SELL_BURN_BPS,
+            ),
+        );
 
-        expected_ticket_id = ticket_id;
+        expected_ticket_id = created_ticket_id;
         expected_metadata_cap_id = metadata_cap_id;
 
         transfer::public_transfer(ticket, CREATOR);
@@ -184,13 +168,22 @@ fun ticket_accepts_fifty_percent_sell_burn() {
             5_000,
             f.ctx!(),
         );
+        let ticket_id = object::id(&ticket);
         let created = events::collect_one<events::LaunchTicketCreated>(0);
-        let (_, _, _, _, _, _, _, sell_burn_bps) =
-            created.launch_ticket_created_fields();
         let (meme, metadata_cap, creator_authority, stored_sell_burn_bps) =
             ticket.destroy();
 
-        assert_eq!(sell_burn_bps, 5_000);
+        assert_eq!(
+            bcs::to_bytes(&created),
+            ticket_created_bytes(
+                ticket_id,
+                object::id(&metadata_cap),
+                option::some(CREATOR),
+                option::none(),
+                false,
+                5_000,
+            ),
+        );
         assert_eq!(stored_sell_burn_bps.value(), 5_000);
         destroy(meme);
         destroy(metadata_cap);
@@ -320,6 +313,27 @@ fun ticket_rejects_the_first_sell_burn_above_fifty_percent() {
 }
 
 // === Private Test Helpers ===
+
+/// Expected `LaunchTicketCreated` bytes in payload order for the canonical generated supply.
+fun ticket_created_bytes(
+    ticket_id: ID,
+    metadata_cap_id: ID,
+    creator_address: Option<address>,
+    account_commitment: Option<vector<u8>>,
+    burnable: bool,
+    sell_burn_bps: u64,
+): vector<u8> {
+    let mut expected = bcs::to_bytes(&ticket_id);
+    expected.append(bcs::to_bytes(&std::type_name::with_original_ids<LAUNCH_TICKET_TESTS>()));
+    let initial_supply = MEME_TOTAL_SUPPLY;
+    expected.append(bcs::to_bytes(&initial_supply));
+    expected.append(bcs::to_bytes(&metadata_cap_id));
+    expected.append(bcs::to_bytes(&creator_address));
+    expected.append(bcs::to_bytes(&account_commitment));
+    expected.append(bcs::to_bytes(&burnable));
+    expected.append(bcs::to_bytes(&sell_burn_bps));
+    expected
+}
 
 macro fun next_tx(
     $fixture: &mut TicketFixture,

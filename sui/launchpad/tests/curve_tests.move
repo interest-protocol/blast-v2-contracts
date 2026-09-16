@@ -90,6 +90,31 @@ fun buy_input_cap_reaches_the_exact_post_fee_target_and_refunds_excess() {
 }
 
 #[test]
+fun buy_input_cap_is_exact_and_minimal_for_every_admitted_fee() {
+    let max = std::u64::max_value!();
+    let reals = vector[0u64, 1, 7, 24_999_999, 12_345_678, max - 1_000_000_001, 0];
+    let targets = vector[25_000_000u64, 2, 1_000, 25_000_000, 25_000_000, max, max];
+    let supplies = vector[30_000_000u64, max, 1_001, 1, 100_000_000, max, max];
+
+    (blast_fun::constants::max_launch_fee_bps!() + 1).do!(|fee| {
+        let fee = bps::new(fee);
+        reals.length().do!(|i| {
+            let (real, target, supplied) = (reals[i], targets[i], supplies[i]);
+            let remaining = target - real;
+            let (gross, refund) = curve::cap_buy_quote_input(real, target, supplied, fee);
+
+            assert_eq!(gross + refund, supplied);
+            if (supplied - fee.apply_up(supplied) <= remaining) {
+                assert_eq!(gross, supplied);
+            } else {
+                assert_eq!(gross - fee.apply_up(gross), remaining);
+                assert!((gross - 1) - fee.apply_up(gross - 1) < remaining);
+            };
+        });
+    });
+}
+
+#[test]
 fun buy_first_one_quote_unit_matches_the_committed_vector() {
     let (
         quote_fee,

@@ -581,14 +581,6 @@ public fun assert_curve_fee_cap<Meme, Quote>(
     );
 }
 
-/// Allows fee destinations to reject creation before the selected migration completes.
-public fun assert_migrated<Meme, Quote>(self: &Launch<Meme, Quote>) {
-    assert!(
-        self.lifecycle == Lifecycle::Migrated,
-        blast_fun::errors::invalid_launch_lifecycle!(),
-    );
-}
-
 /// Opens the linear handoff with the witness owned by the selected adapter.
 public fun redeem_migration<Meme, Quote, MigrationWitness: drop>(
     self: MigrationPayload<Meme, Quote, MigrationWitness>,

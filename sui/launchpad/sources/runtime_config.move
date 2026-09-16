@@ -84,11 +84,6 @@ public fun set_protocol_fee_share(
     events::protocol_fee_share_changed(protocol_fee_share_bps.value());
 }
 
-/// Returns the raw live protocol share used by subsequent fee accruals.
-public fun protocol_fee_share_bps(self: &RuntimeConfig): u64 {
-    self.protocol_fee_share_bps.value()
-}
-
 // === Package Functions ===
 
 /// Rejects use of the account claim path while no backend signer is authorized.

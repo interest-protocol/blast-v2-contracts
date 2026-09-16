@@ -31,10 +31,10 @@ Accordingly, `CreatorIdentity` exposes `creator()` and `x_identity_hash()`, and
 `LaunchTicket` exposes `destroy()`. Generic names such as `fields`, `parts`,
 `data`, and `info` are not production APIs.
 
-The existing `<event>_fields` helpers are a narrow test-only exception. They are
-the established package convention for snapshotting private event payloads, and
-Move does not support overloading a single field getter across the many event
-types. They do not enter production bytecode.
+Tests observe private event payloads by comparing their BCS bytes with bytes
+built in field order, the convention the migrators package established. The
+launchpad's former `<event>_fields` snapshot helpers were removed on 2026-09-16;
+no per-payload accessor remains, and a new one fails the structural gate.
 
 ## Consequences
 

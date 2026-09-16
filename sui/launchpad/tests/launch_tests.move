@@ -15,7 +15,7 @@ use blast_fun::{
     package_version::{Self, PackageVersion},
     runtime_config,
 };
-use std::{type_name, unit_test::{assert_eq, destroy}};
+use std::{bcs, type_name, unit_test::{assert_eq, destroy}};
 use sui::{
     clock::{Self, Clock},
     coin::{Self, Coin},
@@ -99,48 +99,12 @@ fun launch_consumes_ticket_and_emits_complete_initial_state() {
         );
         let launch_id = object::id(&launch);
         let created = events::collect_one<events::LaunchCreated>(0);
-        let (
-            emitted_launch_id,
-            emitted_ticket_id,
-            quote,
-            migration_witness,
-        ) = created.launch_created_identity_fields();
-        let (curve_meme, protocol_meme, pool_meme) =
-            created.launch_created_balance_fields();
-        let (
-            virtual_quote,
-            migration_quote_target,
-            quote_fee_bps,
-            meme_fee_bps,
-            protocol_quote_migration_fee_bps,
-            protocol_meme_graduation_fee_bps,
-            meme_liquidity_provision_bps,
-        ) = created.launch_created_policy_fields();
 
-        assert_eq!(emitted_launch_id, launch_id);
-        assert_eq!(emitted_ticket_id, ticket_id);
-        assert_eq!(quote, type_name::with_original_ids<TEST_QUOTE>());
-        assert_eq!(
-            migration_witness,
-            type_name::with_original_ids<TEST_MIGRATION_WITNESS>(),
-        );
+        assert_eq!(bcs::to_bytes(&created), launch_created_bytes(launch_id, ticket_id));
         assert_eq!(launch.sell_burn_bps_for_testing(), SELL_BURN_BPS);
-        assert_eq!(curve_meme, EXPECTED_CURVE_MEME);
-        assert_eq!(protocol_meme, EXPECTED_PROTOCOL_MEME);
-        assert_eq!(pool_meme, EXPECTED_POOL_MEME);
-        assert_eq!(curve_meme + protocol_meme + pool_meme, INITIAL_MEME_SUPPLY);
-        assert_eq!(virtual_quote, VIRTUAL_QUOTE);
-        assert_eq!(migration_quote_target, MIGRATION_QUOTE_TARGET);
-        assert_eq!(quote_fee_bps, QUOTE_FEE_BPS);
-        assert_eq!(meme_fee_bps, MEME_FEE_BPS);
-        assert_eq!(protocol_quote_migration_fee_bps, PROTOCOL_QUOTE_MIGRATION_FEE_BPS);
         assert_eq!(
-            protocol_meme_graduation_fee_bps,
-            PROTOCOL_MEME_GRADUATION_FEE_BPS,
-        );
-        assert_eq!(
-            meme_liquidity_provision_bps,
-            MEME_LIQUIDITY_PROVISION_BPS,
+            EXPECTED_CURVE_MEME + EXPECTED_PROTOCOL_MEME + EXPECTED_POOL_MEME,
+            INITIAL_MEME_SUPPLY,
         );
         launch.assert_snapshot();
 
@@ -262,24 +226,16 @@ fun burn_only_ticket_keeps_supply_mode_authoritative_in_coin_registry() {
             f.ctx!(),
         );
         let ticket_created = events::collect_one<events::LaunchTicketCreated>(0);
-        let (
-            emitted_ticket_id,
-            _,
-            _,
-            _,
-            _,
-            _,
-            burnable,
-            sell_burn_bps,
-        ) = ticket_created.launch_ticket_created_fields();
         let launch_created = events::collect_one<events::LaunchCreated>(0);
-        let (_, source_ticket_id, _, _) =
-            launch_created.launch_created_identity_fields();
 
-        assert_eq!(emitted_ticket_id, ticket_id);
-        assert_eq!(source_ticket_id, ticket_id);
-        assert!(burnable);
-        assert_eq!(sell_burn_bps, SELL_BURN_BPS);
+        assert_eq!(
+            bcs::to_bytes(&ticket_created),
+            ticket_created_bytes(ticket_id, launch.metadata_cap_id_for_testing(), true),
+        );
+        assert_eq!(
+            bcs::to_bytes(&launch_created),
+            launch_created_bytes(object::id(&launch), ticket_id),
+        );
         launch.assert_snapshot();
 
         destroy(launch);
@@ -521,11 +477,21 @@ fun buy_and_sell_all_bought_meme_move_exact_coins_and_accounting() {
         assert_eq!(meme_bought.value(), meme_out_net);
         assert_eq!(quote_refund.value(), 0);
         let bought = events::collect_one<events::Bought>(0);
-        assert_bought_event(
-            &bought,
-            object::id(&launch),
-            quote_in_gross,
-            meme_out_gross,
+        let (protocol_meme_fee, creator_meme_fee, protocol_quote_fee, creator_quote_fee) =
+            launch.fee_totals_for_testing();
+        assert_eq!(
+            bcs::to_bytes(&bought),
+            bought_bytes(
+                object::id(&launch),
+                quote_in_gross,
+                meme_out_gross,
+                protocol_meme_fee,
+                creator_meme_fee,
+                protocol_quote_fee,
+                creator_quote_fee,
+                EXPECTED_CURVE_MEME - meme_out_gross,
+                quote_in_gross - quote_fee,
+            ),
         );
 
         let meme_in_gross = meme_out_net;
@@ -556,18 +522,22 @@ fun buy_and_sell_all_bought_meme_move_exact_coins_and_accounting() {
 
         assert_eq!(quote_out.value(), quote_out_net);
         let sold = events::collect_one<events::Sold>(0);
-        let (
-            sold_launch_id,
-            emitted_meme_in_gross,
-            emitted_pending_burn_delta,
-            emitted_pending_burn_total,
-            emitted_quote_out_gross,
-        ) = sold.sold_trade_fields();
-        assert_eq!(sold_launch_id, object::id(&launch));
-        assert_eq!(emitted_meme_in_gross, meme_in_gross);
-        assert_eq!(emitted_pending_burn_delta, pending_burn_delta);
-        assert_eq!(emitted_pending_burn_total, pending_burn_delta);
-        assert_eq!(emitted_quote_out_gross, quote_out_gross);
+        let (protocol_meme_total, creator_meme_total, protocol_quote_total, creator_quote_total) =
+            launch.fee_totals_for_testing();
+        let mut expected_sold = bcs::to_bytes(&object::id(&launch));
+        expected_sold.append(bcs::to_bytes(&meme_in_gross));
+        expected_sold.append(bcs::to_bytes(&pending_burn_delta));
+        expected_sold.append(bcs::to_bytes(&pending_burn_delta));
+        expected_sold.append(bcs::to_bytes(&quote_out_gross));
+        expected_sold.append(bcs::to_bytes(&(protocol_meme_total - protocol_meme_fee)));
+        expected_sold.append(bcs::to_bytes(&(creator_meme_total - creator_meme_fee)));
+        expected_sold.append(bcs::to_bytes(&(protocol_quote_total - protocol_quote_fee)));
+        expected_sold.append(bcs::to_bytes(&(creator_quote_total - creator_quote_fee)));
+        expected_sold.append(bcs::to_bytes(
+            &(meme_reserve_after_buy + meme_in_gross - sell_meme_fee - pending_burn_delta),
+        ));
+        expected_sold.append(bcs::to_bytes(&(real_quote_after_buy - quote_out_gross)));
+        assert_eq!(bcs::to_bytes(&sold), expected_sold);
 
         let (meme_reserve, real_quote, pending_burn, _, _) =
             launch.initial_balances_for_testing();
@@ -679,11 +649,10 @@ fun creator_claim_returns_trade_fees_as_composable_coins() {
         assert_eq!(meme_fees.value(), creator_meme_before);
         assert_eq!(quote_fees.value(), creator_quote_before);
         let claimed = events::collect_one<events::CreatorFeesClaimed>(0);
-        let (launch_id, meme_amount, quote_amount) =
-            claimed.creator_fees_claimed_fields();
-        assert_eq!(launch_id, object::id(&launch));
-        assert_eq!(meme_amount, creator_meme_before);
-        assert_eq!(quote_amount, creator_quote_before);
+        assert_eq!(
+            bcs::to_bytes(&claimed),
+            fee_claim_bytes(object::id(&launch), creator_meme_before, creator_quote_before),
+        );
 
         destroy(creator_cap);
         destroy(meme_bought);
@@ -730,11 +699,10 @@ fun live_protocol_share_routes_and_claims_launch_trade_fees() {
         assert_eq!(quote_fees.value(), protocol_quote);
 
         let claimed = events::collect_one<events::ProtocolFeesClaimed>(0);
-        let (launch_id, meme_amount, quote_amount) =
-            claimed.protocol_fees_claimed_fields();
-        assert_eq!(launch_id, object::id(&launch));
-        assert_eq!(meme_amount, protocol_meme);
-        assert_eq!(quote_amount, protocol_quote);
+        assert_eq!(
+            bcs::to_bytes(&claimed),
+            fee_claim_bytes(object::id(&launch), protocol_meme, protocol_quote),
+        );
 
         destroy(meme_bought);
         destroy(quote_refund);
@@ -763,16 +731,36 @@ fun fixed_migration_sends_terminal_disposal_to_zero_without_reducing_supply() {
         let (meme_bought, quote_refund) =
             launch.buy(&f.package_version, &f.runtime_config, quote_in, 1, f.ctx!());
         let (_, ready, _) = launch.lifecycle_for_testing();
-        let (_, real_quote, _, _, _) = launch.initial_balances_for_testing();
+        let (meme_reserve, real_quote, _, _, _) = launch.initial_balances_for_testing();
         let bought = events::collect_one<events::Bought>(0);
+        let quote_in_gross = 30_000_000 - quote_refund.value();
+        let (_, meme_out_gross, _, _) = curve::quote_buy(
+            EXPECTED_CURVE_MEME,
+            0,
+            VIRTUAL_QUOTE,
+            quote_in_gross,
+            bps::new(QUOTE_FEE_BPS),
+            bps::new(MEME_FEE_BPS),
+        );
+        let (protocol_meme_fee, creator_meme_fee, protocol_quote_fee, creator_quote_fee) =
+            launch.fee_totals_for_testing();
 
         assert!(ready);
         assert_eq!(real_quote, MIGRATION_QUOTE_TARGET);
         assert!(quote_refund.value() > 0);
-        assert_terminal_bought_event(
-            &bought,
-            object::id(&launch),
-            quote_refund.value(),
+        assert_eq!(
+            bcs::to_bytes(&bought),
+            bought_bytes(
+                object::id(&launch),
+                quote_in_gross,
+                meme_out_gross,
+                protocol_meme_fee,
+                creator_meme_fee,
+                protocol_quote_fee,
+                creator_quote_fee,
+                meme_reserve,
+                real_quote,
+            ),
         );
         destroy(meme_bought);
         destroy(quote_refund);
@@ -784,6 +772,9 @@ fun fixed_migration_sends_terminal_disposal_to_zero_without_reducing_supply() {
         let mut currency = f.take_currency();
         let admin_witness = f.sign_in();
         let initial_supply = currency.total_supply().destroy_some();
+        let (meme_reserve, _, pending_burn, protocol_meme_graduation_fee, _) =
+            launch.initial_balances_for_testing();
+        let (_, _, protocol_quote_before, _) = launch.fee_totals_for_testing();
         let payload = launch.migrate<
             LAUNCH_TESTS,
             TEST_QUOTE,
@@ -796,36 +787,37 @@ fun fixed_migration_sends_terminal_disposal_to_zero_without_reducing_supply() {
         let (meme, quote) = payload.redeem_migration(TEST_MIGRATION_WITNESS());
         let (_, _, migrated) = launch.lifecycle_for_testing();
         let migration = events::collect_one<events::Migrated>(0);
-        let (
-            launch_id,
-            migration_meme,
-            migration_quote,
-            disposed_meme,
-            native_supply_burned,
-            total_supply_after,
-            protocol_meme_fee,
-            protocol_quote_migration_fee,
-        ) = migration.migrated_balance_fields();
+        let disposed_meme = meme_reserve + pending_burn;
+        let (_, _, protocol_quote_after, _) = launch.fee_totals_for_testing();
+        let protocol_quote_migration_fee = protocol_quote_after - protocol_quote_before;
 
         assert!(migrated);
-        assert_eq!(launch_id, object::id(&launch));
-        assert!(!native_supply_burned);
-        assert_eq!(migration_meme, EXPECTED_POOL_MEME);
-        assert_eq!(migration_meme, meme.value());
-        assert_eq!(migration_quote, quote.value());
+        assert_eq!(meme.value(), EXPECTED_POOL_MEME);
         assert!(disposed_meme > 0);
-        expected_disposed_meme = disposed_meme;
-        assert_eq!(protocol_meme_fee, EXPECTED_PROTOCOL_MEME);
+        assert_eq!(protocol_meme_graduation_fee, EXPECTED_PROTOCOL_MEME);
         assert!(protocol_quote_migration_fee > 0);
-        assert_eq!(total_supply_after, initial_supply);
         assert_eq!(currency.total_supply().destroy_some(), initial_supply);
+        assert_eq!(
+            bcs::to_bytes(&migration),
+            migrated_bytes(
+                object::id(&launch),
+                meme.value(),
+                quote.value(),
+                disposed_meme,
+                false,
+                initial_supply,
+                protocol_meme_graduation_fee,
+                protocol_quote_migration_fee,
+            ),
+        );
+        expected_disposed_meme = disposed_meme;
 
         let (protocol_meme, protocol_quote) = launch.claim_protocol_fees(
             &f.package_version,
             &admin_witness,
             f.ctx!(),
         );
-        assert_eq!(protocol_meme.value(), protocol_meme_fee);
+        assert_eq!(protocol_meme.value(), protocol_meme_graduation_fee);
         assert_eq!(protocol_quote.value(), protocol_quote_migration_fee);
 
         destroy(meme);
@@ -871,6 +863,9 @@ fun burn_only_migration_destroys_terminal_disposal_from_native_supply() {
         let mut launch = f.take_launch();
         let mut currency = f.take_currency();
         let initial_supply = currency.total_supply().destroy_some();
+        let (meme_reserve, _, pending_burn, protocol_meme_graduation_fee, _) =
+            launch.initial_balances_for_testing();
+        let (_, _, protocol_quote_before, _) = launch.fee_totals_for_testing();
         let payload = launch.migrate<
             LAUNCH_TESTS,
             TEST_QUOTE,
@@ -882,22 +877,25 @@ fun burn_only_migration_destroys_terminal_disposal_from_native_supply() {
         );
         let (meme, quote) = payload.redeem_migration(TEST_MIGRATION_WITNESS());
         let migration = events::collect_one<events::Migrated>(0);
-        let (
-            _,
-            _,
-            _,
-            disposed_meme,
-            native_supply_burned,
-            total_supply_after,
-            _,
-            _,
-        ) = migration.migrated_balance_fields();
+        let disposed_meme = meme_reserve + pending_burn;
+        let (_, _, protocol_quote_after, _) = launch.fee_totals_for_testing();
 
-        assert!(native_supply_burned);
-        assert_eq!(total_supply_after, initial_supply - disposed_meme);
         assert_eq!(
             currency.total_supply().destroy_some(),
             initial_supply - disposed_meme,
+        );
+        assert_eq!(
+            bcs::to_bytes(&migration),
+            migrated_bytes(
+                object::id(&launch),
+                meme.value(),
+                quote.value(),
+                disposed_meme,
+                true,
+                initial_supply - disposed_meme,
+                protocol_meme_graduation_fee,
+                protocol_quote_after - protocol_quote_before,
+            ),
         );
 
         destroy(meme);
@@ -935,6 +933,9 @@ fun fixed_migration_sends_accumulated_sell_burn_to_zero_address() {
         let mut launch = f.take_launch();
         let mut currency = f.take_currency();
         let initial_supply = currency.total_supply().destroy_some();
+        let (meme_reserve, _, pending_burn, protocol_meme_graduation_fee, _) =
+            launch.initial_balances_for_testing();
+        let (_, _, protocol_quote_before, _) = launch.fee_totals_for_testing();
         let payload = launch.migrate<
             LAUNCH_TESTS,
             TEST_QUOTE,
@@ -946,21 +947,23 @@ fun fixed_migration_sends_accumulated_sell_burn_to_zero_address() {
         );
         let (meme, quote) = payload.redeem_migration(TEST_MIGRATION_WITNESS());
         let migration = events::collect_one<events::Migrated>(0);
-        let (
-            _,
-            _,
-            _,
-            disposed_meme,
-            native_supply_burned,
-            total_supply_after,
-            _,
-            _,
-        ) = migration.migrated_balance_fields();
+        let (_, _, protocol_quote_after, _) = launch.fee_totals_for_testing();
 
-        assert_eq!(disposed_meme, expected_disposed_meme);
-        assert!(!native_supply_burned);
-        assert_eq!(total_supply_after, initial_supply);
+        assert_eq!(meme_reserve + pending_burn, expected_disposed_meme);
         assert_eq!(currency.total_supply().destroy_some(), initial_supply);
+        assert_eq!(
+            bcs::to_bytes(&migration),
+            migrated_bytes(
+                object::id(&launch),
+                meme.value(),
+                quote.value(),
+                expected_disposed_meme,
+                false,
+                initial_supply,
+                protocol_meme_graduation_fee,
+                protocol_quote_after - protocol_quote_before,
+            ),
+        );
 
         destroy(meme);
         destroy(quote);
@@ -1004,6 +1007,9 @@ fun burn_only_migration_burns_accumulated_sell_burn_from_native_supply() {
         let mut launch = f.take_launch();
         let mut currency = f.take_currency();
         let initial_supply = currency.total_supply().destroy_some();
+        let (meme_reserve, _, pending_burn, protocol_meme_graduation_fee, _) =
+            launch.initial_balances_for_testing();
+        let (_, _, protocol_quote_before, _) = launch.fee_totals_for_testing();
         let payload = launch.migrate<
             LAUNCH_TESTS,
             TEST_QUOTE,
@@ -1015,23 +1021,25 @@ fun burn_only_migration_burns_accumulated_sell_burn_from_native_supply() {
         );
         let (meme, quote) = payload.redeem_migration(TEST_MIGRATION_WITNESS());
         let migration = events::collect_one<events::Migrated>(0);
-        let (
-            _,
-            _,
-            _,
-            disposed_meme,
-            native_supply_burned,
-            total_supply_after,
-            _,
-            _,
-        ) = migration.migrated_balance_fields();
+        let (_, _, protocol_quote_after, _) = launch.fee_totals_for_testing();
 
-        assert_eq!(disposed_meme, expected_disposed_meme);
-        assert!(native_supply_burned);
-        assert_eq!(total_supply_after, initial_supply - expected_disposed_meme);
+        assert_eq!(meme_reserve + pending_burn, expected_disposed_meme);
         assert_eq!(
             currency.total_supply().destroy_some(),
             initial_supply - expected_disposed_meme,
+        );
+        assert_eq!(
+            bcs::to_bytes(&migration),
+            migrated_bytes(
+                object::id(&launch),
+                meme.value(),
+                quote.value(),
+                expected_disposed_meme,
+                true,
+                initial_supply - expected_disposed_meme,
+                protocol_meme_graduation_fee,
+                protocol_quote_after - protocol_quote_before,
+            ),
         );
 
         destroy(meme);
@@ -1471,13 +1479,18 @@ fun admin_reassigns_claimed_creator_and_the_new_cap_claims_prior_fees() {
         launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
 
         let reassigned = events::collect_one<events::CurveFeeCapReassigned>(0);
-        let (launch_id, revoked_creator_cap_id, creator_cap_id, recipient) =
-            reassigned.curve_fee_cap_reassigned_fields();
+        let creator_cap_id = launch.curve_fee_cap_id_for_testing().destroy_some();
         assert!(retired_creator_cap_id.is_some());
-        assert_eq!(launch_id, object::id(&launch));
-        assert_eq!(revoked_creator_cap_id, retired_creator_cap_id);
-        assert_eq!(launch.curve_fee_cap_id_for_testing(), option::some(creator_cap_id));
-        assert_eq!(recipient, NEW_CREATOR);
+        assert!(retired_creator_cap_id != option::some(creator_cap_id));
+        assert_eq!(
+            bcs::to_bytes(&reassigned),
+            cap_reassigned_bytes(
+                object::id(&launch),
+                retired_creator_cap_id,
+                creator_cap_id,
+                NEW_CREATOR,
+            ),
+        );
 
         launch.put_back();
     });
@@ -1558,11 +1571,12 @@ fun admin_reassigns_an_unclaimed_creator_and_removes_the_pending_claim() {
         launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
 
         let reassigned = events::collect_one<events::CurveFeeCapReassigned>(0);
-        let (_, revoked_creator_cap_id, creator_cap_id, _) =
-            reassigned.curve_fee_cap_reassigned_fields();
-        assert!(revoked_creator_cap_id.is_none());
+        let creator_cap_id = launch.curve_fee_cap_id_for_testing().destroy_some();
         assert!(!launch.has_creator_authority_for_testing());
-        assert_eq!(launch.curve_fee_cap_id_for_testing(), option::some(creator_cap_id));
+        assert_eq!(
+            bcs::to_bytes(&reassigned),
+            cap_reassigned_bytes(object::id(&launch), option::none(), creator_cap_id, NEW_CREATOR),
+        );
 
         destroy(launch);
     });
@@ -1700,11 +1714,11 @@ fun metadata_cap_holder_updates_coin_metadata_through_the_launch() {
         );
 
         let updated = events::collect_one<events::MemeMetadataUpdated>(0);
-        let (launch_id, name, description, icon_url) = updated.meme_metadata_updated_fields();
-        assert_eq!(launch_id, object::id(&launch));
-        assert_eq!(name, b"Renamed Launch".to_string());
-        assert_eq!(description, b"Normalized launch state".to_string());
-        assert_eq!(icon_url, b"".to_string());
+        let mut expected = bcs::to_bytes(&object::id(&launch));
+        expected.append(bcs::to_bytes(&b"Renamed Launch".to_string()));
+        expected.append(bcs::to_bytes(&b"Normalized launch state".to_string()));
+        expected.append(bcs::to_bytes(&b"".to_string()));
+        assert_eq!(bcs::to_bytes(&updated), expected);
 
         launch.set_description(
             &f.package_version,
@@ -1857,12 +1871,17 @@ fun metadata_stays_editable_and_reassignable_after_curve_fees_are_locked() {
         launch.reassign_metadata_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
 
         let reassigned = events::collect_one<events::MetadataCapReassigned>(0);
-        let (launch_id, revoked_metadata_cap_id, metadata_cap_id, recipient) =
-            reassigned.metadata_cap_reassigned_fields();
-        assert_eq!(launch_id, object::id(&launch));
-        assert_eq!(revoked_metadata_cap_id, option::some(retired_metadata_cap_id));
-        assert_eq!(launch.blast_metadata_cap_id_for_testing(), option::some(metadata_cap_id));
-        assert_eq!(recipient, NEW_CREATOR);
+        let metadata_cap_id = launch.blast_metadata_cap_id_for_testing().destroy_some();
+        assert!(metadata_cap_id != retired_metadata_cap_id);
+        assert_eq!(
+            bcs::to_bytes(&reassigned),
+            cap_reassigned_bytes(
+                object::id(&launch),
+                option::some(retired_metadata_cap_id),
+                metadata_cap_id,
+                NEW_CREATOR,
+            ),
+        );
         assert_eq!(
             launch.fee_custodian_for_testing(),
             option::some(type_name::with_original_ids<TestCustodian>()),
@@ -1934,10 +1953,10 @@ fun locking_destroys_the_cap_and_binds_creator_fees_to_the_custodian() {
         launch.lock_creator_fees(&f.package_version, creator_cap, TestCustodian());
 
         let locked = events::collect_one<events::CreatorFeesLocked>(0);
-        let (launch_id, locked_cap_id, custodian) = locked.creator_fees_locked_fields();
-        assert_eq!(launch_id, object::id(&launch));
-        assert_eq!(locked_cap_id, creator_cap_id);
-        assert_eq!(custodian, type_name::with_original_ids<TestCustodian>());
+        let mut expected = bcs::to_bytes(&object::id(&launch));
+        expected.append(bcs::to_bytes(&creator_cap_id));
+        expected.append(bcs::to_bytes(&type_name::with_original_ids<TestCustodian>()));
+        assert_eq!(bcs::to_bytes(&locked), expected);
         assert_eq!(
             launch.fee_custodian_for_testing(),
             option::some(type_name::with_original_ids<TestCustodian>()),
@@ -2172,6 +2191,11 @@ fun locking_rejects_a_publicly_constructible_framework_witness() {
 
 // === Private Test Helpers ===
 
+/// Serializes one protocol constant by value, so no test borrows a constant in place.
+fun u64_bytes(value: u64): vector<u8> {
+    bcs::to_bytes(&value)
+}
+
 macro fun launch_next_tx(
     $fixture: &mut LaunchFixture,
     $sender: address,
@@ -2353,30 +2377,104 @@ fun assert_launch_snapshot(launch: &Launch<LAUNCH_TESTS, TEST_QUOTE>) {
     );
 }
 
-fun assert_bought_event(
-    bought: &events::Bought,
-    launch_id: ID,
-    quote_in_gross: u64,
-    meme_out_gross: u64,
-) {
-    let (emitted_launch_id, emitted_quote_in, emitted_meme_out_gross) =
-        bought.bought_trade_fields();
-
-    assert_eq!(emitted_launch_id, launch_id);
-    assert_eq!(emitted_quote_in, quote_in_gross);
-    assert_eq!(emitted_meme_out_gross, meme_out_gross);
+/// Expected `LaunchTicketCreated` bytes for a fixture ticket designating `CREATOR` by address.
+fun ticket_created_bytes(ticket_id: ID, metadata_cap_id: ID, burnable: bool): vector<u8> {
+    let mut expected = bcs::to_bytes(&ticket_id);
+    expected.append(bcs::to_bytes(&type_name::with_original_ids<LAUNCH_TESTS>()));
+    expected.append(u64_bytes(INITIAL_MEME_SUPPLY));
+    expected.append(bcs::to_bytes(&metadata_cap_id));
+    expected.append(bcs::to_bytes(&option::some(CREATOR)));
+    expected.append(bcs::to_bytes(&option::none<vector<u8>>()));
+    expected.append(bcs::to_bytes(&burnable));
+    expected.append(u64_bytes(SELL_BURN_BPS));
+    expected
 }
 
-fun assert_terminal_bought_event(
-    bought: &events::Bought,
-    launch_id: ID,
-    quote_refund: u64,
-) {
-    let (emitted_launch_id, quote_in, _) =
-        bought.bought_trade_fields();
+/// Expected `LaunchCreated` bytes for the fixture's cold policy and canonical partition.
+fun launch_created_bytes(launch_id: ID, ticket_id: ID): vector<u8> {
+    let mut expected = bcs::to_bytes(&launch_id);
+    expected.append(bcs::to_bytes(&ticket_id));
+    expected.append(bcs::to_bytes(&type_name::with_original_ids<TEST_QUOTE>()));
+    expected.append(bcs::to_bytes(&type_name::with_original_ids<TEST_MIGRATION_WITNESS>()));
+    expected.append(u64_bytes(EXPECTED_CURVE_MEME));
+    expected.append(u64_bytes(EXPECTED_PROTOCOL_MEME));
+    expected.append(u64_bytes(EXPECTED_POOL_MEME));
+    expected.append(u64_bytes(VIRTUAL_QUOTE));
+    expected.append(u64_bytes(MIGRATION_QUOTE_TARGET));
+    expected.append(u64_bytes(QUOTE_FEE_BPS));
+    expected.append(u64_bytes(MEME_FEE_BPS));
+    expected.append(u64_bytes(PROTOCOL_QUOTE_MIGRATION_FEE_BPS));
+    expected.append(u64_bytes(PROTOCOL_MEME_GRADUATION_FEE_BPS));
+    expected.append(u64_bytes(MEME_LIQUIDITY_PROVISION_BPS));
+    expected
+}
 
-    assert_eq!(emitted_launch_id, launch_id);
-    assert_eq!(quote_in + quote_refund, 30_000_000);
+/// Expected `Bought` bytes: trade amounts, the four ledger deltas, then both reserves after.
+fun bought_bytes(
+    launch_id: ID,
+    quote_in: u64,
+    meme_out_gross: u64,
+    protocol_meme_fee_delta: u64,
+    creator_meme_fee_delta: u64,
+    protocol_quote_fee_delta: u64,
+    creator_quote_fee_delta: u64,
+    meme_reserve: u64,
+    real_quote_reserve: u64,
+): vector<u8> {
+    let mut expected = bcs::to_bytes(&launch_id);
+    expected.append(bcs::to_bytes(&quote_in));
+    expected.append(bcs::to_bytes(&meme_out_gross));
+    expected.append(bcs::to_bytes(&protocol_meme_fee_delta));
+    expected.append(bcs::to_bytes(&creator_meme_fee_delta));
+    expected.append(bcs::to_bytes(&protocol_quote_fee_delta));
+    expected.append(bcs::to_bytes(&creator_quote_fee_delta));
+    expected.append(bcs::to_bytes(&meme_reserve));
+    expected.append(bcs::to_bytes(&real_quote_reserve));
+    expected
+}
+
+/// Expected `Migrated` bytes in payload order.
+fun migrated_bytes(
+    launch_id: ID,
+    migration_meme: u64,
+    migration_quote: u64,
+    disposed_meme: u64,
+    native_supply_burned: bool,
+    total_supply_after: u64,
+    protocol_meme_graduation_fee: u64,
+    protocol_quote_migration_fee: u64,
+): vector<u8> {
+    let mut expected = bcs::to_bytes(&launch_id);
+    expected.append(bcs::to_bytes(&migration_meme));
+    expected.append(bcs::to_bytes(&migration_quote));
+    expected.append(bcs::to_bytes(&disposed_meme));
+    expected.append(bcs::to_bytes(&native_supply_burned));
+    expected.append(bcs::to_bytes(&total_supply_after));
+    expected.append(bcs::to_bytes(&protocol_meme_graduation_fee));
+    expected.append(bcs::to_bytes(&protocol_quote_migration_fee));
+    expected
+}
+
+/// Expected bytes shared by `CreatorFeesClaimed` and `ProtocolFeesClaimed`.
+fun fee_claim_bytes(launch_id: ID, meme_amount: u64, quote_amount: u64): vector<u8> {
+    let mut expected = bcs::to_bytes(&launch_id);
+    expected.append(bcs::to_bytes(&meme_amount));
+    expected.append(bcs::to_bytes(&quote_amount));
+    expected
+}
+
+/// Expected bytes shared by `CurveFeeCapReassigned` and `MetadataCapReassigned`.
+fun cap_reassigned_bytes(
+    launch_id: ID,
+    revoked_cap_id: Option<ID>,
+    cap_id: ID,
+    recipient: address,
+): vector<u8> {
+    let mut expected = bcs::to_bytes(&launch_id);
+    expected.append(bcs::to_bytes(&revoked_cap_id));
+    expected.append(bcs::to_bytes(&cap_id));
+    expected.append(bcs::to_bytes(&recipient));
+    expected
 }
 
 fun reach_migration_after_sell(

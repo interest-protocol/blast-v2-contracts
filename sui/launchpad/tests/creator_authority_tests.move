@@ -11,7 +11,7 @@ use blast_fun::{
     package_version::{Self, PackageVersion},
     runtime_config,
 };
-use std::unit_test::{assert_eq, destroy};
+use std::{bcs, unit_test::{assert_eq, destroy}};
 use sui::{clock::{Self, Clock}, event, test_scenario::{Self, Scenario}};
 
 use fun acl_ctx as AclFixture.ctx;
@@ -162,8 +162,10 @@ fun creator_claim_signer_set_event_emits_current_key() {
         );
 
         let signer_set = events::collect_one<events::CreatorClaimSignerSet>(0);
-        let signer_public_key = signer_set.creator_claim_signer_set_fields();
-        assert_eq!(signer_public_key, creator_claim_signer_public_key());
+        assert_eq!(
+            bcs::to_bytes(&signer_set),
+            bcs::to_bytes(&creator_claim_signer_public_key()),
+        );
     });
 
     fixture.end();
@@ -300,17 +302,17 @@ fun address_creator_claim_returns_composable_cap_without_attestation() {
     fixture.next_tx!(CREATOR, |f| {
         let creator_state = creator_authority::new_address(CREATOR)
             .into_authority<TEST_MEME>();
-        let cap = f.claim(creator_state, option::none());
+        let (cap, metadata_cap) = f.claim_caps(creator_state, option::none());
         let cap_id = object::id(&cap);
+        let metadata_cap_id = object::id(&metadata_cap);
         transfer::public_transfer(cap, PROTOCOL_ADMIN);
+        destroy(metadata_cap);
 
         let claimed = events::collect_one<events::CreatorCapsClaimed>(0);
-        let (meme, creator_cap_id, _) = claimed.creator_caps_claimed_fields();
-        assert_eq!(
-            meme,
-            std::type_name::with_original_ids<TEST_MEME>(),
-        );
-        assert_eq!(creator_cap_id, cap_id);
+        let mut expected = bcs::to_bytes(&std::type_name::with_original_ids<TEST_MEME>());
+        expected.append(bcs::to_bytes(&cap_id));
+        expected.append(bcs::to_bytes(&metadata_cap_id));
+        assert_eq!(bcs::to_bytes(&claimed), expected);
     });
 
     fixture.next_tx_expecting_events!(PROTOCOL_ADMIN, 1, |f| {
@@ -867,15 +869,23 @@ fun claim<Meme>(
     creator_state: creator_authority::CreatorAuthority<Meme>,
     creator_claim_attestation: Option<vector<u8>>,
 ): creator_authority::CurveFeeCap<Meme> {
-    let (curve_fee_cap, metadata_cap) = creator_state.claim_creator_caps(
+    let (curve_fee_cap, metadata_cap) = self.claim_caps(creator_state, creator_claim_attestation);
+    destroy(metadata_cap);
+
+    curve_fee_cap
+}
+
+fun claim_caps<Meme>(
+    self: &mut ClaimFixture,
+    creator_state: creator_authority::CreatorAuthority<Meme>,
+    creator_claim_attestation: Option<vector<u8>>,
+): (creator_authority::CurveFeeCap<Meme>, creator_authority::BlastMetadataCap<Meme>) {
+    creator_state.claim_creator_caps(
         &self.config,
         creator_claim_attestation,
         &self.clock,
         self.scenario.ctx(),
-    );
-    destroy(metadata_cap);
-
-    curve_fee_cap
+    )
 }
 
 fun take_delivered_creator_cap(

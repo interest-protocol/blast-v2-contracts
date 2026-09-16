@@ -10,7 +10,7 @@ use blast_fun::{
     package_version,
     runtime_config,
 };
-use std::unit_test::{assert_eq, destroy};
+use std::{bcs, unit_test::{assert_eq, destroy}};
 use sui::{event, test_scenario::{Self, Scenario}};
 
 use fun config_end as ConfigFixture.end;
@@ -47,7 +47,7 @@ fun package_init_creates_disabled_zero_share_runtime_config() {
     let mut fixture = start_init();
 
     fixture.next_tx!(PUBLISHER, |f| {
-        assert_eq!(f.config.protocol_fee_share_bps(), 0);
+        assert_eq!(f.config.protocol_fee_share().value(), 0);
     });
 
     fixture.end();
@@ -63,9 +63,8 @@ fun active_admin_updates_live_share_and_emits_new_value() {
         f.config.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(7_000));
 
         let changed = events::collect_one<events::ProtocolFeeShareChanged>(0);
-        let new_share_bps = changed.protocol_fee_share_changed_fields();
-        assert_eq!(f.config.protocol_fee_share_bps(), 7_000);
-        assert_eq!(new_share_bps, 7_000);
+        assert_eq!(f.config.protocol_fee_share().value(), 7_000);
+        assert_eq!(bcs::to_bytes(&changed), bcs::to_bytes(&7_000u64));
         assert!(event::events_by_type<events::ProtocolFeeShareChanged>().is_empty());
     });
 
@@ -89,14 +88,12 @@ fun one_runtime_config_and_admin_witness_update_both_live_settings() {
         f.config.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(2_500));
 
         let signer_set = events::collect_one<events::CreatorClaimSignerSet>(0);
-        let emitted_public_key = signer_set.creator_claim_signer_set_fields();
         let fee_share_changed =
             events::collect_one<events::ProtocolFeeShareChanged>(0);
-        let new_share_bps = fee_share_changed.protocol_fee_share_changed_fields();
 
-        assert_eq!(emitted_public_key, signer_public_key);
-        assert_eq!(new_share_bps, 2_500);
-        assert_eq!(f.config.protocol_fee_share_bps(), 2_500);
+        assert_eq!(bcs::to_bytes(&signer_set), bcs::to_bytes(&signer_public_key));
+        assert_eq!(bcs::to_bytes(&fee_share_changed), bcs::to_bytes(&2_500u64));
+        assert_eq!(f.config.protocol_fee_share().value(), 2_500);
     });
 
     fixture.end();
@@ -166,20 +163,18 @@ fun protocol_fee_share_accepts_both_percentage_boundaries() {
         let admin_witness = f.sign_in();
 
         f.config.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(10_000));
-        assert_eq!(f.config.protocol_fee_share_bps(), 10_000);
+        assert_eq!(f.config.protocol_fee_share().value(), 10_000);
 
         f.config.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(0));
-        assert_eq!(f.config.protocol_fee_share_bps(), 0);
+        assert_eq!(f.config.protocol_fee_share().value(), 0);
 
         let mut changes = events::collect<events::ProtocolFeeShareChanged>();
         assert_eq!(changes.length(), 2);
         let second = changes.pop_back();
         let first = changes.pop_back();
-        let first_new = first.protocol_fee_share_changed_fields();
-        let second_new = second.protocol_fee_share_changed_fields();
 
-        assert_eq!(first_new, 10_000);
-        assert_eq!(second_new, 0);
+        assert_eq!(bcs::to_bytes(&first), bcs::to_bytes(&10_000u64));
+        assert_eq!(bcs::to_bytes(&second), bcs::to_bytes(&0u64));
     });
 
     fixture.end();

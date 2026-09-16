@@ -133,6 +133,12 @@ public fun truncate_supply_for_testing<Meme>(
 }
 
 #[test_only]
+/// Returns the identity of the native metadata capability this ticket custodies.
+public fun metadata_cap_id_for_testing<Meme>(self: &LaunchTicket<Meme>): ID {
+    object::id(&self.metadata_cap)
+}
+
+#[test_only]
 /// Overrides the sell-burn rate past this package's ceiling to model an old-generation ticket.
 public fun set_sell_burn_bps_for_testing<Meme>(self: &mut LaunchTicket<Meme>, value: u64) {
     self.sell_burn_bps = bps::new(value);
