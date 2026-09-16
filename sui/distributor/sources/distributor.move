@@ -237,6 +237,10 @@ public fun collect_curve_fees<Meme, Quote>(
 }
 
 /// Collects already-accounted LP fees; venue fee collection can precede it in a PTB.
+///
+/// No launch argument pins the source: the vault must already be bound to this module's
+/// witness, and `Meme` is a one-time witness, so exactly one launch, one vault and one
+/// distributor exist for `<Meme, Quote>`. The type arguments already name the only pair.
 public fun collect_lp_fees<Meme, Quote>(
     self: &mut Distributor<Meme, Quote>,
     version: &Version,

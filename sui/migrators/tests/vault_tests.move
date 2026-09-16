@@ -91,7 +91,7 @@ fun accrues_with_the_lp_policy_share_and_never_resplits_prior_ownership() {
             f.vault.claim_protocol_fees(
                 &f.migrators_version,
                 &admin_witness,
-                f.scenario.ctx(),
+                f.ctx!(),
             );
         assert_eq!(meme.value(), 2);
         assert_eq!(quote.value(), 2);
@@ -115,7 +115,7 @@ fun accrues_with_the_lp_policy_share_and_never_resplits_prior_ownership() {
             f.vault.claim_protocol_fees(
                 &f.migrators_version,
                 &admin_witness,
-                f.scenario.ctx(),
+                f.ctx!(),
             );
         assert_eq!(meme.value(), 10);
         assert_eq!(quote.value(), 10);
@@ -150,7 +150,7 @@ fun project_share_overrides_the_default_and_is_the_emitted_split_input() {
             f.vault.claim_protocol_fees(
                 &f.migrators_version,
                 &admin_witness,
-                f.scenario.ctx(),
+                f.ctx!(),
             );
         assert_eq!(meme.value(), 2);
         assert_eq!(quote.value(), 2);
@@ -188,7 +188,7 @@ fun project_share_overrides_the_default_and_is_the_emitted_split_input() {
             f.vault.claim_protocol_fees(
                 &f.migrators_version,
                 &admin_witness,
-                f.scenario.ctx(),
+                f.ctx!(),
             );
         assert_eq!(meme.value(), 5);
         assert_eq!(quote.value(), 5);
@@ -209,7 +209,7 @@ fun protocol_claim_returns_migration_residuals_without_accrued_fees() {
             f.vault.claim_protocol_fees(
                 &f.migrators_version,
                 &admin_witness,
-                f.scenario.ctx(),
+                f.ctx!(),
             );
 
         assert_eq!(meme.value(), 3);
@@ -249,13 +249,13 @@ fun receives_and_merges_the_maximum_coin_batch() {
         let mut count: u64 = 0;
         while (count < 60) {
             let fee_coin =
-                balance::create_for_testing<MEME>(1).into_coin(f.scenario.ctx());
+                balance::create_for_testing<MEME>(1).into_coin(f.ctx!());
             transfer::public_transfer(fee_coin, vault_id.to_address());
             count = count + 1;
         };
         while (count < 100) {
             let fee_coin =
-                balance::create_for_testing<QUOTE>(1).into_coin(f.scenario.ctx());
+                balance::create_for_testing<QUOTE>(1).into_coin(f.ctx!());
             transfer::public_transfer(fee_coin, vault_id.to_address());
             count = count + 1;
         };
@@ -361,7 +361,7 @@ fun wrong_venue_accrual_fails_closed() {
             balance::create_for_testing<QUOTE>(1),
             5,
             &f.lp_fee_policy,
-            f.scenario.ctx(),
+            f.ctx!(),
         );
     });
 
@@ -374,13 +374,13 @@ fun live_lp_fee_cap_claims_only_creator_fees() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let lp_fee_cap = f.vault.issue_lp_fee_cap_for_testing(f.scenario.ctx());
+        let lp_fee_cap = f.vault.issue_lp_fee_cap_for_testing(f.ctx!());
 
         f.accrue!(10, 20);
         let (meme, quote) = f.vault.claim_creator_fees(
             &f.migrators_version,
             &lp_fee_cap,
-            f.scenario.ctx(),
+            f.ctx!(),
         );
 
         assert_eq!(meme.value(), 10);
@@ -403,12 +403,12 @@ fun retired_lp_fee_cap_is_rejected_before_the_empty_ledger_check() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let retired = f.vault.issue_lp_fee_cap_for_testing(f.scenario.ctx());
-        let live = f.vault.issue_lp_fee_cap_for_testing(f.scenario.ctx());
+        let retired = f.vault.issue_lp_fee_cap_for_testing(f.ctx!());
+        let live = f.vault.issue_lp_fee_cap_for_testing(f.ctx!());
         let (meme, quote) = f.vault.claim_creator_fees(
             &f.migrators_version,
             &retired,
-            f.scenario.ctx(),
+            f.ctx!(),
         );
 
         destroy(meme);
@@ -429,13 +429,13 @@ fun pending_vault_honors_no_lp_fee_cap() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let lp_fee_cap = lp_fee_authority::new_lp_fee_cap_for_testing<MEME>(f.scenario.ctx());
+        let lp_fee_cap = lp_fee_authority::new_lp_fee_cap_for_testing<MEME>(f.ctx!());
 
         f.accrue!(10, 20);
         let (meme, quote) = f.vault.claim_creator_fees(
             &f.migrators_version,
             &lp_fee_cap,
-            f.scenario.ctx(),
+            f.ctx!(),
         );
 
         destroy(meme);
@@ -451,7 +451,7 @@ fun locked_lp_fees_are_claimed_only_by_the_bound_custodian() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let lp_fee_cap = f.vault.issue_lp_fee_cap_for_testing(f.scenario.ctx());
+        let lp_fee_cap = f.vault.issue_lp_fee_cap_for_testing(f.ctx!());
         let lp_fee_cap_id = object::id(&lp_fee_cap);
 
         f.accrue!(10, 20);
@@ -473,7 +473,7 @@ fun locked_lp_fees_are_claimed_only_by_the_bound_custodian() {
         let (meme, quote) = f.vault.claim_custodied_creator_fees(
             &f.migrators_version,
             TestCustodian(),
-            f.scenario.ctx(),
+            f.ctx!(),
         );
         assert_eq!(meme.value(), 10);
         assert_eq!(quote.value(), 20);
@@ -494,13 +494,13 @@ fun wrong_custodian_is_rejected_before_the_empty_lp_ledger_check() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let lp_fee_cap = f.vault.issue_lp_fee_cap_for_testing(f.scenario.ctx());
+        let lp_fee_cap = f.vault.issue_lp_fee_cap_for_testing(f.ctx!());
 
         f.vault.lock_creator_fees(&f.migrators_version, lp_fee_cap, TestCustodian());
         let (meme, quote) = f.vault.claim_custodied_creator_fees(
             &f.migrators_version,
             OtherCustodian(),
-            f.scenario.ctx(),
+            f.ctx!(),
         );
 
         destroy(meme);
@@ -523,6 +523,12 @@ macro fun next_tx(
     $fn(fixture);
 }
 
+macro fun ctx($fixture: &mut VaultFixture): &mut TxContext {
+    let fixture = $fixture;
+
+    fixture.scenario.ctx()
+}
+
 macro fun accrue($fixture: &mut VaultFixture, $meme: u64, $quote: u64) {
     let fixture = $fixture;
     let venue = TestVenue();
@@ -534,7 +540,7 @@ macro fun accrue($fixture: &mut VaultFixture, $meme: u64, $quote: u64) {
         balance::create_for_testing<QUOTE>($quote),
         5,
         &fixture.lp_fee_policy,
-        fixture.scenario.ctx(),
+        fixture.ctx!(),
     );
 }
 

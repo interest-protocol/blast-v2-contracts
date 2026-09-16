@@ -1,13 +1,14 @@
 # Holder fee distributor
 
 Optional, independent Sui package for redirecting creator fees to wallet holders.
-The existing launchpad and migrators remain unchanged. Enrollment takes the
-launch's existing `CreatorCap<Meme>` by value and retains it as a discoverable
-child object. It does not destroy the cap or mint a replacement.
+The existing launchpad and migrators remain unchanged. Enrollment consumes the
+launch's `CurveFeeCap<Meme>` and destroys it, binding the launch's creator fees
+to this module's drop-only `Witness` type forever. No fee capability survives, so
+no administrator can reassign those fees and no replacement can be minted.
 
 ```mermaid
 flowchart LR
-  Curve[Curve creator fees] --> D[Distributor owns CreatorCap]
+  Curve[Curve creator fees] --> D[Distributor bound as fee custodian]
   LP[LP vault creator fees] --> D
   Indexer[Checkpoint holder accounting] --> Manifest[Public allocation manifest]
   Manifest --> Publisher[PublisherCap owner signs round]
@@ -33,7 +34,9 @@ root or excess reserved budget cannot be recovered through the current API.
 
 | Operation | Authority | Result |
 | --- | --- | --- |
-| `new` + `share` | Existing CreatorCap owner | Shared distributor; separately delivered PublisherCap |
+| `new` + `share` | Existing CurveFeeCap owner | Cap destroyed; shared distributor; separately delivered PublisherCap |
+| `lock_lp_fees` | Anyone, with the enrolled launch | Pending LP fees bind here without any capability |
+| `lock_lp_fees_with_cap` | Live LpFeeCap owner | Cap destroyed; LP fees bind here forever |
 | `collect_curve_fees` | Anyone | Both creator fee assets enter distributor custody |
 | `collect_lp_fees` | Anyone | Accrued LP creator fees enter distributor custody |
 | `publish_round` + `share_round` | Bound PublisherCap owner | Independently funded shared round |
@@ -44,10 +47,10 @@ transaction signatures; no server-message signature verifier is needed. Transfer
 PublisherCap to rotate authority. Destroying or losing it prevents future rounds.
 Permissionless collectors and relayers need only gas.
 
-Events: `Enrolled`, `FeesCollected`, `RoundPublished`, `RewardPaid`. The SDK's
-`getDistributorCreatorCap` resolves the actual dynamic child and checks its type;
-the enrollment event links its original ID to the distributor. `CreatorCapKey()`
-has BCS bytes `00` (Move's unit-struct dummy boolean).
+Events: `Enrolled`, `FeesCollected`, `RoundPublished`, `RewardPaid`. `Enrolled`
+records the destroyed `CurveFeeCap` ID beside the launch and distributor, so an
+indexer can still link the retired capability to the custody that replaced it.
+`FeesCollected` names the paying launch or vault in its `source` field.
 
 ## Accounting and operation
 
@@ -68,13 +71,20 @@ Verify vault provenance against the launch's migration event.
 ## Verification and release
 
 ```sh
+bash sui/distributor/scripts/test_check_source_boundaries.sh
+bash sui/distributor/scripts/check_source_boundaries.sh
 sui move test --path sui/distributor --build-env testnet --lint
 sui move build --path sui/distributor --build-env testnet
 sui move lint --path sui/distributor --build-env testnet --warnings-are-errors
 ```
 
+The boundary checker pins the custody witness, both bind paths, both collection
+paths, the pause and version guards, the published struct and event layouts, and
+the error registry. Its self-test mutates each of those in a throwaway copy and
+requires the checker to reject every variant.
+
 `docs/vectors/holder-rewards.json` is the fixed Move/SDK commitment vector.
-Tests cover actual creator-cap enrollment and curve fee collection, sharing and
+Tests cover actual curve-fee-cap enrollment and curve fee collection, sharing and
 publisher-cap transfer, funding, replay, recipients, contiguous intervals, maximum
 65,536-leaf bitmap/proof, and native payout event bytes. The production ABI exposes
 no cap borrow, mutable UID, or coin-returning withdrawal.
@@ -102,8 +112,9 @@ This package is **unpublished**. Before accepting real creator caps:
 - Verify compatible upgrades, commit-and-advance cutover, and resumption on the
   target network. Record the AdminCap, Version, and UpgradeCap IDs. Coordinate core cutovers with a tested dependency relink for creator-fee
   collection.
-- Verify child custody in an explorer, measure maximum-round transaction gas and
-  object size under target-chain limits, and publish manifests/accounting durably.
+- Verify on an explorer that enrollment destroyed the curve-fee capability, measure
+  maximum-round transaction gas and object size under target-chain limits, and
+  publish manifests/accounting durably.
 
 No package publication, mainnet transaction, or UpgradeCap destruction is included
 in local implementation. See [ADR 0075](../../docs/decisions/0075-independent-holder-fee-distributor.md).

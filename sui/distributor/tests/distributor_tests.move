@@ -711,18 +711,18 @@ fun retired_code_cannot_resume_paused_rewards() {
 #[test]
 fun locked_lp_fees_collect_only_creator_lp_fees() {
     let mut f = start();
-    let lp_fee_policy = lp_fee_policy::new_for_testing(f.scenario.ctx());
+    let lp_fee_policy = lp_fee_policy::new_for_testing(f.ctx!());
     let share = lp_fee_policy.protocol_fee_share<DISTRIBUTOR_TESTS>().value();
-    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.scenario.ctx()).into_balance();
-    let quote = coin::mint_for_testing<QUOTE>(2000, f.scenario.ctx()).into_balance();
+    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.ctx!()).into_balance();
+    let quote = coin::mint_for_testing<QUOTE>(2000, f.ctx!()).into_balance();
     let mut source = blast_fun_migrators::vault::funded_for_testing(
         object::id_from_address(@0xF00),
         meme,
         quote,
         &lp_fee_policy,
-        f.scenario.ctx(),
+        f.ctx!(),
     );
-    let lp_fee_cap = source.issue_lp_fee_cap_for_testing(f.scenario.ctx());
+    let lp_fee_cap = source.issue_lp_fee_cap_for_testing(f.ctx!());
     f.next_tx!(BOT, |f| {
         f.distributor.lock_lp_fees_with_cap(
             &f.control,
@@ -736,7 +736,7 @@ fun locked_lp_fees_collect_only_creator_lp_fees() {
             option::some(type_name::with_original_ids<distributor::Witness>()),
         );
         assert!(source.lp_fee_cap_id_for_testing().is_none());
-        f.distributor.collect_lp_fees(&f.control, &mut source, &f.migrators_version, f.scenario.ctx());
+        f.distributor.collect_lp_fees(&f.control, &mut source, &f.migrators_version, f.ctx!());
     });
     let (meme, quote) = f.distributor.balances_for_testing();
     assert_eq!(meme, 1000 - (1000 * share + 9999) / 10000);
@@ -755,18 +755,18 @@ fun locked_lp_fees_collect_only_creator_lp_fees() {
 ]
 fun lp_collection_requires_lp_fees_bound_to_the_distributor() {
     let mut f = start();
-    let lp_fee_policy = lp_fee_policy::new_for_testing(f.scenario.ctx());
-    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.scenario.ctx()).into_balance();
-    let quote = coin::mint_for_testing<QUOTE>(2000, f.scenario.ctx()).into_balance();
+    let lp_fee_policy = lp_fee_policy::new_for_testing(f.ctx!());
+    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.ctx!()).into_balance();
+    let quote = coin::mint_for_testing<QUOTE>(2000, f.ctx!()).into_balance();
     let mut source = blast_fun_migrators::vault::funded_for_testing(
         object::id_from_address(@0xF00),
         meme,
         quote,
         &lp_fee_policy,
-        f.scenario.ctx(),
+        f.ctx!(),
     );
     f.next_tx!(BOT, |f| {
-        f.distributor.collect_lp_fees(&f.control, &mut source, &f.migrators_version, f.scenario.ctx());
+        f.distributor.collect_lp_fees(&f.control, &mut source, &f.migrators_version, f.ctx!());
     });
     destroy(source);
     destroy(lp_fee_policy);
@@ -782,18 +782,18 @@ fun lp_collection_requires_lp_fees_bound_to_the_distributor() {
 ]
 fun retired_lp_fee_cap_cannot_lock_lp_fees() {
     let mut f = start();
-    let lp_fee_policy = lp_fee_policy::new_for_testing(f.scenario.ctx());
-    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1, f.scenario.ctx()).into_balance();
-    let quote = coin::mint_for_testing<QUOTE>(1, f.scenario.ctx()).into_balance();
+    let lp_fee_policy = lp_fee_policy::new_for_testing(f.ctx!());
+    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1, f.ctx!()).into_balance();
+    let quote = coin::mint_for_testing<QUOTE>(1, f.ctx!()).into_balance();
     let mut source = blast_fun_migrators::vault::funded_for_testing(
         object::id_from_address(@0xF00),
         meme,
         quote,
         &lp_fee_policy,
-        f.scenario.ctx(),
+        f.ctx!(),
     );
-    let retired = source.issue_lp_fee_cap_for_testing(f.scenario.ctx());
-    let live = source.issue_lp_fee_cap_for_testing(f.scenario.ctx());
+    let retired = source.issue_lp_fee_cap_for_testing(f.ctx!());
+    let live = source.issue_lp_fee_cap_for_testing(f.ctx!());
     f.next_tx!(BOT, |f| {
         f.distributor.lock_lp_fees_with_cap(
             &f.control,
@@ -813,16 +813,16 @@ fun retired_lp_fee_cap_cannot_lock_lp_fees() {
 #[test]
 fun pending_lp_fees_bind_to_the_enrolled_distributor_without_a_cap() {
     let mut f = start();
-    let lp_fee_policy = lp_fee_policy::new_for_testing(f.scenario.ctx());
+    let lp_fee_policy = lp_fee_policy::new_for_testing(f.ctx!());
     let share = lp_fee_policy.protocol_fee_share<DISTRIBUTOR_TESTS>().value();
-    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.scenario.ctx()).into_balance();
-    let quote = coin::mint_for_testing<QUOTE>(2000, f.scenario.ctx()).into_balance();
+    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.ctx!()).into_balance();
+    let quote = coin::mint_for_testing<QUOTE>(2000, f.ctx!()).into_balance();
     let mut source = blast_fun_migrators::vault::funded_for_testing(
         object::id_from_address(@0xF00),
         meme,
         quote,
         &lp_fee_policy,
-        f.scenario.ctx(),
+        f.ctx!(),
     );
     f.next_tx!(BOT, |f| {
         f.distributor.lock_lp_fees(&f.control, &mut source, &f.migrators_version, &f.launch);
@@ -830,7 +830,7 @@ fun pending_lp_fees_bind_to_the_enrolled_distributor_without_a_cap() {
             source.custodian_for_testing(),
             option::some(type_name::with_original_ids<distributor::Witness>()),
         );
-        f.distributor.collect_lp_fees(&f.control, &mut source, &f.migrators_version, f.scenario.ctx());
+        f.distributor.collect_lp_fees(&f.control, &mut source, &f.migrators_version, f.ctx!());
     });
     let (meme, quote) = f.distributor.balances_for_testing();
     assert_eq!(meme, 1000 - (1000 * share + 9999) / 10000);
@@ -847,17 +847,17 @@ fun pending_lp_fees_bind_to_the_enrolled_distributor_without_a_cap() {
 )]
 fun locking_a_claimed_lp_cap_rejects_an_unenrolled_launch() {
     let mut f = start();
-    let lp_fee_policy = lp_fee_policy::new_for_testing(f.scenario.ctx());
-    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.scenario.ctx()).into_balance();
-    let quote = coin::mint_for_testing<QUOTE>(2000, f.scenario.ctx()).into_balance();
+    let lp_fee_policy = lp_fee_policy::new_for_testing(f.ctx!());
+    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.ctx!()).into_balance();
+    let quote = coin::mint_for_testing<QUOTE>(2000, f.ctx!()).into_balance();
     let mut source = blast_fun_migrators::vault::funded_for_testing(
         object::id_from_address(@0xF00),
         meme,
         quote,
         &lp_fee_policy,
-        f.scenario.ctx(),
+        f.ctx!(),
     );
-    let lp_fee_cap = source.issue_lp_fee_cap_for_testing(f.scenario.ctx());
+    let lp_fee_cap = source.issue_lp_fee_cap_for_testing(f.ctx!());
     let unenrolled = f.new_unenrolled_launch();
 
     f.distributor.lock_lp_fees_with_cap(
@@ -867,6 +867,50 @@ fun locking_a_claimed_lp_cap_rejects_an_unenrolled_launch() {
         &unenrolled,
         lp_fee_cap,
     );
+
+    destroy(unenrolled);
+    destroy(source);
+    destroy(lp_fee_policy);
+    f.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = distributor::EWrongSource,
+    location = blast_fun_distributor::distributor,
+)]
+fun collecting_curve_fees_rejects_an_unenrolled_launch() {
+    let mut f = start();
+    let mut unenrolled = f.new_unenrolled_launch();
+
+    f.next_tx!(BOT, |f| {
+        f.distributor.collect_curve_fees(&f.control, &mut unenrolled, &f.version, f.ctx!());
+    });
+
+    destroy(unenrolled);
+    f.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = distributor::EWrongSource,
+    location = blast_fun_distributor::distributor,
+)]
+fun binding_pending_lp_fees_rejects_an_unenrolled_launch() {
+    let mut f = start();
+    let lp_fee_policy = lp_fee_policy::new_for_testing(f.ctx!());
+    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.ctx!()).into_balance();
+    let quote = coin::mint_for_testing<QUOTE>(2000, f.ctx!()).into_balance();
+    let mut source = blast_fun_migrators::vault::funded_for_testing(
+        object::id_from_address(@0xF00),
+        meme,
+        quote,
+        &lp_fee_policy,
+        f.ctx!(),
+    );
+    let unenrolled = f.new_unenrolled_launch();
+
+    f.distributor.lock_lp_fees(&f.control, &mut source, &f.migrators_version, &unenrolled);
 
     destroy(unenrolled);
     destroy(source);
@@ -890,13 +934,13 @@ fun new_unenrolled_launch(self: &mut DistributionFixture): Launch<DISTRIBUTOR_TE
         creator_authority::new_address(CREATOR),
         false,
         0,
-        self.scenario.ctx(),
+        self.ctx!(),
     );
     let launch = launch::new<DISTRIBUTOR_TESTS, QUOTE, Venue>(
         ticket,
         &self.version,
         &config,
-        self.scenario.ctx(),
+        self.ctx!(),
     );
     test_scenario::return_shared(config);
 

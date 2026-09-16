@@ -105,7 +105,7 @@ fun a_retired_curve_fee_cap_cannot_claim_the_lp_fee_cap() {
     let f = &mut fixture;
     let admin_witness = f.sign_in();
 
-    f.launch.reassign_curve_fee_cap(&f.version, &admin_witness, NEW_CREATOR, f.scenario.ctx());
+    f.launch.reassign_curve_fee_cap(&f.version, &admin_witness, NEW_CREATOR, f.ctx!());
     let lp_fee_cap = f.claim();
 
     destroy(lp_fee_cap);
@@ -182,7 +182,7 @@ fun admin_reissue_retires_the_claimed_cap() {
         &f.launch,
         &admin_witness,
         NEW_CREATOR,
-        f.scenario.ctx(),
+        f.ctx!(),
     );
 
     let issued = sui::event::events_by_type<events::LpFeeCapIssued>();
@@ -216,12 +216,12 @@ fun a_reissue_rejects_the_previously_claimed_cap_before_the_empty_ledger_check()
         &f.launch,
         &admin_witness,
         NEW_CREATOR,
-        f.scenario.ctx(),
+        f.ctx!(),
     );
     let (meme, quote) = f.vault.claim_creator_fees(
         &f.migrators_version,
         &claimed,
-        f.scenario.ctx(),
+        f.ctx!(),
     );
 
     destroy(meme);
@@ -245,7 +245,7 @@ fun reissue_requires_the_creator_admin_role() {
         &f.launch,
         &admin_witness,
         NEW_CREATOR,
-        f.scenario.ctx(),
+        f.ctx!(),
     );
 
     destroy(other);
@@ -264,7 +264,7 @@ fun admin_reissues_a_pending_vault_whose_launch_fees_are_not_custodied() {
         &f.launch,
         &admin_witness,
         NEW_CREATOR,
-        f.scenario.ctx(),
+        f.ctx!(),
     );
 
     let issued = sui::event::events_by_type<events::LpFeeCapIssued>();
@@ -299,7 +299,7 @@ fun pending_fees_of_a_custodied_launch_reject_reissue_before_the_role_check() {
         &f.launch,
         &admin_witness,
         NEW_CREATOR,
-        f.scenario.ctx(),
+        f.ctx!(),
     );
 
     destroy(other);
@@ -321,7 +321,7 @@ fun a_claimed_cap_stays_reissuable_after_launch_fees_are_custodied() {
         &f.launch,
         &admin_witness,
         NEW_CREATOR,
-        f.scenario.ctx(),
+        f.ctx!(),
     );
 
     let live_lp_fee_cap_id = f.vault.lp_fee_cap_id_for_testing();
@@ -347,7 +347,7 @@ fun reissue_rejects_the_zero_recipient() {
         &f.launch,
         &admin_witness,
         @0x0,
-        f.scenario.ctx(),
+        f.ctx!(),
     );
 
     fixture.end();
@@ -370,7 +370,7 @@ fun locked_lp_fees_reject_reissue_before_the_recipient_check() {
         &f.launch,
         &admin_witness,
         @0x0,
-        f.scenario.ctx(),
+        f.ctx!(),
     );
 
     fixture.end();
@@ -454,13 +454,19 @@ fun reissue_rejects_the_zero_recipient_before_the_custodian_reservation() {
         &f.launch,
         &admin_witness,
         @0x0,
-        f.scenario.ctx(),
+        f.ctx!(),
     );
 
     fixture.end();
 }
 
 // === Private Test Helpers ===
+
+macro fun ctx($self: &mut AuthorityFixture): &mut TxContext {
+    let self = $self;
+
+    self.scenario.ctx()
+}
 
 fun authority_take_curve_fee_cap(
     self: &mut AuthorityFixture,
@@ -556,7 +562,7 @@ fun claim(self: &mut AuthorityFixture): LpFeeCap<LP_FEE_AUTHORITY_TESTS> {
         &self.migrators_version,
         &self.launch,
         self.curve_fee_cap.borrow(),
-        self.scenario.ctx(),
+        self.ctx!(),
     )
 }
 
@@ -567,13 +573,13 @@ fun new_role_less_admin(
     let (root, mut other) = acl::new_for_testing<LAUNCHPAD_DOMAIN>(
         MAX_ADMINS,
         ROOT_TRANSFER_DELAY_MS,
-        self.scenario.ctx(),
+        self.ctx!(),
     );
     other.grant_admin(
         &root,
         launchpad_domain::package_admin_role(),
         ROLE_LESS_ADMIN,
-        self.scenario.ctx(),
+        self.ctx!(),
     );
     destroy(root);
     self.scenario.next_tx(ROLE_LESS_ADMIN);
