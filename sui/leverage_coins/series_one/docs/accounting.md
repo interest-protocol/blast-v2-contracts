@@ -92,8 +92,7 @@ cost reaches the depositor exactly as before. When a venue fill is better than
 the index price, the excess `N1 - N0 - (D - protocol_fee)` mints no shares and
 stays with the existing holders, whose NAV per share rises. The cap lives
 inside the quote, so no Series transition can bypass it, and it needs no
-policy value (ADR 0084 D3). `mint_accounting_quote` applies the same cap as
-`min(N1 - N0, D - F)`.
+policy value (ADR 0084 D3).
 
 Because the credited contribution can no longer exceed the expected one, the
 mint exposure range `mint_base_bounds` is `[delta(actual), delta(expected)]`
@@ -135,7 +134,7 @@ net, buffer credit, and `min_usdc_out` apply to the capped gross unchanged.
 share of NAV to rounding. That loss is bounded only by the share price, which
 the locked seed sets: a one-share pool at NAV 1e9 mints one share for a
 1,999,999,999 deposit, a 25 percent loss, and one unit less aborts as zero
-shares. `mint_accounting_quote` takes `min_shares_out` so the depositor can
+shares. `allocated_mint_quote` takes `min_shares_out` so the depositor can
 bound the loss themselves; the Series must pass the depositor's value through
 unchanged. Independently, the seed must keep one share economically dust: to
 cap any depositor's rounding loss at `X` bps, the seed supply `S` must satisfy
@@ -222,11 +221,10 @@ sizing:
 shareholder_nav = venue_equity - maintenance_reserve
 ```
 
-Mint and redemption fees credit the reserve. The canonical
-`mint_accounting_quote` computes the fee once, derives post-mint NAV with the
-credited reserve, requires a positive contribution, and only then calls the
-share formula, so the fee is excluded exactly once and cannot be subtracted
-twice. `redemption_accounting_quote` derives post-unwind NAV with the old
+Mint and redemption fees credit the reserve. `prepare_mint` computes the fee
+once and `allocated_mint_quote` derives post-mint NAV with the credited
+reserve, requires a positive contribution, and only then calls the share
+formula, so the fee is excluded exactly once and cannot be subtracted twice. `redemption_accounting_quote` derives post-unwind NAV with the old
 reserve, then credits the new fee. Final shareholder NAV is exactly
 `equity_keep`, not `equity_keep + fee`. The pure sequence removes the
 split-redemption fee-recapture path; the later atomic state transition must use

@@ -268,7 +268,7 @@ fun non_funding_loss_can_impair_the_reserve_and_must_enter_the_health_path() {
 #[test]
 fun canonical_mint_credits_the_actual_nav_gain_net_of_the_retained_fee() {
     let (reserve_after, nav_before, nav_after, fee, contribution, shares_out, shares_after) =
-        accounting_math::mint_accounting_quote(
+        canonical_mint(
             1_000_000,
             1_000_000_000,
             1_001_000_000,
@@ -288,7 +288,7 @@ fun canonical_mint_credits_the_actual_nav_gain_net_of_the_retained_fee() {
 
     // The same deposit through a market that costs 500_000 credits less.
     let (_, _, nav_after, fee, contribution, shares_out, shares_after) =
-        accounting_math::mint_accounting_quote(
+        canonical_mint(
             1_000_000,
             1_000_000_000,
             1_000_500_000,
@@ -327,7 +327,7 @@ fun mint_reserve_accounting_does_not_subtract_the_fee_twice() {
     // The venue charged 5,000 during the proportional position increase.
     let venue_equity_after = venue_equity_before + deposit - 5_000;
     let (reserve_after, nav_before, nav_after, fee, contribution, shares_out, _) =
-        accounting_math::mint_accounting_quote(
+        canonical_mint(
             deposit,
             venue_equity_before,
             venue_equity_after,
@@ -349,7 +349,7 @@ fun mint_reserve_accounting_does_not_subtract_the_fee_twice() {
 #[test]
 fun the_highest_fee_rate_can_mint_exactly_one_atomic_share() {
     let (reserve_after, _, nav_after, fee, contribution, shares_out, shares_after) =
-        accounting_math::mint_accounting_quote(
+        canonical_mint(
             10_000,
             100_000,
             110_000,
@@ -417,7 +417,7 @@ fun canonical_mint_supports_the_highest_fee_near_the_u64_boundary() {
         contribution,
         shares_out,
         shares_after,
-    ) = accounting_math::mint_accounting_quote(
+    ) = canonical_mint(
         10_000,
         max - 10_000,
         max,
@@ -444,7 +444,7 @@ fun canonical_mint_supports_the_highest_fee_near_the_u64_boundary() {
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_rejects_an_unbacked_pre_mint_reserve_first() {
-    accounting_math::mint_accounting_quote(0, 99, 0, 100, 0, 10_000, 0);
+    canonical_mint(0, 99, 0, 100, 0, 10_000, 0);
 }
 
 /// Pins fee validation before deriving an invalid post-mint reserve checkpoint.
@@ -454,7 +454,7 @@ fun a_canonical_mint_rejects_an_unbacked_pre_mint_reserve_first() {
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_rejects_an_invalid_fee_before_post_mint_backing() {
-    accounting_math::mint_accounting_quote(1, 100, 0, 0, 0, 10_000, 0);
+    canonical_mint(1, 100, 0, 0, 0, 10_000, 0);
 }
 
 /// Pins fee validation ahead of contribution validation when both are invalid.
@@ -464,7 +464,7 @@ fun a_canonical_mint_rejects_an_invalid_fee_before_post_mint_backing() {
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_rejects_an_invalid_fee_before_a_nonpositive_contribution() {
-    accounting_math::mint_accounting_quote(10, 1_000, 999, 0, 1_000, 10_000, 0);
+    canonical_mint(10, 1_000, 999, 0, 1_000, 10_000, 0);
 }
 
 /// Catches a maximum-width reserve credit that wraps before post-mint backing is checked.
@@ -474,7 +474,7 @@ fun a_canonical_mint_rejects_an_invalid_fee_before_a_nonpositive_contribution() 
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_rejects_a_reserve_credit_above_u64() {
-    accounting_math::mint_accounting_quote(
+    canonical_mint(
         1,
         std::u64::max_value!(),
         std::u64::max_value!(),
@@ -492,7 +492,7 @@ fun a_canonical_mint_rejects_a_reserve_credit_above_u64() {
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_cannot_credit_more_reserve_than_post_mint_equity_backs() {
-    accounting_math::mint_accounting_quote(100, 100, 99, 0, 100, 9_999, 0);
+    canonical_mint(100, 100, 99, 0, 100, 9_999, 0);
 }
 
 /// Catches accepting a deposit whose fee consumes the complete shareholder NAV gain.
@@ -502,7 +502,7 @@ fun a_mint_cannot_credit_more_reserve_than_post_mint_equity_backs() {
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_without_shareholder_nav_gain_is_rejected() {
-    accounting_math::mint_accounting_quote(10_000, 1_000, 1_000, 0, 1_000, 100, 0);
+    canonical_mint(10_000, 1_000, 1_000, 0, 1_000, 100, 0);
 }
 
 #[test]
@@ -511,7 +511,7 @@ fun a_canonical_mint_without_shareholder_nav_gain_is_rejected() {
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_that_lowers_nav_is_rejected() {
-    accounting_math::mint_accounting_quote(10, 1_000, 999, 0, 1_000, 0, 0);
+    canonical_mint(10, 1_000, 999, 0, 1_000, 0, 0);
 }
 
 /// Pins the contribution guard ahead of the low-level supply guard.
@@ -521,7 +521,7 @@ fun a_canonical_mint_that_lowers_nav_is_rejected() {
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_rejects_a_nonpositive_contribution_before_zero_supply() {
-    accounting_math::mint_accounting_quote(10, 1_000, 999, 0, 0, 0, 0);
+    canonical_mint(10, 1_000, 999, 0, 0, 0, 0);
 }
 
 /// Pins the low-level supply guard once the canonical path has a positive contribution.
@@ -531,7 +531,7 @@ fun a_canonical_mint_rejects_a_nonpositive_contribution_before_zero_supply() {
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_against_zero_supply_is_rejected() {
-    accounting_math::mint_accounting_quote(10, 1_000, 1_010, 0, 0, 0, 0);
+    canonical_mint(10, 1_000, 1_010, 0, 0, 0, 0);
 }
 
 /// Pins deposit validation before the low-level NAV and supply guards.
@@ -541,7 +541,7 @@ fun a_canonical_mint_against_zero_supply_is_rejected() {
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_canonical_mint_rejects_zero_deposit_before_zero_nav_and_supply() {
-    accounting_math::mint_accounting_quote(0, 0, 0, 0, 0, 10_000, 0);
+    canonical_mint(0, 0, 0, 0, 0, 10_000, 0);
 }
 
 /// Pins the reserve-backing guard before redemption's low-level input guards.
@@ -879,7 +879,7 @@ fun reserve_aware_mint_base_delta_propagates_the_base_overflow() {
 fun canonical_quotes_support_the_maximum_venue_equity() {
     let max = std::u64::max_value!();
     let (reserve_after, nav_before, nav_after, fee, contribution, shares_out, shares_after) =
-        accounting_math::mint_accounting_quote(
+        canonical_mint(
             100,
             max - 100,
             max,
@@ -918,7 +918,7 @@ fun canonical_quotes_support_the_maximum_venue_equity() {
 /// Catches gaining shares by splitting a reserve-aware mint.
 #[test]
 fun splitting_a_canonical_mint_does_not_create_extra_shares() {
-    let (_, _, _, _, _, combined_shares, _) = accounting_math::mint_accounting_quote(
+    let (_, _, _, _, _, combined_shares, _) = canonical_mint(
         200,
         1_100,
         1_300,
@@ -928,8 +928,8 @@ fun splitting_a_canonical_mint_does_not_create_extra_shares() {
         0,
     );
     let (reserve_1, _, _, _, _, first_shares, shares_1) =
-        accounting_math::mint_accounting_quote(100, 1_100, 1_200, 100, 333, 100, 0);
-    let (_, _, _, _, _, second_shares, _) = accounting_math::mint_accounting_quote(
+        canonical_mint(100, 1_100, 1_200, 100, 333, 100, 0);
+    let (_, _, _, _, _, second_shares, _) = canonical_mint(
         100,
         1_200,
         1_300,
@@ -1164,7 +1164,7 @@ fun a_multi_operation_sequence_preserves_venue_equity_as_nav_plus_reserve() {
         minted,
         shares_1,
     ) =
-        accounting_math::mint_accounting_quote(
+        canonical_mint(
             deposit,
             venue_equity_0,
             venue_equity_1,
@@ -1222,7 +1222,7 @@ fun a_sequence_after_reserve_exhaustion_charges_only_uncovered_funding_to_nav() 
     let reserve_0 = 10_000;
     let nav_0 = accounting_math::shareholder_nav(venue_equity_0, reserve_0);
     let (reserve_1, _, nav_1, fee, contribution, minted, shares_1) =
-        accounting_math::mint_accounting_quote(
+        canonical_mint(
             100_000,
             venue_equity_0,
             1_100_000,
@@ -1284,7 +1284,7 @@ fun random_accounting_sequences_conserve(seed: u32) {
         shares_out,
         shares_after,
     ) =
-        accounting_math::mint_accounting_quote(
+        canonical_mint(
             deposit,
             venue_equity_before,
             venue_equity_after,
@@ -1371,7 +1371,7 @@ fun the_proportional_claim_is_independent_of_the_unwound_reading() {
 fun canonical_mint_credits_at_most_the_deposit_net_of_the_fee() {
     // The venue gained 5,000 during the proportional position increase.
     let (reserve_after, nav_before, nav_after, fee, contribution, shares_out, shares_after) =
-        accounting_math::mint_accounting_quote(
+        canonical_mint(
             1_000_000,
             10_000_000,
             10_000_000 + 1_000_000 + 5_000,
@@ -1507,7 +1507,7 @@ fun capped_redemptions_never_lower_remaining_holders_nav_per_share_across_the_sm
 #[test]
 fun a_mint_at_its_share_floor_is_accepted() {
     let (_, _, _, _, _, shares_out, shares_after) =
-        accounting_math::mint_accounting_quote(1_000, 1_000, 2_000, 0, 1_000, 0, 1_000);
+        canonical_mint(1_000, 1_000, 2_000, 0, 1_000, 0, 1_000);
 
     assert_eq!(shares_out, 1_000);
     assert_eq!(shares_after, 2_000);
@@ -1519,7 +1519,7 @@ fun a_mint_at_its_share_floor_is_accepted() {
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_one_share_below_its_floor_is_rejected() {
-    accounting_math::mint_accounting_quote(1_000, 1_000, 2_000, 0, 1_000, 0, 1_001);
+    canonical_mint(1_000, 1_000, 2_000, 0, 1_000, 0, 1_001);
 }
 
 /// The audit case: a one-share pool at NAV 1e9 takes a 1,999,999,999 deposit for
@@ -1530,7 +1530,7 @@ fun a_mint_one_share_below_its_floor_is_rejected() {
     location = blast_leverage_series_one::accounting_math,
 )]
 fun the_share_floor_bounds_the_seed_inflation_loss() {
-    accounting_math::mint_accounting_quote(
+    canonical_mint(
         1_999_999_999,
         1_000_000_000,
         2_999_999_999,
@@ -1547,7 +1547,7 @@ fun the_share_floor_bounds_the_seed_inflation_loss() {
     location = blast_leverage_series_one::accounting_math,
 )]
 fun zero_shares_are_rejected_before_the_share_floor() {
-    accounting_math::mint_accounting_quote(1, 1_000_000_000, 1_000_000_001, 0, 1, 0, 5);
+    canonical_mint(1, 1_000_000_000, 1_000_000_001, 0, 1, 0, 5);
 }
 
 #[test]
@@ -1623,7 +1623,7 @@ fun assert_canonical_mint_matches_reference(
         contribution,
         shares_out,
         shares_after,
-    ) = accounting_math::mint_accounting_quote(
+    ) = canonical_mint(
         deposit,
         venue_equity_before,
         venue_equity_after,
@@ -1658,7 +1658,7 @@ fun assert_split_mint(
 ) {
     let venue_equity_before = nav_before + reserve_before;
     let combined_deposit = first_deposit + second_deposit;
-    let (_, _, _, _, _, combined_shares, _) = accounting_math::mint_accounting_quote(
+    let (_, _, _, _, _, combined_shares, _) = canonical_mint(
         combined_deposit,
         venue_equity_before,
         venue_equity_before + combined_deposit,
@@ -1668,7 +1668,7 @@ fun assert_split_mint(
         0,
     );
     let (reserve_1, _, _, _, _, first_shares, shares_1) =
-        accounting_math::mint_accounting_quote(
+        canonical_mint(
             first_deposit,
             venue_equity_before,
             venue_equity_before + first_deposit,
@@ -1678,7 +1678,7 @@ fun assert_split_mint(
             0,
         );
     let venue_equity_1 = venue_equity_before + first_deposit;
-    let (_, _, _, _, _, second_shares, _) = accounting_math::mint_accounting_quote(
+    let (_, _, _, _, _, second_shares, _) = canonical_mint(
         second_deposit,
         venue_equity_1,
         venue_equity_1 + second_deposit,
@@ -1816,4 +1816,28 @@ fun assert_split_redemption(
         venue_equity_2 - combined_equity,
         combined_net - (net_1 + net_2),
     );
+}
+
+// === Canonical Mint Helper ===
+
+/// The reserve-aware mint as State performs it: fee once, reserve credited,
+/// then the production quote. Returns
+/// `(reserve_after, nav_before, nav_after, fee, contribution, shares_out, shares_after)`.
+fun canonical_mint(
+    deposit: u64,
+    venue_equity_before: u64,
+    venue_equity_after: u64,
+    reserve_before: u64,
+    shares_before: u64,
+    mint_fee_bps: u64,
+    min_shares_out: u64,
+): (u64, u64, u64, u64, u64, u64, u64) {
+    let nav_before = accounting_math::shareholder_nav(venue_equity_before, reserve_before);
+    let fee = accounting_math::fee_up_for_testing(deposit, mint_fee_bps);
+    let reserve_after = accounting_math::credit_fee_for_testing(reserve_before, fee);
+    let (nav_after, contribution, shares_out) = accounting_math::allocated_mint_quote(
+        venue_equity_before, venue_equity_after, reserve_before, reserve_after,
+        deposit - fee, shares_before, min_shares_out,
+    );
+    (reserve_after, nav_before, nav_after, fee, contribution, shares_out, shares_before + shares_out)
 }

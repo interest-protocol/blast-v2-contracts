@@ -119,79 +119,6 @@ public(package) fun shareholder_nav(
     venue_equity - maintenance_reserve
 }
 
-/// Quotes a mint from venue equity while applying the reserve fee exactly once.
-///
-/// Returns `(reserve_after, nav_before, nav_after, fee, contribution,
-/// shares_out, shares_after)`. Both venue-equity values use one canonical
-/// valuation pair. This function derives pre-mint shareholder NAV with
-/// `reserve_before`, computes the fee once, derives post-mint shareholder NAV
-/// with `reserve_after`, requires a positive contribution, and only then
-/// calls the low-level share formula. The returned NAV values are the exact
-/// inputs that later exposure and final-leverage checks must consume. A
-/// caller therefore cannot accidentally derive both NAV values with the same
-/// reserve checkpoint, subtract the fee twice, or size exposure from venue
-/// equity.
-///
-/// `contribution` is `min(nav_after - nav_before, deposit - fee)`. A fill that
-/// raises shareholder NAV by more than the depositor paid net of the fee
-/// credits exactly `deposit - fee`; the favorable excess stays with existing
-/// holders instead of minting shares for the depositor (ADR 0084 D3). A fill
-/// that raises NAV by less credits the actual rise, so execution cost still
-/// reaches the depositor.
-///
-/// `min_shares_out` is the depositor's own floor on `shares_out`. The share
-/// formula floors, so a depositor can lose up to one pre-mint share of NAV to
-/// rounding; that loss is bounded only by the share price, which the locked
-/// seed sets and this package cannot constrain. The floor lets the depositor
-/// bound it themselves, and zero means no floor.
-///
-/// Guard order is pre-mint reserve backing, the deposit and fee rate, the
-/// reserve credit, post-mint reserve backing, the contribution, the low-level
-/// NAV, supply, and share guards, then the depositor's share floor.
-///
-/// The later state transition must still prove that `venue_equity_after` is the
-/// authenticated result of depositing `deposit` and executing only the sealed
-/// proportional trade. Pure arithmetic cannot authenticate that venue fact.
-public(package) fun mint_accounting_quote(
-    deposit: u64,
-    venue_equity_before: u64,
-    venue_equity_after: u64,
-    reserve_before: u64,
-    shares_before: u64,
-    mint_fee_bps: u64,
-    min_shares_out: u64,
-): (u64, u64, u64, u64, u64, u64, u64) {
-    let nav_before = shareholder_nav(venue_equity_before, reserve_before);
-    let fee = fee_up(deposit, mint_fee_bps);
-    let reserve_after = credit_fee(reserve_before, fee);
-    let nav_after = shareholder_nav(venue_equity_after, reserve_after);
-    assert!(
-        nav_after > nav_before,
-        blast_leverage_series_one::errors::nonpositive_contribution!(),
-    );
-
-    let contribution = (nav_after - nav_before).min(deposit - fee);
-    let (shares_out, shares_after) = mint_quote(
-        contribution,
-        nav_before,
-        shares_before,
-    );
-    assert!(
-        shares_out >= min_shares_out,
-        blast_leverage_series_one::errors::shares_out_below_minimum!(),
-    );
-
-    (
-        reserve_after,
-        nav_before,
-        nav_after,
-        fee,
-        contribution,
-        shares_out,
-        shares_after,
-    )
-}
-
 /// Splits one ceiling-rounded fee; its allocation remainder belongs to buffer.
 public(package) fun fee_allocation(amount: u64, rate_bps: u64, admin_bps: u64): (u64, u64, u64) {
     assert!(admin_bps <= 10_000, blast_leverage_series_one::errors::invalid_fee_bps!());
@@ -226,25 +153,17 @@ public(package) fun allocated_mint_quote(
     (after, contribution, shares)
 }
 
-/// Quotes a redemption and credits its reserve fee at the correct checkpoint.
+/// Quotes a redemption and credits its reserve fee only after the gross is known.
 ///
 /// Returns `(reserve_after, shares_after, nav_kept, proportional_claim,
-/// gross, fee, net)`. Both pre-redemption and post-unwind shareholder NAV
-/// exclude `reserve_before`. Only after the gross claim is known does this
-/// function credit the fee. Thus the credited fee cannot re-enter the current
-/// or a later redemption's share pricing base.
+/// gross, fee, net)`. Both NAV readings exclude `reserve_before`, so the
+/// credited fee never re-enters share pricing. `proportional_claim` is
+/// `nav_before - equity_keep`; `gross` is capped at it (ADR 0084 D3);
+/// `nav_kept = nav_unwound - gross >= equity_keep` is the NAV that remains and
+/// the only source of the required final venue equity.
 ///
-/// `proportional_claim` is `nav_before - equity_keep`: the redeemer's share of
-/// pre-unwind NAV after the kept equity rounds up. `gross` is
-/// `min(nav_unwound, nav_before) - equity_keep`, so it never exceeds the
-/// claim: an unwind that costs the Series pays less, and one that gains keeps
-/// the gain with the remaining holders (ADR 0084 D3). `nav_kept` is the
-/// shareholder NAV that actually remains, `nav_unwound - gross`, which is at
-/// least `equity_keep`; the Series derives the required final venue equity
-/// from it and never from a NAV of its own.
-///
-/// The later state transition must still authenticate both venue-equity values,
-/// withdraw exactly `net`, and verify final venue equity and reserve atomically.
+/// The state transition still authenticates both equity readings, withdraws
+/// exactly `net`, and proves the final venue equity atomically.
 public(package) fun redemption_accounting_quote(
     shares_burned: u64,
     venue_equity_before: u64,
@@ -361,9 +280,7 @@ public(package) fun assert_mint_base_within_bounds_from_equity(
     );
 }
 
-/// Quotes how an exact negative funding settlement consumes the reserve.
-///
-/// Returns `(reserve_after, absorbed, uncovered)` in atomic collateral units:
+/// Quotes how a negative funding settlement consumes the reserve.
 ///
 /// ```text
 /// absorbed      = min(maintenance_reserve, funding_cost)
@@ -371,10 +288,8 @@ public(package) fun assert_mint_base_within_bounds_from_equity(
 /// uncovered     = funding_cost - absorbed
 /// ```
 ///
-/// Thus both conservation identities hold exactly. If venue equity has already
-/// fallen by `funding_cost`, shareholder NAV falls only by `uncovered`. A zero
-/// cost is a valid no-op. Positive funding is not a cost and must not call this
-/// function; State credits positive net funding to the reserve instead.
+/// Shareholder NAV falls only by `uncovered`. Zero cost is a no-op; positive
+/// funding is credited by State, never passed here.
 public(package) fun absorb_funding_cost(
     maintenance_reserve: u64,
     funding_cost: u64,
@@ -388,10 +303,9 @@ public(package) fun absorb_funding_cost(
     )
 }
 
-/// Returns the permitted absolute final base range for a redemption unwind.
+/// Returns `(min_final_base, max_final_base)` for a redemption unwind.
 ///
-/// Returns `(min_final_base, max_final_base)`. With
-/// `S1 = shares_before - shares_burned`:
+/// With `S1 = shares_before - shares_burned`:
 ///
 /// ```text
 /// max_final_base = floor(base_before * S1 / shares_before)
@@ -400,38 +314,19 @@ public(package) fun absorb_funding_cost(
 /// min_final_base = base_before - planned
 /// ```
 ///
-/// `max_final_base` is the `Q_keep` of ADR 0064 I11: the redemption must remove
-/// at least the proportional exposure, so the floor keeps the remaining holders
-/// at or below their proportional risk. `min_final_base` bounds deliberate
-/// over-reduction: the risk-reducing planned order rounds the required
-/// reduction up to `lot_size` and is capped at flat, so
-/// `max_final_base - min_final_base` is always below one lot. The flat cap can
-/// bind only when `max_final_base` is itself below one lot, and it then makes
-/// `min_final_base` zero.
+/// `max_final_base` is `Q_keep` (ADR 0064 I11): at least the proportional
+/// exposure must close. `min_final_base` bounds over-reduction to below one
+/// lot, and `required` must be at least `lot_size * min_exposure_lots`
+/// unless the unwind reaches flat, so the over-reduction is also below
+/// `1 / min_exposure_lots` of `required` (the redemption half of I26).
+/// `required` is largest when all but one share burns; if that is still below
+/// the minimum lot multiple, every non-flat redemption aborts and
+/// `is_exposure_above_minimum_operation` reports the locked state.
 ///
-/// `min_exposure_lots` is the Series' immutable minimum operation size in
-/// live lots. Unless the redemption reaches flat, `required` must be at least
-/// `lot_size * min_exposure_lots`, so the over-reduction is also below
-/// `1 / min_exposure_lots` of `required`. That is the redemption half of the
-/// cumulative-drift bound in ADR 0064 I26; without it a stream of dust
-/// redemptions could each close a whole lot while burning almost no shares.
-/// Together the two bounds give I26 a two-sided lot tolerance that every
-/// partial fill must satisfy cumulatively.
-///
-/// The minimum has a sharp lock condition. `required` is largest when the
-/// redemption burns all but one share, where it equals
-/// `base_before - floor(base_before / shares_before)`. When that value is below
-/// `lot_size * min_exposure_lots` and `base_before >= shares_before`, no burn
-/// count is legal and every non-flat redemption aborts; the flat exemption is
-/// unreachable because a proportional keep of zero needs
-/// `base_before < shares_before`. `is_exposure_above_minimum_operation` is the
-/// non-aborting predicate the health transition uses to observe that state.
-///
-/// Preconditions: `0 < shares_burned < shares_before`, positive `lot_size`,
-/// and positive `min_exposure_lots`. A flat Series returns `(0, 0)` and must
-/// stay flat. Guard order is the share bound, `lot_size`, `min_exposure_lots`,
-/// then the minimum-lot bound. The reduction intermediate stays below `2^65`
-/// and is capped at `base_before`, so no result can leave the `u64` range.
+/// Preconditions: `0 < shares_burned < shares_before`, positive `lot_size`
+/// and `min_exposure_lots`. A flat Series returns `(0, 0)`. Guard order is the
+/// share bound, `lot_size`, `min_exposure_lots`, then the minimum-lot bound.
+/// The intermediate stays below `2^65` and is capped at `base_before`.
 public(package) fun redemption_base_bounds(
     shares_burned: u64,
     base_before: u64,
@@ -657,33 +552,21 @@ fun fee_up(amount: u64, fee_bps: u64): u64 {
     amount.mul_div_ceil(fee_bps, constants::basis_points_denominator!())
 }
 
-/// Quotes shares from an already-derived positive shareholder NAV contribution.
-///
-/// Returns `(shares_out, shares_after)` in atomic Share units:
+/// Quotes shares from a positive shareholder NAV contribution.
 ///
 /// ```text
 /// shares_out   = floor(shares_before * contribution / nav_before)
 /// shares_after = shares_before + shares_out
 /// ```
 ///
-/// `contribution` is `nav_after - nav_before`, where both values are
-/// shareholder NAV from one canonical valuation pair and `nav_after` already
-/// excludes the newly credited fee. `accounting_math::mint_accounting_quote`
-/// derives that contribution together with its reserve checkpoint and is the
-/// production entry point; this raw formula stays private and has a test-only
-/// seam for direct arithmetic checks. Venue fees and slippage reduce the
-/// actual contribution, so the depositor pays them. Flooring `shares_out` gives
-/// `nav_after / shares_after >= nav_before / shares_before` (ADR 0064 I9).
+/// Flooring gives `nav_after / shares_after >= nav_before / shares_before`
+/// (ADR 0064 I9). `allocated_mint_quote` derives the contribution with its
+/// reserve checkpoint and is the production entry; this raw form stays
+/// private with a test-only seam.
 ///
-/// Preconditions: positive `nav_before`, `shares_before`, and `contribution`.
-/// A contribution too small to buy one atomic share aborts instead of minting
-/// zero. Guard order is `nav_before`, `shares_before`, `contribution`, then
-/// the share results.
-///
-/// `shares_before * contribution` stays below `2^128`; `shares_out` and
-/// `shares_after` abort when they leave the `u64` range. This function proves
-/// no proportional exposure change: pair it with `mint_base_delta_down` and
-/// `assert_mint_base_within_bounds`.
+/// Guard order is `nav_before`, `shares_before`, `contribution`, then a zero
+/// share result. `shares_before * contribution` stays below `2^128`; results
+/// outside `u64` abort.
 fun mint_quote(
     contribution: u64,
     nav_before: u64,
@@ -714,10 +597,9 @@ fun mint_quote(
     (shares_out, shares_after)
 }
 
-/// Quotes a redemption from the burned shares, the valuation pair, and the supply.
+/// Quotes a redemption from the burned shares, one valuation pair, and the supply.
 ///
-/// Returns `(shares_after, equity_keep, gross, fee, net)` in atomic Share and
-/// atomic collateral units. With `S1 = shares_before - shares_burned`:
+/// With `S1 = shares_before - shares_burned`:
 ///
 /// ```text
 /// equity_keep = ceil(nav_before * S1 / shares_before)
@@ -726,27 +608,16 @@ fun mint_quote(
 /// net         = gross - fee
 /// ```
 ///
-/// `nav_unwound` is shareholder NAV after the proportional unwind and before
-/// the payout or reserve credit, at the same valuation pair as `nav_before`.
-/// Production state transitions must use
-/// `accounting_math::redemption_accounting_quote`, which pins that checkpoint
-/// and credits the fee afterward. The gross is capped at the proportional
-/// claim `nav_before - equity_keep`: a favorable unwind pays exactly the
-/// claim and its excess stays with the remaining holders (ADR 0084 D3).
-/// Final shareholder NAV is `nav_unwound - gross`, at least `equity_keep`.
-/// Rounding the kept equity up gives
-/// `equity_keep / S1 >= nav_before / shares_before` (ADR 0064 I10).
+/// Rounding `equity_keep` up gives `equity_keep / S1 >= nav_before /
+/// shares_before` (ADR 0064 I10); capping the gross at the proportional
+/// claim keeps a favorable unwind with the remaining holders (ADR 0084 D3).
+/// `redemption_accounting_quote` pins the checkpoint and credits the fee.
 ///
-/// Preconditions: positive `nav_before`, `0 < shares_burned < shares_before`, a
-/// fee rate below 10,000, `min(nav_unwound, nav_before) > equity_keep`, and a
-/// positive net payout. The function enforces the share bound directly; the future locked
-/// seed makes the complete production supply unpresentable. A zero supply
-/// cannot satisfy the bound and aborts with the share-amount code. Guard order
-/// is `nav_before`, the share bound, the fee rate, the gross claim, then the net
-/// payout. Every cheap check precedes the kept-equity computation.
-///
-/// `nav_before * S1` stays below `2^128` and `equity_keep <= nav_before`, so no
-/// result can leave the `u64` range.
+/// Preconditions: positive `nav_before`, `0 < shares_burned < shares_before`,
+/// a fee rate below 10,000, `min(nav_unwound, nav_before) > equity_keep`, and
+/// a positive net. Guard order is `nav_before`, the share bound, the fee rate,
+/// the gross, then the net. `nav_before * S1` stays below `2^128` and
+/// `equity_keep <= nav_before`.
 fun redemption_quote(
     shares_burned: u64,
     nav_before: u64,
@@ -826,39 +697,20 @@ fun target_notional_down(nav: u64, target_leverage_bps: u64): u64 {
 
 /// Returns the absolute base a mint must add, rounded down to whole lots.
 ///
-/// `base_before` is the pre-mint absolute base, `nav_before` is the matching
-/// pre-mint shareholder NAV, and `contribution` is the shareholder NAV credited
-/// for the exposure being sized. Before the trade, the Series sizes its order
-/// from the expected contribution `deposit - fee`. After the trade, it applies
-/// the same formula to the actual contribution `nav_after - nav_before`
-/// through `assert_mint_base_within_bounds`. The proportional target is
-/// `floor(base_before * contribution / nav_before)`, rounded down to
-/// `lot_size` so the venue can accept the order. Rounding down keeps the new
-/// cohort from buying more exposure than it funds; the sub-lot remainder is
-/// left unopened.
+/// The proportional target is `floor(base_before * contribution / nav_before)`
+/// rounded down to `lot_size`, so the new cohort never buys more exposure than
+/// it funds; the sub-lot remainder stays unopened. The Series sizes the order
+/// from the expected contribution and re-applies the formula to the actual
+/// one through `assert_mint_base_within_bounds`.
 ///
-/// `min_exposure_lots` is the Series' immutable minimum operation size in
-/// live lots. A proportional target below `lot_size * min_exposure_lots`
-/// aborts, so the unopened remainder is always below `1 / min_exposure_lots`
-/// of the target. That relative cap is the mint half of the cumulative-drift
-/// bound in ADR 0064 I26: each legal mint multiplies accounting leverage by at
-/// least `1 - contribution / ((nav_before + contribution) * min_exposure_lots)`,
-/// so after any sequence leverage stays close to
-/// `L0 * (N0 / N)^(1 / min_exposure_lots)` where `N` is the final NAV. With a
-/// one-lot minimum that cap is one lot per mint and the bound is not useful;
-/// the Series must supply a simulated value.
+/// A target below `lot_size * min_exposure_lots` aborts, so the unopened
+/// remainder is below `1 / min_exposure_lots` of the target: the mint half of
+/// the cumulative-drift bound (ADR 0064 I26). A flat position cannot be sized
+/// proportionally; reopening from flat needs a separate primitive.
 ///
-/// Preconditions: positive `nav_before`, `base_before`, `lot_size`, and
-/// `min_exposure_lots`, and a proportional target of at least the minimum lot
-/// multiple. A flat position cannot be sized proportionally, so once
-/// `base_before` reaches zero with live shares no mint can pass this function;
-/// reopening exposure from flat needs a separate Series primitive. Rounding down to lots is zero exactly when the target is below
-/// one lot, so the single minimum-lot guard also rejects a zero rounded delta
-/// and any dust mint. Guard order is `nav_before`, `base_before`, `lot_size`,
-/// `min_exposure_lots`, then the minimum-lot bound.
-///
-/// `base_before * contribution` and `lot_size * min_exposure_lots` use `u128`
-/// intermediates, and a proportional target outside the `u64` range aborts.
+/// Guard order is `nav_before`, `base_before`, `lot_size`,
+/// `min_exposure_lots`, then the minimum-lot bound, which also rejects a zero
+/// rounded delta. Intermediates are `u128`; a target outside `u64` aborts.
 fun mint_base_delta_down(
     contribution: u64,
     base_before: u64,
@@ -891,32 +743,19 @@ fun mint_base_delta_down(
     proportional_base - proportional_base % lot_size
 }
 
-/// Returns the permitted absolute base delta range for a mint.
-///
-/// Returns `(min_delta, max_delta)`:
+/// Returns `(min_delta, max_delta)` for a mint's absolute base change.
 ///
 /// ```text
 /// max_delta = mint_base_delta_down(expected_contribution)
 /// min_delta = min(mint_base_delta_down(actual_contribution), max_delta)
 /// ```
 ///
-/// `expected_contribution` is the pre-trade `deposit - fee` that sized the
-/// sealed order, and `actual_contribution` is the post-trade
-/// `nav_after - nav_before` that prices the shares. A full fill of the planned
-/// order always satisfies the range. When execution cost makes the actual
-/// contribution smaller, the range admits a partial fill down to the exposure
-/// the actual contribution funds. When a favorable fill makes it larger, the
-/// cap keeps the range non-empty and demands the complete plan. Both
-/// contributions pass the minimum-lot guard, so a mint whose actual credited
-/// contribution is dust aborts even when its plan was not.
-///
-/// The range does not bound execution-cost over-exposure: `max_delta -
-/// min_delta` grows with the venue cost the depositor paid, and the admitted
-/// band is wide. From 2.0x with a deposit equal to NAV, a fill that loses half
-/// the deposit to execution still admits the complete plan and leaves the
-/// pool at 2.67x; at 95 percent loss it admits 3.81x. The Series' post-trade
-/// leverage gate is therefore a hard release blocker, not an optional check,
-/// and the user's slippage bound owns the rest.
+/// A full planned fill always passes; execution cost lowers the actual
+/// contribution and admits a partial fill down to what it funds. Both
+/// contributions pass the minimum-lot guard. The range does not bound
+/// execution-cost over-exposure (a fill losing half the deposit from 2.0x
+/// still admits the plan and lands at 2.67x); the post-trade leverage gate
+/// and the user's slippage bound own that.
 fun mint_base_bounds(
     expected_contribution: u64,
     actual_contribution: u64,

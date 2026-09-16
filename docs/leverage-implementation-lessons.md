@@ -77,8 +77,8 @@ cap, which needs no bound and is what the venue's own accounting does.
 
 ### 1.4 Compute every economic value once at its canonical checkpoint
 
-`mint_accounting_quote` computes the fee once and passes the derived
-contribution down; the low-level formula no longer recomputes it. Keep that
+`prepare_mint` computes the fee once and `allocated_mint_quote` passes the
+derived contribution down; the low-level formula no longer recomputes it. Keep that
 discipline in every state transition: a value that the transition reads back
 from a helper must be the same value it used to mutate state. A discarded
 return from a second computation is a hazard, not a convenience.
@@ -118,7 +118,7 @@ which the audit hit once at twenty-six thousand.
 
 ### 1.9 Pass the depositor's share floor through unchanged
 
-`mint_accounting_quote` takes `min_shares_out`. It is the depositor's own
+`allocated_mint_quote` takes `min_shares_out`. It is the depositor's own
 floor on `shares_out` and the only in-package bound on the rounding loss a
 mint can suffer, which is otherwise capped only by the share price the seed
 sets. The Series must take it from the depositor's transaction and pass it

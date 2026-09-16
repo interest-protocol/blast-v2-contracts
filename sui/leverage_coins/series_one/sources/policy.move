@@ -433,28 +433,15 @@ public(package) fun assert_within_nav_cap(self: &TierPolicy, nav: u64) {
 
 /// Creates immutable valuation policy from proposed structural bounds.
 ///
-/// `max_price_age_ms` must be positive because the structural policy requires
-/// a nonzero historical-age tolerance. This check alone does not prove that a
-/// selected value supports the deployed source cadence; that remains a live
-/// integration and simulation gate. `max_price_ahead_ms` may be zero; zero is
-/// the strictest clock-skew policy and rejects the first millisecond after the
-/// reference time. It must not exceed `max_price_age_ms`: clock skew is never
-/// larger than a staleness budget, and the rule catches a transposed pair
-/// that would otherwise reject every aged update and admit future-dated ones.
+/// `max_price_age_ms` is positive; `max_price_ahead_ms` may be zero and must
+/// not exceed it (skew is never larger than a staleness budget, and the rule
+/// catches a transposed pair). Both relative bounds stay below 10,000 bps: at
+/// the denominator a confidence interval spans the whole price and a
+/// divergence bound admits a zero mark. No upper millisecond bound is
+/// structural; simulation and the live source cadence select every value.
 ///
-/// Both relative bounds may be zero, which demands an exact price and an exact
-/// mark, and both must stay below the 10,000 basis-point denominator. At or
-/// above the denominator a confidence interval may span the complete price and
-/// a divergence bound admits a zero mark, so the gate would stop constraining
-/// the observation at all.
-///
-/// No upper millisecond bound is structural. The deployed source cadence,
-/// keeper latency, venue margin parameters, and simulation select every value
-/// here; this package compiles none of them and validates no value against
-/// live venue state.
-///
-/// Guard order is the freshness budget, the freshness window shape, the
-/// confidence bound, then the mark divergence bound.
+/// Guard order is the freshness budget, the window shape, the confidence
+/// bound, then the mark divergence bound.
 public fun new_valuation(
     max_price_age_ms: u64,
     max_price_ahead_ms: u64,
@@ -526,17 +513,11 @@ public(package) fun is_price_fresh(
 
 /// Rejects a source update outside the two-sided freshness window.
 ///
-/// `published_at_ms` is the source's own update time and `reference_time_ms` is
-/// the operation's single on-chain time reading, both in milliseconds. An
-/// update older than the staleness budget aborts as stale, and one stamped
-/// further ahead than the skew budget aborts as future-dated. The two failures
-/// stay distinct because an outage and a skewed or misreporting source need
-/// different operational responses.
-///
-/// Admitting a fresh update is necessary, not sufficient. This module cannot
-/// prove which source produced the update, that the same pair priced both
-/// sides of the operation, or that a caller did not choose among historical
-/// updates.
+/// Older than the staleness budget aborts as stale; further ahead than the
+/// skew budget aborts as future-dated. The two codes stay distinct because an
+/// outage and a skewed source need different responses. Freshness proves
+/// neither which source produced the update nor that one pair priced both
+/// sides; the adapter's binding owns that.
 public(package) fun assert_price_fresh(
     self: &ValuationPolicy,
     published_at_ms: u64,
@@ -572,17 +553,9 @@ public(package) fun is_confidence_within_bound(
 
 /// Rejects a share-pricing price whose confidence interval is too wide.
 ///
-/// `confidence` is the absolute interval reported with `price`, in the same
-/// units and scale as `price`. The gate is
-/// `confidence * 10_000 <= max_confidence_bps * price`, so it holds exactly
-/// when `confidence` is at most `floor(max_confidence_bps * price / 10_000)`.
-/// Cross-multiplying keeps the comparison exact and removes the division that
-/// a zero price would otherwise have to survive.
-///
-/// A zero price is rejected before the bound is read: a relative interval is
-/// undefined against it, and a zero share-pricing price is itself a source
-/// failure that must fail closed. A confidence at or above the price is always
-/// rejected because the constructor keeps `max_confidence_bps` below 10,000.
+/// The gate is `confidence * 10_000 <= max_confidence_bps * price`, exact by
+/// cross-multiplication. A zero price is rejected first: a relative interval
+/// is undefined against it and it is itself a source failure.
 ///
 /// Guard order is the positive price, then the confidence bound.
 public(package) fun assert_confidence_within_bound(
@@ -620,17 +593,9 @@ public(package) fun is_mark_within_index_divergence(
 /// Rejects a venue mark that diverges too far from the base index.
 ///
 /// The gate is `|mark - index| * 10_000 <= max_mark_divergence_bps * index`,
-/// so it holds exactly when the absolute difference is at most
-/// `floor(max_mark_divergence_bps * index / 10_000)`. The bound is symmetric:
-/// a mark above and a mark below the index are limited by the same fraction of
-/// the index.
-///
-/// This is a venue margin-safety gate. Its result never prices shares, never
-/// enters shareholder NAV, and never sizes exposure; ADR 0064 I25 keeps the
-/// index-and-collateral pair as the only share-pricing valuation. A zero index
-/// is rejected before the bound is read, and a zero mark against a positive
-/// index is always rejected because the constructor keeps
-/// `max_mark_divergence_bps` below 10,000.
+/// symmetric and exact. It is a margin-safety gate only: it never prices
+/// shares, enters NAV, or sizes exposure (ADR 0064 I25). A zero index is
+/// rejected first.
 ///
 /// Guard order is the positive index, then the divergence bound.
 public(package) fun assert_mark_within_index_divergence(
