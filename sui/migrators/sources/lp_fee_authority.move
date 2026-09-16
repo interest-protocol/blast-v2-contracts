@@ -3,8 +3,8 @@
 /// Every migration creates exactly one `Pending` authority from the witness-typed launch
 /// payload, so no administrator mints the first capability. The launch's live curve-fee cap
 /// holder claims it once, a launch custodian binds pending fees without any cap, and a
-/// creator administrator may reissue it for community takeovers until fees are bound. Pending
-/// fees of a launch whose creator fees are already custodied are reserved for that custodian.
+/// creator administrator may replace a claimed capability until fees are bound. Pending fees
+/// are never reissued: they follow the launch's curve-fee capability.
 module blast_fun_migrators::lp_fee_authority;
 
 use blast_admin::acl::AdminWitness;
@@ -27,8 +27,8 @@ const ELpFeeCustodianMismatch: vector<u8> = b"Custodian must be the one creator 
 const ELpFeeAuthorityNotPending: vector<u8> =
     b"Only a pending LP-fee authority can be claimed or bound without a capability.";
 #[error(code = 4)]
-const ELpFeesReservedForCustodian: vector<u8> =
-    b"Pending creator LP fees are reserved for the launch's creator-fee custodian.";
+const ELpFeesFollowTheCurveFeeCap: vector<u8> =
+    b"Pending LP fees follow the launch's curve-fee capability; reissue replaces a claimed one.";
 #[error(code = 5)]
 const EInvalidLpFeeCustodian: vector<u8> =
     b"Custodian witness must be a struct type from a package outside the frameworks.";
@@ -117,18 +117,18 @@ public(package) fun lock<Meme, Custodian: drop>(
     (lp_fee_cap_id, custodian)
 }
 
-/// Mints a replacement capability under creator-admin authority and retires any live one.
+/// Mints a replacement capability under creator-admin authority and retires the live one.
 ///
-/// Pending fees of a launch whose creator fees are custodied belong to that custodian, which
-/// binds them with `lock_pending`; no administrator may redirect them first.
-public(package) fun reissue<Meme, Quote>(
+/// Reissue only ever replaces a capability a creator already claimed. Pending fees follow the
+/// launch's curve-fee capability: a community takeover reassigns that capability through the
+/// launchpad, and its new holder claims this one with `claim`.
+public(package) fun reissue<Meme>(
     self: &mut LpFeeAuthority<Meme>,
-    launch: &Launch<Meme, Quote>,
     admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
     ctx: &mut TxContext,
 ): (Option<ID>, LpFeeCap<Meme>) {
     self.assert_not_locked();
-    assert!(!self.is_pending() || !launch.has_fee_custodian(), ELpFeesReservedForCustodian);
+    assert!(!self.is_pending(), ELpFeesFollowTheCurveFeeCap);
     admin_witness.assert_role(launchpad_domain::creator_admin_role());
 
     let revoked_lp_fee_cap_id = self.cap_id();

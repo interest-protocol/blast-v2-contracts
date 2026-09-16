@@ -179,7 +179,6 @@ fun admin_reissue_retires_the_claimed_cap() {
 
     f.vault.issue_lp_fee_cap(
         &f.migrators_version,
-        &f.launch,
         &admin_witness,
         NEW_CREATOR,
         f.ctx!(),
@@ -213,7 +212,6 @@ fun a_reissue_rejects_the_previously_claimed_cap_before_the_empty_ledger_check()
 
     f.vault.issue_lp_fee_cap(
         &f.migrators_version,
-        &f.launch,
         &admin_witness,
         NEW_CREATOR,
         f.ctx!(),
@@ -238,52 +236,70 @@ fun a_reissue_rejects_the_previously_claimed_cap_before_the_empty_ledger_check()
 fun reissue_requires_the_creator_admin_role() {
     let mut fixture = start();
     let f = &mut fixture;
+    let claimed = f.claim();
     let (other, role_less_cap) = f.new_role_less_admin();
     let admin_witness = other.sign_in(&role_less_cap);
     f.vault.issue_lp_fee_cap(
         &f.migrators_version,
-        &f.launch,
         &admin_witness,
         NEW_CREATOR,
         f.ctx!(),
     );
 
+    destroy(claimed);
     destroy(other);
     destroy(role_less_cap);
     fixture.end();
 }
 
 #[test]
-fun admin_reissues_a_pending_vault_whose_launch_fees_are_not_custodied() {
+#[expected_failure(
+    abort_code = lp_fee_authority::ELpFeesFollowTheCurveFeeCap,
+    location = blast_fun_migrators::lp_fee_authority,
+)]
+fun an_admin_cannot_reissue_pending_lp_fees_away_from_the_curve_fee_holder() {
     let mut fixture = start();
     let f = &mut fixture;
     let admin_witness = f.sign_in();
 
     f.vault.issue_lp_fee_cap(
         &f.migrators_version,
-        &f.launch,
         &admin_witness,
         NEW_CREATOR,
         f.ctx!(),
     );
 
-    let issued = sui::event::events_by_type<events::LpFeeCapIssued>();
-    let recipient = NEW_CREATOR;
-    let mut expected = bcs::to_bytes(&object::id(&f.vault));
-    expected.append(bcs::to_bytes(&type_name::with_original_ids<LP_FEE_AUTHORITY_TESTS>()));
-    expected.append(bcs::to_bytes(&type_name::with_original_ids<QUOTE>()));
-    expected.append(bcs::to_bytes(&option::none<ID>()));
-    expected.append(bcs::to_bytes(&f.vault.lp_fee_cap_id_for_testing().destroy_some()));
-    expected.append(bcs::to_bytes(&recipient));
-    assert_eq!(issued.length(), 1);
-    assert_eq!(bcs::to_bytes(&issued[0]), expected);
+    fixture.end();
+}
 
+#[test]
+fun a_reassigned_curve_fee_holder_claims_the_pending_lp_fee_cap() {
+    let mut fixture = start();
+    let f = &mut fixture;
+    let stale_curve_fee_cap = f.take_curve_fee_cap();
+    let admin_witness = f.sign_in();
+
+    f.launch.reassign_curve_fee_cap(&f.version, &admin_witness, NEW_CREATOR, f.ctx!());
+    f.scenario.next_tx(NEW_CREATOR);
+    let curve_fee_cap = f.scenario.take_from_sender<CurveFeeCap<LP_FEE_AUTHORITY_TESTS>>();
+    let lp_fee_cap = f.vault.claim_lp_fee_cap(
+        &f.migrators_version,
+        &f.launch,
+        &curve_fee_cap,
+        f.ctx!(),
+    );
+
+    assert_eq!(f.vault.lp_fee_cap_id_for_testing(), option::some(object::id(&lp_fee_cap)));
+
+    destroy(stale_curve_fee_cap);
+    destroy(curve_fee_cap);
+    destroy(lp_fee_cap);
     fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = lp_fee_authority::ELpFeesReservedForCustodian,
+    abort_code = lp_fee_authority::ELpFeesFollowTheCurveFeeCap,
     location = blast_fun_migrators::lp_fee_authority,
 )]
 fun pending_fees_of_a_custodied_launch_reject_reissue_before_the_role_check() {
@@ -296,7 +312,6 @@ fun pending_fees_of_a_custodied_launch_reject_reissue_before_the_role_check() {
     let admin_witness = other.sign_in(&role_less_cap);
     f.vault.issue_lp_fee_cap(
         &f.migrators_version,
-        &f.launch,
         &admin_witness,
         NEW_CREATOR,
         f.ctx!(),
@@ -318,7 +333,6 @@ fun a_claimed_cap_stays_reissuable_after_launch_fees_are_custodied() {
     f.launch.lock_creator_fees(&f.version, curve_fee_cap, TestCustodian());
     f.vault.issue_lp_fee_cap(
         &f.migrators_version,
-        &f.launch,
         &admin_witness,
         NEW_CREATOR,
         f.ctx!(),
@@ -344,7 +358,6 @@ fun reissue_rejects_the_zero_recipient() {
 
     f.vault.issue_lp_fee_cap(
         &f.migrators_version,
-        &f.launch,
         &admin_witness,
         @0x0,
         f.ctx!(),
@@ -367,7 +380,6 @@ fun locked_lp_fees_reject_reissue_before_the_recipient_check() {
     f.vault.lock_creator_fees(&f.migrators_version, lp_fee_cap, TestCustodian());
     f.vault.issue_lp_fee_cap(
         &f.migrators_version,
-        &f.launch,
         &admin_witness,
         @0x0,
         f.ctx!(),
@@ -442,7 +454,7 @@ fun a_primitive_witness_cannot_bind_pending_lp_fees() {
     abort_code = vault::EInvalidLpFeeCapRecipient,
     location = blast_fun_migrators::vault,
 )]
-fun reissue_rejects_the_zero_recipient_before_the_custodian_reservation() {
+fun reissue_rejects_the_zero_recipient_before_the_pending_check() {
     let mut fixture = start();
     let f = &mut fixture;
     let curve_fee_cap = f.take_curve_fee_cap();
@@ -451,7 +463,6 @@ fun reissue_rejects_the_zero_recipient_before_the_custodian_reservation() {
     f.launch.lock_creator_fees(&f.version, curve_fee_cap, TestCustodian());
     f.vault.issue_lp_fee_cap(
         &f.migrators_version,
-        &f.launch,
         &admin_witness,
         @0x0,
         f.ctx!(),

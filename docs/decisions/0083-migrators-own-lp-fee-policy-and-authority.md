@@ -50,20 +50,25 @@ capability.
 - `lock_creator_fees`: the live cap is destroyed to bind the custodian named by
   its witness type, moving `Cap` to `Custodian`. A primitive, vector, or
   framework witness is rejected with `EInvalidLpFeeCustodian` (code 5).
-- `issue_lp_fee_cap`: a community-takeover reissue from `Pending` or `Cap`. It
-  takes the vault's `Launch` and checks the migrators version, then that fees
-  are not locked, then a nonzero recipient, then that pending fees are not
-  reserved (`ELpFeesReservedForCustodian`, code 4), then `creator_admin_role`.
-  It mints, retires the previous ID, transfers, and emits.
+- `issue_lp_fee_cap`: replaces a capability a creator already claimed, moving
+  `Cap` to a fresh `Cap`. It checks the migrators version, then that fees are
+  not locked, then a nonzero recipient, then that the authority is no longer
+  pending (`ELpFeesFollowTheCurveFeeCap`, code 4), then `creator_admin_role`.
+  It mints, retires the previous ID, transfers, and emits. It never reissues
+  pending fees, so it takes no `Launch`.
 
-**Custodied launches need no LP-fee cap.** An LP-fee cap exists only for a
-creator who still holds curve-fee rights. When the launch's creator fees are
+**Pending LP fees follow the curve-fee capability.** An LP-fee cap exists only
+for a creator who still holds curve-fee rights, so a pending authority is never
+reissued: `issue_lp_fee_cap` aborts from `Pending` for every launch, custodied
+or not. A community takeover reassigns the launch's `CurveFeeCap` through the
+launchpad, and its new holder claims the LP-fee cap with `claim_lp_fee_cap`.
+That keeps takeover a single gated, evented decision instead of letting an
+administrator redirect LP fees while a creator still holds the curve-fee
+capability that entitles them to those fees. When the launch's creator fees are
 bound to a custodian such as Auto-LP or the distributor, the pending LP fees
-belong to that same custodian: `claim_lp_fee_cap` fails because no curve-fee
-cap is live, and `issue_lp_fee_cap` aborts from `Pending` while
-`Launch::has_fee_custodian` holds, so no administrator can redirect them before
-the custodian binds them. Once a creator has claimed the cap, reissue stays
-available because the claimed cap, not the launch, then governs those fees.
+belong to that same custodian, which binds them with `lock_pending_creator_fees`.
+Once a creator has claimed the cap, reissue stays available because the claimed
+cap, not the launch, then governs those fees.
 
 Events are `LpFeeCapClaimed`, `LpFeeCapIssued`, and `LpFeesLocked`, whose
 `lp_fee_cap_id` is `Option<ID>` and is none for pending binds and whose
@@ -102,7 +107,10 @@ recovery. The distributor exposes `lock_lp_fees`.
 
 - Creators claim LP fees without administrator involvement, and custodians
   enrolled before migration bind them directly.
-- `issue_lp_fee_cap` drops the launchpad `PackageVersion` argument.
+- `issue_lp_fee_cap` drops the launchpad `PackageVersion` and `Launch` arguments.
+- An administrator can no longer redirect pending LP fees away from a creator who
+  still holds the launch's curve-fee capability. Takeover of an abandoned launch
+  goes through `reassign_curve_fee_cap`, so nothing becomes unrecoverable.
 - Indexers read LP-fee policy and authority events from migrators.
 - Dex and Auto-LP are parked in `scratch-sui/` until the native migration is
   redesigned; the distributor is the only enrolled fee custodian meanwhile.
@@ -119,8 +127,10 @@ Tests prove the following:
   cap is rejected.
 - A launch custodian binds pending fees, and a non-custodian cannot.
 - A claimed cap blocks capless binding.
-- Pending fees of a custodied launch reject reissue before the role check, while
-  a claimed cap stays reissuable.
+- Pending fees reject reissue before the role check, for a custodied launch and
+  an uncustodied one alike, while a claimed cap stays reissuable.
+- A reassigned curve-fee holder claims the still-pending LP-fee cap, so takeover
+  survives the removal of the pending reissue.
 - Reissue retires the claimed cap before the empty-ledger check and requires the
   creator-admin role.
 - The moved policy keeps its default, pin, re-pin, clear, and guard-order

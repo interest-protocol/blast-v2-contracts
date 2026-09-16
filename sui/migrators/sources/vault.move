@@ -87,15 +87,15 @@ public fun claim_lp_fee_cap<Meme, Quote>(
     lp_fee_cap
 }
 
-/// Delivers a replacement LP-fee capability to `recipient` and retires any previous one.
+/// Delivers a replacement LP-fee capability to `recipient` and retires the previous one.
 ///
-/// Community takeovers use this path under creator-admin authority. It aborts once fees
-/// are permanently bound to a custodian, and while pending fees are reserved for the launch's
-/// creator-fee custodian.
+/// Creator-admin authority replaces a capability a creator already claimed. It aborts once fees
+/// are permanently bound to a custodian, and while the authority is still pending: a community
+/// takeover reassigns the launch's curve-fee capability instead, and its holder then calls
+/// `claim_lp_fee_cap`.
 public fun issue_lp_fee_cap<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    launch: &Launch<Meme, Quote>,
     admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
     recipient: address,
     ctx: &mut TxContext,
@@ -105,7 +105,7 @@ public fun issue_lp_fee_cap<Meme, Quote>(
     assert!(recipient != @0x0, EInvalidLpFeeCapRecipient);
 
     let (revoked_lp_fee_cap_id, lp_fee_cap) =
-        self.lp_fee_authority.reissue(launch, admin_witness, ctx);
+        self.lp_fee_authority.reissue(admin_witness, ctx);
     let lp_fee_cap_id = object::id(&lp_fee_cap);
     transfer::public_transfer(lp_fee_cap, recipient);
 
