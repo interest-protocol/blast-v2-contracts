@@ -118,7 +118,7 @@ public fun new<Meme, Quote, MigrationWitness: drop>(
         meme_liquidity_provision_bps,
         migration_witness,
     ) = config.snapshot_for_launch<Quote, MigrationWitness>();
-    let ticket_id = object::id(&ticket);
+    let ticket_id = ticket.id();
     // LaunchTicket construction already finalized Currency<Meme> as Fixed or BurnOnly.
     let (meme, metadata_cap, creator_authority, sell_burn_bps) =
         ticket.destroy();
@@ -196,8 +196,8 @@ public fun claim_creator_caps<Meme, Quote>(
         clock,
         ctx,
     );
-    self.curve_fee_authority = CurveFeeAuthority::Cap(object::id(&curve_fee_cap));
-    self.blast_metadata_cap_id = option::some(object::id(&blast_metadata_cap));
+    self.curve_fee_authority = CurveFeeAuthority::Cap(curve_fee_cap.id());
+    self.blast_metadata_cap_id = option::some(blast_metadata_cap.id());
 
     (curve_fee_cap, blast_metadata_cap)
 }
@@ -228,7 +228,7 @@ public fun reassign_curve_fee_cap<Meme, Quote>(
     };
     self.revoke_creator_authority();
     let curve_fee_cap = creator_authority::new_curve_fee_cap<Meme>(ctx);
-    let curve_fee_cap_id = object::id(&curve_fee_cap);
+    let curve_fee_cap_id = curve_fee_cap.id();
     self.curve_fee_authority = CurveFeeAuthority::Cap(curve_fee_cap_id);
     transfer::public_transfer(curve_fee_cap, recipient);
 
@@ -258,7 +258,7 @@ public fun reassign_metadata_cap<Meme, Quote>(
     let revoked_metadata_cap_id = self.blast_metadata_cap_id;
     self.revoke_creator_authority();
     let blast_metadata_cap = creator_authority::new_metadata_cap<Meme>(ctx);
-    let metadata_cap_id = object::id(&blast_metadata_cap);
+    let metadata_cap_id = blast_metadata_cap.id();
     self.blast_metadata_cap_id = option::some(metadata_cap_id);
     transfer::public_transfer(blast_metadata_cap, recipient);
 
@@ -285,7 +285,7 @@ public fun lock_creator_fees<Meme, Quote, Custodian: drop>(
     package_version.assert_current();
     self.assert_curve_fee_cap(&curve_fee_cap);
 
-    let curve_fee_cap_id = object::id(&curve_fee_cap);
+    let curve_fee_cap_id = curve_fee_cap.id();
     let custodian = custodian_type<Custodian>();
     curve_fee_cap.destroy_curve_fee_cap();
     self.curve_fee_authority = CurveFeeAuthority::Custodian(custodian);
@@ -576,7 +576,7 @@ public fun assert_curve_fee_cap<Meme, Quote>(
     curve_fee_cap: &CurveFeeCap<Meme>,
 ) {
     assert!(
-        self.curve_fee_authority == CurveFeeAuthority::Cap(object::id(curve_fee_cap)),
+        self.curve_fee_authority == CurveFeeAuthority::Cap(curve_fee_cap.id()),
         blast_fun::errors::curve_fee_cap_not_live!(),
     );
 }
@@ -654,7 +654,7 @@ fun assert_blast_metadata_cap<Meme, Quote>(
     blast_metadata_cap: &BlastMetadataCap<Meme>,
 ) {
     assert!(
-        self.blast_metadata_cap_id.contains(&object::id(blast_metadata_cap)),
+        self.blast_metadata_cap_id.contains(&blast_metadata_cap.id()),
         blast_fun::errors::metadata_cap_not_live!(),
     );
 }

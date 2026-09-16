@@ -80,7 +80,7 @@ public fun claim_lp_fee_cap<Meme, Quote>(
 
     events::lp_fee_cap_claimed<Meme, Quote>(
         self.id.to_inner(),
-        object::id(&lp_fee_cap),
+        lp_fee_cap.id(),
         ctx.sender(),
     );
 
@@ -106,7 +106,7 @@ public fun issue_lp_fee_cap<Meme, Quote>(
 
     let (revoked_lp_fee_cap_id, lp_fee_cap) =
         self.lp_fee_authority.reissue(admin_witness, ctx);
-    let lp_fee_cap_id = object::id(&lp_fee_cap);
+    let lp_fee_cap_id = lp_fee_cap.id();
     transfer::public_transfer(lp_fee_cap, recipient);
 
     events::lp_fee_cap_issued<Meme, Quote>(

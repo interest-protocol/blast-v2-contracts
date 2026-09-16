@@ -89,6 +89,11 @@ public fun new<Meme: drop>(
 
 // === Package Functions ===
 
+/// Returns the identity the opened launch records for the ticket it consumed.
+public(package) fun id<Meme>(self: &LaunchTicket<Meme>): ID {
+    self.id.to_inner()
+}
+
 /// Returns the complete generated supply held for launch intake.
 public(package) fun initial_supply<Meme>(self: &LaunchTicket<Meme>): u64 {
     self.meme.value()

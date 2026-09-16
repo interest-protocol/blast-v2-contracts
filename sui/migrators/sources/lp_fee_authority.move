@@ -62,6 +62,11 @@ public fun destroy_lp_fee_cap<Meme>(self: LpFeeCap<Meme>) {
 
 // === Package Functions ===
 
+/// Returns the identity a vault records to honor this LP-fee capability.
+public(package) fun id<Meme>(self: &LpFeeCap<Meme>): ID {
+    self.id.to_inner()
+}
+
 /// Creates the one pending authority for a migration the selected adapter is completing.
 public(package) fun new<Meme, Quote, MigrationWitness: drop>(
     _: &MigrationPayload<Meme, Quote, MigrationWitness>,

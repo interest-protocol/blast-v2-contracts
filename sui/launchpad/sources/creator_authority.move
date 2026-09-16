@@ -9,6 +9,9 @@ use blast_fun::{constants, events, runtime_config::RuntimeConfig};
 use std::{bcs, type_name::{Self, TypeName}};
 use sui::clock::Clock;
 
+public use fun curve_fee_cap_id as CurveFeeCap.id;
+public use fun blast_metadata_cap_id as BlastMetadataCap.id;
+
 // === Public Types ===
 
 /// Validated recipient selecting who may claim the creator capability.
@@ -140,6 +143,16 @@ public(package) fun new_curve_fee_cap<Meme>(ctx: &mut TxContext): CurveFeeCap<Me
 /// Creates a metadata capability that the calling launch must record as live.
 public(package) fun new_metadata_cap<Meme>(ctx: &mut TxContext): BlastMetadataCap<Meme> {
     BlastMetadataCap { id: object::new(ctx) }
+}
+
+/// Returns the identity a launch records to honor this curve-fee capability.
+public(package) fun curve_fee_cap_id<Meme>(self: &CurveFeeCap<Meme>): ID {
+    self.id.to_inner()
+}
+
+/// Returns the identity a launch records to honor this metadata capability.
+public(package) fun blast_metadata_cap_id<Meme>(self: &BlastMetadataCap<Meme>): ID {
+    self.id.to_inner()
 }
 
 /// Discards pending creator authority during an administrative reassignment.
