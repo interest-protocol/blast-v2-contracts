@@ -490,6 +490,7 @@ deposit_line="$(initialization_line 'account::deposit_collateral(')"
 allocate_line="$(initialization_line 'clearing_house::allocate_collateral(')"
 position_line="$(initialization_line 'clearing_house::create_market_position(')"
 imr_line="$(initialization_line 'clearing_house::set_position_initial_margin_ratio(')"
+update_line="$(initialization_line 'update_funding_when_due(&mut clearing_house, base_oracle, clock);')"
 pre_capture_line="$(grep -nF 'snapshot::capture_initialization(' <<<"$initialization_block" | sed -n '1s/:.*//p')"
 session_start_line="$(initialization_line 'clearing_house::start_session(')"
 session_end_line="$(initialization_line 'clearing_house::end_session(')"
@@ -504,7 +505,7 @@ clearing_share_line="$(initialization_line 'clearing_house::share(clearing_house
 event_line="$(initialization_line 'emit_vault_initialized<Product>(')"
 initialization_order=(
   "$version_line" "$risk_line" "$create_line" "$binding_line" "$deposit_line"
-  "$allocate_line" "$position_line" "$imr_line" "$pre_capture_line"
+  "$allocate_line" "$position_line" "$imr_line" "$update_line" "$pre_capture_line"
   "$session_start_line" "$session_end_line" "$settle_line" "$final_capture_line"
   "$activate_line" "$mint_line" "$seal_line" "$account_share_line" "$install_line"
   "$clearing_share_line" "$event_line"
@@ -626,6 +627,7 @@ sync_line() {
 }
 sync_version_line="$(sync_line 'protocol.assert_current();')"
 sync_cap_line="$(sync_line 'vault.assert_venue_custody_binding();')"
+sync_update_line="$(sync_line 'update_funding_when_due(clearing_house, base_oracle, clock);')"
 sync_pre_line="$(grep -nF 'snapshot::capture_health(' <<<"$sync_block" | sed -n '1s/:.*//p')"
 sync_candidate_line="$(sync_line 'let funding_candidate = position::calculate_position_funding_internal(')"
 sync_settle_line="$(sync_line 'clearing_house::settle_position_funding(')"
@@ -633,7 +635,7 @@ sync_post_line="$(grep -nF 'snapshot::capture_health(' <<<"$sync_block" | sed -n
 sync_classify_line="$(sync_line 'let (preexisting_change, local_change) = classify_sync_changes(')"
 sync_apply_line="$(sync_line 'apply_post_capture(')"
 sync_order=(
-  "$sync_version_line" "$sync_cap_line" "$sync_pre_line"
+  "$sync_version_line" "$sync_cap_line" "$sync_update_line" "$sync_pre_line"
   "$sync_candidate_line" "$sync_settle_line" "$sync_post_line"
   "$sync_classify_line" "$sync_apply_line"
 )
@@ -811,5 +813,43 @@ awk '
 if grep -q 'protocol.assert_current();' <<<"$finalizer_block"; then
   fail "The finalizer must prove the next generation, not the current one."
 fi
+
+# --- Funding update before every accepted settlement (ADR 0074, T-005) ---
+update_helper_block="$(sed -n '/^fun update_funding_when_due<Collateral>($/,/^}/p' "$operations_file")"
+[[ -n "$update_helper_block" ]] \
+  || fail "The adapter must own one package-private guarded funding update helper."
+update_shape="$(tr -d '[:space:]' <<<"$update_helper_block")"
+grep -q 'let(funding_frequency_ms,_)=market::funding_params(clearing_house.market_params());' <<<"$update_shape" \
+  || fail "The funding update guard must read the frequency as the first funding parameter of the bound market."
+grep -q 'letfunding_last_upd_ms=market::funding_last_upd_ms(clearing_house.market_state());' <<<"$update_shape" \
+  || fail "The funding update guard must read the bound market's last funding update time."
+grep -q 'if(is_time_to_update_funding(clock.timestamp_ms(),funding_last_upd_ms,funding_frequency_ms)){clearing_house::update_funding(clearing_house,base_oracle,clock);};' <<<"$update_shape" \
+  || fail "A venue funding update must be guarded by the due-time check and read the base oracle storage."
+[[ "$(grep -Fc 'clearing_house::update_funding(' "$operations_file")" -eq 1 ]] \
+  || fail "The venue funding update must have exactly one guarded call site."
+[[ "$(grep -Fc 'update_twaps(' "$operations_file")" -eq 0 ]] \
+  || fail "The adapter must not call the venue TWAP update."
+guard_shape="$(sed -n '/^fun is_time_to_update_funding(/,/^}/p' "$operations_file" | tr -d '[:space:]')"
+grep -q 'funding_frequency_ms>0&&now>=next_funding_update_time_ms(funding_last_upd_ms,funding_frequency_ms)' <<<"$guard_shape" \
+  || fail "The due-time guard must mirror the pinned venue formula and treat a zero frequency as never due."
+[[ "$(grep -Fc 'clearing_house::settle_position_funding(' "$operations_file")" -eq 3 ]] \
+  || fail "Every funding settlement must be one of the three guarded call sites."
+settlement_function_check() {
+  local header="$1" capture="$2" label="$3"
+  local block update_line capture_line settle_line
+  block="$(sed -n "/^${header}\$/,/^}/p" "$operations_file")"
+  update_line="$( (grep -nF 'update_funding_when_due(' <<<"$block" || true) | head -1 | cut -d: -f1)"
+  capture_line="$( (grep -nF "$capture" <<<"$block" || true) | head -1 | cut -d: -f1)"
+  settle_line="$( (grep -nF 'clearing_house::settle_position_funding(' <<<"$block" || true) | head -1 | cut -d: -f1)"
+  [[ "$(grep -Fc 'update_funding_when_due(' <<<"$block")" -eq 1 ]] \
+    || fail "${label} must call the guarded funding update exactly once."
+  if [[ -z "$update_line" || -z "$capture_line" || -z "$settle_line" ]] \
+    || (( update_line >= capture_line )) || (( capture_line >= settle_line )); then
+    fail "${label} must update funding when due before its pre-settlement capture and its settlement."
+  fi
+}
+settlement_function_check 'public fun initialize<Product, RiskModule: drop, Collateral>(' 'snapshot::capture_initialization(' 'Initialization'
+settlement_function_check 'public fun sync_health<Product, Collateral>(' 'snapshot::capture_health(' 'Health sync'
+settlement_function_check 'fun unwind_market<Product, Collateral>(' 'snapshot::capture_health(' 'Terminal unwind'
 
 printf '%s\n' "Aftermath adapter source boundaries: OK"

@@ -48,6 +48,7 @@ const CASE_NAMES = [
     'freeze',
     'stale_oracle',
     'collateral_depeg',
+    'update_due_then_settlement',
 ];
 const CHECKPOINT_FIELDS = [
     'free_collateral',

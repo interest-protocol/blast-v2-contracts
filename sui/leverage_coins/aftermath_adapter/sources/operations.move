@@ -506,6 +506,7 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
         position_imr,
     );
 
+    update_funding_when_due(&mut clearing_house, base_oracle, clock);
     let (pre_observation, _, _) = snapshot::capture_initialization(
         &binding,
         &account,
@@ -689,6 +690,7 @@ public fun sync_health<Product, Collateral>(
 
     let binding = vault.venue_binding();
     let stored_checkpoint = *vault.venue_checkpoint();
+    update_funding_when_due(clearing_house, base_oracle, clock);
     let pre_capture = snapshot::capture_health(
         &binding,
         account,
@@ -950,6 +952,54 @@ public(package) fun emit_vault_initialized<Product>(
 
 // === Private Functions ===
 
+/// Refreshes the venue's lazily updated cumulative funding rates when they are
+/// due, immediately before a settlement the vault accepts.
+///
+/// Aftermath advances cumulative funding only when someone trades or calls
+/// its permissionless `update_funding`; an idle market would otherwise leave
+/// accrued funding out of the candidate, the settlement, and both captured
+/// checkpoints. The guard reads the bound market's `funding_last_upd_ms` and
+/// the frequency, the first element of `funding_params`, and makes no venue
+/// call when the update is not due. `update_funding` reads the base price-feed
+/// storage: the deployed bytecode routes it through
+/// `market::try_update_funding`, which prices the premium against the base
+/// index through `base_oracle_price_and_twap_price` and aborts on any other
+/// storage. The classifier already treats stored-to-pre market-rate
+/// advancement as the expected precursor of a local settlement, so the
+/// aggregate net-funding rule and the funding event are unchanged.
+fun update_funding_when_due<Collateral>(
+    clearing_house: &mut ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    clock: &Clock,
+) {
+    let (funding_frequency_ms, _) = market::funding_params(clearing_house.market_params());
+    let funding_last_upd_ms = market::funding_last_upd_ms(clearing_house.market_state());
+    if (is_time_to_update_funding(clock.timestamp_ms(), funding_last_upd_ms, funding_frequency_ms)) {
+        clearing_house::update_funding(clearing_house, base_oracle, clock);
+    };
+}
+
+/// Returns whether the venue's cumulative funding is due for an update at `now`.
+///
+/// Mirrors the pinned `market::is_time_to_update` bytecode exactly:
+/// `now >= next_funding_update_time_ms(funding_last_upd_ms, funding_frequency_ms)`.
+/// The venue's own `try_update_fundings` repeats this check, so the guard only
+/// decides whether the adapter spends a venue call; it never changes what the
+/// venue would settle. A zero frequency is never due: the venue formula would
+/// divide by it, and a market without a funding cadence has nothing to
+/// refresh.
+fun is_time_to_update_funding(now: u64, funding_last_upd_ms: u64, funding_frequency_ms: u64): bool {
+    funding_frequency_ms > 0
+        && now >= next_funding_update_time_ms(funding_last_upd_ms, funding_frequency_ms)
+}
+
+/// Returns the venue's next funding update instant: the start of the period
+/// after the one containing `funding_last_upd_ms`, exactly as the pinned
+/// `market::next_funding_update_time` computes it.
+fun next_funding_update_time_ms(funding_last_upd_ms: u64, funding_frequency_ms: u64): u64 {
+    funding_last_upd_ms - funding_last_upd_ms % funding_frequency_ms + funding_frequency_ms
+}
+
 /// Advances terminal checkpoint/event state only after an attributable close has completed.
 fun complete_unwind<Product>(
     vault: &mut Vault<Product>, before: venue_account::Checkpoint, funded: Option<venue_account::Checkpoint>,
@@ -1000,6 +1050,7 @@ fun unwind_market<Product, Collateral>(
     base_price_info: &PriceInfoObject, collateral_price_info: &PriceInfoObject, clock: &Clock, ctx: &TxContext,
 ): ClearingHouse<Collateral> {
     let binding = vault.venue_binding();
+    update_funding_when_due(&mut clearing_house, base_oracle, clock);
     let capture = snapshot::capture_health(&binding, account, registry, &clearing_house,
         base_oracle, collateral_oracle, base_price_info, collateral_price_info, clock);
     let (base, collateral, before, collateral_fixed) = snapshot::unwind_prices(capture);
@@ -1413,6 +1464,16 @@ public fun active_order_size_for_testing(
 
 #[test_only]
 public fun assert_deadline_for_testing(now: u64, deadline: u64) { assert_deadline(now, deadline); }
+
+#[test_only]
+public fun is_time_to_update_funding_for_testing(now: u64, funding_last_upd_ms: u64, funding_frequency_ms: u64): bool {
+    is_time_to_update_funding(now, funding_last_upd_ms, funding_frequency_ms)
+}
+
+#[test_only]
+public fun next_funding_update_time_ms_for_testing(funding_last_upd_ms: u64, funding_frequency_ms: u64): u64 {
+    next_funding_update_time_ms(funding_last_upd_ms, funding_frequency_ms)
+}
 
 #[test_only]
 public fun active_fill_for_testing(

@@ -414,19 +414,25 @@ type, storage, source, Pyth identity, price, and timestamp.
 
 After authentication, synchronization has one fixed sequence:
 
-1. Capture a permissive pre-settlement checkpoint and the named Aftermath
+1. Ask the venue to update its cumulative funding when the update is due:
+   call `clearing_house::update_funding` with the bound base oracle storage
+   only when `market::is_time_to_update(now, funding_last_upd_ms,
+   funding_frequency_ms)` holds for the bound market, so the candidate, the
+   settlement, and both captured checkpoints read current rates (amendment
+   below).
+2. Capture a permissive pre-settlement checkpoint and the named Aftermath
    funding candidate at the captured market rates.
-2. Call `clearing_house::settle_position_funding` with the bound collateral
+3. Call `clearing_house::settle_position_funding` with the bound collateral
    oracle.
-3. Capture the post-settlement facts and classify both stored-to-pre and
+4. Capture the post-settlement facts and classify both stored-to-pre and
    pre-to-post checkpoint edges.
-4. Aggregate both authenticated signed effects before rounding. Credits round
+5. Aggregate both authenticated signed effects before rounding. Credits round
    down and increase reserve; costs round up and consume reserve, with any
    uncovered cost borne by holder NAV.
-5. Consume the final linear capture and extract its checkpoint without a
+6. Consume the final linear capture and extract its checkpoint without a
    lifecycle mutation. Accept the economic checkpoint only for a reconciled interval;
    unresolved observations update only the diagnostic fingerprint.
-6. Emit accepted funding facts (including zero-net advancement) and new
+7. Emit accepted funding facts (including zero-net advancement) and new
    unresolved/reconciled diagnostics after their mutations. Unchanged repeats
    emit nothing.
 
@@ -483,6 +489,57 @@ product types, and compare reconstructed canonical facts to the resulting
 Vaults. An authorized combined verifier must still execute the complete
 permissionless path against controlled live objects and compare the resulting
 checkpoint, reserve, lifecycle, and events.
+
+### Funding update before settlement amendment (2026-09-16)
+
+Aftermath advances its cumulative funding rates lazily, when a trade or its
+permissionless `clearing_house::update_funding` runs. An idle market therefore
+leaves accrued funding out of the vault's candidate, its settlement, and both
+captured checkpoints. ADR 0084 D5 requires the adapter to refresh the rates
+before every settlement it accepts. The package-private helper
+`operations::update_funding_when_due` runs immediately before the
+pre-settlement capture in `initialize`, `sync_health` and `unwind_market`; it
+reads the bound market's `funding_last_upd_ms` and the frequency, and calls
+`update_funding` only when the update is due. The adapter never calls
+`update_twaps`. The classifier, the aggregate net-funding rule and the
+funding event are unchanged: stored-to-pre market-rate advancement was already
+the expected precursor of a local settlement.
+
+Two facts the interface does not state were read from the deployed package
+`0x3ec740df8428aa9c93aaef7f8cc1542ac3194fd014826b51bfe245346d64efc7`, whose
+`market` and `clearing_house` bytecode hashes the ABI gate already pins
+(`7b487816…` and `56290307…`), by disassembling the modules the GraphQL
+endpoint returns:
+
+- `market::funding_params(&MarketParams): (u64, u64)` returns
+  `(TwapParams.funding_frequency_ms, TwapParams.funding_period_ms)`; the
+  frequency in milliseconds is the first element.
+- `clearing_house::update_funding` delegates to
+  `market::try_update_funding`, which prices the premium through
+  `base_oracle_price_and_twap_price(&MarketParams, &PriceFeedStorage, &Clock)`;
+  that function asserts the storage id equals `CoreParams.base_storage_id`, so
+  the call expects the base price-feed storage and aborts at the venue on any
+  other storage. `settle_position_funding` keeps reading
+  `collateral_oracle_price`.
+- `market::is_time_to_update(now, last, frequency)` is
+  `now >= next_funding_update_time(last, frequency)` with
+  `next = last - last % frequency + frequency`; the venue's inner
+  `try_update_fundings` repeats this check, so the adapter's guard only
+  decides whether a venue call is spent. `try_update_funding` also refreshes
+  the premium and spread TWAPs and asserts the index/TWAP divergence limit,
+  which is why the adapter guards the call instead of calling
+  unconditionally.
+
+The adapter's `is_time_to_update_funding` mirrors that formula and treats a
+zero frequency as never due. The ABI gate pins `update_funding`,
+`funding_params`, `funding_last_upd_ms`, `is_time_to_update` and
+`next_funding_update_time`; the source-boundary gate pins that every
+`settle_position_funding` call site is preceded in its function by the guarded
+update, before the pre-settlement capture, with the base storage; the offline
+controlled-health matrix carries the `update_due_then_settlement` vector, a
+due update followed by one settlement whose post checkpoint carries the
+updated market rates. Live execution of the venue call remains part of the
+separately authorized verification stage.
 
 ### Terminal finality and event ABI amendment (2026-09-06)
 

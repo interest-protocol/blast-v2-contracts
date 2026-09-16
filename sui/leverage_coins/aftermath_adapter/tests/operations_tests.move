@@ -747,6 +747,76 @@ fun active_order_uses_the_sealed_base_without_a_notional_round_trip() {
     operations::assert_deadline_for_testing(1_000, 1_000);
 }
 
+/// The guard mirrors the pinned venue formula: the next update is the start of
+/// the period after the one containing the last update, and it is due at that
+/// instant, not one millisecond before it.
+#[test]
+fun funding_update_is_due_at_the_next_period_boundary_and_not_before() {
+    let frequency = 3_600_000;
+    let last = 7 * frequency + 1_234;
+    let next = 8 * frequency;
+
+    assert_eq!(operations::next_funding_update_time_ms_for_testing(last, frequency), next);
+    assert!(!operations::is_time_to_update_funding_for_testing(next - 1, last, frequency));
+    assert!(operations::is_time_to_update_funding_for_testing(next, last, frequency));
+    assert!(operations::is_time_to_update_funding_for_testing(next + 1, last, frequency));
+    assert!(operations::is_time_to_update_funding_for_testing(next + 5 * frequency, last, frequency));
+}
+
+/// An aligned last update is due exactly one period later, and a market whose
+/// last update is the current instant is not due.
+#[test]
+fun funding_update_from_an_aligned_last_update_is_due_one_period_later() {
+    let frequency = 60_000;
+
+    assert_eq!(operations::next_funding_update_time_ms_for_testing(0, frequency), frequency);
+    assert_eq!(operations::next_funding_update_time_ms_for_testing(frequency, frequency), 2 * frequency);
+    assert!(!operations::is_time_to_update_funding_for_testing(frequency, frequency, frequency));
+    assert!(!operations::is_time_to_update_funding_for_testing(2 * frequency - 1, frequency, frequency));
+    assert!(operations::is_time_to_update_funding_for_testing(2 * frequency, frequency, frequency));
+}
+
+/// A not-due market receives no update call: the production helper only calls
+/// the venue under a true guard, which the source-boundary gate pins, so every
+/// instant strictly inside the current period decides "no call".
+#[test]
+fun a_not_due_market_receives_no_funding_update_call() {
+    let frequency = 1_000;
+    let last = 4_321;
+    let next = 5_000;
+    let mut now = last;
+    while (now < next) {
+        assert!(!operations::is_time_to_update_funding_for_testing(now, last, frequency));
+        now = now + 1;
+    };
+    assert!(operations::is_time_to_update_funding_for_testing(now, last, frequency));
+}
+
+/// A zero frequency is never due, so the adapter never asks the venue to divide by it.
+#[test]
+fun a_market_without_a_funding_cadence_is_never_due() {
+    assert!(!operations::is_time_to_update_funding_for_testing(0, 0, 0));
+    assert!(!operations::is_time_to_update_funding_for_testing(std::u64::max_value!(), 0, 0));
+}
+
+/// Exhausts small periods and offsets against an independent reference of the
+/// venue formula.
+#[test]
+fun funding_update_guard_matches_the_small_domain_reference() {
+    1u64.range_do!(6, |frequency| {
+        0u64.range_do!(25, |last| {
+            let next = (last / frequency + 1) * frequency;
+            assert_eq!(operations::next_funding_update_time_ms_for_testing(last, frequency), next);
+            0u64.range_do!(31, |now| {
+                assert_eq!(
+                    operations::is_time_to_update_funding_for_testing(now, last, frequency),
+                    now >= next,
+                );
+            });
+        });
+    });
+}
+
 #[test]
 #[expected_failure(abort_code = 46, location = blast_leverage_aftermath::operations)]
 fun active_order_rejects_a_seventeenth_session() {
