@@ -269,6 +269,10 @@ const EMetadataCapNotLive: u64 = 92;
 /// A custodian witness was a primitive or vector type that anyone can construct.
 const EInvalidFeeCustodian: u64 = 93;
 
+#[test_only]
+/// A curve fee rate is one hundred percent, leaving no complement to divide by.
+const EInvalidCurveFee: u64 = 94;
+
 macro public(package) fun invalid_creator_claim_public_key(): u64 { 2 }
 
 macro public(package) fun creator_claim_signer_inactive(): u64 { 3 }
@@ -386,3 +390,5 @@ macro public(package) fun creator_custodian_mismatch(): u64 { 91 }
 macro public(package) fun metadata_cap_not_live(): u64 { 92 }
 
 macro public(package) fun invalid_fee_custodian(): u64 { 93 }
+
+macro public(package) fun invalid_curve_fee(): u64 { 94 }

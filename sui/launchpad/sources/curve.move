@@ -31,14 +31,20 @@ public(package) fun k(reserve_x: u256, reserve_y: u256): u256 {
 /// smallest amount whose post-fee value reaches the remaining target.
 ///
 /// The complement of `quote_fee_bps` is the divisor, so the rate must stay below one hundred
-/// percent. `launch_config` owns that bound by capping trade fees at ten percent, and every
-/// launch snapshots the capped value; this module does not re-check it.
+/// percent. `launch_config` caps trade fees at ten percent and every launch snapshots that
+/// value; the guard here only rejects a total fee, so a later ceiling change can never turn
+/// the division into a bare arithmetic fault or strand a launch created under an older ceiling.
 public(package) fun cap_buy_quote_input(
     real_quote: u64,
     terminal_threshold: u64,
     quote_supplied: u64,
     quote_fee_bps: Bps,
 ): (u64, u64) {
+    assert!(
+        quote_fee_bps.value() < blast_fun::constants::basis_points_denominator!(),
+        blast_fun::errors::invalid_curve_fee!(),
+    );
+
     let quote_fee = quote_fee_bps.apply_up(quote_supplied);
     let quote_in_net = quote_supplied - quote_fee;
     let quote_remaining = terminal_threshold - real_quote;

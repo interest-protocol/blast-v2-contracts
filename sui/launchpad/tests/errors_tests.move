@@ -69,6 +69,7 @@ fun market_and_launch_error_registry_is_stable() {
         blast_fun::errors::constant_product_invariant_decreased!(),
         84,
     );
+    assert_eq!(blast_fun::errors::invalid_curve_fee!(), 94);
 }
 
 #[test]

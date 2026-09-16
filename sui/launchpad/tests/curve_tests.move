@@ -90,6 +90,15 @@ fun buy_input_cap_reaches_the_exact_post_fee_target_and_refunds_excess() {
 }
 
 #[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidCurveFee,
+    location = blast_fun::curve,
+)]
+fun buy_input_cap_rejects_a_total_fee_before_dividing_by_its_complement() {
+    cap_buy_quote_input(0, TERMINAL_THRESHOLD, 1_000_000_000, 10_000);
+}
+
+#[test]
 fun buy_input_cap_is_exact_and_minimal_for_every_admitted_fee() {
     let max = std::u64::max_value!();
     let reals = vector[0u64, 1, 7, 24_999_999, 12_345_678, max - 1_000_000_001, 0];
