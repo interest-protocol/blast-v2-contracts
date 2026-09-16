@@ -122,6 +122,30 @@ fun reduction_improvement_uses_exact_ratios_and_one_lot_tolerance() {
     assert!(!rebalance_math::reduction_is_sufficient(300, 100, 270, 90, 20_000, 1, 1));
 }
 
+#[test]
+#[expected_failure(abort_code = blast_leverage_series_one::errors::EInvalidNav, location = blast_leverage_series_one::rebalance_math)]
+fun reduction_predicate_rejects_a_zero_before_nav_first() {
+    rebalance_math::reduction_is_sufficient(300, 0, 250, 0, 20_000, 1, 1);
+}
+
+#[test]
+#[expected_failure(abort_code = blast_leverage_series_one::errors::EInvalidNav, location = blast_leverage_series_one::rebalance_math)]
+fun reduction_predicate_rejects_a_zero_after_nav() {
+    rebalance_math::reduction_is_sufficient(300, 100, 250, 0, 20_000, 1, 1);
+}
+
+#[test]
+#[expected_failure(abort_code = blast_leverage_series_one::errors::EInvalidValuationPrice, location = blast_leverage_series_one::rebalance_math)]
+fun index_notional_rejects_a_zero_base_price_first() {
+    rebalance_math::index_notional_up(1, 0, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = blast_leverage_series_one::errors::EInvalidValuationPrice, location = blast_leverage_series_one::rebalance_math)]
+fun index_notional_rejects_a_zero_collateral_price() {
+    rebalance_math::index_notional_up(1, 1, 0);
+}
+
 /// The improvement clause is inclusive at exactly the minimum and exclusive one
 /// basis point below it: 3.00x to 2.99x is a 100 bps improvement.
 #[test]

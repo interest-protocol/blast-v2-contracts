@@ -305,6 +305,19 @@ fun canonical_mint_credits_the_actual_nav_gain_net_of_the_retained_fee() {
     assert_eq!(shares_after, 2_000_980_000);
 }
 
+/// The allocation share is validated before any fee arithmetic.
+#[test]
+#[expected_failure(abort_code = errors::EInvalidFeeBps, location = blast_leverage_series_one::accounting_math)]
+fun fee_allocation_rejects_an_admin_share_above_the_whole_fee() {
+    accounting_math::fee_allocation(1_000, 100, 10_001);
+}
+
+#[test]
+fun fee_allocation_accepts_the_whole_fee_as_admin_share() {
+    let (fee, admin, buffer) = accounting_math::fee_allocation(1_000, 100, 10_000);
+    assert_eq!(vector[fee, admin, buffer], vector[10, 10, 0]);
+}
+
 /// Proves mint fees are excluded once while execution loss still reaches the depositor.
 #[test]
 fun mint_reserve_accounting_does_not_subtract_the_fee_twice() {
