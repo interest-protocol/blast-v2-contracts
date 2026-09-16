@@ -51,63 +51,63 @@ fun whole_lot_increase_matches_exhaustive_small_domain_reference() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_leverage_series_one::errors::EVenueFeeUnusable, location = blast_leverage_series_one::rebalance_math)]
+#[expected_failure(abort_code = blast_leverage_series_one::rebalance_math::EVenueFeeUnusable, location = blast_leverage_series_one::rebalance_math)]
 fun sizing_rejects_fee_first_above_full_rate() {
     rebalance_math::execution_cost_up(1, 10_001, 0);
 }
 
 
 #[test]
-#[expected_failure(abort_code = blast_leverage_series_one::errors::EVenueFeeUnusable, location = blast_leverage_series_one::rebalance_math)]
+#[expected_failure(abort_code = blast_leverage_series_one::rebalance_math::EVenueFeeUnusable, location = blast_leverage_series_one::rebalance_math)]
 fun sizing_rejects_tolerance_at_full_rate() {
     rebalance_math::execution_cost_up(1, 0, 10_000);
 }
 
 
 #[test]
-#[expected_failure(abort_code = blast_leverage_series_one::errors::EArithmeticOverflow, location = blast_leverage_series_one::rebalance_math)]
+#[expected_failure(abort_code = blast_leverage_series_one::rebalance_math::EArithmeticOverflow, location = blast_leverage_series_one::rebalance_math)]
 fun sizing_rejects_target_width_overflow() {
     rebalance_math::increase_base_down(std::u64::max_value!(), 0, 20_000, 1_000, 1, 1, 1, 0, 0);
 }
 
 
 #[test]
-#[expected_failure(abort_code = blast_leverage_series_one::errors::EArithmeticOverflow, location = blast_leverage_series_one::rebalance_math)]
+#[expected_failure(abort_code = blast_leverage_series_one::rebalance_math::EArithmeticOverflow, location = blast_leverage_series_one::rebalance_math)]
 fun sizing_rejects_base_width_overflow() {
     rebalance_math::base_for_notional_down(std::u64::max_value!(), 1, 1, 1);
 }
 
 
 #[test]
-#[expected_failure(abort_code = blast_leverage_series_one::errors::EArithmeticOverflow, location = blast_leverage_series_one::rebalance_math)]
+#[expected_failure(abort_code = blast_leverage_series_one::rebalance_math::EArithmeticOverflow, location = blast_leverage_series_one::rebalance_math)]
 fun sizing_rejects_notional_width_overflow() {
     rebalance_math::index_notional_up(std::u64::max_value!(), 1_001, 1);
 }
 
 
 #[test]
-#[expected_failure(abort_code = blast_leverage_series_one::errors::EInvalidNav, location = blast_leverage_series_one::rebalance_math)]
+#[expected_failure(abort_code = blast_leverage_series_one::rebalance_math::EInvalidNav, location = blast_leverage_series_one::rebalance_math)]
 fun sizing_rejects_zero_nav_before_invalid_target() {
     rebalance_math::increase_base_down(0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
 
 #[test]
-#[expected_failure(abort_code = blast_leverage_series_one::errors::EInvalidTargetLeverageBps, location = blast_leverage_series_one::rebalance_math)]
+#[expected_failure(abort_code = blast_leverage_series_one::rebalance_math::EInvalidTargetLeverageBps, location = blast_leverage_series_one::rebalance_math)]
 fun sizing_rejects_zero_target_before_invalid_price() {
     rebalance_math::increase_base_down(1, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
 
 #[test]
-#[expected_failure(abort_code = blast_leverage_series_one::errors::EInvalidValuationPrice, location = blast_leverage_series_one::rebalance_math)]
+#[expected_failure(abort_code = blast_leverage_series_one::rebalance_math::EInvalidValuationPrice, location = blast_leverage_series_one::rebalance_math)]
 fun sizing_rejects_invalid_price_before_zero_lot() {
     rebalance_math::base_for_notional_down(1, 0, 1, 0);
 }
 
 
 #[test]
-#[expected_failure(abort_code = blast_leverage_series_one::errors::EInvalidLotSize, location = blast_leverage_series_one::rebalance_math)]
+#[expected_failure(abort_code = blast_leverage_series_one::rebalance_math::EInvalidLotSize, location = blast_leverage_series_one::rebalance_math)]
 fun sizing_rejects_zero_lot_at_valid_prices() {
     rebalance_math::base_for_notional_down(1, 1, 1, 0);
 }
@@ -123,25 +123,25 @@ fun reduction_improvement_uses_exact_ratios_and_one_lot_tolerance() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_leverage_series_one::errors::EInvalidNav, location = blast_leverage_series_one::rebalance_math)]
+#[expected_failure(abort_code = blast_leverage_series_one::rebalance_math::EInvalidNav, location = blast_leverage_series_one::rebalance_math)]
 fun reduction_predicate_rejects_a_zero_before_nav_first() {
     rebalance_math::reduction_is_sufficient(300, 0, 250, 0, 20_000, 1, 1);
 }
 
 #[test]
-#[expected_failure(abort_code = blast_leverage_series_one::errors::EInvalidNav, location = blast_leverage_series_one::rebalance_math)]
+#[expected_failure(abort_code = blast_leverage_series_one::rebalance_math::EInvalidNav, location = blast_leverage_series_one::rebalance_math)]
 fun reduction_predicate_rejects_a_zero_after_nav() {
     rebalance_math::reduction_is_sufficient(300, 100, 250, 0, 20_000, 1, 1);
 }
 
 #[test]
-#[expected_failure(abort_code = blast_leverage_series_one::errors::EInvalidValuationPrice, location = blast_leverage_series_one::rebalance_math)]
+#[expected_failure(abort_code = blast_leverage_series_one::rebalance_math::EInvalidValuationPrice, location = blast_leverage_series_one::rebalance_math)]
 fun index_notional_rejects_a_zero_base_price_first() {
     rebalance_math::index_notional_up(1, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = blast_leverage_series_one::errors::EInvalidValuationPrice, location = blast_leverage_series_one::rebalance_math)]
+#[expected_failure(abort_code = blast_leverage_series_one::rebalance_math::EInvalidValuationPrice, location = blast_leverage_series_one::rebalance_math)]
 fun index_notional_rejects_a_zero_collateral_price() {
     rebalance_math::index_notional_up(1, 1, 0);
 }

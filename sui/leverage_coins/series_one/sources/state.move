@@ -1,6 +1,3 @@
-// `errors` intentionally centralizes package-wide abort codes through zero-cost macros.
-// W04005 sees the expanded literal; this suppression preserves stable codes and local checks.
-#[allow(lint(abort_without_constant))]
 /// Venue-neutral state for one Series1 leveraged product.
 ///
 /// The selected adapter stores this value inside its own shared Vault. Only
@@ -19,6 +16,104 @@ use blast_leverage_series_one::{
     rebalance_math,
     series_one_domain::{Self, SERIES_ONE_DOMAIN},
 };
+
+// === Errors ===
+
+#[error(code = 0)]
+const EZeroAmount: vector<u8> = b"A fee calculation requires a positive atomic collateral amount.";
+
+#[error(code = 2)]
+const EInvalidNav: vector<u8> = b"A priced operation requires positive Series NAV.";
+
+#[error(code = 3)]
+const EInvalidShareSupply: vector<u8> = b"A priced operation requires positive share supply.";
+
+#[error(code = 4)]
+const EInvalidShareAmount: vector<u8> = b"Presented shares must be positive and below the live supply.";
+
+#[error(code = 5)]
+const ENonpositiveContribution: vector<u8> = b"A mint requires a positive shareholder NAV contribution.";
+
+#[error(code = 8)]
+const EZeroNetPayout: vector<u8> = b"The redemption fee consumed the complete gross claim.";
+
+#[error(code = 15)]
+const EArithmeticOverflow: vector<u8> = b"An arithmetic result exceeds the supported u64 range.";
+
+#[error(code = 16)]
+const EMaintenanceReserveExceedsEquity: vector<u8> = b"The maintenance reserve exceeds the venue equity that backs it.";
+
+#[error(code = 18)]
+const EOperationNotPermittedInLifecycle: vector<u8> = b"The lifecycle does not permit the requested operation.";
+
+#[error(code = 64)]
+const EInvalidMaxOrderNotional: vector<u8> = b"The maximum-order-notional minimum must be positive.";
+
+#[error(code = 74)]
+const EMaxOrderNotionalUnchanged: vector<u8> = b"A maximum-order-notional update repeated the current setting.";
+
+#[error(code = 77)]
+const EInvalidPositionObservation: vector<u8> = b"A normalized position must be flat or use positive, lot-aligned base and notional.";
+
+#[error(code = 78)]
+const EOrderNotionalExceedsMaximum: vector<u8> = b"An order exceeds the live per-order maximum notional.";
+
+#[error(code = 79)]
+const EInvalidInitializationObservation: vector<u8> = b"A seed observation's position side differs from the immutable product side.";
+
+#[error(code = 80)]
+const EInitializationOrdersNotEmpty: vector<u8> = b"Seed activation observed one or more pending venue orders.";
+
+#[error(code = 81)]
+const EInitializationVenueNotOperational: vector<u8> = b"Seed activation observed a paused, frozen, or otherwise unavailable venue.";
+
+#[error(code = 82)]
+const EInitializationCheckpointDirty: vector<u8> = b"Seed activation observed an unreconciled venue checkpoint.";
+
+#[error(code = 83)]
+const EInitializationMarginUnsafe: vector<u8> = b"Seed activation observed unsafe venue margin.";
+
+#[error(code = 84)]
+const EInitializationLeverageUnhealthy: vector<u8> = b"Seed activation leverage lies outside the immutable healthy band.";
+
+#[error(code = 85)]
+const EInitializationExposureBelowMinimum: vector<u8> = b"Seed activation exposure cannot support the immutable minimum operation.";
+
+#[error(code = 87)]
+const EFeeSettingsUnchanged: vector<u8> = b"Fee settings unchanged.";
+
+#[error(code = 88)]
+const EUserFeeLimitExceeded: vector<u8> = b"User fee limit exceeded.";
+
+#[error(code = 89)]
+const EMintOutsidePublicBand: vector<u8> = b"Mint outside public band.";
+
+#[error(code = 90)]
+const EActiveCheckpointChanged: vector<u8> = b"Active checkpoint changed.";
+
+#[error(code = 91)]
+const EActiveFillIncomplete: vector<u8> = b"Active fill incomplete.";
+
+#[error(code = 92)]
+const EActiveLeverageAboveCap: vector<u8> = b"Active leverage above cap.";
+
+#[error(code = 93)]
+const EActiveObservationUnusable: vector<u8> = b"Active observation unusable.";
+
+#[error(code = 94)]
+const ERedemptionOutputBelowMinimum: vector<u8> = b"Redemption output below minimum.";
+
+#[error(code = 95)]
+const EBufferReleaseExceedsBalance: vector<u8> = b"Buffer release exceeds balance.";
+
+#[error(code = 96)]
+const ERebalanceInsidePublicBand: vector<u8> = b"An active rebalance was requested at or inside the one public band.";
+
+#[error(code = 97)]
+const ERebalanceNoProgress: vector<u8> = b"No admissible whole-lot rebalance progress was completed.";
+
+#[error(code = 98)]
+const EVenueFeeUnusable: vector<u8> = b"A venue fee or execution bound cannot be represented conservatively.";
 
 // === Constants ===
 
@@ -102,14 +197,14 @@ public fun prepare_rebalance<Product>(
     self: &State<Product>, observation: PositionObservation, venue_fee_bps: u64, now: u64,
 ): RebalancePlan<Product> {
     self.lifecycle.assert_active();
-    assert!(venue_fee_bps <= 10_000, blast_leverage_series_one::errors::venue_fee_unusable!());
+    assert!(venue_fee_bps <= 10_000, EVenueFeeUnusable);
     let before = validated_active_position(self, observation, now);
     let nav = accounting_math::shareholder_nav(before.equity, self.maintenance_reserve);
     let risk = self.tier_policy.rebalance_policy();
     let scaled = (before.notional as u128) * 10_000;
     let increase = scaled < (nav as u128) * (risk.public_lower_bps() as u128);
     assert!(increase || scaled > (nav as u128) * (risk.public_upper_bps() as u128),
-        blast_leverage_series_one::errors::rebalance_inside_public_band!());
+        ERebalanceInsidePublicBand);
     RebalancePlan { before, current: before, reserve: self.maintenance_reserve, increase, venue_fee_bps, steps: 0 }
 }
 
@@ -117,7 +212,7 @@ public fun prepare_rebalance<Product>(
 /// A zero size finishes planning; the adapter independently caps work at sixteen sessions.
 public fun rebalance_order<Product>(self: &State<Product>, plan: &RebalancePlan<Product>): (u64, bool, bool) {
     self.lifecycle.assert_active();
-    assert!(self.maintenance_reserve == plan.reserve, blast_leverage_series_one::errors::active_checkpoint_changed!());
+    assert!(self.maintenance_reserve == plan.reserve, EActiveCheckpointChanged);
     let p = &plan.current;
     let nav = accounting_math::shareholder_nav(p.equity, plan.reserve);
     let risk = self.tier_policy.rebalance_policy();
@@ -128,7 +223,7 @@ public fun rebalance_order<Product>(self: &State<Product>, plan: &RebalancePlan<
             risk.strict_tolerance_bps()), true, false)
     } else {
         let target_notional = (nav as u128) * (risk.target_bps() as u128) / 10_000;
-        assert!(target_notional <= std::u64::max_value!() as u128, blast_leverage_series_one::errors::arithmetic_overflow!());
+        assert!(target_notional <= std::u64::max_value!() as u128, EArithmeticOverflow);
         let target_base = rebalance_math::base_for_notional_down(target_notional as u64, p.base_price, p.collateral_price, p.lot);
         let cap_base = rebalance_math::base_for_notional_down(self.max_order_notional.current(), p.base_price, p.collateral_price, p.lot);
         let base = if (p.base > target_base) { (p.base - target_base).min(cap_base) / p.lot * p.lot } else { 0 };
@@ -155,18 +250,18 @@ public fun accept_rebalance_fill<Product>(
 ) {
     let (requested, increase, _) = self.rebalance_order(plan);
     assert!(filled > 0 && filled <= requested && filled % plan.current.lot == 0,
-        blast_leverage_series_one::errors::active_fill_incomplete!());
+        EActiveFillIncomplete);
     let after = validated_active_position(self, observation, now);
     assert!(after.base_price == plan.before.base_price && after.collateral_price == plan.before.collateral_price
-        && after.lot == plan.before.lot, blast_leverage_series_one::errors::active_checkpoint_changed!());
-    let expected_base = if (increase) { plan.current.base.checked_add(filled).destroy_or!(abort blast_leverage_series_one::errors::arithmetic_overflow!()) } else { plan.current.base - filled };
-    assert!(after.base == expected_base, blast_leverage_series_one::errors::active_fill_incomplete!());
+        && after.lot == plan.before.lot, EActiveCheckpointChanged);
+    let expected_base = if (increase) { plan.current.base.checked_add(filled).destroy_or!(abort EArithmeticOverflow) } else { plan.current.base - filled };
+    assert!(after.base == expected_base, EActiveFillIncomplete);
     if (increase) {
         let nav = accounting_math::shareholder_nav(after.equity, plan.reserve);
         let risk = self.tier_policy.rebalance_policy();
         assert!((after.notional as u128) * 10_000 <= (nav as u128) * (risk.target_bps() as u128)
             && (after.notional as u128) * 10_000 < (nav as u128) * (risk.hard_cap_bps() as u128),
-            blast_leverage_series_one::errors::active_leverage_above_cap!());
+            EActiveLeverageAboveCap);
     };
     plan.current = after;
     plan.steps = plan.steps + 1;
@@ -177,8 +272,8 @@ public fun accept_rebalance_fill<Product>(
 public fun complete_rebalance<Product>(self: &State<Product>, plan: RebalancePlan<Product>): (u64, u64, u64, u64, bool) {
     self.lifecycle.assert_active();
     let RebalancePlan { before, current, reserve, increase, venue_fee_bps: _, steps } = plan;
-    assert!(reserve == self.maintenance_reserve, blast_leverage_series_one::errors::active_checkpoint_changed!());
-    assert!(steps > 0, blast_leverage_series_one::errors::rebalance_no_progress!());
+    assert!(reserve == self.maintenance_reserve, EActiveCheckpointChanged);
+    assert!(steps > 0, ERebalanceNoProgress);
     let before_nav = accounting_math::shareholder_nav(before.equity, reserve);
     let after_nav = accounting_math::shareholder_nav(current.equity, reserve);
     let risk = self.tier_policy.rebalance_policy();
@@ -189,7 +284,7 @@ public fun complete_rebalance<Product>(self: &State<Product>, plan: RebalancePla
             current.notional, after_nav, risk.target_bps(), risk.minimum_improvement_bps(),
             rebalance_math::index_notional_up(current.lot, current.base_price, current.collateral_price))
     };
-    assert!(improved, blast_leverage_series_one::errors::rebalance_no_progress!());
+    assert!(improved, ERebalanceNoProgress);
     (before.equity, current.equity, before.base, current.base, increase)
 }
 
@@ -207,7 +302,7 @@ public fun new<Product>(
     admin_witness.assert_role(series_one_domain::vault_issuer_role());
     assert!(
         max_order_notional_minimum > 0,
-        blast_leverage_series_one::errors::invalid_max_order_notional!(),
+        EInvalidMaxOrderNotional,
     );
 
     State {
@@ -235,7 +330,7 @@ public fun set_fees<Product>(
 ): (u64, u64, u64) {
     assert!(
         self.lifecycle.is_uninitialized() || self.lifecycle.is_active(),
-        blast_leverage_series_one::errors::operation_not_permitted_in_lifecycle!(),
+        EOperationNotPermittedInLifecycle,
     );
     self.tier_policy.assert_fee_limits(mint_bps, redeem_bps, admin_bps);
     let previous_mint = self.mint_fee_bps;
@@ -244,7 +339,7 @@ public fun set_fees<Product>(
     assert!(
         self.mint_fee_bps != mint_bps || self.redeem_fee_bps != redeem_bps
             || self.admin_allocation_bps != admin_bps,
-        blast_leverage_series_one::errors::fee_settings_unchanged!(),
+        EFeeSettingsUnchanged,
     );
     self.mint_fee_bps = mint_bps;
     self.redeem_fee_bps = redeem_bps;
@@ -270,7 +365,7 @@ public fun fee_settings<Product>(self: &State<Product>): (u64, u64, u64) {
 /// Checks a user's fee ceiling before the adapter interacts with the venue.
 public fun assert_user_fee_limit<Product>(self: &State<Product>, mint: bool, maximum: u64) {
     assert!((if (mint) { self.mint_fee_bps } else { self.redeem_fee_bps }) <= maximum,
-        blast_leverage_series_one::errors::user_fee_limit_exceeded!());
+        EUserFeeLimitExceeded);
 }
 
 /// Seals a proportional increase from reserve-excluded NAV and the user's limits.
@@ -285,8 +380,8 @@ public fun prepare_mint<Product>(
     reference_time_ms: u64,
 ): MintPlan<Product> {
     self.lifecycle.assert_active();
-    assert!(supply > 0, blast_leverage_series_one::errors::invalid_share_supply!());
-    assert!(self.mint_fee_bps <= maximum_fee_bps, blast_leverage_series_one::errors::user_fee_limit_exceeded!());
+    assert!(supply > 0, EInvalidShareSupply);
+    assert!(self.mint_fee_bps <= maximum_fee_bps, EUserFeeLimitExceeded);
     let before = validated_active_position(self, observation, reference_time_ms);
     let nav = accounting_math::shareholder_nav(before.equity, self.maintenance_reserve);
     let risk = self.tier_policy.rebalance_policy();
@@ -294,14 +389,13 @@ public fun prepare_mint<Product>(
     assert!(
         scaled >= (nav as u128) * (risk.public_lower_bps() as u128)
             && scaled <= (nav as u128) * (risk.public_upper_bps() as u128),
-        blast_leverage_series_one::errors::mint_outside_public_band!(),
+        EMintOutsidePublicBand,
     );
     let (fee, admin_fee, buffer_fee) = self.fee_allocation(deposit, true);
     let expected_contribution = deposit - fee;
-    assert!(expected_contribution > 0, blast_leverage_series_one::errors::nonpositive_contribution!());
-    let order_base = accounting_math::mint_base_delta_from_equity_down(
-        expected_contribution, before.base, before.equity, self.maintenance_reserve,
-        before.lot, self.tier_policy.min_exposure_lots(),
+    assert!(expected_contribution > 0, ENonpositiveContribution);
+    let order_base = accounting_math::mint_base_delta_down(
+        expected_contribution, before.base, nav, before.lot, self.tier_policy.min_exposure_lots(),
     );
     MintPlan {
         before,
@@ -351,7 +445,7 @@ public fun assert_active_observation<Product>(
     self.lifecycle.assert_active();
     let position = validated_active_position(self, observation, now);
     assert!(position.base_price == base_price && position.collateral_price == collateral_price,
-        blast_leverage_series_one::errors::active_checkpoint_changed!());
+        EActiveCheckpointChanged);
 }
 
 /// Completes a full proportional fill and credits only its buffer allocation.
@@ -370,26 +464,27 @@ public fun complete_mint<Product>(
         before, reserve_before, deposit: _, expected_contribution, buffer_fee,
         admin_fee, fee_bps, admin_bps, supply, minimum_shares, order_base,
     } = plan;
-    assert!(self.maintenance_reserve == reserve_before, blast_leverage_series_one::errors::active_checkpoint_changed!());
+    assert!(self.maintenance_reserve == reserve_before, EActiveCheckpointChanged);
     let after = validated_active_position(self, observation, reference_time_ms);
     assert!(
         before.base_price == after.base_price && before.collateral_price == after.collateral_price
             && before.lot == after.lot,
-        blast_leverage_series_one::errors::active_checkpoint_changed!(),
+        EActiveCheckpointChanged,
     );
     assert!(
         after.base >= before.base && after.base - before.base == order_base,
-        blast_leverage_series_one::errors::active_fill_incomplete!(),
+        EActiveFillIncomplete,
     );
     let reserve_after = reserve_before.checked_add(buffer_fee)
-        .destroy_or!(abort blast_leverage_series_one::errors::arithmetic_overflow!());
+        .destroy_or!(abort EArithmeticOverflow);
     let (nav_after, contribution, shares) = accounting_math::allocated_mint_quote(
         before.equity, after.equity, reserve_before, reserve_after, expected_contribution,
         supply, minimum_shares,
     );
-    accounting_math::assert_mint_base_within_bounds_from_equity(
-        after.base, expected_contribution, contribution, before.base, before.equity,
-        reserve_before, before.lot, self.tier_policy.min_exposure_lots(),
+    accounting_math::assert_mint_base_within_bounds(
+        after.base, expected_contribution, contribution, before.base,
+        accounting_math::shareholder_nav(before.equity, reserve_before),
+        before.lot, self.tier_policy.min_exposure_lots(),
     );
     self.tier_policy.assert_within_nav_cap(nav_after);
     assert!(
@@ -397,7 +492,7 @@ public fun complete_mint<Product>(
             after.notional, after.equity, reserve_after,
             self.tier_policy.rebalance_policy().hard_cap_bps(),
         ),
-        blast_leverage_series_one::errors::active_leverage_above_cap!(),
+        EActiveLeverageAboveCap,
     );
     self.maintenance_reserve = reserve_after;
     (shares, contribution, admin_fee + buffer_fee, admin_fee, buffer_fee, fee_bps, admin_bps)
@@ -414,7 +509,7 @@ public fun prepare_redemption<Product>(
     reference_time_ms: u64,
 ): RedemptionPlan<Product> {
     self.lifecycle.assert_active();
-    assert!(self.redeem_fee_bps <= maximum_fee_bps, blast_leverage_series_one::errors::user_fee_limit_exceeded!());
+    assert!(self.redeem_fee_bps <= maximum_fee_bps, EUserFeeLimitExceeded);
     let before = validated_active_position(self, observation, reference_time_ms);
     let (minimum_base, _) = accounting_math::redemption_base_bounds(
         shares, before.base, supply, before.lot, self.tier_policy.min_exposure_lots(),
@@ -449,7 +544,7 @@ public fun assert_redemption_cash_out<Product>(
     let after = validated_active_position(self, observation, now);
     assert!(after.equity == equity && after.base == base && after.base_price == base_price
         && after.collateral_price == collateral_price,
-        blast_leverage_series_one::errors::active_checkpoint_changed!());
+        EActiveCheckpointChanged);
 }
 
 /// Computes payout after unwind and credits the fee once, excluding admin cash.
@@ -467,16 +562,16 @@ public fun complete_redemption<Product>(
     let RedemptionPlan {
         before, reserve_before, shares, supply, minimum_output, fee_bps, admin_bps, order_base,
     } = plan;
-    assert!(self.maintenance_reserve == reserve_before, blast_leverage_series_one::errors::active_checkpoint_changed!());
+    assert!(self.maintenance_reserve == reserve_before, EActiveCheckpointChanged);
     let after = validated_active_position(self, observation, reference_time_ms);
     assert!(
         before.base_price == after.base_price && before.collateral_price == after.collateral_price
             && before.lot == after.lot,
-        blast_leverage_series_one::errors::active_checkpoint_changed!(),
+        EActiveCheckpointChanged,
     );
     assert!(
         before.base >= after.base && before.base - after.base == order_base,
-        blast_leverage_series_one::errors::active_fill_incomplete!(),
+        EActiveFillIncomplete,
     );
     accounting_math::assert_redemption_base_within_bounds(
         after.base, shares, before.base, supply, before.lot, self.tier_policy.min_exposure_lots(),
@@ -484,11 +579,11 @@ public fun complete_redemption<Product>(
     let (reserve_with_fee, _, nav_kept, _, _, fee, net) = accounting_math::redemption_accounting_quote(
         shares, before.equity, after.equity, reserve_before, supply, fee_bps,
     );
-    assert!(net >= minimum_output, blast_leverage_series_one::errors::redemption_output_below_minimum!());
+    assert!(net >= minimum_output, ERedemptionOutputBelowMinimum);
     let admin = fee.mul_div(admin_bps, 10_000);
     let reserve_after = reserve_with_fee - admin;
     let final_equity = nav_kept.checked_add(reserve_after)
-        .destroy_or!(abort blast_leverage_series_one::errors::arithmetic_overflow!());
+        .destroy_or!(abort EArithmeticOverflow);
     self.maintenance_reserve = reserve_after;
     (net, admin, final_equity, fee, fee - admin)
 }
@@ -506,7 +601,7 @@ public fun prepare_donation<Product>(
     reference_time_ms: u64,
 ): DonationPlan<Product> {
     self.lifecycle.assert_active();
-    assert!(amount > 0, blast_leverage_series_one::errors::zero_amount!());
+    assert!(amount > 0, EZeroAmount);
     DonationPlan {
         before: validated_active_position(self, observation, reference_time_ms),
         reserve_before: self.maintenance_reserve,
@@ -523,16 +618,16 @@ public fun complete_donation<Product>(
 ) {
     self.lifecycle.assert_active();
     let DonationPlan { before, reserve_before, amount } = plan;
-    assert!(reserve_before == self.maintenance_reserve, blast_leverage_series_one::errors::active_checkpoint_changed!());
+    assert!(reserve_before == self.maintenance_reserve, EActiveCheckpointChanged);
     let after = validated_active_position(self, after, reference_time_ms);
     assert!(
         before.base == after.base && before.notional == after.notional && before.lot == after.lot
             && before.base_price == after.base_price && before.collateral_price == after.collateral_price
             && after.equity >= before.equity && after.equity - before.equity == amount,
-        blast_leverage_series_one::errors::active_checkpoint_changed!(),
+        EActiveCheckpointChanged,
     );
     self.maintenance_reserve = self.maintenance_reserve.checked_add(amount)
-        .destroy_or!(abort blast_leverage_series_one::errors::arithmetic_overflow!());
+        .destroy_or!(abort EArithmeticOverflow);
 }
 
 /// Relabels active buffer as shareholder NAV without trading or moving collateral.
@@ -545,8 +640,8 @@ public fun release_buffer<Product>(
     reference_time_ms: u64,
 ): u64 {
     self.lifecycle.assert_active();
-    assert!(amount > 0, blast_leverage_series_one::errors::zero_amount!());
-    assert!(amount <= self.maintenance_reserve, blast_leverage_series_one::errors::buffer_release_exceeds_balance!());
+    assert!(amount > 0, EZeroAmount);
+    assert!(amount <= self.maintenance_reserve, EBufferReleaseExceedsBalance);
     let position = validated_active_position(self, observation, reference_time_ms);
     let reserve_after = self.maintenance_reserve - amount;
     let nav = accounting_math::shareholder_nav(position.equity, reserve_after);
@@ -589,11 +684,11 @@ public fun prepare_initialization<Product>(
 
     assert!(
         accounting_math::is_reserve_backed(venue_equity, seed_reserve),
-        blast_leverage_series_one::errors::maintenance_reserve_exceeds_equity!(),
+        EMaintenanceReserveExceedsEquity,
     );
     assert!(
         accounting_math::is_shareholder_nav_positive(venue_equity, seed_reserve),
-        blast_leverage_series_one::errors::invalid_nav!(),
+        EInvalidNav,
     );
 
     let valuation_policy = self.tier_policy.valuation_policy();
@@ -604,31 +699,29 @@ public fun prepare_initialization<Product>(
     valuation_policy.assert_mark_within_index_divergence(mark_price, base_index_price);
     assert!(
         absolute_base == 0 && absolute_notional == 0,
-        blast_leverage_series_one::errors::invalid_initialization_observation!(),
+        EInvalidInitializationObservation,
     );
     assert!(
         pending_order_count == 0,
-        blast_leverage_series_one::errors::initialization_orders_not_empty!(),
+        EInitializationOrdersNotEmpty,
     );
     assert!(
         venue_operational,
-        blast_leverage_series_one::errors::initialization_venue_not_operational!(),
+        EInitializationVenueNotOperational,
     );
     assert!(
         checkpoint_clean,
-        blast_leverage_series_one::errors::initialization_checkpoint_dirty!(),
+        EInitializationCheckpointDirty,
     );
     assert!(
         margin_safe,
-        blast_leverage_series_one::errors::initialization_margin_unsafe!(),
+        EInitializationMarginUnsafe,
     );
 
     let seed_nav = accounting_math::shareholder_nav(venue_equity, seed_reserve);
     self.tier_policy.assert_within_nav_cap(seed_nav);
-    let target_notional = accounting_math::target_notional_from_equity_down(
-        venue_equity,
-        seed_reserve,
-        self.tier_policy.rebalance_policy().target_bps(),
+    let target_notional = accounting_math::target_notional_down(
+        seed_nav, self.tier_policy.rebalance_policy().target_bps(),
     );
 
     (
@@ -678,7 +771,7 @@ public fun assert_order_notional_allowed<Product>(
 ) {
     assert!(
         order_notional <= self.max_order_notional.current(),
-        blast_leverage_series_one::errors::order_notional_exceeds_maximum!(),
+        EOrderNotionalExceedsMaximum,
     );
 }
 
@@ -735,7 +828,7 @@ public fun settle_funding<Product>(
     } else {
         self.maintenance_reserve = self.maintenance_reserve
             .checked_add(amount)
-            .destroy_or!(abort blast_leverage_series_one::errors::arithmetic_overflow!());
+            .destroy_or!(abort EArithmeticOverflow);
         (0, 0)
     }
 }
@@ -763,7 +856,7 @@ public fun set_max_order_notional<Product>(
     let previous = self.max_order_notional.current();
     assert!(
         current != previous,
-        blast_leverage_series_one::errors::max_order_notional_unchanged!(),
+        EMaxOrderNotionalUnchanged,
     );
 
     self.max_order_notional.set_current(current);
@@ -777,7 +870,7 @@ public fun begin_shutdown<Product>(self: &mut State<Product>) {
 
 /// Consumes the buffer book entry only after the adapter proves complete local cash recovery.
 public fun finalize_shutdown<Product>(self: &mut State<Product>, native_supply: u64, locked: u64): u64 {
-    assert!(native_supply >= locked, blast_leverage_series_one::errors::invalid_share_supply!());
+    assert!(native_supply >= locked, EInvalidShareSupply);
     self.lifecycle.finalize_shutdown();
     self.maintenance_reserve = 0;
     native_supply - locked
@@ -788,12 +881,12 @@ public fun shutdown_claim_quote<Product>(
     self: &State<Product>, cash: u64, native_supply: u64, locked: u64, shares: u64, minimum: u64,
 ): u64 {
     self.lifecycle.assert_shutdown_redemption_allowed();
-    assert!(native_supply >= locked, blast_leverage_series_one::errors::invalid_share_supply!());
+    assert!(native_supply >= locked, EInvalidShareSupply);
     let eligible = native_supply - locked;
-    assert!(shares > 0 && shares <= eligible, blast_leverage_series_one::errors::invalid_share_amount!());
+    assert!(shares > 0 && shares <= eligible, EInvalidShareAmount);
     let output = cash.mul_div(shares, eligible);
-    assert!(cash == 0 || output > 0, blast_leverage_series_one::errors::zero_net_payout!());
-    assert!(output >= minimum, blast_leverage_series_one::errors::redemption_output_below_minimum!());
+    assert!(cash == 0 || output > 0, EZeroNetPayout);
+    assert!(output >= minimum, ERedemptionOutputBelowMinimum);
     output
 }
 
@@ -853,10 +946,10 @@ fun validated_active_position<Product>(
     valuation.assert_mark_within_index_divergence(mark, base_price);
     assert!(
         (base == 0 && notional == 0) || side == self.tier_policy.side(),
-        blast_leverage_series_one::errors::invalid_position_observation!(),
+        EInvalidPositionObservation,
     );
-    assert!(orders == 0 && margin_safe && operational && clean, blast_leverage_series_one::errors::active_observation_unusable!());
-    assert!(accounting_math::is_shareholder_nav_positive(equity, self.maintenance_reserve), blast_leverage_series_one::errors::invalid_nav!());
+    assert!(orders == 0 && margin_safe && operational && clean, EActiveObservationUnusable);
+    assert!(accounting_math::is_shareholder_nav_positive(equity, self.maintenance_reserve), EInvalidNav);
     ActivePosition { equity, base, notional, lot, base_price, collateral_price }
 }
 
@@ -888,11 +981,11 @@ fun validated_initialization_nav<Product>(
 
     assert!(
         accounting_math::is_reserve_backed(venue_equity, seed_reserve),
-        blast_leverage_series_one::errors::maintenance_reserve_exceeds_equity!(),
+        EMaintenanceReserveExceedsEquity,
     );
     assert!(
         accounting_math::is_shareholder_nav_positive(venue_equity, seed_reserve),
-        blast_leverage_series_one::errors::invalid_nav!(),
+        EInvalidNav,
     );
 
     let valuation_policy = self.tier_policy.valuation_policy();
@@ -903,23 +996,23 @@ fun validated_initialization_nav<Product>(
     valuation_policy.assert_mark_within_index_divergence(mark_price, base_index_price);
     assert!(
         observed_side == self.tier_policy.side(),
-        blast_leverage_series_one::errors::invalid_initialization_observation!(),
+        EInvalidInitializationObservation,
     );
     assert!(
         pending_order_count == 0,
-        blast_leverage_series_one::errors::initialization_orders_not_empty!(),
+        EInitializationOrdersNotEmpty,
     );
     assert!(
         venue_operational,
-        blast_leverage_series_one::errors::initialization_venue_not_operational!(),
+        EInitializationVenueNotOperational,
     );
     assert!(
         checkpoint_clean,
-        blast_leverage_series_one::errors::initialization_checkpoint_dirty!(),
+        EInitializationCheckpointDirty,
     );
     assert!(
         margin_safe,
-        blast_leverage_series_one::errors::initialization_margin_unsafe!(),
+        EInitializationMarginUnsafe,
     );
 
     let seed_nav = accounting_math::shareholder_nav(venue_equity, seed_reserve);
@@ -929,7 +1022,7 @@ fun validated_initialization_nav<Product>(
     assert!(
         scaled >= (seed_nav as u128) * (rebalance_policy.public_lower_bps() as u128)
             && scaled <= (seed_nav as u128) * (rebalance_policy.public_upper_bps() as u128),
-        blast_leverage_series_one::errors::initialization_leverage_unhealthy!(),
+        EInitializationLeverageUnhealthy,
     );
     assert!(
         observation::is_position_structurally_valid(
@@ -937,7 +1030,7 @@ fun validated_initialization_nav<Product>(
             absolute_notional,
             lot_size,
         ),
-        blast_leverage_series_one::errors::invalid_position_observation!(),
+        EInvalidPositionObservation,
     );
     assert!(
         accounting_math::is_exposure_above_minimum_operation(
@@ -945,7 +1038,7 @@ fun validated_initialization_nav<Product>(
             lot_size,
             self.tier_policy.min_exposure_lots(),
         ),
-        blast_leverage_series_one::errors::initialization_exposure_below_minimum!(),
+        EInitializationExposureBelowMinimum,
     );
 
     seed_nav

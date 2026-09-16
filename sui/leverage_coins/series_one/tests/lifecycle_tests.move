@@ -2,7 +2,7 @@
 /// Series lifecycle transitions and operation-permission matrix.
 module blast_leverage_series_one::lifecycle_tests;
 
-use blast_leverage_series_one::{errors, lifecycle};
+use blast_leverage_series_one::{lifecycle};
 
 // === Tests ===
 
@@ -14,21 +14,21 @@ fun unwinding_finalizes_once_to_settled() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidLifecycleTransition, location = blast_leverage_series_one::lifecycle)]
+#[expected_failure(abort_code = lifecycle::EInvalidLifecycleTransition, location = blast_leverage_series_one::lifecycle)]
 fun uninitialized_cannot_finalize_shutdown() {
     let mut lifecycle = lifecycle::new();
     lifecycle.finalize_shutdown();
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidLifecycleTransition, location = blast_leverage_series_one::lifecycle)]
+#[expected_failure(abort_code = lifecycle::EInvalidLifecycleTransition, location = blast_leverage_series_one::lifecycle)]
 fun active_cannot_skip_unwinding_to_finalize() {
     let mut lifecycle = lifecycle::active_for_testing();
     lifecycle.finalize_shutdown();
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidLifecycleTransition, location = blast_leverage_series_one::lifecycle)]
+#[expected_failure(abort_code = lifecycle::EInvalidLifecycleTransition, location = blast_leverage_series_one::lifecycle)]
 fun settled_cannot_finalize_twice() {
     let mut lifecycle = lifecycle::settled_for_testing();
     lifecycle.finalize_shutdown();
@@ -54,7 +54,7 @@ fun uninitialized_can_activate() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidLifecycleTransition,
+    abort_code = lifecycle::EInvalidLifecycleTransition,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun active_cannot_activate_again() {
@@ -65,7 +65,7 @@ fun active_cannot_activate_again() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidLifecycleTransition,
+    abort_code = lifecycle::EInvalidLifecycleTransition,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun unwinding_cannot_activate() {
@@ -76,7 +76,7 @@ fun unwinding_cannot_activate() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidLifecycleTransition,
+    abort_code = lifecycle::EInvalidLifecycleTransition,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun settled_cannot_activate() {
@@ -96,7 +96,7 @@ fun active_can_begin_shutdown() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidLifecycleTransition,
+    abort_code = lifecycle::EInvalidLifecycleTransition,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun uninitialized_cannot_begin_shutdown() {
@@ -107,7 +107,7 @@ fun uninitialized_cannot_begin_shutdown() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidLifecycleTransition,
+    abort_code = lifecycle::EInvalidLifecycleTransition,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun unwinding_cannot_begin_shutdown_again() {
@@ -118,7 +118,7 @@ fun unwinding_cannot_begin_shutdown_again() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidLifecycleTransition,
+    abort_code = lifecycle::EInvalidLifecycleTransition,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun settled_cannot_begin_shutdown() {
@@ -134,7 +134,7 @@ fun active_permits_active_operations() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle,
+    abort_code = lifecycle::EOperationNotPermittedInLifecycle,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun uninitialized_rejects_active_operations() {
@@ -143,7 +143,7 @@ fun uninitialized_rejects_active_operations() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle,
+    abort_code = lifecycle::EOperationNotPermittedInLifecycle,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun unwinding_rejects_active_operations() {
@@ -152,7 +152,7 @@ fun unwinding_rejects_active_operations() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle,
+    abort_code = lifecycle::EOperationNotPermittedInLifecycle,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun settled_rejects_active_operations() {
@@ -166,7 +166,7 @@ fun active_permits_normal_redemption() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle,
+    abort_code = lifecycle::EOperationNotPermittedInLifecycle,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun uninitialized_rejects_normal_redemption() {
@@ -175,7 +175,7 @@ fun uninitialized_rejects_normal_redemption() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle,
+    abort_code = lifecycle::EOperationNotPermittedInLifecycle,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun unwinding_rejects_normal_redemption() {
@@ -184,7 +184,7 @@ fun unwinding_rejects_normal_redemption() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle,
+    abort_code = lifecycle::EOperationNotPermittedInLifecycle,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun settled_rejects_normal_redemption() {
@@ -198,7 +198,7 @@ fun active_permits_risk_reduction() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle,
+    abort_code = lifecycle::EOperationNotPermittedInLifecycle,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun uninitialized_rejects_operating_risk_reduction() {
@@ -207,7 +207,7 @@ fun uninitialized_rejects_operating_risk_reduction() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle,
+    abort_code = lifecycle::EOperationNotPermittedInLifecycle,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun unwinding_rejects_operating_risk_reduction() {
@@ -217,7 +217,7 @@ fun unwinding_rejects_operating_risk_reduction() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle,
+    abort_code = lifecycle::EOperationNotPermittedInLifecycle,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun settled_rejects_operating_risk_reduction() {
@@ -232,7 +232,7 @@ fun unwinding_permits_shutdown_close() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle,
+    abort_code = lifecycle::EOperationNotPermittedInLifecycle,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun uninitialized_rejects_shutdown_close() {
@@ -241,7 +241,7 @@ fun uninitialized_rejects_shutdown_close() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle,
+    abort_code = lifecycle::EOperationNotPermittedInLifecycle,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun active_rejects_shutdown_close() {
@@ -250,7 +250,7 @@ fun active_rejects_shutdown_close() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle,
+    abort_code = lifecycle::EOperationNotPermittedInLifecycle,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun settled_rejects_shutdown_close() {
@@ -265,7 +265,7 @@ fun settled_permits_shutdown_redemption() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle,
+    abort_code = lifecycle::EOperationNotPermittedInLifecycle,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun uninitialized_rejects_shutdown_redemption() {
@@ -274,7 +274,7 @@ fun uninitialized_rejects_shutdown_redemption() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle,
+    abort_code = lifecycle::EOperationNotPermittedInLifecycle,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun active_rejects_shutdown_redemption() {
@@ -283,7 +283,7 @@ fun active_rejects_shutdown_redemption() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle,
+    abort_code = lifecycle::EOperationNotPermittedInLifecycle,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun unwinding_rejects_shutdown_redemption() {

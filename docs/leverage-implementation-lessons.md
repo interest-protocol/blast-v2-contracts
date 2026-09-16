@@ -92,20 +92,33 @@ and authority, object binding, lifecycle, input bounds, external health,
 arithmetic, then post-execution reconciliation. Add a precedence test for each
 new pair of overlapping invalid inputs.
 
-### 1.6 Keep one error registry
+### 1.6 Declare each error where it is raised
 
-The package's `errors.move` is the sole registry. Every new code ships with a
-registry assertion and at least one `expected_failure` test that pins both the
-code and raising module. Package numeric spaces are independent.
+Every abort uses a module-local `#[error(code = N)] const EName: vector<u8>`
+declared in the module that raises it, under that module's `// === Errors ===`
+section, with the message stating the violated condition. Codes are stable and
+append-only within a module; a retired code is never reused. Tests pin the
+constant and the raising module (`abort_code = module::EName, location =
+package::module`); there is no separate registry, macro layer, or numeric
+registry test to keep in sync.
 
-### 1.7 Keep raw NAV-taking formulas private
+Why: the earlier package-wide registry declared every code twice (a
+test-only constant and a production macro) and needed a lint suppression in
+every module; the compiler's error constants give the same stable codes with
+one declaration and a readable message.
 
-`accounting_math` owns both raw formulas and their reserve-aware package API.
-Every function that accepts already-derived shareholder NAV stays private. A
-new NAV-taking formula must ship with a reserve-aware package function in the
-same module; expose the raw form only through an explicit test-only seam. The
-Series must only ever supply venue equity and reserve, never a NAV it derived
-itself.
+### 1.7 Compute shareholder NAV once and pass it explicitly
+
+`accounting_math` exposes its NAV-taking formulas as package functions and
+`shareholder_nav(venue_equity, reserve)` is the only way to derive their
+input. A State transition computes that NAV once at its checkpoint and passes
+the same value to every formula it calls; it never re-derives NAV inline and
+never passes reserve-inclusive venue equity where NAV is expected. Tests call
+the formulas directly.
+
+Why: the reserve-aware wrapper layer that used to hide this derivation doubled
+the module's function count without adding a check; the invariant lives in the
+single `shareholder_nav` call per checkpoint, which the state tests pin.
 
 ### 1.8 Test shape that the package expects
 

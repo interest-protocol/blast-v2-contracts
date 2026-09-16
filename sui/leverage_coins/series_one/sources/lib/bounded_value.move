@@ -1,9 +1,10 @@
-// `blast_leverage_series_one::errors` centralizes package abort codes through zero-cost macros. This
-// narrow suppression preserves caller-local abort locations and the stable code map documented in
-// this package's `README.md`.
-#[allow(lint(abort_without_constant))]
 /// A reusable value whose current setting cannot leave immutable inclusive bounds.
 module blast_leverage_series_one::bounded_value;
+
+// === Errors ===
+
+#[error(code = 34)]
+const EInvalidBoundedValue: vector<u8> = b"A bounded value must satisfy minimum <= current <= maximum.";
 
 // === Public Structs ===
 
@@ -20,7 +21,7 @@ public struct BoundedValue(u64, u64, u64) has copy, drop, store;
 public(package) fun new(minimum: u64, current: u64, maximum: u64): BoundedValue {
     assert!(
         minimum <= current && current <= maximum,
-        blast_leverage_series_one::errors::invalid_bounded_value!(),
+        EInvalidBoundedValue,
     );
 
     BoundedValue(minimum, current, maximum)
@@ -45,7 +46,7 @@ public(package) fun maximum(self: &BoundedValue): u64 {
 public(package) fun set_current(self: &mut BoundedValue, current: u64) {
     assert!(
         self.0 <= current && current <= self.2,
-        blast_leverage_series_one::errors::invalid_bounded_value!(),
+        EInvalidBoundedValue,
     );
 
     self.1 = current;

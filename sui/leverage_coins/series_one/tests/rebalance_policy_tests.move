@@ -4,7 +4,7 @@ module blast_leverage_series_one::rebalance_policy_tests;
 
 use std::unit_test::assert_eq;
 
-use blast_leverage_series_one::{errors, policy};
+use blast_leverage_series_one::{policy};
 
 // === Tests ===
 
@@ -104,7 +104,7 @@ fun a_hard_cap_at_the_leverage_ceiling_is_accepted() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidRebalancePolicy, location = blast_leverage_series_one::policy)]
+#[expected_failure(abort_code = policy::EInvalidRebalancePolicy, location = blast_leverage_series_one::policy)]
 fun a_hard_cap_above_the_leverage_ceiling_is_rejected() {
     new_with_thresholds(0, 2, 4, 1_000_001);
 }
@@ -143,7 +143,7 @@ fun improvement_comparison_does_not_wrap_at_maximum_width() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInsufficientLeverageImprovement, location = blast_leverage_series_one::policy)]
+#[expected_failure(abort_code = policy::EInsufficientLeverageImprovement, location = blast_leverage_series_one::policy)]
 fun a_rebalance_one_basis_point_short_of_the_minimum_improvement_is_rejected() {
     standard_policy().assert_improvement_sufficient(22_000, 21_991);
 }
@@ -178,79 +178,79 @@ fun maximum_width_execution_tolerance_does_not_wrap() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EExecutionOutsideTolerance, location = blast_leverage_series_one::policy)]
+#[expected_failure(abort_code = policy::EExecutionOutsideTolerance, location = blast_leverage_series_one::policy)]
 fun an_execution_one_unit_past_strict_tolerance_is_rejected() {
     standard_policy().assert_execution_within_strict_tolerance(1_000_000, 1_010_001);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EExecutionOutsideTolerance, location = blast_leverage_series_one::policy)]
+#[expected_failure(abort_code = policy::EExecutionOutsideTolerance, location = blast_leverage_series_one::policy)]
 fun an_execution_one_unit_past_emergency_tolerance_is_rejected() {
     standard_policy().assert_execution_within_emergency_tolerance(1_000_000, 1_050_001);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidValuationPrice, location = blast_leverage_series_one::policy)]
+#[expected_failure(abort_code = policy::EInvalidValuationPrice, location = blast_leverage_series_one::policy)]
 fun a_zero_reference_is_rejected_before_the_strict_tolerance() {
     standard_policy().assert_execution_within_strict_tolerance(0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidValuationPrice, location = blast_leverage_series_one::policy)]
+#[expected_failure(abort_code = policy::EInvalidValuationPrice, location = blast_leverage_series_one::policy)]
 fun a_zero_reference_is_rejected_before_the_emergency_tolerance() {
     standard_policy().assert_execution_within_emergency_tolerance(0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidRebalancePolicy, location = blast_leverage_series_one::policy)]
+#[expected_failure(abort_code = policy::EInvalidRebalancePolicy, location = blast_leverage_series_one::policy)]
 fun public_lower_equal_to_target_is_rejected() {
     new_with_thresholds(1, 1, 2, 3);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidRebalancePolicy, location = blast_leverage_series_one::policy)]
+#[expected_failure(abort_code = policy::EInvalidRebalancePolicy, location = blast_leverage_series_one::policy)]
 fun public_lower_above_target_is_rejected() {
     new_with_thresholds(2, 1, 3, 4);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidRebalancePolicy, location = blast_leverage_series_one::policy)]
+#[expected_failure(abort_code = policy::EInvalidRebalancePolicy, location = blast_leverage_series_one::policy)]
 fun target_equal_to_public_upper_is_rejected() {
     new_with_thresholds(0, 2, 2, 3);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidRebalancePolicy, location = blast_leverage_series_one::policy)]
+#[expected_failure(abort_code = policy::EInvalidRebalancePolicy, location = blast_leverage_series_one::policy)]
 fun target_above_public_upper_is_rejected() {
     new_with_thresholds(0, 3, 2, 4);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidRebalancePolicy, location = blast_leverage_series_one::policy)]
+#[expected_failure(abort_code = policy::EInvalidRebalancePolicy, location = blast_leverage_series_one::policy)]
 fun public_upper_equal_to_hard_cap_is_rejected() {
     new_with_thresholds(0, 2, 5, 5);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidRebalancePolicy, location = blast_leverage_series_one::policy)]
+#[expected_failure(abort_code = policy::EInvalidRebalancePolicy, location = blast_leverage_series_one::policy)]
 fun public_upper_above_hard_cap_is_rejected() {
     new_with_thresholds(0, 2, 6, 5);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidStrictToleranceBps, location = blast_leverage_series_one::policy)]
+#[expected_failure(abort_code = policy::EInvalidStrictToleranceBps, location = blast_leverage_series_one::policy)]
 fun strict_tolerance_at_the_denominator_is_rejected() {
     policy::new_rebalance_policy(0, 2, 4, 5, 10_000, 10_000, 1);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidEmergencyToleranceBps, location = blast_leverage_series_one::policy)]
+#[expected_failure(abort_code = policy::EInvalidEmergencyToleranceBps, location = blast_leverage_series_one::policy)]
 fun emergency_tolerance_at_the_denominator_is_rejected() {
     policy::new_rebalance_policy(0, 2, 4, 5, 0, 10_000, 1);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidEmergencyToleranceBps, location = blast_leverage_series_one::policy)]
+#[expected_failure(abort_code = policy::EInvalidEmergencyToleranceBps, location = blast_leverage_series_one::policy)]
 fun emergency_tolerance_below_strict_tolerance_is_rejected() {
     policy::new_rebalance_policy(0, 2, 4, 5, 2, 1, 1);
 }
@@ -263,13 +263,13 @@ fun equal_strict_and_emergency_tolerances_are_accepted() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidMinimumImprovementBps, location = blast_leverage_series_one::policy)]
+#[expected_failure(abort_code = policy::EInvalidMinimumImprovementBps, location = blast_leverage_series_one::policy)]
 fun zero_minimum_improvement_is_rejected() {
     policy::new_rebalance_policy(0, 2, 4, 5, 0, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidRebalancePolicy, location = blast_leverage_series_one::policy)]
+#[expected_failure(abort_code = policy::EInvalidRebalancePolicy, location = blast_leverage_series_one::policy)]
 fun threshold_validation_precedes_tolerance_and_improvement_validation() {
     policy::new_rebalance_policy(0, 0, 0, 0, 10_000, 0, 0);
 }

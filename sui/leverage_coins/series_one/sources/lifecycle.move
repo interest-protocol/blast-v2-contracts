@@ -1,7 +1,13 @@
-// Package error macros preserve stable abort codes and caller-local ownership.
-#[allow(lint(abort_without_constant))]
 /// Irreversible lifecycle and operation permissions for one Series1 Vault.
 module blast_leverage_series_one::lifecycle;
+
+// === Errors ===
+
+#[error(code = 17)]
+const EInvalidLifecycleTransition: vector<u8> = b"The lifecycle cannot make the requested transition.";
+
+#[error(code = 18)]
+const EOperationNotPermittedInLifecycle: vector<u8> = b"The lifecycle does not permit the requested operation.";
 
 // === Public Types ===
 
@@ -49,7 +55,7 @@ public(package) fun is_settled(self: &Lifecycle): bool {
 }
 
 public(package) fun assert_can_activate(self: &Lifecycle) {
-    assert!(self.is_uninitialized(), blast_leverage_series_one::errors::invalid_lifecycle_transition!());
+    assert!(self.is_uninitialized(), EInvalidLifecycleTransition);
 }
 
 public(package) fun activate(self: &mut Lifecycle) {
@@ -59,18 +65,18 @@ public(package) fun activate(self: &mut Lifecycle) {
 
 /// Only the owner with authenticated shutdown authority may call this transition.
 public(package) fun begin_shutdown(self: &mut Lifecycle) {
-    assert!(self.is_active(), blast_leverage_series_one::errors::invalid_lifecycle_transition!());
+    assert!(self.is_active(), EInvalidLifecycleTransition);
     *self = Lifecycle::Unwinding;
 }
 
 /// The owning adapter must first recover all cash and prove venue finality.
 public(package) fun finalize_shutdown(self: &mut Lifecycle) {
-    assert!(self.is_unwinding(), blast_leverage_series_one::errors::invalid_lifecycle_transition!());
+    assert!(self.is_unwinding(), EInvalidLifecycleTransition);
     *self = Lifecycle::Settled;
 }
 
 public(package) fun assert_active(self: &Lifecycle) {
-    assert!(self.is_active(), blast_leverage_series_one::errors::operation_not_permitted_in_lifecycle!());
+    assert!(self.is_active(), EOperationNotPermittedInLifecycle);
 }
 
 public(package) fun assert_normal_redemption_allowed(self: &Lifecycle) {
@@ -82,17 +88,17 @@ public(package) fun assert_operating_risk_reduction_allowed(self: &Lifecycle) {
 }
 
 public(package) fun assert_shutdown_close_allowed(self: &Lifecycle) {
-    assert!(self.is_unwinding(), blast_leverage_series_one::errors::operation_not_permitted_in_lifecycle!());
+    assert!(self.is_unwinding(), EOperationNotPermittedInLifecycle);
 }
 
 /// Settled cash has no remaining venue funding or health lifecycle.
 public(package) fun assert_can_sync(self: &Lifecycle) {
     assert!(self.is_active() || self.is_unwinding(),
-        blast_leverage_series_one::errors::operation_not_permitted_in_lifecycle!());
+        EOperationNotPermittedInLifecycle);
 }
 
 public(package) fun assert_shutdown_redemption_allowed(self: &Lifecycle) {
-    assert!(self.is_settled(), blast_leverage_series_one::errors::operation_not_permitted_in_lifecycle!());
+    assert!(self.is_settled(), EOperationNotPermittedInLifecycle);
 }
 
 // === Test-Only Functions ===

@@ -1,7 +1,3 @@
-// `blast_leverage_series_one::errors` centralizes package abort codes through zero-cost macros. This
-// narrow suppression preserves caller-local abort locations and the stable code map documented in
-// this package's `README.md`.
-#[allow(lint(abort_without_constant))]
 /// Immutable Series1 policy values and pure policy gates.
 ///
 /// This slice selects no production value, authenticates no valuation source,
@@ -9,6 +5,68 @@
 module blast_leverage_series_one::policy;
 
 use blast_leverage_series_one::constants;
+
+// === Errors ===
+
+#[error(code = 1)]
+const EInvalidFeeBps: vector<u8> = b"A fee rate must be below the full basis-point denominator.";
+
+#[error(code = 21)]
+const EInvalidMinExposureLots: vector<u8> = b"A minimum exposure lot multiple must be positive.";
+
+#[error(code = 22)]
+const EInvalidRebalancePolicy: vector<u8> = b"Rebalance thresholds are not strictly ordered.";
+
+#[error(code = 23)]
+const EInvalidSeriesNavCap: vector<u8> = b"A Series NAV cap must be positive.";
+
+#[error(code = 24)]
+const EInvalidMaxPriceAge: vector<u8> = b"A valuation maximum age must be positive.";
+
+#[error(code = 25)]
+const EInvalidMaxConfidenceBps: vector<u8> = b"A confidence bound must be below the basis-point denominator.";
+
+#[error(code = 26)]
+const EInvalidMaxMarkDivergenceBps: vector<u8> = b"A mark-divergence bound must be below the basis-point denominator.";
+
+#[error(code = 27)]
+const EStaleValuation: vector<u8> = b"A valuation is older than its freshness budget.";
+
+#[error(code = 28)]
+const EFutureValuation: vector<u8> = b"A valuation is too far ahead of the reference time.";
+
+#[error(code = 29)]
+const EInvalidValuationPrice: vector<u8> = b"A gated valuation price is zero.";
+
+#[error(code = 30)]
+const EConfidenceExceedsBound: vector<u8> = b"Confidence exceeds its relative bound.";
+
+#[error(code = 31)]
+const EMarkIndexDivergenceExceedsBound: vector<u8> = b"Venue mark diverges too far from its index.";
+
+#[error(code = 35)]
+const EInvalidStrictToleranceBps: vector<u8> = b"Strict execution tolerance must be below the basis-point denominator.";
+
+#[error(code = 36)]
+const EInvalidEmergencyToleranceBps: vector<u8> = b"Emergency tolerance must include strict tolerance and remain below the denominator.";
+
+#[error(code = 37)]
+const EInvalidMinimumImprovementBps: vector<u8> = b"Minimum leverage improvement must be positive.";
+
+#[error(code = 58)]
+const EInsufficientLeverageImprovement: vector<u8> = b"A rebalance does not move leverage toward target by the minimum improvement.";
+
+#[error(code = 59)]
+const ESeriesNavCapExceeded: vector<u8> = b"Shareholder NAV exceeds the immutable Series NAV cap.";
+
+#[error(code = 60)]
+const EExecutionOutsideTolerance: vector<u8> = b"An executed value diverges from its reference beyond the execution tolerance.";
+
+#[error(code = 61)]
+const EInvalidFreshnessWindow: vector<u8> = b"Forward clock skew must not exceed the staleness budget.";
+
+#[error(code = 86)]
+const EFeeCapExceeded: vector<u8> = b"Fee cap exceeded.";
 
 // === Public Types ===
 
@@ -108,20 +166,20 @@ public fun new_rebalance_policy(
             && target_bps < public_upper_bps
             && public_upper_bps < hard_cap_bps
             && hard_cap_bps <= constants::max_leverage_bps!(),
-        blast_leverage_series_one::errors::invalid_rebalance_policy!(),
+        EInvalidRebalancePolicy,
     );
     assert!(
         strict_tolerance_bps < constants::basis_points_denominator!(),
-        blast_leverage_series_one::errors::invalid_strict_tolerance_bps!(),
+        EInvalidStrictToleranceBps,
     );
     assert!(
         strict_tolerance_bps <= emergency_tolerance_bps
             && emergency_tolerance_bps < constants::basis_points_denominator!(),
-        blast_leverage_series_one::errors::invalid_emergency_tolerance_bps!(),
+        EInvalidEmergencyToleranceBps,
     );
     assert!(
         minimum_improvement_bps > 0,
-        blast_leverage_series_one::errors::invalid_minimum_improvement_bps!(),
+        EInvalidMinimumImprovementBps,
     );
 
     RebalancePolicy {
@@ -216,7 +274,7 @@ public(package) fun assert_improvement_sufficient(
 ) {
     assert!(
         self.is_improvement_sufficient(leverage_before_bps, leverage_after_bps),
-        blast_leverage_series_one::errors::insufficient_leverage_improvement!(),
+        EInsufficientLeverageImprovement,
     );
 }
 
@@ -259,11 +317,11 @@ public(package) fun assert_execution_within_strict_tolerance(
 ) {
     assert!(
         reference > 0,
-        blast_leverage_series_one::errors::invalid_valuation_price!(),
+        EInvalidValuationPrice,
     );
     assert!(
         self.is_execution_within_strict_tolerance(reference, executed),
-        blast_leverage_series_one::errors::execution_outside_tolerance!(),
+        EExecutionOutsideTolerance,
     );
 }
 
@@ -275,11 +333,11 @@ public(package) fun assert_execution_within_emergency_tolerance(
 ) {
     assert!(
         reference > 0,
-        blast_leverage_series_one::errors::invalid_valuation_price!(),
+        EInvalidValuationPrice,
     );
     assert!(
         self.is_execution_within_emergency_tolerance(reference, executed),
-        blast_leverage_series_one::errors::execution_outside_tolerance!(),
+        EExecutionOutsideTolerance,
     );
 }
 
@@ -309,19 +367,19 @@ public fun new_tier_policy(
     assert!(
         mint_fee_bps < constants::basis_points_denominator!()
             && redeem_fee_bps < constants::basis_points_denominator!(),
-        blast_leverage_series_one::errors::invalid_fee_bps!(),
+        EInvalidFeeBps,
     );
     assert!(
         min_exposure_lots > 0
             && min_exposure_lots <= constants::max_min_exposure_lots!(),
-        blast_leverage_series_one::errors::invalid_min_exposure_lots!(),
+        EInvalidMinExposureLots,
     );
     assert!(
         nav_cap > 0
             && (nav_cap as u128) * (rebalance_policy.hard_cap_bps as u128)
                 <= (std::u64::max_value!() as u128)
                     * (constants::basis_points_denominator!() as u128),
-        blast_leverage_series_one::errors::invalid_series_nav_cap!(),
+        EInvalidSeriesNavCap,
     );
 
     TierPolicy {
@@ -352,7 +410,7 @@ public fun with_fee_limits(
         self.mint_fee_bps <= mint_cap_bps && mint_cap_bps < 10_000
             && self.redeem_fee_bps <= redeem_cap_bps && redeem_cap_bps < 10_000
             && initial_admin_bps <= admin_cap_bps && admin_cap_bps <= 10_000,
-        blast_leverage_series_one::errors::fee_cap_exceeded!(),
+        EFeeCapExceeded,
     );
     self.mint_fee_cap_bps = mint_cap_bps;
     self.redeem_fee_cap_bps = redeem_cap_bps;
@@ -375,7 +433,7 @@ public(package) fun assert_fee_limits(
         mint_bps <= self.mint_fee_cap_bps
             && redeem_bps <= self.redeem_fee_cap_bps
             && admin_bps <= self.admin_allocation_cap_bps,
-        blast_leverage_series_one::errors::fee_cap_exceeded!(),
+        EFeeCapExceeded,
     );
 }
 
@@ -425,7 +483,7 @@ public(package) fun is_within_nav_cap(self: &TierPolicy, nav: u64): bool {
 public(package) fun assert_within_nav_cap(self: &TierPolicy, nav: u64) {
     assert!(
         self.is_within_nav_cap(nav),
-        blast_leverage_series_one::errors::series_nav_cap_exceeded!(),
+        ESeriesNavCapExceeded,
     );
 }
 
@@ -450,19 +508,19 @@ public fun new_valuation(
 ): ValuationPolicy {
     assert!(
         max_price_age_ms > 0,
-        blast_leverage_series_one::errors::invalid_max_price_age!(),
+        EInvalidMaxPriceAge,
     );
     assert!(
         max_price_ahead_ms <= max_price_age_ms,
-        blast_leverage_series_one::errors::invalid_freshness_window!(),
+        EInvalidFreshnessWindow,
     );
     assert!(
         max_confidence_bps < constants::basis_points_denominator!(),
-        blast_leverage_series_one::errors::invalid_max_confidence_bps!(),
+        EInvalidMaxConfidenceBps,
     );
     assert!(
         max_mark_divergence_bps < constants::basis_points_denominator!(),
-        blast_leverage_series_one::errors::invalid_max_mark_divergence_bps!(),
+        EInvalidMaxMarkDivergenceBps,
     );
 
     ValuationPolicy {
@@ -523,16 +581,12 @@ public(package) fun assert_price_fresh(
     published_at_ms: u64,
     reference_time_ms: u64,
 ) {
-    let freshness_abort_code = if (published_at_ms > reference_time_ms) {
-        blast_leverage_series_one::errors::future_valuation!()
+    let fresh = self.is_price_fresh(published_at_ms, reference_time_ms);
+    if (published_at_ms > reference_time_ms) {
+        assert!(fresh, EFutureValuation);
     } else {
-        blast_leverage_series_one::errors::stale_valuation!()
+        assert!(fresh, EStaleValuation);
     };
-
-    assert!(
-        self.is_price_fresh(published_at_ms, reference_time_ms),
-        freshness_abort_code,
-    );
 }
 
 /// Returns whether a positive share-pricing price has an admitted confidence.
@@ -565,11 +619,11 @@ public(package) fun assert_confidence_within_bound(
 ) {
     assert!(
         price > 0,
-        blast_leverage_series_one::errors::invalid_valuation_price!(),
+        EInvalidValuationPrice,
     );
     assert!(
         self.is_confidence_within_bound(confidence, price),
-        blast_leverage_series_one::errors::confidence_exceeds_bound!(),
+        EConfidenceExceedsBound,
     );
 }
 
@@ -605,11 +659,11 @@ public(package) fun assert_mark_within_index_divergence(
 ) {
     assert!(
         index > 0,
-        blast_leverage_series_one::errors::invalid_valuation_price!(),
+        EInvalidValuationPrice,
     );
     assert!(
         self.is_mark_within_index_divergence(mark, index),
-        blast_leverage_series_one::errors::mark_index_divergence_exceeds_bound!(),
+        EMarkIndexDivergenceExceedsBound,
     );
 }
 

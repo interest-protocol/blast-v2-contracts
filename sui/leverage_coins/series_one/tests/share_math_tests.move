@@ -2,7 +2,7 @@
 /// Fee, mint, and redemption share accounting.
 module blast_leverage_series_one::share_math_tests;
 
-use blast_leverage_series_one::{accounting_math, errors};
+use blast_leverage_series_one::{accounting_math};
 use std::unit_test::assert_eq;
 
 // === Tests ===
@@ -10,13 +10,13 @@ use std::unit_test::assert_eq;
 /// Catches a fee that truncates below one atomic unit or ignores the live rate.
 #[test]
 fun fee_rounds_up_and_a_zero_rate_is_the_only_fee_free_result() {
-    assert_eq!(accounting_math::fee_up_for_testing(10_000, 0), 0);
-    assert_eq!(accounting_math::fee_up_for_testing(1, 1), 1);
-    assert_eq!(accounting_math::fee_up_for_testing(10_000, 1), 1);
-    assert_eq!(accounting_math::fee_up_for_testing(10_001, 1), 2);
-    assert_eq!(accounting_math::fee_up_for_testing(1, 9_999), 1);
-    assert_eq!(accounting_math::fee_up_for_testing(20_000, 9_999), 19_998);
-    assert_eq!(accounting_math::fee_up_for_testing(20_001, 9_999), 19_999);
+    assert_eq!(accounting_math::fee_up(10_000, 0), 0);
+    assert_eq!(accounting_math::fee_up(1, 1), 1);
+    assert_eq!(accounting_math::fee_up(10_000, 1), 1);
+    assert_eq!(accounting_math::fee_up(10_001, 1), 2);
+    assert_eq!(accounting_math::fee_up(1, 9_999), 1);
+    assert_eq!(accounting_math::fee_up(20_000, 9_999), 19_998);
+    assert_eq!(accounting_math::fee_up(20_001, 9_999), 19_999);
 }
 
 /// Catches an intermediate `amount * fee_bps` that wraps instead of widening.
@@ -24,9 +24,9 @@ fun fee_rounds_up_and_a_zero_rate_is_the_only_fee_free_result() {
 fun fee_supports_maximum_u64_amounts() {
     let max = std::u64::max_value!();
 
-    assert_eq!(accounting_math::fee_up_for_testing(max, 0), 0);
-    assert_eq!(accounting_math::fee_up_for_testing(max, 1), 1_844_674_407_370_956);
-    assert_eq!(accounting_math::fee_up_for_testing(max, 9_999), 18_444_899_399_302_180_660);
+    assert_eq!(accounting_math::fee_up(max, 0), 0);
+    assert_eq!(accounting_math::fee_up(max, 1), 1_844_674_407_370_956);
+    assert_eq!(accounting_math::fee_up(max, 9_999), 18_444_899_399_302_180_660);
 }
 
 /// Proves the returned fee is the least integer not below the exact rational fee.
@@ -47,52 +47,52 @@ fun fee_never_exceeds_the_amount_at_the_highest_rate() {
     let max = std::u64::max_value!();
 
     vector[1u64, 2, 3, 9_999, 10_000, 10_001, 1_000_000_000, max].do!(
-        |amount| assert!(accounting_math::fee_up_for_testing(amount, 9_999) <= amount),
+        |amount| assert!(accounting_math::fee_up(amount, 9_999) <= amount),
     );
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EZeroAmount, location = blast_leverage_series_one::accounting_math)]
+#[expected_failure(abort_code = accounting_math::EZeroAmount, location = blast_leverage_series_one::accounting_math)]
 fun zero_fee_amount_is_rejected() {
-    accounting_math::fee_up_for_testing(0, 1);
+    accounting_math::fee_up(0, 1);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidFeeBps,
+    abort_code = accounting_math::EInvalidFeeBps,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_fee_rate_at_the_denominator_is_rejected() {
-    accounting_math::fee_up_for_testing(10_000, 10_000);
+    accounting_math::fee_up(10_000, 10_000);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidFeeBps,
+    abort_code = accounting_math::EInvalidFeeBps,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun the_maximum_u64_fee_rate_is_rejected() {
-    accounting_math::fee_up_for_testing(1, std::u64::max_value!());
+    accounting_math::fee_up(1, std::u64::max_value!());
 }
 
 /// Pins the amount guard ahead of the rate guard when both inputs are invalid.
 #[test]
-#[expected_failure(abort_code = errors::EZeroAmount, location = blast_leverage_series_one::accounting_math)]
+#[expected_failure(abort_code = accounting_math::EZeroAmount, location = blast_leverage_series_one::accounting_math)]
 fun a_zero_amount_is_rejected_before_an_invalid_fee_rate() {
-    accounting_math::fee_up_for_testing(0, 10_000);
+    accounting_math::fee_up(0, 10_000);
 }
 
 /// Catches rounding minted shares up, which would take value from existing holders.
 #[test]
 fun mint_shares_floor_and_leave_the_remainder_with_existing_holders() {
     // Exact division mints the whole quotient.
-    let (shares_out, shares_after) = accounting_math::mint_quote_for_testing(10, 100, 100);
+    let (shares_out, shares_after) = accounting_math::mint_quote(10, 100, 100);
 
     assert_eq!(shares_out, 10);
     assert_eq!(shares_after, 110);
 
     // A one-unit remainder stays with the Series.
-    let (shares_out, shares_after) = accounting_math::mint_quote_for_testing(10, 300, 100);
+    let (shares_out, shares_after) = accounting_math::mint_quote(10, 300, 100);
 
     assert_eq!(shares_out, 3);
     assert_eq!(shares_after, 103);
@@ -102,7 +102,7 @@ fun mint_shares_floor_and_leave_the_remainder_with_existing_holders() {
 #[test]
 fun mint_supports_maximum_supported_values() {
     let max = std::u64::max_value!();
-    let (shares_out, shares_after) = accounting_math::mint_quote_for_testing(100, max - 100, max - 1_000);
+    let (shares_out, shares_after) = accounting_math::mint_quote(100, max - 100, max - 1_000);
 
     assert_eq!(shares_out, 99);
     assert_eq!(shares_after, max - 901);
@@ -141,7 +141,7 @@ fun mint_formula_and_non_dilution_hold_across_the_small_domain() {
 #[test]
 fun mint_reaches_the_maximum_representable_share_boundary() {
     let max = std::u64::max_value!();
-    let (shares_out, shares_after) = accounting_math::mint_quote_for_testing(max - 1, 1, 1);
+    let (shares_out, shares_after) = accounting_math::mint_quote(max - 1, 1, 1);
 
     assert_eq!(shares_out, max - 1);
     assert_eq!(shares_after, max);
@@ -150,85 +150,85 @@ fun mint_reaches_the_maximum_representable_share_boundary() {
 /// Pins the smallest positive contribution that still buys one atomic share.
 #[test]
 fun a_one_unit_contribution_can_mint_exactly_one_atomic_share() {
-    let (shares_out, shares_after) = accounting_math::mint_quote_for_testing(1, 100_000, 100_000);
+    let (shares_out, shares_after) = accounting_math::mint_quote(1, 100_000, 100_000);
 
     assert_eq!(shares_out, 1);
     assert_eq!(shares_after, 100_001);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_series_one::accounting_math)]
+#[expected_failure(abort_code = accounting_math::EInvalidNav, location = blast_leverage_series_one::accounting_math)]
 fun a_mint_against_zero_nav_is_rejected() {
-    accounting_math::mint_quote_for_testing(10, 0, 100);
+    accounting_math::mint_quote(10, 0, 100);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidShareSupply,
+    abort_code = accounting_math::EInvalidShareSupply,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_against_zero_supply_is_rejected() {
-    accounting_math::mint_quote_for_testing(10, 100, 0);
+    accounting_math::mint_quote(10, 100, 0);
 }
 
 /// Catches accepting a mint that creates no shareholder NAV contribution.
 #[test]
 #[expected_failure(
-    abort_code = errors::ENonpositiveContribution,
+    abort_code = accounting_math::ENonpositiveContribution,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_zero_contribution_mint_is_rejected() {
-    accounting_math::mint_quote_for_testing(0, 100, 100);
+    accounting_math::mint_quote(0, 100, 100);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EZeroSharesOut,
+    abort_code = accounting_math::EZeroSharesOut,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_below_one_atomic_share_is_rejected() {
-    accounting_math::mint_quote_for_testing(999, 1_000, 1);
+    accounting_math::mint_quote(999, 1_000, 1);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EArithmeticOverflow,
+    abort_code = accounting_math::EArithmeticOverflow,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_of_more_shares_than_u64_is_rejected() {
-    accounting_math::mint_quote_for_testing(2, 1, std::u64::max_value!());
+    accounting_math::mint_quote(2, 1, std::u64::max_value!());
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EArithmeticOverflow,
+    abort_code = accounting_math::EArithmeticOverflow,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_mint_that_overflows_the_supply_is_rejected() {
-    accounting_math::mint_quote_for_testing(1, 2, std::u64::max_value!());
+    accounting_math::mint_quote(1, 2, std::u64::max_value!());
 }
 
 /// Pins the NAV guard ahead of the supply guard when both are zero.
 #[test]
-#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_series_one::accounting_math)]
+#[expected_failure(abort_code = accounting_math::EInvalidNav, location = blast_leverage_series_one::accounting_math)]
 fun zero_nav_is_rejected_before_zero_supply() {
-    accounting_math::mint_quote_for_testing(10, 0, 0);
+    accounting_math::mint_quote(10, 0, 0);
 }
 
 /// Pins the supply guard ahead of the contribution guard when both are zero.
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidShareSupply,
+    abort_code = accounting_math::EInvalidShareSupply,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun zero_supply_is_rejected_before_a_zero_contribution() {
-    accounting_math::mint_quote_for_testing(0, 100, 0);
+    accounting_math::mint_quote(0, 100, 0);
 }
 
 /// Catches paying a redeemer more than the excess over the equity kept for others.
 #[test]
 fun redemption_pays_only_the_excess_over_the_kept_equity() {
-    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote_for_testing(
+    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote(
         10,
         1_000,
         1_000,
@@ -243,7 +243,7 @@ fun redemption_pays_only_the_excess_over_the_kept_equity() {
     assert_eq!(net, 99);
 
     // An unwind that costs the Series 50 units pays the redeemer 50 less.
-    let (_, equity_keep, gross, fee, net) = accounting_math::redemption_quote_for_testing(
+    let (_, equity_keep, gross, fee, net) = accounting_math::redemption_quote(
         10,
         1_000,
         950,
@@ -260,7 +260,7 @@ fun redemption_pays_only_the_excess_over_the_kept_equity() {
 /// A favorable unwind pays exactly the proportional claim; the gain stays with holders.
 #[test]
 fun a_favorable_unwind_pays_exactly_the_proportional_claim() {
-    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote_for_testing(
+    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote(
         10,
         1_000,
         1_050,
@@ -275,7 +275,7 @@ fun a_favorable_unwind_pays_exactly_the_proportional_claim() {
     assert_eq!(net, 99);
 
     // The audit case: one share of a million against a 100-unit pool-wide gain pays one unit.
-    let (_, equity_keep, gross, _, net) = accounting_math::redemption_quote_for_testing(
+    let (_, equity_keep, gross, _, net) = accounting_math::redemption_quote(
         1,
         1_000_000,
         1_000_100,
@@ -297,16 +297,16 @@ fun a_costly_unwind_still_pays_the_reduced_gross() {
 
 /// Catches a favorable unwind rescuing a claim the rounded-up kept equity consumed.
 #[test]
-#[expected_failure(abort_code = errors::ENonpositiveGross, location = blast_leverage_series_one::accounting_math)]
+#[expected_failure(abort_code = accounting_math::ENonpositiveGross, location = blast_leverage_series_one::accounting_math)]
 fun a_favorable_unwind_cannot_rescue_a_claim_the_kept_equity_consumes() {
-    accounting_math::redemption_quote_for_testing(10, 1, 1_000, 100, 0);
+    accounting_math::redemption_quote(10, 1, 1_000, 100, 0);
 }
 
 /// Catches a maximum-width favorable unwind that wraps or escapes the cap.
 #[test]
 fun a_maximum_width_favorable_unwind_is_capped_at_the_claim() {
     let max = std::u64::max_value!();
-    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote_for_testing(
+    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote(
         1,
         max - 1,
         max,
@@ -324,7 +324,7 @@ fun a_maximum_width_favorable_unwind_is_capped_at_the_claim() {
 /// Catches flooring the kept equity, which would pay the redeemer one extra unit.
 #[test]
 fun redemption_rounds_the_kept_equity_up() {
-    let (shares_after, equity_keep, gross, _, net) = accounting_math::redemption_quote_for_testing(
+    let (shares_after, equity_keep, gross, _, net) = accounting_math::redemption_quote(
         10,
         1_001,
         1_001,
@@ -341,7 +341,7 @@ fun redemption_rounds_the_kept_equity_up() {
 /// Catches an off-by-one at the first and last presentable share count.
 #[test]
 fun redemption_supports_the_first_and_last_presentable_share_count() {
-    let (shares_after, equity_keep, gross, _, net) = accounting_math::redemption_quote_for_testing(
+    let (shares_after, equity_keep, gross, _, net) = accounting_math::redemption_quote(
         1,
         1_000,
         1_000,
@@ -354,7 +354,7 @@ fun redemption_supports_the_first_and_last_presentable_share_count() {
     assert_eq!(gross, 10);
     assert_eq!(net, 10);
 
-    let (shares_after, equity_keep, gross, _, net) = accounting_math::redemption_quote_for_testing(
+    let (shares_after, equity_keep, gross, _, net) = accounting_math::redemption_quote(
         99,
         1_000,
         1_000,
@@ -372,7 +372,7 @@ fun redemption_supports_the_first_and_last_presentable_share_count() {
 #[test]
 fun redemption_supports_maximum_supported_values() {
     let max = std::u64::max_value!();
-    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote_for_testing(
+    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote(
         1,
         max,
         max,
@@ -390,7 +390,7 @@ fun redemption_supports_maximum_supported_values() {
 /// Catches a redemption fee that leaves the redeemer nothing but still burns shares.
 #[test]
 fun the_highest_fee_rate_still_leaves_a_positive_payout() {
-    let (_, equity_keep, gross, fee, net) = accounting_math::redemption_quote_for_testing(
+    let (_, equity_keep, gross, fee, net) = accounting_math::redemption_quote(
         10,
         100_000,
         100_000,
@@ -515,9 +515,9 @@ fun immediate_round_trips_cannot_profit_from_share_or_fee_rounding() {
 /// Catches gaining shares by splitting one contribution around downward share rounding.
 #[test]
 fun splitting_a_mint_does_not_create_extra_shares() {
-    let (combined_shares, _) = accounting_math::mint_quote_for_testing(198, 1_000, 333);
-    let (first_shares, shares_after_first) = accounting_math::mint_quote_for_testing(99, 1_000, 333);
-    let (second_shares, _) = accounting_math::mint_quote_for_testing(99, 1_099, shares_after_first);
+    let (combined_shares, _) = accounting_math::mint_quote(198, 1_000, 333);
+    let (first_shares, shares_after_first) = accounting_math::mint_quote(99, 1_000, 333);
+    let (second_shares, _) = accounting_math::mint_quote(99, 1_099, shares_after_first);
 
     assert_eq!(combined_shares, 65);
     assert_eq!(first_shares + second_shares, 64);
@@ -525,111 +525,111 @@ fun splitting_a_mint_does_not_create_extra_shares() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_series_one::accounting_math)]
+#[expected_failure(abort_code = accounting_math::EInvalidNav, location = blast_leverage_series_one::accounting_math)]
 fun a_redemption_against_zero_nav_is_rejected() {
-    accounting_math::redemption_quote_for_testing(10, 0, 1_000, 100, 0);
+    accounting_math::redemption_quote(10, 0, 1_000, 100, 0);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidShareAmount,
+    abort_code = accounting_math::EInvalidShareAmount,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_zero_share_redemption_is_rejected() {
-    accounting_math::redemption_quote_for_testing(0, 1_000, 1_000, 100, 0);
+    accounting_math::redemption_quote(0, 1_000, 1_000, 100, 0);
 }
 
 /// Catches a final-holder drain that the permanently locked seed shares must prevent.
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidShareAmount,
+    abort_code = accounting_math::EInvalidShareAmount,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun redeeming_the_complete_supply_is_rejected() {
-    accounting_math::redemption_quote_for_testing(100, 1_000, 1_000, 100, 0);
+    accounting_math::redemption_quote(100, 1_000, 1_000, 100, 0);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidShareAmount,
+    abort_code = accounting_math::EInvalidShareAmount,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_redemption_against_zero_supply_is_rejected() {
-    accounting_math::redemption_quote_for_testing(1, 1_000, 1_000, 0, 0);
+    accounting_math::redemption_quote(1, 1_000, 1_000, 0, 0);
 }
 
 /// Catches paying a redeemer when the unwind left exactly the equity others keep.
 #[test]
 #[expected_failure(
-    abort_code = errors::ENonpositiveGross,
+    abort_code = accounting_math::ENonpositiveGross,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_redemption_without_excess_equity_is_rejected() {
-    accounting_math::redemption_quote_for_testing(10, 1_000, 900, 100, 0);
+    accounting_math::redemption_quote(10, 1_000, 900, 100, 0);
 }
 
 /// Pins fee validation ahead of the gross-claim guard, before the kept equity is computed.
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidFeeBps,
+    abort_code = accounting_math::EInvalidFeeBps,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun an_invalid_redemption_fee_is_rejected_before_a_nonpositive_gross() {
-    accounting_math::redemption_quote_for_testing(10, 1_000, 900, 100, 10_000);
+    accounting_math::redemption_quote(10, 1_000, 900, 100, 10_000);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::ENonpositiveGross,
+    abort_code = accounting_math::ENonpositiveGross,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_redemption_below_the_kept_equity_is_rejected() {
-    accounting_math::redemption_quote_for_testing(10, 1_000, 899, 100, 0);
+    accounting_math::redemption_quote(10, 1_000, 899, 100, 0);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidFeeBps,
+    abort_code = accounting_math::EInvalidFeeBps,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_redeem_fee_rate_at_the_denominator_is_rejected() {
-    accounting_math::redemption_quote_for_testing(10, 1_000, 1_000, 100, 10_000);
+    accounting_math::redemption_quote(10, 1_000, 1_000, 100, 10_000);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EZeroNetPayout,
+    abort_code = accounting_math::EZeroNetPayout,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_redemption_consumed_by_its_fee_is_rejected() {
-    accounting_math::redemption_quote_for_testing(10, 1_000, 901, 100, 9_999);
+    accounting_math::redemption_quote(10, 1_000, 901, 100, 9_999);
 }
 
 /// Pins the last gross amount below the 9,999-bps positive-payout threshold.
 #[test]
 #[expected_failure(
-    abort_code = errors::EZeroNetPayout,
+    abort_code = accounting_math::EZeroNetPayout,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun a_9_999_unit_gross_is_completely_consumed_at_the_highest_fee() {
-    accounting_math::redemption_quote_for_testing(9_999, 10_000, 10_000, 10_000, 9_999);
+    accounting_math::redemption_quote(9_999, 10_000, 10_000, 10_000, 9_999);
 }
 
 /// Pins the NAV guard ahead of the share-bound guard when both are invalid.
 #[test]
-#[expected_failure(abort_code = errors::EInvalidNav, location = blast_leverage_series_one::accounting_math)]
+#[expected_failure(abort_code = accounting_math::EInvalidNav, location = blast_leverage_series_one::accounting_math)]
 fun zero_nav_is_rejected_before_an_invalid_share_amount() {
-    accounting_math::redemption_quote_for_testing(0, 0, 1_000, 100, 0);
+    accounting_math::redemption_quote(0, 0, 1_000, 100, 0);
 }
 
 /// Pins the share-bound guard ahead of the fee-rate guard when both are invalid.
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidShareAmount,
+    abort_code = accounting_math::EInvalidShareAmount,
     location = blast_leverage_series_one::accounting_math,
 )]
 fun an_invalid_share_amount_is_rejected_before_an_invalid_fee_rate() {
-    accounting_math::redemption_quote_for_testing(100, 1_000, 1_000, 100, 10_000);
+    accounting_math::redemption_quote(100, 1_000, 1_000, 100, 10_000);
 }
 
 // === Private Test Helpers ===
@@ -643,7 +643,7 @@ fun reference_fee_up(amount: u64, fee_bps: u64): u64 {
 
 /// Asserts the fee is the exact ceiling and remains bounded by its source amount.
 fun assert_fee_is_exact_ceiling(amount: u64, fee_bps: u64) {
-    let fee = accounting_math::fee_up_for_testing(amount, fee_bps);
+    let fee = accounting_math::fee_up(amount, fee_bps);
     let numerator = (amount as u128) * (fee_bps as u128);
 
     assert_eq!(fee, reference_fee_up(amount, fee_bps));
@@ -658,7 +658,7 @@ fun assert_fee_is_exact_ceiling(amount: u64, fee_bps: u64) {
 
 /// Asserts every mint field against an independently evaluated floor formula.
 fun assert_mint_matches_reference(contribution: u64, nav_before: u64, shares_before: u64) {
-    let (shares_out, shares_after) = accounting_math::mint_quote_for_testing(
+    let (shares_out, shares_after) = accounting_math::mint_quote(
         contribution,
         nav_before,
         shares_before,
@@ -681,7 +681,7 @@ fun assert_redemption_matches_reference(
     shares_before: u64,
     redeem_fee_bps: u64,
 ) {
-    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote_for_testing(
+    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote(
         shares_burned,
         nav_before,
         nav_unwound,
@@ -719,12 +719,12 @@ fun assert_round_trip_cannot_profit(
     let mint_fee = reference_fee_up(deposit, mint_fee_bps);
     let contribution = deposit - mint_fee;
     let nav_after_mint = nav_before + contribution;
-    let (shares_out, shares_after) = accounting_math::mint_quote_for_testing(
+    let (shares_out, shares_after) = accounting_math::mint_quote(
         contribution,
         nav_before,
         shares_before,
     );
-    let (_, equity_keep, _, redemption_fee, net) = accounting_math::redemption_quote_for_testing(
+    let (_, equity_keep, _, redemption_fee, net) = accounting_math::redemption_quote(
         shares_out,
         nav_after_mint,
         nav_after_mint,
@@ -739,7 +739,7 @@ fun assert_round_trip_cannot_profit(
 
 /// Asserts the quote fields reconcile and `nav_after / S1 >= nav_before / S0`.
 fun assert_mint_is_non_dilutive(contribution: u64, nav_before: u64, shares_before: u64) {
-    let (shares_out, shares_after) = accounting_math::mint_quote_for_testing(
+    let (shares_out, shares_after) = accounting_math::mint_quote(
         contribution,
         nav_before,
         shares_before,
@@ -758,7 +758,7 @@ fun assert_redemption_is_non_dilutive(
     shares_before: u64,
     redeem_fee_bps: u64,
 ) {
-    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote_for_testing(
+    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote(
         shares_burned,
         nav_before,
         nav_unwound,

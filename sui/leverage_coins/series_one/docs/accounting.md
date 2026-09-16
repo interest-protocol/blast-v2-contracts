@@ -22,14 +22,12 @@ coins target approximately 2x exposure and can be liquidated.
 ## Modules
 
 - `lib/accounting_math.move` — pure share, fee, leverage, exposure, shareholder-NAV,
-  reserve-credit, and exact negative-funding absorption arithmetic. Its
-  package-visible mint, redemption, leverage, target-notional, and mint-exposure
-  operations derive shareholder NAV from venue equity and reserve. Raw
-  NAV-taking formulas are private and exposed only through test-only seams, so
-  future state modules cannot bypass reserve accounting. Redemption exposure
-  bounds remain package-visible because they depend only on supply and base
-  exposure. This module cannot authenticate venue funding; the later adapter
-  and Series transition own that obligation.
+  reserve-credit, and exact negative-funding absorption arithmetic. The mint and
+  redemption quotes derive shareholder NAV from venue equity and reserve; the
+  leverage, target-notional, and mint-exposure formulas take a shareholder NAV
+  that State computes once per checkpoint through `shareholder_nav`. This
+  module cannot authenticate venue funding; the adapter and the Series
+  transition own that obligation.
 - `lib/bounded_value.move` — a sealed `BoundedValue(minimum, current,
   maximum)` whose constructor and only mutation enforce inclusive immutable
   bounds. Units, authority, lifecycle, and domain-specific constraints belong
@@ -354,8 +352,8 @@ What this module does not close:
 
 ## Package integration
 
-The package error registry, verification commands, and deferred stateful work
-are recorded in the parent [Series1 README](../README.md). The future financial
+Verification commands and deferred stateful work are recorded in the parent
+[Series1 README](../README.md); each module declares the errors it raises. The future financial
 transitions in `state.move` are the only production consumers of these
 calculations. Venue adapters provide authenticated execution facts; they do
 not price shares or select accounting inputs.

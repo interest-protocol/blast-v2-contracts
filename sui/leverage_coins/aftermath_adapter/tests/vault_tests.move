@@ -422,7 +422,7 @@ fun primitive_risk_module_cannot_update_max_order_notional() {
 
 #[test]
 #[expected_failure(
-    abort_code = 74,
+    abort_code = blast_leverage_series_one::state::EMaxOrderNotionalUnchanged,
     location = blast_leverage_series_one::state,
 )]
 fun risk_module_cannot_repeat_the_current_max_order_notional() {
@@ -443,7 +443,7 @@ fun risk_module_cannot_repeat_the_current_max_order_notional() {
 
 #[test]
 #[expected_failure(
-    abort_code = 34,
+    abort_code = blast_leverage_series_one::bounded_value::EInvalidBoundedValue,
     location = blast_leverage_series_one::bounded_value,
 )]
 fun risk_module_cannot_exceed_the_frozen_max_order_notional_bounds() {
@@ -558,7 +558,7 @@ fun issuer_and_risk_admin_without_shutdown_role_cannot_begin_shutdown() {
 
 #[test]
 #[expected_failure(
-    abort_code = 17,
+    abort_code = blast_leverage_series_one::lifecycle::EInvalidLifecycleTransition,
     location = blast_leverage_series_one::lifecycle,
 )]
 fun shutdown_admin_cannot_stop_an_uninitialized_vault() {

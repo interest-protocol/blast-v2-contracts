@@ -4,7 +4,7 @@ module blast_leverage_series_one::bounded_value_tests;
 
 use std::unit_test::assert_eq;
 
-use blast_leverage_series_one::{bounded_value, errors};
+use blast_leverage_series_one::{bounded_value};
 
 // === Tests ===
 
@@ -33,7 +33,7 @@ fun current_at_the_inclusive_maximum_is_accepted() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidBoundedValue,
+    abort_code = bounded_value::EInvalidBoundedValue,
     location = blast_leverage_series_one::bounded_value,
 )]
 fun construction_rejects_current_below_the_minimum() {
@@ -42,7 +42,7 @@ fun construction_rejects_current_below_the_minimum() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidBoundedValue,
+    abort_code = bounded_value::EInvalidBoundedValue,
     location = blast_leverage_series_one::bounded_value,
 )]
 fun construction_rejects_current_above_the_maximum() {
@@ -63,7 +63,7 @@ fun update_accepts_the_minimum_interior_and_maximum() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidBoundedValue,
+    abort_code = bounded_value::EInvalidBoundedValue,
     location = blast_leverage_series_one::bounded_value,
 )]
 fun update_rejects_one_below_the_minimum() {
@@ -74,7 +74,7 @@ fun update_rejects_one_below_the_minimum() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidBoundedValue,
+    abort_code = bounded_value::EInvalidBoundedValue,
     location = blast_leverage_series_one::bounded_value,
 )]
 fun update_rejects_one_above_the_maximum() {
