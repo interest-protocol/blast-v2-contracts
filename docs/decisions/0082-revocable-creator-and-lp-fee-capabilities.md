@@ -116,6 +116,10 @@ until an administrator reassigns them.
   `MetadataCapReassigned`,
   `LpFeeCapIssued`, `CreatorFeesLocked`, and `LpFeesLocked` rather than object
   ownership alone.
+- No Blast V2 package was published on any network when this was decided
+  (confirmed 2026-09-16), so rewriting `CurveFeeAuthority`, `LpFeeAuthority`
+  and the `CreatorFeesLocked` payload required no new package lineage. The
+  same change after first publication would.
 
 ## Verification
 

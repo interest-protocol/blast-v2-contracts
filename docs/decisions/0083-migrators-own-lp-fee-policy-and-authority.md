@@ -106,6 +106,9 @@ recovery. The distributor exposes `lock_lp_fees`.
 - Indexers read LP-fee policy and authority events from migrators.
 - Dex and Auto-LP are parked in `scratch-sui/` until the native migration is
   redesigned; the distributor is the only enrolled fee custodian meanwhile.
+- Moving the policy and authority rewrites published struct layouts, public
+  signatures and event payloads. No package was published when this was
+  decided (confirmed 2026-09-16), so it needed no lineage break.
 
 ## Verification
 
@@ -124,4 +127,4 @@ Tests prove the following:
   behavior.
 - The distributor binds pending LP fees and collects them.
 
-Launchpad and migrators boundary gates pin the new ownership.
+Launchpad, migrators and distributor boundary gates pin the new ownership.
