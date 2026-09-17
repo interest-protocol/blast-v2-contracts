@@ -1,0 +1,12 @@
+[package]
+name = "blast_boosts_composition_tests"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+blast_admin = { local = "../../admin" }
+blast_boosts_aftermath = { local = "../aftermath_adapter" }
+blast_fun = { local = "../../launchpad" }
+
+[addresses]
+blast_boosts_composition_tests = "0x0"

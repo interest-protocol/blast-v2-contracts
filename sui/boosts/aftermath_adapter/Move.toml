@@ -1,0 +1,18 @@
+[package]
+name = "blast_boosts_aftermath"
+edition = "2024"
+license = "MIT"
+authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
+
+[dependencies]
+blast_admin = { local = "../../admin" }
+blast_boosts_core = { local = "../core" }
+perpetuals = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/iperps/perpetuals", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
+position = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/iperps/position", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
+authority_cap = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/authority-cap/authority-cap", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
+oracle_aggregator = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/oracle-aggregator/oracle-aggregator", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
+ifixed = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/ifixed/ifixed", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
+pyth = { local = "interfaces/pyth" }
+
+[addresses]
+blast_boosts_aftermath = "0x0"

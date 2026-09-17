@@ -16,7 +16,7 @@ fee ceilings, allocation ceiling, lot minimum and NAV cap are frozen at issuance
 Only bounded current order notional and capped future fee settings can change.
 
 The candidate policy values and deliberately unset NAV, seed/reserve and order
-bounds live in the [normalized input template](../sui/leverage_coins/aftermath_adapter/release/active-input.template.json).
+bounds live in the [normalized input template](../sui/boosts/aftermath_adapter/release/active-input.template.json).
 It is the single candidate-value record; the governing accounting and health
 contract is [ADR 0074](decisions/0074-aftermath-vault-activation-and-health.md).
 They require exact market depth, lot, fees, margin, smallest exit and bounded-call
@@ -67,7 +67,7 @@ After a competing success, rebuild only from current objects. If submission is
 uncertain, resolve that digest before retrying; never use a numerical shadow
 checkpoint. Read-only observation requires no database, queue or new service.
 
-The [offline client planner](../sui/leverage_coins/aftermath_adapter/scripts/active_ptb.mjs)
+The [offline client planner](../sui/boosts/aftermath_adapter/scripts/active_ptb.mjs)
 constructs typed active and composition calls with exact native return-value
 references. Its adjacent tests and package-local gate are the executable
 contract. It never opens RPC, signs or submits. Rendered call plans/CLI arguments

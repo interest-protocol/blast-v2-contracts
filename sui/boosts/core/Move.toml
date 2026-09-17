@@ -1,0 +1,11 @@
+[package]
+name = "blast_boosts_core"
+edition = "2024"
+license = "MIT"
+authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
+
+[dependencies]
+blast_admin = { local = "../../admin" }
+
+[addresses]
+blast_boosts_core = "0x0"

@@ -1,7 +1,7 @@
 # Leverage coins: implementation lessons and required rules
 
 Status: required reading. Read this file completely before implementing or
-changing `sui/leverage_coins/core/`, the `blast_leverage_aftermath`
+changing `sui/boosts/core/`, the `blast_boosts_aftermath`
 adapter, or any SDK code that mirrors their math.
 
 This file collects the rules that the pure Series1 accounting library cannot
