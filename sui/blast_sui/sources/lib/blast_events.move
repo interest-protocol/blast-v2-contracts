@@ -1,4 +1,4 @@
-module blast_sui::events_wrapper;
+module blast_sui::blast_events;
 
 // === Public Structs ===
 

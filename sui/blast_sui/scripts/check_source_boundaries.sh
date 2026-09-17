@@ -40,14 +40,14 @@ rg -q '^const PACKAGE_ADMIN_ROLE: u64 = 1;$' \
 
 # 4. Its generation container and custody hold the shared typed values, and no
 #    separate activation or capability escape survives.
-rg -q 'generation: OperationalVersion<BLAST>,' "$package_dir/sources/package_version.move" \
+rg -q 'generation: OperationalVersion<BLAST_SUI_PACKAGE>,' "$package_dir/sources/package_version.move" \
   || fail "The generation value must be the shared typed value."
 rg -q '^const NEXT_PACKAGE_VERSION: u64 = 2;$' "$package_dir/sources/package_version.move" \
   || fail "blast_sui must compile its cutover target constant."
 if rg -n '\.checked_add\(|fun activate\(' "$package_dir/sources/package_version.move"; then
   fail "Generation arithmetic and separate activation belong to blast_admin."
 fi
-rg -q 'custody: UpgradeCustody<BLAST>,' "$package_dir/sources/package_admin.move" \
+rg -q 'custody: UpgradeCustody<BLAST_SUI_PACKAGE>,' "$package_dir/sources/package_admin.move" \
   || fail "Package custody must hold the shared typed value."
 rg -q 'public fun commit_upgrade_and_advance\(' "$package_dir/sources/package_admin.move" \
   || fail "blast_sui must expose one atomic commit-and-advance finalizer."
@@ -83,9 +83,9 @@ done
 [ "$(grep -c 'missing_package_capability' <<<"$share_body")" -eq 3 ] \
   || fail "share must reject on each of the three missing child capabilities."
 
-# 3. Every event goes through the events_wrapper envelope.
-if grep -rn "sui::event::emit" "$package_dir/sources" | grep -v "sources/lib/events_wrapper.move"; then
-  fail "Only events_wrapper may call sui::event::emit."
+# 3. Every event goes through the blast_events envelope.
+if grep -rn "sui::event::emit" "$package_dir/sources" | grep -v "sources/lib/blast_events.move"; then
+  fail "Only blast_events may call sui::event::emit."
 fi
 
 # 4. Functions with a natural first receiver use Move 2024 method syntax.

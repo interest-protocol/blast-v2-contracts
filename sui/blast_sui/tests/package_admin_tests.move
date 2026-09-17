@@ -39,7 +39,7 @@ public struct CustodyFixture {
     fun_metadata_added: events::PackageCapabilityAdded,
     blast_metadata_added: events::PackageCapabilityAdded,
     display_added: events::PackageCapabilityAdded,
-    created: blast_admin::events::UpgradeCustodyCreated<BLAST>,
+    created: blast_admin::events::UpgradeCustodyCreated<BLAST_SUI_PACKAGE>,
     package_version: package_version::PackageVersion,
     authority: Authority<BLAST_SUI_DOMAIN>,
     admin_cap: AdminCap<BLAST_SUI_DOMAIN>,
@@ -69,7 +69,7 @@ fun the_version_container_advances_to_the_next_compiled_generation() {
         f.package_version.advance_for_testing();
 
         let advanced = blast_admin::events::collect_one<
-            blast_admin::events::OperationalVersionAdvanced<BLAST>,
+            blast_admin::events::OperationalVersionAdvanced<BLAST_SUI_PACKAGE>,
         >(0);
         let (_, _, previous_generation, new_generation) =
             advanced.operational_version_advanced_fields();
@@ -275,7 +275,7 @@ fun new_rejects_an_upgrade_cap_for_another_package() {
     let mut fixture = start_wrap();
 
     fixture.next_tx!(PUBLISHER, |f| {
-        let publisher = blast::publisher_for_testing(f.ctx!());
+        let publisher = blast_sui_package::publisher_for_testing(f.ctx!());
         let upgrade_cap = package::test_publish(OTHER_PACKAGE_ID.to_id(), f.ctx!());
         destroy(package_admin::new(publisher, upgrade_cap, f.ctx!()));
     });
@@ -317,7 +317,7 @@ fun package_admin_can_irreversibly_restrict_upgrade_policy() {
         f.package_admin.restrict_to_additive(&f.package_version, &admin_witness);
 
         let restricted = blast_admin::events::collect_one<
-            blast_admin::events::UpgradePolicyRestricted<BLAST>,
+            blast_admin::events::UpgradePolicyRestricted<BLAST_SUI_PACKAGE>,
         >(0);
         let (_, _, _, _, previous_policy, new_policy) =
             restricted.upgrade_policy_restricted_fields();
@@ -342,7 +342,7 @@ fun package_admin_can_permanently_destroy_native_upgrade_authority() {
         f.package_admin.make_immutable(&f.package_version, &admin_witness);
 
         let destroyed = blast_admin::events::collect_one<
-            blast_admin::events::UpgradeCapDestroyed<BLAST>,
+            blast_admin::events::UpgradeCapDestroyed<BLAST_SUI_PACKAGE>,
         >(0);
         let (custodian_id, emitted_upgrade_cap_id, _, final_native_version, final_policy) =
             destroyed.upgrade_cap_destroyed_fields();
@@ -634,7 +634,7 @@ fun start_wrap(): WrapFixture {
 fun start_custody(): CustodyFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     scenario.create_system_objects();
-    blast::init_for_testing(scenario.ctx());
+    blast_sui_package::init_for_testing(scenario.ctx());
     let package_version = package_version::new_for_testing(scenario.ctx());
     let (super_admin_cap, mut authority) = new_authority(scenario.ctx());
     authority.grant_admin(&super_admin_cap, 0, PUBLISHER, scenario.ctx());
@@ -669,7 +669,7 @@ fun start_custody(): CustodyFixture {
     let blast_metadata_added = events::collect<events::PackageCapabilityAdded>()[1];
     let display_added = events::collect<events::PackageCapabilityAdded>()[2];
     let created = blast_admin::events::collect_one<
-        blast_admin::events::UpgradeCustodyCreated<BLAST>,
+        blast_admin::events::UpgradeCustodyCreated<BLAST_SUI_PACKAGE>,
     >(0);
     destroy(super_admin_cap);
 
@@ -795,7 +795,7 @@ fun new_display_cap(
 use blast_admin::acl::{Self, Authority, SuperAdminCap, AdminCap, AdminWitness};
 
 use blast_sui::{
-    blast::{Self, BLAST},
+    blast_sui_package::{Self, BLAST_SUI_PACKAGE},
     blast_sui::{Self as blast_coin, BLAST_SUI},
     blast_sui_domain::{Self, BLAST_SUI_DOMAIN},
     deposit_receipt::{Self, BlastSuiDepositReceipt},

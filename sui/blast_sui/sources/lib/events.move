@@ -173,7 +173,7 @@ public(package) fun package_capability_added<Capability>(
     package_admin_id: ID,
     capability_id: ID,
 ) {
-    blast_sui::events_wrapper::emit_event(PackageCapabilityAdded {
+    blast_sui::blast_events::emit_event(PackageCapabilityAdded {
         package_admin_id,
         capability_id,
         capability_type: std::type_name::with_original_ids<Capability>(),
@@ -191,7 +191,7 @@ public(package) fun vault_created(
     redeem_fee_bps: u64,
     custody: VaultCustody,
 ) {
-    blast_sui::events_wrapper::emit_event(VaultCreated {
+    blast_sui::blast_events::emit_event(VaultCreated {
         vault_id,
         validator,
         pool_id,
@@ -205,12 +205,12 @@ public(package) fun vault_created(
 
 /// Emits a one-to-one funSUI mint and the resulting custody state.
 public(package) fun fun_sui_minted(sui_in: u64, custody: VaultCustody) {
-    blast_sui::events_wrapper::emit_event(FunSuiMinted { sui_in, custody });
+    blast_sui::blast_events::emit_event(FunSuiMinted { sui_in, custody });
 }
 
 /// Emits a funSUI redemption and the resulting custody state.
 public(package) fun fun_sui_redeemed(fun_in: u64, custody: VaultCustody) {
-    blast_sui::events_wrapper::emit_event(FunSuiRedeemed { fun_in, custody });
+    blast_sui::blast_events::emit_event(FunSuiRedeemed { fun_in, custody });
 }
 
 /// Emits creation of an external native-stake deposit receipt.
@@ -222,7 +222,7 @@ public(package) fun blast_sui_deposit_requested(
     activation_epoch: u64,
     custody: VaultCustody,
 ) {
-    blast_sui::events_wrapper::emit_event(BlastSuiDepositRequested {
+    blast_sui::blast_events::emit_event(BlastSuiDepositRequested {
         receipt_id,
         vault_id,
         pool_id,
@@ -242,7 +242,7 @@ public(package) fun blast_sui_deposit_claimed(
     blast_out: u64,
     custody: VaultCustody,
 ) {
-    blast_sui::events_wrapper::emit_event(BlastSuiDepositClaimed {
+    blast_sui::blast_events::emit_event(BlastSuiDepositClaimed {
         receipt_id,
         vault_id,
         principal_sui,
@@ -260,7 +260,7 @@ public(package) fun blast_sui_deposit_cancelled(
     principal_sui: u64,
     returned_sui: u64,
 ) {
-    blast_sui::events_wrapper::emit_event(BlastSuiDepositCancelled {
+    blast_sui::blast_events::emit_event(BlastSuiDepositCancelled {
         receipt_id,
         vault_id,
         principal_sui,
@@ -270,7 +270,7 @@ public(package) fun blast_sui_deposit_cancelled(
 
 /// Emits an uncompensated SUI donation and the resulting custody state.
 public(package) fun blast_sui_donated(sui_in: u64, custody: VaultCustody) {
-    blast_sui::events_wrapper::emit_event(BlastSuiDonated { sui_in, custody });
+    blast_sui::blast_events::emit_event(BlastSuiDonated { sui_in, custody });
 }
 
 /// Emits a blastSUI redemption quote, fee, payout, and resulting custody state.
@@ -281,7 +281,7 @@ public(package) fun blast_sui_redeemed(
     net_sui: u64,
     custody: VaultCustody,
 ) {
-    blast_sui::events_wrapper::emit_event(BlastSuiRedeemed {
+    blast_sui::blast_events::emit_event(BlastSuiRedeemed {
         blast_in,
         gross_sui,
         fee_sui,
@@ -297,7 +297,7 @@ public(package) fun fun_yield_swept(
     swept_sui: u64,
     custody: VaultCustody,
 ) {
-    blast_sui::events_wrapper::emit_event(FunYieldSwept {
+    blast_sui::blast_events::emit_event(FunYieldSwept {
         liquid_sui,
         pool_tokens,
         swept_sui,
@@ -307,7 +307,7 @@ public(package) fun fun_yield_swept(
 
 /// Emits a completed redemption-fee update.
 public(package) fun redeem_fee_changed(old_redeem_fee_bps: u64, new_redeem_fee_bps: u64) {
-    blast_sui::events_wrapper::emit_event(RedeemFeeChanged {
+    blast_sui::blast_events::emit_event(RedeemFeeChanged {
         old_redeem_fee_bps,
         new_redeem_fee_bps,
     });
@@ -315,12 +315,12 @@ public(package) fun redeem_fee_changed(old_redeem_fee_bps: u64, new_redeem_fee_b
 
 /// Emits the canonical custody snapshot after a permissionless sync.
 public(package) fun vault_synced(custody: VaultCustody) {
-    blast_sui::events_wrapper::emit_event(VaultSynced { custody });
+    blast_sui::blast_events::emit_event(VaultSynced { custody });
 }
 
 /// Emits custody after every native position has been unwound.
 public(package) fun native_stake_unwound(custody: VaultCustody) {
-    blast_sui::events_wrapper::emit_event(NativeStakeUnwound { custody });
+    blast_sui::blast_events::emit_event(NativeStakeUnwound { custody });
 }
 
 // === Test-Only Functions ===
@@ -329,7 +329,7 @@ public(package) fun native_stake_unwound(custody: VaultCustody) {
 public fun collect<T: copy + drop>(): vector<T> {
     let mut out = vector[];
 
-    sui::event::events_by_type<blast_sui::events_wrapper::Event<T>>().do!(
+    sui::event::events_by_type<blast_sui::blast_events::Event<T>>().do!(
         |event| out.push_back(event.unwrap()),
     );
 

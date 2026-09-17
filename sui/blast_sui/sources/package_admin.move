@@ -13,7 +13,7 @@ module blast_sui::package_admin;
 /// children of this wrapper.
 public struct PackageAdmin has key {
     id: UID,
-    custody: UpgradeCustody<BLAST>,
+    custody: UpgradeCustody<BLAST_SUI_PACKAGE>,
 }
 
 /// Type-derived key for a capability owned as a dynamic object field.
@@ -32,12 +32,12 @@ public fun new(
 ): PackageAdmin {
     // from_module compares both the package address and the module name.
     assert!(
-        publisher.from_module<BLAST>(),
+        publisher.from_module<BLAST_SUI_PACKAGE>(),
         blast_sui::errors::invalid_package_publisher!(),
     );
 
     let id = object::new(ctx);
-    let custody = upgrade_custody::new<BLAST>(id.to_inner(), publisher, upgrade_cap);
+    let custody = upgrade_custody::new<BLAST_SUI_PACKAGE>(id.to_inner(), publisher, upgrade_cap);
 
     PackageAdmin { id, custody }
 }
@@ -192,11 +192,11 @@ public fun new_for_testing(
 /// Creates incomplete custody for staged-construction rejection tests.
 public fun new_empty_for_testing(ctx: &mut TxContext): PackageAdmin {
     let id = object::new(ctx);
-    let custody = upgrade_custody::new<BLAST>(
+    let custody = upgrade_custody::new<BLAST_SUI_PACKAGE>(
         id.to_inner(),
-        blast_sui::blast::publisher_for_testing(ctx),
+        blast_sui::blast_sui_package::publisher_for_testing(ctx),
         sui::package::test_publish(
-            std::type_name::original_id<BLAST>().to_id(),
+            std::type_name::original_id<BLAST_SUI_PACKAGE>().to_id(),
             ctx,
         ),
     );
@@ -273,7 +273,7 @@ use blast_admin::{
 };
 
 use blast_sui::{
-    blast::BLAST,
+    blast_sui_package::BLAST_SUI_PACKAGE,
     blast_sui::BLAST_SUI,
     blast_sui_domain::{Self, BLAST_SUI_DOMAIN},
     deposit_receipt::BlastSuiDepositReceipt,

@@ -8,7 +8,7 @@
 #     cap handoff execute in package-admin tests; and
 #   * `package_admin`, whose `authorize_upgrade` and `commit_upgrade_and_advance`
 #     bodies cannot execute under test compilation. Sealed custody binds the
-#     UpgradeCap to `type_name::original_id<BLAST>()`, which is `0x0` before
+#     UpgradeCap to `type_name::original_id<BLAST_SUI_PACKAGE>()`, which is `0x0` before
 #     publication, and the framework refuses to authorize an upgrade for the
 #     zero package id. The complete native authorize/commit/advance matrix is
 #     proved in `blast_admin::upgrade_custody_tests`, which owns a package
@@ -41,7 +41,7 @@ require_module_exact() {
   fi
 }
 
-for module in events_wrapper events package_version blast_sui_domain blast blast_sui \
+for module in blast_events events package_version blast_sui_domain blast_sui_package blast_sui \
   fun_sui math custody vault; do
   require_module "$module"
 done
