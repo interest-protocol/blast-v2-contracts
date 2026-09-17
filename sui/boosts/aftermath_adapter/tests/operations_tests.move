@@ -7,6 +7,7 @@ module blast_boosts_aftermath::operations_tests;
 const SYSTEM: address = @0x0;
 const ADMIN: address = @0xA11CE;
 const REFERENCE_TIME_MS: u64 = 1_000;
+const NAV_CAP: u64 = 1_000_000_000;
 const SEED_EQUITY: u64 = 1_000;
 const SEED_RESERVE: u64 = 100;
 const ABSOLUTE_BASE: u64 = 1_800;
@@ -2288,6 +2289,7 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         100,
         250,
         1_000,
+        NAV_CAP,
         b"SYNC".to_string(),
         b"Sync Vault".to_string(),
         b"Connected Task 7 fixture".to_string(),
@@ -2587,7 +2589,6 @@ fun standard_vault_policy_for_side(side: policy::PositionSide): policy::VaultPol
         10,
         10,
         100,
-        1_000_000_000,
     )
 }
 
@@ -2840,6 +2841,7 @@ fun replay_issued<Tag>(event: events::VaultIssued<Tag>): ReplayState {
         vault_policy,
         _,
         max_order_notional,
+        _,
         _,
         maintenance_reserve,
     ) = event.vault_issued_fields();

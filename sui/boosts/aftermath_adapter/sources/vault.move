@@ -58,6 +58,7 @@ public fun issue<Product: drop, RiskModule: drop>(
     max_order_notional_minimum: u64,
     max_order_notional_current: u64,
     max_order_notional_maximum: u64,
+    nav_cap: u64,
     symbol: String,
     name: String,
     description: String,
@@ -71,6 +72,7 @@ public fun issue<Product: drop, RiskModule: drop>(
         max_order_notional_minimum,
         max_order_notional_current,
         max_order_notional_maximum,
+        nav_cap,
     );
 
     assert!(
@@ -111,6 +113,7 @@ public fun issue<Product: drop, RiskModule: drop>(
         max_order_notional_minimum,
         max_order_notional_current,
         max_order_notional_maximum,
+        nav_cap,
         0,
     );
 

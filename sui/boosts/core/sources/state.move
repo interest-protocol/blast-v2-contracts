@@ -104,13 +104,16 @@ public struct DonationPlan<phantom Product> {
 /// Creates one validated, uninitialized Series1 state value.
 ///
 /// The adapter must store the returned value inside its Vault. The caller's
-/// live admin witness must contain the Vault issuer role.
+/// live admin witness must contain the Vault issuer role. `nav_cap` must
+/// satisfy `RebalancePolicy::assert_valid_nav_cap`; it stays adjustable
+/// through `set_nav_cap`.
 public fun new<Product>(
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
     vault_policy: VaultPolicy,
     max_order_notional_minimum: u64,
     max_order_notional_current: u64,
     max_order_notional_maximum: u64,
+    nav_cap: u64,
 ): State<Product> {
     admin_witness.assert_role(domain::vault_issuer_role());
     assert!(
@@ -119,12 +122,13 @@ public fun new<Product>(
             && max_order_notional_current <= max_order_notional_maximum,
         blast_boosts_core::errors::invalid_max_order_notional!(),
     );
+    vault_policy.rebalance_policy().assert_valid_nav_cap(nav_cap);
 
     State {
         mint_fee_bps: vault_policy.mint_fee_bps(),
         redeem_fee_bps: vault_policy.redeem_fee_bps(),
         admin_allocation_bps: 0,
-        nav_cap: vault_policy.nav_cap(),
+        nav_cap,
         vault_policy,
         max_order_notional_minimum,
         max_order_notional: max_order_notional_current,
@@ -211,8 +215,8 @@ public fun set_max_order_notional<Product>(
 /// Replaces the NAV cap and returns the previous one.
 ///
 /// Adapter custody owns authentication. The new cap must satisfy the same
-/// bound the policy applies to the initial cap; it may be lowered below the
-/// current NAV, which only blocks further mints.
+/// bound issuance applies; it may be lowered below the current NAV, which
+/// only blocks further mints.
 public fun set_nav_cap<Product>(self: &mut State<Product>, nav_cap: u64): u64 {
     let previous = self.nav_cap;
     assert!(nav_cap != previous, blast_boosts_core::errors::nav_cap_unchanged!());

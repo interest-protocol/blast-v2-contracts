@@ -52,8 +52,8 @@ public struct PricePolicy has copy, drop, store {
 
 /// The immutable rule-set one Vault is issued with.
 ///
-/// Fee rates and the NAV cap are the values the Vault starts with; the admin
-/// may move them later inside the caps recorded here.
+/// Fee rates are the values the Vault starts with; the admin may move them
+/// later inside the caps recorded here.
 public struct VaultPolicy has copy, drop, store {
     side: PositionSide,
     rebalance_policy: RebalancePolicy,
@@ -64,7 +64,6 @@ public struct VaultPolicy has copy, drop, store {
     redeem_fee_cap_bps: u64,
     admin_allocation_cap_bps: u64,
     min_exposure_lots: u64,
-    nav_cap: u64,
 }
 
 // === Public Functions ===
@@ -198,12 +197,10 @@ public fun new_price_policy(
 ///
 /// Both fee rates stay below 10,000 bps.
 /// `min_exposure_lots` is positive and at most `max_min_exposure_lots`.
-/// `nav_cap` is the initial NAV cap and must satisfy `assert_valid_nav_cap`.
-/// Because the policy is immutable, both ceilings also fence a transposed lot
-/// multiple and NAV cap, which would otherwise brick every mint of the
-/// deployed Vault.
+/// The NAV cap is not part of the policy: it is a live `State` value the
+/// admin may move, supplied to `state::new` directly.
 ///
-/// Guard order is the fee rates, the lot multiple, then the NAV cap.
+/// Guard order is the fee rates, then the lot multiple.
 public fun new_vault_policy(
     side: PositionSide,
     rebalance_policy: RebalancePolicy,
@@ -211,7 +208,6 @@ public fun new_vault_policy(
     mint_fee_bps: u64,
     redeem_fee_bps: u64,
     min_exposure_lots: u64,
-    nav_cap: u64,
 ): VaultPolicy {
     assert!(
         mint_fee_bps < constants::basis_points_denominator!()
@@ -223,7 +219,6 @@ public fun new_vault_policy(
             && min_exposure_lots <= constants::max_min_exposure_lots!(),
         blast_boosts_core::errors::invalid_min_exposure_lots!(),
     );
-    rebalance_policy.assert_valid_nav_cap(nav_cap);
 
     VaultPolicy {
         side,
@@ -235,7 +230,6 @@ public fun new_vault_policy(
         redeem_fee_cap_bps: redeem_fee_bps,
         admin_allocation_cap_bps: 0,
         min_exposure_lots,
-        nav_cap,
     }
 }
 
@@ -614,11 +608,6 @@ public(package) fun redeem_fee_bps(self: &VaultPolicy): u64 {
 /// Returns the minimum proportional exposure change in live venue lots.
 public(package) fun min_exposure_lots(self: &VaultPolicy): u64 {
     self.min_exposure_lots
-}
-
-/// Returns the initial NAV cap in atomic collateral units.
-public(package) fun nav_cap(self: &VaultPolicy): u64 {
-    self.nav_cap
 }
 
 public(package) fun assert_fee_limits(

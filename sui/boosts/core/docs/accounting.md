@@ -41,7 +41,7 @@ coins target approximately 2x exposure and can be liquidated.
 | leverage rate | basis points of 1x | `20_000` is 2x; no 10,000 ceiling |
 | depositor share floor | atomic Share units | `min_shares_out`, supplied per mint by the depositor; zero means no floor |
 | minimum operation size | live venue lots | `min_exposure_lots`, an immutable Series policy value at most 1,000,000 lots; this package selects no value for it |
-| NAV cap | atomic collateral | positive live value, initialised from the policy and adjustable by the risk admin, whose max-leverage notional fits in `u64`; simulation selects its value |
+| NAV cap | atomic collateral | positive live `State` value, set at issuance and adjustable by the risk admin, whose max-leverage notional fits in `u64`; simulation selects its value |
 | price freshness window | milliseconds | `max_price_age_ms` and `max_price_ahead_ms`, both immutable policy values on the on-chain millisecond scale |
 | price confidence | absolute interval in the price's own units | bounded by `max_confidence_bps` basis points of that price |
 | mark divergence | absolute difference in the index's own units | bounded by `max_mark_divergence_bps` basis points of the index |

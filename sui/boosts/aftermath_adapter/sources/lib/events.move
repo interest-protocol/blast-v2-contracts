@@ -105,6 +105,7 @@ public struct VaultIssued<phantom Product> has copy, drop {
     max_order_notional_minimum: u64,
     max_order_notional_current: u64,
     max_order_notional_maximum: u64,
+    nav_cap: u64,
     maintenance_reserve: u64,
 }
 
@@ -296,6 +297,7 @@ public(package) fun vault_issued<Product>(
     max_order_notional_minimum: u64,
     max_order_notional_current: u64,
     max_order_notional_maximum: u64,
+    nav_cap: u64,
     maintenance_reserve: u64,
 ) {
     blast_boosts_aftermath::blast_events::emit_event(VaultIssued<Product> {
@@ -307,6 +309,7 @@ public(package) fun vault_issued<Product>(
         max_order_notional_minimum,
         max_order_notional_current,
         max_order_notional_maximum,
+        nav_cap,
         maintenance_reserve,
     });
 }
@@ -547,7 +550,7 @@ public fun collect_one<T: copy + drop>(abort_code: u64): T {
 #[test_only]
 public fun vault_issued_fields<Product>(
     self: &VaultIssued<Product>,
-): (ID, ID, ID, TypeName, VaultPolicy, u64, u64, u64, u64) {
+): (ID, ID, ID, TypeName, VaultPolicy, u64, u64, u64, u64, u64) {
     (
         self.vault_id,
         self.treasury_cap_id,
@@ -557,6 +560,7 @@ public fun vault_issued_fields<Product>(
         self.max_order_notional_minimum,
         self.max_order_notional_current,
         self.max_order_notional_maximum,
+        self.nav_cap,
         self.maintenance_reserve,
     )
 }

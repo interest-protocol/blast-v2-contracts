@@ -273,9 +273,9 @@ remove the floor from every safety claim.
 
 ### 2.6 NAV cap as an admin-adjustable live value (owner: Series)
 
-The NAV cap is tied to executable book depth, not headline open interest. The
-policy carries the initial cap; the live cap sits in `State` and the risk admin
-may move it through `set_nav_cap`, which applies the same bound as issuance
+The NAV cap is tied to executable book depth, not headline open interest. It
+lives in one place, `State`: issuance passes it to `state::new` beside the
+order-notional bounds, and the risk admin may move it through `set_nav_cap`, which applies the same bound as issuance
 (positive, and the max-leverage notional fits `u64`) and emits `NavCapUpdated`.
 Lowering it below current NAV only blocks further mints. The mint transition
 applies the live cap to post-mint shareholder NAV. Raising it still deserves

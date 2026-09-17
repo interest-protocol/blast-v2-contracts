@@ -252,6 +252,28 @@ fun redemption_shares_supply_swap_is_rejected() {
 }
 
 #[test]
+#[expected_failure(abort_code = errors::EInvalidNavCap, location = blast_boosts_core::policy)]
+fun issuance_rejects_a_zero_nav_cap() {
+    let fixture = start(domain::vault_issuer_role());
+    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let state = state::new<Product>(&witness, vault_policy(policy::long()), 1, 2_000_000, 5_000_000, 0);
+    state.destroy_for_testing();
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidNavCap, location = blast_boosts_core::policy)]
+fun issuance_rejects_a_nav_cap_whose_max_leverage_notional_overflows() {
+    let fixture = start(domain::vault_issuer_role());
+    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let state = state::new<Product>(
+        &witness, vault_policy(policy::long()), 1, 2_000_000, 5_000_000, std::u64::max_value!(),
+    );
+    state.destroy_for_testing();
+    abort
+}
+
+#[test]
 fun nav_cap_setter_replaces_the_initial_cap_and_returns_the_previous_one() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = new_state(&fixture, policy::long());
@@ -298,7 +320,7 @@ fun nav_cap_setter_rejects_a_cap_whose_max_leverage_notional_overflows() {
 fun live_fee_setter_accepts_each_exact_immutable_cap() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let mut state = state::new<Product>(&witness, vault_policy(policy::long()).with_fee_limits(100, 200, 3_000), 100, 250, 1_000);
+    let mut state = state::new<Product>(&witness, vault_policy(policy::long()).with_fee_limits(100, 200, 3_000), 100, 250, 1_000, NAV_CAP);
     state.set_fees(100, 200, 3_000);
     let (mint, redeem, admin) = state.fee_settings();
     assert_eq!(vector[mint, redeem, admin], vector[100, 200, 3_000]);
@@ -314,9 +336,9 @@ fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
             let witness = fixture.authority.sign_in(&fixture.admin_cap);
             let vault_policy = policy::new_vault_policy(
                 side, policy::new_rebalance_policy(target - 2_000, target, target + 2_000, target + 10_000, 100, 500, 10),
-                policy::new_price_policy(30_000, 2_000, 100, 500), 0, 0, 100, NAV_CAP,
+                policy::new_price_policy(30_000, 2_000, 100, 500), 0, 0, 100,
             );
-            let mut state = state::new<Product>(&witness, vault_policy, 1, 2_000_000, 5_000_000);
+            let mut state = state::new<Product>(&witness, vault_policy, 1, 2_000_000, 5_000_000, NAV_CAP);
             let notional = target * 100;
             state.initialize(rebalance_observation(1_100_000, notional, side), 100_000, 9, 6, REFERENCE_TIME_MS);
             let plan = state.prepare_mint(rebalance_observation(1_100_000, notional, side), 1_000_000, 1_000_000, 1_000_000, 0, REFERENCE_TIME_MS);
@@ -663,6 +685,7 @@ fun fee_updates_change_future_allocations_without_relabeling_the_buffer() {
         100,
         250,
         1_000,
+        NAV_CAP,
     );
     let (fee, admin, buffer) = state.fee_allocation(1_000_000, true);
     assert_eq!(vector[fee, admin, buffer], vector[1_000, 0, 1_000]);
@@ -773,6 +796,7 @@ fun authorized_constructor_returns_valid_uninitialized_state() {
         MAX_ORDER_NOTIONAL_MINIMUM,
         MAX_ORDER_NOTIONAL_CURRENT,
         MAX_ORDER_NOTIONAL_MAXIMUM,
+        NAV_CAP,
     );
 
     assert!(state.is_uninitialized_for_testing());
@@ -801,6 +825,7 @@ fun constructor_requires_the_vault_issuer_role() {
         MAX_ORDER_NOTIONAL_MINIMUM,
         MAX_ORDER_NOTIONAL_CURRENT,
         MAX_ORDER_NOTIONAL_MAXIMUM,
+        NAV_CAP,
     );
 
     state.destroy_for_testing();
@@ -820,6 +845,7 @@ fun max_order_notional_minimum_must_be_positive() {
         0,
         0,
         MAX_ORDER_NOTIONAL_MAXIMUM,
+        NAV_CAP,
     );
 
     state.destroy_for_testing();
@@ -839,6 +865,7 @@ fun max_order_notional_values_must_be_ordered() {
         2,
         1,
         3,
+        NAV_CAP,
     );
 
     state.destroy_for_testing();
@@ -855,6 +882,7 @@ fun max_order_notional_moves_both_directions_inside_frozen_bounds() {
         MAX_ORDER_NOTIONAL_MINIMUM,
         MAX_ORDER_NOTIONAL_CURRENT,
         MAX_ORDER_NOTIONAL_MAXIMUM,
+        NAV_CAP,
     );
 
     assert_eq!(
@@ -888,6 +916,7 @@ fun max_order_notional_rejects_the_current_value() {
         MAX_ORDER_NOTIONAL_MINIMUM,
         MAX_ORDER_NOTIONAL_CURRENT,
         MAX_ORDER_NOTIONAL_MAXIMUM,
+        NAV_CAP,
     );
 
     state.set_max_order_notional(MAX_ORDER_NOTIONAL_CURRENT);
@@ -909,6 +938,7 @@ fun max_order_notional_rejects_one_below_the_frozen_minimum() {
         MAX_ORDER_NOTIONAL_MINIMUM,
         MAX_ORDER_NOTIONAL_CURRENT,
         MAX_ORDER_NOTIONAL_MAXIMUM,
+        NAV_CAP,
     );
 
     state.set_max_order_notional(MAX_ORDER_NOTIONAL_MINIMUM - 1);
@@ -930,6 +960,7 @@ fun max_order_notional_rejects_one_above_the_frozen_maximum() {
         MAX_ORDER_NOTIONAL_MINIMUM,
         MAX_ORDER_NOTIONAL_CURRENT,
         MAX_ORDER_NOTIONAL_MAXIMUM,
+        NAV_CAP,
     );
 
     state.set_max_order_notional(MAX_ORDER_NOTIONAL_MAXIMUM + 1);
@@ -948,6 +979,7 @@ fun active_state_begins_shutdown() {
         MAX_ORDER_NOTIONAL_MINIMUM,
         MAX_ORDER_NOTIONAL_CURRENT,
         MAX_ORDER_NOTIONAL_MAXIMUM,
+        NAV_CAP,
     );
     state.set_active_for_testing();
 
@@ -972,6 +1004,7 @@ fun uninitialized_state_cannot_begin_shutdown() {
         MAX_ORDER_NOTIONAL_MINIMUM,
         MAX_ORDER_NOTIONAL_CURRENT,
         MAX_ORDER_NOTIONAL_MAXIMUM,
+        NAV_CAP,
     );
 
     state.begin_shutdown();
@@ -1634,7 +1667,7 @@ fun deficits_accumulate_and_an_over_repaying_credit_splits() {
 
 fun rebalance_state(fixture: &Fixture, side: PositionSide): State<Product> {
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let mut state = state::new<Product>(&witness, vault_policy(side), 1, 2_000_000, 5_000_000);
+    let mut state = state::new<Product>(&witness, vault_policy(side), 1, 2_000_000, 5_000_000, NAV_CAP);
     state.initialize(rebalance_observation(SEED_VENUE_EQUITY, SEED_NOTIONAL, side), SEED_RESERVE, 9, 6, REFERENCE_TIME_MS);
     state
 }
@@ -1693,7 +1726,6 @@ fun vault_policy(side: PositionSide): VaultPolicy {
         10,
         10,
         MIN_EXPOSURE_LOTS,
-        NAV_CAP,
     )
 }
 
@@ -1706,6 +1738,7 @@ fun new_state(fixture: &Fixture, side: PositionSide): State<Product> {
         MAX_ORDER_NOTIONAL_MINIMUM,
         MAX_ORDER_NOTIONAL_CURRENT,
         MAX_ORDER_NOTIONAL_MAXIMUM,
+        NAV_CAP,
     )
 }
 

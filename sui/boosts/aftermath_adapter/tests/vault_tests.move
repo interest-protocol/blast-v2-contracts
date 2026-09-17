@@ -9,6 +9,7 @@ const ISSUER: address = @0xA11CE;
 const MAX_ORDER_NOTIONAL_MINIMUM: u64 = 100;
 const MAX_ORDER_NOTIONAL_CURRENT: u64 = 250;
 const MAX_ORDER_NOTIONAL_MAXIMUM: u64 = 1_000;
+const NAV_CAP: u64 = 1_000_000_000;
 
 // === Product Witnesses ===
 /// Sealed product witness for the 2x currency.
@@ -182,6 +183,7 @@ fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
         minimum_2x,
         current_2x,
         maximum_2x,
+        _,
         reserve_2x,
     ) = issued_2x.vault_issued_fields();
     let (
@@ -193,6 +195,7 @@ fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
         minimum_5x,
         current_5x,
         maximum_5x,
+        _,
         reserve_5x,
     ) = issued_5x.vault_issued_fields();
 
@@ -647,6 +650,7 @@ fun adapter_package_type_cannot_be_selected_as_a_risk_module() {
         MAX_ORDER_NOTIONAL_MINIMUM,
         MAX_ORDER_NOTIONAL_CURRENT,
         MAX_ORDER_NOTIONAL_MAXIMUM,
+        NAV_CAP,
         b"BADRISK".to_string(),
         b"Bad Risk Vault".to_string(),
         b"Same-package public constructors are not risk authority".to_string(),
@@ -751,6 +755,7 @@ fun issue_and_share_with_policy<Product: drop>(
         MAX_ORDER_NOTIONAL_MINIMUM,
         MAX_ORDER_NOTIONAL_CURRENT,
         MAX_ORDER_NOTIONAL_MAXIMUM,
+        NAV_CAP,
         symbol,
         b"Test Vault".to_string(),
         b"Blast leverage coin".to_string(),
@@ -770,7 +775,7 @@ fun assert_issued_policy<Product>(self: &Fixture, expected: VaultPolicy) {
 fun configured_policy(side: policy::PositionSide, target: u64): VaultPolicy {
     policy::new_vault_policy(
         side, policy::new_rebalance_policy(target - 2_000, target, target + 2_000, target + 10_000, 100, 500, 10),
-        policy::new_price_policy(30_000, 2_000, 100, 500), 30, 30, 100, 1_000_000_000,
+        policy::new_price_policy(30_000, 2_000, 100, 500), 30, 30, 100,
     ).with_fee_limits(100, 100, 3_000)
 }
 
@@ -790,7 +795,6 @@ fun standard_vault_policy(): VaultPolicy {
         10,
         10,
         100,
-        1_000_000_000,
     )
 }
 
