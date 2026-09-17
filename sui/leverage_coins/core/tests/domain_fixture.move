@@ -7,10 +7,6 @@
 /// configuration the production initializer does.
 module blast_leverage_core::domain_fixture;
 
-use blast_admin::acl::{Self, Authority, SuperAdminCap};
-use blast_leverage_core::blast_leverage_core::BLAST_LEVERAGE_CORE;
-use std::unit_test::{assert_eq, destroy};
-
 // === Constants ===
 
 const MAX_ADMINS: u64 = 16;
@@ -41,3 +37,11 @@ fun the_fixture_uses_this_packages_governance_constants() {
     destroy(authority);
     destroy(ctx);
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Self, Authority, SuperAdminCap};
+
+use blast_leverage_core::blast_leverage_core::BLAST_LEVERAGE_CORE;
+
+use std::unit_test::{assert_eq, destroy};

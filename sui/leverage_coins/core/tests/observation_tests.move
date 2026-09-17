@@ -2,10 +2,6 @@
 /// Tests for operation-scoped, venue-neutral observations.
 module blast_leverage_core::observation_tests;
 
-use std::unit_test::assert_eq;
-
-use blast_leverage_core::{observation, policy};
-
 // === Tests ===
 
 #[test]
@@ -144,3 +140,9 @@ fun funding_construction_preserves_each_settlement_variant() {
     assert_eq!(cost.amount(), 8);
     cost.destroy();
 }
+
+// === Imports ===
+
+use std::unit_test::assert_eq;
+
+use blast_leverage_core::{observation, policy};

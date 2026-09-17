@@ -5,17 +5,6 @@
 /// Currency, venue custody, ACL routing, and versioning belong to the adapter.
 module blast_leverage_core::state;
 
-use blast_admin::acl::AdminWitness;
-use blast_leverage_core::{
-    accounting_math,
-    constants,
-    lifecycle::{Self, Lifecycle},
-    observation::{Self, FundingSettlement, PositionObservation, PriceObservation},
-    policy::{PositionSide, VaultPolicy},
-    rebalance_math,
-    blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
-};
-
 // === Errors ===
 
 #[error(code = 0)]
@@ -1275,3 +1264,17 @@ public fun donate<Product>(
     let plan = self.prepare_donation(before, amount, reference_time_ms);
     self.complete_donation(plan, after, reference_time_ms);
 }
+
+// === Imports ===
+
+use blast_admin::acl::AdminWitness;
+
+use blast_leverage_core::{
+    accounting_math,
+    constants,
+    lifecycle::{Self, Lifecycle},
+    observation::{Self, FundingSettlement, PositionObservation, PriceObservation},
+    policy::{PositionSide, VaultPolicy},
+    rebalance_math,
+    blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
+};

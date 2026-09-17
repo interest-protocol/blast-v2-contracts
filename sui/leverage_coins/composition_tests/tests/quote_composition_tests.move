@@ -2,19 +2,6 @@
 /// Consumer-only native Quote integration; neither production package depends on the other.
 module blast_leverage_composition_tests::quote_composition_tests;
 
-use blast_admin::acl::{Self, AdminCap};
-use blast_fun::{
-    bps, creator_authority, launch::{Self, Launch}, launch_config,
-    launch_ticket, launchpad_domain::LAUNCHPAD_DOMAIN,
-    package_version::{Self, PackageVersion}, runtime_config::{Self, RuntimeConfig},
-};
-use blast_leverage_aftermath::{operations, protocol::Protocol, vault::Vault};
-use oracle_aggregator::price_feed_storage::PriceFeedStorage;
-use perpetuals::{account::Account, clearing_house::ClearingHouse, registry::Registry};
-use pyth::price_info::PriceInfoObject;
-use std::unit_test::{assert_eq, destroy};
-use sui::{clock::Clock, coin::{Self, Coin}, test_scenario};
-
 // === Constants ===
 
 const MAX_ADMINS: u64 = 16;
@@ -140,3 +127,25 @@ public fun sell_and_redeem<Product, Collateral, Meme>(
         base_oracle, collateral_oracle, base_price, collateral_price, shares,
         minimum_cash, maximum_fee, deadline, clock, ctx)
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Self, AdminCap};
+
+use blast_fun::{
+    bps, creator_authority, launch::{Self, Launch}, launch_config,
+    launch_ticket, launchpad_domain::LAUNCHPAD_DOMAIN,
+    package_version::{Self, PackageVersion}, runtime_config::{Self, RuntimeConfig},
+};
+
+use blast_leverage_aftermath::{operations, protocol::Protocol, vault::Vault};
+
+use oracle_aggregator::price_feed_storage::PriceFeedStorage;
+
+use perpetuals::{account::Account, clearing_house::ClearingHouse, registry::Registry};
+
+use pyth::price_info::PriceInfoObject;
+
+use std::unit_test::{assert_eq, destroy};
+
+use sui::{clock::Clock, coin::{Self, Coin}, test_scenario};

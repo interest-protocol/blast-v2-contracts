@@ -2,10 +2,6 @@
 /// Composition and validation tests for one immutable Vault policy.
 module blast_leverage_core::vault_policy_tests;
 
-use std::unit_test::assert_eq;
-
-use blast_leverage_core::{policy};
-
 // === Tests ===
 
 #[test]
@@ -44,7 +40,6 @@ fun fee_limits_accept_zero_exact_and_largest_legal_caps() {
     new_policy(true, 10, 20, 1, 1).with_fee_limits(10, 20, 2_000).assert_fee_limits(10, 20, 2_000);
     new_policy(true, 9_999, 9_999, 1, 1).with_fee_limits(9_999, 9_999, 10_000).assert_fee_limits(9_999, 9_999, 10_000);
 }
-
 
 #[test]
 fun a_complete_long_policy_is_composed_and_preserved() {
@@ -231,3 +226,9 @@ fun new_policy(
 fun standard_price_policy(): policy::PricePolicy {
     policy::new_price_policy(1, 0, 0, 0)
 }
+
+// === Imports ===
+
+use std::unit_test::assert_eq;
+
+use blast_leverage_core::{policy};

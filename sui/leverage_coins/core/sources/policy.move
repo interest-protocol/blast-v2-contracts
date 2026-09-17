@@ -4,8 +4,6 @@
 /// and owns no Vault or venue state.
 module blast_leverage_core::policy;
 
-use blast_leverage_core::constants;
-
 // === Errors ===
 
 #[error(code = 1)]
@@ -715,3 +713,7 @@ fun is_within_relative_tolerance(
 public fun initial_fee_rates_for_testing(self: &VaultPolicy): (u64, u64) {
     (self.mint_fee_bps, self.redeem_fee_bps)
 }
+
+// === Imports ===
+
+use blast_leverage_core::constants;

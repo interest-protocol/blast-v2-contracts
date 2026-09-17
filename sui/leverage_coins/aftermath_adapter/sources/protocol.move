@@ -6,9 +6,6 @@
 /// bytecode a governed upgrade cuts over to.
 module blast_leverage_aftermath::protocol;
 
-use blast_admin::operational_version::{Self, OperationalVersion};
-use blast_leverage_aftermath::aftermath::AFTERMATH;
-
 // === Constants ===
 
 /// Current adapter generation accepted by every protected mutation.
@@ -100,3 +97,9 @@ public fun assert_next_for_testing(self: &Protocol) {
 public fun assert_current_for_testing(self: &Protocol) {
     self.assert_current();
 }
+
+// === Imports ===
+
+use blast_admin::operational_version::{Self, OperationalVersion};
+
+use blast_leverage_aftermath::aftermath::AFTERMATH;

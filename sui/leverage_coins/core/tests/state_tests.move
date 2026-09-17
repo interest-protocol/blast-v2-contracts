@@ -2,19 +2,6 @@
 /// Tests for construction of adapter-custodied Series1 state.
 module blast_leverage_core::state_tests;
 
-use blast_admin::acl::{Authority, SuperAdminCap, AdminCap};
-use blast_leverage_core::{
-    accounting_math,
-    domain_fixture,
-    lifecycle,
-    observation::{Self, FundingSettlement, PositionObservation},
-    policy::{Self, PositionSide, VaultPolicy},
-    blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
-    state::{Self, State},
-};
-use std::unit_test::{assert_eq, destroy};
-use sui::test_scenario::{Self, Scenario};
-
 // === Constants ===
 
 const ROOT: address = @0xA11CE;
@@ -1914,3 +1901,21 @@ fun with_mark_price(mut self: ObservationSpec, mark_price: u64): ObservationSpec
     self.mark_price = mark_price;
     self
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Authority, SuperAdminCap, AdminCap};
+
+use blast_leverage_core::{
+    accounting_math,
+    domain_fixture,
+    lifecycle,
+    observation::{Self, FundingSettlement, PositionObservation},
+    policy::{Self, PositionSide, VaultPolicy},
+    blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
+    state::{Self, State},
+};
+
+use std::unit_test::{assert_eq, destroy};
+
+use sui::test_scenario::{Self, Scenario};

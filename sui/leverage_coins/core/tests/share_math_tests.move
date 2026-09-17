@@ -2,9 +2,6 @@
 /// Fee, mint, and redemption share accounting.
 module blast_leverage_core::share_math_tests;
 
-use blast_leverage_core::{accounting_math};
-use std::unit_test::assert_eq;
-
 // === Tests ===
 
 /// Catches a fee that truncates below one atomic unit or ignores the live rate.
@@ -780,3 +777,9 @@ fun assert_redemption_is_non_dilutive(
             >= (nav_before as u128) * (shares_after as u128),
     );
 }
+
+// === Imports ===
+
+use blast_leverage_core::{accounting_math};
+
+use std::unit_test::assert_eq;

@@ -10,14 +10,6 @@
 /// generation of its own.
 module blast_leverage_aftermath::package_admin;
 
-use blast_admin::{
-    acl::AdminWitness,
-    upgrade_custody::{Self, UpgradeCustody},
-};
-use blast_leverage_aftermath::{aftermath::AFTERMATH, protocol::Protocol};
-use blast_leverage_core::blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE};
-use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};
-
 // === Public Structs ===
 
 /// Shared, non-releasable adapter package authority.
@@ -170,3 +162,16 @@ public fun version_for_testing(self: &PackageAdmin): u64 {
 public fun policy_for_testing(self: &PackageAdmin): u8 {
     self.custody.policy_for_testing()
 }
+
+// === Imports ===
+
+use blast_admin::{
+    acl::AdminWitness,
+    upgrade_custody::{Self, UpgradeCustody},
+};
+
+use blast_leverage_aftermath::{aftermath::AFTERMATH, protocol::Protocol};
+
+use blast_leverage_core::blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE};
+
+use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};

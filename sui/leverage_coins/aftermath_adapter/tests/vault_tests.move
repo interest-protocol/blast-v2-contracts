@@ -2,29 +2,6 @@
 /// Stateful tests for multi-product issuance from one Aftermath adapter.
 module blast_leverage_aftermath::vault_tests;
 
-use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
-use blast_leverage_aftermath::{
-    domain_fixture,
-    events,
-    protocol::{Self, Protocol},
-    vault::{Self, Vault},
-};
-use blast_leverage_core::{
-    policy::{Self, VaultPolicy},
-    blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
-    test_risk_module::{Self, RiskModule, RiskModuleV2},
-};
-use std::{
-    string::String,
-    type_name::{Self, TypeName},
-    unit_test::{assert_eq, destroy},
-};
-use sui::{
-    coin_registry::{Self, CoinRegistry, Currency},
-    package,
-    test_scenario::{Self, Scenario},
-};
-
 // === Constants ===
 
 const SYSTEM: address = @0x0;
@@ -91,7 +68,6 @@ fun seed_funder_rejects_zero_before_activation() {
 fun seed_funder_accepts_the_first_nonzero_address() {
     vault::assert_seed_funder(@0x1);
 }
-
 
 #[test]
 fun distinct_issued_products_freeze_actual_long_short_2x_and_generic_4x_6x_policy() {
@@ -817,3 +793,32 @@ fun standard_vault_policy(): VaultPolicy {
         1_000_000_000,
     )
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
+
+use blast_leverage_aftermath::{
+    domain_fixture,
+    events,
+    protocol::{Self, Protocol},
+    vault::{Self, Vault},
+};
+
+use blast_leverage_core::{
+    policy::{Self, VaultPolicy},
+    blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
+    test_risk_module::{Self, RiskModule, RiskModuleV2},
+};
+
+use std::{
+    string::String,
+    type_name::{Self, TypeName},
+    unit_test::{assert_eq, destroy},
+};
+
+use sui::{
+    coin_registry::{Self, CoinRegistry, Currency},
+    package,
+    test_scenario::{Self, Scenario},
+};

@@ -2,9 +2,6 @@
 /// Maintenance-reserve accounting and cross-operation conservation tests.
 module blast_leverage_core::maintenance_math_tests;
 
-use blast_leverage_core::{accounting_math};
-use std::unit_test::assert_eq;
-
 // === Tests ===
 
 /// Pins reserve exclusion at zero, equality, and maximum-width boundaries.
@@ -1568,3 +1565,9 @@ fun canonical_mint(
     );
     (reserve_after, nav_before, nav_after, fee, contribution, shares_out, shares_before + shares_out)
 }
+
+// === Imports ===
+
+use blast_leverage_core::{accounting_math};
+
+use std::unit_test::assert_eq;

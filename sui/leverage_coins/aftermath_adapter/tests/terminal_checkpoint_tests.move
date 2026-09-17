@@ -2,9 +2,6 @@
 /// Exact terminal venue finality and state-derived sub-atomic collateral remainder.
 module blast_leverage_aftermath::terminal_checkpoint_tests;
 
-use blast_leverage_aftermath::venue_account::{Self, Checkpoint};
-use std::unit_test::assert_eq;
-
 // === Tests ===
 
 #[test]
@@ -147,3 +144,9 @@ fun checkpoint(base: u256, quote: u256, allocated: u256, pending: u64, funding: 
     venue_account::new_checkpoint(free, allocated, base, quote, funding, 10, 9, 10,
         1_000, 0, 0, pending, 0, false, 0, 0, 0)
 }
+
+// === Imports ===
+
+use blast_leverage_aftermath::venue_account::{Self, Checkpoint};
+
+use std::unit_test::assert_eq;

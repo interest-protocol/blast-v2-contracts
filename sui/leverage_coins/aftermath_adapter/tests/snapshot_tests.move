@@ -2,11 +2,6 @@
 /// Literal-vector tests for authenticated Aftermath snapshot normalization.
 module blast_leverage_aftermath::snapshot_tests;
 
-use blast_leverage_aftermath::snapshot;
-use blast_leverage_aftermath::venue_account;
-use blast_leverage_core::policy;
-use std::unit_test::assert_eq;
-
 // === Tests ===
 
 #[test]
@@ -499,3 +494,13 @@ fun checkpoint(
         16,
     )
 }
+
+// === Imports ===
+
+use blast_leverage_aftermath::snapshot;
+
+use blast_leverage_aftermath::venue_account;
+
+use blast_leverage_core::policy;
+
+use std::unit_test::assert_eq;

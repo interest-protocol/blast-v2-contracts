@@ -1,9 +1,6 @@
 #[test_only]
 module blast_leverage_aftermath::errors_tests;
 
-use blast_leverage_aftermath::errors;
-use std::unit_test::assert_eq;
-
 #[test]
 fun adapter_error_registry_is_stable() {
     // Codes 0, 1, 5, 6, and 7 are retired: generation checking, custody
@@ -63,3 +60,9 @@ fun active_lifecycle_error_registry_is_stable() {
     assert_eq!(errors::terminal_venue_unsettled!(), 54);
     assert_eq!(errors::invalid_unwind_exposure!(), 55);
 }
+
+// === Imports ===
+
+use blast_leverage_aftermath::errors;
+
+use std::unit_test::assert_eq;

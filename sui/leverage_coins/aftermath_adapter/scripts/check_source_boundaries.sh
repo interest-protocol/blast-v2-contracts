@@ -13,15 +13,14 @@ snapshot_file="$package_dir/sources/snapshot.move"
 operations_file="$package_dir/sources/operations.move"
 package_admin_file="$package_dir/sources/package_admin.move"
 aftermath_file="$package_dir/sources/aftermath.move"
-product_file="$package_dir/sources/product.move"
 series_dir="$(cd "$package_dir/../core" && pwd)"
 
 grep -q '^name = "blast_leverage_aftermath"$' "$manifest" \
   || fail "Move.toml must name blast_leverage_aftermath."
 grep -q 'blast_leverage_core = { local = "../core" }' "$manifest" \
-  || fail "The adapter must depend inward on Series1."
+  || fail "The adapter must depend inward on the core."
 if grep -q 'blast_leverage_aftermath' "$series_dir/Move.toml"; then
-  fail "Series1 must never depend back on the Aftermath adapter."
+  fail "the core must never depend back on the Aftermath adapter."
 fi
 
 for required in \
@@ -32,7 +31,6 @@ for required in \
   "$operations_file" \
   "$package_admin_file" \
   "$aftermath_file" \
-  "$product_file" \
   "$package_dir/sources/lib/constants.move" \
   "$package_dir/sources/lib/errors.move" \
   "$package_dir/sources/lib/events.move" \
@@ -44,13 +42,10 @@ if grep -rniE 'AdapterRoot|AdapterDomain|venue_handoff' "$package_dir/sources"; 
   fail "The adapter must not reintroduce a per-adapter ACL root or handoff layer."
 fi
 
-grep -q '^public struct Product<phantom Tag>() has drop;$' "$product_file" \
-  || fail "Product witnesses must be stateless, droppable, and tag-scoped."
-grep -q '^public fun new<Tag>(): Product<Tag> {$' "$product_file" \
-  || fail "Product tags must have one public stateless constructor."
-if grep -Eq '\b(TxContext|AdminWitness|AdminCap|UID|key|store|copy)\b' "$product_file"; then
-  fail "Product witnesses must carry no state or authority."
-fi
+# A Vault is tagged by any non-primitive droppable type; the issuer role is
+# the only gate, so no product wrapper or runtime witness value exists.
+[[ ! -e "$package_dir/sources/product.move" ]] \
+  || fail "The adapter must not reintroduce a Product wrapper; the issuer role is the only gate."
 if grep -rniE '^(public )?struct [A-Za-z0-9_]*AdminCap' "$package_dir/sources"; then
   fail "The adapter must not define an adapter-local AdminCap."
 fi
@@ -74,7 +69,7 @@ grep -q '^const NEXT_PACKAGE_VERSION: u64 = 2;$' "$protocol_file" \
 grep -q '^fun init(ctx: &mut TxContext) {$' "$protocol_file" \
   || fail "The adapter generation must be shared by its own initializer."
 if grep -rEq '\b(ProtocolAuthority|SuperAdminCap|AdminCap)\b' "$package_dir/sources"; then
-  fail "Adapter functions must accept a Series1 AdminWitness, not ACL state or caps."
+  fail "Adapter functions must accept a the core AdminWitness, not ACL state or caps."
 fi
 if grep -rnE '^public struct (Authority|SuperAdminCap|AdminCap|AdminWitness|OperationalVersion|UpgradeCustody)\b' \
   "$package_dir/sources"; then
@@ -84,13 +79,13 @@ if grep -Eq 'AdminWitness|activate' <<<"$protocol_production"; then
   fail "The adapter generation container must not carry administration or a separate activation."
 fi
 if grep -rEq 'fun sign_in\(|(grant|revoke)_(admin|role)' "$package_dir/sources"; then
-  fail "The adapter must not proxy or reimplement Series1 ACL management."
+  fail "The adapter must not proxy or reimplement the core ACL management."
 fi
 
 grep -q '^public struct Vault<phantom Product> has key {$' "$vault_file" \
   || fail "The adapter must define one Vault type per product witness."
 grep -q 'series_state: State<Product>' "$vault_file" \
-  || fail "The adapter Vault must wrap the Series1 state value."
+  || fail "The adapter Vault must wrap the the core state value."
 if grep -qE 'adapter_storage|Bag|bag::' "$vault_file"; then
   fail "Vault must not carry speculative extension storage."
 fi
@@ -196,9 +191,9 @@ if grep -qE 'Bag|bag::|dynamic_(object_)?field' "$venue_account_file"; then
 fi
 grep -q '^public fun issue<Product: drop, RiskModule: drop>($' "$vault_file" \
   || fail "Issuance must be generic over product and risk witnesses."
-sed -n '/^public fun issue</,/^)/p' "$vault_file" \
-  | grep -q '_: Product,' \
-  || fail "Issuance must consume a runtime product witness."
+if sed -n '/^public fun issue</,/^)/p' "$vault_file" | grep -q '_: Product,'; then
+  fail "Issuance takes no product witness value; the issuer role is the only gate."
+fi
 sed -n '/^public fun issue</,/^)/p' "$vault_file" \
   | grep -q '_risk_module: RiskModule,' \
   || fail "Issuance must consume the initially selected runtime risk witness."
@@ -208,10 +203,9 @@ if sed -n '/^public fun issue</,/^}/p' "$vault_file" \
   | grep -qE 'PackageAdmin|assert_adapter_custody'; then
   fail "Vault issuance must not re-read sealed package custody."
 fi
-grep -q 'type_name::original_id<Product>()' "$vault_file" \
-  || fail "Issuance must inspect the product witness origin."
-grep -q 'type_name::original_id<AFTERMATH>()' "$vault_file" \
-  || fail "Product witnesses must originate from the Aftermath adapter package."
+sed -n '/^public fun issue</,/^}/p' "$vault_file" \
+  | grep -q 'is_primitive()' \
+  || fail "Issuance must reject primitive product tags."
 grep -q 'registry.new_currency<Vault<Product>>' "$vault_file" \
   || fail "Coin Registry must enforce one currency per product witness type."
 grep -q 'initializer.finalize(ctx)' "$vault_file" \
@@ -241,17 +235,17 @@ sed -n '/^public fun rotate_risk_module</,/^)/p' "$vault_file" \
 grep -q '^public fun begin_shutdown<Product>($' "$vault_file" \
   || fail "The adapter must expose irreversible shutdown."
 sed -n '/^public fun begin_shutdown<Product>($/,/^}/p' "$vault_file" \
-  | grep -q 'admin_witness.assert_role(series_one_domain::shutdown_admin_role());' \
+  | grep -q 'admin_witness.assert_role(domain::shutdown_admin_role());' \
   || fail "Only shutdown-role authority may begin shutdown."
 sed -n '/^public fun rotate_risk_module</,/^}/p' "$vault_file" \
-  | grep -q 'admin_witness.assert_role(series_one_domain::risk_admin_role());' \
-  || fail "Risk rotation must require the Series1 risk-admin role."
+  | grep -q 'admin_witness.assert_role(domain::risk_admin_role());' \
+  || fail "Risk rotation must require the the core risk-admin role."
 grep -q 'admin_witness: &AdminWitness,' "$vault_file" \
-  && fail "Every administered Vault operation must take the typed Series1-domain witness."
-witness_params="$(grep -c 'admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,' "$vault_file")"
-role_checks="$(grep -c 'admin_witness.assert_role(series_one_domain::' "$vault_file")"
+  && fail "Every administered Vault operation must take the typed the core-domain witness."
+witness_params="$(grep -c 'admin_witness: &AdminWitness<BLAST_LEVERAGE_CORE>,' "$vault_file")"
+role_checks="$(grep -c 'admin_witness.assert_role(domain::' "$vault_file")"
 [[ "$witness_params" -eq $((role_checks + 1)) ]] \
-  || fail "Every administered Vault operation except issuance, whose issuer role Series1 asserts, must assert its own Series1-domain role."
+  || fail "Every administered Vault operation except issuance, whose issuer role the core asserts, must assert its own the core-domain role."
 
 # Custody wraps the shared sealed value. Provenance is proved once, by this
 # package for the Publisher module and by blast_admin for the cap.
@@ -293,9 +287,9 @@ expected_package_admin_public="$(printf '%s\n' \
   || fail "The adapter package-administration surface changed without boundary review."
 [[ "$(grep -c 'protocol.assert_current();' <<<"$package_admin_production")" -eq 4 ]] \
   || fail "Every non-finalizer custody transition must check the current generation first."
-[[ "$(grep -c 'admin_witness.assert_role(series_one_domain::package_admin_role());' \
+[[ "$(grep -c 'admin_witness.assert_role(domain::package_admin_role());' \
   <<<"$package_admin_production")" -eq 5 ]] \
-  || fail "Every custody transition must assert the Series1 package-admin role."
+  || fail "Every custody transition must assert the the core package-admin role."
 grep -q 'protocol.assert_next();' "$package_admin_file" \
   || fail "The finalizer must prove the exact next generation before committing."
 grep -q 'self.custody.commit_upgrade(custodian_id, receipt);' "$package_admin_file" \
@@ -365,10 +359,10 @@ grep -q 'let pnl = position.unrealized_pnl(base_fixed);' "$snapshot_file" \
 if grep -q 'position.unrealized_pnl(mark_fixed)' "$snapshot_file"; then
   fail "Mark price may affect venue margin and divergence, not shareholder NAV."
 fi
-grep -q 'let (absolute_notional, notional_representable) = base_notional_health(' "$snapshot_file" \
+grep -q 'let (position_collateral, notional_representable) = base_notional_health(' "$snapshot_file" \
   || fail "Current leverage notional must use base size and the authenticated Pyth index."
 snapshot_shape="$(tr -d '[:space:]' < "$snapshot_file")"
-grep -q 'base_notional_health(absolute_base,base_risk_price,collateral_price,)' \
+grep -q 'base_notional_health(position_base,base_risk_price,collateral_price,)' \
   <<<"$snapshot_shape" \
   && grep -q 'normalize_pyth_component_health(price_magnitude,&expo,true)' \
   <<<"$snapshot_shape" \
@@ -467,7 +461,7 @@ activation_event_block="$(
 )"
 [[ "$(grep -Fc 'events::vault_initialized<Product>(' <<<"$activation_event_block")" -eq 1 ]] \
   || fail "The state-derived activation helper must emit exactly one activation event."
-grep -q 'vault.venue_binding().unpack_binding()' <<<"$activation_event_block" \
+grep -q 'let binding = vault.venue_binding();' <<<"$activation_event_block" \
   || fail "Activation events must read immutable binding fields from the resulting Vault."
 grep -q 'let checkpoint = \*vault.venue_checkpoint();' <<<"$activation_event_block" \
   || fail "Activation events must read the resulting Vault checkpoint."
@@ -655,10 +649,10 @@ post_capture_line() {
   grep -nF "$needle" <<<"$post_capture_block" | head -1 | cut -d: -f1
 }
 post_stored_line="$(post_capture_line 'let stored_checkpoint = *vault.venue_checkpoint();')"
-post_net_line="$(post_capture_line 'let net = snapshot::net_funding(preexisting_change, local_change);')"
-post_fields_line="$(post_capture_line 'snapshot::funding_change_fields(&net)')"
+post_net_line="$(post_capture_line 'let net = preexisting_change.net_funding(local_change);')"
+post_fields_line="$(post_capture_line 'let checkpoint_clean = net.is_clean();')"
 post_settle_line="$(post_capture_line 'vault.settle_funding(is_cost, amount)')"
-post_finish_line="$(post_capture_line 'let checkpoint = snapshot::finish_health(')"
+post_finish_line="$(post_capture_line 'let checkpoint = post_capture.finish_health();')"
 post_persist_line="$(post_capture_line 'vault.replace_venue_checkpoint(checkpoint);')"
 post_funding_event_line="$(post_capture_line 'events::funding_settled<Product>(')"
 post_health_decision_line="$(post_capture_line 'if (diagnostic_changed) {')"
@@ -696,7 +690,7 @@ for operation in unwind finalize_shutdown; do
   operation_block="$(sed -n "/^public fun $operation</,/^}/p" "$operations_file")"
   grep -q 'protocol.assert_current();' <<<"$operation_block" \
     && grep -q 'vault.assert_unwinding();' <<<"$operation_block" \
-    && grep -q 'vault.assert_collateral_type<Product, Collateral>();' <<<"$operation_block" \
+    && grep -q 'vault.assert_collateral_type<_, Collateral>();' <<<"$operation_block" \
     || fail "$operation must enforce version, irreversible lifecycle and exact collateral."
   first_statement="$(sed -n '/^) {$/,$p' <<<"$operation_block" | sed -n '2p')"
   [[ "$first_statement" == '    protocol.assert_current();' ]] \
@@ -739,7 +733,7 @@ for helper in complete_unwind complete_finalization; do
 done
 rebalance_block="$(sed -n '/^public fun rebalance</,/^}/p' "$operations_file")"
 redemption_block="$(sed -n '/^public fun redeem</,/^}/p' "$operations_file")"
-withdrawal_proof_line="$(grep -nF 'venue_account::assert_withdrawal_checkpoint(&receipt.unwound_checkpoint, &final_checkpoint, receipt.redemption_cash_required());' <<<"$redemption_block" | cut -d: -f1)"
+withdrawal_proof_line="$(grep -nF 'receipt.unwound_checkpoint.assert_withdrawal_checkpoint(&final_checkpoint, receipt.redemption_cash_required());' <<<"$redemption_block" | cut -d: -f1)"
 redemption_completion_line="$(grep -nF 'let cash = complete_redemption(' <<<"$redemption_block" | cut -d: -f1)"
 [[ -n "$withdrawal_proof_line" && -n "$redemption_completion_line" ]] \
   && (( withdrawal_proof_line < redemption_completion_line )) \
@@ -805,7 +799,7 @@ awk '
   /^\).* \{$/ {
     getline
     found = 1
-    valid = ($0 == "    admin_witness.assert_role(series_one_domain::package_admin_role());")
+    valid = ($0 == "    admin_witness.assert_role(domain::package_admin_role());")
   }
   END { exit !(found && valid) }
 ' <<<"$finalizer_block" \

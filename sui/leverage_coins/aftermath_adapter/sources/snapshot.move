@@ -3,21 +3,6 @@
 /// Authenticated Aftermath/Pyth normalization and raw checkpoint comparison.
 module blast_leverage_aftermath::snapshot;
 
-use blast_leverage_aftermath::venue_account::{Self as venue_account, Binding, Checkpoint};
-use blast_leverage_core::{observation, policy::{Self, PositionSide}};
-use ifixed::ifixed;
-use oracle_aggregator::{price_feed, price_feed_storage::{Self, PriceFeedStorage}};
-use perpetuals::{
-    account::{Self, Account},
-    clearing_house::{Self, ClearingHouse},
-    market,
-    registry::Registry,
-};
-use position::position;
-use pyth::{i64, price, price_feed as pyth_price_feed, price_info::{Self, PriceInfoObject}};
-use sui::clock::Clock;
-use std::type_name;
-
 /// Converts nine-decimal base atoms to six-decimal collateral atoms.
 const COLLATERAL_TO_BASE_SCALE: u256 = 1_000;
 
@@ -355,7 +340,6 @@ public(package) fun collateral_price_observation(self: &CapturedSnapshot): obser
 /// Returns the raw IFixed collateral reading behind the capture.
 public(package) fun collateral_fixed(self: &CapturedSnapshot): u256 { self.collateral_fixed }
 
-
 /// A terminal market close may realize losses, but cannot misattribute an unrelated funding mutation.
 public(package) fun assert_clean_funding(change: Change) {
     assert!(match (change) { Change::Unexpected => false, _ => true },
@@ -443,7 +427,6 @@ public fun unpack_facts_for_testing(self: SnapshotFacts): (u64, u64, u64, u64, P
     (self.venue_equity, self.position_base, self.position_collateral, self.lot_size, self.side,
         self.base_price, self.collateral_price)
 }
-
 
 /// Classifies only an isolated funding-snapshot and allocated-collateral change.
 public(package) fun classify_change(
@@ -1334,3 +1317,28 @@ public fun signed_equity_strict_for_testing(
     assert!(representable, blast_leverage_aftermath::errors::normalization_overflow!());
     equity
 }
+
+// === Imports ===
+
+use blast_leverage_aftermath::venue_account::{Self as venue_account, Binding, Checkpoint};
+
+use blast_leverage_core::{observation, policy::{Self, PositionSide}};
+
+use ifixed::ifixed;
+
+use oracle_aggregator::{price_feed, price_feed_storage::{Self, PriceFeedStorage}};
+
+use perpetuals::{
+    account::{Self, Account},
+    clearing_house::{Self, ClearingHouse},
+    market,
+    registry::Registry,
+};
+
+use position::position;
+
+use pyth::{i64, price, price_feed as pyth_price_feed, price_info::{Self, PriceInfoObject}};
+
+use sui::clock::Clock;
+
+use std::type_name;

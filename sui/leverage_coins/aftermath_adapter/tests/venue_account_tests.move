@@ -2,9 +2,6 @@
 /// Pure binding tests for sealed Aftermath venue custody.
 module blast_leverage_aftermath::venue_account_tests;
 
-use blast_leverage_aftermath::venue_account::{Self, Binding};
-use std::{type_name, unit_test::{assert_eq, destroy}};
-
 // === Constants ===
 
 const ACCOUNT_NUMBER: u64 = 7;
@@ -357,3 +354,9 @@ fun assert_standard_checkpoint(checkpoint: &venue_account::Checkpoint) {
     assert_eq!(market_initial_margin_ratio, 15);
     assert_eq!(market_maintenance_margin_ratio, 16);
 }
+
+// === Imports ===
+
+use blast_leverage_aftermath::venue_account::{Self, Binding};
+
+use std::{type_name, unit_test::{assert_eq, destroy}};

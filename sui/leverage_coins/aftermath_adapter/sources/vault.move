@@ -4,34 +4,6 @@
 /// Adapter-owned Vault, leverage currency, and venue storage.
 module blast_leverage_aftermath::vault;
 
-use blast_admin::acl::AdminWitness;
-use blast_leverage_aftermath::{
-    aftermath::AFTERMATH,
-    constants,
-    events,
-    protocol::Protocol,
-    venue_account::{Self as venue_account, Binding, Checkpoint, TerminalWithdrawal, VenueAccount},
-};
-use blast_leverage_core::{
-    observation::{Self as observation, PositionObservation, PriceObservation},
-    policy::{PositionSide, VaultPolicy},
-    blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
-    state::{Self as series_state, DonationPlan, MintPlan, RebalancePlan, RedemptionPlan, State},
-};
-use perpetuals::{account::Account, clearing_house::{ClearingHouse, SessionSummary}, registry::Registry};
-use oracle_aggregator::price_feed_storage::PriceFeedStorage;
-use std::{string::String, type_name::{Self, TypeName}};
-use sui::{
-    balance::{Self, Balance},
-    coin::{Self, Coin, TreasuryCap},
-    coin_registry::{CoinRegistry, MetadataCap},
-    clock::Clock,
-    dynamic_field,
-    dynamic_object_field,
-};
-
-use fun dynamic_object_field::add as UID.add_dynamic_object_field;
-
 // === Public Structs ===
 
 /// Shared adapter custody for one Series1 leverage currency and product.
@@ -935,3 +907,39 @@ public fun mint_eligible_shares_for_testing<Product>(
 public fun is_unwinding_for_testing<Product>(self: &Vault<Product>): bool {
     self.series_state.is_unwinding_for_testing()
 }
+
+// === Imports ===
+
+use blast_admin::acl::AdminWitness;
+
+use blast_leverage_aftermath::{
+    aftermath::AFTERMATH,
+    constants,
+    events,
+    protocol::Protocol,
+    venue_account::{Self as venue_account, Binding, Checkpoint, TerminalWithdrawal, VenueAccount},
+};
+
+use blast_leverage_core::{
+    observation::{Self as observation, PositionObservation, PriceObservation},
+    policy::{PositionSide, VaultPolicy},
+    blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
+    state::{Self as series_state, DonationPlan, MintPlan, RebalancePlan, RedemptionPlan, State},
+};
+
+use perpetuals::{account::Account, clearing_house::{ClearingHouse, SessionSummary}, registry::Registry};
+
+use oracle_aggregator::price_feed_storage::PriceFeedStorage;
+
+use std::{string::String, type_name::{Self, TypeName}};
+
+use sui::{
+    balance::{Self, Balance},
+    coin::{Self, Coin, TreasuryCap},
+    coin_registry::{CoinRegistry, MetadataCap},
+    clock::Clock,
+    dynamic_field,
+    dynamic_object_field,
+};
+
+use fun dynamic_object_field::add as UID.add_dynamic_object_field;

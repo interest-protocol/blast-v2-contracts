@@ -9,18 +9,6 @@
 /// wiring, provenance, and guard order.
 module blast_leverage_aftermath::package_admin_tests;
 
-use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
-use blast_leverage_aftermath::{
-    aftermath::{Self, AFTERMATH},
-    domain_fixture,
-    errors,
-    package_admin::{Self, PackageAdmin},
-    protocol::{Self, Protocol},
-};
-use blast_leverage_core::blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE};
-use std::unit_test::{assert_eq, destroy};
-use sui::{package, test_scenario::{Self, Scenario}};
-
 // === Constants ===
 
 const ROOT: address = @0xA11CE;
@@ -379,3 +367,21 @@ fun make_immutable(self: &mut Fixture) {
 
     package_admin.make_immutable(protocol, &admin_witness);
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
+
+use blast_leverage_aftermath::{
+    aftermath::{Self, AFTERMATH},
+    domain_fixture,
+    errors,
+    package_admin::{Self, PackageAdmin},
+    protocol::{Self, Protocol},
+};
+
+use blast_leverage_core::blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE};
+
+use std::unit_test::{assert_eq, destroy};
+
+use sui::{package, test_scenario::{Self, Scenario}};

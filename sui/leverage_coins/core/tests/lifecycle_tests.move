@@ -2,8 +2,6 @@
 /// Series lifecycle transitions and operation-permission matrix.
 module blast_leverage_core::lifecycle_tests;
 
-use blast_leverage_core::{lifecycle};
-
 // === Tests ===
 
 #[test]
@@ -269,3 +267,7 @@ fun unwinding_rejects_shutdown_redemption() {
     lifecycle::unwinding_for_testing()
         .assert_shutdown_redemption_allowed();
 }
+
+// === Imports ===
+
+use blast_leverage_core::{lifecycle};

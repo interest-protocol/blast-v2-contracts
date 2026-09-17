@@ -1,8 +1,6 @@
 /// Canonical package marker for this adapter.
 module blast_leverage_aftermath::aftermath;
 
-use sui::package::Publisher;
-
 // === Public Structs ===
 
 /// One-time witness used only to claim this package's Publisher.
@@ -31,3 +29,7 @@ public fun init_for_testing(ctx: &mut TxContext) {
 public fun publisher_for_testing(ctx: &mut TxContext): Publisher {
     sui::package::test_claim(AFTERMATH(), ctx)
 }
+
+// === Imports ===
+
+use sui::package::Publisher;

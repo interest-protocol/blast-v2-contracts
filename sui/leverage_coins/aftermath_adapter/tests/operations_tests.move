@@ -2,32 +2,6 @@
 /// Tests for atomic Aftermath Vault initialization seams.
 module blast_leverage_aftermath::operations_tests;
 
-use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
-use blast_leverage_aftermath::{
-    domain_fixture,
-    events,
-    operations,
-    protocol::{Self, Protocol},
-    snapshot,
-    vault::{Self as vault, Vault},
-    venue_account,
-};
-use blast_leverage_core::{
-    observation,
-    policy,
-    blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
-    test_risk_module::{Self, RiskModule, RiskModuleV2},
-};
-use std::{
-    string::String,
-    type_name,
-    unit_test::{assert_eq, destroy},
-};
-use sui::{
-    coin_registry::{Self, CoinRegistry},
-    test_scenario::{Self, Scenario},
-};
-
 // === Constants ===
 
 const SYSTEM: address = @0x0;
@@ -518,7 +492,6 @@ fun unresolved_checkpoint_precedes_invalid_buffer_release_amount() {
     destroy(vault);
     fixture.end();
 }
-
 
 #[test]
 fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_change() {
@@ -3013,3 +2986,35 @@ fun replay_health<Tag>(
         replay.unresolved_checkpoint = option::some(checkpoint);
     };
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
+
+use blast_leverage_aftermath::{
+    domain_fixture,
+    events,
+    operations,
+    protocol::{Self, Protocol},
+    snapshot,
+    vault::{Self as vault, Vault},
+    venue_account,
+};
+
+use blast_leverage_core::{
+    observation,
+    policy,
+    blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
+    test_risk_module::{Self, RiskModule, RiskModuleV2},
+};
+
+use std::{
+    string::String,
+    type_name,
+    unit_test::{assert_eq, destroy},
+};
+
+use sui::{
+    coin_registry::{Self, CoinRegistry},
+    test_scenario::{Self, Scenario},
+};

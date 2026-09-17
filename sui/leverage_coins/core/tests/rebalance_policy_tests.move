@@ -2,10 +2,6 @@
 /// Structural and boundary tests for immutable rebalance policy.
 module blast_leverage_core::rebalance_policy_tests;
 
-use std::unit_test::assert_eq;
-
-use blast_leverage_core::{policy};
-
 // === Tests ===
 
 #[test]
@@ -304,3 +300,9 @@ fun new_with_thresholds(
         1,
     )
 }
+
+// === Imports ===
+
+use std::unit_test::assert_eq;
+
+use blast_leverage_core::{policy};

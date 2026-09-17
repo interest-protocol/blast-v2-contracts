@@ -19,8 +19,6 @@
 /// a separate successful health transition for that loss state.
 module blast_leverage_core::accounting_math;
 
-use blast_leverage_core::constants;
-
 // === Errors ===
 
 #[error(code = 0)]
@@ -791,3 +789,7 @@ fun narrow_to_u64(wide: u128): u64 {
 
     wide as u64
 }
+
+// === Imports ===
+
+use blast_leverage_core::constants;

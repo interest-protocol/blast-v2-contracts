@@ -7,14 +7,6 @@
 /// Series1 administration is independent of the adapter generation.
 module blast_leverage_aftermath::protocol_tests;
 
-use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
-use blast_leverage_aftermath::{aftermath::AFTERMATH, domain_fixture, protocol};
-use blast_leverage_core::{
-    blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
-};
-use std::unit_test::{assert_eq, destroy};
-use sui::test_scenario;
-
 // === Constants ===
 
 const ROOT: address = @0xA11CE;
@@ -168,3 +160,17 @@ fun start(roles: u64): Fixture {
 
     Fixture { scenario, protocol, authority, super_admin_cap, admin_cap }
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
+
+use blast_leverage_aftermath::{aftermath::AFTERMATH, domain_fixture, protocol};
+
+use blast_leverage_core::{
+    blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
+};
+
+use std::unit_test::{assert_eq, destroy};
+
+use sui::test_scenario;

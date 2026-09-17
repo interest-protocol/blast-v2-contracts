@@ -175,6 +175,7 @@ state_admin_witness_violations="$(
         sub(/[<(].*$/, "", declaration)
         function_name = declaration
       }
+      /^[0-9]+:\/\/ === / { function_name = "" }
       function_name != "" && function_name != "new" && /AdminWitness/ { print }
     '
 )"

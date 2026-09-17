@@ -2,9 +2,6 @@
 /// Leverage, target notional, and the two-sided proportional-exposure bounds.
 module blast_leverage_core::exposure_math_tests;
 
-use blast_leverage_core::{accounting_math};
-use std::unit_test::assert_eq;
-
 // === Tests ===
 
 /// Catches reporting an unsafe position as safer than it is.
@@ -1043,3 +1040,9 @@ fun drift_after_worst_case_mints(
         nav,
     )
 }
+
+// === Imports ===
+
+use blast_leverage_core::{accounting_math};
+
+use std::unit_test::assert_eq;

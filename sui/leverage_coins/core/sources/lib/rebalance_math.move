@@ -1,8 +1,6 @@
 /// Whole-lot, fixed-pair sizing with conservative per-session execution headroom.
 module blast_leverage_core::rebalance_math;
 
-use blast_leverage_core::constants;
-
 // === Errors ===
 
 #[error(code = 2)]
@@ -128,3 +126,7 @@ public(package) fun reduction_is_sufficient(
 
     (within_one_lot_of_target && not_farther_than_before) || improved_by_minimum
 }
+
+// === Imports ===
+
+use blast_leverage_core::constants;

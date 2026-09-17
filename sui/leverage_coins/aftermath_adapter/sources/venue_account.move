@@ -4,18 +4,6 @@
 /// Exact Aftermath account custody and immutable venue binding.
 module blast_leverage_aftermath::venue_account;
 
-use authority_cap::authority::{Self, ADMIN, AuthorityCap};
-use ifixed::ifixed;
-use oracle_aggregator::price_feed_storage::PriceFeedStorage;
-use perpetuals::{
-    account::{Self, Account},
-    authority::ACCOUNT,
-    clearing_house::{Self, ClearingHouse, SessionSummary},
-    registry::Registry,
-};
-use std::type_name::TypeName;
-use sui::{clock::Clock, coin::Coin};
-
 // === Public Types ===
 
 /// Immutable external object graph for one Aftermath leverage account.
@@ -440,7 +428,6 @@ public(package) fun collateral_oracle_id(self: &Binding): ID { self.collateral_o
 
 public(package) fun collateral_type(self: &Binding): TypeName { self.collateral_type }
 
-
 /// Borrows the latest authenticated raw checkpoint immutably.
 public(package) fun checkpoint(self: &VenueAccount): &Checkpoint {
     &self.checkpoint
@@ -734,3 +721,22 @@ public fun checkpoint_for_testing(
         market_maintenance_margin_ratio,
     )
 }
+
+// === Imports ===
+
+use authority_cap::authority::{Self, ADMIN, AuthorityCap};
+
+use ifixed::ifixed;
+
+use oracle_aggregator::price_feed_storage::PriceFeedStorage;
+
+use perpetuals::{
+    account::{Self, Account},
+    authority::ACCOUNT,
+    clearing_house::{Self, ClearingHouse, SessionSummary},
+    registry::Registry,
+};
+
+use std::type_name::TypeName;
+
+use sui::{clock::Clock, coin::Coin};

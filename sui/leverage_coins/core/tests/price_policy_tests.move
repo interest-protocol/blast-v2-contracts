@@ -2,10 +2,6 @@
 /// Validation and gate tests for the immutable Series valuation policy.
 module blast_leverage_core::price_policy_tests;
 
-use std::unit_test::assert_eq;
-
-use blast_leverage_core::{policy};
-
 // === Tests ===
 
 #[test]
@@ -508,3 +504,9 @@ fun divergence_policy(
 ): policy::PricePolicy {
     policy::new_price_policy(1, 0, 0, max_mark_divergence_bps)
 }
+
+// === Imports ===
+
+use std::unit_test::assert_eq;
+
+use blast_leverage_core::{policy};

@@ -2,9 +2,6 @@
 /// Independent boundary vectors for per-session cost-aware rebalance sizing.
 module blast_leverage_core::rebalance_math_tests;
 
-use blast_leverage_core::{rebalance_math};
-use std::unit_test::assert_eq;
-
 // === Tests ===
 
 #[test]
@@ -56,13 +53,11 @@ fun sizing_rejects_fee_first_above_full_rate() {
     rebalance_math::execution_cost_up(1, 10_001, 0);
 }
 
-
 #[test]
 #[expected_failure(abort_code = rebalance_math::EVenueFeeUnusable, location = blast_leverage_core::rebalance_math)]
 fun sizing_rejects_tolerance_at_full_rate() {
     rebalance_math::execution_cost_up(1, 0, 10_000);
 }
-
 
 #[test]
 #[expected_failure(abort_code = rebalance_math::EArithmeticOverflow, location = blast_leverage_core::rebalance_math)]
@@ -70,13 +65,11 @@ fun sizing_rejects_target_width_overflow() {
     rebalance_math::increase_base_down(std::u64::max_value!(), 0, 20_000, 1_000, 1, 1, 1, 0, 0, 1_000_000_000, 1_000_000);
 }
 
-
 #[test]
 #[expected_failure(abort_code = rebalance_math::EArithmeticOverflow, location = blast_leverage_core::rebalance_math)]
 fun sizing_rejects_base_width_overflow() {
     rebalance_math::base_for_notional_down(std::u64::max_value!(), 1, 1, 1, 1_000_000_000, 1_000_000);
 }
-
 
 #[test]
 #[expected_failure(abort_code = rebalance_math::EArithmeticOverflow, location = blast_leverage_core::rebalance_math)]
@@ -84,13 +77,11 @@ fun sizing_rejects_notional_width_overflow() {
     rebalance_math::index_notional_up(std::u64::max_value!(), 1_001, 1, 1_000_000_000, 1_000_000);
 }
 
-
 #[test]
 #[expected_failure(abort_code = rebalance_math::EInvalidNav, location = blast_leverage_core::rebalance_math)]
 fun sizing_rejects_zero_nav_before_invalid_target() {
     rebalance_math::increase_base_down(0, 0, 0, 0, 0, 0, 0, 0, 0, 1_000_000_000, 1_000_000);
 }
-
 
 #[test]
 #[expected_failure(abort_code = rebalance_math::EInvalidTargetLeverageBps, location = blast_leverage_core::rebalance_math)]
@@ -98,20 +89,17 @@ fun sizing_rejects_zero_target_before_invalid_price() {
     rebalance_math::increase_base_down(1, 0, 0, 0, 0, 0, 0, 0, 0, 1_000_000_000, 1_000_000);
 }
 
-
 #[test]
 #[expected_failure(abort_code = rebalance_math::EInvalidValuationPrice, location = blast_leverage_core::rebalance_math)]
 fun sizing_rejects_invalid_price_before_zero_lot() {
     rebalance_math::base_for_notional_down(1, 0, 1, 0, 1_000_000_000, 1_000_000);
 }
 
-
 #[test]
 #[expected_failure(abort_code = rebalance_math::EInvalidLotSize, location = blast_leverage_core::rebalance_math)]
 fun sizing_rejects_zero_lot_at_valid_prices() {
     rebalance_math::base_for_notional_down(1, 1, 1, 0, 1_000_000_000, 1_000_000);
 }
-
 
 #[test]
 fun reduction_improvement_uses_exact_ratios_and_one_lot_tolerance() {
@@ -321,3 +309,9 @@ fun leverage_distance_bps(notional: u64, nav: u64, target_bps: u64): Ratio {
 fun ratio_le(left: Ratio, right: Ratio): bool {
     left.numerator * right.denominator <= right.numerator * left.denominator
 }
+
+// === Imports ===
+
+use blast_leverage_core::{rebalance_math};
+
+use std::unit_test::assert_eq;

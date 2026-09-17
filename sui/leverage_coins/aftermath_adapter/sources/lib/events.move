@@ -1,10 +1,6 @@
 /// Replay-complete Aftermath adapter events.
 module blast_leverage_aftermath::events;
 
-use blast_leverage_aftermath::venue_account::Checkpoint;
-use blast_leverage_core::policy::{PositionSide, VaultPolicy};
-use std::type_name::TypeName;
-
 // === Constants ===
 
 /// An earlier unresolved diagnostic has returned to a clean authenticated checkpoint.
@@ -692,3 +688,11 @@ public fun donated_fields<Product>(self: &Donated<Product>): (ID, u64, u64, Chec
 public fun buffer_released_fields<Product>(self: &BufferReleased<Product>): (ID, u64, u64) {
     (self.vault_id, self.amount, self.reserve_after)
 }
+
+// === Imports ===
+
+use blast_leverage_aftermath::venue_account::Checkpoint;
+
+use blast_leverage_core::policy::{PositionSide, VaultPolicy};
+
+use std::type_name::TypeName;

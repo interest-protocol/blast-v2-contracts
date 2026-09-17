@@ -4,34 +4,6 @@
 /// Atomic Aftermath operations for adapter-owned leverage Vaults.
 module blast_leverage_aftermath::operations;
 
-use authority_cap::authority;
-use blast_admin::acl::AdminWitness;
-use blast_leverage_aftermath::{
-    events,
-    protocol::Protocol,
-    snapshot,
-    vault::{Self as vault, Vault},
-    venue_account,
-};
-use blast_leverage_core::{
-    observation::PositionObservation,
-    policy::{Self, PositionSide},
-    blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
-    state::{DonationPlan, MintPlan, RebalancePlan, RedemptionPlan},
-};
-use ifixed::ifixed;
-use oracle_aggregator::price_feed_storage::PriceFeedStorage;
-use perpetuals::{
-    account::{Self as account, Account},
-    clearing_house::{Self, ClearingHouse},
-    market,
-    registry::Registry,
-};
-use position::position;
-use pyth::price_info::PriceInfoObject;
-use std::type_name;
-use sui::{balance::Balance, clock::Clock, coin::Coin, coin_registry::Currency};
-
 // === Constants ===
 
 /// Converts six-decimal collateral atoms to nine-decimal base atoms.
@@ -1677,3 +1649,43 @@ public fun apply_post_captures_for_testing<Product>(
         local_change,
     );
 }
+
+// === Imports ===
+
+use authority_cap::authority;
+
+use blast_admin::acl::AdminWitness;
+
+use blast_leverage_aftermath::{
+    events,
+    protocol::Protocol,
+    snapshot,
+    vault::{Self as vault, Vault},
+    venue_account,
+};
+
+use blast_leverage_core::{
+    observation::PositionObservation,
+    policy::{Self, PositionSide},
+    blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
+    state::{DonationPlan, MintPlan, RebalancePlan, RedemptionPlan},
+};
+
+use ifixed::ifixed;
+
+use oracle_aggregator::price_feed_storage::PriceFeedStorage;
+
+use perpetuals::{
+    account::{Self as account, Account},
+    clearing_house::{Self, ClearingHouse},
+    market,
+    registry::Registry,
+};
+
+use position::position;
+
+use pyth::price_info::PriceInfoObject;
+
+use std::type_name;
+
+use sui::{balance::Balance, clock::Clock, coin::Coin, coin_registry::Currency};
