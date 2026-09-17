@@ -182,7 +182,7 @@ public fun redeem<Product, Collateral>(
         base_price_info, collateral_price_info, clock,
     );
     vault.venue_checkpoint().assert_accepted_checkpoint(&checkpoint);
-    let plan = vault.prepare_redemption(before, &shares, minimum_collateral, maximum_fee_bps, clock.timestamp_ms());
+    let plan = vault.prepare_redemption(before, &shares, minimum_collateral, clock.timestamp_ms());
     let base_price = plan.redemption_base_price();
     let collateral_price = plan.redemption_collateral_price();
     let lot = plan.redemption_lot_size();
@@ -276,7 +276,7 @@ public fun mint<Product, Collateral>(
         base_price_info, collateral_price_info, clock,
     );
     vault.venue_checkpoint().assert_accepted_checkpoint(&before_checkpoint);
-    let plan = vault.prepare_mint(before, deposit, minimum_shares, maximum_fee_bps, clock.timestamp_ms());
+    let plan = vault.prepare_mint(before, deposit, minimum_shares, clock.timestamp_ms());
     let base_price = plan.mint_base_price();
     let collateral_price = plan.mint_collateral_price();
     let lot = plan.mint_lot_size();
@@ -739,7 +739,7 @@ public(package) fun complete_rebalance<Product, Collateral>(
 /// Holds the actual input coin across payout instead of accepting a numerical burn promise.
 public(package) fun price_redemption<Product>(
     vault: &mut Vault<Product>, plan: RedemptionPlan<Product>, shares: Coin<BlastBoost<Product>>,
-    unwound: PositionObservation, unwound_checkpoint: venue_account::Checkpoint, now: u64,
+    unwound: PositionObservation, unwound_checkpoint: venue_account::Checkpoint, now_ms: u64,
 ): RedemptionReceipt<Product> {
     let amount = plan.redemption_shares();
     let final_base = plan.base_after_sell();
@@ -748,7 +748,7 @@ public(package) fun price_redemption<Product>(
     let fee_bps = plan.redemption_fee_bps();
     let admin_share_bps = plan.redemption_admin_share_bps();
     assert!(shares.value() == amount, blast_boosts_aftermath::errors::redemption_share_mismatch!());
-    let (net, admin, final_equity, fee, buffer) = vault.price_redemption(plan, unwound, now);
+    let (net, admin, final_equity, fee, buffer) = vault.price_redemption(plan, unwound, now_ms);
     let shares = shares.into_balance();
     RedemptionReceipt {
         shares, net, admin, fee, buffer, fee_bps, admin_share_bps, final_equity, final_base,
@@ -765,7 +765,7 @@ public(package) fun redemption_cash_required<Product>(self: &RedemptionReceipt<P
 /// Validates final cash and margin, retains earned admin cash, then burns the held shares.
 public(package) fun complete_redemption<Product, Collateral>(
     vault: &mut Vault<Product>, receipt: RedemptionReceipt<Product>, mut cash: Coin<Collateral>,
-    after: PositionObservation, checkpoint: venue_account::Checkpoint, now: u64, ctx: &mut TxContext,
+    after: PositionObservation, checkpoint: venue_account::Checkpoint, now_ms: u64, ctx: &mut TxContext,
 ): Coin<Collateral> {
     let RedemptionReceipt {
         shares, net, admin, fee, buffer, fee_bps, admin_share_bps, final_equity, final_base,
@@ -773,7 +773,7 @@ public(package) fun complete_redemption<Product, Collateral>(
     } = receipt;
     vault.assert_collateral_type<_, Collateral>();
     assert!(cash.value() == net + admin, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
-    vault.assert_redemption_cash_out(after, final_equity, final_base, base_price, collateral_price, now);
+    vault.assert_redemption_cash_out(after, final_equity, final_base, base_price, collateral_price, now_ms);
 
     let admin_cash = cash.split(admin, ctx);
     vault.retain_admin_cash(admin_cash);
@@ -789,10 +789,10 @@ public(package) fun complete_redemption<Product, Collateral>(
 /// Commits native mint effects only after the orchestration proved its venue checkpoint.
 public(package) fun complete_mint<Product, Collateral>(
     vault: &mut Vault<Product>, plan: MintPlan<Product>, after: PositionObservation,
-    checkpoint: venue_account::Checkpoint, now: u64, ctx: &mut TxContext,
+    checkpoint: venue_account::Checkpoint, now_ms: u64, ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
     let deposit = plan.mint_deposit();
-    let (shares, contribution, fee, admin, buffer, rate, admin_rate) = vault.complete_mint(plan, after, now, ctx);
+    let (shares, contribution, fee, admin, buffer, rate, admin_rate) = vault.complete_mint(plan, after, now_ms, ctx);
     vault.replace_venue_checkpoint(checkpoint);
     events::minted<Product>(
         vault.id(), deposit, shares.value(), contribution, fee, admin, buffer, rate, admin_rate,
@@ -809,11 +809,11 @@ public(package) fun complete_reserve_release<Product>(
     observation: PositionObservation,
     checkpoint: venue_account::Checkpoint,
     amount: u64,
-    reference_time_ms: u64,
+    now_ms: u64,
 ) {
     admin_witness.assert_role(domain::risk_admin_role());
     vault.venue_checkpoint().assert_accepted_checkpoint(&checkpoint);
-    vault.release_reserve(admin_witness, observation, amount, reference_time_ms);
+    vault.release_reserve(admin_witness, observation, amount, now_ms);
     events::reserve_released<Product>(vault.id(), amount, vault.maintenance_reserve());
 }
 
@@ -824,10 +824,10 @@ public(package) fun complete_donation<Product>(
     after: PositionObservation,
     checkpoint: venue_account::Checkpoint,
     amount: u64,
-    reference_time_ms: u64,
+    now_ms: u64,
 ) {
     vault.venue_checkpoint().assert_deposit_checkpoint(&checkpoint, amount);
-    vault.complete_donation(plan, after, reference_time_ms);
+    vault.complete_donation(plan, after, now_ms);
     vault.replace_venue_checkpoint(checkpoint);
     events::donated<Product>(vault.id(), amount, vault.maintenance_reserve(), checkpoint);
 }
@@ -968,18 +968,18 @@ fun update_funding_when_due<Collateral>(
     };
 }
 
-/// Returns whether the venue's cumulative funding is due for an update at `now`.
+/// Returns whether the venue's cumulative funding is due for an update at `now_ms`.
 ///
 /// Mirrors the pinned `market::is_time_to_update` bytecode exactly:
-/// `now >= next_funding_update_time_ms(funding_last_upd_ms, funding_frequency_ms)`.
+/// `now_ms >= next_funding_update_time_ms(funding_last_upd_ms, funding_frequency_ms)`.
 /// The venue's own `try_update_fundings` repeats this check, so the guard only
 /// decides whether the adapter spends a venue call; it never changes what the
 /// venue would settle. A zero frequency is never due: the venue formula would
 /// divide by it, and a market without a funding cadence has nothing to
 /// refresh.
-fun is_time_to_update_funding(now: u64, funding_last_upd_ms: u64, funding_frequency_ms: u64): bool {
+fun is_time_to_update_funding(now_ms: u64, funding_last_upd_ms: u64, funding_frequency_ms: u64): bool {
     funding_frequency_ms > 0
-        && now >= next_funding_update_time_ms(funding_last_upd_ms, funding_frequency_ms)
+        && now_ms >= next_funding_update_time_ms(funding_last_upd_ms, funding_frequency_ms)
 }
 
 /// Returns the venue's next funding update instant: the start of the period
@@ -1145,8 +1145,8 @@ fun active_order_size(
     remaining.min(maximum)
 }
 
-fun assert_deadline(now: u64, deadline: u64) {
-    assert!(now <= deadline, blast_boosts_aftermath::errors::deadline_expired!());
+fun assert_deadline(now_ms: u64, deadline: u64) {
+    assert!(now_ms <= deadline, blast_boosts_aftermath::errors::deadline_expired!());
 }
 
 fun order_sizes(
@@ -1456,11 +1456,11 @@ public fun active_order_size_for_testing(
 }
 
 #[test_only]
-public fun assert_deadline_for_testing(now: u64, deadline: u64) { assert_deadline(now, deadline); }
+public fun assert_deadline_for_testing(now_ms: u64, deadline: u64) { assert_deadline(now_ms, deadline); }
 
 #[test_only]
-public fun is_time_to_update_funding_for_testing(now: u64, funding_last_upd_ms: u64, funding_frequency_ms: u64): bool {
-    is_time_to_update_funding(now, funding_last_upd_ms, funding_frequency_ms)
+public fun is_time_to_update_funding_for_testing(now_ms: u64, funding_last_upd_ms: u64, funding_frequency_ms: u64): bool {
+    is_time_to_update_funding(now_ms, funding_last_upd_ms, funding_frequency_ms)
 }
 
 #[test_only]

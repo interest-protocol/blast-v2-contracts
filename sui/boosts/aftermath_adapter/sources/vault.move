@@ -324,24 +324,24 @@ public(package) fun withdraw_collateral<Product, Collateral>(
 /// Seals redemption terms against the actual native input and authoritative supply.
 public(package) fun prepare_redemption<Product>(
     self: &Vault<Product>, observation: PositionObservation, shares: &Coin<BlastBoost<Product>>,
-    minimum_output: u64, maximum_fee_bps: u64, now: u64,
+    minimum_output: u64, now_ms: u64,
 ): RedemptionPlan<Product> {
-    self.series_state.prepare_redemption(observation, shares.value(), self.share_supply(), minimum_output, maximum_fee_bps, now)
+    self.series_state.prepare_redemption(observation, shares.value(), self.share_supply(), minimum_output, now_ms)
 }
 
 /// Prices only the attributable completed unwind, before any withdrawal or burn.
 public(package) fun price_redemption<Product>(
-    self: &mut Vault<Product>, plan: RedemptionPlan<Product>, observation: PositionObservation, now: u64,
+    self: &mut Vault<Product>, plan: RedemptionPlan<Product>, observation: PositionObservation, now_ms: u64,
 ): (u64, u64, u64, u64, u64) {
-    self.series_state.complete_redemption(plan, observation, now)
+    self.series_state.complete_redemption(plan, observation, now_ms)
 }
 
 /// Consumes the final cash/margin proof before native shares leave the supply.
 public(package) fun assert_redemption_cash_out<Product>(
     self: &Vault<Product>, observation: PositionObservation, equity: u64, base: u64,
-    base_price: u64, collateral_price: u64, now: u64,
+    base_price: u64, collateral_price: u64, now_ms: u64,
 ) {
-    self.series_state.assert_redemption_cash_out(observation, equity, base, base_price, collateral_price, now);
+    self.series_state.assert_redemption_cash_out(observation, equity, base, base_price, collateral_price, now_ms);
 }
 
 /// Burns only through this Vault's retained native TreasuryCap.
@@ -380,16 +380,16 @@ public(package) fun assert_active_execution<Product>(self: &Vault<Product>, refe
 
 /// Validates intermediate margin and prices without persisting an economic checkpoint.
 public(package) fun assert_active_observation<Product>(
-    self: &Vault<Product>, observation: PositionObservation, base_price: u64, collateral_price: u64, now: u64,
+    self: &Vault<Product>, observation: PositionObservation, base_price: u64, collateral_price: u64, now_ms: u64,
 ) {
-    self.series_state.assert_active_observation(observation, base_price, collateral_price, now);
+    self.series_state.assert_active_observation(observation, base_price, collateral_price, now_ms);
 }
 
 /// Seals maintenance terms against this Vault's immutable policy and current buffer.
 public(package) fun prepare_rebalance<Product>(
-    self: &Vault<Product>, observation: PositionObservation, venue_fee_bps: u64, now: u64,
+    self: &Vault<Product>, observation: PositionObservation, venue_fee_bps: u64, now_ms: u64,
 ): RebalancePlan<Product> {
-    self.series_state.prepare_rebalance(observation, venue_fee_bps, now)
+    self.series_state.prepare_rebalance(observation, venue_fee_bps, now_ms)
 }
 
 /// Derives the next bounded order without accepting any caller trading parameter.
@@ -404,9 +404,9 @@ public(package) fun assert_rebalance_execution<Product>(self: &Vault<Product>, p
 
 /// Advances sealed intent only after the adapter has proved the venue mutation.
 public(package) fun accept_rebalance_fill<Product>(
-    self: &Vault<Product>, plan: &mut RebalancePlan<Product>, observation: PositionObservation, filled: u64, now: u64,
+    self: &Vault<Product>, plan: &mut RebalancePlan<Product>, observation: PositionObservation, filled: u64, now_ms: u64,
 ) {
-    self.series_state.accept_rebalance_fill(plan, observation, filled, now);
+    self.series_state.accept_rebalance_fill(plan, observation, filled, now_ms);
 }
 
 /// Completes core maintenance; no native shares or admin assets move.
@@ -420,12 +420,9 @@ public(package) fun prepare_mint<Product>(
     observation: PositionObservation,
     deposit: u64,
     minimum_shares: u64,
-    maximum_fee_bps: u64,
-    now: u64,
+    now_ms: u64,
 ): MintPlan<Product> {
-    self.series_state.prepare_mint(
-        observation, deposit, self.share_supply(), minimum_shares, maximum_fee_bps, now,
-    )
+    self.series_state.prepare_mint(observation, deposit, self.share_supply(), minimum_shares, now_ms)
 }
 
 /// Mints only the shares priced by the completed Series1 transition.
@@ -433,10 +430,10 @@ public(package) fun complete_mint<Product>(
     self: &mut Vault<Product>,
     plan: MintPlan<Product>,
     after: PositionObservation,
-    now: u64,
+    now_ms: u64,
     ctx: &mut TxContext,
 ): (Coin<BlastBoost<Product>>, u64, u64, u64, u64, u64, u64) {
-    let (amount, contribution, fee, admin, buffer, rate, admin_rate) = self.series_state.complete_mint(plan, after, now);
+    let (amount, contribution, fee, admin, buffer, rate, admin_rate) = self.series_state.complete_mint(plan, after, now_ms);
     let treasury_cap = dynamic_object_field::borrow_mut(&mut self.id, TreasuryKey<Product>());
     (coin::mint(treasury_cap, amount, ctx), contribution, fee, admin, buffer, rate, admin_rate)
 }
@@ -458,9 +455,9 @@ public(package) fun assert_unwinding<Product>(self: &Vault<Product>) {
 
 /// Consumes authenticated oracle facts through the terminal Series1 policy.
 public(package) fun unwind_constraints<Product>(
-    self: &Vault<Product>, base: PriceObservation, collateral: PriceObservation, now: u64,
+    self: &Vault<Product>, base: PriceObservation, collateral: PriceObservation, now_ms: u64,
 ): (PositionSide, u64, u64, u64) {
-    self.series_state.unwind_constraints(base, collateral, now)
+    self.series_state.unwind_constraints(base, collateral, now_ms)
 }
 
 /// Enforces the immutable emergency bound on an actual venue fill price.
@@ -470,16 +467,16 @@ public(package) fun assert_unwind_execution<Product>(self: &Vault<Product>, refe
 
 /// Validates pre-donation pricing before any asset-bearing venue interaction.
 public(package) fun prepare_donation<Product>(
-    self: &Vault<Product>, observation: PositionObservation, amount: u64, now: u64,
+    self: &Vault<Product>, observation: PositionObservation, amount: u64, now_ms: u64,
 ): DonationPlan<Product> {
-    self.series_state.prepare_donation(observation, amount, now)
+    self.series_state.prepare_donation(observation, amount, now_ms)
 }
 
 /// Applies only the completed donation's buffer allocation.
 public(package) fun complete_donation<Product>(
-    self: &mut Vault<Product>, plan: DonationPlan<Product>, after: PositionObservation, now: u64,
+    self: &mut Vault<Product>, plan: DonationPlan<Product>, after: PositionObservation, now_ms: u64,
 ) {
-    self.series_state.complete_donation(plan, after, now);
+    self.series_state.complete_donation(plan, after, now_ms);
 }
 
 /// Relabels authenticated buffer after live risk-administrator authorization.
@@ -488,10 +485,10 @@ public(package) fun release_reserve<Product>(
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
     observation: PositionObservation,
     amount: u64,
-    now: u64,
+    now_ms: u64,
 ) {
     admin_witness.assert_role(domain::risk_admin_role());
-    self.series_state.release_reserve(observation, amount, now);
+    self.series_state.release_reserve(observation, amount, now_ms);
 }
 
 /// Uses retained venue authority without exposing a cap or custody reference.
@@ -574,12 +571,12 @@ public(package) fun prepare_initialization<Product>(
     self: &Vault<Product>,
     observation: PositionObservation,
     seed_reserve: u64,
-    reference_time_ms: u64,
+    now_ms: u64,
 ): (u64, u64, u64, u64) {
     self.series_state.prepare_initialization(
         observation,
         seed_reserve,
-        reference_time_ms,
+        now_ms,
     )
 }
 
@@ -609,14 +606,14 @@ public(package) fun initialize_series<Product>(
     observation: PositionObservation,
     seed_reserve: u64,
     collateral_decimals: u8,
-    reference_time_ms: u64,
+    now_ms: u64,
 ): u64 {
     self.series_state.initialize(
         observation,
         seed_reserve,
         constants::base_decimals!(),
         collateral_decimals,
-        reference_time_ms,
+        now_ms,
     )
 }
 

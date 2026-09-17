@@ -175,7 +175,7 @@ fun invalid_rebalance_fee_precedes_invalid_observation() {
 fun mint_outside_band_precedes_deposit_arithmetic() {
     let fixture = start(domain::vault_issuer_role());
     let state = initialized_state(&fixture, policy::long());
-    let plan = state.prepare_mint(standard_observation(policy::long()).with_position_collateral(1_000_000).into_position_observation(), 0, 1_000_000, 1, 10, REFERENCE_TIME_MS);
+    let plan = state.prepare_mint(standard_observation(policy::long()).with_position_collateral(1_000_000).into_position_observation(), 0, 1_000_000, 1, REFERENCE_TIME_MS);
     destroy(plan);
     state.destroy_for_testing();
     destroy(fixture);
@@ -186,7 +186,7 @@ fun mint_outside_band_precedes_deposit_arithmetic() {
 fun mint_completion_rejects_checkpoint_drift_before_fill() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
-    let plan = state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1_000_000, 1_000_000, 1, 10, REFERENCE_TIME_MS);
+    let plan = state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1_000_000, 1_000_000, 1, REFERENCE_TIME_MS);
     state.settle_funding(observation::funding_credit(1));
     state.complete_mint(plan, standard_observation(policy::long()).into_position_observation(), REFERENCE_TIME_MS);
     state.destroy_for_testing();
@@ -198,7 +198,7 @@ fun mint_completion_rejects_checkpoint_drift_before_fill() {
 fun mint_completion_rejects_missing_attributable_fill() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
-    let plan = state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1_000_000, 1_000_000, 1, 10, REFERENCE_TIME_MS);
+    let plan = state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1_000_000, 1_000_000, 1, REFERENCE_TIME_MS);
     state.complete_mint(plan, standard_observation(policy::long()).into_position_observation(), REFERENCE_TIME_MS);
     state.destroy_for_testing();
     destroy(fixture);
@@ -210,7 +210,7 @@ fun redemption_rejects_output_one_above_net() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
     let before = standard_observation(policy::long());
-    let plan = state.prepare_redemption(before.into_position_observation(), 500_000, 1_000_000, 499_501, 10, REFERENCE_TIME_MS);
+    let plan = state.prepare_redemption(before.into_position_observation(), 500_000, 1_000_000, 499_501, REFERENCE_TIME_MS);
     state.complete_redemption(plan, before.with_position_base(100_000).with_position_collateral(1_000_000).into_position_observation(), REFERENCE_TIME_MS);
     state.destroy_for_testing();
     destroy(fixture);
@@ -232,7 +232,7 @@ fun mint_amount_supply_swap_cannot_satisfy_the_original_minimum() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
     let before = standard_observation(policy::long());
-    let plan = state.prepare_mint(before.into_position_observation(), 1_000_000, 500_000, 600_000, 10, REFERENCE_TIME_MS);
+    let plan = state.prepare_mint(before.into_position_observation(), 1_000_000, 500_000, 600_000, REFERENCE_TIME_MS);
     state.complete_mint(plan, before.with_venue_equity(2_098_000).with_position_base(399_000).with_position_collateral(3_990_000).into_position_observation(), REFERENCE_TIME_MS);
     state.destroy_for_testing();
     destroy(fixture);
@@ -243,7 +243,7 @@ fun mint_amount_supply_swap_cannot_satisfy_the_original_minimum() {
 fun redemption_shares_supply_swap_is_rejected() {
     let fixture = start(domain::vault_issuer_role());
     let state = initialized_state(&fixture, policy::long());
-    let plan = state.prepare_redemption(standard_observation(policy::long()).into_position_observation(), 1_000_000, 500_000, 1, 10, REFERENCE_TIME_MS);
+    let plan = state.prepare_redemption(standard_observation(policy::long()).into_position_observation(), 1_000_000, 500_000, 1, REFERENCE_TIME_MS);
     destroy(plan);
     state.destroy_for_testing();
     destroy(fixture);
@@ -339,11 +339,11 @@ fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
             let mut state = state::new<Product>(&witness, vault_policy, 2_000_000, NAV_CAP);
             let notional = target * 100;
             state.initialize(rebalance_observation(1_100_000, notional, side), 100_000, 9, 6, REFERENCE_TIME_MS);
-            let plan = state.prepare_mint(rebalance_observation(1_100_000, notional, side), 1_000_000, 1_000_000, 1_000_000, 0, REFERENCE_TIME_MS);
+            let plan = state.prepare_mint(rebalance_observation(1_100_000, notional, side), 1_000_000, 1_000_000, 1_000_000, REFERENCE_TIME_MS);
             assert_eq!(plan.base_to_buy(), notional * 1_000);
             let (shares, contribution, _, _, _, _, _) = state.complete_mint(plan, rebalance_observation(2_100_000, notional * 2, side), REFERENCE_TIME_MS);
             assert_eq!(vector[shares, contribution, state.maintenance_reserve()], vector[1_000_000, 1_000_000, 100_000]);
-            let plan = state.prepare_redemption(rebalance_observation(2_100_000, notional * 2, side), 500_000, 2_000_000, 500_000, 0, REFERENCE_TIME_MS);
+            let plan = state.prepare_redemption(rebalance_observation(2_100_000, notional * 2, side), 500_000, 2_000_000, 500_000, REFERENCE_TIME_MS);
             assert_eq!(plan.base_to_sell(), notional * 500);
             let (net, admin, equity, fee, _) = state.complete_redemption(plan, rebalance_observation(2_100_000, notional * 3 / 2, side), REFERENCE_TIME_MS);
             assert_eq!(vector[net, admin, equity, fee], vector[500_000, 0, 1_600_000, 0]);
@@ -361,7 +361,7 @@ fun active_mint_rejects_a_temporary_venue_pause() {
     let state = initialized_state(&fixture, policy::long());
     let mut invalid = standard_observation(policy::long());
     invalid.venue_operational = false;
-    destroy(state.prepare_mint(invalid.into_position_observation(), 1_000_000, HEALTH_SHARE_SUPPLY, 1, 10, REFERENCE_TIME_MS));
+    destroy(state.prepare_mint(invalid.into_position_observation(), 1_000_000, HEALTH_SHARE_SUPPLY, 1, REFERENCE_TIME_MS));
     state.destroy_for_testing();
     destroy(fixture);
 }
@@ -373,17 +373,7 @@ fun active_redemption_rejects_a_stale_price() {
     let state = initialized_state(&fixture, policy::short());
     let mut invalid = standard_observation(policy::short());
     invalid.base_publish_time_ms = 0;
-    destroy(state.prepare_redemption(invalid.into_position_observation(), 500_000, HEALTH_SHARE_SUPPLY, 1, 10, REFERENCE_TIME_MS));
-    state.destroy_for_testing();
-    destroy(fixture);
-}
-
-#[test]
-#[expected_failure(abort_code = errors::EUserFeeLimitExceeded, location = blast_boosts_core::state)]
-fun active_mint_rejects_the_first_fee_above_the_user_ceiling() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
-    destroy(state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1_000_000, HEALTH_SHARE_SUPPLY, 1, 9, REFERENCE_TIME_MS));
+    destroy(state.prepare_redemption(invalid.into_position_observation(), 500_000, HEALTH_SHARE_SUPPLY, 1, REFERENCE_TIME_MS));
     state.destroy_for_testing();
     destroy(fixture);
 }
@@ -413,7 +403,7 @@ fun fee_update_rejects_an_unchanged_tuple() {
 fun mint_rejects_input_consumed_by_rounded_fee_before_sizing_exposure() {
     let fixture = start(domain::vault_issuer_role());
     let state = initialized_state(&fixture, policy::long());
-    destroy(state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1, HEALTH_SHARE_SUPPLY, 0, 10, REFERENCE_TIME_MS));
+    destroy(state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1, HEALTH_SHARE_SUPPLY, 0, REFERENCE_TIME_MS));
     state.destroy_for_testing();
     destroy(fixture);
 }
@@ -522,7 +512,7 @@ fun a_flat_short_product_redeems_without_inventing_a_long_position() {
     let mut state = initialized_state(&fixture, policy::short());
     let flat = standard_observation(policy::long())
         .with_position_base(0).with_position_collateral(0);
-    let plan = state.prepare_redemption(flat.into_position_observation(), 500_000, 1_000_000, 499_500, 10, REFERENCE_TIME_MS);
+    let plan = state.prepare_redemption(flat.into_position_observation(), 500_000, 1_000_000, 499_500, REFERENCE_TIME_MS);
     assert_eq!(plan.base_to_sell(), 0);
     let (net, admin, final_equity, fee, _) = state.complete_redemption(
         plan, flat.into_position_observation(), REFERENCE_TIME_MS,
@@ -562,7 +552,7 @@ fun redemption_keeps_remaining_nav_and_allocates_its_own_fee() {
     let mut state = initialized_state(&fixture, policy::short());
     let plan = state.prepare_redemption(
         standard_observation(policy::short()).into_position_observation(),
-        500_000, 1_000_000, 497_502, 10, REFERENCE_TIME_MS,
+        500_000, 1_000_000, 497_502, REFERENCE_TIME_MS,
     );
     assert_eq!(plan.base_to_sell(), 100_000);
     let (net, admin, final_equity, fee, _) = state.complete_redemption(
@@ -593,7 +583,6 @@ fun mint_credits_at_most_the_deposit_net_of_fee_when_the_fill_is_favorable() {
         1_000_000,
         1_000_000,
         999_000,
-        10,
         REFERENCE_TIME_MS,
     );
     assert_eq!(plan.base_to_buy(), 199_000);
@@ -622,7 +611,7 @@ fun redemption_pays_at_most_the_proportional_claim_when_the_unwind_is_favorable(
     let mut state = initialized_state(&fixture, policy::long());
     let plan = state.prepare_redemption(
         standard_observation(policy::long()).into_position_observation(),
-        500_000, 1_000_000, 499_500, 10, REFERENCE_TIME_MS,
+        500_000, 1_000_000, 499_500, REFERENCE_TIME_MS,
     );
     assert_eq!(plan.base_to_sell(), 100_000);
     let (net, admin, final_equity, fee, buffer) = state.complete_redemption(
@@ -652,7 +641,6 @@ fun mint_prices_actual_contribution_after_the_attributable_cost() {
         1_000_000,
         1_000_000,
         997_000,
-        10,
         REFERENCE_TIME_MS,
     );
     assert_eq!(plan.base_to_buy(), 199_000);

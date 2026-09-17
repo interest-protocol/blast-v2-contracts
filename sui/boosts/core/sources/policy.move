@@ -309,6 +309,13 @@ public(package) fun is_leverage_above_band(self: &RebalancePolicy, notional: u64
     scale_by_denominator(notional) > (nav as u128) * (self.rebalance_above_bps as u128)
 }
 
+/// Returns whether leverage lies inside the public rebalance band, edges included.
+///
+/// Same units and exact comparison as `is_leverage_below_band`.
+public(package) fun is_leverage_within_band(self: &RebalancePolicy, notional: u64, nav: u64): bool {
+    !self.is_leverage_below_band(notional, nav) && !self.is_leverage_above_band(notional, nav)
+}
+
 /// Returns whether leverage is strictly above the hard cap that permits wider slippage.
 ///
 /// Same units and exact comparison as `is_leverage_below_band`:
@@ -418,24 +425,24 @@ public(package) fun max_mark_divergence_bps(self: &PricePolicy): u64 {
 /// Returns whether a source update lies inside the two-sided freshness window.
 ///
 /// The admitted window is the closed interval
-/// `[reference_time_ms - max_price_age_ms, reference_time_ms + max_price_ahead_ms]`.
+/// `[now_ms - max_price_age_ms, now_ms + max_price_ahead_ms]`.
 /// Unlike `assert_price_fresh`, this predicate never aborts: health may report
 /// a stale or future-stamped source without changing lifecycle.
 public(package) fun is_price_fresh(
     self: &PricePolicy,
     published_at_ms: u64,
-    reference_time_ms: u64,
+    now_ms: u64,
 ): bool {
-    if (published_at_ms > reference_time_ms) {
-        published_at_ms - reference_time_ms <= self.max_price_ahead_ms
+    if (published_at_ms > now_ms) {
+        published_at_ms - now_ms <= self.max_price_ahead_ms
     } else {
-        reference_time_ms - published_at_ms <= self.max_price_age_ms
+        now_ms - published_at_ms <= self.max_price_age_ms
     }
 }
 
 /// Rejects a source update outside the two-sided freshness window.
 ///
-/// `published_at_ms` is the source's own update time and `reference_time_ms` is
+/// `published_at_ms` is the source's own update time and `now_ms` is
 /// the operation's single on-chain time reading, both in milliseconds. An
 /// update older than the staleness budget aborts as stale, and one stamped
 /// further ahead than the skew budget aborts as future-dated. The two failures
@@ -449,11 +456,11 @@ public(package) fun is_price_fresh(
 public(package) fun assert_price_fresh(
     self: &PricePolicy,
     published_at_ms: u64,
-    reference_time_ms: u64,
+    now_ms: u64,
 ) {
-    let fresh = self.is_price_fresh(published_at_ms, reference_time_ms);
+    let fresh = self.is_price_fresh(published_at_ms, now_ms);
 
-    if (published_at_ms > reference_time_ms) {
+    if (published_at_ms > now_ms) {
         assert!(fresh, blast_boosts_core::errors::future_price!());
     } else {
         assert!(fresh, blast_boosts_core::errors::stale_price!());

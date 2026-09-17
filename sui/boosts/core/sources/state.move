@@ -5,6 +5,9 @@
 /// The selected adapter stores this value inside its own shared Vault. Only
 /// functions in this module can inspect or change the private core fields.
 /// Currency, venue custody, ACL routing, and versioning belong to the adapter.
+/// The core reads no clock: every `now_ms` is the adapter's
+/// `Clock::timestamp_ms()` for the transaction, and oracle freshness is
+/// judged against it.
 module blast_boosts_core::state;
 
 // === Constants ===
@@ -143,11 +146,11 @@ public fun prepare_initialization<Product>(
     self: &State<Product>,
     observation: PositionObservation,
     seed_reserve: u64,
-    reference_time_ms: u64,
+    now_ms: u64,
 ): (u64, u64, u64, u64) {
     self.lifecycle.assert_can_activate();
 
-    let seed_nav = self.seed_nav(&observation, seed_reserve, reference_time_ms);
+    let seed_nav = self.seed_nav(&observation, seed_reserve, now_ms);
     assert!(
         observation.position_base() == 0 && observation.position_collateral() == 0,
         blast_boosts_core::errors::invalid_initialization_observation!(),
@@ -224,7 +227,7 @@ public fun initialize<Product>(
     seed_reserve: u64,
     base_decimals: u8,
     collateral_decimals: u8,
-    reference_time_ms: u64,
+    now_ms: u64,
 ): u64 {
     self.lifecycle.assert_can_activate();
     assert!(
@@ -237,7 +240,7 @@ public fun initialize<Product>(
         self,
         observation,
         seed_reserve,
-        reference_time_ms,
+        now_ms,
     );
 
     self.lifecycle.activate();
@@ -264,11 +267,11 @@ public fun active_constraints<Product>(self: &State<Product>): (PositionSide, u6
 
 /// Consumes an intermediate active observation at the operation's fixed price pair.
 public fun assert_active_observation<Product>(
-    self: &State<Product>, observation: PositionObservation, base_price: u64, collateral_price: u64, now: u64,
+    self: &State<Product>, observation: PositionObservation, base_price: u64, collateral_price: u64, now_ms: u64,
 ) {
     self.lifecycle.assert_active();
 
-    let position = validated_active_position(self, observation, now);
+    let position = validated_active_position(self, observation, now_ms);
     assert!(
         position.base_price == base_price && position.collateral_price == collateral_price,
         blast_boosts_core::errors::active_checkpoint_changed!(),
@@ -291,19 +294,15 @@ public fun prepare_mint<Product>(
     deposit: u64,
     supply: u64,
     minimum_shares: u64,
-    maximum_fee_bps: u64,
-    reference_time_ms: u64,
+    now_ms: u64,
 ): MintPlan<Product> {
     self.lifecycle.assert_active();
     assert!(supply > 0, blast_boosts_core::errors::invalid_share_supply!());
-    assert!(self.mint_fee_bps <= maximum_fee_bps, blast_boosts_core::errors::user_fee_limit_exceeded!());
 
-    let before = validated_active_position(self, observation, reference_time_ms);
+    let before = validated_active_position(self, observation, now_ms);
     let nav = accounting_math::shareholder_nav(before.equity, self.maintenance_reserve);
-    let rebalance = self.vault_policy.rebalance_policy();
     assert!(
-        !rebalance.is_leverage_below_band(before.notional, nav)
-            && !rebalance.is_leverage_above_band(before.notional, nav),
+        self.vault_policy.rebalance_policy().is_leverage_within_band(before.notional, nav),
         blast_boosts_core::errors::mint_outside_rebalance_band!(),
     );
 
@@ -356,7 +355,7 @@ public fun complete_mint<Product>(
     self: &mut State<Product>,
     plan: MintPlan<Product>,
     observation: PositionObservation,
-    reference_time_ms: u64,
+    now_ms: u64,
 ): (u64, u64, u64, u64, u64, u64, u64) {
     self.lifecycle.assert_active();
     let MintPlan {
@@ -365,7 +364,7 @@ public fun complete_mint<Product>(
     } = plan;
     assert!(self.maintenance_reserve == reserve_before, blast_boosts_core::errors::active_checkpoint_changed!());
 
-    let after = validated_active_position(self, observation, reference_time_ms);
+    let after = validated_active_position(self, observation, now_ms);
     assert!(
         before.base_price == after.base_price && before.collateral_price == after.collateral_price
             && before.lot_size == after.lot_size,
@@ -410,13 +409,11 @@ public fun prepare_redemption<Product>(
     shares: u64,
     supply: u64,
     minimum_output: u64,
-    maximum_fee_bps: u64,
-    reference_time_ms: u64,
+    now_ms: u64,
 ): RedemptionPlan<Product> {
     self.lifecycle.assert_active();
-    assert!(self.redeem_fee_bps <= maximum_fee_bps, blast_boosts_core::errors::user_fee_limit_exceeded!());
 
-    let before = validated_active_position(self, observation, reference_time_ms);
+    let before = validated_active_position(self, observation, now_ms);
     let (minimum_base, _) = accounting_math::redemption_base_bounds(
         shares, before.base, supply, before.lot_size, self.vault_policy.min_order_lots(),
     );
@@ -455,11 +452,11 @@ public fun redemption_admin_share_bps<Product>(self: &RedemptionPlan<Product>): 
 /// Validates actual post-withdrawal backing and margin before a native share burn.
 public fun assert_redemption_cash_out<Product>(
     self: &State<Product>, observation: PositionObservation, equity: u64, base: u64,
-    base_price: u64, collateral_price: u64, now: u64,
+    base_price: u64, collateral_price: u64, now_ms: u64,
 ) {
     self.lifecycle.assert_active();
 
-    let after = validated_active_position(self, observation, now);
+    let after = validated_active_position(self, observation, now_ms);
     assert!(
         after.equity == equity && after.base == base && after.base_price == base_price
             && after.collateral_price == collateral_price,
@@ -476,7 +473,7 @@ public fun complete_redemption<Product>(
     self: &mut State<Product>,
     plan: RedemptionPlan<Product>,
     observation: PositionObservation,
-    reference_time_ms: u64,
+    now_ms: u64,
 ): (u64, u64, u64, u64, u64) {
     self.lifecycle.assert_active();
     let RedemptionPlan {
@@ -484,7 +481,7 @@ public fun complete_redemption<Product>(
     } = plan;
     assert!(self.maintenance_reserve == reserve_before, blast_boosts_core::errors::active_checkpoint_changed!());
 
-    let after = validated_active_position(self, observation, reference_time_ms);
+    let after = validated_active_position(self, observation, now_ms);
     assert!(
         before.base_price == after.base_price && before.collateral_price == after.collateral_price
             && before.lot_size == after.lot_size,
@@ -516,7 +513,7 @@ public fun complete_redemption<Product>(
 
 /// Derives public maintenance intent from exact outside-band ratios, never caller orders.
 public fun prepare_rebalance<Product>(
-    self: &State<Product>, observation: PositionObservation, venue_fee_bps: u64, now: u64,
+    self: &State<Product>, observation: PositionObservation, venue_fee_bps: u64, now_ms: u64,
 ): RebalancePlan<Product> {
     self.lifecycle.assert_active();
     assert!(
@@ -524,7 +521,7 @@ public fun prepare_rebalance<Product>(
         blast_boosts_core::errors::venue_fee_unusable!(),
     );
 
-    let before = validated_active_position(self, observation, now);
+    let before = validated_active_position(self, observation, now_ms);
     let nav = accounting_math::shareholder_nav(before.equity, self.maintenance_reserve);
     let rebalance = self.vault_policy.rebalance_policy();
     let increase = rebalance.is_leverage_below_band(before.notional, nav);
@@ -591,7 +588,7 @@ public fun assert_rebalance_execution<Product>(self: &State<Product>, plan: &Reb
 
 /// Advances only exact partial whole-lot fills under sealed intent and the fixed oracle pair.
 public fun accept_rebalance_fill<Product>(
-    self: &State<Product>, plan: &mut RebalancePlan<Product>, observation: PositionObservation, filled: u64, now: u64,
+    self: &State<Product>, plan: &mut RebalancePlan<Product>, observation: PositionObservation, filled: u64, now_ms: u64,
 ) {
     let (requested, increase, _) = self.rebalance_order(plan);
     assert!(
@@ -599,7 +596,7 @@ public fun accept_rebalance_fill<Product>(
         blast_boosts_core::errors::active_fill_incomplete!(),
     );
 
-    let after = validated_active_position(self, observation, now);
+    let after = validated_active_position(self, observation, now_ms);
     assert!(
         after.base_price == plan.before.base_price && after.collateral_price == plan.before.collateral_price
             && after.lot_size == plan.before.lot_size,
@@ -710,13 +707,13 @@ public fun prepare_donation<Product>(
     self: &State<Product>,
     observation: PositionObservation,
     amount: u64,
-    reference_time_ms: u64,
+    now_ms: u64,
 ): DonationPlan<Product> {
     self.lifecycle.assert_active();
     assert!(amount > 0, blast_boosts_core::errors::zero_amount!());
 
     DonationPlan {
-        before: validated_active_position(self, observation, reference_time_ms),
+        before: validated_active_position(self, observation, now_ms),
         reserve_before: self.maintenance_reserve,
         amount,
     }
@@ -727,13 +724,13 @@ public fun complete_donation<Product>(
     self: &mut State<Product>,
     plan: DonationPlan<Product>,
     after: PositionObservation,
-    reference_time_ms: u64,
+    now_ms: u64,
 ) {
     self.lifecycle.assert_active();
     let DonationPlan { before, reserve_before, amount } = plan;
     assert!(reserve_before == self.maintenance_reserve, blast_boosts_core::errors::active_checkpoint_changed!());
 
-    let after = validated_active_position(self, after, reference_time_ms);
+    let after = validated_active_position(self, after, now_ms);
     assert!(
         before.base == after.base && before.notional == after.notional && before.lot_size == after.lot_size
             && before.base_price == after.base_price && before.collateral_price == after.collateral_price
@@ -752,13 +749,13 @@ public fun release_reserve<Product>(
     self: &mut State<Product>,
     observation: PositionObservation,
     amount: u64,
-    reference_time_ms: u64,
+    now_ms: u64,
 ): u64 {
     self.lifecycle.assert_active();
     assert!(amount > 0, blast_boosts_core::errors::zero_amount!());
     assert!(amount <= self.maintenance_reserve, blast_boosts_core::errors::reserve_release_exceeds_balance!());
 
-    let position = validated_active_position(self, observation, reference_time_ms);
+    let position = validated_active_position(self, observation, now_ms);
     let reserve_after = self.maintenance_reserve - amount;
     let nav = accounting_math::shareholder_nav(position.equity, reserve_after);
 
@@ -786,12 +783,12 @@ public fun assert_unwinding<Product>(self: &State<Product>) {
 
 /// Prices only a close-only order; insolvency and the reserve do not gate an exit.
 public fun unwind_constraints<Product>(
-    self: &State<Product>, base_oracle: PriceObservation, collateral_oracle: PriceObservation, now: u64,
+    self: &State<Product>, base_oracle: PriceObservation, collateral_oracle: PriceObservation, now_ms: u64,
 ): (PositionSide, u64, u64, u64) {
     self.assert_unwinding();
     let price_policy = self.vault_policy.price_policy();
-    assert_oracle_admitted(&price_policy, &base_oracle, now);
-    assert_oracle_admitted(&price_policy, &collateral_oracle, now);
+    assert_oracle_admitted(&price_policy, &base_oracle, now_ms);
+    assert_oracle_admitted(&price_policy, &collateral_oracle, now_ms);
     let (base_price, collateral_price) = (base_oracle.price(), collateral_oracle.price());
     base_oracle.destroy();
     collateral_oracle.destroy();
@@ -952,9 +949,9 @@ fun assert_within_nav_cap<Product>(self: &State<Product>, nav: u64) {
 fun validated_active_position<Product>(
     self: &State<Product>,
     observation: PositionObservation,
-    reference_time_ms: u64,
+    now_ms: u64,
 ): ActivePosition {
-    self.assert_observation_priced(&observation, reference_time_ms);
+    self.assert_observation_priced(&observation, now_ms);
 
     let flat = observation.position_base() == 0 && observation.position_collateral() == 0;
     assert!(
@@ -988,12 +985,12 @@ fun validated_active_position<Product>(
 fun assert_observation_priced<Product>(
     self: &State<Product>,
     observation: &PositionObservation,
-    reference_time_ms: u64,
+    now_ms: u64,
 ) {
     let price_policy = self.vault_policy.price_policy();
 
-    assert_oracle_admitted(&price_policy, observation.base_oracle(), reference_time_ms);
-    assert_oracle_admitted(&price_policy, observation.collateral_oracle(), reference_time_ms);
+    assert_oracle_admitted(&price_policy, observation.base_oracle(), now_ms);
+    assert_oracle_admitted(&price_policy, observation.collateral_oracle(), now_ms);
     price_policy.assert_mark_within_oracle_divergence(
         observation.mark_price(),
         observation.base_oracle().price(),
@@ -1001,8 +998,8 @@ fun assert_observation_priced<Product>(
 }
 
 /// Rejects one oracle price that is stale or carries too wide a confidence interval.
-fun assert_oracle_admitted(price_policy: &PricePolicy, oracle: &PriceObservation, reference_time_ms: u64) {
-    price_policy.assert_price_fresh(oracle.publish_time_ms(), reference_time_ms);
+fun assert_oracle_admitted(price_policy: &PricePolicy, oracle: &PriceObservation, now_ms: u64) {
+    price_policy.assert_price_fresh(oracle.publish_time_ms(), now_ms);
     price_policy.assert_confidence_within_bound(oracle.confidence(), oracle.price());
 }
 
@@ -1013,7 +1010,7 @@ fun seed_nav<Product>(
     self: &State<Product>,
     observation: &PositionObservation,
     seed_reserve: u64,
-    reference_time_ms: u64,
+    now_ms: u64,
 ): u64 {
     let venue_equity = observation.venue_equity();
     assert!(
@@ -1024,7 +1021,7 @@ fun seed_nav<Product>(
         accounting_math::is_shareholder_nav_positive(venue_equity, seed_reserve),
         blast_boosts_core::errors::invalid_nav!(),
     );
-    self.assert_observation_priced(observation, reference_time_ms);
+    self.assert_observation_priced(observation, now_ms);
 
     accounting_math::shareholder_nav(venue_equity, seed_reserve)
 }
@@ -1054,9 +1051,9 @@ fun validated_initialization_nav<Product>(
     self: &State<Product>,
     observation: PositionObservation,
     seed_reserve: u64,
-    reference_time_ms: u64,
+    now_ms: u64,
 ): u64 {
-    let seed_nav = self.seed_nav(&observation, seed_reserve, reference_time_ms);
+    let seed_nav = self.seed_nav(&observation, seed_reserve, now_ms);
     assert!(
         observation.observed_side() == self.vault_policy.side(),
         blast_boosts_core::errors::invalid_initialization_observation!(),
@@ -1065,10 +1062,8 @@ fun validated_initialization_nav<Product>(
     self.assert_within_nav_cap(seed_nav);
 
     let notional = observation.position_collateral();
-    let rebalance_policy = self.vault_policy.rebalance_policy();
     assert!(
-        !rebalance_policy.is_leverage_below_band(notional, seed_nav)
-            && !rebalance_policy.is_leverage_above_band(notional, seed_nav),
+        self.vault_policy.rebalance_policy().is_leverage_within_band(notional, seed_nav),
         blast_boosts_core::errors::initialization_leverage_unhealthy!(),
     );
     assert!(
@@ -1174,10 +1169,10 @@ public fun donate<Product>(
     before: PositionObservation,
     after: PositionObservation,
     amount: u64,
-    reference_time_ms: u64,
+    now_ms: u64,
 ) {
-    let plan = self.prepare_donation(before, amount, reference_time_ms);
-    self.complete_donation(plan, after, reference_time_ms);
+    let plan = self.prepare_donation(before, amount, now_ms);
+    self.complete_donation(plan, after, now_ms);
 }
 
 // === Imports ===

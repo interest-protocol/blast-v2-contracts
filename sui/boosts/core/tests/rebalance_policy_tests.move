@@ -89,6 +89,10 @@ fun eligibility_predicates_pin_every_threshold_equality() {
     assert!(!value.is_leverage_above_band(26_000, 10_000));
     assert!(!value.is_leverage_below_band(26_000, 10_000));
     assert!(value.is_leverage_above_band(26_001, 10_000));
+    assert!(!value.is_leverage_within_band(15_999, 10_000));
+    assert!(value.is_leverage_within_band(16_000, 10_000));
+    assert!(value.is_leverage_within_band(26_000, 10_000));
+    assert!(!value.is_leverage_within_band(26_001, 10_000));
     assert!(!value.is_leverage_above_max(29_999, 10_000));
     assert!(!value.is_leverage_above_max(30_000, 10_000));
     assert!(value.is_leverage_above_max(30_001, 10_000));
