@@ -75,7 +75,7 @@ are not BCS TransactionData: resolving live objects and running the generated un
 serialization command belong to the authorized rehearsal and remain unrun.
 
 Mint/redeem clients provide a native input coin, minimum output, maximum protocol
-fee and inclusive deadline. Consume returned `Coin<Vault<Product>>` directly as
+fee and inclusive deadline. Consume returned `Coin<BlastBoost<Product>>` directly as
 the launchpad Quote, or consume launchpad's returned Quote directly in redeem.
 Exact Quote admission remains launchpad administration; neither module gains
 the other's custody authority. The consumer-only composition package compiles

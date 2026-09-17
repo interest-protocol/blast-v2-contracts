@@ -220,7 +220,7 @@ public(package) fun rebalanced<Product>(
     vault_id: ID, equity_before: u64, equity_after: u64, base_before: u64, base_after: u64,
     increase: bool, reserve_after: u64, admin_cash_after: u64, supply_after: u64, checkpoint: Checkpoint,
 ) {
-    blast_boosts_aftermath::events_wrapper::emit_event(Rebalanced<Product> {
+    blast_boosts_aftermath::blast_events::emit_event(Rebalanced<Product> {
         vault_id, equity_before, equity_after, base_before, base_after, increase,
         reserve_after, admin_cash_after, supply_after, checkpoint,
     });
@@ -231,7 +231,7 @@ public(package) fun redeemed<Product>(
     fee_bps: u64, admin_bps: u64, reserve_after: u64, admin_cash_after: u64,
     supply_after: u64, checkpoint: Checkpoint,
 ) {
-    blast_boosts_aftermath::events_wrapper::emit_event(Redeemed<Product> {
+    blast_boosts_aftermath::blast_events::emit_event(Redeemed<Product> {
         vault_id, shares, net, fee, admin_fee, buffer_fee, fee_bps, admin_bps,
         reserve_after, admin_cash_after, supply_after, checkpoint,
     });
@@ -242,26 +242,26 @@ public(package) fun minted<Product>(
     buffer_fee: u64, fee_bps: u64, admin_bps: u64, reserve_after: u64, admin_cash_after: u64,
     supply_after: u64, checkpoint: Checkpoint,
 ) {
-    blast_boosts_aftermath::events_wrapper::emit_event(Minted<Product> {
+    blast_boosts_aftermath::blast_events::emit_event(Minted<Product> {
         vault_id, deposit, shares, contribution, fee, admin_fee, buffer_fee, fee_bps, admin_bps,
         reserve_after, admin_cash_after, supply_after, checkpoint,
     });
 }
 
 public(package) fun buffer_released<Product>(vault_id: ID, amount: u64, reserve_after: u64) {
-    blast_boosts_aftermath::events_wrapper::emit_event(BufferReleased<Product> {
+    blast_boosts_aftermath::blast_events::emit_event(BufferReleased<Product> {
         vault_id, amount, reserve_after,
     });
 }
 
 public(package) fun donated<Product>(vault_id: ID, amount: u64, reserve_after: u64, checkpoint: Checkpoint) {
-    blast_boosts_aftermath::events_wrapper::emit_event(Donated<Product> {
+    blast_boosts_aftermath::blast_events::emit_event(Donated<Product> {
         vault_id, amount, reserve_after, checkpoint,
     });
 }
 
 public(package) fun admin_fees_withdrawn<Product>(vault_id: ID, amount: u64, remaining: u64) {
-    blast_boosts_aftermath::events_wrapper::emit_event(AdminFeesWithdrawn<Product> {
+    blast_boosts_aftermath::blast_events::emit_event(AdminFeesWithdrawn<Product> {
         vault_id, amount, remaining,
     });
 }
@@ -275,14 +275,14 @@ public(package) fun fees_updated<Product>(
     redeem_bps: u64,
     admin_bps: u64,
 ) {
-    blast_boosts_aftermath::events_wrapper::emit_event(FeesUpdated<Product> {
+    blast_boosts_aftermath::blast_events::emit_event(FeesUpdated<Product> {
         vault_id, previous_mint_bps, previous_redeem_bps, previous_admin_bps,
         mint_bps, redeem_bps, admin_bps,
     });
 }
 
 public(package) fun nav_cap_updated<Product>(vault_id: ID, previous_nav_cap: u64, nav_cap: u64) {
-    blast_boosts_aftermath::events_wrapper::emit_event(NavCapUpdated<Product> {
+    blast_boosts_aftermath::blast_events::emit_event(NavCapUpdated<Product> {
         vault_id, previous_nav_cap, nav_cap,
     });
 }
@@ -298,7 +298,7 @@ public(package) fun vault_issued<Product>(
     max_order_notional_maximum: u64,
     maintenance_reserve: u64,
 ) {
-    blast_boosts_aftermath::events_wrapper::emit_event(VaultIssued<Product> {
+    blast_boosts_aftermath::blast_events::emit_event(VaultIssued<Product> {
         vault_id,
         treasury_cap_id,
         metadata_cap_id,
@@ -333,7 +333,7 @@ public(package) fun vault_initialized<Product>(
     position_imr: u256,
     checkpoint: Checkpoint,
 ) {
-    blast_boosts_aftermath::events_wrapper::emit_event(
+    blast_boosts_aftermath::blast_events::emit_event(
         VaultInitialized<Product> {
             vault_id,
             account_object_id,
@@ -371,7 +371,7 @@ public(package) fun funding_settled<Product>(
     previous_checkpoint: Checkpoint,
     checkpoint: Checkpoint,
 ) {
-    blast_boosts_aftermath::events_wrapper::emit_event(
+    blast_boosts_aftermath::blast_events::emit_event(
         FundingSettled<Product> {
             vault_id,
             is_cost,
@@ -392,7 +392,7 @@ public(package) fun health_synchronized<Product>(
     reason: u8,
     checkpoint: Checkpoint,
 ) {
-    blast_boosts_aftermath::events_wrapper::emit_event(
+    blast_boosts_aftermath::blast_events::emit_event(
         HealthSynchronized<Product> {
             vault_id,
             reason,
@@ -414,7 +414,7 @@ public(package) fun risk_module_witness_rotated<Product>(
     previous_witness: TypeName,
     new_witness: TypeName,
 ) {
-    blast_boosts_aftermath::events_wrapper::emit_event(
+    blast_boosts_aftermath::blast_events::emit_event(
         RiskModuleWitnessRotated<Product> {
             vault_id,
             previous_witness,
@@ -428,7 +428,7 @@ public(package) fun max_order_notional_updated<Product>(
     previous_current: u64,
     new_current: u64,
 ) {
-    blast_boosts_aftermath::events_wrapper::emit_event(
+    blast_boosts_aftermath::blast_events::emit_event(
         MaxOrderNotionalUpdated<Product> {
             vault_id,
             previous_current,
@@ -441,7 +441,7 @@ public(package) fun shutdown_finalized<Product>(
     vault_id: ID, recovered_cash: u64, eligible_supply: u64, seed_funder_payment: Option<address>, checkpoint: Checkpoint,
     unrecoverable_collateral_raw: u256,
 ) {
-    blast_boosts_aftermath::events_wrapper::emit_event(ShutdownFinalized<Product> {
+    blast_boosts_aftermath::blast_events::emit_event(ShutdownFinalized<Product> {
         vault_id, recovered_cash, eligible_supply, seed_funder_payment, checkpoint, unrecoverable_collateral_raw,
     });
 }
@@ -450,7 +450,7 @@ public(package) fun unwind_progress<Product>(
     vault_id: ID, before: Checkpoint, after_funding: Option<Checkpoint>, after: Checkpoint,
     market_orders: u64, filled_quote: Option<u256>,
 ) {
-    blast_boosts_aftermath::events_wrapper::emit_event(UnwindProgress<Product> {
+    blast_boosts_aftermath::blast_events::emit_event(UnwindProgress<Product> {
         vault_id, before, after_funding, after, market_orders, filled_quote,
     });
 }
@@ -458,13 +458,13 @@ public(package) fun unwind_progress<Product>(
 public(package) fun shutdown_redeemed<Product>(
     vault_id: ID, shares: u64, cash_paid: u64, cash_remaining: u64, eligible_remaining: u64,
 ) {
-    blast_boosts_aftermath::events_wrapper::emit_event(ShutdownRedeemed<Product> {
+    blast_boosts_aftermath::blast_events::emit_event(ShutdownRedeemed<Product> {
         vault_id, shares, cash_paid, cash_remaining, eligible_remaining,
     });
 }
 
 public(package) fun shutdown_begun<Product>(vault_id: ID, reason: blast_boosts_core::lifecycle::ShutdownReason) {
-    blast_boosts_aftermath::events_wrapper::emit_event(
+    blast_boosts_aftermath::blast_events::emit_event(
         ShutdownBegun<Product> { vault_id, reason },
     );
 }
@@ -527,7 +527,7 @@ public fun rebalanced_amounts<Product>(self: &Rebalanced<Product>): (u64, u64, u
 public fun collect<T: copy + drop>(): vector<T> {
     let mut out = vector[];
 
-    sui::event::events_by_type<blast_boosts_aftermath::events_wrapper::Event<T>>().do!(
+    sui::event::events_by_type<blast_boosts_aftermath::blast_events::Event<T>>().do!(
         |event| out.push_back(event.unwrap()),
     );
 

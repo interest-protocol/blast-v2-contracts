@@ -15,7 +15,7 @@ module blast_boosts_aftermath::package_admin;
 /// Shared, non-releasable adapter package authority.
 public struct PackageAdmin has key {
     id: UID,
-    custody: UpgradeCustody<AFTERMATH>,
+    custody: UpgradeCustody<BLAST_BOOSTS_AFTERMATH>,
 }
 
 // === Public Functions ===
@@ -29,12 +29,12 @@ public struct PackageAdmin has key {
 public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext) {
     // from_module compares both the package address and the canonical module name.
     assert!(
-        publisher.from_module<AFTERMATH>(),
+        publisher.from_module<BLAST_BOOSTS_AFTERMATH>(),
         blast_boosts_aftermath::errors::invalid_package_publisher!(),
     );
 
     let id = object::new(ctx);
-    let custody = upgrade_custody::new<AFTERMATH>(id.to_inner(), publisher, upgrade_cap);
+    let custody = upgrade_custody::new<BLAST_BOOSTS_AFTERMATH>(id.to_inner(), publisher, upgrade_cap);
 
     transfer::share_object(PackageAdmin { id, custody });
 }
@@ -121,11 +121,11 @@ public fun has_upgrade_cap(self: &PackageAdmin): bool {
 /// Creates unshared custody around this package's simulated capabilities.
 public fun new_for_testing(ctx: &mut TxContext): PackageAdmin {
     let id = object::new(ctx);
-    let custody = upgrade_custody::new<AFTERMATH>(
+    let custody = upgrade_custody::new<BLAST_BOOSTS_AFTERMATH>(
         id.to_inner(),
-        blast_boosts_aftermath::aftermath::publisher_for_testing(ctx),
+        blast_boosts_aftermath::blast_boosts_aftermath::publisher_for_testing(ctx),
         sui::package::test_publish(
-            std::type_name::original_id<AFTERMATH>().to_id(),
+            std::type_name::original_id<BLAST_BOOSTS_AFTERMATH>().to_id(),
             ctx,
         ),
     );
@@ -170,7 +170,7 @@ use blast_admin::{
     upgrade_custody::{Self, UpgradeCustody},
 };
 
-use blast_boosts_aftermath::{aftermath::AFTERMATH, protocol::Protocol};
+use blast_boosts_aftermath::{blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH, protocol::Protocol};
 
 use blast_boosts_core::blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE};
 

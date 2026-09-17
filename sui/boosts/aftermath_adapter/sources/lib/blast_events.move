@@ -1,5 +1,5 @@
 /// Stable event envelope for the Aftermath adapter package.
-module blast_boosts_aftermath::events_wrapper;
+module blast_boosts_aftermath::blast_events;
 
 // === Public Structs ===
 

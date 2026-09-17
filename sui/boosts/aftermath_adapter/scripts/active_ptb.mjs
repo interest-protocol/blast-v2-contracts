@@ -57,7 +57,7 @@ export function buildActivePlan(input) {
         const keys = ['package', 'memeType', 'launch', 'version', 'runtime', 'minimumOutput'];
         if (Object.keys(launch).length !== keys.length || Object.keys(launch).some((key) => !keys.includes(key))) throw Error('unexpected launch field');
         launchPackage = address(launch.package);
-        launchTypes = [type(launch.memeType), `${adapter}::vault::Vault<${product}>`];
+        launchTypes = [type(launch.memeType), `${adapter}::blast_boost::BlastBoost<${product}>`];
         launchArgs = ['launch', 'version', 'runtime'].map((role) => `@${address(launch[role])}`);
         launchMinimum = u64(launch.minimumOutput);
     }

@@ -73,7 +73,7 @@ for forbidden in \
   upgrade.move \
   package_marker.move \
   lib/events.move \
-  lib/events_wrapper.move; do
+  lib/blast_events.move; do
   [[ ! -e "$package_dir/sources/$forbidden" ]] \
     || fail "$forbidden reintroduces administration or replay state that blast_admin owns."
 done

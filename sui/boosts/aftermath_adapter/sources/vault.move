@@ -80,15 +80,14 @@ public fun issue<Product: drop, RiskModule: drop>(
 
     let risk_module_witness = valid_risk_module_type<RiskModule>();
 
-    let (initializer, treasury_cap) = registry.new_currency<Vault<Product>>(
-        constants::share_decimals!(),
+    let (treasury_cap, metadata_cap) = blast_boost::new_currency<Product>(
+        registry,
         symbol,
         name,
         description,
         icon_url,
         ctx,
     );
-    let metadata_cap = initializer.finalize(ctx);
     let treasury_cap_id = object::id(&treasury_cap);
     let metadata_cap_id = object::id(&metadata_cap);
     let mut vault = Vault {
@@ -260,7 +259,7 @@ public fun begin_shutdown<Product>(
 
 /// Burns native eligible shares for local terminal collateral; no venue or oracle access.
 public fun redeem_shutdown<Product, Collateral>(
-    self: &mut Vault<Product>, protocol: &Protocol, shares: Coin<Vault<Product>>,
+    self: &mut Vault<Product>, protocol: &Protocol, shares: Coin<BlastBoost<Product>>,
     minimum_collateral: u64, deadline_ms: u64, clock: &Clock, ctx: &mut TxContext,
 ): Coin<Collateral> {
     protocol.assert_current();
@@ -327,7 +326,7 @@ public(package) fun withdraw_collateral<Product, Collateral>(
 
 /// Seals redemption terms against the actual native input and authoritative supply.
 public(package) fun prepare_redemption<Product>(
-    self: &Vault<Product>, observation: PositionObservation, shares: &Coin<Vault<Product>>,
+    self: &Vault<Product>, observation: PositionObservation, shares: &Coin<BlastBoost<Product>>,
     minimum_output: u64, maximum_fee_bps: u64, now: u64,
 ): RedemptionPlan<Product> {
     self.series_state.prepare_redemption(observation, shares.value(), self.share_supply(), minimum_output, maximum_fee_bps, now)
@@ -349,7 +348,7 @@ public(package) fun assert_redemption_cash_out<Product>(
 }
 
 /// Burns only through this Vault's retained native TreasuryCap.
-public(package) fun burn_redeemed_shares<Product>(self: &mut Vault<Product>, shares: Coin<Vault<Product>>): u64 {
+public(package) fun burn_redeemed_shares<Product>(self: &mut Vault<Product>, shares: Coin<BlastBoost<Product>>): u64 {
     let treasury_cap = dynamic_object_field::borrow_mut(&mut self.id, TreasuryKey<Product>());
     coin::burn(treasury_cap, shares)
 }
@@ -439,7 +438,7 @@ public(package) fun complete_mint<Product>(
     after: PositionObservation,
     now: u64,
     ctx: &mut TxContext,
-): (Coin<Vault<Product>>, u64, u64, u64, u64, u64, u64) {
+): (Coin<BlastBoost<Product>>, u64, u64, u64, u64, u64, u64) {
     let (amount, contribution, fee, admin, buffer, rate, admin_rate) = self.series_state.complete_mint(plan, after, now);
     let treasury_cap = dynamic_object_field::borrow_mut(&mut self.id, TreasuryKey<Product>());
     (coin::mint(treasury_cap, amount, ctx), contribution, fee, admin, buffer, rate, admin_rate)
@@ -654,7 +653,7 @@ public(package) fun mint_locked_shares<Product>(
         &mut self.id,
         TreasuryKey<Product>(),
     );
-    let locked_shares: Coin<Vault<Product>> = coin::mint(treasury_cap, amount, ctx);
+    let locked_shares: Coin<BlastBoost<Product>> = coin::mint(treasury_cap, amount, ctx);
     self.seed_facts.fill(SeedFacts { locked_shares: amount, funder });
     transfer::public_transfer(locked_shares, @0x0);
 }
@@ -750,7 +749,7 @@ fun valid_risk_module_type<RiskModule: drop>(): TypeName {
     assert!(
         !witness.is_primitive()
             && type_name::original_id<RiskModule>()
-                != type_name::original_id<AFTERMATH>(),
+                != type_name::original_id<BLAST_BOOSTS_AFTERMATH>(),
         blast_boosts_aftermath::errors::invalid_risk_module_witness_type!(),
     );
     witness
@@ -758,19 +757,19 @@ fun valid_risk_module_type<RiskModule: drop>(): TypeName {
 
 fun add_treasury_cap<Product>(
     self: &mut Vault<Product>,
-    treasury_cap: TreasuryCap<Vault<Product>>,
+    treasury_cap: TreasuryCap<BlastBoost<Product>>,
 ) {
     self.id.add_dynamic_object_field(TreasuryKey<Product>(), treasury_cap);
 }
 
 fun add_metadata_cap<Product>(
     self: &mut Vault<Product>,
-    metadata_cap: MetadataCap<Vault<Product>>,
+    metadata_cap: MetadataCap<BlastBoost<Product>>,
 ) {
     self.id.add_dynamic_object_field(MetadataKey<Product>(), metadata_cap);
 }
 
-fun treasury_cap<Product>(self: &Vault<Product>): &TreasuryCap<Vault<Product>> {
+fun treasury_cap<Product>(self: &Vault<Product>): &TreasuryCap<BlastBoost<Product>> {
     dynamic_object_field::borrow(&self.id, TreasuryKey<Product>())
 }
 
@@ -783,7 +782,7 @@ public fun terminal_cash_for_testing<Product, Collateral>(self: &Vault<Product>)
 }
 
 #[test_only]
-fun metadata_cap<Product>(self: &Vault<Product>): &MetadataCap<Vault<Product>> {
+fun metadata_cap<Product>(self: &Vault<Product>): &MetadataCap<BlastBoost<Product>> {
     dynamic_object_field::borrow(&self.id, MetadataKey<Product>())
 }
 
@@ -898,7 +897,7 @@ public fun mint_locked_shares_for_testing<Product>(
 /// Issues fixture shares through the same retained native TreasuryCap as production mints.
 public fun mint_eligible_shares_for_testing<Product>(
     self: &mut Vault<Product>, amount: u64, ctx: &mut TxContext,
-): Coin<Vault<Product>> {
+): Coin<BlastBoost<Product>> {
     let treasury_cap = dynamic_object_field::borrow_mut(&mut self.id, TreasuryKey<Product>());
     coin::mint(treasury_cap, amount, ctx)
 }
@@ -913,7 +912,8 @@ public fun is_unwinding_for_testing<Product>(self: &Vault<Product>): bool {
 use blast_admin::acl::AdminWitness;
 
 use blast_boosts_aftermath::{
-    aftermath::AFTERMATH,
+    blast_boost::{Self, BlastBoost},
+    blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH,
     constants,
     events,
     protocol::Protocol,

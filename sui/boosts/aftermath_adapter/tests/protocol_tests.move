@@ -50,7 +50,7 @@ fun the_generation_advances_to_the_next_compiled_generation() {
     fixture.protocol.advance_for_testing();
 
     let advanced = blast_admin::events::collect_one<
-        blast_admin::events::OperationalVersionAdvanced<AFTERMATH>,
+        blast_admin::events::OperationalVersionAdvanced<BLAST_BOOSTS_AFTERMATH>,
     >(0);
     let (_, _, previous_generation, new_generation) =
         advanced.operational_version_advanced_fields();
@@ -165,7 +165,7 @@ fun start(roles: u64): Fixture {
 
 use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
 
-use blast_boosts_aftermath::{aftermath::AFTERMATH, domain_fixture, protocol};
+use blast_boosts_aftermath::{blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH, domain_fixture, protocol};
 
 use blast_boosts_core::{
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},

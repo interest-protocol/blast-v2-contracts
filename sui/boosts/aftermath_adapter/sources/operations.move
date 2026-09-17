@@ -25,7 +25,7 @@ const MAX_ACTIVE_ORDERS: u64 = 16;
 
 /// Linear custody of priced shares until exact collateral and final margin are proved.
 public struct RedemptionReceipt<phantom Product> {
-    shares: Balance<Vault<Product>>,
+    shares: Balance<BlastBoost<Product>>,
     net: u64,
     admin: u64,
     fee: u64,
@@ -158,7 +158,7 @@ public fun redeem<Product, Collateral>(
     collateral_oracle: &PriceFeedStorage,
     base_price_info: &PriceInfoObject,
     collateral_price_info: &PriceInfoObject,
-    shares: Coin<Vault<Product>>,
+    shares: Coin<BlastBoost<Product>>,
     minimum_collateral: u64,
     maximum_fee_bps: u64,
     deadline_ms: u64,
@@ -257,7 +257,7 @@ public fun mint<Product, Collateral>(
     deadline_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
-): Coin<Vault<Product>> {
+): Coin<BlastBoost<Product>> {
     protocol.assert_current();
     vault.assert_active();
     vault.assert_collateral_type<_, Collateral>();
@@ -738,7 +738,7 @@ public(package) fun complete_rebalance<Product, Collateral>(
 
 /// Holds the actual input coin across payout instead of accepting a numerical burn promise.
 public(package) fun price_redemption<Product>(
-    vault: &mut Vault<Product>, plan: RedemptionPlan<Product>, shares: Coin<Vault<Product>>,
+    vault: &mut Vault<Product>, plan: RedemptionPlan<Product>, shares: Coin<BlastBoost<Product>>,
     unwound: PositionObservation, unwound_checkpoint: venue_account::Checkpoint, now: u64,
 ): RedemptionReceipt<Product> {
     let amount = plan.redemption_shares();
@@ -790,7 +790,7 @@ public(package) fun complete_redemption<Product, Collateral>(
 public(package) fun complete_mint<Product, Collateral>(
     vault: &mut Vault<Product>, plan: MintPlan<Product>, after: PositionObservation,
     checkpoint: venue_account::Checkpoint, now: u64, ctx: &mut TxContext,
-): Coin<Vault<Product>> {
+): Coin<BlastBoost<Product>> {
     let deposit = plan.mint_deposit();
     let (shares, contribution, fee, admin, buffer, rate, admin_rate) = vault.complete_mint(plan, after, now, ctx);
     vault.replace_venue_checkpoint(checkpoint);
@@ -1657,6 +1657,7 @@ use authority_cap::authority;
 use blast_admin::acl::AdminWitness;
 
 use blast_boosts_aftermath::{
+    blast_boost::BlastBoost,
     events,
     protocol::Protocol,
     snapshot,

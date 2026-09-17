@@ -39,13 +39,13 @@ fun admitting_long_does_not_admit_the_distinct_short_vault_quote() {
 fun quote_round_trip<Quote>(admit_exact: bool) {
     let mut scenario = test_scenario::begin(@0xa);
     let version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin, mut authority) = acl::new_for_testing<LAUNCHPAD_DOMAIN>(
+    let (super_admin, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(
         MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, scenario.ctx(),
     );
     authority.grant_admin(&super_admin, 0, @0xa, scenario.ctx());
     launch_config::init_for_testing(scenario.ctx());
     scenario.next_tx(@0xa);
-    let admin = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let witness = authority.sign_in(&admin);
     let mut config = scenario.take_shared<launch_config::LaunchConfig>();
     if (admit_exact) {
@@ -87,7 +87,7 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
 /// External Quote trading is independent of retirement; returned shares can enter a local claim.
 /// This typechecks the actual terminal ABI without requiring a venue or oracle object.
 public fun sell_and_redeem_shutdown<Product, Collateral, Meme>(
-    market: &mut Launch<Meme, Vault<Product>>, version: &PackageVersion,
+    market: &mut Launch<Meme, BlastBoost<Product>>, version: &PackageVersion,
     runtime: &RuntimeConfig, meme: Coin<Meme>, minimum_shares: u64,
     vault: &mut Vault<Product>, protocol: &Protocol,
     minimum_cash: u64, deadline: u64, clock: &Clock, ctx: &mut TxContext,
@@ -103,9 +103,9 @@ public fun mint_and_buy<Product, Collateral, Meme>(
     base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
     base_price: &PriceInfoObject, collateral_price: &PriceInfoObject,
     cash: Coin<Collateral>, minimum_shares: u64, maximum_fee: u64, deadline: u64,
-    market: &mut Launch<Meme, Vault<Product>>, version: &PackageVersion,
+    market: &mut Launch<Meme, BlastBoost<Product>>, version: &PackageVersion,
     runtime: &RuntimeConfig, minimum_meme: u64, clock: &Clock, ctx: &mut TxContext,
-): (Coin<Meme>, Coin<Vault<Product>>) {
+): (Coin<Meme>, Coin<BlastBoost<Product>>) {
     let shares = operations::mint(vault, protocol, account, registry, clearing_house,
         base_oracle, collateral_oracle, base_price, collateral_price, cash,
         minimum_shares, maximum_fee, deadline, clock, ctx);
@@ -114,7 +114,7 @@ public fun mint_and_buy<Product, Collateral, Meme>(
 
 /// Typechecks the atomic launch sell -> redemption handoff without a receipt currency.
 public fun sell_and_redeem<Product, Collateral, Meme>(
-    market: &mut Launch<Meme, Vault<Product>>, version: &PackageVersion,
+    market: &mut Launch<Meme, BlastBoost<Product>>, version: &PackageVersion,
     runtime: &RuntimeConfig, meme: Coin<Meme>, minimum_shares: u64,
     vault: &mut Vault<Product>, protocol: &Protocol, account: &mut Account<Collateral>,
     registry: &Registry, clearing_house: ClearingHouse<Collateral>,
@@ -134,11 +134,11 @@ use blast_admin::acl::{Self, AdminCap};
 
 use blast_fun::{
     bps, creator_authority, launch::{Self, Launch}, launch_config,
-    launch_ticket, launchpad_domain::LAUNCHPAD_DOMAIN,
+    launch_ticket, blast_fun_domain::BLAST_FUN_DOMAIN,
     package_version::{Self, PackageVersion}, runtime_config::{Self, RuntimeConfig},
 };
 
-use blast_boosts_aftermath::{operations, protocol::Protocol, vault::Vault};
+use blast_boosts_aftermath::{blast_boost::BlastBoost, operations, protocol::Protocol, vault::Vault};
 
 use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 

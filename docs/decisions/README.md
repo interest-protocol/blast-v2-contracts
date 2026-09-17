@@ -129,8 +129,9 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0081](0081-separate-lp-fee-share-policy.md) | Separate LP-fee share policy with per-project pins | **accepted** |
 | [0082](0082-revocable-creator-and-lp-fee-capabilities.md) | Revocable curve-fee, metadata, and LP-fee capabilities | **accepted** |
 | [0083](0083-migrators-own-lp-fee-policy-and-authority.md) | Migrators own LP-fee policy and migration-born LP-fee authority | **accepted** |
+| [0085](0085-explorer-visible-type-naming.md) | Explorer-visible type naming: every on-chain type names Blast | **accepted** |
 
-ADRs 0013–0036, 0038–0063, 0065–0069, 0073, and 0077–0083 are accepted; ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
+ADRs 0013–0036, 0038–0063, 0065–0069, 0073, 0077–0083, and 0085 are accepted; ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR

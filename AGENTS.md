@@ -24,6 +24,8 @@ assigned review scope; report inaccessible required guidance as a review gap.
 Load only the branch the task changes:
 
 - Package or contract/SDK boundary: `docs/architecture.md`.
+- Naming a module, one-time witness, coin, or event type that appears on an
+  explorer: `docs/explorer-naming.md` and ADR 0085.
 - Product inclusion or deferral: `docs/protocol-scope.md`.
 - Numerical compatibility or release evidence: `docs/testing.md` and
   `docs/vectors/`.

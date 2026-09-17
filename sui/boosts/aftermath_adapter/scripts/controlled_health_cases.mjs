@@ -126,8 +126,8 @@ function eventTypes(adapterPackage, productType) {
         fail(`productType: expected ${prefix}...>`);
     }
     return {
-        funding: `${adapterPackage}::events_wrapper::Event<${adapterPackage}::events::FundingSettled<${productType}>>`,
-        health: `${adapterPackage}::events_wrapper::Event<${adapterPackage}::events::HealthSynchronized<${productType}>>`,
+        funding: `${adapterPackage}::blast_events::Event<${adapterPackage}::events::FundingSettled<${productType}>>`,
+        health: `${adapterPackage}::blast_events::Event<${adapterPackage}::events::HealthSynchronized<${productType}>>`,
     };
 }
 
@@ -1319,7 +1319,7 @@ function live(configPath) {
         const protocolEvents = transition.events.filter((event) =>
             typeof event.type === 'string'
             && event.type.startsWith(
-                `${adapterPackage}::events_wrapper::Event<${adapterPackage}::events::`,
+                `${adapterPackage}::blast_events::Event<${adapterPackage}::events::`,
             ));
         const outcome = validateEvidence({
             stored: stored.selected,

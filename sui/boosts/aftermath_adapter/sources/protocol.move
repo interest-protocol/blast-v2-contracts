@@ -19,7 +19,7 @@ const NEXT_PACKAGE_VERSION: u64 = 2;
 /// Shared operational generation for the Aftermath adapter package.
 public struct Protocol has key {
     id: UID,
-    generation: OperationalVersion<AFTERMATH>,
+    generation: OperationalVersion<BLAST_BOOSTS_AFTERMATH>,
 }
 
 // === Private Initialization ===
@@ -102,4 +102,4 @@ public fun assert_current_for_testing(self: &Protocol) {
 
 use blast_admin::operational_version::{Self, OperationalVersion};
 
-use blast_boosts_aftermath::aftermath::AFTERMATH;
+use blast_boosts_aftermath::blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH;

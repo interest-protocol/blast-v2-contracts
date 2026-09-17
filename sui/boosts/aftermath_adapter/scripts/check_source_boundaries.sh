@@ -12,7 +12,8 @@ venue_account_file="$package_dir/sources/venue_account.move"
 snapshot_file="$package_dir/sources/snapshot.move"
 operations_file="$package_dir/sources/operations.move"
 package_admin_file="$package_dir/sources/package_admin.move"
-aftermath_file="$package_dir/sources/aftermath.move"
+marker_file="$package_dir/sources/blast_boosts_aftermath.move"
+blast_boost_file="$package_dir/sources/blast_boost.move"
 series_dir="$(cd "$package_dir/../core" && pwd)"
 
 grep -q '^name = "blast_boosts_aftermath"$' "$manifest" \
@@ -30,11 +31,12 @@ for required in \
   "$snapshot_file" \
   "$operations_file" \
   "$package_admin_file" \
-  "$aftermath_file" \
+  "$marker_file" \
+  "$blast_boost_file" \
   "$package_dir/sources/lib/constants.move" \
   "$package_dir/sources/lib/errors.move" \
   "$package_dir/sources/lib/events.move" \
-  "$package_dir/sources/lib/events_wrapper.move"; do
+  "$package_dir/sources/lib/blast_events.move"; do
   [[ -f "$required" ]] || fail "Missing required adapter source: $required"
 done
 
@@ -60,7 +62,7 @@ protocol_fields="$(
   sed -n '/^public struct Protocol has key {$/,/^}$/p' "$protocol_file" \
     | tr -d '[:space:]'
 )"
-[[ "$protocol_fields" == 'publicstructProtocolhaskey{id:UID,generation:OperationalVersion<AFTERMATH>,}' ]] \
+[[ "$protocol_fields" == 'publicstructProtocolhaskey{id:UID,generation:OperationalVersion<BLAST_BOOSTS_AFTERMATH>,}' ]] \
   || fail "The adapter generation must be the shared typed value and nothing else."
 grep -q '^const PACKAGE_VERSION: u64 = 1;$' "$protocol_file" \
   || fail "The adapter must own its compiled package version."
@@ -206,10 +208,23 @@ fi
 sed -n '/^public fun issue</,/^}/p' "$vault_file" \
   | grep -q 'is_primitive()' \
   || fail "Issuance must reject primitive product tags."
-grep -q 'registry.new_currency<Vault<Product>>' "$vault_file" \
-  || fail "Coin Registry must enforce one currency per product witness type."
-grep -q 'initializer.finalize(ctx)' "$vault_file" \
+grep -q 'blast_boost::new_currency<Product>(' "$vault_file" \
+  || fail "Issuance must register the share currency through the blast_boost marker."
+if grep -q 'new_currency<Vault<' "$vault_file"; then
+  fail "The shared Vault type must never be a currency."
+fi
+grep -q '^public struct BlastBoost<phantom Product> has key {$' "$blast_boost_file" \
+  || fail "The share currency marker must be BlastBoost<phantom Product> has key."
+grep -q 'registry.new_currency<BlastBoost<Product>>(' "$blast_boost_file" \
+  || fail "Coin Registry must enforce one BlastBoost currency per product witness type."
+grep -q 'initializer.finalize(ctx)' "$blast_boost_file" \
   || fail "Issuance must retain the claimed MetadataCap."
+if grep -q 'BlastBoost *{' "$package_dir/sources" -r; then
+  fail "No BlastBoost value may ever be constructed."
+fi
+if grep -rn 'new_currency<' "$package_dir/sources" | grep -v "$blast_boost_file" | grep -v 'blast_boost::new_currency<Product>('; then
+  fail "Only blast_boost may call coin_registry::new_currency."
+fi
 grep -q 'let vault_id = vault.id.to_inner();' "$vault_file" \
   || fail "Vault identity must use its UID directly inside vault.move."
 grep -q '^): Vault<Product> {$' "$vault_file" \
@@ -227,7 +242,7 @@ sed -n '/^public fun set_max_order_notional</,/^}/p' "$vault_file" \
   | grep -q 'presented_witness == self.risk_module_witness' \
   || fail "Notional-cap control must authenticate the selected risk module."
 grep -q 'type_name::original_id<RiskModule>()' "$vault_file" \
-  && grep -q '!= type_name::original_id<AFTERMATH>()' "$vault_file" \
+  && grep -q '!= type_name::original_id<BLAST_BOOSTS_AFTERMATH>()' "$vault_file" \
   || fail "Risk witnesses must originate outside the adapter's public Product package."
 sed -n '/^public fun rotate_risk_module</,/^)/p' "$vault_file" \
   | grep -q '_risk_module: RiskModule,' \
@@ -255,11 +270,11 @@ package_admin_fields="$(
   sed -n '/^public struct PackageAdmin has key {$/,/^}$/p' "$package_admin_file" \
     | tr -d '[:space:]'
 )"
-[[ "$package_admin_fields" == 'publicstructPackageAdminhaskey{id:UID,custody:UpgradeCustody<AFTERMATH>,}' ]] \
+[[ "$package_admin_fields" == 'publicstructPackageAdminhaskey{id:UID,custody:UpgradeCustody<BLAST_BOOSTS_AFTERMATH>,}' ]] \
   || fail "Adapter custody must be the shared sealed value and nothing else."
-grep -q 'publisher.from_module<AFTERMATH>()' "$package_admin_file" \
+grep -q 'publisher.from_module<BLAST_BOOSTS_AFTERMATH>()' "$package_admin_file" \
   || fail "PackageAdmin must validate the canonical adapter Publisher."
-grep -q 'upgrade_custody::new<AFTERMATH>(id.to_inner(), publisher, upgrade_cap)' \
+grep -q 'upgrade_custody::new<BLAST_BOOSTS_AFTERMATH>(id.to_inner(), publisher, upgrade_cap)' \
   "$package_admin_file" \
   || fail "PackageAdmin must seal both capabilities through the shared constructor."
 if grep -qE 'assert_adapter_custody|self\.publisher|self\.upgrade_cap' \
@@ -312,8 +327,15 @@ if grep -nE '^public struct (PackageAdminCreated|UpgradeAuthorized|UpgradeCommit
   fail "Reusable administration events must come from blast_admin, not a consumer copy."
 fi
 
-grep -q 'sui::package::claim_and_keep(otw, ctx);' "$aftermath_file" \
+grep -q '^module blast_boosts_aftermath::blast_boosts_aftermath;$' "$marker_file" \
+  || fail "The package marker module must be named after the package."
+grep -q '^public struct BLAST_BOOSTS_AFTERMATH() has drop;$' "$marker_file" \
+  || fail "The package one-time witness must be BLAST_BOOSTS_AFTERMATH."
+grep -q 'sui::package::claim_and_keep(otw, ctx);' "$marker_file" \
   || fail "Adapter initialization must claim and keep its Publisher."
+if grep -rn 'module blast_boosts_aftermath::events_wrapper' "$package_dir/sources"; then
+  fail "The event envelope module is blast_events."
+fi
 
 if grep -rnE '^[[:space:]]*(public[[:space:]]+entry|entry)[[:space:]]+fun' \
   "$package_dir/sources"; then

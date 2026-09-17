@@ -104,7 +104,7 @@ test('both direction types compose returned values through mint-buy and sell-red
                 assert.equal(plan.commands[1].arguments[9], 'shares');
                 assert.deepEqual(plan.transfers, ['result']);
             }
-            assert(plan.commands.some((c) => c.typeArguments.includes(`${address(1)}::vault::Vault<${value.productType}>`)));
+            assert(plan.commands.some((c) => c.typeArguments.includes(`${address(1)}::blast_boost::BlastBoost<${value.productType}>`)));
         }
     }
 });

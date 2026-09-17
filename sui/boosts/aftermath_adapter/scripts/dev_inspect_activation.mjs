@@ -171,7 +171,7 @@ function productType(adapterPackage, tagType) {
 }
 
 function wrappedEventType(adapterPackage, payloadType) {
-    return `${adapterPackage}::events_wrapper::Event<${payloadType}>`;
+    return `${adapterPackage}::blast_events::Event<${payloadType}>`;
 }
 
 function unwrapEventPayload(value, path) {

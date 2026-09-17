@@ -168,8 +168,8 @@ fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
     fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
     fixture.issue_and_share<Sui5x>(b"SUI5X".to_string());
 
-    assert!(fixture.registry.exists<Vault<Sui2x>>());
-    assert!(fixture.registry.exists<Vault<Sui5x>>());
+    assert!(fixture.registry.exists<BlastBoost<Sui2x>>());
+    assert!(fixture.registry.exists<BlastBoost<Sui5x>>());
 
     let issued_2x = events::collect_one<events::VaultIssued<Sui2x>>(0);
     let issued_5x = events::collect_one<events::VaultIssued<Sui5x>>(0);
@@ -215,8 +215,8 @@ fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
     fixture.scenario.next_tx(ISSUER);
     let vault_2x = fixture.scenario.take_shared<Vault<Sui2x>>();
     let vault_5x = fixture.scenario.take_shared<Vault<Sui5x>>();
-    let currency_2x = fixture.scenario.take_shared<Currency<Vault<Sui2x>>>();
-    let currency_5x = fixture.scenario.take_shared<Currency<Vault<Sui5x>>>();
+    let currency_2x = fixture.scenario.take_shared<Currency<BlastBoost<Sui2x>>>();
+    let currency_5x = fixture.scenario.take_shared<Currency<BlastBoost<Sui5x>>>();
 
     assert_eq!(vault_2x.id_for_testing(), vault_2x_id);
     assert_eq!(vault_5x.id_for_testing(), vault_5x_id);
@@ -253,8 +253,8 @@ fun generic_product_tags_issue_distinct_currencies() {
         b"SUI5XT".to_string(),
     );
 
-    assert!(fixture.registry.exists<Vault<TaggedSui2x>>());
-    assert!(fixture.registry.exists<Vault<TaggedSui5x>>());
+    assert!(fixture.registry.exists<BlastBoost<TaggedSui2x>>());
+    assert!(fixture.registry.exists<BlastBoost<TaggedSui5x>>());
 
     destroy(fixture);
 }
@@ -763,7 +763,7 @@ fun issue_and_share_with_policy<Product: drop>(
 fun assert_issued_policy<Product>(self: &Fixture, expected: VaultPolicy) {
     let vault = self.scenario.take_shared<Vault<Product>>();
     assert_eq!(vault.vault_policy_for_testing(), expected);
-    assert!(self.registry.exists<Vault<Product>>());
+    assert!(self.registry.exists<BlastBoost<Product>>());
     test_scenario::return_shared(vault);
 }
 
@@ -799,6 +799,7 @@ fun standard_vault_policy(): VaultPolicy {
 use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
 
 use blast_boosts_aftermath::{
+    blast_boost::BlastBoost,
     domain_fixture,
     events,
     protocol::{Self, Protocol},

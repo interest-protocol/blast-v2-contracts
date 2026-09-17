@@ -503,14 +503,15 @@ function trackedObject(runConfig, role, path) {
 }
 
 function assertTrackedTypeBindings(runConfig, inputs, path) {
-    const leverageType = `${runConfig.packageId}::vault::Vault<${inputs.productType}>`;
+    const vaultType = `${runConfig.packageId}::vault::Vault<${inputs.productType}>`;
+    const boostType = `${runConfig.packageId}::blast_boost::BlastBoost<${inputs.productType}>`;
     const exact = {
-        vault: leverageType,
+        vault: vaultType,
         protocol: `${runConfig.packageId}::protocol::Protocol`,
-        share_currency: `0x2::coin_registry::Currency<${leverageType}>`,
+        share_currency: `0x2::coin_registry::Currency<${boostType}>`,
         collateral_currency: `0x2::coin_registry::Currency<${inputs.collateralType}>`,
-        treasury_cap: `0x2::coin::TreasuryCap<${leverageType}>`,
-        locked_share_coin: `0x2::coin::Coin<${leverageType}>`,
+        treasury_cap: `0x2::coin::TreasuryCap<${boostType}>`,
+        locked_share_coin: `0x2::coin::Coin<${boostType}>`,
         seed_coin: `0x2::coin::Coin<${inputs.collateralType}>`,
         clock: '0x2::clock::Clock',
     };
@@ -1014,7 +1015,7 @@ function assertSuccessOwnership(evidence) {
 }
 
 function initializedEvent(evidence, runConfig) {
-    const eventPrefix = `${runConfig.packageId}::events_wrapper::Event<${runConfig.packageId}::events::`;
+    const eventPrefix = `${runConfig.packageId}::blast_events::Event<${runConfig.packageId}::events::`;
     const expectedType = `${eventPrefix}VaultInitialized<${runConfig.initializer.typeArguments[0]}>>`;
     const protocolEvents = evidence.events.filter((event) =>
         typeof event?.type === 'string'
@@ -1458,7 +1459,7 @@ function selfTest() {
 
     const unexpectedProtocolEvent = structuredClone(fixture.success);
     unexpectedProtocolEvent.events.push({
-        type: `${fixture.success.packageId}::events_wrapper::Event<${fixture.success.packageId}::events::Unexpected>`,
+        type: `${fixture.success.packageId}::blast_events::Event<${fixture.success.packageId}::events::Unexpected>`,
         parsedJson: { pos0: {} },
     });
     expectFailure('unexpected protocol event', () => validateSuccess(

@@ -12,11 +12,12 @@ are validated once and sealed inside `blast_admin` custody, from which no call
 returns them; a governed upgrade commits its receipt and advances the generation
 in one transaction, so a failure at either step rolls the whole upgrade back.
 
-A product is any non-primitive `drop` type: `Vault<Product>` names the
-currency, and Coin Registry rejects a second currency for the same type. Issuing
-consumes a `Product` value, so the module that defines the type must
-participate, together with a live Series1 issuer witness. Each product's tag
-type may live in its own small package.
+A product is any non-primitive type. The share currency is
+`blast_boost::BlastBoost<Product>`, a never-constructed marker registered
+through this package, and Coin Registry rejects a second currency for the same
+tag; `vault::Vault<Product>` is the shared custody object, not the coin.
+Issuing requires a live Series1 issuer witness. Product tags are declared in
+`blast_boosts_products` so the inner type also reads as Blast.
 
 The selected risk-module type is an external authorization boundary. The
 adapter requires a runtime witness and rejects adapter-origin types, but Move

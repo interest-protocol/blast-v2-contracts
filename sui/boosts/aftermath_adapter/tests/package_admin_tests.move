@@ -44,7 +44,7 @@ public struct Fixture {
 /// canonical capabilities it validated.
 fun canonical_capabilities_enter_adapter_custody() {
     let mut scenario = test_scenario::begin(ROOT);
-    let publisher = aftermath::publisher_for_testing(scenario.ctx());
+    let publisher = marker::publisher_for_testing(scenario.ctx());
     let upgrade_cap = package::test_publish(PACKAGE_ID.to_id(), scenario.ctx());
     let publisher_id = object::id(&publisher);
     let upgrade_cap_id = object::id(&upgrade_cap);
@@ -54,7 +54,7 @@ fun canonical_capabilities_enter_adapter_custody() {
     // The creation fact belongs to the sealing transaction, so it is collected
     // before the shared object can be taken in the next one.
     let created = blast_admin::events::collect_one<
-        blast_admin::events::UpgradeCustodyCreated<AFTERMATH>,
+        blast_admin::events::UpgradeCustodyCreated<BLAST_BOOSTS_AFTERMATH>,
     >(0);
 
     scenario.next_tx(ROOT);
@@ -113,7 +113,7 @@ fun a_publisher_from_another_module_is_rejected_first() {
 fun an_upgrade_cap_for_another_package_is_rejected() {
     let mut fixture = start_wrap();
 
-    let publisher = aftermath::publisher_for_testing(fixture.scenario.ctx());
+    let publisher = marker::publisher_for_testing(fixture.scenario.ctx());
     let upgrade_cap = package::test_publish(
         OTHER_PACKAGE_ID.to_id(),
         fixture.scenario.ctx(),
@@ -131,7 +131,7 @@ fun the_package_admin_role_can_irreversibly_restrict_the_adapter() {
 
     fixture.restrict_to_additive();
     let restricted = blast_admin::events::collect_one<
-        blast_admin::events::UpgradePolicyRestricted<AFTERMATH>,
+        blast_admin::events::UpgradePolicyRestricted<BLAST_BOOSTS_AFTERMATH>,
     >(0);
     let (_, _, _, _, previous_policy, new_policy) =
         restricted.upgrade_policy_restricted_fields();
@@ -175,7 +175,7 @@ fun the_package_admin_role_can_permanently_destroy_upgrade_authority() {
     fixture.make_immutable();
 
     let destroyed = blast_admin::events::collect_one<
-        blast_admin::events::UpgradeCapDestroyed<AFTERMATH>,
+        blast_admin::events::UpgradeCapDestroyed<BLAST_BOOSTS_AFTERMATH>,
     >(0);
     let (custodian_id, emitted_upgrade_cap_id, _, final_native_version, final_policy) =
         destroyed.upgrade_cap_destroyed_fields();
@@ -373,7 +373,7 @@ fun make_immutable(self: &mut Fixture) {
 use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
 
 use blast_boosts_aftermath::{
-    aftermath::{Self, AFTERMATH},
+    blast_boosts_aftermath::{Self as marker, BLAST_BOOSTS_AFTERMATH},
     domain_fixture,
     errors,
     package_admin::{Self, PackageAdmin},

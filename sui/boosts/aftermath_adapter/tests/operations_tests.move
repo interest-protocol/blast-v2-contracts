@@ -445,10 +445,10 @@ fun zero_admin_withdrawal_fails_before_empty_cash_lookup() {
 fun mismatched_native_shares_fail_before_unwind_validation() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let shares = sui::coin::mint_for_testing<Vault<Product>>(100_000, fixture.ctx!());
+    let shares = sui::coin::mint_for_testing<BlastBoost<Product>>(100_000, fixture.ctx!());
     let plan = vault.prepare_redemption(position_observation(SEED_EQUITY, true), &shares, 1, 10, REFERENCE_TIME_MS);
     destroy(shares);
-    let wrong_shares = sui::coin::mint_for_testing<Vault<Product>>(99_999, fixture.ctx!());
+    let wrong_shares = sui::coin::mint_for_testing<BlastBoost<Product>>(99_999, fixture.ctx!());
     let receipt = operations::price_redemption(&mut vault, plan, wrong_shares,
         position_observation(SEED_EQUITY, false), initial_checkpoint(), REFERENCE_TIME_MS);
     destroy(receipt);
@@ -2992,6 +2992,7 @@ fun replay_health<Tag>(
 use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
 
 use blast_boosts_aftermath::{
+    blast_boost::BlastBoost,
     domain_fixture,
     events,
     operations,
