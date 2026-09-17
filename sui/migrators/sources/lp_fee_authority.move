@@ -7,14 +7,6 @@
 /// are never reissued: they follow the launch's curve-fee capability.
 module blast_fun_migrators::lp_fee_authority;
 
-use blast_admin::acl::AdminWitness;
-use blast_fun::{
-    creator_authority::CurveFeeCap,
-    launch::{Launch, MigrationPayload},
-    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
-};
-use std::type_name::{Self, TypeName};
-
 // === Errors ===
 
 #[error(code = 0)]
@@ -244,3 +236,15 @@ public fun custodian_for_testing<Meme>(self: &LpFeeAuthority<Meme>): Option<Type
 public fun is_pending_for_testing<Meme>(self: &LpFeeAuthority<Meme>): bool {
     self.is_pending()
 }
+
+// === Imports ===
+
+use blast_admin::acl::AdminWitness;
+
+use blast_fun::{
+    creator_authority::CurveFeeCap,
+    launch::{Launch, MigrationPayload},
+    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
+};
+
+use std::type_name::{Self, TypeName};

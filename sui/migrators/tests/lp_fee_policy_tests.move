@@ -1,17 +1,6 @@
 #[test_only]
 module blast_fun_migrators::lp_fee_policy_tests;
 
-use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
-use blast_fun::{bps, launchpad_domain::LAUNCHPAD_DOMAIN};
-use blast_fun_migrators::{events, lp_fee_policy::{Self, LpFeePolicy}, package_version};
-use std::{type_name, unit_test::{assert_eq, destroy}};
-use sui::{event, test_scenario::{Self, Scenario}};
-
-use fun init_end as InitFixture.end;
-use fun init_next_tx as InitFixture.next_tx;
-use fun policy_end as PolicyFixture.end;
-use fun policy_next_tx as PolicyFixture.next_tx;
-
 // === Constants ===
 
 const PUBLISHER: address = @0xA11CE;
@@ -405,3 +394,23 @@ fun init_end(self: InitFixture) {
 fun policy_end(self: PolicyFixture) {
     destroy(self);
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
+
+use blast_fun::{bps, launchpad_domain::LAUNCHPAD_DOMAIN};
+
+use blast_fun_migrators::{events, lp_fee_policy::{Self, LpFeePolicy}, package_version};
+
+use std::{type_name, unit_test::{assert_eq, destroy}};
+
+use sui::{event, test_scenario::{Self, Scenario}};
+
+use fun init_end as InitFixture.end;
+
+use fun init_next_tx as InitFixture.next_tx;
+
+use fun policy_end as PolicyFixture.end;
+
+use fun policy_next_tx as PolicyFixture.next_tx;

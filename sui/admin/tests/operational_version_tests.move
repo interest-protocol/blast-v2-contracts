@@ -2,11 +2,6 @@
 /// Boundary and transition tests for sealed operational generations.
 module blast_admin::operational_version_tests;
 
-use 0xa::package_marker;
-use blast_admin::{errors, events, operational_version};
-use std::{type_name, unit_test::{assert_eq, destroy}};
-use sui::event;
-
 // === Constants ===
 
 const CONTAINER_ID: address = @0xCAFE;
@@ -119,3 +114,13 @@ fun advance_rejects_overflow_before_mutation() {
 
     destroy(version);
 }
+
+// === Imports ===
+
+use 0xa::package_marker;
+
+use blast_admin::{errors, events, operational_version};
+
+use std::{type_name, unit_test::{assert_eq, destroy}};
+
+use sui::event;

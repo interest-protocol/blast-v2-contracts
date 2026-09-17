@@ -4,9 +4,6 @@
 /// Typed, bounded administration membership and delayed cold-root rotation.
 module blast_admin::acl;
 
-use blast_admin::events;
-use sui::{clock::Clock, types, vec_map::{Self, VecMap}};
-
 // === Public Structs ===
 
 /// One pending delayed replacement of a domain's active root capability.
@@ -430,3 +427,9 @@ public fun pending_execute_after_ms_for_testing<Domain: drop>(
 ): u64 {
     self.pending_super_admin.borrow().execute_after_ms
 }
+
+// === Imports ===
+
+use blast_admin::events;
+
+use sui::{clock::Clock, types, vec_map::{Self, VecMap}};

@@ -2,9 +2,6 @@
 /// Pins the append-only shared administration error registry.
 module blast_admin::errors_tests;
 
-use blast_admin::errors;
-use std::unit_test::assert_eq;
-
 #[test]
 fun shared_error_codes_are_stable() {
     assert_eq!(errors::invalid_domain_witness!(), 0);
@@ -32,3 +29,9 @@ fun shared_error_codes_are_stable() {
     assert_eq!(errors::upgrade_cap_unavailable!(), 22);
     assert_eq!(errors::upgrade_policy_not_more_restrictive!(), 23);
 }
+
+// === Imports ===
+
+use blast_admin::errors;
+
+use std::unit_test::assert_eq;

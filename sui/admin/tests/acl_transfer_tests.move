@@ -2,10 +2,6 @@
 /// Stateful tests for delayed typed root-capability transfer.
 module blast_admin::acl_transfer_tests;
 
-use blast_admin::{acl, errors, events, test_domain};
-use std::unit_test::{assert_eq, destroy};
-use sui::{clock::{Self, Clock}, test_scenario::{Self, Scenario}};
-
 // === Constants ===
 
 const ROOT: address = @0xA11CE;
@@ -225,3 +221,11 @@ fun cancel_transfer(self: &mut Fixture) {
     let Fixture { authority, root, .. } = self;
     authority.cancel_super_admin_transfer(root.borrow());
 }
+
+// === Imports ===
+
+use blast_admin::{acl, errors, events, test_domain};
+
+use std::unit_test::{assert_eq, destroy};
+
+use sui::{clock::{Self, Clock}, test_scenario::{Self, Scenario}};

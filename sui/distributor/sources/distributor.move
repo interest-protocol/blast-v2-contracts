@@ -1,19 +1,6 @@
 /// Creator-fee custody, authorized funded rounds and permissionless direct payouts.
 module blast_fun_distributor::distributor;
 
-use blast_fun::{
-    creator_authority::CurveFeeCap,
-    launch::Launch,
-    package_version::PackageVersion
-};
-use blast_fun_distributor::merkle;
-use blast_fun_migrators::{
-    lp_fee_authority::LpFeeCap,
-    package_version::PackageVersion as MigratorsVersion,
-    vault::LpVault,
-};
-use sui::{balance::{Self, Balance}, coin::Coin, event};
-
 // === Constants ===
 
 const VERSION: u64 = 1;
@@ -462,12 +449,10 @@ public fun round_balances_for_testing<Meme, Quote>(self: &Round<Meme, Quote>): (
     (self.meme.value(), self.quote.value())
 }
 #[test_only]
-public use fun round_balances_for_testing as Round.balances_for_testing;
 #[test_only]
 public fun is_claimed_for_testing<Meme, Quote>(self: &Round<Meme, Quote>, index: u64): bool {
     self.claimed[index / 256] & (1u256 << ((index % 256) as u8)) != 0
 }
-
 
 #[test]
 #[expected_failure(abort_code = EWrongPublisher, location = blast_fun_distributor::distributor)]
@@ -504,3 +489,25 @@ fun publisher_cap_is_bound_to_one_distributor() {
     std::unit_test::destroy(publisher);
     std::unit_test::destroy(distributor);
 }
+
+// === Public Aliases ===
+
+public use fun round_balances_for_testing as Round.balances_for_testing;
+
+// === Imports ===
+
+use blast_fun::{
+    creator_authority::CurveFeeCap,
+    launch::Launch,
+    package_version::PackageVersion
+};
+
+use blast_fun_distributor::merkle;
+
+use blast_fun_migrators::{
+    lp_fee_authority::LpFeeCap,
+    package_version::PackageVersion as MigratorsVersion,
+    vault::LpVault,
+};
+
+use sui::{balance::{Self, Balance}, coin::Coin, event};

@@ -1,8 +1,6 @@
 /// The unrestricted 1:1 SUI quote coin used by Blast liquidity.
 module blast_sui::fun_sui;
 
-use sui::{coin::TreasuryCap, coin_registry::{Self, MetadataCap}};
-
 // === Public Structs ===
 
 /// One-time witness and coin type for funSUI.
@@ -52,3 +50,7 @@ public fun new_for_testing(
 ): (TreasuryCap<FUN_SUI>, MetadataCap<FUN_SUI>) {
     new(FUN_SUI(), ctx)
 }
+
+// === Imports ===
+
+use sui::{coin::TreasuryCap, coin_registry::{Self, MetadataCap}};

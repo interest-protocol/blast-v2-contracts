@@ -1,23 +1,6 @@
 #[test_only]
 module blast_fun::runtime_config_tests;
 
-use blast_admin::acl::{Authority, AdminCap, AdminWitness};
-use blast_fun::{
-    bps,
-    domain_fixture,
-    events,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
-    package_version,
-    runtime_config,
-};
-use std::{bcs, unit_test::{assert_eq, destroy}};
-use sui::{event, test_scenario::{Self, Scenario}};
-
-use fun config_end as ConfigFixture.end;
-use fun config_next_tx as ConfigFixture.next_tx;
-use fun init_end as InitFixture.end;
-use fun init_next_tx as InitFixture.next_tx;
-
 // === Constants ===
 
 const PUBLISHER: address = @0xA11CE;
@@ -241,3 +224,28 @@ fun init_end(self: InitFixture) {
 fun config_end(self: ConfigFixture) {
     destroy(self);
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Authority, AdminCap, AdminWitness};
+
+use blast_fun::{
+    bps,
+    domain_fixture,
+    events,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
+    package_version,
+    runtime_config,
+};
+
+use std::{bcs, unit_test::{assert_eq, destroy}};
+
+use sui::{event, test_scenario::{Self, Scenario}};
+
+use fun config_end as ConfigFixture.end;
+
+use fun config_next_tx as ConfigFixture.next_tx;
+
+use fun init_end as InitFixture.end;
+
+use fun init_next_tx as InitFixture.next_tx;

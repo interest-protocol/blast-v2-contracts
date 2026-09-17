@@ -1,9 +1,6 @@
 /// Fully funded vesting at bounded, immutable cumulative checkpoints.
 module blast_fun_vesting::checkpoints;
 
-use std::type_name::{Self, TypeName};
-use sui::{balance::Balance, clock::Clock, coin::Coin, event};
-
 // === Constants ===
 
 const MAX_CHECKPOINTS: u64 = 256;
@@ -480,3 +477,9 @@ public fun vesting_closed_fields(self: &VestingClosed): (ID, TypeName, address, 
         self.released_total,
     )
 }
+
+// === Imports ===
+
+use std::type_name::{Self, TypeName};
+
+use sui::{balance::Balance, clock::Clock, coin::Coin, event};

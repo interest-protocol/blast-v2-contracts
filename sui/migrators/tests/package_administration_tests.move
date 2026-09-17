@@ -7,23 +7,6 @@
 /// for membership and the exported package-admin role.
 module blast_fun_migrators::package_administration_tests;
 
-use blast_admin::acl::{Self, Authority, SuperAdminCap, AdminCap, AdminWitness};
-use blast_fun::launchpad_domain::{Self, LAUNCHPAD_DOMAIN};
-use blast_fun_migrators::{
-    cetus,
-    package_admin::{Self, PackageAdmin},
-    package_version::{Self, PackageVersion},
-    venue_config::{Self, VenueConfig},
-};
-use std::unit_test::{assert_eq, destroy};
-use sui::test_scenario::{Self, Scenario};
-
-use fun admin_end as AdminFixtureState.end;
-use fun admin_next_tx as AdminFixtureState.next_tx;
-use fun admin_sign_in as AdminFixtureState.sign_in;
-use fun cetus::effective_tier_for_testing as VenueConfig.cetus_tier_for_testing;
-use fun cetus::set_tier as VenueConfig.set_cetus_tier;
-
 // === Constants ===
 
 const PUBLISHER: address = @0xA11CE;
@@ -232,3 +215,30 @@ fun admin_sign_in(self: &AdminFixtureState): AdminWitness<LAUNCHPAD_DOMAIN> {
 fun admin_end(self: AdminFixtureState) {
     destroy(self);
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Self, Authority, SuperAdminCap, AdminCap, AdminWitness};
+
+use blast_fun::launchpad_domain::{Self, LAUNCHPAD_DOMAIN};
+
+use blast_fun_migrators::{
+    cetus,
+    package_admin::{Self, PackageAdmin},
+    package_version::{Self, PackageVersion},
+    venue_config::{Self, VenueConfig},
+};
+
+use std::unit_test::{assert_eq, destroy};
+
+use sui::test_scenario::{Self, Scenario};
+
+use fun admin_end as AdminFixtureState.end;
+
+use fun admin_next_tx as AdminFixtureState.next_tx;
+
+use fun admin_sign_in as AdminFixtureState.sign_in;
+
+use fun cetus::effective_tier_for_testing as VenueConfig.cetus_tier_for_testing;
+
+use fun cetus::set_tier as VenueConfig.set_cetus_tier;

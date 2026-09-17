@@ -1,39 +1,6 @@
 /// Aftermath migration with complete source reconciliation and locked fungible LP.
 module blast_fun_migrators::aftermath;
 
-use amm::{
-    pool::{Self, CreatePoolCapV2, Pool},
-    pool_factory,
-    pool_registry::{Self, PoolRegistry},
-};
-use blast_admin::acl::AdminWitness;
-use blast_fun::{
-    launch::Launch,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
-    package_version::PackageVersion,
-};
-use blast_fun_migrators::{
-    events,
-    lp_fee_authority::{Self, LpFeeAuthority},
-    lp_fee_policy::LpFeePolicy,
-    package_version::PackageVersion as MigratorsVersion,
-    vault::{Self, LpVault},
-    venue_config::VenueConfig,
-};
-use dao_fee_amm::{
-    pool::{Self as dao_fee_pool, DaoFeePool, OwnerCap},
-    version::Version,
-};
-use std::type_name;
-use sui::{
-    balance::{Self, Balance},
-    coin::Coin,
-    coin_registry::Currency,
-    transfer::Receiving,
-};
-
-use fun dao_fee_amm::pool::update_fee_bps as OwnerCap.set_fee_bps;
-
 // === Constants ===
 
 /// One half in Aftermath's `1e18` fixed-point weight unit.
@@ -530,3 +497,44 @@ public fun effective_policy_for_testing(
 public fun is_type_name_less_for_testing<A, B>(): bool {
     is_type_name_less<A, B>()
 }
+
+// === Imports ===
+
+use amm::{
+    pool::{Self, CreatePoolCapV2, Pool},
+    pool_factory,
+    pool_registry::{Self, PoolRegistry},
+};
+
+use blast_admin::acl::AdminWitness;
+
+use blast_fun::{
+    launch::Launch,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
+    package_version::PackageVersion,
+};
+
+use blast_fun_migrators::{
+    events,
+    lp_fee_authority::{Self, LpFeeAuthority},
+    lp_fee_policy::LpFeePolicy,
+    package_version::PackageVersion as MigratorsVersion,
+    vault::{Self, LpVault},
+    venue_config::VenueConfig,
+};
+
+use dao_fee_amm::{
+    pool::{Self as dao_fee_pool, DaoFeePool, OwnerCap},
+    version::Version,
+};
+
+use std::type_name;
+
+use sui::{
+    balance::{Self, Balance},
+    coin::Coin,
+    coin_registry::Currency,
+    transfer::Receiving,
+};
+
+use fun dao_fee_amm::pool::update_fee_bps as OwnerCap.set_fee_bps;

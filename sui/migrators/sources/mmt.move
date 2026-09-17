@@ -1,39 +1,6 @@
 /// MMT migration with canonically ordered, custodied concentrated-liquidity principal.
 module blast_fun_migrators::mmt;
 
-use blast_admin::acl::AdminWitness;
-use blast_fun::{
-    bps,
-    launch::Launch,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
-    package_version::PackageVersion,
-};
-use blast_fun_migrators::{
-    events,
-    lp_fee_authority::{Self, LpFeeAuthority},
-    lp_fee_policy::LpFeePolicy,
-    migration_math,
-    package_version::PackageVersion as MigratorsVersion,
-    vault::{Self, LpVault},
-    venue_config::VenueConfig,
-};
-use mmt_v3::{
-    collect,
-    create_pool,
-    global_config::GlobalConfig,
-    i32,
-    liquidity,
-    pool::{Self, Pool},
-    position::Position,
-    tick_math,
-    version::Version,
-};
-use sui::{clock::Clock, coin::Coin, coin_registry::Currency};
-
-use fun liquidity::add_liquidity as Pool.add_liquidity;
-use fun liquidity::open_position as Pool.open_position;
-use fun collect::fee as Pool.collect_fee;
-
 // === Constants ===
 
 /// MMT must use at least 99.99% of both migration balances.
@@ -494,3 +461,44 @@ fun collect_position_fees<X, Y, Meme, Quote>(
 public fun effective_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
     effective_tier(venue_config)
 }
+
+// === Imports ===
+
+use blast_admin::acl::AdminWitness;
+
+use blast_fun::{
+    bps,
+    launch::Launch,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
+    package_version::PackageVersion,
+};
+
+use blast_fun_migrators::{
+    events,
+    lp_fee_authority::{Self, LpFeeAuthority},
+    lp_fee_policy::LpFeePolicy,
+    migration_math,
+    package_version::PackageVersion as MigratorsVersion,
+    vault::{Self, LpVault},
+    venue_config::VenueConfig,
+};
+
+use mmt_v3::{
+    collect,
+    create_pool,
+    global_config::GlobalConfig,
+    i32,
+    liquidity,
+    pool::{Self, Pool},
+    position::Position,
+    tick_math,
+    version::Version,
+};
+
+use sui::{clock::Clock, coin::Coin, coin_registry::Currency};
+
+use fun liquidity::add_liquidity as Pool.add_liquidity;
+
+use fun liquidity::open_position as Pool.open_position;
+
+use fun collect::fee as Pool.collect_fee;

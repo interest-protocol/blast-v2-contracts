@@ -1,10 +1,6 @@
 #[test_only]
 module blast_fun::graduation_tests;
 
-use blast_fun::{bps, launch};
-use std::unit_test::{assert_eq, destroy};
-use sui::balance::{Self, Balance};
-
 // === Constants ===
 
 const PROTOCOL_QUOTE_MIGRATION_FEE_BPS: u64 = 250;
@@ -229,3 +225,11 @@ fun assert_quote_partition(
     destroy(net_quote);
     destroy(migration_fee);
 }
+
+// === Imports ===
+
+use blast_fun::{bps, launch};
+
+use std::unit_test::{assert_eq, destroy};
+
+use sui::balance::{Self, Balance};

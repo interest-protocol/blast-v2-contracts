@@ -1,7 +1,5 @@
 module blast_sui::events;
 
-use std::type_name::TypeName;
-
 // === Public Structs ===
 
 /// Final native custody buckets of one ledger after a completed transition.
@@ -477,3 +475,7 @@ public fun vault_synced_custody(self: &VaultSynced): VaultCustody {
 public fun native_stake_unwound_custody(self: &NativeStakeUnwound): VaultCustody {
     self.custody
 }
+
+// === Imports ===
+
+use std::type_name::TypeName;

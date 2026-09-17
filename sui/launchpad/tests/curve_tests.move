@@ -1,9 +1,6 @@
 #[test_only]
 module blast_fun::curve_tests;
 
-use blast_fun::{bps, curve};
-use std::unit_test::assert_eq;
-
 // === Constants ===
 
 const MEME_RESERVE: u64 = 800_000_000_000_000_000;
@@ -1051,3 +1048,9 @@ fun assert_sell_back_invariant_with_trace(
 
     assert_eq!(actual_trace, expected_trace);
 }
+
+// === Imports ===
+
+use blast_fun::{bps, curve};
+
+use std::unit_test::assert_eq;

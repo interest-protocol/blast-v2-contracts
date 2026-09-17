@@ -5,8 +5,6 @@
 /// Pure constant-product quotes and the terminal-target input cap; owns no state.
 module blast_fun::curve;
 
-use blast_fun::bps::{Self, Bps};
-
 // === Package Functions ===
 
 /// Returns the output for an exact constant-product input, rounded down.
@@ -143,3 +141,7 @@ public(package) fun quote_sell(
 
     (meme_fee, pending_burn, quote_out_gross, quote_fee, quote_out_net)
 }
+
+// === Imports ===
+
+use blast_fun::bps::{Self, Bps};

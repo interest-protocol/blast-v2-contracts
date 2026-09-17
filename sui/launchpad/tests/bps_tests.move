@@ -1,9 +1,6 @@
 #[test_only]
 module blast_fun::bps_tests;
 
-use blast_fun::bps;
-use std::unit_test::assert_eq;
-
 // === Tests ===
 
 #[test]
@@ -54,3 +51,9 @@ fun upward_rate_plus_downward_complement_conserves_the_amount() {
         amount,
     );
 }
+
+// === Imports ===
+
+use blast_fun::bps;
+
+use std::unit_test::assert_eq;

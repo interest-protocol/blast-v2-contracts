@@ -1,10 +1,6 @@
 #[test_only]
 module blast_fun::launch_ticket_tests;
 
-use blast_fun::{creator_authority, events, launch_ticket::{Self, LaunchTicket}};
-use std::{bcs, unit_test::{assert_eq, destroy}};
-use sui::{coin_registry::Currency, test_scenario::{Self, Scenario}};
-
 // === Constants ===
 
 const LAUNCHER: address = @0xA11CE;
@@ -379,3 +375,11 @@ fun take_currency<Meme>(self: &TicketFixture): Currency<Meme> {
 fun end(self: TicketFixture) {
     destroy(self);
 }
+
+// === Imports ===
+
+use blast_fun::{creator_authority, events, launch_ticket::{Self, LaunchTicket}};
+
+use std::{bcs, unit_test::{assert_eq, destroy}};
+
+use sui::{coin_registry::Currency, test_scenario::{Self, Scenario}};

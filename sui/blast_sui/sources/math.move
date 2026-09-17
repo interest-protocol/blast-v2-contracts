@@ -11,8 +11,6 @@
 /// narrowing cannot overflow on any reachable input.
 module blast_sui::math;
 
-use blast_sui::constants;
-
 // === Package Functions ===
 
 /// Returns blastSUI shares for a SUI deposit into blast custody, rounding down.
@@ -126,3 +124,7 @@ public(package) fun pool_tokens_for_sui_up(sui_amount: u64, held: u64, active_su
 
     sui_amount.mul_div_ceil(held, active_sui).min(held)
 }
+
+// === Imports ===
+
+use blast_sui::constants;

@@ -1,18 +1,6 @@
 #[test_only]
 module blast_fun_migrators::vault_tests;
 
-use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
-use blast_fun::{bps, launchpad_domain::{Self, LAUNCHPAD_DOMAIN}, package_version};
-use blast_fun_migrators::{
-    events,
-    lp_fee_authority::{Self, LpFeeCap},
-    lp_fee_policy::{Self, LpFeePolicy},
-    package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
-    vault::{Self, LpVault},
-};
-use std::{bcs, type_name, unit_test::{assert_eq, destroy}};
-use sui::{balance, coin, test_scenario::{Self, Scenario}};
-
 // === Constants ===
 
 const PUBLISHER: address = @0xA11CE;
@@ -368,7 +356,6 @@ fun wrong_venue_accrual_fails_closed() {
     fixture.end();
 }
 
-
 #[test]
 fun live_lp_fee_cap_claims_only_creator_fees() {
     let mut fixture = start();
@@ -607,3 +594,21 @@ fun sign_in(self: &VaultFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
 fun end(self: VaultFixture) {
     destroy(self);
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
+
+use blast_fun::{bps, launchpad_domain::{Self, LAUNCHPAD_DOMAIN}, package_version};
+
+use blast_fun_migrators::{
+    events,
+    lp_fee_authority::{Self, LpFeeCap},
+    lp_fee_policy::{Self, LpFeePolicy},
+    package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
+    vault::{Self, LpVault},
+};
+
+use std::{bcs, type_name, unit_test::{assert_eq, destroy}};
+
+use sui::{balance, coin, test_scenario::{Self, Scenario}};

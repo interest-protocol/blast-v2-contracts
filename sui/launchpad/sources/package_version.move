@@ -6,9 +6,6 @@
 /// and the bytecode a governed upgrade cuts over to.
 module blast_fun::package_version;
 
-use blast_admin::operational_version::{Self, OperationalVersion};
-use blast_fun::blast::BLAST;
-
 // === Constants ===
 
 /// Current Blast package generation accepted by the shared cutover.
@@ -90,3 +87,9 @@ public fun version_for_testing(self: &PackageVersion): u64 {
 public fun advance_for_testing(self: &mut PackageVersion) {
     self.advance();
 }
+
+// === Imports ===
+
+use blast_admin::operational_version::{Self, OperationalVersion};
+
+use blast_fun::blast::BLAST;

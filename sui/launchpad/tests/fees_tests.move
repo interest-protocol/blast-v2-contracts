@@ -1,26 +1,6 @@
 #[test_only]
 module blast_fun::fees_tests;
 
-use blast_admin::acl::{Authority, AdminCap, AdminWitness};
-use blast_fun::{
-    bps,
-    creator_authority,
-    domain_fixture,
-    fees,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
-    package_version,
-    runtime_config,
-};
-use std::unit_test::{assert_eq, destroy};
-use sui::{balance::{Self, Balance}, clock, coin::Coin, test_scenario::{Self, Scenario}};
-
-use fun creator_ctx as CreatorFixture.ctx;
-use fun creator_end as CreatorFixture.end;
-use fun creator_next_tx as CreatorFixture.next_tx;
-use fun fees_ctx as FeesFixture.ctx;
-use fun fees_end as FeesFixture.end;
-use fun fees_next_tx as FeesFixture.next_tx;
-
 // === Constants ===
 
 const CREATOR: address = @0xC0FFEE;
@@ -540,3 +520,33 @@ fun fees_end(self: FeesFixture) {
 fun creator_end(self: CreatorFixture) {
     destroy(self);
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Authority, AdminCap, AdminWitness};
+
+use blast_fun::{
+    bps,
+    creator_authority,
+    domain_fixture,
+    fees,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
+    package_version,
+    runtime_config,
+};
+
+use std::unit_test::{assert_eq, destroy};
+
+use sui::{balance::{Self, Balance}, clock, coin::Coin, test_scenario::{Self, Scenario}};
+
+use fun creator_ctx as CreatorFixture.ctx;
+
+use fun creator_end as CreatorFixture.end;
+
+use fun creator_next_tx as CreatorFixture.next_tx;
+
+use fun fees_ctx as FeesFixture.ctx;
+
+use fun fees_end as FeesFixture.end;
+
+use fun fees_next_tx as FeesFixture.next_tx;

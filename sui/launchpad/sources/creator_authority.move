@@ -5,13 +5,6 @@
 /// Creator recipients, the one-time claim they authorize, and the revocable caps it issues.
 module blast_fun::creator_authority;
 
-use blast_fun::{constants, events, runtime_config::RuntimeConfig};
-use std::{bcs, type_name::{Self, TypeName}};
-use sui::clock::Clock;
-
-public use fun curve_fee_cap_id as CurveFeeCap.id;
-public use fun blast_metadata_cap_id as BlastMetadataCap.id;
-
 // === Public Types ===
 
 /// Validated recipient selecting who may claim the creator capability.
@@ -263,3 +256,16 @@ public fun new_creator_claim_attestation_for_testing(
 
     attestation
 }
+
+// === Public Aliases ===
+
+public use fun curve_fee_cap_id as CurveFeeCap.id;
+public use fun blast_metadata_cap_id as BlastMetadataCap.id;
+
+// === Imports ===
+
+use blast_fun::{constants, events, runtime_config::RuntimeConfig};
+
+use std::{bcs, type_name::{Self, TypeName}};
+
+use sui::clock::Clock;

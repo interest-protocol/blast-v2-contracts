@@ -1,43 +1,6 @@
 #[test_only]
 module blast_fun::launch_tests;
 
-use blast_admin::acl::{Authority, AdminCap, AdminWitness};
-use blast_fun::{
-    bps,
-    creator_authority,
-    curve,
-    domain_fixture,
-    events,
-    launch::{Self, Launch},
-    launch_config,
-    launch_ticket::{Self, LaunchTicket},
-    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
-    package_version::{Self, PackageVersion},
-    runtime_config,
-};
-use std::{bcs, type_name, unit_test::{assert_eq, destroy}};
-use sui::{
-    clock::{Self, Clock},
-    coin::{Self, Coin},
-    coin_registry::Currency,
-    test_scenario::{Self, Scenario},
-};
-
-use fun launch_ctx as LaunchFixture.ctx;
-use fun launch_end as LaunchFixture.end;
-use fun launch_new_ticket as LaunchFixture.new_ticket;
-use fun launch_new_ticket_with_mode as LaunchFixture.new_ticket_with_mode;
-use fun launch_next_tx as LaunchFixture.next_tx;
-use fun launch_sign_in as LaunchFixture.sign_in;
-use fun launch_take_currency as LaunchFixture.take_currency;
-use fun launch_take_fixed_disposal as LaunchFixture.take_fixed_disposal;
-use fun launch_take_shared as LaunchFixture.take_launch;
-use fun launch_take_curve_fee_cap as LaunchFixture.take_curve_fee_cap;
-use fun launch_has_curve_fee_cap as LaunchFixture.has_curve_fee_cap;
-use fun assert_launch_snapshot as Launch.assert_snapshot;
-use fun launch_put_back as Launch.put_back;
-use fun reach_migration_after_sell as Launch.reach_migration_after_sell;
-
 // === Constants ===
 
 const PUBLISHER: address = @0xA11CE;
@@ -1440,7 +1403,6 @@ fun migration_rejects_a_witness_type_not_selected_at_launch() {
     fixture.end();
 }
 
-
 #[test]
 fun admin_reassigns_claimed_creator_and_the_new_cap_claims_prior_fees() {
     let mut fixture = start();
@@ -1923,7 +1885,6 @@ fun holders_destroy_curve_fee_and_metadata_capabilities() {
 
     fixture.end();
 }
-
 
 #[test]
 fun locking_destroys_the_cap_and_binds_creator_fees_to_the_custodian() {
@@ -2523,3 +2484,58 @@ fun reach_migration_after_sell(
 fun launch_end(self: LaunchFixture) {
     destroy(self);
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Authority, AdminCap, AdminWitness};
+
+use blast_fun::{
+    bps,
+    creator_authority,
+    curve,
+    domain_fixture,
+    events,
+    launch::{Self, Launch},
+    launch_config,
+    launch_ticket::{Self, LaunchTicket},
+    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
+    package_version::{Self, PackageVersion},
+    runtime_config,
+};
+
+use std::{bcs, type_name, unit_test::{assert_eq, destroy}};
+
+use sui::{
+    clock::{Self, Clock},
+    coin::{Self, Coin},
+    coin_registry::Currency,
+    test_scenario::{Self, Scenario},
+};
+
+use fun launch_ctx as LaunchFixture.ctx;
+
+use fun launch_end as LaunchFixture.end;
+
+use fun launch_new_ticket as LaunchFixture.new_ticket;
+
+use fun launch_new_ticket_with_mode as LaunchFixture.new_ticket_with_mode;
+
+use fun launch_next_tx as LaunchFixture.next_tx;
+
+use fun launch_sign_in as LaunchFixture.sign_in;
+
+use fun launch_take_currency as LaunchFixture.take_currency;
+
+use fun launch_take_fixed_disposal as LaunchFixture.take_fixed_disposal;
+
+use fun launch_take_shared as LaunchFixture.take_launch;
+
+use fun launch_take_curve_fee_cap as LaunchFixture.take_curve_fee_cap;
+
+use fun launch_has_curve_fee_cap as LaunchFixture.has_curve_fee_cap;
+
+use fun assert_launch_snapshot as Launch.assert_snapshot;
+
+use fun launch_put_back as Launch.put_back;
+
+use fun reach_migration_after_sell as Launch.reach_migration_after_sell;

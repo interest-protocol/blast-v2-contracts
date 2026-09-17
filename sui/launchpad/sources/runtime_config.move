@@ -7,15 +7,6 @@
 /// Fees collected from migrated liquidity use `blast_fun_migrators::lp_fee_policy::LpFeePolicy` instead.
 module blast_fun::runtime_config;
 
-use blast_admin::acl::AdminWitness;
-use blast_fun::{
-    bps::{Self, Bps},
-    constants,
-    events,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
-    package_version::PackageVersion,
-};
-
 // === Public Structs ===
 
 /// Shared singleton for immediately effective protocol-wide runtime settings.
@@ -161,3 +152,15 @@ public fun new_for_testing(
         protocol_fee_share_bps: bps::new(0),
     }
 }
+
+// === Imports ===
+
+use blast_admin::acl::AdminWitness;
+
+use blast_fun::{
+    bps::{Self, Bps},
+    constants,
+    events,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
+    package_version::PackageVersion,
+};

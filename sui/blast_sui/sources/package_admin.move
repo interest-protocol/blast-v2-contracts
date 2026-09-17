@@ -4,31 +4,6 @@
 /// Permanent shared custody for package capabilities.
 module blast_sui::package_admin;
 
-use blast_admin::{
-    acl::AdminWitness,
-    upgrade_custody::{Self, UpgradeCustody},
-};
-use blast_sui::{
-    blast::BLAST,
-    blast_sui::BLAST_SUI,
-    blast_sui_domain::{Self, BLAST_SUI_DOMAIN},
-    deposit_receipt::BlastSuiDepositReceipt,
-    events,
-    fun_sui::FUN_SUI,
-    package_version::PackageVersion,
-};
-use sui::{
-    coin_registry::MetadataCap,
-    display_registry::DisplayCap,
-    dynamic_object_field,
-    package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket},
-};
-
-use fun dynamic_object_field::add as UID.add_dynamic_object_field;
-#[test_only]
-use fun dynamic_object_field::borrow as UID.dynamic_object_field;
-use fun dynamic_object_field::exists_with_type as UID.has_dynamic_object_field_with_type;
-
 // === Public Structs ===
 
 /// Shared, non-releasable custody for package and update authority.
@@ -289,3 +264,34 @@ public fun version_for_testing(self: &PackageAdmin): u64 {
 public fun policy_for_testing(self: &PackageAdmin): u8 {
     self.custody.policy_for_testing()
 }
+
+// === Imports ===
+
+use blast_admin::{
+    acl::AdminWitness,
+    upgrade_custody::{Self, UpgradeCustody},
+};
+
+use blast_sui::{
+    blast::BLAST,
+    blast_sui::BLAST_SUI,
+    blast_sui_domain::{Self, BLAST_SUI_DOMAIN},
+    deposit_receipt::BlastSuiDepositReceipt,
+    events,
+    fun_sui::FUN_SUI,
+    package_version::PackageVersion,
+};
+
+use sui::{
+    coin_registry::MetadataCap,
+    display_registry::DisplayCap,
+    dynamic_object_field,
+    package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket},
+};
+
+use fun dynamic_object_field::add as UID.add_dynamic_object_field;
+
+#[test_only]
+use fun dynamic_object_field::borrow as UID.dynamic_object_field;
+
+use fun dynamic_object_field::exists_with_type as UID.has_dynamic_object_field_with_type;

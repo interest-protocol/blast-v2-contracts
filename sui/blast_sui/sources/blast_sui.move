@@ -1,8 +1,6 @@
 /// The unrestricted residual-share LST that receives all vault staking rewards.
 module blast_sui::blast_sui;
 
-use sui::{coin::TreasuryCap, coin_registry::{Self, MetadataCap}};
-
 // === Public Structs ===
 
 /// One-time witness and coin type for blastSUI.
@@ -52,3 +50,7 @@ public fun new_for_testing(
 ): (TreasuryCap<BLAST_SUI>, MetadataCap<BLAST_SUI>) {
     new(BLAST_SUI(), ctx)
 }
+
+// === Imports ===
+
+use sui::{coin::TreasuryCap, coin_registry::{Self, MetadataCap}};

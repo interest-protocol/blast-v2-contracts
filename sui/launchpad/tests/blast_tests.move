@@ -1,10 +1,6 @@
 #[test_only]
 module blast_fun::blast_tests;
 
-use blast_fun::blast;
-use std::unit_test::destroy;
-use sui::{package::Publisher, test_scenario::{Self, Scenario}};
-
 // === Constants ===
 
 const PUBLISHER: address = @0xA11CE;
@@ -57,3 +53,11 @@ fun start(): PublisherFixture {
 fun end(self: PublisherFixture) {
     destroy(self);
 }
+
+// === Imports ===
+
+use blast_fun::blast;
+
+use std::unit_test::destroy;
+
+use sui::{package::Publisher, test_scenario::{Self, Scenario}};

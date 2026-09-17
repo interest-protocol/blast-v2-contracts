@@ -4,20 +4,6 @@
 /// Self-custodial native stake waiting to enter blast custody after activation.
 module blast_sui::deposit_receipt;
 
-use blast_sui::{events, package_version::PackageVersion};
-use std::string::String;
-use sui::{
-    coin::Coin,
-    display_registry::{Self, Display, DisplayCap, DisplayRegistry},
-    sui::SUI,
-};
-use sui_system::{
-    staking_pool::StakedSui,
-    sui_system::SuiSystemState,
-};
-
-use fun configure_display as Display.configure;
-
 // === Public Structs ===
 
 /// An owned blastSUI deposit that has not entered vault custody or coin supply.
@@ -181,3 +167,22 @@ public fun fields_for_testing(self: &BlastSuiDepositReceipt): (ID, ID, ID, u64, 
         self.staked_sui.activation_epoch(),
     )
 }
+
+// === Imports ===
+
+use blast_sui::{events, package_version::PackageVersion};
+
+use std::string::String;
+
+use sui::{
+    coin::Coin,
+    display_registry::{Self, Display, DisplayCap, DisplayRegistry},
+    sui::SUI,
+};
+
+use sui_system::{
+    staking_pool::StakedSui,
+    sui_system::SuiSystemState,
+};
+
+use fun configure_display as Display.configure;

@@ -1,31 +1,6 @@
 #[test_only]
 module blast_fun_migrators::venue_config_tests;
 
-use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
-use blast_fun::launchpad_domain::LAUNCHPAD_DOMAIN;
-use blast_fun_migrators::{
-    aftermath,
-    bluefin,
-    cetus,
-    mmt,
-    package_version,
-    turbos,
-    venue_config::{Self, VenueConfig},
-};
-use std::unit_test::{assert_eq, destroy};
-use sui::test_scenario::{Self, Scenario};
-
-use fun aftermath::effective_policy_for_testing as VenueConfig.aftermath_policy_for_testing;
-use fun aftermath::set_policy as VenueConfig.set_aftermath_policy;
-use fun bluefin::effective_tier_for_testing as VenueConfig.bluefin_tier_for_testing;
-use fun bluefin::set_tier as VenueConfig.set_bluefin_tier;
-use fun cetus::effective_tier_for_testing as VenueConfig.cetus_tier_for_testing;
-use fun cetus::set_tier as VenueConfig.set_cetus_tier;
-use fun mmt::effective_tier_for_testing as VenueConfig.mmt_tier_for_testing;
-use fun mmt::set_tier as VenueConfig.set_mmt_tier;
-use fun turbos::effective_tier_for_testing as VenueConfig.turbos_tier_for_testing;
-use fun turbos::set_tier as VenueConfig.set_turbos_tier;
-
 // === Constants ===
 
 const PUBLISHER: address = @0xA11CE;
@@ -466,3 +441,43 @@ fun sign_in(self: &TierFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
 fun end(self: TierFixture) {
     destroy(self);
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
+
+use blast_fun::launchpad_domain::LAUNCHPAD_DOMAIN;
+
+use blast_fun_migrators::{
+    aftermath,
+    bluefin,
+    cetus,
+    mmt,
+    package_version,
+    turbos,
+    venue_config::{Self, VenueConfig},
+};
+
+use std::unit_test::{assert_eq, destroy};
+
+use sui::test_scenario::{Self, Scenario};
+
+use fun aftermath::effective_policy_for_testing as VenueConfig.aftermath_policy_for_testing;
+
+use fun aftermath::set_policy as VenueConfig.set_aftermath_policy;
+
+use fun bluefin::effective_tier_for_testing as VenueConfig.bluefin_tier_for_testing;
+
+use fun bluefin::set_tier as VenueConfig.set_bluefin_tier;
+
+use fun cetus::effective_tier_for_testing as VenueConfig.cetus_tier_for_testing;
+
+use fun cetus::set_tier as VenueConfig.set_cetus_tier;
+
+use fun mmt::effective_tier_for_testing as VenueConfig.mmt_tier_for_testing;
+
+use fun mmt::set_tier as VenueConfig.set_mmt_tier;
+
+use fun turbos::effective_tier_for_testing as VenueConfig.turbos_tier_for_testing;
+
+use fun turbos::set_tier as VenueConfig.set_turbos_tier;

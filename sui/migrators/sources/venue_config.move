@@ -9,14 +9,6 @@
 /// destroyed.
 module blast_fun_migrators::venue_config;
 
-use blast_fun_migrators::events;
-use sui::dynamic_field;
-
-use fun dynamic_field::add as UID.add_dynamic_field;
-use fun dynamic_field::borrow as UID.dynamic_field;
-use fun dynamic_field::borrow_mut as UID.dynamic_field_mut;
-use fun dynamic_field::exists as UID.has_dynamic_field;
-
 // === Errors ===
 
 #[error(code = 0)]
@@ -144,3 +136,17 @@ public(package) fun policy_mut<Key: copy + drop + store, Policy: store>(
 public fun init_for_testing(ctx: &mut TxContext) {
     init(ctx);
 }
+
+// === Imports ===
+
+use blast_fun_migrators::events;
+
+use sui::dynamic_field;
+
+use fun dynamic_field::add as UID.add_dynamic_field;
+
+use fun dynamic_field::borrow as UID.dynamic_field;
+
+use fun dynamic_field::borrow_mut as UID.dynamic_field_mut;
+
+use fun dynamic_field::exists as UID.has_dynamic_field;

@@ -1,9 +1,6 @@
 #[test_only]
 module blast_sui::math_tests;
 
-use blast_sui::{constants, errors, math};
-use std::unit_test::assert_eq;
-
 // === Tests ===
 
 /// Catches assigning a later depositor any blast value earned before its deposit.
@@ -175,3 +172,9 @@ fun zero_gross_redemption_is_rejected() {
 fun zero_gross_fee_is_rejected() {
     math::blast_redeem_fee_up(0, 2);
 }
+
+// === Imports ===
+
+use blast_sui::{constants, errors, math};
+
+use std::unit_test::assert_eq;

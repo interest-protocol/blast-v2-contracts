@@ -1,28 +1,6 @@
 #[test_only]
 module blast_fun_distributor::distributor_tests;
 
-use blast_admin::acl::{Self, Authority, AdminCap as LaunchpadAdminCap, SuperAdminCap};
-use blast_fun::{
-    bps,
-    creator_authority,
-    launch::{Self, Launch},
-    launch_config,
-    launch_ticket,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
-    package_version,
-    runtime_config
-};
-use blast_fun_distributor::{
-    distributor::{Self, AdminCap, Distributor, PublisherCap, Round, Version},
-    merkle
-};
-use blast_fun_migrators::{
-    lp_fee_policy,
-    package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
-};
-use std::{bcs, type_name, unit_test::{assert_eq, destroy}};
-use sui::{clock, coin::{Self, Coin}, test_scenario::{Self, Scenario}};
-
 // === Constants ===
 
 const CREATOR: address = @0xC;
@@ -707,7 +685,6 @@ fun retired_code_cannot_resume_paused_rewards() {
     f.end();
 }
 
-
 #[test]
 fun locked_lp_fees_collect_only_creator_lp_fees() {
     let mut f = start();
@@ -808,7 +785,6 @@ fun retired_lp_fee_cap_cannot_lock_lp_fees() {
     destroy(lp_fee_policy);
     f.end();
 }
-
 
 #[test]
 fun pending_lp_fees_bind_to_the_enrolled_distributor_without_a_cap() {
@@ -1224,3 +1200,32 @@ fun end(f: DistributionFixture) {
     destroy(publisher);
     scenario.end();
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Self, Authority, AdminCap as LaunchpadAdminCap, SuperAdminCap};
+
+use blast_fun::{
+    bps,
+    creator_authority,
+    launch::{Self, Launch},
+    launch_config,
+    launch_ticket,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
+    package_version,
+    runtime_config
+};
+
+use blast_fun_distributor::{
+    distributor::{Self, AdminCap, Distributor, PublisherCap, Round, Version},
+    merkle
+};
+
+use blast_fun_migrators::{
+    lp_fee_policy,
+    package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
+};
+
+use std::{bcs, type_name, unit_test::{assert_eq, destroy}};
+
+use sui::{clock, coin::{Self, Coin}, test_scenario::{Self, Scenario}};

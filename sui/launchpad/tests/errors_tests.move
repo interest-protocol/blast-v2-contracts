@@ -1,8 +1,6 @@
 #[test_only]
 module blast_fun::errors_tests;
 
-use std::unit_test::assert_eq;
-
 // === Tests ===
 
 #[test]
@@ -88,3 +86,7 @@ fun creator_authority_error_registry_is_stable() {
 fun package_admin_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::invalid_package_publisher!(), 56);
 }
+
+// === Imports ===
+
+use std::unit_test::assert_eq;

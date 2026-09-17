@@ -2,19 +2,6 @@
 /// Provenance, native-capability, policy, and atomic composition tests.
 module blast_admin::upgrade_custody_tests;
 
-use 0xf::foreign_package_marker;
-use 0xa::{other_package_marker, package_marker};
-use blast_admin::{
-    acl,
-    errors,
-    events,
-    test_domain,
-    upgrade_custody,
-    upgrade_fixture,
-};
-use std::{type_name, unit_test::{assert_eq, destroy}};
-use sui::{event, package::{Self, Publisher, UpgradeCap}, test_scenario};
-
 // === Constants ===
 
 const ROOT: address = @0xA11CE;
@@ -572,3 +559,22 @@ fun canonical_custody_with_id(
 fun digest(): vector<u8> {
     x"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
 }
+
+// === Imports ===
+
+use 0xf::foreign_package_marker;
+
+use 0xa::{other_package_marker, package_marker};
+
+use blast_admin::{
+    acl,
+    errors,
+    events,
+    test_domain,
+    upgrade_custody,
+    upgrade_fixture,
+};
+
+use std::{type_name, unit_test::{assert_eq, destroy}};
+
+use sui::{event, package::{Self, Publisher, UpgradeCap}, test_scenario};

@@ -1,18 +1,6 @@
 #[test_only]
 module blast_sui::currency_tests;
 
-use blast_sui::{blast_sui::{Self, BLAST_SUI}, fun_sui::{Self, FUN_SUI}};
-use std::unit_test::{assert_eq, destroy};
-use sui::{
-    coin::TreasuryCap,
-    coin_registry::MetadataCap,
-    test_scenario::{Self, Scenario},
-};
-
-use fun currency_ctx as CurrencyFixture.ctx;
-use fun currency_end as CurrencyFixture.end;
-use fun currency_next_tx as CurrencyFixture.next_tx;
-
 // === Constants ===
 
 const ADMIN: address = @0xAD;
@@ -125,3 +113,21 @@ fun start_from_init(): CurrencyFixture {
 fun currency_end(self: CurrencyFixture) {
     destroy(self);
 }
+
+// === Imports ===
+
+use blast_sui::{blast_sui::{Self, BLAST_SUI}, fun_sui::{Self, FUN_SUI}};
+
+use std::unit_test::{assert_eq, destroy};
+
+use sui::{
+    coin::TreasuryCap,
+    coin_registry::MetadataCap,
+    test_scenario::{Self, Scenario},
+};
+
+use fun currency_ctx as CurrencyFixture.ctx;
+
+use fun currency_end as CurrencyFixture.end;
+
+use fun currency_next_tx as CurrencyFixture.next_tx;

@@ -6,14 +6,6 @@
 /// leaves Launchpad and Distributor on their own generations.
 module blast_fun_migrators::package_admin;
 
-use blast_admin::{
-    acl::AdminWitness,
-    upgrade_custody::{Self, UpgradeCustody},
-};
-use blast_fun::launchpad_domain::{Self, LAUNCHPAD_DOMAIN};
-use blast_fun_migrators::{package_marker::PACKAGE_MARKER, package_version::PackageVersion};
-use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};
-
 // === Errors ===
 
 #[error(code = 0)]
@@ -140,3 +132,16 @@ public fun id_for_testing(self: &PackageAdmin): ID {
 public fun policy_for_testing(self: &PackageAdmin): u8 {
     self.custody.policy_for_testing()
 }
+
+// === Imports ===
+
+use blast_admin::{
+    acl::AdminWitness,
+    upgrade_custody::{Self, UpgradeCustody},
+};
+
+use blast_fun::launchpad_domain::{Self, LAUNCHPAD_DOMAIN};
+
+use blast_fun_migrators::{package_marker::PACKAGE_MARKER, package_version::PackageVersion};
+
+use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};

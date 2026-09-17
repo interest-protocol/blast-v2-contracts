@@ -5,10 +5,6 @@
 /// Dual-asset protocol and creator fee ledger embedded by launches and LP vaults.
 module blast_fun::fees;
 
-use blast_admin::acl::AdminWitness;
-use blast_fun::{bps::Bps, launchpad_domain::LAUNCHPAD_DOMAIN};
-use sui::{balance::{Self, Balance}, coin::Coin};
-
 // === Public Structs ===
 
 /// Creator and protocol dual-asset fee obligations embedded in one owner object.
@@ -140,3 +136,11 @@ public fun totals_for_testing<Meme, Quote>(
         self.creator_quote.value(),
     )
 }
+
+// === Imports ===
+
+use blast_admin::acl::AdminWitness;
+
+use blast_fun::{bps::Bps, launchpad_domain::LAUNCHPAD_DOMAIN};
+
+use sui::{balance::{Self, Balance}, coin::Coin};

@@ -1,16 +1,6 @@
 #[test_only]
 module blast_sui::custody_tests;
 
-use blast_sui::{constants, custody::{Self, Custody}, errors};
-use std::unit_test::{assert_eq, destroy};
-use sui::{coin, test_scenario, sui::SUI};
-use sui_system::{sui_system::SuiSystemState, test_runner::{Self, TestRunner}};
-
-use fun custody_ctx as CustodyFixture.ctx;
-use fun custody_end as CustodyFixture.end;
-use fun custody_next_tx as CustodyFixture.next_tx;
-use fun custody_system as CustodyFixture.system;
-
 // === Constants ===
 
 const USER: address = @0xA11CE;
@@ -427,3 +417,21 @@ fun advance_epoch_with_rewards(self: &mut CustodyFixture, computation_charge: u6
     let options = self.runner.advance_epoch_opts().computation_charge(computation_charge);
     self.runner.advance_epoch(option::some(options)).destroy_for_testing();
 }
+
+// === Imports ===
+
+use blast_sui::{constants, custody::{Self, Custody}, errors};
+
+use std::unit_test::{assert_eq, destroy};
+
+use sui::{coin, test_scenario, sui::SUI};
+
+use sui_system::{sui_system::SuiSystemState, test_runner::{Self, TestRunner}};
+
+use fun custody_ctx as CustodyFixture.ctx;
+
+use fun custody_end as CustodyFixture.end;
+
+use fun custody_next_tx as CustodyFixture.next_tx;
+
+use fun custody_system as CustodyFixture.system;

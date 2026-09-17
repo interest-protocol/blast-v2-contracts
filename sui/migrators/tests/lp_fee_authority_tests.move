@@ -1,28 +1,6 @@
 #[test_only]
 module blast_fun_migrators::lp_fee_authority_tests;
 
-use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
-use blast_fun::{
-    bps,
-    creator_authority::{Self, CurveFeeCap},
-    launch::{Self, Launch},
-    launch_config::{Self, LaunchConfig},
-    launch_ticket,
-    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
-    package_version::{Self, PackageVersion},
-    runtime_config,
-};
-use blast_fun_migrators::{
-    events,
-    lp_fee_authority::{Self, LpFeeCap},
-    package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
-    vault::{Self, LpVault},
-};
-use std::{bcs, type_name, unit_test::{assert_eq, destroy}};
-use sui::{clock, coin, coin_registry::Currency, test_scenario::{Self, Scenario}};
-
-use fun authority_take_curve_fee_cap as AuthorityFixture.take_curve_fee_cap;
-
 // === Constants ===
 
 const CREATOR: address = @0xC0FFEE;
@@ -606,3 +584,31 @@ fun sign_in(self: &AuthorityFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
 fun end(self: AuthorityFixture) {
     destroy(self);
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
+
+use blast_fun::{
+    bps,
+    creator_authority::{Self, CurveFeeCap},
+    launch::{Self, Launch},
+    launch_config::{Self, LaunchConfig},
+    launch_ticket,
+    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
+    package_version::{Self, PackageVersion},
+    runtime_config,
+};
+
+use blast_fun_migrators::{
+    events,
+    lp_fee_authority::{Self, LpFeeCap},
+    package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
+    vault::{Self, LpVault},
+};
+
+use std::{bcs, type_name, unit_test::{assert_eq, destroy}};
+
+use sui::{clock, coin, coin_registry::Currency, test_scenario::{Self, Scenario}};
+
+use fun authority_take_curve_fee_cap as AuthorityFixture.take_curve_fee_cap;

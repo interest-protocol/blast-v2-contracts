@@ -1,40 +1,6 @@
 #[test_only]
 module blast_sui::vault_tests;
 
-use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
-use blast_sui::{
-    blast_sui::{Self as blast_coin, BLAST_SUI},
-    blast_sui_domain::BLAST_SUI_DOMAIN,
-    constants,
-    deposit_receipt::{Self, BlastSuiDepositReceipt},
-    errors,
-    events,
-    fun_sui::{Self, FUN_SUI},
-    math,
-    package_version::{Self, PackageVersion},
-    vault::{Self, Vault},
-};
-use std::unit_test::{assert_eq, destroy};
-use sui::{coin::{Self, Coin}, test_scenario};
-use sui_system::{
-    sui_system::SuiSystemState,
-    test_runner::{Self, TestRunner},
-    validator_builder,
-};
-
-use fun create_advance_epoch_safe_mode as CreateFixture.advance_epoch_safe_mode;
-use fun create_advance_epoch as CreateFixture.advance_epoch;
-use fun create_ctx as CreateFixture.ctx;
-use fun create_end as CreateFixture.end;
-use fun create_next_tx as CreateFixture.next_tx;
-use fun create_remove_validator as CreateFixture.remove_validator;
-use fun create_system as CreateFixture.system;
-use fun vault_ctx as VaultFixture.ctx;
-use fun vault_end as VaultFixture.end;
-use fun vault_next_tx as VaultFixture.next_tx;
-use fun vault_system as VaultFixture.system;
-use fun vault_vault as VaultFixture.vault;
-
 // === Constants ===
 
 const OWNER: address = @0xAD;
@@ -2789,3 +2755,54 @@ fun assert_custody_matches(custody: &events::VaultCustody, vault: &Vault) {
     assert_eq!(fun_supply, vault.fun_supply_for_testing());
     assert_eq!(blast_supply, vault.blast_supply_for_testing());
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
+
+use blast_sui::{
+    blast_sui::{Self as blast_coin, BLAST_SUI},
+    blast_sui_domain::BLAST_SUI_DOMAIN,
+    constants,
+    deposit_receipt::{Self, BlastSuiDepositReceipt},
+    errors,
+    events,
+    fun_sui::{Self, FUN_SUI},
+    math,
+    package_version::{Self, PackageVersion},
+    vault::{Self, Vault},
+};
+
+use std::unit_test::{assert_eq, destroy};
+
+use sui::{coin::{Self, Coin}, test_scenario};
+
+use sui_system::{
+    sui_system::SuiSystemState,
+    test_runner::{Self, TestRunner},
+    validator_builder,
+};
+
+use fun create_advance_epoch_safe_mode as CreateFixture.advance_epoch_safe_mode;
+
+use fun create_advance_epoch as CreateFixture.advance_epoch;
+
+use fun create_ctx as CreateFixture.ctx;
+
+use fun create_end as CreateFixture.end;
+
+use fun create_next_tx as CreateFixture.next_tx;
+
+use fun create_remove_validator as CreateFixture.remove_validator;
+
+use fun create_system as CreateFixture.system;
+
+use fun vault_ctx as VaultFixture.ctx;
+
+use fun vault_end as VaultFixture.end;
+
+use fun vault_next_tx as VaultFixture.next_tx;
+
+use fun vault_system as VaultFixture.system;
+
+use fun vault_vault as VaultFixture.vault;

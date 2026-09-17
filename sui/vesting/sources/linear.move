@@ -1,9 +1,6 @@
 /// Fully funded, fixed-beneficiary stepped-linear vesting.
 module blast_fun_vesting::linear;
 
-use std::type_name::{Self, TypeName};
-use sui::{balance::Balance, clock::Clock, coin::Coin, event};
-
 // === Errors ===
 
 #[error(code = 0)]
@@ -449,3 +446,9 @@ public fun vesting_closed_fields(self: &VestingClosed): (ID, TypeName, address, 
         self.released_total,
     )
 }
+
+// === Imports ===
+
+use std::type_name::{Self, TypeName};
+
+use sui::{balance::Balance, clock::Clock, coin::Coin, event};

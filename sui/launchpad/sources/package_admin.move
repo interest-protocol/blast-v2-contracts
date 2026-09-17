@@ -10,17 +10,6 @@
 /// governed transition must follow.
 module blast_fun::package_admin;
 
-use blast_admin::{
-    acl::AdminWitness,
-    upgrade_custody::{Self, UpgradeCustody},
-};
-use blast_fun::{
-    blast::BLAST,
-    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
-    package_version::PackageVersion,
-};
-use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};
-
 // === Public Structs ===
 
 /// Shared custody for the package's framework Publisher and UpgradeCap.
@@ -179,3 +168,18 @@ public fun version_for_testing(self: &PackageAdmin): u64 {
 public fun policy_for_testing(self: &PackageAdmin): u8 {
     self.custody.policy_for_testing()
 }
+
+// === Imports ===
+
+use blast_admin::{
+    acl::AdminWitness,
+    upgrade_custody::{Self, UpgradeCustody},
+};
+
+use blast_fun::{
+    blast::BLAST,
+    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
+    package_version::PackageVersion,
+};
+
+use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};

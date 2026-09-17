@@ -1,9 +1,6 @@
 /// Generated Meme package that creates one Blast launch ticket at publication.
 module meme_template::meme;
 
-use blast_fun::{creator_authority, launch_ticket};
-use sui::address;
-
 // === Constants ===
 
 const SYMBOL: vector<u8> = b"MEME";
@@ -44,3 +41,9 @@ fun init(otw: MEME, ctx: &mut TxContext) {
 
     transfer::public_transfer(ticket, ctx.sender());
 }
+
+// === Imports ===
+
+use blast_fun::{creator_authority, launch_ticket};
+
+use sui::address;

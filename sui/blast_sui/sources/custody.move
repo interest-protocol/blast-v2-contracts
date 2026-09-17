@@ -12,10 +12,6 @@
 /// refreshes. The vault owns the applied rate; a ledger never reads the pool.
 module blast_sui::custody;
 
-use blast_sui::{constants, events, math};
-use sui::{balance::{Self, Balance}, sui::SUI};
-use sui_system::{staking_pool::{FungibleStakedSui, StakedSui}, sui_system::SuiSystemState};
-
 // === Public Structs ===
 
 /// One internal native-asset ledger with liquid, pending, and active stake layers.
@@ -319,3 +315,11 @@ fun withdraw_pending(
         self.liquid_sui.join(sui_out);
     }
 }
+
+// === Imports ===
+
+use blast_sui::{constants, events, math};
+
+use sui::{balance::{Self, Balance}, sui::SUI};
+
+use sui_system::{staking_pool::{FungibleStakedSui, StakedSui}, sui_system::SuiSystemState};

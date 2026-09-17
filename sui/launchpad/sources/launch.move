@@ -5,30 +5,6 @@
 /// Normalized launch construction, custody, and revocable creator authority.
 module blast_fun::launch;
 
-use blast_admin::acl::AdminWitness;
-use blast_fun::{
-    bps::Bps,
-    constants,
-    creator_authority::{Self, BlastMetadataCap, CreatorAuthority, CurveFeeCap},
-    curve,
-    events,
-    fees::{Self, FeeLedger},
-    launch_config::LaunchConfig,
-    launch_ticket::LaunchTicket,
-    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
-    package_version::PackageVersion,
-    runtime_config::RuntimeConfig,
-};
-use std::{string::String, type_name::{Self, TypeName}};
-use sui::{
-    balance::{Self, Balance},
-    clock::Clock,
-    coin::Coin,
-    coin_registry::{Currency, MetadataCap},
-};
-
-use fun dispose_meme as Balance.dispose_meme;
-
 // === Public Structs ===
 
 /// Consensus lifecycle for one launch market and its terminal handoff.
@@ -943,3 +919,32 @@ public fun fee_totals_for_testing<Meme, Quote>(
 ): (u64, u64, u64, u64) {
     self.fee_ledger.totals_for_testing()
 }
+
+// === Imports ===
+
+use blast_admin::acl::AdminWitness;
+
+use blast_fun::{
+    bps::Bps,
+    constants,
+    creator_authority::{Self, BlastMetadataCap, CreatorAuthority, CurveFeeCap},
+    curve,
+    events,
+    fees::{Self, FeeLedger},
+    launch_config::LaunchConfig,
+    launch_ticket::LaunchTicket,
+    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
+    package_version::PackageVersion,
+    runtime_config::RuntimeConfig,
+};
+
+use std::{string::String, type_name::{Self, TypeName}};
+
+use sui::{
+    balance::{Self, Balance},
+    clock::Clock,
+    coin::Coin,
+    coin_registry::{Currency, MetadataCap},
+};
+
+use fun dispose_meme as Balance.dispose_meme;

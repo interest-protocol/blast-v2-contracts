@@ -7,15 +7,6 @@
 /// another product's capability.
 module blast_sui::blast_sui_domain_tests;
 
-use blast_admin::acl::{Self, Authority, SuperAdminCap, AdminCap, AdminWitness};
-use blast_sui::blast_sui_domain::{Self, BLAST_SUI_DOMAIN};
-use std::unit_test::{assert_eq, destroy};
-use sui::test_scenario::{Self, Scenario};
-
-use fun domain_end as DomainFixture.end;
-use fun domain_next_tx as DomainFixture.next_tx;
-use fun domain_sign_in as DomainFixture.sign_in;
-
 // === Constants ===
 
 const ROOT: address = @0xA11CE;
@@ -179,3 +170,19 @@ fun domain_sign_in(self: &DomainFixture): AdminWitness<BLAST_SUI_DOMAIN> {
 fun domain_end(self: DomainFixture) {
     destroy(self);
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Self, Authority, SuperAdminCap, AdminCap, AdminWitness};
+
+use blast_sui::blast_sui_domain::{Self, BLAST_SUI_DOMAIN};
+
+use std::unit_test::{assert_eq, destroy};
+
+use sui::test_scenario::{Self, Scenario};
+
+use fun domain_end as DomainFixture.end;
+
+use fun domain_next_tx as DomainFixture.next_tx;
+
+use fun domain_sign_in as DomainFixture.sign_in;

@@ -2,10 +2,6 @@
 /// Stateful tests for the reusable typed ACL lifecycle.
 module blast_admin::acl_tests;
 
-use blast_admin::{acl, errors, events, other_domain, test_domain};
-use std::{type_name, unit_test::{assert_eq, destroy}};
-use sui::{event, test_scenario::{Self, Scenario}};
-
 // === Constants ===
 
 const ROOT: address = @0xA11CE;
@@ -448,3 +444,11 @@ fun revoke_role(self: &mut Fixture, admin_cap_id: ID, role: u64) {
     let Fixture { authority, root, .. } = self;
     authority.revoke_role(root, admin_cap_id, role);
 }
+
+// === Imports ===
+
+use blast_admin::{acl, errors, events, other_domain, test_domain};
+
+use std::{type_name, unit_test::{assert_eq, destroy}};
+
+use sui::{event, test_scenario::{Self, Scenario}};

@@ -3,10 +3,6 @@
 /// Sealed custody and native transitions for one consumer package's framework capabilities.
 module blast_admin::upgrade_custody;
 
-use blast_admin::events;
-use std::type_name;
-use sui::package::{Self, Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};
-
 // === Constants ===
 
 const PACKAGE_DIGEST_LENGTH: u64 = 32;
@@ -245,3 +241,11 @@ public fun policy_for_testing<PackageMarker: drop>(
     assert!(self.upgrade_cap.is_some(), blast_admin::errors::upgrade_cap_unavailable!());
     self.upgrade_cap.borrow().policy()
 }
+
+// === Imports ===
+
+use blast_admin::events;
+
+use std::type_name;
+
+use sui::package::{Self, Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};

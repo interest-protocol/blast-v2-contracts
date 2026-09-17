@@ -1,10 +1,6 @@
 #[test_only]
 module blast_fun_migrators::route_math_tests;
 
-use blast_fun_migrators::{aftermath, turbos};
-use std::unit_test::assert_eq;
-use sui::sui::SUI;
-
 // === Test-Only Types ===
 
 public struct TypeA() has drop;
@@ -45,3 +41,11 @@ fun aftermath_order_compares_defining_addresses_first() {
         false,
     );
 }
+
+// === Imports ===
+
+use blast_fun_migrators::{aftermath, turbos};
+
+use std::unit_test::assert_eq;
+
+use sui::sui::SUI;

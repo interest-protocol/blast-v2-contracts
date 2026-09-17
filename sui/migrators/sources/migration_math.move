@@ -1,8 +1,6 @@
 /// Shared concentrated-liquidity price and utilization invariants for migrator venues.
 module blast_fun_migrators::migration_math;
 
-use blast_fun::bps::Bps;
-
 // === Constants ===
 
 /// Only the exact u256 price-deviation comparison needs the raw denominator.
@@ -128,3 +126,7 @@ fun integer_sqrt(value: u256): u128 {
 fun maximum_residual_amount(amount: u64, max_residual_bps: Bps): u64 {
     max_residual_bps.apply_up(amount)
 }
+
+// === Imports ===
+
+use blast_fun::bps::Bps;

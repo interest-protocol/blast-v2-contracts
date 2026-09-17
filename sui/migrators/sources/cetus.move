@@ -1,31 +1,6 @@
 /// Cetus migration with custodied concentrated-liquidity principal.
 module blast_fun_migrators::cetus;
 
-use blast_admin::acl::AdminWitness;
-use blast_fun::{
-    bps,
-    launch::Launch,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
-    package_version::PackageVersion,
-};
-use blast_fun_migrators::{
-    events,
-    lp_fee_authority::{Self, LpFeeAuthority},
-    lp_fee_policy::LpFeePolicy,
-    migration_math,
-    package_version::PackageVersion as MigratorsVersion,
-    vault::{Self, LpVault},
-    venue_config::VenueConfig,
-};
-use cetus_clmm::{
-    config::{Self, GlobalConfig},
-    factory::{Self, Pools},
-    pool::{Self, Pool},
-    pool_creator,
-    position::Position,
-};
-use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, coin_registry::Currency};
-
 // === Constants ===
 
 /// Cetus must use at least 99.99% of both migration balances.
@@ -654,3 +629,34 @@ fun collect_position_fees<X, Y, Meme, Quote>(
 public fun effective_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
     effective_tier(venue_config)
 }
+
+// === Imports ===
+
+use blast_admin::acl::AdminWitness;
+
+use blast_fun::{
+    bps,
+    launch::Launch,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
+    package_version::PackageVersion,
+};
+
+use blast_fun_migrators::{
+    events,
+    lp_fee_authority::{Self, LpFeeAuthority},
+    lp_fee_policy::LpFeePolicy,
+    migration_math,
+    package_version::PackageVersion as MigratorsVersion,
+    vault::{Self, LpVault},
+    venue_config::VenueConfig,
+};
+
+use cetus_clmm::{
+    config::{Self, GlobalConfig},
+    factory::{Self, Pools},
+    pool::{Self, Pool},
+    pool_creator,
+    position::Position,
+};
+
+use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, coin_registry::Currency};

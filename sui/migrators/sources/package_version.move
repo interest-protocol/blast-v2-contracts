@@ -5,9 +5,6 @@
 /// package checks only the transitions it implements.
 module blast_fun_migrators::package_version;
 
-use blast_admin::operational_version::{Self, OperationalVersion};
-use blast_fun_migrators::package_marker::PACKAGE_MARKER;
-
 // === Constants ===
 
 /// Current migrators generation accepted by every protected mutation.
@@ -87,3 +84,9 @@ public fun version_for_testing(self: &PackageVersion): u64 {
 public fun advance_for_testing(self: &mut PackageVersion) {
     self.advance();
 }
+
+// === Imports ===
+
+use blast_admin::operational_version::{Self, OperationalVersion};
+
+use blast_fun_migrators::package_marker::PACKAGE_MARKER;

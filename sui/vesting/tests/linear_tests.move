@@ -1,45 +1,6 @@
 #[test_only]
 module blast_fun_vesting::linear_tests;
 
-use blast_fun_vesting::linear::{
-    Self,
-    CancelCap,
-    Vesting,
-    VestingCanceled,
-    VestingClaimed,
-    VestingClosed,
-    VestingCreated,
-};
-use std::unit_test::{assert_eq, destroy};
-use sui::{clock::{Self, Clock}, coin::{Self, Coin}, event, test_scenario::{Self, Scenario}};
-
-use fun cancel_end as CancelFixture.end;
-use fun cancel_next_tx as CancelFixture.next_tx;
-use fun claim_end as ClaimFixture.end;
-use fun claim_next_tx as ClaimFixture.next_tx;
-use fun cancel_fixture_cancel_at as CancelFixture.cancel_at;
-use fun cancel_fixture_cancel_cap_id as CancelFixture.cancel_cap_id;
-use fun cancel_fixture_cancel_cap_vesting_id as CancelFixture.cancel_cap_vesting_id;
-use fun cancel_fixture_claim_at as CancelFixture.claim_at;
-use fun cancel_fixture_take_beneficiary_payout as CancelFixture.take_beneficiary_payout;
-use fun cancel_fixture_take_refund as CancelFixture.take_refund;
-use fun cancel_fixture_vesting_id as CancelFixture.vesting_id;
-use fun claim_fixture_claim_at as ClaimFixture.claim_at;
-use fun claim_fixture_close_at as ClaimFixture.close_at;
-use fun claim_fixture_assert_created as ClaimFixture.assert_created;
-use fun claim_fixture_releasable_at as ClaimFixture.releasable_at;
-use fun claim_fixture_take_beneficiary_payout as ClaimFixture.take_beneficiary_payout;
-use fun claim_fixture_vested_at as ClaimFixture.vested_at;
-use fun claim_fixture_vesting_id as ClaimFixture.vesting_id;
-use fun unit_cancel_with_mismatched_cap as UnitFixture.cancel_with_mismatched_cap;
-use fun unit_claim as UnitFixture.claim;
-use fun unit_close_irrevocable as UnitFixture.close_irrevocable;
-use fun unit_create_cancelable as UnitFixture.create_cancelable;
-use fun unit_create_irrevocable as UnitFixture.create_irrevocable;
-use fun unit_end as UnitFixture.end;
-use fun unit_set_clock as UnitFixture.set_clock;
-use fun unit_vesting as UnitFixture.vesting;
-
 // === Constants ===
 
 const FUNDER: address = @0xF00D;
@@ -854,3 +815,71 @@ fun cancel_end(self: CancelFixture) {
     assert!(self.cancel_cap.is_none());
     destroy(self);
 }
+
+// === Imports ===
+
+use blast_fun_vesting::linear::{
+    Self,
+    CancelCap,
+    Vesting,
+    VestingCanceled,
+    VestingClaimed,
+    VestingClosed,
+    VestingCreated,
+};
+
+use std::unit_test::{assert_eq, destroy};
+
+use sui::{clock::{Self, Clock}, coin::{Self, Coin}, event, test_scenario::{Self, Scenario}};
+
+use fun cancel_end as CancelFixture.end;
+
+use fun cancel_next_tx as CancelFixture.next_tx;
+
+use fun claim_end as ClaimFixture.end;
+
+use fun claim_next_tx as ClaimFixture.next_tx;
+
+use fun cancel_fixture_cancel_at as CancelFixture.cancel_at;
+
+use fun cancel_fixture_cancel_cap_id as CancelFixture.cancel_cap_id;
+
+use fun cancel_fixture_cancel_cap_vesting_id as CancelFixture.cancel_cap_vesting_id;
+
+use fun cancel_fixture_claim_at as CancelFixture.claim_at;
+
+use fun cancel_fixture_take_beneficiary_payout as CancelFixture.take_beneficiary_payout;
+
+use fun cancel_fixture_take_refund as CancelFixture.take_refund;
+
+use fun cancel_fixture_vesting_id as CancelFixture.vesting_id;
+
+use fun claim_fixture_claim_at as ClaimFixture.claim_at;
+
+use fun claim_fixture_close_at as ClaimFixture.close_at;
+
+use fun claim_fixture_assert_created as ClaimFixture.assert_created;
+
+use fun claim_fixture_releasable_at as ClaimFixture.releasable_at;
+
+use fun claim_fixture_take_beneficiary_payout as ClaimFixture.take_beneficiary_payout;
+
+use fun claim_fixture_vested_at as ClaimFixture.vested_at;
+
+use fun claim_fixture_vesting_id as ClaimFixture.vesting_id;
+
+use fun unit_cancel_with_mismatched_cap as UnitFixture.cancel_with_mismatched_cap;
+
+use fun unit_claim as UnitFixture.claim;
+
+use fun unit_close_irrevocable as UnitFixture.close_irrevocable;
+
+use fun unit_create_cancelable as UnitFixture.create_cancelable;
+
+use fun unit_create_irrevocable as UnitFixture.create_irrevocable;
+
+use fun unit_end as UnitFixture.end;
+
+use fun unit_set_clock as UnitFixture.set_clock;
+
+use fun unit_vesting as UnitFixture.vesting;

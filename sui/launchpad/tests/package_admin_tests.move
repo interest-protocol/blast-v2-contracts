@@ -1,31 +1,6 @@
 #[test_only]
 module blast_fun::package_admin_tests;
 
-use blast_admin::{acl::{Authority, SuperAdminCap, AdminCap, AdminWitness}, errors, events};
-use blast_fun::{
-    blast::{Self, BLAST},
-    domain_fixture,
-    launchpad_domain,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
-    package_admin,
-    package_version,
-};
-use 0xf::foreign_publisher;
-use std::unit_test::{assert_eq, destroy};
-use sui::{
-    event,
-    package::{Self, Publisher},
-    test_scenario::{Self, Scenario},
-};
-
-use fun custody_end as CustodyFixture.end;
-use fun custody_next_tx as CustodyFixture.next_tx;
-use fun upgrade_end as UpgradeFixture.end;
-use fun upgrade_next_tx as UpgradeFixture.next_tx;
-use fun wrap_ctx as WrapFixture.ctx;
-use fun wrap_end as WrapFixture.end;
-use fun wrap_next_tx as WrapFixture.next_tx;
-
 // === Constants ===
 
 const PUBLISHER: address = @0xA11CE;
@@ -566,3 +541,40 @@ fun upgrade_end(self: UpgradeFixture) {
 fun package_digest(): vector<u8> {
     x"11223344556677889900aabbccddeeffffeeddccbbaa00998877665544332211"
 }
+
+// === Imports ===
+
+use blast_admin::{acl::{Authority, SuperAdminCap, AdminCap, AdminWitness}, errors, events};
+
+use blast_fun::{
+    blast::{Self, BLAST},
+    domain_fixture,
+    launchpad_domain,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
+    package_admin,
+    package_version,
+};
+
+use 0xf::foreign_publisher;
+
+use std::unit_test::{assert_eq, destroy};
+
+use sui::{
+    event,
+    package::{Self, Publisher},
+    test_scenario::{Self, Scenario},
+};
+
+use fun custody_end as CustodyFixture.end;
+
+use fun custody_next_tx as CustodyFixture.next_tx;
+
+use fun upgrade_end as UpgradeFixture.end;
+
+use fun upgrade_next_tx as UpgradeFixture.next_tx;
+
+use fun wrap_ctx as WrapFixture.ctx;
+
+use fun wrap_end as WrapFixture.end;
+
+use fun wrap_next_tx as WrapFixture.next_tx;

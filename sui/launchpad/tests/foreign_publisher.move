@@ -2,10 +2,6 @@
 /// Supplies a Publisher whose original package address is not Blast's test address.
 module 0xf::foreign_publisher;
 
-use blast_fun::blast::BLAST;
-use std::unit_test::destroy;
-use sui::package::{Self, Publisher};
-
 public struct FOREIGN_PUBLISHER() has drop;
 
 public fun new(ctx: &mut TxContext): Publisher {
@@ -24,3 +20,11 @@ fun publisher_has_a_foreign_original_package() {
     destroy(publisher);
     destroy(ctx);
 }
+
+// === Imports ===
+
+use blast_fun::blast::BLAST;
+
+use std::unit_test::destroy;
+
+use sui::package::{Self, Publisher};

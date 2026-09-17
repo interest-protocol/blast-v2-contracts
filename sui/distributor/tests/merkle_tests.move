@@ -1,9 +1,6 @@
 #[test_only]
 module blast_fun_distributor::merkle_tests;
 
-use blast_fun_distributor::merkle;
-use std::unit_test::assert_eq;
-
 // === Tests ===
 
 #[test]
@@ -92,3 +89,9 @@ fun every_leaf_field_is_bound_to_the_commitment() {
     ];
     altered.do!(|leaf| assert!(!merkle::verify(root, leaf, 0, 1, &vector[])));
 }
+
+// === Imports ===
+
+use blast_fun_distributor::merkle;
+
+use std::unit_test::assert_eq;

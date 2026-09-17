@@ -1,17 +1,6 @@
 #[test_only]
 module blast_fun::launch_config_capacity_tests;
 
-use blast_admin::acl::{Authority, AdminCap, AdminWitness};
-use blast_fun::{
-    constants,
-    domain_fixture,
-    launch_config,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
-    package_version,
-};
-use std::unit_test::{assert_eq, destroy};
-use sui::test_scenario::{Self, Scenario};
-
 // === Constants ===
 
 const PUBLISHER: address = @0xA11CE;
@@ -153,3 +142,19 @@ fun sign_in(self: &ConfigFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
 fun end(self: ConfigFixture) {
     destroy(self);
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Authority, AdminCap, AdminWitness};
+
+use blast_fun::{
+    constants,
+    domain_fixture,
+    launch_config,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
+    package_version,
+};
+
+use std::unit_test::{assert_eq, destroy};
+
+use sui::test_scenario::{Self, Scenario};

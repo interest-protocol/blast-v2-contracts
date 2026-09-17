@@ -4,26 +4,6 @@
 /// Single-validator custody of the 1:1 funSUI ledger and the blastSUI share ledger.
 module blast_sui::vault;
 
-use blast_admin::acl::AdminWitness;
-use blast_sui::{
-    blast_sui::BLAST_SUI,
-    blast_sui_domain::BLAST_SUI_DOMAIN,
-    constants,
-    custody::{Self, Custody},
-    deposit_receipt::{Self, BlastSuiDepositReceipt},
-    events,
-    fun_sui::FUN_SUI,
-    math,
-    package_version::PackageVersion,
-};
-use sui::{coin::{Coin, TreasuryCap}, dynamic_object_field, sui::SUI};
-use sui_system::sui_system::SuiSystemState;
-
-use fun dynamic_object_field::add as UID.add_dynamic_object_field;
-use fun dynamic_object_field::borrow as UID.dynamic_object_field;
-use fun dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut;
-use fun exchange_rate_at as SuiSystemState.exchange_rate_at;
-
 // === Public Structs ===
 
 /// Shared owner of both treasury-cap child objects and the two native custody ledgers.
@@ -688,3 +668,31 @@ public fun add_blast_layers_for_testing(
     self.blast_custody.stake_idle(system_state, validator, &pool_id, 0, ctx);
     self.blast_custody.deposit(liquid_in.into_balance());
 }
+
+// === Imports ===
+
+use blast_admin::acl::AdminWitness;
+
+use blast_sui::{
+    blast_sui::BLAST_SUI,
+    blast_sui_domain::BLAST_SUI_DOMAIN,
+    constants,
+    custody::{Self, Custody},
+    deposit_receipt::{Self, BlastSuiDepositReceipt},
+    events,
+    fun_sui::FUN_SUI,
+    math,
+    package_version::PackageVersion,
+};
+
+use sui::{coin::{Coin, TreasuryCap}, dynamic_object_field, sui::SUI};
+
+use sui_system::sui_system::SuiSystemState;
+
+use fun dynamic_object_field::add as UID.add_dynamic_object_field;
+
+use fun dynamic_object_field::borrow as UID.dynamic_object_field;
+
+use fun dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut;
+
+use fun exchange_rate_at as SuiSystemState.exchange_rate_at;

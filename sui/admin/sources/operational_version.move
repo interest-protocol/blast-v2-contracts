@@ -3,9 +3,6 @@
 /// Sealed operational-generation arithmetic for consumer-owned version containers.
 module blast_admin::operational_version;
 
-use blast_admin::events;
-use std::type_name;
-
 // === Constants ===
 
 const INITIAL_GENERATION: u64 = 1;
@@ -95,3 +92,9 @@ public fun set_generation_for_testing<PackageMarker: drop>(
 ) {
     self.generation = generation;
 }
+
+// === Imports ===
+
+use blast_admin::events;
+
+use std::type_name;

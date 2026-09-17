@@ -5,8 +5,6 @@
 /// Validated basis-points values and explicit rounded application.
 module blast_fun::bps;
 
-use blast_fun::constants;
-
 // === Public Structs ===
 
 // The type and every operation are public so dependent packages share one rate unit. The tuple
@@ -54,3 +52,7 @@ public fun apply_up(self: Bps, amount: u64): u64 {
 public fun complement(self: Bps): Bps {
     Bps(constants::basis_points_denominator!() - self.value())
 }
+
+// === Imports ===
+
+use blast_fun::constants;

@@ -1,8 +1,6 @@
 /// Typed replay facts for migrations, custody, tier policy, and fee flows.
 module blast_fun_migrators::events;
 
-use std::type_name::{Self, TypeName};
-
 // === Public Structs ===
 
 /// Records one pinned venue tier replacing the previous values.
@@ -465,3 +463,7 @@ public fun project_lp_protocol_fee_share_cleared_fields(
 ): TypeName {
     self.0
 }
+
+// === Imports ===
+
+use std::type_name::{Self, TypeName};

@@ -5,20 +5,6 @@
 /// Cold launch-time policy snapshotted before bonding begins.
 module blast_fun::launch_config;
 
-use blast_admin::acl::AdminWitness;
-use blast_fun::{
-    bps::{Self, Bps},
-    constants,
-    events,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
-    package_version::PackageVersion,
-};
-use std::type_name::{Self, TypeName};
-use sui::{
-    table::{Self, Table},
-    vec_set::{Self, VecSet},
-};
-
 // === Public Structs ===
 
 /// Shared singleton containing cold policy snapshotted by each new launch.
@@ -369,3 +355,22 @@ public fun rate_defaults_for_testing(self: &LaunchConfig): (u64, u64, u64, u64, 
 public fun allowed_migration_witness_count_for_testing(self: &LaunchConfig): u64 {
     self.migration_witnesses.length()
 }
+
+// === Imports ===
+
+use blast_admin::acl::AdminWitness;
+
+use blast_fun::{
+    bps::{Self, Bps},
+    constants,
+    events,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
+    package_version::PackageVersion,
+};
+
+use std::type_name::{Self, TypeName};
+
+use sui::{
+    table::{Self, Table},
+    vec_set::{Self, VecSet},
+};

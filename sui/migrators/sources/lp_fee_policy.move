@@ -5,12 +5,6 @@
 /// Partner projects may carry a unique share keyed by their Meme type.
 module blast_fun_migrators::lp_fee_policy;
 
-use blast_admin::acl::AdminWitness;
-use blast_fun::{bps::{Self, Bps}, launchpad_domain::LAUNCHPAD_DOMAIN};
-use blast_fun_migrators::{events, package_version::PackageVersion};
-use std::type_name::{Self, TypeName};
-use sui::table::{Self, Table};
-
 // === Errors ===
 
 #[error(code = 0)]
@@ -155,3 +149,15 @@ public fun new_for_testing(ctx: &mut TxContext): LpFeePolicy {
 public fun project_count_for_testing(self: &LpFeePolicy): u64 {
     self.project_protocol_fee_shares.length()
 }
+
+// === Imports ===
+
+use blast_admin::acl::AdminWitness;
+
+use blast_fun::{bps::{Self, Bps}, launchpad_domain::LAUNCHPAD_DOMAIN};
+
+use blast_fun_migrators::{events, package_version::PackageVersion};
+
+use std::type_name::{Self, TypeName};
+
+use sui::table::{Self, Table};

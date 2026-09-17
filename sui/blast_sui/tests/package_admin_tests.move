@@ -1,36 +1,6 @@
 #[test_only]
 module blast_sui::package_admin_tests;
 
-use blast_admin::acl::{Self, Authority, SuperAdminCap, AdminCap, AdminWitness};
-use blast_sui::{
-    blast::{Self, BLAST},
-    blast_sui::{Self as blast_coin, BLAST_SUI},
-    blast_sui_domain::{Self, BLAST_SUI_DOMAIN},
-    deposit_receipt::{Self, BlastSuiDepositReceipt},
-    errors,
-    events,
-    fun_sui::{Self as fun_coin, FUN_SUI},
-    package_admin,
-    package_version,
-};
-use std::{type_name, unit_test::{assert_eq, destroy}};
-use sui::{
-    coin_registry::MetadataCap,
-    display_registry::{DisplayCap, DisplayRegistry},
-    event,
-    package,
-    test_scenario::{Self, Scenario},
-};
-
-use fun custody_end as CustodyFixture.end;
-use fun custody_next_tx as CustodyFixture.next_tx;
-use fun upgrade_ctx as UpgradeFixture.ctx;
-use fun upgrade_end as UpgradeFixture.end;
-use fun upgrade_next_tx as UpgradeFixture.next_tx;
-use fun wrap_ctx as WrapFixture.ctx;
-use fun wrap_end as WrapFixture.end;
-use fun wrap_next_tx as WrapFixture.next_tx;
-
 // === Constants ===
 
 const PUBLISHER: address = @0xA11CE;
@@ -446,7 +416,6 @@ fun equal_policy_restriction_is_rejected_before_mutation() {
     fixture.end();
 }
 
-
 #[test]
 #[expected_failure(
     abort_code = blast_admin::errors::EOperationalVersionOverflow,
@@ -820,3 +789,45 @@ fun new_display_cap(
     destroy(package_version);
     display_cap
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Self, Authority, SuperAdminCap, AdminCap, AdminWitness};
+
+use blast_sui::{
+    blast::{Self, BLAST},
+    blast_sui::{Self as blast_coin, BLAST_SUI},
+    blast_sui_domain::{Self, BLAST_SUI_DOMAIN},
+    deposit_receipt::{Self, BlastSuiDepositReceipt},
+    errors,
+    events,
+    fun_sui::{Self as fun_coin, FUN_SUI},
+    package_admin,
+    package_version,
+};
+
+use std::{type_name, unit_test::{assert_eq, destroy}};
+
+use sui::{
+    coin_registry::MetadataCap,
+    display_registry::{DisplayCap, DisplayRegistry},
+    event,
+    package,
+    test_scenario::{Self, Scenario},
+};
+
+use fun custody_end as CustodyFixture.end;
+
+use fun custody_next_tx as CustodyFixture.next_tx;
+
+use fun upgrade_ctx as UpgradeFixture.ctx;
+
+use fun upgrade_end as UpgradeFixture.end;
+
+use fun upgrade_next_tx as UpgradeFixture.next_tx;
+
+use fun wrap_ctx as WrapFixture.ctx;
+
+use fun wrap_end as WrapFixture.end;
+
+use fun wrap_next_tx as WrapFixture.next_tx;

@@ -1,10 +1,6 @@
 #[test_only]
 module blast_fun_migrators::migration_math_tests;
 
-use blast_fun::bps;
-use blast_fun_migrators::migration_math;
-use std::unit_test::assert_eq;
-
 // === Tests ===
 
 #[test]
@@ -161,3 +157,11 @@ fun price_deviation_limit_rejects_more_than_one_hundred_percent() {
 
     migration_math::assert_price_within_bps(10_000, 10_000, true, price, bps::new(10_001));
 }
+
+// === Imports ===
+
+use blast_fun::bps;
+
+use blast_fun_migrators::migration_math;
+
+use std::unit_test::assert_eq;

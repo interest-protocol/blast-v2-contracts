@@ -2,10 +2,6 @@
 /// Minimal consumer wrapper proving the shared custody/version composition boundary.
 module blast_admin::upgrade_fixture;
 
-use 0xa::package_marker;
-use blast_admin::{acl, operational_version, upgrade_custody};
-use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};
-
 // === Constants ===
 
 const COMPILED_GENERATION: u64 = 1;
@@ -86,3 +82,11 @@ public fun generation(self: &PackageAdmin): u64 {
 public fun set_generation(self: &mut PackageAdmin, generation: u64) {
     self.operational_version.set_generation_for_testing(generation);
 }
+
+// === Imports ===
+
+use 0xa::package_marker;
+
+use blast_admin::{acl, operational_version, upgrade_custody};
+
+use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};

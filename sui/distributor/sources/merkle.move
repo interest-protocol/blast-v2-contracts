@@ -1,9 +1,6 @@
 /// Positional Blake2b-256 proofs with distinct leaf and internal-node domains.
 module blast_fun_distributor::merkle;
 
-use std::bcs;
-use sui::hash;
-
 // === Package Functions ===
 
 /// The unique distributor ID and monotonically increasing round separate claims.
@@ -63,3 +60,9 @@ fun node(left: vector<u8>, right: vector<u8>): vector<u8> {
 
 #[test_only]
 public fun node_for_testing(left: vector<u8>, right: vector<u8>): vector<u8> { node(left, right) }
+
+// === Imports ===
+
+use std::bcs;
+
+use sui::hash;

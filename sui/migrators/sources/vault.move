@@ -1,30 +1,6 @@
 /// Shared fee accounting and sealed dynamic-object custody for migration positions.
 module blast_fun_migrators::vault;
 
-use blast_admin::acl::AdminWitness;
-use blast_fun::{
-    creator_authority::CurveFeeCap,
-    fees::{Self, FeeLedger},
-    launch::Launch,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
-};
-use blast_fun_migrators::{
-    events,
-    lp_fee_authority::{LpFeeAuthority, LpFeeCap},
-    lp_fee_policy::LpFeePolicy,
-    package_version::PackageVersion as MigratorsVersion,
-};
-use sui::{
-    balance::{Self, Balance},
-    coin::Coin,
-    dynamic_object_field,
-    transfer::Receiving,
-};
-
-use fun dynamic_object_field::add as UID.add_dynamic_object_field;
-use fun dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut;
-use fun dynamic_object_field::exists as UID.has_dynamic_object_field;
-
 // === Constants ===
 
 /// Maximum total child coin objects one receiving call can consume.
@@ -495,3 +471,34 @@ public fun funded_for_testing<Meme, Quote>(
     );
     vault
 }
+
+// === Imports ===
+
+use blast_admin::acl::AdminWitness;
+
+use blast_fun::{
+    creator_authority::CurveFeeCap,
+    fees::{Self, FeeLedger},
+    launch::Launch,
+    launchpad_domain::LAUNCHPAD_DOMAIN,
+};
+
+use blast_fun_migrators::{
+    events,
+    lp_fee_authority::{LpFeeAuthority, LpFeeCap},
+    lp_fee_policy::LpFeePolicy,
+    package_version::PackageVersion as MigratorsVersion,
+};
+
+use sui::{
+    balance::{Self, Balance},
+    coin::Coin,
+    dynamic_object_field,
+    transfer::Receiving,
+};
+
+use fun dynamic_object_field::add as UID.add_dynamic_object_field;
+
+use fun dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut;
+
+use fun dynamic_object_field::exists as UID.has_dynamic_object_field;

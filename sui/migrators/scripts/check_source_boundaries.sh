@@ -555,7 +555,7 @@ rg -q '^// Code 4 retired: ' "$VAULT_SOURCE" \
 LP_FEE_AUTHORITY_PRODUCTION="$(production_section "$LP_FEE_AUTHORITY_SOURCE")"
 require_pattern "$LP_FEE_AUTHORITY_SOURCE" '^module blast_fun_migrators::lp_fee_authority;$' \
     'migrator-owned LP-fee authority module'
-[[ "$(tr -d '[:space:]' <<<"$LP_FEE_AUTHORITY_PRODUCTION")" == *'useblast_admin::acl::AdminWitness;useblast_fun::{creator_authority::CurveFeeCap,launch::{Launch,MigrationPayload},launchpad_domain::{Self,LAUNCHPAD_DOMAIN},};usestd::type_name::{Self,TypeName};//===Errors==='* ]] || \
+[[ "$(tr -d '[:space:]' < "$LP_FEE_AUTHORITY_SOURCE")" == *'//===Imports===useblast_admin::acl::AdminWitness;useblast_fun::{creator_authority::CurveFeeCap,launch::{Launch,MigrationPayload},launchpad_domain::{Self,LAUNCHPAD_DOMAIN},};usestd::type_name::{Self,TypeName};' ]] || \
     fail "lp_fee_authority.move must import only AdminWitness, CurveFeeCap, Launch, MigrationPayload, the Launchpad domain, and TypeName"
 LP_FEE_AUTHORITY_FUNCTIONS="$(rg -o '^(public(\(package\))? )?(entry )?fun [[:alnum:]_]+' <<<"$LP_FEE_AUTHORITY_PRODUCTION" | sort | tr '\n' ';')"
 [[ "$LP_FEE_AUTHORITY_FUNCTIONS" == 'fun assert_pending;fun cap_id;fun custodian;fun custodian_type;fun is_pending;public fun destroy_lp_fee_cap;public(package) fun assert_cap;public(package) fun assert_custodian;public(package) fun assert_not_locked;public(package) fun claim;public(package) fun id;public(package) fun lock;public(package) fun lock_pending;public(package) fun new;public(package) fun reissue;' ]] || \

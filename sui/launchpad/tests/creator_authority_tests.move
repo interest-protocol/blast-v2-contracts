@@ -1,39 +1,6 @@
 #[test_only]
 module blast_fun::creator_authority_tests;
 
-use blast_admin::acl::{Authority, SuperAdminCap, AdminCap, AdminWitness};
-use blast_fun::{
-    creator_authority,
-    domain_fixture,
-    events,
-    launch_config::{Self, LaunchConfig},
-    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
-    package_version::{Self, PackageVersion},
-    runtime_config,
-};
-use std::{bcs, unit_test::{assert_eq, destroy}};
-use sui::{clock::{Self, Clock}, event, test_scenario::{Self, Scenario}};
-
-use fun acl_ctx as AclFixture.ctx;
-use fun acl_end as AclFixture.end;
-use fun acl_next_tx as AclFixture.next_tx;
-use fun claim_end as ClaimFixture.end;
-use fun claim_next_tx as ClaimFixture.next_tx;
-use fun claim_next_tx_expecting_events as ClaimFixture.next_tx_expecting_events;
-use fun event_ctx as EventFixture.ctx;
-use fun event_end as EventFixture.end;
-use fun event_next_tx as EventFixture.next_tx;
-use fun event_take_authority as EventFixture.take_authority;
-use fun event_take_launch_config as EventFixture.take_launch_config;
-use fun event_take_package_version as EventFixture.take_package_version;
-use fun event_take_runtime_config as EventFixture.take_runtime_config;
-use fun signer_claim_end as SignerClaimFixture.end;
-use fun signer_claim_next_tx as SignerClaimFixture.next_tx;
-use fun signer_claim_sign_in as SignerClaimFixture.sign_in;
-use fun signer_end as SignerFixture.end;
-use fun signer_next_tx as SignerFixture.next_tx;
-use fun signer_sign_in as SignerFixture.sign_in;
-
 // === Constants ===
 
 const LAUNCHER: address = @0xA11CE;
@@ -918,7 +885,6 @@ fun event_take_launch_config(self: &EventFixture): LaunchConfig {
     self.scenario.take_shared<LaunchConfig>()
 }
 
-
 fun claim_end(self: ClaimFixture) {
     destroy(self);
 }
@@ -978,3 +944,59 @@ fun creator_claim_signer_public_key(): vector<u8> {
 fun valid_creator_claim_signature(): vector<u8> {
     x"9ad5e8a47856b8080b3105c805c3555bcfbdf28889ffe3fc54bc54700ff308e495e6dd1b014c9e2316bc98f0ec55c08293065ccee444aa96b1f5e107004a9a02"
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Authority, SuperAdminCap, AdminCap, AdminWitness};
+
+use blast_fun::{
+    creator_authority,
+    domain_fixture,
+    events,
+    launch_config::{Self, LaunchConfig},
+    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
+    package_version::{Self, PackageVersion},
+    runtime_config,
+};
+
+use std::{bcs, unit_test::{assert_eq, destroy}};
+
+use sui::{clock::{Self, Clock}, event, test_scenario::{Self, Scenario}};
+
+use fun acl_ctx as AclFixture.ctx;
+
+use fun acl_end as AclFixture.end;
+
+use fun acl_next_tx as AclFixture.next_tx;
+
+use fun claim_end as ClaimFixture.end;
+
+use fun claim_next_tx as ClaimFixture.next_tx;
+
+use fun claim_next_tx_expecting_events as ClaimFixture.next_tx_expecting_events;
+
+use fun event_ctx as EventFixture.ctx;
+
+use fun event_end as EventFixture.end;
+
+use fun event_next_tx as EventFixture.next_tx;
+
+use fun event_take_authority as EventFixture.take_authority;
+
+use fun event_take_launch_config as EventFixture.take_launch_config;
+
+use fun event_take_package_version as EventFixture.take_package_version;
+
+use fun event_take_runtime_config as EventFixture.take_runtime_config;
+
+use fun signer_claim_end as SignerClaimFixture.end;
+
+use fun signer_claim_next_tx as SignerClaimFixture.next_tx;
+
+use fun signer_claim_sign_in as SignerClaimFixture.sign_in;
+
+use fun signer_end as SignerFixture.end;
+
+use fun signer_next_tx as SignerFixture.next_tx;
+
+use fun signer_sign_in as SignerFixture.sign_in;

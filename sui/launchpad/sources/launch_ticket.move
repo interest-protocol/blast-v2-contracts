@@ -1,18 +1,6 @@
 /// Generated-coin creation, finalized supply, and linear custody before launch opens.
 module blast_fun::launch_ticket;
 
-use blast_fun::{
-    bps::{Self, Bps},
-    constants,
-    creator_authority::{CreatorAuthority, CreatorRecipient},
-    events,
-};
-use std::string::String;
-use sui::{
-    balance::Balance,
-    coin_registry::{Self, MetadataCap},
-};
-
 // === Public Structs ===
 
 /// Linear custody of a generated coin's inventory and authorities before launch.
@@ -148,3 +136,19 @@ public fun metadata_cap_id_for_testing<Meme>(self: &LaunchTicket<Meme>): ID {
 public fun set_sell_burn_bps_for_testing<Meme>(self: &mut LaunchTicket<Meme>, value: u64) {
     self.sell_burn_bps = bps::new(value);
 }
+
+// === Imports ===
+
+use blast_fun::{
+    bps::{Self, Bps},
+    constants,
+    creator_authority::{CreatorAuthority, CreatorRecipient},
+    events,
+};
+
+use std::string::String;
+
+use sui::{
+    balance::Balance,
+    coin_registry::{Self, MetadataCap},
+};

@@ -6,9 +6,6 @@
 /// and the bytecode a governed upgrade cuts over to.
 module blast_sui::package_version;
 
-use blast_admin::operational_version::{Self, OperationalVersion};
-use blast_sui::blast::BLAST;
-
 // === Constants ===
 
 const PACKAGE_VERSION: u64 = 1;
@@ -91,3 +88,9 @@ public fun advance_for_testing(self: &mut PackageVersion) {
 public fun assert_next_for_testing(self: &PackageVersion) {
     self.assert_next();
 }
+
+// === Imports ===
+
+use blast_admin::operational_version::{Self, OperationalVersion};
+
+use blast_sui::blast::BLAST;
