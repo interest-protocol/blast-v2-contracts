@@ -49,6 +49,7 @@ const CASE_NAMES = [
     'stale_oracle',
     'collateral_depeg',
     'update_due_then_settlement',
+    'deficit_repaid_by_credit',
 ];
 const CHECKPOINT_FIELDS = [
     'free_collateral',
@@ -270,6 +271,7 @@ function protocolEvent(event, path, types) {
             'amount',
             'absorbed_by_reserve',
             'uncovered_cost',
+            'restored_to_holders',
             'reserve_after',
             'previous_checkpoint',
             'checkpoint',
@@ -414,7 +416,10 @@ function validateEvidence(evidence, oracle, types, vaultId, path) {
                 ? amount
                 : isCost ? expectedReserve : 0n;
             const uncovered = isCost ? amount - absorbed : 0n;
-            expectedReserve = isCost ? expectedReserve - absorbed : expectedReserve + amount;
+            // A credit first repays the deficit holders carried; only the rest rebuilds the reserve.
+            const restored = unsigned(parsed.restored_to_holders, 64, `${eventPath}.restored_to_holders`);
+            if (isCost ? restored !== 0n : restored > amount) fail(`${eventPath}.restored_to_holders: exceeds the credit or set on a cost`);
+            expectedReserve = isCost ? expectedReserve - absorbed : expectedReserve + amount - restored;
             if (expectedReserve > (1n << 64n) - 1n) fail(`${path}: reserve width overflow`);
             assertEqual(
                 unsigned(parsed.absorbed_by_reserve, 64, `${eventPath}.absorbed_by_reserve`).toString(),

@@ -271,6 +271,7 @@ expected_state_public="$(printf '%s\n' \
   set_fees \
   set_max_order_notional \
   settle_funding \
+  uncovered_deficit \
   | sort)"
 [[ "$actual_state_public" == "$expected_state_public" ]] \
   || fail "The production Series1 State surface changed without boundary review."

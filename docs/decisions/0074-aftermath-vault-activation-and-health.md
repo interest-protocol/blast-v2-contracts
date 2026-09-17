@@ -426,9 +426,12 @@ After authentication, synchronization has one fixed sequence:
    oracle.
 4. Capture the post-settlement facts and classify both stored-to-pre and
    pre-to-post checkpoint edges.
-5. Aggregate both authenticated signed effects before rounding. Credits round
-   down and increase reserve; costs round up and consume reserve, with any
-   uncovered cost borne by holder NAV.
+5. Aggregate both authenticated signed effects before rounding. Costs round
+   up and consume reserve, with any uncovered cost borne by holder NAV and
+   recorded as the Series' uncovered deficit. Credits round down and repay
+   that deficit first, staying in holder NAV; only the remainder increases
+   reserve (amended 2026-09-17; `FundingSettled.restored_to_holders` carries
+   the split).
 6. Consume the final linear capture and extract its checkpoint without a
    lifecycle mutation. Accept the economic checkpoint only for a reconciled interval;
    unresolved observations update only the diagnostic fingerprint.

@@ -861,10 +861,10 @@ public(package) fun apply_post_capture<Product>(
     let net = snapshot::net_funding(preexisting_change, local_change);
     let (has_funding, is_cost, raw_amount, amount, checkpoint_clean) =
         snapshot::funding_change_fields(&net);
-    let (absorbed, uncovered, reserve_after) = if (has_funding) {
+    let (absorbed, uncovered, restored, reserve_after) = if (has_funding) {
         vault.settle_funding(is_cost, amount)
     } else {
-        (0, 0, vault.maintenance_reserve())
+        (0, 0, 0, vault.maintenance_reserve())
     };
     let checkpoint = snapshot::finish_health(post_capture);
 
@@ -884,6 +884,7 @@ public(package) fun apply_post_capture<Product>(
             amount,
             absorbed,
             uncovered,
+            restored,
             reserve_after,
             stored_checkpoint,
             checkpoint,

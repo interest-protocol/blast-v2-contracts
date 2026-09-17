@@ -144,6 +144,7 @@ public struct FundingSettled<phantom Product> has copy, drop {
     amount: u64,
     absorbed_by_reserve: u64,
     uncovered_cost: u64,
+    restored_to_holders: u64,
     reserve_after: u64,
     previous_checkpoint: Checkpoint,
     checkpoint: Checkpoint,
@@ -356,6 +357,7 @@ public(package) fun funding_settled<Product>(
     amount: u64,
     absorbed_by_reserve: u64,
     uncovered_cost: u64,
+    restored_to_holders: u64,
     reserve_after: u64,
     previous_checkpoint: Checkpoint,
     checkpoint: Checkpoint,
@@ -368,6 +370,7 @@ public(package) fun funding_settled<Product>(
             amount,
             absorbed_by_reserve,
             uncovered_cost,
+            restored_to_holders,
             reserve_after,
             previous_checkpoint,
             checkpoint,
@@ -599,7 +602,7 @@ public fun vault_initialized_fields<Product>(
 #[test_only]
 public fun funding_settled_fields<Product>(
     self: &FundingSettled<Product>,
-): (ID, bool, u256, u64, u64, u64, u64, Checkpoint, Checkpoint) {
+): (ID, bool, u256, u64, u64, u64, u64, u64, Checkpoint, Checkpoint) {
     (
         self.vault_id,
         self.is_cost,
@@ -607,6 +610,7 @@ public fun funding_settled_fields<Product>(
         self.amount,
         self.absorbed_by_reserve,
         self.uncovered_cost,
+        self.restored_to_holders,
         self.reserve_after,
         self.previous_checkpoint,
         self.checkpoint,

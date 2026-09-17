@@ -1605,6 +1605,7 @@ fun funding_event_records_exact_amount_reserve_effect_and_checkpoint() {
         10,
         10,
         0,
+        0,
         90,
         previous_checkpoint,
         checkpoint,
@@ -1617,6 +1618,7 @@ fun funding_event_records_exact_amount_reserve_effect_and_checkpoint() {
         amount,
         absorbed,
         uncovered,
+        _,
         reserve_after,
         event_previous_checkpoint,
         event_checkpoint,
@@ -1858,7 +1860,7 @@ fun connected_external_cost_and_local_income_settle_one_net_checkpoint() {
     let first = *funding_events.borrow(0);
     let (
         _, first_is_cost, first_raw, first_amount, first_absorbed,
-        first_uncovered, first_reserve_after, first_previous, first_checkpoint,
+        first_uncovered, _, first_reserve_after, first_previous, first_checkpoint,
     ) = first.funding_settled_fields();
     assert!(first_is_cost);
     assert_eq!(first_raw, 90 * ATOM_FIXED);
@@ -1885,7 +1887,7 @@ fun connected_zero_net_checkpoint_emits_once_and_preserves_the_buffer() {
     assert_eq!(*vault.venue_checkpoint(), after);
     let facts = events::collect<events::FundingSettled<Product>>();
     assert_eq!(facts.length(), 1);
-    let (_, is_cost, raw, amount, absorbed, uncovered, reserve, previous, current) =
+    let (_, is_cost, raw, amount, absorbed, uncovered, _, reserve, previous, current) =
         facts.borrow(0).funding_settled_fields();
     assert!(!is_cost);
     assert_eq!(raw, 0);
@@ -2435,6 +2437,48 @@ fun apply_connected_change<Tag>(
     );
 }
 
+/// A cost past the reserve leaves a deficit; the next credit repays holders
+/// through NAV first and the event carries the split, so a reducer can rebuild
+/// the reserve without the deficit.
+#[test]
+fun a_credit_after_an_exhausting_cost_repays_holders_before_the_reserve() {
+    let mut fixture = start();
+    let initial = initial_checkpoint();
+    let mut vault = issue_and_activate(&mut fixture, initial);
+    let cost = SEED_RESERVE + 30;
+    let funded = funding_checkpoint(cost, true);
+    let change = operations::classify_sync_change_for_testing(
+        &initial, &funding_before_checkpoint(), &funded, true, (cost as u256) * ATOM_FIXED,
+    );
+    apply_connected_change(&mut vault, funded, change, SEED_EQUITY - cost, true);
+    assert_eq!(vault.maintenance_reserve_for_testing(), 0);
+
+    // Second interval: market rates advance again and a 50-unit credit lands.
+    let credited = checkpoint_with_market_imr(
+        0, ALLOCATED_FIXED - (cost as u256) * ATOM_FIXED + 50 * ATOM_FIXED, 12, 22, 12, 22, 1,
+    );
+    let change = operations::classify_sync_change_for_testing(
+        &funded,
+        &checkpoint_with_market_imr(0, ALLOCATED_FIXED - (cost as u256) * ATOM_FIXED, 11, 21, 12, 22, 1),
+        &credited, false, 50 * ATOM_FIXED,
+    );
+    apply_connected_change(&mut vault, credited, change, SEED_EQUITY - cost + 50, true);
+
+    // 30 of the 50 repay the deficit and stay in NAV; 20 rebuild the reserve.
+    assert_eq!(vault.maintenance_reserve_for_testing(), 20);
+    let events = events::collect<events::FundingSettled<Product>>();
+    assert_eq!(events.length(), 2);
+    let (_, is_cost, _, amount, absorbed, uncovered, restored, reserve_after, previous, current) =
+        events.borrow(1).funding_settled_fields();
+    assert!(!is_cost);
+    assert_eq!(vector[amount, absorbed, uncovered, restored, reserve_after], vector[50, 0, 0, 30, 20]);
+    assert_eq!(previous, funded);
+    assert_eq!(current, credited);
+
+    destroy(vault);
+    fixture.end();
+}
+
 fun assert_connected_cost(
     amount: u64,
     expected_reserve: u64,
@@ -2473,6 +2517,7 @@ fun assert_connected_cost(
         normalized_amount,
         absorbed,
         uncovered,
+        _,
         reserve_after,
         previous_checkpoint,
         checkpoint,
@@ -2887,7 +2932,7 @@ fun replay_funding<Tag>(
     replay: &mut ReplayState,
     event: events::FundingSettled<Tag>,
 ) {
-    let (vault_id, is_cost, raw_amount, amount, absorbed, uncovered, reserve_after, previous_checkpoint, checkpoint) =
+    let (vault_id, is_cost, raw_amount, amount, absorbed, uncovered, restored, reserve_after, previous_checkpoint, checkpoint) =
         event.funding_settled_fields();
     assert_eq!(vault_id, replay.vault_id);
     assert_eq!(previous_checkpoint, *replay.checkpoint.borrow());
@@ -2896,8 +2941,10 @@ fun replay_funding<Tag>(
     let expected_absorbed = if (is_cost) { std::u64::min(amount, replay.maintenance_reserve) } else { 0 };
     assert_eq!(absorbed, expected_absorbed);
     assert_eq!(uncovered, if (is_cost) { amount - absorbed } else { 0 });
+    // A credit repays holders before the reserve; the event carries the split.
+    assert!(restored <= amount && (restored == 0 || !is_cost));
 
-    assert_eq!(reserve_after, if (is_cost) { replay.maintenance_reserve - absorbed } else { replay.maintenance_reserve + amount });
+    assert_eq!(reserve_after, if (is_cost) { replay.maintenance_reserve - absorbed } else { replay.maintenance_reserve + amount - restored });
     replay.maintenance_reserve = reserve_after;
     replay.checkpoint = option::some(checkpoint);
 }

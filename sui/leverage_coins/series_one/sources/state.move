@@ -130,6 +130,9 @@ public struct State<phantom Product> has store {
     tier_policy: TierPolicy,
     max_order_notional: BoundedValue,
     maintenance_reserve: u64,
+    /// Funding cost holders bore while the reserve was exhausted; later credits
+    /// repay it to NAV before any credit rebuilds the reserve.
+    uncovered_deficit: u64,
     lifecycle: Lifecycle,
     mint_fee_bps: u64,
     redeem_fee_bps: u64,
@@ -316,6 +319,7 @@ public fun new<Product>(
             max_order_notional_maximum,
         ),
         maintenance_reserve: 0,
+        uncovered_deficit: 0,
         lifecycle: lifecycle::new(),
     }
 }
@@ -806,14 +810,17 @@ public fun initialize<Product>(
 
 /// Applies one adapter-authenticated funding classification to the reserve.
 ///
-/// Returns `(absorbed_by_reserve, uncovered_cost)` in atomic collateral units.
-/// A positive net credit belongs entirely to the buffer. The
-/// adapter owns exact-once funding checkpoint authentication; Series1 stores
-/// no venue cursor and never infers funding from an equity delta.
+/// Returns `(absorbed_by_reserve, uncovered_cost, restored_to_holders)` in
+/// atomic collateral units. A cost consumes the reserve first; what it cannot
+/// cover is borne by holder NAV and recorded as the uncovered deficit. A credit
+/// repays that deficit first, by staying in NAV, and only its remainder
+/// rebuilds the reserve. The adapter owns exact-once funding checkpoint
+/// authentication; Series1 stores no venue cursor and never infers funding
+/// from an equity delta.
 public fun settle_funding<Product>(
     self: &mut State<Product>,
     settlement: FundingSettlement,
-): (u64, u64) {
+): (u64, u64, u64) {
     self.lifecycle.assert_can_sync();
     let (_, is_cost, amount) = settlement.unpack_funding();
 
@@ -823,14 +830,24 @@ public fun settle_funding<Product>(
             amount,
         );
         self.maintenance_reserve = reserve_after;
-
-        (absorbed, uncovered)
-    } else {
-        self.maintenance_reserve = self.maintenance_reserve
-            .checked_add(amount)
+        self.uncovered_deficit = self.uncovered_deficit
+            .checked_add(uncovered)
             .destroy_or!(abort EArithmeticOverflow);
-        (0, 0)
+
+        (absorbed, uncovered, 0)
+    } else {
+        let restored = amount.min(self.uncovered_deficit);
+        self.uncovered_deficit = self.uncovered_deficit - restored;
+        self.maintenance_reserve = self.maintenance_reserve
+            .checked_add(amount - restored)
+            .destroy_or!(abort EArithmeticOverflow);
+        (0, 0, restored)
     }
+}
+
+/// Returns the funding cost holders still carry from exhausted-reserve intervals.
+public fun uncovered_deficit<Product>(self: &State<Product>): u64 {
+    self.uncovered_deficit
 }
 
 /// Returns the authoritative funding-only maintenance reserve.
@@ -1117,6 +1134,7 @@ public fun destroy_for_testing<Product>(self: State<Product>) {
         tier_policy: _,
         max_order_notional: _,
         maintenance_reserve: _,
+        uncovered_deficit: _,
         lifecycle: _,
         mint_fee_bps: _,
         redeem_fee_bps: _,

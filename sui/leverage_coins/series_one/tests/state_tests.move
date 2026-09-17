@@ -1586,6 +1586,58 @@ fun a_funding_cost_above_the_reserve_reports_the_uncovered_remainder() {
     );
 }
 
+/// A credit repays the deficit holders carried before it rebuilds the reserve:
+/// -150_000 then +300_000 leaves NAV whole and the reserve at 250_000, not
+/// 300_000.
+#[test]
+fun a_credit_repays_the_uncovered_deficit_before_rebuilding_the_reserve() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::long());
+
+    let (absorbed, uncovered, restored) = state.settle_funding(observation::funding_cost(150_000));
+    assert_eq!(vector[absorbed, uncovered, restored], vector[SEED_RESERVE, 50_000, 0]);
+    assert_eq!(state.uncovered_deficit(), 50_000);
+
+    // Partial repayment: the whole credit stays in NAV.
+    let (absorbed, uncovered, restored) = state.settle_funding(observation::funding_credit(20_000));
+    assert_eq!(vector[absorbed, uncovered, restored], vector[0, 0, 20_000]);
+    assert_eq!(vector[state.maintenance_reserve(), state.uncovered_deficit()], vector[0, 30_000]);
+
+    // Exact repayment clears the deficit and still adds nothing to the reserve.
+    let (absorbed, uncovered, restored) = state.settle_funding(observation::funding_credit(30_000));
+    assert_eq!(vector[absorbed, uncovered, restored], vector[0, 0, 30_000]);
+    assert_eq!(vector[state.maintenance_reserve(), state.uncovered_deficit()], vector[0, 0]);
+
+    // With no deficit the next credit rebuilds the reserve in full.
+    let (absorbed, uncovered, restored) = state.settle_funding(observation::funding_credit(250_000));
+    assert_eq!(vector[absorbed, uncovered, restored], vector[0, 0, 0]);
+    assert_eq!(vector[state.maintenance_reserve(), state.uncovered_deficit()], vector[250_000, 0]);
+
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+/// Two exhausting costs accumulate one deficit, and an over-repaying credit
+/// splits between NAV and the reserve.
+#[test]
+fun deficits_accumulate_and_an_over_repaying_credit_splits() {
+    let fixture = start(series_one_domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::long());
+
+    let (absorbed, uncovered, restored) = state.settle_funding(observation::funding_cost(120_000));
+    assert_eq!(vector[absorbed, uncovered, restored], vector[SEED_RESERVE, 20_000, 0]);
+    let (absorbed, uncovered, restored) = state.settle_funding(observation::funding_cost(5_000));
+    assert_eq!(vector[absorbed, uncovered, restored], vector[0, 5_000, 0]);
+    assert_eq!(state.uncovered_deficit(), 25_000);
+
+    let (absorbed, uncovered, restored) = state.settle_funding(observation::funding_credit(40_000));
+    assert_eq!(vector[absorbed, uncovered, restored], vector[0, 0, 25_000]);
+    assert_eq!(vector[state.maintenance_reserve(), state.uncovered_deficit()], vector[15_000, 0]);
+
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
 #[test]
 fun the_maximum_funding_cost_cannot_wrap() {
     assert_funding_settlement(
@@ -1714,11 +1766,13 @@ fun assert_funding_settlement(
     let fixture = start(series_one_domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
 
-    let (absorbed, uncovered) = state.settle_funding(settlement);
+    let (absorbed, uncovered, restored) = state.settle_funding(settlement);
 
     assert_eq!(absorbed, expected_absorbed);
     assert_eq!(uncovered, expected_uncovered);
+    assert_eq!(restored, 0);
     assert_eq!(state.maintenance_reserve_for_testing(), expected_reserve);
+    assert_eq!(state.uncovered_deficit(), expected_uncovered);
     assert!(state.is_active_for_testing());
     state.destroy_for_testing();
     destroy(fixture);

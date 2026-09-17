@@ -244,7 +244,21 @@ uncovered     = funding_cost - absorbed
 ```
 
 If venue equity has already fallen by `funding_cost`, shareholder NAV falls
-only by `uncovered`. Positive funding leaves the reserve unchanged. Trading
+only by `uncovered`, and `uncovered` accumulates in the State's
+`uncovered_deficit`. A later positive settlement repays that deficit first:
+
+```text
+restored      = min(credit, uncovered_deficit)
+deficit_after = uncovered_deficit - restored
+reserve_after = reserve_before + credit - restored
+```
+
+Because the venue already added the whole credit to equity, keeping
+`restored` out of the reserve is what raises shareholder NAV by exactly that
+amount; only the remainder rebuilds the buffer. A cost of 150 against a
+reserve of 100 followed by a credit of 300 therefore leaves NAV whole and the
+reserve at 250. The repayment goes to current holders, as every reserve
+movement does; the vault keeps no per-holder ledger. Trading
 fees, slippage, price PnL, liquidation, ADL, and socialized loss are not funding
 costs. The future adapter must derive the exact cost from an authoritative
 Aftermath funding accumulator or checkpoint; it may not infer funding from a
