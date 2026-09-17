@@ -1,9 +1,5 @@
-/// Fully funded vesting at bounded, immutable cumulative checkpoints.
-module blast_fun_vesting::checkpoints;
-
-// === Constants ===
-
-const MAX_CHECKPOINTS: u64 = 256;
+/// Fully funded, fixed-beneficiary stepped-linear vesting.
+module blast_fun_vesting::blast_fun_linear_vesting;
 
 // === Errors ===
 
@@ -14,48 +10,38 @@ const EInvalidRefundRecipient: vector<u8> = b"Refund recipient must not be the z
 #[error(code = 2)]
 const EZeroAllocation: vector<u8> = b"Vesting allocation must be greater than zero.";
 #[error(code = 3)]
-const ENoCheckpoints: vector<u8> = b"Vesting requires at least one checkpoint.";
+const EZeroPeriod: vector<u8> = b"Vesting period must be greater than zero.";
 #[error(code = 4)]
-const ETooManyCheckpoints: vector<u8> = b"Vesting supports at most 256 checkpoints.";
+const EZeroPeriods: vector<u8> = b"Vesting period count must be greater than zero.";
 #[error(code = 5)]
-const ECheckpointInPast: vector<u8> = b"First checkpoint must not precede the current clock time.";
+const EInvalidCliff: vector<u8> = b"Cliff must not exceed the vesting duration.";
 #[error(code = 6)]
-const ECheckpointTimesNotIncreasing: vector<u8> = b"Checkpoint times must be strictly increasing.";
+const EScheduleOverflow: vector<u8> = b"Vesting schedule exceeds the u64 time range.";
 #[error(code = 7)]
-const ECheckpointAmountsNotIncreasing: vector<u8> = b"Checkpoint amounts must be strictly increasing.";
-#[error(code = 8)]
-const EFinalAmountMismatch: vector<u8> = b"Final checkpoint amount must equal the funded allocation.";
-#[error(code = 9)]
 const ENothingClaimable: vector<u8> = b"No vested balance is available to claim.";
-#[error(code = 10)]
+#[error(code = 8)]
 const EInvalidCancelCap: vector<u8> = b"Cancellation capability does not match this schedule.";
-#[error(code = 11)]
+#[error(code = 9)]
 const EScheduleNotEnded: vector<u8> = b"Vesting schedule has not ended.";
-#[error(code = 12)]
+#[error(code = 10)]
 const EScheduleNotEmpty: vector<u8> = b"Vesting schedule still holds funds.";
-#[error(code = 13)]
+#[error(code = 11)]
 const ECancelCapRequired: vector<u8> = b"Cancelable schedule requires its cancellation capability.";
+#[error(code = 12)]
+const EStartInPast: vector<u8> = b"Vesting start must not precede the current clock time.";
 
 // === Public Structs ===
 
-/// One exact cumulative unlock boundary.
-public struct Checkpoint has copy, drop, store {
-    timestamp_ms: u64,
-    cumulative_amount: u64,
-}
-
-/// Linear builder for one bounded immutable checkpoint schedule.
-public struct Schedule {
-    checkpoints: vector<Checkpoint>,
-}
-
-/// Key-only shared custody for one immutable checkpoint schedule.
+/// Key-only shared custody for one immutable vesting schedule.
 public struct Vesting<phantom CoinType> has key {
     id: UID,
     balance: Balance<CoinType>,
     beneficiary: address,
     cancel_refund_recipient: Option<address>,
-    checkpoints: vector<Checkpoint>,
+    start_ms: u64,
+    cliff_ms: u64,
+    period_ms: u64,
+    periods: u64,
     released: u64,
 }
 
@@ -74,7 +60,10 @@ public struct VestingCreated has copy, drop {
     refund_recipient: Option<address>,
     cancel_cap_id: Option<ID>,
     total_amount: u64,
-    checkpoint_count: u64,
+    start_ms: u64,
+    cliff_ms: u64,
+    period_ms: u64,
+    periods: u64,
 }
 
 /// Emitted after newly vested value is transferred to the fixed beneficiary.
@@ -110,41 +99,14 @@ public struct VestingClosed has copy, drop {
 
 // === Public Functions ===
 
-/// Creates an empty schedule that must be populated and consumed in the same PTB.
-public fun new_schedule(): Schedule {
-    Schedule { checkpoints: vector[] }
-}
-
-/// Appends one strictly increasing cumulative unlock boundary.
-public fun add(
-    self: &mut Schedule,
-    timestamp_ms: u64,
-    cumulative_amount: u64,
-) {
-    let length = self.checkpoints.length();
-    assert!(length < MAX_CHECKPOINTS, ETooManyCheckpoints);
-    if (length == 0) {
-        assert!(cumulative_amount > 0, ECheckpointAmountsNotIncreasing);
-    } else {
-        let previous = &self.checkpoints[length - 1];
-        assert!(
-            timestamp_ms > previous.timestamp_ms,
-            ECheckpointTimesNotIncreasing,
-        );
-        assert!(
-            cumulative_amount > previous.cumulative_amount,
-            ECheckpointAmountsNotIncreasing,
-        );
-    };
-
-    self.checkpoints.push_back(Checkpoint { timestamp_ms, cumulative_amount });
-}
-
 /// Creates a fully funded schedule with no cancellation authority.
 public fun new_irrevocable<CoinType>(
     funds: Coin<CoinType>,
     beneficiary: address,
-    schedule: Schedule,
+    start_ms: u64,
+    cliff_ms: u64,
+    period_ms: u64,
+    periods: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Vesting<CoinType> {
@@ -152,7 +114,10 @@ public fun new_irrevocable<CoinType>(
         funds,
         beneficiary,
         option::none(),
-        schedule,
+        start_ms,
+        cliff_ms,
+        period_ms,
+        periods,
         clock,
         ctx,
     );
@@ -165,7 +130,10 @@ public fun new_irrevocable<CoinType>(
         refund_recipient: option::none(),
         cancel_cap_id: option::none(),
         total_amount: vesting.balance.value(),
-        checkpoint_count: vesting.checkpoints.length(),
+        start_ms,
+        cliff_ms,
+        period_ms,
+        periods,
     });
 
     vesting
@@ -176,7 +144,10 @@ public fun new_cancelable<CoinType>(
     funds: Coin<CoinType>,
     beneficiary: address,
     refund_recipient: address,
-    schedule: Schedule,
+    start_ms: u64,
+    cliff_ms: u64,
+    period_ms: u64,
+    periods: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Vesting<CoinType>, CancelCap<CoinType>) {
@@ -184,7 +155,10 @@ public fun new_cancelable<CoinType>(
         funds,
         beneficiary,
         option::some(refund_recipient),
-        schedule,
+        start_ms,
+        cliff_ms,
+        period_ms,
+        periods,
         clock,
         ctx,
     );
@@ -202,7 +176,10 @@ public fun new_cancelable<CoinType>(
         refund_recipient: option::some(refund_recipient),
         cancel_cap_id: option::some(cancel_cap.id.to_inner()),
         total_amount: vesting.balance.value(),
-        checkpoint_count: vesting.checkpoints.length(),
+        start_ms,
+        cliff_ms,
+        period_ms,
+        periods,
     });
 
     (vesting, cancel_cap)
@@ -256,10 +233,13 @@ public fun cancel<CoinType>(
     let Vesting {
         id,
         mut balance,
-        beneficiary: _,
         cancel_refund_recipient: _,
-        checkpoints: _,
+        start_ms: _,
+        cliff_ms: _,
+        period_ms: _,
+        periods: _,
         released: _,
+        beneficiary: _,
     } = self;
     let CancelCap { id: cap_id, vesting_id: _ } = cap;
 
@@ -286,7 +266,7 @@ public fun cancel<CoinType>(
     });
 }
 
-/// Deletes a drained irrevocable schedule after its final checkpoint.
+/// Deletes a drained irrevocable schedule after its final vesting boundary.
 public fun close_irrevocable<CoinType>(
     self: Vesting<CoinType>,
     clock: &Clock,
@@ -302,7 +282,10 @@ public fun close_irrevocable<CoinType>(
         balance,
         beneficiary: _,
         cancel_refund_recipient: _,
-        checkpoints: _,
+        start_ms: _,
+        cliff_ms: _,
+        period_ms: _,
+        periods: _,
         released,
     } = self;
 
@@ -323,7 +306,10 @@ fun new<CoinType>(
     funds: Coin<CoinType>,
     beneficiary: address,
     cancel_refund_recipient: Option<address>,
-    schedule: Schedule,
+    start_ms: u64,
+    cliff_ms: u64,
+    period_ms: u64,
+    periods: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Vesting<CoinType> {
@@ -331,53 +317,43 @@ fun new<CoinType>(
     if (cancel_refund_recipient.is_some()) {
         assert!(*cancel_refund_recipient.borrow() != @0x0, EInvalidRefundRecipient);
     };
-    let total_amount = funds.value();
-    assert!(total_amount > 0, EZeroAllocation);
+    assert!(funds.value() > 0, EZeroAllocation);
+    assert!(period_ms > 0, EZeroPeriod);
+    assert!(periods > 0, EZeroPeriods);
+    assert!(start_ms >= clock.timestamp_ms(), EStartInPast);
 
-    schedule.validate(total_amount, clock.timestamp_ms());
-    let Schedule { checkpoints } = schedule;
+    let max = std::u64::max_value!();
+    assert!(period_ms <= max / periods, EScheduleOverflow);
+    let duration_ms = period_ms * periods;
+    assert!(cliff_ms <= duration_ms, EInvalidCliff);
+    assert!(duration_ms <= max - start_ms, EScheduleOverflow);
 
     Vesting {
         id: object::new(ctx),
         balance: funds.into_balance(),
         beneficiary,
         cancel_refund_recipient,
-        checkpoints,
+        start_ms,
+        cliff_ms,
+        period_ms,
+        periods,
         released: 0,
     }
 }
 
-fun validate(
-    self: &Schedule,
-    total_amount: u64,
-    current_ms: u64,
-) {
-    let length = self.checkpoints.length();
-    assert!(length > 0, ENoCheckpoints);
-
-    assert!(self.checkpoints[0].timestamp_ms >= current_ms, ECheckpointInPast);
-    assert!(
-        self.checkpoints[length - 1].cumulative_amount == total_amount,
-        EFinalAmountMismatch,
-    );
-}
-
 fun vested_at<CoinType>(self: &Vesting<CoinType>, timestamp_ms: u64): u64 {
-    let mut low = 0;
-    let mut high = self.checkpoints.length();
-    while (low < high) {
-        let middle = low + (high - low) / 2;
-        if (self.checkpoints[middle].timestamp_ms <= timestamp_ms) {
-            low = middle + 1;
-        } else {
-            high = middle;
-        };
+    if (timestamp_ms < self.start_ms || timestamp_ms < self.start_ms + self.cliff_ms) {
+        return 0
     };
-    if (low == 0) {
-        0
-    } else {
-        self.checkpoints[low - 1].cumulative_amount
-    }
+
+    // Conservation keeps this sum equal to the original u64 funding amount.
+    let total_amount = self.balance.value() + self.released;
+    if (timestamp_ms >= self.end_ms()) {
+        return total_amount
+    };
+
+    let elapsed_periods = (timestamp_ms - self.start_ms) / self.period_ms;
+    total_amount.mul_div(elapsed_periods, self.periods)
 }
 
 fun releasable_at<CoinType>(self: &Vesting<CoinType>, timestamp_ms: u64): u64 {
@@ -385,20 +361,10 @@ fun releasable_at<CoinType>(self: &Vesting<CoinType>, timestamp_ms: u64): u64 {
 }
 
 fun end_ms<CoinType>(self: &Vesting<CoinType>): u64 {
-    self.checkpoints[self.checkpoints.length() - 1].timestamp_ms
+    self.start_ms + self.period_ms * self.periods
 }
 
 // === Test-Only Functions ===
-
-#[test_only]
-public fun timestamp_ms(self: &Checkpoint): u64 {
-    self.timestamp_ms
-}
-
-#[test_only]
-public fun cumulative_amount(self: &Checkpoint): u64 {
-    self.cumulative_amount
-}
 
 #[test_only]
 public fun vested_at_for_testing<CoinType>(
@@ -424,7 +390,7 @@ public fun vesting_id<CoinType>(self: &CancelCap<CoinType>): ID {
 #[test_only]
 public fun vesting_created_fields(
     self: &VestingCreated,
-): (ID, TypeName, address, address, Option<address>, Option<ID>, u64, u64) {
+): (ID, TypeName, address, address, Option<address>, Option<ID>, u64, u64, u64, u64, u64) {
     (
         self.vesting_id,
         self.coin_type,
@@ -433,7 +399,10 @@ public fun vesting_created_fields(
         self.refund_recipient,
         self.cancel_cap_id,
         self.total_amount,
-        self.checkpoint_count,
+        self.start_ms,
+        self.cliff_ms,
+        self.period_ms,
+        self.periods,
     )
 }
 

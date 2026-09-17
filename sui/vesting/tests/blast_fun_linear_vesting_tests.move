@@ -1,5 +1,5 @@
 #[test_only]
-module blast_fun_vesting::checkpoints_tests;
+module blast_fun_vesting::blast_fun_linear_vesting_tests;
 
 // === Constants ===
 
@@ -8,12 +8,11 @@ const BENEFICIARY: address = @0xB0B;
 const REFUND_RECIPIENT: address = @0xCAFE;
 const CALLER: address = @0xC11;
 const CANCELER: address = @0xCA11;
-const TOTAL_AMOUNT: u64 = 1_000;
-const FIRST_MS: u64 = 100;
-const SECOND_MS: u64 = 250;
-const FINAL_MS: u64 = 700;
-const FIRST_AMOUNT: u64 = 100;
-const SECOND_AMOUNT: u64 = 400;
+const TOTAL_AMOUNT: u64 = 1_001;
+const START_MS: u64 = 100;
+const CLIFF_MS: u64 = 200;
+const PERIOD_MS: u64 = 100;
+const PERIODS: u64 = 4;
 
 // === Test-Only Types ===
 
@@ -23,7 +22,6 @@ public struct TEST_COIN() has drop;
 public struct UnitFixture {
     scenario: Scenario,
     clock: Clock,
-    schedule: Option<Schedule>,
     vesting: Option<Vesting<TEST_COIN>>,
     cancel_cap: Option<CancelCap<TEST_COIN>>,
 }
@@ -51,7 +49,7 @@ public struct CancelFixture {
 // === Tests ===
 
 #[test]
-fun irrevocable_lifecycle_releases_irregular_amounts_and_replays_events() {
+fun irrevocable_lifecycle_matches_vectors_and_replays_events() {
     let mut fixture = start_claim();
 
     fixture.next_tx!(CALLER, |f| {
@@ -59,15 +57,16 @@ fun irrevocable_lifecycle_releases_irregular_amounts_and_replays_events() {
         let vesting_id = f.vesting_id();
         let coin_type = std::type_name::with_original_ids<TEST_COIN>();
 
-        assert_eq!(f.vested_at(FIRST_MS - 1), 0);
-        assert_eq!(f.vested_at(FIRST_MS), FIRST_AMOUNT);
-        assert_eq!(f.vested_at(SECOND_MS - 1), FIRST_AMOUNT);
-        assert_eq!(f.vested_at(SECOND_MS), SECOND_AMOUNT);
-        assert_eq!(f.vested_at(FINAL_MS - 1), SECOND_AMOUNT);
-        assert_eq!(f.vested_at(FINAL_MS), TOTAL_AMOUNT);
-        assert_eq!(f.vested_at(FINAL_MS + 1), TOTAL_AMOUNT);
+        assert_eq!(f.vested_at(99), 0);
+        assert_eq!(f.vested_at(100), 0);
+        assert_eq!(f.vested_at(299), 0);
+        assert_eq!(f.vested_at(300), 500);
+        assert_eq!(f.vested_at(399), 500);
+        assert_eq!(f.vested_at(400), 750);
+        assert_eq!(f.vested_at(499), 750);
+        assert_eq!(f.vested_at(500), TOTAL_AMOUNT);
 
-        f.claim_at(FIRST_MS);
+        f.claim_at(300);
 
         let claimed = collect_one<VestingClaimed>();
         let (
@@ -83,34 +82,34 @@ fun irrevocable_lifecycle_releases_irregular_amounts_and_replays_events() {
         assert_eq!(emitted_coin_type, coin_type);
         assert_eq!(caller, CALLER);
         assert_eq!(emitted_beneficiary, BENEFICIARY);
-        assert_eq!(amount, FIRST_AMOUNT);
-        assert_eq!(released_total, FIRST_AMOUNT);
-        assert_eq!(remaining_balance, TOTAL_AMOUNT - FIRST_AMOUNT);
+        assert_eq!(amount, 500);
+        assert_eq!(released_total, 500);
+        assert_eq!(remaining_balance, 501);
     });
 
     fixture.next_tx!(BENEFICIARY, |f| {
-        assert_eq!(f.take_beneficiary_payout(), FIRST_AMOUNT);
+        assert_eq!(f.take_beneficiary_payout(), 500);
     });
 
     fixture.next_tx!(CALLER, |f| {
-        assert_eq!(f.releasable_at(SECOND_MS - 1), 0);
-        f.claim_at(SECOND_MS);
+        assert_eq!(f.releasable_at(399), 0);
+        f.claim_at(400);
 
         let claimed = collect_one<VestingClaimed>();
         let (_, _, _, _, amount, released_total, remaining_balance) =
             claimed.vesting_claimed_fields();
-        assert_eq!(amount, SECOND_AMOUNT - FIRST_AMOUNT);
-        assert_eq!(released_total, SECOND_AMOUNT);
-        assert_eq!(remaining_balance, TOTAL_AMOUNT - SECOND_AMOUNT);
+        assert_eq!(amount, 250);
+        assert_eq!(released_total, 750);
+        assert_eq!(remaining_balance, 251);
     });
 
     fixture.next_tx!(BENEFICIARY, |f| {
-        assert_eq!(f.take_beneficiary_payout(), SECOND_AMOUNT - FIRST_AMOUNT);
+        assert_eq!(f.take_beneficiary_payout(), 250);
     });
 
     fixture.next_tx!(CALLER, |f| {
-        f.claim_at(FINAL_MS);
-        f.close_at(FINAL_MS);
+        f.claim_at(500);
+        f.close_at(500);
 
         let claimed = collect_one<VestingClaimed>();
         let (_, _, _, _, amount, released_total, remaining_balance) =
@@ -119,7 +118,7 @@ fun irrevocable_lifecycle_releases_irregular_amounts_and_replays_events() {
         let (closed_id, _, caller, closed_released_total) =
             closed.vesting_closed_fields();
 
-        assert_eq!(amount, TOTAL_AMOUNT - SECOND_AMOUNT);
+        assert_eq!(amount, 251);
         assert_eq!(released_total, TOTAL_AMOUNT);
         assert_eq!(remaining_balance, 0);
         assert_eq!(closed_id, f.vesting_id());
@@ -128,7 +127,7 @@ fun irrevocable_lifecycle_releases_irregular_amounts_and_replays_events() {
     });
 
     fixture.next_tx!(BENEFICIARY, |f| {
-        assert_eq!(f.take_beneficiary_payout(), TOTAL_AMOUNT - SECOND_AMOUNT);
+        assert_eq!(f.take_beneficiary_payout(), 251);
     });
 
     fixture.end();
@@ -147,7 +146,10 @@ fun cancelable_schedule_preserves_prior_and_unclaimed_vested_value() {
             refund_recipient,
             cancel_cap_id,
             total_amount,
-            checkpoint_count,
+            _,
+            _,
+            _,
+            _,
         ) = f.created.vesting_created_fields();
 
         assert_eq!(vesting_id, f.vesting_id());
@@ -157,25 +159,24 @@ fun cancelable_schedule_preserves_prior_and_unclaimed_vested_value() {
         assert_eq!(refund_recipient.destroy_some(), REFUND_RECIPIENT);
         assert_eq!(cancel_cap_id.destroy_some(), f.cancel_cap_id());
         assert_eq!(total_amount, TOTAL_AMOUNT);
-        assert_eq!(checkpoint_count, 3);
 
-        f.claim_at(FIRST_MS);
+        f.claim_at(200);
 
         let claimed = collect_one<VestingClaimed>();
         let (_, _, caller, _, amount, released_total, remaining_balance) =
             claimed.vesting_claimed_fields();
         assert_eq!(caller, CALLER);
-        assert_eq!(amount, FIRST_AMOUNT);
-        assert_eq!(released_total, FIRST_AMOUNT);
-        assert_eq!(remaining_balance, TOTAL_AMOUNT - FIRST_AMOUNT);
+        assert_eq!(amount, 250);
+        assert_eq!(released_total, 250);
+        assert_eq!(remaining_balance, 751);
     });
 
     fixture.next_tx!(BENEFICIARY, |f| {
-        assert_eq!(f.take_beneficiary_payout(), FIRST_AMOUNT);
+        assert_eq!(f.take_beneficiary_payout(), 250);
     });
 
     fixture.next_tx!(CANCELER, |f| {
-        f.cancel_at(SECOND_MS);
+        f.cancel_at(350);
 
         let canceled = collect_one<VestingCanceled>();
         let (
@@ -194,28 +195,28 @@ fun cancelable_schedule_preserves_prior_and_unclaimed_vested_value() {
         assert_eq!(caller, CANCELER);
         assert_eq!(beneficiary, BENEFICIARY);
         assert_eq!(refund_recipient, REFUND_RECIPIENT);
-        assert_eq!(beneficiary_amount, SECOND_AMOUNT - FIRST_AMOUNT);
-        assert_eq!(refund_amount, TOTAL_AMOUNT - SECOND_AMOUNT);
-        assert_eq!(released_total, SECOND_AMOUNT);
+        assert_eq!(beneficiary_amount, 250);
+        assert_eq!(refund_amount, 501);
+        assert_eq!(released_total, 500);
     });
 
     fixture.next_tx!(BENEFICIARY, |f| {
-        assert_eq!(f.take_beneficiary_payout(), SECOND_AMOUNT - FIRST_AMOUNT);
+        assert_eq!(f.take_beneficiary_payout(), 250);
     });
 
     fixture.next_tx!(REFUND_RECIPIENT, |f| {
-        assert_eq!(f.take_refund(), TOTAL_AMOUNT - SECOND_AMOUNT);
+        assert_eq!(f.take_refund(), 501);
     });
 
     fixture.end();
 }
 
 #[test]
-fun cancellation_before_first_checkpoint_returns_the_full_allocation() {
+fun cancellation_before_the_first_period_returns_the_full_allocation() {
     let mut fixture = start_cancel();
 
     fixture.next_tx!(CANCELER, |f| {
-        f.cancel_at(FIRST_MS - 1);
+        f.cancel_at(START_MS);
 
         let canceled = collect_one<VestingCanceled>();
         let (_, _, caller, beneficiary, refund_recipient, beneficiary_amount, refund_amount, released_total) =
@@ -236,11 +237,11 @@ fun cancellation_before_first_checkpoint_returns_the_full_allocation() {
 }
 
 #[test]
-fun cancellation_after_final_checkpoint_has_no_refund() {
+fun cancellation_after_full_vesting_has_no_refund() {
     let mut fixture = start_cancel();
 
     fixture.next_tx!(CANCELER, |f| {
-        f.cancel_at(FINAL_MS);
+        f.cancel_at(START_MS + PERIOD_MS * PERIODS);
 
         let canceled = collect_one<VestingCanceled>();
         let (_, _, caller, beneficiary, refund_recipient, beneficiary_amount, refund_amount, released_total) =
@@ -261,171 +262,182 @@ fun cancellation_after_final_checkpoint_has_no_refund() {
 }
 
 #[test]
-fun one_checkpoint_schedule_is_supported() {
+fun maximum_width_schedule_uses_wide_multiplication() {
     let mut fixture = start_unit(0);
-    fixture.add_checkpoint(10, 1);
-    fixture.create_irrevocable(1, BENEFICIARY);
+    fixture.create_irrevocable(
+        std::u64::max_value!(),
+        BENEFICIARY,
+        0,
+        0,
+        1,
+        std::u64::max_value!(),
+    );
 
-    assert_eq!(fixture.vesting().vested_at_for_testing(9), 0);
-    assert_eq!(fixture.vesting().vested_at_for_testing(10), 1);
-
-    fixture.end();
-}
-
-#[test]
-fun maximum_checkpoint_count_searches_every_boundary() {
-    let mut fixture = start_unit(0);
-    fixture.add_checkpoint_range(256);
-    fixture.create_irrevocable(256, BENEFICIARY);
-
-    let mut timestamp_ms = 0;
-    while (timestamp_ms < 256) {
-        assert_eq!(
-            fixture.vesting().vested_at_for_testing(timestamp_ms),
-            timestamp_ms + 1,
-        );
-        timestamp_ms = timestamp_ms + 1;
-    };
+    assert_eq!(
+        fixture.vesting().vested_at_for_testing(std::u64::max_value!() - 1),
+        std::u64::max_value!() - 1,
+    );
+    assert_eq!(
+        fixture.vesting().vested_at_for_testing(std::u64::max_value!()),
+        std::u64::max_value!(),
+    );
 
     fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting::checkpoints::EInvalidBeneficiary,
-    location = blast_fun_vesting::checkpoints,
+    abort_code = blast_fun_vesting::blast_fun_linear_vesting::EInvalidBeneficiary,
+    location = blast_fun_vesting::blast_fun_linear_vesting,
 )]
 fun constructor_rejects_zero_beneficiary_before_other_invalid_inputs() {
     let mut fixture = start_unit(0);
-    fixture.create_irrevocable(0, @0x0);
+    fixture.create_irrevocable(0, @0x0, 0, 0, 0, 0);
 
     fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting::checkpoints::EInvalidRefundRecipient,
-    location = blast_fun_vesting::checkpoints,
+    abort_code = blast_fun_vesting::blast_fun_linear_vesting::EInvalidRefundRecipient,
+    location = blast_fun_vesting::blast_fun_linear_vesting,
 )]
 fun cancelable_constructor_rejects_zero_refund_before_zero_allocation() {
     let mut fixture = start_unit(0);
-    fixture.create_cancelable(0, BENEFICIARY, @0x0);
+    fixture.create_cancelable(
+        0,
+        BENEFICIARY,
+        @0x0,
+        0,
+        0,
+        PERIOD_MS,
+        PERIODS,
+    );
 
     fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting::checkpoints::EZeroAllocation,
-    location = blast_fun_vesting::checkpoints,
+    abort_code = blast_fun_vesting::blast_fun_linear_vesting::EZeroAllocation,
+    location = blast_fun_vesting::blast_fun_linear_vesting,
 )]
-fun constructor_rejects_zero_allocation_before_empty_checkpoints() {
+fun constructor_rejects_zero_allocation() {
     let mut fixture = start_unit(0);
-    fixture.create_irrevocable(0, BENEFICIARY);
+    fixture.create_irrevocable(
+        0,
+        BENEFICIARY,
+        0,
+        0,
+        PERIOD_MS,
+        PERIODS,
+    );
 
     fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting::checkpoints::ENoCheckpoints,
-    location = blast_fun_vesting::checkpoints,
+    abort_code = blast_fun_vesting::blast_fun_linear_vesting::EZeroPeriod,
+    location = blast_fun_vesting::blast_fun_linear_vesting,
 )]
-fun constructor_rejects_empty_checkpoints() {
+fun constructor_rejects_zero_period_before_zero_period_count() {
     let mut fixture = start_unit(0);
-    fixture.create_irrevocable(1, BENEFICIARY);
+    fixture.create_irrevocable(1, BENEFICIARY, 0, 0, 0, 0);
 
     fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting::checkpoints::ETooManyCheckpoints,
-    location = blast_fun_vesting::checkpoints,
+    abort_code = blast_fun_vesting::blast_fun_linear_vesting::EZeroPeriods,
+    location = blast_fun_vesting::blast_fun_linear_vesting,
 )]
-fun schedule_rejects_more_than_256_checkpoints() {
+fun constructor_rejects_zero_period_count() {
     let mut fixture = start_unit(0);
-    fixture.add_checkpoint_range(257);
+    fixture.create_irrevocable(1, BENEFICIARY, 0, 0, 1, 0);
 
     fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting::checkpoints::ECheckpointInPast,
-    location = blast_fun_vesting::checkpoints,
+    abort_code = blast_fun_vesting::blast_fun_linear_vesting::EInvalidCliff,
+    location = blast_fun_vesting::blast_fun_linear_vesting,
 )]
-fun constructor_rejects_first_checkpoint_before_current_clock_time() {
+fun constructor_rejects_cliff_after_end() {
+    let mut fixture = start_unit(0);
+    fixture.create_irrevocable(1, BENEFICIARY, 0, 5, 1, 4);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun_vesting::blast_fun_linear_vesting::EScheduleOverflow,
+    location = blast_fun_vesting::blast_fun_linear_vesting,
+)]
+fun constructor_rejects_duration_multiplication_overflow() {
+    let mut fixture = start_unit(0);
+    fixture.create_irrevocable(
+        1,
+        BENEFICIARY,
+        0,
+        0,
+        std::u64::max_value!(),
+        2,
+    );
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun_vesting::blast_fun_linear_vesting::EScheduleOverflow,
+    location = blast_fun_vesting::blast_fun_linear_vesting,
+)]
+fun constructor_rejects_end_time_overflow() {
+    let mut fixture = start_unit(0);
+    fixture.create_irrevocable(
+        1,
+        BENEFICIARY,
+        std::u64::max_value!(),
+        0,
+        1,
+        1,
+    );
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun_vesting::blast_fun_linear_vesting::EStartInPast,
+    location = blast_fun_vesting::blast_fun_linear_vesting,
+)]
+fun constructor_rejects_a_start_before_the_current_clock_time() {
     let mut fixture = start_unit(100);
-    fixture.add_checkpoint(99, 1);
-    fixture.create_irrevocable(1, BENEFICIARY);
+    fixture.create_irrevocable(1, BENEFICIARY, 99, 0, 1, 1);
 
     fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting::checkpoints::ECheckpointTimesNotIncreasing,
-    location = blast_fun_vesting::checkpoints,
+    abort_code = blast_fun_vesting::blast_fun_linear_vesting::ENothingClaimable,
+    location = blast_fun_vesting::blast_fun_linear_vesting,
 )]
-fun schedule_rejects_checkpoint_times_that_do_not_increase() {
+fun claim_rejects_zero_release_before_the_cliff() {
     let mut fixture = start_unit(0);
-    fixture.add_checkpoint(10, 1);
-    fixture.add_checkpoint(10, 2);
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun_vesting::checkpoints::ECheckpointAmountsNotIncreasing,
-    location = blast_fun_vesting::checkpoints,
-)]
-fun schedule_rejects_zero_first_checkpoint_amount() {
-    let mut fixture = start_unit(0);
-    fixture.add_checkpoint(10, 0);
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun_vesting::checkpoints::ECheckpointAmountsNotIncreasing,
-    location = blast_fun_vesting::checkpoints,
-)]
-fun schedule_rejects_checkpoint_amounts_that_do_not_increase() {
-    let mut fixture = start_unit(0);
-    fixture.add_checkpoint(10, 1);
-    fixture.add_checkpoint(20, 1);
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun_vesting::checkpoints::EFinalAmountMismatch,
-    location = blast_fun_vesting::checkpoints,
-)]
-fun constructor_rejects_final_amount_different_from_funding() {
-    let mut fixture = start_unit(0);
-    fixture.add_checkpoint(10, 1);
-    fixture.create_irrevocable(2, BENEFICIARY);
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun_vesting::checkpoints::ENothingClaimable,
-    location = blast_fun_vesting::checkpoints,
-)]
-fun claim_rejects_zero_release_before_first_checkpoint() {
-    let mut fixture = start_unit(0);
-    fixture.add_checkpoint(FIRST_MS, FIRST_AMOUNT);
-    fixture.add_checkpoint(SECOND_MS, SECOND_AMOUNT);
-    fixture.add_checkpoint(FINAL_MS, TOTAL_AMOUNT);
-    fixture.create_irrevocable(TOTAL_AMOUNT, BENEFICIARY);
-    fixture.set_clock(FIRST_MS - 1);
+    fixture.create_irrevocable(
+        TOTAL_AMOUNT,
+        BENEFICIARY,
+        START_MS,
+        CLIFF_MS,
+        PERIOD_MS,
+        PERIODS,
+    );
+    fixture.set_clock(299);
 
     fixture.claim();
 
@@ -434,8 +446,8 @@ fun claim_rejects_zero_release_before_first_checkpoint() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting::checkpoints::EInvalidCancelCap,
-    location = blast_fun_vesting::checkpoints,
+    abort_code = blast_fun_vesting::blast_fun_linear_vesting::EInvalidCancelCap,
+    location = blast_fun_vesting::blast_fun_linear_vesting,
 )]
 fun cancellation_rejects_a_cap_for_another_schedule() {
     let mut fixture = start_unit(0);
@@ -446,13 +458,12 @@ fun cancellation_rejects_a_cap_for_another_schedule() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting::checkpoints::EScheduleNotEnded,
-    location = blast_fun_vesting::checkpoints,
+    abort_code = blast_fun_vesting::blast_fun_linear_vesting::EScheduleNotEnded,
+    location = blast_fun_vesting::blast_fun_linear_vesting,
 )]
-fun close_rejects_a_schedule_before_its_final_checkpoint() {
+fun close_rejects_a_schedule_before_its_end() {
     let mut fixture = start_unit(0);
-    fixture.add_checkpoint(10, 1);
-    fixture.create_irrevocable(1, BENEFICIARY);
+    fixture.create_irrevocable(1, BENEFICIARY, 0, 0, 1, 1);
 
     fixture.close_irrevocable();
 
@@ -461,14 +472,13 @@ fun close_rejects_a_schedule_before_its_final_checkpoint() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting::checkpoints::EScheduleNotEmpty,
-    location = blast_fun_vesting::checkpoints,
+    abort_code = blast_fun_vesting::blast_fun_linear_vesting::EScheduleNotEmpty,
+    location = blast_fun_vesting::blast_fun_linear_vesting,
 )]
-fun close_rejects_unclaimed_custody_after_the_final_checkpoint() {
+fun close_rejects_unclaimed_custody_after_the_end() {
     let mut fixture = start_unit(0);
-    fixture.add_checkpoint(10, 1);
-    fixture.create_irrevocable(1, BENEFICIARY);
-    fixture.set_clock(10);
+    fixture.create_irrevocable(1, BENEFICIARY, 0, 0, 1, 1);
+    fixture.set_clock(1);
 
     fixture.close_irrevocable();
 
@@ -477,13 +487,20 @@ fun close_rejects_unclaimed_custody_after_the_final_checkpoint() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_vesting::checkpoints::ECancelCapRequired,
-    location = blast_fun_vesting::checkpoints,
+    abort_code = blast_fun_vesting::blast_fun_linear_vesting::ECancelCapRequired,
+    location = blast_fun_vesting::blast_fun_linear_vesting,
 )]
 fun irrevocable_close_rejects_a_cancellable_schedule_before_time_checks() {
     let mut fixture = start_unit(0);
-    fixture.add_checkpoint(10, 1);
-    fixture.create_cancelable(1, BENEFICIARY, REFUND_RECIPIENT);
+    fixture.create_cancelable(
+        1,
+        BENEFICIARY,
+        REFUND_RECIPIENT,
+        0,
+        0,
+        1,
+        1,
+    );
 
     fixture.close_irrevocable();
 
@@ -514,69 +531,36 @@ macro fun cancel_next_tx(
     $fn(fixture);
 }
 
-fun standard_schedule(): Schedule {
-    let mut schedule = checkpoints::new_schedule();
-    schedule.add(FIRST_MS, FIRST_AMOUNT);
-    schedule.add(SECOND_MS, SECOND_AMOUNT);
-    schedule.add(FINAL_MS, TOTAL_AMOUNT);
-    schedule
-}
-
-fun one_checkpoint_schedule(
-    timestamp_ms: u64,
-    cumulative_amount: u64,
-): Schedule {
-    let mut schedule = checkpoints::new_schedule();
-    schedule.add(timestamp_ms, cumulative_amount);
-    schedule
-}
-
-fun add_checkpoint_range(self: &mut Schedule, length: u64) {
-    let mut index = 0;
-    while (index < length) {
-        self.add(index, index + 1);
-        index = index + 1;
-    };
-}
-
 fun start_unit(timestamp_ms: u64): UnitFixture {
     let mut scenario = test_scenario::begin(FUNDER);
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(timestamp_ms);
-    let schedule = checkpoints::new_schedule();
 
     UnitFixture {
         scenario,
         clock,
-        schedule: option::some(schedule),
         vesting: option::none(),
         cancel_cap: option::none(),
     }
-}
-
-fun unit_add_checkpoint(
-    self: &mut UnitFixture,
-    timestamp_ms: u64,
-    cumulative_amount: u64,
-) {
-    self.schedule.borrow_mut().add(timestamp_ms, cumulative_amount);
-}
-
-fun unit_add_checkpoint_range(self: &mut UnitFixture, length: u64) {
-    self.schedule.borrow_mut().add_checkpoint_range(length);
 }
 
 fun unit_create_irrevocable(
     self: &mut UnitFixture,
     amount: u64,
     beneficiary: address,
+    start_ms: u64,
+    cliff_ms: u64,
+    period_ms: u64,
+    periods: u64,
 ) {
     let funds = coin::mint_for_testing<TEST_COIN>(amount, self.scenario.ctx());
-    let schedule = self.schedule.extract();
-    let vesting = checkpoints::new_irrevocable(
+    let vesting = linear::new_irrevocable(
         funds,
         beneficiary,
-        schedule,
+        start_ms,
+        cliff_ms,
+        period_ms,
+        periods,
         &self.clock,
         self.scenario.ctx(),
     );
@@ -588,14 +572,20 @@ fun unit_create_cancelable(
     amount: u64,
     beneficiary: address,
     refund_recipient: address,
+    start_ms: u64,
+    cliff_ms: u64,
+    period_ms: u64,
+    periods: u64,
 ) {
     let funds = coin::mint_for_testing<TEST_COIN>(amount, self.scenario.ctx());
-    let schedule = self.schedule.extract();
-    let (vesting, cancel_cap) = checkpoints::new_cancelable(
+    let (vesting, cancel_cap) = linear::new_cancelable(
         funds,
         beneficiary,
         refund_recipient,
-        schedule,
+        start_ms,
+        cliff_ms,
+        period_ms,
+        periods,
         &self.clock,
         self.scenario.ctx(),
     );
@@ -618,21 +608,25 @@ fun unit_claim(self: &mut UnitFixture) {
 fun unit_cancel_with_mismatched_cap(self: &mut UnitFixture) {
     let first_funds = coin::mint_for_testing<TEST_COIN>(1, self.scenario.ctx());
     let second_funds = coin::mint_for_testing<TEST_COIN>(1, self.scenario.ctx());
-    let first_schedule = one_checkpoint_schedule(1, 1);
-    let second_schedule = one_checkpoint_schedule(1, 1);
-    let (first, first_cap) = checkpoints::new_cancelable(
+    let (first, first_cap) = linear::new_cancelable(
         first_funds,
         BENEFICIARY,
         REFUND_RECIPIENT,
-        first_schedule,
+        0,
+        0,
+        1,
+        1,
         &self.clock,
         self.scenario.ctx(),
     );
-    let (second, second_cap) = checkpoints::new_cancelable(
+    let (second, second_cap) = linear::new_cancelable(
         second_funds,
         BENEFICIARY,
         REFUND_RECIPIENT,
-        second_schedule,
+        0,
+        0,
+        1,
+        1,
         &self.clock,
         self.scenario.ctx(),
     );
@@ -655,11 +649,13 @@ fun start_claim(): ClaimFixture {
     let mut scenario = test_scenario::begin(FUNDER);
     let clock = clock::create_for_testing(scenario.ctx());
     let funds = coin::mint_for_testing<TEST_COIN>(TOTAL_AMOUNT, scenario.ctx());
-    let schedule = standard_schedule();
-    let vesting = checkpoints::new_irrevocable(
+    let vesting = linear::new_irrevocable(
         funds,
         BENEFICIARY,
-        schedule,
+        START_MS,
+        CLIFF_MS,
+        PERIOD_MS,
+        PERIODS,
         &clock,
         scenario.ctx(),
     );
@@ -683,12 +679,14 @@ fun start_cancel(): CancelFixture {
     let mut scenario = test_scenario::begin(FUNDER);
     let clock = clock::create_for_testing(scenario.ctx());
     let funds = coin::mint_for_testing<TEST_COIN>(TOTAL_AMOUNT, scenario.ctx());
-    let schedule = standard_schedule();
-    let (vesting, cancel_cap) = checkpoints::new_cancelable(
+    let (vesting, cancel_cap) = linear::new_cancelable(
         funds,
         BENEFICIARY,
         REFUND_RECIPIENT,
-        schedule,
+        START_MS,
+        0,
+        PERIOD_MS,
+        PERIODS,
         &clock,
         scenario.ctx(),
     );
@@ -719,6 +717,10 @@ fun collect_one<T: copy + drop>(): T {
     events.pop_back()
 }
 
+fun claim_fixture_vested_at(self: &ClaimFixture, timestamp_ms: u64): u64 {
+    self.vesting.borrow().vested_at_for_testing(timestamp_ms)
+}
+
 fun claim_fixture_assert_created(self: &ClaimFixture) {
     let (
         vesting_id,
@@ -728,7 +730,10 @@ fun claim_fixture_assert_created(self: &ClaimFixture) {
         refund_recipient,
         cancel_cap_id,
         total_amount,
-        checkpoint_count,
+        start_ms,
+        cliff_ms,
+        period_ms,
+        periods,
     ) = self.created.vesting_created_fields();
 
     assert_eq!(vesting_id, self.vesting_id);
@@ -738,11 +743,10 @@ fun claim_fixture_assert_created(self: &ClaimFixture) {
     assert!(refund_recipient.is_none());
     assert!(cancel_cap_id.is_none());
     assert_eq!(total_amount, TOTAL_AMOUNT);
-    assert_eq!(checkpoint_count, 3);
-}
-
-fun claim_fixture_vested_at(self: &ClaimFixture, timestamp_ms: u64): u64 {
-    self.vesting.borrow().vested_at_for_testing(timestamp_ms)
+    assert_eq!(start_ms, START_MS);
+    assert_eq!(cliff_ms, CLIFF_MS);
+    assert_eq!(period_ms, PERIOD_MS);
+    assert_eq!(periods, PERIODS);
 }
 
 fun claim_fixture_releasable_at(self: &ClaimFixture, timestamp_ms: u64): u64 {
@@ -814,10 +818,9 @@ fun cancel_end(self: CancelFixture) {
 
 // === Imports ===
 
-use blast_fun_vesting::checkpoints::{
-    Self,
+use blast_fun_vesting::blast_fun_linear_vesting::{
+    Self as linear,
     CancelCap,
-    Schedule,
     Vesting,
     VestingCanceled,
     VestingClaimed,
@@ -851,11 +854,11 @@ use fun cancel_fixture_take_refund as CancelFixture.take_refund;
 
 use fun cancel_fixture_vesting_id as CancelFixture.vesting_id;
 
-use fun claim_fixture_assert_created as ClaimFixture.assert_created;
-
 use fun claim_fixture_claim_at as ClaimFixture.claim_at;
 
 use fun claim_fixture_close_at as ClaimFixture.close_at;
+
+use fun claim_fixture_assert_created as ClaimFixture.assert_created;
 
 use fun claim_fixture_releasable_at as ClaimFixture.releasable_at;
 
@@ -865,13 +868,7 @@ use fun claim_fixture_vested_at as ClaimFixture.vested_at;
 
 use fun claim_fixture_vesting_id as ClaimFixture.vesting_id;
 
-use fun add_checkpoint_range as Schedule.add_checkpoint_range;
-
 use fun unit_cancel_with_mismatched_cap as UnitFixture.cancel_with_mismatched_cap;
-
-use fun unit_add_checkpoint as UnitFixture.add_checkpoint;
-
-use fun unit_add_checkpoint_range as UnitFixture.add_checkpoint_range;
 
 use fun unit_claim as UnitFixture.claim;
 
