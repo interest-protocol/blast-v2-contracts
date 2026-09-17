@@ -75,7 +75,7 @@ public(package) fun set_tier<Venue: drop>(
         (0, 0)
     };
 
-    events::venue_tier_updated<Venue>(
+    blast_events::venue_tier_updated<Venue>(
         old_tick_spacing,
         tick_spacing,
         old_fee_rate,
@@ -139,7 +139,7 @@ public fun init_for_testing(ctx: &mut TxContext) {
 
 // === Imports ===
 
-use blast_fun_migrators::events;
+use blast_fun_migrators::blast_events;
 
 use sui::dynamic_field;
 

@@ -1,5 +1,5 @@
 /// Typed replay facts for migrations, custody, tier policy, and fee flows.
-module blast_fun_migrators::events;
+module blast_fun_migrators::blast_events;
 
 // === Public Structs ===
 

@@ -15,8 +15,8 @@ public struct TestVenue() has drop;
 /// Admin-pinned tier policy through the core ACL sign-in seam.
 public struct TierFixture {
     scenario: Scenario,
-    authority: Authority<LAUNCHPAD_DOMAIN>,
-    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
+    authority: Authority<BLAST_FUN_DOMAIN>,
+    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     package_version: package_version::PackageVersion,
     config: VenueConfig,
 }
@@ -422,19 +422,19 @@ fun start(): TierFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
     let (super_admin_cap, mut authority) =
-        acl::new_for_testing<LAUNCHPAD_DOMAIN>(MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, scenario.ctx());
+        acl::new_for_testing<BLAST_FUN_DOMAIN>(MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, scenario.ctx());
     authority.grant_admin(&super_admin_cap, 0, PROTOCOL_ADMIN, scenario.ctx());
     destroy(super_admin_cap);
     venue_config::init_for_testing(scenario.ctx());
 
     scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let config = scenario.take_shared<VenueConfig>();
 
     TierFixture { scenario, authority, admin_cap, package_version, config }
 }
 
-fun sign_in(self: &TierFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+fun sign_in(self: &TierFixture): AdminWitness<BLAST_FUN_DOMAIN> {
     self.authority.sign_in(&self.admin_cap)
 }
 
@@ -446,7 +446,7 @@ fun end(self: TierFixture) {
 
 use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
 
-use blast_fun::launchpad_domain::LAUNCHPAD_DOMAIN;
+use blast_fun::blast_fun_domain::BLAST_FUN_DOMAIN;
 
 use blast_fun_migrators::{
     aftermath,

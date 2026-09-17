@@ -22,8 +22,8 @@ public struct InitFixture {
 /// LP-fee policy administration through the ACL sign-in seam.
 public struct PolicyFixture {
     scenario: Scenario,
-    authority: Authority<LAUNCHPAD_DOMAIN>,
-    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
+    authority: Authority<BLAST_FUN_DOMAIN>,
+    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     package_version: package_version::PackageVersion,
     policy: LpFeePolicy,
 }
@@ -51,7 +51,7 @@ fun active_admin_updates_default_share_and_emits_new_value() {
 
         f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(3_000));
 
-        let changed = event::events_by_type<events::LpProtocolFeeShareChanged>();
+        let changed = event::events_by_type<blast_events::LpProtocolFeeShareChanged>();
         assert_eq!(changed.length(), 1);
         assert_eq!(changed[0].lp_protocol_fee_share_changed_fields(), 3_000);
         assert_eq!(f.policy.protocol_fee_share<PARTNER_MEME>().value(), 3_000);
@@ -72,7 +72,7 @@ fun default_share_accepts_both_percentage_boundaries() {
 
         f.policy.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(0));
         assert_eq!(f.policy.protocol_fee_share<PARTNER_MEME>().value(), 0);
-        assert_eq!(event::events_by_type<events::LpProtocolFeeShareChanged>().length(), 2);
+        assert_eq!(event::events_by_type<blast_events::LpProtocolFeeShareChanged>().length(), 2);
     });
 
     fixture.end();
@@ -144,7 +144,7 @@ fun project_share_takes_precedence_over_default_and_emits_its_meme() {
             bps::new(1_000),
         );
 
-        let set = event::events_by_type<events::ProjectLpProtocolFeeShareSet>();
+        let set = event::events_by_type<blast_events::ProjectLpProtocolFeeShareSet>();
         assert_eq!(set.length(), 1);
         let (meme, share_bps) = set[0].project_lp_protocol_fee_share_set_fields();
         assert_eq!(meme, type_name::with_original_ids<PARTNER_MEME>());
@@ -198,7 +198,7 @@ fun project_share_repins_to_a_different_value() {
 
         assert_eq!(f.policy.protocol_fee_share<PARTNER_MEME>().value(), 10_000);
         assert_eq!(f.policy.project_count_for_testing(), 1);
-        assert_eq!(event::events_by_type<events::ProjectLpProtocolFeeShareSet>().length(), 2);
+        assert_eq!(event::events_by_type<blast_events::ProjectLpProtocolFeeShareSet>().length(), 2);
     });
 
     fixture.end();
@@ -270,7 +270,7 @@ fun cleared_project_follows_the_default_again_and_emits_its_meme() {
             &admin_witness,
         );
 
-        let cleared = event::events_by_type<events::ProjectLpProtocolFeeShareCleared>();
+        let cleared = event::events_by_type<blast_events::ProjectLpProtocolFeeShareCleared>();
         assert_eq!(cleared.length(), 1);
         assert_eq!(
             cleared[0].project_lp_protocol_fee_share_cleared_fields(),
@@ -368,7 +368,7 @@ fun start_init(): InitFixture {
 fun start(): PolicyFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) = acl::new_for_testing<LAUNCHPAD_DOMAIN>(
+    let (super_admin_cap, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(
         MAX_ADMINS,
         ROOT_TRANSFER_DELAY_MS,
         scenario.ctx(),
@@ -378,12 +378,12 @@ fun start(): PolicyFixture {
     let policy = lp_fee_policy::new_for_testing(scenario.ctx());
 
     scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
 
     PolicyFixture { scenario, authority, admin_cap, package_version, policy }
 }
 
-fun sign_in(self: &PolicyFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+fun sign_in(self: &PolicyFixture): AdminWitness<BLAST_FUN_DOMAIN> {
     self.authority.sign_in(&self.admin_cap)
 }
 
@@ -399,9 +399,9 @@ fun policy_end(self: PolicyFixture) {
 
 use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
 
-use blast_fun::{bps, launchpad_domain::LAUNCHPAD_DOMAIN};
+use blast_fun::{bps, blast_fun_domain::BLAST_FUN_DOMAIN};
 
-use blast_fun_migrators::{events, lp_fee_policy::{Self, LpFeePolicy}, package_version};
+use blast_fun_migrators::{blast_events, lp_fee_policy::{Self, LpFeePolicy}, package_version};
 
 use std::{type_name, unit_test::{assert_eq, destroy}};
 

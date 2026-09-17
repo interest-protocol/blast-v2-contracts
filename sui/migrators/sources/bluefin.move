@@ -205,7 +205,7 @@ public fun collect_fees<Meme, Quote>(
 public fun set_tier(
     venue_config: &mut VenueConfig,
     migrators_version: &MigratorsVersion,
-    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
     tick_spacing: u32,
     fee_rate: u64,
 ) {
@@ -314,7 +314,7 @@ fun lock_and_share<Meme, Quote>(
         residual_quote,
         ctx,
     );
-    events::migration_completed<Meme, Quote, Venue>(
+    blast_events::migration_completed<Meme, Quote, Venue>(
         launch_id,
         vault_id,
         pool_id,
@@ -346,12 +346,12 @@ use blast_admin::acl::AdminWitness;
 use blast_fun::{
     bps,
     launch::Launch,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
+    blast_fun_domain::BLAST_FUN_DOMAIN,
     package_version::PackageVersion,
 };
 
 use blast_fun_migrators::{
-    events,
+    blast_events,
     lp_fee_authority::{Self, LpFeeAuthority},
     lp_fee_policy::LpFeePolicy,
     migration_math,

@@ -19,9 +19,9 @@ const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 /// Launchpad-domain membership plus this package's own generation and custody.
 public struct AdminFixtureState {
     scenario: Scenario,
-    authority: Authority<LAUNCHPAD_DOMAIN>,
-    super_admin_cap: SuperAdminCap<LAUNCHPAD_DOMAIN>,
-    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
+    authority: Authority<BLAST_FUN_DOMAIN>,
+    super_admin_cap: SuperAdminCap<BLAST_FUN_DOMAIN>,
+    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     package_version: PackageVersion,
     package_admin: PackageAdmin,
     config: VenueConfig,
@@ -113,7 +113,7 @@ fun a_zero_role_launchpad_admin_cannot_reach_package_custody() {
 #[test]
 /// The exported Launchpad role authorizes this package's own custody.
 fun the_exported_launchpad_role_governs_this_packages_custody() {
-    let mut fixture = start_with_roles(launchpad_domain::package_admin_role());
+    let mut fixture = start_with_roles(blast_fun_domain::package_admin_role());
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
@@ -130,7 +130,7 @@ fun the_exported_launchpad_role_governs_this_packages_custody() {
 #[test]
 /// Immutability destroys native upgrade authority for this package only.
 fun package_custody_can_be_made_permanently_immutable() {
-    let mut fixture = start_with_roles(launchpad_domain::package_admin_role());
+    let mut fixture = start_with_roles(blast_fun_domain::package_admin_role());
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
@@ -185,7 +185,7 @@ fun start_with_roles(roles: u64): AdminFixtureState {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
     let package_admin = package_admin::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) = acl::new_for_testing<LAUNCHPAD_DOMAIN>(
+    let (super_admin_cap, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(
         MAX_ADMINS,
         ROOT_TRANSFER_DELAY_MS,
         scenario.ctx(),
@@ -194,7 +194,7 @@ fun start_with_roles(roles: u64): AdminFixtureState {
     venue_config::init_for_testing(scenario.ctx());
 
     scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let config = scenario.take_shared<VenueConfig>();
 
     AdminFixtureState {
@@ -208,7 +208,7 @@ fun start_with_roles(roles: u64): AdminFixtureState {
     }
 }
 
-fun admin_sign_in(self: &AdminFixtureState): AdminWitness<LAUNCHPAD_DOMAIN> {
+fun admin_sign_in(self: &AdminFixtureState): AdminWitness<BLAST_FUN_DOMAIN> {
     self.authority.sign_in(&self.admin_cap)
 }
 
@@ -220,7 +220,7 @@ fun admin_end(self: AdminFixtureState) {
 
 use blast_admin::acl::{Self, Authority, SuperAdminCap, AdminCap, AdminWitness};
 
-use blast_fun::launchpad_domain::{Self, LAUNCHPAD_DOMAIN};
+use blast_fun::blast_fun_domain::{Self, BLAST_FUN_DOMAIN};
 
 use blast_fun_migrators::{
     cetus,

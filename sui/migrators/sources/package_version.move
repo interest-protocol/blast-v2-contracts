@@ -18,7 +18,7 @@ const NEXT_PACKAGE_VERSION: u64 = 2;
 /// Singleton operational generation for the aggregate migrators package.
 public struct PackageVersion has key {
     id: UID,
-    generation: OperationalVersion<PACKAGE_MARKER>,
+    generation: OperationalVersion<BLAST_FUN_MIGRATORS>,
 }
 
 // === Private Initialization ===
@@ -89,4 +89,4 @@ public fun advance_for_testing(self: &mut PackageVersion) {
 
 use blast_admin::operational_version::{Self, OperationalVersion};
 
-use blast_fun_migrators::package_marker::PACKAGE_MARKER;
+use blast_fun_migrators::blast_fun_migrators::BLAST_FUN_MIGRATORS;

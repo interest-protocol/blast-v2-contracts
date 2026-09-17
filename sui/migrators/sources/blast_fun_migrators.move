@@ -3,16 +3,16 @@
 /// This marker types the package's own operational generation and upgrade
 /// custody. It never names an administration domain: Migrators reuses the
 /// Launchpad domain for membership and owns only its package-local state.
-module blast_fun_migrators::package_marker;
+module blast_fun_migrators::blast_fun_migrators;
 
 // === Public Structs ===
 
 /// One-time witness used only to claim this package's Publisher.
-public struct PACKAGE_MARKER has drop {}
+public struct BLAST_FUN_MIGRATORS has drop {}
 
 // === Private Initialization ===
 
-fun init(otw: PACKAGE_MARKER, ctx: &mut TxContext) {
+fun init(otw: BLAST_FUN_MIGRATORS, ctx: &mut TxContext) {
     sui::package::claim_and_keep(otw, ctx);
 }
 
@@ -21,11 +21,11 @@ fun init(otw: PACKAGE_MARKER, ctx: &mut TxContext) {
 #[test_only]
 /// Runs package initialization with a genuine test one-time witness.
 public fun init_for_testing(ctx: &mut TxContext) {
-    init(sui::test_utils::create_one_time_witness<PACKAGE_MARKER>(), ctx);
+    init(sui::test_utils::create_one_time_witness<BLAST_FUN_MIGRATORS>(), ctx);
 }
 
 #[test_only]
 /// Claims the canonical Publisher without transferring it.
 public fun publisher_for_testing(ctx: &mut TxContext): sui::package::Publisher {
-    sui::package::test_claim(PACKAGE_MARKER {}, ctx)
+    sui::package::test_claim(BLAST_FUN_MIGRATORS {}, ctx)
 }

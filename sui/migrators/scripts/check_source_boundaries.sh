@@ -9,7 +9,7 @@ MMT_SOURCE="$SOURCE_DIR/mmt.move"
 CETUS_SOURCE="$SOURCE_DIR/cetus.move"
 TURBOS_SOURCE="$SOURCE_DIR/turbos.move"
 AFTERMATH_SOURCE="$SOURCE_DIR/aftermath.move"
-EVENTS_SOURCE="$SOURCE_DIR/events.move"
+EVENTS_SOURCE="$SOURCE_DIR/blast_events.move"
 VENUE_CONFIG_SOURCE="$SOURCE_DIR/venue_config.move"
 MIGRATION_MATH_SOURCE="$SOURCE_DIR/migration_math.move"
 LP_FEE_AUTHORITY_SOURCE="$SOURCE_DIR/lp_fee_authority.move"
@@ -247,7 +247,7 @@ reject_turbos_pre_guard_mutator() {
 [[ -f "$CETUS_SOURCE" ]] || fail "missing sources/cetus.move"
 [[ -f "$TURBOS_SOURCE" ]] || fail "missing sources/turbos.move"
 [[ -f "$AFTERMATH_SOURCE" ]] || fail "missing sources/aftermath.move"
-[[ -f "$EVENTS_SOURCE" ]] || fail "missing sources/events.move"
+[[ -f "$EVENTS_SOURCE" ]] || fail "missing sources/blast_events.move"
 [[ -f "$VENUE_CONFIG_SOURCE" ]] || fail "missing sources/venue_config.move"
 [[ -f "$MIGRATION_MATH_SOURCE" ]] || fail "missing sources/migration_math.move"
 [[ -f "$LP_FEE_AUTHORITY_SOURCE" ]] || fail "missing sources/lp_fee_authority.move"
@@ -286,7 +286,7 @@ require_pattern "$MIGRATION_MATH_SOURCE" \
 require_pattern "$MIGRATION_MATH_SOURCE" \
     'maximum_residual_amount\(source_amount, max_residual_bps\)' \
     'shared residual allowance'
-if rg -q '\b(blast_fun::(constants|errors)|UID|key|Balance|Coin|TxContext|transfer::|events::|RuntimeConfig)\b' \
+if rg -q '\b(blast_fun::(constants|errors)|UID|key|Balance|Coin|TxContext|transfer::|blast_events::|RuntimeConfig)\b' \
     "$MIGRATION_MATH_SOURCE"; then
     fail "migration math must remain a pure migrator-owned arithmetic module"
 fi
@@ -357,13 +357,13 @@ rg -U -q 'public struct LpFeeCapClaimed has copy, drop \{\n    vault_id: ID,\n  
     fail "LpFeeCapClaimed must carry vault, types, claimed cap, and claimant"
 require_pattern "$EVENTS_SOURCE" 'sui::event::emit\(LpFeeCapClaimed' \
     'direct strongly typed LP-fee capability claim emission'
-require_exact_count 'events::lp_fee_cap_claimed<Meme, Quote>(' 1 \
+require_exact_count 'blast_events::lp_fee_cap_claimed<Meme, Quote>(' 1 \
     "LP-fee capability claims must be emitted only by vault::claim_lp_fee_cap" \
     "$SOURCE_DIR"/*.move
-require_exact_count 'events::lp_fee_cap_issued<Meme, Quote>(' 1 \
+require_exact_count 'blast_events::lp_fee_cap_issued<Meme, Quote>(' 1 \
     "LP-fee capability issuance must be emitted only by vault::issue_lp_fee_cap" \
     "$SOURCE_DIR"/*.move
-require_exact_count 'events::lp_fees_locked<Meme, Quote>(' 2 \
+require_exact_count 'blast_events::lp_fees_locked<Meme, Quote>(' 2 \
     "LP-fee locks must be emitted only by vault::lock_pending_creator_fees and vault::lock_creator_fees" \
     "$SOURCE_DIR"/*.move
 # LP-fee share policy moved from Launchpad and replays from migrator events.
@@ -383,9 +383,9 @@ if rg -q '\bLpFeePolicyCreated\b' "$EVENTS_SOURCE"; then
     fail "LP-fee policy creation must stay eventless"
 fi
 for policy_event in \
-    'events::lp_protocol_fee_share_changed(' \
-    'events::project_lp_protocol_fee_share_set<Meme>(' \
-    'events::project_lp_protocol_fee_share_cleared<Meme>('; do
+    'blast_events::lp_protocol_fee_share_changed(' \
+    'blast_events::project_lp_protocol_fee_share_set<Meme>(' \
+    'blast_events::project_lp_protocol_fee_share_cleared<Meme>('; do
     require_exact_count "$policy_event" 1 \
         "LP-fee share events must be emitted once, only by lp_fee_policy.move" \
         "$SOURCE_DIR"/*.move
@@ -393,7 +393,7 @@ for policy_event in \
         "LP-fee share events must be emitted once, only by lp_fee_policy.move" \
         "$LP_FEE_POLICY_SOURCE"
 done
-require_exact_count 'events::creator_fees_claimed<Meme, Quote>(' 1 \
+require_exact_count 'blast_events::creator_fees_claimed<Meme, Quote>(' 1 \
     "creator LP-fee claims must be emitted only by the shared private ledger claim" \
     "$SOURCE_DIR"/*.move
 
@@ -435,10 +435,10 @@ require_pattern "$VAULT_SOURCE" 'protocol_quote_residual\.withdraw_all' \
     'protocol Quote residual claim'
 require_pattern "$VAULT_SOURCE" 'public\(package\) fun accrue_fees' \
     'witness-gated shared fee accrual'
-require_pattern "$VAULT_SOURCE" 'events::vault_created' 'vault creation event emission'
-require_pattern "$VAULT_SOURCE" 'events::lp_fees_collected' 'LP-fee event emission'
-require_pattern "$VAULT_SOURCE" 'events::creator_fees_claimed' 'creator claim event emission'
-require_pattern "$VAULT_SOURCE" 'events::protocol_fees_claimed' 'protocol claim event emission'
+require_pattern "$VAULT_SOURCE" 'blast_events::vault_created' 'vault creation event emission'
+require_pattern "$VAULT_SOURCE" 'blast_events::lp_fees_collected' 'LP-fee event emission'
+require_pattern "$VAULT_SOURCE" 'blast_events::creator_fees_claimed' 'creator claim event emission'
+require_pattern "$VAULT_SOURCE" 'blast_events::protocol_fees_claimed' 'protocol claim event emission'
 
 # LP-fee authority is migration-born (ADR 0082): every venue migration creates one
 # `Pending` authority from the witness-typed payload and hands it to the vault; the
@@ -492,7 +492,7 @@ require_exact_count 'PackageVersion' 1 \
     "$VAULT_SOURCE"
 require_pattern "$VAULT_SOURCE" '^    package_version::PackageVersion as MigratorsVersion,$' \
     'Migrators generation imported under its guard alias'
-require_exact_count '&AdminWitness<LAUNCHPAD_DOMAIN>' 2 \
+require_exact_count '&AdminWitness<BLAST_FUN_DOMAIN>' 2 \
     "vault Launchpad authority must be exactly protocol claims and LP-fee capability reissue" \
     <(production_section "$VAULT_SOURCE")
 require_exact_count 'admin_witness' 4 \
@@ -520,16 +520,16 @@ require_function_body "$VAULT_SOURCE" 'prepare' \
     'public(package)funprepare<Meme,Quote>(lp_fee_authority:LpFeeAuthority<Meme>,protocol_meme_residual:Balance<Meme>,protocol_quote_residual:Balance<Quote>,ctx:&mutTxContext,):LpVault<Meme,Quote>{LpVault{id:object::new(ctx),pool_id:object::id_from_address(@0x0),lp_fee_authority,protocol_meme_residual,protocol_quote_residual,fee_ledger:fees::new(),}}' \
     "vault::prepare must embed the supplied LP-fee authority unchanged"
 require_function_body "$VAULT_SOURCE" 'claim_lp_fee_cap' \
-    'publicfunclaim_lp_fee_cap<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,launch:&Launch<Meme,Quote>,curve_fee_cap:&CurveFeeCap<Meme>,ctx:&mutTxContext,):LpFeeCap<Meme>{migrators_version.assert_current();letlp_fee_cap=self.lp_fee_authority.claim(launch,curve_fee_cap,ctx);events::lp_fee_cap_claimed<Meme,Quote>(self.id.to_inner(),lp_fee_cap.id(),ctx.sender(),);lp_fee_cap}' \
+    'publicfunclaim_lp_fee_cap<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,launch:&Launch<Meme,Quote>,curve_fee_cap:&CurveFeeCap<Meme>,ctx:&mutTxContext,):LpFeeCap<Meme>{migrators_version.assert_current();letlp_fee_cap=self.lp_fee_authority.claim(launch,curve_fee_cap,ctx);blast_events::lp_fee_cap_claimed<Meme,Quote>(self.id.to_inner(),lp_fee_cap.id(),ctx.sender(),);lp_fee_cap}' \
     "vault::claim_lp_fee_cap must check generation, claim through the authority, emit, and return the cap"
 require_function_body "$VAULT_SOURCE" 'issue_lp_fee_cap' \
-    'publicfunissue_lp_fee_cap<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,admin_witness:&AdminWitness<LAUNCHPAD_DOMAIN>,recipient:address,ctx:&mutTxContext,){migrators_version.assert_current();self.lp_fee_authority.assert_not_locked();assert!(recipient!=@0x0,EInvalidLpFeeCapRecipient);let(revoked_lp_fee_cap_id,lp_fee_cap)=self.lp_fee_authority.reissue(admin_witness,ctx);letlp_fee_cap_id=lp_fee_cap.id();transfer::public_transfer(lp_fee_cap,recipient);events::lp_fee_cap_issued<Meme,Quote>(self.id.to_inner(),revoked_lp_fee_cap_id,lp_fee_cap_id,recipient,);}' \
+    'publicfunissue_lp_fee_cap<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,admin_witness:&AdminWitness<BLAST_FUN_DOMAIN>,recipient:address,ctx:&mutTxContext,){migrators_version.assert_current();self.lp_fee_authority.assert_not_locked();assert!(recipient!=@0x0,EInvalidLpFeeCapRecipient);let(revoked_lp_fee_cap_id,lp_fee_cap)=self.lp_fee_authority.reissue(admin_witness,ctx);letlp_fee_cap_id=lp_fee_cap.id();transfer::public_transfer(lp_fee_cap,recipient);blast_events::lp_fee_cap_issued<Meme,Quote>(self.id.to_inner(),revoked_lp_fee_cap_id,lp_fee_cap_id,recipient,);}' \
     "vault::issue_lp_fee_cap must check generation, terminal lock, and nonzero recipient before role-gated reissue, then deliver and emit"
 require_function_body "$VAULT_SOURCE" 'lock_pending_creator_fees' \
-    'publicfunlock_pending_creator_fees<Meme,Quote,Custodian:drop>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,launch:&Launch<Meme,Quote>,custodian:Custodian,){migrators_version.assert_current();letcustodian=self.lp_fee_authority.lock_pending(launch,custodian);events::lp_fees_locked<Meme,Quote>(self.id.to_inner(),option::none(),custodian);}' \
+    'publicfunlock_pending_creator_fees<Meme,Quote,Custodian:drop>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,launch:&Launch<Meme,Quote>,custodian:Custodian,){migrators_version.assert_current();letcustodian=self.lp_fee_authority.lock_pending(launch,custodian);blast_events::lp_fees_locked<Meme,Quote>(self.id.to_inner(),option::none(),custodian);}' \
     "vault::lock_pending_creator_fees must check generation, bind through the authority, and emit a capless lock"
 require_function_body "$VAULT_SOURCE" 'lock_creator_fees' \
-    'publicfunlock_creator_fees<Meme,Quote,Custodian:drop>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,lp_fee_cap:LpFeeCap<Meme>,custodian:Custodian,){migrators_version.assert_current();let(lp_fee_cap_id,custodian)=self.lp_fee_authority.lock(lp_fee_cap,custodian);events::lp_fees_locked<Meme,Quote>(self.id.to_inner(),option::some(lp_fee_cap_id),custodian,);}' \
+    'publicfunlock_creator_fees<Meme,Quote,Custodian:drop>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,lp_fee_cap:LpFeeCap<Meme>,custodian:Custodian,){migrators_version.assert_current();let(lp_fee_cap_id,custodian)=self.lp_fee_authority.lock(lp_fee_cap,custodian);blast_events::lp_fees_locked<Meme,Quote>(self.id.to_inner(),option::some(lp_fee_cap_id),custodian,);}' \
     "vault::lock_creator_fees must check generation, lock through the authority, and emit the destroyed cap"
 require_function_body "$VAULT_SOURCE" 'claim_creator_fees' \
     'publicfunclaim_creator_fees<Meme,Quote>(self:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,lp_fee_cap:&LpFeeCap<Meme>,ctx:&mutTxContext,):(Coin<Meme>,Coin<Quote>){migrators_version.assert_current();self.lp_fee_authority.assert_cap(lp_fee_cap);self.claim_ledger_creator_fees(ctx)}' \
@@ -555,12 +555,12 @@ rg -q '^// Code 4 retired: ' "$VAULT_SOURCE" \
 LP_FEE_AUTHORITY_PRODUCTION="$(production_section "$LP_FEE_AUTHORITY_SOURCE")"
 require_pattern "$LP_FEE_AUTHORITY_SOURCE" '^module blast_fun_migrators::lp_fee_authority;$' \
     'migrator-owned LP-fee authority module'
-[[ "$(tr -d '[:space:]' < "$LP_FEE_AUTHORITY_SOURCE")" == *'//===Imports===useblast_admin::acl::AdminWitness;useblast_fun::{creator_authority::CurveFeeCap,launch::{Launch,MigrationPayload},launchpad_domain::{Self,LAUNCHPAD_DOMAIN},};usestd::type_name::{Self,TypeName};' ]] || \
+[[ "$(tr -d '[:space:]' < "$LP_FEE_AUTHORITY_SOURCE")" == *'//===Imports===useblast_admin::acl::AdminWitness;useblast_fun::{creator_authority::CurveFeeCap,launch::{Launch,MigrationPayload},blast_fun_domain::{Self,BLAST_FUN_DOMAIN},};usestd::type_name::{Self,TypeName};' ]] || \
     fail "lp_fee_authority.move must import only AdminWitness, CurveFeeCap, Launch, MigrationPayload, the Launchpad domain, and TypeName"
 LP_FEE_AUTHORITY_FUNCTIONS="$(rg -o '^(public(\(package\))? )?(entry )?fun [[:alnum:]_]+' <<<"$LP_FEE_AUTHORITY_PRODUCTION" | sort | tr '\n' ';')"
 [[ "$LP_FEE_AUTHORITY_FUNCTIONS" == 'fun assert_pending;fun cap_id;fun custodian;fun custodian_type;fun is_pending;public fun destroy_lp_fee_cap;public(package) fun assert_cap;public(package) fun assert_custodian;public(package) fun assert_not_locked;public(package) fun claim;public(package) fun id;public(package) fun lock;public(package) fun lock_pending;public(package) fun new;public(package) fun reissue;' ]] || \
     fail "lp_fee_authority.move must expose only destroy_lp_fee_cap publicly, its eight package transitions plus the id accessor, and five private helpers"
-if rg -q 'events::|transfer::|assert_current|PackageVersion|\bentry\b' "$LP_FEE_AUTHORITY_SOURCE"; then
+if rg -q 'blast_events::|transfer::|assert_current|PackageVersion|\bentry\b' "$LP_FEE_AUTHORITY_SOURCE"; then
     fail "lp_fee_authority.move must stay an eventless, transferless state module under the vault's guards"
 fi
 [[ "$(rg -c '#\[error\(code = ' "$LP_FEE_AUTHORITY_SOURCE" || true)" -eq 6 ]] \
@@ -587,7 +587,7 @@ require_function_body "$LP_FEE_AUTHORITY_SOURCE" 'lock' \
     'public(package)funlock<Meme,Custodian:drop>(self:&mutLpFeeAuthority<Meme>,lp_fee_cap:LpFeeCap<Meme>,_:Custodian,):(ID,TypeName){self.assert_cap(&lp_fee_cap);letlp_fee_cap_id=object::id(&lp_fee_cap);letcustodian=custodian_type<Custodian>();lp_fee_cap.destroy_lp_fee_cap();*self=LpFeeAuthority::Custodian(custodian);(lp_fee_cap_id,custodian)}' \
     "lp_fee_authority::lock must assert and destroy the live cap before binding a terminal custodian"
 require_function_body "$LP_FEE_AUTHORITY_SOURCE" 'reissue' \
-    'public(package)funreissue<Meme>(self:&mutLpFeeAuthority<Meme>,admin_witness:&AdminWitness<LAUNCHPAD_DOMAIN>,ctx:&mutTxContext,):(Option<ID>,LpFeeCap<Meme>){self.assert_not_locked();assert!(!self.is_pending(),ELpFeesFollowTheCurveFeeCap);admin_witness.assert_role(launchpad_domain::creator_admin_role());letrevoked_lp_fee_cap_id=self.cap_id();letlp_fee_cap=LpFeeCap{id:object::new(ctx)};*self=LpFeeAuthority::Cap(object::id(&lp_fee_cap));(revoked_lp_fee_cap_id,lp_fee_cap)}' \
+    'public(package)funreissue<Meme>(self:&mutLpFeeAuthority<Meme>,admin_witness:&AdminWitness<BLAST_FUN_DOMAIN>,ctx:&mutTxContext,):(Option<ID>,LpFeeCap<Meme>){self.assert_not_locked();assert!(!self.is_pending(),ELpFeesFollowTheCurveFeeCap);admin_witness.assert_role(blast_fun_domain::creator_admin_role());letrevoked_lp_fee_cap_id=self.cap_id();letlp_fee_cap=LpFeeCap{id:object::new(ctx)};*self=LpFeeAuthority::Cap(object::id(&lp_fee_cap));(revoked_lp_fee_cap_id,lp_fee_cap)}' \
     "lp_fee_authority::reissue must assert not-locked, then that the authority is no longer pending, then the creator-admin role, before retiring and minting"
 require_function_body "$LP_FEE_AUTHORITY_SOURCE" 'assert_not_locked' \
     'public(package)funassert_not_locked<Meme>(self:&LpFeeAuthority<Meme>){assert!(self.custodian().is_none(),ELpFeesLocked);}' \
@@ -675,9 +675,9 @@ require_exact_count 'vault::prepare<Meme, Quote>(' 1 \
 LP_FEE_POLICY_PRODUCTION="$(production_section "$LP_FEE_POLICY_SOURCE")"
 require_pattern "$LP_FEE_POLICY_SOURCE" '^module blast_fun_migrators::lp_fee_policy;$' \
     'migrator-owned LP-fee policy module'
-require_pattern "$LP_FEE_POLICY_SOURCE" '^use blast_fun::\{bps::\{Self, Bps\}, launchpad_domain::LAUNCHPAD_DOMAIN\};$' \
+require_pattern "$LP_FEE_POLICY_SOURCE" '^use blast_fun::\{bps::\{Self, Bps\}, blast_fun_domain::BLAST_FUN_DOMAIN\};$' \
     'Launchpad Bps and domain imports only'
-require_pattern "$LP_FEE_POLICY_SOURCE" '^use blast_fun_migrators::\{events, package_version::PackageVersion\};$' \
+require_pattern "$LP_FEE_POLICY_SOURCE" '^use blast_fun_migrators::\{blast_events, package_version::PackageVersion\};$' \
     'Migrators events and generation imports'
 if rg -q 'blast_fun::(package_version|events|lp_fee_policy)|runtime_config' "$LP_FEE_POLICY_SOURCE"; then
     fail "lp_fee_policy.move must use the Migrators generation and events, never Launchpad's"
@@ -693,7 +693,7 @@ LP_FEE_POLICY_FUNCTIONS="$(rg -o '^(public(\(package\))? )?(entry )?fun [[:alnum
     && rg -U -q '#\[error\(code = 1\)\]\nconst EProjectProtocolFeeShareUnchanged: vector<u8> =\n    b"A project LP-fee share update must change the project.s pinned share\.";' "$LP_FEE_POLICY_SOURCE" \
     && rg -U -q '#\[error\(code = 2\)\]\nconst EProjectProtocolFeeShareMissing: vector<u8> =\n    b"A project LP-fee share clear requires a pinned share\.";' "$LP_FEE_POLICY_SOURCE" || \
     fail "lp_fee_policy error codes must remain contiguous 0-2 and bound to their documented failures"
-require_exact_count '_: &AdminWitness<LAUNCHPAD_DOMAIN>' 3 \
+require_exact_count '_: &AdminWitness<BLAST_FUN_DOMAIN>' 3 \
     "every LP-fee share setter must take a Launchpad admin witness" \
     <(production_section "$LP_FEE_POLICY_SOURCE")
 if rg -q '\b(AdminCap|ProtocolAuthority|RuntimeConfig|FeeLedger|Balance|sequence|schema_version|action_tag|nonce)\b' \
@@ -707,13 +707,13 @@ require_function_body "$LP_FEE_POLICY_SOURCE" 'new' \
     'funnew(ctx:&mutTxContext):LpFeePolicy{LpFeePolicy{id:object::new(ctx),protocol_fee_share_bps:bps::new(0),project_protocol_fee_shares:table::new(ctx),}}' \
     "lp_fee_policy::new must start at a zero share with no project overrides"
 require_function_body "$LP_FEE_POLICY_SOURCE" 'set_protocol_fee_share' \
-    'publicfunset_protocol_fee_share(self:&mutLpFeePolicy,package_version:&PackageVersion,_:&AdminWitness<LAUNCHPAD_DOMAIN>,protocol_fee_share_bps:Bps,){package_version.assert_current();assert!(protocol_fee_share_bps!=self.protocol_fee_share_bps,EProtocolFeeShareUnchanged,);self.protocol_fee_share_bps=protocol_fee_share_bps;events::lp_protocol_fee_share_changed(protocol_fee_share_bps.value());}' \
+    'publicfunset_protocol_fee_share(self:&mutLpFeePolicy,package_version:&PackageVersion,_:&AdminWitness<BLAST_FUN_DOMAIN>,protocol_fee_share_bps:Bps,){package_version.assert_current();assert!(protocol_fee_share_bps!=self.protocol_fee_share_bps,EProtocolFeeShareUnchanged,);self.protocol_fee_share_bps=protocol_fee_share_bps;blast_events::lp_protocol_fee_share_changed(protocol_fee_share_bps.value());}' \
     "lp_fee_policy::set_protocol_fee_share must check generation and change before writing and emitting"
 require_function_body "$LP_FEE_POLICY_SOURCE" 'set_project_protocol_fee_share' \
-    'publicfunset_project_protocol_fee_share<Meme>(self:&mutLpFeePolicy,package_version:&PackageVersion,_:&AdminWitness<LAUNCHPAD_DOMAIN>,protocol_fee_share_bps:Bps,){package_version.assert_current();letmeme=type_name::with_original_ids<Meme>();if(self.project_protocol_fee_shares.contains(meme)){letshare_mut=&mutself.project_protocol_fee_shares[meme];assert!(protocol_fee_share_bps!=*share_mut,EProjectProtocolFeeShareUnchanged,);*share_mut=protocol_fee_share_bps;}else{self.project_protocol_fee_shares.add(meme,protocol_fee_share_bps);};events::project_lp_protocol_fee_share_set<Meme>(protocol_fee_share_bps.value());}' \
+    'publicfunset_project_protocol_fee_share<Meme>(self:&mutLpFeePolicy,package_version:&PackageVersion,_:&AdminWitness<BLAST_FUN_DOMAIN>,protocol_fee_share_bps:Bps,){package_version.assert_current();letmeme=type_name::with_original_ids<Meme>();if(self.project_protocol_fee_shares.contains(meme)){letshare_mut=&mutself.project_protocol_fee_shares[meme];assert!(protocol_fee_share_bps!=*share_mut,EProjectProtocolFeeShareUnchanged,);*share_mut=protocol_fee_share_bps;}else{self.project_protocol_fee_shares.add(meme,protocol_fee_share_bps);};blast_events::project_lp_protocol_fee_share_set<Meme>(protocol_fee_share_bps.value());}' \
     "lp_fee_policy::set_project_protocol_fee_share must check generation and change before pinning and emitting"
 require_function_body "$LP_FEE_POLICY_SOURCE" 'clear_project_protocol_fee_share' \
-    'publicfunclear_project_protocol_fee_share<Meme>(self:&mutLpFeePolicy,package_version:&PackageVersion,_:&AdminWitness<LAUNCHPAD_DOMAIN>,){package_version.assert_current();letmeme=type_name::with_original_ids<Meme>();assert!(self.project_protocol_fee_shares.contains(meme),EProjectProtocolFeeShareMissing,);self.project_protocol_fee_shares.remove(meme);events::project_lp_protocol_fee_share_cleared<Meme>();}' \
+    'publicfunclear_project_protocol_fee_share<Meme>(self:&mutLpFeePolicy,package_version:&PackageVersion,_:&AdminWitness<BLAST_FUN_DOMAIN>,){package_version.assert_current();letmeme=type_name::with_original_ids<Meme>();assert!(self.project_protocol_fee_shares.contains(meme),EProjectProtocolFeeShareMissing,);self.project_protocol_fee_shares.remove(meme);blast_events::project_lp_protocol_fee_share_cleared<Meme>();}' \
     "lp_fee_policy::clear_project_protocol_fee_share must check generation and presence before clearing and emitting"
 require_function_body "$LP_FEE_POLICY_SOURCE" 'protocol_fee_share' \
     'publicfunprotocol_fee_share<Meme>(self:&LpFeePolicy):Bps{letmeme=type_name::with_original_ids<Meme>();if(self.project_protocol_fee_shares.contains(meme)){self.project_protocol_fee_shares[meme]}else{self.protocol_fee_share_bps}}' \
@@ -743,7 +743,7 @@ require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun tier<Venue>' \
     'package-only tier read'
 require_pattern "$VENUE_CONFIG_SOURCE" 'dynamic_field::add' \
     'dynamic-field tier storage for upgrade-safe venue registration'
-require_pattern "$VENUE_CONFIG_SOURCE" 'events::venue_tier_updated<Venue>' \
+require_pattern "$VENUE_CONFIG_SOURCE" 'blast_events::venue_tier_updated<Venue>' \
     'sealed tier mutation emission'
 require_pattern "$VENUE_CONFIG_SOURCE" 'public\(package\) fun add_policy<Key:' \
     'sealed-key package-only policy installation'
@@ -757,7 +757,7 @@ VENUE_TIER_SETTER_COUNT=0
 for source in "$BLUEFIN_SOURCE" "$CETUS_SOURCE" "$MMT_SOURCE" "$TURBOS_SOURCE"; do
     rg -q 'public fun set_tier' "$source" || \
         fail "every venue module must expose its admin tier pin"
-    count="$(rg -c '_: &AdminWitness<LAUNCHPAD_DOMAIN>,' "$source" || true)"
+    count="$(rg -c '_: &AdminWitness<BLAST_FUN_DOMAIN>,' "$source" || true)"
     VENUE_TIER_SETTER_COUNT=$((VENUE_TIER_SETTER_COUNT + ${count:-0}))
     rg -q 'fun effective_tier\(venue_config: &VenueConfig\)' "$source" || \
         fail "every venue module must own its default-tier fallback read"
@@ -853,7 +853,7 @@ require_pattern "$AFTERMATH_SOURCE" 'locked_lp_amount_before == locked_lp_amount
     'explicit unchanged Aftermath LP principal guard'
 require_pattern "$AFTERMATH_SOURCE" 'self\.accrue_fees\(' \
     'shared creator/protocol DAO fee accrual'
-require_pattern "$AFTERMATH_SOURCE" 'events::aftermath_migration_completed' \
+require_pattern "$AFTERMATH_SOURCE" 'blast_events::aftermath_migration_completed' \
     'Aftermath-specific migration emission'
 require_pattern "$AFTERMATH_SOURCE" 'public fun set_policy' \
     'admin-pinned Aftermath weighted-pool policy'
@@ -863,11 +863,11 @@ require_pattern "$AFTERMATH_SOURCE" 'dao_fee_owner_cap\.set_fee_bps' \
     'locked-cap DAO fee mutation call'
 require_pattern "$AFTERMATH_SOURCE" 'self\.pool_id\(\) == dao_fee_pool_id' \
     'DAO fee mutation vault-pool binding'
-require_pattern "$AFTERMATH_SOURCE" 'events::aftermath_dao_fee_updated' \
+require_pattern "$AFTERMATH_SOURCE" 'blast_events::aftermath_dao_fee_updated' \
     'replay-complete DAO fee mutation emission'
 require_pattern "$AFTERMATH_SOURCE" 'self\.meme_weight \+ self\.quote_weight == FIXED_ONE' \
     'normalized Aftermath weight policy'
-require_pattern "$AFTERMATH_SOURCE" 'events::aftermath_policy_updated' \
+require_pattern "$AFTERMATH_SOURCE" 'blast_events::aftermath_policy_updated' \
     'replay-complete Aftermath policy mutation emission'
 if rg -q 'update_fee_recipient|remove_liquidity|withdraw_liquidity|dao_fee_owner_cap\(' "$AFTERMATH_SOURCE"; then
     fail "Aftermath must expose neither recipient mutation nor LP withdrawal"
@@ -895,7 +895,7 @@ require_pattern "$BLUEFIN_SOURCE" 'bluefin_config\.pool_creation_fee_amount<Quot
     'Quote creation-fee query'
 require_pattern "$BLUEFIN_SOURCE" 'balance::zero\(\)' \
     'zero Quote creation-fee balance'
-require_pattern "$BLUEFIN_SOURCE" 'events::migration_completed' \
+require_pattern "$BLUEFIN_SOURCE" 'blast_events::migration_completed' \
     'completed migration event emission'
 require_pattern "$BLUEFIN_SOURCE" 'self\.accrue_fees\(' 'shared replay-complete fee accrual'
 require_pattern "$BLUEFIN_SOURCE" 'effective_tier\(venue_config\)' 'effective Bluefin tier read'
@@ -928,7 +928,7 @@ require_pattern "$MMT_SOURCE" 'migration_math::minimum_utilized_amount' \
     'MMT one-basis-point minimum utilization'
 require_pattern "$MMT_SOURCE" 'pool\.transfer\(\)' 'MMT pool sharing after position creation'
 require_pattern "$MMT_SOURCE" 'pool\.collect_fee' 'MMT fee collection'
-require_pattern "$MMT_SOURCE" 'events::migration_completed' \
+require_pattern "$MMT_SOURCE" 'blast_events::migration_completed' \
     'MMT completed migration event emission'
 require_pattern "$MMT_SOURCE" 'self\.accrue_fees\(' 'MMT shared replay-complete fee accrual'
 # Two migration routes plus the test-only default inspector.
@@ -1112,7 +1112,7 @@ require_cetus_private 'lock_and_share' \
     'vault::new<Meme,Quote,Venue,Position>(Venue(),lp_fee_authority,pool_id,position,residual_meme.into_balance(),residual_quote.into_balance(),ctx,)' \
     'residual custody in the Cetus vault'
 require_cetus_private 'lock_and_share' \
-    'events::migration_completed<Meme,Quote,Venue>(' 'direct migration event'
+    'blast_events::migration_completed<Meme,Quote,Venue>(' 'direct migration event'
 require_cetus_private 'assert_adopted_tier' \
     'tick_spacing==pinned_tick_spacing' 'pinned adopted tick spacing'
 require_cetus_private 'assert_adopted_tier' \
@@ -1276,7 +1276,7 @@ require_turbos_private 'lock_and_share' \
     'vault::new<Meme,Quote,Venue,TurbosPositionNFT>(Venue(),lp_fee_authority,pool_id,position,residual_meme.into_balance(),residual_quote.into_balance(),ctx,)' \
     'Turbos NFT and residual custody'
 require_turbos_private 'lock_and_share' \
-    'events::migration_completed<Meme,Quote,Venue>(' 'direct migration event'
+    'blast_events::migration_completed<Meme,Quote,Venue>(' 'direct migration event'
 require_turbos_private 'checked_fee_tier' \
     'effective_tier(venue_config)' 'effective tier read'
 require_turbos_private 'checked_fee_tier' \
@@ -1323,13 +1323,13 @@ reject_pattern '(sequence|revision|nonce|schema_version|action_tag):' \
     'application-level event ordering fields are forbidden'
 
 if rg -q 'sui::event::emit' "$SOURCE_DIR" \
-    --glob '*.move' --glob '!events.move'; then
+    --glob '*.move' --glob '!blast_events.move'; then
     fail "state modules must emit only through typed events helpers"
 fi
 
 EVENT_EMISSION_COUNT="$(rg -o 'sui::event::emit' "$EVENTS_SOURCE" | wc -l)"
 [[ "$EVENT_EMISSION_COUNT" -eq 15 ]] || \
-    fail "events.move must emit exactly fifteen strongly typed payloads"
+    fail "blast_events.move must emit exactly fifteen strongly typed payloads"
 
 POSITION_ATTACHMENT_COUNT="$(rg -o 'dynamic_object_field::add' "$SOURCE_DIR" | wc -l)"
 [[ "$POSITION_ATTACHMENT_COUNT" -eq 1 ]] || \
@@ -1448,14 +1448,14 @@ if rg -n 'acl::new\(|fun (grant_admin|revoke_admin|sign_in)\(' "$SOURCE_DIR"; th
     fail "Migrators must not create or manage its own administration domain"
 fi
 
-for required in package_marker.move package_version.move package_admin.move; do
+for required in blast_fun_migrators.move package_version.move package_admin.move; do
     [[ -f "$SOURCE_DIR/$required" ]] || \
         fail "Migrators must own $required"
 done
 
 rg -q '^public struct PackageVersion has key \{$' "$SOURCE_DIR/package_version.move" || \
     fail "Migrators must own one canonical generation container"
-rg -q 'generation: OperationalVersion<PACKAGE_MARKER>,' "$SOURCE_DIR/package_version.move" || \
+rg -q 'generation: OperationalVersion<BLAST_FUN_MIGRATORS>,' "$SOURCE_DIR/package_version.move" || \
     fail "the generation value must be the shared typed value"
 rg -q '^const PACKAGE_VERSION: u64 = 1;$' "$SOURCE_DIR/package_version.move" || \
     fail "Migrators must compile its current generation constant"
@@ -1465,7 +1465,7 @@ if rg -n '\.checked_add\(|fun activate\(' "$SOURCE_DIR/package_version.move"; th
     fail "generation arithmetic and separate activation belong to blast_admin"
 fi
 
-rg -q 'custody: UpgradeCustody<PACKAGE_MARKER>,' "$SOURCE_DIR/package_admin.move" || \
+rg -q 'custody: UpgradeCustody<BLAST_FUN_MIGRATORS>,' "$SOURCE_DIR/package_admin.move" || \
     fail "Migrators custody must hold the shared typed value"
 rg -q 'public fun commit_upgrade_and_advance\(' "$SOURCE_DIR/package_admin.move" || \
     fail "Migrators must expose one atomic commit-and-advance finalizer"
@@ -1476,7 +1476,7 @@ if rg -U -n '^public fun [^(]+\([^)]*\): (&)?(Publisher|UpgradeCap)' \
     "$SOURCE_DIR/package_admin.move"; then
     fail "no custody path may release the sealed Publisher or UpgradeCap"
 fi
-CUSTODY_ROLE_ASSERTIONS="$(rg -c 'admin_witness\.assert_role\(launchpad_domain::package_admin_role\(\)\);' \
+CUSTODY_ROLE_ASSERTIONS="$(rg -c 'admin_witness\.assert_role\(blast_fun_domain::package_admin_role\(\)\);' \
     "$SOURCE_DIR/package_admin.move" || true)"
 [[ "${CUSTODY_ROLE_ASSERTIONS:-0}" -eq 5 ]] || \
     fail "every governed custody transition must assert Launchpad's exported role"

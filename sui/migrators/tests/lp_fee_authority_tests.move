@@ -23,8 +23,8 @@ public struct AuthorityFixture {
     scenario: Scenario,
     version: PackageVersion,
     migrators_version: MigratorsVersion,
-    authority: Authority<LAUNCHPAD_DOMAIN>,
-    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
+    authority: Authority<BLAST_FUN_DOMAIN>,
+    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     launch: Launch<LP_FEE_AUTHORITY_TESTS, QUOTE>,
     curve_fee_cap: Option<CurveFeeCap<LP_FEE_AUTHORITY_TESTS>>,
     vault: LpVault<LP_FEE_AUTHORITY_TESTS, QUOTE>,
@@ -40,7 +40,7 @@ fun migration_payload_creates_a_pending_authority_that_the_curve_fee_holder_clai
 
     let lp_fee_cap = f.claim();
 
-    let claimed = sui::event::events_by_type<events::LpFeeCapClaimed>();
+    let claimed = sui::event::events_by_type<blast_events::LpFeeCapClaimed>();
     let claimant = CREATOR;
     let mut expected = bcs::to_bytes(&object::id(&f.vault));
     expected.append(bcs::to_bytes(&type_name::with_original_ids<LP_FEE_AUTHORITY_TESTS>()));
@@ -99,7 +99,7 @@ fun a_launch_custodian_binds_pending_lp_fees_without_a_cap() {
     f.launch.lock_creator_fees(&f.version, curve_fee_cap, TestCustodian());
     f.vault.lock_pending_creator_fees(&f.migrators_version, &f.launch, TestCustodian());
 
-    let locked = sui::event::events_by_type<events::LpFeesLocked>();
+    let locked = sui::event::events_by_type<blast_events::LpFeesLocked>();
     let mut expected = bcs::to_bytes(&object::id(&f.vault));
     expected.append(bcs::to_bytes(&type_name::with_original_ids<LP_FEE_AUTHORITY_TESTS>()));
     expected.append(bcs::to_bytes(&type_name::with_original_ids<QUOTE>()));
@@ -162,7 +162,7 @@ fun admin_reissue_retires_the_claimed_cap() {
         f.ctx!(),
     );
 
-    let issued = sui::event::events_by_type<events::LpFeeCapIssued>();
+    let issued = sui::event::events_by_type<blast_events::LpFeeCapIssued>();
     let recipient = NEW_CREATOR;
     let mut expected = bcs::to_bytes(&object::id(&f.vault));
     expected.append(bcs::to_bytes(&type_name::with_original_ids<LP_FEE_AUTHORITY_TESTS>()));
@@ -467,17 +467,17 @@ fun start(): AuthorityFixture {
     let mut scenario = test_scenario::begin(ADMIN);
     let version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
-    let (root, mut authority) = acl::new_for_testing<LAUNCHPAD_DOMAIN>(
+    let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(
         MAX_ADMINS,
         ROOT_TRANSFER_DELAY_MS,
         scenario.ctx(),
     );
-    authority.grant_admin(&root, launchpad_domain::creator_admin_role(), ADMIN, scenario.ctx());
+    authority.grant_admin(&root, blast_fun_domain::creator_admin_role(), ADMIN, scenario.ctx());
     destroy(root);
     launch_config::init_for_testing(scenario.ctx());
 
     scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let admin_witness = authority.sign_in(&admin_cap);
     let mut config = scenario.take_shared<LaunchConfig>();
     config.allow_quote<QUOTE>(&version, &admin_witness, 5_000_000, 25_000_000);
@@ -558,26 +558,26 @@ fun claim(self: &mut AuthorityFixture): LpFeeCap<LP_FEE_AUTHORITY_TESTS> {
 /// Separate live administration whose only admin lacks the creator-admin role.
 fun new_role_less_admin(
     self: &mut AuthorityFixture,
-): (Authority<LAUNCHPAD_DOMAIN>, AdminCap<LAUNCHPAD_DOMAIN>) {
-    let (root, mut other) = acl::new_for_testing<LAUNCHPAD_DOMAIN>(
+): (Authority<BLAST_FUN_DOMAIN>, AdminCap<BLAST_FUN_DOMAIN>) {
+    let (root, mut other) = acl::new_for_testing<BLAST_FUN_DOMAIN>(
         MAX_ADMINS,
         ROOT_TRANSFER_DELAY_MS,
         self.ctx!(),
     );
     other.grant_admin(
         &root,
-        launchpad_domain::package_admin_role(),
+        blast_fun_domain::package_admin_role(),
         ROLE_LESS_ADMIN,
         self.ctx!(),
     );
     destroy(root);
     self.scenario.next_tx(ROLE_LESS_ADMIN);
-    let role_less_cap = self.scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let role_less_cap = self.scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
 
     (other, role_less_cap)
 }
 
-fun sign_in(self: &AuthorityFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+fun sign_in(self: &AuthorityFixture): AdminWitness<BLAST_FUN_DOMAIN> {
     self.authority.sign_in(&self.admin_cap)
 }
 
@@ -595,13 +595,13 @@ use blast_fun::{
     launch::{Self, Launch},
     launch_config::{Self, LaunchConfig},
     launch_ticket,
-    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
+    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     package_version::{Self, PackageVersion},
     runtime_config,
 };
 
 use blast_fun_migrators::{
-    events,
+    blast_events,
     lp_fee_authority::{Self, LpFeeCap},
     package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
     vault::{Self, LpVault},

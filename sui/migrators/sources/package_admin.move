@@ -1,7 +1,7 @@
 /// Sealed custody for the migrators package's Publisher and UpgradeCap.
 ///
 /// Migrators shares the Launchpad administration domain, so its governed
-/// transitions accept `AdminWitness<LAUNCHPAD_DOMAIN>` and assert the role that
+/// transitions accept `AdminWitness<BLAST_FUN_DOMAIN>` and assert the role that
 /// Launchpad exports. Custody itself stays package-local: advancing Migrators
 /// leaves Launchpad and Distributor on their own generations.
 module blast_fun_migrators::package_admin;
@@ -17,7 +17,7 @@ const EInvalidPackagePublisher: vector<u8> =
 /// Shared custody for this package's framework Publisher and UpgradeCap.
 public struct PackageAdmin has key {
     id: UID,
-    custody: UpgradeCustody<PACKAGE_MARKER>,
+    custody: UpgradeCustody<BLAST_FUN_MIGRATORS>,
 }
 
 // === Public Functions ===
@@ -25,10 +25,10 @@ public struct PackageAdmin has key {
 /// Validates and permanently seals the migrators Publisher and raw UpgradeCap.
 public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext) {
     // from_module compares both the package address and the canonical module name.
-    assert!(publisher.from_module<PACKAGE_MARKER>(), EInvalidPackagePublisher);
+    assert!(publisher.from_module<BLAST_FUN_MIGRATORS>(), EInvalidPackagePublisher);
 
     let id = object::new(ctx);
-    let custody = upgrade_custody::new<PACKAGE_MARKER>(id.to_inner(), publisher, upgrade_cap);
+    let custody = upgrade_custody::new<BLAST_FUN_MIGRATORS>(id.to_inner(), publisher, upgrade_cap);
 
     transfer::share_object(PackageAdmin { id, custody });
 }
@@ -37,11 +37,11 @@ public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxConte
 public fun authorize_upgrade(
     self: &mut PackageAdmin,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
     digest: vector<u8>,
 ): UpgradeTicket {
     package_version.assert_current();
-    admin_witness.assert_role(launchpad_domain::package_admin_role());
+    admin_witness.assert_role(blast_fun_domain::package_admin_role());
     let custodian_id = self.id.to_inner();
 
     self.custody.authorize_upgrade(custodian_id, digest)
@@ -51,10 +51,10 @@ public fun authorize_upgrade(
 public fun commit_upgrade_and_advance(
     self: &mut PackageAdmin,
     package_version: &mut PackageVersion,
-    admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
     receipt: UpgradeReceipt,
 ) {
-    admin_witness.assert_role(launchpad_domain::package_admin_role());
+    admin_witness.assert_role(blast_fun_domain::package_admin_role());
     package_version.assert_next();
     let custodian_id = self.id.to_inner();
 
@@ -66,10 +66,10 @@ public fun commit_upgrade_and_advance(
 public fun restrict_to_additive(
     self: &mut PackageAdmin,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
 ) {
     package_version.assert_current();
-    admin_witness.assert_role(launchpad_domain::package_admin_role());
+    admin_witness.assert_role(blast_fun_domain::package_admin_role());
     let custodian_id = self.id.to_inner();
 
     self.custody.restrict_to_additive(custodian_id);
@@ -79,10 +79,10 @@ public fun restrict_to_additive(
 public fun restrict_to_dependency_only(
     self: &mut PackageAdmin,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
 ) {
     package_version.assert_current();
-    admin_witness.assert_role(launchpad_domain::package_admin_role());
+    admin_witness.assert_role(blast_fun_domain::package_admin_role());
     let custodian_id = self.id.to_inner();
 
     self.custody.restrict_to_dependency_only(custodian_id);
@@ -92,10 +92,10 @@ public fun restrict_to_dependency_only(
 public fun make_immutable(
     self: &mut PackageAdmin,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
 ) {
     package_version.assert_current();
-    admin_witness.assert_role(launchpad_domain::package_admin_role());
+    admin_witness.assert_role(blast_fun_domain::package_admin_role());
     let custodian_id = self.id.to_inner();
 
     self.custody.make_immutable(custodian_id);
@@ -111,11 +111,11 @@ public fun has_upgrade_cap(self: &PackageAdmin): bool {
 #[test_only]
 public fun new_for_testing(ctx: &mut TxContext): PackageAdmin {
     let id = object::new(ctx);
-    let custody = upgrade_custody::new<PACKAGE_MARKER>(
+    let custody = upgrade_custody::new<BLAST_FUN_MIGRATORS>(
         id.to_inner(),
-        blast_fun_migrators::package_marker::publisher_for_testing(ctx),
+        blast_fun_migrators::blast_fun_migrators::publisher_for_testing(ctx),
         sui::package::test_publish(
-            std::type_name::original_id<PACKAGE_MARKER>().to_id(),
+            std::type_name::original_id<BLAST_FUN_MIGRATORS>().to_id(),
             ctx,
         ),
     );
@@ -140,8 +140,8 @@ use blast_admin::{
     upgrade_custody::{Self, UpgradeCustody},
 };
 
-use blast_fun::launchpad_domain::{Self, LAUNCHPAD_DOMAIN};
+use blast_fun::blast_fun_domain::{Self, BLAST_FUN_DOMAIN};
 
-use blast_fun_migrators::{package_marker::PACKAGE_MARKER, package_version::PackageVersion};
+use blast_fun_migrators::{blast_fun_migrators::BLAST_FUN_MIGRATORS, package_version::PackageVersion};
 
 use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};

@@ -41,7 +41,7 @@ fun init(ctx: &mut TxContext) {
 public fun set_protocol_fee_share(
     self: &mut LpFeePolicy,
     package_version: &PackageVersion,
-    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
     protocol_fee_share_bps: Bps,
 ) {
     package_version.assert_current();
@@ -52,7 +52,7 @@ public fun set_protocol_fee_share(
 
     self.protocol_fee_share_bps = protocol_fee_share_bps;
 
-    events::lp_protocol_fee_share_changed(protocol_fee_share_bps.value());
+    blast_events::lp_protocol_fee_share_changed(protocol_fee_share_bps.value());
 }
 
 /// Pins one project's LP share, which then ignores later migrator-wide changes.
@@ -63,7 +63,7 @@ public fun set_protocol_fee_share(
 public fun set_project_protocol_fee_share<Meme>(
     self: &mut LpFeePolicy,
     package_version: &PackageVersion,
-    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
     protocol_fee_share_bps: Bps,
 ) {
     package_version.assert_current();
@@ -83,14 +83,14 @@ public fun set_project_protocol_fee_share<Meme>(
         self.project_protocol_fee_shares.add(meme, protocol_fee_share_bps);
     };
 
-    events::project_lp_protocol_fee_share_set<Meme>(protocol_fee_share_bps.value());
+    blast_events::project_lp_protocol_fee_share_set<Meme>(protocol_fee_share_bps.value());
 }
 
 /// Removes one project's pinned share so it follows the migrator-wide share again.
 public fun clear_project_protocol_fee_share<Meme>(
     self: &mut LpFeePolicy,
     package_version: &PackageVersion,
-    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
 ) {
     package_version.assert_current();
 
@@ -103,7 +103,7 @@ public fun clear_project_protocol_fee_share<Meme>(
 
     self.project_protocol_fee_shares.remove(meme);
 
-    events::project_lp_protocol_fee_share_cleared<Meme>();
+    blast_events::project_lp_protocol_fee_share_cleared<Meme>();
 }
 
 /// Returns the share a migrator must apply to newly collected `Meme` LP fees.
@@ -154,9 +154,9 @@ public fun project_count_for_testing(self: &LpFeePolicy): u64 {
 
 use blast_admin::acl::AdminWitness;
 
-use blast_fun::{bps::{Self, Bps}, launchpad_domain::LAUNCHPAD_DOMAIN};
+use blast_fun::{bps::{Self, Bps}, blast_fun_domain::BLAST_FUN_DOMAIN};
 
-use blast_fun_migrators::{events, package_version::PackageVersion};
+use blast_fun_migrators::{blast_events, package_version::PackageVersion};
 
 use std::type_name::{Self, TypeName};
 

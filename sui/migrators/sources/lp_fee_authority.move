@@ -121,12 +121,12 @@ public(package) fun lock<Meme, Custodian: drop>(
 /// launchpad, and its new holder claims this one with `claim`.
 public(package) fun reissue<Meme>(
     self: &mut LpFeeAuthority<Meme>,
-    admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
     ctx: &mut TxContext,
 ): (Option<ID>, LpFeeCap<Meme>) {
     self.assert_not_locked();
     assert!(!self.is_pending(), ELpFeesFollowTheCurveFeeCap);
-    admin_witness.assert_role(launchpad_domain::creator_admin_role());
+    admin_witness.assert_role(blast_fun_domain::creator_admin_role());
 
     let revoked_lp_fee_cap_id = self.cap_id();
     let lp_fee_cap = LpFeeCap { id: object::new(ctx) };
@@ -244,7 +244,7 @@ use blast_admin::acl::AdminWitness;
 use blast_fun::{
     creator_authority::CurveFeeCap,
     launch::{Launch, MigrationPayload},
-    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
+    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
 };
 
 use std::type_name::{Self, TypeName};

@@ -39,14 +39,14 @@ migration payload in the same Move call.
   researched highest-tier default (see the README table, sourced from live
   mainnet registries on 2026-08-30) and falls back to it while no pin exists;
   only that module's sealed witness can write its entry, behind this package's
-  own current generation and a live `AdminWitness<LAUNCHPAD_DOMAIN>` from the
+  own current generation and a live `AdminWitness<BLAST_FUN_DOMAIN>` from the
   shared Launchpad authority. The singleton stays adjustable after the package
   `UpgradeCap` is destroyed and affects only later migrations.
-- **Direct events, no wrapper.** `events.move` owns nine typed payloads,
+- **Direct events, no wrapper.** `blast_events.move` owns the typed payloads,
   including `AftermathPolicyUpdated`, `AftermathMigrationCompleted`, and
   `AftermathDaoFeeUpdated`, and is the only module that calls
   `sui::event::emit`.
-  This package deliberately does **not** use the core `events_wrapper::Event<T>`
+  This package deliberately does **not** use the core `blast_events::Event<T>`
   envelope: it is a separate package, so native payload filtering stays direct
   and the core event ABI is unchanged. Payloads carry no application sequence,
   revision, nonce, schema version, or action tag.
@@ -335,7 +335,7 @@ release blocker, not a documentation footnote.
 | Aftermath | `migrate_meme_first`, `migrate_meme_second` | `accrue_dao_fees`; also dev-inspect `update_dao_fee` separately |
 
 Vault claims: `vault::claim_creator_fees` under `CreatorCap<Meme>` and
-`vault::claim_protocol_fees` under `AdminWitness<LAUNCHPAD_DOMAIN>`. Both also
+`vault::claim_protocol_fees` under `AdminWitness<BLAST_FUN_DOMAIN>`. Both also
 require this package's current generation. Neither touches the venue or the
 position.
 

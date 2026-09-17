@@ -24,8 +24,8 @@ public struct TestPosition has key, store { id: UID }
 /// Shared custody and LP-policy fee accounting through the vault seam.
 public struct VaultFixture {
     scenario: Scenario,
-    authority: Authority<LAUNCHPAD_DOMAIN>,
-    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
+    authority: Authority<BLAST_FUN_DOMAIN>,
+    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     package_version: package_version::PackageVersion,
     migrators_version: MigratorsVersion,
     lp_fee_policy: LpFeePolicy,
@@ -156,7 +156,7 @@ fun project_share_overrides_the_default_and_is_the_emitted_split_input() {
         );
         f.accrue!(10, 10);
 
-        let events = sui::event::events_by_type<blast_fun_migrators::events::LpFeesCollected>();
+        let events = sui::event::events_by_type<blast_fun_migrators::blast_events::LpFeesCollected>();
         let mut expected = bcs::to_bytes(&object::id(&f.vault));
         expected.append(bcs::to_bytes(&f.pool_id));
         expected.append(bcs::to_bytes(&f.position_id));
@@ -444,7 +444,7 @@ fun locked_lp_fees_are_claimed_only_by_the_bound_custodian() {
         f.accrue!(10, 20);
         f.vault.lock_creator_fees(&f.migrators_version, lp_fee_cap, TestCustodian());
 
-        let events = sui::event::events_by_type<events::LpFeesLocked>();
+        let events = sui::event::events_by_type<blast_events::LpFeesLocked>();
         let mut expected = bcs::to_bytes(&object::id(&f.vault));
         expected.append(bcs::to_bytes(&type_name::with_original_ids<MEME>()));
         expected.append(bcs::to_bytes(&type_name::with_original_ids<QUOTE>()));
@@ -542,14 +542,14 @@ fun start_with_residuals(
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) = acl::new_for_testing<LAUNCHPAD_DOMAIN>(
+    let (super_admin_cap, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(
         MAX_ADMINS,
         ROOT_TRANSFER_DELAY_MS,
         scenario.ctx(),
     );
     authority.grant_admin(
         &super_admin_cap,
-        launchpad_domain::creator_admin_role(),
+        blast_fun_domain::creator_admin_role(),
         PROTOCOL_ADMIN,
         scenario.ctx(),
     );
@@ -571,7 +571,7 @@ fun start_with_residuals(
     );
 
     scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let vault = scenario.take_shared<LpVault<MEME, QUOTE>>();
 
     VaultFixture {
@@ -587,7 +587,7 @@ fun start_with_residuals(
     }
 }
 
-fun sign_in(self: &VaultFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+fun sign_in(self: &VaultFixture): AdminWitness<BLAST_FUN_DOMAIN> {
     self.authority.sign_in(&self.admin_cap)
 }
 
@@ -599,10 +599,10 @@ fun end(self: VaultFixture) {
 
 use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
 
-use blast_fun::{bps, launchpad_domain::{Self, LAUNCHPAD_DOMAIN}, package_version};
+use blast_fun::{bps, blast_fun_domain::{Self, BLAST_FUN_DOMAIN}, package_version};
 
 use blast_fun_migrators::{
-    events,
+    blast_events,
     lp_fee_authority::{Self, LpFeeCap},
     lp_fee_policy::{Self, LpFeePolicy},
     package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},

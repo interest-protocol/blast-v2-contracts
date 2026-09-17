@@ -54,7 +54,7 @@ public fun claim_lp_fee_cap<Meme, Quote>(
 
     let lp_fee_cap = self.lp_fee_authority.claim(launch, curve_fee_cap, ctx);
 
-    events::lp_fee_cap_claimed<Meme, Quote>(
+    blast_events::lp_fee_cap_claimed<Meme, Quote>(
         self.id.to_inner(),
         lp_fee_cap.id(),
         ctx.sender(),
@@ -72,7 +72,7 @@ public fun claim_lp_fee_cap<Meme, Quote>(
 public fun issue_lp_fee_cap<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
     recipient: address,
     ctx: &mut TxContext,
 ) {
@@ -85,7 +85,7 @@ public fun issue_lp_fee_cap<Meme, Quote>(
     let lp_fee_cap_id = lp_fee_cap.id();
     transfer::public_transfer(lp_fee_cap, recipient);
 
-    events::lp_fee_cap_issued<Meme, Quote>(
+    blast_events::lp_fee_cap_issued<Meme, Quote>(
         self.id.to_inner(),
         revoked_lp_fee_cap_id,
         lp_fee_cap_id,
@@ -106,7 +106,7 @@ public fun lock_pending_creator_fees<Meme, Quote, Custodian: drop>(
 
     let custodian = self.lp_fee_authority.lock_pending(launch, custodian);
 
-    events::lp_fees_locked<Meme, Quote>(self.id.to_inner(), option::none(), custodian);
+    blast_events::lp_fees_locked<Meme, Quote>(self.id.to_inner(), option::none(), custodian);
 }
 
 /// Destroys the live LP-fee capability and binds creator LP fees to `Custodian` permanently.
@@ -123,7 +123,7 @@ public fun lock_creator_fees<Meme, Quote, Custodian: drop>(
 
     let (lp_fee_cap_id, custodian) = self.lp_fee_authority.lock(lp_fee_cap, custodian);
 
-    events::lp_fees_locked<Meme, Quote>(
+    blast_events::lp_fees_locked<Meme, Quote>(
         self.id.to_inner(),
         option::some(lp_fee_cap_id),
         custodian,
@@ -158,7 +158,7 @@ public fun claim_custodied_creator_fees<Meme, Quote, Custodian: drop>(
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     migrators_version.assert_current();
@@ -185,7 +185,7 @@ public fun claim_protocol_fees<Meme, Quote>(
     let meme_amount = meme.value();
     let quote_amount = quote.value();
 
-    events::protocol_fees_claimed<Meme, Quote>(
+    blast_events::protocol_fees_claimed<Meme, Quote>(
         self.id.to_inner(),
         ctx.sender(),
         meme_amount,
@@ -264,7 +264,7 @@ public(package) fun finish<Meme, Quote, Venue: drop, Position: key + store>(
     let vault_id = self.id.to_inner();
     self.id.add_dynamic_object_field(PositionKey<Venue>(), position);
     transfer::share_object(self);
-    events::vault_created<Meme, Quote, Venue>(
+    blast_events::vault_created<Meme, Quote, Venue>(
         vault_id,
         pool_id,
         position_id,
@@ -349,7 +349,7 @@ public(package) fun accrue_fees<Meme, Quote, Venue>(
     );
     let protocol_fee_share_bps = protocol_fee_share.value();
 
-    events::lp_fees_collected<Meme, Quote, Venue>(
+    blast_events::lp_fees_collected<Meme, Quote, Venue>(
         self.id.to_inner(),
         self.pool_id,
         position_id,
@@ -375,7 +375,7 @@ fun claim_ledger_creator_fees<Meme, Quote>(
     let meme_amount = meme.value();
     let quote_amount = quote.value();
 
-    events::creator_fees_claimed<Meme, Quote>(
+    blast_events::creator_fees_claimed<Meme, Quote>(
         self.id.to_inner(),
         ctx.sender(),
         meme_amount,
@@ -480,11 +480,11 @@ use blast_fun::{
     creator_authority::CurveFeeCap,
     fees::{Self, FeeLedger},
     launch::Launch,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
+    blast_fun_domain::BLAST_FUN_DOMAIN,
 };
 
 use blast_fun_migrators::{
-    events,
+    blast_events,
     lp_fee_authority::{LpFeeAuthority, LpFeeCap},
     lp_fee_policy::LpFeePolicy,
     package_version::PackageVersion as MigratorsVersion,

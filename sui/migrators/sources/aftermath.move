@@ -168,7 +168,7 @@ public fun migrate_meme_second<Lp, Meme, Quote>(
 public fun set_policy(
     venue_config: &mut VenueConfig,
     migrators_version: &MigratorsVersion,
-    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
     meme_weight: u64,
     quote_weight: u64,
     dao_fee_bps: u16,
@@ -194,7 +194,7 @@ public fun set_policy(
         old_policy
     };
 
-    events::aftermath_policy_updated(
+    blast_events::aftermath_policy_updated(
         old_policy.meme_weight,
         old_policy.quote_weight,
         old_policy.dao_fee_bps,
@@ -210,7 +210,7 @@ public fun update_dao_fee<Lp, Meme, Quote>(
     migrators_version: &MigratorsVersion,
     dao_fee_pool: &mut DaoFeePool<Lp>,
     dao_fee_version: &Version,
-    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
     dao_fee_bps: u16,
 ) {
     migrators_version.assert_current();
@@ -238,7 +238,7 @@ public fun update_dao_fee<Lp, Meme, Quote>(
         dao_fee_pool.fee_recipient() == object::id(self).to_address(),
         EDaoPoolInvariantMismatch,
     );
-    events::aftermath_dao_fee_updated(
+    blast_events::aftermath_dao_fee_updated(
         object::id(self),
         dao_fee_pool_id,
         old_dao_fee_bps,
@@ -424,7 +424,7 @@ fun lock_and_share<Lp, Meme, Quote>(
     let finished_vault_id =
         pending_vault.finish(Venue(), dao_fee_pool_id, position);
     assert!(finished_vault_id == vault_id, EDaoPoolInvariantMismatch);
-    events::aftermath_migration_completed<Lp, Meme, Quote, Venue>(
+    blast_events::aftermath_migration_completed<Lp, Meme, Quote, Venue>(
         launch_id,
         vault_id,
         inner_pool_id,
@@ -510,12 +510,12 @@ use blast_admin::acl::AdminWitness;
 
 use blast_fun::{
     launch::Launch,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
+    blast_fun_domain::BLAST_FUN_DOMAIN,
     package_version::PackageVersion,
 };
 
 use blast_fun_migrators::{
-    events,
+    blast_events,
     lp_fee_authority::{Self, LpFeeAuthority},
     lp_fee_policy::LpFeePolicy,
     package_version::PackageVersion as MigratorsVersion,
