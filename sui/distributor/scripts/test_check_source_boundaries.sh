@@ -24,7 +24,7 @@ expect_rejected() {
   fi
 }
 
-source_of() { printf '%s\n' "$1/sources/distributor.move"; }
+source_of() { printf '%s\n' "$1/sources/blast_fun_distributor.move"; }
 
 [[ -x "$checker" ]] || fail "Boundary checker must exist and be executable."
 

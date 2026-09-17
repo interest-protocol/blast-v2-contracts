@@ -4,7 +4,7 @@ set -euo pipefail
 
 PACKAGE_DIR="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 SOURCE_DIR="$PACKAGE_DIR/sources"
-DISTRIBUTOR_SOURCE="$SOURCE_DIR/distributor.move"
+DISTRIBUTOR_SOURCE="$SOURCE_DIR/blast_fun_distributor.move"
 MERKLE_SOURCE="$SOURCE_DIR/merkle.move"
 
 fail() {

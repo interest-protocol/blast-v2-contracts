@@ -122,7 +122,7 @@ fun quote_only_round_does_not_create_a_zero_meme_coin() {
 #[
     expected_failure(
         abort_code = distributor::EAlreadyClaimed,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun payout_cannot_be_replayed_even_after_budget_is_drained() {
@@ -138,7 +138,7 @@ fun payout_cannot_be_replayed_even_after_budget_is_drained() {
 #[
     expected_failure(
         abort_code = distributor::EInvalidProof,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun relayer_cannot_substitute_its_own_address() {
@@ -153,7 +153,7 @@ fun relayer_cannot_substitute_its_own_address() {
 #[
     expected_failure(
         abort_code = distributor::EInvalidProof,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun holder_cannot_change_an_amount() {
@@ -168,7 +168,7 @@ fun holder_cannot_change_an_amount() {
 #[
     expected_failure(
         abort_code = distributor::EInvalidIndex,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun claim_rejects_out_of_range_index_before_proof_work() {
@@ -183,7 +183,7 @@ fun claim_rejects_out_of_range_index_before_proof_work() {
 #[
     expected_failure(
         abort_code = distributor::EWrongRound,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun stale_publication_cannot_fund_another_round() {
@@ -197,7 +197,7 @@ fun stale_publication_cannot_fund_another_round() {
 #[
     expected_failure(
         abort_code = distributor::EInsufficientFunds,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun unfunded_round_is_rejected() {
@@ -210,7 +210,7 @@ fun unfunded_round_is_rejected() {
 #[
     expected_failure(
         abort_code = distributor::EEmptyBudget,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun empty_round_is_rejected() {
@@ -277,7 +277,7 @@ fun maximum_round_claims_last_bitmap_bit_and_emits_exact_payment() {
 #[
     expected_failure(
         abort_code = distributor::EInvalidInterval,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun overlapping_intervals_abort() {
@@ -293,7 +293,7 @@ fun overlapping_intervals_abort() {
 #[
     expected_failure(
         abort_code = distributor::EInvalidInterval,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun gapped_intervals_abort() {
@@ -309,7 +309,7 @@ fun gapped_intervals_abort() {
 #[
     expected_failure(
         abort_code = distributor::EInvalidInterval,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun empty_intervals_abort() {
@@ -324,7 +324,7 @@ fun empty_intervals_abort() {
 #[
     expected_failure(
         abort_code = distributor::EInvalidCommitment,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun malformed_commitments_abort() {
@@ -339,7 +339,7 @@ fun malformed_commitments_abort() {
 #[
     expected_failure(
         abort_code = distributor::EInvalidLeafCount,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun empty_leaf_set_aborts() {
@@ -354,7 +354,7 @@ fun empty_leaf_set_aborts() {
 #[
     expected_failure(
         abort_code = distributor::EInvalidLeafCount,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun first_over_capacity_leaf_set_aborts() {
@@ -369,7 +369,7 @@ fun first_over_capacity_leaf_set_aborts() {
 #[
     expected_failure(
         abort_code = distributor::EPaused,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun pause_stops_collection_before_fees_move() {
@@ -383,7 +383,7 @@ fun pause_stops_collection_before_fees_move() {
 #[
     expected_failure(
         abort_code = distributor::EPaused,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun pause_stops_new_rounds() {
@@ -397,7 +397,7 @@ fun pause_stops_new_rounds() {
 #[
     expected_failure(
         abort_code = distributor::EPaused,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun pause_stops_existing_claims_before_proof_validation() {
@@ -425,7 +425,7 @@ fun admin_can_resume_existing_funded_claims() {
 #[
     expected_failure(
         abort_code = distributor::EWrongVersion,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun retired_code_cannot_pay_existing_claims_even_if_also_paused() {
@@ -442,7 +442,7 @@ fun retired_code_cannot_pay_existing_claims_even_if_also_paused() {
 #[
     expected_failure(
         abort_code = distributor::EWrongVersion,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun retired_code_cannot_collect() {
@@ -456,7 +456,7 @@ fun retired_code_cannot_collect() {
 #[
     expected_failure(
         abort_code = distributor::EWrongVersion,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun retired_code_cannot_publish() {
@@ -470,7 +470,7 @@ fun retired_code_cannot_publish() {
 #[
     expected_failure(
         abort_code = distributor::EWrongVersion,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun unmigrated_version_rejects_claims_until_admin_migrates() {
@@ -507,7 +507,7 @@ fun migration_preserves_pause_and_round_state() {
 #[
     expected_failure(
         abort_code = distributor::ENotUpgrade,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun migration_rejects_a_current_version() {
@@ -520,7 +520,7 @@ fun migration_rejects_a_current_version() {
 #[
     expected_failure(
         abort_code = distributor::ENotUpgrade,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun migration_rejects_a_rollback() {
@@ -534,7 +534,7 @@ fun migration_rejects_a_rollback() {
 #[
     expected_failure(
         abort_code = distributor::EPaused,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun pause_rejects_enrollment_before_taking_creator_cap() {
@@ -545,7 +545,7 @@ fun pause_rejects_enrollment_before_taking_creator_cap() {
 #[
     expected_failure(
         abort_code = distributor::EWrongVersion,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun retired_code_rejects_enrollment() {
@@ -556,7 +556,7 @@ fun retired_code_rejects_enrollment() {
 #[
     expected_failure(
         abort_code = distributor::EUnchangedPause,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun no_op_pause_does_not_emit_a_false_transition() {
@@ -629,7 +629,7 @@ fun enrollment_collection_and_publication_events_reconcile_every_funding_field()
 #[
     expected_failure(
         abort_code = distributor::EInvalidBeneficiary,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun zero_beneficiary_is_rejected_before_proof_work() {
@@ -644,7 +644,7 @@ fun zero_beneficiary_is_rejected_before_proof_work() {
 #[
     expected_failure(
         abort_code = distributor::EEmptyBudget,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun empty_claim_cannot_consume_a_bitmap_bit() {
@@ -659,7 +659,7 @@ fun empty_claim_cannot_consume_a_bitmap_bit() {
 #[
     expected_failure(
         abort_code = distributor::EInsufficientFunds,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun claim_cannot_exceed_its_reserved_budget() {
@@ -674,7 +674,7 @@ fun claim_cannot_exceed_its_reserved_budget() {
 #[
     expected_failure(
         abort_code = distributor::EWrongVersion,
-        location = blast_fun_distributor::distributor,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
 fun retired_code_cannot_resume_paused_rewards() {
@@ -819,7 +819,7 @@ fun pending_lp_fees_bind_to_the_enrolled_distributor_without_a_cap() {
 #[test]
 #[expected_failure(
     abort_code = distributor::EWrongSource,
-    location = blast_fun_distributor::distributor,
+    location = blast_fun_distributor::blast_fun_distributor,
 )]
 fun locking_a_claimed_lp_cap_rejects_an_unenrolled_launch() {
     let mut f = start();
@@ -853,7 +853,7 @@ fun locking_a_claimed_lp_cap_rejects_an_unenrolled_launch() {
 #[test]
 #[expected_failure(
     abort_code = distributor::EWrongSource,
-    location = blast_fun_distributor::distributor,
+    location = blast_fun_distributor::blast_fun_distributor,
 )]
 fun collecting_curve_fees_rejects_an_unenrolled_launch() {
     let mut f = start();
@@ -870,7 +870,7 @@ fun collecting_curve_fees_rejects_an_unenrolled_launch() {
 #[test]
 #[expected_failure(
     abort_code = distributor::EWrongSource,
-    location = blast_fun_distributor::distributor,
+    location = blast_fun_distributor::blast_fun_distributor,
 )]
 fun binding_pending_lp_fees_rejects_an_unenrolled_launch() {
     let mut f = start();
@@ -1104,7 +1104,7 @@ fun start_with_control(paused: bool, version_number: u64): DistributionFixture {
     authority.grant_admin(&root, 0, CREATOR, scenario.ctx());
     launch_config::init_for_testing(scenario.ctx());
     scenario.next_tx(CREATOR);
-    let launchpad_admin = scenario.take_from_sender<LaunchpadAdminCap<LAUNCHPAD_DOMAIN>>();
+    let launchpad_admin = scenario.take_from_sender<LaunchpadAdminCap<BLAST_FUN_DOMAIN>>();
     let witness = authority.sign_in(&launchpad_admin);
     let mut config = scenario.take_shared<launch_config::LaunchConfig>();
     config.allow_quote<QUOTE>(&version, &witness, 5_000_000, 25_000_000);
@@ -1175,8 +1175,8 @@ fun start_with_control(paused: bool, version_number: u64): DistributionFixture {
 }
 
 /// Unshared Launchpad-domain authority used only to configure the test launch.
-fun new_authority(ctx: &mut TxContext): (SuperAdminCap<LAUNCHPAD_DOMAIN>, Authority<LAUNCHPAD_DOMAIN>) {
-    acl::new_for_testing<LAUNCHPAD_DOMAIN>(16, 7 * 24 * 60 * 60 * 1_000, ctx)
+fun new_authority(ctx: &mut TxContext): (SuperAdminCap<BLAST_FUN_DOMAIN>, Authority<BLAST_FUN_DOMAIN>) {
+    acl::new_for_testing<BLAST_FUN_DOMAIN>(16, 7 * 24 * 60 * 60 * 1_000, ctx)
 }
 
 fun end(f: DistributionFixture) {
@@ -1211,13 +1211,13 @@ use blast_fun::{
     launch::{Self, Launch},
     launch_config,
     launch_ticket,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
+    blast_fun_domain::BLAST_FUN_DOMAIN,
     package_version,
     runtime_config
 };
 
 use blast_fun_distributor::{
-    distributor::{Self, AdminCap, Distributor, PublisherCap, Round, Version},
+    blast_fun_distributor::{Self as distributor, AdminCap, Distributor, PublisherCap, Round, Version},
     merkle
 };
 

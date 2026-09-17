@@ -1,5 +1,5 @@
 /// Creator-fee custody, authorized funded rounds and permissionless direct payouts.
-module blast_fun_distributor::distributor;
+module blast_fun_distributor::blast_fun_distributor;
 
 // === Constants ===
 
@@ -455,7 +455,7 @@ public fun is_claimed_for_testing<Meme, Quote>(self: &Round<Meme, Quote>, index:
 }
 
 #[test]
-#[expected_failure(abort_code = EWrongPublisher, location = blast_fun_distributor::distributor)]
+#[expected_failure(abort_code = EWrongPublisher, location = blast_fun_distributor::blast_fun_distributor)]
 fun publisher_cap_is_bound_to_one_distributor() {
     let mut ctx = tx_context::dummy();
     let mut distributor = Distributor<sui::sui::SUI, sui::sui::SUI> {
