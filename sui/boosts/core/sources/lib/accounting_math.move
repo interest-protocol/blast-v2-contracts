@@ -150,6 +150,7 @@ public(package) fun admin_share_down(fee: u64, admin_share_bps: u64): u64 {
 public(package) fun fee_allocation(amount: u64, rate_bps: u64, admin_share_bps: u64): (u64, u64, u64) {
     let fee = fee_up(amount, rate_bps);
     let admin = admin_share_down(fee, admin_share_bps);
+
     (fee, admin, fee - admin)
 }
 
@@ -214,7 +215,6 @@ public(package) fun mint_quote(
         shares_out > 0,
         blast_boosts_core::errors::zero_shares_out!(),
     );
-
     assert!(
         shares_before.checked_add(shares_out).is_some(),
         blast_boosts_core::errors::arithmetic_overflow!(),

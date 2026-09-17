@@ -123,9 +123,11 @@ only `TypeName`, so `RISK_ADMIN` retains the immediate witness-replacement
 model.
 
 The selected risk module can raise or lower the current
-`max_order_notional` within the immutable minimum and maximum selected at
-issuance. This value limits the absolute atomic-USDC notional of one adapter
-order. It does not limit a user's deposit or the Vault's total open position.
+`max_order_notional` to any positive value. (The immutable minimum and maximum
+selected at issuance were removed on 2026-09-17: execution slippage is already
+bounded by the immutable rebalance policy, and the shutdown role already gives
+the operator a direct freeze, so the bounds duplicated existing controls.)
+This value limits the absolute atomic-USDC notional of one adapter order. It does not limit a user's deposit or the Vault's total open position.
 There is no cooldown. The update changes no target leverage, lifecycle, or
 live position and remains available during shutdown. Series1 owns the bounded
 value mutation; the adapter authenticates the runtime risk-module witness and

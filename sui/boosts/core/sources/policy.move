@@ -58,8 +58,9 @@ public struct VaultPolicy has copy, drop, store {
     side: PositionSide,
     rebalance_policy: RebalancePolicy,
     price_policy: PricePolicy,
-    mint_fee_bps: u64,
-    redeem_fee_bps: u64,
+    /// Fee rates the Vault starts with; `State` holds the live, adjustable rates.
+    initial_mint_fee_bps: u64,
+    initial_redeem_fee_bps: u64,
     mint_fee_cap_bps: u64,
     redeem_fee_cap_bps: u64,
     admin_share_cap_bps: u64,
@@ -195,7 +196,8 @@ public fun new_price_policy(
 
 /// Composes one complete immutable policy for one future Vault.
 ///
-/// Both fee rates stay below 10,000 bps.
+/// Both initial fee rates stay below 10,000 bps and seed the live `State`
+/// rates; until `with_fee_limits` runs they are also the fee caps.
 /// `min_order_lots` is positive and at most `max_min_order_lots`.
 /// The NAV cap is not part of the policy: it is a live `State` value the
 /// admin may move, supplied to `state::new` directly.
@@ -205,13 +207,13 @@ public fun new_vault_policy(
     side: PositionSide,
     rebalance_policy: RebalancePolicy,
     price_policy: PricePolicy,
-    mint_fee_bps: u64,
-    redeem_fee_bps: u64,
+    initial_mint_fee_bps: u64,
+    initial_redeem_fee_bps: u64,
     min_order_lots: u64,
 ): VaultPolicy {
     assert!(
-        mint_fee_bps < constants::basis_points_denominator!()
-            && redeem_fee_bps < constants::basis_points_denominator!(),
+        initial_mint_fee_bps < constants::basis_points_denominator!()
+            && initial_redeem_fee_bps < constants::basis_points_denominator!(),
         blast_boosts_core::errors::invalid_fee_bps!(),
     );
     assert!(
@@ -224,10 +226,10 @@ public fun new_vault_policy(
         side,
         rebalance_policy,
         price_policy,
-        mint_fee_bps,
-        redeem_fee_bps,
-        mint_fee_cap_bps: mint_fee_bps,
-        redeem_fee_cap_bps: redeem_fee_bps,
+        initial_mint_fee_bps,
+        initial_redeem_fee_bps,
+        mint_fee_cap_bps: initial_mint_fee_bps,
+        redeem_fee_cap_bps: initial_redeem_fee_bps,
         admin_share_cap_bps: 0,
         min_order_lots,
     }
@@ -244,14 +246,16 @@ public fun with_fee_limits(
 ): VaultPolicy {
     let bps = constants::basis_points_denominator!();
     assert!(
-        self.mint_fee_bps <= mint_cap_bps && mint_cap_bps < bps
-            && self.redeem_fee_bps <= redeem_cap_bps && redeem_cap_bps < bps
+        self.initial_mint_fee_bps <= mint_cap_bps && mint_cap_bps < bps
+            && self.initial_redeem_fee_bps <= redeem_cap_bps && redeem_cap_bps < bps
             && admin_cap_bps <= bps,
         blast_boosts_core::errors::fee_cap_exceeded!(),
     );
+
     self.mint_fee_cap_bps = mint_cap_bps;
     self.redeem_fee_cap_bps = redeem_cap_bps;
     self.admin_share_cap_bps = admin_cap_bps;
+
     self
 }
 
@@ -448,6 +452,7 @@ public(package) fun assert_price_fresh(
     reference_time_ms: u64,
 ) {
     let fresh = self.is_price_fresh(published_at_ms, reference_time_ms);
+
     if (published_at_ms > reference_time_ms) {
         assert!(fresh, blast_boosts_core::errors::future_price!());
     } else {
@@ -564,14 +569,14 @@ public(package) fun price_policy(self: &VaultPolicy): PricePolicy {
     self.price_policy
 }
 
-/// Returns the mint fee rate in basis points.
-public(package) fun mint_fee_bps(self: &VaultPolicy): u64 {
-    self.mint_fee_bps
+/// Returns the issuance mint fee rate in basis points.
+public(package) fun initial_mint_fee_bps(self: &VaultPolicy): u64 {
+    self.initial_mint_fee_bps
 }
 
-/// Returns the redemption fee rate in basis points.
-public(package) fun redeem_fee_bps(self: &VaultPolicy): u64 {
-    self.redeem_fee_bps
+/// Returns the issuance redemption fee rate in basis points.
+public(package) fun initial_redeem_fee_bps(self: &VaultPolicy): u64 {
+    self.initial_redeem_fee_bps
 }
 
 /// Returns the minimum proportional order in live venue lots.
@@ -620,7 +625,7 @@ fun is_within_relative_tolerance(
 #[test_only]
 /// Exposes issuance fee rates to the test event reducer without widening production ABI.
 public fun initial_fee_rates_for_testing(self: &VaultPolicy): (u64, u64) {
-    (self.mint_fee_bps, self.redeem_fee_bps)
+    (self.initial_mint_fee_bps, self.initial_redeem_fee_bps)
 }
 
 // === Imports ===

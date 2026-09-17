@@ -14,7 +14,7 @@ fun unwinding_finalizes_once_to_settled() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidLifecycleTransition, location = blast_boosts_core::lifecycle)]
 fun uninitialized_cannot_finalize_shutdown() {
-    let mut lifecycle = lifecycle::new();
+    let mut lifecycle = lifecycle::uninitialized();
     lifecycle.finalize_shutdown();
 }
 
@@ -34,7 +34,7 @@ fun settled_cannot_finalize_twice() {
 
 #[test]
 fun a_new_lifecycle_is_uninitialized() {
-    let lifecycle = lifecycle::new();
+    let lifecycle = lifecycle::uninitialized();
 
     assert!(lifecycle.is_uninitialized());
 }
@@ -43,7 +43,7 @@ fun a_new_lifecycle_is_uninitialized() {
 
 #[test]
 fun uninitialized_can_activate() {
-    let mut lifecycle = lifecycle::new();
+    let mut lifecycle = lifecycle::uninitialized();
 
     lifecycle.activate();
 
@@ -94,7 +94,7 @@ fun active_can_begin_shutdown() {
     abort_code = errors::EInvalidLifecycleTransition, location = blast_boosts_core::lifecycle,
 )]
 fun uninitialized_cannot_begin_shutdown() {
-    let mut lifecycle = lifecycle::new();
+    let mut lifecycle = lifecycle::uninitialized();
 
     lifecycle.begin_shutdown();
 }
@@ -129,7 +129,7 @@ fun active_permits_active_operations() {
     abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle,
 )]
 fun uninitialized_rejects_active_operations() {
-    lifecycle::new().assert_active();
+    lifecycle::uninitialized().assert_active();
 }
 
 #[test]
@@ -158,7 +158,7 @@ fun unwinding_permits_shutdown_close() {
     abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle,
 )]
 fun uninitialized_rejects_shutdown_close() {
-    lifecycle::new().assert_shutdown_close_allowed();
+    lifecycle::uninitialized().assert_shutdown_close_allowed();
 }
 
 #[test]
@@ -188,7 +188,7 @@ fun settled_permits_shutdown_redemption() {
     abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle,
 )]
 fun uninitialized_rejects_shutdown_redemption() {
-    lifecycle::new().assert_shutdown_redemption_allowed();
+    lifecycle::uninitialized().assert_shutdown_redemption_allowed();
 }
 
 #[test]

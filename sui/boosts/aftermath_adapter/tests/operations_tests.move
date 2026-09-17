@@ -2157,7 +2157,7 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
         replay.risk_module_witness,
         vault.risk_module_witness_for_testing(),
     );
-    let (_, actual_order_notional, _) = vault.max_order_notional_for_testing();
+    let actual_order_notional = vault.max_order_notional_for_testing();
     assert_eq!(replay.max_order_notional, actual_order_notional);
     assert_eq!(*replay.checkpoint.borrow(), *vault.venue_checkpoint());
     assert_eq!(*vault.venue_checkpoint(), funded_checkpoint);
@@ -2286,9 +2286,7 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         test_risk_module::new(),
         registry,
         vault_policy,
-        100,
         250,
-        1_000,
         NAV_CAP,
         b"SYNC".to_string(),
         b"Sync Vault".to_string(),
@@ -2839,9 +2837,7 @@ fun replay_issued<Tag>(event: events::VaultIssued<Tag>): ReplayState {
         _,
         risk_module_witness,
         vault_policy,
-        _,
         max_order_notional,
-        _,
         _,
         maintenance_reserve,
     ) = event.vault_issued_fields();

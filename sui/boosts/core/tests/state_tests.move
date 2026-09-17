@@ -6,9 +6,7 @@ module blast_boosts_core::state_tests;
 
 const ROOT: address = @0xA11CE;
 const ISSUER: address = @0x1;
-const MAX_ORDER_NOTIONAL_MINIMUM: u64 = 100;
-const MAX_ORDER_NOTIONAL_CURRENT: u64 = 250;
-const MAX_ORDER_NOTIONAL_MAXIMUM: u64 = 1_000;
+const MAX_ORDER_NOTIONAL: u64 = 250;
 const REFERENCE_TIME_MS: u64 = 100_000;
 const SEED_RESERVE: u64 = 100_000;
 const SEED_VENUE_EQUITY: u64 = 1_100_000;
@@ -256,7 +254,7 @@ fun redemption_shares_supply_swap_is_rejected() {
 fun issuance_rejects_a_zero_nav_cap() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let state = state::new<Product>(&witness, vault_policy(policy::long()), 1, 2_000_000, 5_000_000, 0);
+    let state = state::new<Product>(&witness, vault_policy(policy::long()), 2_000_000, 0);
     state.destroy_for_testing();
     abort
 }
@@ -267,7 +265,7 @@ fun issuance_rejects_a_nav_cap_whose_max_leverage_notional_overflows() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let state = state::new<Product>(
-        &witness, vault_policy(policy::long()), 1, 2_000_000, 5_000_000, std::u64::max_value!(),
+        &witness, vault_policy(policy::long()), 2_000_000, std::u64::max_value!(),
     );
     state.destroy_for_testing();
     abort
@@ -320,7 +318,7 @@ fun nav_cap_setter_rejects_a_cap_whose_max_leverage_notional_overflows() {
 fun live_fee_setter_accepts_each_exact_immutable_cap() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let mut state = state::new<Product>(&witness, vault_policy(policy::long()).with_fee_limits(100, 200, 3_000), 100, 250, 1_000, NAV_CAP);
+    let mut state = state::new<Product>(&witness, vault_policy(policy::long()).with_fee_limits(100, 200, 3_000), MAX_ORDER_NOTIONAL, NAV_CAP);
     state.set_fees(100, 200, 3_000);
     let (mint, redeem, admin) = state.fee_settings();
     assert_eq!(vector[mint, redeem, admin], vector[100, 200, 3_000]);
@@ -338,7 +336,7 @@ fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
                 side, policy::new_rebalance_policy(target - 2_000, target, target + 2_000, target + 10_000, 100, 500, 10),
                 policy::new_price_policy(30_000, 2_000, 100, 500), 0, 0, 100,
             );
-            let mut state = state::new<Product>(&witness, vault_policy, 1, 2_000_000, 5_000_000, NAV_CAP);
+            let mut state = state::new<Product>(&witness, vault_policy, 2_000_000, NAV_CAP);
             let notional = target * 100;
             state.initialize(rebalance_observation(1_100_000, notional, side), 100_000, 9, 6, REFERENCE_TIME_MS);
             let plan = state.prepare_mint(rebalance_observation(1_100_000, notional, side), 1_000_000, 1_000_000, 1_000_000, 0, REFERENCE_TIME_MS);
@@ -682,9 +680,7 @@ fun fee_updates_change_future_allocations_without_relabeling_the_buffer() {
     let mut state = state::new<Product>(
         &witness,
         vault_policy(policy::long()).with_fee_limits(100, 100, 3_000),
-        100,
-        250,
-        1_000,
+        MAX_ORDER_NOTIONAL,
         NAV_CAP,
     );
     let (fee, admin, buffer) = state.fee_allocation(1_000_000, true);
@@ -708,7 +704,7 @@ fun initialization_constraints_return_the_frozen_side_and_live_order_cap() {
     let (side, max_order_notional) = state.initialization_constraints();
 
     assert_eq!(side, policy::short());
-    assert_eq!(max_order_notional, MAX_ORDER_NOTIONAL_CURRENT);
+    assert_eq!(max_order_notional, MAX_ORDER_NOTIONAL);
     state.destroy_for_testing();
     destroy(fixture);
 }
@@ -793,19 +789,14 @@ fun authorized_constructor_returns_valid_uninitialized_state() {
     let state = state::new<Product>(
         &witness,
         expected_policy,
-        MAX_ORDER_NOTIONAL_MINIMUM,
-        MAX_ORDER_NOTIONAL_CURRENT,
-        MAX_ORDER_NOTIONAL_MAXIMUM,
+        MAX_ORDER_NOTIONAL,
         NAV_CAP,
     );
 
     assert!(state.is_uninitialized_for_testing());
     assert_eq!(state.maintenance_reserve_for_testing(), 0);
     assert_eq!(state.vault_policy_for_testing(), expected_policy);
-    let (minimum, current, maximum) = state.max_order_notional_for_testing();
-    assert_eq!(minimum, MAX_ORDER_NOTIONAL_MINIMUM);
-    assert_eq!(current, MAX_ORDER_NOTIONAL_CURRENT);
-    assert_eq!(maximum, MAX_ORDER_NOTIONAL_MAXIMUM);
+    assert_eq!(state.max_order_notional_for_testing(), MAX_ORDER_NOTIONAL);
 
     state.destroy_for_testing();
     destroy(fixture);
@@ -822,9 +813,7 @@ fun constructor_requires_the_vault_issuer_role() {
     let state = state::new<Product>(
         &witness,
         standard_vault_policy(),
-        MAX_ORDER_NOTIONAL_MINIMUM,
-        MAX_ORDER_NOTIONAL_CURRENT,
-        MAX_ORDER_NOTIONAL_MAXIMUM,
+        MAX_ORDER_NOTIONAL,
         NAV_CAP,
     );
 
@@ -836,67 +825,29 @@ fun constructor_requires_the_vault_issuer_role() {
 #[expected_failure(
     abort_code = errors::EInvalidMaxOrderNotional, location = blast_boosts_core::state,
 )]
-fun max_order_notional_minimum_must_be_positive() {
+fun max_order_notional_must_be_positive() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let state = state::new<Product>(
-        &witness,
-        standard_vault_policy(),
-        0,
-        0,
-        MAX_ORDER_NOTIONAL_MAXIMUM,
-        NAV_CAP,
-    );
+    let state = state::new<Product>(&witness, standard_vault_policy(), 0, NAV_CAP);
 
     state.destroy_for_testing();
     destroy(fixture);
 }
 
 #[test]
-#[expected_failure(
-    abort_code = errors::EInvalidMaxOrderNotional, location = blast_boosts_core::state,
-)]
-fun max_order_notional_values_must_be_ordered() {
-    let fixture = start(domain::vault_issuer_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let state = state::new<Product>(
-        &witness,
-        standard_vault_policy(),
-        2,
-        1,
-        3,
-        NAV_CAP,
-    );
-
-    state.destroy_for_testing();
-    destroy(fixture);
-}
-
-#[test]
-fun max_order_notional_moves_both_directions_inside_frozen_bounds() {
+fun max_order_notional_moves_both_directions_and_returns_the_previous_value() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let mut state = state::new<Product>(
         &witness,
         standard_vault_policy(),
-        MAX_ORDER_NOTIONAL_MINIMUM,
-        MAX_ORDER_NOTIONAL_CURRENT,
-        MAX_ORDER_NOTIONAL_MAXIMUM,
+        MAX_ORDER_NOTIONAL,
         NAV_CAP,
     );
 
-    assert_eq!(
-        state.set_max_order_notional(MAX_ORDER_NOTIONAL_MINIMUM),
-        MAX_ORDER_NOTIONAL_CURRENT,
-    );
-    assert_eq!(
-        state.set_max_order_notional(MAX_ORDER_NOTIONAL_MAXIMUM),
-        MAX_ORDER_NOTIONAL_MINIMUM,
-    );
-    let (minimum, current, maximum) = state.max_order_notional_for_testing();
-    assert_eq!(minimum, MAX_ORDER_NOTIONAL_MINIMUM);
-    assert_eq!(current, MAX_ORDER_NOTIONAL_MAXIMUM);
-    assert_eq!(maximum, MAX_ORDER_NOTIONAL_MAXIMUM);
+    assert_eq!(state.set_max_order_notional(1), MAX_ORDER_NOTIONAL);
+    assert_eq!(state.set_max_order_notional(std::u64::max_value!()), 1);
+    assert_eq!(state.max_order_notional_for_testing(), std::u64::max_value!());
 
     state.destroy_for_testing();
     destroy(fixture);
@@ -913,13 +864,11 @@ fun max_order_notional_rejects_the_current_value() {
     let mut state = state::new<Product>(
         &witness,
         standard_vault_policy(),
-        MAX_ORDER_NOTIONAL_MINIMUM,
-        MAX_ORDER_NOTIONAL_CURRENT,
-        MAX_ORDER_NOTIONAL_MAXIMUM,
+        MAX_ORDER_NOTIONAL,
         NAV_CAP,
     );
 
-    state.set_max_order_notional(MAX_ORDER_NOTIONAL_CURRENT);
+    state.set_max_order_notional(MAX_ORDER_NOTIONAL);
 
     state.destroy_for_testing();
     destroy(fixture);
@@ -929,41 +878,17 @@ fun max_order_notional_rejects_the_current_value() {
 #[expected_failure(
     abort_code = errors::EInvalidMaxOrderNotional, location = blast_boosts_core::state,
 )]
-fun max_order_notional_rejects_one_below_the_frozen_minimum() {
+fun max_order_notional_rejects_zero() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let mut state = state::new<Product>(
         &witness,
         standard_vault_policy(),
-        MAX_ORDER_NOTIONAL_MINIMUM,
-        MAX_ORDER_NOTIONAL_CURRENT,
-        MAX_ORDER_NOTIONAL_MAXIMUM,
+        MAX_ORDER_NOTIONAL,
         NAV_CAP,
     );
 
-    state.set_max_order_notional(MAX_ORDER_NOTIONAL_MINIMUM - 1);
-
-    state.destroy_for_testing();
-    destroy(fixture);
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EInvalidMaxOrderNotional, location = blast_boosts_core::state,
-)]
-fun max_order_notional_rejects_one_above_the_frozen_maximum() {
-    let fixture = start(domain::vault_issuer_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let mut state = state::new<Product>(
-        &witness,
-        standard_vault_policy(),
-        MAX_ORDER_NOTIONAL_MINIMUM,
-        MAX_ORDER_NOTIONAL_CURRENT,
-        MAX_ORDER_NOTIONAL_MAXIMUM,
-        NAV_CAP,
-    );
-
-    state.set_max_order_notional(MAX_ORDER_NOTIONAL_MAXIMUM + 1);
+    state.set_max_order_notional(0);
 
     state.destroy_for_testing();
     destroy(fixture);
@@ -976,9 +901,7 @@ fun active_state_begins_shutdown() {
     let mut state = state::new<Product>(
         &witness,
         standard_vault_policy(),
-        MAX_ORDER_NOTIONAL_MINIMUM,
-        MAX_ORDER_NOTIONAL_CURRENT,
-        MAX_ORDER_NOTIONAL_MAXIMUM,
+        MAX_ORDER_NOTIONAL,
         NAV_CAP,
     );
     state.set_active_for_testing();
@@ -1001,9 +924,7 @@ fun uninitialized_state_cannot_begin_shutdown() {
     let mut state = state::new<Product>(
         &witness,
         standard_vault_policy(),
-        MAX_ORDER_NOTIONAL_MINIMUM,
-        MAX_ORDER_NOTIONAL_CURRENT,
-        MAX_ORDER_NOTIONAL_MAXIMUM,
+        MAX_ORDER_NOTIONAL,
         NAV_CAP,
     );
 
@@ -1539,7 +1460,7 @@ fun an_order_at_the_live_maximum_is_allowed() {
     let fixture = start(domain::vault_issuer_role());
     let state = new_state(&fixture, policy::long());
 
-    state.assert_order_notional_allowed(MAX_ORDER_NOTIONAL_CURRENT);
+    state.assert_order_notional_allowed(MAX_ORDER_NOTIONAL);
 
     state.destroy_for_testing();
     destroy(fixture);
@@ -1553,7 +1474,7 @@ fun an_order_one_unit_above_the_live_maximum_is_rejected() {
     let fixture = start(domain::vault_issuer_role());
     let state = new_state(&fixture, policy::long());
 
-    state.assert_order_notional_allowed(MAX_ORDER_NOTIONAL_CURRENT + 1);
+    state.assert_order_notional_allowed(MAX_ORDER_NOTIONAL + 1);
 
     state.destroy_for_testing();
     destroy(fixture);
@@ -1662,7 +1583,7 @@ fun deficits_accumulate_and_an_over_repaying_credit_splits() {
 
 fun rebalance_state(fixture: &Fixture, side: PositionSide): State<Product> {
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let mut state = state::new<Product>(&witness, vault_policy(side), 1, 2_000_000, 5_000_000, NAV_CAP);
+    let mut state = state::new<Product>(&witness, vault_policy(side), 2_000_000, NAV_CAP);
     state.initialize(rebalance_observation(SEED_VENUE_EQUITY, SEED_NOTIONAL, side), SEED_RESERVE, 9, 6, REFERENCE_TIME_MS);
     state
 }
@@ -1730,9 +1651,7 @@ fun new_state(fixture: &Fixture, side: PositionSide): State<Product> {
     state::new<Product>(
         &witness,
         vault_policy(side),
-        MAX_ORDER_NOTIONAL_MINIMUM,
-        MAX_ORDER_NOTIONAL_CURRENT,
-        MAX_ORDER_NOTIONAL_MAXIMUM,
+        MAX_ORDER_NOTIONAL,
         NAV_CAP,
     )
 }

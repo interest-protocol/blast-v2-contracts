@@ -6,9 +6,7 @@ module blast_boosts_aftermath::vault_tests;
 
 const SYSTEM: address = @0x0;
 const ISSUER: address = @0xA11CE;
-const MAX_ORDER_NOTIONAL_MINIMUM: u64 = 100;
-const MAX_ORDER_NOTIONAL_CURRENT: u64 = 250;
-const MAX_ORDER_NOTIONAL_MAXIMUM: u64 = 1_000;
+const MAX_ORDER_NOTIONAL: u64 = 250;
 const NAV_CAP: u64 = 1_000_000_000;
 
 // === Product Witnesses ===
@@ -180,9 +178,7 @@ fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
         metadata_2x_id,
         risk_2x,
         policy_2x,
-        minimum_2x,
-        current_2x,
-        maximum_2x,
+        order_notional_2x,
         _,
         reserve_2x,
     ) = issued_2x.vault_issued_fields();
@@ -192,9 +188,7 @@ fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
         metadata_5x_id,
         risk_5x,
         policy_5x,
-        minimum_5x,
-        current_5x,
-        maximum_5x,
+        order_notional_5x,
         _,
         reserve_5x,
     ) = issued_5x.vault_issued_fields();
@@ -206,12 +200,8 @@ fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
     assert_eq!(risk_5x, type_name::with_original_ids<RiskModule>());
     assert_eq!(policy_2x, expected_policy);
     assert_eq!(policy_5x, expected_policy);
-    assert_eq!(minimum_2x, MAX_ORDER_NOTIONAL_MINIMUM);
-    assert_eq!(minimum_5x, MAX_ORDER_NOTIONAL_MINIMUM);
-    assert_eq!(current_2x, MAX_ORDER_NOTIONAL_CURRENT);
-    assert_eq!(current_5x, MAX_ORDER_NOTIONAL_CURRENT);
-    assert_eq!(maximum_2x, MAX_ORDER_NOTIONAL_MAXIMUM);
-    assert_eq!(maximum_5x, MAX_ORDER_NOTIONAL_MAXIMUM);
+    assert_eq!(order_notional_2x, MAX_ORDER_NOTIONAL);
+    assert_eq!(order_notional_5x, MAX_ORDER_NOTIONAL);
     assert_eq!(reserve_2x, 0);
     assert_eq!(reserve_5x, 0);
 
@@ -281,7 +271,7 @@ fun a_global_series_admin_rotates_risk_after_shutdown_starts() {
     vault.set_max_order_notional(
         &fixture.protocol,
         test_risk_module::new_v2(),
-        MAX_ORDER_NOTIONAL_MINIMUM,
+        MAX_ORDER_NOTIONAL / 2,
     );
 
     assert!(vault.is_unwinding_for_testing());
@@ -289,10 +279,7 @@ fun a_global_series_admin_rotates_risk_after_shutdown_starts() {
         vault.risk_module_witness_for_testing(),
         type_name::with_original_ids<RiskModuleV2>(),
     );
-    let (minimum, current, maximum) = vault.max_order_notional_for_testing();
-    assert_eq!(minimum, MAX_ORDER_NOTIONAL_MINIMUM);
-    assert_eq!(current, MAX_ORDER_NOTIONAL_MINIMUM);
-    assert_eq!(maximum, MAX_ORDER_NOTIONAL_MAXIMUM);
+    assert_eq!(vault.max_order_notional_for_testing(), MAX_ORDER_NOTIONAL / 2);
 
     test_scenario::return_shared(vault);
     destroy(fixture);
@@ -309,18 +296,15 @@ fun selected_risk_module_updates_max_order_notional_and_emits_the_change() {
     vault.set_max_order_notional(
         &fixture.protocol,
         test_risk_module::new(),
-        MAX_ORDER_NOTIONAL_MAXIMUM,
+        MAX_ORDER_NOTIONAL * 4,
     );
 
-    let (minimum, current, maximum) = vault.max_order_notional_for_testing();
-    assert_eq!(minimum, MAX_ORDER_NOTIONAL_MINIMUM);
-    assert_eq!(current, MAX_ORDER_NOTIONAL_MAXIMUM);
-    assert_eq!(maximum, MAX_ORDER_NOTIONAL_MAXIMUM);
+    assert_eq!(vault.max_order_notional_for_testing(), MAX_ORDER_NOTIONAL * 4);
     let updated = events::collect_one<events::MaxOrderNotionalUpdated<Sui2x>>(0);
     let (event_vault_id, previous, current) = updated.max_order_notional_updated_fields();
     assert_eq!(event_vault_id, vault_id);
-    assert_eq!(previous, MAX_ORDER_NOTIONAL_CURRENT);
-    assert_eq!(current, MAX_ORDER_NOTIONAL_MAXIMUM);
+    assert_eq!(previous, MAX_ORDER_NOTIONAL);
+    assert_eq!(current, MAX_ORDER_NOTIONAL * 4);
 
     test_scenario::return_shared(vault);
     destroy(fixture);
@@ -337,7 +321,7 @@ fun selected_risk_module_reads_uninitialized_seed_constraints() {
         .initialization_constraints_for_testing(&test_risk_module::new());
 
     assert_eq!(side, policy::long());
-    assert_eq!(max_order_notional, MAX_ORDER_NOTIONAL_CURRENT);
+    assert_eq!(max_order_notional, MAX_ORDER_NOTIONAL);
     test_scenario::return_shared(vault);
     destroy(fixture);
 }
@@ -403,7 +387,7 @@ fun unselected_risk_module_cannot_update_max_order_notional() {
     vault.set_max_order_notional(
         &fixture.protocol,
         test_risk_module::new_v2(),
-        MAX_ORDER_NOTIONAL_MAXIMUM,
+        MAX_ORDER_NOTIONAL * 4,
     );
 
     test_scenario::return_shared(vault);
@@ -424,7 +408,7 @@ fun primitive_risk_module_cannot_update_max_order_notional() {
     vault.set_max_order_notional(
         &fixture.protocol,
         0u64,
-        MAX_ORDER_NOTIONAL_MAXIMUM,
+        MAX_ORDER_NOTIONAL * 4,
     );
 
     test_scenario::return_shared(vault);
@@ -445,7 +429,7 @@ fun risk_module_cannot_repeat_the_current_max_order_notional() {
     vault.set_max_order_notional(
         &fixture.protocol,
         test_risk_module::new(),
-        MAX_ORDER_NOTIONAL_CURRENT,
+        MAX_ORDER_NOTIONAL,
     );
 
     test_scenario::return_shared(vault);
@@ -457,7 +441,7 @@ fun risk_module_cannot_repeat_the_current_max_order_notional() {
     abort_code = blast_boosts_core::errors::EInvalidMaxOrderNotional,
     location = blast_boosts_core::state,
 )]
-fun risk_module_cannot_exceed_the_frozen_max_order_notional_bounds() {
+fun risk_module_cannot_zero_the_max_order_notional() {
     let mut fixture = start(domain::vault_issuer_role());
     fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
@@ -466,7 +450,7 @@ fun risk_module_cannot_exceed_the_frozen_max_order_notional_bounds() {
     vault.set_max_order_notional(
         &fixture.protocol,
         test_risk_module::new(),
-        MAX_ORDER_NOTIONAL_MAXIMUM + 1,
+        0,
     );
 
     test_scenario::return_shared(vault);
@@ -488,7 +472,7 @@ fun stale_adapter_version_precedes_risk_witness_and_max_order_notional_validatio
     vault.set_max_order_notional(
         &fixture.protocol,
         0u64,
-        MAX_ORDER_NOTIONAL_MAXIMUM + 1,
+        0,
     );
 
     test_scenario::return_shared(vault);
@@ -517,7 +501,7 @@ fun rotated_out_risk_module_cannot_update_max_order_notional() {
     vault.set_max_order_notional(
         &fixture.protocol,
         test_risk_module::new(),
-        MAX_ORDER_NOTIONAL_MAXIMUM,
+        MAX_ORDER_NOTIONAL * 4,
     );
 
     test_scenario::return_shared(vault);
@@ -647,9 +631,7 @@ fun adapter_package_type_cannot_be_selected_as_a_risk_module() {
         TaggedSui5x(),
         &mut fixture.registry,
         standard_vault_policy(),
-        MAX_ORDER_NOTIONAL_MINIMUM,
-        MAX_ORDER_NOTIONAL_CURRENT,
-        MAX_ORDER_NOTIONAL_MAXIMUM,
+        MAX_ORDER_NOTIONAL,
         NAV_CAP,
         b"BADRISK".to_string(),
         b"Bad Risk Vault".to_string(),
@@ -752,9 +734,7 @@ fun issue_and_share_with_policy<Product: drop>(
         test_risk_module::new(),
         registry,
         vault_policy,
-        MAX_ORDER_NOTIONAL_MINIMUM,
-        MAX_ORDER_NOTIONAL_CURRENT,
-        MAX_ORDER_NOTIONAL_MAXIMUM,
+        MAX_ORDER_NOTIONAL,
         NAV_CAP,
         symbol,
         b"Test Vault".to_string(),

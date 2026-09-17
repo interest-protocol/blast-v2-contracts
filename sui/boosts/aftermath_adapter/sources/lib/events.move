@@ -102,9 +102,7 @@ public struct VaultIssued<phantom Product> has copy, drop {
     metadata_cap_id: ID,
     risk_module_witness: TypeName,
     vault_policy: VaultPolicy,
-    max_order_notional_minimum: u64,
-    max_order_notional_current: u64,
-    max_order_notional_maximum: u64,
+    max_order_notional: u64,
     nav_cap: u64,
     maintenance_reserve: u64,
 }
@@ -294,9 +292,7 @@ public(package) fun vault_issued<Product>(
     metadata_cap_id: ID,
     risk_module_witness: TypeName,
     vault_policy: VaultPolicy,
-    max_order_notional_minimum: u64,
-    max_order_notional_current: u64,
-    max_order_notional_maximum: u64,
+    max_order_notional: u64,
     nav_cap: u64,
     maintenance_reserve: u64,
 ) {
@@ -306,9 +302,7 @@ public(package) fun vault_issued<Product>(
         metadata_cap_id,
         risk_module_witness,
         vault_policy,
-        max_order_notional_minimum,
-        max_order_notional_current,
-        max_order_notional_maximum,
+        max_order_notional,
         nav_cap,
         maintenance_reserve,
     });
@@ -550,16 +544,14 @@ public fun collect_one<T: copy + drop>(abort_code: u64): T {
 #[test_only]
 public fun vault_issued_fields<Product>(
     self: &VaultIssued<Product>,
-): (ID, ID, ID, TypeName, VaultPolicy, u64, u64, u64, u64, u64) {
+): (ID, ID, ID, TypeName, VaultPolicy, u64, u64, u64) {
     (
         self.vault_id,
         self.treasury_cap_id,
         self.metadata_cap_id,
         self.risk_module_witness,
         self.vault_policy,
-        self.max_order_notional_minimum,
-        self.max_order_notional_current,
-        self.max_order_notional_maximum,
+        self.max_order_notional,
         self.nav_cap,
         self.maintenance_reserve,
     )

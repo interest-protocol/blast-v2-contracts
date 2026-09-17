@@ -50,8 +50,8 @@ fun a_complete_long_policy_is_composed_and_preserved() {
     assert_eq!(vault_policy.side(), policy::long());
     assert_eq!(rebalance.target_bps(), 3);
     assert_eq!(price_policy.max_price_age_ms(), 1);
-    assert_eq!(vault_policy.mint_fee_bps(), 0);
-    assert_eq!(vault_policy.redeem_fee_bps(), 0);
+    assert_eq!(vault_policy.initial_mint_fee_bps(), 0);
+    assert_eq!(vault_policy.initial_redeem_fee_bps(), 0);
     assert_eq!(vault_policy.min_order_lots(), 1);
 }
 
@@ -78,8 +78,8 @@ fun the_largest_locally_valid_short_policy_is_preserved() {
     assert_eq!(vault_policy.side(), policy::short());
     assert_eq!(vault_policy.rebalance_policy().max_leverage_bps(), 1_000_000);
     assert_eq!(vault_policy.price_policy().max_price_age_ms(), max);
-    assert_eq!(vault_policy.mint_fee_bps(), 9_999);
-    assert_eq!(vault_policy.redeem_fee_bps(), 9_999);
+    assert_eq!(vault_policy.initial_mint_fee_bps(), 9_999);
+    assert_eq!(vault_policy.initial_redeem_fee_bps(), 9_999);
     assert_eq!(vault_policy.min_order_lots(), 1_000_000);
 }
 
@@ -91,8 +91,8 @@ fun copied_policy_preserves_every_composed_field() {
     assert_eq!(copied.side(), vault_policy.side());
     assert_eq!(copied.rebalance_policy(), vault_policy.rebalance_policy());
     assert_eq!(copied.price_policy(), vault_policy.price_policy());
-    assert_eq!(copied.mint_fee_bps(), vault_policy.mint_fee_bps());
-    assert_eq!(copied.redeem_fee_bps(), vault_policy.redeem_fee_bps());
+    assert_eq!(copied.initial_mint_fee_bps(), vault_policy.initial_mint_fee_bps());
+    assert_eq!(copied.initial_redeem_fee_bps(), vault_policy.initial_redeem_fee_bps());
     assert_eq!(copied.min_order_lots(), vault_policy.min_order_lots());
 }
 
@@ -104,8 +104,8 @@ fun every_small_valid_domain_tuple_is_accepted_and_preserved() {
                 1u64.range_do!(3, |min_order_lots| {
                     let vault_policy = new_policy(is_long, mint_fee_bps, redeem_fee_bps, min_order_lots);
 
-                    assert_eq!(vault_policy.mint_fee_bps(), mint_fee_bps);
-                    assert_eq!(vault_policy.redeem_fee_bps(), redeem_fee_bps);
+                    assert_eq!(vault_policy.initial_mint_fee_bps(), mint_fee_bps);
+                    assert_eq!(vault_policy.initial_redeem_fee_bps(), redeem_fee_bps);
                     assert_eq!(vault_policy.min_order_lots(), min_order_lots);
                 });
             });

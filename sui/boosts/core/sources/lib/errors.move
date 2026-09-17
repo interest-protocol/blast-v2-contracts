@@ -164,7 +164,7 @@ const EExecutionOutsideMaxSlippage: u64 = 60;
 const EInvalidFreshnessWindow: u64 = 61;
 
 #[test_only]
-/// The maximum-order-notional minimum must be positive.
+/// The maximum order notional must be positive.
 const EInvalidMaxOrderNotional: u64 = 64;
 
 #[test_only]

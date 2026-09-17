@@ -30,7 +30,7 @@ public fun observed_venue_change_reason(): ShutdownReason { ShutdownReason::Obse
 
 // === Package Functions ===
 
-public(package) fun new(): Lifecycle { Lifecycle::Uninitialized }
+public(package) fun uninitialized(): Lifecycle { Lifecycle::Uninitialized }
 
 public(package) fun is_uninitialized(self: &Lifecycle): bool {
     match (self) { Lifecycle::Uninitialized => true, _ => false }
@@ -42,6 +42,7 @@ public(package) fun assert_can_activate(self: &Lifecycle) {
 
 public(package) fun activate(self: &mut Lifecycle) {
     self.assert_can_activate();
+
     *self = Lifecycle::Active;
 }
 
@@ -55,13 +56,16 @@ public(package) fun assert_active(self: &Lifecycle) {
 
 /// Settled cash has no remaining venue funding or health lifecycle.
 public(package) fun assert_can_sync(self: &Lifecycle) {
-    assert!(self.is_active() || self.is_unwinding(),
-        blast_boosts_core::errors::operation_not_permitted_in_lifecycle!());
+    assert!(
+        self.is_active() || self.is_unwinding(),
+        blast_boosts_core::errors::operation_not_permitted_in_lifecycle!(),
+    );
 }
 
 /// Only the owner with authenticated shutdown authority may call this transition.
 public(package) fun begin_shutdown(self: &mut Lifecycle) {
     assert!(self.is_active(), blast_boosts_core::errors::invalid_lifecycle_transition!());
+
     *self = Lifecycle::Unwinding;
 }
 
@@ -76,6 +80,7 @@ public(package) fun assert_shutdown_close_allowed(self: &Lifecycle) {
 /// The owning adapter must first recover all cash and prove venue finality.
 public(package) fun finalize_shutdown(self: &mut Lifecycle) {
     assert!(self.is_unwinding(), blast_boosts_core::errors::invalid_lifecycle_transition!());
+
     *self = Lifecycle::Settled;
 }
 

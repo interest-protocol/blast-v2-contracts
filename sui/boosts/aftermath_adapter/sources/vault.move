@@ -55,9 +55,7 @@ public fun issue<Product: drop, RiskModule: drop>(
     _risk_module: RiskModule,
     registry: &mut CoinRegistry,
     vault_policy: VaultPolicy,
-    max_order_notional_minimum: u64,
-    max_order_notional_current: u64,
-    max_order_notional_maximum: u64,
+    max_order_notional: u64,
     nav_cap: u64,
     symbol: String,
     name: String,
@@ -69,9 +67,7 @@ public fun issue<Product: drop, RiskModule: drop>(
     let series_state = series_state::new<Product>(
         admin_witness,
         vault_policy,
-        max_order_notional_minimum,
-        max_order_notional_current,
-        max_order_notional_maximum,
+        max_order_notional,
         nav_cap,
     );
 
@@ -110,9 +106,7 @@ public fun issue<Product: drop, RiskModule: drop>(
         metadata_cap_id,
         risk_module_witness,
         vault_policy,
-        max_order_notional_minimum,
-        max_order_notional_current,
-        max_order_notional_maximum,
+        max_order_notional,
         nav_cap,
         0,
     );
@@ -219,8 +213,8 @@ public fun rotate_risk_module<Product, RiskModule: drop>(
 /// This value limits the absolute atomic-USDC notional of one Aftermath order.
 /// It does not limit a user's deposit or the Vault's total open position.
 /// The selected risk module may raise or lower the current value without a
-/// cooldown. This transition changes neither the immutable bounds nor live
-/// position exposure and therefore remains available in every lifecycle state.
+/// cooldown. This transition changes no live position exposure and therefore
+/// remains available in every lifecycle state.
 public fun set_max_order_notional<Product, RiskModule: drop>(
     self: &mut Vault<Product>,
     protocol: &Protocol,
@@ -830,9 +824,7 @@ public fun maintenance_reserve_for_testing<Product>(self: &Vault<Product>): u64 
 }
 
 #[test_only]
-public fun max_order_notional_for_testing<Product>(
-    self: &Vault<Product>,
-): (u64, u64, u64) {
+public fun max_order_notional_for_testing<Product>(self: &Vault<Product>): u64 {
     self.series_state.max_order_notional_for_testing()
 }
 
