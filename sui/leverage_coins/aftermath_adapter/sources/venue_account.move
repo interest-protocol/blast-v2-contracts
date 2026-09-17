@@ -424,30 +424,22 @@ public(package) fun binding(self: &VenueAccount): Binding {
     }
 }
 
-/// Unpacks a copied immutable binding for replay-complete adapter events.
-public(package) fun unpack_binding(
-    self: Binding,
-): (ID, u64, ID, ID, ID, ID, TypeName) {
-    let Binding {
-        account_object_id,
-        account_number,
-        registry_id,
-        clearing_house_id,
-        base_oracle_id,
-        collateral_oracle_id,
-        collateral_type,
-    } = self;
+// --- Binding Reads ---
 
-    (
-        account_object_id,
-        account_number,
-        registry_id,
-        clearing_house_id,
-        base_oracle_id,
-        collateral_oracle_id,
-        collateral_type,
-    )
-}
+public(package) fun account_object_id(self: &Binding): ID { self.account_object_id }
+
+public(package) fun account_number(self: &Binding): u64 { self.account_number }
+
+public(package) fun registry_id(self: &Binding): ID { self.registry_id }
+
+public(package) fun clearing_house_id(self: &Binding): ID { self.clearing_house_id }
+
+public(package) fun base_oracle_id(self: &Binding): ID { self.base_oracle_id }
+
+public(package) fun collateral_oracle_id(self: &Binding): ID { self.collateral_oracle_id }
+
+public(package) fun collateral_type(self: &Binding): TypeName { self.collateral_type }
+
 
 /// Borrows the latest authenticated raw checkpoint immutably.
 public(package) fun checkpoint(self: &VenueAccount): &Checkpoint {
@@ -466,67 +458,59 @@ public(package) fun assert_custody_binding(self: &VenueAccount) {
     );
 }
 
-/// Unpacks a copied checkpoint for normalization and change classification.
-public(package) fun unpack(
-    self: Checkpoint,
-): (
-    u64,
-    u256,
-    u256,
-    u256,
-    u256,
-    u256,
-    u256,
-    u256,
-    u64,
-    u256,
-    u256,
-    u64,
-    u8,
-    bool,
-    u256,
-    u256,
-    u256,
-) {
-    let Checkpoint {
-        free_collateral,
-        allocated_collateral,
-        signed_base,
-        signed_quote_notional,
-        funding_snapshot_long,
-        funding_snapshot_short,
-        market_funding_long,
-        market_funding_short,
-        lot_size,
-        pending_ask_base,
-        pending_bid_base,
-        pending_order_count,
-        market_pause_mode,
-        market_frozen,
-        position_initial_margin_ratio,
-        market_initial_margin_ratio,
-        market_maintenance_margin_ratio,
-    } = self;
+// --- Checkpoint Reads ---
 
-    (
-        free_collateral,
-        allocated_collateral,
-        signed_base,
-        signed_quote_notional,
-        funding_snapshot_long,
-        funding_snapshot_short,
-        market_funding_long,
-        market_funding_short,
-        lot_size,
-        pending_ask_base,
-        pending_bid_base,
-        pending_order_count,
-        market_pause_mode,
-        market_frozen,
-        position_initial_margin_ratio,
-        market_initial_margin_ratio,
-        market_maintenance_margin_ratio,
-    )
+public(package) fun free_collateral(self: &Checkpoint): u64 { self.free_collateral }
+
+public(package) fun allocated_collateral(self: &Checkpoint): u256 { self.allocated_collateral }
+
+public(package) fun signed_base(self: &Checkpoint): u256 { self.signed_base }
+
+public(package) fun signed_quote_notional(self: &Checkpoint): u256 { self.signed_quote_notional }
+
+public(package) fun funding_snapshot_long(self: &Checkpoint): u256 { self.funding_snapshot_long }
+
+public(package) fun funding_snapshot_short(self: &Checkpoint): u256 { self.funding_snapshot_short }
+
+public(package) fun market_funding_long(self: &Checkpoint): u256 { self.market_funding_long }
+
+public(package) fun market_funding_short(self: &Checkpoint): u256 { self.market_funding_short }
+
+public(package) fun lot_size(self: &Checkpoint): u64 { self.lot_size }
+
+public(package) fun pending_ask_base(self: &Checkpoint): u256 { self.pending_ask_base }
+
+public(package) fun pending_bid_base(self: &Checkpoint): u256 { self.pending_bid_base }
+
+public(package) fun pending_order_count(self: &Checkpoint): u64 { self.pending_order_count }
+
+public(package) fun market_pause_mode(self: &Checkpoint): u8 { self.market_pause_mode }
+
+public(package) fun market_frozen(self: &Checkpoint): bool { self.market_frozen }
+
+public(package) fun position_initial_margin_ratio(self: &Checkpoint): u256 { self.position_initial_margin_ratio }
+
+public(package) fun market_initial_margin_ratio(self: &Checkpoint): u256 { self.market_initial_margin_ratio }
+
+public(package) fun market_maintenance_margin_ratio(self: &Checkpoint): u256 { self.market_maintenance_margin_ratio }
+
+/// Returns whether every field outside funding accounting is equal.
+///
+/// Funding fields are allocated collateral, both position funding snapshots,
+/// and both market cumulative funding rates; settlement may move only those.
+public(package) fun non_funding_fields_equal(self: &Checkpoint, other: &Checkpoint): bool {
+    self.free_collateral == other.free_collateral
+        && self.signed_base == other.signed_base
+        && self.signed_quote_notional == other.signed_quote_notional
+        && self.lot_size == other.lot_size
+        && self.pending_ask_base == other.pending_ask_base
+        && self.pending_bid_base == other.pending_bid_base
+        && self.pending_order_count == other.pending_order_count
+        && self.market_pause_mode == other.market_pause_mode
+        && self.market_frozen == other.market_frozen
+        && self.position_initial_margin_ratio == other.position_initial_margin_ratio
+        && self.market_initial_margin_ratio == other.market_initial_margin_ratio
+        && self.market_maintenance_margin_ratio == other.market_maintenance_margin_ratio
 }
 
 /// Replaces the raw checkpoint after one fully authenticated observation.
@@ -608,6 +592,27 @@ fun assert_market_account<Collateral>(
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+/// Unpacks every checkpoint field, in declaration order, for test assertions.
+public fun unpack_for_testing(self: Checkpoint): (
+    u64, u256, u256, u256, u256, u256, u256, u256, u64, u256, u256, u64, u8, bool, u256, u256, u256,
+) {
+    let Checkpoint {
+        free_collateral, allocated_collateral, signed_base, signed_quote_notional,
+        funding_snapshot_long, funding_snapshot_short, market_funding_long, market_funding_short,
+        lot_size, pending_ask_base, pending_bid_base, pending_order_count, market_pause_mode,
+        market_frozen, position_initial_margin_ratio, market_initial_margin_ratio,
+        market_maintenance_margin_ratio,
+    } = self;
+    (
+        free_collateral, allocated_collateral, signed_base, signed_quote_notional,
+        funding_snapshot_long, funding_snapshot_short, market_funding_long, market_funding_short,
+        lot_size, pending_ask_base, pending_bid_base, pending_order_count, market_pause_mode,
+        market_frozen, position_initial_margin_ratio, market_initial_margin_ratio,
+        market_maintenance_margin_ratio,
+    )
+}
 
 #[test_only]
 public(package) fun assert_terminal_withdrawal_for_testing(

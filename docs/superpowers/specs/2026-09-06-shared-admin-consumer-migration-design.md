@@ -54,7 +54,7 @@ Domain-owning packages replace their copied `acl.move` lifecycle with a small do
 | `blast_fun::launchpad_domain::LAUNCHPAD_DOMAIN` | Launchpad, Migrators, Distributor | exported package-admin bit |
 | `blast_sui::blast_sui_domain::BLAST_SUI_DOMAIN` | Blast SUI | exported package-admin bit |
 | `blast_fun_dex::dex_domain::DEX_DOMAIN` | DEX | exported package-admin bit |
-| `blast_leverage_series_one::series_one_domain::SERIES_ONE_DOMAIN` | Series One, Aftermath adapter | vault issuer `1`, risk `2`, shutdown `8`, package admin `16`, all widened to `u64` |
+| `blast_leverage_core::blast_leverage_core::BLAST_LEVERAGE_CORE` | Leverage core, Aftermath adapter | vault issuer `1`, risk `2`, shutdown `8`, package admin `16`, all widened to `u64` |
 
 Each domain module owns an OTW, `max_admins = 16`, a seven-day root-transfer delay, and an initializer that calls `blast_admin::acl::new`. Role values are exposed by pure public functions from the domain owner. Cross-package consumers import those functions rather than copying numeric bits.
 

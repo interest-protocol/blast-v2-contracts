@@ -26,9 +26,8 @@ const EInvalidPackagePublisher: u64 = 4;
 /// A product witness is primitive and cannot identify a sealed product module.
 const EInvalidProductWitnessType: u64 = 8;
 
-#[test_only]
-/// A product witness does not originate from this adapter package family.
-const EProductWitnessPackageMismatch: u64 = 9;
+// Code 9 retired: the `Product<Tag>` wrapper and its package-origin check
+// gave way to a plain product witness type owned by its defining module.
 
 #[test_only]
 /// A call did not present the risk-module type selected by this Vault.
@@ -163,10 +162,6 @@ macro public(package) fun invalid_package_publisher(): u64 {
 
 macro public(package) fun invalid_product_witness_type(): u64 {
     8
-}
-
-macro public(package) fun product_witness_package_mismatch(): u64 {
-    9
 }
 
 macro public(package) fun risk_module_witness_mismatch(): u64 {

@@ -2,7 +2,7 @@
 module blast_leverage_aftermath::events;
 
 use blast_leverage_aftermath::venue_account::Checkpoint;
-use blast_leverage_series_one::policy::{PositionSide, TierPolicy};
+use blast_leverage_core::policy::{PositionSide, VaultPolicy};
 use std::type_name::TypeName;
 
 // === Constants ===
@@ -105,7 +105,7 @@ public struct VaultIssued<phantom Product> has copy, drop {
     treasury_cap_id: ID,
     metadata_cap_id: ID,
     risk_module_witness: TypeName,
-    tier_policy: TierPolicy,
+    vault_policy: VaultPolicy,
     max_order_notional_minimum: u64,
     max_order_notional_current: u64,
     max_order_notional_maximum: u64,
@@ -128,8 +128,8 @@ public struct VaultInitialized<phantom Product> has copy, drop {
     seed_shareholder_nav: u64,
     locked_shares: u64,
     seed_funder: address,
-    absolute_base: u64,
-    absolute_notional: u64,
+    position_base: u64,
+    position_collateral: u64,
     lot_size: u64,
     position_side: PositionSide,
     position_imr: u256,
@@ -173,7 +173,7 @@ public struct MaxOrderNotionalUpdated<phantom Product> has copy, drop {
 /// Emitted after shutdown-role authorization permanently stops ordinary operations.
 public struct ShutdownBegun<phantom Product> has copy, drop {
     vault_id: ID,
-    reason: blast_leverage_series_one::lifecycle::ShutdownReason,
+    reason: blast_leverage_core::lifecycle::ShutdownReason,
 }
 
 /// Completed live-setting update; immutable caps and existing balances do not change.
@@ -185,6 +185,13 @@ public struct FeesUpdated<phantom Product> has copy, drop {
     mint_bps: u64,
     redeem_bps: u64,
     admin_bps: u64,
+}
+
+/// Completed NAV cap update; existing NAV and balances do not change.
+public struct NavCapUpdated<phantom Product> has copy, drop {
+    vault_id: ID,
+    previous_nav_cap: u64,
+    nav_cap: u64,
 }
 
 /// Completed withdrawal from native admin cash; no holder or buffer claim is created.
@@ -277,12 +284,18 @@ public(package) fun fees_updated<Product>(
     });
 }
 
+public(package) fun nav_cap_updated<Product>(vault_id: ID, previous_nav_cap: u64, nav_cap: u64) {
+    blast_leverage_aftermath::events_wrapper::emit_event(NavCapUpdated<Product> {
+        vault_id, previous_nav_cap, nav_cap,
+    });
+}
+
 public(package) fun vault_issued<Product>(
     vault_id: ID,
     treasury_cap_id: ID,
     metadata_cap_id: ID,
     risk_module_witness: TypeName,
-    tier_policy: TierPolicy,
+    vault_policy: VaultPolicy,
     max_order_notional_minimum: u64,
     max_order_notional_current: u64,
     max_order_notional_maximum: u64,
@@ -293,7 +306,7 @@ public(package) fun vault_issued<Product>(
         treasury_cap_id,
         metadata_cap_id,
         risk_module_witness,
-        tier_policy,
+        vault_policy,
         max_order_notional_minimum,
         max_order_notional_current,
         max_order_notional_maximum,
@@ -316,8 +329,8 @@ public(package) fun vault_initialized<Product>(
     seed_shareholder_nav: u64,
     locked_shares: u64,
     seed_funder: address,
-    absolute_base: u64,
-    absolute_notional: u64,
+    position_base: u64,
+    position_collateral: u64,
     lot_size: u64,
     position_side: PositionSide,
     position_imr: u256,
@@ -339,8 +352,8 @@ public(package) fun vault_initialized<Product>(
             seed_shareholder_nav,
             locked_shares,
             seed_funder,
-            absolute_base,
-            absolute_notional,
+            position_base,
+            position_collateral,
             lot_size,
             position_side,
             position_imr,
@@ -451,7 +464,7 @@ public(package) fun shutdown_redeemed<Product>(
     });
 }
 
-public(package) fun shutdown_begun<Product>(vault_id: ID, reason: blast_leverage_series_one::lifecycle::ShutdownReason) {
+public(package) fun shutdown_begun<Product>(vault_id: ID, reason: blast_leverage_core::lifecycle::ShutdownReason) {
     blast_leverage_aftermath::events_wrapper::emit_event(
         ShutdownBegun<Product> { vault_id, reason },
     );
@@ -535,13 +548,13 @@ public fun collect_one<T: copy + drop>(abort_code: u64): T {
 #[test_only]
 public fun vault_issued_fields<Product>(
     self: &VaultIssued<Product>,
-): (ID, ID, ID, TypeName, TierPolicy, u64, u64, u64, u64) {
+): (ID, ID, ID, TypeName, VaultPolicy, u64, u64, u64, u64) {
     (
         self.vault_id,
         self.treasury_cap_id,
         self.metadata_cap_id,
         self.risk_module_witness,
-        self.tier_policy,
+        self.vault_policy,
         self.max_order_notional_minimum,
         self.max_order_notional_current,
         self.max_order_notional_maximum,
@@ -587,8 +600,8 @@ public fun vault_initialized_fields<Product>(
         self.seed_reserve,
         self.seed_shareholder_nav,
         self.locked_shares,
-        self.absolute_base,
-        self.absolute_notional,
+        self.position_base,
+        self.position_collateral,
         self.lot_size,
         self.position_side,
         self.position_imr,
@@ -639,7 +652,12 @@ public fun max_order_notional_updated_fields<Product>(
 }
 
 #[test_only]
-public fun shutdown_reason<Product>(self: &ShutdownBegun<Product>): blast_leverage_series_one::lifecycle::ShutdownReason {
+public fun nav_cap_updated_fields<Product>(self: &NavCapUpdated<Product>): (ID, u64, u64) {
+    (self.vault_id, self.previous_nav_cap, self.nav_cap)
+}
+
+#[test_only]
+public fun shutdown_reason<Product>(self: &ShutdownBegun<Product>): blast_leverage_core::lifecycle::ShutdownReason {
     self.reason
 }
 

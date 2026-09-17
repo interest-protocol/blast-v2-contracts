@@ -337,7 +337,7 @@ fun assert_standard_checkpoint(checkpoint: &venue_account::Checkpoint) {
         position_initial_margin_ratio,
         market_initial_margin_ratio,
         market_maintenance_margin_ratio,
-    ) = (*checkpoint).unpack();
+    ) = (*checkpoint).unpack_for_testing();
 
     assert_eq!(free_collateral, 1);
     assert_eq!(allocated_collateral, 2);

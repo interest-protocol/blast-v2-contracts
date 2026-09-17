@@ -14,11 +14,11 @@ operations_file="$package_dir/sources/operations.move"
 package_admin_file="$package_dir/sources/package_admin.move"
 aftermath_file="$package_dir/sources/aftermath.move"
 product_file="$package_dir/sources/product.move"
-series_dir="$(cd "$package_dir/../series_one" && pwd)"
+series_dir="$(cd "$package_dir/../core" && pwd)"
 
 grep -q '^name = "blast_leverage_aftermath"$' "$manifest" \
   || fail "Move.toml must name blast_leverage_aftermath."
-grep -q 'blast_leverage_series_one = { local = "../series_one" }' "$manifest" \
+grep -q 'blast_leverage_core = { local = "../core" }' "$manifest" \
   || fail "The adapter must depend inward on Series1."
 if grep -q 'blast_leverage_aftermath' "$series_dir/Move.toml"; then
   fail "Series1 must never depend back on the Aftermath adapter."

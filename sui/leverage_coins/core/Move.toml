@@ -1,0 +1,11 @@
+[package]
+name = "blast_leverage_core"
+edition = "2024"
+license = "MIT"
+authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
+
+[dependencies]
+blast_admin = { local = "../../admin" }
+
+[addresses]
+blast_leverage_core = "0x0"

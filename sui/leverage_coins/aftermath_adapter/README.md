@@ -12,11 +12,11 @@ are validated once and sealed inside `blast_admin` custody, from which no call
 returns them; a governed upgrade commits its receipt and advances the generation
 in one transaction, so a failure at either step rolls the whole upgrade back.
 
-`product::new<Tag>()` creates a stateless `Product<Tag>` identity. It grants no
-authority: a live Series1 issuer witness is still required to issue the
-corresponding `Vault<Product<Tag>>` currency, and Coin Registry rejects a second
-currency with the same tag. Different tags let this package issue multiple
-independent leverage products.
+A product is any non-primitive `drop` type: `Vault<Product>` names the
+currency, and Coin Registry rejects a second currency for the same type. Issuing
+consumes a `Product` value, so the module that defines the type must
+participate, together with a live Series1 issuer witness. Each product's tag
+type may live in its own small package.
 
 The selected risk-module type is an external authorization boundary. The
 adapter requires a runtime witness and rejects adapter-origin types, but Move

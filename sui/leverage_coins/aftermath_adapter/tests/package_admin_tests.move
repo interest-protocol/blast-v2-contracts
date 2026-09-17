@@ -17,7 +17,7 @@ use blast_leverage_aftermath::{
     package_admin::{Self, PackageAdmin},
     protocol::{Self, Protocol},
 };
-use blast_leverage_series_one::series_one_domain::{Self, SERIES_ONE_DOMAIN};
+use blast_leverage_core::blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE};
 use std::unit_test::{assert_eq, destroy};
 use sui::{package, test_scenario::{Self, Scenario}};
 
@@ -43,9 +43,9 @@ public struct WrapFixture {
 public struct Fixture {
     scenario: Scenario,
     protocol: Protocol,
-    authority: Authority<SERIES_ONE_DOMAIN>,
-    super_admin_cap: SuperAdminCap<SERIES_ONE_DOMAIN>,
-    admin_cap: AdminCap<SERIES_ONE_DOMAIN>,
+    authority: Authority<BLAST_LEVERAGE_CORE>,
+    super_admin_cap: SuperAdminCap<BLAST_LEVERAGE_CORE>,
+    admin_cap: AdminCap<BLAST_LEVERAGE_CORE>,
     package_admin: PackageAdmin,
 }
 
@@ -139,7 +139,7 @@ fun an_upgrade_cap_for_another_package_is_rejected() {
 #[test]
 /// A package administrator irreversibly narrows the policy in two steps.
 fun the_package_admin_role_can_irreversibly_restrict_the_adapter() {
-    let mut fixture = start(series_one_domain::package_admin_role());
+    let mut fixture = start(domain::package_admin_role());
 
     fixture.restrict_to_additive();
     let restricted = blast_admin::events::collect_one<
@@ -169,7 +169,7 @@ fun the_package_admin_role_can_irreversibly_restrict_the_adapter() {
     location = blast_admin::upgrade_custody,
 )]
 fun an_equal_policy_restriction_is_rejected_before_mutation() {
-    let mut fixture = start(series_one_domain::package_admin_role());
+    let mut fixture = start(domain::package_admin_role());
 
     fixture.restrict_to_additive();
     fixture.restrict_to_additive();
@@ -181,7 +181,7 @@ fun an_equal_policy_restriction_is_rejected_before_mutation() {
 /// Immutability destroys native upgrade authority while the final operational
 /// generation survives.
 fun the_package_admin_role_can_permanently_destroy_upgrade_authority() {
-    let mut fixture = start(series_one_domain::package_admin_role());
+    let mut fixture = start(domain::package_admin_role());
     let upgrade_cap_id = fixture.package_admin.upgrade_cap_id_for_testing();
 
     fixture.make_immutable();
@@ -207,7 +207,7 @@ fun the_package_admin_role_can_permanently_destroy_upgrade_authority() {
     location = blast_admin::upgrade_custody,
 )]
 fun policy_restriction_is_rejected_after_immutability() {
-    let mut fixture = start(series_one_domain::package_admin_role());
+    let mut fixture = start(domain::package_admin_role());
 
     fixture.make_immutable();
     fixture.restrict_to_additive();
@@ -236,7 +236,7 @@ fun a_zero_role_admin_cannot_restrict_upgrade_policy() {
 )]
 /// Risk administration is a different Series1 role and does not reach custody.
 fun a_risk_only_admin_cannot_authorize_an_upgrade() {
-    let mut fixture = start(series_one_domain::risk_admin_role());
+    let mut fixture = start(domain::risk_admin_role());
 
     let ticket = fixture.authorize_upgrade(package_digest());
 
@@ -266,7 +266,7 @@ fun a_stale_generation_rejects_old_bytecode_before_the_role_check() {
     location = blast_admin::upgrade_custody,
 )]
 fun upgrade_authorization_rejects_a_non_digest_length() {
-    let mut fixture = start(series_one_domain::package_admin_role());
+    let mut fixture = start(domain::package_admin_role());
 
     let ticket = fixture.authorize_upgrade(vector[]);
 
@@ -281,7 +281,7 @@ fun upgrade_authorization_rejects_a_non_digest_length() {
 )]
 /// An administrator registered in another registry cannot sign in here.
 fun an_admin_from_another_registry_cannot_authorize_an_upgrade() {
-    let mut fixture = start(series_one_domain::package_admin_role());
+    let mut fixture = start(domain::package_admin_role());
 
     let (foreign_super_admin_cap, foreign_authority) =
         domain_fixture::new_authority(fixture.scenario.ctx());
@@ -306,7 +306,7 @@ fun an_admin_from_another_registry_cannot_authorize_an_upgrade() {
 )]
 /// One revocation in the shared Series1 registry blocks the next sign-in.
 fun a_revoked_administrator_can_no_longer_sign_in() {
-    let mut fixture = start(series_one_domain::package_admin_role());
+    let mut fixture = start(domain::package_admin_role());
     let admin_cap_id = fixture.admin_cap.admin_cap_id_for_testing();
     let Fixture { authority, super_admin_cap, .. } = &mut fixture;
     authority.revoke_admin(super_admin_cap, admin_cap_id);
@@ -331,7 +331,7 @@ fun start(roles: u64): Fixture {
     let package_admin = package_admin::new_for_testing(scenario.ctx());
 
     scenario.next_tx(PACKAGE_ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<SERIES_ONE_DOMAIN>>();
+    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_LEVERAGE_CORE>>();
 
     Fixture {
         scenario,

@@ -12,10 +12,10 @@ use blast_leverage_aftermath::{
     protocol::Protocol,
     venue_account::{Self as venue_account, Binding, Checkpoint, TerminalWithdrawal, VenueAccount},
 };
-use blast_leverage_series_one::{
+use blast_leverage_core::{
     observation::{Self as observation, PositionObservation, PriceObservation},
-    policy::{PositionSide, TierPolicy},
-    series_one_domain::{Self, SERIES_ONE_DOMAIN},
+    policy::{PositionSide, VaultPolicy},
+    blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
     state::{Self as series_state, DonationPlan, MintPlan, RebalancePlan, RedemptionPlan, State},
 };
 use perpetuals::{account::Account, clearing_house::{ClearingHouse, SessionSummary}, registry::Registry};
@@ -70,18 +70,19 @@ public struct TerminalCashKey() has copy, drop, store;
 
 /// Issues one owned adapter Vault and its unique leverage currency.
 ///
-/// The adapter generation and Series1 issuer role are checked before Coin
-/// Registry mutation. The returned key-only Vault must pass to `share` in this
+/// `Product` is the currency's identity: `Vault<Product>` names the coin and
+/// Coin Registry admits each type once. Any non-primitive type may serve; the
+/// Series1 issuer role is the only authority. The adapter generation and that
+/// role are checked before Coin Registry mutation. The returned key-only Vault must pass to `share` in this
 /// package. Package custody is not an input: `package_admin` seals a validated
 /// Publisher and UpgradeCap that no other object can hold, so re-reading those
 /// fields here would prove nothing this package does not already own.
 public fun issue<Product: drop, RiskModule: drop>(
     protocol: &Protocol,
-    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
-    _: Product,
+    admin_witness: &AdminWitness<BLAST_LEVERAGE_CORE>,
     _risk_module: RiskModule,
     registry: &mut CoinRegistry,
-    tier_policy: TierPolicy,
+    vault_policy: VaultPolicy,
     max_order_notional_minimum: u64,
     max_order_notional_current: u64,
     max_order_notional_maximum: u64,
@@ -94,21 +95,15 @@ public fun issue<Product: drop, RiskModule: drop>(
     protocol.assert_current();
     let series_state = series_state::new<Product>(
         admin_witness,
-        tier_policy,
+        vault_policy,
         max_order_notional_minimum,
         max_order_notional_current,
         max_order_notional_maximum,
     );
 
-    let product_witness = type_name::with_original_ids<Product>();
     assert!(
-        !product_witness.is_primitive(),
+        !type_name::with_original_ids<Product>().is_primitive(),
         blast_leverage_aftermath::errors::invalid_product_witness_type!(),
-    );
-    assert!(
-        type_name::original_id<Product>()
-            == type_name::original_id<AFTERMATH>(),
-        blast_leverage_aftermath::errors::product_witness_package_mismatch!(),
     );
 
     let risk_module_witness = valid_risk_module_type<RiskModule>();
@@ -141,7 +136,7 @@ public fun issue<Product: drop, RiskModule: drop>(
         treasury_cap_id,
         metadata_cap_id,
         risk_module_witness,
-        tier_policy,
+        vault_policy,
         max_order_notional_minimum,
         max_order_notional_current,
         max_order_notional_maximum,
@@ -156,20 +151,37 @@ public fun share<Product>(self: Vault<Product>) {
     transfer::share_object(self);
 }
 
+/// Replaces the NAV cap that bounds post-mint shareholder NAV.
+/// This local administrative edge requires neither venue objects nor prices.
+public fun set_nav_cap<Product>(
+    self: &mut Vault<Product>,
+    protocol: &Protocol,
+    admin_witness: &AdminWitness<BLAST_LEVERAGE_CORE>,
+    nav_cap: u64,
+) {
+    protocol.assert_current();
+    admin_witness.assert_role(domain::risk_admin_role());
+
+    let previous = self.series_state.set_nav_cap(nav_cap);
+    events::nav_cap_updated<Product>(self.id.to_inner(), previous, nav_cap);
+}
+
 /// Updates only future fee collections under the immutable issuance caps.
 /// This local administrative edge requires neither venue objects nor prices.
 public fun set_fees<Product>(
     self: &mut Vault<Product>,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_LEVERAGE_CORE>,
     mint_bps: u64,
     redeem_bps: u64,
     admin_bps: u64,
 ) {
     protocol.assert_current();
-    admin_witness.assert_role(series_one_domain::risk_admin_role());
+    admin_witness.assert_role(domain::risk_admin_role());
+
     let (previous_mint, previous_redeem, previous_admin) =
         self.series_state.set_fees(mint_bps, redeem_bps, admin_bps);
+
     events::fees_updated<Product>(
         self.id.to_inner(), previous_mint, previous_redeem, previous_admin,
         mint_bps, redeem_bps, admin_bps,
@@ -180,19 +192,23 @@ public fun set_fees<Product>(
 public fun withdraw_admin_fees<Product, Collateral>(
     self: &mut Vault<Product>,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_LEVERAGE_CORE>,
     amount: u64,
     ctx: &mut TxContext,
 ): Coin<Collateral> {
     protocol.assert_current();
-    admin_witness.assert_role(series_one_domain::risk_admin_role());
-    self.assert_collateral_type<Product, Collateral>();
+    admin_witness.assert_role(domain::risk_admin_role());
+    self.assert_collateral_type<_, Collateral>();
     assert!(amount > 0, blast_leverage_aftermath::errors::zero_amount!());
-    let available = self.admin_cash_balance<Product, Collateral>();
+
+    let available = self.admin_cash_balance<_, Collateral>();
     assert!(amount <= available, blast_leverage_aftermath::errors::insufficient_admin_cash!());
-    let cash: &mut Balance<Collateral> = dynamic_field::borrow_mut(&mut self.id, AdminCashKey());
+
+    let cash = dynamic_field::borrow_mut<_, Balance<Collateral>>(&mut self.id, AdminCashKey());
     let output = coin::from_balance(cash.split(amount), ctx);
+
     events::admin_fees_withdrawn<Product>(self.id.to_inner(), amount, available - amount);
+
     output
 }
 
@@ -203,11 +219,11 @@ public fun withdraw_admin_fees<Product, Collateral>(
 public fun rotate_risk_module<Product, RiskModule: drop>(
     self: &mut Vault<Product>,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_LEVERAGE_CORE>,
     _risk_module: RiskModule,
 ) {
     protocol.assert_current();
-    admin_witness.assert_role(series_one_domain::risk_admin_role());
+    admin_witness.assert_role(domain::risk_admin_role());
 
     let new_witness = valid_risk_module_type<RiskModule>();
     assert!(
@@ -260,11 +276,11 @@ public fun set_max_order_notional<Product, RiskModule: drop>(
 public fun begin_shutdown<Product>(
     self: &mut Vault<Product>,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
-    reason: blast_leverage_series_one::lifecycle::ShutdownReason,
+    admin_witness: &AdminWitness<BLAST_LEVERAGE_CORE>,
+    reason: blast_leverage_core::lifecycle::ShutdownReason,
 ) {
     protocol.assert_current();
-    admin_witness.assert_role(series_one_domain::shutdown_admin_role());
+    admin_witness.assert_role(domain::shutdown_admin_role());
 
     self.series_state.begin_shutdown();
     events::shutdown_begun<Product>(self.id.to_inner(), reason);
@@ -278,14 +294,14 @@ public fun redeem_shutdown<Product, Collateral>(
     protocol.assert_current();
     self.series_state.assert_settled();
     assert!(clock.timestamp_ms() <= deadline_ms, blast_leverage_aftermath::errors::deadline_expired!());
-    self.assert_collateral_type<Product, Collateral>();
+    self.assert_collateral_type<_, Collateral>();
 
     let (locked, _) = self.seed_facts();
-    let cash: &Balance<Collateral> = dynamic_field::borrow(&self.id, TerminalCashKey());
+    let cash = dynamic_field::borrow<_, Balance<Collateral>>(&self.id, TerminalCashKey());
     let output = self.series_state.shutdown_claim_quote(cash.value(), self.share_supply(), locked, shares.value(), minimum_collateral);
 
     let burned = self.burn_redeemed_shares(shares);
-    let cash: &mut Balance<Collateral> = dynamic_field::borrow_mut(&mut self.id, TerminalCashKey());
+    let cash = dynamic_field::borrow_mut<_, Balance<Collateral>>(&mut self.id, TerminalCashKey());
     let output_coin = coin::from_balance(cash.split(output), ctx);
     let remaining = cash.value();
 
@@ -300,7 +316,7 @@ public(package) fun complete_shutdown<Product, Collateral>(
     self: &mut Vault<Product>, withdrawal: TerminalWithdrawal<Collateral>,
 ) {
     self.series_state.assert_unwinding();
-    self.assert_collateral_type<Product, Collateral>();
+    self.assert_collateral_type<_, Collateral>();
     let (recovered, checkpoint, unrecoverable_collateral_raw) = withdrawal.into_recovered_cash();
 
     let (locked, funder) = self.seed_facts();
@@ -501,12 +517,12 @@ public(package) fun complete_donation<Product>(
 /// Relabels authenticated buffer after live risk-administrator authorization.
 public(package) fun release_buffer<Product>(
     self: &mut Vault<Product>,
-    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_LEVERAGE_CORE>,
     observation: PositionObservation,
     amount: u64,
     now: u64,
 ) {
-    admin_witness.assert_role(series_one_domain::risk_admin_role());
+    admin_witness.assert_role(domain::risk_admin_role());
     self.series_state.release_buffer(observation, amount, now);
 }
 
@@ -523,7 +539,7 @@ public(package) fun retain_admin_cash<Product, Collateral>(
     self: &mut Vault<Product>,
     cash: Coin<Collateral>,
 ) {
-    self.assert_collateral_type<Product, Collateral>();
+    self.assert_collateral_type<_, Collateral>();
     if (cash.value() == 0) {
         cash.destroy_zero();
         return
@@ -536,17 +552,16 @@ public(package) fun retain_admin_cash<Product, Collateral>(
 
 /// Native cash is authoritative; no mirrored numerical admin ledger is stored.
 public(package) fun admin_cash_balance<Product, Collateral>(self: &Vault<Product>): u64 {
-    self.assert_collateral_type<Product, Collateral>();
+    self.assert_collateral_type<_, Collateral>();
     if (!dynamic_field::exists(&self.id, AdminCashKey())) { return 0 };
-    let cash: &Balance<Collateral> = dynamic_field::borrow(&self.id, AdminCashKey());
+    let cash = dynamic_field::borrow<_, Balance<Collateral>>(&self.id, AdminCashKey());
     cash.value()
 }
 
 /// Checks the immutable activation collateral identity even on local-only paths.
 public(package) fun assert_collateral_type<Product, Collateral>(self: &Vault<Product>) {
-    let (_, _, _, _, _, _, collateral_type) = self.venue_binding().unpack_binding();
     assert!(
-        collateral_type == type_name::with_original_ids<Collateral>(),
+        self.venue_binding().collateral_type() == type_name::with_original_ids<Collateral>(),
         blast_leverage_aftermath::errors::collateral_type_mismatch!(),
     );
 }
@@ -625,11 +640,14 @@ public(package) fun initialize_series<Product>(
     self: &mut Vault<Product>,
     observation: PositionObservation,
     seed_reserve: u64,
+    collateral_decimals: u8,
     reference_time_ms: u64,
 ): u64 {
     self.series_state.initialize(
         observation,
         seed_reserve,
+        constants::base_decimals!(),
+        collateral_decimals,
         reference_time_ms,
     )
 }
@@ -792,7 +810,7 @@ fun treasury_cap<Product>(self: &Vault<Product>): &TreasuryCap<Vault<Product>> {
 
 #[test_only]
 public fun terminal_cash_for_testing<Product, Collateral>(self: &Vault<Product>): u64 {
-    let cash: &Balance<Collateral> = dynamic_field::borrow(&self.id, TerminalCashKey());
+    let cash = dynamic_field::borrow<_, Balance<Collateral>>(&self.id, TerminalCashKey());
     cash.value()
 }
 
@@ -849,8 +867,13 @@ public fun max_order_notional_for_testing<Product>(
 }
 
 #[test_only]
-public fun tier_policy_for_testing<Product>(self: &Vault<Product>): TierPolicy {
-    self.series_state.tier_policy_for_testing()
+public fun vault_policy_for_testing<Product>(self: &Vault<Product>): VaultPolicy {
+    self.series_state.vault_policy_for_testing()
+}
+
+#[test_only]
+public fun nav_cap_for_testing<Product>(self: &Vault<Product>): u64 {
+    self.series_state.nav_cap()
 }
 
 #[test_only]

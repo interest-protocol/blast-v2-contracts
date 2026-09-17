@@ -13,10 +13,10 @@ use blast_leverage_aftermath::{
     vault::{Self as vault, Vault},
     venue_account,
 };
-use blast_leverage_series_one::{
+use blast_leverage_core::{
     observation::PositionObservation,
     policy::{Self, PositionSide},
-    series_one_domain::{Self, SERIES_ONE_DOMAIN},
+    blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
     state::{DonationPlan, MintPlan, RebalancePlan, RedemptionPlan},
 };
 use ifixed::ifixed;
@@ -79,7 +79,7 @@ public fun unwind<Product, Collateral>(
 ) {
     protocol.assert_current();
     vault.assert_unwinding();
-    vault.assert_collateral_type<Product, Collateral>();
+    vault.assert_collateral_type<_, Collateral>();
     if (clearing_house.is_frozen()) {
         unwind_frozen(vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle);
     } else {
@@ -98,7 +98,7 @@ public fun finalize_shutdown<Product, Collateral>(
 ) {
     protocol.assert_current();
     vault.assert_unwinding();
-    vault.assert_collateral_type<Product, Collateral>();
+    vault.assert_collateral_type<_, Collateral>();
     let binding = vault.venue_binding();
     let before = snapshot::capture_checkpoint(&binding, account, registry, clearing_house, base_oracle, collateral_oracle);
     let amount = before.recoverable_terminal_cash();
@@ -121,13 +121,13 @@ public fun rebalance<Product, Collateral>(
 ) {
     protocol.assert_current();
     vault.assert_active();
-    vault.assert_collateral_type<Product, Collateral>();
+    vault.assert_collateral_type<_, Collateral>();
     sync_health(vault, protocol, account, registry, &mut clearing_house, base_oracle,
         collateral_oracle, base_price_info, collateral_price_info, clock);
     let binding = vault.venue_binding();
     let (before, mut checkpoint) = snapshot::capture(&binding, account, registry, &clearing_house,
         base_oracle, collateral_oracle, base_price_info, collateral_price_info, clock);
-    venue_account::assert_accepted_checkpoint(vault.venue_checkpoint(), &checkpoint);
+    vault.venue_checkpoint().assert_accepted_checkpoint(&checkpoint);
     let params = clearing_house.market_params();
     let ordinary = market::taker_fee(params);
     let priority = market::resolve_priority_taker_fee(market::priority_taker_fee(params));
@@ -136,7 +136,9 @@ public fun rebalance<Product, Collateral>(
         if (ifixed::is_neg(priority)) { 0 } else { ifixed::abs(priority) },
     );
     let mut plan = vault.prepare_rebalance(before, fee, clock.timestamp_ms());
-    let (base_price, collateral_price, lot) = plan.rebalance_valuation();
+    let base_price = plan.base_price();
+    let collateral_price = plan.collateral_price();
+    let lot = plan.lot();
     let (side, _) = vault.active_constraints();
     let mut index = 0;
     while (index < MAX_ACTIVE_ORDERS) {
@@ -153,15 +155,16 @@ public fun rebalance<Product, Collateral>(
         let (filled_base, filled_quote) = clearing_house::filled_base_and_quote(&summary, is_ask);
         vault.assert_rebalance_execution(&plan, base_price, execution_price(clearing_house::execution_price(&summary, is_ask), !is_ask));
         vault.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
-        let (_, _, previous_base, previous_quote, _, _, _, _, _, _, _, _, _, _, _, _, _) = checkpoint.unpack();
+        let previous_base = checkpoint.signed_base();
+        let previous_quote = checkpoint.signed_quote_notional();
         let expected_base = if (is_ask) { ifixed::sub(previous_base, filled_base) } else { ifixed::add(previous_base, filled_base) };
         let (after, after_checkpoint) = snapshot::capture(&binding, account, registry, &clearing_house,
             base_oracle, collateral_oracle, base_price_info, collateral_price_info, clock);
         if (increase) {
             let expected_quote = if (is_ask) { ifixed::add(previous_quote, filled_quote) } else { ifixed::sub(previous_quote, filled_quote) };
-            venue_account::assert_trade_checkpoint(&checkpoint, &after_checkpoint, expected_base, expected_quote);
+            checkpoint.assert_trade_checkpoint(&after_checkpoint, expected_base, expected_quote);
         } else {
-            venue_account::assert_reduction_checkpoint(&checkpoint, &after_checkpoint, expected_base);
+            checkpoint.assert_reduction_checkpoint(&after_checkpoint, expected_base);
         };
         vault.accept_rebalance_fill(&mut plan, after, filled, clock.timestamp_ms());
         checkpoint = after_checkpoint;
@@ -192,7 +195,7 @@ public fun redeem<Product, Collateral>(
 ): Coin<Collateral> {
     protocol.assert_current();
     vault.assert_active();
-    vault.assert_collateral_type<Product, Collateral>();
+    vault.assert_collateral_type<_, Collateral>();
     assert!(shares.value() > 0, blast_leverage_aftermath::errors::zero_amount!());
     assert_deadline(clock.timestamp_ms(), deadline_ms);
     vault.assert_user_fee_limit(false, maximum_fee_bps);
@@ -206,9 +209,11 @@ public fun redeem<Product, Collateral>(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    venue_account::assert_accepted_checkpoint(vault.venue_checkpoint(), &checkpoint);
+    vault.venue_checkpoint().assert_accepted_checkpoint(&checkpoint);
     let plan = vault.prepare_redemption(before, &shares, minimum_collateral, maximum_fee_bps, clock.timestamp_ms());
-    let (base_price, collateral_price, lot) = plan.redemption_valuation();
+    let base_price = plan.redemption_base_price();
+    let collateral_price = plan.redemption_collateral_price();
+    let lot = plan.redemption_lot();
     let (side, cap) = vault.active_constraints();
     let is_ask = !order_side(side);
     let mut remaining = plan.redemption_order_base();
@@ -229,13 +234,13 @@ public fun redeem<Product, Collateral>(
         let (filled_base, filled_quote) = clearing_house::filled_base_and_quote(&summary, is_ask);
         vault.assert_active_execution(base_price, execution_price(clearing_house::execution_price(&summary, is_ask), !is_ask));
         vault.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
-        let (_, _, previous_base, _, _, _, _, _, _, _, _, _, _, _, _, _, _) = checkpoint.unpack();
+        let previous_base = checkpoint.signed_base();
         let expected_base = if (is_ask) { ifixed::sub(previous_base, filled_base) } else { ifixed::add(previous_base, filled_base) };
         let (intermediate, after_checkpoint) = snapshot::capture(
             &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
             base_price_info, collateral_price_info, clock,
         );
-        venue_account::assert_reduction_checkpoint(&checkpoint, &after_checkpoint, expected_base);
+        checkpoint.assert_reduction_checkpoint(&after_checkpoint, expected_base);
         vault.assert_active_observation(intermediate, base_price, collateral_price, clock.timestamp_ms());
         checkpoint = after_checkpoint;
         remaining = remaining - filled;
@@ -246,7 +251,7 @@ public fun redeem<Product, Collateral>(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    venue_account::assert_deposit_checkpoint(&checkpoint, &unwound_checkpoint, 0);
+    checkpoint.assert_deposit_checkpoint(&unwound_checkpoint, 0);
     let receipt = price_redemption(vault, plan, shares, unwound, unwound_checkpoint, clock.timestamp_ms());
     let cash = vault.withdraw_collateral(
         account, registry, &mut clearing_house, base_oracle, collateral_oracle,
@@ -256,7 +261,7 @@ public fun redeem<Product, Collateral>(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    venue_account::assert_withdrawal_checkpoint(&receipt.unwound_checkpoint, &final_checkpoint, receipt.redemption_cash_required());
+    receipt.unwound_checkpoint.assert_withdrawal_checkpoint(&final_checkpoint, receipt.redemption_cash_required());
     let cash = complete_redemption(vault, receipt, cash, after, final_checkpoint, clock.timestamp_ms(), ctx);
     clearing_house::share(clearing_house);
     cash
@@ -283,7 +288,7 @@ public fun mint<Product, Collateral>(
 ): Coin<Vault<Product>> {
     protocol.assert_current();
     vault.assert_active();
-    vault.assert_collateral_type<Product, Collateral>();
+    vault.assert_collateral_type<_, Collateral>();
     let deposit = cash.value();
     assert!(deposit > 0, blast_leverage_aftermath::errors::zero_amount!());
     assert_deadline(clock.timestamp_ms(), deadline_ms);
@@ -298,9 +303,11 @@ public fun mint<Product, Collateral>(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    venue_account::assert_accepted_checkpoint(vault.venue_checkpoint(), &before_checkpoint);
+    vault.venue_checkpoint().assert_accepted_checkpoint(&before_checkpoint);
     let plan = vault.prepare_mint(before, deposit, minimum_shares, maximum_fee_bps, clock.timestamp_ms());
-    let (base_price, collateral_price, lot) = plan.mint_valuation();
+    let base_price = plan.mint_base_price();
+    let collateral_price = plan.mint_collateral_price();
+    let lot = plan.mint_lot();
     let (side, cap) = vault.active_constraints();
     let is_ask = order_side(side);
     let mut remaining = plan.order_base();
@@ -314,7 +321,7 @@ public fun mint<Product, Collateral>(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    venue_account::assert_allocated_deposit_checkpoint(&before_checkpoint, &checkpoint, venue_deposit);
+    before_checkpoint.assert_allocated_deposit_checkpoint(&checkpoint, venue_deposit);
     vault.assert_active_observation(allocated, base_price, collateral_price, clock.timestamp_ms());
 
     let mut index = 0;
@@ -333,14 +340,15 @@ public fun mint<Product, Collateral>(
         let (filled_base, filled_quote) = clearing_house::filled_base_and_quote(&summary, is_ask);
         vault.assert_active_execution(base_price, execution_price(clearing_house::execution_price(&summary, is_ask), !is_ask));
         vault.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
-        let (_, _, previous_base, previous_quote, _, _, _, _, _, _, _, _, _, _, _, _, _) = checkpoint.unpack();
+        let previous_base = checkpoint.signed_base();
+        let previous_quote = checkpoint.signed_quote_notional();
         let expected_base = if (is_ask) { ifixed::sub(previous_base, filled_base) } else { ifixed::add(previous_base, filled_base) };
         let expected_quote = if (is_ask) { ifixed::add(previous_quote, filled_quote) } else { ifixed::sub(previous_quote, filled_quote) };
         let (intermediate, after_checkpoint) = snapshot::capture(
             &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
             base_price_info, collateral_price_info, clock,
         );
-        venue_account::assert_trade_checkpoint(&checkpoint, &after_checkpoint, expected_base, expected_quote);
+        checkpoint.assert_trade_checkpoint(&after_checkpoint, expected_base, expected_quote);
         vault.assert_active_observation(intermediate, base_price, collateral_price, clock.timestamp_ms());
         checkpoint = after_checkpoint;
         remaining = remaining - filled;
@@ -351,7 +359,7 @@ public fun mint<Product, Collateral>(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    venue_account::assert_deposit_checkpoint(&checkpoint, &final_checkpoint, 0);
+    checkpoint.assert_deposit_checkpoint(&final_checkpoint, 0);
     let shares = complete_mint<Product, Collateral>(vault, plan, after, final_checkpoint, clock.timestamp_ms(), ctx);
     clearing_house::share(clearing_house);
     shares
@@ -361,7 +369,7 @@ public fun mint<Product, Collateral>(
 public fun release_buffer<Product, Collateral>(
     vault: &mut Vault<Product>,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_LEVERAGE_CORE>,
     account: &mut Account<Collateral>,
     registry: &Registry,
     clearing_house: &mut ClearingHouse<Collateral>,
@@ -374,8 +382,8 @@ public fun release_buffer<Product, Collateral>(
 ) {
     protocol.assert_current();
     vault.assert_active();
-    admin_witness.assert_role(series_one_domain::risk_admin_role());
-    vault.assert_collateral_type<Product, Collateral>();
+    admin_witness.assert_role(domain::risk_admin_role());
+    vault.assert_collateral_type<_, Collateral>();
     assert!(amount > 0, blast_leverage_aftermath::errors::zero_amount!());
     sync_health(
         vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
@@ -404,7 +412,7 @@ public fun donate<Product, Collateral>(
 ) {
     protocol.assert_current();
     vault.assert_active();
-    vault.assert_collateral_type<Product, Collateral>();
+    vault.assert_collateral_type<_, Collateral>();
     let amount = cash.value();
     assert!(amount > 0, blast_leverage_aftermath::errors::zero_amount!());
     sync_health(
@@ -416,7 +424,7 @@ public fun donate<Product, Collateral>(
         &binding, account, registry, clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    venue_account::assert_accepted_checkpoint(vault.venue_checkpoint(), &before_checkpoint);
+    vault.venue_checkpoint().assert_accepted_checkpoint(&before_checkpoint);
     let plan = vault.prepare_donation(before, amount, clock.timestamp_ms());
     vault.deposit_collateral(account, registry, cash);
     let (after, checkpoint) = snapshot::capture(
@@ -626,18 +634,15 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
         !ifixed::is_neg(final_imr) && final_imr == position_imr,
         blast_leverage_aftermath::errors::initialization_imr_mismatch!(),
     );
-    let (
-        seed_venue_equity,
-        absolute_base,
-        absolute_notional,
-        final_lot_size,
-        final_side,
-        _,
-        _,
-    ) = snapshot::unpack_facts(facts);
+    let seed_venue_equity = facts.venue_equity();
+    let position_base = facts.position_base();
+    let position_collateral = facts.position_collateral();
+    let final_lot_size = facts.lot_size();
+    let final_side = facts.side();
     let seed_shareholder_nav = vault.initialize_series(
         final_observation,
         seed_reserve,
+        currency.decimals(),
         clock.timestamp_ms(),
     );
     // BLAST_ACTIVATION_BOUNDARY_A1
@@ -657,8 +662,8 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
         vault,
         seed_amount,
         seed_venue_equity,
-        absolute_base,
-        absolute_notional,
+        position_base,
+        position_collateral,
         final_lot_size,
         final_side,
         position_imr,
@@ -703,7 +708,7 @@ public fun sync_health<Product, Collateral>(
         clock,
     );
     let (pre_checkpoint, collateral_price) =
-        snapshot::into_funding_probe(pre_capture);
+        pre_capture.into_funding_probe();
     let position = clearing_house.position(account::account_id(account));
     let (funding_rate_long, funding_rate_short) =
         market::cum_funding_rates(clearing_house.market_state());
@@ -756,7 +761,7 @@ public(package) fun complete_rebalance<Product, Collateral>(
     let (before_equity, after_equity, before_base, after_base, increase) = vault.complete_rebalance(plan);
     vault.replace_venue_checkpoint(checkpoint);
     events::rebalanced<Product>(object::id(vault), before_equity, after_equity, before_base, after_base,
-        increase, vault.maintenance_reserve(), vault.admin_cash_balance<Product, Collateral>(), vault.share_supply(), checkpoint);
+        increase, vault.maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(), vault.share_supply(), checkpoint);
 }
 
 /// Holds the actual input coin across payout instead of accepting a numerical burn promise.
@@ -764,7 +769,12 @@ public(package) fun price_redemption<Product>(
     vault: &mut Vault<Product>, plan: RedemptionPlan<Product>, shares: Coin<Vault<Product>>,
     unwound: PositionObservation, unwound_checkpoint: venue_account::Checkpoint, now: u64,
 ): RedemptionReceipt<Product> {
-    let (amount, final_base, base_price, collateral_price, fee_bps, admin_bps) = plan.redemption_terms();
+    let amount = plan.redemption_shares();
+    let final_base = plan.redemption_final_base();
+    let base_price = plan.redemption_base_price();
+    let collateral_price = plan.redemption_collateral_price();
+    let fee_bps = plan.redemption_fee_bps();
+    let admin_bps = plan.redemption_admin_bps();
     assert!(shares.value() == amount, blast_leverage_aftermath::errors::redemption_share_mismatch!());
     let (net, admin, final_equity, fee, buffer) = vault.price_redemption(plan, unwound, now);
     let shares = shares.into_balance();
@@ -789,7 +799,7 @@ public(package) fun complete_redemption<Product, Collateral>(
         shares, net, admin, fee, buffer, fee_bps, admin_bps, final_equity, final_base,
         base_price, collateral_price, unwound_checkpoint: _,
     } = receipt;
-    vault.assert_collateral_type<Product, Collateral>();
+    vault.assert_collateral_type<_, Collateral>();
     assert!(cash.value() == net + admin, blast_leverage_aftermath::errors::cash_checkpoint_mismatch!());
     vault.assert_redemption_cash_out(after, final_equity, final_base, base_price, collateral_price, now);
 
@@ -799,7 +809,7 @@ public(package) fun complete_redemption<Product, Collateral>(
     vault.replace_venue_checkpoint(checkpoint);
     events::redeemed<Product>(
         vault.id(), burned, net, fee, admin, buffer, fee_bps, admin_bps,
-        vault.maintenance_reserve(), vault.admin_cash_balance<Product, Collateral>(), vault.share_supply(), checkpoint,
+        vault.maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(), vault.share_supply(), checkpoint,
     );
     cash
 }
@@ -814,7 +824,7 @@ public(package) fun complete_mint<Product, Collateral>(
     vault.replace_venue_checkpoint(checkpoint);
     events::minted<Product>(
         vault.id(), deposit, shares.value(), contribution, fee, admin, buffer, rate, admin_rate,
-        vault.maintenance_reserve(), vault.admin_cash_balance<Product, Collateral>(),
+        vault.maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(),
         vault.share_supply(), checkpoint,
     );
     shares
@@ -823,14 +833,14 @@ public(package) fun complete_mint<Product, Collateral>(
 /// Completes a pure buffer relabeling only at the accepted economic checkpoint.
 public(package) fun complete_buffer_release<Product>(
     vault: &mut Vault<Product>,
-    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_LEVERAGE_CORE>,
     observation: PositionObservation,
     checkpoint: venue_account::Checkpoint,
     amount: u64,
     reference_time_ms: u64,
 ) {
-    admin_witness.assert_role(series_one_domain::risk_admin_role());
-    venue_account::assert_accepted_checkpoint(vault.venue_checkpoint(), &checkpoint);
+    admin_witness.assert_role(domain::risk_admin_role());
+    vault.venue_checkpoint().assert_accepted_checkpoint(&checkpoint);
     vault.release_buffer(admin_witness, observation, amount, reference_time_ms);
     events::buffer_released<Product>(vault.id(), amount, vault.maintenance_reserve());
 }
@@ -844,7 +854,7 @@ public(package) fun complete_donation<Product>(
     amount: u64,
     reference_time_ms: u64,
 ) {
-    venue_account::assert_deposit_checkpoint(vault.venue_checkpoint(), &checkpoint, amount);
+    vault.venue_checkpoint().assert_deposit_checkpoint(&checkpoint, amount);
     vault.complete_donation(plan, after, reference_time_ms);
     vault.replace_venue_checkpoint(checkpoint);
     events::donated<Product>(vault.id(), amount, vault.maintenance_reserve(), checkpoint);
@@ -858,15 +868,18 @@ public(package) fun apply_post_capture<Product>(
     local_change: snapshot::Change,
 ) {
     let stored_checkpoint = *vault.venue_checkpoint();
-    let net = snapshot::net_funding(preexisting_change, local_change);
-    let (has_funding, is_cost, raw_amount, amount, checkpoint_clean) =
-        snapshot::funding_change_fields(&net);
+    let net = preexisting_change.net_funding(local_change);
+    let has_funding = net.has_funding();
+    let is_cost = net.is_cost();
+    let raw_amount = net.raw_amount();
+    let amount = net.amount();
+    let checkpoint_clean = net.is_clean();
     let (absorbed, uncovered, reserve_after) = if (has_funding) {
         vault.settle_funding(is_cost, amount)
     } else {
         (0, 0, vault.maintenance_reserve())
     };
-    let checkpoint = snapshot::finish_health(post_capture);
+    let checkpoint = post_capture.finish_health();
 
     let diagnostic_changed = vault.note_checkpoint_health(&checkpoint, checkpoint_clean);
     if (checkpoint_clean) {
@@ -907,21 +920,20 @@ public(package) fun emit_vault_initialized<Product>(
     vault: &Vault<Product>,
     seed_amount: u64,
     seed_venue_equity: u64,
-    absolute_base: u64,
-    absolute_notional: u64,
+    position_base: u64,
+    position_collateral: u64,
     lot_size: u64,
     position_side: PositionSide,
     position_imr: u256,
 ) {
-    let (
-        account_object_id,
-        account_number,
-        registry_id,
-        clearing_house_id,
-        base_oracle_id,
-        collateral_oracle_id,
-        collateral_type,
-    ) = vault.venue_binding().unpack_binding();
+    let binding = vault.venue_binding();
+    let account_object_id = binding.account_object_id();
+    let account_number = binding.account_number();
+    let registry_id = binding.registry_id();
+    let clearing_house_id = binding.clearing_house_id();
+    let base_oracle_id = binding.base_oracle_id();
+    let collateral_oracle_id = binding.collateral_oracle_id();
+    let collateral_type = binding.collateral_type();
     let checkpoint = *vault.venue_checkpoint();
     let (locked_shares, seed_funder) = vault.seed_facts();
     let seed_reserve = vault.maintenance_reserve();
@@ -941,8 +953,8 @@ public(package) fun emit_vault_initialized<Product>(
         locked_shares / SEED_SHARE_SCALE,
         locked_shares,
         seed_funder,
-        absolute_base,
-        absolute_notional,
+        position_base,
+        position_collateral,
         lot_size,
         position_side,
         position_imr,
@@ -1013,7 +1025,7 @@ fun complete_unwind<Product>(
     after.assert_no_orders();
     if (filled_quote.is_none()) {
         assert!(funded.is_none() && orders == 0, blast_leverage_aftermath::errors::terminal_venue_unsettled!());
-        venue_account::assert_direct_settlement_close(&before, &after);
+        before.assert_direct_settlement_close(&after);
     } else {
         assert!(funded.is_some() && orders > 0 && orders <= MAX_ACTIVE_ORDERS,
             blast_leverage_aftermath::errors::terminal_venue_unsettled!());
@@ -1026,7 +1038,7 @@ fun complete_unwind<Product>(
 fun complete_finalization<Product, Collateral>(
     vault: &mut Vault<Product>, recovered: Coin<Collateral>, before: venue_account::Checkpoint, after: venue_account::Checkpoint,
 ) {
-    vault.complete_shutdown(venue_account::terminal_withdrawal(&before, after, recovered));
+    vault.complete_shutdown(before.terminal_withdrawal(after, recovered));
 }
 
 /// The venue's direct frozen settlement is not a market order or a stale-price fallback.
@@ -1057,7 +1069,10 @@ fun unwind_market<Product, Collateral>(
     update_funding_when_due(&binding, &mut clearing_house, base_oracle, clock);
     let capture = snapshot::capture_health(&binding, account, registry, &clearing_house,
         base_oracle, collateral_oracle, base_price_info, collateral_price_info, clock);
-    let (base, collateral, before, collateral_fixed) = snapshot::unwind_prices(capture);
+    let base = capture.base_price_observation();
+    let collateral = capture.collateral_price_observation();
+    let collateral_fixed = capture.collateral_fixed();
+    let before = capture.finish_health();
     let (side, cap, base_price, collateral_price) = vault.unwind_constraints(base, collateral, clock.timestamp_ms());
     before.assert_no_orders();
     let mut remaining = unwind_base(&before, side);
@@ -1066,8 +1081,8 @@ fun unwind_market<Product, Collateral>(
     clearing_house::settle_position_funding(&mut clearing_house, collateral_oracle, account::account_id(account), clock);
     let funded = snapshot::capture_checkpoint(&binding, account, registry, &clearing_house, base_oracle, collateral_oracle);
     let funding = snapshot::classify_change(&before, &funded, candidate, collateral_fixed);
-    snapshot::assert_clean_funding(funding);
-    let (_, _, _, _, _, _, _, _, lot, _, _, _, _, _, _, _, _) = funded.unpack();
+    funding.assert_clean_funding();
+    let lot = funded.lot_size();
     let mut checkpoint = funded;
     let mut orders = 0;
     let mut filled_quote_total: u256 = 0;
@@ -1084,10 +1099,10 @@ fun unwind_market<Product, Collateral>(
         let (filled_base, filled_quote) = clearing_house::filled_base_and_quote(&summary, is_ask);
         vault.assert_unwind_execution(base_price, execution_price(clearing_house::execution_price(&summary, is_ask), !is_ask));
         vault.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
-        let (_, _, previous_base, _, _, _, _, _, _, _, _, _, _, _, _, _, _) = checkpoint.unpack();
+        let previous_base = checkpoint.signed_base();
         let expected_base = if (is_ask) { ifixed::sub(previous_base, filled_base) } else { ifixed::add(previous_base, filled_base) };
         let after = snapshot::capture_checkpoint(&binding, account, registry, &clearing_house, base_oracle, collateral_oracle);
-        venue_account::assert_reduction_checkpoint(&checkpoint, &after, expected_base);
+        checkpoint.assert_reduction_checkpoint(&after, expected_base);
         after.assert_no_orders();
         remaining = remaining - filled;
         checkpoint = after;
@@ -1101,7 +1116,8 @@ fun unwind_market<Product, Collateral>(
 
 /// Named IFixed decoding precedes exact base-atom and lot validation.
 fun unwind_base(checkpoint: &venue_account::Checkpoint, side: PositionSide): u64 {
-    let (_, _, base, _, _, _, _, _, lot, _, _, _, _, _, _, _, _) = (*checkpoint).unpack();
+    let base = checkpoint.signed_base();
+    let lot = checkpoint.lot_size();
     unwind_base_from_parts(ifixed::abs(base), !ifixed::is_neg(base), lot, side)
 }
 
@@ -1605,7 +1621,7 @@ public fun classify_sync_change_for_testing(
             candidate_negative,
             candidate_collateral_magnitude,
         );
-    snapshot::net_funding(preexisting_change, local_change)
+    preexisting_change.net_funding(local_change)
 }
 
 #[test_only]

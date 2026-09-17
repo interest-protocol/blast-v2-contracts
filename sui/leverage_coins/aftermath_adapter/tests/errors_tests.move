@@ -12,7 +12,6 @@ fun adapter_error_registry_is_stable() {
     assert_eq!(errors::risk_module_witness_unchanged!(), 3);
     assert_eq!(errors::invalid_package_publisher!(), 4);
     assert_eq!(errors::invalid_product_witness_type!(), 8);
-    assert_eq!(errors::product_witness_package_mismatch!(), 9);
     assert_eq!(errors::risk_module_witness_mismatch!(), 10);
     assert_eq!(errors::admin_cap_account_mismatch!(), 11);
     assert_eq!(errors::account_object_mismatch!(), 12);

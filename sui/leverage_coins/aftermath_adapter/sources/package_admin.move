@@ -4,7 +4,7 @@
 /// Permanent shared custody for the adapter Publisher and UpgradeCap.
 ///
 /// The adapter shares the Series1 administration domain, so its governed
-/// transitions accept `AdminWitness<SERIES_ONE_DOMAIN>` and assert the role that
+/// transitions accept `AdminWitness<BLAST_LEVERAGE_CORE>` and assert the role that
 /// Series1 exports. Custody itself stays package-local: this adapter's
 /// generation advances without touching Series1, which is immutable and has no
 /// generation of its own.
@@ -15,7 +15,7 @@ use blast_admin::{
     upgrade_custody::{Self, UpgradeCustody},
 };
 use blast_leverage_aftermath::{aftermath::AFTERMATH, protocol::Protocol};
-use blast_leverage_series_one::series_one_domain::{Self, SERIES_ONE_DOMAIN};
+use blast_leverage_core::blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE};
 use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};
 
 // === Public Structs ===
@@ -51,11 +51,11 @@ public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxConte
 public fun authorize_upgrade(
     self: &mut PackageAdmin,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_LEVERAGE_CORE>,
     digest: vector<u8>,
 ): UpgradeTicket {
     protocol.assert_current();
-    admin_witness.assert_role(series_one_domain::package_admin_role());
+    admin_witness.assert_role(domain::package_admin_role());
     let custodian_id = self.id.to_inner();
 
     self.custody.authorize_upgrade(custodian_id, digest)
@@ -68,10 +68,10 @@ public fun authorize_upgrade(
 public fun commit_upgrade_and_advance(
     self: &mut PackageAdmin,
     protocol: &mut Protocol,
-    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_LEVERAGE_CORE>,
     receipt: UpgradeReceipt,
 ) {
-    admin_witness.assert_role(series_one_domain::package_admin_role());
+    admin_witness.assert_role(domain::package_admin_role());
     protocol.assert_next();
     let custodian_id = self.id.to_inner();
 
@@ -83,10 +83,10 @@ public fun commit_upgrade_and_advance(
 public fun restrict_to_additive(
     self: &mut PackageAdmin,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_LEVERAGE_CORE>,
 ) {
     protocol.assert_current();
-    admin_witness.assert_role(series_one_domain::package_admin_role());
+    admin_witness.assert_role(domain::package_admin_role());
     let custodian_id = self.id.to_inner();
 
     self.custody.restrict_to_additive(custodian_id);
@@ -96,10 +96,10 @@ public fun restrict_to_additive(
 public fun restrict_to_dependency_only(
     self: &mut PackageAdmin,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_LEVERAGE_CORE>,
 ) {
     protocol.assert_current();
-    admin_witness.assert_role(series_one_domain::package_admin_role());
+    admin_witness.assert_role(domain::package_admin_role());
     let custodian_id = self.id.to_inner();
 
     self.custody.restrict_to_dependency_only(custodian_id);
@@ -109,10 +109,10 @@ public fun restrict_to_dependency_only(
 public fun make_immutable(
     self: &mut PackageAdmin,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_LEVERAGE_CORE>,
 ) {
     protocol.assert_current();
-    admin_witness.assert_role(series_one_domain::package_admin_role());
+    admin_witness.assert_role(domain::package_admin_role());
     let custodian_id = self.id.to_inner();
 
     self.custody.make_immutable(custodian_id);

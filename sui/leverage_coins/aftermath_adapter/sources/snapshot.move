@@ -4,7 +4,7 @@
 module blast_leverage_aftermath::snapshot;
 
 use blast_leverage_aftermath::venue_account::{Self as venue_account, Binding, Checkpoint};
-use blast_leverage_series_one::{observation, policy::{Self, PositionSide}};
+use blast_leverage_core::{observation, policy::{Self, PositionSide}};
 use ifixed::ifixed;
 use oracle_aggregator::{price_feed, price_feed_storage::{Self, PriceFeedStorage}};
 use perpetuals::{
@@ -37,8 +37,8 @@ public enum Change has drop {
 /// the same authenticated capture for sizing, postconditions, and events.
 public struct SnapshotFacts has copy, drop {
     venue_equity: u64,
-    absolute_base: u64,
-    absolute_notional: u64,
+    position_base: u64,
+    position_collateral: u64,
     lot_size: u64,
     side: PositionSide,
     base_price: u64,
@@ -52,8 +52,8 @@ public struct SnapshotFacts has copy, drop {
 /// economic normalization therefore cannot be separated or replayed.
 public struct CapturedSnapshot {
     venue_equity: u64,
-    absolute_base: u64,
-    absolute_notional: u64,
+    position_base: u64,
+    position_collateral: u64,
     lot_size: u64,
     side: PositionSide,
     pending_order_count: u64,
@@ -255,9 +255,9 @@ fun capture_<Collateral>(
     };
     let position = clearing_house.position(account::account_id(account));
     let (signed_base, signed_quote_notional) = position::base_and_quote_amounts(position);
-    let (absolute_base, base_representable) = fixed_to_u64_up_health(ifixed::abs(signed_base), 9);
-    let (absolute_notional, notional_representable) = base_notional_health(
-        absolute_base,
+    let (position_base, base_representable) = fixed_to_u64_up_health(ifixed::abs(signed_base), 9);
+    let (position_collateral, notional_representable) = base_notional_health(
+        position_base,
         base_risk_price,
         collateral_price,
     );
@@ -293,8 +293,8 @@ fun capture_<Collateral>(
 
     CapturedSnapshot {
         venue_equity,
-        absolute_base,
-        absolute_notional,
+        position_base,
+        position_collateral,
         lot_size: market::lot_size(params),
         side,
         pending_order_count: position.pending_order_count(),
@@ -342,15 +342,19 @@ public(package) fun finish_health(self: CapturedSnapshot): Checkpoint {
     checkpoint
 }
 
-/// Supplies only authenticated prices and raw venue facts to insolvency-safe close policy.
-public(package) fun unwind_prices(self: CapturedSnapshot): (
-    observation::PriceObservation, observation::PriceObservation, Checkpoint, u256,
-) {
-    let CapturedSnapshot { base_price, base_confidence, base_timestamp,
-        collateral_price, collateral_confidence, collateral_timestamp, checkpoint, collateral_fixed, .. } = self;
-    (observation::new_price(base_price, base_confidence, base_timestamp),
-        observation::new_price(collateral_price, collateral_confidence, collateral_timestamp), checkpoint, collateral_fixed)
+/// Builds the base oracle observation from the authenticated capture.
+public(package) fun base_price_observation(self: &CapturedSnapshot): observation::PriceObservation {
+    observation::new_price(self.base_price, self.base_confidence, self.base_timestamp)
 }
+
+/// Builds the collateral oracle observation from the authenticated capture.
+public(package) fun collateral_price_observation(self: &CapturedSnapshot): observation::PriceObservation {
+    observation::new_price(self.collateral_price, self.collateral_confidence, self.collateral_timestamp)
+}
+
+/// Returns the raw IFixed collateral reading behind the capture.
+public(package) fun collateral_fixed(self: &CapturedSnapshot): u256 { self.collateral_fixed }
+
 
 /// A terminal market close may realize losses, but cannot misattribute an unrelated funding mutation.
 public(package) fun assert_clean_funding(change: Change) {
@@ -363,8 +367,8 @@ fun into_observation(
 ): (observation::PositionObservation, Checkpoint, SnapshotFacts) {
     let CapturedSnapshot {
         venue_equity,
-        absolute_base,
-        absolute_notional,
+        position_base,
+        position_collateral,
         lot_size,
         side,
         pending_order_count,
@@ -389,8 +393,8 @@ fun into_observation(
     );
     let observation = observation::new_position(
         venue_equity,
-        absolute_base,
-        absolute_notional,
+        position_base,
+        position_collateral,
         lot_size,
         side,
         pending_order_count,
@@ -407,8 +411,8 @@ fun into_observation(
         checkpoint,
         SnapshotFacts {
             venue_equity,
-            absolute_base,
-            absolute_notional,
+            position_base,
+            position_collateral,
             lot_size,
             side,
             base_price,
@@ -417,30 +421,29 @@ fun into_observation(
     )
 }
 
-/// Unpacks operation-scoped normalized facts after one authenticated capture.
-public(package) fun unpack_facts(
-    self: SnapshotFacts,
-): (u64, u64, u64, u64, PositionSide, u64, u64) {
-    let SnapshotFacts {
-        venue_equity,
-        absolute_base,
-        absolute_notional,
-        lot_size,
-        side,
-        base_price,
-        collateral_price,
-    } = self;
+// --- Snapshot Facts Reads ---
 
-    (
-        venue_equity,
-        absolute_base,
-        absolute_notional,
-        lot_size,
-        side,
-        base_price,
-        collateral_price,
-    )
+public(package) fun venue_equity(self: &SnapshotFacts): u64 { self.venue_equity }
+
+public(package) fun position_base(self: &SnapshotFacts): u64 { self.position_base }
+
+public(package) fun position_collateral(self: &SnapshotFacts): u64 { self.position_collateral }
+
+public(package) fun lot_size(self: &SnapshotFacts): u64 { self.lot_size }
+
+public(package) fun side(self: &SnapshotFacts): PositionSide { self.side }
+
+public(package) fun base_price(self: &SnapshotFacts): u64 { self.base_price }
+
+public(package) fun collateral_price(self: &SnapshotFacts): u64 { self.collateral_price }
+
+#[test_only]
+/// Unpacks every fact, in declaration order, for test assertions.
+public fun unpack_facts_for_testing(self: SnapshotFacts): (u64, u64, u64, u64, PositionSide, u64, u64) {
+    (self.venue_equity, self.position_base, self.position_collateral, self.lot_size, self.side,
+        self.base_price, self.collateral_price)
 }
+
 
 /// Classifies only an isolated funding-snapshot and allocated-collateral change.
 public(package) fun classify_change(
@@ -487,34 +490,10 @@ public(package) fun checkpoint_ready_for_settlement(
     stored: &Checkpoint,
     before: &Checkpoint,
 ): bool {
-    let (
-        stored_free, stored_allocated, stored_base, stored_quote,
-        stored_long, stored_short, _, _, stored_lot, stored_ask, stored_bid,
-        stored_orders, stored_pause, stored_frozen, stored_imr,
-        stored_market_imr, stored_market_mmr,
-    ) = (*stored).unpack();
-    let (
-        before_free, before_allocated, before_base, before_quote,
-        before_long, before_short, _, _, before_lot, before_ask, before_bid,
-        before_orders, before_pause, before_frozen, before_imr,
-        before_market_imr, before_market_mmr,
-    ) = (*before).unpack();
-
-    stored_free == before_free
-        && stored_allocated == before_allocated
-        && stored_base == before_base
-        && stored_quote == before_quote
-        && stored_long == before_long
-        && stored_short == before_short
-        && stored_lot == before_lot
-        && stored_ask == before_ask
-        && stored_bid == before_bid
-        && stored_orders == before_orders
-        && stored_pause == before_pause
-        && stored_frozen == before_frozen
-        && stored_imr == before_imr
-        && stored_market_imr == before_market_imr
-        && stored_market_mmr == before_market_mmr
+    stored.non_funding_fields_equal(before)
+        && stored.allocated_collateral() == before.allocated_collateral()
+        && stored.funding_snapshot_long() == before.funding_snapshot_long()
+        && stored.funding_snapshot_short() == before.funding_snapshot_short()
 }
 
 /// Recognizes funding that another caller settled before this synchronization.
@@ -540,36 +519,12 @@ fun classify_preexisting_funding_(
     before: &Checkpoint,
     allocated_change: Change,
 ): Change {
-    let (
-        stored_free, _, stored_base, stored_quote,
-        stored_long, stored_short, _, _, stored_lot, stored_ask, stored_bid,
-        stored_orders, stored_pause, stored_frozen, stored_imr,
-        stored_market_imr, stored_market_mmr,
-    ) = (*stored).unpack();
-    let (
-        before_free, _, before_base, before_quote,
-        before_long, before_short, _, _,
-        before_lot, before_ask, before_bid, before_orders, before_pause,
-        before_frozen, before_imr, before_market_imr, before_market_mmr,
-    ) = (*before).unpack();
-
-    let unrelated_unchanged = stored_free == before_free
-        && stored_base == before_base
-        && stored_quote == before_quote
-        && stored_lot == before_lot
-        && stored_ask == before_ask
-        && stored_bid == before_bid
-        && stored_orders == before_orders
-        && stored_pause == before_pause
-        && stored_frozen == before_frozen
-        && stored_imr == before_imr
-        && stored_market_imr == before_market_imr
-        && stored_market_mmr == before_market_mmr;
+    let unrelated_unchanged = stored.non_funding_fields_equal(before);
     // The position snapshots prove the completed external settlement. They may
     // trail the market again if another funding epoch advanced before Blast
     // synchronized, so equality with the current market rates is not required.
-    let snapshots_refreshed = stored_long != before_long
-        || stored_short != before_short;
+    let snapshots_refreshed = stored.funding_snapshot_long() != before.funding_snapshot_long()
+        || stored.funding_snapshot_short() != before.funding_snapshot_short();
     if (!unrelated_unchanged || !snapshots_refreshed) {
         return Change::Unexpected
     };
@@ -586,12 +541,52 @@ public(package) fun unchanged_change(): Change {
     Change::Unchanged
 }
 
-/// Returns the normalized Series1 settlement and raw event facts for a change.
-///
-/// Funding credits round down and costs round up at the six-decimal collateral
-/// boundary. A width failure is an objective dirty-checkpoint fact rather than
-/// an abort in permissionless health synchronization.
-public(package) fun funding_change_fields(
+// --- Change Reads ---
+
+/// Returns whether the change is a representable funding credit or cost.
+public(package) fun has_funding(self: &Change): bool {
+    match (self) {
+        Change::FundingCredit(raw) => { let (_, ok) = fixed_to_u64_down_health(*raw, 6); ok },
+        Change::FundingCost(raw) => { let (_, ok) = fixed_to_u64_up_health(*raw, 6); ok },
+        _ => false,
+    }
+}
+
+/// Returns whether the change is a funding cost.
+public(package) fun is_cost(self: &Change): bool {
+    match (self) { Change::FundingCost(_) => true, _ => false }
+}
+
+/// Returns the raw IFixed funding magnitude; zero when there is no funding.
+public(package) fun raw_amount(self: &Change): u256 {
+    match (self) {
+        Change::FundingCredit(raw) => *raw,
+        Change::FundingCost(raw) => *raw,
+        _ => 0,
+    }
+}
+
+/// Returns the six-decimal funding amount, credits down and costs up; zero when unrepresentable.
+public(package) fun amount(self: &Change): u64 {
+    match (self) {
+        Change::FundingCredit(raw) => { let (v, _) = fixed_to_u64_down_health(*raw, 6); v },
+        Change::FundingCost(raw) => { let (v, _) = fixed_to_u64_up_health(*raw, 6); v },
+        _ => 0,
+    }
+}
+
+/// Returns whether the checkpoint is clean: unchanged, or a representable funding change.
+public(package) fun is_clean(self: &Change): bool {
+    match (self) {
+        Change::Unchanged => true,
+        Change::Unexpected => false,
+        _ => self.has_funding(),
+    }
+}
+
+#[test_only]
+/// Returns `(has_funding, is_cost, raw_amount, amount, is_clean)` for test assertions.
+public fun funding_change_fields(
     change: &Change,
 ): (bool, bool, u256, u64, bool) {
     match (change) {
@@ -642,40 +637,18 @@ fun classify_change_(
     candidate_collateral_magnitude: u256,
     allocated_change: Change,
 ): Change {
-    let before = *before;
-    let after = *after;
-    let (
-        free_before, allocated_before, base_before, quote_before, long_before, short_before,
-        market_long_before, market_short_before, lot_before, ask_before, bid_before,
-        orders_before, pause_before, frozen_before, imr_before, market_imr_before, market_mmr_before,
-    ) = before.unpack();
-    let (
-        free_after, allocated_after, base_after, quote_after, long_after, short_after,
-        market_long_after, market_short_after, lot_after, ask_after, bid_after,
-        orders_after, pause_after, frozen_after, imr_after, market_imr_after, market_mmr_after,
-    ) = after.unpack();
-    if (free_before == free_after && allocated_before == allocated_after && base_before == base_after
-        && quote_before == quote_after && long_before == long_after && short_before == short_after
-        && market_long_before == market_long_after && market_short_before == market_short_after
-        && lot_before == lot_after && ask_before == ask_after && bid_before == bid_after
-        && orders_before == orders_after && pause_before == pause_after && frozen_before == frozen_after
-        && imr_before == imr_after && market_imr_before == market_imr_after
-        && market_mmr_before == market_mmr_after) {
-        return Change::Unchanged
-    };
-    if (free_before != free_after || base_before != base_after || quote_before != quote_after
-        || market_long_before != market_long_after || market_short_before != market_short_after
-        || lot_before != lot_after || ask_before != ask_after || bid_before != bid_after
-        || orders_before != orders_after || pause_before != pause_after || frozen_before != frozen_after
-        || imr_before != imr_after || market_imr_before != market_imr_after
-        || market_mmr_before != market_mmr_after) {
+    if (before == after) { return Change::Unchanged };
+    if (!before.non_funding_fields_equal(after)
+        || before.market_funding_long() != after.market_funding_long()
+        || before.market_funding_short() != after.market_funding_short()) {
         return Change::Unexpected
     };
-    let snapshots_refreshed = long_after == market_long_before
-        && short_after == market_short_before
-        && (long_before != long_after || short_before != short_after);
+    let snapshots_refreshed = after.funding_snapshot_long() == before.market_funding_long()
+        && after.funding_snapshot_short() == before.market_funding_short()
+        && (before.funding_snapshot_long() != after.funding_snapshot_long()
+            || before.funding_snapshot_short() != after.funding_snapshot_short());
     if (!snapshots_refreshed) { return Change::Unexpected };
-    if (candidate_collateral_magnitude == 0 && allocated_before == allocated_after) {
+    if (candidate_collateral_magnitude == 0 && before.allocated_collateral() == after.allocated_collateral()) {
         return Change::Unchanged
     };
     let matched = match (&allocated_change) {
@@ -705,8 +678,8 @@ fun read_checkpoint<Collateral>(account: &Account<Collateral>, clearing_house: &
 
 /// Named IFixed operations decode signed collateral; raw checkpoint bits are never ordered.
 fun allocated_delta(before: &Checkpoint, after: &Checkpoint): Change {
-    let (_, b, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) = (*before).unpack();
-    let (_, a, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) = (*after).unpack();
+    let b = before.allocated_collateral();
+    let a = after.allocated_collateral();
     signed_delta(ifixed::is_neg(b), ifixed::abs(b), ifixed::is_neg(a), ifixed::abs(a))
 }
 
@@ -988,12 +961,12 @@ fun usd_fixed_to_collateral_fixed(usd: u256, collateral_price: u256, round_up: b
 /// direction coherence, but it is historical cost basis and therefore cannot
 /// be the live leverage numerator.
 fun base_notional_health(
-    absolute_base: u64,
+    position_base: u64,
     base_price: u64,
     collateral_price: u64,
 ): (u64, bool) {
     if (collateral_price == 0) { return (0, false) };
-    let numerator = (absolute_base as u256) * (base_price as u256);
+    let numerator = (position_base as u256) * (base_price as u256);
     let denominator = (collateral_price as u256) * COLLATERAL_TO_BASE_SCALE;
     let notional = numerator.div_ceil(denominator);
     if (notional > std::u64::max_value!() as u256) {
@@ -1110,8 +1083,8 @@ public fun captured_health_for_testing(
 ): CapturedSnapshot {
     CapturedSnapshot {
         venue_equity,
-        absolute_base: 1_800,
-        absolute_notional: 1_800,
+        position_base: 1_800,
+        position_collateral: 1_800,
         lot_size: 1,
         side: policy::long(),
         pending_order_count: 0,
@@ -1142,9 +1115,8 @@ public fun classify_change_with_candidate_for_testing(
     candidate_negative: bool,
     candidate_magnitude: u256,
 ): Change {
-    let (_, b, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) = (*before).unpack();
-    let (_, a, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) = (*after).unpack();
-    classify_change_(before, after, candidate_negative, candidate_magnitude, signed_delta(false, b, false, a))
+    let delta = signed_delta(false, before.allocated_collateral(), false, after.allocated_collateral());
+    classify_change_(before, after, candidate_negative, candidate_magnitude, delta)
 }
 
 #[test_only]
@@ -1152,9 +1124,8 @@ public fun classify_preexisting_funding_for_testing(
     stored: &Checkpoint,
     before: &Checkpoint,
 ): Change {
-    let (_, b, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) = (*stored).unpack();
-    let (_, a, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) = (*before).unpack();
-    classify_preexisting_funding_(stored, before, signed_delta(false, b, false, a))
+    let delta = signed_delta(false, stored.allocated_collateral(), false, before.allocated_collateral());
+    classify_preexisting_funding_(stored, before, delta)
 }
 
 #[test_only]
@@ -1242,16 +1213,16 @@ public fun usd_fixed_to_collateral_health_for_testing(usd: u256, collateral_pric
 
 #[test_only]
 public fun base_notional_health_for_testing(
-    absolute_base: u64,
+    position_base: u64,
     base_price: u64,
     collateral_price: u64,
 ): (u64, bool) {
-    base_notional_health(absolute_base, base_price, collateral_price)
+    base_notional_health(position_base, base_price, collateral_price)
 }
 
 #[test_only]
 public fun base_notional_from_pyth_for_testing(
-    absolute_base: u64,
+    position_base: u64,
     price_component: u64,
     expo_negative: bool,
     expo_magnitude: u64,
@@ -1268,7 +1239,7 @@ public fun base_notional_from_pyth_for_testing(
         (0, false)
     } else {
         base_notional_health(
-            absolute_base,
+            position_base,
             base_risk_price,
             collateral_price,
         )
@@ -1296,8 +1267,8 @@ public fun seconds_to_millis_health_for_testing(seconds: u64): (u64, bool) {
 #[test_only]
 public fun facts_for_testing(
     venue_equity: u64,
-    absolute_base: u64,
-    absolute_notional: u64,
+    position_base: u64,
+    position_collateral: u64,
     lot_size: u64,
     side: PositionSide,
     base_price: u64,
@@ -1305,8 +1276,8 @@ public fun facts_for_testing(
 ): SnapshotFacts {
     SnapshotFacts {
         venue_equity,
-        absolute_base,
-        absolute_notional,
+        position_base,
+        position_collateral,
         lot_size,
         side,
         base_price,

@@ -1,7 +1,7 @@
 # Leverage coins: implementation lessons and required rules
 
 Status: required reading. Read this file completely before implementing or
-changing `sui/leverage_coins/series_one/`, the `blast_leverage_aftermath`
+changing `sui/leverage_coins/core/`, the `blast_leverage_aftermath`
 adapter, or any SDK code that mirrors their math.
 
 This file collects the rules that the pure Series1 accounting library cannot
@@ -77,8 +77,8 @@ cap, which needs no bound and is what the venue's own accounting does.
 
 ### 1.4 Compute every economic value once at its canonical checkpoint
 
-`mint_accounting_quote` computes the fee once and passes the derived
-contribution down; the low-level formula no longer recomputes it. Keep that
+`prepare_mint` computes the fee once and `allocated_mint_quote` takes the
+derived contribution; the low-level formula no longer recomputes it. Keep that
 discipline in every state transition: a value that the transition reads back
 from a helper must be the same value it used to mutate state. A discarded
 return from a second computation is a hazard, not a convenience.
@@ -118,7 +118,7 @@ which the audit hit once at twenty-six thousand.
 
 ### 1.9 Pass the depositor's share floor through unchanged
 
-`mint_accounting_quote` takes `min_shares_out`. It is the depositor's own
+`allocated_mint_quote` takes `min_shares_out`. It is the depositor's own
 floor on `shares_out` and the only in-package bound on the rounding loss a
 mint can suffer, which is otherwise capped only by the share price the seed
 sets. The Series must take it from the depositor's transaction and pass it
@@ -128,7 +128,7 @@ and is a release gate on the seed slice.
 
 ### 1.10 Run every valuation gate at the one operation checkpoint
 
-The `ValuationPolicy` type in `series_one/sources/policy.move` owns the freshness,
+The `PricePolicy` type in `series_one/sources/policy.move` owns the freshness,
 confidence, and mark-divergence rules, but it cannot see how many times or
 against what a caller applies them. The Series and adapter must:
 
@@ -221,7 +221,7 @@ Long liquidation distance is `(1 - MMR * L) / (L * (1 - MMR))`; short is
 
 The short is liquidated four to five points earlier than the long at every
 leverage because its loss grows with the price it is short. `SUI2S` needs its
-own target, band, hard cap, and NAV cap. Do not launch the short with the
+own target, band, max leverage, and NAV cap. Do not launch the short with the
 long's numbers.
 
 ### 2.2 Tiered execution tolerance (owner: adapter)
@@ -230,14 +230,14 @@ Risk increase uses a strict slippage bound against the canonical index
 valuation. Reduce-only orders above an emergency threshold, proposed 2.5x, use
 a wider bound, and no cooldown may block them. A crash with wide spreads must
 never be the reason deleveraging fails. The two bounds are immutable policy
-values with gates, `is_execution_within_strict_tolerance` and
-`is_execution_within_emergency_tolerance`, and the package pins that the
+values with gates, `is_execution_within_max_slippage` and
+`is_execution_within_emergency_max_slippage`, and the package pins that the
 strict bound rejects and the wide bound admits the same fill. The adapter
 selects which gate each order class uses.
 
 ### 2.3 Permissionless emergency deleverage (owner: Series and adapter)
 
-Above the hard cap, any caller may reduce the position toward target with the
+Above max leverage, any caller may reduce the position toward target with the
 wide tolerance, in any lifecycle state that still has a position. Keeper
 liveness is the single largest residual risk; the fix is to let anyone be the
 keeper when it matters most, with sizing and direction fixed by Series1 so the
@@ -254,16 +254,19 @@ reserve makes the accounting band strictly more conservative than the venue.
 
 If `set_position_initial_margin_ratio` proves to hold across partial
 liquidation and parameter changes, set it as a venue-enforced backstop against
-any accounting-sizing bug. If it does not, lower the protocol hard cap instead and
+any accounting-sizing bug. If it does not, lower the protocol max leverage instead and
 remove the floor from every safety claim.
 
-### 2.6 NAV cap as a compiled constant (owner: Series)
+### 2.6 NAV cap as an admin-adjustable live value (owner: Series)
 
-The hard Series NAV cap is tied to executable book depth, not headline open
-interest. It is an immutable policy value per Series with no setter and a gate,
-`assert_within_nav_cap`, that the mint transition must apply to post-mint
-shareholder NAV; raising it is a new deployment decision with its own
-simulation. The leverage ceiling of 100x and the lot-multiple ceiling of one
+The NAV cap is tied to executable book depth, not headline open interest. The
+policy carries the initial cap; the live cap sits in `State` and the risk admin
+may move it through `set_nav_cap`, which applies the same bound as issuance
+(positive, and the max-leverage notional fits `u64`) and emits `NavCapUpdated`.
+Lowering it below current NAV only blocks further mints. The mint transition
+applies the live cap to post-mint shareholder NAV. Raising it still deserves
+its own depth simulation, but no longer a new deployment (founder ruling,
+2026-09-17). The leverage ceiling of 100x and the lot-multiple ceiling of one
 million lots are structural fences, not selected values.
 
 ## 3. Open gates carried forward

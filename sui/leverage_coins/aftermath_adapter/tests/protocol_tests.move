@@ -9,8 +9,8 @@ module blast_leverage_aftermath::protocol_tests;
 
 use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
 use blast_leverage_aftermath::{aftermath::AFTERMATH, domain_fixture, protocol};
-use blast_leverage_series_one::{
-    series_one_domain::{Self, SERIES_ONE_DOMAIN},
+use blast_leverage_core::{
+    blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
 };
 use std::unit_test::{assert_eq, destroy};
 use sui::test_scenario;
@@ -25,9 +25,9 @@ const ADMIN: address = @0xAD;
 public struct Fixture {
     scenario: test_scenario::Scenario,
     protocol: protocol::Protocol,
-    authority: Authority<SERIES_ONE_DOMAIN>,
-    super_admin_cap: SuperAdminCap<SERIES_ONE_DOMAIN>,
-    admin_cap: AdminCap<SERIES_ONE_DOMAIN>,
+    authority: Authority<BLAST_LEVERAGE_CORE>,
+    super_admin_cap: SuperAdminCap<BLAST_LEVERAGE_CORE>,
+    admin_cap: AdminCap<BLAST_LEVERAGE_CORE>,
 }
 
 // === Tests ===
@@ -51,7 +51,7 @@ fun init_shares_the_adapter_generation_at_its_first_generation() {
 /// The container advances to exactly the generation this bytecode hands over
 /// to, and the shared package emits the only cutover fact.
 fun the_generation_advances_to_the_next_compiled_generation() {
-    let mut fixture = start(series_one_domain::package_admin_role());
+    let mut fixture = start(domain::package_admin_role());
 
     assert_eq!(fixture.protocol.version_for_testing(), 1);
 
@@ -72,7 +72,7 @@ fun the_generation_advances_to_the_next_compiled_generation() {
 #[test]
 /// The finalizer proves the exact next generation before it commits a receipt.
 fun the_finalizer_accepts_the_exact_next_generation_before_committing() {
-    let fixture = start(series_one_domain::package_admin_role());
+    let fixture = start(domain::package_admin_role());
 
     fixture.protocol.assert_next_for_testing();
 
@@ -87,7 +87,7 @@ fun the_finalizer_accepts_the_exact_next_generation_before_committing() {
     location = blast_admin::operational_version,
 )]
 fun the_finalizer_rejects_a_skipped_generation_before_committing() {
-    let mut fixture = start(series_one_domain::package_admin_role());
+    let mut fixture = start(domain::package_admin_role());
 
     fixture.protocol.set_version_for_testing(5);
 
@@ -102,7 +102,7 @@ fun the_finalizer_rejects_a_skipped_generation_before_committing() {
     location = blast_admin::operational_version,
 )]
 fun the_cutover_rejects_a_skipped_generation() {
-    let mut fixture = start(series_one_domain::package_admin_role());
+    let mut fixture = start(domain::package_admin_role());
 
     fixture.protocol.set_version_for_testing(5);
 
@@ -117,7 +117,7 @@ fun the_cutover_rejects_a_skipped_generation() {
     location = blast_admin::operational_version,
 )]
 fun the_cutover_rejects_a_generation_overflow() {
-    let mut fixture = start(series_one_domain::package_admin_role());
+    let mut fixture = start(domain::package_admin_role());
 
     fixture.protocol.set_version_for_testing(std::u64::max_value!());
 
@@ -132,7 +132,7 @@ fun the_cutover_rejects_a_generation_overflow() {
     location = blast_admin::operational_version,
 )]
 fun a_stale_generation_rejects_this_bytecode() {
-    let mut fixture = start(series_one_domain::package_admin_role());
+    let mut fixture = start(domain::package_admin_role());
 
     fixture.protocol.set_version_for_testing(2);
 
@@ -145,11 +145,11 @@ fun a_stale_generation_rejects_this_bytecode() {
 /// Series1 membership is shared state; the adapter generation is not. A stale
 /// adapter generation never blocks signing in or checking a Series1 role.
 fun series_domain_administration_does_not_depend_on_the_adapter_generation() {
-    let mut fixture = start(series_one_domain::package_admin_role());
+    let mut fixture = start(domain::package_admin_role());
     fixture.protocol.set_version_for_testing(2);
 
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-    admin_witness.assert_role(series_one_domain::package_admin_role());
+    admin_witness.assert_role(domain::package_admin_role());
 
     destroy(fixture);
 }
@@ -164,7 +164,7 @@ fun start(roles: u64): Fixture {
 
     authority.grant_admin(&super_admin_cap, roles, ADMIN, scenario.ctx());
     scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<SERIES_ONE_DOMAIN>>();
+    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_LEVERAGE_CORE>>();
 
     Fixture { scenario, protocol, authority, super_admin_cap, admin_cap }
 }
