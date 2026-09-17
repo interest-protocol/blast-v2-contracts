@@ -1,5 +1,5 @@
 /// The one stable event envelope and the package's only raw emission seam.
-module blast_fun::events_wrapper;
+module blast_fun::blast_events;
 
 // === Public Structs ===
 

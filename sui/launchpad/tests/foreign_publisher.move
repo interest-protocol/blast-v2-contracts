@@ -15,7 +15,7 @@ fun publisher_has_a_foreign_original_package() {
     let mut ctx = tx_context::dummy();
     let publisher = new(&mut ctx);
 
-    assert!(!publisher.from_package<BLAST>());
+    assert!(!publisher.from_package<BLAST_FUN>());
 
     destroy(publisher);
     destroy(ctx);
@@ -23,7 +23,7 @@ fun publisher_has_a_foreign_original_package() {
 
 // === Imports ===
 
-use blast_fun::blast::BLAST;
+use blast_fun::blast_fun::BLAST_FUN;
 
 use std::unit_test::destroy;
 

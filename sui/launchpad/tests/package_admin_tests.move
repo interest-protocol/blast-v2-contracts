@@ -19,15 +19,15 @@ public struct WrapFixture {
 public struct CustodyFixture {
     scenario: Scenario,
     package_admin: package_admin::PackageAdmin,
-    created: events::UpgradeCustodyCreated<BLAST>,
+    created: events::UpgradeCustodyCreated<BLAST_FUN>,
 }
 
 /// Admin-authorized upgrade and policy operations through the ACL sign-in seam.
 public struct UpgradeFixture {
     scenario: Scenario,
-    super_admin_cap: SuperAdminCap<LAUNCHPAD_DOMAIN>,
-    authority: Authority<LAUNCHPAD_DOMAIN>,
-    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
+    super_admin_cap: SuperAdminCap<BLAST_FUN_DOMAIN>,
+    authority: Authority<BLAST_FUN_DOMAIN>,
+    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     package_admin: package_admin::PackageAdmin,
     package_version: package_version::PackageVersion,
 }
@@ -75,7 +75,7 @@ fun wrap_rejects_upgrade_cap_for_another_package() {
     let mut fixture = start_wrap();
 
     fixture.next_tx!(PUBLISHER, |f| {
-        let valid_publisher = blast::publisher_for_testing(f.ctx!());
+        let valid_publisher = marker::publisher_for_testing(f.ctx!());
         let foreign_upgrade_cap =
             package::test_publish(OTHER_PACKAGE_ID.to_id(), f.ctx!());
 
@@ -210,7 +210,7 @@ fun package_admin_can_permanently_destroy_native_upgrade_authority() {
 
         f.package_admin.make_immutable(&f.package_version, &admin_witness);
 
-        let destroyed = events::collect_one<events::UpgradeCapDestroyed<BLAST>>(0);
+        let destroyed = events::collect_one<events::UpgradeCapDestroyed<BLAST_FUN>>(0);
         let (custodian_id, emitted_upgrade_cap_id, _, final_native_version, final_policy) =
             destroyed.upgrade_cap_destroyed_fields();
         assert_eq!(custodian_id, f.package_admin.id_for_testing());
@@ -235,7 +235,7 @@ fun authorization_is_rejected_after_immutability() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
         f.package_admin.make_immutable(&f.package_version, &admin_witness);
-        let _ = events::collect_one<events::UpgradeCapDestroyed<BLAST>>(0);
+        let _ = events::collect_one<events::UpgradeCapDestroyed<BLAST_FUN>>(0);
 
         let ticket = f.package_admin.authorize_upgrade(
             &f.package_version,
@@ -260,7 +260,7 @@ fun repeated_immutability_is_rejected() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
         f.package_admin.make_immutable(&f.package_version, &admin_witness);
-        let _ = events::collect_one<events::UpgradeCapDestroyed<BLAST>>(0);
+        let _ = events::collect_one<events::UpgradeCapDestroyed<BLAST_FUN>>(0);
 
         f.package_admin.make_immutable(&f.package_version, &admin_witness);
     });
@@ -351,7 +351,7 @@ fun active_admin_can_irreversibly_restrict_upgrade_policy() {
 
         f.package_admin.restrict_to_additive(&f.package_version, &admin_witness);
 
-        let additive = events::collect_one<events::UpgradePolicyRestricted<BLAST>>(0);
+        let additive = events::collect_one<events::UpgradePolicyRestricted<BLAST_FUN>>(0);
         let (_, _, _, _, previous_policy, new_policy) =
             additive.upgrade_policy_restricted_fields();
         assert_eq!(previous_policy, package::compatible_policy());
@@ -369,7 +369,7 @@ fun active_admin_can_irreversibly_restrict_upgrade_policy() {
         );
 
         let dependency_only =
-            events::collect_one<events::UpgradePolicyRestricted<BLAST>>(0);
+            events::collect_one<events::UpgradePolicyRestricted<BLAST_FUN>>(0);
         let (_, _, _, _, previous_policy, new_policy) =
             dependency_only.upgrade_policy_restricted_fields();
         assert_eq!(previous_policy, package::additive_policy());
@@ -392,7 +392,7 @@ fun policy_restriction_rejects_unchanged_policy() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
         f.package_admin.restrict_to_additive(&f.package_version, &admin_witness);
-        let _ = events::collect_one<events::UpgradePolicyRestricted<BLAST>>(0);
+        let _ = events::collect_one<events::UpgradePolicyRestricted<BLAST_FUN>>(0);
     });
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
@@ -417,7 +417,7 @@ fun policy_restriction_rejects_looser_policy() {
             &f.package_version,
             &admin_witness,
         );
-        let _ = events::collect_one<events::UpgradePolicyRestricted<BLAST>>(0);
+        let _ = events::collect_one<events::UpgradePolicyRestricted<BLAST_FUN>>(0);
     });
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
@@ -476,7 +476,7 @@ fun start_wrap(): WrapFixture {
 /// Runs the production wrap flow so the fixture custodies the real shared object.
 fun start_custody(): CustodyFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
-    blast::init_for_testing(scenario.ctx());
+    marker::init_for_testing(scenario.ctx());
 
     scenario.next_tx(PUBLISHER);
     let publisher = scenario.take_from_sender<Publisher>();
@@ -485,7 +485,7 @@ fun start_custody(): CustodyFixture {
         package::test_publish(PACKAGE_ID.to_id(), scenario.ctx()),
         scenario.ctx(),
     );
-    let created = events::collect_one<events::UpgradeCustodyCreated<BLAST>>(0);
+    let created = events::collect_one<events::UpgradeCustodyCreated<BLAST_FUN>>(0);
 
     scenario.next_tx(PUBLISHER);
     let package_admin = scenario.take_shared<package_admin::PackageAdmin>();
@@ -494,7 +494,7 @@ fun start_custody(): CustodyFixture {
 }
 
 fun start(): UpgradeFixture {
-    start_with_roles(launchpad_domain::package_admin_role())
+    start_with_roles(blast_fun_domain::package_admin_role())
 }
 
 /// A live administrator that holds no role at all, for role-gate rejections.
@@ -510,7 +510,7 @@ fun start_with_roles(roles: u64): UpgradeFixture {
     let package_admin = package_admin::new_for_testing(scenario.ctx());
 
     scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
 
     UpgradeFixture {
         scenario,
@@ -522,7 +522,7 @@ fun start_with_roles(roles: u64): UpgradeFixture {
     }
 }
 
-fun sign_in(self: &UpgradeFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+fun sign_in(self: &UpgradeFixture): AdminWitness<BLAST_FUN_DOMAIN> {
     self.authority.sign_in(&self.admin_cap)
 }
 
@@ -547,10 +547,10 @@ fun package_digest(): vector<u8> {
 use blast_admin::{acl::{Authority, SuperAdminCap, AdminCap, AdminWitness}, errors, events};
 
 use blast_fun::{
-    blast::{Self, BLAST},
+    blast_fun::{Self as marker, BLAST_FUN},
     domain_fixture,
-    launchpad_domain,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
+    blast_fun_domain,
+    blast_fun_domain::BLAST_FUN_DOMAIN,
     package_admin,
     package_version,
 };

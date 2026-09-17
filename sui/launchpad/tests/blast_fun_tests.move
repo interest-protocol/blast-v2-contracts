@@ -1,5 +1,5 @@
 #[test_only]
-module blast_fun::blast_tests;
+module blast_fun::blast_fun_tests;
 
 // === Constants ===
 
@@ -20,8 +20,8 @@ fun package_init_claims_and_keeps_publisher() {
     let mut fixture = start();
 
     fixture.next_tx!(PUBLISHER, |f| {
-        assert!(f.publisher.from_module<blast::BLAST>());
-        assert!(f.publisher.from_package<blast::BLAST>());
+        assert!(f.publisher.from_module<marker::BLAST_FUN>());
+        assert!(f.publisher.from_package<marker::BLAST_FUN>());
     });
 
     fixture.end();
@@ -42,7 +42,7 @@ macro fun next_tx(
 
 fun start(): PublisherFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
-    blast::init_for_testing(scenario.ctx());
+    marker::init_for_testing(scenario.ctx());
 
     scenario.next_tx(PUBLISHER);
     let publisher = scenario.take_from_sender<Publisher>();
@@ -56,7 +56,7 @@ fun end(self: PublisherFixture) {
 
 // === Imports ===
 
-use blast_fun::blast;
+use blast_fun::blast_fun as marker;
 
 use std::unit_test::destroy;
 

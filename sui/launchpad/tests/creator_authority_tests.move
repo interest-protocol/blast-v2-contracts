@@ -31,18 +31,18 @@ public struct ClaimFixture {
 public struct AclFixture {
     scenario: Scenario,
     package_version: PackageVersion,
-    super_admin_cap: Option<SuperAdminCap<LAUNCHPAD_DOMAIN>>,
-    authority: Authority<LAUNCHPAD_DOMAIN>,
-    admin_cap: Option<AdminCap<LAUNCHPAD_DOMAIN>>,
+    super_admin_cap: Option<SuperAdminCap<BLAST_FUN_DOMAIN>>,
+    authority: Authority<BLAST_FUN_DOMAIN>,
+    admin_cap: Option<AdminCap<BLAST_FUN_DOMAIN>>,
 }
 
 /// Live signer/config administration through the shared sign-in seam.
 public struct SignerFixture {
     scenario: Scenario,
     package_version: PackageVersion,
-    super_admin_cap: SuperAdminCap<LAUNCHPAD_DOMAIN>,
-    authority: Authority<LAUNCHPAD_DOMAIN>,
-    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
+    super_admin_cap: SuperAdminCap<BLAST_FUN_DOMAIN>,
+    authority: Authority<BLAST_FUN_DOMAIN>,
+    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     config: runtime_config::RuntimeConfig,
 }
 
@@ -50,8 +50,8 @@ public struct SignerFixture {
 public struct SignerClaimFixture {
     scenario: Scenario,
     package_version: PackageVersion,
-    authority: Authority<LAUNCHPAD_DOMAIN>,
-    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
+    authority: Authority<BLAST_FUN_DOMAIN>,
+    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     config: runtime_config::RuntimeConfig,
     clock: Clock,
 }
@@ -65,9 +65,9 @@ fun package_initialization_shares_singletons_with_only_the_authority_fact() {
     let mut fixture = start_event();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        launchpad_domain::init_for_testing(f.ctx!());
+        blast_fun_domain::init_for_testing(f.ctx!());
         let created = blast_admin::events::collect_one<
-            blast_admin::events::AuthorityCreated<LAUNCHPAD_DOMAIN>,
+            blast_admin::events::AuthorityCreated<BLAST_FUN_DOMAIN>,
         >(0);
         let (_, _, recipient, max_admins, root_transfer_delay_ms) =
             created.authority_created_fields();
@@ -750,7 +750,7 @@ fun start_acl(): AclFixture {
     authority.grant_admin(&super_admin_cap, 0, LAUNCHER, scenario.ctx());
 
     scenario.next_tx(LAUNCHER);
-    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
 
     AclFixture {
         scenario,
@@ -768,7 +768,7 @@ fun start_signer(admin: address): SignerFixture {
     authority.grant_admin(&super_admin_cap, 0, admin, scenario.ctx());
 
     scenario.next_tx(admin);
-    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
 
     SignerFixture {
         scenario,
@@ -789,7 +789,7 @@ fun start_signer_claim(): SignerClaimFixture {
     let clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(LAUNCHER);
-    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
 
     SignerClaimFixture {
         scenario,
@@ -803,16 +803,16 @@ fun start_signer_claim(): SignerClaimFixture {
 
 fun sign_in_to(
     self: &AclFixture,
-    authority: &Authority<LAUNCHPAD_DOMAIN>,
-): AdminWitness<LAUNCHPAD_DOMAIN> {
+    authority: &Authority<BLAST_FUN_DOMAIN>,
+): AdminWitness<BLAST_FUN_DOMAIN> {
     authority.sign_in(self.admin_cap.borrow())
 }
 
-fun signer_sign_in(self: &SignerFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+fun signer_sign_in(self: &SignerFixture): AdminWitness<BLAST_FUN_DOMAIN> {
     self.authority.sign_in(&self.admin_cap)
 }
 
-fun signer_claim_sign_in(self: &SignerClaimFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+fun signer_claim_sign_in(self: &SignerClaimFixture): AdminWitness<BLAST_FUN_DOMAIN> {
     self.authority.sign_in(&self.admin_cap)
 }
 
@@ -873,8 +873,8 @@ fun event_take_package_version(self: &EventFixture): PackageVersion {
     self.scenario.take_shared<PackageVersion>()
 }
 
-fun event_take_authority(self: &EventFixture): Authority<LAUNCHPAD_DOMAIN> {
-    self.scenario.take_shared<Authority<LAUNCHPAD_DOMAIN>>()
+fun event_take_authority(self: &EventFixture): Authority<BLAST_FUN_DOMAIN> {
+    self.scenario.take_shared<Authority<BLAST_FUN_DOMAIN>>()
 }
 
 fun event_take_runtime_config(self: &EventFixture): runtime_config::RuntimeConfig {
@@ -905,8 +905,8 @@ fun new_protocol(
     ctx: &mut TxContext,
 ): (
     PackageVersion,
-    SuperAdminCap<LAUNCHPAD_DOMAIN>,
-    Authority<LAUNCHPAD_DOMAIN>,
+    SuperAdminCap<BLAST_FUN_DOMAIN>,
+    Authority<BLAST_FUN_DOMAIN>,
     runtime_config::RuntimeConfig,
 ) {
     let package_version = package_version::new_for_testing(ctx);
@@ -918,7 +918,7 @@ fun new_protocol(
 /// Unshared Launchpad-domain authority state with this package's real constants.
 fun new_authority(
     ctx: &mut TxContext,
-): (SuperAdminCap<LAUNCHPAD_DOMAIN>, Authority<LAUNCHPAD_DOMAIN>) {
+): (SuperAdminCap<BLAST_FUN_DOMAIN>, Authority<BLAST_FUN_DOMAIN>) {
     domain_fixture::new_authority(ctx)
 }
 
@@ -954,7 +954,7 @@ use blast_fun::{
     domain_fixture,
     events,
     launch_config::{Self, LaunchConfig},
-    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
+    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     package_version::{Self, PackageVersion},
     runtime_config,
 };

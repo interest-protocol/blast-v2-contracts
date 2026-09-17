@@ -28,7 +28,7 @@ fun init(ctx: &mut TxContext) {
 public fun set_creator_claim_signer(
     self: &mut RuntimeConfig,
     package_version: &PackageVersion,
-    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
     signer_public_key: vector<u8>,
 ) {
     package_version.assert_current();
@@ -47,7 +47,7 @@ public fun set_creator_claim_signer(
 public fun revoke_creator_claim_signer(
     self: &mut RuntimeConfig,
     package_version: &PackageVersion,
-    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
 ) {
     package_version.assert_current();
     self.assert_creator_claim_active();
@@ -61,7 +61,7 @@ public fun revoke_creator_claim_signer(
 public fun set_protocol_fee_share(
     self: &mut RuntimeConfig,
     package_version: &PackageVersion,
-    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
     protocol_fee_share_bps: Bps,
 ) {
     package_version.assert_current();
@@ -161,6 +161,6 @@ use blast_fun::{
     bps::{Self, Bps},
     constants,
     events,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
+    blast_fun_domain::BLAST_FUN_DOMAIN,
     package_version::PackageVersion,
 };

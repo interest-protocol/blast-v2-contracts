@@ -16,8 +16,8 @@ public struct TEST_QUOTE() has drop;
 /// Fee-claim authorities: the live protocol share plus one claimed creator cap.
 public struct FeesFixture {
     scenario: Scenario,
-    authority: Authority<LAUNCHPAD_DOMAIN>,
-    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
+    authority: Authority<BLAST_FUN_DOMAIN>,
+    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     package_version: package_version::PackageVersion,
     runtime_config: runtime_config::RuntimeConfig,
     creator_cap: Option<creator_authority::CurveFeeCap<TEST_MEME>>,
@@ -447,7 +447,7 @@ fun start(): FeesFixture {
     destroy(super_admin_cap);
 
     scenario.next_tx(CREATOR);
-    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let runtime_config = runtime_config::new_disabled_for_testing(scenario.ctx());
     let creator_cap = new_creator_cap(&runtime_config, scenario.ctx());
 
@@ -489,7 +489,7 @@ fun new_creator_cap(
     creator_cap
 }
 
-fun sign_in(self: &FeesFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+fun sign_in(self: &FeesFixture): AdminWitness<BLAST_FUN_DOMAIN> {
     self.authority.sign_in(&self.admin_cap)
 }
 
@@ -530,7 +530,7 @@ use blast_fun::{
     creator_authority,
     domain_fixture,
     fees,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
+    blast_fun_domain::BLAST_FUN_DOMAIN,
     package_version,
     runtime_config,
 };

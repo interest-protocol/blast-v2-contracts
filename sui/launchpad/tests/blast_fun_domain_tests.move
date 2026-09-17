@@ -4,7 +4,7 @@
 /// The complete reusable ACL matrix belongs to `blast_admin`. These tests prove
 /// only that Launchpad creates exactly one typed domain from its own constants,
 /// exports one role, and keeps generic administration role-free.
-module blast_fun::launchpad_domain_tests;
+module blast_fun::blast_fun_domain_tests;
 
 // === Constants ===
 
@@ -19,9 +19,9 @@ const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 /// one delivered administrator.
 public struct DomainFixture {
     scenario: Scenario,
-    authority: Authority<LAUNCHPAD_DOMAIN>,
-    super_admin_cap: SuperAdminCap<LAUNCHPAD_DOMAIN>,
-    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
+    authority: Authority<BLAST_FUN_DOMAIN>,
+    super_admin_cap: SuperAdminCap<BLAST_FUN_DOMAIN>,
+    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
 }
 
 // === Tests ===
@@ -47,7 +47,7 @@ fun init_creates_one_launchpad_authority_with_its_module_constants() {
 
 #[test]
 fun package_admin_role_is_the_single_exported_launchpad_role_bit() {
-    let role = launchpad_domain::package_admin_role();
+    let role = blast_fun_domain::package_admin_role();
 
     assert_eq!(role, 1);
     assert!(role != 0 && role & (role - 1) == 0);
@@ -77,7 +77,7 @@ fun a_zero_role_administrator_cannot_assert_the_package_admin_role() {
     fixture.next_tx!(ADMIN, |f| {
         let witness = f.sign_in();
 
-        witness.assert_role(launchpad_domain::package_admin_role());
+        witness.assert_role(blast_fun_domain::package_admin_role());
     });
 
     fixture.end();
@@ -85,13 +85,13 @@ fun a_zero_role_administrator_cannot_assert_the_package_admin_role() {
 
 #[test]
 fun a_package_administrator_remains_an_active_generic_administrator() {
-    let mut fixture = start_with_roles(launchpad_domain::package_admin_role());
+    let mut fixture = start_with_roles(blast_fun_domain::package_admin_role());
 
     fixture.next_tx!(ADMIN, |f| {
         let witness = f.sign_in();
 
-        assert_eq!(witness.roles_for_testing(), launchpad_domain::package_admin_role());
-        witness.assert_role(launchpad_domain::package_admin_role());
+        assert_eq!(witness.roles_for_testing(), blast_fun_domain::package_admin_role());
+        witness.assert_role(blast_fun_domain::package_admin_role());
     });
 
     fixture.end();
@@ -136,20 +136,20 @@ macro fun domain_next_tx(
 /// Runs production initialization, then delivers one administrator to ADMIN.
 fun start_with_roles(roles: u64): DomainFixture {
     let mut scenario = test_scenario::begin(ROOT);
-    launchpad_domain::init_for_testing(scenario.ctx());
+    blast_fun_domain::init_for_testing(scenario.ctx());
 
     scenario.next_tx(ROOT);
-    let mut authority = scenario.take_shared<Authority<LAUNCHPAD_DOMAIN>>();
-    let super_admin_cap = scenario.take_from_sender<SuperAdminCap<LAUNCHPAD_DOMAIN>>();
+    let mut authority = scenario.take_shared<Authority<BLAST_FUN_DOMAIN>>();
+    let super_admin_cap = scenario.take_from_sender<SuperAdminCap<BLAST_FUN_DOMAIN>>();
     authority.grant_admin(&super_admin_cap, roles, ADMIN, scenario.ctx());
 
     scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
 
     DomainFixture { scenario, authority, super_admin_cap, admin_cap }
 }
 
-fun domain_sign_in(self: &DomainFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+fun domain_sign_in(self: &DomainFixture): AdminWitness<BLAST_FUN_DOMAIN> {
     self.authority.sign_in(&self.admin_cap)
 }
 
@@ -161,7 +161,7 @@ fun domain_end(self: DomainFixture) {
 
 use blast_admin::acl::{Authority, SuperAdminCap, AdminCap, AdminWitness};
 
-use blast_fun::launchpad_domain::{Self, LAUNCHPAD_DOMAIN};
+use blast_fun::blast_fun_domain::{Self, BLAST_FUN_DOMAIN};
 
 use std::unit_test::{assert_eq, destroy};
 

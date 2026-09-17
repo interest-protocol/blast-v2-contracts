@@ -1,14 +1,14 @@
-/// Package provenance and Publisher custody bootstrap.
-module blast_fun::blast;
+/// Canonical package provenance witness named after the package.
+module blast_fun::blast_fun;
 
 // === Public Structs ===
 
 /// Canonical one-time witness used only to claim this package's Publisher.
-public struct BLAST() has drop;
+public struct BLAST_FUN() has drop;
 
 // === Private Initialization ===
 
-fun init(otw: BLAST, ctx: &mut TxContext) {
+fun init(otw: BLAST_FUN, ctx: &mut TxContext) {
     sui::package::claim_and_keep(otw, ctx);
 }
 
@@ -17,11 +17,11 @@ fun init(otw: BLAST, ctx: &mut TxContext) {
 #[test_only]
 /// Runs package initialization under `test_scenario`.
 public fun init_for_testing(ctx: &mut TxContext) {
-    init(BLAST(), ctx);
+    init(BLAST_FUN(), ctx);
 }
 
 #[test_only]
 /// Claims an additional canonical-module Publisher for package-administration fixture inputs.
 public fun publisher_for_testing(ctx: &mut TxContext): sui::package::Publisher {
-    sui::package::test_claim(BLAST(), ctx)
+    sui::package::test_claim(BLAST_FUN(), ctx)
 }

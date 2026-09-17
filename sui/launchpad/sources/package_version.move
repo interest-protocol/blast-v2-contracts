@@ -19,7 +19,7 @@ const NEXT_PACKAGE_VERSION: u64 = 2;
 /// Singleton operational package generation.
 public struct PackageVersion has key {
     id: UID,
-    generation: OperationalVersion<BLAST>,
+    generation: OperationalVersion<BLAST_FUN>,
 }
 
 // === Private Initialization ===
@@ -92,4 +92,4 @@ public fun advance_for_testing(self: &mut PackageVersion) {
 
 use blast_admin::operational_version::{Self, OperationalVersion};
 
-use blast_fun::blast::BLAST;
+use blast_fun::blast_fun::BLAST_FUN;

@@ -38,8 +38,8 @@ public struct OTHER_MIGRATION_WITNESS() has drop;
 public struct LaunchFixture {
     scenario: Scenario,
     package_version: PackageVersion,
-    authority: Authority<LAUNCHPAD_DOMAIN>,
-    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
+    authority: Authority<BLAST_FUN_DOMAIN>,
+    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     config: launch_config::LaunchConfig,
     runtime_config: runtime_config::RuntimeConfig,
     clock: Clock,
@@ -2180,7 +2180,7 @@ fun start(): LaunchFixture {
     let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
     authority.grant_admin(
         &super_admin_cap,
-        launchpad_domain::creator_admin_role(),
+        blast_fun_domain::creator_admin_role(),
         PROTOCOL_ADMIN,
         scenario.ctx(),
     );
@@ -2190,7 +2190,7 @@ fun start(): LaunchFixture {
     let clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let mut config = scenario.take_shared<launch_config::LaunchConfig>();
     let admin_witness = authority.sign_in(&admin_cap);
 
@@ -2257,22 +2257,22 @@ fun launch_new_ticket_with_mode(
 /// Live administration holding every role except the creator-admin role.
 fun new_role_less_admin(
     self: &mut LaunchFixture,
-): (Authority<LAUNCHPAD_DOMAIN>, AdminCap<LAUNCHPAD_DOMAIN>) {
+): (Authority<BLAST_FUN_DOMAIN>, AdminCap<BLAST_FUN_DOMAIN>) {
     let (super_admin_cap, mut authority) = domain_fixture::new_authority(self.scenario.ctx());
     authority.grant_admin(
         &super_admin_cap,
-        launchpad_domain::package_admin_role(),
+        blast_fun_domain::package_admin_role(),
         ROLE_LESS_ADMIN,
         self.scenario.ctx(),
     );
     destroy(super_admin_cap);
     self.scenario.next_tx(ROLE_LESS_ADMIN);
-    let admin_cap = self.scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin_cap = self.scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
 
     (authority, admin_cap)
 }
 
-fun launch_sign_in(self: &LaunchFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+fun launch_sign_in(self: &LaunchFixture): AdminWitness<BLAST_FUN_DOMAIN> {
     self.authority.sign_in(&self.admin_cap)
 }
 
@@ -2498,7 +2498,7 @@ use blast_fun::{
     launch::{Self, Launch},
     launch_config,
     launch_ticket::{Self, LaunchTicket},
-    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
+    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     package_version::{Self, PackageVersion},
     runtime_config,
 };

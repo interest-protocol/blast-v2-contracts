@@ -177,7 +177,7 @@ public(package) fun launch_trade_fees_changed(
     quote_fee_bps: u64,
     meme_fee_bps: u64,
 ) {
-    blast_fun::events_wrapper::emit_event(LaunchTradeFeesChanged {
+    blast_fun::blast_events::emit_event(LaunchTradeFeesChanged {
         quote_fee_bps,
         meme_fee_bps,
     });
@@ -188,7 +188,7 @@ public(package) fun quote_allowed<Quote>(
     virtual_quote: u64,
     migration_quote_target: u64,
 ) {
-    blast_fun::events_wrapper::emit_event(QuoteAllowed {
+    blast_fun::blast_events::emit_event(QuoteAllowed {
         quote: type_name::with_original_ids<Quote>(),
         virtual_quote,
         migration_quote_target,
@@ -200,7 +200,7 @@ public(package) fun quote_parameters_changed<Quote>(
     virtual_quote: u64,
     migration_quote_target: u64,
 ) {
-    blast_fun::events_wrapper::emit_event(QuoteParametersChanged {
+    blast_fun::blast_events::emit_event(QuoteParametersChanged {
         quote: type_name::with_original_ids<Quote>(),
         virtual_quote,
         migration_quote_target,
@@ -209,7 +209,7 @@ public(package) fun quote_parameters_changed<Quote>(
 
 /// Emits removal of one quote type.
 public(package) fun quote_disallowed<Quote>() {
-    blast_fun::events_wrapper::emit_event(QuoteDisallowed(
+    blast_fun::blast_events::emit_event(QuoteDisallowed(
         type_name::with_original_ids<Quote>(),
     ));
 }
@@ -220,7 +220,7 @@ public(package) fun graduation_defaults_changed(
     protocol_meme_graduation_fee_bps: u64,
     meme_liquidity_provision_bps: u64,
 ) {
-    blast_fun::events_wrapper::emit_event(GraduationDefaultsChanged {
+    blast_fun::blast_events::emit_event(GraduationDefaultsChanged {
         protocol_quote_migration_fee_bps,
         protocol_meme_graduation_fee_bps,
         meme_liquidity_provision_bps,
@@ -229,38 +229,38 @@ public(package) fun graduation_defaults_changed(
 
 /// Emits admission of one sealed migration-witness type.
 public(package) fun migration_witness_allowed<MigrationWitness>() {
-    blast_fun::events_wrapper::emit_event(MigrationWitnessAllowed(
+    blast_fun::blast_events::emit_event(MigrationWitnessAllowed(
         type_name::with_original_ids<MigrationWitness>(),
     ));
 }
 
 /// Emits removal of one sealed migration-witness type.
 public(package) fun migration_witness_disallowed<MigrationWitness>() {
-    blast_fun::events_wrapper::emit_event(MigrationWitnessDisallowed(
+    blast_fun::blast_events::emit_event(MigrationWitnessDisallowed(
         type_name::with_original_ids<MigrationWitness>(),
     ));
 }
 
 /// Emits replacement of the runtime protocol fee share.
 public(package) fun protocol_fee_share_changed(protocol_fee_share_bps: u64) {
-    blast_fun::events_wrapper::emit_event(ProtocolFeeShareChanged(
+    blast_fun::blast_events::emit_event(ProtocolFeeShareChanged(
         protocol_fee_share_bps,
     ));
 }
 
 /// Emits installation or rotation of the creator-claim signer key.
 public(package) fun creator_claim_signer_set(signer_public_key: vector<u8>) {
-    blast_fun::events_wrapper::emit_event(CreatorClaimSignerSet(signer_public_key));
+    blast_fun::blast_events::emit_event(CreatorClaimSignerSet(signer_public_key));
 }
 
 /// Emits revocation of the creator-claim signer key.
 public(package) fun creator_claim_signer_revoked() {
-    blast_fun::events_wrapper::emit_event(CreatorClaimSignerRevoked {});
+    blast_fun::blast_events::emit_event(CreatorClaimSignerRevoked {});
 }
 
 /// Emits a creator claim that consumed pending authority and issued both capabilities.
 public(package) fun creator_caps_claimed<Meme>(curve_fee_cap_id: ID, metadata_cap_id: ID) {
-    blast_fun::events_wrapper::emit_event(CreatorCapsClaimed {
+    blast_fun::blast_events::emit_event(CreatorCapsClaimed {
         meme: type_name::with_original_ids<Meme>(),
         curve_fee_cap_id,
         metadata_cap_id,
@@ -274,7 +274,7 @@ public(package) fun curve_fee_cap_reassigned(
     curve_fee_cap_id: ID,
     recipient: address,
 ) {
-    blast_fun::events_wrapper::emit_event(CurveFeeCapReassigned {
+    blast_fun::blast_events::emit_event(CurveFeeCapReassigned {
         launch_id,
         revoked_curve_fee_cap_id,
         curve_fee_cap_id,
@@ -289,7 +289,7 @@ public(package) fun metadata_cap_reassigned(
     metadata_cap_id: ID,
     recipient: address,
 ) {
-    blast_fun::events_wrapper::emit_event(MetadataCapReassigned {
+    blast_fun::blast_events::emit_event(MetadataCapReassigned {
         launch_id,
         revoked_metadata_cap_id,
         metadata_cap_id,
@@ -303,7 +303,7 @@ public(package) fun creator_fees_locked(
     curve_fee_cap_id: ID,
     custodian: TypeName,
 ) {
-    blast_fun::events_wrapper::emit_event(CreatorFeesLocked {
+    blast_fun::blast_events::emit_event(CreatorFeesLocked {
         launch_id,
         curve_fee_cap_id,
         custodian,
@@ -317,7 +317,7 @@ public(package) fun meme_metadata_updated(
     description: String,
     icon_url: String,
 ) {
-    blast_fun::events_wrapper::emit_event(MemeMetadataUpdated {
+    blast_fun::blast_events::emit_event(MemeMetadataUpdated {
         launch_id,
         name,
         description,
@@ -335,7 +335,7 @@ public(package) fun launch_ticket_created<Meme>(
     burnable: bool,
     sell_burn_bps: u64,
 ) {
-    blast_fun::events_wrapper::emit_event(LaunchTicketCreated {
+    blast_fun::blast_events::emit_event(LaunchTicketCreated {
         ticket_id,
         meme: type_name::with_original_ids<Meme>(),
         initial_supply,
@@ -363,7 +363,7 @@ public(package) fun launch_created<Quote>(
     protocol_meme_graduation_fee_bps: u64,
     meme_liquidity_provision_bps: u64,
 ) {
-    blast_fun::events_wrapper::emit_event(LaunchCreated {
+    blast_fun::blast_events::emit_event(LaunchCreated {
         launch_id,
         ticket_id,
         quote: type_name::with_original_ids<Quote>(),
@@ -393,7 +393,7 @@ public(package) fun bought(
     meme_reserve: u64,
     real_quote_reserve: u64,
 ) {
-    blast_fun::events_wrapper::emit_event(Bought {
+    blast_fun::blast_events::emit_event(Bought {
         launch_id,
         quote_in,
         meme_out_gross,
@@ -420,7 +420,7 @@ public(package) fun sold(
     meme_reserve: u64,
     real_quote_reserve: u64,
 ) {
-    blast_fun::events_wrapper::emit_event(Sold {
+    blast_fun::blast_events::emit_event(Sold {
         launch_id,
         meme_in_gross,
         pending_burn_delta,
@@ -446,7 +446,7 @@ public(package) fun migrated(
     protocol_meme_graduation_fee: u64,
     protocol_quote_migration_fee: u64,
 ) {
-    blast_fun::events_wrapper::emit_event(Migrated {
+    blast_fun::blast_events::emit_event(Migrated {
         launch_id,
         migration_meme,
         migration_quote,
@@ -464,7 +464,7 @@ public(package) fun creator_fees_claimed(
     meme_amount: u64,
     quote_amount: u64,
 ) {
-    blast_fun::events_wrapper::emit_event(CreatorFeesClaimed {
+    blast_fun::blast_events::emit_event(CreatorFeesClaimed {
         launch_id,
         meme_amount,
         quote_amount,
@@ -477,7 +477,7 @@ public(package) fun protocol_fees_claimed(
     meme_amount: u64,
     quote_amount: u64,
 ) {
-    blast_fun::events_wrapper::emit_event(ProtocolFeesClaimed {
+    blast_fun::blast_events::emit_event(ProtocolFeesClaimed {
         launch_id,
         meme_amount,
         quote_amount,
@@ -491,7 +491,7 @@ public(package) fun protocol_fees_claimed(
 public fun collect<T: copy + drop>(): vector<T> {
     let mut out = vector[];
 
-    sui::event::events_by_type<blast_fun::events_wrapper::Event<T>>().do!(
+    sui::event::events_by_type<blast_fun::blast_events::Event<T>>().do!(
         |event| out.push_back(event.unwrap()),
     );
 

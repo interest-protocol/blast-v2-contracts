@@ -17,8 +17,8 @@ const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 /// Unshared Launchpad-domain authority state using this package's real constants.
 public fun new_authority(
     ctx: &mut TxContext,
-): (SuperAdminCap<LAUNCHPAD_DOMAIN>, Authority<LAUNCHPAD_DOMAIN>) {
-    acl::new_for_testing<LAUNCHPAD_DOMAIN>(MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, ctx)
+): (SuperAdminCap<BLAST_FUN_DOMAIN>, Authority<BLAST_FUN_DOMAIN>) {
+    acl::new_for_testing<BLAST_FUN_DOMAIN>(MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, ctx)
 }
 
 // === Tests ===
@@ -42,6 +42,6 @@ fun the_fixture_uses_this_packages_governance_constants() {
 
 use blast_admin::acl::{Self, Authority, SuperAdminCap};
 
-use blast_fun::launchpad_domain::LAUNCHPAD_DOMAIN;
+use blast_fun::blast_fun_domain::BLAST_FUN_DOMAIN;
 
 use std::unit_test::{assert_eq, destroy};

@@ -6,7 +6,7 @@ package; adapters compose with it through a programmable transaction block.
 
 Administration is not implemented here. `blast_admin` owns the reusable ACL,
 operational-generation, and package-custody primitives; this package owns the
-`LAUNCHPAD_DOMAIN` marker, its governance constants, and the one package-admin
+`BLAST_FUN_DOMAIN` marker, its governance constants, and the one package-admin
 role it exports to Migrators and Distributor. Those two packages share this
 domain's administrator membership while keeping their own generation and
 `PackageAdmin`.

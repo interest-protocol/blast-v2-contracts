@@ -37,7 +37,7 @@ fun init(ctx: &mut TxContext) {
 public fun allow_quote<Quote>(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
-    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
     virtual_quote: u64,
     migration_quote_target: u64,
 ) {
@@ -69,7 +69,7 @@ public fun allow_quote<Quote>(
 public fun disallow_quote<Quote>(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
-    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
 ) {
     package_version.assert_current();
 
@@ -88,7 +88,7 @@ public fun disallow_quote<Quote>(
 public fun set_trade_fees(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
-    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
     quote_fee_bps: Bps,
     meme_fee_bps: Bps,
 ) {
@@ -105,7 +105,7 @@ public fun set_trade_fees(
 public fun set_graduation_defaults(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
-    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
     protocol_quote_migration_fee_bps: Bps,
     protocol_meme_graduation_fee_bps: Bps,
     meme_liquidity_provision_bps: Bps,
@@ -132,7 +132,7 @@ public fun set_graduation_defaults(
 public fun allow_migration_witness<MigrationWitness: drop>(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
-    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
 ) {
     package_version.assert_current();
 
@@ -161,7 +161,7 @@ public fun allow_migration_witness<MigrationWitness: drop>(
 public fun disallow_migration_witness<MigrationWitness: drop>(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
-    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
 ) {
     package_version.assert_current();
 
@@ -364,7 +364,7 @@ use blast_fun::{
     bps::{Self, Bps},
     constants,
     events,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
+    blast_fun_domain::BLAST_FUN_DOMAIN,
     package_version::PackageVersion,
 };
 

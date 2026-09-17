@@ -30,8 +30,8 @@ public struct R16() has drop;
 /// Cold-policy administration through the ACL sign-in seam.
 public struct ConfigFixture {
     scenario: Scenario,
-    authority: Authority<LAUNCHPAD_DOMAIN>,
-    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
+    authority: Authority<BLAST_FUN_DOMAIN>,
+    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     package_version: package_version::PackageVersion,
     config: launch_config::LaunchConfig,
 }
@@ -100,7 +100,7 @@ macro fun next_tx(
 
 fun allow_sixteen_migration_witnesses(
     self: &mut ConfigFixture,
-    admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
 ) {
     self.config.allow_migration_witness<MIGRATION_WITNESS<R0>>(&self.package_version, admin_witness);
     self.config.allow_migration_witness<MIGRATION_WITNESS<R1>>(&self.package_version, admin_witness);
@@ -129,13 +129,13 @@ fun start(): ConfigFixture {
     launch_config::init_for_testing(scenario.ctx());
 
     scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let config = scenario.take_shared<launch_config::LaunchConfig>();
 
     ConfigFixture { scenario, authority, admin_cap, package_version, config }
 }
 
-fun sign_in(self: &ConfigFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+fun sign_in(self: &ConfigFixture): AdminWitness<BLAST_FUN_DOMAIN> {
     self.authority.sign_in(&self.admin_cap)
 }
 
@@ -151,7 +151,7 @@ use blast_fun::{
     constants,
     domain_fixture,
     launch_config,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
+    blast_fun_domain::BLAST_FUN_DOMAIN,
     package_version,
 };
 

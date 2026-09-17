@@ -17,8 +17,8 @@ public struct InitFixture {
 /// Live-settings administration through the ACL sign-in seam.
 public struct ConfigFixture {
     scenario: Scenario,
-    authority: Authority<LAUNCHPAD_DOMAIN>,
-    admin_cap: AdminCap<LAUNCHPAD_DOMAIN>,
+    authority: Authority<BLAST_FUN_DOMAIN>,
+    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     package_version: package_version::PackageVersion,
     config: runtime_config::RuntimeConfig,
 }
@@ -208,12 +208,12 @@ fun start(): ConfigFixture {
     let config = runtime_config::new_disabled_for_testing(scenario.ctx());
 
     scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
 
     ConfigFixture { scenario, authority, admin_cap, package_version, config }
 }
 
-fun sign_in(self: &ConfigFixture): AdminWitness<LAUNCHPAD_DOMAIN> {
+fun sign_in(self: &ConfigFixture): AdminWitness<BLAST_FUN_DOMAIN> {
     self.authority.sign_in(&self.admin_cap)
 }
 
@@ -233,7 +233,7 @@ use blast_fun::{
     bps,
     domain_fixture,
     events,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
+    blast_fun_domain::BLAST_FUN_DOMAIN,
     package_version,
     runtime_config,
 };

@@ -186,7 +186,7 @@ public fun claim_creator_caps<Meme, Quote>(
 public fun reassign_curve_fee_cap<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
     recipient: address,
     ctx: &mut TxContext,
 ) {
@@ -195,7 +195,7 @@ public fun reassign_curve_fee_cap<Meme, Quote>(
         !self.curve_fee_authority.is_custodian(),
         blast_fun::errors::creator_fees_locked!(),
     );
-    admin_witness.assert_role(launchpad_domain::creator_admin_role());
+    admin_witness.assert_role(blast_fun_domain::creator_admin_role());
     assert!(recipient != @0x0, blast_fun::errors::invalid_creator_recipient!());
 
     let revoked_curve_fee_cap_id = match (self.curve_fee_authority) {
@@ -223,12 +223,12 @@ public fun reassign_curve_fee_cap<Meme, Quote>(
 public fun reassign_metadata_cap<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
     recipient: address,
     ctx: &mut TxContext,
 ) {
     package_version.assert_current();
-    admin_witness.assert_role(launchpad_domain::creator_admin_role());
+    admin_witness.assert_role(blast_fun_domain::creator_admin_role());
     assert!(recipient != @0x0, blast_fun::errors::invalid_creator_recipient!());
 
     let revoked_metadata_cap_id = self.blast_metadata_cap_id;
@@ -467,7 +467,7 @@ public fun claim_creator_fees<Meme, Quote>(
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     package_version.assert_current();
@@ -933,7 +933,7 @@ use blast_fun::{
     fees::{Self, FeeLedger},
     launch_config::LaunchConfig,
     launch_ticket::LaunchTicket,
-    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
+    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     package_version::PackageVersion,
     runtime_config::RuntimeConfig,
 };

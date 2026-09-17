@@ -97,7 +97,7 @@ public fun claim_creator_fees<Meme, Quote>(
 /// Claims both protocol balances after an active administrator signs in.
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut FeeLedger<Meme, Quote>,
-    _: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     assert!(
@@ -141,6 +141,6 @@ public fun totals_for_testing<Meme, Quote>(
 
 use blast_admin::acl::AdminWitness;
 
-use blast_fun::{bps::Bps, launchpad_domain::LAUNCHPAD_DOMAIN};
+use blast_fun::{bps::Bps, blast_fun_domain::BLAST_FUN_DOMAIN};
 
 use sui::{balance::{Self, Balance}, coin::Coin};

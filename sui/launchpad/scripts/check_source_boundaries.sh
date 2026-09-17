@@ -492,17 +492,17 @@ if rg -n '^[[:space:]]+[a-z_]+_bps: Bps,' sources/lib/events.move; then
   failures=$((failures + 1))
 fi
 
-blast_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/blast.move)"
+blast_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/blast_fun.move)"
 
-if [[ ! -f sources/blast.move ]] \
-  || ! rg -Fq 'public struct BLAST() has drop;' sources/blast.move \
+if [[ ! -f sources/blast_fun.move ]] \
+  || ! rg -Fq 'public struct BLAST_FUN() has drop;' sources/blast_fun.move \
   || ! rg -U -q \
-    'fun init\(otw: BLAST, ctx: &mut TxContext\) \{\s*sui::package::claim_and_keep\(otw, ctx\);\s*\}' \
+    'fun init\(otw: BLAST_FUN, ctx: &mut TxContext\) \{\s*sui::package::claim_and_keep\(otw, ctx\);\s*\}' \
     <<<"$blast_production" \
   || [[ "$(rg -c '^(public struct|fun) ' <<<"$blast_production")" != 2 ]] \
   || [[ "$(rg -c '^fun init\(' <<<"$blast_production")" != 1 ]] \
   || rg -n '^(public|entry|public\(package\)) fun ' <<<"$blast_production"; then
-  echo 'blast.move must own only the package BLAST witness and private Publisher claim.' >&2
+  echo 'blast_fun.move must own only the package BLAST_FUN witness and private Publisher claim.' >&2
   failures=$((failures + 1))
 fi
 
@@ -520,34 +520,34 @@ if rg -n '^public struct (ProtocolAuthority|Authority|SuperAdminCap|AdminCap|Adm
   failures=$((failures + 1))
 fi
 
-launchpad_domain_facts="$(move_facts sources/launchpad_domain.move)"
+blast_fun_domain_facts="$(move_facts sources/blast_fun_domain.move)"
 
 # The domain exports exactly two distinct role bits: package administration and
 # the creator administration that alone may reassign creator fee authority.
-if [[ ! -f sources/launchpad_domain.move ]] \
-  || [[ "$(move_production_type LAUNCHPAD_DOMAIN <<<"$launchpad_domain_facts")" \
-    != 'struct LAUNCHPAD_DOMAIN() has drop;' ]] \
-  || [[ "$(move_production_functions <<<"$launchpad_domain_facts")" \
+if [[ ! -f sources/blast_fun_domain.move ]] \
+  || [[ "$(move_production_type BLAST_FUN_DOMAIN <<<"$blast_fun_domain_facts")" \
+    != 'struct BLAST_FUN_DOMAIN() has drop;' ]] \
+  || [[ "$(move_production_functions <<<"$blast_fun_domain_facts")" \
     != 'creator_admin_role:public:0 init:private:0 package_admin_role:public:0 ' ]] \
-  || [[ "$(move_production_signature init <<<"$launchpad_domain_facts")" \
-    != 'fun init(otw: LAUNCHPAD_DOMAIN, ctx: &mut TxContext)' ]] \
-  || [[ "$(move_production_body init <<<"$launchpad_domain_facts")" \
+  || [[ "$(move_production_signature init <<<"$blast_fun_domain_facts")" \
+    != 'fun init(otw: BLAST_FUN_DOMAIN, ctx: &mut TxContext)' ]] \
+  || [[ "$(move_production_body init <<<"$blast_fun_domain_facts")" \
     != 'blast_admin::acl::new(otw, MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, ctx);' ]] \
-  || [[ "$(move_production_signature package_admin_role <<<"$launchpad_domain_facts")" \
+  || [[ "$(move_production_signature package_admin_role <<<"$blast_fun_domain_facts")" \
     != 'fun package_admin_role(): u64' ]] \
-  || [[ "$(move_production_body package_admin_role <<<"$launchpad_domain_facts")" \
+  || [[ "$(move_production_body package_admin_role <<<"$blast_fun_domain_facts")" \
     != 'PACKAGE_ADMIN_ROLE' ]] \
-  || [[ "$(move_production_signature creator_admin_role <<<"$launchpad_domain_facts")" \
+  || [[ "$(move_production_signature creator_admin_role <<<"$blast_fun_domain_facts")" \
     != 'fun creator_admin_role(): u64' ]] \
-  || [[ "$(move_production_body creator_admin_role <<<"$launchpad_domain_facts")" \
+  || [[ "$(move_production_body creator_admin_role <<<"$blast_fun_domain_facts")" \
     != 'CREATOR_ADMIN_ROLE' ]] \
-  || ! rg -q '^const MAX_ADMINS: u64 = 16;$' sources/launchpad_domain.move \
+  || ! rg -q '^const MAX_ADMINS: u64 = 16;$' sources/blast_fun_domain.move \
   || ! rg -q '^const ROOT_TRANSFER_DELAY_MS: u64 = 7 \* 24 \* 60 \* 60 \* 1_000;$' \
-    sources/launchpad_domain.move \
-  || ! rg -q '^const PACKAGE_ADMIN_ROLE: u64 = 1;$' sources/launchpad_domain.move \
-  || ! rg -q '^const CREATOR_ADMIN_ROLE: u64 = 2;$' sources/launchpad_domain.move \
-  || [[ "$(rg -c '^const ' sources/launchpad_domain.move)" != 4 ]]; then
-  echo 'launchpad_domain.move must create exactly one typed domain from module constants and export exactly the package-admin and creator-admin role bits.' >&2
+    sources/blast_fun_domain.move \
+  || ! rg -q '^const PACKAGE_ADMIN_ROLE: u64 = 1;$' sources/blast_fun_domain.move \
+  || ! rg -q '^const CREATOR_ADMIN_ROLE: u64 = 2;$' sources/blast_fun_domain.move \
+  || [[ "$(rg -c '^const ' sources/blast_fun_domain.move)" != 4 ]]; then
+  echo 'blast_fun_domain.move must create exactly one typed domain from module constants and export exactly the package-admin and creator-admin role bits.' >&2
   failures=$((failures + 1))
 fi
 
@@ -571,21 +571,21 @@ package_admin_production="$(sed '/^\/\/ === Test-Only Types ===/,$d' sources/pac
 
 if [[ ! -f sources/package_admin.move || -f sources/upgrade.move ]] \
   || ! rg -U -q \
-    'public struct PackageAdmin has key \{\s*id: UID,\s*custody: UpgradeCustody<BLAST>,\s*\}' \
+    'public struct PackageAdmin has key \{\s*id: UID,\s*custody: UpgradeCustody<BLAST_FUN>,\s*\}' \
     sources/package_admin.move \
   || [[ "$(rg -c '^public fun ' <<<"$package_admin_production")" != 7 ]] \
   || [[ "$(rg -c '^public fun (wrap|authorize_upgrade|restrict_to_additive|restrict_to_dependency_only|commit_upgrade_and_advance|make_immutable|has_upgrade_cap)\(' <<<"$package_admin_production")" != 7 ]] \
   || rg -n '^public\(package\) fun ' <<<"$package_admin_production" \
   || rg -n '^public fun commit_upgrade\(|^public fun activate' <<<"$package_admin_production" \
-  || [[ "$(rg -o 'admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>' <<<"$package_admin_production" | wc -l)" != 5 ]] \
+  || [[ "$(rg -o 'admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>' <<<"$package_admin_production" | wc -l)" != 5 ]] \
   || ! rg -U -q \
     'public fun wrap\(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext\)' \
     sources/package_admin.move \
   || ! rg -U -q \
-    'public fun authorize_upgrade\(\s*self: &mut PackageAdmin,\s*package_version: &PackageVersion,\s*admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*digest: vector<u8>,\s*\): UpgradeTicket' \
+    'public fun authorize_upgrade\(\s*self: &mut PackageAdmin,\s*package_version: &PackageVersion,\s*admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,\s*digest: vector<u8>,\s*\): UpgradeTicket' \
     sources/package_admin.move \
   || ! rg -U -q \
-    'public fun commit_upgrade_and_advance\(\s*self: &mut PackageAdmin,\s*package_version: &mut PackageVersion,\s*admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*receipt: UpgradeReceipt,\s*\)' \
+    'public fun commit_upgrade_and_advance\(\s*self: &mut PackageAdmin,\s*package_version: &mut PackageVersion,\s*admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,\s*receipt: UpgradeReceipt,\s*\)' \
     sources/package_admin.move; then
   echo 'package_admin.move must expose only validated wrapping, role-gated native administration, and one atomic commit-and-advance finalizer.' >&2
   failures=$((failures + 1))
@@ -594,11 +594,11 @@ fi
 # Every governed custody transition asserts the current generation, then the one
 # exported role, before it reaches the shared custody value. Commit-and-advance
 # is the post-upgrade finalizer and instead proves the exact next generation.
-if ! rg -Fq 'publisher.from_module<BLAST>()' sources/package_admin.move \
-  || ! rg -Fq 'upgrade_custody::new<BLAST>(id.to_inner(), publisher, upgrade_cap)' \
+if ! rg -Fq 'publisher.from_module<BLAST_FUN>()' sources/package_admin.move \
+  || ! rg -Fq 'upgrade_custody::new<BLAST_FUN>(id.to_inner(), publisher, upgrade_cap)' \
     sources/package_admin.move \
   || [[ "$(rg -c 'package_version\.assert_current\(\);' <<<"$package_admin_production")" != 4 ]] \
-  || [[ "$(rg -c 'admin_witness\.assert_role\(launchpad_domain::package_admin_role\(\)\);' <<<"$package_admin_production")" != 5 ]] \
+  || [[ "$(rg -c 'admin_witness\.assert_role\(blast_fun_domain::package_admin_role\(\)\);' <<<"$package_admin_production")" != 5 ]] \
   || ! rg -Fq 'package_version.assert_next();' sources/package_admin.move \
   || ! rg -Fq 'self.custody.commit_upgrade(custodian_id, receipt);' sources/package_admin.move \
   || ! rg -Fq 'package_version.advance();' sources/package_admin.move \
@@ -904,7 +904,7 @@ check_fee_function claim_creator_fees \
   'assert!( self.creator_meme.value() > 0 || self.creator_quote.value() > 0, blast_fun::errors::nothing_accrued!(), ); ( self.creator_meme.withdraw_all().into_coin(ctx), self.creator_quote.withdraw_all().into_coin(ctx), )'
 
 check_fee_function claim_protocol_fees \
-  'fun claim_protocol_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, _: &AdminWitness<LAUNCHPAD_DOMAIN>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
+  'fun claim_protocol_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, _: &AdminWitness<BLAST_FUN_DOMAIN>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
   'protocol_meme.withdraw_all protocol_quote.withdraw_all ' \
   'assert!( self.has_protocol_fees(), blast_fun::errors::nothing_accrued!(), ); ( self.protocol_meme.withdraw_all().into_coin(ctx), self.protocol_quote.withdraw_all().into_coin(ctx), )'
 
@@ -950,7 +950,7 @@ package_version_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sourc
 # checked arithmetic, and its replay event belong to blast_admin.
 if [[ ! -f sources/package_version.move ]] \
   || ! rg -U -q \
-    'public struct PackageVersion has key \{\s*id: UID,\s*generation: OperationalVersion<BLAST>,\s*\}' \
+    'public struct PackageVersion has key \{\s*id: UID,\s*generation: OperationalVersion<BLAST_FUN>,\s*\}' \
     sources/package_version.move \
   || ! rg -q '^const PACKAGE_VERSION: u64 = 1;$' sources/package_version.move \
   || ! rg -q '^const NEXT_PACKAGE_VERSION: u64 = 2;$' sources/package_version.move \
@@ -1032,15 +1032,15 @@ check_runtime_function assert_creator_claim_signature \
   'assert!( sui::ed25519::ed25519_verify( signature, &self.creator_claim_signer_public_key, message, ), blast_fun::errors::invalid_creator_claim_signature!(), );'
 
 check_runtime_function set_creator_claim_signer \
-  'fun set_creator_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<LAUNCHPAD_DOMAIN>, signer_public_key: vector<u8>, )' \
+  'fun set_creator_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<BLAST_FUN_DOMAIN>, signer_public_key: vector<u8>, )' \
   'package_version.assert_current(); validate_creator_claim_public_key(&signer_public_key); assert!( self.creator_claim_signer_public_key != signer_public_key, blast_fun::errors::creator_claim_signer_unchanged!(), ); self.creator_claim_signer_public_key = signer_public_key; events::creator_claim_signer_set(self.creator_claim_signer_public_key);'
 
 check_runtime_function revoke_creator_claim_signer \
-  'fun revoke_creator_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<LAUNCHPAD_DOMAIN>, )' \
+  'fun revoke_creator_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<BLAST_FUN_DOMAIN>, )' \
   'package_version.assert_current(); self.assert_creator_claim_active(); self.creator_claim_signer_public_key = vector[]; events::creator_claim_signer_revoked();'
 
 check_runtime_function set_protocol_fee_share \
-  'fun set_protocol_fee_share( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<LAUNCHPAD_DOMAIN>, protocol_fee_share_bps: Bps, )' \
+  'fun set_protocol_fee_share( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<BLAST_FUN_DOMAIN>, protocol_fee_share_bps: Bps, )' \
   'package_version.assert_current(); assert!( protocol_fee_share_bps != self.protocol_fee_share_bps, blast_fun::errors::protocol_fee_share_unchanged!(), ); self.protocol_fee_share_bps = protocol_fee_share_bps; events::protocol_fee_share_changed(protocol_fee_share_bps.value());'
 
 # The three named mutations are the complete set of RuntimeConfig transitions, and
@@ -1067,7 +1067,7 @@ runtime_config_ungated="$(awk -F'\t' '
     if ($10 !~ /^package_version\.assert_current\(\);/) {
       print "  " $2 " must check the live package version as its first statement"
     }
-    if ($9 !~ /[(,] _: &AdminWitness<LAUNCHPAD_DOMAIN>,/) {
+    if ($9 !~ /[(,] _: &AdminWitness<BLAST_FUN_DOMAIN>,/) {
       print "  " $2 " must be authorized by a borrowed AdminWitness"
     }
   }
@@ -1139,15 +1139,15 @@ if [[ ! -f sources/launch_config.move ]] \
     sources/launch_config.move \
   || rg -n '\b(AdminCap|ProtocolAuthority)\b' <<<"$launch_config_production" \
   || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' <<<"$launch_config_production" \
-  || [[ "$(rg -o '_: &AdminWitness<LAUNCHPAD_DOMAIN>' <<<"$launch_config_production" | wc -l)" != 6 ]] \
+  || [[ "$(rg -o '_: &AdminWitness<BLAST_FUN_DOMAIN>' <<<"$launch_config_production" | wc -l)" != 6 ]] \
   || [[ "$(rg -c '^public fun ' <<<"$launch_config_production")" != 6 ]] \
   || [[ "$(rg -c '^public fun (allow_quote|disallow_quote|allow_migration_witness|disallow_migration_witness)<' <<<"$launch_config_production")" != 4 ]] \
   || [[ "$(rg -c '^public fun set_graduation_defaults\(' <<<"$launch_config_production")" != 1 ]] \
   || ! rg -U -q \
-    'public fun set_trade_fees\(\s*self: &mut LaunchConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*quote_fee_bps: Bps,\s*meme_fee_bps: Bps,\s*\)' \
+    'public fun set_trade_fees\(\s*self: &mut LaunchConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness<BLAST_FUN_DOMAIN>,\s*quote_fee_bps: Bps,\s*meme_fee_bps: Bps,\s*\)' \
     sources/launch_config.move \
   || ! rg -U -q \
-    'public fun set_graduation_defaults\(\s*self: &mut LaunchConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness<LAUNCHPAD_DOMAIN>,\s*protocol_quote_migration_fee_bps: Bps,\s*protocol_meme_graduation_fee_bps: Bps,\s*meme_liquidity_provision_bps: Bps,\s*\)' \
+    'public fun set_graduation_defaults\(\s*self: &mut LaunchConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness<BLAST_FUN_DOMAIN>,\s*protocol_quote_migration_fee_bps: Bps,\s*protocol_meme_graduation_fee_bps: Bps,\s*meme_liquidity_provision_bps: Bps,\s*\)' \
     sources/launch_config.move \
   || [[ "$(rg -c '^public\(package\) fun ' <<<"$launch_config_production")" != 1 ]] \
   || ! rg -U -q \
@@ -1406,12 +1406,12 @@ check_launch_function claim_creator_caps \
   'package_version.assert_current(); assert!( self.creator_authority.is_some(), blast_fun::errors::creator_authority_unavailable!(), ); let (curve_fee_cap, blast_metadata_cap) = self.creator_authority.extract().claim_creator_caps( config, account_attestation, clock, ctx, ); self.curve_fee_authority = CurveFeeAuthority::Cap(curve_fee_cap.id()); self.blast_metadata_cap_id = option::some(blast_metadata_cap.id()); (curve_fee_cap, blast_metadata_cap)'
 
 check_launch_function reassign_curve_fee_cap \
-  'fun reassign_curve_fee_cap<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>, recipient: address, ctx: &mut TxContext, )' \
-  'package_version.assert_current(); assert!( !self.curve_fee_authority.is_custodian(), blast_fun::errors::creator_fees_locked!(), ); admin_witness.assert_role(launchpad_domain::creator_admin_role()); assert!(recipient != @0x0, blast_fun::errors::invalid_creator_recipient!()); let revoked_curve_fee_cap_id = match (self.curve_fee_authority) { CurveFeeAuthority::Cap(curve_fee_cap_id) => option::some(curve_fee_cap_id), _ => option::none(), }; self.revoke_creator_authority(); let curve_fee_cap = creator_authority::new_curve_fee_cap<Meme>(ctx); let curve_fee_cap_id = curve_fee_cap.id(); self.curve_fee_authority = CurveFeeAuthority::Cap(curve_fee_cap_id); transfer::public_transfer(curve_fee_cap, recipient); events::curve_fee_cap_reassigned( self.id.to_inner(), revoked_curve_fee_cap_id, curve_fee_cap_id, recipient, );'
+  'fun reassign_curve_fee_cap<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, recipient: address, ctx: &mut TxContext, )' \
+  'package_version.assert_current(); assert!( !self.curve_fee_authority.is_custodian(), blast_fun::errors::creator_fees_locked!(), ); admin_witness.assert_role(blast_fun_domain::creator_admin_role()); assert!(recipient != @0x0, blast_fun::errors::invalid_creator_recipient!()); let revoked_curve_fee_cap_id = match (self.curve_fee_authority) { CurveFeeAuthority::Cap(curve_fee_cap_id) => option::some(curve_fee_cap_id), _ => option::none(), }; self.revoke_creator_authority(); let curve_fee_cap = creator_authority::new_curve_fee_cap<Meme>(ctx); let curve_fee_cap_id = curve_fee_cap.id(); self.curve_fee_authority = CurveFeeAuthority::Cap(curve_fee_cap_id); transfer::public_transfer(curve_fee_cap, recipient); events::curve_fee_cap_reassigned( self.id.to_inner(), revoked_curve_fee_cap_id, curve_fee_cap_id, recipient, );'
 
 check_launch_function reassign_metadata_cap \
-  'fun reassign_metadata_cap<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, admin_witness: &AdminWitness<LAUNCHPAD_DOMAIN>, recipient: address, ctx: &mut TxContext, )' \
-  'package_version.assert_current(); admin_witness.assert_role(launchpad_domain::creator_admin_role()); assert!(recipient != @0x0, blast_fun::errors::invalid_creator_recipient!()); let revoked_metadata_cap_id = self.blast_metadata_cap_id; self.revoke_creator_authority(); let blast_metadata_cap = creator_authority::new_metadata_cap<Meme>(ctx); let metadata_cap_id = blast_metadata_cap.id(); self.blast_metadata_cap_id = option::some(metadata_cap_id); transfer::public_transfer(blast_metadata_cap, recipient); events::metadata_cap_reassigned( self.id.to_inner(), revoked_metadata_cap_id, metadata_cap_id, recipient, );'
+  'fun reassign_metadata_cap<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, recipient: address, ctx: &mut TxContext, )' \
+  'package_version.assert_current(); admin_witness.assert_role(blast_fun_domain::creator_admin_role()); assert!(recipient != @0x0, blast_fun::errors::invalid_creator_recipient!()); let revoked_metadata_cap_id = self.blast_metadata_cap_id; self.revoke_creator_authority(); let blast_metadata_cap = creator_authority::new_metadata_cap<Meme>(ctx); let metadata_cap_id = blast_metadata_cap.id(); self.blast_metadata_cap_id = option::some(metadata_cap_id); transfer::public_transfer(blast_metadata_cap, recipient); events::metadata_cap_reassigned( self.id.to_inner(), revoked_metadata_cap_id, metadata_cap_id, recipient, );'
 
 check_launch_function lock_creator_fees \
   'fun lock_creator_fees<Meme, Quote, Custodian: drop>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, curve_fee_cap: CurveFeeCap<Meme>, _: Custodian, )' \
@@ -1623,8 +1623,8 @@ fi
 
 if rg -n \
   'RuntimeConfig|ed25519|creator_claim_signer|verify_creator_claim|CreatorCap|CurveFeeCap|BlastMetadataCap|issue_creator_cap' \
-  sources/launchpad_domain.move; then
-  echo 'launchpad_domain.move must own only the domain marker, its constants, and its role.' >&2
+  sources/blast_fun_domain.move; then
+  echo 'blast_fun_domain.move must own only the domain marker, its constants, and its role.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1710,7 +1710,7 @@ creator_authority_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sou
 if rg -n '\b[a-z_]*claimed:[[:space:]]*bool|\bissue_creator_cap\b|\btransfer::' \
   <<<"$creator_authority_production" \
   || rg -q '\bMetadataCap\b|\bcoin_registry\b' <<<"$(move_normalized_source <<<"$creator_authority_facts")" \
-  || rg -q '\b(AdminWitness|LAUNCHPAD_DOMAIN|launchpad_domain|PackageVersion|package_version|assert_role)\b' \
+  || rg -q '\b(AdminWitness|BLAST_FUN_DOMAIN|blast_fun_domain|PackageVersion|package_version|assert_role)\b' \
     <<<"$(move_normalized_source <<<"$creator_authority_facts")" \
   || [[ "$(rg -c '^use blast_fun::' sources/creator_authority.move)" != 1 ]] \
   || ! rg -Fxq 'use blast_fun::{constants, events, runtime_config::RuntimeConfig};' sources/creator_authority.move \

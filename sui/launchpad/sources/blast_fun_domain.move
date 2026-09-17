@@ -1,10 +1,10 @@
-/// The Launchpad-owned administration domain shared with Migrators and Distributor.
+/// The blast.fun administration domain shared with Migrators and Distributor.
 ///
 /// This module owns the domain one-time witness, the governance configuration,
 /// and the exported role bits. Reusing packages import
-/// `AdminWitness<LAUNCHPAD_DOMAIN>` and the role accessors; they never create
+/// `AdminWitness<BLAST_FUN_DOMAIN>` and the role accessors; they never create
 /// another authority and never restate a numeric role.
-module blast_fun::launchpad_domain;
+module blast_fun::blast_fun_domain;
 
 // === Constants ===
 
@@ -23,11 +23,11 @@ const CREATOR_ADMIN_ROLE: u64 = 2;
 // === Public Structs ===
 
 /// One-time witness that names this administration domain at the type level.
-public struct LAUNCHPAD_DOMAIN() has drop;
+public struct BLAST_FUN_DOMAIN() has drop;
 
 // === Private Initialization ===
 
-fun init(otw: LAUNCHPAD_DOMAIN, ctx: &mut TxContext) {
+fun init(otw: BLAST_FUN_DOMAIN, ctx: &mut TxContext) {
     blast_admin::acl::new(otw, MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, ctx);
 }
 
@@ -48,5 +48,5 @@ public fun creator_admin_role(): u64 {
 #[test_only]
 /// Runs domain initialization with a genuine test one-time witness.
 public fun init_for_testing(ctx: &mut TxContext) {
-    init(sui::test_utils::create_one_time_witness<LAUNCHPAD_DOMAIN>(), ctx);
+    init(sui::test_utils::create_one_time_witness<BLAST_FUN_DOMAIN>(), ctx);
 }
