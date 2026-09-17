@@ -430,7 +430,7 @@ fun primitive_risk_module_cannot_update_max_order_notional() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_boosts_core::state::EMaxOrderNotionalUnchanged,
+    abort_code = blast_boosts_core::errors::EMaxOrderNotionalUnchanged,
     location = blast_boosts_core::state,
 )]
 fun risk_module_cannot_repeat_the_current_max_order_notional() {
@@ -451,7 +451,7 @@ fun risk_module_cannot_repeat_the_current_max_order_notional() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_boosts_core::state::EInvalidMaxOrderNotional,
+    abort_code = blast_boosts_core::errors::EInvalidMaxOrderNotional,
     location = blast_boosts_core::state,
 )]
 fun risk_module_cannot_exceed_the_frozen_max_order_notional_bounds() {
@@ -566,7 +566,7 @@ fun issuer_and_risk_admin_without_shutdown_role_cannot_begin_shutdown() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_boosts_core::lifecycle::EInvalidLifecycleTransition,
+    abort_code = blast_boosts_core::errors::EInvalidLifecycleTransition,
     location = blast_boosts_core::lifecycle,
 )]
 fun shutdown_admin_cannot_stop_an_uninitialized_vault() {

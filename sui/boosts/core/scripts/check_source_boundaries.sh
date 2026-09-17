@@ -328,7 +328,7 @@ actual_initialize_shape="$(
   sed -n '/^public fun initialize<Product>($/,/^}/p' "$state_file" \
     | tr -d '[:space:]'
 )"
-expected_initialize_shape='publicfuninitialize<Product>(self:&mutState<Product>,observation:PositionObservation,seed_reserve:u64,base_decimals:u8,collateral_decimals:u8,reference_time_ms:u64,):u64{self.lifecycle.assert_can_activate();assert!(base_decimals<=constants::max_asset_decimals!()&&collateral_decimals<=constants::max_asset_decimals!(),EInvalidAssetDecimals,);letseed_nav=validated_initialization_nav(self,observation,seed_reserve,reference_time_ms,);self.lifecycle.activate();self.maintenance_reserve=seed_reserve;self.base_unit=10u64.pow(base_decimals);self.collateral_unit=10u64.pow(collateral_decimals);seed_nav}'
+expected_initialize_shape='publicfuninitialize<Product>(self:&mutState<Product>,observation:PositionObservation,seed_reserve:u64,base_decimals:u8,collateral_decimals:u8,reference_time_ms:u64,):u64{self.lifecycle.assert_can_activate();assert!(base_decimals<=constants::max_asset_decimals!()&&collateral_decimals<=constants::max_asset_decimals!(),blast_boosts_core::errors::invalid_asset_decimals!(),);letseed_nav=validated_initialization_nav(self,observation,seed_reserve,reference_time_ms,);self.lifecycle.activate();self.maintenance_reserve=seed_reserve;self.base_unit=10u64.pow(base_decimals);self.collateral_unit=10u64.pow(collateral_decimals);seed_nav}'
 [[ "$actual_initialize_shape" == "$expected_initialize_shape" ]] \
   || fail "State initialization must validate immutably before its final activation and reserve writes."
 

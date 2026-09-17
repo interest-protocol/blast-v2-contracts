@@ -1,13 +1,7 @@
+// Package error macros keep stable codes in `errors.move`; the lint sees the expanded literal.
+#[allow(lint(abort_without_constant))]
 /// Irreversible lifecycle and operation permissions for one Series1 Vault.
 module blast_boosts_core::lifecycle;
-
-// === Errors ===
-
-#[error(code = 17)]
-const EInvalidLifecycleTransition: vector<u8> = b"The lifecycle cannot make the requested transition.";
-
-#[error(code = 18)]
-const EOperationNotPermittedInLifecycle: vector<u8> = b"The lifecycle does not permit the requested operation.";
 
 // === Public Types ===
 
@@ -43,7 +37,7 @@ public(package) fun is_uninitialized(self: &Lifecycle): bool {
 }
 
 public(package) fun assert_can_activate(self: &Lifecycle) {
-    assert!(self.is_uninitialized(), EInvalidLifecycleTransition);
+    assert!(self.is_uninitialized(), blast_boosts_core::errors::invalid_lifecycle_transition!());
 }
 
 public(package) fun activate(self: &mut Lifecycle) {
@@ -56,7 +50,7 @@ public(package) fun is_active(self: &Lifecycle): bool {
 }
 
 public(package) fun assert_active(self: &Lifecycle) {
-    assert!(self.is_active(), EOperationNotPermittedInLifecycle);
+    assert!(self.is_active(), blast_boosts_core::errors::operation_not_permitted_in_lifecycle!());
 }
 
 public(package) fun assert_normal_redemption_allowed(self: &Lifecycle) {
@@ -70,12 +64,12 @@ public(package) fun assert_operating_risk_reduction_allowed(self: &Lifecycle) {
 /// Settled cash has no remaining venue funding or health lifecycle.
 public(package) fun assert_can_sync(self: &Lifecycle) {
     assert!(self.is_active() || self.is_unwinding(),
-        EOperationNotPermittedInLifecycle);
+        blast_boosts_core::errors::operation_not_permitted_in_lifecycle!());
 }
 
 /// Only the owner with authenticated shutdown authority may call this transition.
 public(package) fun begin_shutdown(self: &mut Lifecycle) {
-    assert!(self.is_active(), EInvalidLifecycleTransition);
+    assert!(self.is_active(), blast_boosts_core::errors::invalid_lifecycle_transition!());
     *self = Lifecycle::Unwinding;
 }
 
@@ -84,12 +78,12 @@ public(package) fun is_unwinding(self: &Lifecycle): bool {
 }
 
 public(package) fun assert_shutdown_close_allowed(self: &Lifecycle) {
-    assert!(self.is_unwinding(), EOperationNotPermittedInLifecycle);
+    assert!(self.is_unwinding(), blast_boosts_core::errors::operation_not_permitted_in_lifecycle!());
 }
 
 /// The owning adapter must first recover all cash and prove venue finality.
 public(package) fun finalize_shutdown(self: &mut Lifecycle) {
-    assert!(self.is_unwinding(), EInvalidLifecycleTransition);
+    assert!(self.is_unwinding(), blast_boosts_core::errors::invalid_lifecycle_transition!());
     *self = Lifecycle::Settled;
 }
 
@@ -98,7 +92,7 @@ public(package) fun is_settled(self: &Lifecycle): bool {
 }
 
 public(package) fun assert_shutdown_redemption_allowed(self: &Lifecycle) {
-    assert!(self.is_settled(), EOperationNotPermittedInLifecycle);
+    assert!(self.is_settled(), blast_boosts_core::errors::operation_not_permitted_in_lifecycle!());
 }
 
 // === Test-Only Functions ===

@@ -92,20 +92,21 @@ and authority, object binding, lifecycle, input bounds, external health,
 arithmetic, then post-execution reconciliation. Add a precedence test for each
 new pair of overlapping invalid inputs.
 
-### 1.6 Declare each error where it is raised
+### 1.6 Keep one error registry per package
 
-Every abort uses a module-local `#[error(code = N)] const EName: vector<u8>`
-declared in the module that raises it, under that module's `// === Errors ===`
-section, with the message stating the violated condition. Codes are stable and
-append-only within a module; a retired code is never reused. Tests pin the
-constant and the raising module (`abort_code = module::EName, location =
-package::module`); there is no separate registry, macro layer, or numeric
-registry test to keep in sync.
+Each Boosts package keeps every abort code in its `lib/errors.move`: a
+`#[test_only] const EName: u64 = N` with a doc comment stating the violated
+condition, and a `macro public(package) fun name(): u64` that raising modules
+call. Codes are stable and append-only; a retired code is never reused. Tests
+pin `abort_code = errors::EName, location = package::module`, so the raising
+module still owns the abort location.
 
-Why: the earlier package-wide registry declared every code twice (a
-test-only constant and a production macro) and needed a lint suppression in
-every module; the compiler's error constants give the same stable codes with
-one declaration and a readable message.
+Why: with the codes spread across modules a reader had to open each file to
+learn what a code meant; one registry per package reads top to bottom and is
+the single place a reviewer checks for reuse (founder ruling, 2026-09-17).
+Move constants are module-private and macros expand in the caller, so the
+registry cannot hand out `#[error]` message constants; the doc comment on each
+constant carries the message instead.
 
 ### 1.7 Compute shareholder NAV once and pass it explicitly
 

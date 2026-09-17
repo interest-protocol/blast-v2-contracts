@@ -365,7 +365,7 @@ What this module does not close:
 ## Package integration
 
 Verification commands and deferred stateful work are recorded in the parent
-[README](../README.md); each module declares the errors it raises. The future financial
+[README](../README.md); `lib/errors.move` is the package abort registry. The future financial
 transitions in `state.move` are the only production consumers of these
 calculations. Venue adapters provide authenticated execution facts; they do
 not price shares or select accounting inputs.

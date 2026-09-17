@@ -1,20 +1,11 @@
+// Package error macros keep stable codes in `errors.move`; the lint sees the expanded literal.
+#[allow(lint(abort_without_constant))]
 /// Linear, operation-scoped observations supplied by a venue adapter.
 ///
 /// These values prove neither source identity nor caller authority. The adapter
 /// authenticates its venue and oracle sources before it constructs them, while
 /// Series1 uses each value exactly once during the enclosing operation.
 module blast_boosts_core::observation;
-
-// === Errors ===
-
-#[error(code = 75)]
-const EInvalidObservationPrice: vector<u8> = b"A normalized price observation must be positive.";
-
-#[error(code = 76)]
-const EInvalidObservationLotSize: vector<u8> = b"A normalized position observation must use a positive venue lot size.";
-
-#[error(code = 77)]
-const EInvalidPositionObservation: vector<u8> = b"A normalized position must be flat or use positive, lot-aligned base and notional.";
 
 // === Public Types ===
 
@@ -64,7 +55,7 @@ public fun new_price(
 ): PriceObservation {
     assert!(
         price > 0,
-        EInvalidObservationPrice,
+        blast_boosts_core::errors::invalid_observation_price!(),
     );
 
     PriceObservation { price, confidence, publish_time_ms }
@@ -91,15 +82,15 @@ public fun new_position(
 ): PositionObservation {
     assert!(
         lot_size > 0,
-        EInvalidObservationLotSize,
+        blast_boosts_core::errors::invalid_observation_lot_size!(),
     );
     assert!(
         mark_price > 0,
-        EInvalidObservationPrice,
+        blast_boosts_core::errors::invalid_observation_price!(),
     );
     assert!(
         is_position_structurally_valid(position_base, position_collateral, lot_size),
-        EInvalidPositionObservation,
+        blast_boosts_core::errors::invalid_position_observation!(),
     );
 
     PositionObservation {

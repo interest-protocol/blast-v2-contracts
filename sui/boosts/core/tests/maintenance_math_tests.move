@@ -93,7 +93,7 @@ fun reserve_backing_and_shareholder_nav_agree_across_the_small_domain() {
 /// Prevents share pricing from subtracting an unbacked reserve.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EMaintenanceReserveExceedsEquity,
+    abort_code = errors::EMaintenanceReserveExceedsEquity,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_reserve_above_venue_equity_is_rejected() {
@@ -103,7 +103,7 @@ fun a_reserve_above_venue_equity_is_rejected() {
 /// Pins the exact maximum-width underwater boundary and abort owner.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EMaintenanceReserveExceedsEquity,
+    abort_code = errors::EMaintenanceReserveExceedsEquity,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_maximum_reserve_one_unit_above_equity_is_rejected() {
@@ -143,7 +143,7 @@ fun fee_credits_conserve_every_unit_across_the_small_domain() {
 /// Catches a reserve credit that wraps at the u64 boundary.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EArithmeticOverflow,
+    abort_code = errors::EArithmeticOverflow,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_fee_credit_that_overflows_is_rejected() {
@@ -304,7 +304,7 @@ fun canonical_mint_credits_the_actual_nav_gain_net_of_the_retained_fee() {
 
 /// The allocation share is validated before any fee arithmetic.
 #[test]
-#[expected_failure(abort_code = accounting_math::EInvalidFeeBps, location = blast_boosts_core::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidFeeBps, location = blast_boosts_core::accounting_math)]
 fun fee_allocation_rejects_an_admin_share_above_the_whole_fee() {
     accounting_math::fee_allocation(1_000, 100, 10_001);
 }
@@ -437,7 +437,7 @@ fun canonical_mint_supports_the_highest_fee_near_the_u64_boundary() {
 /// Pins the pre-mint reserve check ahead of every low-level mint input check.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EMaintenanceReserveExceedsEquity,
+    abort_code = errors::EMaintenanceReserveExceedsEquity,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_canonical_mint_rejects_an_unbacked_pre_mint_reserve_first() {
@@ -447,7 +447,7 @@ fun a_canonical_mint_rejects_an_unbacked_pre_mint_reserve_first() {
 /// Pins fee validation before deriving an invalid post-mint reserve checkpoint.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidFeeBps,
+    abort_code = errors::EInvalidFeeBps,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_canonical_mint_rejects_an_invalid_fee_before_post_mint_backing() {
@@ -457,7 +457,7 @@ fun a_canonical_mint_rejects_an_invalid_fee_before_post_mint_backing() {
 /// Pins fee validation ahead of contribution validation when both are invalid.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidFeeBps,
+    abort_code = errors::EInvalidFeeBps,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_canonical_mint_rejects_an_invalid_fee_before_a_nonpositive_contribution() {
@@ -467,7 +467,7 @@ fun a_canonical_mint_rejects_an_invalid_fee_before_a_nonpositive_contribution() 
 /// Catches a maximum-width reserve credit that wraps before post-mint backing is checked.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EArithmeticOverflow,
+    abort_code = errors::EArithmeticOverflow,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_canonical_mint_rejects_a_reserve_credit_above_u64() {
@@ -485,7 +485,7 @@ fun a_canonical_mint_rejects_a_reserve_credit_above_u64() {
 /// Catches deriving post-mint NAV before crediting a fee that is no longer backed.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EMaintenanceReserveExceedsEquity,
+    abort_code = errors::EMaintenanceReserveExceedsEquity,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_cannot_credit_more_reserve_than_post_mint_equity_backs() {
@@ -495,7 +495,7 @@ fun a_mint_cannot_credit_more_reserve_than_post_mint_equity_backs() {
 /// Catches accepting a deposit whose fee consumes the complete shareholder NAV gain.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ENonpositiveContribution,
+    abort_code = errors::ENonpositiveContribution,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_canonical_mint_without_shareholder_nav_gain_is_rejected() {
@@ -504,7 +504,7 @@ fun a_canonical_mint_without_shareholder_nav_gain_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ENonpositiveContribution,
+    abort_code = errors::ENonpositiveContribution,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_canonical_mint_that_lowers_nav_is_rejected() {
@@ -514,7 +514,7 @@ fun a_canonical_mint_that_lowers_nav_is_rejected() {
 /// Pins the contribution guard ahead of the low-level supply guard.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ENonpositiveContribution,
+    abort_code = errors::ENonpositiveContribution,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_canonical_mint_rejects_a_nonpositive_contribution_before_zero_supply() {
@@ -524,7 +524,7 @@ fun a_canonical_mint_rejects_a_nonpositive_contribution_before_zero_supply() {
 /// Pins the low-level supply guard once the canonical path has a positive contribution.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidShareSupply,
+    abort_code = errors::EInvalidShareSupply,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_canonical_mint_against_zero_supply_is_rejected() {
@@ -534,7 +534,7 @@ fun a_canonical_mint_against_zero_supply_is_rejected() {
 /// Pins deposit validation before the low-level NAV and supply guards.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EZeroAmount,
+    abort_code = errors::EZeroAmount,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_canonical_mint_rejects_zero_deposit_before_zero_nav_and_supply() {
@@ -544,7 +544,7 @@ fun a_canonical_mint_rejects_zero_deposit_before_zero_nav_and_supply() {
 /// Pins the reserve-backing guard before redemption's low-level input guards.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EMaintenanceReserveExceedsEquity,
+    abort_code = errors::EMaintenanceReserveExceedsEquity,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_canonical_redemption_rejects_unbacked_reserve_before_share_inputs() {
@@ -554,7 +554,7 @@ fun a_canonical_redemption_rejects_unbacked_reserve_before_share_inputs() {
 /// The mint range assertion aborts with the over-exposure code above the planned fill.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EMintOverExposed,
+    abort_code = errors::EMintOverExposed,
     location = blast_boosts_core::accounting_math,
 )]
 fun mint_base_bound_assertion_rejects_over_exposure() {
@@ -564,7 +564,7 @@ fun mint_base_bound_assertion_rejects_over_exposure() {
 /// The mint range assertion aborts with the under-exposure code below the funded fill.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EMintUnderExposed,
+    abort_code = errors::EMintUnderExposed,
     location = blast_boosts_core::accounting_math,
 )]
 fun mint_base_bound_assertion_rejects_under_exposure() {
@@ -573,7 +573,7 @@ fun mint_base_bound_assertion_rejects_under_exposure() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EArithmeticOverflow,
+    abort_code = errors::EArithmeticOverflow,
     location = blast_boosts_core::accounting_math,
 )]
 fun leverage_ratio_rejects_an_overflowing_result() {
@@ -582,7 +582,7 @@ fun leverage_ratio_rejects_an_overflowing_result() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EArithmeticOverflow,
+    abort_code = errors::EArithmeticOverflow,
     location = blast_boosts_core::accounting_math,
 )]
 fun target_notional_rejects_an_overflowing_result() {
@@ -591,7 +591,7 @@ fun target_notional_rejects_an_overflowing_result() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EArithmeticOverflow,
+    abort_code = errors::EArithmeticOverflow,
     location = blast_boosts_core::accounting_math,
 )]
 fun mint_base_delta_rejects_an_overflowing_target() {
@@ -790,7 +790,7 @@ fun canonical_redemption_reconciles_execution_loss_at_both_sides_of_a_rounding_c
 /// Pins the post-unwind reserve check ahead of share and fee validation.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EMaintenanceReserveExceedsEquity,
+    abort_code = errors::EMaintenanceReserveExceedsEquity,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_canonical_redemption_rejects_an_unbacked_unwind_reserve_first() {
@@ -1134,13 +1134,13 @@ fun allocated_mint_quote_credits_the_capped_contribution() {
 }
 
 #[test]
-#[expected_failure(abort_code = accounting_math::ENonpositiveContribution, location = blast_boosts_core::accounting_math)]
+#[expected_failure(abort_code = errors::ENonpositiveContribution, location = blast_boosts_core::accounting_math)]
 fun allocated_mint_quote_rejects_a_flat_nav_before_the_cap() {
     accounting_math::allocated_mint_quote(1_100_000, 1_101_000, 100_000, 101_000, 999_000, 1_000_000, 1);
 }
 
 #[test]
-#[expected_failure(abort_code = accounting_math::ESharesOutBelowMinimum, location = blast_boosts_core::accounting_math)]
+#[expected_failure(abort_code = errors::ESharesOutBelowMinimum, location = blast_boosts_core::accounting_math)]
 fun allocated_mint_quote_applies_the_share_floor_to_the_capped_contribution() {
     accounting_math::allocated_mint_quote(1_100_000, 2_102_000, 100_000, 101_000, 999_000, 1_000_000, 999_001);
 }
@@ -1239,7 +1239,7 @@ fun a_mint_at_its_share_floor_is_accepted() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ESharesOutBelowMinimum,
+    abort_code = errors::ESharesOutBelowMinimum,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_one_share_below_its_floor_is_rejected() {
@@ -1250,7 +1250,7 @@ fun a_mint_one_share_below_its_floor_is_rejected() {
 /// one share, a 25 percent rounding loss. A share floor of two rejects it.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ESharesOutBelowMinimum,
+    abort_code = errors::ESharesOutBelowMinimum,
     location = blast_boosts_core::accounting_math,
 )]
 fun the_share_floor_bounds_the_seed_inflation_loss() {
@@ -1267,7 +1267,7 @@ fun the_share_floor_bounds_the_seed_inflation_loss() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EZeroSharesOut,
+    abort_code = errors::EZeroSharesOut,
     location = blast_boosts_core::accounting_math,
 )]
 fun zero_shares_are_rejected_before_the_share_floor() {
@@ -1306,7 +1306,7 @@ fun a_wiped_account_is_backed_but_has_no_positive_nav() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidNav,
+    abort_code = errors::EInvalidNav,
     location = blast_boosts_core::accounting_math,
 )]
 fun leverage_ratio_rejects_zero_nav() {
@@ -1568,6 +1568,6 @@ fun canonical_mint(
 
 // === Imports ===
 
-use blast_boosts_core::{accounting_math};
+use blast_boosts_core::{errors, accounting_math};
 
 use std::unit_test::assert_eq;

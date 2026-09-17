@@ -25,7 +25,7 @@ fun leverage_supports_its_maximum_representable_ratio() {
 }
 
 #[test]
-#[expected_failure(abort_code = accounting_math::EInvalidNav, location = blast_boosts_core::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::accounting_math)]
 fun leverage_against_zero_nav_is_rejected() {
     accounting_math::leverage_bps_up(100, 0);
 }
@@ -33,7 +33,7 @@ fun leverage_against_zero_nav_is_rejected() {
 /// Pins the first ratio above the supported `u64` range.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EArithmeticOverflow,
+    abort_code = errors::EArithmeticOverflow,
     location = blast_boosts_core::accounting_math,
 )]
 fun leverage_above_the_supported_bound_is_rejected() {
@@ -83,14 +83,14 @@ fun target_and_reported_leverage_are_dual_across_the_operating_band() {
 }
 
 #[test]
-#[expected_failure(abort_code = accounting_math::EInvalidNav, location = blast_boosts_core::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::accounting_math)]
 fun a_target_notional_against_zero_nav_is_rejected() {
     accounting_math::target_notional_down(0, 20_000);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidTargetLeverageBps,
+    abort_code = errors::EInvalidTargetLeverageBps,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_zero_target_leverage_is_rejected() {
@@ -99,14 +99,14 @@ fun a_zero_target_leverage_is_rejected() {
 
 /// Pins the NAV guard ahead of the target guard when both are zero.
 #[test]
-#[expected_failure(abort_code = accounting_math::EInvalidNav, location = blast_boosts_core::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::accounting_math)]
 fun zero_nav_is_rejected_before_a_zero_target_leverage() {
     accounting_math::target_notional_down(0, 0);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EArithmeticOverflow,
+    abort_code = errors::EArithmeticOverflow,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_target_notional_above_the_supported_bound_is_rejected() {
@@ -267,7 +267,7 @@ fun repeated_worst_case_mints_stay_in_band_with_a_hundred_lot_minimum() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ESubLotExposureDelta,
+    abort_code = errors::ESubLotExposureDelta,
     location = blast_boosts_core::accounting_math,
 )]
 fun the_smallest_dust_mint_is_rejected() {
@@ -276,7 +276,7 @@ fun the_smallest_dust_mint_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ESubLotExposureDelta,
+    abort_code = errors::ESubLotExposureDelta,
     location = blast_boosts_core::accounting_math,
 )]
 fun the_largest_sub_lot_mint_is_rejected() {
@@ -285,7 +285,7 @@ fun the_largest_sub_lot_mint_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ESubLotExposureDelta,
+    abort_code = errors::ESubLotExposureDelta,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mid_range_sub_lot_mint_is_rejected() {
@@ -294,7 +294,7 @@ fun a_mid_range_sub_lot_mint_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ESubLotExposureDelta,
+    abort_code = errors::ESubLotExposureDelta,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_zero_contribution_mint_is_rejected() {
@@ -304,7 +304,7 @@ fun a_zero_contribution_mint_is_rejected() {
 /// Pins the last proportional target below a hundred-lot minimum.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ESubLotExposureDelta,
+    abort_code = errors::ESubLotExposureDelta,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_below_the_minimum_lot_multiple_is_rejected() {
@@ -312,14 +312,14 @@ fun a_mint_below_the_minimum_lot_multiple_is_rejected() {
 }
 
 #[test]
-#[expected_failure(abort_code = accounting_math::EInvalidNav, location = blast_boosts_core::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::accounting_math)]
 fun a_mint_base_delta_against_zero_nav_is_rejected() {
     accounting_math::mint_base_delta_down(10, 100, 0, 1, 1);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidBaseExposure,
+    abort_code = errors::EInvalidBaseExposure,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_base_delta_from_flat_exposure_is_rejected() {
@@ -328,7 +328,7 @@ fun a_mint_base_delta_from_flat_exposure_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidLotSize,
+    abort_code = errors::EInvalidLotSize,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_base_delta_with_a_zero_lot_is_rejected() {
@@ -337,7 +337,7 @@ fun a_mint_base_delta_with_a_zero_lot_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidMinExposureLots,
+    abort_code = errors::EInvalidMinExposureLots,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_base_delta_with_a_zero_minimum_lot_multiple_is_rejected() {
@@ -346,7 +346,7 @@ fun a_mint_base_delta_with_a_zero_minimum_lot_multiple_is_rejected() {
 
 /// Pins the NAV guard ahead of the exposure and lot guards.
 #[test]
-#[expected_failure(abort_code = accounting_math::EInvalidNav, location = blast_boosts_core::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::accounting_math)]
 fun zero_nav_is_rejected_before_flat_exposure_and_a_zero_lot() {
     accounting_math::mint_base_delta_down(10, 0, 0, 0, 0);
 }
@@ -354,7 +354,7 @@ fun zero_nav_is_rejected_before_flat_exposure_and_a_zero_lot() {
 /// Pins the exposure guard ahead of the lot guard.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidBaseExposure,
+    abort_code = errors::EInvalidBaseExposure,
     location = blast_boosts_core::accounting_math,
 )]
 fun flat_exposure_is_rejected_before_a_zero_lot() {
@@ -364,7 +364,7 @@ fun flat_exposure_is_rejected_before_a_zero_lot() {
 /// Pins the lot guard ahead of the minimum-lot-multiple guard.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidLotSize,
+    abort_code = errors::EInvalidLotSize,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_zero_lot_is_rejected_before_a_zero_minimum_lot_multiple() {
@@ -373,7 +373,7 @@ fun a_zero_lot_is_rejected_before_a_zero_minimum_lot_multiple() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EArithmeticOverflow,
+    abort_code = errors::EArithmeticOverflow,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_base_delta_beyond_u64_is_rejected() {
@@ -480,7 +480,7 @@ fun mint_bounds_match_their_definition_across_the_small_domain() {
 /// Catches a fill that opened more than the sealed plan.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EMintOverExposed,
+    abort_code = errors::EMintOverExposed,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_fill_above_the_plan_is_rejected() {
@@ -490,7 +490,7 @@ fun a_mint_fill_above_the_plan_is_rejected() {
 /// Catches a partial fill below the exposure the actual contribution funds.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EMintUnderExposed,
+    abort_code = errors::EMintUnderExposed,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_fill_below_the_actual_contribution_is_rejected() {
@@ -500,7 +500,7 @@ fun a_mint_fill_below_the_actual_contribution_is_rejected() {
 /// Catches a mint whose actual credited contribution is dust even though its plan was not.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ESubLotExposureDelta,
+    abort_code = errors::ESubLotExposureDelta,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_whose_actual_contribution_is_dust_is_rejected() {
@@ -510,7 +510,7 @@ fun a_mint_whose_actual_contribution_is_dust_is_rejected() {
 /// Catches an upper bound that wraps past the maximum base.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EArithmeticOverflow,
+    abort_code = errors::EArithmeticOverflow,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_bound_beyond_the_maximum_base_is_rejected() {
@@ -639,7 +639,7 @@ fun proportional_exposure_math_supports_the_maximum_live_lot() {
 /// Catches a partial fill that pays out without reaching the proportional keep.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ERedemptionUnderReduced,
+    abort_code = errors::ERedemptionUnderReduced,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_final_base_above_the_proportional_keep_is_rejected() {
@@ -649,7 +649,7 @@ fun a_final_base_above_the_proportional_keep_is_rejected() {
 /// Catches a reduction beyond the lot tolerance that is not the flat cap.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ERedemptionOverReduced,
+    abort_code = errors::ERedemptionOverReduced,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_final_base_more_than_one_lot_below_the_keep_is_rejected() {
@@ -659,7 +659,7 @@ fun a_final_base_more_than_one_lot_below_the_keep_is_rejected() {
 /// Catches reopening exposure on a flat Series through the bounds check.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ERedemptionUnderReduced,
+    abort_code = errors::ERedemptionUnderReduced,
     location = blast_boosts_core::accounting_math,
 )]
 fun any_exposure_on_a_flat_series_is_rejected() {
@@ -669,7 +669,7 @@ fun any_exposure_on_a_flat_series_is_rejected() {
 /// Regression for cumulative drift: a dust redemption may not close a whole lot.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ESubLotExposureDelta,
+    abort_code = errors::ESubLotExposureDelta,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_dust_redemption_below_one_lot_is_rejected() {
@@ -679,7 +679,7 @@ fun a_dust_redemption_below_one_lot_is_rejected() {
 /// Pins the last required reduction below a fourteen-lot minimum.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ESubLotExposureDelta,
+    abort_code = errors::ESubLotExposureDelta,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_sub_minimum_redemption_reduction_is_rejected() {
@@ -689,7 +689,7 @@ fun a_sub_minimum_redemption_reduction_is_rejected() {
 /// A position that is itself a single live lot cannot be redeemed at any size.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ESubLotExposureDelta,
+    abort_code = errors::ESubLotExposureDelta,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_one_lot_position_cannot_be_redeemed_at_any_size() {
@@ -702,7 +702,7 @@ fun a_one_lot_position_cannot_be_redeemed_at_any_size() {
 /// the minimum, every burn count aborts and the position is locked.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ESubLotExposureDelta,
+    abort_code = errors::ESubLotExposureDelta,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_position_at_the_minimum_operation_size_locks_the_largest_redemption() {
@@ -743,7 +743,7 @@ fun exposure_predicates_never_abort_on_degenerate_inputs() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidShareAmount,
+    abort_code = errors::EInvalidShareAmount,
     location = blast_boosts_core::accounting_math,
 )]
 fun redemption_bounds_reject_a_zero_share_burn() {
@@ -752,7 +752,7 @@ fun redemption_bounds_reject_a_zero_share_burn() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidShareAmount,
+    abort_code = errors::EInvalidShareAmount,
     location = blast_boosts_core::accounting_math,
 )]
 fun redemption_bounds_reject_burning_the_complete_supply() {
@@ -761,7 +761,7 @@ fun redemption_bounds_reject_burning_the_complete_supply() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidLotSize,
+    abort_code = errors::EInvalidLotSize,
     location = blast_boosts_core::accounting_math,
 )]
 fun redemption_bounds_reject_a_zero_lot() {
@@ -770,7 +770,7 @@ fun redemption_bounds_reject_a_zero_lot() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidMinExposureLots,
+    abort_code = errors::EInvalidMinExposureLots,
     location = blast_boosts_core::accounting_math,
 )]
 fun redemption_bounds_reject_a_zero_minimum_lot_multiple() {
@@ -780,7 +780,7 @@ fun redemption_bounds_reject_a_zero_minimum_lot_multiple() {
 /// Pins the share-bound guard ahead of the lot guard when both are invalid.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidShareAmount,
+    abort_code = errors::EInvalidShareAmount,
     location = blast_boosts_core::accounting_math,
 )]
 fun an_invalid_share_amount_is_rejected_before_a_zero_lot() {
@@ -790,7 +790,7 @@ fun an_invalid_share_amount_is_rejected_before_a_zero_lot() {
 /// Pins the lot guard ahead of the minimum-lot-multiple guard in redemption.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidLotSize,
+    abort_code = errors::EInvalidLotSize,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_zero_lot_is_rejected_before_a_zero_minimum_lot_multiple_in_redemption() {
@@ -1043,6 +1043,6 @@ fun drift_after_worst_case_mints(
 
 // === Imports ===
 
-use blast_boosts_core::{accounting_math};
+use blast_boosts_core::{errors, accounting_math};
 
 use std::unit_test::assert_eq;

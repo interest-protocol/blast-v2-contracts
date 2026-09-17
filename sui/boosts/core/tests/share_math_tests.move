@@ -49,14 +49,14 @@ fun fee_never_exceeds_the_amount_at_the_highest_rate() {
 }
 
 #[test]
-#[expected_failure(abort_code = accounting_math::EZeroAmount, location = blast_boosts_core::accounting_math)]
+#[expected_failure(abort_code = errors::EZeroAmount, location = blast_boosts_core::accounting_math)]
 fun zero_fee_amount_is_rejected() {
     accounting_math::fee_up(0, 1);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidFeeBps,
+    abort_code = errors::EInvalidFeeBps,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_fee_rate_at_the_denominator_is_rejected() {
@@ -65,7 +65,7 @@ fun a_fee_rate_at_the_denominator_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidFeeBps,
+    abort_code = errors::EInvalidFeeBps,
     location = blast_boosts_core::accounting_math,
 )]
 fun the_maximum_u64_fee_rate_is_rejected() {
@@ -74,7 +74,7 @@ fun the_maximum_u64_fee_rate_is_rejected() {
 
 /// Pins the amount guard ahead of the rate guard when both inputs are invalid.
 #[test]
-#[expected_failure(abort_code = accounting_math::EZeroAmount, location = blast_boosts_core::accounting_math)]
+#[expected_failure(abort_code = errors::EZeroAmount, location = blast_boosts_core::accounting_math)]
 fun a_zero_amount_is_rejected_before_an_invalid_fee_rate() {
     accounting_math::fee_up(0, 10_000);
 }
@@ -154,14 +154,14 @@ fun a_one_unit_contribution_can_mint_exactly_one_atomic_share() {
 }
 
 #[test]
-#[expected_failure(abort_code = accounting_math::EInvalidNav, location = blast_boosts_core::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::accounting_math)]
 fun a_mint_against_zero_nav_is_rejected() {
     accounting_math::mint_quote(10, 0, 100);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidShareSupply,
+    abort_code = errors::EInvalidShareSupply,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_against_zero_supply_is_rejected() {
@@ -171,7 +171,7 @@ fun a_mint_against_zero_supply_is_rejected() {
 /// Catches accepting a mint that creates no shareholder NAV contribution.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ENonpositiveContribution,
+    abort_code = errors::ENonpositiveContribution,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_zero_contribution_mint_is_rejected() {
@@ -180,7 +180,7 @@ fun a_zero_contribution_mint_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EZeroSharesOut,
+    abort_code = errors::EZeroSharesOut,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_below_one_atomic_share_is_rejected() {
@@ -189,7 +189,7 @@ fun a_mint_below_one_atomic_share_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EArithmeticOverflow,
+    abort_code = errors::EArithmeticOverflow,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_of_more_shares_than_u64_is_rejected() {
@@ -198,7 +198,7 @@ fun a_mint_of_more_shares_than_u64_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EArithmeticOverflow,
+    abort_code = errors::EArithmeticOverflow,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_that_overflows_the_supply_is_rejected() {
@@ -207,7 +207,7 @@ fun a_mint_that_overflows_the_supply_is_rejected() {
 
 /// Pins the NAV guard ahead of the supply guard when both are zero.
 #[test]
-#[expected_failure(abort_code = accounting_math::EInvalidNav, location = blast_boosts_core::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::accounting_math)]
 fun zero_nav_is_rejected_before_zero_supply() {
     accounting_math::mint_quote(10, 0, 0);
 }
@@ -215,7 +215,7 @@ fun zero_nav_is_rejected_before_zero_supply() {
 /// Pins the supply guard ahead of the contribution guard when both are zero.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidShareSupply,
+    abort_code = errors::EInvalidShareSupply,
     location = blast_boosts_core::accounting_math,
 )]
 fun zero_supply_is_rejected_before_a_zero_contribution() {
@@ -294,7 +294,7 @@ fun a_costly_unwind_still_pays_the_reduced_gross() {
 
 /// Catches a favorable unwind rescuing a claim the rounded-up kept equity consumed.
 #[test]
-#[expected_failure(abort_code = accounting_math::ENonpositiveGross, location = blast_boosts_core::accounting_math)]
+#[expected_failure(abort_code = errors::ENonpositiveGross, location = blast_boosts_core::accounting_math)]
 fun a_favorable_unwind_cannot_rescue_a_claim_the_kept_equity_consumes() {
     accounting_math::redemption_quote(10, 1, 1_000, 100, 0);
 }
@@ -522,14 +522,14 @@ fun splitting_a_mint_does_not_create_extra_shares() {
 }
 
 #[test]
-#[expected_failure(abort_code = accounting_math::EInvalidNav, location = blast_boosts_core::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::accounting_math)]
 fun a_redemption_against_zero_nav_is_rejected() {
     accounting_math::redemption_quote(10, 0, 1_000, 100, 0);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidShareAmount,
+    abort_code = errors::EInvalidShareAmount,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_zero_share_redemption_is_rejected() {
@@ -539,7 +539,7 @@ fun a_zero_share_redemption_is_rejected() {
 /// Catches a final-holder drain that the permanently locked seed shares must prevent.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidShareAmount,
+    abort_code = errors::EInvalidShareAmount,
     location = blast_boosts_core::accounting_math,
 )]
 fun redeeming_the_complete_supply_is_rejected() {
@@ -548,7 +548,7 @@ fun redeeming_the_complete_supply_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidShareAmount,
+    abort_code = errors::EInvalidShareAmount,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_redemption_against_zero_supply_is_rejected() {
@@ -558,7 +558,7 @@ fun a_redemption_against_zero_supply_is_rejected() {
 /// Catches paying a redeemer when the unwind left exactly the equity others keep.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ENonpositiveGross,
+    abort_code = errors::ENonpositiveGross,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_redemption_without_excess_equity_is_rejected() {
@@ -568,7 +568,7 @@ fun a_redemption_without_excess_equity_is_rejected() {
 /// Pins fee validation ahead of the gross-claim guard, before the kept equity is computed.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidFeeBps,
+    abort_code = errors::EInvalidFeeBps,
     location = blast_boosts_core::accounting_math,
 )]
 fun an_invalid_redemption_fee_is_rejected_before_a_nonpositive_gross() {
@@ -577,7 +577,7 @@ fun an_invalid_redemption_fee_is_rejected_before_a_nonpositive_gross() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::ENonpositiveGross,
+    abort_code = errors::ENonpositiveGross,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_redemption_below_the_kept_equity_is_rejected() {
@@ -586,7 +586,7 @@ fun a_redemption_below_the_kept_equity_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidFeeBps,
+    abort_code = errors::EInvalidFeeBps,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_redeem_fee_rate_at_the_denominator_is_rejected() {
@@ -595,7 +595,7 @@ fun a_redeem_fee_rate_at_the_denominator_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EZeroNetPayout,
+    abort_code = errors::EZeroNetPayout,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_redemption_consumed_by_its_fee_is_rejected() {
@@ -605,7 +605,7 @@ fun a_redemption_consumed_by_its_fee_is_rejected() {
 /// Pins the last gross amount below the 9,999-bps positive-payout threshold.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EZeroNetPayout,
+    abort_code = errors::EZeroNetPayout,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_9_999_unit_gross_is_completely_consumed_at_the_highest_fee() {
@@ -614,7 +614,7 @@ fun a_9_999_unit_gross_is_completely_consumed_at_the_highest_fee() {
 
 /// Pins the NAV guard ahead of the share-bound guard when both are invalid.
 #[test]
-#[expected_failure(abort_code = accounting_math::EInvalidNav, location = blast_boosts_core::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::accounting_math)]
 fun zero_nav_is_rejected_before_an_invalid_share_amount() {
     accounting_math::redemption_quote(0, 0, 1_000, 100, 0);
 }
@@ -622,7 +622,7 @@ fun zero_nav_is_rejected_before_an_invalid_share_amount() {
 /// Pins the share-bound guard ahead of the fee-rate guard when both are invalid.
 #[test]
 #[expected_failure(
-    abort_code = accounting_math::EInvalidShareAmount,
+    abort_code = errors::EInvalidShareAmount,
     location = blast_boosts_core::accounting_math,
 )]
 fun an_invalid_share_amount_is_rejected_before_an_invalid_fee_rate() {
@@ -780,6 +780,6 @@ fun assert_redemption_is_non_dilutive(
 
 // === Imports ===
 
-use blast_boosts_core::{accounting_math};
+use blast_boosts_core::{errors, accounting_math};
 
 use std::unit_test::assert_eq;

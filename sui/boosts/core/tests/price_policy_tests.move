@@ -68,7 +68,7 @@ fun a_policy_is_a_copyable_immutable_value() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EInvalidMaxPriceAge, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidMaxPriceAge, location = blast_boosts_core::policy,
 )]
 fun a_zero_freshness_budget_is_rejected() {
     policy::new_price_policy(0, 0, 0, 0);
@@ -84,7 +84,7 @@ fun an_equal_skew_and_age_budget_is_accepted() {
 /// A transposed `(age, ahead)` pair would reject aged updates and admit future ones.
 #[test]
 #[expected_failure(
-    abort_code = policy::EInvalidFreshnessWindow, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidFreshnessWindow, location = blast_boosts_core::policy,
 )]
 fun a_skew_budget_above_the_age_budget_is_rejected() {
     policy::new_price_policy(2_000, 30_000, 0, 0);
@@ -92,7 +92,7 @@ fun a_skew_budget_above_the_age_budget_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EInvalidMaxPriceAge, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidMaxPriceAge, location = blast_boosts_core::policy,
 )]
 fun freshness_budget_validation_precedes_window_validation() {
     policy::new_price_policy(0, 1, 0, 0);
@@ -100,7 +100,7 @@ fun freshness_budget_validation_precedes_window_validation() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EInvalidFreshnessWindow, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidFreshnessWindow, location = blast_boosts_core::policy,
 )]
 fun window_validation_precedes_both_relative_bound_validations() {
     policy::new_price_policy(1, 2, 10_000, 10_000);
@@ -108,7 +108,7 @@ fun window_validation_precedes_both_relative_bound_validations() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EInvalidMaxConfidenceBps, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidMaxConfidenceBps, location = blast_boosts_core::policy,
 )]
 fun a_confidence_bound_at_the_denominator_is_rejected() {
     policy::new_price_policy(1, 0, 10_000, 0);
@@ -116,7 +116,7 @@ fun a_confidence_bound_at_the_denominator_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EInvalidMaxConfidenceBps, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidMaxConfidenceBps, location = blast_boosts_core::policy,
 )]
 fun a_confidence_bound_above_the_denominator_is_rejected() {
     policy::new_price_policy(1, 0, std::u64::max_value!(), 0);
@@ -124,7 +124,7 @@ fun a_confidence_bound_above_the_denominator_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EInvalidMaxMarkDivergenceBps, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidMaxMarkDivergenceBps, location = blast_boosts_core::policy,
 )]
 fun a_mark_divergence_bound_at_the_denominator_is_rejected() {
     policy::new_price_policy(1, 0, 0, 10_000);
@@ -132,7 +132,7 @@ fun a_mark_divergence_bound_at_the_denominator_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EInvalidMaxMarkDivergenceBps, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidMaxMarkDivergenceBps, location = blast_boosts_core::policy,
 )]
 fun a_mark_divergence_bound_above_the_denominator_is_rejected() {
     policy::new_price_policy(1, 0, 0, std::u64::max_value!());
@@ -140,7 +140,7 @@ fun a_mark_divergence_bound_above_the_denominator_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EInvalidMaxPriceAge, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidMaxPriceAge, location = blast_boosts_core::policy,
 )]
 fun freshness_validation_precedes_both_relative_bound_validations() {
     policy::new_price_policy(0, 0, 10_000, 10_000);
@@ -148,7 +148,7 @@ fun freshness_validation_precedes_both_relative_bound_validations() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EInvalidMaxConfidenceBps, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidMaxConfidenceBps, location = blast_boosts_core::policy,
 )]
 fun confidence_validation_precedes_mark_divergence_validation() {
     policy::new_price_policy(1, 0, 10_000, 10_000);
@@ -206,7 +206,7 @@ fun an_update_at_the_exact_age_bound_is_fresh() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EStaleValuation, location = blast_boosts_core::policy,
+    abort_code = errors::EStaleValuation, location = blast_boosts_core::policy,
 )]
 fun an_update_one_millisecond_past_the_age_bound_is_stale() {
     freshness_policy(30_000, 0).assert_price_fresh(969_999, 1_000_000);
@@ -222,7 +222,7 @@ fun an_update_at_the_exact_skew_bound_is_fresh() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EFutureValuation, location = blast_boosts_core::policy,
+    abort_code = errors::EFutureValuation, location = blast_boosts_core::policy,
 )]
 fun an_update_one_millisecond_past_the_skew_bound_is_future_dated() {
     freshness_policy(30_000, 2_000).assert_price_fresh(1_002_001, 1_000_000);
@@ -230,7 +230,7 @@ fun an_update_one_millisecond_past_the_skew_bound_is_future_dated() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EFutureValuation, location = blast_boosts_core::policy,
+    abort_code = errors::EFutureValuation, location = blast_boosts_core::policy,
 )]
 fun a_zero_skew_budget_rejects_the_first_future_millisecond() {
     freshness_policy(30_000, 0).assert_price_fresh(1_000_001, 1_000_000);
@@ -289,7 +289,7 @@ fun a_confidence_at_the_exact_threshold_is_admitted() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EConfidenceExceedsBound, location = blast_boosts_core::policy,
+    abort_code = errors::EConfidenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun a_confidence_one_unit_above_the_exact_threshold_is_rejected() {
     confidence_policy(250).assert_confidence_within_bound(251, 10_000);
@@ -297,7 +297,7 @@ fun a_confidence_one_unit_above_the_exact_threshold_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EConfidenceExceedsBound, location = blast_boosts_core::policy,
+    abort_code = errors::EConfidenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun the_strictest_confidence_bound_rejects_the_first_atomic_interval() {
     confidence_policy(0).assert_confidence_within_bound(
@@ -308,7 +308,7 @@ fun the_strictest_confidence_bound_rejects_the_first_atomic_interval() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EConfidenceExceedsBound, location = blast_boosts_core::policy,
+    abort_code = errors::EConfidenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun a_confidence_equal_to_the_price_is_always_rejected() {
     confidence_policy(9_999).assert_confidence_within_bound(1, 1);
@@ -324,7 +324,7 @@ fun a_maximum_width_confidence_at_the_threshold_is_admitted() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EConfidenceExceedsBound, location = blast_boosts_core::policy,
+    abort_code = errors::EConfidenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun a_maximum_width_confidence_one_unit_past_the_threshold_is_rejected() {
     let price = std::u64::max_value!();
@@ -338,7 +338,7 @@ fun a_maximum_width_confidence_one_unit_past_the_threshold_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EConfidenceExceedsBound, location = blast_boosts_core::policy,
+    abort_code = errors::EConfidenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun a_maximum_width_confidence_and_price_do_not_wrap() {
     let max = std::u64::max_value!();
@@ -348,7 +348,7 @@ fun a_maximum_width_confidence_and_price_do_not_wrap() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EInvalidValuationPrice, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidValuationPrice, location = blast_boosts_core::policy,
 )]
 fun a_zero_price_is_rejected_even_when_the_confidence_bound_holds() {
     confidence_policy(9_999).assert_confidence_within_bound(0, 0);
@@ -356,7 +356,7 @@ fun a_zero_price_is_rejected_even_when_the_confidence_bound_holds() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EInvalidValuationPrice, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidValuationPrice, location = blast_boosts_core::policy,
 )]
 fun price_validation_precedes_the_confidence_bound() {
     confidence_policy(0).assert_confidence_within_bound(1, 0);
@@ -404,7 +404,7 @@ fun a_mark_at_either_exact_divergence_bound_is_admitted() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EMarkIndexDivergenceExceedsBound, location = blast_boosts_core::policy,
+    abort_code = errors::EMarkIndexDivergenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun a_mark_one_unit_above_the_upper_divergence_bound_is_rejected() {
     divergence_policy(250).assert_mark_within_index_divergence(10_251, 10_000);
@@ -412,7 +412,7 @@ fun a_mark_one_unit_above_the_upper_divergence_bound_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EMarkIndexDivergenceExceedsBound, location = blast_boosts_core::policy,
+    abort_code = errors::EMarkIndexDivergenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun a_mark_one_unit_below_the_lower_divergence_bound_is_rejected() {
     divergence_policy(250).assert_mark_within_index_divergence(9_749, 10_000);
@@ -420,7 +420,7 @@ fun a_mark_one_unit_below_the_lower_divergence_bound_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EMarkIndexDivergenceExceedsBound, location = blast_boosts_core::policy,
+    abort_code = errors::EMarkIndexDivergenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun a_zero_mark_against_a_positive_index_is_always_rejected() {
     divergence_policy(9_999).assert_mark_within_index_divergence(0, 10_000);
@@ -439,7 +439,7 @@ fun a_maximum_width_mark_divergence_at_the_threshold_is_admitted() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EMarkIndexDivergenceExceedsBound, location = blast_boosts_core::policy,
+    abort_code = errors::EMarkIndexDivergenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun a_maximum_width_mark_divergence_one_unit_past_the_threshold_is_rejected() {
     let index = std::u64::max_value!();
@@ -453,7 +453,7 @@ fun a_maximum_width_mark_divergence_one_unit_past_the_threshold_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EMarkIndexDivergenceExceedsBound, location = blast_boosts_core::policy,
+    abort_code = errors::EMarkIndexDivergenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun a_maximum_width_mark_and_index_do_not_wrap() {
     divergence_policy(9_999).assert_mark_within_index_divergence(
@@ -464,7 +464,7 @@ fun a_maximum_width_mark_and_index_do_not_wrap() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EInvalidValuationPrice, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidValuationPrice, location = blast_boosts_core::policy,
 )]
 fun a_zero_index_is_rejected_even_when_the_mark_matches() {
     divergence_policy(9_999).assert_mark_within_index_divergence(0, 0);
@@ -472,7 +472,7 @@ fun a_zero_index_is_rejected_even_when_the_mark_matches() {
 
 #[test]
 #[expected_failure(
-    abort_code = policy::EInvalidValuationPrice, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidValuationPrice, location = blast_boosts_core::policy,
 )]
 fun index_validation_precedes_the_mark_divergence_bound() {
     divergence_policy(0).assert_mark_within_index_divergence(
@@ -509,4 +509,4 @@ fun divergence_policy(
 
 use std::unit_test::assert_eq;
 
-use blast_boosts_core::{policy};
+use blast_boosts_core::{errors, policy};

@@ -16,7 +16,7 @@ fun price_construction_preserves_normalized_fields() {
 
 #[test]
 #[expected_failure(
-    abort_code = observation::EInvalidObservationPrice, location = blast_boosts_core::observation,
+    abort_code = errors::EInvalidObservationPrice, location = blast_boosts_core::observation,
 )]
 fun price_construction_rejects_zero_price() {
     observation::new_price(0, 4, 5).destroy();
@@ -81,7 +81,7 @@ fun short_position_construction_preserves_the_observed_side() {
 
 #[test]
 #[expected_failure(
-    abort_code = observation::EInvalidObservationLotSize, location = blast_boosts_core::observation,
+    abort_code = errors::EInvalidObservationLotSize, location = blast_boosts_core::observation,
 )]
 fun position_construction_rejects_zero_lot_size() {
     observation::new_position(
@@ -103,7 +103,7 @@ fun position_construction_rejects_zero_lot_size() {
 
 #[test]
 #[expected_failure(
-    abort_code = observation::EInvalidPositionObservation, location = blast_boosts_core::observation,
+    abort_code = errors::EInvalidPositionObservation, location = blast_boosts_core::observation,
 )]
 fun position_construction_rejects_a_flat_base_with_nonzero_notional() {
     observation::new_position(
@@ -145,4 +145,4 @@ fun funding_construction_preserves_each_settlement_variant() {
 
 use std::unit_test::assert_eq;
 
-use blast_boosts_core::{observation, policy};
+use blast_boosts_core::{errors, observation, policy};

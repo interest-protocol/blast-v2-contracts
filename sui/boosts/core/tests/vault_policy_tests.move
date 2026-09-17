@@ -5,31 +5,31 @@ module blast_boosts_core::vault_policy_tests;
 // === Tests ===
 
 #[test]
-#[expected_failure(abort_code = policy::EFeeCapExceeded, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
 fun fee_limits_reject_mint_cap_below_initial_rate() {
     new_policy(true, 10, 20, 1, 1).with_fee_limits(9, 20, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = policy::EFeeCapExceeded, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
 fun fee_limits_reject_redeem_cap_below_initial_rate() {
     new_policy(true, 10, 20, 1, 1).with_fee_limits(10, 19, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = policy::EFeeCapExceeded, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
 fun fee_limits_reject_mint_cap_at_full_principal() {
     new_policy(true, 10, 20, 1, 1).with_fee_limits(10_000, 20, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = policy::EFeeCapExceeded, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
 fun fee_limits_reject_redeem_cap_at_full_principal() {
     new_policy(true, 10, 20, 1, 1).with_fee_limits(10, 10_000, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = policy::EFeeCapExceeded, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
 fun fee_limits_reject_allocation_cap_above_full_fee() {
     new_policy(true, 10, 20, 1, 1).with_fee_limits(10, 20, 10_001);
 }
@@ -138,7 +138,7 @@ fun minimum_exposure_lots_at_the_ceiling_are_accepted() {
 }
 
 #[test]
-#[expected_failure(abort_code = policy::EInvalidMinExposureLots, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EInvalidMinExposureLots, location = blast_boosts_core::policy)]
 fun minimum_exposure_lots_above_the_ceiling_are_rejected() {
     new_policy(true, 0, 0, 1_000_001, 1);
 }
@@ -146,13 +146,13 @@ fun minimum_exposure_lots_above_the_ceiling_are_rejected() {
 /// A policy whose lot multiple and NAV cap were swapped is rejected instead of
 /// deploying an immutable Vault that can never mint.
 #[test]
-#[expected_failure(abort_code = policy::EInvalidMinExposureLots, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EInvalidMinExposureLots, location = blast_boosts_core::policy)]
 fun a_transposed_lot_multiple_and_nav_cap_is_rejected() {
     new_policy(true, 0, 0, 5_000_000_000_000, 100);
 }
 
 #[test]
-#[expected_failure(abort_code = policy::EInvalidNavCap, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EInvalidNavCap, location = blast_boosts_core::policy)]
 fun a_nav_cap_whose_max_leverage_notional_overflows_is_rejected() {
     let max = std::u64::max_value!();
 
@@ -168,37 +168,37 @@ fun a_nav_cap_whose_max_leverage_notional_overflows_is_rejected() {
 }
 
 #[test]
-#[expected_failure(abort_code = policy::EInvalidFeeBps, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EInvalidFeeBps, location = blast_boosts_core::policy)]
 fun mint_fee_at_the_denominator_is_rejected() {
     new_policy(true, 10_000, 0, 1, 1);
 }
 
 #[test]
-#[expected_failure(abort_code = policy::EInvalidFeeBps, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EInvalidFeeBps, location = blast_boosts_core::policy)]
 fun redeem_fee_at_the_denominator_is_rejected() {
     new_policy(true, 0, 10_000, 1, 1);
 }
 
 #[test]
-#[expected_failure(abort_code = policy::EInvalidMinExposureLots, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EInvalidMinExposureLots, location = blast_boosts_core::policy)]
 fun zero_minimum_exposure_lots_are_rejected() {
     new_policy(true, 0, 0, 0, 1);
 }
 
 #[test]
-#[expected_failure(abort_code = policy::EInvalidNavCap, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EInvalidNavCap, location = blast_boosts_core::policy)]
 fun zero_nav_cap_is_rejected() {
     new_policy(true, 0, 0, 1, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = policy::EInvalidFeeBps, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EInvalidFeeBps, location = blast_boosts_core::policy)]
 fun fee_validation_precedes_other_policy_validation() {
     new_policy(true, 10_000, 10_000, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = policy::EInvalidMinExposureLots, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EInvalidMinExposureLots, location = blast_boosts_core::policy)]
 fun lot_validation_precedes_nav_validation() {
     new_policy(true, 0, 0, 0, 0);
 }
@@ -231,4 +231,4 @@ fun standard_price_policy(): policy::PricePolicy {
 
 use std::unit_test::assert_eq;
 
-use blast_boosts_core::{policy};
+use blast_boosts_core::{errors, policy};

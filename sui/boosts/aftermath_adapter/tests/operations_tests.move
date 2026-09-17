@@ -215,7 +215,7 @@ fun terminal_zero_cash_burns_native_shares_and_returns_composable_zero_coin() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_boosts_core::lifecycle::EInvalidLifecycleTransition, location = blast_boosts_core::lifecycle)]
+#[expected_failure(abort_code = blast_boosts_core::errors::EInvalidLifecycleTransition, location = blast_boosts_core::lifecycle)]
 fun shutdown_is_irreversible_even_for_the_same_authorized_witness() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
@@ -227,7 +227,7 @@ fun shutdown_is_irreversible_even_for_the_same_authorized_witness() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_boosts_core::lifecycle::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
+#[expected_failure(abort_code = blast_boosts_core::errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun finalization_cannot_recover_or_pay_the_seed_funder_twice() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
@@ -364,7 +364,7 @@ fun zero_eligible_supply_sends_all_terminal_cash_to_recorded_funder_not_finalize
 }
 
 #[test]
-#[expected_failure(abort_code = blast_boosts_core::lifecycle::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
+#[expected_failure(abort_code = blast_boosts_core::errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun terminal_claim_before_shutdown_rejects_lifecycle_before_missing_cash_field() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
