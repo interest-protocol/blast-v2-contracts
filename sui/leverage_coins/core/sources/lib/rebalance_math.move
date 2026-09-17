@@ -1,9 +1,27 @@
-// Package error macros intentionally preserve stable caller-local abort ownership.
-#[allow(lint(abort_without_constant))]
 /// Whole-lot, fixed-pair sizing with conservative per-session execution headroom.
 module blast_leverage_core::rebalance_math;
 
 use blast_leverage_core::constants;
+
+// === Errors ===
+
+#[error(code = 2)]
+const EInvalidNav: vector<u8> = b"A priced operation requires positive Series NAV.";
+
+#[error(code = 9)]
+const EInvalidTargetLeverageBps: vector<u8> = b"A target leverage rate must be positive.";
+
+#[error(code = 10)]
+const EInvalidLotSize: vector<u8> = b"A venue lot size must be positive.";
+
+#[error(code = 15)]
+const EArithmeticOverflow: vector<u8> = b"An arithmetic result exceeds the supported u64 range.";
+
+#[error(code = 29)]
+const EInvalidValuationPrice: vector<u8> = b"A gated valuation price is zero.";
+
+#[error(code = 98)]
+const EVenueFeeUnusable: vector<u8> = b"A venue fee or execution bound cannot be represented conservatively.";
 
 // === Package Functions ===
 
@@ -14,11 +32,11 @@ use blast_leverage_core::constants;
 public(package) fun index_notional_up(
     base: u64, base_price: u64, collateral_price: u64, base_unit: u64, collateral_unit: u64,
 ): u64 {
-    assert!(base_price > 0 && collateral_price > 0, blast_leverage_core::errors::invalid_valuation_price!());
+    assert!(base_price > 0 && collateral_price > 0, EInvalidValuationPrice);
     let numerator = (base as u256) * (base_price as u256) * (collateral_unit as u256);
     let denominator = (collateral_price as u256) * (base_unit as u256);
     let value = numerator.div_ceil(denominator);
-    assert!(value <= std::u64::max_value!() as u256, blast_leverage_core::errors::arithmetic_overflow!());
+    assert!(value <= std::u64::max_value!() as u256, EArithmeticOverflow);
     value as u64
 }
 
@@ -26,11 +44,11 @@ public(package) fun index_notional_up(
 public(package) fun base_for_notional_down(
     notional: u64, base_price: u64, collateral_price: u64, lot: u64, base_unit: u64, collateral_unit: u64,
 ): u64 {
-    assert!(base_price > 0 && collateral_price > 0, blast_leverage_core::errors::invalid_valuation_price!());
-    assert!(lot > 0, blast_leverage_core::errors::invalid_lot_size!());
+    assert!(base_price > 0 && collateral_price > 0, EInvalidValuationPrice);
+    assert!(lot > 0, EInvalidLotSize);
     let base = (notional as u256) * (collateral_price as u256) * (base_unit as u256)
         / ((base_price as u256) * (collateral_unit as u256));
-    assert!(base <= std::u64::max_value!() as u256, blast_leverage_core::errors::arithmetic_overflow!());
+    assert!(base <= std::u64::max_value!() as u256, EArithmeticOverflow);
     (base as u64) / lot * lot
 }
 
@@ -38,7 +56,7 @@ public(package) fun base_for_notional_down(
 /// Each session calls this separately: rounding a multi-order total is not equivalent.
 public(package) fun execution_cost_up(notional: u64, fee_bps: u64, tolerance_bps: u64): u128 {
     assert!(fee_bps <= constants::basis_points_denominator!() && tolerance_bps < constants::basis_points_denominator!(),
-        blast_leverage_core::errors::venue_fee_unusable!());
+        EVenueFeeUnusable);
     let adverse = ((notional as u128) * (tolerance_bps as u128)).div_ceil(constants::basis_points_denominator!() as u128);
     let fee = (((notional as u128) + adverse) * (fee_bps as u128)).div_ceil(constants::basis_points_denominator!() as u128);
     adverse + fee
@@ -50,10 +68,10 @@ public(package) fun increase_base_down(
     nav: u64, notional: u64, target_bps: u64, base_price: u64, collateral_price: u64,
     lot: u64, order_cap: u64, fee_bps: u64, tolerance_bps: u64, base_unit: u64, collateral_unit: u64,
 ): u64 {
-    assert!(nav > 0, blast_leverage_core::errors::invalid_nav!());
-    assert!(target_bps > 0, blast_leverage_core::errors::invalid_target_leverage_bps!());
+    assert!(nav > 0, EInvalidNav);
+    assert!(target_bps > 0, EInvalidTargetLeverageBps);
     let target = (nav as u128) * (target_bps as u128) / (constants::basis_points_denominator!() as u128);
-    assert!(target <= std::u64::max_value!() as u128, blast_leverage_core::errors::arithmetic_overflow!());
+    assert!(target <= std::u64::max_value!() as u128, EArithmeticOverflow);
     if (target <= notional as u128)  return 0 ;
 
     let headroom = ((target as u64) - notional).min(order_cap);
@@ -82,13 +100,15 @@ public(package) fun increase_base_down(
 /// division, each distance is kept scaled by its own NAV, so comparing the
 /// before and after distances cross-multiplies by the other side's NAV.
 /// Sufficient means either the remaining gap is within one lot of notional
-/// (whole lots cannot get closer) or leverage moved at least
-/// `min_leverage_improvement_bps` toward the target.
+/// (whole lots cannot get closer) without having moved away from the target,
+/// or leverage moved at least `min_leverage_improvement_bps` toward it.
+/// Neither clause admits a landing farther from target than the start, so the
+/// predicate stays safe even if a caller sized past the target.
 public(package) fun reduction_is_sufficient(
     before_notional: u64, before_nav: u64, after_notional: u64, after_nav: u64,
     target_bps: u64, min_leverage_improvement_bps: u64, one_lot_notional: u64,
 ): bool {
-    assert!(before_nav > 0 && after_nav > 0, blast_leverage_core::errors::invalid_nav!());
+    assert!(before_nav > 0 && after_nav > 0, EInvalidNav);
     let bps = constants::basis_points_denominator!() as u256;
     let before_nav = before_nav as u256;
     let after_nav = after_nav as u256;
@@ -97,11 +117,14 @@ public(package) fun reduction_is_sufficient(
     // Each distance is in bps, multiplied through by its own NAV.
     let before_distance = ((before_notional as u256) * bps).diff(target * before_nav);
     let after_distance = ((after_notional as u256) * bps).diff(target * after_nav);
+    // Both distances over a common denominator, so they compare directly.
+    let scaled_before = before_distance * after_nav;
+    let scaled_after = after_distance * before_nav;
 
+    let not_farther_than_before = scaled_after <= scaled_before;
     let within_one_lot_of_target = after_distance <= (one_lot_notional as u256) * bps;
-    // before/before_nav - after/after_nav >= minimum, cross-multiplied.
-    let improved_by_minimum = before_distance * after_nav
-        >= after_distance * before_nav + (min_leverage_improvement_bps as u256) * before_nav * after_nav;
+    let improved_by_minimum =
+        scaled_before >= scaled_after + (min_leverage_improvement_bps as u256) * before_nav * after_nav;
 
-    within_one_lot_of_target || improved_by_minimum
+    (within_one_lot_of_target && not_farther_than_before) || improved_by_minimum
 }

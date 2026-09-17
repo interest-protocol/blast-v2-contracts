@@ -4,8 +4,9 @@ module blast_leverage_core::state_tests;
 
 use blast_admin::acl::{Authority, SuperAdminCap, AdminCap};
 use blast_leverage_core::{
+    accounting_math,
     domain_fixture,
-    errors,
+    lifecycle,
     observation::{Self, FundingSettlement, PositionObservation},
     policy::{Self, PositionSide, VaultPolicy},
     blast_leverage_core::{Self as domain, BLAST_LEVERAGE_CORE},
@@ -82,7 +83,7 @@ fun terminal_claim_quote_conserves_zero_dust_and_maximum_cash_for_both_sides() {
 }
 
 #[test]
-#[expected_failure(abort_code = 8, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::EZeroNetPayout, location = blast_leverage_core::state)]
 fun terminal_partial_dust_requires_combining_native_shares() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
@@ -94,7 +95,7 @@ fun terminal_partial_dust_requires_combining_native_shares() {
 }
 
 #[test]
-#[expected_failure(abort_code = 94, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::ERedemptionOutputBelowMinimum, location = blast_leverage_core::state)]
 fun terminal_zero_pool_requires_explicit_zero_minimum() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::short());
@@ -106,7 +107,7 @@ fun terminal_zero_pool_requires_explicit_zero_minimum() {
 }
 
 #[test]
-#[expected_failure(abort_code = 4, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::EInvalidShareAmount, location = blast_leverage_core::state)]
 fun terminal_claim_cannot_include_locked_seed() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
@@ -118,7 +119,7 @@ fun terminal_claim_cannot_include_locked_seed() {
 }
 
 #[test]
-#[expected_failure(abort_code = 3, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::EInvalidShareSupply, location = blast_leverage_core::state)]
 fun terminal_supply_below_locked_seed_fails_closed() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
@@ -150,7 +151,7 @@ fun unwind_uses_the_frozen_emergency_bound_without_a_nav_input_for_both_sides() 
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EStaleValuation, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EStaleValuation, location = blast_leverage_core::policy)]
 fun ordinary_unwind_never_falls_back_to_a_stale_price() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::short());
@@ -162,7 +163,7 @@ fun ordinary_unwind_never_falls_back_to_a_stale_price() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_leverage_core::lifecycle)]
+#[expected_failure(abort_code = lifecycle::EOperationNotPermittedInLifecycle, location = blast_leverage_core::lifecycle)]
 fun settled_cash_cannot_reopen_a_funding_buffer() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
@@ -174,7 +175,7 @@ fun settled_cash_cannot_reopen_a_funding_buffer() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EVenueFeeUnusable, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::EVenueFeeUnusable, location = blast_leverage_core::state)]
 fun invalid_rebalance_fee_precedes_invalid_observation() {
     let fixture = start(domain::vault_issuer_role());
     let state = initialized_state(&fixture, policy::long());
@@ -185,7 +186,7 @@ fun invalid_rebalance_fee_precedes_invalid_observation() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EMintOutsidePublicBand, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::EMintOutsidePublicBand, location = blast_leverage_core::state)]
 fun mint_outside_band_precedes_deposit_arithmetic() {
     let fixture = start(domain::vault_issuer_role());
     let state = initialized_state(&fixture, policy::long());
@@ -196,7 +197,7 @@ fun mint_outside_band_precedes_deposit_arithmetic() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveCheckpointChanged, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::EActiveCheckpointChanged, location = blast_leverage_core::state)]
 fun mint_completion_rejects_checkpoint_drift_before_fill() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
@@ -208,7 +209,7 @@ fun mint_completion_rejects_checkpoint_drift_before_fill() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveFillIncomplete, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::EActiveFillIncomplete, location = blast_leverage_core::state)]
 fun mint_completion_rejects_missing_attributable_fill() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
@@ -219,7 +220,7 @@ fun mint_completion_rejects_missing_attributable_fill() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ERedemptionOutputBelowMinimum, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::ERedemptionOutputBelowMinimum, location = blast_leverage_core::state)]
 fun redemption_rejects_output_one_above_net() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
@@ -231,7 +232,7 @@ fun redemption_rejects_output_one_above_net() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EBufferReleaseExceedsBalance, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::EBufferReleaseExceedsBalance, location = blast_leverage_core::state)]
 fun buffer_release_balance_guard_precedes_bad_observation() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
@@ -241,7 +242,7 @@ fun buffer_release_balance_guard_precedes_bad_observation() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ESharesOutBelowMinimum, location = blast_leverage_core::accounting_math)]
+#[expected_failure(abort_code = accounting_math::ESharesOutBelowMinimum, location = blast_leverage_core::accounting_math)]
 fun mint_amount_supply_swap_cannot_satisfy_the_original_minimum() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
@@ -253,7 +254,7 @@ fun mint_amount_supply_swap_cannot_satisfy_the_original_minimum() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidShareAmount, location = blast_leverage_core::accounting_math)]
+#[expected_failure(abort_code = accounting_math::EInvalidShareAmount, location = blast_leverage_core::accounting_math)]
 fun redemption_shares_supply_swap_is_rejected() {
     let fixture = start(domain::vault_issuer_role());
     let state = initialized_state(&fixture, policy::long());
@@ -280,7 +281,7 @@ fun nav_cap_setter_replaces_the_initial_cap_and_returns_the_previous_one() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ENavCapUnchanged, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::ENavCapUnchanged, location = blast_leverage_core::state)]
 fun nav_cap_setter_rejects_an_unchanged_cap() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = new_state(&fixture, policy::long());
@@ -289,7 +290,7 @@ fun nav_cap_setter_rejects_an_unchanged_cap() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidNavCap, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EInvalidNavCap, location = blast_leverage_core::policy)]
 fun nav_cap_setter_rejects_zero() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = new_state(&fixture, policy::long());
@@ -298,7 +299,7 @@ fun nav_cap_setter_rejects_zero() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidNavCap, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EInvalidNavCap, location = blast_leverage_core::policy)]
 fun nav_cap_setter_rejects_a_cap_whose_max_leverage_notional_overflows() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = new_state(&fixture, policy::long());
@@ -347,7 +348,7 @@ fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveObservationUnusable, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::EActiveObservationUnusable, location = blast_leverage_core::state)]
 fun active_mint_rejects_a_temporary_venue_pause() {
     let fixture = start(domain::vault_issuer_role());
     let state = initialized_state(&fixture, policy::long());
@@ -359,7 +360,7 @@ fun active_mint_rejects_a_temporary_venue_pause() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EStaleValuation, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EStaleValuation, location = blast_leverage_core::policy)]
 fun active_redemption_rejects_a_stale_price() {
     let fixture = start(domain::vault_issuer_role());
     let state = initialized_state(&fixture, policy::short());
@@ -371,7 +372,7 @@ fun active_redemption_rejects_a_stale_price() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EUserFeeLimitExceeded, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::EUserFeeLimitExceeded, location = blast_leverage_core::state)]
 fun active_mint_rejects_the_first_fee_above_the_user_ceiling() {
     let fixture = start(domain::vault_issuer_role());
     let state = initialized_state(&fixture, policy::long());
@@ -381,7 +382,7 @@ fun active_mint_rejects_the_first_fee_above_the_user_ceiling() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EFeeCapExceeded, location = blast_leverage_core::policy)]
 fun fee_update_cannot_raise_the_immutable_cap() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
@@ -391,7 +392,7 @@ fun fee_update_cannot_raise_the_immutable_cap() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EFeeSettingsUnchanged, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::EFeeSettingsUnchanged, location = blast_leverage_core::state)]
 fun fee_update_rejects_an_unchanged_tuple() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
@@ -401,7 +402,7 @@ fun fee_update_rejects_an_unchanged_tuple() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ENonpositiveContribution, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::ENonpositiveContribution, location = blast_leverage_core::state)]
 fun mint_rejects_input_consumed_by_rounded_fee_before_sizing_exposure() {
     let fixture = start(domain::vault_issuer_role());
     let state = initialized_state(&fixture, policy::long());
@@ -452,11 +453,11 @@ fun rebalance_short_reduction_recomputes_wide_permission_after_partial_progress(
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ERebalanceInsidePublicBand, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::ERebalanceInsidePublicBand, location = blast_leverage_core::state)]
 fun rebalance_exact_lower_endpoint_rejects() { rebalance_endpoint(1_600_000); }
 
 #[test]
-#[expected_failure(abort_code = errors::ERebalanceInsidePublicBand, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::ERebalanceInsidePublicBand, location = blast_leverage_core::state)]
 fun rebalance_exact_upper_endpoint_rejects() { rebalance_endpoint(2_600_000); }
 
 #[test]
@@ -473,7 +474,7 @@ fun rebalance_one_rational_atom_below_lower_is_not_hidden_by_report_rounding() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ERebalanceNoProgress, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::ERebalanceNoProgress, location = blast_leverage_core::state)]
 fun rebalance_reduction_without_leverage_improvement_rejects() {
     let fixture = start(domain::vault_issuer_role());
     let state = rebalance_state(&fixture, policy::long());
@@ -485,7 +486,7 @@ fun rebalance_reduction_without_leverage_improvement_rejects() {
 }
 
 #[test]
-#[expected_failure(abort_code = 92, location = blast_leverage_core::state)]
+#[expected_failure(abort_code = state::EActiveLeverageAboveCap, location = blast_leverage_core::state)]
 fun rebalance_increase_rejects_post_cost_target_overshoot() {
     let fixture = start(domain::vault_issuer_role());
     let state = rebalance_state(&fixture, policy::long());
@@ -497,7 +498,7 @@ fun rebalance_increase_rejects_post_cost_target_overshoot() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EExecutionOutsideMaxSlippage, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EExecutionOutsideMaxSlippage, location = blast_leverage_core::policy)]
 fun rebalance_hard_threshold_equality_does_not_enable_wide_tolerance() {
     let fixture = start(domain::vault_issuer_role());
     let state = rebalance_state(&fixture, policy::long());
@@ -733,8 +734,7 @@ fun flat_seed_preflight_returns_authenticated_order_inputs() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidInitializationObservation,
-    location = blast_leverage_core::state,
+    abort_code = state::EInvalidInitializationObservation, location = blast_leverage_core::state,
 )]
 fun seed_preflight_rejects_a_preexisting_position() {
     let fixture = start(domain::vault_issuer_role());
@@ -763,8 +763,7 @@ fun initialization_strict_execution_uses_the_frozen_tolerance() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EExecutionOutsideMaxSlippage,
-    location = blast_leverage_core::policy,
+    abort_code = policy::EExecutionOutsideMaxSlippage, location = blast_leverage_core::policy,
 )]
 fun initialization_strict_execution_rejects_one_unit_past_tolerance() {
     let fixture = start(domain::vault_issuer_role());
@@ -823,8 +822,7 @@ fun constructor_requires_the_vault_issuer_role() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidMaxOrderNotional,
-    location = blast_leverage_core::state,
+    abort_code = state::EInvalidMaxOrderNotional, location = blast_leverage_core::state,
 )]
 fun max_order_notional_minimum_must_be_positive() {
     let fixture = start(domain::vault_issuer_role());
@@ -843,8 +841,7 @@ fun max_order_notional_minimum_must_be_positive() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidMaxOrderNotional,
-    location = blast_leverage_core::state,
+    abort_code = state::EInvalidMaxOrderNotional, location = blast_leverage_core::state,
 )]
 fun max_order_notional_values_must_be_ordered() {
     let fixture = start(domain::vault_issuer_role());
@@ -892,7 +889,7 @@ fun max_order_notional_moves_both_directions_inside_frozen_bounds() {
 
 #[test]
 #[expected_failure(
-    abort_code = 74,
+    abort_code = state::EMaxOrderNotionalUnchanged,
     location = blast_leverage_core::state,
 )]
 fun max_order_notional_rejects_the_current_value() {
@@ -914,8 +911,7 @@ fun max_order_notional_rejects_the_current_value() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidMaxOrderNotional,
-    location = blast_leverage_core::state,
+    abort_code = state::EInvalidMaxOrderNotional, location = blast_leverage_core::state,
 )]
 fun max_order_notional_rejects_one_below_the_frozen_minimum() {
     let fixture = start(domain::vault_issuer_role());
@@ -936,8 +932,7 @@ fun max_order_notional_rejects_one_below_the_frozen_minimum() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidMaxOrderNotional,
-    location = blast_leverage_core::state,
+    abort_code = state::EInvalidMaxOrderNotional, location = blast_leverage_core::state,
 )]
 fun max_order_notional_rejects_one_above_the_frozen_maximum() {
     let fixture = start(domain::vault_issuer_role());
@@ -978,7 +973,7 @@ fun active_state_begins_shutdown() {
 
 #[test]
 #[expected_failure(
-    abort_code = 17,
+    abort_code = lifecycle::EInvalidLifecycleTransition,
     location = blast_leverage_core::lifecycle,
 )]
 fun uninitialized_state_cannot_begin_shutdown() {
@@ -1035,8 +1030,7 @@ fun valid_short_seed_activates() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidPositionObservation,
-    location = blast_leverage_core::state,
+    abort_code = state::EInvalidPositionObservation, location = blast_leverage_core::state,
 )]
 fun initialization_rejects_a_structurally_invalid_observation() {
     let fixture = start(domain::vault_issuer_role());
@@ -1101,8 +1095,7 @@ fun initialization_admits_both_healthy_leverage_boundaries() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EMaintenanceReserveExceedsEquity,
-    location = blast_leverage_core::state,
+    abort_code = state::EMaintenanceReserveExceedsEquity, location = blast_leverage_core::state,
 )]
 fun initialization_guard_order_checks_reserve_before_nav() {
     initialize_once(
@@ -1114,8 +1107,7 @@ fun initialization_guard_order_checks_reserve_before_nav() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidNav,
-    location = blast_leverage_core::state,
+    abort_code = state::EInvalidNav, location = blast_leverage_core::state,
 )]
 fun initialization_rejects_zero_shareholder_nav() {
     initialize_once(
@@ -1127,8 +1119,7 @@ fun initialization_rejects_zero_shareholder_nav() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::ENavCapExceeded,
-    location = blast_leverage_core::state,
+    abort_code = state::ENavCapExceeded, location = blast_leverage_core::state,
 )]
 fun initialization_rejects_one_unit_above_the_nav_cap() {
     initialize_once(
@@ -1142,8 +1133,7 @@ fun initialization_rejects_one_unit_above_the_nav_cap() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidInitializationObservation,
-    location = blast_leverage_core::state,
+    abort_code = state::EInvalidInitializationObservation, location = blast_leverage_core::state,
 )]
 fun initialization_rejects_the_wrong_side() {
     initialize_once(
@@ -1155,8 +1145,7 @@ fun initialization_rejects_the_wrong_side() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInitializationOrdersNotEmpty,
-    location = blast_leverage_core::state,
+    abort_code = state::EInitializationOrdersNotEmpty, location = blast_leverage_core::state,
 )]
 fun initialization_rejects_pending_orders() {
     initialize_once(
@@ -1168,8 +1157,7 @@ fun initialization_rejects_pending_orders() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EStaleValuation,
-    location = blast_leverage_core::policy,
+    abort_code = policy::EStaleValuation, location = blast_leverage_core::policy,
 )]
 fun initialization_rejects_a_stale_base_price() {
     initialize_once(
@@ -1181,8 +1169,7 @@ fun initialization_rejects_a_stale_base_price() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EFutureValuation,
-    location = blast_leverage_core::policy,
+    abort_code = policy::EFutureValuation, location = blast_leverage_core::policy,
 )]
 fun initialization_rejects_a_future_base_price() {
     initialize_once(
@@ -1194,8 +1181,7 @@ fun initialization_rejects_a_future_base_price() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EConfidenceExceedsBound,
-    location = blast_leverage_core::policy,
+    abort_code = policy::EConfidenceExceedsBound, location = blast_leverage_core::policy,
 )]
 fun initialization_rejects_a_low_confidence_base_price() {
     initialize_once(
@@ -1207,8 +1193,7 @@ fun initialization_rejects_a_low_confidence_base_price() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EStaleValuation,
-    location = blast_leverage_core::policy,
+    abort_code = policy::EStaleValuation, location = blast_leverage_core::policy,
 )]
 fun initialization_rejects_a_stale_collateral_price() {
     initialize_once(
@@ -1220,8 +1205,7 @@ fun initialization_rejects_a_stale_collateral_price() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EFutureValuation,
-    location = blast_leverage_core::policy,
+    abort_code = policy::EFutureValuation, location = blast_leverage_core::policy,
 )]
 fun initialization_rejects_a_future_collateral_price() {
     initialize_once(
@@ -1233,8 +1217,7 @@ fun initialization_rejects_a_future_collateral_price() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EConfidenceExceedsBound,
-    location = blast_leverage_core::policy,
+    abort_code = policy::EConfidenceExceedsBound, location = blast_leverage_core::policy,
 )]
 fun initialization_rejects_a_low_confidence_collateral_price() {
     initialize_once(
@@ -1246,8 +1229,7 @@ fun initialization_rejects_a_low_confidence_collateral_price() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EMarkIndexDivergenceExceedsBound,
-    location = blast_leverage_core::policy,
+    abort_code = policy::EMarkIndexDivergenceExceedsBound, location = blast_leverage_core::policy,
 )]
 fun initialization_rejects_mark_divergence() {
     initialize_once(
@@ -1259,8 +1241,7 @@ fun initialization_rejects_mark_divergence() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInitializationVenueNotOperational,
-    location = blast_leverage_core::state,
+    abort_code = state::EInitializationVenueNotOperational, location = blast_leverage_core::state,
 )]
 fun initialization_rejects_a_paused_or_frozen_venue() {
     initialize_once(
@@ -1272,8 +1253,7 @@ fun initialization_rejects_a_paused_or_frozen_venue() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInitializationCheckpointDirty,
-    location = blast_leverage_core::state,
+    abort_code = state::EInitializationCheckpointDirty, location = blast_leverage_core::state,
 )]
 fun initialization_rejects_a_dirty_checkpoint() {
     initialize_once(
@@ -1285,8 +1265,7 @@ fun initialization_rejects_a_dirty_checkpoint() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInitializationMarginUnsafe,
-    location = blast_leverage_core::state,
+    abort_code = state::EInitializationMarginUnsafe, location = blast_leverage_core::state,
 )]
 fun initialization_rejects_unsafe_margin() {
     initialize_once(
@@ -1298,8 +1277,7 @@ fun initialization_rejects_unsafe_margin() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInitializationLeverageUnhealthy,
-    location = blast_leverage_core::state,
+    abort_code = state::EInitializationLeverageUnhealthy, location = blast_leverage_core::state,
 )]
 fun initialization_rejects_leverage_one_unit_below_healthy() {
     initialize_once(
@@ -1311,8 +1289,7 @@ fun initialization_rejects_leverage_one_unit_below_healthy() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInitializationLeverageUnhealthy,
-    location = blast_leverage_core::state,
+    abort_code = state::EInitializationLeverageUnhealthy, location = blast_leverage_core::state,
 )]
 fun initialization_rejects_leverage_one_unit_above_healthy() {
     initialize_once(
@@ -1324,8 +1301,7 @@ fun initialization_rejects_leverage_one_unit_above_healthy() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInitializationExposureBelowMinimum,
-    location = blast_leverage_core::state,
+    abort_code = state::EInitializationExposureBelowMinimum, location = blast_leverage_core::state,
 )]
 fun initialization_rejects_base_below_the_immutable_lot_minimum() {
     initialize_once(
@@ -1337,8 +1313,7 @@ fun initialization_rejects_base_below_the_immutable_lot_minimum() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidLifecycleTransition,
-    location = blast_leverage_core::lifecycle,
+    abort_code = lifecycle::EInvalidLifecycleTransition, location = blast_leverage_core::lifecycle,
 )]
 fun initialization_guard_order_checks_lifecycle_before_reserve() {
     let fixture = start(domain::vault_issuer_role());
@@ -1357,8 +1332,7 @@ fun initialization_guard_order_checks_lifecycle_before_reserve() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidNav,
-    location = blast_leverage_core::state,
+    abort_code = state::EInvalidNav, location = blast_leverage_core::state,
 )]
 fun initialization_guard_order_checks_nav_before_base_freshness() {
     initialize_once(
@@ -1372,8 +1346,7 @@ fun initialization_guard_order_checks_nav_before_base_freshness() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EStaleValuation,
-    location = blast_leverage_core::policy,
+    abort_code = policy::EStaleValuation, location = blast_leverage_core::policy,
 )]
 fun initialization_guard_order_checks_base_freshness_before_base_confidence() {
     initialize_once(
@@ -1387,8 +1360,7 @@ fun initialization_guard_order_checks_base_freshness_before_base_confidence() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EConfidenceExceedsBound,
-    location = blast_leverage_core::policy,
+    abort_code = policy::EConfidenceExceedsBound, location = blast_leverage_core::policy,
 )]
 fun initialization_guard_order_checks_base_before_collateral_valuation() {
     initialize_once(
@@ -1402,8 +1374,7 @@ fun initialization_guard_order_checks_base_before_collateral_valuation() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EStaleValuation,
-    location = blast_leverage_core::policy,
+    abort_code = policy::EStaleValuation, location = blast_leverage_core::policy,
 )]
 fun initialization_guard_order_checks_collateral_freshness_before_confidence() {
     initialize_once(
@@ -1417,8 +1388,7 @@ fun initialization_guard_order_checks_collateral_freshness_before_confidence() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EConfidenceExceedsBound,
-    location = blast_leverage_core::policy,
+    abort_code = policy::EConfidenceExceedsBound, location = blast_leverage_core::policy,
 )]
 fun initialization_guard_order_checks_collateral_confidence_before_mark() {
     initialize_once(
@@ -1432,8 +1402,7 @@ fun initialization_guard_order_checks_collateral_confidence_before_mark() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EMarkIndexDivergenceExceedsBound,
-    location = blast_leverage_core::policy,
+    abort_code = policy::EMarkIndexDivergenceExceedsBound, location = blast_leverage_core::policy,
 )]
 fun initialization_guard_order_checks_mark_before_side() {
     initialize_once(
@@ -1447,8 +1416,7 @@ fun initialization_guard_order_checks_mark_before_side() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidInitializationObservation,
-    location = blast_leverage_core::state,
+    abort_code = state::EInvalidInitializationObservation, location = blast_leverage_core::state,
 )]
 fun initialization_guard_order_checks_side_before_orders() {
     initialize_once(
@@ -1462,8 +1430,7 @@ fun initialization_guard_order_checks_side_before_orders() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInitializationOrdersNotEmpty,
-    location = blast_leverage_core::state,
+    abort_code = state::EInitializationOrdersNotEmpty, location = blast_leverage_core::state,
 )]
 fun initialization_guard_order_checks_orders_before_venue() {
     initialize_once(
@@ -1477,8 +1444,7 @@ fun initialization_guard_order_checks_orders_before_venue() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInitializationVenueNotOperational,
-    location = blast_leverage_core::state,
+    abort_code = state::EInitializationVenueNotOperational, location = blast_leverage_core::state,
 )]
 fun initialization_guard_order_checks_venue_before_checkpoint() {
     initialize_once(
@@ -1492,8 +1458,7 @@ fun initialization_guard_order_checks_venue_before_checkpoint() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInitializationCheckpointDirty,
-    location = blast_leverage_core::state,
+    abort_code = state::EInitializationCheckpointDirty, location = blast_leverage_core::state,
 )]
 fun initialization_guard_order_checks_checkpoint_before_margin() {
     initialize_once(
@@ -1507,8 +1472,7 @@ fun initialization_guard_order_checks_checkpoint_before_margin() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInitializationMarginUnsafe,
-    location = blast_leverage_core::state,
+    abort_code = state::EInitializationMarginUnsafe, location = blast_leverage_core::state,
 )]
 fun initialization_guard_order_checks_margin_before_nav_cap() {
     initialize_once(
@@ -1522,8 +1486,7 @@ fun initialization_guard_order_checks_margin_before_nav_cap() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::ENavCapExceeded,
-    location = blast_leverage_core::state,
+    abort_code = state::ENavCapExceeded, location = blast_leverage_core::state,
 )]
 fun initialization_guard_order_checks_nav_cap_before_leverage() {
     initialize_once(
@@ -1537,8 +1500,7 @@ fun initialization_guard_order_checks_nav_cap_before_leverage() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInitializationLeverageUnhealthy,
-    location = blast_leverage_core::state,
+    abort_code = state::EInitializationLeverageUnhealthy, location = blast_leverage_core::state,
 )]
 fun initialization_guard_order_checks_leverage_before_minimum_exposure() {
     initialize_once(
@@ -1565,8 +1527,7 @@ fun an_order_at_the_live_maximum_is_allowed() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EOrderNotionalExceedsMaximum,
-    location = blast_leverage_core::state,
+    abort_code = state::EOrderNotionalExceedsMaximum, location = blast_leverage_core::state,
 )]
 fun an_order_one_unit_above_the_live_maximum_is_rejected() {
     let fixture = start(domain::vault_issuer_role());
@@ -1628,6 +1589,58 @@ fun the_maximum_funding_cost_cannot_wrap() {
         std::u64::max_value!() - SEED_RESERVE,
         0,
     );
+}
+
+/// A credit repays the deficit holders carried before it rebuilds the reserve:
+/// -150_000 then +300_000 leaves NAV whole and the reserve at 250_000, not
+/// 300_000.
+#[test]
+fun a_credit_repays_the_uncovered_deficit_before_rebuilding_the_reserve() {
+    let fixture = start(domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::long());
+
+    let (absorbed, uncovered, restored) = state.settle_funding(observation::funding_cost(150_000));
+    assert_eq!(vector[absorbed, uncovered, restored], vector[SEED_RESERVE, 50_000, 0]);
+    assert_eq!(state.uncovered_deficit(), 50_000);
+
+    // Partial repayment: the whole credit stays in NAV.
+    let (absorbed, uncovered, restored) = state.settle_funding(observation::funding_credit(20_000));
+    assert_eq!(vector[absorbed, uncovered, restored], vector[0, 0, 20_000]);
+    assert_eq!(vector[state.maintenance_reserve(), state.uncovered_deficit()], vector[0, 30_000]);
+
+    // Exact repayment clears the deficit and still adds nothing to the reserve.
+    let (absorbed, uncovered, restored) = state.settle_funding(observation::funding_credit(30_000));
+    assert_eq!(vector[absorbed, uncovered, restored], vector[0, 0, 30_000]);
+    assert_eq!(vector[state.maintenance_reserve(), state.uncovered_deficit()], vector[0, 0]);
+
+    // With no deficit the next credit rebuilds the reserve in full.
+    let (absorbed, uncovered, restored) = state.settle_funding(observation::funding_credit(250_000));
+    assert_eq!(vector[absorbed, uncovered, restored], vector[0, 0, 0]);
+    assert_eq!(vector[state.maintenance_reserve(), state.uncovered_deficit()], vector[250_000, 0]);
+
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+/// Two exhausting costs accumulate one deficit, and an over-repaying credit
+/// splits between NAV and the reserve.
+#[test]
+fun deficits_accumulate_and_an_over_repaying_credit_splits() {
+    let fixture = start(domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::long());
+
+    let (absorbed, uncovered, restored) = state.settle_funding(observation::funding_cost(120_000));
+    assert_eq!(vector[absorbed, uncovered, restored], vector[SEED_RESERVE, 20_000, 0]);
+    let (absorbed, uncovered, restored) = state.settle_funding(observation::funding_cost(5_000));
+    assert_eq!(vector[absorbed, uncovered, restored], vector[0, 5_000, 0]);
+    assert_eq!(state.uncovered_deficit(), 25_000);
+
+    let (absorbed, uncovered, restored) = state.settle_funding(observation::funding_credit(40_000));
+    assert_eq!(vector[absorbed, uncovered, restored], vector[0, 0, 25_000]);
+    assert_eq!(vector[state.maintenance_reserve(), state.uncovered_deficit()], vector[15_000, 0]);
+
+    state.destroy_for_testing();
+    destroy(fixture);
 }
 
 // === Fixture Setup ===
@@ -1746,10 +1759,12 @@ fun assert_funding_settlement(
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
 
-    let (absorbed, uncovered) = state.settle_funding(settlement);
+    let (absorbed, uncovered, restored) = state.settle_funding(settlement);
 
     assert_eq!(absorbed, expected_absorbed);
     assert_eq!(uncovered, expected_uncovered);
+    assert_eq!(restored, 0);
+    assert_eq!(state.uncovered_deficit(), expected_uncovered);
     assert_eq!(state.maintenance_reserve_for_testing(), expected_reserve);
     assert!(state.is_active_for_testing());
     state.destroy_for_testing();

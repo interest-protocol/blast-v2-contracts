@@ -4,7 +4,7 @@ module blast_leverage_core::rebalance_policy_tests;
 
 use std::unit_test::assert_eq;
 
-use blast_leverage_core::{errors, policy};
+use blast_leverage_core::{policy};
 
 // === Tests ===
 
@@ -104,7 +104,7 @@ fun max_leverage_at_the_leverage_ceiling_is_accepted() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidRebalancePolicy, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EInvalidRebalancePolicy, location = blast_leverage_core::policy)]
 fun max_leverage_above_the_leverage_ceiling_is_rejected() {
     new_with_thresholds(0, 2, 4, 1_000_001);
 }
@@ -143,7 +143,7 @@ fun improvement_comparison_does_not_wrap_at_maximum_width() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInsufficientLeverageImprovement, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EInsufficientLeverageImprovement, location = blast_leverage_core::policy)]
 fun a_rebalance_one_basis_point_short_of_the_min_leverage_improvement_is_rejected() {
     standard_policy().assert_improvement_sufficient(22_000, 21_991);
 }
@@ -178,79 +178,79 @@ fun maximum_width_execution_tolerance_does_not_wrap() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EExecutionOutsideMaxSlippage, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EExecutionOutsideMaxSlippage, location = blast_leverage_core::policy)]
 fun an_execution_one_unit_past_max_slippage_is_rejected() {
     standard_policy().assert_execution_within_max_slippage(1_000_000, 1_010_001);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EExecutionOutsideMaxSlippage, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EExecutionOutsideMaxSlippage, location = blast_leverage_core::policy)]
 fun an_execution_one_unit_past_emergency_max_slippage_is_rejected() {
     standard_policy().assert_execution_within_emergency_max_slippage(1_000_000, 1_050_001);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidValuationPrice, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EInvalidValuationPrice, location = blast_leverage_core::policy)]
 fun a_zero_reference_is_rejected_before_the_max_slippage() {
     standard_policy().assert_execution_within_max_slippage(0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidValuationPrice, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EInvalidValuationPrice, location = blast_leverage_core::policy)]
 fun a_zero_reference_is_rejected_before_the_emergency_max_slippage() {
     standard_policy().assert_execution_within_emergency_max_slippage(0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidRebalancePolicy, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EInvalidRebalancePolicy, location = blast_leverage_core::policy)]
 fun rebalance_below_equal_to_target_is_rejected() {
     new_with_thresholds(1, 1, 2, 3);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidRebalancePolicy, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EInvalidRebalancePolicy, location = blast_leverage_core::policy)]
 fun rebalance_below_above_target_is_rejected() {
     new_with_thresholds(2, 1, 3, 4);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidRebalancePolicy, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EInvalidRebalancePolicy, location = blast_leverage_core::policy)]
 fun target_equal_to_rebalance_above_is_rejected() {
     new_with_thresholds(0, 2, 2, 3);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidRebalancePolicy, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EInvalidRebalancePolicy, location = blast_leverage_core::policy)]
 fun target_above_rebalance_above_is_rejected() {
     new_with_thresholds(0, 3, 2, 4);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidRebalancePolicy, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EInvalidRebalancePolicy, location = blast_leverage_core::policy)]
 fun rebalance_above_equal_to_max_leverage_is_rejected() {
     new_with_thresholds(0, 2, 5, 5);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidRebalancePolicy, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EInvalidRebalancePolicy, location = blast_leverage_core::policy)]
 fun rebalance_above_past_max_leverage_is_rejected() {
     new_with_thresholds(0, 2, 6, 5);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidMaxSlippageBps, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EInvalidMaxSlippageBps, location = blast_leverage_core::policy)]
 fun max_slippage_at_the_denominator_is_rejected() {
     policy::new_rebalance_policy(0, 2, 4, 5, 10_000, 10_000, 1);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidEmergencyMaxSlippageBps, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EInvalidEmergencyMaxSlippageBps, location = blast_leverage_core::policy)]
 fun emergency_max_slippage_at_the_denominator_is_rejected() {
     policy::new_rebalance_policy(0, 2, 4, 5, 0, 10_000, 1);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidEmergencyMaxSlippageBps, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EInvalidEmergencyMaxSlippageBps, location = blast_leverage_core::policy)]
 fun emergency_max_slippage_below_max_slippage_is_rejected() {
     policy::new_rebalance_policy(0, 2, 4, 5, 2, 1, 1);
 }
@@ -263,13 +263,13 @@ fun equal_strict_and_emergency_max_slippages_are_accepted() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidMinLeverageImprovementBps, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EInvalidMinLeverageImprovementBps, location = blast_leverage_core::policy)]
 fun zero_min_leverage_improvement_is_rejected() {
     policy::new_rebalance_policy(0, 2, 4, 5, 0, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidRebalancePolicy, location = blast_leverage_core::policy)]
+#[expected_failure(abort_code = policy::EInvalidRebalancePolicy, location = blast_leverage_core::policy)]
 fun threshold_validation_precedes_tolerance_and_improvement_validation() {
     policy::new_rebalance_policy(0, 0, 0, 0, 10_000, 0, 0);
 }

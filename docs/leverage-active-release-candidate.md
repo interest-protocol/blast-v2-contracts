@@ -32,7 +32,7 @@ base and the fixed canonical price pair, not historical entry quote.
 
 One Blast interval aggregates authenticated signed funding effects, including
 socialized debt carried by the same accumulator, before normalization. A net
-credit increases `R`; a net cost consumes `R` before `N`. Zero-net checkpoint
+credit repays any uncovered deficit to `N` before increasing `R`; a net cost consumes `R` before `N`. Zero-net checkpoint
 advancement emits once. Identical repeats emit nothing. Unexplained external
 changes preserve the accepted checkpoint, block priced paths and produce one
 diagnostic per distinct observed fingerprint. Recovery emits reason 2 once;

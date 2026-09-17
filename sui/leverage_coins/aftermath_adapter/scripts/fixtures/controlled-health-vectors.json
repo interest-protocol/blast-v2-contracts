@@ -327,6 +327,44 @@
       "position_initial_margin_ratio": "100",
       "market_initial_margin_ratio": "50",
       "market_maintenance_margin_ratio": "30"
+    },
+    "deficit_pre": {
+      "free_collateral": "0",
+      "allocated_collateral": "900000000000000000000",
+      "signed_base": "100",
+      "signed_quote_notional": "200",
+      "funding_snapshot_long": "10",
+      "funding_snapshot_short": "20",
+      "market_funding_long": "11",
+      "market_funding_short": "21",
+      "lot_size": "1",
+      "pending_ask_base": "0",
+      "pending_bid_base": "0",
+      "pending_order_count": "0",
+      "market_pause_mode": 0,
+      "market_frozen": false,
+      "position_initial_margin_ratio": "100",
+      "market_initial_margin_ratio": "50",
+      "market_maintenance_margin_ratio": "30"
+    },
+    "deficit_post": {
+      "free_collateral": "0",
+      "allocated_collateral": "900000002000000000000",
+      "signed_base": "100",
+      "signed_quote_notional": "200",
+      "funding_snapshot_long": "11",
+      "funding_snapshot_short": "21",
+      "market_funding_long": "11",
+      "market_funding_short": "21",
+      "lot_size": "1",
+      "pending_ask_base": "0",
+      "pending_bid_base": "0",
+      "pending_order_count": "0",
+      "market_pause_mode": 0,
+      "market_frozen": false,
+      "position_initial_margin_ratio": "100",
+      "market_initial_margin_ratio": "50",
+      "market_maintenance_margin_ratio": "30"
     }
   },
   "eventSets": {
@@ -342,6 +380,7 @@
             "amount": "1",
             "absorbed_by_reserve": "0",
             "uncovered_cost": "0",
+            "restored_to_holders": "0",
             "reserve_after": "101",
             "previous_checkpoint": "funding_stored",
             "checkpoint": "funding_credit"
@@ -360,6 +399,7 @@
             "amount": "1",
             "absorbed_by_reserve": "1",
             "uncovered_cost": "0",
+            "restored_to_holders": "0",
             "reserve_after": "99",
             "previous_checkpoint": "funding_stored",
             "checkpoint": "funding_cost"
@@ -378,6 +418,7 @@
             "amount": "1",
             "absorbed_by_reserve": "1",
             "uncovered_cost": "0",
+            "restored_to_holders": "0",
             "reserve_after": "99",
             "previous_checkpoint": "funding_stored",
             "checkpoint": "two_epoch_post"
@@ -468,9 +509,29 @@
             "amount": "2",
             "absorbed_by_reserve": "0",
             "uncovered_cost": "0",
+            "restored_to_holders": "0",
             "reserve_after": "102",
             "previous_checkpoint": "funding_stored",
             "checkpoint": "update_due_post"
+          }
+        }
+      }
+    ],
+    "deficit_repaid_by_credit": [
+      {
+        "type": "0x1111111111111111111111111111111111111111111111111111111111111111::events_wrapper::Event<0x1111111111111111111111111111111111111111111111111111111111111111::events::FundingSettled<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>>",
+        "parsedJson": {
+          "pos0": {
+            "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
+            "is_cost": false,
+            "raw_amount": "2000000000000",
+            "amount": "2",
+            "absorbed_by_reserve": "0",
+            "uncovered_cost": "0",
+            "restored_to_holders": "2",
+            "reserve_after": "0",
+            "previous_checkpoint": "funding_stored",
+            "checkpoint": "deficit_post"
           }
         }
       }
@@ -937,6 +998,32 @@
         "checkpoint": "update_due_post"
       },
       "events": "update_due_then_settlement",
+      "oracle": {
+        "classification": "funding_credit",
+        "lifecycle": "Active",
+        "fundingEvents": 1,
+        "healthEvents": 0,
+        "reason": null
+      }
+    },
+    {
+      "name": "deficit_repaid_by_credit",
+      "stored": {
+        "lifecycle": "Active",
+        "maintenanceReserve": "0",
+        "checkpoint": "funding_stored"
+      },
+      "pre": {
+        "lifecycle": "Active",
+        "maintenanceReserve": "0",
+        "checkpoint": "deficit_pre"
+      },
+      "post": {
+        "lifecycle": "Active",
+        "maintenanceReserve": "0",
+        "checkpoint": "deficit_post"
+      },
+      "events": "deficit_repaid_by_credit",
       "oracle": {
         "classification": "funding_credit",
         "lifecycle": "Active",

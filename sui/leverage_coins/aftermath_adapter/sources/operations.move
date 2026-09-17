@@ -874,10 +874,10 @@ public(package) fun apply_post_capture<Product>(
     let raw_amount = net.raw_amount();
     let amount = net.amount();
     let checkpoint_clean = net.is_clean();
-    let (absorbed, uncovered, reserve_after) = if (has_funding) {
+    let (absorbed, uncovered, restored, reserve_after) = if (has_funding) {
         vault.settle_funding(is_cost, amount)
     } else {
-        (0, 0, vault.maintenance_reserve())
+        (0, 0, 0, vault.maintenance_reserve())
     };
     let checkpoint = post_capture.finish_health();
 
@@ -897,6 +897,7 @@ public(package) fun apply_post_capture<Product>(
             amount,
             absorbed,
             uncovered,
+            restored,
             reserve_after,
             stored_checkpoint,
             checkpoint,

@@ -16,7 +16,7 @@ if grep -qE -- 'transfer-objects|public_transfer|transfer::' "$publication_scrip
   fail "Series1 publication must never transfer its UpgradeCap."
 fi
 
-domain_file="$package_dir/sources/series_one_domain.move"
+domain_file="$package_dir/sources/blast_leverage_core.move"
 state_file="$package_dir/sources/state.move"
 policy_file="$package_dir/sources/policy.move"
 lifecycle_file="$package_dir/sources/lifecycle.move"
@@ -53,7 +53,7 @@ for required in \
   "$lifecycle_file" \
   "$observation_file" \
   "$package_dir/sources/lib/accounting_math.move" \
-  "$package_dir/sources/lib/bounded_value.move"; do
+  "$package_dir/sources/lib/rebalance_math.move"; do
   [[ -f "$required" ]] || fail "Missing required Series1 source: $required"
 done
 
@@ -61,7 +61,7 @@ for forbidden in \
   venue_handoff.move \
   package_admin.move \
   package_version.move \
-  series_one.move \
+  core.move \
   vault.move; do
   [[ ! -e "$package_dir/sources/$forbidden" ]] \
     || fail "$forbidden belongs outside the venue-neutral Series1 core."
@@ -104,9 +104,9 @@ fi
 
 domain_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' "$domain_file")"
 
-grep -q '^public struct SERIES_ONE_DOMAIN has drop {}$' "$domain_file" \
-  || fail "series_one_domain.move must own the domain one-time witness."
-grep -q '^fun init(otw: SERIES_ONE_DOMAIN, ctx: &mut TxContext) {$' "$domain_file" \
+grep -q '^public struct BLAST_LEVERAGE_CORE has drop {}$' "$domain_file" \
+  || fail "blast_leverage_core.move must own the domain one-time witness."
+grep -q '^fun init(otw: BLAST_LEVERAGE_CORE, ctx: &mut TxContext) {$' "$domain_file" \
   || fail "The Series1 domain must be created from its own one-time witness."
 grep -q '^    blast_admin::acl::new(otw, MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, ctx);$' \
   "$domain_file" \
@@ -151,7 +151,7 @@ if grep -qE 'UID|Bag|TypeName|TreasuryCap|MetadataCap|CoinRegistry|share_object'
 fi
 grep -q '^public fun new<Product>($' "$state_file" \
   || fail "Series state construction must be generic only over Product."
-grep -q 'admin_witness.assert_role(series_one_domain::vault_issuer_role());' "$state_file" \
+grep -q 'admin_witness.assert_role(domain::vault_issuer_role());' "$state_file" \
   || fail "Series state construction must require VAULT_ISSUER."
 grep -q 'lifecycle: lifecycle::new(),' "$state_file" \
   || fail "Every new Series state must start uninitialized."
@@ -161,7 +161,7 @@ grep -Fq 'public fun begin_shutdown<Product>(' "$state_file" \
   || fail "Series state must own the irreversible shutdown transition."
 grep -q '^use blast_admin::acl::AdminWitness;$' "$state_file" \
   || fail "State must import the shared AdminWitness without an alias."
-grep -q 'admin_witness: &AdminWitness<SERIES_ONE_DOMAIN>,' "$state_file" \
+grep -q 'admin_witness: &AdminWitness<BLAST_LEVERAGE_CORE>,' "$state_file" \
   || fail "State construction must take the typed Series1-domain witness."
 if production_lines "$state_file" | grep -Eq 'AdminWitness[[:space:]]+as[[:space:]]'; then
   fail "State must not alias AdminWitness around the function scanner."
@@ -187,11 +187,11 @@ grep -q '^public struct PositionObservation {$' "$observation_file" \
   || fail "PositionObservation must remain an ability-free linear carrier."
 grep -q '^public enum FundingSettlement {$' "$observation_file" \
   || fail "FundingSettlement must remain an ability-free linear carrier."
-for unpacker in unpack_price unpack_position unpack_funding; do
-  grep -q "^public(package) fun $unpacker" "$observation_file" \
-    || fail "$unpacker must remain package-only."
-  if production_lines "$observation_file" | grep -q "public fun $unpacker"; then
-    fail "$unpacker must not be exposed outside Series1."
+for sink in destroy_price destroy_position destroy_funding; do
+  grep -q "^public(package) fun $sink" "$observation_file" \
+    || fail "$sink must remain package-only."
+  if production_lines "$observation_file" | grep -q "public fun $sink"; then
+    fail "$sink must not be exposed outside the core."
   fi
 done
 
@@ -211,9 +211,9 @@ actual_policy_public="$({
 } | sort)"
 expected_policy_public="$(printf '%s\n' \
   long \
+  new_price_policy \
   new_rebalance_policy \
-  new_tier_policy \
-  new_valuation \
+  new_vault_policy \
   short \
   with_fee_limits \
   | sort)"
@@ -231,30 +231,34 @@ expected_state_public="$(printf '%s\n' \
   assert_active \
   assert_active_execution \
   assert_active_observation \
+  assert_can_sync \
   assert_initialization_execution \
   assert_order_notional_allowed \
   assert_rebalance_execution \
   assert_redemption_cash_out \
+  assert_settled \
+  assert_unwind_execution \
+  assert_unwinding \
   assert_user_fee_limit \
+  base_price \
+  begin_shutdown \
+  collateral_price \
   complete_donation \
   complete_mint \
   complete_rebalance \
   complete_redemption \
-  begin_shutdown \
-  finalize_shutdown \
-  shutdown_claim_quote \
-  assert_unwinding \
-  assert_unwind_execution \
-  assert_settled \
-  assert_can_sync \
-  unwind_constraints \
   fee_allocation \
-  fee_settings \
+  finalize_shutdown \
   initialization_constraints \
   initialize \
+  is_within_nav_cap \
+  lot \
   maintenance_reserve \
+  mint_base_price \
+  mint_collateral_price \
   mint_deposit \
-  mint_valuation \
+  mint_lot \
+  nav_cap \
   new \
   order_base \
   prepare_donation \
@@ -263,14 +267,22 @@ expected_state_public="$(printf '%s\n' \
   prepare_rebalance \
   prepare_redemption \
   rebalance_order \
-  rebalance_valuation \
+  redemption_admin_bps \
+  redemption_base_price \
+  redemption_collateral_price \
+  redemption_fee_bps \
+  redemption_final_base \
+  redemption_lot \
   redemption_order_base \
-  redemption_terms \
-  redemption_valuation \
+  redemption_shares \
   release_buffer \
   set_fees \
   set_max_order_notional \
+  set_nav_cap \
   settle_funding \
+  shutdown_claim_quote \
+  uncovered_deficit \
+  unwind_constraints \
   | sort)"
 [[ "$actual_state_public" == "$expected_state_public" ]] \
   || fail "The production Series1 State surface changed without boundary review."
@@ -283,39 +295,39 @@ if grep -qE 'module_lower_bps|module_upper_bps|is_risk_module_allowed' "$policy_
   fail "Maintenance must have exactly one public band, without a privileged inner window."
 fi
 rebalance_prepare="$(sed -n '/^public fun prepare_rebalance</,/^}/p' "$state_file")"
-grep -q 'scaled < (nav as u128) \* (risk.public_lower_bps() as u128)' <<<"$rebalance_prepare" \
-  && grep -q 'scaled > (nav as u128) \* (risk.public_upper_bps() as u128)' <<<"$rebalance_prepare" \
+grep -q 'scaled < (nav as u128) \* (risk.rebalance_below_bps() as u128)' <<<"$rebalance_prepare" \
+  && grep -q 'scaled > (nav as u128) \* (risk.rebalance_above_bps() as u128)' <<<"$rebalance_prepare" \
   || fail "Rebalance triggers must use strict exact-ratio cross products."
 prepare_initialization_block="$(
   sed -n '/^public fun prepare_initialization<Product>($/,/^}/p' "$state_file"
 )"
 grep -q 'self.lifecycle.assert_can_activate();' <<<"$prepare_initialization_block" \
   || fail "Seed preflight must require an uninitialized lifecycle."
-grep -q ') = observation.unpack_position();' <<<"$prepare_initialization_block" \
+grep -q '    observation.destroy();' <<<"$prepare_initialization_block" \
   || fail "Seed preflight must consume one linear position observation."
-grep -q 'absolute_base == 0 && absolute_notional == 0' <<<"$prepare_initialization_block" \
+grep -q 'position_base == 0 && position_collateral == 0' <<<"$prepare_initialization_block" \
   || fail "Seed preflight must require an exactly flat position."
 initialization_constraints_block="$(
   sed -n '/^public fun initialization_constraints<Product>($/,/^}/p' "$state_file"
 )"
 grep -q 'self.lifecycle.assert_can_activate();' <<<"$initialization_constraints_block" \
   || fail "Initialization constraints must reject an activated State before venue mutation."
-grep -q 'self.tier_policy.side(),' <<<"$initialization_constraints_block" \
+grep -q 'self.vault_policy.side()' <<<"$initialization_constraints_block" \
   || fail "Initialization constraints must return the immutable Series side."
-grep -q 'self.max_order_notional.current(),' <<<"$initialization_constraints_block" \
+grep -q '        self.max_order_notional,' <<<"$initialization_constraints_block" \
   || fail "Initialization constraints must return the live per-order notional cap."
 
 initialization_execution_block="$(
   sed -n '/^public fun assert_initialization_execution<Product>($/,/^}/p' "$state_file"
 )"
-grep -q 'assert_execution_within_strict_tolerance' <<<"$initialization_execution_block" \
+grep -q 'assert_execution_within_max_slippage' <<<"$initialization_execution_block" \
   || fail "Initialization must use the immutable strict execution tolerance."
 
 actual_initialize_shape="$(
   sed -n '/^public fun initialize<Product>($/,/^}/p' "$state_file" \
     | tr -d '[:space:]'
 )"
-expected_initialize_shape='publicfuninitialize<Product>(self:&mutState<Product>,observation:PositionObservation,seed_reserve:u64,reference_time_ms:u64,):u64{self.lifecycle.assert_can_activate();letseed_nav=validated_initialization_nav(self,observation,seed_reserve,reference_time_ms,);self.lifecycle.activate();self.maintenance_reserve=seed_reserve;seed_nav}'
+expected_initialize_shape='publicfuninitialize<Product>(self:&mutState<Product>,observation:PositionObservation,seed_reserve:u64,base_decimals:u8,collateral_decimals:u8,reference_time_ms:u64,):u64{self.lifecycle.assert_can_activate();assert!(base_decimals<=constants::max_asset_decimals!()&&collateral_decimals<=constants::max_asset_decimals!(),EInvalidAssetDecimals,);letseed_nav=validated_initialization_nav(self,observation,seed_reserve,reference_time_ms,);self.lifecycle.activate();self.maintenance_reserve=seed_reserve;self.base_unit=10u64.pow(base_decimals);self.collateral_unit=10u64.pow(collateral_decimals);seed_nav}'
 [[ "$actual_initialize_shape" == "$expected_initialize_shape" ]] \
   || fail "State initialization must validate immutably before its final activation and reserve writes."
 

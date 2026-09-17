@@ -4,7 +4,7 @@ module blast_leverage_core::observation_tests;
 
 use std::unit_test::assert_eq;
 
-use blast_leverage_core::{errors, observation, policy};
+use blast_leverage_core::{observation, policy};
 
 // === Tests ===
 
@@ -20,8 +20,7 @@ fun price_construction_preserves_normalized_fields() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidObservationPrice,
-    location = blast_leverage_core::observation,
+    abort_code = observation::EInvalidObservationPrice, location = blast_leverage_core::observation,
 )]
 fun price_construction_rejects_zero_price() {
     observation::new_price(0, 4, 5).destroy();
@@ -86,8 +85,7 @@ fun short_position_construction_preserves_the_observed_side() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidObservationLotSize,
-    location = blast_leverage_core::observation,
+    abort_code = observation::EInvalidObservationLotSize, location = blast_leverage_core::observation,
 )]
 fun position_construction_rejects_zero_lot_size() {
     observation::new_position(
@@ -109,8 +107,7 @@ fun position_construction_rejects_zero_lot_size() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidPositionObservation,
-    location = blast_leverage_core::observation,
+    abort_code = observation::EInvalidPositionObservation, location = blast_leverage_core::observation,
 )]
 fun position_construction_rejects_a_flat_base_with_nonzero_notional() {
     observation::new_position(

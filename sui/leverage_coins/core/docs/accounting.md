@@ -22,14 +22,12 @@ coins target approximately 2x exposure and can be liquidated.
 ## Modules
 
 - `lib/accounting_math.move` — pure share, fee, leverage, exposure, shareholder-NAV,
-  reserve-credit, and exact negative-funding absorption arithmetic. Its
-  package-visible mint, redemption, leverage, target-notional, and mint-exposure
-  operations derive shareholder NAV from venue equity and reserve. Raw
-  NAV-taking formulas are private and exposed only through test-only seams, so
-  future state modules cannot bypass reserve accounting. Redemption exposure
-  bounds remain package-visible because they depend only on supply and base
-  exposure. This module cannot authenticate venue funding; the later adapter
-  and Series transition own that obligation.
+  reserve-credit, and exact negative-funding absorption arithmetic. The mint and
+  redemption quotes derive shareholder NAV from venue equity and reserve; the
+  leverage, target-notional, and mint-exposure formulas take a shareholder NAV
+  that State computes once per checkpoint through `shareholder_nav`. This
+  module cannot authenticate venue funding; the adapter and the Series
+  transition own that obligation.
 
 ## Units, bounds, and rounding
 
@@ -244,7 +242,21 @@ uncovered     = funding_cost - absorbed
 ```
 
 If venue equity has already fallen by `funding_cost`, shareholder NAV falls
-only by `uncovered`. Positive funding leaves the reserve unchanged. Trading
+only by `uncovered`, and `uncovered` accumulates in the State's
+`uncovered_deficit`. A later positive settlement repays that deficit first:
+
+```text
+restored      = min(credit, uncovered_deficit)
+deficit_after = uncovered_deficit - restored
+reserve_after = reserve_before + credit - restored
+```
+
+Because the venue already added the whole credit to equity, keeping
+`restored` out of the reserve is what raises shareholder NAV by exactly that
+amount; only the remainder rebuilds the buffer. A cost of 150 against a
+reserve of 100 followed by a credit of 300 therefore leaves NAV whole and the
+reserve at 250. The repayment goes to current holders, as every reserve
+movement does; the vault keeps no per-holder ledger. Trading
 fees, slippage, price PnL, liquidation, ADL, and socialized loss are not funding
 costs. The future adapter must derive the exact cost from an authoritative
 Aftermath funding accumulator or checkpoint; it may not infer funding from a
@@ -352,8 +364,8 @@ What this module does not close:
 
 ## Package integration
 
-The package error registry, verification commands, and deferred stateful work
-are recorded in the parent [Series1 README](../README.md). The future financial
+Verification commands and deferred stateful work are recorded in the parent
+[README](../README.md); each module declares the errors it raises. The future financial
 transitions in `state.move` are the only production consumers of these
 calculations. Venue adapters provide authenticated execution facts; they do
 not price shares or select accounting inputs.

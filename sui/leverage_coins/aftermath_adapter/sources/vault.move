@@ -725,18 +725,14 @@ public(package) fun settle_funding<Product>(
     self: &mut Vault<Product>,
     is_cost: bool,
     amount: u64,
-): (u64, u64, u64) {
-    let (absorbed, uncovered) = self.series_state.settle_funding(if (is_cost) {
+): (u64, u64, u64, u64) {
+    let (absorbed, uncovered, restored) = self.series_state.settle_funding(if (is_cost) {
         observation::funding_cost(amount)
     } else {
         observation::funding_credit(amount)
     });
 
-    (
-        absorbed,
-        uncovered,
-        self.series_state.maintenance_reserve(),
-    )
+    (absorbed, uncovered, restored, self.series_state.maintenance_reserve())
 }
 
 /// Replaces the raw venue checkpoint after authenticated reconciliation.
