@@ -5,14 +5,14 @@ module blast_boosts_core::rebalance_math;
 
 // === Package Functions ===
 
-/// Prices index exposure conservatively in collateral atoms.
+/// Prices the position at the oracle price, rounding up, in collateral atoms.
 ///
 /// `base_unit` and `collateral_unit` are `10^decimals` of each asset, so the
 /// formula is decimal-agnostic: `base / base_unit * price ratio * collateral_unit`.
-public(package) fun index_notional_up(
+public(package) fun oracle_notional_up(
     base: u64, base_price: u64, collateral_price: u64, base_unit: u64, collateral_unit: u64,
 ): u64 {
-    assert!(base_price > 0 && collateral_price > 0, blast_boosts_core::errors::invalid_valuation_price!());
+    assert!(base_price > 0 && collateral_price > 0, blast_boosts_core::errors::invalid_price!());
     let numerator = (base as u256) * (base_price as u256) * (collateral_unit as u256);
     let denominator = (collateral_price as u256) * (base_unit as u256);
     let value = numerator.div_ceil(denominator);
@@ -22,22 +22,22 @@ public(package) fun index_notional_up(
 
 /// Converts a notional cap to the largest whole-lot base it permits.
 public(package) fun base_for_notional_down(
-    notional: u64, base_price: u64, collateral_price: u64, lot: u64, base_unit: u64, collateral_unit: u64,
+    notional: u64, base_price: u64, collateral_price: u64, lot_size: u64, base_unit: u64, collateral_unit: u64,
 ): u64 {
-    assert!(base_price > 0 && collateral_price > 0, blast_boosts_core::errors::invalid_valuation_price!());
-    assert!(lot > 0, blast_boosts_core::errors::invalid_lot_size!());
+    assert!(base_price > 0 && collateral_price > 0, blast_boosts_core::errors::invalid_price!());
+    assert!(lot_size > 0, blast_boosts_core::errors::invalid_lot_size!());
     let base = (notional as u256) * (collateral_price as u256) * (base_unit as u256)
         / ((base_price as u256) * (collateral_unit as u256));
     assert!(base <= std::u64::max_value!() as u256, blast_boosts_core::errors::arithmetic_overflow!());
-    (base as u64) / lot * lot
+    (base as u64) / lot_size * lot_size
 }
 
 /// Reserves adverse execution first, then the authenticated fee on that adverse quote.
 /// Each session calls this separately: rounding a multi-order total is not equivalent.
-public(package) fun execution_cost_up(notional: u64, fee_bps: u64, tolerance_bps: u64): u128 {
-    assert!(fee_bps <= constants::basis_points_denominator!() && tolerance_bps < constants::basis_points_denominator!(),
+public(package) fun execution_cost_up(notional: u64, fee_bps: u64, slippage_bps: u64): u128 {
+    assert!(fee_bps <= constants::basis_points_denominator!() && slippage_bps < constants::basis_points_denominator!(),
         blast_boosts_core::errors::venue_fee_unusable!());
-    let adverse = ((notional as u128) * (tolerance_bps as u128)).div_ceil(constants::basis_points_denominator!() as u128);
+    let adverse = ((notional as u128) * (slippage_bps as u128)).div_ceil(constants::basis_points_denominator!() as u128);
     let fee = (((notional as u128) + adverse) * (fee_bps as u128)).div_ceil(constants::basis_points_denominator!() as u128);
     adverse + fee
 }
@@ -46,7 +46,7 @@ public(package) fun execution_cost_up(notional: u64, fee_bps: u64, tolerance_bps
 /// The adapter must recompute from each accepted session and enforce its fixed work bound.
 public(package) fun increase_base_down(
     nav: u64, notional: u64, target_bps: u64, base_price: u64, collateral_price: u64,
-    lot: u64, order_cap: u64, fee_bps: u64, tolerance_bps: u64, base_unit: u64, collateral_unit: u64,
+    lot_size: u64, order_cap: u64, fee_bps: u64, slippage_bps: u64, base_unit: u64, collateral_unit: u64,
 ): u64 {
     assert!(nav > 0, blast_boosts_core::errors::invalid_nav!());
     assert!(target_bps > 0, blast_boosts_core::errors::invalid_target_leverage_bps!());
@@ -55,14 +55,14 @@ public(package) fun increase_base_down(
     if (target <= notional as u128)  return 0 ;
 
     let headroom = ((target as u64) - notional).min(order_cap);
-    let maximum = base_for_notional_down(headroom, base_price, collateral_price, lot, base_unit, collateral_unit);
+    let maximum = base_for_notional_down(headroom, base_price, collateral_price, lot_size, base_unit, collateral_unit);
     let mut low = 0;
-    let mut high = maximum / lot;
+    let mut high = maximum / lot_size;
 
     while (low < high) {
         let candidate = low + (high - low).div_ceil(2);
-        let value = index_notional_up(candidate * lot, base_price, collateral_price, base_unit, collateral_unit);
-        let cost = execution_cost_up(value, fee_bps, tolerance_bps);
+        let value = oracle_notional_up(candidate * lot_size, base_price, collateral_price, base_unit, collateral_unit);
+        let cost = execution_cost_up(value, fee_bps, slippage_bps);
         if ((nav as u128) > cost
             && ((notional as u128) + (value as u128)) * (constants::basis_points_denominator!() as u128) <= (target_bps as u128) * ((nav as u128) - cost)) {
             low = candidate;
@@ -71,7 +71,7 @@ public(package) fun increase_base_down(
         };
     };
 
-    low * lot
+    low * lot_size
 }
 
 /// Returns whether a rebalance moved leverage enough to be worth executing.

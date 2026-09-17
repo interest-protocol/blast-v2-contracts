@@ -1,4 +1,4 @@
-/// Package-wide immutable Series1 numeric constants.
+/// Package-wide immutable core numeric constants.
 module blast_boosts_core::constants;
 
 // === Package Constants ===
@@ -22,9 +22,9 @@ macro public(package) fun leverage_ceiling_bps(): u64 {
 ///
 /// The minimum exists so a small holder can still exit; a million lots can
 /// never be small in collateral terms. The fence also catches a policy that
-/// swaps `min_exposure_lots` with an atomic-collateral value such as the NAV
+/// swaps `min_order_lots` with an atomic-collateral value such as the NAV
 /// cap, which would otherwise brick every mint of an immutable policy.
-macro public(package) fun max_min_exposure_lots(): u64 {
+macro public(package) fun max_min_order_lots(): u64 {
     1_000_000
 }
 

@@ -8,7 +8,7 @@ module blast_boosts_core::rebalance_math_tests;
 fun maximum_width_cost_and_conversion_keep_wide_intermediates() {
     let max = std::u64::max_value!();
     assert_eq!(rebalance_math::execution_cost_up(max, 10_000, 9_999), 55_336_542_872_313_912_935);
-    assert_eq!(rebalance_math::index_notional_up(max, 1_000, 1, 1_000_000_000, 1_000_000), max);
+    assert_eq!(rebalance_math::oracle_notional_up(max, 1_000, 1, 1_000_000_000, 1_000_000), max);
     assert_eq!(rebalance_math::base_for_notional_down(max, 1_000, 1, 1, 1_000_000_000, 1_000_000), max);
     assert_eq!(rebalance_math::increase_base_down(max, max - 1, 10_000, 1_000, 1, 1, max, 0, 0, 1_000_000_000, 1_000_000), 1);
     assert!(!rebalance_math::reduction_is_sufficient(max, max, max - 1, max, 20_000, max, max));
@@ -22,24 +22,24 @@ fun whole_lot_increase_matches_exhaustive_small_domain_reference() {
     while (nav <= 6) {
         let mut notional = 0u64;
         while (notional <= 12) {
-            let mut lot = 1u64;
-            while (lot <= 3) {
+            let mut lot_size = 1u64;
+            while (lot_size <= 3) {
                 vector[0u64, 1_000].do!(|fee| {
                     vector[0u64, 1_000].do!(|tolerance| {
                         let mut expected = 0u64;
-                        let mut candidate = lot;
+                        let mut candidate = lot_size;
                         while (candidate <= 8) {
                             let adverse = (candidate * tolerance + 9_999) / 10_000;
                             let charge = ((candidate + adverse) * fee + 9_999) / 10_000;
                             if (adverse + charge < nav && notional + candidate <= 2 * (nav - adverse - charge)) {
                                 expected = candidate;
                             };
-                            candidate = candidate + lot;
+                            candidate = candidate + lot_size;
                         };
-                        assert_eq!(rebalance_math::increase_base_down(nav, notional, 20_000, 1_000, 1, lot, 8, fee, tolerance, 1_000_000_000, 1_000_000), expected);
+                        assert_eq!(rebalance_math::increase_base_down(nav, notional, 20_000, 1_000, 1, lot_size, 8, fee, tolerance, 1_000_000_000, 1_000_000), expected);
                     });
                 });
-                lot = lot + 1;
+                lot_size = lot_size + 1;
             };
             notional = notional + 1;
         };
@@ -74,7 +74,7 @@ fun sizing_rejects_base_width_overflow() {
 #[test]
 #[expected_failure(abort_code = errors::EArithmeticOverflow, location = blast_boosts_core::rebalance_math)]
 fun sizing_rejects_notional_width_overflow() {
-    rebalance_math::index_notional_up(std::u64::max_value!(), 1_001, 1, 1_000_000_000, 1_000_000);
+    rebalance_math::oracle_notional_up(std::u64::max_value!(), 1_001, 1, 1_000_000_000, 1_000_000);
 }
 
 #[test]
@@ -90,7 +90,7 @@ fun sizing_rejects_zero_target_before_invalid_price() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidValuationPrice, location = blast_boosts_core::rebalance_math)]
+#[expected_failure(abort_code = errors::EInvalidPrice, location = blast_boosts_core::rebalance_math)]
 fun sizing_rejects_invalid_price_before_zero_lot() {
     rebalance_math::base_for_notional_down(1, 0, 1, 0, 1_000_000_000, 1_000_000);
 }
@@ -165,14 +165,14 @@ fun one_lot_tolerance_never_admits_moving_away_from_target() {
 fun reduction_predicate_matches_the_small_domain_reference() {
     vector[10_000u64, 20_000].do!(|target_bps| {
         vector[1u64, 5_000].do!(|minimum_improvement_bps| {
-            vector[1u64, 3].do!(|lot| {
+            vector[1u64, 3].do!(|lot_size| {
                 1u64.range_do!(5, |before_nav| {
                     1u64.range_do!(5, |after_nav| {
                         0u64.range_do!(8, |before_notional| {
                             0u64.range_do!(8, |after_notional| {
                                 let observed = rebalance_math::reduction_is_sufficient(
                                     before_notional, before_nav, after_notional, after_nav,
-                                    target_bps, minimum_improvement_bps, lot,
+                                    target_bps, minimum_improvement_bps, lot_size,
                                 );
                                 let before_bps = leverage_distance_bps(before_notional, before_nav, target_bps);
                                 let after_bps = leverage_distance_bps(after_notional, after_nav, target_bps);
@@ -187,7 +187,7 @@ fun reduction_predicate_matches_the_small_domain_reference() {
                                 );
                                 let within_lot = ratio_le(
                                     after_bps,
-                                    Ratio { numerator: (lot as u128) * 10_000, denominator: after_nav as u128 },
+                                    Ratio { numerator: (lot_size as u128) * 10_000, denominator: after_nav as u128 },
                                 );
                                 assert_eq!(observed, (within_lot && not_farther) || improved);
                                 if (observed) { assert!(not_farther) };
@@ -213,15 +213,15 @@ fun reduction_predicate_rejects_a_zero_after_nav() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidValuationPrice, location = blast_boosts_core::rebalance_math)]
+#[expected_failure(abort_code = errors::EInvalidPrice, location = blast_boosts_core::rebalance_math)]
 fun index_notional_rejects_a_zero_base_price_first() {
-    rebalance_math::index_notional_up(1, 0, 0, 1, 1);
+    rebalance_math::oracle_notional_up(1, 0, 0, 1, 1);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidValuationPrice, location = blast_boosts_core::rebalance_math)]
+#[expected_failure(abort_code = errors::EInvalidPrice, location = blast_boosts_core::rebalance_math)]
 fun index_notional_rejects_a_zero_collateral_price() {
-    rebalance_math::index_notional_up(1, 1, 0, 1, 1);
+    rebalance_math::oracle_notional_up(1, 1, 0, 1, 1);
 }
 
 #[test]
@@ -232,12 +232,12 @@ fun increase_reserves_adverse_execution_and_fee_headroom() {
         1_000_000_000, 1_000_000,
     );
     assert_eq!(base, 98_813_000);
-    let notional = rebalance_math::index_notional_up(base, 10_000_000_000, 1_000_000_000, 1_000_000_000, 1_000_000);
+    let notional = rebalance_math::oracle_notional_up(base, 10_000_000_000, 1_000_000_000, 1_000_000_000, 1_000_000);
     let cost = rebalance_math::execution_cost_up(notional, 10, 50);
     assert_eq!(notional, 988_130);
     assert_eq!(cost, 5_935);
     assert!((1_000_000u128 + (notional as u128)) * 10_000 <= 20_000 * (1_000_000 - cost));
-    let next = rebalance_math::index_notional_up(base + 1_000, 10_000_000_000, 1_000_000_000, 1_000_000_000, 1_000_000);
+    let next = rebalance_math::oracle_notional_up(base + 1_000, 10_000_000_000, 1_000_000_000, 1_000_000_000, 1_000_000);
     let next_cost = rebalance_math::execution_cost_up(next, 10, 50);
     assert!((1_000_000u128 + (next as u128)) * 10_000 > 20_000 * (1_000_000 - next_cost));
 }

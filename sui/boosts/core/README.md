@@ -22,7 +22,7 @@ facts.
 Series1 provides sealed, transaction-local plans for active mint, proportional
 redemption, donation and permissionless rebalance. Adapters authenticate venue
 facts and own native cash and share custody. Positive net funding credits the
-buffer; costs consume buffer before backing. Ordinary health observation never
+reserve; costs consume reserve before backing. Ordinary health observation never
 retires a product. The single public maintenance band has inclusive healthy
 endpoints and strict outside-band eligibility.
 

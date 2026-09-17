@@ -701,7 +701,7 @@ grep -q 'if (checkpoint_clean) {' <<<"$post_capture_block" \
   && grep -q 'vault.note_checkpoint_health(&checkpoint, checkpoint_clean)' <<<"$post_capture_block" \
   || fail "Ordinary health must preserve lifecycle and distinguish accepted from diagnostic identities."
 
-for operation in mint redeem rebalance donate release_buffer; do
+for operation in mint redeem rebalance donate release_reserve; do
   operation_block="$(sed -n "/^public fun $operation</,/^}/p" "$operations_file")"
   grep -q 'protocol.assert_current();' <<<"$operation_block" \
     && grep -q 'vault.assert_active();' <<<"$operation_block" \

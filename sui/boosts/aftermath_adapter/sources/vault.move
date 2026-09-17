@@ -148,17 +148,17 @@ public fun set_fees<Product>(
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
     mint_bps: u64,
     redeem_bps: u64,
-    admin_bps: u64,
+    admin_share_bps: u64,
 ) {
     protocol.assert_current();
     admin_witness.assert_role(domain::risk_admin_role());
 
     let (previous_mint, previous_redeem, previous_admin) =
-        self.series_state.set_fees(mint_bps, redeem_bps, admin_bps);
+        self.series_state.set_fees(mint_bps, redeem_bps, admin_share_bps);
 
     events::fees_updated<Product>(
         self.id.to_inner(), previous_mint, previous_redeem, previous_admin,
-        mint_bps, redeem_bps, admin_bps,
+        mint_bps, redeem_bps, admin_share_bps,
     );
 }
 
@@ -489,7 +489,7 @@ public(package) fun complete_donation<Product>(
 }
 
 /// Relabels authenticated buffer after live risk-administrator authorization.
-public(package) fun release_buffer<Product>(
+public(package) fun release_reserve<Product>(
     self: &mut Vault<Product>,
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
     observation: PositionObservation,
@@ -497,7 +497,7 @@ public(package) fun release_buffer<Product>(
     now: u64,
 ) {
     admin_witness.assert_role(domain::risk_admin_role());
-    self.series_state.release_buffer(observation, amount, now);
+    self.series_state.release_reserve(observation, amount, now);
 }
 
 /// Uses retained venue authority without exposing a cap or custody reference.

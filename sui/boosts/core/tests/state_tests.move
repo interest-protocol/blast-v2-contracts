@@ -138,7 +138,7 @@ fun unwind_uses_the_frozen_emergency_bound_without_a_nav_input_for_both_sides() 
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EStaleValuation, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EStalePrice, location = blast_boosts_core::policy)]
 fun ordinary_unwind_never_falls_back_to_a_stale_price() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::short());
@@ -173,7 +173,7 @@ fun invalid_rebalance_fee_precedes_invalid_observation() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EMintOutsidePublicBand, location = blast_boosts_core::state)]
+#[expected_failure(abort_code = errors::EMintOutsideRebalanceBand, location = blast_boosts_core::state)]
 fun mint_outside_band_precedes_deposit_arithmetic() {
     let fixture = start(domain::vault_issuer_role());
     let state = initialized_state(&fixture, policy::long());
@@ -219,11 +219,11 @@ fun redemption_rejects_output_one_above_net() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EBufferReleaseExceedsBalance, location = blast_boosts_core::state)]
+#[expected_failure(abort_code = errors::EReserveReleaseExceedsBalance, location = blast_boosts_core::state)]
 fun buffer_release_balance_guard_precedes_bad_observation() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
-    state.release_buffer(standard_observation(policy::long()).with_pending_order_count(1).into_position_observation(), SEED_RESERVE + 1, REFERENCE_TIME_MS);
+    state.release_reserve(standard_observation(policy::long()).with_pending_order_count(1).into_position_observation(), SEED_RESERVE + 1, REFERENCE_TIME_MS);
     state.destroy_for_testing();
     destroy(fixture);
 }
@@ -342,11 +342,11 @@ fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
             let notional = target * 100;
             state.initialize(rebalance_observation(1_100_000, notional, side), 100_000, 9, 6, REFERENCE_TIME_MS);
             let plan = state.prepare_mint(rebalance_observation(1_100_000, notional, side), 1_000_000, 1_000_000, 1_000_000, 0, REFERENCE_TIME_MS);
-            assert_eq!(plan.order_base(), notional * 1_000);
+            assert_eq!(plan.base_to_buy(), notional * 1_000);
             let (shares, contribution, _, _, _, _, _) = state.complete_mint(plan, rebalance_observation(2_100_000, notional * 2, side), REFERENCE_TIME_MS);
             assert_eq!(vector[shares, contribution, state.maintenance_reserve()], vector[1_000_000, 1_000_000, 100_000]);
             let plan = state.prepare_redemption(rebalance_observation(2_100_000, notional * 2, side), 500_000, 2_000_000, 500_000, 0, REFERENCE_TIME_MS);
-            assert_eq!(plan.redemption_order_base(), notional * 500);
+            assert_eq!(plan.base_to_sell(), notional * 500);
             let (net, admin, equity, fee, _) = state.complete_redemption(plan, rebalance_observation(2_100_000, notional * 3 / 2, side), REFERENCE_TIME_MS);
             assert_eq!(vector[net, admin, equity, fee], vector[500_000, 0, 1_600_000, 0]);
             state.assert_redemption_cash_out(rebalance_observation(equity, notional * 3 / 2, side), equity, notional * 1_500, 1_000_000_000, 1_000_000_000, REFERENCE_TIME_MS);
@@ -369,7 +369,7 @@ fun active_mint_rejects_a_temporary_venue_pause() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EStaleValuation, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EStalePrice, location = blast_boosts_core::policy)]
 fun active_redemption_rejects_a_stale_price() {
     let fixture = start(domain::vault_issuer_role());
     let state = initialized_state(&fixture, policy::short());
@@ -462,11 +462,11 @@ fun rebalance_short_reduction_recomputes_wide_permission_after_partial_progress(
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ERebalanceInsidePublicBand, location = blast_boosts_core::state)]
+#[expected_failure(abort_code = errors::ERebalanceInsideBand, location = blast_boosts_core::state)]
 fun rebalance_exact_lower_endpoint_rejects() { rebalance_endpoint(1_600_000); }
 
 #[test]
-#[expected_failure(abort_code = errors::ERebalanceInsidePublicBand, location = blast_boosts_core::state)]
+#[expected_failure(abort_code = errors::ERebalanceInsideBand, location = blast_boosts_core::state)]
 fun rebalance_exact_upper_endpoint_rejects() { rebalance_endpoint(2_600_000); }
 
 #[test]
@@ -525,7 +525,7 @@ fun a_flat_short_product_redeems_without_inventing_a_long_position() {
     let flat = standard_observation(policy::long())
         .with_position_base(0).with_position_collateral(0);
     let plan = state.prepare_redemption(flat.into_position_observation(), 500_000, 1_000_000, 499_500, 10, REFERENCE_TIME_MS);
-    assert_eq!(plan.redemption_order_base(), 0);
+    assert_eq!(plan.base_to_sell(), 0);
     let (net, admin, final_equity, fee, _) = state.complete_redemption(
         plan, flat.into_position_observation(), REFERENCE_TIME_MS,
     );
@@ -545,7 +545,7 @@ fun donation_and_full_release_preserve_venue_equity_and_shareholder_accounting()
         50_000, REFERENCE_TIME_MS,
     );
     assert_eq!(state.maintenance_reserve(), 150_000);
-    let nav = state.release_buffer(
+    let nav = state.release_reserve(
         standard_observation(policy::long())
             .with_venue_equity(NAV_CAP + 150_000)
             .with_position_collateral(1_000_000)
@@ -566,7 +566,7 @@ fun redemption_keeps_remaining_nav_and_allocates_its_own_fee() {
         standard_observation(policy::short()).into_position_observation(),
         500_000, 1_000_000, 497_502, 10, REFERENCE_TIME_MS,
     );
-    assert_eq!(plan.redemption_order_base(), 100_000);
+    assert_eq!(plan.base_to_sell(), 100_000);
     let (net, admin, final_equity, fee, _) = state.complete_redemption(
         plan,
         standard_observation(policy::short())
@@ -598,7 +598,7 @@ fun mint_credits_at_most_the_deposit_net_of_fee_when_the_fill_is_favorable() {
         10,
         REFERENCE_TIME_MS,
     );
-    assert_eq!(plan.order_base(), 199_000);
+    assert_eq!(plan.base_to_buy(), 199_000);
     let (shares, contribution, fee, admin, buffer, _, _) = state.complete_mint(
         plan,
         standard_observation(policy::long())
@@ -626,7 +626,7 @@ fun redemption_pays_at_most_the_proportional_claim_when_the_unwind_is_favorable(
         standard_observation(policy::long()).into_position_observation(),
         500_000, 1_000_000, 499_500, 10, REFERENCE_TIME_MS,
     );
-    assert_eq!(plan.redemption_order_base(), 100_000);
+    assert_eq!(plan.base_to_sell(), 100_000);
     let (net, admin, final_equity, fee, buffer) = state.complete_redemption(
         plan,
         standard_observation(policy::long())
@@ -657,7 +657,7 @@ fun mint_prices_actual_contribution_after_the_attributable_cost() {
         10,
         REFERENCE_TIME_MS,
     );
-    assert_eq!(plan.order_base(), 199_000);
+    assert_eq!(plan.base_to_buy(), 199_000);
     let (shares, contribution, _, _, _, _, _) = state.complete_mint(
         plan,
         standard_observation(policy::long())
@@ -1177,7 +1177,7 @@ fun initialization_rejects_pending_orders() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EStaleValuation, location = blast_boosts_core::policy,
+    abort_code = errors::EStalePrice, location = blast_boosts_core::policy,
 )]
 fun initialization_rejects_a_stale_base_price() {
     initialize_once(
@@ -1189,7 +1189,7 @@ fun initialization_rejects_a_stale_base_price() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EFutureValuation, location = blast_boosts_core::policy,
+    abort_code = errors::EFuturePrice, location = blast_boosts_core::policy,
 )]
 fun initialization_rejects_a_future_base_price() {
     initialize_once(
@@ -1213,7 +1213,7 @@ fun initialization_rejects_a_low_confidence_base_price() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EStaleValuation, location = blast_boosts_core::policy,
+    abort_code = errors::EStalePrice, location = blast_boosts_core::policy,
 )]
 fun initialization_rejects_a_stale_collateral_price() {
     initialize_once(
@@ -1225,7 +1225,7 @@ fun initialization_rejects_a_stale_collateral_price() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EFutureValuation, location = blast_boosts_core::policy,
+    abort_code = errors::EFuturePrice, location = blast_boosts_core::policy,
 )]
 fun initialization_rejects_a_future_collateral_price() {
     initialize_once(
@@ -1249,7 +1249,7 @@ fun initialization_rejects_a_low_confidence_collateral_price() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EMarkIndexDivergenceExceedsBound, location = blast_boosts_core::policy,
+    abort_code = errors::EMarkOracleDivergenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun initialization_rejects_mark_divergence() {
     initialize_once(
@@ -1321,7 +1321,7 @@ fun initialization_rejects_leverage_one_unit_above_healthy() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInitializationExposureBelowMinimum, location = blast_boosts_core::state,
+    abort_code = errors::EInitializationBaseBelowMinOrder, location = blast_boosts_core::state,
 )]
 fun initialization_rejects_base_below_the_immutable_lot_minimum() {
     initialize_once(
@@ -1366,7 +1366,7 @@ fun initialization_guard_order_checks_nav_before_base_freshness() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EStaleValuation, location = blast_boosts_core::policy,
+    abort_code = errors::EStalePrice, location = blast_boosts_core::policy,
 )]
 fun initialization_guard_order_checks_base_freshness_before_base_confidence() {
     initialize_once(
@@ -1394,7 +1394,7 @@ fun initialization_guard_order_checks_base_before_collateral_valuation() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EStaleValuation, location = blast_boosts_core::policy,
+    abort_code = errors::EStalePrice, location = blast_boosts_core::policy,
 )]
 fun initialization_guard_order_checks_collateral_freshness_before_confidence() {
     initialize_once(
@@ -1422,7 +1422,7 @@ fun initialization_guard_order_checks_collateral_confidence_before_mark() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EMarkIndexDivergenceExceedsBound, location = blast_boosts_core::policy,
+    abort_code = errors::EMarkOracleDivergenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun initialization_guard_order_checks_mark_before_side() {
     initialize_once(

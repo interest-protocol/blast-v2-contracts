@@ -241,7 +241,10 @@ expected_state_public="$(printf '%s\n' \
   assert_unwind_execution \
   assert_unwinding \
   assert_user_fee_limit \
+  base_after_sell \
   base_price \
+  base_to_buy \
+  base_to_sell \
   begin_shutdown \
   collateral_price \
   complete_donation \
@@ -253,30 +256,27 @@ expected_state_public="$(printf '%s\n' \
   initialization_constraints \
   initialize \
   is_within_nav_cap \
-  lot \
+  lot_size \
   maintenance_reserve \
   mint_base_price \
   mint_collateral_price \
   mint_deposit \
-  mint_lot \
+  mint_lot_size \
   nav_cap \
   new \
-  order_base \
   prepare_donation \
   prepare_initialization \
   prepare_mint \
   prepare_rebalance \
   prepare_redemption \
   rebalance_order \
-  redemption_admin_bps \
+  redemption_admin_share_bps \
   redemption_base_price \
   redemption_collateral_price \
   redemption_fee_bps \
-  redemption_final_base \
-  redemption_lot \
-  redemption_order_base \
+  redemption_lot_size \
   redemption_shares \
-  release_buffer \
+  release_reserve \
   set_fees \
   set_max_order_notional \
   set_nav_cap \
@@ -296,8 +296,8 @@ if grep -qE 'module_lower_bps|module_upper_bps|is_risk_module_allowed' "$policy_
   fail "Maintenance must have exactly one public band, without a privileged inner window."
 fi
 rebalance_prepare="$(sed -n '/^public fun prepare_rebalance</,/^}/p' "$state_file")"
-grep -q 'scaled < (nav as u128) \* (risk.rebalance_below_bps() as u128)' <<<"$rebalance_prepare" \
-  && grep -q 'scaled > (nav as u128) \* (risk.rebalance_above_bps() as u128)' <<<"$rebalance_prepare" \
+grep -q 'scaled < (nav as u128) \* (rebalance.rebalance_below_bps() as u128)' <<<"$rebalance_prepare" \
+  && grep -q 'scaled > (nav as u128) \* (rebalance.rebalance_above_bps() as u128)' <<<"$rebalance_prepare" \
   || fail "Rebalance triggers must use strict exact-ratio cross products."
 prepare_initialization_block="$(
   sed -n '/^public fun prepare_initialization<Product>($/,/^}/p' "$state_file"

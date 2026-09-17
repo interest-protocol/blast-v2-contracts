@@ -51,9 +51,9 @@ public struct Redeemed<phantom Product> has copy, drop {
     net: u64,
     fee: u64,
     admin_fee: u64,
-    buffer_fee: u64,
+    reserve_fee: u64,
     fee_bps: u64,
-    admin_bps: u64,
+    admin_share_bps: u64,
     reserve_after: u64,
     admin_cash_after: u64,
     supply_after: u64,
@@ -82,9 +82,9 @@ public struct Minted<phantom Product> has copy, drop {
     contribution: u64,
     fee: u64,
     admin_fee: u64,
-    buffer_fee: u64,
+    reserve_fee: u64,
     fee_bps: u64,
-    admin_bps: u64,
+    admin_share_bps: u64,
     reserve_after: u64,
     admin_cash_after: u64,
     supply_after: u64,
@@ -182,7 +182,7 @@ public struct FeesUpdated<phantom Product> has copy, drop {
     previous_admin_bps: u64,
     mint_bps: u64,
     redeem_bps: u64,
-    admin_bps: u64,
+    admin_share_bps: u64,
 }
 
 /// Completed NAV cap update; existing NAV and balances do not change.
@@ -208,7 +208,7 @@ public struct Donated<phantom Product> has copy, drop {
 }
 
 /// Completed buffer-to-backing relabeling with no cash movement or supply change.
-public struct BufferReleased<phantom Product> has copy, drop {
+public struct ReserveReleased<phantom Product> has copy, drop {
     vault_id: ID,
     amount: u64,
     reserve_after: u64,
@@ -228,29 +228,29 @@ public(package) fun rebalanced<Product>(
 }
 
 public(package) fun redeemed<Product>(
-    vault_id: ID, shares: u64, net: u64, fee: u64, admin_fee: u64, buffer_fee: u64,
-    fee_bps: u64, admin_bps: u64, reserve_after: u64, admin_cash_after: u64,
+    vault_id: ID, shares: u64, net: u64, fee: u64, admin_fee: u64, reserve_fee: u64,
+    fee_bps: u64, admin_share_bps: u64, reserve_after: u64, admin_cash_after: u64,
     supply_after: u64, checkpoint: Checkpoint,
 ) {
     blast_boosts_aftermath::blast_events::emit_event(Redeemed<Product> {
-        vault_id, shares, net, fee, admin_fee, buffer_fee, fee_bps, admin_bps,
+        vault_id, shares, net, fee, admin_fee, reserve_fee, fee_bps, admin_share_bps,
         reserve_after, admin_cash_after, supply_after, checkpoint,
     });
 }
 
 public(package) fun minted<Product>(
     vault_id: ID, deposit: u64, shares: u64, contribution: u64, fee: u64, admin_fee: u64,
-    buffer_fee: u64, fee_bps: u64, admin_bps: u64, reserve_after: u64, admin_cash_after: u64,
+    reserve_fee: u64, fee_bps: u64, admin_share_bps: u64, reserve_after: u64, admin_cash_after: u64,
     supply_after: u64, checkpoint: Checkpoint,
 ) {
     blast_boosts_aftermath::blast_events::emit_event(Minted<Product> {
-        vault_id, deposit, shares, contribution, fee, admin_fee, buffer_fee, fee_bps, admin_bps,
+        vault_id, deposit, shares, contribution, fee, admin_fee, reserve_fee, fee_bps, admin_share_bps,
         reserve_after, admin_cash_after, supply_after, checkpoint,
     });
 }
 
-public(package) fun buffer_released<Product>(vault_id: ID, amount: u64, reserve_after: u64) {
-    blast_boosts_aftermath::blast_events::emit_event(BufferReleased<Product> {
+public(package) fun reserve_released<Product>(vault_id: ID, amount: u64, reserve_after: u64) {
+    blast_boosts_aftermath::blast_events::emit_event(ReserveReleased<Product> {
         vault_id, amount, reserve_after,
     });
 }
@@ -274,11 +274,11 @@ public(package) fun fees_updated<Product>(
     previous_admin_bps: u64,
     mint_bps: u64,
     redeem_bps: u64,
-    admin_bps: u64,
+    admin_share_bps: u64,
 ) {
     blast_boosts_aftermath::blast_events::emit_event(FeesUpdated<Product> {
         vault_id, previous_mint_bps, previous_redeem_bps, previous_admin_bps,
-        mint_bps, redeem_bps, admin_bps,
+        mint_bps, redeem_bps, admin_share_bps,
     });
 }
 
@@ -506,8 +506,8 @@ public fun rebalanced_checkpoint_fields<Product>(self: &Rebalanced<Product>): (I
 
 #[test_only]
 public fun redeemed_amounts<Product>(self: &Redeemed<Product>): vector<u64> {
-    vector[self.shares, self.net, self.fee, self.admin_fee, self.buffer_fee,
-        self.fee_bps, self.admin_bps, self.reserve_after, self.admin_cash_after, self.supply_after]
+    vector[self.shares, self.net, self.fee, self.admin_fee, self.reserve_fee,
+        self.fee_bps, self.admin_share_bps, self.reserve_after, self.admin_cash_after, self.supply_after]
 }
 
 #[test_only]
@@ -517,8 +517,8 @@ public fun vault_initialized_seed_funder<Product>(self: &VaultInitialized<Produc
 
 #[test_only]
 public fun minted_amounts<Product>(self: &Minted<Product>): (u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64) {
-    (self.deposit, self.shares, self.contribution, self.fee, self.admin_fee, self.buffer_fee,
-        self.fee_bps, self.admin_bps, self.reserve_after, self.admin_cash_after, self.supply_after)
+    (self.deposit, self.shares, self.contribution, self.fee, self.admin_fee, self.reserve_fee,
+        self.fee_bps, self.admin_share_bps, self.reserve_after, self.admin_cash_after, self.supply_after)
 }
 
 #[test_only]
@@ -675,7 +675,7 @@ public fun shutdown_begun_vault_id<Product>(
 #[test_only]
 public fun fees_updated_fields<Product>(self: &FeesUpdated<Product>): (ID, u64, u64, u64, u64, u64, u64) {
     (self.vault_id, self.previous_mint_bps, self.previous_redeem_bps, self.previous_admin_bps,
-        self.mint_bps, self.redeem_bps, self.admin_bps)
+        self.mint_bps, self.redeem_bps, self.admin_share_bps)
 }
 
 #[test_only]
@@ -689,7 +689,7 @@ public fun donated_fields<Product>(self: &Donated<Product>): (ID, u64, u64, Chec
 }
 
 #[test_only]
-public fun buffer_released_fields<Product>(self: &BufferReleased<Product>): (ID, u64, u64) {
+public fun reserve_released_fields<Product>(self: &ReserveReleased<Product>): (ID, u64, u64) {
     (self.vault_id, self.amount, self.reserve_after)
 }
 

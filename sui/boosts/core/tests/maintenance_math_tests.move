@@ -554,7 +554,7 @@ fun a_canonical_redemption_rejects_unbacked_reserve_before_share_inputs() {
 /// The mint range assertion aborts with the over-exposure code above the planned fill.
 #[test]
 #[expected_failure(
-    abort_code = errors::EMintOverExposed,
+    abort_code = errors::EMintBaseAboveBound,
     location = blast_boosts_core::accounting_math,
 )]
 fun mint_base_bound_assertion_rejects_over_exposure() {
@@ -564,7 +564,7 @@ fun mint_base_bound_assertion_rejects_over_exposure() {
 /// The mint range assertion aborts with the under-exposure code below the funded fill.
 #[test]
 #[expected_failure(
-    abort_code = errors::EMintUnderExposed,
+    abort_code = errors::EMintBaseBelowBound,
     location = blast_boosts_core::accounting_math,
 )]
 fun mint_base_bound_assertion_rejects_under_exposure() {
@@ -595,7 +595,7 @@ fun target_notional_rejects_an_overflowing_result() {
     location = blast_boosts_core::accounting_math,
 )]
 fun mint_base_delta_rejects_an_overflowing_target() {
-    accounting_math::mint_base_delta_down(3, std::u64::max_value!(), 2, 1, 1);
+    accounting_math::mint_base_to_buy_down(3, std::u64::max_value!(), 2, 1, 1);
 }
 
 /// Reaches maximum-width venue equity through both canonical accounting paths.

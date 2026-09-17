@@ -34,13 +34,13 @@ coins target approximately 2x exposure and can be liquidated.
 | Quantity | Unit | Note |
 | --- | --- | --- |
 | venue equity, shareholder NAV, maintenance reserve | atomic collateral (USDC) | `shareholder_nav = venue_equity - maintenance_reserve` |
-| deposit, fee, payout, funding cost | atomic collateral (USDC) | one valuation pair per operation |
+| deposit, fee, payout, funding cost | atomic collateral (USDC) | one price pair per operation |
 | shares | atomic Share units | `SUI2L` or `SUI2S` |
 | base exposure | absolute atomic venue base units | direction is never encoded here |
 | fee rate | basis points below 10,000 | proves `fee <= amount` |
 | leverage rate | basis points of 1x | `20_000` is 2x; no 10,000 ceiling |
 | depositor share floor | atomic Share units | `min_shares_out`, supplied per mint by the depositor; zero means no floor |
-| minimum operation size | live venue lots | `min_exposure_lots`, an immutable Series policy value at most 1,000,000 lots; this package selects no value for it |
+| minimum operation size | live venue lots | `min_order_lots`, an immutable Series policy value at most 1,000,000 lots; this package selects no value for it |
 | NAV cap | atomic collateral | positive live `State` value, set at issuance and adjustable by the risk admin, whose max-leverage notional fits in `u64`; simulation selects its value |
 | price freshness window | milliseconds | `max_price_age_ms` and `max_price_ahead_ms`, both immutable policy values on the on-chain millisecond scale |
 | price confidence | absolute interval in the price's own units | bounded by `max_confidence_bps` basis points of that price |
@@ -63,17 +63,17 @@ shares. Exposure rounding favors lower risk but can create underexposure:
 | `target_notional_down` | down | the planned order stays under target |
 | `allocated_mint_quote` contribution cap | `min(NAV rise, deposit - fee)` | existing holders keep a favorable fill's excess |
 | `redemption_quote` gross cap | `min(nav_unwound, nav_before) - equity_keep` | remaining holders keep a favorable unwind's excess |
-| `mint_base_delta_down` | down to the live lot | unopened sub-lot exposure, below `1 / min_exposure_lots` of the target |
+| `mint_base_to_buy_down` | down to the live lot | unopened sub-lot exposure, below `1 / min_order_lots` of the target |
 | `mint_base_bounds` | `[actual, planned]`; the capped contribution keeps `actual <= planned` | a partial fill may leave at most the actual contribution's exposure unopened |
 | `redemption_base_bounds` keep | down | remaining holders |
-| `redemption_base_bounds` planned reduction | up to the live lot, capped at flat | over-reduction below one lot and below `1 / min_exposure_lots` of the required reduction |
+| `redemption_base_bounds` planned reduction | up to the live lot, capped at flat | over-reduction below one lot and below `1 / min_order_lots` of the required reduction |
 
 ### Mint contribution cap
 
 A depositor is credited at most what they paid. With `D` the deposit,
 `protocol_fee` the ceiling-rounded fee on `D` (its admin allocation is retained
-locally and its buffer allocation is credited to the reserve), `N0` and `N1`
-the shareholder NAV before and after the mint at one valuation pair, and `S0`
+locally and its reserve allocation is credited to the reserve), `N0` and `N1`
+the shareholder NAV before and after the mint at one price pair, and `S0`
 the supply, `allocated_mint_quote` credits:
 
 ```text
@@ -83,7 +83,7 @@ shares_out   = floor(S0 * contribution / N0)
 
 `N1 <= N0` still aborts with the nonpositive-contribution code, so execution
 cost reaches the depositor exactly as before. When a venue fill is better than
-the index price, the excess `N1 - N0 - (D - protocol_fee)` mints no shares and
+the oracle price, the excess `N1 - N0 - (D - protocol_fee)` mints no shares and
 stays with the existing holders, whose NAV per share rises. The cap lives
 inside the quote, so no Series transition can bypass it, and it needs no
 policy value (ADR 0084 D3). `allocated_mint_quote` applies the same cap as
@@ -102,7 +102,7 @@ tolerances. Those checks remain separate integration gates.
 
 A redeemer is paid at most their proportional share. For `x` burned shares
 with `keep = ceil(N0 * (S0 - x) / S0)`, `claim = N0 - keep`, and `Nu` the
-shareholder NAV after the proportional unwind at the same valuation pair,
+shareholder NAV after the proportional unwind at the same price pair,
 `redemption_quote` pays:
 
 ```text
@@ -121,7 +121,7 @@ favorable unwind cannot rescue a claim the rounded-up kept equity consumed.
 `redemption_accounting_quote` returns `nav_kept = Nu - gross`, the shareholder
 NAV that actually remains, beside `proportional_claim`; `nav_kept` is at least
 `keep`, and the Series derives the required final venue equity from it. Fee,
-net, buffer credit, and `min_usdc_out` apply to the capped gross unchanged.
+net, reserve credit, and `min_usdc_out` apply to the capped gross unchanged.
 
 ### Depositor share floor and seed sizing
 
@@ -135,13 +135,13 @@ unchanged. Independently, the seed must keep one share economically dust: to
 cap any depositor's rounding loss at `X` bps, the seed supply `S` must satisfy
 `floor(S * c / N) >= 10_000 / X` for the smallest legal contribution `c`, which
 with the minimum operation size is `S >= (10_000 / X) * base / (lot_size *
-min_exposure_lots)`. That sizing is a release gate on the seed slice.
+min_order_lots)`. That sizing is a release gate on the seed slice.
 
 ### Proportional exposure and the minimum operation size
 
-`mint_base_delta_down`, `mint_base_bounds`, and `redemption_base_bounds` are
+`mint_base_to_buy_down`, `mint_base_bounds`, and `redemption_base_bounds` are
 the arithmetic of invariant I26. Every proportional exposure change must be at
-least `lot_size * min_exposure_lots`, except a redemption that reaches flat.
+least `lot_size * min_order_lots`, except a redemption that reaches flat.
 
 A mint is sized before its trade from the expected contribution
 `deposit - fee`. After the trade the Series must call
@@ -170,37 +170,37 @@ release blocker, not an optional check.
 The minimum has a sharp lock condition. The required reduction is largest when
 a redemption burns all but one share, where it equals
 `base_before - floor(base_before / shares_before)`. When that is below
-`lot_size * min_exposure_lots` and `base_before >= shares_before`, every burn
+`lot_size * min_order_lots` and `base_before >= shares_before`, every burn
 count aborts with code 12 and the position is locked for every holder; the
 flat exemption is unreachable because a zero proportional keep needs
 `base_before < shares_before`. With base 100,000, supply 1,000, lot 1,000 and
 a hundred-lot minimum, none of the 999 burn counts is legal. The state is
 reachable: a leveraged long that rebalances after a drawdown shrinks base
 toward zero, and once base is zero with live shares no mint can pass
-`mint_base_delta_down` either. Initialization uses
-`is_exposure_above_minimum_operation`; ordinary redemptions enforce the exact
+`mint_base_to_buy_down` either. Initialization uses
+`is_base_above_min_order`; ordinary redemptions enforce the exact
 bounds in `redemption_base_bounds`. Health synchronization does not change
 lifecycle for unavailable ordinary operations. Explicit terminal handling is
 a separate lifecycle contract.
 
 The minimum operation size is what turns the per-operation lot tolerance into
 a cumulative bound. With relative under-exposure below
-`e = 1 / min_exposure_lots`, each legal mint multiplies accounting leverage by
+`e = 1 / min_order_lots`, each legal mint multiplies accounting leverage by
 at least `1 - e * contribution / (nav_before + contribution)`, so after any
 sequence of mints from leverage `L0` and NAV `N0` the leverage stays close to
 `L0 * (N0 / N)^e` where `N` is the final NAV. The closed form is a lower bound;
-the attained worst case is `e = 1 / (min_exposure_lots + 1)`. The regression
+the attained worst case is `e = 1 / (min_order_lots + 1)`. The regression
 test `repeated_worst_case_mints_leave_the_band_with_a_one_lot_minimum` pins
 that a one-lot minimum lets worst-case mints move a 2.0x pool below 1.8x on
 mint 2,229, with the pool at 1.7397x and NAV up 32 percent after 3,000 mints;
 its twin pins that a hundred-lot minimum keeps the same sequence at 1.9455x
 after 3,000 mints and NAV growth of sixteen times. The
-Series must select `min_exposure_lots` from simulation, keep
-`lot_size * min_exposure_lots` small in collateral terms so exits are not
+Series must select `min_order_lots` from simulation, keep
+`lot_size * min_order_lots` small in collateral terms so exits are not
 stranded, and verify the live lot size against the deployed market (P16).
 
 These pure modules cannot observe NAV, supply, reserve state, or venue exposure.
-Each caller must supply values from one canonical valuation pair. The later
+Each caller must supply values from one canonical price pair. The later
 adapter must settle and authenticate funding exactly once first. Signed
 direction, reduce-only flags, and the final signed-position check belong to the
 later adapter.
@@ -218,7 +218,7 @@ shareholder_nav = venue_equity - maintenance_reserve
 
 Mint and redemption fees credit the reserve. `prepare_mint` computes the fee
 once through `fee_allocation`; `allocated_mint_quote` then derives post-mint
-NAV with the credited buffer, requires a positive contribution, and only then
+NAV with the credited reserve, requires a positive contribution, and only then
 calls the share formula, so the fee is excluded exactly once and cannot be
 subtracted twice. `redemption_accounting_quote` derives post-unwind NAV with the old
 reserve, then credits the new fee. Final shareholder NAV is exactly
@@ -253,7 +253,7 @@ reserve_after = reserve_before + credit - restored
 
 Because the venue already added the whole credit to equity, keeping
 `restored` out of the reserve is what raises shareholder NAV by exactly that
-amount; only the remainder rebuilds the buffer. A cost of 150 against a
+amount; only the remainder rebuilds the reserve. A cost of 150 against a
 reserve of 100 followed by a credit of 300 therefore leaves NAV whole and the
 reserve at 250. The repayment goes to current holders, as every reserve
 movement does; the vault keeps no per-holder ledger. Trading
@@ -269,7 +269,7 @@ operations require `maintenance_reserve <= venue_equity`; an observed breach
 fails priced operations closed, without clamping NAV or changing lifecycle.
 Health reports authenticated checkpoint faults without declaring liquidation.
 Only a shutdown-role witness starts the irreversible Active → Unwinding →
-Settled path. No admin or keeper can claim the buffer book entry.
+Settled path. No admin or keeper can claim the reserve book entry.
 
 Finalization consumes that entry into actual recovered holder cash only after
 the adapter proves exact flat exposure, no orders, settled funding and
@@ -282,7 +282,7 @@ the holder pool.
 
 ### Priced-operation predicates and health synchronization
 
-Reserve backing, positive shareholder NAV, valuation, and proportional exposure
+Reserve backing, positive shareholder NAV, price, and proportional exposure
 bounds are enforced by priced operations. Health synchronization consumes its
 authenticated capture inside the adapter and uses the checkpoint for aggregate
 funding settlement and unresolved/reconciled diagnostics. It does not construct
@@ -306,9 +306,9 @@ value, reads no source, and binds no source identity.
 | --- | --- | --- |
 | `assert_price_fresh` | `published_at_ms` lies in the closed interval `[reference - max_price_age_ms, reference + max_price_ahead_ms]` | each share-pricing source, so every priced operation and every risk increase |
 | `assert_confidence_within_bound` | `confidence * 10_000 <= max_confidence_bps * price` | each share-pricing source, so every priced operation and every risk increase |
-| `assert_mark_within_index_divergence` | `abs(mark - index) * 10_000 <= max_mark_divergence_bps * index` | venue margin safety only; never share pricing, NAV, or accounting leverage |
+| `assert_mark_within_oracle_divergence` | `abs(mark - index) * 10_000 <= max_mark_divergence_bps * index` | venue margin safety only; never share pricing, NAV, or accounting leverage |
 
-Share pricing stays base-index plus collateral-oracle valuation. The venue mark
+Share pricing stays base-index plus collateral-oracle price. The venue mark
 is only the separate margin-safety and divergence check, so the boundary script
 rejects standalone and snake-case `mark` identifiers in `accounting_math`.
 This lexical gate supports review; it does not authenticate the economic origin
@@ -352,7 +352,7 @@ change lifecycle.
 
 What this module does not close:
 
-- the operation-scoped linear valuation carrier that would make one captured
+- the operation-scoped linear price carrier that would make one captured
   pair provably the same for the pre- and post-operation checks. Its field
   layout depends on the future Vault handoff and the unresolved signed
   fixed-point normalization of premise P17;

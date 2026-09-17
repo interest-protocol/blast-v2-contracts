@@ -4,7 +4,7 @@
 ///
 /// These values prove neither source identity nor caller authority. The adapter
 /// authenticates its venue and oracle sources before it constructs them, while
-/// Series1 uses each value exactly once during the enclosing operation.
+/// core uses each value exactly once during the enclosing operation.
 module blast_boosts_core::observation;
 
 // === Public Types ===
@@ -18,7 +18,7 @@ public struct PriceObservation {
     publish_time_ms: u64,
 }
 
-/// One venue-position and valuation snapshot for a single operation.
+/// One venue-position and price snapshot for a single operation.
 ///
 /// Constructors validate the structural fields before priced operations.
 public struct PositionObservation {
@@ -33,7 +33,7 @@ public struct PositionObservation {
     margin_safe: bool,
     venue_operational: bool,
     checkpoint_clean: bool,
-    base_index: PriceObservation,
+    base_oracle: PriceObservation,
     collateral_oracle: PriceObservation,
     mark_price: u64,
 }
@@ -55,7 +55,7 @@ public fun new_price(
 ): PriceObservation {
     assert!(
         price > 0,
-        blast_boosts_core::errors::invalid_observation_price!(),
+        blast_boosts_core::errors::invalid_price!(),
     );
 
     PriceObservation { price, confidence, publish_time_ms }
@@ -76,7 +76,7 @@ public fun new_position(
     margin_safe: bool,
     venue_operational: bool,
     checkpoint_clean: bool,
-    base_index: PriceObservation,
+    base_oracle: PriceObservation,
     collateral_oracle: PriceObservation,
     mark_price: u64,
 ): PositionObservation {
@@ -86,7 +86,7 @@ public fun new_position(
     );
     assert!(
         mark_price > 0,
-        blast_boosts_core::errors::invalid_observation_price!(),
+        blast_boosts_core::errors::invalid_price!(),
     );
     assert!(
         is_position_structurally_valid(position_base, position_collateral, lot_size),
@@ -103,7 +103,7 @@ public fun new_position(
         margin_safe,
         venue_operational,
         checkpoint_clean,
-        base_index,
+        base_oracle,
         collateral_oracle,
         mark_price,
     }
@@ -134,7 +134,7 @@ public(package) fun confidence(self: &PriceObservation): u64 { self.confidence }
 
 public(package) fun publish_time_ms(self: &PriceObservation): u64 { self.publish_time_ms }
 
-/// Consumes one price observation once Series1 has read it.
+/// Consumes one price observation once core has read it.
 public(package) fun destroy_price(self: PriceObservation) {
     let PriceObservation { .. } = self;
 }
@@ -144,7 +144,7 @@ public(package) fun destroy_price(self: PriceObservation) {
 /// Returns whether base, notional, and lot size form a normalized position.
 ///
 /// This predicate never aborts, including for a zero lot. Strict operation
-/// constructors and Series1 initialization assert it.
+/// constructors and initialization assert it.
 public(package) fun is_position_structurally_valid(
     position_base: u64,
     position_collateral: u64,
@@ -179,17 +179,17 @@ public(package) fun is_venue_operational(self: &PositionObservation): bool { sel
 public(package) fun is_checkpoint_clean(self: &PositionObservation): bool { self.checkpoint_clean }
 
 /// Borrows the base asset's oracle price observation.
-public(package) fun base_index(self: &PositionObservation): &PriceObservation { &self.base_index }
+public(package) fun base_oracle(self: &PositionObservation): &PriceObservation { &self.base_oracle }
 
 /// Borrows the collateral's oracle price observation.
 public(package) fun collateral_oracle(self: &PositionObservation): &PriceObservation { &self.collateral_oracle }
 
 public(package) fun mark_price(self: &PositionObservation): u64 { self.mark_price }
 
-/// Consumes one position observation once Series1 has read it.
+/// Consumes one position observation once core has read it.
 public(package) fun destroy_position(self: PositionObservation) {
-    let PositionObservation { base_index, collateral_oracle, .. } = self;
-    base_index.destroy();
+    let PositionObservation { base_oracle, collateral_oracle, .. } = self;
+    base_oracle.destroy();
     collateral_oracle.destroy();
 }
 
@@ -208,7 +208,7 @@ public(package) fun amount(self: &FundingSettlement): u64 {
     }
 }
 
-/// Consumes one funding settlement once Series1 has read it.
+/// Consumes one funding settlement once core has read it.
 public(package) fun destroy_funding(self: FundingSettlement) {
     match (self) {
         FundingSettlement::None => (),
@@ -220,7 +220,7 @@ public(package) fun destroy_funding(self: FundingSettlement) {
 // === Test-Only Functions ===
 
 #[test_only]
-/// Injects malformed exposure to exercise State's independent initialization guard.
+/// Injects a malformed position to exercise State's independent initialization guard.
 public fun with_position_base_for_testing(
     mut self: PositionObservation,
     position_base: u64,

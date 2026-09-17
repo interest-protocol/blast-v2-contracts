@@ -52,7 +52,7 @@ fun a_complete_long_policy_is_composed_and_preserved() {
     assert_eq!(price_policy.max_price_age_ms(), 1);
     assert_eq!(vault_policy.mint_fee_bps(), 0);
     assert_eq!(vault_policy.redeem_fee_bps(), 0);
-    assert_eq!(vault_policy.min_exposure_lots(), 1);
+    assert_eq!(vault_policy.min_order_lots(), 1);
 }
 
 #[test]
@@ -80,7 +80,7 @@ fun the_largest_locally_valid_short_policy_is_preserved() {
     assert_eq!(vault_policy.price_policy().max_price_age_ms(), max);
     assert_eq!(vault_policy.mint_fee_bps(), 9_999);
     assert_eq!(vault_policy.redeem_fee_bps(), 9_999);
-    assert_eq!(vault_policy.min_exposure_lots(), 1_000_000);
+    assert_eq!(vault_policy.min_order_lots(), 1_000_000);
 }
 
 #[test]
@@ -93,7 +93,7 @@ fun copied_policy_preserves_every_composed_field() {
     assert_eq!(copied.price_policy(), vault_policy.price_policy());
     assert_eq!(copied.mint_fee_bps(), vault_policy.mint_fee_bps());
     assert_eq!(copied.redeem_fee_bps(), vault_policy.redeem_fee_bps());
-    assert_eq!(copied.min_exposure_lots(), vault_policy.min_exposure_lots());
+    assert_eq!(copied.min_order_lots(), vault_policy.min_order_lots());
 }
 
 #[test]
@@ -101,12 +101,12 @@ fun every_small_valid_domain_tuple_is_accepted_and_preserved() {
     vector[false, true].do!(|is_long| {
         0u64.range_do!(3, |mint_fee_bps| {
             0u64.range_do!(3, |redeem_fee_bps| {
-                1u64.range_do!(3, |min_exposure_lots| {
-                    let vault_policy = new_policy(is_long, mint_fee_bps, redeem_fee_bps, min_exposure_lots);
+                1u64.range_do!(3, |min_order_lots| {
+                    let vault_policy = new_policy(is_long, mint_fee_bps, redeem_fee_bps, min_order_lots);
 
                     assert_eq!(vault_policy.mint_fee_bps(), mint_fee_bps);
                     assert_eq!(vault_policy.redeem_fee_bps(), redeem_fee_bps);
-                    assert_eq!(vault_policy.min_exposure_lots(), min_exposure_lots);
+                    assert_eq!(vault_policy.min_order_lots(), min_order_lots);
                 });
             });
         });
@@ -121,11 +121,11 @@ fun rebalance_policy_accepts_the_largest_nav_cap_that_fits_max_leverage() {
 
 #[test]
 fun minimum_exposure_lots_at_the_ceiling_are_accepted() {
-    assert_eq!(new_policy(true, 0, 0, 1_000_000).min_exposure_lots(), 1_000_000);
+    assert_eq!(new_policy(true, 0, 0, 1_000_000).min_order_lots(), 1_000_000);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidMinExposureLots, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EInvalidMinOrderLots, location = blast_boosts_core::policy)]
 fun minimum_exposure_lots_above_the_ceiling_are_rejected() {
     new_policy(true, 0, 0, 1_000_001);
 }
@@ -150,7 +150,7 @@ fun redeem_fee_at_the_denominator_is_rejected() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidMinExposureLots, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EInvalidMinOrderLots, location = blast_boosts_core::policy)]
 fun zero_minimum_exposure_lots_are_rejected() {
     new_policy(true, 0, 0, 0);
 }
@@ -173,7 +173,7 @@ fun new_policy(
     is_long: bool,
     mint_fee_bps: u64,
     redeem_fee_bps: u64,
-    min_exposure_lots: u64,
+    min_order_lots: u64,
 ): policy::VaultPolicy {
     policy::new_vault_policy(
         if (is_long) policy::long() else policy::short(),
@@ -181,7 +181,7 @@ fun new_policy(
         standard_price_policy(),
         mint_fee_bps,
         redeem_fee_bps,
-        min_exposure_lots,
+        min_order_lots,
     )
 }
 

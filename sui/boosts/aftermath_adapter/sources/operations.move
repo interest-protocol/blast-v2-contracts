@@ -31,7 +31,7 @@ public struct RedemptionReceipt<phantom Product> {
     fee: u64,
     buffer: u64,
     fee_bps: u64,
-    admin_bps: u64,
+    admin_share_bps: u64,
     final_equity: u64,
     final_base: u64,
     base_price: u64,
@@ -110,7 +110,7 @@ public fun rebalance<Product, Collateral>(
     let mut plan = vault.prepare_rebalance(before, fee, clock.timestamp_ms());
     let base_price = plan.base_price();
     let collateral_price = plan.collateral_price();
-    let lot = plan.lot();
+    let lot = plan.lot_size();
     let (side, _) = vault.active_constraints();
     let mut index = 0;
     while (index < MAX_ACTIVE_ORDERS) {
@@ -185,10 +185,10 @@ public fun redeem<Product, Collateral>(
     let plan = vault.prepare_redemption(before, &shares, minimum_collateral, maximum_fee_bps, clock.timestamp_ms());
     let base_price = plan.redemption_base_price();
     let collateral_price = plan.redemption_collateral_price();
-    let lot = plan.redemption_lot();
+    let lot = plan.redemption_lot_size();
     let (side, cap) = vault.active_constraints();
     let is_ask = !order_side(side);
-    let mut remaining = plan.redemption_order_base();
+    let mut remaining = plan.base_to_sell();
 
     let mut index = 0;
     while (remaining > 0) {
@@ -279,10 +279,10 @@ public fun mint<Product, Collateral>(
     let plan = vault.prepare_mint(before, deposit, minimum_shares, maximum_fee_bps, clock.timestamp_ms());
     let base_price = plan.mint_base_price();
     let collateral_price = plan.mint_collateral_price();
-    let lot = plan.mint_lot();
+    let lot = plan.mint_lot_size();
     let (side, cap) = vault.active_constraints();
     let is_ask = order_side(side);
-    let mut remaining = plan.order_base();
+    let mut remaining = plan.base_to_buy();
 
     let admin_cash = cash.split(plan.admin_fee(), ctx);
     vault.retain_admin_cash(admin_cash);
@@ -338,7 +338,7 @@ public fun mint<Product, Collateral>(
 }
 
 /// Releases active buffer to holder NAV without a venue trade or withdrawal.
-public fun release_buffer<Product, Collateral>(
+public fun release_reserve<Product, Collateral>(
     vault: &mut Vault<Product>,
     protocol: &Protocol,
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
@@ -365,7 +365,7 @@ public fun release_buffer<Product, Collateral>(
         &vault.venue_binding(), account, registry, clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    complete_buffer_release(vault, admin_witness, observation, checkpoint, amount, clock.timestamp_ms());
+    complete_reserve_release(vault, admin_witness, observation, checkpoint, amount, clock.timestamp_ms());
 }
 
 /// Deposits configured collateral into the active funding buffer without shares or fees.
@@ -742,16 +742,16 @@ public(package) fun price_redemption<Product>(
     unwound: PositionObservation, unwound_checkpoint: venue_account::Checkpoint, now: u64,
 ): RedemptionReceipt<Product> {
     let amount = plan.redemption_shares();
-    let final_base = plan.redemption_final_base();
+    let final_base = plan.base_after_sell();
     let base_price = plan.redemption_base_price();
     let collateral_price = plan.redemption_collateral_price();
     let fee_bps = plan.redemption_fee_bps();
-    let admin_bps = plan.redemption_admin_bps();
+    let admin_share_bps = plan.redemption_admin_share_bps();
     assert!(shares.value() == amount, blast_boosts_aftermath::errors::redemption_share_mismatch!());
     let (net, admin, final_equity, fee, buffer) = vault.price_redemption(plan, unwound, now);
     let shares = shares.into_balance();
     RedemptionReceipt {
-        shares, net, admin, fee, buffer, fee_bps, admin_bps, final_equity, final_base,
+        shares, net, admin, fee, buffer, fee_bps, admin_share_bps, final_equity, final_base,
         base_price, collateral_price, unwound_checkpoint,
     }
 }
@@ -768,7 +768,7 @@ public(package) fun complete_redemption<Product, Collateral>(
     after: PositionObservation, checkpoint: venue_account::Checkpoint, now: u64, ctx: &mut TxContext,
 ): Coin<Collateral> {
     let RedemptionReceipt {
-        shares, net, admin, fee, buffer, fee_bps, admin_bps, final_equity, final_base,
+        shares, net, admin, fee, buffer, fee_bps, admin_share_bps, final_equity, final_base,
         base_price, collateral_price, unwound_checkpoint: _,
     } = receipt;
     vault.assert_collateral_type<_, Collateral>();
@@ -780,7 +780,7 @@ public(package) fun complete_redemption<Product, Collateral>(
     let burned = vault.burn_redeemed_shares(shares.into_coin(ctx));
     vault.replace_venue_checkpoint(checkpoint);
     events::redeemed<Product>(
-        vault.id(), burned, net, fee, admin, buffer, fee_bps, admin_bps,
+        vault.id(), burned, net, fee, admin, buffer, fee_bps, admin_share_bps,
         vault.maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(), vault.share_supply(), checkpoint,
     );
     cash
@@ -803,7 +803,7 @@ public(package) fun complete_mint<Product, Collateral>(
 }
 
 /// Completes a pure buffer relabeling only at the accepted economic checkpoint.
-public(package) fun complete_buffer_release<Product>(
+public(package) fun complete_reserve_release<Product>(
     vault: &mut Vault<Product>,
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
     observation: PositionObservation,
@@ -813,8 +813,8 @@ public(package) fun complete_buffer_release<Product>(
 ) {
     admin_witness.assert_role(domain::risk_admin_role());
     vault.venue_checkpoint().assert_accepted_checkpoint(&checkpoint);
-    vault.release_buffer(admin_witness, observation, amount, reference_time_ms);
-    events::buffer_released<Product>(vault.id(), amount, vault.maintenance_reserve());
+    vault.release_reserve(admin_witness, observation, amount, reference_time_ms);
+    events::reserve_released<Product>(vault.id(), amount, vault.maintenance_reserve());
 }
 
 /// Shared production completion phase, after the real venue deposit has returned.

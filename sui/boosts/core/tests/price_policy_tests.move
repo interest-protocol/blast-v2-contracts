@@ -206,7 +206,7 @@ fun an_update_at_the_exact_age_bound_is_fresh() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EStaleValuation, location = blast_boosts_core::policy,
+    abort_code = errors::EStalePrice, location = blast_boosts_core::policy,
 )]
 fun an_update_one_millisecond_past_the_age_bound_is_stale() {
     freshness_policy(30_000, 0).assert_price_fresh(969_999, 1_000_000);
@@ -222,7 +222,7 @@ fun an_update_at_the_exact_skew_bound_is_fresh() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EFutureValuation, location = blast_boosts_core::policy,
+    abort_code = errors::EFuturePrice, location = blast_boosts_core::policy,
 )]
 fun an_update_one_millisecond_past_the_skew_bound_is_future_dated() {
     freshness_policy(30_000, 2_000).assert_price_fresh(1_002_001, 1_000_000);
@@ -230,7 +230,7 @@ fun an_update_one_millisecond_past_the_skew_bound_is_future_dated() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EFutureValuation, location = blast_boosts_core::policy,
+    abort_code = errors::EFuturePrice, location = blast_boosts_core::policy,
 )]
 fun a_zero_skew_budget_rejects_the_first_future_millisecond() {
     freshness_policy(30_000, 0).assert_price_fresh(1_000_001, 1_000_000);
@@ -348,7 +348,7 @@ fun a_maximum_width_confidence_and_price_do_not_wrap() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidValuationPrice, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidPrice, location = blast_boosts_core::policy,
 )]
 fun a_zero_price_is_rejected_even_when_the_confidence_bound_holds() {
     confidence_policy(9_999).assert_confidence_within_bound(0, 0);
@@ -356,7 +356,7 @@ fun a_zero_price_is_rejected_even_when_the_confidence_bound_holds() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidValuationPrice, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidPrice, location = blast_boosts_core::policy,
 )]
 fun price_validation_precedes_the_confidence_bound() {
     confidence_policy(0).assert_confidence_within_bound(1, 0);
@@ -379,7 +379,7 @@ fun mark_divergence_predicate_matches_the_reference_across_the_small_domain() {
                         <= (max_mark_divergence_bps as u128) * (index as u128);
 
                 assert_eq!(
-                    policy.is_mark_within_index_divergence(mark, index),
+                    policy.is_mark_within_oracle_divergence(mark, index),
                     expected,
                 );
             });
@@ -391,39 +391,39 @@ fun mark_divergence_predicate_matches_the_reference_across_the_small_domain() {
 fun a_mark_equal_to_the_index_is_admitted_by_the_strictest_bound() {
     let max = std::u64::max_value!();
 
-    divergence_policy(0).assert_mark_within_index_divergence(max, max);
+    divergence_policy(0).assert_mark_within_oracle_divergence(max, max);
 }
 
 #[test]
 fun a_mark_at_either_exact_divergence_bound_is_admitted() {
     let policy = divergence_policy(250);
 
-    policy.assert_mark_within_index_divergence(10_250, 10_000);
-    policy.assert_mark_within_index_divergence(9_750, 10_000);
+    policy.assert_mark_within_oracle_divergence(10_250, 10_000);
+    policy.assert_mark_within_oracle_divergence(9_750, 10_000);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EMarkIndexDivergenceExceedsBound, location = blast_boosts_core::policy,
+    abort_code = errors::EMarkOracleDivergenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun a_mark_one_unit_above_the_upper_divergence_bound_is_rejected() {
-    divergence_policy(250).assert_mark_within_index_divergence(10_251, 10_000);
+    divergence_policy(250).assert_mark_within_oracle_divergence(10_251, 10_000);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EMarkIndexDivergenceExceedsBound, location = blast_boosts_core::policy,
+    abort_code = errors::EMarkOracleDivergenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun a_mark_one_unit_below_the_lower_divergence_bound_is_rejected() {
-    divergence_policy(250).assert_mark_within_index_divergence(9_749, 10_000);
+    divergence_policy(250).assert_mark_within_oracle_divergence(9_749, 10_000);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EMarkIndexDivergenceExceedsBound, location = blast_boosts_core::policy,
+    abort_code = errors::EMarkOracleDivergenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun a_zero_mark_against_a_positive_index_is_always_rejected() {
-    divergence_policy(9_999).assert_mark_within_index_divergence(0, 10_000);
+    divergence_policy(9_999).assert_mark_within_oracle_divergence(0, 10_000);
 }
 
 #[test]
@@ -431,7 +431,7 @@ fun a_maximum_width_mark_divergence_at_the_threshold_is_admitted() {
     let index = std::u64::max_value!();
     let threshold = ((9_999u128 * (index as u128)) / 10_000) as u64;
 
-    divergence_policy(9_999).assert_mark_within_index_divergence(
+    divergence_policy(9_999).assert_mark_within_oracle_divergence(
         index - threshold,
         index,
     );
@@ -439,13 +439,13 @@ fun a_maximum_width_mark_divergence_at_the_threshold_is_admitted() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EMarkIndexDivergenceExceedsBound, location = blast_boosts_core::policy,
+    abort_code = errors::EMarkOracleDivergenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun a_maximum_width_mark_divergence_one_unit_past_the_threshold_is_rejected() {
     let index = std::u64::max_value!();
     let threshold = ((9_999u128 * (index as u128)) / 10_000) as u64;
 
-    divergence_policy(9_999).assert_mark_within_index_divergence(
+    divergence_policy(9_999).assert_mark_within_oracle_divergence(
         index - threshold - 1,
         index,
     );
@@ -453,10 +453,10 @@ fun a_maximum_width_mark_divergence_one_unit_past_the_threshold_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EMarkIndexDivergenceExceedsBound, location = blast_boosts_core::policy,
+    abort_code = errors::EMarkOracleDivergenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun a_maximum_width_mark_and_index_do_not_wrap() {
-    divergence_policy(9_999).assert_mark_within_index_divergence(
+    divergence_policy(9_999).assert_mark_within_oracle_divergence(
         0,
         std::u64::max_value!(),
     );
@@ -464,18 +464,18 @@ fun a_maximum_width_mark_and_index_do_not_wrap() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidValuationPrice, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidPrice, location = blast_boosts_core::policy,
 )]
 fun a_zero_index_is_rejected_even_when_the_mark_matches() {
-    divergence_policy(9_999).assert_mark_within_index_divergence(0, 0);
+    divergence_policy(9_999).assert_mark_within_oracle_divergence(0, 0);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidValuationPrice, location = blast_boosts_core::policy,
+    abort_code = errors::EInvalidPrice, location = blast_boosts_core::policy,
 )]
 fun index_validation_precedes_the_mark_divergence_bound() {
-    divergence_policy(0).assert_mark_within_index_divergence(
+    divergence_policy(0).assert_mark_within_oracle_divergence(
         std::u64::max_value!(),
         0,
     );

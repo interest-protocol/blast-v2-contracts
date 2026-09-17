@@ -369,7 +369,7 @@ fun into_observation(
         checkpoint,
         collateral_fixed: _,
     } = self;
-    let base_index = observation::new_price(base_price, base_confidence, base_timestamp);
+    let base_oracle = observation::new_price(base_price, base_confidence, base_timestamp);
     let collateral_index = observation::new_price(
         collateral_price,
         collateral_confidence,
@@ -385,7 +385,7 @@ fun into_observation(
         economics_valid && margin_safe,
         venue_operational,
         true,
-        base_index,
+        base_oracle,
         collateral_index,
         mark_price,
     );

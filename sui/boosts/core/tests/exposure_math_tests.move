@@ -117,16 +117,16 @@ fun a_target_notional_above_the_supported_bound_is_rejected() {
 #[test]
 fun the_mint_base_delta_rounds_down_to_the_live_lot() {
     assert_eq!(
-        accounting_math::mint_base_delta_down(990_000, 1_000_000, 1_000_000_000, 1, 1),
+        accounting_math::mint_base_to_buy_down(990_000, 1_000_000, 1_000_000_000, 1, 1),
         990,
     );
     assert_eq!(
-        accounting_math::mint_base_delta_down(990_000, 1_000_000, 1_000_000_000, 100, 1),
+        accounting_math::mint_base_to_buy_down(990_000, 1_000_000, 1_000_000_000, 100, 1),
         900,
     );
     // An exact multiple of the lot keeps the complete proportional target.
     assert_eq!(
-        accounting_math::mint_base_delta_down(1_000, 1_000_000_000, 1_000_000_000, 1_000, 1),
+        accounting_math::mint_base_to_buy_down(1_000, 1_000_000_000, 1_000_000_000, 1_000, 1),
         1_000,
     );
 }
@@ -136,8 +136,8 @@ fun the_mint_base_delta_rounds_down_to_the_live_lot() {
 fun the_mint_base_delta_supports_maximum_supported_values() {
     let max = std::u64::max_value!();
 
-    assert_eq!(accounting_math::mint_base_delta_down(2, max, 2, 1, 1), max);
-    assert_eq!(accounting_math::mint_base_delta_down(2, max, 2, 1, max), max);
+    assert_eq!(accounting_math::mint_base_to_buy_down(2, max, 2, 1, 1), max);
+    assert_eq!(accounting_math::mint_base_to_buy_down(2, max, 2, 1, max), max);
 }
 
 /// Catches a rounded delta that exceeds its proportional target or falls a lot short.
@@ -159,16 +159,16 @@ fun mint_base_delta_matches_its_definition_across_the_small_domain() {
         1u64.range_do!(13, |base_before| {
             0u64.range_do!(13, |contribution| {
                 1u64.range_do!(9, |lot_size| {
-                    1u64.range_do!(4, |min_exposure_lots| {
+                    1u64.range_do!(4, |min_order_lots| {
                         let proportional_base = base_before * contribution / nav_before;
 
-                        if (proportional_base >= lot_size * min_exposure_lots) {
+                        if (proportional_base >= lot_size * min_order_lots) {
                             assert_mint_base_delta_is_proportional(
                                 contribution,
                                 base_before,
                                 nav_before,
                                 lot_size,
-                                min_exposure_lots,
+                                min_order_lots,
                             );
                         };
                     });
@@ -186,7 +186,7 @@ fun mint_base_delta_matches_its_definition_across_the_small_domain() {
 #[test]
 fun every_dust_contribution_has_a_sub_lot_proportional_target() {
     1u64.range_do!(1_000, |contribution| {
-        let proportional_base = accounting_math::mint_base_delta_down(
+        let proportional_base = accounting_math::mint_base_to_buy_down(
             contribution,
             1_000_000_000,
             1_000_000_000,
@@ -199,7 +199,7 @@ fun every_dust_contribution_has_a_sub_lot_proportional_target() {
     });
 
     assert_eq!(
-        accounting_math::mint_base_delta_down(1_000, 1_000_000_000, 1_000_000_000, 1_000, 1),
+        accounting_math::mint_base_to_buy_down(1_000, 1_000_000_000, 1_000_000_000, 1_000, 1),
         1_000,
     );
 }
@@ -208,21 +208,21 @@ fun every_dust_contribution_has_a_sub_lot_proportional_target() {
 #[test]
 fun a_mint_at_the_minimum_lot_multiple_is_accepted() {
     assert_eq!(
-        accounting_math::mint_base_delta_down(100_000, 1_000_000_000, 1_000_000_000, 1_000, 100),
+        accounting_math::mint_base_to_buy_down(100_000, 1_000_000_000, 1_000_000_000, 1_000, 100),
         100_000,
     );
     assert_eq!(
-        accounting_math::mint_base_delta_down(100_999, 1_000_000_000, 1_000_000_000, 1_000, 100),
+        accounting_math::mint_base_to_buy_down(100_999, 1_000_000_000, 1_000_000_000, 1_000, 100),
         100_000,
     );
 }
 
-/// Proves the minimum lot multiple caps under-exposure at `1 / min_exposure_lots` of the target.
+/// Proves the minimum lot multiple caps under-exposure at `1 / min_order_lots` of the target.
 #[test]
 fun the_minimum_lot_multiple_bounds_relative_under_exposure() {
-    vector[1u64, 10, 100].do!(|min_exposure_lots| {
+    vector[1u64, 10, 100].do!(|min_order_lots| {
         vector[1u64, 7, 1_000].do!(|lot_size| {
-            let first_target = lot_size * min_exposure_lots;
+            let first_target = lot_size * min_order_lots;
 
             first_target.range_do!(first_target + 3 * lot_size, |contribution| {
                 assert_mint_base_delta_is_proportional(
@@ -230,7 +230,7 @@ fun the_minimum_lot_multiple_bounds_relative_under_exposure() {
                     1_000_000_000,
                     1_000_000_000,
                     lot_size,
-                    min_exposure_lots,
+                    min_order_lots,
                 );
             });
         });
@@ -267,63 +267,63 @@ fun repeated_worst_case_mints_stay_in_band_with_a_hundred_lot_minimum() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::ESubLotExposureDelta,
+    abort_code = errors::EOrderBelowMinLots,
     location = blast_boosts_core::accounting_math,
 )]
 fun the_smallest_dust_mint_is_rejected() {
-    accounting_math::mint_base_delta_down(1, 1_000_000_000, 1_000_000_000, 1_000, 1);
+    accounting_math::mint_base_to_buy_down(1, 1_000_000_000, 1_000_000_000, 1_000, 1);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::ESubLotExposureDelta,
+    abort_code = errors::EOrderBelowMinLots,
     location = blast_boosts_core::accounting_math,
 )]
 fun the_largest_sub_lot_mint_is_rejected() {
-    accounting_math::mint_base_delta_down(999, 1_000_000_000, 1_000_000_000, 1_000, 1);
+    accounting_math::mint_base_to_buy_down(999, 1_000_000_000, 1_000_000_000, 1_000, 1);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::ESubLotExposureDelta,
+    abort_code = errors::EOrderBelowMinLots,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mid_range_sub_lot_mint_is_rejected() {
-    accounting_math::mint_base_delta_down(500, 1_000_000_000, 1_000_000_000, 1_000, 1);
+    accounting_math::mint_base_to_buy_down(500, 1_000_000_000, 1_000_000_000, 1_000, 1);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::ESubLotExposureDelta,
+    abort_code = errors::EOrderBelowMinLots,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_zero_contribution_mint_is_rejected() {
-    accounting_math::mint_base_delta_down(0, 1_000_000_000, 1_000_000_000, 1_000, 1);
+    accounting_math::mint_base_to_buy_down(0, 1_000_000_000, 1_000_000_000, 1_000, 1);
 }
 
 /// Pins the last proportional target below a hundred-lot minimum.
 #[test]
 #[expected_failure(
-    abort_code = errors::ESubLotExposureDelta,
+    abort_code = errors::EOrderBelowMinLots,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_below_the_minimum_lot_multiple_is_rejected() {
-    accounting_math::mint_base_delta_down(99_999, 1_000_000_000, 1_000_000_000, 1_000, 100);
+    accounting_math::mint_base_to_buy_down(99_999, 1_000_000_000, 1_000_000_000, 1_000, 100);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::accounting_math)]
 fun a_mint_base_delta_against_zero_nav_is_rejected() {
-    accounting_math::mint_base_delta_down(10, 100, 0, 1, 1);
+    accounting_math::mint_base_to_buy_down(10, 100, 0, 1, 1);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidBaseExposure,
+    abort_code = errors::EInvalidBase,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_base_delta_from_flat_exposure_is_rejected() {
-    accounting_math::mint_base_delta_down(10, 0, 100, 1, 1);
+    accounting_math::mint_base_to_buy_down(10, 0, 100, 1, 1);
 }
 
 #[test]
@@ -332,33 +332,33 @@ fun a_mint_base_delta_from_flat_exposure_is_rejected() {
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_base_delta_with_a_zero_lot_is_rejected() {
-    accounting_math::mint_base_delta_down(10, 100, 100, 0, 1);
+    accounting_math::mint_base_to_buy_down(10, 100, 100, 0, 1);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidMinExposureLots,
+    abort_code = errors::EInvalidMinOrderLots,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_base_delta_with_a_zero_minimum_lot_multiple_is_rejected() {
-    accounting_math::mint_base_delta_down(10, 100, 100, 1, 0);
+    accounting_math::mint_base_to_buy_down(10, 100, 100, 1, 0);
 }
 
 /// Pins the NAV guard ahead of the exposure and lot guards.
 #[test]
 #[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::accounting_math)]
 fun zero_nav_is_rejected_before_flat_exposure_and_a_zero_lot() {
-    accounting_math::mint_base_delta_down(10, 0, 0, 0, 0);
+    accounting_math::mint_base_to_buy_down(10, 0, 0, 0, 0);
 }
 
 /// Pins the exposure guard ahead of the lot guard.
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidBaseExposure,
+    abort_code = errors::EInvalidBase,
     location = blast_boosts_core::accounting_math,
 )]
 fun flat_exposure_is_rejected_before_a_zero_lot() {
-    accounting_math::mint_base_delta_down(10, 0, 100, 0, 0);
+    accounting_math::mint_base_to_buy_down(10, 0, 100, 0, 0);
 }
 
 /// Pins the lot guard ahead of the minimum-lot-multiple guard.
@@ -368,7 +368,7 @@ fun flat_exposure_is_rejected_before_a_zero_lot() {
     location = blast_boosts_core::accounting_math,
 )]
 fun a_zero_lot_is_rejected_before_a_zero_minimum_lot_multiple() {
-    accounting_math::mint_base_delta_down(10, 100, 100, 0, 0);
+    accounting_math::mint_base_to_buy_down(10, 100, 100, 0, 0);
 }
 
 #[test]
@@ -377,13 +377,13 @@ fun a_zero_lot_is_rejected_before_a_zero_minimum_lot_multiple() {
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_base_delta_beyond_u64_is_rejected() {
-    accounting_math::mint_base_delta_down(3, std::u64::max_value!(), 2, 1, 1);
+    accounting_math::mint_base_to_buy_down(3, std::u64::max_value!(), 2, 1, 1);
 }
 
 /// Catches a mint range that admits a fill beyond the plan or below the actual contribution.
 #[test]
 fun mint_bounds_span_the_actual_contribution_and_the_planned_fill() {
-    let (min_delta, max_delta) = accounting_math::mint_base_bounds(
+    let (min_order_base, max_order_base) = accounting_math::mint_base_bounds(
         1_000_500,
         999_000,
         1_000_000,
@@ -392,8 +392,8 @@ fun mint_bounds_span_the_actual_contribution_and_the_planned_fill() {
         1,
     );
 
-    assert_eq!(min_delta, 900);
-    assert_eq!(max_delta, 1_000);
+    assert_eq!(min_order_base, 900);
+    assert_eq!(max_order_base, 1_000);
 
     // The full planned fill, the actual-contribution floor, and a point between are admitted.
     accounting_math::assert_mint_base_within_bounds(1_001_000, 1_000_500, 999_000, 1_000_000, 1_000_000_000, 100, 1);
@@ -406,23 +406,23 @@ fun mint_bounds_span_the_actual_contribution_and_the_planned_fill() {
 #[test]
 fun a_capped_contribution_never_widens_the_planned_fill() {
     vector[999_000u64, 1_000_000, 1_000_500].do!(|expected| {
-        let planned = accounting_math::mint_base_delta_down(
+        let planned = accounting_math::mint_base_to_buy_down(
             expected, 1_000_000, 1_000_000_000, 100, 1,
         );
 
         vector[100_000u64, 500_000, expected - 1, expected].do!(|actual| {
-            let (min_delta, max_delta) = accounting_math::mint_base_bounds(
+            let (min_order_base, max_order_base) = accounting_math::mint_base_bounds(
                 expected, actual, 1_000_000, 1_000_000_000, 100, 1,
             );
-            let actual_delta = accounting_math::mint_base_delta_down(
+            let actual_order_base = accounting_math::mint_base_to_buy_down(
                 actual, 1_000_000, 1_000_000_000, 100, 1,
             );
 
-            assert_eq!(max_delta, planned);
-            assert_eq!(min_delta, actual_delta);
-            assert!(min_delta <= max_delta);
+            assert_eq!(max_order_base, planned);
+            assert_eq!(min_order_base, actual_order_base);
+            assert!(min_order_base <= max_order_base);
             if (actual == expected) {
-                assert_eq!(min_delta, max_delta);
+                assert_eq!(min_order_base, max_order_base);
             };
         });
     });
@@ -431,7 +431,7 @@ fun a_capped_contribution_never_widens_the_planned_fill() {
 /// Catches an empty range when a favorable fill credits more than the plan expected.
 #[test]
 fun a_favorable_fill_demands_the_complete_planned_fill() {
-    let (min_delta, max_delta) = accounting_math::mint_base_bounds(
+    let (min_order_base, max_order_base) = accounting_math::mint_base_bounds(
         999_000,
         1_000_500,
         1_000_000,
@@ -440,8 +440,8 @@ fun a_favorable_fill_demands_the_complete_planned_fill() {
         1,
     );
 
-    assert_eq!(min_delta, 900);
-    assert_eq!(max_delta, 900);
+    assert_eq!(min_order_base, 900);
+    assert_eq!(max_order_base, 900);
 
     accounting_math::assert_mint_base_within_bounds(1_000_900, 999_000, 1_000_500, 1_000_000, 1_000_000_000, 100, 1);
 }
@@ -454,10 +454,10 @@ fun mint_bounds_match_their_definition_across_the_small_domain() {
             0u64.range_do!(9, |expected_contribution| {
                 0u64.range_do!(9, |actual_contribution| {
                     1u64.range_do!(4, |lot_size| {
-                        1u64.range_do!(3, |min_exposure_lots| {
+                        1u64.range_do!(3, |min_order_lots| {
                             let expected_target = base_before * expected_contribution / nav_before;
                             let actual_target = base_before * actual_contribution / nav_before;
-                            let minimum = lot_size * min_exposure_lots;
+                            let minimum = lot_size * min_order_lots;
 
                             if (expected_target >= minimum && actual_target >= minimum) {
                                 assert_mint_bounds_hold(
@@ -466,7 +466,7 @@ fun mint_bounds_match_their_definition_across_the_small_domain() {
                                     base_before,
                                     nav_before,
                                     lot_size,
-                                    min_exposure_lots,
+                                    min_order_lots,
                                 );
                             };
                         });
@@ -480,7 +480,7 @@ fun mint_bounds_match_their_definition_across_the_small_domain() {
 /// Catches a fill that opened more than the sealed plan.
 #[test]
 #[expected_failure(
-    abort_code = errors::EMintOverExposed,
+    abort_code = errors::EMintBaseAboveBound,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_fill_above_the_plan_is_rejected() {
@@ -490,7 +490,7 @@ fun a_mint_fill_above_the_plan_is_rejected() {
 /// Catches a partial fill below the exposure the actual contribution funds.
 #[test]
 #[expected_failure(
-    abort_code = errors::EMintUnderExposed,
+    abort_code = errors::EMintBaseBelowBound,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_fill_below_the_actual_contribution_is_rejected() {
@@ -500,7 +500,7 @@ fun a_mint_fill_below_the_actual_contribution_is_rejected() {
 /// Catches a mint whose actual credited contribution is dust even though its plan was not.
 #[test]
 #[expected_failure(
-    abort_code = errors::ESubLotExposureDelta,
+    abort_code = errors::EOrderBelowMinLots,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_whose_actual_contribution_is_dust_is_rejected() {
@@ -601,21 +601,21 @@ fun redemption_bounds_match_their_definition_across_the_small_domain() {
         1u64.range_do!(shares_before, |shares_burned| {
             0u64.range_do!(17, |base_before| {
                 1u64.range_do!(9, |lot_size| {
-                    1u64.range_do!(4, |min_exposure_lots| {
+                    1u64.range_do!(4, |min_order_lots| {
                         let max_final_base =
                             base_before * (shares_before - shares_burned) / shares_before;
                         let required_reduction = base_before - max_final_base;
 
                         if (
                             max_final_base == 0
-                                || required_reduction >= lot_size * min_exposure_lots
+                                || required_reduction >= lot_size * min_order_lots
                         ) {
                             assert_redemption_bounds_hold(
                                 shares_burned,
                                 base_before,
                                 shares_before,
                                 lot_size,
-                                min_exposure_lots,
+                                min_order_lots,
                             );
                         };
                     });
@@ -630,8 +630,8 @@ fun redemption_bounds_match_their_definition_across_the_small_domain() {
 fun proportional_exposure_math_supports_the_maximum_live_lot() {
     let max = std::u64::max_value!();
 
-    assert_eq!(accounting_math::mint_base_delta_down(max, max, max, max, 1), max);
-    assert_eq!(accounting_math::mint_base_delta_down(max, max, max, 1, max), max);
+    assert_eq!(accounting_math::mint_base_to_buy_down(max, max, max, max, 1), max);
+    assert_eq!(accounting_math::mint_base_to_buy_down(max, max, max, 1, max), max);
     assert_redemption_bounds_eq(max - 1, max, max, 1, 1, 1, 1);
     accounting_math::assert_redemption_base_within_bounds(1, max - 1, max, max, 1, 1);
 }
@@ -669,7 +669,7 @@ fun any_exposure_on_a_flat_series_is_rejected() {
 /// Regression for cumulative drift: a dust redemption may not close a whole lot.
 #[test]
 #[expected_failure(
-    abort_code = errors::ESubLotExposureDelta,
+    abort_code = errors::EOrderBelowMinLots,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_dust_redemption_below_one_lot_is_rejected() {
@@ -679,7 +679,7 @@ fun a_dust_redemption_below_one_lot_is_rejected() {
 /// Pins the last required reduction below a fourteen-lot minimum.
 #[test]
 #[expected_failure(
-    abort_code = errors::ESubLotExposureDelta,
+    abort_code = errors::EOrderBelowMinLots,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_sub_minimum_redemption_reduction_is_rejected() {
@@ -689,7 +689,7 @@ fun a_sub_minimum_redemption_reduction_is_rejected() {
 /// A position that is itself a single live lot cannot be redeemed at any size.
 #[test]
 #[expected_failure(
-    abort_code = errors::ESubLotExposureDelta,
+    abort_code = errors::EOrderBelowMinLots,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_one_lot_position_cannot_be_redeemed_at_any_size() {
@@ -702,7 +702,7 @@ fun a_one_lot_position_cannot_be_redeemed_at_any_size() {
 /// the minimum, every burn count aborts and the position is locked.
 #[test]
 #[expected_failure(
-    abort_code = errors::ESubLotExposureDelta,
+    abort_code = errors::EOrderBelowMinLots,
     location = blast_boosts_core::accounting_math,
 )]
 fun a_position_at_the_minimum_operation_size_locks_the_largest_redemption() {
@@ -721,7 +721,7 @@ fun sufficient_exposure_gives_exact_bounds_for_the_largest_redemption() {
 
 #[test]
 fun a_sub_supply_position_can_always_close_flat() {
-    assert!(!accounting_math::is_exposure_above_minimum_operation(999, 1_000, 100));
+    assert!(!accounting_math::is_base_above_min_order(999, 1_000, 100));
 
     let (min_final_base, max_final_base) =
         accounting_math::redemption_base_bounds(999, 999, 1_000, 1_000, 100);
@@ -734,11 +734,11 @@ fun a_sub_supply_position_can_always_close_flat() {
 fun exposure_predicates_never_abort_on_degenerate_inputs() {
     let max = std::u64::max_value!();
 
-    assert!(!accounting_math::is_exposure_above_minimum_operation(max, 0, 1));
-    assert!(!accounting_math::is_exposure_above_minimum_operation(max, 1, 0));
-    assert!(!accounting_math::is_exposure_above_minimum_operation(max, max, max));
-    assert!(accounting_math::is_exposure_above_minimum_operation(max, max, 1) == false);
-    assert!(accounting_math::is_exposure_above_minimum_operation(max, max - 1, 1));
+    assert!(!accounting_math::is_base_above_min_order(max, 0, 1));
+    assert!(!accounting_math::is_base_above_min_order(max, 1, 0));
+    assert!(!accounting_math::is_base_above_min_order(max, max, max));
+    assert!(accounting_math::is_base_above_min_order(max, max, 1) == false);
+    assert!(accounting_math::is_base_above_min_order(max, max - 1, 1));
 }
 
 #[test]
@@ -770,7 +770,7 @@ fun redemption_bounds_reject_a_zero_lot() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidMinExposureLots,
+    abort_code = errors::EInvalidMinOrderLots,
     location = blast_boosts_core::accounting_math,
 )]
 fun redemption_bounds_reject_a_zero_minimum_lot_multiple() {
@@ -831,7 +831,7 @@ fun assert_redemption_bounds_eq(
     base_before: u64,
     shares_before: u64,
     lot_size: u64,
-    min_exposure_lots: u64,
+    min_order_lots: u64,
     expected_min_final_base: u64,
     expected_max_final_base: u64,
 ) {
@@ -840,7 +840,7 @@ fun assert_redemption_bounds_eq(
         base_before,
         shares_before,
         lot_size,
-        min_exposure_lots,
+        min_order_lots,
     );
 
     assert_eq!(min_final_base, expected_min_final_base);
@@ -853,25 +853,25 @@ fun assert_mint_base_delta_is_proportional(
     base_before: u64,
     nav_before: u64,
     lot_size: u64,
-    min_exposure_lots: u64,
+    min_order_lots: u64,
 ) {
     let proportional_base = (
         (base_before as u128) * (contribution as u128) / (nav_before as u128),
     ) as u64;
-    let delta = accounting_math::mint_base_delta_down(
+    let delta = accounting_math::mint_base_to_buy_down(
         contribution,
         base_before,
         nav_before,
         lot_size,
-        min_exposure_lots,
+        min_order_lots,
     );
     let under_exposure = proportional_base - delta;
 
-    assert!((delta as u128) >= (lot_size as u128) * (min_exposure_lots as u128));
+    assert!((delta as u128) >= (lot_size as u128) * (min_order_lots as u128));
     assert_eq!(delta % lot_size, 0);
     assert!(delta <= proportional_base);
     assert!(under_exposure < lot_size);
-    assert!((under_exposure as u128) * (min_exposure_lots as u128) < (proportional_base as u128));
+    assert!((under_exposure as u128) * (min_order_lots as u128) < (proportional_base as u128));
 }
 
 /// Asserts the mint range is `[min(actual, planned), planned]` and admits its own endpoints.
@@ -881,52 +881,52 @@ fun assert_mint_bounds_hold(
     base_before: u64,
     nav_before: u64,
     lot_size: u64,
-    min_exposure_lots: u64,
+    min_order_lots: u64,
 ) {
-    let (min_delta, max_delta) = accounting_math::mint_base_bounds(
+    let (min_order_base, max_order_base) = accounting_math::mint_base_bounds(
         expected_contribution,
         actual_contribution,
         base_before,
         nav_before,
         lot_size,
-        min_exposure_lots,
+        min_order_lots,
     );
-    let planned_delta = accounting_math::mint_base_delta_down(
+    let planned_delta = accounting_math::mint_base_to_buy_down(
         expected_contribution,
         base_before,
         nav_before,
         lot_size,
-        min_exposure_lots,
+        min_order_lots,
     );
-    let actual_delta = accounting_math::mint_base_delta_down(
+    let actual_order_base = accounting_math::mint_base_to_buy_down(
         actual_contribution,
         base_before,
         nav_before,
         lot_size,
-        min_exposure_lots,
+        min_order_lots,
     );
 
-    assert_eq!(max_delta, planned_delta);
-    assert_eq!(min_delta, actual_delta.min(planned_delta));
-    assert!(min_delta <= max_delta);
+    assert_eq!(max_order_base, planned_delta);
+    assert_eq!(min_order_base, actual_order_base.min(planned_delta));
+    assert!(min_order_base <= max_order_base);
 
     accounting_math::assert_mint_base_within_bounds(
-        base_before + max_delta,
+        base_before + max_order_base,
         expected_contribution,
         actual_contribution,
         base_before,
         nav_before,
         lot_size,
-        min_exposure_lots,
+        min_order_lots,
     );
     accounting_math::assert_mint_base_within_bounds(
-        base_before + min_delta,
+        base_before + min_order_base,
         expected_contribution,
         actual_contribution,
         base_before,
         nav_before,
         lot_size,
-        min_exposure_lots,
+        min_order_lots,
     );
 }
 
@@ -936,14 +936,14 @@ fun assert_redemption_bounds_hold(
     base_before: u64,
     shares_before: u64,
     lot_size: u64,
-    min_exposure_lots: u64,
+    min_order_lots: u64,
 ) {
     let (min_final_base, max_final_base) = accounting_math::redemption_base_bounds(
         shares_burned,
         base_before,
         shares_before,
         lot_size,
-        min_exposure_lots,
+        min_order_lots,
     );
     let expected_max_final_base = (
         (base_before as u128) * ((shares_before - shares_burned) as u128)
@@ -965,7 +965,7 @@ fun assert_redemption_bounds_hold(
     );
     if (required_reduction > 0) {
         assert!(
-            (over_reduction as u128) * (min_exposure_lots as u128)
+            (over_reduction as u128) * (min_order_lots as u128)
                 < (required_reduction as u128),
         );
     };
@@ -976,7 +976,7 @@ fun assert_redemption_bounds_hold(
         base_before,
         shares_before,
         lot_size,
-        min_exposure_lots,
+        min_order_lots,
     );
     accounting_math::assert_redemption_base_within_bounds(
         max_final_base,
@@ -984,7 +984,7 @@ fun assert_redemption_bounds_hold(
         base_before,
         shares_before,
         lot_size,
-        min_exposure_lots,
+        min_order_lots,
     );
     accounting_math::assert_redemption_base_within_bounds(
         min_final_base + over_reduction / 2,
@@ -992,7 +992,7 @@ fun assert_redemption_bounds_hold(
         base_before,
         shares_before,
         lot_size,
-        min_exposure_lots,
+        min_order_lots,
     );
 }
 
@@ -1004,26 +1004,26 @@ fun assert_redemption_bounds_hold(
 fun drift_after_worst_case_mints(
     count: u64,
     lot_size: u64,
-    min_exposure_lots: u64,
+    min_order_lots: u64,
 ): (u64, u64, u64, u64) {
     let mut nav = 10_000_000u64;
     let mut base = 20_000_000u64;
     let mut lowest = accounting_math::leverage_bps_up(base, nav);
     let mut first_breach = 0;
-    let worst_target = (min_exposure_lots + 1) * lot_size - 1;
+    let worst_target = (min_order_lots + 1) * lot_size - 1;
 
     assert_eq!(lowest, 20_000);
     count.do!(|index| {
         let contribution = ((worst_target as u128) * (nav as u128) / (base as u128)) as u64;
-        let delta = accounting_math::mint_base_delta_down(
+        let delta = accounting_math::mint_base_to_buy_down(
             contribution,
             base,
             nav,
             lot_size,
-            min_exposure_lots,
+            min_order_lots,
         );
 
-        assert_eq!(delta, min_exposure_lots * lot_size);
+        assert_eq!(delta, min_order_lots * lot_size);
         nav = nav + contribution;
         base = base + delta;
         let leverage = accounting_math::leverage_bps_up(base, nav);

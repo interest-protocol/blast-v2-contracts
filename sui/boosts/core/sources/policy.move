@@ -1,8 +1,8 @@
 // Package error macros keep stable codes in `errors.move`; the lint sees the expanded literal.
 #[allow(lint(abort_without_constant))]
-/// Immutable Series1 policy values and pure policy gates.
+/// Immutable core policy values and pure policy gates.
 ///
-/// This slice selects no production value, authenticates no valuation source,
+/// This slice selects no production value, authenticates no price source,
 /// and owns no Vault or venue state.
 module blast_boosts_core::policy;
 
@@ -31,10 +31,10 @@ public struct RebalancePolicy has copy, drop, store {
     min_leverage_improvement_bps: u64,
 }
 
-/// Locally validated bounds for the valuation gates of one Series.
+/// Locally validated bounds for the price gates of one Vault.
 ///
 /// Millisecond bounds use the on-chain clock scale. Relative bounds use the
-/// package's 10,000 basis-point denominator. A future Series1 transition will
+/// package's 10,000 basis-point denominator. A future core transition will
 /// verify the bound oracle source directly; the adapter owns venue observations.
 /// Freshness and confidence gate each share-pricing source; mark divergence gates venue
 /// margin safety only and never supplies shareholder-NAV or accounting inputs.
@@ -42,7 +42,7 @@ public struct RebalancePolicy has copy, drop, store {
 /// and relative comparisons cross-multiply through `u128`.
 ///
 /// This value cannot prove that observations came from the bound source or one
-/// operation-scoped valuation pair. Those remain Series and adapter obligations.
+/// operation-scoped price pair. Those remain core and adapter obligations.
 public struct PricePolicy has copy, drop, store {
     max_price_age_ms: u64,
     max_price_ahead_ms: u64,
@@ -62,8 +62,8 @@ public struct VaultPolicy has copy, drop, store {
     redeem_fee_bps: u64,
     mint_fee_cap_bps: u64,
     redeem_fee_cap_bps: u64,
-    admin_allocation_cap_bps: u64,
-    min_exposure_lots: u64,
+    admin_share_cap_bps: u64,
+    min_order_lots: u64,
 }
 
 // === Public Functions ===
@@ -136,10 +136,10 @@ public fun new_rebalance_policy(
 
 // --- Price Policy ---
 
-/// Creates immutable valuation policy from proposed structural bounds.
+/// Creates immutable price policy from proposed structural bounds.
 ///
 /// `max_price_age_ms` must be positive because the structural policy requires
-/// a nonzero historical-age tolerance. This check alone does not prove that a
+/// a nonzero historical-age slippage. This check alone does not prove that a
 /// selected value supports the deployed source cadence; that remains a live
 /// integration and simulation gate. `max_price_ahead_ms` may be zero; zero is
 /// the strictest clock-skew policy and rejects the first millisecond after the
@@ -196,7 +196,7 @@ public fun new_price_policy(
 /// Composes one complete immutable policy for one future Vault.
 ///
 /// Both fee rates stay below 10,000 bps.
-/// `min_exposure_lots` is positive and at most `max_min_exposure_lots`.
+/// `min_order_lots` is positive and at most `max_min_order_lots`.
 /// The NAV cap is not part of the policy: it is a live `State` value the
 /// admin may move, supplied to `state::new` directly.
 ///
@@ -207,7 +207,7 @@ public fun new_vault_policy(
     price_policy: PricePolicy,
     mint_fee_bps: u64,
     redeem_fee_bps: u64,
-    min_exposure_lots: u64,
+    min_order_lots: u64,
 ): VaultPolicy {
     assert!(
         mint_fee_bps < constants::basis_points_denominator!()
@@ -215,9 +215,9 @@ public fun new_vault_policy(
         blast_boosts_core::errors::invalid_fee_bps!(),
     );
     assert!(
-        min_exposure_lots > 0
-            && min_exposure_lots <= constants::max_min_exposure_lots!(),
-        blast_boosts_core::errors::invalid_min_exposure_lots!(),
+        min_order_lots > 0
+            && min_order_lots <= constants::max_min_order_lots!(),
+        blast_boosts_core::errors::invalid_min_order_lots!(),
     );
 
     VaultPolicy {
@@ -228,8 +228,8 @@ public fun new_vault_policy(
         redeem_fee_bps,
         mint_fee_cap_bps: mint_fee_bps,
         redeem_fee_cap_bps: redeem_fee_bps,
-        admin_allocation_cap_bps: 0,
-        min_exposure_lots,
+        admin_share_cap_bps: 0,
+        min_order_lots,
     }
 }
 
@@ -251,7 +251,7 @@ public fun with_fee_limits(
     );
     self.mint_fee_cap_bps = mint_cap_bps;
     self.redeem_fee_cap_bps = redeem_cap_bps;
-    self.admin_allocation_cap_bps = admin_cap_bps;
+    self.admin_share_cap_bps = admin_cap_bps;
     self
 }
 
@@ -287,7 +287,7 @@ public(package) fun min_leverage_improvement_bps(self: &RebalancePolicy): u64 {
     self.min_leverage_improvement_bps
 }
 
-/// Returns whether reported leverage lies inside the one inclusive public band.
+/// Returns whether reported leverage lies inside the one inclusive rebalance band.
 public(package) fun is_healthy(self: &RebalancePolicy, leverage_bps: u64): bool {
     self.rebalance_below_bps <= leverage_bps
         && leverage_bps <= self.rebalance_above_bps
@@ -304,7 +304,7 @@ public(package) fun is_public_allowed(
         || leverage_bps > self.rebalance_above_bps
 }
 
-/// Returns whether leverage is strictly above the hard wider-tolerance threshold.
+/// Returns whether leverage is strictly above the hard wider-slippage threshold.
 public(package) fun is_hard_emergency(
     self: &RebalancePolicy,
     leverage_bps: u64,
@@ -317,7 +317,7 @@ public(package) fun is_hard_emergency(
 /// Improvement is measured as the decrease in absolute distance from
 /// `target_bps`, so `|before - target| >= |after - target| +
 /// min_leverage_improvement_bps` in `u128`. This is the only anti-grief control on
-/// the permissionless trigger: a rebalance that stays outside the public band
+/// the permissionless trigger: a rebalance that stays outside the rebalance band
 /// leaves the trigger live, and without this rule a keeper could re-trigger
 /// and bleed NAV through venue costs on every pass. Reaching the exact target
 /// from further than the minimum always passes.
@@ -366,7 +366,7 @@ public(package) fun assert_execution_within_max_slippage(
 ) {
     assert!(
         reference > 0,
-        blast_boosts_core::errors::invalid_valuation_price!(),
+        blast_boosts_core::errors::invalid_price!(),
     );
     assert!(
         self.is_execution_within_max_slippage(reference, executed),
@@ -399,7 +399,7 @@ public(package) fun assert_execution_within_emergency_max_slippage(
 ) {
     assert!(
         reference > 0,
-        blast_boosts_core::errors::invalid_valuation_price!(),
+        blast_boosts_core::errors::invalid_price!(),
     );
     assert!(
         self.is_execution_within_emergency_max_slippage(reference, executed),
@@ -437,7 +437,7 @@ public(package) fun max_confidence_bps(self: &PricePolicy): u64 {
     self.max_confidence_bps
 }
 
-/// Returns the admitted mark divergence as basis points of the index.
+/// Returns the admitted mark divergence as basis points of the oracle price.
 public(package) fun max_mark_divergence_bps(self: &PricePolicy): u64 {
     self.max_mark_divergence_bps
 }
@@ -480,9 +480,9 @@ public(package) fun assert_price_fresh(
 ) {
     let fresh = self.is_price_fresh(published_at_ms, reference_time_ms);
     if (published_at_ms > reference_time_ms) {
-        assert!(fresh, blast_boosts_core::errors::future_valuation!());
+        assert!(fresh, blast_boosts_core::errors::future_price!());
     } else {
-        assert!(fresh, blast_boosts_core::errors::stale_valuation!());
+        assert!(fresh, blast_boosts_core::errors::stale_price!());
     };
 }
 
@@ -524,7 +524,7 @@ public(package) fun assert_confidence_within_bound(
 ) {
     assert!(
         price > 0,
-        blast_boosts_core::errors::invalid_valuation_price!(),
+        blast_boosts_core::errors::invalid_price!(),
     );
     assert!(
         self.is_confidence_within_bound(confidence, price),
@@ -532,13 +532,13 @@ public(package) fun assert_confidence_within_bound(
     );
 }
 
-/// Returns whether a venue mark is inside the admitted base-index band.
+/// Returns whether a venue mark is inside the admitted base-oracle band.
 ///
-/// A zero index returns false instead of aborting so the future objective
+/// A zero oracle price returns false instead of aborting so the future objective
 /// health check can report invalid data. The mark may be zero
 /// at the type level, but every valid policy rejects it against a positive
-/// index because the divergence bound stays below 10,000 basis points.
-public(package) fun is_mark_within_index_divergence(
+/// oracle price because the divergence bound stays below 10,000 basis points.
+public(package) fun is_mark_within_oracle_divergence(
     self: &PricePolicy,
     mark: u64,
     index: u64,
@@ -549,34 +549,34 @@ public(package) fun is_mark_within_index_divergence(
             <= (self.max_mark_divergence_bps as u128) * (index as u128)
 }
 
-/// Rejects a venue mark that diverges too far from the base index.
+/// Rejects a venue mark that diverges too far from the base oracle.
 ///
-/// The gate is `|mark - index| * 10_000 <= max_mark_divergence_bps * index`,
+/// The gate is `|mark - oracle| * 10_000 <= max_mark_divergence_bps * oracle`,
 /// so it holds exactly when the absolute difference is at most
-/// `floor(max_mark_divergence_bps * index / 10_000)`. The bound is symmetric:
-/// a mark above and a mark below the index are limited by the same fraction of
-/// the index.
+/// `floor(max_mark_divergence_bps * oracle / 10_000)`. The bound is symmetric:
+/// a mark above and a mark below the oracle price are limited by the same fraction of
+/// the oracle price.
 ///
 /// This is a venue margin-safety gate. Its result never prices shares, never
-/// enters shareholder NAV, and never sizes exposure; ADR 0064 I25 keeps the
-/// index-and-collateral pair as the only share-pricing valuation. A zero index
+/// enters shareholder NAV, and never sizes position; ADR 0064 I25 keeps the
+/// base-and-collateral oracle pair as the only share-pricing price. A zero oracle price
 /// is rejected before the bound is read, and a zero mark against a positive
-/// index is always rejected because the constructor keeps
+/// oracle price is always rejected because the constructor keeps
 /// `max_mark_divergence_bps` below 10,000.
 ///
-/// Guard order is the positive index, then the divergence bound.
-public(package) fun assert_mark_within_index_divergence(
+/// Guard order is the positive oracle price, then the divergence bound.
+public(package) fun assert_mark_within_oracle_divergence(
     self: &PricePolicy,
     mark: u64,
     index: u64,
 ) {
     assert!(
         index > 0,
-        blast_boosts_core::errors::invalid_valuation_price!(),
+        blast_boosts_core::errors::invalid_price!(),
     );
     assert!(
-        self.is_mark_within_index_divergence(mark, index),
-        blast_boosts_core::errors::mark_index_divergence_exceeds_bound!(),
+        self.is_mark_within_oracle_divergence(mark, index),
+        blast_boosts_core::errors::mark_oracle_divergence_exceeds_bound!(),
     );
 }
 
@@ -605,37 +605,37 @@ public(package) fun redeem_fee_bps(self: &VaultPolicy): u64 {
     self.redeem_fee_bps
 }
 
-/// Returns the minimum proportional exposure change in live venue lots.
-public(package) fun min_exposure_lots(self: &VaultPolicy): u64 {
-    self.min_exposure_lots
+/// Returns the minimum proportional order in live venue lots.
+public(package) fun min_order_lots(self: &VaultPolicy): u64 {
+    self.min_order_lots
 }
 
 public(package) fun assert_fee_limits(
     self: &VaultPolicy,
     mint_bps: u64,
     redeem_bps: u64,
-    admin_bps: u64,
+    admin_share_bps: u64,
 ) {
     assert!(
         mint_bps <= self.mint_fee_cap_bps
             && redeem_bps <= self.redeem_fee_cap_bps
-            && admin_bps <= self.admin_allocation_cap_bps,
+            && admin_share_bps <= self.admin_share_cap_bps,
         blast_boosts_core::errors::fee_cap_exceeded!(),
     );
 }
 
 // === Private Functions ===
 
-/// Returns whether `executed` is within `tolerance_bps` of a positive `reference`.
+/// Returns whether `executed` is within `slippage_bps` of a positive `reference`.
 fun is_within_relative_tolerance(
-    tolerance_bps: u64,
+    slippage_bps: u64,
     reference: u64,
     executed: u64,
 ): bool {
     reference > 0
         && (executed.diff(reference) as u128)
             * (constants::basis_points_denominator!() as u128)
-            <= (tolerance_bps as u128) * (reference as u128)
+            <= (slippage_bps as u128) * (reference as u128)
 }
 
 // === Test-Only Functions ===

@@ -16,7 +16,7 @@ fun price_construction_preserves_normalized_fields() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidObservationPrice, location = blast_boosts_core::observation,
+    abort_code = errors::EInvalidPrice, location = blast_boosts_core::observation,
 )]
 fun price_construction_rejects_zero_price() {
     observation::new_price(0, 4, 5).destroy();
@@ -48,9 +48,9 @@ fun long_position_construction_preserves_the_complete_observation() {
     assert!(observation.is_margin_safe());
     assert!(observation.is_venue_operational());
     assert!(observation.is_checkpoint_clean());
-    assert_eq!(observation.base_index().price(), 3);
-    assert_eq!(observation.base_index().confidence(), 4);
-    assert_eq!(observation.base_index().publish_time_ms(), 5);
+    assert_eq!(observation.base_oracle().price(), 3);
+    assert_eq!(observation.base_oracle().confidence(), 4);
+    assert_eq!(observation.base_oracle().publish_time_ms(), 5);
     assert_eq!(observation.collateral_oracle().price(), 6);
     assert_eq!(observation.collateral_oracle().confidence(), 7);
     assert_eq!(observation.collateral_oracle().publish_time_ms(), 8);

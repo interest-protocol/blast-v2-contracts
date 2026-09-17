@@ -186,13 +186,13 @@ fun an_execution_one_unit_past_emergency_max_slippage_is_rejected() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidValuationPrice, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EInvalidPrice, location = blast_boosts_core::policy)]
 fun a_zero_reference_is_rejected_before_the_max_slippage() {
     standard_policy().assert_execution_within_max_slippage(0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidValuationPrice, location = blast_boosts_core::policy)]
+#[expected_failure(abort_code = errors::EInvalidPrice, location = blast_boosts_core::policy)]
 fun a_zero_reference_is_rejected_before_the_emergency_max_slippage() {
     standard_policy().assert_execution_within_emergency_max_slippage(0, 0);
 }

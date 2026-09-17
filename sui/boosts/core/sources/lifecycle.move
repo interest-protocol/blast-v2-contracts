@@ -1,6 +1,6 @@
 // Package error macros keep stable codes in `errors.move`; the lint sees the expanded literal.
 #[allow(lint(abort_without_constant))]
-/// Irreversible lifecycle and operation permissions for one Series1 Vault.
+/// Irreversible lifecycle and operation permissions for one Vault.
 module blast_boosts_core::lifecycle;
 
 // === Public Types ===

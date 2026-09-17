@@ -31,17 +31,17 @@ Why: the audit showed the two inputs can disagree by a whole lot at a rounding
 boundary, and a full fill required for mints is a venue claim, not an accounting
 proof.
 
-### 1.2 Always supply the Series' immutable `min_exposure_lots`
+### 1.2 Always supply the Series' immutable `min_order_lots`
 
-Every exposure function takes `min_exposure_lots`. It must come from the
+Every exposure function takes `min_order_lots`. It must come from the
 immutable `SeriesPolicy`, never from a caller or a live setter. Selecting the
 value is a simulation gate, but the shape of the decision is fixed:
 
 - Relative under-exposure per mint and over-reduction per redemption are both
-  below `1 / min_exposure_lots`.
+  below `1 / min_order_lots`.
 - After any sequence of legal mints, accounting leverage stays close to
-  `L0 * (N0 / N)^(1 / min_exposure_lots)`, a lower bound whose attained worst
-  case is `1 / (min_exposure_lots + 1)`. With one lot a 2.0x pool leaves the
+  `L0 * (N0 / N)^(1 / min_order_lots)`, a lower bound whose attained worst
+  case is `1 / (min_order_lots + 1)`. With one lot a 2.0x pool leaves the
   1.8x band on worst-case mint 2,229 and sits at 1.7397x after 3,000 mints
   and 32 percent NAV growth. With one hundred lots the same sequence stays at
   1.9455x after 3,000 mints and sixteen times NAV growth. Both facts are
@@ -51,7 +51,7 @@ value is a simulation gate, but the shape of the decision is fixed:
   redemptions enforce their exact proportional bounds. Health synchronization
   does not degrade lifecycle for unavailable ordinary redemption. Explicit
   terminal handling belongs to its separately authorized lifecycle path.
-- `lot_size * min_exposure_lots` must stay small in collateral terms so a
+- `lot_size * min_order_lots` must stay small in collateral terms so a
   small holder can still exit. Compute it against the live Aftermath lot size
   for the SUI-USDC market (premise P16) and state the resulting minimum mint
   and redemption in USDC in the Series ADR.
@@ -140,7 +140,7 @@ through unchanged; it must never substitute zero or a policy value. The seed
 sizing rule that keeps one share economically dust is in `docs/accounting.md`
 and is a release gate on the seed slice.
 
-### 1.10 Run every valuation gate at the one operation checkpoint
+### 1.10 Run every price gate at the one operation checkpoint
 
 The `PricePolicy` type in `series_one/sources/policy.move` owns the freshness,
 confidence, and mark-divergence rules, but it cannot see how many times or
@@ -152,7 +152,7 @@ against what a caller applies them. The Series and adapter must:
 - run `assert_price_fresh` and `assert_confidence_within_bound` for both the
   base index and the collateral oracle before deriving pre-operation
   shareholder NAV, and prove the post-operation NAV used the same pair;
-- keep `assert_mark_within_index_divergence` on the venue margin path only. Its
+- keep `assert_mark_within_oracle_divergence` on the venue margin path only. Its
   operands must never reach `accounting_math`; the
   source-boundary script fails if a standalone or snake-case `mark` identifier
   appears there, while semantic review still verifies arbitrary numeric inputs;
@@ -162,7 +162,7 @@ against what a caller applies them. The Series and adapter must:
   checkpoints, not an unused Series1 economic observation. Temporary economic
   faults do not change lifecycle; checkpoint drift is reported through the
   unresolved/reconciled diagnostic identity. Funding settlement alone changes
-  the buffer during synchronization.
+  the reserve during synchronization.
 
 ### 1.11 Never assign to a stored lifecycle
 
@@ -183,10 +183,10 @@ path. Series2 is a new immutable package and coin family.
 ### 1.12 Wire every policy gate, and mind same-typed parameter order
 
 `policy.move` has a predicate and an assertion for every stored value:
-improvement, strict and emergency execution tolerance, and the NAV cap. The
+improvement, strict and emergency max slippage, and the NAV cap. The
 Vault and adapter must call each one at its checkpoint; the package cannot
 force the call. One guard fails open when its same-typed `u64` arguments are
-transposed: `assert_mark_within_index_divergence(mark, index)` widens instead
+transposed: `assert_mark_within_oracle_divergence(mark, index)` widens instead
 of aborting. Pass the observation outputs positionally from the same tuple,
 add a call-site test that swaps the pair and expects the abort, and prefer
 single-field wrapper types when the Vault's own API is designed. The mint
@@ -238,10 +238,10 @@ leverage because its loss grows with the price it is short. `SUI2S` needs its
 own target, band, max leverage, and NAV cap. Do not launch the short with the
 long's numbers.
 
-### 2.2 Tiered execution tolerance (owner: adapter)
+### 2.2 Tiered max slippage (owner: adapter)
 
 Risk increase uses a strict slippage bound against the canonical index
-valuation. Reduce-only orders above an emergency threshold, proposed 2.5x, use
+price. Reduce-only orders above an emergency threshold, proposed 2.5x, use
 a wider bound, and no cooldown may block them. A crash with wide spreads must
 never be the reason deleveraging fails. The two bounds are immutable policy
 values with gates, `is_execution_within_max_slippage` and
@@ -288,7 +288,7 @@ million lots are structural fences, not selected values.
 These remain open from ADR 0064 and both audits and are listed so no reader
 believes the package closes them:
 
-- production values for the immutable valuation bounds. The adapter now owns
+- production values for the immutable price bounds. The adapter now owns
   operation-scoped source binding, strict activation capture, permissive health
   capture, the raw checkpoint, and permissionless exact-once health and funding
   synchronization under ADR 0074, but simulation has not selected launch

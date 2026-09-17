@@ -1,9 +1,9 @@
 // Package error macros keep stable codes in `errors.move`; the lint sees the expanded literal.
 #[allow(lint(abort_without_constant))]
-/// Venue-neutral state for one Series1 leveraged product.
+/// Venue-neutral state for one core leveraged product.
 ///
 /// The selected adapter stores this value inside its own shared Vault. Only
-/// functions in this module can inspect or change the private Series1 fields.
+/// functions in this module can inspect or change the private core fields.
 /// Currency, venue custody, ACL routing, and versioning belong to the adapter.
 module blast_boosts_core::state;
 
@@ -14,7 +14,7 @@ const MAX_REBALANCE_ORDERS: u64 = 16;
 
 // === Public Types ===
 
-/// Sealed Series1 state stored inside one adapter-owned Vault.
+/// Sealed core state stored inside one adapter-owned Vault.
 ///
 /// The value can be stored but cannot be copied or dropped. `Product`
 /// separates independent leveraged products at the type level.
@@ -36,7 +36,7 @@ public struct State<phantom Product> has store {
     lifecycle: Lifecycle,
     mint_fee_bps: u64,
     redeem_fee_bps: u64,
-    admin_allocation_bps: u64,
+    admin_share_bps: u64,
     /// Inclusive ceiling on post-mint shareholder NAV, adjustable by the admin.
     /// Only mints check it: NAV may exceed it through position profit, which
     /// just blocks further mints until NAV falls back under or the cap is raised.
@@ -48,7 +48,7 @@ public struct ActivePosition has copy, drop {
     equity: u64,
     base: u64,
     notional: u64,
-    lot: u64,
+    lot_size: u64,
     base_price: u64,
     collateral_price: u64,
 }
@@ -59,13 +59,13 @@ public struct MintPlan<phantom Product> {
     reserve_before: u64,
     deposit: u64,
     expected_contribution: u64,
-    buffer_fee: u64,
+    reserve_fee: u64,
     admin_fee: u64,
     fee_bps: u64,
-    admin_bps: u64,
+    admin_share_bps: u64,
     supply: u64,
     minimum_shares: u64,
-    order_base: u64,
+    base_to_buy: u64,
 }
 
 /// Linear terms for one proportional redemption, before any payout or fee credit.
@@ -76,8 +76,8 @@ public struct RedemptionPlan<phantom Product> {
     supply: u64,
     minimum_output: u64,
     fee_bps: u64,
-    admin_bps: u64,
-    order_base: u64,
+    admin_share_bps: u64,
+    base_to_sell: u64,
 }
 
 /// Linear maintenance intent, recalculated only from accepted fixed-pair sessions.
@@ -101,7 +101,7 @@ public struct DonationPlan<phantom Product> {
 
 // --- Issuance ---
 
-/// Creates one validated, uninitialized Series1 state value.
+/// Creates one validated, uninitialized core state value.
 ///
 /// The adapter must store the returned value inside its Vault. The caller's
 /// live admin witness must contain the Vault issuer role. `nav_cap` must
@@ -127,7 +127,7 @@ public fun new<Product>(
     State {
         mint_fee_bps: vault_policy.mint_fee_bps(),
         redeem_fee_bps: vault_policy.redeem_fee_bps(),
-        admin_allocation_bps: 0,
+        admin_share_bps: 0,
         nav_cap,
         vault_policy,
         max_order_notional_minimum,
@@ -149,34 +149,34 @@ public fun set_fees<Product>(
     self: &mut State<Product>,
     mint_bps: u64,
     redeem_bps: u64,
-    admin_bps: u64,
+    admin_share_bps: u64,
 ): (u64, u64, u64) {
     assert!(
         self.lifecycle.is_uninitialized() || self.lifecycle.is_active(),
         blast_boosts_core::errors::operation_not_permitted_in_lifecycle!(),
     );
-    self.vault_policy.assert_fee_limits(mint_bps, redeem_bps, admin_bps);
+    self.vault_policy.assert_fee_limits(mint_bps, redeem_bps, admin_share_bps);
     let previous_mint = self.mint_fee_bps;
     let previous_redeem = self.redeem_fee_bps;
-    let previous_admin = self.admin_allocation_bps;
+    let previous_admin = self.admin_share_bps;
     assert!(
         self.mint_fee_bps != mint_bps || self.redeem_fee_bps != redeem_bps
-            || self.admin_allocation_bps != admin_bps,
+            || self.admin_share_bps != admin_share_bps,
         blast_boosts_core::errors::fee_settings_unchanged!(),
     );
     self.mint_fee_bps = mint_bps;
     self.redeem_fee_bps = redeem_bps;
-    self.admin_allocation_bps = admin_bps;
+    self.admin_share_bps = admin_share_bps;
     (previous_mint, previous_redeem, previous_admin)
 }
 
-/// Returns fee, local admin allocation, and buffer allocation in collateral atoms.
-/// The fee rounds up, admin share rounds down, and buffer receives the remainder.
+/// Returns fee, local admin share, and reserve allocation in collateral atoms.
+/// The fee rounds up, admin share rounds down, and reserve receives the remainder.
 public fun fee_allocation<Product>(self: &State<Product>, amount: u64, mint: bool): (u64, u64, u64) {
     accounting_math::fee_allocation(
         amount,
         if (mint) { self.mint_fee_bps } else { self.redeem_fee_bps },
-        self.admin_allocation_bps,
+        self.admin_share_bps,
     )
 }
 
@@ -193,7 +193,7 @@ public fun assert_user_fee_limit<Product>(self: &State<Product>, mint: bool, max
 /// Adapter custody of `State<Product>` determines who can present mutable
 /// access. The adapter must authenticate its currently selected risk module
 /// before calling this function. Updates are available in every lifecycle
-/// state because they change only the size of later calls, not live exposure.
+/// state because they change only the size of later calls, not the live position.
 public fun set_max_order_notional<Product>(
     self: &mut State<Product>,
     current: u64,
@@ -242,7 +242,7 @@ public fun is_within_nav_cap<Product>(self: &State<Product>, nav: u64): bool {
 /// Returns the authoritative funding-only maintenance reserve.
 ///
 /// Adapter operations use this value only for replay-complete post-state
-/// events. Reserve mutation remains exclusive to Series1 transitions.
+/// events. Reserve mutation remains exclusive to core transitions.
 public fun maintenance_reserve<Product>(self: &State<Product>): u64 {
     self.maintenance_reserve
 }
@@ -271,9 +271,9 @@ public fun prepare_initialization<Product>(
     let margin_safe = observation.is_margin_safe();
     let venue_operational = observation.is_venue_operational();
     let checkpoint_clean = observation.is_checkpoint_clean();
-    let base_index_price = observation.base_index().price();
-    let base_confidence = observation.base_index().confidence();
-    let base_publish_time_ms = observation.base_index().publish_time_ms();
+    let base_oracle_price = observation.base_oracle().price();
+    let base_confidence = observation.base_oracle().confidence();
+    let base_publish_time_ms = observation.base_oracle().publish_time_ms();
     let collateral_price = observation.collateral_oracle().price();
     let collateral_confidence = observation.collateral_oracle().confidence();
     let collateral_publish_time_ms = observation.collateral_oracle().publish_time_ms();
@@ -291,10 +291,10 @@ public fun prepare_initialization<Product>(
 
     let price_policy = self.vault_policy.price_policy();
     price_policy.assert_price_fresh(base_publish_time_ms, reference_time_ms);
-    price_policy.assert_confidence_within_bound(base_confidence, base_index_price);
+    price_policy.assert_confidence_within_bound(base_confidence, base_oracle_price);
     price_policy.assert_price_fresh(collateral_publish_time_ms, reference_time_ms);
     price_policy.assert_confidence_within_bound(collateral_confidence, collateral_price);
-    price_policy.assert_mark_within_index_divergence(mark_price, base_index_price);
+    price_policy.assert_mark_within_oracle_divergence(mark_price, base_oracle_price);
     assert!(
         position_base == 0 && position_collateral == 0,
         blast_boosts_core::errors::invalid_initialization_observation!(),
@@ -325,7 +325,7 @@ public fun prepare_initialization<Product>(
 
     (
         target_notional,
-        base_index_price,
+        base_oracle_price,
         collateral_price,
         lot_size,
     )
@@ -345,9 +345,9 @@ public fun initialization_constraints<Product>(
     )
 }
 
-/// Rejects a seed session whose execution diverges beyond strict tolerance.
+/// Rejects a seed session whose execution diverges beyond max slippage.
 ///
-/// Initialization always increases risk, so the wider emergency tolerance is
+/// Initialization always increases risk, so the wider emergency max slippage is
 /// never available on this edge.
 public fun assert_initialization_execution<Product>(
     self: &State<Product>,
@@ -378,7 +378,7 @@ public fun assert_order_notional_allowed<Product>(
 ///
 /// Returns the seed's reserve-excluded shareholder NAV in atomic collateral
 /// units. The adapter must authenticate the linear observation before calling
-/// this function. Every lifecycle, accounting, valuation, position, venue,
+/// this function. Every lifecycle, accounting, price, position, venue,
 /// capacity, leverage, and minimum-operation guard runs before reserve or
 /// lifecycle mutation. No administrative witness is accepted after State
 /// construction.
@@ -425,7 +425,7 @@ public fun active_constraints<Product>(self: &State<Product>): (PositionSide, u6
     (self.vault_policy.side(), self.max_order_notional)
 }
 
-/// Consumes an intermediate active observation at the operation's fixed valuation pair.
+/// Consumes an intermediate active observation at the operation's fixed price pair.
 public fun assert_active_observation<Product>(
     self: &State<Product>, observation: PositionObservation, base_price: u64, collateral_price: u64, now: u64,
 ) {
@@ -435,7 +435,7 @@ public fun assert_active_observation<Product>(
         blast_boosts_core::errors::active_checkpoint_changed!());
 }
 
-/// Applies strict tolerance to ordinary active mint and redemption sessions.
+/// Applies max slippage to ordinary active mint and redemption sessions.
 public fun assert_active_execution<Product>(self: &State<Product>, reference: u64, executed: u64) {
     self.lifecycle.assert_active();
     self.vault_policy.rebalance_policy().assert_execution_within_max_slippage(reference, executed);
@@ -459,36 +459,36 @@ public fun prepare_mint<Product>(
     assert!(self.mint_fee_bps <= maximum_fee_bps, blast_boosts_core::errors::user_fee_limit_exceeded!());
     let before = validated_active_position(self, observation, reference_time_ms);
     let nav = accounting_math::shareholder_nav(before.equity, self.maintenance_reserve);
-    let risk = self.vault_policy.rebalance_policy();
+    let rebalance = self.vault_policy.rebalance_policy();
     let scaled = (before.notional as u128) * (constants::basis_points_denominator!() as u128);
     assert!(
-        scaled >= (nav as u128) * (risk.rebalance_below_bps() as u128)
-            && scaled <= (nav as u128) * (risk.rebalance_above_bps() as u128),
-        blast_boosts_core::errors::mint_outside_public_band!(),
+        scaled >= (nav as u128) * (rebalance.rebalance_below_bps() as u128)
+            && scaled <= (nav as u128) * (rebalance.rebalance_above_bps() as u128),
+        blast_boosts_core::errors::mint_outside_rebalance_band!(),
     );
-    let (fee, admin_fee, buffer_fee) = self.fee_allocation(deposit, true);
+    let (fee, admin_fee, reserve_fee) = self.fee_allocation(deposit, true);
     let expected_contribution = deposit - fee;
     assert!(expected_contribution > 0, blast_boosts_core::errors::nonpositive_contribution!());
-    let order_base = accounting_math::mint_base_delta_down(
-        expected_contribution, before.base, nav, before.lot, self.vault_policy.min_exposure_lots(),
+    let base_to_buy = accounting_math::mint_base_to_buy_down(
+        expected_contribution, before.base, nav, before.lot_size, self.vault_policy.min_order_lots(),
     );
     MintPlan {
         before,
         reserve_before: self.maintenance_reserve,
         deposit,
         expected_contribution,
-        buffer_fee,
+        reserve_fee,
         admin_fee,
         fee_bps: self.mint_fee_bps,
-        admin_bps: self.admin_allocation_bps,
+        admin_share_bps: self.admin_share_bps,
         supply,
         minimum_shares,
-        order_base,
+        base_to_buy,
     }
 }
 
 /// Returns the entire required whole-lot increase, not caller-selected sizing.
-public fun order_base<Product>(self: &MintPlan<Product>): u64 { self.order_base }
+public fun base_to_buy<Product>(self: &MintPlan<Product>): u64 { self.base_to_buy }
 
 /// Returns the admin cash the adapter must retain before depositing collateral.
 public fun admin_fee<Product>(self: &MintPlan<Product>): u64 { self.admin_fee }
@@ -496,20 +496,20 @@ public fun admin_fee<Product>(self: &MintPlan<Product>): u64 { self.admin_fee }
 /// Returns the sealed input for completed adapter accounting facts.
 public fun mint_deposit<Product>(self: &MintPlan<Product>): u64 { self.deposit }
 
-/// Sealed base index price used to size this mint.
+/// Sealed base oracle price used to size this mint.
 public fun mint_base_price<Product>(self: &MintPlan<Product>): u64 { self.before.base_price }
 
 /// Sealed collateral price used to size this mint.
 public fun mint_collateral_price<Product>(self: &MintPlan<Product>): u64 { self.before.collateral_price }
 
 /// Venue lot size sealed with the mint plan.
-public fun mint_lot<Product>(self: &MintPlan<Product>): u64 { self.before.lot }
+public fun mint_lot_size<Product>(self: &MintPlan<Product>): u64 { self.before.lot_size }
 
-/// Completes a full proportional fill and credits only its buffer allocation.
+/// Completes a full proportional fill and credits only its reserve allocation.
 /// The credited contribution is capped at the deposit net of the whole fee, so
 /// a favorable fill accrues to existing holders (ADR 0084 D3).
 /// The returned shares are minted through the adapter's native share authority.
-/// Returns shares, contribution, fee, admin, buffer and the two sealed rates.
+/// Returns shares, contribution, fee, admin, reserve and the two sealed rates.
 public fun complete_mint<Product>(
     self: &mut State<Product>,
     plan: MintPlan<Product>,
@@ -518,21 +518,21 @@ public fun complete_mint<Product>(
 ): (u64, u64, u64, u64, u64, u64, u64) {
     self.lifecycle.assert_active();
     let MintPlan {
-        before, reserve_before, deposit: _, expected_contribution, buffer_fee,
-        admin_fee, fee_bps, admin_bps, supply, minimum_shares, order_base,
+        before, reserve_before, deposit: _, expected_contribution, reserve_fee,
+        admin_fee, fee_bps, admin_share_bps, supply, minimum_shares, base_to_buy,
     } = plan;
     assert!(self.maintenance_reserve == reserve_before, blast_boosts_core::errors::active_checkpoint_changed!());
     let after = validated_active_position(self, observation, reference_time_ms);
     assert!(
         before.base_price == after.base_price && before.collateral_price == after.collateral_price
-            && before.lot == after.lot,
+            && before.lot_size == after.lot_size,
         blast_boosts_core::errors::active_checkpoint_changed!(),
     );
     assert!(
-        after.base >= before.base && after.base - before.base == order_base,
+        after.base >= before.base && after.base - before.base == base_to_buy,
         blast_boosts_core::errors::active_fill_incomplete!(),
     );
-    let reserve_after = reserve_before.checked_add(buffer_fee)
+    let reserve_after = reserve_before.checked_add(reserve_fee)
         .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
     let (nav_after, contribution, shares) = accounting_math::allocated_mint_quote(
         before.equity, after.equity, reserve_before, reserve_after, expected_contribution,
@@ -541,7 +541,7 @@ public fun complete_mint<Product>(
     accounting_math::assert_mint_base_within_bounds(
         after.base, expected_contribution, contribution, before.base,
         accounting_math::shareholder_nav(before.equity, reserve_before),
-        before.lot, self.vault_policy.min_exposure_lots(),
+        before.lot_size, self.vault_policy.min_order_lots(),
     );
     self.assert_within_nav_cap(nav_after);
     assert!(
@@ -552,7 +552,7 @@ public fun complete_mint<Product>(
         blast_boosts_core::errors::active_leverage_above_cap!(),
     );
     self.maintenance_reserve = reserve_after;
-    (shares, contribution, admin_fee + buffer_fee, admin_fee, buffer_fee, fee_bps, admin_bps)
+    (shares, contribution, admin_fee + reserve_fee, admin_fee, reserve_fee, fee_bps, admin_share_bps)
 }
 
 // --- Redemption ---
@@ -571,38 +571,38 @@ public fun prepare_redemption<Product>(
     assert!(self.redeem_fee_bps <= maximum_fee_bps, blast_boosts_core::errors::user_fee_limit_exceeded!());
     let before = validated_active_position(self, observation, reference_time_ms);
     let (minimum_base, _) = accounting_math::redemption_base_bounds(
-        shares, before.base, supply, before.lot, self.vault_policy.min_exposure_lots(),
+        shares, before.base, supply, before.lot_size, self.vault_policy.min_order_lots(),
     );
-    let order_base = before.base - minimum_base;
+    let base_to_sell = before.base - minimum_base;
     RedemptionPlan {
         before, reserve_before: self.maintenance_reserve, shares, supply, minimum_output,
-        fee_bps: self.redeem_fee_bps, admin_bps: self.admin_allocation_bps, order_base,
+        fee_bps: self.redeem_fee_bps, admin_share_bps: self.admin_share_bps, base_to_sell,
     }
 }
 
 /// Returns the full reduce-only order amount; flat redemptions require no order.
-public fun redemption_order_base<Product>(self: &RedemptionPlan<Product>): u64 { self.order_base }
+public fun base_to_sell<Product>(self: &RedemptionPlan<Product>): u64 { self.base_to_sell }
 
-/// Sealed base index price used by the attributable close.
+/// Sealed base oracle price used by the attributable close.
 public fun redemption_base_price<Product>(self: &RedemptionPlan<Product>): u64 { self.before.base_price }
 
 /// Sealed collateral price used by the attributable close.
 public fun redemption_collateral_price<Product>(self: &RedemptionPlan<Product>): u64 { self.before.collateral_price }
 
 /// Venue lot size sealed with the redemption plan.
-public fun redemption_lot<Product>(self: &RedemptionPlan<Product>): u64 { self.before.lot }
+public fun redemption_lot_size<Product>(self: &RedemptionPlan<Product>): u64 { self.before.lot_size }
 
 /// Shares the redeemer must burn.
 public fun redemption_shares<Product>(self: &RedemptionPlan<Product>): u64 { self.shares }
 
-/// Base exposure that must remain after the sealed close.
-public fun redemption_final_base<Product>(self: &RedemptionPlan<Product>): u64 { self.before.base - self.order_base }
+/// Base that must remain after the sealed close.
+public fun base_after_sell<Product>(self: &RedemptionPlan<Product>): u64 { self.before.base - self.base_to_sell }
 
 /// Redemption fee rate sealed with the plan.
 public fun redemption_fee_bps<Product>(self: &RedemptionPlan<Product>): u64 { self.fee_bps }
 
 /// Admin allocation rate sealed with the plan.
-public fun redemption_admin_bps<Product>(self: &RedemptionPlan<Product>): u64 { self.admin_bps }
+public fun redemption_admin_share_bps<Product>(self: &RedemptionPlan<Product>): u64 { self.admin_share_bps }
 
 /// Validates actual post-withdrawal backing and margin before a native share burn.
 public fun assert_redemption_cash_out<Product>(
@@ -629,27 +629,27 @@ public fun complete_redemption<Product>(
 ): (u64, u64, u64, u64, u64) {
     self.lifecycle.assert_active();
     let RedemptionPlan {
-        before, reserve_before, shares, supply, minimum_output, fee_bps, admin_bps, order_base,
+        before, reserve_before, shares, supply, minimum_output, fee_bps, admin_share_bps, base_to_sell,
     } = plan;
     assert!(self.maintenance_reserve == reserve_before, blast_boosts_core::errors::active_checkpoint_changed!());
     let after = validated_active_position(self, observation, reference_time_ms);
     assert!(
         before.base_price == after.base_price && before.collateral_price == after.collateral_price
-            && before.lot == after.lot,
+            && before.lot_size == after.lot_size,
         blast_boosts_core::errors::active_checkpoint_changed!(),
     );
     assert!(
-        before.base >= after.base && before.base - after.base == order_base,
+        before.base >= after.base && before.base - after.base == base_to_sell,
         blast_boosts_core::errors::active_fill_incomplete!(),
     );
     accounting_math::assert_redemption_base_within_bounds(
-        after.base, shares, before.base, supply, before.lot, self.vault_policy.min_exposure_lots(),
+        after.base, shares, before.base, supply, before.lot_size, self.vault_policy.min_order_lots(),
     );
     let (reserve_with_fee, _, nav_kept, _, _, fee, net) = accounting_math::redemption_accounting_quote(
         shares, before.equity, after.equity, reserve_before, supply, fee_bps,
     );
     assert!(net >= minimum_output, blast_boosts_core::errors::redemption_output_below_minimum!());
-    let admin = fee.mul_div(admin_bps, constants::basis_points_denominator!());
+    let admin = fee.mul_div(admin_share_bps, constants::basis_points_denominator!());
     let reserve_after = reserve_with_fee - admin;
     let final_equity = nav_kept.checked_add(reserve_after)
         .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
@@ -670,56 +670,56 @@ public fun prepare_rebalance<Product>(
     );
     let before = validated_active_position(self, observation, now);
     let nav = accounting_math::shareholder_nav(before.equity, self.maintenance_reserve);
-    let risk = self.vault_policy.rebalance_policy();
+    let rebalance = self.vault_policy.rebalance_policy();
     let scaled = (before.notional as u128) * (constants::basis_points_denominator!() as u128);
-    let increase = scaled < (nav as u128) * (risk.rebalance_below_bps() as u128);
-    assert!(increase || scaled > (nav as u128) * (risk.rebalance_above_bps() as u128),
-        blast_boosts_core::errors::rebalance_inside_public_band!());
+    let increase = scaled < (nav as u128) * (rebalance.rebalance_below_bps() as u128);
+    assert!(increase || scaled > (nav as u128) * (rebalance.rebalance_above_bps() as u128),
+        blast_boosts_core::errors::rebalance_inside_band!());
     RebalancePlan { before, current: before, reserve: self.maintenance_reserve, increase, venue_fee_bps, steps: 0 }
 }
 
-/// Returns next whole-lot size, increase intent and current wider-tolerance permission.
+/// Returns next whole-lot size, increase intent and current wider-slippage permission.
 /// A zero size finishes planning; the adapter independently caps work at sixteen sessions.
 public fun rebalance_order<Product>(self: &State<Product>, plan: &RebalancePlan<Product>): (u64, bool, bool) {
     self.lifecycle.assert_active();
     assert!(self.maintenance_reserve == plan.reserve, blast_boosts_core::errors::active_checkpoint_changed!());
     let p = &plan.current;
     let nav = accounting_math::shareholder_nav(p.equity, plan.reserve);
-    let risk = self.vault_policy.rebalance_policy();
+    let rebalance = self.vault_policy.rebalance_policy();
     if (plan.steps == MAX_REBALANCE_ORDERS) { return (0, plan.increase, false) };
     if (plan.increase) {
-        (rebalance_math::increase_base_down(nav, p.notional, risk.target_bps(), p.base_price,
-            p.collateral_price, p.lot, self.max_order_notional, plan.venue_fee_bps,
-            risk.max_slippage_bps(), self.base_unit, self.collateral_unit), true, false)
+        (rebalance_math::increase_base_down(nav, p.notional, rebalance.target_bps(), p.base_price,
+            p.collateral_price, p.lot_size, self.max_order_notional, plan.venue_fee_bps,
+            rebalance.max_slippage_bps(), self.base_unit, self.collateral_unit), true, false)
     } else {
-        let target_notional = (nav as u128) * (risk.target_bps() as u128) / (constants::basis_points_denominator!() as u128);
+        let target_notional = (nav as u128) * (rebalance.target_bps() as u128) / (constants::basis_points_denominator!() as u128);
         assert!(target_notional <= std::u64::max_value!() as u128, blast_boosts_core::errors::arithmetic_overflow!());
         let target_base = rebalance_math::base_for_notional_down(
-            target_notional as u64, p.base_price, p.collateral_price, p.lot, self.base_unit, self.collateral_unit,
+            target_notional as u64, p.base_price, p.collateral_price, p.lot_size, self.base_unit, self.collateral_unit,
         );
         let cap_base = rebalance_math::base_for_notional_down(
-            self.max_order_notional, p.base_price, p.collateral_price, p.lot, self.base_unit, self.collateral_unit,
+            self.max_order_notional, p.base_price, p.collateral_price, p.lot_size, self.base_unit, self.collateral_unit,
         );
-        let base = if (p.base > target_base) { (p.base - target_base).min(cap_base) / p.lot * p.lot } else { 0 };
-        (base, false, (p.notional as u128) * (constants::basis_points_denominator!() as u128) > (nav as u128) * (risk.max_leverage_bps() as u128))
+        let base = if (p.base > target_base) { (p.base - target_base).min(cap_base) / p.lot_size * p.lot_size } else { 0 };
+        (base, false, (p.notional as u128) * (constants::basis_points_denominator!() as u128) > (nav as u128) * (rebalance.max_leverage_bps() as u128))
     }
 }
 
-/// Sealed base index price the rebalance sizes and proves execution against.
+/// Sealed base oracle price the rebalance sizes and proves execution against.
 public fun base_price<Product>(self: &RebalancePlan<Product>): u64 { self.before.base_price }
 
 /// Sealed collateral price the rebalance sizes and proves execution against.
 public fun collateral_price<Product>(self: &RebalancePlan<Product>): u64 { self.before.collateral_price }
 
 /// Venue lot size sealed with the rebalance plan.
-public fun lot<Product>(self: &RebalancePlan<Product>): u64 { self.before.lot }
+public fun lot_size<Product>(self: &RebalancePlan<Product>): u64 { self.before.lot_size }
 
-/// The current authenticated ratio alone selects ordinary or wider execution tolerance.
+/// The current authenticated ratio alone selects ordinary or wider max slippage.
 public fun assert_rebalance_execution<Product>(self: &State<Product>, plan: &RebalancePlan<Product>, reference: u64, executed: u64) {
     let (_, _, wide) = self.rebalance_order(plan);
-    let risk = self.vault_policy.rebalance_policy();
-    if (wide) { risk.assert_execution_within_emergency_max_slippage(reference, executed); }
-    else { risk.assert_execution_within_max_slippage(reference, executed); };
+    let rebalance = self.vault_policy.rebalance_policy();
+    if (wide) { rebalance.assert_execution_within_emergency_max_slippage(reference, executed); }
+    else { rebalance.assert_execution_within_max_slippage(reference, executed); };
 }
 
 /// Advances only exact partial whole-lot fills under sealed intent and the fixed oracle pair.
@@ -727,18 +727,18 @@ public fun accept_rebalance_fill<Product>(
     self: &State<Product>, plan: &mut RebalancePlan<Product>, observation: PositionObservation, filled: u64, now: u64,
 ) {
     let (requested, increase, _) = self.rebalance_order(plan);
-    assert!(filled > 0 && filled <= requested && filled % plan.current.lot == 0,
+    assert!(filled > 0 && filled <= requested && filled % plan.current.lot_size == 0,
         blast_boosts_core::errors::active_fill_incomplete!());
     let after = validated_active_position(self, observation, now);
     assert!(after.base_price == plan.before.base_price && after.collateral_price == plan.before.collateral_price
-        && after.lot == plan.before.lot, blast_boosts_core::errors::active_checkpoint_changed!());
+        && after.lot_size == plan.before.lot_size, blast_boosts_core::errors::active_checkpoint_changed!());
     let expected_base = if (increase) { plan.current.base.checked_add(filled).destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!()) } else { plan.current.base - filled };
     assert!(after.base == expected_base, blast_boosts_core::errors::active_fill_incomplete!());
     if (increase) {
         let nav = accounting_math::shareholder_nav(after.equity, plan.reserve);
-        let risk = self.vault_policy.rebalance_policy();
-        assert!((after.notional as u128) * (constants::basis_points_denominator!() as u128) <= (nav as u128) * (risk.target_bps() as u128)
-            && (after.notional as u128) * (constants::basis_points_denominator!() as u128) < (nav as u128) * (risk.max_leverage_bps() as u128),
+        let rebalance = self.vault_policy.rebalance_policy();
+        assert!((after.notional as u128) * (constants::basis_points_denominator!() as u128) <= (nav as u128) * (rebalance.target_bps() as u128)
+            && (after.notional as u128) * (constants::basis_points_denominator!() as u128) < (nav as u128) * (rebalance.max_leverage_bps() as u128),
             blast_boosts_core::errors::active_leverage_above_cap!());
     };
     plan.current = after;
@@ -754,21 +754,21 @@ public fun complete_rebalance<Product>(self: &State<Product>, plan: RebalancePla
     assert!(steps > 0, blast_boosts_core::errors::rebalance_no_progress!());
     let before_nav = accounting_math::shareholder_nav(before.equity, reserve);
     let after_nav = accounting_math::shareholder_nav(current.equity, reserve);
-    let risk = self.vault_policy.rebalance_policy();
+    let rebalance = self.vault_policy.rebalance_policy();
     let improved = if (increase) {
         current.base > before.base && (current.notional as u128) * (before_nav as u128) > (before.notional as u128) * (after_nav as u128)
     } else {
         current.base < before.base && rebalance_math::reduction_is_sufficient(before.notional, before_nav,
-            current.notional, after_nav, risk.target_bps(), risk.min_leverage_improvement_bps(),
-            rebalance_math::index_notional_up(
-                current.lot, current.base_price, current.collateral_price, self.base_unit, self.collateral_unit,
+            current.notional, after_nav, rebalance.target_bps(), rebalance.min_leverage_improvement_bps(),
+            rebalance_math::oracle_notional_up(
+                current.lot_size, current.base_price, current.collateral_price, self.base_unit, self.collateral_unit,
             ))
     };
     assert!(improved, blast_boosts_core::errors::rebalance_no_progress!());
     (before.equity, current.equity, before.base, current.base, increase)
 }
 
-// --- Funding And Buffer ---
+// --- Funding And Reserve ---
 
 /// Applies one adapter-authenticated funding classification to the reserve.
 ///
@@ -778,7 +778,7 @@ public fun complete_rebalance<Product>(self: &State<Product>, plan: RebalancePla
 /// repays that deficit first, by staying in NAV, and only its remainder
 /// rebuilds the reserve. The adapter owns exact-once funding checkpoint
 /// authentication; the core stores no venue cursor and never infers funding
-/// from an equity delta.
+/// from an equity change.
 public fun settle_funding<Product>(
     self: &mut State<Product>,
     settlement: FundingSettlement,
@@ -843,7 +843,7 @@ public fun complete_donation<Product>(
     assert!(reserve_before == self.maintenance_reserve, blast_boosts_core::errors::active_checkpoint_changed!());
     let after = validated_active_position(self, after, reference_time_ms);
     assert!(
-        before.base == after.base && before.notional == after.notional && before.lot == after.lot
+        before.base == after.base && before.notional == after.notional && before.lot_size == after.lot_size
             && before.base_price == after.base_price && before.collateral_price == after.collateral_price
             && after.equity >= before.equity && after.equity - before.equity == amount,
         blast_boosts_core::errors::active_checkpoint_changed!(),
@@ -852,10 +852,10 @@ public fun complete_donation<Product>(
         .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
 }
 
-/// Relabels active buffer as shareholder NAV without trading or moving collateral.
+/// Relabels reserve as shareholder NAV without trading or moving collateral.
 /// Adapter custody must authenticate the risk administrator before this call.
 /// NAV-cap and ordinary leverage-band checks intentionally do not gate release.
-public fun release_buffer<Product>(
+public fun release_reserve<Product>(
     self: &mut State<Product>,
     observation: PositionObservation,
     amount: u64,
@@ -863,7 +863,7 @@ public fun release_buffer<Product>(
 ): u64 {
     self.lifecycle.assert_active();
     assert!(amount > 0, blast_boosts_core::errors::zero_amount!());
-    assert!(amount <= self.maintenance_reserve, blast_boosts_core::errors::buffer_release_exceeds_balance!());
+    assert!(amount <= self.maintenance_reserve, blast_boosts_core::errors::reserve_release_exceeds_balance!());
     let position = validated_active_position(self, observation, reference_time_ms);
     let reserve_after = self.maintenance_reserve - amount;
     let nav = accounting_math::shareholder_nav(position.equity, reserve_after);
@@ -888,18 +888,18 @@ public fun assert_unwinding<Product>(self: &State<Product>) {
     self.lifecycle.assert_shutdown_close_allowed();
 }
 
-/// Prices only a close-only order; insolvency and the buffer do not gate an exit.
+/// Prices only a close-only order; insolvency and the reserve do not gate an exit.
 public fun unwind_constraints<Product>(
-    self: &State<Product>, base_index: PriceObservation, collateral_oracle: PriceObservation, now: u64,
+    self: &State<Product>, base_oracle: PriceObservation, collateral_oracle: PriceObservation, now: u64,
 ): (PositionSide, u64, u64, u64) {
     self.assert_unwinding();
-    let base_price = base_index.price();
-    let base_confidence = base_index.confidence();
-    let base_time = base_index.publish_time_ms();
+    let base_price = base_oracle.price();
+    let base_confidence = base_oracle.confidence();
+    let base_time = base_oracle.publish_time_ms();
     let collateral_price = collateral_oracle.price();
     let collateral_confidence = collateral_oracle.confidence();
     let collateral_time = collateral_oracle.publish_time_ms();
-    base_index.destroy();
+    base_oracle.destroy();
     collateral_oracle.destroy();
     let price_policy = self.vault_policy.price_policy();
     price_policy.assert_price_fresh(base_time, now);
@@ -915,7 +915,7 @@ public fun assert_unwind_execution<Product>(self: &State<Product>, reference: u6
     self.vault_policy.rebalance_policy().assert_execution_within_emergency_max_slippage(reference, executed);
 }
 
-/// Consumes the buffer book entry only after the adapter proves complete local cash recovery.
+/// Consumes the reserve book entry only after the adapter proves complete local cash recovery.
 public fun finalize_shutdown<Product>(self: &mut State<Product>, native_supply: u64, locked: u64): u64 {
     assert!(native_supply >= locked, blast_boosts_core::errors::invalid_share_supply!());
     self.lifecycle.finalize_shutdown();
@@ -957,15 +957,15 @@ fun validated_active_position<Product>(
     let equity = observation.venue_equity();
     let base = observation.position_base();
     let notional = observation.position_collateral();
-    let lot = observation.lot_size();
+    let lot_size = observation.lot_size();
     let side = observation.observed_side();
     let orders = observation.pending_order_count();
     let margin_safe = observation.is_margin_safe();
     let operational = observation.is_venue_operational();
     let clean = observation.is_checkpoint_clean();
-    let base_price = observation.base_index().price();
-    let base_confidence = observation.base_index().confidence();
-    let base_time = observation.base_index().publish_time_ms();
+    let base_price = observation.base_oracle().price();
+    let base_confidence = observation.base_oracle().confidence();
+    let base_time = observation.base_oracle().publish_time_ms();
     let collateral_price = observation.collateral_oracle().price();
     let collateral_confidence = observation.collateral_oracle().confidence();
     let collateral_time = observation.collateral_oracle().publish_time_ms();
@@ -976,14 +976,14 @@ fun validated_active_position<Product>(
     price_policy.assert_confidence_within_bound(base_confidence, base_price);
     price_policy.assert_price_fresh(collateral_time, reference_time_ms);
     price_policy.assert_confidence_within_bound(collateral_confidence, collateral_price);
-    price_policy.assert_mark_within_index_divergence(mark, base_price);
+    price_policy.assert_mark_within_oracle_divergence(mark, base_price);
     assert!(
         (base == 0 && notional == 0) || side == self.vault_policy.side(),
         blast_boosts_core::errors::invalid_position_observation!(),
     );
     assert!(orders == 0 && margin_safe && operational && clean, blast_boosts_core::errors::active_observation_unusable!());
     assert!(accounting_math::is_shareholder_nav_positive(equity, self.maintenance_reserve), blast_boosts_core::errors::invalid_nav!());
-    ActivePosition { equity, base, notional, lot, base_price, collateral_price }
+    ActivePosition { equity, base, notional, lot_size, base_price, collateral_price }
 }
 
 /// Consumes and validates a complete seed without mutable access to State.
@@ -1002,9 +1002,9 @@ fun validated_initialization_nav<Product>(
     let margin_safe = observation.is_margin_safe();
     let venue_operational = observation.is_venue_operational();
     let checkpoint_clean = observation.is_checkpoint_clean();
-    let base_index_price = observation.base_index().price();
-    let base_confidence = observation.base_index().confidence();
-    let base_publish_time_ms = observation.base_index().publish_time_ms();
+    let base_oracle_price = observation.base_oracle().price();
+    let base_confidence = observation.base_oracle().confidence();
+    let base_publish_time_ms = observation.base_oracle().publish_time_ms();
     let collateral_price = observation.collateral_oracle().price();
     let collateral_confidence = observation.collateral_oracle().confidence();
     let collateral_publish_time_ms = observation.collateral_oracle().publish_time_ms();
@@ -1022,10 +1022,10 @@ fun validated_initialization_nav<Product>(
 
     let price_policy = self.vault_policy.price_policy();
     price_policy.assert_price_fresh(base_publish_time_ms, reference_time_ms);
-    price_policy.assert_confidence_within_bound(base_confidence, base_index_price);
+    price_policy.assert_confidence_within_bound(base_confidence, base_oracle_price);
     price_policy.assert_price_fresh(collateral_publish_time_ms, reference_time_ms);
     price_policy.assert_confidence_within_bound(collateral_confidence, collateral_price);
-    price_policy.assert_mark_within_index_divergence(mark_price, base_index_price);
+    price_policy.assert_mark_within_oracle_divergence(mark_price, base_oracle_price);
     assert!(
         observed_side == self.vault_policy.side(),
         blast_boosts_core::errors::invalid_initialization_observation!(),
@@ -1065,12 +1065,12 @@ fun validated_initialization_nav<Product>(
         blast_boosts_core::errors::invalid_position_observation!(),
     );
     assert!(
-        accounting_math::is_exposure_above_minimum_operation(
+        accounting_math::is_base_above_min_order(
             position_base,
             lot_size,
-            self.vault_policy.min_exposure_lots(),
+            self.vault_policy.min_order_lots(),
         ),
-        blast_boosts_core::errors::initialization_exposure_below_minimum!(),
+        blast_boosts_core::errors::initialization_base_below_min_order!(),
     );
 
     seed_nav
@@ -1139,9 +1139,9 @@ public fun set_active_for_testing<Product>(self: &mut State<Product>) {
 }
 
 #[test_only]
-/// Returns `(mint_fee_bps, redeem_fee_bps, admin_allocation_bps)` for test assertions.
+/// Returns `(mint_fee_bps, redeem_fee_bps, admin_share_bps)` for test assertions.
 public fun fee_settings<Product>(self: &State<Product>): (u64, u64, u64) {
-    (self.mint_fee_bps, self.redeem_fee_bps, self.admin_allocation_bps)
+    (self.mint_fee_bps, self.redeem_fee_bps, self.admin_share_bps)
 }
 
 #[test_only]
@@ -1151,7 +1151,7 @@ public fun destroy_for_testing<Product>(self: State<Product>) {
 }
 
 #[test_only]
-/// Credits only authenticated newly deposited collateral to the active buffer.
+/// Credits only authenticated newly deposited collateral to the reserve.
 /// This edge creates no shares and no admin entitlement.
 public fun donate<Product>(
     self: &mut State<Product>,

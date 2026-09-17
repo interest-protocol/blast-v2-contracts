@@ -43,7 +43,7 @@ checks the complete expected object/effect/ownership graph for success and
 rollback. All three live proof paths enforce the pinned Sui CLI version.
 
 Public active operations are `initialize`, `mint`, `redeem`, `rebalance`,
-`sync_health`, `donate`, and `release_buffer`; Vault also exposes authorized
+`sync_health`, `donate`, and `release_reserve`; Vault also exposes authorized
 fee settings and earned-admin cash withdrawal. Mint/redeem return ordinary
 native coins and finish atomically. Rebalance has no privileged keeper path,
 caller trade sizing or reward. An unresolved external change preserves the
