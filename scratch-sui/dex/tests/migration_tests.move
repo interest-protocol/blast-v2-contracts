@@ -8,7 +8,7 @@ use blast_fun::{
     launch::{Self, Launch},
     launch_config,
     launch_ticket,
-    launchpad_domain::{Self, LAUNCHPAD_DOMAIN},
+    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     lp_fee_policy::{Self, LpFeePolicy},
     package_version::{Self, PackageVersion},
     runtime_config::{Self, RuntimeConfig}
@@ -31,8 +31,8 @@ public struct OtherWitness() has drop;
 public struct MigrationFixture {
     scenario: Scenario,
     version: PackageVersion,
-    authority: Authority<LAUNCHPAD_DOMAIN>,
-    admin: AdminCap<LAUNCHPAD_DOMAIN>,
+    authority: Authority<BLAST_FUN_DOMAIN>,
+    admin: AdminCap<BLAST_FUN_DOMAIN>,
     cap: CurveFeeCap<MIGRATION_TESTS>,
     launch: Launch<MIGRATION_TESTS, QUOTE>,
     factory: Factory,
@@ -631,10 +631,10 @@ fun start_with_policy<SelectedWitness: drop>(
     let mut scenario = test_scenario::begin(@0xA);
     let version = package_version::new_for_testing(scenario.ctx());
     let (root, mut authority) = domain_fixture::new_launchpad_authority(scenario.ctx());
-    authority.grant_admin(&root, launchpad_domain::creator_admin_role(), @0xA, scenario.ctx());
+    authority.grant_admin(&root, blast_fun_domain::creator_admin_role(), @0xA, scenario.ctx());
     launch_config::init_for_testing(scenario.ctx());
     scenario.next_tx(@0xA);
-    let admin = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let witness = authority.sign_in(&admin);
     let mut config = scenario.take_shared<launch_config::LaunchConfig>();
     config.allow_quote<QUOTE>(&version, &witness, 5_000_000, 25_000_000);

@@ -6,7 +6,7 @@ use blast_fun::{
     creator_authority::{Self, LpFeeCap},
     fees::{Self, FeeLedger},
     launch::Launch,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
+    blast_fun_domain::BLAST_FUN_DOMAIN,
     lp_fee_policy::LpFeePolicy,
     package_version::PackageVersion
 };
@@ -176,7 +176,7 @@ public fun collect<Meme, Quote>(
 /// protocol claims, this uses Launchpad-domain authority because the ledger is Launchpad-owned.
 public fun issue_lp_fee_cap<Meme, Quote>(
     self: &mut LockedLpVault<Meme, Quote>,
-    witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    witness: &AdminWitness<BLAST_FUN_DOMAIN>,
     factory: &Factory,
     version: &PackageVersion,
     recipient: address,
@@ -253,7 +253,7 @@ public fun claim_custodied_creator_fees<Meme, Quote>(
 /// administration all use the independent DEX domain instead.
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut LockedLpVault<Meme, Quote>,
-    witness: &AdminWitness<LAUNCHPAD_DOMAIN>,
+    witness: &AdminWitness<BLAST_FUN_DOMAIN>,
     factory: &Factory,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {

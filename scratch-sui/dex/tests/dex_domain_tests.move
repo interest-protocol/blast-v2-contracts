@@ -94,7 +94,7 @@ fun a_zero_role_administrator_cannot_assert_the_package_admin_role() {
 
 #[test]
 /// A Launchpad administrator is live in its own registry, but its witness type
-/// is `AdminWitness<LAUNCHPAD_DOMAIN>`, which no DEX factory, pool-policy, or
+/// is `AdminWitness<BLAST_FUN_DOMAIN>`, which no DEX factory, pool-policy, or
 /// package operation takes. The one deliberate exception,
 /// `migration::claim_protocol_fees`, claims from a Launchpad-owned ledger.
 fun a_launchpad_capability_cannot_administer_the_dex() {

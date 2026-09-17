@@ -8,7 +8,7 @@ use blast_fun::{
     launch::{Self, Launch},
     launch_config,
     launch_ticket,
-    launchpad_domain::LAUNCHPAD_DOMAIN,
+    blast_fun_domain::BLAST_FUN_DOMAIN,
     lp_fee_policy::{Self, LpFeePolicy},
     package_version::{Self, PackageVersion},
     runtime_config
@@ -41,8 +41,8 @@ public struct AutoLpFixture {
     locked: Option<LockedLpVault<VAULT_TESTS, QUOTE>>,
     runtime: runtime_config::RuntimeConfig,
     lp_fee_policy: LpFeePolicy,
-    admin: AdminCap<LAUNCHPAD_DOMAIN>,
-    root: SuperAdminCap<LAUNCHPAD_DOMAIN>,
+    admin: AdminCap<BLAST_FUN_DOMAIN>,
+    root: SuperAdminCap<BLAST_FUN_DOMAIN>,
 }
 
 // === Tests ===
@@ -531,7 +531,7 @@ fun start_with_route(executor: address, external: bool): AutoLpFixture {
     authority.grant_admin(&root, 0, @0xA, scenario.ctx());
     launch_config::init_for_testing(scenario.ctx());
     scenario.next_tx(@0xA);
-    let admin = scenario.take_from_sender<AdminCap<LAUNCHPAD_DOMAIN>>();
+    let admin = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let witness = authority.sign_in(&admin);
     let mut config = scenario.take_shared<launch_config::LaunchConfig>();
     config.allow_quote<QUOTE>(&version, &witness, 5_000_000, 25_000_000);
@@ -719,8 +719,8 @@ macro fun compound_bounded(
 /// funds; AutoLP itself accepts no administration capability of any domain.
 fun launchpad_authority(
     ctx: &mut TxContext,
-): (SuperAdminCap<LAUNCHPAD_DOMAIN>, blast_admin::acl::Authority<LAUNCHPAD_DOMAIN>) {
-    blast_admin::acl::new_for_testing<LAUNCHPAD_DOMAIN>(
+): (SuperAdminCap<BLAST_FUN_DOMAIN>, blast_admin::acl::Authority<BLAST_FUN_DOMAIN>) {
+    blast_admin::acl::new_for_testing<BLAST_FUN_DOMAIN>(
         16,
         7 * 24 * 60 * 60 * 1_000,
         ctx,

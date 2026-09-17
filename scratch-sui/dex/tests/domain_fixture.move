@@ -8,7 +8,7 @@
 module blast_fun_dex::domain_fixture;
 
 use blast_admin::acl::{Self, Authority, SuperAdminCap};
-use blast_fun::launchpad_domain::LAUNCHPAD_DOMAIN;
+use blast_fun::blast_fun_domain::BLAST_FUN_DOMAIN;
 use blast_fun_dex::dex_domain::DEX_DOMAIN;
 use std::unit_test::{assert_eq, destroy};
 
@@ -29,8 +29,8 @@ public fun new_dex_authority(
 /// Unshared Launchpad-domain authority state for the product-fee exception.
 public fun new_launchpad_authority(
     ctx: &mut TxContext,
-): (SuperAdminCap<LAUNCHPAD_DOMAIN>, Authority<LAUNCHPAD_DOMAIN>) {
-    acl::new_for_testing<LAUNCHPAD_DOMAIN>(MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, ctx)
+): (SuperAdminCap<BLAST_FUN_DOMAIN>, Authority<BLAST_FUN_DOMAIN>) {
+    acl::new_for_testing<BLAST_FUN_DOMAIN>(MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, ctx)
 }
 
 // === Tests ===
