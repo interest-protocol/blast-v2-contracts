@@ -4,40 +4,40 @@ module blast_boosts_core::exposure_math_tests;
 
 // === Tests ===
 
-/// Catches reporting an unsafe position as safer than it is.
+/// Catches a limit check that rounds leverage down and reports an unsafe position as safe.
 #[test]
-fun leverage_rounds_up_and_reports_a_flat_position_as_zero() {
-    assert_eq!(accounting_math::leverage_bps_up(0, 100), 0);
-    assert_eq!(accounting_math::leverage_bps_up(100, 100), 10_000);
-    assert_eq!(accounting_math::leverage_bps_up(200, 100), 20_000);
-    assert_eq!(accounting_math::leverage_bps_up(200_000_001, 100_000_000), 20_001);
-    assert_eq!(accounting_math::leverage_bps_up(1, 10_000), 1);
-    assert_eq!(accounting_math::leverage_bps_up(1, 10_001), 1);
+fun the_leverage_limit_rounds_up_and_treats_a_flat_position_as_zero() {
+    assert!(accounting_math::is_accounting_leverage_below_limit(0, 100, 0, 1));
+    assert!(!accounting_math::is_accounting_leverage_below_limit(100, 100, 0, 10_000));
+    assert!(accounting_math::is_accounting_leverage_below_limit(100, 100, 0, 10_001));
+    assert!(!accounting_math::is_accounting_leverage_below_limit(200, 100, 0, 20_000));
+    assert!(!accounting_math::is_accounting_leverage_below_limit(
+        200_000_001,
+        100_000_000,
+        0,
+        20_001,
+    ));
+    assert!(accounting_math::is_accounting_leverage_below_limit(
+        200_000_001,
+        100_000_000,
+        0,
+        20_002,
+    ));
+    assert!(!accounting_math::is_accounting_leverage_below_limit(1, 10_000, 0, 1));
+    assert!(!accounting_math::is_accounting_leverage_below_limit(1, 10_001, 0, 1));
+    assert!(accounting_math::is_accounting_leverage_below_limit(1, 10_001, 0, 2));
 }
 
 /// Catches an intermediate `notional * 10_000` that wraps instead of widening.
 #[test]
-fun leverage_supports_its_maximum_representable_ratio() {
+fun the_leverage_limit_supports_every_width_without_aborting() {
     let max = std::u64::max_value!();
 
-    assert_eq!(accounting_math::leverage_bps_up(max, max), 10_000);
-    assert_eq!(accounting_math::leverage_bps_up(max, 10_000), max);
-}
-
-#[test]
-#[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::accounting_math)]
-fun leverage_against_zero_nav_is_rejected() {
-    accounting_math::leverage_bps_up(100, 0);
-}
-
-/// Pins the first ratio above the supported `u64` range.
-#[test]
-#[expected_failure(
-    abort_code = errors::EArithmeticOverflow,
-    location = blast_boosts_core::accounting_math,
-)]
-fun leverage_above_the_supported_bound_is_rejected() {
-    accounting_math::leverage_bps_up(std::u64::max_value!(), 9_999);
+    assert!(accounting_math::is_accounting_leverage_below_limit(max, max, 0, 10_001));
+    assert!(!accounting_math::is_accounting_leverage_below_limit(max, max, 0, 10_000));
+    assert!(!accounting_math::is_accounting_leverage_below_limit(max, 10_000, 0, max));
+    // A ratio above the `u64` range is simply above every limit.
+    assert!(!accounting_math::is_accounting_leverage_below_limit(max, 9_999, 0, max));
 }
 
 /// Catches targeting more notional than the requested leverage allows.
@@ -799,11 +799,16 @@ fun a_zero_lot_is_rejected_before_a_zero_minimum_lot_multiple_in_redemption() {
 
 // === Private Test Helpers ===
 
+/// Reference accounting leverage `ceil(notional * 10_000 / nav)` for drift measurements.
+fun leverage_bps_up(notional: u64, nav: u64): u64 {
+    ((notional as u128) * 10_000).div_ceil(nav as u128) as u64
+}
+
 /// Proves floor targeting followed by ceiling reporting cannot exceed the requested leverage.
 fun assert_target_round_trip_is_conservative(nav: u64, target_leverage_bps: u64) {
     let target_numerator = (nav as u128) * (target_leverage_bps as u128);
     let target_notional = accounting_math::target_notional_down(nav, target_leverage_bps);
-    let reported_leverage_bps = accounting_math::leverage_bps_up(target_notional, nav);
+    let reported_leverage_bps = leverage_bps_up(target_notional, nav);
 
     assert_eq!(
         target_notional as u128,
@@ -1008,7 +1013,7 @@ fun drift_after_worst_case_mints(
 ): (u64, u64, u64, u64) {
     let mut nav = 10_000_000u64;
     let mut base = 20_000_000u64;
-    let mut lowest = accounting_math::leverage_bps_up(base, nav);
+    let mut lowest = leverage_bps_up(base, nav);
     let mut first_breach = 0;
     let worst_target = (min_order_lots + 1) * lot_size - 1;
 
@@ -1026,7 +1031,7 @@ fun drift_after_worst_case_mints(
         assert_eq!(delta, min_order_lots * lot_size);
         nav = nav + contribution;
         base = base + delta;
-        let leverage = accounting_math::leverage_bps_up(base, nav);
+        let leverage = leverage_bps_up(base, nav);
         if (leverage < 18_000 && first_breach == 0) {
             first_breach = index + 1;
         };
@@ -1034,7 +1039,7 @@ fun drift_after_worst_case_mints(
     });
 
     (
-        accounting_math::leverage_bps_up(base, nav),
+        leverage_bps_up(base, nav),
         lowest,
         first_breach,
         nav,

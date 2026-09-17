@@ -576,15 +576,6 @@ fun mint_base_bound_assertion_rejects_under_exposure() {
     abort_code = errors::EArithmeticOverflow,
     location = blast_boosts_core::accounting_math,
 )]
-fun leverage_ratio_rejects_an_overflowing_result() {
-    accounting_math::leverage_bps_up(std::u64::max_value!(), 9_999);
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EArithmeticOverflow,
-    location = blast_boosts_core::accounting_math,
-)]
 fun target_notional_rejects_an_overflowing_result() {
     accounting_math::target_notional_down(std::u64::max_value!(), 10_001);
 }
@@ -621,20 +612,17 @@ fun canonical_quotes_support_the_maximum_venue_equity() {
     assert_eq!(shares_out, 100);
     assert_eq!(shares_after, max);
 
-    let (reserve_after, shares_after, equity_keep, _, gross, fee, net) =
-        accounting_math::redemption_accounting_quote(
-            1,
-            max,
-            max,
-            1,
-            max - 1,
-            0,
-        );
+    let (reserve_after, nav_kept, fee, net) = accounting_math::redemption_accounting_quote(
+        1,
+        max,
+        max,
+        1,
+        max - 1,
+        0,
+    );
 
     assert_eq!(reserve_after, 1);
-    assert_eq!(shares_after, max - 2);
-    assert_eq!(equity_keep, max - 2);
-    assert_eq!(gross, 1);
+    assert_eq!(nav_kept, max - 2);
     assert_eq!(fee, 0);
     assert_eq!(net, 1);
 }
@@ -693,22 +681,21 @@ fun redemption_fee_moves_to_the_reserve_without_remaining_in_shareholder_nav() {
     let shares_before = 9_900_000;
     // The proportional unwind charged 10,000 in venue execution costs.
     let venue_equity_unwound = venue_equity_before - 10_000;
-    let (reserve_after, _, equity_keep, _, _, fee, net) =
-        accounting_math::redemption_accounting_quote(
-            990_000,
-            venue_equity_before,
-            venue_equity_unwound,
-            reserve_before,
-            shares_before,
-            100,
-        );
+    let (reserve_after, nav_kept, fee, net) = accounting_math::redemption_accounting_quote(
+        990_000,
+        venue_equity_before,
+        venue_equity_unwound,
+        reserve_before,
+        shares_before,
+        100,
+    );
     let venue_equity_after = venue_equity_unwound - net;
     let nav_after = accounting_math::shareholder_nav(venue_equity_after, reserve_after);
 
-    assert_eq!(equity_keep, 8_910_000);
+    assert_eq!(nav_kept, 8_910_000);
     assert_eq!(fee, 9_800);
     assert_eq!(net, 970_200);
-    assert_eq!(nav_after, equity_keep);
+    assert_eq!(nav_after, nav_kept);
 }
 
 /// Exhausts fee, reserve, execution-loss, NAV, supply, burn, and rounding combinations.
@@ -756,15 +743,14 @@ fun canonical_redemptions_match_independent_accounting_across_the_small_domain()
 #[test]
 fun canonical_redemption_supports_the_highest_fee_near_the_u64_boundary() {
     let max = std::u64::max_value!();
-    let (reserve_after, shares_after, equity_keep, _, gross, fee, net) =
-        accounting_math::redemption_accounting_quote(
-            10_000,
-            max,
-            max,
-            max - 10_001,
-            10_001,
-            9_999,
-        );
+    let (reserve_after, nav_kept, fee, net) = accounting_math::redemption_accounting_quote(
+        10_000,
+        max,
+        max,
+        max - 10_001,
+        10_001,
+        9_999,
+    );
     let venue_equity_after = max - net;
     let nav_after = accounting_math::shareholder_nav(
         venue_equity_after,
@@ -772,12 +758,10 @@ fun canonical_redemption_supports_the_highest_fee_near_the_u64_boundary() {
     );
 
     assert_eq!(reserve_after, max - 2);
-    assert_eq!(shares_after, 1);
-    assert_eq!(equity_keep, 1);
-    assert_eq!(gross, 10_000);
+    assert_eq!(nav_kept, 1);
     assert_eq!(fee, 9_999);
     assert_eq!(net, 1);
-    assert_eq!(nav_after, equity_keep);
+    assert_eq!(nav_after, nav_kept);
 }
 
 /// Proves that authenticated unwind loss reduces only the redeemer's gross claim.
@@ -802,7 +786,7 @@ fun a_canonical_redemption_rejects_an_unbacked_unwind_reserve_first() {
 fun splitting_a_redemption_cannot_recapture_an_earlier_reserve_fee() {
     let venue_equity_0 = 10_000_000;
     let reserve_0 = 0;
-    let (combined_reserve, _, combined_keep, _, _, _, combined_net) =
+    let (combined_reserve, combined_keep, _, combined_net) =
         accounting_math::redemption_accounting_quote(
             98,
             venue_equity_0,
@@ -817,7 +801,7 @@ fun splitting_a_redemption_cannot_recapture_an_earlier_reserve_fee() {
         combined_reserve,
     );
 
-    let (reserve_1, shares_1, keep_1, _, _, _, net_1) =
+    let (reserve_1, keep_1, _, net_1) =
         accounting_math::redemption_accounting_quote(
             49,
             venue_equity_0,
@@ -830,13 +814,13 @@ fun splitting_a_redemption_cannot_recapture_an_earlier_reserve_fee() {
     let nav_1 = accounting_math::shareholder_nav(venue_equity_1, reserve_1);
     assert_eq!(nav_1, keep_1);
 
-    let (reserve_2, _, keep_2, _, _, _, net_2) =
+    let (reserve_2, keep_2, _, net_2) =
         accounting_math::redemption_accounting_quote(
             49,
             venue_equity_1,
             venue_equity_1,
             reserve_1,
-            shares_1,
+            100 - 49,
             100,
         );
     let venue_equity_2 = venue_equity_1 - net_2;
@@ -916,7 +900,7 @@ fun a_multi_operation_sequence_preserves_venue_equity_as_nav_plus_reserve() {
     assert_eq!(nav_2, nav_1);
     assert_eq!(venue_equity_2, nav_2 + reserve_2);
 
-    let (reserve_3, _, equity_keep, _, _, _, net) =
+    let (reserve_3, nav_kept, _, net) =
         accounting_math::redemption_accounting_quote(
             minted,
             venue_equity_2,
@@ -928,7 +912,7 @@ fun a_multi_operation_sequence_preserves_venue_equity_as_nav_plus_reserve() {
     let venue_equity_3 = venue_equity_2 - net;
     let nav_3 = accounting_math::shareholder_nav(venue_equity_3, reserve_3);
 
-    assert_eq!(nav_3, equity_keep);
+    assert_eq!(nav_3, nav_kept);
     assert_eq!(venue_equity_3, nav_3 + reserve_3);
 
     let positive_funding = 2_000;
@@ -972,7 +956,7 @@ fun a_sequence_after_reserve_exhaustion_charges_only_uncovered_funding_to_nav() 
     assert_eq!(uncovered, 50_000);
     assert_eq!(nav_2, nav_1 - uncovered);
 
-    let (reserve_3, _, equity_keep, _, gross, fee, net) =
+    let (reserve_3, nav_kept, fee, net) =
         accounting_math::redemption_accounting_quote(
             minted,
             venue_equity_2,
@@ -984,8 +968,8 @@ fun a_sequence_after_reserve_exhaustion_charges_only_uncovered_funding_to_nav() 
     let venue_equity_3 = venue_equity_2 - net;
     let nav_3 = accounting_math::shareholder_nav(venue_equity_3, reserve_3);
 
-    assert_eq!(gross, fee + net);
-    assert_eq!(nav_3, equity_keep);
+    assert_eq!(nav_2 - nav_kept, fee + net);
+    assert_eq!(nav_3, nav_kept);
     assert_eq!(venue_equity_3, nav_3 + reserve_3);
 }
 
@@ -1049,21 +1033,18 @@ fun random_accounting_sequences_conserve(seed: u32) {
 /// claim and the quote reports the NAV that actually remains (ADR 0084 D3).
 #[test]
 fun a_favorable_unwind_pays_exactly_the_claim_and_keeps_the_gain_for_holders() {
-    let (reserve_after, shares_after, nav_kept, proportional_claim, gross, fee, net) =
-        accounting_math::redemption_accounting_quote(
-            1,
-            1_000_000,
-            1_000_100,
-            0,
-            1_000_000,
-            0,
-        );
+    let (reserve_after, nav_kept, fee, net) = accounting_math::redemption_accounting_quote(
+        1,
+        1_000_000,
+        1_000_100,
+        0,
+        1_000_000,
+        0,
+    );
 
     assert_eq!(reserve_after, 0);
-    assert_eq!(shares_after, 999_999);
+    // The one-unit proportional claim is paid; the 100-unit gain stays.
     assert_eq!(nav_kept, 1_000_099);
-    assert_eq!(proportional_claim, 1);
-    assert_eq!(gross, 1);
     assert_eq!(fee, 0);
     assert_eq!(net, 1);
 }
@@ -1072,22 +1053,21 @@ fun a_favorable_unwind_pays_exactly_the_claim_and_keeps_the_gain_for_holders() {
 /// the NAV kept for the remaining holders is never below the proportional keep.
 #[test]
 fun the_proportional_claim_is_independent_of_the_unwound_reading() {
-    let (_, _, kept_flat, claim_flat, gross_flat, _, _) =
+    let (_, kept_flat, fee_flat, net_flat) =
         accounting_math::redemption_accounting_quote(250, 10_000, 10_000, 500, 1_000, 30);
-    let (_, _, kept_gain, claim_gain, gross_gain, _, _) =
+    let (_, kept_gain, fee_gain, net_gain) =
         accounting_math::redemption_accounting_quote(250, 10_000, 10_400, 500, 1_000, 30);
-    let (_, _, kept_loss, claim_loss, gross_loss, _, _) =
+    let (_, kept_loss, fee_loss, net_loss) =
         accounting_math::redemption_accounting_quote(250, 10_000, 9_900, 500, 1_000, 30);
+    // The proportional claim is 2,375 at every reading: 9,500 - ceil(9,500 * 750 / 1,000).
+    let claim = 2_375;
 
     assert_eq!(kept_flat, 7_125);
     assert_eq!(kept_gain, 7_525);
     assert_eq!(kept_loss, 7_125);
-    assert_eq!(claim_flat, 2_375);
-    assert_eq!(claim_gain, claim_flat);
-    assert_eq!(claim_loss, claim_flat);
-    assert_eq!(gross_flat, 2_375);
-    assert_eq!(gross_gain, 2_375);
-    assert_eq!(gross_loss, 2_275);
+    assert_eq!(fee_flat + net_flat, claim);
+    assert_eq!(fee_gain + net_gain, claim);
+    assert_eq!(fee_loss + net_loss, claim - 100);
 }
 
 /// A canonical mint whose NAV rises by more than `deposit - fee` credits exactly that.
@@ -1206,14 +1186,12 @@ fun capped_redemptions_never_lower_remaining_holders_nav_per_share_across_the_sm
                     let equity_keep = ((nav_before as u128) * (shares_after as u128))
                         .div_ceil(shares_before as u128) as u64;
                     if (nav_unwound.min(nav_before) > equity_keep) {
-                        let (_, quoted_after, nav_kept, claim, gross, fee, net) =
+                        let (_, nav_kept, fee, net) =
                             accounting_math::redemption_accounting_quote(
                                 shares_burned, nav_before, nav_unwound, 0, shares_before, 0,
                             );
-                        assert_eq!(quoted_after, shares_after);
-                        assert_eq!(claim, nav_before - equity_keep);
-                        assert_eq!(gross, nav_unwound.min(nav_before) - equity_keep);
-                        assert!(gross <= claim);
+                        assert_eq!(net, nav_unwound.min(nav_before) - equity_keep);
+                        assert!(net <= nav_before - equity_keep);
                         assert_eq!(fee, 0);
                         assert_eq!(nav_kept + net, nav_unwound);
                         assert!(nav_kept >= equity_keep);
@@ -1302,15 +1280,6 @@ fun a_wiped_account_is_backed_but_has_no_positive_nav() {
     assert!(!accounting_math::is_shareholder_nav_positive(5_000_000, 5_000_000));
     assert!(accounting_math::is_shareholder_nav_positive(5_000_001, 5_000_000));
     assert!(!accounting_math::is_shareholder_nav_positive(4_999_999, 5_000_000));
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EInvalidNav,
-    location = blast_boosts_core::accounting_math,
-)]
-fun leverage_ratio_rejects_zero_nav() {
-    accounting_math::leverage_bps_up(10_000_000, 0);
 }
 
 // === Private Test Helpers ===
@@ -1434,36 +1403,31 @@ fun assert_canonical_redemption_matches_reference(
     let expected_fee = reference_fee_up(expected_gross, redeem_fee_bps);
     let expected_net = expected_gross - expected_fee;
     let expected_reserve = reserve_before + expected_fee;
-    let (reserve_after, shares_after, equity_keep, proportional_claim, gross, fee, net) =
-        accounting_math::redemption_accounting_quote(
-            shares_burned,
-            venue_equity_before,
-            venue_equity_unwound,
-            reserve_before,
-            shares_before,
-            redeem_fee_bps,
-        );
+    let (reserve_after, nav_kept, fee, net) = accounting_math::redemption_accounting_quote(
+        shares_burned,
+        venue_equity_before,
+        venue_equity_unwound,
+        reserve_before,
+        shares_before,
+        redeem_fee_bps,
+    );
     let venue_equity_after = venue_equity_unwound - net;
-
-    assert_eq!(proportional_claim, nav_before - expected_equity_keep);
-    assert_eq!(gross + execution_loss, proportional_claim);
     let nav_after = accounting_math::shareholder_nav(
         venue_equity_after,
         reserve_after,
     );
 
+    // The unwind loss comes out of the proportional claim, never the kept equity.
+    assert_eq!(fee + net + execution_loss, nav_before - expected_equity_keep);
     assert_eq!(reserve_after, expected_reserve);
-    assert_eq!(shares_after, expected_shares_after);
-    assert_eq!(equity_keep, expected_equity_keep);
-    assert_eq!(gross, expected_gross);
+    assert_eq!(nav_kept, expected_equity_keep);
     assert_eq!(fee, expected_fee);
     assert_eq!(net, expected_net);
-    assert_eq!(gross, fee + net);
-    assert_eq!(nav_after, equity_keep);
+    assert_eq!(nav_after, nav_kept);
     assert_eq!(venue_equity_after, nav_after + reserve_after);
     assert!(
-        (equity_keep as u128) * (shares_before as u128)
-            >= (nav_before as u128) * (shares_after as u128),
+        (nav_kept as u128) * (shares_before as u128)
+            >= (nav_before as u128) * (expected_shares_after as u128),
     );
 }
 
@@ -1493,7 +1457,7 @@ fun assert_split_redemption(
     redeem_fee_bps: u64,
 ) {
     let venue_equity_before = nav_before + reserve_before;
-    let (combined_reserve, _, combined_keep, _, _, _, combined_net) =
+    let (combined_reserve, combined_keep, _, combined_net) =
         accounting_math::redemption_accounting_quote(
             shares_burned,
             venue_equity_before,
@@ -1508,7 +1472,7 @@ fun assert_split_redemption(
         combined_reserve,
     );
 
-    let (reserve_1, shares_1, keep_1, _, _, _, net_1) =
+    let (reserve_1, keep_1, _, net_1) =
         accounting_math::redemption_accounting_quote(
             first_burn,
             venue_equity_before,
@@ -1519,13 +1483,13 @@ fun assert_split_redemption(
         );
     let venue_equity_1 = venue_equity_before - net_1;
     let nav_1 = accounting_math::shareholder_nav(venue_equity_1, reserve_1);
-    let (reserve_2, _, keep_2, _, _, _, net_2) =
+    let (reserve_2, keep_2, _, net_2) =
         accounting_math::redemption_accounting_quote(
             shares_burned - first_burn,
             venue_equity_1,
             venue_equity_1,
             reserve_1,
-            shares_1,
+            shares_before - first_burn,
             redeem_fee_bps,
         );
     let venue_equity_2 = venue_equity_1 - net_2;

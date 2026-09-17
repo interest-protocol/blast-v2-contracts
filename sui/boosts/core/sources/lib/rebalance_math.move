@@ -48,13 +48,10 @@ public(package) fun increase_base_down(
     nav: u64, notional: u64, target_bps: u64, base_price: u64, collateral_price: u64,
     lot_size: u64, order_cap: u64, fee_bps: u64, slippage_bps: u64, base_unit: u64, collateral_unit: u64,
 ): u64 {
-    assert!(nav > 0, blast_boosts_core::errors::invalid_nav!());
-    assert!(target_bps > 0, blast_boosts_core::errors::invalid_target_leverage_bps!());
-    let target = (nav as u128) * (target_bps as u128) / (constants::basis_points_denominator!() as u128);
-    assert!(target <= std::u64::max_value!() as u128, blast_boosts_core::errors::arithmetic_overflow!());
-    if (target <= notional as u128)  return 0 ;
+    let target = accounting_math::target_notional_down(nav, target_bps);
+    if (target <= notional) return 0;
 
-    let headroom = ((target as u64) - notional).min(order_cap);
+    let headroom = (target - notional).min(order_cap);
     let maximum = base_for_notional_down(headroom, base_price, collateral_price, lot_size, base_unit, collateral_unit);
     let mut low = 0;
     let mut high = maximum / lot_size;
@@ -111,4 +108,4 @@ public(package) fun reduction_is_sufficient(
 
 // === Imports ===
 
-use blast_boosts_core::constants;
+use blast_boosts_core::{accounting_math, constants};

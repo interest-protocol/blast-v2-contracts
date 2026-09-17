@@ -149,66 +149,6 @@ fun settled_rejects_active_operations() {
 }
 
 #[test]
-fun active_permits_normal_redemption() {
-    lifecycle::active_for_testing().assert_normal_redemption_allowed();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle,
-)]
-fun uninitialized_rejects_normal_redemption() {
-    lifecycle::new().assert_normal_redemption_allowed();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle,
-)]
-fun unwinding_rejects_normal_redemption() {
-    lifecycle::unwinding_for_testing().assert_normal_redemption_allowed();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle,
-)]
-fun settled_rejects_normal_redemption() {
-    lifecycle::settled_for_testing().assert_normal_redemption_allowed();
-}
-
-#[test]
-fun active_permits_risk_reduction() {
-    lifecycle::active_for_testing().assert_operating_risk_reduction_allowed();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle,
-)]
-fun uninitialized_rejects_operating_risk_reduction() {
-    lifecycle::new().assert_operating_risk_reduction_allowed();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle,
-)]
-fun unwinding_rejects_operating_risk_reduction() {
-    lifecycle::unwinding_for_testing()
-        .assert_operating_risk_reduction_allowed();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle,
-)]
-fun settled_rejects_operating_risk_reduction() {
-    lifecycle::settled_for_testing()
-        .assert_operating_risk_reduction_allowed();
-}
-
-#[test]
 fun unwinding_permits_shutdown_close() {
     lifecycle::unwinding_for_testing().assert_shutdown_close_allowed();
 }

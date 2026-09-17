@@ -40,7 +40,6 @@ public struct PositionObservation {
 
 /// The normalized result of one isolated funding settlement.
 public enum FundingSettlement {
-    None,
     Credit(u64),
     Cost(u64),
 }
@@ -107,11 +106,6 @@ public fun new_position(
         collateral_oracle,
         mark_price,
     }
-}
-
-/// Creates the no-settlement funding outcome.
-public fun no_funding(): FundingSettlement {
-    FundingSettlement::None
 }
 
 /// Creates a credit funding outcome.
@@ -199,10 +193,9 @@ public(package) fun is_cost(self: &FundingSettlement): bool {
     match (self) { FundingSettlement::Cost(_) => true, _ => false }
 }
 
-/// Returns the settled amount; zero for `None`.
+/// Returns the settled amount.
 public(package) fun amount(self: &FundingSettlement): u64 {
     match (self) {
-        FundingSettlement::None => 0,
         FundingSettlement::Credit(amount) => *amount,
         FundingSettlement::Cost(amount) => *amount,
     }
@@ -211,7 +204,6 @@ public(package) fun amount(self: &FundingSettlement): u64 {
 /// Consumes one funding settlement once core has read it.
 public(package) fun destroy_funding(self: FundingSettlement) {
     match (self) {
-        FundingSettlement::None => (),
         FundingSettlement::Credit(_) => (),
         FundingSettlement::Cost(_) => (),
     }

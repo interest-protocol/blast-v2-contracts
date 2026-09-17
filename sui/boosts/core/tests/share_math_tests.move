@@ -83,26 +83,18 @@ fun a_zero_amount_is_rejected_before_an_invalid_fee_rate() {
 #[test]
 fun mint_shares_floor_and_leave_the_remainder_with_existing_holders() {
     // Exact division mints the whole quotient.
-    let (shares_out, shares_after) = accounting_math::mint_quote(10, 100, 100);
-
-    assert_eq!(shares_out, 10);
-    assert_eq!(shares_after, 110);
+    assert_eq!(accounting_math::mint_quote(10, 100, 100), 10);
 
     // A one-unit remainder stays with the Series.
-    let (shares_out, shares_after) = accounting_math::mint_quote(10, 300, 100);
-
-    assert_eq!(shares_out, 3);
-    assert_eq!(shares_after, 103);
+    assert_eq!(accounting_math::mint_quote(10, 300, 100), 3);
 }
 
 /// Catches an intermediate `shares_before * contribution` that wraps instead of widening.
 #[test]
 fun mint_supports_maximum_supported_values() {
     let max = std::u64::max_value!();
-    let (shares_out, shares_after) = accounting_math::mint_quote(100, max - 100, max - 1_000);
 
-    assert_eq!(shares_out, 99);
-    assert_eq!(shares_after, max - 901);
+    assert_eq!(accounting_math::mint_quote(100, max - 100, max - 1_000), 99);
 }
 
 /// Catches any mint that lowers NAV per share for holders that entered earlier.
@@ -138,19 +130,14 @@ fun mint_formula_and_non_dilution_hold_across_the_small_domain() {
 #[test]
 fun mint_reaches_the_maximum_representable_share_boundary() {
     let max = std::u64::max_value!();
-    let (shares_out, shares_after) = accounting_math::mint_quote(max - 1, 1, 1);
 
-    assert_eq!(shares_out, max - 1);
-    assert_eq!(shares_after, max);
+    assert_eq!(accounting_math::mint_quote(max - 1, 1, 1), max - 1);
 }
 
 /// Pins the smallest positive contribution that still buys one atomic share.
 #[test]
 fun a_one_unit_contribution_can_mint_exactly_one_atomic_share() {
-    let (shares_out, shares_after) = accounting_math::mint_quote(1, 100_000, 100_000);
-
-    assert_eq!(shares_out, 1);
-    assert_eq!(shares_after, 100_001);
+    assert_eq!(accounting_math::mint_quote(1, 100_000, 100_000), 1);
 }
 
 #[test]
@@ -225,30 +212,16 @@ fun zero_supply_is_rejected_before_a_zero_contribution() {
 /// Catches paying a redeemer more than the excess over the equity kept for others.
 #[test]
 fun redemption_pays_only_the_excess_over_the_kept_equity() {
-    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote(
-        10,
-        1_000,
-        1_000,
-        100,
-        100,
-    );
+    // The kept equity is 900, so the gross is the 100-unit excess.
+    let (gross, fee, net) = accounting_math::redemption_quote(10, 1_000, 1_000, 100, 100);
 
-    assert_eq!(shares_after, 90);
-    assert_eq!(equity_keep, 900);
     assert_eq!(gross, 100);
     assert_eq!(fee, 1);
     assert_eq!(net, 99);
 
     // An unwind that costs the Series 50 units pays the redeemer 50 less.
-    let (_, equity_keep, gross, fee, net) = accounting_math::redemption_quote(
-        10,
-        1_000,
-        950,
-        100,
-        0,
-    );
+    let (gross, fee, net) = accounting_math::redemption_quote(10, 1_000, 950, 100, 0);
 
-    assert_eq!(equity_keep, 900);
     assert_eq!(gross, 50);
     assert_eq!(fee, 0);
     assert_eq!(net, 50);
@@ -257,30 +230,16 @@ fun redemption_pays_only_the_excess_over_the_kept_equity() {
 /// A favorable unwind pays exactly the proportional claim; the gain stays with holders.
 #[test]
 fun a_favorable_unwind_pays_exactly_the_proportional_claim() {
-    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote(
-        10,
-        1_000,
-        1_050,
-        100,
-        100,
-    );
+    // The kept equity is 900 of the 1,000 pre-unwind NAV; the 50-unit gain stays.
+    let (gross, fee, net) = accounting_math::redemption_quote(10, 1_000, 1_050, 100, 100);
 
-    assert_eq!(shares_after, 90);
-    assert_eq!(equity_keep, 900);
     assert_eq!(gross, 100);
     assert_eq!(fee, 1);
     assert_eq!(net, 99);
 
     // The audit case: one share of a million against a 100-unit pool-wide gain pays one unit.
-    let (_, equity_keep, gross, _, net) = accounting_math::redemption_quote(
-        1,
-        1_000_000,
-        1_000_100,
-        1_000_000,
-        0,
-    );
+    let (gross, _, net) = accounting_math::redemption_quote(1, 1_000_000, 1_000_100, 1_000_000, 0);
 
-    assert_eq!(equity_keep, 999_999);
     assert_eq!(gross, 1);
     assert_eq!(net, 1);
 }
@@ -303,16 +262,9 @@ fun a_favorable_unwind_cannot_rescue_a_claim_the_kept_equity_consumes() {
 #[test]
 fun a_maximum_width_favorable_unwind_is_capped_at_the_claim() {
     let max = std::u64::max_value!();
-    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote(
-        1,
-        max - 1,
-        max,
-        max - 1,
-        0,
-    );
+    // The kept equity is `max - 2`, one unit below the pre-unwind NAV.
+    let (gross, fee, net) = accounting_math::redemption_quote(1, max - 1, max, max - 1, 0);
 
-    assert_eq!(shares_after, max - 2);
-    assert_eq!(equity_keep, max - 2);
     assert_eq!(gross, 1);
     assert_eq!(fee, 0);
     assert_eq!(net, 1);
@@ -321,16 +273,9 @@ fun a_maximum_width_favorable_unwind_is_capped_at_the_claim() {
 /// Catches flooring the kept equity, which would pay the redeemer one extra unit.
 #[test]
 fun redemption_rounds_the_kept_equity_up() {
-    let (shares_after, equity_keep, gross, _, net) = accounting_math::redemption_quote(
-        10,
-        1_001,
-        1_001,
-        100,
-        0,
-    );
+    // Flooring the kept equity at 900 would pay 101; rounding it up to 901 pays 100.
+    let (gross, _, net) = accounting_math::redemption_quote(10, 1_001, 1_001, 100, 0);
 
-    assert_eq!(shares_after, 90);
-    assert_eq!(equity_keep, 901);
     assert_eq!(gross, 100);
     assert_eq!(net, 100);
 }
@@ -338,29 +283,13 @@ fun redemption_rounds_the_kept_equity_up() {
 /// Catches an off-by-one at the first and last presentable share count.
 #[test]
 fun redemption_supports_the_first_and_last_presentable_share_count() {
-    let (shares_after, equity_keep, gross, _, net) = accounting_math::redemption_quote(
-        1,
-        1_000,
-        1_000,
-        100,
-        0,
-    );
+    let (gross, _, net) = accounting_math::redemption_quote(1, 1_000, 1_000, 100, 0);
 
-    assert_eq!(shares_after, 99);
-    assert_eq!(equity_keep, 990);
     assert_eq!(gross, 10);
     assert_eq!(net, 10);
 
-    let (shares_after, equity_keep, gross, _, net) = accounting_math::redemption_quote(
-        99,
-        1_000,
-        1_000,
-        100,
-        0,
-    );
+    let (gross, _, net) = accounting_math::redemption_quote(99, 1_000, 1_000, 100, 0);
 
-    assert_eq!(shares_after, 1);
-    assert_eq!(equity_keep, 10);
     assert_eq!(gross, 990);
     assert_eq!(net, 990);
 }
@@ -369,16 +298,8 @@ fun redemption_supports_the_first_and_last_presentable_share_count() {
 #[test]
 fun redemption_supports_maximum_supported_values() {
     let max = std::u64::max_value!();
-    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote(
-        1,
-        max,
-        max,
-        max,
-        0,
-    );
+    let (gross, fee, net) = accounting_math::redemption_quote(1, max, max, max, 0);
 
-    assert_eq!(shares_after, max - 1);
-    assert_eq!(equity_keep, max - 1);
     assert_eq!(gross, 1);
     assert_eq!(fee, 0);
     assert_eq!(net, 1);
@@ -387,15 +308,8 @@ fun redemption_supports_maximum_supported_values() {
 /// Catches a redemption fee that leaves the redeemer nothing but still burns shares.
 #[test]
 fun the_highest_fee_rate_still_leaves_a_positive_payout() {
-    let (_, equity_keep, gross, fee, net) = accounting_math::redemption_quote(
-        10,
-        100_000,
-        100_000,
-        100,
-        9_999,
-    );
+    let (gross, fee, net) = accounting_math::redemption_quote(10, 100_000, 100_000, 100, 9_999);
 
-    assert_eq!(equity_keep, 90_000);
     assert_eq!(gross, 10_000);
     assert_eq!(fee, 9_999);
     assert_eq!(net, 1);
@@ -512,9 +426,9 @@ fun immediate_round_trips_cannot_profit_from_share_or_fee_rounding() {
 /// Catches gaining shares by splitting one contribution around downward share rounding.
 #[test]
 fun splitting_a_mint_does_not_create_extra_shares() {
-    let (combined_shares, _) = accounting_math::mint_quote(198, 1_000, 333);
-    let (first_shares, shares_after_first) = accounting_math::mint_quote(99, 1_000, 333);
-    let (second_shares, _) = accounting_math::mint_quote(99, 1_099, shares_after_first);
+    let combined_shares = accounting_math::mint_quote(198, 1_000, 333);
+    let first_shares = accounting_math::mint_quote(99, 1_000, 333);
+    let second_shares = accounting_math::mint_quote(99, 1_099, 333 + first_shares);
 
     assert_eq!(combined_shares, 65);
     assert_eq!(first_shares + second_shares, 64);
@@ -655,16 +569,12 @@ fun assert_fee_is_exact_ceiling(amount: u64, fee_bps: u64) {
 
 /// Asserts every mint field against an independently evaluated floor formula.
 fun assert_mint_matches_reference(contribution: u64, nav_before: u64, shares_before: u64) {
-    let (shares_out, shares_after) = accounting_math::mint_quote(
-        contribution,
-        nav_before,
-        shares_before,
-    );
+    let shares_out = accounting_math::mint_quote(contribution, nav_before, shares_before);
+    let shares_after = shares_before + shares_out;
     let share_numerator = (shares_before as u128) * (contribution as u128);
     let nav_after = (nav_before as u128) + (contribution as u128);
 
     assert_eq!(shares_out as u128, share_numerator / (nav_before as u128));
-    assert_eq!(shares_after, shares_before + shares_out);
     assert!((shares_out as u128) * (nav_before as u128) <= share_numerator);
     assert!(((shares_out as u128) + 1) * (nav_before as u128) > share_numerator);
     assert!(nav_after * (shares_before as u128) >= (nav_before as u128) * (shares_after as u128));
@@ -678,19 +588,20 @@ fun assert_redemption_matches_reference(
     shares_before: u64,
     redeem_fee_bps: u64,
 ) {
-    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote(
+    let (gross, fee, net) = accounting_math::redemption_quote(
         shares_burned,
         nav_before,
         nav_unwound,
         shares_before,
         redeem_fee_bps,
     );
+    let shares_after = shares_before - shares_burned;
+    let equity_keep = nav_unwound.min(nav_before) - gross;
     let equity_numerator = (nav_before as u128) * (shares_after as u128);
     let expected_equity_keep = equity_numerator.div_ceil(shares_before as u128) as u64;
     let expected_gross = nav_unwound.min(nav_before) - expected_equity_keep;
     let expected_fee = reference_fee_up(expected_gross, redeem_fee_bps);
 
-    assert_eq!(shares_after, shares_before - shares_burned);
     assert_eq!(equity_keep, expected_equity_keep);
     assert_eq!(gross, expected_gross);
     assert_eq!(fee, expected_fee);
@@ -716,34 +627,26 @@ fun assert_round_trip_cannot_profit(
     let mint_fee = reference_fee_up(deposit, mint_fee_bps);
     let contribution = deposit - mint_fee;
     let nav_after_mint = nav_before + contribution;
-    let (shares_out, shares_after) = accounting_math::mint_quote(
-        contribution,
-        nav_before,
-        shares_before,
-    );
-    let (_, equity_keep, _, redemption_fee, net) = accounting_math::redemption_quote(
+    let shares_out = accounting_math::mint_quote(contribution, nav_before, shares_before);
+    let (_, redemption_fee, net) = accounting_math::redemption_quote(
         shares_out,
         nav_after_mint,
         nav_after_mint,
-        shares_after,
+        shares_before + shares_out,
         redeem_fee_bps,
     );
+    let equity_keep = nav_after_mint - net - redemption_fee;
 
     assert!(net <= deposit);
-    assert_eq!(nav_after_mint - net - redemption_fee, equity_keep);
     assert!(equity_keep >= nav_before);
 }
 
 /// Asserts the quote fields reconcile and `nav_after / S1 >= nav_before / S0`.
 fun assert_mint_is_non_dilutive(contribution: u64, nav_before: u64, shares_before: u64) {
-    let (shares_out, shares_after) = accounting_math::mint_quote(
-        contribution,
-        nav_before,
-        shares_before,
-    );
+    let shares_out = accounting_math::mint_quote(contribution, nav_before, shares_before);
+    let shares_after = shares_before + shares_out;
     let nav_after = (nav_before as u128) + (contribution as u128);
 
-    assert_eq!(shares_after, shares_before + shares_out);
     assert!(nav_after * (shares_before as u128) >= (nav_before as u128) * (shares_after as u128));
 }
 
@@ -755,17 +658,17 @@ fun assert_redemption_is_non_dilutive(
     shares_before: u64,
     redeem_fee_bps: u64,
 ) {
-    let (shares_after, equity_keep, gross, fee, net) = accounting_math::redemption_quote(
+    let (gross, fee, net) = accounting_math::redemption_quote(
         shares_burned,
         nav_before,
         nav_unwound,
         shares_before,
         redeem_fee_bps,
     );
+    let shares_after = shares_before - shares_burned;
+    let equity_keep = nav_unwound.min(nav_before) - gross;
 
     assert!(fee <= gross);
-    assert_eq!(shares_after, shares_before - shares_burned);
-    assert_eq!(gross, nav_unwound.min(nav_before) - equity_keep);
     assert_eq!(net, gross - fee);
     assert!(
         (equity_keep as u128) * (shares_before as u128)

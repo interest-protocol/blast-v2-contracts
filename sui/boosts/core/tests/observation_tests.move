@@ -125,11 +125,6 @@ fun position_construction_rejects_a_flat_base_with_nonzero_notional() {
 
 #[test]
 fun funding_construction_preserves_each_settlement_variant() {
-    let none = observation::no_funding();
-    assert!(!none.is_cost());
-    assert_eq!(none.amount(), 0);
-    none.destroy();
-
     let credit = observation::funding_credit(7);
     assert!(!credit.is_cost());
     assert_eq!(credit.amount(), 7);

@@ -1562,11 +1562,6 @@ fun an_order_one_unit_above_the_live_maximum_is_rejected() {
 // --- Funding Settlement ---
 
 #[test]
-fun no_funding_leaves_the_reserve_unchanged() {
-    assert_funding_settlement(observation::no_funding(), 0, 0, SEED_RESERVE);
-}
-
-#[test]
 fun positive_funding_credits_only_the_buffer() {
     assert_funding_settlement(observation::funding_credit(1), 0, 0, SEED_RESERVE + 1);
 }

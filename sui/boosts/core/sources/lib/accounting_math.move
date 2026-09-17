@@ -57,9 +57,8 @@ public(package) fun is_shareholder_nav_positive(
 /// `position_collateral`, `venue_equity`, and `maintenance_reserve` use atomic
 /// collateral units. `leverage_limit_bps` uses leverage basis points, where
 /// 10,000 is 1x. The ratio rounds up before the strict comparison: equality
-/// is unsafe. An unbacked reserve, zero
-/// shareholder NAV, or zero limit returns false. The widened numerator is at
-/// most `u64::MAX * 10_000`, so every `u64` input is supported without
+/// is unsafe. An unbacked reserve, zero shareholder NAV, or zero limit returns
+/// false. The comparison stays wide, so every `u64` input is supported without
 /// narrowing or aborting.
 public(package) fun is_accounting_leverage_below_limit(
     position_collateral: u64,
@@ -67,17 +66,10 @@ public(package) fun is_accounting_leverage_below_limit(
     maintenance_reserve: u64,
     leverage_limit_bps: u64,
 ): bool {
-    if (maintenance_reserve >= venue_equity || leverage_limit_bps == 0) {
-        false
-    } else {
-        let nav = (venue_equity - maintenance_reserve) as u128;
-        let leverage_bps = (position_collateral as u128).mul_div_ceil(
-            constants::basis_points_denominator!() as u128,
-            nav,
-        );
-
-        leverage_bps < (leverage_limit_bps as u128)
-    }
+    is_shareholder_nav_positive(venue_equity, maintenance_reserve)
+        && leverage_limit_bps > 0
+        && leverage_bps_up(position_collateral, venue_equity - maintenance_reserve)
+            < (leverage_limit_bps as u128)
 }
 
 /// Returns whether base exceeds the minimum operation size, without aborting.
@@ -118,28 +110,6 @@ public(package) fun shareholder_nav(
     venue_equity - maintenance_reserve
 }
 
-/// Returns accounting leverage in leverage basis points, rounding up.
-///
-/// `notional` is the absolute oracle-valued position notional and `nav` is
-/// positive shareholder NAV, both in atomic collateral units. Rounding up keeps
-/// an unsafe position from appearing safer than it is. A flat position returns
-/// zero. This accounting ratio is not the venue margin ratio; ADR 0064 keeps
-/// both as independent gates.
-///
-/// Supported bound: `ceil(notional * 10_000 / nav)` must fit in `u64`, so
-/// ratios up to about `1.8 * 10^15` x are representable and anything above that
-/// aborts with the overflow code. The intermediate stays below `2^78`.
-public(package) fun leverage_bps_up(notional: u64, nav: u64): u64 {
-    assert!(nav > 0, blast_boosts_core::errors::invalid_nav!());
-
-    narrow_to_u64(
-        (notional as u128).mul_div_ceil(
-            constants::basis_points_denominator!() as u128,
-            nav as u128,
-        ),
-    )
-}
-
 // --- Fees ---
 
 /// Returns the fee retained on `amount` at `fee_bps`, rounding up.
@@ -161,14 +131,25 @@ public(package) fun fee_up(amount: u64, fee_bps: u64): u64 {
     amount.mul_div_ceil(fee_bps, constants::basis_points_denominator!())
 }
 
-/// Splits one ceiling-rounded fee; its allocation remainder belongs to reserve.
-public(package) fun fee_allocation(amount: u64, rate_bps: u64, admin_share_bps: u64): (u64, u64, u64) {
+/// Returns the admin's share of a collected fee, rounding down.
+///
+/// `fee` and the result are atomic collateral units. `admin_share_bps` is a
+/// rate on the 10,000 basis-point denominator and may equal it. Rounding down
+/// leaves the allocation remainder with the maintenance reserve, so
+/// `admin <= fee` always holds.
+public(package) fun admin_share_down(fee: u64, admin_share_bps: u64): u64 {
     assert!(
         admin_share_bps <= constants::basis_points_denominator!(),
         blast_boosts_core::errors::invalid_fee_bps!(),
     );
+
+    fee.mul_div(admin_share_bps, constants::basis_points_denominator!())
+}
+
+/// Splits one ceiling-rounded fee; its allocation remainder belongs to reserve.
+public(package) fun fee_allocation(amount: u64, rate_bps: u64, admin_share_bps: u64): (u64, u64, u64) {
     let fee = fee_up(amount, rate_bps);
-    let admin = fee.mul_div(admin_share_bps, constants::basis_points_denominator!());
+    let admin = admin_share_down(fee, admin_share_bps);
     (fee, admin, fee - admin)
 }
 
@@ -186,11 +167,10 @@ public(package) fun credit_fee(maintenance_reserve: u64, fee: u64): u64 {
 
 /// Quotes shares from an already-derived positive shareholder NAV contribution.
 ///
-/// Returns `(shares_out, shares_after)` in atomic Share units:
+/// Returns `shares_out` in atomic Share units:
 ///
 /// ```text
-/// shares_out   = floor(shares_before * contribution / nav_before)
-/// shares_after = shares_before + shares_out
+/// shares_out = floor(shares_before * contribution / nav_before)
 /// ```
 ///
 /// `contribution` is `nav_after - nav_before`, where both values are
@@ -200,22 +180,23 @@ public(package) fun credit_fee(maintenance_reserve: u64, fee: u64): u64 {
 /// production entry point; this raw formula stays private and has a test-only
 /// seam for direct arithmetic checks. Venue fees and slippage reduce the
 /// actual contribution, so the depositor pays them. Flooring `shares_out` gives
-/// `nav_after / shares_after >= nav_before / shares_before` (ADR 0064 I9).
+/// `nav_after / (shares_before + shares_out) >= nav_before / shares_before`
+/// (ADR 0064 I9).
 ///
 /// Preconditions: positive `nav_before`, `shares_before`, and `contribution`.
 /// A contribution too small to buy one atomic share aborts instead of minting
 /// zero. Guard order is `nav_before`, `shares_before`, `contribution`, then
 /// the share results.
 ///
-/// `shares_before * contribution` stays below `2^128`; `shares_out` and
-/// `shares_after` abort when they leave the `u64` range. This function proves
+/// `shares_before * contribution` stays below `2^128`; `shares_out` and the
+/// final supply abort when they leave the `u64` range. This function proves
 /// no proportional order: pair it with `mint_base_to_buy_down` and
 /// `assert_mint_base_within_bounds`.
 public(package) fun mint_quote(
     contribution: u64,
     nav_before: u64,
     shares_before: u64,
-): (u64, u64) {
+): u64 {
     assert!(nav_before > 0, blast_boosts_core::errors::invalid_nav!());
     assert!(
         shares_before > 0,
@@ -234,11 +215,12 @@ public(package) fun mint_quote(
         blast_boosts_core::errors::zero_shares_out!(),
     );
 
-    let shares_after = shares_before
-        .checked_add(shares_out)
-        .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
+    assert!(
+        shares_before.checked_add(shares_out).is_some(),
+        blast_boosts_core::errors::arithmetic_overflow!(),
+    );
 
-    (shares_out, shares_after)
+    shares_out
 }
 
 /// Prices shares after the separately allocated fee has left shareholder NAV.
@@ -263,7 +245,7 @@ public(package) fun allocated_mint_quote(
     assert!(after > before, blast_boosts_core::errors::nonpositive_contribution!());
 
     let contribution = (after - before).min(expected_contribution);
-    let (shares, _) = mint_quote(contribution, before, supply);
+    let shares = mint_quote(contribution, before, supply);
     assert!(shares >= minimum, blast_boosts_core::errors::shares_out_below_minimum!());
 
     (after, contribution, shares)
@@ -453,8 +435,8 @@ public(package) fun assert_mint_base_within_bounds(
 
 /// Quotes a redemption from the burned shares, the price pair, and the supply.
 ///
-/// Returns `(shares_after, equity_keep, gross, fee, net)` in atomic Share and
-/// atomic collateral units. With `S1 = shares_before - shares_burned`:
+/// Returns `(gross, fee, net)` in atomic collateral units. With
+/// `S1 = shares_before - shares_burned`:
 ///
 /// ```text
 /// equity_keep = ceil(nav_before * S1 / shares_before)
@@ -490,7 +472,7 @@ public(package) fun redemption_quote(
     nav_unwound: u64,
     shares_before: u64,
     redeem_fee_bps: u64,
-): (u64, u64, u64, u64, u64) {
+): (u64, u64, u64) {
     assert!(nav_before > 0, blast_boosts_core::errors::invalid_nav!());
     assert!(
         shares_burned > 0 && shares_burned < shares_before,
@@ -501,8 +483,7 @@ public(package) fun redemption_quote(
         blast_boosts_core::errors::invalid_fee_bps!(),
     );
 
-    let shares_after = shares_before - shares_burned;
-    let equity_keep = nav_before.mul_div_ceil(shares_after, shares_before);
+    let equity_keep = nav_before.mul_div_ceil(shares_before - shares_burned, shares_before);
     let claimable = nav_unwound.min(nav_before);
     assert!(
         claimable > equity_keep,
@@ -514,25 +495,23 @@ public(package) fun redemption_quote(
     let net = gross - fee;
     assert!(net > 0, blast_boosts_core::errors::zero_net_payout!());
 
-    (shares_after, equity_keep, gross, fee, net)
+    (gross, fee, net)
 }
 
 /// Quotes a redemption and credits its reserve fee at the correct checkpoint.
 ///
-/// Returns `(reserve_after, shares_after, nav_kept, proportional_claim,
-/// gross, fee, net)`. Both pre-redemption and post-unwind shareholder NAV
-/// exclude `reserve_before`. Only after the gross claim is known does this
-/// function credit the fee. Thus the credited fee cannot re-enter the current
-/// or a later redemption's share pricing base.
+/// Returns `(reserve_after, nav_kept, fee, net)`. Both pre-redemption and
+/// post-unwind shareholder NAV exclude `reserve_before`. Only after the gross
+/// claim is known does this function credit the fee. Thus the credited fee
+/// cannot re-enter the current or a later redemption's share pricing base.
 ///
-/// `proportional_claim` is `nav_before - equity_keep`: the redeemer's share of
-/// pre-unwind NAV after the kept equity rounds up. `gross` is
-/// `min(nav_unwound, nav_before) - equity_keep`, so it never exceeds the
-/// claim: an unwind that costs the core pays less, and one that gains keeps
-/// the gain with the remaining holders (ADR 0084 D3). `nav_kept` is the
-/// shareholder NAV that actually remains, `nav_unwound - gross`, which is at
-/// least `equity_keep`; the core derives the required final venue equity
-/// from it and never from a NAV of its own.
+/// The gross is `min(nav_unwound, nav_before) - equity_keep`, so it never
+/// exceeds the redeemer's proportional claim `nav_before - equity_keep`: an
+/// unwind that costs the core pays less, and one that gains keeps the gain
+/// with the remaining holders (ADR 0084 D3). `nav_kept` is the shareholder
+/// NAV that actually remains, `nav_unwound - gross`, which is at least
+/// `equity_keep`; the core derives the required final venue equity from it
+/// and never from a NAV of its own.
 ///
 /// The later state transition must still authenticate both venue-equity values,
 /// withdraw exactly `net`, and verify final venue equity and reserve atomically.
@@ -543,29 +522,18 @@ public(package) fun redemption_accounting_quote(
     reserve_before: u64,
     shares_before: u64,
     redeem_fee_bps: u64,
-): (u64, u64, u64, u64, u64, u64, u64) {
+): (u64, u64, u64, u64) {
     let nav_before = shareholder_nav(venue_equity_before, reserve_before);
     let nav_unwound = shareholder_nav(venue_equity_unwound, reserve_before);
-    let (shares_after, equity_keep, gross, fee, net) = redemption_quote(
+    let (gross, fee, net) = redemption_quote(
         shares_burned,
         nav_before,
         nav_unwound,
         shares_before,
         redeem_fee_bps,
     );
-    let proportional_claim = nav_before - equity_keep;
-    let nav_kept = nav_unwound - gross;
-    let reserve_after = credit_fee(reserve_before, fee);
 
-    (
-        reserve_after,
-        shares_after,
-        nav_kept,
-        proportional_claim,
-        gross,
-        fee,
-        net,
-    )
+    (credit_fee(reserve_before, fee), nav_unwound - gross, fee, net)
 }
 
 /// Returns the permitted absolute final base range for a redemption unwind.
@@ -716,6 +684,21 @@ public(package) fun absorb_funding_cost(
 }
 
 // === Private Functions ===
+
+/// Returns accounting leverage in leverage basis points, rounding up.
+///
+/// `notional` is the absolute oracle-valued position notional and `nav` is
+/// positive shareholder NAV, both in atomic collateral units. Rounding up keeps
+/// an unsafe position from appearing safer than it is. A flat position returns
+/// zero. This accounting ratio is not the venue margin ratio; ADR 0064 keeps
+/// both as independent gates. The caller guarantees a positive `nav`; the
+/// result stays below `2^78` and is compared wide, never narrowed.
+fun leverage_bps_up(notional: u64, nav: u64): u128 {
+    (notional as u128).mul_div_ceil(
+        constants::basis_points_denominator!() as u128,
+        nav as u128,
+    )
+}
 
 /// Narrows a wide intermediate to `u64` or aborts with the package overflow code.
 fun narrow_to_u64(wide: u128): u64 {

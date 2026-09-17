@@ -53,14 +53,6 @@ public(package) fun assert_active(self: &Lifecycle) {
     assert!(self.is_active(), blast_boosts_core::errors::operation_not_permitted_in_lifecycle!());
 }
 
-public(package) fun assert_normal_redemption_allowed(self: &Lifecycle) {
-    self.assert_active();
-}
-
-public(package) fun assert_operating_risk_reduction_allowed(self: &Lifecycle) {
-    self.assert_active();
-}
-
 /// Settled cash has no remaining venue funding or health lifecycle.
 public(package) fun assert_can_sync(self: &Lifecycle) {
     assert!(self.is_active() || self.is_unwinding(),

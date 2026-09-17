@@ -60,7 +60,7 @@ fun sizing_rejects_tolerance_at_full_rate() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EArithmeticOverflow, location = blast_boosts_core::rebalance_math)]
+#[expected_failure(abort_code = errors::EArithmeticOverflow, location = blast_boosts_core::accounting_math)]
 fun sizing_rejects_target_width_overflow() {
     rebalance_math::increase_base_down(std::u64::max_value!(), 0, 20_000, 1_000, 1, 1, 1, 0, 0, 1_000_000_000, 1_000_000);
 }
@@ -78,13 +78,13 @@ fun sizing_rejects_notional_width_overflow() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::rebalance_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::accounting_math)]
 fun sizing_rejects_zero_nav_before_invalid_target() {
     rebalance_math::increase_base_down(0, 0, 0, 0, 0, 0, 0, 0, 0, 1_000_000_000, 1_000_000);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidTargetLeverageBps, location = blast_boosts_core::rebalance_math)]
+#[expected_failure(abort_code = errors::EInvalidTargetLeverageBps, location = blast_boosts_core::accounting_math)]
 fun sizing_rejects_zero_target_before_invalid_price() {
     rebalance_math::increase_base_down(1, 0, 0, 0, 0, 0, 0, 0, 0, 1_000_000_000, 1_000_000);
 }

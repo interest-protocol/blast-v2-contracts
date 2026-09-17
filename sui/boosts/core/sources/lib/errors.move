@@ -152,10 +152,6 @@ const EInvalidMinLeverageImprovementBps: u64 = 37;
 const ESharesOutBelowMinimum: u64 = 57;
 
 #[test_only]
-/// A rebalance does not move leverage toward target by the minimum improvement.
-const EInsufficientLeverageImprovement: u64 = 58;
-
-#[test_only]
 /// Shareholder NAV exceeds the Vault NAV cap.
 const ENavCapExceeded: u64 = 59;
 
@@ -315,7 +311,7 @@ macro public(package) fun invalid_max_slippage_bps(): u64 { 35 }
 macro public(package) fun invalid_emergency_max_slippage_bps(): u64 { 36 }
 macro public(package) fun invalid_min_leverage_improvement_bps(): u64 { 37 }
 macro public(package) fun shares_out_below_minimum(): u64 { 57 }
-macro public(package) fun insufficient_leverage_improvement(): u64 { 58 }
+// Code 58 retired: `rebalance_math::reduction_is_sufficient` raises `rebalance_no_progress`.
 macro public(package) fun nav_cap_exceeded(): u64 { 59 }
 macro public(package) fun execution_outside_max_slippage(): u64 { 60 }
 macro public(package) fun invalid_freshness_window(): u64 { 61 }

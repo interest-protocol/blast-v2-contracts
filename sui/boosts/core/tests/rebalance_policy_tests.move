@@ -7,12 +7,14 @@ module blast_boosts_core::rebalance_policy_tests;
 #[test]
 fun one_public_band_accepts_adjacent_thresholds_and_has_inclusive_endpoints() {
     let value = policy::new_rebalance_policy(0, 1, 2, 3, 0, 0, 1);
-    assert!(value.is_healthy(0));
-    assert!(value.is_healthy(2));
-    assert!(!value.is_public_allowed(0));
-    assert!(!value.is_public_allowed(2));
-    assert!(!value.is_hard_emergency(3));
-    assert!(value.is_hard_emergency(4));
+    // Leverage 0 bps: notional 0 against NAV 10_000.
+    assert!(!value.is_leverage_below_band(0, 10_000));
+    assert!(!value.is_leverage_above_band(0, 10_000));
+    // Leverage 2 bps sits exactly on the upper edge.
+    assert!(!value.is_leverage_below_band(2, 10_000));
+    assert!(!value.is_leverage_above_band(2, 10_000));
+    assert!(!value.is_leverage_above_max(3, 10_000));
+    assert!(value.is_leverage_above_max(4, 10_000));
 }
 
 #[test]
@@ -80,18 +82,21 @@ fun every_strictly_ordered_small_tuple_is_accepted_and_preserved() {
 fun eligibility_predicates_pin_every_threshold_equality() {
     let value = standard_policy();
 
-    assert!(value.is_public_allowed(15_999));
-    assert!(!value.is_public_allowed(16_000));
-    assert!(!value.is_healthy(15_999));
-    assert!(value.is_healthy(16_000));
-    assert!(value.is_healthy(17_999));
-    assert!(value.is_healthy(22_000));
-    assert!(value.is_healthy(26_000));
-    assert!(!value.is_public_allowed(26_000));
-    assert!(value.is_public_allowed(26_001));
-    assert!(!value.is_hard_emergency(29_999));
-    assert!(!value.is_hard_emergency(30_000));
-    assert!(value.is_hard_emergency(30_001));
+    // Notional in collateral atoms against NAV 10_000, so notional reads as leverage bps.
+    assert!(value.is_leverage_below_band(15_999, 10_000));
+    assert!(!value.is_leverage_below_band(16_000, 10_000));
+    assert!(!value.is_leverage_above_band(16_000, 10_000));
+    assert!(!value.is_leverage_above_band(26_000, 10_000));
+    assert!(!value.is_leverage_below_band(26_000, 10_000));
+    assert!(value.is_leverage_above_band(26_001, 10_000));
+    assert!(!value.is_leverage_above_max(29_999, 10_000));
+    assert!(!value.is_leverage_above_max(30_000, 10_000));
+    assert!(value.is_leverage_above_max(30_001, 10_000));
+    // The comparison is exact: one atom over the edge on a large NAV still counts.
+    let nav = std::u64::max_value!() / 3;
+    let edge = ((nav as u128) * 26_000 / 10_000) as u64;
+    assert!(!value.is_leverage_above_band(edge, nav));
+    assert!(value.is_leverage_above_band(edge + 1, nav));
 }
 
 #[test]
@@ -109,39 +114,8 @@ fun max_leverage_above_the_leverage_ceiling_is_rejected() {
 fun a_zero_rebalance_below_threshold_disables_the_lower_public_trigger() {
     let value = new_with_thresholds(0, 2, 4, 5);
 
-    assert!(!value.is_public_allowed(0));
-    assert!(value.is_healthy(0));
-}
-
-#[test]
-fun improvement_is_the_decrease_in_distance_from_target() {
-    let value = standard_policy();
-
-    assert!(value.is_improvement_sufficient(22_000, 21_990));
-    assert!(!value.is_improvement_sufficient(22_000, 21_991));
-    assert!(value.is_improvement_sufficient(22_000, 20_000));
-    assert!(value.is_improvement_sufficient(18_000, 18_010));
-    assert!(!value.is_improvement_sufficient(18_000, 18_009));
-    assert!(value.is_improvement_sufficient(22_000, 18_010));
-    assert!(!value.is_improvement_sufficient(22_000, 17_990));
-    assert!(!value.is_improvement_sufficient(20_000, 20_000));
-    assert!(!value.is_improvement_sufficient(21_000, 22_000));
-    value.assert_improvement_sufficient(22_000, 21_990);
-}
-
-#[test]
-fun improvement_comparison_does_not_wrap_at_maximum_width() {
-    let max = std::u64::max_value!();
-    let value = policy::new_rebalance_policy(0, 2, 4, 5, 0, 0, max);
-
-    assert!(!value.is_improvement_sufficient(max, 2));
-    assert!(!value.is_improvement_sufficient(max, max));
-}
-
-#[test]
-#[expected_failure(abort_code = errors::EInsufficientLeverageImprovement, location = blast_boosts_core::policy)]
-fun a_rebalance_one_basis_point_short_of_the_min_leverage_improvement_is_rejected() {
-    standard_policy().assert_improvement_sufficient(22_000, 21_991);
+    assert!(!value.is_leverage_below_band(0, 10_000));
+    assert!(!value.is_leverage_above_band(0, 10_000));
 }
 
 #[test]

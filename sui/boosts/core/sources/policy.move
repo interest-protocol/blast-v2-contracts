@@ -287,61 +287,30 @@ public(package) fun min_leverage_improvement_bps(self: &RebalancePolicy): u64 {
     self.min_leverage_improvement_bps
 }
 
-/// Returns whether reported leverage lies inside the one inclusive rebalance band.
-public(package) fun is_healthy(self: &RebalancePolicy, leverage_bps: u64): bool {
-    self.rebalance_below_bps <= leverage_bps
-        && leverage_bps <= self.rebalance_above_bps
-}
-
-/// Returns whether any caller may rebalance toward the fixed target.
+/// Returns whether leverage is strictly below the public rebalance band.
 ///
-/// Both public threshold equalities are inside; every caller uses this band.
-public(package) fun is_public_allowed(
-    self: &RebalancePolicy,
-    leverage_bps: u64,
-): bool {
-    leverage_bps < self.rebalance_below_bps
-        || leverage_bps > self.rebalance_above_bps
+/// `notional` and `nav` are atomic collateral units. Leverage is
+/// `notional / nav`, compared cross-multiplied so no ratio is ever rounded:
+/// `notional * 10_000 < nav * rebalance_below_bps`. The band edge itself is
+/// healthy, so equality returns false. A zero threshold disables this trigger.
+public(package) fun is_leverage_below_band(self: &RebalancePolicy, notional: u64, nav: u64): bool {
+    scale_by_denominator(notional) < (nav as u128) * (self.rebalance_below_bps as u128)
 }
 
-/// Returns whether leverage is strictly above the hard wider-slippage threshold.
-public(package) fun is_hard_emergency(
-    self: &RebalancePolicy,
-    leverage_bps: u64,
-): bool {
-    leverage_bps > self.max_leverage_bps
-}
-
-/// Returns whether a rebalance moved leverage toward target by the minimum.
+/// Returns whether leverage is strictly above the public rebalance band.
 ///
-/// Improvement is measured as the decrease in absolute distance from
-/// `target_bps`, so `|before - target| >= |after - target| +
-/// min_leverage_improvement_bps` in `u128`. This is the only anti-grief control on
-/// the permissionless trigger: a rebalance that stays outside the rebalance band
-/// leaves the trigger live, and without this rule a keeper could re-trigger
-/// and bleed NAV through venue costs on every pass. Reaching the exact target
-/// from further than the minimum always passes.
-public(package) fun is_improvement_sufficient(
-    self: &RebalancePolicy,
-    leverage_before_bps: u64,
-    leverage_after_bps: u64,
-): bool {
-    let distance_before = leverage_before_bps.diff(self.target_bps) as u128;
-    let distance_after = leverage_after_bps.diff(self.target_bps) as u128;
-
-    distance_before >= distance_after + (self.min_leverage_improvement_bps as u128)
+/// Same units and exact comparison as `is_leverage_below_band`:
+/// `notional * 10_000 > nav * rebalance_above_bps`. Equality is healthy.
+public(package) fun is_leverage_above_band(self: &RebalancePolicy, notional: u64, nav: u64): bool {
+    scale_by_denominator(notional) > (nav as u128) * (self.rebalance_above_bps as u128)
 }
 
-/// Rejects a rebalance whose leverage improvement is below the policy minimum.
-public(package) fun assert_improvement_sufficient(
-    self: &RebalancePolicy,
-    leverage_before_bps: u64,
-    leverage_after_bps: u64,
-) {
-    assert!(
-        self.is_improvement_sufficient(leverage_before_bps, leverage_after_bps),
-        blast_boosts_core::errors::insufficient_leverage_improvement!(),
-    );
+/// Returns whether leverage is strictly above the hard cap that permits wider slippage.
+///
+/// Same units and exact comparison as `is_leverage_below_band`:
+/// `notional * 10_000 > nav * max_leverage_bps`.
+public(package) fun is_leverage_above_max(self: &RebalancePolicy, notional: u64, nav: u64): bool {
+    scale_by_denominator(notional) > (nav as u128) * (self.max_leverage_bps as u128)
 }
 
 /// Returns whether an executed value stays within max slippage of its reference.
@@ -625,6 +594,14 @@ public(package) fun assert_fee_limits(
 }
 
 // === Private Functions ===
+
+/// Widens a notional and multiplies it by the basis-point denominator.
+///
+/// Every leverage comparison in this module cross-multiplies rather than
+/// divides, so the notional side always carries the denominator.
+fun scale_by_denominator(notional: u64): u128 {
+    (notional as u128) * (constants::basis_points_denominator!() as u128)
+}
 
 /// Returns whether `executed` is within `slippage_bps` of a positive `reference`.
 fun is_within_relative_tolerance(

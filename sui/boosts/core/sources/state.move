@@ -460,10 +460,9 @@ public fun prepare_mint<Product>(
     let before = validated_active_position(self, observation, reference_time_ms);
     let nav = accounting_math::shareholder_nav(before.equity, self.maintenance_reserve);
     let rebalance = self.vault_policy.rebalance_policy();
-    let scaled = (before.notional as u128) * (constants::basis_points_denominator!() as u128);
     assert!(
-        scaled >= (nav as u128) * (rebalance.rebalance_below_bps() as u128)
-            && scaled <= (nav as u128) * (rebalance.rebalance_above_bps() as u128),
+        !rebalance.is_leverage_below_band(before.notional, nav)
+            && !rebalance.is_leverage_above_band(before.notional, nav),
         blast_boosts_core::errors::mint_outside_rebalance_band!(),
     );
     let (fee, admin_fee, reserve_fee) = self.fee_allocation(deposit, true);
@@ -645,11 +644,11 @@ public fun complete_redemption<Product>(
     accounting_math::assert_redemption_base_within_bounds(
         after.base, shares, before.base, supply, before.lot_size, self.vault_policy.min_order_lots(),
     );
-    let (reserve_with_fee, _, nav_kept, _, _, fee, net) = accounting_math::redemption_accounting_quote(
+    let (reserve_with_fee, nav_kept, fee, net) = accounting_math::redemption_accounting_quote(
         shares, before.equity, after.equity, reserve_before, supply, fee_bps,
     );
     assert!(net >= minimum_output, blast_boosts_core::errors::redemption_output_below_minimum!());
-    let admin = fee.mul_div(admin_share_bps, constants::basis_points_denominator!());
+    let admin = accounting_math::admin_share_down(fee, admin_share_bps);
     let reserve_after = reserve_with_fee - admin;
     let final_equity = nav_kept.checked_add(reserve_after)
         .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
@@ -671,9 +670,8 @@ public fun prepare_rebalance<Product>(
     let before = validated_active_position(self, observation, now);
     let nav = accounting_math::shareholder_nav(before.equity, self.maintenance_reserve);
     let rebalance = self.vault_policy.rebalance_policy();
-    let scaled = (before.notional as u128) * (constants::basis_points_denominator!() as u128);
-    let increase = scaled < (nav as u128) * (rebalance.rebalance_below_bps() as u128);
-    assert!(increase || scaled > (nav as u128) * (rebalance.rebalance_above_bps() as u128),
+    let increase = rebalance.is_leverage_below_band(before.notional, nav);
+    assert!(increase || rebalance.is_leverage_above_band(before.notional, nav),
         blast_boosts_core::errors::rebalance_inside_band!());
     RebalancePlan { before, current: before, reserve: self.maintenance_reserve, increase, venue_fee_bps, steps: 0 }
 }
@@ -692,16 +690,15 @@ public fun rebalance_order<Product>(self: &State<Product>, plan: &RebalancePlan<
             p.collateral_price, p.lot_size, self.max_order_notional, plan.venue_fee_bps,
             rebalance.max_slippage_bps(), self.base_unit, self.collateral_unit), true, false)
     } else {
-        let target_notional = (nav as u128) * (rebalance.target_bps() as u128) / (constants::basis_points_denominator!() as u128);
-        assert!(target_notional <= std::u64::max_value!() as u128, blast_boosts_core::errors::arithmetic_overflow!());
+        let target_notional = accounting_math::target_notional_down(nav, rebalance.target_bps());
         let target_base = rebalance_math::base_for_notional_down(
-            target_notional as u64, p.base_price, p.collateral_price, p.lot_size, self.base_unit, self.collateral_unit,
+            target_notional, p.base_price, p.collateral_price, p.lot_size, self.base_unit, self.collateral_unit,
         );
         let cap_base = rebalance_math::base_for_notional_down(
             self.max_order_notional, p.base_price, p.collateral_price, p.lot_size, self.base_unit, self.collateral_unit,
         );
         let base = if (p.base > target_base) { (p.base - target_base).min(cap_base) / p.lot_size * p.lot_size } else { 0 };
-        (base, false, (p.notional as u128) * (constants::basis_points_denominator!() as u128) > (nav as u128) * (rebalance.max_leverage_bps() as u128))
+        (base, false, rebalance.is_leverage_above_max(p.notional, nav))
     }
 }
 
@@ -1050,10 +1047,9 @@ fun validated_initialization_nav<Product>(
     let seed_nav = accounting_math::shareholder_nav(venue_equity, seed_reserve);
     self.assert_within_nav_cap(seed_nav);
     let rebalance_policy = self.vault_policy.rebalance_policy();
-    let scaled = (position_collateral as u128) * (constants::basis_points_denominator!() as u128);
     assert!(
-        scaled >= (seed_nav as u128) * (rebalance_policy.rebalance_below_bps() as u128)
-            && scaled <= (seed_nav as u128) * (rebalance_policy.rebalance_above_bps() as u128),
+        !rebalance_policy.is_leverage_below_band(position_collateral, seed_nav)
+            && !rebalance_policy.is_leverage_above_band(position_collateral, seed_nav),
         blast_boosts_core::errors::initialization_leverage_unhealthy!(),
     );
     assert!(
