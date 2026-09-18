@@ -96,16 +96,16 @@ public struct Minted<phantom Product> has copy, drop {
 // immutability, and generation advance are emitted by `blast_admin` for every
 // consumer package. No copy belongs in this registry.
 
-/// Emitted after one adapter Vault and its leverage currency are issued.
+/// Emitted when one leverage currency is issued, before its Vault exists; the
+/// `Product` type names the currency for good and `VaultInitialized` follows in
+/// the same transaction with the Vault id.
 public struct VaultIssued<phantom Product> has copy, drop {
-    vault_id: ID,
     treasury_cap_id: ID,
     metadata_cap_id: ID,
     risk_module_witness: TypeName,
     vault_policy: VaultPolicy,
     max_order_notional: u64,
     nav_cap: u64,
-    maintenance_reserve: u64,
 }
 
 /// Emitted after one atomic seed activates a bound Aftermath Vault.
@@ -275,24 +275,20 @@ public(package) fun nav_cap_updated<Product>(vault_id: ID, previous_nav_cap: u64
 }
 
 public(package) fun vault_issued<Product>(
-    vault_id: ID,
     treasury_cap_id: ID,
     metadata_cap_id: ID,
     risk_module_witness: TypeName,
     vault_policy: VaultPolicy,
     max_order_notional: u64,
     nav_cap: u64,
-    maintenance_reserve: u64,
 ) {
     blast_boosts_aftermath::blast_events::emit_event(VaultIssued<Product> {
-        vault_id,
         treasury_cap_id,
         metadata_cap_id,
         risk_module_witness,
         vault_policy,
         max_order_notional,
         nav_cap,
-        maintenance_reserve,
     });
 }
 
@@ -527,16 +523,14 @@ public fun collect_one<T: copy + drop>(abort_code: u64): T {
 #[test_only]
 public fun vault_issued_fields<Product>(
     self: &VaultIssued<Product>,
-): (ID, ID, ID, TypeName, VaultPolicy, u64, u64, u64) {
+): (ID, ID, TypeName, VaultPolicy, u64, u64) {
     (
-        self.vault_id,
         self.treasury_cap_id,
         self.metadata_cap_id,
         self.risk_module_witness,
         self.vault_policy,
         self.max_order_notional,
         self.nav_cap,
-        self.maintenance_reserve,
     )
 }
 

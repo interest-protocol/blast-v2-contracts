@@ -65,9 +65,8 @@ const ECollateralOracleMismatch: u64 = 17;
 /// A collateral type does not match the immutable binding.
 const ECollateralTypeMismatch: u64 = 18;
 
-#[test_only]
-/// A Vault already contains its one Aftermath venue account.
-const EVenueAccountAlreadyInstalled: u64 = 19;
+// Code 19 retired: a Vault is built with its venue account, so nothing can
+// install one twice.
 
 #[test_only]
 /// An oracle storage id differs from the bound market parameter.
@@ -113,9 +112,8 @@ const EInvalidSeed: u64 = 29;
 /// The maintenance reserve must leave positive seed shareholder NAV.
 const EInvalidSeedReserve: u64 = 30;
 
-#[test_only]
-/// Initialization requires the leverage currency to have zero supply.
-const EShareSupplyNotZero: u64 = 31;
+// Code 31 retired: an issuance mints nothing before its locked seed shares,
+// so the zero-supply precondition holds by construction.
 
 #[test_only]
 /// The target or order cap cannot fund one complete base lot.
@@ -145,9 +143,7 @@ const ELockedSharesOverflow: u64 = 37;
 /// Atomic initialization requires more venue orders than the adapter permits.
 const EInitializationOrderCountExceeded: u64 = 38;
 
-#[test_only]
-/// A venue-dependent operation ran before atomic initialization installed it.
-const EVenueAccountNotInstalled: u64 = 39;
+// Code 39 retired: no Vault exists before its venue account does.
 
 #[test_only]
 /// A collateral input or withdrawal must be positive.
@@ -228,7 +224,6 @@ macro public(package) fun clearing_house_mismatch(): u64 { 15 }
 macro public(package) fun base_oracle_mismatch(): u64 { 16 }
 macro public(package) fun collateral_oracle_mismatch(): u64 { 17 }
 macro public(package) fun collateral_type_mismatch(): u64 { 18 }
-macro public(package) fun venue_account_already_installed(): u64 { 19 }
 macro public(package) fun oracle_storage_mismatch(): u64 { 20 }
 macro public(package) fun oracle_source_mismatch(): u64 { 21 }
 macro public(package) fun pyth_price_info_mismatch(): u64 { 22 }
@@ -240,7 +235,6 @@ macro public(package) fun incoherent_position_signs(): u64 { 27 }
 macro public(package) fun invalid_collateral_decimals(): u64 { 28 }
 macro public(package) fun invalid_seed(): u64 { 29 }
 macro public(package) fun invalid_seed_reserve(): u64 { 30 }
-macro public(package) fun share_supply_not_zero(): u64 { 31 }
 macro public(package) fun invalid_initialization_order_size(): u64 { 32 }
 macro public(package) fun initialization_fill_mismatch(): u64 { 33 }
 macro public(package) fun initialization_orders_posted(): u64 { 34 }
@@ -248,7 +242,6 @@ macro public(package) fun initialization_liquidation(): u64 { 35 }
 macro public(package) fun initialization_imr_mismatch(): u64 { 36 }
 macro public(package) fun locked_shares_overflow(): u64 { 37 }
 macro public(package) fun initialization_order_count_exceeded(): u64 { 38 }
-macro public(package) fun venue_account_not_installed(): u64 { 39 }
 macro public(package) fun zero_amount(): u64 { 40 }
 macro public(package) fun insufficient_admin_cash(): u64 { 41 }
 macro public(package) fun cash_checkpoint_mismatch(): u64 { 42 }

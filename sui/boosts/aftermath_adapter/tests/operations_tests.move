@@ -1224,37 +1224,25 @@ fun bad_debt_is_rejected_before_fill_validation() {
 
 #[test]
 fun valid_local_initialization_inputs_are_accepted() {
-    operations::assert_initialization_inputs_for_testing(false, 6, 100, 10, 0);
-}
-
-#[test]
-#[expected_failure(abort_code = 19, location = blast_boosts_aftermath::vault)]
-fun already_initialized_precedes_currency_and_seed_validation() {
-    operations::assert_initialization_inputs_for_testing(true, 7, 0, 0, 1);
+    operations::assert_initialization_inputs_for_testing(6, 100, 10);
 }
 
 #[test]
 #[expected_failure(abort_code = 28, location = blast_boosts_aftermath::operations)]
 fun non_six_decimal_collateral_is_rejected_before_seed_validation() {
-    operations::assert_initialization_inputs_for_testing(false, 7, 0, 0, 1);
+    operations::assert_initialization_inputs_for_testing(7, 0, 0);
 }
 
 #[test]
 #[expected_failure(abort_code = 29, location = blast_boosts_aftermath::operations)]
 fun a_zero_seed_is_rejected_before_reserve_validation() {
-    operations::assert_initialization_inputs_for_testing(false, 6, 0, 1, 1);
+    operations::assert_initialization_inputs_for_testing(6, 0, 1);
 }
 
 #[test]
 #[expected_failure(abort_code = 30, location = blast_boosts_aftermath::operations)]
-fun a_reserve_equal_to_the_seed_is_rejected_before_supply_validation() {
-    operations::assert_initialization_inputs_for_testing(false, 6, 100, 100, 1);
-}
-
-#[test]
-#[expected_failure(abort_code = 31, location = blast_boosts_aftermath::operations)]
-fun preexisting_share_supply_is_rejected() {
-    operations::assert_initialization_inputs_for_testing(false, 6, 100, 10, 1);
+fun a_reserve_equal_to_the_seed_is_rejected() {
+    operations::assert_initialization_inputs_for_testing(6, 100, 100);
 }
 
 #[test]
@@ -2251,7 +2239,7 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         ..
     } = fixture;
     let admin_witness = authority.sign_in(admin_cap);
-    let mut vault = vault::issue<Tag, RiskModule>(
+    let mut issuance = vault::issue<Tag, RiskModule>(
         protocol,
         &admin_witness,
         test_risk_module::new(),
@@ -2265,18 +2253,14 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         b"".to_string(),
         scenario.ctx(),
     );
-    let seed_nav = vault.initialize(
+    let seed_nav = issuance.initialize(
         observation::new_position(SEED_EQUITY, ABSOLUTE_BASE, ABSOLUTE_NOTIONAL, LOT_SIZE, side, 0, true, true, true,
             observation::new_price(PRICE, 0, REFERENCE_TIME_MS), observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE),
         SEED_RESERVE,
         6,
         REFERENCE_TIME_MS,
     );
-    vault.mint_locked_shares_for_testing(
-        seed_nav * 1_000,
-        ADMIN,
-        scenario.ctx(),
-    );
+    let seed_facts = issuance.mint_locked_shares(seed_nav * 1_000, ADMIN, scenario.ctx());
     let binding = venue_account::new_binding(
         @0xB.to_id(),
         7,
@@ -2286,8 +2270,7 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         @0xF.to_id(),
         type_name::with_original_ids<Collateral>(),
     );
-    let venue = venue_account::new(binding, checkpoint);
-    vault.install_venue_account_for_testing(venue);
+    let vault = issuance.activate_for_testing(venue_account::new(binding, checkpoint), seed_facts, scenario.ctx());
     operations::emit_vault_initialized<Tag>(
         &vault,
         SEED_EQUITY,
@@ -2802,24 +2785,17 @@ fun assert_replay<Tag>(replay: &ReplayState, vault: &Vault<Tag>) {
     let digest = replay.unresolved_checkpoint.map!(|checkpoint| sui::hash::blake2b256(&std::bcs::to_bytes(&checkpoint)));
     assert_eq!(digest, vault.unresolved_checkpoint_digest_for_testing());
     assert_eq!(replay.lifecycle, 1);
-    assert!(!vault.is_uninitialized_for_testing() && !vault.is_unwinding_for_testing());
+    assert!(!vault.is_unwinding_for_testing());
 }
 
+/// `VaultIssued` carries no Vault id: the Vault does not exist yet, and the
+/// `VaultInitialized` that follows in the same transaction names it.
 fun replay_issued<Tag>(event: events::VaultIssued<Tag>): ReplayState {
-    let (
-        vault_id,
-        _,
-        _,
-        risk_module_witness,
-        vault_policy,
-        max_order_notional,
-        _,
-        maintenance_reserve,
-    ) = event.vault_issued_fields();
+    let (_, _, risk_module_witness, vault_policy, max_order_notional, _) = event.vault_issued_fields();
     let (mint, redeem) = vault_policy.initial_fee_rates_for_testing();
 
     ReplayState {
-        vault_id,
+        vault_id: @0x0.to_id(),
         account_object_id: @0x0.to_id(),
         account_number: 0,
         registry_id: @0x0.to_id(),
@@ -2827,7 +2803,7 @@ fun replay_issued<Tag>(event: events::VaultIssued<Tag>): ReplayState {
         base_oracle_id: @0x0.to_id(),
         collateral_oracle_id: @0x0.to_id(),
         collateral_type: type_name::with_original_ids<u8>(),
-        maintenance_reserve,
+        maintenance_reserve: 0,
         lifecycle: 0,
         risk_module_witness,
         max_order_notional,
@@ -2868,8 +2844,8 @@ fun replay_initialized<Tag>(
         _,
         checkpoint,
     ) = event.vault_initialized_fields();
-    assert_eq!(vault_id, replay.vault_id);
 
+    replay.vault_id = vault_id;
     replay.account_object_id = account_object_id;
     replay.account_number = account_number;
     replay.registry_id = registry_id;

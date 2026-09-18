@@ -44,17 +44,12 @@ public struct Checkpoint has copy, drop, store {
 }
 
 /// The bound Aftermath account as the adapter knows it: its identity and the
-/// last raw state it accepted. Holds no authority.
+/// last raw state it accepted. Holds no authority; every venue mutation goes
+/// through this module's guarded functions under the admin cap the Vault keeps.
 public struct VenueAccount has store {
     binding: Binding,
     checkpoint: Checkpoint,
 }
-
-/// Store-only custody of the sole admin authority over the bound account.
-///
-/// Every venue mutation borrows the cap through this module's guarded
-/// functions and nothing else; the cap itself never leaves.
-public struct VenueCustody(AuthorityCap<ACCOUNT, ADMIN>) has store;
 
 // This unstorable, same-call value preserves the returned Coin for the seed-funder endpoint.
 // Pinned ESL99003 otherwise suggests Balance, which would require a new Coin/TxContext there.
@@ -230,14 +225,14 @@ public(package) fun lot_size(self: &Checkpoint): u64 { self.lot_size }
 
 public(package) fun market_pause_mode(self: &Checkpoint): u8 { self.market_pause_mode }
 
-// --- Account And Custody ---
+// --- Account ---
 
 /// Records the bound account's identity and the checkpoint activation accepted.
 public(package) fun new(binding: Binding, checkpoint: Checkpoint): VenueAccount {
     VenueAccount { binding, checkpoint }
 }
 
-/// Copies the immutable binding without exposing venue custody.
+/// Copies the immutable binding.
 public(package) fun binding(self: &VenueAccount): Binding { self.binding }
 
 /// Borrows the latest authenticated raw checkpoint immutably.
@@ -253,11 +248,9 @@ public(package) fun replace_checkpoint(
     self.checkpoint = checkpoint;
 }
 
-/// Seals the exact account admin authority, proving it names the bound account.
-public(package) fun new_custody(admin_cap: AuthorityCap<ACCOUNT, ADMIN>, binding: &Binding): VenueCustody {
-    assert_admin_cap_binding(authority::`for`(&admin_cap), binding.account_object_id);
-
-    VenueCustody(admin_cap)
+/// The admin cap names the bound account object.
+public(package) fun assert_admin_cap(self: &Binding, cap: &AuthorityCap<ACCOUNT, ADMIN>) {
+    assert_admin_cap_binding(authority::`for`(cap), self.account_object_id);
 }
 
 /// Rejects an admin cap that does not belong to the created account object.
@@ -271,23 +264,18 @@ public(package) fun assert_admin_cap_binding(
     );
 }
 
-/// Revalidates that retained admin authority still names the bound account.
-public(package) fun assert_bound(self: &VenueCustody, binding: &Binding) {
-    assert_admin_cap_binding(authority::`for`(&self.0), binding.account_object_id);
-}
-
 // --- Deposit ---
 
-/// Deposits only into the retained account under its private admin authority.
+/// Deposits only into the bound account under its admin authority.
 public(package) fun deposit<Collateral>(
-    self: &VenueCustody, binding: &Binding, account: &mut Account<Collateral>, registry: &Registry,
-    cash: Coin<Collateral>,
+    self: &VenueAccount, cap: &AuthorityCap<ACCOUNT, ADMIN>, account: &mut Account<Collateral>,
+    registry: &Registry, cash: Coin<Collateral>,
 ) {
-    self.assert_bound(binding);
-    binding.assert_account(account);
-    binding.assert_registry(registry);
+    self.binding.assert_admin_cap(cap);
+    self.binding.assert_account(account);
+    self.binding.assert_registry(registry);
 
-    account.deposit_collateral(&self.0, registry, cash);
+    account.deposit_collateral(cap, registry, cash);
 }
 
 /// A cash-only deposit may change exactly free collateral and no other raw field.
@@ -300,13 +288,13 @@ public(package) fun assert_deposit_checkpoint(before: &Checkpoint, after: &Check
 
 /// Allocates deposited cash into the sole bound market without lending its authority.
 public(package) fun allocate<Collateral>(
-    self: &VenueCustody, binding: &Binding, account: &mut Account<Collateral>,
+    self: &VenueAccount, cap: &AuthorityCap<ACCOUNT, ADMIN>, account: &mut Account<Collateral>,
     clearing_house: &mut ClearingHouse<Collateral>, amount: u64,
 ) {
-    self.assert_bound(binding);
-    binding.assert_market_account(account, clearing_house);
+    self.binding.assert_admin_cap(cap);
+    self.binding.assert_market_account(account, clearing_house);
 
-    clearing_house.allocate_collateral(&self.0, account, amount);
+    clearing_house.allocate_collateral(cap, account, amount);
 }
 
 /// A deposited-and-allocated input changes exactly allocated six-decimal collateral.
@@ -322,8 +310,8 @@ public(package) fun assert_allocated_deposit_checkpoint(before: &Checkpoint, aft
 
 /// Executes one bounded market order under retained authority and returns its venue facts.
 public(package) fun execute_order<Collateral>(
-    self: &VenueCustody,
-    binding: &Binding,
+    self: &VenueAccount,
+    cap: &AuthorityCap<ACCOUNT, ADMIN>,
     account: &mut Account<Collateral>,
     clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage,
@@ -334,16 +322,16 @@ public(package) fun execute_order<Collateral>(
     clock: &Clock,
     ctx: &TxContext,
 ): (ClearingHouse<Collateral>, SessionSummary) {
-    self.assert_bound(binding);
-    binding.assert_market_account(account, &clearing_house);
-    binding.assert_oracles(base_oracle, collateral_oracle);
+    self.binding.assert_admin_cap(cap);
+    self.binding.assert_market_account(account, &clearing_house);
+    self.binding.assert_oracles(base_oracle, collateral_oracle);
 
     let mut session = clearing_house.start_session(
-        &self.0, account, base_oracle, collateral_oracle, option::none(), clock, ctx,
+        cap, account, base_oracle, collateral_oracle, option::none(), clock, ctx,
     );
     session.place_market_order(is_ask, base, reduce_only);
 
-    session.end_session(&self.0, account, false, false)
+    session.end_session(cap, account, false, false)
 }
 
 /// An isolated session may change only its proved position and allocated trading cost.
@@ -370,25 +358,25 @@ public(package) fun assert_reduction_checkpoint(before: &Checkpoint, after: &Che
 
 /// Withdraws the exact payout, using free collateral before a bounded deallocation.
 public(package) fun withdraw<Collateral>(
-    self: &VenueCustody, binding: &Binding, account: &mut Account<Collateral>, registry: &Registry,
+    self: &VenueAccount, cap: &AuthorityCap<ACCOUNT, ADMIN>, account: &mut Account<Collateral>, registry: &Registry,
     clearing_house: &mut ClearingHouse<Collateral>, base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage, amount: u64, clock: &Clock, ctx: &mut TxContext,
 ): Coin<Collateral> {
-    self.assert_bound(binding);
-    binding.assert_market_account(account, clearing_house);
-    binding.assert_registry(registry);
-    binding.assert_oracles(base_oracle, collateral_oracle);
+    self.binding.assert_admin_cap(cap);
+    self.binding.assert_market_account(account, clearing_house);
+    self.binding.assert_registry(registry);
+    self.binding.assert_oracles(base_oracle, collateral_oracle);
 
     let free = account.collateral_balance();
     if (free < amount) {
         let required = amount - free;
         let deallocated = clearing_house.deallocate_collateral(
-            &self.0, account, base_oracle, collateral_oracle, required, clock,
+            cap, account, base_oracle, collateral_oracle, required, clock,
         );
         assert!(deallocated == required, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
     };
 
-    account.withdraw_collateral(&self.0, registry, amount, ctx)
+    account.withdraw_collateral(cap, registry, amount, ctx)
 }
 
 /// Payout spends free cash first, then exactly deallocates the remaining amount.
