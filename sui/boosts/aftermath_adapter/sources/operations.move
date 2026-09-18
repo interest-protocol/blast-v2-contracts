@@ -21,22 +21,6 @@ const MAX_ACTIVE_ORDERS: u64 = 16;
 
 // === Public Types ===
 
-/// Linear custody of priced shares until exact collateral and final margin are proved.
-public struct RedemptionReceipt<phantom Product> {
-    shares: Balance<BlastBoost<Product>>,
-    net: u64,
-    admin: u64,
-    fee: u64,
-    reserve_fee: u64,
-    fee_bps: u64,
-    admin_share_bps: u64,
-    final_equity: u64,
-    final_base: u64,
-    base_price: u64,
-    collateral_price: u64,
-    unwound_checkpoint: venue_account::Checkpoint,
-}
-
 /// The sealed terms every order of one operation is placed and proved under.
 /// Package-internal; Move has no private structs.
 public struct OrderTerms has copy, drop {
@@ -59,6 +43,22 @@ public struct Fill has copy, drop {
     executed: u64,
     is_ask: bool,
     reduce_only: bool,
+}
+
+/// Linear custody of priced shares until exact collateral and final margin are proved.
+public struct RedemptionReceipt<phantom Product> {
+    shares: Balance<BlastBoost<Product>>,
+    net: u64,
+    admin: u64,
+    fee: u64,
+    reserve_fee: u64,
+    fee_bps: u64,
+    admin_share_bps: u64,
+    final_equity: u64,
+    final_base: u64,
+    base_price: u64,
+    collateral_price: u64,
+    unwound_checkpoint: venue_account::Checkpoint,
 }
 
 // === Public Functions ===
@@ -471,18 +471,62 @@ public fun finalize_shutdown<Product, Collateral>(
 
 // === Package Functions ===
 
-/// Advances the sole economic checkpoint only after sealed maintenance has succeeded.
-public(package) fun complete_rebalance<Product, Collateral>(
-    vault: &mut Vault<Product>, plan: RebalancePlan<Product>, checkpoint: venue_account::Checkpoint,
+/// Emits activation facts read back from the resulting real Vault state.
+public(package) fun emit_vault_initialized<Product>(
+    vault: &Vault<Product>,
+    seed_amount: u64,
+    seed_venue_equity: u64,
+    position_base: u64,
+    position_collateral: u64,
+    lot_size: u64,
+    position_side: PositionSide,
+    position_imr: u256,
 ) {
-    let (before_equity, after_equity, before_base, after_base, increase) = vault.complete_rebalance(plan);
+    let binding = vault.venue_binding();
+    let (locked_shares, seed_funder) = vault.seed_facts();
+
+    events::vault_initialized<Product>(
+        vault.id(),
+        binding.account_object_id(),
+        binding.account_number(),
+        binding.registry_id(),
+        binding.clearing_house_id(),
+        binding.base_oracle_id(),
+        binding.collateral_oracle_id(),
+        binding.collateral_type(),
+        seed_amount,
+        seed_venue_equity,
+        vault.maintenance_reserve(),
+        locked_shares / SEED_SHARE_SCALE,
+        locked_shares,
+        seed_funder,
+        position_base,
+        position_collateral,
+        lot_size,
+        position_side,
+        position_imr,
+        *vault.venue_checkpoint(),
+    );
+}
+
+/// Commits native mint effects only after the orchestration proved its venue checkpoint.
+public(package) fun complete_mint<Product, Collateral>(
+    vault: &mut Vault<Product>, plan: MintPlan<Product>, after: PositionObservation,
+    checkpoint: venue_account::Checkpoint, now_ms: u64, ctx: &mut TxContext,
+): Coin<BlastBoost<Product>> {
+    let deposit = plan.mint_deposit();
+    let (shares, contribution, fee, admin, reserve_fee, fee_bps, admin_share_bps) =
+        vault.complete_mint(plan, after, now_ms, ctx);
 
     vault.replace_venue_checkpoint(checkpoint);
 
-    events::rebalanced<Product>(
-        object::id(vault), before_equity, after_equity, before_base, after_base, increase,
-        vault.maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(), vault.share_supply(), checkpoint,
+    events::minted<Product>(
+        vault.id(), deposit, shares.value(), contribution, fee, admin, reserve_fee, fee_bps, admin_share_bps,
+        vault.maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(),
+        vault.share_supply(), checkpoint,
     );
+
+    shares
 }
 
 /// Holds the actual input coin across payout instead of accepting a numerical burn promise.
@@ -541,24 +585,18 @@ public(package) fun complete_redemption<Product, Collateral>(
     cash
 }
 
-/// Commits native mint effects only after the orchestration proved its venue checkpoint.
-public(package) fun complete_mint<Product, Collateral>(
-    vault: &mut Vault<Product>, plan: MintPlan<Product>, after: PositionObservation,
-    checkpoint: venue_account::Checkpoint, now_ms: u64, ctx: &mut TxContext,
-): Coin<BlastBoost<Product>> {
-    let deposit = plan.mint_deposit();
-    let (shares, contribution, fee, admin, reserve_fee, fee_bps, admin_share_bps) =
-        vault.complete_mint(plan, after, now_ms, ctx);
+/// Advances the sole economic checkpoint only after sealed maintenance has succeeded.
+public(package) fun complete_rebalance<Product, Collateral>(
+    vault: &mut Vault<Product>, plan: RebalancePlan<Product>, checkpoint: venue_account::Checkpoint,
+) {
+    let (before_equity, after_equity, before_base, after_base, increase) = vault.complete_rebalance(plan);
 
     vault.replace_venue_checkpoint(checkpoint);
 
-    events::minted<Product>(
-        vault.id(), deposit, shares.value(), contribution, fee, admin, reserve_fee, fee_bps, admin_share_bps,
-        vault.maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(),
-        vault.share_supply(), checkpoint,
+    events::rebalanced<Product>(
+        object::id(vault), before_equity, after_equity, before_base, after_base, increase,
+        vault.maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(), vault.share_supply(), checkpoint,
     );
-
-    shares
 }
 
 /// Shared production completion phase, after the real venue deposit has returned.
@@ -618,45 +656,32 @@ public(package) fun apply_post_capture<Product>(
     };
 }
 
-/// Emits activation facts read back from the resulting real Vault state.
-public(package) fun emit_vault_initialized<Product>(
-    vault: &Vault<Product>,
-    seed_amount: u64,
-    seed_venue_equity: u64,
-    position_base: u64,
-    position_collateral: u64,
-    lot_size: u64,
-    position_side: PositionSide,
-    position_imr: u256,
-) {
-    let binding = vault.venue_binding();
-    let (locked_shares, seed_funder) = vault.seed_facts();
+// === Private Functions ===
 
-    events::vault_initialized<Product>(
-        vault.id(),
-        binding.account_object_id(),
-        binding.account_number(),
-        binding.registry_id(),
-        binding.clearing_house_id(),
-        binding.base_oracle_id(),
-        binding.collateral_oracle_id(),
-        binding.collateral_type(),
-        seed_amount,
-        seed_venue_equity,
-        vault.maintenance_reserve(),
-        locked_shares / SEED_SHARE_SCALE,
-        locked_shares,
-        seed_funder,
-        position_base,
-        position_collateral,
-        lot_size,
-        position_side,
-        position_imr,
-        *vault.venue_checkpoint(),
+// --- Initialization ---
+
+fun assert_initialization_inputs(
+    collateral_decimals: u8,
+    seed_amount: u64,
+    seed_reserve: u64,
+    share_supply: u64,
+) {
+    assert!(
+        collateral_decimals == constants::collateral_decimals!(),
+        blast_boosts_aftermath::errors::invalid_collateral_decimals!(),
     );
+    assert!(seed_amount > 0, blast_boosts_aftermath::errors::invalid_seed!());
+    assert!(seed_reserve < seed_amount, blast_boosts_aftermath::errors::invalid_seed_reserve!());
+    assert!(share_supply == 0, blast_boosts_aftermath::errors::share_supply_not_zero!());
 }
 
-// === Private Functions ===
+fun assert_position_imr(position_imr: u256) {
+    assert_position_imr_sign(ifixed::is_neg(position_imr));
+}
+
+fun assert_position_imr_sign(negative: bool) {
+    assert!(!negative, blast_boosts_aftermath::errors::initialization_imr_mismatch!());
+}
 
 /// Creates the isolated Aftermath account the Vault will own and binds it to
 /// the exact venue objects this activation was called with.
@@ -757,14 +782,324 @@ fun assert_position_imr_unchanged<Collateral>(
     );
 }
 
-/// The funding the venue would settle for this account at its current cumulative rates.
-fun funding_candidate<Collateral>(clearing_house: &ClearingHouse<Collateral>, account: &Account<Collateral>): u256 {
-    let (long_rate, short_rate) = market::cum_funding_rates(clearing_house.market_state());
+fun assert_session_result(
+    is_long: bool,
+    expected_base: u64,
+    filled_bid: u256,
+    filled_ask: u256,
+    posted_orders: u64,
+    liquidated_size: u64,
+    bad_debt: u256,
+) {
+    assert!(posted_orders == 0, blast_boosts_aftermath::errors::initialization_orders_posted!());
+    assert!(liquidated_size == 0 && bad_debt == 0, blast_boosts_aftermath::errors::initialization_liquidation!());
 
-    position::calculate_position_funding_internal(
-        clearing_house.position(account::account_id(account)), long_rate, short_rate,
+    let expected_raw_base = (expected_base as u256) * constants::base_atom_to_ifixed_scale!();
+    let fill_matches = if (is_long) {
+        filled_bid == expected_raw_base && filled_ask == 0
+    } else {
+        filled_ask == expected_raw_base && filled_bid == 0
+    };
+    assert!(fill_matches, blast_boosts_aftermath::errors::initialization_fill_mismatch!());
+}
+
+fun initialization_order_count(target_base: u64, max_order_base: u64): u64 {
+    assert!(max_order_base > 0, blast_boosts_aftermath::errors::invalid_initialization_order_size!());
+
+    let count = target_base.div_ceil(max_order_base);
+    assert!(
+        count <= MAX_INITIALIZATION_ORDERS,
+        blast_boosts_aftermath::errors::initialization_order_count_exceeded!(),
+    );
+
+    count
+}
+
+fun locked_shares(seed_nav: u64): u64 {
+    seed_nav
+        .checked_mul(SEED_SHARE_SCALE)
+        .destroy_or!(abort blast_boosts_aftermath::errors::locked_shares_overflow!())
+}
+
+// --- Orders ---
+
+fun assert_deadline(now_ms: u64, deadline: u64) {
+    assert!(now_ms <= deadline, blast_boosts_aftermath::errors::deadline_expired!());
+}
+
+/// The terms of an active operation: direction from policy, the live cap, and the plan's sealed prices.
+fun active_terms<Product>(
+    vault: &Vault<Product>, reduce_only: bool, lot_size: u64, base_price: u64, collateral_price: u64,
+): OrderTerms {
+    let (side, max_order_notional) = vault.active_constraints();
+    let is_ask = if (reduce_only) { !opens_with_ask(side) } else { opens_with_ask(side) };
+
+    OrderTerms { is_ask, reduce_only, max_order_notional, lot_size, base_price, collateral_price }
+}
+
+/// Reads the market's taker fee and priority surcharge as one basis-point bound.
+fun live_venue_fee_bps<Collateral>(clearing_house: &ClearingHouse<Collateral>): u64 {
+    let params = clearing_house.market_params();
+
+    venue_fee_bound(
+        nonnegative_rate(market::taker_fee(params)),
+        nonnegative_rate(market::resolve_priority_taker_fee(market::priority_taker_fee(params))),
     )
 }
+
+/// Aftermath's priority rate is an additional surcharge, not an alternative fee.
+/// Negative rebates are ignored conservatively; callers provide no fee input.
+fun venue_fee_bound(ordinary: u256, priority: u256): u64 {
+    let one = constants::ifixed_one!();
+    assert!(
+        ordinary <= one && priority <= one && ordinary <= one - priority,
+        blast_boosts_aftermath::errors::venue_fee_unusable!(),
+    );
+
+    ((ordinary + priority).div_ceil(constants::ifixed_per_basis_point!())) as u64
+}
+
+/// A venue rebate reads as a zero fee; the bound never credits execution.
+fun nonnegative_rate(rate: u256): u256 {
+    if (ifixed::is_neg(rate)) { 0 } else { ifixed::abs(rate) }
+}
+
+/// Whether opening this side is an ask on the Aftermath port: shorts sell to open, longs buy.
+fun opens_with_ask(position_side: PositionSide): bool {
+    position_side == policy::short()
+}
+
+fun order_sizes(
+    target_notional: u64,
+    max_order_notional: u64,
+    base_price: u64,
+    collateral_price: u64,
+    lot_size: u64,
+): vector<u64> {
+    assert!(
+        target_notional > 0 && max_order_notional > 0,
+        blast_boosts_aftermath::errors::invalid_initialization_order_size!(),
+    );
+
+    let target_base = base_for_notional_down(target_notional, base_price, collateral_price, lot_size);
+    let max_order_base = base_for_notional_down(max_order_notional, base_price, collateral_price, lot_size);
+    assert!(
+        target_base > 0 && max_order_base > 0,
+        blast_boosts_aftermath::errors::invalid_initialization_order_size!(),
+    );
+    let order_count = initialization_order_count(target_base, max_order_base);
+
+    let mut remaining = target_base;
+    let mut orders = vector[];
+    while (orders.length() < order_count) {
+        let order_base = remaining.min(max_order_base);
+        assert!(
+            notional_for_base_up(order_base, base_price, collateral_price) <= max_order_notional,
+            blast_boosts_aftermath::errors::normalization_overflow!(),
+        );
+        orders.push_back(order_base);
+        remaining = remaining - order_base;
+    };
+    assert!(remaining == 0, blast_boosts_aftermath::errors::normalization_overflow!());
+
+    orders
+}
+
+/// Bounds each next whole-lot request without re-rounding the sealed aggregate.
+fun active_order_size(
+    remaining: u64, max_order_notional: u64, base_price: u64, collateral_price: u64, lot_size: u64, index: u64,
+): u64 {
+    assert!(index < MAX_ACTIVE_ORDERS, blast_boosts_aftermath::errors::active_order_count_exceeded!());
+
+    let maximum = base_for_notional_down(max_order_notional, base_price, collateral_price, lot_size);
+    assert!(
+        maximum > 0 && remaining > 0 && remaining % lot_size == 0,
+        blast_boosts_aftermath::errors::active_fill_mismatch!(),
+    );
+
+    remaining.min(maximum)
+}
+
+/// The next whole-lot request: what remains, capped by the live order notional.
+fun next_order_size(self: &OrderTerms, remaining: u64, index: u64): u64 {
+    active_order_size(remaining, self.max_order_notional, self.base_price, self.collateral_price, self.lot_size, index)
+}
+
+/// Whole-lot base atoms worth at most `notional` at the oracle pair, rounding down.
+fun base_for_notional_down(notional: u64, base_price: u64, collateral_price: u64, lot_size: u64): u64 {
+    assert!(
+        notional > 0 && base_price > 0 && collateral_price > 0 && lot_size > 0,
+        blast_boosts_aftermath::errors::normalization_overflow!(),
+    );
+
+    let numerator = (notional as u256)
+        .checked_mul(collateral_price as u256)
+        .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!())
+        .checked_mul(constants::collateral_to_base_scale!())
+        .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
+    let base = numerator / (base_price as u256);
+    assert!(base <= std::u64::max_value!() as u256, blast_boosts_aftermath::errors::normalization_overflow!());
+
+    (base as u64) / lot_size * lot_size
+}
+
+/// Collateral atoms `base` is worth at the oracle pair, rounding up.
+fun notional_for_base_up(base: u64, base_price: u64, collateral_price: u64): u64 {
+    let numerator = (base as u256)
+        .checked_mul(base_price as u256)
+        .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
+    let denominator = (collateral_price as u256)
+        .checked_mul(constants::collateral_to_base_scale!())
+        .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
+    let notional = numerator.div_ceil(denominator);
+    assert!(notional <= std::u64::max_value!() as u256, blast_boosts_aftermath::errors::normalization_overflow!());
+
+    notional as u64
+}
+
+/// Places every order of one active mint or redemption, proving each fill
+/// against the sealed oracle and the checkpoint before the next.
+///
+/// Returns the market and the checkpoint the last fill left behind.
+fun fill_orders<Product, Collateral>(
+    vault: &Vault<Product>, account: &mut Account<Collateral>, registry: &Registry,
+    mut clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
+    base_price_info: &PriceInfoObject, collateral_price_info: &PriceInfoObject,
+    binding: &venue_account::Binding, mut checkpoint: venue_account::Checkpoint,
+    terms: OrderTerms, mut remaining: u64, clock: &Clock, ctx: &TxContext,
+): (ClearingHouse<Collateral>, venue_account::Checkpoint) {
+    let mut index = 0;
+    while (remaining > 0) {
+        let requested = terms.next_order_size(remaining, index);
+        let (next_market, fill) = place_order(
+            vault, account, clearing_house, base_oracle, collateral_oracle, &terms, requested, clock, ctx,
+        );
+        clearing_house = next_market;
+        vault.assert_active_execution(terms.base_price, fill.executed);
+
+        let (intermediate, after_checkpoint) = snapshot::capture(
+            binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
+            base_price_info, collateral_price_info, clock,
+        );
+        fill.assert_checkpoint(&checkpoint, &after_checkpoint);
+        vault.assert_active_observation(intermediate, terms.base_price, terms.collateral_price, clock.timestamp_ms());
+
+        checkpoint = after_checkpoint;
+        remaining = remaining - fill.filled;
+        index = index + 1;
+    };
+
+    (clearing_house, checkpoint)
+}
+
+/// Places one whole-lot market order and verifies the venue's report of it.
+///
+/// The request is checked against the per-order cap before the call and the
+/// actual fill after it, so admitted slippage cannot carry one order past the
+/// live cap. Every operation loop places its orders through this step; only
+/// the slippage bound it then proves against differs.
+fun place_order<Product, Collateral>(
+    vault: &Vault<Product>, account: &mut Account<Collateral>, clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
+    terms: &OrderTerms, requested: u64, clock: &Clock, ctx: &TxContext,
+): (ClearingHouse<Collateral>, Fill) {
+    let OrderTerms { is_ask, reduce_only, lot_size, base_price, collateral_price, .. } = *terms;
+    vault.assert_order_notional_allowed(notional_for_base_up(requested, base_price, collateral_price));
+
+    let (clearing_house, summary) = vault.execute_order(
+        account, clearing_house, base_oracle, collateral_oracle, is_ask, requested, reduce_only, clock, ctx,
+    );
+    let filled = active_fill(
+        !is_ask, requested, lot_size,
+        clearing_house::base_filled_bid(&summary), clearing_house::base_filled_ask(&summary),
+        clearing_house::posted_orders(&summary), clearing_house::liquidated_size(&summary),
+        clearing_house::liquidation_bad_debt(&summary),
+    );
+    let (filled_base, filled_quote) = clearing_house::filled_base_and_quote(&summary, is_ask);
+    let executed = execution_price(clearing_house::execution_price(&summary, is_ask), !is_ask);
+    vault.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
+
+    (clearing_house, Fill { filled, filled_base, filled_quote, executed, is_ask, reduce_only })
+}
+
+/// Proves the checkpoint moved exactly as this fill did: an opening trade moves
+/// base and quote, a reduction only base.
+fun assert_checkpoint(self: &Fill, before: &venue_account::Checkpoint, after: &venue_account::Checkpoint) {
+    let base = self.base_after(before.signed_base());
+
+    if (self.reduce_only) {
+        before.assert_reduction_checkpoint(after, base)
+    } else {
+        before.assert_trade_checkpoint(after, base, self.quote_after(before.signed_quote_notional()))
+    }
+}
+
+/// The signed base the checkpoint must show after this fill.
+fun base_after(self: &Fill, previous: u256): u256 {
+    if (self.is_ask) { ifixed::sub(previous, self.filled_base) } else { ifixed::add(previous, self.filled_base) }
+}
+
+/// The signed quote notional the checkpoint must show after this fill.
+fun quote_after(self: &Fill, previous: u256): u256 {
+    if (self.is_ask) { ifixed::add(previous, self.filled_quote) } else { ifixed::sub(previous, self.filled_quote) }
+}
+
+/// Accepts a positive whole-lot fill toward a bounded atomic aggregate.
+fun active_fill(
+    is_bid: bool,
+    requested_base: u64,
+    lot_size: u64,
+    filled_bid: u256,
+    filled_ask: u256,
+    posted_orders: u64,
+    liquidated_size: u64,
+    bad_debt: u256,
+): u64 {
+    assert!(posted_orders == 0, blast_boosts_aftermath::errors::active_orders_posted!());
+    assert!(liquidated_size == 0 && bad_debt == 0, blast_boosts_aftermath::errors::active_liquidation!());
+
+    let (filled, opposite) = if (is_bid) { (filled_bid, filled_ask) } else { (filled_ask, filled_bid) };
+    assert!(
+        opposite == 0 && filled > 0 && filled <= (requested_base as u256) * constants::base_atom_to_ifixed_scale!()
+            && lot_size > 0 && filled % ((lot_size as u256) * constants::base_atom_to_ifixed_scale!()) == 0,
+        blast_boosts_aftermath::errors::active_fill_mismatch!(),
+    );
+
+    (filled / constants::base_atom_to_ifixed_scale!()) as u64
+}
+
+/// Converts one session's actual filled quote into atomic collateral notional.
+///
+/// The fill is checked separately for every order so allowed execution
+/// slippage cannot make an individual order exceed the live core cap.
+fun actual_fill_notional(filled_quote: u256, collateral_price: u64): u64 {
+    assert!(collateral_price > 0, blast_boosts_aftermath::errors::normalization_overflow!());
+
+    let denominator = (collateral_price as u256)
+        .checked_mul(constants::collateral_to_base_scale!())
+        .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
+    let notional = filled_quote.div_ceil(denominator);
+    assert!(notional <= std::u64::max_value!() as u256, blast_boosts_aftermath::errors::normalization_overflow!());
+
+    notional as u64
+}
+
+fun execution_price(raw_price: u256, round_up: bool): u64 {
+    normalize_execution_price(raw_price, round_up, ifixed::is_neg(raw_price))
+}
+
+fun normalize_execution_price(raw_price: u256, round_up: bool, negative: bool): u64 {
+    assert!(!negative, blast_boosts_aftermath::errors::normalization_overflow!());
+
+    let down = raw_price / constants::base_atom_to_ifixed_scale!();
+    let normalized = if (round_up && raw_price % constants::base_atom_to_ifixed_scale!() != 0) { down + 1 } else { down };
+    assert!(normalized <= std::u64::max_value!() as u256, blast_boosts_aftermath::errors::normalization_overflow!());
+
+    normalized as u64
+}
+
+// --- Funding ---
 
 /// Refreshes the venue's lazily updated cumulative funding rates when they are
 /// due, immediately before a settlement the vault accepts.
@@ -820,35 +1155,33 @@ fun next_funding_update_time_ms(funding_last_upd_ms: u64, funding_frequency_ms: 
     funding_last_upd_ms - funding_last_upd_ms % funding_frequency_ms + funding_frequency_ms
 }
 
-/// Advances terminal checkpoint/event state only after an attributable close has completed.
-fun complete_unwind<Product>(
-    vault: &mut Vault<Product>, before: venue_account::Checkpoint, funded: Option<venue_account::Checkpoint>,
-    after: venue_account::Checkpoint, orders: u64, filled_quote: Option<u256>,
-) {
-    vault.assert_unwinding();
-    after.assert_no_orders();
-    if (filled_quote.is_none()) {
-        assert!(funded.is_none() && orders == 0, blast_boosts_aftermath::errors::terminal_venue_unsettled!());
-        before.assert_direct_settlement_close(&after);
+/// The funding the venue would settle for this account at its current cumulative rates.
+fun funding_candidate<Collateral>(clearing_house: &ClearingHouse<Collateral>, account: &Account<Collateral>): u256 {
+    let (long_rate, short_rate) = market::cum_funding_rates(clearing_house.market_state());
+
+    position::calculate_position_funding_internal(
+        clearing_house.position(account::account_id(account)), long_rate, short_rate,
+    )
+}
+
+fun classify_sync_changes(
+    stored: &venue_account::Checkpoint,
+    before: &venue_account::Checkpoint,
+    after: &venue_account::Checkpoint,
+    funding_candidate: u256,
+    collateral_price: u256,
+): (snapshot::Change, snapshot::Change) {
+    let preexisting_change = if (snapshot::checkpoint_ready_for_settlement(stored, before)) {
+        snapshot::unchanged_change()
     } else {
-        assert!(
-            funded.is_some() && orders > 0 && orders <= MAX_ACTIVE_ORDERS,
-            blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
-        );
+        snapshot::classify_preexisting_funding(stored, before)
     };
+    let local_change = snapshot::classify_change(before, after, funding_candidate, collateral_price);
 
-    vault.replace_venue_checkpoint(after);
-
-    events::unwind_progress<Product>(vault.id(), before, funded, after, orders, filled_quote);
+    (preexisting_change, local_change)
 }
 
-/// Verifies actual withdrawal effects before sealing custody and native claim rules.
-fun complete_finalization<Product, Collateral>(
-    vault: &mut Vault<Product>, recovered: Coin<Collateral>,
-    before: venue_account::Checkpoint, after: venue_account::Checkpoint,
-) {
-    vault.complete_shutdown(before.terminal_withdrawal(after, recovered));
-}
+// --- Shutdown ---
 
 /// The venue's direct frozen settlement is not a market order or a stale-price fallback.
 fun unwind_frozen<Product, Collateral>(
@@ -959,445 +1292,60 @@ fun unwind_base_decoded(magnitude: u256, is_long: bool, lot_size: u64, side: Pos
     (magnitude / constants::base_atom_to_ifixed_scale!()) as u64
 }
 
-/// Reads the market's taker fee and priority surcharge as one basis-point bound.
-fun live_venue_fee_bps<Collateral>(clearing_house: &ClearingHouse<Collateral>): u64 {
-    let params = clearing_house.market_params();
-
-    venue_fee_bound(
-        nonnegative_rate(market::taker_fee(params)),
-        nonnegative_rate(market::resolve_priority_taker_fee(market::priority_taker_fee(params))),
-    )
-}
-
-/// A venue rebate reads as a zero fee; the bound never credits execution.
-fun nonnegative_rate(rate: u256): u256 {
-    if (ifixed::is_neg(rate)) { 0 } else { ifixed::abs(rate) }
-}
-
-/// Aftermath's priority rate is an additional surcharge, not an alternative fee.
-/// Negative rebates are ignored conservatively; callers provide no fee input.
-fun venue_fee_bound(ordinary: u256, priority: u256): u64 {
-    let one = constants::ifixed_one!();
-    assert!(
-        ordinary <= one && priority <= one && ordinary <= one - priority,
-        blast_boosts_aftermath::errors::venue_fee_unusable!(),
-    );
-
-    ((ordinary + priority).div_ceil(constants::ifixed_per_basis_point!())) as u64
-}
-
-fun classify_sync_changes(
-    stored: &venue_account::Checkpoint,
-    before: &venue_account::Checkpoint,
-    after: &venue_account::Checkpoint,
-    funding_candidate: u256,
-    collateral_price: u256,
-): (snapshot::Change, snapshot::Change) {
-    let preexisting_change = if (snapshot::checkpoint_ready_for_settlement(stored, before)) {
-        snapshot::unchanged_change()
+/// Advances terminal checkpoint/event state only after an attributable close has completed.
+fun complete_unwind<Product>(
+    vault: &mut Vault<Product>, before: venue_account::Checkpoint, funded: Option<venue_account::Checkpoint>,
+    after: venue_account::Checkpoint, orders: u64, filled_quote: Option<u256>,
+) {
+    vault.assert_unwinding();
+    after.assert_no_orders();
+    if (filled_quote.is_none()) {
+        assert!(funded.is_none() && orders == 0, blast_boosts_aftermath::errors::terminal_venue_unsettled!());
+        before.assert_direct_settlement_close(&after);
     } else {
-        snapshot::classify_preexisting_funding(stored, before)
-    };
-    let local_change = snapshot::classify_change(before, after, funding_candidate, collateral_price);
-
-    (preexisting_change, local_change)
-}
-
-/// Places one whole-lot market order and verifies the venue's report of it.
-///
-/// The request is checked against the per-order cap before the call and the
-/// actual fill after it, so admitted slippage cannot carry one order past the
-/// live cap. Every operation loop places its orders through this step; only
-/// the slippage bound it then proves against differs.
-fun place_order<Product, Collateral>(
-    vault: &Vault<Product>, account: &mut Account<Collateral>, clearing_house: ClearingHouse<Collateral>,
-    base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
-    terms: &OrderTerms, requested: u64, clock: &Clock, ctx: &TxContext,
-): (ClearingHouse<Collateral>, Fill) {
-    let OrderTerms { is_ask, reduce_only, lot_size, base_price, collateral_price, .. } = *terms;
-    vault.assert_order_notional_allowed(notional_for_base_up(requested, base_price, collateral_price));
-
-    let (clearing_house, summary) = vault.execute_order(
-        account, clearing_house, base_oracle, collateral_oracle, is_ask, requested, reduce_only, clock, ctx,
-    );
-    let filled = active_fill(
-        !is_ask, requested, lot_size,
-        clearing_house::base_filled_bid(&summary), clearing_house::base_filled_ask(&summary),
-        clearing_house::posted_orders(&summary), clearing_house::liquidated_size(&summary),
-        clearing_house::liquidation_bad_debt(&summary),
-    );
-    let (filled_base, filled_quote) = clearing_house::filled_base_and_quote(&summary, is_ask);
-    let executed = execution_price(clearing_house::execution_price(&summary, is_ask), !is_ask);
-    vault.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
-
-    (clearing_house, Fill { filled, filled_base, filled_quote, executed, is_ask, reduce_only })
-}
-
-/// Places every order of one active mint or redemption, proving each fill
-/// against the sealed oracle and the checkpoint before the next.
-///
-/// Returns the market and the checkpoint the last fill left behind.
-fun fill_orders<Product, Collateral>(
-    vault: &Vault<Product>, account: &mut Account<Collateral>, registry: &Registry,
-    mut clearing_house: ClearingHouse<Collateral>,
-    base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
-    base_price_info: &PriceInfoObject, collateral_price_info: &PriceInfoObject,
-    binding: &venue_account::Binding, mut checkpoint: venue_account::Checkpoint,
-    terms: OrderTerms, mut remaining: u64, clock: &Clock, ctx: &TxContext,
-): (ClearingHouse<Collateral>, venue_account::Checkpoint) {
-    let mut index = 0;
-    while (remaining > 0) {
-        let requested = terms.next_order_size(remaining, index);
-        let (next_market, fill) = place_order(
-            vault, account, clearing_house, base_oracle, collateral_oracle, &terms, requested, clock, ctx,
-        );
-        clearing_house = next_market;
-        vault.assert_active_execution(terms.base_price, fill.executed);
-
-        let (intermediate, after_checkpoint) = snapshot::capture(
-            binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
-            base_price_info, collateral_price_info, clock,
-        );
-        fill.assert_checkpoint(&checkpoint, &after_checkpoint);
-        vault.assert_active_observation(intermediate, terms.base_price, terms.collateral_price, clock.timestamp_ms());
-
-        checkpoint = after_checkpoint;
-        remaining = remaining - fill.filled;
-        index = index + 1;
-    };
-
-    (clearing_house, checkpoint)
-}
-
-/// The terms of an active operation: direction from policy, the live cap, and the plan's sealed prices.
-fun active_terms<Product>(
-    vault: &Vault<Product>, reduce_only: bool, lot_size: u64, base_price: u64, collateral_price: u64,
-): OrderTerms {
-    let (side, max_order_notional) = vault.active_constraints();
-    let is_ask = if (reduce_only) { !opens_with_ask(side) } else { opens_with_ask(side) };
-
-    OrderTerms { is_ask, reduce_only, max_order_notional, lot_size, base_price, collateral_price }
-}
-
-/// The next whole-lot request: what remains, capped by the live order notional.
-fun next_order_size(self: &OrderTerms, remaining: u64, index: u64): u64 {
-    active_order_size(remaining, self.max_order_notional, self.base_price, self.collateral_price, self.lot_size, index)
-}
-
-/// Proves the checkpoint moved exactly as this fill did: an opening trade moves
-/// base and quote, a reduction only base.
-fun assert_checkpoint(self: &Fill, before: &venue_account::Checkpoint, after: &venue_account::Checkpoint) {
-    let base = self.base_after(before.signed_base());
-
-    if (self.reduce_only) {
-        before.assert_reduction_checkpoint(after, base)
-    } else {
-        before.assert_trade_checkpoint(after, base, self.quote_after(before.signed_quote_notional()))
-    }
-}
-
-/// The signed base the checkpoint must show after this fill.
-fun base_after(self: &Fill, previous: u256): u256 {
-    if (self.is_ask) { ifixed::sub(previous, self.filled_base) } else { ifixed::add(previous, self.filled_base) }
-}
-
-/// The signed quote notional the checkpoint must show after this fill.
-fun quote_after(self: &Fill, previous: u256): u256 {
-    if (self.is_ask) { ifixed::add(previous, self.filled_quote) } else { ifixed::sub(previous, self.filled_quote) }
-}
-
-/// Bounds each next whole-lot request without re-rounding the sealed aggregate.
-fun active_order_size(
-    remaining: u64, max_order_notional: u64, base_price: u64, collateral_price: u64, lot_size: u64, index: u64,
-): u64 {
-    assert!(index < MAX_ACTIVE_ORDERS, blast_boosts_aftermath::errors::active_order_count_exceeded!());
-
-    let maximum = base_for_notional_down(max_order_notional, base_price, collateral_price, lot_size);
-    assert!(
-        maximum > 0 && remaining > 0 && remaining % lot_size == 0,
-        blast_boosts_aftermath::errors::active_fill_mismatch!(),
-    );
-
-    remaining.min(maximum)
-}
-
-fun assert_deadline(now_ms: u64, deadline: u64) {
-    assert!(now_ms <= deadline, blast_boosts_aftermath::errors::deadline_expired!());
-}
-
-fun order_sizes(
-    target_notional: u64,
-    max_order_notional: u64,
-    base_price: u64,
-    collateral_price: u64,
-    lot_size: u64,
-): vector<u64> {
-    assert!(
-        target_notional > 0 && max_order_notional > 0,
-        blast_boosts_aftermath::errors::invalid_initialization_order_size!(),
-    );
-
-    let target_base = base_for_notional_down(target_notional, base_price, collateral_price, lot_size);
-    let max_order_base = base_for_notional_down(max_order_notional, base_price, collateral_price, lot_size);
-    assert!(
-        target_base > 0 && max_order_base > 0,
-        blast_boosts_aftermath::errors::invalid_initialization_order_size!(),
-    );
-    let order_count = initialization_order_count(target_base, max_order_base);
-
-    let mut remaining = target_base;
-    let mut orders = vector[];
-    while (orders.length() < order_count) {
-        let order_base = remaining.min(max_order_base);
         assert!(
-            notional_for_base_up(order_base, base_price, collateral_price) <= max_order_notional,
-            blast_boosts_aftermath::errors::normalization_overflow!(),
+            funded.is_some() && orders > 0 && orders <= MAX_ACTIVE_ORDERS,
+            blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
         );
-        orders.push_back(order_base);
-        remaining = remaining - order_base;
     };
-    assert!(remaining == 0, blast_boosts_aftermath::errors::normalization_overflow!());
 
-    orders
+    vault.replace_venue_checkpoint(after);
+
+    events::unwind_progress<Product>(vault.id(), before, funded, after, orders, filled_quote);
 }
 
-fun initialization_order_count(target_base: u64, max_order_base: u64): u64 {
-    assert!(max_order_base > 0, blast_boosts_aftermath::errors::invalid_initialization_order_size!());
-
-    let count = target_base.div_ceil(max_order_base);
-    assert!(
-        count <= MAX_INITIALIZATION_ORDERS,
-        blast_boosts_aftermath::errors::initialization_order_count_exceeded!(),
-    );
-
-    count
-}
-
-/// Whether opening this side is an ask on the Aftermath port: shorts sell to open, longs buy.
-fun opens_with_ask(position_side: PositionSide): bool {
-    position_side == policy::short()
-}
-
-/// Whole-lot base atoms worth at most `notional` at the oracle pair, rounding down.
-fun base_for_notional_down(notional: u64, base_price: u64, collateral_price: u64, lot_size: u64): u64 {
-    assert!(
-        notional > 0 && base_price > 0 && collateral_price > 0 && lot_size > 0,
-        blast_boosts_aftermath::errors::normalization_overflow!(),
-    );
-
-    let numerator = (notional as u256)
-        .checked_mul(collateral_price as u256)
-        .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!())
-        .checked_mul(constants::collateral_to_base_scale!())
-        .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
-    let base = numerator / (base_price as u256);
-    assert!(base <= std::u64::max_value!() as u256, blast_boosts_aftermath::errors::normalization_overflow!());
-
-    (base as u64) / lot_size * lot_size
-}
-
-/// Collateral atoms `base` is worth at the oracle pair, rounding up.
-fun notional_for_base_up(base: u64, base_price: u64, collateral_price: u64): u64 {
-    let numerator = (base as u256)
-        .checked_mul(base_price as u256)
-        .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
-    let denominator = (collateral_price as u256)
-        .checked_mul(constants::collateral_to_base_scale!())
-        .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
-    let notional = numerator.div_ceil(denominator);
-    assert!(notional <= std::u64::max_value!() as u256, blast_boosts_aftermath::errors::normalization_overflow!());
-
-    notional as u64
-}
-
-/// Converts one session's actual filled quote into atomic collateral notional.
-///
-/// The fill is checked separately for every order so allowed execution
-/// slippage cannot make an individual order exceed the live core cap.
-fun actual_fill_notional(filled_quote: u256, collateral_price: u64): u64 {
-    assert!(collateral_price > 0, blast_boosts_aftermath::errors::normalization_overflow!());
-
-    let denominator = (collateral_price as u256)
-        .checked_mul(constants::collateral_to_base_scale!())
-        .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
-    let notional = filled_quote.div_ceil(denominator);
-    assert!(notional <= std::u64::max_value!() as u256, blast_boosts_aftermath::errors::normalization_overflow!());
-
-    notional as u64
-}
-
-/// Accepts a positive whole-lot fill toward a bounded atomic aggregate.
-fun active_fill(
-    is_bid: bool,
-    requested_base: u64,
-    lot_size: u64,
-    filled_bid: u256,
-    filled_ask: u256,
-    posted_orders: u64,
-    liquidated_size: u64,
-    bad_debt: u256,
-): u64 {
-    assert!(posted_orders == 0, blast_boosts_aftermath::errors::active_orders_posted!());
-    assert!(liquidated_size == 0 && bad_debt == 0, blast_boosts_aftermath::errors::active_liquidation!());
-
-    let (filled, opposite) = if (is_bid) { (filled_bid, filled_ask) } else { (filled_ask, filled_bid) };
-    assert!(
-        opposite == 0 && filled > 0 && filled <= (requested_base as u256) * constants::base_atom_to_ifixed_scale!()
-            && lot_size > 0 && filled % ((lot_size as u256) * constants::base_atom_to_ifixed_scale!()) == 0,
-        blast_boosts_aftermath::errors::active_fill_mismatch!(),
-    );
-
-    (filled / constants::base_atom_to_ifixed_scale!()) as u64
-}
-
-fun assert_session_result(
-    is_long: bool,
-    expected_base: u64,
-    filled_bid: u256,
-    filled_ask: u256,
-    posted_orders: u64,
-    liquidated_size: u64,
-    bad_debt: u256,
+/// Verifies actual withdrawal effects before sealing custody and native claim rules.
+fun complete_finalization<Product, Collateral>(
+    vault: &mut Vault<Product>, recovered: Coin<Collateral>,
+    before: venue_account::Checkpoint, after: venue_account::Checkpoint,
 ) {
-    assert!(posted_orders == 0, blast_boosts_aftermath::errors::initialization_orders_posted!());
-    assert!(liquidated_size == 0 && bad_debt == 0, blast_boosts_aftermath::errors::initialization_liquidation!());
-
-    let expected_raw_base = (expected_base as u256) * constants::base_atom_to_ifixed_scale!();
-    let fill_matches = if (is_long) {
-        filled_bid == expected_raw_base && filled_ask == 0
-    } else {
-        filled_ask == expected_raw_base && filled_bid == 0
-    };
-    assert!(fill_matches, blast_boosts_aftermath::errors::initialization_fill_mismatch!());
-}
-
-fun assert_initialization_inputs(
-    collateral_decimals: u8,
-    seed_amount: u64,
-    seed_reserve: u64,
-    share_supply: u64,
-) {
-    assert!(
-        collateral_decimals == constants::collateral_decimals!(),
-        blast_boosts_aftermath::errors::invalid_collateral_decimals!(),
-    );
-    assert!(seed_amount > 0, blast_boosts_aftermath::errors::invalid_seed!());
-    assert!(seed_reserve < seed_amount, blast_boosts_aftermath::errors::invalid_seed_reserve!());
-    assert!(share_supply == 0, blast_boosts_aftermath::errors::share_supply_not_zero!());
-}
-
-fun locked_shares(seed_nav: u64): u64 {
-    seed_nav
-        .checked_mul(SEED_SHARE_SCALE)
-        .destroy_or!(abort blast_boosts_aftermath::errors::locked_shares_overflow!())
-}
-
-fun execution_price(raw_price: u256, round_up: bool): u64 {
-    normalize_execution_price(raw_price, round_up, ifixed::is_neg(raw_price))
-}
-
-fun normalize_execution_price(raw_price: u256, round_up: bool, negative: bool): u64 {
-    assert!(!negative, blast_boosts_aftermath::errors::normalization_overflow!());
-
-    let down = raw_price / constants::base_atom_to_ifixed_scale!();
-    let normalized = if (round_up && raw_price % constants::base_atom_to_ifixed_scale!() != 0) { down + 1 } else { down };
-    assert!(normalized <= std::u64::max_value!() as u256, blast_boosts_aftermath::errors::normalization_overflow!());
-
-    normalized as u64
-}
-
-fun assert_position_imr(position_imr: u256) {
-    assert_position_imr_sign(ifixed::is_neg(position_imr));
-}
-
-fun assert_position_imr_sign(negative: bool) {
-    assert!(!negative, blast_boosts_aftermath::errors::initialization_imr_mismatch!());
+    vault.complete_shutdown(before.terminal_withdrawal(after, recovered));
 }
 
 // === Test-Only Functions ===
 
 #[test_only]
-public(package) fun complete_unwind_for_testing<Product>(
-    vault: &mut Vault<Product>, before: venue_account::Checkpoint, funded: Option<venue_account::Checkpoint>,
-    after: venue_account::Checkpoint, orders: u64, filled_quote: Option<u256>,
+public fun assert_initialization_inputs_for_testing(
+    already_initialized: bool,
+    collateral_decimals: u8,
+    seed_amount: u64,
+    seed_reserve: u64,
+    share_supply: u64,
 ) {
-    complete_unwind(vault, before, funded, after, orders, filled_quote);
+    if (already_initialized) {
+        blast_boosts_aftermath::vault::assert_venue_account_installable_for_testing(true);
+    };
+    assert_initialization_inputs(
+        collateral_decimals,
+        seed_amount,
+        seed_reserve,
+        share_supply,
+    );
 }
 
 #[test_only]
-public(package) fun complete_finalization_for_testing<Product, Collateral>(
-    vault: &mut Vault<Product>, recovered: Coin<Collateral>,
-    before: venue_account::Checkpoint, after: venue_account::Checkpoint,
-) {
-    complete_finalization(vault, recovered, before, after);
-}
-
-#[test_only]
-public fun unwind_base_for_testing(magnitude: u256, is_long: bool, lot_size: u64, side: PositionSide): u64 {
-    unwind_base_decoded(magnitude, is_long, lot_size, side)
-}
-
-#[test_only]
-public fun venue_fee_bound_for_testing(ordinary: u256, priority: u256): u64 { venue_fee_bound(ordinary, priority) }
-
-#[test_only]
-public fun active_order_size_for_testing(
-    remaining: u64, max_order_notional: u64, base_price: u64, collateral_price: u64, lot_size: u64, index: u64,
-): u64 {
-    active_order_size(remaining, max_order_notional, base_price, collateral_price, lot_size, index)
-}
-
-#[test_only]
-public fun assert_deadline_for_testing(now_ms: u64, deadline: u64) { assert_deadline(now_ms, deadline); }
-
-#[test_only]
-public fun is_time_to_update_funding_for_testing(
-    now_ms: u64, funding_last_upd_ms: u64, funding_frequency_ms: u64,
-): bool {
-    is_time_to_update_funding(now_ms, funding_last_upd_ms, funding_frequency_ms)
-}
-
-#[test_only]
-public fun next_funding_update_time_ms_for_testing(funding_last_upd_ms: u64, funding_frequency_ms: u64): u64 {
-    next_funding_update_time_ms(funding_last_upd_ms, funding_frequency_ms)
-}
-
-#[test_only]
-public fun active_fill_for_testing(
-    is_bid: bool, requested_base: u64, lot_size: u64, filled_bid: u256, filled_ask: u256,
-    posted_orders: u64, liquidated_size: u64, bad_debt: u256,
-): u64 {
-    active_fill(is_bid, requested_base, lot_size, filled_bid, filled_ask, posted_orders, liquidated_size, bad_debt)
-}
-
-#[test_only]
-public fun order_sizes_for_testing(
-    target_notional: u64,
-    max_order_notional: u64,
-    base_price: u64,
-    collateral_price: u64,
-    lot_size: u64,
-): vector<u64> {
-    order_sizes(
-        target_notional,
-        max_order_notional,
-        base_price,
-        collateral_price,
-        lot_size,
-    )
-}
-
-#[test_only]
-public fun max_initialization_orders_for_testing(): u64 {
-    MAX_INITIALIZATION_ORDERS
-}
-
-#[test_only]
-public fun order_count_for_testing(
-    target_base: u64,
-    max_order_base: u64,
-): u64 {
-    initialization_order_count(target_base, max_order_base)
+public fun assert_position_imr_for_testing(negative: bool) {
+    assert_position_imr_sign(negative);
 }
 
 #[test_only]
@@ -1422,32 +1370,72 @@ public fun assert_session_result_for_testing(
 }
 
 #[test_only]
-public fun opens_with_ask_for_testing(position_side: PositionSide): bool {
-    opens_with_ask(position_side)
+public fun max_initialization_orders_for_testing(): u64 {
+    MAX_INITIALIZATION_ORDERS
 }
 
 #[test_only]
-public fun assert_initialization_inputs_for_testing(
-    already_initialized: bool,
-    collateral_decimals: u8,
-    seed_amount: u64,
-    seed_reserve: u64,
-    share_supply: u64,
-) {
-    if (already_initialized) {
-        blast_boosts_aftermath::vault::assert_venue_account_installable_for_testing(true);
-    };
-    assert_initialization_inputs(
-        collateral_decimals,
-        seed_amount,
-        seed_reserve,
-        share_supply,
-    );
+public fun order_count_for_testing(
+    target_base: u64,
+    max_order_base: u64,
+): u64 {
+    initialization_order_count(target_base, max_order_base)
 }
 
 #[test_only]
 public fun locked_shares_for_testing(seed_nav: u64): u64 {
     locked_shares(seed_nav)
+}
+
+#[test_only]
+public fun assert_deadline_for_testing(now_ms: u64, deadline: u64) { assert_deadline(now_ms, deadline); }
+
+#[test_only]
+public fun venue_fee_bound_for_testing(ordinary: u256, priority: u256): u64 { venue_fee_bound(ordinary, priority) }
+
+#[test_only]
+public fun opens_with_ask_for_testing(position_side: PositionSide): bool {
+    opens_with_ask(position_side)
+}
+
+#[test_only]
+public fun order_sizes_for_testing(
+    target_notional: u64,
+    max_order_notional: u64,
+    base_price: u64,
+    collateral_price: u64,
+    lot_size: u64,
+): vector<u64> {
+    order_sizes(
+        target_notional,
+        max_order_notional,
+        base_price,
+        collateral_price,
+        lot_size,
+    )
+}
+
+#[test_only]
+public fun active_order_size_for_testing(
+    remaining: u64, max_order_notional: u64, base_price: u64, collateral_price: u64, lot_size: u64, index: u64,
+): u64 {
+    active_order_size(remaining, max_order_notional, base_price, collateral_price, lot_size, index)
+}
+
+#[test_only]
+public fun active_fill_for_testing(
+    is_bid: bool, requested_base: u64, lot_size: u64, filled_bid: u256, filled_ask: u256,
+    posted_orders: u64, liquidated_size: u64, bad_debt: u256,
+): u64 {
+    active_fill(is_bid, requested_base, lot_size, filled_bid, filled_ask, posted_orders, liquidated_size, bad_debt)
+}
+
+#[test_only]
+public fun actual_fill_notional_for_testing(
+    filled_quote: u256,
+    collateral_price: u64,
+): u64 {
+    actual_fill_notional(filled_quote, collateral_price)
 }
 
 #[test_only]
@@ -1460,16 +1448,15 @@ public fun execution_price_for_testing(
 }
 
 #[test_only]
-public fun actual_fill_notional_for_testing(
-    filled_quote: u256,
-    collateral_price: u64,
-): u64 {
-    actual_fill_notional(filled_quote, collateral_price)
+public fun is_time_to_update_funding_for_testing(
+    now_ms: u64, funding_last_upd_ms: u64, funding_frequency_ms: u64,
+): bool {
+    is_time_to_update_funding(now_ms, funding_last_upd_ms, funding_frequency_ms)
 }
 
 #[test_only]
-public fun assert_position_imr_for_testing(negative: bool) {
-    assert_position_imr_sign(negative);
+public fun next_funding_update_time_ms_for_testing(funding_last_upd_ms: u64, funding_frequency_ms: u64): u64 {
+    next_funding_update_time_ms(funding_last_upd_ms, funding_frequency_ms)
 }
 
 #[test_only]
@@ -1542,6 +1529,27 @@ public fun apply_post_captures_for_testing<Product>(
         preexisting_change,
         local_change,
     );
+}
+
+#[test_only]
+public fun unwind_base_for_testing(magnitude: u256, is_long: bool, lot_size: u64, side: PositionSide): u64 {
+    unwind_base_decoded(magnitude, is_long, lot_size, side)
+}
+
+#[test_only]
+public(package) fun complete_unwind_for_testing<Product>(
+    vault: &mut Vault<Product>, before: venue_account::Checkpoint, funded: Option<venue_account::Checkpoint>,
+    after: venue_account::Checkpoint, orders: u64, filled_quote: Option<u256>,
+) {
+    complete_unwind(vault, before, funded, after, orders, filled_quote);
+}
+
+#[test_only]
+public(package) fun complete_finalization_for_testing<Product, Collateral>(
+    vault: &mut Vault<Product>, recovered: Coin<Collateral>,
+    before: venue_account::Checkpoint, after: venue_account::Checkpoint,
+) {
+    complete_finalization(vault, recovered, before, after);
 }
 
 // === Imports ===
