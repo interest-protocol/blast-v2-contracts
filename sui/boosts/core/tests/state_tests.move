@@ -246,14 +246,14 @@ fun issuance_rejects_a_nav_cap_whose_max_leverage_notional_overflows() {
 fun nav_cap_setter_replaces_the_initial_cap_and_returns_the_previous_one() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
-    assert_eq!(state.nav_cap(), NAV_CAP);
-    assert!(state.is_within_nav_cap(NAV_CAP));
-    assert!(!state.is_within_nav_cap(NAV_CAP + 1));
+    assert_eq!(state.nav_cap_for_testing(), NAV_CAP);
+    assert!(state.is_within_nav_cap_for_testing(NAV_CAP));
+    assert!(!state.is_within_nav_cap_for_testing(NAV_CAP + 1));
 
     assert_eq!(state.set_nav_cap(NAV_CAP / 2), NAV_CAP);
 
-    assert_eq!(state.nav_cap(), NAV_CAP / 2);
-    assert!(!state.is_within_nav_cap(NAV_CAP / 2 + 1));
+    assert_eq!(state.nav_cap_for_testing(), NAV_CAP / 2);
+    assert!(!state.is_within_nav_cap_for_testing(NAV_CAP / 2 + 1));
     state.destroy_for_testing();
     destroy(fixture);
 }
@@ -385,7 +385,7 @@ fun rebalance_increase_reserves_cost_and_keeps_buffer_unchanged() {
     assert_eq!(before_base, 1_000_000_000);
     assert_eq!(after_base, 1_978_452_000);
     assert!(increased);
-    assert_eq!(state.maintenance_reserve_for_testing(), SEED_RESERVE);
+    assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     state.destroy_for_testing();
     destroy(fixture);
 }
@@ -407,7 +407,7 @@ fun rebalance_short_emergency_reduction_stops_once_leverage_is_below_the_cap() {
     assert_eq!(next.order_base(), 0);
     assert!(!next.is_wide());
     state.complete_rebalance(plan);
-    assert_eq!(state.maintenance_reserve_for_testing(), SEED_RESERVE);
+    assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     state.destroy_for_testing();
     destroy(fixture);
 }
@@ -607,13 +607,13 @@ fun fee_updates_change_future_allocations_without_relabeling_the_buffer() {
         &witness, vault_policy(policy::long()).with_fee_limits(100, 100, 3_000), MAX_ORDER_NOTIONAL, NAV_CAP,
     );
     let (mut state, _) = activate_with(issuance, standard_observation(policy::long()), SEED_RESERVE);
-    let (fee, admin, buffer) = state.fee_allocation(1_000_000, true);
+    let (fee, admin, buffer) = state.fee_allocation_for_testing(1_000_000, true);
     assert_eq!(vector[fee, admin, buffer], vector[1_000, 0, 1_000]);
     let (mint, redeem, allocation) = state.set_fees(30, 40, 3_000);
     assert_eq!(vector[mint, redeem, allocation], vector[10, 10, 0]);
-    let (fee, admin, buffer) = state.fee_allocation(1_000_000, true);
+    let (fee, admin, buffer) = state.fee_allocation_for_testing(1_000_000, true);
     assert_eq!(vector[fee, admin, buffer], vector[3_000, 900, 2_100]);
-    let (fee, admin, buffer) = state.fee_allocation(1_000_000, false);
+    let (fee, admin, buffer) = state.fee_allocation_for_testing(1_000_000, false);
     assert_eq!(vector[fee, admin, buffer], vector[4_000, 1_200, 2_800]);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     state.destroy_for_testing();
@@ -696,9 +696,9 @@ fun an_authorized_issuance_activates_into_the_issued_terms() {
     let (state, _) = activate_with(state::issue<Product>(&witness, expected_policy, MAX_ORDER_NOTIONAL, NAV_CAP), standard_observation(policy::long()), SEED_RESERVE);
 
     assert!(state.is_active_for_testing());
-    assert_eq!(state.maintenance_reserve_for_testing(), SEED_RESERVE);
+    assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     assert_eq!(state.vault_policy_for_testing(), expected_policy);
-    assert_eq!(state.max_order_notional_for_testing(), MAX_ORDER_NOTIONAL);
+    assert_eq!(state.max_order_notional(), MAX_ORDER_NOTIONAL);
 
     state.destroy_for_testing();
     destroy(fixture);
@@ -737,7 +737,7 @@ fun max_order_notional_moves_both_directions_and_returns_the_previous_value() {
 
     assert_eq!(state.set_max_order_notional(1), MAX_ORDER_NOTIONAL);
     assert_eq!(state.set_max_order_notional(std::u64::max_value!()), 1);
-    assert_eq!(state.max_order_notional_for_testing(), std::u64::max_value!());
+    assert_eq!(state.max_order_notional(), std::u64::max_value!());
 
     state.destroy_for_testing();
     destroy(fixture);
@@ -795,7 +795,7 @@ fun valid_long_seed_activates_and_records_only_the_reserve() {
     let (state, seed_nav) = activate_with(issued(&fixture, policy::long()), standard_observation(policy::long()), SEED_RESERVE);
 
     assert_eq!(seed_nav, SEED_NAV);
-    assert_eq!(state.maintenance_reserve_for_testing(), SEED_RESERVE);
+    assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     assert!(state.is_active_for_testing());
     state.destroy_for_testing();
     destroy(fixture);
@@ -1513,7 +1513,7 @@ fun assert_funding_settlement(
     assert_eq!(uncovered, expected_uncovered);
     assert_eq!(restored, 0);
     assert_eq!(state.uncovered_deficit(), expected_uncovered);
-    assert_eq!(state.maintenance_reserve_for_testing(), expected_reserve);
+    assert_eq!(state.maintenance_reserve(), expected_reserve);
     assert!(state.is_active_for_testing());
     state.destroy_for_testing();
     destroy(fixture);

@@ -474,7 +474,7 @@ fun the_nav_cap_blocks_mints_but_not_profit_or_redemptions() {
 
     let price = vault.venue().base_price();
     vault.venue_mut().set_base_price(price * 102 / 100);
-    assert!(vault.nav() > vault.state().nav_cap());
+    assert!(vault.nav() > vault.state().nav_cap_for_testing());
 
     let payout = vault.redeem(shares, 1);
     assert!(payout > 1_000 * USDC);

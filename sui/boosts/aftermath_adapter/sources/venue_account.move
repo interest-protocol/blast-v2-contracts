@@ -53,7 +53,7 @@ public struct VenueAccount has store {
     admin_cap: AuthorityCap<ACCOUNT, ADMIN>,
 }
 
-// This unstorable, same-call value carries the Coin that `complete_shutdown` pays out.
+// This unstorable, same-call value carries the Coin that `vault::seal_terminal_cash` pays out.
 // Pinned ESL99003 otherwise suggests Balance, which would require a new Coin/TxContext there.
 #[allow(lint(coin_field))]
 /// Actual recovered coin bound to its exact final venue checkpoint.
@@ -197,7 +197,6 @@ public(package) fun replace_checkpoint(
 ) {
     self.checkpoint = checkpoint;
 }
-
 
 // --- Deposit ---
 
@@ -441,10 +440,6 @@ public(package) fun is_clean(self: &CheckpointChange): bool {
     }
 }
 
-fun is_unexpected(self: &CheckpointChange): bool {
-    match (self) { CheckpointChange::Unexpected => true, _ => false }
-}
-
 // --- Shutdown ---
 
 /// Neither an ordinary close nor a direct settlement may adopt standing orders.
@@ -487,12 +482,6 @@ public(package) fun recoverable_terminal_cash(self: &Checkpoint): u64 {
 }
 
 /// Complete recovery changes only the two collateral locations, by the actual returned coin.
-fun assert_terminal_withdrawal_checkpoint(before: &Checkpoint, after: &Checkpoint, amount: u64) {
-    let (negative, magnitude) = before.allocated_collateral_sign_and_magnitude();
-    assert_terminal_withdrawal_checkpoint_decoded(before, after, amount, negative, magnitude);
-}
-
-/// Binds native cash to finality before the Vault can seal terminal custody.
 public(package) fun terminal_withdrawal<Collateral>(
     before: &Checkpoint, after: Checkpoint, recovered: Coin<Collateral>,
 ): TerminalWithdrawal<Collateral> {
@@ -500,11 +489,11 @@ public(package) fun terminal_withdrawal<Collateral>(
     TerminalWithdrawal { recovered, checkpoint: after }
 }
 
-/// Consumes the verified withdrawal, including the raw sub-atomic remainder for replay.
 public(package) fun recovered_amount<Collateral>(self: &TerminalWithdrawal<Collateral>): u64 {
     self.recovered.value()
 }
 
+/// Consumes the verified withdrawal, including the raw sub-atomic remainder for replay.
 public(package) fun into_recovered_cash<Collateral>(
     self: TerminalWithdrawal<Collateral>,
 ): (Coin<Collateral>, Checkpoint, u256) {
@@ -513,6 +502,37 @@ public(package) fun into_recovered_cash<Collateral>(
 }
 
 // === Private Functions ===
+
+// --- Binding ---
+
+/// The account object, its venue number, and its collateral type are the bound ones.
+fun assert_account<Collateral>(self: &Binding, account: &Account<Collateral>) {
+    assert!(object::id(account) == self.account_object_id, blast_boosts_aftermath::errors::account_object_mismatch!());
+    assert!(account.account_id() == self.account_number, blast_boosts_aftermath::errors::account_number_mismatch!());
+}
+
+/// The account and the market a session touches are the bound ones.
+fun assert_market_account<Collateral>(
+    self: &Binding, account: &Account<Collateral>, clearing_house: &ClearingHouse<Collateral>,
+) {
+    self.assert_account(account);
+    assert!(
+        object::id(clearing_house) == self.clearing_house_id,
+        blast_boosts_aftermath::errors::clearing_house_mismatch!(),
+    );
+}
+
+fun assert_registry(self: &Binding, registry: &Registry) {
+    assert!(object::id(registry) == self.registry_id, blast_boosts_aftermath::errors::registry_mismatch!());
+}
+
+fun assert_oracles(self: &Binding, base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage) {
+    assert!(object::id(base_oracle) == self.base_oracle_id, blast_boosts_aftermath::errors::base_oracle_mismatch!());
+    assert!(
+        object::id(collateral_oracle) == self.collateral_oracle_id,
+        blast_boosts_aftermath::errors::collateral_oracle_mismatch!(),
+    );
+}
 
 // --- Checkpoint ---
 
@@ -585,6 +605,37 @@ fun funding_snapshot_short(self: &Checkpoint): u256 { self.funding_snapshot_shor
 fun market_funding_long(self: &Checkpoint): u256 { self.market_funding_long }
 
 fun market_funding_short(self: &Checkpoint): u256 { self.market_funding_short }
+
+// --- Cash ---
+
+/// Exact signed change in decoded IFixed magnitudes, with no raw-carrier ordering.
+fun assert_signed_cash_change(
+    before_negative: bool, before: u256, after_negative: bool, after: u256,
+    amount: u64, increase: bool,
+) {
+    let required = (amount as u256) * constants::collateral_atom_to_ifixed_scale!();
+    let (actual, credit) = if (before_negative == after_negative) {
+        (before.diff(after), if (before_negative) { before > after } else { after > before })
+    } else {
+        let crossed = before.checked_add(after)
+            .destroy_or!(abort blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
+        (crossed, !after_negative)
+    };
+
+    assert!(
+        actual == required && (actual == 0 || credit == increase),
+        blast_boosts_aftermath::errors::cash_checkpoint_mismatch!(),
+    );
+}
+
+/// Checks every unrelated field after the caller proves the signed collateral delta.
+fun assert_cash_checkpoint(before: &Checkpoint, after: &Checkpoint, free: u64) {
+    let mut expected = *before;
+    expected.free_collateral = free;
+    expected.allocated_collateral = after.allocated_collateral;
+
+    assert!(&expected == after, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
+}
 
 // --- Funding ---
 
@@ -664,65 +715,18 @@ fun signed_delta(before_negative: bool, before: u256, after_negative: bool, afte
     }
 }
 
-// --- Binding ---
-
-/// The account object, its venue number, and its collateral type are the bound ones.
-fun assert_account<Collateral>(self: &Binding, account: &Account<Collateral>) {
-    assert!(object::id(account) == self.account_object_id, blast_boosts_aftermath::errors::account_object_mismatch!());
-    assert!(account.account_id() == self.account_number, blast_boosts_aftermath::errors::account_number_mismatch!());
+fun is_unexpected(self: &CheckpointChange): bool {
+    match (self) { CheckpointChange::Unexpected => true, _ => false }
 }
 
-/// The account and the market a session touches are the bound ones.
-fun assert_market_account<Collateral>(
-    self: &Binding, account: &Account<Collateral>, clearing_house: &ClearingHouse<Collateral>,
-) {
-    self.assert_account(account);
-    assert!(
-        object::id(clearing_house) == self.clearing_house_id,
-        blast_boosts_aftermath::errors::clearing_house_mismatch!(),
-    );
+// --- Shutdown ---
+
+fun assert_terminal_withdrawal_checkpoint(before: &Checkpoint, after: &Checkpoint, amount: u64) {
+    let (negative, magnitude) = before.allocated_collateral_sign_and_magnitude();
+    assert_terminal_withdrawal_checkpoint_decoded(before, after, amount, negative, magnitude);
 }
 
-fun assert_registry(self: &Binding, registry: &Registry) {
-    assert!(object::id(registry) == self.registry_id, blast_boosts_aftermath::errors::registry_mismatch!());
-}
-
-fun assert_oracles(self: &Binding, base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage) {
-    assert!(object::id(base_oracle) == self.base_oracle_id, blast_boosts_aftermath::errors::base_oracle_mismatch!());
-    assert!(
-        object::id(collateral_oracle) == self.collateral_oracle_id,
-        blast_boosts_aftermath::errors::collateral_oracle_mismatch!(),
-    );
-}
-
-/// Exact signed change in decoded IFixed magnitudes, with no raw-carrier ordering.
-fun assert_signed_cash_change(
-    before_negative: bool, before: u256, after_negative: bool, after: u256,
-    amount: u64, increase: bool,
-) {
-    let required = (amount as u256) * constants::collateral_atom_to_ifixed_scale!();
-    let (actual, credit) = if (before_negative == after_negative) {
-        (before.diff(after), if (before_negative) { before > after } else { after > before })
-    } else {
-        let crossed = before.checked_add(after)
-            .destroy_or!(abort blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
-        (crossed, !after_negative)
-    };
-
-    assert!(
-        actual == required && (actual == 0 || credit == increase),
-        blast_boosts_aftermath::errors::cash_checkpoint_mismatch!(),
-    );
-}
-
-/// Checks every unrelated field after the caller proves the signed collateral delta.
-fun assert_cash_checkpoint(before: &Checkpoint, after: &Checkpoint, free: u64) {
-    let mut expected = *before;
-    expected.free_collateral = free;
-    expected.allocated_collateral = after.allocated_collateral;
-
-    assert!(&expected == after, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
-}
+/// Binds native cash to finality before the Vault can seal terminal custody.
 
 fun allocated_collateral_sign_and_magnitude(self: &Checkpoint): (bool, u256) {
     if (self.allocated_collateral == 0) {

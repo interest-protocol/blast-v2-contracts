@@ -315,7 +315,7 @@ public(package) fun seal_terminal_cash<Product, Collateral>(
     (checkpoint, unrecoverable_collateral_raw)
 }
 
-// --- Venue Custody ---
+// --- Admin Cash ---
 
 /// Retains an operation's already allocated admin coin without changing venue accounting.
 public(package) fun retain_admin_cash<Product, Collateral>(
@@ -391,7 +391,7 @@ fun metadata_cap<Product, Collateral>(self: &Vault<Product, Collateral>): &Metad
 
 #[test_only]
 public fun max_order_notional_for_testing<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
-    self.state.max_order_notional_for_testing()
+    self.state.max_order_notional()
 }
 
 #[test_only]
@@ -401,7 +401,7 @@ public fun vault_policy_for_testing<Product, Collateral>(self: &Vault<Product, C
 
 #[test_only]
 public fun nav_cap_for_testing<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
-    self.state.nav_cap()
+    self.state.nav_cap_for_testing()
 }
 
 #[test_only]
@@ -422,14 +422,6 @@ public fun metadata_cap_id_for_testing<Product, Collateral>(self: &Vault<Product
 #[test_only]
 public fun set_unwinding_for_testing<Product, Collateral>(self: &mut Vault<Product, Collateral>) {
     self.state.set_unwinding_for_testing();
-}
-
-#[test_only]
-/// Issues fixture shares through the same retained native TreasuryCap as production mints.
-public fun mint_eligible_shares_for_testing<Product, Collateral>(
-    self: &mut Vault<Product, Collateral>, amount: u64, ctx: &mut TxContext,
-): Coin<BlastBoost<Product>> {
-    coin::mint(self.treasury_cap_mut(), amount, ctx)
 }
 
 #[test_only]

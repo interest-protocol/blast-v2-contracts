@@ -28,10 +28,6 @@ macro public(package) fun max_min_order_lots(): u64 {
     1_000_000
 }
 
-// Administration configuration and role bits moved to
-// `blast_boosts_core::blast_boosts_core`, which owns the typed
-// `blast_admin` domain shared with every leverage adapter.
-
 /// Widest asset precision the notional formulas support without overflow.
 macro public(package) fun max_asset_decimals(): u8 {
     18

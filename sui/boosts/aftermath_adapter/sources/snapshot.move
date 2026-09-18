@@ -508,10 +508,9 @@ public fun position_signs_coherent_for_testing(
     position_signs_coherent_decoded(base_negative, quote_negative, base_zero, quote_zero, long_or_flat)
 }
 
-
 // === Imports ===
 
-use blast_boosts_aftermath::{constants, ifixed_math, venue_account::{Self as venue_account, Binding, Checkpoint}};
+use blast_boosts_aftermath::{constants, ifixed_math, venue_account::{Self, Binding, Checkpoint}};
 
 use blast_boosts_core::{
     observation::{Self, PositionObservation, PriceObservation},

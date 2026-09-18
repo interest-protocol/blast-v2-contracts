@@ -356,7 +356,7 @@ public fun mint(self: &mut Vault, deposit: u64, minimum_shares: u64): u64 {
 public fun mint_with_fee_limit(self: &mut Vault, deposit: u64, minimum_shares: u64, maximum_fee_bps: u64): u64 {
     assert!(deposit > 0);
     self.state.assert_user_fee_limit(true, maximum_fee_bps);
-    let (fee, admin_fee, reserve_fee) = self.state.fee_allocation(deposit, true);
+    let (fee, admin_fee, reserve_fee) = self.state.fee_allocation_for_testing(deposit, true);
     assert!(fee == admin_fee + reserve_fee);
 
     let now_ms = self.venue.now_ms;
@@ -386,7 +386,7 @@ public fun mint_with_fee_limit(self: &mut Vault, deposit: u64, minimum_shares: u
 
     let (shares, _, total_fee, admin, reserve_slice) = self.state.complete_mint(plan, self.venue.observe(), now_ms);
     assert!(total_fee == fee && admin == admin_fee && reserve_slice == reserve_fee);
-    assert!(self.state.is_within_nav_cap(self.venue.equity - self.state.maintenance_reserve_for_testing()));
+    assert!(self.state.is_within_nav_cap_for_testing(self.venue.equity - self.state.maintenance_reserve()));
     self.supply = self.supply + shares;
     self.last_orders = orders;
 
@@ -497,7 +497,7 @@ public fun set_fees(self: &mut Vault, mint_bps: u64, redeem_bps: u64, admin_shar
 
 public fun set_max_order_notional(self: &mut Vault, max_order_notional: u64) {
     self.state.set_max_order_notional(max_order_notional);
-    assert!(self.state.max_order_notional_for_testing() == max_order_notional);
+    assert!(self.state.max_order_notional() == max_order_notional);
 }
 
 // --- Shutdown ---

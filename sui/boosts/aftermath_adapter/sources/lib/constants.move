@@ -42,6 +42,3 @@ macro public(package) fun collateral_atom_to_ifixed_scale(): u256 {
 macro public(package) fun collateral_to_base_scale(): u256 {
     1_000
 }
-
-// The package-digest length moved to `blast_admin::upgrade_custody`, which owns
-// the authorization check that reads it.

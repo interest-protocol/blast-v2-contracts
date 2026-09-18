@@ -3,80 +3,7 @@ module blast_boosts_aftermath::events;
 
 // === Public Types ===
 
-/// Completed close-only progress with exact raw venue effects.
-/// Ordinary market closes expose the isolated funding checkpoint and filled quote.
-/// Direct frozen settlement has neither a market order nor a synthetic funding/fill attribution.
-public struct UnwindProgress<phantom Product> has copy, drop {
-    vault_id: ID,
-    before: Checkpoint,
-    after_funding: Option<Checkpoint>,
-    after: Checkpoint,
-    market_orders: u64,
-    filled_quote: Option<u256>,
-}
-
-/// Actual recovered holder cash and frozen eligible supply after venue finality.
-/// A beneficiary is present only for the zero-eligible-supply fallback transfer.
-public struct ShutdownFinalized<phantom Product> has copy, drop {
-    vault_id: ID,
-    recovered_cash: u64,
-    eligible_supply: u64,
-    checkpoint: Checkpoint,
-    // Nonnegative collateral-token IFixed, strictly below 10^12 raw units (one USDC atom).
-    unrecoverable_collateral_raw: u256,
-}
-
-/// Completed native share burn and fee-free local collateral payout.
-public struct ShutdownRedeemed<phantom Product> has copy, drop {
-    vault_id: ID,
-    shares: u64,
-    cash_paid: u64,
-    cash_remaining: u64,
-    eligible_remaining: u64,
-}
-
-/// Completed native share burn and exact collateral payout after attributable unwind.
-public struct Redeemed<phantom Product> has copy, drop {
-    vault_id: ID,
-    shares: u64,
-    net: u64,
-    fee: u64,
-    admin_fee: u64,
-    reserve_fee: u64,
-    reserve_after: u64,
-    admin_cash_after: u64,
-    supply_after: u64,
-    checkpoint: Checkpoint,
-}
-
-/// Completed maintenance with actual equity/exposure effects and unchanged allocations.
-public struct Rebalanced<phantom Product> has copy, drop {
-    vault_id: ID,
-    equity_before: u64,
-    equity_after: u64,
-    base_before: u64,
-    base_after: u64,
-    increase: bool,
-    reserve_after: u64,
-    admin_cash_after: u64,
-    supply_after: u64,
-    checkpoint: Checkpoint,
-}
-
-/// Completed active mint, including its actual contribution and both fee allocations.
-public struct Minted<phantom Product> has copy, drop {
-    vault_id: ID,
-    deposit: u64,
-    shares: u64,
-    contribution: u64,
-    fee: u64,
-    admin_fee: u64,
-    reserve_fee: u64,
-    reserve_after: u64,
-    admin_cash_after: u64,
-    supply_after: u64,
-    checkpoint: Checkpoint,
-}
+// --- Issuance ---
 
 // Custody creation, upgrade authorization, receipt commit, policy restriction,
 // immutability, and generation advance are emitted by `blast_admin` for every
@@ -109,6 +36,57 @@ public struct VaultInitialized<phantom Product> has copy, drop {
     checkpoint: Checkpoint,
 }
 
+// --- Mint ---
+
+/// Completed active mint, including its actual contribution and both fee allocations.
+public struct Minted<phantom Product> has copy, drop {
+    vault_id: ID,
+    deposit: u64,
+    shares: u64,
+    contribution: u64,
+    fee: u64,
+    admin_fee: u64,
+    reserve_fee: u64,
+    reserve_after: u64,
+    admin_cash_after: u64,
+    supply_after: u64,
+    checkpoint: Checkpoint,
+}
+
+// --- Redemption ---
+
+/// Completed native share burn and exact collateral payout after attributable unwind.
+public struct Redeemed<phantom Product> has copy, drop {
+    vault_id: ID,
+    shares: u64,
+    net: u64,
+    fee: u64,
+    admin_fee: u64,
+    reserve_fee: u64,
+    reserve_after: u64,
+    admin_cash_after: u64,
+    supply_after: u64,
+    checkpoint: Checkpoint,
+}
+
+// --- Rebalance ---
+
+/// Completed maintenance with actual equity/exposure effects and unchanged allocations.
+public struct Rebalanced<phantom Product> has copy, drop {
+    vault_id: ID,
+    equity_before: u64,
+    equity_after: u64,
+    base_before: u64,
+    base_after: u64,
+    increase: bool,
+    reserve_after: u64,
+    admin_cash_after: u64,
+    supply_after: u64,
+    checkpoint: Checkpoint,
+}
+
+// --- Funding And Donation ---
+
 /// Emitted after one nonzero isolated funding change is reconciled.
 public struct FundingSettled<phantom Product> has copy, drop {
     vault_id: ID,
@@ -131,18 +109,54 @@ public struct CheckpointDrifted<phantom Product> has copy, drop {
     checkpoint: Checkpoint,
 }
 
-/// Emitted after the active risk module changes the live maximum order notional.
-public struct MaxOrderNotionalUpdated<phantom Product> has copy, drop {
+/// Completed venue cash deposit allocated entirely to the funding buffer.
+public struct Donated<phantom Product> has copy, drop {
     vault_id: ID,
-    previous: u64,
-    max_order_notional: u64,
+    amount: u64,
+    reserve_after: u64,
+    checkpoint: Checkpoint,
 }
+
+// --- Shutdown ---
 
 /// Emitted after shutdown-role authorization permanently stops ordinary operations.
 public struct ShutdownBegun<phantom Product> has copy, drop {
     vault_id: ID,
     reason: ShutdownReason,
 }
+
+/// Completed close-only progress with exact raw venue effects.
+/// Ordinary market closes expose the isolated funding checkpoint and filled quote.
+/// Direct frozen settlement has neither a market order nor a synthetic funding/fill attribution.
+public struct UnwindProgress<phantom Product> has copy, drop {
+    vault_id: ID,
+    before: Checkpoint,
+    after_funding: Option<Checkpoint>,
+    after: Checkpoint,
+    market_orders: u64,
+    filled_quote: Option<u256>,
+}
+
+/// Actual recovered holder cash and frozen eligible supply after venue finality.
+public struct ShutdownFinalized<phantom Product> has copy, drop {
+    vault_id: ID,
+    recovered_cash: u64,
+    eligible_supply: u64,
+    checkpoint: Checkpoint,
+    // Nonnegative collateral-token IFixed, strictly below 10^12 raw units (one USDC atom).
+    unrecoverable_collateral_raw: u256,
+}
+
+/// Completed native share burn and fee-free local collateral payout.
+public struct ShutdownRedeemed<phantom Product> has copy, drop {
+    vault_id: ID,
+    shares: u64,
+    cash_paid: u64,
+    cash_remaining: u64,
+    eligible_remaining: u64,
+}
+
+// --- Administration ---
 
 /// Completed live-setting update; immutable caps and existing balances do not change.
 public struct FeesUpdated<phantom Product> has copy, drop {
@@ -162,6 +176,13 @@ public struct NavCapUpdated<phantom Product> has copy, drop {
     nav_cap: u64,
 }
 
+/// Emitted after the active risk module changes the live maximum order notional.
+public struct MaxOrderNotionalUpdated<phantom Product> has copy, drop {
+    vault_id: ID,
+    previous: u64,
+    max_order_notional: u64,
+}
+
 /// Completed withdrawal from native admin cash; no holder or buffer claim is created.
 public struct AdminFeesWithdrawn<phantom Product> has copy, drop {
     vault_id: ID,
@@ -169,78 +190,9 @@ public struct AdminFeesWithdrawn<phantom Product> has copy, drop {
     remaining: u64,
 }
 
-/// Completed venue cash deposit allocated entirely to the funding buffer.
-public struct Donated<phantom Product> has copy, drop {
-    vault_id: ID,
-    amount: u64,
-    reserve_after: u64,
-    checkpoint: Checkpoint,
-}
-
 // === Package Functions ===
 
-/// The signed equity delta is the actual net execution effect at the fixed oracle pair.
-public(package) fun rebalanced<Product>(
-    vault_id: ID, equity_before: u64, equity_after: u64, base_before: u64, base_after: u64,
-    increase: bool, reserve_after: u64, admin_cash_after: u64, supply_after: u64, checkpoint: Checkpoint,
-) {
-    emit_event(Rebalanced<Product> {
-        vault_id, equity_before, equity_after, base_before, base_after, increase,
-        reserve_after, admin_cash_after, supply_after, checkpoint,
-    });
-}
-
-public(package) fun redeemed<Product>(
-    vault_id: ID, shares: u64, net: u64, fee: u64, admin_fee: u64, reserve_fee: u64,
-    reserve_after: u64, admin_cash_after: u64, supply_after: u64, checkpoint: Checkpoint,
-) {
-    emit_event(Redeemed<Product> {
-        vault_id, shares, net, fee, admin_fee, reserve_fee, reserve_after, admin_cash_after, supply_after, checkpoint,
-    });
-}
-
-public(package) fun minted<Product>(
-    vault_id: ID, deposit: u64, shares: u64, contribution: u64, fee: u64, admin_fee: u64,
-    reserve_fee: u64, reserve_after: u64, admin_cash_after: u64, supply_after: u64, checkpoint: Checkpoint,
-) {
-    emit_event(Minted<Product> {
-        vault_id, deposit, shares, contribution, fee, admin_fee, reserve_fee,
-        reserve_after, admin_cash_after, supply_after, checkpoint,
-    });
-}
-
-public(package) fun donated<Product>(vault_id: ID, amount: u64, reserve_after: u64, checkpoint: Checkpoint) {
-    emit_event(Donated<Product> {
-        vault_id, amount, reserve_after, checkpoint,
-    });
-}
-
-public(package) fun admin_fees_withdrawn<Product>(vault_id: ID, amount: u64, remaining: u64) {
-    emit_event(AdminFeesWithdrawn<Product> {
-        vault_id, amount, remaining,
-    });
-}
-
-public(package) fun fees_updated<Product>(
-    vault_id: ID,
-    previous_mint_bps: u64,
-    previous_redeem_bps: u64,
-    previous_admin_bps: u64,
-    mint_bps: u64,
-    redeem_bps: u64,
-    admin_share_bps: u64,
-) {
-    emit_event(FeesUpdated<Product> {
-        vault_id, previous_mint_bps, previous_redeem_bps, previous_admin_bps,
-        mint_bps, redeem_bps, admin_share_bps,
-    });
-}
-
-public(package) fun nav_cap_updated<Product>(vault_id: ID, previous_nav_cap: u64, nav_cap: u64) {
-    emit_event(NavCapUpdated<Product> {
-        vault_id, previous_nav_cap, nav_cap,
-    });
-}
+// --- Issuance ---
 
 public(package) fun vault_issued<Product>(
     treasury_cap_id: ID,
@@ -290,6 +242,44 @@ public(package) fun vault_initialized<Product>(
     );
 }
 
+// --- Mint ---
+
+public(package) fun minted<Product>(
+    vault_id: ID, deposit: u64, shares: u64, contribution: u64, fee: u64, admin_fee: u64,
+    reserve_fee: u64, reserve_after: u64, admin_cash_after: u64, supply_after: u64, checkpoint: Checkpoint,
+) {
+    emit_event(Minted<Product> {
+        vault_id, deposit, shares, contribution, fee, admin_fee, reserve_fee,
+        reserve_after, admin_cash_after, supply_after, checkpoint,
+    });
+}
+
+// --- Redemption ---
+
+public(package) fun redeemed<Product>(
+    vault_id: ID, shares: u64, net: u64, fee: u64, admin_fee: u64, reserve_fee: u64,
+    reserve_after: u64, admin_cash_after: u64, supply_after: u64, checkpoint: Checkpoint,
+) {
+    emit_event(Redeemed<Product> {
+        vault_id, shares, net, fee, admin_fee, reserve_fee, reserve_after, admin_cash_after, supply_after, checkpoint,
+    });
+}
+
+// --- Rebalance ---
+
+/// The signed equity delta is the actual net execution effect at the fixed oracle pair.
+public(package) fun rebalanced<Product>(
+    vault_id: ID, equity_before: u64, equity_after: u64, base_before: u64, base_after: u64,
+    increase: bool, reserve_after: u64, admin_cash_after: u64, supply_after: u64, checkpoint: Checkpoint,
+) {
+    emit_event(Rebalanced<Product> {
+        vault_id, equity_before, equity_after, base_before, base_after, increase,
+        reserve_after, admin_cash_after, supply_after, checkpoint,
+    });
+}
+
+// --- Funding And Donation ---
+
 public(package) fun funding_settled<Product>(
     vault_id: ID,
     is_cost: bool,
@@ -322,19 +312,18 @@ public(package) fun checkpoint_drifted<Product>(vault_id: ID, checkpoint: Checkp
     emit_event(CheckpointDrifted<Product> { vault_id, checkpoint });
 }
 
-public(package) fun max_order_notional_updated<Product>(vault_id: ID, previous: u64, max_order_notional: u64) {
-    emit_event(
-        MaxOrderNotionalUpdated<Product> { vault_id, previous, max_order_notional },
-    );
+public(package) fun donated<Product>(vault_id: ID, amount: u64, reserve_after: u64, checkpoint: Checkpoint) {
+    emit_event(Donated<Product> {
+        vault_id, amount, reserve_after, checkpoint,
+    });
 }
 
-public(package) fun shutdown_finalized<Product>(
-    vault_id: ID, recovered_cash: u64, eligible_supply: u64,
-    checkpoint: Checkpoint, unrecoverable_collateral_raw: u256,
-) {
-    emit_event(ShutdownFinalized<Product> {
-        vault_id, recovered_cash, eligible_supply, checkpoint, unrecoverable_collateral_raw,
-    });
+// --- Shutdown ---
+
+public(package) fun shutdown_begun<Product>(vault_id: ID, reason: ShutdownReason) {
+    emit_event(
+        ShutdownBegun<Product> { vault_id, reason },
+    );
 }
 
 public(package) fun unwind_progress<Product>(
@@ -346,6 +335,15 @@ public(package) fun unwind_progress<Product>(
     });
 }
 
+public(package) fun shutdown_finalized<Product>(
+    vault_id: ID, recovered_cash: u64, eligible_supply: u64,
+    checkpoint: Checkpoint, unrecoverable_collateral_raw: u256,
+) {
+    emit_event(ShutdownFinalized<Product> {
+        vault_id, recovered_cash, eligible_supply, checkpoint, unrecoverable_collateral_raw,
+    });
+}
+
 public(package) fun shutdown_redeemed<Product>(
     vault_id: ID, shares: u64, cash_paid: u64, cash_remaining: u64, eligible_remaining: u64,
 ) {
@@ -354,67 +352,42 @@ public(package) fun shutdown_redeemed<Product>(
     });
 }
 
-public(package) fun shutdown_begun<Product>(vault_id: ID, reason: ShutdownReason) {
+// --- Administration ---
+
+public(package) fun fees_updated<Product>(
+    vault_id: ID,
+    previous_mint_bps: u64,
+    previous_redeem_bps: u64,
+    previous_admin_bps: u64,
+    mint_bps: u64,
+    redeem_bps: u64,
+    admin_share_bps: u64,
+) {
+    emit_event(FeesUpdated<Product> {
+        vault_id, previous_mint_bps, previous_redeem_bps, previous_admin_bps,
+        mint_bps, redeem_bps, admin_share_bps,
+    });
+}
+
+public(package) fun nav_cap_updated<Product>(vault_id: ID, previous_nav_cap: u64, nav_cap: u64) {
+    emit_event(NavCapUpdated<Product> {
+        vault_id, previous_nav_cap, nav_cap,
+    });
+}
+
+public(package) fun max_order_notional_updated<Product>(vault_id: ID, previous: u64, max_order_notional: u64) {
     emit_event(
-        ShutdownBegun<Product> { vault_id, reason },
+        MaxOrderNotionalUpdated<Product> { vault_id, previous, max_order_notional },
     );
 }
 
+public(package) fun admin_fees_withdrawn<Product>(vault_id: ID, amount: u64, remaining: u64) {
+    emit_event(AdminFeesWithdrawn<Product> {
+        vault_id, amount, remaining,
+    });
+}
+
 // === Test-Only Functions ===
-
-#[test_only]
-public fun unwind_progress_fields<Product>(
-    self: &UnwindProgress<Product>,
-): (ID, Checkpoint, Option<Checkpoint>, Checkpoint, u64, Option<u256>) {
-    (self.vault_id, self.before, self.after_funding, self.after, self.market_orders, self.filled_quote)
-}
-
-#[test_only]
-public fun shutdown_finalized_fields<Product>(
-    self: &ShutdownFinalized<Product>,
-): (ID, u64, u64, Checkpoint, u256) {
-    (
-        self.vault_id, self.recovered_cash, self.eligible_supply,
-        self.checkpoint, self.unrecoverable_collateral_raw,
-    )
-}
-
-#[test_only]
-public fun shutdown_redeemed_fields<Product>(self: &ShutdownRedeemed<Product>): (ID, u64, u64, u64, u64) {
-    (self.vault_id, self.shares, self.cash_paid, self.cash_remaining, self.eligible_remaining)
-}
-
-#[test_only]
-public fun minted_checkpoint_fields<Product>(self: &Minted<Product>): (ID, Checkpoint) {
-    (self.vault_id, self.checkpoint)
-}
-
-#[test_only]
-public fun redeemed_checkpoint_fields<Product>(self: &Redeemed<Product>): (ID, Checkpoint) {
-    (self.vault_id, self.checkpoint)
-}
-
-#[test_only]
-public fun rebalanced_checkpoint_fields<Product>(self: &Rebalanced<Product>): (ID, u64, u64, u64, Checkpoint) {
-    (self.vault_id, self.reserve_after, self.admin_cash_after, self.supply_after, self.checkpoint)
-}
-
-#[test_only]
-public fun redeemed_amounts<Product>(self: &Redeemed<Product>): vector<u64> {
-    vector[self.shares, self.net, self.fee, self.admin_fee, self.reserve_fee,
-        self.reserve_after, self.admin_cash_after, self.supply_after]
-}
-
-#[test_only]
-public fun minted_amounts<Product>(self: &Minted<Product>): (u64, u64, u64, u64, u64, u64, u64, u64, u64) {
-    (self.deposit, self.shares, self.contribution, self.fee, self.admin_fee, self.reserve_fee,
-        self.reserve_after, self.admin_cash_after, self.supply_after)
-}
-
-#[test_only]
-public fun rebalanced_amounts<Product>(self: &Rebalanced<Product>): (u64, u64, u64, u64, bool) {
-    (self.equity_before, self.equity_after, self.base_before, self.base_after, self.increase)
-}
 
 #[test_only]
 public fun collect<T: copy + drop>(): vector<T> {
@@ -436,6 +409,8 @@ public fun collect_one<T: copy + drop>(abort_code: u64): T {
 
     events.pop_back()
 }
+
+// --- Issuance ---
 
 #[test_only]
 public fun vault_issued_fields<Product>(
@@ -483,6 +458,46 @@ public fun vault_initialized_fields<Product>(
     )
 }
 
+// --- Mint ---
+
+#[test_only]
+public fun minted_checkpoint_fields<Product>(self: &Minted<Product>): (ID, Checkpoint) {
+    (self.vault_id, self.checkpoint)
+}
+
+#[test_only]
+public fun minted_amounts<Product>(self: &Minted<Product>): (u64, u64, u64, u64, u64, u64, u64, u64, u64) {
+    (self.deposit, self.shares, self.contribution, self.fee, self.admin_fee, self.reserve_fee,
+        self.reserve_after, self.admin_cash_after, self.supply_after)
+}
+
+// --- Redemption ---
+
+#[test_only]
+public fun redeemed_checkpoint_fields<Product>(self: &Redeemed<Product>): (ID, Checkpoint) {
+    (self.vault_id, self.checkpoint)
+}
+
+#[test_only]
+public fun redeemed_amounts<Product>(self: &Redeemed<Product>): vector<u64> {
+    vector[self.shares, self.net, self.fee, self.admin_fee, self.reserve_fee,
+        self.reserve_after, self.admin_cash_after, self.supply_after]
+}
+
+// --- Rebalance ---
+
+#[test_only]
+public fun rebalanced_checkpoint_fields<Product>(self: &Rebalanced<Product>): (ID, u64, u64, u64, Checkpoint) {
+    (self.vault_id, self.reserve_after, self.admin_cash_after, self.supply_after, self.checkpoint)
+}
+
+#[test_only]
+public fun rebalanced_amounts<Product>(self: &Rebalanced<Product>): (u64, u64, u64, u64, bool) {
+    (self.equity_before, self.equity_after, self.base_before, self.base_after, self.increase)
+}
+
+// --- Funding And Donation ---
+
 #[test_only]
 public fun funding_settled_fields<Product>(
     self: &FundingSettled<Product>,
@@ -507,16 +522,11 @@ public fun checkpoint_drifted_fields<Product>(self: &CheckpointDrifted<Product>)
 }
 
 #[test_only]
-public fun max_order_notional_updated_fields<Product>(
-    self: &MaxOrderNotionalUpdated<Product>,
-): (ID, u64, u64) {
-    (self.vault_id, self.previous, self.max_order_notional)
+public fun donated_fields<Product>(self: &Donated<Product>): (ID, u64, u64, Checkpoint) {
+    (self.vault_id, self.amount, self.reserve_after, self.checkpoint)
 }
 
-#[test_only]
-public fun nav_cap_updated_fields<Product>(self: &NavCapUpdated<Product>): (ID, u64, u64) {
-    (self.vault_id, self.previous_nav_cap, self.nav_cap)
-}
+// --- Shutdown ---
 
 #[test_only]
 public fun shutdown_reason<Product>(self: &ShutdownBegun<Product>): ShutdownReason {
@@ -531,19 +541,50 @@ public fun shutdown_begun_vault_id<Product>(
 }
 
 #[test_only]
+public fun unwind_progress_fields<Product>(
+    self: &UnwindProgress<Product>,
+): (ID, Checkpoint, Option<Checkpoint>, Checkpoint, u64, Option<u256>) {
+    (self.vault_id, self.before, self.after_funding, self.after, self.market_orders, self.filled_quote)
+}
+
+#[test_only]
+public fun shutdown_finalized_fields<Product>(
+    self: &ShutdownFinalized<Product>,
+): (ID, u64, u64, Checkpoint, u256) {
+    (
+        self.vault_id, self.recovered_cash, self.eligible_supply,
+        self.checkpoint, self.unrecoverable_collateral_raw,
+    )
+}
+
+#[test_only]
+public fun shutdown_redeemed_fields<Product>(self: &ShutdownRedeemed<Product>): (ID, u64, u64, u64, u64) {
+    (self.vault_id, self.shares, self.cash_paid, self.cash_remaining, self.eligible_remaining)
+}
+
+// --- Administration ---
+
+#[test_only]
 public fun fees_updated_fields<Product>(self: &FeesUpdated<Product>): (ID, u64, u64, u64, u64, u64, u64) {
     (self.vault_id, self.previous_mint_bps, self.previous_redeem_bps, self.previous_admin_bps,
         self.mint_bps, self.redeem_bps, self.admin_share_bps)
 }
 
 #[test_only]
-public fun admin_fees_withdrawn_fields<Product>(self: &AdminFeesWithdrawn<Product>): (ID, u64, u64) {
-    (self.vault_id, self.amount, self.remaining)
+public fun nav_cap_updated_fields<Product>(self: &NavCapUpdated<Product>): (ID, u64, u64) {
+    (self.vault_id, self.previous_nav_cap, self.nav_cap)
 }
 
 #[test_only]
-public fun donated_fields<Product>(self: &Donated<Product>): (ID, u64, u64, Checkpoint) {
-    (self.vault_id, self.amount, self.reserve_after, self.checkpoint)
+public fun max_order_notional_updated_fields<Product>(
+    self: &MaxOrderNotionalUpdated<Product>,
+): (ID, u64, u64) {
+    (self.vault_id, self.previous, self.max_order_notional)
+}
+
+#[test_only]
+public fun admin_fees_withdrawn_fields<Product>(self: &AdminFeesWithdrawn<Product>): (ID, u64, u64) {
+    (self.vault_id, self.amount, self.remaining)
 }
 
 // === Imports ===

@@ -205,7 +205,7 @@ public fun new_price_policy(
 /// may hold at most that share of position notional, and every reserve
 /// credit is clamped to it so the excess stays with holders as NAV.
 /// The NAV cap is not part of the policy: it is a live `State` value the
-/// admin may move, supplied to `state::new` directly.
+/// admin may move, supplied to `state::issue` directly.
 ///
 /// Guard order is the fee rates, the lot multiple, then the reserve ceiling.
 public fun new_vault_policy(

@@ -262,8 +262,6 @@ public fun assert_execution<Product>(self: &State<Product>, wide: bool, referenc
     assert_execution_within(&self.vault_policy, wide, reference, executed);
 }
 
-// --- Active Operations ---
-
 // --- Mint ---
 
 /// Seals a proportional increase from reserve-excluded NAV and the user's limits.
@@ -401,9 +399,6 @@ public fun redemption_position<Product>(self: &RedemptionPlan<Product>): ActiveP
 
 /// Shares the redeemer must burn.
 public fun redemption_shares<Product>(self: &RedemptionPlan<Product>): u64 { self.shares }
-
-/// Base that must remain after the sealed close.
-public fun base_after_sell<Product>(self: &RedemptionPlan<Product>): u64 { self.before.base - self.base_to_sell }
 
 /// Computes the payout after the unwind and credits the fee once, excluding admin cash.
 /// The gross is capped at the proportional claim, so a favorable unwind accrues
@@ -737,12 +732,6 @@ public fun set_fees<Product>(
     (previous_mint, previous_redeem, previous_admin)
 }
 
-/// Returns fee, local admin share, and reserve allocation in collateral atoms.
-/// The fee rounds up, admin share rounds down, and reserve receives the remainder.
-public fun fee_allocation<Product>(self: &State<Product>, amount: u64, mint: bool): (u64, u64, u64) {
-    accounting_math::fee_allocation(amount, self.live_fee_bps(mint), self.admin_share_bps)
-}
-
 /// Checks a user's fee ceiling before the adapter interacts with the venue.
 public fun assert_user_fee_limit<Product>(self: &State<Product>, mint: bool, maximum: u64) {
     assert!(self.live_fee_bps(mint) <= maximum, blast_boosts_core::errors::user_fee_limit_exceeded!());
@@ -780,19 +769,6 @@ public fun set_nav_cap<Product>(self: &mut State<Product>, nav_cap: u64): u64 {
     previous
 }
 
-public fun nav_cap<Product>(self: &State<Product>): u64 {
-    self.nav_cap
-}
-
-/// Returns whether shareholder NAV is at or below the cap.
-///
-/// The cap is inclusive and is tied to executable book depth, not headline
-/// open interest. The mint transition applies it to post-mint shareholder
-/// NAV from the canonical accounting checkpoint.
-public fun is_within_nav_cap<Product>(self: &State<Product>, nav: u64): bool {
-    nav <= self.nav_cap
-}
-
 /// Returns the authoritative funding-only maintenance reserve.
 ///
 /// Adapter operations use this value only for replay-complete post-state
@@ -816,6 +792,21 @@ public fun base_price(self: &ActivePosition): u64 { self.base_price }
 public fun collateral_price(self: &ActivePosition): u64 { self.collateral_price }
 
 // === Private Functions ===
+
+/// Returns fee, local admin share, and reserve allocation in collateral atoms.
+/// The fee rounds up, admin share rounds down, and reserve receives the remainder.
+fun fee_allocation<Product>(self: &State<Product>, amount: u64, mint: bool): (u64, u64, u64) {
+    accounting_math::fee_allocation(amount, self.live_fee_bps(mint), self.admin_share_bps)
+}
+
+/// Returns whether shareholder NAV is at or below the cap.
+///
+/// The cap is inclusive and is tied to executable book depth, not headline
+/// open interest. The mint transition applies it to post-mint shareholder
+/// NAV from the canonical accounting checkpoint.
+fun is_within_nav_cap<Product>(self: &State<Product>, nav: u64): bool {
+    nav <= self.nav_cap
+}
 
 /// The seed's reserve-excluded shareholder NAV after the backing and price guards.
 fun seed_nav(vault_policy: &VaultPolicy, observation: &PositionObservation, seed_reserve: u64, now_ms: u64): u64 {
@@ -865,7 +856,6 @@ fun assert_execution_within(vault_policy: &VaultPolicy, wide: bool, reference: u
     };
 }
 
-/// Returns whether the position was valued at exactly this oracle pair.
 /// Returns whether two positions share one oracle pair and one venue lot, so their
 /// base and equity deltas can be attributed to the fills between them.
 fun is_same_checkpoint(self: &ActivePosition, other: &ActivePosition): bool {
@@ -873,12 +863,6 @@ fun is_same_checkpoint(self: &ActivePosition, other: &ActivePosition): bool {
         && self.lot_size == other.lot_size
 }
 
-/// Returns `reserve` clamped to the policy ceiling for `position`'s notional.
-///
-/// The clamp moves nothing: collateral above the ceiling stays in venue
-/// equity and simply counts as shareholder NAV from this checkpoint on. A
-/// flat position has no funding exposure to size the ceiling against, so it
-/// keeps the reserve intact for the position that reopens.
 /// The vault's `k`: no priced operation may lower NAV per share for the holders who stay.
 /// Cross-multiplied so no division rounds the comparison.
 fun assert_holders_not_diluted(nav_before: u64, supply_before: u64, nav_after: u64, supply_after: u64) {
@@ -891,6 +875,12 @@ fun assert_invariant(holds: bool) {
     assert!(holds, blast_boosts_core::errors::invariant_violated!());
 }
 
+/// Returns `reserve` clamped to the policy ceiling for `position`'s notional.
+///
+/// The clamp moves nothing: collateral above the ceiling stays in venue
+/// equity and simply counts as shareholder NAV from this checkpoint on. A
+/// flat position has no funding exposure to size the ceiling against, so it
+/// keeps the reserve intact for the position that reopens.
 fun reserve_within_cap<Product>(self: &State<Product>, reserve: u64, position: &ActivePosition): u64 {
     if (position.notional == 0) reserve else reserve.min(self.vault_policy.reserve_cap(position.notional))
 }
@@ -1022,21 +1012,24 @@ public fun is_active_for_testing<Product>(self: &State<Product>): bool {
 }
 
 #[test_only]
-/// Returns the initial and live maintenance reserve.
-public fun maintenance_reserve_for_testing<Product>(self: &State<Product>): u64 {
-    self.maintenance_reserve
-}
-
-#[test_only]
 /// Returns the immutable vault policy.
 public fun vault_policy_for_testing<Product>(self: &State<Product>): VaultPolicy {
     self.vault_policy
 }
 
 #[test_only]
-/// Returns the live maximum order notional.
-public fun max_order_notional_for_testing<Product>(self: &State<Product>): u64 {
-    self.max_order_notional
+public fun nav_cap_for_testing<Product>(self: &State<Product>): u64 {
+    self.nav_cap
+}
+
+#[test_only]
+public fun is_within_nav_cap_for_testing<Product>(self: &State<Product>, nav: u64): bool {
+    self.is_within_nav_cap(nav)
+}
+
+#[test_only]
+public fun fee_allocation_for_testing<Product>(self: &State<Product>, amount: u64, mint: bool): (u64, u64, u64) {
+    self.fee_allocation(amount, mint)
 }
 
 #[test_only]

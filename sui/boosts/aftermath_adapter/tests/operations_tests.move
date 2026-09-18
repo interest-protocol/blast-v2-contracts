@@ -60,7 +60,7 @@ fun terminal_claim_checks_version_before_lifecycle_or_zero_shares() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     fixture.protocol.set_version_for_testing(2);
-    let shares = vault.mint_eligible_shares_for_testing(0, fixture.ctx!());
+    let shares = vault.mint_shares(0, fixture.ctx!());
     let clock = sui::clock::create_for_testing(fixture.ctx!());
     destroy(vault.redeem_shutdown<Product, Collateral>(&fixture.protocol, shares, 0, 0, &clock, fixture.ctx!()));
     destroy(clock);
@@ -97,7 +97,7 @@ fun revoked_shutdown_role_cannot_retire_a_vault() {
 fun expired_terminal_claim_cannot_burn_shares_or_pay_cash() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let shares = vault.mint_eligible_shares_for_testing(5, fixture.ctx!());
+    let shares = vault.mint_shares(5, fixture.ctx!());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     operations::complete_finalization_for_testing(&mut vault, terminal_withdrawal(sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!())));
@@ -154,7 +154,7 @@ fun short_terminal_claims_allow_changed_order_and_split_merge_without_fees() {
     let mut vault = issue_and_activate_product_with_side(&mut fixture, OtherProduct(), initial_checkpoint(),
         standard_vault_policy_for_side(policy::short()), policy::short());
     let locked = vault.share_supply();
-    let mut shares = vault.mint_eligible_shares_for_testing(5, fixture.ctx!());
+    let mut shares = vault.mint_shares(5, fixture.ctx!());
     let first = shares.split(3, fixture.ctx!());
     let split = shares.split(1, fixture.ctx!());
     shares.join(split);
@@ -193,7 +193,7 @@ fun terminal_zero_cash_burns_native_shares_and_returns_composable_zero_coin() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let locked = vault.share_supply();
-    let mut shares = vault.mint_eligible_shares_for_testing(5, fixture.ctx!());
+    let mut shares = vault.mint_shares(5, fixture.ctx!());
     let split = shares.split(2, fixture.ctx!());
     shares.join(split);
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
@@ -299,7 +299,7 @@ fun terminal_claims_exclude_locked_seed_burn_native_shares_and_give_last_claiman
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let locked = vault.share_supply();
-    let mut shares = vault.mint_eligible_shares_for_testing(5, fixture.ctx!());
+    let mut shares = vault.mint_shares(5, fixture.ctx!());
     let first = shares.split(2, fixture.ctx!());
     vault.retain_admin_cash(sui::coin::mint_for_testing<Collateral>(7, fixture.ctx!()));
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
@@ -358,7 +358,7 @@ fun zero_eligible_supply_keeps_all_terminal_cash_as_admin_cash() {
 fun terminal_claim_before_shutdown_rejects_lifecycle_before_missing_cash_field() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let shares = vault.mint_eligible_shares_for_testing(5, fixture.ctx!());
+    let shares = vault.mint_shares(5, fixture.ctx!());
     let clock = sui::clock::create_for_testing(fixture.ctx!());
     destroy(vault.redeem_shutdown<Product, Collateral>(&fixture.protocol, shares, 0, 0, &clock, fixture.ctx!()));
     destroy(clock);
