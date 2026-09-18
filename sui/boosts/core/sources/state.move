@@ -89,8 +89,16 @@ public struct RedemptionPlan<phantom Product> {
 public struct RebalancePlan<phantom Product> {
     before: ActivePosition,
     current: ActivePosition,
+    /// The stored reserve at preparation; every later step must still see it.
     reserve: u64,
+    /// The reserve as the ceiling admits it against `before`; every NAV in the plan uses it.
+    reserve_priced: u64,
     increase: bool,
+    /// Whether the plan began above the hard cap and so may use the emergency
+    /// slippage bound. Such a reduction stops at the cap: below it only the
+    /// ordinary bound applies, and a market that cannot fill within it must
+    /// not revert the progress already made.
+    emergency: bool,
     venue_fee_bps: u64,
     steps: u64,
 }
@@ -244,17 +252,13 @@ public fun initialize<Product>(
         blast_boosts_core::errors::invalid_asset_decimals!(),
     );
 
-    let seed_nav = validated_initialization_nav(
-        self,
-        observation,
-        seed_reserve,
-        now_ms,
-    );
+    // The units are pure facts about the assets; the seed is valued in them below.
+    self.base_unit = 10u64.pow(base_decimals);
+    self.collateral_unit = 10u64.pow(collateral_decimals);
+    let seed_nav = validated_initialization_nav(self, observation, seed_reserve, now_ms);
 
     self.lifecycle.activate();
     self.maintenance_reserve = seed_reserve;
-    self.base_unit = 10u64.pow(base_decimals);
-    self.collateral_unit = 10u64.pow(collateral_decimals);
 
     seed_nav
 }
@@ -525,7 +529,8 @@ public fun prepare_rebalance<Product>(
     );
 
     let before = validated_active_position(self, observation, now_ms);
-    let nav = accounting_math::shareholder_nav(before.equity, self.maintenance_reserve);
+    let reserve_priced = self.admitted_reserve(&before);
+    let nav = accounting_math::shareholder_nav(before.equity, reserve_priced);
     let rebalance = self.vault_policy.rebalance_policy();
     let increase = rebalance.is_leverage_below_band(before.notional, nav);
     assert!(
@@ -533,18 +538,31 @@ public fun prepare_rebalance<Product>(
         blast_boosts_core::errors::rebalance_inside_band!(),
     );
 
-    RebalancePlan { before, current: before, reserve: self.maintenance_reserve, increase, venue_fee_bps, steps: 0 }
+    RebalancePlan {
+        before,
+        current: before,
+        reserve: self.maintenance_reserve,
+        reserve_priced,
+        increase,
+        emergency: !increase && rebalance.is_leverage_above_max(before.notional, nav),
+        venue_fee_bps,
+        steps: 0,
+    }
 }
 
 /// Returns next whole-lot size, increase intent and current wider-slippage permission.
-/// A zero size finishes planning; the adapter independently caps work at sixteen sessions.
+///
+/// A zero size finishes planning; the adapter independently caps work at
+/// sixteen sessions. An emergency reduction finishes as soon as leverage is
+/// no longer above the hard cap, so the wider bound never covers an order
+/// placed below it and a wide market cannot revert the orders placed above it.
 public fun rebalance_order<Product>(self: &State<Product>, plan: &RebalancePlan<Product>): (u64, bool, bool) {
     self.lifecycle.assert_active();
     assert!(self.maintenance_reserve == plan.reserve, blast_boosts_core::errors::active_checkpoint_changed!());
     if (plan.steps == MAX_REBALANCE_ORDERS) return (0, plan.increase, false);
 
     let p = &plan.current;
-    let nav = accounting_math::shareholder_nav(p.equity, plan.reserve);
+    let nav = accounting_math::shareholder_nav(p.equity, plan.reserve_priced);
     let rebalance = self.vault_policy.rebalance_policy();
     if (plan.increase) {
         (rebalance_math::increase_base_down(nav, p.notional, rebalance.target_bps(), p.base_price,
@@ -558,13 +576,15 @@ public fun rebalance_order<Product>(self: &State<Product>, plan: &RebalancePlan<
         let cap_base = rebalance_math::base_for_notional_down(
             self.max_order_notional, p.base_price, p.collateral_price, p.lot_size, self.base_unit, self.collateral_unit,
         );
+        let wide = rebalance.is_leverage_above_max(p.notional, nav);
+        if (plan.emergency && !wide) return (0, false, false);
         let base = if (p.base > target_base) {
             (p.base - target_base).min(cap_base) / p.lot_size * p.lot_size
         } else {
             0
         };
 
-        (base, false, rebalance.is_leverage_above_max(p.notional, nav))
+        (base, false, wide)
     }
 }
 
@@ -609,7 +629,7 @@ public fun accept_rebalance_fill<Product>(
     assert!(after.base == expected_base, blast_boosts_core::errors::active_fill_incomplete!());
 
     if (increase) {
-        let nav = accounting_math::shareholder_nav(after.equity, plan.reserve);
+        let nav = accounting_math::shareholder_nav(after.equity, plan.reserve_priced);
         let rebalance = self.vault_policy.rebalance_policy();
         let scaled = (after.notional as u128) * (constants::basis_points_denominator!() as u128);
         assert!(
@@ -627,12 +647,14 @@ public fun accept_rebalance_fill<Product>(
 /// Returns authenticated before/after equity and base for one completed event.
 public fun complete_rebalance<Product>(self: &State<Product>, plan: RebalancePlan<Product>): (u64, u64, u64, u64, bool) {
     self.lifecycle.assert_active();
-    let RebalancePlan { before, current, reserve, increase, venue_fee_bps: _, steps } = plan;
+    let RebalancePlan {
+        before, current, reserve, reserve_priced, increase, emergency: _, venue_fee_bps: _, steps,
+    } = plan;
     assert!(reserve == self.maintenance_reserve, blast_boosts_core::errors::active_checkpoint_changed!());
     assert!(steps > 0, blast_boosts_core::errors::rebalance_no_progress!());
 
-    let before_nav = accounting_math::shareholder_nav(before.equity, reserve);
-    let after_nav = accounting_math::shareholder_nav(current.equity, reserve);
+    let before_nav = accounting_math::shareholder_nav(before.equity, reserve_priced);
+    let after_nav = accounting_math::shareholder_nav(current.equity, reserve_priced);
     let rebalance = self.vault_policy.rebalance_policy();
     let improved = if (increase) {
         current.base > before.base
@@ -967,6 +989,10 @@ fun validated_active_position<Product>(
         blast_boosts_core::errors::invalid_position_observation!(),
     );
     assert!(
+        self.is_notional_consistent(&observation),
+        blast_boosts_core::errors::invalid_position_observation!(),
+    );
+    assert!(
         observation.pending_order_count() == 0 && observation.is_margin_safe()
             && observation.is_venue_operational() && observation.is_checkpoint_clean(),
         blast_boosts_core::errors::active_observation_unusable!(),
@@ -987,6 +1013,24 @@ fun validated_active_position<Product>(
     observation.destroy();
 
     position
+}
+
+/// Returns whether the adapter's notional agrees with the base valued at the same oracle pair.
+///
+/// The leverage gates trust `position_collateral` while sizing values `base`
+/// itself, so the two must agree to within one lot: the venue may value a
+/// position with its own rounding, never with a different price.
+fun is_notional_consistent<Product>(self: &State<Product>, observation: &PositionObservation): bool {
+    let base_price = observation.base_oracle().price();
+    let collateral_price = observation.collateral_oracle().price();
+    let priced = rebalance_math::oracle_notional_up(
+        observation.position_base(), base_price, collateral_price, self.base_unit, self.collateral_unit,
+    );
+    let one_lot = rebalance_math::oracle_notional_up(
+        observation.lot_size(), base_price, collateral_price, self.base_unit, self.collateral_unit,
+    );
+
+    observation.position_collateral().diff(priced) <= one_lot
 }
 
 /// Rejects an observation whose oracle pair is stale, uncertain, or diverges from the venue mark.
@@ -1084,6 +1128,10 @@ fun validated_initialization_nav<Product>(
             notional,
             observation.lot_size(),
         ),
+        blast_boosts_core::errors::invalid_position_observation!(),
+    );
+    assert!(
+        self.is_notional_consistent(&observation),
         blast_boosts_core::errors::invalid_position_observation!(),
     );
     assert!(

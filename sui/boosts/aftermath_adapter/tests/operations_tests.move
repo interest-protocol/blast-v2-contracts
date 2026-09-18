@@ -10,8 +10,10 @@ const REFERENCE_TIME_MS: u64 = 1_000;
 const NAV_CAP: u64 = 1_000_000_000;
 const SEED_EQUITY: u64 = 1_000;
 const SEED_RESERVE: u64 = 100;
-const ABSOLUTE_BASE: u64 = 1_800;
+/// With 9-decimal base, 6-decimal collateral and unit prices, one collateral atom of notional is 1,000 base atoms.
+const BASE_PER_NOTIONAL: u64 = 1_000;
 const ABSOLUTE_NOTIONAL: u64 = 1_800;
+const ABSOLUTE_BASE: u64 = ABSOLUTE_NOTIONAL * BASE_PER_NOTIONAL;
 const LOT_SIZE: u64 = 1;
 const PRICE: u64 = 1_000_000_000;
 const ALLOCATED_FIXED: u256 = 1_000_000_000_000_000;
@@ -491,7 +493,7 @@ fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
     let plan = vault.prepare_mint(position_observation(SEED_EQUITY, true), 10_000, 9_989_000, REFERENCE_TIME_MS);
     assert_eq!(plan.admin_fee(), 2);
-    assert_eq!(plan.base_to_buy(), 19_980);
+    assert_eq!(plan.base_to_buy(), 19_980_000);
     vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
     vault.retain_admin_cash(sui::coin::mint_for_testing<Collateral>(2, fixture.ctx!()));
     let shares = operations::complete_mint<Product, Collateral>(
@@ -503,13 +505,14 @@ fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_
         vector[9_989_000, 9_989, 10, 2, 8, 10, 2_000, 108, 2, 10_889_000]);
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
     let plan = vault.prepare_redemption(active_position(10_997, 21_780), &shares, 9_978, REFERENCE_TIME_MS);
-    assert_eq!(plan.base_to_sell(), 19_980);
+    // 21_780_000 less the floor of its 900_000 / 10_889_000 share, to the atom.
+    assert_eq!(plan.base_to_sell(), 19_979_835);
     let receipt = operations::price_redemption(&mut vault, plan, shares,
-        active_position(10_996, 1_800), initial_checkpoint(), REFERENCE_TIME_MS);
+        active_position_with_base(10_996, 1_800_165), initial_checkpoint(), REFERENCE_TIME_MS);
     assert_eq!(receipt.redemption_cash_required(), 9_980);
     let cash = sui::coin::mint_for_testing<Collateral>(9_980, fixture.ctx!());
     let cash = operations::complete_redemption(&mut vault, receipt, cash,
-        active_position(1_016, 1_800), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
+        active_position_with_base(1_016, 1_800_165), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
     assert_eq!(cash.value(), 9_978);
     assert_eq!(vault.share_supply(), 900_000);
     assert_eq!(vault.maintenance_reserve(), 116);
@@ -634,15 +637,16 @@ fun completed_redemption_burns_the_native_input_only_after_exact_cash_return() {
     let mint_plan = vault.prepare_mint(position_observation(SEED_EQUITY, true), 1_000, 997_000, REFERENCE_TIME_MS);
     let (shares, _, _, _, _, _, _) = vault.complete_mint(mint_plan, active_position(1_998, 3_798), REFERENCE_TIME_MS, fixture.ctx!());
     let plan = vault.prepare_redemption(active_position(1_998, 3_798), &shares, 994, REFERENCE_TIME_MS);
-    assert_eq!(plan.base_to_sell(), 1_997);
+    // 3_798_000 less the floor of its 900_000 / 1_897_000 share, to the atom.
+    assert_eq!(plan.base_to_sell(), 1_996_103);
     let receipt = operations::price_redemption(
-        &mut vault, plan, shares, active_position(1_996, 1_801), initial_checkpoint(), REFERENCE_TIME_MS,
+        &mut vault, plan, shares, active_position_with_base(1_996, 1_801_897), initial_checkpoint(), REFERENCE_TIME_MS,
     );
     assert_eq!(receipt.redemption_cash_required(), 994);
     let cash = sui::coin::mint_for_testing<Collateral>(994, fixture.ctx!());
     let final_checkpoint = checkpoint_with_market_imr(0, ALLOCATED_FIXED - 994 * ATOM_FIXED, 10, 20, 10, 20, 1);
     let cash = operations::complete_redemption(
-        &mut vault, receipt, cash, active_position(1_002, 1_801), final_checkpoint, REFERENCE_TIME_MS, fixture.ctx!(),
+        &mut vault, receipt, cash, active_position_with_base(1_002, 1_801_897), final_checkpoint, REFERENCE_TIME_MS, fixture.ctx!(),
     );
     assert_eq!(cash.value(), 994);
     assert_eq!(vault.share_supply_for_testing(), 900_000);
@@ -861,7 +865,7 @@ fun completed_mint_returns_native_shares_and_updates_the_same_treasury_supply() 
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     vault.assert_active_observation(position_observation(SEED_EQUITY, true), PRICE, PRICE, REFERENCE_TIME_MS);
     let plan = vault.prepare_mint(position_observation(SEED_EQUITY, true), 1_000, 997_000, REFERENCE_TIME_MS);
-    assert_eq!(plan.base_to_buy(), 1_998);
+    assert_eq!(plan.base_to_buy(), 1_998_000);
     let base_price = plan.mint_base_price();
     let collateral_price = plan.mint_collateral_price();
     let lot = plan.mint_lot_size();
@@ -873,7 +877,7 @@ fun completed_mint_returns_native_shares_and_updates_the_same_treasury_supply() 
     assert!(cap > 0);
     vault.assert_active_execution(PRICE, PRICE);
     let after = observation::new_position(
-        1_998, 3_798, 3_798, LOT_SIZE, policy::long(), 0, true, true, true,
+        1_998, 3_798 * BASE_PER_NOTIONAL, 3_798, LOT_SIZE, policy::long(), 0, true, true, true,
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
     );
@@ -2322,13 +2326,23 @@ fun position_observation_for_side(venue_equity: u64, margin_safe: bool, side: po
     )
 }
 
-fun active_position(equity: u64, base: u64): observation::PositionObservation {
-    active_position_for_side(equity, base, policy::long())
+fun active_position(equity: u64, notional: u64): observation::PositionObservation {
+    active_position_for_side(equity, notional, policy::long())
 }
 
-fun active_position_for_side(equity: u64, base: u64, side: policy::PositionSide): observation::PositionObservation {
+/// A live position of an exact base, valued at the unit price rounded up.
+fun active_position_with_base(equity: u64, base: u64): observation::PositionObservation {
     observation::new_position(
-        equity, base, base, LOT_SIZE, side, 0, true, true, true,
+        equity, base, base.div_ceil(BASE_PER_NOTIONAL), LOT_SIZE, policy::long(), 0, true, true, true,
+        observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
+        observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
+    )
+}
+
+/// A live position of `notional` collateral atoms, held as the base that values to it.
+fun active_position_for_side(equity: u64, notional: u64, side: policy::PositionSide): observation::PositionObservation {
+    observation::new_position(
+        equity, notional * BASE_PER_NOTIONAL, notional, LOT_SIZE, side, 0, true, true, true,
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
     )
@@ -2658,10 +2672,10 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag>) 
     assert_replay(&replay, vault);
     let plan = vault.prepare_redemption(active_position(10_997, 21_780), &shares, 9_978, REFERENCE_TIME_MS);
     let receipt = operations::price_redemption(vault, plan, shares,
-        active_position(10_996, 1_800), initial_checkpoint(), REFERENCE_TIME_MS);
+        active_position_with_base(10_996, 1_800_165), initial_checkpoint(), REFERENCE_TIME_MS);
     let cash = sui::coin::mint_for_testing<Collateral>(9_980, fixture.ctx!());
     let cash = operations::complete_redemption(vault, receipt, cash,
-        active_position(1_016, 1_800), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
+        active_position_with_base(1_016, 1_800_165), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
     replay_redemption(&mut replay, events::collect_one<events::Redeemed<Tag>>(0));
     assert_replay(&replay, vault);
     sui::transfer::public_transfer(cash, ADMIN);

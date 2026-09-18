@@ -11,7 +11,7 @@ const REFERENCE_TIME_MS: u64 = 100_000;
 const SEED_RESERVE: u64 = 100_000;
 const SEED_VENUE_EQUITY: u64 = 1_100_000;
 const SEED_NAV: u64 = 1_000_000;
-const SEED_BASE: u64 = 200_000;
+const SEED_BASE: u64 = 2_000_000_000;
 const SEED_NOTIONAL: u64 = 2_000_000;
 const LOT_SIZE: u64 = 1_000;
 const MIN_EXPOSURE_LOTS: u64 = 100;
@@ -177,7 +177,7 @@ fun invalid_rebalance_fee_precedes_invalid_observation() {
 fun mint_outside_band_precedes_deposit_arithmetic() {
     let fixture = start(domain::vault_issuer_role());
     let state = initialized_state(&fixture, policy::long());
-    let plan = state.prepare_mint(standard_observation(policy::long()).with_position_collateral(1_000_000).into_position_observation(), 0, 1_000_000, 1, REFERENCE_TIME_MS);
+    let plan = state.prepare_mint(standard_observation(policy::long()).with_notional(1_000_000).into_position_observation(), 0, 1_000_000, 1, REFERENCE_TIME_MS);
     destroy(plan);
     state.destroy_for_testing();
     destroy(fixture);
@@ -213,7 +213,7 @@ fun redemption_rejects_output_one_above_net() {
     let mut state = initialized_state(&fixture, policy::long());
     let before = standard_observation(policy::long());
     let plan = state.prepare_redemption(before.into_position_observation(), 500_000, 1_000_000, 499_501, REFERENCE_TIME_MS);
-    state.complete_redemption(plan, before.with_position_base(100_000).with_position_collateral(1_000_000).into_position_observation(), REFERENCE_TIME_MS);
+    state.complete_redemption(plan, before.with_position_base(1_000_000_000).with_position_collateral(1_000_000).into_position_observation(), REFERENCE_TIME_MS);
     state.destroy_for_testing();
     destroy(fixture);
 }
@@ -225,7 +225,7 @@ fun mint_amount_supply_swap_cannot_satisfy_the_original_minimum() {
     let mut state = initialized_state(&fixture, policy::long());
     let before = standard_observation(policy::long());
     let plan = state.prepare_mint(before.into_position_observation(), 1_000_000, 500_000, 600_000, REFERENCE_TIME_MS);
-    state.complete_mint(plan, before.with_venue_equity(2_098_000).with_position_base(399_000).with_position_collateral(3_990_000).into_position_observation(), REFERENCE_TIME_MS);
+    state.complete_mint(plan, before.with_venue_equity(2_098_000).with_position_base(3_998_000_000).with_position_collateral(3_998_000).into_position_observation(), REFERENCE_TIME_MS);
     state.destroy_for_testing();
     destroy(fixture);
 }
@@ -422,8 +422,11 @@ fun rebalance_increase_reserves_cost_and_keeps_buffer_unchanged() {
     destroy(fixture);
 }
 
+/// An emergency reduction ends the moment leverage is no longer above the hard
+/// cap: the wider bound never covers an order below it, and a wide market cannot
+/// revert the orders placed above it.
 #[test]
-fun rebalance_short_reduction_recomputes_wide_permission_after_partial_progress() {
+fun rebalance_short_emergency_reduction_stops_once_leverage_is_below_the_cap() {
     let fixture = start(domain::vault_issuer_role());
     let state = rebalance_state(&fixture, policy::short());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_200_000, policy::short()), 10, REFERENCE_TIME_MS);
@@ -433,7 +436,7 @@ fun rebalance_short_reduction_recomputes_wide_permission_after_partial_progress(
     state.assert_rebalance_execution(&plan, 100, 104);
     state.accept_rebalance_fill(&mut plan, rebalance_observation(1_099_500, 2_900_000, policy::short()), 300_000_000, REFERENCE_TIME_MS);
     let (next, _, next_wide) = state.rebalance_order(&plan);
-    assert_eq!(next, 901_000_000);
+    assert_eq!(next, 0);
     assert!(!next_wide);
     state.complete_rebalance(plan);
     assert_eq!(state.maintenance_reserve_for_testing(), SEED_RESERVE);
@@ -523,12 +526,12 @@ fun redemption_keeps_remaining_nav_and_allocates_its_own_fee() {
         standard_observation(policy::short()).into_position_observation(),
         500_000, 1_000_000, 497_502, REFERENCE_TIME_MS,
     );
-    assert_eq!(plan.base_to_sell(), 100_000);
+    assert_eq!(plan.base_to_sell(), 1_000_000_000);
     let (net, admin, final_equity, fee, _) = state.complete_redemption(
         plan,
         standard_observation(policy::short())
             .with_venue_equity(1_098_000)
-            .with_position_base(100_000)
+            .with_position_base(1_000_000_000)
             .with_position_collateral(1_000_000)
             .into_position_observation(),
         REFERENCE_TIME_MS,
@@ -554,13 +557,13 @@ fun mint_credits_at_most_the_deposit_net_of_fee_when_the_fill_is_favorable() {
         999_000,
         REFERENCE_TIME_MS,
     );
-    assert_eq!(plan.base_to_buy(), 199_000);
+    assert_eq!(plan.base_to_buy(), 1_998_000_000);
     let (shares, contribution, fee, admin, buffer, _, _) = state.complete_mint(
         plan,
         standard_observation(policy::long())
             .with_venue_equity(2_102_000)
-            .with_position_base(399_000)
-            .with_position_collateral(3_990_000)
+            .with_position_base(3_998_000_000)
+            .with_position_collateral(3_998_000)
             .into_position_observation(),
         REFERENCE_TIME_MS,
     );
@@ -582,12 +585,12 @@ fun redemption_pays_at_most_the_proportional_claim_when_the_unwind_is_favorable(
         standard_observation(policy::long()).into_position_observation(),
         500_000, 1_000_000, 499_500, REFERENCE_TIME_MS,
     );
-    assert_eq!(plan.base_to_sell(), 100_000);
+    assert_eq!(plan.base_to_sell(), 1_000_000_000);
     let (net, admin, final_equity, fee, buffer) = state.complete_redemption(
         plan,
         standard_observation(policy::long())
             .with_venue_equity(1_102_000)
-            .with_position_base(100_000)
+            .with_position_base(1_000_000_000)
             .with_position_collateral(1_000_000)
             .into_position_observation(),
         REFERENCE_TIME_MS,
@@ -612,13 +615,13 @@ fun mint_prices_actual_contribution_after_the_attributable_cost() {
         997_000,
         REFERENCE_TIME_MS,
     );
-    assert_eq!(plan.base_to_buy(), 199_000);
+    assert_eq!(plan.base_to_buy(), 1_998_000_000);
     let (shares, contribution, _, _, _, _, _) = state.complete_mint(
         plan,
         standard_observation(policy::long())
             .with_venue_equity(2_098_000)
-            .with_position_base(399_000)
-            .with_position_collateral(3_990_000)
+            .with_position_base(3_998_000_000)
+            .with_position_collateral(3_998_000)
             .into_position_observation(),
         REFERENCE_TIME_MS,
     );
@@ -951,7 +954,7 @@ fun initialization_admits_nav_cap_equality() {
     let mut state = new_state(&fixture, policy::long());
     let spec = standard_observation(policy::long())
         .with_venue_equity(NAV_CAP + SEED_RESERVE)
-        .with_position_collateral(2 * NAV_CAP);
+        .with_notional(2 * NAV_CAP);
 
     assert_eq!(
         state.initialize(
@@ -973,13 +976,13 @@ fun initialization_admits_both_healthy_leverage_boundaries() {
 
     lower.initialize(
         standard_observation(policy::long())
-            .with_position_collateral(1_600_000)
+            .with_notional(1_600_000)
             .into_position_observation(),
         SEED_RESERVE, 9, 6,
         REFERENCE_TIME_MS);
     upper.initialize(
         standard_observation(policy::long())
-            .with_position_collateral(2_600_000)
+            .with_notional(2_600_000)
             .into_position_observation(),
         SEED_RESERVE, 9, 6,
         REFERENCE_TIME_MS);
@@ -1202,8 +1205,9 @@ fun initialization_rejects_leverage_one_unit_above_healthy() {
     abort_code = errors::EInitializationBaseBelowMinOrder, location = blast_boosts_core::state,
 )]
 fun initialization_rejects_base_below_the_immutable_lot_minimum() {
+    // A lot of 0.1 base makes the 100-lot minimum 1e10, above the 2e9 seed position.
     initialize_once(
-        standard_observation(policy::long()).with_position_base(99_000),
+        standard_observation(policy::long()).with_lot_size(100_000_000),
         policy::long(),
         SEED_RESERVE,
     );
@@ -1401,10 +1405,11 @@ fun initialization_guard_order_checks_nav_cap_before_leverage() {
     abort_code = errors::EInitializationLeverageUnhealthy, location = blast_boosts_core::state,
 )]
 fun initialization_guard_order_checks_leverage_before_minimum_exposure() {
+    // Equity 700_000 leaves NAV 600_000 against 2_000_000 of notional: 3.33x, outside the band.
     initialize_once(
         standard_observation(policy::long())
-            .with_position_collateral(3_000_000)
-            .with_position_base(99_000),
+            .with_venue_equity(700_000)
+            .with_lot_size(100_000_000),
         policy::long(),
         SEED_RESERVE,
     );
@@ -1589,7 +1594,7 @@ fun redemption_releases_reserve_above_the_ceiling_for_the_smaller_position() {
         plan,
         standard_observation(policy::long())
             .with_venue_equity(1_102_000)
-            .with_position_base(100_000)
+            .with_position_base(1_000_000_000)
             .with_position_collateral(1_000_000)
             .into_position_observation(),
         REFERENCE_TIME_MS,
@@ -1617,13 +1622,14 @@ fun a_mint_prices_shares_after_releasing_reserve_above_the_ceiling() {
     let before = standard_observation(policy::long()).with_venue_equity(1_150_000);
     let plan = state.prepare_mint(before.into_position_observation(), 1_000_000, 1_000_000, 1, REFERENCE_TIME_MS);
     // Sized against NAV 1_050_000, not 1_000_000: 200_000 * 999_000 / 1_050_000 floored to the lot.
-    assert_eq!(plan.base_to_buy(), 190_000);
+    // 2e9 * 999_000 / 1_050_000 floored to the lot.
+    assert_eq!(plan.base_to_buy(), 1_902_857_000);
     let (shares, contribution, _, _, _, _, _) = state.complete_mint(
         plan,
         before
             .with_venue_equity(2_150_000)
-            .with_position_base(SEED_BASE + 190_000)
-            .with_position_collateral((SEED_BASE + 190_000) * 10)
+            .with_position_base(SEED_BASE + 1_902_857_000)
+            .with_position_collateral((SEED_BASE + 1_902_857_000) / 1_000)
             .into_position_observation(),
         REFERENCE_TIME_MS,
     );
@@ -1870,6 +1876,18 @@ fun into_position_observation(self: ObservationSpec): PositionObservation {
         ),
         mark_price,
     )
+}
+
+/// Sets the notional and the base that values to it at the fixture's unit price.
+fun with_notional(mut self: ObservationSpec, notional: u64): ObservationSpec {
+    self.position_collateral = notional;
+    self.position_base = notional * 1_000;
+    self
+}
+
+fun with_lot_size(mut self: ObservationSpec, lot_size: u64): ObservationSpec {
+    self.lot_size = lot_size;
+    self
 }
 
 fun with_venue_equity(mut self: ObservationSpec, venue_equity: u64): ObservationSpec {
