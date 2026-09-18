@@ -315,7 +315,7 @@ fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
                 .activate(rebalance_observation(1_100_000, notional, side), 100_000, 9, 6, REFERENCE_TIME_MS);
             let plan = state.prepare_mint(rebalance_observation(1_100_000, notional, side), 1_000_000, 1_000_000, 1_000_000, REFERENCE_TIME_MS);
             assert_eq!(plan.base_to_buy(), notional * 1_000);
-            let (shares, contribution, _, _, _, _, _) = state.complete_mint(plan, rebalance_observation(2_100_000, notional * 2, side), REFERENCE_TIME_MS);
+            let (shares, contribution, _, _, _) = state.complete_mint(plan, rebalance_observation(2_100_000, notional * 2, side), REFERENCE_TIME_MS);
             assert_eq!(vector[shares, contribution, state.maintenance_reserve()], vector[1_000_000, 1_000_000, 100_000]);
             let plan = state.prepare_redemption(rebalance_observation(2_100_000, notional * 2, side), 500_000, 2_000_000, 500_000, REFERENCE_TIME_MS);
             assert_eq!(plan.base_to_sell(), notional * 500);
@@ -526,7 +526,7 @@ fun mint_credits_at_most_the_deposit_net_of_fee_when_the_fill_is_favorable() {
         REFERENCE_TIME_MS,
     );
     assert_eq!(plan.base_to_buy(), 1_998_000_000);
-    let (shares, contribution, fee, admin, buffer, _, _) = state.complete_mint(
+    let (shares, contribution, fee, admin, buffer) = state.complete_mint(
         plan,
         standard_observation(policy::long())
             .with_venue_equity(2_102_000)
@@ -583,7 +583,7 @@ fun mint_prices_actual_contribution_after_the_attributable_cost() {
         REFERENCE_TIME_MS,
     );
     assert_eq!(plan.base_to_buy(), 1_998_000_000);
-    let (shares, contribution, _, _, _, _, _) = state.complete_mint(
+    let (shares, contribution, _, _, _) = state.complete_mint(
         plan,
         standard_observation(policy::long())
             .with_venue_equity(2_098_000)
@@ -637,13 +637,14 @@ fun flat_seed_preflight_returns_authenticated_order_inputs() {
     let issuance = issued(&fixture, policy::short());
     let observation = standard_observation(policy::long()).with_position_base(0).into_position_observation();
 
-    let (target_notional, base_price, collateral_price, lot_size) =
-        issuance.seed_terms(observation, SEED_RESERVE, REFERENCE_TIME_MS);
+    let (target_notional, seed_position) = issuance.seed_terms(observation, SEED_RESERVE, REFERENCE_TIME_MS);
 
     assert_eq!(target_notional, SEED_NOTIONAL);
-    assert_eq!(base_price, 1_000_000_000);
-    assert_eq!(collateral_price, 1_000_000_000);
-    assert_eq!(lot_size, LOT_SIZE);
+    assert_eq!(seed_position.base_price(), 1_000_000_000);
+    assert_eq!(seed_position.collateral_price(), 1_000_000_000);
+    assert_eq!(seed_position.lot_size(), LOT_SIZE);
+    assert_eq!(seed_position.base(), 0);
+    assert_eq!(seed_position.notional(), 0);
     destroy(issuance);
     destroy(fixture);
 }
@@ -1270,7 +1271,7 @@ fun a_seed_reserve_above_the_ceiling_is_rejected_before_any_order() {
     // Ceiling 4% of the 2_000_000 target is 80_000; the seed asks for 100_000.
     let issuance = capped_issuance(&fixture, 400);
     let flat = standard_observation(policy::long()).with_position_base(0);
-    let (target, _, _, _) = issuance.seed_terms(flat.into_position_observation(), SEED_RESERVE, REFERENCE_TIME_MS);
+    let (target, _) = issuance.seed_terms(flat.into_position_observation(), SEED_RESERVE, REFERENCE_TIME_MS);
     assert_eq!(target, SEED_NOTIONAL);
     destroy(issuance);
     destroy(fixture);
@@ -1341,7 +1342,7 @@ fun a_mint_prices_shares_after_releasing_reserve_above_the_ceiling() {
     // Sized against NAV 1_050_000, not 1_000_000: 200_000 * 999_000 / 1_050_000 floored to the lot.
     // 2e9 * 999_000 / 1_050_000 floored to the lot.
     assert_eq!(plan.base_to_buy(), 1_902_857_000);
-    let (shares, contribution, _, _, _, _, _) = state.complete_mint(
+    let (shares, contribution, _, _, _) = state.complete_mint(
         plan,
         before
             .with_venue_equity(2_150_000)

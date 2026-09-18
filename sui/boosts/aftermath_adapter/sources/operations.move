@@ -38,8 +38,6 @@ public struct Fill has copy, drop {
     filled_base: u256,
     filled_quote: u256,
     executed: u64,
-    is_ask: bool,
-    reduce_only: bool,
 }
 
 /// Linear custody of the redeemed shares until the payout is proved to have left the venue.
@@ -49,8 +47,6 @@ public struct RedemptionReceipt<phantom Product> {
     admin: u64,
     fee: u64,
     reserve_fee: u64,
-    fee_bps: u64,
-    admin_share_bps: u64,
     unwound_checkpoint: Checkpoint,
 }
 
@@ -96,9 +92,11 @@ public fun initialize<Product, Collateral>(
         &binding, &account, registry, &clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     ).into_observation();
-    let (target_notional, reference_base_price, collateral_price, lot_size) =
-        terms.seed_terms(pre_observation, seed_reserve, clock.timestamp_ms());
-    let orders = order_sizes(target_notional, max_order_notional, reference_base_price, collateral_price, lot_size);
+    let (target_notional, seed_position) = terms.seed_terms(pre_observation, seed_reserve, clock.timestamp_ms());
+    let (reference_base_price, collateral_price) = (seed_position.base_price(), seed_position.collateral_price());
+    let orders = order_sizes(
+        target_notional, max_order_notional, reference_base_price, collateral_price, seed_position.lot_size(),
+    );
     orders.do_ref!(|order| {
         terms.assert_order_notional_allowed(notional_for_base_up(*order, reference_base_price, collateral_price));
     });
@@ -186,7 +184,7 @@ public fun mint<Product, Collateral>(
         base_price_info, collateral_price_info, clock,
     ).into_observation();
     checkpoint.assert_deposit_checkpoint(&final_checkpoint, 0);
-    let shares = complete_mint<Product, Collateral>(vault, plan, after, final_checkpoint, clock.timestamp_ms(), ctx);
+    let shares = complete_mint<Product, Collateral>(vault, plan, deposit, after, final_checkpoint, clock.timestamp_ms(), ctx);
     clearing_house.share();
 
     shares
@@ -288,7 +286,7 @@ public fun rebalance<Product, Collateral>(
             &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
             base_price_info, collateral_price_info, clock,
         ).into_observation();
-        fill.assert_checkpoint(&checkpoint, &after_checkpoint);
+        fill.assert_checkpoint(&terms, &checkpoint, &after_checkpoint);
         vault.state().accept_rebalance_fill(&mut plan, order, after, fill.filled, clock.timestamp_ms());
 
         checkpoint = after_checkpoint;
@@ -473,17 +471,15 @@ public(package) fun emit_vault_initialized<Product>(
 
 /// Commits native mint effects only after the orchestration proved its venue checkpoint.
 public(package) fun complete_mint<Product, Collateral>(
-    vault: &mut Vault<Product>, plan: MintPlan<Product>, after: PositionObservation,
+    vault: &mut Vault<Product>, plan: MintPlan<Product>, deposit: u64, after: PositionObservation,
     checkpoint: Checkpoint, now_ms: u64, ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
-    let deposit = plan.mint_deposit();
-    let (shares, contribution, fee, admin, reserve_fee, fee_bps, admin_share_bps) =
-        vault.complete_mint(plan, after, now_ms, ctx);
+    let (shares, contribution, fee, admin, reserve_fee) = vault.complete_mint(plan, after, now_ms, ctx);
 
     vault.venue_mut().replace_checkpoint(checkpoint);
 
     events::minted<Product>(
-        vault.id(), deposit, shares.value(), contribution, fee, admin, reserve_fee, fee_bps, admin_share_bps,
+        vault.id(), deposit, shares.value(), contribution, fee, admin, reserve_fee,
         vault.state().maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(),
         vault.share_supply(), checkpoint,
     );
@@ -501,10 +497,9 @@ public(package) fun seal_redemption_receipt<Product>(
         blast_boosts_aftermath::errors::redemption_share_mismatch!(),
     );
 
-    let (fee_bps, admin_share_bps) = (plan.redemption_fee_bps(), plan.redemption_admin_share_bps());
     let (net, admin, fee, reserve_fee) = vault.state_mut().complete_redemption(plan, unwound, now_ms);
 
-    RedemptionReceipt { shares: shares.into_balance(), net, admin, fee, reserve_fee, fee_bps, admin_share_bps, unwound_checkpoint }
+    RedemptionReceipt { shares: shares.into_balance(), net, admin, fee, reserve_fee, unwound_checkpoint }
 }
 
 /// Returns only the exact total collateral that must leave the venue before completion.
@@ -518,9 +513,7 @@ public(package) fun complete_redemption<Product, Collateral>(
     vault: &mut Vault<Product>, receipt: RedemptionReceipt<Product>, mut cash: Coin<Collateral>,
     checkpoint: Checkpoint, ctx: &mut TxContext,
 ): Coin<Collateral> {
-    let RedemptionReceipt {
-        shares, net, admin, fee, reserve_fee, fee_bps, admin_share_bps, unwound_checkpoint: _,
-    } = receipt;
+    let RedemptionReceipt { shares, net, admin, fee, reserve_fee, unwound_checkpoint: _ } = receipt;
     vault.assert_collateral_type<_, Collateral>();
     assert!(cash.value() == net + admin, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
 
@@ -529,7 +522,7 @@ public(package) fun complete_redemption<Product, Collateral>(
     vault.venue_mut().replace_checkpoint(checkpoint);
 
     events::redeemed<Product>(
-        vault.id(), burned, net, fee, admin, reserve_fee, fee_bps, admin_share_bps,
+        vault.id(), burned, net, fee, admin, reserve_fee,
         vault.state().maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(), vault.share_supply(), checkpoint,
     );
 
@@ -906,7 +899,7 @@ fun fill_orders<Product, Collateral>(
         let after_checkpoint = snapshot::capture_checkpoint(
             binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
         );
-        fill.assert_checkpoint(&checkpoint, &after_checkpoint);
+        fill.assert_checkpoint(&terms, &checkpoint, &after_checkpoint);
 
         checkpoint = after_checkpoint;
         remaining = remaining - fill.filled;
@@ -943,29 +936,29 @@ fun place_order<Product, Collateral>(
     let executed = execution_price(summary.execution_price(is_ask), !is_ask);
     vault.state().assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
 
-    (clearing_house, Fill { filled, filled_base, filled_quote, executed, is_ask, reduce_only })
+    (clearing_house, Fill { filled, filled_base, filled_quote, executed })
 }
 
 /// Proves the checkpoint moved exactly as this fill did: an opening trade moves
 /// base and quote, a reduction only base.
-fun assert_checkpoint(self: &Fill, before: &Checkpoint, after: &Checkpoint) {
-    let base = self.base_after(before.signed_base());
+fun assert_checkpoint(self: &Fill, terms: &OrderTerms, before: &Checkpoint, after: &Checkpoint) {
+    let base = self.base_after(terms.is_ask, before.signed_base());
 
-    if (self.reduce_only) {
+    if (terms.reduce_only) {
         before.assert_reduction_checkpoint(after, base)
     } else {
-        before.assert_trade_checkpoint(after, base, self.quote_after(before.signed_quote_notional()))
+        before.assert_trade_checkpoint(after, base, self.quote_after(terms.is_ask, before.signed_quote_notional()))
     }
 }
 
 /// The signed base the checkpoint must show after this fill.
-fun base_after(self: &Fill, previous: u256): u256 {
-    if (self.is_ask) { ifixed::sub(previous, self.filled_base) } else { ifixed::add(previous, self.filled_base) }
+fun base_after(self: &Fill, is_ask: bool, previous: u256): u256 {
+    if (is_ask) { ifixed::sub(previous, self.filled_base) } else { ifixed::add(previous, self.filled_base) }
 }
 
 /// The signed quote notional the checkpoint must show after this fill.
-fun quote_after(self: &Fill, previous: u256): u256 {
-    if (self.is_ask) { ifixed::add(previous, self.filled_quote) } else { ifixed::sub(previous, self.filled_quote) }
+fun quote_after(self: &Fill, is_ask: bool, previous: u256): u256 {
+    if (is_ask) { ifixed::add(previous, self.filled_quote) } else { ifixed::sub(previous, self.filled_quote) }
 }
 
 /// Accepts a positive whole-lot fill toward a bounded atomic aggregate.
@@ -1213,7 +1206,7 @@ fun unwind_market<Product, Collateral>(
         let after = snapshot::capture_checkpoint(
             &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
         );
-        fill.assert_checkpoint(&checkpoint, &after);
+        fill.assert_checkpoint(&terms, &checkpoint, &after);
         after.assert_no_orders();
 
         remaining = remaining - fill.filled;

@@ -606,7 +606,7 @@ fun a_price_move_between_prepare_and_complete_reverts_the_mint() {
     vault.venue_mut().set_base_price(base_price + 1);
 
     let observation = vault.venue().observe();
-    let (_, _, _, _, _, _, _) = vault.state_mut().complete_mint(plan, observation, now_ms);
+    let (_, _, _, _, _) = vault.state_mut().complete_mint(plan, observation, now_ms);
     vault.destroy();
 }
 
@@ -626,7 +626,7 @@ fun a_venue_error_after_the_fill_reverts_the_mint() {
     vault.venue_mut().set_operational(false);
 
     let observation = vault.venue().observe();
-    let (_, _, _, _, _, _, _) = vault.state_mut().complete_mint(plan, observation, now_ms);
+    let (_, _, _, _, _) = vault.state_mut().complete_mint(plan, observation, now_ms);
     vault.destroy();
 }
 

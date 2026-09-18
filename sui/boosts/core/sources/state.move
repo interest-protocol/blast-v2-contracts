@@ -58,12 +58,9 @@ public struct ActivePosition has copy, drop {
 /// Linear, transaction-local mint terms. Only State can construct or finish them.
 public struct MintPlan<phantom Product> {
     before: ActivePosition,
-    deposit: u64,
     expected_contribution: u64,
     reserve_fee: u64,
     admin_fee: u64,
-    fee_bps: u64,
-    admin_share_bps: u64,
     supply: u64,
     minimum_shares: u64,
     base_to_buy: u64,
@@ -255,12 +252,9 @@ public fun prepare_mint<Product>(
 
     MintPlan {
         before,
-        deposit,
         expected_contribution,
         reserve_fee,
         admin_fee,
-        fee_bps: self.mint_fee_bps,
-        admin_share_bps: self.admin_share_bps,
         supply,
         minimum_shares,
         base_to_buy,
@@ -274,8 +268,6 @@ public fun base_to_buy<Product>(self: &MintPlan<Product>): u64 { self.base_to_bu
 public fun admin_fee<Product>(self: &MintPlan<Product>): u64 { self.admin_fee }
 
 /// Returns the sealed input for completed adapter accounting facts.
-public fun mint_deposit<Product>(self: &MintPlan<Product>): u64 { self.deposit }
-
 /// The position the mint was priced against; the adapter trades at its pair and lot.
 public fun mint_position<Product>(self: &MintPlan<Product>): ActivePosition { self.before }
 
@@ -289,11 +281,10 @@ public fun complete_mint<Product>(
     plan: MintPlan<Product>,
     observation: PositionObservation,
     now_ms: u64,
-): (u64, u64, u64, u64, u64, u64, u64) {
+): (u64, u64, u64, u64, u64) {
     self.lifecycle.assert_active();
     let MintPlan {
-        before, deposit: _, expected_contribution, reserve_fee,
-        admin_fee, fee_bps, admin_share_bps, supply, minimum_shares, base_to_buy,
+        before, expected_contribution, reserve_fee, admin_fee, supply, minimum_shares, base_to_buy,
     } = plan;
 
     let after = validated_active_position(self, observation, now_ms);
@@ -330,7 +321,7 @@ public fun complete_mint<Product>(
     self.maintenance_reserve = reserve_after;
     assert_holders_not_diluted(nav_before, supply, nav_after, supply + shares);
 
-    (shares, contribution, admin_fee + reserve_fee, admin_fee, reserve_fee, fee_bps, admin_share_bps)
+    (shares, contribution, admin_fee + reserve_fee, admin_fee, reserve_fee)
 }
 
 // --- Redemption ---
@@ -369,12 +360,6 @@ public fun redemption_shares<Product>(self: &RedemptionPlan<Product>): u64 { sel
 
 /// Base that must remain after the sealed close.
 public fun base_after_sell<Product>(self: &RedemptionPlan<Product>): u64 { self.before.base - self.base_to_sell }
-
-/// Redemption fee rate sealed with the plan.
-public fun redemption_fee_bps<Product>(self: &RedemptionPlan<Product>): u64 { self.fee_bps }
-
-/// Admin allocation rate sealed with the plan.
-public fun redemption_admin_share_bps<Product>(self: &RedemptionPlan<Product>): u64 { self.admin_share_bps }
 
 /// Computes the payout after the unwind and credits the fee once, excluding admin cash.
 /// The gross is capped at the proportional claim, so a favorable unwind accrues
@@ -770,6 +755,28 @@ public fun is_within_nav_cap<Product>(self: &State<Product>, nav: u64): bool {
 /// events. Reserve mutation remains exclusive to core transitions.
 public fun maintenance_reserve<Product>(self: &State<Product>): u64 {
     self.maintenance_reserve
+}
+
+// --- Flat Seed ---
+
+/// Prices a flat seed observation for the orders that will open its position.
+///
+/// Reads the pair and the lot the issuance sizes with; `equity` is the seed
+/// the adapter funded, not shareholder NAV, and base and notional are zero
+/// because no position exists yet. `issuance::seed_terms` has already refused
+/// an observation that carries base.
+public(package) fun flat_position(observation: PositionObservation): ActivePosition {
+    let position = ActivePosition {
+        equity: observation.venue_equity(),
+        base: 0,
+        notional: 0,
+        lot_size: observation.lot_size(),
+        base_price: observation.base_oracle().price(),
+        collateral_price: observation.collateral_oracle().price(),
+    };
+    observation.destroy();
+
+    position
 }
 
 // --- Priced Position Reads ---

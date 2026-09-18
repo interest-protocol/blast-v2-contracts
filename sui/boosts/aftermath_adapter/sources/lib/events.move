@@ -43,8 +43,6 @@ public struct Redeemed<phantom Product> has copy, drop {
     fee: u64,
     admin_fee: u64,
     reserve_fee: u64,
-    fee_bps: u64,
-    admin_share_bps: u64,
     reserve_after: u64,
     admin_cash_after: u64,
     supply_after: u64,
@@ -74,8 +72,6 @@ public struct Minted<phantom Product> has copy, drop {
     fee: u64,
     admin_fee: u64,
     reserve_fee: u64,
-    fee_bps: u64,
-    admin_share_bps: u64,
     reserve_after: u64,
     admin_cash_after: u64,
     supply_after: u64,
@@ -202,22 +198,19 @@ public(package) fun rebalanced<Product>(
 
 public(package) fun redeemed<Product>(
     vault_id: ID, shares: u64, net: u64, fee: u64, admin_fee: u64, reserve_fee: u64,
-    fee_bps: u64, admin_share_bps: u64, reserve_after: u64, admin_cash_after: u64,
-    supply_after: u64, checkpoint: Checkpoint,
+    reserve_after: u64, admin_cash_after: u64, supply_after: u64, checkpoint: Checkpoint,
 ) {
     emit_event(Redeemed<Product> {
-        vault_id, shares, net, fee, admin_fee, reserve_fee, fee_bps, admin_share_bps,
-        reserve_after, admin_cash_after, supply_after, checkpoint,
+        vault_id, shares, net, fee, admin_fee, reserve_fee, reserve_after, admin_cash_after, supply_after, checkpoint,
     });
 }
 
 public(package) fun minted<Product>(
     vault_id: ID, deposit: u64, shares: u64, contribution: u64, fee: u64, admin_fee: u64,
-    reserve_fee: u64, fee_bps: u64, admin_share_bps: u64, reserve_after: u64, admin_cash_after: u64,
-    supply_after: u64, checkpoint: Checkpoint,
+    reserve_fee: u64, reserve_after: u64, admin_cash_after: u64, supply_after: u64, checkpoint: Checkpoint,
 ) {
     emit_event(Minted<Product> {
-        vault_id, deposit, shares, contribution, fee, admin_fee, reserve_fee, fee_bps, admin_share_bps,
+        vault_id, deposit, shares, contribution, fee, admin_fee, reserve_fee,
         reserve_after, admin_cash_after, supply_after, checkpoint,
     });
 }
@@ -427,13 +420,13 @@ public fun rebalanced_checkpoint_fields<Product>(self: &Rebalanced<Product>): (I
 #[test_only]
 public fun redeemed_amounts<Product>(self: &Redeemed<Product>): vector<u64> {
     vector[self.shares, self.net, self.fee, self.admin_fee, self.reserve_fee,
-        self.fee_bps, self.admin_share_bps, self.reserve_after, self.admin_cash_after, self.supply_after]
+        self.reserve_after, self.admin_cash_after, self.supply_after]
 }
 
 #[test_only]
-public fun minted_amounts<Product>(self: &Minted<Product>): (u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64) {
+public fun minted_amounts<Product>(self: &Minted<Product>): (u64, u64, u64, u64, u64, u64, u64, u64, u64) {
     (self.deposit, self.shares, self.contribution, self.fee, self.admin_fee, self.reserve_fee,
-        self.fee_bps, self.admin_share_bps, self.reserve_after, self.admin_cash_after, self.supply_after)
+        self.reserve_after, self.admin_cash_after, self.supply_after)
 }
 
 #[test_only]

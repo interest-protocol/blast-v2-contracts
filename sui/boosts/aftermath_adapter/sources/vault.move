@@ -286,11 +286,10 @@ public(package) fun complete_mint<Product>(
     after: PositionObservation,
     now_ms: u64,
     ctx: &mut TxContext,
-): (Coin<BlastBoost<Product>>, u64, u64, u64, u64, u64, u64) {
-    let (amount, contribution, fee, admin, reserve_fee, fee_bps, admin_share_bps) =
-        self.state.complete_mint(plan, after, now_ms);
+): (Coin<BlastBoost<Product>>, u64, u64, u64, u64) {
+    let (amount, contribution, fee, admin, reserve_fee) = self.state.complete_mint(plan, after, now_ms);
 
-    (coin::mint(self.treasury_cap_mut(), amount, ctx), contribution, fee, admin, reserve_fee, fee_bps, admin_share_bps)
+    (coin::mint(self.treasury_cap_mut(), amount, ctx), contribution, fee, admin, reserve_fee)
 }
 
 // --- Redemption ---

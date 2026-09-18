@@ -321,8 +321,7 @@ public fun witness(self: &Vault): AdminWitness<BLAST_BOOSTS_CORE> {
 public fun activate(self: Issued, seed: u64, seed_reserve: u64): Vault {
     let Issued { issuance, mut venue, authority, super_admin_cap, admin_cap, scenario } = self;
     venue.deposit(seed);
-    let (target, base_price, collateral_price, _) =
-        issuance.seed_terms(venue.observe(), seed_reserve, venue.now_ms);
+    let (target, seed_position) = issuance.seed_terms(venue.observe(), seed_reserve, venue.now_ms);
 
     let mut remaining = venue.base_for_notional(target);
     let cap_base = venue.base_for_notional(issuance.max_order_notional());
@@ -330,11 +329,11 @@ public fun activate(self: Issued, seed: u64, seed_reserve: u64): Vault {
         let order = remaining.min(cap_base);
         issuance.assert_order_notional_allowed(venue.notional_of(order));
         let (executed, filled) = venue.fill(order, true);
-        issuance.assert_execution(base_price, executed);
+        issuance.assert_execution(seed_position.base_price(), executed);
         issuance.assert_order_notional_allowed(venue.notional_of(filled));
         remaining = remaining - filled;
     };
-    assert!(collateral_price == venue.collateral_price);
+    assert!(seed_position.collateral_price() == venue.collateral_price);
 
     let (state, seed_nav, _) =
         issuance.activate(venue.observe(), seed_reserve, BASE_DECIMALS, COLLATERAL_DECIMALS, venue.now_ms);
@@ -362,7 +361,7 @@ public fun mint_with_fee_limit(self: &mut Vault, deposit: u64, minimum_shares: u
 
     let now_ms = self.venue.now_ms;
     let plan = self.state.prepare_mint(self.venue.observe(), deposit, self.supply, minimum_shares, now_ms);
-    assert!(plan.mint_deposit() == deposit && plan.admin_fee() == admin_fee);
+    assert!(plan.admin_fee() == admin_fee);
     let priced = plan.mint_position();
     assert!(priced.lot_size() == self.venue.lot_size);
     let base_price = priced.base_price();
@@ -385,11 +384,8 @@ public fun mint_with_fee_limit(self: &mut Vault, deposit: u64, minimum_shares: u
         orders = orders + 1;
     };
 
-    let (shares, _, total_fee, admin, reserve_slice, fee_bps, admin_share_bps) =
-        self.state.complete_mint(plan, self.venue.observe(), now_ms);
-    let (mint_bps, _, live_admin_share_bps) = self.state.fee_settings();
+    let (shares, _, total_fee, admin, reserve_slice) = self.state.complete_mint(plan, self.venue.observe(), now_ms);
     assert!(total_fee == fee && admin == admin_fee && reserve_slice == reserve_fee);
-    assert!(fee_bps == mint_bps && admin_share_bps == live_admin_share_bps);
     assert!(self.state.is_within_nav_cap(self.venue.equity - self.state.maintenance_reserve_for_testing()));
     self.supply = self.supply + shares;
     self.last_orders = orders;
@@ -410,10 +406,8 @@ public fun redeem_with_fee_limit(self: &mut Vault, shares: u64, minimum_output: 
 
     let now_ms = self.venue.now_ms;
     let plan = self.state.prepare_redemption(self.venue.observe(), shares, self.supply, minimum_output, now_ms);
-    let (_, redeem_bps, admin_share_bps) = self.state.fee_settings();
     let priced = plan.redemption_position();
     assert!(plan.redemption_shares() == shares && priced.lot_size() == self.venue.lot_size);
-    assert!(plan.redemption_fee_bps() == redeem_bps && plan.redemption_admin_share_bps() == admin_share_bps);
     let base_price = priced.base_price();
     let cap = self.state.max_order_notional();
 

@@ -60,10 +60,14 @@ public fun assert_execution<Product>(self: &Issuance<Product>, reference: u64, e
 }
 
 /// Sizes the opening position from a flat seed observation: the target notional
-/// in atomic collateral units, and the pair and lot the orders are placed under.
+/// in atomic collateral units, and the priced flat seed whose pair and lot the
+/// orders are placed under.
+///
+/// The NAV and reserve caps are checked here against the sized target and
+/// again in `state::activate` against the position actually filled.
 public fun seed_terms<Product>(
     self: &Issuance<Product>, observation: PositionObservation, seed_reserve: u64, now_ms: u64,
-): (u64, u64, u64, u64) {
+): (u64, ActivePosition) {
     let seed_nav = state::seed_nav(&self.vault_policy, &observation, seed_reserve, now_ms);
     assert!(observation.position_base() == 0, blast_boosts_core::errors::invalid_initialization_observation!());
     assert!(seed_nav <= self.nav_cap, blast_boosts_core::errors::nav_cap_exceeded!());
@@ -75,14 +79,7 @@ public fun seed_terms<Product>(
         blast_boosts_core::errors::seed_reserve_above_cap!(),
     );
 
-    let (base_price, collateral_price, lot_size) = (
-        observation.base_oracle().price(),
-        observation.collateral_oracle().price(),
-        observation.lot_size(),
-    );
-    observation.destroy();
-
-    (target_notional, base_price, collateral_price, lot_size)
+    (target_notional, state::flat_position(observation))
 }
 
 /// Turns the issuance and the seeded observation into the live state.
