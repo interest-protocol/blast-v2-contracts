@@ -274,16 +274,8 @@ public fun with_fee_limits(
 
 // --- Rebalance Policy ---
 
-public(package) fun rebalance_below_bps(self: &RebalancePolicy): u64 {
-    self.rebalance_below_bps
-}
-
 public(package) fun target_bps(self: &RebalancePolicy): u64 {
     self.target_bps
-}
-
-public(package) fun rebalance_above_bps(self: &RebalancePolicy): u64 {
-    self.rebalance_above_bps
 }
 
 public(package) fun max_leverage_bps(self: &RebalancePolicy): u64 {
@@ -292,10 +284,6 @@ public(package) fun max_leverage_bps(self: &RebalancePolicy): u64 {
 
 public(package) fun max_slippage_bps(self: &RebalancePolicy): u64 {
     self.max_slippage_bps
-}
-
-public(package) fun emergency_max_slippage_bps(self: &RebalancePolicy): u64 {
-    self.emergency_max_slippage_bps
 }
 
 public(package) fun min_leverage_improvement_bps(self: &RebalancePolicy): u64 {
@@ -422,26 +410,6 @@ public(package) fun assert_nav_cap_valid(self: &RebalancePolicy, nav_cap: u64) {
 }
 
 // --- Price Policy ---
-
-/// Returns the oldest admitted source update age in milliseconds.
-public(package) fun max_price_age_ms(self: &PricePolicy): u64 {
-    self.max_price_age_ms
-}
-
-/// Returns the admitted forward clock skew in milliseconds.
-public(package) fun max_price_ahead_ms(self: &PricePolicy): u64 {
-    self.max_price_ahead_ms
-}
-
-/// Returns the admitted confidence interval as basis points of the price.
-public(package) fun max_confidence_bps(self: &PricePolicy): u64 {
-    self.max_confidence_bps
-}
-
-/// Returns the admitted mark divergence as basis points of the oracle price.
-public(package) fun max_mark_divergence_bps(self: &PricePolicy): u64 {
-    self.max_mark_divergence_bps
-}
 
 /// Returns whether a source update lies inside the two-sided freshness window.
 ///
@@ -612,11 +580,6 @@ public(package) fun min_order_lots(self: &VaultPolicy): u64 {
     self.min_order_lots
 }
 
-/// Returns the reserve ceiling as basis points of position notional.
-public(package) fun max_reserve_bps(self: &VaultPolicy): u64 {
-    self.max_reserve_bps
-}
-
 /// Returns the largest maintenance reserve the policy admits against `notional`.
 ///
 /// Both values are atomic collateral units. Rounds down, so a reserve exactly
@@ -662,6 +625,51 @@ fun is_within_relative_tolerance(
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+public fun rebalance_below_bps(self: &RebalancePolicy): u64 {
+    self.rebalance_below_bps
+}
+
+#[test_only]
+public fun rebalance_above_bps(self: &RebalancePolicy): u64 {
+    self.rebalance_above_bps
+}
+
+#[test_only]
+public fun emergency_max_slippage_bps(self: &RebalancePolicy): u64 {
+    self.emergency_max_slippage_bps
+}
+
+#[test_only]
+/// Returns the oldest admitted source update age in milliseconds.
+public fun max_price_age_ms(self: &PricePolicy): u64 {
+    self.max_price_age_ms
+}
+
+#[test_only]
+/// Returns the admitted forward clock skew in milliseconds.
+public fun max_price_ahead_ms(self: &PricePolicy): u64 {
+    self.max_price_ahead_ms
+}
+
+#[test_only]
+/// Returns the admitted confidence interval as basis points of the price.
+public fun max_confidence_bps(self: &PricePolicy): u64 {
+    self.max_confidence_bps
+}
+
+#[test_only]
+/// Returns the admitted mark divergence as basis points of the oracle price.
+public fun max_mark_divergence_bps(self: &PricePolicy): u64 {
+    self.max_mark_divergence_bps
+}
+
+#[test_only]
+/// Returns the reserve ceiling as basis points of position notional.
+public fun max_reserve_bps(self: &VaultPolicy): u64 {
+    self.max_reserve_bps
+}
 
 #[test_only]
 /// Exposes issuance fee rates to the test event reducer without widening production ABI.

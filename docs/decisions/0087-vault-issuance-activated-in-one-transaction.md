@@ -30,8 +30,8 @@ package, so that reason has expired, while the split kept three costs:
 ### D1. `issue` returns an issuance, not a Vault
 
 `vault::issue` returns `VaultIssuance<Product>`: a value with no abilities
-holding the core `State` (uninitialized), the selected risk-module witness and
-the currency's `TreasuryCap` and `MetadataCap`. It cannot be stored, shared or
+holding the core `Issuance` (the issuer's terms) and the currency's
+`TreasuryCap` and `MetadataCap`. It cannot be stored, shared or
 transferred, so the transaction that issues must also activate; a failed
 activation aborts the whole transaction and the currency registration with it.
 
@@ -86,6 +86,18 @@ modules against mainnet bytecode.
 always-zero maintenance reserve; the `Product` type argument identifies the
 currency for good and `VaultInitialized` follows in the same transaction with
 the Vault id. Both events stay.
+
+### D4a. The risk-module witness is removed
+
+The adapter carried a second authority class, a `RiskModule` type parameter
+on `issue` and `initialize` and a rotatable `TypeName` on the Vault, whose
+only power was `set_max_order_notional`. Its second purpose, gating who may
+activate a shared uninitialized Vault, has no object to gate since D1. The
+risk-admin role, which already sets fees and the NAV cap, now sets the order
+cap too; `rotate_risk_module`, `RiskModuleWitnessRotated`, the witness field
+and its three error codes are gone, and `VaultIssued` no longer names a
+witness type. A separately rotatable keeper key can return as a role if it
+is ever needed.
 
 ### D5. Retired codes
 

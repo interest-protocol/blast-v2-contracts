@@ -47,7 +47,6 @@ public struct ReplayState has drop {
     collateral_type: TypeName,
     maintenance_reserve: u64,
     lifecycle: u8,
-    risk_module_witness: TypeName,
     max_order_notional: u64,
     checkpoint: Option<Checkpoint>,
     unresolved_checkpoint: Option<Checkpoint>,
@@ -1936,17 +1935,8 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
         10 * ATOM_FIXED,
     );
     apply_connected_change(&mut vault, funded_checkpoint, funding);
-    vault.set_max_order_notional(
-        &fixture.protocol,
-        test_risk_module::new(),
-        300,
-    );
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-    vault.rotate_risk_module<Product, RiskModuleV2>(
-        &fixture.protocol,
-        &admin_witness,
-        test_risk_module::new_v2(),
-    );
+    vault.set_max_order_notional(&fixture.protocol, &admin_witness, 300);
     vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
 
     let final_checkpoint = checkpoint_with_market_imr(
@@ -1982,10 +1972,6 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
         &mut replay,
         events::collect_one<events::MaxOrderNotionalUpdated<Product>>(0),
     );
-    replay_risk_rotation(
-        &mut replay,
-        events::collect_one<events::RiskModuleWitnessRotated<Product>>(0),
-    );
     replay_shutdown(
         &mut replay,
         events::collect_one<events::ShutdownBegun<Product>>(0),
@@ -2008,10 +1994,6 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
     assert_eq!(replay.vault_id, vault_id);
     assert_eq!(replay.maintenance_reserve, vault.state().maintenance_reserve());
     assert_eq!(replay.lifecycle == 2, vault.is_unwinding_for_testing());
-    assert_eq!(
-        replay.risk_module_witness,
-        vault.risk_module_witness_for_testing(),
-    );
     let actual_order_notional = vault.max_order_notional_for_testing();
     assert_eq!(replay.max_order_notional, actual_order_notional);
     assert_eq!(*replay.checkpoint.borrow(), *vault.venue().checkpoint());
@@ -2135,10 +2117,9 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         ..
     } = fixture;
     let admin_witness = authority.sign_in(admin_cap);
-    let issuance = vault::issue<Tag, RiskModule>(
+    let issuance = vault::issue<Tag>(
         protocol,
         &admin_witness,
-        test_risk_module::new(),
         registry,
         vault_policy,
         250,
@@ -2641,7 +2622,7 @@ fun assert_replay<Tag>(replay: &ReplayState, vault: &Vault<Tag>) {
 /// `VaultIssued` carries no Vault id: the Vault does not exist yet, and the
 /// `VaultInitialized` that follows in the same transaction names it.
 fun replay_issued<Tag>(event: events::VaultIssued<Tag>): ReplayState {
-    let (_, _, risk_module_witness, vault_policy, max_order_notional, _) = event.vault_issued_fields();
+    let (_, _, vault_policy, max_order_notional, _) = event.vault_issued_fields();
     let (mint, redeem) = vault_policy.initial_fee_rates_for_testing();
 
     ReplayState {
@@ -2655,7 +2636,6 @@ fun replay_issued<Tag>(event: events::VaultIssued<Tag>): ReplayState {
         collateral_type: type_name::with_original_ids<u8>(),
         maintenance_reserve: 0,
         lifecycle: 0,
-        risk_module_witness,
         max_order_notional,
         checkpoint: option::none(),
         unresolved_checkpoint: option::none(),
@@ -2741,16 +2721,6 @@ fun replay_max_order_notional<Tag>(
     replay.max_order_notional = current;
 }
 
-fun replay_risk_rotation<Tag>(
-    replay: &mut ReplayState,
-    event: events::RiskModuleWitnessRotated<Tag>,
-) {
-    let (vault_id, previous, current) = event.risk_module_witness_rotated_fields();
-    assert_eq!(vault_id, replay.vault_id);
-    assert_eq!(previous, replay.risk_module_witness);
-    replay.risk_module_witness = current;
-}
-
 fun replay_shutdown<Tag>(
     replay: &mut ReplayState,
     event: events::ShutdownBegun<Tag>,
@@ -2807,7 +2777,6 @@ use blast_boosts_core::{
     observation::{Self, PositionObservation},
     policy::{Self, PositionSide, VaultPolicy},
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
-    test_risk_module::{Self, RiskModule, RiskModuleV2},
 };
 
 use perpetuals::authority::ACCOUNT;

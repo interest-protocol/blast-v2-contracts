@@ -102,7 +102,6 @@ public struct Minted<phantom Product> has copy, drop {
 public struct VaultIssued<phantom Product> has copy, drop {
     treasury_cap_id: ID,
     metadata_cap_id: ID,
-    risk_module_witness: TypeName,
     vault_policy: VaultPolicy,
     max_order_notional: u64,
     nav_cap: u64,
@@ -150,13 +149,6 @@ public struct HealthSynchronized<phantom Product> has copy, drop {
     vault_id: ID,
     reason: u8,
     checkpoint: Checkpoint,
-}
-
-/// Emitted after the trusted risk-module witness changes.
-public struct RiskModuleWitnessRotated<phantom Product> has copy, drop {
-    vault_id: ID,
-    previous_witness: TypeName,
-    new_witness: TypeName,
 }
 
 /// Emitted after the active risk module changes the live maximum order notional.
@@ -276,7 +268,6 @@ public(package) fun nav_cap_updated<Product>(vault_id: ID, previous_nav_cap: u64
 public(package) fun vault_issued<Product>(
     treasury_cap_id: ID,
     metadata_cap_id: ID,
-    risk_module_witness: TypeName,
     vault_policy: VaultPolicy,
     max_order_notional: u64,
     nav_cap: u64,
@@ -284,7 +275,6 @@ public(package) fun vault_issued<Product>(
     emit_event(VaultIssued<Product> {
         treasury_cap_id,
         metadata_cap_id,
-        risk_module_witness,
         vault_policy,
         max_order_notional,
         nav_cap,
@@ -382,20 +372,6 @@ public(package) fun health_synchronized<Product>(
 public(package) fun diagnostic_raised_reason(): u8 { HEALTH_DIAGNOSTIC_RAISED }
 
 public(package) fun diagnostic_cleared_reason(): u8 { HEALTH_DIAGNOSTIC_CLEARED }
-
-public(package) fun risk_module_witness_rotated<Product>(
-    vault_id: ID,
-    previous_witness: TypeName,
-    new_witness: TypeName,
-) {
-    emit_event(
-        RiskModuleWitnessRotated<Product> {
-            vault_id,
-            previous_witness,
-            new_witness,
-        },
-    );
-}
 
 public(package) fun max_order_notional_updated<Product>(vault_id: ID, previous: u64, max_order_notional: u64) {
     emit_event(
@@ -520,11 +496,10 @@ public fun collect_one<T: copy + drop>(abort_code: u64): T {
 #[test_only]
 public fun vault_issued_fields<Product>(
     self: &VaultIssued<Product>,
-): (ID, ID, TypeName, VaultPolicy, u64, u64) {
+): (ID, ID, VaultPolicy, u64, u64) {
     (
         self.treasury_cap_id,
         self.metadata_cap_id,
-        self.risk_module_witness,
         self.vault_policy,
         self.max_order_notional,
         self.nav_cap,
@@ -603,13 +578,6 @@ public fun health_synchronized_fields<Product>(
         self.reason,
         self.checkpoint,
     )
-}
-
-#[test_only]
-public fun risk_module_witness_rotated_fields<Product>(
-    self: &RiskModuleWitnessRotated<Product>,
-): (ID, TypeName, TypeName) {
-    (self.vault_id, self.previous_witness, self.new_witness)
 }
 
 #[test_only]

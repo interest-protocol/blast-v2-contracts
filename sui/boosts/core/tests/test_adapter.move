@@ -355,7 +355,6 @@ public fun mint(self: &mut Vault, deposit: u64, minimum_shares: u64): u64 {
 
 /// A mint under the depositor's fee ceiling, in the real adapter's exact call order.
 public fun mint_with_fee_limit(self: &mut Vault, deposit: u64, minimum_shares: u64, maximum_fee_bps: u64): u64 {
-    self.state.assert_active();
     assert!(deposit > 0);
     self.state.assert_user_fee_limit(true, maximum_fee_bps);
     let (fee, admin_fee, reserve_fee) = self.state.fee_allocation(deposit, true);
@@ -407,7 +406,6 @@ public fun redeem(self: &mut Vault, shares: u64, minimum_output: u64): u64 {
 
 /// A redemption under the redeemer's fee ceiling, in the real adapter's exact call order.
 public fun redeem_with_fee_limit(self: &mut Vault, shares: u64, minimum_output: u64, maximum_fee_bps: u64): u64 {
-    self.state.assert_active();
     self.state.assert_user_fee_limit(false, maximum_fee_bps);
 
     let now_ms = self.venue.now_ms;

@@ -223,11 +223,6 @@ public(package) fun seed_nav(vault_policy: &VaultPolicy, observation: &PositionO
 
 // --- Active Operations ---
 
-/// Rejects unavailable active lifecycle before the adapter touches the venue.
-public fun assert_active<Product>(self: &State<Product>) {
-    self.lifecycle.assert_active();
-}
-
 // --- Mint ---
 
 /// Seals a proportional increase from reserve-excluded NAV and the user's limits.
@@ -606,11 +601,6 @@ public fun settle_funding<Product>(
     }
 }
 
-/// Returns the funding cost holders still carry from exhausted-reserve intervals.
-public fun uncovered_deficit<Product>(self: &State<Product>): u64 {
-    self.uncovered_deficit
-}
-
 /// Credits an exact donation to the reserve, clamped to the ceiling, without
 /// creating supply or an admin entitlement. The adapter proves the venue took
 /// exactly `amount` on the raw checkpoint; the core prices the position it left.
@@ -941,6 +931,12 @@ fun assert_oracle_admitted(price_policy: &PricePolicy, oracle: &PriceObservation
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+/// Returns the funding cost holders still carry from exhausted-reserve intervals.
+public fun uncovered_deficit<Product>(self: &State<Product>): u64 {
+    self.uncovered_deficit
+}
 
 #[test_only]
 /// Returns whether the embedded lifecycle is active.

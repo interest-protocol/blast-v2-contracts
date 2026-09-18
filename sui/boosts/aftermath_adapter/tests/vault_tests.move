@@ -178,15 +178,11 @@ fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
 
     let issued_2x = events::collect_one<events::VaultIssued<Sui2x>>(0);
     let issued_5x = events::collect_one<events::VaultIssued<Sui5x>>(0);
-    let (treasury_2x_id, metadata_2x_id, risk_2x, policy_2x, order_notional_2x, _) =
-        issued_2x.vault_issued_fields();
-    let (treasury_5x_id, metadata_5x_id, risk_5x, policy_5x, order_notional_5x, _) =
-        issued_5x.vault_issued_fields();
+    let (treasury_2x_id, metadata_2x_id, policy_2x, order_notional_2x, _) = issued_2x.vault_issued_fields();
+    let (treasury_5x_id, metadata_5x_id, policy_5x, order_notional_5x, _) = issued_5x.vault_issued_fields();
 
     assert!(treasury_2x_id != treasury_5x_id);
     assert!(metadata_2x_id != metadata_5x_id);
-    assert_eq!(risk_2x, type_name::with_original_ids<RiskModule>());
-    assert_eq!(risk_5x, type_name::with_original_ids<RiskModule>());
     assert_eq!(policy_2x, expected_policy);
     assert_eq!(policy_5x, expected_policy);
     assert_eq!(order_notional_2x, MAX_ORDER_NOTIONAL);
@@ -237,51 +233,15 @@ fun generic_product_tags_issue_distinct_currencies() {
 }
 
 #[test]
-fun a_global_series_admin_rotates_risk_after_shutdown_starts() {
-    let mut fixture = start(
-        domain::vault_issuer_role() | domain::risk_admin_role(),
-    );
-    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
-    fixture.scenario.next_tx(ISSUER);
-    let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
-    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-
-    vault.set_unwinding_for_testing();
-    vault.rotate_risk_module<Sui2x, RiskModuleV2>(
-        &fixture.protocol,
-        &admin_witness,
-        test_risk_module::new_v2(),
-    );
-    vault.set_max_order_notional(
-        &fixture.protocol,
-        test_risk_module::new_v2(),
-        MAX_ORDER_NOTIONAL / 2,
-    );
-
-    assert!(vault.is_unwinding_for_testing());
-    assert_eq!(
-        vault.risk_module_witness_for_testing(),
-        type_name::with_original_ids<RiskModuleV2>(),
-    );
-    assert_eq!(vault.max_order_notional_for_testing(), MAX_ORDER_NOTIONAL / 2);
-
-    test_scenario::return_shared(vault);
-    destroy(fixture);
-}
-
-#[test]
-fun selected_risk_module_updates_max_order_notional_and_emits_the_change() {
-    let mut fixture = start(domain::vault_issuer_role());
+fun the_risk_admin_updates_max_order_notional_and_emits_the_change() {
+    let mut fixture = start(domain::vault_issuer_role() | domain::risk_admin_role());
     fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
     let vault_id = vault.id();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
 
-    vault.set_max_order_notional(
-        &fixture.protocol,
-        test_risk_module::new(),
-        MAX_ORDER_NOTIONAL * 4,
-    );
+    vault.set_max_order_notional(&fixture.protocol, &admin_witness, MAX_ORDER_NOTIONAL * 4);
 
     assert_eq!(vault.max_order_notional_for_testing(), MAX_ORDER_NOTIONAL * 4);
     let updated = events::collect_one<events::MaxOrderNotionalUpdated<Sui2x>>(0);
@@ -291,31 +251,6 @@ fun selected_risk_module_updates_max_order_notional_and_emits_the_change() {
     assert_eq!(current, MAX_ORDER_NOTIONAL * 4);
 
     test_scenario::return_shared(vault);
-    destroy(fixture);
-}
-
-#[test]
-fun selected_risk_module_reads_the_seed_constraints() {
-    let mut fixture = start(domain::vault_issuer_role());
-    let issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
-
-    issuance.assert_risk_module(&test_risk_module::new());
-
-    assert_eq!(issuance.issuance().side(), policy::long());
-    assert_eq!(issuance.issuance().max_order_notional(), MAX_ORDER_NOTIONAL);
-    destroy(issuance);
-    destroy(fixture);
-}
-
-#[test]
-#[expected_failure(abort_code = errors::ERiskModuleWitnessMismatch, location = blast_boosts_aftermath::vault)]
-fun unselected_risk_module_cannot_read_seed_constraints() {
-    let mut fixture = start(domain::vault_issuer_role());
-    let issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
-
-    issuance.assert_risk_module(&test_risk_module::new_v2());
-
-    destroy(issuance);
     destroy(fixture);
 }
 
@@ -336,36 +271,15 @@ fun activation_locks_the_seed_shares_as_the_whole_supply() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ERiskModuleWitnessMismatch, location = blast_boosts_aftermath::vault)]
-fun unselected_risk_module_cannot_update_max_order_notional() {
+#[expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun an_issuer_without_the_risk_role_cannot_update_max_order_notional() {
     let mut fixture = start(domain::vault_issuer_role());
     fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
 
-    vault.set_max_order_notional(
-        &fixture.protocol,
-        test_risk_module::new_v2(),
-        MAX_ORDER_NOTIONAL * 4,
-    );
-
-    test_scenario::return_shared(vault);
-    destroy(fixture);
-}
-
-#[test]
-#[expected_failure(abort_code = errors::EInvalidRiskModuleWitnessType, location = blast_boosts_aftermath::vault)]
-fun primitive_risk_module_cannot_update_max_order_notional() {
-    let mut fixture = start(domain::vault_issuer_role());
-    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
-    fixture.scenario.next_tx(ISSUER);
-    let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
-
-    vault.set_max_order_notional(
-        &fixture.protocol,
-        0u64,
-        MAX_ORDER_NOTIONAL * 4,
-    );
+    vault.set_max_order_notional(&fixture.protocol, &admin_witness, MAX_ORDER_NOTIONAL * 4);
 
     test_scenario::return_shared(vault);
     destroy(fixture);
@@ -376,17 +290,14 @@ fun primitive_risk_module_cannot_update_max_order_notional() {
     abort_code = blast_boosts_core::errors::EMaxOrderNotionalUnchanged,
     location = blast_boosts_core::state,
 )]
-fun risk_module_cannot_repeat_the_current_max_order_notional() {
-    let mut fixture = start(domain::vault_issuer_role());
+fun the_risk_admin_cannot_repeat_the_current_max_order_notional() {
+    let mut fixture = start(domain::vault_issuer_role() | domain::risk_admin_role());
     fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
 
-    vault.set_max_order_notional(
-        &fixture.protocol,
-        test_risk_module::new(),
-        MAX_ORDER_NOTIONAL,
-    );
+    vault.set_max_order_notional(&fixture.protocol, &admin_witness, MAX_ORDER_NOTIONAL);
 
     test_scenario::return_shared(vault);
     destroy(fixture);
@@ -397,17 +308,14 @@ fun risk_module_cannot_repeat_the_current_max_order_notional() {
     abort_code = blast_boosts_core::errors::EInvalidMaxOrderNotional,
     location = blast_boosts_core::state,
 )]
-fun risk_module_cannot_zero_the_max_order_notional() {
-    let mut fixture = start(domain::vault_issuer_role());
+fun the_risk_admin_cannot_zero_the_max_order_notional() {
+    let mut fixture = start(domain::vault_issuer_role() | domain::risk_admin_role());
     fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
 
-    vault.set_max_order_notional(
-        &fixture.protocol,
-        test_risk_module::new(),
-        0,
-    );
+    vault.set_max_order_notional(&fixture.protocol, &admin_witness, 0);
 
     test_scenario::return_shared(vault);
     destroy(fixture);
@@ -418,44 +326,15 @@ fun risk_module_cannot_zero_the_max_order_notional() {
     abort_code = blast_admin::errors::EOperationalVersionMismatch,
     location = blast_admin::operational_version,
 )]
-fun stale_adapter_version_precedes_risk_witness_and_max_order_notional_validation() {
+fun stale_adapter_version_precedes_role_and_max_order_notional_validation() {
     let mut fixture = start(domain::vault_issuer_role());
     fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
     fixture.protocol.set_version_for_testing(2);
 
-    vault.set_max_order_notional(
-        &fixture.protocol,
-        0u64,
-        0,
-    );
-
-    test_scenario::return_shared(vault);
-    destroy(fixture);
-}
-
-#[test]
-#[expected_failure(abort_code = errors::ERiskModuleWitnessMismatch, location = blast_boosts_aftermath::vault)]
-fun rotated_out_risk_module_cannot_update_max_order_notional() {
-    let mut fixture = start(
-        domain::vault_issuer_role() | domain::risk_admin_role(),
-    );
-    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
-    fixture.scenario.next_tx(ISSUER);
-    let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
-    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-    vault.rotate_risk_module<Sui2x, RiskModuleV2>(
-        &fixture.protocol,
-        &admin_witness,
-        test_risk_module::new_v2(),
-    );
-
-    vault.set_max_order_notional(
-        &fixture.protocol,
-        test_risk_module::new(),
-        MAX_ORDER_NOTIONAL * 4,
-    );
+    vault.set_max_order_notional(&fixture.protocol, &admin_witness, 0);
 
     test_scenario::return_shared(vault);
     destroy(fixture);
@@ -540,31 +419,6 @@ fun primitive_product_witness_is_rejected() {
     let mut fixture = start(domain::vault_issuer_role());
 
     fixture.issue_and_share<u64>(b"BAD".to_string());
-
-    destroy(fixture);
-}
-
-#[test]
-#[expected_failure(abort_code = errors::EInvalidRiskModuleWitnessType, location = blast_boosts_aftermath::vault)]
-fun adapter_package_type_cannot_be_selected_as_a_risk_module() {
-    let mut fixture = start(domain::vault_issuer_role());
-    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-
-    let vault = vault::issue<TaggedSui2x, TaggedSui5x>(
-        &fixture.protocol,
-        &admin_witness,
-        TaggedSui5x(),
-        &mut fixture.registry,
-        standard_vault_policy(),
-        MAX_ORDER_NOTIONAL,
-        NAV_CAP,
-        b"BADRISK".to_string(),
-        b"Bad Risk Vault".to_string(),
-        b"Same-package public constructors are not risk authority".to_string(),
-        b"".to_string(),
-        fixture.scenario.ctx(),
-    );
-    destroy(vault);
 
     destroy(fixture);
 }
@@ -666,10 +520,9 @@ fun issue_with_policy<Product: drop>(
         ..
     } = self;
     let admin_witness = authority.sign_in(admin_cap);
-    vault::issue<Product, RiskModule>(
+    vault::issue<Product>(
         protocol,
         &admin_witness,
-        test_risk_module::new(),
         registry,
         vault_policy,
         MAX_ORDER_NOTIONAL,
@@ -748,7 +601,6 @@ use blast_boosts_core::{
     observation,
     policy::{Self, PositionSide, VaultPolicy},
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
-    test_risk_module::{Self, RiskModule, RiskModuleV2},
 };
 
 use perpetuals::authority::ACCOUNT;

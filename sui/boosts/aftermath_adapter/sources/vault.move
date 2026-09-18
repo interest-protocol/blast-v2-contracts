@@ -18,7 +18,6 @@ const SEED_SHARE_SCALE: u64 = 1_000;
 /// be stored or shared, and a failed activation rolls the currency back too.
 public struct VaultIssuance<phantom Product> {
     issuance: Issuance<Product>,
-    risk_module_witness: TypeName,
     treasury_cap: TreasuryCap<BlastBoost<Product>>,
     metadata_cap: MetadataCap<BlastBoost<Product>>,
 }
@@ -33,7 +32,6 @@ public struct VaultIssuance<phantom Product> {
 public struct Vault<phantom Product> has key {
     id: UID,
     state: State<Product>,
-    risk_module_witness: TypeName,
     /// The bound account's identity, last accepted checkpoint and admin authority.
     venue_account: VenueAccount,
     seed_facts: SeedFacts,
@@ -71,10 +69,9 @@ public struct TerminalCashKey() has copy, drop, store;
 /// input: `package_admin` seals a validated Publisher and UpgradeCap that no
 /// other object can hold, so re-reading those fields here would prove nothing
 /// this package does not already own.
-public fun issue<Product: drop, RiskModule: drop>(
+public fun issue<Product: drop>(
     protocol: &Protocol,
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
-    _risk_module: RiskModule,
     registry: &mut CoinRegistry,
     vault_policy: VaultPolicy,
     max_order_notional: u64,
@@ -90,17 +87,14 @@ public fun issue<Product: drop, RiskModule: drop>(
         !type_name::with_original_ids<Product>().is_primitive(),
         blast_boosts_aftermath::errors::invalid_product_witness_type!(),
     );
-    let risk_module_witness = valid_risk_module_type<RiskModule>();
-
     let issuance = issuance::issue<Product>(admin_witness, vault_policy, max_order_notional, nav_cap);
     let (treasury_cap, metadata_cap) =
         blast_boost::new_currency<Product>(registry, symbol, name, description, icon_url, ctx);
     events::vault_issued<Product>(
-        object::id(&treasury_cap), object::id(&metadata_cap), risk_module_witness, vault_policy,
-        max_order_notional, nav_cap,
+        object::id(&treasury_cap), object::id(&metadata_cap), vault_policy, max_order_notional, nav_cap,
     );
 
-    VaultIssuance { issuance, risk_module_witness, treasury_cap, metadata_cap }
+    VaultIssuance { issuance, treasury_cap, metadata_cap }
 }
 
 /// Shares one activated adapter Vault.
@@ -193,46 +187,21 @@ public fun set_nav_cap<Product>(
 ///
 /// This value limits the absolute atomic-USDC notional of one Aftermath order.
 /// It does not limit a user's deposit or the Vault's total open position.
-/// The selected risk module may raise or lower the current value without a
+/// The risk administrator may raise or lower the current value without a
 /// cooldown. This transition changes no live position exposure and therefore
 /// remains available in every lifecycle state.
-public fun set_max_order_notional<Product, RiskModule: drop>(
-    self: &mut Vault<Product>,
-    protocol: &Protocol,
-    _: RiskModule,
-    max_order_notional: u64,
-) {
-    protocol.assert_current();
-    assert_selected_risk_module<RiskModule>(self.risk_module_witness);
-
-    let previous = self.state.set_max_order_notional(max_order_notional);
-
-    events::max_order_notional_updated<Product>(self.id.to_inner(), previous, max_order_notional);
-}
-
-/// Replaces the risk-module witness accepted by this adapter Vault.
-///
-/// Rotation is available in every lifecycle state. It changes no core
-/// policy, accounting value, currency capability, or adapter version.
-public fun rotate_risk_module<Product, RiskModule: drop>(
+public fun set_max_order_notional<Product>(
     self: &mut Vault<Product>,
     protocol: &Protocol,
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
-    _risk_module: RiskModule,
+    max_order_notional: u64,
 ) {
     protocol.assert_current();
     admin_witness.assert_role(domain::risk_admin_role());
 
-    let new_witness = valid_risk_module_type<RiskModule>();
-    assert!(
-        new_witness != self.risk_module_witness,
-        blast_boosts_aftermath::errors::risk_module_witness_unchanged!(),
-    );
+    let previous = self.state.set_max_order_notional(max_order_notional);
 
-    let previous_witness = self.risk_module_witness;
-    self.risk_module_witness = new_witness;
-
-    events::risk_module_witness_rotated<Product>(self.id.to_inner(), previous_witness, new_witness);
+    events::max_order_notional_updated<Product>(self.id.to_inner(), previous, max_order_notional);
 }
 
 /// Returns only earned local admin collateral, including during venue/oracle outages.
@@ -278,11 +247,6 @@ public(package) fun issuance<Product>(self: &VaultIssuance<Product>): &Issuance<
 
 // --- Initialization ---
 
-/// The caller's risk module is the one the issuance selected.
-public(package) fun assert_risk_module<Product, RiskModule: drop>(self: &VaultIssuance<Product>, _: &RiskModule) {
-    assert_selected_risk_module<RiskModule>(self.risk_module_witness);
-}
-
 /// Activates the core on the seeded observation, mints the locked seed shares
 /// to the burn address, and builds the Vault around the venue account, with
 /// the share caps hanging off the new id. Returns the Vault, the seed's
@@ -298,7 +262,7 @@ public(package) fun activate<Product>(
     ctx: &mut TxContext,
 ): (Vault<Product>, u64, ActivePosition) {
     assert_seed_funder(funder);
-    let VaultIssuance { issuance, risk_module_witness, mut treasury_cap, metadata_cap } = self;
+    let VaultIssuance { issuance, mut treasury_cap, metadata_cap } = self;
     let (state, seed_nav, seeded) =
         issuance.activate(seeded, seed_reserve, constants::base_decimals!(), collateral_decimals, now_ms);
 
@@ -308,7 +272,6 @@ public(package) fun activate<Product>(
     let mut vault = Vault {
         id: object::new(ctx),
         state,
-        risk_module_witness,
         venue_account,
         seed_facts: SeedFacts { locked_shares, funder },
         unresolved_checkpoint_digest: option::none(),
@@ -476,28 +439,6 @@ fun locked_shares(seed_nav: u64): u64 {
     seed_nav.checked_mul(SEED_SHARE_SCALE).destroy_or!(abort blast_boosts_aftermath::errors::locked_shares_overflow!())
 }
 
-/// The caller's risk module is the one the issuance selected.
-fun assert_selected_risk_module<RiskModule: drop>(selected: TypeName) {
-    assert!(
-        valid_risk_module_type<RiskModule>() == selected,
-        blast_boosts_aftermath::errors::risk_module_witness_mismatch!(),
-    );
-}
-
-/// Admits only runtime-constructible witnesses from a separate risk package.
-/// The package-origin check excludes this adapter's public Product wrapper
-/// from accidentally becoming administrative risk authority.
-fun valid_risk_module_type<RiskModule: drop>(): TypeName {
-    let witness = type_name::with_original_ids<RiskModule>();
-    assert!(
-        !witness.is_primitive()
-            && type_name::original_id<RiskModule>() != type_name::original_id<BLAST_BOOSTS_AFTERMATH>(),
-        blast_boosts_aftermath::errors::invalid_risk_module_witness_type!(),
-    );
-
-    witness
-}
-
 fun treasury_cap<Product>(self: &Vault<Product>): &TreasuryCap<BlastBoost<Product>> {
     dynamic_object_field::borrow(&self.id, TreasuryKey<Product>())
 }
@@ -550,13 +491,6 @@ public fun fee_settings_for_testing<Product>(self: &Vault<Product>): (u64, u64, 
 }
 
 #[test_only]
-public fun risk_module_witness_for_testing<Product>(
-    self: &Vault<Product>,
-): TypeName {
-    self.risk_module_witness
-}
-
-#[test_only]
 public fun treasury_cap_id_for_testing<Product>(self: &Vault<Product>): ID {
     object::id(self.treasury_cap())
 }
@@ -590,7 +524,6 @@ use blast_admin::acl::AdminWitness;
 
 use blast_boosts_aftermath::{
     blast_boost::{Self, BlastBoost},
-    blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH,
     constants,
     events,
     protocol::Protocol,
@@ -610,7 +543,7 @@ use perpetuals::{account::Account, clearing_house::{ClearingHouse, SessionSummar
 
 use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 
-use std::{string::String, type_name::{Self, TypeName}};
+use std::{string::String, type_name};
 
 use sui::{
     balance::{Self, Balance},

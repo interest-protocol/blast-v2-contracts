@@ -59,15 +59,14 @@ public struct RedemptionReceipt<phantom Product> {
 /// Seeds one issuance on the venue and returns its activated Vault, which the
 /// same transaction must pass to `vault::share`.
 ///
-/// Direction and size come only from the immutable core policy. The selected
-/// risk module authenticates the edge but cannot choose an order parameter.
+/// Direction and size come only from the immutable core policy; the caller
+/// chooses no order parameter.
 /// Every external value is either retained in the Vault, shared, or consumed.
 /// Only the issuer's transaction can reach this: the issuance has no abilities,
 /// so it cannot be stored, shared, or handed to another signer.
-public fun initialize<Product, RiskModule: drop, Collateral>(
+public fun initialize<Product, Collateral>(
     issuance: VaultIssuance<Product>,
     protocol: &Protocol,
-    risk_module: RiskModule,
     currency: &Currency<Collateral>,
     registry: &mut Registry,
     mut clearing_house: ClearingHouse<Collateral>,
@@ -83,7 +82,6 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
     ctx: &mut TxContext,
 ): Vault<Product> {
     protocol.assert_current();
-    issuance.assert_risk_module(&risk_module);
     let terms = issuance.issuance();
     let (position_side, max_order_notional) = (terms.side(), terms.max_order_notional());
     let seed_amount = seed.value();
