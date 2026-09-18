@@ -7,11 +7,13 @@ authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
 [dependencies]
 blast_admin = { local = "../../admin" }
 blast_boosts_core = { local = "../core" }
-perpetuals = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/iperps/perpetuals", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
-position = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/iperps/position", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
-authority_cap = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/authority-cap/authority-cap", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
-oracle_aggregator = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/oracle-aggregator/oracle-aggregator", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
-ifixed = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/ifixed/ifixed", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
+# Verbatim copy of AftermathFinance/move-interfaces at f62e74aa862ef65b8950a70d83aac8cb71c19837
+# (see interfaces/aftermath/README.md); check_mainnet_abi.mjs gates it against mainnet.
+perpetuals = { local = "interfaces/aftermath/iperps/perpetuals" }
+position = { local = "interfaces/aftermath/iperps/position" }
+authority_cap = { local = "interfaces/aftermath/authority-cap/authority-cap" }
+oracle_aggregator = { local = "interfaces/aftermath/oracle-aggregator/oracle-aggregator" }
+ifixed = { local = "interfaces/aftermath/ifixed/ifixed" }
 pyth = { local = "interfaces/pyth" }
 
 [addresses]

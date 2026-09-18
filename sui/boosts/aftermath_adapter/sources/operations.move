@@ -128,11 +128,11 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
     // BLAST_ACTIVATION_BOUNDARY_A1
     let seed_facts = issuance.mint_locked_shares(locked_shares(seed_shareholder_nav), seed_funder, ctx);
     // BLAST_ACTIVATION_BOUNDARY_A2
-    let venue_account = venue_account::new(binding, checkpoint);
+    let venue_account = venue_account::new(binding, checkpoint, admin_cap);
     // BLAST_ACTIVATION_BOUNDARY_A3
     account.consume_policy_and_share_account(share_policy);
     // BLAST_ACTIVATION_BOUNDARY_A4
-    let vault = issuance.activate(venue_account, admin_cap, seed_facts, ctx);
+    let vault = issuance.activate(venue_account, seed_facts, ctx);
     // BLAST_ACTIVATION_BOUNDARY_A5
     clearing_house.share();
     // BLAST_ACTIVATION_BOUNDARY_A6
@@ -415,7 +415,6 @@ public fun sync_health<Product, Collateral>(
 ) {
     protocol.assert_current();
     vault.assert_can_sync();
-    vault.assert_venue_custody_binding();
 
     let binding = vault.venue_binding();
     let stored_checkpoint = *vault.venue_checkpoint();
@@ -708,9 +707,8 @@ fun open_venue_account<Collateral>(
     ctx: &mut TxContext,
 ): (Account<Collateral>, AccountSharePolicy, AuthorityCap<ACCOUNT, ADMIN>, venue_account::Binding) {
     let (account, share_policy, admin_cap) = account::create_account<Collateral>(registry, ctx);
-    let account_object_id = object::id(&account);
     let binding = venue_account::new_binding(
-        account_object_id,
+        object::id(&account),
         account.account_id(),
         object::id(registry),
         object::id(clearing_house),
@@ -718,7 +716,6 @@ fun open_venue_account<Collateral>(
         object::id(collateral_oracle),
         type_name::with_original_ids<Collateral>(),
     );
-    venue_account::assert_admin_cap_binding(authority::`for`(&admin_cap), account_object_id);
 
     (account, share_policy, admin_cap, binding)
 }

@@ -5,13 +5,13 @@
 version = 4
 
 [pinned.testnet.AftermathControlFlow]
-source = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/control-flow/control-flow", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
+source = { local = "interfaces/aftermath/control-flow/control-flow" }
 use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.AftermathOrderedMap]
-source = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/ordered-map/ordered-map", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
+source = { local = "interfaces/aftermath/ordered-map/ordered-map" }
 use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib", sui = "Sui" }
@@ -29,7 +29,7 @@ manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D
 deps = { MoveStdlib = "MoveStdlib" }
 
 [pinned.testnet.authority_cap]
-source = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/authority-cap/authority-cap", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
+source = { local = "interfaces/aftermath/authority-cap/authority-cap" }
 use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib", sui = "Sui" }
@@ -43,7 +43,7 @@ deps = { Sui = "Sui" }
 [pinned.testnet.blast_boosts_aftermath]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "BE3CC82141097AD02BB3C00D36DB8B13F14D349146F073C97945A56A3B1E81E8"
+manifest_digest = "5166A9DFBA19AE79FC061AD957C48208CB541DB58B2B9727452C851DCB99EACB"
 deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_boosts_core = "blast_boosts_core", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", pyth = "pyth", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.blast_boosts_core]
@@ -53,25 +53,25 @@ manifest_digest = "D22569635345AD81636092AAA074AE3A61666325E24EA5D65B1CB4BFC9BCE
 deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.ifixed]
-source = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/ifixed/ifixed", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
+source = { local = "interfaces/aftermath/ifixed/ifixed" }
 use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.oracle_aggregator]
-source = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/oracle-aggregator/oracle-aggregator", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
+source = { local = "interfaces/aftermath/oracle-aggregator/oracle-aggregator" }
 use_environment = "testnet"
 manifest_digest = "1CB627750B3E184B53EE88A3E06B4EA7C36BD046DB22AC8D04FA0BFF3A2C215D"
 deps = { authority_cap = "authority_cap", std = "MoveStdlib", sui = "Sui", vendor = "vendor" }
 
 [pinned.testnet.perpetuals]
-source = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/iperps/perpetuals", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
+source = { local = "interfaces/aftermath/iperps/perpetuals" }
 use_environment = "testnet"
 manifest_digest = "2F02BACBD59F790A285E3710B2E5A644F62B3839CFA4623187A754DB5F163919"
 deps = { authority_cap = "authority_cap", control_flow = "AftermathControlFlow", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", ordered_map = "AftermathOrderedMap", position = "position", std = "MoveStdlib", sui = "Sui", vendor = "vendor" }
 
 [pinned.testnet.position]
-source = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/iperps/position", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
+source = { local = "interfaces/aftermath/iperps/position" }
 use_environment = "testnet"
 manifest_digest = "73B9AA235CF82D45B86D246566B3280A5A2E95D72A6CCB94CA259EC60B8564A7"
 deps = { control_flow = "AftermathControlFlow", ifixed = "ifixed", std = "MoveStdlib", sui = "Sui" }
@@ -83,7 +83,7 @@ manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332
 deps = { std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.vendor]
-source = { git = "https://github.com/AftermathFinance/move-interfaces.git", subdir = "packages/vendor/vendor", rev = "f62e74aa862ef65b8950a70d83aac8cb71c19837" }
+source = { local = "interfaces/aftermath/vendor/vendor" }
 use_environment = "testnet"
 manifest_digest = "1E994F2D4B60FE973432B6C48C13A38F0D36C5F7AE82A6ECFF5AF2F9B3EA801E"
 deps = { authority_cap = "authority_cap", std = "MoveStdlib", sui = "Sui" }

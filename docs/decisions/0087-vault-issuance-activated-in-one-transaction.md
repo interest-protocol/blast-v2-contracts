@@ -48,13 +48,25 @@ transaction, activation is gated by the issuer role without a second check.
 ### D3. A Vault exists only from activation on
 
 `Vault` holds `venue_account: VenueAccount` and `seed_facts: SeedFacts` as
-plain fields. Authority objects hang off the Vault's id as dynamic object
-fields under one rule, authority is attached and identity is a field: the
-share `TreasuryCap` and `MetadataCap` (0071) and now the venue account's
-`AuthorityCap<ACCOUNT, ADMIN>` under `CustodyKey`. `VenueCustody` is removed;
-custody functions are `VenueAccount` methods that take the cap and re-check on
-every call that it names the bound account. `unresolved_checkpoint_digest`
+plain fields. `VenueAccount` seals the binding, the accepted checkpoint and
+the venue's `AuthorityCap<ACCOUNT, ADMIN>` together; `venue_account::new` is
+the one place the cap is proved to name the bound account, and because both
+are immutable from then on nothing re-checks the pairing later. `VenueCustody`
+is removed; custody functions are `VenueAccount` methods. The share caps stay
+dynamic object fields of the Vault (0071). `unresolved_checkpoint_digest`
 stays `Option`: it is "none while healthy", a real state.
+
+### D3a. The Aftermath interfaces are vendored
+
+The five direct Aftermath dependencies and their three transitive packages
+are copied verbatim from `AftermathFinance/move-interfaces` at the pinned
+revision into `interfaces/aftermath/`, keeping each package's manifest,
+published address and `abort 404` bodies, exactly as `interfaces/pyth` is
+kept. One marked difference: `authority::for` reads the field instead of
+aborting, and a `#[test_only]` constructor exists, so tests mint a real venue
+cap and build every Vault through the production `activate`. No test-only
+assembly of a Vault exists. `check_mainnet_abi.mjs` keeps gating the vendored
+modules against mainnet bytecode.
 
 ### D4. Events
 
@@ -77,9 +89,9 @@ retired and never reused.
   down" case cannot arise.
 - The issuer's activation PTB is `issue → initialize → share` and takes a
   mutable lock on Coin Registry alongside the venue's shared objects.
-- Tests build an activated Vault through `#[test_only] activate_for_testing`,
-  which assembles the same struct without the venue cap the local Aftermath
-  stub cannot mint. No production type or branch exists for that seam.
+- Tests build an activated Vault through the production `activate` with a
+  cap minted by the vendored interface's test constructor; the custody guards
+  are under local test for the first time.
 - The 0074 atomicity-gate validator and its A1–A7 fixtures bind the Vault as
   an input argument of the initializer; they must be re-bound to a created
   object consumed by `share`, together with the earlier renames they already

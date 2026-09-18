@@ -173,20 +173,22 @@ const ABI = {
     'price_info::uid_to_inner': 'public fun uid_to_inner(&@self::price_info::PriceInfoObject): @sui::object::ID',
 };
 
+// The Aftermath interfaces are vendored verbatim from AFTERMATH_GIT at AFTERMATH_REV under
+// interfaces/aftermath (see its README); the module hashes below still gate them against mainnet.
 const DIRECT_DEPENDENCIES = {
     blast_admin: { local: '../../admin' },
-    blast_boosts_series_one: { local: '../series_one' },
-    perpetuals: { git: AFTERMATH_GIT, subdir: 'packages/iperps/perpetuals', rev: AFTERMATH_REV },
-    position: { git: AFTERMATH_GIT, subdir: 'packages/iperps/position', rev: AFTERMATH_REV },
-    authority_cap: { git: AFTERMATH_GIT, subdir: 'packages/authority-cap/authority-cap', rev: AFTERMATH_REV },
-    oracle_aggregator: { git: AFTERMATH_GIT, subdir: 'packages/oracle-aggregator/oracle-aggregator', rev: AFTERMATH_REV },
-    ifixed: { git: AFTERMATH_GIT, subdir: 'packages/ifixed/ifixed', rev: AFTERMATH_REV },
+    blast_boosts_core: { local: '../core' },
+    perpetuals: { local: 'interfaces/aftermath/iperps/perpetuals' },
+    position: { local: 'interfaces/aftermath/iperps/position' },
+    authority_cap: { local: 'interfaces/aftermath/authority-cap/authority-cap' },
+    oracle_aggregator: { local: 'interfaces/aftermath/oracle-aggregator/oracle-aggregator' },
+    ifixed: { local: 'interfaces/aftermath/ifixed/ifixed' },
     pyth: { local: 'interfaces/pyth' },
 };
 
 const LOCK_SOURCES = {
-    AftermathControlFlow: { git: AFTERMATH_GIT, subdir: 'packages/control-flow/control-flow', rev: AFTERMATH_REV },
-    AftermathOrderedMap: { git: AFTERMATH_GIT, subdir: 'packages/ordered-map/ordered-map', rev: AFTERMATH_REV },
+    AftermathControlFlow: { local: 'interfaces/aftermath/control-flow/control-flow' },
+    AftermathOrderedMap: { local: 'interfaces/aftermath/ordered-map/ordered-map' },
     MoveStdlib: { git: SUI_GIT, subdir: 'crates/sui-framework/packages/move-stdlib', rev: SUI_REV },
     Sui: { git: SUI_GIT, subdir: 'crates/sui-framework/packages/sui-framework', rev: SUI_REV },
     authority_cap: DIRECT_DEPENDENCIES.authority_cap,
@@ -194,13 +196,13 @@ const LOCK_SOURCES = {
     // it pins the same framework revision and adds no venue dependency.
     blast_admin: DIRECT_DEPENDENCIES.blast_admin,
     blast_boosts_aftermath: { root: true },
-    blast_boosts_series_one: DIRECT_DEPENDENCIES.blast_boosts_series_one,
+    blast_boosts_core: DIRECT_DEPENDENCIES.blast_boosts_core,
     ifixed: DIRECT_DEPENDENCIES.ifixed,
     pyth: DIRECT_DEPENDENCIES.pyth,
     oracle_aggregator: DIRECT_DEPENDENCIES.oracle_aggregator,
     perpetuals: DIRECT_DEPENDENCIES.perpetuals,
     position: DIRECT_DEPENDENCIES.position,
-    vendor: { git: AFTERMATH_GIT, subdir: 'packages/vendor/vendor', rev: AFTERMATH_REV },
+    vendor: { local: 'interfaces/aftermath/vendor/vendor' },
 };
 
 const LOCK_DEPS = {
@@ -210,8 +212,8 @@ const LOCK_DEPS = {
     Sui: { MoveStdlib: 'MoveStdlib' },
     authority_cap: { std: 'MoveStdlib', sui: 'Sui' },
     blast_admin: { Sui: 'Sui' },
-    blast_boosts_aftermath: { authority_cap: 'authority_cap', blast_admin: 'blast_admin', blast_boosts_series_one: 'blast_boosts_series_one', ifixed: 'ifixed', oracle_aggregator: 'oracle_aggregator', perpetuals: 'perpetuals', position: 'position', pyth: 'pyth', std: 'MoveStdlib', sui: 'Sui' },
-    blast_boosts_series_one: { blast_admin: 'blast_admin', std: 'MoveStdlib', sui: 'Sui' },
+    blast_boosts_aftermath: { authority_cap: 'authority_cap', blast_admin: 'blast_admin', blast_boosts_core: 'blast_boosts_core', ifixed: 'ifixed', oracle_aggregator: 'oracle_aggregator', perpetuals: 'perpetuals', position: 'position', pyth: 'pyth', std: 'MoveStdlib', sui: 'Sui' },
+    blast_boosts_core: { blast_admin: 'blast_admin', std: 'MoveStdlib', sui: 'Sui' },
     ifixed: { std: 'MoveStdlib', sui: 'Sui' },
     pyth: { std: 'MoveStdlib', sui: 'Sui' },
     oracle_aggregator: { authority_cap: 'authority_cap', std: 'MoveStdlib', sui: 'Sui', vendor: 'vendor' },
@@ -622,7 +624,10 @@ function selfTest() {
         `published-at = "${publishedAt}"\n\n[dependencies]`,
     );
     reject('unexpected published-at', `Move.toml: published-at drift\n    expected: null\n    actual:   ${publishedAt}`, () => validateManifestSource(publishedManifest));
-    const manifest = readFileSync(join(PACKAGE_DIR, 'Move.toml'), 'utf8').replace(`rev = "${AFTERMATH_REV}"`, 'rev = "main"');
+    const manifest = readFileSync(join(PACKAGE_DIR, 'Move.toml'), 'utf8').replace(
+        'perpetuals = { local = "interfaces/aftermath/iperps/perpetuals" }',
+        `perpetuals = { git = "${AFTERMATH_GIT}", subdir = "packages/iperps/perpetuals", rev = "main" }`,
+    );
     reject('mutable Git revision', 'Move.toml: perpetuals must pin an immutable 40-hex commit, got "main"', () => validateManifestSource(manifest));
     const lock = `${readFileSync(join(PACKAGE_DIR, 'Move.lock'), 'utf8')}\n[pinned.mainnet.Rogue]\nsource = { root = true }\nuse_environment = "mainnet"\nmanifest_digest = "${'A'.repeat(64)}"\ndeps = {}\n`;
     reject('unexpected lock node', 'Move.lock: unexpected pinned node pinned.mainnet.Rogue', () => validateLockSource(lock));

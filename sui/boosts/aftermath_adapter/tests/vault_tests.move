@@ -319,7 +319,8 @@ fun locked_seed_share_mint_updates_the_canonical_supply_once() {
     let mut issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
 
     let seed_facts = issuance.mint_locked_shares(1_000_000, ISSUER, fixture.scenario.ctx());
-    let vault = issuance.activate_for_testing(fixture_venue_account(), seed_facts, fixture.scenario.ctx());
+    let venue_account = fixture_venue_account(fixture.scenario.ctx());
+    let vault = issuance.activate(venue_account, seed_facts, fixture.scenario.ctx());
 
     assert_eq!(vault.share_supply_for_testing(), 1_000_000);
     let (locked, funder) = vault.seed_facts();
@@ -649,9 +650,8 @@ fun issue_and_share_with_policy<Product: drop>(
 ) {
     let mut issuance = self.issue_with_policy<Product>(symbol, vault_policy);
     issuance.set_active_for_testing();
-    let vault = issuance.activate_for_testing(
-        fixture_venue_account(), vault::seed_facts_for_testing(0, ISSUER), self.scenario.ctx(),
-    );
+    let venue_account = fixture_venue_account(self.scenario.ctx());
+    let vault = issuance.activate(venue_account, vault::seed_facts_for_testing(0, ISSUER), self.scenario.ctx());
     vault.share();
 }
 
@@ -687,13 +687,16 @@ fun issue_with_policy<Product: drop>(
     )
 }
 
-/// A bound account with a flat, order-free checkpoint; no test here reads the venue.
-fun fixture_venue_account(): venue_account::VenueAccount {
+/// A bound account with a flat, order-free checkpoint and a minted admin cap; no test here reads the venue.
+fun fixture_venue_account(ctx: &mut TxContext): venue_account::VenueAccount {
     let binding = venue_account::new_binding(
         @0xB.to_id(), 7, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id(),
         type_name::with_original_ids<sui::sui::SUI>(),
     );
-    venue_account::new(binding, venue_account::checkpoint_for_testing(0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, false, 0, 0, 0))
+    let admin_cap = authority::new_for_testing<ACCOUNT, AdminRole>(@0xB.to_id(), ctx);
+    venue_account::new(
+        binding, venue_account::checkpoint_for_testing(0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, false, 0, 0, 0), admin_cap,
+    )
 }
 
 fun assert_issued_policy<Product>(self: &Fixture, expected: VaultPolicy) {
@@ -732,6 +735,8 @@ fun standard_vault_policy(): VaultPolicy {
 
 // === Imports ===
 
+use authority_cap::authority::{Self, ADMIN as AdminRole};
+
 use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
 
 use blast_boosts_aftermath::{
@@ -748,6 +753,8 @@ use blast_boosts_core::{
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
     test_risk_module::{Self, RiskModule, RiskModuleV2},
 };
+
+use perpetuals::authority::ACCOUNT;
 
 use std::{
     string::String,

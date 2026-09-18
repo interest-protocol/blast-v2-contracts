@@ -2270,7 +2270,8 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         @0xF.to_id(),
         type_name::with_original_ids<Collateral>(),
     );
-    let vault = issuance.activate_for_testing(venue_account::new(binding, checkpoint), seed_facts, scenario.ctx());
+    let admin_cap = authority::new_for_testing<ACCOUNT, AdminRole>(@0xB.to_id(), scenario.ctx());
+    let vault = issuance.activate(venue_account::new(binding, checkpoint, admin_cap), seed_facts, scenario.ctx());
     operations::emit_vault_initialized<Tag>(
         &vault,
         SEED_EQUITY,
@@ -2938,6 +2939,8 @@ fun replay_health<Tag>(
 
 // === Imports ===
 
+use authority_cap::authority::{Self, ADMIN as AdminRole};
+
 use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
 
 use blast_boosts_aftermath::{
@@ -2957,6 +2960,8 @@ use blast_boosts_core::{
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
     test_risk_module::{Self, RiskModule, RiskModuleV2},
 };
+
+use perpetuals::authority::ACCOUNT;
 
 use std::{
     string::String,

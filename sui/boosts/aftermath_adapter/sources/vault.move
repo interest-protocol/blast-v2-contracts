@@ -24,12 +24,12 @@ public struct VaultIssuance<phantom Product> {
 /// non-OTW currency through Coin Registry. The nested core state has private
 /// fields and can change only through core mutation functions. A Vault exists
 /// only from activation on, so every field below is always present; the share
-/// caps and the venue admin cap hang off `id` as dynamic object fields.
+/// caps hang off `id` as dynamic object fields.
 public struct Vault<phantom Product> has key {
     id: UID,
     state: State<Product>,
     risk_module_witness: TypeName,
-    /// The bound account's identity and last accepted checkpoint.
+    /// The bound account's identity, last accepted checkpoint and admin authority.
     venue_account: VenueAccount,
     seed_facts: SeedFacts,
     /// Digest of the drifted checkpoint while a health diagnostic is open.
@@ -47,9 +47,6 @@ public struct TreasuryKey<phantom Product>() has copy, drop, store;
 
 /// Dynamic-object-field key for one Vault's metadata authority.
 public struct MetadataKey<phantom Product>() has copy, drop, store;
-
-/// Dynamic-object-field key for the sole admin authority over the bound venue account.
-public struct CustodyKey() has copy, drop, store;
 
 /// One native balance of the exact bound collateral, separate from venue equity.
 public struct AdminCashKey() has copy, drop, store;
@@ -322,19 +319,22 @@ public(package) fun mint_locked_shares<Product>(
     SeedFacts { locked_shares: amount, funder }
 }
 
-/// Turns the issuance into the Vault once the venue account exists: the admin
-/// cap that names the bound account joins the share caps under the Vault's id.
+/// Turns the issuance into the Vault once the venue account exists, hanging
+/// the share caps off the new id.
 public(package) fun activate<Product>(
-    self: VaultIssuance<Product>,
-    venue_account: VenueAccount,
-    admin_cap: AuthorityCap<ACCOUNT, ADMIN>,
-    seed_facts: SeedFacts,
-    ctx: &mut TxContext,
+    self: VaultIssuance<Product>, venue_account: VenueAccount, seed_facts: SeedFacts, ctx: &mut TxContext,
 ): Vault<Product> {
-    venue_account.binding().assert_admin_cap(&admin_cap);
-
-    let mut vault = assemble(self, venue_account, seed_facts, ctx);
-    vault.id.add_dynamic_object_field(CustodyKey(), admin_cap);
+    let VaultIssuance { state, risk_module_witness, treasury_cap, metadata_cap } = self;
+    let mut vault = Vault {
+        id: object::new(ctx),
+        state,
+        risk_module_witness,
+        venue_account,
+        seed_facts,
+        unresolved_checkpoint_digest: option::none(),
+    };
+    vault.id.add_dynamic_object_field(TreasuryKey<Product>(), treasury_cap);
+    vault.id.add_dynamic_object_field(MetadataKey<Product>(), metadata_cap);
 
     vault
 }
@@ -578,11 +578,6 @@ public(package) fun complete_shutdown<Product, Collateral>(
 
 // --- Venue Custody ---
 
-/// Revalidates that the retained admin cap still names the bound account.
-public(package) fun assert_venue_custody_binding<Product>(self: &Vault<Product>) {
-    self.venue_account.binding().assert_admin_cap(self.venue_custody());
-}
-
 /// Copies the immutable venue binding.
 public(package) fun venue_binding<Product>(self: &Vault<Product>): Binding {
     self.venue_account.binding()
@@ -605,8 +600,7 @@ public(package) fun execute_order<Product, Collateral>(
     is_ask: bool, base: u64, reduce_only: bool, clock: &Clock, ctx: &TxContext,
 ): (ClearingHouse<Collateral>, SessionSummary) {
     self.venue_account.execute_order(
-        self.venue_custody(), account, clearing_house, base_oracle, collateral_oracle,
-        is_ask, base, reduce_only, clock, ctx,
+        account, clearing_house, base_oracle, collateral_oracle, is_ask, base, reduce_only, clock, ctx,
     )
 }
 
@@ -614,7 +608,7 @@ public(package) fun execute_order<Product, Collateral>(
 public(package) fun deposit_collateral<Product, Collateral>(
     self: &Vault<Product>, account: &mut Account<Collateral>, registry: &Registry, cash: Coin<Collateral>,
 ) {
-    self.venue_account.deposit(self.venue_custody(), account, registry, cash);
+    self.venue_account.deposit(account, registry, cash);
 }
 
 /// Allocates only the bound account's deposited cash into its retained market.
@@ -622,7 +616,7 @@ public(package) fun allocate_collateral<Product, Collateral>(
     self: &Vault<Product>, account: &mut Account<Collateral>,
     clearing_house: &mut ClearingHouse<Collateral>, amount: u64,
 ) {
-    self.venue_account.allocate(self.venue_custody(), account, clearing_house, amount);
+    self.venue_account.allocate(account, clearing_house, amount);
 }
 
 /// Returns actual collateral through retained custody; no caller receives venue authority.
@@ -632,7 +626,7 @@ public(package) fun withdraw_collateral<Product, Collateral>(
     collateral_oracle: &PriceFeedStorage, amount: u64, clock: &Clock, ctx: &mut TxContext,
 ): Coin<Collateral> {
     self.venue_account.withdraw(
-        self.venue_custody(), account, registry, clearing_house, base_oracle, collateral_oracle, amount, clock, ctx,
+        account, registry, clearing_house, base_oracle, collateral_oracle, amount, clock, ctx,
     )
 }
 
@@ -705,26 +699,6 @@ fun assert_selected_risk_module<RiskModule: drop>(selected: TypeName) {
     );
 }
 
-/// Builds the Vault from an activated issuance and hangs the share caps off its
-/// id; venue custody is attached by the caller.
-fun assemble<Product>(
-    issuance: VaultIssuance<Product>, venue_account: VenueAccount, seed_facts: SeedFacts, ctx: &mut TxContext,
-): Vault<Product> {
-    let VaultIssuance { state, risk_module_witness, treasury_cap, metadata_cap } = issuance;
-    let mut vault = Vault {
-        id: object::new(ctx),
-        state,
-        risk_module_witness,
-        venue_account,
-        seed_facts,
-        unresolved_checkpoint_digest: option::none(),
-    };
-    vault.id.add_dynamic_object_field(TreasuryKey<Product>(), treasury_cap);
-    vault.id.add_dynamic_object_field(MetadataKey<Product>(), metadata_cap);
-
-    vault
-}
-
 /// Admits only runtime-constructible witnesses from a separate risk package.
 /// The package-origin check excludes this adapter's public Product wrapper
 /// from accidentally becoming administrative risk authority.
@@ -739,10 +713,6 @@ fun valid_risk_module_type<RiskModule: drop>(): TypeName {
     witness
 }
 
-fun venue_custody<Product>(self: &Vault<Product>): &AuthorityCap<ACCOUNT, ADMIN> {
-    dynamic_object_field::borrow(&self.id, CustodyKey())
-}
-
 fun treasury_cap<Product>(self: &Vault<Product>): &TreasuryCap<BlastBoost<Product>> {
     dynamic_object_field::borrow(&self.id, TreasuryKey<Product>())
 }
@@ -752,15 +722,6 @@ fun treasury_cap_mut<Product>(self: &mut Vault<Product>): &mut TreasuryCap<Blast
 }
 
 // === Test-Only Functions ===
-
-#[test_only]
-/// Builds the Vault without venue custody: the venue's AuthorityCap constructor
-/// is an aborting ABI stub locally, and no local test reaches a custody call.
-public fun activate_for_testing<Product>(
-    self: VaultIssuance<Product>, venue_account: VenueAccount, seed_facts: SeedFacts, ctx: &mut TxContext,
-): Vault<Product> {
-    assemble(self, venue_account, seed_facts, ctx)
-}
 
 #[test_only]
 public fun seed_facts_for_testing(locked_shares: u64, funder: address): SeedFacts {
@@ -860,8 +821,6 @@ public fun is_unwinding_for_testing<Product>(self: &Vault<Product>): bool {
 
 // === Imports ===
 
-use authority_cap::authority::{ADMIN, AuthorityCap};
-
 use blast_admin::acl::AdminWitness;
 
 use blast_boosts_aftermath::{
@@ -880,9 +839,7 @@ use blast_boosts_core::{
     state::{Self, DonationPlan, MintPlan, RebalancePlan, RedemptionPlan, State},
 };
 
-use perpetuals::{
-    account::Account, authority::ACCOUNT, clearing_house::{ClearingHouse, SessionSummary}, registry::Registry,
-};
+use perpetuals::{account::Account, clearing_house::{ClearingHouse, SessionSummary}, registry::Registry};
 
 use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 

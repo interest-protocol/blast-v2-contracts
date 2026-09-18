@@ -14,11 +14,12 @@ public struct OtherCollateral {}
 // === Tests ===
 
 #[test]
-fun matching_admin_cap_authority_is_accepted() {
-    venue_account::assert_admin_cap_binding_for_testing(
-        @0xA11CE.to_id(),
-        @0xA11CE.to_id(),
-    );
+fun an_admin_cap_for_the_bound_account_seals_the_venue_account() {
+    let mut ctx = tx_context::dummy();
+    let venue = venue_account::new(standard_binding(), standard_checkpoint(), admin_cap_for(@0xA11CE, &mut ctx));
+
+    assert_eq!(venue.binding().account_object_id(), @0xA11CE.to_id());
+    destroy(venue);
 }
 
 #[test]
@@ -26,11 +27,10 @@ fun matching_admin_cap_authority_is_accepted() {
     abort_code = 11,
     location = blast_boosts_aftermath::venue_account,
 )]
-fun wrong_admin_cap_authority_is_rejected() {
-    venue_account::assert_admin_cap_binding_for_testing(
-        @0xBAD.to_id(),
-        @0xA11CE.to_id(),
-    );
+fun an_admin_cap_for_another_account_is_rejected() {
+    let mut ctx = tx_context::dummy();
+    let venue = venue_account::new(standard_binding(), standard_checkpoint(), admin_cap_for(@0xBAD, &mut ctx));
+    destroy(venue);
 }
 
 #[test]
@@ -273,25 +273,7 @@ fun collateral_oracle_precedes_collateral_type() {
 
 #[test]
 fun checkpoint_preserves_every_raw_field() {
-    let checkpoint = venue_account::checkpoint_for_testing(
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10,
-        11,
-        12,
-        13,
-        true,
-        14,
-        15,
-        16,
-    );
+    let checkpoint = standard_checkpoint();
     let checkpoint_copy = checkpoint;
 
     assert_standard_checkpoint(&checkpoint);
@@ -302,6 +284,15 @@ fun checkpoint_preserves_every_raw_field() {
 }
 
 // === Test Helpers ===
+
+/// A real venue admin cap naming `account`, minted by the vendored interface's test constructor.
+fun admin_cap_for(account: address, ctx: &mut TxContext): AuthorityCap<ACCOUNT, ADMIN> {
+    authority::new_for_testing<ACCOUNT, ADMIN>(account.to_id(), ctx)
+}
+
+fun standard_checkpoint(): venue_account::Checkpoint {
+    venue_account::checkpoint_for_testing(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, true, 14, 15, 16)
+}
 
 fun standard_binding(): Binding {
     venue_account::new_binding(
@@ -357,6 +348,10 @@ fun assert_standard_checkpoint(checkpoint: &venue_account::Checkpoint) {
 
 // === Imports ===
 
+use authority_cap::authority::{Self, ADMIN, AuthorityCap};
+
 use blast_boosts_aftermath::venue_account::{Self, Binding};
+
+use perpetuals::authority::ACCOUNT;
 
 use std::{type_name, unit_test::{assert_eq, destroy}};
