@@ -519,7 +519,7 @@ fun issuer_and_risk_admin_without_shutdown_role_cannot_begin_shutdown() {
 
 #[test]
 #[expected_failure(
-    abort_code = sui::coin_registry::ECurrencyAlreadyExists,
+    abort_code = ECurrencyAlreadyExists,
     location = sui::coin_registry,
 )]
 fun one_product_witness_cannot_issue_twice() {
@@ -533,7 +533,7 @@ fun one_product_witness_cannot_issue_twice() {
 
 #[test]
 #[expected_failure(
-    abort_code = sui::coin_registry::ECurrencyAlreadyExists,
+    abort_code = ECurrencyAlreadyExists,
     location = sui::coin_registry,
 )]
 fun one_generic_product_tag_cannot_issue_twice() {
@@ -655,13 +655,13 @@ fun issue_and_share_with_policy<Product: drop>(
     vault.share();
 }
 
-fun issue<Product: drop>(self: &mut Fixture, symbol: String): vault::VaultIssuance<Product> {
+fun issue<Product: drop>(self: &mut Fixture, symbol: String): VaultIssuance<Product> {
     self.issue_with_policy<Product>(symbol, standard_vault_policy())
 }
 
 fun issue_with_policy<Product: drop>(
     self: &mut Fixture, symbol: String, vault_policy: VaultPolicy,
-): vault::VaultIssuance<Product> {
+): VaultIssuance<Product> {
     let Fixture {
         scenario,
         registry,
@@ -688,7 +688,7 @@ fun issue_with_policy<Product: drop>(
 }
 
 /// A bound account with a flat, order-free checkpoint and a minted admin cap; no test here reads the venue.
-fun fixture_venue_account(ctx: &mut TxContext): venue_account::VenueAccount {
+fun fixture_venue_account(ctx: &mut TxContext): VenueAccount {
     let binding = venue_account::new_binding(
         @0xB.to_id(), 7, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id(),
         type_name::with_original_ids<sui::sui::SUI>(),
@@ -706,7 +706,7 @@ fun assert_issued_policy<Product>(self: &Fixture, expected: VaultPolicy) {
     test_scenario::return_shared(vault);
 }
 
-fun configured_policy(side: policy::PositionSide, target: u64): VaultPolicy {
+fun configured_policy(side: PositionSide, target: u64): VaultPolicy {
     policy::new_vault_policy(
         side, policy::new_rebalance_policy(target - 2_000, target, target + 2_000, target + 10_000, 100, 500, 10),
         policy::new_price_policy(30_000, 2_000, 100, 500), 30, 30, 100, 5_000,
@@ -744,12 +744,12 @@ use blast_boosts_aftermath::{
     domain_fixture,
     events,
     protocol::{Self, Protocol},
-    vault::{Self, Vault},
-    venue_account,
+    vault::{Self, Vault, VaultIssuance},
+    venue_account::{Self, VenueAccount},
 };
 
 use blast_boosts_core::{
-    policy::{Self, VaultPolicy},
+    policy::{Self, PositionSide, VaultPolicy},
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
     test_risk_module::{Self, RiskModule, RiskModuleV2},
 };
@@ -763,7 +763,7 @@ use std::{
 };
 
 use sui::{
-    coin_registry::{Self, CoinRegistry, Currency},
+    coin_registry::{Self, CoinRegistry, Currency, ECurrencyAlreadyExists},
     package,
     test_scenario::{Self, Scenario},
 };

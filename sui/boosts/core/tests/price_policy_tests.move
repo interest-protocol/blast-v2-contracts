@@ -487,21 +487,21 @@ fun index_validation_precedes_the_mark_divergence_bound() {
 fun freshness_policy(
     max_price_age_ms: u64,
     max_price_ahead_ms: u64,
-): policy::PricePolicy {
+): PricePolicy {
     policy::new_price_policy(max_price_age_ms, max_price_ahead_ms, 0, 0)
 }
 
 /// Builds a policy whose confidence bound is the bound under test.
 fun confidence_policy(
     max_confidence_bps: u64,
-): policy::PricePolicy {
+): PricePolicy {
     policy::new_price_policy(1, 0, max_confidence_bps, 0)
 }
 
 /// Builds a policy whose mark divergence bound is the bound under test.
 fun divergence_policy(
     max_mark_divergence_bps: u64,
-): policy::PricePolicy {
+): PricePolicy {
     policy::new_price_policy(1, 0, 0, max_mark_divergence_bps)
 }
 
@@ -509,4 +509,4 @@ fun divergence_policy(
 
 use std::unit_test::assert_eq;
 
-use blast_boosts_core::{errors, policy};
+use blast_boosts_core::{errors, policy::{Self, PricePolicy}};

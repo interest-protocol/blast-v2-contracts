@@ -15,8 +15,8 @@ const ADMIN: address = @0xAD;
 // === Test-Only Types ===
 
 public struct Fixture {
-    scenario: test_scenario::Scenario,
-    protocol: protocol::Protocol,
+    scenario: Scenario,
+    protocol: Protocol,
     authority: Authority<BLAST_BOOSTS_CORE>,
     super_admin_cap: SuperAdminCap<BLAST_BOOSTS_CORE>,
     admin_cap: AdminCap<BLAST_BOOSTS_CORE>,
@@ -31,7 +31,7 @@ fun init_shares_the_adapter_generation_at_its_first_generation() {
     protocol::init_for_testing(scenario.ctx());
 
     scenario.next_tx(ROOT);
-    let container = scenario.take_shared<protocol::Protocol>();
+    let container = scenario.take_shared<Protocol>();
     assert_eq!(container.version_for_testing(), 1);
     container.assert_current_for_testing();
 
@@ -165,7 +165,7 @@ fun start(roles: u64): Fixture {
 
 use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
 
-use blast_boosts_aftermath::{blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH, domain_fixture, protocol};
+use blast_boosts_aftermath::{blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH, domain_fixture, protocol::{Self, Protocol}};
 
 use blast_boosts_core::{
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
@@ -173,4 +173,4 @@ use blast_boosts_core::{
 
 use std::unit_test::{assert_eq, destroy};
 
-use sui::test_scenario;
+use sui::test_scenario::{Self, Scenario};

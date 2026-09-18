@@ -34,13 +34,8 @@ public struct Fixture {
 public struct ObservationSpec has copy, drop {
     venue_equity: u64,
     position_base: u64,
-    position_collateral: u64,
     lot_size: u64,
     observed_side: PositionSide,
-    pending_order_count: u64,
-    margin_safe: bool,
-    venue_operational: bool,
-    checkpoint_clean: bool,
     base_price: u64,
     base_confidence: u64,
     base_publish_time_ms: u64,
@@ -166,7 +161,7 @@ fun settled_cash_cannot_reopen_a_funding_buffer() {
 fun invalid_rebalance_fee_precedes_invalid_observation() {
     let fixture = start(domain::vault_issuer_role());
     let state = initialized_state(&fixture, policy::long());
-    let invalid = standard_observation(policy::long()).with_pending_order_count(1);
+    let invalid = standard_observation(policy::long()).with_observed_side(policy::short());
     destroy(state.prepare_rebalance(invalid.into_position_observation(), 10_001, REFERENCE_TIME_MS));
     destroy(state);
     destroy(fixture);
@@ -213,7 +208,7 @@ fun redemption_rejects_output_one_above_net() {
     let mut state = initialized_state(&fixture, policy::long());
     let before = standard_observation(policy::long());
     let plan = state.prepare_redemption(before.into_position_observation(), 500_000, 1_000_000, 499_501, REFERENCE_TIME_MS);
-    state.complete_redemption(plan, before.with_position_base(1_000_000_000).with_position_collateral(1_000_000).into_position_observation(), REFERENCE_TIME_MS);
+    state.complete_redemption(plan, before.with_position_base(1_000_000_000).into_position_observation(), REFERENCE_TIME_MS);
     state.destroy_for_testing();
     destroy(fixture);
 }
@@ -225,7 +220,7 @@ fun mint_amount_supply_swap_cannot_satisfy_the_original_minimum() {
     let mut state = initialized_state(&fixture, policy::long());
     let before = standard_observation(policy::long());
     let plan = state.prepare_mint(before.into_position_observation(), 1_000_000, 500_000, 600_000, REFERENCE_TIME_MS);
-    state.complete_mint(plan, before.with_venue_equity(2_098_000).with_position_base(3_998_000_000).with_position_collateral(3_998_000).into_position_observation(), REFERENCE_TIME_MS);
+    state.complete_mint(plan, before.with_venue_equity(2_098_000).with_position_base(3_998_000_000).into_position_observation(), REFERENCE_TIME_MS);
     state.destroy_for_testing();
     destroy(fixture);
 }
@@ -343,18 +338,6 @@ fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
             state.destroy_for_testing();
         });
     });
-    destroy(fixture);
-}
-
-#[test]
-#[expected_failure(abort_code = errors::EActiveObservationUnusable, location = blast_boosts_core::state)]
-fun active_mint_rejects_a_temporary_venue_pause() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
-    let mut invalid = standard_observation(policy::long());
-    invalid.venue_operational = false;
-    destroy(state.prepare_mint(invalid.into_position_observation(), 1_000_000, HEALTH_SHARE_SUPPLY, 1, REFERENCE_TIME_MS));
-    state.destroy_for_testing();
     destroy(fixture);
 }
 
@@ -506,7 +489,7 @@ fun a_flat_short_product_redeems_without_inventing_a_long_position() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::short());
     let flat = standard_observation(policy::long())
-        .with_position_base(0).with_position_collateral(0);
+        .with_position_base(0);
     let plan = state.prepare_redemption(flat.into_position_observation(), 500_000, 1_000_000, 499_500, REFERENCE_TIME_MS);
     assert_eq!(plan.base_to_sell(), 0);
     let (net, admin, final_equity, fee, _) = state.complete_redemption(
@@ -532,7 +515,7 @@ fun redemption_keeps_remaining_nav_and_allocates_its_own_fee() {
         standard_observation(policy::short())
             .with_venue_equity(1_098_000)
             .with_position_base(1_000_000_000)
-            .with_position_collateral(1_000_000)
+            
             .into_position_observation(),
         REFERENCE_TIME_MS,
     );
@@ -563,7 +546,7 @@ fun mint_credits_at_most_the_deposit_net_of_fee_when_the_fill_is_favorable() {
         standard_observation(policy::long())
             .with_venue_equity(2_102_000)
             .with_position_base(3_998_000_000)
-            .with_position_collateral(3_998_000)
+            
             .into_position_observation(),
         REFERENCE_TIME_MS,
     );
@@ -591,7 +574,7 @@ fun redemption_pays_at_most_the_proportional_claim_when_the_unwind_is_favorable(
         standard_observation(policy::long())
             .with_venue_equity(1_102_000)
             .with_position_base(1_000_000_000)
-            .with_position_collateral(1_000_000)
+            
             .into_position_observation(),
         REFERENCE_TIME_MS,
     );
@@ -621,7 +604,7 @@ fun mint_prices_actual_contribution_after_the_attributable_cost() {
         standard_observation(policy::long())
             .with_venue_equity(2_098_000)
             .with_position_base(3_998_000_000)
-            .with_position_collateral(3_998_000)
+            
             .into_position_observation(),
         REFERENCE_TIME_MS,
     );
@@ -675,7 +658,7 @@ fun flat_seed_preflight_returns_authenticated_order_inputs() {
     let state = new_state(&fixture, policy::short());
     let observation = standard_observation(policy::long())
         .with_position_base(0)
-        .with_position_collateral(0)
+        
         .into_position_observation();
 
     let (
@@ -901,7 +884,7 @@ fun valid_long_seed_activates_and_records_only_the_reserve() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = new_state(&fixture, policy::long());
 
-    let seed_nav = state.initialize(
+    let (seed_nav, _) = state.initialize(
         standard_observation(policy::long()).into_position_observation(),
         SEED_RESERVE, 9, 6,
         REFERENCE_TIME_MS);
@@ -918,7 +901,7 @@ fun valid_short_seed_activates() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = new_state(&fixture, policy::short());
 
-    let seed_nav = state.initialize(
+    let (seed_nav, _) = state.initialize(
         standard_observation(policy::short()).into_position_observation(),
         SEED_RESERVE, 9, 6,
         REFERENCE_TIME_MS);
@@ -931,21 +914,10 @@ fun valid_short_seed_activates() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidPositionObservation, location = blast_boosts_core::state,
+    abort_code = errors::EInvalidPositionObservation, location = blast_boosts_core::observation,
 )]
-fun initialization_rejects_a_structurally_invalid_observation() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = new_state(&fixture, policy::long());
-
-    state.initialize(
-        standard_observation(policy::long())
-            .into_position_observation()
-            .with_position_base_for_testing(SEED_BASE + 1),
-        SEED_RESERVE, 9, 6,
-        REFERENCE_TIME_MS);
-
-    state.destroy_for_testing();
-    destroy(fixture);
+fun an_observation_with_a_partial_lot_cannot_be_built() {
+    destroy(standard_observation(policy::long()).with_position_base(SEED_BASE + 1).into_position_observation());
 }
 
 #[test]
@@ -956,13 +928,8 @@ fun initialization_admits_nav_cap_equality() {
         .with_venue_equity(NAV_CAP + SEED_RESERVE)
         .with_notional(2 * NAV_CAP);
 
-    assert_eq!(
-        state.initialize(
-            spec.into_position_observation(),
-            SEED_RESERVE, 9, 6,
-            REFERENCE_TIME_MS),
-        NAV_CAP,
-    );
+    let (seed_nav, _) = state.initialize(spec.into_position_observation(), SEED_RESERVE, 9, 6, REFERENCE_TIME_MS);
+    assert_eq!(seed_nav, NAV_CAP);
 
     state.destroy_for_testing();
     destroy(fixture);
@@ -1026,7 +993,7 @@ fun initialization_rejects_one_unit_above_the_nav_cap() {
     initialize_once(
         standard_observation(policy::long())
             .with_venue_equity(NAV_CAP + SEED_RESERVE + 1)
-            .with_position_collateral(2 * NAV_CAP + 2),
+            .with_position_base((2 * NAV_CAP + 2) * 1_000),
         policy::long(),
         SEED_RESERVE,
     );
@@ -1039,18 +1006,6 @@ fun initialization_rejects_one_unit_above_the_nav_cap() {
 fun initialization_rejects_the_wrong_side() {
     initialize_once(
         standard_observation(policy::long()).with_observed_side(policy::short()),
-        policy::long(),
-        SEED_RESERVE,
-    );
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EInitializationOrdersNotEmpty, location = blast_boosts_core::state,
-)]
-fun initialization_rejects_pending_orders() {
-    initialize_once(
-        standard_observation(policy::long()).with_pending_order_count(1),
         policy::long(),
         SEED_RESERVE,
     );
@@ -1142,47 +1097,11 @@ fun initialization_rejects_mark_divergence() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInitializationVenueNotOperational, location = blast_boosts_core::state,
-)]
-fun initialization_rejects_a_paused_or_frozen_venue() {
-    initialize_once(
-        standard_observation(policy::long()).with_venue_operational(false),
-        policy::long(),
-        SEED_RESERVE,
-    );
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EInitializationCheckpointDirty, location = blast_boosts_core::state,
-)]
-fun initialization_rejects_a_dirty_checkpoint() {
-    initialize_once(
-        standard_observation(policy::long()).with_checkpoint_clean(false),
-        policy::long(),
-        SEED_RESERVE,
-    );
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EInitializationMarginUnsafe, location = blast_boosts_core::state,
-)]
-fun initialization_rejects_unsafe_margin() {
-    initialize_once(
-        standard_observation(policy::long()).with_margin_safe(false),
-        policy::long(),
-        SEED_RESERVE,
-    );
-}
-
-#[test]
-#[expected_failure(
     abort_code = errors::EInitializationLeverageUnhealthy, location = blast_boosts_core::state,
 )]
 fun initialization_rejects_leverage_one_unit_below_healthy() {
     initialize_once(
-        standard_observation(policy::long()).with_position_collateral(1_599_999),
+        standard_observation(policy::long()).with_position_base(1_599_999_000),
         policy::long(),
         SEED_RESERVE,
     );
@@ -1194,7 +1113,7 @@ fun initialization_rejects_leverage_one_unit_below_healthy() {
 )]
 fun initialization_rejects_leverage_one_unit_above_healthy() {
     initialize_once(
-        standard_observation(policy::long()).with_position_collateral(2_600_001),
+        standard_observation(policy::long()).with_position_base(2_600_001_000),
         policy::long(),
         SEED_RESERVE,
     );
@@ -1318,83 +1237,13 @@ fun initialization_guard_order_checks_mark_before_side() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidInitializationObservation, location = blast_boosts_core::state,
-)]
-fun initialization_guard_order_checks_side_before_orders() {
-    initialize_once(
-        standard_observation(policy::long())
-            .with_observed_side(policy::short())
-            .with_pending_order_count(1),
-        policy::long(),
-        SEED_RESERVE,
-    );
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EInitializationOrdersNotEmpty, location = blast_boosts_core::state,
-)]
-fun initialization_guard_order_checks_orders_before_venue() {
-    initialize_once(
-        standard_observation(policy::long())
-            .with_pending_order_count(1)
-            .with_venue_operational(false),
-        policy::long(),
-        SEED_RESERVE,
-    );
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EInitializationVenueNotOperational, location = blast_boosts_core::state,
-)]
-fun initialization_guard_order_checks_venue_before_checkpoint() {
-    initialize_once(
-        standard_observation(policy::long())
-            .with_venue_operational(false)
-            .with_checkpoint_clean(false),
-        policy::long(),
-        SEED_RESERVE,
-    );
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EInitializationCheckpointDirty, location = blast_boosts_core::state,
-)]
-fun initialization_guard_order_checks_checkpoint_before_margin() {
-    initialize_once(
-        standard_observation(policy::long())
-            .with_checkpoint_clean(false)
-            .with_margin_safe(false),
-        policy::long(),
-        SEED_RESERVE,
-    );
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EInitializationMarginUnsafe, location = blast_boosts_core::state,
-)]
-fun initialization_guard_order_checks_margin_before_nav_cap() {
-    initialize_once(
-        standard_observation(policy::long())
-            .with_margin_safe(false)
-            .with_venue_equity(NAV_CAP + SEED_RESERVE + 1),
-        policy::long(),
-        SEED_RESERVE,
-    );
-}
-
-#[test]
-#[expected_failure(
     abort_code = errors::ENavCapExceeded, location = blast_boosts_core::state,
 )]
 fun initialization_guard_order_checks_nav_cap_before_leverage() {
     initialize_once(
         standard_observation(policy::long())
             .with_venue_equity(NAV_CAP + SEED_RESERVE + 1)
-            .with_position_collateral(std::u64::max_value!()),
+            .with_position_base(SEED_BASE * 100),
         policy::long(),
         SEED_RESERVE,
     );
@@ -1550,7 +1399,7 @@ fun a_seed_reserve_above_the_ceiling_is_rejected_before_any_order() {
     let fixture = start(domain::vault_issuer_role());
     // Ceiling 4% of the 2_000_000 target is 80_000; the seed asks for 100_000.
     let state = capped_state(&fixture, 400);
-    let flat = standard_observation(policy::long()).with_position_base(0).with_position_collateral(0);
+    let flat = standard_observation(policy::long()).with_position_base(0);
     let (target, _, _, _) = state.prepare_initialization(flat.into_position_observation(), SEED_RESERVE, REFERENCE_TIME_MS);
     assert_eq!(target, SEED_NOTIONAL);
     state.destroy_for_testing();
@@ -1572,7 +1421,7 @@ fun a_seed_reserve_above_the_ceiling_cannot_activate() {
 fun a_seed_reserve_at_the_ceiling_activates() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = capped_state(&fixture, 500);
-    let seed_nav = state.initialize(standard_observation(policy::long()).into_position_observation(), SEED_RESERVE, 9, 6, REFERENCE_TIME_MS);
+    let (seed_nav, _) = state.initialize(standard_observation(policy::long()).into_position_observation(), SEED_RESERVE, 9, 6, REFERENCE_TIME_MS);
     assert_eq!(seed_nav, SEED_NAV);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     state.destroy_for_testing();
@@ -1595,7 +1444,7 @@ fun redemption_releases_reserve_above_the_ceiling_for_the_smaller_position() {
         standard_observation(policy::long())
             .with_venue_equity(1_102_000)
             .with_position_base(1_000_000_000)
-            .with_position_collateral(1_000_000)
+            
             .into_position_observation(),
         REFERENCE_TIME_MS,
     );
@@ -1629,7 +1478,6 @@ fun a_mint_prices_shares_after_releasing_reserve_above_the_ceiling() {
         before
             .with_venue_equity(2_150_000)
             .with_position_base(SEED_BASE + 1_902_857_000)
-            .with_position_collateral((SEED_BASE + 1_902_857_000) / 1_000)
             .into_position_observation(),
         REFERENCE_TIME_MS,
     );
@@ -1661,7 +1509,7 @@ fun a_donation_above_the_ceiling_is_accepted_and_the_excess_is_nav() {
 fun a_flat_position_keeps_the_reserve_for_the_position_that_reopens() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = capped_initialized_state(&fixture, 500);
-    let flat = standard_observation(policy::long()).with_position_base(0).with_position_collateral(0);
+    let flat = standard_observation(policy::long()).with_position_base(0);
     state.donate(flat.into_position_observation(), flat.with_venue_equity(SEED_VENUE_EQUITY + 70_000).into_position_observation(), 70_000, REFERENCE_TIME_MS);
     assert_eq!(state.maintenance_reserve(), 170_000);
     state.destroy_for_testing();
@@ -1680,7 +1528,6 @@ fun rebalance_state(fixture: &Fixture, side: PositionSide): State<Product> {
 fun rebalance_observation(equity: u64, notional: u64, side: PositionSide): PositionObservation {
     let mut spec = standard_observation(side);
     spec.venue_equity = equity;
-    spec.position_collateral = notional;
     spec.position_base = notional * 1_000;
     spec.into_position_observation()
 }
@@ -1770,7 +1617,7 @@ fun new_state(fixture: &Fixture, side: PositionSide): State<Product> {
 
 fun initialized_state(fixture: &Fixture, side: PositionSide): State<Product> {
     let mut state = new_state(fixture, side);
-    let seed_nav = state.initialize(
+    let (seed_nav, _) = state.initialize(
         standard_observation(side).into_position_observation(),
         SEED_RESERVE, 9, 6,
         REFERENCE_TIME_MS);
@@ -1821,13 +1668,8 @@ fun standard_observation(side: PositionSide): ObservationSpec {
     ObservationSpec {
         venue_equity: SEED_VENUE_EQUITY,
         position_base: SEED_BASE,
-        position_collateral: SEED_NOTIONAL,
         lot_size: LOT_SIZE,
         observed_side: side,
-        pending_order_count: 0,
-        margin_safe: true,
-        venue_operational: true,
-        checkpoint_clean: true,
         base_price: 1_000_000_000,
         base_confidence: 1_000_000,
         base_publish_time_ms: 95_000,
@@ -1842,13 +1684,8 @@ fun into_position_observation(self: ObservationSpec): PositionObservation {
     let ObservationSpec {
         venue_equity,
         position_base,
-        position_collateral,
         lot_size,
         observed_side,
-        pending_order_count,
-        margin_safe,
-        venue_operational,
-        checkpoint_clean,
         base_price,
         base_confidence,
         base_publish_time_ms,
@@ -1861,13 +1698,8 @@ fun into_position_observation(self: ObservationSpec): PositionObservation {
     observation::new_position(
         venue_equity,
         position_base,
-        position_collateral,
         lot_size,
         observed_side,
-        pending_order_count,
-        margin_safe,
-        venue_operational,
-        checkpoint_clean,
         observation::new_price(base_price, base_confidence, base_publish_time_ms),
         observation::new_price(
             collateral_price,
@@ -1880,7 +1712,6 @@ fun into_position_observation(self: ObservationSpec): PositionObservation {
 
 /// Sets the notional and the base that values to it at the fixture's unit price.
 fun with_notional(mut self: ObservationSpec, notional: u64): ObservationSpec {
-    self.position_collateral = notional;
     self.position_base = notional * 1_000;
     self
 }
@@ -1900,42 +1731,8 @@ fun with_position_base(mut self: ObservationSpec, position_base: u64): Observati
     self
 }
 
-fun with_position_collateral(mut self: ObservationSpec, position_collateral: u64): ObservationSpec {
-    self.position_collateral = position_collateral;
-    self
-}
-
 fun with_observed_side(mut self: ObservationSpec, observed_side: PositionSide): ObservationSpec {
     self.observed_side = observed_side;
-    self
-}
-
-fun with_pending_order_count(
-    mut self: ObservationSpec,
-    pending_order_count: u64,
-): ObservationSpec {
-    self.pending_order_count = pending_order_count;
-    self
-}
-
-fun with_margin_safe(mut self: ObservationSpec, margin_safe: bool): ObservationSpec {
-    self.margin_safe = margin_safe;
-    self
-}
-
-fun with_venue_operational(
-    mut self: ObservationSpec,
-    venue_operational: bool,
-): ObservationSpec {
-    self.venue_operational = venue_operational;
-    self
-}
-
-fun with_checkpoint_clean(
-    mut self: ObservationSpec,
-    checkpoint_clean: bool,
-): ObservationSpec {
-    self.checkpoint_clean = checkpoint_clean;
     self
 }
 

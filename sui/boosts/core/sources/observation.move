@@ -18,21 +18,17 @@ public struct PriceObservation {
     publish_time_ms: u64,
 }
 
-/// One venue-position and price snapshot for a single operation.
+/// The external facts one operation prices against: the venue position and
+/// the oracle pair, as the adapter authenticated them.
 ///
-/// Constructors validate the structural fields before priced operations.
+/// The adapter has already refused a venue that is paused, under margin or
+/// carrying orders; the core values what it is given.
 public struct PositionObservation {
     venue_equity: u64,
     /// Unsigned position size in base-asset atoms; direction is `observed_side`.
     position_base: u64,
-    /// The same position valued in collateral atoms, also unsigned.
-    position_collateral: u64,
     lot_size: u64,
     observed_side: PositionSide,
-    pending_order_count: u64,
-    margin_safe: bool,
-    venue_operational: bool,
-    checkpoint_clean: bool,
     base_oracle: PriceObservation,
     collateral_oracle: PriceObservation,
     mark_price: u64,
@@ -60,52 +56,23 @@ public fun new_price(
     PriceObservation { price, confidence, publish_time_ms }
 }
 
-/// Creates one structurally consistent normalized position observation.
+/// Creates one position observation; base is whole lots and the mark is positive.
 ///
-/// A flat position has zero base and zero notional. A non-flat position has
-/// both values positive and base is an exact multiple of the venue lot size.
 /// `observed_side` retains the venue's direction; it has no meaning while flat.
 public fun new_position(
     venue_equity: u64,
     position_base: u64,
-    position_collateral: u64,
     lot_size: u64,
     observed_side: PositionSide,
-    pending_order_count: u64,
-    margin_safe: bool,
-    venue_operational: bool,
-    checkpoint_clean: bool,
     base_oracle: PriceObservation,
     collateral_oracle: PriceObservation,
     mark_price: u64,
 ): PositionObservation {
-    assert!(
-        lot_size > 0,
-        blast_boosts_core::errors::invalid_observation_lot_size!(),
-    );
-    assert!(
-        mark_price > 0,
-        blast_boosts_core::errors::invalid_price!(),
-    );
-    assert!(
-        is_position_structurally_valid(position_base, position_collateral, lot_size),
-        blast_boosts_core::errors::invalid_position_observation!(),
-    );
+    assert!(lot_size > 0, blast_boosts_core::errors::invalid_observation_lot_size!());
+    assert!(mark_price > 0, blast_boosts_core::errors::invalid_price!());
+    assert!(position_base % lot_size == 0, blast_boosts_core::errors::invalid_position_observation!());
 
-    PositionObservation {
-        venue_equity,
-        position_base,
-        position_collateral,
-        lot_size,
-        observed_side,
-        pending_order_count,
-        margin_safe,
-        venue_operational,
-        checkpoint_clean,
-        base_oracle,
-        collateral_oracle,
-        mark_price,
-    }
+    PositionObservation { venue_equity, position_base, lot_size, observed_side, base_oracle, collateral_oracle, mark_price }
 }
 
 /// Creates a credit funding outcome.
@@ -141,42 +108,13 @@ public(package) fun destroy_price(self: PriceObservation) {
 
 // --- Position Observation ---
 
-/// Returns whether base, notional, and lot size form a normalized position.
-///
-/// This predicate never aborts, including for a zero lot. Strict operation
-/// constructors and initialization assert it.
-public(package) fun is_position_structurally_valid(
-    position_base: u64,
-    position_collateral: u64,
-    lot_size: u64,
-): bool {
-    lot_size > 0
-        && ((position_base == 0 && position_collateral == 0)
-            || (position_base > 0
-                && position_collateral > 0
-                && position_base % lot_size == 0))
-}
-
 public(package) fun venue_equity(self: &PositionObservation): u64 { self.venue_equity }
 
 public(package) fun position_base(self: &PositionObservation): u64 { self.position_base }
 
-public(package) fun position_collateral(self: &PositionObservation): u64 { self.position_collateral }
-
 public(package) fun lot_size(self: &PositionObservation): u64 { self.lot_size }
 
 public(package) fun observed_side(self: &PositionObservation): PositionSide { self.observed_side }
-
-public(package) fun pending_order_count(self: &PositionObservation): u64 { self.pending_order_count }
-
-/// Returns whether the venue reports margin at or above its maintenance requirement.
-public(package) fun is_margin_safe(self: &PositionObservation): bool { self.margin_safe }
-
-/// Returns whether the market is neither paused nor frozen.
-public(package) fun is_venue_operational(self: &PositionObservation): bool { self.venue_operational }
-
-/// Returns whether venue bookkeeping matches the last accepted checkpoint.
-public(package) fun is_checkpoint_clean(self: &PositionObservation): bool { self.checkpoint_clean }
 
 /// Borrows the base asset's oracle price observation.
 public(package) fun base_oracle(self: &PositionObservation): &PriceObservation { &self.base_oracle }
@@ -213,18 +151,6 @@ public(package) fun destroy_funding(self: FundingSettlement) {
         FundingSettlement::Credit(_) => (),
         FundingSettlement::Cost(_) => (),
     }
-}
-
-// === Test-Only Functions ===
-
-#[test_only]
-/// Injects a malformed position to exercise State's independent initialization guard.
-public fun with_position_base_for_testing(
-    mut self: PositionObservation,
-    position_base: u64,
-): PositionObservation {
-    self.position_base = position_base;
-    self
 }
 
 // === Imports ===

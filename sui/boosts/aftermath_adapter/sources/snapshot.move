@@ -18,7 +18,6 @@ module blast_boosts_aftermath::snapshot;
 public struct CapturedSnapshot {
     venue_equity: u64,
     position_base: u64,
-    position_collateral: u64,
     lot_size: u64,
     side: PositionSide,
     pending_order_count: u64,
@@ -42,24 +41,9 @@ public struct CapturedSnapshot {
 /// be normalized; a strict capture aborts instead.
 public struct OracleLeg has copy, drop {
     price: u64,
-    risk_price: u64,
     confidence: u64,
     timestamp: u64,
     representable: bool,
-}
-
-/// Normalized primitives needed by the enclosing adapter operation.
-///
-/// This value is operation-scoped and is never stored. It lets the caller use
-/// the same authenticated capture for sizing, postconditions, and events.
-public struct SnapshotFacts has copy, drop {
-    venue_equity: u64,
-    position_base: u64,
-    position_collateral: u64,
-    lot_size: u64,
-    side: PositionSide,
-    base_price: u64,
-    collateral_price: u64,
 }
 
 /// What moved between the checkpoint last accepted and the one just captured:
@@ -91,31 +75,15 @@ public(package) fun capture_checkpoint<Collateral>(
     read_checkpoint(account, clearing_house)
 }
 
-/// Captures strict seed facts for atomic Vault initialization.
-public(package) fun capture_initialization<Collateral>(
-    binding: &Binding,
-    account: &Account<Collateral>,
-    registry: &Registry,
-    clearing_house: &ClearingHouse<Collateral>,
-    base_oracle: &PriceFeedStorage,
-    collateral_oracle: &PriceFeedStorage,
-    base_price_info: &PriceInfoObject,
-    collateral_price_info: &PriceInfoObject,
-    clock: &Clock,
-): (observation::PositionObservation, Checkpoint, SnapshotFacts) {
-    let captured = capture_snapshot(
-        binding, account, registry, clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock, false,
-    );
-
-    into_observation(captured)
-}
-
 /// Captures one authenticated venue and Pyth valuation pair.
 ///
-/// The two Pyth objects are exact sources for the corresponding Aftermath
-/// feeds. The interface packages are ABI ports, so this production path is
-/// mechanically pinned but never executed by local unit tests.
+/// Source identity and source agreement are strict and abort. Values that do
+/// not fit the adapter's units, and a venue that cannot serve a priced
+/// operation, are carried as facts: `into_observation` refuses them for a
+/// priced operation, health synchronization reports them. The two Pyth
+/// objects are exact sources for the corresponding Aftermath feeds. The
+/// interface packages are ABI ports, so this production path is mechanically
+/// pinned but never executed by local unit tests.
 public(package) fun capture<Collateral>(
     binding: &Binding,
     account: &Account<Collateral>,
@@ -126,38 +94,87 @@ public(package) fun capture<Collateral>(
     base_price_info: &PriceInfoObject,
     collateral_price_info: &PriceInfoObject,
     clock: &Clock,
-): (observation::PositionObservation, Checkpoint) {
-    let captured = capture_snapshot(
-        binding, account, registry, clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock, false,
-    );
-    let (observation, checkpoint, _) = into_observation(captured);
-
-    (observation, checkpoint)
-}
-
-/// Captures authenticated live facts for fail-closed health reporting.
-///
-/// Authentication and source agreement remain strict; only structural venue
-/// values are retained instead of aborting; ordinary sync never changes lifecycle.
-public(package) fun capture_health<Collateral>(
-    binding: &Binding,
-    account: &Account<Collateral>,
-    registry: &Registry,
-    clearing_house: &ClearingHouse<Collateral>,
-    base_oracle: &PriceFeedStorage,
-    collateral_oracle: &PriceFeedStorage,
-    base_price_info: &PriceInfoObject,
-    collateral_price_info: &PriceInfoObject,
-    clock: &Clock,
 ): CapturedSnapshot {
-    capture_snapshot(
-        binding, account, registry, clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock, true,
-    )
+    let checkpoint = capture_checkpoint(binding, account, registry, clearing_house, base_oracle, collateral_oracle);
+    let params = clearing_house.market_params();
+    let (base_feed, collateral_feed) = authenticated_feeds(
+        params, base_oracle, collateral_oracle, base_price_info, collateral_price_info,
+    );
+
+    let base_fixed = params.base_oracle_price(base_oracle, clock);
+    let collateral_fixed = params.collateral_oracle_price(collateral_oracle, clock);
+    let mark_fixed = clearing_house.mark_price(base_oracle, clock);
+    let base = oracle_leg(base_price_info, base_feed, base_fixed);
+    let collateral = oracle_leg(collateral_price_info, collateral_feed, collateral_fixed);
+    let (mark_price, mark_representable) = fixed_to_u64_down(mark_fixed, 9);
+
+    let position = clearing_house.position(account.account_id());
+    let (signed_base, signed_quote_notional) = position.base_and_quote_amounts();
+    let (position_base, base_representable) = fixed_to_u64_up(signed_base.abs(), 9);
+    let effective_imr = position.effective_initial_margin_ratio(params.margin_ratio_initial());
+    let (margin, requirement) = position.compute_margin_and_requirement(
+        collateral_fixed, mark_fixed, effective_imr, params.collateral_haircut(),
+    );
+    let (venue_equity, equity_representable) = signed_equity(
+        account.collateral_balance(), position.collateral(), position.unrealized_pnl(base_fixed), collateral_fixed,
+    );
+    let economics_valid = position_signs_coherent(signed_base, signed_quote_notional, position.is_long_or_flat())
+        && base.representable
+        && collateral.representable
+        && base_representable
+        && mark_representable
+        && equity_representable;
+
+    CapturedSnapshot {
+        venue_equity,
+        position_base,
+        lot_size: params.lot_size(),
+        side: if (position.is_long_or_flat()) { policy::long() } else { policy::short() },
+        pending_order_count: position.pending_order_count(),
+        margin_safe: margin_safe(margin, requirement),
+        venue_operational: clearing_house.market_pause_mode() == 0 && !clearing_house.is_frozen(),
+        economics_valid,
+        base_price: base.price,
+        base_confidence: base.confidence,
+        base_timestamp: base.timestamp,
+        collateral_price: collateral.price,
+        collateral_confidence: collateral.confidence,
+        collateral_timestamp: collateral.timestamp,
+        mark_price,
+        checkpoint,
+        collateral_fixed: if (collateral.representable) { collateral_fixed } else { 0 },
+    }
 }
 
 // --- Captured Snapshot Reads ---
+
+/// Turns a capture into the core's observation and the checkpoint it was read
+/// with, refusing a venue no priced operation may build on: unrepresentable
+/// economics, open orders, unsafe margin, or a paused or frozen market.
+public(package) fun into_observation(self: CapturedSnapshot): (PositionObservation, Checkpoint) {
+    let CapturedSnapshot {
+        venue_equity, position_base, lot_size, side, pending_order_count, margin_safe, venue_operational,
+        economics_valid, base_price, base_confidence, base_timestamp, collateral_price, collateral_confidence,
+        collateral_timestamp, mark_price, checkpoint, collateral_fixed: _,
+    } = self;
+    assert!(economics_valid, blast_boosts_aftermath::errors::normalization_overflow!());
+    assert!(
+        pending_order_count == 0 && margin_safe && venue_operational,
+        blast_boosts_aftermath::errors::venue_not_ready!(),
+    );
+
+    let observation = observation::new_position(
+        venue_equity,
+        position_base,
+        lot_size,
+        side,
+        observation::new_price(base_price, base_confidence, base_timestamp),
+        observation::new_price(collateral_price, collateral_confidence, collateral_timestamp),
+        mark_price,
+    );
+
+    (observation, checkpoint)
+}
 
 /// Consumes a pre-settlement capture into the exact reconciliation inputs.
 public(package) fun funding_probe(self: CapturedSnapshot): (Checkpoint, u256) {
@@ -178,33 +195,17 @@ public(package) fun checkpoint(self: &CapturedSnapshot): Checkpoint {
 }
 
 /// Builds the base oracle observation from the authenticated capture.
-public(package) fun base_price_observation(self: &CapturedSnapshot): observation::PriceObservation {
+public(package) fun base_price_observation(self: &CapturedSnapshot): PriceObservation {
     observation::new_price(self.base_price, self.base_confidence, self.base_timestamp)
 }
 
 /// Builds the collateral oracle observation from the authenticated capture.
-public(package) fun collateral_price_observation(self: &CapturedSnapshot): observation::PriceObservation {
+public(package) fun collateral_price_observation(self: &CapturedSnapshot): PriceObservation {
     observation::new_price(self.collateral_price, self.collateral_confidence, self.collateral_timestamp)
 }
 
 /// Returns the raw IFixed collateral reading behind the capture.
 public(package) fun collateral_fixed(self: &CapturedSnapshot): u256 { self.collateral_fixed }
-
-// --- Snapshot Facts Reads ---
-
-public(package) fun venue_equity(self: &SnapshotFacts): u64 { self.venue_equity }
-
-public(package) fun position_base(self: &SnapshotFacts): u64 { self.position_base }
-
-public(package) fun position_collateral(self: &SnapshotFacts): u64 { self.position_collateral }
-
-public(package) fun lot_size(self: &SnapshotFacts): u64 { self.lot_size }
-
-public(package) fun side(self: &SnapshotFacts): PositionSide { self.side }
-
-public(package) fun base_price(self: &SnapshotFacts): u64 { self.base_price }
-
-public(package) fun collateral_price(self: &SnapshotFacts): u64 { self.collateral_price }
 
 // --- CheckpointChange Classification ---
 
@@ -343,82 +344,6 @@ public(package) fun is_unexpected(self: &CheckpointChange): bool {
 
 // --- Capture ---
 
-fun capture_snapshot<Collateral>(
-    binding: &Binding,
-    account: &Account<Collateral>,
-    registry: &Registry,
-    clearing_house: &ClearingHouse<Collateral>,
-    base_oracle: &PriceFeedStorage,
-    collateral_oracle: &PriceFeedStorage,
-    base_price_info: &PriceInfoObject,
-    collateral_price_info: &PriceInfoObject,
-    clock: &Clock,
-    health: bool,
-): CapturedSnapshot {
-    let checkpoint = capture_checkpoint(binding, account, registry, clearing_house, base_oracle, collateral_oracle);
-    let params = clearing_house.market_params();
-    let (base_feed, collateral_feed) = authenticated_feeds(
-        params, base_oracle, collateral_oracle, base_price_info, collateral_price_info,
-    );
-
-    let base_fixed = params.base_oracle_price(base_oracle, clock);
-    let collateral_fixed = params.collateral_oracle_price(collateral_oracle, clock);
-    let mark_fixed = clearing_house.mark_price(base_oracle, clock);
-    let base = oracle_leg(base_price_info, base_feed, base_fixed, health);
-    let collateral = oracle_leg(collateral_price_info, collateral_feed, collateral_fixed, health);
-    let (mark_price, mark_representable) = fixed_to_u64_down(mark_fixed, 9);
-    assert_representable_unless_health(health, mark_representable);
-
-    let position = clearing_house.position(account.account_id());
-    let (signed_base, signed_quote_notional) = position.base_and_quote_amounts();
-    let (position_base, base_representable) = fixed_to_u64_up(signed_base.abs(), 9);
-    let (position_collateral, notional_representable) =
-        base_notional(position_base, base.risk_price, collateral.price);
-    assert_representable_unless_health(health, base_representable && notional_representable);
-    let side = if (health) {
-        if (position.is_long_or_flat()) { policy::long() } else { policy::short() }
-    } else {
-        assert_position_signs(signed_base, signed_quote_notional, position.is_long_or_flat())
-    };
-
-    let effective_imr = position.effective_initial_margin_ratio(params.margin_ratio_initial());
-    let (margin, requirement) = position.compute_margin_and_requirement(
-        collateral_fixed, mark_fixed, effective_imr, params.collateral_haircut(),
-    );
-    let (venue_equity, equity_representable) = signed_equity(
-        account.collateral_balance(), position.collateral(), position.unrealized_pnl(base_fixed), collateral_fixed,
-    );
-    assert_representable_unless_health(health, equity_representable);
-    let economics_valid = position_signs_coherent(signed_base, signed_quote_notional, position.is_long_or_flat())
-        && base.representable
-        && collateral.representable
-        && base_representable
-        && notional_representable
-        && mark_representable
-        && equity_representable;
-
-    CapturedSnapshot {
-        venue_equity,
-        position_base,
-        position_collateral,
-        lot_size: params.lot_size(),
-        side,
-        pending_order_count: position.pending_order_count(),
-        margin_safe: margin_safe(margin, requirement),
-        venue_operational: clearing_house.market_pause_mode() == 0 && !clearing_house.is_frozen(),
-        economics_valid,
-        base_price: base.price,
-        base_confidence: base.confidence,
-        base_timestamp: base.timestamp,
-        collateral_price: collateral.price,
-        collateral_confidence: collateral.confidence,
-        collateral_timestamp: collateral.timestamp,
-        mark_price,
-        checkpoint,
-        collateral_fixed: if (collateral.representable) { collateral_fixed } else { 0 },
-    }
-}
-
 /// Reads every raw venue field the checkpoint authenticates, in one pass and without normalization.
 fun read_checkpoint<Collateral>(account: &Account<Collateral>, clearing_house: &ClearingHouse<Collateral>): Checkpoint {
     let params = clearing_house.market_params();
@@ -467,47 +392,11 @@ fun authenticated_feeds(
     (base_feed, collateral_feed)
 }
 
-/// Normalizes one oracle leg: a strict capture aborts on an unrepresentable
-/// value; a health capture reports it in the leg.
-fun oracle_leg(price_info: &PriceInfoObject, feed: &PriceFeed, fixed: u256, health: bool): OracleLeg {
-    let (price, risk_price, confidence, timestamp, representable) = pyth_price(price_info, feed, fixed);
-    assert_representable_unless_health(health, representable);
+/// Normalizes one oracle leg, carrying whether every value fit.
+fun oracle_leg(price_info: &PriceInfoObject, feed: &PriceFeed, fixed: u256): OracleLeg {
+    let (price, confidence, timestamp, representable) = pyth_price(price_info, feed, fixed);
 
-    OracleLeg { price, risk_price, confidence, timestamp, representable }
-}
-
-/// A strict capture fails closed on an unrepresentable value; a health capture carries on.
-fun assert_representable_unless_health(health: bool, representable: bool) {
-    assert!(health || representable, blast_boosts_aftermath::errors::normalization_overflow!());
-}
-
-/// Turns a strict capture into the core's observation, the checkpoint, and the sizing facts.
-fun into_observation(self: CapturedSnapshot): (observation::PositionObservation, Checkpoint, SnapshotFacts) {
-    let CapturedSnapshot {
-        venue_equity, position_base, position_collateral, lot_size, side, pending_order_count,
-        margin_safe, venue_operational, economics_valid, base_price, base_confidence, base_timestamp,
-        collateral_price, collateral_confidence, collateral_timestamp, mark_price, checkpoint, collateral_fixed: _,
-    } = self;
-
-    let observation = observation::new_position(
-        venue_equity,
-        position_base,
-        position_collateral,
-        lot_size,
-        side,
-        pending_order_count,
-        economics_valid && margin_safe,
-        venue_operational,
-        true,
-        observation::new_price(base_price, base_confidence, base_timestamp),
-        observation::new_price(collateral_price, collateral_confidence, collateral_timestamp),
-        mark_price,
-    );
-    let facts = SnapshotFacts {
-        venue_equity, position_base, position_collateral, lot_size, side, base_price, collateral_price,
-    };
-
-    (observation, checkpoint, facts)
+    OracleLeg { price, confidence, timestamp, representable }
 }
 
 // --- CheckpointChange Classification ---
@@ -598,7 +487,7 @@ fun pyth_price(
     price_info_object: &PriceInfoObject,
     aftermath_feed: &PriceFeed,
     venue_price: u256,
-): (u64, u64, u64, u64, bool) {
+): (u64, u64, u64, bool) {
     let price_info = price_info_object.get_price_info_from_price_info_object();
     let pyth_price = price_info.get_price_feed().get_price();
     let price_i64 = pyth_price.get_price();
@@ -607,7 +496,6 @@ fun pyth_price(
     let expo = pyth_price.get_expo();
 
     let (normalized_price, price_representable) = normalize_pyth_component(magnitude, &expo, false);
-    let (normalized_risk_price, risk_price_representable) = normalize_pyth_component(magnitude, &expo, true);
     let (normalized_confidence, confidence_representable) =
         normalize_pyth_component(pyth_price.get_conf(), &expo, true);
     let (aftermath_price, aftermath_timestamp) = aftermath_feed.price_and_timestamp_ms();
@@ -616,12 +504,11 @@ fun pyth_price(
     let (pyth_timestamp, timestamp_representable) = seconds_to_millis(pyth_price.get_timestamp());
     let representable = price_nonnegative
         && price_representable
-        && risk_price_representable
         && confidence_representable
         && feed_representable
         && venue_representable
         && timestamp_representable;
-    if (!representable) return (0, 0, 0, 0, false);
+    if (!representable) return (0, 0, 0, false);
 
     assert!(
         normalized_feed_price == normalized_price
@@ -630,7 +517,7 @@ fun pyth_price(
         blast_boosts_aftermath::errors::oracle_observation_mismatch!(),
     );
 
-    (normalized_price, normalized_risk_price, normalized_confidence, aftermath_timestamp, true)
+    (normalized_price, normalized_confidence, aftermath_timestamp, true)
 }
 
 fun assert_pyth_price_info(price_info_object: &PriceInfoObject, aftermath_feed: &PriceFeed) {
@@ -739,21 +626,6 @@ fun usd_fixed_to_collateral_fixed(usd: u256, collateral_price: u256, round_up: b
     }
 }
 
-/// Values current position risk as absolute base × Pyth index ÷ collateral.
-///
-/// The quote amount remains in the raw checkpoint for transition guards and
-/// direction coherence, but it is historical cost basis and therefore cannot
-/// be the live leverage numerator.
-fun base_notional(position_base: u64, base_price: u64, collateral_price: u64): (u64, bool) {
-    if (collateral_price == 0) return (0, false);
-
-    let numerator = (position_base as u256) * (base_price as u256);
-    let denominator = (collateral_price as u256) * constants::collateral_to_base_scale!();
-    let notional = numerator.div_ceil(denominator);
-
-    if (notional > std::u64::max_value!() as u256) { (0, false) } else { (notional as u64, true) }
-}
-
 fun signed_equity(free: u64, allocated: u256, pnl_usd: u256, collateral_price: u256): (u64, bool) {
     signed_equity_decoded(
         free,
@@ -822,43 +694,7 @@ fun position_signs_coherent_decoded(
     if (long_or_flat) { !base_negative && quote_negative } else { base_negative && !quote_negative }
 }
 
-fun assert_position_signs(base: u256, quote: u256, long_or_flat: bool): PositionSide {
-    assert!(
-        position_signs_coherent(base, quote, long_or_flat),
-        blast_boosts_aftermath::errors::incoherent_position_signs!(),
-    );
-    if (long_or_flat) { policy::long() } else { policy::short() }
-}
-
 // === Test-Only Functions ===
-
-#[test_only]
-public fun facts_for_testing(
-    venue_equity: u64,
-    position_base: u64,
-    position_collateral: u64,
-    lot_size: u64,
-    side: PositionSide,
-    base_price: u64,
-    collateral_price: u64,
-): SnapshotFacts {
-    SnapshotFacts {
-        venue_equity,
-        position_base,
-        position_collateral,
-        lot_size,
-        side,
-        base_price,
-        collateral_price,
-    }
-}
-
-#[test_only]
-/// Unpacks every fact, in declaration order, for test assertions.
-public fun unpack_facts_for_testing(self: SnapshotFacts): (u64, u64, u64, u64, PositionSide, u64, u64) {
-    (self.venue_equity, self.position_base, self.position_collateral, self.lot_size, self.side,
-        self.base_price, self.collateral_price)
-}
 
 /// Builds a normalized authenticated post-capture fixture around a real raw
 /// checkpoint. Tests vary only equity and margin; all other objective facts
@@ -872,7 +708,6 @@ public fun captured_health_for_testing(
     CapturedSnapshot {
         venue_equity,
         position_base: 1_800,
-        position_collateral: 1_800,
         lot_size: 1,
         side: policy::long(),
         pending_order_count: 0,
@@ -1027,41 +862,6 @@ public fun usd_fixed_to_collateral_for_testing(usd: u256, collateral_price: u256
 }
 
 #[test_only]
-public fun base_notional_for_testing(
-    position_base: u64,
-    base_price: u64,
-    collateral_price: u64,
-): (u64, bool) {
-    base_notional(position_base, base_price, collateral_price)
-}
-
-#[test_only]
-public fun base_notional_from_pyth_for_testing(
-    position_base: u64,
-    price_component: u64,
-    expo_negative: bool,
-    expo_magnitude: u64,
-    collateral_price: u64,
-): (u64, bool) {
-    let (base_risk_price, price_representable) =
-        normalize_pyth_component_parts(
-            price_component,
-            expo_negative,
-            expo_magnitude,
-            true,
-        );
-    if (!price_representable) {
-        (0, false)
-    } else {
-        base_notional(
-            position_base,
-            base_risk_price,
-            collateral_price,
-        )
-    }
-}
-
-#[test_only]
 public fun signed_equity_for_testing(
     free: u64,
     allocated_negative: bool,
@@ -1096,7 +896,10 @@ public fun position_signs_coherent_for_testing(
 
 use blast_boosts_aftermath::{constants, venue_account::{Self as venue_account, Binding, Checkpoint}};
 
-use blast_boosts_core::{observation, policy::{Self, PositionSide}};
+use blast_boosts_core::{
+    observation::{Self, PositionObservation, PriceObservation},
+    policy::{Self, PositionSide},
+};
 
 use ifixed::ifixed;
 

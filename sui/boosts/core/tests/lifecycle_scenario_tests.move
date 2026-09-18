@@ -329,7 +329,7 @@ fun a_funding_storm_charges_holders_only_after_the_reserve_and_repays_them_first
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveObservationUnusable, location = blast_boosts_core::state)]
+#[expected_failure(abort_code = test_adapter::EVenueNotReady, location = blast_boosts_core::test_adapter)]
 fun a_paused_venue_refuses_active_operations() {
     let mut vault = test_adapter::issue(test_adapter::calm_venue());
     vault.activate(SEED, SEED_RESERVE);
@@ -340,7 +340,7 @@ fun a_paused_venue_refuses_active_operations() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveObservationUnusable, location = blast_boosts_core::state)]
+#[expected_failure(abort_code = test_adapter::EVenueNotReady, location = blast_boosts_core::test_adapter)]
 fun an_unsafe_margin_refuses_active_operations() {
     let mut vault = test_adapter::issue(test_adapter::calm_venue());
     vault.activate(SEED, SEED_RESERVE);
@@ -649,7 +649,7 @@ fun a_price_move_between_prepare_and_complete_reverts_the_mint() {
 /// The venue errors out mid-transaction: the post-fill observation is unusable and
 /// the mint reverts as a whole, leaving the core exactly as it was.
 #[test]
-#[expected_failure(abort_code = errors::EActiveObservationUnusable, location = blast_boosts_core::state)]
+#[expected_failure(abort_code = test_adapter::EVenueNotReady, location = blast_boosts_core::test_adapter)]
 fun a_venue_error_after_the_fill_reverts_the_mint() {
     let mut vault = test_adapter::issue(test_adapter::calm_venue());
     vault.activate(SEED, SEED_RESERVE);
@@ -1123,7 +1123,7 @@ fun terminal_claims_pay_every_eligible_share_pro_rata() {
 
 /// Walks the price up one basis point at a time from the seed price until leverage
 /// first reads below the band, and restores the seed price before returning.
-fun first_price_below_the_band(vault: &mut test_adapter::Vault): u64 {
+fun first_price_below_the_band(vault: &mut Vault): u64 {
     let seed_price = vault.venue().base_price();
     // A 2x long reads 1.6x at four thirds of the seed price; start just short of it.
     let mut price = seed_price * 4 / 3 - 20 * PRICE_STEP;
@@ -1138,7 +1138,7 @@ fun first_price_below_the_band(vault: &mut test_adapter::Vault): u64 {
 }
 
 /// A vault whose 1,000 USDC order cap makes every large correction take several orders.
-fun stressed_vault(): test_adapter::Vault {
+fun stressed_vault(): Vault {
     test_adapter::issue_with(
         test_adapter::calm_venue(), test_adapter::standard_policy(policy::long()), 1_000 * USDC, 1_000_000_000_000,
     )
@@ -1146,12 +1146,12 @@ fun stressed_vault(): test_adapter::Vault {
 
 /// After a priced operation the stored reserve sits at or under the ceiling, so venue
 /// equity is exactly shareholder NAV plus the stored reserve.
-fun assert_reconciled(vault: &test_adapter::Vault) {
+fun assert_reconciled(vault: &Vault) {
     assert!(vault.reserve() <= reserve_cap(vault));
     assert_eq!(vault.venue().equity(), vault.nav() + vault.reserve());
 }
 
-fun reserve_cap(vault: &test_adapter::Vault): u64 {
+fun reserve_cap(vault: &Vault): u64 {
     vault.venue().notional() * 1_000 / BPS
 }
 
@@ -1164,6 +1164,6 @@ fun total_reserve_fees(deposits: &vector<u64>): u64 {
 
 // === Imports ===
 
-use blast_boosts_core::{errors, policy, test_adapter};
+use blast_boosts_core::{errors, policy, test_adapter::{Self, Vault}};
 
 use std::unit_test::assert_eq;

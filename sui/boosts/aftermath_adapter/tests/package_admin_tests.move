@@ -340,7 +340,7 @@ fun package_digest(): vector<u8> {
 fun authorize_upgrade(
     self: &mut Fixture,
     digest: vector<u8>,
-): sui::package::UpgradeTicket {
+): UpgradeTicket {
     let Fixture { protocol, authority, admin_cap, package_admin, .. } = self;
     let admin_witness = authority.sign_in(admin_cap);
 
@@ -384,4 +384,4 @@ use blast_boosts_core::blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE};
 
 use std::unit_test::{assert_eq, destroy};
 
-use sui::{package, test_scenario::{Self, Scenario}};
+use sui::{package::{Self, UpgradeTicket}, test_scenario::{Self, Scenario}};

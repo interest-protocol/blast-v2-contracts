@@ -25,29 +25,13 @@ fun price_construction_rejects_zero_price() {
 #[test]
 fun long_position_construction_preserves_the_complete_observation() {
     let observation = observation::new_position(
-        100,
-        20,
-        40,
-        10,
-        policy::long(),
-        2,
-        true,
-        true,
-        true,
-        observation::new_price(3, 4, 5),
-        observation::new_price(6, 7, 8),
-        9,
+        100, 20, 10, policy::long(), observation::new_price(3, 4, 5), observation::new_price(6, 7, 8), 9,
     );
 
     assert_eq!(observation.venue_equity(), 100);
     assert_eq!(observation.position_base(), 20);
-    assert_eq!(observation.position_collateral(), 40);
     assert_eq!(observation.lot_size(), 10);
     assert_eq!(observation.observed_side(), policy::long());
-    assert_eq!(observation.pending_order_count(), 2);
-    assert!(observation.is_margin_safe());
-    assert!(observation.is_venue_operational());
-    assert!(observation.is_checkpoint_clean());
     assert_eq!(observation.base_oracle().price(), 3);
     assert_eq!(observation.base_oracle().confidence(), 4);
     assert_eq!(observation.base_oracle().publish_time_ms(), 5);
@@ -61,18 +45,7 @@ fun long_position_construction_preserves_the_complete_observation() {
 #[test]
 fun short_position_construction_preserves_the_observed_side() {
     let observation = observation::new_position(
-        100,
-        30,
-        60,
-        10,
-        policy::short(),
-        0,
-        true,
-        true,
-        true,
-        observation::new_price(3, 4, 5),
-        observation::new_price(6, 7, 8),
-        9,
+        100, 30, 10, policy::short(), observation::new_price(3, 4, 5), observation::new_price(6, 7, 8), 9,
     );
 
     assert_eq!(observation.observed_side(), policy::short());
@@ -85,42 +58,18 @@ fun short_position_construction_preserves_the_observed_side() {
 )]
 fun position_construction_rejects_zero_lot_size() {
     observation::new_position(
-        100,
-        20,
-        40,
-        0,
-        policy::long(),
-        0,
-        true,
-        true,
-        true,
-        observation::new_price(3, 4, 5),
-        observation::new_price(6, 7, 8),
-        9,
-    )
-    .destroy();
+        100, 20, 0, policy::long(), observation::new_price(3, 4, 5), observation::new_price(6, 7, 8), 9,
+    ).destroy();
 }
 
 #[test]
 #[expected_failure(
     abort_code = errors::EInvalidPositionObservation, location = blast_boosts_core::observation,
 )]
-fun position_construction_rejects_a_flat_base_with_nonzero_notional() {
+fun position_construction_rejects_a_partial_lot() {
     observation::new_position(
-        100,
-        0,
-        40,
-        10,
-        policy::long(),
-        0,
-        true,
-        true,
-        true,
-        observation::new_price(3, 4, 5),
-        observation::new_price(6, 7, 8),
-        9,
-    )
-    .destroy();
+        100, 25, 10, policy::long(), observation::new_price(3, 4, 5), observation::new_price(6, 7, 8), 9,
+    ).destroy();
 }
 
 #[test]

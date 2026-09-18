@@ -250,7 +250,7 @@ fun threshold_validation_precedes_tolerance_and_improvement_validation() {
 
 // === Private Functions ===
 
-fun standard_policy(): policy::RebalancePolicy {
+fun standard_policy(): RebalancePolicy {
     policy::new_rebalance_policy(
         16_000,
         20_000,
@@ -267,7 +267,7 @@ fun new_with_thresholds(
     target: u64,
     rebalance_above: u64,
     max_leverage: u64,
-): policy::RebalancePolicy {
+): RebalancePolicy {
     policy::new_rebalance_policy(
         rebalance_below,
         target,
@@ -283,4 +283,4 @@ fun new_with_thresholds(
 
 use std::unit_test::assert_eq;
 
-use blast_boosts_core::{errors, policy};
+use blast_boosts_core::{errors, policy::{Self, RebalancePolicy}};

@@ -44,36 +44,6 @@ fun zero_net_funding_refresh_is_clean_but_not_an_identical_checkpoint() {
 }
 
 #[test]
-fun initialization_facts_carrier_preserves_normalized_fields() {
-    let facts = snapshot::facts_for_testing(
-        1_100_000,
-        2_000_000_000,
-        2_000_000,
-        1_000,
-        policy::short(),
-        1_000_000_000,
-        999_000_000,
-    );
-    let (
-        venue_equity,
-        position_base,
-        position_collateral,
-        lot_size,
-        side,
-        base_price,
-        collateral_price,
-    ) = facts.unpack_facts_for_testing();
-
-    assert_eq!(venue_equity, 1_100_000);
-    assert_eq!(position_base, 2_000_000_000);
-    assert_eq!(position_collateral, 2_000_000);
-    assert_eq!(lot_size, 1_000);
-    assert_eq!(side, policy::short());
-    assert_eq!(base_price, 1_000_000_000);
-    assert_eq!(collateral_price, 999_000_000);
-}
-
-#[test]
 fun unchanged_checkpoint_is_not_funding() {
     let before = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
     let after = before;
@@ -286,48 +256,6 @@ fun usd_values_convert_to_collateral_units_at_the_authenticated_depeg_price() {
 }
 
 #[test]
-fun current_notional_uses_base_size_and_pyth_index_instead_of_quote_cost_basis() {
-    let (notional, valid) = snapshot::base_notional_for_testing(
-        2_000_000_000,
-        3_000_000_000,
-        1_000_000_000,
-    );
-
-    assert_eq!(notional, 6_000_000);
-    assert!(valid);
-}
-
-#[test]
-fun current_notional_ceil_rounds_a_sub_nine_decimal_pyth_base_price() {
-    let (notional, valid) = snapshot::base_notional_from_pyth_for_testing(
-        1_000_000_000,
-        10_000_000_001,
-        true,
-        10,
-        1_000_000_000,
-    );
-
-    assert_eq!(notional, 1_000_001);
-    assert!(valid);
-}
-
-#[test]
-fun health_current_notional_rejects_zero_or_unrepresentable_prices() {
-    let (zero_price, zero_price_valid) =
-        snapshot::base_notional_for_testing(1, 1, 0);
-    let (too_wide, too_wide_valid) = snapshot::base_notional_for_testing(
-        std::u64::max_value!(),
-        std::u64::max_value!(),
-        1,
-    );
-
-    assert_eq!(zero_price, 0);
-    assert!(!zero_price_valid);
-    assert_eq!(too_wide, 0);
-    assert!(!too_wide_valid);
-}
-
-#[test]
 fun margin_safety_is_below_equal_and_above_the_named_requirement() {
     assert!(!snapshot::margin_safe_for_testing(true, 999, 1));
     assert!(snapshot::margin_safe_for_testing(false, 0, 0));
@@ -453,7 +381,7 @@ fun checkpoint(
     market_funding_long: u256,
     market_funding_short: u256,
     lot_size: u64,
-): venue_account::Checkpoint {
+): Checkpoint {
     venue_account::checkpoint_for_testing(
         free_collateral,
         allocated_collateral,
@@ -477,9 +405,7 @@ fun checkpoint(
 
 // === Imports ===
 
-use blast_boosts_aftermath::snapshot;
-
-use blast_boosts_aftermath::venue_account;
+use blast_boosts_aftermath::{snapshot, venue_account::{Self, Checkpoint}};
 
 use blast_boosts_core::policy;
 

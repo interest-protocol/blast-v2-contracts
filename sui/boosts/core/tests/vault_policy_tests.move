@@ -205,7 +205,7 @@ fun new_policy(
     mint_fee_bps: u64,
     redeem_fee_bps: u64,
     min_order_lots: u64,
-): policy::VaultPolicy {
+): VaultPolicy {
     policy::new_vault_policy(
         if (is_long) policy::long() else policy::short(),
         policy::new_rebalance_policy(0, 3, 5, 6, 0, 0, 1),
@@ -217,7 +217,7 @@ fun new_policy(
     )
 }
 
-fun new_policy_with_reserve_ceiling(max_reserve_bps: u64): policy::VaultPolicy {
+fun new_policy_with_reserve_ceiling(max_reserve_bps: u64): VaultPolicy {
     policy::new_vault_policy(
         policy::long(),
         policy::new_rebalance_policy(0, 3, 5, 6, 0, 0, 1),
@@ -229,7 +229,7 @@ fun new_policy_with_reserve_ceiling(max_reserve_bps: u64): policy::VaultPolicy {
     )
 }
 
-fun standard_price_policy(): policy::PricePolicy {
+fun standard_price_policy(): PricePolicy {
     policy::new_price_policy(1, 0, 0, 0)
 }
 
@@ -237,4 +237,4 @@ fun standard_price_policy(): policy::PricePolicy {
 
 use std::unit_test::assert_eq;
 
-use blast_boosts_core::{errors, policy};
+use blast_boosts_core::{errors, policy::{Self, PricePolicy, VaultPolicy}};

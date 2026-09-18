@@ -290,7 +290,7 @@ fun admin_cap_for(account: address, ctx: &mut TxContext): AuthorityCap<ACCOUNT, 
     authority::new_for_testing<ACCOUNT, ADMIN>(account.to_id(), ctx)
 }
 
-fun standard_checkpoint(): venue_account::Checkpoint {
+fun standard_checkpoint(): Checkpoint {
     venue_account::checkpoint_for_testing(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, true, 14, 15, 16)
 }
 
@@ -306,7 +306,7 @@ fun standard_binding(): Binding {
     )
 }
 
-fun assert_standard_checkpoint(checkpoint: &venue_account::Checkpoint) {
+fun assert_standard_checkpoint(checkpoint: &Checkpoint) {
     let (
         free_collateral,
         allocated_collateral,
@@ -350,7 +350,7 @@ fun assert_standard_checkpoint(checkpoint: &venue_account::Checkpoint) {
 
 use authority_cap::authority::{Self, ADMIN, AuthorityCap};
 
-use blast_boosts_aftermath::venue_account::{Self, Binding};
+use blast_boosts_aftermath::venue_account::{Self, Binding, Checkpoint};
 
 use perpetuals::authority::ACCOUNT;
 

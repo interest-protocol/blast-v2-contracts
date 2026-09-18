@@ -48,7 +48,9 @@ public struct State<phantom Product> has store {
     nav_cap: u64,
 }
 
-/// Validated values at one canonical pair; never persisted as a second ledger.
+/// The position priced at one oracle pair: equity, base, base valued at the
+/// pair, the lot, and the pair itself. Sealed into every plan and reported
+/// back to the adapter; never persisted as a second ledger.
 public struct ActivePosition has copy, drop {
     equity: u64,
     base: u64,
@@ -162,11 +164,7 @@ public fun prepare_initialization<Product>(
     self.lifecycle.assert_can_activate();
 
     let seed_nav = self.seed_nav(&observation, seed_reserve, now_ms);
-    assert!(
-        observation.position_base() == 0 && observation.position_collateral() == 0,
-        blast_boosts_core::errors::invalid_initialization_observation!(),
-    );
-    assert_seed_venue_ready(&observation);
+    assert!(observation.position_base() == 0, blast_boosts_core::errors::invalid_initialization_observation!());
     self.assert_within_nav_cap(seed_nav);
 
     let target_notional = accounting_math::target_notional_down(
@@ -232,8 +230,7 @@ public fun assert_order_notional_allowed<Product>(
 /// Activates one fully observed long or short seed.
 ///
 /// Returns the seed's reserve-excluded shareholder NAV in atomic collateral
-/// units. The adapter must authenticate the linear observation before calling
-/// this function. Every lifecycle, accounting, price, position, venue,
+/// units and the priced seed position. Every lifecycle, accounting, price,
 /// capacity, leverage, and minimum-operation guard runs before reserve or
 /// lifecycle mutation. No administrative witness is accepted after State
 /// construction.
@@ -244,7 +241,7 @@ public fun initialize<Product>(
     base_decimals: u8,
     collateral_decimals: u8,
     now_ms: u64,
-): u64 {
+): (u64, ActivePosition) {
     self.lifecycle.assert_can_activate();
     assert!(
         base_decimals <= constants::max_asset_decimals!()
@@ -255,12 +252,12 @@ public fun initialize<Product>(
     // The units are pure facts about the assets; the seed is valued in them below.
     self.base_unit = 10u64.pow(base_decimals);
     self.collateral_unit = 10u64.pow(collateral_decimals);
-    let seed_nav = validated_initialization_nav(self, observation, seed_reserve, now_ms);
+    let (seed_nav, seeded) = validated_initialization_nav(self, observation, seed_reserve, now_ms);
 
     self.lifecycle.activate();
     self.maintenance_reserve = seed_reserve;
 
-    seed_nav
+    (seed_nav, seeded)
 }
 
 // --- Active Operations ---
@@ -275,19 +272,6 @@ public fun active_constraints<Product>(self: &State<Product>): (PositionSide, u6
     self.lifecycle.assert_active();
 
     (self.vault_policy.side(), self.max_order_notional)
-}
-
-/// Consumes an intermediate active observation at the operation's fixed price pair.
-public fun assert_active_observation<Product>(
-    self: &State<Product>, observation: PositionObservation, base_price: u64, collateral_price: u64, now_ms: u64,
-) {
-    self.lifecycle.assert_active();
-
-    let position = validated_active_position(self, observation, now_ms);
-    assert!(
-        position.is_priced_at(base_price, collateral_price),
-        blast_boosts_core::errors::active_checkpoint_changed!(),
-    );
 }
 
 /// Applies max slippage to ordinary active mint and redemption sessions.
@@ -350,14 +334,8 @@ public fun admin_fee<Product>(self: &MintPlan<Product>): u64 { self.admin_fee }
 /// Returns the sealed input for completed adapter accounting facts.
 public fun mint_deposit<Product>(self: &MintPlan<Product>): u64 { self.deposit }
 
-/// Sealed base oracle price used to size this mint.
-public fun mint_base_price<Product>(self: &MintPlan<Product>): u64 { self.before.base_price }
-
-/// Sealed collateral price used to size this mint.
-public fun mint_collateral_price<Product>(self: &MintPlan<Product>): u64 { self.before.collateral_price }
-
-/// Venue lot size sealed with the mint plan.
-public fun mint_lot_size<Product>(self: &MintPlan<Product>): u64 { self.before.lot_size }
+/// The position the mint was priced against; the adapter trades at its pair and lot.
+public fun mint_position<Product>(self: &MintPlan<Product>): ActivePosition { self.before }
 
 /// Completes a full proportional fill and credits only its reserve allocation.
 /// The credited contribution is capped at the deposit net of the whole fee, so
@@ -441,14 +419,8 @@ public fun prepare_redemption<Product>(
 /// Returns the full reduce-only order amount; flat redemptions require no order.
 public fun base_to_sell<Product>(self: &RedemptionPlan<Product>): u64 { self.base_to_sell }
 
-/// Sealed base oracle price used by the attributable close.
-public fun redemption_base_price<Product>(self: &RedemptionPlan<Product>): u64 { self.before.base_price }
-
-/// Sealed collateral price used by the attributable close.
-public fun redemption_collateral_price<Product>(self: &RedemptionPlan<Product>): u64 { self.before.collateral_price }
-
-/// Venue lot size sealed with the redemption plan.
-public fun redemption_lot_size<Product>(self: &RedemptionPlan<Product>): u64 { self.before.lot_size }
+/// The position the redemption was priced against.
+public fun redemption_position<Product>(self: &RedemptionPlan<Product>): ActivePosition { self.before }
 
 /// Shares the redeemer must burn.
 public fun redemption_shares<Product>(self: &RedemptionPlan<Product>): u64 { self.shares }
@@ -581,14 +553,8 @@ public fun rebalance_order<Product>(self: &State<Product>, plan: &RebalancePlan<
     (self.reduction_order(position, nav), false, wide)
 }
 
-/// Sealed base oracle price the rebalance sizes and proves execution against.
-public fun base_price<Product>(self: &RebalancePlan<Product>): u64 { self.before.base_price }
-
-/// Sealed collateral price the rebalance sizes and proves execution against.
-public fun collateral_price<Product>(self: &RebalancePlan<Product>): u64 { self.before.collateral_price }
-
-/// Venue lot size sealed with the rebalance plan.
-public fun lot_size<Product>(self: &RebalancePlan<Product>): u64 { self.before.lot_size }
+/// The position the rebalance was priced against.
+public fun rebalance_position<Product>(self: &RebalancePlan<Product>): ActivePosition { self.before }
 
 /// The current authenticated ratio alone selects ordinary or wider max slippage.
 public fun assert_rebalance_execution<Product>(
@@ -925,6 +891,20 @@ public fun maintenance_reserve<Product>(self: &State<Product>): u64 {
     self.maintenance_reserve
 }
 
+// --- Priced Position Reads ---
+
+public fun equity(self: &ActivePosition): u64 { self.equity }
+
+public fun base(self: &ActivePosition): u64 { self.base }
+
+public fun notional(self: &ActivePosition): u64 { self.notional }
+
+public fun lot_size(self: &ActivePosition): u64 { self.lot_size }
+
+public fun base_price(self: &ActivePosition): u64 { self.base_price }
+
+public fun collateral_price(self: &ActivePosition): u64 { self.collateral_price }
+
 // === Private Functions ===
 
 /// Returns whether the position was valued at exactly this oracle pair.
@@ -1010,55 +990,36 @@ fun validated_active_position<Product>(
     now_ms: u64,
 ): ActivePosition {
     self.assert_observation_priced(&observation, now_ms);
-
-    let flat = observation.position_base() == 0 && observation.position_collateral() == 0;
     assert!(
-        flat || observation.observed_side() == self.vault_policy.side(),
+        observation.position_base() == 0 || observation.observed_side() == self.vault_policy.side(),
         blast_boosts_core::errors::invalid_position_observation!(),
-    );
-    assert!(
-        self.is_notional_consistent(&observation),
-        blast_boosts_core::errors::invalid_position_observation!(),
-    );
-    assert!(
-        observation.pending_order_count() == 0 && observation.is_margin_safe()
-            && observation.is_venue_operational() && observation.is_checkpoint_clean(),
-        blast_boosts_core::errors::active_observation_unusable!(),
     );
     assert!(
         accounting_math::is_shareholder_nav_positive(observation.venue_equity(), self.maintenance_reserve),
         blast_boosts_core::errors::invalid_nav!(),
     );
 
+    self.priced_position(observation)
+}
+
+/// Reads a consumed observation into a position priced at its own pair; the
+/// notional is the base valued at that pair, rounded up.
+fun priced_position<Product>(self: &State<Product>, observation: PositionObservation): ActivePosition {
+    let (base_price, collateral_price) = (observation.base_oracle().price(), observation.collateral_oracle().price());
+    let base = observation.position_base();
     let position = ActivePosition {
         equity: observation.venue_equity(),
-        base: observation.position_base(),
-        notional: observation.position_collateral(),
+        base,
+        notional: rebalance_math::oracle_notional_up(
+            base, base_price, collateral_price, self.base_unit, self.collateral_unit,
+        ),
         lot_size: observation.lot_size(),
-        base_price: observation.base_oracle().price(),
-        collateral_price: observation.collateral_oracle().price(),
+        base_price,
+        collateral_price,
     };
     observation.destroy();
 
     position
-}
-
-/// Returns whether the adapter's notional agrees with the base valued at the same oracle pair.
-///
-/// The leverage gates trust `position_collateral` while sizing values `base`
-/// itself, so the two must agree to within one lot: the venue may value a
-/// position with its own rounding, never with a different price.
-fun is_notional_consistent<Product>(self: &State<Product>, observation: &PositionObservation): bool {
-    let base_price = observation.base_oracle().price();
-    let collateral_price = observation.collateral_oracle().price();
-    let priced = rebalance_math::oracle_notional_up(
-        observation.position_base(), base_price, collateral_price, self.base_unit, self.collateral_unit,
-    );
-    let one_lot = rebalance_math::oracle_notional_up(
-        observation.lot_size(), base_price, collateral_price, self.base_unit, self.collateral_unit,
-    );
-
-    observation.position_collateral().diff(priced) <= one_lot
 }
 
 /// Rejects an observation whose oracle pair is stale, uncertain, or diverges from the venue mark.
@@ -1106,73 +1067,35 @@ fun seed_nav<Product>(
     accounting_math::shareholder_nav(venue_equity, seed_reserve)
 }
 
-/// Rejects a seed observation whose venue cannot take the opening position, one code per cause.
-fun assert_seed_venue_ready(observation: &PositionObservation) {
-    assert!(
-        observation.pending_order_count() == 0,
-        blast_boosts_core::errors::initialization_orders_not_empty!(),
-    );
-    assert!(
-        observation.is_venue_operational(),
-        blast_boosts_core::errors::initialization_venue_not_operational!(),
-    );
-    assert!(
-        observation.is_checkpoint_clean(),
-        blast_boosts_core::errors::initialization_checkpoint_dirty!(),
-    );
-    assert!(
-        observation.is_margin_safe(),
-        blast_boosts_core::errors::initialization_margin_unsafe!(),
-    );
-}
-
 /// Consumes and validates a complete seed without mutable access to State.
 fun validated_initialization_nav<Product>(
     self: &State<Product>,
     observation: PositionObservation,
     seed_reserve: u64,
     now_ms: u64,
-): u64 {
+): (u64, ActivePosition) {
     let seed_nav = self.seed_nav(&observation, seed_reserve, now_ms);
     assert!(
         observation.observed_side() == self.vault_policy.side(),
         blast_boosts_core::errors::invalid_initialization_observation!(),
     );
-    assert_seed_venue_ready(&observation);
     self.assert_within_nav_cap(seed_nav);
 
-    let notional = observation.position_collateral();
+    let seeded = self.priced_position(observation);
     assert!(
-        self.vault_policy.rebalance_policy().is_leverage_within_band(notional, seed_nav),
+        self.vault_policy.rebalance_policy().is_leverage_within_band(seeded.notional, seed_nav),
         blast_boosts_core::errors::initialization_leverage_unhealthy!(),
     );
     assert!(
-        seed_reserve <= self.vault_policy.reserve_cap(notional),
+        seed_reserve <= self.vault_policy.reserve_cap(seeded.notional),
         blast_boosts_core::errors::seed_reserve_above_cap!(),
     );
     assert!(
-        observation::is_position_structurally_valid(
-            observation.position_base(),
-            notional,
-            observation.lot_size(),
-        ),
-        blast_boosts_core::errors::invalid_position_observation!(),
-    );
-    assert!(
-        self.is_notional_consistent(&observation),
-        blast_boosts_core::errors::invalid_position_observation!(),
-    );
-    assert!(
-        accounting_math::is_base_above_min_order(
-            observation.position_base(),
-            observation.lot_size(),
-            self.vault_policy.min_order_lots(),
-        ),
+        accounting_math::is_base_above_min_order(seeded.base, seeded.lot_size, self.vault_policy.min_order_lots()),
         blast_boosts_core::errors::initialization_base_below_min_order!(),
     );
-    observation.destroy();
 
-    seed_nav
+    (seed_nav, seeded)
 }
 
 // === Test-Only Functions ===

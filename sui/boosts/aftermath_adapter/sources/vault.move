@@ -108,7 +108,7 @@ public fun begin_shutdown<Product>(
     self: &mut Vault<Product>,
     protocol: &Protocol,
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
-    reason: blast_boosts_core::lifecycle::ShutdownReason,
+    reason: ShutdownReason,
 ) {
     protocol.assert_current();
     admin_witness.assert_role(domain::shutdown_admin_role());
@@ -298,7 +298,7 @@ public(package) fun initialize<Product>(
     seed_reserve: u64,
     collateral_decimals: u8,
     now_ms: u64,
-): u64 {
+): (u64, ActivePosition) {
     self.state.initialize(observation, seed_reserve, constants::base_decimals!(), collateral_decimals, now_ms)
 }
 
@@ -362,13 +362,6 @@ public(package) fun assert_order_notional_allowed<Product>(
 /// Validates each ordinary active fill against the sealed reference price.
 public(package) fun assert_active_execution<Product>(self: &Vault<Product>, reference: u64, executed: u64) {
     self.state.assert_active_execution(reference, executed);
-}
-
-/// Validates intermediate margin and prices without persisting an economic checkpoint.
-public(package) fun assert_active_observation<Product>(
-    self: &Vault<Product>, observation: PositionObservation, base_price: u64, collateral_price: u64, now_ms: u64,
-) {
-    self.state.assert_active_observation(observation, base_price, collateral_price, now_ms);
 }
 
 // --- Mint ---
@@ -821,7 +814,8 @@ use blast_boosts_core::{
     observation::{Self as observation, PositionObservation, PriceObservation},
     policy::{PositionSide, VaultPolicy},
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
-    state::{Self, DonationPlan, MintPlan, RebalancePlan, RedemptionPlan, State},
+    lifecycle::ShutdownReason,
+    state::{Self, ActivePosition, DonationPlan, MintPlan, RebalancePlan, RedemptionPlan, State},
 };
 
 use perpetuals::{account::Account, clearing_house::{ClearingHouse, SessionSummary}, registry::Registry};

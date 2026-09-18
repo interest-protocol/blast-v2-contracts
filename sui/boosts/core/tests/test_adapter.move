@@ -23,6 +23,9 @@ const BPS: u64 = 10_000;
 const SEED_SHARE_SCALE: u64 = 1_000;
 const MAX_ORDERS: u64 = 16;
 const ORACLE_LAG_MS: u64 = 1_000;
+
+/// The venue cannot serve a priced operation: paused, under margin, orders open, or drifted.
+const EVenueNotReady: u64 = 1;
 const ROOT: address = @0xA;
 const ISSUER: address = @0xB;
 
@@ -123,17 +126,21 @@ public fun base_for_notional(self: &Venue, notional: u64): u64 {
 }
 
 /// One observation of the account at this instant, priced by oracles published `ORACLE_LAG_MS` ago.
+///
+/// Like the real adapter, this refuses a venue that is paused, under margin,
+/// carrying orders, or drifted from the last accepted checkpoint before the
+/// core sees anything.
 public fun observe(self: &Venue): PositionObservation {
+    assert!(
+        self.pending_orders == 0 && self.margin_safe && self.operational && self.checkpoint_clean,
+        EVenueNotReady,
+    );
+
     observation::new_position(
         self.equity,
         self.base,
-        self.notional(),
         self.lot_size,
         self.side,
-        self.pending_orders,
-        self.margin_safe,
-        self.operational,
-        self.checkpoint_clean,
         self.oracle(self.base_price),
         self.oracle(self.collateral_price),
         self.base_price,
@@ -320,7 +327,7 @@ public fun activate(self: &mut Vault, seed: u64, seed_reserve: u64): u64 {
     };
     assert!(collateral_price == self.venue.collateral_price);
 
-    let seed_nav = self.state.initialize(
+    let (seed_nav, _) = self.state.initialize(
         self.venue.observe(), seed_reserve, BASE_DECIMALS, COLLATERAL_DECIMALS, self.venue.now_ms,
     );
     self.locked = seed_nav * SEED_SHARE_SCALE;
@@ -347,13 +354,13 @@ public fun mint_with_fee_limit(self: &mut Vault, deposit: u64, minimum_shares: u
     let now_ms = self.venue.now_ms;
     let plan = self.state.prepare_mint(self.venue.observe(), deposit, self.supply, minimum_shares, now_ms);
     assert!(plan.mint_deposit() == deposit && plan.admin_fee() == admin_fee);
-    assert!(plan.mint_lot_size() == self.venue.lot_size);
-    let (base_price, collateral_price) = (plan.mint_base_price(), plan.mint_collateral_price());
+    let priced = plan.mint_position();
+    assert!(priced.lot_size() == self.venue.lot_size);
+    let base_price = priced.base_price();
     let (_, cap) = self.state.active_constraints();
 
     self.admin_cash = self.admin_cash + plan.admin_fee();
     self.venue.deposit(deposit - plan.admin_fee());
-    self.state.assert_active_observation(self.venue.observe(), base_price, collateral_price, now_ms);
 
     let mut remaining = plan.base_to_buy();
     let cap_base = self.venue.base_for_notional(cap);
@@ -365,8 +372,7 @@ public fun mint_with_fee_limit(self: &mut Vault, deposit: u64, minimum_shares: u
         let (executed, filled) = self.venue.fill(order, true);
         self.state.assert_active_execution(base_price, executed);
         self.state.assert_order_notional_allowed(self.venue.notional_of(filled));
-        self.state.assert_active_observation(self.venue.observe(), base_price, collateral_price, now_ms);
-        remaining = remaining - filled;
+            remaining = remaining - filled;
         orders = orders + 1;
     };
 
@@ -397,9 +403,10 @@ public fun redeem_with_fee_limit(self: &mut Vault, shares: u64, minimum_output: 
     let now_ms = self.venue.now_ms;
     let plan = self.state.prepare_redemption(self.venue.observe(), shares, self.supply, minimum_output, now_ms);
     let (_, redeem_bps, admin_share_bps) = self.state.fee_settings();
-    assert!(plan.redemption_shares() == shares && plan.redemption_lot_size() == self.venue.lot_size);
+    let priced = plan.redemption_position();
+    assert!(plan.redemption_shares() == shares && priced.lot_size() == self.venue.lot_size);
     assert!(plan.redemption_fee_bps() == redeem_bps && plan.redemption_admin_share_bps() == admin_share_bps);
-    let (base_price, collateral_price) = (plan.redemption_base_price(), plan.redemption_collateral_price());
+    let (base_price, collateral_price) = (priced.base_price(), priced.collateral_price());
     let base_after_sell = plan.base_after_sell();
     let (_, cap) = self.state.active_constraints();
 
@@ -413,8 +420,7 @@ public fun redeem_with_fee_limit(self: &mut Vault, shares: u64, minimum_output: 
         let (executed, filled) = self.venue.fill(order, false);
         self.state.assert_active_execution(base_price, executed);
         self.state.assert_order_notional_allowed(self.venue.notional_of(filled));
-        self.state.assert_active_observation(self.venue.observe(), base_price, collateral_price, now_ms);
-        remaining = remaining - filled;
+            remaining = remaining - filled;
         orders = orders + 1;
     };
     self.last_orders = orders;
@@ -443,7 +449,7 @@ public fun needs_rebalance(self: &Vault): bool {
 public fun rebalance(self: &mut Vault): u64 {
     let now_ms = self.venue.now_ms;
     let mut plan = self.state.prepare_rebalance(self.venue.observe(), self.venue.taker_fee_bps, now_ms);
-    let base_price = plan.base_price();
+    let base_price = plan.rebalance_position().base_price();
     let mut orders = 0;
     while (orders < MAX_ORDERS) {
         let (requested, increase, _) = self.state.rebalance_order(&plan);

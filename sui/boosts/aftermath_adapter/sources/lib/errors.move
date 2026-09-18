@@ -204,6 +204,10 @@ const ETerminalVenueUnsettled: u64 = 54;
 /// A close requires positive exact whole-lot base in the bound product direction.
 const EInvalidUnwindExposure: u64 = 55;
 
+#[test_only]
+/// A priced operation found the venue with open orders, unsafe margin, or a paused or frozen market.
+const EVenueNotReady: u64 = 56;
+
 // === Package Functions ===
 
 macro public(package) fun invalid_risk_module_witness_type(): u64 { 2 }
@@ -251,3 +255,4 @@ macro public(package) fun invalid_seed_funder(): u64 { 52 }
 macro public(package) fun unresolved_checkpoint(): u64 { 53 }
 macro public(package) fun terminal_venue_unsettled(): u64 { 54 }
 macro public(package) fun invalid_unwind_exposure(): u64 { 55 }
+macro public(package) fun venue_not_ready(): u64 { 56 }

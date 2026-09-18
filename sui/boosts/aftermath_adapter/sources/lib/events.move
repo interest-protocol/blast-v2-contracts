@@ -125,7 +125,6 @@ public struct VaultInitialized<phantom Product> has copy, drop {
     locked_shares: u64,
     seed_funder: address,
     position_base: u64,
-    position_collateral: u64,
     lot_size: u64,
     position_side: PositionSide,
     position_imr: u256,
@@ -170,7 +169,7 @@ public struct MaxOrderNotionalUpdated<phantom Product> has copy, drop {
 /// Emitted after shutdown-role authorization permanently stops ordinary operations.
 public struct ShutdownBegun<phantom Product> has copy, drop {
     vault_id: ID,
-    reason: blast_boosts_core::lifecycle::ShutdownReason,
+    reason: ShutdownReason,
 }
 
 /// Completed live-setting update; immutable caps and existing balances do not change.
@@ -213,7 +212,7 @@ public(package) fun rebalanced<Product>(
     vault_id: ID, equity_before: u64, equity_after: u64, base_before: u64, base_after: u64,
     increase: bool, reserve_after: u64, admin_cash_after: u64, supply_after: u64, checkpoint: Checkpoint,
 ) {
-    blast_boosts_aftermath::blast_events::emit_event(Rebalanced<Product> {
+    emit_event(Rebalanced<Product> {
         vault_id, equity_before, equity_after, base_before, base_after, increase,
         reserve_after, admin_cash_after, supply_after, checkpoint,
     });
@@ -224,7 +223,7 @@ public(package) fun redeemed<Product>(
     fee_bps: u64, admin_share_bps: u64, reserve_after: u64, admin_cash_after: u64,
     supply_after: u64, checkpoint: Checkpoint,
 ) {
-    blast_boosts_aftermath::blast_events::emit_event(Redeemed<Product> {
+    emit_event(Redeemed<Product> {
         vault_id, shares, net, fee, admin_fee, reserve_fee, fee_bps, admin_share_bps,
         reserve_after, admin_cash_after, supply_after, checkpoint,
     });
@@ -235,20 +234,20 @@ public(package) fun minted<Product>(
     reserve_fee: u64, fee_bps: u64, admin_share_bps: u64, reserve_after: u64, admin_cash_after: u64,
     supply_after: u64, checkpoint: Checkpoint,
 ) {
-    blast_boosts_aftermath::blast_events::emit_event(Minted<Product> {
+    emit_event(Minted<Product> {
         vault_id, deposit, shares, contribution, fee, admin_fee, reserve_fee, fee_bps, admin_share_bps,
         reserve_after, admin_cash_after, supply_after, checkpoint,
     });
 }
 
 public(package) fun donated<Product>(vault_id: ID, amount: u64, reserve_after: u64, checkpoint: Checkpoint) {
-    blast_boosts_aftermath::blast_events::emit_event(Donated<Product> {
+    emit_event(Donated<Product> {
         vault_id, amount, reserve_after, checkpoint,
     });
 }
 
 public(package) fun admin_fees_withdrawn<Product>(vault_id: ID, amount: u64, remaining: u64) {
-    blast_boosts_aftermath::blast_events::emit_event(AdminFeesWithdrawn<Product> {
+    emit_event(AdminFeesWithdrawn<Product> {
         vault_id, amount, remaining,
     });
 }
@@ -262,14 +261,14 @@ public(package) fun fees_updated<Product>(
     redeem_bps: u64,
     admin_share_bps: u64,
 ) {
-    blast_boosts_aftermath::blast_events::emit_event(FeesUpdated<Product> {
+    emit_event(FeesUpdated<Product> {
         vault_id, previous_mint_bps, previous_redeem_bps, previous_admin_bps,
         mint_bps, redeem_bps, admin_share_bps,
     });
 }
 
 public(package) fun nav_cap_updated<Product>(vault_id: ID, previous_nav_cap: u64, nav_cap: u64) {
-    blast_boosts_aftermath::blast_events::emit_event(NavCapUpdated<Product> {
+    emit_event(NavCapUpdated<Product> {
         vault_id, previous_nav_cap, nav_cap,
     });
 }
@@ -282,7 +281,7 @@ public(package) fun vault_issued<Product>(
     max_order_notional: u64,
     nav_cap: u64,
 ) {
-    blast_boosts_aftermath::blast_events::emit_event(VaultIssued<Product> {
+    emit_event(VaultIssued<Product> {
         treasury_cap_id,
         metadata_cap_id,
         risk_module_witness,
@@ -308,13 +307,12 @@ public(package) fun vault_initialized<Product>(
     locked_shares: u64,
     seed_funder: address,
     position_base: u64,
-    position_collateral: u64,
     lot_size: u64,
     position_side: PositionSide,
     position_imr: u256,
     checkpoint: Checkpoint,
 ) {
-    blast_boosts_aftermath::blast_events::emit_event(
+    emit_event(
         VaultInitialized<Product> {
             vault_id,
             account_object_id,
@@ -331,7 +329,6 @@ public(package) fun vault_initialized<Product>(
             locked_shares,
             seed_funder,
             position_base,
-            position_collateral,
             lot_size,
             position_side,
             position_imr,
@@ -352,7 +349,7 @@ public(package) fun funding_settled<Product>(
     previous_checkpoint: Checkpoint,
     checkpoint: Checkpoint,
 ) {
-    blast_boosts_aftermath::blast_events::emit_event(
+    emit_event(
         FundingSettled<Product> {
             vault_id,
             is_cost,
@@ -373,7 +370,7 @@ public(package) fun health_synchronized<Product>(
     reason: u8,
     checkpoint: Checkpoint,
 ) {
-    blast_boosts_aftermath::blast_events::emit_event(
+    emit_event(
         HealthSynchronized<Product> {
             vault_id,
             reason,
@@ -391,7 +388,7 @@ public(package) fun risk_module_witness_rotated<Product>(
     previous_witness: TypeName,
     new_witness: TypeName,
 ) {
-    blast_boosts_aftermath::blast_events::emit_event(
+    emit_event(
         RiskModuleWitnessRotated<Product> {
             vault_id,
             previous_witness,
@@ -401,7 +398,7 @@ public(package) fun risk_module_witness_rotated<Product>(
 }
 
 public(package) fun max_order_notional_updated<Product>(vault_id: ID, previous: u64, max_order_notional: u64) {
-    blast_boosts_aftermath::blast_events::emit_event(
+    emit_event(
         MaxOrderNotionalUpdated<Product> { vault_id, previous, max_order_notional },
     );
 }
@@ -410,7 +407,7 @@ public(package) fun shutdown_finalized<Product>(
     vault_id: ID, recovered_cash: u64, eligible_supply: u64, seed_funder_payment: Option<address>,
     checkpoint: Checkpoint, unrecoverable_collateral_raw: u256,
 ) {
-    blast_boosts_aftermath::blast_events::emit_event(ShutdownFinalized<Product> {
+    emit_event(ShutdownFinalized<Product> {
         vault_id, recovered_cash, eligible_supply, seed_funder_payment, checkpoint, unrecoverable_collateral_raw,
     });
 }
@@ -419,7 +416,7 @@ public(package) fun unwind_progress<Product>(
     vault_id: ID, before: Checkpoint, after_funding: Option<Checkpoint>, after: Checkpoint,
     market_orders: u64, filled_quote: Option<u256>,
 ) {
-    blast_boosts_aftermath::blast_events::emit_event(UnwindProgress<Product> {
+    emit_event(UnwindProgress<Product> {
         vault_id, before, after_funding, after, market_orders, filled_quote,
     });
 }
@@ -427,13 +424,13 @@ public(package) fun unwind_progress<Product>(
 public(package) fun shutdown_redeemed<Product>(
     vault_id: ID, shares: u64, cash_paid: u64, cash_remaining: u64, eligible_remaining: u64,
 ) {
-    blast_boosts_aftermath::blast_events::emit_event(ShutdownRedeemed<Product> {
+    emit_event(ShutdownRedeemed<Product> {
         vault_id, shares, cash_paid, cash_remaining, eligible_remaining,
     });
 }
 
-public(package) fun shutdown_begun<Product>(vault_id: ID, reason: blast_boosts_core::lifecycle::ShutdownReason) {
-    blast_boosts_aftermath::blast_events::emit_event(
+public(package) fun shutdown_begun<Product>(vault_id: ID, reason: ShutdownReason) {
+    emit_event(
         ShutdownBegun<Product> { vault_id, reason },
     );
 }
@@ -503,7 +500,7 @@ public fun rebalanced_amounts<Product>(self: &Rebalanced<Product>): (u64, u64, u
 public fun collect<T: copy + drop>(): vector<T> {
     let mut out = vector[];
 
-    sui::event::events_by_type<blast_boosts_aftermath::blast_events::Event<T>>().do!(
+    events_by_type<Event<T>>().do!(
         |event| out.push_back(event.unwrap()),
     );
 
@@ -553,7 +550,6 @@ public fun vault_initialized_fields<Product>(
     u64,
     u64,
     u64,
-    u64,
     PositionSide,
     u256,
     Checkpoint,
@@ -573,7 +569,6 @@ public fun vault_initialized_fields<Product>(
         self.seed_shareholder_nav,
         self.locked_shares,
         self.position_base,
-        self.position_collateral,
         self.lot_size,
         self.position_side,
         self.position_imr,
@@ -630,7 +625,7 @@ public fun nav_cap_updated_fields<Product>(self: &NavCapUpdated<Product>): (ID, 
 }
 
 #[test_only]
-public fun shutdown_reason<Product>(self: &ShutdownBegun<Product>): blast_boosts_core::lifecycle::ShutdownReason {
+public fun shutdown_reason<Product>(self: &ShutdownBegun<Product>): ShutdownReason {
     self.reason
 }
 
@@ -659,8 +654,11 @@ public fun donated_fields<Product>(self: &Donated<Product>): (ID, u64, u64, Chec
 
 // === Imports ===
 
-use blast_boosts_aftermath::venue_account::Checkpoint;
+use blast_boosts_aftermath::{blast_events::{Event, emit_event}, venue_account::Checkpoint};
 
-use blast_boosts_core::policy::{PositionSide, VaultPolicy};
+use blast_boosts_core::{lifecycle::ShutdownReason, policy::{PositionSide, VaultPolicy}};
 
 use std::type_name::TypeName;
+
+#[test_only]
+use sui::event::events_by_type;
