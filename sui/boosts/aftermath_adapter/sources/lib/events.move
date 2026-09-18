@@ -1,15 +1,6 @@
 /// Replay-complete Aftermath adapter events.
 module blast_boosts_aftermath::events;
 
-// === Constants ===
-
-/// A sync found a mutation no vault operation explains; the vault now holds an
-/// unresolved diagnostic and refuses priced operations until it clears.
-const HEALTH_DIAGNOSTIC_RAISED: u8 = 1;
-
-/// A later sync, or terminal settlement, produced a clean checkpoint again.
-const HEALTH_DIAGNOSTIC_CLEARED: u8 = 2;
-
 // === Public Types ===
 
 /// Completed close-only progress with exact raw venue effects.
@@ -30,7 +21,6 @@ public struct ShutdownFinalized<phantom Product> has copy, drop {
     vault_id: ID,
     recovered_cash: u64,
     eligible_supply: u64,
-    seed_funder_payment: Option<address>,
     checkpoint: Checkpoint,
     // Nonnegative collateral-token IFixed, strictly below 10^12 raw units (one USDC atom).
     unrecoverable_collateral_raw: u256,
@@ -122,7 +112,6 @@ public struct VaultInitialized<phantom Product> has copy, drop {
     seed_reserve: u64,
     seed_shareholder_nav: u64,
     locked_shares: u64,
-    seed_funder: address,
     position_base: u64,
     lot_size: u64,
     position_side: PositionSide,
@@ -144,10 +133,11 @@ public struct FundingSettled<phantom Product> has copy, drop {
     checkpoint: Checkpoint,
 }
 
-/// Diagnostic novelty or reconciliation; ordinary health never changes lifecycle.
-public struct HealthSynchronized<phantom Product> has copy, drop {
+/// A sync found the venue in a state no vault operation explains. The accepted
+/// checkpoint stands and priced operations are refused until a later sync
+/// finds the venue explainable again; every such sync emits this event.
+public struct CheckpointDrifted<phantom Product> has copy, drop {
     vault_id: ID,
-    reason: u8,
     checkpoint: Checkpoint,
 }
 
@@ -295,7 +285,6 @@ public(package) fun vault_initialized<Product>(
     seed_reserve: u64,
     seed_shareholder_nav: u64,
     locked_shares: u64,
-    seed_funder: address,
     position_base: u64,
     lot_size: u64,
     position_side: PositionSide,
@@ -317,7 +306,6 @@ public(package) fun vault_initialized<Product>(
             seed_reserve,
             seed_shareholder_nav,
             locked_shares,
-            seed_funder,
             position_base,
             lot_size,
             position_side,
@@ -355,23 +343,9 @@ public(package) fun funding_settled<Product>(
     );
 }
 
-public(package) fun health_synchronized<Product>(
-    vault_id: ID,
-    reason: u8,
-    checkpoint: Checkpoint,
-) {
-    emit_event(
-        HealthSynchronized<Product> {
-            vault_id,
-            reason,
-            checkpoint,
-        },
-    );
+public(package) fun checkpoint_drifted<Product>(vault_id: ID, checkpoint: Checkpoint) {
+    emit_event(CheckpointDrifted<Product> { vault_id, checkpoint });
 }
-
-public(package) fun diagnostic_raised_reason(): u8 { HEALTH_DIAGNOSTIC_RAISED }
-
-public(package) fun diagnostic_cleared_reason(): u8 { HEALTH_DIAGNOSTIC_CLEARED }
 
 public(package) fun max_order_notional_updated<Product>(vault_id: ID, previous: u64, max_order_notional: u64) {
     emit_event(
@@ -380,11 +354,11 @@ public(package) fun max_order_notional_updated<Product>(vault_id: ID, previous: 
 }
 
 public(package) fun shutdown_finalized<Product>(
-    vault_id: ID, recovered_cash: u64, eligible_supply: u64, seed_funder_payment: Option<address>,
+    vault_id: ID, recovered_cash: u64, eligible_supply: u64,
     checkpoint: Checkpoint, unrecoverable_collateral_raw: u256,
 ) {
     emit_event(ShutdownFinalized<Product> {
-        vault_id, recovered_cash, eligible_supply, seed_funder_payment, checkpoint, unrecoverable_collateral_raw,
+        vault_id, recovered_cash, eligible_supply, checkpoint, unrecoverable_collateral_raw,
     });
 }
 
@@ -423,9 +397,9 @@ public fun unwind_progress_fields<Product>(
 #[test_only]
 public fun shutdown_finalized_fields<Product>(
     self: &ShutdownFinalized<Product>,
-): (ID, u64, u64, Option<address>, Checkpoint, u256) {
+): (ID, u64, u64, Checkpoint, u256) {
     (
-        self.vault_id, self.recovered_cash, self.eligible_supply, self.seed_funder_payment,
+        self.vault_id, self.recovered_cash, self.eligible_supply,
         self.checkpoint, self.unrecoverable_collateral_raw,
     )
 }
@@ -454,11 +428,6 @@ public fun rebalanced_checkpoint_fields<Product>(self: &Rebalanced<Product>): (I
 public fun redeemed_amounts<Product>(self: &Redeemed<Product>): vector<u64> {
     vector[self.shares, self.net, self.fee, self.admin_fee, self.reserve_fee,
         self.fee_bps, self.admin_share_bps, self.reserve_after, self.admin_cash_after, self.supply_after]
-}
-
-#[test_only]
-public fun vault_initialized_seed_funder<Product>(self: &VaultInitialized<Product>): address {
-    self.seed_funder
 }
 
 #[test_only]
@@ -570,14 +539,8 @@ public fun funding_settled_fields<Product>(
 }
 
 #[test_only]
-public fun health_synchronized_fields<Product>(
-    self: &HealthSynchronized<Product>,
-): (ID, u8, Checkpoint) {
-    (
-        self.vault_id,
-        self.reason,
-        self.checkpoint,
-    )
+public fun checkpoint_drifted_fields<Product>(self: &CheckpointDrifted<Product>): (ID, Checkpoint) {
+    (self.vault_id, self.checkpoint)
 }
 
 #[test_only]

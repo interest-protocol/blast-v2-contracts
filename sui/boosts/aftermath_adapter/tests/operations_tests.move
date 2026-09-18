@@ -53,7 +53,6 @@ public struct ReplayState has drop {
     supply: u64,
     admin_cash: u64,
     locked_shares: u64,
-    seed_funder: address,
     fees: vector<u64>,
     terminal_cash: u64,
     unrecoverable_collateral_raw: u256,
@@ -322,11 +321,10 @@ fun terminal_claims_exclude_locked_seed_burn_native_shares_and_give_last_claiman
     assert_eq!(vault.state().maintenance_reserve(), 0);
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 7);
     let finalization = events::collect_one<events::ShutdownFinalized<Product>>(0);
-    let (_, recovered, eligible, fallback, checkpoint, remainder) = finalization.shutdown_finalized_fields();
+    let (_, recovered, eligible, checkpoint, remainder) = finalization.shutdown_finalized_fields();
     assert_eq!(remainder, 0);
     assert_eq!(recovered, 13);
     assert_eq!(eligible, 5);
-    assert!(fallback.is_none());
     assert_eq!(checkpoint, terminal_checkpoint());
     let claims = events::collect<events::ShutdownRedeemed<Product>>();
     assert_eq!(claims.length(), 2);
@@ -342,7 +340,7 @@ fun terminal_claims_exclude_locked_seed_burn_native_shares_and_give_last_claiman
 }
 
 #[test]
-fun zero_eligible_supply_sends_all_terminal_cash_to_recorded_funder_not_finalizer() {
+fun zero_eligible_supply_keeps_all_terminal_cash_as_admin_cash() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
@@ -351,16 +349,12 @@ fun zero_eligible_supply_sends_all_terminal_cash_to_recorded_funder_not_finalize
         let recovered = sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!());
         vault.complete_shutdown(terminal_withdrawal(recovered));
         assert_eq!(vault.state().maintenance_reserve(), 0);
-        let (_, cash, eligible, beneficiary, _, remainder) = events::collect_one<events::ShutdownFinalized<Product>>(0).shutdown_finalized_fields();
+        let (_, cash, eligible, _, remainder) = events::collect_one<events::ShutdownFinalized<Product>>(0).shutdown_finalized_fields();
         assert_eq!(remainder, 0);
         assert_eq!(vector[cash, eligible], vector[13, 0]);
-        assert_eq!(beneficiary, option::some(ADMIN));
+        assert_eq!(vault.admin_cash_balance<_, Collateral>(), 13);
+        assert_eq!(vault.terminal_cash_for_testing<_, Collateral>(), 0);
         destroy(vault);
-    });
-    fixture.next_tx!(ADMIN, |fixture| {
-        let returned = fixture.take_collateral();
-        assert_eq!(returned.value(), 13);
-        destroy(returned);
     });
     fixture.end();
 }
@@ -551,21 +545,20 @@ fun event_reducer_reconstructs_a_positive_funding_checkpoint() {
 }
 
 #[test]
-fun recovered_diagnostic_emits_once_without_claiming_lifecycle_failure() {
+fun every_drifted_sync_reports_the_drift_and_a_clean_sync_is_silent() {
     let mut fixture = start();
     let initial = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, initial);
     let dirty = checkpoint_with_market_imr(0, ALLOCATED_FIXED, 10, 20, 10, 20, 2);
     apply_connected_change(&mut vault, dirty, snapshot::unexpected_change());
     apply_connected_change(&mut vault, initial, snapshot::unchanged_change());
-    let recovered = events::collect<events::HealthSynchronized<Product>>();
-    let event = recovered[1];
-    let (_, reason, checkpoint) = event.health_synchronized_fields();
-    assert_eq!(reason, 2);
-    assert_eq!(checkpoint, initial);
-    assert!(vault.unresolved_checkpoint_digest_for_testing().is_none());
-    apply_connected_change(&mut vault, initial, snapshot::unchanged_change());
-    assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 2);
+    let drifted = events::collect<events::CheckpointDrifted<Product>>();
+    assert_eq!(drifted.length(), 1);
+    let (_, checkpoint) = drifted[0].checkpoint_drifted_fields();
+    assert_eq!(checkpoint, dirty);
+    assert_eq!(*vault.venue().checkpoint(), initial);
+    apply_connected_change(&mut vault, dirty, snapshot::unexpected_change());
+    assert_eq!(events::collect<events::CheckpointDrifted<Product>>().length(), 2);
     assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 0);
     destroy(vault);
     fixture.end();
@@ -1227,7 +1220,7 @@ fun a_reserve_equal_to_the_seed_is_rejected() {
 #[test]
 fun locked_share_scaling_accepts_the_largest_seed_nav() {
     assert_eq!(
-        vault::locked_shares_for_testing(std::u64::max_value!() / 1_000),
+        vault::seed_shares_for_testing(std::u64::max_value!() / 1_000),
         std::u64::max_value!() / 1_000 * 1_000,
     );
 }
@@ -1235,7 +1228,7 @@ fun locked_share_scaling_accepts_the_largest_seed_nav() {
 #[test]
 #[expected_failure(abort_code = errors::ELockedSharesOverflow, location = blast_boosts_aftermath::vault)]
 fun locked_share_scaling_rejects_the_first_overflow() {
-    vault::locked_shares_for_testing(std::u64::max_value!() / 1_000 + 1);
+    vault::seed_shares_for_testing(std::u64::max_value!() / 1_000 + 1);
 }
 
 #[test]
@@ -1308,7 +1301,6 @@ fun vault_initialized_event_records_every_activation_primitive() {
         30,
         31,
         32,
-        ADMIN,
         33,
         35,
         policy::short(),
@@ -1317,7 +1309,6 @@ fun vault_initialized_event_records_every_activation_primitive() {
     );
 
     let event = events::collect_one<events::VaultInitialized<Product>>(0);
-    assert_eq!(event.vault_initialized_seed_funder(), ADMIN);
     let (
         vault_id,
         account_object_id,
@@ -1551,20 +1542,14 @@ fun funding_event_records_exact_amount_reserve_effect_and_checkpoint() {
 }
 
 #[test]
-fun health_event_records_stable_reason_and_latest_checkpoint() {
+fun drift_event_records_the_vault_and_the_drifted_checkpoint() {
     let checkpoint = sync_checkpoint(1_000, 100_000_000_000_000, 10, 20, 11, 21, 0, 0, 1);
 
-    events::health_synchronized<Product>(
-        @0xA.to_id(),
-        events::diagnostic_raised_reason(),
-        checkpoint,
-    );
-    let event = events::collect_one<events::HealthSynchronized<Product>>(0);
-    let (vault_id, reason, event_checkpoint) =
-        event.health_synchronized_fields();
+    events::checkpoint_drifted<Product>(@0xA.to_id(), checkpoint);
+    let (vault_id, event_checkpoint) =
+        events::collect_one<events::CheckpointDrifted<Product>>(0).checkpoint_drifted_fields();
 
     assert_eq!(vault_id, @0xA.to_id());
-    assert_eq!(reason, events::diagnostic_raised_reason());
     assert_eq!(event_checkpoint, checkpoint);
 }
 
@@ -1660,7 +1645,7 @@ fun connected_credit_credits_the_buffer_once() {
 
     assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE + 10);
     assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 1);
-    assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 0);
+    assert_eq!(events::collect<events::CheckpointDrifted<Product>>().length(), 0);
     assert_eq!(*vault.venue().checkpoint(), credited);
     destroy(vault);
     fixture.end();
@@ -1693,7 +1678,7 @@ fun connected_second_call_at_the_same_checkpoint_is_exactly_once() {
 
     assert_eq!(vault.state().maintenance_reserve(), 90);
     assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 1);
-    assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 0);
+    assert_eq!(events::collect<events::CheckpointDrifted<Product>>().length(), 0);
     assert_eq!(*vault.venue().checkpoint(), funded);
     destroy(vault);
     fixture.end();
@@ -1725,7 +1710,7 @@ fun connected_permissionless_pre_settlement_debits_the_reserve_exactly_once() {
 
     assert_eq!(vault.state().maintenance_reserve(), 90);
     assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 1);
-    assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 0);
+    assert_eq!(events::collect<events::CheckpointDrifted<Product>>().length(), 0);
     assert_eq!(*vault.venue().checkpoint(), settled);
     destroy(vault);
     fixture.end();
@@ -1767,7 +1752,7 @@ fun connected_external_cost_and_local_income_settle_one_net_checkpoint() {
     assert_eq!(vault.state().maintenance_reserve(), 10);
     let funding_events = events::collect<events::FundingSettled<Product>>();
     assert_eq!(funding_events.length(), 1);
-    assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 0);
+    assert_eq!(events::collect<events::CheckpointDrifted<Product>>().length(), 0);
     assert_eq!(*vault.venue().checkpoint(), after);
     let first = *funding_events.borrow(0);
     let (
@@ -1866,10 +1851,7 @@ fun connected_unresolved_drift_preserves_the_accepted_checkpoint_across_retries(
     assert!(!vault.is_unwinding_for_testing());
     assert_eq!(*vault.venue().checkpoint(), initial);
     assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 0);
-    let synchronized = events::collect_one<events::HealthSynchronized<Product>>(0);
-    let (_, reason, checkpoint) =
-        synchronized.health_synchronized_fields();
-    assert_eq!(reason, events::diagnostic_raised_reason());
+    let (_, checkpoint) = events::collect_one<events::CheckpointDrifted<Product>>(0).checkpoint_drifted_fields();
     assert_eq!(checkpoint, after);
 
     let replay = operations::classify_sync_change_for_testing(
@@ -1880,7 +1862,8 @@ fun connected_unresolved_drift_preserves_the_accepted_checkpoint_across_retries(
         0,
     );
     apply_connected_change(&mut vault, after, replay);
-    assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 1);
+    assert_eq!(events::collect<events::CheckpointDrifted<Product>>().length(), 2);
+    assert_eq!(*vault.venue().checkpoint(), initial);
     assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
     destroy(vault);
     fixture.end();
@@ -1902,7 +1885,7 @@ fun connected_temporary_health_fault_keeps_lifecycle_and_emits_no_mutation() {
 
     assert!(!vault.is_unwinding_for_testing());
     assert_eq!(*vault.venue().checkpoint(), checkpoint);
-    assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 0);
+    assert_eq!(events::collect<events::CheckpointDrifted<Product>>().length(), 0);
 
     let repeated = operations::classify_sync_change_for_testing(
         &checkpoint,
@@ -1912,7 +1895,7 @@ fun connected_temporary_health_fault_keeps_lifecycle_and_emits_no_mutation() {
         0,
     );
     apply_connected_change(&mut vault, checkpoint, repeated);
-    assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 0);
+    assert_eq!(events::collect<events::CheckpointDrifted<Product>>().length(), 0);
     assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 0);
     destroy(vault);
     fixture.end();
@@ -1976,9 +1959,9 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
         &mut replay,
         events::collect_one<events::ShutdownBegun<Product>>(0),
     );
-    replay_health(
+    replay_drift(
         &mut replay,
-        events::collect_one<events::HealthSynchronized<Product>>(0),
+        events::collect_one<events::CheckpointDrifted<Product>>(0),
     );
 
     let actual_binding = vault.venue().binding();
@@ -1999,10 +1982,6 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
     assert_eq!(*replay.checkpoint.borrow(), *vault.venue().checkpoint());
     assert_eq!(*vault.venue().checkpoint(), funded_checkpoint);
     assert_eq!(*replay.unresolved_checkpoint.borrow(), final_checkpoint);
-    assert_eq!(
-        vault.unresolved_checkpoint_digest_for_testing(),
-        option::some(sui::hash::blake2b256(&std::bcs::to_bytes(replay.unresolved_checkpoint.borrow()))),
-    );
 
     destroy(vault);
     fixture.end();
@@ -2030,10 +2009,6 @@ macro fun next_tx($self: &mut Fixture, $sender: address, $body: |&mut Fixture|) 
     let fixture = $self;
     fixture.scenario.next_tx($sender);
     $body(fixture);
-}
-
-fun take_collateral(fixture: &Fixture): Coin<Collateral> {
-    fixture.scenario.take_from_sender()
 }
 
 fun funding_binding(): Binding {
@@ -2145,7 +2120,7 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS), observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
     );
     let (vault, seed_nav, _) = issuance.activate(
-        seeded, SEED_RESERVE, 6, ADMIN, venue_account::new(binding, checkpoint, admin_cap), REFERENCE_TIME_MS, scenario.ctx(),
+        seeded, SEED_RESERVE, 6, venue_account::new(binding, checkpoint, admin_cap), REFERENCE_TIME_MS, scenario.ctx(),
     );
     operations::emit_vault_initialized<Tag>(&vault, SEED_EQUITY, seed_nav, SEED_EQUITY, ABSOLUTE_BASE, LOT_SIZE, side, 1);
 
@@ -2284,7 +2259,7 @@ fun assert_connected_cost(
     assert_eq!(vault.state().maintenance_reserve(), expected_reserve);
     assert_eq!(*vault.venue().checkpoint(), funded);
     assert!(!vault.is_unwinding_for_testing());
-    assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 0);
+    assert_eq!(events::collect<events::CheckpointDrifted<Product>>().length(), 0);
     let event = events::collect_one<events::FundingSettled<Product>>(0);
     let (
         vault_id,
@@ -2405,7 +2380,7 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     let dirty = venue_account::new_checkpoint(13, 0, 1, 1, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, true, 1, 1, 1);
     apply_connected_change(&mut vault, dirty, snapshot::unexpected_change());
-    replay_health(&mut replay, events::collect<events::HealthSynchronized<Tag>>()[0]);
+    replay_drift(&mut replay, events::collect<events::CheckpointDrifted<Tag>>()[0]);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::observed_venue_change_reason());
     let shutdown = events::collect_one<events::ShutdownBegun<Tag>>(0);
     assert_eq!(shutdown.shutdown_reason(), blast_boosts_core::lifecycle::observed_venue_change_reason());
@@ -2423,11 +2398,11 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     let withdrawal = flat.terminal_withdrawal_for_testing(final_checkpoint,
         sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()), false, 1_000_000_000_001);
     vault.complete_shutdown(withdrawal);
-    replay_health(&mut replay, events::collect<events::HealthSynchronized<Tag>>()[1]);
-    let (id, cash, eligible, fallback, checkpoint, remainder) = events::collect_one<events::ShutdownFinalized<Tag>>(0).shutdown_finalized_fields();
+    assert_eq!(events::collect<events::CheckpointDrifted<Tag>>().length(), 1);
+    replay.unresolved_checkpoint = option::none();
+    let (id, cash, eligible, checkpoint, remainder) = events::collect_one<events::ShutdownFinalized<Tag>>(0).shutdown_finalized_fields();
     assert_eq!(id, replay.vault_id);
     assert_eq!(eligible, replay.supply - replay.locked_shares);
-    assert!(fallback.is_none());
     replay.lifecycle = 3;
     replay.maintenance_reserve = 0;
     replay.terminal_cash = cash;
@@ -2447,7 +2422,6 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     assert_eq!(replay.supply, vault.share_supply());
     assert_eq!(*replay.checkpoint.borrow(), *vault.venue().checkpoint());
     assert!(replay.unresolved_checkpoint.is_none());
-    assert!(vault.unresolved_checkpoint_digest_for_testing().is_none());
     let admin = vault.withdraw_admin_fees<_, Collateral>(&fixture.protocol, &witness, 2, fixture.ctx!());
     let (_, paid, remaining) = events::collect_one<events::AdminFeesWithdrawn<Tag>>(0).admin_fees_withdrawn_fields();
     assert_eq!(paid, admin.value());
@@ -2534,13 +2508,14 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag>) 
 
     let dirty = checkpoint_with_market_imr(10, ALLOCATED_FIXED - ATOM_FIXED, 10, 20, 10, 20, 2);
     apply_connected_change(vault, dirty, snapshot::unexpected_change());
-    replay_health(&mut replay, events::collect<events::HealthSynchronized<Tag>>()[0]);
+    replay_drift(&mut replay, events::collect<events::CheckpointDrifted<Tag>>()[0]);
     assert_replay(&replay, vault);
     apply_connected_change(vault, dirty, snapshot::unexpected_change());
-    assert_eq!(events::collect<events::HealthSynchronized<Tag>>().length(), 1);
+    replay_drift(&mut replay, events::collect<events::CheckpointDrifted<Tag>>()[1]);
     assert_replay(&replay, vault);
     apply_connected_change(vault, checkpoint, snapshot::unchanged_change());
-    replay_health(&mut replay, events::collect<events::HealthSynchronized<Tag>>()[1]);
+    assert_eq!(events::collect<events::CheckpointDrifted<Tag>>().length(), 2);
+    replay.unresolved_checkpoint = option::none();
     assert_replay(&replay, vault);
 
     let before = checkpoint_with_market_imr(10, ALLOCATED_FIXED - ATOM_FIXED, 10, 20, 11, 21, 1);
@@ -2551,7 +2526,6 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag>) 
     assert_replay(&replay, vault);
     apply_connected_change(vault, after, snapshot::unchanged_change());
     assert_eq!(events::collect<events::FundingSettled<Tag>>().length(), 1);
-    assert_eq!(events::collect<events::HealthSynchronized<Tag>>().length(), 2);
     assert_replay(&replay, vault);
 }
 
@@ -2607,14 +2581,11 @@ fun assert_replay<Tag>(replay: &ReplayState, vault: &Vault<Tag>) {
     assert_eq!(replay.maintenance_reserve, vault.state().maintenance_reserve());
     assert_eq!(replay.admin_cash, vault.admin_cash_balance<_, Collateral>());
     assert_eq!(replay.supply, vault.share_supply());
-    let (locked, funder) = vault.seed_facts();
+    let locked = vault.locked_shares();
     assert_eq!(replay.locked_shares, locked);
-    assert_eq!(replay.seed_funder, funder);
     let (mint, redeem, admin) = vault.fee_settings_for_testing();
     assert_eq!(replay.fees, vector[mint, redeem, admin]);
     assert_eq!(*replay.checkpoint.borrow(), *vault.venue().checkpoint());
-    let digest = replay.unresolved_checkpoint.map!(|checkpoint| sui::hash::blake2b256(&std::bcs::to_bytes(&checkpoint)));
-    assert_eq!(digest, vault.unresolved_checkpoint_digest_for_testing());
     assert_eq!(replay.lifecycle, 1);
     assert!(!vault.is_unwinding_for_testing());
 }
@@ -2642,7 +2613,6 @@ fun replay_issued<Tag>(event: events::VaultIssued<Tag>): ReplayState {
         supply: 0,
         admin_cash: 0,
         locked_shares: 0,
-        seed_funder: @0x0,
         fees: vector[mint, redeem, 0],
         terminal_cash: 0,
         unrecoverable_collateral_raw: 0,
@@ -2685,7 +2655,6 @@ fun replay_initialized<Tag>(
     replay.maintenance_reserve = maintenance_reserve;
     replay.supply = locked_shares;
     replay.locked_shares = locked_shares;
-    replay.seed_funder = event.vault_initialized_seed_funder();
     replay.lifecycle = 1;
     replay.checkpoint = option::some(checkpoint);
 }
@@ -2740,19 +2709,10 @@ fun replay_terminal_claim<Tag>(replay: &mut ReplayState, event: events::Shutdown
     replay.terminal_cash = remaining_cash;
 }
 
-fun replay_health<Tag>(
-    replay: &mut ReplayState,
-    event: events::HealthSynchronized<Tag>,
-) {
-    let (vault_id, reason, checkpoint) =
-        event.health_synchronized_fields();
+fun replay_drift<Tag>(replay: &mut ReplayState, event: events::CheckpointDrifted<Tag>) {
+    let (vault_id, checkpoint) = event.checkpoint_drifted_fields();
     assert_eq!(vault_id, replay.vault_id);
-    if (reason == events::diagnostic_cleared_reason()) {
-        replay.checkpoint = option::some(checkpoint);
-        replay.unresolved_checkpoint = option::none();
-    } else {
-        replay.unresolved_checkpoint = option::some(checkpoint);
-    };
+    replay.unresolved_checkpoint = option::some(checkpoint);
 }
 
 // === Imports ===

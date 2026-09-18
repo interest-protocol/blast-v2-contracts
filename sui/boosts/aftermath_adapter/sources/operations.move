@@ -76,7 +76,6 @@ public fun initialize<Product, Collateral>(
     collateral_price_info: &PriceInfoObject,
     seed: Coin<Collateral>,
     seed_reserve: u64,
-    seed_funder: address,
     position_imr: u256,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -117,7 +116,7 @@ public fun initialize<Product, Collateral>(
     let venue_account = venue_account::new(binding, checkpoint, admin_cap);
     // BLAST_ACTIVATION_BOUNDARY_A1
     let (vault, seed_nav, seeded) = issuance.activate(
-        final_observation, seed_reserve, currency.decimals(), seed_funder, venue_account, clock.timestamp_ms(), ctx,
+        final_observation, seed_reserve, currency.decimals(), venue_account, clock.timestamp_ms(), ctx,
     );
     // BLAST_ACTIVATION_BOUNDARY_A2
     account.consume_policy_and_share_account(share_policy);
@@ -449,7 +448,6 @@ public(package) fun emit_vault_initialized<Product>(
     position_imr: u256,
 ) {
     let binding = vault.venue().binding();
-    let (locked_shares, seed_funder) = vault.seed_facts();
 
     events::vault_initialized<Product>(
         vault.id(),
@@ -464,8 +462,7 @@ public(package) fun emit_vault_initialized<Product>(
         seed_venue_equity,
         vault.state().maintenance_reserve(),
         seed_shareholder_nav,
-        locked_shares,
-        seed_funder,
+        vault.locked_shares(),
         position_base,
         lot_size,
         position_side,
@@ -582,9 +579,10 @@ public(package) fun apply_post_capture<Product>(
         (0, 0, 0, vault.state().maintenance_reserve())
     };
 
-    let diagnostic_changed = vault.note_checkpoint_health(&checkpoint, checkpoint_clean);
     if (checkpoint_clean) {
         vault.venue_mut().replace_checkpoint(checkpoint);
+    } else {
+        events::checkpoint_drifted<Product>(vault.id(), checkpoint);
     };
 
     // A zero-net interval still advances authenticated source identity and
@@ -594,14 +592,6 @@ public(package) fun apply_post_capture<Product>(
             vault.id(), net.is_cost(), net.raw_amount(), net.amount(), absorbed, uncovered, restored,
             reserve_after, stored_checkpoint, checkpoint,
         );
-    };
-    if (diagnostic_changed) {
-        let reason = if (checkpoint_clean) {
-            events::diagnostic_cleared_reason()
-        } else {
-            events::diagnostic_raised_reason()
-        };
-        events::health_synchronized<Product>(vault.id(), reason, checkpoint);
     };
 }
 

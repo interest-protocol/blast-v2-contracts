@@ -34,15 +34,8 @@ public struct Vault<phantom Product> has key {
     state: State<Product>,
     /// The bound account's identity, last accepted checkpoint and admin authority.
     venue_account: VenueAccount,
-    seed_facts: SeedFacts,
-    /// Digest of the drifted checkpoint while a health diagnostic is open.
-    unresolved_checkpoint_digest: Option<vector<u8>>,
-}
-
-/// Immutable activation ownership facts; not a terminal claim or cash ledger.
-public struct SeedFacts has copy, drop, store {
+    /// The seed shares minted to the burn address at activation; never redeemable.
     locked_shares: u64,
-    funder: address,
 }
 
 /// Dynamic-object-field key for one Vault's share mint authority.
@@ -127,10 +120,9 @@ public fun redeem_shutdown<Product, Collateral>(
     assert!(clock.timestamp_ms() <= deadline_ms, blast_boosts_aftermath::errors::deadline_expired!());
     self.assert_collateral_type<_, Collateral>();
 
-    let (locked, _) = self.seed_facts();
     let cash = dynamic_field::borrow<_, Balance<Collateral>>(&self.id, TerminalCashKey());
     let output = self.state.shutdown_claim_quote(
-        cash.value(), self.share_supply(), locked, shares.value(), minimum_collateral,
+        cash.value(), self.share_supply(), self.locked_shares, shares.value(), minimum_collateral,
     );
 
     let burned = self.burn_redeemed_shares(shares);
@@ -138,7 +130,9 @@ public fun redeem_shutdown<Product, Collateral>(
     let output_coin = coin::from_balance(cash.split(output), ctx);
     let remaining = cash.value();
 
-    events::shutdown_redeemed<Product>(self.id.to_inner(), burned, output, remaining, self.share_supply() - locked);
+    events::shutdown_redeemed<Product>(
+        self.id.to_inner(), burned, output, remaining, self.share_supply() - self.locked_shares,
+    );
 
     output_coin
 }
@@ -250,31 +244,30 @@ public(package) fun issuance<Product>(self: &VaultIssuance<Product>): &Issuance<
 /// Activates the core on the seeded observation, mints the locked seed shares
 /// to the burn address, and builds the Vault around the venue account, with
 /// the share caps hanging off the new id. Returns the Vault, the seed's
-/// shareholder NAV, and the priced seed position.
+/// shareholder NAV, and the priced seed position. The seed is a permanent
+/// gift to the product: its shares are never redeemable and its cash, once
+/// every other share has left, becomes admin cash.
 public(package) fun activate<Product>(
     self: VaultIssuance<Product>,
     seeded: PositionObservation,
     seed_reserve: u64,
     collateral_decimals: u8,
-    funder: address,
     venue_account: VenueAccount,
     now_ms: u64,
     ctx: &mut TxContext,
 ): (Vault<Product>, u64, ActivePosition) {
-    assert_seed_funder(funder);
     let VaultIssuance { issuance, mut treasury_cap, metadata_cap } = self;
     let (state, seed_nav, seeded) =
         issuance.activate(seeded, seed_reserve, constants::base_decimals!(), collateral_decimals, now_ms);
 
-    let locked_shares = locked_shares(seed_nav);
+    let locked_shares = seed_shares(seed_nav);
     transfer::public_transfer(coin::mint(&mut treasury_cap, locked_shares, ctx), @0x0);
 
     let mut vault = Vault {
         id: object::new(ctx),
         state,
         venue_account,
-        seed_facts: SeedFacts { locked_shares, funder },
-        unresolved_checkpoint_digest: option::none(),
+        locked_shares,
     };
     vault.id.add_dynamic_object_field(TreasuryKey<Product>(), treasury_cap);
     vault.id.add_dynamic_object_field(MetadataKey<Product>(), metadata_cap);
@@ -326,22 +319,6 @@ public(package) fun settle_funding<Product>(
     (absorbed, uncovered, restored, self.state.maintenance_reserve())
 }
 
-/// Records only diagnostic novelty; it never accepts an economic checkpoint.
-public(package) fun note_checkpoint_health<Product>(
-    self: &mut Vault<Product>,
-    checkpoint: &Checkpoint,
-    clean: bool,
-): bool {
-    let next = if (clean) {
-        option::none()
-    } else {
-        option::some(sui::hash::blake2b256(&std::bcs::to_bytes(checkpoint)))
-    };
-    let changed = self.unresolved_checkpoint_digest != next;
-    self.unresolved_checkpoint_digest = next;
-    changed
-}
-
 // --- Shutdown ---
 
 /// Consumes verified venue finality and seals the actual recovered holder cash.
@@ -351,13 +328,12 @@ public(package) fun complete_shutdown<Product, Collateral>(
     self.assert_collateral_type<_, Collateral>();
 
     let (recovered, checkpoint, unrecoverable_collateral_raw) = withdrawal.into_recovered_cash();
-    let (locked, funder) = self.seed_facts();
     let supply = self.share_supply();
-    let eligible = self.state.finalize_shutdown(supply, locked);
+    let eligible = self.state.finalize_shutdown(supply, self.locked_shares);
     let recovered_amount = recovered.value();
-    // With no eligible share left the seed funder takes the cash back directly.
+    // With no eligible share left, what the locked seed backed is admin cash.
     let cash = if (eligible == 0) {
-        transfer::public_transfer(recovered, funder);
+        self.retain_admin_cash(recovered);
         balance::zero()
     } else {
         recovered.into_balance()
@@ -366,13 +342,8 @@ public(package) fun complete_shutdown<Product, Collateral>(
     self.venue_account.replace_checkpoint(checkpoint);
     dynamic_field::add(&mut self.id, TerminalCashKey(), cash);
 
-    if (self.note_checkpoint_health(&checkpoint, true)) {
-        events::health_synchronized<Product>(self.id.to_inner(), events::diagnostic_cleared_reason(), checkpoint);
-    };
     events::shutdown_finalized<Product>(
-        self.id.to_inner(), recovered_amount, eligible,
-        if (eligible == 0) { option::some(funder) } else { option::none() },
-        checkpoint, unrecoverable_collateral_raw,
+        self.id.to_inner(), recovered_amount, eligible, checkpoint, unrecoverable_collateral_raw,
     );
 }
 
@@ -422,20 +393,15 @@ public(package) fun share_supply<Product>(self: &Vault<Product>): u64 {
     self.treasury_cap().total_supply()
 }
 
-/// Returns the exact once-recorded activation ownership for future terminal accounting.
-public(package) fun seed_facts<Product>(self: &Vault<Product>): (u64, address) {
-    (self.seed_facts.locked_shares, self.seed_facts.funder)
-}
-
-/// Rejects an unusable immutable beneficiary before activation touches the venue.
-public(package) fun assert_seed_funder(funder: address) {
-    assert!(funder != @0x0, blast_boosts_aftermath::errors::invalid_seed_funder!());
+/// The seed shares locked at activation, excluded from every terminal claim.
+public(package) fun locked_shares<Product>(self: &Vault<Product>): u64 {
+    self.locked_shares
 }
 
 // === Private Functions ===
 
 /// Six-decimal seed NAV atoms as nine-decimal share atoms; the seed is never dust.
-fun locked_shares(seed_nav: u64): u64 {
+fun seed_shares(seed_nav: u64): u64 {
     seed_nav.checked_mul(SEED_SHARE_SCALE).destroy_or!(abort blast_boosts_aftermath::errors::locked_shares_overflow!())
 }
 
@@ -450,8 +416,8 @@ fun treasury_cap_mut<Product>(self: &mut Vault<Product>): &mut TreasuryCap<Blast
 // === Test-Only Functions ===
 
 #[test_only]
-public fun locked_shares_for_testing(seed_nav: u64): u64 {
-    locked_shares(seed_nav)
+public fun seed_shares_for_testing(seed_nav: u64): u64 {
+    seed_shares(seed_nav)
 }
 
 #[test_only]
@@ -463,11 +429,6 @@ public fun terminal_cash_for_testing<Product, Collateral>(self: &Vault<Product>)
 #[test_only]
 fun metadata_cap<Product>(self: &Vault<Product>): &MetadataCap<BlastBoost<Product>> {
     dynamic_object_field::borrow(&self.id, MetadataKey<Product>())
-}
-
-#[test_only]
-public fun unresolved_checkpoint_digest_for_testing<Product>(self: &Vault<Product>): Option<vector<u8>> {
-    self.unresolved_checkpoint_digest
 }
 
 #[test_only]

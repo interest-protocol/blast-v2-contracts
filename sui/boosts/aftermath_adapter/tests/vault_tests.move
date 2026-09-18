@@ -65,17 +65,6 @@ fun shutdown_admin_stops_an_active_vault_without_any_venue_or_oracle_input() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidSeedFunder, location = blast_boosts_aftermath::vault)]
-fun seed_funder_rejects_zero_before_activation() {
-    vault::assert_seed_funder(@0x0);
-}
-
-#[test]
-fun seed_funder_accepts_the_first_nonzero_address() {
-    vault::assert_seed_funder(@0x1);
-}
-
-#[test]
 fun distinct_issued_products_freeze_actual_long_short_2x_and_generic_4x_6x_policy() {
     let mut fixture = start(domain::vault_issuer_role());
     let long2 = configured_policy(policy::long(), 20_000);
@@ -263,9 +252,7 @@ fun activation_locks_the_seed_shares_as_the_whole_supply() {
 
     assert_eq!(seed_nav, SEED_NAV);
     assert_eq!(vault.share_supply(), SEED_NAV * 1_000);
-    let (locked, funder) = vault.seed_facts();
-    assert_eq!(locked, SEED_NAV * 1_000);
-    assert_eq!(funder, ISSUER);
+    assert_eq!(vault.locked_shares(), SEED_NAV * 1_000);
     destroy(vault);
     destroy(fixture);
 }
@@ -499,7 +486,7 @@ fun activate_at<Product>(self: &mut Fixture, issuance: VaultIssuance<Product>, t
     );
     let venue_account = fixture_venue_account(self.scenario.ctx());
     let (vault, seed_nav, _) = issuance.activate(
-        seeded, SEED_RESERVE, 6, ISSUER, venue_account, REFERENCE_TIME_MS, self.scenario.ctx(),
+        seeded, SEED_RESERVE, 6, venue_account, REFERENCE_TIME_MS, self.scenario.ctx(),
     );
     (vault, seed_nav)
 }
