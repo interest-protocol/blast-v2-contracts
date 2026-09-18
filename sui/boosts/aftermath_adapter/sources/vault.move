@@ -328,11 +328,6 @@ public(package) fun install_venue_account<Product>(
 
 // --- Active Guards ---
 
-/// Cheap active lifecycle guard shared by public financial operations.
-public(package) fun assert_active<Product>(self: &Vault<Product>) {
-    self.state.assert_active();
-}
-
 /// Checks the caller's rate ceiling without treating share atoms as collateral.
 public(package) fun assert_user_fee_limit<Product>(self: &Vault<Product>, mint: bool, maximum: u64) {
     self.state.assert_user_fee_limit(mint, maximum);
@@ -540,7 +535,6 @@ public(package) fun assert_unwind_execution<Product>(self: &Vault<Product>, refe
 public(package) fun complete_shutdown<Product, Collateral>(
     self: &mut Vault<Product>, withdrawal: TerminalWithdrawal<Collateral>,
 ) {
-    self.state.assert_unwinding();
     self.assert_collateral_type<_, Collateral>();
 
     let (recovered, checkpoint, unrecoverable_collateral_raw) = withdrawal.into_recovered_cash();

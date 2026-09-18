@@ -163,7 +163,6 @@ public fun mint<Product, Collateral>(
     ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
     protocol.assert_current();
-    vault.assert_active();
     vault.assert_collateral_type<_, Collateral>();
     let deposit = cash.value();
     assert!(deposit > 0, blast_boosts_aftermath::errors::zero_amount!());
@@ -231,7 +230,6 @@ public fun redeem<Product, Collateral>(
     ctx: &mut TxContext,
 ): Coin<Collateral> {
     protocol.assert_current();
-    vault.assert_active();
     vault.assert_collateral_type<_, Collateral>();
     assert!(shares.value() > 0, blast_boosts_aftermath::errors::zero_amount!());
     assert_deadline(clock.timestamp_ms(), deadline_ms);
@@ -288,7 +286,6 @@ public fun rebalance<Product, Collateral>(
     clock: &Clock, ctx: &mut TxContext,
 ) {
     protocol.assert_current();
-    vault.assert_active();
     vault.assert_collateral_type<_, Collateral>();
 
     sync_health(
@@ -346,7 +343,6 @@ public fun needs_rebalance<Product, Collateral>(
     collateral_price_info: &PriceInfoObject, clock: &Clock,
 ): bool {
     protocol.assert_current();
-    vault.assert_active();
     vault.assert_collateral_type<_, Collateral>();
 
     let (observation, checkpoint) = snapshot::capture(
@@ -373,7 +369,6 @@ public fun donate<Product, Collateral>(
     clock: &Clock,
 ) {
     protocol.assert_current();
-    vault.assert_active();
     vault.assert_collateral_type<_, Collateral>();
     let amount = cash.value();
     assert!(amount > 0, blast_boosts_aftermath::errors::zero_amount!());
@@ -451,7 +446,6 @@ public fun unwind<Product, Collateral>(
     clock: &Clock, ctx: &mut TxContext,
 ) {
     protocol.assert_current();
-    vault.assert_unwinding();
     vault.assert_collateral_type<_, Collateral>();
 
     if (clearing_house.is_frozen()) {
@@ -473,7 +467,6 @@ public fun finalize_shutdown<Product, Collateral>(
     clock: &Clock, ctx: &mut TxContext,
 ) {
     protocol.assert_current();
-    vault.assert_unwinding();
     vault.assert_collateral_type<_, Collateral>();
 
     let binding = vault.venue_binding();
