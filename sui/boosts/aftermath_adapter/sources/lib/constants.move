@@ -3,7 +3,7 @@ module blast_boosts_aftermath::constants;
 
 // === Package Constants ===
 
-/// Fixed decimals for every Series1 leverage currency issued by this adapter.
+/// Fixed decimals for every Boost currency issued by this adapter.
 macro public(package) fun share_decimals(): u8 {
     9
 }

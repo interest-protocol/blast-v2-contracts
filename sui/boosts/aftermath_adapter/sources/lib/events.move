@@ -3,11 +3,12 @@ module blast_boosts_aftermath::events;
 
 // === Constants ===
 
-/// An earlier unresolved diagnostic has returned to a clean authenticated checkpoint.
-const HEALTH_REASON_CHECKPOINT_RECONCILED: u8 = 2;
+/// A sync found a mutation no vault operation explains; the vault now holds an
+/// unresolved diagnostic and refuses priced operations until it clears.
+const HEALTH_DIAGNOSTIC_RAISED: u8 = 1;
 
-/// Stored or settlement checkpoint comparison found an unrelated mutation.
-const HEALTH_REASON_UNEXPECTED_CHECKPOINT: u8 = 1;
+/// A later sync, or terminal settlement, produced a clean checkpoint again.
+const HEALTH_DIAGNOSTIC_CLEARED: u8 = 2;
 
 // === Public Structs ===
 
@@ -385,13 +386,9 @@ public(package) fun health_synchronized<Product>(
     );
 }
 
-public(package) fun checkpoint_reconciled_reason(): u8 {
-    HEALTH_REASON_CHECKPOINT_RECONCILED
-}
+public(package) fun diagnostic_raised_reason(): u8 { HEALTH_DIAGNOSTIC_RAISED }
 
-public(package) fun unexpected_checkpoint_reason(): u8 {
-    HEALTH_REASON_UNEXPECTED_CHECKPOINT
-}
+public(package) fun diagnostic_cleared_reason(): u8 { HEALTH_DIAGNOSTIC_CLEARED }
 
 public(package) fun risk_module_witness_rotated<Product>(
     vault_id: ID,

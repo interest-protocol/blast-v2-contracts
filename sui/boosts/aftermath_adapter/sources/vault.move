@@ -6,11 +6,11 @@ module blast_boosts_aftermath::vault;
 
 // === Public Structs ===
 
-/// Shared adapter custody for one Series1 leverage currency and product.
+/// Shared adapter custody for one Boost currency and its core state.
 ///
 /// This adapter defines `Vault<Product>`, so it can issue the corresponding
-/// non-OTW currency through Coin Registry. The nested Series1 state has private
-/// fields and can change only through Series1 mutation functions.
+/// non-OTW currency through Coin Registry. The nested core state has private
+/// fields and can change only through core mutation functions.
 public struct Vault<phantom Product> has key {
     id: UID,
     series_state: State<Product>,
@@ -44,7 +44,7 @@ public struct TerminalCashKey() has copy, drop, store;
 ///
 /// `Product` is the currency's identity: `Vault<Product>` names the coin and
 /// Coin Registry admits each type once. Any non-primitive type may serve; the
-/// Series1 issuer role is the only authority. The adapter generation and that
+/// core issuer role is the only authority. The adapter generation and that
 /// role are checked before Coin Registry mutation. The returned key-only Vault must pass to `share` in this
 /// package. Package custody is not an input: `package_admin` seals a validated
 /// Publisher and UpgradeCap that no other object can hold, so re-reading those
@@ -202,7 +202,7 @@ public fun set_max_order_notional<Product, RiskModule: drop>(
 
 /// Replaces the risk-module witness accepted by this adapter Vault.
 ///
-/// Rotation is available in every Series1 lifecycle state. It changes no core
+/// Rotation is available in every lifecycle state. It changes no core
 /// policy, accounting value, currency capability, or adapter version.
 public fun rotate_risk_module<Product, RiskModule: drop>(
     self: &mut Vault<Product>,
@@ -289,7 +289,7 @@ public(package) fun assert_initialization_execution<Product>(
     );
 }
 
-/// Activates Series1 after the adapter proves the complete final observation.
+/// Activates the core after the adapter proves the complete final observation.
 public(package) fun initialize_series<Product>(
     self: &mut Vault<Product>,
     observation: PositionObservation,
@@ -317,11 +317,8 @@ public(package) fun mint_locked_shares<Product>(
         blast_boosts_aftermath::errors::seed_already_recorded!());
     assert_seed_funder(funder);
     assert!(amount > 0, blast_boosts_aftermath::errors::zero_amount!());
-    let treasury_cap = dynamic_object_field::borrow_mut(
-        &mut self.id,
-        TreasuryKey<Product>(),
-    );
-    let locked_shares: Coin<BlastBoost<Product>> = coin::mint(treasury_cap, amount, ctx);
+
+    let locked_shares = coin::mint(self.treasury_cap_mut(), amount, ctx);
     self.seed_facts.fill(SeedFacts { locked_shares: amount, funder });
     transfer::public_transfer(locked_shares, @0x0);
 }
@@ -352,7 +349,7 @@ public(package) fun active_constraints<Product>(self: &Vault<Product>): (Positio
     self.series_state.active_constraints()
 }
 
-/// Applies the live Series1 order-notional cap to one planned seed order.
+/// Applies the live order-notional cap to one planned seed order.
 public(package) fun assert_order_notional_allowed<Product>(
     self: &Vault<Product>,
     order_notional: u64,
@@ -385,7 +382,7 @@ public(package) fun prepare_mint<Product>(
     self.series_state.prepare_mint(observation, deposit, self.share_supply(), minimum_shares, now_ms)
 }
 
-/// Mints only the shares priced by the completed Series1 transition.
+/// Mints only the shares priced by the completed core transition.
 public(package) fun complete_mint<Product>(
     self: &mut Vault<Product>,
     plan: MintPlan<Product>,
@@ -393,11 +390,10 @@ public(package) fun complete_mint<Product>(
     now_ms: u64,
     ctx: &mut TxContext,
 ): (Coin<BlastBoost<Product>>, u64, u64, u64, u64, u64, u64) {
-    let (amount, contribution, fee, admin, buffer, rate, admin_rate) =
+    let (amount, contribution, fee, admin, reserve_fee, fee_bps, admin_share_bps) =
         self.series_state.complete_mint(plan, after, now_ms);
-    let treasury_cap = dynamic_object_field::borrow_mut(&mut self.id, TreasuryKey<Product>());
 
-    (coin::mint(treasury_cap, amount, ctx), contribution, fee, admin, buffer, rate, admin_rate)
+    (coin::mint(self.treasury_cap_mut(), amount, ctx), contribution, fee, admin, reserve_fee, fee_bps, admin_share_bps)
 }
 
 // --- Redemption ---
@@ -411,7 +407,7 @@ public(package) fun prepare_redemption<Product>(
 }
 
 /// Prices only the attributable completed unwind, before any withdrawal or burn.
-public(package) fun price_redemption<Product>(
+public(package) fun complete_redemption<Product>(
     self: &mut Vault<Product>, plan: RedemptionPlan<Product>, observation: PositionObservation, now_ms: u64,
 ): (u64, u64, u64, u64, u64) {
     self.series_state.complete_redemption(plan, observation, now_ms)
@@ -427,8 +423,7 @@ public(package) fun assert_redemption_cash_out<Product>(
 
 /// Burns only through this Vault's retained native TreasuryCap.
 public(package) fun burn_redeemed_shares<Product>(self: &mut Vault<Product>, shares: Coin<BlastBoost<Product>>): u64 {
-    let treasury_cap = dynamic_object_field::borrow_mut(&mut self.id, TreasuryKey<Product>());
-    coin::burn(treasury_cap, shares)
+    coin::burn(self.treasury_cap_mut(), shares)
 }
 
 // --- Rebalance ---
@@ -474,7 +469,7 @@ public(package) fun assert_can_sync<Product>(self: &Vault<Product>) {
     self.series_state.assert_can_sync();
 }
 
-/// Applies one authenticated nonzero funding classification to Series1.
+/// Applies one authenticated nonzero funding classification to the core.
 public(package) fun settle_funding<Product>(
     self: &mut Vault<Product>,
     is_cost: bool,
@@ -526,7 +521,7 @@ public(package) fun assert_unwinding<Product>(self: &Vault<Product>) {
     self.series_state.assert_unwinding();
 }
 
-/// Consumes authenticated oracle facts through the terminal Series1 policy.
+/// Consumes authenticated oracle facts through the terminal core policy.
 public(package) fun unwind_constraints<Product>(
     self: &Vault<Product>, base: PriceObservation, collateral: PriceObservation, now_ms: u64,
 ): (PositionSide, u64, u64, u64) {
@@ -562,7 +557,7 @@ public(package) fun complete_shutdown<Product, Collateral>(
     dynamic_field::add(&mut self.id, TerminalCashKey(), cash);
 
     if (self.note_checkpoint_health(&checkpoint, true)) {
-        events::health_synchronized<Product>(self.id.to_inner(), events::checkpoint_reconciled_reason(), checkpoint);
+        events::health_synchronized<Product>(self.id.to_inner(), events::diagnostic_cleared_reason(), checkpoint);
     };
     events::shutdown_finalized<Product>(
         self.id.to_inner(), recovered_amount, eligible,
@@ -745,6 +740,10 @@ fun treasury_cap<Product>(self: &Vault<Product>): &TreasuryCap<BlastBoost<Produc
     dynamic_object_field::borrow(&self.id, TreasuryKey<Product>())
 }
 
+fun treasury_cap_mut<Product>(self: &mut Vault<Product>): &mut TreasuryCap<BlastBoost<Product>> {
+    dynamic_object_field::borrow_mut(&mut self.id, TreasuryKey<Product>())
+}
+
 // === Test-Only Functions ===
 
 #[test_only]
@@ -868,8 +867,7 @@ public fun mint_locked_shares_for_testing<Product>(
 public fun mint_eligible_shares_for_testing<Product>(
     self: &mut Vault<Product>, amount: u64, ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
-    let treasury_cap = dynamic_object_field::borrow_mut(&mut self.id, TreasuryKey<Product>());
-    coin::mint(treasury_cap, amount, ctx)
+    coin::mint(self.treasury_cap_mut(), amount, ctx)
 }
 
 #[test_only]

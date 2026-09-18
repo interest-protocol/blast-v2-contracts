@@ -44,8 +44,9 @@ public(package) fun execution_cost_up(notional: u64, fee_bps: u64, slippage_bps:
         blast_boosts_core::errors::venue_fee_unusable!(),
     );
 
-    let adverse = ((notional as u128) * (slippage_bps as u128)).div_ceil(constants::basis_points_denominator!() as u128);
-    let fee = (((notional as u128) + adverse) * (fee_bps as u128)).div_ceil(constants::basis_points_denominator!() as u128);
+    let denominator = constants::basis_points_denominator!() as u128;
+    let adverse = ((notional as u128) * (slippage_bps as u128)).div_ceil(denominator);
+    let fee = (((notional as u128) + adverse) * (fee_bps as u128)).div_ceil(denominator);
 
     adverse + fee
 }
@@ -80,6 +81,11 @@ public(package) fun increase_base_down(
     };
 
     low * lot_size
+}
+
+/// Returns whether leverage rose from one reading to the next, comparing `notional / nav` exactly.
+public(package) fun leverage_rose(before_notional: u64, before_nav: u64, after_notional: u64, after_nav: u64): bool {
+    (after_notional as u128) * (before_nav as u128) > (before_notional as u128) * (after_nav as u128)
 }
 
 /// Returns whether a rebalance moved leverage enough to be worth executing.

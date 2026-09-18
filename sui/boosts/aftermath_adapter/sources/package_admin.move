@@ -3,10 +3,10 @@
 #[allow(lint(abort_without_constant))]
 /// Permanent shared custody for the adapter Publisher and UpgradeCap.
 ///
-/// The adapter shares the Series1 administration domain, so its governed
+/// The adapter shares the Boosts core administration domain, so its governed
 /// transitions accept `AdminWitness<BLAST_BOOSTS_CORE>` and assert the role that
-/// Series1 exports. Custody itself stays package-local: this adapter's
-/// generation advances without touching Series1, which is immutable and has no
+/// core exports. Custody itself stays package-local: this adapter's
+/// generation advances without touching the core, which is immutable and has no
 /// generation of its own.
 module blast_boosts_aftermath::package_admin;
 

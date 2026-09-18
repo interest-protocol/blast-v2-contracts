@@ -561,31 +561,14 @@ public fun rebalance_order<Product>(self: &State<Product>, plan: &RebalancePlan<
     assert!(self.maintenance_reserve == plan.reserve, blast_boosts_core::errors::active_checkpoint_changed!());
     if (plan.steps == MAX_REBALANCE_ORDERS) return (0, plan.increase, false);
 
-    let p = &plan.current;
-    let nav = accounting_math::shareholder_nav(p.equity, plan.reserve_priced);
-    let rebalance = self.vault_policy.rebalance_policy();
-    if (plan.increase) {
-        (rebalance_math::increase_base_down(nav, p.notional, rebalance.target_bps(), p.base_price,
-            p.collateral_price, p.lot_size, self.max_order_notional, plan.venue_fee_bps,
-            rebalance.max_slippage_bps(), self.base_unit, self.collateral_unit), true, false)
-    } else {
-        let target_notional = accounting_math::target_notional_down(nav, rebalance.target_bps());
-        let target_base = rebalance_math::base_for_notional_down(
-            target_notional, p.base_price, p.collateral_price, p.lot_size, self.base_unit, self.collateral_unit,
-        );
-        let cap_base = rebalance_math::base_for_notional_down(
-            self.max_order_notional, p.base_price, p.collateral_price, p.lot_size, self.base_unit, self.collateral_unit,
-        );
-        let wide = rebalance.is_leverage_above_max(p.notional, nav);
-        if (plan.emergency && !wide) return (0, false, false);
-        let base = if (p.base > target_base) {
-            (p.base - target_base).min(cap_base) / p.lot_size * p.lot_size
-        } else {
-            0
-        };
+    let position = &plan.current;
+    let nav = accounting_math::shareholder_nav(position.equity, plan.reserve_priced);
+    if (plan.increase) return (self.increase_order(position, nav, plan.venue_fee_bps), true, false);
 
-        (base, false, wide)
-    }
+    let wide = self.vault_policy.rebalance_policy().is_leverage_above_max(position.notional, nav);
+    if (plan.emergency && !wide) return (0, false, false);
+
+    (self.reduction_order(position, nav), false, wide)
 }
 
 /// Sealed base oracle price the rebalance sizes and proves execution against.
@@ -598,7 +581,9 @@ public fun collateral_price<Product>(self: &RebalancePlan<Product>): u64 { self.
 public fun lot_size<Product>(self: &RebalancePlan<Product>): u64 { self.before.lot_size }
 
 /// The current authenticated ratio alone selects ordinary or wider max slippage.
-public fun assert_rebalance_execution<Product>(self: &State<Product>, plan: &RebalancePlan<Product>, reference: u64, executed: u64) {
+public fun assert_rebalance_execution<Product>(
+    self: &State<Product>, plan: &RebalancePlan<Product>, reference: u64, executed: u64,
+) {
     let (_, _, wide) = self.rebalance_order(plan);
     let rebalance = self.vault_policy.rebalance_policy();
 
@@ -611,7 +596,8 @@ public fun assert_rebalance_execution<Product>(self: &State<Product>, plan: &Reb
 
 /// Advances only exact partial whole-lot fills under sealed intent and the fixed oracle pair.
 public fun accept_rebalance_fill<Product>(
-    self: &State<Product>, plan: &mut RebalancePlan<Product>, observation: PositionObservation, filled: u64, now_ms: u64,
+    self: &State<Product>, plan: &mut RebalancePlan<Product>, observation: PositionObservation,
+    filled: u64, now_ms: u64,
 ) {
     let (requested, increase, _) = self.rebalance_order(plan);
     assert!(
@@ -631,10 +617,9 @@ public fun accept_rebalance_fill<Product>(
     if (increase) {
         let nav = accounting_math::shareholder_nav(after.equity, plan.reserve_priced);
         let rebalance = self.vault_policy.rebalance_policy();
-        let scaled = (after.notional as u128) * (constants::basis_points_denominator!() as u128);
         assert!(
-            scaled <= (nav as u128) * (rebalance.target_bps() as u128)
-                && scaled < (nav as u128) * (rebalance.max_leverage_bps() as u128),
+            rebalance.is_leverage_at_most_target(after.notional, nav)
+                && rebalance.is_leverage_below_max(after.notional, nav),
             blast_boosts_core::errors::active_leverage_above_cap!(),
         );
     };
@@ -645,7 +630,9 @@ public fun accept_rebalance_fill<Product>(
 
 /// Completes holder-funded maintenance without changing reserve, supply or admin cash.
 /// Returns authenticated before/after equity and base for one completed event.
-public fun complete_rebalance<Product>(self: &State<Product>, plan: RebalancePlan<Product>): (u64, u64, u64, u64, bool) {
+public fun complete_rebalance<Product>(
+    self: &State<Product>, plan: RebalancePlan<Product>,
+): (u64, u64, u64, u64, bool) {
     self.lifecycle.assert_active();
     let RebalancePlan {
         before, current, reserve, reserve_priced, increase, emergency: _, venue_fee_bps: _, steps,
@@ -658,14 +645,15 @@ public fun complete_rebalance<Product>(self: &State<Product>, plan: RebalancePla
     let rebalance = self.vault_policy.rebalance_policy();
     let improved = if (increase) {
         current.base > before.base
-            && (current.notional as u128) * (before_nav as u128) > (before.notional as u128) * (after_nav as u128)
+            && rebalance_math::leverage_rose(before.notional, before_nav, current.notional, after_nav)
     } else {
         current.base < before.base
             && rebalance_math::reduction_is_sufficient(
                 before.notional, before_nav, current.notional, after_nav,
                 rebalance.target_bps(), rebalance.min_leverage_improvement_bps(),
                 rebalance_math::oracle_notional_up(
-                    current.lot_size, current.base_price, current.collateral_price, self.base_unit, self.collateral_unit,
+                    current.lot_size, current.base_price, current.collateral_price,
+                    self.base_unit, self.collateral_unit,
                 ),
             )
     };
@@ -866,19 +854,12 @@ public fun set_fees<Product>(
 /// Returns fee, local admin share, and reserve allocation in collateral atoms.
 /// The fee rounds up, admin share rounds down, and reserve receives the remainder.
 public fun fee_allocation<Product>(self: &State<Product>, amount: u64, mint: bool): (u64, u64, u64) {
-    accounting_math::fee_allocation(
-        amount,
-        if (mint) { self.mint_fee_bps } else { self.redeem_fee_bps },
-        self.admin_share_bps,
-    )
+    accounting_math::fee_allocation(amount, self.live_fee_bps(mint), self.admin_share_bps)
 }
 
 /// Checks a user's fee ceiling before the adapter interacts with the venue.
 public fun assert_user_fee_limit<Product>(self: &State<Product>, mint: bool, maximum: u64) {
-    assert!(
-        (if (mint) { self.mint_fee_bps } else { self.redeem_fee_bps }) <= maximum,
-        blast_boosts_core::errors::user_fee_limit_exceeded!(),
-    );
+    assert!(self.live_fee_bps(mint) <= maximum, blast_boosts_core::errors::user_fee_limit_exceeded!());
 }
 
 /// Updates the live per-call maximum order notional.
@@ -969,6 +950,42 @@ fun reserve_within_cap<Product>(self: &State<Product>, reserve: u64, position: &
 /// pending accrues to the holders at the checkpoint, not to the caller.
 fun admitted_reserve<Product>(self: &State<Product>, position: &ActivePosition): u64 {
     self.reserve_within_cap(self.maintenance_reserve, position)
+}
+
+/// The live rate one side of the vault charges.
+fun live_fee_bps<Product>(self: &State<Product>, mint: bool): u64 {
+    if (mint) { self.mint_fee_bps } else { self.redeem_fee_bps }
+}
+
+/// Whole-lot base worth at most `notional` at the position's sealed oracle pair.
+fun base_for_notional<Product>(self: &State<Product>, notional: u64, position: &ActivePosition): u64 {
+    rebalance_math::base_for_notional_down(
+        notional, position.base_price, position.collateral_price, position.lot_size,
+        self.base_unit, self.collateral_unit,
+    )
+}
+
+/// The largest next buy that lands at or under target after its own execution cost, capped per order.
+fun increase_order<Product>(self: &State<Product>, position: &ActivePosition, nav: u64, venue_fee_bps: u64): u64 {
+    let rebalance = self.vault_policy.rebalance_policy();
+
+    rebalance_math::increase_base_down(
+        nav, position.notional, rebalance.target_bps(), position.base_price, position.collateral_price,
+        position.lot_size, self.max_order_notional, venue_fee_bps, rebalance.max_slippage_bps(),
+        self.base_unit, self.collateral_unit,
+    )
+}
+
+/// The next sell toward the target position, capped per order; zero at or under target.
+fun reduction_order<Product>(self: &State<Product>, position: &ActivePosition, nav: u64): u64 {
+    let target_notional =
+        accounting_math::target_notional_down(nav, self.vault_policy.rebalance_policy().target_bps());
+    let target_base = self.base_for_notional(target_notional, position);
+    if (position.base <= target_base) return 0;
+
+    let cap_base = self.base_for_notional(self.max_order_notional, position);
+
+    (position.base - target_base).min(cap_base) / position.lot_size * position.lot_size
 }
 
 fun assert_within_nav_cap<Product>(self: &State<Product>, nav: u64) {

@@ -29,7 +29,7 @@ public struct RedemptionReceipt<phantom Product> {
     net: u64,
     admin: u64,
     fee: u64,
-    buffer: u64,
+    reserve_fee: u64,
     fee_bps: u64,
     admin_share_bps: u64,
     final_equity: u64,
@@ -55,7 +55,7 @@ public struct Fill has copy, drop {
 
 /// Atomically seeds and activates one issued Aftermath leverage Vault.
 ///
-/// Direction and size come only from the immutable Series1 policy. The selected
+/// Direction and size come only from the immutable core policy. The selected
 /// risk module authenticates the edge but cannot choose an order parameter.
 /// Every external value is either retained in the Vault, shared, or consumed.
 public fun initialize<Product, RiskModule: drop, Collateral>(
@@ -174,7 +174,7 @@ public fun mint<Product, Collateral>(
     let (base_price, collateral_price, lot) =
         (plan.mint_base_price(), plan.mint_collateral_price(), plan.mint_lot_size());
     let (side, cap) = vault.active_constraints();
-    let is_ask = order_side(side);
+    let is_ask = opens_with_ask(side);
     let mut remaining = plan.base_to_buy();
 
     let admin_cash = cash.split(plan.admin_fee(), ctx);
@@ -267,7 +267,7 @@ public fun redeem<Product, Collateral>(
     let (base_price, collateral_price, lot) =
         (plan.redemption_base_price(), plan.redemption_collateral_price(), plan.redemption_lot_size());
     let (side, cap) = vault.active_constraints();
-    let is_ask = !order_side(side);
+    let is_ask = !opens_with_ask(side);
     let mut remaining = plan.base_to_sell();
 
     let mut index = 0;
@@ -297,7 +297,7 @@ public fun redeem<Product, Collateral>(
         base_price_info, collateral_price_info, clock,
     );
     checkpoint.assert_deposit_checkpoint(&unwound_checkpoint, 0);
-    let receipt = price_redemption(vault, plan, shares, unwound, unwound_checkpoint, clock.timestamp_ms());
+    let receipt = seal_redemption_receipt(vault, plan, shares, unwound, unwound_checkpoint, clock.timestamp_ms());
     let cash = vault.withdraw_collateral(
         account, registry, &mut clearing_house, base_oracle, collateral_oracle,
         receipt.redemption_cash_required(), clock, ctx,
@@ -344,7 +344,7 @@ public fun rebalance<Product, Collateral>(
     while (index < MAX_ACTIVE_ORDERS) {
         let (requested, increase, _) = vault.rebalance_order(&plan);
         if (requested == 0) break;
-        let is_ask = if (increase) { order_side(side) } else { !order_side(side) };
+        let is_ask = if (increase) { opens_with_ask(side) } else { !opens_with_ask(side) };
 
         let (next_market, fill) = place_order(
             vault, account, clearing_house, base_oracle, collateral_oracle,
@@ -530,7 +530,7 @@ public(package) fun complete_rebalance<Product, Collateral>(
 }
 
 /// Holds the actual input coin across payout instead of accepting a numerical burn promise.
-public(package) fun price_redemption<Product>(
+public(package) fun seal_redemption_receipt<Product>(
     vault: &mut Vault<Product>, plan: RedemptionPlan<Product>, shares: Coin<BlastBoost<Product>>,
     unwound: PositionObservation, unwound_checkpoint: venue_account::Checkpoint, now_ms: u64,
 ): RedemptionReceipt<Product> {
@@ -546,10 +546,10 @@ public(package) fun price_redemption<Product>(
         plan.redemption_fee_bps(),
         plan.redemption_admin_share_bps(),
     );
-    let (net, admin, final_equity, fee, buffer) = vault.price_redemption(plan, unwound, now_ms);
+    let (net, admin, final_equity, fee, reserve_fee) = vault.complete_redemption(plan, unwound, now_ms);
 
     RedemptionReceipt {
-        shares: shares.into_balance(), net, admin, fee, buffer, fee_bps, admin_share_bps,
+        shares: shares.into_balance(), net, admin, fee, reserve_fee, fee_bps, admin_share_bps,
         final_equity, final_base, base_price, collateral_price, unwound_checkpoint,
     }
 }
@@ -566,7 +566,7 @@ public(package) fun complete_redemption<Product, Collateral>(
     after: PositionObservation, checkpoint: venue_account::Checkpoint, now_ms: u64, ctx: &mut TxContext,
 ): Coin<Collateral> {
     let RedemptionReceipt {
-        shares, net, admin, fee, buffer, fee_bps, admin_share_bps, final_equity, final_base,
+        shares, net, admin, fee, reserve_fee, fee_bps, admin_share_bps, final_equity, final_base,
         base_price, collateral_price, unwound_checkpoint: _,
     } = receipt;
     vault.assert_collateral_type<_, Collateral>();
@@ -578,7 +578,7 @@ public(package) fun complete_redemption<Product, Collateral>(
     vault.replace_venue_checkpoint(checkpoint);
 
     events::redeemed<Product>(
-        vault.id(), burned, net, fee, admin, buffer, fee_bps, admin_share_bps,
+        vault.id(), burned, net, fee, admin, reserve_fee, fee_bps, admin_share_bps,
         vault.maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(), vault.share_supply(), checkpoint,
     );
 
@@ -591,12 +591,13 @@ public(package) fun complete_mint<Product, Collateral>(
     checkpoint: venue_account::Checkpoint, now_ms: u64, ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
     let deposit = plan.mint_deposit();
-    let (shares, contribution, fee, admin, buffer, rate, admin_rate) = vault.complete_mint(plan, after, now_ms, ctx);
+    let (shares, contribution, fee, admin, reserve_fee, fee_bps, admin_share_bps) =
+        vault.complete_mint(plan, after, now_ms, ctx);
 
     vault.replace_venue_checkpoint(checkpoint);
 
     events::minted<Product>(
-        vault.id(), deposit, shares.value(), contribution, fee, admin, buffer, rate, admin_rate,
+        vault.id(), deposit, shares.value(), contribution, fee, admin, reserve_fee, fee_bps, admin_share_bps,
         vault.maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(),
         vault.share_supply(), checkpoint,
     );
@@ -653,9 +654,9 @@ public(package) fun apply_post_capture<Product>(
     };
     if (diagnostic_changed) {
         let reason = if (checkpoint_clean) {
-            events::checkpoint_reconciled_reason()
+            events::diagnostic_cleared_reason()
         } else {
-            events::unexpected_checkpoint_reason()
+            events::diagnostic_raised_reason()
         };
         events::health_synchronized<Product>(vault.id(), reason, checkpoint);
     };
@@ -763,7 +764,7 @@ fun open_seed_position<Product, Collateral>(
     ctx: &TxContext,
 ): ClearingHouse<Collateral> {
     let is_long = position_side == policy::long();
-    let aftermath_order_side = order_side(position_side);
+    let aftermath_order_side = opens_with_ask(position_side);
 
     while (!orders.is_empty()) {
         let order_base = orders.pop_back();
@@ -951,7 +952,7 @@ fun unwind_market<Product, Collateral>(
     snapshot::classify_change(&before, &funded, candidate, collateral_fixed).assert_clean_funding();
 
     let lot = funded.lot_size();
-    let is_ask = !order_side(side);
+    let is_ask = !opens_with_ask(side);
     let mut checkpoint = funded;
     let mut orders = 0;
     let mut filled_quote_total: u256 = 0;
@@ -1004,13 +1005,16 @@ fun unwind_base_from_parts(magnitude: u256, is_long: bool, lot: u64, side: Posit
 /// Reads the market's taker fee and priority surcharge as one basis-point bound.
 fun live_venue_fee_bps<Collateral>(clearing_house: &ClearingHouse<Collateral>): u64 {
     let params = clearing_house.market_params();
-    let ordinary = market::taker_fee(params);
-    let priority = market::resolve_priority_taker_fee(market::priority_taker_fee(params));
 
     venue_fee_bound(
-        if (ifixed::is_neg(ordinary)) { 0 } else { ifixed::abs(ordinary) },
-        if (ifixed::is_neg(priority)) { 0 } else { ifixed::abs(priority) },
+        nonnegative_rate(market::taker_fee(params)),
+        nonnegative_rate(market::resolve_priority_taker_fee(market::priority_taker_fee(params))),
     )
+}
+
+/// A venue rebate reads as a zero fee; the bound never credits execution.
+fun nonnegative_rate(rate: u256): u256 {
+    if (ifixed::is_neg(rate)) { 0 } else { ifixed::abs(rate) }
 }
 
 /// Aftermath's priority rate is an additional surcharge, not an alternative fee.
@@ -1149,8 +1153,8 @@ fun initialization_order_count(target_base: u64, max_order_base: u64): u64 {
     count
 }
 
-/// Maps the Series side to the Aftermath port's bid/ask boolean convention.
-fun order_side(position_side: PositionSide): bool {
+/// Whether opening this side is an ask on the Aftermath port: shorts sell to open, longs buy.
+fun opens_with_ask(position_side: PositionSide): bool {
     position_side == policy::short()
 }
 
@@ -1189,7 +1193,7 @@ fun notional_for_base_up(base: u64, base_price: u64, collateral_price: u64): u64
 /// Converts one session's actual filled quote into atomic collateral notional.
 ///
 /// The fill is checked separately for every order so allowed execution
-/// slippage cannot make an individual order exceed the live Series1 cap.
+/// slippage cannot make an individual order exceed the live core cap.
 fun actual_fill_notional(filled_quote: u256, collateral_price: u64): u64 {
     assert!(collateral_price > 0, blast_boosts_aftermath::errors::normalization_overflow!());
 
@@ -1395,8 +1399,8 @@ public fun assert_session_result_for_testing(
 }
 
 #[test_only]
-public fun order_side_for_testing(position_side: PositionSide): bool {
-    order_side(position_side)
+public fun opens_with_ask_for_testing(position_side: PositionSide): bool {
+    opens_with_ask(position_side)
 }
 
 #[test_only]

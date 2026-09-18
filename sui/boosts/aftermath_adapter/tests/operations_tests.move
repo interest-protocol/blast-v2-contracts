@@ -452,7 +452,7 @@ fun mismatched_native_shares_fail_before_unwind_validation() {
     let plan = vault.prepare_redemption(position_observation(SEED_EQUITY, true), &shares, 1, REFERENCE_TIME_MS);
     destroy(shares);
     let wrong_shares = sui::coin::mint_for_testing<BlastBoost<Product>>(99_999, fixture.ctx!());
-    let receipt = operations::price_redemption(&mut vault, plan, wrong_shares,
+    let receipt = operations::seal_redemption_receipt(&mut vault, plan, wrong_shares,
         position_observation(SEED_EQUITY, false), initial_checkpoint(), REFERENCE_TIME_MS);
     destroy(receipt);
     destroy(vault);
@@ -507,7 +507,7 @@ fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_
     let plan = vault.prepare_redemption(active_position(10_997, 21_780), &shares, 9_978, REFERENCE_TIME_MS);
     // 21_780_000 less the floor of its 900_000 / 10_889_000 share, to the atom.
     assert_eq!(plan.base_to_sell(), 19_979_835);
-    let receipt = operations::price_redemption(&mut vault, plan, shares,
+    let receipt = operations::seal_redemption_receipt(&mut vault, plan, shares,
         active_position_with_base(10_996, 1_800_165), initial_checkpoint(), REFERENCE_TIME_MS);
     assert_eq!(receipt.redemption_cash_required(), 9_980);
     let cash = sui::coin::mint_for_testing<Collateral>(9_980, fixture.ctx!());
@@ -639,7 +639,7 @@ fun completed_redemption_burns_the_native_input_only_after_exact_cash_return() {
     let plan = vault.prepare_redemption(active_position(1_998, 3_798), &shares, 994, REFERENCE_TIME_MS);
     // 3_798_000 less the floor of its 900_000 / 1_897_000 share, to the atom.
     assert_eq!(plan.base_to_sell(), 1_996_103);
-    let receipt = operations::price_redemption(
+    let receipt = operations::seal_redemption_receipt(
         &mut vault, plan, shares, active_position_with_base(1_996, 1_801_897), initial_checkpoint(), REFERENCE_TIME_MS,
     );
     assert_eq!(receipt.redemption_cash_required(), 994);
@@ -1148,8 +1148,8 @@ fun exact_long_and_short_full_fills_are_accepted() {
 
 #[test]
 fun series_side_maps_to_the_aftermath_port_convention() {
-    assert_eq!(operations::order_side_for_testing(policy::long()), false);
-    assert_eq!(operations::order_side_for_testing(policy::short()), true);
+    assert_eq!(operations::opens_with_ask_for_testing(policy::long()), false);
+    assert_eq!(operations::opens_with_ask_for_testing(policy::short()), true);
 }
 
 #[test]
@@ -1592,7 +1592,7 @@ fun health_event_records_stable_reason_and_latest_checkpoint() {
 
     events::health_synchronized<Product>(
         @0xA.to_id(),
-        events::unexpected_checkpoint_reason(),
+        events::diagnostic_raised_reason(),
         checkpoint,
     );
     let event = events::collect_one<events::HealthSynchronized<Product>>(0);
@@ -1600,7 +1600,7 @@ fun health_event_records_stable_reason_and_latest_checkpoint() {
         event.health_synchronized_fields();
 
     assert_eq!(vault_id, @0xA.to_id());
-    assert_eq!(reason, events::unexpected_checkpoint_reason());
+    assert_eq!(reason, events::diagnostic_raised_reason());
     assert_eq!(event_checkpoint, checkpoint);
 }
 
@@ -1956,7 +1956,7 @@ fun connected_unresolved_drift_preserves_the_accepted_checkpoint_across_retries(
     let synchronized = events::collect_one<events::HealthSynchronized<Product>>(0);
     let (_, reason, checkpoint) =
         synchronized.health_synchronized_fields();
-    assert_eq!(reason, events::unexpected_checkpoint_reason());
+    assert_eq!(reason, events::diagnostic_raised_reason());
     assert_eq!(checkpoint, after);
 
     let replay = operations::classify_sync_change_for_testing(
@@ -2671,7 +2671,7 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag>) 
     replay_fees(&mut replay, events::collect<events::FeesUpdated<Tag>>()[2]);
     assert_replay(&replay, vault);
     let plan = vault.prepare_redemption(active_position(10_997, 21_780), &shares, 9_978, REFERENCE_TIME_MS);
-    let receipt = operations::price_redemption(vault, plan, shares,
+    let receipt = operations::seal_redemption_receipt(vault, plan, shares,
         active_position_with_base(10_996, 1_800_165), initial_checkpoint(), REFERENCE_TIME_MS);
     let cash = sui::coin::mint_for_testing<Collateral>(9_980, fixture.ctx!());
     let cash = operations::complete_redemption(vault, receipt, cash,
@@ -2952,7 +2952,7 @@ fun replay_health<Tag>(
     let (vault_id, reason, checkpoint) =
         event.health_synchronized_fields();
     assert_eq!(vault_id, replay.vault_id);
-    if (reason == events::checkpoint_reconciled_reason()) {
+    if (reason == events::diagnostic_cleared_reason()) {
         replay.checkpoint = option::some(checkpoint);
         replay.unresolved_checkpoint = option::none();
     } else {

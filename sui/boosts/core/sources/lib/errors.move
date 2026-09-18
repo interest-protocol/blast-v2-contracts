@@ -151,6 +151,8 @@ const EInvalidMinLeverageImprovementBps: u64 = 37;
 /// A mint produced fewer shares than the caller's stated minimum.
 const ESharesOutBelowMinimum: u64 = 57;
 
+// Code 58 retired: `rebalance_math::reduction_is_sufficient` raises `rebalance_no_progress`.
+
 #[test_only]
 /// Shareholder NAV exceeds the Vault NAV cap.
 const ENavCapExceeded: u64 = 59;
@@ -170,14 +172,6 @@ const EInvalidMaxOrderNotional: u64 = 64;
 #[test_only]
 /// A maximum-order-notional update repeated the current setting.
 const EMaxOrderNotionalUnchanged: u64 = 74;
-
-#[test_only]
-/// The reserve ceiling must be a positive share of notional, at most 100%.
-const EInvalidMaxReserveBps: u64 = 101;
-
-#[test_only]
-/// A seed reserve exceeds the policy ceiling for the opening notional.
-const ESeedReserveAboveCap: u64 = 102;
 
 // Code 75 retired: a zero observation price now raises `invalid_price` (29).
 
@@ -279,6 +273,14 @@ const EInvalidAssetDecimals: u64 = 99;
 /// A NAV cap update must change the cap.
 const ENavCapUnchanged: u64 = 100;
 
+#[test_only]
+/// The reserve ceiling must be a positive share of notional, at most 100%.
+const EInvalidMaxReserveBps: u64 = 101;
+
+#[test_only]
+/// A seed reserve exceeds the policy ceiling for the opening notional.
+const ESeedReserveAboveCap: u64 = 102;
+
 // === Package Functions ===
 
 macro public(package) fun zero_amount(): u64 { 0 }
@@ -317,7 +319,6 @@ macro public(package) fun invalid_max_slippage_bps(): u64 { 35 }
 macro public(package) fun invalid_emergency_max_slippage_bps(): u64 { 36 }
 macro public(package) fun invalid_min_leverage_improvement_bps(): u64 { 37 }
 macro public(package) fun shares_out_below_minimum(): u64 { 57 }
-// Code 58 retired: `rebalance_math::reduction_is_sufficient` raises `rebalance_no_progress`.
 macro public(package) fun nav_cap_exceeded(): u64 { 59 }
 macro public(package) fun execution_outside_max_slippage(): u64 { 60 }
 macro public(package) fun invalid_freshness_window(): u64 { 61 }

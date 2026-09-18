@@ -439,8 +439,6 @@ public(package) fun assert_custody_binding(self: &VenueAccount) {
 
 // --- Checkpoint Reads ---
 
-public(package) fun free_collateral(self: &Checkpoint): u64 { self.free_collateral }
-
 public(package) fun allocated_collateral(self: &Checkpoint): u256 { self.allocated_collateral }
 
 public(package) fun signed_base(self: &Checkpoint): u256 { self.signed_base }
@@ -457,21 +455,7 @@ public(package) fun market_funding_short(self: &Checkpoint): u256 { self.market_
 
 public(package) fun lot_size(self: &Checkpoint): u64 { self.lot_size }
 
-public(package) fun pending_ask_base(self: &Checkpoint): u256 { self.pending_ask_base }
-
-public(package) fun pending_bid_base(self: &Checkpoint): u256 { self.pending_bid_base }
-
-public(package) fun pending_order_count(self: &Checkpoint): u64 { self.pending_order_count }
-
 public(package) fun market_pause_mode(self: &Checkpoint): u8 { self.market_pause_mode }
-
-public(package) fun market_frozen(self: &Checkpoint): bool { self.market_frozen }
-
-public(package) fun position_initial_margin_ratio(self: &Checkpoint): u256 { self.position_initial_margin_ratio }
-
-public(package) fun market_initial_margin_ratio(self: &Checkpoint): u256 { self.market_initial_margin_ratio }
-
-public(package) fun market_maintenance_margin_ratio(self: &Checkpoint): u256 { self.market_maintenance_margin_ratio }
 
 /// Returns whether every field outside funding accounting is equal.
 ///

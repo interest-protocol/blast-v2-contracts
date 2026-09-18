@@ -327,6 +327,16 @@ public(package) fun is_leverage_within_band(self: &RebalancePolicy, notional: u6
     !self.is_leverage_below_band(notional, nav) && !self.is_leverage_above_band(notional, nav)
 }
 
+/// Returns whether leverage is at or below target: `notional * 10_000 <= nav * target_bps`.
+public(package) fun is_leverage_at_most_target(self: &RebalancePolicy, notional: u64, nav: u64): bool {
+    scale_by_denominator(notional) <= (nav as u128) * (self.target_bps as u128)
+}
+
+/// Returns whether leverage is strictly below the hard cap: `notional * 10_000 < nav * max_leverage_bps`.
+public(package) fun is_leverage_below_max(self: &RebalancePolicy, notional: u64, nav: u64): bool {
+    scale_by_denominator(notional) < (nav as u128) * (self.max_leverage_bps as u128)
+}
+
 /// Returns whether leverage is strictly above the hard cap that permits wider slippage.
 ///
 /// Same units and exact comparison as `is_leverage_below_band`:
