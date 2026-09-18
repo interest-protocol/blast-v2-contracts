@@ -73,7 +73,7 @@ public(package) fun is_unwinding(self: &Lifecycle): bool {
     match (self) { Lifecycle::Unwinding => true, _ => false }
 }
 
-public(package) fun assert_shutdown_close_allowed(self: &Lifecycle) {
+public(package) fun assert_unwinding(self: &Lifecycle) {
     assert!(self.is_unwinding(), blast_boosts_core::errors::operation_not_permitted_in_lifecycle!());
 }
 
@@ -88,7 +88,7 @@ public(package) fun is_settled(self: &Lifecycle): bool {
     match (self) { Lifecycle::Settled => true, _ => false }
 }
 
-public(package) fun assert_shutdown_redemption_allowed(self: &Lifecycle) {
+public(package) fun assert_settled(self: &Lifecycle) {
     assert!(self.is_settled(), blast_boosts_core::errors::operation_not_permitted_in_lifecycle!());
 }
 

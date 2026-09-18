@@ -4,6 +4,10 @@
 /// Atomic Aftermath operations for adapter-owned leverage Vaults.
 module blast_boosts_aftermath::operations;
 
+// `unwind_base_decoded` takes the position already decoded from IFixed; the
+// pinned `ifixed` port aborts under test, so the pure check is exercised
+// from fixtures through it.
+
 // === Constants ===
 
 /// Converts six-decimal collateral atoms to nine-decimal base atoms.
@@ -402,7 +406,7 @@ public fun sync_health<Product, Collateral>(
         &binding, account, registry, clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    let (pre_checkpoint, collateral_price) = pre_capture.into_funding_probe();
+    let (pre_checkpoint, collateral_price) = pre_capture.funding_probe();
     let funding_candidate = funding_candidate(clearing_house, account);
 
     clearing_house::settle_position_funding(clearing_house, collateral_oracle, account::account_id(account), clock);
@@ -595,7 +599,7 @@ public(package) fun apply_post_capture<Product>(
         (0, 0, 0, vault.maintenance_reserve())
     };
 
-    let checkpoint = post_capture.finish_health();
+    let checkpoint = post_capture.into_checkpoint();
     let diagnostic_changed = vault.note_checkpoint_health(&checkpoint, checkpoint_clean);
     if (checkpoint_clean) {
         vault.replace_venue_checkpoint(checkpoint);
@@ -892,10 +896,10 @@ fun unwind_market<Product, Collateral>(
         base_price_info, collateral_price_info, clock,
     );
     let collateral_fixed = capture.collateral_fixed();
-    let (side, cap, base_price, collateral_price) = vault.unwind_constraints(
+    let (side, max_order_notional, base_price, collateral_price) = vault.unwind_constraints(
         capture.base_price_observation(), capture.collateral_price_observation(), clock.timestamp_ms(),
     );
-    let before = capture.finish_health();
+    let before = capture.into_checkpoint();
     before.assert_no_orders();
     let mut remaining = unwind_base(&before, side);
 
@@ -909,7 +913,7 @@ fun unwind_market<Product, Collateral>(
     snapshot::classify_change(&before, &funded, candidate, collateral_fixed).assert_clean_funding();
 
     let terms = OrderTerms {
-        is_ask: !opens_with_ask(side), reduce_only: true, max_order_notional: cap,
+        is_ask: !opens_with_ask(side), reduce_only: true, max_order_notional,
         lot_size: funded.lot_size(), base_price, collateral_price,
     };
     let mut checkpoint = funded;
@@ -945,14 +949,14 @@ fun unwind_market<Product, Collateral>(
 fun unwind_base(checkpoint: &venue_account::Checkpoint, side: PositionSide): u64 {
     let base = checkpoint.signed_base();
 
-    unwind_base_from_parts(ifixed::abs(base), !ifixed::is_neg(base), checkpoint.lot_size(), side)
+    unwind_base_decoded(ifixed::abs(base), !ifixed::is_neg(base), checkpoint.lot_size(), side)
 }
 
-fun unwind_base_from_parts(magnitude: u256, is_long: bool, lot: u64, side: PositionSide): u64 {
+fun unwind_base_decoded(magnitude: u256, is_long: bool, lot_size: u64, side: PositionSide): u64 {
     assert!(
-        lot > 0 && magnitude > 0
+        lot_size > 0 && magnitude > 0
             && magnitude <= (std::u64::max_value!() as u256) * BASE_ATOM_TO_IFIXED_SCALE
-            && magnitude % ((lot as u256) * BASE_ATOM_TO_IFIXED_SCALE) == 0
+            && magnitude % ((lot_size as u256) * BASE_ATOM_TO_IFIXED_SCALE) == 0
             && is_long == (side == policy::long()),
         blast_boosts_aftermath::errors::invalid_unwind_exposure!(),
     );
@@ -1109,13 +1113,13 @@ fun quote_after(self: &Fill, previous: u256): u256 {
 
 /// Bounds each next whole-lot request without re-rounding the sealed aggregate.
 fun active_order_size(
-    remaining: u64, cap: u64, base_price: u64, collateral_price: u64, lot: u64, index: u64,
+    remaining: u64, max_order_notional: u64, base_price: u64, collateral_price: u64, lot_size: u64, index: u64,
 ): u64 {
     assert!(index < MAX_ACTIVE_ORDERS, blast_boosts_aftermath::errors::active_order_count_exceeded!());
 
-    let maximum = base_for_notional_down(cap, base_price, collateral_price, lot);
+    let maximum = base_for_notional_down(max_order_notional, base_price, collateral_price, lot_size);
     assert!(
-        maximum > 0 && remaining > 0 && remaining % lot == 0,
+        maximum > 0 && remaining > 0 && remaining % lot_size == 0,
         blast_boosts_aftermath::errors::active_fill_mismatch!(),
     );
 
@@ -1331,8 +1335,8 @@ public(package) fun complete_finalization_for_testing<Product, Collateral>(
 }
 
 #[test_only]
-public fun unwind_base_for_testing(magnitude: u256, is_long: bool, lot: u64, side: PositionSide): u64 {
-    unwind_base_from_parts(magnitude, is_long, lot, side)
+public fun unwind_base_for_testing(magnitude: u256, is_long: bool, lot_size: u64, side: PositionSide): u64 {
+    unwind_base_decoded(magnitude, is_long, lot_size, side)
 }
 
 #[test_only]
@@ -1340,9 +1344,9 @@ public fun venue_fee_bound_for_testing(ordinary: u256, priority: u256): u64 { ve
 
 #[test_only]
 public fun active_order_size_for_testing(
-    remaining: u64, cap: u64, base_price: u64, collateral_price: u64, lot: u64, index: u64,
+    remaining: u64, max_order_notional: u64, base_price: u64, collateral_price: u64, lot_size: u64, index: u64,
 ): u64 {
-    active_order_size(remaining, cap, base_price, collateral_price, lot, index)
+    active_order_size(remaining, max_order_notional, base_price, collateral_price, lot_size, index)
 }
 
 #[test_only]

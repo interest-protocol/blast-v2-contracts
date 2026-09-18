@@ -294,7 +294,7 @@ fun insolvent_capture_still_supplies_fresh_close_only_valuation() {
     let captured = snapshot::captured_health_for_testing(initial_checkpoint(), 0, false);
     let base = captured.base_price_observation();
     let collateral = captured.collateral_price_observation();
-    captured.finish_health();
+    captured.into_checkpoint();
     let (side, cap, base_price, collateral_price) = vault.unwind_constraints(base, collateral, REFERENCE_TIME_MS);
     assert_eq!(side, policy::long());
     assert_eq!(vector[cap, base_price, collateral_price], vector[250, PRICE, PRICE]);

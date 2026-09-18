@@ -29,7 +29,7 @@ const SHUTDOWN_ADMIN_ROLE: u64 = 8;
 /// Role that authorizes adapter package upgrade custody in this domain.
 const PACKAGE_ADMIN_ROLE: u64 = 16;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// One-time witness that names this administration domain at the type level.
 public struct BLAST_BOOSTS_CORE has drop {}

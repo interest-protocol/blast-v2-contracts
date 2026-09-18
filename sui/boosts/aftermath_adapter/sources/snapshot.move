@@ -3,6 +3,11 @@
 /// Authenticated Aftermath/Pyth normalization and raw checkpoint comparison.
 module blast_boosts_aftermath::snapshot;
 
+// The `*_decoded` helpers take a value's sign and magnitude already decoded
+// from IFixed. They exist because the pinned `ifixed` port aborts under test,
+// so the pure arithmetic can be exercised from fixtures; production callers
+// always go through the decoding wrapper above each one.
+
 /// Converts nine-decimal base atoms to six-decimal collateral atoms.
 const COLLATERAL_TO_BASE_SCALE: u256 = 1_000;
 
@@ -28,6 +33,18 @@ public struct SnapshotFacts has copy, drop {
     side: PositionSide,
     base_price: u64,
     collateral_price: u64,
+}
+
+/// One normalized oracle leg of a capture.
+///
+/// `representable` is false only in a health capture whose values could not
+/// be normalized; a strict capture aborts instead.
+public struct OracleLeg has copy, drop {
+    price: u64,
+    risk_price: u64,
+    confidence: u64,
+    timestamp: u64,
+    representable: bool,
 }
 
 /// One authenticated capture awaiting operation-specific finalization.
@@ -160,10 +177,8 @@ fun capture_snapshot<Collateral>(
     let base_fixed = market::base_oracle_price(params, base_oracle, clock);
     let collateral_fixed = market::collateral_oracle_price(params, collateral_oracle, clock);
     let mark_fixed = clearing_house.mark_price(base_oracle, clock);
-    let (base_price, base_risk_price, base_confidence, base_timestamp, base_oracle_representable) =
-        oracle_leg(base_price_info, base_feed, base_fixed, health);
-    let (collateral_price, _, collateral_confidence, collateral_timestamp, collateral_oracle_representable) =
-        oracle_leg(collateral_price_info, collateral_feed, collateral_fixed, health);
+    let base = oracle_leg(base_price_info, base_feed, base_fixed, health);
+    let collateral = oracle_leg(collateral_price_info, collateral_feed, collateral_fixed, health);
     let (mark_price, mark_representable) = fixed_to_u64_down_health(mark_fixed, 9);
     assert_representable_unless_health(health, mark_representable);
 
@@ -171,7 +186,7 @@ fun capture_snapshot<Collateral>(
     let (signed_base, signed_quote_notional) = position::base_and_quote_amounts(position);
     let (position_base, base_representable) = fixed_to_u64_up_health(ifixed::abs(signed_base), 9);
     let (position_collateral, notional_representable) =
-        base_notional_health(position_base, base_risk_price, collateral_price);
+        base_notional_health(position_base, base.risk_price, collateral.price);
     assert_representable_unless_health(health, base_representable && notional_representable);
     let side = if (health) {
         if (position.is_long_or_flat()) { policy::long() } else { policy::short() }
@@ -188,8 +203,8 @@ fun capture_snapshot<Collateral>(
     );
     assert_representable_unless_health(health, equity_representable);
     let economics_valid = position_signs_coherent(signed_base, signed_quote_notional, position.is_long_or_flat())
-        && base_oracle_representable
-        && collateral_oracle_representable
+        && base.representable
+        && collateral.representable
         && base_representable
         && notional_representable
         && mark_representable
@@ -205,15 +220,15 @@ fun capture_snapshot<Collateral>(
         margin_safe: margin_safe(margin, requirement),
         venue_operational: clearing_house.market_pause_mode() == 0 && !clearing_house.is_frozen(),
         economics_valid,
-        base_price,
-        base_confidence,
-        base_timestamp,
-        collateral_price,
-        collateral_confidence,
-        collateral_timestamp,
+        base_price: base.price,
+        base_confidence: base.confidence,
+        base_timestamp: base.timestamp,
+        collateral_price: collateral.price,
+        collateral_confidence: collateral.confidence,
+        collateral_timestamp: collateral.timestamp,
         mark_price,
         checkpoint,
-        collateral_fixed: if (collateral_oracle_representable) { collateral_fixed } else { 0 },
+        collateral_fixed: if (collateral.representable) { collateral_fixed } else { 0 },
     }
 }
 
@@ -248,19 +263,17 @@ fun authenticated_feeds(
     (base_feed, collateral_feed)
 }
 
-/// One oracle leg: price, risk price, confidence, timestamp and whether every
-/// value was representable. A strict capture aborts on the first unrepresentable
-/// value; a health capture reports it.
-fun oracle_leg(
-    price_info: &PriceInfoObject, feed: &price_feed::PriceFeed, fixed: u256, health: bool,
-): (u64, u64, u64, u64, bool) {
-    if (health) {
+/// Normalizes one oracle leg: a strict capture aborts on the first
+/// unrepresentable value; a health capture reports it in the leg.
+fun oracle_leg(price_info: &PriceInfoObject, feed: &price_feed::PriceFeed, fixed: u256, health: bool): OracleLeg {
+    let (price, risk_price, confidence, timestamp, representable) = if (health) {
         pyth_price_health(price_info, feed, fixed)
     } else {
         let (price, risk_price, confidence, timestamp) = pyth_price(price_info, feed, fixed);
-
         (price, risk_price, confidence, timestamp, true)
-    }
+    };
+
+    OracleLeg { price, risk_price, confidence, timestamp, representable }
 }
 
 /// A strict capture fails closed on an unrepresentable value; a health capture carries on.
@@ -269,7 +282,7 @@ fun assert_representable_unless_health(health: bool, representable: bool) {
 }
 
 /// Consumes a pre-settlement capture into the exact reconciliation inputs.
-public(package) fun into_funding_probe(self: CapturedSnapshot): (Checkpoint, u256) {
+public(package) fun funding_probe(self: CapturedSnapshot): (Checkpoint, u256) {
     let CapturedSnapshot { checkpoint, collateral_fixed, .. } = self;
 
     (checkpoint, collateral_fixed)
@@ -281,7 +294,7 @@ public(package) fun checkpoint(self: &CapturedSnapshot): Checkpoint {
 }
 
 /// Consumes the authenticated health capture after checkpoint classification.
-public(package) fun finish_health(self: CapturedSnapshot): Checkpoint {
+public(package) fun into_checkpoint(self: CapturedSnapshot): Checkpoint {
     let CapturedSnapshot { checkpoint, .. } = self;
     checkpoint
 }
@@ -847,7 +860,7 @@ fun base_notional_health(position_base: u64, base_price: u64, collateral_price: 
 }
 
 fun signed_equity_health(free: u64, allocated: u256, pnl_usd: u256, collateral_price: u256): (u64, bool) {
-    signed_equity_health_from_parts(
+    signed_equity_health_decoded(
         free,
         ifixed::is_neg(allocated),
         ifixed::abs(allocated),
@@ -857,7 +870,7 @@ fun signed_equity_health(free: u64, allocated: u256, pnl_usd: u256, collateral_p
     )
 }
 
-fun signed_equity_health_from_parts(
+fun signed_equity_health_decoded(
     free: u64,
     allocated_negative: bool,
     allocated: u256,
@@ -881,11 +894,11 @@ fun signed_equity_health_from_parts(
     };
     if (!allocated_ok || !collateral_ok || !pnl_ok) return (0, false);
 
-    let assets = (free as u128)
-        + (if (allocated_negative) { 0 } else { allocated_tokens } as u128)
-        + (if (pnl_negative) { 0 } else { rounded } as u128);
-    let liabilities = (if (allocated_negative) { allocated_tokens } else { 0 } as u128)
-        + (if (pnl_negative) { rounded } else { 0 } as u128);
+    let (allocated_asset, allocated_liability) =
+        if (allocated_negative) { (0, allocated_tokens) } else { (allocated_tokens, 0) };
+    let (pnl_asset, pnl_liability) = if (pnl_negative) { (0, rounded) } else { (rounded, 0) };
+    let assets = (free as u128) + (allocated_asset as u128) + (pnl_asset as u128);
+    let liabilities = (allocated_liability as u128) + (pnl_liability as u128);
     if (assets < liabilities) return (0, false);
 
     let net = assets - liabilities;
@@ -913,20 +926,20 @@ fun usd_fixed_to_collateral_fixed_health(usd: u256, collateral_price: u256, roun
 }
 
 fun margin_safe(margin: u256, requirement: u256): bool {
-    margin_safe_from_parts(ifixed::is_neg(margin), margin, requirement)
+    margin_safe_decoded(ifixed::is_neg(margin), margin, requirement)
 }
 
-fun margin_safe_from_parts(margin_negative: bool, margin: u256, requirement: u256): bool {
+fun margin_safe_decoded(margin_negative: bool, margin: u256, requirement: u256): bool {
     !margin_negative && margin >= requirement
 }
 
 fun position_signs_coherent(base: u256, quote: u256, long_or_flat: bool): bool {
-    position_signs_coherent_from_parts(
+    position_signs_coherent_decoded(
         ifixed::is_neg(base), ifixed::is_neg(quote), ifixed::abs(base) == 0, ifixed::abs(quote) == 0, long_or_flat,
     )
 }
 
-fun position_signs_coherent_from_parts(
+fun position_signs_coherent_decoded(
     base_negative: bool, quote_negative: bool, base_zero: bool, quote_zero: bool, long_or_flat: bool,
 ): bool {
     if (base_zero || quote_zero) return base_zero && quote_zero;
@@ -1122,14 +1135,14 @@ public fun base_notional_from_pyth_for_testing(
 
 #[test_only]
 public fun margin_safe_for_testing(margin_negative: bool, margin: u256, requirement: u256): bool {
-    margin_safe_from_parts(margin_negative, margin, requirement)
+    margin_safe_decoded(margin_negative, margin, requirement)
 }
 
 #[test_only]
 public fun position_signs_coherent_for_testing(
     base_negative: bool, quote_negative: bool, base_zero: bool, quote_zero: bool, long_or_flat: bool,
 ): bool {
-    position_signs_coherent_from_parts(base_negative, quote_negative, base_zero, quote_zero, long_or_flat)
+    position_signs_coherent_decoded(base_negative, quote_negative, base_zero, quote_zero, long_or_flat)
 }
 
 #[test_only]
@@ -1182,7 +1195,7 @@ public fun signed_equity_health_for_testing(
     pnl_magnitude_usd: u256,
     collateral_price: u256,
 ): (u64, bool) {
-    signed_equity_health_from_parts(
+    signed_equity_health_decoded(
         free,
         allocated_negative,
         allocated,
@@ -1201,7 +1214,7 @@ public fun signed_equity_strict_for_testing(
     pnl_magnitude_usd: u256,
     collateral_price: u256,
 ): u64 {
-    let (equity, representable) = signed_equity_health_from_parts(
+    let (equity, representable) = signed_equity_health_decoded(
         free,
         allocated_negative,
         allocated,

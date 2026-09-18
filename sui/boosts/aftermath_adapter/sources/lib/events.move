@@ -10,7 +10,7 @@ const HEALTH_DIAGNOSTIC_RAISED: u8 = 1;
 /// A later sync, or terminal settlement, produced a clean checkpoint again.
 const HEALTH_DIAGNOSTIC_CLEARED: u8 = 2;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Completed close-only progress with exact raw venue effects.
 /// Ordinary market closes expose the isolated funding checkpoint and filled quote.
@@ -163,8 +163,8 @@ public struct RiskModuleWitnessRotated<phantom Product> has copy, drop {
 /// Emitted after the active risk module changes the live maximum order notional.
 public struct MaxOrderNotionalUpdated<phantom Product> has copy, drop {
     vault_id: ID,
-    previous_current: u64,
-    new_current: u64,
+    previous: u64,
+    max_order_notional: u64,
 }
 
 /// Emitted after shutdown-role authorization permanently stops ordinary operations.
@@ -404,17 +404,9 @@ public(package) fun risk_module_witness_rotated<Product>(
     );
 }
 
-public(package) fun max_order_notional_updated<Product>(
-    vault_id: ID,
-    previous_current: u64,
-    new_current: u64,
-) {
+public(package) fun max_order_notional_updated<Product>(vault_id: ID, previous: u64, max_order_notional: u64) {
     blast_boosts_aftermath::blast_events::emit_event(
-        MaxOrderNotionalUpdated<Product> {
-            vault_id,
-            previous_current,
-            new_current,
-        },
+        MaxOrderNotionalUpdated<Product> { vault_id, previous, max_order_notional },
     );
 }
 
@@ -635,7 +627,7 @@ public fun risk_module_witness_rotated_fields<Product>(
 public fun max_order_notional_updated_fields<Product>(
     self: &MaxOrderNotionalUpdated<Product>,
 ): (ID, u64, u64) {
-    (self.vault_id, self.previous_current, self.new_current)
+    (self.vault_id, self.previous, self.max_order_notional)
 }
 
 #[test_only]

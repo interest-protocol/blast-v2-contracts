@@ -5,7 +5,7 @@
 /// `vault::Vault<Product>` custodies the product; it is not the currency.
 module blast_boosts_aftermath::blast_boost;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Currency marker for one Boost's share coin.
 ///

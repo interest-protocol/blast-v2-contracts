@@ -766,7 +766,7 @@ public fun begin_shutdown<Product>(self: &mut State<Product>) {
 
 /// Authorizes only close-only venue progress before finalization.
 public fun assert_unwinding<Product>(self: &State<Product>) {
-    self.lifecycle.assert_shutdown_close_allowed();
+    self.lifecycle.assert_unwinding();
 }
 
 /// Prices only a close-only order; insolvency and the reserve do not gate an exit.
@@ -802,14 +802,14 @@ public fun finalize_shutdown<Product>(self: &mut State<Product>, native_supply: 
 
 /// Rejects terminal claims before any adapter cash-field access.
 public fun assert_settled<Product>(self: &State<Product>) {
-    self.lifecycle.assert_shutdown_redemption_allowed();
+    self.lifecycle.assert_settled();
 }
 
 /// Fee-free claim against current cash and native supply, excluding the immutable seed.
 public fun shutdown_claim_quote<Product>(
     self: &State<Product>, cash: u64, native_supply: u64, locked: u64, shares: u64, minimum: u64,
 ): u64 {
-    self.lifecycle.assert_shutdown_redemption_allowed();
+    self.lifecycle.assert_settled();
     assert!(native_supply >= locked, blast_boosts_core::errors::invalid_share_supply!());
     let eligible = native_supply - locked;
     assert!(shares > 0 && shares <= eligible, blast_boosts_core::errors::invalid_share_amount!());
@@ -870,18 +870,13 @@ public fun assert_user_fee_limit<Product>(self: &State<Product>, mint: bool, max
 /// access. The adapter must authenticate its currently selected risk module
 /// before calling this function. Updates are available in every lifecycle
 /// state because they change only the size of later calls, not the live position.
-public fun set_max_order_notional<Product>(
-    self: &mut State<Product>,
-    current: u64,
-): u64 {
+public fun set_max_order_notional<Product>(self: &mut State<Product>, max_order_notional: u64): u64 {
     let previous = self.max_order_notional;
-    assert!(
-        current != previous,
-        blast_boosts_core::errors::max_order_notional_unchanged!(),
-    );
-    assert!(current > 0, blast_boosts_core::errors::invalid_max_order_notional!());
+    assert!(max_order_notional != previous, blast_boosts_core::errors::max_order_notional_unchanged!());
+    assert!(max_order_notional > 0, blast_boosts_core::errors::invalid_max_order_notional!());
 
-    self.max_order_notional = current;
+    self.max_order_notional = max_order_notional;
+
     previous
 }
 

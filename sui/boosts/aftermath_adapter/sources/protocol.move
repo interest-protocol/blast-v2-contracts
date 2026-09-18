@@ -14,7 +14,7 @@ const PACKAGE_VERSION: u64 = 1;
 /// The generation this bytecode hands over to in a governed upgrade.
 const NEXT_PACKAGE_VERSION: u64 = 2;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Shared operational generation for the Aftermath adapter package.
 public struct Protocol has key {

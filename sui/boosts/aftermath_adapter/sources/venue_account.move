@@ -4,6 +4,10 @@
 /// Exact Aftermath account custody and immutable venue binding.
 module blast_boosts_aftermath::venue_account;
 
+// The `*_decoded` helpers take collateral already decoded from IFixed into a
+// sign and magnitude; the pinned `ifixed` port aborts under test, so the pure
+// proof is exercised from fixtures through them.
+
 // === Public Types ===
 
 /// Immutable external object graph for one Aftermath leverage account.
@@ -51,13 +55,7 @@ public struct TerminalWithdrawal<phantom Collateral> {
 /// Store-only custody for the sole admin authority of one bound Aftermath account.
 public struct VenueAccount has store {
     admin_cap: Option<AuthorityCap<ACCOUNT, ADMIN>>,
-    account_object_id: ID,
-    account_number: u64,
-    registry_id: ID,
-    clearing_house_id: ID,
-    base_oracle_id: ID,
-    collateral_oracle_id: ID,
-    collateral_type: TypeName,
+    binding: Binding,
     checkpoint: Checkpoint,
 }
 
@@ -67,13 +65,13 @@ public struct VenueAccount has store {
 /// Named IFixed decoding excludes liabilities before whole-atom floor conversion.
 public(package) fun recoverable_terminal_cash(self: &Checkpoint): u64 {
     let (negative, magnitude) = self.allocated_collateral_sign_and_magnitude();
-    recoverable_cash_from_parts(self, negative, magnitude)
+    recoverable_cash_decoded(self, negative, magnitude)
 }
 
 /// Complete recovery changes only the two collateral locations, by the actual returned coin.
 public(package) fun assert_terminal_withdrawal(before: &Checkpoint, after: &Checkpoint, amount: u64) {
     let (negative, magnitude) = before.allocated_collateral_sign_and_magnitude();
-    assert_terminal_withdrawal_from_parts(before, after, amount, negative, magnitude);
+    assert_terminal_withdrawal_decoded(before, after, amount, negative, magnitude);
 }
 
 /// Binds native cash to finality before the Vault can seal terminal custody.
@@ -356,28 +354,9 @@ public(package) fun new(
     binding: Binding,
     checkpoint: Checkpoint,
 ): VenueAccount {
-    let Binding {
-        account_object_id,
-        account_number,
-        registry_id,
-        clearing_house_id,
-        base_oracle_id,
-        collateral_oracle_id,
-        collateral_type,
-    } = binding;
-    assert_admin_cap_binding(authority::`for`(&admin_cap), account_object_id);
-    let admin_cap = option::some(admin_cap);
-    VenueAccount {
-        admin_cap,
-        account_object_id,
-        account_number,
-        registry_id,
-        clearing_house_id,
-        base_oracle_id,
-        collateral_oracle_id,
-        collateral_type,
-        checkpoint,
-    }
+    assert_admin_cap_binding(authority::`for`(&admin_cap), binding.account_object_id);
+
+    VenueAccount { admin_cap: option::some(admin_cap), binding, checkpoint }
 }
 
 /// Rejects an admin cap that does not belong to the created account object.
@@ -392,17 +371,7 @@ public(package) fun assert_admin_cap_binding(
 }
 
 /// Copies the immutable binding without exposing venue custody.
-public(package) fun binding(self: &VenueAccount): Binding {
-    Binding {
-        account_object_id: self.account_object_id,
-        account_number: self.account_number,
-        registry_id: self.registry_id,
-        clearing_house_id: self.clearing_house_id,
-        base_oracle_id: self.base_oracle_id,
-        collateral_oracle_id: self.collateral_oracle_id,
-        collateral_type: self.collateral_type,
-    }
-}
+public(package) fun binding(self: &VenueAccount): Binding { self.binding }
 
 // --- Binding Reads ---
 
@@ -431,10 +400,7 @@ public(package) fun assert_custody_binding(self: &VenueAccount) {
         self.admin_cap.is_some(),
         blast_boosts_aftermath::errors::admin_cap_account_mismatch!(),
     );
-    assert_admin_cap_binding(
-        authority::`for`(self.admin_cap.borrow()),
-        self.account_object_id,
-    );
+    assert_admin_cap_binding(authority::`for`(self.admin_cap.borrow()), self.binding.account_object_id);
 }
 
 // --- Checkpoint Reads ---
@@ -494,11 +460,11 @@ fun allocated_collateral_sign_and_magnitude(self: &Checkpoint): (bool, u256) {
     }
 }
 
-fun assert_terminal_withdrawal_from_parts(
+fun assert_terminal_withdrawal_decoded(
     before: &Checkpoint, after: &Checkpoint, amount: u64, negative: bool, magnitude: u256,
 ) {
     assert!(
-        recoverable_cash_from_parts(before, negative, magnitude) == amount,
+        recoverable_cash_decoded(before, negative, magnitude) == amount,
         blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
     );
 
@@ -510,7 +476,7 @@ fun assert_terminal_withdrawal_from_parts(
     assert!(&expected == after, blast_boosts_aftermath::errors::terminal_venue_unsettled!());
 }
 
-fun recoverable_cash_from_parts(self: &Checkpoint, negative: bool, magnitude: u256): u64 {
+fun recoverable_cash_decoded(self: &Checkpoint, negative: bool, magnitude: u256): u64 {
     assert!(
         self.signed_base == 0 && self.signed_quote_notional == 0
             && self.pending_ask_base == 0 && self.pending_bid_base == 0
@@ -565,32 +531,32 @@ fun assert_market_account<Collateral>(
     self.assert_custody_binding();
     self.assert_bound_account(account);
     assert!(
-        object::id(clearing_house) == self.clearing_house_id,
+        object::id(clearing_house) == self.binding.clearing_house_id,
         blast_boosts_aftermath::errors::clearing_house_mismatch!(),
     );
 }
 
 /// The account object, its venue number, and its collateral type are the bound ones.
 fun assert_bound_account<Collateral>(self: &VenueAccount, account: &Account<Collateral>) {
-    assert!(object::id(account) == self.account_object_id, blast_boosts_aftermath::errors::account_object_mismatch!());
+    assert!(object::id(account) == self.binding.account_object_id, blast_boosts_aftermath::errors::account_object_mismatch!());
     assert!(
-        account::account_id(account) == self.account_number,
+        account::account_id(account) == self.binding.account_number,
         blast_boosts_aftermath::errors::account_number_mismatch!(),
     );
     assert!(
-        std::type_name::with_original_ids<Collateral>() == self.collateral_type,
+        std::type_name::with_original_ids<Collateral>() == self.binding.collateral_type,
         blast_boosts_aftermath::errors::collateral_type_mismatch!(),
     );
 }
 
 fun assert_bound_registry(self: &VenueAccount, registry: &Registry) {
-    assert!(object::id(registry) == self.registry_id, blast_boosts_aftermath::errors::registry_mismatch!());
+    assert!(object::id(registry) == self.binding.registry_id, blast_boosts_aftermath::errors::registry_mismatch!());
 }
 
 fun assert_bound_oracles(self: &VenueAccount, base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage) {
-    assert!(object::id(base_oracle) == self.base_oracle_id, blast_boosts_aftermath::errors::base_oracle_mismatch!());
+    assert!(object::id(base_oracle) == self.binding.base_oracle_id, blast_boosts_aftermath::errors::base_oracle_mismatch!());
     assert!(
-        object::id(collateral_oracle) == self.collateral_oracle_id,
+        object::id(collateral_oracle) == self.binding.collateral_oracle_id,
         blast_boosts_aftermath::errors::collateral_oracle_mismatch!(),
     );
 }
@@ -622,7 +588,7 @@ public fun unpack_for_testing(self: Checkpoint): (
 public(package) fun assert_terminal_withdrawal_for_testing(
     before: &Checkpoint, after: &Checkpoint, amount: u64, negative: bool, magnitude: u256,
 ) {
-    assert_terminal_withdrawal_from_parts(before, after, amount, negative, magnitude);
+    assert_terminal_withdrawal_decoded(before, after, amount, negative, magnitude);
 }
 
 /// Substitutes only named IFixed decoding; cash and checkpoint guards remain production code.
@@ -630,14 +596,14 @@ public(package) fun assert_terminal_withdrawal_for_testing(
 public(package) fun terminal_withdrawal_for_testing<Collateral>(
     before: &Checkpoint, after: Checkpoint, recovered: Coin<Collateral>, negative: bool, magnitude: u256,
 ): TerminalWithdrawal<Collateral> {
-    assert_terminal_withdrawal_from_parts(before, &after, recovered.value(), negative, magnitude);
+    assert_terminal_withdrawal_decoded(before, &after, recovered.value(), negative, magnitude);
     TerminalWithdrawal { recovered, checkpoint: after }
 }
 
 /// Decoded dependency-port values; the production wrapper always uses named IFixed decoding.
 #[test_only]
 public(package) fun recoverable_cash_for_testing(self: &Checkpoint, negative: bool, magnitude: u256): u64 {
-    recoverable_cash_from_parts(self, negative, magnitude)
+    recoverable_cash_decoded(self, negative, magnitude)
 }
 
 /// Builds real binding/checkpoint custody around the unavailable local cap.
@@ -649,27 +615,7 @@ public fun new_for_testing(
     binding: Binding,
     checkpoint: Checkpoint,
 ): VenueAccount {
-    let Binding {
-        account_object_id,
-        account_number,
-        registry_id,
-        clearing_house_id,
-        base_oracle_id,
-        collateral_oracle_id,
-        collateral_type,
-    } = binding;
-
-    VenueAccount {
-        admin_cap: option::none(),
-        account_object_id,
-        account_number,
-        registry_id,
-        clearing_house_id,
-        base_oracle_id,
-        collateral_oracle_id,
-        collateral_type,
-        checkpoint,
-    }
+    VenueAccount { admin_cap: option::none(), binding, checkpoint }
 }
 
 #[test_only]

@@ -118,6 +118,12 @@ public fun funding_cost(amount: u64): FundingSettlement {
     FundingSettlement::Cost(amount)
 }
 
+// === Public Aliases ===
+
+public use fun destroy_price as PriceObservation.destroy;
+public use fun destroy_position as PositionObservation.destroy;
+public use fun destroy_funding as FundingSettlement.destroy;
+
 // === Package Functions ===
 
 // --- Price Observation ---
@@ -220,12 +226,6 @@ public fun with_position_base_for_testing(
     self.position_base = position_base;
     self
 }
-
-// === Public Aliases ===
-
-public use fun destroy_price as PriceObservation.destroy;
-public use fun destroy_position as PositionObservation.destroy;
-public use fun destroy_funding as FundingSettlement.destroy;
 
 // === Imports ===
 

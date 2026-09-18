@@ -1,7 +1,7 @@
 /// Stable event envelope for the Aftermath adapter package.
 module blast_boosts_aftermath::blast_events;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Stable package-wide envelope for every adapter event payload.
 public struct Event<T: copy + drop>(T) has copy, drop;

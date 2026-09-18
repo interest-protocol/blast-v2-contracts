@@ -10,7 +10,7 @@
 /// generation of its own.
 module blast_boosts_aftermath::package_admin;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Shared, non-releasable adapter package authority.
 public struct PackageAdmin has key {

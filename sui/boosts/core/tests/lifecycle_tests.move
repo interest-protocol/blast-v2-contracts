@@ -150,7 +150,7 @@ fun settled_rejects_active_operations() {
 
 #[test]
 fun unwinding_permits_shutdown_close() {
-    lifecycle::unwinding_for_testing().assert_shutdown_close_allowed();
+    lifecycle::unwinding_for_testing().assert_unwinding();
 }
 
 #[test]
@@ -158,7 +158,7 @@ fun unwinding_permits_shutdown_close() {
     abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle,
 )]
 fun uninitialized_rejects_shutdown_close() {
-    lifecycle::uninitialized().assert_shutdown_close_allowed();
+    lifecycle::uninitialized().assert_unwinding();
 }
 
 #[test]
@@ -166,7 +166,7 @@ fun uninitialized_rejects_shutdown_close() {
     abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle,
 )]
 fun active_rejects_shutdown_close() {
-    lifecycle::active_for_testing().assert_shutdown_close_allowed();
+    lifecycle::active_for_testing().assert_unwinding();
 }
 
 #[test]
@@ -174,13 +174,13 @@ fun active_rejects_shutdown_close() {
     abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle,
 )]
 fun settled_rejects_shutdown_close() {
-    lifecycle::settled_for_testing().assert_shutdown_close_allowed();
+    lifecycle::settled_for_testing().assert_unwinding();
 }
 
 #[test]
 fun settled_permits_shutdown_redemption() {
     lifecycle::settled_for_testing()
-        .assert_shutdown_redemption_allowed();
+        .assert_settled();
 }
 
 #[test]
@@ -188,7 +188,7 @@ fun settled_permits_shutdown_redemption() {
     abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle,
 )]
 fun uninitialized_rejects_shutdown_redemption() {
-    lifecycle::uninitialized().assert_shutdown_redemption_allowed();
+    lifecycle::uninitialized().assert_settled();
 }
 
 #[test]
@@ -196,7 +196,7 @@ fun uninitialized_rejects_shutdown_redemption() {
     abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle,
 )]
 fun active_rejects_shutdown_redemption() {
-    lifecycle::active_for_testing().assert_shutdown_redemption_allowed();
+    lifecycle::active_for_testing().assert_settled();
 }
 
 #[test]
@@ -205,7 +205,7 @@ fun active_rejects_shutdown_redemption() {
 )]
 fun unwinding_rejects_shutdown_redemption() {
     lifecycle::unwinding_for_testing()
-        .assert_shutdown_redemption_allowed();
+        .assert_settled();
 }
 
 // === Imports ===

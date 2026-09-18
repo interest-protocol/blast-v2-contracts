@@ -4,7 +4,7 @@
 /// Adapter-owned Vault, leverage currency, and venue storage.
 module blast_boosts_aftermath::vault;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Shared adapter custody for one Boost currency and its core state.
 ///
@@ -190,14 +190,14 @@ public fun set_max_order_notional<Product, RiskModule: drop>(
     self: &mut Vault<Product>,
     protocol: &Protocol,
     _: RiskModule,
-    current: u64,
+    max_order_notional: u64,
 ) {
     protocol.assert_current();
     self.assert_selected_risk_module<_, RiskModule>();
 
-    let previous = self.state.set_max_order_notional(current);
+    let previous = self.state.set_max_order_notional(max_order_notional);
 
-    events::max_order_notional_updated<Product>(self.id.to_inner(), previous, current);
+    events::max_order_notional_updated<Product>(self.id.to_inner(), previous, max_order_notional);
 }
 
 /// Replaces the risk-module witness accepted by this adapter Vault.
@@ -270,11 +270,7 @@ public(package) fun prepare_initialization<Product>(
     seed_reserve: u64,
     now_ms: u64,
 ): (u64, u64, u64, u64) {
-    self.state.prepare_initialization(
-        observation,
-        seed_reserve,
-        now_ms,
-    )
+    self.state.prepare_initialization(observation, seed_reserve, now_ms)
 }
 
 /// Applies the immutable strict execution tolerance before activation.
@@ -283,10 +279,7 @@ public(package) fun assert_initialization_execution<Product>(
     reference_price: u64,
     execution_price: u64,
 ) {
-    self.state.assert_initialization_execution(
-        reference_price,
-        execution_price,
-    );
+    self.state.assert_initialization_execution(reference_price, execution_price);
 }
 
 /// Activates the core after the adapter proves the complete final observation.
@@ -297,13 +290,7 @@ public(package) fun initialize<Product>(
     collateral_decimals: u8,
     now_ms: u64,
 ): u64 {
-    self.state.initialize(
-        observation,
-        seed_reserve,
-        constants::base_decimals!(),
-        collateral_decimals,
-        now_ms,
-    )
+    self.state.initialize(observation, seed_reserve, constants::base_decimals!(), collateral_decimals, now_ms)
 }
 
 /// Mints the one locked seed position and makes it permanently inaccessible.

@@ -1,7 +1,7 @@
 /// Canonical package marker for this adapter.
 module blast_boosts_aftermath::blast_boosts_aftermath;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// One-time witness used only to claim this package's Publisher.
 public struct BLAST_BOOSTS_AFTERMATH() has drop;
