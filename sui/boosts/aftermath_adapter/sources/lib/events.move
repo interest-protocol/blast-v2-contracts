@@ -102,7 +102,6 @@ public struct VaultInitialized<phantom Product> has copy, drop {
     clearing_house_id: ID,
     base_oracle_id: ID,
     collateral_oracle_id: ID,
-    collateral_type: TypeName,
     seed_amount: u64,
     seed_venue_equity: u64,
     seed_reserve: u64,
@@ -272,7 +271,6 @@ public(package) fun vault_initialized<Product>(
     clearing_house_id: ID,
     base_oracle_id: ID,
     collateral_oracle_id: ID,
-    collateral_type: TypeName,
     seed_amount: u64,
     seed_venue_equity: u64,
     seed_reserve: u64,
@@ -293,7 +291,6 @@ public(package) fun vault_initialized<Product>(
             clearing_house_id,
             base_oracle_id,
             collateral_oracle_id,
-            collateral_type,
             seed_amount,
             seed_venue_equity,
             seed_reserve,
@@ -479,7 +476,6 @@ public fun vault_initialized_fields<Product>(
     ID,
     ID,
     ID,
-    TypeName,
     u64,
     u64,
     u64,
@@ -499,7 +495,6 @@ public fun vault_initialized_fields<Product>(
         self.clearing_house_id,
         self.base_oracle_id,
         self.collateral_oracle_id,
-        self.collateral_type,
         self.seed_amount,
         self.seed_venue_equity,
         self.seed_reserve,
@@ -581,8 +576,6 @@ public fun donated_fields<Product>(self: &Donated<Product>): (ID, u64, u64, Chec
 use blast_boosts_aftermath::{blast_events::{Event, emit_event}, venue_account::Checkpoint};
 
 use blast_boosts_core::{lifecycle::ShutdownReason, policy::{PositionSide, VaultPolicy}};
-
-use std::type_name::TypeName;
 
 #[test_only]
 use sui::event::events_by_type;

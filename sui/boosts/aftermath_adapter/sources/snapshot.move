@@ -69,7 +69,6 @@ public(package) fun capture_checkpoint<Collateral>(
     binding.assert_object_graph(
         object::id(account), account.account_id(), object::id(registry),
         object::id(clearing_house), object::id(base_oracle), object::id(collateral_oracle),
-        type_name::with_original_ids<Collateral>(),
     );
 
     read_checkpoint(account, clearing_house)
@@ -920,4 +919,3 @@ use pyth::{i64::I64, price_info::PriceInfoObject};
 
 use sui::clock::Clock;
 
-use std::type_name;

@@ -16,7 +16,7 @@ const SEED_SHARE_SCALE: u64 = 1_000;
 /// `issue` creates it and `operations::initialize` must consume it in the same
 /// transaction: it has no abilities, so an issuance that is not activated cannot
 /// be stored or shared, and a failed activation rolls the currency back too.
-public struct VaultIssuance<phantom Product> {
+public struct VaultIssuance<phantom Product, phantom Collateral> {
     issuance: Issuance<Product>,
     treasury_cap: TreasuryCap<BlastBoost<Product>>,
     metadata_cap: MetadataCap<BlastBoost<Product>>,
@@ -24,12 +24,12 @@ public struct VaultIssuance<phantom Product> {
 
 /// Shared adapter custody for one Boost currency, its core state and its venue account.
 ///
-/// This adapter defines `Vault<Product>`, so it can issue the corresponding
+/// This adapter defines `Vault<Product, Collateral>`, so it can issue the corresponding
 /// non-OTW currency through Coin Registry. The nested core state has private
 /// fields and can change only through core mutation functions. A Vault exists
 /// only from activation on, so every field below is always present; the share
 /// caps hang off `id` as dynamic object fields.
-public struct Vault<phantom Product> has key {
+public struct Vault<phantom Product, phantom Collateral> has key {
     id: UID,
     state: State<Product>,
     /// The bound account's identity, last accepted checkpoint and admin authority.
@@ -55,14 +55,14 @@ public struct TerminalCashKey() has copy, drop, store;
 /// Issues one leverage currency and the issuance that `operations::initialize`
 /// turns into its Vault in the same transaction.
 ///
-/// `Product` is the currency's identity: `Vault<Product>` names the coin and
+/// `Product` is the currency's identity: `Vault<Product, Collateral>` names the coin and
 /// Coin Registry admits each type once. Any non-primitive type may serve; the
 /// core issuer role is the only authority. The adapter generation and that
 /// role are checked before Coin Registry mutation. Package custody is not an
 /// input: `package_admin` seals a validated Publisher and UpgradeCap that no
 /// other object can hold, so re-reading those fields here would prove nothing
 /// this package does not already own.
-public fun issue<Product: drop>(
+public fun issue<Product: drop, Collateral>(
     protocol: &Protocol,
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
     registry: &mut CoinRegistry,
@@ -74,7 +74,7 @@ public fun issue<Product: drop>(
     description: String,
     icon_url: String,
     ctx: &mut TxContext,
-): VaultIssuance<Product> {
+): VaultIssuance<Product, Collateral> {
     protocol.assert_current();
     assert!(
         !type_name::with_original_ids<Product>().is_primitive(),
@@ -91,13 +91,13 @@ public fun issue<Product: drop>(
 }
 
 /// Shares one activated adapter Vault.
-public fun share<Product>(self: Vault<Product>) {
+public fun share<Product, Collateral>(self: Vault<Product, Collateral>) {
     transfer::share_object(self);
 }
 
 /// Irreversibly stops ordinary operations without requiring venue or oracle availability.
-public fun begin_shutdown<Product>(
-    self: &mut Vault<Product>,
+public fun begin_shutdown<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
     reason: ShutdownReason,
@@ -112,13 +112,12 @@ public fun begin_shutdown<Product>(
 
 /// Burns native eligible shares for local terminal collateral; no venue or oracle access.
 public fun redeem_shutdown<Product, Collateral>(
-    self: &mut Vault<Product>, protocol: &Protocol, shares: Coin<BlastBoost<Product>>,
+    self: &mut Vault<Product, Collateral>, protocol: &Protocol, shares: Coin<BlastBoost<Product>>,
     minimum_collateral: u64, deadline_ms: u64, clock: &Clock, ctx: &mut TxContext,
 ): Coin<Collateral> {
     protocol.assert_current();
     self.state.assert_settled();
     assert!(clock.timestamp_ms() <= deadline_ms, blast_boosts_aftermath::errors::deadline_expired!());
-    self.assert_collateral_type<_, Collateral>();
 
     let cash = dynamic_field::borrow<_, Balance<Collateral>>(&self.id, TerminalCashKey());
     let output = self.state.shutdown_claim_quote(
@@ -141,8 +140,8 @@ public fun redeem_shutdown<Product, Collateral>(
 
 /// Updates only future fee collections under the immutable issuance caps.
 /// This local administrative edge requires neither venue objects nor prices.
-public fun set_fees<Product>(
-    self: &mut Vault<Product>,
+public fun set_fees<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
     mint_bps: u64,
@@ -163,8 +162,8 @@ public fun set_fees<Product>(
 
 /// Replaces the NAV cap that bounds post-mint shareholder NAV.
 /// This local administrative edge requires neither venue objects nor prices.
-public fun set_nav_cap<Product>(
-    self: &mut Vault<Product>,
+public fun set_nav_cap<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
     nav_cap: u64,
@@ -184,8 +183,8 @@ public fun set_nav_cap<Product>(
 /// The risk administrator may raise or lower the current value without a
 /// cooldown. This transition changes no live position exposure and therefore
 /// remains available in every lifecycle state.
-public fun set_max_order_notional<Product>(
-    self: &mut Vault<Product>,
+public fun set_max_order_notional<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
     max_order_notional: u64,
@@ -200,7 +199,7 @@ public fun set_max_order_notional<Product>(
 
 /// Returns only earned local admin collateral, including during venue/oracle outages.
 public fun withdraw_admin_fees<Product, Collateral>(
-    self: &mut Vault<Product>,
+    self: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
     amount: u64,
@@ -208,7 +207,6 @@ public fun withdraw_admin_fees<Product, Collateral>(
 ): Coin<Collateral> {
     protocol.assert_current();
     admin_witness.assert_role(domain::risk_admin_role());
-    self.assert_collateral_type<_, Collateral>();
     assert!(amount > 0, blast_boosts_aftermath::errors::zero_amount!());
 
     let available = self.admin_cash_balance<_, Collateral>();
@@ -227,17 +225,17 @@ public fun withdraw_admin_fees<Product, Collateral>(
 // --- Core And Venue ---
 
 /// The core accounting state; the adapter drives it directly and the Vault only stores it.
-public(package) fun state<Product>(self: &Vault<Product>): &State<Product> { &self.state }
+public(package) fun state<Product, Collateral>(self: &Vault<Product, Collateral>): &State<Product> { &self.state }
 
-public(package) fun state_mut<Product>(self: &mut Vault<Product>): &mut State<Product> { &mut self.state }
+public(package) fun state_mut<Product, Collateral>(self: &mut Vault<Product, Collateral>): &mut State<Product> { &mut self.state }
 
 /// The bound venue account: identity, last accepted checkpoint, and custody calls.
-public(package) fun venue<Product>(self: &Vault<Product>): &VenueAccount { &self.venue_account }
+public(package) fun venue<Product, Collateral>(self: &Vault<Product, Collateral>): &VenueAccount { &self.venue_account }
 
-public(package) fun venue_mut<Product>(self: &mut Vault<Product>): &mut VenueAccount { &mut self.venue_account }
+public(package) fun venue_mut<Product, Collateral>(self: &mut Vault<Product, Collateral>): &mut VenueAccount { &mut self.venue_account }
 
 /// The issuer's terms, which size and bound the seed position before the state exists.
-public(package) fun issuance<Product>(self: &VaultIssuance<Product>): &Issuance<Product> { &self.issuance }
+public(package) fun issuance<Product, Collateral>(self: &VaultIssuance<Product, Collateral>): &Issuance<Product> { &self.issuance }
 
 // --- Initialization ---
 
@@ -247,15 +245,15 @@ public(package) fun issuance<Product>(self: &VaultIssuance<Product>): &Issuance<
 /// shareholder NAV, and the priced seed position. The seed is a permanent
 /// gift to the product: its shares are never redeemable and its cash, once
 /// every other share has left, becomes admin cash.
-public(package) fun activate<Product>(
-    self: VaultIssuance<Product>,
+public(package) fun activate<Product, Collateral>(
+    self: VaultIssuance<Product, Collateral>,
     seeded: PositionObservation,
     seed_reserve: u64,
     collateral_decimals: u8,
     venue_account: VenueAccount,
     now_ms: u64,
     ctx: &mut TxContext,
-): (Vault<Product>, u64, ActivePosition) {
+): (Vault<Product, Collateral>, u64, ActivePosition) {
     let VaultIssuance { issuance, mut treasury_cap, metadata_cap } = self;
     let (state, seed_nav, seeded) =
         issuance.activate(seeded, seed_reserve, constants::base_decimals!(), collateral_decimals, now_ms);
@@ -280,8 +278,8 @@ public(package) fun activate<Product>(
 // --- Mint ---
 
 /// Mints only the shares priced by the completed core transition.
-public(package) fun complete_mint<Product>(
-    self: &mut Vault<Product>,
+public(package) fun complete_mint<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
     plan: MintPlan<Product>,
     after: PositionObservation,
     now_ms: u64,
@@ -295,7 +293,7 @@ public(package) fun complete_mint<Product>(
 // --- Redemption ---
 
 /// Burns only through this Vault's retained native TreasuryCap.
-public(package) fun burn_redeemed_shares<Product>(self: &mut Vault<Product>, shares: Coin<BlastBoost<Product>>): u64 {
+public(package) fun burn_redeemed_shares<Product, Collateral>(self: &mut Vault<Product, Collateral>, shares: Coin<BlastBoost<Product>>): u64 {
     coin::burn(self.treasury_cap_mut(), shares)
 }
 
@@ -304,8 +302,8 @@ public(package) fun burn_redeemed_shares<Product>(self: &mut Vault<Product>, sha
 // --- Funding And Donation ---
 
 /// Applies one authenticated nonzero funding classification to the core.
-public(package) fun settle_funding<Product>(
-    self: &mut Vault<Product>,
+public(package) fun settle_funding<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
     is_cost: bool,
     amount: u64,
 ): (u64, u64, u64, u64) {
@@ -322,9 +320,8 @@ public(package) fun settle_funding<Product>(
 
 /// Consumes verified venue finality and seals the actual recovered holder cash.
 public(package) fun complete_shutdown<Product, Collateral>(
-    self: &mut Vault<Product>, withdrawal: TerminalWithdrawal<Collateral>,
+    self: &mut Vault<Product, Collateral>, withdrawal: TerminalWithdrawal<Collateral>,
 ) {
-    self.assert_collateral_type<_, Collateral>();
 
     let (recovered, checkpoint, unrecoverable_collateral_raw) = withdrawal.into_recovered_cash();
     let supply = self.share_supply();
@@ -350,10 +347,9 @@ public(package) fun complete_shutdown<Product, Collateral>(
 
 /// Retains an operation's already allocated admin coin without changing venue accounting.
 public(package) fun retain_admin_cash<Product, Collateral>(
-    self: &mut Vault<Product>,
+    self: &mut Vault<Product, Collateral>,
     cash: Coin<Collateral>,
 ) {
-    self.assert_collateral_type<_, Collateral>();
     if (cash.value() == 0) {
         cash.destroy_zero();
         return
@@ -365,35 +361,26 @@ public(package) fun retain_admin_cash<Product, Collateral>(
 }
 
 /// Native cash is authoritative; no mirrored numerical admin ledger is stored.
-public(package) fun admin_cash_balance<Product, Collateral>(self: &Vault<Product>): u64 {
-    self.assert_collateral_type<_, Collateral>();
+public(package) fun admin_cash_balance<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
     if (!dynamic_field::exists(&self.id, AdminCashKey())) { return 0 };
     let cash = dynamic_field::borrow<_, Balance<Collateral>>(&self.id, AdminCashKey());
     cash.value()
 }
 
-/// Checks the immutable activation collateral identity even on local-only paths.
-public(package) fun assert_collateral_type<Product, Collateral>(self: &Vault<Product>) {
-    assert!(
-        self.venue_account.binding().collateral_type() == type_name::with_original_ids<Collateral>(),
-        blast_boosts_aftermath::errors::collateral_type_mismatch!(),
-    );
-}
-
 // --- Reads ---
 
 /// Returns the stable Vault identity used by adapter events.
-public(package) fun id<Product>(self: &Vault<Product>): ID {
+public(package) fun id<Product, Collateral>(self: &Vault<Product, Collateral>): ID {
     self.id.to_inner()
 }
 
 /// Returns the authoritative leverage-currency supply from the retained cap.
-public(package) fun share_supply<Product>(self: &Vault<Product>): u64 {
+public(package) fun share_supply<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
     self.treasury_cap().total_supply()
 }
 
 /// The seed shares locked at activation, excluded from every terminal claim.
-public(package) fun locked_shares<Product>(self: &Vault<Product>): u64 {
+public(package) fun locked_shares<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
     self.locked_shares
 }
 
@@ -404,11 +391,11 @@ fun seed_shares(seed_nav: u64): u64 {
     seed_nav.checked_mul(SEED_SHARE_SCALE).destroy_or!(abort blast_boosts_aftermath::errors::locked_shares_overflow!())
 }
 
-fun treasury_cap<Product>(self: &Vault<Product>): &TreasuryCap<BlastBoost<Product>> {
+fun treasury_cap<Product, Collateral>(self: &Vault<Product, Collateral>): &TreasuryCap<BlastBoost<Product>> {
     dynamic_object_field::borrow(&self.id, TreasuryKey<Product>())
 }
 
-fun treasury_cap_mut<Product>(self: &mut Vault<Product>): &mut TreasuryCap<BlastBoost<Product>> {
+fun treasury_cap_mut<Product, Collateral>(self: &mut Vault<Product, Collateral>): &mut TreasuryCap<BlastBoost<Product>> {
     dynamic_object_field::borrow_mut(&mut self.id, TreasuryKey<Product>())
 }
 
@@ -420,61 +407,61 @@ public fun seed_shares_for_testing(seed_nav: u64): u64 {
 }
 
 #[test_only]
-public fun terminal_cash_for_testing<Product, Collateral>(self: &Vault<Product>): u64 {
+public fun terminal_cash_for_testing<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
     let cash = dynamic_field::borrow<_, Balance<Collateral>>(&self.id, TerminalCashKey());
     cash.value()
 }
 
 #[test_only]
-fun metadata_cap<Product>(self: &Vault<Product>): &MetadataCap<BlastBoost<Product>> {
+fun metadata_cap<Product, Collateral>(self: &Vault<Product, Collateral>): &MetadataCap<BlastBoost<Product>> {
     dynamic_object_field::borrow(&self.id, MetadataKey<Product>())
 }
 
 #[test_only]
-public fun max_order_notional_for_testing<Product>(self: &Vault<Product>): u64 {
+public fun max_order_notional_for_testing<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
     self.state.max_order_notional_for_testing()
 }
 
 #[test_only]
-public fun vault_policy_for_testing<Product>(self: &Vault<Product>): VaultPolicy {
+public fun vault_policy_for_testing<Product, Collateral>(self: &Vault<Product, Collateral>): VaultPolicy {
     self.state.vault_policy_for_testing()
 }
 
 #[test_only]
-public fun nav_cap_for_testing<Product>(self: &Vault<Product>): u64 {
+public fun nav_cap_for_testing<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
     self.state.nav_cap()
 }
 
 #[test_only]
-public fun fee_settings_for_testing<Product>(self: &Vault<Product>): (u64, u64, u64) {
+public fun fee_settings_for_testing<Product, Collateral>(self: &Vault<Product, Collateral>): (u64, u64, u64) {
     self.state.fee_settings()
 }
 
 #[test_only]
-public fun treasury_cap_id_for_testing<Product>(self: &Vault<Product>): ID {
+public fun treasury_cap_id_for_testing<Product, Collateral>(self: &Vault<Product, Collateral>): ID {
     object::id(self.treasury_cap())
 }
 
 #[test_only]
-public fun metadata_cap_id_for_testing<Product>(self: &Vault<Product>): ID {
+public fun metadata_cap_id_for_testing<Product, Collateral>(self: &Vault<Product, Collateral>): ID {
     object::id(self.metadata_cap())
 }
 
 #[test_only]
-public fun set_unwinding_for_testing<Product>(self: &mut Vault<Product>) {
+public fun set_unwinding_for_testing<Product, Collateral>(self: &mut Vault<Product, Collateral>) {
     self.state.set_unwinding_for_testing();
 }
 
 #[test_only]
 /// Issues fixture shares through the same retained native TreasuryCap as production mints.
-public fun mint_eligible_shares_for_testing<Product>(
-    self: &mut Vault<Product>, amount: u64, ctx: &mut TxContext,
+public fun mint_eligible_shares_for_testing<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>, amount: u64, ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
     coin::mint(self.treasury_cap_mut(), amount, ctx)
 }
 
 #[test_only]
-public fun is_unwinding_for_testing<Product>(self: &Vault<Product>): bool {
+public fun is_unwinding_for_testing<Product, Collateral>(self: &Vault<Product, Collateral>): bool {
     self.state.is_unwinding_for_testing()
 }
 

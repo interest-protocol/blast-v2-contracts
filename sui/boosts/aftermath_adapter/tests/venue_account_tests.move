@@ -40,8 +40,7 @@ fun exact_binding_accepts_every_matching_component() {
         @0xB.to_id(),
         @0xC.to_id(),
         @0xD.to_id(),
-        @0xE.to_id(),
-        type_name::with_original_ids<Collateral>(),
+        @0xE.to_id()
     );
 
     destroy(binding);
@@ -56,8 +55,7 @@ fun wrong_account_object_is_rejected() {
         @0xB.to_id(),
         @0xC.to_id(),
         @0xD.to_id(),
-        @0xE.to_id(),
-        type_name::with_original_ids<Collateral>(),
+        @0xE.to_id()
     );
 }
 
@@ -70,8 +68,7 @@ fun wrong_account_number_is_rejected() {
         @0xB.to_id(),
         @0xC.to_id(),
         @0xD.to_id(),
-        @0xE.to_id(),
-        type_name::with_original_ids<Collateral>(),
+        @0xE.to_id()
     );
 }
 
@@ -84,8 +81,7 @@ fun wrong_registry_is_rejected() {
         @0xBAD.to_id(),
         @0xC.to_id(),
         @0xD.to_id(),
-        @0xE.to_id(),
-        type_name::with_original_ids<Collateral>(),
+        @0xE.to_id()
     );
 }
 
@@ -98,8 +94,7 @@ fun wrong_clearing_house_is_rejected() {
         @0xB.to_id(),
         @0xBAD.to_id(),
         @0xD.to_id(),
-        @0xE.to_id(),
-        type_name::with_original_ids<Collateral>(),
+        @0xE.to_id()
     );
 }
 
@@ -112,8 +107,7 @@ fun wrong_base_oracle_is_rejected() {
         @0xB.to_id(),
         @0xC.to_id(),
         @0xBAD.to_id(),
-        @0xE.to_id(),
-        type_name::with_original_ids<Collateral>(),
+        @0xE.to_id()
     );
 }
 
@@ -126,22 +120,7 @@ fun wrong_collateral_oracle_is_rejected() {
         @0xB.to_id(),
         @0xC.to_id(),
         @0xD.to_id(),
-        @0xBAD.to_id(),
-        type_name::with_original_ids<Collateral>(),
-    );
-}
-
-#[test]
-#[expected_failure(abort_code = errors::ECollateralTypeMismatch, location = blast_boosts_aftermath::venue_account)]
-fun wrong_collateral_type_is_rejected() {
-    standard_binding().assert_object_graph(
-        @0xA11CE.to_id(),
-        ACCOUNT_NUMBER,
-        @0xB.to_id(),
-        @0xC.to_id(),
-        @0xD.to_id(),
-        @0xE.to_id(),
-        type_name::with_original_ids<OtherCollateral>(),
+        @0xBAD.to_id()
     );
 }
 
@@ -154,8 +133,7 @@ fun account_object_precedes_account_number() {
         @0xB.to_id(),
         @0xC.to_id(),
         @0xD.to_id(),
-        @0xE.to_id(),
-        type_name::with_original_ids<Collateral>(),
+        @0xE.to_id()
     );
 }
 
@@ -168,8 +146,7 @@ fun account_number_precedes_registry() {
         @0xBAD.to_id(),
         @0xC.to_id(),
         @0xD.to_id(),
-        @0xE.to_id(),
-        type_name::with_original_ids<Collateral>(),
+        @0xE.to_id()
     );
 }
 
@@ -182,8 +159,7 @@ fun registry_precedes_clearing_house() {
         @0xBAD.to_id(),
         @0xBAD.to_id(),
         @0xD.to_id(),
-        @0xE.to_id(),
-        type_name::with_original_ids<Collateral>(),
+        @0xE.to_id()
     );
 }
 
@@ -196,8 +172,7 @@ fun clearing_house_precedes_base_oracle() {
         @0xB.to_id(),
         @0xBAD.to_id(),
         @0xBAD.to_id(),
-        @0xE.to_id(),
-        type_name::with_original_ids<Collateral>(),
+        @0xE.to_id()
     );
 }
 
@@ -210,22 +185,7 @@ fun base_oracle_precedes_collateral_oracle() {
         @0xB.to_id(),
         @0xC.to_id(),
         @0xBAD.to_id(),
-        @0xBAD.to_id(),
-        type_name::with_original_ids<Collateral>(),
-    );
-}
-
-#[test]
-#[expected_failure(abort_code = errors::ECollateralOracleMismatch, location = blast_boosts_aftermath::venue_account)]
-fun collateral_oracle_precedes_collateral_type() {
-    standard_binding().assert_object_graph(
-        @0xA11CE.to_id(),
-        ACCOUNT_NUMBER,
-        @0xB.to_id(),
-        @0xC.to_id(),
-        @0xD.to_id(),
-        @0xBAD.to_id(),
-        type_name::with_original_ids<OtherCollateral>(),
+        @0xBAD.to_id()
     );
 }
 
@@ -259,8 +219,7 @@ fun standard_binding(): Binding {
         @0xB.to_id(),
         @0xC.to_id(),
         @0xD.to_id(),
-        @0xE.to_id(),
-        type_name::with_original_ids<Collateral>(),
+        @0xE.to_id()
     )
 }
 

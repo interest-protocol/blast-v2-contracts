@@ -59,14 +59,25 @@ and the dual-branch `set_fees` are gone.
 
 ### D3. A Vault exists only from activation on
 
-`Vault` holds `venue_account: VenueAccount` and `seed_facts: SeedFacts` as
-plain fields. `VenueAccount` seals the binding, the accepted checkpoint and
-the venue's `AuthorityCap<ACCOUNT, ADMIN>` together; `venue_account::new` is
-the one place the cap is proved to name the bound account, and because both
-are immutable from then on nothing re-checks the pairing later. `VenueCustody`
-is removed; custody functions are `VenueAccount` methods. The share caps stay
-dynamic object fields of the Vault (0071). `unresolved_checkpoint_digest`
-stays `Option`: it is "none while healthy", a real state.
+`Vault` holds the core `State`, `venue_account: VenueAccount` and the count
+of locked seed shares, nothing else. `VenueAccount` seals the binding, the
+accepted checkpoint and the venue's `AuthorityCap<ACCOUNT, ADMIN>` together;
+`venue_account::new` is the one place the cap is proved to name the bound
+account, and because both are immutable from then on nothing re-checks the
+pairing later. `VenueCustody` is removed; custody functions are
+`VenueAccount` methods. The share caps stay dynamic object fields of the
+Vault (0071). The seed funder, its `SeedFacts` and the diagnostic
+`unresolved_checkpoint_digest` are gone: none of them controlled an
+invariant, and the drift a digest used to record is now an event.
+
+### D3b. The collateral is a type parameter
+
+`Vault<Product, Collateral>` names its collateral coin at the type level, as
+every venue object it touches already does (`Account<Collateral>`,
+`ClearingHouse<Collateral>`). The stored `TypeName` and its runtime
+comparison are gone: a Vault, an account and a market of different
+collateral no longer typecheck in one call, so there is nothing left for an
+assertion to catch.
 
 ### D3a. The Aftermath interfaces are vendored
 
@@ -101,10 +112,13 @@ is ever needed.
 
 ### D5. Retired codes
 
-Adapter codes 19 (`venue_account_already_installed`), 31
-(`share_supply_not_zero`, true by construction: the issuance mints nothing
-before its locked seed shares) and 39 (`venue_account_not_installed`) are
-retired and never reused.
+`venue_account_already_installed`, `share_supply_not_zero` (true by
+construction: the issuance mints nothing before its locked seed shares),
+`venue_account_not_installed`, the three risk-module codes,
+`seed_already_recorded`, `invalid_seed_funder` and
+`collateral_type_mismatch` are retired. Nothing is published, so each
+registry is renumbered to stay gap-free from zero; tests name codes through
+the registry's constants, never by number.
 
 ## Consequences
 

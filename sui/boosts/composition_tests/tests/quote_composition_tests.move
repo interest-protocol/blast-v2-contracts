@@ -20,18 +20,18 @@ public struct Migration() has drop;
 /// The fixture share coin is test-minted; this is not a venue mint execution claim.
 #[test]
 fun admitted_vault_quote_buys_and_sells_as_an_ordinary_native_coin() {
-    quote_round_trip<Vault<Long2x>>(true);
+    quote_round_trip<BlastBoost<Long2x>>(true);
 }
 
 #[test]
 fun admitted_short_vault_quote_uses_the_same_native_buy_and_sell_path() {
-    quote_round_trip<Vault<Short2x>>(true);
+    quote_round_trip<BlastBoost<Short2x>>(true);
 }
 
 #[test]
 #[expected_failure(abort_code = 45, location = blast_fun::launch_config)]
 fun admitting_long_does_not_admit_the_distinct_short_vault_quote() {
-    quote_round_trip<Vault<Short2x>>(false);
+    quote_round_trip<BlastBoost<Short2x>>(false);
 }
 
 // === Test Helpers ===
@@ -51,7 +51,7 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     if (admit_exact) {
         config.allow_quote<Quote>(&version, &witness, 5_000_000, 25_000_000);
     } else {
-        config.allow_quote<Vault<Long2x>>(&version, &witness, 5_000_000, 25_000_000);
+        config.allow_quote<BlastBoost<Long2x>>(&version, &witness, 5_000_000, 25_000_000);
     };
     config.allow_migration_witness<Migration>(&version, &witness);
     config.set_graduation_defaults(&version, &witness, bps::new(250), bps::new(750), bps::new(2_000));
@@ -89,7 +89,7 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
 public fun sell_and_redeem_shutdown<Product, Collateral, Meme>(
     market: &mut Launch<Meme, BlastBoost<Product>>, version: &PackageVersion,
     runtime: &RuntimeConfig, meme: Coin<Meme>, minimum_shares: u64,
-    vault: &mut Vault<Product>, protocol: &Protocol,
+    vault: &mut Vault<Product, Collateral>, protocol: &Protocol,
     minimum_cash: u64, deadline: u64, clock: &Clock, ctx: &mut TxContext,
 ): Coin<Collateral> {
     let shares = market.sell(version, runtime, meme, minimum_shares, ctx);
@@ -98,7 +98,7 @@ public fun sell_and_redeem_shutdown<Product, Collateral, Meme>(
 
 /// Typechecks the atomic mint -> launch buy handoff; requires authorized live objects to run.
 public fun mint_and_buy<Product, Collateral, Meme>(
-    vault: &mut Vault<Product>, protocol: &Protocol, account: &mut Account<Collateral>,
+    vault: &mut Vault<Product, Collateral>, protocol: &Protocol, account: &mut Account<Collateral>,
     registry: &Registry, clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
     base_price: &PriceInfoObject, collateral_price: &PriceInfoObject,
@@ -116,7 +116,7 @@ public fun mint_and_buy<Product, Collateral, Meme>(
 public fun sell_and_redeem<Product, Collateral, Meme>(
     market: &mut Launch<Meme, BlastBoost<Product>>, version: &PackageVersion,
     runtime: &RuntimeConfig, meme: Coin<Meme>, minimum_shares: u64,
-    vault: &mut Vault<Product>, protocol: &Protocol, account: &mut Account<Collateral>,
+    vault: &mut Vault<Product, Collateral>, protocol: &Protocol, account: &mut Account<Collateral>,
     registry: &Registry, clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
     base_price: &PriceInfoObject, collateral_price: &PriceInfoObject,

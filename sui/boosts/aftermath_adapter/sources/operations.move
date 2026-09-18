@@ -61,7 +61,7 @@ public struct RedemptionReceipt<phantom Product> {
 /// Only the issuer's transaction can reach this: the issuance has no abilities,
 /// so it cannot be stored, shared, or handed to another signer.
 public fun initialize<Product, Collateral>(
-    issuance: VaultIssuance<Product>,
+    issuance: VaultIssuance<Product, Collateral>,
     protocol: &Protocol,
     currency: &Currency<Collateral>,
     registry: &mut Registry,
@@ -75,7 +75,7 @@ public fun initialize<Product, Collateral>(
     position_imr: u256,
     clock: &Clock,
     ctx: &mut TxContext,
-): Vault<Product> {
+): Vault<Product, Collateral> {
     protocol.assert_current();
     let terms = issuance.issuance();
     let (position_side, max_order_notional) = (terms.side(), terms.max_order_notional());
@@ -121,7 +121,7 @@ public fun initialize<Product, Collateral>(
     // BLAST_ACTIVATION_BOUNDARY_A3
     clearing_house.share();
     // BLAST_ACTIVATION_BOUNDARY_A4
-    emit_vault_initialized<Product>(
+    emit_vault_initialized<Product, Collateral>(
         &vault, seed_amount, seed_nav, seeded.equity(), seeded.base(), seeded.lot_size(), position_side, position_imr,
     );
     // BLAST_ACTIVATION_BOUNDARY_A5
@@ -132,7 +132,7 @@ public fun initialize<Product, Collateral>(
 /// Exchanges exact bound collateral for native leverage shares in one atomic operation.
 /// Policy fixes direction and whole-lot size; partial sessions must complete the aggregate.
 public fun mint<Product, Collateral>(
-    vault: &mut Vault<Product>,
+    vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
     account: &mut Account<Collateral>,
     registry: &Registry,
@@ -149,7 +149,6 @@ public fun mint<Product, Collateral>(
     ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
     protocol.assert_current();
-    vault.assert_collateral_type<_, Collateral>();
     let deposit = cash.value();
     assert!(deposit > 0, blast_boosts_aftermath::errors::zero_amount!());
     assert_deadline(clock.timestamp_ms(), deadline_ms);
@@ -193,7 +192,7 @@ public fun mint<Product, Collateral>(
 /// Burns native shares only after their proportional close and exact collateral payout.
 /// Entry-quote and realized PnL use authenticated post-session state, never an invented formula.
 public fun redeem<Product, Collateral>(
-    vault: &mut Vault<Product>,
+    vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
     account: &mut Account<Collateral>,
     registry: &Registry,
@@ -210,7 +209,6 @@ public fun redeem<Product, Collateral>(
     ctx: &mut TxContext,
 ): Coin<Collateral> {
     protocol.assert_current();
-    vault.assert_collateral_type<_, Collateral>();
     assert!(shares.value() > 0, blast_boosts_aftermath::errors::zero_amount!());
     assert_deadline(clock.timestamp_ms(), deadline_ms);
     vault.state().assert_user_fee_limit(false, maximum_fee_bps);
@@ -252,14 +250,13 @@ public fun redeem<Product, Collateral>(
 
 /// Permissionless, policy-sized maintenance with no caller reward or trade parameters.
 public fun rebalance<Product, Collateral>(
-    vault: &mut Vault<Product>, protocol: &Protocol, account: &mut Account<Collateral>,
+    vault: &mut Vault<Product, Collateral>, protocol: &Protocol, account: &mut Account<Collateral>,
     registry: &Registry, mut clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
     base_price_info: &PriceInfoObject, collateral_price_info: &PriceInfoObject,
     clock: &Clock, ctx: &mut TxContext,
 ) {
     protocol.assert_current();
-    vault.assert_collateral_type<_, Collateral>();
 
     let (before, mut checkpoint) = synchronize(
         vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle,
@@ -305,13 +302,12 @@ public fun rebalance<Product, Collateral>(
 /// first, so a due settlement can move the answer by that amount when the real
 /// call runs; intended for `dev_inspect`, not for on-chain gating.
 public fun needs_rebalance<Product, Collateral>(
-    vault: &Vault<Product>, protocol: &Protocol, account: &Account<Collateral>, registry: &Registry,
+    vault: &Vault<Product, Collateral>, protocol: &Protocol, account: &Account<Collateral>, registry: &Registry,
     clearing_house: &ClearingHouse<Collateral>, base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage, base_price_info: &PriceInfoObject,
     collateral_price_info: &PriceInfoObject, clock: &Clock,
 ): bool {
     protocol.assert_current();
-    vault.assert_collateral_type<_, Collateral>();
 
     let (observation, checkpoint) = snapshot::capture(
         &vault.venue().binding(), account, registry, clearing_house, base_oracle, collateral_oracle,
@@ -324,7 +320,7 @@ public fun needs_rebalance<Product, Collateral>(
 
 /// Deposits configured collateral into the active funding buffer without shares or fees.
 public fun donate<Product, Collateral>(
-    vault: &mut Vault<Product>,
+    vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
     account: &mut Account<Collateral>,
     registry: &Registry,
@@ -337,7 +333,6 @@ public fun donate<Product, Collateral>(
     clock: &Clock,
 ) {
     protocol.assert_current();
-    vault.assert_collateral_type<_, Collateral>();
     let amount = cash.value();
     assert!(amount > 0, blast_boosts_aftermath::errors::zero_amount!());
 
@@ -362,7 +357,7 @@ public fun donate<Product, Collateral>(
 /// faults preserve lifecycle; unresolved external changes preserve the accepted
 /// economic checkpoint and emit only a novel diagnostic observation.
 public fun sync_health<Product, Collateral>(
-    vault: &mut Vault<Product>,
+    vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
     account: &mut Account<Collateral>,
     registry: &Registry,
@@ -383,14 +378,13 @@ public fun sync_health<Product, Collateral>(
 
 /// Permissionless bounded close-only progress, never caller-sized or dependent on positive NAV.
 public fun unwind<Product, Collateral>(
-    vault: &mut Vault<Product>, protocol: &Protocol, account: &mut Account<Collateral>,
+    vault: &mut Vault<Product, Collateral>, protocol: &Protocol, account: &mut Account<Collateral>,
     registry: &Registry, mut clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
     base_price_info: &PriceInfoObject, collateral_price_info: &PriceInfoObject,
     clock: &Clock, ctx: &mut TxContext,
 ) {
     protocol.assert_current();
-    vault.assert_collateral_type<_, Collateral>();
 
     if (clearing_house.is_frozen()) {
         unwind_frozen(vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle);
@@ -405,13 +399,12 @@ public fun unwind<Product, Collateral>(
 
 /// Recovers all actual holder collateral only from an exactly settled bound account.
 public fun finalize_shutdown<Product, Collateral>(
-    vault: &mut Vault<Product>, protocol: &Protocol, account: &mut Account<Collateral>,
+    vault: &mut Vault<Product, Collateral>, protocol: &Protocol, account: &mut Account<Collateral>,
     registry: &Registry, clearing_house: &mut ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
     clock: &Clock, ctx: &mut TxContext,
 ) {
     protocol.assert_current();
-    vault.assert_collateral_type<_, Collateral>();
 
     let binding = vault.venue().binding();
     let before = snapshot::capture_checkpoint(
@@ -435,8 +428,8 @@ public fun finalize_shutdown<Product, Collateral>(
 // === Package Functions ===
 
 /// Emits activation facts read back from the resulting real Vault state.
-public(package) fun emit_vault_initialized<Product>(
-    vault: &Vault<Product>,
+public(package) fun emit_vault_initialized<Product, Collateral>(
+    vault: &Vault<Product, Collateral>,
     seed_amount: u64,
     seed_shareholder_nav: u64,
     seed_venue_equity: u64,
@@ -455,7 +448,6 @@ public(package) fun emit_vault_initialized<Product>(
         binding.clearing_house_id(),
         binding.base_oracle_id(),
         binding.collateral_oracle_id(),
-        binding.collateral_type(),
         seed_amount,
         seed_venue_equity,
         vault.state().maintenance_reserve(),
@@ -471,7 +463,7 @@ public(package) fun emit_vault_initialized<Product>(
 
 /// Commits native mint effects only after the orchestration proved its venue checkpoint.
 public(package) fun complete_mint<Product, Collateral>(
-    vault: &mut Vault<Product>, plan: MintPlan<Product>, deposit: u64, after: PositionObservation,
+    vault: &mut Vault<Product, Collateral>, plan: MintPlan<Product>, deposit: u64, after: PositionObservation,
     checkpoint: Checkpoint, now_ms: u64, ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
     let (shares, contribution, fee, admin, reserve_fee) = vault.complete_mint(plan, after, now_ms, ctx);
@@ -488,8 +480,8 @@ public(package) fun complete_mint<Product, Collateral>(
 }
 
 /// Holds the actual input coin across payout instead of accepting a numerical burn promise.
-public(package) fun seal_redemption_receipt<Product>(
-    vault: &mut Vault<Product>, plan: RedemptionPlan<Product>, shares: Coin<BlastBoost<Product>>,
+public(package) fun seal_redemption_receipt<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>, plan: RedemptionPlan<Product>, shares: Coin<BlastBoost<Product>>,
     unwound: PositionObservation, unwound_checkpoint: Checkpoint, now_ms: u64,
 ): RedemptionReceipt<Product> {
     assert!(
@@ -510,11 +502,10 @@ public(package) fun redemption_cash_required<Product>(self: &RedemptionReceipt<P
 /// Completes custody after the public operation proves the withdrawal on the checkpoint:
 /// retains the earned admin cash, burns the held shares, and accepts the checkpoint.
 public(package) fun complete_redemption<Product, Collateral>(
-    vault: &mut Vault<Product>, receipt: RedemptionReceipt<Product>, mut cash: Coin<Collateral>,
+    vault: &mut Vault<Product, Collateral>, receipt: RedemptionReceipt<Product>, mut cash: Coin<Collateral>,
     checkpoint: Checkpoint, ctx: &mut TxContext,
 ): Coin<Collateral> {
     let RedemptionReceipt { shares, net, admin, fee, reserve_fee, unwound_checkpoint: _ } = receipt;
-    vault.assert_collateral_type<_, Collateral>();
     assert!(cash.value() == net + admin, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
 
     vault.retain_admin_cash(cash.split(admin, ctx));
@@ -531,7 +522,7 @@ public(package) fun complete_redemption<Product, Collateral>(
 
 /// Advances the sole economic checkpoint only after sealed maintenance has succeeded.
 public(package) fun complete_rebalance<Product, Collateral>(
-    vault: &mut Vault<Product>, plan: RebalancePlan<Product>, checkpoint: Checkpoint,
+    vault: &mut Vault<Product, Collateral>, plan: RebalancePlan<Product>, checkpoint: Checkpoint,
 ) {
     let (before_equity, after_equity, before_base, after_base, increase) = vault.state().complete_rebalance(plan);
 
@@ -545,8 +536,8 @@ public(package) fun complete_rebalance<Product, Collateral>(
 
 /// Credits a donation the venue has taken: the raw checkpoint proves the exact
 /// deposit, the core prices the position it left.
-public(package) fun complete_donation<Product>(
-    vault: &mut Vault<Product>, after: PositionObservation, checkpoint: Checkpoint, amount: u64, now_ms: u64,
+public(package) fun complete_donation<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>, after: PositionObservation, checkpoint: Checkpoint, amount: u64, now_ms: u64,
 ) {
     vault.venue().checkpoint().assert_deposit_checkpoint(&checkpoint, amount);
 
@@ -557,8 +548,8 @@ public(package) fun complete_donation<Product>(
 }
 
 /// Applies the complete Blast-owned post-capture synchronization phase.
-public(package) fun apply_post_capture<Product>(
-    vault: &mut Vault<Product>,
+public(package) fun apply_post_capture<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
     checkpoint: Checkpoint,
     preexisting_change: CheckpointChange,
     local_change: CheckpointChange,
@@ -626,7 +617,6 @@ fun open_venue_account<Collateral>(
         object::id(clearing_house),
         object::id(base_oracle),
         object::id(collateral_oracle),
-        type_name::with_original_ids<Collateral>(),
     );
 
     (account, share_policy, admin_cap, binding)
@@ -746,7 +736,7 @@ fun assert_deadline(now_ms: u64, deadline: u64) {
 }
 
 /// The terms of an active operation: direction from policy, the live cap, and the plan's sealed prices.
-fun active_terms<Product>(vault: &Vault<Product>, reduce_only: bool, position: ActivePosition): OrderTerms {
+fun active_terms<Product, Collateral>(vault: &Vault<Product, Collateral>, reduce_only: bool, position: ActivePosition): OrderTerms {
     let (side, max_order_notional) = (vault.state().side(), vault.state().max_order_notional());
     let is_ask = if (reduce_only) { !opens_with_ask(side) } else { opens_with_ask(side) };
 
@@ -881,7 +871,7 @@ fun notional_for_base_up(base: u64, base_price: u64, collateral_price: u64): u64
 ///
 /// Returns the market and the checkpoint the last fill left behind.
 fun fill_orders<Product, Collateral>(
-    vault: &Vault<Product>, account: &mut Account<Collateral>, registry: &Registry,
+    vault: &Vault<Product, Collateral>, account: &mut Account<Collateral>, registry: &Registry,
     mut clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
     binding: &Binding, mut checkpoint: Checkpoint,
@@ -916,7 +906,7 @@ fun fill_orders<Product, Collateral>(
 /// live cap. Every operation loop places its orders through this step; only
 /// the slippage bound it then proves against differs.
 fun place_order<Product, Collateral>(
-    vault: &Vault<Product>, account: &mut Account<Collateral>, clearing_house: ClearingHouse<Collateral>,
+    vault: &Vault<Product, Collateral>, account: &mut Account<Collateral>, clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
     terms: &OrderTerms, requested: u64, clock: &Clock, ctx: &TxContext,
 ): (ClearingHouse<Collateral>, Fill) {
@@ -1082,7 +1072,7 @@ fun funding_candidate<Collateral>(clearing_house: &ClearingHouse<Collateral>, ac
 /// what the venue shows now; returns that capture so a priced operation can
 /// build on it without reading the venue again.
 fun synchronize<Product, Collateral>(
-    vault: &mut Vault<Product>, account: &Account<Collateral>, registry: &Registry,
+    vault: &mut Vault<Product, Collateral>, account: &Account<Collateral>, registry: &Registry,
     clearing_house: &mut ClearingHouse<Collateral>, base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage, base_price_info: &PriceInfoObject,
     collateral_price_info: &PriceInfoObject, clock: &Clock,
@@ -1133,7 +1123,7 @@ fun classify_sync_changes(
 
 /// The venue's direct frozen settlement is not a market order or a stale-price fallback.
 fun unwind_frozen<Product, Collateral>(
-    vault: &mut Vault<Product>, account: &mut Account<Collateral>, registry: &Registry,
+    vault: &mut Vault<Product, Collateral>, account: &mut Account<Collateral>, registry: &Registry,
     clearing_house: &mut ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
 ) {
@@ -1159,7 +1149,7 @@ fun unwind_frozen<Product, Collateral>(
 
 /// Authenticates prices and isolates actual funding before up to sixteen policy-sized market closes.
 fun unwind_market<Product, Collateral>(
-    vault: &mut Vault<Product>, account: &mut Account<Collateral>, registry: &Registry,
+    vault: &mut Vault<Product, Collateral>, account: &mut Account<Collateral>, registry: &Registry,
     mut clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
     base_price_info: &PriceInfoObject, collateral_price_info: &PriceInfoObject,
@@ -1241,8 +1231,8 @@ fun unwind_base_decoded(magnitude: u256, is_long: bool, lot_size: u64, side: Pos
 }
 
 /// Advances terminal checkpoint/event state only after an attributable close has completed.
-fun complete_unwind<Product>(
-    vault: &mut Vault<Product>, before: Checkpoint, funded: Option<Checkpoint>,
+fun complete_unwind<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>, before: Checkpoint, funded: Option<Checkpoint>,
     after: Checkpoint, orders: u64, filled_quote: Option<u256>,
 ) {
     vault.state().assert_unwinding();
@@ -1264,7 +1254,7 @@ fun complete_unwind<Product>(
 
 /// Verifies actual withdrawal effects before sealing custody and native claim rules.
 fun complete_finalization<Product, Collateral>(
-    vault: &mut Vault<Product>, recovered: Coin<Collateral>,
+    vault: &mut Vault<Product, Collateral>, recovered: Coin<Collateral>,
     before: Checkpoint, after: Checkpoint,
 ) {
     vault.complete_shutdown(before.terminal_withdrawal(after, recovered));
@@ -1432,15 +1422,15 @@ public fun classify_sync_changes_for_testing(
 }
 
 #[test_only]
-public fun apply_post_capture_for_testing<Product>(
-    vault: &mut Vault<Product>, checkpoint: Checkpoint, change: CheckpointChange,
+public fun apply_post_capture_for_testing<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>, checkpoint: Checkpoint, change: CheckpointChange,
 ) {
     apply_post_capture(vault, checkpoint, snapshot::unchanged_change(), change);
 }
 
 #[test_only]
-public fun apply_post_captures_for_testing<Product>(
-    vault: &mut Vault<Product>, checkpoint: Checkpoint,
+public fun apply_post_captures_for_testing<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>, checkpoint: Checkpoint,
     preexisting_change: CheckpointChange, local_change: CheckpointChange,
 ) {
     apply_post_capture(vault, checkpoint, preexisting_change, local_change);
@@ -1452,8 +1442,8 @@ public fun unwind_base_for_testing(magnitude: u256, is_long: bool, lot_size: u64
 }
 
 #[test_only]
-public(package) fun complete_unwind_for_testing<Product>(
-    vault: &mut Vault<Product>, before: Checkpoint, funded: Option<Checkpoint>,
+public(package) fun complete_unwind_for_testing<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>, before: Checkpoint, funded: Option<Checkpoint>,
     after: Checkpoint, orders: u64, filled_quote: Option<u256>,
 ) {
     complete_unwind(vault, before, funded, after, orders, filled_quote);
@@ -1461,7 +1451,7 @@ public(package) fun complete_unwind_for_testing<Product>(
 
 #[test_only]
 public(package) fun complete_finalization_for_testing<Product, Collateral>(
-    vault: &mut Vault<Product>, recovered: Coin<Collateral>,
+    vault: &mut Vault<Product, Collateral>, recovered: Coin<Collateral>,
     before: Checkpoint, after: Checkpoint,
 ) {
     complete_finalization(vault, recovered, before, after);

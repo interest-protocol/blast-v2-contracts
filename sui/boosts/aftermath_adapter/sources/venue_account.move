@@ -19,7 +19,6 @@ public struct Binding has copy, drop, store {
     clearing_house_id: ID,
     base_oracle_id: ID,
     collateral_oracle_id: ID,
-    collateral_type: TypeName,
 }
 
 /// Raw Aftermath state captured at one authenticated mutation boundary.
@@ -53,7 +52,7 @@ public struct VenueAccount has store {
     admin_cap: AuthorityCap<ACCOUNT, ADMIN>,
 }
 
-// This unstorable, same-call value preserves the returned Coin for the seed-funder endpoint.
+// This unstorable, same-call value carries the Coin that `complete_shutdown` pays out.
 // Pinned ESL99003 otherwise suggests Balance, which would require a new Coin/TxContext there.
 #[allow(lint(coin_field))]
 /// Actual recovered coin bound to its exact final venue checkpoint.
@@ -75,7 +74,6 @@ public(package) fun new_binding(
     clearing_house_id: ID,
     base_oracle_id: ID,
     collateral_oracle_id: ID,
-    collateral_type: TypeName,
 ): Binding {
     Binding {
         account_object_id,
@@ -84,7 +82,6 @@ public(package) fun new_binding(
         clearing_house_id,
         base_oracle_id,
         collateral_oracle_id,
-        collateral_type,
     }
 }
 
@@ -97,7 +94,6 @@ public(package) fun assert_object_graph(
     clearing_house_id: ID,
     base_oracle_id: ID,
     collateral_oracle_id: ID,
-    collateral_type: TypeName,
 ) {
     assert!(self.account_object_id == account_object_id, blast_boosts_aftermath::errors::account_object_mismatch!());
     assert!(self.account_number == account_number, blast_boosts_aftermath::errors::account_number_mismatch!());
@@ -108,7 +104,6 @@ public(package) fun assert_object_graph(
         self.collateral_oracle_id == collateral_oracle_id,
         blast_boosts_aftermath::errors::collateral_oracle_mismatch!(),
     );
-    assert!(self.collateral_type == collateral_type, blast_boosts_aftermath::errors::collateral_type_mismatch!());
 }
 
 /// Rejects a market or base oracle that is not the bound one before the venue
@@ -139,8 +134,6 @@ public(package) fun clearing_house_id(self: &Binding): ID { self.clearing_house_
 public(package) fun base_oracle_id(self: &Binding): ID { self.base_oracle_id }
 
 public(package) fun collateral_oracle_id(self: &Binding): ID { self.collateral_oracle_id }
-
-public(package) fun collateral_type(self: &Binding): TypeName { self.collateral_type }
 
 // --- Checkpoint ---
 
@@ -450,10 +443,6 @@ public(package) fun into_recovered_cash<Collateral>(
 fun assert_account<Collateral>(self: &Binding, account: &Account<Collateral>) {
     assert!(object::id(account) == self.account_object_id, blast_boosts_aftermath::errors::account_object_mismatch!());
     assert!(account.account_id() == self.account_number, blast_boosts_aftermath::errors::account_number_mismatch!());
-    assert!(
-        std::type_name::with_original_ids<Collateral>() == self.collateral_type,
-        blast_boosts_aftermath::errors::collateral_type_mismatch!(),
-    );
 }
 
 /// The account and the market a session touches are the bound ones.
@@ -677,7 +666,5 @@ use perpetuals::{
     clearing_house::{ClearingHouse, SessionSummary},
     registry::Registry,
 };
-
-use std::type_name::TypeName;
 
 use sui::{clock::Clock, coin::Coin};

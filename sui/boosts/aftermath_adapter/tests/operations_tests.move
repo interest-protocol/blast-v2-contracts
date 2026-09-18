@@ -44,7 +44,6 @@ public struct ReplayState has drop {
     clearing_house_id: ID,
     base_oracle_id: ID,
     collateral_oracle_id: ID,
-    collateral_type: TypeName,
     maintenance_reserve: u64,
     lifecycle: u8,
     max_order_notional: u64,
@@ -1293,7 +1292,6 @@ fun vault_initialized_event_records_every_activation_primitive() {
         @0xD.to_id(),
         @0xE.to_id(),
         @0xF.to_id(),
-        type_name::with_original_ids<Collateral>(),
         28,
         29,
         30,
@@ -1315,7 +1313,6 @@ fun vault_initialized_event_records_every_activation_primitive() {
         clearing_house_id,
         base_oracle_id,
         collateral_oracle_id,
-        collateral_type,
         seed_amount,
         seed_venue_equity,
         seed_reserve,
@@ -1335,7 +1332,6 @@ fun vault_initialized_event_records_every_activation_primitive() {
     assert_eq!(clearing_house_id, @0xD.to_id());
     assert_eq!(base_oracle_id, @0xE.to_id());
     assert_eq!(collateral_oracle_id, @0xF.to_id());
-    assert_eq!(collateral_type, type_name::with_original_ids<Collateral>());
     assert_eq!(seed_amount, 28);
     assert_eq!(seed_venue_equity, 29);
     assert_eq!(seed_reserve, 30);
@@ -1970,7 +1966,6 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
         replay.clearing_house_id,
         replay.base_oracle_id,
         replay.collateral_oracle_id,
-        replay.collateral_type,
     );
     assert_eq!(replay.vault_id, vault_id);
     assert_eq!(replay.maintenance_reserve, vault.state().maintenance_reserve());
@@ -2012,7 +2007,6 @@ macro fun next_tx($self: &mut Fixture, $sender: address, $body: |&mut Fixture|) 
 fun funding_binding(): Binding {
     venue_account::new_binding(
         @0xB.to_id(), 7, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id(),
-        type_name::with_original_ids<sui::sui::SUI>(),
     )
 }
 
@@ -2057,7 +2051,7 @@ fun start(): Fixture {
 fun issue_and_activate(
     fixture: &mut Fixture,
     checkpoint: Checkpoint,
-): Vault<Product> {
+): Vault<Product, Collateral> {
     issue_and_activate_with_policy(fixture, checkpoint, standard_vault_policy())
 }
 
@@ -2068,19 +2062,19 @@ fun revoke_role(fixture: &mut Fixture, role: u64) {
 
 fun issue_and_activate_with_policy(
     fixture: &mut Fixture, checkpoint: Checkpoint, vault_policy: VaultPolicy,
-): Vault<Product> {
+): Vault<Product, Collateral> {
     issue_and_activate_product(fixture, Product(), checkpoint, vault_policy)
 }
 
 fun issue_and_activate_product<Tag: drop>(
     fixture: &mut Fixture, product: Tag, checkpoint: Checkpoint, vault_policy: VaultPolicy,
-): Vault<Tag> {
+): Vault<Tag, Collateral> {
     issue_and_activate_product_with_side(fixture, product, checkpoint, vault_policy, policy::long())
 }
 
 fun issue_and_activate_product_with_side<Tag: drop>(
     fixture: &mut Fixture, _: Tag, checkpoint: Checkpoint, vault_policy: VaultPolicy, side: PositionSide,
-): Vault<Tag> {
+): Vault<Tag, Collateral> {
     let Fixture {
         scenario,
         registry,
@@ -2090,7 +2084,7 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         ..
     } = fixture;
     let admin_witness = authority.sign_in(admin_cap);
-    let issuance = vault::issue<Tag>(
+    let issuance = vault::issue<Tag, Collateral>(
         protocol,
         &admin_witness,
         registry,
@@ -2110,7 +2104,6 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         @0xD.to_id(),
         @0xE.to_id(),
         @0xF.to_id(),
-        type_name::with_original_ids<Collateral>(),
     );
     let admin_cap = authority::new_for_testing<ACCOUNT, AdminRole>(@0xB.to_id(), scenario.ctx());
     let seeded = observation::new_position(
@@ -2120,7 +2113,7 @@ fun issue_and_activate_product_with_side<Tag: drop>(
     let (vault, seed_nav, _) = issuance.activate(
         seeded, SEED_RESERVE, 6, venue_account::new(binding, checkpoint, admin_cap), REFERENCE_TIME_MS, scenario.ctx(),
     );
-    operations::emit_vault_initialized<Tag>(&vault, SEED_EQUITY, seed_nav, SEED_EQUITY, ABSOLUTE_BASE, LOT_SIZE, side, 1);
+    operations::emit_vault_initialized<Tag, Collateral>(&vault, SEED_EQUITY, seed_nav, SEED_EQUITY, ABSOLUTE_BASE, LOT_SIZE, side, 1);
 
     vault
 }
@@ -2230,7 +2223,7 @@ fun checkpoint_with_market_imr(
     )
 }
 
-fun apply_connected_change<Tag>(vault: &mut Vault<Tag>, checkpoint: Checkpoint, change: CheckpointChange) {
+fun apply_connected_change<Tag>(vault: &mut Vault<Tag, Collateral>, checkpoint: Checkpoint, change: CheckpointChange) {
     operations::apply_post_capture_for_testing(vault, checkpoint, change);
 }
 
@@ -2435,7 +2428,7 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
 
 // Reduces events immediately after each local completion, preserving call order.
 // Captures are authenticated-boundary fixtures, not evidence of venue execution.
-fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag>) {
+fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, Collateral>) {
     let mut replay = replay_issued(events::collect_one<events::VaultIssued<Tag>>(0));
     replay_initialized(&mut replay, events::collect_one<events::VaultInitialized<Tag>>(0));
     assert_replay(&replay, vault);
@@ -2571,7 +2564,7 @@ fun replay_redemption<Tag>(replay: &mut ReplayState, event: events::Redeemed<Tag
     replay.checkpoint = option::some(checkpoint);
 }
 
-fun assert_replay<Tag>(replay: &ReplayState, vault: &Vault<Tag>) {
+fun assert_replay<Tag>(replay: &ReplayState, vault: &Vault<Tag, Collateral>) {
     assert_eq!(replay.vault_id, vault.id());
     assert_eq!(replay.maintenance_reserve, vault.state().maintenance_reserve());
     assert_eq!(replay.admin_cash, vault.admin_cash_balance<_, Collateral>());
@@ -2599,7 +2592,6 @@ fun replay_issued<Tag>(event: events::VaultIssued<Tag>): ReplayState {
         clearing_house_id: @0x0.to_id(),
         base_oracle_id: @0x0.to_id(),
         collateral_oracle_id: @0x0.to_id(),
-        collateral_type: type_name::with_original_ids<u8>(),
         maintenance_reserve: 0,
         lifecycle: 0,
         max_order_notional,
@@ -2626,7 +2618,6 @@ fun replay_initialized<Tag>(
         clearing_house_id,
         base_oracle_id,
         collateral_oracle_id,
-        collateral_type,
         _,
         _,
         maintenance_reserve,
@@ -2646,7 +2637,6 @@ fun replay_initialized<Tag>(
     replay.clearing_house_id = clearing_house_id;
     replay.base_oracle_id = base_oracle_id;
     replay.collateral_oracle_id = collateral_oracle_id;
-    replay.collateral_type = collateral_type;
     replay.maintenance_reserve = maintenance_reserve;
     replay.supply = locked_shares;
     replay.locked_shares = locked_shares;
