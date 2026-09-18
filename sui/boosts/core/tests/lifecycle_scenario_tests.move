@@ -445,6 +445,41 @@ fun a_mint_below_the_users_minimum_shares_is_refused() {
     vault.destroy();
 }
 
+/// The depositor's fee ceiling is checked before any venue call, against the live rate.
+#[test]
+#[expected_failure(abort_code = errors::EUserFeeLimitExceeded, location = blast_boosts_core::state)]
+fun a_mint_whose_fee_ceiling_is_below_the_live_rate_is_refused() {
+    let mut vault = test_adapter::issue(test_adapter::calm_venue());
+    vault.activate(SEED, SEED_RESERVE);
+    vault.set_fees(50, 50, 0);
+
+    vault.mint_with_fee_limit(1_000 * USDC, 1, 49);
+    vault.destroy();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EUserFeeLimitExceeded, location = blast_boosts_core::state)]
+fun a_redemption_whose_fee_ceiling_is_below_the_live_rate_is_refused() {
+    let mut vault = test_adapter::issue(test_adapter::calm_venue());
+    vault.activate(SEED, SEED_RESERVE);
+    let shares = vault.mint(1_000 * USDC, 1);
+    vault.set_fees(10, 30, 0);
+
+    vault.redeem_with_fee_limit(shares, 1, 29);
+    vault.destroy();
+}
+
+/// A fee ceiling equal to the live rate is accepted on both sides.
+#[test]
+fun a_fee_ceiling_at_the_live_rate_is_accepted() {
+    let mut vault = test_adapter::issue(test_adapter::calm_venue());
+    vault.activate(SEED, SEED_RESERVE);
+    let shares = vault.mint_with_fee_limit(1_000 * USDC, 1, 10);
+    let payout = vault.redeem_with_fee_limit(shares, 1, 10);
+    assert!(payout > 0);
+    vault.destroy();
+}
+
 #[test]
 #[expected_failure(abort_code = errors::ERedemptionOutputBelowMinimum, location = blast_boosts_core::state)]
 fun a_redemption_below_the_users_minimum_output_is_refused() {
@@ -704,7 +739,7 @@ fun a_lower_order_cap_splits_the_next_operation_into_more_orders() {
     vault.mint(2_000 * USDC, 1);
     assert_eq!(vault.last_orders(), 1);
 
-    vault.state_mut().set_max_order_notional(500 * USDC);
+    vault.set_max_order_notional(500 * USDC);
     let cap_base = vault.venue().base_for_notional(500 * USDC);
     let base_before = vault.venue().base();
     let shares = vault.mint(2_000 * USDC, 1);

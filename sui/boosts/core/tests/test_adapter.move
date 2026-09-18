@@ -303,6 +303,7 @@ public fun witness(self: &Vault): AdminWitness<BLAST_BOOSTS_CORE> {
 /// Returns the seed's shareholder NAV; the locked supply is `SEED_SHARE_SCALE` times it.
 public fun activate(self: &mut Vault, seed: u64, seed_reserve: u64): u64 {
     let (_, cap) = self.state.initialization_constraints();
+    assert!(self.state.is_uninitialized_for_testing());
     self.venue.deposit(seed);
     let (target, base_price, collateral_price, _) =
         self.state.prepare_initialization(self.venue.observe(), seed_reserve, self.venue.now_ms);
@@ -332,8 +333,21 @@ public fun activate(self: &mut Vault, seed: u64, seed_reserve: u64): u64 {
 
 /// Deposits `deposit`, buys the proportional base in capped orders, and mints shares.
 public fun mint(self: &mut Vault, deposit: u64, minimum_shares: u64): u64 {
+    self.mint_with_fee_limit(deposit, minimum_shares, BPS)
+}
+
+/// A mint under the depositor's fee ceiling, in the real adapter's exact call order.
+public fun mint_with_fee_limit(self: &mut Vault, deposit: u64, minimum_shares: u64, maximum_fee_bps: u64): u64 {
+    self.state.assert_active();
+    assert!(deposit > 0);
+    self.state.assert_user_fee_limit(true, maximum_fee_bps);
+    let (fee, admin_fee, reserve_fee) = self.state.fee_allocation(deposit, true);
+    assert!(fee == admin_fee + reserve_fee);
+
     let now_ms = self.venue.now_ms;
     let plan = self.state.prepare_mint(self.venue.observe(), deposit, self.supply, minimum_shares, now_ms);
+    assert!(plan.mint_deposit() == deposit && plan.admin_fee() == admin_fee);
+    assert!(plan.mint_lot_size() == self.venue.lot_size);
     let (base_price, collateral_price) = (plan.mint_base_price(), plan.mint_collateral_price());
     let (_, cap) = self.state.active_constraints();
 
@@ -356,7 +370,12 @@ public fun mint(self: &mut Vault, deposit: u64, minimum_shares: u64): u64 {
         orders = orders + 1;
     };
 
-    let (shares, _, _, _, _, _, _) = self.state.complete_mint(plan, self.venue.observe(), now_ms);
+    let (shares, _, total_fee, admin, reserve_slice, fee_bps, admin_share_bps) =
+        self.state.complete_mint(plan, self.venue.observe(), now_ms);
+    let (mint_bps, _, live_admin_share_bps) = self.state.fee_settings();
+    assert!(total_fee == fee && admin == admin_fee && reserve_slice == reserve_fee);
+    assert!(fee_bps == mint_bps && admin_share_bps == live_admin_share_bps);
+    assert!(self.state.is_within_nav_cap(self.venue.equity - self.state.maintenance_reserve_for_testing()));
     self.supply = self.supply + shares;
     self.last_orders = orders;
 
@@ -367,8 +386,19 @@ public fun mint(self: &mut Vault, deposit: u64, minimum_shares: u64): u64 {
 
 /// Sells the proportional base in capped orders, withdraws the payout, and burns.
 public fun redeem(self: &mut Vault, shares: u64, minimum_output: u64): u64 {
+    self.redeem_with_fee_limit(shares, minimum_output, BPS)
+}
+
+/// A redemption under the redeemer's fee ceiling, in the real adapter's exact call order.
+public fun redeem_with_fee_limit(self: &mut Vault, shares: u64, minimum_output: u64, maximum_fee_bps: u64): u64 {
+    self.state.assert_active();
+    self.state.assert_user_fee_limit(false, maximum_fee_bps);
+
     let now_ms = self.venue.now_ms;
     let plan = self.state.prepare_redemption(self.venue.observe(), shares, self.supply, minimum_output, now_ms);
+    let (_, redeem_bps, admin_share_bps) = self.state.fee_settings();
+    assert!(plan.redemption_shares() == shares && plan.redemption_lot_size() == self.venue.lot_size);
+    assert!(plan.redemption_fee_bps() == redeem_bps && plan.redemption_admin_share_bps() == admin_share_bps);
     let (base_price, collateral_price) = (plan.redemption_base_price(), plan.redemption_collateral_price());
     let base_after_sell = plan.base_after_sell();
     let (_, cap) = self.state.active_constraints();
@@ -389,7 +419,9 @@ public fun redeem(self: &mut Vault, shares: u64, minimum_output: u64): u64 {
     };
     self.last_orders = orders;
 
-    let (net, admin, final_equity, _, _) = self.state.complete_redemption(plan, self.venue.observe(), now_ms);
+    let (net, admin, final_equity, fee, reserve_slice) =
+        self.state.complete_redemption(plan, self.venue.observe(), now_ms);
+    assert!(fee == admin + reserve_slice);
     self.venue.withdraw(net + admin);
     self.admin_cash = self.admin_cash + admin;
     self.state.assert_redemption_cash_out(
@@ -428,6 +460,7 @@ public fun rebalance(self: &mut Vault): u64 {
 
 /// The venue charges `cost` of funding; the core settles it against the reserve.
 public fun charge_funding(self: &mut Vault, cost: u64): (u64, u64, u64) {
+    self.state.assert_can_sync();
     let (absorbed, uncovered, restored) = self.state.settle_funding(observation::funding_cost(cost));
     self.venue.withdraw(cost);
 
@@ -436,6 +469,7 @@ public fun charge_funding(self: &mut Vault, cost: u64): (u64, u64, u64) {
 
 /// The venue pays `credit` of funding; the core settles it into deficit repayment and reserve.
 public fun credit_funding(self: &mut Vault, credit: u64): (u64, u64, u64) {
+    self.state.assert_can_sync();
     let (absorbed, uncovered, restored) = self.state.settle_funding(observation::funding_credit(credit));
     self.venue.deposit(credit);
 
@@ -451,6 +485,13 @@ public fun donate(self: &mut Vault, amount: u64) {
 
 public fun set_fees(self: &mut Vault, mint_bps: u64, redeem_bps: u64, admin_share_bps: u64) {
     self.state.set_fees(mint_bps, redeem_bps, admin_share_bps);
+    let (live_mint_bps, live_redeem_bps, live_admin_share_bps) = self.state.fee_settings();
+    assert!(live_mint_bps == mint_bps && live_redeem_bps == redeem_bps && live_admin_share_bps == admin_share_bps);
+}
+
+public fun set_max_order_notional(self: &mut Vault, max_order_notional: u64) {
+    self.state.set_max_order_notional(max_order_notional);
+    assert!(self.state.max_order_notional_for_testing() == max_order_notional);
 }
 
 // --- Shutdown ---
@@ -465,10 +506,14 @@ public fun shutdown(self: &mut Vault): u64 {
     self.finalize()
 }
 
-public fun begin_shutdown(self: &mut Vault) { self.state.begin_shutdown(); }
+public fun begin_shutdown(self: &mut Vault) {
+    self.state.begin_shutdown();
+    assert!(self.state.is_unwinding_for_testing());
+}
 
 /// One unwind transaction: at most `max_orders` close-only orders under the emergency bound.
 public fun unwind(self: &mut Vault, max_orders: u64): u64 {
+    self.state.assert_unwinding();
     let now_ms = self.venue.now_ms;
     let mut orders = 0;
     while (self.venue.base > 0 && orders < max_orders) {
@@ -487,6 +532,7 @@ public fun unwind(self: &mut Vault, max_orders: u64): u64 {
 
 /// Recovers every atom of venue equity as terminal cash and settles.
 public fun finalize(self: &mut Vault): u64 {
+    self.state.assert_unwinding();
     let cash = self.venue.equity;
     self.venue.withdraw(cash);
     self.state.finalize_shutdown(self.supply, self.locked);
@@ -497,6 +543,7 @@ public fun finalize(self: &mut Vault): u64 {
 
 /// Claims `shares` against the terminal cash and burns them.
 public fun claim(self: &mut Vault, shares: u64, minimum: u64): u64 {
+    self.state.assert_settled();
     let output = self.state.shutdown_claim_quote(self.terminal_cash, self.supply, self.locked, shares, minimum);
     self.terminal_cash = self.terminal_cash - output;
     self.supply = self.supply - shares;
