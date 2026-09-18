@@ -561,6 +561,7 @@ fun classify_change_(
 // === Private Functions ===
 
 /// Reads the one canonical raw position/account field inventory after source authentication.
+/// Reads every raw venue field the checkpoint authenticates, in one pass and without normalization.
 fun read_checkpoint<Collateral>(account: &Account<Collateral>, clearing_house: &ClearingHouse<Collateral>): Checkpoint {
     let params = clearing_house.market_params();
     let position = clearing_house.position(account::account_id(account));
@@ -568,32 +569,41 @@ fun read_checkpoint<Collateral>(account: &Account<Collateral>, clearing_house: &
     let (snapshot_long, snapshot_short) = position.funding_rate_snapshots();
     let (market_long, market_short) = market::cum_funding_rates(clearing_house.market_state());
     let (ask, bid) = position.pending_base_amounts_by_side();
-    venue_account::new_checkpoint(account.collateral_balance(), position.collateral(), base, quote,
+
+    venue_account::new_checkpoint(
+        account.collateral_balance(), position.collateral(), base, quote,
         snapshot_long, snapshot_short, market_long, market_short, market::lot_size(params), ask, bid,
         position.pending_order_count(), clearing_house.market_pause_mode(), clearing_house.is_frozen(),
-        position.initial_margin_ratio(), market::margin_ratio_initial(params), market::margin_ratio_maintenance(params))
+        position.initial_margin_ratio(), market::margin_ratio_initial(params), market::margin_ratio_maintenance(params),
+    )
 }
 
 /// Named IFixed operations decode signed collateral; raw checkpoint bits are never ordered.
 fun allocated_delta(before: &Checkpoint, after: &Checkpoint): Change {
-    let b = before.allocated_collateral();
-    let a = after.allocated_collateral();
+    let (b, a) = (before.allocated_collateral(), after.allocated_collateral());
+
     signed_delta(ifixed::is_neg(b), ifixed::abs(b), ifixed::is_neg(a), ifixed::abs(a))
 }
 
 /// Computes after-minus-before in sign/magnitude facts, including a zero crossing.
 fun signed_delta(before_negative: bool, before: u256, after_negative: bool, after: u256): Change {
     if (before_negative == after_negative) {
-        if (before == after) { return Change::Unchanged };
+        if (before == after) return Change::Unchanged;
         let credit = if (before_negative) { before > after } else { after > before };
         let amount = before.diff(after);
+
         if (credit) { Change::FundingCredit(amount) } else { Change::FundingCost(amount) }
     } else {
-        if (before > std::u256::max_value!() - after) { return Change::Unexpected };
+        if (before > std::u256::max_value!() - after) return Change::Unexpected;
         let amount = before + after;
-        if (amount == 0) { Change::Unchanged }
-        else if (after_negative) { Change::FundingCost(amount) }
-        else { Change::FundingCredit(amount) }
+
+        if (amount == 0) {
+            Change::Unchanged
+        } else if (after_negative) {
+            Change::FundingCost(amount)
+        } else {
+            Change::FundingCredit(amount)
+        }
     }
 }
 
@@ -696,17 +706,15 @@ fun normalize_pyth_component(component: u64, expo: &i64::I64, round_up: bool): u
     } else {
         i64::get_magnitude_if_positive(expo)
     };
+
     normalize_pyth_component_parts(component, expo_negative, magnitude, round_up)
 }
 
 fun normalize_pyth_component_parts(component: u64, expo_negative: bool, magnitude: u64, round_up: bool): u64 {
-    let (normalized, representable) = normalize_pyth_component_parts_health(
-        component,
-        expo_negative,
-        magnitude,
-        round_up,
-    );
+    let (normalized, representable) =
+        normalize_pyth_component_parts_health(component, expo_negative, magnitude, round_up);
     assert!(representable, blast_boosts_aftermath::errors::pyth_normalization_overflow!());
+
     normalized
 }
 
@@ -721,12 +729,8 @@ fun normalize_pyth_component_health(
     } else {
         i64::get_magnitude_if_positive(expo)
     };
-    normalize_pyth_component_parts_health(
-        component,
-        expo_negative,
-        magnitude,
-        round_up,
-    )
+
+    normalize_pyth_component_parts_health(component, expo_negative, magnitude, round_up)
 }
 
 fun normalize_pyth_component_parts_health(
@@ -772,16 +776,14 @@ fun checked_mul(value: u256, factor: u256): u256 {
         value == 0 || value <= (std::u256::max_value!() / factor),
         blast_boosts_aftermath::errors::normalization_overflow!(),
     );
+
     value * factor
 }
 
 fun pow10(exponent: u64): u256 {
     let mut result = 1;
-    let mut remaining = exponent;
-    while (remaining > 0) {
-        result = result * 10;
-        remaining = remaining - 1;
-    };
+    exponent.do!(|_| result = result * 10);
+
     result
 }
 
@@ -803,9 +805,10 @@ fun fixed_to_u64_down_health(value: u256, decimals: u64): (u64, bool) {
 fun fixed_to_u64_up_health(value: u256, decimals: u64): (u64, bool) {
     let scale = pow10(18 - decimals);
     let down = value / scale;
-    if (down > std::u64::max_value!() as u256 || (value % scale != 0 && down == std::u64::max_value!() as u256)) {
-        (0, false)
-    } else if (value % scale == 0) { (down as u64, true) } else { ((down + 1) as u64, true) }
+    let exact = value % scale == 0;
+    let up = if (exact) { down } else { down + 1 };
+
+    if (up > std::u64::max_value!() as u256) { (0, false) } else { (up as u64, true) }
 }
 
 // The strict variant remains a test-pinned aborting contract for risk-increasing
@@ -927,11 +930,9 @@ fun margin_safe_from_parts(margin_negative: bool, margin: u256, requirement: u25
 }
 
 fun position_signs_coherent(base: u256, quote: u256, long_or_flat: bool): bool {
-    let base_negative = ifixed::is_neg(base);
-    let quote_negative = ifixed::is_neg(quote);
-    let base_zero = ifixed::abs(base) == 0;
-    let quote_zero = ifixed::abs(quote) == 0;
-    position_signs_coherent_from_parts(base_negative, quote_negative, base_zero, quote_zero, long_or_flat)
+    position_signs_coherent_from_parts(
+        ifixed::is_neg(base), ifixed::is_neg(quote), ifixed::abs(base) == 0, ifixed::abs(quote) == 0, long_or_flat,
+    )
 }
 
 fun position_signs_coherent_from_parts(

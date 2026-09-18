@@ -48,5 +48,7 @@ public(package) fun new_currency<Product>(
 // === Imports ===
 
 use blast_boosts_aftermath::constants;
+
 use std::string::String;
+
 use sui::{coin::TreasuryCap, coin_registry::{CoinRegistry, MetadataCap}};

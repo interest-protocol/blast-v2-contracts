@@ -48,9 +48,8 @@ public fun authorize_upgrade(
 ): UpgradeTicket {
     protocol.assert_current();
     admin_witness.assert_role(domain::package_admin_role());
-    let custodian_id = self.id.to_inner();
 
-    self.custody.authorize_upgrade(custodian_id, digest)
+    self.custody.authorize_upgrade(self.id.to_inner(), digest)
 }
 
 /// Commits the native receipt and advances one operational generation at once.
@@ -65,9 +64,8 @@ public fun commit_upgrade_and_advance(
 ) {
     admin_witness.assert_role(domain::package_admin_role());
     protocol.assert_next();
-    let custodian_id = self.id.to_inner();
 
-    self.custody.commit_upgrade(custodian_id, receipt);
+    self.custody.commit_upgrade(self.id.to_inner(), receipt);
     protocol.advance();
 }
 
@@ -79,9 +77,8 @@ public fun restrict_to_additive(
 ) {
     protocol.assert_current();
     admin_witness.assert_role(domain::package_admin_role());
-    let custodian_id = self.id.to_inner();
 
-    self.custody.restrict_to_additive(custodian_id);
+    self.custody.restrict_to_additive(self.id.to_inner());
 }
 
 /// Irreversibly narrows adapter upgrades to dependency-only changes.
@@ -92,9 +89,8 @@ public fun restrict_to_dependency_only(
 ) {
     protocol.assert_current();
     admin_witness.assert_role(domain::package_admin_role());
-    let custodian_id = self.id.to_inner();
 
-    self.custody.restrict_to_dependency_only(custodian_id);
+    self.custody.restrict_to_dependency_only(self.id.to_inner());
 }
 
 /// Irreversibly destroys native upgrade authority for this adapter.
@@ -105,9 +101,8 @@ public fun make_immutable(
 ) {
     protocol.assert_current();
     admin_witness.assert_role(domain::package_admin_role());
-    let custodian_id = self.id.to_inner();
 
-    self.custody.make_immutable(custodian_id);
+    self.custody.make_immutable(self.id.to_inner());
 }
 
 /// Reports whether native upgrade authority remains sealed in custody.

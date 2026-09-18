@@ -96,11 +96,15 @@ public(package) fun into_recovered_cash<Collateral>(
 public(package) fun assert_direct_settlement_close(before: &Checkpoint, after: &Checkpoint) {
     before.assert_no_orders();
     after.assert_no_orders();
-    assert!(before.market_frozen && before.signed_base != 0
-        && after.signed_base == 0 && after.signed_quote_notional == 0
-        && after.funding_snapshot_long == after.market_funding_long
-        && after.funding_snapshot_short == after.market_funding_short,
-        blast_boosts_aftermath::errors::terminal_venue_unsettled!());
+    assert!(
+        before.market_frozen && before.signed_base != 0
+            && after.signed_base == 0 && after.signed_quote_notional == 0
+            && after.funding_snapshot_long == after.market_funding_long
+            && after.funding_snapshot_short == after.market_funding_short,
+        blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
+    );
+
+    // The settlement may move only the position, the cash it released, and the funding snapshots.
     let mut expected = *before;
     expected.signed_base = 0;
     expected.signed_quote_notional = 0;
@@ -108,13 +112,16 @@ public(package) fun assert_direct_settlement_close(before: &Checkpoint, after: &
     expected.allocated_collateral = after.allocated_collateral;
     expected.funding_snapshot_long = after.funding_snapshot_long;
     expected.funding_snapshot_short = after.funding_snapshot_short;
+
     assert!(&expected == after, blast_boosts_aftermath::errors::terminal_venue_unsettled!());
 }
 
 /// Neither an ordinary close nor a direct settlement may adopt standing orders.
 public(package) fun assert_no_orders(self: &Checkpoint) {
-    assert!(self.pending_ask_base == 0 && self.pending_bid_base == 0 && self.pending_order_count == 0,
-        blast_boosts_aftermath::errors::terminal_venue_unsettled!());
+    assert!(
+        self.pending_ask_base == 0 && self.pending_bid_base == 0 && self.pending_order_count == 0,
+        blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
+    );
 }
 
 /// Withdraws the exact payout, using free collateral before a bounded deallocation.
@@ -212,10 +219,11 @@ public(package) fun assert_allocated_deposit_checkpoint(before: &Checkpoint, aft
 /// Payout spends free cash first, then exactly deallocates the remaining amount.
 public(package) fun assert_withdrawal_checkpoint(before: &Checkpoint, after: &Checkpoint, amount: u64) {
     let from_free = before.free_collateral.min(amount);
-    let from_position = amount - from_free;
+
     assert_signed_cash_change(
         ifixed::is_neg(before.allocated_collateral), ifixed::abs(before.allocated_collateral),
-        ifixed::is_neg(after.allocated_collateral), ifixed::abs(after.allocated_collateral), from_position, false,
+        ifixed::is_neg(after.allocated_collateral), ifixed::abs(after.allocated_collateral),
+        amount - from_free, false,
     );
     assert_cash_checkpoint(before, after, before.free_collateral - from_free);
 }
@@ -229,6 +237,7 @@ public(package) fun assert_trade_checkpoint(
     expected.signed_base = expected_base;
     expected.signed_quote_notional = expected_quote;
     expected.allocated_collateral = after.allocated_collateral;
+
     assert!(&expected == after, blast_boosts_aftermath::errors::active_checkpoint_mismatch!());
 }
 
@@ -329,34 +338,16 @@ public(package) fun assert_exact(
     collateral_oracle_id: ID,
     collateral_type: TypeName,
 ) {
-    assert!(
-        self.account_object_id == account_object_id,
-        blast_boosts_aftermath::errors::account_object_mismatch!(),
-    );
-    assert!(
-        self.account_number == account_number,
-        blast_boosts_aftermath::errors::account_number_mismatch!(),
-    );
-    assert!(
-        self.registry_id == registry_id,
-        blast_boosts_aftermath::errors::registry_mismatch!(),
-    );
-    assert!(
-        self.clearing_house_id == clearing_house_id,
-        blast_boosts_aftermath::errors::clearing_house_mismatch!(),
-    );
-    assert!(
-        self.base_oracle_id == base_oracle_id,
-        blast_boosts_aftermath::errors::base_oracle_mismatch!(),
-    );
+    assert!(self.account_object_id == account_object_id, blast_boosts_aftermath::errors::account_object_mismatch!());
+    assert!(self.account_number == account_number, blast_boosts_aftermath::errors::account_number_mismatch!());
+    assert!(self.registry_id == registry_id, blast_boosts_aftermath::errors::registry_mismatch!());
+    assert!(self.clearing_house_id == clearing_house_id, blast_boosts_aftermath::errors::clearing_house_mismatch!());
+    assert!(self.base_oracle_id == base_oracle_id, blast_boosts_aftermath::errors::base_oracle_mismatch!());
     assert!(
         self.collateral_oracle_id == collateral_oracle_id,
         blast_boosts_aftermath::errors::collateral_oracle_mismatch!(),
     );
-    assert!(
-        self.collateral_type == collateral_type,
-        blast_boosts_aftermath::errors::collateral_type_mismatch!(),
-    );
+    assert!(self.collateral_type == collateral_type, blast_boosts_aftermath::errors::collateral_type_mismatch!());
 }
 
 /// Seals the exact account admin authority into its authenticated binding.
@@ -522,12 +513,16 @@ fun allocated_collateral_sign_and_magnitude(self: &Checkpoint): (bool, u256) {
 fun assert_terminal_withdrawal_from_parts(
     before: &Checkpoint, after: &Checkpoint, amount: u64, negative: bool, magnitude: u256,
 ) {
-    assert!(recoverable_cash_from_parts(before, negative, magnitude) == amount,
-        blast_boosts_aftermath::errors::terminal_venue_unsettled!());
+    assert!(
+        recoverable_cash_from_parts(before, negative, magnitude) == amount,
+        blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
+    );
+
     let mut expected = *before;
     expected.free_collateral = 0;
     // Magnitude is nonnegative and validated above; the exact raw remainder is < one atom.
     expected.allocated_collateral = magnitude % 1_000_000_000_000;
+
     assert!(&expected == after, blast_boosts_aftermath::errors::terminal_venue_unsettled!());
 }
 
@@ -540,9 +535,13 @@ fun recoverable_cash_from_parts(self: &Checkpoint, negative: bool, magnitude: u2
             && self.funding_snapshot_short == self.market_funding_short,
         blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
     );
+
     let capacity = (std::u64::max_value!() - self.free_collateral) as u256;
-    assert!(!negative && magnitude / 1_000_000_000_000 <= capacity,
-        blast_boosts_aftermath::errors::terminal_venue_unsettled!());
+    assert!(
+        !negative && magnitude / 1_000_000_000_000 <= capacity,
+        blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
+    );
+
     self.free_collateral + ((magnitude / 1_000_000_000_000) as u64)
 }
 
@@ -551,6 +550,7 @@ fun assert_cash_checkpoint(before: &Checkpoint, after: &Checkpoint, free: u64) {
     let mut expected = *before;
     expected.free_collateral = free;
     expected.allocated_collateral = after.allocated_collateral;
+
     assert!(&expected == after, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
 }
 
