@@ -15,7 +15,11 @@ public struct Vault<phantom Product> has key {
     id: UID,
     state: State<Product>,
     risk_module_witness: TypeName,
+    /// The bound account's identity and last accepted checkpoint, from activation on.
     venue_account: Option<VenueAccount>,
+    /// The bound account's admin authority, from activation on. Present whenever
+    /// `venue_account` is in published code; a test may install the account alone.
+    venue_custody: Option<VenueCustody>,
     unresolved_checkpoint_digest: Option<vector<u8>>,
     seed_facts: Option<SeedFacts>,
 }
@@ -79,6 +83,7 @@ public fun issue<Product: drop, RiskModule: drop>(
         state,
         risk_module_witness,
         venue_account: option::none(),
+        venue_custody: option::none(),
         unresolved_checkpoint_digest: option::none(),
         seed_facts: option::none(),
     };
@@ -314,9 +319,11 @@ public(package) fun mint_locked_shares<Product>(
 public(package) fun install_venue_account<Product>(
     self: &mut Vault<Product>,
     venue_account: VenueAccount,
+    venue_custody: VenueCustody,
 ) {
     assert_venue_account_installable(self.venue_account.is_some());
     self.venue_account.fill(venue_account);
+    self.venue_custody.fill(venue_custody);
 }
 
 // --- Active Guards ---
@@ -562,7 +569,7 @@ public(package) fun assert_venue_custody_binding<Product>(
     self: &Vault<Product>,
 ) {
     assert_venue_account_installed(self.venue_account.is_some());
-    self.venue_account.borrow().assert_custody_binding();
+    self.venue_custody.borrow().assert_bound(&self.venue_account.borrow().binding());
 }
 
 /// Copies the immutable venue binding without exposing its custody value.
@@ -594,8 +601,9 @@ public(package) fun execute_order<Product, Collateral>(
     base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
     is_ask: bool, base: u64, reduce_only: bool, clock: &Clock, ctx: &TxContext,
 ): (ClearingHouse<Collateral>, SessionSummary) {
-    self.venue_account.borrow().execute_order(
-        account, clearing_house, base_oracle, collateral_oracle, is_ask, base, reduce_only, clock, ctx,
+    self.venue_custody.borrow().execute_order(
+        &self.venue_account.borrow().binding(), account, clearing_house, base_oracle, collateral_oracle,
+        is_ask, base, reduce_only, clock, ctx,
     )
 }
 
@@ -604,7 +612,7 @@ public(package) fun deposit_collateral<Product, Collateral>(
     self: &Vault<Product>, account: &mut Account<Collateral>, registry: &Registry, cash: Coin<Collateral>,
 ) {
     assert_venue_account_installed(self.venue_account.is_some());
-    self.venue_account.borrow().deposit(account, registry, cash);
+    self.venue_custody.borrow().deposit(&self.venue_account.borrow().binding(), account, registry, cash);
 }
 
 /// Allocates only the bound account's deposited cash into its retained market.
@@ -612,7 +620,7 @@ public(package) fun allocate_collateral<Product, Collateral>(
     self: &Vault<Product>, account: &mut Account<Collateral>,
     clearing_house: &mut ClearingHouse<Collateral>, amount: u64,
 ) {
-    self.venue_account.borrow().allocate(account, clearing_house, amount);
+    self.venue_custody.borrow().allocate(&self.venue_account.borrow().binding(), account, clearing_house, amount);
 }
 
 /// Returns actual collateral through retained custody; no caller receives venue authority.
@@ -621,8 +629,9 @@ public(package) fun withdraw_collateral<Product, Collateral>(
     clearing_house: &mut ClearingHouse<Collateral>, base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage, amount: u64, clock: &Clock, ctx: &mut TxContext,
 ): Coin<Collateral> {
-    self.venue_account.borrow().withdraw(
-        account, registry, clearing_house, base_oracle, collateral_oracle, amount, clock, ctx,
+    self.venue_custody.borrow().withdraw(
+        &self.venue_account.borrow().binding(), account, registry, clearing_house, base_oracle, collateral_oracle,
+        amount, clock, ctx,
     )
 }
 
@@ -734,6 +743,15 @@ fun treasury_cap_mut<Product>(self: &mut Vault<Product>): &mut TreasuryCap<Blast
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+/// Installs the account identity and checkpoint without custody: the venue's
+/// AuthorityCap constructor is an aborting ABI stub locally, and no local test
+/// reaches a custody call.
+public fun install_venue_account_for_testing<Product>(self: &mut Vault<Product>, venue_account: VenueAccount) {
+    assert_venue_account_installable(self.venue_account.is_some());
+    self.venue_account.fill(venue_account);
+}
 
 #[test_only]
 public fun terminal_cash_for_testing<Product, Collateral>(self: &Vault<Product>): u64 {
@@ -874,7 +892,7 @@ use blast_boosts_aftermath::{
     constants,
     events,
     protocol::Protocol,
-    venue_account::{Self as venue_account, Binding, Checkpoint, TerminalWithdrawal, VenueAccount},
+    venue_account::{Self as venue_account, Binding, Checkpoint, TerminalWithdrawal, VenueAccount, VenueCustody},
 };
 
 use blast_boosts_core::{

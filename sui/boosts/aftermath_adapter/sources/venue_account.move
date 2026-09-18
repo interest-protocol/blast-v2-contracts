@@ -1,7 +1,8 @@
 // `errors` intentionally centralizes package-wide abort codes through zero-cost macros.
 // W04005 sees the expanded literal; this suppression preserves stable codes and local checks.
 #[allow(lint(abort_without_constant))]
-/// Exact Aftermath account custody and immutable venue binding.
+/// Exact Aftermath account custody, its immutable venue binding, and the raw
+/// checkpoints the adapter proves every venue mutation against.
 module blast_boosts_aftermath::venue_account;
 
 // The `*_decoded` helpers take collateral already decoded from IFixed into a
@@ -52,12 +53,18 @@ public struct TerminalWithdrawal<phantom Collateral> {
     checkpoint: Checkpoint,
 }
 
-/// Store-only custody for the sole admin authority of one bound Aftermath account.
+/// The bound Aftermath account as the adapter knows it: its identity and the
+/// last raw state it accepted. Holds no authority.
 public struct VenueAccount has store {
-    admin_cap: Option<AuthorityCap<ACCOUNT, ADMIN>>,
     binding: Binding,
     checkpoint: Checkpoint,
 }
+
+/// Store-only custody of the sole admin authority over the bound account.
+///
+/// Every venue mutation borrows the cap through this module's guarded
+/// functions and nothing else; the cap itself never leaves.
+public struct VenueCustody(AuthorityCap<ACCOUNT, ADMIN>) has store;
 
 // === Package Functions ===
 
@@ -124,39 +131,42 @@ public(package) fun assert_no_orders(self: &Checkpoint) {
 
 /// Withdraws the exact payout, using free collateral before a bounded deallocation.
 public(package) fun withdraw<Collateral>(
-    self: &VenueAccount, account: &mut Account<Collateral>, registry: &Registry,
+    self: &VenueCustody, binding: &Binding, account: &mut Account<Collateral>, registry: &Registry,
     clearing_house: &mut ClearingHouse<Collateral>, base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage, amount: u64, clock: &Clock, ctx: &mut TxContext,
 ): Coin<Collateral> {
-    self.assert_market_account(account, clearing_house);
-    self.assert_bound_registry(registry);
-    self.assert_bound_oracles(base_oracle, collateral_oracle);
+    self.assert_bound(binding);
+    binding.assert_market_account(account, clearing_house);
+    binding.assert_registry(registry);
+    binding.assert_oracles(base_oracle, collateral_oracle);
 
     let free = account::collateral_balance(account);
     if (free < amount) {
         let required = amount - free;
         let deallocated = clearing_house::deallocate_collateral(
-            clearing_house, self.admin_cap.borrow(), account, base_oracle, collateral_oracle, required, clock,
+            clearing_house, &self.0, account, base_oracle, collateral_oracle, required, clock,
         );
         assert!(deallocated == required, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
     };
 
-    account::withdraw_collateral(account, self.admin_cap.borrow(), registry, amount, ctx)
+    account::withdraw_collateral(account, &self.0, registry, amount, ctx)
 }
 
 /// Allocates deposited cash into the sole bound market without lending its authority.
 public(package) fun allocate<Collateral>(
-    self: &VenueAccount, account: &mut Account<Collateral>,
+    self: &VenueCustody, binding: &Binding, account: &mut Account<Collateral>,
     clearing_house: &mut ClearingHouse<Collateral>, amount: u64,
 ) {
-    self.assert_market_account(account, clearing_house);
+    self.assert_bound(binding);
+    binding.assert_market_account(account, clearing_house);
 
-    clearing_house::allocate_collateral(clearing_house, self.admin_cap.borrow(), account, amount);
+    clearing_house::allocate_collateral(clearing_house, &self.0, account, amount);
 }
 
 /// Executes one bounded market order under retained authority and returns its venue facts.
 public(package) fun execute_order<Collateral>(
-    self: &VenueAccount,
+    self: &VenueCustody,
+    binding: &Binding,
     account: &mut Account<Collateral>,
     clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage,
@@ -167,29 +177,28 @@ public(package) fun execute_order<Collateral>(
     clock: &Clock,
     ctx: &TxContext,
 ): (ClearingHouse<Collateral>, SessionSummary) {
-    self.assert_market_account(account, &clearing_house);
-    self.assert_bound_oracles(base_oracle, collateral_oracle);
+    self.assert_bound(binding);
+    binding.assert_market_account(account, &clearing_house);
+    binding.assert_oracles(base_oracle, collateral_oracle);
 
     let mut session = clearing_house::start_session(
-        clearing_house, self.admin_cap.borrow(), account, base_oracle, collateral_oracle,
-        option::none(), clock, ctx,
+        clearing_house, &self.0, account, base_oracle, collateral_oracle, option::none(), clock, ctx,
     );
     clearing_house::place_market_order(&mut session, is_ask, base, reduce_only);
-    clearing_house::end_session(session, self.admin_cap.borrow(), account, false, false)
+
+    clearing_house::end_session(session, &self.0, account, false, false)
 }
 
 /// Deposits only into the retained account under its private admin authority.
 public(package) fun deposit<Collateral>(
-    self: &VenueAccount,
-    account: &mut Account<Collateral>,
-    registry: &Registry,
+    self: &VenueCustody, binding: &Binding, account: &mut Account<Collateral>, registry: &Registry,
     cash: Coin<Collateral>,
 ) {
-    self.assert_custody_binding();
-    self.assert_bound_account(account);
-    self.assert_bound_registry(registry);
+    self.assert_bound(binding);
+    binding.assert_account(account);
+    binding.assert_registry(registry);
 
-    account::deposit_collateral(account, self.admin_cap.borrow(), registry, cash);
+    account::deposit_collateral(account, &self.0, registry, cash);
 }
 
 /// Rejects unresolved venue drift before a priced operation uses the accepted checkpoint.
@@ -348,15 +357,16 @@ public(package) fun assert_exact(
     assert!(self.collateral_type == collateral_type, blast_boosts_aftermath::errors::collateral_type_mismatch!());
 }
 
-/// Seals the exact account admin authority into its authenticated binding.
-public(package) fun new(
-    admin_cap: AuthorityCap<ACCOUNT, ADMIN>,
-    binding: Binding,
-    checkpoint: Checkpoint,
-): VenueAccount {
+/// Records the bound account's identity and the checkpoint activation accepted.
+public(package) fun new(binding: Binding, checkpoint: Checkpoint): VenueAccount {
+    VenueAccount { binding, checkpoint }
+}
+
+/// Seals the exact account admin authority, proving it names the bound account.
+public(package) fun new_custody(admin_cap: AuthorityCap<ACCOUNT, ADMIN>, binding: &Binding): VenueCustody {
     assert_admin_cap_binding(authority::`for`(&admin_cap), binding.account_object_id);
 
-    VenueAccount { admin_cap: option::some(admin_cap), binding, checkpoint }
+    VenueCustody(admin_cap)
 }
 
 /// Rejects an admin cap that does not belong to the created account object.
@@ -395,12 +405,8 @@ public(package) fun checkpoint(self: &VenueAccount): &Checkpoint {
 }
 
 /// Revalidates that retained admin authority still names the bound account.
-public(package) fun assert_custody_binding(self: &VenueAccount) {
-    assert!(
-        self.admin_cap.is_some(),
-        blast_boosts_aftermath::errors::admin_cap_account_mismatch!(),
-    );
-    assert_admin_cap_binding(authority::`for`(self.admin_cap.borrow()), self.binding.account_object_id);
+public(package) fun assert_bound(self: &VenueCustody, binding: &Binding) {
+    assert_admin_cap_binding(authority::`for`(&self.0), binding.account_object_id);
 }
 
 // --- Checkpoint Reads ---
@@ -524,39 +530,35 @@ fun assert_signed_cash_change(
     );
 }
 
-/// Verifies every authority-bearing account/market component before a session.
+/// The account and the market a session touches are the bound ones.
 fun assert_market_account<Collateral>(
-    self: &VenueAccount, account: &Account<Collateral>, clearing_house: &ClearingHouse<Collateral>,
+    self: &Binding, account: &Account<Collateral>, clearing_house: &ClearingHouse<Collateral>,
 ) {
-    self.assert_custody_binding();
-    self.assert_bound_account(account);
+    self.assert_account(account);
     assert!(
-        object::id(clearing_house) == self.binding.clearing_house_id,
+        object::id(clearing_house) == self.clearing_house_id,
         blast_boosts_aftermath::errors::clearing_house_mismatch!(),
     );
 }
 
 /// The account object, its venue number, and its collateral type are the bound ones.
-fun assert_bound_account<Collateral>(self: &VenueAccount, account: &Account<Collateral>) {
-    assert!(object::id(account) == self.binding.account_object_id, blast_boosts_aftermath::errors::account_object_mismatch!());
+fun assert_account<Collateral>(self: &Binding, account: &Account<Collateral>) {
+    assert!(object::id(account) == self.account_object_id, blast_boosts_aftermath::errors::account_object_mismatch!());
+    assert!(account::account_id(account) == self.account_number, blast_boosts_aftermath::errors::account_number_mismatch!());
     assert!(
-        account::account_id(account) == self.binding.account_number,
-        blast_boosts_aftermath::errors::account_number_mismatch!(),
-    );
-    assert!(
-        std::type_name::with_original_ids<Collateral>() == self.binding.collateral_type,
+        std::type_name::with_original_ids<Collateral>() == self.collateral_type,
         blast_boosts_aftermath::errors::collateral_type_mismatch!(),
     );
 }
 
-fun assert_bound_registry(self: &VenueAccount, registry: &Registry) {
-    assert!(object::id(registry) == self.binding.registry_id, blast_boosts_aftermath::errors::registry_mismatch!());
+fun assert_registry(self: &Binding, registry: &Registry) {
+    assert!(object::id(registry) == self.registry_id, blast_boosts_aftermath::errors::registry_mismatch!());
 }
 
-fun assert_bound_oracles(self: &VenueAccount, base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage) {
-    assert!(object::id(base_oracle) == self.binding.base_oracle_id, blast_boosts_aftermath::errors::base_oracle_mismatch!());
+fun assert_oracles(self: &Binding, base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage) {
+    assert!(object::id(base_oracle) == self.base_oracle_id, blast_boosts_aftermath::errors::base_oracle_mismatch!());
     assert!(
-        object::id(collateral_oracle) == self.binding.collateral_oracle_id,
+        object::id(collateral_oracle) == self.collateral_oracle_id,
         blast_boosts_aftermath::errors::collateral_oracle_mismatch!(),
     );
 }
@@ -604,18 +606,6 @@ public(package) fun terminal_withdrawal_for_testing<Collateral>(
 #[test_only]
 public(package) fun recoverable_cash_for_testing(self: &Checkpoint, negative: bool, magnitude: u256): u64 {
     recoverable_cash_decoded(self, negative, magnitude)
-}
-
-/// Builds real binding/checkpoint custody around the unavailable local cap.
-///
-/// The authoritative external AuthorityCap constructor is an aborting ABI
-/// stub in local tests. Published code has no path that can create `none`.
-#[test_only]
-public fun new_for_testing(
-    binding: Binding,
-    checkpoint: Checkpoint,
-): VenueAccount {
-    VenueAccount { admin_cap: option::none(), binding, checkpoint }
 }
 
 #[test_only]

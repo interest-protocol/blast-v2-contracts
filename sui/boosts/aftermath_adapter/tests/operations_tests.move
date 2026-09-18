@@ -2286,8 +2286,8 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         @0xF.to_id(),
         type_name::with_original_ids<Collateral>(),
     );
-    let venue = venue_account::new_for_testing(binding, checkpoint);
-    vault.install_venue_account(venue);
+    let venue = venue_account::new(binding, checkpoint);
+    vault.install_venue_account_for_testing(venue);
     operations::emit_vault_initialized<Tag>(
         &vault,
         SEED_EQUITY,

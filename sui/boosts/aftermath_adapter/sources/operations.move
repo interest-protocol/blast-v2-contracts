@@ -127,11 +127,12 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
     vault.mint_locked_shares(locked_shares, seed_funder, ctx);
     // BLAST_ACTIVATION_BOUNDARY_A2
 
-    let venue_account = venue_account::new(admin_cap, binding, checkpoint);
+    let venue_custody = venue_account::new_custody(admin_cap, &binding);
+    let venue_account = venue_account::new(binding, checkpoint);
     // BLAST_ACTIVATION_BOUNDARY_A3
     account::consume_policy_and_share_account(account, share_policy);
     // BLAST_ACTIVATION_BOUNDARY_A4
-    vault.install_venue_account(venue_account);
+    vault.install_venue_account(venue_account, venue_custody);
     // BLAST_ACTIVATION_BOUNDARY_A5
     clearing_house::share(clearing_house);
     // BLAST_ACTIVATION_BOUNDARY_A6
