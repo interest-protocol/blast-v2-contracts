@@ -113,7 +113,7 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
         orders, position_side, reference_base_price, collateral_price, clock, ctx,
     );
 
-    clearing_house::settle_position_funding(&mut clearing_house, collateral_oracle, binding.account_number(), clock);
+    clearing_house.settle_position_funding(collateral_oracle, binding.account_number(), clock);
     let (final_observation, checkpoint, facts) = snapshot::capture_initialization(
         &binding, &account, registry, &clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
@@ -130,11 +130,11 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
     let venue_custody = venue_account::new_custody(admin_cap, &binding);
     let venue_account = venue_account::new(binding, checkpoint);
     // BLAST_ACTIVATION_BOUNDARY_A3
-    account::consume_policy_and_share_account(account, share_policy);
+    account.consume_policy_and_share_account(share_policy);
     // BLAST_ACTIVATION_BOUNDARY_A4
     vault.install_venue_account(venue_account, venue_custody);
     // BLAST_ACTIVATION_BOUNDARY_A5
-    clearing_house::share(clearing_house);
+    clearing_house.share();
     // BLAST_ACTIVATION_BOUNDARY_A6
     emit_vault_initialized<Product>(
         vault, seed_amount, facts.venue_equity(), facts.position_base(), facts.position_collateral(),
@@ -206,7 +206,7 @@ public fun mint<Product, Collateral>(
     );
     checkpoint.assert_deposit_checkpoint(&final_checkpoint, 0);
     let shares = complete_mint<Product, Collateral>(vault, plan, after, final_checkpoint, clock.timestamp_ms(), ctx);
-    clearing_house::share(clearing_house);
+    clearing_house.share();
 
     shares
 }
@@ -274,7 +274,7 @@ public fun redeem<Product, Collateral>(
     );
     receipt.unwound_checkpoint.assert_withdrawal_checkpoint(&final_checkpoint, receipt.redemption_cash_required());
     let cash = complete_redemption(vault, receipt, cash, after, final_checkpoint, clock.timestamp_ms(), ctx);
-    clearing_house::share(clearing_house);
+    clearing_house.share();
 
     cash
 }
@@ -329,7 +329,7 @@ public fun rebalance<Product, Collateral>(
     };
 
     complete_rebalance<Product, Collateral>(vault, plan, checkpoint);
-    clearing_house::share(clearing_house);
+    clearing_house.share();
 }
 
 /// Deposits configured collateral into the active funding buffer without shares or fees.
@@ -404,7 +404,7 @@ public fun sync_health<Product, Collateral>(
     let (pre_checkpoint, collateral_price) = pre_capture.funding_probe();
     let funding_candidate = funding_candidate(clearing_house, account);
 
-    clearing_house::settle_position_funding(clearing_house, collateral_oracle, account::account_id(account), clock);
+    clearing_house.settle_position_funding(collateral_oracle, account.account_id(), clock);
 
     let post_capture = snapshot::capture_health(
         &binding, account, registry, clearing_house, base_oracle, collateral_oracle,
@@ -436,7 +436,7 @@ public fun unwind<Product, Collateral>(
             base_price_info, collateral_price_info, clock, ctx,
         );
     };
-    clearing_house::share(clearing_house);
+    clearing_house.share();
 }
 
 /// Recovers all actual holder collateral only from an exactly settled bound account.
@@ -676,7 +676,7 @@ fun assert_initialization_inputs(
 }
 
 fun assert_position_imr(position_imr: u256) {
-    assert_position_imr_sign(ifixed::is_neg(position_imr));
+    assert_position_imr_sign(position_imr.is_neg());
 }
 
 fun assert_position_imr_sign(negative: bool) {
@@ -696,7 +696,7 @@ fun open_venue_account<Collateral>(
     let account_object_id = object::id(&account);
     let binding = venue_account::new_binding(
         account_object_id,
-        account::account_id(&account),
+        account.account_id(),
         object::id(registry),
         object::id(clearing_house),
         object::id(base_oracle),
@@ -718,10 +718,10 @@ fun fund_venue_account<Collateral>(
     position_imr: u256,
 ) {
     let seed_amount = seed.value();
-    account::deposit_collateral(account, admin_cap, registry, seed);
-    clearing_house::allocate_collateral(clearing_house, admin_cap, account, seed_amount);
-    clearing_house::create_market_position(clearing_house, admin_cap, account);
-    clearing_house::set_position_initial_margin_ratio(clearing_house, admin_cap, account, position_imr);
+    account.deposit_collateral(admin_cap, registry, seed);
+    clearing_house.allocate_collateral(admin_cap, account, seed_amount);
+    clearing_house.create_market_position(admin_cap, account);
+    clearing_house.set_position_initial_margin_ratio(admin_cap, account, position_imr);
 }
 
 /// Opens the seed position one policy-sized market order at a time.
@@ -749,22 +749,22 @@ fun open_seed_position<Product, Collateral>(
 
     while (!orders.is_empty()) {
         let order_base = orders.pop_back();
-        let mut session = clearing_house::start_session(
-            clearing_house, admin_cap, account, base_oracle, collateral_oracle, option::none(), clock, ctx,
+        let mut session = clearing_house.start_session(
+            admin_cap, account, base_oracle, collateral_oracle, option::none(), clock, ctx,
         );
-        clearing_house::place_market_order(&mut session, aftermath_order_side, order_base, false);
-        let (next_clearing_house, summary) = clearing_house::end_session(session, admin_cap, account, false, false);
+        session.place_market_order(aftermath_order_side, order_base, false);
+        let (next_clearing_house, summary) = session.end_session(admin_cap, account, false, false);
         clearing_house = next_clearing_house;
 
         assert_session_result(
             is_long, order_base,
-            clearing_house::base_filled_bid(&summary), clearing_house::base_filled_ask(&summary),
-            clearing_house::posted_orders(&summary), clearing_house::liquidated_size(&summary),
-            clearing_house::liquidation_bad_debt(&summary),
+            summary.base_filled_bid(), summary.base_filled_ask(),
+            summary.posted_orders(), summary.liquidated_size(),
+            summary.liquidation_bad_debt(),
         );
-        let executed = execution_price(clearing_house::execution_price(&summary, aftermath_order_side), is_long);
+        let executed = execution_price(summary.execution_price(aftermath_order_side), is_long);
         vault.assert_initialization_execution(reference_base_price, executed);
-        let (_, filled_quote) = clearing_house::filled_base_and_quote(&summary, aftermath_order_side);
+        let (_, filled_quote) = summary.filled_base_and_quote(aftermath_order_side);
         vault.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
     };
 
@@ -775,9 +775,9 @@ fun open_seed_position<Product, Collateral>(
 fun assert_position_imr_unchanged<Collateral>(
     clearing_house: &ClearingHouse<Collateral>, account_number: u64, position_imr: u256,
 ) {
-    let final_imr = position::initial_margin_ratio(clearing_house::position(clearing_house, account_number));
+    let final_imr = clearing_house.position(account_number).initial_margin_ratio();
     assert!(
-        !ifixed::is_neg(final_imr) && final_imr == position_imr,
+        !final_imr.is_neg() && final_imr == position_imr,
         blast_boosts_aftermath::errors::initialization_imr_mismatch!(),
     );
 }
@@ -842,8 +842,8 @@ fun live_venue_fee_bps<Collateral>(clearing_house: &ClearingHouse<Collateral>): 
     let params = clearing_house.market_params();
 
     venue_fee_bound(
-        nonnegative_rate(market::taker_fee(params)),
-        nonnegative_rate(market::resolve_priority_taker_fee(market::priority_taker_fee(params))),
+        nonnegative_rate(params.taker_fee()),
+        nonnegative_rate(market::resolve_priority_taker_fee(params.priority_taker_fee())),
     )
 }
 
@@ -861,7 +861,7 @@ fun venue_fee_bound(ordinary: u256, priority: u256): u64 {
 
 /// A venue rebate reads as a zero fee; the bound never credits execution.
 fun nonnegative_rate(rate: u256): u256 {
-    if (ifixed::is_neg(rate)) { 0 } else { ifixed::abs(rate) }
+    if (rate.is_neg()) { 0 } else { rate.abs() }
 }
 
 /// Whether opening this side is an ask on the Aftermath port: shorts sell to open, longs buy.
@@ -1012,12 +1012,12 @@ fun place_order<Product, Collateral>(
     );
     let filled = active_fill(
         !is_ask, requested, lot_size,
-        clearing_house::base_filled_bid(&summary), clearing_house::base_filled_ask(&summary),
-        clearing_house::posted_orders(&summary), clearing_house::liquidated_size(&summary),
-        clearing_house::liquidation_bad_debt(&summary),
+        summary.base_filled_bid(), summary.base_filled_ask(),
+        summary.posted_orders(), summary.liquidated_size(),
+        summary.liquidation_bad_debt(),
     );
-    let (filled_base, filled_quote) = clearing_house::filled_base_and_quote(&summary, is_ask);
-    let executed = execution_price(clearing_house::execution_price(&summary, is_ask), !is_ask);
+    let (filled_base, filled_quote) = summary.filled_base_and_quote(is_ask);
+    let executed = execution_price(summary.execution_price(is_ask), !is_ask);
     vault.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
 
     (clearing_house, Fill { filled, filled_base, filled_quote, executed, is_ask, reduce_only })
@@ -1086,7 +1086,7 @@ fun actual_fill_notional(filled_quote: u256, collateral_price: u64): u64 {
 }
 
 fun execution_price(raw_price: u256, round_up: bool): u64 {
-    normalize_execution_price(raw_price, round_up, ifixed::is_neg(raw_price))
+    normalize_execution_price(raw_price, round_up, raw_price.is_neg())
 }
 
 fun normalize_execution_price(raw_price: u256, round_up: bool, negative: bool): u64 {
@@ -1126,11 +1126,11 @@ fun update_funding_when_due<Collateral>(
 ) {
     binding.assert_funding_update_inputs(object::id(clearing_house), object::id(base_oracle));
 
-    let (funding_frequency_ms, _) = market::funding_params(clearing_house.market_params());
-    let funding_last_upd_ms = market::funding_last_upd_ms(clearing_house.market_state());
+    let (funding_frequency_ms, _) = clearing_house.market_params().funding_params();
+    let funding_last_upd_ms = clearing_house.market_state().funding_last_upd_ms();
 
     if (is_time_to_update_funding(clock.timestamp_ms(), funding_last_upd_ms, funding_frequency_ms)) {
-        clearing_house::update_funding(clearing_house, base_oracle, clock);
+        clearing_house.update_funding(base_oracle, clock);
     };
 }
 
@@ -1157,11 +1157,9 @@ fun next_funding_update_time_ms(funding_last_upd_ms: u64, funding_frequency_ms: 
 
 /// The funding the venue would settle for this account at its current cumulative rates.
 fun funding_candidate<Collateral>(clearing_house: &ClearingHouse<Collateral>, account: &Account<Collateral>): u256 {
-    let (long_rate, short_rate) = market::cum_funding_rates(clearing_house.market_state());
+    let (long_rate, short_rate) = clearing_house.market_state().cum_funding_rates();
 
-    position::calculate_position_funding_internal(
-        clearing_house.position(account::account_id(account)), long_rate, short_rate,
-    )
+    clearing_house.position(account.account_id()).calculate_position_funding_internal(long_rate, short_rate)
 }
 
 fun classify_sync_changes(
@@ -1197,11 +1195,11 @@ fun unwind_frozen<Product, Collateral>(
     let (enabled, base_price, collateral_price) = clearing_house.settlement_valuation_prices();
     assert!(
         enabled && base_price != 0 && collateral_price != 0
-            && !ifixed::is_neg(base_price) && !ifixed::is_neg(collateral_price),
+            && !base_price.is_neg() && !collateral_price.is_neg(),
         blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
     );
 
-    clearing_house::close_position_at_settlement_prices(clearing_house, account, &vector[]);
+    clearing_house.close_position_at_settlement_prices(account, &vector[]);
     let after = snapshot::capture_checkpoint(
         &binding, account, registry, clearing_house, base_oracle, collateral_oracle,
     );
@@ -1232,8 +1230,8 @@ fun unwind_market<Product, Collateral>(
     let mut remaining = unwind_base(&before, side);
 
     let candidate = funding_candidate(&clearing_house, account);
-    clearing_house::settle_position_funding(
-        &mut clearing_house, collateral_oracle, account::account_id(account), clock,
+    clearing_house.settle_position_funding(
+        collateral_oracle, account.account_id(), clock,
     );
     let funded = snapshot::capture_checkpoint(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
@@ -1277,7 +1275,7 @@ fun unwind_market<Product, Collateral>(
 fun unwind_base(checkpoint: &venue_account::Checkpoint, side: PositionSide): u64 {
     let base = checkpoint.signed_base();
 
-    unwind_base_decoded(ifixed::abs(base), !ifixed::is_neg(base), checkpoint.lot_size(), side)
+    unwind_base_decoded(base.abs(), !base.is_neg(), checkpoint.lot_size(), side)
 }
 
 fun unwind_base_decoded(magnitude: u256, is_long: bool, lot_size: u64, side: PositionSide): u64 {
@@ -1577,17 +1575,19 @@ use blast_boosts_core::{
 
 use ifixed::ifixed;
 
+// An IFixed value is a u256 carrier; only its sign and magnitude read as methods.
+use fun ifixed::abs as u256.abs;
+use fun ifixed::is_neg as u256.is_neg;
+
 use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 
 use perpetuals::{
     account::{Self as account, Account, AccountSharePolicy},
     authority::ACCOUNT,
-    clearing_house::{Self, ClearingHouse},
+    clearing_house::ClearingHouse,
     market,
     registry::Registry,
 };
-
-use position::position;
 
 use pyth::price_info::PriceInfoObject;
 

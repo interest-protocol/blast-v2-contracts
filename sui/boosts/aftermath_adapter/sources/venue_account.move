@@ -287,7 +287,7 @@ public(package) fun deposit<Collateral>(
     binding.assert_account(account);
     binding.assert_registry(registry);
 
-    account::deposit_collateral(account, &self.0, registry, cash);
+    account.deposit_collateral(&self.0, registry, cash);
 }
 
 /// A cash-only deposit may change exactly free collateral and no other raw field.
@@ -306,14 +306,14 @@ public(package) fun allocate<Collateral>(
     self.assert_bound(binding);
     binding.assert_market_account(account, clearing_house);
 
-    clearing_house::allocate_collateral(clearing_house, &self.0, account, amount);
+    clearing_house.allocate_collateral(&self.0, account, amount);
 }
 
 /// A deposited-and-allocated input changes exactly allocated six-decimal collateral.
 public(package) fun assert_allocated_deposit_checkpoint(before: &Checkpoint, after: &Checkpoint, amount: u64) {
     assert_signed_cash_change(
-        ifixed::is_neg(before.allocated_collateral), ifixed::abs(before.allocated_collateral),
-        ifixed::is_neg(after.allocated_collateral), ifixed::abs(after.allocated_collateral), amount, true,
+        before.allocated_collateral.is_neg(), before.allocated_collateral.abs(),
+        after.allocated_collateral.is_neg(), after.allocated_collateral.abs(), amount, true,
     );
     assert_cash_checkpoint(before, after, before.free_collateral);
 }
@@ -338,12 +338,12 @@ public(package) fun execute_order<Collateral>(
     binding.assert_market_account(account, &clearing_house);
     binding.assert_oracles(base_oracle, collateral_oracle);
 
-    let mut session = clearing_house::start_session(
-        clearing_house, &self.0, account, base_oracle, collateral_oracle, option::none(), clock, ctx,
+    let mut session = clearing_house.start_session(
+        &self.0, account, base_oracle, collateral_oracle, option::none(), clock, ctx,
     );
-    clearing_house::place_market_order(&mut session, is_ask, base, reduce_only);
+    session.place_market_order(is_ask, base, reduce_only);
 
-    clearing_house::end_session(session, &self.0, account, false, false)
+    session.end_session(&self.0, account, false, false)
 }
 
 /// An isolated session may change only its proved position and allocated trading cost.
@@ -379,16 +379,16 @@ public(package) fun withdraw<Collateral>(
     binding.assert_registry(registry);
     binding.assert_oracles(base_oracle, collateral_oracle);
 
-    let free = account::collateral_balance(account);
+    let free = account.collateral_balance();
     if (free < amount) {
         let required = amount - free;
-        let deallocated = clearing_house::deallocate_collateral(
-            clearing_house, &self.0, account, base_oracle, collateral_oracle, required, clock,
+        let deallocated = clearing_house.deallocate_collateral(
+            &self.0, account, base_oracle, collateral_oracle, required, clock,
         );
         assert!(deallocated == required, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
     };
 
-    account::withdraw_collateral(account, &self.0, registry, amount, ctx)
+    account.withdraw_collateral(&self.0, registry, amount, ctx)
 }
 
 /// Payout spends free cash first, then exactly deallocates the remaining amount.
@@ -396,8 +396,8 @@ public(package) fun assert_withdrawal_checkpoint(before: &Checkpoint, after: &Ch
     let from_free = before.free_collateral.min(amount);
 
     assert_signed_cash_change(
-        ifixed::is_neg(before.allocated_collateral), ifixed::abs(before.allocated_collateral),
-        ifixed::is_neg(after.allocated_collateral), ifixed::abs(after.allocated_collateral),
+        before.allocated_collateral.is_neg(), before.allocated_collateral.abs(),
+        after.allocated_collateral.is_neg(), after.allocated_collateral.abs(),
         amount - from_free, false,
     );
     assert_cash_checkpoint(before, after, before.free_collateral - from_free);
@@ -471,7 +471,7 @@ public(package) fun into_recovered_cash<Collateral>(
 /// The account object, its venue number, and its collateral type are the bound ones.
 fun assert_account<Collateral>(self: &Binding, account: &Account<Collateral>) {
     assert!(object::id(account) == self.account_object_id, blast_boosts_aftermath::errors::account_object_mismatch!());
-    assert!(account::account_id(account) == self.account_number, blast_boosts_aftermath::errors::account_number_mismatch!());
+    assert!(account.account_id() == self.account_number, blast_boosts_aftermath::errors::account_number_mismatch!());
     assert!(
         std::type_name::with_original_ids<Collateral>() == self.collateral_type,
         blast_boosts_aftermath::errors::collateral_type_mismatch!(),
@@ -534,7 +534,7 @@ fun allocated_collateral_sign_and_magnitude(self: &Checkpoint): (bool, u256) {
     if (self.allocated_collateral == 0) {
         (false, 0)
     } else {
-        (ifixed::is_neg(self.allocated_collateral), ifixed::abs(self.allocated_collateral))
+        (self.allocated_collateral.is_neg(), self.allocated_collateral.abs())
     }
 }
 
@@ -695,12 +695,16 @@ use blast_boosts_aftermath::constants;
 
 use ifixed::ifixed;
 
+// An IFixed value is a u256 carrier; only its sign and magnitude read as methods.
+use fun ifixed::abs as u256.abs;
+use fun ifixed::is_neg as u256.is_neg;
+
 use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 
 use perpetuals::{
-    account::{Self, Account},
+    account::Account,
     authority::ACCOUNT,
-    clearing_house::{Self, ClearingHouse, SessionSummary},
+    clearing_house::{ClearingHouse, SessionSummary},
     registry::Registry,
 };
 
