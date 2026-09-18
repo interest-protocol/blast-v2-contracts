@@ -39,6 +39,18 @@ public struct RedemptionReceipt<phantom Product> {
     unwound_checkpoint: venue_account::Checkpoint,
 }
 
+/// What the venue reported about one whole-lot market order, already checked
+/// against the order cap and the lot: the base atoms filled, the raw signed
+/// base and quote the session moved, and the execution price to prove against
+/// the sealed oracle. Package-internal; Move has no private structs.
+public struct Fill has copy, drop {
+    filled: u64,
+    filled_base: u256,
+    filled_quote: u256,
+    executed: u64,
+    is_ask: bool,
+}
+
 // === Public Functions ===
 
 /// Permissionless bounded close-only progress, never caller-sized or dependent on positive NAV.
@@ -115,33 +127,35 @@ public fun rebalance<Product, Collateral>(
     let mut index = 0;
     while (index < MAX_ACTIVE_ORDERS) {
         let (requested, increase, _) = vault.rebalance_order(&plan);
-        if (requested == 0) { break };
+        if (requested == 0) break;
         let is_ask = if (increase) { order_side(side) } else { !order_side(side) };
-        vault.assert_order_notional_allowed(notional_for_base_up(requested, base_price, collateral_price));
-        let (next_market, summary) = vault.execute_order(account, clearing_house, base_oracle,
-            collateral_oracle, is_ask, requested, !increase, clock, ctx);
+
+        let (next_market, fill) = place_order(
+            vault, account, clearing_house, base_oracle, collateral_oracle,
+            is_ask, requested, !increase, lot, base_price, collateral_price, clock, ctx,
+        );
         clearing_house = next_market;
-        let filled = active_fill(!is_ask, requested, lot, clearing_house::base_filled_bid(&summary),
-            clearing_house::base_filled_ask(&summary), clearing_house::posted_orders(&summary),
-            clearing_house::liquidated_size(&summary), clearing_house::liquidation_bad_debt(&summary));
-        let (filled_base, filled_quote) = clearing_house::filled_base_and_quote(&summary, is_ask);
-        vault.assert_rebalance_execution(&plan, base_price, execution_price(clearing_house::execution_price(&summary, is_ask), !is_ask));
-        vault.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
-        let previous_base = checkpoint.signed_base();
-        let previous_quote = checkpoint.signed_quote_notional();
-        let expected_base = if (is_ask) { ifixed::sub(previous_base, filled_base) } else { ifixed::add(previous_base, filled_base) };
-        let (after, after_checkpoint) = snapshot::capture(&binding, account, registry, &clearing_house,
-            base_oracle, collateral_oracle, base_price_info, collateral_price_info, clock);
+        vault.assert_rebalance_execution(&plan, base_price, fill.executed);
+
+        let (after, after_checkpoint) = snapshot::capture(
+            &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
+            base_price_info, collateral_price_info, clock,
+        );
         if (increase) {
-            let expected_quote = if (is_ask) { ifixed::add(previous_quote, filled_quote) } else { ifixed::sub(previous_quote, filled_quote) };
-            checkpoint.assert_trade_checkpoint(&after_checkpoint, expected_base, expected_quote);
+            checkpoint.assert_trade_checkpoint(
+                &after_checkpoint,
+                fill.base_after(checkpoint.signed_base()),
+                fill.quote_after(checkpoint.signed_quote_notional()),
+            );
         } else {
-            checkpoint.assert_reduction_checkpoint(&after_checkpoint, expected_base);
+            checkpoint.assert_reduction_checkpoint(&after_checkpoint, fill.base_after(checkpoint.signed_base()));
         };
-        vault.accept_rebalance_fill(&mut plan, after, filled, clock.timestamp_ms());
+        vault.accept_rebalance_fill(&mut plan, after, fill.filled, clock.timestamp_ms());
+
         checkpoint = after_checkpoint;
         index = index + 1;
     };
+
     complete_rebalance<Product, Collateral>(vault, plan, checkpoint);
     clearing_house::share(clearing_house);
 }
@@ -193,29 +207,22 @@ public fun redeem<Product, Collateral>(
     let mut index = 0;
     while (remaining > 0) {
         let requested = active_order_size(remaining, cap, base_price, collateral_price, lot, index);
-        vault.assert_order_notional_allowed(notional_for_base_up(requested, base_price, collateral_price));
-        let (next_market, summary) = vault.execute_order(
-            account, clearing_house, base_oracle, collateral_oracle, is_ask, requested, true, clock, ctx,
+        let (next_market, fill) = place_order(
+            vault, account, clearing_house, base_oracle, collateral_oracle,
+            is_ask, requested, true, lot, base_price, collateral_price, clock, ctx,
         );
         clearing_house = next_market;
-        let filled = active_fill(
-            !is_ask, requested, lot, clearing_house::base_filled_bid(&summary),
-            clearing_house::base_filled_ask(&summary), clearing_house::posted_orders(&summary),
-            clearing_house::liquidated_size(&summary), clearing_house::liquidation_bad_debt(&summary),
-        );
-        let (filled_base, filled_quote) = clearing_house::filled_base_and_quote(&summary, is_ask);
-        vault.assert_active_execution(base_price, execution_price(clearing_house::execution_price(&summary, is_ask), !is_ask));
-        vault.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
-        let previous_base = checkpoint.signed_base();
-        let expected_base = if (is_ask) { ifixed::sub(previous_base, filled_base) } else { ifixed::add(previous_base, filled_base) };
+        vault.assert_active_execution(base_price, fill.executed);
+
         let (intermediate, after_checkpoint) = snapshot::capture(
             &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
             base_price_info, collateral_price_info, clock,
         );
-        checkpoint.assert_reduction_checkpoint(&after_checkpoint, expected_base);
+        checkpoint.assert_reduction_checkpoint(&after_checkpoint, fill.base_after(checkpoint.signed_base()));
         vault.assert_active_observation(intermediate, base_price, collateral_price, clock.timestamp_ms());
+
         checkpoint = after_checkpoint;
-        remaining = remaining - filled;
+        remaining = remaining - fill.filled;
         index = index + 1;
     };
 
@@ -299,31 +306,26 @@ public fun mint<Product, Collateral>(
     let mut index = 0;
     while (remaining > 0) {
         let requested = active_order_size(remaining, cap, base_price, collateral_price, lot, index);
-        vault.assert_order_notional_allowed(notional_for_base_up(requested, base_price, collateral_price));
-        let (next_market, summary) = vault.execute_order(
-            account, clearing_house, base_oracle, collateral_oracle, is_ask, requested, false, clock, ctx,
+        let (next_market, fill) = place_order(
+            vault, account, clearing_house, base_oracle, collateral_oracle,
+            is_ask, requested, false, lot, base_price, collateral_price, clock, ctx,
         );
         clearing_house = next_market;
-        let filled = active_fill(
-            !is_ask, requested, lot, clearing_house::base_filled_bid(&summary),
-            clearing_house::base_filled_ask(&summary), clearing_house::posted_orders(&summary),
-            clearing_house::liquidated_size(&summary), clearing_house::liquidation_bad_debt(&summary),
-        );
-        let (filled_base, filled_quote) = clearing_house::filled_base_and_quote(&summary, is_ask);
-        vault.assert_active_execution(base_price, execution_price(clearing_house::execution_price(&summary, is_ask), !is_ask));
-        vault.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
-        let previous_base = checkpoint.signed_base();
-        let previous_quote = checkpoint.signed_quote_notional();
-        let expected_base = if (is_ask) { ifixed::sub(previous_base, filled_base) } else { ifixed::add(previous_base, filled_base) };
-        let expected_quote = if (is_ask) { ifixed::add(previous_quote, filled_quote) } else { ifixed::sub(previous_quote, filled_quote) };
+        vault.assert_active_execution(base_price, fill.executed);
+
         let (intermediate, after_checkpoint) = snapshot::capture(
             &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
             base_price_info, collateral_price_info, clock,
         );
-        checkpoint.assert_trade_checkpoint(&after_checkpoint, expected_base, expected_quote);
+        checkpoint.assert_trade_checkpoint(
+            &after_checkpoint,
+            fill.base_after(checkpoint.signed_base()),
+            fill.quote_after(checkpoint.signed_quote_notional()),
+        );
         vault.assert_active_observation(intermediate, base_price, collateral_price, clock.timestamp_ms());
+
         checkpoint = after_checkpoint;
-        remaining = remaining - filled;
+        remaining = remaining - fill.filled;
         index = index + 1;
     };
 
@@ -1016,24 +1018,22 @@ fun unwind_market<Product, Collateral>(
     let is_ask = !order_side(side);
     while (orders < MAX_ACTIVE_ORDERS && remaining > 0) {
         let requested = active_order_size(remaining, cap, base_price, collateral_price, lot, orders);
-        vault.assert_order_notional_allowed(notional_for_base_up(requested, base_price, collateral_price));
-        let (next_market, summary) = vault.execute_order(account, clearing_house, base_oracle, collateral_oracle,
-            is_ask, requested, true, clock, ctx);
+        let (next_market, fill) = place_order(
+            vault, account, clearing_house, base_oracle, collateral_oracle,
+            is_ask, requested, true, lot, base_price, collateral_price, clock, ctx,
+        );
         clearing_house = next_market;
-        let filled = active_fill(!is_ask, requested, lot, clearing_house::base_filled_bid(&summary),
-            clearing_house::base_filled_ask(&summary), clearing_house::posted_orders(&summary),
-            clearing_house::liquidated_size(&summary), clearing_house::liquidation_bad_debt(&summary));
-        let (filled_base, filled_quote) = clearing_house::filled_base_and_quote(&summary, is_ask);
-        vault.assert_unwind_execution(base_price, execution_price(clearing_house::execution_price(&summary, is_ask), !is_ask));
-        vault.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
-        let previous_base = checkpoint.signed_base();
-        let expected_base = if (is_ask) { ifixed::sub(previous_base, filled_base) } else { ifixed::add(previous_base, filled_base) };
-        let after = snapshot::capture_checkpoint(&binding, account, registry, &clearing_house, base_oracle, collateral_oracle);
-        checkpoint.assert_reduction_checkpoint(&after, expected_base);
+        vault.assert_unwind_execution(base_price, fill.executed);
+
+        let after = snapshot::capture_checkpoint(
+            &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
+        );
+        checkpoint.assert_reduction_checkpoint(&after, fill.base_after(checkpoint.signed_base()));
         after.assert_no_orders();
-        remaining = remaining - filled;
+
+        remaining = remaining - fill.filled;
         checkpoint = after;
-        filled_quote_total = filled_quote_total.checked_add(filled_quote)
+        filled_quote_total = filled_quote_total.checked_add(fill.filled_quote)
             .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
         orders = orders + 1;
     };
@@ -1087,6 +1087,46 @@ fun classify_sync_changes(
         collateral_price,
     );
     (preexisting_change, local_change)
+}
+
+/// Places one whole-lot market order and verifies the venue's report of it.
+///
+/// The request is checked against the per-order cap before the call and the
+/// actual fill after it, so admitted slippage cannot carry one order past the
+/// live cap. Every operation loop places its orders through this step; only
+/// the slippage bound it then proves against differs.
+fun place_order<Product, Collateral>(
+    vault: &Vault<Product>, account: &mut Account<Collateral>, clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
+    is_ask: bool, requested: u64, reduce_only: bool, lot: u64, base_price: u64, collateral_price: u64,
+    clock: &Clock, ctx: &TxContext,
+): (ClearingHouse<Collateral>, Fill) {
+    vault.assert_order_notional_allowed(notional_for_base_up(requested, base_price, collateral_price));
+
+    let (clearing_house, summary) = vault.execute_order(
+        account, clearing_house, base_oracle, collateral_oracle, is_ask, requested, reduce_only, clock, ctx,
+    );
+    let filled = active_fill(
+        !is_ask, requested, lot,
+        clearing_house::base_filled_bid(&summary), clearing_house::base_filled_ask(&summary),
+        clearing_house::posted_orders(&summary), clearing_house::liquidated_size(&summary),
+        clearing_house::liquidation_bad_debt(&summary),
+    );
+    let (filled_base, filled_quote) = clearing_house::filled_base_and_quote(&summary, is_ask);
+    let executed = execution_price(clearing_house::execution_price(&summary, is_ask), !is_ask);
+    vault.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
+
+    (clearing_house, Fill { filled, filled_base, filled_quote, executed, is_ask })
+}
+
+/// The signed base the checkpoint must show after this fill.
+fun base_after(self: &Fill, previous: u256): u256 {
+    if (self.is_ask) { ifixed::sub(previous, self.filled_base) } else { ifixed::add(previous, self.filled_base) }
+}
+
+/// The signed quote notional the checkpoint must show after this fill.
+fun quote_after(self: &Fill, previous: u256): u256 {
+    if (self.is_ask) { ifixed::add(previous, self.filled_quote) } else { ifixed::sub(previous, self.filled_quote) }
 }
 
 /// Bounds each next whole-lot request without re-rounding the sealed aggregate.
