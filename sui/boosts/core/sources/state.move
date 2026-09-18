@@ -339,13 +339,13 @@ public fun complete_mint<Product>(
             .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!()),
         &after,
     );
+    let nav_before = accounting_math::shareholder_nav(before.equity, reserve_priced);
     let (nav_after, contribution, shares) = accounting_math::allocated_mint_quote(
         before.equity, after.equity, reserve_priced, reserve_after, expected_contribution,
         supply, minimum_shares,
     );
     accounting_math::assert_mint_base_within_bounds(
-        after.base, expected_contribution, contribution, before.base,
-        accounting_math::shareholder_nav(before.equity, reserve_priced),
+        after.base, expected_contribution, contribution, before.base, nav_before,
         before.lot_size, self.vault_policy.min_order_lots(),
     );
     self.assert_within_nav_cap(nav_after);
@@ -358,6 +358,7 @@ public fun complete_mint<Product>(
     );
 
     self.maintenance_reserve = reserve_after;
+    assert_holders_not_diluted(nav_before, supply, nav_after, supply + shares);
 
     (shares, contribution, admin_fee + reserve_fee, admin_fee, reserve_fee, fee_bps, admin_share_bps)
 }
@@ -431,8 +432,9 @@ public fun complete_redemption<Product>(
         after.base, shares, before.base, supply, before.lot_size, self.vault_policy.min_order_lots(),
     );
 
+    let reserve_priced = self.admitted_reserve(&before);
     let (reserve_with_fee, nav_kept, fee, net) = accounting_math::redemption_accounting_quote(
-        shares, before.equity, after.equity, self.admitted_reserve(&before), supply, fee_bps,
+        shares, before.equity, after.equity, reserve_priced, supply, fee_bps,
     );
     assert!(net >= minimum_output, blast_boosts_core::errors::redemption_output_below_minimum!());
     let admin = accounting_math::admin_share_down(fee, admin_share_bps);
@@ -443,6 +445,9 @@ public fun complete_redemption<Product>(
     );
 
     self.maintenance_reserve = self.reserve_within_cap(reserve_retained, &after);
+    assert_holders_not_diluted(
+        accounting_math::shareholder_nav(before.equity, reserve_priced), supply, nav_kept, supply - shares,
+    );
 
     (net, admin, fee, fee - admin)
 }
@@ -602,25 +607,25 @@ public fun settle_funding<Product>(
     let amount = settlement.amount();
     settlement.destroy();
 
+    let reserve_before = self.maintenance_reserve;
     if (is_cost) {
-        let (reserve_after, absorbed, uncovered) = accounting_math::absorb_funding_cost(
-            self.maintenance_reserve,
-            amount,
-        );
+        let (reserve_after, absorbed, uncovered) = accounting_math::absorb_funding_cost(reserve_before, amount);
 
         self.maintenance_reserve = reserve_after;
         self.uncovered_deficit = self.uncovered_deficit
             .checked_add(uncovered)
             .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
+        assert_invariant(reserve_after + absorbed == reserve_before && absorbed + uncovered == amount);
 
         (absorbed, uncovered, 0)
     } else {
         let restored = amount.min(self.uncovered_deficit);
 
         self.uncovered_deficit = self.uncovered_deficit - restored;
-        self.maintenance_reserve = self.maintenance_reserve
+        self.maintenance_reserve = reserve_before
             .checked_add(amount - restored)
             .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
+        assert_invariant(self.maintenance_reserve + restored == reserve_before + amount);
 
         (0, 0, restored)
     }
@@ -639,10 +644,12 @@ public fun donate<Product>(self: &mut State<Product>, after: PositionObservation
     assert!(amount > 0, blast_boosts_core::errors::zero_amount!());
 
     let after = validated_active_position(self, after, now_ms);
-    let reserve_funded = self.maintenance_reserve.checked_add(amount)
+    let reserve_before = self.maintenance_reserve;
+    let reserve_funded = reserve_before.checked_add(amount)
         .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
 
     self.maintenance_reserve = self.reserve_within_cap(reserve_funded, &after);
+    assert_invariant(self.maintenance_reserve <= reserve_funded && self.maintenance_reserve <= after.equity);
 }
 
 /// Rejects venue synchronization after the local cash pool has been sealed.
@@ -683,6 +690,7 @@ public fun finalize_shutdown<Product>(self: &mut State<Product>, native_supply: 
 
     self.lifecycle.finalize_shutdown();
     self.maintenance_reserve = 0;
+    assert_invariant(self.lifecycle.is_settled());
 
     native_supply - locked
 }
@@ -832,6 +840,18 @@ fun is_same_checkpoint(self: &ActivePosition, other: &ActivePosition): bool {
 /// equity and simply counts as shareholder NAV from this checkpoint on. A
 /// flat position has no funding exposure to size the ceiling against, so it
 /// keeps the reserve intact for the position that reopens.
+/// The vault's `k`: no priced operation may lower NAV per share for the holders who stay.
+/// Cross-multiplied so no division rounds the comparison.
+fun assert_holders_not_diluted(nav_before: u64, supply_before: u64, nav_after: u64, supply_after: u64) {
+    assert_invariant((nav_after as u128) * (supply_before as u128) >= (nav_before as u128) * (supply_after as u128));
+}
+
+/// A fact the arithmetic above establishes by construction; checked anyway, because a
+/// mutation that breaks it must never be committed.
+fun assert_invariant(holds: bool) {
+    assert!(holds, blast_boosts_core::errors::invariant_violated!());
+}
+
 fun reserve_within_cap<Product>(self: &State<Product>, reserve: u64, position: &ActivePosition): u64 {
     if (position.notional == 0) reserve else reserve.min(self.vault_policy.reserve_cap(position.notional))
 }

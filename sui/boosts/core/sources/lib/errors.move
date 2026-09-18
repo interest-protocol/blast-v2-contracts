@@ -257,6 +257,10 @@ const EInvalidMaxReserveBps: u64 = 60;
 /// A seed reserve exceeds the policy ceiling for the opening notional.
 const ESeedReserveAboveCap: u64 = 61;
 
+#[test_only]
+/// A mutation left the state in violation of an accounting invariant that must hold by construction.
+const EInvariantViolated: u64 = 62;
+
 // === Package Functions ===
 
 macro public(package) fun zero_amount(): u64 { 0 }
@@ -321,3 +325,4 @@ macro public(package) fun invalid_asset_decimals(): u64 { 58 }
 macro public(package) fun nav_cap_unchanged(): u64 { 59 }
 macro public(package) fun invalid_max_reserve_bps(): u64 { 60 }
 macro public(package) fun seed_reserve_above_cap(): u64 { 61 }
+macro public(package) fun invariant_violated(): u64 { 62 }
