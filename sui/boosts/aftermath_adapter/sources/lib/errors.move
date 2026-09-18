@@ -80,13 +80,8 @@ const EOracleSourceMismatch: u64 = 21;
 /// An Aftermath feed does not originate from the presented Pyth object.
 const EPythPriceInfoMismatch: u64 = 22;
 
-#[test_only]
-/// A Pyth price is negative or cannot normalize into the adapter unit.
-const EInvalidPythPrice: u64 = 23;
-
-#[test_only]
-/// A Pyth exponent or normalized value cannot fit the adapter unit.
-const EPythNormalizationOverflow: u64 = 24;
+// Codes 23 and 24 retired: a negative or unrepresentable Pyth component is one
+// unrepresentable oracle leg, refused by a strict capture as `normalization_overflow`.
 
 #[test_only]
 /// Pyth and Aftermath observations do not describe one price update.
@@ -227,8 +222,6 @@ macro public(package) fun collateral_type_mismatch(): u64 { 18 }
 macro public(package) fun oracle_storage_mismatch(): u64 { 20 }
 macro public(package) fun oracle_source_mismatch(): u64 { 21 }
 macro public(package) fun pyth_price_info_mismatch(): u64 { 22 }
-macro public(package) fun invalid_pyth_price(): u64 { 23 }
-macro public(package) fun pyth_normalization_overflow(): u64 { 24 }
 macro public(package) fun oracle_observation_mismatch(): u64 { 25 }
 macro public(package) fun normalization_overflow(): u64 { 26 }
 macro public(package) fun incoherent_position_signs(): u64 { 27 }

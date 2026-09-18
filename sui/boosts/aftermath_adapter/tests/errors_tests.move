@@ -21,8 +21,6 @@ fun adapter_error_registry_is_stable() {
     assert_eq!(errors::oracle_storage_mismatch!(), 20);
     assert_eq!(errors::oracle_source_mismatch!(), 21);
     assert_eq!(errors::pyth_price_info_mismatch!(), 22);
-    assert_eq!(errors::invalid_pyth_price!(), 23);
-    assert_eq!(errors::pyth_normalization_overflow!(), 24);
     assert_eq!(errors::oracle_observation_mismatch!(), 25);
     assert_eq!(errors::normalization_overflow!(), 26);
     assert_eq!(errors::incoherent_position_signs!(), 27);

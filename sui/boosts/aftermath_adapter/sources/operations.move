@@ -614,7 +614,7 @@ public(package) fun complete_rebalance<Product, Collateral>(
     vault.replace_venue_checkpoint(checkpoint);
 
     events::rebalanced<Product>(
-        object::id(vault), before_equity, after_equity, before_base, after_base, increase,
+        vault.id(), before_equity, after_equity, before_base, after_base, increase,
         vault.maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(), vault.share_supply(), checkpoint,
     );
 }

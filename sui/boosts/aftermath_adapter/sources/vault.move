@@ -740,11 +740,6 @@ fun metadata_cap<Product>(self: &Vault<Product>): &MetadataCap<BlastBoost<Produc
 }
 
 #[test_only]
-public fun id_for_testing<Product>(self: &Vault<Product>): ID {
-    self.id.to_inner()
-}
-
-#[test_only]
 public fun unresolved_checkpoint_digest_for_testing<Product>(self: &Vault<Product>): Option<vector<u8>> {
     self.unresolved_checkpoint_digest
 }
@@ -752,11 +747,6 @@ public fun unresolved_checkpoint_digest_for_testing<Product>(self: &Vault<Produc
 #[test_only]
 public fun set_active_for_testing<Product>(self: &mut VaultIssuance<Product>) {
     self.state.set_active_for_testing();
-}
-
-#[test_only]
-public fun maintenance_reserve_for_testing<Product>(self: &Vault<Product>): u64 {
-    self.state.maintenance_reserve_for_testing()
 }
 
 #[test_only]
@@ -794,11 +784,6 @@ public fun treasury_cap_id_for_testing<Product>(self: &Vault<Product>): ID {
 #[test_only]
 public fun metadata_cap_id_for_testing<Product>(self: &Vault<Product>): ID {
     object::id(self.metadata_cap())
-}
-
-#[test_only]
-public fun share_supply_for_testing<Product>(self: &Vault<Product>): u64 {
-    self.treasury_cap().total_supply()
 }
 
 #[test_only]

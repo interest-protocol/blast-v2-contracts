@@ -247,7 +247,7 @@ public(package) fun classify_change(
 ): CheckpointChange {
     if (checkpoint_unchanged(before, after)) return CheckpointChange::Unchanged;
 
-    let (candidate_collateral_magnitude, representable) = usd_fixed_to_collateral_fixed_health(
+    let (candidate_collateral_magnitude, representable) = usd_fixed_to_collateral_fixed(
         funding_candidate.abs(), collateral_price, funding_candidate.is_neg(),
     );
     if (!representable) return CheckpointChange::Unexpected;
@@ -297,8 +297,8 @@ public(package) fun assert_expected(self: CheckpointChange) {
 /// Returns whether the change is a representable funding credit or cost.
 public(package) fun has_funding(self: &CheckpointChange): bool {
     match (self) {
-        CheckpointChange::FundingCredit(raw) => { let (_, ok) = fixed_to_u64_down_health(*raw, constants::collateral_decimals!() as u64); ok },
-        CheckpointChange::FundingCost(raw) => { let (_, ok) = fixed_to_u64_up_health(*raw, constants::collateral_decimals!() as u64); ok },
+        CheckpointChange::FundingCredit(raw) => { let (_, ok) = fixed_to_u64_down(*raw, constants::collateral_decimals!() as u64); ok },
+        CheckpointChange::FundingCost(raw) => { let (_, ok) = fixed_to_u64_up(*raw, constants::collateral_decimals!() as u64); ok },
         _ => false,
     }
 }
@@ -320,8 +320,8 @@ public(package) fun raw_amount(self: &CheckpointChange): u256 {
 /// Returns the six-decimal funding amount, credits down and costs up; zero when unrepresentable.
 public(package) fun amount(self: &CheckpointChange): u64 {
     match (self) {
-        CheckpointChange::FundingCredit(raw) => { let (amount, _) = fixed_to_u64_down_health(*raw, constants::collateral_decimals!() as u64); amount },
-        CheckpointChange::FundingCost(raw) => { let (amount, _) = fixed_to_u64_up_health(*raw, constants::collateral_decimals!() as u64); amount },
+        CheckpointChange::FundingCredit(raw) => { let (amount, _) = fixed_to_u64_down(*raw, constants::collateral_decimals!() as u64); amount },
+        CheckpointChange::FundingCost(raw) => { let (amount, _) = fixed_to_u64_up(*raw, constants::collateral_decimals!() as u64); amount },
         _ => 0,
     }
 }
@@ -366,14 +366,14 @@ fun capture_snapshot<Collateral>(
     let mark_fixed = clearing_house.mark_price(base_oracle, clock);
     let base = oracle_leg(base_price_info, base_feed, base_fixed, health);
     let collateral = oracle_leg(collateral_price_info, collateral_feed, collateral_fixed, health);
-    let (mark_price, mark_representable) = fixed_to_u64_down_health(mark_fixed, 9);
+    let (mark_price, mark_representable) = fixed_to_u64_down(mark_fixed, 9);
     assert_representable_unless_health(health, mark_representable);
 
     let position = clearing_house.position(account.account_id());
     let (signed_base, signed_quote_notional) = position.base_and_quote_amounts();
-    let (position_base, base_representable) = fixed_to_u64_up_health(signed_base.abs(), 9);
+    let (position_base, base_representable) = fixed_to_u64_up(signed_base.abs(), 9);
     let (position_collateral, notional_representable) =
-        base_notional_health(position_base, base.risk_price, collateral.price);
+        base_notional(position_base, base.risk_price, collateral.price);
     assert_representable_unless_health(health, base_representable && notional_representable);
     let side = if (health) {
         if (position.is_long_or_flat()) { policy::long() } else { policy::short() }
@@ -385,7 +385,7 @@ fun capture_snapshot<Collateral>(
     let (margin, requirement) = position.compute_margin_and_requirement(
         collateral_fixed, mark_fixed, effective_imr, params.collateral_haircut(),
     );
-    let (venue_equity, equity_representable) = signed_equity_health(
+    let (venue_equity, equity_representable) = signed_equity(
         account.collateral_balance(), position.collateral(), position.unrealized_pnl(base_fixed), collateral_fixed,
     );
     assert_representable_unless_health(health, equity_representable);
@@ -467,15 +467,11 @@ fun authenticated_feeds(
     (base_feed, collateral_feed)
 }
 
-/// Normalizes one oracle leg: a strict capture aborts on the first
-/// unrepresentable value; a health capture reports it in the leg.
+/// Normalizes one oracle leg: a strict capture aborts on an unrepresentable
+/// value; a health capture reports it in the leg.
 fun oracle_leg(price_info: &PriceInfoObject, feed: &PriceFeed, fixed: u256, health: bool): OracleLeg {
-    let (price, risk_price, confidence, timestamp, representable) = if (health) {
-        pyth_price_health(price_info, feed, fixed)
-    } else {
-        let (price, risk_price, confidence, timestamp) = pyth_price(price_info, feed, fixed);
-        (price, risk_price, confidence, timestamp, true)
-    };
+    let (price, risk_price, confidence, timestamp, representable) = pyth_price(price_info, feed, fixed);
+    assert_representable_unless_health(health, representable);
 
     OracleLeg { price, risk_price, confidence, timestamp, representable }
 }
@@ -594,37 +590,11 @@ fun signed_delta(before_negative: bool, before: u256, after_negative: bool, afte
 
 // --- Pyth Normalization ---
 
-fun pyth_price(
-    price_info_object: &PriceInfoObject,
-    aftermath_feed: &PriceFeed,
-    venue_price: u256,
-): (u64, u64, u64, u64) {
-    let price_info = price_info_object.get_price_info_from_price_info_object();
-    let pyth_price = price_info.get_price_feed().get_price();
-    let price_i64 = pyth_price.get_price();
-    assert!(!price_i64.get_is_negative(), blast_boosts_aftermath::errors::invalid_pyth_price!());
-
-    let magnitude = price_i64.get_magnitude_if_positive();
-    let expo = pyth_price.get_expo();
-    let normalized_price = normalize_pyth_component(magnitude, &expo, false);
-    let normalized_risk_price = normalize_pyth_component(magnitude, &expo, true);
-    let normalized_confidence = normalize_pyth_component(pyth_price.get_conf(), &expo, true);
-    let (aftermath_price, aftermath_timestamp) = aftermath_feed.price_and_timestamp_ms();
-    assert!(
-        normalize_feed_price(aftermath_price) == normalized_price
-            && fixed_to_u64_down(venue_price, 9) == normalized_price
-            && aftermath_timestamp == checked_seconds_to_millis(pyth_price.get_timestamp()),
-        blast_boosts_aftermath::errors::oracle_observation_mismatch!(),
-    );
-
-    (normalized_price, normalized_risk_price, normalized_confidence, aftermath_timestamp)
-}
-
 /// Normalizes authenticated oracle values without aborting on representation.
 /// A representable disagreement is still an authentication failure and aborts;
-/// only width, exponent, sign, or timestamp-domain failures become invalid
-/// economic facts for permissionless health reporting.
-fun pyth_price_health(
+/// width, exponent, sign, or timestamp-domain failures come back as not
+/// representable for the caller to refuse or report.
+fun pyth_price(
     price_info_object: &PriceInfoObject,
     aftermath_feed: &PriceFeed,
     venue_price: u256,
@@ -636,15 +606,14 @@ fun pyth_price_health(
     let magnitude = if (price_nonnegative) { price_i64.get_magnitude_if_positive() } else { 0 };
     let expo = pyth_price.get_expo();
 
-    let (normalized_price, price_representable) = normalize_pyth_component_health(magnitude, &expo, false);
-    let (normalized_risk_price, risk_price_representable) = normalize_pyth_component_health(magnitude, &expo, true);
+    let (normalized_price, price_representable) = normalize_pyth_component(magnitude, &expo, false);
+    let (normalized_risk_price, risk_price_representable) = normalize_pyth_component(magnitude, &expo, true);
     let (normalized_confidence, confidence_representable) =
-        normalize_pyth_component_health(pyth_price.get_conf(), &expo, true);
+        normalize_pyth_component(pyth_price.get_conf(), &expo, true);
     let (aftermath_price, aftermath_timestamp) = aftermath_feed.price_and_timestamp_ms();
-    let (normalized_feed_price, feed_representable) = normalize_feed_price_health(aftermath_price);
-    let (normalized_venue_price, venue_representable) = fixed_to_u64_down_health(venue_price, 9);
-    let (pyth_timestamp, timestamp_representable) =
-        checked_seconds_to_millis_health(pyth_price.get_timestamp());
+    let (normalized_feed_price, feed_representable) = normalize_feed_price(aftermath_price);
+    let (normalized_venue_price, venue_representable) = fixed_to_u64_down(venue_price, 9);
+    let (pyth_timestamp, timestamp_representable) = seconds_to_millis(pyth_price.get_timestamp());
     let representable = price_nonnegative
         && price_representable
         && risk_price_representable
@@ -672,13 +641,7 @@ fun assert_pyth_price_info(price_info_object: &PriceInfoObject, aftermath_feed: 
 }
 
 /// Aftermath feeds at the bound source use the adapter's 9-decimal price unit.
-fun normalize_feed_price(raw_price: u128): u64 {
-    let (normalized, representable) = normalize_feed_price_health(raw_price);
-    assert!(representable, blast_boosts_aftermath::errors::normalization_overflow!());
-    normalized
-}
-
-fun normalize_feed_price_health(raw_price: u128): (u64, bool) {
+fun normalize_feed_price(raw_price: u128): (u64, bool) {
     if (raw_price > std::u64::max_value!() as u128) {
         (0, false)
     } else {
@@ -686,7 +649,8 @@ fun normalize_feed_price_health(raw_price: u128): (u64, bool) {
     }
 }
 
-fun normalize_pyth_component(component: u64, expo: &I64, round_up: bool): u64 {
+/// Scales one Pyth component from its signed exponent to the 9-decimal unit.
+fun normalize_pyth_component(component: u64, expo: &I64, round_up: bool): (u64, bool) {
     let expo_negative = expo.get_is_negative();
     let magnitude = if (expo_negative) {
         expo.get_magnitude_if_negative()
@@ -697,30 +661,9 @@ fun normalize_pyth_component(component: u64, expo: &I64, round_up: bool): u64 {
     normalize_pyth_component_parts(component, expo_negative, magnitude, round_up)
 }
 
-fun normalize_pyth_component_parts(component: u64, expo_negative: bool, magnitude: u64, round_up: bool): u64 {
-    let (normalized, representable) =
-        normalize_pyth_component_parts_health(component, expo_negative, magnitude, round_up);
-    assert!(representable, blast_boosts_aftermath::errors::pyth_normalization_overflow!());
-
-    normalized
-}
-
-fun normalize_pyth_component_health(
-    component: u64,
-    expo: &I64,
-    round_up: bool,
-): (u64, bool) {
-    let expo_negative = expo.get_is_negative();
-    let magnitude = if (expo_negative) {
-        expo.get_magnitude_if_negative()
-    } else {
-        expo.get_magnitude_if_positive()
-    };
-
-    normalize_pyth_component_parts_health(component, expo_negative, magnitude, round_up)
-}
-
-fun normalize_pyth_component_parts_health(
+/// A u64 component scaled by at most 10^27 stays far inside u256, so the only
+/// way out of range is the final u64 narrowing.
+fun normalize_pyth_component_parts(
     component: u64,
     expo_negative: bool,
     magnitude: u64,
@@ -731,40 +674,25 @@ fun normalize_pyth_component_parts_health(
     let raw = component as u256;
     let normalized = if (expo_negative) {
         if (magnitude <= 9) {
-            checked_mul(raw, pow10(9 - magnitude))
+            raw * pow10(9 - magnitude)
         } else {
             let scale = pow10(magnitude - 9);
             let down = raw / scale;
             if (round_up && raw % scale != 0) { down + 1 } else { down }
         }
     } else {
-        checked_mul(raw, pow10(9 + magnitude))
+        raw * pow10(9 + magnitude)
     };
 
     if (normalized > std::u64::max_value!() as u256) { (0, false) } else { (normalized as u64, true) }
 }
 
-fun checked_seconds_to_millis(seconds: u64): u64 {
-    let (milliseconds, representable) = checked_seconds_to_millis_health(seconds);
-    assert!(representable, blast_boosts_aftermath::errors::normalization_overflow!());
-    milliseconds
-}
-
-fun checked_seconds_to_millis_health(seconds: u64): (u64, bool) {
+fun seconds_to_millis(seconds: u64): (u64, bool) {
     if (seconds > std::u64::max_value!() / 1_000) {
         (0, false)
     } else {
         (seconds * 1_000, true)
     }
-}
-
-fun checked_mul(value: u256, factor: u256): u256 {
-    assert!(
-        value == 0 || value <= (std::u256::max_value!() / factor),
-        blast_boosts_aftermath::errors::normalization_overflow!(),
-    );
-
-    value * factor
 }
 
 fun pow10(exponent: u64): u256 {
@@ -774,18 +702,12 @@ fun pow10(exponent: u64): u256 {
     result
 }
 
-fun fixed_to_u64_down(value: u256, decimals: u64): u64 {
-    let (normalized, representable) = fixed_to_u64_down_health(value, decimals);
-    assert!(representable, blast_boosts_aftermath::errors::normalization_overflow!());
-    normalized
-}
-
-fun fixed_to_u64_down_health(value: u256, decimals: u64): (u64, bool) {
+fun fixed_to_u64_down(value: u256, decimals: u64): (u64, bool) {
     let normalized = value / pow10(18 - decimals);
     if (normalized > std::u64::max_value!() as u256) { (0, false) } else { (normalized as u64, true) }
 }
 
-fun fixed_to_u64_up_health(value: u256, decimals: u64): (u64, bool) {
+fun fixed_to_u64_up(value: u256, decimals: u64): (u64, bool) {
     let scale = pow10(18 - decimals);
     let down = value / scale;
     let exact = value % scale == 0;
@@ -796,36 +718,8 @@ fun fixed_to_u64_up_health(value: u256, decimals: u64): (u64, bool) {
 
 // --- Position Arithmetic ---
 
-// The strict variant remains a test-pinned aborting contract for risk-increasing
-// paths; Task 7 production reconciliation uses the non-aborting health variant.
-#[allow(unused_function)]
-fun usd_fixed_to_collateral_fixed(usd: u256, collateral_price: u256, round_up: bool): u256 {
-    assert!(collateral_price > 0, blast_boosts_aftermath::errors::normalization_overflow!());
-
-    let one = constants::ifixed_one!();
-    let whole = usd / collateral_price;
-    let remainder = usd % collateral_price;
-    assert!(
-        whole <= std::u256::max_value!() / one && remainder <= std::u256::max_value!() / one,
-        blast_boosts_aftermath::errors::normalization_overflow!(),
-    );
-    let whole_scaled = whole * one;
-    let fraction = remainder * one / collateral_price;
-    assert!(
-        whole_scaled <= std::u256::max_value!() - fraction,
-        blast_boosts_aftermath::errors::normalization_overflow!(),
-    );
-
-    let down = whole_scaled + fraction;
-    if (round_up && remainder * one % collateral_price != 0) {
-        assert!(down < std::u256::max_value!(), blast_boosts_aftermath::errors::normalization_overflow!());
-        down + 1
-    } else {
-        down
-    }
-}
-
-fun usd_fixed_to_collateral_fixed_health(usd: u256, collateral_price: u256, round_up: bool): (u256, bool) {
+/// Converts a USD IFixed amount into collateral IFixed at `collateral_price`.
+fun usd_fixed_to_collateral_fixed(usd: u256, collateral_price: u256, round_up: bool): (u256, bool) {
     if (collateral_price == 0) return (0, false);
 
     let one = constants::ifixed_one!();
@@ -850,7 +744,7 @@ fun usd_fixed_to_collateral_fixed_health(usd: u256, collateral_price: u256, roun
 /// The quote amount remains in the raw checkpoint for transition guards and
 /// direction coherence, but it is historical cost basis and therefore cannot
 /// be the live leverage numerator.
-fun base_notional_health(position_base: u64, base_price: u64, collateral_price: u64): (u64, bool) {
+fun base_notional(position_base: u64, base_price: u64, collateral_price: u64): (u64, bool) {
     if (collateral_price == 0) return (0, false);
 
     let numerator = (position_base as u256) * (base_price as u256);
@@ -860,8 +754,8 @@ fun base_notional_health(position_base: u64, base_price: u64, collateral_price: 
     if (notional > std::u64::max_value!() as u256) { (0, false) } else { (notional as u64, true) }
 }
 
-fun signed_equity_health(free: u64, allocated: u256, pnl_usd: u256, collateral_price: u256): (u64, bool) {
-    signed_equity_health_decoded(
+fun signed_equity(free: u64, allocated: u256, pnl_usd: u256, collateral_price: u256): (u64, bool) {
+    signed_equity_decoded(
         free,
         allocated.is_neg(),
         allocated.abs(),
@@ -871,7 +765,7 @@ fun signed_equity_health(free: u64, allocated: u256, pnl_usd: u256, collateral_p
     )
 }
 
-fun signed_equity_health_decoded(
+fun signed_equity_decoded(
     free: u64,
     allocated_negative: bool,
     allocated: u256,
@@ -883,15 +777,15 @@ fun signed_equity_health_decoded(
 
     // A liability rounds up and an asset rounds down, so equity never reads high.
     let (allocated_tokens, allocated_ok) = if (allocated_negative) {
-        fixed_to_u64_up_health(allocated, constants::collateral_decimals!() as u64)
+        fixed_to_u64_up(allocated, constants::collateral_decimals!() as u64)
     } else {
-        fixed_to_u64_down_health(allocated, constants::collateral_decimals!() as u64)
+        fixed_to_u64_down(allocated, constants::collateral_decimals!() as u64)
     };
-    let (pnl, collateral_ok) = usd_fixed_to_collateral_fixed_health(pnl_magnitude_usd, collateral_price, pnl_negative);
+    let (pnl, collateral_ok) = usd_fixed_to_collateral_fixed(pnl_magnitude_usd, collateral_price, pnl_negative);
     let (rounded, pnl_ok) = if (pnl_negative) {
-        fixed_to_u64_up_health(pnl, constants::collateral_decimals!() as u64)
+        fixed_to_u64_up(pnl, constants::collateral_decimals!() as u64)
     } else {
-        fixed_to_u64_down_health(pnl, constants::collateral_decimals!() as u64)
+        fixed_to_u64_down(pnl, constants::collateral_decimals!() as u64)
     };
     if (!allocated_ok || !collateral_ok || !pnl_ok) return (0, false);
 
@@ -1012,11 +906,11 @@ public fun funding_change_fields(
         CheckpointChange::Unchanged => (false, false, 0, 0, true),
         CheckpointChange::Unexpected => (false, false, 0, 0, false),
         CheckpointChange::FundingCredit(raw_amount) => {
-            let (amount, representable) = fixed_to_u64_down_health(*raw_amount, constants::collateral_decimals!() as u64);
+            let (amount, representable) = fixed_to_u64_down(*raw_amount, constants::collateral_decimals!() as u64);
             (representable, false, *raw_amount, amount, representable)
         },
         CheckpointChange::FundingCost(raw_amount) => {
-            let (amount, representable) = fixed_to_u64_up_health(*raw_amount, constants::collateral_decimals!() as u64);
+            let (amount, representable) = fixed_to_u64_up(*raw_amount, constants::collateral_decimals!() as u64);
             (representable, true, *raw_amount, amount, representable)
         },
     }
@@ -1089,27 +983,22 @@ public fun is_unexpected_for_testing(change: CheckpointChange): bool {
 #[test_only]
 public fun normalize_raw_fixed_for_testing(value: u256, decimals: u64, round_up: bool): u64 {
     let (normalized, representable) = if (round_up) {
-        fixed_to_u64_up_health(value, decimals)
+        fixed_to_u64_up(value, decimals)
     } else {
-        fixed_to_u64_down_health(value, decimals)
+        fixed_to_u64_down(value, decimals)
     };
     assert!(representable, blast_boosts_aftermath::errors::normalization_overflow!());
     normalized
 }
 
 #[test_only]
-public fun normalize_pyth_for_testing(component: u64, expo_negative: bool, expo_magnitude: u64, round_up: bool): u64 {
-    normalize_pyth_component_parts(component, expo_negative, expo_magnitude, round_up)
-}
-
-#[test_only]
-public fun normalize_pyth_health_for_testing(
+public fun normalize_pyth_for_testing(
     component: u64,
     expo_negative: bool,
     expo_magnitude: u64,
     round_up: bool,
 ): (u64, bool) {
-    normalize_pyth_component_parts_health(
+    normalize_pyth_component_parts(
         component,
         expo_negative,
         expo_magnitude,
@@ -1118,47 +1007,32 @@ public fun normalize_pyth_health_for_testing(
 }
 
 #[test_only]
-public fun normalize_feed_health_for_testing(raw_price: u128): (u64, bool) {
-    normalize_feed_price_health(raw_price)
+public fun normalize_feed_for_testing(raw_price: u128): (u64, bool) {
+    normalize_feed_price(raw_price)
 }
 
 #[test_only]
-public fun normalize_mark_health_for_testing(value: u256): (u64, bool) {
-    fixed_to_u64_down_health(value, 9)
-}
-
-#[test_only]
-public fun normalize_mark_strict_for_testing(value: u256): u64 {
+public fun normalize_mark_for_testing(value: u256): (u64, bool) {
     fixed_to_u64_down(value, 9)
 }
 
 #[test_only]
-public fun seconds_to_millis_for_testing(seconds: u64): u64 {
-    checked_seconds_to_millis(seconds)
+public fun seconds_to_millis_for_testing(seconds: u64): (u64, bool) {
+    seconds_to_millis(seconds)
 }
 
 #[test_only]
-public fun seconds_to_millis_health_for_testing(seconds: u64): (u64, bool) {
-    checked_seconds_to_millis_health(seconds)
-}
-
-#[test_only]
-public fun usd_fixed_to_collateral_for_testing(usd: u256, collateral_price: u256, round_up: bool): u256 {
+public fun usd_fixed_to_collateral_for_testing(usd: u256, collateral_price: u256, round_up: bool): (u256, bool) {
     usd_fixed_to_collateral_fixed(usd, collateral_price, round_up)
 }
 
 #[test_only]
-public fun usd_fixed_to_collateral_health_for_testing(usd: u256, collateral_price: u256, round_up: bool): (u256, bool) {
-    usd_fixed_to_collateral_fixed_health(usd, collateral_price, round_up)
-}
-
-#[test_only]
-public fun base_notional_health_for_testing(
+public fun base_notional_for_testing(
     position_base: u64,
     base_price: u64,
     collateral_price: u64,
 ): (u64, bool) {
-    base_notional_health(position_base, base_price, collateral_price)
+    base_notional(position_base, base_price, collateral_price)
 }
 
 #[test_only]
@@ -1170,7 +1044,7 @@ public fun base_notional_from_pyth_for_testing(
     collateral_price: u64,
 ): (u64, bool) {
     let (base_risk_price, price_representable) =
-        normalize_pyth_component_parts_health(
+        normalize_pyth_component_parts(
             price_component,
             expo_negative,
             expo_magnitude,
@@ -1179,7 +1053,7 @@ public fun base_notional_from_pyth_for_testing(
     if (!price_representable) {
         (0, false)
     } else {
-        base_notional_health(
+        base_notional(
             position_base,
             base_risk_price,
             collateral_price,
@@ -1188,7 +1062,7 @@ public fun base_notional_from_pyth_for_testing(
 }
 
 #[test_only]
-public fun signed_equity_health_for_testing(
+public fun signed_equity_for_testing(
     free: u64,
     allocated_negative: bool,
     allocated: u256,
@@ -1196,7 +1070,7 @@ public fun signed_equity_health_for_testing(
     pnl_magnitude_usd: u256,
     collateral_price: u256,
 ): (u64, bool) {
-    signed_equity_health_decoded(
+    signed_equity_decoded(
         free,
         allocated_negative,
         allocated,
@@ -1204,27 +1078,6 @@ public fun signed_equity_health_for_testing(
         pnl_magnitude_usd,
         collateral_price,
     )
-}
-
-#[test_only]
-public fun signed_equity_strict_for_testing(
-    free: u64,
-    allocated_negative: bool,
-    allocated: u256,
-    pnl_negative: bool,
-    pnl_magnitude_usd: u256,
-    collateral_price: u256,
-): u64 {
-    let (equity, representable) = signed_equity_health_decoded(
-        free,
-        allocated_negative,
-        allocated,
-        pnl_negative,
-        pnl_magnitude_usd,
-        collateral_price,
-    );
-    assert!(representable, blast_boosts_aftermath::errors::normalization_overflow!());
-    equity
 }
 
 #[test_only]

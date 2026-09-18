@@ -50,7 +50,7 @@ fun shutdown_admin_stops_an_active_vault_without_any_venue_or_oracle_input() {
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     assert!(vault.is_unwinding_for_testing());
-    assert_eq!(vault.share_supply_for_testing(), 0);
+    assert_eq!(vault.share_supply(), 0);
     test_scenario::return_shared(vault);
     destroy(fixture);
 }
@@ -97,10 +97,10 @@ fun risk_admin_updates_live_fees_with_a_completed_event_and_no_asset_movement() 
     vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
     let event = events::collect_one<events::FeesUpdated<Sui2x>>(0);
     let (id, old_mint, old_redeem, old_admin, mint, redeem, admin) = event.fees_updated_fields();
-    assert_eq!(id, vault.id_for_testing());
+    assert_eq!(id, vault.id());
     assert_eq!(vector[old_mint, old_redeem, old_admin, mint, redeem, admin], vector[10, 10, 0, 0, 0, 0]);
-    assert_eq!(vault.share_supply_for_testing(), 0);
-    assert_eq!(vault.maintenance_reserve_for_testing(), 0);
+    assert_eq!(vault.share_supply(), 0);
+    assert_eq!(vault.maintenance_reserve(), 0);
     test_scenario::return_shared(vault);
     destroy(fixture);
 }
@@ -117,7 +117,7 @@ fun risk_admin_updates_the_nav_cap_with_a_completed_event() {
     vault.set_nav_cap(&fixture.protocol, &witness, 2_000_000_000);
     let (id, previous, current) =
         events::collect_one<events::NavCapUpdated<Sui2x>>(0).nav_cap_updated_fields();
-    assert_eq!(id, vault.id_for_testing());
+    assert_eq!(id, vault.id());
     assert_eq!(vector[previous, current], vector[1_000_000_000, 2_000_000_000]);
     assert_eq!(vault.nav_cap_for_testing(), 2_000_000_000);
     test_scenario::return_shared(vault);
@@ -189,13 +189,13 @@ fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
     let currency_2x = fixture.scenario.take_shared<Currency<BlastBoost<Sui2x>>>();
     let currency_5x = fixture.scenario.take_shared<Currency<BlastBoost<Sui5x>>>();
 
-    assert!(vault_2x.id_for_testing() != vault_5x.id_for_testing());
+    assert!(vault_2x.id() != vault_5x.id());
     assert_eq!(vault_2x.treasury_cap_id_for_testing(), treasury_2x_id);
     assert_eq!(vault_5x.treasury_cap_id_for_testing(), treasury_5x_id);
     assert_eq!(vault_2x.metadata_cap_id_for_testing(), metadata_2x_id);
     assert_eq!(vault_5x.metadata_cap_id_for_testing(), metadata_5x_id);
-    assert_eq!(vault_2x.share_supply_for_testing(), 0);
-    assert_eq!(vault_5x.share_supply_for_testing(), 0);
+    assert_eq!(vault_2x.share_supply(), 0);
+    assert_eq!(vault_5x.share_supply(), 0);
     assert_eq!(currency_2x.symbol(), b"SUI2X".to_string());
     assert_eq!(currency_5x.symbol(), b"SUI5X".to_string());
     assert_eq!(currency_2x.treasury_cap_id().destroy_some(), treasury_2x_id);
@@ -266,7 +266,7 @@ fun selected_risk_module_updates_max_order_notional_and_emits_the_change() {
     fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
-    let vault_id = vault.id_for_testing();
+    let vault_id = vault.id();
 
     vault.set_max_order_notional(
         &fixture.protocol,
@@ -322,7 +322,7 @@ fun locked_seed_share_mint_updates_the_canonical_supply_once() {
     let venue_account = fixture_venue_account(fixture.scenario.ctx());
     let vault = issuance.activate(venue_account, seed_facts, fixture.scenario.ctx());
 
-    assert_eq!(vault.share_supply_for_testing(), 1_000_000);
+    assert_eq!(vault.share_supply(), 1_000_000);
     let (locked, funder) = vault.seed_facts();
     assert_eq!(locked, 1_000_000);
     assert_eq!(funder, ISSUER);
@@ -484,7 +484,7 @@ fun shutdown_admin_moves_an_active_vault_to_unwinding() {
     fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
     fixture.scenario.next_tx(ISSUER);
     let mut vault = fixture.scenario.take_shared<Vault<Sui2x>>();
-    let vault_id = vault.id_for_testing();
+    let vault_id = vault.id();
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
 
     vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());

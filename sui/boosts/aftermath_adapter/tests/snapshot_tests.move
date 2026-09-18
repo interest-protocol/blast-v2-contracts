@@ -205,22 +205,32 @@ fun fixed_negative_liability_and_absolute_risk_round_against_the_vault() {
 #[test]
 fun pyth_price_rounds_down_and_confidence_rounds_up_at_a_remainder() {
     // 12345 × 10^-13 normalizes to 1.2345 at 9 decimals.
-    assert_eq!(snapshot::normalize_pyth_for_testing(12_345, true, 13, false), 1);
-    assert_eq!(snapshot::normalize_pyth_for_testing(12_345, true, 13, true), 2);
-    assert_eq!(snapshot::normalize_pyth_for_testing(1, true, 13, true), 1);
+    let (value_1, ok_1) = snapshot::normalize_pyth_for_testing(12_345, true, 13, false);
+    assert_eq!(value_1, 1);
+    assert!(ok_1);
+    let (value_2, ok_2) = snapshot::normalize_pyth_for_testing(12_345, true, 13, true);
+    assert_eq!(value_2, 2);
+    assert!(ok_2);
+    let (value_3, ok_3) = snapshot::normalize_pyth_for_testing(1, true, 13, true);
+    assert_eq!(value_3, 1);
+    assert!(ok_3);
 }
 
 #[test]
 fun pyth_positive_exponent_and_seconds_conversion_are_literal() {
-    assert_eq!(snapshot::normalize_pyth_for_testing(42, false, 2, false), 4_200_000_000_000);
-    assert_eq!(snapshot::seconds_to_millis_for_testing(1_700_000_000), 1_700_000_000_000);
+    let (value_4, ok_4) = snapshot::normalize_pyth_for_testing(42, false, 2, false);
+    assert_eq!(value_4, 4_200_000_000_000);
+    assert!(ok_4);
+    let (value_5, ok_5) = snapshot::seconds_to_millis_for_testing(1_700_000_000);
+    assert_eq!(value_5, 1_700_000_000_000);
+    assert!(ok_5);
 }
 
 #[test]
 fun health_pyth_normalization_preserves_unrepresentable_values_as_invalid() {
     let (exponent_value, exponent_valid) =
-        snapshot::normalize_pyth_health_for_testing(1, false, 19, false);
-    let (width_value, width_valid) = snapshot::normalize_pyth_health_for_testing(
+        snapshot::normalize_pyth_for_testing(1, false, 19, false);
+    let (width_value, width_valid) = snapshot::normalize_pyth_for_testing(
         std::u64::max_value!(),
         false,
         9,
@@ -235,10 +245,10 @@ fun health_pyth_normalization_preserves_unrepresentable_values_as_invalid() {
 
 #[test]
 fun health_feed_and_timestamp_width_failures_are_invalid_not_aborts() {
-    let (feed, feed_valid) = snapshot::normalize_feed_health_for_testing(
+    let (feed, feed_valid) = snapshot::normalize_feed_for_testing(
         (std::u64::max_value!() as u128) + 1,
     );
-    let (timestamp, timestamp_valid) = snapshot::seconds_to_millis_health_for_testing(
+    let (timestamp, timestamp_valid) = snapshot::seconds_to_millis_for_testing(
         std::u64::max_value!() / 1_000 + 1,
     );
 
@@ -251,7 +261,9 @@ fun health_feed_and_timestamp_width_failures_are_invalid_not_aborts() {
 #[test]
 fun stablecoin_depeg_and_minimum_lot_vectors_keep_the_venue_scales() {
     // Pyth -9 inputs are already in adapter price units: $0.95 remains exact.
-    assert_eq!(snapshot::normalize_pyth_for_testing(950_000_000, true, 9, false), 950_000_000);
+    let (value_6, ok_6) = snapshot::normalize_pyth_for_testing(950_000_000, true, 9, false);
+    assert_eq!(value_6, 950_000_000);
+    assert!(ok_6);
     // One minimum base lot and one quote micro-unit remain distinct scales.
     assert_eq!(snapshot::normalize_raw_fixed_for_testing(1_000_000_000, 9, false), 1);
     assert_eq!(snapshot::normalize_raw_fixed_for_testing(1_000_000_000_000, 6, false), 1);
@@ -261,15 +273,21 @@ fun stablecoin_depeg_and_minimum_lot_vectors_keep_the_venue_scales() {
 fun usd_values_convert_to_collateral_units_at_the_authenticated_depeg_price() {
     // $1 converts to 1.052631578947368421 collateral at $0.95; credits floor
     // and costs ceil at the raw IFixed unit.
-    assert_eq!(snapshot::usd_fixed_to_collateral_for_testing(1_000_000_000_000_000_000, 950_000_000_000_000_000, false), 1_052_631_578_947_368_421);
-    assert_eq!(snapshot::usd_fixed_to_collateral_for_testing(1_000_000_000_000_000_000, 950_000_000_000_000_000, true), 1_052_631_578_947_368_422);
+    let (value_7, ok_7) = snapshot::usd_fixed_to_collateral_for_testing(1_000_000_000_000_000_000, 950_000_000_000_000_000, false);
+    assert_eq!(value_7, 1_052_631_578_947_368_421);
+    assert!(ok_7);
+    let (value_8, ok_8) = snapshot::usd_fixed_to_collateral_for_testing(1_000_000_000_000_000_000, 950_000_000_000_000_000, true);
+    assert_eq!(value_8, 1_052_631_578_947_368_422);
+    assert!(ok_8);
     // $1.50 notional at $1.20 collateral is exactly 1.25 collateral.
-    assert_eq!(snapshot::usd_fixed_to_collateral_for_testing(1_500_000_000_000_000_000, 1_200_000_000_000_000_000, true), 1_250_000_000_000_000_000);
+    let (value_9, ok_9) = snapshot::usd_fixed_to_collateral_for_testing(1_500_000_000_000_000_000, 1_200_000_000_000_000_000, true);
+    assert_eq!(value_9, 1_250_000_000_000_000_000);
+    assert!(ok_9);
 }
 
 #[test]
 fun current_notional_uses_base_size_and_pyth_index_instead_of_quote_cost_basis() {
-    let (notional, valid) = snapshot::base_notional_health_for_testing(
+    let (notional, valid) = snapshot::base_notional_for_testing(
         2_000_000_000,
         3_000_000_000,
         1_000_000_000,
@@ -296,8 +314,8 @@ fun current_notional_ceil_rounds_a_sub_nine_decimal_pyth_base_price() {
 #[test]
 fun health_current_notional_rejects_zero_or_unrepresentable_prices() {
     let (zero_price, zero_price_valid) =
-        snapshot::base_notional_health_for_testing(1, 1, 0);
-    let (too_wide, too_wide_valid) = snapshot::base_notional_health_for_testing(
+        snapshot::base_notional_for_testing(1, 1, 0);
+    let (too_wide, too_wide_valid) = snapshot::base_notional_for_testing(
         std::u64::max_value!(),
         std::u64::max_value!(),
         1,
@@ -331,18 +349,8 @@ fun sign_coherence_covers_long_short_flat_and_all_bad_combinations() {
 }
 
 #[test]
-#[expected_failure(abort_code = 26, location = blast_boosts_aftermath::snapshot)]
-fun usd_conversion_rejects_the_max_width_fractional_addition_vector() {
-    snapshot::usd_fixed_to_collateral_for_testing(
-        57896044618658097595993403267027758503064007324132374166459015334359435960541,
-        499_999_999_999_999_999,
-        false,
-    );
-}
-
-#[test]
 fun health_usd_conversion_keeps_the_same_max_width_input_as_an_invalid_fact() {
-    let (value, valid) = snapshot::usd_fixed_to_collateral_health_for_testing(
+    let (value, valid) = snapshot::usd_fixed_to_collateral_for_testing(
         57896044618658097595993403267027758503064007324132374166459015334359435960541,
         499_999_999_999_999_999,
         false,
@@ -354,37 +362,32 @@ fun health_usd_conversion_keeps_the_same_max_width_input_as_an_invalid_fact() {
 #[test]
 fun health_mark_normalization_preserves_an_unrepresentable_mark_as_invalid() {
     let raw = ((std::u64::max_value!() as u256) + 1) * 1_000_000_000;
-    let (mark, valid) = snapshot::normalize_mark_health_for_testing(raw);
+    let (mark, valid) = snapshot::normalize_mark_for_testing(raw);
 
     assert_eq!(mark, 0);
     assert!(!valid);
 }
 
 #[test]
-#[expected_failure(abort_code = 26, location = blast_boosts_aftermath::snapshot)]
-fun strict_mark_normalization_rejects_the_first_unrepresentable_mark() {
-    let raw = ((std::u64::max_value!() as u256) + 1) * 1_000_000_000;
-    snapshot::normalize_mark_strict_for_testing(raw);
-}
-
-#[test]
 fun negative_allocated_collateral_is_a_liability_not_an_invalid_observation() {
-    let (equity, valid) = snapshot::signed_equity_health_for_testing(
+    let (equity, valid) = snapshot::signed_equity_for_testing(
         10, true, 2_000_000_000_001, false, 5_000_000_000_000,
         1_000_000_000_000_000_000,
     );
     assert!(valid);
     // Round the liability up and the favorable PnL down.
     assert_eq!(equity, 12);
-    assert_eq!(snapshot::signed_equity_strict_for_testing(
+    let (value_10, ok_10) = snapshot::signed_equity_for_testing(
         0, true, 2_000_000_000_000, false, 5_000_000_000_000,
         1_000_000_000_000_000_000,
-    ), 3);
+    );
+    assert_eq!(value_10, 3);
+    assert!(ok_10);
 }
 
 #[test]
 fun negative_allocated_collateral_and_negative_pnl_cannot_create_equity() {
-    let (equity, valid) = snapshot::signed_equity_health_for_testing(
+    let (equity, valid) = snapshot::signed_equity_for_testing(
         4, true, 2_000_000_000_000, true, 3_000_000_000_000,
         1_000_000_000_000_000_000,
     );
@@ -394,7 +397,7 @@ fun negative_allocated_collateral_and_negative_pnl_cannot_create_equity() {
 
 #[test]
 fun negative_pnl_equity_accepts_the_largest_u64_net_value() {
-    let (equity, valid) = snapshot::signed_equity_health_for_testing(
+    let (equity, valid) = snapshot::signed_equity_for_testing(
         std::u64::max_value!(),
         false,
         1_000_000_000_000,
@@ -409,7 +412,7 @@ fun negative_pnl_equity_accepts_the_largest_u64_net_value() {
 
 #[test]
 fun health_negative_pnl_equity_rejects_the_first_net_value_above_u64() {
-    let (equity, valid) = snapshot::signed_equity_health_for_testing(
+    let (equity, valid) = snapshot::signed_equity_for_testing(
         std::u64::max_value!(),
         false,
         2_000_000_000_000,
@@ -423,44 +426,21 @@ fun health_negative_pnl_equity_rejects_the_first_net_value_above_u64() {
 }
 
 #[test]
-#[expected_failure(abort_code = 26, location = blast_boosts_aftermath::snapshot)]
-fun strict_negative_pnl_equity_rejects_the_first_net_value_above_u64() {
-    snapshot::signed_equity_strict_for_testing(
-        std::u64::max_value!(),
-        false,
-        2_000_000_000_000,
-        true,
-        1_000_000_000_000,
-        1_000_000_000_000_000_000,
-    );
-}
-
-#[test]
-fun strict_usd_round_up_accepts_the_largest_representable_result() {
-    assert_eq!(
-        snapshot::usd_fixed_to_collateral_for_testing(
+fun usd_round_up_accepts_the_largest_representable_result_and_refuses_one_more() {
+    let (value_11, ok_11) = snapshot::usd_fixed_to_collateral_for_testing(
             115792089237316195307778895771371712429698999656952656186187599342272565600477,
             999_999_999_999_999_999,
             true,
-        ),
-        std::u256::max_value!(),
-    );
-}
-
-#[test]
-#[expected_failure(abort_code = 26, location = blast_boosts_aftermath::snapshot)]
-fun strict_usd_round_up_rejects_a_floor_at_u256_max_with_remainder() {
-    snapshot::usd_fixed_to_collateral_for_testing(
-        115792089237316195307778895771371712429698999656952656186187599342272565600478,
-        999_999_999_999_999_999,
-        true,
-    );
-}
-
-#[test]
-#[expected_failure(abort_code = 24, location = blast_boosts_aftermath::snapshot)]
-fun pyth_normalization_rejects_a_component_that_cannot_fit_u64() {
-    snapshot::normalize_pyth_for_testing(std::u64::max_value!(), false, 9, false);
+        );
+    assert_eq!(value_11, std::u256::max_value!());
+    assert!(ok_11);
+    let (value_12, ok_12) = snapshot::usd_fixed_to_collateral_for_testing(
+            115792089237316195307778895771371712429698999656952656186187599342272565600478,
+            999_999_999_999_999_999,
+            true,
+        );
+    assert_eq!(value_12, 0);
+    assert!(!ok_12);
 }
 
 // === Test Helpers ===
