@@ -13,7 +13,7 @@ module blast_boosts_aftermath::vault;
 /// fields and can change only through core mutation functions.
 public struct Vault<phantom Product> has key {
     id: UID,
-    series_state: State<Product>,
+    state: State<Product>,
     risk_module_witness: TypeName,
     venue_account: Option<VenueAccount>,
     unresolved_checkpoint_digest: Option<vector<u8>>,
@@ -70,13 +70,13 @@ public fun issue<Product: drop, RiskModule: drop>(
     );
     let risk_module_witness = valid_risk_module_type<RiskModule>();
 
-    let series_state = series_state::new<Product>(admin_witness, vault_policy, max_order_notional, nav_cap);
+    let state = state::new<Product>(admin_witness, vault_policy, max_order_notional, nav_cap);
     let (treasury_cap, metadata_cap) =
         blast_boost::new_currency<Product>(registry, symbol, name, description, icon_url, ctx);
     let (treasury_cap_id, metadata_cap_id) = (object::id(&treasury_cap), object::id(&metadata_cap));
     let mut vault = Vault {
         id: object::new(ctx),
-        series_state,
+        state,
         risk_module_witness,
         venue_account: option::none(),
         unresolved_checkpoint_digest: option::none(),
@@ -108,7 +108,7 @@ public fun begin_shutdown<Product>(
     protocol.assert_current();
     admin_witness.assert_role(domain::shutdown_admin_role());
 
-    self.series_state.begin_shutdown();
+    self.state.begin_shutdown();
 
     events::shutdown_begun<Product>(self.id.to_inner(), reason);
 }
@@ -119,13 +119,13 @@ public fun redeem_shutdown<Product, Collateral>(
     minimum_collateral: u64, deadline_ms: u64, clock: &Clock, ctx: &mut TxContext,
 ): Coin<Collateral> {
     protocol.assert_current();
-    self.series_state.assert_settled();
+    self.state.assert_settled();
     assert!(clock.timestamp_ms() <= deadline_ms, blast_boosts_aftermath::errors::deadline_expired!());
     self.assert_collateral_type<_, Collateral>();
 
     let (locked, _) = self.seed_facts();
     let cash = dynamic_field::borrow<_, Balance<Collateral>>(&self.id, TerminalCashKey());
-    let output = self.series_state.shutdown_claim_quote(
+    let output = self.state.shutdown_claim_quote(
         cash.value(), self.share_supply(), locked, shares.value(), minimum_collateral,
     );
 
@@ -155,7 +155,7 @@ public fun set_fees<Product>(
     admin_witness.assert_role(domain::risk_admin_role());
 
     let (previous_mint, previous_redeem, previous_admin) =
-        self.series_state.set_fees(mint_bps, redeem_bps, admin_share_bps);
+        self.state.set_fees(mint_bps, redeem_bps, admin_share_bps);
 
     events::fees_updated<Product>(
         self.id.to_inner(), previous_mint, previous_redeem, previous_admin,
@@ -174,7 +174,7 @@ public fun set_nav_cap<Product>(
     protocol.assert_current();
     admin_witness.assert_role(domain::risk_admin_role());
 
-    let previous = self.series_state.set_nav_cap(nav_cap);
+    let previous = self.state.set_nav_cap(nav_cap);
 
     events::nav_cap_updated<Product>(self.id.to_inner(), previous, nav_cap);
 }
@@ -195,7 +195,7 @@ public fun set_max_order_notional<Product, RiskModule: drop>(
     protocol.assert_current();
     self.assert_selected_risk_module<_, RiskModule>();
 
-    let previous = self.series_state.set_max_order_notional(current);
+    let previous = self.state.set_max_order_notional(current);
 
     events::max_order_notional_updated<Product>(self.id.to_inner(), previous, current);
 }
@@ -260,7 +260,7 @@ public(package) fun initialization_constraints<Product, RiskModule: drop>(
 ): (PositionSide, u64) {
     self.assert_selected_risk_module<_, RiskModule>();
     assert_venue_account_installable(self.venue_account.is_some());
-    self.series_state.initialization_constraints()
+    self.state.initialization_constraints()
 }
 
 /// Consumes a strict flat-position observation and returns authenticated sizing inputs.
@@ -270,7 +270,7 @@ public(package) fun prepare_initialization<Product>(
     seed_reserve: u64,
     now_ms: u64,
 ): (u64, u64, u64, u64) {
-    self.series_state.prepare_initialization(
+    self.state.prepare_initialization(
         observation,
         seed_reserve,
         now_ms,
@@ -283,21 +283,21 @@ public(package) fun assert_initialization_execution<Product>(
     reference_price: u64,
     execution_price: u64,
 ) {
-    self.series_state.assert_initialization_execution(
+    self.state.assert_initialization_execution(
         reference_price,
         execution_price,
     );
 }
 
 /// Activates the core after the adapter proves the complete final observation.
-public(package) fun initialize_series<Product>(
+public(package) fun initialize<Product>(
     self: &mut Vault<Product>,
     observation: PositionObservation,
     seed_reserve: u64,
     collateral_decimals: u8,
     now_ms: u64,
 ): u64 {
-    self.series_state.initialize(
+    self.state.initialize(
         observation,
         seed_reserve,
         constants::base_decimals!(),
@@ -336,17 +336,17 @@ public(package) fun install_venue_account<Product>(
 
 /// Cheap active lifecycle guard shared by public financial operations.
 public(package) fun assert_active<Product>(self: &Vault<Product>) {
-    self.series_state.assert_active();
+    self.state.assert_active();
 }
 
 /// Checks the caller's rate ceiling without treating share atoms as collateral.
 public(package) fun assert_user_fee_limit<Product>(self: &Vault<Product>, mint: bool, maximum: u64) {
-    self.series_state.assert_user_fee_limit(mint, maximum);
+    self.state.assert_user_fee_limit(mint, maximum);
 }
 
 /// Supplies only policy-derived active execution constraints to the adapter.
 public(package) fun active_constraints<Product>(self: &Vault<Product>): (PositionSide, u64) {
-    self.series_state.active_constraints()
+    self.state.active_constraints()
 }
 
 /// Applies the live order-notional cap to one planned seed order.
@@ -354,19 +354,19 @@ public(package) fun assert_order_notional_allowed<Product>(
     self: &Vault<Product>,
     order_notional: u64,
 ) {
-    self.series_state.assert_order_notional_allowed(order_notional);
+    self.state.assert_order_notional_allowed(order_notional);
 }
 
 /// Validates each ordinary active fill against the sealed reference price.
 public(package) fun assert_active_execution<Product>(self: &Vault<Product>, reference: u64, executed: u64) {
-    self.series_state.assert_active_execution(reference, executed);
+    self.state.assert_active_execution(reference, executed);
 }
 
 /// Validates intermediate margin and prices without persisting an economic checkpoint.
 public(package) fun assert_active_observation<Product>(
     self: &Vault<Product>, observation: PositionObservation, base_price: u64, collateral_price: u64, now_ms: u64,
 ) {
-    self.series_state.assert_active_observation(observation, base_price, collateral_price, now_ms);
+    self.state.assert_active_observation(observation, base_price, collateral_price, now_ms);
 }
 
 // --- Mint ---
@@ -379,7 +379,7 @@ public(package) fun prepare_mint<Product>(
     minimum_shares: u64,
     now_ms: u64,
 ): MintPlan<Product> {
-    self.series_state.prepare_mint(observation, deposit, self.share_supply(), minimum_shares, now_ms)
+    self.state.prepare_mint(observation, deposit, self.share_supply(), minimum_shares, now_ms)
 }
 
 /// Mints only the shares priced by the completed core transition.
@@ -391,7 +391,7 @@ public(package) fun complete_mint<Product>(
     ctx: &mut TxContext,
 ): (Coin<BlastBoost<Product>>, u64, u64, u64, u64, u64, u64) {
     let (amount, contribution, fee, admin, reserve_fee, fee_bps, admin_share_bps) =
-        self.series_state.complete_mint(plan, after, now_ms);
+        self.state.complete_mint(plan, after, now_ms);
 
     (coin::mint(self.treasury_cap_mut(), amount, ctx), contribution, fee, admin, reserve_fee, fee_bps, admin_share_bps)
 }
@@ -403,14 +403,14 @@ public(package) fun prepare_redemption<Product>(
     self: &Vault<Product>, observation: PositionObservation, shares: &Coin<BlastBoost<Product>>,
     minimum_output: u64, now_ms: u64,
 ): RedemptionPlan<Product> {
-    self.series_state.prepare_redemption(observation, shares.value(), self.share_supply(), minimum_output, now_ms)
+    self.state.prepare_redemption(observation, shares.value(), self.share_supply(), minimum_output, now_ms)
 }
 
 /// Prices only the attributable completed unwind, before any withdrawal or burn.
 public(package) fun complete_redemption<Product>(
     self: &mut Vault<Product>, plan: RedemptionPlan<Product>, observation: PositionObservation, now_ms: u64,
 ): (u64, u64, u64, u64, u64) {
-    self.series_state.complete_redemption(plan, observation, now_ms)
+    self.state.complete_redemption(plan, observation, now_ms)
 }
 
 /// Consumes the final cash/margin proof before native shares leave the supply.
@@ -418,7 +418,7 @@ public(package) fun assert_redemption_cash_out<Product>(
     self: &Vault<Product>, observation: PositionObservation, equity: u64, base: u64,
     base_price: u64, collateral_price: u64, now_ms: u64,
 ) {
-    self.series_state.assert_redemption_cash_out(observation, equity, base, base_price, collateral_price, now_ms);
+    self.state.assert_redemption_cash_out(observation, equity, base, base_price, collateral_price, now_ms);
 }
 
 /// Burns only through this Vault's retained native TreasuryCap.
@@ -432,19 +432,21 @@ public(package) fun burn_redeemed_shares<Product>(self: &mut Vault<Product>, sha
 public(package) fun prepare_rebalance<Product>(
     self: &Vault<Product>, observation: PositionObservation, venue_fee_bps: u64, now_ms: u64,
 ): RebalancePlan<Product> {
-    self.series_state.prepare_rebalance(observation, venue_fee_bps, now_ms)
+    self.state.prepare_rebalance(observation, venue_fee_bps, now_ms)
 }
 
 /// Derives the next bounded order without accepting any caller trading parameter.
-public(package) fun rebalance_order<Product>(self: &Vault<Product>, plan: &RebalancePlan<Product>): (u64, bool, bool) {
-    self.series_state.rebalance_order(plan)
+public(package) fun rebalance_order<Product>(
+    self: &Vault<Product>, plan: &RebalancePlan<Product>,
+): (u64, bool, bool) {
+    self.state.rebalance_order(plan)
 }
 
 /// Uses the core's current threshold to validate this session's actual execution.
 public(package) fun assert_rebalance_execution<Product>(
     self: &Vault<Product>, plan: &RebalancePlan<Product>, reference: u64, executed: u64,
 ) {
-    self.series_state.assert_rebalance_execution(plan, reference, executed);
+    self.state.assert_rebalance_execution(plan, reference, executed);
 }
 
 /// Advances sealed intent only after the adapter has proved the venue mutation.
@@ -452,21 +454,21 @@ public(package) fun accept_rebalance_fill<Product>(
     self: &Vault<Product>, plan: &mut RebalancePlan<Product>, observation: PositionObservation,
     filled: u64, now_ms: u64,
 ) {
-    self.series_state.accept_rebalance_fill(plan, observation, filled, now_ms);
+    self.state.accept_rebalance_fill(plan, observation, filled, now_ms);
 }
 
 /// Completes core maintenance; no native shares or admin assets move.
 public(package) fun complete_rebalance<Product>(
     self: &Vault<Product>, plan: RebalancePlan<Product>,
 ): (u64, u64, u64, u64, bool) {
-    self.series_state.complete_rebalance(plan)
+    self.state.complete_rebalance(plan)
 }
 
 // --- Funding And Donation ---
 
 /// Synchronization can reconcile only an active or unwinding venue account.
 public(package) fun assert_can_sync<Product>(self: &Vault<Product>) {
-    self.series_state.assert_can_sync();
+    self.state.assert_can_sync();
 }
 
 /// Applies one authenticated nonzero funding classification to the core.
@@ -475,13 +477,13 @@ public(package) fun settle_funding<Product>(
     is_cost: bool,
     amount: u64,
 ): (u64, u64, u64, u64) {
-    let (absorbed, uncovered, restored) = self.series_state.settle_funding(if (is_cost) {
+    let (absorbed, uncovered, restored) = self.state.settle_funding(if (is_cost) {
         observation::funding_cost(amount)
     } else {
         observation::funding_credit(amount)
     });
 
-    (absorbed, uncovered, restored, self.series_state.maintenance_reserve())
+    (absorbed, uncovered, restored, self.state.maintenance_reserve())
 }
 
 /// Records only diagnostic novelty; it never accepts an economic checkpoint.
@@ -504,46 +506,46 @@ public(package) fun note_checkpoint_health<Product>(
 public(package) fun prepare_donation<Product>(
     self: &Vault<Product>, observation: PositionObservation, amount: u64, now_ms: u64,
 ): DonationPlan<Product> {
-    self.series_state.prepare_donation(observation, amount, now_ms)
+    self.state.prepare_donation(observation, amount, now_ms)
 }
 
 /// Applies only the completed donation's buffer allocation.
 public(package) fun complete_donation<Product>(
     self: &mut Vault<Product>, plan: DonationPlan<Product>, after: PositionObservation, now_ms: u64,
 ) {
-    self.series_state.complete_donation(plan, after, now_ms);
+    self.state.complete_donation(plan, after, now_ms);
 }
 
 // --- Shutdown ---
 
 /// Stops every terminal venue call outside the irreversible unwind phase.
 public(package) fun assert_unwinding<Product>(self: &Vault<Product>) {
-    self.series_state.assert_unwinding();
+    self.state.assert_unwinding();
 }
 
 /// Consumes authenticated oracle facts through the terminal core policy.
 public(package) fun unwind_constraints<Product>(
     self: &Vault<Product>, base: PriceObservation, collateral: PriceObservation, now_ms: u64,
 ): (PositionSide, u64, u64, u64) {
-    self.series_state.unwind_constraints(base, collateral, now_ms)
+    self.state.unwind_constraints(base, collateral, now_ms)
 }
 
 /// Enforces the immutable emergency bound on an actual venue fill price.
 public(package) fun assert_unwind_execution<Product>(self: &Vault<Product>, reference: u64, executed: u64) {
-    self.series_state.assert_unwind_execution(reference, executed);
+    self.state.assert_unwind_execution(reference, executed);
 }
 
 /// Consumes verified venue finality and seals the actual recovered holder cash.
 public(package) fun complete_shutdown<Product, Collateral>(
     self: &mut Vault<Product>, withdrawal: TerminalWithdrawal<Collateral>,
 ) {
-    self.series_state.assert_unwinding();
+    self.state.assert_unwinding();
     self.assert_collateral_type<_, Collateral>();
 
     let (recovered, checkpoint, unrecoverable_collateral_raw) = withdrawal.into_recovered_cash();
     let (locked, funder) = self.seed_facts();
     let supply = self.share_supply();
-    let eligible = self.series_state.finalize_shutdown(supply, locked);
+    let eligible = self.state.finalize_shutdown(supply, locked);
     let recovered_amount = recovered.value();
     // With no eligible share left the seed funder takes the cash back directly.
     let cash = if (eligible == 0) {
@@ -683,7 +685,7 @@ public(package) fun share_supply<Product>(self: &Vault<Product>): u64 {
 
 /// Returns the authoritative funding-only reserve for state-derived events.
 public(package) fun maintenance_reserve<Product>(self: &Vault<Product>): u64 {
-    self.series_state.maintenance_reserve()
+    self.state.maintenance_reserve()
 }
 
 /// Returns the exact once-recorded activation ownership for future terminal accounting.
@@ -769,7 +771,7 @@ public fun unresolved_checkpoint_digest_for_testing<Product>(self: &Vault<Produc
 
 #[test_only]
 public fun is_uninitialized_for_testing<Product>(self: &Vault<Product>): bool {
-    self.series_state.is_uninitialized_for_testing()
+    self.state.is_uninitialized_for_testing()
 }
 
 #[test_only]
@@ -789,32 +791,32 @@ public fun assert_venue_account_installed_for_testing(is_installed: bool) {
 
 #[test_only]
 public fun set_active_for_testing<Product>(self: &mut Vault<Product>) {
-    self.series_state.set_active_for_testing();
+    self.state.set_active_for_testing();
 }
 
 #[test_only]
 public fun maintenance_reserve_for_testing<Product>(self: &Vault<Product>): u64 {
-    self.series_state.maintenance_reserve_for_testing()
+    self.state.maintenance_reserve_for_testing()
 }
 
 #[test_only]
 public fun max_order_notional_for_testing<Product>(self: &Vault<Product>): u64 {
-    self.series_state.max_order_notional_for_testing()
+    self.state.max_order_notional_for_testing()
 }
 
 #[test_only]
 public fun vault_policy_for_testing<Product>(self: &Vault<Product>): VaultPolicy {
-    self.series_state.vault_policy_for_testing()
+    self.state.vault_policy_for_testing()
 }
 
 #[test_only]
 public fun nav_cap_for_testing<Product>(self: &Vault<Product>): u64 {
-    self.series_state.nav_cap()
+    self.state.nav_cap()
 }
 
 #[test_only]
 public fun fee_settings_for_testing<Product>(self: &Vault<Product>): (u64, u64, u64) {
-    self.series_state.fee_settings()
+    self.state.fee_settings()
 }
 
 #[test_only]
@@ -841,7 +843,7 @@ public fun share_supply_for_testing<Product>(self: &Vault<Product>): u64 {
 
 #[test_only]
 public fun set_unwinding_for_testing<Product>(self: &mut Vault<Product>) {
-    self.series_state.set_unwinding_for_testing();
+    self.state.set_unwinding_for_testing();
 }
 
 #[test_only]
@@ -872,7 +874,7 @@ public fun mint_eligible_shares_for_testing<Product>(
 
 #[test_only]
 public fun is_unwinding_for_testing<Product>(self: &Vault<Product>): bool {
-    self.series_state.is_unwinding_for_testing()
+    self.state.is_unwinding_for_testing()
 }
 
 // === Imports ===
@@ -892,7 +894,7 @@ use blast_boosts_core::{
     observation::{Self as observation, PositionObservation, PriceObservation},
     policy::{PositionSide, VaultPolicy},
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
-    state::{Self as series_state, DonationPlan, MintPlan, RebalancePlan, RedemptionPlan, State},
+    state::{Self, DonationPlan, MintPlan, RebalancePlan, RedemptionPlan, State},
 };
 
 use perpetuals::{account::Account, clearing_house::{ClearingHouse, SessionSummary}, registry::Registry};

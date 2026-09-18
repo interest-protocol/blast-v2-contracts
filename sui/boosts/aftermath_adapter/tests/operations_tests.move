@@ -2265,7 +2265,7 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         b"".to_string(),
         scenario.ctx(),
     );
-    let seed_nav = vault.initialize_series(
+    let seed_nav = vault.initialize(
         observation::new_position(SEED_EQUITY, ABSOLUTE_BASE, ABSOLUTE_NOTIONAL, LOT_SIZE, side, 0, true, true, true,
             observation::new_price(PRICE, 0, REFERENCE_TIME_MS), observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE),
         SEED_RESERVE,
