@@ -422,8 +422,8 @@ public(package) fun max_order_notional_updated<Product>(
 }
 
 public(package) fun shutdown_finalized<Product>(
-    vault_id: ID, recovered_cash: u64, eligible_supply: u64, seed_funder_payment: Option<address>, checkpoint: Checkpoint,
-    unrecoverable_collateral_raw: u256,
+    vault_id: ID, recovered_cash: u64, eligible_supply: u64, seed_funder_payment: Option<address>,
+    checkpoint: Checkpoint, unrecoverable_collateral_raw: u256,
 ) {
     blast_boosts_aftermath::blast_events::emit_event(ShutdownFinalized<Product> {
         vault_id, recovered_cash, eligible_supply, seed_funder_payment, checkpoint, unrecoverable_collateral_raw,
@@ -456,13 +456,20 @@ public(package) fun shutdown_begun<Product>(vault_id: ID, reason: blast_boosts_c
 // === Test-Only Functions ===
 
 #[test_only]
-public fun unwind_progress_fields<Product>(self: &UnwindProgress<Product>): (ID, Checkpoint, Option<Checkpoint>, Checkpoint, u64, Option<u256>) {
+public fun unwind_progress_fields<Product>(
+    self: &UnwindProgress<Product>,
+): (ID, Checkpoint, Option<Checkpoint>, Checkpoint, u64, Option<u256>) {
     (self.vault_id, self.before, self.after_funding, self.after, self.market_orders, self.filled_quote)
 }
 
 #[test_only]
-public fun shutdown_finalized_fields<Product>(self: &ShutdownFinalized<Product>): (ID, u64, u64, Option<address>, Checkpoint, u256) {
-    (self.vault_id, self.recovered_cash, self.eligible_supply, self.seed_funder_payment, self.checkpoint, self.unrecoverable_collateral_raw)
+public fun shutdown_finalized_fields<Product>(
+    self: &ShutdownFinalized<Product>,
+): (ID, u64, u64, Option<address>, Checkpoint, u256) {
+    (
+        self.vault_id, self.recovered_cash, self.eligible_supply, self.seed_funder_payment,
+        self.checkpoint, self.unrecoverable_collateral_raw,
+    )
 }
 
 #[test_only]

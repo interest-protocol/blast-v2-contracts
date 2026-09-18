@@ -124,9 +124,9 @@ public(package) fun withdraw<Collateral>(
     collateral_oracle: &PriceFeedStorage, amount: u64, clock: &Clock, ctx: &mut TxContext,
 ): Coin<Collateral> {
     self.assert_market_account(account, clearing_house);
-    assert!(object::id(registry) == self.registry_id, blast_boosts_aftermath::errors::registry_mismatch!());
-    assert!(object::id(base_oracle) == self.base_oracle_id, blast_boosts_aftermath::errors::base_oracle_mismatch!());
-    assert!(object::id(collateral_oracle) == self.collateral_oracle_id, blast_boosts_aftermath::errors::collateral_oracle_mismatch!());
+    self.assert_bound_registry(registry);
+    self.assert_bound_oracles(base_oracle, collateral_oracle);
+
     let free = account::collateral_balance(account);
     if (free < amount) {
         let required = amount - free;
@@ -135,14 +135,17 @@ public(package) fun withdraw<Collateral>(
         );
         assert!(deallocated == required, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
     };
+
     account::withdraw_collateral(account, self.admin_cap.borrow(), registry, amount, ctx)
 }
 
 /// Allocates deposited cash into the sole bound market without lending its authority.
 public(package) fun allocate<Collateral>(
-    self: &VenueAccount, account: &mut Account<Collateral>, clearing_house: &mut ClearingHouse<Collateral>, amount: u64,
+    self: &VenueAccount, account: &mut Account<Collateral>,
+    clearing_house: &mut ClearingHouse<Collateral>, amount: u64,
 ) {
     self.assert_market_account(account, clearing_house);
+
     clearing_house::allocate_collateral(clearing_house, self.admin_cap.borrow(), account, amount);
 }
 
@@ -160,8 +163,7 @@ public(package) fun execute_order<Collateral>(
     ctx: &TxContext,
 ): (ClearingHouse<Collateral>, SessionSummary) {
     self.assert_market_account(account, &clearing_house);
-    assert!(object::id(base_oracle) == self.base_oracle_id, blast_boosts_aftermath::errors::base_oracle_mismatch!());
-    assert!(object::id(collateral_oracle) == self.collateral_oracle_id, blast_boosts_aftermath::errors::collateral_oracle_mismatch!());
+    self.assert_bound_oracles(base_oracle, collateral_oracle);
 
     let mut session = clearing_house::start_session(
         clearing_house, self.admin_cap.borrow(), account, base_oracle, collateral_oracle,
@@ -179,10 +181,9 @@ public(package) fun deposit<Collateral>(
     cash: Coin<Collateral>,
 ) {
     self.assert_custody_binding();
-    assert!(object::id(account) == self.account_object_id, blast_boosts_aftermath::errors::account_object_mismatch!());
-    assert!(account::account_id(account) == self.account_number, blast_boosts_aftermath::errors::account_number_mismatch!());
-    assert!(object::id(registry) == self.registry_id, blast_boosts_aftermath::errors::registry_mismatch!());
-    assert!(std::type_name::with_original_ids<Collateral>() == self.collateral_type, blast_boosts_aftermath::errors::collateral_type_mismatch!());
+    self.assert_bound_account(account);
+    self.assert_bound_registry(registry);
+
     account::deposit_collateral(account, self.admin_cap.borrow(), registry, cash);
 }
 
@@ -562,9 +563,15 @@ fun assert_signed_cash_change(
     let (actual, credit) = if (before_negative == after_negative) {
         (before.diff(after), if (before_negative) { before > after } else { after > before })
     } else {
-        (before.checked_add(after).destroy_or!(abort blast_boosts_aftermath::errors::cash_checkpoint_mismatch!()), !after_negative)
+        let crossed = before.checked_add(after)
+            .destroy_or!(abort blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
+        (crossed, !after_negative)
     };
-    assert!(actual == required && (actual == 0 || credit == increase), blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
+
+    assert!(
+        actual == required && (actual == 0 || credit == increase),
+        blast_boosts_aftermath::errors::cash_checkpoint_mismatch!(),
+    );
 }
 
 /// Verifies every authority-bearing account/market component before a session.
@@ -572,10 +579,36 @@ fun assert_market_account<Collateral>(
     self: &VenueAccount, account: &Account<Collateral>, clearing_house: &ClearingHouse<Collateral>,
 ) {
     self.assert_custody_binding();
+    self.assert_bound_account(account);
+    assert!(
+        object::id(clearing_house) == self.clearing_house_id,
+        blast_boosts_aftermath::errors::clearing_house_mismatch!(),
+    );
+}
+
+/// The account object, its venue number, and its collateral type are the bound ones.
+fun assert_bound_account<Collateral>(self: &VenueAccount, account: &Account<Collateral>) {
     assert!(object::id(account) == self.account_object_id, blast_boosts_aftermath::errors::account_object_mismatch!());
-    assert!(account::account_id(account) == self.account_number, blast_boosts_aftermath::errors::account_number_mismatch!());
-    assert!(object::id(clearing_house) == self.clearing_house_id, blast_boosts_aftermath::errors::clearing_house_mismatch!());
-    assert!(std::type_name::with_original_ids<Collateral>() == self.collateral_type, blast_boosts_aftermath::errors::collateral_type_mismatch!());
+    assert!(
+        account::account_id(account) == self.account_number,
+        blast_boosts_aftermath::errors::account_number_mismatch!(),
+    );
+    assert!(
+        std::type_name::with_original_ids<Collateral>() == self.collateral_type,
+        blast_boosts_aftermath::errors::collateral_type_mismatch!(),
+    );
+}
+
+fun assert_bound_registry(self: &VenueAccount, registry: &Registry) {
+    assert!(object::id(registry) == self.registry_id, blast_boosts_aftermath::errors::registry_mismatch!());
+}
+
+fun assert_bound_oracles(self: &VenueAccount, base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage) {
+    assert!(object::id(base_oracle) == self.base_oracle_id, blast_boosts_aftermath::errors::base_oracle_mismatch!());
+    assert!(
+        object::id(collateral_oracle) == self.collateral_oracle_id,
+        blast_boosts_aftermath::errors::collateral_oracle_mismatch!(),
+    );
 }
 
 // === Test-Only Functions ===
@@ -677,7 +710,9 @@ public fun assert_nonnegative_cash_checkpoint_for_testing(
     before: &Checkpoint, after: &Checkpoint, amount: u64, deposit: bool,
 ) {
     let from_free = if (deposit) { 0 } else { before.free_collateral.min(amount) };
-    assert_signed_cash_change(false, before.allocated_collateral, false, after.allocated_collateral, amount - from_free, deposit);
+    assert_signed_cash_change(
+        false, before.allocated_collateral, false, after.allocated_collateral, amount - from_free, deposit,
+    );
     assert_cash_checkpoint(before, after, before.free_collateral - from_free);
 }
 
