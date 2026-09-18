@@ -586,16 +586,9 @@ fun emit_vault_initialized<Product, Collateral>(
     position_side: PositionSide,
     position_imr: u256,
 ) {
-    let binding = vault.venue().binding();
-
     events::vault_initialized<Product>(
         vault.id(),
-        binding.account_object_id(),
-        binding.account_number(),
-        binding.registry_id(),
-        binding.clearing_house_id(),
-        binding.base_oracle_id(),
-        binding.collateral_oracle_id(),
+        vault.venue().binding(),
         seed_amount,
         seed_venue_equity,
         vault.state().maintenance_reserve(),

@@ -96,12 +96,7 @@ public struct VaultIssued<phantom Product> has copy, drop {
 /// Emitted after one atomic seed activates a bound Aftermath Vault.
 public struct VaultInitialized<phantom Product> has copy, drop {
     vault_id: ID,
-    account_object_id: ID,
-    account_number: u64,
-    registry_id: ID,
-    clearing_house_id: ID,
-    base_oracle_id: ID,
-    collateral_oracle_id: ID,
+    binding: Binding,
     seed_amount: u64,
     seed_venue_equity: u64,
     seed_reserve: u64,
@@ -265,12 +260,7 @@ public(package) fun vault_issued<Product>(
 
 public(package) fun vault_initialized<Product>(
     vault_id: ID,
-    account_object_id: ID,
-    account_number: u64,
-    registry_id: ID,
-    clearing_house_id: ID,
-    base_oracle_id: ID,
-    collateral_oracle_id: ID,
+    binding: Binding,
     seed_amount: u64,
     seed_venue_equity: u64,
     seed_reserve: u64,
@@ -285,12 +275,7 @@ public(package) fun vault_initialized<Product>(
     emit_event(
         VaultInitialized<Product> {
             vault_id,
-            account_object_id,
-            account_number,
-            registry_id,
-            clearing_house_id,
-            base_oracle_id,
-            collateral_oracle_id,
+            binding,
             seed_amount,
             seed_venue_equity,
             seed_reserve,
@@ -470,12 +455,7 @@ public fun vault_initialized_fields<Product>(
     self: &VaultInitialized<Product>,
 ): (
     ID,
-    ID,
-    u64,
-    ID,
-    ID,
-    ID,
-    ID,
+    Binding,
     u64,
     u64,
     u64,
@@ -489,12 +469,7 @@ public fun vault_initialized_fields<Product>(
 ) {
     (
         self.vault_id,
-        self.account_object_id,
-        self.account_number,
-        self.registry_id,
-        self.clearing_house_id,
-        self.base_oracle_id,
-        self.collateral_oracle_id,
+        self.binding,
         self.seed_amount,
         self.seed_venue_equity,
         self.seed_reserve,
@@ -573,7 +548,7 @@ public fun donated_fields<Product>(self: &Donated<Product>): (ID, u64, u64, Chec
 
 // === Imports ===
 
-use blast_boosts_aftermath::{blast_events::{Event, emit_event}, venue_account::Checkpoint};
+use blast_boosts_aftermath::{blast_events::{Event, emit_event}, venue_account::{Binding, Checkpoint}};
 
 use blast_boosts_core::{lifecycle::ShutdownReason, policy::{PositionSide, VaultPolicy}};
 

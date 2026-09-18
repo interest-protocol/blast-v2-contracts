@@ -38,12 +38,7 @@ public struct Fixture {
 
 public struct ReplayState has drop {
     vault_id: ID,
-    account_object_id: ID,
-    account_number: u64,
-    registry_id: ID,
-    clearing_house_id: ID,
-    base_oracle_id: ID,
-    collateral_oracle_id: ID,
+    binding: Option<Binding>,
     maintenance_reserve: u64,
     lifecycle: u8,
     max_order_notional: u64,
@@ -1287,12 +1282,7 @@ fun vault_initialized_event_records_every_activation_primitive() {
     );
     events::vault_initialized<Product>(
         @0xA.to_id(),
-        @0xB.to_id(),
-        27,
-        @0xC.to_id(),
-        @0xD.to_id(),
-        @0xE.to_id(),
-        @0xF.to_id(),
+        venue_account::new_binding(@0xB.to_id(), 27, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id()),
         28,
         29,
         30,
@@ -1308,12 +1298,7 @@ fun vault_initialized_event_records_every_activation_primitive() {
     let event = events::collect_one<events::VaultInitialized<Product>>(0);
     let (
         vault_id,
-        account_object_id,
-        account_number,
-        registry_id,
-        clearing_house_id,
-        base_oracle_id,
-        collateral_oracle_id,
+        binding,
         seed_amount,
         seed_venue_equity,
         seed_reserve,
@@ -1327,12 +1312,10 @@ fun vault_initialized_event_records_every_activation_primitive() {
     ) = event.vault_initialized_fields();
 
     assert_eq!(vault_id, @0xA.to_id());
-    assert_eq!(account_object_id, @0xB.to_id());
-    assert_eq!(account_number, 27);
-    assert_eq!(registry_id, @0xC.to_id());
-    assert_eq!(clearing_house_id, @0xD.to_id());
-    assert_eq!(base_oracle_id, @0xE.to_id());
-    assert_eq!(collateral_oracle_id, @0xF.to_id());
+    assert_eq!(
+        binding,
+        venue_account::new_binding(@0xB.to_id(), 27, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id()),
+    );
     assert_eq!(seed_amount, 28);
     assert_eq!(seed_venue_equity, 29);
     assert_eq!(seed_reserve, 30);
@@ -1959,15 +1942,7 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
         events::collect_one<events::CheckpointDrifted<Product>>(0),
     );
 
-    let actual_binding = vault.venue().binding();
-    actual_binding.assert_object_graph(
-        replay.account_object_id,
-        replay.account_number,
-        replay.registry_id,
-        replay.clearing_house_id,
-        replay.base_oracle_id,
-        replay.collateral_oracle_id,
-    );
+    assert_eq!(replay.binding, option::some(vault.venue().binding()));
     assert_eq!(replay.vault_id, vault_id);
     assert_eq!(replay.maintenance_reserve, vault.state().maintenance_reserve());
     assert_eq!(replay.lifecycle == 2, vault.is_unwinding_for_testing());
@@ -2587,12 +2562,7 @@ fun replay_issued<Tag>(event: events::VaultIssued<Tag>): ReplayState {
 
     ReplayState {
         vault_id: @0x0.to_id(),
-        account_object_id: @0x0.to_id(),
-        account_number: 0,
-        registry_id: @0x0.to_id(),
-        clearing_house_id: @0x0.to_id(),
-        base_oracle_id: @0x0.to_id(),
-        collateral_oracle_id: @0x0.to_id(),
+        binding: option::none(),
         maintenance_reserve: 0,
         lifecycle: 0,
         max_order_notional,
@@ -2613,12 +2583,7 @@ fun replay_initialized<Tag>(
 ) {
     let (
         vault_id,
-        account_object_id,
-        account_number,
-        registry_id,
-        clearing_house_id,
-        base_oracle_id,
-        collateral_oracle_id,
+        binding,
         _,
         _,
         maintenance_reserve,
@@ -2632,12 +2597,7 @@ fun replay_initialized<Tag>(
     ) = event.vault_initialized_fields();
 
     replay.vault_id = vault_id;
-    replay.account_object_id = account_object_id;
-    replay.account_number = account_number;
-    replay.registry_id = registry_id;
-    replay.clearing_house_id = clearing_house_id;
-    replay.base_oracle_id = base_oracle_id;
-    replay.collateral_oracle_id = collateral_oracle_id;
+    replay.binding = option::some(binding);
     replay.maintenance_reserve = maintenance_reserve;
     replay.supply = locked_shares;
     replay.locked_shares = locked_shares;

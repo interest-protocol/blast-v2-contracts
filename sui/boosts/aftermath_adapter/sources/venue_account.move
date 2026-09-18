@@ -123,17 +123,7 @@ public(package) fun assert_funding_update_inputs(
     );
 }
 
-public(package) fun account_object_id(self: &Binding): ID { self.account_object_id }
-
 public(package) fun account_number(self: &Binding): u64 { self.account_number }
-
-public(package) fun registry_id(self: &Binding): ID { self.registry_id }
-
-public(package) fun clearing_house_id(self: &Binding): ID { self.clearing_house_id }
-
-public(package) fun base_oracle_id(self: &Binding): ID { self.base_oracle_id }
-
-public(package) fun collateral_oracle_id(self: &Binding): ID { self.collateral_oracle_id }
 
 // --- Checkpoint ---
 

@@ -18,7 +18,7 @@ fun an_admin_cap_for_the_bound_account_seals_the_venue_account() {
     let mut ctx = tx_context::dummy();
     let venue = venue_account::new(standard_binding(), standard_checkpoint(), admin_cap_for(@0xA11CE, &mut ctx));
 
-    assert_eq!(venue.binding().account_object_id(), @0xA11CE.to_id());
+    assert_eq!(venue.binding(), standard_binding());
     destroy(venue);
 }
 
