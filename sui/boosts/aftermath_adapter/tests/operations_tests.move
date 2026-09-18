@@ -2424,7 +2424,7 @@ fun checkpoint_with_market_imr(
 fun apply_connected_change<Tag>(
     vault: &mut Vault<Tag>,
     checkpoint: venue_account::Checkpoint,
-    change: snapshot::Change,
+    change: snapshot::CheckpointChange,
     venue_equity: u64,
     margin_safe: bool,
 ) {

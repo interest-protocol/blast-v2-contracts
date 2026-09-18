@@ -620,8 +620,8 @@ public(package) fun complete_donation<Product>(
 public(package) fun apply_post_capture<Product>(
     vault: &mut Vault<Product>,
     post_capture: snapshot::CapturedSnapshot,
-    preexisting_change: snapshot::Change,
-    local_change: snapshot::Change,
+    preexisting_change: snapshot::CheckpointChange,
+    local_change: snapshot::CheckpointChange,
 ) {
     let stored_checkpoint = *vault.venue_checkpoint();
     let net = preexisting_change.net_funding(local_change);
@@ -1168,7 +1168,7 @@ fun classify_sync_changes(
     after: &venue_account::Checkpoint,
     funding_candidate: u256,
     collateral_price: u256,
-): (snapshot::Change, snapshot::Change) {
+): (snapshot::CheckpointChange, snapshot::CheckpointChange) {
     let preexisting_change = if (snapshot::checkpoint_ready_for_settlement(stored, before)) {
         snapshot::unchanged_change()
     } else {
@@ -1464,7 +1464,7 @@ public fun classify_sync_change_for_testing(
     after: &venue_account::Checkpoint,
     candidate_negative: bool,
     candidate_collateral_magnitude: u256,
-): snapshot::Change {
+): snapshot::CheckpointChange {
     let (preexisting_change, local_change) =
         classify_sync_changes_for_testing(
             stored,
@@ -1483,7 +1483,7 @@ public fun classify_sync_changes_for_testing(
     after: &venue_account::Checkpoint,
     candidate_negative: bool,
     candidate_collateral_magnitude: u256,
-): (snapshot::Change, snapshot::Change) {
+): (snapshot::CheckpointChange, snapshot::CheckpointChange) {
     let preexisting_change = if (
         snapshot::checkpoint_ready_for_settlement(stored, before)
     ) {
@@ -1504,7 +1504,7 @@ public fun classify_sync_changes_for_testing(
 public fun apply_post_capture_for_testing<Product>(
     vault: &mut Vault<Product>,
     post_capture: snapshot::CapturedSnapshot,
-    change: snapshot::Change,
+    change: snapshot::CheckpointChange,
 ) {
     apply_post_capture(
         vault,
@@ -1518,8 +1518,8 @@ public fun apply_post_capture_for_testing<Product>(
 public fun apply_post_captures_for_testing<Product>(
     vault: &mut Vault<Product>,
     post_capture: snapshot::CapturedSnapshot,
-    preexisting_change: snapshot::Change,
-    local_change: snapshot::Change,
+    preexisting_change: snapshot::CheckpointChange,
+    local_change: snapshot::CheckpointChange,
 ) {
     apply_post_capture(
         vault,

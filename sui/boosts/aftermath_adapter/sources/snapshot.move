@@ -62,8 +62,10 @@ public struct SnapshotFacts has copy, drop {
     collateral_price: u64,
 }
 
-/// The only recognized raw transition between authenticated checkpoints.
-public enum Change has drop {
+/// What moved between the checkpoint last accepted and the one just captured:
+/// nothing, one funding settlement carrying its raw signed collateral delta, or
+/// anything else, which no operation may build on.
+public enum CheckpointChange has drop {
     Unchanged,
     FundingCredit(u256),
     FundingCost(u256),
@@ -204,7 +206,7 @@ public(package) fun base_price(self: &SnapshotFacts): u64 { self.base_price }
 
 public(package) fun collateral_price(self: &SnapshotFacts): u64 { self.collateral_price }
 
-// --- Change Classification ---
+// --- CheckpointChange Classification ---
 
 /// Returns true only when every stored raw checkpoint field is unchanged.
 public(package) fun checkpoint_unchanged(
@@ -232,7 +234,7 @@ public(package) fun checkpoint_ready_for_settlement(stored: &Checkpoint, before:
 /// snapshots refresh to the current market rates and allocated collateral
 /// changes, while every unrelated account, position, order, and risk field is
 /// byte-for-byte unchanged.
-public(package) fun classify_preexisting_funding(stored: &Checkpoint, before: &Checkpoint): Change {
+public(package) fun classify_preexisting_funding(stored: &Checkpoint, before: &Checkpoint): CheckpointChange {
     classify_preexisting_from_delta(stored, before, allocated_delta(stored, before))
 }
 
@@ -242,13 +244,13 @@ public(package) fun classify_change(
     after: &Checkpoint,
     funding_candidate: u256,
     collateral_price: u256,
-): Change {
-    if (checkpoint_unchanged(before, after)) return Change::Unchanged;
+): CheckpointChange {
+    if (checkpoint_unchanged(before, after)) return CheckpointChange::Unchanged;
 
     let (candidate_collateral_magnitude, representable) = usd_fixed_to_collateral_fixed_health(
         funding_candidate.abs(), collateral_price, funding_candidate.is_neg(),
     );
-    if (!representable) return Change::Unexpected;
+    if (!representable) return CheckpointChange::Unexpected;
 
     classify_from_delta(
         before, after, funding_candidate.is_neg(), candidate_collateral_magnitude,
@@ -258,13 +260,13 @@ public(package) fun classify_change(
 
 /// Nets authenticated settlement edges before rounding or buffer allocation.
 /// No gross ordering inside one Blast checkpoint is an entitlement boundary.
-public(package) fun net_funding(first: Change, second: Change): Change {
-    if (first.is_unexpected() || second.is_unexpected()) return Change::Unexpected;
+public(package) fun net_funding(first: CheckpointChange, second: CheckpointChange): CheckpointChange {
+    if (first.is_unexpected() || second.is_unexpected()) return CheckpointChange::Unexpected;
 
     let (first_cost, first_amount) = (first.is_cost(), first.raw_amount());
     let (second_cost, second_amount) = (second.is_cost(), second.raw_amount());
     let (is_cost, amount) = if (first_cost == second_cost) {
-        (first_cost, first_amount.checked_add(second_amount).destroy_or!(return Change::Unexpected))
+        (first_cost, first_amount.checked_add(second_amount).destroy_or!(return CheckpointChange::Unexpected))
     } else if (first_amount >= second_amount) {
         (first_cost, first_amount - second_amount)
     } else {
@@ -272,69 +274,69 @@ public(package) fun net_funding(first: Change, second: Change): Change {
     };
 
     if (amount == 0) {
-        Change::Unchanged
+        CheckpointChange::Unchanged
     } else if (is_cost) {
-        Change::FundingCost(amount)
+        CheckpointChange::FundingCost(amount)
     } else {
-        Change::FundingCredit(amount)
+        CheckpointChange::FundingCredit(amount)
     }
 }
 
 /// Creates the clean no-op classification for adapter orchestration.
-public(package) fun unchanged_change(): Change {
-    Change::Unchanged
+public(package) fun unchanged_change(): CheckpointChange {
+    CheckpointChange::Unchanged
 }
 
 /// A terminal market close may realize losses, but cannot misattribute an unrelated funding mutation.
-public(package) fun assert_expected(self: Change) {
+public(package) fun assert_expected(self: CheckpointChange) {
     assert!(!self.is_unexpected(), blast_boosts_aftermath::errors::unresolved_checkpoint!());
 }
 
-// --- Change Reads ---
+// --- CheckpointChange Reads ---
 
 /// Returns whether the change is a representable funding credit or cost.
-public(package) fun has_funding(self: &Change): bool {
+public(package) fun has_funding(self: &CheckpointChange): bool {
     match (self) {
-        Change::FundingCredit(raw) => { let (_, ok) = fixed_to_u64_down_health(*raw, constants::collateral_decimals!() as u64); ok },
-        Change::FundingCost(raw) => { let (_, ok) = fixed_to_u64_up_health(*raw, constants::collateral_decimals!() as u64); ok },
+        CheckpointChange::FundingCredit(raw) => { let (_, ok) = fixed_to_u64_down_health(*raw, constants::collateral_decimals!() as u64); ok },
+        CheckpointChange::FundingCost(raw) => { let (_, ok) = fixed_to_u64_up_health(*raw, constants::collateral_decimals!() as u64); ok },
         _ => false,
     }
 }
 
 /// Returns whether the change is a funding cost.
-public(package) fun is_cost(self: &Change): bool {
-    match (self) { Change::FundingCost(_) => true, _ => false }
+public(package) fun is_cost(self: &CheckpointChange): bool {
+    match (self) { CheckpointChange::FundingCost(_) => true, _ => false }
 }
 
 /// Returns the raw IFixed funding magnitude; zero when there is no funding.
-public(package) fun raw_amount(self: &Change): u256 {
+public(package) fun raw_amount(self: &CheckpointChange): u256 {
     match (self) {
-        Change::FundingCredit(raw) => *raw,
-        Change::FundingCost(raw) => *raw,
+        CheckpointChange::FundingCredit(raw) => *raw,
+        CheckpointChange::FundingCost(raw) => *raw,
         _ => 0,
     }
 }
 
 /// Returns the six-decimal funding amount, credits down and costs up; zero when unrepresentable.
-public(package) fun amount(self: &Change): u64 {
+public(package) fun amount(self: &CheckpointChange): u64 {
     match (self) {
-        Change::FundingCredit(raw) => { let (amount, _) = fixed_to_u64_down_health(*raw, constants::collateral_decimals!() as u64); amount },
-        Change::FundingCost(raw) => { let (amount, _) = fixed_to_u64_up_health(*raw, constants::collateral_decimals!() as u64); amount },
+        CheckpointChange::FundingCredit(raw) => { let (amount, _) = fixed_to_u64_down_health(*raw, constants::collateral_decimals!() as u64); amount },
+        CheckpointChange::FundingCost(raw) => { let (amount, _) = fixed_to_u64_up_health(*raw, constants::collateral_decimals!() as u64); amount },
         _ => 0,
     }
 }
 
 /// Returns whether the checkpoint is clean: unchanged, or a representable funding change.
-public(package) fun is_clean(self: &Change): bool {
+public(package) fun is_clean(self: &CheckpointChange): bool {
     match (self) {
-        Change::Unchanged => true,
-        Change::Unexpected => false,
+        CheckpointChange::Unchanged => true,
+        CheckpointChange::Unexpected => false,
         _ => self.has_funding(),
     }
 }
 
-public(package) fun is_unexpected(self: &Change): bool {
-    match (self) { Change::Unexpected => true, _ => false }
+public(package) fun is_unexpected(self: &CheckpointChange): bool {
+    match (self) { CheckpointChange::Unexpected => true, _ => false }
 }
 
 // === Private Functions ===
@@ -512,19 +514,19 @@ fun into_observation(self: CapturedSnapshot): (observation::PositionObservation,
     (observation, checkpoint, facts)
 }
 
-// --- Change Classification ---
+// --- CheckpointChange Classification ---
 
 fun classify_preexisting_from_delta(
     stored: &Checkpoint,
     before: &Checkpoint,
-    allocated_change: Change,
-): Change {
+    allocated_change: CheckpointChange,
+): CheckpointChange {
     // The position snapshots prove the completed external settlement. They may
     // trail the market again if another funding epoch advanced before Blast
     // synchronized, so equality with the current market rates is not required.
     let snapshots_refreshed = stored.funding_snapshot_long() != before.funding_snapshot_long()
         || stored.funding_snapshot_short() != before.funding_snapshot_short();
-    if (!stored.non_funding_fields_equal(before) || !snapshots_refreshed) return Change::Unexpected;
+    if (!stored.non_funding_fields_equal(before) || !snapshots_refreshed) return CheckpointChange::Unexpected;
 
     allocated_change
 }
@@ -534,58 +536,58 @@ fun classify_from_delta(
     after: &Checkpoint,
     candidate_negative: bool,
     candidate_collateral_magnitude: u256,
-    allocated_change: Change,
-): Change {
-    if (before == after) return Change::Unchanged;
+    allocated_change: CheckpointChange,
+): CheckpointChange {
+    if (before == after) return CheckpointChange::Unchanged;
     let market_rates_unchanged = before.non_funding_fields_equal(after)
         && before.market_funding_long() == after.market_funding_long()
         && before.market_funding_short() == after.market_funding_short();
-    if (!market_rates_unchanged) return Change::Unexpected;
+    if (!market_rates_unchanged) return CheckpointChange::Unexpected;
 
     let snapshots_refreshed = after.funding_snapshot_long() == before.market_funding_long()
         && after.funding_snapshot_short() == before.market_funding_short()
         && (before.funding_snapshot_long() != after.funding_snapshot_long()
             || before.funding_snapshot_short() != after.funding_snapshot_short());
-    if (!snapshots_refreshed) return Change::Unexpected;
+    if (!snapshots_refreshed) return CheckpointChange::Unexpected;
     if (candidate_collateral_magnitude == 0 && before.allocated_collateral() == after.allocated_collateral()) {
-        return Change::Unchanged
+        return CheckpointChange::Unchanged
     };
 
     let matched = match (&allocated_change) {
-        Change::FundingCredit(amount) => !candidate_negative && *amount == candidate_collateral_magnitude,
-        Change::FundingCost(amount) => candidate_negative && *amount == candidate_collateral_magnitude,
-        Change::Unchanged => candidate_collateral_magnitude == 0,
-        Change::Unexpected => false,
+        CheckpointChange::FundingCredit(amount) => !candidate_negative && *amount == candidate_collateral_magnitude,
+        CheckpointChange::FundingCost(amount) => candidate_negative && *amount == candidate_collateral_magnitude,
+        CheckpointChange::Unchanged => candidate_collateral_magnitude == 0,
+        CheckpointChange::Unexpected => false,
     };
 
-    if (matched) { allocated_change } else { Change::Unexpected }
+    if (matched) { allocated_change } else { CheckpointChange::Unexpected }
 }
 
 /// Named IFixed operations decode signed collateral; raw checkpoint bits are never ordered.
-fun allocated_delta(before: &Checkpoint, after: &Checkpoint): Change {
+fun allocated_delta(before: &Checkpoint, after: &Checkpoint): CheckpointChange {
     let (before_raw, after_raw) = (before.allocated_collateral(), after.allocated_collateral());
 
     signed_delta(before_raw.is_neg(), before_raw.abs(), after_raw.is_neg(), after_raw.abs())
 }
 
 /// Computes after-minus-before in sign/magnitude facts, including a zero crossing.
-fun signed_delta(before_negative: bool, before: u256, after_negative: bool, after: u256): Change {
+fun signed_delta(before_negative: bool, before: u256, after_negative: bool, after: u256): CheckpointChange {
     if (before_negative == after_negative) {
-        if (before == after) return Change::Unchanged;
+        if (before == after) return CheckpointChange::Unchanged;
         let credit = if (before_negative) { before > after } else { after > before };
         let amount = before.diff(after);
 
-        if (credit) { Change::FundingCredit(amount) } else { Change::FundingCost(amount) }
+        if (credit) { CheckpointChange::FundingCredit(amount) } else { CheckpointChange::FundingCost(amount) }
     } else {
-        if (before > std::u256::max_value!() - after) return Change::Unexpected;
+        if (before > std::u256::max_value!() - after) return CheckpointChange::Unexpected;
         let amount = before + after;
 
         if (amount == 0) {
-            Change::Unchanged
+            CheckpointChange::Unchanged
         } else if (after_negative) {
-            Change::FundingCost(amount)
+            CheckpointChange::FundingCost(amount)
         } else {
-            Change::FundingCredit(amount)
+            CheckpointChange::FundingCredit(amount)
         }
     }
 }
@@ -997,23 +999,23 @@ public fun captured_health_for_testing(
 
 #[test_only]
 /// Creates the dirty-checkpoint classification for adapter test fixtures.
-public fun unexpected_change(): Change {
-    Change::Unexpected
+public fun unexpected_change(): CheckpointChange {
+    CheckpointChange::Unexpected
 }
 
 #[test_only]
 /// Returns `(has_funding, is_cost, raw_amount, amount, is_clean)` for test assertions.
 public fun funding_change_fields(
-    change: &Change,
+    change: &CheckpointChange,
 ): (bool, bool, u256, u64, bool) {
     match (change) {
-        Change::Unchanged => (false, false, 0, 0, true),
-        Change::Unexpected => (false, false, 0, 0, false),
-        Change::FundingCredit(raw_amount) => {
+        CheckpointChange::Unchanged => (false, false, 0, 0, true),
+        CheckpointChange::Unexpected => (false, false, 0, 0, false),
+        CheckpointChange::FundingCredit(raw_amount) => {
             let (amount, representable) = fixed_to_u64_down_health(*raw_amount, constants::collateral_decimals!() as u64);
             (representable, false, *raw_amount, amount, representable)
         },
-        Change::FundingCost(raw_amount) => {
+        CheckpointChange::FundingCost(raw_amount) => {
             let (amount, representable) = fixed_to_u64_up_health(*raw_amount, constants::collateral_decimals!() as u64);
             (representable, true, *raw_amount, amount, representable)
         },
@@ -1021,7 +1023,7 @@ public fun funding_change_fields(
 }
 
 #[test_only]
-public fun classify_change_for_testing(before: &Checkpoint, after: &Checkpoint): Change {
+public fun classify_change_for_testing(before: &Checkpoint, after: &Checkpoint): CheckpointChange {
     classify_change_with_candidate_for_testing(before, after, false, 0)
 }
 
@@ -1031,7 +1033,7 @@ public fun classify_change_with_candidate_for_testing(
     after: &Checkpoint,
     candidate_negative: bool,
     candidate_magnitude: u256,
-): Change {
+): CheckpointChange {
     let delta = signed_delta(false, before.allocated_collateral(), false, after.allocated_collateral());
     classify_from_delta(before, after, candidate_negative, candidate_magnitude, delta)
 }
@@ -1040,7 +1042,7 @@ public fun classify_change_with_candidate_for_testing(
 public fun classify_preexisting_funding_for_testing(
     stored: &Checkpoint,
     before: &Checkpoint,
-): Change {
+): CheckpointChange {
     let delta = signed_delta(false, stored.allocated_collateral(), false, before.allocated_collateral());
     classify_preexisting_from_delta(stored, before, delta)
 }
@@ -1049,39 +1051,39 @@ public fun classify_preexisting_funding_for_testing(
 public fun classify_signed_funding_for_testing(
     stored: &Checkpoint, before: &Checkpoint, stored_negative: bool, stored_magnitude: u256,
     before_negative: bool, before_magnitude: u256,
-): Change {
+): CheckpointChange {
     classify_preexisting_from_delta(
         stored, before, signed_delta(stored_negative, stored_magnitude, before_negative, before_magnitude),
     )
 }
 
 #[test_only]
-public fun is_unchanged_for_testing(change: Change): bool {
-    match (change) { Change::Unchanged => true, _ => false }
+public fun is_unchanged_for_testing(change: CheckpointChange): bool {
+    match (change) { CheckpointChange::Unchanged => true, _ => false }
 }
 
 #[test_only]
-public fun is_credit_for_testing(change: Change): bool {
-    match (change) { Change::FundingCredit(_) => true, _ => false }
+public fun is_credit_for_testing(change: CheckpointChange): bool {
+    match (change) { CheckpointChange::FundingCredit(_) => true, _ => false }
 }
 
 #[test_only]
-public fun is_cost_for_testing(change: Change): bool {
-    match (change) { Change::FundingCost(_) => true, _ => false }
+public fun is_cost_for_testing(change: CheckpointChange): bool {
+    match (change) { CheckpointChange::FundingCost(_) => true, _ => false }
 }
 
 #[test_only]
-public fun funding_amount_for_testing(change: Change): u256 {
+public fun funding_amount_for_testing(change: CheckpointChange): u256 {
     match (change) {
-        Change::FundingCredit(amount) => amount,
-        Change::FundingCost(amount) => amount,
+        CheckpointChange::FundingCredit(amount) => amount,
+        CheckpointChange::FundingCost(amount) => amount,
         _ => 0,
     }
 }
 
 #[test_only]
-public fun is_unexpected_for_testing(change: Change): bool {
-    match (change) { Change::Unexpected => true, _ => false }
+public fun is_unexpected_for_testing(change: CheckpointChange): bool {
+    match (change) { CheckpointChange::Unexpected => true, _ => false }
 }
 
 #[test_only]

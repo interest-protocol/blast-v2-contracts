@@ -379,7 +379,7 @@ Series1 position observation for health. A temporary economic-data fault does
 not retire or degrade an active Vault. This path never weakens source identity
 or accepts caller-shaped economics.
 
-`Change` preserves raw collateral-token IFixed deltas. The ordinary
+`CheckpointChange` preserves raw collateral-token IFixed deltas. The ordinary
 stored-to-pre edge may advance only the market cumulative rates while the
 position snapshots and every other field remain unchanged. Settlement then
 refreshes both snapshots, so funding is recognized only when both equal the
