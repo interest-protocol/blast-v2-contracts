@@ -1,7 +1,11 @@
 // `errors` intentionally centralizes package-wide abort codes through zero-cost macros.
 // W04005 sees the expanded literal; this suppression preserves stable codes and local checks.
 #[allow(lint(abort_without_constant))]
-/// Adapter-owned Vault, leverage currency, and venue storage.
+/// Adapter-owned Vault: custody of the core state, the venue account, the
+/// share currency and the retained cash, plus the public surface that needs
+/// no venue object (issuance, shutdown begin and claim, administration).
+/// Every venue-touching operation is driven by `operations`; this module
+/// never reads the venue, advances a checkpoint or completes a core plan.
 module blast_boosts_aftermath::vault;
 
 // === Constants ===
@@ -275,17 +279,11 @@ public(package) fun activate<Product, Collateral>(
 
 // --- Mint ---
 
-/// Mints only the shares priced by the completed core transition.
-public(package) fun complete_mint<Product, Collateral>(
-    self: &mut Vault<Product, Collateral>,
-    plan: MintPlan<Product>,
-    after: PositionObservation,
-    now_ms: u64,
-    ctx: &mut TxContext,
-): (Coin<BlastBoost<Product>>, u64, u64, u64, u64) {
-    let (amount, contribution, fee, admin, reserve_fee) = self.state.complete_mint(plan, after, now_ms);
-
-    (coin::mint(self.treasury_cap_mut(), amount, ctx), contribution, fee, admin, reserve_fee)
+/// Mints only through this Vault's retained native TreasuryCap.
+public(package) fun mint_shares<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>, amount: u64, ctx: &mut TxContext,
+): Coin<BlastBoost<Product>> {
+    coin::mint(self.treasury_cap_mut(), amount, ctx)
 }
 
 // --- Redemption ---
@@ -295,35 +293,16 @@ public(package) fun burn_redeemed_shares<Product, Collateral>(self: &mut Vault<P
     coin::burn(self.treasury_cap_mut(), shares)
 }
 
-// --- Funding And Donation ---
-
-/// Applies one authenticated nonzero funding classification to the core.
-public(package) fun settle_funding<Product, Collateral>(
-    self: &mut Vault<Product, Collateral>,
-    is_cost: bool,
-    amount: u64,
-): (u64, u64, u64, u64) {
-    let (absorbed, uncovered, restored) = self.state.settle_funding(if (is_cost) {
-        observation::funding_cost(amount)
-    } else {
-        observation::funding_credit(amount)
-    });
-
-    (absorbed, uncovered, restored, self.state.maintenance_reserve())
-}
-
 // --- Shutdown ---
 
-/// Consumes verified venue finality and seals the actual recovered holder cash.
-public(package) fun complete_shutdown<Product, Collateral>(
-    self: &mut Vault<Product, Collateral>, withdrawal: TerminalWithdrawal<Collateral>,
-) {
-
+/// Seals the proven terminal withdrawal as holder cash: the coin becomes the
+/// terminal claim balance, or admin cash when no eligible share is left to
+/// claim what the locked seed backed. Returns the final checkpoint and the
+/// raw collateral the venue could not release.
+public(package) fun seal_terminal_cash<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>, withdrawal: TerminalWithdrawal<Collateral>, eligible: u64,
+): (Checkpoint, u256) {
     let (recovered, checkpoint, unrecoverable_collateral_raw) = withdrawal.into_recovered_cash();
-    let supply = self.share_supply();
-    let eligible = self.state.finalize_shutdown(supply, self.locked_shares);
-    let recovered_amount = recovered.value();
-    // With no eligible share left, what the locked seed backed is admin cash.
     let cash = if (eligible == 0) {
         self.retain_admin_cash(recovered);
         balance::zero()
@@ -331,12 +310,9 @@ public(package) fun complete_shutdown<Product, Collateral>(
         recovered.into_balance()
     };
 
-    self.venue_account.replace_checkpoint(checkpoint);
     dynamic_field::add(&mut self.id, TerminalCashKey(), cash);
 
-    events::shutdown_finalized<Product>(
-        self.id.to_inner(), recovered_amount, eligible, checkpoint, unrecoverable_collateral_raw,
-    );
+    (checkpoint, unrecoverable_collateral_raw)
 }
 
 // --- Venue Custody ---
@@ -470,15 +446,15 @@ use blast_boosts_aftermath::{
     constants,
     events,
     protocol::Protocol,
-    venue_account::{TerminalWithdrawal, VenueAccount},
+    venue_account::{Checkpoint, TerminalWithdrawal, VenueAccount},
 };
 
 use blast_boosts_core::{
-    observation::{Self as observation, PositionObservation},
+    observation::PositionObservation,
     policy::VaultPolicy,
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
     lifecycle::ShutdownReason,
-    state::{Self, ActivePosition, Issuance, MintPlan, State},
+    state::{Self, ActivePosition, Issuance, State},
 };
 
 use std::{string::String, type_name};

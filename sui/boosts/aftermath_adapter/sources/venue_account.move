@@ -428,6 +428,10 @@ public(package) fun terminal_withdrawal<Collateral>(
 }
 
 /// Consumes the verified withdrawal, including the raw sub-atomic remainder for replay.
+public(package) fun recovered_amount<Collateral>(self: &TerminalWithdrawal<Collateral>): u64 {
+    self.recovered.value()
+}
+
 public(package) fun into_recovered_cash<Collateral>(
     self: TerminalWithdrawal<Collateral>,
 ): (Coin<Collateral>, Checkpoint, u256) {

@@ -422,7 +422,7 @@ public fun finalize_shutdown<Product, Collateral>(
         &binding, account, registry, clearing_house, base_oracle, collateral_oracle,
     );
 
-    complete_finalization(vault, recovered, before, after);
+    complete_finalization(vault, before.terminal_withdrawal(after, recovered));
 }
 
 // === Private Functions ===
@@ -892,8 +892,9 @@ fun complete_mint<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>, plan: MintPlan<Product>, deposit: u64, after: PositionObservation,
     checkpoint: Checkpoint, now_ms: u64, ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
-    let (shares, contribution, fee, admin, reserve_fee) = vault.complete_mint(plan, after, now_ms, ctx);
+    let (amount, contribution, fee, admin, reserve_fee) = vault.state_mut().complete_mint(plan, after, now_ms);
 
+    let shares = vault.mint_shares(amount, ctx);
     vault.venue_mut().replace_checkpoint(checkpoint);
 
     events::minted<Product>(
@@ -985,11 +986,16 @@ fun apply_post_capture<Product, Collateral>(
     let stored_checkpoint = *vault.venue().checkpoint();
     let net = preexisting_change.net_funding(local_change);
     let checkpoint_clean = net.is_clean();
-    let (absorbed, uncovered, restored, reserve_after) = if (net.has_funding()) {
-        vault.settle_funding(net.is_cost(), net.amount())
+    let (absorbed, uncovered, restored) = if (net.has_funding()) {
+        vault.state_mut().settle_funding(if (net.is_cost()) {
+            observation::funding_cost(net.amount())
+        } else {
+            observation::funding_credit(net.amount())
+        })
     } else {
-        (0, 0, 0, vault.state().maintenance_reserve())
+        (0, 0, 0)
     };
+    let reserve_after = vault.state().maintenance_reserve();
 
     if (checkpoint_clean) {
         vault.venue_mut().replace_checkpoint(checkpoint);
@@ -1252,12 +1258,21 @@ fun complete_unwind<Product, Collateral>(
     events::unwind_progress<Product>(vault.id(), before, funded, after, orders, filled_quote);
 }
 
-/// Verifies actual withdrawal effects before sealing custody and native claim rules.
+/// Settles the core on the proven withdrawal, then seals the recovered coin as
+/// holder cash under the final checkpoint.
 fun complete_finalization<Product, Collateral>(
-    vault: &mut Vault<Product, Collateral>, recovered: Coin<Collateral>,
-    before: Checkpoint, after: Checkpoint,
+    vault: &mut Vault<Product, Collateral>, withdrawal: TerminalWithdrawal<Collateral>,
 ) {
-    vault.complete_shutdown(before.terminal_withdrawal(after, recovered));
+    let recovered_amount = withdrawal.recovered_amount();
+    let (supply, locked) = (vault.share_supply(), vault.locked_shares());
+    let eligible = vault.state_mut().finalize_shutdown(supply, locked);
+
+    let (checkpoint, unrecoverable_collateral_raw) = vault.seal_terminal_cash(withdrawal, eligible);
+    vault.venue_mut().replace_checkpoint(checkpoint);
+
+    events::shutdown_finalized<Product>(
+        vault.id(), recovered_amount, eligible, checkpoint, unrecoverable_collateral_raw,
+    );
 }
 
 // === Test-Only Functions ===
@@ -1504,10 +1519,9 @@ public fun complete_unwind_for_testing<Product, Collateral>(
 
 #[test_only]
 public fun complete_finalization_for_testing<Product, Collateral>(
-    vault: &mut Vault<Product, Collateral>, recovered: Coin<Collateral>,
-    before: Checkpoint, after: Checkpoint,
+    vault: &mut Vault<Product, Collateral>, withdrawal: TerminalWithdrawal<Collateral>,
 ) {
-    complete_finalization(vault, recovered, before, after);
+    complete_finalization(vault, withdrawal);
 }
 
 // === Imports ===
@@ -1521,11 +1535,11 @@ use blast_boosts_aftermath::{
     protocol::Protocol,
     snapshot::{Self, CapturedSnapshot, CheckpointChange},
     vault::{Vault, VaultIssuance},
-    venue_account::{Self, Binding, Checkpoint},
+    venue_account::{Self, Binding, Checkpoint, TerminalWithdrawal},
 };
 
 use blast_boosts_core::{
-    observation::PositionObservation,
+    observation::{Self, PositionObservation},
     policy::{Self, PositionSide},
     state::{ActivePosition, Issuance, MintPlan, RebalancePlan, RedemptionPlan},
 };
