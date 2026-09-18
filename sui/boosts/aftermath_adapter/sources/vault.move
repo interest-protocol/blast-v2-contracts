@@ -479,18 +479,6 @@ public(package) fun complete_donation<Product>(
     self.series_state.complete_donation(plan, after, now_ms);
 }
 
-/// Relabels authenticated buffer after live risk-administrator authorization.
-public(package) fun release_reserve<Product>(
-    self: &mut Vault<Product>,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
-    observation: PositionObservation,
-    amount: u64,
-    now_ms: u64,
-) {
-    admin_witness.assert_role(domain::risk_admin_role());
-    self.series_state.release_reserve(observation, amount, now_ms);
-}
-
 /// Uses retained venue authority without exposing a cap or custody reference.
 public(package) fun deposit_collateral<Product, Collateral>(
     self: &Vault<Product>, account: &mut Account<Collateral>, registry: &Registry, cash: Coin<Collateral>,

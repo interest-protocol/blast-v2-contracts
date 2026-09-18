@@ -567,7 +567,9 @@ N1            = N0 - uncovered
 The adapter may not infer `K` from a total-equity delta. Trading fees,
 slippage, price PnL, liquidation, ADL, bad debt, and socialized loss cannot be
 presented as funding or voluntarily debited from the reserve. Positive funding
-leaves `R` unchanged and increases shareholder NAV. The funding checkpoint and
+leaves `R` unchanged and increases shareholder NAV. (Superseded by ADR 0086 D7:
+a credit repays the uncovered deficit to NAV, then rebuilds `R` up to the
+reserve ceiling.) The funding checkpoint and
 reserve mutation commit atomically, so one venue settlement can be accounted
 for exactly once.
 
@@ -585,7 +587,9 @@ silently relabeled as funding and it does not permit risk increase.
 
 A permissionless `donate_collateral` path may also deposit positive USDC and
 mint no shares. A donation increases shareholder NAV; it does not credit the
-funding-only reserve. It cannot auto-resume a damaged Series. Resume requires
+funding-only reserve. (Superseded by ADR 0086 D7: a donation credits `R` up to
+the reserve ceiling and the excess is shareholder NAV.) It cannot auto-resume
+a damaged Series. Resume requires
 an independent fresh health check and cannot restore an old NAV or compensate
 a past holder.
 
@@ -754,7 +758,9 @@ NAV. Exact negative funding consumes the maintenance reserve first; positive
 funding increases shareholder NAV. None of these transitions reduces coin
 balances in user wallets or creates a debt owed by Blast. Re-levering after a
 loss changes future exposure; it is not recapitalization. New retained USDC
-fees add reserve, while donations add shareholder NAV.
+fees add reserve, while donations add shareholder NAV (superseded by ADR 0086
+D7). Since ADR 0086, `R` is capped at `max_reserve_bps` of notional and there
+is no admin reserve release.
 
 If Aftermath is unavailable, a direct account cannot produce a trustless USDC
 redemption. The contract fails closed and waits for the venue's reduction or

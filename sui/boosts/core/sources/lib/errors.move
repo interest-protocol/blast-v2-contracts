@@ -171,6 +171,14 @@ const EInvalidMaxOrderNotional: u64 = 64;
 /// A maximum-order-notional update repeated the current setting.
 const EMaxOrderNotionalUnchanged: u64 = 74;
 
+#[test_only]
+/// The reserve ceiling must be a positive share of notional, at most 100%.
+const EInvalidMaxReserveBps: u64 = 101;
+
+#[test_only]
+/// A seed reserve exceeds the policy ceiling for the opening notional.
+const ESeedReserveAboveCap: u64 = 102;
+
 // Code 75 retired: a zero observation price now raises `invalid_price` (29).
 
 #[test_only]
@@ -249,9 +257,7 @@ const EActiveObservationUnusable: u64 = 93;
 /// The redemption pays less than the holder's stated minimum.
 const ERedemptionOutputBelowMinimum: u64 = 94;
 
-#[test_only]
-/// A reserve release exceeds the maintenance reserve.
-const EReserveReleaseExceedsBalance: u64 = 95;
+// Code 95 retired: the reserve ceiling in `VaultPolicy` replaced admin reserve release.
 
 #[test_only]
 /// An active rebalance was requested at or inside the one rebalance band.
@@ -336,9 +342,10 @@ macro public(package) fun active_fill_incomplete(): u64 { 91 }
 macro public(package) fun active_leverage_above_cap(): u64 { 92 }
 macro public(package) fun active_observation_unusable(): u64 { 93 }
 macro public(package) fun redemption_output_below_minimum(): u64 { 94 }
-macro public(package) fun reserve_release_exceeds_balance(): u64 { 95 }
 macro public(package) fun rebalance_inside_band(): u64 { 96 }
 macro public(package) fun rebalance_no_progress(): u64 { 97 }
 macro public(package) fun venue_fee_unusable(): u64 { 98 }
 macro public(package) fun invalid_asset_decimals(): u64 { 99 }
 macro public(package) fun nav_cap_unchanged(): u64 { 100 }
+macro public(package) fun invalid_max_reserve_bps(): u64 { 101 }
+macro public(package) fun seed_reserve_above_cap(): u64 { 102 }

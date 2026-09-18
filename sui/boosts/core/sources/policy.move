@@ -65,6 +65,8 @@ public struct VaultPolicy has copy, drop, store {
     redeem_fee_cap_bps: u64,
     admin_share_cap_bps: u64,
     min_order_lots: u64,
+    /// Ceiling on the maintenance reserve as basis points of position notional.
+    max_reserve_bps: u64,
 }
 
 // === Public Functions ===
@@ -199,10 +201,13 @@ public fun new_price_policy(
 /// Both initial fee rates stay below 10,000 bps and seed the live `State`
 /// rates; until `with_fee_limits` runs they are also the fee caps.
 /// `min_order_lots` is positive and at most `max_min_order_lots`.
+/// `max_reserve_bps` is positive and at most 10,000: the maintenance reserve
+/// may hold at most that share of position notional, and every reserve
+/// credit is clamped to it so the excess stays with holders as NAV.
 /// The NAV cap is not part of the policy: it is a live `State` value the
 /// admin may move, supplied to `state::new` directly.
 ///
-/// Guard order is the fee rates, then the lot multiple.
+/// Guard order is the fee rates, the lot multiple, then the reserve ceiling.
 public fun new_vault_policy(
     side: PositionSide,
     rebalance_policy: RebalancePolicy,
@@ -210,6 +215,7 @@ public fun new_vault_policy(
     initial_mint_fee_bps: u64,
     initial_redeem_fee_bps: u64,
     min_order_lots: u64,
+    max_reserve_bps: u64,
 ): VaultPolicy {
     assert!(
         initial_mint_fee_bps < constants::basis_points_denominator!()
@@ -220,6 +226,10 @@ public fun new_vault_policy(
         min_order_lots > 0
             && min_order_lots <= constants::max_min_order_lots!(),
         blast_boosts_core::errors::invalid_min_order_lots!(),
+    );
+    assert!(
+        max_reserve_bps > 0 && max_reserve_bps <= constants::basis_points_denominator!(),
+        blast_boosts_core::errors::invalid_max_reserve_bps!(),
     );
 
     VaultPolicy {
@@ -232,6 +242,7 @@ public fun new_vault_policy(
         redeem_fee_cap_bps: initial_redeem_fee_bps,
         admin_share_cap_bps: 0,
         min_order_lots,
+        max_reserve_bps,
     }
 }
 
@@ -589,6 +600,19 @@ public(package) fun initial_redeem_fee_bps(self: &VaultPolicy): u64 {
 /// Returns the minimum proportional order in live venue lots.
 public(package) fun min_order_lots(self: &VaultPolicy): u64 {
     self.min_order_lots
+}
+
+/// Returns the reserve ceiling as basis points of position notional.
+public(package) fun max_reserve_bps(self: &VaultPolicy): u64 {
+    self.max_reserve_bps
+}
+
+/// Returns the largest maintenance reserve the policy admits against `notional`.
+///
+/// Both values are atomic collateral units. Rounds down, so a reserve exactly
+/// at the ceiling is admitted and one atom more is released to NAV.
+public(package) fun reserve_cap(self: &VaultPolicy, notional: u64): u64 {
+    notional.mul_div(self.max_reserve_bps, constants::basis_points_denominator!())
 }
 
 public(package) fun assert_fee_limits(

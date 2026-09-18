@@ -205,13 +205,6 @@ public struct Donated<phantom Product> has copy, drop {
     checkpoint: Checkpoint,
 }
 
-/// Completed buffer-to-backing relabeling with no cash movement or supply change.
-public struct ReserveReleased<phantom Product> has copy, drop {
-    vault_id: ID,
-    amount: u64,
-    reserve_after: u64,
-}
-
 // === Package Functions ===
 
 /// The signed equity delta is the actual net execution effect at the fixed oracle pair.
@@ -244,12 +237,6 @@ public(package) fun minted<Product>(
     blast_boosts_aftermath::blast_events::emit_event(Minted<Product> {
         vault_id, deposit, shares, contribution, fee, admin_fee, reserve_fee, fee_bps, admin_share_bps,
         reserve_after, admin_cash_after, supply_after, checkpoint,
-    });
-}
-
-public(package) fun reserve_released<Product>(vault_id: ID, amount: u64, reserve_after: u64) {
-    blast_boosts_aftermath::blast_events::emit_event(ReserveReleased<Product> {
-        vault_id, amount, reserve_after,
     });
 }
 
@@ -678,11 +665,6 @@ public fun admin_fees_withdrawn_fields<Product>(self: &AdminFeesWithdrawn<Produc
 #[test_only]
 public fun donated_fields<Product>(self: &Donated<Product>): (ID, u64, u64, Checkpoint) {
     (self.vault_id, self.amount, self.reserve_after, self.checkpoint)
-}
-
-#[test_only]
-public fun reserve_released_fields<Product>(self: &ReserveReleased<Product>): (ID, u64, u64) {
-    (self.vault_id, self.amount, self.reserve_after)
 }
 
 // === Imports ===

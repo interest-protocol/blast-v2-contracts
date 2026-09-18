@@ -27,6 +27,9 @@ public struct State<phantom Product> has store {
     /// the selected risk module. Execution slippage is bounded separately by
     /// the immutable rebalance policy, so this value only paces orders.
     max_order_notional: u64,
+    /// Collateral inside the venue account that share pricing excludes. Every
+    /// credit is clamped to the policy ceiling for the live notional, so the
+    /// reserve can never grow past the share of the position it protects.
     maintenance_reserve: u64,
     /// Funding cost holders bore while the reserve was exhausted; later credits
     /// repay it to NAV before any credit rebuilds the reserve.
@@ -162,6 +165,11 @@ public fun prepare_initialization<Product>(
         seed_nav,
         self.vault_policy.rebalance_policy().target_bps(),
     );
+    assert!(
+        seed_reserve <= self.vault_policy.reserve_cap(target_notional),
+        blast_boosts_core::errors::seed_reserve_above_cap!(),
+    );
+
     let (base_price, collateral_price, lot_size) = (
         observation.base_oracle().price(),
         observation.collateral_oracle().price(),
@@ -273,7 +281,7 @@ public fun assert_active_observation<Product>(
 
     let position = validated_active_position(self, observation, now_ms);
     assert!(
-        position.base_price == base_price && position.collateral_price == collateral_price,
+        position.is_priced_at(base_price, collateral_price),
         blast_boosts_core::errors::active_checkpoint_changed!(),
     );
 }
@@ -300,7 +308,7 @@ public fun prepare_mint<Product>(
     assert!(supply > 0, blast_boosts_core::errors::invalid_share_supply!());
 
     let before = validated_active_position(self, observation, now_ms);
-    let nav = accounting_math::shareholder_nav(before.equity, self.maintenance_reserve);
+    let nav = accounting_math::shareholder_nav(before.equity, self.admitted_reserve(&before));
     assert!(
         self.vault_policy.rebalance_policy().is_leverage_within_band(before.notional, nav),
         blast_boosts_core::errors::mint_outside_rebalance_band!(),
@@ -365,25 +373,25 @@ public fun complete_mint<Product>(
     assert!(self.maintenance_reserve == reserve_before, blast_boosts_core::errors::active_checkpoint_changed!());
 
     let after = validated_active_position(self, observation, now_ms);
-    assert!(
-        before.base_price == after.base_price && before.collateral_price == after.collateral_price
-            && before.lot_size == after.lot_size,
-        blast_boosts_core::errors::active_checkpoint_changed!(),
-    );
+    assert!(before.is_same_checkpoint(&after), blast_boosts_core::errors::active_checkpoint_changed!());
     assert!(
         after.base >= before.base && after.base - before.base == base_to_buy,
         blast_boosts_core::errors::active_fill_incomplete!(),
     );
 
-    let reserve_after = reserve_before.checked_add(reserve_fee)
-        .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
+    let reserve_priced = self.admitted_reserve(&before);
+    let reserve_after = self.reserve_within_cap(
+        reserve_priced.checked_add(reserve_fee)
+            .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!()),
+        &after,
+    );
     let (nav_after, contribution, shares) = accounting_math::allocated_mint_quote(
-        before.equity, after.equity, reserve_before, reserve_after, expected_contribution,
+        before.equity, after.equity, reserve_priced, reserve_after, expected_contribution,
         supply, minimum_shares,
     );
     accounting_math::assert_mint_base_within_bounds(
         after.base, expected_contribution, contribution, before.base,
-        accounting_math::shareholder_nav(before.equity, reserve_before),
+        accounting_math::shareholder_nav(before.equity, reserve_priced),
         before.lot_size, self.vault_policy.min_order_lots(),
     );
     self.assert_within_nav_cap(nav_after);
@@ -458,8 +466,7 @@ public fun assert_redemption_cash_out<Product>(
 
     let after = validated_active_position(self, observation, now_ms);
     assert!(
-        after.equity == equity && after.base == base && after.base_price == base_price
-            && after.collateral_price == collateral_price,
+        after.equity == equity && after.base == base && after.is_priced_at(base_price, collateral_price),
         blast_boosts_core::errors::active_checkpoint_changed!(),
     );
 }
@@ -482,11 +489,7 @@ public fun complete_redemption<Product>(
     assert!(self.maintenance_reserve == reserve_before, blast_boosts_core::errors::active_checkpoint_changed!());
 
     let after = validated_active_position(self, observation, now_ms);
-    assert!(
-        before.base_price == after.base_price && before.collateral_price == after.collateral_price
-            && before.lot_size == after.lot_size,
-        blast_boosts_core::errors::active_checkpoint_changed!(),
-    );
+    assert!(before.is_same_checkpoint(&after), blast_boosts_core::errors::active_checkpoint_changed!());
     assert!(
         before.base >= after.base && before.base - after.base == base_to_sell,
         blast_boosts_core::errors::active_fill_incomplete!(),
@@ -496,15 +499,15 @@ public fun complete_redemption<Product>(
     );
 
     let (reserve_with_fee, nav_kept, fee, net) = accounting_math::redemption_accounting_quote(
-        shares, before.equity, after.equity, reserve_before, supply, fee_bps,
+        shares, before.equity, after.equity, self.admitted_reserve(&before), supply, fee_bps,
     );
     assert!(net >= minimum_output, blast_boosts_core::errors::redemption_output_below_minimum!());
     let admin = accounting_math::admin_share_down(fee, admin_share_bps);
-    let reserve_after = reserve_with_fee - admin;
-    let final_equity = nav_kept.checked_add(reserve_after)
+    let reserve_retained = reserve_with_fee - admin;
+    let final_equity = nav_kept.checked_add(reserve_retained)
         .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
 
-    self.maintenance_reserve = reserve_after;
+    self.maintenance_reserve = self.reserve_within_cap(reserve_retained, &after);
 
     (net, admin, final_equity, fee, fee - admin)
 }
@@ -597,11 +600,7 @@ public fun accept_rebalance_fill<Product>(
     );
 
     let after = validated_active_position(self, observation, now_ms);
-    assert!(
-        after.base_price == plan.before.base_price && after.collateral_price == plan.before.collateral_price
-            && after.lot_size == plan.before.lot_size,
-        blast_boosts_core::errors::active_checkpoint_changed!(),
-    );
+    assert!(plan.before.is_same_checkpoint(&after), blast_boosts_core::errors::active_checkpoint_changed!());
     let expected_base = if (increase) {
         plan.current.base.checked_add(filled).destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!())
     } else {
@@ -732,36 +731,15 @@ public fun complete_donation<Product>(
 
     let after = validated_active_position(self, after, now_ms);
     assert!(
-        before.base == after.base && before.notional == after.notional && before.lot_size == after.lot_size
-            && before.base_price == after.base_price && before.collateral_price == after.collateral_price
+        before.is_same_checkpoint(&after) && before.base == after.base && before.notional == after.notional
             && after.equity >= before.equity && after.equity - before.equity == amount,
         blast_boosts_core::errors::active_checkpoint_changed!(),
     );
 
-    self.maintenance_reserve = self.maintenance_reserve.checked_add(amount)
+    let reserve_funded = self.maintenance_reserve.checked_add(amount)
         .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
-}
 
-/// Relabels reserve as shareholder NAV without trading or moving collateral.
-/// Adapter custody must authenticate the risk administrator before this call.
-/// NAV-cap and ordinary leverage-band checks intentionally do not gate release.
-public fun release_reserve<Product>(
-    self: &mut State<Product>,
-    observation: PositionObservation,
-    amount: u64,
-    now_ms: u64,
-): u64 {
-    self.lifecycle.assert_active();
-    assert!(amount > 0, blast_boosts_core::errors::zero_amount!());
-    assert!(amount <= self.maintenance_reserve, blast_boosts_core::errors::reserve_release_exceeds_balance!());
-
-    let position = validated_active_position(self, observation, now_ms);
-    let reserve_after = self.maintenance_reserve - amount;
-    let nav = accounting_math::shareholder_nav(position.equity, reserve_after);
-
-    self.maintenance_reserve = reserve_after;
-
-    nav
+    self.maintenance_reserve = self.reserve_within_cap(reserve_funded, &after);
 }
 
 /// Rejects venue synchronization after the local cash pool has been sealed.
@@ -941,6 +919,36 @@ public fun maintenance_reserve<Product>(self: &State<Product>): u64 {
 
 // === Private Functions ===
 
+/// Returns whether the position was valued at exactly this oracle pair.
+fun is_priced_at(self: &ActivePosition, base_price: u64, collateral_price: u64): bool {
+    self.base_price == base_price && self.collateral_price == collateral_price
+}
+
+/// Returns whether two positions share one oracle pair and one venue lot, so their
+/// base and equity deltas can be attributed to the fills between them.
+fun is_same_checkpoint(self: &ActivePosition, other: &ActivePosition): bool {
+    self.is_priced_at(other.base_price, other.collateral_price) && self.lot_size == other.lot_size
+}
+
+/// Returns `reserve` clamped to the policy ceiling for `position`'s notional.
+///
+/// The clamp moves nothing: collateral above the ceiling stays in venue
+/// equity and simply counts as shareholder NAV from this checkpoint on. A
+/// flat position has no funding exposure to size the ceiling against, so it
+/// keeps the reserve intact for the position that reopens.
+fun reserve_within_cap<Product>(self: &State<Product>, reserve: u64, position: &ActivePosition): u64 {
+    if (position.notional == 0) reserve else reserve.min(self.vault_policy.reserve_cap(position.notional))
+}
+
+/// Returns the stored reserve as the ceiling admits it against `position`.
+///
+/// Every priced operation values shares against this, never the raw stored
+/// reserve, so a release that a shrinking notional or a funding credit left
+/// pending accrues to the holders at the checkpoint, not to the caller.
+fun admitted_reserve<Product>(self: &State<Product>, position: &ActivePosition): u64 {
+    self.reserve_within_cap(self.maintenance_reserve, position)
+}
+
 fun assert_within_nav_cap<Product>(self: &State<Product>, nav: u64) {
     assert!(self.is_within_nav_cap(nav), blast_boosts_core::errors::nav_cap_exceeded!());
 }
@@ -1065,6 +1073,10 @@ fun validated_initialization_nav<Product>(
     assert!(
         self.vault_policy.rebalance_policy().is_leverage_within_band(notional, seed_nav),
         blast_boosts_core::errors::initialization_leverage_unhealthy!(),
+    );
+    assert!(
+        seed_reserve <= self.vault_policy.reserve_cap(notional),
+        blast_boosts_core::errors::seed_reserve_above_cap!(),
     );
     assert!(
         observation::is_position_structurally_valid(

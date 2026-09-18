@@ -2,6 +2,10 @@
 /// Composition and validation tests for one immutable Vault policy.
 module blast_boosts_core::vault_policy_tests;
 
+// === Constants ===
+
+const MAX_RESERVE_BPS: u64 = 1_000;
+
 // === Tests ===
 
 #[test]
@@ -73,6 +77,7 @@ fun the_largest_locally_valid_short_policy_is_preserved() {
         9_999,
         9_999,
         1_000_000,
+        10_000,
     );
 
     assert_eq!(vault_policy.side(), policy::short());
@@ -81,6 +86,7 @@ fun the_largest_locally_valid_short_policy_is_preserved() {
     assert_eq!(vault_policy.initial_mint_fee_bps(), 9_999);
     assert_eq!(vault_policy.initial_redeem_fee_bps(), 9_999);
     assert_eq!(vault_policy.min_order_lots(), 1_000_000);
+    assert_eq!(vault_policy.max_reserve_bps(), 10_000);
 }
 
 #[test]
@@ -156,6 +162,31 @@ fun zero_minimum_exposure_lots_are_rejected() {
 }
 
 #[test]
+#[expected_failure(abort_code = errors::EInvalidMaxReserveBps, location = blast_boosts_core::policy)]
+fun a_zero_reserve_ceiling_is_rejected() {
+    new_policy_with_reserve_ceiling(0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidMaxReserveBps, location = blast_boosts_core::policy)]
+fun a_reserve_ceiling_above_the_whole_notional_is_rejected() {
+    new_policy_with_reserve_ceiling(10_001);
+}
+
+/// The ceiling rounds down against notional, so one atom over it is released.
+#[test]
+fun the_reserve_cap_is_the_floored_share_of_notional() {
+    let vault_policy = new_policy_with_reserve_ceiling(1_000);
+
+    assert_eq!(vault_policy.reserve_cap(0), 0);
+    assert_eq!(vault_policy.reserve_cap(9), 0);
+    assert_eq!(vault_policy.reserve_cap(10), 1);
+    assert_eq!(vault_policy.reserve_cap(2_000_000), 200_000);
+    assert_eq!(new_policy_with_reserve_ceiling(10_000).reserve_cap(std::u64::max_value!()), std::u64::max_value!());
+    assert_eq!(new_policy_with_reserve_ceiling(1).reserve_cap(std::u64::max_value!()), std::u64::max_value!() / 10_000);
+}
+
+#[test]
 #[expected_failure(abort_code = errors::EInvalidNavCap, location = blast_boosts_core::policy)]
 fun zero_nav_cap_is_rejected() {
     policy::new_rebalance_policy(0, 3, 5, 6, 0, 0, 1).assert_valid_nav_cap(0);
@@ -182,6 +213,19 @@ fun new_policy(
         mint_fee_bps,
         redeem_fee_bps,
         min_order_lots,
+        MAX_RESERVE_BPS,
+    )
+}
+
+fun new_policy_with_reserve_ceiling(max_reserve_bps: u64): policy::VaultPolicy {
+    policy::new_vault_policy(
+        policy::long(),
+        policy::new_rebalance_policy(0, 3, 5, 6, 0, 0, 1),
+        standard_price_policy(),
+        0,
+        0,
+        1,
+        max_reserve_bps,
     )
 }
 

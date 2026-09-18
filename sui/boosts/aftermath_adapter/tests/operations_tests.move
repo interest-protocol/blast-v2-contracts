@@ -483,18 +483,6 @@ fun wrong_role_precedes_invalid_fee_settings() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_boosts_aftermath::errors::EUnresolvedCheckpoint, location = blast_boosts_aftermath::venue_account)]
-fun unresolved_checkpoint_precedes_invalid_buffer_release_amount() {
-    let mut fixture = start();
-    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let changed = checkpoint_with_market_imr(1, ALLOCATED_FIXED, 10, 20, 10, 20, 1);
-    operations::complete_reserve_release(&mut vault, &witness, position_observation(SEED_EQUITY, false), changed, 0, REFERENCE_TIME_MS);
-    destroy(vault);
-    fixture.end();
-}
-
-#[test]
 fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_change() {
     let mut fixture = start();
     let mut vault = issue_and_activate_with_policy(&mut fixture, initial_checkpoint(),
@@ -908,27 +896,6 @@ fun completed_mint_returns_native_shares_and_updates_the_same_treasury_supply() 
     assert_eq!(vault.maintenance_reserve_for_testing(), 101);
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 0);
     sui::transfer::public_transfer(shares, ADMIN);
-    destroy(vault);
-    fixture.end();
-}
-
-#[test]
-fun connected_full_buffer_release_changes_no_cash_supply_or_checkpoint() {
-    let mut fixture = start();
-    let initial = initial_checkpoint();
-    let mut vault = issue_and_activate(&mut fixture, initial);
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    operations::complete_reserve_release(
-        &mut vault, &witness, position_observation(SEED_EQUITY, true),
-        initial, SEED_RESERVE, REFERENCE_TIME_MS,
-    );
-    assert_eq!(vault.maintenance_reserve_for_testing(), 0);
-    assert_eq!(vault.share_supply_for_testing(), 900_000);
-    assert_eq!(vault.admin_cash_balance<_, Collateral>(), 0);
-    assert_eq!(*vault.venue_checkpoint(), initial);
-    let (id, amount, reserve) = events::collect_one<events::ReserveReleased<Product>>(0).reserve_released_fields();
-    assert_eq!(id, vault.id_for_testing());
-    assert_eq!(vector[amount, reserve], vector[100, 0]);
     destroy(vault);
     fixture.end();
 }
@@ -2587,6 +2554,7 @@ fun standard_vault_policy_for_side(side: policy::PositionSide): policy::VaultPol
         10,
         10,
         100,
+        5_000,
     )
 }
 
@@ -2717,13 +2685,6 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag>) 
     assert_eq!(reserve, replay.maintenance_reserve + amount);
     replay.maintenance_reserve = reserve;
     replay.checkpoint = option::some(checkpoint);
-    assert_replay(&replay, vault);
-
-    operations::complete_reserve_release(vault, &witness, active_position(1_026, 1_800), donated_checkpoint, 20, REFERENCE_TIME_MS);
-    let (id, amount, reserve) = events::collect_one<events::ReserveReleased<Tag>>(0).reserve_released_fields();
-    assert_eq!(id, replay.vault_id);
-    assert_eq!(reserve, replay.maintenance_reserve - amount);
-    replay.maintenance_reserve = reserve;
     assert_replay(&replay, vault);
 
     let mut plan = vault.prepare_rebalance(rebalance_position(1_026, 3_000_000, 3_000), 10, REFERENCE_TIME_MS);

@@ -337,37 +337,6 @@ public fun mint<Product, Collateral>(
     shares
 }
 
-/// Releases active buffer to holder NAV without a venue trade or withdrawal.
-public fun release_reserve<Product, Collateral>(
-    vault: &mut Vault<Product>,
-    protocol: &Protocol,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
-    account: &mut Account<Collateral>,
-    registry: &Registry,
-    clearing_house: &mut ClearingHouse<Collateral>,
-    base_oracle: &PriceFeedStorage,
-    collateral_oracle: &PriceFeedStorage,
-    base_price_info: &PriceInfoObject,
-    collateral_price_info: &PriceInfoObject,
-    amount: u64,
-    clock: &Clock,
-) {
-    protocol.assert_current();
-    vault.assert_active();
-    admin_witness.assert_role(domain::risk_admin_role());
-    vault.assert_collateral_type<_, Collateral>();
-    assert!(amount > 0, blast_boosts_aftermath::errors::zero_amount!());
-    sync_health(
-        vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
-    );
-    let (observation, checkpoint) = snapshot::capture(
-        &vault.venue_binding(), account, registry, clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
-    );
-    complete_reserve_release(vault, admin_witness, observation, checkpoint, amount, clock.timestamp_ms());
-}
-
 /// Deposits configured collateral into the active funding buffer without shares or fees.
 public fun donate<Product, Collateral>(
     vault: &mut Vault<Product>,
@@ -800,21 +769,6 @@ public(package) fun complete_mint<Product, Collateral>(
         vault.share_supply(), checkpoint,
     );
     shares
-}
-
-/// Completes a pure buffer relabeling only at the accepted economic checkpoint.
-public(package) fun complete_reserve_release<Product>(
-    vault: &mut Vault<Product>,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
-    observation: PositionObservation,
-    checkpoint: venue_account::Checkpoint,
-    amount: u64,
-    now_ms: u64,
-) {
-    admin_witness.assert_role(domain::risk_admin_role());
-    vault.venue_checkpoint().assert_accepted_checkpoint(&checkpoint);
-    vault.release_reserve(admin_witness, observation, amount, now_ms);
-    events::reserve_released<Product>(vault.id(), amount, vault.maintenance_reserve());
 }
 
 /// Shared production completion phase, after the real venue deposit has returned.

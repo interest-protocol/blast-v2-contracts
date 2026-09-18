@@ -16,6 +16,8 @@ const SEED_NOTIONAL: u64 = 2_000_000;
 const LOT_SIZE: u64 = 1_000;
 const MIN_EXPOSURE_LOTS: u64 = 100;
 const NAV_CAP: u64 = 1_000_000_000;
+/// Half of notional: wide enough that ordinary fixtures never touch the ceiling.
+const MAX_RESERVE_BPS: u64 = 5_000;
 const HEALTH_SHARE_SUPPLY: u64 = 1_000_000;
 
 // === Test-Only Types ===
@@ -217,16 +219,6 @@ fun redemption_rejects_output_one_above_net() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EReserveReleaseExceedsBalance, location = blast_boosts_core::state)]
-fun buffer_release_balance_guard_precedes_bad_observation() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
-    state.release_reserve(standard_observation(policy::long()).with_pending_order_count(1).into_position_observation(), SEED_RESERVE + 1, REFERENCE_TIME_MS);
-    state.destroy_for_testing();
-    destroy(fixture);
-}
-
-#[test]
 #[expected_failure(abort_code = errors::ESharesOutBelowMinimum, location = blast_boosts_core::accounting_math)]
 fun mint_amount_supply_swap_cannot_satisfy_the_original_minimum() {
     let fixture = start(domain::vault_issuer_role());
@@ -334,7 +326,7 @@ fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
             let witness = fixture.authority.sign_in(&fixture.admin_cap);
             let vault_policy = policy::new_vault_policy(
                 side, policy::new_rebalance_policy(target - 2_000, target, target + 2_000, target + 10_000, 100, 500, 10),
-                policy::new_price_policy(30_000, 2_000, 100, 500), 0, 0, 100,
+                policy::new_price_policy(30_000, 2_000, 100, 500), 0, 0, 100, MAX_RESERVE_BPS,
             );
             let mut state = state::new<Product>(&witness, vault_policy, 2_000_000, NAV_CAP);
             let notional = target * 100;
@@ -519,29 +511,6 @@ fun a_flat_short_product_redeems_without_inventing_a_long_position() {
     );
     assert_eq!(vector[net, admin, final_equity], vector[499_500, 0, 600_500]);
     assert_eq!(fee, 500);
-    state.destroy_for_testing();
-    destroy(fixture);
-}
-
-#[test]
-fun donation_and_full_release_preserve_venue_equity_and_shareholder_accounting() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
-    state.donate(
-        standard_observation(policy::long()).into_position_observation(),
-        standard_observation(policy::long()).with_venue_equity(1_150_000).into_position_observation(),
-        50_000, REFERENCE_TIME_MS,
-    );
-    assert_eq!(state.maintenance_reserve(), 150_000);
-    let nav = state.release_reserve(
-        standard_observation(policy::long())
-            .with_venue_equity(NAV_CAP + 150_000)
-            .with_position_collateral(1_000_000)
-            .into_position_observation(),
-        150_000, REFERENCE_TIME_MS,
-    );
-    assert_eq!(state.maintenance_reserve(), 0);
-    assert_eq!(nav, NAV_CAP + 150_000);
     state.destroy_for_testing();
     destroy(fixture);
 }
@@ -1567,6 +1536,132 @@ fun deficits_accumulate_and_an_over_repaying_credit_splits() {
     destroy(fixture);
 }
 
+// --- Reserve Ceiling ---
+
+/// The seed reserve may not exceed the ceiling for the opening target notional.
+#[test]
+#[expected_failure(abort_code = errors::ESeedReserveAboveCap, location = blast_boosts_core::state)]
+fun a_seed_reserve_above_the_ceiling_is_rejected_before_any_order() {
+    let fixture = start(domain::vault_issuer_role());
+    // Ceiling 4% of the 2_000_000 target is 80_000; the seed asks for 100_000.
+    let state = capped_state(&fixture, 400);
+    let flat = standard_observation(policy::long()).with_position_base(0).with_position_collateral(0);
+    let (target, _, _, _) = state.prepare_initialization(flat.into_position_observation(), SEED_RESERVE, REFERENCE_TIME_MS);
+    assert_eq!(target, SEED_NOTIONAL);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ESeedReserveAboveCap, location = blast_boosts_core::state)]
+fun a_seed_reserve_above_the_ceiling_cannot_activate() {
+    let fixture = start(domain::vault_issuer_role());
+    let mut state = capped_state(&fixture, 400);
+    state.initialize(standard_observation(policy::long()).into_position_observation(), SEED_RESERVE, 9, 6, REFERENCE_TIME_MS);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+/// A seed reserve exactly at the ceiling activates; the ceiling is inclusive.
+#[test]
+fun a_seed_reserve_at_the_ceiling_activates() {
+    let fixture = start(domain::vault_issuer_role());
+    let mut state = capped_state(&fixture, 500);
+    let seed_nav = state.initialize(standard_observation(policy::long()).into_position_observation(), SEED_RESERVE, 9, 6, REFERENCE_TIME_MS);
+    assert_eq!(seed_nav, SEED_NAV);
+    assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+/// A redemption that shrinks notional below what the reserve needs releases the
+/// excess to holders: the stored reserve drops to the ceiling, the required venue
+/// equity is unchanged because nothing moved, and NAV per share rises.
+#[test]
+fun redemption_releases_reserve_above_the_ceiling_for_the_smaller_position() {
+    let fixture = start(domain::vault_issuer_role());
+    let mut state = capped_initialized_state(&fixture, 500);
+    let plan = state.prepare_redemption(
+        standard_observation(policy::long()).into_position_observation(),
+        500_000, 1_000_000, 499_500, REFERENCE_TIME_MS,
+    );
+    let (net, admin, final_equity, fee, buffer) = state.complete_redemption(
+        plan,
+        standard_observation(policy::long())
+            .with_venue_equity(1_102_000)
+            .with_position_base(100_000)
+            .with_position_collateral(1_000_000)
+            .into_position_observation(),
+        REFERENCE_TIME_MS,
+    );
+    // Same payout and physical equity as with a wide ceiling.
+    assert_eq!(vector[net, admin, fee, buffer, final_equity], vector[499_500, 0, 500, 500, 602_500]);
+    // The ceiling for 1_000_000 of notional at 5% is 50_000; the other 50_500 is NAV now.
+    assert_eq!(state.maintenance_reserve(), 50_000);
+    assert_eq!(final_equity - state.maintenance_reserve(), 552_500);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+/// A reserve left above the ceiling by a funding credit is priced as released
+/// before a mint, so the newcomer pays the higher NAV per share and the release
+/// stays with the holders at the checkpoint.
+#[test]
+fun a_mint_prices_shares_after_releasing_reserve_above_the_ceiling() {
+    let fixture = start(domain::vault_issuer_role());
+    let mut state = capped_initialized_state(&fixture, 500);
+    // Funding credits carry no observation, so the reserve grows past the 100_000 ceiling.
+    state.settle_funding(observation::funding_credit(50_000));
+    assert_eq!(state.maintenance_reserve(), 150_000);
+
+    let before = standard_observation(policy::long()).with_venue_equity(1_150_000);
+    let plan = state.prepare_mint(before.into_position_observation(), 1_000_000, 1_000_000, 1, REFERENCE_TIME_MS);
+    // Sized against NAV 1_050_000, not 1_000_000: 200_000 * 999_000 / 1_050_000 floored to the lot.
+    assert_eq!(plan.base_to_buy(), 190_000);
+    let (shares, contribution, _, _, _, _, _) = state.complete_mint(
+        plan,
+        before
+            .with_venue_equity(2_150_000)
+            .with_position_base(SEED_BASE + 190_000)
+            .with_position_collateral((SEED_BASE + 190_000) * 10)
+            .into_position_observation(),
+        REFERENCE_TIME_MS,
+    );
+    // 1_000_000 * 999_000 / 1_050_000, not the 999_000 a pre-release price would mint.
+    assert_eq!(vector[shares, contribution], vector[951_428, 999_000]);
+    // The fee rebuilds the reserve from the ceiling, not from the stale 150_000.
+    assert_eq!(state.maintenance_reserve(), 101_000);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+/// A donation is never rejected: the part above the ceiling counts as NAV.
+#[test]
+fun a_donation_above_the_ceiling_is_accepted_and_the_excess_is_nav() {
+    let fixture = start(domain::vault_issuer_role());
+    let mut state = capped_initialized_state(&fixture, 500);
+    state.donate(
+        standard_observation(policy::long()).into_position_observation(),
+        standard_observation(policy::long()).with_venue_equity(SEED_VENUE_EQUITY + 70_000).into_position_observation(),
+        70_000, REFERENCE_TIME_MS,
+    );
+    assert_eq!(state.maintenance_reserve(), 100_000);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+/// A flat position has nothing to size the ceiling against and keeps its reserve.
+#[test]
+fun a_flat_position_keeps_the_reserve_for_the_position_that_reopens() {
+    let fixture = start(domain::vault_issuer_role());
+    let mut state = capped_initialized_state(&fixture, 500);
+    let flat = standard_observation(policy::long()).with_position_base(0).with_position_collateral(0);
+    state.donate(flat.into_position_observation(), flat.with_venue_equity(SEED_VENUE_EQUITY + 70_000).into_position_observation(), 70_000, REFERENCE_TIME_MS);
+    assert_eq!(state.maintenance_reserve(), 170_000);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
 // === Fixture Setup ===
 
 fun rebalance_state(fixture: &Fixture, side: PositionSide): State<Product> {
@@ -1630,7 +1725,30 @@ fun vault_policy(side: PositionSide): VaultPolicy {
         10,
         10,
         MIN_EXPOSURE_LOTS,
+        MAX_RESERVE_BPS,
     )
+}
+
+/// A long state whose reserve ceiling is `max_reserve_bps` of notional, not yet activated.
+fun capped_state(fixture: &Fixture, max_reserve_bps: u64): State<Product> {
+    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let vault_policy = policy::new_vault_policy(
+        policy::long(),
+        policy::new_rebalance_policy(16_000, 20_000, 26_000, 30_000, 100, 500, 10),
+        policy::new_price_policy(30_000, 2_000, 100, 500),
+        10,
+        10,
+        MIN_EXPOSURE_LOTS,
+        max_reserve_bps,
+    );
+
+    state::new<Product>(&witness, vault_policy, MAX_ORDER_NOTIONAL, NAV_CAP)
+}
+
+fun capped_initialized_state(fixture: &Fixture, max_reserve_bps: u64): State<Product> {
+    let mut state = capped_state(fixture, max_reserve_bps);
+    state.initialize(standard_observation(policy::long()).into_position_observation(), SEED_RESERVE, 9, 6, REFERENCE_TIME_MS);
+    state
 }
 
 fun new_state(fixture: &Fixture, side: PositionSide): State<Product> {
