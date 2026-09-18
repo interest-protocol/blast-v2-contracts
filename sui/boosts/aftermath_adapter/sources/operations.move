@@ -45,7 +45,7 @@ public struct Fill has copy, drop {
     reduce_only: bool,
 }
 
-/// Linear custody of priced shares until exact collateral and final margin are proved.
+/// Linear custody of the redeemed shares until the payout is proved to have left the venue.
 public struct RedemptionReceipt<phantom Product> {
     shares: Balance<BlastBoost<Product>>,
     net: u64,
@@ -54,10 +54,6 @@ public struct RedemptionReceipt<phantom Product> {
     reserve_fee: u64,
     fee_bps: u64,
     admin_share_bps: u64,
-    final_equity: u64,
-    final_base: u64,
-    base_price: u64,
-    collateral_price: u64,
     unwound_checkpoint: Checkpoint,
 }
 
@@ -256,12 +252,11 @@ public fun redeem<Product, Collateral>(
         account, registry, &mut clearing_house, base_oracle, collateral_oracle,
         receipt.redemption_cash_required(), clock, ctx,
     );
-    let (after, final_checkpoint) = snapshot::capture(
+    let final_checkpoint = snapshot::capture_checkpoint(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
-    ).into_observation();
+    );
     receipt.unwound_checkpoint.assert_withdrawal_checkpoint(&final_checkpoint, receipt.redemption_cash_required());
-    let cash = complete_redemption(vault, receipt, cash, after, final_checkpoint, clock.timestamp_ms(), ctx);
+    let cash = complete_redemption(vault, receipt, cash, final_checkpoint, ctx);
     clearing_house.share();
 
     cash
@@ -358,19 +353,18 @@ public fun donate<Product, Collateral>(
     let amount = cash.value();
     assert!(amount > 0, blast_boosts_aftermath::errors::zero_amount!());
 
-    let (before, before_checkpoint) = synchronize(
+    let before_checkpoint = synchronize(
         vault, account, registry, clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
-    ).into_observation();
+    ).into_checkpoint();
     vault.venue().checkpoint().assert_unchanged(&before_checkpoint);
 
-    let plan = vault.state().prepare_donation(before, amount, clock.timestamp_ms());
     vault.venue().deposit(account, registry, cash);
     let (after, checkpoint) = snapshot::capture(
         &vault.venue().binding(), account, registry, clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     ).into_observation();
-    complete_donation(vault, plan, after, checkpoint, amount, clock.timestamp_ms());
+    complete_donation(vault, after, checkpoint, amount, clock.timestamp_ms());
 }
 
 /// Reconciles one bound Aftermath checkpoint and persists objective health.
@@ -518,20 +512,10 @@ public(package) fun seal_redemption_receipt<Product>(
         blast_boosts_aftermath::errors::redemption_share_mismatch!(),
     );
 
-    let priced = plan.redemption_position();
-    let (final_base, base_price, collateral_price, fee_bps, admin_share_bps) = (
-        plan.base_after_sell(),
-        priced.base_price(),
-        priced.collateral_price(),
-        plan.redemption_fee_bps(),
-        plan.redemption_admin_share_bps(),
-    );
-    let (net, admin, final_equity, fee, reserve_fee) = vault.state_mut().complete_redemption(plan, unwound, now_ms);
+    let (fee_bps, admin_share_bps) = (plan.redemption_fee_bps(), plan.redemption_admin_share_bps());
+    let (net, admin, fee, reserve_fee) = vault.state_mut().complete_redemption(plan, unwound, now_ms);
 
-    RedemptionReceipt {
-        shares: shares.into_balance(), net, admin, fee, reserve_fee, fee_bps, admin_share_bps,
-        final_equity, final_base, base_price, collateral_price, unwound_checkpoint,
-    }
+    RedemptionReceipt { shares: shares.into_balance(), net, admin, fee, reserve_fee, fee_bps, admin_share_bps, unwound_checkpoint }
 }
 
 /// Returns only the exact total collateral that must leave the venue before completion.
@@ -539,19 +523,17 @@ public(package) fun redemption_cash_required<Product>(self: &RedemptionReceipt<P
     self.net + self.admin
 }
 
-/// Completes custody after the public operation proves the signed withdrawal checkpoint.
-/// Validates final cash and margin, retains earned admin cash, then burns the held shares.
+/// Completes custody after the public operation proves the withdrawal on the checkpoint:
+/// retains the earned admin cash, burns the held shares, and accepts the checkpoint.
 public(package) fun complete_redemption<Product, Collateral>(
     vault: &mut Vault<Product>, receipt: RedemptionReceipt<Product>, mut cash: Coin<Collateral>,
-    after: PositionObservation, checkpoint: Checkpoint, now_ms: u64, ctx: &mut TxContext,
+    checkpoint: Checkpoint, ctx: &mut TxContext,
 ): Coin<Collateral> {
     let RedemptionReceipt {
-        shares, net, admin, fee, reserve_fee, fee_bps, admin_share_bps, final_equity, final_base,
-        base_price, collateral_price, unwound_checkpoint: _,
+        shares, net, admin, fee, reserve_fee, fee_bps, admin_share_bps, unwound_checkpoint: _,
     } = receipt;
     vault.assert_collateral_type<_, Collateral>();
     assert!(cash.value() == net + admin, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
-    vault.state().assert_redemption_cash_out(after, final_equity, final_base, base_price, collateral_price, now_ms);
 
     vault.retain_admin_cash(cash.split(admin, ctx));
     let burned = vault.burn_redeemed_shares(shares.into_coin(ctx));
@@ -579,18 +561,14 @@ public(package) fun complete_rebalance<Product, Collateral>(
     );
 }
 
-/// Shared production completion phase, after the real venue deposit has returned.
+/// Credits a donation the venue has taken: the raw checkpoint proves the exact
+/// deposit, the core prices the position it left.
 public(package) fun complete_donation<Product>(
-    vault: &mut Vault<Product>,
-    plan: DonationPlan<Product>,
-    after: PositionObservation,
-    checkpoint: Checkpoint,
-    amount: u64,
-    now_ms: u64,
+    vault: &mut Vault<Product>, after: PositionObservation, checkpoint: Checkpoint, amount: u64, now_ms: u64,
 ) {
     vault.venue().checkpoint().assert_deposit_checkpoint(&checkpoint, amount);
 
-    vault.state_mut().complete_donation(plan, after, now_ms);
+    vault.state_mut().donate(after, amount, now_ms);
     vault.venue_mut().replace_checkpoint(checkpoint);
 
     events::donated<Product>(vault.id(), amount, vault.state().maintenance_reserve(), checkpoint);
@@ -1545,7 +1523,7 @@ use blast_boosts_core::{
     observation::PositionObservation,
     policy::{Self, PositionSide},
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
-    state::{ActivePosition, DonationPlan, MintPlan, RebalancePlan, RedemptionPlan},
+    state::{ActivePosition, MintPlan, RebalancePlan, RedemptionPlan},
 };
 
 use ifixed::ifixed;

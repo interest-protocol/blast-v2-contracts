@@ -96,12 +96,6 @@ public struct RebalancePlan<phantom Product> {
     steps: u64,
 }
 
-/// Prevalidated funding donation terms held across the adapter deposit.
-public struct DonationPlan<phantom Product> {
-    before: ActivePosition,
-    amount: u64,
-}
-
 /// The next whole-lot order a rebalance places: its size, direction, and
 /// whether the position is still above the hard cap so the emergency
 /// slippage bound applies. A zero size ends the plan.
@@ -411,31 +405,17 @@ public fun redemption_fee_bps<Product>(self: &RedemptionPlan<Product>): u64 { se
 /// Admin allocation rate sealed with the plan.
 public fun redemption_admin_share_bps<Product>(self: &RedemptionPlan<Product>): u64 { self.admin_share_bps }
 
-/// Validates actual post-withdrawal backing and margin before a native share burn.
-public fun assert_redemption_cash_out<Product>(
-    self: &State<Product>, observation: PositionObservation, equity: u64, base: u64,
-    base_price: u64, collateral_price: u64, now_ms: u64,
-) {
-    self.lifecycle.assert_active();
-
-    let after = validated_active_position(self, observation, now_ms);
-    assert!(
-        after.equity == equity && after.base == base && after.is_priced_at(base_price, collateral_price),
-        blast_boosts_core::errors::active_checkpoint_changed!(),
-    );
-}
-
-/// Computes payout after unwind and credits the fee once, excluding admin cash.
+/// Computes the payout after the unwind and credits the fee once, excluding admin cash.
 /// The gross is capped at the proportional claim, so a favorable unwind accrues
 /// to the remaining holders (ADR 0084 D3).
-/// Returns user payout, locally retained admin cash, and required final venue equity.
-/// The adapter must withdraw exactly their sum and prove the final cash checkpoint.
+/// Returns the user payout, the admin cash, the fee, and the fee's reserve share.
+/// The adapter withdraws exactly payout plus admin cash and proves that on the checkpoint.
 public fun complete_redemption<Product>(
     self: &mut State<Product>,
     plan: RedemptionPlan<Product>,
     observation: PositionObservation,
     now_ms: u64,
-): (u64, u64, u64, u64, u64) {
+): (u64, u64, u64, u64) {
     self.lifecycle.assert_active();
     let RedemptionPlan {
         before, shares, supply, minimum_output, fee_bps, admin_share_bps, base_to_sell,
@@ -457,12 +437,14 @@ public fun complete_redemption<Product>(
     assert!(net >= minimum_output, blast_boosts_core::errors::redemption_output_below_minimum!());
     let admin = accounting_math::admin_share_down(fee, admin_share_bps);
     let reserve_retained = reserve_with_fee - admin;
-    let final_equity = nav_kept.checked_add(reserve_retained)
-        .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
+    assert!(
+        nav_kept <= std::u64::max_value!() - reserve_retained,
+        blast_boosts_core::errors::arithmetic_overflow!(),
+    );
 
     self.maintenance_reserve = self.reserve_within_cap(reserve_retained, &after);
 
-    (net, admin, final_equity, fee, fee - admin)
+    (net, admin, fee, fee - admin)
 }
 
 // --- Rebalance ---
@@ -649,39 +631,14 @@ public fun uncovered_deficit<Product>(self: &State<Product>): u64 {
     self.uncovered_deficit
 }
 
-/// Validates donation accounting before the adapter sends collateral to the venue.
-public fun prepare_donation<Product>(
-    self: &State<Product>,
-    observation: PositionObservation,
-    amount: u64,
-    now_ms: u64,
-): DonationPlan<Product> {
+/// Credits an exact donation to the reserve, clamped to the ceiling, without
+/// creating supply or an admin entitlement. The adapter proves the venue took
+/// exactly `amount` on the raw checkpoint; the core prices the position it left.
+public fun donate<Product>(self: &mut State<Product>, after: PositionObservation, amount: u64, now_ms: u64) {
     self.lifecycle.assert_active();
     assert!(amount > 0, blast_boosts_core::errors::zero_amount!());
 
-    DonationPlan {
-        before: validated_active_position(self, observation, now_ms),
-        amount,
-    }
-}
-
-/// Finishes an exact donation without creating any supply or admin entitlement.
-public fun complete_donation<Product>(
-    self: &mut State<Product>,
-    plan: DonationPlan<Product>,
-    after: PositionObservation,
-    now_ms: u64,
-) {
-    self.lifecycle.assert_active();
-    let DonationPlan { before, amount } = plan;
-
     let after = validated_active_position(self, after, now_ms);
-    assert!(
-        before.is_same_checkpoint(&after) && before.base == after.base && before.notional == after.notional
-            && after.equity >= before.equity && after.equity - before.equity == amount,
-        blast_boosts_core::errors::active_checkpoint_changed!(),
-    );
-
     let reserve_funded = self.maintenance_reserve.checked_add(amount)
         .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
 
@@ -862,14 +819,11 @@ public fun collateral_price(self: &ActivePosition): u64 { self.collateral_price 
 // === Private Functions ===
 
 /// Returns whether the position was valued at exactly this oracle pair.
-fun is_priced_at(self: &ActivePosition, base_price: u64, collateral_price: u64): bool {
-    self.base_price == base_price && self.collateral_price == collateral_price
-}
-
 /// Returns whether two positions share one oracle pair and one venue lot, so their
 /// base and equity deltas can be attributed to the fills between them.
 fun is_same_checkpoint(self: &ActivePosition, other: &ActivePosition): bool {
-    self.is_priced_at(other.base_price, other.collateral_price) && self.lot_size == other.lot_size
+    self.base_price == other.base_price && self.collateral_price == other.collateral_price
+        && self.lot_size == other.lot_size
 }
 
 /// Returns `reserve` clamped to the policy ceiling for `position`'s notional.
@@ -1124,20 +1078,6 @@ public fun fee_settings<Product>(self: &State<Product>): (u64, u64, u64) {
 /// Consumes an isolated state value at the end of a unit test.
 public fun destroy_for_testing<Product>(self: State<Product>) {
     let State { .. } = self;
-}
-
-#[test_only]
-/// Credits only authenticated newly deposited collateral to the reserve.
-/// This edge creates no shares and no admin entitlement.
-public fun donate<Product>(
-    self: &mut State<Product>,
-    before: PositionObservation,
-    after: PositionObservation,
-    amount: u64,
-    now_ms: u64,
-) {
-    let plan = self.prepare_donation(before, amount, now_ms);
-    self.complete_donation(plan, after, now_ms);
 }
 
 // === Imports ===

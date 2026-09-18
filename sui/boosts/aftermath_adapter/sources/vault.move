@@ -600,7 +600,7 @@ use blast_boosts_core::{
     policy::{PositionSide, VaultPolicy},
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
     lifecycle::ShutdownReason,
-    state::{Self, ActivePosition, DonationPlan, MintPlan, RebalancePlan, RedemptionPlan, State},
+    state::{Self, ActivePosition, MintPlan, RebalancePlan, RedemptionPlan, State},
 };
 
 use perpetuals::{account::Account, clearing_house::{ClearingHouse, SessionSummary}, registry::Registry};

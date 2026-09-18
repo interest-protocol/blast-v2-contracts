@@ -405,8 +405,7 @@ public fun redeem_with_fee_limit(self: &mut Vault, shares: u64, minimum_output: 
     let priced = plan.redemption_position();
     assert!(plan.redemption_shares() == shares && priced.lot_size() == self.venue.lot_size);
     assert!(plan.redemption_fee_bps() == redeem_bps && plan.redemption_admin_share_bps() == admin_share_bps);
-    let (base_price, collateral_price) = (priced.base_price(), priced.collateral_price());
-    let base_after_sell = plan.base_after_sell();
+    let base_price = priced.base_price();
     let cap = self.state.max_order_notional();
 
     let mut remaining = plan.base_to_sell();
@@ -424,14 +423,10 @@ public fun redeem_with_fee_limit(self: &mut Vault, shares: u64, minimum_output: 
     };
     self.last_orders = orders;
 
-    let (net, admin, final_equity, fee, reserve_slice) =
-        self.state.complete_redemption(plan, self.venue.observe(), now_ms);
+    let (net, admin, fee, reserve_slice) = self.state.complete_redemption(plan, self.venue.observe(), now_ms);
     assert!(fee == admin + reserve_slice);
     self.venue.withdraw(net + admin);
     self.admin_cash = self.admin_cash + admin;
-    self.state.assert_redemption_cash_out(
-        self.venue.observe(), final_equity, base_after_sell, base_price, collateral_price, now_ms,
-    );
     self.supply = self.supply - shares;
 
     net
@@ -487,10 +482,8 @@ public fun credit_funding(self: &mut Vault, credit: u64): (u64, u64, u64) {
 }
 
 public fun donate(self: &mut Vault, amount: u64) {
-    let now_ms = self.venue.now_ms;
-    let plan = self.state.prepare_donation(self.venue.observe(), amount, now_ms);
     self.venue.deposit(amount);
-    self.state.complete_donation(plan, self.venue.observe(), now_ms);
+    self.state.donate(self.venue.observe(), amount, self.venue.now_ms);
 }
 
 public fun set_fees(self: &mut Vault, mint_bps: u64, redeem_bps: u64, admin_share_bps: u64) {

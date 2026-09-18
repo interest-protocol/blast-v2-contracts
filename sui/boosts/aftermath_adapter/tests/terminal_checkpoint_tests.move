@@ -5,14 +5,14 @@ module blast_boosts_aftermath::terminal_checkpoint_tests;
 // === Tests ===
 
 #[test]
-#[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun terminal_cash_sum_overflow_is_not_a_partial_withdrawal() {
     checkpoint(0, 0, 1_000_000_000_000, 0, 9, std::u64::max_value!())
         .recoverable_cash_for_testing(false, 1_000_000_000_000);
 }
 
 #[test]
-#[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun one_remaining_atomic_coin_blocks_completed_withdrawal() {
     let before = checkpoint(0, 0, 0, 0, 9, 13);
     let after = checkpoint(0, 0, 0, 0, 9, 1);
@@ -20,14 +20,14 @@ fun one_remaining_atomic_coin_blocks_completed_withdrawal() {
 }
 
 #[test]
-#[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun pending_bid_base_blocks_finality_even_when_order_count_is_zero() {
     venue_account::new_checkpoint(0, 0, 0, 0, 9, 10, 9, 10, 1_000,
         0, 1, 0, 0, false, 0, 0, 0).recoverable_terminal_cash();
 }
 
 #[test]
-#[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun short_funding_snapshot_must_be_exact_even_when_flat() {
     venue_account::new_checkpoint(0, 0, 0, 0, 9, 9, 9, 10, 1_000,
         0, 0, 0, 0, false, 0, 0, 0).recoverable_terminal_cash();
@@ -43,7 +43,7 @@ fun direct_settlement_closes_raw_dust_without_creating_a_market_order() {
 }
 
 #[test]
-#[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun direct_settlement_cannot_leave_one_raw_order_or_position_unit() {
     let before = venue_account::new_checkpoint(0, 0, 1, 1, 9, 10, 9, 10, 1_000,
         0, 0, 0, 0, true, 0, 0, 0);
@@ -61,25 +61,25 @@ fun flat_settled_checkpoint_recovers_every_integral_collateral_atom() {
 // === Fixtures ===
 
 #[test]
-#[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun one_raw_base_unit_prevents_terminal_finality() {
     checkpoint(1, 0, 0, 0, 9, 0).recoverable_terminal_cash();
 }
 
 #[test]
-#[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun unresolved_entry_quote_prevents_terminal_finality() {
     checkpoint(0, 1, 0, 0, 9, 0).recoverable_terminal_cash();
 }
 
 #[test]
-#[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun pending_order_prevents_terminal_finality() {
     checkpoint(0, 0, 0, 1, 9, 0).recoverable_terminal_cash();
 }
 
 #[test]
-#[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun unsettled_funding_prevents_terminal_finality_even_when_flat() {
     checkpoint(0, 0, 0, 0, 8, 0).recoverable_terminal_cash();
 }
@@ -113,28 +113,28 @@ fun maximum_free_cash_does_not_make_sub_atomic_remainder_overflow() {
 }
 
 #[test]
-#[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun terminal_withdrawal_cannot_erase_one_raw_unit() {
     checkpoint(0, 0, 1, 0, 9, 5).assert_terminal_withdrawal_checkpoint_for_testing(
         &checkpoint(0, 0, 0, 0, 9, 0), 5, false, 1);
 }
 
 #[test]
-#[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun terminal_withdrawal_cannot_leave_one_recoverable_atom() {
     checkpoint(0, 0, 1_000_000_000_000, 0, 9, 5).assert_terminal_withdrawal_checkpoint_for_testing(
         &checkpoint(0, 0, 1_000_000_000_000, 0, 9, 0), 6, false, 1_000_000_000_000);
 }
 
 #[test]
-#[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun terminal_withdrawal_rejects_negative_raw_remainder() {
     checkpoint(0, 0, 1, 0, 9, 5).assert_terminal_withdrawal_checkpoint_for_testing(
         &checkpoint(0, 0, std::u256::max_value!(), 0, 9, 0), 5, false, 1);
 }
 
 #[test]
-#[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun signed_negative_liability_cannot_be_recovered_as_cash() {
     checkpoint(0, 0, 0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff,
         0, 9, 0).recoverable_cash_for_testing(true, 1);
@@ -147,6 +147,6 @@ fun checkpoint(base: u256, quote: u256, allocated: u256, pending: u64, funding: 
 
 // === Imports ===
 
-use blast_boosts_aftermath::venue_account::{Self, Checkpoint};
+use blast_boosts_aftermath::{errors, venue_account::{Self, Checkpoint}};
 
 use std::unit_test::assert_eq;

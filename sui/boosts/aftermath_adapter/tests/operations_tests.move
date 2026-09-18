@@ -101,7 +101,7 @@ fun revoked_shutdown_role_cannot_retire_a_vault() {
 }
 
 #[test]
-#[expected_failure(abort_code = 47, location = blast_boosts_aftermath::vault)]
+#[expected_failure(abort_code = errors::EDeadlineExpired, location = blast_boosts_aftermath::vault)]
 fun expired_terminal_claim_cannot_burn_shares_or_pay_cash() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
@@ -149,7 +149,7 @@ fun unwind_partial_budget_then_retry_uses_actual_remaining_exposure_for_both_sid
 }
 
 #[test]
-#[expected_failure(abort_code = 43, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::operations)]
 fun unwind_failed_middle_fill_aborts_the_current_atomic_call() {
     let first = operations::active_fill_for_testing(false, 250_000, 1, 0, 125_000_000_000_000, 0, 0, 0);
     assert_eq!(first, 125_000);
@@ -274,13 +274,13 @@ fun unwind_normalization_keeps_exact_positive_whole_lots_in_both_directions() {
 }
 
 #[test]
-#[expected_failure(abort_code = 55, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInvalidUnwindExposure, location = blast_boosts_aftermath::operations)]
 fun unwind_normalization_rejects_a_forced_opposite_direction() {
     operations::unwind_base_for_testing(1_800_000_000_000, false, 1, policy::long());
 }
 
 #[test]
-#[expected_failure(abort_code = 55, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInvalidUnwindExposure, location = blast_boosts_aftermath::operations)]
 fun ordinary_unwind_never_rounds_raw_base_dust_to_a_whole_lot() {
     operations::unwind_base_for_testing(1_800_000_000_001, true, 1, policy::long());
 }
@@ -380,7 +380,7 @@ fun terminal_claim_before_shutdown_rejects_lifecycle_before_missing_cash_field()
 }
 
 #[test]
-#[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun finalization_rejects_a_short_actual_coin_even_when_the_venue_is_empty() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
@@ -395,7 +395,7 @@ fun finalization_rejects_a_short_actual_coin_even_when_the_venue_is_empty() {
 }
 
 #[test]
-#[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun finalization_rejects_a_short_actual_coin_with_exact_sub_atomic_remainder() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
@@ -511,8 +511,7 @@ fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_
         active_position_with_base(10_996, 1_800_165), initial_checkpoint(), REFERENCE_TIME_MS);
     assert_eq!(receipt.redemption_cash_required(), 9_980);
     let cash = sui::coin::mint_for_testing<Collateral>(9_980, fixture.ctx!());
-    let cash = operations::complete_redemption(&mut vault, receipt, cash,
-        active_position_with_base(1_016, 1_800_165), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
+    let cash = operations::complete_redemption(&mut vault, receipt, cash, initial_checkpoint(), fixture.ctx!());
     assert_eq!(cash.value(), 9_978);
     assert_eq!(vault.share_supply(), 900_000);
     assert_eq!(vault.state().maintenance_reserve(), 116);
@@ -643,9 +642,7 @@ fun completed_redemption_burns_the_native_input_only_after_exact_cash_return() {
     assert_eq!(receipt.redemption_cash_required(), 994);
     let cash = sui::coin::mint_for_testing<Collateral>(994, fixture.ctx!());
     let final_checkpoint = checkpoint_with_market_imr(0, ALLOCATED_FIXED - 994 * ATOM_FIXED, 10, 20, 10, 20, 1);
-    let cash = operations::complete_redemption(
-        &mut vault, receipt, cash, active_position_with_base(1_002, 1_801_897), final_checkpoint, REFERENCE_TIME_MS, fixture.ctx!(),
-    );
+    let cash = operations::complete_redemption(&mut vault, receipt, cash, final_checkpoint, fixture.ctx!());
     assert_eq!(cash.value(), 994);
     assert_eq!(vault.share_supply(), 900_000);
     assert_eq!(vault.state().maintenance_reserve(), 102);
@@ -663,7 +660,7 @@ fun allocated_cash_changes_cross_zero_with_exact_signed_magnitudes() {
 }
 
 #[test]
-#[expected_failure(abort_code = 42, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::venue_account)]
 fun allocated_cash_changes_reject_a_reversed_signed_delta() {
     venue_account::assert_signed_cash_change_for_testing(true, 2 * ATOM_FIXED, false, 3 * ATOM_FIXED, 5, false);
 }
@@ -678,7 +675,7 @@ fun active_checkpoint_admits_only_the_executed_position_and_venue_cost() {
 }
 
 #[test]
-#[expected_failure(abort_code = 48, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::EActiveCheckpointMismatch, location = blast_boosts_aftermath::venue_account)]
 fun active_checkpoint_rejects_a_foreign_market_parameter_change() {
     let before = initial_checkpoint();
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, 10, 20, 10, 20, 2);
@@ -686,7 +683,7 @@ fun active_checkpoint_rejects_a_foreign_market_parameter_change() {
 }
 
 #[test]
-#[expected_failure(abort_code = 42, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::venue_account)]
 fun active_checkpoint_rejects_an_inexact_allocated_deposit() {
     let before = initial_checkpoint();
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED + 49 * ATOM_FIXED, 10, 20, 10, 20, 1);
@@ -701,7 +698,7 @@ fun redemption_cash_checkpoint_spends_free_cash_before_deallocating() {
 }
 
 #[test]
-#[expected_failure(abort_code = 42, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::venue_account)]
 fun redemption_cash_checkpoint_rejects_inexact_payout() {
     let before = checkpoint_with_market_imr(25, ALLOCATED_FIXED, 10, 20, 10, 20, 1);
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - 14 * ATOM_FIXED, 10, 20, 10, 20, 1);
@@ -804,13 +801,13 @@ fun funding_update_guard_matches_the_small_domain_reference() {
 }
 
 #[test]
-#[expected_failure(abort_code = 46, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EActiveOrderCountExceeded, location = blast_boosts_aftermath::operations)]
 fun active_order_rejects_a_seventeenth_session() {
     operations::active_order_size_for_testing(10, 1, PRICE, PRICE, 1, 16);
 }
 
 #[test]
-#[expected_failure(abort_code = 47, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EDeadlineExpired, location = blast_boosts_aftermath::operations)]
 fun active_order_rejects_an_expired_deadline() {
     operations::assert_deadline_for_testing(1_001, 1_000);
 }
@@ -822,37 +819,37 @@ fun active_partial_fill_consumes_only_filled_whole_lots() {
 }
 
 #[test]
-#[expected_failure(abort_code = 43, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::operations)]
 fun active_partial_fill_rejects_zero_progress() {
     operations::active_fill_for_testing(true, 100, 10, 0, 0, 0, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = 43, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::operations)]
 fun active_partial_fill_rejects_opposite_side() {
     operations::active_fill_for_testing(true, 100, 10, 60_000_000_000, 10_000_000_000, 0, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = 43, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::operations)]
 fun active_partial_fill_rejects_fractional_lot() {
     operations::active_fill_for_testing(true, 100, 10, 61_000_000_000, 0, 0, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = 43, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::operations)]
 fun active_partial_fill_rejects_overfill() {
     operations::active_fill_for_testing(true, 100, 10, 110_000_000_000, 0, 0, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = 44, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EActiveOrdersPosted, location = blast_boosts_aftermath::operations)]
 fun active_partial_fill_rejects_posted_orders() {
     operations::active_fill_for_testing(true, 100, 10, 60_000_000_000, 0, 1, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = 45, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EActiveLiquidation, location = blast_boosts_aftermath::operations)]
 fun active_partial_fill_rejects_liquidation() {
     operations::active_fill_for_testing(true, 100, 10, 60_000_000_000, 0, 0, 1, 0);
 }
@@ -904,11 +901,7 @@ fun connected_donation_accepts_only_the_exact_free_collateral_deposit() {
     let initial = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, initial);
     let after = checkpoint_with_market_imr(50, ALLOCATED_FIXED, 10, 20, 10, 20, 1);
-    let plan = vault.state().prepare_donation(position_observation(SEED_EQUITY), 50, REFERENCE_TIME_MS);
-    operations::complete_donation(
-        &mut vault, plan,
-        position_observation(SEED_EQUITY + 50), after, 50, REFERENCE_TIME_MS,
-    );
+    operations::complete_donation(&mut vault, position_observation(SEED_EQUITY + 50), after, 50, REFERENCE_TIME_MS);
     assert_eq!(vault.state().maintenance_reserve(), 150);
     assert_eq!(vault.share_supply(), 900_000);
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 0);
@@ -923,16 +916,12 @@ fun connected_donation_accepts_only_the_exact_free_collateral_deposit() {
 }
 
 #[test]
-#[expected_failure(abort_code = 42, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::venue_account)]
 fun donation_cannot_accept_an_unrelated_position_margin_change() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let after = checkpoint_with_market_imr(50, ALLOCATED_FIXED, 10, 20, 10, 20, 2);
-    let plan = vault.state().prepare_donation(position_observation(SEED_EQUITY), 50, REFERENCE_TIME_MS);
-    operations::complete_donation(
-        &mut vault, plan,
-        position_observation(SEED_EQUITY + 50), after, 50, REFERENCE_TIME_MS,
-    );
+    operations::complete_donation(&mut vault, position_observation(SEED_EQUITY + 50), after, 50, REFERENCE_TIME_MS);
     destroy(vault);
     fixture.end();
 }
@@ -963,7 +952,7 @@ fun earned_admin_cash_withdraws_without_venue_or_oracle_in_terminal_state() {
 }
 
 #[test]
-#[expected_failure(abort_code = 41, location = blast_boosts_aftermath::vault)]
+#[expected_failure(abort_code = errors::EInsufficientAdminCash, location = blast_boosts_aftermath::vault)]
 fun admin_cash_withdrawal_cannot_spend_the_buffer_when_earnings_are_absent() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
@@ -1003,7 +992,7 @@ fun target_and_order_cap_round_down_to_whole_base_lots() {
 }
 
 #[test]
-#[expected_failure(abort_code = 32, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInvalidInitializationOrderSize, location = blast_boosts_aftermath::operations)]
 fun target_below_one_lot_is_rejected() {
     operations::order_sizes_for_testing(
         1,
@@ -1015,7 +1004,7 @@ fun target_below_one_lot_is_rejected() {
 }
 
 #[test]
-#[expected_failure(abort_code = 32, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInvalidInitializationOrderSize, location = blast_boosts_aftermath::operations)]
 fun a_zero_target_is_rejected_as_an_invalid_order_size() {
     operations::order_sizes_for_testing(
         0,
@@ -1027,7 +1016,7 @@ fun a_zero_target_is_rejected_as_an_invalid_order_size() {
 }
 
 #[test]
-#[expected_failure(abort_code = 32, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInvalidInitializationOrderSize, location = blast_boosts_aftermath::operations)]
 fun a_zero_order_cap_is_rejected_as_an_invalid_order_size() {
     operations::order_sizes_for_testing(
         1,
@@ -1081,16 +1070,13 @@ fun actual_fill_notional_uses_the_session_quote_and_rounds_against_the_vault() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 26,
-    location = blast_boosts_aftermath::operations,
-)]
+#[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::operations)]
 fun actual_fill_notional_rejects_a_zero_collateral_price() {
     operations::actual_fill_notional_for_testing(1, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = 38, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInitializationOrderCountExceeded, location = blast_boosts_aftermath::operations)]
 fun initialization_order_count_rejects_the_first_value_above_the_maximum() {
     operations::order_count_for_testing(17, 1);
 }
@@ -1107,7 +1093,7 @@ fun initialization_order_count_ceil_does_not_add_before_dividing() {
 }
 
 #[test]
-#[expected_failure(abort_code = 32, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInvalidInitializationOrderSize, location = blast_boosts_aftermath::operations)]
 fun one_lot_above_the_order_cap_is_rejected() {
     operations::order_sizes_for_testing(
         2_000_000,
@@ -1147,7 +1133,7 @@ fun series_side_maps_to_the_aftermath_port_convention() {
 }
 
 #[test]
-#[expected_failure(abort_code = 33, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInitializationFillMismatch, location = blast_boosts_aftermath::operations)]
 fun a_partial_fill_is_rejected() {
     operations::assert_session_result_for_testing(
         true,
@@ -1161,7 +1147,7 @@ fun a_partial_fill_is_rejected() {
 }
 
 #[test]
-#[expected_failure(abort_code = 33, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInitializationFillMismatch, location = blast_boosts_aftermath::operations)]
 fun a_fill_on_the_wrong_side_is_rejected() {
     operations::assert_session_result_for_testing(
         true,
@@ -1175,7 +1161,7 @@ fun a_fill_on_the_wrong_side_is_rejected() {
 }
 
 #[test]
-#[expected_failure(abort_code = 34, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInitializationOrdersPosted, location = blast_boosts_aftermath::operations)]
 fun a_posted_order_is_rejected_before_fill_validation() {
     operations::assert_session_result_for_testing(
         true,
@@ -1189,7 +1175,7 @@ fun a_posted_order_is_rejected_before_fill_validation() {
 }
 
 #[test]
-#[expected_failure(abort_code = 35, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInitializationLiquidation, location = blast_boosts_aftermath::operations)]
 fun a_liquidation_is_rejected_before_fill_validation() {
     operations::assert_session_result_for_testing(
         true,
@@ -1203,7 +1189,7 @@ fun a_liquidation_is_rejected_before_fill_validation() {
 }
 
 #[test]
-#[expected_failure(abort_code = 35, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInitializationLiquidation, location = blast_boosts_aftermath::operations)]
 fun bad_debt_is_rejected_before_fill_validation() {
     operations::assert_session_result_for_testing(
         true,
@@ -1222,19 +1208,19 @@ fun valid_local_initialization_inputs_are_accepted() {
 }
 
 #[test]
-#[expected_failure(abort_code = 28, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInvalidCollateralDecimals, location = blast_boosts_aftermath::operations)]
 fun non_six_decimal_collateral_is_rejected_before_seed_validation() {
     operations::assert_initialization_inputs_for_testing(7, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = 29, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInvalidSeed, location = blast_boosts_aftermath::operations)]
 fun a_zero_seed_is_rejected_before_reserve_validation() {
     operations::assert_initialization_inputs_for_testing(6, 0, 1);
 }
 
 #[test]
-#[expected_failure(abort_code = 30, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInvalidSeedReserve, location = blast_boosts_aftermath::operations)]
 fun a_reserve_equal_to_the_seed_is_rejected() {
     operations::assert_initialization_inputs_for_testing(6, 100, 100);
 }
@@ -1248,7 +1234,7 @@ fun locked_share_scaling_accepts_the_largest_seed_nav() {
 }
 
 #[test]
-#[expected_failure(abort_code = 37, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::ELockedSharesOverflow, location = blast_boosts_aftermath::operations)]
 fun locked_share_scaling_rejects_the_first_overflow() {
     operations::locked_shares_for_testing(std::u64::max_value!() / 1_000 + 1);
 }
@@ -1266,13 +1252,13 @@ fun execution_price_rounds_against_the_vault() {
 }
 
 #[test]
-#[expected_failure(abort_code = 26, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::operations)]
 fun negative_execution_price_is_rejected() {
     operations::execution_price_for_testing(1, true, true);
 }
 
 #[test]
-#[expected_failure(abort_code = 26, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::operations)]
 fun unrepresentable_execution_price_is_rejected() {
     operations::execution_price_for_testing(std::u256::max_value!(), false, false);
 }
@@ -1283,7 +1269,7 @@ fun nonnegative_position_imr_is_accepted() {
 }
 
 #[test]
-#[expected_failure(abort_code = 36, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInitializationImrMismatch, location = blast_boosts_aftermath::operations)]
 fun negative_position_imr_is_rejected() {
     operations::assert_position_imr_for_testing(true);
 }
@@ -2534,8 +2520,7 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag>) 
     let receipt = operations::seal_redemption_receipt(vault, plan, shares,
         active_position_with_base(10_996, 1_800_165), initial_checkpoint(), REFERENCE_TIME_MS);
     let cash = sui::coin::mint_for_testing<Collateral>(9_980, fixture.ctx!());
-    let cash = operations::complete_redemption(vault, receipt, cash,
-        active_position_with_base(1_016, 1_800_165), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
+    let cash = operations::complete_redemption(vault, receipt, cash, initial_checkpoint(), fixture.ctx!());
     replay_redemption(&mut replay, events::collect_one<events::Redeemed<Tag>>(0));
     assert_replay(&replay, vault);
     sui::transfer::public_transfer(cash, ADMIN);
@@ -2551,9 +2536,8 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag>) 
     assert_replay(&replay, vault);
     sui::transfer::public_transfer(cash, ADMIN);
 
-    let plan = vault.state().prepare_donation(active_position(1_016, 1_800), 10, REFERENCE_TIME_MS);
     let donated_checkpoint = checkpoint_with_market_imr(10, ALLOCATED_FIXED, 10, 20, 10, 20, 1);
-    operations::complete_donation(vault, plan, active_position(1_026, 1_800), donated_checkpoint, 10, REFERENCE_TIME_MS);
+    operations::complete_donation(vault, active_position(1_026, 1_800), donated_checkpoint, 10, REFERENCE_TIME_MS);
     let (id, amount, reserve, checkpoint) = events::collect_one<events::Donated<Tag>>(0).donated_fields();
     assert_eq!(id, replay.vault_id);
     assert_eq!(reserve, replay.maintenance_reserve + amount);
@@ -2821,6 +2805,7 @@ use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
 use blast_boosts_aftermath::{
     blast_boost::BlastBoost,
     domain_fixture,
+    errors,
     events,
     operations,
     protocol::{Self, Protocol},

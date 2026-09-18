@@ -320,9 +320,8 @@ fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
             assert_eq!(vector[shares, contribution, state.maintenance_reserve()], vector[1_000_000, 1_000_000, 100_000]);
             let plan = state.prepare_redemption(rebalance_observation(2_100_000, notional * 2, side), 500_000, 2_000_000, 500_000, REFERENCE_TIME_MS);
             assert_eq!(plan.base_to_sell(), notional * 500);
-            let (net, admin, equity, fee, _) = state.complete_redemption(plan, rebalance_observation(2_100_000, notional * 3 / 2, side), REFERENCE_TIME_MS);
-            assert_eq!(vector[net, admin, equity, fee], vector[500_000, 0, 1_600_000, 0]);
-            state.assert_redemption_cash_out(rebalance_observation(equity, notional * 3 / 2, side), equity, notional * 1_500, 1_000_000_000, 1_000_000_000, REFERENCE_TIME_MS);
+            let (net, admin, fee, _) = state.complete_redemption(plan, rebalance_observation(2_100_000, notional * 3 / 2, side), REFERENCE_TIME_MS);
+            assert_eq!(vector[net, admin, fee], vector[500_000, 0, 0]);
             state.destroy_for_testing();
         });
     });
@@ -481,10 +480,8 @@ fun a_flat_short_product_redeems_without_inventing_a_long_position() {
         .with_position_base(0);
     let plan = state.prepare_redemption(flat.into_position_observation(), 500_000, 1_000_000, 499_500, REFERENCE_TIME_MS);
     assert_eq!(plan.base_to_sell(), 0);
-    let (net, admin, final_equity, fee, _) = state.complete_redemption(
-        plan, flat.into_position_observation(), REFERENCE_TIME_MS,
-    );
-    assert_eq!(vector[net, admin, final_equity], vector[499_500, 0, 600_500]);
+    let (net, admin, fee, _) = state.complete_redemption(plan, flat.into_position_observation(), REFERENCE_TIME_MS);
+    assert_eq!(vector[net, admin], vector[499_500, 0]);
     assert_eq!(fee, 500);
     state.destroy_for_testing();
     destroy(fixture);
@@ -499,15 +496,15 @@ fun redemption_keeps_remaining_nav_and_allocates_its_own_fee() {
         500_000, 1_000_000, 497_502, REFERENCE_TIME_MS,
     );
     assert_eq!(plan.base_to_sell(), 1_000_000_000);
-    let (net, admin, final_equity, fee, _) = state.complete_redemption(
+    let (net, admin, fee, _) = state.complete_redemption(
         plan,
         standard_observation(policy::short())
             .with_venue_equity(1_098_000)
             .with_position_base(1_000_000_000)
-            
             .into_position_observation(),
         REFERENCE_TIME_MS,
     );
+    let final_equity = 1_098_000 - net - admin;
     assert_eq!(vector[net, admin, final_equity], vector[497_502, 0, 600_498]);
     assert_eq!(fee, 498);
     assert_eq!(state.maintenance_reserve(), 100_498);
@@ -535,7 +532,6 @@ fun mint_credits_at_most_the_deposit_net_of_fee_when_the_fill_is_favorable() {
         standard_observation(policy::long())
             .with_venue_equity(2_102_000)
             .with_position_base(3_998_000_000)
-            
             .into_position_observation(),
         REFERENCE_TIME_MS,
     );
@@ -558,15 +554,15 @@ fun redemption_pays_at_most_the_proportional_claim_when_the_unwind_is_favorable(
         500_000, 1_000_000, 499_500, REFERENCE_TIME_MS,
     );
     assert_eq!(plan.base_to_sell(), 1_000_000_000);
-    let (net, admin, final_equity, fee, buffer) = state.complete_redemption(
+    let (net, admin, fee, buffer) = state.complete_redemption(
         plan,
         standard_observation(policy::long())
             .with_venue_equity(1_102_000)
             .with_position_base(1_000_000_000)
-            
             .into_position_observation(),
         REFERENCE_TIME_MS,
     );
+    let final_equity = 1_102_000 - net - admin;
     assert_eq!(vector[net, admin, fee, buffer], vector[499_500, 0, 500, 500]);
     assert_eq!(state.maintenance_reserve(), 100_500);
     assert_eq!(final_equity, 602_500);
@@ -593,7 +589,6 @@ fun mint_prices_actual_contribution_after_the_attributable_cost() {
         standard_observation(policy::long())
             .with_venue_equity(2_098_000)
             .with_position_base(3_998_000_000)
-            
             .into_position_observation(),
         REFERENCE_TIME_MS,
     );
@@ -1426,15 +1421,15 @@ fun redemption_releases_reserve_above_the_ceiling_for_the_smaller_position() {
         standard_observation(policy::long()).into_position_observation(),
         500_000, 1_000_000, 499_500, REFERENCE_TIME_MS,
     );
-    let (net, admin, final_equity, fee, buffer) = state.complete_redemption(
+    let (net, admin, fee, buffer) = state.complete_redemption(
         plan,
         standard_observation(policy::long())
             .with_venue_equity(1_102_000)
             .with_position_base(1_000_000_000)
-            
             .into_position_observation(),
         REFERENCE_TIME_MS,
     );
+    let final_equity = 1_102_000 - net - admin;
     // Same payout and physical equity as with a wide ceiling.
     assert_eq!(vector[net, admin, fee, buffer, final_equity], vector[499_500, 0, 500, 500, 602_500]);
     // The ceiling for 1_000_000 of notional at 5% is 50_000; the other 50_500 is NAV now.
@@ -1482,7 +1477,6 @@ fun a_donation_above_the_ceiling_is_accepted_and_the_excess_is_nav() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = capped_initialized_state(&fixture, 500);
     state.donate(
-        standard_observation(policy::long()).into_position_observation(),
         standard_observation(policy::long()).with_venue_equity(SEED_VENUE_EQUITY + 70_000).into_position_observation(),
         70_000, REFERENCE_TIME_MS,
     );
@@ -1497,7 +1491,7 @@ fun a_flat_position_keeps_the_reserve_for_the_position_that_reopens() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = capped_initialized_state(&fixture, 500);
     let flat = standard_observation(policy::long()).with_position_base(0);
-    state.donate(flat.into_position_observation(), flat.with_venue_equity(SEED_VENUE_EQUITY + 70_000).into_position_observation(), 70_000, REFERENCE_TIME_MS);
+    state.donate(flat.with_venue_equity(SEED_VENUE_EQUITY + 70_000).into_position_observation(), 70_000, REFERENCE_TIME_MS);
     assert_eq!(state.maintenance_reserve(), 170_000);
     state.destroy_for_testing();
     destroy(fixture);

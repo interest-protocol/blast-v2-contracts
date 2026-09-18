@@ -23,10 +23,7 @@ fun an_admin_cap_for_the_bound_account_seals_the_venue_account() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 11,
-    location = blast_boosts_aftermath::venue_account,
-)]
+#[expected_failure(abort_code = errors::EAdminCapAccountMismatch, location = blast_boosts_aftermath::venue_account)]
 fun an_admin_cap_for_another_account_is_rejected() {
     let mut ctx = tx_context::dummy();
     let venue = venue_account::new(standard_binding(), standard_checkpoint(), admin_cap_for(@0xBAD, &mut ctx));
@@ -51,10 +48,7 @@ fun exact_binding_accepts_every_matching_component() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 12,
-    location = blast_boosts_aftermath::venue_account,
-)]
+#[expected_failure(abort_code = errors::EAccountObjectMismatch, location = blast_boosts_aftermath::venue_account)]
 fun wrong_account_object_is_rejected() {
     standard_binding().assert_object_graph(
         @0xBAD.to_id(),
@@ -68,10 +62,7 @@ fun wrong_account_object_is_rejected() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 13,
-    location = blast_boosts_aftermath::venue_account,
-)]
+#[expected_failure(abort_code = errors::EAccountNumberMismatch, location = blast_boosts_aftermath::venue_account)]
 fun wrong_account_number_is_rejected() {
     standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
@@ -85,10 +76,7 @@ fun wrong_account_number_is_rejected() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 14,
-    location = blast_boosts_aftermath::venue_account,
-)]
+#[expected_failure(abort_code = errors::ERegistryMismatch, location = blast_boosts_aftermath::venue_account)]
 fun wrong_registry_is_rejected() {
     standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
@@ -102,10 +90,7 @@ fun wrong_registry_is_rejected() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 15,
-    location = blast_boosts_aftermath::venue_account,
-)]
+#[expected_failure(abort_code = errors::EClearingHouseMismatch, location = blast_boosts_aftermath::venue_account)]
 fun wrong_clearing_house_is_rejected() {
     standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
@@ -119,10 +104,7 @@ fun wrong_clearing_house_is_rejected() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 16,
-    location = blast_boosts_aftermath::venue_account,
-)]
+#[expected_failure(abort_code = errors::EBaseOracleMismatch, location = blast_boosts_aftermath::venue_account)]
 fun wrong_base_oracle_is_rejected() {
     standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
@@ -136,10 +118,7 @@ fun wrong_base_oracle_is_rejected() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 17,
-    location = blast_boosts_aftermath::venue_account,
-)]
+#[expected_failure(abort_code = errors::ECollateralOracleMismatch, location = blast_boosts_aftermath::venue_account)]
 fun wrong_collateral_oracle_is_rejected() {
     standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
@@ -153,10 +132,7 @@ fun wrong_collateral_oracle_is_rejected() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 18,
-    location = blast_boosts_aftermath::venue_account,
-)]
+#[expected_failure(abort_code = errors::ECollateralTypeMismatch, location = blast_boosts_aftermath::venue_account)]
 fun wrong_collateral_type_is_rejected() {
     standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
@@ -170,10 +146,7 @@ fun wrong_collateral_type_is_rejected() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 12,
-    location = blast_boosts_aftermath::venue_account,
-)]
+#[expected_failure(abort_code = errors::EAccountObjectMismatch, location = blast_boosts_aftermath::venue_account)]
 fun account_object_precedes_account_number() {
     standard_binding().assert_object_graph(
         @0xBAD.to_id(),
@@ -187,10 +160,7 @@ fun account_object_precedes_account_number() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 13,
-    location = blast_boosts_aftermath::venue_account,
-)]
+#[expected_failure(abort_code = errors::EAccountNumberMismatch, location = blast_boosts_aftermath::venue_account)]
 fun account_number_precedes_registry() {
     standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
@@ -204,10 +174,7 @@ fun account_number_precedes_registry() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 14,
-    location = blast_boosts_aftermath::venue_account,
-)]
+#[expected_failure(abort_code = errors::ERegistryMismatch, location = blast_boosts_aftermath::venue_account)]
 fun registry_precedes_clearing_house() {
     standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
@@ -221,10 +188,7 @@ fun registry_precedes_clearing_house() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 15,
-    location = blast_boosts_aftermath::venue_account,
-)]
+#[expected_failure(abort_code = errors::EClearingHouseMismatch, location = blast_boosts_aftermath::venue_account)]
 fun clearing_house_precedes_base_oracle() {
     standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
@@ -238,10 +202,7 @@ fun clearing_house_precedes_base_oracle() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 16,
-    location = blast_boosts_aftermath::venue_account,
-)]
+#[expected_failure(abort_code = errors::EBaseOracleMismatch, location = blast_boosts_aftermath::venue_account)]
 fun base_oracle_precedes_collateral_oracle() {
     standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
@@ -255,10 +216,7 @@ fun base_oracle_precedes_collateral_oracle() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 17,
-    location = blast_boosts_aftermath::venue_account,
-)]
+#[expected_failure(abort_code = errors::ECollateralOracleMismatch, location = blast_boosts_aftermath::venue_account)]
 fun collateral_oracle_precedes_collateral_type() {
     standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
@@ -350,7 +308,7 @@ fun assert_standard_checkpoint(checkpoint: &Checkpoint) {
 
 use authority_cap::authority::{Self, ADMIN, AuthorityCap};
 
-use blast_boosts_aftermath::venue_account::{Self, Binding, Checkpoint};
+use blast_boosts_aftermath::{errors, venue_account::{Self, Binding, Checkpoint}};
 
 use perpetuals::authority::ACCOUNT;
 

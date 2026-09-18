@@ -56,7 +56,7 @@ fun shutdown_admin_stops_an_active_vault_without_any_venue_or_oracle_input() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_boosts_aftermath::errors::EInvalidSeedFunder, location = blast_boosts_aftermath::vault)]
+#[expected_failure(abort_code = errors::EInvalidSeedFunder, location = blast_boosts_aftermath::vault)]
 fun seed_funder_rejects_zero_before_activation() {
     vault::assert_seed_funder(@0x0);
 }
@@ -299,10 +299,7 @@ fun selected_risk_module_reads_the_seed_constraints() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 10,
-    location = blast_boosts_aftermath::vault,
-)]
+#[expected_failure(abort_code = errors::ERiskModuleWitnessMismatch, location = blast_boosts_aftermath::vault)]
 fun unselected_risk_module_cannot_read_seed_constraints() {
     let mut fixture = start(domain::vault_issuer_role());
     let issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
@@ -331,7 +328,7 @@ fun locked_seed_share_mint_updates_the_canonical_supply_once() {
 }
 
 #[test]
-#[expected_failure(abort_code = 51, location = blast_boosts_aftermath::vault)]
+#[expected_failure(abort_code = errors::ESeedAlreadyRecorded, location = blast_boosts_aftermath::vault)]
 fun locked_seed_funder_and_amount_cannot_be_replaced() {
     let mut fixture = start(domain::vault_issuer_role());
     let mut issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
@@ -342,10 +339,7 @@ fun locked_seed_funder_and_amount_cannot_be_replaced() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 10,
-    location = blast_boosts_aftermath::vault,
-)]
+#[expected_failure(abort_code = errors::ERiskModuleWitnessMismatch, location = blast_boosts_aftermath::vault)]
 fun unselected_risk_module_cannot_update_max_order_notional() {
     let mut fixture = start(domain::vault_issuer_role());
     fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
@@ -363,10 +357,7 @@ fun unselected_risk_module_cannot_update_max_order_notional() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 2,
-    location = blast_boosts_aftermath::vault,
-)]
+#[expected_failure(abort_code = errors::EInvalidRiskModuleWitnessType, location = blast_boosts_aftermath::vault)]
 fun primitive_risk_module_cannot_update_max_order_notional() {
     let mut fixture = start(domain::vault_issuer_role());
     fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
@@ -448,10 +439,7 @@ fun stale_adapter_version_precedes_risk_witness_and_max_order_notional_validatio
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 10,
-    location = blast_boosts_aftermath::vault,
-)]
+#[expected_failure(abort_code = errors::ERiskModuleWitnessMismatch, location = blast_boosts_aftermath::vault)]
 fun rotated_out_risk_module_cannot_update_max_order_notional() {
     let mut fixture = start(
         domain::vault_issuer_role() | domain::risk_admin_role(),
@@ -550,10 +538,7 @@ fun one_generic_product_tag_cannot_issue_twice() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 8,
-    location = blast_boosts_aftermath::vault,
-)]
+#[expected_failure(abort_code = errors::EInvalidProductWitnessType, location = blast_boosts_aftermath::vault)]
 fun primitive_product_witness_is_rejected() {
     let mut fixture = start(domain::vault_issuer_role());
 
@@ -563,10 +548,7 @@ fun primitive_product_witness_is_rejected() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = 2,
-    location = blast_boosts_aftermath::vault,
-)]
+#[expected_failure(abort_code = errors::EInvalidRiskModuleWitnessType, location = blast_boosts_aftermath::vault)]
 fun adapter_package_type_cannot_be_selected_as_a_risk_module() {
     let mut fixture = start(domain::vault_issuer_role());
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
@@ -742,6 +724,7 @@ use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
 use blast_boosts_aftermath::{
     blast_boost::BlastBoost,
     domain_fixture,
+    errors,
     events,
     protocol::{Self, Protocol},
     vault::{Self, Vault, VaultIssuance},
