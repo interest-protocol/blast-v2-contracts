@@ -471,7 +471,7 @@ fun assert_terminal_withdrawal_decoded(
     let mut expected = *before;
     expected.free_collateral = 0;
     // Magnitude is nonnegative and validated above; the exact raw remainder is < one atom.
-    expected.allocated_collateral = magnitude % 1_000_000_000_000;
+    expected.allocated_collateral = magnitude % constants::collateral_atom_to_ifixed_scale!();
 
     assert!(&expected == after, blast_boosts_aftermath::errors::terminal_venue_unsettled!());
 }
@@ -488,11 +488,11 @@ fun recoverable_cash_decoded(self: &Checkpoint, negative: bool, magnitude: u256)
 
     let capacity = (std::u64::max_value!() - self.free_collateral) as u256;
     assert!(
-        !negative && magnitude / 1_000_000_000_000 <= capacity,
+        !negative && magnitude / constants::collateral_atom_to_ifixed_scale!() <= capacity,
         blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
     );
 
-    self.free_collateral + ((magnitude / 1_000_000_000_000) as u64)
+    self.free_collateral + ((magnitude / constants::collateral_atom_to_ifixed_scale!()) as u64)
 }
 
 /// Checks every unrelated field after the caller proves the signed collateral delta.
@@ -509,7 +509,7 @@ fun assert_signed_cash_change(
     before_negative: bool, before: u256, after_negative: bool, after: u256,
     amount: u64, increase: bool,
 ) {
-    let required = (amount as u256) * 1_000_000_000_000;
+    let required = (amount as u256) * constants::collateral_atom_to_ifixed_scale!();
     let (actual, credit) = if (before_negative == after_negative) {
         (before.diff(after), if (before_negative) { before > after } else { after > before })
     } else {
@@ -690,6 +690,8 @@ public fun checkpoint_for_testing(
 // === Imports ===
 
 use authority_cap::authority::{Self, ADMIN, AuthorityCap};
+
+use blast_boosts_aftermath::constants;
 
 use ifixed::ifixed;
 

@@ -8,9 +8,6 @@ module blast_boosts_aftermath::snapshot;
 // so the pure arithmetic can be exercised from fixtures; production callers
 // always go through the decoding wrapper above each one.
 
-/// Converts nine-decimal base atoms to six-decimal collateral atoms.
-const COLLATERAL_TO_BASE_SCALE: u256 = 1_000;
-
 // === Public Types ===
 
 /// The only recognized raw transition between authenticated checkpoints.
@@ -450,8 +447,8 @@ public(package) fun unchanged_change(): Change {
 /// Returns whether the change is a representable funding credit or cost.
 public(package) fun has_funding(self: &Change): bool {
     match (self) {
-        Change::FundingCredit(raw) => { let (_, ok) = fixed_to_u64_down_health(*raw, 6); ok },
-        Change::FundingCost(raw) => { let (_, ok) = fixed_to_u64_up_health(*raw, 6); ok },
+        Change::FundingCredit(raw) => { let (_, ok) = fixed_to_u64_down_health(*raw, constants::collateral_decimals!() as u64); ok },
+        Change::FundingCost(raw) => { let (_, ok) = fixed_to_u64_up_health(*raw, constants::collateral_decimals!() as u64); ok },
         _ => false,
     }
 }
@@ -473,8 +470,8 @@ public(package) fun raw_amount(self: &Change): u256 {
 /// Returns the six-decimal funding amount, credits down and costs up; zero when unrepresentable.
 public(package) fun amount(self: &Change): u64 {
     match (self) {
-        Change::FundingCredit(raw) => { let (amount, _) = fixed_to_u64_down_health(*raw, 6); amount },
-        Change::FundingCost(raw) => { let (amount, _) = fixed_to_u64_up_health(*raw, 6); amount },
+        Change::FundingCredit(raw) => { let (amount, _) = fixed_to_u64_down_health(*raw, constants::collateral_decimals!() as u64); amount },
+        Change::FundingCost(raw) => { let (amount, _) = fixed_to_u64_up_health(*raw, constants::collateral_decimals!() as u64); amount },
         _ => 0,
     }
 }
@@ -501,11 +498,11 @@ public fun funding_change_fields(
         Change::Unchanged => (false, false, 0, 0, true),
         Change::Unexpected => (false, false, 0, 0, false),
         Change::FundingCredit(raw_amount) => {
-            let (amount, representable) = fixed_to_u64_down_health(*raw_amount, 6);
+            let (amount, representable) = fixed_to_u64_down_health(*raw_amount, constants::collateral_decimals!() as u64);
             (representable, false, *raw_amount, amount, representable)
         },
         Change::FundingCost(raw_amount) => {
-            let (amount, representable) = fixed_to_u64_up_health(*raw_amount, 6);
+            let (amount, representable) = fixed_to_u64_up_health(*raw_amount, constants::collateral_decimals!() as u64);
             (representable, true, *raw_amount, amount, representable)
         },
     }
@@ -821,7 +818,7 @@ fun fixed_to_u64_up_health(value: u256, decimals: u64): (u64, bool) {
 fun usd_fixed_to_collateral_fixed(usd: u256, collateral_price: u256, round_up: bool): u256 {
     assert!(collateral_price > 0, blast_boosts_aftermath::errors::normalization_overflow!());
 
-    let one = pow10(18);
+    let one = constants::ifixed_one!();
     let whole = usd / collateral_price;
     let remainder = usd % collateral_price;
     assert!(
@@ -853,7 +850,7 @@ fun base_notional_health(position_base: u64, base_price: u64, collateral_price: 
     if (collateral_price == 0) return (0, false);
 
     let numerator = (position_base as u256) * (base_price as u256);
-    let denominator = (collateral_price as u256) * COLLATERAL_TO_BASE_SCALE;
+    let denominator = (collateral_price as u256) * constants::collateral_to_base_scale!();
     let notional = numerator.div_ceil(denominator);
 
     if (notional > std::u64::max_value!() as u256) { (0, false) } else { (notional as u64, true) }
@@ -882,15 +879,15 @@ fun signed_equity_health_decoded(
 
     // A liability rounds up and an asset rounds down, so equity never reads high.
     let (allocated_tokens, allocated_ok) = if (allocated_negative) {
-        fixed_to_u64_up_health(allocated, 6)
+        fixed_to_u64_up_health(allocated, constants::collateral_decimals!() as u64)
     } else {
-        fixed_to_u64_down_health(allocated, 6)
+        fixed_to_u64_down_health(allocated, constants::collateral_decimals!() as u64)
     };
     let (pnl, collateral_ok) = usd_fixed_to_collateral_fixed_health(pnl_magnitude_usd, collateral_price, pnl_negative);
     let (rounded, pnl_ok) = if (pnl_negative) {
-        fixed_to_u64_up_health(pnl, 6)
+        fixed_to_u64_up_health(pnl, constants::collateral_decimals!() as u64)
     } else {
-        fixed_to_u64_down_health(pnl, 6)
+        fixed_to_u64_down_health(pnl, constants::collateral_decimals!() as u64)
     };
     if (!allocated_ok || !collateral_ok || !pnl_ok) return (0, false);
 
@@ -908,7 +905,7 @@ fun signed_equity_health_decoded(
 fun usd_fixed_to_collateral_fixed_health(usd: u256, collateral_price: u256, round_up: bool): (u256, bool) {
     if (collateral_price == 0) return (0, false);
 
-    let one = pow10(18);
+    let one = constants::ifixed_one!();
     let whole = usd / collateral_price;
     let remainder = usd % collateral_price;
     if (whole > std::u256::max_value!() / one || remainder > std::u256::max_value!() / one) return (0, false);
@@ -1228,7 +1225,7 @@ public fun signed_equity_strict_for_testing(
 
 // === Imports ===
 
-use blast_boosts_aftermath::venue_account::{Self as venue_account, Binding, Checkpoint};
+use blast_boosts_aftermath::{constants, venue_account::{Self as venue_account, Binding, Checkpoint}};
 
 use blast_boosts_core::{observation, policy::{Self, PositionSide}};
 

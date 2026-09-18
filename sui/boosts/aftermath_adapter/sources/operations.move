@@ -10,12 +10,6 @@ module blast_boosts_aftermath::operations;
 
 // === Constants ===
 
-/// Converts six-decimal collateral atoms to nine-decimal base atoms.
-const COLLATERAL_TO_BASE_SCALE: u256 = 1_000;
-
-/// Raw IFixed units represented by one nine-decimal base atom.
-const BASE_ATOM_TO_IFIXED_SCALE: u256 = 1_000_000_000;
-
 /// Converts six-decimal seed NAV atoms to nine-decimal share atoms.
 const SEED_SHARE_SCALE: u64 = 1_000;
 
@@ -955,13 +949,13 @@ fun unwind_base(checkpoint: &venue_account::Checkpoint, side: PositionSide): u64
 fun unwind_base_decoded(magnitude: u256, is_long: bool, lot_size: u64, side: PositionSide): u64 {
     assert!(
         lot_size > 0 && magnitude > 0
-            && magnitude <= (std::u64::max_value!() as u256) * BASE_ATOM_TO_IFIXED_SCALE
-            && magnitude % ((lot_size as u256) * BASE_ATOM_TO_IFIXED_SCALE) == 0
+            && magnitude <= (std::u64::max_value!() as u256) * constants::base_atom_to_ifixed_scale!()
+            && magnitude % ((lot_size as u256) * constants::base_atom_to_ifixed_scale!()) == 0
             && is_long == (side == policy::long()),
         blast_boosts_aftermath::errors::invalid_unwind_exposure!(),
     );
 
-    (magnitude / BASE_ATOM_TO_IFIXED_SCALE) as u64
+    (magnitude / constants::base_atom_to_ifixed_scale!()) as u64
 }
 
 /// Reads the market's taker fee and priority surcharge as one basis-point bound.
@@ -982,13 +976,13 @@ fun nonnegative_rate(rate: u256): u256 {
 /// Aftermath's priority rate is an additional surcharge, not an alternative fee.
 /// Negative rebates are ignored conservatively; callers provide no fee input.
 fun venue_fee_bound(ordinary: u256, priority: u256): u64 {
-    let one = 1_000_000_000_000_000_000u256;
+    let one = constants::ifixed_one!();
     assert!(
         ordinary <= one && priority <= one && ordinary <= one - priority,
         blast_boosts_aftermath::errors::venue_fee_unusable!(),
     );
 
-    ((ordinary + priority).div_ceil(100_000_000_000_000)) as u64
+    ((ordinary + priority).div_ceil(constants::ifixed_per_basis_point!())) as u64
 }
 
 fun classify_sync_changes(
@@ -1193,7 +1187,7 @@ fun base_for_notional_down(notional: u64, base_price: u64, collateral_price: u64
     let numerator = (notional as u256)
         .checked_mul(collateral_price as u256)
         .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!())
-        .checked_mul(COLLATERAL_TO_BASE_SCALE)
+        .checked_mul(constants::collateral_to_base_scale!())
         .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
     let base = numerator / (base_price as u256);
     assert!(base <= std::u64::max_value!() as u256, blast_boosts_aftermath::errors::normalization_overflow!());
@@ -1207,7 +1201,7 @@ fun notional_for_base_up(base: u64, base_price: u64, collateral_price: u64): u64
         .checked_mul(base_price as u256)
         .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
     let denominator = (collateral_price as u256)
-        .checked_mul(COLLATERAL_TO_BASE_SCALE)
+        .checked_mul(constants::collateral_to_base_scale!())
         .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
     let notional = numerator.div_ceil(denominator);
     assert!(notional <= std::u64::max_value!() as u256, blast_boosts_aftermath::errors::normalization_overflow!());
@@ -1223,7 +1217,7 @@ fun actual_fill_notional(filled_quote: u256, collateral_price: u64): u64 {
     assert!(collateral_price > 0, blast_boosts_aftermath::errors::normalization_overflow!());
 
     let denominator = (collateral_price as u256)
-        .checked_mul(COLLATERAL_TO_BASE_SCALE)
+        .checked_mul(constants::collateral_to_base_scale!())
         .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
     let notional = filled_quote.div_ceil(denominator);
     assert!(notional <= std::u64::max_value!() as u256, blast_boosts_aftermath::errors::normalization_overflow!());
@@ -1247,12 +1241,12 @@ fun active_fill(
 
     let (filled, opposite) = if (is_bid) { (filled_bid, filled_ask) } else { (filled_ask, filled_bid) };
     assert!(
-        opposite == 0 && filled > 0 && filled <= (requested_base as u256) * BASE_ATOM_TO_IFIXED_SCALE
-            && lot_size > 0 && filled % ((lot_size as u256) * BASE_ATOM_TO_IFIXED_SCALE) == 0,
+        opposite == 0 && filled > 0 && filled <= (requested_base as u256) * constants::base_atom_to_ifixed_scale!()
+            && lot_size > 0 && filled % ((lot_size as u256) * constants::base_atom_to_ifixed_scale!()) == 0,
         blast_boosts_aftermath::errors::active_fill_mismatch!(),
     );
 
-    (filled / BASE_ATOM_TO_IFIXED_SCALE) as u64
+    (filled / constants::base_atom_to_ifixed_scale!()) as u64
 }
 
 fun assert_session_result(
@@ -1267,7 +1261,7 @@ fun assert_session_result(
     assert!(posted_orders == 0, blast_boosts_aftermath::errors::initialization_orders_posted!());
     assert!(liquidated_size == 0 && bad_debt == 0, blast_boosts_aftermath::errors::initialization_liquidation!());
 
-    let expected_raw_base = (expected_base as u256) * BASE_ATOM_TO_IFIXED_SCALE;
+    let expected_raw_base = (expected_base as u256) * constants::base_atom_to_ifixed_scale!();
     let fill_matches = if (is_long) {
         filled_bid == expected_raw_base && filled_ask == 0
     } else {
@@ -1282,7 +1276,10 @@ fun assert_initialization_inputs(
     seed_reserve: u64,
     share_supply: u64,
 ) {
-    assert!(collateral_decimals == 6, blast_boosts_aftermath::errors::invalid_collateral_decimals!());
+    assert!(
+        collateral_decimals == constants::collateral_decimals!(),
+        blast_boosts_aftermath::errors::invalid_collateral_decimals!(),
+    );
     assert!(seed_amount > 0, blast_boosts_aftermath::errors::invalid_seed!());
     assert!(seed_reserve < seed_amount, blast_boosts_aftermath::errors::invalid_seed_reserve!());
     assert!(share_supply == 0, blast_boosts_aftermath::errors::share_supply_not_zero!());
@@ -1301,8 +1298,8 @@ fun execution_price(raw_price: u256, round_up: bool): u64 {
 fun normalize_execution_price(raw_price: u256, round_up: bool, negative: bool): u64 {
     assert!(!negative, blast_boosts_aftermath::errors::normalization_overflow!());
 
-    let down = raw_price / BASE_ATOM_TO_IFIXED_SCALE;
-    let normalized = if (round_up && raw_price % BASE_ATOM_TO_IFIXED_SCALE != 0) { down + 1 } else { down };
+    let down = raw_price / constants::base_atom_to_ifixed_scale!();
+    let normalized = if (round_up && raw_price % constants::base_atom_to_ifixed_scale!() != 0) { down + 1 } else { down };
     assert!(normalized <= std::u64::max_value!() as u256, blast_boosts_aftermath::errors::normalization_overflow!());
 
     normalized as u64
@@ -1554,6 +1551,7 @@ use blast_admin::acl::AdminWitness;
 
 use blast_boosts_aftermath::{
     blast_boost::BlastBoost,
+    constants,
     events,
     protocol::Protocol,
     snapshot,
