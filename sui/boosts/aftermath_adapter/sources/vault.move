@@ -422,6 +422,13 @@ public(package) fun burn_redeemed_shares<Product>(self: &mut Vault<Product>, sha
 
 // --- Rebalance ---
 
+/// Whether the core would admit a rebalance against this observation.
+public(package) fun needs_rebalance<Product>(
+    self: &Vault<Product>, observation: PositionObservation, now_ms: u64,
+): bool {
+    self.state.needs_rebalance(observation, now_ms)
+}
+
 /// Seals maintenance terms against this Vault's immutable policy and current buffer.
 public(package) fun prepare_rebalance<Product>(
     self: &Vault<Product>, observation: PositionObservation, venue_fee_bps: u64, now_ms: u64,

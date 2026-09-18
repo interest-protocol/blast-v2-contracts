@@ -434,6 +434,11 @@ public fun redeem_with_fee_limit(self: &mut Vault, shares: u64, minimum_output: 
 
 // --- Rebalance ---
 
+/// The keeper's dry run: whether the core would admit a rebalance right now.
+public fun needs_rebalance(self: &Vault): bool {
+    self.state.needs_rebalance(self.venue.observe(), self.venue.now_ms)
+}
+
 /// Runs one complete permissionless rebalance and returns the number of orders it placed.
 public fun rebalance(self: &mut Vault): u64 {
     let now_ms = self.venue.now_ms;

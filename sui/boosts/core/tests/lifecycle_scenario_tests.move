@@ -731,6 +731,68 @@ fun the_last_price_at_the_band_edge_keeps_the_public_trigger_closed() {
     vault.destroy();
 }
 
+// --- Keeper Dry Run ---
+
+/// The dry run agrees with the trigger on both sides of the band edge and after the correction.
+#[test]
+fun the_dry_run_tracks_the_public_trigger_across_the_band_edge() {
+    let mut vault = test_adapter::issue(test_adapter::calm_venue());
+    vault.activate(SEED, SEED_RESERVE);
+    assert!(!vault.needs_rebalance());
+
+    let price = first_price_below_the_band(&mut vault);
+    vault.venue_mut().set_base_price(price - PRICE_STEP);
+    assert!(!vault.needs_rebalance());
+
+    vault.venue_mut().set_base_price(price);
+    assert!(vault.needs_rebalance());
+    vault.rebalance();
+    assert!(!vault.needs_rebalance());
+    vault.destroy();
+}
+
+/// A crash through the hard cap reads as due, and stays due after the emergency
+/// call stops at the cap, until the ordinary call finishes.
+#[test]
+fun the_dry_run_stays_due_until_the_reduction_reaches_the_band() {
+    let mut vault = stressed_vault();
+    vault.activate(SEED, SEED_RESERVE);
+    vault.mint(1_000 * USDC, 1);
+    let price = vault.venue().base_price();
+    vault.venue_mut().set_base_price(price * 70 / 100);
+    assert!(vault.needs_rebalance());
+
+    vault.rebalance();
+    assert!(vault.leverage_bps() <= 30_000 && vault.needs_rebalance());
+
+    vault.rebalance();
+    assert!(!vault.needs_rebalance());
+    vault.destroy();
+}
+
+/// The dry run fails exactly where the real call would fail before its first order.
+#[test]
+#[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
+fun the_dry_run_refuses_an_unwinding_vault() {
+    let mut vault = test_adapter::issue(test_adapter::calm_venue());
+    vault.activate(SEED, SEED_RESERVE);
+    vault.state_mut().begin_shutdown();
+
+    vault.needs_rebalance();
+    vault.destroy();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::state)]
+fun the_dry_run_refuses_a_liquidated_vault() {
+    let mut vault = test_adapter::issue(test_adapter::calm_venue());
+    vault.activate(SEED, SEED_RESERVE);
+    vault.venue_mut().liquidate();
+
+    vault.needs_rebalance();
+    vault.destroy();
+}
+
 /// Lowering the order cap mid-life splits the next operation into more orders.
 #[test]
 fun a_lower_order_cap_splits_the_next_operation_into_more_orders() {

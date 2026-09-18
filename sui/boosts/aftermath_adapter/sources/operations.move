@@ -332,6 +332,32 @@ public fun rebalance<Product, Collateral>(
     clearing_house.share();
 }
 
+/// A keeper's dry run of `rebalance`: whether the live position sits outside the band.
+///
+/// Reads everything `rebalance` reads and asks the core the same question, so it
+/// aborts where `rebalance` would abort before its first order: unresolved venue
+/// drift, or an observation the price policy refuses. It does not settle funding
+/// first, so a due settlement can move the answer by that amount when the real
+/// call runs; intended for `dev_inspect`, not for on-chain gating.
+public fun needs_rebalance<Product, Collateral>(
+    vault: &Vault<Product>, protocol: &Protocol, account: &Account<Collateral>, registry: &Registry,
+    clearing_house: &ClearingHouse<Collateral>, base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage, base_price_info: &PriceInfoObject,
+    collateral_price_info: &PriceInfoObject, clock: &Clock,
+): bool {
+    protocol.assert_current();
+    vault.assert_active();
+    vault.assert_collateral_type<_, Collateral>();
+
+    let (observation, checkpoint) = snapshot::capture(
+        &vault.venue_binding(), account, registry, clearing_house, base_oracle, collateral_oracle,
+        base_price_info, collateral_price_info, clock,
+    );
+    vault.venue_checkpoint().assert_unchanged(&checkpoint);
+
+    vault.needs_rebalance(observation, clock.timestamp_ms())
+}
+
 /// Deposits configured collateral into the active funding buffer without shares or fees.
 public fun donate<Product, Collateral>(
     vault: &mut Vault<Product>,

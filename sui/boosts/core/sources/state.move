@@ -312,11 +312,12 @@ public fun prepare_mint<Product>(
     assert!(supply > 0, blast_boosts_core::errors::invalid_share_supply!());
 
     let before = validated_active_position(self, observation, now_ms);
-    let nav = accounting_math::shareholder_nav(before.equity, self.admitted_reserve(&before));
+    let reserve_priced = self.admitted_reserve(&before);
     assert!(
-        self.vault_policy.rebalance_policy().is_leverage_within_band(before.notional, nav),
+        self.is_within_band(&before, reserve_priced),
         blast_boosts_core::errors::mint_outside_rebalance_band!(),
     );
+    let nav = accounting_math::shareholder_nav(before.equity, reserve_priced);
 
     let (fee, admin_fee, reserve_fee) = self.fee_allocation(deposit, true);
     let expected_contribution = deposit - fee;
@@ -518,6 +519,17 @@ public fun complete_redemption<Product>(
 
 // --- Rebalance ---
 
+/// Whether a rebalance would be admitted against this observation: the position,
+/// priced against the admitted reserve, sits outside the band. A keeper's dry
+/// run; `prepare_rebalance` asks the same question and aborts on `false`.
+public fun needs_rebalance<Product>(self: &State<Product>, observation: PositionObservation, now_ms: u64): bool {
+    self.lifecycle.assert_active();
+
+    let position = validated_active_position(self, observation, now_ms);
+
+    !self.is_within_band(&position, self.admitted_reserve(&position))
+}
+
 /// Derives public maintenance intent from exact outside-band ratios, never caller orders.
 public fun prepare_rebalance<Product>(
     self: &State<Product>, observation: PositionObservation, venue_fee_bps: u64, now_ms: u64,
@@ -530,13 +542,11 @@ public fun prepare_rebalance<Product>(
 
     let before = validated_active_position(self, observation, now_ms);
     let reserve_priced = self.admitted_reserve(&before);
+    assert!(!self.is_within_band(&before, reserve_priced), blast_boosts_core::errors::rebalance_inside_band!());
+
     let nav = accounting_math::shareholder_nav(before.equity, reserve_priced);
     let rebalance = self.vault_policy.rebalance_policy();
     let increase = rebalance.is_leverage_below_band(before.notional, nav);
-    assert!(
-        increase || rebalance.is_leverage_above_band(before.notional, nav),
-        blast_boosts_core::errors::rebalance_inside_band!(),
-    );
 
     RebalancePlan {
         before,
@@ -945,6 +955,12 @@ fun reserve_within_cap<Product>(self: &State<Product>, reserve: u64, position: &
 /// pending accrues to the holders at the checkpoint, not to the caller.
 fun admitted_reserve<Product>(self: &State<Product>, position: &ActivePosition): u64 {
     self.reserve_within_cap(self.maintenance_reserve, position)
+}
+
+/// Whether leverage, priced against `reserve_priced`, is inside the rebalance band.
+fun is_within_band<Product>(self: &State<Product>, position: &ActivePosition, reserve_priced: u64): bool {
+    let nav = accounting_math::shareholder_nav(position.equity, reserve_priced);
+    self.vault_policy.rebalance_policy().is_leverage_within_band(position.notional, nav)
 }
 
 /// The live rate one side of the vault charges.
