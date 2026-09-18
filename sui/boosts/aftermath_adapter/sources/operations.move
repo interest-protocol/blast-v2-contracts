@@ -401,192 +401,40 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
     ctx: &mut TxContext,
 ) {
     protocol.assert_current();
-    let (position_side, max_order_notional) =
-        vault.initialization_constraints(&risk_module);
-
+    let (position_side, max_order_notional) = vault.initialization_constraints(&risk_module);
     let seed_amount = seed.value();
     vault::assert_seed_funder(seed_funder);
-    assert_initialization_inputs(
-        currency.decimals(),
-        seed_amount,
-        seed_reserve,
-        vault.share_supply(),
-    );
+    assert_initialization_inputs(currency.decimals(), seed_amount, seed_reserve, vault.share_supply());
     assert_position_imr(position_imr);
 
-    let registry_id = object::id(registry);
-    let clearing_house_id = object::id(&clearing_house);
-    let base_oracle_id = object::id(base_oracle);
-    let collateral_oracle_id = object::id(collateral_oracle);
-    let collateral_type = type_name::with_original_ids<Collateral>();
-
-    let (mut account, share_policy, admin_cap) =
-        account::create_account<Collateral>(registry, ctx);
-    let account_object_id = object::id(&account);
-    let account_number = account::account_id(&account);
-    let binding = venue_account::new_binding(
-        account_object_id,
-        account_number,
-        registry_id,
-        clearing_house_id,
-        base_oracle_id,
-        collateral_oracle_id,
-        collateral_type,
-    );
-    venue_account::assert_admin_cap_binding(
-        authority::`for`(&admin_cap),
-        account_object_id,
-    );
-
-    account::deposit_collateral(&mut account, &admin_cap, registry, seed);
-    clearing_house::allocate_collateral(
-        &mut clearing_house,
-        &admin_cap,
-        &mut account,
-        seed_amount,
-    );
-    clearing_house::create_market_position(
-        &mut clearing_house,
-        &admin_cap,
-        &account,
-    );
-    clearing_house::set_position_initial_margin_ratio(
-        &mut clearing_house,
-        &admin_cap,
-        &account,
-        position_imr,
-    );
+    let (mut account, share_policy, admin_cap, binding) =
+        open_venue_account(registry, &clearing_house, base_oracle, collateral_oracle, ctx);
+    fund_venue_account(&mut account, &admin_cap, registry, &mut clearing_house, seed, position_imr);
 
     update_funding_when_due(&binding, &mut clearing_house, base_oracle, clock);
     let (pre_observation, _, _) = snapshot::capture_initialization(
-        &binding,
-        &account,
-        registry,
-        &clearing_house,
-        base_oracle,
-        collateral_oracle,
-        base_price_info,
-        collateral_price_info,
-        clock,
+        &binding, &account, registry, &clearing_house, base_oracle, collateral_oracle,
+        base_price_info, collateral_price_info, clock,
     );
-    let (
-        target_notional,
-        reference_base_price,
-        collateral_price,
-        lot_size,
-    ) = vault.prepare_initialization(
-        pre_observation,
-        seed_reserve,
-        clock.timestamp_ms(),
+    let (target_notional, reference_base_price, collateral_price, lot_size) =
+        vault.prepare_initialization(pre_observation, seed_reserve, clock.timestamp_ms());
+    let orders = order_sizes(target_notional, max_order_notional, reference_base_price, collateral_price, lot_size);
+    orders.do_ref!(|order| {
+        vault.assert_order_notional_allowed(notional_for_base_up(*order, reference_base_price, collateral_price));
+    });
+    clearing_house = open_seed_position(
+        vault, &mut account, &admin_cap, clearing_house, base_oracle, collateral_oracle,
+        orders, position_side, reference_base_price, collateral_price, clock, ctx,
     );
-    let is_long = position_side == policy::long();
-    let aftermath_order_side = order_side(position_side);
-    let mut orders = order_sizes(
-        target_notional,
-        max_order_notional,
-        reference_base_price,
-        collateral_price,
-        lot_size,
-    );
-    let mut order_index = 0;
-    while (order_index < orders.length()) {
-        let order_base = *orders.borrow(order_index);
-        let order_notional = notional_for_base_up(
-            order_base,
-            reference_base_price,
-            collateral_price,
-        );
-        vault.assert_order_notional_allowed(order_notional);
-        order_index = order_index + 1;
-    };
 
-    while (!orders.is_empty()) {
-        let order_base = orders.pop_back();
-        let mut session = clearing_house::start_session(
-            clearing_house,
-            &admin_cap,
-            &mut account,
-            base_oracle,
-            collateral_oracle,
-            option::none(),
-            clock,
-            ctx,
-        );
-        clearing_house::place_market_order(
-            &mut session,
-            aftermath_order_side,
-            order_base,
-            false,
-        );
-        let (next_clearing_house, summary) = clearing_house::end_session(
-            session,
-            &admin_cap,
-            &mut account,
-            false,
-            false,
-        );
-        clearing_house = next_clearing_house;
-        assert_session_result(
-            is_long,
-            order_base,
-            clearing_house::base_filled_bid(&summary),
-            clearing_house::base_filled_ask(&summary),
-            clearing_house::posted_orders(&summary),
-            clearing_house::liquidated_size(&summary),
-            clearing_house::liquidation_bad_debt(&summary),
-        );
-        let execution_price = execution_price(
-            clearing_house::execution_price(&summary, aftermath_order_side),
-            is_long,
-        );
-        vault.assert_initialization_execution(
-            reference_base_price,
-            execution_price,
-        );
-        let (_, filled_quote) = clearing_house::filled_base_and_quote(
-            &summary,
-            aftermath_order_side,
-        );
-        vault.assert_order_notional_allowed(actual_fill_notional(
-            filled_quote,
-            collateral_price,
-        ));
-    };
-
-    clearing_house::settle_position_funding(
-        &mut clearing_house,
-        collateral_oracle,
-        account_number,
-        clock,
-    );
+    clearing_house::settle_position_funding(&mut clearing_house, collateral_oracle, binding.account_number(), clock);
     let (final_observation, checkpoint, facts) = snapshot::capture_initialization(
-        &binding,
-        &account,
-        registry,
-        &clearing_house,
-        base_oracle,
-        collateral_oracle,
-        base_price_info,
-        collateral_price_info,
-        clock,
+        &binding, &account, registry, &clearing_house, base_oracle, collateral_oracle,
+        base_price_info, collateral_price_info, clock,
     );
-    let final_imr = position::initial_margin_ratio(
-        clearing_house::position(&clearing_house, account_number),
-    );
-    assert!(
-        !ifixed::is_neg(final_imr) && final_imr == position_imr,
-        blast_boosts_aftermath::errors::initialization_imr_mismatch!(),
-    );
-    let seed_venue_equity = facts.venue_equity();
-    let position_base = facts.position_base();
-    let position_collateral = facts.position_collateral();
-    let final_lot_size = facts.lot_size();
-    let final_side = facts.side();
+    assert_position_imr_unchanged(&clearing_house, binding.account_number(), position_imr);
     let seed_shareholder_nav = vault.initialize_series(
-        final_observation,
-        seed_reserve,
-        currency.decimals(),
-        clock.timestamp_ms(),
+        final_observation, seed_reserve, currency.decimals(), clock.timestamp_ms(),
     );
     // BLAST_ACTIVATION_BOUNDARY_A1
     let locked_shares = locked_shares(seed_shareholder_nav);
@@ -602,14 +450,8 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
     clearing_house::share(clearing_house);
     // BLAST_ACTIVATION_BOUNDARY_A6
     emit_vault_initialized<Product>(
-        vault,
-        seed_amount,
-        seed_venue_equity,
-        position_base,
-        position_collateral,
-        final_lot_size,
-        final_side,
-        position_imr,
+        vault, seed_amount, facts.venue_equity(), facts.position_base(), facts.position_collateral(),
+        facts.lot_size(), facts.side(), position_imr,
     );
     // BLAST_ACTIVATION_BOUNDARY_A7
 }
@@ -892,6 +734,105 @@ public(package) fun emit_vault_initialized<Product>(
 }
 
 // === Private Functions ===
+
+/// Creates the isolated Aftermath account the Vault will own and binds it to
+/// the exact venue objects this activation was called with.
+fun open_venue_account<Collateral>(
+    registry: &mut Registry,
+    clearing_house: &ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    ctx: &mut TxContext,
+): (Account<Collateral>, AccountSharePolicy, AuthorityCap<ACCOUNT, ADMIN>, venue_account::Binding) {
+    let (account, share_policy, admin_cap) = account::create_account<Collateral>(registry, ctx);
+    let account_object_id = object::id(&account);
+    let binding = venue_account::new_binding(
+        account_object_id,
+        account::account_id(&account),
+        object::id(registry),
+        object::id(clearing_house),
+        object::id(base_oracle),
+        object::id(collateral_oracle),
+        type_name::with_original_ids<Collateral>(),
+    );
+    venue_account::assert_admin_cap_binding(authority::`for`(&admin_cap), account_object_id);
+
+    (account, share_policy, admin_cap, binding)
+}
+
+/// Deposits and allocates the whole seed, opens the market position, and sets its margin ratio.
+fun fund_venue_account<Collateral>(
+    account: &mut Account<Collateral>,
+    admin_cap: &AuthorityCap<ACCOUNT, ADMIN>,
+    registry: &Registry,
+    clearing_house: &mut ClearingHouse<Collateral>,
+    seed: Coin<Collateral>,
+    position_imr: u256,
+) {
+    let seed_amount = seed.value();
+    account::deposit_collateral(account, admin_cap, registry, seed);
+    clearing_house::allocate_collateral(clearing_house, admin_cap, account, seed_amount);
+    clearing_house::create_market_position(clearing_house, admin_cap, account);
+    clearing_house::set_position_initial_margin_ratio(clearing_house, admin_cap, account, position_imr);
+}
+
+/// Opens the seed position one policy-sized market order at a time.
+///
+/// Every session must fill its whole order at the sealed oracle price within
+/// the ordinary slippage bound, post nothing, and touch no liquidation; each
+/// actual fill is capped separately so admitted slippage cannot carry one
+/// order past the live cap.
+fun open_seed_position<Product, Collateral>(
+    vault: &Vault<Product>,
+    account: &mut Account<Collateral>,
+    admin_cap: &AuthorityCap<ACCOUNT, ADMIN>,
+    mut clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    mut orders: vector<u64>,
+    position_side: PositionSide,
+    reference_base_price: u64,
+    collateral_price: u64,
+    clock: &Clock,
+    ctx: &TxContext,
+): ClearingHouse<Collateral> {
+    let is_long = position_side == policy::long();
+    let aftermath_order_side = order_side(position_side);
+
+    while (!orders.is_empty()) {
+        let order_base = orders.pop_back();
+        let mut session = clearing_house::start_session(
+            clearing_house, admin_cap, account, base_oracle, collateral_oracle, option::none(), clock, ctx,
+        );
+        clearing_house::place_market_order(&mut session, aftermath_order_side, order_base, false);
+        let (next_clearing_house, summary) = clearing_house::end_session(session, admin_cap, account, false, false);
+        clearing_house = next_clearing_house;
+
+        assert_session_result(
+            is_long, order_base,
+            clearing_house::base_filled_bid(&summary), clearing_house::base_filled_ask(&summary),
+            clearing_house::posted_orders(&summary), clearing_house::liquidated_size(&summary),
+            clearing_house::liquidation_bad_debt(&summary),
+        );
+        let executed = execution_price(clearing_house::execution_price(&summary, aftermath_order_side), is_long);
+        vault.assert_initialization_execution(reference_base_price, executed);
+        let (_, filled_quote) = clearing_house::filled_base_and_quote(&summary, aftermath_order_side);
+        vault.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
+    };
+
+    clearing_house
+}
+
+/// The margin ratio set before the seed orders must survive them unchanged.
+fun assert_position_imr_unchanged<Collateral>(
+    clearing_house: &ClearingHouse<Collateral>, account_number: u64, position_imr: u256,
+) {
+    let final_imr = position::initial_margin_ratio(clearing_house::position(clearing_house, account_number));
+    assert!(
+        !ifixed::is_neg(final_imr) && final_imr == position_imr,
+        blast_boosts_aftermath::errors::initialization_imr_mismatch!(),
+    );
+}
 
 /// Refreshes the venue's lazily updated cumulative funding rates when they are
 /// due, immediately before a settlement the vault accepts.
@@ -1646,7 +1587,7 @@ public fun apply_post_captures_for_testing<Product>(
 
 // === Imports ===
 
-use authority_cap::authority;
+use authority_cap::authority::{Self, ADMIN, AuthorityCap};
 
 use blast_admin::acl::AdminWitness;
 
@@ -1671,7 +1612,8 @@ use ifixed::ifixed;
 use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 
 use perpetuals::{
-    account::{Self as account, Account},
+    account::{Self as account, Account, AccountSharePolicy},
+    authority::ACCOUNT,
     clearing_house::{Self, ClearingHouse},
     market,
     registry::Registry,
