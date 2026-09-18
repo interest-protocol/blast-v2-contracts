@@ -90,7 +90,8 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
     ctx: &mut TxContext,
 ): Vault<Product> {
     protocol.assert_current();
-    let (position_side, max_order_notional) = issuance.initialization_constraints(&risk_module);
+    issuance.assert_risk_module(&risk_module);
+    let (position_side, max_order_notional) = (issuance.seed_state().side(), issuance.seed_state().max_order_notional());
     let seed_amount = seed.value();
     vault::assert_seed_funder(seed_funder);
     assert_initialization_inputs(currency.decimals(), seed_amount, seed_reserve);
@@ -284,27 +285,26 @@ public fun rebalance<Product, Collateral>(
     vault.venue().checkpoint().assert_unchanged(&checkpoint);
 
     let mut plan = vault.state().prepare_rebalance(before, live_venue_fee_bps(&clearing_house), clock.timestamp_ms());
-    let (_, increasing, _) = vault.state().rebalance_order(&plan);
-    let terms = active_terms(vault, !increasing, plan.rebalance_position());
+    let terms = active_terms(vault, !vault.state().next_rebalance_order(&plan).is_increase(), plan.rebalance_position());
     let binding = vault.venue().binding();
 
     let mut index = 0;
     while (index < MAX_ACTIVE_ORDERS) {
-        let (requested, _, _) = vault.state().rebalance_order(&plan);
-        if (requested == 0) break;
+        let order = vault.state().next_rebalance_order(&plan);
+        if (order.order_base() == 0) break;
 
         let (next_market, fill) = place_order(
-            vault, account, clearing_house, base_oracle, collateral_oracle, &terms, requested, clock, ctx,
+            vault, account, clearing_house, base_oracle, collateral_oracle, &terms, order.order_base(), clock, ctx,
         );
         clearing_house = next_market;
-        vault.state().assert_rebalance_execution(&plan, terms.base_price, fill.executed);
+        vault.state().assert_execution(order.is_wide(), terms.base_price, fill.executed);
 
         let (after, after_checkpoint) = snapshot::capture(
             &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
             base_price_info, collateral_price_info, clock,
         ).into_observation();
         fill.assert_checkpoint(&checkpoint, &after_checkpoint);
-        vault.state().accept_rebalance_fill(&mut plan, after, fill.filled, clock.timestamp_ms());
+        vault.state().accept_rebalance_fill(&mut plan, order, after, fill.filled, clock.timestamp_ms());
 
         checkpoint = after_checkpoint;
         index = index + 1;
@@ -734,7 +734,7 @@ fun open_seed_position<Product, Collateral>(
             summary.liquidation_bad_debt(),
         );
         let executed = execution_price(summary.execution_price(aftermath_order_side), is_long);
-        issuance.seed_state().assert_initialization_execution(reference_base_price, executed);
+        issuance.seed_state().assert_execution(false, reference_base_price, executed);
         let (_, filled_quote) = summary.filled_base_and_quote(aftermath_order_side);
         issuance.seed_state().assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
     };
@@ -800,7 +800,7 @@ fun assert_deadline(now_ms: u64, deadline: u64) {
 
 /// The terms of an active operation: direction from policy, the live cap, and the plan's sealed prices.
 fun active_terms<Product>(vault: &Vault<Product>, reduce_only: bool, position: ActivePosition): OrderTerms {
-    let (side, max_order_notional) = vault.state().active_constraints();
+    let (side, max_order_notional) = (vault.state().side(), vault.state().max_order_notional());
     let is_ask = if (reduce_only) { !opens_with_ask(side) } else { opens_with_ask(side) };
 
     OrderTerms {
@@ -947,7 +947,7 @@ fun fill_orders<Product, Collateral>(
             vault, account, clearing_house, base_oracle, collateral_oracle, &terms, requested, clock, ctx,
         );
         clearing_house = next_market;
-        vault.state().assert_active_execution(terms.base_price, fill.executed);
+        vault.state().assert_execution(false, terms.base_price, fill.executed);
 
         let after_checkpoint = snapshot::capture_checkpoint(
             binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
@@ -1254,7 +1254,7 @@ fun unwind_market<Product, Collateral>(
             vault, account, clearing_house, base_oracle, collateral_oracle, &terms, requested, clock, ctx,
         );
         clearing_house = next_market;
-        vault.state().assert_unwind_execution(base_price, fill.executed);
+        vault.state().assert_execution(true, base_price, fill.executed);
 
         let after = snapshot::capture_checkpoint(
             &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,

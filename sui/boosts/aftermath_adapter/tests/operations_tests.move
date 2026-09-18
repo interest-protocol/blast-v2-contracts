@@ -587,15 +587,16 @@ fun completed_rebalance_changes_only_holder_equity_and_the_accepted_checkpoint()
     assert_eq!(base_price, PRICE);
     assert_eq!(collateral_price, PRICE);
     assert_eq!(lot, LOT_SIZE);
-    let (base, increase, wide) = vault.state().rebalance_order(&plan);
+    let order = vault.state().next_rebalance_order(&plan);
+    let base = order.order_base();
     assert_eq!(base, 250_000);
-    assert!(!increase && wide);
-    vault.state().assert_rebalance_execution(&plan, PRICE, PRICE);
+    assert!(!order.is_increase() && order.is_wide());
+    vault.state().assert_execution(order.is_wide(), PRICE, PRICE);
     let after = observation::new_position(999, 2_750_000, LOT_SIZE, policy::long(),
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
     );
-    vault.state().accept_rebalance_fill(&mut plan, after, base, REFERENCE_TIME_MS);
+    vault.state().accept_rebalance_fill(&mut plan, order, after, base, REFERENCE_TIME_MS);
     let checkpoint = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, 10, 20, 10, 20, 1);
     operations::complete_rebalance<Product, Collateral>(&mut vault, plan, checkpoint);
     assert_eq!(vault.state().maintenance_reserve(), 100);
@@ -867,10 +868,9 @@ fun completed_mint_returns_native_shares_and_updates_the_same_treasury_supply() 
     assert_eq!(base_price, PRICE);
     assert_eq!(collateral_price, PRICE);
     assert_eq!(lot, LOT_SIZE);
-    let (side, cap) = vault.state().active_constraints();
-    assert_eq!(side, policy::long());
-    assert!(cap > 0);
-    vault.state().assert_active_execution(PRICE, PRICE);
+    assert_eq!(vault.state().side(), policy::long());
+    assert!(vault.state().max_order_notional() > 0);
+    vault.state().assert_execution(false, PRICE, PRICE);
     let after = observation::new_position(1_998, 3_798 * BASE_PER_NOTIONAL, LOT_SIZE, policy::long(),
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
@@ -2562,10 +2562,10 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag>) 
     assert_replay(&replay, vault);
 
     let mut plan = vault.state().prepare_rebalance(rebalance_position(1_026, 3_000_000), 10, REFERENCE_TIME_MS);
-    let (base, increase, _) = vault.state().rebalance_order(&plan);
-    assert!(!increase);
-    let after_base = 3_000_000 - base;
-    vault.state().accept_rebalance_fill(&mut plan, rebalance_position(1_025, after_base), base, REFERENCE_TIME_MS);
+    let order = vault.state().next_rebalance_order(&plan);
+    assert!(!order.is_increase());
+    let after_base = 3_000_000 - order.order_base();
+    vault.state().accept_rebalance_fill(&mut plan, order, rebalance_position(1_025, after_base), order.order_base(), REFERENCE_TIME_MS);
     let checkpoint = checkpoint_with_market_imr(10, ALLOCATED_FIXED - ATOM_FIXED, 10, 20, 10, 20, 1);
     operations::complete_rebalance<Tag, Collateral>(vault, plan, checkpoint);
     let event = events::collect_one<events::Rebalanced<Tag>>(0);

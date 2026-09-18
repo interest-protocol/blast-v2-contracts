@@ -10,11 +10,6 @@
 /// judged against it.
 module blast_boosts_core::state;
 
-// === Constants ===
-
-/// Bounds per-transaction maintenance planning independently of adapter work limits.
-const MAX_REBALANCE_ORDERS: u64 = 16;
-
 // === Public Types ===
 
 /// Sealed core state stored inside one adapter-owned Vault.
@@ -63,7 +58,6 @@ public struct ActivePosition has copy, drop {
 /// Linear, transaction-local mint terms. Only State can construct or finish them.
 public struct MintPlan<phantom Product> {
     before: ActivePosition,
-    reserve_before: u64,
     deposit: u64,
     expected_contribution: u64,
     reserve_fee: u64,
@@ -78,7 +72,6 @@ public struct MintPlan<phantom Product> {
 /// Linear terms for one proportional redemption, before any payout or fee credit.
 public struct RedemptionPlan<phantom Product> {
     before: ActivePosition,
-    reserve_before: u64,
     shares: u64,
     supply: u64,
     minimum_output: u64,
@@ -87,12 +80,10 @@ public struct RedemptionPlan<phantom Product> {
     base_to_sell: u64,
 }
 
-/// Linear maintenance intent, recalculated only from accepted fixed-pair sessions.
+/// Linear maintenance intent, advanced only by accepted fixed-pair fills.
 public struct RebalancePlan<phantom Product> {
     before: ActivePosition,
     current: ActivePosition,
-    /// The stored reserve at preparation; every later step must still see it.
-    reserve: u64,
     /// The reserve as the ceiling admits it against `before`; every NAV in the plan uses it.
     reserve_priced: u64,
     increase: bool,
@@ -108,8 +99,16 @@ public struct RebalancePlan<phantom Product> {
 /// Prevalidated funding donation terms held across the adapter deposit.
 public struct DonationPlan<phantom Product> {
     before: ActivePosition,
-    reserve_before: u64,
     amount: u64,
+}
+
+/// The next whole-lot order a rebalance places: its size, direction, and
+/// whether the position is still above the hard cap so the emergency
+/// slippage bound applies. A zero size ends the plan.
+public struct RebalanceOrder has copy, drop {
+    base: u64,
+    increase: bool,
+    wide: bool,
 }
 
 // === Public Functions ===
@@ -186,34 +185,27 @@ public fun prepare_initialization<Product>(
     (target_notional, base_price, collateral_price, lot_size)
 }
 
-/// Returns the immutable position side and live per-order notional bound used by activation.
-///
-/// The adapter calls this before any venue mutation. The lifecycle guard makes
-/// an installed or otherwise activated State ineligible for a second seed.
-public fun initialization_constraints<Product>(
-    self: &State<Product>,
-): (PositionSide, u64) {
-    self.lifecycle.assert_can_activate();
-
-    (self.vault_policy.side(), self.max_order_notional)
+/// The immutable direction every order of this product takes.
+public fun side<Product>(self: &State<Product>): PositionSide {
+    self.vault_policy.side()
 }
 
-/// Rejects a seed session whose execution diverges beyond max slippage.
-///
-/// Initialization always increases risk, so the wider emergency max slippage is
-/// never available on this edge.
-public fun assert_initialization_execution<Product>(
-    self: &State<Product>,
-    reference_price: u64,
-    execution_price: u64,
-) {
-    self.lifecycle.assert_can_activate();
-    self.vault_policy
-        .rebalance_policy()
-        .assert_execution_within_max_slippage(
-            reference_price,
-            execution_price,
-        );
+/// The live per-order notional cap in atomic collateral units.
+public fun max_order_notional<Product>(self: &State<Product>): u64 {
+    self.max_order_notional
+}
+
+/// Rejects a fill whose price diverges from the reference beyond the bound the
+/// order was placed under: the ordinary one, or the wider emergency one for a
+/// reduction placed above the hard cap and for shutdown.
+public fun assert_execution<Product>(self: &State<Product>, wide: bool, reference: u64, executed: u64) {
+    let rebalance = self.vault_policy.rebalance_policy();
+
+    if (wide) {
+        rebalance.assert_execution_within_emergency_max_slippage(reference, executed);
+    } else {
+        rebalance.assert_execution_within_max_slippage(reference, executed);
+    };
 }
 
 /// Rejects one adapter order above the live atomic-collateral notional limit.
@@ -267,19 +259,6 @@ public fun assert_active<Product>(self: &State<Product>) {
     self.lifecycle.assert_active();
 }
 
-/// Returns policy-derived direction and the current per-order cap while active.
-public fun active_constraints<Product>(self: &State<Product>): (PositionSide, u64) {
-    self.lifecycle.assert_active();
-
-    (self.vault_policy.side(), self.max_order_notional)
-}
-
-/// Applies max slippage to ordinary active mint and redemption sessions.
-public fun assert_active_execution<Product>(self: &State<Product>, reference: u64, executed: u64) {
-    self.lifecycle.assert_active();
-    self.vault_policy.rebalance_policy().assert_execution_within_max_slippage(reference, executed);
-}
-
 // --- Mint ---
 
 /// Seals a proportional increase from reserve-excluded NAV and the user's limits.
@@ -312,7 +291,6 @@ public fun prepare_mint<Product>(
 
     MintPlan {
         before,
-        reserve_before: self.maintenance_reserve,
         deposit,
         expected_contribution,
         reserve_fee,
@@ -350,10 +328,9 @@ public fun complete_mint<Product>(
 ): (u64, u64, u64, u64, u64, u64, u64) {
     self.lifecycle.assert_active();
     let MintPlan {
-        before, reserve_before, deposit: _, expected_contribution, reserve_fee,
+        before, deposit: _, expected_contribution, reserve_fee,
         admin_fee, fee_bps, admin_share_bps, supply, minimum_shares, base_to_buy,
     } = plan;
-    assert!(self.maintenance_reserve == reserve_before, blast_boosts_core::errors::active_checkpoint_changed!());
 
     let after = validated_active_position(self, observation, now_ms);
     assert!(before.is_same_checkpoint(&after), blast_boosts_core::errors::active_checkpoint_changed!());
@@ -411,7 +388,7 @@ public fun prepare_redemption<Product>(
     let base_to_sell = before.base - minimum_base;
 
     RedemptionPlan {
-        before, reserve_before: self.maintenance_reserve, shares, supply, minimum_output,
+        before, shares, supply, minimum_output,
         fee_bps: self.redeem_fee_bps, admin_share_bps: self.admin_share_bps, base_to_sell,
     }
 }
@@ -461,9 +438,8 @@ public fun complete_redemption<Product>(
 ): (u64, u64, u64, u64, u64) {
     self.lifecycle.assert_active();
     let RedemptionPlan {
-        before, reserve_before, shares, supply, minimum_output, fee_bps, admin_share_bps, base_to_sell,
+        before, shares, supply, minimum_output, fee_bps, admin_share_bps, base_to_sell,
     } = plan;
-    assert!(self.maintenance_reserve == reserve_before, blast_boosts_core::errors::active_checkpoint_changed!());
 
     let after = validated_active_position(self, observation, now_ms);
     assert!(before.is_same_checkpoint(&after), blast_boosts_core::errors::active_checkpoint_changed!());
@@ -523,7 +499,6 @@ public fun prepare_rebalance<Product>(
     RebalancePlan {
         before,
         current: before,
-        reserve: self.maintenance_reserve,
         reserve_priced,
         increase,
         emergency: !increase && rebalance.is_leverage_above_max(before.notional, nav),
@@ -532,50 +507,40 @@ public fun prepare_rebalance<Product>(
     }
 }
 
-/// Returns next whole-lot size, increase intent and current wider-slippage permission.
+/// The next order toward the band, sized from the position the last fill left.
 ///
-/// A zero size finishes planning; the adapter independently caps work at
-/// sixteen sessions. An emergency reduction finishes as soon as leverage is
-/// no longer above the hard cap, so the wider bound never covers an order
-/// placed below it and a wide market cannot revert the orders placed above it.
-public fun rebalance_order<Product>(self: &State<Product>, plan: &RebalancePlan<Product>): (u64, bool, bool) {
-    self.lifecycle.assert_active();
-    assert!(self.maintenance_reserve == plan.reserve, blast_boosts_core::errors::active_checkpoint_changed!());
-    if (plan.steps == MAX_REBALANCE_ORDERS) return (0, plan.increase, false);
-
+/// A zero size ends the plan; the adapter bounds the number of orders. An
+/// emergency reduction ends as soon as leverage is no longer above the hard
+/// cap, so the wider bound never covers an order placed below it and a wide
+/// market cannot revert the orders placed above it.
+public fun next_rebalance_order<Product>(self: &State<Product>, plan: &RebalancePlan<Product>): RebalanceOrder {
     let position = &plan.current;
     let nav = accounting_math::shareholder_nav(position.equity, plan.reserve_priced);
-    if (plan.increase) return (self.increase_order(position, nav, plan.venue_fee_bps), true, false);
+    if (plan.increase) {
+        return RebalanceOrder { base: self.increase_order(position, nav, plan.venue_fee_bps), increase: true, wide: false }
+    };
 
     let wide = self.vault_policy.rebalance_policy().is_leverage_above_max(position.notional, nav);
-    if (plan.emergency && !wide) return (0, false, false);
+    if (plan.emergency && !wide) return RebalanceOrder { base: 0, increase: false, wide: false };
 
-    (self.reduction_order(position, nav), false, wide)
+    RebalanceOrder { base: self.reduction_order(position, nav), increase: false, wide }
 }
 
 /// The position the rebalance was priced against.
 public fun rebalance_position<Product>(self: &RebalancePlan<Product>): ActivePosition { self.before }
 
-/// The current authenticated ratio alone selects ordinary or wider max slippage.
-public fun assert_rebalance_execution<Product>(
-    self: &State<Product>, plan: &RebalancePlan<Product>, reference: u64, executed: u64,
-) {
-    let (_, _, wide) = self.rebalance_order(plan);
-    let rebalance = self.vault_policy.rebalance_policy();
+public fun order_base(self: &RebalanceOrder): u64 { self.base }
 
-    if (wide) {
-        rebalance.assert_execution_within_emergency_max_slippage(reference, executed);
-    } else {
-        rebalance.assert_execution_within_max_slippage(reference, executed);
-    };
-}
+public fun is_increase(self: &RebalanceOrder): bool { self.increase }
 
-/// Advances only exact partial whole-lot fills under sealed intent and the fixed oracle pair.
+public fun is_wide(self: &RebalanceOrder): bool { self.wide }
+
+/// Advances the plan by one accepted whole-lot fill of `order` under the fixed oracle pair.
 public fun accept_rebalance_fill<Product>(
-    self: &State<Product>, plan: &mut RebalancePlan<Product>, observation: PositionObservation,
-    filled: u64, now_ms: u64,
+    self: &State<Product>, plan: &mut RebalancePlan<Product>, order: RebalanceOrder,
+    observation: PositionObservation, filled: u64, now_ms: u64,
 ) {
-    let (requested, increase, _) = self.rebalance_order(plan);
+    let RebalanceOrder { base: requested, increase, wide: _ } = order;
     assert!(
         filled > 0 && filled <= requested && filled % plan.current.lot_size == 0,
         blast_boosts_core::errors::active_fill_incomplete!(),
@@ -610,10 +575,7 @@ public fun complete_rebalance<Product>(
     self: &State<Product>, plan: RebalancePlan<Product>,
 ): (u64, u64, u64, u64, bool) {
     self.lifecycle.assert_active();
-    let RebalancePlan {
-        before, current, reserve, reserve_priced, increase, emergency: _, venue_fee_bps: _, steps,
-    } = plan;
-    assert!(reserve == self.maintenance_reserve, blast_boosts_core::errors::active_checkpoint_changed!());
+    let RebalancePlan { before, current, reserve_priced, increase, emergency: _, venue_fee_bps: _, steps } = plan;
     assert!(steps > 0, blast_boosts_core::errors::rebalance_no_progress!());
 
     let before_nav = accounting_math::shareholder_nav(before.equity, reserve_priced);
@@ -699,7 +661,6 @@ public fun prepare_donation<Product>(
 
     DonationPlan {
         before: validated_active_position(self, observation, now_ms),
-        reserve_before: self.maintenance_reserve,
         amount,
     }
 }
@@ -712,8 +673,7 @@ public fun complete_donation<Product>(
     now_ms: u64,
 ) {
     self.lifecycle.assert_active();
-    let DonationPlan { before, reserve_before, amount } = plan;
-    assert!(reserve_before == self.maintenance_reserve, blast_boosts_core::errors::active_checkpoint_changed!());
+    let DonationPlan { before, amount } = plan;
 
     let after = validated_active_position(self, after, now_ms);
     assert!(
@@ -758,12 +718,6 @@ public fun unwind_constraints<Product>(
     collateral_oracle.destroy();
 
     (self.vault_policy.side(), self.max_order_notional, base_price, collateral_price)
-}
-
-/// Shutdown uses its immutable wider bound without an active leverage/NAV prerequisite.
-public fun assert_unwind_execution<Product>(self: &State<Product>, reference: u64, executed: u64) {
-    self.assert_unwinding();
-    self.vault_policy.rebalance_policy().assert_execution_within_emergency_max_slippage(reference, executed);
 }
 
 /// Consumes the reserve book entry only after the adapter proves complete local cash recovery.

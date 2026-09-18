@@ -290,10 +290,10 @@ fun selected_risk_module_reads_the_seed_constraints() {
     let mut fixture = start(domain::vault_issuer_role());
     let issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
 
-    let (side, max_order_notional) = issuance.initialization_constraints(&test_risk_module::new());
+    issuance.assert_risk_module(&test_risk_module::new());
 
-    assert_eq!(side, policy::long());
-    assert_eq!(max_order_notional, MAX_ORDER_NOTIONAL);
+    assert_eq!(issuance.seed_state().side(), policy::long());
+    assert_eq!(issuance.seed_state().max_order_notional(), MAX_ORDER_NOTIONAL);
     destroy(issuance);
     destroy(fixture);
 }
@@ -307,7 +307,7 @@ fun unselected_risk_module_cannot_read_seed_constraints() {
     let mut fixture = start(domain::vault_issuer_role());
     let issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
 
-    issuance.initialization_constraints(&test_risk_module::new_v2());
+    issuance.assert_risk_module(&test_risk_module::new_v2());
 
     destroy(issuance);
     destroy(fixture);

@@ -125,8 +125,8 @@ fun unwind_uses_the_frozen_emergency_bound_without_a_nav_input_for_both_sides() 
         assert_eq!(cap, 250);
         assert_eq!(base_price, 1_000_000_000);
         assert_eq!(collateral_price, 1_000_000_000);
-        state.assert_unwind_execution(1_000_000_000, 1_050_000_000);
-        state.assert_unwind_execution(1_000_000_000, 950_000_000);
+        state.assert_execution(true, 1_000_000_000, 1_050_000_000);
+        state.assert_execution(true, 1_000_000_000, 950_000_000);
         state.destroy_for_testing();
     });
     destroy(fixture);
@@ -174,18 +174,6 @@ fun mint_outside_band_precedes_deposit_arithmetic() {
     let state = initialized_state(&fixture, policy::long());
     let plan = state.prepare_mint(standard_observation(policy::long()).with_notional(1_000_000).into_position_observation(), 0, 1_000_000, 1, REFERENCE_TIME_MS);
     destroy(plan);
-    state.destroy_for_testing();
-    destroy(fixture);
-}
-
-#[test]
-#[expected_failure(abort_code = errors::EActiveCheckpointChanged, location = blast_boosts_core::state)]
-fun mint_completion_rejects_checkpoint_drift_before_fill() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
-    let plan = state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1_000_000, 1_000_000, 1, REFERENCE_TIME_MS);
-    state.settle_funding(observation::funding_credit(1));
-    state.complete_mint(plan, standard_observation(policy::long()).into_position_observation(), REFERENCE_TIME_MS);
     state.destroy_for_testing();
     destroy(fixture);
 }
@@ -388,12 +376,11 @@ fun rebalance_increase_reserves_cost_and_keeps_buffer_unchanged() {
     let fixture = start(domain::vault_issuer_role());
     let state = rebalance_state(&fixture, policy::long());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 1_000_000, policy::long()), 10, REFERENCE_TIME_MS);
-    let (base, increase, wide) = state.rebalance_order(&plan);
-    assert_eq!(base, 978_452_000);
-    assert!(increase && !wide);
-    state.accept_rebalance_fill(&mut plan, rebalance_observation(1_089_226, 1_978_452, policy::long()), base, REFERENCE_TIME_MS);
-    let (next, _, _) = state.rebalance_order(&plan);
-    assert_eq!(next, 0);
+    let order = state.next_rebalance_order(&plan);
+    assert_eq!(order.order_base(), 978_452_000);
+    assert!(order.is_increase() && !order.is_wide());
+    state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_089_226, 1_978_452, policy::long()), order.order_base(), REFERENCE_TIME_MS);
+    assert_eq!(state.next_rebalance_order(&plan).order_base(), 0);
     let (before_equity, after_equity, before_base, after_base, increased) = state.complete_rebalance(plan);
     assert_eq!(before_equity, 1_100_000);
     assert_eq!(after_equity, 1_089_226);
@@ -413,14 +400,14 @@ fun rebalance_short_emergency_reduction_stops_once_leverage_is_below_the_cap() {
     let fixture = start(domain::vault_issuer_role());
     let state = rebalance_state(&fixture, policy::short());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_200_000, policy::short()), 10, REFERENCE_TIME_MS);
-    let (base, increase, wide) = state.rebalance_order(&plan);
-    assert_eq!(base, 1_200_000_000);
-    assert!(!increase && wide);
-    state.assert_rebalance_execution(&plan, 100, 104);
-    state.accept_rebalance_fill(&mut plan, rebalance_observation(1_099_500, 2_900_000, policy::short()), 300_000_000, REFERENCE_TIME_MS);
-    let (next, _, next_wide) = state.rebalance_order(&plan);
-    assert_eq!(next, 0);
-    assert!(!next_wide);
+    let order = state.next_rebalance_order(&plan);
+    assert_eq!(order.order_base(), 1_200_000_000);
+    assert!(!order.is_increase() && order.is_wide());
+    state.assert_execution(order.is_wide(), 100, 104);
+    state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_099_500, 2_900_000, policy::short()), 300_000_000, REFERENCE_TIME_MS);
+    let next = state.next_rebalance_order(&plan);
+    assert_eq!(next.order_base(), 0);
+    assert!(!next.is_wide());
     state.complete_rebalance(plan);
     assert_eq!(state.maintenance_reserve_for_testing(), SEED_RESERVE);
     state.destroy_for_testing();
@@ -440,9 +427,9 @@ fun rebalance_one_rational_atom_below_lower_is_not_hidden_by_report_rounding() {
     let fixture = start(domain::vault_issuer_role());
     let state = rebalance_state(&fixture, policy::long());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_001, 1_600_001, policy::long()), 10, REFERENCE_TIME_MS);
-    let (base, increase, wide) = state.rebalance_order(&plan);
-    assert!(base > 0 && increase && !wide);
-    state.accept_rebalance_fill(&mut plan, rebalance_observation(1_100_001, 1_600_002, policy::long()), 1_000, REFERENCE_TIME_MS);
+    let order = state.next_rebalance_order(&plan);
+    assert!(order.order_base() > 0 && order.is_increase() && !order.is_wide());
+    state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_100_001, 1_600_002, policy::long()), 1_000, REFERENCE_TIME_MS);
     state.complete_rebalance(plan);
     state.destroy_for_testing();
     destroy(fixture);
@@ -454,7 +441,8 @@ fun rebalance_reduction_without_leverage_improvement_rejects() {
     let fixture = start(domain::vault_issuer_role());
     let state = rebalance_state(&fixture, policy::long());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_TIME_MS);
-    state.accept_rebalance_fill(&mut plan, rebalance_observation(1_000_000, 2_700_000, policy::long()), 300_000_000, REFERENCE_TIME_MS);
+    let order = state.next_rebalance_order(&plan);
+    state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_000_000, 2_700_000, policy::long()), 300_000_000, REFERENCE_TIME_MS);
     state.complete_rebalance(plan);
     state.destroy_for_testing();
     destroy(fixture);
@@ -466,7 +454,8 @@ fun rebalance_increase_rejects_post_cost_target_overshoot() {
     let fixture = start(domain::vault_issuer_role());
     let state = rebalance_state(&fixture, policy::long());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 1_000_000, policy::long()), 10, REFERENCE_TIME_MS);
-    state.accept_rebalance_fill(&mut plan, rebalance_observation(1_089_225, 1_978_452, policy::long()), 978_452_000, REFERENCE_TIME_MS);
+    let order = state.next_rebalance_order(&plan);
+    state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_089_225, 1_978_452, policy::long()), 978_452_000, REFERENCE_TIME_MS);
     state.complete_rebalance(plan);
     state.destroy_for_testing();
     destroy(fixture);
@@ -478,7 +467,7 @@ fun rebalance_hard_threshold_equality_does_not_enable_wide_tolerance() {
     let fixture = start(domain::vault_issuer_role());
     let state = rebalance_state(&fixture, policy::long());
     let plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_TIME_MS);
-    state.assert_rebalance_execution(&plan, 100, 102);
+    state.assert_execution(state.next_rebalance_order(&plan).is_wide(), 100, 102);
     state.complete_rebalance(plan);
     state.destroy_for_testing();
     destroy(fixture);
@@ -640,14 +629,12 @@ fun fee_updates_change_future_allocations_without_relabeling_the_buffer() {
 }
 
 #[test]
-fun initialization_constraints_return_the_frozen_side_and_live_order_cap() {
+fun a_new_state_reads_the_frozen_side_and_live_order_cap() {
     let fixture = start(domain::vault_issuer_role());
     let state = new_state(&fixture, policy::short());
 
-    let (side, max_order_notional) = state.initialization_constraints();
-
-    assert_eq!(side, policy::short());
-    assert_eq!(max_order_notional, MAX_ORDER_NOTIONAL);
+    assert_eq!(state.side(), policy::short());
+    assert_eq!(state.max_order_notional(), MAX_ORDER_NOTIONAL);
     state.destroy_for_testing();
     destroy(fixture);
 }
@@ -704,7 +691,7 @@ fun initialization_strict_execution_uses_the_frozen_tolerance() {
     let fixture = start(domain::vault_issuer_role());
     let state = new_state(&fixture, policy::long());
 
-    state.assert_initialization_execution(1_000_000, 1_010_000);
+    state.assert_execution(false, 1_000_000, 1_010_000);
 
     state.destroy_for_testing();
     destroy(fixture);
@@ -718,7 +705,7 @@ fun initialization_strict_execution_rejects_one_unit_past_tolerance() {
     let fixture = start(domain::vault_issuer_role());
     let state = new_state(&fixture, policy::long());
 
-    state.assert_initialization_execution(1_000_000, 1_010_001);
+    state.assert_execution(false, 1_000_000, 1_010_001);
 
     state.destroy_for_testing();
     destroy(fixture);

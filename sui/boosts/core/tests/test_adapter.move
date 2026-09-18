@@ -309,8 +309,7 @@ public fun witness(self: &Vault): AdminWitness<BLAST_BOOSTS_CORE> {
 ///
 /// Returns the seed's shareholder NAV; the locked supply is `SEED_SHARE_SCALE` times it.
 public fun activate(self: &mut Vault, seed: u64, seed_reserve: u64): u64 {
-    let (_, cap) = self.state.initialization_constraints();
-    assert!(self.state.is_uninitialized_for_testing());
+    let cap = self.state.max_order_notional();
     self.venue.deposit(seed);
     let (target, base_price, collateral_price, _) =
         self.state.prepare_initialization(self.venue.observe(), seed_reserve, self.venue.now_ms);
@@ -321,7 +320,7 @@ public fun activate(self: &mut Vault, seed: u64, seed_reserve: u64): u64 {
         let order = remaining.min(cap_base);
         self.state.assert_order_notional_allowed(self.venue.notional_of(order));
         let (executed, filled) = self.venue.fill(order, true);
-        self.state.assert_initialization_execution(base_price, executed);
+        self.state.assert_execution(false, base_price, executed);
         self.state.assert_order_notional_allowed(self.venue.notional_of(filled));
         remaining = remaining - filled;
     };
@@ -357,7 +356,7 @@ public fun mint_with_fee_limit(self: &mut Vault, deposit: u64, minimum_shares: u
     let priced = plan.mint_position();
     assert!(priced.lot_size() == self.venue.lot_size);
     let base_price = priced.base_price();
-    let (_, cap) = self.state.active_constraints();
+    let cap = self.state.max_order_notional();
 
     self.admin_cash = self.admin_cash + plan.admin_fee();
     self.venue.deposit(deposit - plan.admin_fee());
@@ -370,7 +369,7 @@ public fun mint_with_fee_limit(self: &mut Vault, deposit: u64, minimum_shares: u
         let order = remaining.min(cap_base);
         self.state.assert_order_notional_allowed(self.venue.notional_of(order));
         let (executed, filled) = self.venue.fill(order, true);
-        self.state.assert_active_execution(base_price, executed);
+        self.state.assert_execution(false, base_price, executed);
         self.state.assert_order_notional_allowed(self.venue.notional_of(filled));
             remaining = remaining - filled;
         orders = orders + 1;
@@ -408,7 +407,7 @@ public fun redeem_with_fee_limit(self: &mut Vault, shares: u64, minimum_output: 
     assert!(plan.redemption_fee_bps() == redeem_bps && plan.redemption_admin_share_bps() == admin_share_bps);
     let (base_price, collateral_price) = (priced.base_price(), priced.collateral_price());
     let base_after_sell = plan.base_after_sell();
-    let (_, cap) = self.state.active_constraints();
+    let cap = self.state.max_order_notional();
 
     let mut remaining = plan.base_to_sell();
     let cap_base = self.venue.base_for_notional(cap);
@@ -418,7 +417,7 @@ public fun redeem_with_fee_limit(self: &mut Vault, shares: u64, minimum_output: 
         let order = remaining.min(cap_base);
         self.state.assert_order_notional_allowed(self.venue.notional_of(order));
         let (executed, filled) = self.venue.fill(order, false);
-        self.state.assert_active_execution(base_price, executed);
+        self.state.assert_execution(false, base_price, executed);
         self.state.assert_order_notional_allowed(self.venue.notional_of(filled));
             remaining = remaining - filled;
         orders = orders + 1;
@@ -452,13 +451,13 @@ public fun rebalance(self: &mut Vault): u64 {
     let base_price = plan.rebalance_position().base_price();
     let mut orders = 0;
     while (orders < MAX_ORDERS) {
-        let (requested, increase, _) = self.state.rebalance_order(&plan);
-        if (requested == 0) break;
-        self.state.assert_order_notional_allowed(self.venue.notional_of(requested));
-        let (executed, filled) = self.venue.fill(requested, increase);
-        self.state.assert_rebalance_execution(&plan, base_price, executed);
+        let order = self.state.next_rebalance_order(&plan);
+        if (order.order_base() == 0) break;
+        self.state.assert_order_notional_allowed(self.venue.notional_of(order.order_base()));
+        let (executed, filled) = self.venue.fill(order.order_base(), order.is_increase());
+        self.state.assert_execution(order.is_wide(), base_price, executed);
         self.state.assert_order_notional_allowed(self.venue.notional_of(filled));
-        self.state.accept_rebalance_fill(&mut plan, self.venue.observe(), filled, now_ms);
+        self.state.accept_rebalance_fill(&mut plan, order, self.venue.observe(), filled, now_ms);
         orders = orders + 1;
     };
     self.state.complete_rebalance(plan);
@@ -533,7 +532,7 @@ public fun unwind(self: &mut Vault, max_orders: u64): u64 {
         );
         let order = self.venue.base.min(self.venue.base_for_notional(cap));
         let (executed, _) = self.venue.fill(order, false);
-        self.state.assert_unwind_execution(base_price, executed);
+        self.state.assert_execution(true, base_price, executed);
         orders = orders + 1;
     };
     self.last_orders = orders;

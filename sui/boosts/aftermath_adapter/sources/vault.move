@@ -275,13 +275,9 @@ public(package) fun seed_state_mut<Product>(self: &mut VaultIssuance<Product>): 
 
 // --- Initialization ---
 
-/// Authenticates the selected risk module and returns the seed-side constraints.
-public(package) fun initialization_constraints<Product, RiskModule: drop>(
-    self: &VaultIssuance<Product>,
-    _: &RiskModule,
-): (PositionSide, u64) {
+/// The caller's risk module is the one the issuance selected.
+public(package) fun assert_risk_module<Product, RiskModule: drop>(self: &VaultIssuance<Product>, _: &RiskModule) {
     assert_selected_risk_module<RiskModule>(self.risk_module_witness);
-    self.state.initialization_constraints()
 }
 
 /// Mints the one locked seed position, makes it permanently inaccessible, and
