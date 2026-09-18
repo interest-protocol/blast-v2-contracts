@@ -218,8 +218,6 @@ public(package) fun market_funding_short(self: &Checkpoint): u256 { self.market_
 
 public(package) fun lot_size(self: &Checkpoint): u64 { self.lot_size }
 
-public(package) fun market_pause_mode(self: &Checkpoint): u8 { self.market_pause_mode }
-
 // --- Account ---
 
 /// Seals the bound account's identity, the checkpoint activation accepted, and

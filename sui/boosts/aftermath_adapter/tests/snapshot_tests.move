@@ -38,7 +38,7 @@ fun signed_funding_less_negative_allocation_is_a_credit() {
 fun zero_net_funding_refresh_is_clean_but_not_an_identical_checkpoint() {
     let before = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
     let after = checkpoint(10, 1_000, 7, 8, 7, 8, 9);
-    assert!(!snapshot::checkpoint_unchanged(&before, &after));
+    assert!(before != after);
     assert!(snapshot::classify_change_with_candidate_for_testing(&before, &after, false, 0).is_unchanged_for_testing());
     assert!(snapshot::classify_preexisting_funding_for_testing(&before, &after).is_unchanged_for_testing());
 }

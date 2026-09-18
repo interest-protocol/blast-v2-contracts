@@ -208,14 +208,6 @@ public(package) fun collateral_fixed(self: &CapturedSnapshot): u256 { self.colla
 
 // --- CheckpointChange Classification ---
 
-/// Returns true only when every stored raw checkpoint field is unchanged.
-public(package) fun checkpoint_unchanged(
-    before: &Checkpoint,
-    after: &Checkpoint,
-): bool {
-    before == after
-}
-
 /// Returns true when only the market's cumulative funding rates advanced.
 ///
 /// This is the ordinary pre-settlement shape: the position still carries the
@@ -245,7 +237,7 @@ public(package) fun classify_change(
     funding_candidate: u256,
     collateral_price: u256,
 ): CheckpointChange {
-    if (checkpoint_unchanged(before, after)) return CheckpointChange::Unchanged;
+    if (before == after) return CheckpointChange::Unchanged;
 
     let (candidate_collateral_magnitude, representable) = usd_fixed_to_collateral_fixed(
         funding_candidate.abs(), collateral_price, funding_candidate.is_neg(),

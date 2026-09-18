@@ -571,7 +571,7 @@ public(package) fun apply_post_capture<Product, Collateral>(
 
     // A zero-net interval still advances authenticated source identity and
     // needs a reducer-visible completed fact; identical retries remain quiet.
-    if (checkpoint_clean && !snapshot::checkpoint_unchanged(&stored_checkpoint, &checkpoint)) {
+    if (checkpoint_clean && stored_checkpoint != checkpoint) {
         events::funding_settled<Product>(
             vault.id(), net.is_cost(), net.raw_amount(), net.amount(), absorbed, uncovered, restored,
             reserve_after, stored_checkpoint, checkpoint,
@@ -1459,9 +1459,7 @@ public(package) fun complete_finalization_for_testing<Product, Collateral>(
 
 // === Imports ===
 
-use authority_cap::authority::{Self, ADMIN, AuthorityCap};
-
-use blast_admin::acl::AdminWitness;
+use authority_cap::authority::{ADMIN, AuthorityCap};
 
 use blast_boosts_aftermath::{
     blast_boost::BlastBoost,
@@ -1469,14 +1467,13 @@ use blast_boosts_aftermath::{
     events,
     protocol::Protocol,
     snapshot::{Self, CapturedSnapshot, CheckpointChange},
-    vault::{Self as vault, Vault, VaultIssuance},
+    vault::{Vault, VaultIssuance},
     venue_account::{Self, Binding, Checkpoint},
 };
 
 use blast_boosts_core::{
     observation::PositionObservation,
     policy::{Self, PositionSide},
-    blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
     state::{ActivePosition, Issuance, MintPlan, RebalancePlan, RedemptionPlan},
 };
 
@@ -1497,7 +1494,5 @@ use perpetuals::{
 };
 
 use pyth::price_info::PriceInfoObject;
-
-use std::type_name;
 
 use sui::{balance::Balance, clock::Clock, coin::Coin, coin_registry::Currency};

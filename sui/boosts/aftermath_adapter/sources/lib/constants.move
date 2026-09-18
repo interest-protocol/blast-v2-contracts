@@ -18,11 +18,6 @@ macro public(package) fun collateral_decimals(): u8 {
     6
 }
 
-/// Decimals of Aftermath's IFixed: every raw venue amount is `value * 10^18`.
-macro public(package) fun ifixed_decimals(): u8 {
-    18
-}
-
 /// One in IFixed: `10^18`.
 macro public(package) fun ifixed_one(): u256 {
     1_000_000_000_000_000_000

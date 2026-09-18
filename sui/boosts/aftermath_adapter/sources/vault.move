@@ -273,8 +273,6 @@ public(package) fun activate<Product, Collateral>(
     (vault, seed_nav, seeded)
 }
 
-// --- Active Guards ---
-
 // --- Mint ---
 
 /// Mints only the shares priced by the completed core transition.
@@ -296,8 +294,6 @@ public(package) fun complete_mint<Product, Collateral>(
 public(package) fun burn_redeemed_shares<Product, Collateral>(self: &mut Vault<Product, Collateral>, shares: Coin<BlastBoost<Product>>): u64 {
     coin::burn(self.treasury_cap_mut(), shares)
 }
-
-// --- Rebalance ---
 
 // --- Funding And Donation ---
 
@@ -474,20 +470,16 @@ use blast_boosts_aftermath::{
     constants,
     events,
     protocol::Protocol,
-    venue_account::{Binding, Checkpoint, TerminalWithdrawal, VenueAccount},
+    venue_account::{TerminalWithdrawal, VenueAccount},
 };
 
 use blast_boosts_core::{
-    observation::{Self as observation, PositionObservation, PriceObservation},
-    policy::{PositionSide, VaultPolicy},
+    observation::{Self as observation, PositionObservation},
+    policy::VaultPolicy,
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
     lifecycle::ShutdownReason,
-    state::{Self, ActivePosition, Issuance, MintPlan, RebalancePlan, RedemptionPlan, State},
+    state::{Self, ActivePosition, Issuance, MintPlan, State},
 };
-
-use perpetuals::{account::Account, clearing_house::{ClearingHouse, SessionSummary}, registry::Registry};
-
-use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 
 use std::{string::String, type_name};
 
