@@ -61,11 +61,15 @@ public struct CapturedSnapshot {
 /// Authenticates raw terminal state without requiring a live price or positive equity.
 public(package) fun capture_checkpoint<Collateral>(
     binding: &Binding, account: &Account<Collateral>, registry: &Registry,
-    clearing_house: &ClearingHouse<Collateral>, base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
+    clearing_house: &ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
 ): Checkpoint {
-    binding.assert_exact(object::id(account), account::account_id(account), object::id(registry),
+    binding.assert_exact(
+        object::id(account), account::account_id(account), object::id(registry),
         object::id(clearing_house), object::id(base_oracle), object::id(collateral_oracle),
-        type_name::with_original_ids<Collateral>());
+        type_name::with_original_ids<Collateral>(),
+    );
+
     read_checkpoint(account, clearing_house)
 }
 
@@ -86,18 +90,11 @@ public(package) fun capture<Collateral>(
     clock: &Clock,
 ): (observation::PositionObservation, Checkpoint) {
     let captured = capture_(
-        binding,
-        account,
-        registry,
-        clearing_house,
-        base_oracle,
-        collateral_oracle,
-        base_price_info,
-        collateral_price_info,
-        clock,
-        false,
+        binding, account, registry, clearing_house, base_oracle, collateral_oracle,
+        base_price_info, collateral_price_info, clock, false,
     );
     let (observation, checkpoint, _) = into_observation(captured);
+
     (observation, checkpoint)
 }
 
@@ -114,17 +111,10 @@ public(package) fun capture_initialization<Collateral>(
     clock: &Clock,
 ): (observation::PositionObservation, Checkpoint, SnapshotFacts) {
     let captured = capture_(
-        binding,
-        account,
-        registry,
-        clearing_house,
-        base_oracle,
-        collateral_oracle,
-        base_price_info,
-        collateral_price_info,
-        clock,
-        false,
+        binding, account, registry, clearing_house, base_oracle, collateral_oracle,
+        base_price_info, collateral_price_info, clock, false,
     );
+
     into_observation(captured)
 }
 
@@ -144,16 +134,8 @@ public(package) fun capture_health<Collateral>(
     clock: &Clock,
 ): CapturedSnapshot {
     capture_(
-        binding,
-        account,
-        registry,
-        clearing_house,
-        base_oracle,
-        collateral_oracle,
-        base_price_info,
-        collateral_price_info,
-        clock,
-        true,
+        binding, account, registry, clearing_house, base_oracle, collateral_oracle,
+        base_price_info, collateral_price_info, clock, true,
     )
 }
 
@@ -170,105 +152,42 @@ fun capture_<Collateral>(
     health: bool,
 ): CapturedSnapshot {
     let checkpoint = capture_checkpoint(binding, account, registry, clearing_house, base_oracle, collateral_oracle);
-
     let params = clearing_house.market_params();
-    let base_source_id = market::base_source_id(params);
-    let collateral_source_id = market::collateral_source_id(params);
-    assert!(
-        price_feed_storage::storage_id(base_oracle) == market::base_storage_id(params),
-        blast_boosts_aftermath::errors::oracle_storage_mismatch!(),
+    let (base_feed, collateral_feed) = authenticated_feeds(
+        params, base_oracle, collateral_oracle, base_price_info, collateral_price_info,
     );
-    assert!(
-        price_feed_storage::storage_id(collateral_oracle) == market::collateral_storage_id(params),
-        blast_boosts_aftermath::errors::oracle_storage_mismatch!(),
-    );
-
-    let base_feed = &base_oracle[base_source_id];
-    let collateral_feed = &collateral_oracle[collateral_source_id];
-    assert!(
-        price_feed::source_id(base_feed) == base_source_id
-            && price_feed::source_id(collateral_feed) == collateral_source_id,
-        blast_boosts_aftermath::errors::oracle_source_mismatch!(),
-    );
-
-    // Identity failures precede every named Aftermath price calculation.
-    assert_pyth_price_info(base_price_info, base_feed);
-    assert_pyth_price_info(collateral_price_info, collateral_feed);
 
     let base_fixed = market::base_oracle_price(params, base_oracle, clock);
     let collateral_fixed = market::collateral_oracle_price(params, collateral_oracle, clock);
     let mark_fixed = clearing_house.mark_price(base_oracle, clock);
-    let (
-        base_price,
-        base_risk_price,
-        base_confidence,
-        base_timestamp,
-        base_oracle_representable,
-    ) = if (health) {
-        pyth_price_health(base_price_info, base_feed, base_fixed)
-    } else {
-        let (price, risk_price, confidence, timestamp) = pyth_price(
-            base_price_info,
-            base_feed,
-            base_fixed,
-        );
-        (price, risk_price, confidence, timestamp, true)
-    };
-    let (
-        collateral_price,
-        _collateral_risk_price,
-        collateral_confidence,
-        collateral_timestamp,
-        collateral_oracle_representable,
-    ) = if (health) {
-        pyth_price_health(
-            collateral_price_info,
-            collateral_feed,
-            collateral_fixed,
-        )
-    } else {
-        let (price, risk_price, confidence, timestamp) = pyth_price(
-            collateral_price_info,
-            collateral_feed,
-            collateral_fixed,
-        );
-        (price, risk_price, confidence, timestamp, true)
-    };
+    let (base_price, base_risk_price, base_confidence, base_timestamp, base_oracle_representable) =
+        oracle_leg(base_price_info, base_feed, base_fixed, health);
+    let (collateral_price, _, collateral_confidence, collateral_timestamp, collateral_oracle_representable) =
+        oracle_leg(collateral_price_info, collateral_feed, collateral_fixed, health);
     let (mark_price, mark_representable) = fixed_to_u64_down_health(mark_fixed, 9);
-    if (!health) {
-        assert!(mark_representable, blast_boosts_aftermath::errors::normalization_overflow!());
-    };
+    assert_representable_unless_health(health, mark_representable);
+
     let position = clearing_house.position(account::account_id(account));
     let (signed_base, signed_quote_notional) = position::base_and_quote_amounts(position);
     let (position_base, base_representable) = fixed_to_u64_up_health(ifixed::abs(signed_base), 9);
-    let (position_collateral, notional_representable) = base_notional_health(
-        position_base,
-        base_risk_price,
-        collateral_price,
-    );
-    if (!health) {
-        assert!(base_representable && notional_representable, blast_boosts_aftermath::errors::normalization_overflow!());
-    };
+    let (position_collateral, notional_representable) =
+        base_notional_health(position_base, base_risk_price, collateral_price);
+    assert_representable_unless_health(health, base_representable && notional_representable);
     let side = if (health) {
         if (position.is_long_or_flat()) { policy::long() } else { policy::short() }
     } else {
         assert_position_signs(signed_base, signed_quote_notional, position.is_long_or_flat())
     };
-    let allocated_collateral = position.collateral();
+
     let effective_imr = position::effective_initial_margin_ratio(position, market::margin_ratio_initial(params));
-    let (margin, requirement) = position::compute_margin_and_requirement(position, collateral_fixed, mark_fixed, effective_imr, market::collateral_haircut(params));
-    let pnl = position.unrealized_pnl(base_fixed);
-    let (venue_equity, equity_representable) = signed_equity_health(
-        account.collateral_balance(),
-        allocated_collateral,
-        pnl,
-        collateral_fixed,
+    let (margin, requirement) = position::compute_margin_and_requirement(
+        position, collateral_fixed, mark_fixed, effective_imr, market::collateral_haircut(params),
     );
-    if (!health) {
-        assert!(equity_representable, blast_boosts_aftermath::errors::normalization_overflow!());
-    };
-    let signs_coherent = position_signs_coherent(signed_base, signed_quote_notional, position.is_long_or_flat());
-    let economics_valid = signs_coherent
+    let (venue_equity, equity_representable) = signed_equity_health(
+        account.collateral_balance(), position.collateral(), position.unrealized_pnl(base_fixed), collateral_fixed,
+    );
+    assert_representable_unless_health(health, equity_representable);
+    let economics_valid = position_signs_coherent(signed_base, signed_quote_notional, position.is_long_or_flat())
         && base_oracle_representable
         && collateral_oracle_representable
         && base_representable
@@ -284,8 +203,7 @@ fun capture_<Collateral>(
         side,
         pending_order_count: position.pending_order_count(),
         margin_safe: margin_safe(margin, requirement),
-        venue_operational: clearing_house.market_pause_mode() == 0
-            && !clearing_house.is_frozen(),
+        venue_operational: clearing_house.market_pause_mode() == 0 && !clearing_house.is_frozen(),
         economics_valid,
         base_price,
         base_confidence,
@@ -295,23 +213,64 @@ fun capture_<Collateral>(
         collateral_timestamp,
         mark_price,
         checkpoint,
-        collateral_fixed: if (collateral_oracle_representable) {
-            collateral_fixed
-        } else {
-            0
-        },
+        collateral_fixed: if (collateral_oracle_representable) { collateral_fixed } else { 0 },
     }
 }
 
+/// Proves both oracle storages and both feeds are the ones the bound market
+/// prices with, then returns the feeds. Identity failures abort before any
+/// named Aftermath price calculation runs, in health captures too.
+fun authenticated_feeds(
+    params: &MarketParams,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    base_price_info: &PriceInfoObject,
+    collateral_price_info: &PriceInfoObject,
+): (&price_feed::PriceFeed, &price_feed::PriceFeed) {
+    assert!(
+        price_feed_storage::storage_id(base_oracle) == market::base_storage_id(params)
+            && price_feed_storage::storage_id(collateral_oracle) == market::collateral_storage_id(params),
+        blast_boosts_aftermath::errors::oracle_storage_mismatch!(),
+    );
+
+    let base_source_id = market::base_source_id(params);
+    let collateral_source_id = market::collateral_source_id(params);
+    let base_feed = &base_oracle[base_source_id];
+    let collateral_feed = &collateral_oracle[collateral_source_id];
+    assert!(
+        price_feed::source_id(base_feed) == base_source_id
+            && price_feed::source_id(collateral_feed) == collateral_source_id,
+        blast_boosts_aftermath::errors::oracle_source_mismatch!(),
+    );
+    assert_pyth_price_info(base_price_info, base_feed);
+    assert_pyth_price_info(collateral_price_info, collateral_feed);
+
+    (base_feed, collateral_feed)
+}
+
+/// One oracle leg: price, risk price, confidence, timestamp and whether every
+/// value was representable. A strict capture aborts on the first unrepresentable
+/// value; a health capture reports it.
+fun oracle_leg(
+    price_info: &PriceInfoObject, feed: &price_feed::PriceFeed, fixed: u256, health: bool,
+): (u64, u64, u64, u64, bool) {
+    if (health) {
+        pyth_price_health(price_info, feed, fixed)
+    } else {
+        let (price, risk_price, confidence, timestamp) = pyth_price(price_info, feed, fixed);
+
+        (price, risk_price, confidence, timestamp, true)
+    }
+}
+
+/// A strict capture fails closed on an unrepresentable value; a health capture carries on.
+fun assert_representable_unless_health(health: bool, representable: bool) {
+    assert!(health || representable, blast_boosts_aftermath::errors::normalization_overflow!());
+}
+
 /// Consumes a pre-settlement capture into the exact reconciliation inputs.
-public(package) fun into_funding_probe(
-    self: CapturedSnapshot,
-): (Checkpoint, u256) {
-    let CapturedSnapshot {
-        checkpoint,
-        collateral_fixed,
-        ..
-    } = self;
+public(package) fun into_funding_probe(self: CapturedSnapshot): (Checkpoint, u256) {
+    let CapturedSnapshot { checkpoint, collateral_fixed, .. } = self;
 
     (checkpoint, collateral_fixed)
 }
@@ -346,35 +305,14 @@ public(package) fun assert_clean_funding(change: Change) {
         blast_boosts_aftermath::errors::unresolved_checkpoint!());
 }
 
-fun into_observation(
-    self: CapturedSnapshot,
-): (observation::PositionObservation, Checkpoint, SnapshotFacts) {
+/// Turns a strict capture into the core's observation, the checkpoint, and the sizing facts.
+fun into_observation(self: CapturedSnapshot): (observation::PositionObservation, Checkpoint, SnapshotFacts) {
     let CapturedSnapshot {
-        venue_equity,
-        position_base,
-        position_collateral,
-        lot_size,
-        side,
-        pending_order_count,
-        margin_safe,
-        venue_operational,
-        economics_valid,
-        base_price,
-        base_confidence,
-        base_timestamp,
-        collateral_price,
-        collateral_confidence,
-        collateral_timestamp,
-        mark_price,
-        checkpoint,
-        collateral_fixed: _,
+        venue_equity, position_base, position_collateral, lot_size, side, pending_order_count,
+        margin_safe, venue_operational, economics_valid, base_price, base_confidence, base_timestamp,
+        collateral_price, collateral_confidence, collateral_timestamp, mark_price, checkpoint, collateral_fixed: _,
     } = self;
-    let base_oracle = observation::new_price(base_price, base_confidence, base_timestamp);
-    let collateral_index = observation::new_price(
-        collateral_price,
-        collateral_confidence,
-        collateral_timestamp,
-    );
+
     let observation = observation::new_position(
         venue_equity,
         position_base,
@@ -385,24 +323,15 @@ fun into_observation(
         economics_valid && margin_safe,
         venue_operational,
         true,
-        base_oracle,
-        collateral_index,
+        observation::new_price(base_price, base_confidence, base_timestamp),
+        observation::new_price(collateral_price, collateral_confidence, collateral_timestamp),
         mark_price,
     );
+    let facts = SnapshotFacts {
+        venue_equity, position_base, position_collateral, lot_size, side, base_price, collateral_price,
+    };
 
-    (
-        observation,
-        checkpoint,
-        SnapshotFacts {
-            venue_equity,
-            position_base,
-            position_collateral,
-            lot_size,
-            side,
-            base_price,
-            collateral_price,
-        },
-    )
+    (observation, checkpoint, facts)
 }
 
 // --- Snapshot Facts Reads ---
@@ -435,24 +364,15 @@ public(package) fun classify_change(
     funding_candidate: u256,
     collateral_price: u256,
 ): Change {
-    if (checkpoint_unchanged(before, after)) {
-        return Change::Unchanged
-    };
-    let (candidate_collateral_magnitude, representable) =
-        usd_fixed_to_collateral_fixed_health(
-            ifixed::abs(funding_candidate),
-            collateral_price,
-            ifixed::is_neg(funding_candidate),
-        );
-    if (!representable) {
-        return Change::Unexpected
-    };
+    if (checkpoint_unchanged(before, after)) return Change::Unchanged;
+
+    let (candidate_collateral_magnitude, representable) = usd_fixed_to_collateral_fixed_health(
+        ifixed::abs(funding_candidate), collateral_price, ifixed::is_neg(funding_candidate),
+    );
+    if (!representable) return Change::Unexpected;
 
     classify_change_(
-        before,
-        after,
-        ifixed::is_neg(funding_candidate),
-        candidate_collateral_magnitude,
+        before, after, ifixed::is_neg(funding_candidate), candidate_collateral_magnitude,
         allocated_delta(before, after),
     )
 }
@@ -469,10 +389,7 @@ public(package) fun checkpoint_unchanged(
 ///
 /// This is the ordinary pre-settlement shape: the position still carries the
 /// stored funding snapshots while the market rates may have moved forward.
-public(package) fun checkpoint_ready_for_settlement(
-    stored: &Checkpoint,
-    before: &Checkpoint,
-): bool {
+public(package) fun checkpoint_ready_for_settlement(stored: &Checkpoint, before: &Checkpoint): bool {
     stored.non_funding_fields_equal(before)
         && stored.allocated_collateral() == before.allocated_collateral()
         && stored.funding_snapshot_long() == before.funding_snapshot_long()
@@ -486,15 +403,8 @@ public(package) fun checkpoint_ready_for_settlement(
 /// snapshots refresh to the current market rates and allocated collateral
 /// changes, while every unrelated account, position, order, and risk field is
 /// byte-for-byte unchanged.
-public(package) fun classify_preexisting_funding(
-    stored: &Checkpoint,
-    before: &Checkpoint,
-): Change {
-    classify_preexisting_funding_(
-        stored,
-        before,
-        allocated_delta(stored, before),
-    )
+public(package) fun classify_preexisting_funding(stored: &Checkpoint, before: &Checkpoint): Change {
+    classify_preexisting_funding_(stored, before, allocated_delta(stored, before))
 }
 
 fun classify_preexisting_funding_(
@@ -502,15 +412,13 @@ fun classify_preexisting_funding_(
     before: &Checkpoint,
     allocated_change: Change,
 ): Change {
-    let unrelated_unchanged = stored.non_funding_fields_equal(before);
     // The position snapshots prove the completed external settlement. They may
     // trail the market again if another funding epoch advanced before Blast
     // synchronized, so equality with the current market rates is not required.
     let snapshots_refreshed = stored.funding_snapshot_long() != before.funding_snapshot_long()
         || stored.funding_snapshot_short() != before.funding_snapshot_short();
-    if (!unrelated_unchanged || !snapshots_refreshed) {
-        return Change::Unexpected
-    };
+    if (!stored.non_funding_fields_equal(before) || !snapshots_refreshed) return Change::Unexpected;
+
     allocated_change
 }
 
@@ -608,9 +516,14 @@ public(package) fun net_funding(first: Change, second: Change): Change {
     } else {
         (second_cost, b - a)
     };
-    if (amount == 0) { Change::Unchanged }
-    else if (is_cost) { Change::FundingCost(amount) }
-    else { Change::FundingCredit(amount) }
+
+    if (amount == 0) {
+        Change::Unchanged
+    } else if (is_cost) {
+        Change::FundingCost(amount)
+    } else {
+        Change::FundingCredit(amount)
+    }
 }
 
 fun classify_change_(
@@ -620,26 +533,28 @@ fun classify_change_(
     candidate_collateral_magnitude: u256,
     allocated_change: Change,
 ): Change {
-    if (before == after) { return Change::Unchanged };
-    if (!before.non_funding_fields_equal(after)
-        || before.market_funding_long() != after.market_funding_long()
-        || before.market_funding_short() != after.market_funding_short()) {
-        return Change::Unexpected
-    };
+    if (before == after) return Change::Unchanged;
+    let market_rates_unchanged = before.non_funding_fields_equal(after)
+        && before.market_funding_long() == after.market_funding_long()
+        && before.market_funding_short() == after.market_funding_short();
+    if (!market_rates_unchanged) return Change::Unexpected;
+
     let snapshots_refreshed = after.funding_snapshot_long() == before.market_funding_long()
         && after.funding_snapshot_short() == before.market_funding_short()
         && (before.funding_snapshot_long() != after.funding_snapshot_long()
             || before.funding_snapshot_short() != after.funding_snapshot_short());
-    if (!snapshots_refreshed) { return Change::Unexpected };
+    if (!snapshots_refreshed) return Change::Unexpected;
     if (candidate_collateral_magnitude == 0 && before.allocated_collateral() == after.allocated_collateral()) {
         return Change::Unchanged
     };
+
     let matched = match (&allocated_change) {
         Change::FundingCredit(amount) => !candidate_negative && *amount == candidate_collateral_magnitude,
         Change::FundingCost(amount) => candidate_negative && *amount == candidate_collateral_magnitude,
         Change::Unchanged => candidate_collateral_magnitude == 0,
         Change::Unexpected => false,
     };
+
     if (matched) { allocated_change } else { Change::Unexpected }
 }
 
@@ -690,13 +605,12 @@ fun pyth_price(
     let price_info = price_info::get_price_info_from_price_info_object(price_info_object);
     let pyth_price = pyth_price_feed::get_price(price_info::get_price_feed(&price_info));
     let price_i64 = price::get_price(&pyth_price);
-    assert!(
-        !i64::get_is_negative(&price_i64),
-        blast_boosts_aftermath::errors::invalid_pyth_price!(),
-    );
+    assert!(!i64::get_is_negative(&price_i64), blast_boosts_aftermath::errors::invalid_pyth_price!());
+
+    let magnitude = i64::get_magnitude_if_positive(&price_i64);
     let expo = price::get_expo(&pyth_price);
-    let normalized_price = normalize_pyth_component(i64::get_magnitude_if_positive(&price_i64), &expo, false);
-    let normalized_risk_price = normalize_pyth_component(i64::get_magnitude_if_positive(&price_i64), &expo, true);
+    let normalized_price = normalize_pyth_component(magnitude, &expo, false);
+    let normalized_risk_price = normalize_pyth_component(magnitude, &expo, true);
     let normalized_confidence = normalize_pyth_component(price::get_conf(&pyth_price), &expo, true);
     let (aftermath_price, aftermath_timestamp) = price_feed::price_and_timestamp_ms(aftermath_feed);
     assert!(
@@ -706,12 +620,7 @@ fun pyth_price(
         blast_boosts_aftermath::errors::oracle_observation_mismatch!(),
     );
 
-    (
-        normalized_price,
-        normalized_risk_price,
-        normalized_confidence,
-        aftermath_timestamp,
-    )
+    (normalized_price, normalized_risk_price, normalized_confidence, aftermath_timestamp)
 }
 
 /// Normalizes authenticated oracle values without aborting on representation.
@@ -727,27 +636,16 @@ fun pyth_price_health(
     let pyth_price = pyth_price_feed::get_price(price_info::get_price_feed(&price_info));
     let price_i64 = price::get_price(&pyth_price);
     let price_nonnegative = !i64::get_is_negative(&price_i64);
-    let price_magnitude = if (price_nonnegative) {
-        i64::get_magnitude_if_positive(&price_i64)
-    } else {
-        0
-    };
+    let magnitude = if (price_nonnegative) { i64::get_magnitude_if_positive(&price_i64) } else { 0 };
     let expo = price::get_expo(&pyth_price);
-    let (normalized_price, price_representable) = normalize_pyth_component_health(
-        price_magnitude,
-        &expo,
-        false,
-    );
-    let (normalized_risk_price, risk_price_representable) =
-        normalize_pyth_component_health(price_magnitude, &expo, true);
+
+    let (normalized_price, price_representable) = normalize_pyth_component_health(magnitude, &expo, false);
+    let (normalized_risk_price, risk_price_representable) = normalize_pyth_component_health(magnitude, &expo, true);
     let (normalized_confidence, confidence_representable) =
         normalize_pyth_component_health(price::get_conf(&pyth_price), &expo, true);
-    let (aftermath_price, aftermath_timestamp) =
-        price_feed::price_and_timestamp_ms(aftermath_feed);
-    let (normalized_feed_price, feed_representable) =
-        normalize_feed_price_health(aftermath_price);
-    let (normalized_venue_price, venue_representable) =
-        fixed_to_u64_down_health(venue_price, 9);
+    let (aftermath_price, aftermath_timestamp) = price_feed::price_and_timestamp_ms(aftermath_feed);
+    let (normalized_feed_price, feed_representable) = normalize_feed_price_health(aftermath_price);
+    let (normalized_venue_price, venue_representable) = fixed_to_u64_down_health(venue_price, 9);
     let (pyth_timestamp, timestamp_representable) =
         checked_seconds_to_millis_health(price::get_timestamp(&pyth_price));
     let representable = price_nonnegative
@@ -757,9 +655,8 @@ fun pyth_price_health(
         && feed_representable
         && venue_representable
         && timestamp_representable;
-    if (!representable) {
-        return (0, 0, 0, 0, false)
-    };
+    if (!representable) return (0, 0, 0, 0, false);
+
     assert!(
         normalized_feed_price == normalized_price
             && normalized_venue_price == normalized_price
@@ -767,13 +664,7 @@ fun pyth_price_health(
         blast_boosts_aftermath::errors::oracle_observation_mismatch!(),
     );
 
-    (
-        normalized_price,
-        normalized_risk_price,
-        normalized_confidence,
-        aftermath_timestamp,
-        true,
-    )
+    (normalized_price, normalized_risk_price, normalized_confidence, aftermath_timestamp, true)
 }
 
 fun assert_pyth_price_info(price_info_object: &PriceInfoObject, aftermath_feed: &price_feed::PriceFeed) {
@@ -844,7 +735,8 @@ fun normalize_pyth_component_parts_health(
     magnitude: u64,
     round_up: bool,
 ): (u64, bool) {
-    if (magnitude > 18) { return (0, false) };
+    if (magnitude > 18) return (0, false);
+
     let raw = component as u256;
     let normalized = if (expo_negative) {
         if (magnitude <= 9) {
@@ -857,11 +749,8 @@ fun normalize_pyth_component_parts_health(
     } else {
         checked_mul(raw, pow10(9 + magnitude))
     };
-    if (normalized > std::u64::max_value!() as u256) {
-        (0, false)
-    } else {
-        (normalized as u64, true)
-    }
+
+    if (normalized > std::u64::max_value!() as u256) { (0, false) } else { (normalized as u64, true) }
 }
 
 fun checked_seconds_to_millis(seconds: u64): u64 {
@@ -924,18 +813,28 @@ fun fixed_to_u64_up_health(value: u256, decimals: u64): (u64, bool) {
 #[allow(unused_function)]
 fun usd_fixed_to_collateral_fixed(usd: u256, collateral_price: u256, round_up: bool): u256 {
     assert!(collateral_price > 0, blast_boosts_aftermath::errors::normalization_overflow!());
+
+    let one = pow10(18);
     let whole = usd / collateral_price;
     let remainder = usd % collateral_price;
-    assert!(whole <= std::u256::max_value!() / pow10(18), blast_boosts_aftermath::errors::normalization_overflow!());
-    assert!(remainder == 0 || remainder <= std::u256::max_value!() / pow10(18), blast_boosts_aftermath::errors::normalization_overflow!());
-    let whole_scaled = whole * pow10(18);
-    let fraction = remainder * pow10(18) / collateral_price;
-    assert!(whole_scaled <= std::u256::max_value!() - fraction, blast_boosts_aftermath::errors::normalization_overflow!());
+    assert!(
+        whole <= std::u256::max_value!() / one && remainder <= std::u256::max_value!() / one,
+        blast_boosts_aftermath::errors::normalization_overflow!(),
+    );
+    let whole_scaled = whole * one;
+    let fraction = remainder * one / collateral_price;
+    assert!(
+        whole_scaled <= std::u256::max_value!() - fraction,
+        blast_boosts_aftermath::errors::normalization_overflow!(),
+    );
+
     let down = whole_scaled + fraction;
-    if (round_up && remainder * pow10(18) % collateral_price != 0) {
+    if (round_up && remainder * one % collateral_price != 0) {
         assert!(down < std::u256::max_value!(), blast_boosts_aftermath::errors::normalization_overflow!());
         down + 1
-    } else { down }
+    } else {
+        down
+    }
 }
 
 /// Values current position risk as absolute base × Pyth index ÷ collateral.
@@ -943,20 +842,14 @@ fun usd_fixed_to_collateral_fixed(usd: u256, collateral_price: u256, round_up: b
 /// The quote amount remains in the raw checkpoint for transition guards and
 /// direction coherence, but it is historical cost basis and therefore cannot
 /// be the live leverage numerator.
-fun base_notional_health(
-    position_base: u64,
-    base_price: u64,
-    collateral_price: u64,
-): (u64, bool) {
-    if (collateral_price == 0) { return (0, false) };
+fun base_notional_health(position_base: u64, base_price: u64, collateral_price: u64): (u64, bool) {
+    if (collateral_price == 0) return (0, false);
+
     let numerator = (position_base as u256) * (base_price as u256);
     let denominator = (collateral_price as u256) * COLLATERAL_TO_BASE_SCALE;
     let notional = numerator.div_ceil(denominator);
-    if (notional > std::u64::max_value!() as u256) {
-        (0, false)
-    } else {
-        (notional as u64, true)
-    }
+
+    if (notional > std::u64::max_value!() as u256) { (0, false) } else { (notional as u64, true) }
 }
 
 fun signed_equity_health(free: u64, allocated: u256, pnl_usd: u256, collateral_price: u256): (u64, bool) {
@@ -978,47 +871,51 @@ fun signed_equity_health_from_parts(
     pnl_magnitude_usd: u256,
     collateral_price: u256,
 ): (u64, bool) {
-    if (collateral_price == 0) { return (0, false) };
+    if (collateral_price == 0) return (0, false);
+
+    // A liability rounds up and an asset rounds down, so equity never reads high.
     let (allocated_tokens, allocated_ok) = if (allocated_negative) {
         fixed_to_u64_up_health(allocated, 6)
     } else {
         fixed_to_u64_down_health(allocated, 6)
     };
-    let (pnl, collateral_ok) = usd_fixed_to_collateral_fixed_health(
-        pnl_magnitude_usd,
-        collateral_price,
-        pnl_negative,
-    );
+    let (pnl, collateral_ok) = usd_fixed_to_collateral_fixed_health(pnl_magnitude_usd, collateral_price, pnl_negative);
     let (rounded, pnl_ok) = if (pnl_negative) {
         fixed_to_u64_up_health(pnl, 6)
     } else {
         fixed_to_u64_down_health(pnl, 6)
     };
-    if (!allocated_ok || !collateral_ok || !pnl_ok) { return (0, false) };
+    if (!allocated_ok || !collateral_ok || !pnl_ok) return (0, false);
+
     let assets = (free as u128)
         + (if (allocated_negative) { 0 } else { allocated_tokens } as u128)
         + (if (pnl_negative) { 0 } else { rounded } as u128);
     let liabilities = (if (allocated_negative) { allocated_tokens } else { 0 } as u128)
         + (if (pnl_negative) { rounded } else { 0 } as u128);
-    if (assets < liabilities) { return (0, false) };
+    if (assets < liabilities) return (0, false);
+
     let net = assets - liabilities;
     if (net > std::u64::max_value!() as u128) { (0, false) } else { (net as u64, true) }
 }
 
 fun usd_fixed_to_collateral_fixed_health(usd: u256, collateral_price: u256, round_up: bool): (u256, bool) {
-    if (collateral_price == 0) { return (0, false) };
-    let scalar = pow10(18);
+    if (collateral_price == 0) return (0, false);
+
+    let one = pow10(18);
     let whole = usd / collateral_price;
     let remainder = usd % collateral_price;
-    if (whole > std::u256::max_value!() / scalar || (remainder != 0 && remainder > std::u256::max_value!() / scalar)) { return (0, false) };
-    let fractional_scaled = remainder * scalar;
-    let whole_scaled = whole * scalar;
+    if (whole > std::u256::max_value!() / one || remainder > std::u256::max_value!() / one) return (0, false);
+    let fractional_scaled = remainder * one;
+    let whole_scaled = whole * one;
     let fraction = fractional_scaled / collateral_price;
-    if (whole_scaled > std::u256::max_value!() - fraction) { return (0, false) };
+    if (whole_scaled > std::u256::max_value!() - fraction) return (0, false);
+
     let down = whole_scaled + fraction;
     if (round_up && fractional_scaled % collateral_price != 0) {
         if (down == std::u256::max_value!()) { (0, false) } else { (down + 1, true) }
-    } else { (down, true) }
+    } else {
+        (down, true)
+    }
 }
 
 fun margin_safe(margin: u256, requirement: u256): bool {
@@ -1037,19 +934,19 @@ fun position_signs_coherent(base: u256, quote: u256, long_or_flat: bool): bool {
     position_signs_coherent_from_parts(base_negative, quote_negative, base_zero, quote_zero, long_or_flat)
 }
 
-fun position_signs_coherent_from_parts(base_negative: bool, quote_negative: bool, base_zero: bool, quote_zero: bool, long_or_flat: bool): bool {
-    if (base_zero || quote_zero) {
-        return base_zero && quote_zero
-    };
-    if (long_or_flat) {
-        !base_negative && quote_negative
-    } else {
-        base_negative && !quote_negative
-    }
+fun position_signs_coherent_from_parts(
+    base_negative: bool, quote_negative: bool, base_zero: bool, quote_zero: bool, long_or_flat: bool,
+): bool {
+    if (base_zero || quote_zero) return base_zero && quote_zero;
+
+    if (long_or_flat) { !base_negative && quote_negative } else { base_negative && !quote_negative }
 }
 
 fun assert_position_signs(base: u256, quote: u256, long_or_flat: bool): PositionSide {
-    assert!(position_signs_coherent(base, quote, long_or_flat), blast_boosts_aftermath::errors::incoherent_position_signs!());
+    assert!(
+        position_signs_coherent(base, quote, long_or_flat),
+        blast_boosts_aftermath::errors::incoherent_position_signs!(),
+    );
     if (long_or_flat) { policy::long() } else { policy::short() }
 }
 
@@ -1116,7 +1013,9 @@ public fun classify_signed_funding_for_testing(
     stored: &Checkpoint, before: &Checkpoint, stored_negative: bool, stored_magnitude: u256,
     before_negative: bool, before_magnitude: u256,
 ): Change {
-    classify_preexisting_funding_(stored, before, signed_delta(stored_negative, stored_magnitude, before_negative, before_magnitude))
+    classify_preexisting_funding_(
+        stored, before, signed_delta(stored_negative, stored_magnitude, before_negative, before_magnitude),
+    )
 }
 
 #[test_only]
@@ -1230,10 +1129,14 @@ public fun base_notional_from_pyth_for_testing(
 }
 
 #[test_only]
-public fun margin_safe_for_testing(margin_negative: bool, margin: u256, requirement: u256): bool { margin_safe_from_parts(margin_negative, margin, requirement) }
+public fun margin_safe_for_testing(margin_negative: bool, margin: u256, requirement: u256): bool {
+    margin_safe_from_parts(margin_negative, margin, requirement)
+}
 
 #[test_only]
-public fun position_signs_coherent_for_testing(base_negative: bool, quote_negative: bool, base_zero: bool, quote_zero: bool, long_or_flat: bool): bool {
+public fun position_signs_coherent_for_testing(
+    base_negative: bool, quote_negative: bool, base_zero: bool, quote_zero: bool, long_or_flat: bool,
+): bool {
     position_signs_coherent_from_parts(base_negative, quote_negative, base_zero, quote_zero, long_or_flat)
 }
 
@@ -1331,7 +1234,7 @@ use oracle_aggregator::{price_feed, price_feed_storage::{Self, PriceFeedStorage}
 use perpetuals::{
     account::{Self, Account},
     clearing_house::{Self, ClearingHouse},
-    market,
+    market::{Self, MarketParams},
     registry::Registry,
 };
 
