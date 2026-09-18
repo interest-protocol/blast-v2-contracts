@@ -91,8 +91,8 @@ public(package) fun new_binding(
     }
 }
 
-/// Rejects the first external component that differs from this binding.
-public(package) fun assert_exact(
+/// The external object graph a capture reads is the bound one; rejects the first component that differs.
+public(package) fun assert_object_graph(
     self: &Binding,
     account_object_id: ID,
     account_number: u64,
@@ -188,9 +188,9 @@ public(package) fun new_checkpoint(
     }
 }
 
-/// Rejects unresolved venue drift before a priced operation uses the accepted checkpoint.
-public(package) fun assert_accepted_checkpoint(accepted: &Checkpoint, observed: &Checkpoint) {
-    assert!(accepted == observed, blast_boosts_aftermath::errors::unresolved_checkpoint!());
+/// The venue still shows the checkpoint last accepted; a priced operation may not build on drift.
+public(package) fun assert_unchanged(self: &Checkpoint, observed: &Checkpoint) {
+    assert!(self == observed, blast_boosts_aftermath::errors::unresolved_checkpoint!());
 }
 
 /// Returns whether every field outside funding accounting is equal.
@@ -414,7 +414,7 @@ public(package) fun assert_no_orders(self: &Checkpoint) {
 }
 
 /// A venue-enabled frozen settlement can realize cash, but must finish exactly flat and order-free.
-public(package) fun assert_direct_settlement_close(before: &Checkpoint, after: &Checkpoint) {
+public(package) fun assert_direct_settlement_checkpoint(before: &Checkpoint, after: &Checkpoint) {
     before.assert_no_orders();
     after.assert_no_orders();
     assert!(
@@ -445,16 +445,16 @@ public(package) fun recoverable_terminal_cash(self: &Checkpoint): u64 {
 }
 
 /// Complete recovery changes only the two collateral locations, by the actual returned coin.
-public(package) fun assert_terminal_withdrawal(before: &Checkpoint, after: &Checkpoint, amount: u64) {
+public(package) fun assert_terminal_withdrawal_checkpoint(before: &Checkpoint, after: &Checkpoint, amount: u64) {
     let (negative, magnitude) = before.allocated_collateral_sign_and_magnitude();
-    assert_terminal_withdrawal_decoded(before, after, amount, negative, magnitude);
+    assert_terminal_withdrawal_checkpoint_decoded(before, after, amount, negative, magnitude);
 }
 
 /// Binds native cash to finality before the Vault can seal terminal custody.
 public(package) fun terminal_withdrawal<Collateral>(
     before: &Checkpoint, after: Checkpoint, recovered: Coin<Collateral>,
 ): TerminalWithdrawal<Collateral> {
-    assert_terminal_withdrawal(before, &after, recovered.value());
+    assert_terminal_withdrawal_checkpoint(before, &after, recovered.value());
     TerminalWithdrawal { recovered, checkpoint: after }
 }
 
@@ -557,7 +557,7 @@ fun recoverable_cash_decoded(self: &Checkpoint, negative: bool, magnitude: u256)
     self.free_collateral + ((magnitude / constants::collateral_atom_to_ifixed_scale!()) as u64)
 }
 
-fun assert_terminal_withdrawal_decoded(
+fun assert_terminal_withdrawal_checkpoint_decoded(
     before: &Checkpoint, after: &Checkpoint, amount: u64, negative: bool, magnitude: u256,
 ) {
     assert!(
@@ -672,10 +672,10 @@ public(package) fun recoverable_cash_for_testing(self: &Checkpoint, negative: bo
 }
 
 #[test_only]
-public(package) fun assert_terminal_withdrawal_for_testing(
+public(package) fun assert_terminal_withdrawal_checkpoint_for_testing(
     before: &Checkpoint, after: &Checkpoint, amount: u64, negative: bool, magnitude: u256,
 ) {
-    assert_terminal_withdrawal_decoded(before, after, amount, negative, magnitude);
+    assert_terminal_withdrawal_checkpoint_decoded(before, after, amount, negative, magnitude);
 }
 
 /// Substitutes only named IFixed decoding; cash and checkpoint guards remain production code.
@@ -683,7 +683,7 @@ public(package) fun assert_terminal_withdrawal_for_testing(
 public(package) fun terminal_withdrawal_for_testing<Collateral>(
     before: &Checkpoint, after: Checkpoint, recovered: Coin<Collateral>, negative: bool, magnitude: u256,
 ): TerminalWithdrawal<Collateral> {
-    assert_terminal_withdrawal_decoded(before, &after, recovered.value(), negative, magnitude);
+    assert_terminal_withdrawal_checkpoint_decoded(before, &after, recovered.value(), negative, magnitude);
     TerminalWithdrawal { recovered, checkpoint: after }
 }
 

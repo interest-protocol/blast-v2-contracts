@@ -411,7 +411,7 @@ public(package) fun assert_execution_within_emergency_max_slippage(
 /// Rejects a NAV cap that is zero or so large that
 /// `nav_cap * max_leverage_bps / 10_000` overflows `u64`; without that ceiling
 /// a Vault at the cap could not compute a target notional and rebalance.
-public(package) fun assert_valid_nav_cap(self: &RebalancePolicy, nav_cap: u64) {
+public(package) fun assert_nav_cap_valid(self: &RebalancePolicy, nav_cap: u64) {
     assert!(
         nav_cap > 0
             && (nav_cap as u128) * (self.max_leverage_bps as u128)

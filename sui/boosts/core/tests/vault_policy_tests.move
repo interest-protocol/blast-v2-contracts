@@ -122,7 +122,7 @@ fun every_small_valid_domain_tuple_is_accepted_and_preserved() {
 #[test]
 fun rebalance_policy_accepts_the_largest_nav_cap_that_fits_max_leverage() {
     let max = std::u64::max_value!();
-    policy::new_rebalance_policy(0, 2, 999_999, 1_000_000, 0, 0, 1).assert_valid_nav_cap(max / 100);
+    policy::new_rebalance_policy(0, 2, 999_999, 1_000_000, 0, 0, 1).assert_nav_cap_valid(max / 100);
 }
 
 #[test]
@@ -140,7 +140,7 @@ fun minimum_exposure_lots_above_the_ceiling_are_rejected() {
 #[expected_failure(abort_code = errors::EInvalidNavCap, location = blast_boosts_core::policy)]
 fun a_nav_cap_whose_max_leverage_notional_overflows_is_rejected() {
     let max = std::u64::max_value!();
-    policy::new_rebalance_policy(0, 2, 999_999, 1_000_000, 0, 0, 1).assert_valid_nav_cap(max / 100 + 1);
+    policy::new_rebalance_policy(0, 2, 999_999, 1_000_000, 0, 0, 1).assert_nav_cap_valid(max / 100 + 1);
 }
 
 #[test]
@@ -189,7 +189,7 @@ fun the_reserve_cap_is_the_floored_share_of_notional() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidNavCap, location = blast_boosts_core::policy)]
 fun zero_nav_cap_is_rejected() {
-    policy::new_rebalance_policy(0, 3, 5, 6, 0, 0, 1).assert_valid_nav_cap(0);
+    policy::new_rebalance_policy(0, 3, 5, 6, 0, 0, 1).assert_nav_cap_valid(0);
 }
 
 #[test]

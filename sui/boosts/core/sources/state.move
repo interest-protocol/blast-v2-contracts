@@ -118,7 +118,7 @@ public struct DonationPlan<phantom Product> {
 ///
 /// The adapter must store the returned value inside its Vault. The caller's
 /// live admin witness must contain the Vault issuer role. `nav_cap` must
-/// satisfy `RebalancePolicy::assert_valid_nav_cap`; it stays adjustable
+/// satisfy `RebalancePolicy::assert_nav_cap_valid`; it stays adjustable
 /// through `set_nav_cap`.
 public fun new<Product>(
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
@@ -128,7 +128,7 @@ public fun new<Product>(
 ): State<Product> {
     admin_witness.assert_role(domain::vault_issuer_role());
     assert!(max_order_notional > 0, blast_boosts_core::errors::invalid_max_order_notional!());
-    vault_policy.rebalance_policy().assert_valid_nav_cap(nav_cap);
+    vault_policy.rebalance_policy().assert_nav_cap_valid(nav_cap);
 
     State {
         mint_fee_bps: vault_policy.initial_mint_fee_bps(),
@@ -888,7 +888,7 @@ public fun set_max_order_notional<Product>(self: &mut State<Product>, max_order_
 public fun set_nav_cap<Product>(self: &mut State<Product>, nav_cap: u64): u64 {
     let previous = self.nav_cap;
     assert!(nav_cap != previous, blast_boosts_core::errors::nav_cap_unchanged!());
-    self.vault_policy.rebalance_policy().assert_valid_nav_cap(nav_cap);
+    self.vault_policy.rebalance_policy().assert_nav_cap_valid(nav_cap);
 
     self.nav_cap = nav_cap;
     previous

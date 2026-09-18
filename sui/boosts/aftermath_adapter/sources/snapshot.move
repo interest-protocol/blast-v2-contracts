@@ -80,7 +80,7 @@ public(package) fun capture_checkpoint<Collateral>(
     clearing_house: &ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
 ): Checkpoint {
-    binding.assert_exact(
+    binding.assert_object_graph(
         object::id(account), account::account_id(account), object::id(registry),
         object::id(clearing_house), object::id(base_oracle), object::id(collateral_oracle),
         type_name::with_original_ids<Collateral>(),
@@ -286,8 +286,8 @@ public(package) fun unchanged_change(): Change {
 }
 
 /// A terminal market close may realize losses, but cannot misattribute an unrelated funding mutation.
-public(package) fun assert_clean_funding(change: Change) {
-    assert!(!change.is_unexpected(), blast_boosts_aftermath::errors::unresolved_checkpoint!());
+public(package) fun assert_expected(self: Change) {
+    assert!(!self.is_unexpected(), blast_boosts_aftermath::errors::unresolved_checkpoint!());
 }
 
 // --- Change Reads ---

@@ -1609,7 +1609,7 @@ fun health_event_records_stable_reason_and_latest_checkpoint() {
 fun active_operation_rejects_unresolved_checkpoint_with_its_own_error() {
     let before = sync_checkpoint(1_000, 100, 10, 20, 11, 21, 0, 0, 1);
     let after = sync_checkpoint(1_001, 100, 10, 20, 11, 21, 0, 0, 1);
-    before.assert_accepted_checkpoint(&after);
+    before.assert_unchanged(&after);
 }
 
 #[test]
@@ -2112,7 +2112,7 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
     );
 
     let actual_binding = vault.venue_binding();
-    actual_binding.assert_exact(
+    actual_binding.assert_object_graph(
         replay.account_object_id,
         replay.account_number,
         replay.registry_id,

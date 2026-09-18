@@ -16,7 +16,7 @@ fun terminal_cash_sum_overflow_is_not_a_partial_withdrawal() {
 fun one_remaining_atomic_coin_blocks_completed_withdrawal() {
     let before = checkpoint(0, 0, 0, 0, 9, 13);
     let after = checkpoint(0, 0, 0, 0, 9, 1);
-    before.assert_terminal_withdrawal(&after, 13);
+    before.assert_terminal_withdrawal_checkpoint(&after, 13);
 }
 
 #[test]
@@ -39,7 +39,7 @@ fun direct_settlement_closes_raw_dust_without_creating_a_market_order() {
         0, 0, 0, 0, true, 0, 0, 0);
     let after = venue_account::new_checkpoint(5, 0, 0, 0, 9, 10, 9, 10, 1_000,
         0, 0, 0, 0, true, 0, 0, 0);
-    before.assert_direct_settlement_close(&after);
+    before.assert_direct_settlement_checkpoint(&after);
 }
 
 #[test]
@@ -49,7 +49,7 @@ fun direct_settlement_cannot_leave_one_raw_order_or_position_unit() {
         0, 0, 0, 0, true, 0, 0, 0);
     let after = venue_account::new_checkpoint(5, 0, 0, 0, 9, 10, 9, 10, 1_000,
         1, 0, 0, 0, true, 0, 0, 0);
-    before.assert_direct_settlement_close(&after);
+    before.assert_direct_settlement_checkpoint(&after);
 }
 
 #[test]
@@ -96,13 +96,13 @@ fun terminal_cash_floors_only_nonnegative_allocated_collateral() {
 
 #[test]
 fun terminal_withdrawal_preserves_the_exact_unrecoverable_raw_remainder() {
-    checkpoint(0, 0, 0, 0, 9, 5).assert_terminal_withdrawal_for_testing(
+    checkpoint(0, 0, 0, 0, 9, 5).assert_terminal_withdrawal_checkpoint_for_testing(
         &checkpoint(0, 0, 0, 0, 9, 0), 5, false, 0);
-    checkpoint(0, 0, 1_000_000_000_000, 0, 9, 5).assert_terminal_withdrawal_for_testing(
+    checkpoint(0, 0, 1_000_000_000_000, 0, 9, 5).assert_terminal_withdrawal_checkpoint_for_testing(
         &checkpoint(0, 0, 0, 0, 9, 0), 6, false, 1_000_000_000_000);
-    checkpoint(0, 0, 1_000_000_000_001, 0, 9, 5).assert_terminal_withdrawal_for_testing(
+    checkpoint(0, 0, 1_000_000_000_001, 0, 9, 5).assert_terminal_withdrawal_checkpoint_for_testing(
         &checkpoint(0, 0, 1, 0, 9, 0), 6, false, 1_000_000_000_001);
-    checkpoint(0, 0, 999_999_999_999, 0, 9, 5).assert_terminal_withdrawal_for_testing(
+    checkpoint(0, 0, 999_999_999_999, 0, 9, 5).assert_terminal_withdrawal_checkpoint_for_testing(
         &checkpoint(0, 0, 999_999_999_999, 0, 9, 0), 5, false, 999_999_999_999);
 }
 
@@ -115,21 +115,21 @@ fun maximum_free_cash_does_not_make_sub_atomic_remainder_overflow() {
 #[test]
 #[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
 fun terminal_withdrawal_cannot_erase_one_raw_unit() {
-    checkpoint(0, 0, 1, 0, 9, 5).assert_terminal_withdrawal_for_testing(
+    checkpoint(0, 0, 1, 0, 9, 5).assert_terminal_withdrawal_checkpoint_for_testing(
         &checkpoint(0, 0, 0, 0, 9, 0), 5, false, 1);
 }
 
 #[test]
 #[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
 fun terminal_withdrawal_cannot_leave_one_recoverable_atom() {
-    checkpoint(0, 0, 1_000_000_000_000, 0, 9, 5).assert_terminal_withdrawal_for_testing(
+    checkpoint(0, 0, 1_000_000_000_000, 0, 9, 5).assert_terminal_withdrawal_checkpoint_for_testing(
         &checkpoint(0, 0, 1_000_000_000_000, 0, 9, 0), 6, false, 1_000_000_000_000);
 }
 
 #[test]
 #[expected_failure(abort_code = 54, location = blast_boosts_aftermath::venue_account)]
 fun terminal_withdrawal_rejects_negative_raw_remainder() {
-    checkpoint(0, 0, 1, 0, 9, 5).assert_terminal_withdrawal_for_testing(
+    checkpoint(0, 0, 1, 0, 9, 5).assert_terminal_withdrawal_checkpoint_for_testing(
         &checkpoint(0, 0, std::u256::max_value!(), 0, 9, 0), 5, false, 1);
 }
 

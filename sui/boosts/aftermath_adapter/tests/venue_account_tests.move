@@ -37,7 +37,7 @@ fun wrong_admin_cap_authority_is_rejected() {
 fun exact_binding_accepts_every_matching_component() {
     let binding = standard_binding();
 
-    binding.assert_exact(
+    binding.assert_object_graph(
         @0xA11CE.to_id(),
         ACCOUNT_NUMBER,
         @0xB.to_id(),
@@ -56,7 +56,7 @@ fun exact_binding_accepts_every_matching_component() {
     location = blast_boosts_aftermath::venue_account,
 )]
 fun wrong_account_object_is_rejected() {
-    standard_binding().assert_exact(
+    standard_binding().assert_object_graph(
         @0xBAD.to_id(),
         ACCOUNT_NUMBER,
         @0xB.to_id(),
@@ -73,7 +73,7 @@ fun wrong_account_object_is_rejected() {
     location = blast_boosts_aftermath::venue_account,
 )]
 fun wrong_account_number_is_rejected() {
-    standard_binding().assert_exact(
+    standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
         ACCOUNT_NUMBER + 1,
         @0xB.to_id(),
@@ -90,7 +90,7 @@ fun wrong_account_number_is_rejected() {
     location = blast_boosts_aftermath::venue_account,
 )]
 fun wrong_registry_is_rejected() {
-    standard_binding().assert_exact(
+    standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
         ACCOUNT_NUMBER,
         @0xBAD.to_id(),
@@ -107,7 +107,7 @@ fun wrong_registry_is_rejected() {
     location = blast_boosts_aftermath::venue_account,
 )]
 fun wrong_clearing_house_is_rejected() {
-    standard_binding().assert_exact(
+    standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
         ACCOUNT_NUMBER,
         @0xB.to_id(),
@@ -124,7 +124,7 @@ fun wrong_clearing_house_is_rejected() {
     location = blast_boosts_aftermath::venue_account,
 )]
 fun wrong_base_oracle_is_rejected() {
-    standard_binding().assert_exact(
+    standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
         ACCOUNT_NUMBER,
         @0xB.to_id(),
@@ -141,7 +141,7 @@ fun wrong_base_oracle_is_rejected() {
     location = blast_boosts_aftermath::venue_account,
 )]
 fun wrong_collateral_oracle_is_rejected() {
-    standard_binding().assert_exact(
+    standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
         ACCOUNT_NUMBER,
         @0xB.to_id(),
@@ -158,7 +158,7 @@ fun wrong_collateral_oracle_is_rejected() {
     location = blast_boosts_aftermath::venue_account,
 )]
 fun wrong_collateral_type_is_rejected() {
-    standard_binding().assert_exact(
+    standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
         ACCOUNT_NUMBER,
         @0xB.to_id(),
@@ -175,7 +175,7 @@ fun wrong_collateral_type_is_rejected() {
     location = blast_boosts_aftermath::venue_account,
 )]
 fun account_object_precedes_account_number() {
-    standard_binding().assert_exact(
+    standard_binding().assert_object_graph(
         @0xBAD.to_id(),
         ACCOUNT_NUMBER + 1,
         @0xB.to_id(),
@@ -192,7 +192,7 @@ fun account_object_precedes_account_number() {
     location = blast_boosts_aftermath::venue_account,
 )]
 fun account_number_precedes_registry() {
-    standard_binding().assert_exact(
+    standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
         ACCOUNT_NUMBER + 1,
         @0xBAD.to_id(),
@@ -209,7 +209,7 @@ fun account_number_precedes_registry() {
     location = blast_boosts_aftermath::venue_account,
 )]
 fun registry_precedes_clearing_house() {
-    standard_binding().assert_exact(
+    standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
         ACCOUNT_NUMBER,
         @0xBAD.to_id(),
@@ -226,7 +226,7 @@ fun registry_precedes_clearing_house() {
     location = blast_boosts_aftermath::venue_account,
 )]
 fun clearing_house_precedes_base_oracle() {
-    standard_binding().assert_exact(
+    standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
         ACCOUNT_NUMBER,
         @0xB.to_id(),
@@ -243,7 +243,7 @@ fun clearing_house_precedes_base_oracle() {
     location = blast_boosts_aftermath::venue_account,
 )]
 fun base_oracle_precedes_collateral_oracle() {
-    standard_binding().assert_exact(
+    standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
         ACCOUNT_NUMBER,
         @0xB.to_id(),
@@ -260,7 +260,7 @@ fun base_oracle_precedes_collateral_oracle() {
     location = blast_boosts_aftermath::venue_account,
 )]
 fun collateral_oracle_precedes_collateral_type() {
-    standard_binding().assert_exact(
+    standard_binding().assert_object_graph(
         @0xA11CE.to_id(),
         ACCOUNT_NUMBER,
         @0xB.to_id(),

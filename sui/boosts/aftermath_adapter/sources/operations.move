@@ -179,7 +179,7 @@ public fun mint<Product, Collateral>(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    vault.venue_checkpoint().assert_accepted_checkpoint(&before_checkpoint);
+    vault.venue_checkpoint().assert_unchanged(&before_checkpoint);
 
     let plan = vault.prepare_mint(before, deposit, minimum_shares, clock.timestamp_ms());
     let terms = active_terms(vault, false, plan.mint_lot_size(), plan.mint_base_price(), plan.mint_collateral_price());
@@ -246,7 +246,7 @@ public fun redeem<Product, Collateral>(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    vault.venue_checkpoint().assert_accepted_checkpoint(&checkpoint);
+    vault.venue_checkpoint().assert_unchanged(&checkpoint);
 
     let plan = vault.prepare_redemption(before, &shares, minimum_collateral, clock.timestamp_ms());
     let terms = active_terms(
@@ -300,7 +300,7 @@ public fun rebalance<Product, Collateral>(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    vault.venue_checkpoint().assert_accepted_checkpoint(&checkpoint);
+    vault.venue_checkpoint().assert_unchanged(&checkpoint);
 
     let mut plan = vault.prepare_rebalance(before, live_venue_fee_bps(&clearing_house), clock.timestamp_ms());
     let (_, increasing, _) = vault.rebalance_order(&plan);
@@ -361,7 +361,7 @@ public fun donate<Product, Collateral>(
         &binding, account, registry, clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    vault.venue_checkpoint().assert_accepted_checkpoint(&before_checkpoint);
+    vault.venue_checkpoint().assert_unchanged(&before_checkpoint);
 
     let plan = vault.prepare_donation(before, amount, clock.timestamp_ms());
     vault.deposit_collateral(account, registry, cash);
@@ -1238,7 +1238,7 @@ fun unwind_market<Product, Collateral>(
     let funded = snapshot::capture_checkpoint(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
     );
-    snapshot::classify_change(&before, &funded, candidate, collateral_fixed).assert_clean_funding();
+    snapshot::classify_change(&before, &funded, candidate, collateral_fixed).assert_expected();
 
     let terms = OrderTerms {
         is_ask: !opens_with_ask(side), reduce_only: true, max_order_notional,
@@ -1301,7 +1301,7 @@ fun complete_unwind<Product>(
     after.assert_no_orders();
     if (filled_quote.is_none()) {
         assert!(funded.is_none() && orders == 0, blast_boosts_aftermath::errors::terminal_venue_unsettled!());
-        before.assert_direct_settlement_close(&after);
+        before.assert_direct_settlement_checkpoint(&after);
     } else {
         assert!(
             funded.is_some() && orders > 0 && orders <= MAX_ACTIVE_ORDERS,
