@@ -256,6 +256,23 @@ public fun withdraw_admin_fees<Product, Collateral>(
 
 // === Package Functions ===
 
+// --- Core And Venue ---
+
+/// The core accounting state; the adapter drives it directly and the Vault only stores it.
+public(package) fun state<Product>(self: &Vault<Product>): &State<Product> { &self.state }
+
+public(package) fun state_mut<Product>(self: &mut Vault<Product>): &mut State<Product> { &mut self.state }
+
+/// The bound venue account: identity, last accepted checkpoint, and custody calls.
+public(package) fun venue<Product>(self: &Vault<Product>): &VenueAccount { &self.venue_account }
+
+public(package) fun venue_mut<Product>(self: &mut Vault<Product>): &mut VenueAccount { &mut self.venue_account }
+
+/// The core state of an issuance while activation is proving the seed.
+public(package) fun seed_state<Product>(self: &VaultIssuance<Product>): &State<Product> { &self.state }
+
+public(package) fun seed_state_mut<Product>(self: &mut VaultIssuance<Product>): &mut State<Product> { &mut self.state }
+
 // --- Initialization ---
 
 /// Authenticates the selected risk module and returns the seed-side constraints.
@@ -265,41 +282,6 @@ public(package) fun initialization_constraints<Product, RiskModule: drop>(
 ): (PositionSide, u64) {
     assert_selected_risk_module<RiskModule>(self.risk_module_witness);
     self.state.initialization_constraints()
-}
-
-/// Consumes a strict flat-position observation and returns authenticated sizing inputs.
-public(package) fun prepare_initialization<Product>(
-    self: &VaultIssuance<Product>,
-    observation: PositionObservation,
-    seed_reserve: u64,
-    now_ms: u64,
-): (u64, u64, u64, u64) {
-    self.state.prepare_initialization(observation, seed_reserve, now_ms)
-}
-
-/// Rejects a seed order the immutable cap does not admit.
-public(package) fun assert_seed_order_notional_allowed<Product>(self: &VaultIssuance<Product>, notional: u64) {
-    self.state.assert_order_notional_allowed(notional);
-}
-
-/// Applies the immutable strict execution tolerance before activation.
-public(package) fun assert_initialization_execution<Product>(
-    self: &VaultIssuance<Product>,
-    reference_price: u64,
-    execution_price: u64,
-) {
-    self.state.assert_initialization_execution(reference_price, execution_price);
-}
-
-/// Activates the core after the adapter proves the complete final observation.
-public(package) fun initialize<Product>(
-    self: &mut VaultIssuance<Product>,
-    observation: PositionObservation,
-    seed_reserve: u64,
-    collateral_decimals: u8,
-    now_ms: u64,
-): (u64, ActivePosition) {
-    self.state.initialize(observation, seed_reserve, constants::base_decimals!(), collateral_decimals, now_ms)
 }
 
 /// Mints the one locked seed position, makes it permanently inaccessible, and
@@ -341,41 +323,7 @@ public(package) fun activate<Product>(
 
 // --- Active Guards ---
 
-/// Checks the caller's rate ceiling without treating share atoms as collateral.
-public(package) fun assert_user_fee_limit<Product>(self: &Vault<Product>, mint: bool, maximum: u64) {
-    self.state.assert_user_fee_limit(mint, maximum);
-}
-
-/// Supplies only policy-derived active execution constraints to the adapter.
-public(package) fun active_constraints<Product>(self: &Vault<Product>): (PositionSide, u64) {
-    self.state.active_constraints()
-}
-
-/// Applies the live order-notional cap to one planned seed order.
-public(package) fun assert_order_notional_allowed<Product>(
-    self: &Vault<Product>,
-    order_notional: u64,
-) {
-    self.state.assert_order_notional_allowed(order_notional);
-}
-
-/// Validates each ordinary active fill against the sealed reference price.
-public(package) fun assert_active_execution<Product>(self: &Vault<Product>, reference: u64, executed: u64) {
-    self.state.assert_active_execution(reference, executed);
-}
-
 // --- Mint ---
-
-/// Seals mint terms against this Vault's sole native share-supply authority.
-public(package) fun prepare_mint<Product>(
-    self: &Vault<Product>,
-    observation: PositionObservation,
-    deposit: u64,
-    minimum_shares: u64,
-    now_ms: u64,
-): MintPlan<Product> {
-    self.state.prepare_mint(observation, deposit, self.share_supply(), minimum_shares, now_ms)
-}
 
 /// Mints only the shares priced by the completed core transition.
 public(package) fun complete_mint<Product>(
@@ -393,29 +341,6 @@ public(package) fun complete_mint<Product>(
 
 // --- Redemption ---
 
-/// Seals redemption terms against the actual native input and authoritative supply.
-public(package) fun prepare_redemption<Product>(
-    self: &Vault<Product>, observation: PositionObservation, shares: &Coin<BlastBoost<Product>>,
-    minimum_output: u64, now_ms: u64,
-): RedemptionPlan<Product> {
-    self.state.prepare_redemption(observation, shares.value(), self.share_supply(), minimum_output, now_ms)
-}
-
-/// Prices only the attributable completed unwind, before any withdrawal or burn.
-public(package) fun complete_redemption<Product>(
-    self: &mut Vault<Product>, plan: RedemptionPlan<Product>, observation: PositionObservation, now_ms: u64,
-): (u64, u64, u64, u64, u64) {
-    self.state.complete_redemption(plan, observation, now_ms)
-}
-
-/// Consumes the final cash/margin proof before native shares leave the supply.
-public(package) fun assert_redemption_cash_out<Product>(
-    self: &Vault<Product>, observation: PositionObservation, equity: u64, base: u64,
-    base_price: u64, collateral_price: u64, now_ms: u64,
-) {
-    self.state.assert_redemption_cash_out(observation, equity, base, base_price, collateral_price, now_ms);
-}
-
 /// Burns only through this Vault's retained native TreasuryCap.
 public(package) fun burn_redeemed_shares<Product>(self: &mut Vault<Product>, shares: Coin<BlastBoost<Product>>): u64 {
     coin::burn(self.treasury_cap_mut(), shares)
@@ -423,55 +348,7 @@ public(package) fun burn_redeemed_shares<Product>(self: &mut Vault<Product>, sha
 
 // --- Rebalance ---
 
-/// Whether the core would admit a rebalance against this observation.
-public(package) fun needs_rebalance<Product>(
-    self: &Vault<Product>, observation: PositionObservation, now_ms: u64,
-): bool {
-    self.state.needs_rebalance(observation, now_ms)
-}
-
-/// Seals maintenance terms against this Vault's immutable policy and current buffer.
-public(package) fun prepare_rebalance<Product>(
-    self: &Vault<Product>, observation: PositionObservation, venue_fee_bps: u64, now_ms: u64,
-): RebalancePlan<Product> {
-    self.state.prepare_rebalance(observation, venue_fee_bps, now_ms)
-}
-
-/// Derives the next bounded order without accepting any caller trading parameter.
-public(package) fun rebalance_order<Product>(
-    self: &Vault<Product>, plan: &RebalancePlan<Product>,
-): (u64, bool, bool) {
-    self.state.rebalance_order(plan)
-}
-
-/// Uses the core's current threshold to validate this session's actual execution.
-public(package) fun assert_rebalance_execution<Product>(
-    self: &Vault<Product>, plan: &RebalancePlan<Product>, reference: u64, executed: u64,
-) {
-    self.state.assert_rebalance_execution(plan, reference, executed);
-}
-
-/// Advances sealed intent only after the adapter has proved the venue mutation.
-public(package) fun accept_rebalance_fill<Product>(
-    self: &Vault<Product>, plan: &mut RebalancePlan<Product>, observation: PositionObservation,
-    filled: u64, now_ms: u64,
-) {
-    self.state.accept_rebalance_fill(plan, observation, filled, now_ms);
-}
-
-/// Completes core maintenance; no native shares or admin assets move.
-public(package) fun complete_rebalance<Product>(
-    self: &Vault<Product>, plan: RebalancePlan<Product>,
-): (u64, u64, u64, u64, bool) {
-    self.state.complete_rebalance(plan)
-}
-
 // --- Funding And Donation ---
-
-/// Synchronization can reconcile only an active or unwinding venue account.
-public(package) fun assert_can_sync<Product>(self: &Vault<Product>) {
-    self.state.assert_can_sync();
-}
 
 /// Applies one authenticated nonzero funding classification to the core.
 public(package) fun settle_funding<Product>(
@@ -504,38 +381,7 @@ public(package) fun note_checkpoint_health<Product>(
     changed
 }
 
-/// Validates pre-donation pricing before any asset-bearing venue interaction.
-public(package) fun prepare_donation<Product>(
-    self: &Vault<Product>, observation: PositionObservation, amount: u64, now_ms: u64,
-): DonationPlan<Product> {
-    self.state.prepare_donation(observation, amount, now_ms)
-}
-
-/// Applies only the completed donation's buffer allocation.
-public(package) fun complete_donation<Product>(
-    self: &mut Vault<Product>, plan: DonationPlan<Product>, after: PositionObservation, now_ms: u64,
-) {
-    self.state.complete_donation(plan, after, now_ms);
-}
-
 // --- Shutdown ---
-
-/// Stops every terminal venue call outside the irreversible unwind phase.
-public(package) fun assert_unwinding<Product>(self: &Vault<Product>) {
-    self.state.assert_unwinding();
-}
-
-/// Consumes authenticated oracle facts through the terminal core policy.
-public(package) fun unwind_constraints<Product>(
-    self: &Vault<Product>, base: PriceObservation, collateral: PriceObservation, now_ms: u64,
-): (PositionSide, u64, u64, u64) {
-    self.state.unwind_constraints(base, collateral, now_ms)
-}
-
-/// Enforces the immutable emergency bound on an actual venue fill price.
-public(package) fun assert_unwind_execution<Product>(self: &Vault<Product>, reference: u64, executed: u64) {
-    self.state.assert_unwind_execution(reference, executed);
-}
 
 /// Consumes verified venue finality and seals the actual recovered holder cash.
 public(package) fun complete_shutdown<Product, Collateral>(
@@ -556,7 +402,7 @@ public(package) fun complete_shutdown<Product, Collateral>(
         recovered.into_balance()
     };
 
-    self.replace_venue_checkpoint(checkpoint);
+    self.venue_account.replace_checkpoint(checkpoint);
     dynamic_field::add(&mut self.id, TerminalCashKey(), cash);
 
     if (self.note_checkpoint_health(&checkpoint, true)) {
@@ -570,58 +416,6 @@ public(package) fun complete_shutdown<Product, Collateral>(
 }
 
 // --- Venue Custody ---
-
-/// Copies the immutable venue binding.
-public(package) fun venue_binding<Product>(self: &Vault<Product>): Binding {
-    self.venue_account.binding()
-}
-
-/// Borrows the latest raw venue checkpoint immutably.
-public(package) fun venue_checkpoint<Product>(self: &Vault<Product>): &Checkpoint {
-    self.venue_account.checkpoint()
-}
-
-/// Replaces the raw venue checkpoint after authenticated reconciliation.
-public(package) fun replace_venue_checkpoint<Product>(self: &mut Vault<Product>, checkpoint: Checkpoint) {
-    self.venue_account.replace_checkpoint(checkpoint);
-}
-
-/// Keeps all authority inside custody while executing one adapter-derived order.
-public(package) fun execute_order<Product, Collateral>(
-    self: &Vault<Product>, account: &mut Account<Collateral>, clearing_house: ClearingHouse<Collateral>,
-    base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
-    is_ask: bool, base: u64, reduce_only: bool, clock: &Clock, ctx: &TxContext,
-): (ClearingHouse<Collateral>, SessionSummary) {
-    self.venue_account.execute_order(
-        account, clearing_house, base_oracle, collateral_oracle, is_ask, base, reduce_only, clock, ctx,
-    )
-}
-
-/// Uses retained venue authority without exposing a cap or custody reference.
-public(package) fun deposit_collateral<Product, Collateral>(
-    self: &Vault<Product>, account: &mut Account<Collateral>, registry: &Registry, cash: Coin<Collateral>,
-) {
-    self.venue_account.deposit(account, registry, cash);
-}
-
-/// Allocates only the bound account's deposited cash into its retained market.
-public(package) fun allocate_collateral<Product, Collateral>(
-    self: &Vault<Product>, account: &mut Account<Collateral>,
-    clearing_house: &mut ClearingHouse<Collateral>, amount: u64,
-) {
-    self.venue_account.allocate(account, clearing_house, amount);
-}
-
-/// Returns actual collateral through retained custody; no caller receives venue authority.
-public(package) fun withdraw_collateral<Product, Collateral>(
-    self: &Vault<Product>, account: &mut Account<Collateral>, registry: &Registry,
-    clearing_house: &mut ClearingHouse<Collateral>, base_oracle: &PriceFeedStorage,
-    collateral_oracle: &PriceFeedStorage, amount: u64, clock: &Clock, ctx: &mut TxContext,
-): Coin<Collateral> {
-    self.venue_account.withdraw(
-        account, registry, clearing_house, base_oracle, collateral_oracle, amount, clock, ctx,
-    )
-}
 
 /// Retains an operation's already allocated admin coin without changing venue accounting.
 public(package) fun retain_admin_cash<Product, Collateral>(
@@ -650,7 +444,7 @@ public(package) fun admin_cash_balance<Product, Collateral>(self: &Vault<Product
 /// Checks the immutable activation collateral identity even on local-only paths.
 public(package) fun assert_collateral_type<Product, Collateral>(self: &Vault<Product>) {
     assert!(
-        self.venue_binding().collateral_type() == type_name::with_original_ids<Collateral>(),
+        self.venue_account.binding().collateral_type() == type_name::with_original_ids<Collateral>(),
         blast_boosts_aftermath::errors::collateral_type_mismatch!(),
     );
 }
@@ -665,11 +459,6 @@ public(package) fun id<Product>(self: &Vault<Product>): ID {
 /// Returns the authoritative leverage-currency supply from the retained cap.
 public(package) fun share_supply<Product>(self: &Vault<Product>): u64 {
     self.treasury_cap().total_supply()
-}
-
-/// Returns the authoritative funding-only reserve for state-derived events.
-public(package) fun maintenance_reserve<Product>(self: &Vault<Product>): u64 {
-    self.state.maintenance_reserve()
 }
 
 /// Returns the exact once-recorded activation ownership for future terminal accounting.

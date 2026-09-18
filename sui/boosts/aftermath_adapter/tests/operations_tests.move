@@ -261,7 +261,7 @@ fun completed_direct_settlement_reports_actual_cash_and_no_market_order() {
     assert_eq!(actual, after);
     assert_eq!(orders, 0);
     assert!(quote.is_none());
-    assert_eq!(*vault.venue_checkpoint(), after);
+    assert_eq!(*vault.venue().checkpoint(), after);
     assert!(vault.is_unwinding_for_testing());
     destroy(vault);
     fixture.end();
@@ -295,7 +295,7 @@ fun insolvent_capture_still_supplies_fresh_close_only_valuation() {
     let base = captured.base_price_observation();
     let collateral = captured.collateral_price_observation();
     captured.into_checkpoint();
-    let (side, cap, base_price, collateral_price) = vault.unwind_constraints(base, collateral, REFERENCE_TIME_MS);
+    let (side, cap, base_price, collateral_price) = vault.state().unwind_constraints(base, collateral, REFERENCE_TIME_MS);
     assert_eq!(side, policy::long());
     assert_eq!(vector[cap, base_price, collateral_price], vector[250, PRICE, PRICE]);
     destroy(vault);
@@ -320,7 +320,7 @@ fun terminal_claims_exclude_locked_seed_burn_native_shares_and_give_last_claiman
     let last_out = vault.redeem_shutdown<Product, Collateral>(&fixture.protocol, shares, 8, 0, &clock, fixture.ctx!());
     assert_eq!(last_out.value(), 8);
     assert_eq!(vault.share_supply(), locked);
-    assert_eq!(vault.maintenance_reserve(), 0);
+    assert_eq!(vault.state().maintenance_reserve(), 0);
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 7);
     let finalization = events::collect_one<events::ShutdownFinalized<Product>>(0);
     let (_, recovered, eligible, fallback, checkpoint, remainder) = finalization.shutdown_finalized_fields();
@@ -351,7 +351,7 @@ fun zero_eligible_supply_sends_all_terminal_cash_to_recorded_funder_not_finalize
     fixture.next_tx!(@0xBEEF, |fixture| {
         let recovered = sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!());
         vault.complete_shutdown(terminal_withdrawal(recovered));
-        assert_eq!(vault.maintenance_reserve(), 0);
+        assert_eq!(vault.state().maintenance_reserve(), 0);
         let (_, cash, eligible, beneficiary, _, remainder) = events::collect_one<events::ShutdownFinalized<Product>>(0).shutdown_finalized_fields();
         assert_eq!(remainder, 0);
         assert_eq!(vector[cash, eligible], vector[13, 0]);
@@ -449,7 +449,7 @@ fun mismatched_native_shares_fail_before_unwind_validation() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let shares = sui::coin::mint_for_testing<BlastBoost<Product>>(100_000, fixture.ctx!());
-    let plan = vault.prepare_redemption(position_observation(SEED_EQUITY), &shares, 1, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_redemption(position_observation(SEED_EQUITY), shares.value(), vault.share_supply(), 1, REFERENCE_TIME_MS);
     destroy(shares);
     let wrong_shares = sui::coin::mint_for_testing<BlastBoost<Product>>(99_999, fixture.ctx!());
     let receipt = operations::seal_redemption_receipt(&mut vault, plan, wrong_shares,
@@ -491,7 +491,7 @@ fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_
         standard_vault_policy().with_fee_limits(100, 100, 3_000));
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
-    let plan = vault.prepare_mint(position_observation(SEED_EQUITY), 10_000, 9_989_000, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 10_000, vault.share_supply(), 9_989_000, REFERENCE_TIME_MS);
     assert_eq!(plan.admin_fee(), 2);
     assert_eq!(plan.base_to_buy(), 19_980_000);
     vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
@@ -504,7 +504,7 @@ fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_
     assert_eq!(vector[minted, contribution, fee, admin, buffer, rate, allocation, reserve, cash, supply],
         vector[9_989_000, 9_989, 10, 2, 8, 10, 2_000, 108, 2, 10_889_000]);
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
-    let plan = vault.prepare_redemption(active_position(10_997, 21_780), &shares, 9_978, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_redemption(active_position(10_997, 21_780), shares.value(), vault.share_supply(), 9_978, REFERENCE_TIME_MS);
     // 21_780_000 less the floor of its 900_000 / 10_889_000 share, to the atom.
     assert_eq!(plan.base_to_sell(), 19_979_835);
     let receipt = operations::seal_redemption_receipt(&mut vault, plan, shares,
@@ -515,18 +515,18 @@ fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_
         active_position_with_base(1_016, 1_800_165), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
     assert_eq!(cash.value(), 9_978);
     assert_eq!(vault.share_supply(), 900_000);
-    assert_eq!(vault.maintenance_reserve(), 116);
+    assert_eq!(vault.state().maintenance_reserve(), 116);
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 4);
     assert_eq!(events::collect_one<events::Redeemed<Product>>(0).redeemed_amounts(),
         vector[9_989_000, 9_978, 10, 2, 8, 10, 2_000, 116, 4, 900_000]);
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 4);
-    assert_eq!(vault.maintenance_reserve(), 116);
+    assert_eq!(vault.state().maintenance_reserve(), 116);
     let earnings = vault.withdraw_admin_fees<_, Collateral>(&fixture.protocol, &witness, 4, fixture.ctx!());
     assert_eq!(earnings.value(), 4);
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 0);
-    assert_eq!(vault.maintenance_reserve(), 116);
+    assert_eq!(vault.state().maintenance_reserve(), 116);
     assert_eq!(vault.share_supply(), 900_000);
     sui::transfer::public_transfer(cash, ADMIN);
     sui::transfer::public_transfer(earnings, ADMIN);
@@ -546,8 +546,8 @@ fun event_reducer_reconstructs_a_positive_funding_checkpoint() {
     let change = operations::classify_sync_change_for_testing(&initial, &before, &after, false, ATOM_FIXED);
     apply_connected_change(&mut vault, after, change);
     replay_funding(&mut replay, events::collect_one<events::FundingSettled<Product>>(0));
-    assert_eq!(replay.maintenance_reserve, vault.maintenance_reserve());
-    assert_eq!(*replay.checkpoint.borrow(), *vault.venue_checkpoint());
+    assert_eq!(replay.maintenance_reserve, vault.state().maintenance_reserve());
+    assert_eq!(*replay.checkpoint.borrow(), *vault.venue().checkpoint());
     destroy(vault);
     fixture.end();
 }
@@ -581,27 +581,27 @@ fun completed_rebalance_changes_only_holder_equity_and_the_accepted_checkpoint()
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
     );
-    let mut plan = vault.prepare_rebalance(before, 10, REFERENCE_TIME_MS);
+    let mut plan = vault.state().prepare_rebalance(before, 10, REFERENCE_TIME_MS);
     let priced = plan.rebalance_position();
     let (base_price, collateral_price, lot) = (priced.base_price(), priced.collateral_price(), priced.lot_size());
     assert_eq!(base_price, PRICE);
     assert_eq!(collateral_price, PRICE);
     assert_eq!(lot, LOT_SIZE);
-    let (base, increase, wide) = vault.rebalance_order(&plan);
+    let (base, increase, wide) = vault.state().rebalance_order(&plan);
     assert_eq!(base, 250_000);
     assert!(!increase && wide);
-    vault.assert_rebalance_execution(&plan, PRICE, PRICE);
+    vault.state().assert_rebalance_execution(&plan, PRICE, PRICE);
     let after = observation::new_position(999, 2_750_000, LOT_SIZE, policy::long(),
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
     );
-    vault.accept_rebalance_fill(&mut plan, after, base, REFERENCE_TIME_MS);
+    vault.state().accept_rebalance_fill(&mut plan, after, base, REFERENCE_TIME_MS);
     let checkpoint = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, 10, 20, 10, 20, 1);
     operations::complete_rebalance<Product, Collateral>(&mut vault, plan, checkpoint);
-    assert_eq!(vault.maintenance_reserve(), 100);
+    assert_eq!(vault.state().maintenance_reserve(), 100);
     assert_eq!(vault.share_supply(), 900_000);
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 0);
-    assert_eq!(*vault.venue_checkpoint(), checkpoint);
+    assert_eq!(*vault.venue().checkpoint(), checkpoint);
     let event = events::collect_one<events::Rebalanced<Product>>(0);
     let (before_equity, after_equity, before_base, after_base, increased) = event.rebalanced_amounts();
     assert_eq!(before_equity, 1_000);
@@ -631,9 +631,9 @@ fun venue_fee_bound_rejects_unrepresentable_addition_before_overflow() {
 fun completed_redemption_burns_the_native_input_only_after_exact_cash_return() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let mint_plan = vault.prepare_mint(position_observation(SEED_EQUITY), 1_000, 997_000, REFERENCE_TIME_MS);
+    let mint_plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.share_supply(), 997_000, REFERENCE_TIME_MS);
     let (shares, _, _, _, _, _, _) = vault.complete_mint(mint_plan, active_position(1_998, 3_798), REFERENCE_TIME_MS, fixture.ctx!());
-    let plan = vault.prepare_redemption(active_position(1_998, 3_798), &shares, 994, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_redemption(active_position(1_998, 3_798), shares.value(), vault.share_supply(), 994, REFERENCE_TIME_MS);
     // 3_798_000 less the floor of its 900_000 / 1_897_000 share, to the atom.
     assert_eq!(plan.base_to_sell(), 1_996_103);
     let receipt = operations::seal_redemption_receipt(
@@ -647,7 +647,7 @@ fun completed_redemption_burns_the_native_input_only_after_exact_cash_return() {
     );
     assert_eq!(cash.value(), 994);
     assert_eq!(vault.share_supply(), 900_000);
-    assert_eq!(vault.maintenance_reserve(), 102);
+    assert_eq!(vault.state().maintenance_reserve(), 102);
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 0);
     sui::transfer::public_transfer(cash, ADMIN);
     destroy(vault);
@@ -860,17 +860,17 @@ fun active_partial_fill_rejects_liquidation() {
 fun completed_mint_returns_native_shares_and_updates_the_same_treasury_supply() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let plan = vault.prepare_mint(position_observation(SEED_EQUITY), 1_000, 997_000, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.share_supply(), 997_000, REFERENCE_TIME_MS);
     assert_eq!(plan.base_to_buy(), 1_998_000);
     let priced = plan.mint_position();
     let (base_price, collateral_price, lot) = (priced.base_price(), priced.collateral_price(), priced.lot_size());
     assert_eq!(base_price, PRICE);
     assert_eq!(collateral_price, PRICE);
     assert_eq!(lot, LOT_SIZE);
-    let (side, cap) = vault.active_constraints();
+    let (side, cap) = vault.state().active_constraints();
     assert_eq!(side, policy::long());
     assert!(cap > 0);
-    vault.assert_active_execution(PRICE, PRICE);
+    vault.state().assert_active_execution(PRICE, PRICE);
     let after = observation::new_position(1_998, 3_798 * BASE_PER_NOTIONAL, LOT_SIZE, policy::long(),
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
@@ -891,7 +891,7 @@ fun completed_mint_returns_native_shares_and_updates_the_same_treasury_supply() 
     assert_eq!(supply, 1_897_000);
     assert_eq!(shares.value(), 997_000);
     assert_eq!(vault.share_supply(), 1_897_000);
-    assert_eq!(vault.maintenance_reserve(), 101);
+    assert_eq!(vault.state().maintenance_reserve(), 101);
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 0);
     sui::transfer::public_transfer(shares, ADMIN);
     destroy(vault);
@@ -904,15 +904,15 @@ fun connected_donation_accepts_only_the_exact_free_collateral_deposit() {
     let initial = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, initial);
     let after = checkpoint_with_market_imr(50, ALLOCATED_FIXED, 10, 20, 10, 20, 1);
-    let plan = vault.prepare_donation(position_observation(SEED_EQUITY), 50, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_donation(position_observation(SEED_EQUITY), 50, REFERENCE_TIME_MS);
     operations::complete_donation(
         &mut vault, plan,
         position_observation(SEED_EQUITY + 50), after, 50, REFERENCE_TIME_MS,
     );
-    assert_eq!(vault.maintenance_reserve(), 150);
+    assert_eq!(vault.state().maintenance_reserve(), 150);
     assert_eq!(vault.share_supply(), 900_000);
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 0);
-    assert_eq!(*vault.venue_checkpoint(), after);
+    assert_eq!(*vault.venue().checkpoint(), after);
     let (id, amount, reserve, checkpoint) =
         events::collect_one<events::Donated<Product>>(0).donated_fields();
     assert_eq!(id, vault.id());
@@ -928,7 +928,7 @@ fun donation_cannot_accept_an_unrelated_position_margin_change() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let after = checkpoint_with_market_imr(50, ALLOCATED_FIXED, 10, 20, 10, 20, 2);
-    let plan = vault.prepare_donation(position_observation(SEED_EQUITY), 50, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_donation(position_observation(SEED_EQUITY), 50, REFERENCE_TIME_MS);
     operations::complete_donation(
         &mut vault, plan,
         position_observation(SEED_EQUITY + 50), after, 50, REFERENCE_TIME_MS,
@@ -950,8 +950,8 @@ fun earned_admin_cash_withdraws_without_venue_or_oracle_in_terminal_state() {
     );
     assert_eq!(cash.value(), 10);
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 15);
-    assert_eq!(vault.maintenance_reserve(), SEED_RESERVE);
-    assert_eq!(*vault.venue_checkpoint(), initial);
+    assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
+    assert_eq!(*vault.venue().checkpoint(), initial);
     assert_eq!(vault.share_supply(), 900_000);
     let event = events::collect_one<events::AdminFeesWithdrawn<Product>>(0);
     let (id, amount, remaining) = event.admin_fees_withdrawn_fields();
@@ -1620,7 +1620,7 @@ fun a_credit_after_an_exhausting_cost_repays_holders_before_the_reserve() {
         &initial, &funding_before_checkpoint(), &funded, true, (cost as u256) * ATOM_FIXED,
     );
     apply_connected_change(&mut vault, funded, change);
-    assert_eq!(vault.maintenance_reserve(), 0);
+    assert_eq!(vault.state().maintenance_reserve(), 0);
 
     // Second interval: market rates advance again and a 50-unit credit lands.
     let credited = checkpoint_with_market_imr(
@@ -1634,7 +1634,7 @@ fun a_credit_after_an_exhausting_cost_repays_holders_before_the_reserve() {
     apply_connected_change(&mut vault, credited, change);
 
     // 30 of the 50 repay the deficit and stay in NAV; 20 rebuild the reserve.
-    assert_eq!(vault.maintenance_reserve(), 20);
+    assert_eq!(vault.state().maintenance_reserve(), 20);
     let events = events::collect<events::FundingSettled<Product>>();
     assert_eq!(events.length(), 2);
     let (_, is_cost, _, amount, absorbed, uncovered, restored, reserve_after, previous, current) =
@@ -1673,10 +1673,10 @@ fun connected_credit_credits_the_buffer_once() {
     );
     apply_connected_change(&mut vault, credited, unchanged);
 
-    assert_eq!(vault.maintenance_reserve(), SEED_RESERVE + 10);
+    assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE + 10);
     assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 1);
     assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 0);
-    assert_eq!(*vault.venue_checkpoint(), credited);
+    assert_eq!(*vault.venue().checkpoint(), credited);
     destroy(vault);
     fixture.end();
 }
@@ -1706,10 +1706,10 @@ fun connected_second_call_at_the_same_checkpoint_is_exactly_once() {
     );
     apply_connected_change(&mut vault, funded, replay);
 
-    assert_eq!(vault.maintenance_reserve(), 90);
+    assert_eq!(vault.state().maintenance_reserve(), 90);
     assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 1);
     assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 0);
-    assert_eq!(*vault.venue_checkpoint(), funded);
+    assert_eq!(*vault.venue().checkpoint(), funded);
     destroy(vault);
     fixture.end();
 }
@@ -1738,10 +1738,10 @@ fun connected_permissionless_pre_settlement_debits_the_reserve_exactly_once() {
     );
     apply_connected_change(&mut vault, settled, replay);
 
-    assert_eq!(vault.maintenance_reserve(), 90);
+    assert_eq!(vault.state().maintenance_reserve(), 90);
     assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 1);
     assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 0);
-    assert_eq!(*vault.venue_checkpoint(), settled);
+    assert_eq!(*vault.venue().checkpoint(), settled);
     destroy(vault);
     fixture.end();
 }
@@ -1779,11 +1779,11 @@ fun connected_external_cost_and_local_income_settle_one_net_checkpoint() {
 
     operations::apply_post_captures_for_testing(&mut vault, after, external, local);
 
-    assert_eq!(vault.maintenance_reserve(), 10);
+    assert_eq!(vault.state().maintenance_reserve(), 10);
     let funding_events = events::collect<events::FundingSettled<Product>>();
     assert_eq!(funding_events.length(), 1);
     assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 0);
-    assert_eq!(*vault.venue_checkpoint(), after);
+    assert_eq!(*vault.venue().checkpoint(), after);
     let first = *funding_events.borrow(0);
     let (
         _, first_is_cost, first_raw, first_amount, first_absorbed,
@@ -1810,8 +1810,8 @@ fun connected_zero_net_checkpoint_emits_once_and_preserves_the_buffer() {
     let after = funding_checkpoint(0, false);
     let change = operations::classify_sync_change_for_testing(&initial, &before, &after, false, 0);
     apply_connected_change(&mut vault, after, change);
-    assert_eq!(vault.maintenance_reserve(), SEED_RESERVE);
-    assert_eq!(*vault.venue_checkpoint(), after);
+    assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
+    assert_eq!(*vault.venue().checkpoint(), after);
     let facts = events::collect<events::FundingSettled<Product>>();
     assert_eq!(facts.length(), 1);
     let (_, is_cost, raw, amount, absorbed, uncovered, _, reserve, previous, current) =
@@ -1877,9 +1877,9 @@ fun connected_unresolved_drift_preserves_the_accepted_checkpoint_across_retries(
 
     apply_connected_change(&mut vault, after, unexpected);
 
-    assert_eq!(vault.maintenance_reserve(), SEED_RESERVE);
+    assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
     assert!(!vault.is_unwinding_for_testing());
-    assert_eq!(*vault.venue_checkpoint(), initial);
+    assert_eq!(*vault.venue().checkpoint(), initial);
     assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 0);
     let synchronized = events::collect_one<events::HealthSynchronized<Product>>(0);
     let (_, reason, checkpoint) =
@@ -1888,7 +1888,7 @@ fun connected_unresolved_drift_preserves_the_accepted_checkpoint_across_retries(
     assert_eq!(checkpoint, after);
 
     let replay = operations::classify_sync_change_for_testing(
-        vault.venue_checkpoint(),
+        vault.venue().checkpoint(),
         &after,
         &after,
         false,
@@ -1896,7 +1896,7 @@ fun connected_unresolved_drift_preserves_the_accepted_checkpoint_across_retries(
     );
     apply_connected_change(&mut vault, after, replay);
     assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 1);
-    assert_eq!(vault.maintenance_reserve(), SEED_RESERVE);
+    assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
     destroy(vault);
     fixture.end();
 }
@@ -1916,7 +1916,7 @@ fun connected_temporary_health_fault_keeps_lifecycle_and_emits_no_mutation() {
     apply_connected_change(&mut vault, checkpoint, unchanged);
 
     assert!(!vault.is_unwinding_for_testing());
-    assert_eq!(*vault.venue_checkpoint(), checkpoint);
+    assert_eq!(*vault.venue().checkpoint(), checkpoint);
     assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 0);
 
     let repeated = operations::classify_sync_change_for_testing(
@@ -2009,7 +2009,7 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
         events::collect_one<events::HealthSynchronized<Product>>(0),
     );
 
-    let actual_binding = vault.venue_binding();
+    let actual_binding = vault.venue().binding();
     actual_binding.assert_object_graph(
         replay.account_object_id,
         replay.account_number,
@@ -2020,7 +2020,7 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
         replay.collateral_type,
     );
     assert_eq!(replay.vault_id, vault_id);
-    assert_eq!(replay.maintenance_reserve, vault.maintenance_reserve());
+    assert_eq!(replay.maintenance_reserve, vault.state().maintenance_reserve());
     assert_eq!(replay.lifecycle == 2, vault.is_unwinding_for_testing());
     assert_eq!(
         replay.risk_module_witness,
@@ -2028,8 +2028,8 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
     );
     let actual_order_notional = vault.max_order_notional_for_testing();
     assert_eq!(replay.max_order_notional, actual_order_notional);
-    assert_eq!(*replay.checkpoint.borrow(), *vault.venue_checkpoint());
-    assert_eq!(*vault.venue_checkpoint(), funded_checkpoint);
+    assert_eq!(*replay.checkpoint.borrow(), *vault.venue().checkpoint());
+    assert_eq!(*vault.venue().checkpoint(), funded_checkpoint);
     assert_eq!(*replay.unresolved_checkpoint.borrow(), final_checkpoint);
     assert_eq!(
         vault.unresolved_checkpoint_digest_for_testing(),
@@ -2163,10 +2163,11 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         b"".to_string(),
         scenario.ctx(),
     );
-    let (seed_nav, _) = issuance.initialize(
+    let (seed_nav, _) = issuance.seed_state_mut().initialize(
         observation::new_position(SEED_EQUITY, ABSOLUTE_BASE, LOT_SIZE, side,
             observation::new_price(PRICE, 0, REFERENCE_TIME_MS), observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE),
         SEED_RESERVE,
+        9,
         6,
         REFERENCE_TIME_MS,
     );
@@ -2324,8 +2325,8 @@ fun assert_connected_cost(
     );
     apply_connected_change(&mut vault, funded, change);
 
-    assert_eq!(vault.maintenance_reserve(), expected_reserve);
-    assert_eq!(*vault.venue_checkpoint(), funded);
+    assert_eq!(vault.state().maintenance_reserve(), expected_reserve);
+    assert_eq!(*vault.venue().checkpoint(), funded);
     assert!(!vault.is_unwinding_for_testing());
     assert_eq!(events::collect<events::HealthSynchronized<Product>>().length(), 0);
     let event = events::collect_one<events::FundingSettled<Product>>(0);
@@ -2440,7 +2441,7 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
     replay_fees(&mut replay, events::collect_one<events::FeesUpdated<Tag>>(0));
-    let plan = vault.prepare_mint(position_observation_for_side(SEED_EQUITY, side), 10_000, 9_989_000, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_mint(position_observation_for_side(SEED_EQUITY, side), 10_000, vault.share_supply(), 9_989_000, REFERENCE_TIME_MS);
     vault.retain_admin_cash(sui::coin::mint_for_testing<Collateral>(2, fixture.ctx!()));
     let mut shares = operations::complete_mint<Tag, Collateral>(&mut vault, plan,
         active_position_for_side(10_997, 21_780, side), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
@@ -2477,7 +2478,7 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     replay.unrecoverable_collateral_raw = remainder;
     replay.checkpoint = option::some(checkpoint);
     assert_eq!(replay.unrecoverable_collateral_raw, 1);
-    assert_eq!(*vault.venue_checkpoint(), final_checkpoint);
+    assert_eq!(*vault.venue().checkpoint(), final_checkpoint);
     assert_eq!(replay.terminal_cash, vault.terminal_cash_for_testing<Tag, Collateral>());
     let first = shares.split(2_000_000, fixture.ctx!());
     let clock = sui::clock::create_for_testing(fixture.ctx!());
@@ -2488,7 +2489,7 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     assert_eq!(first_cash.value() + last_cash.value(), 13);
     assert_eq!(replay.terminal_cash, vault.terminal_cash_for_testing<Tag, Collateral>());
     assert_eq!(replay.supply, vault.share_supply());
-    assert_eq!(*replay.checkpoint.borrow(), *vault.venue_checkpoint());
+    assert_eq!(*replay.checkpoint.borrow(), *vault.venue().checkpoint());
     assert!(replay.unresolved_checkpoint.is_none());
     assert!(vault.unresolved_checkpoint_digest_for_testing().is_none());
     let admin = vault.withdraw_admin_fees<_, Collateral>(&fixture.protocol, &witness, 2, fixture.ctx!());
@@ -2515,7 +2516,7 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag>) 
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
     replay_fees(&mut replay, events::collect<events::FeesUpdated<Tag>>()[0]);
     assert_replay(&replay, vault);
-    let plan = vault.prepare_mint(position_observation(SEED_EQUITY), 10_000, 9_989_000, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 10_000, vault.share_supply(), 9_989_000, REFERENCE_TIME_MS);
     // Several events in this same transaction: live rates change after the plan seals.
     vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
     replay_fees(&mut replay, events::collect<events::FeesUpdated<Tag>>()[1]);
@@ -2529,7 +2530,7 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag>) 
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
     replay_fees(&mut replay, events::collect<events::FeesUpdated<Tag>>()[2]);
     assert_replay(&replay, vault);
-    let plan = vault.prepare_redemption(active_position(10_997, 21_780), &shares, 9_978, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_redemption(active_position(10_997, 21_780), shares.value(), vault.share_supply(), 9_978, REFERENCE_TIME_MS);
     let receipt = operations::seal_redemption_receipt(vault, plan, shares,
         active_position_with_base(10_996, 1_800_165), initial_checkpoint(), REFERENCE_TIME_MS);
     let cash = sui::coin::mint_for_testing<Collateral>(9_980, fixture.ctx!());
@@ -2550,7 +2551,7 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag>) 
     assert_replay(&replay, vault);
     sui::transfer::public_transfer(cash, ADMIN);
 
-    let plan = vault.prepare_donation(active_position(1_016, 1_800), 10, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_donation(active_position(1_016, 1_800), 10, REFERENCE_TIME_MS);
     let donated_checkpoint = checkpoint_with_market_imr(10, ALLOCATED_FIXED, 10, 20, 10, 20, 1);
     operations::complete_donation(vault, plan, active_position(1_026, 1_800), donated_checkpoint, 10, REFERENCE_TIME_MS);
     let (id, amount, reserve, checkpoint) = events::collect_one<events::Donated<Tag>>(0).donated_fields();
@@ -2560,11 +2561,11 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag>) 
     replay.checkpoint = option::some(checkpoint);
     assert_replay(&replay, vault);
 
-    let mut plan = vault.prepare_rebalance(rebalance_position(1_026, 3_000_000), 10, REFERENCE_TIME_MS);
-    let (base, increase, _) = vault.rebalance_order(&plan);
+    let mut plan = vault.state().prepare_rebalance(rebalance_position(1_026, 3_000_000), 10, REFERENCE_TIME_MS);
+    let (base, increase, _) = vault.state().rebalance_order(&plan);
     assert!(!increase);
     let after_base = 3_000_000 - base;
-    vault.accept_rebalance_fill(&mut plan, rebalance_position(1_025, after_base), base, REFERENCE_TIME_MS);
+    vault.state().accept_rebalance_fill(&mut plan, rebalance_position(1_025, after_base), base, REFERENCE_TIME_MS);
     let checkpoint = checkpoint_with_market_imr(10, ALLOCATED_FIXED - ATOM_FIXED, 10, 20, 10, 20, 1);
     operations::complete_rebalance<Tag, Collateral>(vault, plan, checkpoint);
     let event = events::collect_one<events::Rebalanced<Tag>>(0);
@@ -2649,7 +2650,7 @@ fun replay_redemption<Tag>(replay: &mut ReplayState, event: events::Redeemed<Tag
 
 fun assert_replay<Tag>(replay: &ReplayState, vault: &Vault<Tag>) {
     assert_eq!(replay.vault_id, vault.id());
-    assert_eq!(replay.maintenance_reserve, vault.maintenance_reserve());
+    assert_eq!(replay.maintenance_reserve, vault.state().maintenance_reserve());
     assert_eq!(replay.admin_cash, vault.admin_cash_balance<_, Collateral>());
     assert_eq!(replay.supply, vault.share_supply());
     let (locked, funder) = vault.seed_facts();
@@ -2657,7 +2658,7 @@ fun assert_replay<Tag>(replay: &ReplayState, vault: &Vault<Tag>) {
     assert_eq!(replay.seed_funder, funder);
     let (mint, redeem, admin) = vault.fee_settings_for_testing();
     assert_eq!(replay.fees, vector[mint, redeem, admin]);
-    assert_eq!(*replay.checkpoint.borrow(), *vault.venue_checkpoint());
+    assert_eq!(*replay.checkpoint.borrow(), *vault.venue().checkpoint());
     let digest = replay.unresolved_checkpoint.map!(|checkpoint| sui::hash::blake2b256(&std::bcs::to_bytes(&checkpoint)));
     assert_eq!(digest, vault.unresolved_checkpoint_digest_for_testing());
     assert_eq!(replay.lifecycle, 1);

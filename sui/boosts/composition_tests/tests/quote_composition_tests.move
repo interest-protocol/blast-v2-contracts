@@ -47,7 +47,7 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     scenario.next_tx(@0xa);
     let admin = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let witness = authority.sign_in(&admin);
-    let mut config = scenario.take_shared<launch_config::LaunchConfig>();
+    let mut config = scenario.take_shared<LaunchConfig>();
     if (admit_exact) {
         config.allow_quote<Quote>(&version, &witness, 5_000_000, 25_000_000);
     } else {
@@ -133,7 +133,7 @@ public fun sell_and_redeem<Product, Collateral, Meme>(
 use blast_admin::acl::{Self, AdminCap};
 
 use blast_fun::{
-    bps, creator_authority, launch::{Self, Launch}, launch_config,
+    bps, creator_authority, launch::{Self, Launch}, launch_config::{Self, LaunchConfig},
     launch_ticket, blast_fun_domain::BLAST_FUN_DOMAIN,
     package_version::{Self, PackageVersion}, runtime_config::{Self, RuntimeConfig},
 };

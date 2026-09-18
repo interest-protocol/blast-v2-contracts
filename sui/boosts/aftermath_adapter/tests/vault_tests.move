@@ -100,7 +100,7 @@ fun risk_admin_updates_live_fees_with_a_completed_event_and_no_asset_movement() 
     assert_eq!(id, vault.id());
     assert_eq!(vector[old_mint, old_redeem, old_admin, mint, redeem, admin], vector[10, 10, 0, 0, 0, 0]);
     assert_eq!(vault.share_supply(), 0);
-    assert_eq!(vault.maintenance_reserve(), 0);
+    assert_eq!(vault.state().maintenance_reserve(), 0);
     test_scenario::return_shared(vault);
     destroy(fixture);
 }
