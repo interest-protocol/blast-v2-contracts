@@ -1,13 +1,13 @@
-# Blast Series1 Aftermath adapter
+# Blast Boosts Aftermath adapter
 
-`blast_boosts_aftermath` connects Series1 policy and accounting to
+`blast_boosts_aftermath` connects the Boosts core policy and accounting to
 Aftermath-owned venue state. It owns product currencies, its own operational
-generation, sealed package custody, and `Vault<Product>` custody while relying on
-the shared Series1 administration domain.
+generation, sealed package custody, and `Vault<Product, Collateral>` custody
+while relying on the shared core administration domain.
 
 Membership is shared, custody is not: administrators authenticate against the
-Series1 authority, but this package's generation and `UpgradeCap` belong only to
-it, and advancing them leaves Series1 untouched. Its Publisher and `UpgradeCap`
+core authority, but this package's generation and `UpgradeCap` belong only to
+it, and advancing them leaves the core untouched. Its Publisher and `UpgradeCap`
 are validated once and sealed inside `blast_admin` custody, from which no call
 returns them; a governed upgrade commits its receipt and advances the generation
 in one transaction, so a failure at either step rolls the whole upgrade back.
@@ -15,19 +15,14 @@ in one transaction, so a failure at either step rolls the whole upgrade back.
 A product is any non-primitive type. The share currency is
 `blast_boost::BlastBoost<Product>`, a never-constructed marker registered
 through this package, and Coin Registry rejects a second currency for the same
-tag; `vault::Vault<Product>` is the shared custody object, not the coin.
-Issuing requires a live Series1 issuer witness. Product tags are declared in
-`blast_boosts_products` so the inner type also reads as Blast.
-
-The selected risk-module type is an external authorization boundary. The
-adapter requires a runtime witness and rejects adapter-origin types, but Move
-cannot infer whether a foreign constructor is capability-gated or whether its
-package is immutable. Do not issue or activate a production Vault until the
-exact risk package source, protected constructor path, immutable publication
-digest, and selected market/oracle object IDs are recorded and reviewed.
+tag; `vault::Vault<Product, Collateral>` is the shared custody object, not the
+coin, and names its collateral at the type level like every venue object it is
+called with. Issuing requires a live core issuer witness, and the Vault is
+activated in the transaction that issues it (ADR 0087). Product tags are
+declared in `blast_boosts_products` so the inner type also reads as Blast.
 
 Read [ADR 0064](../../../docs/decisions/0064-aftermath-backed-leverage-coins.md),
-the later Series1 ADRs in the
+the later Boosts ADRs in the
 [decision index](../../../docs/decisions/README.md), and the
 [leverage implementation rules](../../../docs/leverage-implementation-lessons.md)
 before changing this package. `scripts/verify.sh` is the executable authority
@@ -43,14 +38,15 @@ checks the complete expected object/effect/ownership graph for success and
 rollback. All three live proof paths enforce the pinned Sui CLI version.
 
 Public active operations are `initialize`, `mint`, `redeem`, `rebalance`,
-`sync_health`, `donate`, and `release_reserve`; Vault also exposes authorized
-fee settings and earned-admin cash withdrawal. Mint/redeem return ordinary
-native coins and finish atomically. Rebalance has no privileged keeper path,
-caller trade sizing or reward. An unresolved external change preserves the
-accepted economic checkpoint and emits a deduplicated diagnostic.
+`needs_rebalance`, `sync_health` and `donate`; Vault also exposes authorized
+fee, NAV-cap and order-cap settings and earned-admin cash withdrawal.
+Mint/redeem return ordinary native coins and finish atomically. Rebalance has
+no privileged keeper path, caller trade sizing or reward. An unresolved
+external change preserves the accepted economic checkpoint and emits
+`CheckpointDrifted`.
 
-Activation records the exact locked seed amount and explicit funder.
-`vault::begin_shutdown` requires a shutdown-role witness and no venue or oracle
+Activation mints the locked seed shares to the burn address; they are never
+redeemable. `vault::begin_shutdown` requires a shutdown-role witness and no venue or oracle
 input. It irreversibly moves Active to Unwinding. Permissionless
 `operations::unwind` makes up to 16 bounded close-only market orders using fresh
 prices and the immutable emergency tolerance. A frozen market instead uses only
@@ -67,8 +63,8 @@ It seals Settled once; no terminal path reopens leverage.
 the denominator. Claims floor the fraction of remaining cash; the last gets
 all dust. A wholly zero cash pool permits an explicit zero-minimum burn, but a
 partial claim rounded to zero while cash remains aborts. With no eligible
-holders, all recovered cash goes once to the recorded seed funder, never the
-finalizer. Admin cash remains separate. See the
+holders, what the locked seed backed is retained as admin cash, never paid to
+the finalizer. Admin cash remains separate. See the
 [terminal local record](../../../docs/leverage-terminal-local.md) for events,
 observer-to-witness operation and the boundary of local evidence.
 

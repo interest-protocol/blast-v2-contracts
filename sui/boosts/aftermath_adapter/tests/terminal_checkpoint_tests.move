@@ -22,22 +22,22 @@ fun one_remaining_atomic_coin_blocks_completed_withdrawal() {
 #[test]
 #[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun pending_bid_base_blocks_finality_even_when_order_count_is_zero() {
-    venue_account::new_checkpoint(0, 0, 0, 0, 9, 10, 9, 10, 1_000,
+    venue_account::checkpoint_for_testing(0, 0, 0, 0, 9, 10, 9, 10, 1_000,
         0, 1, 0, 0, false, 0, 0, 0).recoverable_terminal_cash();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun short_funding_snapshot_must_be_exact_even_when_flat() {
-    venue_account::new_checkpoint(0, 0, 0, 0, 9, 9, 9, 10, 1_000,
+    venue_account::checkpoint_for_testing(0, 0, 0, 0, 9, 9, 9, 10, 1_000,
         0, 0, 0, 0, false, 0, 0, 0).recoverable_terminal_cash();
 }
 
 #[test]
 fun direct_settlement_closes_raw_dust_without_creating_a_market_order() {
-    let before = venue_account::new_checkpoint(0, 0, 1, 1, 9, 10, 9, 10, 1_000,
+    let before = venue_account::checkpoint_for_testing(0, 0, 1, 1, 9, 10, 9, 10, 1_000,
         0, 0, 0, 0, true, 0, 0, 0);
-    let after = venue_account::new_checkpoint(5, 0, 0, 0, 9, 10, 9, 10, 1_000,
+    let after = venue_account::checkpoint_for_testing(5, 0, 0, 0, 9, 10, 9, 10, 1_000,
         0, 0, 0, 0, true, 0, 0, 0);
     before.assert_direct_settlement_checkpoint(&after);
 }
@@ -45,9 +45,9 @@ fun direct_settlement_closes_raw_dust_without_creating_a_market_order() {
 #[test]
 #[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
 fun direct_settlement_cannot_leave_one_raw_order_or_position_unit() {
-    let before = venue_account::new_checkpoint(0, 0, 1, 1, 9, 10, 9, 10, 1_000,
+    let before = venue_account::checkpoint_for_testing(0, 0, 1, 1, 9, 10, 9, 10, 1_000,
         0, 0, 0, 0, true, 0, 0, 0);
-    let after = venue_account::new_checkpoint(5, 0, 0, 0, 9, 10, 9, 10, 1_000,
+    let after = venue_account::checkpoint_for_testing(5, 0, 0, 0, 9, 10, 9, 10, 1_000,
         1, 0, 0, 0, true, 0, 0, 0);
     before.assert_direct_settlement_checkpoint(&after);
 }
@@ -141,7 +141,7 @@ fun signed_negative_liability_cannot_be_recovered_as_cash() {
 }
 
 fun checkpoint(base: u256, quote: u256, allocated: u256, pending: u64, funding: u256, free: u64): Checkpoint {
-    venue_account::new_checkpoint(free, allocated, base, quote, funding, 10, 9, 10,
+    venue_account::checkpoint_for_testing(free, allocated, base, quote, funding, 10, 9, 10,
         1_000, 0, 0, pending, 0, false, 0, 0, 0)
 }
 

@@ -1,6 +1,8 @@
 // `errors` intentionally centralizes package-wide abort codes through zero-cost macros.
 #[allow(lint(abort_without_constant))]
-/// Authenticated Aftermath/Pyth normalization and raw checkpoint comparison.
+/// Authenticated Aftermath/Pyth capture: proves every source is the bound
+/// one, reads the raw checkpoint, and normalizes prices and equity into the
+/// adapter's units.
 module blast_boosts_aftermath::snapshot;
 
 // The `*_decoded` helpers take a value's sign and magnitude already decoded
@@ -46,16 +48,6 @@ public struct OracleLeg has copy, drop {
     representable: bool,
 }
 
-/// What moved between the checkpoint last accepted and the one just captured:
-/// nothing, one funding settlement carrying its raw signed collateral delta, or
-/// anything else, which no operation may build on.
-public enum CheckpointChange has drop {
-    Unchanged,
-    FundingCredit(u256),
-    FundingCost(u256),
-    Unexpected,
-}
-
 // === Package Functions ===
 
 // --- Capture ---
@@ -71,7 +63,7 @@ public(package) fun capture_checkpoint<Collateral>(
         object::id(clearing_house), object::id(base_oracle), object::id(collateral_oracle),
     );
 
-    read_checkpoint(account, clearing_house)
+    venue_account::read_checkpoint(account, clearing_house)
 }
 
 /// Captures one authenticated venue and Pyth valuation pair.
@@ -105,11 +97,11 @@ public(package) fun capture<Collateral>(
     let mark_fixed = clearing_house.mark_price(base_oracle, clock);
     let base = oracle_leg(base_price_info, base_feed, base_fixed);
     let collateral = oracle_leg(collateral_price_info, collateral_feed, collateral_fixed);
-    let (mark_price, mark_representable) = fixed_to_u64_down(mark_fixed, 9);
+    let (mark_price, mark_representable) = ifixed_math::fixed_to_u64_down(mark_fixed, 9);
 
     let position = clearing_house.position(account.account_id());
     let (signed_base, signed_quote_notional) = position.base_and_quote_amounts();
-    let (position_base, base_representable) = fixed_to_u64_up(signed_base.abs(), 9);
+    let (position_base, base_representable) = ifixed_math::fixed_to_u64_up(signed_base.abs(), 9);
     let effective_imr = position.effective_initial_margin_ratio(params.margin_ratio_initial());
     let (margin, requirement) = position.compute_margin_and_requirement(
         collateral_fixed, mark_fixed, effective_imr, params.collateral_haircut(),
@@ -206,151 +198,9 @@ public(package) fun collateral_price_observation(self: &CapturedSnapshot): Price
 /// Returns the raw IFixed collateral reading behind the capture.
 public(package) fun collateral_fixed(self: &CapturedSnapshot): u256 { self.collateral_fixed }
 
-// --- CheckpointChange Classification ---
-
-/// Returns true when only the market's cumulative funding rates advanced.
-///
-/// This is the ordinary pre-settlement shape: the position still carries the
-/// stored funding snapshots while the market rates may have moved forward.
-public(package) fun checkpoint_ready_for_settlement(stored: &Checkpoint, before: &Checkpoint): bool {
-    stored.non_funding_fields_equal(before)
-        && stored.allocated_collateral() == before.allocated_collateral()
-        && stored.funding_snapshot_long() == before.funding_snapshot_long()
-        && stored.funding_snapshot_short() == before.funding_snapshot_short()
-}
-
-/// Recognizes funding that another caller settled before this synchronization.
-///
-/// Aftermath settlement is permissionless. The adapter therefore accepts the
-/// one exact stored-to-pre shape that settlement can produce: funding
-/// snapshots refresh to the current market rates and allocated collateral
-/// changes, while every unrelated account, position, order, and risk field is
-/// byte-for-byte unchanged.
-public(package) fun classify_preexisting_funding(stored: &Checkpoint, before: &Checkpoint): CheckpointChange {
-    classify_preexisting_from_delta(stored, before, allocated_delta(stored, before))
-}
-
-/// Classifies only an isolated funding-snapshot and allocated-collateral change.
-public(package) fun classify_change(
-    before: &Checkpoint,
-    after: &Checkpoint,
-    funding_candidate: u256,
-    collateral_price: u256,
-): CheckpointChange {
-    if (before == after) return CheckpointChange::Unchanged;
-
-    let (candidate_collateral_magnitude, representable) = usd_fixed_to_collateral_fixed(
-        funding_candidate.abs(), collateral_price, funding_candidate.is_neg(),
-    );
-    if (!representable) return CheckpointChange::Unexpected;
-
-    classify_from_delta(
-        before, after, funding_candidate.is_neg(), candidate_collateral_magnitude,
-        allocated_delta(before, after),
-    )
-}
-
-/// Nets authenticated settlement edges before rounding or buffer allocation.
-/// No gross ordering inside one Blast checkpoint is an entitlement boundary.
-public(package) fun net_funding(first: CheckpointChange, second: CheckpointChange): CheckpointChange {
-    if (first.is_unexpected() || second.is_unexpected()) return CheckpointChange::Unexpected;
-
-    let (first_cost, first_amount) = (first.is_cost(), first.raw_amount());
-    let (second_cost, second_amount) = (second.is_cost(), second.raw_amount());
-    let (is_cost, amount) = if (first_cost == second_cost) {
-        (first_cost, first_amount.checked_add(second_amount).destroy_or!(return CheckpointChange::Unexpected))
-    } else if (first_amount >= second_amount) {
-        (first_cost, first_amount - second_amount)
-    } else {
-        (second_cost, second_amount - first_amount)
-    };
-
-    if (amount == 0) {
-        CheckpointChange::Unchanged
-    } else if (is_cost) {
-        CheckpointChange::FundingCost(amount)
-    } else {
-        CheckpointChange::FundingCredit(amount)
-    }
-}
-
-/// Creates the clean no-op classification for adapter orchestration.
-public(package) fun unchanged_change(): CheckpointChange {
-    CheckpointChange::Unchanged
-}
-
-/// A terminal market close may realize losses, but cannot misattribute an unrelated funding mutation.
-public(package) fun assert_expected(self: CheckpointChange) {
-    assert!(!self.is_unexpected(), blast_boosts_aftermath::errors::unresolved_checkpoint!());
-}
-
-// --- CheckpointChange Reads ---
-
-/// Returns whether the change is a representable funding credit or cost.
-public(package) fun has_funding(self: &CheckpointChange): bool {
-    match (self) {
-        CheckpointChange::FundingCredit(raw) => { let (_, ok) = fixed_to_u64_down(*raw, constants::collateral_decimals!() as u64); ok },
-        CheckpointChange::FundingCost(raw) => { let (_, ok) = fixed_to_u64_up(*raw, constants::collateral_decimals!() as u64); ok },
-        _ => false,
-    }
-}
-
-/// Returns whether the change is a funding cost.
-public(package) fun is_cost(self: &CheckpointChange): bool {
-    match (self) { CheckpointChange::FundingCost(_) => true, _ => false }
-}
-
-/// Returns the raw IFixed funding magnitude; zero when there is no funding.
-public(package) fun raw_amount(self: &CheckpointChange): u256 {
-    match (self) {
-        CheckpointChange::FundingCredit(raw) => *raw,
-        CheckpointChange::FundingCost(raw) => *raw,
-        _ => 0,
-    }
-}
-
-/// Returns the six-decimal funding amount, credits down and costs up; zero when unrepresentable.
-public(package) fun amount(self: &CheckpointChange): u64 {
-    match (self) {
-        CheckpointChange::FundingCredit(raw) => { let (amount, _) = fixed_to_u64_down(*raw, constants::collateral_decimals!() as u64); amount },
-        CheckpointChange::FundingCost(raw) => { let (amount, _) = fixed_to_u64_up(*raw, constants::collateral_decimals!() as u64); amount },
-        _ => 0,
-    }
-}
-
-/// Returns whether the checkpoint is clean: unchanged, or a representable funding change.
-public(package) fun is_clean(self: &CheckpointChange): bool {
-    match (self) {
-        CheckpointChange::Unchanged => true,
-        CheckpointChange::Unexpected => false,
-        _ => self.has_funding(),
-    }
-}
-
-fun is_unexpected(self: &CheckpointChange): bool {
-    match (self) { CheckpointChange::Unexpected => true, _ => false }
-}
-
 // === Private Functions ===
 
 // --- Capture ---
-
-/// Reads every raw venue field the checkpoint authenticates, in one pass and without normalization.
-fun read_checkpoint<Collateral>(account: &Account<Collateral>, clearing_house: &ClearingHouse<Collateral>): Checkpoint {
-    let params = clearing_house.market_params();
-    let position = clearing_house.position(account.account_id());
-    let (base, quote) = position.base_and_quote_amounts();
-    let (snapshot_long, snapshot_short) = position.funding_rate_snapshots();
-    let (market_long, market_short) = clearing_house.market_state().cum_funding_rates();
-    let (ask, bid) = position.pending_base_amounts_by_side();
-
-    venue_account::new_checkpoint(
-        account.collateral_balance(), position.collateral(), base, quote,
-        snapshot_long, snapshot_short, market_long, market_short, params.lot_size(), ask, bid,
-        position.pending_order_count(), clearing_house.market_pause_mode(), clearing_house.is_frozen(),
-        position.initial_margin_ratio(), params.margin_ratio_initial(), params.margin_ratio_maintenance(),
-    )
-}
 
 /// Proves both oracle storages and both feeds are the ones the bound market
 /// prices with, then returns the feeds. Identity failures abort before any
@@ -390,84 +240,6 @@ fun oracle_leg(price_info: &PriceInfoObject, feed: &PriceFeed, fixed: u256): Ora
     OracleLeg { price, confidence, timestamp, representable }
 }
 
-// --- CheckpointChange Classification ---
-
-fun classify_preexisting_from_delta(
-    stored: &Checkpoint,
-    before: &Checkpoint,
-    allocated_change: CheckpointChange,
-): CheckpointChange {
-    // The position snapshots prove the completed external settlement. They may
-    // trail the market again if another funding epoch advanced before Blast
-    // synchronized, so equality with the current market rates is not required.
-    let snapshots_refreshed = stored.funding_snapshot_long() != before.funding_snapshot_long()
-        || stored.funding_snapshot_short() != before.funding_snapshot_short();
-    if (!stored.non_funding_fields_equal(before) || !snapshots_refreshed) return CheckpointChange::Unexpected;
-
-    allocated_change
-}
-
-fun classify_from_delta(
-    before: &Checkpoint,
-    after: &Checkpoint,
-    candidate_negative: bool,
-    candidate_collateral_magnitude: u256,
-    allocated_change: CheckpointChange,
-): CheckpointChange {
-    if (before == after) return CheckpointChange::Unchanged;
-    let market_rates_unchanged = before.non_funding_fields_equal(after)
-        && before.market_funding_long() == after.market_funding_long()
-        && before.market_funding_short() == after.market_funding_short();
-    if (!market_rates_unchanged) return CheckpointChange::Unexpected;
-
-    let snapshots_refreshed = after.funding_snapshot_long() == before.market_funding_long()
-        && after.funding_snapshot_short() == before.market_funding_short()
-        && (before.funding_snapshot_long() != after.funding_snapshot_long()
-            || before.funding_snapshot_short() != after.funding_snapshot_short());
-    if (!snapshots_refreshed) return CheckpointChange::Unexpected;
-    if (candidate_collateral_magnitude == 0 && before.allocated_collateral() == after.allocated_collateral()) {
-        return CheckpointChange::Unchanged
-    };
-
-    let matched = match (&allocated_change) {
-        CheckpointChange::FundingCredit(amount) => !candidate_negative && *amount == candidate_collateral_magnitude,
-        CheckpointChange::FundingCost(amount) => candidate_negative && *amount == candidate_collateral_magnitude,
-        CheckpointChange::Unchanged => candidate_collateral_magnitude == 0,
-        CheckpointChange::Unexpected => false,
-    };
-
-    if (matched) { allocated_change } else { CheckpointChange::Unexpected }
-}
-
-/// Named IFixed operations decode signed collateral; raw checkpoint bits are never ordered.
-fun allocated_delta(before: &Checkpoint, after: &Checkpoint): CheckpointChange {
-    let (before_raw, after_raw) = (before.allocated_collateral(), after.allocated_collateral());
-
-    signed_delta(before_raw.is_neg(), before_raw.abs(), after_raw.is_neg(), after_raw.abs())
-}
-
-/// Computes after-minus-before in sign/magnitude facts, including a zero crossing.
-fun signed_delta(before_negative: bool, before: u256, after_negative: bool, after: u256): CheckpointChange {
-    if (before_negative == after_negative) {
-        if (before == after) return CheckpointChange::Unchanged;
-        let credit = if (before_negative) { before > after } else { after > before };
-        let amount = before.diff(after);
-
-        if (credit) { CheckpointChange::FundingCredit(amount) } else { CheckpointChange::FundingCost(amount) }
-    } else {
-        if (before > std::u256::max_value!() - after) return CheckpointChange::Unexpected;
-        let amount = before + after;
-
-        if (amount == 0) {
-            CheckpointChange::Unchanged
-        } else if (after_negative) {
-            CheckpointChange::FundingCost(amount)
-        } else {
-            CheckpointChange::FundingCredit(amount)
-        }
-    }
-}
-
 // --- Pyth Normalization ---
 
 /// Normalizes authenticated oracle values without aborting on representation.
@@ -491,7 +263,7 @@ fun pyth_price(
         normalize_pyth_component(pyth_price.get_conf(), &expo, true);
     let (aftermath_price, aftermath_timestamp) = aftermath_feed.price_and_timestamp_ms();
     let (normalized_feed_price, feed_representable) = normalize_feed_price(aftermath_price);
-    let (normalized_venue_price, venue_representable) = fixed_to_u64_down(venue_price, 9);
+    let (normalized_venue_price, venue_representable) = ifixed_math::fixed_to_u64_down(venue_price, 9);
     let (pyth_timestamp, timestamp_representable) = seconds_to_millis(pyth_price.get_timestamp());
     let representable = price_nonnegative
         && price_representable
@@ -552,14 +324,14 @@ fun normalize_pyth_component_parts(
     let raw = component as u256;
     let normalized = if (expo_negative) {
         if (magnitude <= 9) {
-            raw * pow10(9 - magnitude)
+            raw * ifixed_math::pow10(9 - magnitude)
         } else {
-            let scale = pow10(magnitude - 9);
+            let scale = ifixed_math::pow10(magnitude - 9);
             let down = raw / scale;
             if (round_up && raw % scale != 0) { down + 1 } else { down }
         }
     } else {
-        raw * pow10(9 + magnitude)
+        raw * ifixed_math::pow10(9 + magnitude)
     };
 
     if (normalized > std::u64::max_value!() as u256) { (0, false) } else { (normalized as u64, true) }
@@ -573,49 +345,7 @@ fun seconds_to_millis(seconds: u64): (u64, bool) {
     }
 }
 
-fun pow10(exponent: u64): u256 {
-    let mut result = 1;
-    exponent.do!(|_| result = result * 10);
-
-    result
-}
-
-fun fixed_to_u64_down(value: u256, decimals: u64): (u64, bool) {
-    let normalized = value / pow10(18 - decimals);
-    if (normalized > std::u64::max_value!() as u256) { (0, false) } else { (normalized as u64, true) }
-}
-
-fun fixed_to_u64_up(value: u256, decimals: u64): (u64, bool) {
-    let scale = pow10(18 - decimals);
-    let down = value / scale;
-    let exact = value % scale == 0;
-    let up = if (exact) { down } else { down + 1 };
-
-    if (up > std::u64::max_value!() as u256) { (0, false) } else { (up as u64, true) }
-}
-
 // --- Position Arithmetic ---
-
-/// Converts a USD IFixed amount into collateral IFixed at `collateral_price`.
-fun usd_fixed_to_collateral_fixed(usd: u256, collateral_price: u256, round_up: bool): (u256, bool) {
-    if (collateral_price == 0) return (0, false);
-
-    let one = constants::ifixed_one!();
-    let whole = usd / collateral_price;
-    let remainder = usd % collateral_price;
-    if (whole > std::u256::max_value!() / one || remainder > std::u256::max_value!() / one) return (0, false);
-    let fractional_scaled = remainder * one;
-    let whole_scaled = whole * one;
-    let fraction = fractional_scaled / collateral_price;
-    if (whole_scaled > std::u256::max_value!() - fraction) return (0, false);
-
-    let down = whole_scaled + fraction;
-    if (round_up && fractional_scaled % collateral_price != 0) {
-        if (down == std::u256::max_value!()) { (0, false) } else { (down + 1, true) }
-    } else {
-        (down, true)
-    }
-}
 
 fun signed_equity(free: u64, allocated: u256, pnl_usd: u256, collateral_price: u256): (u64, bool) {
     signed_equity_decoded(
@@ -640,15 +370,15 @@ fun signed_equity_decoded(
 
     // A liability rounds up and an asset rounds down, so equity never reads high.
     let (allocated_tokens, allocated_ok) = if (allocated_negative) {
-        fixed_to_u64_up(allocated, constants::collateral_decimals!() as u64)
+        ifixed_math::fixed_to_u64_up(allocated, constants::collateral_decimals!() as u64)
     } else {
-        fixed_to_u64_down(allocated, constants::collateral_decimals!() as u64)
+        ifixed_math::fixed_to_u64_down(allocated, constants::collateral_decimals!() as u64)
     };
-    let (pnl, collateral_ok) = usd_fixed_to_collateral_fixed(pnl_magnitude_usd, collateral_price, pnl_negative);
+    let (pnl, collateral_ok) = ifixed_math::usd_fixed_to_collateral_fixed(pnl_magnitude_usd, collateral_price, pnl_negative);
     let (rounded, pnl_ok) = if (pnl_negative) {
-        fixed_to_u64_up(pnl, constants::collateral_decimals!() as u64)
+        ifixed_math::fixed_to_u64_up(pnl, constants::collateral_decimals!() as u64)
     } else {
-        fixed_to_u64_down(pnl, constants::collateral_decimals!() as u64)
+        ifixed_math::fixed_to_u64_down(pnl, constants::collateral_decimals!() as u64)
     };
     if (!allocated_ok || !collateral_ok || !pnl_ok) return (0, false);
 
@@ -718,106 +448,6 @@ public fun captured_health_for_testing(
 }
 
 #[test_only]
-/// Creates the dirty-checkpoint classification for adapter test fixtures.
-public fun unexpected_change(): CheckpointChange {
-    CheckpointChange::Unexpected
-}
-
-#[test_only]
-/// Returns `(has_funding, is_cost, raw_amount, amount, is_clean)` for test assertions.
-public fun funding_change_fields(
-    change: &CheckpointChange,
-): (bool, bool, u256, u64, bool) {
-    match (change) {
-        CheckpointChange::Unchanged => (false, false, 0, 0, true),
-        CheckpointChange::Unexpected => (false, false, 0, 0, false),
-        CheckpointChange::FundingCredit(raw_amount) => {
-            let (amount, representable) = fixed_to_u64_down(*raw_amount, constants::collateral_decimals!() as u64);
-            (representable, false, *raw_amount, amount, representable)
-        },
-        CheckpointChange::FundingCost(raw_amount) => {
-            let (amount, representable) = fixed_to_u64_up(*raw_amount, constants::collateral_decimals!() as u64);
-            (representable, true, *raw_amount, amount, representable)
-        },
-    }
-}
-
-#[test_only]
-public fun classify_change_for_testing(before: &Checkpoint, after: &Checkpoint): CheckpointChange {
-    classify_change_with_candidate_for_testing(before, after, false, 0)
-}
-
-#[test_only]
-public fun classify_change_with_candidate_for_testing(
-    before: &Checkpoint,
-    after: &Checkpoint,
-    candidate_negative: bool,
-    candidate_magnitude: u256,
-): CheckpointChange {
-    let delta = signed_delta(false, before.allocated_collateral(), false, after.allocated_collateral());
-    classify_from_delta(before, after, candidate_negative, candidate_magnitude, delta)
-}
-
-#[test_only]
-public fun classify_preexisting_funding_for_testing(
-    stored: &Checkpoint,
-    before: &Checkpoint,
-): CheckpointChange {
-    let delta = signed_delta(false, stored.allocated_collateral(), false, before.allocated_collateral());
-    classify_preexisting_from_delta(stored, before, delta)
-}
-
-#[test_only]
-public fun classify_signed_funding_for_testing(
-    stored: &Checkpoint, before: &Checkpoint, stored_negative: bool, stored_magnitude: u256,
-    before_negative: bool, before_magnitude: u256,
-): CheckpointChange {
-    classify_preexisting_from_delta(
-        stored, before, signed_delta(stored_negative, stored_magnitude, before_negative, before_magnitude),
-    )
-}
-
-#[test_only]
-public fun is_unchanged_for_testing(change: CheckpointChange): bool {
-    match (change) { CheckpointChange::Unchanged => true, _ => false }
-}
-
-#[test_only]
-public fun is_credit_for_testing(change: CheckpointChange): bool {
-    match (change) { CheckpointChange::FundingCredit(_) => true, _ => false }
-}
-
-#[test_only]
-public fun is_cost_for_testing(change: CheckpointChange): bool {
-    match (change) { CheckpointChange::FundingCost(_) => true, _ => false }
-}
-
-#[test_only]
-public fun funding_amount_for_testing(change: CheckpointChange): u256 {
-    match (change) {
-        CheckpointChange::FundingCredit(amount) => amount,
-        CheckpointChange::FundingCost(amount) => amount,
-        _ => 0,
-    }
-}
-
-#[test_only]
-public fun is_unexpected_for_testing(change: CheckpointChange): bool {
-    match (change) { CheckpointChange::Unexpected => true, _ => false }
-}
-
-#[test_only]
-public fun normalize_raw_fixed_for_testing(value: u256, decimals: u64, round_up: bool): u64 {
-    let (normalized, representable) = if (round_up) {
-        fixed_to_u64_up(value, decimals)
-    } else {
-        fixed_to_u64_down(value, decimals)
-    };
-    assert!(representable, blast_boosts_aftermath::errors::normalization_overflow!());
-    normalized
-}
-
-#[test_only]
 public fun normalize_pyth_for_testing(
     component: u64,
     expo_negative: bool,
@@ -839,17 +469,12 @@ public fun normalize_feed_for_testing(raw_price: u128): (u64, bool) {
 
 #[test_only]
 public fun normalize_mark_for_testing(value: u256): (u64, bool) {
-    fixed_to_u64_down(value, 9)
+    ifixed_math::fixed_to_u64_down(value, 9)
 }
 
 #[test_only]
 public fun seconds_to_millis_for_testing(seconds: u64): (u64, bool) {
     seconds_to_millis(seconds)
-}
-
-#[test_only]
-public fun usd_fixed_to_collateral_for_testing(usd: u256, collateral_price: u256, round_up: bool): (u256, bool) {
-    usd_fixed_to_collateral_fixed(usd, collateral_price, round_up)
 }
 
 #[test_only]
@@ -886,7 +511,7 @@ public fun position_signs_coherent_for_testing(
 
 // === Imports ===
 
-use blast_boosts_aftermath::{constants, venue_account::{Self as venue_account, Binding, Checkpoint}};
+use blast_boosts_aftermath::{constants, ifixed_math, venue_account::{Self as venue_account, Binding, Checkpoint}};
 
 use blast_boosts_core::{
     observation::{Self, PositionObservation, PriceObservation},

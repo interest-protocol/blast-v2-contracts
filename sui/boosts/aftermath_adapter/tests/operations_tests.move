@@ -237,9 +237,9 @@ fun finalization_cannot_recover_or_pay_the_seed_funder_twice() {
 #[test]
 fun completed_direct_settlement_reports_actual_cash_and_no_market_order() {
     let mut fixture = start();
-    let before = venue_account::new_checkpoint(0, 0, 1, 1, 11, 21, 11, 21, LOT_SIZE,
+    let before = venue_account::checkpoint_for_testing(0, 0, 1, 1, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, true, 1, 1, 1);
-    let after = venue_account::new_checkpoint(5, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    let after = venue_account::checkpoint_for_testing(5, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, true, 1, 1, 1);
     let mut vault = issue_and_activate(&mut fixture, before);
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
@@ -373,7 +373,7 @@ fun finalization_rejects_a_short_actual_coin_even_when_the_venue_is_empty() {
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
-    let before = venue_account::new_checkpoint(13, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    let before = venue_account::checkpoint_for_testing(13, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, false, 1, 1, 1);
     let recovered = sui::coin::mint_for_testing<Collateral>(12, fixture.ctx!());
     operations::complete_finalization_for_testing(&mut vault, before.terminal_withdrawal(terminal_checkpoint(), recovered));
@@ -388,9 +388,9 @@ fun finalization_rejects_a_short_actual_coin_with_exact_sub_atomic_remainder() {
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
-    let before = venue_account::new_checkpoint(12, 1_000_000_000_001, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    let before = venue_account::checkpoint_for_testing(12, 1_000_000_000_001, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, false, 1, 1, 1);
-    let after = venue_account::new_checkpoint(0, 1, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    let after = venue_account::checkpoint_for_testing(0, 1, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, false, 1, 1, 1);
     let recovered = sui::coin::mint_for_testing<Collateral>(12, fixture.ctx!());
     operations::complete_finalization_for_testing(&mut vault, before.terminal_withdrawal_for_testing(after, recovered, false, 1_000_000_000_001));
@@ -544,14 +544,14 @@ fun every_drifted_sync_reports_the_drift_and_a_clean_sync_is_silent() {
     let initial = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, initial);
     let dirty = checkpoint_with_market_imr(0, ALLOCATED_FIXED, 10, 20, 10, 20, 2);
-    apply_connected_change(&mut vault, dirty, snapshot::unexpected_change());
-    apply_connected_change(&mut vault, initial, snapshot::unchanged_change());
+    apply_connected_change(&mut vault, dirty, venue_account::unexpected_change());
+    apply_connected_change(&mut vault, initial, venue_account::unchanged_change());
     let drifted = events::collect<events::CheckpointDrifted<Product>>();
     assert_eq!(drifted.length(), 1);
     let (_, checkpoint) = drifted[0].checkpoint_drifted_fields();
     assert_eq!(checkpoint, dirty);
     assert_eq!(*vault.venue().checkpoint(), initial);
-    apply_connected_change(&mut vault, dirty, snapshot::unexpected_change());
+    apply_connected_change(&mut vault, dirty, venue_account::unexpected_change());
     assert_eq!(events::collect<events::CheckpointDrifted<Product>>().length(), 2);
     assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 0);
     destroy(vault);
@@ -1959,13 +1959,13 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
 // === Test Helpers ===
 
 fun terminal_withdrawal(recovered: Coin<Collateral>): TerminalWithdrawal<Collateral> {
-    let before = venue_account::new_checkpoint(recovered.value(), 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    let before = venue_account::checkpoint_for_testing(recovered.value(), 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, false, 1, 1, 1);
     before.terminal_withdrawal(terminal_checkpoint(), recovered)
 }
 
 fun terminal_checkpoint(): Checkpoint {
-    venue_account::new_checkpoint(0, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    venue_account::checkpoint_for_testing(0, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, false, 1, 1, 1)
 }
 
@@ -2344,15 +2344,15 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     let mut shares = operations::complete_mint_for_testing<Tag, Collateral>(&mut vault, plan, 10_000,
         active_position_for_side(10_997, 21_780, side), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
     replay_mint(&mut replay, events::collect_one<events::Minted<Tag>>(0));
-    let dirty = venue_account::new_checkpoint(13, 0, 1, 1, 11, 21, 11, 21, LOT_SIZE,
+    let dirty = venue_account::checkpoint_for_testing(13, 0, 1, 1, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, true, 1, 1, 1);
-    apply_connected_change(&mut vault, dirty, snapshot::unexpected_change());
+    apply_connected_change(&mut vault, dirty, venue_account::unexpected_change());
     replay_drift(&mut replay, events::collect<events::CheckpointDrifted<Tag>>()[0]);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::observed_venue_change_reason());
     let shutdown = events::collect_one<events::ShutdownBegun<Tag>>(0);
     assert_eq!(shutdown.shutdown_reason(), blast_boosts_core::lifecycle::observed_venue_change_reason());
     replay_shutdown(&mut replay, shutdown);
-    let flat = venue_account::new_checkpoint(12, 1_000_000_000_001, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    let flat = venue_account::checkpoint_for_testing(12, 1_000_000_000_001, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, true, 1, 1, 1);
     operations::complete_unwind_for_testing(&mut vault, dirty, option::none(), flat, 0, option::none());
     let (_, before, _, after, orders, quote) = events::collect_one<events::UnwindProgress<Tag>>(0).unwind_progress_fields();
@@ -2360,7 +2360,7 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     assert_eq!(orders, 0);
     assert!(quote.is_none());
     replay.checkpoint = option::some(after);
-    let final_checkpoint = venue_account::new_checkpoint(0, 1, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    let final_checkpoint = venue_account::checkpoint_for_testing(0, 1, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, true, 1, 1, 1);
     let withdrawal = flat.terminal_withdrawal_for_testing(final_checkpoint,
         sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()), false, 1_000_000_000_001);
@@ -2474,13 +2474,13 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     assert_replay(&replay, vault);
 
     let dirty = checkpoint_with_market_imr(10, ALLOCATED_FIXED - ATOM_FIXED, 10, 20, 10, 20, 2);
-    apply_connected_change(vault, dirty, snapshot::unexpected_change());
+    apply_connected_change(vault, dirty, venue_account::unexpected_change());
     replay_drift(&mut replay, events::collect<events::CheckpointDrifted<Tag>>()[0]);
     assert_replay(&replay, vault);
-    apply_connected_change(vault, dirty, snapshot::unexpected_change());
+    apply_connected_change(vault, dirty, venue_account::unexpected_change());
     replay_drift(&mut replay, events::collect<events::CheckpointDrifted<Tag>>()[1]);
     assert_replay(&replay, vault);
-    apply_connected_change(vault, checkpoint, snapshot::unchanged_change());
+    apply_connected_change(vault, checkpoint, venue_account::unchanged_change());
     assert_eq!(events::collect<events::CheckpointDrifted<Tag>>().length(), 2);
     replay.unresolved_checkpoint = option::none();
     assert_replay(&replay, vault);
@@ -2491,7 +2491,7 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     apply_connected_change(vault, after, change);
     replay_funding(&mut replay, events::collect_one<events::FundingSettled<Tag>>(0));
     assert_replay(&replay, vault);
-    apply_connected_change(vault, after, snapshot::unchanged_change());
+    apply_connected_change(vault, after, venue_account::unchanged_change());
     assert_eq!(events::collect<events::FundingSettled<Tag>>().length(), 1);
     assert_replay(&replay, vault);
 }
@@ -2674,9 +2674,9 @@ use blast_boosts_aftermath::{
     events,
     operations,
     protocol::{Self, Protocol},
-    snapshot::{Self, CheckpointChange},
+    snapshot,
     vault::{Self as vault, Vault},
-    venue_account::{Self, Binding, Checkpoint, TerminalWithdrawal},
+    venue_account::{Self, Binding, Checkpoint, CheckpointChange, TerminalWithdrawal},
 };
 
 use blast_boosts_core::{

@@ -624,8 +624,8 @@ fun live_venue_fee_bps<Collateral>(clearing_house: &ClearingHouse<Collateral>): 
     let params = clearing_house.market_params();
 
     venue_fee_bound(
-        nonnegative_rate(params.taker_fee()),
-        nonnegative_rate(market::resolve_priority_taker_fee(params.priority_taker_fee())),
+        ifixed_math::nonnegative_rate(params.taker_fee()),
+        ifixed_math::nonnegative_rate(market::resolve_priority_taker_fee(params.priority_taker_fee())),
     )
 }
 
@@ -639,11 +639,6 @@ fun venue_fee_bound(ordinary: u256, priority: u256): u64 {
     );
 
     ((ordinary + priority).div_ceil(constants::ifixed_per_basis_point!())) as u64
-}
-
-/// A venue rebate reads as a zero fee; the bound never credits execution.
-fun nonnegative_rate(rate: u256): u256 {
-    if (rate.is_neg()) { 0 } else { rate.abs() }
 }
 
 /// Whether opening this side is an ask on the Aftermath port: shorts sell to open, longs buy.
@@ -1108,12 +1103,12 @@ fun classify_sync_changes(
     funding_candidate: u256,
     collateral_price: u256,
 ): (CheckpointChange, CheckpointChange) {
-    let preexisting_change = if (snapshot::checkpoint_ready_for_settlement(stored, before)) {
-        snapshot::unchanged_change()
+    let preexisting_change = if (venue_account::checkpoint_ready_for_settlement(stored, before)) {
+        venue_account::unchanged_change()
     } else {
-        snapshot::classify_preexisting_funding(stored, before)
+        venue_account::classify_preexisting_funding(stored, before)
     };
-    let local_change = snapshot::classify_change(before, after, funding_candidate, collateral_price);
+    let local_change = venue_account::classify_change(before, after, funding_candidate, collateral_price);
 
     (preexisting_change, local_change)
 }
@@ -1175,7 +1170,7 @@ fun unwind_market<Product, Collateral>(
     let funded = snapshot::capture_checkpoint(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
     );
-    snapshot::classify_change(&before, &funded, candidate, collateral_fixed).assert_expected();
+    venue_account::classify_change(&before, &funded, candidate, collateral_fixed).assert_expected();
 
     let terms = OrderTerms {
         is_ask: !opens_with_ask(side), reduce_only: true, max_order_notional,
@@ -1467,13 +1462,13 @@ public fun classify_sync_changes_for_testing(
     candidate_collateral_magnitude: u256,
 ): (CheckpointChange, CheckpointChange) {
     let preexisting_change = if (
-        snapshot::checkpoint_ready_for_settlement(stored, before)
+        venue_account::checkpoint_ready_for_settlement(stored, before)
     ) {
-        snapshot::unchanged_change()
+        venue_account::unchanged_change()
     } else {
-        snapshot::classify_preexisting_funding_for_testing(stored, before)
+        venue_account::classify_preexisting_funding_for_testing(stored, before)
     };
-    let local_change = snapshot::classify_change_with_candidate_for_testing(
+    let local_change = venue_account::classify_change_with_candidate_for_testing(
         before,
         after,
         candidate_negative,
@@ -1486,7 +1481,7 @@ public fun classify_sync_changes_for_testing(
 public fun apply_post_capture_for_testing<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>, checkpoint: Checkpoint, change: CheckpointChange,
 ) {
-    apply_post_capture(vault, checkpoint, snapshot::unchanged_change(), change);
+    apply_post_capture(vault, checkpoint, venue_account::unchanged_change(), change);
 }
 
 #[test_only]
@@ -1526,9 +1521,10 @@ use blast_boosts_aftermath::{
     constants,
     events,
     protocol::Protocol,
-    snapshot::{Self, CapturedSnapshot, CheckpointChange},
+    ifixed_math,
+    snapshot::{Self, CapturedSnapshot},
     vault::{Vault, VaultIssuance},
-    venue_account::{Self, Binding, Checkpoint, TerminalWithdrawal},
+    venue_account::{Self, Binding, Checkpoint, CheckpointChange, TerminalWithdrawal},
 };
 
 use blast_boosts_core::{
