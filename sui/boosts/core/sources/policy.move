@@ -304,7 +304,7 @@ public(package) fun is_leverage_below_band(self: &RebalancePolicy, notional: u64
 ///
 /// Same units and exact comparison as `is_leverage_below_band`:
 /// `notional * 10_000 > nav * rebalance_above_bps`. Equality is healthy.
-public(package) fun is_leverage_above_band(self: &RebalancePolicy, notional: u64, nav: u64): bool {
+fun is_leverage_above_band(self: &RebalancePolicy, notional: u64, nav: u64): bool {
     scale_by_denominator(notional) > (nav as u128) * (self.rebalance_above_bps as u128)
 }
 
@@ -339,7 +339,7 @@ public(package) fun is_leverage_above_max(self: &RebalancePolicy, notional: u64,
 /// `|executed - reference| * 10_000 <= max_slippage_bps * reference`,
 /// cross-multiplied through `u128`. A zero reference returns false. Risk
 /// increase and every ordinary rebalance use this bound.
-public(package) fun is_execution_within_max_slippage(
+fun is_execution_within_max_slippage(
     self: &RebalancePolicy,
     reference: u64,
     executed: u64,
@@ -368,7 +368,7 @@ public(package) fun assert_execution_within_max_slippage(
 /// Same gate as the strict form with the wider emergency bound. Reduce-only
 /// execution strictly above max leverage may use it. This finite wider bound
 /// does not guarantee executable liquidity or successful deleveraging.
-public(package) fun is_execution_within_emergency_max_slippage(
+fun is_execution_within_emergency_max_slippage(
     self: &RebalancePolicy,
     reference: u64,
     executed: u64,
@@ -417,7 +417,7 @@ public(package) fun assert_nav_cap_valid(self: &RebalancePolicy, nav_cap: u64) {
 /// `[now_ms - max_price_age_ms, now_ms + max_price_ahead_ms]`.
 /// Unlike `assert_price_fresh`, this predicate never aborts: health may report
 /// a stale or future-stamped source without changing lifecycle.
-public(package) fun is_price_fresh(
+fun is_price_fresh(
     self: &PricePolicy,
     published_at_ms: u64,
     now_ms: u64,
@@ -462,7 +462,7 @@ public(package) fun assert_price_fresh(
 /// health check can report the failure without changing lifecycle.
 /// `assert_confidence_within_bound` remains the priced-operation guard that
 /// reports a zero price separately from an excessive confidence interval.
-public(package) fun is_confidence_within_bound(
+fun is_confidence_within_bound(
     self: &PricePolicy,
     confidence: u64,
     price: u64,
@@ -508,7 +508,7 @@ public(package) fun assert_confidence_within_bound(
 /// health check can report invalid data. The mark may be zero
 /// at the type level, but every valid policy rejects it against a positive
 /// oracle price because the divergence bound stays below 10,000 basis points.
-public(package) fun is_mark_within_oracle_divergence(
+fun is_mark_within_oracle_divergence(
     self: &PricePolicy,
     mark: u64,
     index: u64,
@@ -675,6 +675,36 @@ public fun max_reserve_bps(self: &VaultPolicy): u64 {
 /// Exposes issuance fee rates to the test event reducer without widening production ABI.
 public fun initial_fee_rates_for_testing(self: &VaultPolicy): (u64, u64) {
     (self.initial_mint_fee_bps, self.initial_redeem_fee_bps)
+}
+
+#[test_only]
+public fun is_leverage_above_band_for_testing(self: &RebalancePolicy, notional: u64, nav: u64): bool {
+    self.is_leverage_above_band(notional, nav)
+}
+
+#[test_only]
+public fun is_execution_within_max_slippage_for_testing(self: &RebalancePolicy, reference: u64, executed: u64): bool {
+    self.is_execution_within_max_slippage(reference, executed)
+}
+
+#[test_only]
+public fun is_execution_within_emergency_max_slippage_for_testing(self: &RebalancePolicy, reference: u64, executed: u64): bool {
+    self.is_execution_within_emergency_max_slippage(reference, executed)
+}
+
+#[test_only]
+public fun is_price_fresh_for_testing(self: &PricePolicy, published_at_ms: u64, now_ms: u64): bool {
+    self.is_price_fresh(published_at_ms, now_ms)
+}
+
+#[test_only]
+public fun is_confidence_within_bound_for_testing(self: &PricePolicy, confidence: u64, price: u64): bool {
+    self.is_confidence_within_bound(confidence, price)
+}
+
+#[test_only]
+public fun is_mark_within_oracle_divergence_for_testing(self: &PricePolicy, mark: u64, index: u64): bool {
+    self.is_mark_within_oracle_divergence(mark, index)
 }
 
 // === Imports ===

@@ -383,7 +383,7 @@ fun a_mint_base_delta_beyond_u64_is_rejected() {
 /// Catches a mint range that admits a fill beyond the plan or below the actual contribution.
 #[test]
 fun mint_bounds_span_the_actual_contribution_and_the_planned_fill() {
-    let (min_order_base, max_order_base) = accounting_math::mint_base_bounds(
+    let (min_order_base, max_order_base) = accounting_math::mint_base_bounds_for_testing(
         1_000_500,
         999_000,
         1_000_000,
@@ -411,7 +411,7 @@ fun a_capped_contribution_never_widens_the_planned_fill() {
         );
 
         vector[100_000u64, 500_000, expected - 1, expected].do!(|actual| {
-            let (min_order_base, max_order_base) = accounting_math::mint_base_bounds(
+            let (min_order_base, max_order_base) = accounting_math::mint_base_bounds_for_testing(
                 expected, actual, 1_000_000, 1_000_000_000, 100, 1,
             );
             let actual_order_base = accounting_math::mint_base_to_buy_down(
@@ -431,7 +431,7 @@ fun a_capped_contribution_never_widens_the_planned_fill() {
 /// Catches an empty range when a favorable fill credits more than the plan expected.
 #[test]
 fun a_favorable_fill_demands_the_complete_planned_fill() {
-    let (min_order_base, max_order_base) = accounting_math::mint_base_bounds(
+    let (min_order_base, max_order_base) = accounting_math::mint_base_bounds_for_testing(
         999_000,
         1_000_500,
         1_000_000,
@@ -504,7 +504,7 @@ fun a_mint_fill_below_the_actual_contribution_is_rejected() {
     location = blast_boosts_core::accounting_math,
 )]
 fun a_mint_whose_actual_contribution_is_dust_is_rejected() {
-    accounting_math::mint_base_bounds(1_000_500, 99, 1_000_000, 1_000_000_000, 100, 1);
+    accounting_math::mint_base_bounds_for_testing(1_000_500, 99, 1_000_000, 1_000_000_000, 100, 1);
 }
 
 /// Catches an upper bound that wraps past the maximum base.
@@ -888,7 +888,7 @@ fun assert_mint_bounds_hold(
     lot_size: u64,
     min_order_lots: u64,
 ) {
-    let (min_order_base, max_order_base) = accounting_math::mint_base_bounds(
+    let (min_order_base, max_order_base) = accounting_math::mint_base_bounds_for_testing(
         expected_contribution,
         actual_contribution,
         base_before,

@@ -327,7 +327,7 @@ public(package) fun is_clean(self: &CheckpointChange): bool {
     }
 }
 
-public(package) fun is_unexpected(self: &CheckpointChange): bool {
+fun is_unexpected(self: &CheckpointChange): bool {
     match (self) { CheckpointChange::Unexpected => true, _ => false }
 }
 
@@ -882,6 +882,7 @@ public fun position_signs_coherent_for_testing(
 ): bool {
     position_signs_coherent_decoded(base_negative, quote_negative, base_zero, quote_zero, long_or_flat)
 }
+
 
 // === Imports ===
 

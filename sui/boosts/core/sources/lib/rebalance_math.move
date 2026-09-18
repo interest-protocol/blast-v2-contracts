@@ -38,7 +38,7 @@ public(package) fun base_for_notional_down(
 
 /// Reserves adverse execution first, then the authenticated fee on that adverse quote.
 /// Each session calls this separately: rounding a multi-order total is not equivalent.
-public(package) fun execution_cost_up(notional: u64, fee_bps: u64, slippage_bps: u64): u128 {
+fun execution_cost_up(notional: u64, fee_bps: u64, slippage_bps: u64): u128 {
     assert!(
         fee_bps <= constants::basis_points_denominator!() && slippage_bps < constants::basis_points_denominator!(),
         blast_boosts_core::errors::venue_fee_unusable!(),
@@ -122,6 +122,13 @@ public(package) fun reduction_is_sufficient(
         scaled_before >= scaled_after + (min_leverage_improvement_bps as u256) * before_nav * after_nav;
 
     (within_one_lot_of_target && not_farther_than_before) || improved_by_minimum
+}
+
+// === Test-Only Functions ===
+
+#[test_only]
+public fun execution_cost_up_for_testing(notional: u64, fee_bps: u64, slippage_bps: u64): u128 {
+    execution_cost_up(notional, fee_bps, slippage_bps)
 }
 
 // === Imports ===

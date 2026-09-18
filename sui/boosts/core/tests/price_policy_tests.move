@@ -173,7 +173,7 @@ fun the_freshness_window_matches_the_saturating_interval_model() {
                             && published_at_ms <= window_end;
 
                     assert_eq!(
-                        policy.is_price_fresh(published_at_ms, reference_time_ms),
+                        policy.is_price_fresh_for_testing(published_at_ms, reference_time_ms),
                         is_fresh,
                     );
                     if (is_fresh) {
@@ -192,7 +192,7 @@ fun the_freshness_window_matches_the_saturating_interval_model() {
 fun an_update_stamped_at_the_reference_time_is_fresh() {
     let policy = freshness_policy(1, 0);
 
-    assert!(policy.is_price_fresh(1_000, 1_000));
+    assert!(policy.is_price_fresh_for_testing(1_000, 1_000));
     policy.assert_price_fresh(1_000, 1_000);
 }
 
@@ -200,7 +200,7 @@ fun an_update_stamped_at_the_reference_time_is_fresh() {
 fun an_update_at_the_exact_age_bound_is_fresh() {
     let policy = freshness_policy(30_000, 0);
 
-    assert!(policy.is_price_fresh(970_000, 1_000_000));
+    assert!(policy.is_price_fresh_for_testing(970_000, 1_000_000));
     policy.assert_price_fresh(970_000, 1_000_000);
 }
 
@@ -216,7 +216,7 @@ fun an_update_one_millisecond_past_the_age_bound_is_stale() {
 fun an_update_at_the_exact_skew_bound_is_fresh() {
     let policy = freshness_policy(30_000, 2_000);
 
-    assert!(policy.is_price_fresh(1_002_000, 1_000_000));
+    assert!(policy.is_price_fresh_for_testing(1_002_000, 1_000_000));
     policy.assert_price_fresh(1_002_000, 1_000_000);
 }
 
@@ -242,16 +242,16 @@ fun the_freshness_window_saturates_instead_of_wrapping_at_the_width_boundary() {
     let widest = freshness_policy(max, max);
     let narrowest = freshness_policy(1, 0);
 
-    assert!(widest.is_price_fresh(0, max));
-    assert!(widest.is_price_fresh(max, 0));
+    assert!(widest.is_price_fresh_for_testing(0, max));
+    assert!(widest.is_price_fresh_for_testing(max, 0));
     widest.assert_price_fresh(0, max);
     widest.assert_price_fresh(max, 0);
 
-    assert!(!narrowest.is_price_fresh(0, max));
-    assert!(!narrowest.is_price_fresh(max, 0));
-    assert!(narrowest.is_price_fresh(max - 1, max));
-    assert!(narrowest.is_price_fresh(max, max));
-    assert!(!narrowest.is_price_fresh(max, max - 1));
+    assert!(!narrowest.is_price_fresh_for_testing(0, max));
+    assert!(!narrowest.is_price_fresh_for_testing(max, 0));
+    assert!(narrowest.is_price_fresh_for_testing(max - 1, max));
+    assert!(narrowest.is_price_fresh_for_testing(max, max));
+    assert!(!narrowest.is_price_fresh_for_testing(max, max - 1));
 }
 
 #[test]
@@ -266,7 +266,7 @@ fun confidence_predicate_matches_the_reference_across_the_small_domain() {
                         <= (max_confidence_bps as u128) * (price as u128);
 
                 assert_eq!(
-                    policy.is_confidence_within_bound(confidence, price),
+                    policy.is_confidence_within_bound_for_testing(confidence, price),
                     expected,
                 );
             });
@@ -379,7 +379,7 @@ fun mark_divergence_predicate_matches_the_reference_across_the_small_domain() {
                         <= (max_mark_divergence_bps as u128) * (index as u128);
 
                 assert_eq!(
-                    policy.is_mark_within_oracle_divergence(mark, index),
+                    policy.is_mark_within_oracle_divergence_for_testing(mark, index),
                     expected,
                 );
             });

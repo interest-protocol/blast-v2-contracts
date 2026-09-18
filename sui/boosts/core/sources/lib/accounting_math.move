@@ -121,7 +121,7 @@ public(package) fun shareholder_nav(
 /// maintenance reserve. It is excluded from shareholder NAV. A zero rate is
 /// the only fee-free result. One atomic unit at any positive rate still pays
 /// one unit, and the intermediate `amount * fee_bps` stays below `2^78`.
-public(package) fun fee_up(amount: u64, fee_bps: u64): u64 {
+fun fee_up(amount: u64, fee_bps: u64): u64 {
     assert!(amount > 0, blast_boosts_core::errors::zero_amount!());
     assert!(
         fee_bps < constants::basis_points_denominator!(),
@@ -158,7 +158,7 @@ public(package) fun fee_allocation(amount: u64, rate_bps: u64, admin_share_bps: 
 ///
 /// A zero fee is a valid no-op. Overflow aborts with the package arithmetic
 /// code instead of wrapping or silently narrowing.
-public(package) fun credit_fee(maintenance_reserve: u64, fee: u64): u64 {
+fun credit_fee(maintenance_reserve: u64, fee: u64): u64 {
     maintenance_reserve
         .checked_add(fee)
         .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!())
@@ -193,7 +193,7 @@ public(package) fun credit_fee(maintenance_reserve: u64, fee: u64): u64 {
 /// final supply abort when they leave the `u64` range. This function proves
 /// no proportional order: pair it with `mint_base_to_buy_down` and
 /// `assert_mint_base_within_bounds`.
-public(package) fun mint_quote(
+fun mint_quote(
     contribution: u64,
     nav_before: u64,
     shares_before: u64,
@@ -366,7 +366,7 @@ public(package) fun mint_base_to_buy_down(
 /// pool at 2.67x; at 95 percent loss it admits 3.81x. The core' post-trade
 /// leverage gate is therefore a hard release blocker, not an optional check,
 /// and the user's slippage bound owns the rest.
-public(package) fun mint_base_bounds(
+fun mint_base_bounds(
     expected_contribution: u64,
     actual_contribution: u64,
     base_before: u64,
@@ -466,7 +466,7 @@ public(package) fun assert_mint_base_within_bounds(
 ///
 /// `nav_before * S1` stays below `2^128` and `equity_keep <= nav_before`, so no
 /// result can leave the `u64` range.
-public(package) fun redemption_quote(
+fun redemption_quote(
     shares_burned: u64,
     nav_before: u64,
     nav_unwound: u64,
@@ -708,6 +708,33 @@ fun narrow_to_u64(wide: u128): u64 {
     );
 
     wide as u64
+}
+
+// === Test-Only Functions ===
+
+#[test_only]
+public fun fee_up_for_testing(amount: u64, fee_bps: u64): u64 {
+    fee_up(amount, fee_bps)
+}
+
+#[test_only]
+public fun credit_fee_for_testing(maintenance_reserve: u64, fee: u64): u64 {
+    credit_fee(maintenance_reserve, fee)
+}
+
+#[test_only]
+public fun mint_quote_for_testing(contribution: u64, nav_before: u64, shares_before: u64): u64 {
+    mint_quote(contribution, nav_before, shares_before)
+}
+
+#[test_only]
+public fun mint_base_bounds_for_testing(expected_contribution: u64, actual_contribution: u64, base_before: u64, nav_before: u64, lot_size: u64, min_order_lots: u64): (u64, u64) {
+    mint_base_bounds(expected_contribution, actual_contribution, base_before, nav_before, lot_size, min_order_lots)
+}
+
+#[test_only]
+public fun redemption_quote_for_testing(shares_burned: u64, nav_before: u64, nav_unwound: u64, shares_before: u64, redeem_fee_bps: u64): (u64, u64, u64) {
+    redemption_quote(shares_burned, nav_before, nav_unwound, shares_before, redeem_fee_bps)
 }
 
 // === Imports ===

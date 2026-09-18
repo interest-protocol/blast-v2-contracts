@@ -414,7 +414,7 @@ public(package) fun recoverable_terminal_cash(self: &Checkpoint): u64 {
 }
 
 /// Complete recovery changes only the two collateral locations, by the actual returned coin.
-public(package) fun assert_terminal_withdrawal_checkpoint(before: &Checkpoint, after: &Checkpoint, amount: u64) {
+fun assert_terminal_withdrawal_checkpoint(before: &Checkpoint, after: &Checkpoint, amount: u64) {
     let (negative, magnitude) = before.allocated_collateral_sign_and_magnitude();
     assert_terminal_withdrawal_checkpoint_decoded(before, after, amount, negative, magnitude);
 }
@@ -629,7 +629,7 @@ public(package) fun recoverable_cash_for_testing(self: &Checkpoint, negative: bo
 }
 
 #[test_only]
-public(package) fun assert_terminal_withdrawal_checkpoint_for_testing(
+public fun assert_terminal_withdrawal_checkpoint_decoded_for_testing(
     before: &Checkpoint, after: &Checkpoint, amount: u64, negative: bool, magnitude: u256,
 ) {
     assert_terminal_withdrawal_checkpoint_decoded(before, after, amount, negative, magnitude);
@@ -642,6 +642,11 @@ public(package) fun terminal_withdrawal_for_testing<Collateral>(
 ): TerminalWithdrawal<Collateral> {
     assert_terminal_withdrawal_checkpoint_decoded(before, &after, recovered.value(), negative, magnitude);
     TerminalWithdrawal { recovered, checkpoint: after }
+}
+
+#[test_only]
+public fun assert_terminal_withdrawal_checkpoint_for_testing(before: &Checkpoint, after: &Checkpoint, amount: u64) {
+    assert_terminal_withdrawal_checkpoint(before, after, amount)
 }
 
 // === Imports ===

@@ -425,160 +425,6 @@ public fun finalize_shutdown<Product, Collateral>(
     complete_finalization(vault, recovered, before, after);
 }
 
-// === Package Functions ===
-
-/// Emits activation facts read back from the resulting real Vault state.
-public(package) fun emit_vault_initialized<Product, Collateral>(
-    vault: &Vault<Product, Collateral>,
-    seed_amount: u64,
-    seed_shareholder_nav: u64,
-    seed_venue_equity: u64,
-    position_base: u64,
-    lot_size: u64,
-    position_side: PositionSide,
-    position_imr: u256,
-) {
-    let binding = vault.venue().binding();
-
-    events::vault_initialized<Product>(
-        vault.id(),
-        binding.account_object_id(),
-        binding.account_number(),
-        binding.registry_id(),
-        binding.clearing_house_id(),
-        binding.base_oracle_id(),
-        binding.collateral_oracle_id(),
-        seed_amount,
-        seed_venue_equity,
-        vault.state().maintenance_reserve(),
-        seed_shareholder_nav,
-        vault.locked_shares(),
-        position_base,
-        lot_size,
-        position_side,
-        position_imr,
-        *vault.venue().checkpoint(),
-    );
-}
-
-/// Commits native mint effects only after the orchestration proved its venue checkpoint.
-public(package) fun complete_mint<Product, Collateral>(
-    vault: &mut Vault<Product, Collateral>, plan: MintPlan<Product>, deposit: u64, after: PositionObservation,
-    checkpoint: Checkpoint, now_ms: u64, ctx: &mut TxContext,
-): Coin<BlastBoost<Product>> {
-    let (shares, contribution, fee, admin, reserve_fee) = vault.complete_mint(plan, after, now_ms, ctx);
-
-    vault.venue_mut().replace_checkpoint(checkpoint);
-
-    events::minted<Product>(
-        vault.id(), deposit, shares.value(), contribution, fee, admin, reserve_fee,
-        vault.state().maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(),
-        vault.share_supply(), checkpoint,
-    );
-
-    shares
-}
-
-/// Holds the actual input coin across payout instead of accepting a numerical burn promise.
-public(package) fun seal_redemption_receipt<Product, Collateral>(
-    vault: &mut Vault<Product, Collateral>, plan: RedemptionPlan<Product>, shares: Coin<BlastBoost<Product>>,
-    unwound: PositionObservation, unwound_checkpoint: Checkpoint, now_ms: u64,
-): RedemptionReceipt<Product> {
-    assert!(
-        shares.value() == plan.redemption_shares(),
-        blast_boosts_aftermath::errors::redemption_share_mismatch!(),
-    );
-
-    let (net, admin, fee, reserve_fee) = vault.state_mut().complete_redemption(plan, unwound, now_ms);
-
-    RedemptionReceipt { shares: shares.into_balance(), net, admin, fee, reserve_fee, unwound_checkpoint }
-}
-
-/// Returns only the exact total collateral that must leave the venue before completion.
-public(package) fun redemption_cash_required<Product>(self: &RedemptionReceipt<Product>): u64 {
-    self.net + self.admin
-}
-
-/// Completes custody after the public operation proves the withdrawal on the checkpoint:
-/// retains the earned admin cash, burns the held shares, and accepts the checkpoint.
-public(package) fun complete_redemption<Product, Collateral>(
-    vault: &mut Vault<Product, Collateral>, receipt: RedemptionReceipt<Product>, mut cash: Coin<Collateral>,
-    checkpoint: Checkpoint, ctx: &mut TxContext,
-): Coin<Collateral> {
-    let RedemptionReceipt { shares, net, admin, fee, reserve_fee, unwound_checkpoint: _ } = receipt;
-    assert!(cash.value() == net + admin, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
-
-    vault.retain_admin_cash(cash.split(admin, ctx));
-    let burned = vault.burn_redeemed_shares(shares.into_coin(ctx));
-    vault.venue_mut().replace_checkpoint(checkpoint);
-
-    events::redeemed<Product>(
-        vault.id(), burned, net, fee, admin, reserve_fee,
-        vault.state().maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(), vault.share_supply(), checkpoint,
-    );
-
-    cash
-}
-
-/// Advances the sole economic checkpoint only after sealed maintenance has succeeded.
-public(package) fun complete_rebalance<Product, Collateral>(
-    vault: &mut Vault<Product, Collateral>, plan: RebalancePlan<Product>, checkpoint: Checkpoint,
-) {
-    let (before_equity, after_equity, before_base, after_base, increase) = vault.state().complete_rebalance(plan);
-
-    vault.venue_mut().replace_checkpoint(checkpoint);
-
-    events::rebalanced<Product>(
-        vault.id(), before_equity, after_equity, before_base, after_base, increase,
-        vault.state().maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(), vault.share_supply(), checkpoint,
-    );
-}
-
-/// Credits a donation the venue has taken: the raw checkpoint proves the exact
-/// deposit, the core prices the position it left.
-public(package) fun complete_donation<Product, Collateral>(
-    vault: &mut Vault<Product, Collateral>, after: PositionObservation, checkpoint: Checkpoint, amount: u64, now_ms: u64,
-) {
-    vault.venue().checkpoint().assert_deposit_checkpoint(&checkpoint, amount);
-
-    vault.state_mut().donate(after, amount, now_ms);
-    vault.venue_mut().replace_checkpoint(checkpoint);
-
-    events::donated<Product>(vault.id(), amount, vault.state().maintenance_reserve(), checkpoint);
-}
-
-/// Applies the complete Blast-owned post-capture synchronization phase.
-public(package) fun apply_post_capture<Product, Collateral>(
-    vault: &mut Vault<Product, Collateral>,
-    checkpoint: Checkpoint,
-    preexisting_change: CheckpointChange,
-    local_change: CheckpointChange,
-) {
-    let stored_checkpoint = *vault.venue().checkpoint();
-    let net = preexisting_change.net_funding(local_change);
-    let checkpoint_clean = net.is_clean();
-    let (absorbed, uncovered, restored, reserve_after) = if (net.has_funding()) {
-        vault.settle_funding(net.is_cost(), net.amount())
-    } else {
-        (0, 0, 0, vault.state().maintenance_reserve())
-    };
-
-    if (checkpoint_clean) {
-        vault.venue_mut().replace_checkpoint(checkpoint);
-    } else {
-        events::checkpoint_drifted<Product>(vault.id(), checkpoint);
-    };
-
-    // A zero-net interval still advances authenticated source identity and
-    // needs a reducer-visible completed fact; identical retries remain quiet.
-    if (checkpoint_clean && stored_checkpoint != checkpoint) {
-        events::funding_settled<Product>(
-            vault.id(), net.is_cost(), net.raw_amount(), net.amount(), absorbed, uncovered, restored,
-            reserve_after, stored_checkpoint, checkpoint,
-        );
-    };
-}
-
 // === Private Functions ===
 
 // --- Initialization ---
@@ -727,6 +573,40 @@ fun initialization_order_count(target_base: u64, max_order_base: u64): u64 {
     );
 
     count
+}
+
+/// Emits activation facts read back from the resulting real Vault state.
+fun emit_vault_initialized<Product, Collateral>(
+    vault: &Vault<Product, Collateral>,
+    seed_amount: u64,
+    seed_shareholder_nav: u64,
+    seed_venue_equity: u64,
+    position_base: u64,
+    lot_size: u64,
+    position_side: PositionSide,
+    position_imr: u256,
+) {
+    let binding = vault.venue().binding();
+
+    events::vault_initialized<Product>(
+        vault.id(),
+        binding.account_object_id(),
+        binding.account_number(),
+        binding.registry_id(),
+        binding.clearing_house_id(),
+        binding.base_oracle_id(),
+        binding.collateral_oracle_id(),
+        seed_amount,
+        seed_venue_equity,
+        vault.state().maintenance_reserve(),
+        seed_shareholder_nav,
+        vault.locked_shares(),
+        position_base,
+        lot_size,
+        position_side,
+        position_imr,
+        *vault.venue().checkpoint(),
+    );
 }
 
 // --- Orders ---
@@ -1005,7 +885,127 @@ fun normalize_execution_price(raw_price: u256, round_up: bool, negative: bool): 
     normalized as u64
 }
 
+// --- Completion ---
+
+/// Commits native mint effects only after the orchestration proved its venue checkpoint.
+fun complete_mint<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>, plan: MintPlan<Product>, deposit: u64, after: PositionObservation,
+    checkpoint: Checkpoint, now_ms: u64, ctx: &mut TxContext,
+): Coin<BlastBoost<Product>> {
+    let (shares, contribution, fee, admin, reserve_fee) = vault.complete_mint(plan, after, now_ms, ctx);
+
+    vault.venue_mut().replace_checkpoint(checkpoint);
+
+    events::minted<Product>(
+        vault.id(), deposit, shares.value(), contribution, fee, admin, reserve_fee,
+        vault.state().maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(),
+        vault.share_supply(), checkpoint,
+    );
+
+    shares
+}
+
+/// Holds the actual input coin across payout instead of accepting a numerical burn promise.
+fun seal_redemption_receipt<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>, plan: RedemptionPlan<Product>, shares: Coin<BlastBoost<Product>>,
+    unwound: PositionObservation, unwound_checkpoint: Checkpoint, now_ms: u64,
+): RedemptionReceipt<Product> {
+    assert!(
+        shares.value() == plan.redemption_shares(),
+        blast_boosts_aftermath::errors::redemption_share_mismatch!(),
+    );
+
+    let (net, admin, fee, reserve_fee) = vault.state_mut().complete_redemption(plan, unwound, now_ms);
+
+    RedemptionReceipt { shares: shares.into_balance(), net, admin, fee, reserve_fee, unwound_checkpoint }
+}
+
+/// Returns only the exact total collateral that must leave the venue before completion.
+fun redemption_cash_required<Product>(self: &RedemptionReceipt<Product>): u64 {
+    self.net + self.admin
+}
+
+/// Completes custody after the public operation proves the withdrawal on the checkpoint:
+/// retains the earned admin cash, burns the held shares, and accepts the checkpoint.
+fun complete_redemption<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>, receipt: RedemptionReceipt<Product>, mut cash: Coin<Collateral>,
+    checkpoint: Checkpoint, ctx: &mut TxContext,
+): Coin<Collateral> {
+    let RedemptionReceipt { shares, net, admin, fee, reserve_fee, unwound_checkpoint: _ } = receipt;
+    assert!(cash.value() == net + admin, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
+
+    vault.retain_admin_cash(cash.split(admin, ctx));
+    let burned = vault.burn_redeemed_shares(shares.into_coin(ctx));
+    vault.venue_mut().replace_checkpoint(checkpoint);
+
+    events::redeemed<Product>(
+        vault.id(), burned, net, fee, admin, reserve_fee,
+        vault.state().maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(), vault.share_supply(), checkpoint,
+    );
+
+    cash
+}
+
+/// Advances the sole economic checkpoint only after sealed maintenance has succeeded.
+fun complete_rebalance<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>, plan: RebalancePlan<Product>, checkpoint: Checkpoint,
+) {
+    let (before_equity, after_equity, before_base, after_base, increase) = vault.state().complete_rebalance(plan);
+
+    vault.venue_mut().replace_checkpoint(checkpoint);
+
+    events::rebalanced<Product>(
+        vault.id(), before_equity, after_equity, before_base, after_base, increase,
+        vault.state().maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(), vault.share_supply(), checkpoint,
+    );
+}
+
+/// Credits a donation the venue has taken: the raw checkpoint proves the exact
+/// deposit, the core prices the position it left.
+fun complete_donation<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>, after: PositionObservation, checkpoint: Checkpoint, amount: u64, now_ms: u64,
+) {
+    vault.venue().checkpoint().assert_deposit_checkpoint(&checkpoint, amount);
+
+    vault.state_mut().donate(after, amount, now_ms);
+    vault.venue_mut().replace_checkpoint(checkpoint);
+
+    events::donated<Product>(vault.id(), amount, vault.state().maintenance_reserve(), checkpoint);
+}
+
 // --- Funding ---
+
+/// Applies the complete Blast-owned post-capture synchronization phase.
+fun apply_post_capture<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    checkpoint: Checkpoint,
+    preexisting_change: CheckpointChange,
+    local_change: CheckpointChange,
+) {
+    let stored_checkpoint = *vault.venue().checkpoint();
+    let net = preexisting_change.net_funding(local_change);
+    let checkpoint_clean = net.is_clean();
+    let (absorbed, uncovered, restored, reserve_after) = if (net.has_funding()) {
+        vault.settle_funding(net.is_cost(), net.amount())
+    } else {
+        (0, 0, 0, vault.state().maintenance_reserve())
+    };
+
+    if (checkpoint_clean) {
+        vault.venue_mut().replace_checkpoint(checkpoint);
+    } else {
+        events::checkpoint_drifted<Product>(vault.id(), checkpoint);
+    };
+
+    // A zero-net interval still advances authenticated source identity and
+    // needs a reducer-visible completed fact; identical retries remain quiet.
+    if (checkpoint_clean && stored_checkpoint != checkpoint) {
+        events::funding_settled<Product>(
+            vault.id(), net.is_cost(), net.raw_amount(), net.amount(), absorbed, uncovered, restored,
+            reserve_after, stored_checkpoint, checkpoint,
+        );
+    };
+}
 
 /// Refreshes the venue's lazily updated cumulative funding rates when they are
 /// due, immediately before a settlement the vault accepts.
@@ -1263,6 +1263,59 @@ fun complete_finalization<Product, Collateral>(
 // === Test-Only Functions ===
 
 #[test_only]
+public fun emit_vault_initialized_for_testing<Product, Collateral>(
+    vault: &Vault<Product, Collateral>, seed_amount: u64, seed_shareholder_nav: u64, seed_venue_equity: u64,
+    position_base: u64, lot_size: u64, position_side: PositionSide, position_imr: u256,
+) {
+    emit_vault_initialized(
+        vault, seed_amount, seed_shareholder_nav, seed_venue_equity, position_base, lot_size, position_side, position_imr,
+    );
+}
+
+#[test_only]
+public fun complete_mint_for_testing<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>, plan: MintPlan<Product>, deposit: u64, after: PositionObservation,
+    checkpoint: Checkpoint, now_ms: u64, ctx: &mut TxContext,
+): Coin<BlastBoost<Product>> {
+    complete_mint(vault, plan, deposit, after, checkpoint, now_ms, ctx)
+}
+
+#[test_only]
+public fun seal_redemption_receipt_for_testing<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>, plan: RedemptionPlan<Product>, shares: Coin<BlastBoost<Product>>,
+    unwound: PositionObservation, unwound_checkpoint: Checkpoint, now_ms: u64,
+): RedemptionReceipt<Product> {
+    seal_redemption_receipt(vault, plan, shares, unwound, unwound_checkpoint, now_ms)
+}
+
+#[test_only]
+public fun redemption_cash_required_for_testing<Product>(self: &RedemptionReceipt<Product>): u64 {
+    self.redemption_cash_required()
+}
+
+#[test_only]
+public fun complete_redemption_for_testing<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>, receipt: RedemptionReceipt<Product>, cash: Coin<Collateral>,
+    checkpoint: Checkpoint, ctx: &mut TxContext,
+): Coin<Collateral> {
+    complete_redemption(vault, receipt, cash, checkpoint, ctx)
+}
+
+#[test_only]
+public fun complete_rebalance_for_testing<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>, plan: RebalancePlan<Product>, checkpoint: Checkpoint,
+) {
+    complete_rebalance(vault, plan, checkpoint);
+}
+
+#[test_only]
+public fun complete_donation_for_testing<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>, after: PositionObservation, checkpoint: Checkpoint, amount: u64, now_ms: u64,
+) {
+    complete_donation(vault, after, checkpoint, amount, now_ms);
+}
+
+#[test_only]
 public fun assert_initialization_inputs_for_testing(collateral_decimals: u8, seed_amount: u64, seed_reserve: u64) {
     assert_initialization_inputs(collateral_decimals, seed_amount, seed_reserve);
 }
@@ -1442,7 +1495,7 @@ public fun unwind_base_for_testing(magnitude: u256, is_long: bool, lot_size: u64
 }
 
 #[test_only]
-public(package) fun complete_unwind_for_testing<Product, Collateral>(
+public fun complete_unwind_for_testing<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>, before: Checkpoint, funded: Option<Checkpoint>,
     after: Checkpoint, orders: u64, filled_quote: Option<u256>,
 ) {
@@ -1450,7 +1503,7 @@ public(package) fun complete_unwind_for_testing<Product, Collateral>(
 }
 
 #[test_only]
-public(package) fun complete_finalization_for_testing<Product, Collateral>(
+public fun complete_finalization_for_testing<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>, recovered: Coin<Collateral>,
     before: Checkpoint, after: Checkpoint,
 ) {

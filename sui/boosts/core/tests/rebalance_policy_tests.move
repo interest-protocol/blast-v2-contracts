@@ -9,10 +9,10 @@ fun one_public_band_accepts_adjacent_thresholds_and_has_inclusive_endpoints() {
     let value = policy::new_rebalance_policy(0, 1, 2, 3, 0, 0, 1);
     // Leverage 0 bps: notional 0 against NAV 10_000.
     assert!(!value.is_leverage_below_band(0, 10_000));
-    assert!(!value.is_leverage_above_band(0, 10_000));
+    assert!(!value.is_leverage_above_band_for_testing(0, 10_000));
     // Leverage 2 bps sits exactly on the upper edge.
     assert!(!value.is_leverage_below_band(2, 10_000));
-    assert!(!value.is_leverage_above_band(2, 10_000));
+    assert!(!value.is_leverage_above_band_for_testing(2, 10_000));
     assert!(!value.is_leverage_above_max(3, 10_000));
     assert!(value.is_leverage_above_max(4, 10_000));
 }
@@ -85,10 +85,10 @@ fun eligibility_predicates_pin_every_threshold_equality() {
     // Notional in collateral atoms against NAV 10_000, so notional reads as leverage bps.
     assert!(value.is_leverage_below_band(15_999, 10_000));
     assert!(!value.is_leverage_below_band(16_000, 10_000));
-    assert!(!value.is_leverage_above_band(16_000, 10_000));
-    assert!(!value.is_leverage_above_band(26_000, 10_000));
+    assert!(!value.is_leverage_above_band_for_testing(16_000, 10_000));
+    assert!(!value.is_leverage_above_band_for_testing(26_000, 10_000));
     assert!(!value.is_leverage_below_band(26_000, 10_000));
-    assert!(value.is_leverage_above_band(26_001, 10_000));
+    assert!(value.is_leverage_above_band_for_testing(26_001, 10_000));
     assert!(!value.is_leverage_within_band(15_999, 10_000));
     assert!(value.is_leverage_within_band(16_000, 10_000));
     assert!(value.is_leverage_within_band(26_000, 10_000));
@@ -99,8 +99,8 @@ fun eligibility_predicates_pin_every_threshold_equality() {
     // The comparison is exact: one atom over the edge on a large NAV still counts.
     let nav = std::u64::max_value!() / 3;
     let edge = ((nav as u128) * 26_000 / 10_000) as u64;
-    assert!(!value.is_leverage_above_band(edge, nav));
-    assert!(value.is_leverage_above_band(edge + 1, nav));
+    assert!(!value.is_leverage_above_band_for_testing(edge, nav));
+    assert!(value.is_leverage_above_band_for_testing(edge + 1, nav));
 }
 
 #[test]
@@ -119,24 +119,24 @@ fun a_zero_rebalance_below_threshold_disables_the_lower_public_trigger() {
     let value = new_with_thresholds(0, 2, 4, 5);
 
     assert!(!value.is_leverage_below_band(0, 10_000));
-    assert!(!value.is_leverage_above_band(0, 10_000));
+    assert!(!value.is_leverage_above_band_for_testing(0, 10_000));
 }
 
 #[test]
 fun execution_slippage_bounds_are_inclusive_and_symmetric() {
     let value = standard_policy();
 
-    assert!(value.is_execution_within_max_slippage(1_000_000, 1_010_000));
-    assert!(!value.is_execution_within_max_slippage(1_000_000, 1_010_001));
-    assert!(value.is_execution_within_max_slippage(1_000_000, 990_000));
-    assert!(!value.is_execution_within_max_slippage(1_000_000, 989_999));
-    assert!(value.is_execution_within_emergency_max_slippage(1_000_000, 1_010_001));
-    assert!(value.is_execution_within_emergency_max_slippage(1_000_000, 1_050_000));
-    assert!(!value.is_execution_within_emergency_max_slippage(1_000_000, 1_050_001));
-    assert!(value.is_execution_within_emergency_max_slippage(1_000_000, 950_000));
-    assert!(!value.is_execution_within_emergency_max_slippage(1_000_000, 949_999));
-    assert!(!value.is_execution_within_max_slippage(0, 0));
-    assert!(!value.is_execution_within_emergency_max_slippage(0, 0));
+    assert!(value.is_execution_within_max_slippage_for_testing(1_000_000, 1_010_000));
+    assert!(!value.is_execution_within_max_slippage_for_testing(1_000_000, 1_010_001));
+    assert!(value.is_execution_within_max_slippage_for_testing(1_000_000, 990_000));
+    assert!(!value.is_execution_within_max_slippage_for_testing(1_000_000, 989_999));
+    assert!(value.is_execution_within_emergency_max_slippage_for_testing(1_000_000, 1_010_001));
+    assert!(value.is_execution_within_emergency_max_slippage_for_testing(1_000_000, 1_050_000));
+    assert!(!value.is_execution_within_emergency_max_slippage_for_testing(1_000_000, 1_050_001));
+    assert!(value.is_execution_within_emergency_max_slippage_for_testing(1_000_000, 950_000));
+    assert!(!value.is_execution_within_emergency_max_slippage_for_testing(1_000_000, 949_999));
+    assert!(!value.is_execution_within_max_slippage_for_testing(0, 0));
+    assert!(!value.is_execution_within_emergency_max_slippage_for_testing(0, 0));
     value.assert_execution_within_max_slippage(1_000_000, 1_010_000);
     value.assert_execution_within_emergency_max_slippage(1_000_000, 1_050_000);
 }
@@ -146,9 +146,9 @@ fun maximum_width_execution_tolerance_does_not_wrap() {
     let max = std::u64::max_value!();
     let value = policy::new_rebalance_policy(0, 2, 4, 5, 9_999, 9_999, 1);
 
-    assert!(value.is_execution_within_max_slippage(max, max));
-    assert!(!value.is_execution_within_max_slippage(max, 0));
-    assert!(!value.is_execution_within_max_slippage(1, max));
+    assert!(value.is_execution_within_max_slippage_for_testing(max, max));
+    assert!(!value.is_execution_within_max_slippage_for_testing(max, 0));
+    assert!(!value.is_execution_within_max_slippage_for_testing(1, max));
 }
 
 #[test]

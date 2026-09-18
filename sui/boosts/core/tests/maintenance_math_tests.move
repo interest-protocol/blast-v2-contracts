@@ -118,12 +118,12 @@ fun a_maximum_reserve_one_unit_above_equity_is_rejected() {
 fun fee_credits_are_exact() {
     let max = std::u64::max_value!();
 
-    assert_eq!(accounting_math::credit_fee(0, 0), 0);
-    assert_eq!(accounting_math::credit_fee(0, max), max);
-    assert_eq!(accounting_math::credit_fee(100, 0), 100);
-    assert_eq!(accounting_math::credit_fee(100, 7), 107);
-    assert_eq!(accounting_math::credit_fee(max - 1, 1), max);
-    assert_eq!(accounting_math::credit_fee(max, 0), max);
+    assert_eq!(accounting_math::credit_fee_for_testing(0, 0), 0);
+    assert_eq!(accounting_math::credit_fee_for_testing(0, max), max);
+    assert_eq!(accounting_math::credit_fee_for_testing(100, 0), 100);
+    assert_eq!(accounting_math::credit_fee_for_testing(100, 7), 107);
+    assert_eq!(accounting_math::credit_fee_for_testing(max - 1, 1), max);
+    assert_eq!(accounting_math::credit_fee_for_testing(max, 0), max);
 }
 
 /// Exhausts every successful small reserve credit and proves exact conservation.
@@ -131,7 +131,7 @@ fun fee_credits_are_exact() {
 fun fee_credits_conserve_every_unit_across_the_small_domain() {
     0u64.range_do!(65, |reserve_before| {
         0u64.range_do!(65, |fee| {
-            let reserve_after = accounting_math::credit_fee(reserve_before, fee);
+            let reserve_after = accounting_math::credit_fee_for_testing(reserve_before, fee);
 
             assert_eq!(reserve_after, reserve_before + fee);
             assert_eq!(reserve_after - reserve_before, fee);
@@ -147,7 +147,7 @@ fun fee_credits_conserve_every_unit_across_the_small_domain() {
     location = blast_boosts_core::accounting_math,
 )]
 fun a_fee_credit_that_overflows_is_rejected() {
-    accounting_math::credit_fee(std::u64::max_value!(), 1);
+    accounting_math::credit_fee_for_testing(std::u64::max_value!(), 1);
 }
 
 /// Covers zero, partial, exact, exhausted, and maximum-width funding costs.
@@ -1521,8 +1521,8 @@ fun canonical_mint(
     min_shares_out: u64,
 ): (u64, u64, u64, u64, u64, u64, u64) {
     let nav_before = accounting_math::shareholder_nav(venue_equity_before, reserve_before);
-    let fee = accounting_math::fee_up(deposit, mint_fee_bps);
-    let reserve_after = accounting_math::credit_fee(reserve_before, fee);
+    let fee = accounting_math::fee_up_for_testing(deposit, mint_fee_bps);
+    let reserve_after = accounting_math::credit_fee_for_testing(reserve_before, fee);
     let (nav_after, contribution, shares_out) = accounting_math::allocated_mint_quote(
         venue_equity_before, venue_equity_after, reserve_before, reserve_after,
         deposit - fee, shares_before, min_shares_out,
