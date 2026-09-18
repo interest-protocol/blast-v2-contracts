@@ -52,6 +52,16 @@ public struct Venue has copy, drop {
     now_ms: u64,
 }
 
+/// An issued product before its seed position exists, as the real adapter holds one.
+public struct Issued {
+    issuance: Issuance<Product>,
+    venue: Venue,
+    authority: Authority<BLAST_BOOSTS_CORE>,
+    super_admin_cap: SuperAdminCap<BLAST_BOOSTS_CORE>,
+    admin_cap: AdminCap<BLAST_BOOSTS_CORE>,
+    scenario: Scenario,
+}
+
 /// A vault: the core state, the venue it is bound to, and the adapter's own books.
 public struct Vault {
     state: State<Product>,
@@ -93,6 +103,8 @@ public fun calm_venue(): Venue {
 }
 
 public fun with_side(mut self: Venue, side: PositionSide): Venue { self.side = side; self }
+
+public fun with_fill_ratio_bps(mut self: Venue, fill_ratio_bps: u64): Venue { self.fill_ratio_bps = fill_ratio_bps; self }
 
 public fun with_slippage_bps(mut self: Venue, slippage_bps: u64): Venue { self.slippage_bps = slippage_bps; self }
 
@@ -221,23 +233,20 @@ public fun fill(self: &mut Venue, base: u64, increase: bool): (u64, u64) {
 // --- Vault ---
 
 /// Issues a vault over `venue` with the standard 2x long policy and a wide NAV cap.
-public fun issue(venue: Venue): Vault {
+public fun issue(venue: Venue): Issued {
     issue_with(venue, standard_policy(venue.side), 5_000_000_000, 1_000_000_000_000)
 }
 
-public fun issue_with(venue: Venue, vault_policy: VaultPolicy, max_order_notional: u64, nav_cap: u64): Vault {
+public fun issue_with(venue: Venue, vault_policy: VaultPolicy, max_order_notional: u64, nav_cap: u64): Issued {
     let mut scenario = test_scenario::begin(ROOT);
     let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
     authority.grant_admin(&super_admin_cap, domain::vault_issuer_role(), ISSUER, scenario.ctx());
     scenario.next_tx(ISSUER);
     let admin_cap = scenario.take_from_sender<AdminCap<BLAST_BOOSTS_CORE>>();
     let witness = authority.sign_in(&admin_cap);
-    let state = state::new<Product>(&witness, vault_policy, max_order_notional, nav_cap);
+    let issuance = issuance::issue<Product>(&witness, vault_policy, max_order_notional, nav_cap);
 
-    Vault {
-        state, venue, supply: 0, locked: 0, admin_cash: 0, terminal_cash: 0, last_orders: 0,
-        authority, super_admin_cap, admin_cap, scenario,
-    }
+    Issued { issuance, venue, authority, super_admin_cap, admin_cap, scenario }
 }
 
 /// The standard policy: band 1.6x to 2.6x around 2x, 3x hard cap, 1% ordinary and
@@ -308,31 +317,33 @@ public fun witness(self: &Vault): AdminWitness<BLAST_BOOSTS_CORE> {
 /// Seeds the account, opens the target position in capped orders, and activates.
 ///
 /// Returns the seed's shareholder NAV; the locked supply is `SEED_SHARE_SCALE` times it.
-public fun activate(self: &mut Vault, seed: u64, seed_reserve: u64): u64 {
-    let cap = self.state.max_order_notional();
-    self.venue.deposit(seed);
+/// Seeds the venue, opens the target position in capped orders, and activates: the Vault exists from here on.
+public fun activate(self: Issued, seed: u64, seed_reserve: u64): Vault {
+    let Issued { issuance, mut venue, authority, super_admin_cap, admin_cap, scenario } = self;
+    venue.deposit(seed);
     let (target, base_price, collateral_price, _) =
-        self.state.prepare_initialization(self.venue.observe(), seed_reserve, self.venue.now_ms);
+        issuance.seed_terms(venue.observe(), seed_reserve, venue.now_ms);
 
-    let mut remaining = self.venue.base_for_notional(target);
-    let cap_base = self.venue.base_for_notional(cap);
+    let mut remaining = venue.base_for_notional(target);
+    let cap_base = venue.base_for_notional(issuance.max_order_notional());
     while (remaining > 0) {
         let order = remaining.min(cap_base);
-        self.state.assert_order_notional_allowed(self.venue.notional_of(order));
-        let (executed, filled) = self.venue.fill(order, true);
-        self.state.assert_execution(false, base_price, executed);
-        self.state.assert_order_notional_allowed(self.venue.notional_of(filled));
+        issuance.assert_order_notional_allowed(venue.notional_of(order));
+        let (executed, filled) = venue.fill(order, true);
+        issuance.assert_execution(base_price, executed);
+        issuance.assert_order_notional_allowed(venue.notional_of(filled));
         remaining = remaining - filled;
     };
-    assert!(collateral_price == self.venue.collateral_price);
+    assert!(collateral_price == venue.collateral_price);
 
-    let (seed_nav, _) = self.state.initialize(
-        self.venue.observe(), seed_reserve, BASE_DECIMALS, COLLATERAL_DECIMALS, self.venue.now_ms,
-    );
-    self.locked = seed_nav * SEED_SHARE_SCALE;
-    self.supply = self.locked;
+    let (state, seed_nav, _) =
+        issuance.activate(venue.observe(), seed_reserve, BASE_DECIMALS, COLLATERAL_DECIMALS, venue.now_ms);
+    let locked = seed_nav * SEED_SHARE_SCALE;
 
-    seed_nav
+    Vault {
+        state, venue, supply: locked, locked, admin_cash: 0, terminal_cash: 0, last_orders: 0,
+        authority, super_admin_cap, admin_cap, scenario,
+    }
 }
 
 // --- Mint ---
@@ -578,7 +589,8 @@ use blast_boosts_core::{
     policy::{Self, PositionSide, VaultPolicy},
     rebalance_math,
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
-    state::{Self, State},
+    issuance::{Self, Issuance},
+    state::State,
 };
 
 use std::unit_test;

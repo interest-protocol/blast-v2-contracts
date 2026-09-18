@@ -107,77 +107,7 @@ public struct RebalanceOrder has copy, drop {
 
 // === Public Functions ===
 
-// --- Issuance ---
-
-/// Creates one validated, uninitialized core state value.
-///
-/// The adapter must store the returned value inside its Vault. The caller's
-/// live admin witness must contain the Vault issuer role. `nav_cap` must
-/// satisfy `RebalancePolicy::assert_nav_cap_valid`; it stays adjustable
-/// through `set_nav_cap`.
-public fun new<Product>(
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
-    vault_policy: VaultPolicy,
-    max_order_notional: u64,
-    nav_cap: u64,
-): State<Product> {
-    admin_witness.assert_role(domain::vault_issuer_role());
-    assert!(max_order_notional > 0, blast_boosts_core::errors::invalid_max_order_notional!());
-    vault_policy.rebalance_policy().assert_nav_cap_valid(nav_cap);
-
-    State {
-        mint_fee_bps: vault_policy.initial_mint_fee_bps(),
-        redeem_fee_bps: vault_policy.initial_redeem_fee_bps(),
-        admin_share_bps: 0,
-        nav_cap,
-        vault_policy,
-        max_order_notional,
-        maintenance_reserve: 0,
-        uncovered_deficit: 0,
-        base_unit: 0,
-        collateral_unit: 0,
-        lifecycle: lifecycle::uninitialized(),
-    }
-}
-
-// --- Initialization ---
-
-/// Validates one flat seed observation and returns policy-owned sizing inputs.
-///
-/// The target uses atomic collateral units. Prices and lot size come from the
-/// same consumed strict observation that the adapter uses for the opening
-/// session; direction and the live order cap are read by the earlier
-/// initialization-constraints guard.
-public fun prepare_initialization<Product>(
-    self: &State<Product>,
-    observation: PositionObservation,
-    seed_reserve: u64,
-    now_ms: u64,
-): (u64, u64, u64, u64) {
-    self.lifecycle.assert_can_activate();
-
-    let seed_nav = self.seed_nav(&observation, seed_reserve, now_ms);
-    assert!(observation.position_base() == 0, blast_boosts_core::errors::invalid_initialization_observation!());
-    self.assert_within_nav_cap(seed_nav);
-
-    let target_notional = accounting_math::target_notional_down(
-        seed_nav,
-        self.vault_policy.rebalance_policy().target_bps(),
-    );
-    assert!(
-        seed_reserve <= self.vault_policy.reserve_cap(target_notional),
-        blast_boosts_core::errors::seed_reserve_above_cap!(),
-    );
-
-    let (base_price, collateral_price, lot_size) = (
-        observation.base_oracle().price(),
-        observation.collateral_oracle().price(),
-        observation.lot_size(),
-    );
-    observation.destroy();
-
-    (target_notional, base_price, collateral_price, lot_size)
-}
+// --- Activation ---
 
 /// The immutable direction every order of this product takes.
 public fun side<Product>(self: &State<Product>): PositionSide {
@@ -213,37 +143,82 @@ public fun assert_order_notional_allowed<Product>(
     );
 }
 
-/// Activates one fully observed long or short seed.
+/// Builds the state of an activated product around its seeded position.
 ///
-/// Returns the seed's reserve-excluded shareholder NAV in atomic collateral
-/// units and the priced seed position. Every lifecycle, accounting, price,
-/// capacity, leverage, and minimum-operation guard runs before reserve or
-/// lifecycle mutation. No administrative witness is accepted after State
-/// construction.
-public fun initialize<Product>(
-    self: &mut State<Product>,
+/// Called by `issuance::activate` with the issuer's terms and the observation
+/// the adapter took after the seed position opened. Returns the state, the
+/// seed's reserve-excluded shareholder NAV in atomic collateral units, and the
+/// priced seed position. Every price, capacity, leverage and minimum-order
+/// guard runs before the state exists.
+public(package) fun activate<Product>(
+    vault_policy: VaultPolicy,
+    max_order_notional: u64,
+    nav_cap: u64,
     observation: PositionObservation,
     seed_reserve: u64,
     base_decimals: u8,
     collateral_decimals: u8,
     now_ms: u64,
-): (u64, ActivePosition) {
-    self.lifecycle.assert_can_activate();
+): (State<Product>, u64, ActivePosition) {
     assert!(
         base_decimals <= constants::max_asset_decimals!()
             && collateral_decimals <= constants::max_asset_decimals!(),
         blast_boosts_core::errors::invalid_asset_decimals!(),
     );
 
-    // The units are pure facts about the assets; the seed is valued in them below.
-    self.base_unit = 10u64.pow(base_decimals);
-    self.collateral_unit = 10u64.pow(collateral_decimals);
-    let (seed_nav, seeded) = validated_initialization_nav(self, observation, seed_reserve, now_ms);
+    let state = State {
+        mint_fee_bps: vault_policy.initial_mint_fee_bps(),
+        redeem_fee_bps: vault_policy.initial_redeem_fee_bps(),
+        admin_share_bps: 0,
+        nav_cap,
+        vault_policy,
+        max_order_notional,
+        maintenance_reserve: seed_reserve,
+        uncovered_deficit: 0,
+        // The units are pure facts about the assets; the seed is valued in them below.
+        base_unit: 10u64.pow(base_decimals),
+        collateral_unit: 10u64.pow(collateral_decimals),
+        lifecycle: lifecycle::active(),
+    };
+    let seed_nav = seed_nav(&state.vault_policy, &observation, seed_reserve, now_ms);
+    assert!(
+        observation.observed_side() == state.vault_policy.side(),
+        blast_boosts_core::errors::invalid_initialization_observation!(),
+    );
+    state.assert_within_nav_cap(seed_nav);
 
-    self.lifecycle.activate();
-    self.maintenance_reserve = seed_reserve;
+    let seeded = state.priced_position(observation);
+    assert!(
+        state.vault_policy.rebalance_policy().is_leverage_within_band(seeded.notional, seed_nav),
+        blast_boosts_core::errors::initialization_leverage_unhealthy!(),
+    );
+    assert!(
+        seed_reserve <= state.vault_policy.reserve_cap(seeded.notional),
+        blast_boosts_core::errors::seed_reserve_above_cap!(),
+    );
+    assert!(
+        accounting_math::is_base_above_min_order(seeded.base, seeded.lot_size, state.vault_policy.min_order_lots()),
+        blast_boosts_core::errors::initialization_base_below_min_order!(),
+    );
 
-    (seed_nav, seeded)
+    (state, seed_nav, seeded)
+}
+
+/// The seed's reserve-excluded shareholder NAV, after the backing and price
+/// guards, for the terms an issuance sizes its opening orders with.
+public(package) fun seed_nav(vault_policy: &VaultPolicy, observation: &PositionObservation, seed_reserve: u64, now_ms: u64): u64 {
+    let venue_equity = observation.venue_equity();
+    assert!(
+        accounting_math::is_reserve_backed(venue_equity, seed_reserve),
+        blast_boosts_core::errors::maintenance_reserve_exceeds_equity!(),
+    );
+    assert!(
+        accounting_math::is_shareholder_nav_positive(venue_equity, seed_reserve),
+        blast_boosts_core::errors::invalid_nav!(),
+    );
+    assert_observation_priced(vault_policy, observation, now_ms);
+
+    accounting_math::shareholder_nav(venue_equity, seed_reserve)
 }
 
 // --- Active Operations ---
@@ -726,10 +701,7 @@ public fun set_fees<Product>(
     redeem_bps: u64,
     admin_share_bps: u64,
 ): (u64, u64, u64) {
-    assert!(
-        self.lifecycle.is_uninitialized() || self.lifecycle.is_active(),
-        blast_boosts_core::errors::operation_not_permitted_in_lifecycle!(),
-    );
+    self.lifecycle.assert_active();
     self.vault_policy.assert_fee_limits(mint_bps, redeem_bps, admin_share_bps);
 
     let (previous_mint, previous_redeem, previous_admin) =
@@ -917,7 +889,7 @@ fun validated_active_position<Product>(
     observation: PositionObservation,
     now_ms: u64,
 ): ActivePosition {
-    self.assert_observation_priced(&observation, now_ms);
+    assert_observation_priced(&self.vault_policy, &observation, now_ms);
     assert!(
         observation.position_base() == 0 || observation.observed_side() == self.vault_policy.side(),
         blast_boosts_core::errors::invalid_position_observation!(),
@@ -951,12 +923,8 @@ fun priced_position<Product>(self: &State<Product>, observation: PositionObserva
 }
 
 /// Rejects an observation whose oracle pair is stale, uncertain, or diverges from the venue mark.
-fun assert_observation_priced<Product>(
-    self: &State<Product>,
-    observation: &PositionObservation,
-    now_ms: u64,
-) {
-    let price_policy = self.vault_policy.price_policy();
+fun assert_observation_priced(vault_policy: &VaultPolicy, observation: &PositionObservation, now_ms: u64) {
+    let price_policy = vault_policy.price_policy();
 
     assert_oracle_admitted(&price_policy, observation.base_oracle(), now_ms);
     assert_oracle_admitted(&price_policy, observation.collateral_oracle(), now_ms);
@@ -972,67 +940,7 @@ fun assert_oracle_admitted(price_policy: &PricePolicy, oracle: &PriceObservation
     price_policy.assert_confidence_within_bound(oracle.confidence(), oracle.price());
 }
 
-/// Returns the seed's reserve-excluded shareholder NAV after the backing and price guards.
-///
-/// Guard order is the reserve backing, positive NAV, then the oracle pair.
-fun seed_nav<Product>(
-    self: &State<Product>,
-    observation: &PositionObservation,
-    seed_reserve: u64,
-    now_ms: u64,
-): u64 {
-    let venue_equity = observation.venue_equity();
-    assert!(
-        accounting_math::is_reserve_backed(venue_equity, seed_reserve),
-        blast_boosts_core::errors::maintenance_reserve_exceeds_equity!(),
-    );
-    assert!(
-        accounting_math::is_shareholder_nav_positive(venue_equity, seed_reserve),
-        blast_boosts_core::errors::invalid_nav!(),
-    );
-    self.assert_observation_priced(observation, now_ms);
-
-    accounting_math::shareholder_nav(venue_equity, seed_reserve)
-}
-
-/// Consumes and validates a complete seed without mutable access to State.
-fun validated_initialization_nav<Product>(
-    self: &State<Product>,
-    observation: PositionObservation,
-    seed_reserve: u64,
-    now_ms: u64,
-): (u64, ActivePosition) {
-    let seed_nav = self.seed_nav(&observation, seed_reserve, now_ms);
-    assert!(
-        observation.observed_side() == self.vault_policy.side(),
-        blast_boosts_core::errors::invalid_initialization_observation!(),
-    );
-    self.assert_within_nav_cap(seed_nav);
-
-    let seeded = self.priced_position(observation);
-    assert!(
-        self.vault_policy.rebalance_policy().is_leverage_within_band(seeded.notional, seed_nav),
-        blast_boosts_core::errors::initialization_leverage_unhealthy!(),
-    );
-    assert!(
-        seed_reserve <= self.vault_policy.reserve_cap(seeded.notional),
-        blast_boosts_core::errors::seed_reserve_above_cap!(),
-    );
-    assert!(
-        accounting_math::is_base_above_min_order(seeded.base, seeded.lot_size, self.vault_policy.min_order_lots()),
-        blast_boosts_core::errors::initialization_base_below_min_order!(),
-    );
-
-    (seed_nav, seeded)
-}
-
 // === Test-Only Functions ===
-
-#[test_only]
-/// Returns whether the embedded lifecycle is uninitialized.
-public fun is_uninitialized_for_testing<Product>(self: &State<Product>): bool {
-    self.lifecycle.is_uninitialized()
-}
 
 #[test_only]
 /// Returns whether the embedded lifecycle is active.
@@ -1083,12 +991,6 @@ public fun is_settled_for_testing<Product>(self: &State<Product>): bool {
 }
 
 #[test_only]
-/// Forces active state for focused transition and adapter tests.
-public fun set_active_for_testing<Product>(self: &mut State<Product>) {
-    self.lifecycle = lifecycle::active_for_testing();
-}
-
-#[test_only]
 /// Returns `(mint_fee_bps, redeem_fee_bps, admin_share_bps)` for test assertions.
 public fun fee_settings<Product>(self: &State<Product>): (u64, u64, u64) {
     (self.mint_fee_bps, self.redeem_fee_bps, self.admin_share_bps)
@@ -1102,8 +1004,6 @@ public fun destroy_for_testing<Product>(self: State<Product>) {
 
 // === Imports ===
 
-use blast_admin::acl::AdminWitness;
-
 use blast_boosts_core::{
     accounting_math,
     constants,
@@ -1111,5 +1011,4 @@ use blast_boosts_core::{
     observation::{Self, FundingSettlement, PositionObservation, PriceObservation},
     policy::{PositionSide, PricePolicy, VaultPolicy},
     rebalance_math,
-    blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
 };

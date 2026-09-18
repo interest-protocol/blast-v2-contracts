@@ -1228,15 +1228,15 @@ fun a_reserve_equal_to_the_seed_is_rejected() {
 #[test]
 fun locked_share_scaling_accepts_the_largest_seed_nav() {
     assert_eq!(
-        operations::locked_shares_for_testing(std::u64::max_value!() / 1_000),
+        vault::locked_shares_for_testing(std::u64::max_value!() / 1_000),
         std::u64::max_value!() / 1_000 * 1_000,
     );
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ELockedSharesOverflow, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::ELockedSharesOverflow, location = blast_boosts_aftermath::vault)]
 fun locked_share_scaling_rejects_the_first_overflow() {
-    operations::locked_shares_for_testing(std::u64::max_value!() / 1_000 + 1);
+    vault::locked_shares_for_testing(std::u64::max_value!() / 1_000 + 1);
 }
 
 #[test]
@@ -2135,7 +2135,7 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         ..
     } = fixture;
     let admin_witness = authority.sign_in(admin_cap);
-    let mut issuance = vault::issue<Tag, RiskModule>(
+    let issuance = vault::issue<Tag, RiskModule>(
         protocol,
         &admin_witness,
         test_risk_module::new(),
@@ -2149,15 +2149,6 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         b"".to_string(),
         scenario.ctx(),
     );
-    let (seed_nav, _) = issuance.seed_state_mut().initialize(
-        observation::new_position(SEED_EQUITY, ABSOLUTE_BASE, LOT_SIZE, side,
-            observation::new_price(PRICE, 0, REFERENCE_TIME_MS), observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE),
-        SEED_RESERVE,
-        9,
-        6,
-        REFERENCE_TIME_MS,
-    );
-    let seed_facts = issuance.mint_locked_shares(seed_nav * 1_000, ADMIN, scenario.ctx());
     let binding = venue_account::new_binding(
         @0xB.to_id(),
         7,
@@ -2168,16 +2159,14 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         type_name::with_original_ids<Collateral>(),
     );
     let admin_cap = authority::new_for_testing<ACCOUNT, AdminRole>(@0xB.to_id(), scenario.ctx());
-    let vault = issuance.activate(venue_account::new(binding, checkpoint, admin_cap), seed_facts, scenario.ctx());
-    operations::emit_vault_initialized<Tag>(
-        &vault,
-        SEED_EQUITY,
-        SEED_EQUITY,
-        ABSOLUTE_BASE,
-        LOT_SIZE,
-        side,
-        1,
+    let seeded = observation::new_position(
+        SEED_EQUITY, ABSOLUTE_BASE, LOT_SIZE, side,
+        observation::new_price(PRICE, 0, REFERENCE_TIME_MS), observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
     );
+    let (vault, seed_nav, _) = issuance.activate(
+        seeded, SEED_RESERVE, 6, ADMIN, venue_account::new(binding, checkpoint, admin_cap), REFERENCE_TIME_MS, scenario.ctx(),
+    );
+    operations::emit_vault_initialized<Tag>(&vault, SEED_EQUITY, seed_nav, SEED_EQUITY, ABSOLUTE_BASE, LOT_SIZE, side, 1);
 
     vault
 }

@@ -5,10 +5,8 @@ module blast_boosts_core::lifecycle;
 
 // === Public Types ===
 
-/// Only activation and authenticated shutdown can move a Vault forward.
-/// Field assignment and construction remain restricted by the source-boundary gate.
+/// A Vault is born active; only authenticated shutdown moves it forward.
 public enum Lifecycle has drop, store {
-    Uninitialized,
     Active,
     Unwinding,
     Settled,
@@ -30,21 +28,7 @@ public fun observed_venue_change_reason(): ShutdownReason { ShutdownReason::Obse
 
 // === Package Functions ===
 
-public(package) fun uninitialized(): Lifecycle { Lifecycle::Uninitialized }
-
-public(package) fun is_uninitialized(self: &Lifecycle): bool {
-    match (self) { Lifecycle::Uninitialized => true, _ => false }
-}
-
-public(package) fun assert_can_activate(self: &Lifecycle) {
-    assert!(self.is_uninitialized(), blast_boosts_core::errors::invalid_lifecycle_transition!());
-}
-
-public(package) fun activate(self: &mut Lifecycle) {
-    self.assert_can_activate();
-
-    *self = Lifecycle::Active;
-}
+public(package) fun active(): Lifecycle { Lifecycle::Active }
 
 public(package) fun is_active(self: &Lifecycle): bool {
     match (self) { Lifecycle::Active => true, _ => false }
@@ -93,9 +77,6 @@ public(package) fun assert_settled(self: &Lifecycle) {
 }
 
 // === Test-Only Functions ===
-
-#[test_only]
-public(package) fun active_for_testing(): Lifecycle { Lifecycle::Active }
 
 #[test_only]
 public(package) fun unwinding_for_testing(): Lifecycle { Lifecycle::Unwinding }

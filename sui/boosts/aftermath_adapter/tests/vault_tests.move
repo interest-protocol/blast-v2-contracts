@@ -8,6 +8,15 @@ const SYSTEM: address = @0x0;
 const ISSUER: address = @0xA11CE;
 const MAX_ORDER_NOTIONAL: u64 = 250;
 const NAV_CAP: u64 = 1_000_000_000;
+const REFERENCE_TIME_MS: u64 = 1_000;
+/// The standard seed at the unit price: 1,100 of equity less a 100 reserve is 1,000 of NAV.
+const SEED_EQUITY: u64 = 1_100;
+const SEED_RESERVE: u64 = 100;
+const SEED_NAV: u64 = 1_000;
+/// Nine-decimal base atoms per six-decimal collateral atom at the unit price.
+const BASE_PER_NOTIONAL: u64 = 1_000;
+const LOT_SIZE: u64 = 1;
+const PRICE: u64 = 1_000_000_000;
 
 // === Product Witnesses ===
 /// Sealed product witness for the 2x currency.
@@ -50,7 +59,7 @@ fun shutdown_admin_stops_an_active_vault_without_any_venue_or_oracle_input() {
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     assert!(vault.is_unwinding_for_testing());
-    assert_eq!(vault.share_supply(), 0);
+    assert_eq!(vault.share_supply(), SEED_NAV * 1_000);
     test_scenario::return_shared(vault);
     destroy(fixture);
 }
@@ -73,10 +82,10 @@ fun distinct_issued_products_freeze_actual_long_short_2x_and_generic_4x_6x_polic
     let short2 = configured_policy(policy::short(), 20_000);
     let long4 = configured_policy(policy::long(), 40_000);
     let short6 = configured_policy(policy::short(), 60_000);
-    fixture.issue_and_share_with_policy<Sui2x>(b"LONG2".to_string(), long2);
-    fixture.issue_and_share_with_policy<Sui2xShort>(b"SHORT2".to_string(), short2);
-    fixture.issue_and_share_with_policy<Sui4x>(b"LONG4".to_string(), long4);
-    fixture.issue_and_share_with_policy<Sui6xShort>(b"SHORT6".to_string(), short6);
+    fixture.issue_and_share_with_policy<Sui2x>(b"LONG2".to_string(), long2, 20_000);
+    fixture.issue_and_share_with_policy<Sui2xShort>(b"SHORT2".to_string(), short2, 20_000);
+    fixture.issue_and_share_with_policy<Sui4x>(b"LONG4".to_string(), long4, 40_000);
+    fixture.issue_and_share_with_policy<Sui6xShort>(b"SHORT6".to_string(), short6, 60_000);
     fixture.scenario.next_tx(ISSUER);
     fixture.assert_issued_policy<Sui2x>(long2);
     fixture.assert_issued_policy<Sui2xShort>(short2);
@@ -99,8 +108,8 @@ fun risk_admin_updates_live_fees_with_a_completed_event_and_no_asset_movement() 
     let (id, old_mint, old_redeem, old_admin, mint, redeem, admin) = event.fees_updated_fields();
     assert_eq!(id, vault.id());
     assert_eq!(vector[old_mint, old_redeem, old_admin, mint, redeem, admin], vector[10, 10, 0, 0, 0, 0]);
-    assert_eq!(vault.share_supply(), 0);
-    assert_eq!(vault.state().maintenance_reserve(), 0);
+    assert_eq!(vault.share_supply(), SEED_NAV * 1_000);
+    assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
     test_scenario::return_shared(vault);
     destroy(fixture);
 }
@@ -194,8 +203,8 @@ fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
     assert_eq!(vault_5x.treasury_cap_id_for_testing(), treasury_5x_id);
     assert_eq!(vault_2x.metadata_cap_id_for_testing(), metadata_2x_id);
     assert_eq!(vault_5x.metadata_cap_id_for_testing(), metadata_5x_id);
-    assert_eq!(vault_2x.share_supply(), 0);
-    assert_eq!(vault_5x.share_supply(), 0);
+    assert_eq!(vault_2x.share_supply(), SEED_NAV * 1_000);
+    assert_eq!(vault_5x.share_supply(), SEED_NAV * 1_000);
     assert_eq!(currency_2x.symbol(), b"SUI2X".to_string());
     assert_eq!(currency_5x.symbol(), b"SUI5X".to_string());
     assert_eq!(currency_2x.treasury_cap_id().destroy_some(), treasury_2x_id);
@@ -292,8 +301,8 @@ fun selected_risk_module_reads_the_seed_constraints() {
 
     issuance.assert_risk_module(&test_risk_module::new());
 
-    assert_eq!(issuance.seed_state().side(), policy::long());
-    assert_eq!(issuance.seed_state().max_order_notional(), MAX_ORDER_NOTIONAL);
+    assert_eq!(issuance.issuance().side(), policy::long());
+    assert_eq!(issuance.issuance().max_order_notional(), MAX_ORDER_NOTIONAL);
     destroy(issuance);
     destroy(fixture);
 }
@@ -311,30 +320,18 @@ fun unselected_risk_module_cannot_read_seed_constraints() {
 }
 
 #[test]
-fun locked_seed_share_mint_updates_the_canonical_supply_once() {
+fun activation_locks_the_seed_shares_as_the_whole_supply() {
     let mut fixture = start(domain::vault_issuer_role());
-    let mut issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
+    let issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
 
-    let seed_facts = issuance.mint_locked_shares(1_000_000, ISSUER, fixture.scenario.ctx());
-    let venue_account = fixture_venue_account(fixture.scenario.ctx());
-    let vault = issuance.activate(venue_account, seed_facts, fixture.scenario.ctx());
+    let (vault, seed_nav) = fixture.activate(issuance);
 
-    assert_eq!(vault.share_supply(), 1_000_000);
+    assert_eq!(seed_nav, SEED_NAV);
+    assert_eq!(vault.share_supply(), SEED_NAV * 1_000);
     let (locked, funder) = vault.seed_facts();
-    assert_eq!(locked, 1_000_000);
+    assert_eq!(locked, SEED_NAV * 1_000);
     assert_eq!(funder, ISSUER);
     destroy(vault);
-    destroy(fixture);
-}
-
-#[test]
-#[expected_failure(abort_code = errors::ESeedAlreadyRecorded, location = blast_boosts_aftermath::vault)]
-fun locked_seed_funder_and_amount_cannot_be_replaced() {
-    let mut fixture = start(domain::vault_issuer_role());
-    let mut issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
-    issuance.mint_locked_shares(1_000_000, ISSUER, fixture.scenario.ctx());
-    issuance.mint_locked_shares(1, @0xB, fixture.scenario.ctx());
-    destroy(issuance);
     destroy(fixture);
 }
 
@@ -623,18 +620,34 @@ fun start(roles: u64): Fixture {
 // === Fixture Helpers ===
 
 fun issue_and_share<Product: drop>(self: &mut Fixture, symbol: String) {
-    self.issue_and_share_with_policy<Product>(symbol, standard_vault_policy());
+    self.issue_and_share_with_policy<Product>(symbol, standard_vault_policy(), 20_000);
 }
 
-/// Issues, activates against a fixture venue account with no seed shares, and shares.
+/// Issues, activates on a seed at the policy's target leverage against a fixture venue account, and shares.
 fun issue_and_share_with_policy<Product: drop>(
-    self: &mut Fixture, symbol: String, vault_policy: VaultPolicy,
+    self: &mut Fixture, symbol: String, vault_policy: VaultPolicy, target_bps: u64,
 ) {
-    let mut issuance = self.issue_with_policy<Product>(symbol, vault_policy);
-    issuance.set_active_for_testing();
-    let venue_account = fixture_venue_account(self.scenario.ctx());
-    let vault = issuance.activate(venue_account, vault::seed_facts_for_testing(0, ISSUER), self.scenario.ctx());
+    let issuance = self.issue_with_policy<Product>(symbol, vault_policy);
+    let (vault, _) = self.activate_at(issuance, target_bps);
     vault.share();
+}
+
+/// Activates on the standard 2x seed: 1,100 collateral of equity, a 100 reserve, 2,000 of notional held as base.
+fun activate<Product>(self: &mut Fixture, issuance: VaultIssuance<Product>): (Vault<Product>, u64) {
+    self.activate_at(issuance, 20_000)
+}
+
+/// Activates on a seed whose notional is `target_bps` of the seed NAV, at the unit price.
+fun activate_at<Product>(self: &mut Fixture, issuance: VaultIssuance<Product>, target_bps: u64): (Vault<Product>, u64) {
+    let seeded = observation::new_position(
+        SEED_EQUITY, SEED_NAV * target_bps / 10_000 * BASE_PER_NOTIONAL, LOT_SIZE, issuance.issuance().side(),
+        observation::new_price(PRICE, 0, REFERENCE_TIME_MS), observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
+    );
+    let venue_account = fixture_venue_account(self.scenario.ctx());
+    let (vault, seed_nav, _) = issuance.activate(
+        seeded, SEED_RESERVE, 6, ISSUER, venue_account, REFERENCE_TIME_MS, self.scenario.ctx(),
+    );
+    (vault, seed_nav)
 }
 
 fun issue<Product: drop>(self: &mut Fixture, symbol: String): VaultIssuance<Product> {
@@ -732,6 +745,7 @@ use blast_boosts_aftermath::{
 };
 
 use blast_boosts_core::{
+    observation,
     policy::{Self, PositionSide, VaultPolicy},
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
     test_risk_module::{Self, RiskModule, RiskModuleV2},

@@ -37,13 +37,25 @@ activation aborts the whole transaction and the currency registration with it.
 
 ### D2. `initialize` consumes the issuance and returns the Vault
 
-`operations::initialize(issuance, …): Vault<Product>` runs the activation
-body unchanged (venue account, seed deposit, seed position, core activation,
-locked seed shares) and then builds the Vault. The `BLAST_ACTIVATION_BOUNDARY`
-markers keep their order; A5 now marks "Vault constructed" instead of "venue
-account installed". The Vault is `key`-only, so the same transaction must pass
-it to `vault::share`. Because the issuance can only exist inside the issuer's
-transaction, activation is gated by the issuer role without a second check.
+`operations::initialize(issuance, …): Vault<Product>` opens the venue
+account, seeds it, opens the position, and then builds the Vault. The Vault
+is `key`-only, so the same transaction must pass it to `vault::share`.
+Because the issuance can only exist inside the issuer's transaction,
+activation is gated by the issuer role without a second check. Five
+`BLAST_ACTIVATION_BOUNDARY` markers remain: A1 venue account sealed, A2 Vault
+activated (core state, locked seed shares, object built), A3 account shared,
+A4 market re-shared, A5 event emitted.
+
+### D2a. The core has no uninitialized state
+
+`Lifecycle` is `Active | Unwinding | Settled`. The core's
+`issuance::Issuance` carries the issuer's terms (policy, order cap, NAV cap)
+while the adapter opens the seed position, sizing the orders through
+`seed_terms` and bounding them through its own `assert_execution` and
+`assert_order_notional_allowed`; `issuance::activate` builds the `State`
+around the seeded observation. No `State` value ever exists before its
+position does, so every "not before activation" guard, `assert_can_activate`,
+and the dual-branch `set_fees` are gone.
 
 ### D3. A Vault exists only from activation on
 

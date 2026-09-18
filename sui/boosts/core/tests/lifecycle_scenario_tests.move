@@ -27,12 +27,10 @@ const PRICE_STEP: u64 = 250_000;
 /// Activation opens the target position in capped orders and prices the seed after costs.
 #[test]
 fun activation_opens_the_target_in_capped_orders_and_locks_the_seed_shares() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-
-    let seed_nav = vault.activate(SEED, SEED_RESERVE);
+    let vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
 
     // Four fills at the 5,000 USDC cap cost 47.519 USDC in slippage and fees.
-    assert_eq!(seed_nav, SEED_NAV);
+    assert_eq!(vault.locked() / 1_000, SEED_NAV);
     assert_eq!(vault.venue().equity(), SEED_NAV + SEED_RESERVE);
     assert_eq!(vault.venue().base(), 7_600_000_000_000);
     assert_eq!(vault.venue().notional(), 19_000 * USDC);
@@ -50,8 +48,7 @@ fun activation_opens_the_target_in_capped_orders_and_locks_the_seed_shares() {
 /// orderly shutdown, with no holder ever diluted by another holder's operation.
 #[test]
 fun a_calm_lifetime_never_dilutes_remaining_holders() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
 
     let deposits = vector[1_000 * USDC, 250 * USDC, 5_000 * USDC, 40 * USDC, 12_345 * USDC];
     let mut holders = vector[];
@@ -113,8 +110,7 @@ fun a_calm_lifetime_never_dilutes_remaining_holders() {
 /// The admin's fee share accrues as cash outside the vault and the rest builds the reserve.
 #[test]
 fun fee_splits_route_admin_cash_out_and_the_remainder_into_the_reserve() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.set_fees(100, 100, 5_000);
 
     let shares = vault.mint(2_000 * USDC, 1);
@@ -139,8 +135,7 @@ fun fee_splits_route_admin_cash_out_and_the_remainder_into_the_reserve() {
 /// and a newcomer pays the released NAV rather than sharing it.
 #[test]
 fun reserve_above_the_ceiling_is_released_to_holders_before_a_newcomer_is_priced() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let cap = 19_000 * USDC / 10;
 
     // Funding credits carry no observation and can push the reserve past the 10% ceiling.
@@ -175,8 +170,7 @@ fun reserve_above_the_ceiling_is_released_to_holders_before_a_newcomer_is_priced
 /// finishes the job, and holders can exit.
 #[test]
 fun a_crash_locks_mints_permits_reduction_and_lets_holders_exit() {
-    let mut vault = stressed_vault();
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = stressed_vault().activate(SEED, SEED_RESERVE);
     let shares = vault.mint(1_000 * USDC, 1);
     let price = vault.venue().base_price();
 
@@ -208,8 +202,7 @@ fun a_crash_locks_mints_permits_reduction_and_lets_holders_exit() {
 /// the rest waits for a calmer book under the ordinary bound.
 #[test]
 fun an_emergency_reduction_in_a_wide_market_stops_at_the_cap_and_keeps_its_progress() {
-    let mut vault = stressed_vault();
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = stressed_vault().activate(SEED, SEED_RESERVE);
     let price = vault.venue().base_price();
     vault.venue_mut().set_base_price(price * 70 / 100);
     vault.venue_mut().set_slippage_bps(300);
@@ -230,8 +223,7 @@ fun an_emergency_reduction_in_a_wide_market_stops_at_the_cap_and_keeps_its_progr
 #[test]
 #[expected_failure(abort_code = errors::EExecutionOutsideMaxSlippage, location = blast_boosts_core::policy)]
 fun an_ordinary_reduction_in_a_wide_market_is_refused() {
-    let mut vault = stressed_vault();
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = stressed_vault().activate(SEED, SEED_RESERVE);
     let price = vault.venue().base_price();
     vault.venue_mut().set_base_price(price * 70 / 100);
     vault.venue_mut().set_slippage_bps(300);
@@ -244,8 +236,7 @@ fun an_ordinary_reduction_in_a_wide_market_is_refused() {
 #[test]
 #[expected_failure(abort_code = errors::EMintOutsideRebalanceBand, location = blast_boosts_core::state)]
 fun a_mint_is_refused_while_leverage_is_outside_the_band() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let price = vault.venue().base_price();
     vault.venue_mut().set_base_price(price * 80 / 100);
 
@@ -256,9 +247,7 @@ fun a_mint_is_refused_while_leverage_is_outside_the_band() {
 #[test]
 #[expected_failure(abort_code = errors::EExecutionOutsideMaxSlippage, location = blast_boosts_core::policy)]
 fun an_ordinary_fill_outside_max_slippage_is_refused() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue().with_slippage_bps(150));
-
-    vault.activate(SEED, SEED_RESERVE);
+    let vault = test_adapter::issue(test_adapter::calm_venue().with_slippage_bps(150)).activate(SEED, SEED_RESERVE);
     vault.destroy();
 }
 
@@ -266,8 +255,7 @@ fun an_ordinary_fill_outside_max_slippage_is_refused() {
 /// operation fails closed, and only shutdown can return what remains, pro rata.
 #[test]
 fun a_crash_through_the_reserve_fails_closed_until_shutdown_pays_pro_rata() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let shares = vault.mint(1_000 * USDC, 1);
     let price = vault.venue().base_price();
 
@@ -287,8 +275,7 @@ fun a_crash_through_the_reserve_fails_closed_until_shutdown_pays_pro_rata() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::state)]
 fun zero_shareholder_nav_refuses_every_priced_operation() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let price = vault.venue().base_price();
     vault.venue_mut().set_base_price(price / 2);
 
@@ -300,8 +287,7 @@ fun zero_shareholder_nav_refuses_every_priced_operation() {
 /// credits repay holders before a single atom rebuilds the reserve.
 #[test]
 fun a_funding_storm_charges_holders_only_after_the_reserve_and_repays_them_first() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let nav_before = vault.nav();
 
     let (absorbed, uncovered, _) = vault.charge_funding(400 * USDC);
@@ -331,8 +317,7 @@ fun a_funding_storm_charges_holders_only_after_the_reserve_and_repays_them_first
 #[test]
 #[expected_failure(abort_code = test_adapter::EVenueNotReady, location = blast_boosts_core::test_adapter)]
 fun a_paused_venue_refuses_active_operations() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.venue_mut().set_operational(false);
 
     vault.mint(100 * USDC, 1);
@@ -342,8 +327,7 @@ fun a_paused_venue_refuses_active_operations() {
 #[test]
 #[expected_failure(abort_code = test_adapter::EVenueNotReady, location = blast_boosts_core::test_adapter)]
 fun an_unsafe_margin_refuses_active_operations() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.venue_mut().set_margin_safe(false);
 
     vault.redeem(1, 1);
@@ -353,8 +337,7 @@ fun an_unsafe_margin_refuses_active_operations() {
 #[test]
 #[expected_failure(abort_code = errors::EStalePrice, location = blast_boosts_core::policy)]
 fun a_stale_oracle_refuses_active_operations() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     // The oracle stays at its last publish time while the clock moves past the 30 s window.
     let observation = vault.venue().observe();
     vault.venue_mut().advance(31_000);
@@ -368,8 +351,7 @@ fun a_stale_oracle_refuses_active_operations() {
 /// depends on the venue being healthy, only on it being closable.
 #[test]
 fun shutdown_proceeds_while_the_venue_reports_unsafe_margin() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.venue_mut().set_margin_safe(false);
 
     let cash = vault.shutdown();
@@ -384,8 +366,7 @@ fun shutdown_proceeds_while_the_venue_reports_unsafe_margin() {
 #[test]
 #[expected_failure(abort_code = errors::EOrderBelowMinLots, location = blast_boosts_core::accounting_math)]
 fun a_dust_mint_below_the_minimum_order_is_refused() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
 
     // 100 lots of 0.001 base at $2.50 is 0.25 USDC; this deposit buys less.
     vault.mint(100_000, 1);
@@ -395,8 +376,7 @@ fun a_dust_mint_below_the_minimum_order_is_refused() {
 /// The smallest deposit that buys exactly the minimum order mints.
 #[test]
 fun the_minimum_order_mint_is_accepted() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
 
     // Proportional base is 7.6e12 * contribution / NAV; the minimum order is 1e8.
     let deposit = 130_000;
@@ -412,8 +392,7 @@ fun the_minimum_order_mint_is_accepted() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidShareAmount, location = blast_boosts_core::accounting_math)]
 fun the_entire_supply_cannot_be_redeemed() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
 
     let supply = vault.supply();
     vault.redeem(supply, 1);
@@ -423,8 +402,7 @@ fun the_entire_supply_cannot_be_redeemed() {
 /// The largest ordinary redemption leaves the locked seed and its minimum position.
 #[test]
 fun every_ordinary_share_can_leave_while_the_seed_stays() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let shares = vault.mint(3_000 * USDC, 1);
 
     let payout = vault.redeem(shares, 1);
@@ -438,8 +416,7 @@ fun every_ordinary_share_can_leave_while_the_seed_stays() {
 #[test]
 #[expected_failure(abort_code = errors::ESharesOutBelowMinimum, location = blast_boosts_core::accounting_math)]
 fun a_mint_below_the_users_minimum_shares_is_refused() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
 
     vault.mint(1_000 * USDC, 1_000 * USDC * 1_000);
     vault.destroy();
@@ -449,8 +426,7 @@ fun a_mint_below_the_users_minimum_shares_is_refused() {
 #[test]
 #[expected_failure(abort_code = errors::EUserFeeLimitExceeded, location = blast_boosts_core::state)]
 fun a_mint_whose_fee_ceiling_is_below_the_live_rate_is_refused() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.set_fees(50, 50, 0);
 
     vault.mint_with_fee_limit(1_000 * USDC, 1, 49);
@@ -460,8 +436,7 @@ fun a_mint_whose_fee_ceiling_is_below_the_live_rate_is_refused() {
 #[test]
 #[expected_failure(abort_code = errors::EUserFeeLimitExceeded, location = blast_boosts_core::state)]
 fun a_redemption_whose_fee_ceiling_is_below_the_live_rate_is_refused() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let shares = vault.mint(1_000 * USDC, 1);
     vault.set_fees(10, 30, 0);
 
@@ -472,8 +447,7 @@ fun a_redemption_whose_fee_ceiling_is_below_the_live_rate_is_refused() {
 /// A fee ceiling equal to the live rate is accepted on both sides.
 #[test]
 fun a_fee_ceiling_at_the_live_rate_is_accepted() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let shares = vault.mint_with_fee_limit(1_000 * USDC, 1, 10);
     let payout = vault.redeem_with_fee_limit(shares, 1, 10);
     assert!(payout > 0);
@@ -483,8 +457,7 @@ fun a_fee_ceiling_at_the_live_rate_is_accepted() {
 #[test]
 #[expected_failure(abort_code = errors::ERedemptionOutputBelowMinimum, location = blast_boosts_core::state)]
 fun a_redemption_below_the_users_minimum_output_is_refused() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let shares = vault.mint(1_000 * USDC, 1);
 
     vault.redeem(shares, 1_000 * USDC);
@@ -494,8 +467,7 @@ fun a_redemption_below_the_users_minimum_output_is_refused() {
 /// The NAV cap blocks mints only: profit may carry NAV over it, and redemptions still run.
 #[test]
 fun the_nav_cap_blocks_mints_but_not_profit_or_redemptions() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let shares = vault.mint(1_000 * USDC, 1);
     let nav_cap = vault.nav() + 10 * USDC;
     vault.state_mut().set_nav_cap(nav_cap);
@@ -513,8 +485,7 @@ fun the_nav_cap_blocks_mints_but_not_profit_or_redemptions() {
 #[test]
 #[expected_failure(abort_code = errors::ENavCapExceeded, location = blast_boosts_core::state)]
 fun a_mint_over_the_nav_cap_is_refused() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let nav_cap = vault.nav() + 10 * USDC;
     vault.state_mut().set_nav_cap(nav_cap);
 
@@ -525,8 +496,7 @@ fun a_mint_over_the_nav_cap_is_refused() {
 #[test]
 #[expected_failure(abort_code = errors::ERebalanceInsideBand, location = blast_boosts_core::state)]
 fun a_rebalance_inside_the_band_is_refused() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
 
     vault.rebalance();
     vault.destroy();
@@ -537,8 +507,7 @@ fun a_rebalance_inside_the_band_is_refused() {
 fun a_large_drift_is_corrected_across_several_rebalance_calls() {
     let mut vault = test_adapter::issue_with(
         test_adapter::calm_venue(), test_adapter::standard_policy(policy::long()), 200 * USDC, 1_000_000_000_000,
-    );
-    vault.activate(SEED, SEED_RESERVE);
+    ).activate(SEED, SEED_RESERVE);
     // Doubling the price leaves a 2x long at 1.34x: far more than sixteen 200 USDC orders away.
     let price = vault.venue().base_price();
     vault.venue_mut().set_base_price(price * 2);
@@ -565,9 +534,8 @@ fun a_large_drift_is_corrected_across_several_rebalance_calls() {
 /// Short products mirror every long behaviour with the direction reversed.
 #[test]
 fun a_short_product_runs_the_same_lifetime() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue().with_side(policy::short()));
-    let seed_nav = vault.activate(SEED, SEED_RESERVE);
-    assert_eq!(seed_nav, SEED_NAV);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue().with_side(policy::short())).activate(SEED, SEED_RESERVE);
+    assert_eq!(vault.locked() / 1_000, SEED_NAV);
     let shares = vault.mint(1_000 * USDC, 1);
 
     // A 10% fall is profit for a short; leverage drops below the band and is restored.
@@ -591,8 +559,7 @@ fun a_short_rally_above_the_cap_reduces_in_two_calls() {
     let mut vault = test_adapter::issue_with(
         test_adapter::calm_venue().with_side(policy::short()),
         test_adapter::standard_policy(policy::short()), 1_000 * USDC, 1_000_000_000_000,
-    );
-    vault.activate(SEED, SEED_RESERVE);
+    ).activate(SEED, SEED_RESERVE);
     let price = vault.venue().base_price();
     vault.venue_mut().set_base_price(price * 125 / 100);
     assert!(vault.leverage_bps() > 30_000);
@@ -609,9 +576,7 @@ fun a_short_rally_above_the_cap_reduces_in_two_calls() {
 /// re-plans from the live position, and still lands where a full fill would.
 #[test]
 fun partial_fills_advance_every_path_by_what_actually_filled() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.venue_mut().set_fill_ratio_bps(9_000);
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue().with_fill_ratio_bps(9_000)).activate(SEED, SEED_RESERVE);
     assert_eq!(vault.venue().base(), 7_600_000_000_000);
 
     let shares = vault.mint(1_000 * USDC, 1);
@@ -632,8 +597,7 @@ fun partial_fills_advance_every_path_by_what_actually_filled() {
 #[test]
 #[expected_failure(abort_code = errors::EActiveCheckpointChanged, location = blast_boosts_core::state)]
 fun a_price_move_between_prepare_and_complete_reverts_the_mint() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let now_ms = vault.venue().now_ms();
     let supply = vault.supply();
     let observation = vault.venue().observe();
@@ -651,8 +615,7 @@ fun a_price_move_between_prepare_and_complete_reverts_the_mint() {
 #[test]
 #[expected_failure(abort_code = test_adapter::EVenueNotReady, location = blast_boosts_core::test_adapter)]
 fun a_venue_error_after_the_fill_reverts_the_mint() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let now_ms = vault.venue().now_ms();
     let supply = vault.supply();
     let observation = vault.venue().observe();
@@ -672,8 +635,7 @@ fun a_venue_error_after_the_fill_reverts_the_mint() {
 /// and the stored reserve settles at the ceiling for the smaller position.
 #[test]
 fun a_large_funding_credit_is_released_at_the_next_redemption() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let shares = vault.mint(1_000 * USDC, 1);
     vault.charge_funding(600 * USDC);
     assert_eq!(vault.state().uncovered_deficit(), 99 * USDC);
@@ -693,8 +655,7 @@ fun a_large_funding_credit_is_released_at_the_next_redemption() {
 #[test]
 #[expected_failure(abort_code = errors::ENavCapExceeded, location = blast_boosts_core::state)]
 fun a_reserve_release_over_the_nav_cap_blocks_the_next_mint() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let nav_cap = vault.nav() + 100 * USDC;
     vault.state_mut().set_nav_cap(nav_cap);
     vault.credit_funding(3_000 * USDC);
@@ -706,8 +667,7 @@ fun a_reserve_release_over_the_nav_cap_blocks_the_next_mint() {
 /// The public trigger opens at the first price that carries leverage below the band.
 #[test]
 fun the_first_price_below_the_band_opens_the_public_trigger() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let price = first_price_below_the_band(&mut vault);
     vault.venue_mut().set_base_price(price);
     assert!(vault.is_below_band());
@@ -721,8 +681,7 @@ fun the_first_price_below_the_band_opens_the_public_trigger() {
 #[test]
 #[expected_failure(abort_code = errors::ERebalanceInsideBand, location = blast_boosts_core::state)]
 fun the_last_price_at_the_band_edge_keeps_the_public_trigger_closed() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let price = first_price_below_the_band(&mut vault) - PRICE_STEP;
     vault.venue_mut().set_base_price(price);
     assert!(!vault.is_below_band());
@@ -736,8 +695,7 @@ fun the_last_price_at_the_band_edge_keeps_the_public_trigger_closed() {
 /// The dry run agrees with the trigger on both sides of the band edge and after the correction.
 #[test]
 fun the_dry_run_tracks_the_public_trigger_across_the_band_edge() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     assert!(!vault.needs_rebalance());
 
     let price = first_price_below_the_band(&mut vault);
@@ -755,8 +713,7 @@ fun the_dry_run_tracks_the_public_trigger_across_the_band_edge() {
 /// call stops at the cap, until the ordinary call finishes.
 #[test]
 fun the_dry_run_stays_due_until_the_reduction_reaches_the_band() {
-    let mut vault = stressed_vault();
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = stressed_vault().activate(SEED, SEED_RESERVE);
     vault.mint(1_000 * USDC, 1);
     let price = vault.venue().base_price();
     vault.venue_mut().set_base_price(price * 70 / 100);
@@ -774,8 +731,7 @@ fun the_dry_run_stays_due_until_the_reduction_reaches_the_band() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun the_dry_run_refuses_an_unwinding_vault() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.state_mut().begin_shutdown();
 
     vault.needs_rebalance();
@@ -785,8 +741,7 @@ fun the_dry_run_refuses_an_unwinding_vault() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::state)]
 fun the_dry_run_refuses_a_liquidated_vault() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.venue_mut().liquidate();
 
     vault.needs_rebalance();
@@ -796,8 +751,7 @@ fun the_dry_run_refuses_a_liquidated_vault() {
 /// Lowering the order cap mid-life splits the next operation into more orders.
 #[test]
 fun a_lower_order_cap_splits_the_next_operation_into_more_orders() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.mint(2_000 * USDC, 1);
     assert_eq!(vault.last_orders(), 1);
 
@@ -820,8 +774,7 @@ fun a_lower_order_cap_splits_the_next_operation_into_more_orders() {
 /// contribution goes to work, less only the venue's execution cost.
 #[test]
 fun zero_fees_leave_the_reserve_untouched_through_mint_and_redemption() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.set_fees(0, 0, 0);
 
     let shares = vault.mint(1_000 * USDC, 1);
@@ -842,8 +795,7 @@ fun zero_fees_leave_the_reserve_untouched_through_mint_and_redemption() {
 fun a_mint_needing_more_than_sixteen_orders_is_refused() {
     let mut vault = test_adapter::issue_with(
         test_adapter::calm_venue(), test_adapter::standard_policy(policy::long()), 100 * USDC, 1_000_000_000_000,
-    );
-    vault.activate(SEED, SEED_RESERVE);
+    ).activate(SEED, SEED_RESERVE);
 
     vault.mint(2_000 * USDC, 1);
     vault.destroy();
@@ -853,8 +805,7 @@ fun a_mint_needing_more_than_sixteen_orders_is_refused() {
 /// so it does not over-reduce on a NAV the release will restore.
 #[test]
 fun a_reduction_prices_the_release_before_sizing() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.credit_funding(3_000 * USDC);
     assert!(vault.reserve() > vault.admitted_reserve());
     let price = vault.venue().base_price();
@@ -878,8 +829,7 @@ fun a_reduction_prices_the_release_before_sizing() {
 /// Claims drain the terminal cash to zero: the last eligible share takes the remainder.
 #[test]
 fun consecutive_claims_drain_the_terminal_cash_to_zero() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let first = vault.mint(1_000 * USDC, 1);
     let second = vault.mint(700 * USDC, 1);
     let third = vault.mint(300 * USDC, 1);
@@ -896,8 +846,7 @@ fun consecutive_claims_drain_the_terminal_cash_to_zero() {
 /// operation, shutdown settles with nothing, and every claim pays zero.
 #[test]
 fun a_liquidated_vault_settles_to_zero_and_claims_pay_nothing() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let shares = vault.mint(1_000 * USDC, 1);
     vault.venue_mut().liquidate();
     assert_eq!(vault.venue().equity(), 0);
@@ -912,8 +861,7 @@ fun a_liquidated_vault_settles_to_zero_and_claims_pay_nothing() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::state)]
 fun a_liquidated_vault_refuses_redemptions() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let shares = vault.mint(1_000 * USDC, 1);
     vault.venue_mut().liquidate();
 
@@ -927,8 +875,7 @@ fun a_liquidated_vault_refuses_redemptions() {
 fun winding_down_spans_transactions_with_funding_and_a_paused_venue_in_between() {
     let mut vault = test_adapter::issue_with(
         test_adapter::calm_venue(), test_adapter::standard_policy(policy::long()), 2_000 * USDC, 1_000_000_000_000,
-    );
-    vault.activate(SEED, SEED_RESERVE);
+    ).activate(SEED, SEED_RESERVE);
     vault.begin_shutdown();
 
     assert_eq!(vault.unwind(3), 3);
@@ -949,8 +896,7 @@ fun winding_down_spans_transactions_with_funding_and_a_paused_venue_in_between()
 #[test]
 #[expected_failure(abort_code = errors::EStalePrice, location = blast_boosts_core::policy)]
 fun winding_down_still_requires_fresh_oracles() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.begin_shutdown();
     let stale = vault.venue().oracle(vault.venue().base_price());
     vault.venue_mut().advance(31_000);
@@ -965,42 +911,8 @@ fun winding_down_still_requires_fresh_oracles() {
 
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
-fun an_uninitialized_vault_refuses_mints() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.mint(100 * USDC, 1);
-    vault.destroy();
-}
-
-#[test]
-#[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
-fun an_uninitialized_vault_refuses_funding() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.charge_funding(1);
-    vault.destroy();
-}
-
-#[test]
-#[expected_failure(abort_code = errors::EInvalidLifecycleTransition, location = blast_boosts_core::lifecycle)]
-fun an_uninitialized_vault_cannot_shut_down() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.shutdown();
-    vault.destroy();
-}
-
-#[test]
-#[expected_failure(abort_code = errors::EInvalidLifecycleTransition, location = blast_boosts_core::lifecycle)]
-fun an_active_vault_cannot_activate_again() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
-    vault.activate(SEED, SEED_RESERVE);
-    vault.destroy();
-}
-
-#[test]
-#[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun an_unwinding_vault_refuses_mints() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.state_mut().begin_shutdown();
     vault.mint(100 * USDC, 1);
     vault.destroy();
@@ -1009,8 +921,7 @@ fun an_unwinding_vault_refuses_mints() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun an_unwinding_vault_refuses_redemptions() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let shares = vault.mint(100 * USDC, 1);
     vault.state_mut().begin_shutdown();
     vault.redeem(shares, 1);
@@ -1020,8 +931,7 @@ fun an_unwinding_vault_refuses_redemptions() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun an_unwinding_vault_refuses_rebalances() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.state_mut().begin_shutdown();
     vault.rebalance();
     vault.destroy();
@@ -1030,8 +940,7 @@ fun an_unwinding_vault_refuses_rebalances() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun an_unwinding_vault_refuses_donations() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.state_mut().begin_shutdown();
     vault.donate(USDC);
     vault.destroy();
@@ -1040,8 +949,7 @@ fun an_unwinding_vault_refuses_donations() {
 /// Funding keeps settling while unwinding: the venue still charges it.
 #[test]
 fun an_unwinding_vault_still_settles_funding() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.state_mut().begin_shutdown();
     let (absorbed, _, _) = vault.charge_funding(10 * USDC);
     assert_eq!(absorbed, 10 * USDC);
@@ -1051,8 +959,7 @@ fun an_unwinding_vault_still_settles_funding() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun an_unwinding_vault_refuses_claims() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.state_mut().begin_shutdown();
     vault.claim(1, 0);
     vault.destroy();
@@ -1061,8 +968,7 @@ fun an_unwinding_vault_refuses_claims() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun a_settled_vault_refuses_mints() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.shutdown();
     vault.mint(100 * USDC, 1);
     vault.destroy();
@@ -1071,8 +977,7 @@ fun a_settled_vault_refuses_mints() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun a_settled_vault_refuses_funding() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.shutdown();
     vault.charge_funding(1);
     vault.destroy();
@@ -1081,8 +986,7 @@ fun a_settled_vault_refuses_funding() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidLifecycleTransition, location = blast_boosts_core::lifecycle)]
 fun a_settled_vault_cannot_shut_down_again() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.shutdown();
     vault.state_mut().begin_shutdown();
     vault.destroy();
@@ -1091,8 +995,7 @@ fun a_settled_vault_cannot_shut_down_again() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidShareAmount, location = blast_boosts_core::state)]
 fun the_locked_seed_can_never_claim() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     vault.shutdown();
     vault.claim(1, 0);
     vault.destroy();
@@ -1101,8 +1004,7 @@ fun the_locked_seed_can_never_claim() {
 /// Terminal claims distribute the cash pro rata across every eligible share, to the atom.
 #[test]
 fun terminal_claims_pay_every_eligible_share_pro_rata() {
-    let mut vault = test_adapter::issue(test_adapter::calm_venue());
-    vault.activate(SEED, SEED_RESERVE);
+    let mut vault = test_adapter::issue(test_adapter::calm_venue()).activate(SEED, SEED_RESERVE);
     let first = vault.mint(1_000 * USDC, 1);
     let second = vault.mint(2_000 * USDC, 1);
     let cash = vault.shutdown();
@@ -1138,7 +1040,7 @@ fun first_price_below_the_band(vault: &mut Vault): u64 {
 }
 
 /// A vault whose 1,000 USDC order cap makes every large correction take several orders.
-fun stressed_vault(): Vault {
+fun stressed_vault(): Issued {
     test_adapter::issue_with(
         test_adapter::calm_venue(), test_adapter::standard_policy(policy::long()), 1_000 * USDC, 1_000_000_000_000,
     )
@@ -1164,6 +1066,6 @@ fun total_reserve_fees(deposits: &vector<u64>): u64 {
 
 // === Imports ===
 
-use blast_boosts_core::{errors, policy, test_adapter::{Self, Vault}};
+use blast_boosts_core::{errors, policy, test_adapter::{Self, Issued, Vault}};
 
 use std::unit_test::assert_eq;

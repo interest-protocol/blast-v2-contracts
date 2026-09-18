@@ -4,6 +4,11 @@
 /// Adapter-owned Vault, leverage currency, and venue storage.
 module blast_boosts_aftermath::vault;
 
+// === Constants ===
+
+/// Converts six-decimal seed NAV atoms to nine-decimal share atoms.
+const SEED_SHARE_SCALE: u64 = 1_000;
+
 // === Public Types ===
 
 /// One issued Boost currency before its venue account exists.
@@ -12,7 +17,7 @@ module blast_boosts_aftermath::vault;
 /// transaction: it has no abilities, so an issuance that is not activated cannot
 /// be stored or shared, and a failed activation rolls the currency back too.
 public struct VaultIssuance<phantom Product> {
-    state: State<Product>,
+    issuance: Issuance<Product>,
     risk_module_witness: TypeName,
     treasury_cap: TreasuryCap<BlastBoost<Product>>,
     metadata_cap: MetadataCap<BlastBoost<Product>>,
@@ -87,7 +92,7 @@ public fun issue<Product: drop, RiskModule: drop>(
     );
     let risk_module_witness = valid_risk_module_type<RiskModule>();
 
-    let state = state::new<Product>(admin_witness, vault_policy, max_order_notional, nav_cap);
+    let issuance = issuance::issue<Product>(admin_witness, vault_policy, max_order_notional, nav_cap);
     let (treasury_cap, metadata_cap) =
         blast_boost::new_currency<Product>(registry, symbol, name, description, icon_url, ctx);
     events::vault_issued<Product>(
@@ -95,7 +100,7 @@ public fun issue<Product: drop, RiskModule: drop>(
         max_order_notional, nav_cap,
     );
 
-    VaultIssuance { state, risk_module_witness, treasury_cap, metadata_cap }
+    VaultIssuance { issuance, risk_module_witness, treasury_cap, metadata_cap }
 }
 
 /// Shares one activated adapter Vault.
@@ -268,10 +273,8 @@ public(package) fun venue<Product>(self: &Vault<Product>): &VenueAccount { &self
 
 public(package) fun venue_mut<Product>(self: &mut Vault<Product>): &mut VenueAccount { &mut self.venue_account }
 
-/// The core state of an issuance while activation is proving the seed.
-public(package) fun seed_state<Product>(self: &VaultIssuance<Product>): &State<Product> { &self.state }
-
-public(package) fun seed_state_mut<Product>(self: &mut VaultIssuance<Product>): &mut State<Product> { &mut self.state }
+/// The issuer's terms, which size and bound the seed position before the state exists.
+public(package) fun issuance<Product>(self: &VaultIssuance<Product>): &Issuance<Product> { &self.issuance }
 
 // --- Initialization ---
 
@@ -280,41 +283,40 @@ public(package) fun assert_risk_module<Product, RiskModule: drop>(self: &VaultIs
     assert_selected_risk_module<RiskModule>(self.risk_module_witness);
 }
 
-/// Mints the one locked seed position, makes it permanently inaccessible, and
-/// returns the ownership facts the Vault records.
-public(package) fun mint_locked_shares<Product>(
-    self: &mut VaultIssuance<Product>,
-    amount: u64,
-    funder: address,
-    ctx: &mut TxContext,
-): SeedFacts {
-    assert!(self.treasury_cap.total_supply() == 0, blast_boosts_aftermath::errors::seed_already_recorded!());
-    assert_seed_funder(funder);
-    assert!(amount > 0, blast_boosts_aftermath::errors::zero_amount!());
-
-    transfer::public_transfer(coin::mint(&mut self.treasury_cap, amount, ctx), @0x0);
-
-    SeedFacts { locked_shares: amount, funder }
-}
-
-/// Turns the issuance into the Vault once the venue account exists, hanging
-/// the share caps off the new id.
+/// Activates the core on the seeded observation, mints the locked seed shares
+/// to the burn address, and builds the Vault around the venue account, with
+/// the share caps hanging off the new id. Returns the Vault, the seed's
+/// shareholder NAV, and the priced seed position.
 public(package) fun activate<Product>(
-    self: VaultIssuance<Product>, venue_account: VenueAccount, seed_facts: SeedFacts, ctx: &mut TxContext,
-): Vault<Product> {
-    let VaultIssuance { state, risk_module_witness, treasury_cap, metadata_cap } = self;
+    self: VaultIssuance<Product>,
+    seeded: PositionObservation,
+    seed_reserve: u64,
+    collateral_decimals: u8,
+    funder: address,
+    venue_account: VenueAccount,
+    now_ms: u64,
+    ctx: &mut TxContext,
+): (Vault<Product>, u64, ActivePosition) {
+    assert_seed_funder(funder);
+    let VaultIssuance { issuance, risk_module_witness, mut treasury_cap, metadata_cap } = self;
+    let (state, seed_nav, seeded) =
+        issuance.activate(seeded, seed_reserve, constants::base_decimals!(), collateral_decimals, now_ms);
+
+    let locked_shares = locked_shares(seed_nav);
+    transfer::public_transfer(coin::mint(&mut treasury_cap, locked_shares, ctx), @0x0);
+
     let mut vault = Vault {
         id: object::new(ctx),
         state,
         risk_module_witness,
         venue_account,
-        seed_facts,
+        seed_facts: SeedFacts { locked_shares, funder },
         unresolved_checkpoint_digest: option::none(),
     };
     vault.id.add_dynamic_object_field(TreasuryKey<Product>(), treasury_cap);
     vault.id.add_dynamic_object_field(MetadataKey<Product>(), metadata_cap);
 
-    vault
+    (vault, seed_nav, seeded)
 }
 
 // --- Active Guards ---
@@ -469,6 +471,11 @@ public(package) fun assert_seed_funder(funder: address) {
 
 // === Private Functions ===
 
+/// Six-decimal seed NAV atoms as nine-decimal share atoms; the seed is never dust.
+fun locked_shares(seed_nav: u64): u64 {
+    seed_nav.checked_mul(SEED_SHARE_SCALE).destroy_or!(abort blast_boosts_aftermath::errors::locked_shares_overflow!())
+}
+
 /// The caller's risk module is the one the issuance selected.
 fun assert_selected_risk_module<RiskModule: drop>(selected: TypeName) {
     assert!(
@@ -502,8 +509,8 @@ fun treasury_cap_mut<Product>(self: &mut Vault<Product>): &mut TreasuryCap<Blast
 // === Test-Only Functions ===
 
 #[test_only]
-public fun seed_facts_for_testing(locked_shares: u64, funder: address): SeedFacts {
-    SeedFacts { locked_shares, funder }
+public fun locked_shares_for_testing(seed_nav: u64): u64 {
+    locked_shares(seed_nav)
 }
 
 #[test_only]
@@ -520,11 +527,6 @@ fun metadata_cap<Product>(self: &Vault<Product>): &MetadataCap<BlastBoost<Produc
 #[test_only]
 public fun unresolved_checkpoint_digest_for_testing<Product>(self: &Vault<Product>): Option<vector<u8>> {
     self.unresolved_checkpoint_digest
-}
-
-#[test_only]
-public fun set_active_for_testing<Product>(self: &mut VaultIssuance<Product>) {
-    self.state.set_active_for_testing();
 }
 
 #[test_only]
@@ -600,7 +602,8 @@ use blast_boosts_core::{
     policy::{PositionSide, VaultPolicy},
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
     lifecycle::ShutdownReason,
-    state::{Self, ActivePosition, MintPlan, RebalancePlan, RedemptionPlan, State},
+    issuance::{Self, Issuance},
+    state::{ActivePosition, MintPlan, RebalancePlan, RedemptionPlan, State},
 };
 
 use perpetuals::{account::Account, clearing_house::{ClearingHouse, SessionSummary}, registry::Registry};

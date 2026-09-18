@@ -32,7 +32,7 @@ fun error_registry_first_half_is_sequential() {
 }
 
 #[test]
-/// Codes 23 to 45.
+/// Codes 23 to 44.
 fun error_registry_second_half_is_sequential() {
     assert_eq!(errors::initialization_fill_mismatch!(), 23);
     assert_eq!(errors::initialization_orders_posted!(), 24);
@@ -51,12 +51,11 @@ fun error_registry_second_half_is_sequential() {
     assert_eq!(errors::active_checkpoint_mismatch!(), 37);
     assert_eq!(errors::redemption_share_mismatch!(), 38);
     assert_eq!(errors::venue_fee_unusable!(), 39);
-    assert_eq!(errors::seed_already_recorded!(), 40);
-    assert_eq!(errors::invalid_seed_funder!(), 41);
-    assert_eq!(errors::unresolved_checkpoint!(), 42);
-    assert_eq!(errors::terminal_venue_unsettled!(), 43);
-    assert_eq!(errors::invalid_unwind_exposure!(), 44);
-    assert_eq!(errors::venue_not_ready!(), 45);
+    assert_eq!(errors::invalid_seed_funder!(), 40);
+    assert_eq!(errors::unresolved_checkpoint!(), 41);
+    assert_eq!(errors::terminal_venue_unsettled!(), 42);
+    assert_eq!(errors::invalid_unwind_exposure!(), 43);
+    assert_eq!(errors::venue_not_ready!(), 44);
 }
 
 // === Imports ===

@@ -168,28 +168,24 @@ const ERedemptionShareMismatch: u64 = 38;
 const EVenueFeeUnusable: u64 = 39;
 
 #[test_only]
-/// Activation ownership is immutable and can be recorded only before any shares exist.
-const ESeedAlreadyRecorded: u64 = 40;
-
-#[test_only]
 /// The immutable seed cash beneficiary must not be the zero address.
-const EInvalidSeedFunder: u64 = 41;
+const EInvalidSeedFunder: u64 = 40;
 
 #[test_only]
 /// A financial operation observed a venue change not reconciled into the accepted checkpoint.
-const EUnresolvedCheckpoint: u64 = 42;
+const EUnresolvedCheckpoint: u64 = 41;
 
 #[test_only]
 /// Terminal recovery requires exact flat exposure, settled liabilities and integral cash.
-const ETerminalVenueUnsettled: u64 = 43;
+const ETerminalVenueUnsettled: u64 = 42;
 
 #[test_only]
 /// A close requires positive exact whole-lot base in the bound product direction.
-const EInvalidUnwindExposure: u64 = 44;
+const EInvalidUnwindExposure: u64 = 43;
 
 #[test_only]
 /// A priced operation found the venue with open orders, unsafe margin, or a paused or frozen market.
-const EVenueNotReady: u64 = 45;
+const EVenueNotReady: u64 = 44;
 
 // === Package Functions ===
 
@@ -233,9 +229,8 @@ macro public(package) fun deadline_expired(): u64 { 36 }
 macro public(package) fun active_checkpoint_mismatch(): u64 { 37 }
 macro public(package) fun redemption_share_mismatch(): u64 { 38 }
 macro public(package) fun venue_fee_unusable(): u64 { 39 }
-macro public(package) fun seed_already_recorded(): u64 { 40 }
-macro public(package) fun invalid_seed_funder(): u64 { 41 }
-macro public(package) fun unresolved_checkpoint(): u64 { 42 }
-macro public(package) fun terminal_venue_unsettled(): u64 { 43 }
-macro public(package) fun invalid_unwind_exposure(): u64 { 44 }
-macro public(package) fun venue_not_ready(): u64 { 45 }
+macro public(package) fun invalid_seed_funder(): u64 { 40 }
+macro public(package) fun unresolved_checkpoint(): u64 { 41 }
+macro public(package) fun terminal_venue_unsettled(): u64 { 42 }
+macro public(package) fun invalid_unwind_exposure(): u64 { 43 }
+macro public(package) fun venue_not_ready(): u64 { 44 }

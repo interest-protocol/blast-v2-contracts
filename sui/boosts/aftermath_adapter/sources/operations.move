@@ -10,9 +10,6 @@ module blast_boosts_aftermath::operations;
 
 // === Constants ===
 
-/// Converts six-decimal seed NAV atoms to nine-decimal share atoms.
-const SEED_SHARE_SCALE: u64 = 1_000;
-
 /// Maximum market-order calls permitted in one atomic initialization session.
 const MAX_INITIALIZATION_ORDERS: u64 = 16;
 
@@ -68,7 +65,7 @@ public struct RedemptionReceipt<phantom Product> {
 /// Only the issuer's transaction can reach this: the issuance has no abilities,
 /// so it cannot be stored, shared, or handed to another signer.
 public fun initialize<Product, RiskModule: drop, Collateral>(
-    mut issuance: VaultIssuance<Product>,
+    issuance: VaultIssuance<Product>,
     protocol: &Protocol,
     risk_module: RiskModule,
     currency: &Currency<Collateral>,
@@ -87,9 +84,9 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
 ): Vault<Product> {
     protocol.assert_current();
     issuance.assert_risk_module(&risk_module);
-    let (position_side, max_order_notional) = (issuance.seed_state().side(), issuance.seed_state().max_order_notional());
+    let terms = issuance.issuance();
+    let (position_side, max_order_notional) = (terms.side(), terms.max_order_notional());
     let seed_amount = seed.value();
-    vault::assert_seed_funder(seed_funder);
     assert_initialization_inputs(currency.decimals(), seed_amount, seed_reserve);
     assert_position_imr(position_imr);
 
@@ -103,13 +100,13 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
         base_price_info, collateral_price_info, clock,
     ).into_observation();
     let (target_notional, reference_base_price, collateral_price, lot_size) =
-        issuance.seed_state().prepare_initialization(pre_observation, seed_reserve, clock.timestamp_ms());
+        terms.seed_terms(pre_observation, seed_reserve, clock.timestamp_ms());
     let orders = order_sizes(target_notional, max_order_notional, reference_base_price, collateral_price, lot_size);
     orders.do_ref!(|order| {
-        issuance.seed_state().assert_order_notional_allowed(notional_for_base_up(*order, reference_base_price, collateral_price));
+        terms.assert_order_notional_allowed(notional_for_base_up(*order, reference_base_price, collateral_price));
     });
     clearing_house = open_seed_position(
-        &issuance, &mut account, &admin_cap, clearing_house, base_oracle, collateral_oracle,
+        terms, &mut account, &admin_cap, clearing_house, base_oracle, collateral_oracle,
         orders, position_side, reference_base_price, collateral_price, clock, ctx,
     );
 
@@ -119,24 +116,20 @@ public fun initialize<Product, RiskModule: drop, Collateral>(
         base_price_info, collateral_price_info, clock,
     ).into_observation();
     assert_position_imr_unchanged(&clearing_house, binding.account_number(), position_imr);
-    let (seed_shareholder_nav, seeded) = issuance.seed_state_mut().initialize(
-        final_observation, seed_reserve, constants::base_decimals!(), currency.decimals(), clock.timestamp_ms(),
-    );
-    // BLAST_ACTIVATION_BOUNDARY_A1
-    let seed_facts = issuance.mint_locked_shares(locked_shares(seed_shareholder_nav), seed_funder, ctx);
-    // BLAST_ACTIVATION_BOUNDARY_A2
     let venue_account = venue_account::new(binding, checkpoint, admin_cap);
-    // BLAST_ACTIVATION_BOUNDARY_A3
-    account.consume_policy_and_share_account(share_policy);
-    // BLAST_ACTIVATION_BOUNDARY_A4
-    let vault = issuance.activate(venue_account, seed_facts, ctx);
-    // BLAST_ACTIVATION_BOUNDARY_A5
-    clearing_house.share();
-    // BLAST_ACTIVATION_BOUNDARY_A6
-    emit_vault_initialized<Product>(
-        &vault, seed_amount, seeded.equity(), seeded.base(), seeded.lot_size(), position_side, position_imr,
+    // BLAST_ACTIVATION_BOUNDARY_A1
+    let (vault, seed_nav, seeded) = issuance.activate(
+        final_observation, seed_reserve, currency.decimals(), seed_funder, venue_account, clock.timestamp_ms(), ctx,
     );
-    // BLAST_ACTIVATION_BOUNDARY_A7
+    // BLAST_ACTIVATION_BOUNDARY_A2
+    account.consume_policy_and_share_account(share_policy);
+    // BLAST_ACTIVATION_BOUNDARY_A3
+    clearing_house.share();
+    // BLAST_ACTIVATION_BOUNDARY_A4
+    emit_vault_initialized<Product>(
+        &vault, seed_amount, seed_nav, seeded.equity(), seeded.base(), seeded.lot_size(), position_side, position_imr,
+    );
+    // BLAST_ACTIVATION_BOUNDARY_A5
 
     vault
 }
@@ -450,6 +443,7 @@ public fun finalize_shutdown<Product, Collateral>(
 public(package) fun emit_vault_initialized<Product>(
     vault: &Vault<Product>,
     seed_amount: u64,
+    seed_shareholder_nav: u64,
     seed_venue_equity: u64,
     position_base: u64,
     lot_size: u64,
@@ -471,7 +465,7 @@ public(package) fun emit_vault_initialized<Product>(
         seed_amount,
         seed_venue_equity,
         vault.state().maintenance_reserve(),
-        locked_shares / SEED_SHARE_SCALE,
+        seed_shareholder_nav,
         locked_shares,
         seed_funder,
         position_base,
@@ -680,7 +674,7 @@ fun fund_venue_account<Collateral>(
 /// actual fill is capped separately so admitted slippage cannot carry one
 /// order past the live cap.
 fun open_seed_position<Product, Collateral>(
-    issuance: &VaultIssuance<Product>,
+    issuance: &Issuance<Product>,
     account: &mut Account<Collateral>,
     admin_cap: &AuthorityCap<ACCOUNT, ADMIN>,
     mut clearing_house: ClearingHouse<Collateral>,
@@ -712,9 +706,9 @@ fun open_seed_position<Product, Collateral>(
             summary.liquidation_bad_debt(),
         );
         let executed = execution_price(summary.execution_price(aftermath_order_side), is_long);
-        issuance.seed_state().assert_execution(false, reference_base_price, executed);
+        issuance.assert_execution(reference_base_price, executed);
         let (_, filled_quote) = summary.filled_base_and_quote(aftermath_order_side);
-        issuance.seed_state().assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
+        issuance.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
     };
 
     clearing_house
@@ -762,12 +756,6 @@ fun initialization_order_count(target_base: u64, max_order_base: u64): u64 {
     );
 
     count
-}
-
-fun locked_shares(seed_nav: u64): u64 {
-    seed_nav
-        .checked_mul(SEED_SHARE_SCALE)
-        .destroy_or!(abort blast_boosts_aftermath::errors::locked_shares_overflow!())
 }
 
 // --- Orders ---
@@ -1348,11 +1336,6 @@ public fun order_count_for_testing(
 }
 
 #[test_only]
-public fun locked_shares_for_testing(seed_nav: u64): u64 {
-    locked_shares(seed_nav)
-}
-
-#[test_only]
 public fun assert_deadline_for_testing(now_ms: u64, deadline: u64) { assert_deadline(now_ms, deadline); }
 
 #[test_only]
@@ -1520,6 +1503,7 @@ use blast_boosts_aftermath::{
 };
 
 use blast_boosts_core::{
+    issuance::Issuance,
     observation::PositionObservation,
     policy::{Self, PositionSide},
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
