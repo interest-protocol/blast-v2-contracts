@@ -1474,11 +1474,10 @@ use blast_boosts_aftermath::{
 };
 
 use blast_boosts_core::{
-    issuance::Issuance,
     observation::PositionObservation,
     policy::{Self, PositionSide},
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
-    state::{ActivePosition, MintPlan, RebalancePlan, RedemptionPlan},
+    state::{ActivePosition, Issuance, MintPlan, RebalancePlan, RedemptionPlan},
 };
 
 use ifixed::ifixed;

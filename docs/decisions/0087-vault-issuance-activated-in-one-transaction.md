@@ -49,13 +49,15 @@ A4 market re-shared, A5 event emitted.
 ### D2a. The core has no uninitialized state
 
 `Lifecycle` is `Active | Unwinding | Settled`. The core's
-`issuance::Issuance` carries the issuer's terms (policy, order cap, NAV cap)
+`state::Issuance` carries the issuer's terms (policy, order cap, NAV cap)
 while the adapter opens the seed position, sizing the orders through
 `seed_terms` and bounding them through its own `assert_execution` and
-`assert_order_notional_allowed`; `issuance::activate` builds the `State`
-around the seeded observation. No `State` value ever exists before its
-position does, so every "not before activation" guard, `assert_can_activate`,
-and the dual-branch `set_fees` are gone.
+`assert_order_notional_allowed`; `Issuance::activate` builds the `State`
+around the seeded observation. Issuance is the first section of `state.move`,
+not a module above it: the module that owns every later phase owns the first,
+and observation valuation stays private to it. No `State` value ever exists
+before its position does, so every "not before activation" guard,
+`assert_can_activate`, and the dual-branch `set_fees` are gone.
 
 ### D3. A Vault exists only from activation on
 

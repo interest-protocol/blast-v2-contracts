@@ -12,6 +12,19 @@ module blast_boosts_core::state;
 
 // === Public Types ===
 
+/// An issued product before its seed position exists: the immutable policy
+/// and the two live knobs the issuer set.
+///
+/// The adapter opens the seed position under these terms, then `activate`
+/// turns them and the seeded observation into the `State`. The value has no
+/// abilities, so an issuance that is not activated cannot be stored: a
+/// product is either live or never existed.
+public struct Issuance<phantom Product> {
+    vault_policy: VaultPolicy,
+    max_order_notional: u64,
+    nav_cap: u64,
+}
+
 /// Sealed core state stored inside one adapter-owned Vault.
 ///
 /// The value can be stored but cannot be copied or dropped. `Product`
@@ -104,53 +117,55 @@ public struct RebalanceOrder has copy, drop {
 
 // === Public Functions ===
 
-// --- Activation ---
+// --- Issuance ---
 
-/// The immutable direction every order of this product takes.
-public fun side<Product>(self: &State<Product>): PositionSide {
-    self.vault_policy.side()
-}
-
-/// The live per-order notional cap in atomic collateral units.
-public fun max_order_notional<Product>(self: &State<Product>): u64 {
-    self.max_order_notional
-}
-
-/// Rejects a fill whose price diverges from the reference beyond the bound the
-/// order was placed under: the ordinary one, or the wider emergency one for a
-/// reduction placed above the hard cap and for shutdown.
-public fun assert_execution<Product>(self: &State<Product>, wide: bool, reference: u64, executed: u64) {
-    let rebalance = self.vault_policy.rebalance_policy();
-
-    if (wide) {
-        rebalance.assert_execution_within_emergency_max_slippage(reference, executed);
-    } else {
-        rebalance.assert_execution_within_max_slippage(reference, executed);
-    };
-}
-
-/// Rejects one adapter order above the live atomic-collateral notional limit.
-public fun assert_order_notional_allowed<Product>(
-    self: &State<Product>,
-    order_notional: u64,
-) {
-    assert!(
-        order_notional <= self.max_order_notional,
-        blast_boosts_core::errors::order_notional_exceeds_maximum!(),
-    );
-}
-
-/// Builds the state of an activated product around its seeded position.
-///
-/// Called by `issuance::activate` with the issuer's terms and the observation
-/// the adapter took after the seed position opened. Returns the state, the
-/// seed's reserve-excluded shareholder NAV in atomic collateral units, and the
-/// priced seed position. Every price, capacity, leverage and minimum-order
-/// guard runs before the state exists.
-public(package) fun activate<Product>(
+/// Issues one product. The caller's live admin witness must hold the Vault
+/// issuer role; `nav_cap` must satisfy `RebalancePolicy::assert_nav_cap_valid`
+/// and stays adjustable through `set_nav_cap`.
+public fun issue<Product>(
+    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
     vault_policy: VaultPolicy,
     max_order_notional: u64,
     nav_cap: u64,
+): Issuance<Product> {
+    admin_witness.assert_role(domain::vault_issuer_role());
+    assert!(max_order_notional > 0, blast_boosts_core::errors::invalid_max_order_notional!());
+    vault_policy.rebalance_policy().assert_nav_cap_valid(nav_cap);
+
+    Issuance { vault_policy, max_order_notional, nav_cap }
+}
+
+/// Sizes the opening position from a flat seed observation: the target notional
+/// in atomic collateral units, and the priced flat seed whose pair and lot the
+/// orders are placed under.
+///
+/// The NAV and reserve caps are checked here against the sized target and
+/// again in `activate` against the position actually filled.
+public fun seed_terms<Product>(
+    self: &Issuance<Product>, observation: PositionObservation, seed_reserve: u64, now_ms: u64,
+): (u64, ActivePosition) {
+    let seed_nav = seed_nav(&self.vault_policy, &observation, seed_reserve, now_ms);
+    assert!(observation.position_base() == 0, blast_boosts_core::errors::invalid_initialization_observation!());
+    assert!(seed_nav <= self.nav_cap, blast_boosts_core::errors::nav_cap_exceeded!());
+
+    let target_notional =
+        accounting_math::target_notional_down(seed_nav, self.vault_policy.rebalance_policy().target_bps());
+    assert!(
+        seed_reserve <= self.vault_policy.reserve_cap(target_notional),
+        blast_boosts_core::errors::seed_reserve_above_cap!(),
+    );
+
+    (target_notional, flat_position(observation))
+}
+
+/// Turns the issuance and the observation the adapter took after the seed
+/// position opened into the live state.
+///
+/// Returns the state, the seed's reserve-excluded shareholder NAV in atomic
+/// collateral units, and the priced seed position. Every price, capacity,
+/// leverage and minimum-order guard runs before the state exists.
+public fun activate<Product>(
+    self: Issuance<Product>,
     observation: PositionObservation,
     seed_reserve: u64,
     base_decimals: u8,
@@ -163,6 +178,7 @@ public(package) fun activate<Product>(
         blast_boosts_core::errors::invalid_asset_decimals!(),
     );
 
+    let Issuance { vault_policy, max_order_notional, nav_cap } = self;
     let state = State {
         mint_fee_bps: vault_policy.initial_mint_fee_bps(),
         redeem_fee_bps: vault_policy.initial_redeem_fee_bps(),
@@ -201,21 +217,49 @@ public(package) fun activate<Product>(
     (state, seed_nav, seeded)
 }
 
-/// The seed's reserve-excluded shareholder NAV, after the backing and price
-/// guards, for the terms an issuance sizes its opening orders with.
-public(package) fun seed_nav(vault_policy: &VaultPolicy, observation: &PositionObservation, seed_reserve: u64, now_ms: u64): u64 {
-    let venue_equity = observation.venue_equity();
-    assert!(
-        accounting_math::is_reserve_backed(venue_equity, seed_reserve),
-        blast_boosts_core::errors::maintenance_reserve_exceeds_equity!(),
-    );
-    assert!(
-        accounting_math::is_shareholder_nav_positive(venue_equity, seed_reserve),
-        blast_boosts_core::errors::invalid_nav!(),
-    );
-    assert_observation_priced(vault_policy, observation, now_ms);
+// --- Order Terms ---
 
-    accounting_math::shareholder_nav(venue_equity, seed_reserve)
+/// The immutable direction every order of this product takes.
+public fun issued_side<Product>(self: &Issuance<Product>): PositionSide {
+    self.vault_policy.side()
+}
+
+/// The per-order notional cap the seed orders are paced under.
+public fun issued_max_order_notional<Product>(self: &Issuance<Product>): u64 {
+    self.max_order_notional
+}
+
+/// Rejects one seed order above the per-order notional cap.
+public fun assert_seed_order_notional_allowed<Product>(self: &Issuance<Product>, order_notional: u64) {
+    assert_order_notional_within(self.max_order_notional, order_notional);
+}
+
+/// Rejects a seed fill outside the ordinary slippage bound; opening a position
+/// always increases risk, so the emergency bound never applies here.
+public fun assert_seed_execution<Product>(self: &Issuance<Product>, reference: u64, executed: u64) {
+    assert_execution_within(&self.vault_policy, false, reference, executed);
+}
+
+/// The immutable direction every order of this product takes.
+public fun side<Product>(self: &State<Product>): PositionSide {
+    self.vault_policy.side()
+}
+
+/// The live per-order notional cap in atomic collateral units.
+public fun max_order_notional<Product>(self: &State<Product>): u64 {
+    self.max_order_notional
+}
+
+/// Rejects one adapter order above the live atomic-collateral notional limit.
+public fun assert_order_notional_allowed<Product>(self: &State<Product>, order_notional: u64) {
+    assert_order_notional_within(self.max_order_notional, order_notional);
+}
+
+/// Rejects a fill whose price diverges from the reference beyond the bound the
+/// order was placed under: the ordinary one, or the wider emergency one for a
+/// reduction placed above the hard cap and for shutdown.
+public fun assert_execution<Product>(self: &State<Product>, wide: bool, reference: u64, executed: u64) {
+    assert_execution_within(&self.vault_policy, wide, reference, executed);
 }
 
 // --- Active Operations ---
@@ -757,28 +801,6 @@ public fun maintenance_reserve<Product>(self: &State<Product>): u64 {
     self.maintenance_reserve
 }
 
-// --- Flat Seed ---
-
-/// Prices a flat seed observation for the orders that will open its position.
-///
-/// Reads the pair and the lot the issuance sizes with; `equity` is the seed
-/// the adapter funded, not shareholder NAV, and base and notional are zero
-/// because no position exists yet. `issuance::seed_terms` has already refused
-/// an observation that carries base.
-public(package) fun flat_position(observation: PositionObservation): ActivePosition {
-    let position = ActivePosition {
-        equity: observation.venue_equity(),
-        base: 0,
-        notional: 0,
-        lot_size: observation.lot_size(),
-        base_price: observation.base_oracle().price(),
-        collateral_price: observation.collateral_oracle().price(),
-    };
-    observation.destroy();
-
-    position
-}
-
 // --- Priced Position Reads ---
 
 public fun equity(self: &ActivePosition): u64 { self.equity }
@@ -794,6 +816,54 @@ public fun base_price(self: &ActivePosition): u64 { self.base_price }
 public fun collateral_price(self: &ActivePosition): u64 { self.collateral_price }
 
 // === Private Functions ===
+
+/// The seed's reserve-excluded shareholder NAV after the backing and price guards.
+fun seed_nav(vault_policy: &VaultPolicy, observation: &PositionObservation, seed_reserve: u64, now_ms: u64): u64 {
+    let venue_equity = observation.venue_equity();
+    assert!(
+        accounting_math::is_reserve_backed(venue_equity, seed_reserve),
+        blast_boosts_core::errors::maintenance_reserve_exceeds_equity!(),
+    );
+    assert!(
+        accounting_math::is_shareholder_nav_positive(venue_equity, seed_reserve),
+        blast_boosts_core::errors::invalid_nav!(),
+    );
+    assert_observation_priced(vault_policy, observation, now_ms);
+
+    accounting_math::shareholder_nav(venue_equity, seed_reserve)
+}
+
+/// Prices a flat seed observation for the orders that will open its position:
+/// `equity` is the seed the adapter funded, base and notional are zero because
+/// no position exists yet, and `seed_terms` has already refused an observation
+/// that carries base.
+fun flat_position(observation: PositionObservation): ActivePosition {
+    let position = ActivePosition {
+        equity: observation.venue_equity(),
+        base: 0,
+        notional: 0,
+        lot_size: observation.lot_size(),
+        base_price: observation.base_oracle().price(),
+        collateral_price: observation.collateral_oracle().price(),
+    };
+    observation.destroy();
+
+    position
+}
+
+fun assert_order_notional_within(maximum: u64, order_notional: u64) {
+    assert!(order_notional <= maximum, blast_boosts_core::errors::order_notional_exceeds_maximum!());
+}
+
+fun assert_execution_within(vault_policy: &VaultPolicy, wide: bool, reference: u64, executed: u64) {
+    let rebalance = vault_policy.rebalance_policy();
+
+    if (wide) {
+        rebalance.assert_execution_within_emergency_max_slippage(reference, executed);
+    } else {
+        rebalance.assert_execution_within_max_slippage(reference, executed);
+    };
+}
 
 /// Returns whether the position was valued at exactly this oracle pair.
 /// Returns whether two positions share one oracle pair and one venue lot, so their
@@ -1007,6 +1077,8 @@ public fun destroy_for_testing<Product>(self: State<Product>) {
 
 // === Imports ===
 
+use blast_admin::acl::AdminWitness;
+
 use blast_boosts_core::{
     accounting_math,
     constants,
@@ -1014,4 +1086,10 @@ use blast_boosts_core::{
     observation::{Self, FundingSettlement, PositionObservation, PriceObservation},
     policy::{PositionSide, PricePolicy, VaultPolicy},
     rebalance_math,
+    blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
 };
+
+public use fun issued_side as Issuance.side;
+public use fun issued_max_order_notional as Issuance.max_order_notional;
+public use fun assert_seed_order_notional_allowed as Issuance.assert_order_notional_allowed;
+public use fun assert_seed_execution as Issuance.assert_execution;

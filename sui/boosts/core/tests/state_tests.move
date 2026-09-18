@@ -229,7 +229,7 @@ fun redemption_shares_supply_swap_is_rejected() {
 fun issuance_rejects_a_zero_nav_cap() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    destroy(issuance::issue<Product>(&witness, vault_policy(policy::long()), 2_000_000, 0));
+    destroy(state::issue<Product>(&witness, vault_policy(policy::long()), 2_000_000, 0));
     abort
 }
 
@@ -238,7 +238,7 @@ fun issuance_rejects_a_zero_nav_cap() {
 fun issuance_rejects_a_nav_cap_whose_max_leverage_notional_overflows() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    destroy(issuance::issue<Product>(&witness, vault_policy(policy::long()), 2_000_000, std::u64::max_value!()));
+    destroy(state::issue<Product>(&witness, vault_policy(policy::long()), 2_000_000, std::u64::max_value!()));
     abort
 }
 
@@ -289,7 +289,7 @@ fun nav_cap_setter_rejects_a_cap_whose_max_leverage_notional_overflows() {
 fun live_fee_setter_accepts_each_exact_immutable_cap() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let issuance: Issuance<Product> = issuance::issue(
+    let issuance: Issuance<Product> = state::issue(
         &witness, vault_policy(policy::long()).with_fee_limits(100, 200, 3_000), MAX_ORDER_NOTIONAL, NAV_CAP,
     );
     let (mut state, _) = activate_with(issuance, standard_observation(policy::long()), SEED_RESERVE);
@@ -311,7 +311,7 @@ fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
                 policy::new_price_policy(30_000, 2_000, 100, 500), 0, 0, 100, MAX_RESERVE_BPS,
             );
             let notional = target * 100;
-            let (mut state, _, _) = issuance::issue<Product>(&witness, vault_policy, 2_000_000, NAV_CAP)
+            let (mut state, _, _) = state::issue<Product>(&witness, vault_policy, 2_000_000, NAV_CAP)
                 .activate(rebalance_observation(1_100_000, notional, side), 100_000, 9, 6, REFERENCE_TIME_MS);
             let plan = state.prepare_mint(rebalance_observation(1_100_000, notional, side), 1_000_000, 1_000_000, 1_000_000, REFERENCE_TIME_MS);
             assert_eq!(plan.base_to_buy(), notional * 1_000);
@@ -603,7 +603,7 @@ fun mint_prices_actual_contribution_after_the_attributable_cost() {
 fun fee_updates_change_future_allocations_without_relabeling_the_buffer() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let issuance: Issuance<Product> = issuance::issue(
+    let issuance: Issuance<Product> = state::issue(
         &witness, vault_policy(policy::long()).with_fee_limits(100, 100, 3_000), MAX_ORDER_NOTIONAL, NAV_CAP,
     );
     let (mut state, _) = activate_with(issuance, standard_observation(policy::long()), SEED_RESERVE);
@@ -651,7 +651,7 @@ fun flat_seed_preflight_returns_authenticated_order_inputs() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidInitializationObservation, location = blast_boosts_core::issuance,
+    abort_code = errors::EInvalidInitializationObservation, location = blast_boosts_core::state,
 )]
 fun seed_preflight_rejects_a_preexisting_position() {
     let fixture = start(domain::vault_issuer_role());
@@ -693,7 +693,7 @@ fun an_authorized_issuance_activates_into_the_issued_terms() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let expected_policy = standard_vault_policy();
-    let (state, _) = activate_with(issuance::issue<Product>(&witness, expected_policy, MAX_ORDER_NOTIONAL, NAV_CAP), standard_observation(policy::long()), SEED_RESERVE);
+    let (state, _) = activate_with(state::issue<Product>(&witness, expected_policy, MAX_ORDER_NOTIONAL, NAV_CAP), standard_observation(policy::long()), SEED_RESERVE);
 
     assert!(state.is_active_for_testing());
     assert_eq!(state.maintenance_reserve_for_testing(), SEED_RESERVE);
@@ -713,19 +713,19 @@ fun issuance_requires_the_vault_issuer_role() {
     let fixture = start(domain::risk_admin_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
 
-    destroy(issuance::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP));
+    destroy(state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP));
     destroy(fixture);
 }
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EInvalidMaxOrderNotional, location = blast_boosts_core::issuance,
+    abort_code = errors::EInvalidMaxOrderNotional, location = blast_boosts_core::state,
 )]
 fun max_order_notional_must_be_positive() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
 
-    destroy(issuance::issue<Product>(&witness, standard_vault_policy(), 0, NAV_CAP));
+    destroy(state::issue<Product>(&witness, standard_vault_policy(), 0, NAV_CAP));
     destroy(fixture);
 }
 
@@ -733,7 +733,7 @@ fun max_order_notional_must_be_positive() {
 fun max_order_notional_moves_both_directions_and_returns_the_previous_value() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let (mut state, _) = activate_with(issuance::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP), standard_observation(policy::long()), SEED_RESERVE);
+    let (mut state, _) = activate_with(state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP), standard_observation(policy::long()), SEED_RESERVE);
 
     assert_eq!(state.set_max_order_notional(1), MAX_ORDER_NOTIONAL);
     assert_eq!(state.set_max_order_notional(std::u64::max_value!()), 1);
@@ -751,7 +751,7 @@ fun max_order_notional_moves_both_directions_and_returns_the_previous_value() {
 fun max_order_notional_rejects_the_current_value() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let (mut state, _) = activate_with(issuance::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP), standard_observation(policy::long()), SEED_RESERVE);
+    let (mut state, _) = activate_with(state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP), standard_observation(policy::long()), SEED_RESERVE);
 
     state.set_max_order_notional(MAX_ORDER_NOTIONAL);
 
@@ -766,7 +766,7 @@ fun max_order_notional_rejects_the_current_value() {
 fun max_order_notional_rejects_zero() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let (mut state, _) = activate_with(issuance::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP), standard_observation(policy::long()), SEED_RESERVE);
+    let (mut state, _) = activate_with(state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP), standard_observation(policy::long()), SEED_RESERVE);
 
     state.set_max_order_notional(0);
 
@@ -778,7 +778,7 @@ fun max_order_notional_rejects_zero() {
 fun active_state_begins_shutdown() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let (mut state, _) = activate_with(issuance::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP), standard_observation(policy::long()), SEED_RESERVE);
+    let (mut state, _) = activate_with(state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP), standard_observation(policy::long()), SEED_RESERVE);
 
     state.begin_shutdown();
 
@@ -1265,7 +1265,7 @@ fun deficits_accumulate_and_an_over_repaying_credit_splits() {
 
 /// The seed reserve may not exceed the ceiling for the opening target notional.
 #[test]
-#[expected_failure(abort_code = errors::ESeedReserveAboveCap, location = blast_boosts_core::issuance)]
+#[expected_failure(abort_code = errors::ESeedReserveAboveCap, location = blast_boosts_core::state)]
 fun a_seed_reserve_above_the_ceiling_is_rejected_before_any_order() {
     let fixture = start(domain::vault_issuer_role());
     // Ceiling 4% of the 2_000_000 target is 80_000; the seed asks for 100_000.
@@ -1388,7 +1388,7 @@ fun a_flat_position_keeps_the_reserve_for_the_position_that_reopens() {
 
 fun rebalance_state(fixture: &Fixture, side: PositionSide): State<Product> {
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let (state, _, _) = issuance::issue<Product>(&witness, vault_policy(side), 2_000_000, NAV_CAP)
+    let (state, _, _) = state::issue<Product>(&witness, vault_policy(side), 2_000_000, NAV_CAP)
         .activate(rebalance_observation(SEED_VENUE_EQUITY, SEED_NOTIONAL, side), SEED_RESERVE, 9, 6, REFERENCE_TIME_MS);
     state
 }
@@ -1463,7 +1463,7 @@ fun capped_issuance(fixture: &Fixture, max_reserve_bps: u64): Issuance<Product> 
         max_reserve_bps,
     );
 
-    issuance::issue<Product>(&witness, vault_policy, MAX_ORDER_NOTIONAL, NAV_CAP)
+    state::issue<Product>(&witness, vault_policy, MAX_ORDER_NOTIONAL, NAV_CAP)
 }
 
 fun capped_initialized_state(fixture: &Fixture, max_reserve_bps: u64): State<Product> {
@@ -1474,7 +1474,7 @@ fun capped_initialized_state(fixture: &Fixture, max_reserve_bps: u64): State<Pro
 fun issued(fixture: &Fixture, side: PositionSide): Issuance<Product> {
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
 
-    issuance::issue<Product>(&witness, vault_policy(side), MAX_ORDER_NOTIONAL, NAV_CAP)
+    state::issue<Product>(&witness, vault_policy(side), MAX_ORDER_NOTIONAL, NAV_CAP)
 }
 
 /// Activates the issuance on `spec`, at the fixture's decimals and clock; returns the state and seed NAV.
@@ -1633,12 +1633,11 @@ use blast_boosts_core::{
     accounting_math,
     domain_fixture,
     errors,
-    issuance::{Self, Issuance},
     lifecycle,
     observation::{Self, FundingSettlement, PositionObservation},
     policy::{Self, PositionSide, VaultPolicy},
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
-    state::{Self, State},
+    state::{Self, Issuance, State},
 };
 
 use std::unit_test::{assert_eq, destroy};

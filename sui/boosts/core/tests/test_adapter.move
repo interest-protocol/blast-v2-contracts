@@ -244,7 +244,7 @@ public fun issue_with(venue: Venue, vault_policy: VaultPolicy, max_order_notiona
     scenario.next_tx(ISSUER);
     let admin_cap = scenario.take_from_sender<AdminCap<BLAST_BOOSTS_CORE>>();
     let witness = authority.sign_in(&admin_cap);
-    let issuance = issuance::issue<Product>(&witness, vault_policy, max_order_notional, nav_cap);
+    let issuance = state::issue<Product>(&witness, vault_policy, max_order_notional, nav_cap);
 
     Issued { issuance, venue, authority, super_admin_cap, admin_cap, scenario }
 }
@@ -581,8 +581,7 @@ use blast_boosts_core::{
     policy::{Self, PositionSide, VaultPolicy},
     rebalance_math,
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
-    issuance::{Self, Issuance},
-    state::State,
+    state::{Self, Issuance, State},
 };
 
 use std::unit_test;

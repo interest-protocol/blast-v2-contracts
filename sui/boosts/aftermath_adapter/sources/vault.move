@@ -80,7 +80,7 @@ public fun issue<Product: drop, Collateral>(
         !type_name::with_original_ids<Product>().is_primitive(),
         blast_boosts_aftermath::errors::invalid_product_witness_type!(),
     );
-    let issuance = issuance::issue<Product>(admin_witness, vault_policy, max_order_notional, nav_cap);
+    let issuance = state::issue<Product>(admin_witness, vault_policy, max_order_notional, nav_cap);
     let (treasury_cap, metadata_cap) =
         blast_boost::new_currency<Product>(registry, symbol, name, description, icon_url, ctx);
     events::vault_issued<Product>(
@@ -482,8 +482,7 @@ use blast_boosts_core::{
     policy::{PositionSide, VaultPolicy},
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
     lifecycle::ShutdownReason,
-    issuance::{Self, Issuance},
-    state::{ActivePosition, MintPlan, RebalancePlan, RedemptionPlan, State},
+    state::{Self, ActivePosition, Issuance, MintPlan, RebalancePlan, RedemptionPlan, State},
 };
 
 use perpetuals::{account::Account, clearing_house::{ClearingHouse, SessionSummary}, registry::Registry};
