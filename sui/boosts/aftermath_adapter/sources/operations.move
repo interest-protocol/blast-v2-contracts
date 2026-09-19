@@ -277,7 +277,7 @@ public fun rebalance<Product, Collateral>(
             vault, account, clearing_house, base_oracle, collateral_oracle, &terms, order.order_base(), clock, ctx,
         );
         clearing_house = next_market;
-        vault.state().assert_execution(order.is_wide(), terms.base_price, fill.executed);
+        vault.state().assert_execution(order.is_emergency(), terms.base_price, fill.executed);
 
         let (after, after_checkpoint) = snapshot::capture(
             &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,

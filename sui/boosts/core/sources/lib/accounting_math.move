@@ -54,22 +54,22 @@ public(package) fun is_shareholder_nav_positive(
 
 /// Returns whether conservative accounting leverage is below a limit, without aborting.
 ///
-/// `position_collateral`, `venue_equity`, and `maintenance_reserve` use atomic
-/// collateral units. `leverage_limit_bps` uses leverage basis points, where
+/// `notional`, `venue_equity`, and `maintenance_reserve` use atomic
+/// collateral units. `max_leverage_bps` uses leverage basis points, where
 /// 10,000 is 1x. The ratio rounds up before the strict comparison: equality
 /// is unsafe. An unbacked reserve, zero shareholder NAV, or zero limit returns
 /// false. The comparison stays wide, so every `u64` input is supported without
 /// narrowing or aborting.
 public(package) fun is_accounting_leverage_below_limit(
-    position_collateral: u64,
+    notional: u64,
     venue_equity: u64,
     maintenance_reserve: u64,
-    leverage_limit_bps: u64,
+    max_leverage_bps: u64,
 ): bool {
     is_shareholder_nav_positive(venue_equity, maintenance_reserve)
-        && leverage_limit_bps > 0
-        && leverage_bps_up(position_collateral, venue_equity - maintenance_reserve)
-            < (leverage_limit_bps as u128)
+        && max_leverage_bps > 0
+        && leverage_bps_up(notional, venue_equity - maintenance_reserve)
+            < (max_leverage_bps as u128)
 }
 
 /// Returns whether base exceeds the minimum operation size, without aborting.
@@ -147,8 +147,8 @@ public(package) fun admin_share_down(fee: u64, admin_share_bps: u64): u64 {
 }
 
 /// Splits one ceiling-rounded fee; its allocation remainder belongs to reserve.
-public(package) fun fee_allocation(amount: u64, rate_bps: u64, admin_share_bps: u64): (u64, u64, u64) {
-    let fee = fee_up(amount, rate_bps);
+public(package) fun fee_allocation(amount: u64, fee_bps: u64, admin_share_bps: u64): (u64, u64, u64) {
+    let fee = fee_up(amount, fee_bps);
     let admin = admin_share_down(fee, admin_share_bps);
 
     (fee, admin, fee - admin)
@@ -237,16 +237,16 @@ public(package) fun allocated_mint_quote(
     reserve_before: u64,
     reserve_after: u64,
     expected_contribution: u64,
-    supply: u64,
-    minimum: u64,
+    shares_before: u64,
+    minimum_shares: u64,
 ): (u64, u64, u64) {
     let before = shareholder_nav(equity_before, reserve_before);
     let after = shareholder_nav(equity_after, reserve_after);
     assert!(after > before, blast_boosts_core::errors::nonpositive_contribution!());
 
     let contribution = (after - before).min(expected_contribution);
-    let shares = mint_quote(contribution, before, supply);
-    assert!(shares >= minimum, blast_boosts_core::errors::shares_out_below_minimum!());
+    let shares = mint_quote(contribution, before, shares_before);
+    assert!(shares >= minimum_shares, blast_boosts_core::errors::shares_out_below_minimum!());
 
     (after, contribution, shares)
 }
@@ -401,7 +401,7 @@ fun mint_base_bounds(
 /// without the position the credited contribution funds and aborts. The upper
 /// sum is checked for overflow; the lower sum cannot exceed it.
 public(package) fun assert_mint_base_within_bounds(
-    base_final: u64,
+    base_after: u64,
     expected_contribution: u64,
     actual_contribution: u64,
     base_before: u64,
@@ -422,11 +422,11 @@ public(package) fun assert_mint_base_within_bounds(
         .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
 
     assert!(
-        base_final <= max_final_base,
+        base_after <= max_final_base,
         blast_boosts_core::errors::mint_base_above_bound!(),
     );
     assert!(
-        base_final >= base_before + min_order_base,
+        base_after >= base_before + min_order_base,
         blast_boosts_core::errors::mint_base_below_bound!(),
     );
 }
@@ -436,7 +436,7 @@ public(package) fun assert_mint_base_within_bounds(
 /// Quotes a redemption from the burned shares, the price pair, and the supply.
 ///
 /// Returns `(gross, fee, net)` in atomic collateral units. With
-/// `S1 = shares_before - shares_burned`:
+/// `S1 = shares_before - shares_to_redeem`:
 ///
 /// ```text
 /// equity_keep = ceil(nav_before * S1 / shares_before)
@@ -456,7 +456,7 @@ public(package) fun assert_mint_base_within_bounds(
 /// Rounding the kept equity up gives
 /// `equity_keep / S1 >= nav_before / shares_before` (ADR 0064 I10).
 ///
-/// Preconditions: positive `nav_before`, `0 < shares_burned < shares_before`, a
+/// Preconditions: positive `nav_before`, `0 < shares_to_redeem < shares_before`, a
 /// fee rate below 10,000, `min(nav_after_sell, nav_before) > equity_keep`, and a
 /// positive net payout. The function enforces the share bound directly; the future locked
 /// seed makes the complete production supply unpresentable. A zero supply
@@ -467,7 +467,7 @@ public(package) fun assert_mint_base_within_bounds(
 /// `nav_before * S1` stays below `2^128` and `equity_keep <= nav_before`, so no
 /// result can leave the `u64` range.
 fun redemption_quote(
-    shares_burned: u64,
+    shares_to_redeem: u64,
     nav_before: u64,
     nav_after_sell: u64,
     shares_before: u64,
@@ -475,7 +475,7 @@ fun redemption_quote(
 ): (u64, u64, u64) {
     assert!(nav_before > 0, blast_boosts_core::errors::invalid_nav!());
     assert!(
-        shares_burned > 0 && shares_burned < shares_before,
+        shares_to_redeem > 0 && shares_to_redeem < shares_before,
         blast_boosts_core::errors::invalid_share_amount!(),
     );
     assert!(
@@ -483,7 +483,7 @@ fun redemption_quote(
         blast_boosts_core::errors::invalid_fee_bps!(),
     );
 
-    let equity_keep = nav_before.mul_div_ceil(shares_before - shares_burned, shares_before);
+    let equity_keep = nav_before.mul_div_ceil(shares_before - shares_to_redeem, shares_before);
     let claimable = nav_after_sell.min(nav_before);
     assert!(
         claimable > equity_keep,
@@ -516,7 +516,7 @@ fun redemption_quote(
 /// The later state transition must still authenticate both venue-equity values,
 /// withdraw exactly `net`, and verify final venue equity and reserve atomically.
 public(package) fun redemption_accounting_quote(
-    shares_burned: u64,
+    shares_to_redeem: u64,
     venue_equity_before: u64,
     venue_equity_after_sell: u64,
     reserve_before: u64,
@@ -526,7 +526,7 @@ public(package) fun redemption_accounting_quote(
     let nav_before = shareholder_nav(venue_equity_before, reserve_before);
     let nav_after_sell = shareholder_nav(venue_equity_after_sell, reserve_before);
     let (gross, fee, net) = redemption_quote(
-        shares_burned,
+        shares_to_redeem,
         nav_before,
         nav_after_sell,
         shares_before,
@@ -539,7 +539,7 @@ public(package) fun redemption_accounting_quote(
 /// Returns the permitted absolute final base range for a redemption sell.
 ///
 /// Returns `(min_final_base, max_final_base)`. With
-/// `S1 = shares_before - shares_burned`:
+/// `S1 = shares_before - shares_to_redeem`:
 ///
 /// ```text
 /// max_final_base = floor(base_before * S1 / shares_before)
@@ -575,20 +575,20 @@ public(package) fun redemption_accounting_quote(
 /// `base_before < shares_before`. `is_base_above_min_order` is the
 /// non-aborting predicate the health transition uses to observe that state.
 ///
-/// Preconditions: `0 < shares_burned < shares_before`, positive `lot_size`,
+/// Preconditions: `0 < shares_to_redeem < shares_before`, positive `lot_size`,
 /// and positive `min_order_lots`. A flat core returns `(0, 0)` and must
 /// stay flat. Guard order is the share bound, `lot_size`, `min_order_lots`,
 /// then the minimum-lot bound. The reduction intermediate stays below `2^65`
 /// and is capped at `base_before`, so no result can leave the `u64` range.
 public(package) fun redemption_base_bounds(
-    shares_burned: u64,
+    shares_to_redeem: u64,
     base_before: u64,
     shares_before: u64,
     lot_size: u64,
     min_order_lots: u64,
 ): (u64, u64) {
     assert!(
-        shares_burned > 0 && shares_burned < shares_before,
+        shares_to_redeem > 0 && shares_to_redeem < shares_before,
         blast_boosts_core::errors::invalid_share_amount!(),
     );
     assert!(
@@ -601,7 +601,7 @@ public(package) fun redemption_base_bounds(
     );
 
     let max_final_base = base_before.mul_div(
-        shares_before - shares_burned,
+        shares_before - shares_to_redeem,
         shares_before,
     );
     let required_reduction = base_before - max_final_base;
@@ -629,15 +629,15 @@ public(package) fun redemption_base_bounds(
 /// redemption. A final base below `min_final_base` over-reduces by a lot or
 /// more without reaching flat and also aborts.
 public(package) fun assert_redemption_base_within_bounds(
-    base_final: u64,
-    shares_burned: u64,
+    base_after: u64,
+    shares_to_redeem: u64,
     base_before: u64,
     shares_before: u64,
     lot_size: u64,
     min_order_lots: u64,
 ) {
     let (min_final_base, max_final_base) = redemption_base_bounds(
-        shares_burned,
+        shares_to_redeem,
         base_before,
         shares_before,
         lot_size,
@@ -645,11 +645,11 @@ public(package) fun assert_redemption_base_within_bounds(
     );
 
     assert!(
-        base_final <= max_final_base,
+        base_after <= max_final_base,
         blast_boosts_core::errors::redemption_under_reduced!(),
     );
     assert!(
-        base_final >= min_final_base,
+        base_after >= min_final_base,
         blast_boosts_core::errors::redemption_over_reduced!(),
     );
 }
@@ -733,8 +733,8 @@ public fun mint_base_bounds_for_testing(expected_contribution: u64, actual_contr
 }
 
 #[test_only]
-public fun redemption_quote_for_testing(shares_burned: u64, nav_before: u64, nav_after_sell: u64, shares_before: u64, redeem_fee_bps: u64): (u64, u64, u64) {
-    redemption_quote(shares_burned, nav_before, nav_after_sell, shares_before, redeem_fee_bps)
+public fun redemption_quote_for_testing(shares_to_redeem: u64, nav_before: u64, nav_after_sell: u64, shares_before: u64, redeem_fee_bps: u64): (u64, u64, u64) {
+    redemption_quote(shares_to_redeem, nav_before, nav_after_sell, shares_before, redeem_fee_bps)
 }
 
 // === Imports ===

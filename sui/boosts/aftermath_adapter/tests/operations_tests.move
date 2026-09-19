@@ -575,8 +575,8 @@ fun completed_rebalance_changes_only_holder_equity_and_the_accepted_checkpoint()
     let order = vault.state().next_rebalance_order(&plan);
     let base = order.order_base();
     assert_eq!(base, 250_000);
-    assert!(!order.is_increase() && order.is_wide());
-    vault.state().assert_execution(order.is_wide(), PRICE, PRICE);
+    assert!(!order.is_increase() && order.is_emergency());
+    vault.state().assert_execution(order.is_emergency(), PRICE, PRICE);
     let after = observation::new_position(999, 2_750_000, LOT_SIZE, policy::long(),
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,

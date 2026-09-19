@@ -22,7 +22,7 @@ fun the_smallest_strictly_ordered_policy_is_preserved() {
     let value = policy::new_rebalance_policy(0, 1, 2, 3, 0, 0, 1);
 
     assert_eq!(value.rebalance_below_bps(), 0);
-    assert_eq!(value.target_bps(), 1);
+    assert_eq!(value.target_leverage_bps(), 1);
     assert_eq!(value.rebalance_above_bps(), 2);
     assert_eq!(value.max_leverage_bps(), 3);
     assert_eq!(value.max_slippage_bps(), 0);
@@ -53,7 +53,7 @@ fun copied_policy_preserves_every_field() {
     let copied = value;
 
     assert_eq!(copied.rebalance_below_bps(), value.rebalance_below_bps());
-    assert_eq!(copied.target_bps(), value.target_bps());
+    assert_eq!(copied.target_leverage_bps(), value.target_leverage_bps());
     assert_eq!(copied.rebalance_above_bps(), value.rebalance_above_bps());
     assert_eq!(copied.max_leverage_bps(), value.max_leverage_bps());
     assert_eq!(copied.max_slippage_bps(), value.max_slippage_bps());
@@ -69,7 +69,7 @@ fun every_strictly_ordered_small_tuple_is_accepted_and_preserved() {
                 (rebalance_above + 1).range_do!(8, |max_leverage| {
                     let value = policy::new_rebalance_policy(rebalance_below, target, rebalance_above, max_leverage, 0, 0, 1);
                     assert_eq!(value.rebalance_below_bps(), rebalance_below);
-                    assert_eq!(value.target_bps(), target);
+                    assert_eq!(value.target_leverage_bps(), target);
                     assert_eq!(value.rebalance_above_bps(), rebalance_above);
                     assert_eq!(value.max_leverage_bps(), max_leverage);
                 });

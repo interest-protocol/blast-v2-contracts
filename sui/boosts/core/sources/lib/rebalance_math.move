@@ -38,15 +38,15 @@ public(package) fun base_for_notional_down(
 
 /// Reserves adverse execution first, then the authenticated fee on that adverse quote.
 /// Each session calls this separately: rounding a multi-order total is not equivalent.
-fun execution_cost_up(notional: u64, fee_bps: u64, slippage_bps: u64): u128 {
+fun execution_cost_up(notional: u64, venue_fee_bps: u64, max_slippage_bps: u64): u128 {
     assert!(
-        fee_bps <= constants::basis_points_denominator!() && slippage_bps < constants::basis_points_denominator!(),
+        venue_fee_bps <= constants::basis_points_denominator!() && max_slippage_bps < constants::basis_points_denominator!(),
         blast_boosts_core::errors::venue_fee_unusable!(),
     );
 
     let denominator = constants::basis_points_denominator!() as u128;
-    let adverse = ((notional as u128) * (slippage_bps as u128)).div_ceil(denominator);
-    let fee = (((notional as u128) + adverse) * (fee_bps as u128)).div_ceil(denominator);
+    let adverse = ((notional as u128) * (max_slippage_bps as u128)).div_ceil(denominator);
+    let fee = (((notional as u128) + adverse) * (venue_fee_bps as u128)).div_ceil(denominator);
 
     adverse + fee
 }
@@ -54,13 +54,13 @@ fun execution_cost_up(notional: u64, fee_bps: u64, slippage_bps: u64): u128 {
 /// Finds the maximal next whole-lot increase under both the live order cap and post-cost target.
 /// The adapter must recompute from each accepted session and enforce its fixed work bound.
 public(package) fun increase_base_down(
-    nav: u64, notional: u64, target_bps: u64, base_price: u64, collateral_price: u64,
-    lot_size: u64, order_cap: u64, fee_bps: u64, slippage_bps: u64, base_unit: u64, collateral_unit: u64,
+    nav: u64, notional: u64, target_leverage_bps: u64, base_price: u64, collateral_price: u64,
+    lot_size: u64, max_order_notional: u64, venue_fee_bps: u64, max_slippage_bps: u64, base_unit: u64, collateral_unit: u64,
 ): u64 {
-    let target = accounting_math::target_notional_down(nav, target_bps);
+    let target = accounting_math::target_notional_down(nav, target_leverage_bps);
     if (target <= notional) return 0;
 
-    let headroom = (target - notional).min(order_cap);
+    let headroom = (target - notional).min(max_order_notional);
     let maximum = base_for_notional_down(headroom, base_price, collateral_price, lot_size, base_unit, collateral_unit);
     let mut low = 0;
     let mut high = maximum / lot_size;
@@ -68,10 +68,10 @@ public(package) fun increase_base_down(
     while (low < high) {
         let candidate = low + (high - low).div_ceil(2);
         let value = oracle_notional_up(candidate * lot_size, base_price, collateral_price, base_unit, collateral_unit);
-        let cost = execution_cost_up(value, fee_bps, slippage_bps);
+        let cost = execution_cost_up(value, venue_fee_bps, max_slippage_bps);
         let within_target = (nav as u128) > cost
             && ((notional as u128) + (value as u128)) * (constants::basis_points_denominator!() as u128)
-                <= (target_bps as u128) * ((nav as u128) - cost);
+                <= (target_leverage_bps as u128) * ((nav as u128) - cost);
 
         if (within_target) {
             low = candidate;
@@ -84,13 +84,13 @@ public(package) fun increase_base_down(
 }
 
 /// Returns whether leverage rose from one reading to the next, comparing `notional / nav` exactly.
-public(package) fun leverage_rose(before_notional: u64, before_nav: u64, after_notional: u64, after_nav: u64): bool {
-    (after_notional as u128) * (before_nav as u128) > (before_notional as u128) * (after_nav as u128)
+public(package) fun leverage_rose(notional_before: u64, nav_before: u64, notional_after: u64, nav_after: u64): bool {
+    (notional_after as u128) * (nav_before as u128) > (notional_before as u128) * (nav_after as u128)
 }
 
 /// Returns whether a rebalance moved leverage enough to be worth executing.
 ///
-/// Leverage distance is `|notional * 10_000 / nav - target_bps|`. To avoid
+/// Leverage distance is `|notional * 10_000 / nav - target_leverage_bps|`. To avoid
 /// division, each distance is kept scaled by its own NAV, so comparing the
 /// before and after distances cross-multiplies by the other side's NAV.
 /// Sufficient means either the remaining gap is within one lot of notional
@@ -99,27 +99,27 @@ public(package) fun leverage_rose(before_notional: u64, before_nav: u64, after_n
 /// Neither clause admits a landing farther from target than the start, so the
 /// predicate stays safe even if a caller sized past the target.
 public(package) fun reduction_is_sufficient(
-    before_notional: u64, before_nav: u64, after_notional: u64, after_nav: u64,
-    target_bps: u64, min_leverage_improvement_bps: u64, one_lot_notional: u64,
+    notional_before: u64, nav_before: u64, notional_after: u64, nav_after: u64,
+    target_leverage_bps: u64, min_leverage_improvement_bps: u64, one_lot_notional: u64,
 ): bool {
-    assert!(before_nav > 0 && after_nav > 0, blast_boosts_core::errors::invalid_nav!());
+    assert!(nav_before > 0 && nav_after > 0, blast_boosts_core::errors::invalid_nav!());
 
     let bps = constants::basis_points_denominator!() as u256;
-    let before_nav = before_nav as u256;
-    let after_nav = after_nav as u256;
-    let target = target_bps as u256;
+    let nav_before = nav_before as u256;
+    let nav_after = nav_after as u256;
+    let target = target_leverage_bps as u256;
 
     // Each distance is in bps, multiplied through by its own NAV.
-    let before_distance = ((before_notional as u256) * bps).diff(target * before_nav);
-    let after_distance = ((after_notional as u256) * bps).diff(target * after_nav);
+    let before_distance = ((notional_before as u256) * bps).diff(target * nav_before);
+    let after_distance = ((notional_after as u256) * bps).diff(target * nav_after);
     // Both distances over a common denominator, so they compare directly.
-    let scaled_before = before_distance * after_nav;
-    let scaled_after = after_distance * before_nav;
+    let scaled_before = before_distance * nav_after;
+    let scaled_after = after_distance * nav_before;
 
     let not_farther_than_before = scaled_after <= scaled_before;
     let within_one_lot_of_target = after_distance <= (one_lot_notional as u256) * bps;
     let improved_by_minimum =
-        scaled_before >= scaled_after + (min_leverage_improvement_bps as u256) * before_nav * after_nav;
+        scaled_before >= scaled_after + (min_leverage_improvement_bps as u256) * nav_before * nav_after;
 
     (within_one_lot_of_target && not_farther_than_before) || improved_by_minimum
 }
@@ -127,8 +127,8 @@ public(package) fun reduction_is_sufficient(
 // === Test-Only Functions ===
 
 #[test_only]
-public fun execution_cost_up_for_testing(notional: u64, fee_bps: u64, slippage_bps: u64): u128 {
-    execution_cost_up(notional, fee_bps, slippage_bps)
+public fun execution_cost_up_for_testing(notional: u64, venue_fee_bps: u64, max_slippage_bps: u64): u128 {
+    execution_cost_up(notional, venue_fee_bps, max_slippage_bps)
 }
 
 // === Imports ===

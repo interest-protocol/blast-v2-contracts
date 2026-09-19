@@ -52,7 +52,7 @@ fun a_complete_long_policy_is_composed_and_preserved() {
     let price_policy = vault_policy.price_policy();
 
     assert_eq!(vault_policy.side(), policy::long());
-    assert_eq!(rebalance.target_bps(), 3);
+    assert_eq!(rebalance.target_leverage_bps(), 3);
     assert_eq!(price_policy.max_price_age_ms(), 1);
     assert_eq!(vault_policy.initial_mint_fee_bps(), 0);
     assert_eq!(vault_policy.initial_redeem_fee_bps(), 0);

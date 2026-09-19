@@ -304,9 +304,9 @@ value, reads no source, and binds no source identity.
 
 | Gate | Rule | Applies to |
 | --- | --- | --- |
-| `assert_price_fresh` | `published_at_ms` lies in the closed interval `[reference - max_price_age_ms, reference + max_price_ahead_ms]` | each share-pricing source, so every priced operation and every risk increase |
+| `assert_price_fresh` | `publish_time_ms` lies in the closed interval `[now_ms - max_price_age_ms, now_ms + max_price_ahead_ms]` | each share-pricing source, so every priced operation and every risk increase |
 | `assert_confidence_within_bound` | `confidence * 10_000 <= max_confidence_bps * price` | each share-pricing source, so every priced operation and every risk increase |
-| `assert_mark_within_oracle_divergence` | `abs(mark - index) * 10_000 <= max_mark_divergence_bps * index` | venue margin safety only; never share pricing, NAV, or accounting leverage |
+| `assert_mark_within_oracle_divergence` | `abs(mark_price - oracle_price) * 10_000 <= max_mark_divergence_bps * oracle_price` | venue margin safety only; never share pricing, NAV, or accounting leverage |
 
 Share pricing stays base-index plus collateral-oracle price. The venue mark
 is only the separate margin-safety and divergence check, so the boundary script

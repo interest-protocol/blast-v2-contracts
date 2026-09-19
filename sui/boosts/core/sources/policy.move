@@ -23,7 +23,7 @@ public enum PositionSide has copy, drop, store {
 /// module does not select production values.
 public struct RebalancePolicy has copy, drop, store {
     rebalance_below_bps: u64,
-    target_bps: u64,
+    target_leverage_bps: u64,
     rebalance_above_bps: u64,
     max_leverage_bps: u64,
     max_slippage_bps: u64,
@@ -98,7 +98,7 @@ public fun short(): PositionSide {
 /// must be positive.
 public fun new_rebalance_policy(
     rebalance_below_bps: u64,
-    target_bps: u64,
+    target_leverage_bps: u64,
     rebalance_above_bps: u64,
     max_leverage_bps: u64,
     max_slippage_bps: u64,
@@ -106,8 +106,8 @@ public fun new_rebalance_policy(
     min_leverage_improvement_bps: u64,
 ): RebalancePolicy {
     assert!(
-        rebalance_below_bps < target_bps
-            && target_bps < rebalance_above_bps
+        rebalance_below_bps < target_leverage_bps
+            && target_leverage_bps < rebalance_above_bps
             && rebalance_above_bps < max_leverage_bps
             && max_leverage_bps <= constants::leverage_ceiling_bps!(),
         blast_boosts_core::errors::invalid_rebalance_policy!(),
@@ -128,7 +128,7 @@ public fun new_rebalance_policy(
 
     RebalancePolicy {
         rebalance_below_bps,
-        target_bps,
+        target_leverage_bps,
         rebalance_above_bps,
         max_leverage_bps,
         max_slippage_bps,
@@ -262,8 +262,8 @@ public fun new_vault_policy(
 
 // --- Rebalance Policy ---
 
-public(package) fun target_bps(self: &RebalancePolicy): u64 {
-    self.target_bps
+public(package) fun target_leverage_bps(self: &RebalancePolicy): u64 {
+    self.target_leverage_bps
 }
 
 public(package) fun max_leverage_bps(self: &RebalancePolicy): u64 {
@@ -303,9 +303,9 @@ public(package) fun is_leverage_within_band(self: &RebalancePolicy, notional: u6
     !self.is_leverage_below_band(notional, nav) && !self.is_leverage_above_band(notional, nav)
 }
 
-/// Returns whether leverage is at or below target: `notional * 10_000 <= nav * target_bps`.
+/// Returns whether leverage is at or below target: `notional * 10_000 <= nav * target_leverage_bps`.
 public(package) fun is_leverage_at_most_target(self: &RebalancePolicy, notional: u64, nav: u64): bool {
-    scale_by_denominator(notional) <= (nav as u128) * (self.target_bps as u128)
+    scale_by_denominator(notional) <= (nav as u128) * (self.target_leverage_bps as u128)
 }
 
 /// Returns whether leverage is strictly below the hard cap: `notional * 10_000 < nav * max_leverage_bps`.
@@ -321,32 +321,32 @@ public(package) fun is_leverage_above_max(self: &RebalancePolicy, notional: u64,
     scale_by_denominator(notional) > (nav as u128) * (self.max_leverage_bps as u128)
 }
 
-/// Returns whether an executed value stays within max slippage of its reference.
+/// Returns whether an executed price stays within max slippage of its reference price.
 ///
 /// Both values share one unit and scale; the gate is
-/// `|executed - reference| * 10_000 <= max_slippage_bps * reference`,
-/// cross-multiplied through `u128`. A zero reference returns false. Risk
+/// `|executed_price - reference_price| * 10_000 <= max_slippage_bps * reference_price`,
+/// cross-multiplied through `u128`. A zero reference price returns false. Risk
 /// increase and every ordinary rebalance use this bound.
 fun is_execution_within_max_slippage(
     self: &RebalancePolicy,
-    reference: u64,
-    executed: u64,
+    reference_price: u64,
+    executed_price: u64,
 ): bool {
-    is_within_relative_tolerance(self.max_slippage_bps, reference, executed)
+    is_within_relative_tolerance(self.max_slippage_bps, reference_price, executed_price)
 }
 
-/// Rejects an execution outside max slippage; a zero reference aborts first.
+/// Rejects an execution outside max slippage; a zero reference price aborts first.
 public(package) fun assert_execution_within_max_slippage(
     self: &RebalancePolicy,
-    reference: u64,
-    executed: u64,
+    reference_price: u64,
+    executed_price: u64,
 ) {
     assert!(
-        reference > 0,
+        reference_price > 0,
         blast_boosts_core::errors::invalid_price!(),
     );
     assert!(
-        self.is_execution_within_max_slippage(reference, executed),
+        self.is_execution_within_max_slippage(reference_price, executed_price),
         blast_boosts_core::errors::execution_outside_max_slippage!(),
     );
 }
@@ -358,28 +358,28 @@ public(package) fun assert_execution_within_max_slippage(
 /// does not guarantee executable liquidity or successful deleveraging.
 fun is_execution_within_emergency_max_slippage(
     self: &RebalancePolicy,
-    reference: u64,
-    executed: u64,
+    reference_price: u64,
+    executed_price: u64,
 ): bool {
     is_within_relative_tolerance(
         self.emergency_max_slippage_bps,
-        reference,
-        executed,
+        reference_price,
+        executed_price,
     )
 }
 
-/// Rejects an execution outside emergency max slippage; a zero reference aborts first.
+/// Rejects an execution outside emergency max slippage; a zero reference price aborts first.
 public(package) fun assert_execution_within_emergency_max_slippage(
     self: &RebalancePolicy,
-    reference: u64,
-    executed: u64,
+    reference_price: u64,
+    executed_price: u64,
 ) {
     assert!(
-        reference > 0,
+        reference_price > 0,
         blast_boosts_core::errors::invalid_price!(),
     );
     assert!(
-        self.is_execution_within_emergency_max_slippage(reference, executed),
+        self.is_execution_within_emergency_max_slippage(reference_price, executed_price),
         blast_boosts_core::errors::execution_outside_max_slippage!(),
     );
 }
@@ -407,19 +407,19 @@ public(package) fun assert_nav_cap_valid(self: &RebalancePolicy, nav_cap: u64) {
 /// a stale or future-stamped source without changing lifecycle.
 fun is_price_fresh(
     self: &PricePolicy,
-    published_at_ms: u64,
+    publish_time_ms: u64,
     now_ms: u64,
 ): bool {
-    if (published_at_ms > now_ms) {
-        published_at_ms - now_ms <= self.max_price_ahead_ms
+    if (publish_time_ms > now_ms) {
+        publish_time_ms - now_ms <= self.max_price_ahead_ms
     } else {
-        now_ms - published_at_ms <= self.max_price_age_ms
+        now_ms - publish_time_ms <= self.max_price_age_ms
     }
 }
 
 /// Rejects a source update outside the two-sided freshness window.
 ///
-/// `published_at_ms` is the source's own update time and `now_ms` is
+/// `publish_time_ms` is the source's own update time and `now_ms` is
 /// the operation's single on-chain time reading, both in milliseconds. An
 /// update older than the staleness budget aborts as stale, and one stamped
 /// further ahead than the skew budget aborts as future-dated. The two failures
@@ -432,12 +432,12 @@ fun is_price_fresh(
 /// updates.
 public(package) fun assert_price_fresh(
     self: &PricePolicy,
-    published_at_ms: u64,
+    publish_time_ms: u64,
     now_ms: u64,
 ) {
-    let fresh = self.is_price_fresh(published_at_ms, now_ms);
+    let fresh = self.is_price_fresh(publish_time_ms, now_ms);
 
-    if (published_at_ms > now_ms) {
+    if (publish_time_ms > now_ms) {
         assert!(fresh, blast_boosts_core::errors::future_price!());
     } else {
         assert!(fresh, blast_boosts_core::errors::stale_price!());
@@ -498,13 +498,13 @@ public(package) fun assert_confidence_within_bound(
 /// oracle price because the divergence bound stays below 10,000 basis points.
 fun is_mark_within_oracle_divergence(
     self: &PricePolicy,
-    mark: u64,
-    index: u64,
+    mark_price: u64,
+    oracle_price: u64,
 ): bool {
-    index > 0
-        && (mark.diff(index) as u128)
+    oracle_price > 0
+        && (mark_price.diff(oracle_price) as u128)
             * (constants::basis_points_denominator!() as u128)
-            <= (self.max_mark_divergence_bps as u128) * (index as u128)
+            <= (self.max_mark_divergence_bps as u128) * (oracle_price as u128)
 }
 
 /// Rejects a venue mark that diverges too far from the base oracle.
@@ -525,15 +525,15 @@ fun is_mark_within_oracle_divergence(
 /// Guard order is the positive oracle price, then the divergence bound.
 public(package) fun assert_mark_within_oracle_divergence(
     self: &PricePolicy,
-    mark: u64,
-    index: u64,
+    mark_price: u64,
+    oracle_price: u64,
 ) {
     assert!(
-        index > 0,
+        oracle_price > 0,
         blast_boosts_core::errors::invalid_price!(),
     );
     assert!(
-        self.is_mark_within_oracle_divergence(mark, index),
+        self.is_mark_within_oracle_divergence(mark_price, oracle_price),
         blast_boosts_core::errors::mark_oracle_divergence_exceeds_bound!(),
     );
 }
@@ -600,16 +600,16 @@ fun scale_by_denominator(notional: u64): u128 {
     (notional as u128) * (constants::basis_points_denominator!() as u128)
 }
 
-/// Returns whether `executed` is within `slippage_bps` of a positive `reference`.
+/// Returns whether `executed_price` is within `slippage_bps` of a positive `reference_price`.
 fun is_within_relative_tolerance(
     slippage_bps: u64,
-    reference: u64,
-    executed: u64,
+    reference_price: u64,
+    executed_price: u64,
 ): bool {
-    reference > 0
-        && (executed.diff(reference) as u128)
+    reference_price > 0
+        && (executed_price.diff(reference_price) as u128)
             * (constants::basis_points_denominator!() as u128)
-            <= (slippage_bps as u128) * (reference as u128)
+            <= (slippage_bps as u128) * (reference_price as u128)
 }
 
 // === Test-Only Functions ===
@@ -671,18 +671,18 @@ public fun is_leverage_above_band_for_testing(self: &RebalancePolicy, notional: 
 }
 
 #[test_only]
-public fun is_execution_within_max_slippage_for_testing(self: &RebalancePolicy, reference: u64, executed: u64): bool {
-    self.is_execution_within_max_slippage(reference, executed)
+public fun is_execution_within_max_slippage_for_testing(self: &RebalancePolicy, reference_price: u64, executed_price: u64): bool {
+    self.is_execution_within_max_slippage(reference_price, executed_price)
 }
 
 #[test_only]
-public fun is_execution_within_emergency_max_slippage_for_testing(self: &RebalancePolicy, reference: u64, executed: u64): bool {
-    self.is_execution_within_emergency_max_slippage(reference, executed)
+public fun is_execution_within_emergency_max_slippage_for_testing(self: &RebalancePolicy, reference_price: u64, executed_price: u64): bool {
+    self.is_execution_within_emergency_max_slippage(reference_price, executed_price)
 }
 
 #[test_only]
-public fun is_price_fresh_for_testing(self: &PricePolicy, published_at_ms: u64, now_ms: u64): bool {
-    self.is_price_fresh(published_at_ms, now_ms)
+public fun is_price_fresh_for_testing(self: &PricePolicy, publish_time_ms: u64, now_ms: u64): bool {
+    self.is_price_fresh(publish_time_ms, now_ms)
 }
 
 #[test_only]
@@ -691,8 +691,8 @@ public fun is_confidence_within_bound_for_testing(self: &PricePolicy, confidence
 }
 
 #[test_only]
-public fun is_mark_within_oracle_divergence_for_testing(self: &PricePolicy, mark: u64, index: u64): bool {
-    self.is_mark_within_oracle_divergence(mark, index)
+public fun is_mark_within_oracle_divergence_for_testing(self: &PricePolicy, mark_price: u64, oracle_price: u64): bool {
+    self.is_mark_within_oracle_divergence(mark_price, oracle_price)
 }
 
 // === Imports ===

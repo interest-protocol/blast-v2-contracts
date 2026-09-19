@@ -456,7 +456,7 @@ public fun rebalance(self: &mut Vault): u64 {
         if (order.order_base() == 0) break;
         self.state.assert_order_notional_allowed(self.venue.notional_of(order.order_base()));
         let (executed, filled) = self.venue.fill(order.order_base(), order.is_increase());
-        self.state.assert_execution(order.is_wide(), base_price, executed);
+        self.state.assert_execution(order.is_emergency(), base_price, executed);
         self.state.assert_order_notional_allowed(self.venue.notional_of(filled));
         self.state.accept_rebalance_fill(&mut plan, order, self.venue.observe(), filled, now_ms);
         orders = orders + 1;

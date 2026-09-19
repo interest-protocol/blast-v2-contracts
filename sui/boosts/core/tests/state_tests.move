@@ -376,7 +376,7 @@ fun rebalance_increase_reserves_cost_and_keeps_buffer_unchanged() {
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 1_000_000, policy::long()), 10, REFERENCE_TIME_MS);
     let order = state.next_rebalance_order(&plan);
     assert_eq!(order.order_base(), 978_452_000);
-    assert!(order.is_increase() && !order.is_wide());
+    assert!(order.is_increase() && !order.is_emergency());
     let filled = order.order_base();
     state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_089_226, 1_978_452, policy::long()), filled, REFERENCE_TIME_MS);
     assert_eq!(state.next_rebalance_order(&plan).order_base(), 0);
@@ -401,12 +401,12 @@ fun rebalance_short_emergency_reduction_stops_once_leverage_is_below_the_cap() {
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_200_000, policy::short()), 10, REFERENCE_TIME_MS);
     let order = state.next_rebalance_order(&plan);
     assert_eq!(order.order_base(), 1_200_000_000);
-    assert!(!order.is_increase() && order.is_wide());
-    state.assert_execution(order.is_wide(), 100, 104);
+    assert!(!order.is_increase() && order.is_emergency());
+    state.assert_execution(order.is_emergency(), 100, 104);
     state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_099_500, 2_900_000, policy::short()), 300_000_000, REFERENCE_TIME_MS);
     let next = state.next_rebalance_order(&plan);
     assert_eq!(next.order_base(), 0);
-    assert!(!next.is_wide());
+    assert!(!next.is_emergency());
     state.complete_rebalance(plan);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     state.destroy_for_testing();
@@ -427,7 +427,7 @@ fun rebalance_one_rational_atom_below_lower_is_not_hidden_by_report_rounding() {
     let state = rebalance_state(&fixture, policy::long());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_001, 1_600_001, policy::long()), 10, REFERENCE_TIME_MS);
     let order = state.next_rebalance_order(&plan);
-    assert!(order.order_base() > 0 && order.is_increase() && !order.is_wide());
+    assert!(order.order_base() > 0 && order.is_increase() && !order.is_emergency());
     state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_100_001, 1_600_002, policy::long()), 1_000, REFERENCE_TIME_MS);
     state.complete_rebalance(plan);
     state.destroy_for_testing();
@@ -466,7 +466,7 @@ fun rebalance_hard_threshold_equality_does_not_enable_wide_tolerance() {
     let fixture = start(domain::vault_issuer_role());
     let state = rebalance_state(&fixture, policy::long());
     let plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_TIME_MS);
-    state.assert_execution(state.next_rebalance_order(&plan).is_wide(), 100, 102);
+    state.assert_execution(state.next_rebalance_order(&plan).is_emergency(), 100, 102);
     state.complete_rebalance(plan);
     state.destroy_for_testing();
     destroy(fixture);
