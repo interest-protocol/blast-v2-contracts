@@ -486,7 +486,7 @@ fun activate_at<Product>(self: &mut Fixture, issuance: VaultIssuance<Product, SU
     );
     let venue_account = fixture_venue_account(self.scenario.ctx());
     let (vault, seed_nav, _) = issuance.activate(
-        seeded, SEED_RESERVE, 6, venue_account, REFERENCE_TIME_MS, self.scenario.ctx(),
+        seeded, SEED_RESERVE, venue_account, REFERENCE_TIME_MS, self.scenario.ctx(),
     );
     (vault, seed_nav)
 }

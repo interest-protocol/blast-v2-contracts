@@ -365,17 +365,20 @@ public(package) fun classify_change(
 
 /// Nets authenticated settlement edges before rounding or buffer allocation.
 /// No gross ordering inside one Blast checkpoint is an entitlement boundary.
-public(package) fun net_funding(first: CheckpointChange, second: CheckpointChange): CheckpointChange {
-    if (first.is_unexpected() || second.is_unexpected()) return CheckpointChange::Unexpected;
+public(package) fun net_funding(preexisting: CheckpointChange, settled: CheckpointChange): CheckpointChange {
+    if (preexisting.is_unexpected() || settled.is_unexpected()) return CheckpointChange::Unexpected;
 
-    let (first_cost, first_amount) = (first.is_cost(), first.raw_amount());
-    let (second_cost, second_amount) = (second.is_cost(), second.raw_amount());
-    let (is_cost, amount) = if (first_cost == second_cost) {
-        (first_cost, first_amount.checked_add(second_amount).destroy_or!(return CheckpointChange::Unexpected))
-    } else if (first_amount >= second_amount) {
-        (first_cost, first_amount - second_amount)
+    let (preexisting_is_cost, preexisting_amount) = (preexisting.is_cost(), preexisting.raw_amount());
+    let (settled_is_cost, settled_amount) = (settled.is_cost(), settled.raw_amount());
+    let (is_cost, amount) = if (preexisting_is_cost == settled_is_cost) {
+        (
+            preexisting_is_cost,
+            preexisting_amount.checked_add(settled_amount).destroy_or!(return CheckpointChange::Unexpected),
+        )
+    } else if (preexisting_amount >= settled_amount) {
+        (preexisting_is_cost, preexisting_amount - settled_amount)
     } else {
-        (second_cost, second_amount - first_amount)
+        (settled_is_cost, settled_amount - preexisting_amount)
     };
 
     if (amount == 0) {
@@ -629,9 +632,9 @@ fun assert_signed_cash_change(
 }
 
 /// Checks every unrelated field after the caller proves the signed collateral delta.
-fun assert_cash_checkpoint(before: &Checkpoint, after: &Checkpoint, free: u64) {
+fun assert_cash_checkpoint(before: &Checkpoint, after: &Checkpoint, free_collateral: u64) {
     let mut expected = *before;
-    expected.free_collateral = free;
+    expected.free_collateral = free_collateral;
     expected.allocated_collateral = after.allocated_collateral;
 
     assert!(&expected == after, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
@@ -694,16 +697,19 @@ fun allocated_delta(before: &Checkpoint, after: &Checkpoint): CheckpointChange {
 }
 
 /// Computes after-minus-before in sign/magnitude facts, including a zero crossing.
-fun signed_delta(before_negative: bool, before: u256, after_negative: bool, after: u256): CheckpointChange {
+fun signed_delta(
+    before_negative: bool, before_magnitude: u256, after_negative: bool, after_magnitude: u256,
+): CheckpointChange {
     if (before_negative == after_negative) {
-        if (before == after) return CheckpointChange::Unchanged;
-        let credit = if (before_negative) { before > after } else { after > before };
-        let amount = before.diff(after);
+        if (before_magnitude == after_magnitude) return CheckpointChange::Unchanged;
+        let credit =
+            if (before_negative) { before_magnitude > after_magnitude } else { after_magnitude > before_magnitude };
+        let amount = before_magnitude.diff(after_magnitude);
 
         if (credit) { CheckpointChange::FundingCredit(amount) } else { CheckpointChange::FundingCost(amount) }
     } else {
-        if (before > std::u256::max_value!() - after) return CheckpointChange::Unexpected;
-        let amount = before + after;
+        if (before_magnitude > std::u256::max_value!() - after_magnitude) return CheckpointChange::Unexpected;
+        let amount = before_magnitude + after_magnitude;
 
         if (amount == 0) {
             CheckpointChange::Unchanged
@@ -736,7 +742,7 @@ fun allocated_collateral_sign_and_magnitude(self: &Checkpoint): (bool, u256) {
     }
 }
 
-fun recoverable_cash_decoded(self: &Checkpoint, negative: bool, magnitude: u256): u64 {
+fun recoverable_cash_decoded(self: &Checkpoint, is_negative: bool, magnitude: u256): u64 {
     assert!(
         self.signed_base == 0 && self.signed_quote_notional == 0
             && self.pending_ask_base == 0 && self.pending_bid_base == 0
@@ -749,7 +755,7 @@ fun recoverable_cash_decoded(self: &Checkpoint, negative: bool, magnitude: u256)
     let (atoms, representable) =
         ifixed_math::fixed_to_u64_down(magnitude, constants::collateral_decimals!() as u64);
     assert!(
-        !negative && representable && atoms <= std::u64::max_value!() - self.free_collateral,
+        !is_negative && representable && atoms <= std::u64::max_value!() - self.free_collateral,
         blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
     );
 
@@ -757,10 +763,10 @@ fun recoverable_cash_decoded(self: &Checkpoint, negative: bool, magnitude: u256)
 }
 
 fun assert_terminal_withdrawal_checkpoint_decoded(
-    before: &Checkpoint, after: &Checkpoint, amount: u64, negative: bool, magnitude: u256,
+    before: &Checkpoint, after: &Checkpoint, amount: u64, is_negative: bool, magnitude: u256,
 ) {
     assert!(
-        recoverable_cash_decoded(before, negative, magnitude) == amount,
+        recoverable_cash_decoded(before, is_negative, magnitude) == amount,
         blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
     );
 
@@ -858,23 +864,23 @@ public fun assert_nonnegative_cash_checkpoint_for_testing(
 
 /// Decoded dependency-port values; the production wrapper always uses named IFixed decoding.
 #[test_only]
-public(package) fun recoverable_cash_for_testing(self: &Checkpoint, negative: bool, magnitude: u256): u64 {
-    recoverable_cash_decoded(self, negative, magnitude)
+public(package) fun recoverable_cash_for_testing(self: &Checkpoint, is_negative: bool, magnitude: u256): u64 {
+    recoverable_cash_decoded(self, is_negative, magnitude)
 }
 
 #[test_only]
 public fun assert_terminal_withdrawal_checkpoint_decoded_for_testing(
-    before: &Checkpoint, after: &Checkpoint, amount: u64, negative: bool, magnitude: u256,
+    before: &Checkpoint, after: &Checkpoint, amount: u64, is_negative: bool, magnitude: u256,
 ) {
-    assert_terminal_withdrawal_checkpoint_decoded(before, after, amount, negative, magnitude);
+    assert_terminal_withdrawal_checkpoint_decoded(before, after, amount, is_negative, magnitude);
 }
 
 /// Substitutes only named IFixed decoding; cash and checkpoint guards remain production code.
 #[test_only]
 public(package) fun terminal_withdrawal_for_testing<Collateral>(
-    before: &Checkpoint, after: Checkpoint, recovered: Coin<Collateral>, negative: bool, magnitude: u256,
+    before: &Checkpoint, after: Checkpoint, recovered: Coin<Collateral>, is_negative: bool, magnitude: u256,
 ): TerminalWithdrawal<Collateral> {
-    assert_terminal_withdrawal_checkpoint_decoded(before, &after, recovered.value(), negative, magnitude);
+    assert_terminal_withdrawal_checkpoint_decoded(before, &after, recovered.value(), is_negative, magnitude);
     TerminalWithdrawal { recovered, checkpoint: after }
 }
 

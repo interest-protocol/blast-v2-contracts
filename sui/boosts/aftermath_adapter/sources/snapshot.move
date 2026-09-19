@@ -234,8 +234,8 @@ fun authenticated_feeds(
 }
 
 /// Normalizes one oracle leg, carrying whether every value fit.
-fun oracle_leg(price_info: &PriceInfoObject, feed: &PriceFeed, fixed: u256): OracleLeg {
-    let (price, confidence, timestamp, representable) = pyth_price(price_info, feed, fixed);
+fun oracle_leg(price_info: &PriceInfoObject, feed: &PriceFeed, venue_price: u256): OracleLeg {
+    let (price, confidence, timestamp, representable) = pyth_price(price_info, feed, venue_price);
 
     OracleLeg { price, confidence, timestamp, representable }
 }
@@ -255,12 +255,12 @@ fun pyth_price(
     let pyth_price = price_info.get_price_feed().get_price();
     let price_i64 = pyth_price.get_price();
     let price_nonnegative = !price_i64.get_is_negative();
-    let magnitude = if (price_nonnegative) { price_i64.get_magnitude_if_positive() } else { 0 };
-    let expo = pyth_price.get_expo();
+    let price_magnitude = if (price_nonnegative) { price_i64.get_magnitude_if_positive() } else { 0 };
+    let exponent = pyth_price.get_expo();
 
-    let (normalized_price, price_representable) = normalize_pyth_component(magnitude, &expo, false);
+    let (normalized_price, price_representable) = normalize_pyth_component(price_magnitude, &exponent, false);
     let (normalized_confidence, confidence_representable) =
-        normalize_pyth_component(pyth_price.get_conf(), &expo, true);
+        normalize_pyth_component(pyth_price.get_conf(), &exponent, true);
     let (aftermath_price, aftermath_timestamp) = aftermath_feed.price_and_timestamp_ms();
     let (normalized_feed_price, feed_representable) = normalize_feed_price(aftermath_price);
     let (normalized_venue_price, venue_representable) = ifixed_math::fixed_to_u64_down(venue_price, 9);
@@ -300,38 +300,38 @@ fun normalize_feed_price(raw_price: u128): (u64, bool) {
 }
 
 /// Scales one Pyth component from its signed exponent to the 9-decimal unit.
-fun normalize_pyth_component(component: u64, expo: &I64, round_up: bool): (u64, bool) {
-    let expo_negative = expo.get_is_negative();
-    let magnitude = if (expo_negative) {
-        expo.get_magnitude_if_negative()
+fun normalize_pyth_component(value: u64, exponent: &I64, round_up: bool): (u64, bool) {
+    let exponent_negative = exponent.get_is_negative();
+    let exponent_magnitude = if (exponent_negative) {
+        exponent.get_magnitude_if_negative()
     } else {
-        expo.get_magnitude_if_positive()
+        exponent.get_magnitude_if_positive()
     };
 
-    normalize_pyth_component_parts(component, expo_negative, magnitude, round_up)
+    normalize_pyth_component_parts(value, exponent_negative, exponent_magnitude, round_up)
 }
 
 /// A u64 component scaled by at most 10^27 stays far inside u256, so the only
 /// way out of range is the final u64 narrowing.
 fun normalize_pyth_component_parts(
-    component: u64,
-    expo_negative: bool,
-    magnitude: u64,
+    value: u64,
+    exponent_negative: bool,
+    exponent_magnitude: u64,
     round_up: bool,
 ): (u64, bool) {
-    if (magnitude > 18) return (0, false);
+    if (exponent_magnitude > 18) return (0, false);
 
-    let raw = component as u256;
-    let normalized = if (expo_negative) {
-        if (magnitude <= 9) {
-            raw * ifixed_math::pow10(9 - magnitude)
+    let raw = value as u256;
+    let normalized = if (exponent_negative) {
+        if (exponent_magnitude <= 9) {
+            raw * ifixed_math::pow10(9 - exponent_magnitude)
         } else {
-            let scale = ifixed_math::pow10(magnitude - 9);
+            let scale = ifixed_math::pow10(exponent_magnitude - 9);
             let down = raw / scale;
             if (round_up && raw % scale != 0) { down + 1 } else { down }
         }
     } else {
-        raw * ifixed_math::pow10(9 + magnitude)
+        raw * ifixed_math::pow10(9 + exponent_magnitude)
     };
 
     if (normalized > std::u64::max_value!() as u256) { (0, false) } else { (normalized as u64, true) }
@@ -347,11 +347,13 @@ fun seconds_to_millis(seconds: u64): (u64, bool) {
 
 // --- Position Arithmetic ---
 
-fun signed_equity(free: u64, allocated: u256, pnl_usd: u256, collateral_price: u256): (u64, bool) {
+fun signed_equity(
+    free_collateral: u64, allocated_collateral: u256, pnl_usd: u256, collateral_price: u256,
+): (u64, bool) {
     signed_equity_decoded(
-        free,
-        allocated.is_neg(),
-        allocated.abs(),
+        free_collateral,
+        allocated_collateral.is_neg(),
+        allocated_collateral.abs(),
         pnl_usd.is_neg(),
         pnl_usd.abs(),
         collateral_price,
@@ -359,9 +361,9 @@ fun signed_equity(free: u64, allocated: u256, pnl_usd: u256, collateral_price: u
 }
 
 fun signed_equity_decoded(
-    free: u64,
+    free_collateral: u64,
     allocated_negative: bool,
-    allocated: u256,
+    allocated_magnitude: u256,
     pnl_negative: bool,
     pnl_magnitude_usd: u256,
     collateral_price: u256,
@@ -370,9 +372,9 @@ fun signed_equity_decoded(
 
     // A liability rounds up and an asset rounds down, so equity never reads high.
     let (allocated_tokens, allocated_ok) = if (allocated_negative) {
-        ifixed_math::fixed_to_u64_up(allocated, constants::collateral_decimals!() as u64)
+        ifixed_math::fixed_to_u64_up(allocated_magnitude, constants::collateral_decimals!() as u64)
     } else {
-        ifixed_math::fixed_to_u64_down(allocated, constants::collateral_decimals!() as u64)
+        ifixed_math::fixed_to_u64_down(allocated_magnitude, constants::collateral_decimals!() as u64)
     };
     let (pnl, collateral_ok) = ifixed_math::usd_fixed_to_collateral_fixed(pnl_magnitude_usd, collateral_price, pnl_negative);
     let (rounded, pnl_ok) = if (pnl_negative) {
@@ -385,7 +387,7 @@ fun signed_equity_decoded(
     let (allocated_asset, allocated_liability) =
         if (allocated_negative) { (0, allocated_tokens) } else { (allocated_tokens, 0) };
     let (pnl_asset, pnl_liability) = if (pnl_negative) { (0, rounded) } else { (rounded, 0) };
-    let assets = (free as u128) + (allocated_asset as u128) + (pnl_asset as u128);
+    let assets = (free_collateral as u128) + (allocated_asset as u128) + (pnl_asset as u128);
     let liabilities = (allocated_liability as u128) + (pnl_liability as u128);
     if (assets < liabilities) return (0, false);
 
@@ -401,18 +403,18 @@ fun margin_safe_decoded(margin_negative: bool, margin: u256, requirement: u256):
     !margin_negative && margin >= requirement
 }
 
-fun position_signs_coherent(base: u256, quote: u256, long_or_flat: bool): bool {
+fun position_signs_coherent(base: u256, quote: u256, is_long_or_flat: bool): bool {
     position_signs_coherent_decoded(
-        base.is_neg(), quote.is_neg(), base.abs() == 0, quote.abs() == 0, long_or_flat,
+        base.is_neg(), quote.is_neg(), base.abs() == 0, quote.abs() == 0, is_long_or_flat,
     )
 }
 
 fun position_signs_coherent_decoded(
-    base_negative: bool, quote_negative: bool, base_zero: bool, quote_zero: bool, long_or_flat: bool,
+    base_negative: bool, quote_negative: bool, base_zero: bool, quote_zero: bool, is_long_or_flat: bool,
 ): bool {
     if (base_zero || quote_zero) return base_zero && quote_zero;
 
-    if (long_or_flat) { !base_negative && quote_negative } else { base_negative && !quote_negative }
+    if (is_long_or_flat) { !base_negative && quote_negative } else { base_negative && !quote_negative }
 }
 
 // === Test-Only Functions ===
@@ -449,17 +451,9 @@ public fun captured_health_for_testing(
 
 #[test_only]
 public fun normalize_pyth_for_testing(
-    component: u64,
-    expo_negative: bool,
-    expo_magnitude: u64,
-    round_up: bool,
+    value: u64, exponent_negative: bool, exponent_magnitude: u64, round_up: bool,
 ): (u64, bool) {
-    normalize_pyth_component_parts(
-        component,
-        expo_negative,
-        expo_magnitude,
-        round_up,
-    )
+    normalize_pyth_component_parts(value, exponent_negative, exponent_magnitude, round_up)
 }
 
 #[test_only]
@@ -479,20 +473,15 @@ public fun seconds_to_millis_for_testing(seconds: u64): (u64, bool) {
 
 #[test_only]
 public fun signed_equity_for_testing(
-    free: u64,
+    free_collateral: u64,
     allocated_negative: bool,
-    allocated: u256,
+    allocated_magnitude: u256,
     pnl_negative: bool,
     pnl_magnitude_usd: u256,
     collateral_price: u256,
 ): (u64, bool) {
     signed_equity_decoded(
-        free,
-        allocated_negative,
-        allocated,
-        pnl_negative,
-        pnl_magnitude_usd,
-        collateral_price,
+        free_collateral, allocated_negative, allocated_magnitude, pnl_negative, pnl_magnitude_usd, collateral_price,
     )
 }
 
@@ -503,9 +492,9 @@ public fun margin_safe_for_testing(margin_negative: bool, margin: u256, requirem
 
 #[test_only]
 public fun position_signs_coherent_for_testing(
-    base_negative: bool, quote_negative: bool, base_zero: bool, quote_zero: bool, long_or_flat: bool,
+    base_negative: bool, quote_negative: bool, base_zero: bool, quote_zero: bool, is_long_or_flat: bool,
 ): bool {
-    position_signs_coherent_decoded(base_negative, quote_negative, base_zero, quote_zero, long_or_flat)
+    position_signs_coherent_decoded(base_negative, quote_negative, base_zero, quote_zero, is_long_or_flat)
 }
 
 // === Imports ===

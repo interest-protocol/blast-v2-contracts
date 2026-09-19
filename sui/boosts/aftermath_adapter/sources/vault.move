@@ -84,7 +84,10 @@ public fun issue<Product: drop, Collateral>(
         !type_name::with_original_ids<Product>().is_primitive(),
         blast_boosts_aftermath::errors::invalid_product_witness_type!(),
     );
-    let issuance = state::issue<Product>(admin_witness, vault_policy, max_order_notional, nav_cap);
+    let issuance = state::issue<Product>(
+        admin_witness, vault_policy, max_order_notional, nav_cap,
+        constants::base_decimals!(), constants::collateral_decimals!(),
+    );
     let (treasury_cap, metadata_cap) =
         blast_boost::new_currency<Product>(registry, symbol, name, description, icon_url, ctx);
     events::vault_issued<Product>(
@@ -253,14 +256,12 @@ public(package) fun activate<Product, Collateral>(
     self: VaultIssuance<Product, Collateral>,
     seeded: PositionObservation,
     seed_reserve: u64,
-    collateral_decimals: u8,
     venue_account: VenueAccount,
     now_ms: u64,
     ctx: &mut TxContext,
 ): (Vault<Product, Collateral>, u64, ActivePosition) {
     let VaultIssuance { issuance, mut treasury_cap, metadata_cap } = self;
-    let (state, seed_nav, seeded) =
-        issuance.activate(seeded, seed_reserve, constants::base_decimals!(), collateral_decimals, now_ms);
+    let (state, seed_nav, seeded) = issuance.activate(seeded, seed_reserve, now_ms);
 
     let locked_shares = seed_shares(seed_nav);
     transfer::public_transfer(coin::mint(&mut treasury_cap, locked_shares, ctx), @0x0);
@@ -391,7 +392,7 @@ fun metadata_cap<Product, Collateral>(self: &Vault<Product, Collateral>): &Metad
 
 #[test_only]
 public fun max_order_notional_for_testing<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
-    self.state.max_order_notional()
+    self.state.max_order_notional_for_testing()
 }
 
 #[test_only]

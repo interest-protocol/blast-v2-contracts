@@ -23,7 +23,8 @@ const MAX_ACTIVE_ORDERS: u64 = 16;
 public struct OrderTerms has copy, drop {
     is_ask: bool,
     reduce_only: bool,
-    max_order_notional: u64,
+    /// The whole-lot base one order may carry, sized by the core at the sealed pair.
+    max_order_base: u64,
     lot_size: u64,
     base_price: u64,
     collateral_price: u64,
@@ -78,7 +79,7 @@ public fun initialize<Product, Collateral>(
 ): Vault<Product, Collateral> {
     protocol.assert_current();
     let terms = issuance.issuance();
-    let (position_side, max_order_notional) = (terms.side(), terms.max_order_notional());
+    let position_side = terms.side();
     let seed_amount = seed.value();
     assert_initialization_inputs(currency.decimals(), seed_amount, seed_reserve);
     assert_position_imr(position_imr);
@@ -92,14 +93,9 @@ public fun initialize<Product, Collateral>(
         &binding, &account, registry, &clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     ).into_observation();
-    let (target_notional, seed_position) = terms.seed_terms(pre_observation, seed_reserve);
+    let (target_base, max_order_base, seed_position) = terms.seed_terms(pre_observation, seed_reserve);
     let (reference_base_price, collateral_price) = (seed_position.base_price(), seed_position.collateral_price());
-    let orders = order_sizes(
-        target_notional, max_order_notional, reference_base_price, collateral_price, seed_position.lot_size(),
-    );
-    orders.do_ref!(|order| {
-        terms.assert_order_notional_allowed(notional_for_base_up(*order, reference_base_price, collateral_price));
-    });
+    let orders = order_sizes(target_base, max_order_base);
     clearing_house = open_seed_position(
         terms, &mut account, &admin_cap, clearing_house, base_oracle, collateral_oracle,
         orders, position_side, reference_base_price, collateral_price, clock, ctx,
@@ -114,7 +110,7 @@ public fun initialize<Product, Collateral>(
     let venue_account = venue_account::new(binding, checkpoint, admin_cap);
     // BLAST_ACTIVATION_BOUNDARY_A1
     let (vault, seed_nav, seeded) = issuance.activate(
-        final_observation, seed_reserve, currency.decimals(), venue_account, clock.timestamp_ms(), ctx,
+        final_observation, seed_reserve, venue_account, clock.timestamp_ms(), ctx,
     );
     // BLAST_ACTIVATION_BOUNDARY_A2
     account.consume_policy_and_share_account(share_policy);
@@ -442,8 +438,8 @@ fun assert_position_imr(position_imr: u256) {
     assert_position_imr_sign(position_imr.is_neg());
 }
 
-fun assert_position_imr_sign(negative: bool) {
-    assert!(!negative, blast_boosts_aftermath::errors::initialization_imr_mismatch!());
+fun assert_position_imr_sign(is_negative: bool) {
+    assert!(!is_negative, blast_boosts_aftermath::errors::initialization_imr_mismatch!());
 }
 
 /// Creates the isolated Aftermath account the Vault will own and binds it to
@@ -610,11 +606,11 @@ fun assert_deadline(now_ms: u64, deadline: u64) {
 
 /// The terms of an active operation: direction from policy, the live cap, and the plan's sealed prices.
 fun active_terms<Product, Collateral>(vault: &Vault<Product, Collateral>, reduce_only: bool, position: ActivePosition): OrderTerms {
-    let (side, max_order_notional) = (vault.state().side(), vault.state().max_order_notional());
+    let side = vault.state().side();
     let is_ask = if (reduce_only) { !opens_with_ask(side) } else { opens_with_ask(side) };
 
     OrderTerms {
-        is_ask, reduce_only, max_order_notional,
+        is_ask, reduce_only, max_order_base: vault.state().max_order_base(&position),
         lot_size: position.lot_size(), base_price: position.base_price(), collateral_price: position.collateral_price(),
     }
 }
@@ -631,14 +627,14 @@ fun live_venue_fee_bps<Collateral>(clearing_house: &ClearingHouse<Collateral>): 
 
 /// Aftermath's priority rate is an additional surcharge, not an alternative fee.
 /// Negative rebates are ignored conservatively; callers provide no fee input.
-fun venue_fee_bound(ordinary: u256, priority: u256): u64 {
+fun venue_fee_bound(taker_fee: u256, priority_taker_fee: u256): u64 {
     let one = constants::ifixed_one!();
     assert!(
-        ordinary <= one && priority <= one && ordinary <= one - priority,
+        taker_fee <= one && priority_taker_fee <= one && taker_fee <= one - priority_taker_fee,
         blast_boosts_aftermath::errors::venue_fee_unusable!(),
     );
 
-    ((ordinary + priority).div_ceil(constants::ifixed_per_basis_point!())) as u64
+    ((taker_fee + priority_taker_fee).div_ceil(constants::ifixed_per_basis_point!())) as u64
 }
 
 /// Whether opening this side is an ask on the Aftermath port: shorts sell to open, longs buy.
@@ -646,20 +642,8 @@ fun opens_with_ask(position_side: PositionSide): bool {
     position_side == policy::short()
 }
 
-fun order_sizes(
-    target_notional: u64,
-    max_order_notional: u64,
-    base_price: u64,
-    collateral_price: u64,
-    lot_size: u64,
-): vector<u64> {
-    assert!(
-        target_notional > 0 && max_order_notional > 0,
-        blast_boosts_aftermath::errors::invalid_initialization_order_size!(),
-    );
-
-    let target_base = base_for_notional_down(target_notional, base_price, collateral_price, lot_size);
-    let max_order_base = base_for_notional_down(max_order_notional, base_price, collateral_price, lot_size);
+/// Splits the seed target into whole-lot orders, each at most the per-order cap.
+fun order_sizes(target_base: u64, max_order_base: u64): vector<u64> {
     assert!(
         target_base > 0 && max_order_base > 0,
         blast_boosts_aftermath::errors::invalid_initialization_order_size!(),
@@ -670,10 +654,6 @@ fun order_sizes(
     let mut orders = vector[];
     while (orders.length() < order_count) {
         let order_base = remaining.min(max_order_base);
-        assert!(
-            notional_for_base_up(order_base, base_price, collateral_price) <= max_order_notional,
-            blast_boosts_aftermath::errors::normalization_overflow!(),
-        );
         orders.push_back(order_base);
         remaining = remaining - order_base;
     };
@@ -683,55 +663,19 @@ fun order_sizes(
 }
 
 /// Bounds each next whole-lot request without re-rounding the sealed aggregate.
-fun active_order_size(
-    remaining: u64, max_order_notional: u64, base_price: u64, collateral_price: u64, lot_size: u64, index: u64,
-): u64 {
+fun active_order_size(remaining: u64, max_order_base: u64, lot_size: u64, index: u64): u64 {
     assert!(index < MAX_ACTIVE_ORDERS, blast_boosts_aftermath::errors::active_order_count_exceeded!());
-
-    let maximum = base_for_notional_down(max_order_notional, base_price, collateral_price, lot_size);
     assert!(
-        maximum > 0 && remaining > 0 && remaining % lot_size == 0,
+        max_order_base > 0 && remaining > 0 && remaining % lot_size == 0,
         blast_boosts_aftermath::errors::active_fill_mismatch!(),
     );
 
-    remaining.min(maximum)
+    remaining.min(max_order_base)
 }
 
-/// The next whole-lot request: what remains, capped by the live order notional.
+/// The next whole-lot request: what remains, capped per order.
 fun next_order_size(self: &OrderTerms, remaining: u64, index: u64): u64 {
-    active_order_size(remaining, self.max_order_notional, self.base_price, self.collateral_price, self.lot_size, index)
-}
-
-/// Whole-lot base atoms worth at most `notional` at the oracle pair, rounding down.
-fun base_for_notional_down(notional: u64, base_price: u64, collateral_price: u64, lot_size: u64): u64 {
-    assert!(
-        notional > 0 && base_price > 0 && collateral_price > 0 && lot_size > 0,
-        blast_boosts_aftermath::errors::normalization_overflow!(),
-    );
-
-    let numerator = (notional as u256)
-        .checked_mul(collateral_price as u256)
-        .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!())
-        .checked_mul(constants::collateral_to_base_scale!())
-        .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
-    let base = numerator / (base_price as u256);
-    assert!(base <= std::u64::max_value!() as u256, blast_boosts_aftermath::errors::normalization_overflow!());
-
-    (base as u64) / lot_size * lot_size
-}
-
-/// Collateral atoms `base` is worth at the oracle pair, rounding up.
-fun notional_for_base_up(base: u64, base_price: u64, collateral_price: u64): u64 {
-    let numerator = (base as u256)
-        .checked_mul(base_price as u256)
-        .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
-    let denominator = (collateral_price as u256)
-        .checked_mul(constants::collateral_to_base_scale!())
-        .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
-    let notional = numerator.div_ceil(denominator);
-    assert!(notional <= std::u64::max_value!() as u256, blast_boosts_aftermath::errors::normalization_overflow!());
-
-    notional as u64
+    active_order_size(remaining, self.max_order_base, self.lot_size, index)
 }
 
 /// Places every order of one active mint or redemption, proving each fill
@@ -769,17 +713,16 @@ fun fill_orders<Product, Collateral>(
 
 /// Places one whole-lot market order and verifies the venue's report of it.
 ///
-/// The request is checked against the per-order cap before the call and the
-/// actual fill after it, so admitted slippage cannot carry one order past the
-/// live cap. Every operation loop places its orders through this step; only
-/// the slippage bound it then proves against differs.
+/// The request is at most the core-sized per-order cap; the actual fill is
+/// checked against the cap afterwards, so admitted slippage cannot carry one
+/// order past it. Every operation loop places its orders through this step;
+/// only the slippage bound it then proves against differs.
 fun place_order<Product, Collateral>(
     vault: &Vault<Product, Collateral>, account: &mut Account<Collateral>, clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
     terms: &OrderTerms, requested: u64, clock: &Clock, ctx: &TxContext,
 ): (ClearingHouse<Collateral>, Fill) {
-    let OrderTerms { is_ask, reduce_only, lot_size, base_price, collateral_price, .. } = *terms;
-    vault.state().assert_order_notional_allowed(notional_for_base_up(requested, base_price, collateral_price));
+    let OrderTerms { is_ask, reduce_only, lot_size, collateral_price, .. } = *terms;
 
     let (clearing_house, summary) = vault.venue().execute_order(
         account, clearing_house, base_oracle, collateral_oracle, is_ask, requested, reduce_only, clock, ctx,
@@ -863,8 +806,8 @@ fun execution_price(raw_price: u256, round_up: bool): u64 {
     normalize_execution_price(raw_price, round_up, raw_price.is_neg())
 }
 
-fun normalize_execution_price(raw_price: u256, round_up: bool, negative: bool): u64 {
-    assert!(!negative, blast_boosts_aftermath::errors::normalization_overflow!());
+fun normalize_execution_price(raw_price: u256, round_up: bool, is_negative: bool): u64 {
+    assert!(!is_negative, blast_boosts_aftermath::errors::normalization_overflow!());
 
     let down = raw_price / constants::base_atom_to_ifixed_scale!();
     let normalized = if (round_up && raw_price % constants::base_atom_to_ifixed_scale!() != 0) { down + 1 } else { down };
@@ -1027,9 +970,9 @@ fun update_funding_when_due<Collateral>(
     binding.assert_funding_update_inputs(object::id(clearing_house), object::id(base_oracle));
 
     let (funding_frequency_ms, _) = clearing_house.market_params().funding_params();
-    let funding_last_upd_ms = clearing_house.market_state().funding_last_upd_ms();
+    let last_funding_update_ms = clearing_house.market_state().funding_last_upd_ms();
 
-    if (is_time_to_update_funding(clock.timestamp_ms(), funding_last_upd_ms, funding_frequency_ms)) {
+    if (is_time_to_update_funding(clock.timestamp_ms(), last_funding_update_ms, funding_frequency_ms)) {
         clearing_house.update_funding(base_oracle, clock);
     };
 }
@@ -1037,22 +980,22 @@ fun update_funding_when_due<Collateral>(
 /// Returns whether the venue's cumulative funding is due for an update at `now_ms`.
 ///
 /// Mirrors the pinned `market::is_time_to_update` bytecode exactly:
-/// `now_ms >= next_funding_update_time_ms(funding_last_upd_ms, funding_frequency_ms)`.
+/// `now_ms >= next_funding_update_time_ms(last_funding_update_ms, funding_frequency_ms)`.
 /// The venue's own `try_update_fundings` repeats this check, so the guard only
 /// decides whether the adapter spends a venue call; it never changes what the
 /// venue would settle. A zero frequency is never due: the venue formula would
 /// divide by it, and a market without a funding cadence has nothing to
 /// refresh.
-fun is_time_to_update_funding(now_ms: u64, funding_last_upd_ms: u64, funding_frequency_ms: u64): bool {
+fun is_time_to_update_funding(now_ms: u64, last_funding_update_ms: u64, funding_frequency_ms: u64): bool {
     funding_frequency_ms > 0
-        && now_ms >= next_funding_update_time_ms(funding_last_upd_ms, funding_frequency_ms)
+        && now_ms >= next_funding_update_time_ms(last_funding_update_ms, funding_frequency_ms)
 }
 
 /// Returns the venue's next funding update instant: the start of the period
-/// after the one containing `funding_last_upd_ms`, exactly as the pinned
+/// after the one containing `last_funding_update_ms`, exactly as the pinned
 /// `market::next_funding_update_time` computes it.
-fun next_funding_update_time_ms(funding_last_upd_ms: u64, funding_frequency_ms: u64): u64 {
-    funding_last_upd_ms - funding_last_upd_ms % funding_frequency_ms + funding_frequency_ms
+fun next_funding_update_time_ms(last_funding_update_ms: u64, funding_frequency_ms: u64): u64 {
+    last_funding_update_ms - last_funding_update_ms % funding_frequency_ms + funding_frequency_ms
 }
 
 /// The funding the venue would settle for this account at its current cumulative rates.
@@ -1156,8 +1099,9 @@ fun unwind_market<Product, Collateral>(
         base_price_info, collateral_price_info, clock,
     );
     let collateral_fixed = capture.collateral_fixed();
-    let (side, max_order_notional, base_price, collateral_price) = vault.state().unwind_constraints(
-        capture.base_price_observation(), capture.collateral_price_observation(), clock.timestamp_ms(),
+    let (side, max_order_base, base_price, collateral_price) = vault.state().unwind_constraints(
+        capture.base_price_observation(), capture.collateral_price_observation(), capture.checkpoint().lot_size(),
+        clock.timestamp_ms(),
     );
     let before = capture.into_checkpoint();
     before.assert_no_orders();
@@ -1173,7 +1117,7 @@ fun unwind_market<Product, Collateral>(
     venue_account::classify_change(&before, &funded, candidate, collateral_fixed).assert_expected();
 
     let terms = OrderTerms {
-        is_ask: !opens_with_ask(side), reduce_only: true, max_order_notional,
+        is_ask: !opens_with_ask(side), reduce_only: true, max_order_base,
         lot_size: funded.lot_size(), base_price, collateral_price,
     };
     let mut checkpoint = funded;
@@ -1324,8 +1268,8 @@ public fun assert_initialization_inputs_for_testing(collateral_decimals: u8, see
 }
 
 #[test_only]
-public fun assert_position_imr_for_testing(negative: bool) {
-    assert_position_imr_sign(negative);
+public fun assert_position_imr_for_testing(is_negative: bool) {
+    assert_position_imr_sign(is_negative);
 }
 
 #[test_only]
@@ -1366,7 +1310,9 @@ public fun order_count_for_testing(
 public fun assert_deadline_for_testing(now_ms: u64, deadline: u64) { assert_deadline(now_ms, deadline); }
 
 #[test_only]
-public fun venue_fee_bound_for_testing(ordinary: u256, priority: u256): u64 { venue_fee_bound(ordinary, priority) }
+public fun venue_fee_bound_for_testing(taker_fee: u256, priority_taker_fee: u256): u64 {
+    venue_fee_bound(taker_fee, priority_taker_fee)
+}
 
 #[test_only]
 public fun opens_with_ask_for_testing(position_side: PositionSide): bool {
@@ -1374,27 +1320,13 @@ public fun opens_with_ask_for_testing(position_side: PositionSide): bool {
 }
 
 #[test_only]
-public fun order_sizes_for_testing(
-    target_notional: u64,
-    max_order_notional: u64,
-    base_price: u64,
-    collateral_price: u64,
-    lot_size: u64,
-): vector<u64> {
-    order_sizes(
-        target_notional,
-        max_order_notional,
-        base_price,
-        collateral_price,
-        lot_size,
-    )
+public fun order_sizes_for_testing(target_base: u64, max_order_base: u64): vector<u64> {
+    order_sizes(target_base, max_order_base)
 }
 
 #[test_only]
-public fun active_order_size_for_testing(
-    remaining: u64, max_order_notional: u64, base_price: u64, collateral_price: u64, lot_size: u64, index: u64,
-): u64 {
-    active_order_size(remaining, max_order_notional, base_price, collateral_price, lot_size, index)
+public fun active_order_size_for_testing(remaining: u64, max_order_base: u64, lot_size: u64, index: u64): u64 {
+    active_order_size(remaining, max_order_base, lot_size, index)
 }
 
 #[test_only]
@@ -1417,21 +1349,21 @@ public fun actual_fill_notional_for_testing(
 public fun execution_price_for_testing(
     raw_price: u256,
     round_up: bool,
-    negative: bool,
+    is_negative: bool,
 ): u64 {
-    normalize_execution_price(raw_price, round_up, negative)
+    normalize_execution_price(raw_price, round_up, is_negative)
 }
 
 #[test_only]
 public fun is_time_to_update_funding_for_testing(
-    now_ms: u64, funding_last_upd_ms: u64, funding_frequency_ms: u64,
+    now_ms: u64, last_funding_update_ms: u64, funding_frequency_ms: u64,
 ): bool {
-    is_time_to_update_funding(now_ms, funding_last_upd_ms, funding_frequency_ms)
+    is_time_to_update_funding(now_ms, last_funding_update_ms, funding_frequency_ms)
 }
 
 #[test_only]
-public fun next_funding_update_time_ms_for_testing(funding_last_upd_ms: u64, funding_frequency_ms: u64): u64 {
-    next_funding_update_time_ms(funding_last_upd_ms, funding_frequency_ms)
+public fun next_funding_update_time_ms_for_testing(last_funding_update_ms: u64, funding_frequency_ms: u64): u64 {
+    next_funding_update_time_ms(last_funding_update_ms, funding_frequency_ms)
 }
 
 #[test_only]

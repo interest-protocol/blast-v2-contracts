@@ -903,7 +903,7 @@ fun winding_down_still_requires_fresh_oracles() {
     let fresh = vault.venue().oracle(vault.venue().base_price());
     let now_ms = vault.venue().now_ms();
 
-    let (_, _, _, _) = vault.state().unwind_constraints(stale, fresh, now_ms);
+    let (_, _, _, _) = vault.state().unwind_constraints(stale, fresh, vault.venue().lot_size(), now_ms);
     vault.destroy();
 }
 

@@ -117,7 +117,7 @@ fun unwind_partial_budget_then_retry_uses_actual_remaining_exposure_for_both_sid
         let mut remaining = 2_500_000;
         let mut orders = 0;
         while (orders < 16) {
-            let requested = operations::active_order_size_for_testing(remaining, 250, PRICE, PRICE, 1, orders);
+            let requested = operations::active_order_size_for_testing(remaining, 250_000, 1, orders);
             assert_eq!(requested, 250_000);
             let raw = 125_000_000_000_000;
             let filled = operations::active_fill_for_testing(is_bid, requested, 1,
@@ -129,7 +129,7 @@ fun unwind_partial_budget_then_retry_uses_actual_remaining_exposure_for_both_sid
         // A new successful call starts a fresh bounded budget, not a stale original target.
         let mut retry_orders = 0;
         while (remaining > 0) {
-            let requested = operations::active_order_size_for_testing(remaining, 250, PRICE, PRICE, 1, retry_orders);
+            let requested = operations::active_order_size_for_testing(remaining, 250_000, 1, retry_orders);
             let raw = (requested as u256) * 1_000_000_000;
             let filled = operations::active_fill_for_testing(is_bid, requested, 1,
                 if (is_bid) { raw } else { 0 }, if (is_bid) { 0 } else { raw }, 0, 0, 0);
@@ -287,9 +287,10 @@ fun insolvent_capture_still_supplies_fresh_close_only_valuation() {
     let base = captured.base_price_observation();
     let collateral = captured.collateral_price_observation();
     captured.into_checkpoint();
-    let (side, cap, base_price, collateral_price) = vault.state().unwind_constraints(base, collateral, REFERENCE_TIME_MS);
+    let (side, max_order_base, base_price, collateral_price) =
+        vault.state().unwind_constraints(base, collateral, LOT_SIZE, REFERENCE_TIME_MS);
     assert_eq!(side, policy::long());
-    assert_eq!(vector[cap, base_price, collateral_price], vector[250, PRICE, PRICE]);
+    assert_eq!(vector[max_order_base, base_price, collateral_price], vector[250 * BASE_PER_NOTIONAL, PRICE, PRICE]);
     destroy(vault);
     fixture.end();
 }
@@ -694,8 +695,8 @@ fun redemption_cash_checkpoint_rejects_inexact_payout() {
 
 #[test]
 fun active_order_uses_the_sealed_base_without_a_notional_round_trip() {
-    assert_eq!(operations::active_order_size_for_testing(1_998, 1, PRICE, PRICE, 1, 0), 1_000);
-    assert_eq!(operations::active_order_size_for_testing(998, 1, PRICE, PRICE, 1, 15), 998);
+    assert_eq!(operations::active_order_size_for_testing(1_998, 1_000, 1, 0), 1_000);
+    assert_eq!(operations::active_order_size_for_testing(998, 1_000, 1, 15), 998);
     operations::assert_deadline_for_testing(1_000, 1_000);
 }
 
@@ -790,7 +791,7 @@ fun funding_update_guard_matches_the_small_domain_reference() {
 #[test]
 #[expected_failure(abort_code = errors::EActiveOrderCountExceeded, location = blast_boosts_aftermath::operations)]
 fun active_order_rejects_a_seventeenth_session() {
-    operations::active_order_size_for_testing(10, 1, PRICE, PRICE, 1, 16);
+    operations::active_order_size_for_testing(10, 1_000, 1, 16);
 }
 
 #[test]
@@ -853,7 +854,7 @@ fun completed_mint_returns_native_shares_and_updates_the_same_treasury_supply() 
     assert_eq!(collateral_price, PRICE);
     assert_eq!(lot, LOT_SIZE);
     assert_eq!(vault.state().side(), policy::long());
-    assert!(vault.state().max_order_notional() > 0);
+    assert!(vault.max_order_notional_for_testing() > 0);
     vault.state().assert_execution(false, PRICE, PRICE);
     let after = observation::new_position(1_998, 3_798 * BASE_PER_NOTIONAL, LOT_SIZE, policy::long(),
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
@@ -952,64 +953,21 @@ fun admin_cash_withdrawal_cannot_spend_the_buffer_when_earnings_are_absent() {
 
 #[test]
 fun target_above_one_order_cap_splits_into_compliant_whole_lot_orders() {
-    let orders = operations::order_sizes_for_testing(
-        100_000_000,
-        30_000_000,
-        2_000_000_000,
-        1_000_000_000,
-        1_000_000,
-    );
+    let orders = operations::order_sizes_for_testing(50_000_000_000, 15_000_000_000);
 
     assert_eq!(orders, vector[15_000_000_000, 15_000_000_000, 15_000_000_000, 5_000_000_000]);
 }
 
 #[test]
-fun target_and_order_cap_round_down_to_whole_base_lots() {
-    let orders = operations::order_sizes_for_testing(
-        10_000_001,
-        6_000_001,
-        2_000_000_000,
-        1_000_000_000,
-        1_000_000_000,
-    );
-
-    assert_eq!(orders, vector[3_000_000_000, 2_000_000_000]);
-}
-
-#[test]
-#[expected_failure(abort_code = errors::EInvalidInitializationOrderSize, location = blast_boosts_aftermath::operations)]
-fun target_below_one_lot_is_rejected() {
-    operations::order_sizes_for_testing(
-        1,
-        1,
-        2_000_000_000,
-        1_000_000_000,
-        1_000_000_000,
-    );
-}
-
-#[test]
 #[expected_failure(abort_code = errors::EInvalidInitializationOrderSize, location = blast_boosts_aftermath::operations)]
 fun a_zero_target_is_rejected_as_an_invalid_order_size() {
-    operations::order_sizes_for_testing(
-        0,
-        1,
-        2_000_000_000,
-        1_000_000_000,
-        1,
-    );
+    operations::order_sizes_for_testing(0, 1);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EInvalidInitializationOrderSize, location = blast_boosts_aftermath::operations)]
 fun a_zero_order_cap_is_rejected_as_an_invalid_order_size() {
-    operations::order_sizes_for_testing(
-        1,
-        0,
-        2_000_000_000,
-        1_000_000_000,
-        1,
-    );
+    operations::order_sizes_for_testing(1, 0);
 }
 
 #[test]
@@ -1021,13 +979,7 @@ fun initialization_order_count_accepts_zero_remaining_and_the_fixed_maximum() {
 
 #[test]
 fun maximum_order_count_preserves_the_exact_total_and_per_order_cap() {
-    let orders = operations::order_sizes_for_testing(
-        16,
-        1,
-        1_000_000_000,
-        1_000_000_000,
-        1,
-    );
+    let orders = operations::order_sizes_for_testing(16_000, 1_000);
     let mut total = 0;
     let mut index = 0;
     while (index < orders.length()) {
@@ -1074,18 +1026,6 @@ fun initialization_order_count_ceil_does_not_add_before_dividing() {
             std::u64::max_value!() - 1,
         ),
         2,
-    );
-}
-
-#[test]
-#[expected_failure(abort_code = errors::EInvalidInitializationOrderSize, location = blast_boosts_aftermath::operations)]
-fun one_lot_above_the_order_cap_is_rejected() {
-    operations::order_sizes_for_testing(
-        2_000_000,
-        1_999_999,
-        2_000_000_000,
-        1_000_000_000,
-        1_000_000_000,
     );
 }
 
@@ -2087,7 +2027,7 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS), observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
     );
     let (vault, seed_nav, _) = issuance.activate(
-        seeded, SEED_RESERVE, 6, venue_account::new(binding, checkpoint, admin_cap), REFERENCE_TIME_MS, scenario.ctx(),
+        seeded, SEED_RESERVE, venue_account::new(binding, checkpoint, admin_cap), REFERENCE_TIME_MS, scenario.ctx(),
     );
     operations::emit_vault_initialized_for_testing<Tag, Collateral>(&vault, SEED_EQUITY, seed_nav, SEED_EQUITY, ABSOLUTE_BASE, LOT_SIZE, side, 1);
 

@@ -23,6 +23,11 @@ public struct Issuance<phantom Product> {
     vault_policy: VaultPolicy,
     max_order_notional: u64,
     nav_cap: u64,
+    /// `10^decimals` of the venue's base asset and of the bound collateral:
+    /// facts about the assets, fixed here so the seed orders and the live
+    /// state price base the same way.
+    base_unit: u64,
+    collateral_unit: u64,
 }
 
 /// Sealed core state stored inside one adapter-owned Vault.
@@ -121,35 +126,49 @@ public struct RebalanceOrder has drop {
 
 /// Issues one product. The caller's live admin witness must hold the Vault
 /// issuer role; `nav_cap` must satisfy `RebalancePolicy::assert_nav_cap_valid`
-/// and stays adjustable through `set_nav_cap`.
+/// and stays adjustable through `set_nav_cap`. The asset decimals fix the
+/// units every base valuation of this product uses.
 public fun issue<Product>(
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
     vault_policy: VaultPolicy,
     max_order_notional: u64,
     nav_cap: u64,
+    base_decimals: u8,
+    collateral_decimals: u8,
 ): Issuance<Product> {
     admin_witness.assert_role(domain::vault_issuer_role());
     assert!(max_order_notional > 0, blast_boosts_core::errors::invalid_max_order_notional!());
     vault_policy.rebalance_policy().assert_nav_cap_valid(nav_cap);
+    assert!(
+        base_decimals <= constants::max_asset_decimals!()
+            && collateral_decimals <= constants::max_asset_decimals!(),
+        blast_boosts_core::errors::invalid_asset_decimals!(),
+    );
 
-    Issuance { vault_policy, max_order_notional, nav_cap }
+    Issuance {
+        vault_policy, max_order_notional, nav_cap,
+        base_unit: 10u64.pow(base_decimals), collateral_unit: 10u64.pow(collateral_decimals),
+    }
 }
 
-/// Sizes the opening position from a flat seed observation: the target notional
-/// in atomic collateral units, and the priced flat seed whose pair and lot the
-/// orders are placed under.
+/// Sizes the opening position from a flat seed observation: the whole-lot
+/// target base, the whole-lot base one order may carry, and the priced flat
+/// seed whose pair and lot the orders are placed under.
 ///
 /// Sizing only. Every guard runs in `activate` against the position actually
 /// filled, in the same transaction; a copy here could not refuse a state that
 /// `activate` admits.
 public fun seed_terms<Product>(
     self: &Issuance<Product>, observation: PositionObservation, seed_reserve: u64,
-): (u64, ActivePosition) {
+): (u64, u64, ActivePosition) {
     let seed_nav = accounting_math::shareholder_nav(observation.venue_equity(), seed_reserve);
     let target_notional =
         accounting_math::target_notional_down(seed_nav, self.vault_policy.rebalance_policy().target_leverage_bps());
+    let seed = flat_position(observation);
+    let target_base = base_for_notional(target_notional, &seed, self.base_unit, self.collateral_unit);
+    let max_order_base = base_for_notional(self.max_order_notional, &seed, self.base_unit, self.collateral_unit);
 
-    (target_notional, flat_position(observation))
+    (target_base, max_order_base, seed)
 }
 
 /// Turns the issuance and the observation the adapter took after the seed
@@ -162,17 +181,9 @@ public fun activate<Product>(
     self: Issuance<Product>,
     observation: PositionObservation,
     seed_reserve: u64,
-    base_decimals: u8,
-    collateral_decimals: u8,
     now_ms: u64,
 ): (State<Product>, u64, ActivePosition) {
-    assert!(
-        base_decimals <= constants::max_asset_decimals!()
-            && collateral_decimals <= constants::max_asset_decimals!(),
-        blast_boosts_core::errors::invalid_asset_decimals!(),
-    );
-
-    let Issuance { vault_policy, max_order_notional, nav_cap } = self;
+    let Issuance { vault_policy, max_order_notional, nav_cap, base_unit, collateral_unit } = self;
     let state = State {
         mint_fee_bps: vault_policy.initial_mint_fee_bps(),
         redeem_fee_bps: vault_policy.initial_redeem_fee_bps(),
@@ -182,9 +193,8 @@ public fun activate<Product>(
         max_order_notional,
         maintenance_reserve: seed_reserve,
         uncovered_deficit: 0,
-        // The units are pure facts about the assets; the seed is valued in them below.
-        base_unit: 10u64.pow(base_decimals),
-        collateral_unit: 10u64.pow(collateral_decimals),
+        base_unit,
+        collateral_unit,
         lifecycle: lifecycle::active(),
     };
     let venue_equity = observation.venue_equity();
@@ -224,11 +234,6 @@ public fun issued_side<Product>(self: &Issuance<Product>): PositionSide {
     self.vault_policy.side()
 }
 
-/// The per-order notional cap the seed orders are paced under.
-public fun issued_max_order_notional<Product>(self: &Issuance<Product>): u64 {
-    self.max_order_notional
-}
-
 /// Rejects one seed order above the per-order notional cap.
 public fun assert_seed_order_notional_allowed<Product>(self: &Issuance<Product>, order_notional: u64) {
     assert_order_notional_within(self.max_order_notional, order_notional);
@@ -245,9 +250,9 @@ public fun side<Product>(self: &State<Product>): PositionSide {
     self.vault_policy.side()
 }
 
-/// The live per-order notional cap in atomic collateral units.
-public fun max_order_notional<Product>(self: &State<Product>): u64 {
-    self.max_order_notional
+/// The whole-lot base one order may carry at `position`'s sealed oracle pair.
+public fun max_order_base<Product>(self: &State<Product>, position: &ActivePosition): u64 {
+    base_for_notional(self.max_order_notional, position, self.base_unit, self.collateral_unit)
 }
 
 /// Rejects one adapter order above the live atomic-collateral notional limit.
@@ -661,9 +666,14 @@ public fun assert_unwinding<Product>(self: &State<Product>) {
     self.lifecycle.assert_unwinding();
 }
 
-/// Prices only a close-only order; insolvency and the reserve do not gate an exit.
+/// Prices a close-only order and sizes the per-order cap in whole lots at that
+/// price; insolvency and the reserve do not gate an exit.
 public fun unwind_constraints<Product>(
-    self: &State<Product>, base_oracle: PriceObservation, collateral_oracle: PriceObservation, now_ms: u64,
+    self: &State<Product>,
+    base_oracle: PriceObservation,
+    collateral_oracle: PriceObservation,
+    lot_size: u64,
+    now_ms: u64,
 ): (PositionSide, u64, u64, u64) {
     self.assert_unwinding();
     let price_policy = self.vault_policy.price_policy();
@@ -672,8 +682,11 @@ public fun unwind_constraints<Product>(
     let (base_price, collateral_price) = (base_oracle.price(), collateral_oracle.price());
     base_oracle.destroy();
     collateral_oracle.destroy();
+    let max_order_base = rebalance_math::base_for_notional_down(
+        self.max_order_notional, base_price, collateral_price, lot_size, self.base_unit, self.collateral_unit,
+    );
 
-    (self.vault_policy.side(), self.max_order_notional, base_price, collateral_price)
+    (self.vault_policy.side(), max_order_base, base_price, collateral_price)
 }
 
 /// Consumes the reserve book entry only after the adapter proves complete local cash recovery.
@@ -898,10 +911,9 @@ fun live_fee_bps<Product>(self: &State<Product>, is_mint: bool): u64 {
 }
 
 /// Whole-lot base worth at most `notional` at the position's sealed oracle pair.
-fun base_for_notional<Product>(self: &State<Product>, notional: u64, position: &ActivePosition): u64 {
+fun base_for_notional(notional: u64, position: &ActivePosition, base_unit: u64, collateral_unit: u64): u64 {
     rebalance_math::base_for_notional_down(
-        notional, position.base_price, position.collateral_price, position.lot_size,
-        self.base_unit, self.collateral_unit,
+        notional, position.base_price, position.collateral_price, position.lot_size, base_unit, collateral_unit,
     )
 }
 
@@ -920,12 +932,10 @@ fun increase_order<Product>(self: &State<Product>, position: &ActivePosition, na
 fun reduction_order<Product>(self: &State<Product>, position: &ActivePosition, nav: u64): u64 {
     let target_notional =
         accounting_math::target_notional_down(nav, self.vault_policy.rebalance_policy().target_leverage_bps());
-    let target_base = self.base_for_notional(target_notional, position);
+    let target_base = base_for_notional(target_notional, position, self.base_unit, self.collateral_unit);
     if (position.base <= target_base) return 0;
 
-    let cap_base = self.base_for_notional(self.max_order_notional, position);
-
-    (position.base - target_base).min(cap_base) / position.lot_size * position.lot_size
+    (position.base - target_base).min(self.max_order_base(position)) / position.lot_size * position.lot_size
 }
 
 fun assert_within_nav_cap<Product>(self: &State<Product>, nav: u64) {
@@ -1010,6 +1020,11 @@ public fun vault_policy_for_testing<Product>(self: &State<Product>): VaultPolicy
 }
 
 #[test_only]
+public fun max_order_notional_for_testing<Product>(self: &State<Product>): u64 {
+    self.max_order_notional
+}
+
+#[test_only]
 public fun nav_cap_for_testing<Product>(self: &State<Product>): u64 {
     self.nav_cap
 }
@@ -1075,6 +1090,5 @@ use blast_boosts_core::{
 };
 
 public use fun issued_side as Issuance.side;
-public use fun issued_max_order_notional as Issuance.max_order_notional;
 public use fun assert_seed_order_notional_allowed as Issuance.assert_order_notional_allowed;
 public use fun assert_seed_execution as Issuance.assert_execution;

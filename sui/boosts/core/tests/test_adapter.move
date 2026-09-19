@@ -244,7 +244,7 @@ public fun issue_with(venue: Venue, vault_policy: VaultPolicy, max_order_notiona
     scenario.next_tx(ISSUER);
     let admin_cap = scenario.take_from_sender<AdminCap<BLAST_BOOSTS_CORE>>();
     let witness = authority.sign_in(&admin_cap);
-    let issuance = state::issue<Product>(&witness, vault_policy, max_order_notional, nav_cap);
+    let issuance = state::issue<Product>(&witness, vault_policy, max_order_notional, nav_cap, BASE_DECIMALS, COLLATERAL_DECIMALS);
 
     Issued { issuance, venue, authority, super_admin_cap, admin_cap, scenario }
 }
@@ -324,14 +324,10 @@ public fun witness(self: &Vault): AdminWitness<BLAST_BOOSTS_CORE> {
 public fun activate(self: Issued, seed: u64, seed_reserve: u64): Vault {
     let Issued { issuance, mut venue, authority, super_admin_cap, admin_cap, scenario } = self;
     venue.deposit(seed);
-    let (target, seed_position) = issuance.seed_terms(venue.observe(), seed_reserve);
+    let (mut remaining, max_order_base, seed_position) = issuance.seed_terms(venue.observe(), seed_reserve);
 
-    let mut remaining = venue.base_for_notional(target);
-    let cap_base = venue.base_for_notional(issuance.max_order_notional());
     while (remaining > 0) {
-        let order = remaining.min(cap_base);
-        issuance.assert_order_notional_allowed(venue.notional_of(order));
-        let (executed, filled) = venue.fill(order, true);
+        let (executed, filled) = venue.fill(remaining.min(max_order_base), true);
         issuance.assert_execution(seed_position.base_price(), executed);
         issuance.assert_order_notional_allowed(venue.notional_of(filled));
         remaining = remaining - filled;
@@ -339,7 +335,7 @@ public fun activate(self: Issued, seed: u64, seed_reserve: u64): Vault {
     assert!(seed_position.collateral_price() == venue.collateral_price);
 
     let (state, seed_nav, _) =
-        issuance.activate(venue.observe(), seed_reserve, BASE_DECIMALS, COLLATERAL_DECIMALS, venue.now_ms);
+        issuance.activate(venue.observe(), seed_reserve, venue.now_ms);
     let locked = seed_nav * SEED_SHARE_SCALE;
 
     Vault {
@@ -368,7 +364,7 @@ public fun mint_with_fee_limit(self: &mut Vault, deposit: u64, minimum_shares: u
     let priced = plan.mint_position();
     assert!(priced.lot_size() == self.venue.lot_size);
     let base_price = priced.base_price();
-    let cap = self.state.max_order_notional();
+    let cap = self.state.max_order_notional_for_testing();
 
     self.admin_cash = self.admin_cash + plan.admin_fee();
     self.venue.deposit(deposit - plan.admin_fee());
@@ -412,7 +408,7 @@ public fun redeem_with_fee_limit(self: &mut Vault, shares: u64, minimum_output: 
     let priced = plan.redemption_position();
     assert!(plan.redemption_shares() == shares && priced.lot_size() == self.venue.lot_size);
     let base_price = priced.base_price();
-    let cap = self.state.max_order_notional();
+    let cap = self.state.max_order_notional_for_testing();
 
     let mut remaining = plan.base_to_sell();
     let cap_base = self.venue.base_for_notional(cap);
@@ -500,7 +496,7 @@ public fun set_fees(self: &mut Vault, mint_bps: u64, redeem_bps: u64, admin_shar
 
 public fun set_max_order_notional(self: &mut Vault, max_order_notional: u64) {
     self.state.set_max_order_notional(max_order_notional);
-    assert!(self.state.max_order_notional() == max_order_notional);
+    assert!(self.state.max_order_notional_for_testing() == max_order_notional);
 }
 
 // --- Shutdown ---
@@ -526,10 +522,11 @@ public fun unwind(self: &mut Vault, max_orders: u64): u64 {
     let now_ms = self.venue.now_ms;
     let mut orders = 0;
     while (self.venue.base > 0 && orders < max_orders) {
-        let (_, cap, base_price, _) = self.state.unwind_constraints(
-            self.venue.oracle(self.venue.base_price), self.venue.oracle(self.venue.collateral_price), now_ms,
+        let (_, max_order_base, base_price, _) = self.state.unwind_constraints(
+            self.venue.oracle(self.venue.base_price), self.venue.oracle(self.venue.collateral_price),
+            self.venue.lot_size, now_ms,
         );
-        let order = self.venue.base.min(self.venue.base_for_notional(cap));
+        let order = self.venue.base.min(max_order_base);
         let (executed, _) = self.venue.fill(order, false);
         self.state.assert_execution(true, base_price, executed);
         orders = orders + 1;
