@@ -136,3 +136,8 @@ the registry's constants, never by number.
   an input argument of the initializer; they must be re-bound to a created
   object consumed by `share`, together with the earlier renames they already
   miss. Until then the gate is not evidence for this layout.
+- The source-boundary gate no longer pins activation statement order, which
+  the 0074 phase proofs bind themselves; it checks what neither the compiler
+  nor the Move tests can: dependency direction, one linear module hierarchy
+  per package, the three-module public surface, `operations` as the sole
+  driver, and the `#[test_only]` seams.
