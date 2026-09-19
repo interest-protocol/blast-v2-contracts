@@ -401,7 +401,7 @@ fun finalization_rejects_a_short_actual_coin_with_exact_sub_atomic_remainder() {
 #[test]
 fun event_reducer_reconstructs_active_economics_for_two_product_types() {
     let mut fixture = start();
-    let vault_policy = standard_vault_policy().with_fee_limits(100, 100, 3_000);
+    let vault_policy = fee_capped_vault_policy_for_side(policy::long());
     let mut first = issue_and_activate_product(&mut fixture, Product(), initial_checkpoint(), vault_policy);
     let mut second = issue_and_activate_product(&mut fixture, OtherProduct(), initial_checkpoint(), vault_policy);
     assert!(first.id() != second.id());
@@ -475,7 +475,7 @@ fun wrong_role_precedes_invalid_fee_settings() {
 fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_change() {
     let mut fixture = start();
     let mut vault = issue_and_activate_with_policy(&mut fixture, initial_checkpoint(),
-        standard_vault_policy().with_fee_limits(100, 100, 3_000));
+        fee_capped_vault_policy_for_side(policy::long()));
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
     let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 10_000, vault.total_share_supply(), 9_989_000, REFERENCE_TIME_MS);
@@ -2311,6 +2311,17 @@ fun standard_vault_policy(): VaultPolicy {
 }
 
 fun standard_vault_policy_for_side(side: PositionSide): VaultPolicy {
+    vault_policy_for_side(side, 10, 10, 0)
+}
+
+/// The standard policy whose admin may raise fees to 1% and keep 30% of them.
+fun fee_capped_vault_policy_for_side(side: PositionSide): VaultPolicy {
+    vault_policy_for_side(side, 100, 100, 3_000)
+}
+
+fun vault_policy_for_side(
+    side: PositionSide, mint_fee_cap_bps: u64, redeem_fee_cap_bps: u64, admin_share_cap_bps: u64,
+): VaultPolicy {
     policy::new_vault_policy(
         side,
         policy::new_rebalance_policy(
@@ -2325,6 +2336,9 @@ fun standard_vault_policy_for_side(side: PositionSide): VaultPolicy {
         policy::new_price_policy(30_000, 2_000, 100, 500),
         10,
         10,
+        mint_fee_cap_bps,
+        redeem_fee_cap_bps,
+        admin_share_cap_bps,
         100,
         5_000,
     )
@@ -2332,7 +2346,7 @@ fun standard_vault_policy_for_side(side: PositionSide): VaultPolicy {
 
 fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     let mut fixture = start();
-    let vault_policy = standard_vault_policy_for_side(side).with_fee_limits(100, 100, 3_000);
+    let vault_policy = fee_capped_vault_policy_for_side(side);
     let mut vault = issue_and_activate_product_with_side(&mut fixture, product, initial_checkpoint(), vault_policy, side);
     let mut replay = replay_issued(events::collect_one<events::VaultIssued<Tag>>(0));
     replay_initialized(&mut replay, events::collect_one<events::VaultInitialized<Tag>>(0));

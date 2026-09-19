@@ -543,8 +543,8 @@ fun assert_issued_policy<Product>(self: &Fixture, expected: VaultPolicy) {
 fun configured_policy(side: PositionSide, target: u64): VaultPolicy {
     policy::new_vault_policy(
         side, policy::new_rebalance_policy(target - 2_000, target, target + 2_000, target + 10_000, 100, 500, 10),
-        policy::new_price_policy(30_000, 2_000, 100, 500), 30, 30, 100, 5_000,
-    ).with_fee_limits(100, 100, 3_000)
+        policy::new_price_policy(30_000, 2_000, 100, 500), 30, 30, 100, 100, 3_000, 100, 5_000,
+    )
 }
 
 fun standard_vault_policy(): VaultPolicy {
@@ -562,6 +562,9 @@ fun standard_vault_policy(): VaultPolicy {
         policy::new_price_policy(30_000, 2_000, 100, 500),
         10,
         10,
+        10,
+        10,
+        0,
         100,
         5_000,
     )

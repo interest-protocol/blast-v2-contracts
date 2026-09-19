@@ -290,7 +290,7 @@ fun live_fee_setter_accepts_each_exact_immutable_cap() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let issuance: Issuance<Product> = state::issue(
-        &witness, vault_policy(policy::long()).with_fee_limits(100, 200, 3_000), MAX_ORDER_NOTIONAL, NAV_CAP,
+        &witness, fee_capped_vault_policy(100, 200, 3_000), MAX_ORDER_NOTIONAL, NAV_CAP,
     );
     let (mut state, _) = activate_with(issuance, standard_observation(policy::long()), SEED_RESERVE);
     state.set_fees(100, 200, 3_000);
@@ -308,7 +308,7 @@ fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
             let witness = fixture.authority.sign_in(&fixture.admin_cap);
             let vault_policy = policy::new_vault_policy(
                 side, policy::new_rebalance_policy(target - 2_000, target, target + 2_000, target + 10_000, 100, 500, 10),
-                policy::new_price_policy(30_000, 2_000, 100, 500), 0, 0, 100, MAX_RESERVE_BPS,
+                policy::new_price_policy(30_000, 2_000, 100, 500), 0, 0, 0, 0, 0, 100, MAX_RESERVE_BPS,
             );
             let notional = target * 100;
             let (mut state, _, _) = state::issue<Product>(&witness, vault_policy, 2_000_000, NAV_CAP)
@@ -605,7 +605,7 @@ fun fee_updates_change_future_allocations_without_relabeling_the_buffer() {
     let fixture = start(domain::vault_issuer_role());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     let issuance: Issuance<Product> = state::issue(
-        &witness, vault_policy(policy::long()).with_fee_limits(100, 100, 3_000), MAX_ORDER_NOTIONAL, NAV_CAP,
+        &witness, fee_capped_vault_policy(100, 100, 3_000), MAX_ORDER_NOTIONAL, NAV_CAP,
     );
     let (mut state, _) = activate_with(issuance, standard_observation(policy::long()), SEED_RESERVE);
     let (fee, admin, buffer) = state.fee_allocation_for_testing(1_000_000, true);
@@ -1417,6 +1417,25 @@ fun vault_policy(side: PositionSide): VaultPolicy {
         policy::new_price_policy(30_000, 2_000, 100, 500),
         10,
         10,
+        10,
+        10,
+        0,
+        MIN_EXPOSURE_LOTS,
+        MAX_RESERVE_BPS,
+    )
+}
+
+/// The standard long policy with fee caps the admin may move up to.
+fun fee_capped_vault_policy(mint_fee_cap_bps: u64, redeem_fee_cap_bps: u64, admin_share_cap_bps: u64): VaultPolicy {
+    policy::new_vault_policy(
+        policy::long(),
+        policy::new_rebalance_policy(16_000, 20_000, 26_000, 30_000, 100, 500, 10),
+        policy::new_price_policy(30_000, 2_000, 100, 500),
+        10,
+        10,
+        mint_fee_cap_bps,
+        redeem_fee_cap_bps,
+        admin_share_cap_bps,
         MIN_EXPOSURE_LOTS,
         MAX_RESERVE_BPS,
     )
@@ -1431,6 +1450,9 @@ fun capped_issuance(fixture: &Fixture, max_reserve_bps: u64): Issuance<Product> 
         policy::new_price_policy(30_000, 2_000, 100, 500),
         10,
         10,
+        10,
+        10,
+        0,
         MIN_EXPOSURE_LOTS,
         max_reserve_bps,
     );

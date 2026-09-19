@@ -11,38 +11,38 @@ const MAX_RESERVE_BPS: u64 = 1_000;
 #[test]
 #[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
 fun fee_limits_reject_mint_cap_below_initial_rate() {
-    new_policy(true, 10, 20, 1).with_fee_limits(9, 20, 0);
+    new_policy_with_fee_caps(10, 20, 9, 20, 0);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
 fun fee_limits_reject_redeem_cap_below_initial_rate() {
-    new_policy(true, 10, 20, 1).with_fee_limits(10, 19, 0);
+    new_policy_with_fee_caps(10, 20, 10, 19, 0);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
 fun fee_limits_reject_mint_cap_at_full_principal() {
-    new_policy(true, 10, 20, 1).with_fee_limits(10_000, 20, 0);
+    new_policy_with_fee_caps(10, 20, 10_000, 20, 0);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
 fun fee_limits_reject_redeem_cap_at_full_principal() {
-    new_policy(true, 10, 20, 1).with_fee_limits(10, 10_000, 0);
+    new_policy_with_fee_caps(10, 20, 10, 10_000, 0);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
 fun fee_limits_reject_allocation_cap_above_full_fee() {
-    new_policy(true, 10, 20, 1).with_fee_limits(10, 20, 10_001);
+    new_policy_with_fee_caps(10, 20, 10, 20, 10_001);
 }
 
 #[test]
 fun fee_limits_accept_zero_exact_and_largest_legal_caps() {
-    new_policy(true, 0, 0, 1).with_fee_limits(0, 0, 0).assert_fee_limits(0, 0, 0);
-    new_policy(true, 10, 20, 1).with_fee_limits(10, 20, 2_000).assert_fee_limits(10, 20, 2_000);
-    new_policy(true, 9_999, 9_999, 1).with_fee_limits(9_999, 9_999, 10_000).assert_fee_limits(9_999, 9_999, 10_000);
+    new_policy_with_fee_caps(0, 0, 0, 0, 0).assert_fee_limits(0, 0, 0);
+    new_policy_with_fee_caps(10, 20, 10, 20, 2_000).assert_fee_limits(10, 20, 2_000);
+    new_policy_with_fee_caps(9_999, 9_999, 9_999, 9_999, 10_000).assert_fee_limits(9_999, 9_999, 10_000);
 }
 
 #[test]
@@ -76,6 +76,9 @@ fun the_largest_locally_valid_short_policy_is_preserved() {
         policy::new_price_policy(max, max, 9_999, 9_999),
         9_999,
         9_999,
+        9_999,
+        9_999,
+        10_000,
         1_000_000,
         10_000,
     );
@@ -212,7 +215,31 @@ fun new_policy(
         standard_price_policy(),
         mint_fee_bps,
         redeem_fee_bps,
+        mint_fee_bps,
+        redeem_fee_bps,
+        0,
         min_order_lots,
+        MAX_RESERVE_BPS,
+    )
+}
+
+fun new_policy_with_fee_caps(
+    mint_fee_bps: u64,
+    redeem_fee_bps: u64,
+    mint_fee_cap_bps: u64,
+    redeem_fee_cap_bps: u64,
+    admin_share_cap_bps: u64,
+): VaultPolicy {
+    policy::new_vault_policy(
+        policy::long(),
+        policy::new_rebalance_policy(0, 3, 5, 6, 0, 0, 1),
+        standard_price_policy(),
+        mint_fee_bps,
+        redeem_fee_bps,
+        mint_fee_cap_bps,
+        redeem_fee_cap_bps,
+        admin_share_cap_bps,
+        1,
         MAX_RESERVE_BPS,
     )
 }
@@ -222,6 +249,9 @@ fun new_policy_with_reserve_ceiling(max_reserve_bps: u64): VaultPolicy {
         policy::long(),
         policy::new_rebalance_policy(0, 3, 5, 6, 0, 0, 1),
         standard_price_policy(),
+        0,
+        0,
+        0,
         0,
         0,
         1,

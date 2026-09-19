@@ -198,8 +198,10 @@ public fun new_price_policy(
 
 /// Composes one complete immutable policy for one future Vault.
 ///
-/// Both initial fee rates stay below 10,000 bps and seed the live `State`
-/// rates; until `with_fee_limits` runs they are also the fee caps.
+/// The initial fee rates seed the live `State` rates; each stays at or below
+/// its cap, and both caps stay below 10,000 bps. `admin_share_cap_bps` bounds
+/// the share of future collected fees the admin may take and may equal
+/// 10,000; the Vault starts with an admin share of zero.
 /// `min_order_lots` is positive and at most `max_min_order_lots`.
 /// `max_reserve_bps` is positive and at most 10,000: the maintenance reserve
 /// may hold at most that share of position notional, and every reserve
@@ -207,20 +209,30 @@ public fun new_price_policy(
 /// The NAV cap is not part of the policy: it is a live `State` value the
 /// admin may move, supplied to `state::issue` directly.
 ///
-/// Guard order is the fee rates, the lot multiple, then the reserve ceiling.
+/// Guard order is the fee rates, the fee caps, the lot multiple, then the
+/// reserve ceiling.
 public fun new_vault_policy(
     side: PositionSide,
     rebalance_policy: RebalancePolicy,
     price_policy: PricePolicy,
     initial_mint_fee_bps: u64,
     initial_redeem_fee_bps: u64,
+    mint_fee_cap_bps: u64,
+    redeem_fee_cap_bps: u64,
+    admin_share_cap_bps: u64,
     min_order_lots: u64,
     max_reserve_bps: u64,
 ): VaultPolicy {
+    let bps = constants::basis_points_denominator!();
     assert!(
-        initial_mint_fee_bps < constants::basis_points_denominator!()
-            && initial_redeem_fee_bps < constants::basis_points_denominator!(),
+        initial_mint_fee_bps < bps && initial_redeem_fee_bps < bps,
         blast_boosts_core::errors::invalid_fee_bps!(),
+    );
+    assert!(
+        initial_mint_fee_bps <= mint_fee_cap_bps && mint_fee_cap_bps < bps
+            && initial_redeem_fee_bps <= redeem_fee_cap_bps && redeem_fee_cap_bps < bps
+            && admin_share_cap_bps <= bps,
+        blast_boosts_core::errors::fee_cap_exceeded!(),
     );
     assert!(
         min_order_lots > 0
@@ -238,36 +250,12 @@ public fun new_vault_policy(
         price_policy,
         initial_mint_fee_bps,
         initial_redeem_fee_bps,
-        mint_fee_cap_bps: initial_mint_fee_bps,
-        redeem_fee_cap_bps: initial_redeem_fee_bps,
-        admin_share_cap_bps: 0,
+        mint_fee_cap_bps,
+        redeem_fee_cap_bps,
+        admin_share_cap_bps,
         min_order_lots,
         max_reserve_bps,
     }
-}
-
-/// Configures immutable fee ceilings before this policy is consumed at issuance.
-/// `admin_cap_bps` bounds the share of future collected fees the admin may
-/// take; the Vault starts with an admin share of zero.
-public fun with_fee_limits(
-    mut self: VaultPolicy,
-    mint_cap_bps: u64,
-    redeem_cap_bps: u64,
-    admin_cap_bps: u64,
-): VaultPolicy {
-    let bps = constants::basis_points_denominator!();
-    assert!(
-        self.initial_mint_fee_bps <= mint_cap_bps && mint_cap_bps < bps
-            && self.initial_redeem_fee_bps <= redeem_cap_bps && redeem_cap_bps < bps
-            && admin_cap_bps <= bps,
-        blast_boosts_core::errors::fee_cap_exceeded!(),
-    );
-
-    self.mint_fee_cap_bps = mint_cap_bps;
-    self.redeem_fee_cap_bps = redeem_cap_bps;
-    self.admin_share_cap_bps = admin_cap_bps;
-
-    self
 }
 
 // === Package Functions ===

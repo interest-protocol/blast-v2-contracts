@@ -259,8 +259,11 @@ public fun standard_policy(side: PositionSide): VaultPolicy {
         10,
         10,
         100,
+        100,
+        5_000,
+        100,
         1_000,
-    ).with_fee_limits(100, 100, 5_000)
+    )
 }
 
 public fun state(self: &Vault): &State<Product> { &self.state }
