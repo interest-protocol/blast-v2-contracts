@@ -1977,19 +1977,28 @@ fun revoke_role(fixture: &mut Fixture, role: u64) {
 }
 
 fun issue_and_activate_with_policy(
-    fixture: &mut Fixture, checkpoint: Checkpoint, vault_policy: VaultPolicy,
+    fixture: &mut Fixture,
+    checkpoint: Checkpoint,
+    vault_policy: VaultPolicy,
 ): Vault<Product, Collateral> {
     issue_and_activate_product(fixture, Product(), checkpoint, vault_policy)
 }
 
 fun issue_and_activate_product<Tag: drop>(
-    fixture: &mut Fixture, product: Tag, checkpoint: Checkpoint, vault_policy: VaultPolicy,
+    fixture: &mut Fixture,
+    product: Tag,
+    checkpoint: Checkpoint,
+    vault_policy: VaultPolicy,
 ): Vault<Tag, Collateral> {
     issue_and_activate_product_with_side(fixture, product, checkpoint, vault_policy, policy::long())
 }
 
 fun issue_and_activate_product_with_side<Tag: drop>(
-    fixture: &mut Fixture, _: Tag, checkpoint: Checkpoint, vault_policy: VaultPolicy, side: PositionSide,
+    fixture: &mut Fixture,
+    _: Tag,
+    checkpoint: Checkpoint,
+    vault_policy: VaultPolicy,
+    side: PositionSide,
 ): Vault<Tag, Collateral> {
     let Fixture {
         scenario,
@@ -2260,7 +2269,10 @@ fun fee_capped_vault_policy_for_side(side: PositionSide): VaultPolicy {
 }
 
 fun vault_policy_for_side(
-    side: PositionSide, mint_fee_cap_bps: u64, redeem_fee_cap_bps: u64, admin_share_cap_bps: u64,
+    side: PositionSide,
+    mint_fee_cap_bps: u64,
+    redeem_fee_cap_bps: u64,
+    admin_share_cap_bps: u64,
 ): VaultPolicy {
     policy::new_vault_policy(
         side,

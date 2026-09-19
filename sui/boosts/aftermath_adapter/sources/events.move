@@ -245,8 +245,17 @@ public(package) fun vault_initialized<Product>(
 // --- Mint ---
 
 public(package) fun minted<Product>(
-    vault_id: ID, deposit: u64, shares: u64, contribution: u64, fee: u64, admin_fee: u64,
-    reserve_fee: u64, reserve_after: u64, admin_cash_after: u64, supply_after: u64, checkpoint: Checkpoint,
+    vault_id: ID,
+    deposit: u64,
+    shares: u64,
+    contribution: u64,
+    fee: u64,
+    admin_fee: u64,
+    reserve_fee: u64,
+    reserve_after: u64,
+    admin_cash_after: u64,
+    supply_after: u64,
+    checkpoint: Checkpoint,
 ) {
     emit_event(Minted<Product> {
         vault_id, deposit, shares, contribution, fee, admin_fee, reserve_fee,
@@ -257,8 +266,16 @@ public(package) fun minted<Product>(
 // --- Redemption ---
 
 public(package) fun redeemed<Product>(
-    vault_id: ID, shares: u64, net: u64, fee: u64, admin_fee: u64, reserve_fee: u64,
-    reserve_after: u64, admin_cash_after: u64, supply_after: u64, checkpoint: Checkpoint,
+    vault_id: ID,
+    shares: u64,
+    net: u64,
+    fee: u64,
+    admin_fee: u64,
+    reserve_fee: u64,
+    reserve_after: u64,
+    admin_cash_after: u64,
+    supply_after: u64,
+    checkpoint: Checkpoint,
 ) {
     emit_event(Redeemed<Product> {
         vault_id, shares, net, fee, admin_fee, reserve_fee, reserve_after, admin_cash_after, supply_after, checkpoint,
@@ -269,8 +286,16 @@ public(package) fun redeemed<Product>(
 
 /// The signed equity delta is the actual net execution effect at the fixed oracle pair.
 public(package) fun rebalanced<Product>(
-    vault_id: ID, equity_before: u64, equity_after: u64, base_before: u64, base_after: u64,
-    increase: bool, reserve_after: u64, admin_cash_after: u64, supply_after: u64, checkpoint: Checkpoint,
+    vault_id: ID,
+    equity_before: u64,
+    equity_after: u64,
+    base_before: u64,
+    base_after: u64,
+    increase: bool,
+    reserve_after: u64,
+    admin_cash_after: u64,
+    supply_after: u64,
+    checkpoint: Checkpoint,
 ) {
     emit_event(Rebalanced<Product> {
         vault_id, equity_before, equity_after, base_before, base_after, increase,
@@ -327,8 +352,12 @@ public(package) fun shutdown_begun<Product>(vault_id: ID, reason: ShutdownReason
 }
 
 public(package) fun unwind_progress<Product>(
-    vault_id: ID, before: Checkpoint, after_funding: Option<Checkpoint>, after: Checkpoint,
-    market_orders: u64, filled_quote: Option<u256>,
+    vault_id: ID,
+    before: Checkpoint,
+    after_funding: Option<Checkpoint>,
+    after: Checkpoint,
+    market_orders: u64,
+    filled_quote: Option<u256>,
 ) {
     emit_event(UnwindProgress<Product> {
         vault_id, before, after_funding, after, market_orders, filled_quote,
@@ -336,8 +365,11 @@ public(package) fun unwind_progress<Product>(
 }
 
 public(package) fun shutdown_finalized<Product>(
-    vault_id: ID, recovered_cash: u64, eligible_supply: u64,
-    checkpoint: Checkpoint, unrecoverable_collateral_raw: u256,
+    vault_id: ID,
+    recovered_cash: u64,
+    eligible_supply: u64,
+    checkpoint: Checkpoint,
+    unrecoverable_collateral_raw: u256,
 ) {
     emit_event(ShutdownFinalized<Product> {
         vault_id, recovered_cash, eligible_supply, checkpoint, unrecoverable_collateral_raw,
@@ -345,7 +377,11 @@ public(package) fun shutdown_finalized<Product>(
 }
 
 public(package) fun shutdown_redeemed<Product>(
-    vault_id: ID, shares: u64, cash_paid: u64, cash_remaining: u64, eligible_remaining: u64,
+    vault_id: ID,
+    shares: u64,
+    cash_paid: u64,
+    cash_remaining: u64,
+    eligible_remaining: u64,
 ) {
     emit_event(ShutdownRedeemed<Product> {
         vault_id, shares, cash_paid, cash_remaining, eligible_remaining,

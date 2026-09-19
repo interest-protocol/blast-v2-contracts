@@ -466,7 +466,10 @@ fun issue_and_share<Product: drop>(self: &mut Fixture, symbol: String) {
 
 /// Issues, activates on a seed at the policy's target leverage against a fixture venue account, and shares.
 fun issue_and_share_with_policy<Product: drop>(
-    self: &mut Fixture, symbol: String, vault_policy: VaultPolicy, target_bps: u64,
+    self: &mut Fixture,
+    symbol: String,
+    vault_policy: VaultPolicy,
+    target_bps: u64,
 ) {
     let issuance = self.issue_with_policy<Product>(symbol, vault_policy);
     let (vault, _) = self.activate_at(issuance, target_bps);
@@ -496,7 +499,9 @@ fun issue<Product: drop>(self: &mut Fixture, symbol: String): VaultIssuance<Prod
 }
 
 fun issue_with_policy<Product: drop>(
-    self: &mut Fixture, symbol: String, vault_policy: VaultPolicy,
+    self: &mut Fixture,
+    symbol: String,
+    vault_policy: VaultPolicy,
 ): VaultIssuance<Product, SUI> {
     let Fixture {
         scenario,

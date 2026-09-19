@@ -87,10 +87,17 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
 /// External Quote trading is independent of retirement; returned shares can enter a local claim.
 /// This typechecks the actual terminal ABI without requiring a venue or oracle object.
 public fun sell_and_redeem_shutdown<Product, Collateral, Meme>(
-    market: &mut Launch<Meme, BlastBoost<Product>>, version: &PackageVersion,
-    runtime: &RuntimeConfig, meme: Coin<Meme>, minimum_shares: u64,
-    vault: &mut Vault<Product, Collateral>, protocol: &Protocol,
-    minimum_cash: u64, deadline: u64, clock: &Clock, ctx: &mut TxContext,
+    market: &mut Launch<Meme, BlastBoost<Product>>,
+    version: &PackageVersion,
+    runtime: &RuntimeConfig,
+    meme: Coin<Meme>,
+    minimum_shares: u64,
+    vault: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    minimum_cash: u64,
+    deadline: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
 ): Coin<Collateral> {
     let shares = market.sell(version, runtime, meme, minimum_shares, ctx);
     vault.redeem_shutdown(protocol, shares, minimum_cash, deadline, clock, ctx)
@@ -98,13 +105,25 @@ public fun sell_and_redeem_shutdown<Product, Collateral, Meme>(
 
 /// Typechecks the atomic mint -> launch buy handoff; requires authorized live objects to run.
 public fun mint_and_buy<Product, Collateral, Meme>(
-    vault: &mut Vault<Product, Collateral>, protocol: &Protocol, account: &mut Account<Collateral>,
-    registry: &Registry, clearing_house: ClearingHouse<Collateral>,
-    base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
-    base_price: &PriceInfoObject, collateral_price: &PriceInfoObject,
-    cash: Coin<Collateral>, minimum_shares: u64, maximum_fee: u64, deadline: u64,
-    market: &mut Launch<Meme, BlastBoost<Product>>, version: &PackageVersion,
-    runtime: &RuntimeConfig, minimum_meme: u64, clock: &Clock, ctx: &mut TxContext,
+    vault: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    account: &mut Account<Collateral>,
+    registry: &Registry,
+    clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    base_price: &PriceInfoObject,
+    collateral_price: &PriceInfoObject,
+    cash: Coin<Collateral>,
+    minimum_shares: u64,
+    maximum_fee: u64,
+    deadline: u64,
+    market: &mut Launch<Meme, BlastBoost<Product>>,
+    version: &PackageVersion,
+    runtime: &RuntimeConfig,
+    minimum_meme: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<BlastBoost<Product>>) {
     let shares = operations::mint(vault, protocol, account, registry, clearing_house,
         base_oracle, collateral_oracle, base_price, collateral_price, cash,
@@ -114,13 +133,25 @@ public fun mint_and_buy<Product, Collateral, Meme>(
 
 /// Typechecks the atomic launch sell -> redemption handoff without a receipt currency.
 public fun sell_and_redeem<Product, Collateral, Meme>(
-    market: &mut Launch<Meme, BlastBoost<Product>>, version: &PackageVersion,
-    runtime: &RuntimeConfig, meme: Coin<Meme>, minimum_shares: u64,
-    vault: &mut Vault<Product, Collateral>, protocol: &Protocol, account: &mut Account<Collateral>,
-    registry: &Registry, clearing_house: ClearingHouse<Collateral>,
-    base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
-    base_price: &PriceInfoObject, collateral_price: &PriceInfoObject,
-    minimum_cash: u64, maximum_fee: u64, deadline: u64, clock: &Clock, ctx: &mut TxContext,
+    market: &mut Launch<Meme, BlastBoost<Product>>,
+    version: &PackageVersion,
+    runtime: &RuntimeConfig,
+    meme: Coin<Meme>,
+    minimum_shares: u64,
+    vault: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    account: &mut Account<Collateral>,
+    registry: &Registry,
+    clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    base_price: &PriceInfoObject,
+    collateral_price: &PriceInfoObject,
+    minimum_cash: u64,
+    maximum_fee: u64,
+    deadline: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
 ): Coin<Collateral> {
     let shares = market.sell(version, runtime, meme, minimum_shares, ctx);
     operations::redeem(vault, protocol, account, registry, clearing_house,

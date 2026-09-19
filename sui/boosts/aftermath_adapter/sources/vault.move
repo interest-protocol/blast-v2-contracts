@@ -119,8 +119,13 @@ public fun begin_shutdown<Product, Collateral>(
 
 /// Burns native eligible shares for local terminal collateral; no venue or oracle access.
 public fun redeem_shutdown<Product, Collateral>(
-    self: &mut Vault<Product, Collateral>, protocol: &Protocol, shares: Coin<BlastBoost<Product>>,
-    minimum_collateral: u64, deadline_ms: u64, clock: &Clock, ctx: &mut TxContext,
+    self: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    shares: Coin<BlastBoost<Product>>,
+    minimum_collateral: u64,
+    deadline_ms: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
 ): Coin<Collateral> {
     protocol.assert_current();
     self.state.assert_settled();
@@ -282,7 +287,9 @@ public(package) fun activate<Product, Collateral>(
 
 /// Mints only through this Vault's retained native TreasuryCap.
 public(package) fun mint_shares<Product, Collateral>(
-    self: &mut Vault<Product, Collateral>, amount: u64, ctx: &mut TxContext,
+    self: &mut Vault<Product, Collateral>,
+    amount: u64,
+    ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
     coin::mint(self.treasury_cap_mut(), amount, ctx)
 }
@@ -301,7 +308,9 @@ public(package) fun burn_redeemed_shares<Product, Collateral>(self: &mut Vault<P
 /// claim what the locked seed backed. Returns the final checkpoint and the
 /// raw collateral the venue could not release.
 public(package) fun seal_terminal_cash<Product, Collateral>(
-    self: &mut Vault<Product, Collateral>, withdrawal: TerminalWithdrawal<Collateral>, eligible: u64,
+    self: &mut Vault<Product, Collateral>,
+    withdrawal: TerminalWithdrawal<Collateral>,
+    eligible: u64,
 ): (Checkpoint, u256) {
     let (recovered, checkpoint, unrecoverable_collateral_raw) = withdrawal.into_recovered_cash();
     let cash = if (eligible == 0) {

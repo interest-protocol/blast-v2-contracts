@@ -54,9 +54,12 @@ public struct OracleLeg has drop {
 
 /// Authenticates raw terminal state without requiring a live price or positive equity.
 public(package) fun capture_checkpoint<Collateral>(
-    binding: &Binding, account: &Account<Collateral>, registry: &Registry,
+    binding: &Binding,
+    account: &Account<Collateral>,
+    registry: &Registry,
     clearing_house: &ClearingHouse<Collateral>,
-    base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
 ): Checkpoint {
     binding.assert_object_graph(
         object::id(account), account.account_id(), object::id(registry),
@@ -348,7 +351,10 @@ fun seconds_to_millis(seconds: u64): (u64, bool) {
 // --- Position Arithmetic ---
 
 fun signed_equity(
-    free_collateral: u64, allocated_collateral: u256, pnl_usd: u256, collateral_price: u256,
+    free_collateral: u64,
+    allocated_collateral: u256,
+    pnl_usd: u256,
+    collateral_price: u256,
 ): (u64, bool) {
     signed_equity_decoded(
         free_collateral,
@@ -410,7 +416,11 @@ fun position_signs_coherent(base: u256, quote: u256, is_long_or_flat: bool): boo
 }
 
 fun position_signs_coherent_decoded(
-    base_negative: bool, quote_negative: bool, base_zero: bool, quote_zero: bool, is_long_or_flat: bool,
+    base_negative: bool,
+    quote_negative: bool,
+    base_zero: bool,
+    quote_zero: bool,
+    is_long_or_flat: bool,
 ): bool {
     if (base_zero || quote_zero) return base_zero && quote_zero;
 
@@ -451,7 +461,10 @@ public fun captured_health_for_testing(
 
 #[test_only]
 public fun normalize_pyth_for_testing(
-    value: u64, exponent_negative: bool, exponent_magnitude: u64, round_up: bool,
+    value: u64,
+    exponent_negative: bool,
+    exponent_magnitude: u64,
+    round_up: bool,
 ): (u64, bool) {
     normalize_pyth_component_parts(value, exponent_negative, exponent_magnitude, round_up)
 }
@@ -492,7 +505,11 @@ public fun margin_safe_for_testing(margin_negative: bool, margin: u256, requirem
 
 #[test_only]
 public fun position_signs_coherent_for_testing(
-    base_negative: bool, quote_negative: bool, base_zero: bool, quote_zero: bool, is_long_or_flat: bool,
+    base_negative: bool,
+    quote_negative: bool,
+    base_zero: bool,
+    quote_zero: bool,
+    is_long_or_flat: bool,
 ): bool {
     position_signs_coherent_decoded(base_negative, quote_negative, base_zero, quote_zero, is_long_or_flat)
 }

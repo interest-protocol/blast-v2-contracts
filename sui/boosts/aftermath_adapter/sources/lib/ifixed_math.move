@@ -12,7 +12,7 @@ public(package) fun nonnegative_rate(rate: u256): u256 {
 
 /// `10^exponent` as an IFixed-width integer.
 public(package) fun pow10(exponent: u64): u256 {
-    let mut result = 1;
+    let mut result = 1u256;
     exponent.do!(|_| result = result * 10);
 
     result

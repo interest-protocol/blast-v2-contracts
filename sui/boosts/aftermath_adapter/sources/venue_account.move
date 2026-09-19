@@ -172,7 +172,9 @@ public(package) fun lot_size(self: &Checkpoint): u64 { self.lot_size }
 /// the admin cap. The cap must name that account; both are immutable from here
 /// on, so this is the only place the pairing is ever checked.
 public(package) fun new(
-    binding: Binding, checkpoint: Checkpoint, admin_cap: AuthorityCap<ACCOUNT, ADMIN>,
+    binding: Binding,
+    checkpoint: Checkpoint,
+    admin_cap: AuthorityCap<ACCOUNT, ADMIN>,
 ): VenueAccount {
     assert!(
         authority::`for`(&admin_cap) == binding.account_object_id,
@@ -202,7 +204,10 @@ public(package) fun replace_checkpoint(
 
 /// Deposits only into the bound account under its admin authority.
 public(package) fun deposit<Collateral>(
-    self: &VenueAccount, account: &mut Account<Collateral>, registry: &Registry, cash: Coin<Collateral>,
+    self: &VenueAccount,
+    account: &mut Account<Collateral>,
+    registry: &Registry,
+    cash: Coin<Collateral>,
 ) {
     self.binding.assert_account(account);
     self.binding.assert_registry(registry);
@@ -220,8 +225,10 @@ public(package) fun assert_deposit_checkpoint(before: &Checkpoint, after: &Check
 
 /// Allocates deposited cash into the sole bound market without lending its authority.
 public(package) fun allocate<Collateral>(
-    self: &VenueAccount, account: &mut Account<Collateral>,
-    clearing_house: &mut ClearingHouse<Collateral>, amount: u64,
+    self: &VenueAccount,
+    account: &mut Account<Collateral>,
+    clearing_house: &mut ClearingHouse<Collateral>,
+    amount: u64,
 ) {
     self.binding.assert_market_account(account, clearing_house);
 
@@ -266,7 +273,10 @@ public(package) fun execute_order<Collateral>(
 /// An isolated session may change only its proved position and allocated trading cost.
 /// Expected signed position values must derive from authenticated venue fill facts.
 public(package) fun assert_trade_checkpoint(
-    before: &Checkpoint, after: &Checkpoint, expected_base: u256, expected_quote: u256,
+    before: &Checkpoint,
+    after: &Checkpoint,
+    expected_base: u256,
+    expected_quote: u256,
 ) {
     let mut expected = *before;
     expected.signed_base = expected_base;
@@ -287,9 +297,15 @@ public(package) fun assert_reduction_checkpoint(before: &Checkpoint, after: &Che
 
 /// Withdraws the exact payout, using free collateral before a bounded deallocation.
 public(package) fun withdraw<Collateral>(
-    self: &VenueAccount, account: &mut Account<Collateral>, registry: &Registry,
-    clearing_house: &mut ClearingHouse<Collateral>, base_oracle: &PriceFeedStorage,
-    collateral_oracle: &PriceFeedStorage, amount: u64, clock: &Clock, ctx: &mut TxContext,
+    self: &VenueAccount,
+    account: &mut Account<Collateral>,
+    registry: &Registry,
+    clearing_house: &mut ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    amount: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
 ): Coin<Collateral> {
     self.binding.assert_market_account(account, clearing_house);
     self.binding.assert_registry(registry);
@@ -486,7 +502,9 @@ public(package) fun recoverable_terminal_cash(self: &Checkpoint): u64 {
 
 /// Complete recovery changes only the two collateral locations, by the actual returned coin.
 public(package) fun terminal_withdrawal<Collateral>(
-    before: &Checkpoint, after: Checkpoint, recovered: Coin<Collateral>,
+    before: &Checkpoint,
+    after: Checkpoint,
+    recovered: Coin<Collateral>,
 ): TerminalWithdrawal<Collateral> {
     assert_terminal_withdrawal_checkpoint(before, &after, recovered.value());
     TerminalWithdrawal { recovered, checkpoint: after }
@@ -516,7 +534,9 @@ fun assert_account<Collateral>(self: &Binding, account: &Account<Collateral>) {
 
 /// The account and the market a session touches are the bound ones.
 fun assert_market_account<Collateral>(
-    self: &Binding, account: &Account<Collateral>, clearing_house: &ClearingHouse<Collateral>,
+    self: &Binding,
+    account: &Account<Collateral>,
+    clearing_house: &ClearingHouse<Collateral>,
 ) {
     self.assert_account(account);
     assert!(
@@ -613,8 +633,12 @@ fun market_funding_short(self: &Checkpoint): u256 { self.market_funding_short }
 
 /// Exact signed change in decoded IFixed magnitudes, with no raw-carrier ordering.
 fun assert_signed_cash_change(
-    before_negative: bool, before: u256, after_negative: bool, after: u256,
-    amount: u64, increase: bool,
+    before_negative: bool,
+    before: u256,
+    after_negative: bool,
+    after: u256,
+    amount: u64,
+    increase: bool,
 ) {
     let required = (amount as u256) * constants::collateral_atom_to_ifixed_scale!();
     let (actual, credit) = if (before_negative == after_negative) {
@@ -698,7 +722,10 @@ fun allocated_delta(before: &Checkpoint, after: &Checkpoint): CheckpointChange {
 
 /// Computes after-minus-before in sign/magnitude facts, including a zero crossing.
 fun signed_delta(
-    before_negative: bool, before_magnitude: u256, after_negative: bool, after_magnitude: u256,
+    before_negative: bool,
+    before_magnitude: u256,
+    after_negative: bool,
+    after_magnitude: u256,
 ): CheckpointChange {
     if (before_negative == after_negative) {
         if (before_magnitude == after_magnitude) return CheckpointChange::Unchanged;
@@ -763,7 +790,11 @@ fun recoverable_cash_decoded(self: &Checkpoint, is_negative: bool, magnitude: u2
 }
 
 fun assert_terminal_withdrawal_checkpoint_decoded(
-    before: &Checkpoint, after: &Checkpoint, amount: u64, is_negative: bool, magnitude: u256,
+    before: &Checkpoint,
+    after: &Checkpoint,
+    amount: u64,
+    is_negative: bool,
+    magnitude: u256,
 ) {
     assert!(
         recoverable_cash_decoded(before, is_negative, magnitude) == amount,
@@ -844,8 +875,12 @@ public fun unpack_for_testing(self: Checkpoint): (
 
 #[test_only]
 public fun assert_signed_cash_change_for_testing(
-    before_negative: bool, before: u256, after_negative: bool, after: u256,
-    amount: u64, increase: bool,
+    before_negative: bool,
+    before: u256,
+    after_negative: bool,
+    after: u256,
+    amount: u64,
+    increase: bool,
 ) {
     assert_signed_cash_change(before_negative, before, after_negative, after, amount, increase);
 }
@@ -853,7 +888,10 @@ public fun assert_signed_cash_change_for_testing(
 /// Exercises the pure cash proof with explicitly nonnegative decoded fixture collateral.
 #[test_only]
 public fun assert_nonnegative_cash_checkpoint_for_testing(
-    before: &Checkpoint, after: &Checkpoint, amount: u64, deposit: bool,
+    before: &Checkpoint,
+    after: &Checkpoint,
+    amount: u64,
+    deposit: bool,
 ) {
     let from_free = if (deposit) { 0 } else { before.free_collateral.min(amount) };
     assert_signed_cash_change(
@@ -870,7 +908,11 @@ public(package) fun recoverable_cash_for_testing(self: &Checkpoint, is_negative:
 
 #[test_only]
 public fun assert_terminal_withdrawal_checkpoint_decoded_for_testing(
-    before: &Checkpoint, after: &Checkpoint, amount: u64, is_negative: bool, magnitude: u256,
+    before: &Checkpoint,
+    after: &Checkpoint,
+    amount: u64,
+    is_negative: bool,
+    magnitude: u256,
 ) {
     assert_terminal_withdrawal_checkpoint_decoded(before, after, amount, is_negative, magnitude);
 }
@@ -878,7 +920,11 @@ public fun assert_terminal_withdrawal_checkpoint_decoded_for_testing(
 /// Substitutes only named IFixed decoding; cash and checkpoint guards remain production code.
 #[test_only]
 public(package) fun terminal_withdrawal_for_testing<Collateral>(
-    before: &Checkpoint, after: Checkpoint, recovered: Coin<Collateral>, is_negative: bool, magnitude: u256,
+    before: &Checkpoint,
+    after: Checkpoint,
+    recovered: Coin<Collateral>,
+    is_negative: bool,
+    magnitude: u256,
 ): TerminalWithdrawal<Collateral> {
     assert_terminal_withdrawal_checkpoint_decoded(before, &after, recovered.value(), is_negative, magnitude);
     TerminalWithdrawal { recovered, checkpoint: after }
@@ -941,8 +987,12 @@ public fun classify_preexisting_funding_for_testing(
 
 #[test_only]
 public fun classify_signed_funding_for_testing(
-    stored: &Checkpoint, before: &Checkpoint, stored_negative: bool, stored_magnitude: u256,
-    before_negative: bool, before_magnitude: u256,
+    stored: &Checkpoint,
+    before: &Checkpoint,
+    stored_negative: bool,
+    stored_magnitude: u256,
+    before_negative: bool,
+    before_magnitude: u256,
 ): CheckpointChange {
     classify_preexisting_from_delta(
         stored, before, signed_delta(stored_negative, stored_magnitude, before_negative, before_magnitude),

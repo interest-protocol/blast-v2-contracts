@@ -159,7 +159,9 @@ public fun issue<Product>(
 /// filled, in the same transaction; a copy here could not refuse a state that
 /// `activate` admits.
 public fun seed_terms<Product>(
-    self: &Issuance<Product>, observation: PositionObservation, seed_reserve: u64,
+    self: &Issuance<Product>,
+    observation: PositionObservation,
+    seed_reserve: u64,
 ): (u64, u64, ActivePosition) {
     let seed_nav = accounting_math::shareholder_nav(observation.venue_equity(), seed_reserve);
     let target_notional =
@@ -469,7 +471,10 @@ public fun needs_rebalance<Product>(self: &State<Product>, observation: Position
 
 /// Derives public maintenance intent from exact outside-band ratios, never caller orders.
 public fun prepare_rebalance<Product>(
-    self: &State<Product>, observation: PositionObservation, venue_fee_bps: u64, now_ms: u64,
+    self: &State<Product>,
+    observation: PositionObservation,
+    venue_fee_bps: u64,
+    now_ms: u64,
 ): RebalancePlan<Product> {
     self.lifecycle.assert_active();
     assert!(
@@ -526,8 +531,12 @@ public fun is_emergency(self: &RebalanceOrder): bool { self.emergency }
 
 /// Advances the plan by one accepted whole-lot fill of `order` under the fixed oracle pair.
 public fun accept_rebalance_fill<Product>(
-    self: &State<Product>, plan: &mut RebalancePlan<Product>, order: RebalanceOrder,
-    observation: PositionObservation, filled_base: u64, now_ms: u64,
+    self: &State<Product>,
+    plan: &mut RebalancePlan<Product>,
+    order: RebalanceOrder,
+    observation: PositionObservation,
+    filled_base: u64,
+    now_ms: u64,
 ) {
     let RebalanceOrder { base: requested, increase, emergency: _ } = order;
     assert!(
@@ -561,7 +570,8 @@ public fun accept_rebalance_fill<Product>(
 /// Completes holder-funded maintenance without changing reserve, supply or admin cash.
 /// Returns authenticated before/after equity and base for one completed event.
 public fun complete_rebalance<Product>(
-    self: &State<Product>, plan: RebalancePlan<Product>,
+    self: &State<Product>,
+    plan: RebalancePlan<Product>,
 ): (u64, u64, u64, u64, bool) {
     self.lifecycle.assert_active();
     let RebalancePlan { before, current, reserve_priced, increase, emergency: _, venue_fee_bps: _, steps } = plan;
