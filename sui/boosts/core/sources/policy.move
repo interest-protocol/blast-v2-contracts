@@ -590,13 +590,13 @@ public(package) fun reserve_cap(self: &VaultPolicy, notional: u64): u64 {
 
 public(package) fun assert_fee_limits(
     self: &VaultPolicy,
-    mint_bps: u64,
-    redeem_bps: u64,
+    mint_fee_bps: u64,
+    redeem_fee_bps: u64,
     admin_share_bps: u64,
 ) {
     assert!(
-        mint_bps <= self.mint_fee_cap_bps
-            && redeem_bps <= self.redeem_fee_cap_bps
+        mint_fee_bps <= self.mint_fee_cap_bps
+            && redeem_fee_bps <= self.redeem_fee_cap_bps
             && admin_share_bps <= self.admin_share_cap_bps,
         blast_boosts_core::errors::fee_cap_exceeded!(),
     );

@@ -160,7 +160,7 @@ public fun mint<Product, Collateral>(
     ).into_observation();
     vault.venue().checkpoint().assert_unchanged(&before_checkpoint);
 
-    let plan = vault.state().prepare_mint(before, deposit, vault.share_supply(), minimum_shares, clock.timestamp_ms());
+    let plan = vault.state().prepare_mint(before, deposit, vault.total_share_supply(), minimum_shares, clock.timestamp_ms());
     let terms = active_terms(vault, false, plan.mint_position());
 
     vault.retain_admin_cash(cash.split(plan.admin_fee(), ctx));
@@ -219,7 +219,7 @@ public fun redeem<Product, Collateral>(
     ).into_observation();
     vault.venue().checkpoint().assert_unchanged(&checkpoint);
 
-    let plan = vault.state().prepare_redemption(before, shares.value(), vault.share_supply(), minimum_collateral, clock.timestamp_ms());
+    let plan = vault.state().prepare_redemption(before, shares.value(), vault.total_share_supply(), minimum_collateral, clock.timestamp_ms());
     let terms = active_terms(vault, true, plan.redemption_position());
 
     let binding = vault.venue().binding();
@@ -888,7 +888,7 @@ fun complete_mint<Product, Collateral>(
     events::minted<Product>(
         vault.id(), deposit, shares.value(), contribution, fee, admin, reserve_fee,
         vault.state().maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(),
-        vault.share_supply(), checkpoint,
+        vault.total_share_supply(), checkpoint,
     );
 
     shares
@@ -929,7 +929,7 @@ fun complete_redemption<Product, Collateral>(
 
     events::redeemed<Product>(
         vault.id(), burned, net, fee, admin, reserve_fee,
-        vault.state().maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(), vault.share_supply(), checkpoint,
+        vault.state().maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(), vault.total_share_supply(), checkpoint,
     );
 
     cash
@@ -945,7 +945,7 @@ fun complete_rebalance<Product, Collateral>(
 
     events::rebalanced<Product>(
         vault.id(), before_equity, after_equity, before_base, after_base, increase,
-        vault.state().maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(), vault.share_supply(), checkpoint,
+        vault.state().maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(), vault.total_share_supply(), checkpoint,
     );
 }
 
@@ -1252,8 +1252,8 @@ fun complete_finalization<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>, withdrawal: TerminalWithdrawal<Collateral>,
 ) {
     let recovered_amount = withdrawal.recovered_amount();
-    let (supply, locked) = (vault.share_supply(), vault.locked_shares());
-    let eligible = vault.state_mut().finalize_shutdown(supply, locked);
+    let (total_share_supply, locked_shares) = (vault.total_share_supply(), vault.locked_shares());
+    let eligible = vault.state_mut().finalize_shutdown(total_share_supply, locked_shares);
 
     let (checkpoint, unrecoverable_collateral_raw) = vault.seal_terminal_cash(withdrawal, eligible);
     vault.venue_mut().replace_checkpoint(checkpoint);

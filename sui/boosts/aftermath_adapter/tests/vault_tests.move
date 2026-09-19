@@ -59,7 +59,7 @@ fun shutdown_admin_stops_an_active_vault_without_any_venue_or_oracle_input() {
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     assert!(vault.is_unwinding_for_testing());
-    assert_eq!(vault.share_supply(), SEED_NAV * 1_000);
+    assert_eq!(vault.total_share_supply(), SEED_NAV * 1_000);
     test_scenario::return_shared(vault);
     destroy(fixture);
 }
@@ -97,7 +97,7 @@ fun risk_admin_updates_live_fees_with_a_completed_event_and_no_asset_movement() 
     let (id, old_mint, old_redeem, old_admin, mint, redeem, admin) = event.fees_updated_fields();
     assert_eq!(id, vault.id());
     assert_eq!(vector[old_mint, old_redeem, old_admin, mint, redeem, admin], vector[10, 10, 0, 0, 0, 0]);
-    assert_eq!(vault.share_supply(), SEED_NAV * 1_000);
+    assert_eq!(vault.total_share_supply(), SEED_NAV * 1_000);
     assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
     test_scenario::return_shared(vault);
     destroy(fixture);
@@ -188,8 +188,8 @@ fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
     assert_eq!(vault_5x.treasury_cap_id_for_testing(), treasury_5x_id);
     assert_eq!(vault_2x.metadata_cap_id_for_testing(), metadata_2x_id);
     assert_eq!(vault_5x.metadata_cap_id_for_testing(), metadata_5x_id);
-    assert_eq!(vault_2x.share_supply(), SEED_NAV * 1_000);
-    assert_eq!(vault_5x.share_supply(), SEED_NAV * 1_000);
+    assert_eq!(vault_2x.total_share_supply(), SEED_NAV * 1_000);
+    assert_eq!(vault_5x.total_share_supply(), SEED_NAV * 1_000);
     assert_eq!(currency_2x.symbol(), b"SUI2X".to_string());
     assert_eq!(currency_5x.symbol(), b"SUI5X".to_string());
     assert_eq!(currency_2x.treasury_cap_id().destroy_some(), treasury_2x_id);
@@ -251,7 +251,7 @@ fun activation_locks_the_seed_shares_as_the_whole_supply() {
     let (vault, seed_nav) = fixture.activate(issuance);
 
     assert_eq!(seed_nav, SEED_NAV);
-    assert_eq!(vault.share_supply(), SEED_NAV * 1_000);
+    assert_eq!(vault.total_share_supply(), SEED_NAV * 1_000);
     assert_eq!(vault.locked_shares(), SEED_NAV * 1_000);
     destroy(vault);
     destroy(fixture);

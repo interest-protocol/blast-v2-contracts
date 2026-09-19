@@ -74,7 +74,7 @@ public struct MintPlan<phantom Product> {
     expected_contribution: u64,
     reserve_fee: u64,
     admin_fee: u64,
-    supply: u64,
+    total_share_supply: u64,
     minimum_shares: u64,
     base_to_buy: u64,
 }
@@ -82,9 +82,9 @@ public struct MintPlan<phantom Product> {
 /// Linear terms for one proportional redemption, before any payout or fee credit.
 public struct RedemptionPlan<phantom Product> {
     before: ActivePosition,
-    shares: u64,
-    supply: u64,
-    minimum_output: u64,
+    shares_to_redeem: u64,
+    total_share_supply: u64,
+    minimum_collateral_out: u64,
     fee_bps: u64,
     admin_share_bps: u64,
     base_to_sell: u64,
@@ -265,17 +265,17 @@ public fun assert_execution<Product>(self: &State<Product>, wide: bool, referenc
 // --- Mint ---
 
 /// Seals a proportional increase from reserve-excluded NAV and the user's limits.
-/// The adapter must authenticate the observation and native share supply.
+/// The adapter must authenticate the observation and the total share supply.
 public fun prepare_mint<Product>(
     self: &State<Product>,
     observation: PositionObservation,
-    deposit: u64,
-    supply: u64,
+    collateral_deposit: u64,
+    total_share_supply: u64,
     minimum_shares: u64,
     now_ms: u64,
 ): MintPlan<Product> {
     self.lifecycle.assert_active();
-    assert!(supply > 0, blast_boosts_core::errors::invalid_share_supply!());
+    assert!(total_share_supply > 0, blast_boosts_core::errors::invalid_share_supply!());
 
     let before = validated_active_position(self, observation, now_ms);
     let reserve_priced = self.admitted_reserve(&before);
@@ -285,8 +285,8 @@ public fun prepare_mint<Product>(
     );
     let nav = accounting_math::shareholder_nav(before.equity, reserve_priced);
 
-    let (fee, admin_fee, reserve_fee) = self.fee_allocation(deposit, true);
-    let expected_contribution = deposit - fee;
+    let (fee, admin_fee, reserve_fee) = self.fee_allocation(collateral_deposit, true);
+    let expected_contribution = collateral_deposit - fee;
     assert!(expected_contribution > 0, blast_boosts_core::errors::nonpositive_contribution!());
     let base_to_buy = accounting_math::mint_base_to_buy_down(
         expected_contribution, before.base, nav, before.lot_size, self.vault_policy.min_order_lots(),
@@ -297,7 +297,7 @@ public fun prepare_mint<Product>(
         expected_contribution,
         reserve_fee,
         admin_fee,
-        supply,
+        total_share_supply,
         minimum_shares,
         base_to_buy,
     }
@@ -326,7 +326,7 @@ public fun complete_mint<Product>(
 ): (u64, u64, u64, u64, u64) {
     self.lifecycle.assert_active();
     let MintPlan {
-        before, expected_contribution, reserve_fee, admin_fee, supply, minimum_shares, base_to_buy,
+        before, expected_contribution, reserve_fee, admin_fee, total_share_supply, minimum_shares, base_to_buy,
     } = plan;
 
     let after = validated_active_position(self, observation, now_ms);
@@ -345,7 +345,7 @@ public fun complete_mint<Product>(
     let nav_before = accounting_math::shareholder_nav(before.equity, reserve_priced);
     let (nav_after, contribution, shares) = accounting_math::allocated_mint_quote(
         before.equity, after.equity, reserve_priced, reserve_after, expected_contribution,
-        supply, minimum_shares,
+        total_share_supply, minimum_shares,
     );
     accounting_math::assert_mint_base_within_bounds(
         after.base, expected_contribution, contribution, before.base, nav_before,
@@ -361,7 +361,7 @@ public fun complete_mint<Product>(
     );
 
     self.maintenance_reserve = reserve_after;
-    assert_holders_not_diluted(nav_before, supply, nav_after, supply + shares);
+    assert_holders_not_diluted(nav_before, total_share_supply, nav_after, total_share_supply + shares);
 
     (shares, contribution, admin_fee + reserve_fee, admin_fee, reserve_fee)
 }
@@ -372,21 +372,21 @@ public fun complete_mint<Product>(
 public fun prepare_redemption<Product>(
     self: &State<Product>,
     observation: PositionObservation,
-    shares: u64,
-    supply: u64,
-    minimum_output: u64,
+    shares_to_redeem: u64,
+    total_share_supply: u64,
+    minimum_collateral_out: u64,
     now_ms: u64,
 ): RedemptionPlan<Product> {
     self.lifecycle.assert_active();
 
     let before = validated_active_position(self, observation, now_ms);
     let (minimum_base, _) = accounting_math::redemption_base_bounds(
-        shares, before.base, supply, before.lot_size, self.vault_policy.min_order_lots(),
+        shares_to_redeem, before.base, total_share_supply, before.lot_size, self.vault_policy.min_order_lots(),
     );
     let base_to_sell = before.base - minimum_base;
 
     RedemptionPlan {
-        before, shares, supply, minimum_output,
+        before, shares_to_redeem, total_share_supply, minimum_collateral_out,
         fee_bps: self.redeem_fee_bps, admin_share_bps: self.admin_share_bps, base_to_sell,
     }
 }
@@ -398,7 +398,7 @@ public fun base_to_sell<Product>(self: &RedemptionPlan<Product>): u64 { self.bas
 public fun redemption_position<Product>(self: &RedemptionPlan<Product>): ActivePosition { self.before }
 
 /// Shares the redeemer must burn.
-public fun redemption_shares<Product>(self: &RedemptionPlan<Product>): u64 { self.shares }
+public fun redemption_shares<Product>(self: &RedemptionPlan<Product>): u64 { self.shares_to_redeem }
 
 /// Computes the payout after the unwind and credits the fee once, excluding admin cash.
 /// The gross is capped at the proportional claim, so a favorable unwind accrues
@@ -413,7 +413,7 @@ public fun complete_redemption<Product>(
 ): (u64, u64, u64, u64) {
     self.lifecycle.assert_active();
     let RedemptionPlan {
-        before, shares, supply, minimum_output, fee_bps, admin_share_bps, base_to_sell,
+        before, shares_to_redeem, total_share_supply, minimum_collateral_out, fee_bps, admin_share_bps, base_to_sell,
     } = plan;
 
     let after = validated_active_position(self, observation, now_ms);
@@ -423,14 +423,14 @@ public fun complete_redemption<Product>(
         blast_boosts_core::errors::active_fill_incomplete!(),
     );
     accounting_math::assert_redemption_base_within_bounds(
-        after.base, shares, before.base, supply, before.lot_size, self.vault_policy.min_order_lots(),
+        after.base, shares_to_redeem, before.base, total_share_supply, before.lot_size, self.vault_policy.min_order_lots(),
     );
 
     let reserve_priced = self.admitted_reserve(&before);
     let (reserve_with_fee, nav_kept, fee, net) = accounting_math::redemption_accounting_quote(
-        shares, before.equity, after.equity, reserve_priced, supply, fee_bps,
+        shares_to_redeem, before.equity, after.equity, reserve_priced, total_share_supply, fee_bps,
     );
-    assert!(net >= minimum_output, blast_boosts_core::errors::redemption_output_below_minimum!());
+    assert!(net >= minimum_collateral_out, blast_boosts_core::errors::redemption_output_below_minimum!());
     let admin = accounting_math::admin_share_down(fee, admin_share_bps);
     let reserve_retained = reserve_with_fee - admin;
     assert!(
@@ -440,7 +440,10 @@ public fun complete_redemption<Product>(
 
     self.maintenance_reserve = self.reserve_within_cap(reserve_retained, &after);
     assert_holders_not_diluted(
-        accounting_math::shareholder_nav(before.equity, reserve_priced), supply, nav_kept, supply - shares,
+        accounting_math::shareholder_nav(before.equity, reserve_priced),
+        total_share_supply,
+        nav_kept,
+        total_share_supply - shares_to_redeem,
     );
 
     (net, admin, fee, fee - admin)
@@ -519,20 +522,20 @@ public fun is_wide(self: &RebalanceOrder): bool { self.wide }
 /// Advances the plan by one accepted whole-lot fill of `order` under the fixed oracle pair.
 public fun accept_rebalance_fill<Product>(
     self: &State<Product>, plan: &mut RebalancePlan<Product>, order: RebalanceOrder,
-    observation: PositionObservation, filled: u64, now_ms: u64,
+    observation: PositionObservation, filled_base: u64, now_ms: u64,
 ) {
     let RebalanceOrder { base: requested, increase, wide: _ } = order;
     assert!(
-        filled > 0 && filled <= requested && filled % plan.current.lot_size == 0,
+        filled_base > 0 && filled_base <= requested && filled_base % plan.current.lot_size == 0,
         blast_boosts_core::errors::active_fill_incomplete!(),
     );
 
     let after = validated_active_position(self, observation, now_ms);
     assert!(plan.before.is_same_checkpoint(&after), blast_boosts_core::errors::active_checkpoint_changed!());
     let expected_base = if (increase) {
-        plan.current.base.checked_add(filled).destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!())
+        plan.current.base.checked_add(filled_base).destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!())
     } else {
-        plan.current.base - filled
+        plan.current.base - filled_base
     };
     assert!(after.base == expected_base, blast_boosts_core::errors::active_fill_incomplete!());
 
@@ -674,14 +677,14 @@ public fun unwind_constraints<Product>(
 }
 
 /// Consumes the reserve book entry only after the adapter proves complete local cash recovery.
-public fun finalize_shutdown<Product>(self: &mut State<Product>, native_supply: u64, locked: u64): u64 {
-    assert!(native_supply >= locked, blast_boosts_core::errors::invalid_share_supply!());
+public fun finalize_shutdown<Product>(self: &mut State<Product>, total_share_supply: u64, locked_shares: u64): u64 {
+    assert!(total_share_supply >= locked_shares, blast_boosts_core::errors::invalid_share_supply!());
 
     self.lifecycle.finalize_shutdown();
     self.maintenance_reserve = 0;
     assert_invariant(self.lifecycle.is_settled());
 
-    native_supply - locked
+    total_share_supply - locked_shares
 }
 
 /// Rejects terminal claims before any adapter cash-field access.
@@ -689,18 +692,23 @@ public fun assert_settled<Product>(self: &State<Product>) {
     self.lifecycle.assert_settled();
 }
 
-/// Fee-free claim against current cash and native supply, excluding the immutable seed.
+/// Fee-free claim against current cash and total share supply, excluding the immutable seed.
 public fun shutdown_claim_quote<Product>(
-    self: &State<Product>, cash: u64, native_supply: u64, locked: u64, shares: u64, minimum: u64,
+    self: &State<Product>,
+    recovered_cash: u64,
+    total_share_supply: u64,
+    locked_shares: u64,
+    shares_to_claim: u64,
+    minimum_collateral_out: u64,
 ): u64 {
     self.lifecycle.assert_settled();
-    assert!(native_supply >= locked, blast_boosts_core::errors::invalid_share_supply!());
-    let eligible = native_supply - locked;
-    assert!(shares > 0 && shares <= eligible, blast_boosts_core::errors::invalid_share_amount!());
+    assert!(total_share_supply >= locked_shares, blast_boosts_core::errors::invalid_share_supply!());
+    let eligible = total_share_supply - locked_shares;
+    assert!(shares_to_claim > 0 && shares_to_claim <= eligible, blast_boosts_core::errors::invalid_share_amount!());
 
-    let output = cash.mul_div(shares, eligible);
-    assert!(cash == 0 || output > 0, blast_boosts_core::errors::zero_net_payout!());
-    assert!(output >= minimum, blast_boosts_core::errors::redemption_output_below_minimum!());
+    let output = recovered_cash.mul_div(shares_to_claim, eligible);
+    assert!(recovered_cash == 0 || output > 0, blast_boosts_core::errors::zero_net_payout!());
+    assert!(output >= minimum_collateral_out, blast_boosts_core::errors::redemption_output_below_minimum!());
 
     output
 }
@@ -711,22 +719,22 @@ public fun shutdown_claim_quote<Product>(
 /// Adapter custody owns authentication; no assets or past allocations move.
 public fun set_fees<Product>(
     self: &mut State<Product>,
-    mint_bps: u64,
-    redeem_bps: u64,
+    mint_fee_bps: u64,
+    redeem_fee_bps: u64,
     admin_share_bps: u64,
 ): (u64, u64, u64) {
     self.lifecycle.assert_active();
-    self.vault_policy.assert_fee_limits(mint_bps, redeem_bps, admin_share_bps);
+    self.vault_policy.assert_fee_limits(mint_fee_bps, redeem_fee_bps, admin_share_bps);
 
     let (previous_mint, previous_redeem, previous_admin) =
         (self.mint_fee_bps, self.redeem_fee_bps, self.admin_share_bps);
     assert!(
-        previous_mint != mint_bps || previous_redeem != redeem_bps || previous_admin != admin_share_bps,
+        previous_mint != mint_fee_bps || previous_redeem != redeem_fee_bps || previous_admin != admin_share_bps,
         blast_boosts_core::errors::fee_settings_unchanged!(),
     );
 
-    self.mint_fee_bps = mint_bps;
-    self.redeem_fee_bps = redeem_bps;
+    self.mint_fee_bps = mint_fee_bps;
+    self.redeem_fee_bps = redeem_fee_bps;
     self.admin_share_bps = admin_share_bps;
 
     (previous_mint, previous_redeem, previous_admin)

@@ -125,7 +125,7 @@ public fun redeem_shutdown<Product, Collateral>(
 
     let cash = dynamic_field::borrow<_, Balance<Collateral>>(&self.id, TerminalCashKey());
     let output = self.state.shutdown_claim_quote(
-        cash.value(), self.share_supply(), self.locked_shares, shares.value(), minimum_collateral,
+        cash.value(), self.total_share_supply(), self.locked_shares, shares.value(), minimum_collateral,
     );
 
     let burned = self.burn_redeemed_shares(shares);
@@ -134,7 +134,7 @@ public fun redeem_shutdown<Product, Collateral>(
     let remaining = cash.value();
 
     events::shutdown_redeemed<Product>(
-        self.id.to_inner(), burned, output, remaining, self.share_supply() - self.locked_shares,
+        self.id.to_inner(), burned, output, remaining, self.total_share_supply() - self.locked_shares,
     );
 
     output_coin
@@ -148,19 +148,19 @@ public fun set_fees<Product, Collateral>(
     self: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
-    mint_bps: u64,
-    redeem_bps: u64,
+    mint_fee_bps: u64,
+    redeem_fee_bps: u64,
     admin_share_bps: u64,
 ) {
     protocol.assert_current();
     admin_witness.assert_role(domain::risk_admin_role());
 
     let (previous_mint, previous_redeem, previous_admin) =
-        self.state.set_fees(mint_bps, redeem_bps, admin_share_bps);
+        self.state.set_fees(mint_fee_bps, redeem_fee_bps, admin_share_bps);
 
     events::fees_updated<Product>(
         self.id.to_inner(), previous_mint, previous_redeem, previous_admin,
-        mint_bps, redeem_bps, admin_share_bps,
+        mint_fee_bps, redeem_fee_bps, admin_share_bps,
     );
 }
 
@@ -347,7 +347,7 @@ public(package) fun id<Product, Collateral>(self: &Vault<Product, Collateral>): 
 }
 
 /// Returns the authoritative leverage-currency supply from the retained cap.
-public(package) fun share_supply<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
+public(package) fun total_share_supply<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
     self.treasury_cap().total_supply()
 }
 
