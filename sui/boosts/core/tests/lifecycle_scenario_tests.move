@@ -125,7 +125,7 @@ fun fee_splits_route_admin_cash_out_and_the_remainder_into_the_reserve() {
     assert!((payout as u128) <= claim * 9_900 / 10_000 && (payout as u128) >= claim * 9_820 / 10_000);
     let redemption_fee = vault.admin_cash() - 10 * USDC + (vault.reserve() - SEED_RESERVE - 10 * USDC);
     assert!(redemption_fee > 0);
-    assert_eq!(vault.admin_cash() - 10 * USDC, redemption_fee / 2 + redemption_fee % 2 * 0);
+    assert_eq!(vault.admin_cash() - 10 * USDC, redemption_fee / 2);
     assert!(vault.admin_cash() - 10 * USDC <= vault.reserve() - SEED_RESERVE - 10 * USDC);
     assert_reconciled(&vault);
     vault.destroy();

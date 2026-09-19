@@ -637,7 +637,7 @@ fun flat_seed_preflight_returns_authenticated_order_inputs() {
     let issuance = issued(&fixture, policy::short());
     let observation = standard_observation(policy::long()).with_position_base(0).into_position_observation();
 
-    let (target_notional, seed_position) = issuance.seed_terms(observation, SEED_RESERVE, REFERENCE_TIME_MS);
+    let (target_notional, seed_position) = issuance.seed_terms(observation, SEED_RESERVE);
 
     assert_eq!(target_notional, SEED_NOTIONAL);
     assert_eq!(seed_position.base_price(), 1_000_000_000);
@@ -645,20 +645,6 @@ fun flat_seed_preflight_returns_authenticated_order_inputs() {
     assert_eq!(seed_position.lot_size(), LOT_SIZE);
     assert_eq!(seed_position.base(), 0);
     assert_eq!(seed_position.notional(), 0);
-    destroy(issuance);
-    destroy(fixture);
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EInvalidInitializationObservation, location = blast_boosts_core::state,
-)]
-fun seed_preflight_rejects_a_preexisting_position() {
-    let fixture = start(domain::vault_issuer_role());
-    let issuance = issued(&fixture, policy::long());
-
-    issuance.seed_terms(standard_observation(policy::long()).into_position_observation(), SEED_RESERVE, REFERENCE_TIME_MS);
-
     destroy(issuance);
     destroy(fixture);
 }
@@ -852,10 +838,8 @@ fun initialization_admits_both_healthy_leverage_boundaries() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = errors::EMaintenanceReserveExceedsEquity, location = blast_boosts_core::state,
-)]
-fun initialization_guard_order_checks_reserve_before_nav() {
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::state)]
+fun initialization_rejects_a_reserve_above_equity() {
     initialize_once(
         standard_observation(policy::long()).with_venue_equity(SEED_RESERVE - 1),
         policy::long(),
@@ -1263,20 +1247,7 @@ fun deficits_accumulate_and_an_over_repaying_credit_splits() {
 
 // --- Reserve Ceiling ---
 
-/// The seed reserve may not exceed the ceiling for the opening target notional.
-#[test]
-#[expected_failure(abort_code = errors::ESeedReserveAboveCap, location = blast_boosts_core::state)]
-fun a_seed_reserve_above_the_ceiling_is_rejected_before_any_order() {
-    let fixture = start(domain::vault_issuer_role());
-    // Ceiling 4% of the 2_000_000 target is 80_000; the seed asks for 100_000.
-    let issuance = capped_issuance(&fixture, 400);
-    let flat = standard_observation(policy::long()).with_position_base(0);
-    let (target, _) = issuance.seed_terms(flat.into_position_observation(), SEED_RESERVE, REFERENCE_TIME_MS);
-    assert_eq!(target, SEED_NOTIONAL);
-    destroy(issuance);
-    destroy(fixture);
-}
-
+/// The seed reserve may not exceed the ceiling for the opening notional.
 #[test]
 #[expected_failure(abort_code = errors::ESeedReserveAboveCap, location = blast_boosts_core::state)]
 fun a_seed_reserve_above_the_ceiling_cannot_activate() {

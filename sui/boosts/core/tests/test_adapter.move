@@ -321,7 +321,7 @@ public fun witness(self: &Vault): AdminWitness<BLAST_BOOSTS_CORE> {
 public fun activate(self: Issued, seed: u64, seed_reserve: u64): Vault {
     let Issued { issuance, mut venue, authority, super_admin_cap, admin_cap, scenario } = self;
     venue.deposit(seed);
-    let (target, seed_position) = issuance.seed_terms(venue.observe(), seed_reserve, venue.now_ms);
+    let (target, seed_position) = issuance.seed_terms(venue.observe(), seed_reserve);
 
     let mut remaining = venue.base_for_notional(target);
     let cap_base = venue.base_for_notional(issuance.max_order_notional());

@@ -92,7 +92,7 @@ public fun initialize<Product, Collateral>(
         &binding, &account, registry, &clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     ).into_observation();
-    let (target_notional, seed_position) = terms.seed_terms(pre_observation, seed_reserve, clock.timestamp_ms());
+    let (target_notional, seed_position) = terms.seed_terms(pre_observation, seed_reserve);
     let (reference_base_price, collateral_price) = (seed_position.base_price(), seed_position.collateral_price());
     let orders = order_sizes(
         target_notional, max_order_notional, reference_base_price, collateral_price, seed_position.lot_size(),

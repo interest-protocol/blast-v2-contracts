@@ -4,6 +4,90 @@
 [move]
 version = 4
 
+[pinned.mainnet.AftermathControlFlow]
+source = { local = "interfaces/aftermath/control-flow/control-flow" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.AftermathOrderedMap]
+source = { local = "interfaces/aftermath/ordered-map/ordered-map" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.MoveStdlib]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
+use_environment = "mainnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.mainnet.Sui]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
+use_environment = "mainnet"
+manifest_digest = "CD547CB1ACCE0880C835DAED2D8FFCB91D56C833AE5240D3AA5B918398263195"
+deps = { MoveStdlib = "MoveStdlib" }
+
+[pinned.mainnet.authority_cap]
+source = { local = "interfaces/aftermath/authority-cap/authority-cap" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.blast_admin]
+source = { local = "../../admin" }
+use_environment = "mainnet"
+manifest_digest = "294D98BBBEFA7E526C52FD7F30B5691CD30B86738DDC489AC065D612D0E5F9EF"
+deps = { Sui = "Sui" }
+
+[pinned.mainnet.blast_boosts_aftermath]
+source = { root = true }
+use_environment = "mainnet"
+manifest_digest = "24C8F6245FC7B9AB4491A2416B7A6909033331986C33C80EDF0A64CF65FE794C"
+deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_boosts_core = "blast_boosts_core", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", pyth = "pyth", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.blast_boosts_core]
+source = { local = "../core" }
+use_environment = "mainnet"
+manifest_digest = "1D81A242A868996BDA2D034470EFF798AACC5958CF9958C94BAAACC9C2C92DC8"
+deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.ifixed]
+source = { local = "interfaces/aftermath/ifixed/ifixed" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.oracle_aggregator]
+source = { local = "interfaces/aftermath/oracle-aggregator/oracle-aggregator" }
+use_environment = "mainnet"
+manifest_digest = "1649E9DC99C54FE86C43D0035A2EE12B91C9EFC21E7AEF3399B0D3F6DC238F62"
+deps = { authority_cap = "authority_cap", std = "MoveStdlib", sui = "Sui", vendor = "vendor" }
+
+[pinned.mainnet.perpetuals]
+source = { local = "interfaces/aftermath/iperps/perpetuals" }
+use_environment = "mainnet"
+manifest_digest = "5B85B2C531AFA6D5B28337C8A87C3CF1ECBCD78582A7A79C14B9EDFB4013C925"
+deps = { authority_cap = "authority_cap", control_flow = "AftermathControlFlow", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", ordered_map = "AftermathOrderedMap", position = "position", std = "MoveStdlib", sui = "Sui", vendor = "vendor" }
+
+[pinned.mainnet.position]
+source = { local = "interfaces/aftermath/iperps/position" }
+use_environment = "mainnet"
+manifest_digest = "01FEE8DFDC5A09C4846BDD936E552D87DBF24A3F7727423CCD4F5A397B1AFDCB"
+deps = { control_flow = "AftermathControlFlow", ifixed = "ifixed", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.pyth]
+source = { local = "interfaces/pyth" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.vendor]
+source = { local = "interfaces/aftermath/vendor/vendor" }
+use_environment = "mainnet"
+manifest_digest = "5AAF88D4918BE9A469E16737C8F5D9AEE925CAA6432331DCC4D3E46A73DC72C6"
+deps = { authority_cap = "authority_cap", std = "MoveStdlib", sui = "Sui" }
+
 [pinned.testnet.AftermathControlFlow]
 source = { local = "interfaces/aftermath/control-flow/control-flow" }
 use_environment = "testnet"

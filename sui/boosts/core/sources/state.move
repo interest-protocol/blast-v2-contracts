@@ -139,21 +139,15 @@ public fun issue<Product>(
 /// in atomic collateral units, and the priced flat seed whose pair and lot the
 /// orders are placed under.
 ///
-/// The NAV and reserve caps are checked here against the sized target and
-/// again in `activate` against the position actually filled.
+/// Sizing only. Every guard runs in `activate` against the position actually
+/// filled, in the same transaction; a copy here could not refuse a state that
+/// `activate` admits.
 public fun seed_terms<Product>(
-    self: &Issuance<Product>, observation: PositionObservation, seed_reserve: u64, now_ms: u64,
+    self: &Issuance<Product>, observation: PositionObservation, seed_reserve: u64,
 ): (u64, ActivePosition) {
-    let seed_nav = seed_nav(&self.vault_policy, &observation, seed_reserve, now_ms);
-    assert!(observation.position_base() == 0, blast_boosts_core::errors::invalid_initialization_observation!());
-    assert!(seed_nav <= self.nav_cap, blast_boosts_core::errors::nav_cap_exceeded!());
-
+    let seed_nav = accounting_math::shareholder_nav(observation.venue_equity(), seed_reserve);
     let target_notional =
         accounting_math::target_notional_down(seed_nav, self.vault_policy.rebalance_policy().target_bps());
-    assert!(
-        seed_reserve <= self.vault_policy.reserve_cap(target_notional),
-        blast_boosts_core::errors::seed_reserve_above_cap!(),
-    );
 
     (target_notional, flat_position(observation))
 }
@@ -193,11 +187,17 @@ public fun activate<Product>(
         collateral_unit: 10u64.pow(collateral_decimals),
         lifecycle: lifecycle::active(),
     };
-    let seed_nav = seed_nav(&state.vault_policy, &observation, seed_reserve, now_ms);
+    let venue_equity = observation.venue_equity();
+    assert!(
+        accounting_math::is_shareholder_nav_positive(venue_equity, seed_reserve),
+        blast_boosts_core::errors::invalid_nav!(),
+    );
+    assert_observation_priced(&state.vault_policy, &observation, now_ms);
     assert!(
         observation.observed_side() == state.vault_policy.side(),
         blast_boosts_core::errors::invalid_initialization_observation!(),
     );
+    let seed_nav = accounting_math::shareholder_nav(venue_equity, seed_reserve);
     state.assert_within_nav_cap(seed_nav);
 
     let seeded = state.priced_position(observation);
@@ -808,26 +808,10 @@ fun is_within_nav_cap<Product>(self: &State<Product>, nav: u64): bool {
     nav <= self.nav_cap
 }
 
-/// The seed's reserve-excluded shareholder NAV after the backing and price guards.
-fun seed_nav(vault_policy: &VaultPolicy, observation: &PositionObservation, seed_reserve: u64, now_ms: u64): u64 {
-    let venue_equity = observation.venue_equity();
-    assert!(
-        accounting_math::is_reserve_backed(venue_equity, seed_reserve),
-        blast_boosts_core::errors::maintenance_reserve_exceeds_equity!(),
-    );
-    assert!(
-        accounting_math::is_shareholder_nav_positive(venue_equity, seed_reserve),
-        blast_boosts_core::errors::invalid_nav!(),
-    );
-    assert_observation_priced(vault_policy, observation, now_ms);
-
-    accounting_math::shareholder_nav(venue_equity, seed_reserve)
-}
-
 /// Prices a flat seed observation for the orders that will open its position:
-/// `equity` is the seed the adapter funded, base and notional are zero because
-/// no position exists yet, and `seed_terms` has already refused an observation
-/// that carries base.
+/// `equity` is the seed the adapter funded, and base and notional are zero
+/// because the adapter opens the seed on an account it created in the same
+/// transaction.
 fun flat_position(observation: PositionObservation): ActivePosition {
     let position = ActivePosition {
         equity: observation.venue_equity(),
