@@ -543,10 +543,10 @@ fun mint_credits_at_most_the_deposit_net_of_fee_when_the_fill_is_favorable() {
     destroy(fixture);
 }
 
-/// An unwind that leaves more NAV than the pre-unwind reading pays exactly the
+/// A sell that leaves more NAV than the pre-sell reading pays exactly the
 /// proportional claim; the 2,000-unit gain stays with the remaining holders.
 #[test]
-fun redemption_pays_at_most_the_proportional_claim_when_the_unwind_is_favorable() {
+fun redemption_pays_at_most_the_proportional_claim_when_the_sell_is_favorable() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = initialized_state(&fixture, policy::long());
     let plan = state.prepare_redemption(

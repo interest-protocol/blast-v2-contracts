@@ -679,17 +679,17 @@ fun redemption_fee_moves_to_the_reserve_without_remaining_in_shareholder_nav() {
     let venue_equity_before = 10_000_000;
     let reserve_before = 100_000;
     let shares_before = 9_900_000;
-    // The proportional unwind charged 10,000 in venue execution costs.
-    let venue_equity_unwound = venue_equity_before - 10_000;
+    // The proportional sell charged 10,000 in venue execution costs.
+    let venue_equity_after_sell = venue_equity_before - 10_000;
     let (reserve_after, nav_kept, fee, net) = accounting_math::redemption_accounting_quote(
         990_000,
         venue_equity_before,
-        venue_equity_unwound,
+        venue_equity_after_sell,
         reserve_before,
         shares_before,
         100,
     );
-    let venue_equity_after = venue_equity_unwound - net;
+    let venue_equity_after = venue_equity_after_sell - net;
     let nav_after = accounting_math::shareholder_nav(venue_equity_after, reserve_after);
 
     assert_eq!(nav_kept, 8_910_000);
@@ -713,10 +713,10 @@ fun canonical_redemptions_match_independent_accounting_across_the_small_domain()
                             ).div_ceil(shares_before as u128) as u64;
 
                             if (nav_before >= execution_loss) {
-                                let nav_unwound = nav_before - execution_loss;
+                                let nav_after_sell = nav_before - execution_loss;
 
-                                if (nav_unwound > equity_keep) {
-                                    let gross = nav_unwound - equity_keep;
+                                if (nav_after_sell > equity_keep) {
+                                    let gross = nav_after_sell - equity_keep;
                                     let fee = reference_fee_up(gross, redeem_fee_bps);
 
                                     if (gross > fee) {
@@ -764,14 +764,14 @@ fun canonical_redemption_supports_the_highest_fee_near_the_u64_boundary() {
     assert_eq!(nav_after, nav_kept);
 }
 
-/// Proves that authenticated unwind loss reduces only the redeemer's gross claim.
+/// Proves that authenticated sell loss reduces only the redeemer's gross claim.
 #[test]
 fun canonical_redemption_reconciles_execution_loss_at_both_sides_of_a_rounding_cliff() {
     assert_canonical_redemption_matches_reference(1_001, 77, 100, 10, 100, 0);
     assert_canonical_redemption_matches_reference(1_001, 77, 100, 10, 100, 1);
 }
 
-/// Pins the post-unwind reserve check ahead of share and fee validation.
+/// Pins the post-sell reserve check ahead of share and fee validation.
 #[test]
 #[expected_failure(
     abort_code = errors::EMaintenanceReserveExceedsEquity,
@@ -1049,10 +1049,10 @@ fun a_favorable_unwind_pays_exactly_the_claim_and_keeps_the_gain_for_holders() {
     assert_eq!(net, 1);
 }
 
-/// Pins the three unwound readings: a gain pays the claim, a loss pays less, and
+/// Pins the three after-sell readings: a gain pays the claim, a loss pays less, and
 /// the NAV kept for the remaining holders is never below the proportional keep.
 #[test]
-fun the_proportional_claim_is_independent_of_the_unwound_reading() {
+fun the_proportional_claim_is_independent_of_the_after_sell_reading() {
     let (_, kept_flat, fee_flat, net_flat) =
         accounting_math::redemption_accounting_quote(250, 10_000, 10_000, 500, 1_000, 30);
     let (_, kept_gain, fee_gain, net_gain) =
@@ -1173,27 +1173,27 @@ fun capped_mints_never_lower_existing_holders_nav_per_share_across_the_small_dom
     });
 }
 
-/// Exhausts unwound readings below, at, and above the pre-unwind NAV: the gross
+/// Exhausts after-sell readings below, at, and above the pre-sell NAV: the gross
 /// never exceeds the proportional claim and the NAV kept for the remaining
-/// holders never prices below the pre-unwind share price.
+/// holders never prices below the pre-sell share price.
 #[test]
 fun capped_redemptions_never_lower_remaining_holders_nav_per_share_across_the_small_domain() {
     1u64.range_do!(9, |nav_before| {
         2u64.range_do!(7, |shares_before| {
             1u64.range_do!(shares_before, |shares_burned| {
-                0u64.range_do!(17, |nav_unwound| {
+                0u64.range_do!(17, |nav_after_sell| {
                     let shares_after = shares_before - shares_burned;
                     let equity_keep = ((nav_before as u128) * (shares_after as u128))
                         .div_ceil(shares_before as u128) as u64;
-                    if (nav_unwound.min(nav_before) > equity_keep) {
+                    if (nav_after_sell.min(nav_before) > equity_keep) {
                         let (_, nav_kept, fee, net) =
                             accounting_math::redemption_accounting_quote(
-                                shares_burned, nav_before, nav_unwound, 0, shares_before, 0,
+                                shares_burned, nav_before, nav_after_sell, 0, shares_before, 0,
                             );
-                        assert_eq!(net, nav_unwound.min(nav_before) - equity_keep);
+                        assert_eq!(net, nav_after_sell.min(nav_before) - equity_keep);
                         assert!(net <= nav_before - equity_keep);
                         assert_eq!(fee, 0);
-                        assert_eq!(nav_kept + net, nav_unwound);
+                        assert_eq!(nav_kept + net, nav_after_sell);
                         assert!(nav_kept >= equity_keep);
                         assert!(
                             (nav_kept as u128) * (shares_before as u128)
@@ -1394,7 +1394,7 @@ fun assert_canonical_redemption_matches_reference(
     execution_loss: u64,
 ) {
     let venue_equity_before = nav_before + reserve_before;
-    let venue_equity_unwound = venue_equity_before - execution_loss;
+    let venue_equity_after_sell = venue_equity_before - execution_loss;
     let expected_shares_after = shares_before - shares_burned;
     let expected_equity_keep = (
         (nav_before as u128) * (expected_shares_after as u128),
@@ -1406,18 +1406,18 @@ fun assert_canonical_redemption_matches_reference(
     let (reserve_after, nav_kept, fee, net) = accounting_math::redemption_accounting_quote(
         shares_burned,
         venue_equity_before,
-        venue_equity_unwound,
+        venue_equity_after_sell,
         reserve_before,
         shares_before,
         redeem_fee_bps,
     );
-    let venue_equity_after = venue_equity_unwound - net;
+    let venue_equity_after = venue_equity_after_sell - net;
     let nav_after = accounting_math::shareholder_nav(
         venue_equity_after,
         reserve_after,
     );
 
-    // The unwind loss comes out of the proportional claim, never the kept equity.
+    // The sell loss comes out of the proportional claim, never the kept equity.
     assert_eq!(fee + net + execution_loss, nav_before - expected_equity_keep);
     assert_eq!(reserve_after, expected_reserve);
     assert_eq!(nav_kept, expected_equity_keep);

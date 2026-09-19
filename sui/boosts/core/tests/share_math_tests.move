@@ -219,7 +219,7 @@ fun redemption_pays_only_the_excess_over_the_kept_equity() {
     assert_eq!(fee, 1);
     assert_eq!(net, 99);
 
-    // An unwind that costs the Series 50 units pays the redeemer 50 less.
+    // An sell that costs the Series 50 units pays the redeemer 50 less.
     let (gross, fee, net) = accounting_math::redemption_quote_for_testing(10, 1_000, 950, 100, 0);
 
     assert_eq!(gross, 50);
@@ -227,10 +227,10 @@ fun redemption_pays_only_the_excess_over_the_kept_equity() {
     assert_eq!(net, 50);
 }
 
-/// A favorable unwind pays exactly the proportional claim; the gain stays with holders.
+/// A favorable sell pays exactly the proportional claim; the gain stays with holders.
 #[test]
 fun a_favorable_unwind_pays_exactly_the_proportional_claim() {
-    // The kept equity is 900 of the 1,000 pre-unwind NAV; the 50-unit gain stays.
+    // The kept equity is 900 of the 1,000 pre-sell NAV; the 50-unit gain stays.
     let (gross, fee, net) = accounting_math::redemption_quote_for_testing(10, 1_000, 1_050, 100, 100);
 
     assert_eq!(gross, 100);
@@ -244,25 +244,25 @@ fun a_favorable_unwind_pays_exactly_the_proportional_claim() {
     assert_eq!(net, 1);
 }
 
-/// Catches a cap that widens instead of narrowing when the unwind loses value.
+/// Catches a cap that widens instead of narrowing when the sell loses value.
 #[test]
 fun a_costly_unwind_still_pays_the_reduced_gross() {
     assert_redemption_matches_reference(10, 1_000, 950, 100, 0);
     assert_redemption_matches_reference(10, 1_000, 901, 100, 0);
 }
 
-/// Catches a favorable unwind rescuing a claim the rounded-up kept equity consumed.
+/// Catches a favorable sell rescuing a claim the rounded-up kept equity consumed.
 #[test]
 #[expected_failure(abort_code = errors::ENonpositiveGross, location = blast_boosts_core::accounting_math)]
 fun a_favorable_unwind_cannot_rescue_a_claim_the_kept_equity_consumes() {
     accounting_math::redemption_quote_for_testing(10, 1, 1_000, 100, 0);
 }
 
-/// Catches a maximum-width favorable unwind that wraps or escapes the cap.
+/// Catches a maximum-width favorable sell that wraps or escapes the cap.
 #[test]
 fun a_maximum_width_favorable_unwind_is_capped_at_the_claim() {
     let max = std::u64::max_value!();
-    // The kept equity is `max - 2`, one unit below the pre-unwind NAV.
+    // The kept equity is `max - 2`, one unit below the pre-sell NAV.
     let (gross, fee, net) = accounting_math::redemption_quote_for_testing(1, max - 1, max, max - 1, 0);
 
     assert_eq!(gross, 1);
@@ -364,30 +364,30 @@ fun redemption_formula_and_non_dilution_hold_across_the_small_domain() {
     });
 }
 
-/// Exhausts unwound readings below, at, and above the pre-unwind NAV against the cap.
+/// Exhausts after-sell readings below, at, and above the pre-sell NAV against the cap.
 #[test]
 fun capped_redemption_formula_and_non_dilution_hold_across_the_small_domain() {
     1u64.range_do!(9, |nav_before| {
         2u64.range_do!(7, |shares_before| {
             1u64.range_do!(shares_before, |shares_burned| {
-                0u64.range_do!(16, |nav_unwound| {
+                0u64.range_do!(16, |nav_after_sell| {
                     let shares_after = shares_before - shares_burned;
                     let equity_keep = ((nav_before as u128) * (shares_after as u128))
                         .div_ceil(shares_before as u128) as u64;
-                    let claimable = nav_unwound.min(nav_before);
+                    let claimable = nav_after_sell.min(nav_before);
 
                     if (claimable > equity_keep) {
                         assert_redemption_matches_reference(
                             shares_burned,
                             nav_before,
-                            nav_unwound,
+                            nav_after_sell,
                             shares_before,
                             0,
                         );
                         assert_redemption_is_non_dilutive(
                             shares_burned,
                             nav_before,
-                            nav_unwound,
+                            nav_after_sell,
                             shares_before,
                             0,
                         );
@@ -469,7 +469,7 @@ fun a_redemption_against_zero_supply_is_rejected() {
     accounting_math::redemption_quote_for_testing(1, 1_000, 1_000, 0, 0);
 }
 
-/// Catches paying a redeemer when the unwind left exactly the equity others keep.
+/// Catches paying a redeemer when the sell left exactly the equity others keep.
 #[test]
 #[expected_failure(
     abort_code = errors::ENonpositiveGross,
@@ -584,22 +584,22 @@ fun assert_mint_matches_reference(contribution: u64, nav_before: u64, shares_bef
 fun assert_redemption_matches_reference(
     shares_burned: u64,
     nav_before: u64,
-    nav_unwound: u64,
+    nav_after_sell: u64,
     shares_before: u64,
     redeem_fee_bps: u64,
 ) {
     let (gross, fee, net) = accounting_math::redemption_quote_for_testing(
         shares_burned,
         nav_before,
-        nav_unwound,
+        nav_after_sell,
         shares_before,
         redeem_fee_bps,
     );
     let shares_after = shares_before - shares_burned;
-    let equity_keep = nav_unwound.min(nav_before) - gross;
+    let equity_keep = nav_after_sell.min(nav_before) - gross;
     let equity_numerator = (nav_before as u128) * (shares_after as u128);
     let expected_equity_keep = equity_numerator.div_ceil(shares_before as u128) as u64;
-    let expected_gross = nav_unwound.min(nav_before) - expected_equity_keep;
+    let expected_gross = nav_after_sell.min(nav_before) - expected_equity_keep;
     let expected_fee = reference_fee_up(expected_gross, redeem_fee_bps);
 
     assert_eq!(equity_keep, expected_equity_keep);
@@ -608,7 +608,7 @@ fun assert_redemption_matches_reference(
     assert_eq!(net, expected_gross - expected_fee);
     assert!((equity_keep as u128) * (shares_before as u128) >= equity_numerator);
     assert!(((equity_keep - 1) as u128) * (shares_before as u128) < equity_numerator);
-    assert_eq!(nav_unwound.min(nav_before), equity_keep + fee + net);
+    assert_eq!(nav_after_sell.min(nav_before), equity_keep + fee + net);
     assert!(gross <= nav_before - equity_keep);
     assert!(
         (equity_keep as u128) * (shares_before as u128)
@@ -654,19 +654,19 @@ fun assert_mint_is_non_dilutive(contribution: u64, nav_before: u64, shares_befor
 fun assert_redemption_is_non_dilutive(
     shares_burned: u64,
     nav_before: u64,
-    nav_unwound: u64,
+    nav_after_sell: u64,
     shares_before: u64,
     redeem_fee_bps: u64,
 ) {
     let (gross, fee, net) = accounting_math::redemption_quote_for_testing(
         shares_burned,
         nav_before,
-        nav_unwound,
+        nav_after_sell,
         shares_before,
         redeem_fee_bps,
     );
     let shares_after = shares_before - shares_burned;
-    let equity_keep = nav_unwound.min(nav_before) - gross;
+    let equity_keep = nav_after_sell.min(nav_before) - gross;
 
     assert!(fee <= gross);
     assert_eq!(net, gross - fee);
@@ -674,9 +674,9 @@ fun assert_redemption_is_non_dilutive(
         (equity_keep as u128) * (shares_before as u128)
             >= (nav_before as u128) * (shares_after as u128),
     );
-    // The NAV that actually remains never prices below the pre-unwind share price.
+    // The NAV that actually remains never prices below the pre-sell share price.
     assert!(
-        ((nav_unwound - gross) as u128) * (shares_before as u128)
+        ((nav_after_sell - gross) as u128) * (shares_before as u128)
             >= (nav_before as u128) * (shares_after as u128),
     );
 }

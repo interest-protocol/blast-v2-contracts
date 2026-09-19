@@ -400,8 +400,8 @@ public fun redemption_position<Product>(self: &RedemptionPlan<Product>): ActiveP
 /// Shares the redeemer must burn.
 public fun redemption_shares<Product>(self: &RedemptionPlan<Product>): u64 { self.shares_to_redeem }
 
-/// Computes the payout after the unwind and credits the fee once, excluding admin cash.
-/// The gross is capped at the proportional claim, so a favorable unwind accrues
+/// Computes the payout after the sell and credits the fee once, excluding admin cash.
+/// The gross is capped at the proportional claim, so a favorable sell accrues
 /// to the remaining holders (ADR 0084 D3).
 /// Returns the user payout, the admin cash, the fee, and the fee's reserve share.
 /// The adapter withdraws exactly payout plus admin cash and proves that on the checkpoint.

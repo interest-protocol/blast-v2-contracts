@@ -440,24 +440,24 @@ public(package) fun assert_mint_base_within_bounds(
 ///
 /// ```text
 /// equity_keep = ceil(nav_before * S1 / shares_before)
-/// gross       = min(nav_unwound, nav_before) - equity_keep
+/// gross       = min(nav_after_sell, nav_before) - equity_keep
 /// fee         = ceil(gross * redeem_fee_bps / 10_000)
 /// net         = gross - fee
 /// ```
 ///
-/// `nav_unwound` is shareholder NAV after the proportional unwind and before
+/// `nav_after_sell` is shareholder NAV after the proportional sell and before
 /// the payout or reserve credit, at the same price pair as `nav_before`.
 /// Production state transitions must use
 /// `accounting_math::redemption_accounting_quote`, which pins that checkpoint
 /// and credits the fee afterward. The gross is capped at the proportional
-/// claim `nav_before - equity_keep`: a favorable unwind pays exactly the
+/// claim `nav_before - equity_keep`: a favorable sell pays exactly the
 /// claim and its excess stays with the remaining holders (ADR 0084 D3).
-/// Final shareholder NAV is `nav_unwound - gross`, at least `equity_keep`.
+/// Final shareholder NAV is `nav_after_sell - gross`, at least `equity_keep`.
 /// Rounding the kept equity up gives
 /// `equity_keep / S1 >= nav_before / shares_before` (ADR 0064 I10).
 ///
 /// Preconditions: positive `nav_before`, `0 < shares_burned < shares_before`, a
-/// fee rate below 10,000, `min(nav_unwound, nav_before) > equity_keep`, and a
+/// fee rate below 10,000, `min(nav_after_sell, nav_before) > equity_keep`, and a
 /// positive net payout. The function enforces the share bound directly; the future locked
 /// seed makes the complete production supply unpresentable. A zero supply
 /// cannot satisfy the bound and aborts with the share-amount code. Guard order
@@ -469,7 +469,7 @@ public(package) fun assert_mint_base_within_bounds(
 fun redemption_quote(
     shares_burned: u64,
     nav_before: u64,
-    nav_unwound: u64,
+    nav_after_sell: u64,
     shares_before: u64,
     redeem_fee_bps: u64,
 ): (u64, u64, u64) {
@@ -484,7 +484,7 @@ fun redemption_quote(
     );
 
     let equity_keep = nav_before.mul_div_ceil(shares_before - shares_burned, shares_before);
-    let claimable = nav_unwound.min(nav_before);
+    let claimable = nav_after_sell.min(nav_before);
     assert!(
         claimable > equity_keep,
         blast_boosts_core::errors::nonpositive_gross!(),
@@ -501,15 +501,15 @@ fun redemption_quote(
 /// Quotes a redemption and credits its reserve fee at the correct checkpoint.
 ///
 /// Returns `(reserve_after, nav_kept, fee, net)`. Both pre-redemption and
-/// post-unwind shareholder NAV exclude `reserve_before`. Only after the gross
+/// post-sell shareholder NAV exclude `reserve_before`. Only after the gross
 /// claim is known does this function credit the fee. Thus the credited fee
 /// cannot re-enter the current or a later redemption's share pricing base.
 ///
-/// The gross is `min(nav_unwound, nav_before) - equity_keep`, so it never
-/// exceeds the redeemer's proportional claim `nav_before - equity_keep`: an
-/// unwind that costs the core pays less, and one that gains keeps the gain
+/// The gross is `min(nav_after_sell, nav_before) - equity_keep`, so it never
+/// exceeds the redeemer's proportional claim `nav_before - equity_keep`: a
+/// sell that costs the core pays less, and one that gains keeps the gain
 /// with the remaining holders (ADR 0084 D3). `nav_kept` is the shareholder
-/// NAV that actually remains, `nav_unwound - gross`, which is at least
+/// NAV that actually remains, `nav_after_sell - gross`, which is at least
 /// `equity_keep`; the core derives the required final venue equity from it
 /// and never from a NAV of its own.
 ///
@@ -518,25 +518,25 @@ fun redemption_quote(
 public(package) fun redemption_accounting_quote(
     shares_burned: u64,
     venue_equity_before: u64,
-    venue_equity_unwound: u64,
+    venue_equity_after_sell: u64,
     reserve_before: u64,
     shares_before: u64,
     redeem_fee_bps: u64,
 ): (u64, u64, u64, u64) {
     let nav_before = shareholder_nav(venue_equity_before, reserve_before);
-    let nav_unwound = shareholder_nav(venue_equity_unwound, reserve_before);
+    let nav_after_sell = shareholder_nav(venue_equity_after_sell, reserve_before);
     let (gross, fee, net) = redemption_quote(
         shares_burned,
         nav_before,
-        nav_unwound,
+        nav_after_sell,
         shares_before,
         redeem_fee_bps,
     );
 
-    (credit_fee(reserve_before, fee), nav_unwound - gross, fee, net)
+    (credit_fee(reserve_before, fee), nav_after_sell - gross, fee, net)
 }
 
-/// Returns the permitted absolute final base range for a redemption unwind.
+/// Returns the permitted absolute final base range for a redemption sell.
 ///
 /// Returns `(min_final_base, max_final_base)`. With
 /// `S1 = shares_before - shares_burned`:
@@ -733,8 +733,8 @@ public fun mint_base_bounds_for_testing(expected_contribution: u64, actual_contr
 }
 
 #[test_only]
-public fun redemption_quote_for_testing(shares_burned: u64, nav_before: u64, nav_unwound: u64, shares_before: u64, redeem_fee_bps: u64): (u64, u64, u64) {
-    redemption_quote(shares_burned, nav_before, nav_unwound, shares_before, redeem_fee_bps)
+public fun redemption_quote_for_testing(shares_burned: u64, nav_before: u64, nav_after_sell: u64, shares_before: u64, redeem_fee_bps: u64): (u64, u64, u64) {
+    redemption_quote(shares_burned, nav_before, nav_after_sell, shares_before, redeem_fee_bps)
 }
 
 // === Imports ===

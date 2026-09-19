@@ -60,7 +60,7 @@ value is a simulation gate, but the shape of the decision is fixed:
 
 ### 1.3 Cap the redemption gross at the proportional claim, as the mint caps its contribution
 
-`redemption_quote` pays `min(nav_unwound, nav_before) - equity_keep`, so the
+`redemption_quote` pays `min(nav_after_sell, nav_before) - equity_keep`, so the
 gross never exceeds the redeemer's proportional claim, and
 `allocated_mint_quote` credits `min(nav_after - nav_before, deposit - fee)`,
 so a depositor never receives shares for more than they paid. Both caps live

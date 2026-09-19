@@ -62,7 +62,7 @@ shares. Exposure rounding favors lower risk but can create underexposure:
 | `leverage_bps_up` | up | risk reporting stays conservative |
 | `target_notional_down` | down | the planned order stays under target |
 | `allocated_mint_quote` contribution cap | `min(NAV rise, deposit - fee)` | existing holders keep a favorable fill's excess |
-| `redemption_quote` gross cap | `min(nav_unwound, nav_before) - equity_keep` | remaining holders keep a favorable unwind's excess |
+| `redemption_quote` gross cap | `min(nav_after_sell, nav_before) - equity_keep` | remaining holders keep a favorable sell's excess |
 | `mint_base_to_buy_down` | down to the live lot | unopened sub-lot exposure, below `1 / min_order_lots` of the target |
 | `mint_base_bounds` | `[actual, planned]`; the capped contribution keeps `actual <= planned` | a partial fill may leave at most the actual contribution's exposure unopened |
 | `redemption_base_bounds` keep | down | remaining holders |
@@ -102,7 +102,7 @@ tolerances. Those checks remain separate integration gates.
 
 A redeemer is paid at most their proportional share. For `x` burned shares
 with `keep = ceil(N0 * (S0 - x) / S0)`, `claim = N0 - keep`, and `Nu` the
-shareholder NAV after the proportional unwind at the same price pair,
+shareholder NAV after the proportional sell at the same price pair,
 `redemption_quote` pays:
 
 ```text
@@ -111,12 +111,12 @@ fee   = ceil(gross * redeem_fee_bps / 10_000)
 net   = gross - fee
 ```
 
-so `gross <= claim`. An unwind that costs the Series pays `Nu - keep`; one
+so `gross <= claim`. A sell that costs the Series pays `Nu - keep`; one
 that gains pays exactly `claim`, and the gain stays with the remaining holders.
 With one share of a million burned against a 100-unit pool-wide gain the claim
 is 1 and the gross is 1, not 101. `min(Nu, N0) <= keep` aborts with the
 nonpositive-gross code, so the redeemer's payoff is bounded on both sides and a
-favorable unwind cannot rescue a claim the rounded-up kept equity consumed.
+favorable sell cannot rescue a claim the rounded-up kept equity consumed.
 
 `redemption_accounting_quote` returns `nav_kept = Nu - gross`, the shareholder
 NAV that actually remains, beside `proportional_claim`; `nav_kept` is at least
@@ -220,7 +220,7 @@ Mint and redemption fees credit the reserve. `prepare_mint` computes the fee
 once through `fee_allocation`; `allocated_mint_quote` then derives post-mint
 NAV with the credited reserve, requires a positive contribution, and only then
 calls the share formula, so the fee is excluded exactly once and cannot be
-subtracted twice. `redemption_accounting_quote` derives post-unwind NAV with the old
+subtracted twice. `redemption_accounting_quote` derives post-sell NAV with the old
 reserve, then credits the new fee. Final shareholder NAV is exactly
 `equity_keep`, not `equity_keep + fee`. The pure sequence removes the
 split-redemption fee-recapture path; the later atomic state transition must use
@@ -289,10 +289,10 @@ funding settlement and unresolved/reconciled diagnostics. It does not construct
 a Series1 position observation or persist lifecycle degradation on temporary
 economic faults.
 
-A redemption whose proportional claim is smaller than its unwind cost aborts
+A redemption whose proportional claim is smaller than its sell cost aborts
 with code 7 rather than a size code, because the minimum-size guard lives in
 `redemption_base_bounds`, which the canonical quote does not call. The Series
-must size the unwind through `redemption_base_bounds` before it quotes.
+must size the sell through `redemption_base_bounds` before it quotes.
 
 ## Valuation gates
 

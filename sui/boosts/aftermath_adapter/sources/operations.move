@@ -47,7 +47,7 @@ public struct RedemptionReceipt<phantom Product> {
     admin: u64,
     fee: u64,
     reserve_fee: u64,
-    unwound_checkpoint: Checkpoint,
+    after_sell_checkpoint: Checkpoint,
 }
 
 // === Public Functions ===
@@ -228,12 +228,12 @@ public fun redeem<Product, Collateral>(
         &binding, checkpoint, terms, plan.base_to_sell(), clock, ctx,
     );
 
-    let (unwound, unwound_checkpoint) = snapshot::capture(
+    let (after_sell, after_sell_checkpoint) = snapshot::capture(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     ).into_observation();
-    checkpoint.assert_deposit_checkpoint(&unwound_checkpoint, 0);
-    let receipt = seal_redemption_receipt(vault, plan, shares, unwound, unwound_checkpoint, clock.timestamp_ms());
+    checkpoint.assert_deposit_checkpoint(&after_sell_checkpoint, 0);
+    let receipt = seal_redemption_receipt(vault, plan, shares, after_sell, after_sell_checkpoint, clock.timestamp_ms());
     let cash = vault.venue().withdraw(
         account, registry, &mut clearing_house, base_oracle, collateral_oracle,
         receipt.redemption_cash_required(), clock, ctx,
@@ -241,7 +241,7 @@ public fun redeem<Product, Collateral>(
     let final_checkpoint = snapshot::capture_checkpoint(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
     );
-    receipt.unwound_checkpoint.assert_withdrawal_checkpoint(&final_checkpoint, receipt.redemption_cash_required());
+    receipt.after_sell_checkpoint.assert_withdrawal_checkpoint(&final_checkpoint, receipt.redemption_cash_required());
     let cash = complete_redemption(vault, receipt, cash, final_checkpoint, ctx);
     clearing_house.share();
 
@@ -897,16 +897,16 @@ fun complete_mint<Product, Collateral>(
 /// Holds the actual input coin across payout instead of accepting a numerical burn promise.
 fun seal_redemption_receipt<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>, plan: RedemptionPlan<Product>, shares: Coin<BlastBoost<Product>>,
-    unwound: PositionObservation, unwound_checkpoint: Checkpoint, now_ms: u64,
+    after_sell: PositionObservation, after_sell_checkpoint: Checkpoint, now_ms: u64,
 ): RedemptionReceipt<Product> {
     assert!(
         shares.value() == plan.redemption_shares(),
         blast_boosts_aftermath::errors::redemption_share_mismatch!(),
     );
 
-    let (net, admin, fee, reserve_fee) = vault.state_mut().complete_redemption(plan, unwound, now_ms);
+    let (net, admin, fee, reserve_fee) = vault.state_mut().complete_redemption(plan, after_sell, now_ms);
 
-    RedemptionReceipt { shares: shares.into_balance(), net, admin, fee, reserve_fee, unwound_checkpoint }
+    RedemptionReceipt { shares: shares.into_balance(), net, admin, fee, reserve_fee, after_sell_checkpoint }
 }
 
 /// Returns only the exact total collateral that must leave the venue before completion.
@@ -920,7 +920,7 @@ fun complete_redemption<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>, receipt: RedemptionReceipt<Product>, mut cash: Coin<Collateral>,
     checkpoint: Checkpoint, ctx: &mut TxContext,
 ): Coin<Collateral> {
-    let RedemptionReceipt { shares, net, admin, fee, reserve_fee, unwound_checkpoint: _ } = receipt;
+    let RedemptionReceipt { shares, net, admin, fee, reserve_fee, after_sell_checkpoint: _ } = receipt;
     assert!(cash.value() == net + admin, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
 
     vault.retain_admin_cash(cash.split(admin, ctx));
@@ -1286,9 +1286,9 @@ public fun complete_mint_for_testing<Product, Collateral>(
 #[test_only]
 public fun seal_redemption_receipt_for_testing<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>, plan: RedemptionPlan<Product>, shares: Coin<BlastBoost<Product>>,
-    unwound: PositionObservation, unwound_checkpoint: Checkpoint, now_ms: u64,
+    after_sell: PositionObservation, after_sell_checkpoint: Checkpoint, now_ms: u64,
 ): RedemptionReceipt<Product> {
-    seal_redemption_receipt(vault, plan, shares, unwound, unwound_checkpoint, now_ms)
+    seal_redemption_receipt(vault, plan, shares, after_sell, after_sell_checkpoint, now_ms)
 }
 
 #[test_only]
