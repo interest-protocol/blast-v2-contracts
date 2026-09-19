@@ -2460,7 +2460,8 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     let order = vault.state().next_rebalance_order(&plan);
     assert!(!order.is_increase());
     let after_base = 3_000_000 - order.order_base();
-    vault.state().accept_rebalance_fill(&mut plan, order, rebalance_position(1_025, after_base), order.order_base(), REFERENCE_TIME_MS);
+    let filled = order.order_base();
+    vault.state().accept_rebalance_fill(&mut plan, order, rebalance_position(1_025, after_base), filled, REFERENCE_TIME_MS);
     let checkpoint = checkpoint_with_market_imr(10, ALLOCATED_FIXED - ATOM_FIXED, 10, 20, 10, 20, 1);
     operations::complete_rebalance_for_testing<Tag, Collateral>(vault, plan, checkpoint);
     let event = events::collect_one<events::Rebalanced<Tag>>(0);

@@ -109,7 +109,7 @@ public struct RebalancePlan<phantom Product> {
 /// The next whole-lot order a rebalance places: its size, direction, and
 /// whether the position is still above the hard cap so the emergency
 /// slippage bound applies. A zero size ends the plan.
-public struct RebalanceOrder has copy, drop {
+public struct RebalanceOrder has drop {
     base: u64,
     increase: bool,
     wide: bool,

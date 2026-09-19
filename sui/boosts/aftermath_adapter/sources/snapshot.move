@@ -41,7 +41,7 @@ public struct CapturedSnapshot {
 ///
 /// `representable` is false only in a health capture whose values could not
 /// be normalized; a strict capture aborts instead.
-public struct OracleLeg has copy, drop {
+public struct OracleLeg has drop {
     price: u64,
     confidence: u64,
     timestamp: u64,

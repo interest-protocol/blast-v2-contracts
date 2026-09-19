@@ -33,7 +33,7 @@ public struct OrderTerms has copy, drop {
 /// against the order cap and the lot: the base atoms filled, the raw signed
 /// base and quote the session moved, and the execution price to prove against
 /// the sealed oracle.
-public struct Fill has copy, drop {
+public struct Fill has drop {
     filled: u64,
     filled_base: u256,
     filled_quote: u256,

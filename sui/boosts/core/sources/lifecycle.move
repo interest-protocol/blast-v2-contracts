@@ -13,7 +13,7 @@ public enum Lifecycle has drop, store {
 }
 
 /// Administrator-declared operational reason, never an on-chain liquidation verdict.
-public enum ShutdownReason has copy, drop, store {
+public enum ShutdownReason has copy, drop {
     Emergency,
     ObservedVenueChange,
 }

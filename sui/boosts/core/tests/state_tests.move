@@ -377,7 +377,8 @@ fun rebalance_increase_reserves_cost_and_keeps_buffer_unchanged() {
     let order = state.next_rebalance_order(&plan);
     assert_eq!(order.order_base(), 978_452_000);
     assert!(order.is_increase() && !order.is_wide());
-    state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_089_226, 1_978_452, policy::long()), order.order_base(), REFERENCE_TIME_MS);
+    let filled = order.order_base();
+    state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_089_226, 1_978_452, policy::long()), filled, REFERENCE_TIME_MS);
     assert_eq!(state.next_rebalance_order(&plan).order_base(), 0);
     let (before_equity, after_equity, before_base, after_base, increased) = state.complete_rebalance(plan);
     assert_eq!(before_equity, 1_100_000);
