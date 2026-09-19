@@ -97,9 +97,10 @@ new pair of overlapping invalid inputs.
 Each Boosts package keeps every abort code in its `lib/errors.move`: a
 `#[test_only] const EName: u64 = N` with a doc comment stating the violated
 condition, and a `macro public(package) fun name(): u64` that raising modules
-call. Codes are stable and append-only; a retired code is never reused. Tests
-pin `abort_code = errors::EName, location = package::module`, so the raising
-module still owns the abort location.
+call. Codes run from zero with no gaps: while the package is unpublished a
+removed check renumbers what follows; from the first publish on, codes are
+append-only. Tests pin `abort_code = errors::EName, location =
+package::module`, never a literal, so renumbering touches only the registry.
 
 Why: with the codes spread across modules a reader had to open each file to
 learn what a code meant; one registry per package reads top to bottom and is

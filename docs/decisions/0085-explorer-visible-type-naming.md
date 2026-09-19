@@ -67,10 +67,12 @@ on `blast_boost::BlastBoost<phantom Product> has key { id: UID }`, a
 marker no value of which is ever constructed, and only that module calls
 `coin_registry::new_currency`. `vault::Vault<Product>` remains the shared
 custody object. Product tags are declared in the Blast-owned
-`blast_boosts_products` package, one empty `drop` struct per ticker in its
-namesake module, so the inner type reads
-`…::blast_boosts_products::TSLA_3X`. No product is declared until it is
-approved; adding one is a compatible upgrade of that package.
+`blast_boosts_products` package, one empty `drop` struct per product named
+`<TICKER>_<SIDE>_<LEVERAGE>` in its namesake module, so the inner type reads
+`…::blast_boosts_products::NVDA_BULL_2X`; `BEAR` names the inverse product.
+A bull and bear 2X tag exist for every Aftermath perpetual market; a tag is
+not a live product until an adapter issues its currency. Adding one is a
+compatible upgrade of that package.
 
 **Single-module and product-named modules.** A package whose visible types
 live in one module names that module after the package:

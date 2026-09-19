@@ -114,7 +114,7 @@ Payload struct names inside the envelopes (`Bought`, `Migrated`,
 | `blast_fun_migrators` | `aftermath::Witness`, `cetus::Witness`, … | unchanged | migration witnesses; appear as `TypeName` values in `LaunchConfig` and events |
 | `blast_fun_migrators` | `aftermath::PolicyKey`, `aftermath::AftermathPolicy` | unchanged | dynamic-field key and value under `VenueConfig` |
 | `blast_boosts_aftermath` | `vault::TreasuryKey<Product>`, `vault::MetadataKey<Product>`, `vault::AdminCashKey`, `vault::TerminalCashKey` | unchanged | dynamic-field keys under `Vault` |
-| `blast_boosts_products` | `<TICKER>` tags such as `TSLA_3X` | new package; none declared yet | inner type of every Boost coin |
+| `blast_boosts_products` | `<TICKER>_<SIDE>_<LEVERAGE>` tags such as `NVDA_BULL_2X` | bull and bear 2X per Aftermath market | inner type of every Boost coin |
 
 ## Parked packages
 
