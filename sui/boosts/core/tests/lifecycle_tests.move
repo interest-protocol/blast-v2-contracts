@@ -124,6 +124,33 @@ fun unwinding_rejects_shutdown_redemption() {
         .assert_settled();
 }
 
+#[test]
+fun active_permits_synchronization() {
+    lifecycle::active().assert_can_sync();
+}
+
+#[test]
+fun unwinding_permits_synchronization() {
+    lifecycle::unwinding_for_testing().assert_can_sync();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle,
+)]
+fun settled_rejects_synchronization() {
+    lifecycle::settled_for_testing().assert_can_sync();
+}
+
+#[test]
+fun shutdown_reasons_are_distinct_declared_values() {
+    assert!(lifecycle::emergency_reason() != lifecycle::observed_venue_change_reason());
+    assert_eq!(lifecycle::emergency_reason(), lifecycle::emergency_reason());
+    assert_eq!(lifecycle::observed_venue_change_reason(), lifecycle::observed_venue_change_reason());
+}
+
 // === Imports ===
+
+use std::unit_test::assert_eq;
 
 use blast_boosts_core::{errors, lifecycle};

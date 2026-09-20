@@ -464,6 +464,17 @@ fun a_maximum_width_mark_and_index_do_not_wrap() {
 
 #[test]
 #[expected_failure(
+    abort_code = errors::EMarkOracleDivergenceExceedsBound, location = blast_boosts_core::policy,
+)]
+fun a_maximum_mark_above_a_unit_index_is_rejected() {
+    divergence_policy(9_999).assert_mark_within_oracle_divergence(
+        std::u64::max_value!(),
+        1,
+    );
+}
+
+#[test]
+#[expected_failure(
     abort_code = errors::EInvalidPrice, location = blast_boosts_core::policy,
 )]
 fun a_zero_index_is_rejected_even_when_the_mark_matches() {

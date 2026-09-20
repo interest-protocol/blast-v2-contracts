@@ -10,31 +10,31 @@ const MAX_RESERVE_BPS: u64 = 1_000;
 
 #[test]
 #[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
-fun fee_limits_reject_mint_cap_below_initial_rate() {
+fun policy_construction_rejects_mint_cap_below_initial_rate() {
     new_policy_with_fee_caps(10, 20, 9, 20, 0);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
-fun fee_limits_reject_redeem_cap_below_initial_rate() {
+fun policy_construction_rejects_redeem_cap_below_initial_rate() {
     new_policy_with_fee_caps(10, 20, 10, 19, 0);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
-fun fee_limits_reject_mint_cap_at_full_principal() {
+fun policy_construction_rejects_mint_cap_at_full_principal() {
     new_policy_with_fee_caps(10, 20, 10_000, 20, 0);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
-fun fee_limits_reject_redeem_cap_at_full_principal() {
+fun policy_construction_rejects_redeem_cap_at_full_principal() {
     new_policy_with_fee_caps(10, 20, 10, 10_000, 0);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
-fun fee_limits_reject_allocation_cap_above_full_fee() {
+fun policy_construction_rejects_allocation_cap_above_full_fee() {
     new_policy_with_fee_caps(10, 20, 10, 20, 10_001);
 }
 
@@ -43,6 +43,24 @@ fun fee_limits_accept_zero_exact_and_largest_legal_caps() {
     new_policy_with_fee_caps(0, 0, 0, 0, 0).assert_fee_limits(0, 0, 0);
     new_policy_with_fee_caps(10, 20, 10, 20, 2_000).assert_fee_limits(10, 20, 2_000);
     new_policy_with_fee_caps(9_999, 9_999, 9_999, 9_999, 10_000).assert_fee_limits(9_999, 9_999, 10_000);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
+fun fee_limits_reject_a_mint_fee_one_unit_above_its_cap() {
+    new_policy_with_fee_caps(10, 20, 10, 20, 2_000).assert_fee_limits(11, 20, 2_000);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
+fun fee_limits_reject_a_redeem_fee_one_unit_above_its_cap() {
+    new_policy_with_fee_caps(10, 20, 10, 20, 2_000).assert_fee_limits(10, 21, 2_000);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
+fun fee_limits_reject_an_admin_share_one_unit_above_its_cap() {
+    new_policy_with_fee_caps(10, 20, 10, 20, 2_000).assert_fee_limits(10, 20, 2_001);
 }
 
 #[test]
@@ -128,6 +146,15 @@ fun rebalance_policy_accepts_the_largest_nav_cap_that_fits_max_leverage() {
     policy::new_rebalance_policy(0, 2, 999_999, 1_000_000, 0, 0, 1).assert_nav_cap_valid(max / 100);
 }
 
+/// At or below 1x the target notional never exceeds the cap itself, so the full `u64` range fits.
+#[test]
+fun a_full_u64_nav_cap_is_accepted_when_max_leverage_is_at_most_one_x() {
+    let max = std::u64::max_value!();
+
+    policy::new_rebalance_policy(0, 1, 2, 10_000, 0, 0, 1).assert_nav_cap_valid(max);
+    policy::new_rebalance_policy(0, 1, 2, 3, 0, 0, 1).assert_nav_cap_valid(max);
+}
+
 #[test]
 fun minimum_exposure_lots_at_the_ceiling_are_accepted() {
     assert_eq!(new_policy(true, 0, 0, 1_000_000).min_order_lots(), 1_000_000);
@@ -199,6 +226,40 @@ fun zero_nav_cap_is_rejected() {
 #[expected_failure(abort_code = errors::EInvalidFeeBps, location = blast_boosts_core::policy)]
 fun fee_validation_precedes_lot_validation() {
     new_policy(true, 10_000, 10_000, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
+fun fee_cap_validation_precedes_lot_validation() {
+    policy::new_vault_policy(
+        policy::long(),
+        policy::new_rebalance_policy(0, 3, 5, 6, 0, 0, 1),
+        standard_price_policy(),
+        10,
+        0,
+        9,
+        0,
+        0,
+        0,
+        MAX_RESERVE_BPS,
+    );
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidMinOrderLots, location = blast_boosts_core::policy)]
+fun lot_validation_precedes_reserve_validation() {
+    policy::new_vault_policy(
+        policy::long(),
+        policy::new_rebalance_policy(0, 3, 5, 6, 0, 0, 1),
+        standard_price_policy(),
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    );
 }
 
 // === Private Functions ===
