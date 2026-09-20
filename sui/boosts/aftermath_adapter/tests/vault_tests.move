@@ -50,22 +50,6 @@ public struct Fixture {
 // === Tests ===
 
 #[test]
-fun shutdown_admin_stops_an_active_vault_without_any_venue_or_oracle_input() {
-    let mut fixture = start(
-        domain::vault_issuer_role() | domain::shutdown_admin_role(),
-    );
-    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
-    fixture.scenario.next_tx(ISSUER);
-    let mut vault = fixture.scenario.take_shared<Vault<Sui2x, SUI>>();
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
-    assert!(vault.is_unwinding_for_testing());
-    assert_eq!(vault.total_share_supply(), SEED_NAV * 1_000);
-    test_scenario::return_shared(vault);
-    destroy(fixture);
-}
-
-#[test]
 fun distinct_issued_products_freeze_actual_long_short_2x_and_generic_4x_6x_policy() {
     let mut fixture = start(domain::vault_issuer_role());
     let long2 = configured_policy(policy::long(), 20_000);
@@ -124,6 +108,83 @@ fun risk_admin_updates_the_nav_cap_with_a_completed_event() {
 }
 
 #[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun stale_adapter_version_precedes_fee_role_and_validation() {
+    let mut fixture = start(domain::vault_issuer_role());
+    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
+    fixture.scenario.next_tx(ISSUER);
+    let mut vault = fixture.scenario.take_shared<Vault<Sui2x, SUI>>();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
+    fixture.protocol.set_version_for_testing(2);
+
+    vault.set_fees(&fixture.protocol, &admin_witness, 10_000, 10_000, 10_001);
+
+    test_scenario::return_shared(vault);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_boosts_core::errors::EOperationNotPermittedInLifecycle,
+    location = blast_boosts_core::lifecycle,
+)]
+fun fees_cannot_change_once_shutdown_has_begun() {
+    let mut fixture = start(
+        domain::vault_issuer_role() | domain::risk_admin_role() | domain::shutdown_admin_role(),
+    );
+    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
+    fixture.scenario.next_tx(ISSUER);
+    let mut vault = fixture.scenario.take_shared<Vault<Sui2x, SUI>>();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
+    vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
+
+    vault.set_fees(&fixture.protocol, &admin_witness, 0, 0, 0);
+
+    test_scenario::return_shared(vault);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun stale_adapter_version_precedes_nav_cap_role_and_validation() {
+    let mut fixture = start(domain::vault_issuer_role());
+    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
+    fixture.scenario.next_tx(ISSUER);
+    let mut vault = fixture.scenario.take_shared<Vault<Sui2x, SUI>>();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
+    fixture.protocol.set_version_for_testing(2);
+
+    vault.set_nav_cap(&fixture.protocol, &admin_witness, 0);
+
+    test_scenario::return_shared(vault);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_boosts_core::errors::ENavCapUnchanged,
+    location = blast_boosts_core::state,
+)]
+fun the_risk_admin_cannot_repeat_the_current_nav_cap() {
+    let mut fixture = start(domain::vault_issuer_role() | domain::risk_admin_role());
+    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
+    fixture.scenario.next_tx(ISSUER);
+    let mut vault = fixture.scenario.take_shared<Vault<Sui2x, SUI>>();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
+
+    vault.set_nav_cap(&fixture.protocol, &admin_witness, NAV_CAP);
+
+    test_scenario::return_shared(vault);
+    destroy(fixture);
+}
+
+#[test]
 fun issuer_updates_the_currency_metadata_with_a_completed_event() {
     let mut fixture = start(domain::vault_issuer_role());
     fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
@@ -158,8 +219,7 @@ fun issuer_updates_the_currency_metadata_with_a_completed_event() {
 fun an_admin_stripped_of_the_issuer_role_cannot_change_the_currency_metadata() {
     let mut fixture = start(domain::vault_issuer_role() | domain::risk_admin_role());
     fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
-    let Fixture { authority, super_admin_cap, admin_cap, .. } = &mut fixture;
-    authority.revoke_role(super_admin_cap, object::id(admin_cap), domain::vault_issuer_role());
+    fixture.revoke_role(domain::vault_issuer_role());
     fixture.scenario.next_tx(ISSUER);
     let vault = fixture.scenario.take_shared<Vault<Sui2x, SUI>>();
     let mut currency = fixture.scenario.take_shared<Currency<BlastBoost<Sui2x>>>();
@@ -169,6 +229,65 @@ fun an_admin_stripped_of_the_issuer_role_cannot_change_the_currency_metadata() {
         b"x".to_string(), b"y".to_string(), b"z".to_string(),
     );
     abort
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun stale_adapter_version_precedes_metadata_role_check() {
+    let mut fixture = start(domain::vault_issuer_role());
+    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
+    fixture.revoke_role(domain::vault_issuer_role());
+    fixture.scenario.next_tx(ISSUER);
+    let vault = fixture.scenario.take_shared<Vault<Sui2x, SUI>>();
+    let mut currency = fixture.scenario.take_shared<Currency<BlastBoost<Sui2x>>>();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
+    fixture.protocol.set_version_for_testing(2);
+
+    vault.update_metadata(
+        &fixture.protocol, &admin_witness, &mut currency,
+        b"x".to_string(), b"y".to_string(), b"z".to_string(),
+    );
+
+    abort
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun stale_adapter_version_precedes_admin_fee_role_check() {
+    let mut fixture = start(domain::vault_issuer_role() | domain::risk_admin_role());
+    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
+    fixture.revoke_role(domain::risk_admin_role());
+    fixture.scenario.next_tx(ISSUER);
+    let mut vault = fixture.scenario.take_shared<Vault<Sui2x, SUI>>();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
+    fixture.protocol.set_version_for_testing(2);
+
+    destroy(vault.withdraw_admin_fees(&fixture.protocol, &admin_witness, 1, fixture.scenario.ctx()));
+
+    test_scenario::return_shared(vault);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInsufficientAdminCash, location = blast_boosts_aftermath::vault)]
+fun admin_fee_withdrawal_one_atom_above_earnings_is_rejected() {
+    let mut fixture = start(domain::vault_issuer_role() | domain::risk_admin_role());
+    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
+    fixture.scenario.next_tx(ISSUER);
+    let mut vault = fixture.scenario.take_shared<Vault<Sui2x, SUI>>();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
+    vault.retain_admin_cash(coin::mint_for_testing<SUI>(25, fixture.scenario.ctx()));
+
+    destroy(vault.withdraw_admin_fees(&fixture.protocol, &admin_witness, 26, fixture.scenario.ctx()));
+
+    test_scenario::return_shared(vault);
+    destroy(fixture);
 }
 
 #[test]
@@ -216,8 +335,8 @@ fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
 
     let issued_2x = events::collect_one<events::VaultIssued<Sui2x>>(0);
     let issued_5x = events::collect_one<events::VaultIssued<Sui5x>>(0);
-    let (treasury_2x_id, metadata_2x_id, policy_2x, order_notional_2x, _) = issued_2x.vault_issued_fields();
-    let (treasury_5x_id, metadata_5x_id, policy_5x, order_notional_5x, _) = issued_5x.vault_issued_fields();
+    let (treasury_2x_id, metadata_2x_id, policy_2x, order_notional_2x, nav_cap_2x) = issued_2x.vault_issued_fields();
+    let (treasury_5x_id, metadata_5x_id, policy_5x, order_notional_5x, nav_cap_5x) = issued_5x.vault_issued_fields();
 
     assert!(treasury_2x_id != treasury_5x_id);
     assert!(metadata_2x_id != metadata_5x_id);
@@ -225,6 +344,8 @@ fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
     assert_eq!(policy_5x, expected_policy);
     assert_eq!(order_notional_2x, MAX_ORDER_NOTIONAL);
     assert_eq!(order_notional_5x, MAX_ORDER_NOTIONAL);
+    assert_eq!(nav_cap_2x, NAV_CAP);
+    assert_eq!(nav_cap_5x, NAV_CAP);
 
     fixture.scenario.next_tx(ISSUER);
     let vault_2x = fixture.scenario.take_shared<Vault<Sui2x, SUI>>();
@@ -239,8 +360,12 @@ fun one_adapter_issues_distinct_2x_and_5x_currencies_from_witnesses() {
     assert_eq!(vault_5x.metadata_cap_id_for_testing(), metadata_5x_id);
     assert_eq!(vault_2x.total_share_supply(), SEED_NAV * 1_000);
     assert_eq!(vault_5x.total_share_supply(), SEED_NAV * 1_000);
+    assert_eq!(vault_2x.nav_cap_for_testing(), nav_cap_2x);
+    assert_eq!(vault_5x.nav_cap_for_testing(), nav_cap_5x);
     assert_eq!(currency_2x.symbol(), b"SUI2X".to_string());
     assert_eq!(currency_5x.symbol(), b"SUI5X".to_string());
+    assert_eq!(currency_2x.decimals(), 9);
+    assert_eq!(currency_5x.decimals(), 9);
     assert_eq!(currency_2x.treasury_cap_id().destroy_some(), treasury_2x_id);
     assert_eq!(currency_5x.treasury_cap_id().destroy_some(), treasury_5x_id);
     assert_eq!(currency_2x.metadata_cap_id().destroy_some(), metadata_2x_id);
@@ -293,6 +418,25 @@ fun the_risk_admin_updates_max_order_notional_and_emits_the_change() {
 }
 
 #[test]
+fun max_order_notional_can_change_while_unwinding() {
+    let mut fixture = start(
+        domain::vault_issuer_role() | domain::risk_admin_role() | domain::shutdown_admin_role(),
+    );
+    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
+    fixture.scenario.next_tx(ISSUER);
+    let mut vault = fixture.scenario.take_shared<Vault<Sui2x, SUI>>();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
+    vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
+
+    vault.set_max_order_notional(&fixture.protocol, &admin_witness, MAX_ORDER_NOTIONAL * 4);
+
+    assert!(vault.is_unwinding_for_testing());
+    assert_eq!(vault.max_order_notional_for_testing(), MAX_ORDER_NOTIONAL * 4);
+    test_scenario::return_shared(vault);
+    destroy(fixture);
+}
+
+#[test]
 fun activation_locks_the_seed_shares_as_the_whole_supply() {
     let mut fixture = start(domain::vault_issuer_role());
     let issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
@@ -304,6 +448,101 @@ fun activation_locks_the_seed_shares_as_the_whole_supply() {
     assert_eq!(vault.locked_shares(), SEED_NAV * 1_000);
     destroy(vault);
     destroy(fixture);
+}
+
+#[test]
+fun activation_sends_the_locked_seed_shares_to_the_burn_address() {
+    let mut fixture = start(domain::vault_issuer_role());
+    let issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
+
+    let (vault, _) = fixture.activate(issuance);
+
+    fixture.scenario.next_tx(SYSTEM);
+    let burned = fixture.scenario.take_from_address<Coin<BlastBoost<Sui2x>>>(SYSTEM);
+    assert_eq!(burned.value(), vault.locked_shares());
+    assert_eq!(burned.value(), SEED_NAV * 1_000);
+    assert_eq!(vault.terminal_cash_for_testing(), 0);
+    assert_eq!(vault.admin_cash_balance(), 0);
+    destroy(burned);
+    destroy(vault);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_boosts_core::errors::EOperationNotPermittedInLifecycle,
+    location = blast_boosts_core::lifecycle,
+)]
+fun terminal_claim_during_unwinding_is_rejected_before_finalization() {
+    let mut fixture = start(domain::vault_issuer_role() | domain::shutdown_admin_role());
+    let issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
+    let (mut vault, _) = fixture.activate(issuance);
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
+    vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
+    let shares = vault.mint_shares(5, fixture.scenario.ctx());
+    let clock = clock::create_for_testing(fixture.scenario.ctx());
+
+    destroy(vault.redeem_shutdown(&fixture.protocol, shares, 0, 0, &clock, fixture.scenario.ctx()));
+
+    abort
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_boosts_core::errors::EOperationNotPermittedInLifecycle,
+    location = blast_boosts_core::lifecycle,
+)]
+fun unsettled_lifecycle_precedes_an_expired_deadline() {
+    let mut fixture = start(domain::vault_issuer_role() | domain::shutdown_admin_role());
+    let issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
+    let (mut vault, _) = fixture.activate(issuance);
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
+    vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
+    let shares = vault.mint_shares(5, fixture.scenario.ctx());
+    let mut clock = clock::create_for_testing(fixture.scenario.ctx());
+    clock.set_for_testing(REFERENCE_TIME_MS + 1);
+
+    destroy(vault.redeem_shutdown(&fixture.protocol, shares, 0, REFERENCE_TIME_MS, &clock, fixture.scenario.ctx()));
+
+    abort
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_boosts_core::errors::ERedemptionOutputBelowMinimum,
+    location = blast_boosts_core::state,
+)]
+fun terminal_claim_below_minimum_collateral_is_rejected() {
+    let mut fixture = start(domain::vault_issuer_role() | domain::shutdown_admin_role());
+    let issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
+    let (mut vault, _) = fixture.activate(issuance);
+    let shares = vault.mint_shares(5, fixture.scenario.ctx());
+    fixture.settle_with_cash(&mut vault, 13);
+    let clock = clock::create_for_testing(fixture.scenario.ctx());
+
+    destroy(vault.redeem_shutdown(&fixture.protocol, shares, 14, 0, &clock, fixture.scenario.ctx()));
+
+    abort
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_boosts_core::errors::EInvalidShareAmount,
+    location = blast_boosts_core::state,
+)]
+fun terminal_claim_of_zero_shares_is_rejected() {
+    let mut fixture = start(domain::vault_issuer_role() | domain::shutdown_admin_role());
+    let issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
+    let (mut vault, _) = fixture.activate(issuance);
+    let eligible = vault.mint_shares(5, fixture.scenario.ctx());
+    let nothing = vault.mint_shares(0, fixture.scenario.ctx());
+    fixture.settle_with_cash(&mut vault, 13);
+    let clock = clock::create_for_testing(fixture.scenario.ctx());
+
+    destroy(vault.redeem_shutdown(&fixture.protocol, nothing, 0, 0, &clock, fixture.scenario.ctx()));
+
+    destroy(eligible);
+    abort
 }
 
 #[test]
@@ -377,6 +616,7 @@ fun stale_adapter_version_precedes_role_and_max_order_notional_validation() {
 }
 
 #[test]
+/// Shutdown needs no venue or oracle object: the vault moves to unwinding, keeps its supply, and reports why.
 fun shutdown_admin_moves_an_active_vault_to_unwinding() {
     let mut fixture = start(
         domain::vault_issuer_role() | domain::shutdown_admin_role(),
@@ -390,8 +630,50 @@ fun shutdown_admin_moves_an_active_vault_to_unwinding() {
     vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
 
     assert!(vault.is_unwinding_for_testing());
+    assert_eq!(vault.total_share_supply(), SEED_NAV * 1_000);
     let entered = events::collect_one<events::ShutdownBegun<Sui2x>>(0);
     assert_eq!(entered.shutdown_begun_vault_id(), vault_id);
+    assert_eq!(entered.shutdown_reason(), blast_boosts_core::lifecycle::emergency_reason());
+
+    test_scenario::return_shared(vault);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun stale_version_precedes_the_missing_shutdown_role() {
+    let mut fixture = start(domain::vault_issuer_role());
+    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
+    fixture.scenario.next_tx(ISSUER);
+    let mut vault = fixture.scenario.take_shared<Vault<Sui2x, SUI>>();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
+    fixture.protocol.set_version_for_testing(2);
+
+    vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
+
+    test_scenario::return_shared(vault);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EAdminRoleNotGranted,
+    location = blast_admin::acl,
+)]
+fun missing_shutdown_role_precedes_an_already_unwinding_vault() {
+    let mut fixture = start(domain::vault_issuer_role() | domain::shutdown_admin_role());
+    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
+    fixture.scenario.next_tx(ISSUER);
+    let mut vault = fixture.scenario.take_shared<Vault<Sui2x, SUI>>();
+    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
+    vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
+    fixture.revoke_role(domain::shutdown_admin_role());
+    let stripped_witness = fixture.authority.sign_in(&fixture.admin_cap);
+
+    vault.begin_shutdown(&fixture.protocol, &stripped_witness, blast_boosts_core::lifecycle::emergency_reason());
 
     test_scenario::return_shared(vault);
     destroy(fixture);
@@ -464,6 +746,50 @@ fun primitive_product_witness_is_rejected() {
     abort_code = blast_admin::errors::EOperationalVersionMismatch,
     location = blast_admin::operational_version,
 )]
+fun stale_adapter_version_precedes_primitive_witness_rejection() {
+    let mut fixture = start(domain::vault_issuer_role());
+    fixture.protocol.set_version_for_testing(2);
+
+    fixture.issue_and_share<u64>(b"BAD".to_string());
+
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EAdminRoleNotGranted,
+    location = blast_admin::acl,
+)]
+fun an_admin_without_the_issuer_role_cannot_issue() {
+    let mut fixture = start(domain::risk_admin_role());
+
+    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
+
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidProductWitnessType, location = blast_boosts_aftermath::vault)]
+/// A zero max order notional is the core's rejection; the adapter's witness check fires before it.
+fun primitive_witness_precedes_core_issuance_validation() {
+    let mut fixture = start(domain::vault_issuer_role());
+    let Fixture { scenario, registry, protocol, authority, admin_cap, .. } = &mut fixture;
+    let admin_witness = authority.sign_in(admin_cap);
+
+    destroy(vault::issue<u64, SUI>(
+        protocol, &admin_witness, registry, standard_vault_policy(), 0, NAV_CAP,
+        b"BAD".to_string(), b"Test Vault".to_string(), b"Blast leverage coin".to_string(), b"".to_string(),
+        scenario.ctx(),
+    ));
+
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
 /// Issuance is a protected mutation, so it stops serving the moment a governed
 /// upgrade advances the adapter generation past this bytecode.
 fun vault_issuance_stops_after_the_adapter_generation_advances() {
@@ -508,6 +834,21 @@ fun start(roles: u64): Fixture {
 }
 
 // === Fixture Helpers ===
+
+fun revoke_role(self: &mut Fixture, role: u64) {
+    let Fixture { authority, super_admin_cap, admin_cap, .. } = self;
+    authority.revoke_role(super_admin_cap, object::id(admin_cap), role);
+}
+
+/// Begins shutdown and finalizes it on `recovered` collateral atoms, keeping the current checkpoint.
+fun settle_with_cash<Product>(self: &mut Fixture, vault: &mut Vault<Product, SUI>, recovered: u64) {
+    let admin_witness = self.authority.sign_in(&self.admin_cap);
+    vault.begin_shutdown(&self.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
+    let checkpoint = *vault.venue().checkpoint();
+    operations::complete_finalization_for_testing(
+        vault, checkpoint, coin::mint_for_testing<SUI>(recovered, self.scenario.ctx()),
+    );
+}
 
 fun issue_and_share<Product>(self: &mut Fixture, symbol: String) {
     self.issue_and_share_with_policy<Product>(symbol, standard_vault_policy(), 20_000);
@@ -635,6 +976,7 @@ use blast_boosts_aftermath::{
     domain_fixture,
     errors,
     events,
+    operations,
     protocol::{Self, Protocol},
     vault::{Self, Vault, VaultIssuance},
     checkpoint,
@@ -651,13 +993,13 @@ use perpetuals::authority::ACCOUNT;
 
 use std::{
     string::String,
-    type_name::{Self, TypeName},
     unit_test::{assert_eq, destroy},
 };
 
 use sui::{
-    sui::SUI,
+    clock,
+    coin::{Self, Coin},
     coin_registry::{Self, CoinRegistry, Currency, ECurrencyAlreadyExists},
-    package,
+    sui::SUI,
     test_scenario::{Self, Scenario},
 };

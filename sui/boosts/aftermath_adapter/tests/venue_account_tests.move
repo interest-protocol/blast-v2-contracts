@@ -6,12 +6,12 @@ module blast_boosts_aftermath::venue_account_tests;
 
 const ACCOUNT_NUMBER: u64 = 7;
 
-// === Test Types ===
-
-public struct Collateral {}
-public struct OtherCollateral {}
-
 // === Tests ===
+
+#[test]
+fun binding_exposes_the_bound_account_number() {
+    assert_eq!(standard_binding().account_number(), ACCOUNT_NUMBER);
+}
 
 #[test]
 fun an_admin_cap_for_the_bound_account_seals_the_venue_account() {
@@ -19,6 +19,7 @@ fun an_admin_cap_for_the_bound_account_seals_the_venue_account() {
     let venue = venue_account::new(standard_binding(), standard_checkpoint(), admin_cap_for(@0xA11CE, &mut ctx));
 
     assert_eq!(venue.binding(), standard_binding());
+    assert_eq!(*venue.checkpoint(), standard_checkpoint());
     destroy(venue);
 }
 
@@ -270,6 +271,37 @@ fun checkpoint_preserves_every_raw_field() {
     destroy(checkpoint_copy);
 }
 
+#[test]
+fun funding_update_guard_accepts_the_largest_representable_boundary() {
+    let max = std::u64::max_value!();
+
+    assert!(venue_account::is_time_to_update_funding_for_testing(max, max - 1, 1));
+    assert!(!venue_account::is_time_to_update_funding_for_testing(max - 1, max - 1, 1));
+    assert!(venue_account::is_time_to_update_funding_for_testing(max, 0, max));
+    assert!(!venue_account::is_time_to_update_funding_for_testing(max - 1, 0, max));
+}
+
+#[test]
+fun next_funding_update_time_reaches_the_last_representable_instant() {
+    let max = std::u64::max_value!();
+
+    assert_eq!(venue_account::next_funding_update_time_ms_for_testing(max - 1, 1), max);
+    assert_eq!(venue_account::next_funding_update_time_ms_for_testing(0, max), max);
+    assert_eq!(venue_account::next_funding_update_time_ms_for_testing(max - 1, max), max);
+}
+
+#[test]
+#[expected_failure(arithmetic_error, location = blast_boosts_aftermath::venue_account)]
+fun next_funding_update_time_overflows_past_the_last_period() {
+    venue_account::next_funding_update_time_ms_for_testing(std::u64::max_value!(), 1);
+}
+
+#[test]
+#[expected_failure(arithmetic_error, location = blast_boosts_aftermath::venue_account)]
+fun next_funding_update_time_divides_by_a_zero_cadence() {
+    venue_account::next_funding_update_time_ms_for_testing(1_000, 0);
+}
+
 // === Test Helpers ===
 
 /// A real venue admin cap naming `account`, minted by the vendored interface's test constructor.
@@ -342,4 +374,4 @@ use blast_boosts_aftermath::{checkpoint::{Self, Checkpoint}, errors, venue_accou
 
 use perpetuals::authority::ACCOUNT;
 
-use std::{type_name, unit_test::{assert_eq, destroy}};
+use std::unit_test::{assert_eq, destroy};
