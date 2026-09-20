@@ -674,6 +674,86 @@ fun allocated_cash_changes_reject_a_reversed_signed_delta() {
 }
 
 #[test]
+fun allocated_cash_changes_cover_every_sign_shape_in_both_directions() {
+    // Both positive: up is a deposit, down a withdrawal.
+    checkpoint::assert_signed_cash_change_for_testing(false, 3 * ATOM_FIXED, false, 5 * ATOM_FIXED, 2, true);
+    checkpoint::assert_signed_cash_change_for_testing(false, 5 * ATOM_FIXED, false, 3 * ATOM_FIXED, 2, false);
+    // Both negative: a deeper liability is a withdrawal, a shallower one a deposit.
+    checkpoint::assert_signed_cash_change_for_testing(true, 2 * ATOM_FIXED, true, 5 * ATOM_FIXED, 3, false);
+    checkpoint::assert_signed_cash_change_for_testing(true, 5 * ATOM_FIXED, true, 2 * ATOM_FIXED, 3, true);
+    // Leaving and landing on zero: zero is nonnegative, so these are same-sign and crossing moves respectively.
+    checkpoint::assert_signed_cash_change_for_testing(false, 0, false, 5 * ATOM_FIXED, 5, true);
+    checkpoint::assert_signed_cash_change_for_testing(true, 5 * ATOM_FIXED, false, 0, 5, true);
+    checkpoint::assert_signed_cash_change_for_testing(false, 5 * ATOM_FIXED, false, 0, 5, false);
+    // No move with no amount has no direction to disagree with.
+    checkpoint::assert_signed_cash_change_for_testing(false, 5 * ATOM_FIXED, false, 5 * ATOM_FIXED, 0, true);
+    checkpoint::assert_signed_cash_change_for_testing(true, 5 * ATOM_FIXED, true, 5 * ATOM_FIXED, 0, false);
+    // The largest atomic amount still scales into the carrier.
+    let max = std::u64::max_value!();
+    checkpoint::assert_signed_cash_change_for_testing(false, 0, false, (max as u256) * ATOM_FIXED, max, true);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun allocated_cash_changes_reject_a_positive_rise_called_a_withdrawal() {
+    checkpoint::assert_signed_cash_change_for_testing(false, 3 * ATOM_FIXED, false, 5 * ATOM_FIXED, 2, false);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun allocated_cash_changes_reject_a_deeper_liability_called_a_deposit() {
+    checkpoint::assert_signed_cash_change_for_testing(true, 2 * ATOM_FIXED, true, 5 * ATOM_FIXED, 3, true);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun allocated_cash_changes_reject_a_zero_crossing_of_the_wrong_size() {
+    checkpoint::assert_signed_cash_change_for_testing(true, 2 * ATOM_FIXED, false, 3 * ATOM_FIXED, 4, true);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun allocated_cash_changes_reject_a_move_when_nothing_was_expected() {
+    checkpoint::assert_signed_cash_change_for_testing(false, 3 * ATOM_FIXED, false, 4 * ATOM_FIXED, 0, true);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun allocated_cash_changes_reject_no_move_when_an_amount_was_expected() {
+    checkpoint::assert_signed_cash_change_for_testing(false, 3 * ATOM_FIXED, false, 3 * ATOM_FIXED, 1, true);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun allocated_cash_changes_reject_a_sub_atom_remainder() {
+    // One raw unit short of an atom: the proof is exact at 10^-18, not at the atom.
+    checkpoint::assert_signed_cash_change_for_testing(false, 0, false, ATOM_FIXED - 1, 1, true);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun allocated_cash_changes_refuse_an_overflowing_zero_crossing() {
+    // Unreachable with magnitudes decoded by `abs` (each below 2^255); the branch refuses rather than wraps.
+    let half = std::u256::max_value!() / 2 + 1;
+    checkpoint::assert_signed_cash_change_for_testing(true, half, false, half, 1, true);
+}
+
+#[test]
+fun redemption_cash_checkpoint_paid_entirely_from_free_cash_leaves_allocated_untouched() {
+    let before = checkpoint_with_market_imr(25, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
+    let after = checkpoint_with_market_imr(5, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
+    before.assert_nonnegative_cash_checkpoint_for_testing(&after, 20, false);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun redemption_cash_checkpoint_rejects_deallocating_what_free_cash_covered() {
+    let before = checkpoint_with_market_imr(25, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
+    let after = checkpoint_with_market_imr(5, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
+    before.assert_nonnegative_cash_checkpoint_for_testing(&after, 20, false);
+}
+
+#[test]
 fun active_checkpoint_admits_only_the_executed_position_and_venue_cost() {
     let before = initial_checkpoint();
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
