@@ -123,6 +123,54 @@ fun risk_admin_updates_the_nav_cap_with_a_completed_event() {
 }
 
 #[test]
+fun issuer_updates_the_currency_metadata_with_a_completed_event() {
+    let mut fixture = start(domain::vault_issuer_role());
+    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
+    fixture.scenario.next_tx(ISSUER);
+    let vault = fixture.scenario.take_shared<Vault<Sui2x, SUI>>();
+    let mut currency = fixture.scenario.take_shared<Currency<BlastBoost<Sui2x>>>();
+    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    vault.update_metadata(
+        &fixture.protocol, &witness, &mut currency,
+        b"SUI 2x Bull".to_string(), b"Two times SUI".to_string(), b"https://blast.fun/sui2x.png".to_string(),
+    );
+    let (id, name, description, icon_url) =
+        events::collect_one<events::MetadataUpdated<Sui2x>>(0).metadata_updated_fields();
+    assert_eq!(id, vault.id());
+    assert_eq!(name, b"SUI 2x Bull".to_string());
+    assert_eq!(description, b"Two times SUI".to_string());
+    assert_eq!(icon_url, b"https://blast.fun/sui2x.png".to_string());
+    assert_eq!(currency.name(), b"SUI 2x Bull".to_string());
+    assert_eq!(currency.description(), b"Two times SUI".to_string());
+    assert_eq!(currency.icon_url(), b"https://blast.fun/sui2x.png".to_string());
+    assert_eq!(currency.symbol(), b"SUI2X".to_string());
+    test_scenario::return_shared(vault);
+    test_scenario::return_shared(currency);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EAdminRoleNotGranted,
+    location = blast_admin::acl,
+)]
+fun an_admin_stripped_of_the_issuer_role_cannot_change_the_currency_metadata() {
+    let mut fixture = start(domain::vault_issuer_role() | domain::risk_admin_role());
+    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
+    let Fixture { authority, super_admin_cap, admin_cap, .. } = &mut fixture;
+    authority.revoke_role(super_admin_cap, object::id(admin_cap), domain::vault_issuer_role());
+    fixture.scenario.next_tx(ISSUER);
+    let vault = fixture.scenario.take_shared<Vault<Sui2x, SUI>>();
+    let mut currency = fixture.scenario.take_shared<Currency<BlastBoost<Sui2x>>>();
+    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    vault.update_metadata(
+        &fixture.protocol, &witness, &mut currency,
+        b"x".to_string(), b"y".to_string(), b"z".to_string(),
+    );
+    abort
+}
+
+#[test]
 #[expected_failure(
     abort_code = blast_admin::errors::EAdminRoleNotGranted,
     location = blast_admin::acl,

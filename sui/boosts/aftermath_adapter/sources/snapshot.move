@@ -103,21 +103,9 @@ public(package) fun capture<Collateral>(
     let (mark_price, mark_representable) = ifixed_math::fixed_to_u64_down(mark_fixed, 9);
 
     let position = clearing_house.position(account.account_id());
-    let (signed_base, signed_quote_notional) = position.base_and_quote_amounts();
-    let (position_base, base_representable) = ifixed_math::fixed_to_u64_up(signed_base.abs(), 9);
-    let effective_imr = position.effective_initial_margin_ratio(params.margin_ratio_initial());
-    let (margin, requirement) = position.compute_margin_and_requirement(
-        collateral_fixed, mark_fixed, effective_imr, params.collateral_haircut(),
+    let (position_base, venue_equity, margin_safe, position_representable) = position_economics(
+        position, params, account.collateral_balance(), base_fixed, collateral_fixed, mark_fixed,
     );
-    let (venue_equity, equity_representable) = signed_equity(
-        account.collateral_balance(), position.collateral(), position.unrealized_pnl(base_fixed), collateral_fixed,
-    );
-    let economics_valid = position_signs_coherent(signed_base, signed_quote_notional, position.is_long_or_flat())
-        && base.representable
-        && collateral.representable
-        && base_representable
-        && mark_representable
-        && equity_representable;
 
     CapturedSnapshot {
         venue_equity,
@@ -125,9 +113,9 @@ public(package) fun capture<Collateral>(
         lot_size: params.lot_size(),
         side: if (position.is_long_or_flat()) { policy::long() } else { policy::short() },
         pending_order_count: position.pending_order_count(),
-        margin_safe: margin_safe(margin, requirement),
+        margin_safe,
         venue_operational: clearing_house.market_pause_mode() == 0 && !clearing_house.is_frozen(),
-        economics_valid,
+        economics_valid: position_representable && base.representable && collateral.representable && mark_representable,
         base_price: base.price,
         base_confidence: base.confidence,
         base_timestamp: base.timestamp,
@@ -236,6 +224,33 @@ fun authenticated_feeds(
     (base_feed, collateral_feed)
 }
 
+/// Values one position at the captured prices: whole-lot base, venue equity in
+/// collateral atoms, whether margin covers the requirement, and whether every
+/// figure fit and the position's signs agree with its side.
+fun position_economics(
+    position: &Position,
+    params: &MarketParams,
+    free_collateral: u64,
+    base_fixed: u256,
+    collateral_fixed: u256,
+    mark_fixed: u256,
+): (u64, u64, bool, bool) {
+    let (signed_base, signed_quote_notional) = position.base_and_quote_amounts();
+    let (position_base, base_representable) = ifixed_math::fixed_to_u64_up(signed_base.abs(), 9);
+    let effective_imr = position.effective_initial_margin_ratio(params.margin_ratio_initial());
+    let (margin, requirement) = position.compute_margin_and_requirement(
+        collateral_fixed, mark_fixed, effective_imr, params.collateral_haircut(),
+    );
+    let (venue_equity, equity_representable) = signed_equity(
+        free_collateral, position.collateral(), position.unrealized_pnl(base_fixed), collateral_fixed,
+    );
+    let representable = base_representable
+        && equity_representable
+        && position_signs_coherent(signed_base, signed_quote_notional, position.is_long_or_flat());
+
+    (position_base, venue_equity, margin_safe(margin, requirement), representable)
+}
+
 /// Normalizes one oracle leg, carrying whether every value fit.
 fun oracle_leg(price_info: &PriceInfoObject, feed: &PriceFeed, venue_price: u256): OracleLeg {
     let (price, confidence, timestamp, representable) = pyth_price(price_info, feed, venue_price);
@@ -325,19 +340,15 @@ fun normalize_pyth_component_parts(
     if (exponent_magnitude > 18) return (0, false);
 
     let raw = value as u256;
-    let normalized = if (exponent_negative) {
-        if (exponent_magnitude <= 9) {
-            raw * ifixed_math::pow10(9 - exponent_magnitude)
-        } else {
-            let scale = ifixed_math::pow10(exponent_magnitude - 9);
-            let down = raw / scale;
-            if (round_up && raw % scale != 0) { down + 1 } else { down }
-        }
+    let normalized = if (exponent_negative && exponent_magnitude > 9) {
+        ifixed_math::div_rounded(raw, ifixed_math::pow10(exponent_magnitude - 9), round_up)
+    } else if (exponent_negative) {
+        raw * ifixed_math::pow10(9 - exponent_magnitude)
     } else {
         raw * ifixed_math::pow10(9 + exponent_magnitude)
     };
 
-    if (normalized > std::u64::max_value!() as u256) { (0, false) } else { (normalized as u64, true) }
+    ifixed_math::to_u64(normalized)
 }
 
 fun seconds_to_millis(seconds: u64): (u64, bool) {
@@ -376,29 +387,30 @@ fun signed_equity_decoded(
 ): (u64, bool) {
     if (collateral_price == 0) return (0, false);
 
-    // A liability rounds up and an asset rounds down, so equity never reads high.
-    let (allocated_tokens, allocated_ok) = if (allocated_negative) {
-        ifixed_math::fixed_to_u64_up(allocated_magnitude, constants::collateral_decimals!() as u64)
-    } else {
-        ifixed_math::fixed_to_u64_down(allocated_magnitude, constants::collateral_decimals!() as u64)
-    };
+    let (allocated_asset, allocated_liability, allocated_ok) = signed_collateral_atoms(allocated_negative, allocated_magnitude);
     let (pnl, collateral_ok) = ifixed_math::usd_fixed_to_collateral_fixed(pnl_magnitude_usd, collateral_price, pnl_negative);
-    let (rounded, pnl_ok) = if (pnl_negative) {
-        ifixed_math::fixed_to_u64_up(pnl, constants::collateral_decimals!() as u64)
-    } else {
-        ifixed_math::fixed_to_u64_down(pnl, constants::collateral_decimals!() as u64)
-    };
+    let (pnl_asset, pnl_liability, pnl_ok) = signed_collateral_atoms(pnl_negative, pnl);
     if (!allocated_ok || !collateral_ok || !pnl_ok) return (0, false);
 
-    let (allocated_asset, allocated_liability) =
-        if (allocated_negative) { (0, allocated_tokens) } else { (allocated_tokens, 0) };
-    let (pnl_asset, pnl_liability) = if (pnl_negative) { (0, rounded) } else { (rounded, 0) };
     let assets = (free_collateral as u128) + (allocated_asset as u128) + (pnl_asset as u128);
     let liabilities = (allocated_liability as u128) + (pnl_liability as u128);
     if (assets < liabilities) return (0, false);
 
     let net = assets - liabilities;
     if (net > std::u64::max_value!() as u128) { (0, false) } else { (net as u64, true) }
+}
+
+/// One signed IFixed collateral amount as `(asset_atoms, liability_atoms, representable)`.
+/// A liability rounds up and an asset rounds down, so equity never reads high.
+fun signed_collateral_atoms(negative: bool, magnitude: u256): (u64, u64, bool) {
+    let decimals = constants::collateral_decimals!() as u64;
+    let (atoms, representable) = if (negative) {
+        ifixed_math::fixed_to_u64_up(magnitude, decimals)
+    } else {
+        ifixed_math::fixed_to_u64_down(magnitude, decimals)
+    };
+
+    if (negative) { (0, atoms, representable) } else { (atoms, 0, representable) }
 }
 
 fun margin_safe(margin: u256, requirement: u256): bool {
@@ -537,6 +549,8 @@ use perpetuals::{
     market::MarketParams,
     registry::Registry,
 };
+
+use position::position::Position;
 
 use pyth::{i64::I64, price_info::PriceInfoObject};
 

@@ -88,17 +88,9 @@ public fun initialize<Product, Collateral>(
         open_venue_account(registry, &clearing_house, base_oracle, collateral_oracle, ctx);
     fund_venue_account(&mut account, &admin_cap, registry, &mut clearing_house, seed, position_imr);
 
-    update_funding_when_due(&binding, &mut clearing_house, base_oracle, clock);
-    let (pre_observation, _) = snapshot::capture(
-        &binding, &account, registry, &clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
-    ).into_observation();
-    let (target_base, max_order_base, seed_position) = terms.seed_terms(pre_observation, seed_reserve);
-    let (reference_base_price, collateral_price) = (seed_position.base_price(), seed_position.collateral_price());
-    let orders = order_sizes(target_base, max_order_base);
-    clearing_house = open_seed_position(
-        terms, &mut account, &admin_cap, clearing_house, base_oracle, collateral_oracle,
-        orders, position_side, reference_base_price, collateral_price, clock, ctx,
+    clearing_house = seed_position(
+        terms, &mut account, &admin_cap, &binding, registry, clearing_house, base_oracle, collateral_oracle,
+        base_price_info, collateral_price_info, seed_reserve, clock, ctx,
     );
 
     clearing_house.settle_position_funding(collateral_oracle, binding.account_number(), clock);
@@ -137,7 +129,7 @@ public fun mint<Product, Collateral>(
     collateral_oracle: &PriceFeedStorage,
     base_price_info: &PriceInfoObject,
     collateral_price_info: &PriceInfoObject,
-    mut cash: Coin<Collateral>,
+    cash: Coin<Collateral>,
     minimum_shares: u64,
     maximum_fee_bps: u64,
     deadline_ms: u64,
@@ -159,15 +151,11 @@ public fun mint<Product, Collateral>(
     let plan = vault.state().prepare_mint(before, deposit, vault.total_share_supply(), minimum_shares, clock.timestamp_ms());
     let terms = active_terms(vault, false, plan.mint_position());
 
-    vault.retain_admin_cash(cash.split(plan.admin_fee(), ctx));
-    let venue_deposit = cash.value();
-    vault.venue().deposit(account, registry, cash);
-    vault.venue().allocate(account, &mut clearing_house, venue_deposit);
     let binding = vault.venue().binding();
-    let checkpoint = snapshot::capture_checkpoint(
-        &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
+    let checkpoint = fund_mint(
+        vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle,
+        cash, plan.admin_fee(), &before_checkpoint, ctx,
     );
-    before_checkpoint.assert_allocated_deposit_checkpoint(&checkpoint, venue_deposit);
 
     let (clearing_house, checkpoint) = fill_orders(
         vault, account, registry, clearing_house, base_oracle, collateral_oracle,
@@ -509,6 +497,36 @@ fun fund_venue_account<Collateral>(
 /// the ordinary slippage bound, post nothing, and touch no liquidation; each
 /// actual fill is capped separately so admitted slippage cannot carry one
 /// order past the live cap.
+/// Sizes the seed from a fresh flat observation and opens it in capped orders.
+fun seed_position<Product, Collateral>(
+    issuance: &Issuance<Product>,
+    account: &mut Account<Collateral>,
+    admin_cap: &AuthorityCap<ACCOUNT, ADMIN>,
+    binding: &Binding,
+    registry: &Registry,
+    mut clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    base_price_info: &PriceInfoObject,
+    collateral_price_info: &PriceInfoObject,
+    seed_reserve: u64,
+    clock: &Clock,
+    ctx: &TxContext,
+): ClearingHouse<Collateral> {
+    update_funding_when_due(binding, &mut clearing_house, base_oracle, clock);
+    let (flat_observation, _) = snapshot::capture(
+        binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
+        base_price_info, collateral_price_info, clock,
+    ).into_observation();
+    let (target_base, max_order_base, seed) = issuance.seed_terms(flat_observation, seed_reserve);
+
+    open_seed_position(
+        issuance, account, admin_cap, clearing_house, base_oracle, collateral_oracle,
+        order_sizes(target_base, max_order_base), issuance.side(), seed.base_price(), seed.collateral_price(),
+        clock, ctx,
+    )
+}
+
 fun open_seed_position<Product, Collateral>(
     issuance: &Issuance<Product>,
     account: &mut Account<Collateral>,
@@ -701,6 +719,34 @@ fun active_order_size(remaining: u64, max_order_base: u64, lot_size: u64, index:
 /// The next whole-lot request: what remains, capped per order.
 fun next_order_size(self: &OrderTerms, remaining: u64, index: u64): u64 {
     active_order_size(remaining, self.max_order_base, self.lot_size, index)
+}
+
+/// Keeps the admin's fee slice as vault cash and puts the rest of the deposit
+/// to work on the venue, proving the checkpoint moved by exactly that amount.
+/// Returns the funded checkpoint the orders start from.
+fun fund_mint<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    account: &mut Account<Collateral>,
+    registry: &Registry,
+    clearing_house: &mut ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    mut cash: Coin<Collateral>,
+    admin_fee: u64,
+    before: &Checkpoint,
+    ctx: &mut TxContext,
+): Checkpoint {
+    vault.retain_admin_cash(cash.split(admin_fee, ctx));
+    let venue_deposit = cash.value();
+    vault.venue().deposit(account, registry, cash);
+    vault.venue().allocate(account, clearing_house, venue_deposit);
+
+    let funded = snapshot::capture_checkpoint(
+        &vault.venue().binding(), account, registry, clearing_house, base_oracle, collateral_oracle,
+    );
+    before.assert_allocated_deposit_checkpoint(&funded, venue_deposit);
+
+    funded
 }
 
 /// Places every order of one active mint or redemption, proving each fill
@@ -973,15 +1019,7 @@ fun apply_post_capture<Product, Collateral>(
     let stored_checkpoint = *vault.venue().checkpoint();
     let net = preexisting_change.net_funding(local_change);
     let checkpoint_clean = net.is_clean();
-    let (absorbed, uncovered, restored) = if (net.has_funding()) {
-        vault.state_mut().settle_funding(if (net.is_cost()) {
-            observation::funding_cost(net.amount())
-        } else {
-            observation::funding_credit(net.amount())
-        })
-    } else {
-        (0, 0, 0)
-    };
+    let (absorbed, uncovered, restored) = settle_net_funding(vault, &net);
     let reserve_after = vault.state().maintenance_reserve();
 
     if (checkpoint_clean) {
@@ -1052,6 +1090,23 @@ fun is_time_to_update_funding(now_ms: u64, last_funding_update_ms: u64, funding_
 /// `market::next_funding_update_time` computes it.
 fun next_funding_update_time_ms(last_funding_update_ms: u64, funding_frequency_ms: u64): u64 {
     last_funding_update_ms - last_funding_update_ms % funding_frequency_ms + funding_frequency_ms
+}
+
+/// Applies a net funding move to the reserve; a clean interval settles nothing.
+/// Returns `(absorbed_by_reserve, uncovered_cost, restored_to_holders)`.
+fun settle_net_funding<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    net: &CheckpointChange,
+): (u64, u64, u64) {
+    if (!net.has_funding()) return (0, 0, 0);
+
+    let settlement = if (net.is_cost()) {
+        observation::funding_cost(net.amount())
+    } else {
+        observation::funding_credit(net.amount())
+    };
+
+    vault.state_mut().settle_funding(settlement)
 }
 
 /// The funding the venue would settle for this account at its current cumulative rates.
@@ -1148,7 +1203,9 @@ fun unwind_frozen<Product, Collateral>(
     complete_unwind(vault, before, option::none(), after, 0, option::none());
 }
 
-/// Authenticates prices and isolates actual funding before up to sixteen policy-sized market closes.
+/// One bounded unwind step on a live market: settle funding, then place up to
+/// `MAX_ACTIVE_ORDERS` close-only orders under the emergency bound, proving
+/// each fill against the checkpoint before the next.
 fun unwind_market<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     account: &mut Account<Collateral>,
@@ -1168,54 +1225,113 @@ fun unwind_market<Product, Collateral>(
         base_price_info, collateral_price_info, clock,
     );
     let collateral_fixed = capture.collateral_fixed();
+    let (terms, remaining, before) = unwind_terms(vault, capture, clock.timestamp_ms());
+
+    let funded = settle_funding_for_unwind(
+        &binding, account, registry, &mut clearing_house, base_oracle, collateral_oracle,
+        &before, collateral_fixed, clock,
+    );
+
+    let (clearing_house, after, orders, filled_quote) = close_orders(
+        vault, account, registry, clearing_house, base_oracle, collateral_oracle,
+        &binding, &terms, funded, remaining, clock, ctx,
+    );
+
+    complete_unwind(vault, before, option::some(funded), after, orders, option::some(filled_quote));
+
+    clearing_house
+}
+
+/// Prices the step at fresh oracles: the close-only order terms, the whole-lot
+/// base still open, and the checkpoint the step starts from, which must carry
+/// no resting orders.
+fun unwind_terms<Product, Collateral>(
+    vault: &Vault<Product, Collateral>,
+    capture: CapturedSnapshot,
+    now_ms: u64,
+): (OrderTerms, u64, Checkpoint) {
     let (side, max_order_base, base_price, collateral_price) = vault.state().unwind_constraints(
         capture.base_price_observation(), capture.collateral_price_observation(), capture.checkpoint().lot_size(),
-        clock.timestamp_ms(),
+        now_ms,
     );
     let before = capture.into_checkpoint();
     before.assert_no_orders();
-    let mut remaining = unwind_base(&before, side);
-
-    let candidate = funding_candidate(&clearing_house, account);
-    clearing_house.settle_position_funding(
-        collateral_oracle, account.account_id(), clock,
-    );
-    let funded = snapshot::capture_checkpoint(
-        &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
-    );
-    venue_account::classify_change(&before, &funded, candidate, collateral_fixed).assert_expected();
 
     let terms = OrderTerms {
         is_ask: !opens_with_ask(side), reduce_only: true, max_order_base,
-        lot_size: funded.lot_size(), base_price, collateral_price,
+        lot_size: before.lot_size(), base_price, collateral_price,
     };
-    let mut checkpoint = funded;
+
+    (terms, unwind_base(&before, side), before)
+}
+
+/// Settles the account's funding on the venue and proves the checkpoint moved
+/// only by the funding the venue's own formula predicted. Returns the settled checkpoint.
+fun settle_funding_for_unwind<Collateral>(
+    binding: &Binding,
+    account: &Account<Collateral>,
+    registry: &Registry,
+    clearing_house: &mut ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    before: &Checkpoint,
+    collateral_fixed: u256,
+    clock: &Clock,
+): Checkpoint {
+    let candidate = funding_candidate(clearing_house, account);
+    clearing_house.settle_position_funding(collateral_oracle, account.account_id(), clock);
+
+    let funded = snapshot::capture_checkpoint(binding, account, registry, clearing_house, base_oracle, collateral_oracle);
+    venue_account::classify_change(before, &funded, candidate, collateral_fixed).assert_expected();
+
+    funded
+}
+
+/// Places close-only orders under the emergency bound until the base is flat or
+/// the per-call order budget is spent; every fill is proven against the
+/// checkpoint before the next, and no order may rest on the book.
+///
+/// Returns the market, the checkpoint the last fill left, the orders placed,
+/// and the quote they filled in total.
+fun close_orders<Product, Collateral>(
+    vault: &Vault<Product, Collateral>,
+    account: &mut Account<Collateral>,
+    registry: &Registry,
+    mut clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    binding: &Binding,
+    terms: &OrderTerms,
+    mut checkpoint: Checkpoint,
+    mut remaining: u64,
+    clock: &Clock,
+    ctx: &TxContext,
+): (ClearingHouse<Collateral>, Checkpoint, u64, u256) {
     let mut orders = 0;
-    let mut filled_quote_total: u256 = 0;
+    let mut filled_quote: u256 = 0;
+
     while (orders < MAX_ACTIVE_ORDERS && remaining > 0) {
         let requested = terms.next_order_size(remaining, orders);
         let (next_market, fill) = place_order(
-            vault, account, clearing_house, base_oracle, collateral_oracle, &terms, requested, clock, ctx,
+            vault, account, clearing_house, base_oracle, collateral_oracle, terms, requested, clock, ctx,
         );
         clearing_house = next_market;
-        vault.state().assert_execution(true, base_price, fill.executed);
+        vault.state().assert_execution(true, terms.base_price, fill.executed);
 
         let after = snapshot::capture_checkpoint(
-            &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
+            binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
         );
-        fill.assert_checkpoint(&terms, &checkpoint, &after);
+        fill.assert_checkpoint(terms, &checkpoint, &after);
         after.assert_no_orders();
 
-        remaining = remaining - fill.filled;
         checkpoint = after;
-        filled_quote_total = filled_quote_total.checked_add(fill.filled_quote)
+        remaining = remaining - fill.filled;
+        filled_quote = filled_quote.checked_add(fill.filled_quote)
             .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
         orders = orders + 1;
     };
 
-    complete_unwind(vault, before, option::some(funded), checkpoint, orders, option::some(filled_quote_total));
-
-    clearing_house
+    (clearing_house, checkpoint, orders, filled_quote)
 }
 
 /// Named IFixed decoding precedes exact base-atom and lot validation.

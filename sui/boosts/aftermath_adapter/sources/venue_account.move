@@ -397,13 +397,7 @@ public(package) fun net_funding(preexisting: CheckpointChange, settled: Checkpoi
         (settled_is_cost, settled_amount - preexisting_amount)
     };
 
-    if (amount == 0) {
-        CheckpointChange::Unchanged
-    } else if (is_cost) {
-        CheckpointChange::FundingCost(amount)
-    } else {
-        CheckpointChange::FundingCredit(amount)
-    }
+    funding_change(is_cost, amount)
 }
 
 /// Creates the clean no-op classification for adapter orchestration.
@@ -689,28 +683,43 @@ fun classify_from_delta(
     allocated_change: CheckpointChange,
 ): CheckpointChange {
     if (before == after) return CheckpointChange::Unchanged;
-    let market_rates_unchanged = before.non_funding_fields_equal(after)
-        && before.market_funding_long() == after.market_funding_long()
-        && before.market_funding_short() == after.market_funding_short();
-    if (!market_rates_unchanged) return CheckpointChange::Unexpected;
-
-    let snapshots_refreshed = after.funding_snapshot_long() == before.market_funding_long()
-        && after.funding_snapshot_short() == before.market_funding_short()
-        && (before.funding_snapshot_long() != after.funding_snapshot_long()
-            || before.funding_snapshot_short() != after.funding_snapshot_short());
-    if (!snapshots_refreshed) return CheckpointChange::Unexpected;
+    if (!before.market_rates_unchanged(after) || !before.snapshots_refreshed_to_market(after)) {
+        return CheckpointChange::Unexpected
+    };
     if (candidate_collateral_magnitude == 0 && before.allocated_collateral() == after.allocated_collateral()) {
         return CheckpointChange::Unchanged
     };
 
-    let matched = match (&allocated_change) {
-        CheckpointChange::FundingCredit(amount) => !candidate_negative && *amount == candidate_collateral_magnitude,
-        CheckpointChange::FundingCost(amount) => candidate_negative && *amount == candidate_collateral_magnitude,
-        CheckpointChange::Unchanged => candidate_collateral_magnitude == 0,
-        CheckpointChange::Unexpected => false,
-    };
+    if (allocated_change.matches_candidate(candidate_negative, candidate_collateral_magnitude)) {
+        allocated_change
+    } else {
+        CheckpointChange::Unexpected
+    }
+}
 
-    if (matched) { allocated_change } else { CheckpointChange::Unexpected }
+/// Every field but the position's own funding snapshots is byte-for-byte the same.
+fun market_rates_unchanged(self: &Checkpoint, after: &Checkpoint): bool {
+    self.non_funding_fields_equal(after)
+        && self.market_funding_long() == after.market_funding_long()
+        && self.market_funding_short() == after.market_funding_short()
+}
+
+/// The position's snapshots moved and now sit exactly at the market rates `self` showed.
+fun snapshots_refreshed_to_market(self: &Checkpoint, after: &Checkpoint): bool {
+    after.funding_snapshot_long() == self.market_funding_long()
+        && after.funding_snapshot_short() == self.market_funding_short()
+        && (self.funding_snapshot_long() != after.funding_snapshot_long()
+            || self.funding_snapshot_short() != after.funding_snapshot_short())
+}
+
+/// The allocated-collateral move is the one the venue's own funding formula predicted.
+fun matches_candidate(self: &CheckpointChange, candidate_negative: bool, candidate_magnitude: u256): bool {
+    match (self) {
+        CheckpointChange::FundingCredit(amount) => !candidate_negative && *amount == candidate_magnitude,
+        CheckpointChange::FundingCost(amount) => candidate_negative && *amount == candidate_magnitude,
+        CheckpointChange::Unchanged => candidate_magnitude == 0,
+        CheckpointChange::Unexpected => false,
+    }
 }
 
 /// Named IFixed operations decode signed collateral; raw checkpoint bits are never ordered.
@@ -727,24 +736,31 @@ fun signed_delta(
     after_negative: bool,
     after_magnitude: u256,
 ): CheckpointChange {
-    if (before_negative == after_negative) {
-        if (before_magnitude == after_magnitude) return CheckpointChange::Unchanged;
-        let credit =
-            if (before_negative) { before_magnitude > after_magnitude } else { after_magnitude > before_magnitude };
-        let amount = before_magnitude.diff(after_magnitude);
+    if (before_negative != after_negative) {
+        return sign_crossing_delta(before_magnitude, after_negative, after_magnitude)
+    };
 
-        if (credit) { CheckpointChange::FundingCredit(amount) } else { CheckpointChange::FundingCost(amount) }
+    // Same sign: the balance grew when a positive got larger or a negative got smaller.
+    let grew = if (before_negative) { before_magnitude > after_magnitude } else { after_magnitude > before_magnitude };
+
+    funding_change(!grew, before_magnitude.diff(after_magnitude))
+}
+
+/// The balance crossed zero: it moved by both magnitudes, a cost when it landed negative.
+fun sign_crossing_delta(before_magnitude: u256, after_negative: bool, after_magnitude: u256): CheckpointChange {
+    if (before_magnitude > std::u256::max_value!() - after_magnitude) return CheckpointChange::Unexpected;
+
+    funding_change(after_negative, before_magnitude + after_magnitude)
+}
+
+/// No move is no change; otherwise a cost or a credit of `amount`.
+fun funding_change(is_cost: bool, amount: u256): CheckpointChange {
+    if (amount == 0) {
+        CheckpointChange::Unchanged
+    } else if (is_cost) {
+        CheckpointChange::FundingCost(amount)
     } else {
-        if (before_magnitude > std::u256::max_value!() - after_magnitude) return CheckpointChange::Unexpected;
-        let amount = before_magnitude + after_magnitude;
-
-        if (amount == 0) {
-            CheckpointChange::Unchanged
-        } else if (after_negative) {
-            CheckpointChange::FundingCost(amount)
-        } else {
-            CheckpointChange::FundingCredit(amount)
-        }
+        CheckpointChange::FundingCredit(amount)
     }
 }
 

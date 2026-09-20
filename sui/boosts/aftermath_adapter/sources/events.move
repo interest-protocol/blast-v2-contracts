@@ -183,6 +183,14 @@ public struct MaxOrderNotionalUpdated<phantom Product> has copy, drop {
     max_order_notional: u64,
 }
 
+/// Completed Coin Registry metadata update; the symbol and supply are untouched.
+public struct MetadataUpdated<phantom Product> has copy, drop {
+    vault_id: ID,
+    name: String,
+    description: String,
+    icon_url: String,
+}
+
 /// Completed withdrawal from native admin cash; no holder or buffer claim is created.
 public struct AdminFeesWithdrawn<phantom Product> has copy, drop {
     vault_id: ID,
@@ -417,6 +425,10 @@ public(package) fun max_order_notional_updated<Product>(vault_id: ID, previous: 
     );
 }
 
+public(package) fun metadata_updated<Product>(vault_id: ID, name: String, description: String, icon_url: String) {
+    emit_event(MetadataUpdated<Product> { vault_id, name, description, icon_url });
+}
+
 public(package) fun admin_fees_withdrawn<Product>(vault_id: ID, amount: u64, remaining: u64) {
     emit_event(AdminFeesWithdrawn<Product> {
         vault_id, amount, remaining,
@@ -619,6 +631,11 @@ public fun max_order_notional_updated_fields<Product>(
 }
 
 #[test_only]
+public fun metadata_updated_fields<Product>(self: &MetadataUpdated<Product>): (ID, String, String, String) {
+    (self.vault_id, self.name, self.description, self.icon_url)
+}
+
+#[test_only]
 public fun admin_fees_withdrawn_fields<Product>(self: &AdminFeesWithdrawn<Product>): (ID, u64, u64) {
     (self.vault_id, self.amount, self.remaining)
 }
@@ -628,6 +645,8 @@ public fun admin_fees_withdrawn_fields<Product>(self: &AdminFeesWithdrawn<Produc
 use blast_boosts_aftermath::{blast_events::{Event, emit_event}, venue_account::{Binding, Checkpoint}};
 
 use blast_boosts_core::{lifecycle::ShutdownReason, policy::{PositionSide, VaultPolicy}};
+
+use std::string::String;
 
 #[test_only]
 use sui::event::events_by_type;

@@ -20,39 +20,39 @@ public(package) fun pow10(exponent: u64): u256 {
 
 /// The IFixed value in `decimals`-decimal atoms, rounded down, and whether it fit in a u64.
 public(package) fun fixed_to_u64_down(value: u256, decimals: u64): (u64, bool) {
-    let normalized = value / pow10(18 - decimals);
-    if (normalized > std::u64::max_value!() as u256) { (0, false) } else { (normalized as u64, true) }
+    to_u64(div_rounded(value, pow10(18 - decimals), false))
 }
 
 /// The IFixed value in `decimals`-decimal atoms, rounded up, and whether it fit in a u64.
 public(package) fun fixed_to_u64_up(value: u256, decimals: u64): (u64, bool) {
-    let scale = pow10(18 - decimals);
-    let down = value / scale;
-    let exact = value % scale == 0;
-    let up = if (exact) { down } else { down + 1 };
+    to_u64(div_rounded(value, pow10(18 - decimals), true))
+}
 
-    if (up > std::u64::max_value!() as u256) { (0, false) } else { (up as u64, true) }
+/// `value / divisor`, rounded down or up. `divisor` must be nonzero.
+public(package) fun div_rounded(value: u256, divisor: u256, round_up: bool): u256 {
+    let down = value / divisor;
+    if (round_up && value % divisor != 0) { down + 1 } else { down }
+}
+
+/// The value as a u64 and whether it fit; an unrepresentable value reads as zero.
+public(package) fun to_u64(value: u256): (u64, bool) {
+    if (value > std::u64::max_value!() as u256) { (0, false) } else { (value as u64, true) }
 }
 
 /// Converts a USD IFixed amount into collateral IFixed at `collateral_price`.
+///
+/// `usd / price` in IFixed is `usd × 10^18 / price`; the product is split into
+/// whole and fractional parts so no intermediate exceeds u256.
 public(package) fun usd_fixed_to_collateral_fixed(usd: u256, collateral_price: u256, round_up: bool): (u256, bool) {
     if (collateral_price == 0) return (0, false);
 
     let one = constants::ifixed_one!();
-    let whole = usd / collateral_price;
-    let remainder = usd % collateral_price;
-    if (whole > std::u256::max_value!() / one || remainder > std::u256::max_value!() / one) return (0, false);
-    let fractional_scaled = remainder * one;
-    let whole_scaled = whole * one;
-    let fraction = fractional_scaled / collateral_price;
-    if (whole_scaled > std::u256::max_value!() - fraction) return (0, false);
+    let whole_scaled = (usd / collateral_price).checked_mul(one).destroy_or!(return (0, false));
+    let fraction_scaled = (usd % collateral_price).checked_mul(one).destroy_or!(return (0, false));
+    let quotient = whole_scaled.checked_add(fraction_scaled / collateral_price).destroy_or!(return (0, false));
+    if (!round_up || fraction_scaled % collateral_price == 0) return (quotient, true);
 
-    let down = whole_scaled + fraction;
-    if (round_up && fractional_scaled % collateral_price != 0) {
-        if (down == std::u256::max_value!()) { (0, false) } else { (down + 1, true) }
-    } else {
-        (down, true)
-    }
+    if (quotient == std::u256::max_value!()) { (0, false) } else { (quotient + 1, true) }
 }
 
 // === Test-Only Functions ===

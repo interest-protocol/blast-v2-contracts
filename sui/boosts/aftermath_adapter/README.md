@@ -39,7 +39,8 @@ rollback. All three live proof paths enforce the pinned Sui CLI version.
 
 Public active operations are `initialize`, `mint`, `redeem`, `rebalance`,
 `needs_rebalance`, `sync_health` and `donate`; Vault also exposes authorized
-fee, NAV-cap and order-cap settings and earned-admin cash withdrawal.
+fee, NAV-cap and order-cap settings, issuer-only coin metadata updates, and
+earned-admin cash withdrawal.
 Mint/redeem return ordinary native coins and finish atomically. Rebalance has
 no privileged keeper path, caller trade sizing or reward. An unresolved
 external change preserves the accepted economic checkpoint and emits

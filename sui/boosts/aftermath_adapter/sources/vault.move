@@ -209,6 +209,29 @@ public fun set_max_order_notional<Product, Collateral>(
     events::max_order_notional_updated<Product>(self.id.to_inner(), previous, max_order_notional);
 }
 
+/// Replaces the Boost currency's display name, description and icon in Coin
+/// Registry. The symbol is fixed at issuance; the registry has no setter for it.
+/// This local administrative edge requires neither venue objects nor prices.
+public fun update_metadata<Product, Collateral>(
+    self: &Vault<Product, Collateral>,
+    protocol: &Protocol,
+    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    currency: &mut Currency<BlastBoost<Product>>,
+    name: String,
+    description: String,
+    icon_url: String,
+) {
+    protocol.assert_current();
+    admin_witness.assert_role(domain::vault_issuer_role());
+
+    let metadata_cap = self.metadata_cap();
+    currency.set_name(metadata_cap, name);
+    currency.set_description(metadata_cap, description);
+    currency.set_icon_url(metadata_cap, icon_url);
+
+    events::metadata_updated<Product>(self.id.to_inner(), name, description, icon_url);
+}
+
 /// Returns only earned local admin collateral, including during venue/oracle outages.
 public fun withdraw_admin_fees<Product, Collateral>(
     self: &mut Vault<Product, Collateral>,
@@ -394,7 +417,6 @@ public fun terminal_cash_for_testing<Product, Collateral>(self: &Vault<Product, 
     cash.value()
 }
 
-#[test_only]
 fun metadata_cap<Product, Collateral>(self: &Vault<Product, Collateral>): &MetadataCap<BlastBoost<Product>> {
     dynamic_object_field::borrow(&self.id, MetadataKey<Product>())
 }
@@ -464,7 +486,7 @@ use std::{string::String, type_name};
 use sui::{
     balance::{Self, Balance},
     coin::{Self, Coin, TreasuryCap},
-    coin_registry::{CoinRegistry, MetadataCap},
+    coin_registry::{CoinRegistry, Currency, MetadataCap},
     clock::Clock,
     dynamic_field,
     dynamic_object_field,
