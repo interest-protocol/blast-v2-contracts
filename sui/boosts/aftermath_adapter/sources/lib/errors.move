@@ -64,7 +64,7 @@ const EOracleObservationMismatch: u64 = 12;
 const ENormalizationOverflow: u64 = 13;
 
 #[test_only]
-/// Initialization collateral must use six atomic decimals.
+/// Initialization collateral, and the market's collateral scale, must be six atomic decimals.
 const EInvalidCollateralDecimals: u64 = 14;
 
 #[test_only]

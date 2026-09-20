@@ -34,7 +34,9 @@ public fun initialize<Product, Collateral>(
     let terms = issuance.issuance();
     let position_side = terms.side();
     let seed_amount = seed.value();
-    assert_initialization_inputs(currency.decimals(), seed_amount, seed_reserve);
+    assert_initialization_inputs(
+        currency.decimals(), clearing_house.market_params().scaling_factor(), seed_amount, seed_reserve,
+    );
     assert_position_imr(position_imr);
 
     let (mut account, share_policy, admin_cap, binding) =
@@ -372,9 +374,18 @@ public fun finalize_shutdown<Product, Collateral>(
 
 // --- Initialization ---
 
-fun assert_initialization_inputs(collateral_decimals: u8, seed_amount: u64, seed_reserve: u64) {
+/// The collateral is six-decimal on both sides: the currency the vault issues
+/// against and the market's own collateral scale, which the venue multiplies
+/// every allocated atom by (`clearing_house::allocate_collateral`).
+fun assert_initialization_inputs(
+    collateral_decimals: u8,
+    market_scaling_factor: u256,
+    seed_amount: u64,
+    seed_reserve: u64,
+) {
     assert!(
-        collateral_decimals == constants::collateral_decimals!(),
+        collateral_decimals == constants::collateral_decimals!()
+            && market_scaling_factor == constants::collateral_atom_to_ifixed_scale!(),
         blast_boosts_aftermath::errors::invalid_collateral_decimals!(),
     );
     assert!(seed_amount > 0, blast_boosts_aftermath::errors::invalid_seed!());
@@ -677,7 +688,6 @@ fun synchronize<Product, Collateral>(
         base_price_info, collateral_price_info, clock,
     );
     let (pre_checkpoint, collateral_price) = (pre_capture.checkpoint(), pre_capture.collateral_fixed());
-    let funding_candidate = venue_account::funding_candidate(clearing_house, account);
 
     clearing_house.settle_position_funding(collateral_oracle, account.account_id(), clock);
 
@@ -686,7 +696,7 @@ fun synchronize<Product, Collateral>(
         base_price_info, collateral_price_info, clock,
     );
     let (preexisting_change, local_change) = stored_checkpoint.classify_sync_changes(
-        &pre_checkpoint, &post_capture.checkpoint(), funding_candidate, collateral_price,
+        &pre_checkpoint, &post_capture.checkpoint(), collateral_price,
     );
     apply_post_capture(vault, post_capture.checkpoint(), preexisting_change, local_change);
 
@@ -764,7 +774,8 @@ fun unwind_market<Product, Collateral>(
 }
 
 /// Settles the account's funding on the venue and proves the checkpoint moved
-/// only by the funding the venue's own formula predicted. Returns the settled checkpoint.
+/// only by the funding the venue's own settlement arithmetic yields at the
+/// captured collateral price. Returns the settled checkpoint.
 fun settle_funding_for_unwind<Collateral>(
     binding: &Binding,
     account: &Account<Collateral>,
@@ -776,11 +787,10 @@ fun settle_funding_for_unwind<Collateral>(
     collateral_fixed: u256,
     clock: &Clock,
 ): Checkpoint {
-    let candidate = venue_account::funding_candidate(clearing_house, account);
     clearing_house.settle_position_funding(collateral_oracle, account.account_id(), clock);
 
     let funded = snapshot::capture_checkpoint(binding, account, registry, clearing_house, base_oracle, collateral_oracle);
-    before.classify_change(&funded, candidate, collateral_fixed).assert_expected();
+    before.classify_change(&funded, collateral_fixed).assert_expected();
 
     funded
 }
@@ -908,8 +918,13 @@ public fun complete_donation_for_testing<Product, Collateral>(
 }
 
 #[test_only]
-public fun assert_initialization_inputs_for_testing(collateral_decimals: u8, seed_amount: u64, seed_reserve: u64) {
-    assert_initialization_inputs(collateral_decimals, seed_amount, seed_reserve);
+public fun assert_initialization_inputs_for_testing(
+    collateral_decimals: u8,
+    market_scaling_factor: u256,
+    seed_amount: u64,
+    seed_reserve: u64,
+) {
+    assert_initialization_inputs(collateral_decimals, market_scaling_factor, seed_amount, seed_reserve);
 }
 
 #[test_only]

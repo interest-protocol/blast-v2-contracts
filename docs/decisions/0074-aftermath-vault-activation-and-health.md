@@ -1,6 +1,6 @@
 # 0074: Aftermath Vault activation and health evidence
 
-Active-contract amendment: 2026-09-06. This is the pre-publication source
+Active-contract amendment: 2026-09-20 (venue bytecode read). This is the pre-publication source
 contract; local evidence does not establish publication or live release readiness.
 
 - Status: **accepted for dependency and raw-field normalization**
@@ -79,14 +79,15 @@ adapter's mutation checkpoint; immutable object/source bindings are stored in
 | Free collateral | `perpetuals::account::collateral_balance<T>` | `u64`, atomic units of `T`; six decimals for the admitted collateral | Exact; no conversion | Yes |
 | Allocated collateral | `position::position::collateral` | signed-IFixed carrier, `u256`, 18 decimals | Asset magnitudes round down; liability magnitudes round up before equity netting | Yes |
 | Signed base | first result of `position::position::base_and_quote_amounts` | signed IFixed in `u256`, 18 decimals | Preserve sign with `is_neg`; absolute base converts to 9 decimals, up for risk | Yes, raw signed value |
-| Signed quote cost basis | second result of `position::position::base_and_quote_amounts` | USD-valued signed IFixed in `u256`, 18 decimals | Preserve only for direction coherence and raw transition guards; it is historical cost basis, not current leverage notional | Yes, raw signed value |
-| Realized funding candidate | `position::position::calculate_position_funding_internal(position, long_rate, short_rate)` immediately before settlement; rates come from `perpetuals::market::cum_funding_rates` | USD-valued signed IFixed in `u256`, 18 decimals | Divide by authenticated collateral price; credit down and cost up in collateral-token IFixed units | No derived amount; store both rate snapshots, both market rates, and collateral before/after |
+| Signed quote cost basis | second result of `position::position::base_and_quote_amounts` | USD-valued signed IFixed in `u256`, 18 decimals, **under the base's sign** (a long holds positive base and positive quote; `add_base_to_position` bytecode, 2026-09-20) | Preserve only for direction coherence and raw transition guards; it is historical cost basis, not current leverage notional | Yes, raw signed value |
+| Expected funding settlement | replay of `position::position::settle_position_funding` from the stored checkpoint: the held side's `market rate − snapshot` times `|base|`, divided by the venue collateral price the capture read (2026-09-20 amendment; `calculate_position_funding_internal` is no longer called) | collateral-token IFixed magnitude with a sign | Floor for a credit, ceiling for a cost, exactly as the venue rounds the 10^36 product; a credit that floors to zero is no change | No derived amount; store both rate snapshots, both market rates, and collateral before/after |
 | Current absolute notional | absolute normalized base multiplied by the authenticated Pyth base index | USD value converted through the authenticated collateral price | Base size and the Pyth base numerator round up; the collateral-price denominator rounds down and final collateral notional rounds up. Historical quote cost basis is not used | No; operation-scoped leverage input |
 | Unrealized PnL | `position::position::unrealized_pnl(position, base_index)` | USD-valued signed IFixed in `u256`, 18 decimals | Pyth index anchors shareholder accounting; divide by authenticated collateral price, flooring positive equity and ceiling negative liability | No; derive at the operation index |
 | Base index | `perpetuals::market::base_oracle_price(params, base_storage, clock)` after exact storage/source binding | positive IFixed in `u256`, 18 decimals | Convert to 9 decimals; down for shareholder equity and up for absolute risk bounds | No; operation-scoped price |
-| Collateral price | `perpetuals::market::collateral_oracle_price(params, collateral_storage, clock)` after exact storage/source binding | positive IFixed in `u256`, 18 decimals | Convert to 9 decimals; collateral asset value rounds down | No; operation-scoped price |
+| Collateral price | `perpetuals::market::collateral_oracle_price(params, collateral_storage, clock)` after exact storage/source binding | positive IFixed in `u256`, 18 decimals (the feed's raw `u128` cast unchanged) | Convert to 9 decimals; collateral asset value rounds down; the raw value is what the funding replay divides by | No; operation-scoped price |
 | Mark | `perpetuals::clearing_house::mark_price(clearing_house, base_storage, clock)` | positive IFixed in `u256`, 18 decimals | Convert to 9 decimals through IFixed; use only for venue margin and divergence checks | No; operation-scoped price |
 | Lot size | `perpetuals::market::lot_size(params)` | `u64`, base units at 9 decimals | Exact; order sizes are whole multiples and risk conversion rounds up | Yes |
+| Collateral scale | `perpetuals::market::scaling_factor(params)` | `u256`, raw IFixed units per collateral atom; the venue multiplies every allocated atom by it | Must equal `10^12` at initialization (2026-09-20) | No; bound once |
 | Pending ask base | first result of `position::position::pending_base_amounts_by_side` | nonnegative IFixed magnitude in `u256`, 18 decimals | Exact raw checkpoint; conversion to 9 decimals rounds up for risk | Yes |
 | Pending bid base | second result of `position::position::pending_base_amounts_by_side` | nonnegative IFixed magnitude in `u256`, 18 decimals | Exact raw checkpoint; conversion to 9 decimals rounds up for risk | Yes |
 | Pending-order count | `position::position::pending_order_count` | `u64` count | Exact | Yes |
@@ -108,17 +109,26 @@ caller-selected economic values.
 Funding settlement is isolated from orders, allocation, and every other venue
 mutation:
 
-1. Read the `&Position`, its two funding snapshots, its collateral, and the two
-   current market cumulative rates.
-2. Call `calculate_position_funding_internal` with that same position and rate
-   pair. Preserve the signed IFixed result.
-3. Call `clearing_house::settle_position_funding` with the bound collateral
+1. Read the `&Position`, its two funding snapshots, its collateral, the two
+   current market cumulative rates, and the venue collateral price
+   (`market::collateral_oracle_price`) into the pre-settlement checkpoint.
+2. Call `clearing_house::settle_position_funding` with the bound collateral
    oracle, account number, and clock.
-4. Read the position and market checkpoint again.
-5. Classify the candidate as realized funding only when the expected funding
-   snapshot transition and collateral effect both match and every unrelated
-   checkpoint field is unchanged. Otherwise classify the change as unexpected
-   and do not debit the reserve.
+3. Read the position and market checkpoint again.
+4. Replay the venue's settlement from the pre-settlement checkpoint: the held
+   side's rate delta times the base magnitude, divided by the same collateral
+   price, floored for a credit and ceiled for a cost (bytecode read of
+   2026-09-20, [research](../research/aftermath-venue-bytecode-2026-09-20.md)
+   F1). Classify the change as realized funding only when the snapshots moved
+   to the market rates, the allocated collateral moved by exactly the replayed
+   amount, and every unrelated checkpoint field is unchanged. Otherwise
+   classify the change as unexpected and do not debit the reserve.
+
+Until 2026-09-20 step 4 converted `calculate_position_funding_internal`'s USD
+result; that figure is rounded to 10^18 before the division and disagrees with
+the venue's collateral move in about half of all settlements at a non-unit
+collateral price. The replay agrees with a bytecode model of the venue on
+200,000 random settlements.
 
 The later classifier owns the exact comparison. A total-equity delta, PnL,
 liquidation, ADL, collateral movement, or order mutation is never funding.
@@ -323,6 +333,11 @@ not deployed venue execution. Release still requires:
 - The selected SUI-USDC market, registry, oracle objects, source IDs, lot size,
   IMR, MMR, pause/freeze behavior, and usable owned collateral remain deployment
   inputs that must be recorded and verified.
+- **Open since 2026-09-20 (F4 of the venue bytecode read):** every live
+  Aftermath feed is written by a Pyth Lazer vendor package and its `from` is a
+  `FeedInfoObject`, not a Pyth `PriceInfoObject`; the feed price is 18-decimal
+  and its timestamp is the Lazer update time in milliseconds. The binding
+  below cannot be satisfied on mainnet and awaits a decision.
 - Confidence is not present in Aftermath's normalized `PriceFeed`. Capture
   therefore binds the exact official Pyth `PriceInfoObject` named by the
   Aftermath feed's `from` ID. It reads price, confidence, exponent, and source

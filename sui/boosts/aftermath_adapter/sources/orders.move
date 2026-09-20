@@ -442,26 +442,22 @@ fun place_order<Product, Collateral>(
 /// Proves the checkpoint moved exactly as this fill did: an opening trade moves
 /// base and quote, a reduction only base.
 fun assert_checkpoint(self: &Fill, terms: &OrderTerms, before: &Checkpoint, after: &Checkpoint) {
-    let base = self.base_after(terms.is_ask, before.signed_base());
+    let filled_base = (self.filled as u256) * constants::base_atom_to_ifixed_scale!();
+    let base = filled_after(terms.is_ask, before.signed_base(), filled_base);
 
     if (terms.reduce_only) {
         before.assert_reduction_checkpoint(after, base)
     } else {
-        before.assert_trade_checkpoint(after, base, self.quote_after(terms.is_ask, before.signed_quote_notional()))
+        let quote = filled_after(terms.is_ask, before.signed_quote_notional(), self.filled_quote);
+        before.assert_trade_checkpoint(after, base, quote)
     }
 }
 
-/// The signed base the checkpoint must show after this fill; the whole-lot fill
-/// back in the venue's IFixed unit.
-fun base_after(self: &Fill, is_ask: bool, previous: u256): u256 {
-    let filled_base = (self.filled as u256) * constants::base_atom_to_ifixed_scale!();
-
-    if (is_ask) { ifixed::sub(previous, filled_base) } else { ifixed::add(previous, filled_base) }
-}
-
-/// The signed quote notional the checkpoint must show after this fill.
-fun quote_after(self: &Fill, is_ask: bool, previous: u256): u256 {
-    if (is_ask) { ifixed::add(previous, self.filled_quote) } else { ifixed::sub(previous, self.filled_quote) }
+/// A signed position value after a fill. The venue keeps base and quote
+/// notional under one sign (`position::add_base_to_position`), so a bid adds
+/// the fill to both and an ask subtracts it from both.
+fun filled_after(is_ask: bool, previous: u256, filled: u256): u256 {
+    if (is_ask) { ifixed::sub(previous, filled) } else { ifixed::add(previous, filled) }
 }
 
 /// Accepts a positive whole-lot fill toward a bounded atomic aggregate.

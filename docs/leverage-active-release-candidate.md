@@ -97,6 +97,14 @@ digests/IDs, risk-module source and immutable publication, all capability/treasu
 metadata/vault/account/market/oracle IDs, role addresses without secrets,
 validated policy/depth/lot/fee/gas evidence and every submitted digest.
 
+Every Aftermath function the adapter calls was read from mainnet bytecode on
+2026-09-20 ([record](research/aftermath-venue-bytecode-2026-09-20.md)). Three
+findings are applied (funding settlement replayed from the venue's own
+arithmetic, quote notional under the base's sign, market collateral scale
+checked at initialization). One is open and blocks any live run: Aftermath's
+feeds are Pyth Lazer, so the adapter's Pyth `PriceInfoObject` binding cannot
+be satisfied on mainnet until the oracle design is decided.
+
 Run SC-001 through SC-013 on supported real isolated fixtures: both-direction
 activation and active flows; funding sign/net-order/replay cases; bad bindings,
 prices and ACL; competing keepers, partial fills and bounded costs; donations,

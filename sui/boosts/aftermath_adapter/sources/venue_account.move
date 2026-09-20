@@ -235,8 +235,8 @@ public(package) fun withdraw<Collateral>(
 ///
 /// Aftermath advances cumulative funding only when someone trades or calls
 /// its permissionless `update_funding`; an idle market would otherwise leave
-/// accrued funding out of the candidate, the settlement, and both captured
-/// checkpoints. The guard reads the bound market's `funding_last_upd_ms` and
+/// accrued funding out of the settlement and both captured checkpoints.
+/// The guard reads the bound market's `funding_last_upd_ms` and
 /// the frequency, the first element of `funding_params`, and makes no venue
 /// call when the update is not due. The bound market and base oracle are
 /// checked against the binding first, so the venue mutation never touches an
@@ -261,16 +261,6 @@ public(package) fun update_funding_when_due<Collateral>(
     if (is_time_to_update_funding(clock.timestamp_ms(), last_funding_update_ms, funding_frequency_ms)) {
         clearing_house.update_funding(base_oracle, clock);
     };
-}
-
-/// The funding the venue would settle for this account at its current cumulative rates.
-public(package) fun funding_candidate<Collateral>(
-    clearing_house: &ClearingHouse<Collateral>,
-    account: &Account<Collateral>,
-): u256 {
-    let (long_rate, short_rate) = clearing_house.market_state().cum_funding_rates();
-
-    clearing_house.position(account.account_id()).calculate_position_funding_internal(long_rate, short_rate)
 }
 
 // === Private Functions ===

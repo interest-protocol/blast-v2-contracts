@@ -174,22 +174,25 @@ fun classify_preexisting_funding(self: &Checkpoint, before: &Checkpoint): Checkp
 }
 
 /// Classifies only an isolated funding-snapshot and allocated-collateral change.
-public(package) fun classify_change(
-    self: &Checkpoint,
-    after: &Checkpoint,
-    funding_candidate: u256,
-    collateral_price: u256,
-): CheckpointChange {
-    if (self == after) return CheckpointChange::Unchanged;
+///
+/// The expected allocated move is the venue's own settlement arithmetic
+/// replayed from this checkpoint at `collateral_price`, so a settlement the
+/// venue performed is recognized exactly and anything else is drift.
+public(package) fun classify_change(self: &Checkpoint, after: &Checkpoint, collateral_price: u256): CheckpointChange {
+    let base_negative = self.signed_base.is_neg();
+    let (market_rate, snapshot_rate) = self.side_funding_rates(base_negative);
 
-    let (candidate_collateral_magnitude, representable) = ifixed_math::usd_fixed_to_collateral_fixed(
-        funding_candidate.abs(), collateral_price, funding_candidate.is_neg(),
-    );
-    if (!representable) return CheckpointChange::Unexpected;
-
-    classify_from_delta(
-        self, after, funding_candidate.is_neg(), candidate_collateral_magnitude,
+    classify_change_decoded(
+        self,
+        after,
+        base_negative,
+        self.signed_base.abs(),
+        market_rate.is_neg(),
+        market_rate.abs(),
+        snapshot_rate.is_neg(),
+        snapshot_rate.abs(),
         allocated_delta(self, after),
+        collateral_price,
     )
 }
 
@@ -199,7 +202,6 @@ public(package) fun classify_sync_changes(
     self: &Checkpoint,
     before: &Checkpoint,
     after: &Checkpoint,
-    funding_candidate: u256,
     collateral_price: u256,
 ): (CheckpointChange, CheckpointChange) {
     let preexisting_change = if (self.checkpoint_ready_for_settlement(before)) {
@@ -207,7 +209,7 @@ public(package) fun classify_sync_changes(
     } else {
         self.classify_preexisting_funding(before)
     };
-    let local_change = before.classify_change(after, funding_candidate, collateral_price);
+    let local_change = before.classify_change(after, collateral_price);
 
     (preexisting_change, local_change)
 }
@@ -402,25 +404,62 @@ fun classify_preexisting_from_delta(
     allocated_change
 }
 
-fun classify_from_delta(
+fun classify_change_decoded(
     before: &Checkpoint,
     after: &Checkpoint,
-    candidate_negative: bool,
-    candidate_collateral_magnitude: u256,
+    base_negative: bool,
+    base_magnitude: u256,
+    market_negative: bool,
+    market_magnitude: u256,
+    snapshot_negative: bool,
+    snapshot_magnitude: u256,
     allocated_change: CheckpointChange,
+    collateral_price: u256,
 ): CheckpointChange {
     if (before == after) return CheckpointChange::Unchanged;
     if (!before.market_rates_unchanged(after) || !before.snapshots_refreshed_to_market(after)) {
         return CheckpointChange::Unexpected
     };
-    if (candidate_collateral_magnitude == 0 && before.allocated_collateral == after.allocated_collateral) {
-        return CheckpointChange::Unchanged
-    };
 
-    if (allocated_change.matches_candidate(candidate_negative, candidate_collateral_magnitude)) {
-        allocated_change
+    let (delta_negative, delta_magnitude) =
+        signed_difference(snapshot_negative, snapshot_magnitude, market_negative, market_magnitude);
+    let expected = settled_funding_change(
+        base_negative, base_magnitude, delta_negative, delta_magnitude, collateral_price,
+    );
+
+    if (&allocated_change == &expected) { allocated_change } else { CheckpointChange::Unexpected }
+}
+
+/// The market rate and the position's own snapshot on the side the position holds.
+fun side_funding_rates(self: &Checkpoint, base_negative: bool): (u256, u256) {
+    if (base_negative) {
+        (self.market_funding_short, self.funding_snapshot_short)
     } else {
-        CheckpointChange::Unexpected
+        (self.market_funding_long, self.funding_snapshot_long)
+    }
+}
+
+/// The allocated-collateral move `position::settle_position_funding` makes,
+/// replayed from the deployed bytecode (docs/research/aftermath-venue-bytecode-2026-09-20.md):
+/// the held side's rate delta times the base magnitude is a 10^36-scaled USD
+/// amount that the venue divides by the collateral price directly, rounding
+/// down for a credit and up for a cost; a credit that rounds to zero leaves
+/// the collateral untouched. A flat position or an unchanged rate settles
+/// nothing. The product aborts on overflow exactly where the venue's does.
+fun settled_funding_change(
+    base_negative: bool,
+    base_magnitude: u256,
+    delta_negative: bool,
+    delta_magnitude: u256,
+    collateral_price: u256,
+): CheckpointChange {
+    if (base_magnitude == 0 || delta_magnitude == 0) return CheckpointChange::Unchanged;
+
+    let scaled_usd = delta_magnitude * base_magnitude;
+    if (base_negative == delta_negative) {
+        CheckpointChange::FundingCost((scaled_usd + collateral_price - 1) / collateral_price)
+    } else {
+        funding_change(false, scaled_usd / collateral_price)
     }
 }
 
@@ -439,45 +478,32 @@ fun snapshots_refreshed_to_market(self: &Checkpoint, after: &Checkpoint): bool {
             || self.funding_snapshot_short != after.funding_snapshot_short)
 }
 
-/// The allocated-collateral move is the one the venue's own funding formula predicted.
-fun matches_candidate(self: &CheckpointChange, candidate_negative: bool, candidate_magnitude: u256): bool {
-    match (self) {
-        CheckpointChange::FundingCredit(amount) => !candidate_negative && *amount == candidate_magnitude,
-        CheckpointChange::FundingCost(amount) => candidate_negative && *amount == candidate_magnitude,
-        CheckpointChange::Unchanged => candidate_magnitude == 0,
-        CheckpointChange::Unexpected => false,
-    }
-}
-
 /// Named IFixed operations decode signed collateral; raw checkpoint bits are never ordered.
 fun allocated_delta(before: &Checkpoint, after: &Checkpoint): CheckpointChange {
     let (before_raw, after_raw) = (before.allocated_collateral, after.allocated_collateral);
+    let (negative, magnitude) =
+        signed_difference(before_raw.is_neg(), before_raw.abs(), after_raw.is_neg(), after_raw.abs());
 
-    signed_delta(before_raw.is_neg(), before_raw.abs(), after_raw.is_neg(), after_raw.abs())
+    funding_change(negative, magnitude)
 }
 
-/// Computes after-minus-before in sign/magnitude facts, including a zero crossing.
-fun signed_delta(
+/// `after - before` as a sign and magnitude from the two operands' signs and
+/// magnitudes, the way the venue subtracts two raw IFixed values. Magnitudes
+/// decoded by `abs` are below 2^255, so a zero crossing never overflows.
+fun signed_difference(
     before_negative: bool,
     before_magnitude: u256,
     after_negative: bool,
     after_magnitude: u256,
-): CheckpointChange {
+): (bool, u256) {
     if (before_negative != after_negative) {
-        return sign_crossing_delta(before_magnitude, after_negative, after_magnitude)
+        return (after_negative, before_magnitude + after_magnitude)
     };
 
-    // Same sign: the balance grew when a positive got larger or a negative got smaller.
+    // Same sign: the value grew when a positive got larger or a negative got smaller.
     let grew = if (before_negative) { before_magnitude > after_magnitude } else { after_magnitude > before_magnitude };
 
-    funding_change(!grew, before_magnitude.diff(after_magnitude))
-}
-
-/// The balance crossed zero: it moved by both magnitudes, a cost when it landed negative.
-fun sign_crossing_delta(before_magnitude: u256, after_negative: bool, after_magnitude: u256): CheckpointChange {
-    if (before_magnitude > std::u256::max_value!() - after_magnitude) return CheckpointChange::Unexpected;
-
-    funding_change(after_negative, before_magnitude + after_magnitude)
+    (!grew, before_magnitude.diff(after_magnitude))
 }
 
 /// No move is no change; otherwise a cost or a credit of `amount`.
@@ -670,11 +696,9 @@ public fun classify_sync_change_for_testing(
     self: &Checkpoint,
     before: &Checkpoint,
     after: &Checkpoint,
-    candidate_negative: bool,
-    candidate_collateral_magnitude: u256,
+    collateral_price: u256,
 ): CheckpointChange {
-    let (preexisting_change, local_change) =
-        self.classify_sync_changes_for_testing(before, after, candidate_negative, candidate_collateral_magnitude);
+    let (preexisting_change, local_change) = self.classify_sync_changes_for_testing(before, after, collateral_price);
     preexisting_change.net_funding(local_change)
 }
 
@@ -683,41 +707,55 @@ public fun classify_sync_changes_for_testing(
     self: &Checkpoint,
     before: &Checkpoint,
     after: &Checkpoint,
-    candidate_negative: bool,
-    candidate_collateral_magnitude: u256,
+    collateral_price: u256,
 ): (CheckpointChange, CheckpointChange) {
     let preexisting_change = if (self.checkpoint_ready_for_settlement(before)) {
         unchanged_change()
     } else {
         self.classify_preexisting_funding_for_testing(before)
     };
-    let local_change = before.classify_change_with_candidate_for_testing(after,
-        candidate_negative,
-        candidate_collateral_magnitude,
-    );
+    let local_change = before.classify_change_for_testing(after, collateral_price);
     (preexisting_change, local_change)
 }
 
 #[test_only]
-public fun classify_change_for_testing(self: &Checkpoint, after: &Checkpoint): CheckpointChange {
-    self.classify_change_with_candidate_for_testing(after, false, 0)
+/// The production classifier with every raw field read as a nonnegative
+/// magnitude; the pinned `ifixed` port aborts under test, so signs are
+/// exercised through `classify_change_signed_for_testing`.
+public fun classify_change_for_testing(self: &Checkpoint, after: &Checkpoint, collateral_price: u256): CheckpointChange {
+    self.classify_change_signed_for_testing(after, false, false, false, collateral_price)
 }
 
 #[test_only]
-public fun classify_change_with_candidate_for_testing(
+public fun classify_change_signed_for_testing(
     self: &Checkpoint,
     after: &Checkpoint,
-    candidate_negative: bool,
-    candidate_magnitude: u256,
+    base_negative: bool,
+    market_negative: bool,
+    snapshot_negative: bool,
+    collateral_price: u256,
 ): CheckpointChange {
-    let delta = signed_delta(false, self.allocated_collateral(), false, after.allocated_collateral());
-    classify_from_delta(self, after, candidate_negative, candidate_magnitude, delta)
+    let (market_rate, snapshot_rate) = self.side_funding_rates(base_negative);
+    let (negative, magnitude) =
+        signed_difference(false, self.allocated_collateral(), false, after.allocated_collateral());
+
+    classify_change_decoded(
+        self,
+        after,
+        base_negative,
+        self.signed_base(),
+        market_negative,
+        market_rate,
+        snapshot_negative,
+        snapshot_rate,
+        funding_change(negative, magnitude),
+        collateral_price,
+    )
 }
 
 #[test_only]
 public fun classify_preexisting_funding_for_testing(self: &Checkpoint, before: &Checkpoint): CheckpointChange {
-    let delta = signed_delta(false, self.allocated_collateral(), false, before.allocated_collateral());
-    classify_preexisting_from_delta(self, before, delta)
+    self.classify_signed_funding_for_testing(before, false, self.allocated_collateral(), false, before.allocated_collateral())
 }
 
 #[test_only]
@@ -729,9 +767,8 @@ public fun classify_signed_funding_for_testing(
     before_negative: bool,
     before_magnitude: u256,
 ): CheckpointChange {
-    classify_preexisting_from_delta(
-        self, before, signed_delta(stored_negative, stored_magnitude, before_negative, before_magnitude),
-    )
+    let (negative, magnitude) = signed_difference(stored_negative, stored_magnitude, before_negative, before_magnitude);
+    classify_preexisting_from_delta(self, before, funding_change(negative, magnitude))
 }
 
 #[test_only]

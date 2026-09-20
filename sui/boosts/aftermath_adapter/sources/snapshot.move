@@ -123,7 +123,7 @@ public(package) fun capture<Collateral>(
         collateral_timestamp: collateral.timestamp,
         mark_price,
         checkpoint,
-        collateral_fixed: if (collateral.representable) { collateral_fixed } else { 0 },
+        collateral_fixed,
     }
 }
 
@@ -172,7 +172,7 @@ public(package) fun collateral_price_observation(self: &CapturedSnapshot): Price
     observation::new_price(self.collateral_price, self.collateral_confidence, self.collateral_timestamp)
 }
 
-/// Returns the raw IFixed collateral reading behind the capture.
+/// Returns the raw IFixed collateral price the venue read for this capture.
 public(package) fun collateral_fixed(self: &CapturedSnapshot): u256 { self.collateral_fixed }
 
 // === Private Functions ===
@@ -413,6 +413,8 @@ fun position_signs_coherent(base: u256, quote: u256, is_long_or_flat: bool): boo
     )
 }
 
+/// The venue keeps the quote notional under the base's sign, and a flat
+/// position carries no notional.
 fun position_signs_coherent_decoded(
     base_negative: bool,
     quote_negative: bool,
@@ -422,7 +424,7 @@ fun position_signs_coherent_decoded(
 ): bool {
     if (base_zero || quote_zero) return base_zero && quote_zero;
 
-    if (is_long_or_flat) { !base_negative && quote_negative } else { base_negative && !quote_negative }
+    if (is_long_or_flat) { !base_negative && !quote_negative } else { base_negative && quote_negative }
 }
 
 // === Test-Only Functions ===
