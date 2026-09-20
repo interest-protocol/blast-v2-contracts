@@ -73,7 +73,7 @@ public(package) fun assert_object_graph(
 
 /// Rejects a market or base oracle that is not the bound one before the venue
 /// funding update mutates it; the later capture re-authenticates everything.
-public(package) fun assert_funding_update_inputs(
+fun assert_funding_update_inputs(
     self: &Binding,
     clearing_house_id: ID,
     base_oracle_id: ID,
@@ -208,6 +208,51 @@ public(package) fun withdraw<Collateral>(
     account.withdraw_collateral(&self.admin_cap, registry, amount, ctx)
 }
 
+// --- Funding ---
+
+/// Refreshes the venue's lazily updated cumulative funding rates when they are
+/// due, immediately before a settlement the vault accepts.
+///
+/// Aftermath advances cumulative funding only when someone trades or calls
+/// its permissionless `update_funding`; an idle market would otherwise leave
+/// accrued funding out of the candidate, the settlement, and both captured
+/// checkpoints. The guard reads the bound market's `funding_last_upd_ms` and
+/// the frequency, the first element of `funding_params`, and makes no venue
+/// call when the update is not due. The bound market and base oracle are
+/// checked against the binding first, so the venue mutation never touches an
+/// unbound object. `update_funding` reads the base price-feed
+/// storage: the deployed bytecode routes it through
+/// `market::try_update_funding`, which prices the premium against the base
+/// index through `base_oracle_price_and_twap_price` and aborts on any other
+/// storage. The classifier already treats stored-to-pre market-rate
+/// advancement as the expected precursor of a local settlement, so the
+/// aggregate net-funding rule and the funding event are unchanged.
+public(package) fun update_funding_when_due<Collateral>(
+    self: &Binding,
+    clearing_house: &mut ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    clock: &Clock,
+) {
+    self.assert_funding_update_inputs(object::id(clearing_house), object::id(base_oracle));
+
+    let (funding_frequency_ms, _) = clearing_house.market_params().funding_params();
+    let last_funding_update_ms = clearing_house.market_state().funding_last_upd_ms();
+
+    if (is_time_to_update_funding(clock.timestamp_ms(), last_funding_update_ms, funding_frequency_ms)) {
+        clearing_house.update_funding(base_oracle, clock);
+    };
+}
+
+/// The funding the venue would settle for this account at its current cumulative rates.
+public(package) fun funding_candidate<Collateral>(
+    clearing_house: &ClearingHouse<Collateral>,
+    account: &Account<Collateral>,
+): u256 {
+    let (long_rate, short_rate) = clearing_house.market_state().cum_funding_rates();
+
+    clearing_house.position(account.account_id()).calculate_position_funding_internal(long_rate, short_rate)
+}
+
 // === Private Functions ===
 
 /// The account object, its venue number, and its collateral type are the bound ones.
@@ -241,6 +286,48 @@ fun assert_oracles(self: &Binding, base_oracle: &PriceFeedStorage, collateral_or
     );
 }
 
+/// Returns whether the venue's cumulative funding is due for an update at `now_ms`.
+///
+/// Mirrors the pinned `market::is_time_to_update` bytecode exactly:
+/// `now_ms >= next_funding_update_time_ms(last_funding_update_ms, funding_frequency_ms)`.
+/// The venue's own `try_update_fundings` repeats this check, so the guard only
+/// decides whether the adapter spends a venue call; it never changes what the
+/// venue would settle. A zero frequency is never due: the venue formula would
+/// divide by it, and a market without a funding cadence has nothing to
+/// refresh.
+fun is_time_to_update_funding(now_ms: u64, last_funding_update_ms: u64, funding_frequency_ms: u64): bool {
+    funding_frequency_ms > 0
+        && now_ms >= next_funding_update_time_ms(last_funding_update_ms, funding_frequency_ms)
+}
+
+/// Returns the venue's next funding update instant: the start of the period
+/// after the one containing `last_funding_update_ms`, exactly as the pinned
+/// `market::next_funding_update_time` computes it.
+fun next_funding_update_time_ms(last_funding_update_ms: u64, funding_frequency_ms: u64): u64 {
+    last_funding_update_ms - last_funding_update_ms % funding_frequency_ms + funding_frequency_ms
+}
+
+// === Test-Only Functions ===
+
+#[test_only]
+public fun assert_funding_update_inputs_for_testing(self: &Binding, clearing_house_id: ID, base_oracle_id: ID) {
+    self.assert_funding_update_inputs(clearing_house_id, base_oracle_id);
+}
+
+#[test_only]
+public fun is_time_to_update_funding_for_testing(
+    now_ms: u64,
+    last_funding_update_ms: u64,
+    funding_frequency_ms: u64,
+): bool {
+    is_time_to_update_funding(now_ms, last_funding_update_ms, funding_frequency_ms)
+}
+
+#[test_only]
+public fun next_funding_update_time_ms_for_testing(last_funding_update_ms: u64, funding_frequency_ms: u64): u64 {
+    next_funding_update_time_ms(last_funding_update_ms, funding_frequency_ms)
+}
+
 // === Imports ===
 
 use authority_cap::authority::{Self, ADMIN, AuthorityCap};
@@ -253,6 +340,7 @@ use perpetuals::{
     account::Account,
     authority::ACCOUNT,
     clearing_house::{ClearingHouse, SessionSummary},
+    market,
     registry::Registry,
 };
 

@@ -115,23 +115,23 @@ fun unwind_partial_budget_then_retry_uses_actual_remaining_exposure_for_both_sid
     // They do not execute the external venue or prove submitted transaction effects.
     vector[false, true].do!(|is_bid| {
         let mut remaining = 2_500_000;
-        let mut orders = 0;
-        while (orders < 16) {
-            let requested = operations::active_order_size_for_testing(remaining, 250_000, 1, orders);
+        let mut order_count = 0;
+        while (order_count < 16) {
+            let requested = orders::active_order_size_for_testing(remaining, 250_000, 1, order_count);
             assert_eq!(requested, 250_000);
             let raw = 125_000_000_000_000;
-            let filled = operations::active_fill_for_testing(is_bid, requested, 1,
+            let filled = orders::active_fill_for_testing(is_bid, requested, 1,
                 if (is_bid) { raw } else { 0 }, if (is_bid) { 0 } else { raw }, 0, 0, 0);
             remaining = remaining - filled;
-            orders = orders + 1;
+            order_count = order_count + 1;
         };
         assert_eq!(remaining, 500_000);
         // A new successful call starts a fresh bounded budget, not a stale original target.
         let mut retry_orders = 0;
         while (remaining > 0) {
-            let requested = operations::active_order_size_for_testing(remaining, 250_000, 1, retry_orders);
+            let requested = orders::active_order_size_for_testing(remaining, 250_000, 1, retry_orders);
             let raw = (requested as u256) * 1_000_000_000;
-            let filled = operations::active_fill_for_testing(is_bid, requested, 1,
+            let filled = orders::active_fill_for_testing(is_bid, requested, 1,
                 if (is_bid) { raw } else { 0 }, if (is_bid) { 0 } else { raw }, 0, 0, 0);
             remaining = remaining - filled;
             retry_orders = retry_orders + 1;
@@ -141,11 +141,11 @@ fun unwind_partial_budget_then_retry_uses_actual_remaining_exposure_for_both_sid
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::orders)]
 fun unwind_failed_middle_fill_aborts_the_current_atomic_call() {
-    let first = operations::active_fill_for_testing(false, 250_000, 1, 0, 125_000_000_000_000, 0, 0, 0);
+    let first = orders::active_fill_for_testing(false, 250_000, 1, 0, 125_000_000_000_000, 0, 0, 0);
     assert_eq!(first, 125_000);
-    operations::active_fill_for_testing(false, 250_000, 1, 0, 0, 0, 0, 0);
+    orders::active_fill_for_testing(false, 250_000, 1, 0, 0, 0, 0, 0);
 }
 
 #[test]
@@ -261,20 +261,20 @@ fun completed_direct_settlement_reports_actual_cash_and_no_market_order() {
 
 #[test]
 fun unwind_normalization_keeps_exact_positive_whole_lots_in_both_directions() {
-    assert_eq!(operations::unwind_base_for_testing(1_800_000_000_000, true, 1, policy::long()), 1_800);
-    assert_eq!(operations::unwind_base_for_testing(1_800_000_000_000, false, 1, policy::short()), 1_800);
+    assert_eq!(orders::unwind_base_for_testing(1_800_000_000_000, true, 1, policy::long()), 1_800);
+    assert_eq!(orders::unwind_base_for_testing(1_800_000_000_000, false, 1, policy::short()), 1_800);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidUnwindExposure, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInvalidUnwindExposure, location = blast_boosts_aftermath::orders)]
 fun unwind_normalization_rejects_a_forced_opposite_direction() {
-    operations::unwind_base_for_testing(1_800_000_000_000, false, 1, policy::long());
+    orders::unwind_base_for_testing(1_800_000_000_000, false, 1, policy::long());
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidUnwindExposure, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInvalidUnwindExposure, location = blast_boosts_aftermath::orders)]
 fun ordinary_unwind_never_rounds_raw_base_dust_to_a_whole_lot() {
-    operations::unwind_base_for_testing(1_800_000_000_001, true, 1, policy::long());
+    orders::unwind_base_for_testing(1_800_000_000_001, true, 1, policy::long());
 }
 
 #[test]
@@ -602,16 +602,16 @@ fun completed_rebalance_changes_only_holder_equity_and_the_accepted_checkpoint()
 
 #[test]
 fun venue_fee_bound_adds_priority_surcharge_and_rounds_up_once() {
-    assert_eq!(operations::venue_fee_bound_for_testing(1_000_000_000_000_000, 500_000_000_000_000), 15);
-    assert_eq!(operations::venue_fee_bound_for_testing(1, 0), 1);
-    assert_eq!(operations::venue_fee_bound_for_testing(0, 0), 0);
-    assert_eq!(operations::venue_fee_bound_for_testing(1_000_000_000_000_000_000, 0), 10_000);
+    assert_eq!(orders::venue_fee_bound_for_testing(1_000_000_000_000_000, 500_000_000_000_000), 15);
+    assert_eq!(orders::venue_fee_bound_for_testing(1, 0), 1);
+    assert_eq!(orders::venue_fee_bound_for_testing(0, 0), 0);
+    assert_eq!(orders::venue_fee_bound_for_testing(1_000_000_000_000_000_000, 0), 10_000);
 }
 
 #[test]
-#[expected_failure(abort_code = blast_boosts_aftermath::errors::EVenueFeeUnusable, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = blast_boosts_aftermath::errors::EVenueFeeUnusable, location = blast_boosts_aftermath::orders)]
 fun venue_fee_bound_rejects_unrepresentable_addition_before_overflow() {
-    operations::venue_fee_bound_for_testing(std::u256::max_value!(), 1);
+    orders::venue_fee_bound_for_testing(std::u256::max_value!(), 1);
 }
 
 #[test]
@@ -695,8 +695,8 @@ fun redemption_cash_checkpoint_rejects_inexact_payout() {
 
 #[test]
 fun active_order_uses_the_sealed_base_without_a_notional_round_trip() {
-    assert_eq!(operations::active_order_size_for_testing(1_998, 1_000, 1, 0), 1_000);
-    assert_eq!(operations::active_order_size_for_testing(998, 1_000, 1, 15), 998);
+    assert_eq!(orders::active_order_size_for_testing(1_998, 1_000, 1, 0), 1_000);
+    assert_eq!(orders::active_order_size_for_testing(998, 1_000, 1, 15), 998);
     operations::assert_deadline_for_testing(1_000, 1_000);
 }
 
@@ -709,11 +709,11 @@ fun funding_update_is_due_at_the_next_period_boundary_and_not_before() {
     let last = 7 * frequency + 1_234;
     let next = 8 * frequency;
 
-    assert_eq!(operations::next_funding_update_time_ms_for_testing(last, frequency), next);
-    assert!(!operations::is_time_to_update_funding_for_testing(next - 1, last, frequency));
-    assert!(operations::is_time_to_update_funding_for_testing(next, last, frequency));
-    assert!(operations::is_time_to_update_funding_for_testing(next + 1, last, frequency));
-    assert!(operations::is_time_to_update_funding_for_testing(next + 5 * frequency, last, frequency));
+    assert_eq!(venue_account::next_funding_update_time_ms_for_testing(last, frequency), next);
+    assert!(!venue_account::is_time_to_update_funding_for_testing(next - 1, last, frequency));
+    assert!(venue_account::is_time_to_update_funding_for_testing(next, last, frequency));
+    assert!(venue_account::is_time_to_update_funding_for_testing(next + 1, last, frequency));
+    assert!(venue_account::is_time_to_update_funding_for_testing(next + 5 * frequency, last, frequency));
 }
 
 /// An aligned last update is due exactly one period later, and a market whose
@@ -722,11 +722,11 @@ fun funding_update_is_due_at_the_next_period_boundary_and_not_before() {
 fun funding_update_from_an_aligned_last_update_is_due_one_period_later() {
     let frequency = 60_000;
 
-    assert_eq!(operations::next_funding_update_time_ms_for_testing(0, frequency), frequency);
-    assert_eq!(operations::next_funding_update_time_ms_for_testing(frequency, frequency), 2 * frequency);
-    assert!(!operations::is_time_to_update_funding_for_testing(frequency, frequency, frequency));
-    assert!(!operations::is_time_to_update_funding_for_testing(2 * frequency - 1, frequency, frequency));
-    assert!(operations::is_time_to_update_funding_for_testing(2 * frequency, frequency, frequency));
+    assert_eq!(venue_account::next_funding_update_time_ms_for_testing(0, frequency), frequency);
+    assert_eq!(venue_account::next_funding_update_time_ms_for_testing(frequency, frequency), 2 * frequency);
+    assert!(!venue_account::is_time_to_update_funding_for_testing(frequency, frequency, frequency));
+    assert!(!venue_account::is_time_to_update_funding_for_testing(2 * frequency - 1, frequency, frequency));
+    assert!(venue_account::is_time_to_update_funding_for_testing(2 * frequency, frequency, frequency));
 }
 
 /// A not-due market receives no update call: the production helper only calls
@@ -739,35 +739,35 @@ fun a_not_due_market_receives_no_funding_update_call() {
     let next = 5_000;
     let mut now = last;
     while (now < next) {
-        assert!(!operations::is_time_to_update_funding_for_testing(now, last, frequency));
+        assert!(!venue_account::is_time_to_update_funding_for_testing(now, last, frequency));
         now = now + 1;
     };
-    assert!(operations::is_time_to_update_funding_for_testing(now, last, frequency));
+    assert!(venue_account::is_time_to_update_funding_for_testing(now, last, frequency));
 }
 
 /// The funding update authenticates the bound market and base oracle before touching either.
 #[test]
 fun funding_update_inputs_accept_the_bound_market_and_base_oracle() {
-    funding_binding().assert_funding_update_inputs(@0xD.to_id(), @0xE.to_id());
+    funding_binding().assert_funding_update_inputs_for_testing(@0xD.to_id(), @0xE.to_id());
 }
 
 #[test]
 #[expected_failure(abort_code = blast_boosts_aftermath::errors::EClearingHouseMismatch, location = blast_boosts_aftermath::venue_account)]
 fun funding_update_rejects_an_unbound_market_before_the_oracle() {
-    funding_binding().assert_funding_update_inputs(@0xDD.to_id(), @0xEE.to_id());
+    funding_binding().assert_funding_update_inputs_for_testing(@0xDD.to_id(), @0xEE.to_id());
 }
 
 #[test]
 #[expected_failure(abort_code = blast_boosts_aftermath::errors::EBaseOracleMismatch, location = blast_boosts_aftermath::venue_account)]
 fun funding_update_rejects_the_collateral_oracle_as_its_storage() {
-    funding_binding().assert_funding_update_inputs(@0xD.to_id(), @0xF.to_id());
+    funding_binding().assert_funding_update_inputs_for_testing(@0xD.to_id(), @0xF.to_id());
 }
 
 /// A zero frequency is never due, so the adapter never asks the venue to divide by it.
 #[test]
 fun a_market_without_a_funding_cadence_is_never_due() {
-    assert!(!operations::is_time_to_update_funding_for_testing(0, 0, 0));
-    assert!(!operations::is_time_to_update_funding_for_testing(std::u64::max_value!(), 0, 0));
+    assert!(!venue_account::is_time_to_update_funding_for_testing(0, 0, 0));
+    assert!(!venue_account::is_time_to_update_funding_for_testing(std::u64::max_value!(), 0, 0));
 }
 
 /// Exhausts small periods and offsets against an independent reference of the
@@ -777,10 +777,10 @@ fun funding_update_guard_matches_the_small_domain_reference() {
     1u64.range_do!(6, |frequency| {
         0u64.range_do!(25, |last| {
             let next = (last / frequency + 1) * frequency;
-            assert_eq!(operations::next_funding_update_time_ms_for_testing(last, frequency), next);
+            assert_eq!(venue_account::next_funding_update_time_ms_for_testing(last, frequency), next);
             0u64.range_do!(31, |now| {
                 assert_eq!(
-                    operations::is_time_to_update_funding_for_testing(now, last, frequency),
+                    venue_account::is_time_to_update_funding_for_testing(now, last, frequency),
                     now >= next,
                 );
             });
@@ -789,9 +789,9 @@ fun funding_update_guard_matches_the_small_domain_reference() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveOrderCountExceeded, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EActiveOrderCountExceeded, location = blast_boosts_aftermath::orders)]
 fun active_order_rejects_a_seventeenth_session() {
-    operations::active_order_size_for_testing(10, 1_000, 1, 16);
+    orders::active_order_size_for_testing(10, 1_000, 1, 16);
 }
 
 #[test]
@@ -802,44 +802,44 @@ fun active_order_rejects_an_expired_deadline() {
 
 #[test]
 fun active_partial_fill_consumes_only_filled_whole_lots() {
-    assert_eq!(operations::active_fill_for_testing(true, 100, 10, 60_000_000_000, 0, 0, 0, 0), 60);
-    assert_eq!(operations::active_fill_for_testing(false, 100, 10, 0, 100_000_000_000, 0, 0, 0), 100);
+    assert_eq!(orders::active_fill_for_testing(true, 100, 10, 60_000_000_000, 0, 0, 0, 0), 60);
+    assert_eq!(orders::active_fill_for_testing(false, 100, 10, 0, 100_000_000_000, 0, 0, 0), 100);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::orders)]
 fun active_partial_fill_rejects_zero_progress() {
-    operations::active_fill_for_testing(true, 100, 10, 0, 0, 0, 0, 0);
+    orders::active_fill_for_testing(true, 100, 10, 0, 0, 0, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::orders)]
 fun active_partial_fill_rejects_opposite_side() {
-    operations::active_fill_for_testing(true, 100, 10, 60_000_000_000, 10_000_000_000, 0, 0, 0);
+    orders::active_fill_for_testing(true, 100, 10, 60_000_000_000, 10_000_000_000, 0, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::orders)]
 fun active_partial_fill_rejects_fractional_lot() {
-    operations::active_fill_for_testing(true, 100, 10, 61_000_000_000, 0, 0, 0, 0);
+    orders::active_fill_for_testing(true, 100, 10, 61_000_000_000, 0, 0, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::orders)]
 fun active_partial_fill_rejects_overfill() {
-    operations::active_fill_for_testing(true, 100, 10, 110_000_000_000, 0, 0, 0, 0);
+    orders::active_fill_for_testing(true, 100, 10, 110_000_000_000, 0, 0, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveOrdersPosted, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EActiveOrdersPosted, location = blast_boosts_aftermath::orders)]
 fun active_partial_fill_rejects_posted_orders() {
-    operations::active_fill_for_testing(true, 100, 10, 60_000_000_000, 0, 1, 0, 0);
+    orders::active_fill_for_testing(true, 100, 10, 60_000_000_000, 0, 1, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveLiquidation, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EActiveLiquidation, location = blast_boosts_aftermath::orders)]
 fun active_partial_fill_rejects_liquidation() {
-    operations::active_fill_for_testing(true, 100, 10, 60_000_000_000, 0, 0, 1, 0);
+    orders::active_fill_for_testing(true, 100, 10, 60_000_000_000, 0, 0, 1, 0);
 }
 
 #[test]
@@ -953,33 +953,33 @@ fun admin_cash_withdrawal_cannot_spend_the_buffer_when_earnings_are_absent() {
 
 #[test]
 fun target_above_one_order_cap_splits_into_compliant_whole_lot_orders() {
-    let orders = operations::order_sizes_for_testing(50_000_000_000, 15_000_000_000);
+    let orders = orders::order_sizes_for_testing(50_000_000_000, 15_000_000_000);
 
     assert_eq!(orders, vector[15_000_000_000, 15_000_000_000, 15_000_000_000, 5_000_000_000]);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidInitializationOrderSize, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInvalidInitializationOrderSize, location = blast_boosts_aftermath::orders)]
 fun a_zero_target_is_rejected_as_an_invalid_order_size() {
-    operations::order_sizes_for_testing(0, 1);
+    orders::order_sizes_for_testing(0, 1);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidInitializationOrderSize, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInvalidInitializationOrderSize, location = blast_boosts_aftermath::orders)]
 fun a_zero_order_cap_is_rejected_as_an_invalid_order_size() {
-    operations::order_sizes_for_testing(1, 0);
+    orders::order_sizes_for_testing(1, 0);
 }
 
 #[test]
 fun initialization_order_count_accepts_zero_remaining_and_the_fixed_maximum() {
-    assert_eq!(operations::max_initialization_orders_for_testing(), 16);
-    assert_eq!(operations::order_count_for_testing(0, 1), 0);
-    assert_eq!(operations::order_count_for_testing(16, 1), 16);
+    assert_eq!(orders::max_initialization_orders_for_testing(), 16);
+    assert_eq!(orders::order_count_for_testing(0, 1), 0);
+    assert_eq!(orders::order_count_for_testing(16, 1), 16);
 }
 
 #[test]
 fun maximum_order_count_preserves_the_exact_total_and_per_order_cap() {
-    let orders = operations::order_sizes_for_testing(16_000, 1_000);
+    let orders = orders::order_sizes_for_testing(16_000, 1_000);
     let mut total = 0;
     let mut index = 0;
     while (index < orders.length()) {
@@ -998,7 +998,7 @@ fun actual_fill_notional_uses_the_session_quote_and_rounds_against_the_vault() {
     // $30.000000000001 of filled quote is 31 atomic USDC after conservative
     // rounding, even if the reference-price plan expected only 30.
     assert_eq!(
-        operations::actual_fill_notional_for_testing(
+        orders::actual_fill_notional_for_testing(
             30_000_000_000_001_000_000,
             1_000_000_000,
         ),
@@ -1007,21 +1007,21 @@ fun actual_fill_notional_uses_the_session_quote_and_rounds_against_the_vault() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::orders)]
 fun actual_fill_notional_rejects_a_zero_collateral_price() {
-    operations::actual_fill_notional_for_testing(1, 0);
+    orders::actual_fill_notional_for_testing(1, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInitializationOrderCountExceeded, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInitializationOrderCountExceeded, location = blast_boosts_aftermath::orders)]
 fun initialization_order_count_rejects_the_first_value_above_the_maximum() {
-    operations::order_count_for_testing(17, 1);
+    orders::order_count_for_testing(17, 1);
 }
 
 #[test]
 fun initialization_order_count_ceil_does_not_add_before_dividing() {
     assert_eq!(
-        operations::order_count_for_testing(
+        orders::order_count_for_testing(
             std::u64::max_value!(),
             std::u64::max_value!() - 1,
         ),
@@ -1031,7 +1031,7 @@ fun initialization_order_count_ceil_does_not_add_before_dividing() {
 
 #[test]
 fun exact_long_and_short_full_fills_are_accepted() {
-    operations::assert_session_result_for_testing(
+    orders::assert_session_result_for_testing(
         true,
         5_000_000_000,
         5_000_000_000_000_000_000,
@@ -1040,7 +1040,7 @@ fun exact_long_and_short_full_fills_are_accepted() {
         0,
         0,
     );
-    operations::assert_session_result_for_testing(
+    orders::assert_session_result_for_testing(
         false,
         5_000_000_000,
         0,
@@ -1053,14 +1053,14 @@ fun exact_long_and_short_full_fills_are_accepted() {
 
 #[test]
 fun series_side_maps_to_the_aftermath_port_convention() {
-    assert_eq!(operations::opens_with_ask_for_testing(policy::long()), false);
-    assert_eq!(operations::opens_with_ask_for_testing(policy::short()), true);
+    assert_eq!(orders::opens_with_ask_for_testing(policy::long()), false);
+    assert_eq!(orders::opens_with_ask_for_testing(policy::short()), true);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInitializationFillMismatch, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInitializationFillMismatch, location = blast_boosts_aftermath::orders)]
 fun a_partial_fill_is_rejected() {
-    operations::assert_session_result_for_testing(
+    orders::assert_session_result_for_testing(
         true,
         5_000_000_000,
         4_999_999_999_000_000_000,
@@ -1072,9 +1072,9 @@ fun a_partial_fill_is_rejected() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInitializationFillMismatch, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInitializationFillMismatch, location = blast_boosts_aftermath::orders)]
 fun a_fill_on_the_wrong_side_is_rejected() {
-    operations::assert_session_result_for_testing(
+    orders::assert_session_result_for_testing(
         true,
         5_000_000_000,
         0,
@@ -1086,9 +1086,9 @@ fun a_fill_on_the_wrong_side_is_rejected() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInitializationOrdersPosted, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInitializationOrdersPosted, location = blast_boosts_aftermath::orders)]
 fun a_posted_order_is_rejected_before_fill_validation() {
-    operations::assert_session_result_for_testing(
+    orders::assert_session_result_for_testing(
         true,
         5_000_000_000,
         0,
@@ -1100,9 +1100,9 @@ fun a_posted_order_is_rejected_before_fill_validation() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInitializationLiquidation, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInitializationLiquidation, location = blast_boosts_aftermath::orders)]
 fun a_liquidation_is_rejected_before_fill_validation() {
-    operations::assert_session_result_for_testing(
+    orders::assert_session_result_for_testing(
         true,
         5_000_000_000,
         0,
@@ -1114,9 +1114,9 @@ fun a_liquidation_is_rejected_before_fill_validation() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInitializationLiquidation, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::EInitializationLiquidation, location = blast_boosts_aftermath::orders)]
 fun bad_debt_is_rejected_before_fill_validation() {
-    operations::assert_session_result_for_testing(
+    orders::assert_session_result_for_testing(
         true,
         5_000_000_000,
         0,
@@ -1167,25 +1167,25 @@ fun locked_share_scaling_rejects_the_first_overflow() {
 #[test]
 fun execution_price_rounds_against_the_vault() {
     assert_eq!(
-        operations::execution_price_for_testing(2_000_000_000_000_000_001, true, false),
+        orders::execution_price_for_testing(2_000_000_000_000_000_001, true, false),
         2_000_000_001,
     );
     assert_eq!(
-        operations::execution_price_for_testing(2_000_000_000_999_999_999, false, false),
+        orders::execution_price_for_testing(2_000_000_000_999_999_999, false, false),
         2_000_000_000,
     );
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::orders)]
 fun negative_execution_price_is_rejected() {
-    operations::execution_price_for_testing(1, true, true);
+    orders::execution_price_for_testing(1, true, true);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::operations)]
+#[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::orders)]
 fun unrepresentable_execution_price_is_rejected() {
-    operations::execution_price_for_testing(std::u256::max_value!(), false, false);
+    orders::execution_price_for_testing(std::u256::max_value!(), false, false);
 }
 
 #[test]
@@ -2589,13 +2589,14 @@ use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
 
 use blast_boosts_aftermath::{
     blast_boost::BlastBoost,
+    checkpoint::{Self, Checkpoint, CheckpointChange, TerminalWithdrawal},
     domain_fixture,
     errors,
     events,
     operations,
+    orders,
     protocol::{Self, Protocol},
     snapshot,
-    checkpoint::{Self, Checkpoint, CheckpointChange, TerminalWithdrawal},
     vault::{Self as vault, Vault},
     venue_account::{Self, Binding},
 };

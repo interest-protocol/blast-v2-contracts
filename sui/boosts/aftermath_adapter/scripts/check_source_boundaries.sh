@@ -49,7 +49,8 @@ declare -A adapter_layers=(
   [venue_account]=3
   [events]=4 [snapshot]=4
   [vault]=5
-  [operations]=6
+  [orders]=6
+  [operations]=7
 )
 
 check_hierarchy() {

@@ -42,3 +42,13 @@ macro public(package) fun collateral_atom_to_ifixed_scale(): u256 {
 macro public(package) fun collateral_to_base_scale(): u256 {
     1_000
 }
+
+/// Maximum market-order calls permitted in one atomic initialization session.
+macro public(package) fun max_initialization_orders(): u64 {
+    16
+}
+
+/// Hard ceiling on venue market calls in one active atomic operation.
+macro public(package) fun max_active_orders(): u64 {
+    16
+}
