@@ -33,14 +33,6 @@ public struct Checkpoint has copy, drop, store {
     market_maintenance_margin_ratio: u256,
 }
 
-#[allow(lint(coin_field))]
-/// Actual recovered coin bound to its exact final venue checkpoint.
-/// Package-only construction proves finality; Vault custody must consume it.
-public struct TerminalWithdrawal<phantom Collateral> {
-    recovered: Coin<Collateral>,
-    checkpoint: Checkpoint,
-}
-
 /// What moved between the checkpoint last accepted and the one just captured:
 /// nothing, one funding settlement carrying its raw signed collateral delta, or
 /// anything else, which no operation may build on.
@@ -64,12 +56,25 @@ public(package) fun read_checkpoint<Collateral>(account: &Account<Collateral>, c
     let (market_long, market_short) = clearing_house.market_state().cum_funding_rates();
     let (ask, bid) = position.pending_base_amounts_by_side();
 
-    new_checkpoint(
-        account.collateral_balance(), position.collateral(), base, quote,
-        snapshot_long, snapshot_short, market_long, market_short, params.lot_size(), ask, bid,
-        position.pending_order_count(), clearing_house.market_pause_mode(), clearing_house.is_frozen(),
-        position.initial_margin_ratio(), params.margin_ratio_initial(), params.margin_ratio_maintenance(),
-    )
+    Checkpoint {
+        free_collateral: account.collateral_balance(),
+        allocated_collateral: position.collateral(),
+        signed_base: base,
+        signed_quote_notional: quote,
+        funding_snapshot_long: snapshot_long,
+        funding_snapshot_short: snapshot_short,
+        market_funding_long: market_long,
+        market_funding_short: market_short,
+        lot_size: params.lot_size(),
+        pending_ask_base: ask,
+        pending_bid_base: bid,
+        pending_order_count: position.pending_order_count(),
+        market_pause_mode: clearing_house.market_pause_mode(),
+        market_frozen: clearing_house.is_frozen(),
+        position_initial_margin_ratio: position.initial_margin_ratio(),
+        market_initial_margin_ratio: params.margin_ratio_initial(),
+        market_maintenance_margin_ratio: params.margin_ratio_maintenance(),
+    }
 }
 
 /// The venue still shows the checkpoint last accepted; a priced operation may not build on drift.
@@ -83,6 +88,8 @@ public(package) fun signed_quote_notional(self: &Checkpoint): u256 { self.signed
 
 public(package) fun lot_size(self: &Checkpoint): u64 { self.lot_size }
 
+/// The raw signed IFixed collateral allocated to the position.
+public(package) fun allocated_collateral(self: &Checkpoint): u256 { self.allocated_collateral }
 
 // --- Deposit ---
 
@@ -150,9 +157,9 @@ public(package) fun assert_withdrawal_checkpoint(before: &Checkpoint, after: &Ch
 /// stored funding snapshots while the market rates may have moved forward.
 fun checkpoint_ready_for_settlement(self: &Checkpoint, before: &Checkpoint): bool {
     self.non_funding_fields_equal(before)
-        && self.allocated_collateral() == before.allocated_collateral()
-        && self.funding_snapshot_long() == before.funding_snapshot_long()
-        && self.funding_snapshot_short() == before.funding_snapshot_short()
+        && self.allocated_collateral == before.allocated_collateral
+        && self.funding_snapshot_long == before.funding_snapshot_long
+        && self.funding_snapshot_short == before.funding_snapshot_short
 }
 
 /// Recognizes funding that another caller settled before this synchronization.
@@ -315,72 +322,15 @@ public(package) fun recoverable_terminal_cash(self: &Checkpoint): u64 {
     recoverable_cash_decoded(self, negative, magnitude)
 }
 
-/// Complete recovery changes only the two collateral locations, by the actual returned coin.
-public(package) fun terminal_withdrawal<Collateral>(
-    before: &Checkpoint,
-    after: Checkpoint,
-    recovered: Coin<Collateral>,
-): TerminalWithdrawal<Collateral> {
-    assert_terminal_withdrawal_checkpoint(before, &after, recovered.value());
-    TerminalWithdrawal { recovered, checkpoint: after }
-}
-
-public(package) fun recovered_amount<Collateral>(self: &TerminalWithdrawal<Collateral>): u64 {
-    self.recovered.value()
-}
-
-/// Consumes the verified withdrawal, including the raw sub-atomic remainder for replay.
-public(package) fun into_recovered_cash<Collateral>(
-    self: TerminalWithdrawal<Collateral>,
-): (Coin<Collateral>, Checkpoint, u256) {
-    let TerminalWithdrawal { recovered, checkpoint } = self;
-    (recovered, checkpoint, checkpoint.allocated_collateral)
+/// Complete recovery changes only the two collateral locations, by exactly the coin returned.
+public(package) fun assert_terminal_withdrawal_checkpoint(before: &Checkpoint, after: &Checkpoint, amount: u64) {
+    let (negative, magnitude) = before.allocated_collateral_sign_and_magnitude();
+    assert_terminal_withdrawal_checkpoint_decoded(before, after, amount, negative, magnitude);
 }
 
 // === Private Functions ===
 
 // --- Read ---
-
-/// Assembles one raw checkpoint from fields the caller read in one pass.
-fun new_checkpoint(
-    free_collateral: u64,
-    allocated_collateral: u256,
-    signed_base: u256,
-    signed_quote_notional: u256,
-    funding_snapshot_long: u256,
-    funding_snapshot_short: u256,
-    market_funding_long: u256,
-    market_funding_short: u256,
-    lot_size: u64,
-    pending_ask_base: u256,
-    pending_bid_base: u256,
-    pending_order_count: u64,
-    market_pause_mode: u8,
-    market_frozen: bool,
-    position_initial_margin_ratio: u256,
-    market_initial_margin_ratio: u256,
-    market_maintenance_margin_ratio: u256,
-): Checkpoint {
-    Checkpoint {
-        free_collateral,
-        allocated_collateral,
-        signed_base,
-        signed_quote_notional,
-        funding_snapshot_long,
-        funding_snapshot_short,
-        market_funding_long,
-        market_funding_short,
-        lot_size,
-        pending_ask_base,
-        pending_bid_base,
-        pending_order_count,
-        market_pause_mode,
-        market_frozen,
-        position_initial_margin_ratio,
-        market_initial_margin_ratio,
-        market_maintenance_margin_ratio,
-    }
-}
 
 /// Returns whether every field outside funding accounting is equal.
 ///
@@ -400,16 +350,6 @@ fun non_funding_fields_equal(self: &Checkpoint, other: &Checkpoint): bool {
         && self.market_initial_margin_ratio == other.market_initial_margin_ratio
         && self.market_maintenance_margin_ratio == other.market_maintenance_margin_ratio
 }
-
-fun allocated_collateral(self: &Checkpoint): u256 { self.allocated_collateral }
-
-fun funding_snapshot_long(self: &Checkpoint): u256 { self.funding_snapshot_long }
-
-fun funding_snapshot_short(self: &Checkpoint): u256 { self.funding_snapshot_short }
-
-fun market_funding_long(self: &Checkpoint): u256 { self.market_funding_long }
-
-fun market_funding_short(self: &Checkpoint): u256 { self.market_funding_short }
 
 // --- Cash ---
 
@@ -455,8 +395,8 @@ fun classify_preexisting_from_delta(
     // The position snapshots prove the completed external settlement. They may
     // trail the market again if another funding epoch advanced before Blast
     // synchronized, so equality with the current market rates is not required.
-    let snapshots_refreshed = stored.funding_snapshot_long() != before.funding_snapshot_long()
-        || stored.funding_snapshot_short() != before.funding_snapshot_short();
+    let snapshots_refreshed = stored.funding_snapshot_long != before.funding_snapshot_long
+        || stored.funding_snapshot_short != before.funding_snapshot_short;
     if (!stored.non_funding_fields_equal(before) || !snapshots_refreshed) return CheckpointChange::Unexpected;
 
     allocated_change
@@ -473,7 +413,7 @@ fun classify_from_delta(
     if (!before.market_rates_unchanged(after) || !before.snapshots_refreshed_to_market(after)) {
         return CheckpointChange::Unexpected
     };
-    if (candidate_collateral_magnitude == 0 && before.allocated_collateral() == after.allocated_collateral()) {
+    if (candidate_collateral_magnitude == 0 && before.allocated_collateral == after.allocated_collateral) {
         return CheckpointChange::Unchanged
     };
 
@@ -487,16 +427,16 @@ fun classify_from_delta(
 /// Every field but the position's own funding snapshots is byte-for-byte the same.
 fun market_rates_unchanged(self: &Checkpoint, after: &Checkpoint): bool {
     self.non_funding_fields_equal(after)
-        && self.market_funding_long() == after.market_funding_long()
-        && self.market_funding_short() == after.market_funding_short()
+        && self.market_funding_long == after.market_funding_long
+        && self.market_funding_short == after.market_funding_short
 }
 
 /// The position's snapshots moved and now sit exactly at the market rates `self` showed.
 fun snapshots_refreshed_to_market(self: &Checkpoint, after: &Checkpoint): bool {
-    after.funding_snapshot_long() == self.market_funding_long()
-        && after.funding_snapshot_short() == self.market_funding_short()
-        && (self.funding_snapshot_long() != after.funding_snapshot_long()
-            || self.funding_snapshot_short() != after.funding_snapshot_short())
+    after.funding_snapshot_long == self.market_funding_long
+        && after.funding_snapshot_short == self.market_funding_short
+        && (self.funding_snapshot_long != after.funding_snapshot_long
+            || self.funding_snapshot_short != after.funding_snapshot_short)
 }
 
 /// The allocated-collateral move is the one the venue's own funding formula predicted.
@@ -511,7 +451,7 @@ fun matches_candidate(self: &CheckpointChange, candidate_negative: bool, candida
 
 /// Named IFixed operations decode signed collateral; raw checkpoint bits are never ordered.
 fun allocated_delta(before: &Checkpoint, after: &Checkpoint): CheckpointChange {
-    let (before_raw, after_raw) = (before.allocated_collateral(), after.allocated_collateral());
+    let (before_raw, after_raw) = (before.allocated_collateral, after.allocated_collateral);
 
     signed_delta(before_raw.is_neg(), before_raw.abs(), after_raw.is_neg(), after_raw.abs())
 }
@@ -556,13 +496,6 @@ fun is_unexpected(self: &CheckpointChange): bool {
 }
 
 // --- Shutdown ---
-
-fun assert_terminal_withdrawal_checkpoint(before: &Checkpoint, after: &Checkpoint, amount: u64) {
-    let (negative, magnitude) = before.allocated_collateral_sign_and_magnitude();
-    assert_terminal_withdrawal_checkpoint_decoded(before, after, amount, negative, magnitude);
-}
-
-/// Binds native cash to finality before the Vault can seal terminal custody.
 
 fun allocated_collateral_sign_and_magnitude(self: &Checkpoint): (bool, u256) {
     if (self.allocated_collateral == 0) {
@@ -634,7 +567,7 @@ public fun checkpoint_for_testing(
     market_initial_margin_ratio: u256,
     market_maintenance_margin_ratio: u256,
 ): Checkpoint {
-    new_checkpoint(
+    Checkpoint {
         free_collateral,
         allocated_collateral,
         signed_base,
@@ -652,7 +585,7 @@ public fun checkpoint_for_testing(
         position_initial_margin_ratio,
         market_initial_margin_ratio,
         market_maintenance_margin_ratio,
-    )
+    }
 }
 
 #[test_only]
@@ -718,24 +651,6 @@ public fun assert_terminal_withdrawal_checkpoint_decoded_for_testing(
     magnitude: u256,
 ) {
     assert_terminal_withdrawal_checkpoint_decoded(before, after, amount, is_negative, magnitude);
-}
-
-/// Substitutes only named IFixed decoding; cash and checkpoint guards remain production code.
-#[test_only]
-public(package) fun terminal_withdrawal_for_testing<Collateral>(
-    before: &Checkpoint,
-    after: Checkpoint,
-    recovered: Coin<Collateral>,
-    is_negative: bool,
-    magnitude: u256,
-): TerminalWithdrawal<Collateral> {
-    assert_terminal_withdrawal_checkpoint_decoded(before, &after, recovered.value(), is_negative, magnitude);
-    TerminalWithdrawal { recovered, checkpoint: after }
-}
-
-#[test_only]
-public fun assert_terminal_withdrawal_checkpoint_for_testing(before: &Checkpoint, after: &Checkpoint, amount: u64) {
-    assert_terminal_withdrawal_checkpoint(before, after, amount)
 }
 
 #[test_only]
@@ -845,5 +760,3 @@ use fun ifixed::abs as u256.abs;
 use fun ifixed::is_neg as u256.is_neg;
 
 use perpetuals::{account::Account, clearing_house::ClearingHouse};
-
-use sui::coin::Coin;

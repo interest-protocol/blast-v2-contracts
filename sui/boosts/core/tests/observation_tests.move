@@ -11,7 +11,6 @@ fun price_construction_preserves_normalized_fields() {
     assert_eq!(price.price(), 123);
     assert_eq!(price.confidence(), 4);
     assert_eq!(price.publish_time_ms(), 5);
-    price.destroy();
 }
 
 #[test]
@@ -19,7 +18,7 @@ fun price_construction_preserves_normalized_fields() {
     abort_code = errors::EInvalidPrice, location = blast_boosts_core::observation,
 )]
 fun price_construction_rejects_zero_price() {
-    observation::new_price(0, 4, 5).destroy();
+    observation::new_price(0, 4, 5);
 }
 
 #[test]
@@ -39,7 +38,6 @@ fun long_position_construction_preserves_the_complete_observation() {
     assert_eq!(observation.collateral_oracle().confidence(), 7);
     assert_eq!(observation.collateral_oracle().publish_time_ms(), 8);
     assert_eq!(observation.mark_price(), 9);
-    observation.destroy();
 }
 
 #[test]
@@ -49,7 +47,6 @@ fun short_position_construction_preserves_the_observed_side() {
     );
 
     assert_eq!(observation.observed_side(), policy::short());
-    observation.destroy();
 }
 
 #[test]
@@ -59,7 +56,7 @@ fun short_position_construction_preserves_the_observed_side() {
 fun position_construction_rejects_zero_lot_size() {
     observation::new_position(
         100, 20, 0, policy::long(), observation::new_price(3, 4, 5), observation::new_price(6, 7, 8), 9,
-    ).destroy();
+    );
 }
 
 #[test]
@@ -69,7 +66,7 @@ fun position_construction_rejects_zero_lot_size() {
 fun position_construction_rejects_a_partial_lot() {
     observation::new_position(
         100, 25, 10, policy::long(), observation::new_price(3, 4, 5), observation::new_price(6, 7, 8), 9,
-    ).destroy();
+    );
 }
 
 #[test]
@@ -77,12 +74,10 @@ fun funding_construction_preserves_each_settlement_variant() {
     let credit = observation::funding_credit(7);
     assert!(!credit.is_cost());
     assert_eq!(credit.amount(), 7);
-    credit.destroy();
 
     let cost = observation::funding_cost(8);
     assert!(cost.is_cost());
     assert_eq!(cost.amount(), 8);
-    cost.destroy();
 }
 
 // === Imports ===

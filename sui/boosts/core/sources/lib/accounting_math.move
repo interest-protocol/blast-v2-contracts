@@ -186,8 +186,7 @@ fun credit_fee(maintenance_reserve: u64, fee: u64): u64 {
 ///
 /// Preconditions: positive `nav_before`, `shares_before`, and `contribution`.
 /// A contribution too small to buy one atomic share aborts instead of minting
-/// zero. Guard order is `nav_before`, `shares_before`, `contribution`, then
-/// the share results.
+/// zero.
 ///
 /// `shares_before * contribution` stays below `2^128`; `shares_out` and the
 /// final supply abort when they leave the `u64` range. This function proves
@@ -303,8 +302,7 @@ public(package) fun target_notional_down(nav: u64, target_leverage_bps: u64): u6
 /// `base_before` reaches zero with live shares no mint can pass this function;
 /// reopening the position from flat needs a separate core primitive. Rounding down to lots is zero exactly when the target is below
 /// one lot, so the single minimum-lot guard also rejects a zero rounded order
-/// and any dust mint. Guard order is `nav_before`, `base_before`, `lot_size`,
-/// `min_order_lots`, then the minimum-lot bound.
+/// and any dust mint.
 ///
 /// `base_before * contribution` and `lot_size * min_order_lots` use `u128`
 /// intermediates, and a proportional target outside the `u64` range aborts.
@@ -460,9 +458,8 @@ public(package) fun assert_mint_base_within_bounds(
 /// fee rate below 10,000, `min(nav_after_sell, nav_before) > equity_keep`, and a
 /// positive net payout. The function enforces the share bound directly; the future locked
 /// seed makes the complete production supply unpresentable. A zero supply
-/// cannot satisfy the bound and aborts with the share-amount code. Guard order
-/// is `nav_before`, the share bound, the fee rate, the gross claim, then the net
-/// payout. Every cheap check precedes the kept-equity computation.
+/// cannot satisfy the bound and aborts with the share-amount code. Every cheap
+/// check precedes the kept-equity computation.
 ///
 /// `nav_before * S1` stays below `2^128` and `equity_keep <= nav_before`, so no
 /// result can leave the `u64` range.
@@ -577,8 +574,7 @@ public(package) fun redemption_accounting_quote(
 ///
 /// Preconditions: `0 < shares_to_redeem < shares_before`, positive `lot_size`,
 /// and positive `min_order_lots`. A flat core returns `(0, 0)` and must
-/// stay flat. Guard order is the share bound, `lot_size`, `min_order_lots`,
-/// then the minimum-lot bound. The reduction intermediate stays below `2^65`
+/// stay flat. The reduction intermediate stays below `2^65`
 /// and is capped at `base_before`, so no result can leave the `u64` range.
 public(package) fun redemption_base_bounds(
     shares_to_redeem: u64,

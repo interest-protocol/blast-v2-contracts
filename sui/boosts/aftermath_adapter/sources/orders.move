@@ -24,12 +24,10 @@ public struct OrderTerms has copy, drop {
 }
 
 /// What the venue reported about one whole-lot market order, already checked
-/// against the order cap and the lot: the base atoms filled, the raw signed
-/// base and quote the session moved, and the execution price to prove against
-/// the sealed oracle.
+/// against the order cap and the lot: the base atoms filled, the raw quote the
+/// session moved, and the execution price to prove against the sealed oracle.
 public struct Fill has drop {
     filled: u64,
-    filled_base: u256,
     filled_quote: u256,
     executed: u64,
 }
@@ -63,8 +61,8 @@ public(package) fun seed_position<Product, Collateral>(
 
     open_seed_position(
         issuance, account, admin_cap, clearing_house, base_oracle, collateral_oracle,
-        order_sizes(target_base, max_order_base), issuance.side(), seed.lot_size(),
-        seed.base_price(), seed.collateral_price(), clock, ctx,
+        order_sizes(target_base, max_order_base), seed.lot_size(), seed.base_price(), seed.collateral_price(),
+        clock, ctx,
     )
 }
 
@@ -86,14 +84,13 @@ public(package) fun active_terms<Product, Collateral>(vault: &Vault<Product, Col
 /// no resting orders.
 public(package) fun unwind_terms<Product, Collateral>(
     vault: &Vault<Product, Collateral>,
-    capture: CapturedSnapshot,
+    capture: &CapturedSnapshot,
     now_ms: u64,
 ): (OrderTerms, u64, Checkpoint) {
+    let before = capture.checkpoint();
     let (side, max_order_base, base_price, collateral_price) = vault.state().unwind_constraints(
-        capture.base_price_observation(), capture.collateral_price_observation(), capture.checkpoint().lot_size(),
-        now_ms,
+        capture.base_price_observation(), capture.collateral_price_observation(), before.lot_size(), now_ms,
     );
-    let before = capture.into_checkpoint();
     before.assert_no_orders();
 
     let terms = OrderTerms {
@@ -202,7 +199,7 @@ public(package) fun rebalance_orders<Product, Collateral>(
 
 /// Places close-only orders under the emergency bound until the base is flat or
 /// the per-call order budget is spent; every fill is proven against the
-/// checkpoint before the next, and no order may rest on the book.
+/// checkpoint before the next, which also keeps the book order-free.
 ///
 /// Returns the market, the checkpoint the last fill left, the orders placed,
 /// and the quote they filled in total.
@@ -235,7 +232,6 @@ public(package) fun close_orders<Product, Collateral>(
             binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
         );
         fill.assert_checkpoint(terms, &checkpoint, &after);
-        after.assert_no_orders();
 
         checkpoint = after;
         remaining = remaining - fill.filled;
@@ -265,23 +261,21 @@ fun open_seed_position<Product, Collateral>(
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
     mut orders: vector<u64>,
-    position_side: PositionSide,
     lot_size: u64,
     reference_base_price: u64,
     collateral_price: u64,
     clock: &Clock,
     ctx: &TxContext,
 ): ClearingHouse<Collateral> {
-    let is_long = position_side == policy::long();
-    let aftermath_order_side = opens_with_ask(position_side);
+    let is_long = issuance.side() == policy::long();
+    let aftermath_order_side = opens_with_ask(issuance.side());
 
     while (!orders.is_empty()) {
         let order_base = orders.pop_back();
-        let mut session = clearing_house.start_session(
-            admin_cap, account, base_oracle, collateral_oracle, option::none(), clock, ctx,
+        let (next_clearing_house, summary) = venue_account::execute_order_with_cap(
+            admin_cap, account, clearing_house, base_oracle, collateral_oracle,
+            aftermath_order_side, order_base, false, clock, ctx,
         );
-        session.place_market_order(aftermath_order_side, order_base, false);
-        let (next_clearing_house, summary) = session.end_session(admin_cap, account, false, false);
         clearing_house = next_clearing_house;
 
         assert_seed_fill(
@@ -430,11 +424,11 @@ fun place_order<Product, Collateral>(
         summary.posted_orders(), summary.liquidated_size(),
         summary.liquidation_bad_debt(),
     );
-    let (filled_base, filled_quote) = summary.filled_base_and_quote(is_ask);
+    let (_, filled_quote) = summary.filled_base_and_quote(is_ask);
     let executed = execution_price(summary.execution_price(is_ask), !is_ask);
     vault.state().assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
 
-    (clearing_house, Fill { filled, filled_base, filled_quote, executed })
+    (clearing_house, Fill { filled, filled_quote, executed })
 }
 
 /// Proves the checkpoint moved exactly as this fill did: an opening trade moves
@@ -449,9 +443,12 @@ fun assert_checkpoint(self: &Fill, terms: &OrderTerms, before: &Checkpoint, afte
     }
 }
 
-/// The signed base the checkpoint must show after this fill.
+/// The signed base the checkpoint must show after this fill; the whole-lot fill
+/// back in the venue's IFixed unit.
 fun base_after(self: &Fill, is_ask: bool, previous: u256): u256 {
-    if (is_ask) { ifixed::sub(previous, self.filled_base) } else { ifixed::add(previous, self.filled_base) }
+    let filled_base = (self.filled as u256) * constants::base_atom_to_ifixed_scale!();
+
+    if (is_ask) { ifixed::sub(previous, filled_base) } else { ifixed::add(previous, filled_base) }
 }
 
 /// The signed quote notional the checkpoint must show after this fill.
@@ -608,7 +605,7 @@ use blast_boosts_aftermath::{
     ifixed_math,
     snapshot::{Self, CapturedSnapshot},
     vault::Vault,
-    venue_account::Binding,
+    venue_account::{Self, Binding},
 };
 
 use blast_boosts_core::{

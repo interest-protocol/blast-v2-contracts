@@ -170,12 +170,32 @@ public(package) fun execute_order<Collateral>(
     self.binding.assert_market_account(account, &clearing_house);
     self.binding.assert_oracles(base_oracle, collateral_oracle);
 
+    execute_order_with_cap(
+        &self.admin_cap, account, clearing_house, base_oracle, collateral_oracle, is_ask, base, reduce_only, clock, ctx,
+    )
+}
+
+/// One market order in its own session under an explicit cap: the seed
+/// position opens through this before the cap is sealed, and every later
+/// order through `execute_order` above.
+public(package) fun execute_order_with_cap<Collateral>(
+    admin_cap: &AuthorityCap<ACCOUNT, ADMIN>,
+    account: &mut Account<Collateral>,
+    clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    is_ask: bool,
+    base: u64,
+    reduce_only: bool,
+    clock: &Clock,
+    ctx: &TxContext,
+): (ClearingHouse<Collateral>, SessionSummary) {
     let mut session = clearing_house.start_session(
-        &self.admin_cap, account, base_oracle, collateral_oracle, option::none(), clock, ctx,
+        admin_cap, account, base_oracle, collateral_oracle, option::none(), clock, ctx,
     );
     session.place_market_order(is_ask, base, reduce_only);
 
-    session.end_session(&self.admin_cap, account, false, false)
+    session.end_session(admin_cap, account, false, false)
 }
 
 // --- Withdraw ---

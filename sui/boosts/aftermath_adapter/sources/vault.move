@@ -40,6 +40,10 @@ public struct Vault<phantom Product, phantom Collateral> has key {
     venue_account: VenueAccount,
     /// The seed shares minted to the burn address at activation; never redeemable.
     locked_shares: u64,
+    /// Earned admin fee collateral, held natively and never sent to the venue.
+    admin_cash: Balance<Collateral>,
+    /// Recovered holder collateral after finalization, never mixed with admin cash.
+    terminal_cash: Balance<Collateral>,
 }
 
 /// Dynamic-object-field key for one Vault's share mint authority.
@@ -47,12 +51,6 @@ public struct TreasuryKey<phantom Product>() has copy, drop, store;
 
 /// Dynamic-object-field key for one Vault's metadata authority.
 public struct MetadataKey<phantom Product>() has copy, drop, store;
-
-/// One native balance of the exact bound collateral, separate from venue equity.
-public struct AdminCashKey() has copy, drop, store;
-
-/// Native terminal holder cash, never mixed with the administrator's balance.
-public struct TerminalCashKey() has copy, drop, store;
 
 // === Public Functions ===
 
@@ -131,15 +129,13 @@ public fun redeem_shutdown<Product, Collateral>(
     self.state.assert_settled();
     assert!(clock.timestamp_ms() <= deadline_ms, blast_boosts_aftermath::errors::deadline_expired!());
 
-    let cash = dynamic_field::borrow<_, Balance<Collateral>>(&self.id, TerminalCashKey());
     let output = self.state.shutdown_claim_quote(
-        cash.value(), self.total_share_supply(), self.locked_shares, shares.value(), minimum_collateral,
+        self.terminal_cash.value(), self.total_share_supply(), self.locked_shares, shares.value(), minimum_collateral,
     );
 
     let burned = self.burn_redeemed_shares(shares);
-    let cash = dynamic_field::borrow_mut<_, Balance<Collateral>>(&mut self.id, TerminalCashKey());
-    let output_coin = coin::from_balance(cash.split(output), ctx);
-    let remaining = cash.value();
+    let output_coin = coin::from_balance(self.terminal_cash.split(output), ctx);
+    let remaining = self.terminal_cash.value();
 
     events::shutdown_redeemed<Product>(
         self.id.to_inner(), burned, output, remaining, self.total_share_supply() - self.locked_shares,
@@ -244,11 +240,10 @@ public fun withdraw_admin_fees<Product, Collateral>(
     admin_witness.assert_role(domain::risk_admin_role());
     assert!(amount > 0, blast_boosts_aftermath::errors::zero_amount!());
 
-    let available = self.admin_cash_balance<_, Collateral>();
+    let available = self.admin_cash.value();
     assert!(amount <= available, blast_boosts_aftermath::errors::insufficient_admin_cash!());
 
-    let cash = dynamic_field::borrow_mut<_, Balance<Collateral>>(&mut self.id, AdminCashKey());
-    let output = coin::from_balance(cash.split(amount), ctx);
+    let output = coin::from_balance(self.admin_cash.split(amount), ctx);
 
     events::admin_fees_withdrawn<Product>(self.id.to_inner(), amount, available - amount);
 
@@ -299,6 +294,8 @@ public(package) fun activate<Product, Collateral>(
         state,
         venue_account,
         locked_shares,
+        admin_cash: balance::zero(),
+        terminal_cash: balance::zero(),
     };
     vault.id.add_dynamic_object_field(TreasuryKey<Product>(), treasury_cap);
     vault.id.add_dynamic_object_field(MetadataKey<Product>(), metadata_cap);
@@ -328,24 +325,17 @@ public(package) fun burn_redeemed_shares<Product, Collateral>(self: &mut Vault<P
 
 /// Seals the proven terminal withdrawal as holder cash: the coin becomes the
 /// terminal claim balance, or admin cash when no eligible share is left to
-/// claim what the locked seed backed. Returns the final checkpoint and the
-/// raw collateral the venue could not release.
+/// claim what the locked seed backed.
 public(package) fun seal_terminal_cash<Product, Collateral>(
     self: &mut Vault<Product, Collateral>,
-    withdrawal: TerminalWithdrawal<Collateral>,
+    recovered: Coin<Collateral>,
     eligible: u64,
-): (Checkpoint, u256) {
-    let (recovered, checkpoint, unrecoverable_collateral_raw) = withdrawal.into_recovered_cash();
-    let cash = if (eligible == 0) {
+) {
+    if (eligible == 0) {
         self.retain_admin_cash(recovered);
-        balance::zero()
     } else {
-        recovered.into_balance()
+        self.terminal_cash.join(recovered.into_balance());
     };
-
-    dynamic_field::add(&mut self.id, TerminalCashKey(), cash);
-
-    (checkpoint, unrecoverable_collateral_raw)
 }
 
 // --- Admin Cash ---
@@ -355,21 +345,12 @@ public(package) fun retain_admin_cash<Product, Collateral>(
     self: &mut Vault<Product, Collateral>,
     cash: Coin<Collateral>,
 ) {
-    if (cash.value() == 0) {
-        cash.destroy_zero();
-        return
-    };
-    let balance = dynamic_field::borrow_mut_or_add!(
-        &mut self.id, AdminCashKey(), balance::zero<Collateral>(),
-    );
-    balance.join(cash.into_balance());
+    self.admin_cash.join(cash.into_balance());
 }
 
 /// Native cash is authoritative; no mirrored numerical admin ledger is stored.
 public(package) fun admin_cash_balance<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
-    if (!dynamic_field::exists(&self.id, AdminCashKey())) { return 0 };
-    let cash = dynamic_field::borrow<_, Balance<Collateral>>(&self.id, AdminCashKey());
-    cash.value()
+    self.admin_cash.value()
 }
 
 // --- Reads ---
@@ -417,8 +398,7 @@ public fun seed_shares_for_testing(seed_nav: u64): u64 {
 
 #[test_only]
 public fun terminal_cash_for_testing<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
-    let cash = dynamic_field::borrow<_, Balance<Collateral>>(&self.id, TerminalCashKey());
-    cash.value()
+    self.terminal_cash.value()
 }
 
 #[test_only]
@@ -470,7 +450,6 @@ use blast_boosts_aftermath::{
     constants,
     events,
     protocol::Protocol,
-    checkpoint::{Checkpoint, TerminalWithdrawal},
     venue_account::VenueAccount,
 };
 
@@ -489,7 +468,6 @@ use sui::{
     coin::{Self, Coin, TreasuryCap},
     coin_registry::{CoinRegistry, Currency, MetadataCap},
     clock::Clock,
-    dynamic_field,
     dynamic_object_field,
 };
 

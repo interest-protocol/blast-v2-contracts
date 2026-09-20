@@ -4,18 +4,6 @@
 /// Atomic Aftermath operations for adapter-owned leverage Vaults.
 module blast_boosts_aftermath::operations;
 
-// === Public Types ===
-
-/// Linear custody of the redeemed shares until the payout is proved to have left the venue.
-public struct RedemptionReceipt<phantom Product> {
-    shares: Balance<BlastBoost<Product>>,
-    net: u64,
-    admin: u64,
-    fee: u64,
-    reserve_fee: u64,
-    after_sell_checkpoint: Checkpoint,
-}
-
 // === Public Functions ===
 
 /// Seeds one issuance on the venue and returns its activated Vault, which the
@@ -182,16 +170,15 @@ public fun redeem<Product, Collateral>(
         base_price_info, collateral_price_info, clock,
     ).into_observation();
     checkpoint.assert_deposit_checkpoint(&after_sell_checkpoint, 0);
-    let receipt = seal_redemption_receipt(vault, plan, shares, after_sell, after_sell_checkpoint, clock.timestamp_ms());
+    let (net, admin, fee, reserve_fee) = settle_redemption(vault, plan, &shares, after_sell, clock.timestamp_ms());
     let cash = vault.venue().withdraw(
-        account, registry, &mut clearing_house, base_oracle, collateral_oracle,
-        receipt.redemption_cash_required(), clock, ctx,
+        account, registry, &mut clearing_house, base_oracle, collateral_oracle, net + admin, clock, ctx,
     );
     let final_checkpoint = snapshot::capture_checkpoint(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
     );
-    receipt.after_sell_checkpoint.assert_withdrawal_checkpoint(&final_checkpoint, receipt.redemption_cash_required());
-    let cash = complete_redemption(vault, receipt, cash, final_checkpoint, ctx);
+    after_sell_checkpoint.assert_withdrawal_checkpoint(&final_checkpoint, net + admin);
+    let cash = complete_redemption(vault, shares, cash, net, admin, fee, reserve_fee, final_checkpoint, ctx);
     clearing_house.share();
 
     cash
@@ -283,7 +270,7 @@ public fun donate<Product, Collateral>(
     let before_checkpoint = synchronize(
         vault, account, registry, clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
-    ).into_checkpoint();
+    ).checkpoint();
     vault.venue().checkpoint().assert_unchanged(&before_checkpoint);
 
     vault.venue().deposit(account, registry, cash);
@@ -314,10 +301,10 @@ public fun sync_health<Product, Collateral>(
 ) {
     protocol.assert_current();
 
-    let _ = synchronize(
+    synchronize(
         vault, account, registry, clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
-    ).into_checkpoint();
+    );
 }
 
 /// Permissionless bounded close-only progress, never caller-sized or dependent on positive NAV.
@@ -376,8 +363,9 @@ public fun finalize_shutdown<Product, Collateral>(
     let after = snapshot::capture_checkpoint(
         &binding, account, registry, clearing_house, base_oracle, collateral_oracle,
     );
+    before.assert_terminal_withdrawal_checkpoint(&after, recovered.value());
 
-    complete_finalization(vault, before.terminal_withdrawal(after, recovered));
+    complete_finalization(vault, after, recovered);
 }
 
 // === Private Functions ===
@@ -539,44 +527,41 @@ fun complete_mint<Product, Collateral>(
     shares
 }
 
-/// Holds the actual input coin across payout instead of accepting a numerical burn promise.
-fun seal_redemption_receipt<Product, Collateral>(
+/// Prices the payout on the position the sell left. The share coin is held,
+/// unburned, until the payout is proved to have left the venue.
+/// Returns the user's net, the admin cash, the fee, and the fee's reserve share.
+fun settle_redemption<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     plan: RedemptionPlan<Product>,
-    shares: Coin<BlastBoost<Product>>,
+    shares: &Coin<BlastBoost<Product>>,
     after_sell: PositionObservation,
-    after_sell_checkpoint: Checkpoint,
     now_ms: u64,
-): RedemptionReceipt<Product> {
+): (u64, u64, u64, u64) {
     assert!(
         shares.value() == plan.redemption_shares(),
         blast_boosts_aftermath::errors::redemption_share_mismatch!(),
     );
 
-    let (net, admin, fee, reserve_fee) = vault.state_mut().complete_redemption(plan, after_sell, now_ms);
-
-    RedemptionReceipt { shares: shares.into_balance(), net, admin, fee, reserve_fee, after_sell_checkpoint }
-}
-
-/// Returns only the exact total collateral that must leave the venue before completion.
-fun redemption_cash_required<Product>(self: &RedemptionReceipt<Product>): u64 {
-    self.net + self.admin
+    vault.state_mut().complete_redemption(plan, after_sell, now_ms)
 }
 
 /// Completes custody after the public operation proves the withdrawal on the checkpoint:
 /// retains the earned admin cash, burns the held shares, and accepts the checkpoint.
 fun complete_redemption<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
-    receipt: RedemptionReceipt<Product>,
+    shares: Coin<BlastBoost<Product>>,
     mut cash: Coin<Collateral>,
+    net: u64,
+    admin: u64,
+    fee: u64,
+    reserve_fee: u64,
     checkpoint: Checkpoint,
     ctx: &mut TxContext,
 ): Coin<Collateral> {
-    let RedemptionReceipt { shares, net, admin, fee, reserve_fee, after_sell_checkpoint: _ } = receipt;
     assert!(cash.value() == net + admin, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
 
     vault.retain_admin_cash(cash.split(admin, ctx));
-    let burned = vault.burn_redeemed_shares(shares.into_coin(ctx));
+    let burned = vault.burn_redeemed_shares(shares);
     vault.venue_mut().replace_checkpoint(checkpoint);
 
     events::redeemed<Product>(
@@ -687,10 +672,11 @@ fun synchronize<Product, Collateral>(
     let binding = vault.venue().binding();
     let stored_checkpoint = *vault.venue().checkpoint();
     binding.update_funding_when_due(clearing_house, base_oracle, clock);
-    let (pre_checkpoint, collateral_price) = snapshot::capture(
+    let pre_capture = snapshot::capture(
         &binding, account, registry, clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
-    ).funding_probe();
+    );
+    let (pre_checkpoint, collateral_price) = (pre_capture.checkpoint(), pre_capture.collateral_fixed());
     let funding_candidate = venue_account::funding_candidate(clearing_house, account);
 
     clearing_house.settle_position_funding(collateral_oracle, account.account_id(), clock);
@@ -760,12 +746,11 @@ fun unwind_market<Product, Collateral>(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    let collateral_fixed = capture.collateral_fixed();
-    let (terms, remaining, before) = orders::unwind_terms(vault, capture, clock.timestamp_ms());
+    let (terms, remaining, before) = orders::unwind_terms(vault, &capture, clock.timestamp_ms());
 
     let funded = settle_funding_for_unwind(
         &binding, account, registry, &mut clearing_house, base_oracle, collateral_oracle,
-        &before, collateral_fixed, clock,
+        &before, capture.collateral_fixed(), clock,
     );
 
     let (clearing_house, after, order_count, filled_quote) = orders::close_orders(
@@ -810,7 +795,6 @@ fun complete_unwind<Product, Collateral>(
     filled_quote: Option<u256>,
 ) {
     vault.state().assert_unwinding();
-    after.assert_no_orders();
     if (filled_quote.is_none()) {
         assert!(funded.is_none() && order_count == 0, blast_boosts_aftermath::errors::terminal_venue_unsettled!());
         before.assert_direct_settlement_checkpoint(&after);
@@ -827,20 +811,22 @@ fun complete_unwind<Product, Collateral>(
 }
 
 /// Settles the core on the proven withdrawal, then seals the recovered coin as
-/// holder cash under the final checkpoint.
+/// holder cash under the final checkpoint, whose allocated collateral is the
+/// raw sub-atomic remainder the venue could not release.
 fun complete_finalization<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
-    withdrawal: TerminalWithdrawal<Collateral>,
+    checkpoint: Checkpoint,
+    recovered: Coin<Collateral>,
 ) {
-    let recovered_amount = withdrawal.recovered_amount();
+    let recovered_amount = recovered.value();
     let (total_share_supply, locked_shares) = (vault.total_share_supply(), vault.locked_shares());
     let eligible = vault.state_mut().finalize_shutdown(total_share_supply, locked_shares);
 
-    let (checkpoint, unrecoverable_collateral_raw) = vault.seal_terminal_cash(withdrawal, eligible);
+    vault.seal_terminal_cash(recovered, eligible);
     vault.venue_mut().replace_checkpoint(checkpoint);
 
     events::shutdown_finalized<Product>(
-        vault.id(), recovered_amount, eligible, checkpoint, unrecoverable_collateral_raw,
+        vault.id(), recovered_amount, eligible, checkpoint, checkpoint.allocated_collateral(),
     );
 }
 
@@ -876,31 +862,29 @@ public fun complete_mint_for_testing<Product, Collateral>(
 }
 
 #[test_only]
-public fun seal_redemption_receipt_for_testing<Product, Collateral>(
+public fun settle_redemption_for_testing<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     plan: RedemptionPlan<Product>,
-    shares: Coin<BlastBoost<Product>>,
+    shares: &Coin<BlastBoost<Product>>,
     after_sell: PositionObservation,
-    after_sell_checkpoint: Checkpoint,
     now_ms: u64,
-): RedemptionReceipt<Product> {
-    seal_redemption_receipt(vault, plan, shares, after_sell, after_sell_checkpoint, now_ms)
-}
-
-#[test_only]
-public fun redemption_cash_required_for_testing<Product>(self: &RedemptionReceipt<Product>): u64 {
-    self.redemption_cash_required()
+): (u64, u64, u64, u64) {
+    settle_redemption(vault, plan, shares, after_sell, now_ms)
 }
 
 #[test_only]
 public fun complete_redemption_for_testing<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
-    receipt: RedemptionReceipt<Product>,
+    shares: Coin<BlastBoost<Product>>,
     cash: Coin<Collateral>,
+    net: u64,
+    admin: u64,
+    fee: u64,
+    reserve_fee: u64,
     checkpoint: Checkpoint,
     ctx: &mut TxContext,
 ): Coin<Collateral> {
-    complete_redemption(vault, receipt, cash, checkpoint, ctx)
+    complete_redemption(vault, shares, cash, net, admin, fee, reserve_fee, checkpoint, ctx)
 }
 
 #[test_only]
@@ -970,9 +954,10 @@ public fun complete_unwind_for_testing<Product, Collateral>(
 #[test_only]
 public fun complete_finalization_for_testing<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
-    withdrawal: TerminalWithdrawal<Collateral>,
+    checkpoint: Checkpoint,
+    recovered: Coin<Collateral>,
 ) {
-    complete_finalization(vault, withdrawal);
+    complete_finalization(vault, checkpoint, recovered);
 }
 
 // === Imports ===
@@ -981,7 +966,7 @@ use authority_cap::authority::{ADMIN, AuthorityCap};
 
 use blast_boosts_aftermath::{
     blast_boost::BlastBoost,
-    checkpoint::{Self, Checkpoint, CheckpointChange, TerminalWithdrawal},
+    checkpoint::{Self, Checkpoint, CheckpointChange},
     constants,
     events,
     orders,
@@ -1014,4 +999,4 @@ use perpetuals::{
 
 use pyth::price_info::PriceInfoObject;
 
-use sui::{balance::Balance, clock::Clock, coin::Coin, coin_registry::Currency};
+use sui::{clock::Clock, coin::Coin, coin_registry::Currency};

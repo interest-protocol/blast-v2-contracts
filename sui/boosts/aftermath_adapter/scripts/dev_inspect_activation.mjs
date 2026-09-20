@@ -20,6 +20,7 @@ const PINNED_SURFACE_FIXTURE_PATH = join(
 );
 const OPERATIONS_PATH = join(PACKAGE_DIR, 'sources', 'operations.move');
 const ORDERS_PATH = join(PACKAGE_DIR, 'sources', 'orders.move');
+const VENUE_ACCOUNT_PATH = join(PACKAGE_DIR, 'sources', 'venue_account.move');
 const MAINNET_CHAIN = '4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S';
 const PINNED_SUI_VERSION = '1.77.2-51d177ad7d65';
 const PINNED_SURFACE_TRANSACTION = 'AAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgp0eF9jb250ZXh0BnNlbmRlcgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc7oAwAAAAAAAAAgPYh5LQAAAA==';
@@ -166,13 +167,17 @@ const PHASE_ORDER = [
         from: 'fun open_seed_position<',
         to: '\n}\n',
         markers: [
-            'clearing_house.start_session(',
-            'session.place_market_order(',
-            'session.end_session(',
+            'venue_account::execute_order_with_cap(',
             'assert_seed_fill(',
             'issuance.assert_execution(',
             'issuance.assert_order_notional_allowed(',
         ],
+    },
+    {
+        path: VENUE_ACCOUNT_PATH,
+        from: 'public(package) fun execute_order_with_cap<',
+        to: '\n}\n',
+        markers: ['clearing_house.start_session(', 'session.place_market_order(', 'session.end_session('],
     },
 ];
 

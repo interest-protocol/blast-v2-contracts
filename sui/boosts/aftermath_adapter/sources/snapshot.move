@@ -12,12 +12,11 @@ module blast_boosts_aftermath::snapshot;
 
 // === Public Types ===
 
-/// One authenticated capture awaiting operation-specific finalization.
-///
-/// The value is linear so a caller must either consume a pre-settlement probe
-/// or finalize a post-settlement health observation. Source authentication and
-/// economic normalization therefore cannot be separated or replayed.
-public struct CapturedSnapshot {
+/// One authenticated capture: the raw checkpoint, both oracle legs, the mark,
+/// the position's economics, and whether the venue can serve a priced
+/// operation. A priced caller consumes it through `into_observation`; a health
+/// caller reads only its checkpoint.
+public struct CapturedSnapshot has drop {
     venue_equity: u64,
     position_base: u64,
     lot_size: u64,
@@ -158,20 +157,7 @@ public(package) fun into_observation(self: CapturedSnapshot): (PositionObservati
     (observation, checkpoint)
 }
 
-/// Consumes a pre-settlement capture into the exact reconciliation inputs.
-public(package) fun funding_probe(self: CapturedSnapshot): (Checkpoint, u256) {
-    let CapturedSnapshot { checkpoint, collateral_fixed, .. } = self;
-
-    (checkpoint, collateral_fixed)
-}
-
-/// Consumes the authenticated health capture after checkpoint classification.
-public(package) fun into_checkpoint(self: CapturedSnapshot): Checkpoint {
-    let CapturedSnapshot { checkpoint, .. } = self;
-    checkpoint
-}
-
-/// Copies the post-settlement checkpoint before consuming the final capture.
+/// The authenticated raw checkpoint the capture was read with.
 public(package) fun checkpoint(self: &CapturedSnapshot): Checkpoint {
     self.checkpoint
 }

@@ -16,7 +16,7 @@ fun terminal_cash_sum_overflow_is_not_a_partial_withdrawal() {
 fun one_remaining_atomic_coin_blocks_completed_withdrawal() {
     let before = checkpoint(0, 0, 0, 0, 9, 13);
     let after = checkpoint(0, 0, 0, 0, 9, 1);
-    before.assert_terminal_withdrawal_checkpoint_for_testing(&after, 13);
+    before.assert_terminal_withdrawal_checkpoint(&after, 13);
 }
 
 #[test]

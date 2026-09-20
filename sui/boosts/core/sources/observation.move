@@ -1,10 +1,10 @@
 // Package error macros keep stable codes in `errors.move`; the lint sees the expanded literal.
 #[allow(lint(abort_without_constant))]
-/// Linear, operation-scoped observations supplied by a venue adapter.
+/// Operation-scoped observations supplied by a venue adapter.
 ///
 /// These values prove neither source identity nor caller authority. The adapter
-/// authenticates its venue and oracle sources before it constructs them, while
-/// core uses each value exactly once during the enclosing operation.
+/// authenticates its venue and oracle sources before it constructs them; the
+/// core reads them during the enclosing operation and never stores one.
 module blast_boosts_core::observation;
 
 // === Public Types ===
@@ -12,7 +12,7 @@ module blast_boosts_core::observation;
 /// One normalized price and its source confidence and publication time.
 ///
 /// Constructors require a positive price for priced operations.
-public struct PriceObservation {
+public struct PriceObservation has drop {
     price: u64,
     confidence: u64,
     publish_time_ms: u64,
@@ -23,7 +23,7 @@ public struct PriceObservation {
 ///
 /// The adapter has already refused a venue that is paused, under margin or
 /// carrying orders; the core values what it is given.
-public struct PositionObservation {
+public struct PositionObservation has drop {
     venue_equity: u64,
     /// Unsigned position size in base-asset atoms; direction is `observed_side`.
     position_base: u64,
@@ -35,7 +35,7 @@ public struct PositionObservation {
 }
 
 /// The normalized result of one isolated funding settlement.
-public enum FundingSettlement {
+public enum FundingSettlement has drop {
     Credit(u64),
     Cost(u64),
 }
@@ -85,12 +85,6 @@ public fun funding_cost(amount: u64): FundingSettlement {
     FundingSettlement::Cost(amount)
 }
 
-// === Public Aliases ===
-
-public use fun destroy_price as PriceObservation.destroy;
-public use fun destroy_position as PositionObservation.destroy;
-public use fun destroy_funding as FundingSettlement.destroy;
-
 // === Package Functions ===
 
 // --- Price Observation ---
@@ -100,11 +94,6 @@ public(package) fun price(self: &PriceObservation): u64 { self.price }
 public(package) fun confidence(self: &PriceObservation): u64 { self.confidence }
 
 public(package) fun publish_time_ms(self: &PriceObservation): u64 { self.publish_time_ms }
-
-/// Consumes one price observation once core has read it.
-public(package) fun destroy_price(self: PriceObservation) {
-    let PriceObservation { .. } = self;
-}
 
 // --- Position Observation ---
 
@@ -124,13 +113,6 @@ public(package) fun collateral_oracle(self: &PositionObservation): &PriceObserva
 
 public(package) fun mark_price(self: &PositionObservation): u64 { self.mark_price }
 
-/// Consumes one position observation once core has read it.
-public(package) fun destroy_position(self: PositionObservation) {
-    let PositionObservation { base_oracle, collateral_oracle, .. } = self;
-    base_oracle.destroy();
-    collateral_oracle.destroy();
-}
-
 // --- Funding Settlement ---
 
 public(package) fun is_cost(self: &FundingSettlement): bool {
@@ -142,14 +124,6 @@ public(package) fun amount(self: &FundingSettlement): u64 {
     match (self) {
         FundingSettlement::Credit(amount) => *amount,
         FundingSettlement::Cost(amount) => *amount,
-    }
-}
-
-/// Consumes one funding settlement once core has read it.
-public(package) fun destroy_funding(self: FundingSettlement) {
-    match (self) {
-        FundingSettlement::Credit(_) => (),
-        FundingSettlement::Cost(_) => (),
     }
 }
 

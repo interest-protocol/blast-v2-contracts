@@ -160,9 +160,6 @@ public fun new_rebalance_policy(
 /// keeper latency, venue margin parameters, and simulation select every value
 /// here; this package compiles none of them and validates no value against
 /// live venue state.
-///
-/// Guard order is the freshness budget, the freshness window shape, the
-/// confidence bound, then the mark divergence bound.
 public fun new_price_policy(
     max_price_age_ms: u64,
     max_price_ahead_ms: u64,
@@ -208,9 +205,6 @@ public fun new_price_policy(
 /// credit is clamped to it so the excess stays with holders as NAV.
 /// The NAV cap is not part of the policy: it is a live `State` value the
 /// admin may move, supplied to `state::issue` directly.
-///
-/// Guard order is the fee rates, the fee caps, the lot multiple, then the
-/// reserve ceiling.
 public fun new_vault_policy(
     side: PositionSide,
     rebalance_policy: RebalancePolicy,
@@ -473,8 +467,6 @@ fun is_confidence_within_bound(
 /// undefined against it, and a zero share-pricing price is itself a source
 /// failure that must fail closed. A confidence at or above the price is always
 /// rejected because the constructor keeps `max_confidence_bps` below 10,000.
-///
-/// Guard order is the positive price, then the confidence bound.
 public(package) fun assert_confidence_within_bound(
     self: &PricePolicy,
     confidence: u64,
@@ -521,8 +513,6 @@ fun is_mark_within_oracle_divergence(
 /// is rejected before the bound is read, and a zero mark against a positive
 /// oracle price is always rejected because the constructor keeps
 /// `max_mark_divergence_bps` below 10,000.
-///
-/// Guard order is the positive oracle price, then the divergence bound.
 public(package) fun assert_mark_within_oracle_divergence(
     self: &PricePolicy,
     mark_price: u64,

@@ -617,7 +617,6 @@ public fun settle_funding<Product>(
     self.lifecycle.assert_can_sync();
     let is_cost = settlement.is_cost();
     let amount = settlement.amount();
-    settlement.destroy();
 
     let reserve_before = self.maintenance_reserve;
     if (is_cost) {
@@ -690,8 +689,6 @@ public fun unwind_constraints<Product>(
     assert_oracle_admitted(&price_policy, &base_oracle, now_ms);
     assert_oracle_admitted(&price_policy, &collateral_oracle, now_ms);
     let (base_price, collateral_price) = (base_oracle.price(), collateral_oracle.price());
-    base_oracle.destroy();
-    collateral_oracle.destroy();
     let max_order_base = rebalance_math::base_for_notional_down(
         self.max_order_notional, base_price, collateral_price, lot_size, self.base_unit, self.collateral_unit,
     );
@@ -830,15 +827,6 @@ fun fee_allocation<Product>(self: &State<Product>, amount: u64, is_mint: bool): 
     accounting_math::fee_allocation(amount, self.live_fee_bps(is_mint), self.admin_share_bps)
 }
 
-/// Returns whether shareholder NAV is at or below the cap.
-///
-/// The cap is inclusive and is tied to executable book depth, not headline
-/// open interest. The mint transition applies it to post-mint shareholder
-/// NAV from the canonical accounting checkpoint.
-fun is_within_nav_cap<Product>(self: &State<Product>, nav: u64): bool {
-    nav <= self.nav_cap
-}
-
 /// Prices a flat seed observation for the orders that will open its position:
 /// `equity` is the seed the adapter funded, and base and notional are zero
 /// because the adapter opens the seed on an account it created in the same
@@ -852,7 +840,6 @@ fun flat_position(observation: PositionObservation): ActivePosition {
         base_price: observation.base_oracle().price(),
         collateral_price: observation.collateral_oracle().price(),
     };
-    observation.destroy();
 
     position
 }
@@ -948,8 +935,9 @@ fun reduction_order<Product>(self: &State<Product>, position: &ActivePosition, n
     (position.base - target_base).min(self.max_order_base(position)) / position.lot_size * position.lot_size
 }
 
+/// The cap is inclusive; the mint transition applies it to post-mint shareholder NAV.
 fun assert_within_nav_cap<Product>(self: &State<Product>, nav: u64) {
-    assert!(self.is_within_nav_cap(nav), blast_boosts_core::errors::nav_cap_exceeded!());
+    assert!(nav <= self.nav_cap, blast_boosts_core::errors::nav_cap_exceeded!());
 }
 
 /// All active priced paths consume fresh, attributable venue facts before mutation.
@@ -986,7 +974,6 @@ fun priced_position<Product>(self: &State<Product>, observation: PositionObserva
         base_price,
         collateral_price,
     };
-    observation.destroy();
 
     position
 }
@@ -1041,7 +1028,7 @@ public fun nav_cap_for_testing<Product>(self: &State<Product>): u64 {
 
 #[test_only]
 public fun is_within_nav_cap_for_testing<Product>(self: &State<Product>, nav: u64): bool {
-    self.is_within_nav_cap(nav)
+    nav <= self.nav_cap
 }
 
 #[test_only]
