@@ -159,11 +159,10 @@ branches select ask fields for `true` and bid fields for `false`. Atomic
 activation therefore maps Series1 long to `false` and Series1 short to `true`.
 Unit and source-boundary gates pin that mapping.
 
-Initialization accepts the exact base and collateral Pyth `PriceInfoObject`
-values in addition to the original activation interface. Those two read-only
-arguments are required because strict capture must prove the Aftermath feeds
-and named market prices describe the same Pyth update. They do not let the
-caller supply a price, source ID, market ID, side, order size, or share amount.
+Initialization takes no oracle object beyond the two Aftermath
+`PriceFeedStorage` values (the two Pyth `PriceInfoObject` arguments were
+removed on 2026-09-20; see the oracle amendment below). The caller cannot
+supply a price, source ID, market ID, side, order size, or share amount.
 
 The adapter exposes a stateless `product::Product<phantom Tag>` witness with a
 public zero-state constructor. The witness carries only type identity and no
@@ -285,9 +284,9 @@ equal its post-state snapshot. Every tracked identity is bound to a submitted
 PTB argument, a transaction effect, an origin transaction effect, or a
 transaction-digest creation index. Role selectors are fixed by the validator,
 not live configuration. The initializer is parsed as one exact move-call
-record: its package target, three type arguments, and fifteen explicit
+record: its package target, three type arguments, and thirteen explicit
 arguments must equal the reviewed run configuration. Vault, Protocol,
-Currency, Registry, ClearingHouse, both oracle stores, both Pyth price objects,
+Currency, Registry, ClearingHouse, both oracle stores,
 seed coin, and Clock are each bound to their fixed initializer argument index
 and exact tracked type; mentioning an ID in another call is not a binding. The
 explicit funder address must match the reviewed nonzero beneficiary. The
@@ -333,21 +332,36 @@ not deployed venue execution. Release still requires:
 - The selected SUI-USDC market, registry, oracle objects, source IDs, lot size,
   IMR, MMR, pause/freeze behavior, and usable owned collateral remain deployment
   inputs that must be recorded and verified.
-- **Open since 2026-09-20 (F4 of the venue bytecode read):** every live
-  Aftermath feed is written by a Pyth Lazer vendor package and its `from` is a
-  `FeedInfoObject`, not a Pyth `PriceInfoObject`; the feed price is 18-decimal
-  and its timestamp is the Lazer update time in milliseconds. The binding
-  below cannot be satisfied on mainnet and awaits a decision.
-- Confidence is not present in Aftermath's normalized `PriceFeed`. Capture
-  therefore binds the exact official Pyth `PriceInfoObject` named by the
-  Aftermath feed's `from` ID. It reads price, confidence, exponent, and source
-  seconds from that same object; price rounds down and confidence rounds up at
-  the same normalized 9-decimal scale. Pyth seconds multiply to milliseconds
-  with a checked conversion, and both normalized named Aftermath market-oracle
-  values and the feed timestamp must equal that one Pyth update. No caller can
-  provide confidence or combine two updates.
+- **Oracle amendment (2026-09-20, F4 of the venue bytecode read).** Every
+  live Aftermath feed is written by a Pyth Lazer vendor package: its `from` is
+  a `FeedInfoObject`, not a Pyth `PriceInfoObject`; the feed price is an
+  18-decimal IFixed; its timestamp is the Lazer update time in milliseconds;
+  the signed update is verified in the updater's transaction and stored
+  nowhere else on chain. The Pyth `PriceInfoObject` binding this section
+  used to describe could never be satisfied on mainnet and is removed, with
+  the Pyth port, its two initializer and operation arguments, and the
+  `pyth_price_info_mismatch` / `oracle_source_mismatch` codes. What replaces
+  it: the venue's own price functions (`market::base_oracle_price`,
+  `collateral_oracle_price`, both pinned by bytecode to return the bound
+  feed's raw price after the venue's staleness and, for collateral,
+  index/TWAP divergence checks) are the price; the storages are checked
+  against the market's storage ids; and each feed's origin object
+  (`PriceFeed.from`) is bound at activation and re-checked on every capture
+  (`oracle_feed_mismatch`), so a re-pointed feed halts the vault exactly as
+  a market parameter change does. The feed's raw price must equal the venue's
+  named price (`oracle_observation_mismatch`). Aftermath feeds carry no
+  confidence interval: the adapter reports zero confidence and the core's
+  `max_confidence_bps` bound is vacuous for this adapter. An external
+  classic-Pyth tolerance check was considered and not adopted: it is a
+  different property (two sources, two update times) needing tolerance
+  parameters, and both Lazer and classic Pyth are the same publisher network.
 
 ### Pyth ABI port and snapshot classification amendment
+
+*Superseded on 2026-09-20 by the oracle amendment above: the Pyth port and the
+`PriceInfoObject` identity, price and timestamp checks described here no
+longer exist. The snapshot classification (strict versus health capture) it
+introduced stands.*
 
 The official `pyth-network/pyth-crosschain` source is pinned at
 `6c1c9138e71a62629232607e252b12bcaa38356a`, subdirectory

@@ -1,7 +1,7 @@
 // Pure reviewed call-plan construction. This module never opens RPC, signs or submits.
 // Plans and CLI arguments are not serialized TransactionData or live execution evidence.
 const BOUND_OBJECTS = ['vault', 'protocol', 'account', 'registry', 'clearingHouse',
-    'baseOracle', 'collateralOracle', 'basePriceInfo', 'collateralPriceInfo'];
+    'baseOracle', 'collateralOracle'];
 const INPUT_FIELDS = new Set(['operation', 'adapterPackage', 'sender', 'network',
     'productType', 'collateralType', 'objects', 'minimumOutput', 'maximumFeeBps', 'deadlineMs', 'launch']);
 

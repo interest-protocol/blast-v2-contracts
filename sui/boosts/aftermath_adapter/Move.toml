@@ -14,7 +14,6 @@ position = { local = "interfaces/aftermath/iperps/position" }
 authority_cap = { local = "interfaces/aftermath/authority-cap/authority-cap" }
 oracle_aggregator = { local = "interfaces/aftermath/oracle-aggregator/oracle-aggregator" }
 ifixed = { local = "interfaces/aftermath/ifixed/ifixed" }
-pyth = { local = "interfaces/pyth" }
 
 [addresses]
 blast_boosts_aftermath = "0x0"

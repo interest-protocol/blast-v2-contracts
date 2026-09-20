@@ -43,20 +43,26 @@ deps = { Sui = "Sui" }
 [pinned.testnet.blast_boosts_aftermath]
 source = { local = "../aftermath_adapter" }
 use_environment = "testnet"
-manifest_digest = "5166A9DFBA19AE79FC061AD957C48208CB541DB58B2B9727452C851DCB99EACB"
-deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_boosts_core = "blast_boosts_core", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", pyth = "pyth", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "EA2D0C160EFFDC573857307D0BA796039B5F0FAF8186477265CF7F6DAD81DEA6"
+deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_boosts_core = "blast_boosts_core", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.blast_boosts_composition_tests]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "8B563FCC8A600FBA7146F7353FC32354A5B145358F24F8738A3B9A1E58DFE47D"
-deps = { blast_admin = "blast_admin", blast_boosts_aftermath = "blast_boosts_aftermath", blast_fun = "blast_fun", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "2353AF377146DD667DA2CF7BF529DCD9388899CD984AB966B6A98D698D95FDD0"
+deps = { blast_admin = "blast_admin", blast_boosts_aftermath = "blast_boosts_aftermath", blast_boosts_products = "blast_boosts_products", blast_fun = "blast_fun", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.blast_boosts_core]
 source = { local = "../core" }
 use_environment = "testnet"
 manifest_digest = "D22569635345AD81636092AAA074AE3A61666325E24EA5D65B1CB4BFC9BCEE3F"
 deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.testnet.blast_boosts_products]
+source = { local = "../products" }
+use_environment = "testnet"
+manifest_digest = "B7E2FC3044B807508BDB644524C4ABEA393A1871278966067F470AEAE602C62B"
+deps = { Sui = "Sui" }
 
 [pinned.testnet.blast_fun]
 source = { local = "../../launchpad" }
@@ -87,12 +93,6 @@ source = { local = "../aftermath_adapter/interfaces/aftermath/iperps/position" }
 use_environment = "testnet"
 manifest_digest = "73B9AA235CF82D45B86D246566B3280A5A2E95D72A6CCB94CA259EC60B8564A7"
 deps = { control_flow = "AftermathControlFlow", ifixed = "ifixed", std = "MoveStdlib", sui = "Sui" }
-
-[pinned.testnet.pyth]
-source = { local = "../aftermath_adapter/interfaces/pyth" }
-use_environment = "testnet"
-manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
-deps = { std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.vendor]
 source = { local = "../aftermath_adapter/interfaces/aftermath/vendor/vendor" }

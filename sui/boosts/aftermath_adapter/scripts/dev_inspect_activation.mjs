@@ -37,8 +37,6 @@ const OBJECT_ROLES = [
     'clearingHouse',
     'baseOracle',
     'collateralOracle',
-    'basePriceInfo',
-    'collateralPriceInfo',
     'seedCoin',
     'clock',
 ];
@@ -88,6 +86,8 @@ const BINDING_FIELDS = [
     'clearing_house_id',
     'base_oracle_id',
     'collateral_oracle_id',
+    'base_feed_id',
+    'collateral_feed_id',
 ];
 const CHECKPOINT_FIELDS = [
     'free_collateral',
@@ -363,8 +363,6 @@ function buildPlan(input) {
                     object('clearingHouse'),
                     object('baseOracle'),
                     object('collateralOracle'),
-                    object('basePriceInfo'),
-                    object('collateralPriceInfo'),
                     object('seedCoin'),
                     input.seedReserve,
                     input.positionImr,
@@ -575,6 +573,8 @@ function normalizeInitializedEvent(events, changedObjects, input) {
             `VaultInitialized.binding.${field}`,
         );
     }
+    // The feed origins are read from the storages on chain, not chosen by the caller.
+    for (const field of ['base_feed_id', 'collateral_feed_id']) expectAddress(binding[field], `VaultInitialized.binding.${field}`);
     return canonical({ type: event.type, parsedJson });
 }
 

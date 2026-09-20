@@ -129,8 +129,6 @@ public fun mint_and_buy<Product, Collateral, Meme>(
     clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
-    base_price: &PriceInfoObject,
-    collateral_price: &PriceInfoObject,
     cash: Coin<Collateral>,
     minimum_shares: u64,
     maximum_fee: u64,
@@ -143,7 +141,7 @@ public fun mint_and_buy<Product, Collateral, Meme>(
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<BlastBoost<Product>>) {
     let shares = operations::mint(vault, protocol, account, registry, clearing_house,
-        base_oracle, collateral_oracle, base_price, collateral_price, cash,
+        base_oracle, collateral_oracle, cash,
         minimum_shares, maximum_fee, deadline, clock, ctx);
     market.buy(version, runtime, shares, minimum_meme, ctx)
 }
@@ -162,8 +160,6 @@ public fun sell_and_redeem<Product, Collateral, Meme>(
     clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
-    base_price: &PriceInfoObject,
-    collateral_price: &PriceInfoObject,
     minimum_cash: u64,
     maximum_fee: u64,
     deadline: u64,
@@ -172,7 +168,7 @@ public fun sell_and_redeem<Product, Collateral, Meme>(
 ): Coin<Collateral> {
     let shares = market.sell(version, runtime, meme, minimum_shares, ctx);
     operations::redeem(vault, protocol, account, registry, clearing_house,
-        base_oracle, collateral_oracle, base_price, collateral_price, shares,
+        base_oracle, collateral_oracle, shares,
         minimum_cash, maximum_fee, deadline, clock, ctx)
 }
 
@@ -196,7 +192,6 @@ use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 
 use perpetuals::{account::Account, clearing_house::ClearingHouse, registry::Registry};
 
-use pyth::price_info::PriceInfoObject;
 
 use std::unit_test::{assert_eq, destroy};
 

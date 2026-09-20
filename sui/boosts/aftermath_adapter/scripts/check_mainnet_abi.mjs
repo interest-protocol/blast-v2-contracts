@@ -62,7 +62,7 @@ const PACKAGES = [
         previousTransaction: '24uiWDWHnZigACZ6n9s5sKUM9PhJxwtcQDXqVUbL3EWf',
         modules: [
             { name: 'price_feed_storage', sha256: 'f9c56ecf9081bb4c4c519eb12350084c34771fd10d76ad52fa7302feb78156c0', functions: ['storage_id', 'price_feed'] },
-            { name: 'price_feed', sha256: '6a5dae242c1bb6ff6fb2bf4bb4071990a36688213211c80137d55bd91c893aa8', functions: ['source_id', 'from', 'price_and_timestamp_ms'] },
+            { name: 'price_feed', sha256: '6a5dae242c1bb6ff6fb2bf4bb4071990a36688213211c80137d55bd91c893aa8', functions: ['from', 'price_and_timestamp_ms'] },
         ],
     },
     {
@@ -73,20 +73,6 @@ const PACKAGES = [
         digest: 'BX5Yvqhi8d5J866fuzswViwTB6KKxPrxpip9oFFxFjj4',
         previousTransaction: '5G4cZbE56447Dfd5uxL1kP1xDv7u6uCG3t5a5FAks9Zj',
         modules: [{ name: 'ifixed', sha256: 'ab7e23db8976e59a4e63db87c450ab72d70626050094d6a227bfdb11dccb140e', functions: ['decimal_scalar_from_decimals', 'one', 'is_neg', 'abs', 'to_balance'] }],
-    },
-    {
-        label: 'Pyth',
-        originalId: '0x8d97f1cd6ac663735be08d1d2b6d02a159e711586461306ce60a2b7a6a565a9e',
-        currentId: '0x04e20ddf36af412a4096f9014f4a565af9e812db9a05cc40254846cf6ed0ad91',
-        version: 2,
-        digest: '4RNrQi2Q86vnviobhgoA3Kj5sgohTbQEsdgqQDGwRY4U',
-        previousTransaction: '9aXs2UJPyeQHV8gq15yXHU91LDjaetPvNRZAVonX2TUh',
-        modules: [
-            { name: 'i64', sha256: 'd5b9c43f407a5f26599dcd809cc0b71c8f358ade0477970ef63dddd4d862bfa3', functions: ['get_is_negative', 'get_magnitude_if_positive', 'get_magnitude_if_negative'] },
-            { name: 'price', sha256: '0f304e014ebc52070d84360c1367640d0d20e0adc103820e59abf3b50c711515', functions: ['get_price', 'get_conf', 'get_expo', 'get_timestamp'] },
-            { name: 'price_feed', sha256: '0faf8373a5097db4abfac7c76de1ae89110865b1b75eb1eee4b69face9bc6827', functions: ['get_price'] },
-            { name: 'price_info', sha256: '8d0d0c64d505cef6fe8db46c80d3d03a70f16405ca0d6da31b6c11105c090fb8', functions: ['uid_to_inner', 'get_price_info_from_price_info_object', 'get_price_feed'] },
-        ],
     },
 ];
 
@@ -124,9 +110,6 @@ const ABI = {
     'clearing_house::share': 'public fun share<$0>(@self::clearing_house::ClearingHouse<$0>)',
     'clearing_house::start_session': 'public fun start_session<$0, $1>(@self::clearing_house::ClearingHouse<$0>, &0x4e2df80a5e2fd0392878298c51ce15164222111ccea05504b9291b158f552677::authority::AuthorityCap<@self::authority::ACCOUNT, $1>, &mut @self::account::Account<$0>, &0x9237337d846fc90b0a7acbdee4ab91809298691873d28e1d64d91e6303ff6ba4::price_feed_storage::PriceFeedStorage, &0x9237337d846fc90b0a7acbdee4ab91809298691873d28e1d64d91e6303ff6ba4::price_feed_storage::PriceFeedStorage, @std::option::Option<@self::account::IntegratorInfo>, &@sui::clock::Clock, &@sui::tx_context::TxContext): @self::clearing_house::SessionHotPotato<$0>',
     'clearing_house::update_funding': 'public fun update_funding<$0>(&mut @self::clearing_house::ClearingHouse<$0>, &0x9237337d846fc90b0a7acbdee4ab91809298691873d28e1d64d91e6303ff6ba4::price_feed_storage::PriceFeedStorage, &@sui::clock::Clock)',
-    'i64::get_is_negative': 'public fun get_is_negative(&@self::i64::I64): bool',
-    'i64::get_magnitude_if_negative': 'public fun get_magnitude_if_negative(&@self::i64::I64): u64',
-    'i64::get_magnitude_if_positive': 'public fun get_magnitude_if_positive(&@self::i64::I64): u64',
     'ifixed::abs': 'public fun abs(u256): u256',
     'ifixed::decimal_scalar_from_decimals': 'public fun decimal_scalar_from_decimals(u64): u64',
     'ifixed::is_neg': 'public fun is_neg(u256): bool',
@@ -163,19 +146,10 @@ const ABI = {
     'position::pending_base_amounts_by_side': 'public fun pending_base_amounts_by_side(&@self::position::Position): (u256, u256)',
     'position::pending_order_count': 'public fun pending_order_count(&@self::position::Position): u64',
     'position::unrealized_pnl': 'public fun unrealized_pnl(&@self::position::Position, u256): u256',
-    'price::get_conf': 'public fun get_conf(&@self::price::Price): u64',
-    'price::get_expo': 'public fun get_expo(&@self::price::Price): @self::i64::I64',
-    'price::get_price': 'public fun get_price(&@self::price::Price): @self::i64::I64',
-    'price::get_timestamp': 'public fun get_timestamp(&@self::price::Price): u64',
     'price_feed::from': 'public fun from(&@self::price_feed::PriceFeed): @sui::object::ID',
-    'price_feed::get_price': 'public fun get_price(&@self::price_feed::PriceFeed): @self::price::Price',
     'price_feed::price_and_timestamp_ms': 'public fun price_and_timestamp_ms(&@self::price_feed::PriceFeed): (u128, u64)',
-    'price_feed::source_id': 'public fun source_id(&@self::price_feed::PriceFeed): u16',
     'price_feed_storage::price_feed': 'public fun price_feed(&@self::price_feed_storage::PriceFeedStorage, u16): &@self::price_feed::PriceFeed',
     'price_feed_storage::storage_id': 'public fun storage_id(&@self::price_feed_storage::PriceFeedStorage): u32',
-    'price_info::get_price_feed': 'public fun get_price_feed(&@self::price_info::PriceInfo): &@self::price_feed::PriceFeed',
-    'price_info::get_price_info_from_price_info_object': 'public fun get_price_info_from_price_info_object(&@self::price_info::PriceInfoObject): @self::price_info::PriceInfo',
-    'price_info::uid_to_inner': 'public fun uid_to_inner(&@self::price_info::PriceInfoObject): @sui::object::ID',
 };
 
 // The Aftermath interfaces are vendored verbatim from AFTERMATH_GIT at AFTERMATH_REV under
@@ -188,7 +162,6 @@ const DIRECT_DEPENDENCIES = {
     authority_cap: { local: 'interfaces/aftermath/authority-cap/authority-cap' },
     oracle_aggregator: { local: 'interfaces/aftermath/oracle-aggregator/oracle-aggregator' },
     ifixed: { local: 'interfaces/aftermath/ifixed/ifixed' },
-    pyth: { local: 'interfaces/pyth' },
 };
 
 const LOCK_SOURCES = {
@@ -203,7 +176,6 @@ const LOCK_SOURCES = {
     blast_boosts_aftermath: { root: true },
     blast_boosts_core: DIRECT_DEPENDENCIES.blast_boosts_core,
     ifixed: DIRECT_DEPENDENCIES.ifixed,
-    pyth: DIRECT_DEPENDENCIES.pyth,
     oracle_aggregator: DIRECT_DEPENDENCIES.oracle_aggregator,
     perpetuals: DIRECT_DEPENDENCIES.perpetuals,
     position: DIRECT_DEPENDENCIES.position,
@@ -217,10 +189,9 @@ const LOCK_DEPS = {
     Sui: { MoveStdlib: 'MoveStdlib' },
     authority_cap: { std: 'MoveStdlib', sui: 'Sui' },
     blast_admin: { Sui: 'Sui' },
-    blast_boosts_aftermath: { authority_cap: 'authority_cap', blast_admin: 'blast_admin', blast_boosts_core: 'blast_boosts_core', ifixed: 'ifixed', oracle_aggregator: 'oracle_aggregator', perpetuals: 'perpetuals', position: 'position', pyth: 'pyth', std: 'MoveStdlib', sui: 'Sui' },
+    blast_boosts_aftermath: { authority_cap: 'authority_cap', blast_admin: 'blast_admin', blast_boosts_core: 'blast_boosts_core', ifixed: 'ifixed', oracle_aggregator: 'oracle_aggregator', perpetuals: 'perpetuals', position: 'position', std: 'MoveStdlib', sui: 'Sui' },
     blast_boosts_core: { blast_admin: 'blast_admin', std: 'MoveStdlib', sui: 'Sui' },
     ifixed: { std: 'MoveStdlib', sui: 'Sui' },
-    pyth: { std: 'MoveStdlib', sui: 'Sui' },
     oracle_aggregator: { authority_cap: 'authority_cap', std: 'MoveStdlib', sui: 'Sui', vendor: 'vendor' },
     perpetuals: { authority_cap: 'authority_cap', control_flow: 'AftermathControlFlow', ifixed: 'ifixed', oracle_aggregator: 'oracle_aggregator', ordered_map: 'AftermathOrderedMap', position: 'position', std: 'MoveStdlib', sui: 'Sui', vendor: 'vendor' },
     position: { control_flow: 'AftermathControlFlow', ifixed: 'ifixed', std: 'MoveStdlib', sui: 'Sui' },

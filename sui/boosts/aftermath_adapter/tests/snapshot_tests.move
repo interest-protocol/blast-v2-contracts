@@ -232,65 +232,21 @@ fun fixed_negative_liability_and_absolute_risk_round_against_the_vault() {
 }
 
 #[test]
-fun pyth_price_rounds_down_and_confidence_rounds_up_at_a_remainder() {
-    // 12345 × 10^-13 normalizes to 1.2345 at 9 decimals.
-    let (value_1, ok_1) = snapshot::normalize_pyth_for_testing(12_345, true, 13, false);
-    assert_eq!(value_1, 1);
-    assert!(ok_1);
-    let (value_2, ok_2) = snapshot::normalize_pyth_for_testing(12_345, true, 13, true);
-    assert_eq!(value_2, 2);
-    assert!(ok_2);
-    let (value_3, ok_3) = snapshot::normalize_pyth_for_testing(1, true, 13, true);
-    assert_eq!(value_3, 1);
-    assert!(ok_3);
-}
-
-#[test]
-fun pyth_positive_exponent_and_seconds_conversion_are_literal() {
-    let (value_4, ok_4) = snapshot::normalize_pyth_for_testing(42, false, 2, false);
-    assert_eq!(value_4, 4_200_000_000_000);
-    assert!(ok_4);
-    let (value_5, ok_5) = snapshot::seconds_to_millis_for_testing(1_700_000_000);
-    assert_eq!(value_5, 1_700_000_000_000);
-    assert!(ok_5);
-}
-
-#[test]
-fun health_pyth_normalization_preserves_unrepresentable_values_as_invalid() {
-    let (exponent_value, exponent_valid) =
-        snapshot::normalize_pyth_for_testing(1, false, 19, false);
-    let (width_value, width_valid) = snapshot::normalize_pyth_for_testing(
-        std::u64::max_value!(),
-        false,
-        9,
-        false,
-    );
-
-    assert_eq!(exponent_value, 0);
-    assert!(!exponent_valid);
-    assert_eq!(width_value, 0);
-    assert!(!width_valid);
-}
-
-#[test]
-fun health_feed_and_timestamp_width_failures_are_invalid_not_aborts() {
-    let (feed, feed_valid) = snapshot::normalize_feed_for_testing(
-        (std::u64::max_value!() as u128) + 1,
-    );
-    let (timestamp, timestamp_valid) = snapshot::seconds_to_millis_for_testing(
-        std::u64::max_value!() / 1_000 + 1,
-    );
-
-    assert_eq!(feed, 0);
-    assert!(!feed_valid);
-    assert_eq!(timestamp, 0);
-    assert!(!timestamp_valid);
+fun venue_feed_prices_normalize_from_eighteen_to_nine_decimals() {
+    // The live SUI feed read on 2026-09-20: 0.82152064 USD as an 18-decimal IFixed.
+    let (sui, sui_ok) = snapshot::normalize_price_for_testing(821_520_640_000_000_000);
+    assert_eq!(sui, 821_520_640);
+    assert!(sui_ok);
+    // A feed too wide for the 9-decimal unit is invalid, not an abort.
+    let (wide, wide_ok) = snapshot::normalize_price_for_testing((std::u64::max_value!() as u256 + 1) * 1_000_000_000);
+    assert_eq!(wide, 0);
+    assert!(!wide_ok);
 }
 
 #[test]
 fun stablecoin_depeg_and_minimum_lot_vectors_keep_the_venue_scales() {
-    // Pyth -9 inputs are already in adapter price units: $0.95 remains exact.
-    let (value_6, ok_6) = snapshot::normalize_pyth_for_testing(950_000_000, true, 9, false);
+    // A depegged $0.95 feed remains exact in adapter price units.
+    let (value_6, ok_6) = snapshot::normalize_price_for_testing(950_000_000_000_000_000);
     assert_eq!(value_6, 950_000_000);
     assert!(ok_6);
     // One minimum base lot and one quote micro-unit remain distinct scales.
@@ -350,7 +306,7 @@ fun health_usd_conversion_keeps_the_same_max_width_input_as_an_invalid_fact() {
 #[test]
 fun health_mark_normalization_preserves_an_unrepresentable_mark_as_invalid() {
     let raw = ((std::u64::max_value!() as u256) + 1) * 1_000_000_000;
-    let (mark, valid) = snapshot::normalize_mark_for_testing(raw);
+    let (mark, valid) = snapshot::normalize_price_for_testing(raw);
 
     assert_eq!(mark, 0);
     assert!(!valid);

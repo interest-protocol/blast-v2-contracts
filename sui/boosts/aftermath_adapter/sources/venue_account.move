@@ -7,7 +7,9 @@ module blast_boosts_aftermath::venue_account;
 
 // === Public Types ===
 
-/// Immutable external object graph for one Aftermath leverage account.
+/// Immutable external object graph for one Aftermath leverage account. The
+/// two feed ids are the origin objects (`PriceFeed.from`) of the feeds the
+/// market priced with at activation.
 public struct Binding has copy, drop, store {
     account_object_id: ID,
     account_number: u64,
@@ -15,6 +17,8 @@ public struct Binding has copy, drop, store {
     clearing_house_id: ID,
     base_oracle_id: ID,
     collateral_oracle_id: ID,
+    base_feed_id: ID,
+    collateral_feed_id: ID,
 }
 
 /// The bound Aftermath account as the adapter knows it: its identity, the last
@@ -39,6 +43,8 @@ public(package) fun new_binding(
     clearing_house_id: ID,
     base_oracle_id: ID,
     collateral_oracle_id: ID,
+    base_feed_id: ID,
+    collateral_feed_id: ID,
 ): Binding {
     Binding {
         account_object_id,
@@ -47,6 +53,8 @@ public(package) fun new_binding(
         clearing_house_id,
         base_oracle_id,
         collateral_oracle_id,
+        base_feed_id,
+        collateral_feed_id,
     }
 }
 
@@ -59,6 +67,8 @@ public(package) fun assert_object_graph(
     clearing_house_id: ID,
     base_oracle_id: ID,
     collateral_oracle_id: ID,
+    base_feed_id: ID,
+    collateral_feed_id: ID,
 ) {
     assert!(self.account_object_id == account_object_id, blast_boosts_aftermath::errors::account_object_mismatch!());
     assert!(self.account_number == account_number, blast_boosts_aftermath::errors::account_number_mismatch!());
@@ -68,6 +78,10 @@ public(package) fun assert_object_graph(
     assert!(
         self.collateral_oracle_id == collateral_oracle_id,
         blast_boosts_aftermath::errors::collateral_oracle_mismatch!(),
+    );
+    assert!(
+        self.base_feed_id == base_feed_id && self.collateral_feed_id == collateral_feed_id,
+        blast_boosts_aftermath::errors::oracle_feed_mismatch!(),
     );
 }
 

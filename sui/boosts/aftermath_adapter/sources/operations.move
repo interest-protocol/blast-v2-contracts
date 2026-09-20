@@ -22,8 +22,6 @@ public fun initialize<Product, Collateral>(
     mut clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
-    base_price_info: &PriceInfoObject,
-    collateral_price_info: &PriceInfoObject,
     seed: Coin<Collateral>,
     seed_reserve: u64,
     position_imr: u256,
@@ -44,14 +42,12 @@ public fun initialize<Product, Collateral>(
     fund_venue_account(&mut account, &admin_cap, registry, &mut clearing_house, seed, position_imr);
 
     clearing_house = orders::seed_position(
-        terms, &mut account, &admin_cap, &binding, registry, clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, seed_reserve, clock, ctx,
+        terms, &mut account, &admin_cap, &binding, registry, clearing_house, base_oracle, collateral_oracle, seed_reserve, clock, ctx,
     );
 
     clearing_house.settle_position_funding(collateral_oracle, binding.account_number(), clock);
     let (final_observation, checkpoint) = snapshot::capture(
-        &binding, &account, registry, &clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
+        &binding, &account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
     assert_position_imr_unchanged(&clearing_house, binding.account_number(), position_imr);
     let venue_account = venue_account::new(binding, checkpoint, admin_cap);
@@ -82,8 +78,6 @@ public fun mint<Product, Collateral>(
     mut clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
-    base_price_info: &PriceInfoObject,
-    collateral_price_info: &PriceInfoObject,
     cash: Coin<Collateral>,
     minimum_shares: u64,
     maximum_fee_bps: u64,
@@ -98,8 +92,7 @@ public fun mint<Product, Collateral>(
     vault.state().assert_user_fee_limit(true, maximum_fee_bps);
 
     let (before, before_checkpoint) = synchronize(
-        vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
+        vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
     vault.venue().checkpoint().assert_unchanged(&before_checkpoint);
 
@@ -118,8 +111,7 @@ public fun mint<Product, Collateral>(
     );
 
     let (after, final_checkpoint) = snapshot::capture(
-        &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
+        &binding, account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
     checkpoint.assert_deposit_checkpoint(&final_checkpoint, 0);
     let shares = complete_mint<Product, Collateral>(vault, plan, deposit, after, final_checkpoint, clock.timestamp_ms(), ctx);
@@ -138,8 +130,6 @@ public fun redeem<Product, Collateral>(
     mut clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
-    base_price_info: &PriceInfoObject,
-    collateral_price_info: &PriceInfoObject,
     shares: Coin<BlastBoost<Product>>,
     minimum_collateral: u64,
     maximum_fee_bps: u64,
@@ -153,8 +143,7 @@ public fun redeem<Product, Collateral>(
     vault.state().assert_user_fee_limit(false, maximum_fee_bps);
 
     let (before, checkpoint) = synchronize(
-        vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
+        vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
     vault.venue().checkpoint().assert_unchanged(&checkpoint);
 
@@ -168,8 +157,7 @@ public fun redeem<Product, Collateral>(
     );
 
     let (after_sell, after_sell_checkpoint) = snapshot::capture(
-        &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
+        &binding, account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
     checkpoint.assert_deposit_checkpoint(&after_sell_checkpoint, 0);
     let (net, admin, fee, reserve_fee) = settle_redemption(vault, plan, &shares, after_sell, clock.timestamp_ms());
@@ -195,16 +183,13 @@ public fun rebalance<Product, Collateral>(
     mut clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
-    base_price_info: &PriceInfoObject,
-    collateral_price_info: &PriceInfoObject,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     protocol.assert_current();
 
     let (before, checkpoint) = synchronize(
-        vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
+        vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
     vault.venue().checkpoint().assert_unchanged(&checkpoint);
 
@@ -214,7 +199,7 @@ public fun rebalance<Product, Collateral>(
 
     let (clearing_house, checkpoint) = orders::rebalance_orders(
         vault, account, registry, clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, &binding, &terms, &mut plan, checkpoint, clock, ctx,
+        &binding, &terms, &mut plan, checkpoint, clock, ctx,
     );
 
     complete_rebalance<Product, Collateral>(vault, plan, checkpoint);
@@ -236,15 +221,12 @@ public fun needs_rebalance<Product, Collateral>(
     clearing_house: &ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
-    base_price_info: &PriceInfoObject,
-    collateral_price_info: &PriceInfoObject,
     clock: &Clock,
 ): bool {
     protocol.assert_current();
 
     let (observation, checkpoint) = snapshot::capture(
-        &vault.venue().binding(), account, registry, clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
+        &vault.venue().binding(), account, registry, clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
     vault.venue().checkpoint().assert_unchanged(&checkpoint);
 
@@ -260,8 +242,6 @@ public fun donate<Product, Collateral>(
     clearing_house: &mut ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
-    base_price_info: &PriceInfoObject,
-    collateral_price_info: &PriceInfoObject,
     cash: Coin<Collateral>,
     clock: &Clock,
 ) {
@@ -270,15 +250,13 @@ public fun donate<Product, Collateral>(
     assert!(amount > 0, blast_boosts_aftermath::errors::zero_amount!());
 
     let before_checkpoint = synchronize(
-        vault, account, registry, clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
+        vault, account, registry, clearing_house, base_oracle, collateral_oracle, clock,
     ).checkpoint();
     vault.venue().checkpoint().assert_unchanged(&before_checkpoint);
 
     vault.venue().deposit(account, registry, cash);
     let (after, checkpoint) = snapshot::capture(
-        &vault.venue().binding(), account, registry, clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
+        &vault.venue().binding(), account, registry, clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
     complete_donation(vault, after, checkpoint, amount, clock.timestamp_ms());
 }
@@ -297,15 +275,12 @@ public fun sync_health<Product, Collateral>(
     clearing_house: &mut ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
-    base_price_info: &PriceInfoObject,
-    collateral_price_info: &PriceInfoObject,
     clock: &Clock,
 ) {
     protocol.assert_current();
 
     synchronize(
-        vault, account, registry, clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
+        vault, account, registry, clearing_house, base_oracle, collateral_oracle, clock,
     );
 }
 
@@ -318,8 +293,6 @@ public fun unwind<Product, Collateral>(
     mut clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
-    base_price_info: &PriceInfoObject,
-    collateral_price_info: &PriceInfoObject,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -329,8 +302,7 @@ public fun unwind<Product, Collateral>(
         unwind_frozen(vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle);
     } else {
         clearing_house = unwind_market(
-            vault, account, registry, clearing_house, base_oracle, collateral_oracle,
-            base_price_info, collateral_price_info, clock, ctx,
+            vault, account, registry, clearing_house, base_oracle, collateral_oracle, clock, ctx,
         );
     };
     clearing_house.share();
@@ -401,7 +373,8 @@ fun assert_position_imr_sign(is_negative: bool) {
 }
 
 /// Creates the isolated Aftermath account the Vault will own and binds it to
-/// the exact venue objects this activation was called with.
+/// the exact venue objects this activation was called with, down to the
+/// origin objects of the two feeds the market prices with.
 fun open_venue_account<Collateral>(
     registry: &mut Registry,
     clearing_house: &ClearingHouse<Collateral>,
@@ -410,6 +383,7 @@ fun open_venue_account<Collateral>(
     ctx: &mut TxContext,
 ): (Account<Collateral>, AccountSharePolicy, AuthorityCap<ACCOUNT, ADMIN>, Binding) {
     let (account, share_policy, admin_cap) = account::create_account<Collateral>(registry, ctx);
+    let params = clearing_house.market_params();
     let binding = venue_account::new_binding(
         object::id(&account),
         account.account_id(),
@@ -417,6 +391,8 @@ fun open_venue_account<Collateral>(
         object::id(clearing_house),
         object::id(base_oracle),
         object::id(collateral_oracle),
+        base_oracle[params.base_source_id()].from(),
+        collateral_oracle[params.collateral_source_id()].from(),
     );
 
     (account, share_policy, admin_cap, binding)
@@ -674,8 +650,6 @@ fun synchronize<Product, Collateral>(
     clearing_house: &mut ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
-    base_price_info: &PriceInfoObject,
-    collateral_price_info: &PriceInfoObject,
     clock: &Clock,
 ): CapturedSnapshot {
     vault.state().assert_can_sync();
@@ -684,16 +658,14 @@ fun synchronize<Product, Collateral>(
     let stored_checkpoint = *vault.venue().checkpoint();
     binding.update_funding_when_due(clearing_house, base_oracle, clock);
     let pre_capture = snapshot::capture(
-        &binding, account, registry, clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
+        &binding, account, registry, clearing_house, base_oracle, collateral_oracle, clock,
     );
     let (pre_checkpoint, collateral_price) = (pre_capture.checkpoint(), pre_capture.collateral_fixed());
 
     clearing_house.settle_position_funding(collateral_oracle, account.account_id(), clock);
 
     let post_capture = snapshot::capture(
-        &binding, account, registry, clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
+        &binding, account, registry, clearing_house, base_oracle, collateral_oracle, clock,
     );
     let (preexisting_change, local_change) = stored_checkpoint.classify_sync_changes(
         &pre_checkpoint, &post_capture.checkpoint(), collateral_price,
@@ -745,16 +717,13 @@ fun unwind_market<Product, Collateral>(
     mut clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
-    base_price_info: &PriceInfoObject,
-    collateral_price_info: &PriceInfoObject,
     clock: &Clock,
     ctx: &TxContext,
 ): ClearingHouse<Collateral> {
     let binding = vault.venue().binding();
     binding.update_funding_when_due(&mut clearing_house, base_oracle, clock);
     let capture = snapshot::capture(
-        &binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
+        &binding, account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
     );
     let (terms, remaining, before) = orders::unwind_terms(vault, &capture, clock.timestamp_ms());
 
@@ -1011,7 +980,5 @@ use perpetuals::{
     market,
     registry::Registry,
 };
-
-use pyth::price_info::PriceInfoObject;
 
 use sui::{clock::Clock, coin::Coin, coin_registry::Currency};

@@ -48,8 +48,6 @@ const INPUT_ROLE_OBJECT = {
     clearing_house: 'clearingHouse',
     base_oracle: 'baseOracle',
     collateral_oracle: 'collateralOracle',
-    base_price_info: 'basePriceInfo',
-    collateral_price_info: 'collateralPriceInfo',
     seed_coin: 'seedCoin',
     clock: 'clock',
 };
@@ -63,8 +61,6 @@ const ROLE_POINTERS = {
     clearing_house: { marketState: '/content/market_state' },
     base_oracle: {},
     collateral_oracle: {},
-    base_price_info: {},
-    collateral_price_info: {},
     seed_coin: { balance: '/content/balance' },
     clock: {},
     vault: {
@@ -106,8 +102,6 @@ const SUCCESS_EFFECT_BY_ROLE = {
     clearing_house: 'mutated',
     base_oracle: null,
     collateral_oracle: null,
-    base_price_info: null,
-    collateral_price_info: null,
     seed_coin: 'deleted',
     clock: null,
     vault: 'created',
@@ -133,7 +127,7 @@ const INITIALIZED_FIELDS = [
 ];
 const BINDING_FIELDS = [
     'account_object_id', 'account_number', 'registry_id', 'clearing_house_id',
-    'base_oracle_id', 'collateral_oracle_id',
+    'base_oracle_id', 'collateral_oracle_id', 'base_feed_id', 'collateral_feed_id',
 ];
 const CHECKPOINT_FIELDS = [
     'free_collateral', 'allocated_collateral', 'signed_base',
@@ -541,15 +535,6 @@ function assertTrackedTypeBindings(runConfig, path) {
         trackedObject(runConfig, 'collateral_oracle', `${path}.trackedObjects`).expectedType,
         baseOracleType,
         `${path}.collateral_oracle.type`,
-    );
-    const basePriceInfoType = trackedObject(runConfig, 'base_price_info', `${path}.trackedObjects`).expectedType;
-    if (!basePriceInfoType.endsWith('::price_info::PriceInfoObject')) {
-        fail(`${path}.base_price_info.type: expected PriceInfoObject`);
-    }
-    assertEqual(
-        trackedObject(runConfig, 'collateral_price_info', `${path}.trackedObjects`).expectedType,
-        basePriceInfoType,
-        `${path}.collateral_price_info.type`,
     );
 }
 
@@ -1001,7 +986,8 @@ function validateSuccess(evidence, runConfig) {
         'success.checkpoint.signed_quote_notional',
     );
     if (signedBase.magnitude === 0n) fail('success.checkpoint.signed_base: the seed must open a position');
-    if (signedQuote.negative === signedBase.negative) {
+    // The venue carries the quote notional under the base's sign (position bytecode, 2026-09-20).
+    if (signedQuote.magnitude === 0n || signedQuote.negative !== signedBase.negative) {
         fail('success.position_side: base and quote signs are incoherent');
     }
     const expectedSide = signedBase.negative ? 'short' : 'long';

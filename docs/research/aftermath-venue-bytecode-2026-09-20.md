@@ -108,7 +108,7 @@ six-decimal collateral. The live SUI-USDC market's `scaling_factor` is
 `market_params.scaling_factor() == 10^12` next to the currency-decimals
 check, under the same error code.
 
-## Findings that need a decision (not applied)
+## Finding applied the same day after review
 
 ### F4. Aftermath prices its markets from Pyth Lazer, and no `PriceInfoObject` exists
 
@@ -139,27 +139,18 @@ read:
   divided by 1000 (`to_ms`); live feeds read `…501600`. It is not a Pyth
   publish time in whole seconds, so the seconds×1000 equality is inapplicable.
 
-Options for the founder:
-
-1. **Drop the independent oracle cross-check.** Authenticate the feed by the
-   storage-id and source-id binding the adapter already proves, and take
-   the venue's price as the price. Bind the feed's `from` id at
-   initialization (it identifies the Lazer feed the market prices with), and
-   keep the venue's own staleness (`*_pfs_tolerance`, 15 s base / 30 s
-   collateral) and index/TWAP divergence checks. Confidence is unavailable;
-   the core's confidence bound would read zero.
-2. **Cross-check against classic Pyth as an external reference.** Keep a
-   `PriceInfoObject` argument for SUI/USD and USDC/USD from Pyth's own Sui
-   deployment (not linked to Aftermath), and require the venue's feed price to
-   sit within a tolerance of it with both timestamps within a window. This is
-   a *different* property from today's equality (two sources, two update
-   times) and needs tolerance parameters.
-3. **Both**: option 1 for identity, option 2 as a health bound.
-
-Either way `snapshot::pyth_price`, `normalize_feed_price`, `seconds_to_millis`
-and the Pyth port in `interfaces/pyth` change or go; ADR 0074's oracle
-paragraphs and the atomicity/dev-inspect fixtures that carry two
-`PriceInfoObject` inputs follow.
+**Applied:** venue-feed identity. The two `PriceInfoObject` arguments, the
+Pyth port, `snapshot::pyth_price`, `normalize_feed_price`, `seconds_to_millis`
+and two error codes are gone. `Binding` now carries the origin object id
+(`PriceFeed.from`) of each feed the market priced with at activation, checked
+on every capture next to the six object ids; the storages are checked against
+the market's storage ids; the venue's named price functions (which the
+bytecode pins to the bound feed's raw price after the venue's own staleness
+and, for collateral, index/TWAP checks) are the price, and the feed's raw
+price must equal them. Confidence is reported as zero. A classic-Pyth
+tolerance check was considered and not adopted: a different property (two
+sources, two update times) needing tolerance parameters, from the same
+publisher network as Lazer.
 
 ## Everything else the adapter calls, and what it relies on
 
@@ -195,7 +186,7 @@ the table records what each call does that the proof does not already pin.
 | `position::compute_margin_and_requirement(cp, mark, imr, haircut)` | `margin = collateral × cp × (1 − haircut if collateral ≥ 0) + unrealized_pnl(mark)`, `requirement = abs_net_base × mark × imr` where `abs_net_base = max(|base + bids|, |base − asks|)` | `margin_safe` = margin ≥ IMR requirement, the venue's own opening bound |
 | `position::unrealized_pnl(price)` | `base × price − quote` | equity; F2 |
 | `oracle_aggregator::price_feed_storage::storage_id`, `price_feed(source)` | field read; binary search then borrow | binding |
-| `oracle_aggregator::price_feed::source_id`, `from`, `price_and_timestamp_ms` | field reads | binding; F4 |
+| `oracle_aggregator::price_feed::from`, `price_and_timestamp_ms` | field reads | feed-origin binding; the price leg |
 | `ifixed::one`, `is_neg`, `abs`, `add`, `sub` | read 2026-09-19 | encoding |
 | `authority::for` | field read | custody binding |
 
@@ -204,10 +195,9 @@ the table records what each call does that the proof does not already pin.
 - The funding classifier is now the venue's arithmetic, so the funding-credit
   and funding-cost cases of the controlled health gate rehearse a proof
   rather than test an assumption.
-- The Pyth chain is the open item: the adapter cannot run against mainnet
-  until F4 is decided and implemented.
 - The ABI gate now lists every function the adapter calls (six were missing;
-  `calculate_position_funding_internal` is no longer called).
+  `calculate_position_funding_internal`, `price_feed::source_id` and the Pyth
+  modules are no longer called).
 
 ## Appendix: settlement model
 

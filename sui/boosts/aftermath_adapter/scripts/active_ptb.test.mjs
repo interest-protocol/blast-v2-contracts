@@ -8,7 +8,7 @@ const input = (operation) => ({
     productType: `${address(1)}::product::Product<${address(1)}::tags::Long2x>`,
     collateralType: `${address(3)}::usdc::USDC`,
     objects: Object.fromEntries(['vault', 'protocol', 'account', 'registry', 'clearingHouse',
-        'baseOracle', 'collateralOracle', 'basePriceInfo', 'collateralPriceInfo', 'clock', 'inputCoin']
+        'baseOracle', 'collateralOracle', 'clock', 'inputCoin']
         .map((role, i) => [role, address(10 + i)])),
     minimumOutput: '1', maximumFeeBps: '30', deadlineMs: '100000',
 });
@@ -23,7 +23,7 @@ const terminal = (operation) => {
     const keys = operation === 'begin_shutdown' ? ['vault', 'protocol', 'authority', 'adminCap']
         : operation === 'redeem_shutdown' ? ['vault', 'protocol', 'inputCoin', 'clock']
         : operation === 'finalize_shutdown' ? ['vault', 'protocol', 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle', 'clock']
-        : ['vault', 'protocol', 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle', 'basePriceInfo', 'collateralPriceInfo', 'clock'];
+        : ['vault', 'protocol', 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle', 'clock'];
     value.objects = Object.fromEntries(keys.map((key) => [key, value.objects[key]]));
     return value;
 };
@@ -69,9 +69,9 @@ test('mint and redemption bind public argument order and transfer only the retur
         const plan = buildActivePlan(value);
         assert.equal(plan.commands[0].target, `${address(1)}::operations::${operation}`);
         assert.deepEqual(plan.commands[0].arguments.slice(-5), [`@${value.objects.inputCoin}`, '1', '30', '100000', `@${value.objects.clock}`]);
-        assert.deepEqual(plan.commands[0].arguments.slice(0, 9),
+        assert.deepEqual(plan.commands[0].arguments.slice(0, 7),
             ['vault', 'protocol', 'account', 'registry', 'clearingHouse', 'baseOracle',
-                'collateralOracle', 'basePriceInfo', 'collateralPriceInfo'].map((key) => `@${value.objects[key]}`));
+                'collateralOracle'].map((key) => `@${value.objects[key]}`));
         const args = renderUnsignedPtbArgs(value);
         assert.deepEqual(args.slice(-3), ['--serialize-unsigned-transaction', '--sender', `@${address(2)}`]);
         assert(!args.includes('--gas-budget'));
@@ -82,7 +82,7 @@ test('mint and redemption bind public argument order and transfer only the retur
 test('rebalance contains only bound objects, not witness, trade side, size or fee choices', () => {
     const value = input('rebalance');
     const plan = buildActivePlan(value);
-    assert.equal(plan.commands[0].arguments.length, 10);
+    assert.equal(plan.commands[0].arguments.length, 8);
     assert.equal(plan.commands[0].assign, null);
     assert.deepEqual(plan.transfers, []);
     assert.throws(() => buildActivePlan({...value, side: 'short'}), /unexpected field/);
@@ -101,7 +101,7 @@ test('both direction types compose returned values through mint-buy and sell-red
                 assert.equal(plan.commands[1].arguments[3], 'shares');
                 assert.deepEqual(plan.transfers, ['purchase.0', 'purchase.1']);
             } else {
-                assert.equal(plan.commands[1].arguments[9], 'shares');
+                assert.equal(plan.commands[1].arguments[7], 'shares');
                 assert.deepEqual(plan.transfers, ['result']);
             }
             assert(plan.commands.some((c) => c.typeArguments.includes(`${address(1)}::blast_boost::BlastBoost<${value.productType}>`)));

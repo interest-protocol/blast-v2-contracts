@@ -1255,7 +1255,7 @@ fun vault_initialized_event_records_every_activation_primitive() {
     );
     events::vault_initialized<Product>(
         @0xA.to_id(),
-        venue_account::new_binding(@0xB.to_id(), 27, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id()),
+        venue_account::new_binding(@0xB.to_id(), 27, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id(), @0xF1.to_id(), @0xF2.to_id()),
         28,
         29,
         30,
@@ -1287,7 +1287,7 @@ fun vault_initialized_event_records_every_activation_primitive() {
     assert_eq!(vault_id, @0xA.to_id());
     assert_eq!(
         binding,
-        venue_account::new_binding(@0xB.to_id(), 27, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id()),
+        venue_account::new_binding(@0xB.to_id(), 27, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id(), @0xF1.to_id(), @0xF2.to_id()),
     );
     assert_eq!(seed_amount, 28);
     assert_eq!(seed_venue_equity, 29);
@@ -1812,7 +1812,7 @@ macro fun next_tx($self: &mut Fixture, $sender: address, $body: |&mut Fixture|) 
 
 fun funding_binding(): Binding {
     venue_account::new_binding(
-        @0xB.to_id(), 7, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id(),
+        @0xB.to_id(), 7, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id(), @0xF1.to_id(), @0xF2.to_id(),
     )
 }
 
@@ -1919,6 +1919,8 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         @0xD.to_id(),
         @0xE.to_id(),
         @0xF.to_id(),
+        @0xF1.to_id(),
+        @0xF2.to_id(),
     );
     let admin_cap = authority::new_for_testing<ACCOUNT, AdminRole>(@0xB.to_id(), scenario.ctx());
     let seeded = observation::new_position(

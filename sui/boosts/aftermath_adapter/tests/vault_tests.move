@@ -579,7 +579,7 @@ fun issue_with_policy<Product>(
 /// A bound account with a flat, order-free checkpoint and a minted admin cap; no test here reads the venue.
 fun fixture_venue_account(ctx: &mut TxContext): VenueAccount {
     let binding = venue_account::new_binding(
-        @0xB.to_id(), 7, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id(),
+        @0xB.to_id(), 7, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id(), @0xF1.to_id(), @0xF2.to_id(),
     );
     let admin_cap = authority::new_for_testing<ACCOUNT, AdminRole>(@0xB.to_id(), ctx);
     venue_account::new(

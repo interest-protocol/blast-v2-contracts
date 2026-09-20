@@ -45,16 +45,13 @@ public(package) fun seed_position<Product, Collateral>(
     mut clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
-    base_price_info: &PriceInfoObject,
-    collateral_price_info: &PriceInfoObject,
     seed_reserve: u64,
     clock: &Clock,
     ctx: &TxContext,
 ): ClearingHouse<Collateral> {
     binding.update_funding_when_due(&mut clearing_house, base_oracle, clock);
     let (flat_observation, _) = snapshot::capture(
-        binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
-        base_price_info, collateral_price_info, clock,
+        binding, account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
     let (target_base, max_order_base, seed) = issuance.seed_terms(flat_observation, seed_reserve);
 
@@ -161,8 +158,6 @@ public(package) fun rebalance_orders<Product, Collateral>(
     mut clearing_house: ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
-    base_price_info: &PriceInfoObject,
-    collateral_price_info: &PriceInfoObject,
     binding: &Binding,
     terms: &OrderTerms,
     plan: &mut RebalancePlan<Product>,
@@ -182,8 +177,7 @@ public(package) fun rebalance_orders<Product, Collateral>(
         clearing_house = next_market;
 
         let (after, after_checkpoint) = snapshot::capture(
-            binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
-            base_price_info, collateral_price_info, clock,
+            binding, account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
         ).into_observation();
         fill.assert_checkpoint(terms, &checkpoint, &after_checkpoint);
         vault.state().accept_rebalance_fill(plan, order, after, fill.filled, clock.timestamp_ms());
@@ -627,7 +621,5 @@ use fun ifixed::is_neg as u256.is_neg;
 use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 
 use perpetuals::{account::Account, authority::ACCOUNT, clearing_house::ClearingHouse, market, registry::Registry};
-
-use pyth::price_info::PriceInfoObject;
 
 use sui::clock::Clock;
