@@ -339,7 +339,7 @@ fun insolvent_capture_still_supplies_fresh_close_only_valuation() {
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
-    let captured = snapshot::captured_health_for_testing(initial_checkpoint(), 0, false);
+    let captured = snapshot::captured_health_for_testing(initial_checkpoint(), 0, false, 0, true, true);
     let base = captured.base_price_observation();
     let collateral = captured.collateral_price_observation();
     let (side, max_order_base, base_price, collateral_price) =
@@ -933,7 +933,7 @@ fun unwind_terms_close_a_long_with_an_ask_at_the_capped_size() {
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
-    let captured = snapshot::captured_health_for_testing(initial_checkpoint(), 0, false);
+    let captured = snapshot::captured_health_for_testing(initial_checkpoint(), 0, false, 0, true, true);
 
     let (terms, remaining, before) =
         orders::unwind_terms_for_testing(&vault, &captured, REFERENCE_TIME_MS, 1_800_000_000_000, true);
@@ -957,7 +957,7 @@ fun unwind_terms_reject_a_checkpoint_with_resting_orders() {
     let resting = checkpoint::checkpoint_for_testing(
         0, ALLOCATED_FIXED, ONE_FIXED, 1, RATE, RATE, RATE, RATE, LOT_SIZE, 0, 0, 1, 0, false, 1, 1, 1,
     );
-    let captured = snapshot::captured_health_for_testing(resting, 0, false);
+    let captured = snapshot::captured_health_for_testing(resting, 0, false, 0, true, true);
 
     orders::unwind_terms_for_testing(&vault, &captured, REFERENCE_TIME_MS, 1_800_000_000_000, true);
 
@@ -970,7 +970,7 @@ fun unwind_terms_reject_a_checkpoint_with_resting_orders() {
 fun unwind_terms_require_an_unwinding_vault_before_reading_orders() {
     let mut fixture = start();
     let vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let captured = snapshot::captured_health_for_testing(initial_checkpoint(), 0, false);
+    let captured = snapshot::captured_health_for_testing(initial_checkpoint(), 0, false, 0, true, true);
 
     orders::unwind_terms_for_testing(&vault, &captured, REFERENCE_TIME_MS, 1_800_000_000_000, true);
 

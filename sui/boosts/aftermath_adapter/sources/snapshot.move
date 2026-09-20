@@ -223,6 +223,10 @@ fun position_economics(
 /// not reading. Aftermath feeds carry no confidence interval.
 fun oracle_leg(feed: &PriceFeed, venue_price: u256): (u64, u64, bool) {
     let (feed_price, timestamp) = feed.price_and_timestamp_ms();
+    oracle_leg_decoded(feed_price, timestamp, venue_price)
+}
+
+fun oracle_leg_decoded(feed_price: u128, timestamp: u64, venue_price: u256): (u64, u64, bool) {
     assert!(
         (feed_price as u256) == venue_price,
         blast_boosts_aftermath::errors::oracle_observation_mismatch!(),
@@ -317,23 +321,27 @@ fun position_signs_coherent_decoded(
 // === Test-Only Functions ===
 
 /// Builds a normalized authenticated post-capture fixture around a real raw
-/// checkpoint. Tests vary only equity and margin; all other objective facts
-/// are the standard healthy 2x long fixture used by connected Vault tests.
+/// checkpoint. Tests vary only equity and the venue-readiness facts; all other
+/// objective facts are the standard healthy 2x long fixture used by connected
+/// Vault tests.
 #[test_only]
 public fun captured_health_for_testing(
     checkpoint: Checkpoint,
     venue_equity: u64,
     margin_safe: bool,
+    pending_order_count: u64,
+    venue_operational: bool,
+    economics_valid: bool,
 ): CapturedSnapshot {
     CapturedSnapshot {
         venue_equity,
         position_base: 1_800,
         lot_size: 1,
         side: policy::long(),
-        pending_order_count: 0,
+        pending_order_count,
         margin_safe,
-        venue_operational: true,
-        economics_valid: true,
+        venue_operational,
+        economics_valid,
         base_price: 1_000_000_000,
         base_timestamp: 1_000,
         collateral_price: 1_000_000_000,
@@ -347,6 +355,11 @@ public fun captured_health_for_testing(
 #[test_only]
 public fun normalize_price_for_testing(value: u256): (u64, bool) {
     ifixed_math::fixed_to_u64_down(value, 9)
+}
+
+#[test_only]
+public fun oracle_leg_for_testing(feed_price: u128, timestamp: u64, venue_price: u256): (u64, u64, bool) {
+    oracle_leg_decoded(feed_price, timestamp, venue_price)
 }
 
 #[test_only]

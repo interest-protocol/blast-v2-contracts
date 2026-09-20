@@ -9,10 +9,12 @@ fun signed_funding_cost_crosses_allocated_zero_without_becoming_unresolved() {
     let before = checkpoint(10, 5, 5, 6, 7, 8, 9);
     let after = checkpoint(10, 3, 7, 8, 7, 8, 9);
     let change = before.classify_signed_funding_for_testing(&after, false, 5, true, 3);
-    let (has, cost, raw, _, clean) =
+    let (has, cost, raw, amount, clean) =
         (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
     assert!(has && cost && clean);
     assert_eq!(raw, 8);
+    // A cost of 8 raw IFixed units rounds up to one collateral atom.
+    assert_eq!(amount, 1);
 }
 
 #[test]
@@ -20,10 +22,12 @@ fun signed_funding_credit_crosses_allocated_zero_without_becoming_unresolved() {
     let before = checkpoint(10, 5, 5, 6, 7, 8, 9);
     let after = checkpoint(10, 3, 7, 8, 7, 8, 9);
     let change = before.classify_signed_funding_for_testing(&after, true, 5, false, 3);
-    let (has, cost, raw, _, clean) =
+    let (has, cost, raw, amount, clean) =
         (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
     assert!(has && !cost && clean);
     assert_eq!(raw, 8);
+    // A credit of 8 raw IFixed units floors to nothing.
+    assert_eq!(amount, 0);
 }
 
 #[test]
@@ -31,10 +35,24 @@ fun signed_funding_less_negative_allocation_is_a_credit() {
     let before = checkpoint(10, 5, 5, 6, 7, 8, 9);
     let after = checkpoint(10, 3, 7, 8, 7, 8, 9);
     let change = before.classify_signed_funding_for_testing(&after, true, 5, true, 3);
-    let (has, cost, raw, _, clean) =
+    let (has, cost, raw, amount, clean) =
         (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
     assert!(has && !cost && clean);
     assert_eq!(raw, 2);
+    assert_eq!(amount, 0);
+}
+
+#[test]
+fun signed_funding_deeper_negative_allocation_is_a_cost() {
+    let before = checkpoint(10, 5, 5, 6, 7, 8, 9);
+    let after = checkpoint(10, 3, 7, 8, 7, 8, 9);
+    let change = before.classify_signed_funding_for_testing(&after, true, 3, true, 5);
+    let (has, cost, raw, amount, clean) =
+        (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
+    assert!(has && cost && clean);
+    assert_eq!(raw, 2);
+    // A cost of 2 raw IFixed units rounds up to one collateral atom.
+    assert_eq!(amount, 1);
 }
 
 // The fixtures below hold one raw unit of base at a raw unit collateral
@@ -148,9 +166,11 @@ fun wrong_funding_delta_and_inactive_snapshot_transition_are_unexpected() {
     let before = checkpoint(10, 1_000, 1_005, 6, 5, 8, 9);
     let wrong_delta = checkpoint(10, 1_999, 5, 8, 5, 8, 9);
     let wrong_side = checkpoint(10, 2_000, 1_005, 8, 5, 8, 9);
+    let wrong_short = checkpoint(10, 2_000, 5, 9, 5, 8, 9);
 
     assert!(before.classify_change_for_testing(&wrong_delta, 1).is_unexpected_for_testing());
     assert!(before.classify_change_for_testing(&wrong_side, 1).is_unexpected_for_testing());
+    assert!(before.classify_change_for_testing(&wrong_short, 1).is_unexpected_for_testing());
 }
 
 #[test]
@@ -207,10 +227,129 @@ fun every_checkpoint_guard_field_blocks_an_otherwise_matching_funding_delta() {
 fun market_rate_or_lot_change_blocks_funding_even_when_the_delta_matches() {
     let before = checkpoint(10, 1_000, 1_007, 6, 7, 8, 9);
     let market_rate_changed = checkpoint::checkpoint_for_testing(10, 2_000, 1, 2, 7, 8, 99, 8, 9, 10, 11, 12, 13, false, 14, 15, 16);
+    let short_rate_changed = checkpoint::checkpoint_for_testing(10, 2_000, 1, 2, 7, 8, 7, 99, 9, 10, 11, 12, 13, false, 14, 15, 16);
     let lot_changed = checkpoint::checkpoint_for_testing(10, 2_000, 1, 2, 7, 8, 7, 8, 99, 10, 11, 12, 13, false, 14, 15, 16);
 
     assert!(before.classify_change_for_testing(&market_rate_changed, 1).is_unexpected_for_testing());
+    assert!(before.classify_change_for_testing(&short_rate_changed, 1).is_unexpected_for_testing());
     assert!(before.classify_change_for_testing(&lot_changed, 1).is_unexpected_for_testing());
+}
+
+#[test]
+fun a_funding_cost_too_wide_for_collateral_atoms_is_carried_raw_but_not_clean() {
+    // One raw unit above the widest cost that rounds up into a u64 atom count.
+    let d = (std::u64::max_value!() as u256) * 1_000_000_000_000 + 1;
+    let before = checkpoint(10, d, 5, 6, 5 + d, 8, 9);
+    let after = checkpoint(10, 0, 5 + d, 8, 5 + d, 8, 9);
+    let change = before.classify_change_for_testing(&after, 1);
+
+    assert!(change.is_cost());
+    assert_eq!(change.raw_amount(), d);
+    assert!(!change.has_funding());
+    assert_eq!(change.amount(), 0);
+    assert!(!change.is_clean());
+}
+
+#[test]
+fun funding_width_is_exact_at_the_u64_atom_boundary_per_rounding_direction() {
+    // A cost of exactly u64::max atoms rounds up to itself.
+    let cost_raw = (std::u64::max_value!() as u256) * 1_000_000_000_000;
+    let cost = checkpoint(10, cost_raw, 5, 6, 5 + cost_raw, 8, 9)
+        .classify_change_for_testing(&checkpoint(10, 0, 5 + cost_raw, 8, 5 + cost_raw, 8, 9), 1);
+    assert!(cost.is_cost() && cost.has_funding());
+    assert_eq!(cost.amount(), std::u64::max_value!());
+
+    // A credit just below the next atom floors to u64::max.
+    let credit_raw = cost_raw + 999_999_999_999;
+    let credit = checkpoint(10, 0, 5 + credit_raw, 6, 5, 8, 9)
+        .classify_change_for_testing(&checkpoint(10, credit_raw, 5, 8, 5, 8, 9), 1);
+    assert!(!credit.is_cost() && credit.has_funding());
+    assert_eq!(credit.amount(), std::u64::max_value!());
+
+    // The first whole atom above u64::max is unrepresentable as a credit.
+    let wide_raw = ((std::u64::max_value!() as u256) + 1) * 1_000_000_000_000;
+    let wide = checkpoint(10, 0, 5 + wide_raw, 6, 5, 8, 9)
+        .classify_change_for_testing(&checkpoint(10, wide_raw, 5, 8, 5, 8, 9), 1);
+    assert!(!wide.is_cost() && !wide.has_funding());
+}
+
+#[test]
+fun a_credit_floors_its_sub_atom_remainder() {
+    let before = checkpoint(10, 0, 5 + 1_999_999_999_999, 6, 5, 8, 9);
+    let after = checkpoint(10, 1_999_999_999_999, 5, 8, 5, 8, 9);
+    let change = before.classify_change_for_testing(&after, 1);
+
+    assert!(change.has_funding());
+    assert_eq!(change.amount(), 1);
+    assert!(change.is_credit_for_testing());
+}
+
+#[test]
+fun an_allocated_move_without_refreshed_snapshots_is_not_preexisting_funding() {
+    let stored = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
+    let before = checkpoint(10, 1_500, 5, 6, 7, 8, 9);
+
+    assert!(stored.classify_preexisting_funding_for_testing(&before).is_unexpected_for_testing());
+    assert!(stored.classify_sync_change_for_testing(&before, &before, 1).is_unexpected_for_testing());
+}
+
+#[test]
+fun an_unchanged_held_side_rate_settles_nothing_even_when_the_other_side_refreshes() {
+    let before = checkpoint(10, 1_000, 5, 6, 5, 8, 9);
+    let refreshed = checkpoint(10, 1_000, 5, 8, 5, 8, 9);
+    let moved = checkpoint(10, 1_001, 5, 8, 5, 8, 9);
+
+    assert!(before.classify_change_for_testing(&refreshed, 1).is_unchanged_for_testing());
+    assert!(before.classify_change_for_testing(&moved, 1).is_unexpected_for_testing());
+}
+
+#[test]
+fun a_short_pays_when_the_short_rate_falls() {
+    let before = checkpoint(10, 2_000, 5, 1_006, 7, 6, 9);
+    let after = checkpoint(10, 1_000, 7, 6, 7, 6, 9);
+    let change = before.classify_change_signed_for_testing(&after, true, false, false, 1);
+
+    assert!(change.is_cost());
+    assert_eq!(change.raw_amount(), 1_000);
+}
+
+#[test]
+#[expected_failure(arithmetic_error, location = blast_boosts_aftermath::checkpoint)]
+fun settlement_replay_aborts_where_the_venue_product_overflows() {
+    let rate_delta = 1u256 << 60;
+    let before = checkpoint::checkpoint_for_testing(
+        10, 1_000, 1u256 << 200, 2, 5, 6, 5 + rate_delta, 8, 9, 10, 11, 12, 13, false, 14, 15, 16,
+    );
+    let after = checkpoint::checkpoint_for_testing(
+        10, 999, 1u256 << 200, 2, 5 + rate_delta, 8, 5 + rate_delta, 8, 9, 10, 11, 12, 13, false, 14, 15, 16,
+    );
+
+    before.classify_change_for_testing(&after, 1);
+}
+
+#[test]
+fun net_funding_refuses_an_overflowing_gross_sum() {
+    let half = (1u256 << 255) - 1;
+    let preexisting = checkpoint(10, 1_000, 5, 6, 7, 8, 9)
+        .classify_signed_funding_for_testing(&checkpoint(10, 1_000, 7, 8, 7, 8, 9), false, half, true, half);
+    assert!(preexisting.is_cost());
+    assert_eq!(preexisting.raw_amount(), std::u256::max_value!() - 1);
+    let settled = checkpoint(10, 2_000, 5, 6, 1_005, 8, 9)
+        .classify_change_for_testing(&checkpoint(10, 1_000, 1_005, 8, 1_005, 8, 9), 1);
+    assert!(settled.is_cost());
+
+    assert!(preexisting.net_funding(settled).is_unexpected_for_testing());
+}
+
+#[test]
+fun an_unchanged_change_is_expected() {
+    checkpoint::unchanged_change().assert_expected();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EUnresolvedCheckpoint, location = blast_boosts_aftermath::checkpoint)]
+fun an_unexpected_change_is_refused_as_unresolved() {
+    checkpoint::unexpected_change().assert_expected();
 }
 
 #[test]
@@ -304,15 +443,6 @@ fun health_usd_conversion_keeps_the_same_max_width_input_as_an_invalid_fact() {
 }
 
 #[test]
-fun health_mark_normalization_preserves_an_unrepresentable_mark_as_invalid() {
-    let raw = ((std::u64::max_value!() as u256) + 1) * 1_000_000_000;
-    let (mark, valid) = snapshot::normalize_price_for_testing(raw);
-
-    assert_eq!(mark, 0);
-    assert!(!valid);
-}
-
-#[test]
 fun negative_allocated_collateral_is_a_liability_not_an_invalid_observation() {
     let (equity, valid) = snapshot::signed_equity_for_testing(
         10, true, 2_000_000_000_001, false, 5_000_000_000_000,
@@ -387,6 +517,201 @@ fun usd_round_up_accepts_the_largest_representable_result_and_refuses_one_more()
     assert!(!ok_12);
 }
 
+#[test]
+fun a_ready_capture_becomes_the_core_observation_and_its_checkpoint() {
+    let checkpoint = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
+    let captured = snapshot::captured_health_for_testing(checkpoint, 2_500, true, 0, true, true);
+    assert_eq!(captured.checkpoint(), checkpoint);
+    assert_eq!(captured.collateral_fixed(), 1_000_000_000_000_000_000);
+
+    let (observation, read_with) = captured.into_observation();
+    let expected = observation::new_position(
+        2_500,
+        1_800,
+        1,
+        policy::long(),
+        observation::new_price(1_000_000_000, 0, 1_000),
+        observation::new_price(1_000_000_000, 0, 1_000),
+        1_000_000_000,
+    );
+    assert_eq!(observation, expected);
+    assert_eq!(read_with, checkpoint);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EVenueNotReady, location = blast_boosts_aftermath::snapshot)]
+fun a_capture_under_margin_is_refused_for_a_priced_operation() {
+    snapshot::captured_health_for_testing(checkpoint(10, 1_000, 5, 6, 7, 8, 9), 2_500, false, 0, true, true)
+        .into_observation();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EVenueNotReady, location = blast_boosts_aftermath::snapshot)]
+fun a_capture_with_an_open_order_is_refused_for_a_priced_operation() {
+    snapshot::captured_health_for_testing(checkpoint(10, 1_000, 5, 6, 7, 8, 9), 2_500, true, 1, true, true)
+        .into_observation();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EVenueNotReady, location = blast_boosts_aftermath::snapshot)]
+fun a_capture_of_a_paused_or_frozen_market_is_refused_for_a_priced_operation() {
+    snapshot::captured_health_for_testing(checkpoint(10, 1_000, 5, 6, 7, 8, 9), 2_500, true, 0, false, true)
+        .into_observation();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::snapshot)]
+fun unrepresentable_economics_are_refused_before_venue_readiness() {
+    snapshot::captured_health_for_testing(checkpoint(10, 1_000, 5, 6, 7, 8, 9), 2_500, false, 1, false, false)
+        .into_observation();
+}
+
+#[test]
+fun an_oracle_leg_is_the_bound_feed_price_in_nine_decimals_with_its_timestamp() {
+    let (price, timestamp, representable) =
+        snapshot::oracle_leg_for_testing(821_520_640_000_000_000, 1_000, 821_520_640_000_000_000);
+
+    assert_eq!(price, 821_520_640);
+    assert_eq!(timestamp, 1_000);
+    assert!(representable);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EOracleObservationMismatch, location = blast_boosts_aftermath::snapshot)]
+fun an_oracle_leg_refuses_a_venue_price_the_bound_feed_does_not_show() {
+    snapshot::oracle_leg_for_testing(821_520_640_000_000_000, 1_000, 821_520_640_000_000_001);
+}
+
+#[test]
+fun an_oracle_leg_too_wide_for_nine_decimals_is_an_invalid_fact_not_an_abort() {
+    let wide = ((std::u64::max_value!() as u256) + 1) * 1_000_000_000;
+    let (price, timestamp, representable) = snapshot::oracle_leg_for_testing(wide as u128, 1_000, wide);
+
+    assert_eq!(price, 0);
+    assert_eq!(timestamp, 1_000);
+    assert!(!representable);
+}
+
+#[test]
+fun signed_equity_is_invalid_at_a_zero_collateral_price() {
+    let (equity, valid) = snapshot::signed_equity_for_testing(10, false, 0, false, 0, 0);
+
+    assert_eq!(equity, 0);
+    assert!(!valid);
+}
+
+#[test]
+fun signed_equity_is_invalid_when_allocated_collateral_does_not_fit_u64_atoms() {
+    let wide = ((std::u64::max_value!() as u256) + 1) * 1_000_000_000_000;
+    let (equity, valid) = snapshot::signed_equity_for_testing(0, false, wide, false, 0, 1_000_000_000_000_000_000);
+
+    assert_eq!(equity, 0);
+    assert!(!valid);
+}
+
+#[test]
+fun signed_equity_is_invalid_when_a_liability_rounds_up_past_u64_atoms() {
+    let crossing = (std::u64::max_value!() as u256) * 1_000_000_000_000 + 1;
+    let (equity, valid) =
+        snapshot::signed_equity_for_testing(0, true, crossing, false, 0, 1_000_000_000_000_000_000);
+
+    assert_eq!(equity, 0);
+    assert!(!valid);
+}
+
+#[test]
+fun signed_equity_is_invalid_when_pnl_does_not_fit_u64_atoms() {
+    let wide = ((std::u64::max_value!() as u256) + 1) * 1_000_000_000_000;
+    let (equity, valid) = snapshot::signed_equity_for_testing(0, false, 0, false, wide, 1_000_000_000_000_000_000);
+
+    assert_eq!(equity, 0);
+    assert!(!valid);
+}
+
+#[test]
+fun signed_equity_is_invalid_when_the_pnl_usd_conversion_overflows() {
+    let (equity, valid) =
+        snapshot::signed_equity_for_testing(0, false, 0, false, std::u256::max_value!(), 1);
+
+    assert_eq!(equity, 0);
+    assert!(!valid);
+}
+
+#[test]
+fun equity_exactly_consumed_by_liabilities_is_a_valid_zero() {
+    let (equity, valid) = snapshot::signed_equity_for_testing(
+        4, true, 2_000_000_000_000, true, 2_000_000_000_000, 1_000_000_000_000_000_000,
+    );
+
+    assert_eq!(equity, 0);
+    assert!(valid);
+}
+
+#[test]
+fun signed_equity_rounds_pnl_against_the_vault_at_a_depegged_collateral_price() {
+    // A $1 loss at $0.95 is 1.052631578947368422 collateral, charged as 1_052_632 atoms.
+    let (loss_equity, loss_valid) = snapshot::signed_equity_for_testing(
+        2_000_000, false, 0, true, 1_000_000_000_000_000_000, 950_000_000_000_000_000,
+    );
+    assert_eq!(loss_equity, 947_368);
+    assert!(loss_valid);
+
+    // A $1 gain at $0.95 is 1.052631578947368421 collateral, credited as 1_052_631 atoms.
+    let (gain_equity, gain_valid) = snapshot::signed_equity_for_testing(
+        0, false, 0, false, 1_000_000_000_000_000_000, 950_000_000_000_000_000,
+    );
+    assert_eq!(gain_equity, 1_052_631);
+    assert!(gain_valid);
+}
+
+#[test]
+fun sign_coherence_rejects_half_flat_and_wrong_side_positions() {
+    // (base_negative, quote_negative, base_zero, quote_zero, is_long_or_flat)
+    assert!(!snapshot::position_signs_coherent_for_testing(false, false, false, true, true));
+    assert!(snapshot::position_signs_coherent_for_testing(false, false, true, true, false));
+    assert!(!snapshot::position_signs_coherent_for_testing(true, false, false, false, true));
+    assert!(!snapshot::position_signs_coherent_for_testing(false, false, false, false, false));
+    assert!(!snapshot::position_signs_coherent_for_testing(false, true, false, false, false));
+}
+
+#[test]
+fun price_normalization_accepts_the_largest_u64_price() {
+    let (price, valid) = snapshot::normalize_price_for_testing(18_446_744_073_709_551_615_000_000_000);
+
+    assert_eq!(price, std::u64::max_value!());
+    assert!(valid);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::ifixed_math)]
+fun raw_normalization_round_up_refuses_the_first_value_past_u64() {
+    ifixed_math::normalize_raw_fixed_for_testing(18_446_744_073_709_551_615_000_000_000_001, 6, true);
+}
+
+#[test]
+fun usd_conversion_at_a_zero_collateral_price_is_invalid_in_both_rounding_directions() {
+    let (down, down_ok) = ifixed_math::usd_fixed_to_collateral_for_testing(1_000_000_000_000_000_000, 0, false);
+    assert_eq!(down, 0);
+    assert!(!down_ok);
+    let (up, up_ok) = ifixed_math::usd_fixed_to_collateral_for_testing(1_000_000_000_000_000_000, 0, true);
+    assert_eq!(up, 0);
+    assert!(!up_ok);
+}
+
+#[test]
+fun usd_conversion_is_invalid_when_either_scaled_part_overflows() {
+    // The whole part times one IFixed overflows.
+    let (whole, whole_ok) = ifixed_math::usd_fixed_to_collateral_for_testing(std::u256::max_value!(), 1, false);
+    assert_eq!(whole, 0);
+    assert!(!whole_ok);
+    // The fractional part times one IFixed overflows.
+    let (fraction, fraction_ok) = ifixed_math::usd_fixed_to_collateral_for_testing(
+        std::u256::max_value!() - 1, std::u256::max_value!(), false,
+    );
+    assert_eq!(fraction, 0);
+    assert!(!fraction_ok);
+}
+
 // === Test Helpers ===
 
 /// One raw unit long; the quote carries the base's sign.
@@ -451,8 +776,8 @@ fun flat_checkpoint(
 
 // === Imports ===
 
-use blast_boosts_aftermath::{checkpoint::{Self, Checkpoint}, ifixed_math, snapshot};
+use blast_boosts_aftermath::{checkpoint::{Self, Checkpoint}, errors, ifixed_math, snapshot};
 
-use blast_boosts_core::policy;
+use blast_boosts_core::{observation, policy};
 
 use std::unit_test::assert_eq;
