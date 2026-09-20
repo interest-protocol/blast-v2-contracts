@@ -248,6 +248,68 @@ fun threshold_validation_precedes_tolerance_and_improvement_validation() {
     policy::new_rebalance_policy(0, 0, 0, 0, 10_000, 0, 0);
 }
 
+#[test]
+#[expected_failure(abort_code = errors::EInvalidMaxSlippageBps, location = blast_boosts_core::policy)]
+fun max_slippage_validation_precedes_improvement_validation() {
+    policy::new_rebalance_policy(0, 2, 4, 5, 10_000, 9_999, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidEmergencyMaxSlippageBps, location = blast_boosts_core::policy)]
+fun emergency_validation_precedes_improvement_validation() {
+    policy::new_rebalance_policy(0, 2, 4, 5, 0, 10_000, 0);
+}
+
+/// Every comparison cross-multiplies, so a zero NAV never divides and reads as infinite leverage.
+#[test]
+fun leverage_predicates_against_zero_nav_do_not_wrap() {
+    let value = standard_policy();
+
+    assert!(!value.is_leverage_below_band(0, 0));
+    assert!(!value.is_leverage_below_band(1, 0));
+    assert!(value.is_leverage_above_band_for_testing(1, 0));
+    assert!(!value.is_leverage_above_band_for_testing(0, 0));
+    assert!(value.is_leverage_within_band(0, 0));
+    assert!(value.is_leverage_at_most_target(0, 0));
+    assert!(!value.is_leverage_below_max(0, 0));
+    assert!(value.is_leverage_above_max(1, 0));
+}
+
+#[test]
+fun maximum_width_leverage_comparisons_do_not_wrap() {
+    let max = std::u64::max_value!();
+    let value = standard_policy();
+
+    assert!(value.is_leverage_below_band(max, max));
+    assert!(!value.is_leverage_within_band(max, max));
+    assert!(value.is_leverage_above_max(max, 1));
+    assert!(!value.is_leverage_above_max(1, max));
+    assert!(value.is_leverage_at_most_target(max, max));
+}
+
+#[test]
+fun at_most_target_is_inclusive_at_the_target_edge() {
+    let value = standard_policy();
+
+    assert!(value.is_leverage_at_most_target(19_999, 10_000));
+    assert!(value.is_leverage_at_most_target(20_000, 10_000));
+    assert!(!value.is_leverage_at_most_target(20_001, 10_000));
+    // The comparison is exact: one atom over the edge on a large NAV still counts.
+    let nav = std::u64::max_value!() / 3;
+    let edge = ((nav as u128) * 20_000 / 10_000) as u64;
+    assert!(value.is_leverage_at_most_target(edge, nav));
+    assert!(!value.is_leverage_at_most_target(edge + 1, nav));
+}
+
+#[test]
+fun below_max_is_strict_at_the_max_edge() {
+    let value = standard_policy();
+
+    assert!(value.is_leverage_below_max(29_999, 10_000));
+    assert!(!value.is_leverage_below_max(30_000, 10_000));
+    assert!(!value.is_leverage_below_max(30_001, 10_000));
+}
+
 // === Private Functions ===
 
 fun standard_policy(): RebalancePolicy {

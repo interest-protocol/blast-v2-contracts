@@ -22,6 +22,16 @@ fun price_construction_rejects_zero_price() {
 }
 
 #[test]
+fun price_construction_accepts_maximum_values() {
+    let max = std::u64::max_value!();
+    let price = observation::new_price(max, max, max);
+
+    assert_eq!(price.price(), max);
+    assert_eq!(price.confidence(), max);
+    assert_eq!(price.publish_time_ms(), max);
+}
+
+#[test]
 fun long_position_construction_preserves_the_complete_observation() {
     let observation = observation::new_position(
         100, 20, 10, policy::long(), observation::new_price(3, 4, 5), observation::new_price(6, 7, 8), 9,
@@ -66,6 +76,36 @@ fun position_construction_rejects_zero_lot_size() {
 fun position_construction_rejects_a_partial_lot() {
     observation::new_position(
         100, 25, 10, policy::long(), observation::new_price(3, 4, 5), observation::new_price(6, 7, 8), 9,
+    );
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EInvalidPrice, location = blast_boosts_core::observation,
+)]
+fun position_construction_rejects_a_zero_mark() {
+    observation::new_position(
+        100, 20, 10, policy::long(), observation::new_price(3, 4, 5), observation::new_price(6, 7, 8), 0,
+    );
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EInvalidObservationLotSize, location = blast_boosts_core::observation,
+)]
+fun lot_size_validation_precedes_mark_validation() {
+    observation::new_position(
+        100, 20, 0, policy::long(), observation::new_price(3, 4, 5), observation::new_price(6, 7, 8), 0,
+    );
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EInvalidPrice, location = blast_boosts_core::observation,
+)]
+fun mark_validation_precedes_lot_multiple_validation() {
+    observation::new_position(
+        100, 25, 10, policy::long(), observation::new_price(3, 4, 5), observation::new_price(6, 7, 8), 0,
     );
 }
 
