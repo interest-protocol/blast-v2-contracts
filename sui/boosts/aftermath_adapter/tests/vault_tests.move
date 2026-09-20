@@ -18,20 +18,23 @@ const BASE_PER_NOTIONAL: u64 = 1_000;
 const LOT_SIZE: u64 = 1;
 const PRICE: u64 = 1_000_000_000;
 
-// === Product Witnesses ===
-/// Sealed product witness for the 2x currency.
-public struct Sui2x() has drop;
+// === Product Tags ===
+// Product tags carry no abilities, exactly like the published product tags;
+// issuing must not require any.
 
-/// Sealed product witness for the 5x currency.
-public struct Sui5x() has drop;
+/// Tag for the 2x currency.
+public struct Sui2x {}
 
-/// Tag for a production-constructible 2x product witness.
-public struct TaggedSui2x() has drop;
+/// Tag for the 5x currency.
+public struct Sui5x {}
 
-/// Tag for a production-constructible 5x product witness.
-public struct TaggedSui5x() has drop;
+/// A second 2x tag, to prove two tags never share a currency.
+public struct TaggedSui2x {}
 
-public struct Sui2xShort() has drop;
+/// A second 5x tag.
+public struct TaggedSui5x {}
+
+public struct Sui2xShort {}
 public struct Sui4x() has drop;
 public struct Sui6xShort() has drop;
 
@@ -508,12 +511,12 @@ fun start(roles: u64): Fixture {
 
 // === Fixture Helpers ===
 
-fun issue_and_share<Product: drop>(self: &mut Fixture, symbol: String) {
+fun issue_and_share<Product>(self: &mut Fixture, symbol: String) {
     self.issue_and_share_with_policy<Product>(symbol, standard_vault_policy(), 20_000);
 }
 
 /// Issues, activates on a seed at the policy's target leverage against a fixture venue account, and shares.
-fun issue_and_share_with_policy<Product: drop>(
+fun issue_and_share_with_policy<Product>(
     self: &mut Fixture,
     symbol: String,
     vault_policy: VaultPolicy,
@@ -542,11 +545,11 @@ fun activate_at<Product>(self: &mut Fixture, issuance: VaultIssuance<Product, SU
     (vault, seed_nav)
 }
 
-fun issue<Product: drop>(self: &mut Fixture, symbol: String): VaultIssuance<Product, SUI> {
+fun issue<Product>(self: &mut Fixture, symbol: String): VaultIssuance<Product, SUI> {
     self.issue_with_policy<Product>(symbol, standard_vault_policy())
 }
 
-fun issue_with_policy<Product: drop>(
+fun issue_with_policy<Product>(
     self: &mut Fixture,
     symbol: String,
     vault_policy: VaultPolicy,

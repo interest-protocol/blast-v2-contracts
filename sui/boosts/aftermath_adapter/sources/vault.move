@@ -66,7 +66,7 @@ public struct TerminalCashKey() has copy, drop, store;
 /// input: `package_admin` seals a validated Publisher and UpgradeCap that no
 /// other object can hold, so re-reading those fields here would prove nothing
 /// this package does not already own.
-public fun issue<Product: drop, Collateral>(
+public fun issue<Product, Collateral>(
     protocol: &Protocol,
     admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
     registry: &mut CoinRegistry,
