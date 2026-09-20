@@ -298,6 +298,42 @@ fun ordinary_unwind_never_rounds_raw_base_dust_to_a_whole_lot() {
 }
 
 #[test]
+#[expected_failure(abort_code = errors::EInvalidUnwindExposure, location = blast_boosts_aftermath::orders)]
+fun unwind_normalization_rejects_a_flat_position() {
+    orders::unwind_base_for_testing(0, true, 1, policy::long());
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidUnwindExposure, location = blast_boosts_aftermath::orders)]
+fun unwind_normalization_rejects_a_zero_lot() {
+    orders::unwind_base_for_testing(1_800_000_000_000, true, 0, policy::long());
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidUnwindExposure, location = blast_boosts_aftermath::orders)]
+fun unwind_normalization_rejects_a_fractional_lot() {
+    orders::unwind_base_for_testing(1_805_000_000_000, true, 10, policy::long());
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidUnwindExposure, location = blast_boosts_aftermath::orders)]
+fun unwind_normalization_rejects_a_long_position_on_a_short_vault() {
+    orders::unwind_base_for_testing(1_800_000_000_000, true, 1, policy::short());
+}
+
+#[test]
+fun unwind_normalization_accepts_the_largest_representable_base() {
+    let max = std::u64::max_value!();
+    assert_eq!(orders::unwind_base_for_testing((max as u256) * 1_000_000_000, true, 1, policy::long()), max);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidUnwindExposure, location = blast_boosts_aftermath::orders)]
+fun unwind_normalization_rejects_a_base_beyond_u64_atoms() {
+    orders::unwind_base_for_testing(((std::u64::max_value!() as u256) + 1) * 1_000_000_000, true, 1, policy::long());
+}
+
+#[test]
 fun insolvent_capture_still_supplies_fresh_close_only_valuation() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
@@ -635,6 +671,23 @@ fun venue_fee_bound_rejects_unrepresentable_addition_before_overflow() {
 }
 
 #[test]
+#[expected_failure(abort_code = blast_boosts_aftermath::errors::EVenueFeeUnusable, location = blast_boosts_aftermath::orders)]
+fun venue_fee_bound_rejects_a_priority_surcharge_above_one() {
+    orders::venue_fee_bound_for_testing(0, 1_000_000_000_000_000_001);
+}
+
+#[test]
+#[expected_failure(abort_code = blast_boosts_aftermath::errors::EVenueFeeUnusable, location = blast_boosts_aftermath::orders)]
+fun venue_fee_bound_rejects_a_combined_fee_above_one() {
+    orders::venue_fee_bound_for_testing(600_000_000_000_000_000, 500_000_000_000_000_000);
+}
+
+#[test]
+fun venue_fee_bound_accepts_a_combined_fee_of_exactly_one() {
+    assert_eq!(orders::venue_fee_bound_for_testing(500_000_000_000_000_000, 500_000_000_000_000_000), 10_000);
+}
+
+#[test]
 fun completed_redemption_burns_the_native_input_only_after_exact_cash_return() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
@@ -797,7 +850,132 @@ fun redemption_cash_checkpoint_rejects_inexact_payout() {
 fun active_order_uses_the_sealed_base_without_a_notional_round_trip() {
     assert_eq!(orders::active_order_size_for_testing(1_998, 1_000, 1, 0), 1_000);
     assert_eq!(orders::active_order_size_for_testing(998, 1_000, 1, 15), 998);
+}
+
+#[test]
+fun a_deadline_equal_to_now_is_still_open() {
     operations::assert_deadline_for_testing(1_000, 1_000);
+    operations::assert_deadline_for_testing(0, 0);
+}
+
+#[test]
+fun active_order_takes_the_whole_remainder_at_the_cap_and_a_whole_lot_multiple() {
+    assert_eq!(orders::active_order_size_for_testing(1_000, 1_000, 1, 0), 1_000);
+    assert_eq!(orders::active_order_size_for_testing(2_000, 1_000, 10, 0), 1_000);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EFillMismatch, location = blast_boosts_aftermath::orders)]
+fun active_order_rejects_a_zero_cap() {
+    orders::active_order_size_for_testing(1_000, 0, 1, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EFillMismatch, location = blast_boosts_aftermath::orders)]
+fun active_order_rejects_nothing_remaining() {
+    orders::active_order_size_for_testing(0, 1_000, 1, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EFillMismatch, location = blast_boosts_aftermath::orders)]
+fun active_order_rejects_a_zero_lot_before_dividing_by_it() {
+    orders::active_order_size_for_testing(1_000, 1_000, 0, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EFillMismatch, location = blast_boosts_aftermath::orders)]
+fun active_order_rejects_a_remainder_off_the_lot() {
+    orders::active_order_size_for_testing(105, 1_000, 10, 0);
+}
+
+#[test]
+fun active_terms_open_with_the_side_and_reduce_against_it() {
+    let mut fixture = start();
+    let vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_TIME_MS);
+    let position = plan.mint_position();
+
+    let (is_ask, reduce_only, max_order_base, lot_size, base_price, collateral_price) =
+        orders::active_terms(&vault, false, position).order_terms_fields();
+    assert!(!is_ask && !reduce_only);
+    assert_eq!(max_order_base, vault.state().max_order_base(&position));
+    assert_eq!(vector[lot_size, base_price, collateral_price], vector[LOT_SIZE, PRICE, PRICE]);
+
+    let (is_ask, reduce_only, _, _, _, _) = orders::active_terms(&vault, true, position).order_terms_fields();
+    assert!(is_ask && reduce_only);
+
+    destroy(plan);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+fun active_terms_of_a_short_vault_open_with_an_ask_and_reduce_with_a_bid() {
+    let mut fixture = start();
+    let vault = issue_and_activate_product_with_side(&mut fixture, OtherProduct(), initial_checkpoint(),
+        standard_vault_policy_for_side(policy::short()), policy::short());
+    let plan = vault.state().prepare_mint(position_observation_for_side(SEED_EQUITY, policy::short()), 1_000, vault.total_share_supply(), 997_000, REFERENCE_TIME_MS);
+    let position = plan.mint_position();
+
+    let (is_ask, reduce_only, _, _, _, _) = orders::active_terms(&vault, false, position).order_terms_fields();
+    assert!(is_ask && !reduce_only);
+    let (is_ask, reduce_only, _, _, _, _) = orders::active_terms(&vault, true, position).order_terms_fields();
+    assert!(!is_ask && reduce_only);
+
+    destroy(plan);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+fun unwind_terms_close_a_long_with_an_ask_at_the_capped_size() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    let captured = snapshot::captured_health_for_testing(initial_checkpoint(), 0, false);
+
+    let (terms, remaining, before) =
+        orders::unwind_terms_for_testing(&vault, &captured, REFERENCE_TIME_MS, 1_800_000_000_000, true);
+    let (is_ask, reduce_only, max_order_base, lot_size, base_price, collateral_price) = terms.order_terms_fields();
+    assert!(is_ask && reduce_only);
+    assert_eq!(vector[max_order_base, lot_size, base_price, collateral_price], vector[250 * BASE_PER_NOTIONAL, LOT_SIZE, PRICE, PRICE]);
+    assert_eq!(remaining, 1_800);
+    assert_eq!(before, initial_checkpoint());
+
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+fun unwind_terms_reject_a_checkpoint_with_resting_orders() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    let resting = checkpoint::checkpoint_for_testing(
+        0, ALLOCATED_FIXED, ONE_FIXED, 1, RATE, RATE, RATE, RATE, LOT_SIZE, 0, 0, 1, 0, false, 1, 1, 1,
+    );
+    let captured = snapshot::captured_health_for_testing(resting, 0, false);
+
+    orders::unwind_terms_for_testing(&vault, &captured, REFERENCE_TIME_MS, 1_800_000_000_000, true);
+
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_boosts_core::errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
+fun unwind_terms_require_an_unwinding_vault_before_reading_orders() {
+    let mut fixture = start();
+    let vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let captured = snapshot::captured_health_for_testing(initial_checkpoint(), 0, false);
+
+    orders::unwind_terms_for_testing(&vault, &captured, REFERENCE_TIME_MS, 1_800_000_000_000, true);
+
+    destroy(vault);
+    fixture.end();
 }
 
 /// The guard mirrors the pinned venue formula: the next update is the start of
@@ -943,6 +1121,24 @@ fun active_partial_fill_rejects_liquidation() {
 }
 
 #[test]
+#[expected_failure(abort_code = errors::EFillMismatch, location = blast_boosts_aftermath::orders)]
+fun active_partial_fill_rejects_a_zero_lot_before_dividing_by_it() {
+    orders::active_fill_for_testing(true, 100, 0, 60_000_000_000, 0, 0, 0, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EFillMismatch, location = blast_boosts_aftermath::orders)]
+fun active_partial_fill_rejects_a_bid_leak_on_an_ask() {
+    orders::active_fill_for_testing(false, 100, 10, 10_000_000_000, 100_000_000_000, 0, 0, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EOrdersPosted, location = blast_boosts_aftermath::orders)]
+fun posted_orders_are_reported_before_a_liquidation_in_the_same_session() {
+    orders::active_fill_for_testing(true, 100, 10, 0, 0, 1, 1, 1);
+}
+
+#[test]
 fun completed_mint_returns_native_shares_and_updates_the_same_treasury_supply() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
@@ -1071,6 +1267,24 @@ fun a_zero_order_cap_is_rejected_as_an_invalid_order_size() {
 }
 
 #[test]
+fun a_target_at_or_below_one_cap_is_a_single_order() {
+    assert_eq!(orders::order_sizes_for_testing(5, 10), vector[5]);
+    assert_eq!(orders::order_sizes_for_testing(10, 10), vector[10]);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidInitializationOrderSize, location = blast_boosts_aftermath::orders)]
+fun order_count_rejects_a_zero_cap_on_its_own() {
+    orders::order_count_for_testing(1, 0);
+}
+
+#[test]
+fun order_count_rounds_a_remainder_up() {
+    assert_eq!(orders::order_count_for_testing(17, 2), 9);
+    assert_eq!(orders::order_count_for_testing(16, 2), 8);
+}
+
+#[test]
 fun initialization_order_count_accepts_zero_remaining_and_the_fixed_maximum() {
     assert_eq!(orders::max_initialization_orders_for_testing(), 16);
     assert_eq!(orders::order_count_for_testing(0, 1), 0);
@@ -1110,6 +1324,18 @@ fun actual_fill_notional_uses_the_session_quote_and_rounds_against_the_vault() {
 #[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::orders)]
 fun actual_fill_notional_rejects_a_zero_collateral_price() {
     orders::actual_fill_notional_for_testing(1, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::orders)]
+fun actual_fill_notional_rejects_a_quote_beyond_u64_atoms() {
+    orders::actual_fill_notional_for_testing(std::u256::max_value!(), 1);
+}
+
+#[test]
+fun actual_fill_notional_does_not_round_an_exact_quote() {
+    assert_eq!(orders::actual_fill_notional_for_testing(30_000_000_000_000_000_000, 1_000_000_000), 30_000_000);
+    assert_eq!(orders::actual_fill_notional_for_testing(0, 1_000_000_000), 0);
 }
 
 #[test]
@@ -1299,6 +1525,19 @@ fun negative_execution_price_is_rejected() {
 #[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::orders)]
 fun unrepresentable_execution_price_is_rejected() {
     orders::execution_price_for_testing(std::u256::max_value!(), false, false);
+}
+
+#[test]
+fun execution_price_does_not_round_up_an_exact_price() {
+    assert_eq!(orders::execution_price_for_testing(2_000_000_000_000_000_000, true, false), 2_000_000_000);
+    let max = std::u64::max_value!();
+    assert_eq!(orders::execution_price_for_testing((max as u256) * 1_000_000_000, true, false), max);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::orders)]
+fun execution_price_rejects_a_round_up_past_the_largest_representable() {
+    orders::execution_price_for_testing((std::u64::max_value!() as u256) * 1_000_000_000 + 1, true, false);
 }
 
 #[test]
