@@ -100,6 +100,20 @@ always-zero maintenance reserve; the `Product` type argument identifies the
 currency for good and `VaultInitialized` follows in the same transaction with
 the Vault id. Both events stay.
 
+### D4b. Every venue order leaves an `OrderFilled` event (2026-09-20)
+
+The accounting events replay supply, reserve, admin cash and checkpoints but
+not what each order cost against the oracle, which is the one figure that
+sets the per-order notional cap and decides whether market orders stay
+sufficient. `events::OrderFilled<Product>` is emitted once per venue market
+order, seed orders included, after the fill passed the cap and slippage
+checks: the bound account object id (seed orders fire before a Vault id
+exists; `VaultInitialized.binding` maps the account to the Vault), side,
+reduce-only and emergency flags, requested and filled whole-lot base, the raw
+IFixed quote the session moved, and the sealed reference and executed prices
+at nine decimals. Up to sixteen per operation. The existing events are
+unchanged.
+
 ### D4a. The risk-module witness is removed
 
 The adapter carried a second authority class, a `RiskModule` type parameter

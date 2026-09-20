@@ -23,13 +23,12 @@ public struct OrderTerms has copy, drop {
     collateral_price: u64,
 }
 
-/// What the venue reported about one whole-lot market order, already checked
-/// against the order cap and the lot: the base atoms filled, the raw quote the
-/// session moved, and the execution price to prove against the sealed oracle.
+/// What one whole-lot market order proved: the base atoms filled and the raw
+/// quote the session moved, already checked against the cap, the lot and the
+/// slippage bound.
 public struct Fill has drop {
     filled: u64,
     filled_quote: u256,
-    executed: u64,
 }
 
 // === Package Functions ===
@@ -133,10 +132,9 @@ public(package) fun fill_orders<Product, Collateral>(
     while (remaining > 0) {
         let requested = terms.next_order_size(remaining, index);
         let (next_market, fill) = place_order(
-            vault, account, clearing_house, base_oracle, collateral_oracle, &terms, requested, clock, ctx,
+            vault, account, clearing_house, base_oracle, collateral_oracle, &terms, requested, false, clock, ctx,
         );
         clearing_house = next_market;
-        vault.state().assert_execution(false, terms.base_price, fill.executed);
 
         let after_checkpoint = snapshot::capture_checkpoint(
             binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
@@ -178,10 +176,10 @@ public(package) fun rebalance_orders<Product, Collateral>(
         if (order.order_base() == 0) break;
 
         let (next_market, fill) = place_order(
-            vault, account, clearing_house, base_oracle, collateral_oracle, terms, order.order_base(), clock, ctx,
+            vault, account, clearing_house, base_oracle, collateral_oracle, terms, order.order_base(),
+            order.is_emergency(), clock, ctx,
         );
         clearing_house = next_market;
-        vault.state().assert_execution(order.is_emergency(), terms.base_price, fill.executed);
 
         let (after, after_checkpoint) = snapshot::capture(
             binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
@@ -223,10 +221,9 @@ public(package) fun close_orders<Product, Collateral>(
     while (orders < constants::max_active_orders!() && remaining > 0) {
         let requested = terms.next_order_size(remaining, orders);
         let (next_market, fill) = place_order(
-            vault, account, clearing_house, base_oracle, collateral_oracle, terms, requested, clock, ctx,
+            vault, account, clearing_house, base_oracle, collateral_oracle, terms, requested, true, clock, ctx,
         );
         clearing_house = next_market;
-        vault.state().assert_execution(true, terms.base_price, fill.executed);
 
         let after = snapshot::capture_checkpoint(
             binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
@@ -288,6 +285,10 @@ fun open_seed_position<Product, Collateral>(
         issuance.assert_execution(reference_base_price, executed);
         let (_, filled_quote) = summary.filled_base_and_quote(aftermath_order_side);
         issuance.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
+        events::order_filled<Product>(
+            object::id(account), aftermath_order_side, false, false, order_base, order_base, filled_quote,
+            reference_base_price, executed,
+        );
     };
 
     clearing_house
@@ -400,8 +401,10 @@ fun unwind_base_decoded(magnitude: u256, is_long: bool, lot_size: u64, side: Pos
 ///
 /// The request is at most the core-sized per-order cap; the actual fill is
 /// checked against the cap afterwards, so admitted slippage cannot carry one
-/// order past it. Every operation loop places its orders through this step;
-/// only the slippage bound it then proves against differs.
+/// order past it, and its price against the sealed oracle under the bound the
+/// caller names: the ordinary one, or the emergency one for a reduction above
+/// the hard cap and for shutdown. Every operation loop places its orders
+/// through this step, and every accepted fill leaves one `OrderFilled` event.
 fun place_order<Product, Collateral>(
     vault: &Vault<Product, Collateral>,
     account: &mut Account<Collateral>,
@@ -410,10 +413,11 @@ fun place_order<Product, Collateral>(
     collateral_oracle: &PriceFeedStorage,
     terms: &OrderTerms,
     requested: u64,
+    emergency: bool,
     clock: &Clock,
     ctx: &TxContext,
 ): (ClearingHouse<Collateral>, Fill) {
-    let OrderTerms { is_ask, reduce_only, lot_size, collateral_price, .. } = *terms;
+    let OrderTerms { is_ask, reduce_only, lot_size, base_price, collateral_price, .. } = *terms;
 
     let (clearing_house, summary) = vault.venue().execute_order(
         account, clearing_house, base_oracle, collateral_oracle, is_ask, requested, reduce_only, clock, ctx,
@@ -427,8 +431,12 @@ fun place_order<Product, Collateral>(
     let (_, filled_quote) = summary.filled_base_and_quote(is_ask);
     let executed = execution_price(summary.execution_price(is_ask), !is_ask);
     vault.state().assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
+    vault.state().assert_execution(emergency, base_price, executed);
+    events::order_filled<Product>(
+        object::id(account), is_ask, reduce_only, emergency, requested, filled, filled_quote, base_price, executed,
+    );
 
-    (clearing_house, Fill { filled, filled_quote, executed })
+    (clearing_house, Fill { filled, filled_quote })
 }
 
 /// Proves the checkpoint moved exactly as this fill did: an opening trade moves
@@ -602,6 +610,7 @@ use authority_cap::authority::{ADMIN, AuthorityCap};
 use blast_boosts_aftermath::{
     checkpoint::Checkpoint,
     constants,
+    events,
     ifixed_math,
     snapshot::{Self, CapturedSnapshot},
     vault::Vault,

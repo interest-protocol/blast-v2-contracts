@@ -36,9 +36,28 @@ public struct VaultInitialized<phantom Product> has copy, drop {
     checkpoint: Checkpoint,
 }
 
+// --- Orders ---
+
+/// Emitted once per venue market order the adapter places, seed orders
+/// included, after the fill passed the cap and slippage checks. The account is
+/// the bound venue account (`VaultInitialized.binding` maps it to the Vault);
+/// seed orders run before the Vault id exists. Prices are 9-decimal; the quote
+/// is the raw IFixed amount the session moved.
+public struct OrderFilled<phantom Product> has copy, drop {
+    account_object_id: ID,
+    is_ask: bool,
+    reduce_only: bool,
+    emergency: bool,
+    requested_base: u64,
+    filled_base: u64,
+    filled_quote: u256,
+    reference_price: u64,
+    executed_price: u64,
+}
+
 // --- Mint ---
 
-/// Completed active mint, including its actual contribution and both fee allocations.
+/// Emitted afterive mint, including its actual contribution and both fee allocations.
 public struct Minted<phantom Product> has copy, drop {
     vault_id: ID,
     deposit: u64,
@@ -248,6 +267,32 @@ public(package) fun vault_initialized<Product>(
             checkpoint,
         },
     );
+}
+
+// --- Orders ---
+
+public(package) fun order_filled<Product>(
+    account_object_id: ID,
+    is_ask: bool,
+    reduce_only: bool,
+    emergency: bool,
+    requested_base: u64,
+    filled_base: u64,
+    filled_quote: u256,
+    reference_price: u64,
+    executed_price: u64,
+) {
+    emit_event(OrderFilled<Product> {
+        account_object_id,
+        is_ask,
+        reduce_only,
+        emergency,
+        requested_base,
+        filled_base,
+        filled_quote,
+        reference_price,
+        executed_price,
+    });
 }
 
 // --- Mint ---
@@ -638,6 +683,16 @@ public fun metadata_updated_fields<Product>(self: &MetadataUpdated<Product>): (I
 #[test_only]
 public fun admin_fees_withdrawn_fields<Product>(self: &AdminFeesWithdrawn<Product>): (ID, u64, u64) {
     (self.vault_id, self.amount, self.remaining)
+}
+
+#[test_only]
+public fun order_filled_fields<Product>(
+    self: &OrderFilled<Product>,
+): (ID, bool, bool, bool, u64, u64, u256, u64, u64) {
+    (
+        self.account_object_id, self.is_ask, self.reduce_only, self.emergency, self.requested_base,
+        self.filled_base, self.filled_quote, self.reference_price, self.executed_price,
+    )
 }
 
 // === Imports ===

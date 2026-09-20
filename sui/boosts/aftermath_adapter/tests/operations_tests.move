@@ -55,6 +55,21 @@ public struct ReplayState has drop {
 // === Tests ===
 
 #[test]
+fun order_filled_event_carries_every_fill_fact_in_order() {
+    let account = object::id_from_address(@0xA11);
+    events::order_filled<Product>(account, true, false, true, 2_500_000_000_000, 2_400_000_000_000,
+        4_800_000_000_000_000_000_000, 2_000_000_000, 2_004_000_000);
+    let (id, is_ask, reduce_only, emergency, requested, filled, quote, reference, executed) =
+        events::collect_one<events::OrderFilled<Product>>(0).order_filled_fields();
+    assert_eq!(id, account);
+    assert_eq!(vector[is_ask, reduce_only, emergency], vector[true, false, true]);
+    assert_eq!(vector[requested, filled], vector[2_500_000_000_000, 2_400_000_000_000]);
+    assert_eq!(quote, 4_800_000_000_000_000_000_000);
+    assert_eq!(vector[reference, executed], vector[2_000_000_000, 2_004_000_000]);
+    assert!(events::collect<events::OrderFilled<OtherProduct>>().is_empty());
+}
+
+#[test]
 #[expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
 fun terminal_claim_checks_version_before_lifecycle_or_zero_shares() {
     let mut fixture = start();
