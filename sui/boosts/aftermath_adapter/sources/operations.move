@@ -421,8 +421,16 @@ fun assert_position_imr_unchanged<Collateral>(
     position_imr: u256,
 ) {
     let final_imr = clearing_house.position(account_number).initial_margin_ratio();
+    assert_position_imr_unchanged_decoded(final_imr.is_neg(), final_imr, position_imr);
+}
+
+fun assert_position_imr_unchanged_decoded(
+    final_is_negative: bool,
+    final_imr: u256,
+    position_imr: u256,
+) {
     assert!(
-        !final_imr.is_neg() && final_imr == position_imr,
+        !final_is_negative && final_imr == position_imr,
         blast_boosts_aftermath::errors::initialization_imr_mismatch!(),
     );
 }
@@ -693,10 +701,8 @@ fun unwind_frozen<Product, Collateral>(
     );
     before.assert_no_orders();
     let (enabled, base_price, collateral_price) = clearing_house.settlement_valuation_prices();
-    assert!(
-        enabled && base_price != 0 && collateral_price != 0
-            && !base_price.is_neg() && !collateral_price.is_neg(),
-        blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
+    assert_settlement_valuation(
+        enabled, base_price, base_price.is_neg(), collateral_price, collateral_price.is_neg(),
     );
 
     clearing_house.close_position_at_settlement_prices(account, &vector[]);
@@ -740,6 +746,20 @@ fun unwind_market<Product, Collateral>(
     complete_unwind(vault, before, option::some(funded), after, order_count, option::some(filled_quote));
 
     clearing_house
+}
+
+/// The venue must price a frozen settlement with two positive, nonzero prices.
+fun assert_settlement_valuation(
+    enabled: bool,
+    base_price: u256,
+    base_negative: bool,
+    collateral_price: u256,
+    collateral_negative: bool,
+) {
+    assert!(
+        enabled && base_price != 0 && collateral_price != 0 && !base_negative && !collateral_negative,
+        blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
+    );
 }
 
 /// Settles the account's funding on the venue and proves the checkpoint moved
@@ -902,7 +922,27 @@ public fun assert_position_imr_for_testing(is_negative: bool) {
 }
 
 #[test_only]
+public fun assert_position_imr_unchanged_for_testing(
+    final_is_negative: bool,
+    final_imr: u256,
+    position_imr: u256,
+) {
+    assert_position_imr_unchanged_decoded(final_is_negative, final_imr, position_imr);
+}
+
+#[test_only]
 public fun assert_deadline_for_testing(now_ms: u64, deadline: u64) { assert_deadline(now_ms, deadline); }
+
+#[test_only]
+public fun assert_settlement_valuation_for_testing(
+    enabled: bool,
+    base_price: u256,
+    base_negative: bool,
+    collateral_price: u256,
+    collateral_negative: bool,
+) {
+    assert_settlement_valuation(enabled, base_price, base_negative, collateral_price, collateral_negative);
+}
 
 #[test_only]
 public fun apply_post_capture_for_testing<Product, Collateral>(

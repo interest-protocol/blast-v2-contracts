@@ -2103,6 +2103,454 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
     fixture.end();
 }
 
+#[test]
+fun an_unchanged_nonnegative_position_imr_survives_the_seed_orders() {
+    operations::assert_position_imr_unchanged_for_testing(false, 1, 1);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInitializationImrMismatch, location = blast_boosts_aftermath::operations)]
+fun a_position_imr_the_seed_orders_changed_is_rejected() {
+    operations::assert_position_imr_unchanged_for_testing(false, 2, 1);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInitializationImrMismatch, location = blast_boosts_aftermath::operations)]
+fun a_negative_final_position_imr_is_rejected_even_when_its_bits_match() {
+    operations::assert_position_imr_unchanged_for_testing(true, 1, 1);
+}
+
+#[test]
+fun settlement_valuation_accepts_two_enabled_positive_prices() {
+    operations::assert_settlement_valuation_for_testing(true, PRICE as u256, false, PRICE as u256, false);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::operations)]
+fun settlement_valuation_rejects_a_disabled_settlement() {
+    operations::assert_settlement_valuation_for_testing(false, PRICE as u256, false, PRICE as u256, false);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::operations)]
+fun settlement_valuation_rejects_a_zero_base_price() {
+    operations::assert_settlement_valuation_for_testing(true, 0, false, PRICE as u256, false);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::operations)]
+fun settlement_valuation_rejects_a_zero_collateral_price() {
+    operations::assert_settlement_valuation_for_testing(true, PRICE as u256, false, 0, false);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::operations)]
+fun settlement_valuation_rejects_a_negative_base_price() {
+    operations::assert_settlement_valuation_for_testing(true, PRICE as u256, true, PRICE as u256, false);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::operations)]
+fun settlement_valuation_rejects_a_negative_collateral_price() {
+    operations::assert_settlement_valuation_for_testing(true, PRICE as u256, false, PRICE as u256, true);
+}
+
+#[test]
+fun vault_initialized_event_reads_activation_facts_from_the_vault() {
+    let mut fixture = start();
+    let vault = issue_and_activate_product_with_side(&mut fixture, OtherProduct(), initial_checkpoint(),
+        standard_vault_policy_for_side(policy::short()), policy::short());
+    let (
+        vault_id, binding, seed_amount, seed_venue_equity, seed_reserve, seed_shareholder_nav,
+        locked_shares, position_base, lot_size, side, position_imr, checkpoint,
+    ) = events::collect_one<events::VaultInitialized<OtherProduct>>(0).vault_initialized_fields();
+    assert_eq!(vault_id, vault.id());
+    assert_eq!(binding, vault.venue().binding());
+    assert_eq!(vector[seed_amount, seed_venue_equity], vector[SEED_EQUITY, SEED_EQUITY]);
+    assert_eq!(seed_reserve, vault.state().maintenance_reserve());
+    assert_eq!(seed_reserve, SEED_RESERVE);
+    assert_eq!(seed_shareholder_nav, SEED_EQUITY - SEED_RESERVE);
+    assert_eq!(locked_shares, vault.locked_shares());
+    assert_eq!(vector[position_base, lot_size], vector[ABSOLUTE_BASE, LOT_SIZE]);
+    assert_eq!(side, policy::short());
+    assert_eq!(position_imr, 1);
+    assert_eq!(checkpoint, *vault.venue().checkpoint());
+    assert_eq!(checkpoint, initial_checkpoint());
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::operations)]
+fun completed_redemption_rejects_a_payout_one_atom_short() {
+    complete_redemption_with_cash(993);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::operations)]
+fun completed_redemption_rejects_a_payout_one_atom_over() {
+    complete_redemption_with_cash(995);
+}
+
+#[test]
+fun unrepresentable_net_funding_is_drift_not_settlement() {
+    let mut fixture = start();
+    let large = (std::u64::max_value!() as u256 + 10) * ATOM_FIXED;
+    let stored = checkpoint_with_market_imr(0, large + 100 * ATOM_FIXED, large, large, large, large, 1);
+    let before = checkpoint_with_market_imr(0, 100 * ATOM_FIXED, 2 * large, 2 * large, 2 * large, 2 * large, 1);
+    let mut vault = issue_and_activate(&mut fixture, stored);
+    let (external, local) = stored.classify_sync_changes_for_testing(&before, &before, ONE_FIXED);
+
+    operations::apply_post_captures_for_testing(&mut vault, before, external, local);
+
+    assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
+    assert_eq!(*vault.venue().checkpoint(), stored);
+    assert!(!vault.is_unwinding_for_testing());
+    let (_, drifted) = events::collect_one<events::CheckpointDrifted<Product>>(0).checkpoint_drifted_fields();
+    assert_eq!(drifted, before);
+    assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 0);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+fun two_edge_netting_debits_two_costs_from_the_reserve_once() {
+    assert_two_edge_netting(10, true, 5, true, 85, 15, true);
+}
+
+#[test]
+fun two_edge_netting_credits_two_credits_to_the_reserve_once() {
+    assert_two_edge_netting(10, false, 5, false, 115, 15, false);
+}
+
+#[test]
+fun two_edge_netting_keeps_the_remainder_of_a_credit_over_a_smaller_cost() {
+    assert_two_edge_netting(10, false, 4, true, 106, 6, false);
+}
+
+#[test]
+fun two_edge_netting_keeps_the_remainder_of_a_cost_under_a_larger_credit() {
+    assert_two_edge_netting(4, true, 10, false, 106, 6, false);
+}
+
+#[test]
+fun two_edge_netting_treats_an_unexpected_external_edge_as_drift() {
+    assert_unexpected_edge_keeps_the_checkpoint(true);
+}
+
+#[test]
+fun two_edge_netting_treats_an_unexpected_local_edge_as_drift() {
+    assert_unexpected_edge_keeps_the_checkpoint(false);
+}
+
+#[test]
+#[expected_failure(abort_code = blast_boosts_core::errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
+fun funding_settles_while_unwinding_and_aborts_once_settled() {
+    let mut fixture = start();
+    let initial = initial_checkpoint();
+    let mut vault = issue_and_begin_shutdown(&mut fixture, initial);
+    let (before, funded) = (funding_before_checkpoint(10, true), funding_checkpoint(10, true));
+    let cost = initial.classify_sync_change_for_testing(&before, &funded, ONE_FIXED);
+    apply_connected_change(&mut vault, funded, cost);
+    assert_eq!(vault.state().maintenance_reserve(), 90);
+    assert_eq!(*vault.venue().checkpoint(), funded);
+    finalize_recovered(&mut vault, sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()));
+
+    let cost = initial.classify_sync_change_for_testing(&before, &funded, ONE_FIXED);
+    apply_connected_change(&mut vault, funded, cost);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+fun completed_market_unwind_step_records_the_funded_checkpoint_orders_and_quote() {
+    let mut fixture = start();
+    let before = initial_checkpoint();
+    let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
+    let mut vault = issue_and_begin_shutdown(&mut fixture, before);
+
+    operations::complete_unwind_for_testing(&mut vault, before, option::some(before), after, 3, option::some(1_500));
+
+    let (id, observed, funded, actual, orders, quote) =
+        events::collect_one<events::UnwindProgress<Product>>(0).unwind_progress_fields();
+    assert_eq!(id, vault.id());
+    assert_eq!(observed, before);
+    assert_eq!(funded, option::some(before));
+    assert_eq!(actual, after);
+    assert_eq!(orders, 3);
+    assert_eq!(quote, option::some(1_500));
+    assert_eq!(*vault.venue().checkpoint(), after);
+    assert!(vault.is_unwinding_for_testing());
+    assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+fun completed_market_unwind_step_accepts_the_maximum_order_count() {
+    let mut fixture = start();
+    let before = initial_checkpoint();
+    let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
+    let mut vault = issue_and_begin_shutdown(&mut fixture, before);
+
+    operations::complete_unwind_for_testing(
+        &mut vault, before, option::some(before), after, constants::max_active_orders!(), option::some(1_500),
+    );
+
+    let (_, _, _, _, orders, _) = events::collect_one<events::UnwindProgress<Product>>(0).unwind_progress_fields();
+    assert_eq!(orders, 16);
+    assert_eq!(*vault.venue().checkpoint(), after);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::operations)]
+fun completed_market_unwind_step_rejects_one_order_past_the_maximum() {
+    let mut fixture = start();
+    let before = initial_checkpoint();
+    let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
+    let mut vault = issue_and_begin_shutdown(&mut fixture, before);
+    operations::complete_unwind_for_testing(
+        &mut vault, before, option::some(before), after, constants::max_active_orders!() + 1, option::some(1_500),
+    );
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::operations)]
+fun completed_market_unwind_step_rejects_a_quote_without_orders() {
+    let mut fixture = start();
+    let before = initial_checkpoint();
+    let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
+    let mut vault = issue_and_begin_shutdown(&mut fixture, before);
+    operations::complete_unwind_for_testing(&mut vault, before, option::some(before), after, 0, option::some(1_500));
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::operations)]
+fun completed_market_unwind_step_rejects_a_missing_funded_checkpoint() {
+    let mut fixture = start();
+    let before = initial_checkpoint();
+    let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
+    let mut vault = issue_and_begin_shutdown(&mut fixture, before);
+    operations::complete_unwind_for_testing(&mut vault, before, option::none(), after, 1, option::some(1_500));
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::operations)]
+fun completed_direct_settlement_rejects_a_funded_checkpoint() {
+    let mut fixture = start();
+    let before = frozen_checkpoint();
+    let mut vault = issue_and_begin_shutdown(&mut fixture, before);
+    operations::complete_unwind_for_testing(
+        &mut vault, before, option::some(before), settled_flat_checkpoint(), 0, option::none(),
+    );
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::operations)]
+fun completed_direct_settlement_rejects_a_market_order() {
+    let mut fixture = start();
+    let before = frozen_checkpoint();
+    let mut vault = issue_and_begin_shutdown(&mut fixture, before);
+    operations::complete_unwind_for_testing(&mut vault, before, option::none(), settled_flat_checkpoint(), 1, option::none());
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+fun completed_direct_settlement_rejects_an_unfrozen_market() {
+    let mut fixture = start();
+    let before = initial_checkpoint();
+    let mut vault = issue_and_begin_shutdown(&mut fixture, before);
+    operations::complete_unwind_for_testing(&mut vault, before, option::none(), settled_flat_checkpoint(), 0, option::none());
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_boosts_core::errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
+fun unwind_progress_is_rejected_while_active() {
+    let mut fixture = start();
+    let before = initial_checkpoint();
+    let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
+    let mut vault = issue_and_activate(&mut fixture, before);
+    operations::complete_unwind_for_testing(&mut vault, before, option::some(before), after, 3, option::some(1_500));
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_boosts_core::errors::EInvalidLifecycleTransition, location = blast_boosts_core::lifecycle)]
+fun finalization_is_rejected_before_shutdown_begins() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    finalize_recovered(&mut vault, sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()));
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_boosts_core::errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
+fun completed_mint_is_rejected_after_shutdown_begins() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_TIME_MS);
+    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    let shares = operations::complete_mint_for_testing<Product, Collateral>(
+        &mut vault, plan, 1_000, active_position(1_998, 3_798), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!(),
+    );
+    destroy(shares);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+fun completed_rebalance_reports_an_increase() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    // 1_000 notional on a 900 NAV is 1.11x, under the 1.6x band floor; the
+    // 250 order cap sizes the buy and its 4 atoms of execution cost fit the target.
+    let mut plan = vault.state().prepare_rebalance(rebalance_position(1_000, 1_000_000), 10, REFERENCE_TIME_MS);
+    let order = vault.state().next_rebalance_order(&plan);
+    assert!(order.is_increase() && !order.is_emergency());
+    assert_eq!(order.order_base(), 250_000);
+    vault.state().accept_rebalance_fill(&mut plan, order, rebalance_position(999, 1_250_000), 250_000, REFERENCE_TIME_MS);
+    let checkpoint = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
+
+    operations::complete_rebalance_for_testing<Product, Collateral>(&mut vault, plan, checkpoint);
+
+    let (before_equity, after_equity, before_base, after_base, increased) =
+        events::collect_one<events::Rebalanced<Product>>(0).rebalanced_amounts();
+    assert_eq!(vector[before_equity, after_equity, before_base, after_base], vector[1_000, 999, 1_000_000, 1_250_000]);
+    assert!(increased);
+    assert_eq!(*vault.venue().checkpoint(), checkpoint);
+    assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
+    assert_eq!(vault.total_share_supply(), 900_000);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_boosts_core::errors::EZeroAmount, location = blast_boosts_core::state)]
+fun zero_donation_is_rejected_by_the_core_after_a_trivially_exact_checkpoint() {
+    let mut fixture = start();
+    let initial = initial_checkpoint();
+    let mut vault = issue_and_activate(&mut fixture, initial);
+    operations::complete_donation_for_testing(&mut vault, position_observation(SEED_EQUITY), initial, 0, REFERENCE_TIME_MS);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun deposit_checkpoint_refuses_a_free_collateral_sum_that_overflows() {
+    let before = checkpoint_with_market_imr(std::u64::max_value!(), ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
+    before.assert_deposit_checkpoint(&before, 1);
+}
+
+#[test]
+fun zero_deposit_checkpoint_accepts_only_an_identical_venue() {
+    let initial = initial_checkpoint();
+    initial.assert_deposit_checkpoint(&initial, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun zero_deposit_checkpoint_rejects_free_collateral_that_moved() {
+    let after = checkpoint_with_market_imr(1, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
+    initial_checkpoint().assert_deposit_checkpoint(&after, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EActiveCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun active_checkpoint_rejects_a_position_that_differs_from_the_fill() {
+    let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
+    initial_checkpoint().assert_trade_checkpoint(&after, 2 * ONE_FIXED, 1);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EActiveCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun active_checkpoint_rejects_a_quote_that_differs_from_the_fill() {
+    let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
+    initial_checkpoint().assert_trade_checkpoint(&after, ONE_FIXED, 2);
+}
+
+#[test]
+fun reduction_checkpoint_adopts_the_venue_quote_and_proves_only_the_base() {
+    initial_checkpoint().assert_reduction_checkpoint(&reduced_checkpoint(), ONE_FIXED / 2);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EActiveCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun reduction_checkpoint_rejects_a_base_the_fill_did_not_leave() {
+    initial_checkpoint().assert_reduction_checkpoint(&reduced_checkpoint(), ONE_FIXED);
+}
+
+#[test]
+fun unchanged_checkpoint_passes_the_priced_operation_gate() {
+    let checkpoint = initial_checkpoint();
+    checkpoint.assert_unchanged(&checkpoint);
+}
+
+#[test]
+fun redemption_cash_checkpoint_with_no_free_cash_deallocates_the_whole_payout() {
+    let before = initial_checkpoint();
+    let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - 15 * ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
+    before.assert_nonnegative_cash_checkpoint_for_testing(&after, 15, false);
+}
+
+#[test]
+fun redemption_cash_checkpoint_paid_exactly_by_free_cash() {
+    let before = checkpoint_with_market_imr(25, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
+    let after = initial_checkpoint();
+    before.assert_nonnegative_cash_checkpoint_for_testing(&after, 25, false);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun cash_checkpoint_rejects_free_collateral_that_disagrees_with_the_payout() {
+    let before = checkpoint_with_market_imr(25, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
+    let after = checkpoint_with_market_imr(6, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
+    before.assert_nonnegative_cash_checkpoint_for_testing(&after, 20, false);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun cash_checkpoint_rejects_an_unrelated_field_change_after_an_exact_move() {
+    let before = checkpoint_with_market_imr(25, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
+    let after = checkpoint_with_market_imr(5, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 2);
+    before.assert_nonnegative_cash_checkpoint_for_testing(&after, 20, false);
+}
+
+#[test]
+fun net_funding_adds_two_costs_and_keeps_the_larger_side_of_a_cost_and_a_credit() {
+    let (before, after) = two_edge_checkpoints(10, true, 5, true);
+    let (external, local) = initial_checkpoint().classify_sync_changes_for_testing(&before, &after, ONE_FIXED);
+    let net = external.net_funding(local);
+    assert!(net.is_clean() && net.is_cost());
+    assert_eq!(net.raw_amount(), 15 * ATOM_FIXED);
+    assert_eq!(net.amount(), 15);
+
+    let (before, after) = two_edge_checkpoints(10, true, 15, false);
+    let (external, local) = initial_checkpoint().classify_sync_changes_for_testing(&before, &after, ONE_FIXED);
+    let net = external.net_funding(local);
+    assert!(net.is_clean() && !net.is_cost());
+    assert_eq!(net.raw_amount(), 5 * ATOM_FIXED);
+    assert_eq!(net.amount(), 5);
+    assert!(net.is_credit_for_testing());
+}
+
 // === Test Helpers ===
 
 /// Proves and completes the recovery of `recovered` from an otherwise empty venue.
@@ -2116,6 +2564,53 @@ fun finalize_recovered<P>(vault: &mut Vault<P, Collateral>, recovered: Coin<Coll
 fun terminal_checkpoint(): Checkpoint {
     checkpoint::checkpoint_for_testing(0, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, false, 1, 1, 1)
+}
+
+/// A frozen market still holding one unit of base, before a direct settlement.
+fun frozen_checkpoint(): Checkpoint {
+    checkpoint::checkpoint_for_testing(0, 0, 1, 1, 11, 21, 11, 21, LOT_SIZE,
+        0, 0, 0, 0, true, 1, 1, 1)
+}
+
+/// The flat, order-free venue a direct settlement of `frozen_checkpoint` leaves, with its cash released.
+fun settled_flat_checkpoint(): Checkpoint {
+    checkpoint::checkpoint_for_testing(5, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+        0, 0, 0, 0, true, 1, 1, 1)
+}
+
+/// The venue after a reduce-only fill halved the position at a quote the venue chose.
+fun reduced_checkpoint(): Checkpoint {
+    checkpoint::checkpoint_for_testing(0, ALLOCATED_FIXED - ATOM_FIXED, ONE_FIXED / 2, 7, RATE, RATE, RATE, RATE, LOT_SIZE,
+        0, 0, 0, 0, false, 1, 1, 1)
+}
+
+/// An active vault at `checkpoint` whose shutdown has begun.
+fun issue_and_begin_shutdown(fixture: &mut Fixture, checkpoint: Checkpoint): Vault<Product, Collateral> {
+    let mut vault = issue_and_activate(fixture, checkpoint);
+    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    vault
+}
+
+/// Runs `completed_redemption_burns_the_native_input_only_after_exact_cash_return`
+/// with a payout coin of `cash_amount` where the settlement is owed 994.
+fun complete_redemption_with_cash(cash_amount: u64) {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let mint_plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_TIME_MS);
+    let (amount, _, _, _, _) = vault.state_mut().complete_mint(mint_plan, active_position(1_998, 3_798), REFERENCE_TIME_MS);
+    let shares = vault.mint_shares(amount, fixture.ctx!());
+    let plan = vault.state().prepare_redemption(active_position(1_998, 3_798), shares.value(), vault.total_share_supply(), 994, REFERENCE_TIME_MS);
+    let (net, admin, fee, reserve_fee) = operations::settle_redemption_for_testing(
+        &mut vault, plan, &shares, active_position_with_base(1_996, 1_801_897), REFERENCE_TIME_MS,
+    );
+    assert_eq!(net + admin, 994);
+    let cash = sui::coin::mint_for_testing<Collateral>(cash_amount, fixture.ctx!());
+    let final_checkpoint = checkpoint_with_market_imr(0, ALLOCATED_FIXED - 994 * ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
+    let cash = operations::complete_redemption_for_testing(&mut vault, shares, cash, net, admin, fee, reserve_fee, final_checkpoint, fixture.ctx!());
+    destroy(cash);
+    destroy(vault);
+    fixture.end();
 }
 
 macro fun ctx($self: &mut Fixture): &mut TxContext {
@@ -2400,6 +2895,97 @@ fun assert_connected_cost(
     fixture.end();
 }
 
+/// A cumulative rate moved by `amount` collateral units of funding for the
+/// fixture's one-unit long: up for a cost, down for a credit.
+fun shifted_rate(rate: u256, amount: u64, is_cost: bool): u256 {
+    if (is_cost) { rate + (amount as u256) * ATOM_FIXED } else { rate - (amount as u256) * ATOM_FIXED }
+}
+
+/// Allocated collateral after the venue settled `amount` of funding: down for a cost, up for a credit.
+fun shifted_allocated(allocated: u256, amount: u64, is_cost: bool): u256 {
+    if (is_cost) { allocated - (amount as u256) * ATOM_FIXED } else { allocated + (amount as u256) * ATOM_FIXED }
+}
+
+/// The venue before and after one sync from `initial_checkpoint`: `external`
+/// funding was settled elsewhere since the stored checkpoint, and the market
+/// then moved by `local` more, which this settlement moves.
+fun two_edge_checkpoints(
+    external: u64,
+    external_is_cost: bool,
+    local: u64,
+    local_is_cost: bool,
+): (Checkpoint, Checkpoint) {
+    let external_rate = shifted_rate(RATE, external, external_is_cost);
+    let local_rate = shifted_rate(external_rate, local, local_is_cost);
+    let external_allocated = shifted_allocated(ALLOCATED_FIXED, external, external_is_cost);
+    let local_allocated = shifted_allocated(external_allocated, local, local_is_cost);
+    let before = checkpoint_with_market_imr(
+        0, external_allocated, external_rate, external_rate, local_rate, local_rate, 1,
+    );
+    let after = checkpoint_with_market_imr(0, local_allocated, local_rate, local_rate, local_rate, local_rate, 1);
+
+    (before, after)
+}
+
+/// Syncs a fresh vault across the two funding edges and checks the reserve
+/// moved once, by the net, with one settlement fact.
+fun assert_two_edge_netting(
+    external: u64,
+    external_is_cost: bool,
+    local: u64,
+    local_is_cost: bool,
+    expected_reserve: u64,
+    expected_amount: u64,
+    expected_is_cost: bool,
+) {
+    let mut fixture = start();
+    let initial = initial_checkpoint();
+    let mut vault = issue_and_activate(&mut fixture, initial);
+    let (before, after) = two_edge_checkpoints(external, external_is_cost, local, local_is_cost);
+    let (external_change, local_change) = initial.classify_sync_changes_for_testing(&before, &after, ONE_FIXED);
+
+    operations::apply_post_captures_for_testing(&mut vault, after, external_change, local_change);
+
+    assert_eq!(vault.state().maintenance_reserve(), expected_reserve);
+    assert_eq!(*vault.venue().checkpoint(), after);
+    assert_eq!(events::collect<events::CheckpointDrifted<Product>>().length(), 0);
+    let (_, is_cost, raw_amount, amount, _, _, _, reserve_after, previous, checkpoint) =
+        events::collect_one<events::FundingSettled<Product>>(0).funding_settled_fields();
+    assert_eq!(is_cost, expected_is_cost);
+    assert_eq!(raw_amount, (expected_amount as u256) * ATOM_FIXED);
+    assert_eq!(amount, expected_amount);
+    assert_eq!(reserve_after, expected_reserve);
+    assert_eq!(previous, initial);
+    assert_eq!(checkpoint, after);
+    destroy(vault);
+    fixture.end();
+}
+
+/// An unexpected edge on either side of a ten-unit cost is drift: nothing settles and the checkpoint is kept.
+fun assert_unexpected_edge_keeps_the_checkpoint(external_is_unexpected: bool) {
+    let mut fixture = start();
+    let initial = initial_checkpoint();
+    let mut vault = issue_and_activate(&mut fixture, initial);
+    let funded = funding_checkpoint(10, true);
+    let cost = funding_before_checkpoint(10, true).classify_change_for_testing(&funded, ONE_FIXED);
+    assert!(cost.is_cost() && cost.amount() == 10);
+    let (external_change, local_change) = if (external_is_unexpected) {
+        (checkpoint::unexpected_change(), cost)
+    } else {
+        (cost, checkpoint::unexpected_change())
+    };
+
+    operations::apply_post_captures_for_testing(&mut vault, funded, external_change, local_change);
+
+    assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
+    assert_eq!(*vault.venue().checkpoint(), initial);
+    assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 0);
+    let (_, drifted) = events::collect_one<events::CheckpointDrifted<Product>>(0).checkpoint_drifted_fields();
+    assert_eq!(drifted, funded);
+    destroy(vault);
+    fixture.end();
+}
+
 fun sync_checkpoint(
     free_collateral: u64,
     allocated_collateral: u256,
@@ -2438,10 +3024,13 @@ fun assert_unexpected_sync_change(
     after: &Checkpoint,
 ) {
     let change = stored.classify_sync_change_for_testing(before, after, ONE_FIXED);
-    let (has_funding, _, _, _, checkpoint_clean) =
+    let (has_funding, is_cost, raw_amount, amount, checkpoint_clean) =
         (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
 
     assert!(!has_funding);
+    assert!(!is_cost);
+    assert_eq!(raw_amount, 0);
+    assert_eq!(amount, 0);
     assert!(!checkpoint_clean);
     assert!(change.is_unexpected_for_testing());
 }
@@ -2829,6 +3418,7 @@ use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
 use blast_boosts_aftermath::{
     blast_boost::BlastBoost,
     checkpoint::{Self, Checkpoint, CheckpointChange},
+    constants,
     domain_fixture,
     errors,
     events,
