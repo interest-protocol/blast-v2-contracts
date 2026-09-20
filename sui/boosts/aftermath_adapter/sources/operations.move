@@ -1162,12 +1162,12 @@ fun classify_sync_changes(
     funding_candidate: u256,
     collateral_price: u256,
 ): (CheckpointChange, CheckpointChange) {
-    let preexisting_change = if (venue_account::checkpoint_ready_for_settlement(stored, before)) {
+    let preexisting_change = if (stored.checkpoint_ready_for_settlement(before)) {
         venue_account::unchanged_change()
     } else {
-        venue_account::classify_preexisting_funding(stored, before)
+        stored.classify_preexisting_funding(before)
     };
-    let local_change = venue_account::classify_change(before, after, funding_candidate, collateral_price);
+    let local_change = before.classify_change(after, funding_candidate, collateral_price);
 
     (preexisting_change, local_change)
 }
@@ -1282,7 +1282,7 @@ fun settle_funding_for_unwind<Collateral>(
     clearing_house.settle_position_funding(collateral_oracle, account.account_id(), clock);
 
     let funded = snapshot::capture_checkpoint(binding, account, registry, clearing_house, base_oracle, collateral_oracle);
-    venue_account::classify_change(before, &funded, candidate, collateral_fixed).assert_expected();
+    before.classify_change(&funded, candidate, collateral_fixed).assert_expected();
 
     funded
 }
@@ -1616,15 +1616,13 @@ public fun classify_sync_changes_for_testing(
     candidate_collateral_magnitude: u256,
 ): (CheckpointChange, CheckpointChange) {
     let preexisting_change = if (
-        venue_account::checkpoint_ready_for_settlement(stored, before)
+        stored.checkpoint_ready_for_settlement(before)
     ) {
         venue_account::unchanged_change()
     } else {
-        venue_account::classify_preexisting_funding_for_testing(stored, before)
+        stored.classify_preexisting_funding_for_testing(before)
     };
-    let local_change = venue_account::classify_change_with_candidate_for_testing(
-        before,
-        after,
+    let local_change = before.classify_change_with_candidate_for_testing(after,
         candidate_negative,
         candidate_collateral_magnitude,
     );

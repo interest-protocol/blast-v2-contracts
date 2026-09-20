@@ -233,11 +233,12 @@ public fun fill(self: &mut Venue, base: u64, increase: bool): (u64, u64) {
 // --- Vault ---
 
 /// Issues a vault over `venue` with the standard 2x long policy and a wide NAV cap.
-public fun issue(venue: Venue): Issued {
-    issue_with(venue, standard_policy(venue.side), 5_000_000_000, 1_000_000_000_000)
+public fun issue(self: Venue): Issued {
+    let vault_policy = standard_policy(self.side);
+    self.issue_with(vault_policy, 5_000_000_000, 1_000_000_000_000)
 }
 
-public fun issue_with(venue: Venue, vault_policy: VaultPolicy, max_order_notional: u64, nav_cap: u64): Issued {
+public fun issue_with(self: Venue, vault_policy: VaultPolicy, max_order_notional: u64, nav_cap: u64): Issued {
     let mut scenario = test_scenario::begin(ROOT);
     let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
     authority.grant_admin(&super_admin_cap, domain::vault_issuer_role(), ISSUER, scenario.ctx());
@@ -246,7 +247,7 @@ public fun issue_with(venue: Venue, vault_policy: VaultPolicy, max_order_notiona
     let witness = authority.sign_in(&admin_cap);
     let issuance = state::issue<Product>(&witness, vault_policy, max_order_notional, nav_cap, BASE_DECIMALS, COLLATERAL_DECIMALS);
 
-    Issued { issuance, venue, authority, super_admin_cap, admin_cap, scenario }
+    Issued { issuance, venue: self, authority, super_admin_cap, admin_cap, scenario }
 }
 
 /// The standard policy: band 1.6x to 2.6x around 2x, 3x hard cap, 1% ordinary and

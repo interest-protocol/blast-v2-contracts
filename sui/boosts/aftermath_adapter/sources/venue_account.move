@@ -341,11 +341,11 @@ public(package) fun assert_withdrawal_checkpoint(before: &Checkpoint, after: &Ch
 ///
 /// This is the ordinary pre-settlement shape: the position still carries the
 /// stored funding snapshots while the market rates may have moved forward.
-public(package) fun checkpoint_ready_for_settlement(stored: &Checkpoint, before: &Checkpoint): bool {
-    stored.non_funding_fields_equal(before)
-        && stored.allocated_collateral() == before.allocated_collateral()
-        && stored.funding_snapshot_long() == before.funding_snapshot_long()
-        && stored.funding_snapshot_short() == before.funding_snapshot_short()
+public(package) fun checkpoint_ready_for_settlement(self: &Checkpoint, before: &Checkpoint): bool {
+    self.non_funding_fields_equal(before)
+        && self.allocated_collateral() == before.allocated_collateral()
+        && self.funding_snapshot_long() == before.funding_snapshot_long()
+        && self.funding_snapshot_short() == before.funding_snapshot_short()
 }
 
 /// Recognizes funding that another caller settled before this synchronization.
@@ -355,18 +355,18 @@ public(package) fun checkpoint_ready_for_settlement(stored: &Checkpoint, before:
 /// snapshots refresh to the current market rates and allocated collateral
 /// changes, while every unrelated account, position, order, and risk field is
 /// byte-for-byte unchanged.
-public(package) fun classify_preexisting_funding(stored: &Checkpoint, before: &Checkpoint): CheckpointChange {
-    classify_preexisting_from_delta(stored, before, allocated_delta(stored, before))
+public(package) fun classify_preexisting_funding(self: &Checkpoint, before: &Checkpoint): CheckpointChange {
+    classify_preexisting_from_delta(self, before, allocated_delta(self, before))
 }
 
 /// Classifies only an isolated funding-snapshot and allocated-collateral change.
 public(package) fun classify_change(
-    before: &Checkpoint,
+    self: &Checkpoint,
     after: &Checkpoint,
     funding_candidate: u256,
     collateral_price: u256,
 ): CheckpointChange {
-    if (before == after) return CheckpointChange::Unchanged;
+    if (self == after) return CheckpointChange::Unchanged;
 
     let (candidate_collateral_magnitude, representable) = ifixed_math::usd_fixed_to_collateral_fixed(
         funding_candidate.abs(), collateral_price, funding_candidate.is_neg(),
@@ -374,8 +374,8 @@ public(package) fun classify_change(
     if (!representable) return CheckpointChange::Unexpected;
 
     classify_from_delta(
-        before, after, funding_candidate.is_neg(), candidate_collateral_magnitude,
-        allocated_delta(before, after),
+        self, after, funding_candidate.is_neg(), candidate_collateral_magnitude,
+        allocated_delta(self, after),
     )
 }
 
@@ -977,33 +977,30 @@ public fun funding_change_fields(
 }
 
 #[test_only]
-public fun classify_change_for_testing(before: &Checkpoint, after: &Checkpoint): CheckpointChange {
-    classify_change_with_candidate_for_testing(before, after, false, 0)
+public fun classify_change_for_testing(self: &Checkpoint, after: &Checkpoint): CheckpointChange {
+    self.classify_change_with_candidate_for_testing(after, false, 0)
 }
 
 #[test_only]
 public fun classify_change_with_candidate_for_testing(
-    before: &Checkpoint,
+    self: &Checkpoint,
     after: &Checkpoint,
     candidate_negative: bool,
     candidate_magnitude: u256,
 ): CheckpointChange {
-    let delta = signed_delta(false, before.allocated_collateral(), false, after.allocated_collateral());
-    classify_from_delta(before, after, candidate_negative, candidate_magnitude, delta)
+    let delta = signed_delta(false, self.allocated_collateral(), false, after.allocated_collateral());
+    classify_from_delta(self, after, candidate_negative, candidate_magnitude, delta)
 }
 
 #[test_only]
-public fun classify_preexisting_funding_for_testing(
-    stored: &Checkpoint,
-    before: &Checkpoint,
-): CheckpointChange {
-    let delta = signed_delta(false, stored.allocated_collateral(), false, before.allocated_collateral());
-    classify_preexisting_from_delta(stored, before, delta)
+public fun classify_preexisting_funding_for_testing(self: &Checkpoint, before: &Checkpoint): CheckpointChange {
+    let delta = signed_delta(false, self.allocated_collateral(), false, before.allocated_collateral());
+    classify_preexisting_from_delta(self, before, delta)
 }
 
 #[test_only]
 public fun classify_signed_funding_for_testing(
-    stored: &Checkpoint,
+    self: &Checkpoint,
     before: &Checkpoint,
     stored_negative: bool,
     stored_magnitude: u256,
@@ -1011,7 +1008,7 @@ public fun classify_signed_funding_for_testing(
     before_magnitude: u256,
 ): CheckpointChange {
     classify_preexisting_from_delta(
-        stored, before, signed_delta(stored_negative, stored_magnitude, before_negative, before_magnitude),
+        self, before, signed_delta(stored_negative, stored_magnitude, before_negative, before_magnitude),
     )
 }
 
