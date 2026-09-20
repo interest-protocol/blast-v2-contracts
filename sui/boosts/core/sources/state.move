@@ -941,6 +941,11 @@ fun assert_within_nav_cap<Product>(self: &State<Product>, nav: u64) {
 }
 
 /// All active priced paths consume fresh, attributable venue facts before mutation.
+///
+/// Shareholder NAV must be positive against the reserve the ceiling admits at
+/// this position, the same figure every priced operation values against, so a
+/// funding credit that lifted the stored reserve above the ceiling cannot lock
+/// holders out of the operation that releases the excess to them.
 fun validated_active_position<Product>(
     self: &State<Product>,
     observation: PositionObservation,
@@ -951,12 +956,13 @@ fun validated_active_position<Product>(
         observation.position_base() == 0 || observation.observed_side() == self.vault_policy.side(),
         blast_boosts_core::errors::invalid_position_observation!(),
     );
+    let position = self.priced_position(observation);
     assert!(
-        accounting_math::is_shareholder_nav_positive(observation.venue_equity(), self.maintenance_reserve),
+        accounting_math::is_shareholder_nav_positive(position.equity, self.admitted_reserve(&position)),
         blast_boosts_core::errors::invalid_nav!(),
     );
 
-    self.priced_position(observation)
+    position
 }
 
 /// Reads a consumed observation into a position priced at its own pair; the

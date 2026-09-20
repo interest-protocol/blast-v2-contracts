@@ -2210,17 +2210,35 @@ fun an_active_operation_rejects_equity_equal_to_the_reserve() {
     abort
 }
 
-/// The stored reserve gates priced operations, not the admitted one: a credit
-/// lifts the book to 150_000 over a 100_000 ceiling, and equity of 140_000,
-/// which would leave 40_000 of NAV against the admitted reserve, is refused.
+/// The admitted reserve gates priced operations, not the stored one: a credit
+/// lifts the book to 150_000 over a 100_000 ceiling, and equity of 140_000
+/// still prices, leaving 40_000 of NAV; the redemption that follows releases
+/// the excess back to the ceiling instead of locking holders out.
+#[test]
+fun a_priced_operation_admits_equity_that_covers_the_admitted_reserve() {
+    let fixture = start(domain::vault_issuer_role());
+    let mut state = capped_initialized_state(&fixture, 500);
+    state.settle_funding(observation::funding_credit(50_000));
+    assert_eq!(state.maintenance_reserve(), 150_000);
+    let observation = standard_observation(policy::long()).with_venue_equity(140_000).into_position_observation();
+
+    let plan = state.prepare_redemption(observation, 500_000, 1_000_000, 0, REFERENCE_TIME_MS);
+    let after = standard_observation(policy::long()).with_venue_equity(140_000).with_position_base(1_000_000_000).into_position_observation();
+    let (net, _, _, _) = state.complete_redemption(plan, after, REFERENCE_TIME_MS);
+    assert!(net > 0);
+    assert!(state.maintenance_reserve() <= 100_000);
+    state.destroy_for_testing();
+    destroy(fixture);
+}
+
+/// Equity at or below the admitted reserve is still refused.
 #[test]
 #[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::state)]
 fun a_priced_operation_is_refused_when_equity_only_covers_the_admitted_reserve() {
     let fixture = start(domain::vault_issuer_role());
     let mut state = capped_initialized_state(&fixture, 500);
     state.settle_funding(observation::funding_credit(50_000));
-    assert_eq!(state.maintenance_reserve(), 150_000);
-    state.needs_rebalance(standard_observation(policy::long()).with_venue_equity(140_000).into_position_observation(), REFERENCE_TIME_MS);
+    state.needs_rebalance(standard_observation(policy::long()).with_venue_equity(100_000).into_position_observation(), REFERENCE_TIME_MS);
     abort
 }
 
