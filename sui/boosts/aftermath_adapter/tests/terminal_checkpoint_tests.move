@@ -28,6 +28,13 @@ fun pending_bid_base_blocks_finality_even_when_order_count_is_zero() {
 
 #[test]
 #[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+fun pending_ask_base_blocks_finality_even_when_order_count_is_zero() {
+    checkpoint::checkpoint_for_testing(0, 0, 0, 0, 9, 10, 9, 10, 1_000,
+        1, 0, 0, 0, false, 0, 0, 0).recoverable_terminal_cash();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
 fun short_funding_snapshot_must_be_exact_even_when_flat() {
     checkpoint::checkpoint_for_testing(0, 0, 0, 0, 9, 9, 9, 10, 1_000,
         0, 0, 0, 0, false, 0, 0, 0).recoverable_terminal_cash();
@@ -44,11 +51,113 @@ fun direct_settlement_closes_raw_dust_without_creating_a_market_order() {
 
 #[test]
 #[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
-fun direct_settlement_cannot_leave_one_raw_order_or_position_unit() {
+fun direct_settlement_cannot_leave_one_raw_order() {
     let before = checkpoint::checkpoint_for_testing(0, 0, 1, 1, 9, 10, 9, 10, 1_000,
         0, 0, 0, 0, true, 0, 0, 0);
     let after = checkpoint::checkpoint_for_testing(5, 0, 0, 0, 9, 10, 9, 10, 1_000,
         1, 0, 0, 0, true, 0, 0, 0);
+    before.assert_direct_settlement_checkpoint(&after);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+fun direct_settlement_cannot_leave_one_raw_position_unit() {
+    let before = checkpoint::checkpoint_for_testing(0, 0, 1, 1, 9, 10, 9, 10, 1_000,
+        0, 0, 0, 0, true, 0, 0, 0);
+    let after = checkpoint::checkpoint_for_testing(5, 0, 1, 0, 9, 10, 9, 10, 1_000,
+        0, 0, 0, 0, true, 0, 0, 0);
+    before.assert_direct_settlement_checkpoint(&after);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+fun direct_settlement_requires_a_frozen_market() {
+    let before = checkpoint::checkpoint_for_testing(0, 0, 1, 1, 9, 10, 9, 10, 1_000,
+        0, 0, 0, 0, false, 0, 0, 0);
+    let after = checkpoint::checkpoint_for_testing(5, 0, 0, 0, 9, 10, 9, 10, 1_000,
+        0, 0, 0, 0, false, 0, 0, 0);
+    before.assert_direct_settlement_checkpoint(&after);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+fun direct_settlement_requires_an_open_position_to_close() {
+    let before = checkpoint::checkpoint_for_testing(0, 0, 0, 0, 9, 10, 9, 10, 1_000,
+        0, 0, 0, 0, true, 0, 0, 0);
+    let after = checkpoint::checkpoint_for_testing(5, 0, 0, 0, 9, 10, 9, 10, 1_000,
+        0, 0, 0, 0, true, 0, 0, 0);
+    before.assert_direct_settlement_checkpoint(&after);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+fun direct_settlement_cannot_leave_entry_quote() {
+    let before = checkpoint::checkpoint_for_testing(0, 0, 1, 1, 9, 10, 9, 10, 1_000,
+        0, 0, 0, 0, true, 0, 0, 0);
+    let after = checkpoint::checkpoint_for_testing(5, 0, 0, 1, 9, 10, 9, 10, 1_000,
+        0, 0, 0, 0, true, 0, 0, 0);
+    before.assert_direct_settlement_checkpoint(&after);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+fun direct_settlement_must_refresh_both_funding_snapshots() {
+    let before = checkpoint::checkpoint_for_testing(0, 0, 1, 1, 9, 10, 9, 10, 1_000,
+        0, 0, 0, 0, true, 0, 0, 0);
+    let after = checkpoint::checkpoint_for_testing(5, 0, 0, 0, 8, 10, 9, 10, 1_000,
+        0, 0, 0, 0, true, 0, 0, 0);
+    before.assert_direct_settlement_checkpoint(&after);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+fun direct_settlement_must_refresh_the_short_funding_snapshot() {
+    let before = checkpoint::checkpoint_for_testing(0, 0, 1, 1, 9, 10, 9, 10, 1_000,
+        0, 0, 0, 0, true, 0, 0, 0);
+    let after = checkpoint::checkpoint_for_testing(5, 0, 0, 0, 9, 11, 9, 10, 1_000,
+        0, 0, 0, 0, true, 0, 0, 0);
+    before.assert_direct_settlement_checkpoint(&after);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+fun direct_settlement_cannot_move_an_unrelated_field() {
+    let before = checkpoint::checkpoint_for_testing(0, 0, 1, 1, 9, 10, 9, 10, 1_000,
+        0, 0, 0, 0, true, 0, 0, 0);
+    let after = checkpoint::checkpoint_for_testing(5, 0, 0, 0, 9, 10, 9, 10, 999,
+        0, 0, 0, 0, true, 0, 0, 0);
+    before.assert_direct_settlement_checkpoint(&after);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+/// The snapshot follows the moved market rate, so only the whole-struct
+/// equality can catch the rate itself moving.
+fun direct_settlement_cannot_move_the_market_funding_rate() {
+    let before = checkpoint::checkpoint_for_testing(0, 0, 1, 1, 9, 10, 9, 10, 1_000,
+        0, 0, 0, 0, true, 0, 0, 0);
+    let after = checkpoint::checkpoint_for_testing(5, 0, 0, 0, 11, 10, 11, 10, 1_000,
+        0, 0, 0, 0, true, 0, 0, 0);
+    before.assert_direct_settlement_checkpoint(&after);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+fun direct_settlement_rejects_a_standing_bid() {
+    let before = checkpoint::checkpoint_for_testing(0, 0, 1, 1, 9, 10, 9, 10, 1_000,
+        0, 1, 0, 0, true, 0, 0, 0);
+    let after = checkpoint::checkpoint_for_testing(5, 0, 0, 0, 9, 10, 9, 10, 1_000,
+        0, 0, 0, 0, true, 0, 0, 0);
+    before.assert_direct_settlement_checkpoint(&after);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+fun direct_settlement_rejects_a_standing_order_count() {
+    let before = checkpoint::checkpoint_for_testing(0, 0, 1, 1, 9, 10, 9, 10, 1_000,
+        0, 0, 1, 0, true, 0, 0, 0);
+    let after = checkpoint::checkpoint_for_testing(5, 0, 0, 0, 9, 10, 9, 10, 1_000,
+        0, 0, 0, 0, true, 0, 0, 0);
     before.assert_direct_settlement_checkpoint(&after);
 }
 
@@ -110,6 +219,24 @@ fun terminal_withdrawal_preserves_the_exact_unrecoverable_raw_remainder() {
 fun maximum_free_cash_does_not_make_sub_atomic_remainder_overflow() {
     assert_eq!(checkpoint(0, 0, 999_999_999_999, 0, 9, std::u64::max_value!())
         .recoverable_cash_for_testing(false, 999_999_999_999), std::u64::max_value!());
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+/// One whole atom past u64 cannot be floored into a coin amount, so the flat
+/// settled venue is still not recoverable.
+fun unrepresentable_allocated_magnitude_is_not_terminal_cash() {
+    let magnitude = ((std::u64::max_value!() as u256) + 1) * 1_000_000_000_000;
+    checkpoint(0, 0, magnitude, 0, 9, 0).recoverable_cash_for_testing(false, magnitude);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+fun terminal_withdrawal_cannot_move_an_unrelated_field() {
+    let before = checkpoint(0, 0, 0, 0, 9, 5);
+    let after = checkpoint::checkpoint_for_testing(0, 0, 0, 0, 9, 10, 9, 10, 1_000,
+        0, 0, 0, 0, true, 0, 0, 0);
+    before.assert_terminal_withdrawal_checkpoint(&after, 5);
 }
 
 #[test]

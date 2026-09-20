@@ -152,6 +152,40 @@ fun the_package_admin_role_can_irreversibly_restrict_the_adapter() {
 }
 
 #[test]
+/// The second narrowing step emits its own policy fact, chained from the
+/// additive policy the first step installed.
+fun the_dependency_only_restriction_emits_the_policy_fact() {
+    let mut fixture = start(domain::package_admin_role());
+    let upgrade_cap_id = fixture.package_admin.upgrade_cap_id_for_testing();
+
+    fixture.restrict_to_additive();
+    fixture.restrict_to_dependency_only();
+
+    let mut restricted = sui::event::events_by_type<
+        blast_admin::events::UpgradePolicyRestricted<BLAST_BOOSTS_AFTERMATH>,
+    >();
+    assert_eq!(restricted.length(), 2);
+    let dependency_only = restricted.pop_back();
+    let (
+        custodian_id,
+        emitted_upgrade_cap_id,
+        package_id,
+        native_version,
+        previous_policy,
+        new_policy,
+    ) = dependency_only.upgrade_policy_restricted_fields();
+    assert_eq!(custodian_id, fixture.package_admin.id_for_testing());
+    assert_eq!(emitted_upgrade_cap_id, upgrade_cap_id);
+    assert_eq!(package_id, PACKAGE_ID);
+    assert_eq!(native_version, 1);
+    assert_eq!(previous_policy, package::additive_policy());
+    assert_eq!(new_policy, package::dep_only_policy());
+    assert_eq!(new_policy, fixture.package_admin.policy_for_testing());
+
+    destroy(fixture);
+}
+
+#[test]
 #[expected_failure(
     abort_code = blast_admin::errors::EUpgradePolicyNotMoreRestrictive,
     location = blast_admin::upgrade_custody,
@@ -205,6 +239,21 @@ fun policy_restriction_is_rejected_after_immutability() {
 
 #[test]
 #[expected_failure(
+    abort_code = blast_admin::errors::EUpgradeCapUnavailable,
+    location = blast_admin::upgrade_custody,
+)]
+/// Immutability destroys the cap, so a second application has nothing to destroy.
+fun immutability_cannot_be_applied_twice() {
+    let mut fixture = start(domain::package_admin_role());
+
+    fixture.make_immutable();
+    fixture.make_immutable();
+
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
     abort_code = blast_admin::errors::EAdminRoleNotGranted,
     location = blast_admin::acl,
 )]
@@ -213,6 +262,48 @@ fun a_zero_role_admin_cannot_restrict_upgrade_policy() {
     let mut fixture = start(0);
 
     fixture.restrict_to_additive();
+
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EAdminRoleNotGranted,
+    location = blast_admin::acl,
+)]
+fun a_zero_role_admin_cannot_restrict_to_dependency_only() {
+    let mut fixture = start(0);
+
+    fixture.restrict_to_dependency_only();
+
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EAdminRoleNotGranted,
+    location = blast_admin::acl,
+)]
+fun a_zero_role_admin_cannot_make_the_adapter_immutable() {
+    let mut fixture = start(0);
+
+    fixture.make_immutable();
+
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+/// Immutability runs the generation guard before the role check, so stale
+/// bytecode is refused even before a zero-role administrator is.
+fun a_stale_generation_rejects_immutability_before_the_role_check() {
+    let mut fixture = start(0);
+    fixture.protocol.set_version_for_testing(2);
+
+    fixture.make_immutable();
 
     destroy(fixture);
 }

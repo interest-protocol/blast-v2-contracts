@@ -52,8 +52,9 @@ fun the_generation_advances_to_the_next_compiled_generation() {
     let advanced = blast_admin::events::collect_one<
         blast_admin::events::OperationalVersionAdvanced<BLAST_BOOSTS_AFTERMATH>,
     >(0);
-    let (_, _, previous_generation, new_generation) =
+    let (container_id, _, previous_generation, new_generation) =
         advanced.operational_version_advanced_fields();
+    assert_eq!(container_id, fixture.protocol.id_for_testing());
     assert_eq!(previous_generation, 1);
     assert_eq!(new_generation, 2);
     assert_eq!(new_generation, fixture.protocol.version_for_testing());
@@ -82,6 +83,23 @@ fun the_finalizer_rejects_a_skipped_generation_before_committing() {
     let mut fixture = start(domain::package_admin_role());
 
     fixture.protocol.set_version_for_testing(5);
+
+    fixture.protocol.assert_next_for_testing();
+
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+/// Once the container already sits at the compiled cutover target, the
+/// finalizer's proof fails: the next generation would be three, not two.
+fun the_finalizer_rejects_an_already_advanced_generation_as_next() {
+    let mut fixture = start(domain::package_admin_role());
+
+    fixture.protocol.set_version_for_testing(2);
 
     fixture.protocol.assert_next_for_testing();
 

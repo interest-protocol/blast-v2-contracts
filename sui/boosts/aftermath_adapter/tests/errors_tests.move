@@ -4,7 +4,7 @@ module blast_boosts_aftermath::errors_tests;
 // Every code is pinned so a renumbering is a deliberate, reviewed edit.
 
 #[test]
-/// Codes 0 to 17.
+/// Codes 0 to 16.
 fun error_registry_first_half_is_sequential() {
     assert_eq!(errors::invalid_package_publisher!(), 0);
     assert_eq!(errors::invalid_product_witness_type!(), 1);
@@ -26,7 +26,7 @@ fun error_registry_first_half_is_sequential() {
 }
 
 #[test]
-/// Codes 18 to 36.
+/// Codes 17 to 35.
 fun error_registry_second_half_is_sequential() {
     assert_eq!(errors::initialization_fill_mismatch!(), 17);
     assert_eq!(errors::initialization_imr_mismatch!(), 18);
