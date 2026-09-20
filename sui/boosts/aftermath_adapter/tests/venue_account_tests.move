@@ -209,7 +209,7 @@ fun admin_cap_for(account: address, ctx: &mut TxContext): AuthorityCap<ACCOUNT, 
 }
 
 fun standard_checkpoint(): Checkpoint {
-    venue_account::checkpoint_for_testing(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, true, 14, 15, 16)
+    checkpoint::checkpoint_for_testing(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, true, 14, 15, 16)
 }
 
 fun standard_binding(): Binding {
@@ -267,7 +267,7 @@ fun assert_standard_checkpoint(checkpoint: &Checkpoint) {
 
 use authority_cap::authority::{Self, ADMIN, AuthorityCap};
 
-use blast_boosts_aftermath::{errors, venue_account::{Self, Binding, Checkpoint}};
+use blast_boosts_aftermath::{checkpoint::{Self, Checkpoint}, errors, venue_account::{Self, Binding}};
 
 use perpetuals::authority::ACCOUNT;
 

@@ -237,9 +237,9 @@ fun finalization_cannot_recover_or_pay_the_seed_funder_twice() {
 #[test]
 fun completed_direct_settlement_reports_actual_cash_and_no_market_order() {
     let mut fixture = start();
-    let before = venue_account::checkpoint_for_testing(0, 0, 1, 1, 11, 21, 11, 21, LOT_SIZE,
+    let before = checkpoint::checkpoint_for_testing(0, 0, 1, 1, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, true, 1, 1, 1);
-    let after = venue_account::checkpoint_for_testing(5, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    let after = checkpoint::checkpoint_for_testing(5, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, true, 1, 1, 1);
     let mut vault = issue_and_activate(&mut fixture, before);
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
@@ -368,13 +368,13 @@ fun terminal_claim_before_shutdown_rejects_lifecycle_before_missing_cash_field()
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
 fun finalization_rejects_a_short_actual_coin_even_when_the_venue_is_empty() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
-    let before = venue_account::checkpoint_for_testing(13, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    let before = checkpoint::checkpoint_for_testing(13, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, false, 1, 1, 1);
     let recovered = sui::coin::mint_for_testing<Collateral>(12, fixture.ctx!());
     operations::complete_finalization_for_testing(&mut vault, before.terminal_withdrawal(terminal_checkpoint(), recovered));
@@ -383,15 +383,15 @@ fun finalization_rejects_a_short_actual_coin_even_when_the_venue_is_empty() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
 fun finalization_rejects_a_short_actual_coin_with_exact_sub_atomic_remainder() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
-    let before = venue_account::checkpoint_for_testing(12, 1_000_000_000_001, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    let before = checkpoint::checkpoint_for_testing(12, 1_000_000_000_001, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, false, 1, 1, 1);
-    let after = venue_account::checkpoint_for_testing(0, 1, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    let after = checkpoint::checkpoint_for_testing(0, 1, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, false, 1, 1, 1);
     let recovered = sui::coin::mint_for_testing<Collateral>(12, fixture.ctx!());
     operations::complete_finalization_for_testing(&mut vault, before.terminal_withdrawal_for_testing(after, recovered, false, 1_000_000_000_001));
@@ -530,7 +530,7 @@ fun event_reducer_reconstructs_a_positive_funding_checkpoint() {
     replay_initialized(&mut replay, events::collect_one<events::VaultInitialized<Product>>(0));
     let before = checkpoint_with_market_imr(0, ALLOCATED_FIXED, 10, 20, 11, 21, 1);
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED + ATOM_FIXED, 11, 21, 11, 21, 1);
-    let change = operations::classify_sync_change_for_testing(&initial, &before, &after, false, ATOM_FIXED);
+    let change = initial.classify_sync_change_for_testing(&before, &after, false, ATOM_FIXED);
     apply_connected_change(&mut vault, after, change);
     replay_funding(&mut replay, events::collect_one<events::FundingSettled<Product>>(0));
     assert_eq!(replay.maintenance_reserve, vault.state().maintenance_reserve());
@@ -545,14 +545,14 @@ fun every_drifted_sync_reports_the_drift_and_a_clean_sync_is_silent() {
     let initial = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, initial);
     let dirty = checkpoint_with_market_imr(0, ALLOCATED_FIXED, 10, 20, 10, 20, 2);
-    apply_connected_change(&mut vault, dirty, venue_account::unexpected_change());
-    apply_connected_change(&mut vault, initial, venue_account::unchanged_change());
+    apply_connected_change(&mut vault, dirty, checkpoint::unexpected_change());
+    apply_connected_change(&mut vault, initial, checkpoint::unchanged_change());
     let drifted = events::collect<events::CheckpointDrifted<Product>>();
     assert_eq!(drifted.length(), 1);
     let (_, checkpoint) = drifted[0].checkpoint_drifted_fields();
     assert_eq!(checkpoint, dirty);
     assert_eq!(*vault.venue().checkpoint(), initial);
-    apply_connected_change(&mut vault, dirty, venue_account::unexpected_change());
+    apply_connected_change(&mut vault, dirty, checkpoint::unexpected_change());
     assert_eq!(events::collect<events::CheckpointDrifted<Product>>().length(), 2);
     assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 0);
     destroy(vault);
@@ -642,15 +642,15 @@ fun completed_redemption_burns_the_native_input_only_after_exact_cash_return() {
 
 #[test]
 fun allocated_cash_changes_cross_zero_with_exact_signed_magnitudes() {
-    venue_account::assert_signed_cash_change_for_testing(true, 2 * ATOM_FIXED, false, 3 * ATOM_FIXED, 5, true);
-    venue_account::assert_signed_cash_change_for_testing(false, 3 * ATOM_FIXED, true, 2 * ATOM_FIXED, 5, false);
-    venue_account::assert_signed_cash_change_for_testing(true, 5 * ATOM_FIXED, true, 2 * ATOM_FIXED, 3, true);
+    checkpoint::assert_signed_cash_change_for_testing(true, 2 * ATOM_FIXED, false, 3 * ATOM_FIXED, 5, true);
+    checkpoint::assert_signed_cash_change_for_testing(false, 3 * ATOM_FIXED, true, 2 * ATOM_FIXED, 5, false);
+    checkpoint::assert_signed_cash_change_for_testing(true, 5 * ATOM_FIXED, true, 2 * ATOM_FIXED, 3, true);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
 fun allocated_cash_changes_reject_a_reversed_signed_delta() {
-    venue_account::assert_signed_cash_change_for_testing(true, 2 * ATOM_FIXED, false, 3 * ATOM_FIXED, 5, false);
+    checkpoint::assert_signed_cash_change_for_testing(true, 2 * ATOM_FIXED, false, 3 * ATOM_FIXED, 5, false);
 }
 
 #[test]
@@ -663,7 +663,7 @@ fun active_checkpoint_admits_only_the_executed_position_and_venue_cost() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveCheckpointMismatch, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::EActiveCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
 fun active_checkpoint_rejects_a_foreign_market_parameter_change() {
     let before = initial_checkpoint();
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, 10, 20, 10, 20, 2);
@@ -671,7 +671,7 @@ fun active_checkpoint_rejects_a_foreign_market_parameter_change() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
 fun active_checkpoint_rejects_an_inexact_allocated_deposit() {
     let before = initial_checkpoint();
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED + 49 * ATOM_FIXED, 10, 20, 10, 20, 1);
@@ -686,7 +686,7 @@ fun redemption_cash_checkpoint_spends_free_cash_before_deallocating() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
 fun redemption_cash_checkpoint_rejects_inexact_payout() {
     let before = checkpoint_with_market_imr(25, ALLOCATED_FIXED, 10, 20, 10, 20, 1);
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - 14 * ATOM_FIXED, 10, 20, 10, 20, 1);
@@ -902,7 +902,7 @@ fun connected_donation_accepts_only_the_exact_free_collateral_deposit() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
 fun donation_cannot_accept_an_unrelated_position_margin_change() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
@@ -1201,7 +1201,7 @@ fun negative_position_imr_is_rejected() {
 
 #[test]
 fun vault_initialized_event_records_every_activation_primitive() {
-    let checkpoint = venue_account::checkpoint_for_testing(
+    let checkpoint = checkpoint::checkpoint_for_testing(
         11,
         12,
         13,
@@ -1272,9 +1272,7 @@ fun vault_initialized_event_records_every_activation_primitive() {
 fun synchronization_classifies_no_change_and_replay_as_no_funding() {
     let before = sync_checkpoint(1_000, 100_000_000_000_000, 10, 20, 11, 21, 0, 0, 0);
 
-    let first = operations::classify_sync_change_for_testing(
-        &before,
-        &before,
+    let first = before.classify_sync_change_for_testing(&before,
         &before,
         false,
         0,
@@ -1282,9 +1280,7 @@ fun synchronization_classifies_no_change_and_replay_as_no_funding() {
     assert!(first.is_unchanged_for_testing());
 
     let after = sync_checkpoint(1_000, 110_000_000_000_000, 11, 21, 11, 21, 0, 0, 0);
-    let replay = operations::classify_sync_change_for_testing(
-        &after,
-        &after,
+    let replay = after.classify_sync_change_for_testing(&after,
         &after,
         false,
         0,
@@ -1298,15 +1294,13 @@ fun synchronization_accepts_only_an_isolated_funding_credit() {
     let before = sync_checkpoint(1_000, 100_000_000_000_000, 10, 20, 11, 21, 0, 0, 0);
     let after = sync_checkpoint(1_000, 110_000_000_000_000, 11, 21, 11, 21, 0, 0, 0);
 
-    let change = operations::classify_sync_change_for_testing(
-        &stored,
-        &before,
+    let change = stored.classify_sync_change_for_testing(&before,
         &after,
         false,
         10_000_000_000_000,
     );
     let (has_funding, is_cost, raw_amount, amount, checkpoint_clean) =
-        change.funding_change_fields();
+        (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
 
     assert!(has_funding);
     assert!(!is_cost);
@@ -1322,22 +1316,20 @@ fun synchronization_rounds_an_isolated_funding_cost_against_the_reserve() {
     let before = sync_checkpoint(1_000, 100_000_000_000_000, 10, 20, 11, 21, 0, 0, 0);
     let after = sync_checkpoint(1_000, 99_000_000_000_001, 11, 21, 11, 21, 0, 0, 0);
 
-    let change = operations::classify_sync_change_for_testing(
-        &stored,
-        &before,
+    let change = stored.classify_sync_change_for_testing(&before,
         &after,
         true,
         999_999_999_999,
     );
     let (has_funding, is_cost, raw_amount, amount, checkpoint_clean) =
-        change.funding_change_fields();
+        (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
 
     assert!(has_funding);
     assert!(is_cost);
     assert_eq!(raw_amount, 999_999_999_999);
     assert_eq!(amount, 1);
     assert!(checkpoint_clean);
-    assert!(change.is_cost_for_testing());
+    assert!(change.is_cost());
 }
 
 #[test]
@@ -1345,15 +1337,13 @@ fun synchronization_recognizes_permissionlessly_settled_funding_once() {
     let stored = sync_checkpoint(1_000, 100_000_000_000_000, 10, 20, 10, 20, 0, 0, 0);
     let settled = sync_checkpoint(1_000, 110_000_000_000_000, 11, 21, 11, 21, 0, 0, 0);
 
-    let change = operations::classify_sync_change_for_testing(
-        &stored,
-        &settled,
+    let change = stored.classify_sync_change_for_testing(&settled,
         &settled,
         false,
         0,
     );
     let (has_funding, is_cost, raw_amount, amount, checkpoint_clean) =
-        change.funding_change_fields();
+        (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
 
     assert!(has_funding);
     assert!(!is_cost);
@@ -1361,9 +1351,7 @@ fun synchronization_recognizes_permissionlessly_settled_funding_once() {
     assert_eq!(amount, 10);
     assert!(checkpoint_clean);
 
-    let replay = operations::classify_sync_change_for_testing(
-        &settled,
-        &settled,
+    let replay = settled.classify_sync_change_for_testing(&settled,
         &settled,
         false,
         0,
@@ -1377,18 +1365,16 @@ fun synchronization_preserves_external_then_local_funding_as_two_ordered_changes
     let before = sync_checkpoint(1_000, 90 * ATOM_FIXED, 11, 21, 12, 22, 0, 0, 0);
     let after = sync_checkpoint(1_000, 95 * ATOM_FIXED, 12, 22, 12, 22, 0, 0, 0);
 
-    let (external, local) = operations::classify_sync_changes_for_testing(
-        &stored,
-        &before,
+    let (external, local) = stored.classify_sync_changes_for_testing(&before,
         &after,
         false,
         5 * ATOM_FIXED,
     );
 
     let (has_external, external_is_cost, external_raw, _, external_clean) =
-        external.funding_change_fields();
+        (external.has_funding(), external.is_cost(), external.raw_amount(), external.amount(), external.is_clean());
     let (has_local, local_is_cost, local_raw, _, local_clean) =
-        local.funding_change_fields();
+        (local.has_funding(), local.is_cost(), local.raw_amount(), local.amount(), local.is_clean());
     assert!(has_external && external_is_cost && external_clean);
     assert_eq!(external_raw, 10 * ATOM_FIXED);
     assert!(has_local && !local_is_cost && local_clean);
@@ -1472,7 +1458,7 @@ fun drift_event_records_the_vault_and_the_drifted_checkpoint() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_boosts_aftermath::errors::EUnresolvedCheckpoint, location = blast_boosts_aftermath::venue_account)]
+#[expected_failure(abort_code = blast_boosts_aftermath::errors::EUnresolvedCheckpoint, location = blast_boosts_aftermath::checkpoint)]
 fun active_operation_rejects_unresolved_checkpoint_with_its_own_error() {
     let before = sync_checkpoint(1_000, 100, 10, 20, 11, 21, 0, 0, 1);
     let after = sync_checkpoint(1_001, 100, 10, 20, 11, 21, 0, 0, 1);
@@ -1504,8 +1490,7 @@ fun a_credit_after_an_exhausting_cost_repays_holders_before_the_reserve() {
     let mut vault = issue_and_activate(&mut fixture, initial);
     let cost = SEED_RESERVE + 30;
     let funded = funding_checkpoint(cost, true);
-    let change = operations::classify_sync_change_for_testing(
-        &initial, &funding_before_checkpoint(), &funded, true, (cost as u256) * ATOM_FIXED,
+    let change = initial.classify_sync_change_for_testing(&funding_before_checkpoint(), &funded, true, (cost as u256) * ATOM_FIXED,
     );
     apply_connected_change(&mut vault, funded, change);
     assert_eq!(vault.state().maintenance_reserve(), 0);
@@ -1514,9 +1499,7 @@ fun a_credit_after_an_exhausting_cost_repays_holders_before_the_reserve() {
     let credited = checkpoint_with_market_imr(
         0, ALLOCATED_FIXED - (cost as u256) * ATOM_FIXED + 50 * ATOM_FIXED, 12, 22, 12, 22, 1,
     );
-    let change = operations::classify_sync_change_for_testing(
-        &funded,
-        &checkpoint_with_market_imr(0, ALLOCATED_FIXED - (cost as u256) * ATOM_FIXED, 11, 21, 12, 22, 1),
+    let change = funded.classify_sync_change_for_testing(&checkpoint_with_market_imr(0, ALLOCATED_FIXED - (cost as u256) * ATOM_FIXED, 11, 21, 12, 22, 1),
         &credited, false, 50 * ATOM_FIXED,
     );
     apply_connected_change(&mut vault, credited, change);
@@ -1543,18 +1526,14 @@ fun connected_credit_credits_the_buffer_once() {
     let mut vault = issue_and_activate(&mut fixture, initial);
     let before = funding_before_checkpoint();
     let credited = funding_checkpoint(10, false);
-    let credit = operations::classify_sync_change_for_testing(
-        &initial,
-        &before,
+    let credit = initial.classify_sync_change_for_testing(&before,
         &credited,
         false,
         10 * ATOM_FIXED,
     );
 
     apply_connected_change(&mut vault, credited, credit);
-    let unchanged = operations::classify_sync_change_for_testing(
-        &credited,
-        &credited,
+    let unchanged = credited.classify_sync_change_for_testing(&credited,
         &credited,
         false,
         0,
@@ -1576,18 +1555,14 @@ fun connected_second_call_at_the_same_checkpoint_is_exactly_once() {
     let mut vault = issue_and_activate(&mut fixture, initial);
     let before = funding_before_checkpoint();
     let funded = funding_checkpoint(10, true);
-    let cost = operations::classify_sync_change_for_testing(
-        &initial,
-        &before,
+    let cost = initial.classify_sync_change_for_testing(&before,
         &funded,
         true,
         10 * ATOM_FIXED,
     );
     apply_connected_change(&mut vault, funded, cost);
 
-    let replay = operations::classify_sync_change_for_testing(
-        &funded,
-        &funded,
+    let replay = funded.classify_sync_change_for_testing(&funded,
         &funded,
         false,
         0,
@@ -1608,18 +1583,14 @@ fun connected_permissionless_pre_settlement_debits_the_reserve_exactly_once() {
     let initial = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, initial);
     let settled = funding_checkpoint(10, true);
-    let cost = operations::classify_sync_change_for_testing(
-        &initial,
-        &settled,
+    let cost = initial.classify_sync_change_for_testing(&settled,
         &settled,
         false,
         0,
     );
     apply_connected_change(&mut vault, settled, cost);
 
-    let replay = operations::classify_sync_change_for_testing(
-        &settled,
-        &settled,
+    let replay = settled.classify_sync_change_for_testing(&settled,
         &settled,
         false,
         0,
@@ -1657,9 +1628,7 @@ fun connected_external_cost_and_local_income_settle_one_net_checkpoint() {
         22,
         1,
     );
-    let (external, local) = operations::classify_sync_changes_for_testing(
-        &initial,
-        &before,
+    let (external, local) = initial.classify_sync_changes_for_testing(&before,
         &after,
         false,
         20 * ATOM_FIXED,
@@ -1696,7 +1665,7 @@ fun connected_zero_net_checkpoint_emits_once_and_preserves_the_buffer() {
     let mut vault = issue_and_activate(&mut fixture, initial);
     let before = funding_before_checkpoint();
     let after = funding_checkpoint(0, false);
-    let change = operations::classify_sync_change_for_testing(&initial, &before, &after, false, 0);
+    let change = initial.classify_sync_change_for_testing(&before, &after, false, 0);
     apply_connected_change(&mut vault, after, change);
     assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
     assert_eq!(*vault.venue().checkpoint(), after);
@@ -1709,7 +1678,7 @@ fun connected_zero_net_checkpoint_emits_once_and_preserves_the_buffer() {
     assert_eq!(vector[amount, absorbed, uncovered, reserve], vector[0, 0, 0, SEED_RESERVE]);
     assert_eq!(previous, initial);
     assert_eq!(current, after);
-    let unchanged = operations::classify_sync_change_for_testing(&after, &after, &after, false, 0);
+    let unchanged = after.classify_sync_change_for_testing(&after, &after, false, 0);
     apply_connected_change(&mut vault, after, unchanged);
     assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 1);
     destroy(vault);
@@ -1722,11 +1691,11 @@ fun gross_funding_width_is_checked_only_after_the_signed_net() {
     let stored = checkpoint_with_market_imr(0, large + 100 * ATOM_FIXED, 10, 20, 10, 20, 1);
     let before = checkpoint_with_market_imr(0, 100 * ATOM_FIXED, 11, 21, 12, 22, 1);
     let after = checkpoint_with_market_imr(0, large + 99 * ATOM_FIXED, 12, 22, 12, 22, 1);
-    let (external, local) = operations::classify_sync_changes_for_testing(
-        &stored, &before, &after, false, large - ATOM_FIXED,
+    let (external, local) = stored.classify_sync_changes_for_testing(&before, &after, false, large - ATOM_FIXED,
     );
     let net = external.net_funding(local);
-    let (has_funding, is_cost, raw, amount, clean) = net.funding_change_fields();
+    let (has_funding, is_cost, raw, amount, clean) =
+        (net.has_funding(), net.is_cost(), net.raw_amount(), net.amount(), net.is_clean());
     assert!(clean && has_funding && is_cost);
     assert_eq!(raw, ATOM_FIXED);
     assert_eq!(amount, 1);
@@ -1755,9 +1724,7 @@ fun connected_unresolved_drift_preserves_the_accepted_checkpoint_across_retries(
         21,
         2,
     );
-    let unexpected = operations::classify_sync_change_for_testing(
-        &initial,
-        &before,
+    let unexpected = initial.classify_sync_change_for_testing(&before,
         &after,
         true,
         10 * ATOM_FIXED,
@@ -1772,9 +1739,7 @@ fun connected_unresolved_drift_preserves_the_accepted_checkpoint_across_retries(
     let (_, checkpoint) = events::collect_one<events::CheckpointDrifted<Product>>(0).checkpoint_drifted_fields();
     assert_eq!(checkpoint, after);
 
-    let replay = operations::classify_sync_change_for_testing(
-        vault.venue().checkpoint(),
-        &after,
+    let replay = vault.venue().checkpoint().classify_sync_change_for_testing(&after,
         &after,
         false,
         0,
@@ -1792,9 +1757,7 @@ fun connected_temporary_health_fault_keeps_lifecycle_and_emits_no_mutation() {
     let mut fixture = start();
     let checkpoint = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, checkpoint);
-    let unchanged = operations::classify_sync_change_for_testing(
-        &checkpoint,
-        &checkpoint,
+    let unchanged = checkpoint.classify_sync_change_for_testing(&checkpoint,
         &checkpoint,
         false,
         0,
@@ -1805,9 +1768,7 @@ fun connected_temporary_health_fault_keeps_lifecycle_and_emits_no_mutation() {
     assert_eq!(*vault.venue().checkpoint(), checkpoint);
     assert_eq!(events::collect<events::CheckpointDrifted<Product>>().length(), 0);
 
-    let repeated = operations::classify_sync_change_for_testing(
-        &checkpoint,
-        &checkpoint,
+    let repeated = checkpoint.classify_sync_change_for_testing(&checkpoint,
         &checkpoint,
         false,
         0,
@@ -1828,9 +1789,7 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
 
     let funded_checkpoint = funding_checkpoint(10, true);
     let funding_before = funding_before_checkpoint();
-    let funding = operations::classify_sync_change_for_testing(
-        &initial_checkpoint,
-        &funding_before,
+    let funding = initial_checkpoint.classify_sync_change_for_testing(&funding_before,
         &funded_checkpoint,
         true,
         10 * ATOM_FIXED,
@@ -1849,9 +1808,7 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
         21,
         1,
     );
-    let unexpected = operations::classify_sync_change_for_testing(
-        &funded_checkpoint,
-        &final_checkpoint,
+    let unexpected = funded_checkpoint.classify_sync_change_for_testing(&final_checkpoint,
         &final_checkpoint,
         false,
         0,
@@ -1899,13 +1856,13 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
 // === Test Helpers ===
 
 fun terminal_withdrawal(recovered: Coin<Collateral>): TerminalWithdrawal<Collateral> {
-    let before = venue_account::checkpoint_for_testing(recovered.value(), 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    let before = checkpoint::checkpoint_for_testing(recovered.value(), 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, false, 1, 1, 1);
     before.terminal_withdrawal(terminal_checkpoint(), recovered)
 }
 
 fun terminal_checkpoint(): Checkpoint {
-    venue_account::checkpoint_for_testing(0, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    checkpoint::checkpoint_for_testing(0, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, false, 1, 1, 1)
 }
 
@@ -2127,7 +2084,7 @@ fun checkpoint_with_market_imr(
     market_funding_short: u256,
     market_initial_margin_ratio: u256,
 ): Checkpoint {
-    venue_account::checkpoint_for_testing(
+    checkpoint::checkpoint_for_testing(
         free_collateral,
         allocated_collateral,
         1,
@@ -2163,9 +2120,7 @@ fun assert_connected_cost(
     let mut vault = issue_and_activate(&mut fixture, initial);
     let before = funding_before_checkpoint();
     let funded = funding_checkpoint(amount, true);
-    let change = operations::classify_sync_change_for_testing(
-        &initial,
-        &before,
+    let change = initial.classify_sync_change_for_testing(&before,
         &funded,
         true,
         (amount as u256) * ATOM_FIXED,
@@ -2214,7 +2169,7 @@ fun sync_checkpoint(
     signed_base: u256,
     pending_order_count: u64,
 ): Checkpoint {
-    venue_account::checkpoint_for_testing(
+    checkpoint::checkpoint_for_testing(
         free_collateral,
         allocated_collateral,
         signed_base,
@@ -2240,15 +2195,13 @@ fun assert_unexpected_sync_change(
     before: &Checkpoint,
     after: &Checkpoint,
 ) {
-    let change = operations::classify_sync_change_for_testing(
-        stored,
-        before,
+    let change = stored.classify_sync_change_for_testing(before,
         after,
         false,
         10_000_000_000_000,
     );
     let (has_funding, _, _, _, checkpoint_clean) =
-        change.funding_change_fields();
+        (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
 
     assert!(!has_funding);
     assert!(!checkpoint_clean);
@@ -2310,15 +2263,15 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     let mut shares = operations::complete_mint_for_testing<Tag, Collateral>(&mut vault, plan, 10_000,
         active_position_for_side(10_997, 21_780, side), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
     replay_mint(&mut replay, events::collect_one<events::Minted<Tag>>(0));
-    let dirty = venue_account::checkpoint_for_testing(13, 0, 1, 1, 11, 21, 11, 21, LOT_SIZE,
+    let dirty = checkpoint::checkpoint_for_testing(13, 0, 1, 1, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, true, 1, 1, 1);
-    apply_connected_change(&mut vault, dirty, venue_account::unexpected_change());
+    apply_connected_change(&mut vault, dirty, checkpoint::unexpected_change());
     replay_drift(&mut replay, events::collect<events::CheckpointDrifted<Tag>>()[0]);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::observed_venue_change_reason());
     let shutdown = events::collect_one<events::ShutdownBegun<Tag>>(0);
     assert_eq!(shutdown.shutdown_reason(), blast_boosts_core::lifecycle::observed_venue_change_reason());
     replay_shutdown(&mut replay, shutdown);
-    let flat = venue_account::checkpoint_for_testing(12, 1_000_000_000_001, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    let flat = checkpoint::checkpoint_for_testing(12, 1_000_000_000_001, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, true, 1, 1, 1);
     operations::complete_unwind_for_testing(&mut vault, dirty, option::none(), flat, 0, option::none());
     let (_, before, _, after, orders, quote) = events::collect_one<events::UnwindProgress<Tag>>(0).unwind_progress_fields();
@@ -2326,7 +2279,7 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     assert_eq!(orders, 0);
     assert!(quote.is_none());
     replay.checkpoint = option::some(after);
-    let final_checkpoint = venue_account::checkpoint_for_testing(0, 1, 0, 0, 11, 21, 11, 21, LOT_SIZE,
+    let final_checkpoint = checkpoint::checkpoint_for_testing(0, 1, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, true, 1, 1, 1);
     let withdrawal = flat.terminal_withdrawal_for_testing(final_checkpoint,
         sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()), false, 1_000_000_000_001);
@@ -2441,24 +2394,24 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     assert_replay(&replay, vault);
 
     let dirty = checkpoint_with_market_imr(10, ALLOCATED_FIXED - ATOM_FIXED, 10, 20, 10, 20, 2);
-    apply_connected_change(vault, dirty, venue_account::unexpected_change());
+    apply_connected_change(vault, dirty, checkpoint::unexpected_change());
     replay_drift(&mut replay, events::collect<events::CheckpointDrifted<Tag>>()[0]);
     assert_replay(&replay, vault);
-    apply_connected_change(vault, dirty, venue_account::unexpected_change());
+    apply_connected_change(vault, dirty, checkpoint::unexpected_change());
     replay_drift(&mut replay, events::collect<events::CheckpointDrifted<Tag>>()[1]);
     assert_replay(&replay, vault);
-    apply_connected_change(vault, checkpoint, venue_account::unchanged_change());
+    apply_connected_change(vault, checkpoint, checkpoint::unchanged_change());
     assert_eq!(events::collect<events::CheckpointDrifted<Tag>>().length(), 2);
     replay.unresolved_checkpoint = option::none();
     assert_replay(&replay, vault);
 
     let before = checkpoint_with_market_imr(10, ALLOCATED_FIXED - ATOM_FIXED, 10, 20, 11, 21, 1);
     let after = checkpoint_with_market_imr(10, ALLOCATED_FIXED, 11, 21, 11, 21, 1);
-    let change = operations::classify_sync_change_for_testing(&checkpoint, &before, &after, false, ATOM_FIXED);
+    let change = checkpoint.classify_sync_change_for_testing(&before, &after, false, ATOM_FIXED);
     apply_connected_change(vault, after, change);
     replay_funding(&mut replay, events::collect_one<events::FundingSettled<Tag>>(0));
     assert_replay(&replay, vault);
-    apply_connected_change(vault, after, venue_account::unchanged_change());
+    apply_connected_change(vault, after, checkpoint::unchanged_change());
     assert_eq!(events::collect<events::FundingSettled<Tag>>().length(), 1);
     assert_replay(&replay, vault);
 }
@@ -2642,8 +2595,9 @@ use blast_boosts_aftermath::{
     operations,
     protocol::{Self, Protocol},
     snapshot,
+    checkpoint::{Self, Checkpoint, CheckpointChange, TerminalWithdrawal},
     vault::{Self as vault, Vault},
-    venue_account::{Self, Binding, Checkpoint, CheckpointChange, TerminalWithdrawal},
+    venue_account::{Self, Binding},
 };
 
 use blast_boosts_core::{

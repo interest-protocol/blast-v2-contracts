@@ -1147,30 +1147,14 @@ fun synchronize<Product, Collateral>(
         &binding, account, registry, clearing_house, base_oracle, collateral_oracle,
         base_price_info, collateral_price_info, clock,
     );
-    let (preexisting_change, local_change) = classify_sync_changes(
-        &stored_checkpoint, &pre_checkpoint, &post_capture.checkpoint(), funding_candidate, collateral_price,
+    let (preexisting_change, local_change) = stored_checkpoint.classify_sync_changes(
+        &pre_checkpoint, &post_capture.checkpoint(), funding_candidate, collateral_price,
     );
     apply_post_capture(vault, post_capture.checkpoint(), preexisting_change, local_change);
 
     post_capture
 }
 
-fun classify_sync_changes(
-    stored: &Checkpoint,
-    before: &Checkpoint,
-    after: &Checkpoint,
-    funding_candidate: u256,
-    collateral_price: u256,
-): (CheckpointChange, CheckpointChange) {
-    let preexisting_change = if (stored.checkpoint_ready_for_settlement(before)) {
-        venue_account::unchanged_change()
-    } else {
-        stored.classify_preexisting_funding(before)
-    };
-    let local_change = before.classify_change(after, funding_candidate, collateral_price);
-
-    (preexisting_change, local_change)
-}
 
 // --- Shutdown ---
 
@@ -1589,53 +1573,12 @@ public fun next_funding_update_time_ms_for_testing(last_funding_update_ms: u64, 
 }
 
 #[test_only]
-public fun classify_sync_change_for_testing(
-    stored: &Checkpoint,
-    before: &Checkpoint,
-    after: &Checkpoint,
-    candidate_negative: bool,
-    candidate_collateral_magnitude: u256,
-): CheckpointChange {
-    let (preexisting_change, local_change) =
-        classify_sync_changes_for_testing(
-            stored,
-            before,
-            after,
-            candidate_negative,
-            candidate_collateral_magnitude,
-        );
-    preexisting_change.net_funding(local_change)
-}
-
-#[test_only]
-public fun classify_sync_changes_for_testing(
-    stored: &Checkpoint,
-    before: &Checkpoint,
-    after: &Checkpoint,
-    candidate_negative: bool,
-    candidate_collateral_magnitude: u256,
-): (CheckpointChange, CheckpointChange) {
-    let preexisting_change = if (
-        stored.checkpoint_ready_for_settlement(before)
-    ) {
-        venue_account::unchanged_change()
-    } else {
-        stored.classify_preexisting_funding_for_testing(before)
-    };
-    let local_change = before.classify_change_with_candidate_for_testing(after,
-        candidate_negative,
-        candidate_collateral_magnitude,
-    );
-    (preexisting_change, local_change)
-}
-
-#[test_only]
 public fun apply_post_capture_for_testing<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     checkpoint: Checkpoint,
     change: CheckpointChange,
 ) {
-    apply_post_capture(vault, checkpoint, venue_account::unchanged_change(), change);
+    apply_post_capture(vault, checkpoint, checkpoint::unchanged_change(), change);
 }
 
 #[test_only]
@@ -1685,7 +1628,8 @@ use blast_boosts_aftermath::{
     ifixed_math,
     snapshot::{Self, CapturedSnapshot},
     vault::{Vault, VaultIssuance},
-    venue_account::{Self, Binding, Checkpoint, CheckpointChange, TerminalWithdrawal},
+    checkpoint::{Self, Checkpoint, CheckpointChange, TerminalWithdrawal},
+    venue_account::{Self, Binding},
 };
 
 use blast_boosts_core::{

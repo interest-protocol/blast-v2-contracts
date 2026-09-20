@@ -45,10 +45,11 @@ declare -A core_layers=(
 declare -A adapter_layers=(
   [errors]=0 [constants]=0 [blast_events]=0 [blast_boosts_aftermath]=0
   [ifixed_math]=1 [blast_boost]=1 [protocol]=1
-  [venue_account]=2 [package_admin]=2
-  [events]=3 [snapshot]=3
-  [vault]=4
-  [operations]=5
+  [checkpoint]=2 [package_admin]=2
+  [venue_account]=3
+  [events]=4 [snapshot]=4
+  [vault]=5
+  [operations]=6
 )
 
 check_hierarchy() {

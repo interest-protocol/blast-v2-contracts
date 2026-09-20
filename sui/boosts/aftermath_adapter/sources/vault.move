@@ -470,7 +470,8 @@ use blast_boosts_aftermath::{
     constants,
     events,
     protocol::Protocol,
-    venue_account::{Checkpoint, TerminalWithdrawal, VenueAccount},
+    checkpoint::{Checkpoint, TerminalWithdrawal},
+    venue_account::VenueAccount,
 };
 
 use blast_boosts_core::{

@@ -66,7 +66,7 @@ public(package) fun capture_checkpoint<Collateral>(
         object::id(clearing_house), object::id(base_oracle), object::id(collateral_oracle),
     );
 
-    venue_account::read_checkpoint(account, clearing_house)
+    checkpoint::read_checkpoint(account, clearing_house)
 }
 
 /// Captures one authenticated venue and Pyth valuation pair.
@@ -528,7 +528,7 @@ public fun position_signs_coherent_for_testing(
 
 // === Imports ===
 
-use blast_boosts_aftermath::{constants, ifixed_math, venue_account::{Self, Binding, Checkpoint}};
+use blast_boosts_aftermath::{checkpoint::{Self, Checkpoint}, constants, ifixed_math, venue_account::Binding};
 
 use blast_boosts_core::{
     observation::{Self, PositionObservation, PriceObservation},

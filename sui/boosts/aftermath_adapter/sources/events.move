@@ -642,7 +642,7 @@ public fun admin_fees_withdrawn_fields<Product>(self: &AdminFeesWithdrawn<Produc
 
 // === Imports ===
 
-use blast_boosts_aftermath::{blast_events::{Event, emit_event}, venue_account::{Binding, Checkpoint}};
+use blast_boosts_aftermath::{blast_events::{Event, emit_event}, checkpoint::Checkpoint, venue_account::Binding};
 
 use blast_boosts_core::{lifecycle::ShutdownReason, policy::{PositionSide, VaultPolicy}};
 

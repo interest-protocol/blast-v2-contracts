@@ -9,7 +9,8 @@ fun signed_funding_cost_crosses_allocated_zero_without_becoming_unresolved() {
     let before = checkpoint(10, 5, 5, 6, 7, 8, 9);
     let after = checkpoint(10, 3, 7, 8, 7, 8, 9);
     let change = before.classify_signed_funding_for_testing(&after, false, 5, true, 3);
-    let (has, cost, raw, _, clean) = change.funding_change_fields();
+    let (has, cost, raw, _, clean) =
+        (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
     assert!(has && cost && clean);
     assert_eq!(raw, 8);
 }
@@ -19,7 +20,8 @@ fun signed_funding_credit_crosses_allocated_zero_without_becoming_unresolved() {
     let before = checkpoint(10, 5, 5, 6, 7, 8, 9);
     let after = checkpoint(10, 3, 7, 8, 7, 8, 9);
     let change = before.classify_signed_funding_for_testing(&after, true, 5, false, 3);
-    let (has, cost, raw, _, clean) = change.funding_change_fields();
+    let (has, cost, raw, _, clean) =
+        (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
     assert!(has && !cost && clean);
     assert_eq!(raw, 8);
 }
@@ -29,7 +31,8 @@ fun signed_funding_less_negative_allocation_is_a_credit() {
     let before = checkpoint(10, 5, 5, 6, 7, 8, 9);
     let after = checkpoint(10, 3, 7, 8, 7, 8, 9);
     let change = before.classify_signed_funding_for_testing(&after, true, 5, true, 3);
-    let (has, cost, raw, _, clean) = change.funding_change_fields();
+    let (has, cost, raw, _, clean) =
+        (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
     assert!(has && !cost && clean);
     assert_eq!(raw, 2);
 }
@@ -65,7 +68,7 @@ fun funding_settlement_keeps_the_exact_raw_candidate_amount() {
     let after = checkpoint(10, 5_337, 7, 8, 7, 8, 9);
     let change = before.classify_change_with_candidate_for_testing(&after, false, 1_337);
 
-    assert_eq!(change.funding_amount_for_testing(), 1_337);
+    assert_eq!(change.raw_amount(), 1_337);
 }
 
 #[test]
@@ -73,7 +76,7 @@ fun exact_negative_funding_transition_is_cost() {
     let before = checkpoint(10, 2_000, 5, 6, 7, 8, 9);
     let after = checkpoint(10, 1_000, 7, 8, 7, 8, 9);
 
-    assert!(before.classify_change_with_candidate_for_testing(&after, true, 1_000).is_cost_for_testing());
+    assert!(before.classify_change_with_candidate_for_testing(&after, true, 1_000).is_cost());
 }
 
 #[test]
@@ -113,9 +116,9 @@ fun free_collateral_change_is_unexpected() {
 #[test]
 fun base_quote_and_pending_order_changes_are_unexpected() {
     let before = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
-    let base_changed = venue_account::checkpoint_for_testing(10, 1_000, 12, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13, false, 14, 15, 16);
-    let quote_changed = venue_account::checkpoint_for_testing(10, 1_000, 1, 13, 3, 4, 7, 8, 9, 10, 11, 12, 13, false, 14, 15, 16);
-    let order_changed = venue_account::checkpoint_for_testing(10, 1_000, 1, 2, 3, 4, 7, 8, 9, 10, 11, 13, 13, false, 14, 15, 16);
+    let base_changed = checkpoint::checkpoint_for_testing(10, 1_000, 12, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13, false, 14, 15, 16);
+    let quote_changed = checkpoint::checkpoint_for_testing(10, 1_000, 1, 13, 3, 4, 7, 8, 9, 10, 11, 12, 13, false, 14, 15, 16);
+    let order_changed = checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 3, 4, 7, 8, 9, 10, 11, 13, 13, false, 14, 15, 16);
 
     assert!(before.classify_change_for_testing(&base_changed).is_unexpected_for_testing());
     assert!(before.classify_change_for_testing(&quote_changed).is_unexpected_for_testing());
@@ -126,13 +129,13 @@ fun base_quote_and_pending_order_changes_are_unexpected() {
 fun every_checkpoint_guard_field_blocks_an_otherwise_matching_funding_delta() {
     let before = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
     let base_funding_after = checkpoint(10, 2_000, 7, 8, 7, 8, 9);
-    let pending_ask_changed = venue_account::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 99, 11, 12, 13, false, 14, 15, 16);
-    let pending_bid_changed = venue_account::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 10, 99, 12, 13, false, 14, 15, 16);
-    let pause_changed = venue_account::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 10, 11, 12, 99, false, 14, 15, 16);
-    let frozen_changed = venue_account::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 10, 11, 12, 13, true, 14, 15, 16);
-    let position_imr_changed = venue_account::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 10, 11, 12, 13, false, 99, 15, 16);
-    let market_imr_changed = venue_account::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 10, 11, 12, 13, false, 14, 99, 16);
-    let market_mmr_changed = venue_account::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 10, 11, 12, 13, false, 14, 15, 99);
+    let pending_ask_changed = checkpoint::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 99, 11, 12, 13, false, 14, 15, 16);
+    let pending_bid_changed = checkpoint::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 10, 99, 12, 13, false, 14, 15, 16);
+    let pause_changed = checkpoint::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 10, 11, 12, 99, false, 14, 15, 16);
+    let frozen_changed = checkpoint::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 10, 11, 12, 13, true, 14, 15, 16);
+    let position_imr_changed = checkpoint::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 10, 11, 12, 13, false, 99, 15, 16);
+    let market_imr_changed = checkpoint::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 10, 11, 12, 13, false, 14, 99, 16);
+    let market_mmr_changed = checkpoint::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 9, 10, 11, 12, 13, false, 14, 15, 99);
 
     assert!(before.classify_change_with_candidate_for_testing(&base_funding_after, false, 1_000).is_credit_for_testing());
     assert!(before.classify_change_with_candidate_for_testing(&pending_ask_changed, false, 1_000).is_unexpected_for_testing());
@@ -147,8 +150,8 @@ fun every_checkpoint_guard_field_blocks_an_otherwise_matching_funding_delta() {
 #[test]
 fun market_rate_or_lot_change_blocks_funding_even_when_the_delta_matches() {
     let before = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
-    let market_rate_changed = venue_account::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 99, 8, 9, 10, 11, 12, 13, false, 14, 15, 16);
-    let lot_changed = venue_account::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 99, 10, 11, 12, 13, false, 14, 15, 16);
+    let market_rate_changed = checkpoint::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 99, 8, 9, 10, 11, 12, 13, false, 14, 15, 16);
+    let lot_changed = checkpoint::checkpoint_for_testing(10, 2_000, 1, 2, 7, 6, 7, 8, 99, 10, 11, 12, 13, false, 14, 15, 16);
 
     assert!(before.classify_change_with_candidate_for_testing(&market_rate_changed, false, 1_000).is_unexpected_for_testing());
     assert!(before.classify_change_with_candidate_for_testing(&lot_changed, false, 1_000).is_unexpected_for_testing());
@@ -382,7 +385,7 @@ fun checkpoint(
     market_funding_short: u256,
     lot_size: u64,
 ): Checkpoint {
-    venue_account::checkpoint_for_testing(
+    checkpoint::checkpoint_for_testing(
         free_collateral,
         allocated_collateral,
         1,
@@ -405,7 +408,7 @@ fun checkpoint(
 
 // === Imports ===
 
-use blast_boosts_aftermath::{ifixed_math, snapshot, venue_account::{Self, Checkpoint}};
+use blast_boosts_aftermath::{checkpoint::{Self, Checkpoint}, ifixed_math, snapshot};
 
 use blast_boosts_core::policy;
 

@@ -582,7 +582,7 @@ fun fixture_venue_account(ctx: &mut TxContext): VenueAccount {
     );
     let admin_cap = authority::new_for_testing<ACCOUNT, AdminRole>(@0xB.to_id(), ctx);
     venue_account::new(
-        binding, venue_account::checkpoint_for_testing(0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, false, 0, 0, 0), admin_cap,
+        binding, checkpoint::checkpoint_for_testing(0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, false, 0, 0, 0), admin_cap,
     )
 }
 
@@ -636,6 +636,7 @@ use blast_boosts_aftermath::{
     events,
     protocol::{Self, Protocol},
     vault::{Self, Vault, VaultIssuance},
+    checkpoint,
     venue_account::{Self, VenueAccount},
 };
 
