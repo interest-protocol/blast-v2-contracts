@@ -226,11 +226,6 @@ public(package) fun net_funding(preexisting: CheckpointChange, settled: Checkpoi
     funding_change(is_cost, amount)
 }
 
-/// Creates the clean no-op classification for adapter orchestration.
-public(package) fun unchanged_change(): CheckpointChange {
-    CheckpointChange::Unchanged
-}
-
 /// A terminal market close may realize losses, but cannot misattribute an unrelated funding mutation.
 public(package) fun assert_expected(self: CheckpointChange) {
     assert!(!self.is_unexpected(), blast_boosts_aftermath::errors::unresolved_checkpoint!());
@@ -741,6 +736,12 @@ public(package) fun terminal_withdrawal_for_testing<Collateral>(
 #[test_only]
 public fun assert_terminal_withdrawal_checkpoint_for_testing(before: &Checkpoint, after: &Checkpoint, amount: u64) {
     assert_terminal_withdrawal_checkpoint(before, after, amount)
+}
+
+#[test_only]
+/// Creates the clean no-op classification for adapter test fixtures.
+public fun unchanged_change(): CheckpointChange {
+    CheckpointChange::Unchanged
 }
 
 #[test_only]

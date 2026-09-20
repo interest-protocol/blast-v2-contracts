@@ -404,6 +404,10 @@ fun treasury_cap_mut<Product, Collateral>(self: &mut Vault<Product, Collateral>)
     dynamic_object_field::borrow_mut(&mut self.id, TreasuryKey<Product>())
 }
 
+fun metadata_cap<Product, Collateral>(self: &Vault<Product, Collateral>): &MetadataCap<BlastBoost<Product>> {
+    dynamic_object_field::borrow(&self.id, MetadataKey<Product>())
+}
+
 // === Test-Only Functions ===
 
 #[test_only]
@@ -415,10 +419,6 @@ public fun seed_shares_for_testing(seed_nav: u64): u64 {
 public fun terminal_cash_for_testing<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
     let cash = dynamic_field::borrow<_, Balance<Collateral>>(&self.id, TerminalCashKey());
     cash.value()
-}
-
-fun metadata_cap<Product, Collateral>(self: &Vault<Product, Collateral>): &MetadataCap<BlastBoost<Product>> {
-    dynamic_object_field::borrow(&self.id, MetadataKey<Product>())
 }
 
 #[test_only]
