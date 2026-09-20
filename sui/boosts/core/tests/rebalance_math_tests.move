@@ -290,6 +290,72 @@ fun generic_four_and_six_times_use_the_same_maximal_integer_search() {
     assert_eq!(six, 500_000_000);
 }
 
+/// The ceiling charges a full collateral atom for any fractional remainder.
+#[test]
+fun oracle_notional_rounds_a_fractional_atom_up() {
+    assert_eq!(rebalance_math::oracle_notional_up(1, 1, 3, 1, 1), 1);
+    assert_eq!(rebalance_math::oracle_notional_up(2, 1, 3, 1, 1), 1);
+    assert_eq!(rebalance_math::oracle_notional_up(3, 1, 3, 1, 1), 1);
+    assert_eq!(rebalance_math::oracle_notional_up(4, 1, 3, 1, 1), 2);
+    assert_eq!(rebalance_math::oracle_notional_up(1_001, 1, 1, 1_000, 1), 2);
+}
+
+#[test]
+fun a_flat_position_has_zero_notional() {
+    assert_eq!(rebalance_math::oracle_notional_up(0, 1, 1, 1, 1), 0);
+}
+
+/// The conversion floors the price ratio first and then the lot, never rounding up.
+#[test]
+fun base_for_notional_floors_the_price_ratio_and_the_lot() {
+    assert_eq!(rebalance_math::base_for_notional_down(10, 3, 1, 1, 1, 1), 3);
+    assert_eq!(rebalance_math::base_for_notional_down(10, 1, 1, 3, 1, 1), 9);
+    assert_eq!(rebalance_math::base_for_notional_down(2, 1, 1, 3, 1, 1), 0);
+    assert_eq!(rebalance_math::base_for_notional_down(0, 1, 1, 1, 1, 1), 0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidPrice, location = blast_boosts_core::rebalance_math)]
+fun base_for_notional_rejects_a_zero_collateral_price() {
+    rebalance_math::base_for_notional_down(1, 1, 0, 1, 1, 1);
+}
+
+/// The bound guards still run, but nothing is reserved on an empty order.
+#[test]
+fun a_zero_notional_has_zero_execution_cost() {
+    assert_eq!(rebalance_math::execution_cost_up_for_testing(0, 10_000, 9_999), 0);
+}
+
+/// A zero per-order cap leaves no headroom, so the search returns flat without aborting.
+#[test]
+fun a_zero_order_cap_yields_no_increase() {
+    assert_eq!(rebalance_math::increase_base_down(
+        1_000_000, 0, 20_000, 10_000_000_000, 1_000_000_000,
+        1_000, 0, 0, 0,
+        1_000_000_000, 1_000_000,
+    ), 0);
+}
+
+/// The predicate cross-multiplies, so equal ratios do not count as a rise.
+#[test]
+fun leverage_rose_compares_exact_ratios() {
+    assert!(rebalance_math::leverage_rose(100, 100, 200, 100));
+    assert!(!rebalance_math::leverage_rose(100, 100, 200, 200));
+    assert!(rebalance_math::leverage_rose(100, 100, 201, 200));
+    // 3.00x to 3.00x: notional and NAV fell in the same proportion.
+    assert!(!rebalance_math::leverage_rose(300, 100, 270, 90));
+}
+
+/// Catches a cross-product that wraps instead of widening at the top of the `u64` range.
+#[test]
+fun leverage_rose_supports_maximum_widths() {
+    let max = std::u64::max_value!();
+
+    assert!(rebalance_math::leverage_rose(max, max, max, max - 1));
+    assert!(!rebalance_math::leverage_rose(max, max - 1, max, max));
+    assert!(!rebalance_math::leverage_rose(0, 1, 0, max));
+}
+
 // === Reference Helpers ===
 
 /// One exact positive-denominator rational for the independent reference.

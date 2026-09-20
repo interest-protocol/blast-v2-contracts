@@ -302,7 +302,7 @@ fun canonical_mint_credits_the_actual_nav_gain_net_of_the_retained_fee() {
     assert_eq!(shares_after, 2_000_980_000);
 }
 
-/// The allocation share is validated before any fee arithmetic.
+/// The fee is computed first; the allocation share is validated only when it is split.
 #[test]
 #[expected_failure(abort_code = errors::EInvalidFeeBps, location = blast_boosts_core::accounting_math)]
 fun fee_allocation_rejects_an_admin_share_above_the_whole_fee() {
@@ -1280,6 +1280,85 @@ fun a_wiped_account_is_backed_but_has_no_positive_nav() {
     assert!(!accounting_math::is_shareholder_nav_positive(5_000_000, 5_000_000));
     assert!(accounting_math::is_shareholder_nav_positive(5_000_001, 5_000_000));
     assert!(!accounting_math::is_shareholder_nav_positive(4_999_999, 5_000_000));
+}
+
+/// Pins the strict positivity predicate at the top of the `u64` range.
+#[test]
+fun nav_positivity_holds_at_the_maximum_width() {
+    let max = std::u64::max_value!();
+
+    assert!(accounting_math::is_shareholder_nav_positive(max, max - 1));
+    assert!(!accounting_math::is_shareholder_nav_positive(max, max));
+    assert!(!accounting_math::is_shareholder_nav_positive(max - 1, max));
+}
+
+/// A zero limit fails closed even for a flat position.
+#[test]
+fun a_zero_leverage_limit_is_never_satisfied() {
+    assert!(!accounting_math::is_accounting_leverage_below_limit(0, 100, 0, 0));
+    assert!(!accounting_math::is_accounting_leverage_below_limit(1, 100, 0, 0));
+}
+
+/// The ratio uses shareholder NAV, so a positive reserve raises measured leverage.
+#[test]
+fun the_leverage_limit_prices_against_nav_net_of_a_positive_reserve() {
+    // 2,000 over 1,000 net NAV is exactly 20,000 bps.
+    assert!(accounting_math::is_accounting_leverage_below_limit(2_000, 1_100, 100, 20_001));
+    assert!(!accounting_math::is_accounting_leverage_below_limit(2_000, 1_100, 100, 20_000));
+    // Without the reserve the same equity measures 18,182 bps.
+    assert!(accounting_math::is_accounting_leverage_below_limit(2_000, 1_100, 0, 20_000));
+}
+
+/// Flooring the admin share leaves every rounding unit with the reserve.
+#[test]
+fun admin_share_rounds_down_and_leaves_the_remainder() {
+    assert_eq!(accounting_math::admin_share_down(10, 3_333), 3);
+    assert_eq!(accounting_math::admin_share_down(1, 9_999), 0);
+    assert_eq!(accounting_math::admin_share_down(1, 10_000), 1);
+    assert_eq!(accounting_math::admin_share_down(3, 5_000), 1);
+}
+
+#[test]
+fun admin_share_of_a_zero_fee_or_zero_share_is_zero() {
+    assert_eq!(accounting_math::admin_share_down(0, 5_000), 0);
+    assert_eq!(accounting_math::admin_share_down(1_000, 0), 0);
+}
+
+/// Catches an intermediate `fee * admin_share_bps` that wraps instead of widening.
+#[test]
+fun admin_share_supports_the_maximum_fee_without_wrapping() {
+    let max = std::u64::max_value!();
+
+    assert_eq!(accounting_math::admin_share_down(max, 10_000), max);
+    assert_eq!(accounting_math::admin_share_down(max, 5_000), max / 2);
+}
+
+/// The split conserves the fee: the floored admin share and the reserve remainder sum to it.
+#[test]
+fun fee_allocation_leaves_the_rounding_remainder_with_the_reserve() {
+    let (fee, admin, reserve) = accounting_math::fee_allocation(1_000, 100, 3_333);
+    assert_eq!(vector[fee, admin, reserve], vector[10, 3, 7]);
+    assert_eq!(fee, admin + reserve);
+
+    let (fee, admin, reserve) = accounting_math::fee_allocation(1, 1, 5_000);
+    assert_eq!(vector[fee, admin, reserve], vector[1, 0, 1]);
+    assert_eq!(fee, admin + reserve);
+}
+
+#[test]
+fun a_zero_fee_rate_allocates_nothing() {
+    let (fee, admin, reserve) = accounting_math::fee_allocation(1_000, 0, 5_000);
+    assert_eq!(vector[fee, admin, reserve], vector[0, 0, 0]);
+}
+
+/// Pins the fee amount guard ahead of the allocation share guard when both are invalid.
+#[test]
+#[expected_failure(
+    abort_code = errors::EZeroAmount,
+    location = blast_boosts_core::accounting_math,
+)]
+fun a_zero_amount_is_rejected_before_an_invalid_admin_share() {
+    accounting_math::fee_allocation(0, 100, 10_001);
 }
 
 // === Private Test Helpers ===

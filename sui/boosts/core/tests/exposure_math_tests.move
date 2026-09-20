@@ -797,6 +797,35 @@ fun a_zero_lot_is_rejected_before_a_zero_minimum_lot_multiple_in_redemption() {
     accounting_math::redemption_base_bounds(10, 1_000, 100, 0, 0);
 }
 
+/// The minimum-order predicate is strict: a position equal to the product is locked.
+#[test]
+fun min_order_equality_is_not_above_at_small_widths() {
+    assert!(!accounting_math::is_base_above_min_order(1_000, 10, 100));
+    assert!(accounting_math::is_base_above_min_order(1_001, 10, 100));
+}
+
+/// A lot product above `u64` is compared wide, so the mint fails with the lot code, not overflow.
+#[test]
+#[expected_failure(
+    abort_code = errors::EOrderBelowMinLots,
+    location = blast_boosts_core::accounting_math,
+)]
+fun a_minimum_lot_product_above_u64_rejects_every_mint() {
+    let max = std::u64::max_value!();
+
+    accounting_math::mint_base_to_buy_down(max, max, max, max, 2);
+}
+
+/// The planned order is sized first, so a dust plan aborts before the actual contribution is sized.
+#[test]
+#[expected_failure(
+    abort_code = errors::EOrderBelowMinLots,
+    location = blast_boosts_core::accounting_math,
+)]
+fun a_mint_whose_plan_is_dust_is_rejected_before_its_actual_contribution() {
+    accounting_math::mint_base_bounds_for_testing(99, 1_000_500, 1_000_000, 1_000_000_000, 100, 1);
+}
+
 // === Private Test Helpers ===
 
 /// Reference accounting leverage `ceil(notional * 10_000 / nav)` for drift measurements.
