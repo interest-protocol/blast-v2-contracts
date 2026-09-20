@@ -586,7 +586,7 @@ fun event_reducer_reconstructs_a_positive_funding_checkpoint() {
     replay_initialized(&mut replay, events::collect_one<events::VaultInitialized<Product>>(0));
     let before = funding_before_checkpoint(1, false);
     let after = funding_checkpoint(1, false);
-    let change = initial.classify_sync_change_for_testing(&before, &after, ONE_FIXED);
+    let change = sync_change(&initial, &before, &after, ONE_FIXED);
     apply_connected_change(&mut vault, after, change);
     replay_funding(&mut replay, events::collect_one<events::FundingSettled<Product>>(0));
     assert_eq!(replay.maintenance_reserve, vault.state().maintenance_reserve());
@@ -795,7 +795,7 @@ fun allocated_cash_changes_refuse_an_overflowing_zero_crossing() {
 fun redemption_cash_checkpoint_paid_entirely_from_free_cash_leaves_allocated_untouched() {
     let before = checkpoint_with_market_imr(25, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
     let after = checkpoint_with_market_imr(5, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
-    before.assert_nonnegative_cash_checkpoint_for_testing(&after, 20, false);
+    before.assert_withdrawal_checkpoint(&after, 20);
 }
 
 #[test]
@@ -803,7 +803,7 @@ fun redemption_cash_checkpoint_paid_entirely_from_free_cash_leaves_allocated_unt
 fun redemption_cash_checkpoint_rejects_deallocating_what_free_cash_covered() {
     let before = checkpoint_with_market_imr(25, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
     let after = checkpoint_with_market_imr(5, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
-    before.assert_nonnegative_cash_checkpoint_for_testing(&after, 20, false);
+    before.assert_withdrawal_checkpoint(&after, 20);
 }
 
 #[test]
@@ -812,7 +812,7 @@ fun active_checkpoint_admits_only_the_executed_position_and_venue_cost() {
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
     before.assert_trade_checkpoint(&after, ONE_FIXED, 1);
     let allocated = checkpoint_with_market_imr(0, ALLOCATED_FIXED + 50 * ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
-    before.assert_nonnegative_cash_checkpoint_for_testing(&allocated, 50, true);
+    before.assert_allocated_deposit_checkpoint(&allocated, 50);
 }
 
 #[test]
@@ -828,14 +828,14 @@ fun active_checkpoint_rejects_a_foreign_market_parameter_change() {
 fun active_checkpoint_rejects_an_inexact_allocated_deposit() {
     let before = initial_checkpoint();
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED + 49 * ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
-    before.assert_nonnegative_cash_checkpoint_for_testing(&after, 50, true);
+    before.assert_allocated_deposit_checkpoint(&after, 50);
 }
 
 #[test]
 fun redemption_cash_checkpoint_spends_free_cash_before_deallocating() {
     let before = checkpoint_with_market_imr(25, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - 15 * ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
-    before.assert_nonnegative_cash_checkpoint_for_testing(&after, 40, false);
+    before.assert_withdrawal_checkpoint(&after, 40);
 }
 
 #[test]
@@ -843,7 +843,7 @@ fun redemption_cash_checkpoint_spends_free_cash_before_deallocating() {
 fun redemption_cash_checkpoint_rejects_inexact_payout() {
     let before = checkpoint_with_market_imr(25, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - 14 * ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
-    before.assert_nonnegative_cash_checkpoint_for_testing(&after, 40, false);
+    before.assert_withdrawal_checkpoint(&after, 40);
 }
 
 #[test]
@@ -933,15 +933,15 @@ fun unwind_terms_close_a_long_with_an_ask_at_the_capped_size() {
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
-    let captured = snapshot::captured_health_for_testing(initial_checkpoint(), 0, false, 0, true, true);
+    let checkpoint = checkpoint_with_market_imr(0, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
+    let captured = snapshot::captured_health_for_testing(checkpoint, 0, false, 0, true, true);
 
-    let (terms, remaining, before) =
-        orders::unwind_terms_for_testing(&vault, &captured, REFERENCE_TIME_MS, 1_800_000_000_000, true);
+    let (terms, remaining, before) = orders::unwind_terms(&vault, &captured, REFERENCE_TIME_MS);
     let (is_ask, reduce_only, max_order_base, lot_size, base_price, collateral_price) = terms.order_terms_fields();
     assert!(is_ask && reduce_only);
     assert_eq!(vector[max_order_base, lot_size, base_price, collateral_price], vector[250 * BASE_PER_NOTIONAL, LOT_SIZE, PRICE, PRICE]);
-    assert_eq!(remaining, 1_800);
-    assert_eq!(before, initial_checkpoint());
+    assert_eq!(remaining, 1_000_000_000);
+    assert_eq!(before, checkpoint);
 
     destroy(vault);
     fixture.end();
@@ -959,7 +959,7 @@ fun unwind_terms_reject_a_checkpoint_with_resting_orders() {
     );
     let captured = snapshot::captured_health_for_testing(resting, 0, false, 0, true, true);
 
-    orders::unwind_terms_for_testing(&vault, &captured, REFERENCE_TIME_MS, 1_800_000_000_000, true);
+    orders::unwind_terms(&vault, &captured, REFERENCE_TIME_MS);
 
     destroy(vault);
     fixture.end();
@@ -972,7 +972,7 @@ fun unwind_terms_require_an_unwinding_vault_before_reading_orders() {
     let vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let captured = snapshot::captured_health_for_testing(initial_checkpoint(), 0, false, 0, true, true);
 
-    orders::unwind_terms_for_testing(&vault, &captured, REFERENCE_TIME_MS, 1_800_000_000_000, true);
+    orders::unwind_terms(&vault, &captured, REFERENCE_TIME_MS);
 
     destroy(vault);
     fixture.end();
@@ -1625,11 +1625,11 @@ fun synchronization_classifies_no_change_and_replay_as_no_funding() {
     let settled = RATE + 10 * ATOM_FIXED;
     let before = sync_checkpoint(1_000, 100_000_000_000_000, RATE, RATE, settled, settled, 0, ONE_FIXED, 0);
 
-    let first = before.classify_sync_change_for_testing(&before, &before, ONE_FIXED);
+    let first = sync_change(&before, &before, &before, ONE_FIXED);
     assert!(first.is_unchanged_for_testing());
 
     let after = sync_checkpoint(1_000, 110_000_000_000_000, settled, settled, settled, settled, 0, ONE_FIXED, 0);
-    let replay = after.classify_sync_change_for_testing(&after, &after, ONE_FIXED);
+    let replay = sync_change(&after, &after, &after, ONE_FIXED);
     assert!(replay.is_unchanged_for_testing());
 }
 
@@ -1640,7 +1640,7 @@ fun synchronization_accepts_only_an_isolated_funding_credit() {
     let before = sync_checkpoint(1_000, 100_000_000_000_000, RATE, RATE, settled, settled, 0, ONE_FIXED, 0);
     let after = sync_checkpoint(1_000, 110_000_000_000_000, settled, settled, settled, settled, 0, ONE_FIXED, 0);
 
-    let change = stored.classify_sync_change_for_testing(&before, &after, ONE_FIXED);
+    let change = sync_change(&stored, &before, &after, ONE_FIXED);
     let (has_funding, is_cost, raw_amount, amount, checkpoint_clean) =
         (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
 
@@ -1659,7 +1659,7 @@ fun synchronization_rounds_an_isolated_funding_cost_against_the_reserve() {
     let before = sync_checkpoint(1_000, 100_000_000_000_000, RATE, RATE, settled, settled, 0, ONE_FIXED, 0);
     let after = sync_checkpoint(1_000, 99_000_000_000_001, settled, settled, settled, settled, 0, ONE_FIXED, 0);
 
-    let change = stored.classify_sync_change_for_testing(&before, &after, ONE_FIXED);
+    let change = sync_change(&stored, &before, &after, ONE_FIXED);
     let (has_funding, is_cost, raw_amount, amount, checkpoint_clean) =
         (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
 
@@ -1677,7 +1677,7 @@ fun synchronization_recognizes_permissionlessly_settled_funding_once() {
     let stored = sync_checkpoint(1_000, 100_000_000_000_000, RATE, RATE, RATE, RATE, 0, ONE_FIXED, 0);
     let settled = sync_checkpoint(1_000, 110_000_000_000_000, refreshed, refreshed, refreshed, refreshed, 0, ONE_FIXED, 0);
 
-    let change = stored.classify_sync_change_for_testing(&settled, &settled, ONE_FIXED);
+    let change = sync_change(&stored, &settled, &settled, ONE_FIXED);
     let (has_funding, is_cost, raw_amount, amount, checkpoint_clean) =
         (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
 
@@ -1687,7 +1687,7 @@ fun synchronization_recognizes_permissionlessly_settled_funding_once() {
     assert_eq!(amount, 10);
     assert!(checkpoint_clean);
 
-    let replay = settled.classify_sync_change_for_testing(&settled, &settled, ONE_FIXED);
+    let replay = sync_change(&settled, &settled, &settled, ONE_FIXED);
     assert!(replay.is_unchanged_for_testing());
 }
 
@@ -1699,7 +1699,7 @@ fun synchronization_preserves_external_then_local_funding_as_two_ordered_changes
     let before = sync_checkpoint(1_000, 90 * ATOM_FIXED, external_rate, external_rate, local_rate, local_rate, 0, ONE_FIXED, 0);
     let after = sync_checkpoint(1_000, 95 * ATOM_FIXED, local_rate, local_rate, local_rate, local_rate, 0, ONE_FIXED, 0);
 
-    let (external, local) = stored.classify_sync_changes_for_testing(&before, &after, ONE_FIXED);
+    let (external, local) = stored.classify_sync_changes(&before, &after, ONE_FIXED);
 
     let (has_external, external_is_cost, external_raw, _, external_clean) =
         (external.has_funding(), external.is_cost(), external.raw_amount(), external.amount(), external.is_clean());
@@ -1820,7 +1820,7 @@ fun a_credit_after_an_exhausting_cost_repays_holders_before_the_reserve() {
     let mut vault = issue_and_activate(&mut fixture, initial);
     let cost = SEED_RESERVE + 30;
     let funded = funding_checkpoint(cost, true);
-    let change = initial.classify_sync_change_for_testing(&funding_before_checkpoint(cost, true), &funded, ONE_FIXED);
+    let change = sync_change(&initial, &funding_before_checkpoint(cost, true), &funded, ONE_FIXED);
     apply_connected_change(&mut vault, funded, change);
     assert_eq!(vault.state().maintenance_reserve(), 0);
 
@@ -1831,7 +1831,7 @@ fun a_credit_after_an_exhausting_cost_repays_holders_before_the_reserve() {
     let credited = checkpoint_with_market_imr(
         0, allocated_after_cost + 50 * ATOM_FIXED, credited_rate, credited_rate, credited_rate, credited_rate, 1,
     );
-    let change = funded.classify_sync_change_for_testing(&before, &credited, ONE_FIXED);
+    let change = sync_change(&funded, &before, &credited, ONE_FIXED);
     apply_connected_change(&mut vault, credited, change);
 
     // 30 of the 50 repay the deficit and stay in NAV; 20 rebuild the reserve.
@@ -1856,10 +1856,10 @@ fun connected_credit_credits_the_buffer_once() {
     let mut vault = issue_and_activate(&mut fixture, initial);
     let before = funding_before_checkpoint(10, false);
     let credited = funding_checkpoint(10, false);
-    let credit = initial.classify_sync_change_for_testing(&before, &credited, ONE_FIXED);
+    let credit = sync_change(&initial, &before, &credited, ONE_FIXED);
 
     apply_connected_change(&mut vault, credited, credit);
-    let unchanged = credited.classify_sync_change_for_testing(&credited, &credited, ONE_FIXED);
+    let unchanged = sync_change(&credited, &credited, &credited, ONE_FIXED);
     apply_connected_change(&mut vault, credited, unchanged);
 
     assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE + 10);
@@ -1877,10 +1877,10 @@ fun connected_second_call_at_the_same_checkpoint_is_exactly_once() {
     let mut vault = issue_and_activate(&mut fixture, initial);
     let before = funding_before_checkpoint(10, true);
     let funded = funding_checkpoint(10, true);
-    let cost = initial.classify_sync_change_for_testing(&before, &funded, ONE_FIXED);
+    let cost = sync_change(&initial, &before, &funded, ONE_FIXED);
     apply_connected_change(&mut vault, funded, cost);
 
-    let replay = funded.classify_sync_change_for_testing(&funded, &funded, ONE_FIXED);
+    let replay = sync_change(&funded, &funded, &funded, ONE_FIXED);
     apply_connected_change(&mut vault, funded, replay);
 
     assert_eq!(vault.state().maintenance_reserve(), 90);
@@ -1897,10 +1897,10 @@ fun connected_permissionless_pre_settlement_debits_the_reserve_exactly_once() {
     let initial = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, initial);
     let settled = funding_checkpoint(10, true);
-    let cost = initial.classify_sync_change_for_testing(&settled, &settled, ONE_FIXED);
+    let cost = sync_change(&initial, &settled, &settled, ONE_FIXED);
     apply_connected_change(&mut vault, settled, cost);
 
-    let replay = settled.classify_sync_change_for_testing(&settled, &settled, ONE_FIXED);
+    let replay = sync_change(&settled, &settled, &settled, ONE_FIXED);
     apply_connected_change(&mut vault, settled, replay);
 
     assert_eq!(vault.state().maintenance_reserve(), 90);
@@ -1923,7 +1923,7 @@ fun connected_external_cost_and_local_income_settle_one_net_checkpoint() {
     let after = checkpoint_with_market_imr(
         0, ALLOCATED_FIXED - 90 * ATOM_FIXED, local_rate, local_rate, local_rate, local_rate, 1,
     );
-    let (external, local) = initial.classify_sync_changes_for_testing(&before, &after, ONE_FIXED);
+    let (external, local) = initial.classify_sync_changes(&before, &after, ONE_FIXED);
 
     operations::apply_post_captures_for_testing(&mut vault, after, external, local);
 
@@ -1957,7 +1957,7 @@ fun connected_zero_net_checkpoint_emits_once_and_preserves_the_buffer() {
     let mut vault = issue_and_activate(&mut fixture, initial);
     let before = flat_checkpoint(RATE, RATE + ATOM_FIXED);
     let after = flat_checkpoint(RATE + ATOM_FIXED, RATE + ATOM_FIXED);
-    let change = initial.classify_sync_change_for_testing(&before, &after, ONE_FIXED);
+    let change = sync_change(&initial, &before, &after, ONE_FIXED);
     apply_connected_change(&mut vault, after, change);
     assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
     assert_eq!(*vault.venue().checkpoint(), after);
@@ -1970,7 +1970,7 @@ fun connected_zero_net_checkpoint_emits_once_and_preserves_the_buffer() {
     assert_eq!(vector[amount, absorbed, uncovered, reserve], vector[0, 0, 0, SEED_RESERVE]);
     assert_eq!(previous, initial);
     assert_eq!(current, after);
-    let unchanged = after.classify_sync_change_for_testing(&after, &after, ONE_FIXED);
+    let unchanged = sync_change(&after, &after, &after, ONE_FIXED);
     apply_connected_change(&mut vault, after, unchanged);
     assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 1);
     destroy(vault);
@@ -1984,7 +1984,7 @@ fun gross_funding_width_is_checked_only_after_the_signed_net() {
     let stored = checkpoint_with_market_imr(0, large + 100 * ATOM_FIXED, large, large, large, large, 1);
     let before = checkpoint_with_market_imr(0, 100 * ATOM_FIXED, external_rate, external_rate, local_rate, local_rate, 1);
     let after = checkpoint_with_market_imr(0, large + 99 * ATOM_FIXED, local_rate, local_rate, local_rate, local_rate, 1);
-    let (external, local) = stored.classify_sync_changes_for_testing(&before, &after, ONE_FIXED);
+    let (external, local) = stored.classify_sync_changes(&before, &after, ONE_FIXED);
     let net = external.net_funding(local);
     let (has_funding, is_cost, raw, amount, clean) =
         (net.has_funding(), net.is_cost(), net.raw_amount(), net.amount(), net.is_clean());
@@ -2003,7 +2003,7 @@ fun connected_unresolved_drift_preserves_the_accepted_checkpoint_across_retries(
     let after = checkpoint_with_market_imr(
         0, ALLOCATED_FIXED - 10 * ATOM_FIXED, costed_rate, costed_rate, costed_rate, costed_rate, 2,
     );
-    let unexpected = initial.classify_sync_change_for_testing(&before, &after, ONE_FIXED);
+    let unexpected = sync_change(&initial, &before, &after, ONE_FIXED);
 
     apply_connected_change(&mut vault, after, unexpected);
 
@@ -2014,7 +2014,7 @@ fun connected_unresolved_drift_preserves_the_accepted_checkpoint_across_retries(
     let (_, checkpoint) = events::collect_one<events::CheckpointDrifted<Product>>(0).checkpoint_drifted_fields();
     assert_eq!(checkpoint, after);
 
-    let replay = vault.venue().checkpoint().classify_sync_change_for_testing(&after, &after, ONE_FIXED);
+    let replay = sync_change(vault.venue().checkpoint(), &after, &after, ONE_FIXED);
     apply_connected_change(&mut vault, after, replay);
     assert_eq!(events::collect<events::CheckpointDrifted<Product>>().length(), 2);
     assert_eq!(*vault.venue().checkpoint(), initial);
@@ -2028,14 +2028,14 @@ fun connected_temporary_health_fault_keeps_lifecycle_and_emits_no_mutation() {
     let mut fixture = start();
     let checkpoint = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, checkpoint);
-    let unchanged = checkpoint.classify_sync_change_for_testing(&checkpoint, &checkpoint, ONE_FIXED);
+    let unchanged = sync_change(&checkpoint, &checkpoint, &checkpoint, ONE_FIXED);
     apply_connected_change(&mut vault, checkpoint, unchanged);
 
     assert!(!vault.is_unwinding_for_testing());
     assert_eq!(*vault.venue().checkpoint(), checkpoint);
     assert_eq!(events::collect<events::CheckpointDrifted<Product>>().length(), 0);
 
-    let repeated = checkpoint.classify_sync_change_for_testing(&checkpoint, &checkpoint, ONE_FIXED);
+    let repeated = sync_change(&checkpoint, &checkpoint, &checkpoint, ONE_FIXED);
     apply_connected_change(&mut vault, checkpoint, repeated);
     assert_eq!(events::collect<events::CheckpointDrifted<Product>>().length(), 0);
     assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 0);
@@ -2052,7 +2052,7 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
 
     let funded_checkpoint = funding_checkpoint(10, true);
     let funding_before = funding_before_checkpoint(10, true);
-    let funding = initial_checkpoint.classify_sync_change_for_testing(&funding_before, &funded_checkpoint, ONE_FIXED);
+    let funding = sync_change(&initial_checkpoint, &funding_before, &funded_checkpoint, ONE_FIXED);
     apply_connected_change(&mut vault, funded_checkpoint, funding);
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.set_max_order_notional(&fixture.protocol, &admin_witness, 300);
@@ -2062,7 +2062,7 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
     let final_checkpoint = checkpoint_with_market_imr(
         1, ALLOCATED_FIXED - 10 * ATOM_FIXED, costed_rate, costed_rate, costed_rate, costed_rate, 1,
     );
-    let unexpected = funded_checkpoint.classify_sync_change_for_testing(&final_checkpoint, &final_checkpoint, ONE_FIXED);
+    let unexpected = sync_change(&funded_checkpoint, &final_checkpoint, &final_checkpoint, ONE_FIXED);
     apply_connected_change(&mut vault, final_checkpoint, unexpected);
 
     let mut replay = replay_issued(
@@ -2199,7 +2199,7 @@ fun unrepresentable_net_funding_is_drift_not_settlement() {
     let stored = checkpoint_with_market_imr(0, large + 100 * ATOM_FIXED, large, large, large, large, 1);
     let before = checkpoint_with_market_imr(0, 100 * ATOM_FIXED, 2 * large, 2 * large, 2 * large, 2 * large, 1);
     let mut vault = issue_and_activate(&mut fixture, stored);
-    let (external, local) = stored.classify_sync_changes_for_testing(&before, &before, ONE_FIXED);
+    let (external, local) = stored.classify_sync_changes(&before, &before, ONE_FIXED);
 
     operations::apply_post_captures_for_testing(&mut vault, before, external, local);
 
@@ -2250,13 +2250,13 @@ fun funding_settles_while_unwinding_and_aborts_once_settled() {
     let initial = initial_checkpoint();
     let mut vault = issue_and_begin_shutdown(&mut fixture, initial);
     let (before, funded) = (funding_before_checkpoint(10, true), funding_checkpoint(10, true));
-    let cost = initial.classify_sync_change_for_testing(&before, &funded, ONE_FIXED);
+    let cost = sync_change(&initial, &before, &funded, ONE_FIXED);
     apply_connected_change(&mut vault, funded, cost);
     assert_eq!(vault.state().maintenance_reserve(), 90);
     assert_eq!(*vault.venue().checkpoint(), funded);
     finalize_recovered(&mut vault, sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()));
 
-    let cost = initial.classify_sync_change_for_testing(&before, &funded, ONE_FIXED);
+    let cost = sync_change(&initial, &before, &funded, ONE_FIXED);
     apply_connected_change(&mut vault, funded, cost);
     destroy(vault);
     fixture.end();
@@ -2507,14 +2507,14 @@ fun unchanged_checkpoint_passes_the_priced_operation_gate() {
 fun redemption_cash_checkpoint_with_no_free_cash_deallocates_the_whole_payout() {
     let before = initial_checkpoint();
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - 15 * ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
-    before.assert_nonnegative_cash_checkpoint_for_testing(&after, 15, false);
+    before.assert_withdrawal_checkpoint(&after, 15);
 }
 
 #[test]
 fun redemption_cash_checkpoint_paid_exactly_by_free_cash() {
     let before = checkpoint_with_market_imr(25, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
     let after = initial_checkpoint();
-    before.assert_nonnegative_cash_checkpoint_for_testing(&after, 25, false);
+    before.assert_withdrawal_checkpoint(&after, 25);
 }
 
 #[test]
@@ -2522,7 +2522,7 @@ fun redemption_cash_checkpoint_paid_exactly_by_free_cash() {
 fun cash_checkpoint_rejects_free_collateral_that_disagrees_with_the_payout() {
     let before = checkpoint_with_market_imr(25, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
     let after = checkpoint_with_market_imr(6, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
-    before.assert_nonnegative_cash_checkpoint_for_testing(&after, 20, false);
+    before.assert_withdrawal_checkpoint(&after, 20);
 }
 
 #[test]
@@ -2530,20 +2530,20 @@ fun cash_checkpoint_rejects_free_collateral_that_disagrees_with_the_payout() {
 fun cash_checkpoint_rejects_an_unrelated_field_change_after_an_exact_move() {
     let before = checkpoint_with_market_imr(25, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
     let after = checkpoint_with_market_imr(5, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 2);
-    before.assert_nonnegative_cash_checkpoint_for_testing(&after, 20, false);
+    before.assert_withdrawal_checkpoint(&after, 20);
 }
 
 #[test]
 fun net_funding_adds_two_costs_and_keeps_the_larger_side_of_a_cost_and_a_credit() {
     let (before, after) = two_edge_checkpoints(10, true, 5, true);
-    let (external, local) = initial_checkpoint().classify_sync_changes_for_testing(&before, &after, ONE_FIXED);
+    let (external, local) = initial_checkpoint().classify_sync_changes(&before, &after, ONE_FIXED);
     let net = external.net_funding(local);
     assert!(net.is_clean() && net.is_cost());
     assert_eq!(net.raw_amount(), 15 * ATOM_FIXED);
     assert_eq!(net.amount(), 15);
 
     let (before, after) = two_edge_checkpoints(10, true, 15, false);
-    let (external, local) = initial_checkpoint().classify_sync_changes_for_testing(&before, &after, ONE_FIXED);
+    let (external, local) = initial_checkpoint().classify_sync_changes(&before, &after, ONE_FIXED);
     let net = external.net_funding(local);
     assert!(net.is_clean() && !net.is_cost());
     assert_eq!(net.raw_amount(), 5 * ATOM_FIXED);
@@ -2861,7 +2861,7 @@ fun assert_connected_cost(
     let mut vault = issue_and_activate(&mut fixture, initial);
     let before = funding_before_checkpoint(amount, true);
     let funded = funding_checkpoint(amount, true);
-    let change = initial.classify_sync_change_for_testing(&before, &funded, ONE_FIXED);
+    let change = sync_change(&initial, &before, &funded, ONE_FIXED);
     apply_connected_change(&mut vault, funded, change);
 
     assert_eq!(vault.state().maintenance_reserve(), expected_reserve);
@@ -2942,7 +2942,7 @@ fun assert_two_edge_netting(
     let initial = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, initial);
     let (before, after) = two_edge_checkpoints(external, external_is_cost, local, local_is_cost);
-    let (external_change, local_change) = initial.classify_sync_changes_for_testing(&before, &after, ONE_FIXED);
+    let (external_change, local_change) = initial.classify_sync_changes(&before, &after, ONE_FIXED);
 
     operations::apply_post_captures_for_testing(&mut vault, after, external_change, local_change);
 
@@ -2967,7 +2967,7 @@ fun assert_unexpected_edge_keeps_the_checkpoint(external_is_unexpected: bool) {
     let initial = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, initial);
     let funded = funding_checkpoint(10, true);
-    let cost = funding_before_checkpoint(10, true).classify_change_for_testing(&funded, ONE_FIXED);
+    let cost = funding_before_checkpoint(10, true).classify_change(&funded, ONE_FIXED);
     assert!(cost.is_cost() && cost.amount() == 10);
     let (external_change, local_change) = if (external_is_unexpected) {
         (checkpoint::unexpected_change(), cost)
@@ -3018,12 +3018,18 @@ fun sync_checkpoint(
     )
 }
 
+/// Both edges of one synchronization netted, as `synchronize` applies them.
+fun sync_change(stored: &Checkpoint, before: &Checkpoint, after: &Checkpoint, collateral_price: u256): CheckpointChange {
+    let (preexisting_change, local_change) = stored.classify_sync_changes(before, after, collateral_price);
+    preexisting_change.net_funding(local_change)
+}
+
 fun assert_unexpected_sync_change(
     stored: &Checkpoint,
     before: &Checkpoint,
     after: &Checkpoint,
 ) {
-    let change = stored.classify_sync_change_for_testing(before, after, ONE_FIXED);
+    let change = sync_change(stored, before, after, ONE_FIXED);
     let (has_funding, is_cost, raw_amount, amount, checkpoint_clean) =
         (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
 
@@ -3235,7 +3241,7 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     let credited_rate = RATE - ATOM_FIXED;
     let before = checkpoint_with_market_imr(10, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, credited_rate, credited_rate, 1);
     let after = checkpoint_with_market_imr(10, ALLOCATED_FIXED, credited_rate, credited_rate, credited_rate, credited_rate, 1);
-    let change = checkpoint.classify_sync_change_for_testing(&before, &after, ONE_FIXED);
+    let change = sync_change(&checkpoint, &before, &after, ONE_FIXED);
     apply_connected_change(vault, after, change);
     replay_funding(&mut replay, events::collect_one<events::FundingSettled<Tag>>(0));
     assert_replay(&replay, vault);

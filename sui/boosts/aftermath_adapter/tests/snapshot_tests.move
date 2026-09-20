@@ -7,8 +7,8 @@ module blast_boosts_aftermath::snapshot_tests;
 #[test]
 fun signed_funding_cost_crosses_allocated_zero_without_becoming_unresolved() {
     let before = checkpoint(10, 5, 5, 6, 7, 8, 9);
-    let after = checkpoint(10, 3, 7, 8, 7, 8, 9);
-    let change = before.classify_signed_funding_for_testing(&after, false, 5, true, 3);
+    let after = checkpoint(10, neg(3), 7, 8, 7, 8, 9);
+    let change = preexisting(&before, &after);
     let (has, cost, raw, amount, clean) =
         (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
     assert!(has && cost && clean);
@@ -19,9 +19,9 @@ fun signed_funding_cost_crosses_allocated_zero_without_becoming_unresolved() {
 
 #[test]
 fun signed_funding_credit_crosses_allocated_zero_without_becoming_unresolved() {
-    let before = checkpoint(10, 5, 5, 6, 7, 8, 9);
+    let before = checkpoint(10, neg(5), 5, 6, 7, 8, 9);
     let after = checkpoint(10, 3, 7, 8, 7, 8, 9);
-    let change = before.classify_signed_funding_for_testing(&after, true, 5, false, 3);
+    let change = preexisting(&before, &after);
     let (has, cost, raw, amount, clean) =
         (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
     assert!(has && !cost && clean);
@@ -32,9 +32,9 @@ fun signed_funding_credit_crosses_allocated_zero_without_becoming_unresolved() {
 
 #[test]
 fun signed_funding_less_negative_allocation_is_a_credit() {
-    let before = checkpoint(10, 5, 5, 6, 7, 8, 9);
-    let after = checkpoint(10, 3, 7, 8, 7, 8, 9);
-    let change = before.classify_signed_funding_for_testing(&after, true, 5, true, 3);
+    let before = checkpoint(10, neg(5), 5, 6, 7, 8, 9);
+    let after = checkpoint(10, neg(3), 7, 8, 7, 8, 9);
+    let change = preexisting(&before, &after);
     let (has, cost, raw, amount, clean) =
         (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
     assert!(has && !cost && clean);
@@ -44,9 +44,9 @@ fun signed_funding_less_negative_allocation_is_a_credit() {
 
 #[test]
 fun signed_funding_deeper_negative_allocation_is_a_cost() {
-    let before = checkpoint(10, 5, 5, 6, 7, 8, 9);
-    let after = checkpoint(10, 3, 7, 8, 7, 8, 9);
-    let change = before.classify_signed_funding_for_testing(&after, true, 3, true, 5);
+    let before = checkpoint(10, neg(3), 5, 6, 7, 8, 9);
+    let after = checkpoint(10, neg(5), 7, 8, 7, 8, 9);
+    let change = preexisting(&before, &after);
     let (has, cost, raw, amount, clean) =
         (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
     assert!(has && cost && clean);
@@ -64,8 +64,8 @@ fun a_flat_position_refreshes_its_snapshots_without_settling() {
     let before = flat_checkpoint(1_000, 5, 6, 7, 8, 9);
     let after = flat_checkpoint(1_000, 7, 8, 7, 8, 9);
     assert!(before != after);
-    assert!(before.classify_change_for_testing(&after, 1).is_unchanged_for_testing());
-    assert!(before.classify_preexisting_funding_for_testing(&after).is_unchanged_for_testing());
+    assert!(before.classify_change(&after, 1).is_unchanged_for_testing());
+    assert!(preexisting(&before, &after).is_unchanged_for_testing());
 }
 
 #[test]
@@ -73,14 +73,14 @@ fun unchanged_checkpoint_is_not_funding() {
     let before = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
     let after = before;
 
-    assert!(before.classify_change_for_testing(&after, 1).is_unchanged_for_testing());
+    assert!(before.classify_change(&after, 1).is_unchanged_for_testing());
 }
 
 #[test]
 fun a_rate_fall_on_the_held_side_is_a_credit_of_the_venue_amount() {
     let before = checkpoint(10, 1_000, 1_005, 6, 5, 8, 9);
     let after = checkpoint(10, 2_000, 5, 8, 5, 8, 9);
-    let change = before.classify_change_for_testing(&after, 1);
+    let change = before.classify_change(&after, 1);
 
     assert_eq!(change.raw_amount(), 1_000);
     assert!(change.is_credit_for_testing());
@@ -91,22 +91,23 @@ fun a_rate_rise_on_the_held_side_is_a_cost_of_the_venue_amount() {
     let before = checkpoint(10, 2_000, 5, 6, 1_005, 8, 9);
     let after = checkpoint(10, 1_000, 1_005, 8, 1_005, 8, 9);
 
-    assert!(before.classify_change_for_testing(&after, 1).is_cost());
+    assert!(before.classify_change(&after, 1).is_cost());
 }
 
 #[test]
 fun a_short_settles_against_the_short_rate_with_the_opposite_sign() {
     // Short rate rises by 1_000: the short is paid; the long rate is not consulted.
-    let before = checkpoint(10, 1_000, 5, 6, 7, 1_006, 9);
-    let credited = checkpoint(10, 2_000, 7, 1_006, 7, 1_006, 9);
-    let change = before.classify_change_signed_for_testing(&credited, true, false, false, 1);
+    let before = short_checkpoint(10, 1_000, 5, 6, 7, 1_006, 9);
+    let credited = short_checkpoint(10, 2_000, 7, 1_006, 7, 1_006, 9);
+    let change = before.classify_change(&credited, 1);
     assert_eq!(change.raw_amount(), 1_000);
     assert!(change.is_credit_for_testing());
 
-    // The same move read as a long would look at the long side's +2 and expect a cost of 2.
+    // The same move on a long looks at the long side's +2 and expects a cost of 2.
+    let long_before = checkpoint(10, 1_000, 5, 6, 7, 1_006, 9);
     let costed = checkpoint(10, 998, 7, 1_006, 7, 1_006, 9);
-    assert!(before.classify_change_for_testing(&costed, 1).is_cost());
-    assert!(before.classify_change_for_testing(&credited, 1).is_unexpected_for_testing());
+    assert!(long_before.classify_change(&costed, 1).is_cost());
+    assert!(long_before.classify_change(&checkpoint(10, 2_000, 7, 1_006, 7, 1_006, 9), 1).is_unexpected_for_testing());
 }
 
 #[test]
@@ -114,17 +115,17 @@ fun a_credit_rounds_down_and_a_cost_rounds_up_at_the_collateral_price() {
     // 1_001 raw USD at a price of 2 raw: the venue credits 500 and charges 501.
     let before = checkpoint(10, 1_000, 1_006, 6, 5, 8, 9);
     let credited = checkpoint(10, 1_500, 5, 8, 5, 8, 9);
-    let credit = before.classify_change_for_testing(&credited, 2);
+    let credit = before.classify_change(&credited, 2);
     assert_eq!(credit.raw_amount(), 500);
     assert!(credit.is_credit_for_testing());
-    assert!(before.classify_change_for_testing(&checkpoint(10, 1_501, 5, 8, 5, 8, 9), 2).is_unexpected_for_testing());
+    assert!(before.classify_change(&checkpoint(10, 1_501, 5, 8, 5, 8, 9), 2).is_unexpected_for_testing());
 
     let rising = checkpoint(10, 1_000, 5, 6, 1_006, 8, 9);
     let costed = checkpoint(10, 499, 1_006, 8, 1_006, 8, 9);
-    let cost = rising.classify_change_for_testing(&costed, 2);
+    let cost = rising.classify_change(&costed, 2);
     assert!(cost.is_cost());
     assert_eq!(cost.raw_amount(), 501);
-    assert!(rising.classify_change_for_testing(&checkpoint(10, 500, 1_006, 8, 1_006, 8, 9), 2).is_unexpected_for_testing());
+    assert!(rising.classify_change(&checkpoint(10, 500, 1_006, 8, 1_006, 8, 9), 2).is_unexpected_for_testing());
 }
 
 #[test]
@@ -132,22 +133,23 @@ fun a_credit_that_rounds_to_zero_leaves_the_collateral_untouched() {
     // One raw USD at a price of 2 raw floors to nothing; the venue still refreshes the snapshots.
     let before = checkpoint(10, 1_000, 6, 6, 5, 8, 9);
     let refreshed = checkpoint(10, 1_000, 5, 8, 5, 8, 9);
-    assert!(before.classify_change_for_testing(&refreshed, 2).is_unchanged_for_testing());
-    assert!(before.classify_change_for_testing(&checkpoint(10, 1_001, 5, 8, 5, 8, 9), 2).is_unexpected_for_testing());
+    assert!(before.classify_change(&refreshed, 2).is_unchanged_for_testing());
+    assert!(before.classify_change(&checkpoint(10, 1_001, 5, 8, 5, 8, 9), 2).is_unexpected_for_testing());
 }
 
 #[test]
 fun a_rate_crossing_zero_settles_the_sum_of_both_magnitudes() {
     // Snapshot -3, market +4 on the long side: the rate rose by 7, a cost of 7 for the long.
-    let before = checkpoint(10, 1_000, 3, 6, 4, 8, 9);
+    let before = checkpoint(10, 1_000, neg(3), 6, 4, 8, 9);
     let after = checkpoint(10, 993, 4, 8, 4, 8, 9);
-    let change = before.classify_change_signed_for_testing(&after, false, false, true, 1);
+    let change = before.classify_change(&after, 1);
     assert!(change.is_cost());
     assert_eq!(change.raw_amount(), 7);
 
     // Snapshot +3, market -4: the rate fell by 7, a credit of 7.
-    let falling = checkpoint(10, 1_007, 4, 8, 4, 8, 9);
-    let credit = before.classify_change_signed_for_testing(&falling, false, true, false, 1);
+    let rising = checkpoint(10, 1_000, 3, 6, neg(4), 8, 9);
+    let falling = checkpoint(10, 1_007, neg(4), 8, neg(4), 8, 9);
+    let credit = rising.classify_change(&falling, 1);
     assert_eq!(credit.raw_amount(), 7);
     assert!(credit.is_credit_for_testing());
 }
@@ -156,7 +158,7 @@ fun a_rate_crossing_zero_settles_the_sum_of_both_magnitudes() {
 fun funding_settlement_keeps_the_exact_raw_amount() {
     let before = checkpoint(10, 4_000, 1_342, 6, 5, 8, 9);
     let after = checkpoint(10, 5_337, 5, 8, 5, 8, 9);
-    let change = before.classify_change_for_testing(&after, 1);
+    let change = before.classify_change(&after, 1);
 
     assert_eq!(change.raw_amount(), 1_337);
 }
@@ -168,9 +170,9 @@ fun wrong_funding_delta_and_inactive_snapshot_transition_are_unexpected() {
     let wrong_side = checkpoint(10, 2_000, 1_005, 8, 5, 8, 9);
     let wrong_short = checkpoint(10, 2_000, 5, 9, 5, 8, 9);
 
-    assert!(before.classify_change_for_testing(&wrong_delta, 1).is_unexpected_for_testing());
-    assert!(before.classify_change_for_testing(&wrong_side, 1).is_unexpected_for_testing());
-    assert!(before.classify_change_for_testing(&wrong_short, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&wrong_delta, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&wrong_side, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&wrong_short, 1).is_unexpected_for_testing());
 }
 
 #[test]
@@ -178,7 +180,7 @@ fun collateral_delta_without_a_funding_snapshot_transition_is_unexpected() {
     let before = checkpoint(10, 1_000, 7, 8, 7, 8, 9);
     let after = checkpoint(10, 2_000, 7, 8, 7, 8, 9);
 
-    assert!(before.classify_change_for_testing(&after, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&after, 1).is_unexpected_for_testing());
 }
 
 #[test]
@@ -186,7 +188,7 @@ fun free_collateral_change_is_unexpected() {
     let before = checkpoint(10, 1_000, 5, 6, 5, 6, 9);
     let after = checkpoint(11, 1_000, 5, 6, 5, 6, 9);
 
-    assert!(before.classify_change_for_testing(&after, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&after, 1).is_unexpected_for_testing());
 }
 
 #[test]
@@ -196,9 +198,9 @@ fun base_quote_and_pending_order_changes_are_unexpected() {
     let quote_changed = checkpoint::checkpoint_for_testing(10, 1_000, 1, 13, 3, 4, 7, 8, 9, 10, 11, 12, 13, false, 14, 15, 16);
     let order_changed = checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 3, 4, 7, 8, 9, 10, 11, 13, 13, false, 14, 15, 16);
 
-    assert!(before.classify_change_for_testing(&base_changed, 1).is_unexpected_for_testing());
-    assert!(before.classify_change_for_testing(&quote_changed, 1).is_unexpected_for_testing());
-    assert!(before.classify_change_for_testing(&order_changed, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&base_changed, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&quote_changed, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&order_changed, 1).is_unexpected_for_testing());
 }
 
 #[test]
@@ -213,14 +215,14 @@ fun every_checkpoint_guard_field_blocks_an_otherwise_matching_funding_delta() {
     let market_imr_changed = checkpoint::checkpoint_for_testing(10, 2_000, 1, 2, 7, 8, 7, 8, 9, 10, 11, 12, 13, false, 14, 99, 16);
     let market_mmr_changed = checkpoint::checkpoint_for_testing(10, 2_000, 1, 2, 7, 8, 7, 8, 9, 10, 11, 12, 13, false, 14, 15, 99);
 
-    assert!(before.classify_change_for_testing(&base_funding_after, 1).is_credit_for_testing());
-    assert!(before.classify_change_for_testing(&pending_ask_changed, 1).is_unexpected_for_testing());
-    assert!(before.classify_change_for_testing(&pending_bid_changed, 1).is_unexpected_for_testing());
-    assert!(before.classify_change_for_testing(&pause_changed, 1).is_unexpected_for_testing());
-    assert!(before.classify_change_for_testing(&frozen_changed, 1).is_unexpected_for_testing());
-    assert!(before.classify_change_for_testing(&position_imr_changed, 1).is_unexpected_for_testing());
-    assert!(before.classify_change_for_testing(&market_imr_changed, 1).is_unexpected_for_testing());
-    assert!(before.classify_change_for_testing(&market_mmr_changed, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&base_funding_after, 1).is_credit_for_testing());
+    assert!(before.classify_change(&pending_ask_changed, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&pending_bid_changed, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&pause_changed, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&frozen_changed, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&position_imr_changed, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&market_imr_changed, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&market_mmr_changed, 1).is_unexpected_for_testing());
 }
 
 #[test]
@@ -230,9 +232,9 @@ fun market_rate_or_lot_change_blocks_funding_even_when_the_delta_matches() {
     let short_rate_changed = checkpoint::checkpoint_for_testing(10, 2_000, 1, 2, 7, 8, 7, 99, 9, 10, 11, 12, 13, false, 14, 15, 16);
     let lot_changed = checkpoint::checkpoint_for_testing(10, 2_000, 1, 2, 7, 8, 7, 8, 99, 10, 11, 12, 13, false, 14, 15, 16);
 
-    assert!(before.classify_change_for_testing(&market_rate_changed, 1).is_unexpected_for_testing());
-    assert!(before.classify_change_for_testing(&short_rate_changed, 1).is_unexpected_for_testing());
-    assert!(before.classify_change_for_testing(&lot_changed, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&market_rate_changed, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&short_rate_changed, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&lot_changed, 1).is_unexpected_for_testing());
 }
 
 #[test]
@@ -241,7 +243,7 @@ fun a_funding_cost_too_wide_for_collateral_atoms_is_carried_raw_but_not_clean() 
     let d = (std::u64::max_value!() as u256) * 1_000_000_000_000 + 1;
     let before = checkpoint(10, d, 5, 6, 5 + d, 8, 9);
     let after = checkpoint(10, 0, 5 + d, 8, 5 + d, 8, 9);
-    let change = before.classify_change_for_testing(&after, 1);
+    let change = before.classify_change(&after, 1);
 
     assert!(change.is_cost());
     assert_eq!(change.raw_amount(), d);
@@ -255,21 +257,21 @@ fun funding_width_is_exact_at_the_u64_atom_boundary_per_rounding_direction() {
     // A cost of exactly u64::max atoms rounds up to itself.
     let cost_raw = (std::u64::max_value!() as u256) * 1_000_000_000_000;
     let cost = checkpoint(10, cost_raw, 5, 6, 5 + cost_raw, 8, 9)
-        .classify_change_for_testing(&checkpoint(10, 0, 5 + cost_raw, 8, 5 + cost_raw, 8, 9), 1);
+        .classify_change(&checkpoint(10, 0, 5 + cost_raw, 8, 5 + cost_raw, 8, 9), 1);
     assert!(cost.is_cost() && cost.has_funding());
     assert_eq!(cost.amount(), std::u64::max_value!());
 
     // A credit just below the next atom floors to u64::max.
     let credit_raw = cost_raw + 999_999_999_999;
     let credit = checkpoint(10, 0, 5 + credit_raw, 6, 5, 8, 9)
-        .classify_change_for_testing(&checkpoint(10, credit_raw, 5, 8, 5, 8, 9), 1);
+        .classify_change(&checkpoint(10, credit_raw, 5, 8, 5, 8, 9), 1);
     assert!(!credit.is_cost() && credit.has_funding());
     assert_eq!(credit.amount(), std::u64::max_value!());
 
     // The first whole atom above u64::max is unrepresentable as a credit.
     let wide_raw = ((std::u64::max_value!() as u256) + 1) * 1_000_000_000_000;
     let wide = checkpoint(10, 0, 5 + wide_raw, 6, 5, 8, 9)
-        .classify_change_for_testing(&checkpoint(10, wide_raw, 5, 8, 5, 8, 9), 1);
+        .classify_change(&checkpoint(10, wide_raw, 5, 8, 5, 8, 9), 1);
     assert!(!wide.is_cost() && !wide.has_funding());
 }
 
@@ -277,7 +279,7 @@ fun funding_width_is_exact_at_the_u64_atom_boundary_per_rounding_direction() {
 fun a_credit_floors_its_sub_atom_remainder() {
     let before = checkpoint(10, 0, 5 + 1_999_999_999_999, 6, 5, 8, 9);
     let after = checkpoint(10, 1_999_999_999_999, 5, 8, 5, 8, 9);
-    let change = before.classify_change_for_testing(&after, 1);
+    let change = before.classify_change(&after, 1);
 
     assert!(change.has_funding());
     assert_eq!(change.amount(), 1);
@@ -289,8 +291,8 @@ fun an_allocated_move_without_refreshed_snapshots_is_not_preexisting_funding() {
     let stored = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
     let before = checkpoint(10, 1_500, 5, 6, 7, 8, 9);
 
-    assert!(stored.classify_preexisting_funding_for_testing(&before).is_unexpected_for_testing());
-    assert!(stored.classify_sync_change_for_testing(&before, &before, 1).is_unexpected_for_testing());
+    assert!(preexisting(&stored, &before).is_unexpected_for_testing());
+    assert!(sync_change(&stored, &before, &before, 1).is_unexpected_for_testing());
 }
 
 #[test]
@@ -299,15 +301,15 @@ fun an_unchanged_held_side_rate_settles_nothing_even_when_the_other_side_refresh
     let refreshed = checkpoint(10, 1_000, 5, 8, 5, 8, 9);
     let moved = checkpoint(10, 1_001, 5, 8, 5, 8, 9);
 
-    assert!(before.classify_change_for_testing(&refreshed, 1).is_unchanged_for_testing());
-    assert!(before.classify_change_for_testing(&moved, 1).is_unexpected_for_testing());
+    assert!(before.classify_change(&refreshed, 1).is_unchanged_for_testing());
+    assert!(before.classify_change(&moved, 1).is_unexpected_for_testing());
 }
 
 #[test]
 fun a_short_pays_when_the_short_rate_falls() {
-    let before = checkpoint(10, 2_000, 5, 1_006, 7, 6, 9);
-    let after = checkpoint(10, 1_000, 7, 6, 7, 6, 9);
-    let change = before.classify_change_signed_for_testing(&after, true, false, false, 1);
+    let before = short_checkpoint(10, 2_000, 5, 1_006, 7, 6, 9);
+    let after = short_checkpoint(10, 1_000, 7, 6, 7, 6, 9);
+    let change = before.classify_change(&after, 1);
 
     assert!(change.is_cost());
     assert_eq!(change.raw_amount(), 1_000);
@@ -324,18 +326,27 @@ fun settlement_replay_aborts_where_the_venue_product_overflows() {
         10, 999, 1u256 << 200, 2, 5 + rate_delta, 8, 5 + rate_delta, 8, 9, 10, 11, 12, 13, false, 14, 15, 16,
     );
 
-    before.classify_change_for_testing(&after, 1);
+    before.classify_change(&after, 1);
+}
+
+#[test]
+#[expected_failure(arithmetic_error, location = blast_boosts_aftermath::checkpoint)]
+fun settlement_replay_divides_by_the_collateral_price_the_venue_divided_by() {
+    // A zero price never reaches the classifier: the venue's own settlement
+    // divides by the same price first and aborts. The replay aborts the same way.
+    let before = checkpoint(10, 1_000, 5, 6, 1_005, 8, 9);
+    let after = checkpoint(10, 0, 1_005, 8, 1_005, 8, 9);
+    before.classify_change(&after, 0);
 }
 
 #[test]
 fun net_funding_refuses_an_overflowing_gross_sum() {
     let half = (1u256 << 255) - 1;
-    let preexisting = checkpoint(10, 1_000, 5, 6, 7, 8, 9)
-        .classify_signed_funding_for_testing(&checkpoint(10, 1_000, 7, 8, 7, 8, 9), false, half, true, half);
+    let preexisting = preexisting(&checkpoint(10, half, 5, 6, 7, 8, 9), &checkpoint(10, neg(half), 7, 8, 7, 8, 9));
     assert!(preexisting.is_cost());
     assert_eq!(preexisting.raw_amount(), std::u256::max_value!() - 1);
     let settled = checkpoint(10, 2_000, 5, 6, 1_005, 8, 9)
-        .classify_change_for_testing(&checkpoint(10, 1_000, 1_005, 8, 1_005, 8, 9), 1);
+        .classify_change(&checkpoint(10, 1_000, 1_005, 8, 1_005, 8, 9), 1);
     assert!(settled.is_cost());
 
     assert!(preexisting.net_funding(settled).is_unexpected_for_testing());
@@ -714,6 +725,23 @@ fun usd_conversion_is_invalid_when_either_scaled_part_overflows() {
 
 // === Test Helpers ===
 
+/// `-magnitude` in the venue's two's-complement carrier.
+fun neg(magnitude: u256): u256 {
+    std::u256::max_value!() - magnitude + 1
+}
+
+/// The stored → before edge alone: what another caller settled since `stored`.
+fun preexisting(stored: &Checkpoint, before: &Checkpoint): CheckpointChange {
+    let (change, _) = stored.classify_sync_changes(before, before, 1);
+    change
+}
+
+/// Both edges of one synchronization netted, as `synchronize` applies them.
+fun sync_change(stored: &Checkpoint, before: &Checkpoint, after: &Checkpoint, collateral_price: u256): CheckpointChange {
+    let (preexisting_change, local_change) = stored.classify_sync_changes(before, after, collateral_price);
+    preexisting_change.net_funding(local_change)
+}
+
 /// One raw unit long; the quote carries the base's sign.
 fun checkpoint(
     free_collateral: u64,
@@ -729,6 +757,37 @@ fun checkpoint(
         allocated_collateral,
         1,
         2,
+        funding_snapshot_long,
+        funding_snapshot_short,
+        market_funding_long,
+        market_funding_short,
+        lot_size,
+        10,
+        11,
+        12,
+        13,
+        false,
+        14,
+        15,
+        16,
+    )
+}
+
+/// One raw unit short: base and quote carry the negative sign.
+fun short_checkpoint(
+    free_collateral: u64,
+    allocated_collateral: u256,
+    funding_snapshot_long: u256,
+    funding_snapshot_short: u256,
+    market_funding_long: u256,
+    market_funding_short: u256,
+    lot_size: u64,
+): Checkpoint {
+    checkpoint::checkpoint_for_testing(
+        free_collateral,
+        allocated_collateral,
+        neg(1),
+        neg(2),
         funding_snapshot_long,
         funding_snapshot_short,
         market_funding_long,
@@ -776,7 +835,7 @@ fun flat_checkpoint(
 
 // === Imports ===
 
-use blast_boosts_aftermath::{checkpoint::{Self, Checkpoint}, errors, ifixed_math, snapshot};
+use blast_boosts_aftermath::{checkpoint::{Self, Checkpoint, CheckpointChange}, errors, ifixed_math, snapshot};
 
 use blast_boosts_core::{observation, policy};
 

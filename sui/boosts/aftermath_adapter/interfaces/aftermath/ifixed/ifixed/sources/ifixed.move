@@ -35,8 +35,14 @@ public fun decimal_scalar_from_decimals(decimals: u64): u64 {
     abort 404
 }
 
+// Blast: `one`, `add`, `sub`, `abs` and `is_neg` carry the bodies of the
+// deployed mainnet module (package 0x4b4703a7…8760, module sha256
+// ab7e23db…140e, disassembled 2026-09-19/20), transcribed instruction for
+// instruction, so adapter tests execute the production decode paths. They
+// never reach the chain: the adapter links to the published package. Every
+// other function keeps the interface's `abort 404` body.
 public fun one(): u256 {
-    abort 404
+    ONE
 }
 
 public fun neg_one(): u256 {
@@ -140,11 +146,24 @@ public fun to_u256balance(x: u256, scaling_factor: u256): u256 {
 // =========================================================================
 
 public fun add(x: u256, y: u256): u256 {
-    abort 404
+    // Bytecode: low-255-bit sum; same signs keep the sum and abort when its
+    // sign differs from `x`; different signs flip the sum's sign bit.
+    let sum = (x & NOT_GREATEST_BIT) + (y & NOT_GREATEST_BIT);
+    if ((x ^ y) < GREATEST_BIT) {
+        assert!((x ^ sum) < GREATEST_BIT, OVERFLOW_ERROR);
+        sum
+    } else {
+        sum ^ GREATEST_BIT
+    }
 }
 
 public fun sub(x: u256, y: u256): u256 {
-    abort 404
+    // Bytecode: raw difference, negated in two's complement when `y > x`;
+    // same signs never overflow, different signs must keep `x`'s sign.
+    let difference = if (x >= y) { x - y } else { ((y - x) ^ NEG_ONE) + 1 };
+    let in_range = if ((x ^ y) < GREATEST_BIT) { true } else { (x ^ difference) < GREATEST_BIT };
+    assert!(in_range, OVERFLOW_ERROR);
+    difference
 }
 
 public fun mul(x: u256, y: u256): u256 {
@@ -184,7 +203,9 @@ public fun neg(x: u256): u256 {
 }
 
 public fun abs(x: u256): u256 {
-    abort 404
+    // Bytecode: a negative's magnitude is `((x xor (2^255 - 1)) + 1) xor 2^255`;
+    // the addition overflows only for `-2^255`, whose magnitude has no encoding.
+    if (x >= GREATEST_BIT) { ((x ^ NOT_GREATEST_BIT) + 1) ^ GREATEST_BIT } else { x }
 }
 
 // =========================================================================
@@ -200,7 +221,7 @@ public fun min(x: u256, y: u256): u256 {
 }
 
 public fun is_neg(x: u256): bool {
-    abort 404
+    x >= GREATEST_BIT
 }
 
 public fun same_sign(x: u256, y: u256): bool {

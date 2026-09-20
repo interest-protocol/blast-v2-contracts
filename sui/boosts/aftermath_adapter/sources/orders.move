@@ -83,9 +83,19 @@ public(package) fun unwind_terms<Product, Collateral>(
     capture: &CapturedSnapshot,
     now_ms: u64,
 ): (OrderTerms, u64, Checkpoint) {
-    let base = capture.checkpoint().signed_base();
+    let before = capture.checkpoint();
+    let (side, max_order_base, base_price, collateral_price) = vault.state().unwind_constraints(
+        capture.base_price_observation(), capture.collateral_price_observation(), before.lot_size(), now_ms,
+    );
+    before.assert_no_orders();
 
-    unwind_terms_decoded(vault, capture, now_ms, base.abs(), !base.is_neg())
+    let terms = OrderTerms {
+        is_ask: !opens_with_ask(side), reduce_only: true, max_order_base,
+        lot_size: before.lot_size(), base_price, collateral_price,
+    };
+    let base = before.signed_base();
+
+    (terms, unwind_base_decoded(base.abs(), !base.is_neg(), before.lot_size(), side), before)
 }
 
 /// Reads the market's taker fee and priority surcharge as one basis-point bound.
@@ -361,28 +371,6 @@ fun next_order_size(self: &OrderTerms, remaining: u64, index: u64): u64 {
     active_order_size(remaining, self.max_order_base, self.lot_size, index)
 }
 
-/// The close-only terms from a base already decoded into magnitude and direction.
-fun unwind_terms_decoded<Product, Collateral>(
-    vault: &Vault<Product, Collateral>,
-    capture: &CapturedSnapshot,
-    now_ms: u64,
-    base_magnitude: u256,
-    is_long: bool,
-): (OrderTerms, u64, Checkpoint) {
-    let before = capture.checkpoint();
-    let (side, max_order_base, base_price, collateral_price) = vault.state().unwind_constraints(
-        capture.base_price_observation(), capture.collateral_price_observation(), before.lot_size(), now_ms,
-    );
-    before.assert_no_orders();
-
-    let terms = OrderTerms {
-        is_ask: !opens_with_ask(side), reduce_only: true, max_order_base,
-        lot_size: before.lot_size(), base_price, collateral_price,
-    };
-
-    (terms, unwind_base_decoded(base_magnitude, is_long, before.lot_size(), side), before)
-}
-
 /// Exact base-atom and lot validation of the position to close.
 fun unwind_base_decoded(magnitude: u256, is_long: bool, lot_size: u64, side: PositionSide): u64 {
     assert!(
@@ -598,17 +586,6 @@ public fun execution_price_for_testing(
 #[test_only]
 public fun unwind_base_for_testing(magnitude: u256, is_long: bool, lot_size: u64, side: PositionSide): u64 {
     unwind_base_decoded(magnitude, is_long, lot_size, side)
-}
-
-#[test_only]
-public fun unwind_terms_for_testing<Product, Collateral>(
-    vault: &Vault<Product, Collateral>,
-    capture: &CapturedSnapshot,
-    now_ms: u64,
-    base_magnitude: u256,
-    is_long: bool,
-): (OrderTerms, u64, Checkpoint) {
-    unwind_terms_decoded(vault, capture, now_ms, base_magnitude, is_long)
 }
 
 #[test_only]

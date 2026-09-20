@@ -648,20 +648,6 @@ public fun assert_signed_cash_change_for_testing(
 }
 
 /// Exercises the pure cash proof with explicitly nonnegative decoded fixture collateral.
-#[test_only]
-public fun assert_nonnegative_cash_checkpoint_for_testing(
-    before: &Checkpoint,
-    after: &Checkpoint,
-    amount: u64,
-    deposit: bool,
-) {
-    let from_free = if (deposit) { 0 } else { before.free_collateral.min(amount) };
-    assert_signed_cash_change(
-        false, before.allocated_collateral, false, after.allocated_collateral, amount - from_free, deposit,
-    );
-    assert_cash_checkpoint(before, after, before.free_collateral - from_free);
-}
-
 /// Decoded dependency-port values; the production wrapper always uses named IFixed decoding.
 #[test_only]
 public(package) fun recoverable_cash_for_testing(self: &Checkpoint, is_negative: bool, magnitude: u256): u64 {
@@ -689,86 +675,6 @@ public fun unchanged_change(): CheckpointChange {
 /// Creates the dirty-checkpoint classification for adapter test fixtures.
 public fun unexpected_change(): CheckpointChange {
     CheckpointChange::Unexpected
-}
-
-#[test_only]
-public fun classify_sync_change_for_testing(
-    self: &Checkpoint,
-    before: &Checkpoint,
-    after: &Checkpoint,
-    collateral_price: u256,
-): CheckpointChange {
-    let (preexisting_change, local_change) = self.classify_sync_changes_for_testing(before, after, collateral_price);
-    preexisting_change.net_funding(local_change)
-}
-
-#[test_only]
-public fun classify_sync_changes_for_testing(
-    self: &Checkpoint,
-    before: &Checkpoint,
-    after: &Checkpoint,
-    collateral_price: u256,
-): (CheckpointChange, CheckpointChange) {
-    let preexisting_change = if (self.checkpoint_ready_for_settlement(before)) {
-        unchanged_change()
-    } else {
-        self.classify_preexisting_funding_for_testing(before)
-    };
-    let local_change = before.classify_change_for_testing(after, collateral_price);
-    (preexisting_change, local_change)
-}
-
-#[test_only]
-/// The production classifier with every raw field read as a nonnegative
-/// magnitude; the pinned `ifixed` port aborts under test, so signs are
-/// exercised through `classify_change_signed_for_testing`.
-public fun classify_change_for_testing(self: &Checkpoint, after: &Checkpoint, collateral_price: u256): CheckpointChange {
-    self.classify_change_signed_for_testing(after, false, false, false, collateral_price)
-}
-
-#[test_only]
-public fun classify_change_signed_for_testing(
-    self: &Checkpoint,
-    after: &Checkpoint,
-    base_negative: bool,
-    market_negative: bool,
-    snapshot_negative: bool,
-    collateral_price: u256,
-): CheckpointChange {
-    let (market_rate, snapshot_rate) = self.side_funding_rates(base_negative);
-    let (negative, magnitude) =
-        signed_difference(false, self.allocated_collateral(), false, after.allocated_collateral());
-
-    classify_change_decoded(
-        self,
-        after,
-        base_negative,
-        self.signed_base(),
-        market_negative,
-        market_rate,
-        snapshot_negative,
-        snapshot_rate,
-        funding_change(negative, magnitude),
-        collateral_price,
-    )
-}
-
-#[test_only]
-public fun classify_preexisting_funding_for_testing(self: &Checkpoint, before: &Checkpoint): CheckpointChange {
-    self.classify_signed_funding_for_testing(before, false, self.allocated_collateral(), false, before.allocated_collateral())
-}
-
-#[test_only]
-public fun classify_signed_funding_for_testing(
-    self: &Checkpoint,
-    before: &Checkpoint,
-    stored_negative: bool,
-    stored_magnitude: u256,
-    before_negative: bool,
-    before_magnitude: u256,
-): CheckpointChange {
-    let (negative, magnitude) = signed_difference(stored_negative, stored_magnitude, before_negative, before_magnitude);
-    classify_preexisting_from_delta(self, before, funding_change(negative, magnitude))
 }
 
 #[test_only]
