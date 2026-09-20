@@ -116,7 +116,7 @@ public(package) fun new(
     admin_cap: AuthorityCap<ACCOUNT, ADMIN>,
 ): VenueAccount {
     assert!(
-        authority::`for`(&admin_cap) == binding.account_object_id,
+        admin_cap.`for`() == binding.account_object_id,
         blast_boosts_aftermath::errors::admin_cap_account_mismatch!(),
     );
 
@@ -354,7 +354,7 @@ public fun next_funding_update_time_ms_for_testing(last_funding_update_ms: u64, 
 
 // === Imports ===
 
-use authority_cap::authority::{Self, ADMIN, AuthorityCap};
+use authority_cap::authority::{ADMIN, AuthorityCap};
 
 use blast_boosts_aftermath::checkpoint::Checkpoint;
 

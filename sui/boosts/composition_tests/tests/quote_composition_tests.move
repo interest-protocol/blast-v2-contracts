@@ -131,7 +131,6 @@ public fun mint_and_buy<Product, Collateral, Meme>(
     collateral_oracle: &PriceFeedStorage,
     cash: Coin<Collateral>,
     minimum_shares: u64,
-    maximum_fee: u64,
     deadline: u64,
     market: &mut Launch<Meme, BlastBoost<Product>>,
     version: &PackageVersion,
@@ -142,7 +141,7 @@ public fun mint_and_buy<Product, Collateral, Meme>(
 ): (Coin<Meme>, Coin<BlastBoost<Product>>) {
     let shares = operations::mint(vault, protocol, account, registry, clearing_house,
         base_oracle, collateral_oracle, cash,
-        minimum_shares, maximum_fee, deadline, clock, ctx);
+        minimum_shares, deadline, clock, ctx);
     market.buy(version, runtime, shares, minimum_meme, ctx)
 }
 
@@ -161,7 +160,6 @@ public fun sell_and_redeem<Product, Collateral, Meme>(
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
     minimum_cash: u64,
-    maximum_fee: u64,
     deadline: u64,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -169,7 +167,7 @@ public fun sell_and_redeem<Product, Collateral, Meme>(
     let shares = market.sell(version, runtime, meme, minimum_shares, ctx);
     operations::redeem(vault, protocol, account, registry, clearing_house,
         base_oracle, collateral_oracle, shares,
-        minimum_cash, maximum_fee, deadline, clock, ctx)
+        minimum_cash, deadline, clock, ctx)
 }
 
 // === Imports ===

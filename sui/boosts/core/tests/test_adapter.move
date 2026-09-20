@@ -351,13 +351,7 @@ public fun activate(self: Issued, seed: u64, seed_reserve: u64): Vault {
 
 /// Deposits `deposit`, buys the proportional base in capped orders, and mints shares.
 public fun mint(self: &mut Vault, deposit: u64, minimum_shares: u64): u64 {
-    self.mint_with_fee_limit(deposit, minimum_shares, BPS)
-}
-
-/// A mint under the depositor's fee ceiling, in the real adapter's exact call order.
-public fun mint_with_fee_limit(self: &mut Vault, deposit: u64, minimum_shares: u64, maximum_fee_bps: u64): u64 {
     assert!(deposit > 0);
-    self.state.assert_user_fee_limit(true, maximum_fee_bps);
     let (fee, admin_fee, reserve_fee) = self.state.fee_allocation_for_testing(deposit, true);
     assert!(fee == admin_fee + reserve_fee);
 
@@ -399,13 +393,6 @@ public fun mint_with_fee_limit(self: &mut Vault, deposit: u64, minimum_shares: u
 
 /// Sells the proportional base in capped orders, withdraws the payout, and burns.
 public fun redeem(self: &mut Vault, shares: u64, minimum_output: u64): u64 {
-    self.redeem_with_fee_limit(shares, minimum_output, BPS)
-}
-
-/// A redemption under the redeemer's fee ceiling, in the real adapter's exact call order.
-public fun redeem_with_fee_limit(self: &mut Vault, shares: u64, minimum_output: u64, maximum_fee_bps: u64): u64 {
-    self.state.assert_user_fee_limit(false, maximum_fee_bps);
-
     let now_ms = self.venue.now_ms;
     let plan = self.state.prepare_redemption(self.venue.observe(), shares, self.supply, minimum_output, now_ms);
     let priced = plan.redemption_position();

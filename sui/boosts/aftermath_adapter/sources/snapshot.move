@@ -80,7 +80,7 @@ public(package) fun capture<Collateral>(
     let (base_price, base_timestamp, base_representable) = oracle_leg(base_feed, base_fixed);
     let (collateral_price, collateral_timestamp, collateral_representable) =
         oracle_leg(collateral_feed, collateral_fixed);
-    let (mark_price, mark_representable) = ifixed_math::fixed_to_u64_down(mark_fixed, 9);
+    let (mark_price, mark_representable) = ifixed_math::fixed_to_u64_down(mark_fixed, constants::base_decimals!() as u64);
 
     let position = clearing_house.position(account.account_id());
     let (position_base, venue_equity, margin_safe, position_representable) = position_economics(
@@ -201,7 +201,7 @@ fun position_economics(
     mark_fixed: u256,
 ): (u64, u64, bool, bool) {
     let (signed_base, signed_quote_notional) = position.base_and_quote_amounts();
-    let (position_base, base_representable) = ifixed_math::fixed_to_u64_up(signed_base.abs(), 9);
+    let (position_base, base_representable) = ifixed_math::fixed_to_u64_up(signed_base.abs(), constants::base_decimals!() as u64);
     let effective_imr = position.effective_initial_margin_ratio(params.margin_ratio_initial());
     let (margin, requirement) = position.compute_margin_and_requirement(
         collateral_fixed, mark_fixed, effective_imr, params.collateral_haircut(),
@@ -231,7 +231,7 @@ fun oracle_leg_decoded(feed_price: u128, timestamp: u64, venue_price: u256): (u6
         (feed_price as u256) == venue_price,
         blast_boosts_aftermath::errors::oracle_observation_mismatch!(),
     );
-    let (price, representable) = ifixed_math::fixed_to_u64_down(venue_price, 9);
+    let (price, representable) = ifixed_math::fixed_to_u64_down(venue_price, constants::base_decimals!() as u64);
 
     (price, timestamp, representable)
 }
@@ -354,7 +354,7 @@ public fun captured_health_for_testing(
 
 #[test_only]
 public fun normalize_price_for_testing(value: u256): (u64, bool) {
-    ifixed_math::fixed_to_u64_down(value, 9)
+    ifixed_math::fixed_to_u64_down(value, constants::base_decimals!() as u64)
 }
 
 #[test_only]

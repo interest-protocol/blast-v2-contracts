@@ -212,6 +212,22 @@ fun issuer_updates_the_currency_metadata_with_a_completed_event() {
 }
 
 #[test]
+#[expected_failure(abort_code = errors::EMetadataUnchanged, location = blast_boosts_aftermath::vault)]
+fun a_metadata_update_that_repeats_every_current_value_is_refused() {
+    let mut fixture = start(domain::vault_issuer_role());
+    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
+    fixture.scenario.next_tx(ISSUER);
+    let vault = fixture.scenario.take_shared<Vault<Sui2x, SUI>>();
+    let mut currency = fixture.scenario.take_shared<Currency<BlastBoost<Sui2x>>>();
+    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let (name, description, icon_url) = (currency.name(), currency.description(), currency.icon_url());
+    vault.update_metadata(&fixture.protocol, &witness, &mut currency, name, description, icon_url);
+    test_scenario::return_shared(vault);
+    test_scenario::return_shared(currency);
+    destroy(fixture);
+}
+
+#[test]
 #[expected_failure(
     abort_code = blast_admin::errors::EAdminRoleNotGranted,
     location = blast_admin::acl,

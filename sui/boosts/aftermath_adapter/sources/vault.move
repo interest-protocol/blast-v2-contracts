@@ -10,7 +10,8 @@ module blast_boosts_aftermath::vault;
 
 // === Constants ===
 
-/// Converts six-decimal seed NAV atoms to nine-decimal share atoms.
+/// Converts six-decimal seed NAV atoms to nine-decimal share atoms:
+/// `10^(share_decimals - collateral_decimals)` for the two precisions this adapter fixes.
 const SEED_SHARE_SCALE: u64 = 1_000;
 
 // === Public Types ===
@@ -134,7 +135,7 @@ public fun redeem_shutdown<Product, Collateral>(
     );
 
     let burned = self.burn_redeemed_shares(shares);
-    let output_coin = coin::from_balance(self.terminal_cash.split(output), ctx);
+    let output_coin = self.terminal_cash.split(output).into_coin(ctx);
     let remaining = self.terminal_cash.value();
 
     events::shutdown_redeemed<Product>(
@@ -207,6 +208,7 @@ public fun set_max_order_notional<Product, Collateral>(
 
 /// Replaces the Boost currency's display name, description and icon in Coin
 /// Registry. The symbol is fixed at issuance; the registry has no setter for it.
+/// At least one of the three must change, so every emitted update is a real one.
 /// This local administrative edge requires neither venue objects nor prices.
 public fun update_metadata<Product, Collateral>(
     self: &Vault<Product, Collateral>,
@@ -219,6 +221,10 @@ public fun update_metadata<Product, Collateral>(
 ) {
     protocol.assert_current();
     admin_witness.assert_role(domain::vault_issuer_role());
+    assert!(
+        currency.name() != name || currency.description() != description || currency.icon_url() != icon_url,
+        blast_boosts_aftermath::errors::metadata_unchanged!(),
+    );
 
     let metadata_cap = self.metadata_cap();
     currency.set_name(metadata_cap, name);
@@ -243,7 +249,7 @@ public fun withdraw_admin_fees<Product, Collateral>(
     let available = self.admin_cash.value();
     assert!(amount <= available, blast_boosts_aftermath::errors::insufficient_admin_cash!());
 
-    let output = coin::from_balance(self.admin_cash.split(amount), ctx);
+    let output = self.admin_cash.split(amount).into_coin(ctx);
 
     events::admin_fees_withdrawn<Product>(self.id.to_inner(), amount, available - amount);
 
@@ -287,7 +293,7 @@ public(package) fun activate<Product, Collateral>(
     let (state, seed_nav, seeded) = issuance.activate(seeded, seed_reserve, now_ms);
 
     let locked_shares = seed_shares(seed_nav);
-    transfer::public_transfer(coin::mint(&mut treasury_cap, locked_shares, ctx), @0x0);
+    transfer::public_transfer(treasury_cap.mint(locked_shares, ctx), @0x0);
 
     let mut vault = Vault {
         id: object::new(ctx),
@@ -311,14 +317,14 @@ public(package) fun mint_shares<Product, Collateral>(
     amount: u64,
     ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
-    coin::mint(self.treasury_cap_mut(), amount, ctx)
+    self.treasury_cap_mut().mint(amount, ctx)
 }
 
 // --- Redemption ---
 
 /// Burns only through this Vault's retained native TreasuryCap.
 public(package) fun burn_redeemed_shares<Product, Collateral>(self: &mut Vault<Product, Collateral>, shares: Coin<BlastBoost<Product>>): u64 {
-    coin::burn(self.treasury_cap_mut(), shares)
+    self.treasury_cap_mut().burn(shares)
 }
 
 // --- Shutdown ---
@@ -378,15 +384,15 @@ fun seed_shares(seed_nav: u64): u64 {
 }
 
 fun treasury_cap<Product, Collateral>(self: &Vault<Product, Collateral>): &TreasuryCap<BlastBoost<Product>> {
-    dynamic_object_field::borrow(&self.id, TreasuryKey<Product>())
+    self.id.borrow_dynamic_object_field(TreasuryKey<Product>())
 }
 
 fun treasury_cap_mut<Product, Collateral>(self: &mut Vault<Product, Collateral>): &mut TreasuryCap<BlastBoost<Product>> {
-    dynamic_object_field::borrow_mut(&mut self.id, TreasuryKey<Product>())
+    self.id.borrow_dynamic_object_field_mut(TreasuryKey<Product>())
 }
 
 fun metadata_cap<Product, Collateral>(self: &Vault<Product, Collateral>): &MetadataCap<BlastBoost<Product>> {
-    dynamic_object_field::borrow(&self.id, MetadataKey<Product>())
+    self.id.borrow_dynamic_object_field(MetadataKey<Product>())
 }
 
 // === Test-Only Functions ===
@@ -465,10 +471,12 @@ use std::{string::String, type_name};
 
 use sui::{
     balance::{Self, Balance},
-    coin::{Self, Coin, TreasuryCap},
+    coin::{Coin, TreasuryCap},
     coin_registry::{CoinRegistry, Currency, MetadataCap},
     clock::Clock,
     dynamic_object_field,
 };
 
 use fun dynamic_object_field::add as UID.add_dynamic_object_field;
+use fun dynamic_object_field::borrow as UID.borrow_dynamic_object_field;
+use fun dynamic_object_field::borrow_mut as UID.borrow_dynamic_object_field_mut;

@@ -375,7 +375,7 @@ public fun complete_mint<Product>(
 
 // --- Redemption ---
 
-/// Seals a rounded-up attributable close and the redeemer's output/fee limits.
+/// Seals a rounded-up attributable close and the redeemer's output floor.
 public fun prepare_redemption<Product>(
     self: &State<Product>,
     observation: PositionObservation,
@@ -762,11 +762,6 @@ public fun set_fees<Product>(
     self.admin_share_bps = admin_share_bps;
 
     (previous_mint, previous_redeem, previous_admin)
-}
-
-/// Checks a user's fee ceiling before the adapter interacts with the venue.
-public fun assert_user_fee_limit<Product>(self: &State<Product>, is_mint: bool, max_fee_bps: u64) {
-    assert!(self.live_fee_bps(is_mint) <= max_fee_bps, blast_boosts_core::errors::user_fee_limit_exceeded!());
 }
 
 /// Updates the live per-call maximum order notional.

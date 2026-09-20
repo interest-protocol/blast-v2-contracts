@@ -57,7 +57,7 @@ public struct OrderFilled<phantom Product> has copy, drop {
 
 // --- Mint ---
 
-/// Emitted afterive mint, including its actual contribution and both fee allocations.
+/// Emitted after an active mint, including its actual contribution and both fee allocations.
 public struct Minted<phantom Product> has copy, drop {
     vault_id: ID,
     deposit: u64,

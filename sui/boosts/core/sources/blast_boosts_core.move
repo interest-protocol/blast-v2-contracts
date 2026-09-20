@@ -32,7 +32,7 @@ const PACKAGE_ADMIN_ROLE: u64 = 16;
 // === Public Types ===
 
 /// One-time witness that names this administration domain at the type level.
-public struct BLAST_BOOSTS_CORE has drop {}
+public struct BLAST_BOOSTS_CORE() has drop;
 
 // === Private Initialization ===
 

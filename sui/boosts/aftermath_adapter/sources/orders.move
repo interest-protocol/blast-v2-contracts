@@ -111,7 +111,7 @@ public(package) fun live_venue_fee_bps<Collateral>(clearing_house: &ClearingHous
 /// Places every order of one active mint or redemption, proving each fill
 /// against the sealed oracle and the checkpoint before the next.
 ///
-/// Returns the market and the checkpoint the last fill left behind.
+/// Returns the market once every fill is proven.
 public(package) fun fill_orders<Product, Collateral>(
     vault: &Vault<Product, Collateral>,
     account: &mut Account<Collateral>,
@@ -125,7 +125,7 @@ public(package) fun fill_orders<Product, Collateral>(
     mut remaining: u64,
     clock: &Clock,
     ctx: &TxContext,
-): (ClearingHouse<Collateral>, Checkpoint) {
+): ClearingHouse<Collateral> {
     let mut index = 0;
     while (remaining > 0) {
         let requested = terms.next_order_size(remaining, index);
@@ -144,7 +144,7 @@ public(package) fun fill_orders<Product, Collateral>(
         index = index + 1;
     };
 
-    (clearing_house, checkpoint)
+    clearing_house
 }
 
 /// Places the core's next rebalance order until it sizes zero or the per-call

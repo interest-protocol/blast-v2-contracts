@@ -151,7 +151,9 @@ const EInvalidUnwindExposure: u64 = 34;
 /// A priced operation found the venue with open orders, unsafe margin, or a paused or frozen market.
 const EVenueNotReady: u64 = 35;
 
-// === Package Functions ===
+#[test_only]
+/// A metadata update must change the name, the description, or the icon.
+const EMetadataUnchanged: u64 = 36;
 
 macro public(package) fun invalid_package_publisher(): u64 { 0 }
 macro public(package) fun invalid_product_witness_type(): u64 { 1 }
@@ -189,3 +191,4 @@ macro public(package) fun unresolved_checkpoint(): u64 { 32 }
 macro public(package) fun terminal_venue_unsettled(): u64 { 33 }
 macro public(package) fun invalid_unwind_exposure(): u64 { 34 }
 macro public(package) fun venue_not_ready(): u64 { 35 }
+macro public(package) fun metadata_unchanged(): u64 { 36 }

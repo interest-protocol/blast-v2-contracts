@@ -346,7 +346,7 @@ Zero-policy validity:
 
 Each assertion uses its matching non-aborting predicate:
 `is_price_fresh`, `is_confidence_within_bound`, and
-`is_mark_within_index_divergence`. Priced operations reject failures before
+`is_mark_within_oracle_divergence`. Priced operations reject failures before
 financial mutation; health synchronization does not use these predicates to
 change lifecycle.
 

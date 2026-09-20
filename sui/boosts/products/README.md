@@ -2,7 +2,7 @@
 
 `blast_boosts_products` is the Blast-owned home of every Series1 Boost
 product tag. It holds no state and no authority. Its one module declares the
-package one-time witness and one empty `drop` struct per product named
+package one-time witness and one empty struct with no abilities per product named
 `<TICKER>_<SIDE>_<LEVERAGE>`, so a holder's coin reads as
 `…::blast_boost::BlastBoost<…::blast_boosts_products::NVDA_BULL_2X>` on
 every explorer and wallet. `BULL` tracks the perp long, `BEAR` the inverse.

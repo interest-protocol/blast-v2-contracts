@@ -56,7 +56,6 @@ fun error_codes_run_from_zero_without_gaps() {
         errors::initialization_base_below_min_order!(),
         errors::fee_cap_exceeded!(),
         errors::fee_settings_unchanged!(),
-        errors::user_fee_limit_exceeded!(),
         errors::mint_outside_rebalance_band!(),
         errors::active_checkpoint_changed!(),
         errors::active_fill_incomplete!(),
@@ -72,7 +71,7 @@ fun error_codes_run_from_zero_without_gaps() {
         errors::invariant_violated!(),
     ];
 
-    assert_eq!(codes.length(), 63);
+    assert_eq!(codes.length(), 62);
     codes.length().do!(|i| assert_eq!(codes[i], i));
 }
 

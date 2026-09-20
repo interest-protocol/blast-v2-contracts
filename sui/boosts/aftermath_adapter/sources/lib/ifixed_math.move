@@ -10,28 +10,14 @@ public(package) fun nonnegative_rate(rate: u256): u256 {
     if (rate.is_neg()) { 0 } else { rate.abs() }
 }
 
-/// `10^exponent` as an IFixed-width integer.
-public(package) fun pow10(exponent: u64): u256 {
-    let mut result = 1u256;
-    exponent.do!(|_| result = result * 10);
-
-    result
-}
-
 /// The IFixed value in `decimals`-decimal atoms, rounded down, and whether it fit in a u64.
 public(package) fun fixed_to_u64_down(value: u256, decimals: u64): (u64, bool) {
-    to_u64(div_rounded(value, pow10(18 - decimals), false))
+    to_u64(value / atom_scale(decimals))
 }
 
 /// The IFixed value in `decimals`-decimal atoms, rounded up, and whether it fit in a u64.
 public(package) fun fixed_to_u64_up(value: u256, decimals: u64): (u64, bool) {
-    to_u64(div_rounded(value, pow10(18 - decimals), true))
-}
-
-/// `value / divisor`, rounded down or up. `divisor` must be nonzero.
-public(package) fun div_rounded(value: u256, divisor: u256, round_up: bool): u256 {
-    let down = value / divisor;
-    if (round_up && value % divisor != 0) { down + 1 } else { down }
+    to_u64(value.div_ceil(atom_scale(decimals)))
 }
 
 /// The value as a u64 and whether it fit; an unrepresentable value reads as zero.
@@ -53,6 +39,13 @@ public(package) fun usd_fixed_to_collateral_fixed(usd: u256, collateral_price: u
     if (!round_up || fraction_scaled % collateral_price == 0) return (quotient, true);
 
     if (quotient == std::u256::max_value!()) { (0, false) } else { (quotient + 1, true) }
+}
+
+// === Private Functions ===
+
+/// Raw IFixed units in one `decimals`-decimal atom: `10^(18 - decimals)`.
+fun atom_scale(decimals: u64): u256 {
+    10u256.pow((18 - decimals) as u8)
 }
 
 // === Test-Only Functions ===

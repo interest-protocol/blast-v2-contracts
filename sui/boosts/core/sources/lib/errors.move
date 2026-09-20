@@ -206,60 +206,56 @@ const EFeeCapExceeded: u64 = 47;
 const EFeeSettingsUnchanged: u64 = 48;
 
 #[test_only]
-/// The live fee exceeds the ceiling the user accepted.
-const EUserFeeLimitExceeded: u64 = 49;
-
-#[test_only]
 /// Post-mint leverage lies outside the rebalance band.
-const EMintOutsideRebalanceBand: u64 = 50;
+const EMintOutsideRebalanceBand: u64 = 49;
 
 #[test_only]
 /// The observation pair changed between plan and completion.
-const EActiveCheckpointChanged: u64 = 51;
+const EActiveCheckpointChanged: u64 = 50;
 
 #[test_only]
 /// The venue fill does not match the planned base order.
-const EActiveFillIncomplete: u64 = 52;
+const EActiveFillIncomplete: u64 = 51;
 
 #[test_only]
 /// Post-operation leverage exceeds the policy maximum.
-const EActiveLeverageAboveCap: u64 = 53;
+const EActiveLeverageAboveCap: u64 = 52;
 
 #[test_only]
 /// The redemption pays less than the holder's stated minimum.
-const ERedemptionOutputBelowMinimum: u64 = 54;
+const ERedemptionOutputBelowMinimum: u64 = 53;
 
 #[test_only]
 /// An active rebalance was requested at or inside the one rebalance band.
-const ERebalanceInsideBand: u64 = 55;
+const ERebalanceInsideBand: u64 = 54;
 
 #[test_only]
 /// No admissible whole-lot rebalance progress was completed.
-const ERebalanceNoProgress: u64 = 56;
+const ERebalanceNoProgress: u64 = 55;
 
 #[test_only]
 /// A venue fee or execution bound cannot be represented conservatively.
-const EVenueFeeUnusable: u64 = 57;
+const EVenueFeeUnusable: u64 = 56;
 
 #[test_only]
 /// An asset precision exceeds the widest the notional formulas support.
-const EInvalidAssetDecimals: u64 = 58;
+const EInvalidAssetDecimals: u64 = 57;
 
 #[test_only]
 /// A NAV cap update must change the cap.
-const ENavCapUnchanged: u64 = 59;
+const ENavCapUnchanged: u64 = 58;
 
 #[test_only]
 /// The reserve ceiling must be a positive share of notional, at most 100%.
-const EInvalidMaxReserveBps: u64 = 60;
+const EInvalidMaxReserveBps: u64 = 59;
 
 #[test_only]
 /// A seed reserve exceeds the policy ceiling for the opening notional.
-const ESeedReserveAboveCap: u64 = 61;
+const ESeedReserveAboveCap: u64 = 60;
 
 #[test_only]
 /// A mutation left the state in violation of an accounting invariant that must hold by construction.
-const EInvariantViolated: u64 = 62;
+const EInvariantViolated: u64 = 61;
 
 // === Package Functions ===
 
@@ -312,17 +308,16 @@ macro public(package) fun initialization_leverage_unhealthy(): u64 { 45 }
 macro public(package) fun initialization_base_below_min_order(): u64 { 46 }
 macro public(package) fun fee_cap_exceeded(): u64 { 47 }
 macro public(package) fun fee_settings_unchanged(): u64 { 48 }
-macro public(package) fun user_fee_limit_exceeded(): u64 { 49 }
-macro public(package) fun mint_outside_rebalance_band(): u64 { 50 }
-macro public(package) fun active_checkpoint_changed(): u64 { 51 }
-macro public(package) fun active_fill_incomplete(): u64 { 52 }
-macro public(package) fun active_leverage_above_cap(): u64 { 53 }
-macro public(package) fun redemption_output_below_minimum(): u64 { 54 }
-macro public(package) fun rebalance_inside_band(): u64 { 55 }
-macro public(package) fun rebalance_no_progress(): u64 { 56 }
-macro public(package) fun venue_fee_unusable(): u64 { 57 }
-macro public(package) fun invalid_asset_decimals(): u64 { 58 }
-macro public(package) fun nav_cap_unchanged(): u64 { 59 }
-macro public(package) fun invalid_max_reserve_bps(): u64 { 60 }
-macro public(package) fun seed_reserve_above_cap(): u64 { 61 }
-macro public(package) fun invariant_violated(): u64 { 62 }
+macro public(package) fun mint_outside_rebalance_band(): u64 { 49 }
+macro public(package) fun active_checkpoint_changed(): u64 { 50 }
+macro public(package) fun active_fill_incomplete(): u64 { 51 }
+macro public(package) fun active_leverage_above_cap(): u64 { 52 }
+macro public(package) fun redemption_output_below_minimum(): u64 { 53 }
+macro public(package) fun rebalance_inside_band(): u64 { 54 }
+macro public(package) fun rebalance_no_progress(): u64 { 55 }
+macro public(package) fun venue_fee_unusable(): u64 { 56 }
+macro public(package) fun invalid_asset_decimals(): u64 { 57 }
+macro public(package) fun nav_cap_unchanged(): u64 { 58 }
+macro public(package) fun invalid_max_reserve_bps(): u64 { 59 }
+macro public(package) fun seed_reserve_above_cap(): u64 { 60 }
+macro public(package) fun invariant_violated(): u64 { 61 }

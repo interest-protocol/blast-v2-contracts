@@ -80,7 +80,6 @@ public fun mint<Product, Collateral>(
     collateral_oracle: &PriceFeedStorage,
     cash: Coin<Collateral>,
     minimum_shares: u64,
-    maximum_fee_bps: u64,
     deadline_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -89,7 +88,6 @@ public fun mint<Product, Collateral>(
     let deposit = cash.value();
     assert!(deposit > 0, blast_boosts_aftermath::errors::zero_amount!());
     assert_deadline(clock.timestamp_ms(), deadline_ms);
-    vault.state().assert_user_fee_limit(true, maximum_fee_bps);
 
     let (before, before_checkpoint) = synchronize(
         vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle, clock,
@@ -105,7 +103,7 @@ public fun mint<Product, Collateral>(
         cash, plan.admin_fee(), &before_checkpoint, ctx,
     );
 
-    let (clearing_house, checkpoint) = orders::fill_orders(
+    let clearing_house = orders::fill_orders(
         vault, account, registry, clearing_house, base_oracle, collateral_oracle,
         &binding, checkpoint, terms, plan.base_to_buy(), clock, ctx,
     );
@@ -113,7 +111,6 @@ public fun mint<Product, Collateral>(
     let (after, final_checkpoint) = snapshot::capture(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
-    checkpoint.assert_deposit_checkpoint(&final_checkpoint, 0);
     let shares = complete_mint<Product, Collateral>(vault, plan, deposit, after, final_checkpoint, clock.timestamp_ms(), ctx);
     clearing_house.share();
 
@@ -132,7 +129,6 @@ public fun redeem<Product, Collateral>(
     collateral_oracle: &PriceFeedStorage,
     shares: Coin<BlastBoost<Product>>,
     minimum_collateral: u64,
-    maximum_fee_bps: u64,
     deadline_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -140,7 +136,6 @@ public fun redeem<Product, Collateral>(
     protocol.assert_current();
     assert!(shares.value() > 0, blast_boosts_aftermath::errors::zero_amount!());
     assert_deadline(clock.timestamp_ms(), deadline_ms);
-    vault.state().assert_user_fee_limit(false, maximum_fee_bps);
 
     let (before, checkpoint) = synchronize(
         vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle, clock,
@@ -151,7 +146,7 @@ public fun redeem<Product, Collateral>(
     let terms = orders::active_terms(vault, true, plan.redemption_position());
 
     let binding = vault.venue().binding();
-    let (mut clearing_house, checkpoint) = orders::fill_orders(
+    let mut clearing_house = orders::fill_orders(
         vault, account, registry, clearing_house, base_oracle, collateral_oracle,
         &binding, checkpoint, terms, plan.base_to_sell(), clock, ctx,
     );
@@ -159,7 +154,6 @@ public fun redeem<Product, Collateral>(
     let (after_sell, after_sell_checkpoint) = snapshot::capture(
         &binding, account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
-    checkpoint.assert_deposit_checkpoint(&after_sell_checkpoint, 0);
     let (net, admin, fee, reserve_fee) = settle_redemption(vault, plan, &shares, after_sell, clock.timestamp_ms());
     let cash = vault.venue().withdraw(
         account, registry, &mut clearing_house, base_oracle, collateral_oracle, net + admin, clock, ctx,
