@@ -26,6 +26,8 @@ const ORACLE_LAG_MS: u64 = 1_000;
 
 /// The venue cannot serve a priced operation: paused, under margin, orders open, or drifted.
 const EVenueNotReady: u64 = 1;
+/// A mint or redemption would need more capped orders than one transaction places.
+const EOrderLimitExceeded: u64 = 2;
 const ROOT: address = @0xA;
 const ISSUER: address = @0xB;
 
@@ -374,7 +376,7 @@ public fun mint_with_fee_limit(self: &mut Vault, deposit: u64, minimum_shares: u
     let cap_base = self.venue.base_for_notional(cap);
     let mut orders = 0;
     while (remaining > 0) {
-        assert!(orders < MAX_ORDERS);
+        assert!(orders < MAX_ORDERS, EOrderLimitExceeded);
         let order = remaining.min(cap_base);
         self.state.assert_order_notional_allowed(self.venue.notional_of(order));
         let (executed, filled) = self.venue.fill(order, true);
@@ -415,7 +417,7 @@ public fun redeem_with_fee_limit(self: &mut Vault, shares: u64, minimum_output: 
     let cap_base = self.venue.base_for_notional(cap);
     let mut orders = 0;
     while (remaining > 0) {
-        assert!(orders < MAX_ORDERS);
+        assert!(orders < MAX_ORDERS, EOrderLimitExceeded);
         let order = remaining.min(cap_base);
         self.state.assert_order_notional_allowed(self.venue.notional_of(order));
         let (executed, filled) = self.venue.fill(order, false);

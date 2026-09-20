@@ -1049,12 +1049,6 @@ public fun is_unwinding_for_testing<Product>(self: &State<Product>): bool {
 }
 
 #[test_only]
-/// Forces Settled for focused monotonicity tests.
-public fun set_settled_for_testing<Product>(self: &mut State<Product>) {
-    self.lifecycle = lifecycle::settled_for_testing();
-}
-
-#[test_only]
 /// Returns whether the lifecycle is Settled.
 public fun is_settled_for_testing<Product>(self: &State<Product>): bool {
     self.lifecycle.is_settled()
@@ -1064,6 +1058,17 @@ public fun is_settled_for_testing<Product>(self: &State<Product>): bool {
 /// Returns `(mint_fee_bps, redeem_fee_bps, admin_share_bps)` for test assertions.
 public fun fee_settings<Product>(self: &State<Product>): (u64, u64, u64) {
     (self.mint_fee_bps, self.redeem_fee_bps, self.admin_share_bps)
+}
+
+#[test_only]
+/// Exposes the dilution invariant so a test can prove it trips on a losing transition.
+public fun assert_holders_not_diluted_for_testing(
+    nav_before: u64,
+    shares_before: u64,
+    nav_after: u64,
+    shares_after: u64,
+) {
+    assert_holders_not_diluted(nav_before, shares_before, nav_after, shares_after);
 }
 
 #[test_only]

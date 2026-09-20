@@ -789,7 +789,7 @@ fun zero_fees_leave_the_reserve_untouched_through_mint_and_redemption() {
 
 /// A mint that would need more than sixteen orders is refused by the adapter.
 #[test]
-#[expected_failure]
+#[expected_failure(abort_code = test_adapter::EOrderLimitExceeded, location = blast_boosts_core::test_adapter)]
 fun a_mint_needing_more_than_sixteen_orders_is_refused() {
     let mut vault = test_adapter::calm_venue().issue_with(test_adapter::standard_policy(policy::long()), 100 * USDC, 1_000_000_000_000,
     ).activate(SEED, SEED_RESERVE);
