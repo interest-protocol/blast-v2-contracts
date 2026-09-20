@@ -27,29 +27,27 @@ fun error_registry_first_half_is_sequential() {
 }
 
 #[test]
-/// Codes 18 to 38.
+/// Codes 18 to 36.
 fun error_registry_second_half_is_sequential() {
     assert_eq!(errors::initialization_fill_mismatch!(), 18);
-    assert_eq!(errors::initialization_orders_posted!(), 19);
-    assert_eq!(errors::initialization_liquidation!(), 20);
-    assert_eq!(errors::initialization_imr_mismatch!(), 21);
-    assert_eq!(errors::locked_shares_overflow!(), 22);
-    assert_eq!(errors::initialization_order_count_exceeded!(), 23);
-    assert_eq!(errors::zero_amount!(), 24);
-    assert_eq!(errors::insufficient_admin_cash!(), 25);
-    assert_eq!(errors::cash_checkpoint_mismatch!(), 26);
-    assert_eq!(errors::active_fill_mismatch!(), 27);
-    assert_eq!(errors::active_orders_posted!(), 28);
-    assert_eq!(errors::active_liquidation!(), 29);
-    assert_eq!(errors::active_order_count_exceeded!(), 30);
-    assert_eq!(errors::deadline_expired!(), 31);
-    assert_eq!(errors::active_checkpoint_mismatch!(), 32);
-    assert_eq!(errors::redemption_share_mismatch!(), 33);
-    assert_eq!(errors::venue_fee_unusable!(), 34);
-    assert_eq!(errors::unresolved_checkpoint!(), 35);
-    assert_eq!(errors::terminal_venue_unsettled!(), 36);
-    assert_eq!(errors::invalid_unwind_exposure!(), 37);
-    assert_eq!(errors::venue_not_ready!(), 38);
+    assert_eq!(errors::initialization_imr_mismatch!(), 19);
+    assert_eq!(errors::locked_shares_overflow!(), 20);
+    assert_eq!(errors::initialization_order_count_exceeded!(), 21);
+    assert_eq!(errors::zero_amount!(), 22);
+    assert_eq!(errors::insufficient_admin_cash!(), 23);
+    assert_eq!(errors::cash_checkpoint_mismatch!(), 24);
+    assert_eq!(errors::fill_mismatch!(), 25);
+    assert_eq!(errors::orders_posted!(), 26);
+    assert_eq!(errors::liquidation!(), 27);
+    assert_eq!(errors::active_order_count_exceeded!(), 28);
+    assert_eq!(errors::deadline_expired!(), 29);
+    assert_eq!(errors::active_checkpoint_mismatch!(), 30);
+    assert_eq!(errors::redemption_share_mismatch!(), 31);
+    assert_eq!(errors::venue_fee_unusable!(), 32);
+    assert_eq!(errors::unresolved_checkpoint!(), 33);
+    assert_eq!(errors::terminal_venue_unsettled!(), 34);
+    assert_eq!(errors::invalid_unwind_exposure!(), 35);
+    assert_eq!(errors::venue_not_ready!(), 36);
 }
 
 // === Imports ===

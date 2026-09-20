@@ -63,8 +63,8 @@ public(package) fun seed_position<Product, Collateral>(
 
     open_seed_position(
         issuance, account, admin_cap, clearing_house, base_oracle, collateral_oracle,
-        order_sizes(target_base, max_order_base), issuance.side(), seed.base_price(), seed.collateral_price(),
-        clock, ctx,
+        order_sizes(target_base, max_order_base), issuance.side(), seed.lot_size(),
+        seed.base_price(), seed.collateral_price(), clock, ctx,
     )
 }
 
@@ -266,6 +266,7 @@ fun open_seed_position<Product, Collateral>(
     collateral_oracle: &PriceFeedStorage,
     mut orders: vector<u64>,
     position_side: PositionSide,
+    lot_size: u64,
     reference_base_price: u64,
     collateral_price: u64,
     clock: &Clock,
@@ -283,8 +284,8 @@ fun open_seed_position<Product, Collateral>(
         let (next_clearing_house, summary) = session.end_session(admin_cap, account, false, false);
         clearing_house = next_clearing_house;
 
-        assert_session_result(
-            is_long, order_base,
+        assert_seed_fill(
+            is_long, order_base, lot_size,
             summary.base_filled_bid(), summary.base_filled_ask(),
             summary.posted_orders(), summary.liquidated_size(),
             summary.liquidation_bad_debt(),
@@ -298,25 +299,19 @@ fun open_seed_position<Product, Collateral>(
     clearing_house
 }
 
-fun assert_session_result(
-    is_long: bool,
-    expected_base: u64,
+/// A seed session must fill its whole order: the shared fill checks, then exactness.
+fun assert_seed_fill(
+    is_bid: bool,
+    order_base: u64,
+    lot_size: u64,
     filled_bid: u256,
     filled_ask: u256,
     posted_orders: u64,
     liquidated_size: u64,
     bad_debt: u256,
 ) {
-    assert!(posted_orders == 0, blast_boosts_aftermath::errors::initialization_orders_posted!());
-    assert!(liquidated_size == 0 && bad_debt == 0, blast_boosts_aftermath::errors::initialization_liquidation!());
-
-    let expected_raw_base = (expected_base as u256) * constants::base_atom_to_ifixed_scale!();
-    let fill_matches = if (is_long) {
-        filled_bid == expected_raw_base && filled_ask == 0
-    } else {
-        filled_ask == expected_raw_base && filled_bid == 0
-    };
-    assert!(fill_matches, blast_boosts_aftermath::errors::initialization_fill_mismatch!());
+    let filled = active_fill(is_bid, order_base, lot_size, filled_bid, filled_ask, posted_orders, liquidated_size, bad_debt);
+    assert!(filled == order_base, blast_boosts_aftermath::errors::initialization_fill_mismatch!());
 }
 
 fun initialization_order_count(target_base: u64, max_order_base: u64): u64 {
@@ -375,7 +370,7 @@ fun active_order_size(remaining: u64, max_order_base: u64, lot_size: u64, index:
     assert!(index < constants::max_active_orders!(), blast_boosts_aftermath::errors::active_order_count_exceeded!());
     assert!(
         max_order_base > 0 && remaining > 0 && remaining % lot_size == 0,
-        blast_boosts_aftermath::errors::active_fill_mismatch!(),
+        blast_boosts_aftermath::errors::fill_mismatch!(),
     );
 
     remaining.min(max_order_base)
@@ -475,14 +470,14 @@ fun active_fill(
     liquidated_size: u64,
     bad_debt: u256,
 ): u64 {
-    assert!(posted_orders == 0, blast_boosts_aftermath::errors::active_orders_posted!());
-    assert!(liquidated_size == 0 && bad_debt == 0, blast_boosts_aftermath::errors::active_liquidation!());
+    assert!(posted_orders == 0, blast_boosts_aftermath::errors::orders_posted!());
+    assert!(liquidated_size == 0 && bad_debt == 0, blast_boosts_aftermath::errors::liquidation!());
 
     let (filled, opposite) = if (is_bid) { (filled_bid, filled_ask) } else { (filled_ask, filled_bid) };
     assert!(
         opposite == 0 && filled > 0 && filled <= (requested_base as u256) * constants::base_atom_to_ifixed_scale!()
             && lot_size > 0 && filled % ((lot_size as u256) * constants::base_atom_to_ifixed_scale!()) == 0,
-        blast_boosts_aftermath::errors::active_fill_mismatch!(),
+        blast_boosts_aftermath::errors::fill_mismatch!(),
     );
 
     (filled / constants::base_atom_to_ifixed_scale!()) as u64
@@ -521,24 +516,17 @@ fun normalize_execution_price(raw_price: u256, round_up: bool, is_negative: bool
 // === Test-Only Functions ===
 
 #[test_only]
-public fun assert_session_result_for_testing(
-    is_long: bool,
-    expected_base: u64,
+public fun assert_seed_fill_for_testing(
+    is_bid: bool,
+    order_base: u64,
+    lot_size: u64,
     filled_bid: u256,
     filled_ask: u256,
     posted_orders: u64,
     liquidated_size: u64,
     bad_debt: u256,
 ) {
-    assert_session_result(
-        is_long,
-        expected_base,
-        filled_bid,
-        filled_ask,
-        posted_orders,
-        liquidated_size,
-        bad_debt,
-    );
+    assert_seed_fill(is_bid, order_base, lot_size, filled_bid, filled_ask, posted_orders, liquidated_size, bad_debt);
 }
 
 #[test_only]

@@ -141,7 +141,7 @@ fun unwind_partial_budget_then_retry_uses_actual_remaining_exposure_for_both_sid
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::orders)]
+#[expected_failure(abort_code = errors::EFillMismatch, location = blast_boosts_aftermath::orders)]
 fun unwind_failed_middle_fill_aborts_the_current_atomic_call() {
     let first = orders::active_fill_for_testing(false, 250_000, 1, 0, 125_000_000_000_000, 0, 0, 0);
     assert_eq!(first, 125_000);
@@ -807,37 +807,37 @@ fun active_partial_fill_consumes_only_filled_whole_lots() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::orders)]
+#[expected_failure(abort_code = errors::EFillMismatch, location = blast_boosts_aftermath::orders)]
 fun active_partial_fill_rejects_zero_progress() {
     orders::active_fill_for_testing(true, 100, 10, 0, 0, 0, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::orders)]
+#[expected_failure(abort_code = errors::EFillMismatch, location = blast_boosts_aftermath::orders)]
 fun active_partial_fill_rejects_opposite_side() {
     orders::active_fill_for_testing(true, 100, 10, 60_000_000_000, 10_000_000_000, 0, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::orders)]
+#[expected_failure(abort_code = errors::EFillMismatch, location = blast_boosts_aftermath::orders)]
 fun active_partial_fill_rejects_fractional_lot() {
     orders::active_fill_for_testing(true, 100, 10, 61_000_000_000, 0, 0, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveFillMismatch, location = blast_boosts_aftermath::orders)]
+#[expected_failure(abort_code = errors::EFillMismatch, location = blast_boosts_aftermath::orders)]
 fun active_partial_fill_rejects_overfill() {
     orders::active_fill_for_testing(true, 100, 10, 110_000_000_000, 0, 0, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveOrdersPosted, location = blast_boosts_aftermath::orders)]
+#[expected_failure(abort_code = errors::EOrdersPosted, location = blast_boosts_aftermath::orders)]
 fun active_partial_fill_rejects_posted_orders() {
     orders::active_fill_for_testing(true, 100, 10, 60_000_000_000, 0, 1, 0, 0);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EActiveLiquidation, location = blast_boosts_aftermath::orders)]
+#[expected_failure(abort_code = errors::ELiquidation, location = blast_boosts_aftermath::orders)]
 fun active_partial_fill_rejects_liquidation() {
     orders::active_fill_for_testing(true, 100, 10, 60_000_000_000, 0, 0, 1, 0);
 }
@@ -1031,18 +1031,20 @@ fun initialization_order_count_ceil_does_not_add_before_dividing() {
 
 #[test]
 fun exact_long_and_short_full_fills_are_accepted() {
-    orders::assert_session_result_for_testing(
+    orders::assert_seed_fill_for_testing(
         true,
         5_000_000_000,
+        1,
         5_000_000_000_000_000_000,
         0,
         0,
         0,
         0,
     );
-    orders::assert_session_result_for_testing(
+    orders::assert_seed_fill_for_testing(
         false,
         5_000_000_000,
+        1,
         0,
         5_000_000_000_000_000_000,
         0,
@@ -1060,9 +1062,10 @@ fun series_side_maps_to_the_aftermath_port_convention() {
 #[test]
 #[expected_failure(abort_code = errors::EInitializationFillMismatch, location = blast_boosts_aftermath::orders)]
 fun a_partial_fill_is_rejected() {
-    orders::assert_session_result_for_testing(
+    orders::assert_seed_fill_for_testing(
         true,
         5_000_000_000,
+        1,
         4_999_999_999_000_000_000,
         0,
         0,
@@ -1072,11 +1075,12 @@ fun a_partial_fill_is_rejected() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInitializationFillMismatch, location = blast_boosts_aftermath::orders)]
+#[expected_failure(abort_code = errors::EFillMismatch, location = blast_boosts_aftermath::orders)]
 fun a_fill_on_the_wrong_side_is_rejected() {
-    orders::assert_session_result_for_testing(
+    orders::assert_seed_fill_for_testing(
         true,
         5_000_000_000,
+        1,
         0,
         5_000_000_000_000_000_000,
         0,
@@ -1086,11 +1090,12 @@ fun a_fill_on_the_wrong_side_is_rejected() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInitializationOrdersPosted, location = blast_boosts_aftermath::orders)]
+#[expected_failure(abort_code = errors::EOrdersPosted, location = blast_boosts_aftermath::orders)]
 fun a_posted_order_is_rejected_before_fill_validation() {
-    orders::assert_session_result_for_testing(
+    orders::assert_seed_fill_for_testing(
         true,
         5_000_000_000,
+        1,
         0,
         0,
         1,
@@ -1100,11 +1105,12 @@ fun a_posted_order_is_rejected_before_fill_validation() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInitializationLiquidation, location = blast_boosts_aftermath::orders)]
+#[expected_failure(abort_code = errors::ELiquidation, location = blast_boosts_aftermath::orders)]
 fun a_liquidation_is_rejected_before_fill_validation() {
-    orders::assert_session_result_for_testing(
+    orders::assert_seed_fill_for_testing(
         true,
         5_000_000_000,
+        1,
         0,
         0,
         0,
@@ -1114,11 +1120,12 @@ fun a_liquidation_is_rejected_before_fill_validation() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInitializationLiquidation, location = blast_boosts_aftermath::orders)]
+#[expected_failure(abort_code = errors::ELiquidation, location = blast_boosts_aftermath::orders)]
 fun bad_debt_is_rejected_before_fill_validation() {
-    orders::assert_session_result_for_testing(
+    orders::assert_seed_fill_for_testing(
         true,
         5_000_000_000,
+        1,
         0,
         0,
         0,

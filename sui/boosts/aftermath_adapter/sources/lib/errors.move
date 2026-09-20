@@ -84,84 +84,76 @@ const EInvalidInitializationOrderSize: u64 = 17;
 const EInitializationFillMismatch: u64 = 18;
 
 #[test_only]
-/// Initialization left one or more posted orders.
-const EInitializationOrdersPosted: u64 = 19;
-
-#[test_only]
-/// Initialization observed liquidation or bad debt in its session.
-const EInitializationLiquidation: u64 = 20;
-
-#[test_only]
 /// The selected IMR is negative or the final position IMR differs from it.
-const EInitializationImrMismatch: u64 = 21;
+const EInitializationImrMismatch: u64 = 19;
 
 #[test_only]
 /// Scaling seed NAV into nine-decimal locked shares overflowed `u64`.
-const ELockedSharesOverflow: u64 = 22;
+const ELockedSharesOverflow: u64 = 20;
 
 #[test_only]
 /// Atomic initialization requires more venue orders than the adapter permits.
-const EInitializationOrderCountExceeded: u64 = 23;
+const EInitializationOrderCountExceeded: u64 = 21;
 
 #[test_only]
 /// A collateral input or withdrawal must be positive.
-const EZeroAmount: u64 = 24;
+const EZeroAmount: u64 = 22;
 
 #[test_only]
 /// Earned local admin collateral cannot cover this withdrawal.
-const EInsufficientAdminCash: u64 = 25;
+const EInsufficientAdminCash: u64 = 23;
 
 #[test_only]
 /// A cash operation changed more or less than its exact authenticated collateral delta.
-const ECashCheckpointMismatch: u64 = 26;
+const ECashCheckpointMismatch: u64 = 24;
 
 #[test_only]
-/// An active session failed to make a positive whole-lot fill on the selected side.
-const EActiveFillMismatch: u64 = 27;
+/// A market session failed to make a positive whole-lot fill on the selected side.
+const EFillMismatch: u64 = 25;
 
 #[test_only]
-/// An active market session left posted orders.
-const EActiveOrdersPosted: u64 = 28;
+/// A market session left posted orders.
+const EOrdersPosted: u64 = 26;
 
 #[test_only]
-/// An active market session reported liquidation or bad debt.
-const EActiveLiquidation: u64 = 29;
+/// A market session reported liquidation or bad debt.
+const ELiquidation: u64 = 27;
 
 #[test_only]
 /// The active atomic operation exhausted its market-session bound.
-const EActiveOrderCountExceeded: u64 = 30;
+const EActiveOrderCountExceeded: u64 = 28;
 
 #[test_only]
 /// The caller's deadline has passed.
-const EDeadlineExpired: u64 = 31;
+const EDeadlineExpired: u64 = 29;
 
 #[test_only]
 /// An active venue session changed a field outside its authenticated execution.
-const EActiveCheckpointMismatch: u64 = 32;
+const EActiveCheckpointMismatch: u64 = 30;
 
 #[test_only]
 /// The held native share coin differs from the sealed redemption amount.
-const ERedemptionShareMismatch: u64 = 33;
+const ERedemptionShareMismatch: u64 = 31;
 
 #[test_only]
 /// Authenticated ordinary plus priority fees exceed a representable conservative rate.
-const EVenueFeeUnusable: u64 = 34;
+const EVenueFeeUnusable: u64 = 32;
 
 #[test_only]
 /// A financial operation observed a venue change not reconciled into the accepted checkpoint.
-const EUnresolvedCheckpoint: u64 = 35;
+const EUnresolvedCheckpoint: u64 = 33;
 
 #[test_only]
 /// Terminal recovery requires exact flat exposure, settled liabilities and integral cash.
-const ETerminalVenueUnsettled: u64 = 36;
+const ETerminalVenueUnsettled: u64 = 34;
 
 #[test_only]
 /// A close requires positive exact whole-lot base in the bound product direction.
-const EInvalidUnwindExposure: u64 = 37;
+const EInvalidUnwindExposure: u64 = 35;
 
 #[test_only]
 /// A priced operation found the venue with open orders, unsafe margin, or a paused or frozen market.
-const EVenueNotReady: u64 = 38;
+const EVenueNotReady: u64 = 36;
 
 // === Package Functions ===
 
@@ -184,23 +176,21 @@ macro public(package) fun invalid_seed(): u64 { 15 }
 macro public(package) fun invalid_seed_reserve(): u64 { 16 }
 macro public(package) fun invalid_initialization_order_size(): u64 { 17 }
 macro public(package) fun initialization_fill_mismatch(): u64 { 18 }
-macro public(package) fun initialization_orders_posted(): u64 { 19 }
-macro public(package) fun initialization_liquidation(): u64 { 20 }
-macro public(package) fun initialization_imr_mismatch(): u64 { 21 }
-macro public(package) fun locked_shares_overflow(): u64 { 22 }
-macro public(package) fun initialization_order_count_exceeded(): u64 { 23 }
-macro public(package) fun zero_amount(): u64 { 24 }
-macro public(package) fun insufficient_admin_cash(): u64 { 25 }
-macro public(package) fun cash_checkpoint_mismatch(): u64 { 26 }
-macro public(package) fun active_fill_mismatch(): u64 { 27 }
-macro public(package) fun active_orders_posted(): u64 { 28 }
-macro public(package) fun active_liquidation(): u64 { 29 }
-macro public(package) fun active_order_count_exceeded(): u64 { 30 }
-macro public(package) fun deadline_expired(): u64 { 31 }
-macro public(package) fun active_checkpoint_mismatch(): u64 { 32 }
-macro public(package) fun redemption_share_mismatch(): u64 { 33 }
-macro public(package) fun venue_fee_unusable(): u64 { 34 }
-macro public(package) fun unresolved_checkpoint(): u64 { 35 }
-macro public(package) fun terminal_venue_unsettled(): u64 { 36 }
-macro public(package) fun invalid_unwind_exposure(): u64 { 37 }
-macro public(package) fun venue_not_ready(): u64 { 38 }
+macro public(package) fun initialization_imr_mismatch(): u64 { 19 }
+macro public(package) fun locked_shares_overflow(): u64 { 20 }
+macro public(package) fun initialization_order_count_exceeded(): u64 { 21 }
+macro public(package) fun zero_amount(): u64 { 22 }
+macro public(package) fun insufficient_admin_cash(): u64 { 23 }
+macro public(package) fun cash_checkpoint_mismatch(): u64 { 24 }
+macro public(package) fun fill_mismatch(): u64 { 25 }
+macro public(package) fun orders_posted(): u64 { 26 }
+macro public(package) fun liquidation(): u64 { 27 }
+macro public(package) fun active_order_count_exceeded(): u64 { 28 }
+macro public(package) fun deadline_expired(): u64 { 29 }
+macro public(package) fun active_checkpoint_mismatch(): u64 { 30 }
+macro public(package) fun redemption_share_mismatch(): u64 { 31 }
+macro public(package) fun venue_fee_unusable(): u64 { 32 }
+macro public(package) fun unresolved_checkpoint(): u64 { 33 }
+macro public(package) fun terminal_venue_unsettled(): u64 { 34 }
+macro public(package) fun invalid_unwind_exposure(): u64 { 35 }
+macro public(package) fun venue_not_ready(): u64 { 36 }
