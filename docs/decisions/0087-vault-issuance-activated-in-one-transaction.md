@@ -132,10 +132,14 @@ the registry's constants, never by number.
 - Tests build an activated Vault through the production `activate` with a
   cap minted by the vendored interface's test constructor; the custody guards
   are under local test for the first time.
-- The 0074 atomicity-gate validator and its A1–A7 fixtures bind the Vault as
-  an input argument of the initializer; they must be re-bound to a created
-  object consumed by `share`, together with the earlier renames they already
-  miss. Until then the gate is not evidence for this layout.
+- The 0074 atomicity-gate validator and its A1–A7 fixtures bound the Vault as
+  an input argument of the initializer. They were re-bound on 2026-09-20 to
+  this layout: the dev-inspect proof builds the `issue → initialize → share`
+  PTB from signatures, and the rollback proof tracks the Vault as an object
+  the transaction creates and shares, over the five boundaries A1–A5. Both
+  self-tests run on synthetic vectors; neither is chain evidence until the
+  testnet rehearsal records real effects, which will also fix the created
+  objects Coin Registry and the dynamic object fields add.
 - The source-boundary gate no longer pins activation statement order, which
   the 0074 phase proofs bind themselves; it checks what neither the compiler
   nor the Move tests can: dependency direction, one linear module hierarchy

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "fixtureKind": "standard-sui-dev-inspect",
   "network": {
     "environment": "mainnet",
@@ -7,18 +7,16 @@
   },
   "builderInput": {
     "sender": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "adminPackage": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "corePackage": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
     "adapterPackage": "0x1111111111111111111111111111111111111111111111111111111111111111",
-    "productTagType": "0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX",
-    "riskWitness": {
-      "target": "0x3333333333333333333333333333333333333333333333333333333333333333::risk_module::new",
-      "type": "0x3333333333333333333333333333333333333333333333333333333333333333::risk_module::KeeperWitness",
-      "typeArguments": [],
-      "arguments": []
-    },
+    "productType": "0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X",
     "collateralType": "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC",
     "objects": {
-      "vault": "0x0101010101010101010101010101010101010101010101010101010101010101",
+      "authority": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+      "adminCap": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
       "protocol": "0x0202020202020202020202020202020202020202020202020202020202020202",
+      "coinRegistry": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
       "currency": "0x0303030303030303030303030303030303030303030303030303030303030303",
       "registry": "0x0404040404040404040404040404040404040404040404040404040404040404",
       "clearingHouse": "0x0505050505050505050505050505050505050505050505050505050505050505",
@@ -29,29 +27,132 @@
       "seedCoin": "0x1010101010101010101010101010101010101010101010101010101010101010",
       "clock": "0x0000000000000000000000000000000000000000000000000000000000000006"
     },
+    "side": "long",
+    "rebalancePolicy": {
+      "rebalanceBelowBps": "17000",
+      "targetLeverageBps": "20000",
+      "rebalanceAboveBps": "23000",
+      "maxLeverageBps": "25000",
+      "maxSlippageBps": "100",
+      "emergencyMaxSlippageBps": "500",
+      "minLeverageImprovementBps": "100"
+    },
+    "pricePolicy": {
+      "maxPriceAgeMs": "60000",
+      "maxPriceAheadMs": "5000",
+      "maxConfidenceBps": "100",
+      "maxMarkDivergenceBps": "200"
+    },
+    "vaultPolicy": {
+      "initialMintFeeBps": "10",
+      "initialRedeemFeeBps": "10",
+      "mintFeeCapBps": "100",
+      "redeemFeeCapBps": "100",
+      "adminShareCapBps": "5000",
+      "minOrderLots": "1",
+      "maxReserveBps": "500"
+    },
+    "maxOrderNotional": "250000000",
+    "navCap": "1000000000000",
+    "metadata": {
+      "symbol": "SUI2X",
+      "name": "SUI 2x Bull",
+      "description": "Two times SUI",
+      "iconUrl": "https://blast.fun/sui2x.png"
+    },
     "seedReserve": "10000000",
-    "positionImr": "100000000000000000",
-    "seedFunder": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    "positionImr": "100000000000000000"
   },
   "expectedPlan": {
     "commands": [
       {
-        "target": "0x3333333333333333333333333333333333333333333333333333333333333333::risk_module::new",
+        "target": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::sign_in",
+        "typeArguments": [
+          "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE"
+        ],
+        "arguments": [
+          "@0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+          "@0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2"
+        ],
+        "assign": "admin_witness"
+      },
+      {
+        "target": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::policy::new_rebalance_policy",
+        "typeArguments": [],
+        "arguments": [
+          "17000",
+          "20000",
+          "23000",
+          "25000",
+          "100",
+          "500",
+          "100"
+        ],
+        "assign": "rebalance_policy"
+      },
+      {
+        "target": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::policy::new_price_policy",
+        "typeArguments": [],
+        "arguments": [
+          "60000",
+          "5000",
+          "100",
+          "200"
+        ],
+        "assign": "price_policy"
+      },
+      {
+        "target": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::policy::long",
         "typeArguments": [],
         "arguments": [],
-        "assign": "risk_module"
+        "assign": "side"
+      },
+      {
+        "target": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::policy::new_vault_policy",
+        "typeArguments": [],
+        "arguments": [
+          "side",
+          "rebalance_policy",
+          "price_policy",
+          "10",
+          "10",
+          "100",
+          "100",
+          "5000",
+          "1",
+          "500"
+        ],
+        "assign": "vault_policy"
+      },
+      {
+        "target": "0x1111111111111111111111111111111111111111111111111111111111111111::vault::issue",
+        "typeArguments": [
+          "0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X",
+          "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC"
+        ],
+        "arguments": [
+          "@0x0202020202020202020202020202020202020202020202020202020202020202",
+          "admin_witness",
+          "@0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "vault_policy",
+          "250000000",
+          "1000000000000",
+          "'\"SUI2X\"'",
+          "'\"SUI 2x Bull\"'",
+          "'\"Two times SUI\"'",
+          "'\"https://blast.fun/sui2x.png\"'"
+        ],
+        "assign": "issuance"
       },
       {
         "target": "0x1111111111111111111111111111111111111111111111111111111111111111::operations::initialize",
         "typeArguments": [
-          "0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>",
-          "0x3333333333333333333333333333333333333333333333333333333333333333::risk_module::KeeperWitness",
+          "0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X",
           "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC"
         ],
         "arguments": [
-          "@0x0101010101010101010101010101010101010101010101010101010101010101",
+          "issuance",
           "@0x0202020202020202020202020202020202020202020202020202020202020202",
-          "risk_module",
           "@0x0303030303030303030303030303030303030303030303030303030303030303",
           "@0x0404040404040404040404040404040404040404040404040404040404040404",
           "@0x0505050505050505050505050505050505050505050505050505050505050505",
@@ -61,9 +162,19 @@
           "@0x0909090909090909090909090909090909090909090909090909090909090909",
           "@0x1010101010101010101010101010101010101010101010101010101010101010",
           "10000000",
-          "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "100000000000000000",
           "@0x0000000000000000000000000000000000000000000000000000000000000006"
+        ],
+        "assign": "vault"
+      },
+      {
+        "target": "0x1111111111111111111111111111111111111111111111111111111111111111::vault::share",
+        "typeArguments": [
+          "0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X",
+          "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC"
+        ],
+        "arguments": [
+          "vault"
         ],
         "assign": null
       }
@@ -75,15 +186,69 @@
     "mainnet",
     "ptb",
     "--move-call",
-    "0x3333333333333333333333333333333333333333333333333333333333333333::risk_module::new",
+    "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::sign_in",
+    "<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+    "@0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+    "@0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
     "--assign",
-    "risk_module",
+    "admin_witness",
+    "--move-call",
+    "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::policy::new_rebalance_policy",
+    "17000",
+    "20000",
+    "23000",
+    "25000",
+    "100",
+    "500",
+    "100",
+    "--assign",
+    "rebalance_policy",
+    "--move-call",
+    "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::policy::new_price_policy",
+    "60000",
+    "5000",
+    "100",
+    "200",
+    "--assign",
+    "price_policy",
+    "--move-call",
+    "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::policy::long",
+    "--assign",
+    "side",
+    "--move-call",
+    "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::policy::new_vault_policy",
+    "side",
+    "rebalance_policy",
+    "price_policy",
+    "10",
+    "10",
+    "100",
+    "100",
+    "5000",
+    "1",
+    "500",
+    "--assign",
+    "vault_policy",
+    "--move-call",
+    "0x1111111111111111111111111111111111111111111111111111111111111111::vault::issue",
+    "<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X,0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
+    "@0x0202020202020202020202020202020202020202020202020202020202020202",
+    "admin_witness",
+    "@0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+    "vault_policy",
+    "250000000",
+    "1000000000000",
+    "'\"SUI2X\"'",
+    "'\"SUI 2x Bull\"'",
+    "'\"Two times SUI\"'",
+    "'\"https://blast.fun/sui2x.png\"'",
+    "--assign",
+    "issuance",
     "--move-call",
     "0x1111111111111111111111111111111111111111111111111111111111111111::operations::initialize",
-    "<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>,0x3333333333333333333333333333333333333333333333333333333333333333::risk_module::KeeperWitness,0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
-    "@0x0101010101010101010101010101010101010101010101010101010101010101",
+    "<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X,0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
+    "issuance",
     "@0x0202020202020202020202020202020202020202020202020202020202020202",
-    "risk_module",
     "@0x0303030303030303030303030303030303030303030303030303030303030303",
     "@0x0404040404040404040404040404040404040404040404040404040404040404",
     "@0x0505050505050505050505050505050505050505050505050505050505050505",
@@ -93,16 +258,23 @@
     "@0x0909090909090909090909090909090909090909090909090909090909090909",
     "@0x1010101010101010101010101010101010101010101010101010101010101010",
     "10000000",
-    "@0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     "100000000000000000",
     "@0x0000000000000000000000000000000000000000000000000000000000000006",
+    "--assign",
+    "vault",
+    "--move-call",
+    "0x1111111111111111111111111111111111111111111111111111111111111111::vault::share",
+    "<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X,0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
+    "vault",
     "--serialize-unsigned-transaction",
     "--sender",
     "@0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   ],
   "objectTypes": {
-    "vault": "0x1111111111111111111111111111111111111111111111111111111111111111::vault::Vault<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>",
+    "authority": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+    "adminCap": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
     "protocol": "0x1111111111111111111111111111111111111111111111111111111111111111::protocol::Protocol",
+    "coinRegistry": "0x0000000000000000000000000000000000000000000000000000000000000002::coin_registry::CoinRegistry",
     "currency": "0x0000000000000000000000000000000000000000000000000000000000000002::coin_registry::Currency<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
     "registry": "0x4444444444444444444444444444444444444444444444444444444444444444::registry::Registry",
     "clearingHouse": "0x4444444444444444444444444444444444444444444444444444444444444444::clearing_house::ClearingHouse<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
@@ -126,9 +298,8 @@
         "created": [
           {
             "owner": {
-              "Shared": {
-                "initial_shared_version": 1
-              }
+              "kind": "SHARED",
+              "version": "1"
             },
             "reference": {
               "objectId": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -138,7 +309,41 @@
           },
           {
             "owner": {
-              "AddressOwner": "0x0000000000000000000000000000000000000000000000000000000000000000"
+              "kind": "SHARED",
+              "version": "1"
+            },
+            "reference": {
+              "objectId": "0x0101010101010101010101010101010101010101010101010101010101010101",
+              "version": 1,
+              "digest": "SyntheticVaultDigest"
+            }
+          },
+          {
+            "owner": {
+              "kind": "OBJECT",
+              "address": "0x0101010101010101010101010101010101010101010101010101010101010101"
+            },
+            "reference": {
+              "objectId": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "version": 1,
+              "digest": "SyntheticTreasuryDigest"
+            }
+          },
+          {
+            "owner": {
+              "kind": "OBJECT",
+              "address": "0x0101010101010101010101010101010101010101010101010101010101010101"
+            },
+            "reference": {
+              "objectId": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "version": 1,
+              "digest": "SyntheticMetadataDigest"
+            }
+          },
+          {
+            "owner": {
+              "kind": "ADDRESS",
+              "address": "0x0000000000000000000000000000000000000000000000000000000000000000"
             },
             "reference": {
               "objectId": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
@@ -147,33 +352,19 @@
             }
           }
         ],
-        "mutated": [
-          {
-            "owner": {
-              "Shared": {
-                "initial_shared_version": 1
-              }
-            },
-            "reference": {
-              "objectId": "0x0101010101010101010101010101010101010101010101010101010101010101",
-              "version": 8,
-              "digest": "SyntheticVaultDigest"
-            }
-          }
-        ],
+        "mutated": [],
         "unwrapped": [],
         "deleted": [],
         "unwrappedThenDeleted": [],
         "wrapped": []
       },
-      "clever_error": null,
       "events": {
         "data": [
           {
             "package_id": "0x1111111111111111111111111111111111111111111111111111111111111111",
-            "transaction_module": "events",
+            "transaction_module": "operations",
             "sender": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "type_": "0x1111111111111111111111111111111111111111111111111111111111111111::blast_events::Event<0x1111111111111111111111111111111111111111111111111111111111111111::events::VaultInitialized<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>>",
+            "type_": "0x1111111111111111111111111111111111111111111111111111111111111111::blast_events::Event<0x1111111111111111111111111111111111111111111111111111111111111111::events::VaultInitialized<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X>>",
             "contents": ""
           }
         ]
@@ -182,32 +373,30 @@
         {
           "pos0": {
             "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
-            "account_object_id": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            "account_number": "42",
-            "registry_id": "0x0404040404040404040404040404040404040404040404040404040404040404",
-            "clearing_house_id": "0x0505050505050505050505050505050505050505050505050505050505050505",
-            "base_oracle_id": "0x0606060606060606060606060606060606060606060606060606060606060606",
-            "collateral_oracle_id": "0x0707070707070707070707070707070707070707070707070707070707070707",
-            "collateral_type": {
-              "name": "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC"
+            "binding": {
+              "account_object_id": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "account_number": "42",
+              "registry_id": "0x0404040404040404040404040404040404040404040404040404040404040404",
+              "clearing_house_id": "0x0505050505050505050505050505050505050505050505050505050505050505",
+              "base_oracle_id": "0x0606060606060606060606060606060606060606060606060606060606060606",
+              "collateral_oracle_id": "0x0707070707070707070707070707070707070707070707070707070707070707"
             },
             "seed_amount": "100000000",
             "seed_venue_equity": "100000000",
             "seed_reserve": "10000000",
             "seed_shareholder_nav": "90000000",
             "locked_shares": "90000000000",
-            "absolute_base": "50000000000",
-            "absolute_notional": "100000000",
+            "position_base": "50000000000",
             "lot_size": "100000000",
             "position_side": {
               "variant": "Long"
             },
             "position_imr": "100000000000000000",
             "checkpoint": {
-              "free_collateral": "10000000",
-              "allocated_collateral": "90000000000000000000",
+              "free_collateral": "0",
+              "allocated_collateral": "100000000000000000000",
               "signed_base": "50000000000000000000",
-              "signed_quote_notional": "100000000000000000000",
+              "signed_quote_notional": "115792089237316195423570985008687907853269984665640564039357584007913129639936",
               "funding_snapshot_long": "11",
               "funding_snapshot_short": "21",
               "market_funding_long": "11",
@@ -221,8 +410,7 @@
               "position_initial_margin_ratio": "100000000000000000",
               "market_initial_margin_ratio": "50000000000000000",
               "market_maintenance_margin_ratio": "30000000000000000"
-            },
-            "seed_funder": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            }
           }
         }
       ],
@@ -241,6 +429,45 @@
           "objectType": "0x4444444444444444444444444444444444444444444444444444444444444444::account::Account<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>"
         },
         {
+          "objectId": "0x0101010101010101010101010101010101010101010101010101010101010101",
+          "inputState": "INPUT_OBJECT_STATE_NOT_EXIST",
+          "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+          "outputVersion": "1",
+          "outputDigest": "SyntheticVaultDigest",
+          "outputOwner": {
+            "kind": "SHARED",
+            "version": "1"
+          },
+          "idOperation": "CREATED",
+          "objectType": "0x1111111111111111111111111111111111111111111111111111111111111111::vault::Vault<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X, 0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>"
+        },
+        {
+          "objectId": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "inputState": "INPUT_OBJECT_STATE_NOT_EXIST",
+          "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+          "outputVersion": "1",
+          "outputDigest": "SyntheticTreasuryDigest",
+          "outputOwner": {
+            "kind": "OBJECT",
+            "address": "0x0101010101010101010101010101010101010101010101010101010101010101"
+          },
+          "idOperation": "CREATED",
+          "objectType": "0x0000000000000000000000000000000000000000000000000000000000000002::coin::TreasuryCap<0x1111111111111111111111111111111111111111111111111111111111111111::blast_boost::BlastBoost<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X>>"
+        },
+        {
+          "objectId": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "inputState": "INPUT_OBJECT_STATE_NOT_EXIST",
+          "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+          "outputVersion": "1",
+          "outputDigest": "SyntheticMetadataDigest",
+          "outputOwner": {
+            "kind": "OBJECT",
+            "address": "0x0101010101010101010101010101010101010101010101010101010101010101"
+          },
+          "idOperation": "CREATED",
+          "objectType": "0x0000000000000000000000000000000000000000000000000000000000000002::coin_registry::MetadataCap<0x1111111111111111111111111111111111111111111111111111111111111111::blast_boost::BlastBoost<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X>>"
+        },
+        {
           "objectId": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
           "inputState": "INPUT_OBJECT_STATE_NOT_EXIST",
           "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
@@ -251,28 +478,10 @@
             "address": "0x0000000000000000000000000000000000000000000000000000000000000000"
           },
           "idOperation": "CREATED",
-          "objectType": "0x2::coin::Coin<0x1111111111111111111111111111111111111111111111111111111111111111::blast_boost::BlastBoost<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>>"
-        },
-        {
-          "objectId": "0x0101010101010101010101010101010101010101010101010101010101010101",
-          "inputState": "INPUT_OBJECT_STATE_EXISTS",
-          "inputVersion": "7",
-          "inputDigest": "SyntheticVaultBefore",
-          "inputOwner": {
-            "kind": "SHARED",
-            "version": "1"
-          },
-          "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
-          "outputVersion": "8",
-          "outputDigest": "SyntheticVaultDigest",
-          "outputOwner": {
-            "kind": "SHARED",
-            "version": "1"
-          },
-          "idOperation": "NONE",
-          "objectType": "0x1111111111111111111111111111111111111111111111111111111111111111::vault::Vault<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>"
+          "objectType": "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<0x1111111111111111111111111111111111111111111111111111111111111111::blast_boost::BlastBoost<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X>>"
         }
       ],
+      "clever_error": null,
       "unchanged_loaded_runtime_objects": [],
       "balance_changes": [],
       "checkpoint": null
@@ -285,12 +494,102 @@
       {
         "mutableReferenceOutputs": [],
         "returnValues": []
+      },
+      {
+        "mutableReferenceOutputs": [],
+        "returnValues": []
+      },
+      {
+        "mutableReferenceOutputs": [],
+        "returnValues": []
+      },
+      {
+        "mutableReferenceOutputs": [],
+        "returnValues": []
+      },
+      {
+        "mutableReferenceOutputs": [],
+        "returnValues": []
+      },
+      {
+        "mutableReferenceOutputs": [],
+        "returnValues": []
+      },
+      {
+        "mutableReferenceOutputs": [],
+        "returnValues": []
       }
     ],
-    "suggested_gas_price": null
+    "suggested_gas_price": "1000"
   },
   "expectedObservation": {
-    "status": "success",
+    "changedObjects": [
+      {
+        "idOperation": "CREATED",
+        "inputState": "INPUT_OBJECT_STATE_NOT_EXIST",
+        "objectId": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "objectType": "0x4444444444444444444444444444444444444444444444444444444444444444::account::Account<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
+        "outputDigest": "SyntheticAccountDigest",
+        "outputOwner": {
+          "kind": "SHARED",
+          "version": "1"
+        },
+        "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+        "outputVersion": "1"
+      },
+      {
+        "idOperation": "CREATED",
+        "inputState": "INPUT_OBJECT_STATE_NOT_EXIST",
+        "objectId": "0x0101010101010101010101010101010101010101010101010101010101010101",
+        "objectType": "0x1111111111111111111111111111111111111111111111111111111111111111::vault::Vault<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X, 0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
+        "outputDigest": "SyntheticVaultDigest",
+        "outputOwner": {
+          "kind": "SHARED",
+          "version": "1"
+        },
+        "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+        "outputVersion": "1"
+      },
+      {
+        "idOperation": "CREATED",
+        "inputState": "INPUT_OBJECT_STATE_NOT_EXIST",
+        "objectId": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "objectType": "0x0000000000000000000000000000000000000000000000000000000000000002::coin::TreasuryCap<0x1111111111111111111111111111111111111111111111111111111111111111::blast_boost::BlastBoost<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X>>",
+        "outputDigest": "SyntheticTreasuryDigest",
+        "outputOwner": {
+          "address": "0x0101010101010101010101010101010101010101010101010101010101010101",
+          "kind": "OBJECT"
+        },
+        "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+        "outputVersion": "1"
+      },
+      {
+        "idOperation": "CREATED",
+        "inputState": "INPUT_OBJECT_STATE_NOT_EXIST",
+        "objectId": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "objectType": "0x0000000000000000000000000000000000000000000000000000000000000002::coin_registry::MetadataCap<0x1111111111111111111111111111111111111111111111111111111111111111::blast_boost::BlastBoost<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X>>",
+        "outputDigest": "SyntheticMetadataDigest",
+        "outputOwner": {
+          "address": "0x0101010101010101010101010101010101010101010101010101010101010101",
+          "kind": "OBJECT"
+        },
+        "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+        "outputVersion": "1"
+      },
+      {
+        "idOperation": "CREATED",
+        "inputState": "INPUT_OBJECT_STATE_NOT_EXIST",
+        "objectId": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "objectType": "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<0x1111111111111111111111111111111111111111111111111111111111111111::blast_boost::BlastBoost<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X>>",
+        "outputDigest": "SyntheticLockedCoinDigest",
+        "outputOwner": {
+          "address": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "kind": "ADDRESS"
+        },
+        "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+        "outputVersion": "1"
+      }
+    ],
     "commandResults": [
       {
         "mutableReferenceOutputs": [],
@@ -299,114 +598,91 @@
       {
         "mutableReferenceOutputs": [],
         "returnValues": []
-      }
-    ],
-    "changedObjects": [
-      {
-        "objectId": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "inputState": "INPUT_OBJECT_STATE_NOT_EXIST",
-        "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
-        "outputVersion": "1",
-        "outputDigest": "SyntheticAccountDigest",
-        "outputOwner": {
-          "kind": "SHARED",
-          "version": "1"
-        },
-        "idOperation": "CREATED",
-        "objectType": "0x4444444444444444444444444444444444444444444444444444444444444444::account::Account<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>"
       },
       {
-        "objectId": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-        "inputState": "INPUT_OBJECT_STATE_NOT_EXIST",
-        "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
-        "outputVersion": "1",
-        "outputDigest": "SyntheticLockedCoinDigest",
-        "outputOwner": {
-          "kind": "ADDRESS",
-          "address": "0x0000000000000000000000000000000000000000000000000000000000000000"
-        },
-        "idOperation": "CREATED",
-        "objectType": "0x2::coin::Coin<0x1111111111111111111111111111111111111111111111111111111111111111::blast_boost::BlastBoost<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>>"
+        "mutableReferenceOutputs": [],
+        "returnValues": []
       },
       {
-        "objectId": "0x0101010101010101010101010101010101010101010101010101010101010101",
-        "inputState": "INPUT_OBJECT_STATE_EXISTS",
-        "inputVersion": "7",
-        "inputDigest": "SyntheticVaultBefore",
-        "inputOwner": {
-          "kind": "SHARED",
-          "version": "1"
-        },
-        "outputState": "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
-        "outputVersion": "8",
-        "outputDigest": "SyntheticVaultDigest",
-        "outputOwner": {
-          "kind": "SHARED",
-          "version": "1"
-        },
-        "idOperation": "NONE",
-        "objectType": "0x1111111111111111111111111111111111111111111111111111111111111111::vault::Vault<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>"
+        "mutableReferenceOutputs": [],
+        "returnValues": []
+      },
+      {
+        "mutableReferenceOutputs": [],
+        "returnValues": []
+      },
+      {
+        "mutableReferenceOutputs": [],
+        "returnValues": []
+      },
+      {
+        "mutableReferenceOutputs": [],
+        "returnValues": []
+      },
+      {
+        "mutableReferenceOutputs": [],
+        "returnValues": []
       }
     ],
+    "objectTypes": {
+      "adminCap": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+      "authority": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+      "baseOracle": "0x5555555555555555555555555555555555555555555555555555555555555555::price_feed_storage::PriceFeedStorage",
+      "basePriceInfo": "0x6666666666666666666666666666666666666666666666666666666666666666::price_info::PriceInfoObject",
+      "clearingHouse": "0x4444444444444444444444444444444444444444444444444444444444444444::clearing_house::ClearingHouse<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
+      "clock": "0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock",
+      "coinRegistry": "0x0000000000000000000000000000000000000000000000000000000000000002::coin_registry::CoinRegistry",
+      "collateralOracle": "0x5555555555555555555555555555555555555555555555555555555555555555::price_feed_storage::PriceFeedStorage",
+      "collateralPriceInfo": "0x6666666666666666666666666666666666666666666666666666666666666666::price_info::PriceInfoObject",
+      "currency": "0x0000000000000000000000000000000000000000000000000000000000000002::coin_registry::Currency<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
+      "protocol": "0x1111111111111111111111111111111111111111111111111111111111111111::protocol::Protocol",
+      "registry": "0x4444444444444444444444444444444444444444444444444444444444444444::registry::Registry",
+      "seedCoin": "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>"
+    },
+    "status": "success",
     "vaultInitialized": {
-      "type": "0x1111111111111111111111111111111111111111111111111111111111111111::blast_events::Event<0x1111111111111111111111111111111111111111111111111111111111111111::events::VaultInitialized<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>>",
       "parsedJson": {
-        "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101",
-        "account_object_id": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "account_number": "42",
-        "registry_id": "0x0404040404040404040404040404040404040404040404040404040404040404",
-        "clearing_house_id": "0x0505050505050505050505050505050505050505050505050505050505050505",
-        "base_oracle_id": "0x0606060606060606060606060606060606060606060606060606060606060606",
-        "collateral_oracle_id": "0x0707070707070707070707070707070707070707070707070707070707070707",
-        "collateral_type": {
-          "name": "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC"
+        "binding": {
+          "account_number": "42",
+          "account_object_id": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "base_oracle_id": "0x0606060606060606060606060606060606060606060606060606060606060606",
+          "clearing_house_id": "0x0505050505050505050505050505050505050505050505050505050505050505",
+          "collateral_oracle_id": "0x0707070707070707070707070707070707070707070707070707070707070707",
+          "registry_id": "0x0404040404040404040404040404040404040404040404040404040404040404"
         },
-        "seed_amount": "100000000",
-        "seed_venue_equity": "100000000",
-        "seed_reserve": "10000000",
-        "seed_shareholder_nav": "90000000",
-        "locked_shares": "90000000000",
-        "absolute_base": "50000000000",
-        "absolute_notional": "100000000",
-        "lot_size": "100000000",
-        "position_side": {
-          "variant": "Long"
-        },
-        "position_imr": "100000000000000000",
         "checkpoint": {
-          "free_collateral": "10000000",
-          "allocated_collateral": "90000000000000000000",
-          "signed_base": "50000000000000000000",
-          "signed_quote_notional": "100000000000000000000",
+          "allocated_collateral": "100000000000000000000",
+          "free_collateral": "0",
           "funding_snapshot_long": "11",
           "funding_snapshot_short": "21",
+          "lot_size": "100000000",
+          "market_frozen": false,
           "market_funding_long": "11",
           "market_funding_short": "21",
-          "lot_size": "100000000",
+          "market_initial_margin_ratio": "50000000000000000",
+          "market_maintenance_margin_ratio": "30000000000000000",
+          "market_pause_mode": 0,
           "pending_ask_base": "0",
           "pending_bid_base": "0",
           "pending_order_count": "0",
-          "market_pause_mode": 0,
-          "market_frozen": false,
           "position_initial_margin_ratio": "100000000000000000",
-          "market_initial_margin_ratio": "50000000000000000",
-          "market_maintenance_margin_ratio": "30000000000000000"
+          "signed_base": "50000000000000000000",
+          "signed_quote_notional": "115792089237316195423570985008687907853269984665640564039357584007913129639936"
         },
-        "seed_funder": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-      }
-    },
-    "objectTypes": {
-      "vault": "0x1111111111111111111111111111111111111111111111111111111111111111::vault::Vault<0x1111111111111111111111111111111111111111111111111111111111111111::product::Product<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::TwoX>>",
-      "protocol": "0x1111111111111111111111111111111111111111111111111111111111111111::protocol::Protocol",
-      "currency": "0x0000000000000000000000000000000000000000000000000000000000000002::coin_registry::Currency<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
-      "registry": "0x4444444444444444444444444444444444444444444444444444444444444444::registry::Registry",
-      "clearingHouse": "0x4444444444444444444444444444444444444444444444444444444444444444::clearing_house::ClearingHouse<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
-      "baseOracle": "0x5555555555555555555555555555555555555555555555555555555555555555::price_feed_storage::PriceFeedStorage",
-      "collateralOracle": "0x5555555555555555555555555555555555555555555555555555555555555555::price_feed_storage::PriceFeedStorage",
-      "basePriceInfo": "0x6666666666666666666666666666666666666666666666666666666666666666::price_info::PriceInfoObject",
-      "collateralPriceInfo": "0x6666666666666666666666666666666666666666666666666666666666666666::price_info::PriceInfoObject",
-      "seedCoin": "0x0000000000000000000000000000000000000000000000000000000000000002::coin::Coin<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
-      "clock": "0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock"
+        "locked_shares": "90000000000",
+        "lot_size": "100000000",
+        "position_base": "50000000000",
+        "position_imr": "100000000000000000",
+        "position_side": {
+          "variant": "Long"
+        },
+        "seed_amount": "100000000",
+        "seed_reserve": "10000000",
+        "seed_shareholder_nav": "90000000",
+        "seed_venue_equity": "100000000",
+        "vault_id": "0x0101010101010101010101010101010101010101010101010101010101010101"
+      },
+      "type": "0x1111111111111111111111111111111111111111111111111111111111111111::blast_events::Event<0x1111111111111111111111111111111111111111111111111111111111111111::events::VaultInitialized<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X>>"
     }
   }
 }

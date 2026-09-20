@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-// Serializes the reviewed activation PTB, dev-inspects that exact transaction,
-// and validates only standard Sui machine-readable results, effects, and events.
+// Serializes the reviewed activation PTB (issue -> initialize -> share),
+// dev-inspects that exact transaction, and validates only standard Sui
+// machine-readable results, effects, and events.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import process from 'node:process';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -18,12 +19,18 @@ const PINNED_SURFACE_FIXTURE_PATH = join(
     'sui-1.77.2-serialized-tx-dev-inspect.json',
 );
 const OPERATIONS_PATH = join(PACKAGE_DIR, 'sources', 'operations.move');
+const ORDERS_PATH = join(PACKAGE_DIR, 'sources', 'orders.move');
 const MAINNET_CHAIN = '4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S';
 const PINNED_SUI_VERSION = '1.77.2-51d177ad7d65';
 const PINNED_SURFACE_TRANSACTION = 'AAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgp0eF9jb250ZXh0BnNlbmRlcgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc7oAwAAAAAAAAAgPYh5LQAAAA==';
+const SUI_FRAMEWORK = `0x${'0'.repeat(63)}2`;
+// Every object the activation PTB takes as an input, in the order `initialize`
+// reads them after the issuer's admin objects and the Coin Registry.
 const OBJECT_ROLES = [
-    'vault',
+    'authority',
+    'adminCap',
     'protocol',
+    'coinRegistry',
     'currency',
     'registry',
     'clearingHouse',
@@ -34,27 +41,52 @@ const OBJECT_ROLES = [
     'seedCoin',
     'clock',
 ];
+const REBALANCE_POLICY_FIELDS = [
+    'rebalanceBelowBps',
+    'targetLeverageBps',
+    'rebalanceAboveBps',
+    'maxLeverageBps',
+    'maxSlippageBps',
+    'emergencyMaxSlippageBps',
+    'minLeverageImprovementBps',
+];
+const PRICE_POLICY_FIELDS = [
+    'maxPriceAgeMs',
+    'maxPriceAheadMs',
+    'maxConfidenceBps',
+    'maxMarkDivergenceBps',
+];
+const VAULT_POLICY_FIELDS = [
+    'initialMintFeeBps',
+    'initialRedeemFeeBps',
+    'mintFeeCapBps',
+    'redeemFeeCapBps',
+    'adminShareCapBps',
+    'minOrderLots',
+    'maxReserveBps',
+];
+const METADATA_FIELDS = ['symbol', 'name', 'description', 'iconUrl'];
 const INITIALIZED_FIELDS = [
     'vault_id',
+    'binding',
+    'seed_amount',
+    'seed_venue_equity',
+    'seed_reserve',
+    'seed_shareholder_nav',
+    'locked_shares',
+    'position_base',
+    'lot_size',
+    'position_side',
+    'position_imr',
+    'checkpoint',
+];
+const BINDING_FIELDS = [
     'account_object_id',
     'account_number',
     'registry_id',
     'clearing_house_id',
     'base_oracle_id',
     'collateral_oracle_id',
-    'collateral_type',
-    'seed_amount',
-    'seed_venue_equity',
-    'seed_reserve',
-    'seed_shareholder_nav',
-    'locked_shares',
-    'seed_funder',
-    'absolute_base',
-    'absolute_notional',
-    'lot_size',
-    'position_side',
-    'position_imr',
-    'checkpoint',
 ];
 const CHECKPOINT_FIELDS = [
     'free_collateral',
@@ -75,33 +107,75 @@ const CHECKPOINT_FIELDS = [
     'market_initial_margin_ratio',
     'market_maintenance_margin_ratio',
 ];
-const PHASE_MARKERS = [
-    'account::create_account<Collateral>',
-    'account::deposit_collateral(',
-    'clearing_house::allocate_collateral(',
-    'clearing_house::create_market_position(',
-    'clearing_house::set_position_initial_margin_ratio(',
-    'snapshot::capture_initialization(',
-    'clearing_house::start_session(',
-    'clearing_house::place_market_order(',
-    'clearing_house::end_session(',
-    'clearing_house::settle_position_funding(',
-    'snapshot::capture_initialization(',
-    'vault.initialize_series(',
-    '// BLAST_ACTIVATION_BOUNDARY_A1',
-    'vault.mint_locked_shares(',
-    '// BLAST_ACTIVATION_BOUNDARY_A2',
-    'venue_account::new(admin_cap, binding, checkpoint)',
-    '// BLAST_ACTIVATION_BOUNDARY_A3',
-    'account::consume_policy_and_share_account(account, share_policy)',
-    '// BLAST_ACTIVATION_BOUNDARY_A4',
-    'vault.install_venue_account(venue_account)',
-    '// BLAST_ACTIVATION_BOUNDARY_A5',
-    'clearing_house::share(clearing_house)',
-    '// BLAST_ACTIVATION_BOUNDARY_A6',
-    'emit_vault_initialized<Product>(',
-    '// BLAST_ACTIVATION_BOUNDARY_A7',
+// The activation statements, in order, per production module. `initialize`
+// is read between its signature and the next public entry; each helper is
+// read to its closing brace. Boundary markers must occur exactly once.
+const PHASE_ORDER = [
+    {
+        path: OPERATIONS_PATH,
+        from: 'public fun initialize<',
+        to: '\npublic fun mint<',
+        markers: [
+            'protocol.assert_current()',
+            'assert_initialization_inputs(',
+            'assert_position_imr(',
+            'open_venue_account(',
+            'fund_venue_account(',
+            'orders::seed_position(',
+            'clearing_house.settle_position_funding(',
+            'snapshot::capture(',
+            'assert_position_imr_unchanged(',
+            'venue_account::new(',
+            '// BLAST_ACTIVATION_BOUNDARY_A1',
+            'issuance.activate(',
+            '// BLAST_ACTIVATION_BOUNDARY_A2',
+            'account.consume_policy_and_share_account(share_policy)',
+            '// BLAST_ACTIVATION_BOUNDARY_A3',
+            'clearing_house.share()',
+            '// BLAST_ACTIVATION_BOUNDARY_A4',
+            'emit_vault_initialized<Product, Collateral>(',
+            '// BLAST_ACTIVATION_BOUNDARY_A5',
+            '\n    vault\n}',
+        ],
+    },
+    {
+        path: OPERATIONS_PATH,
+        from: 'fun open_venue_account<',
+        to: '\n}\n',
+        markers: ['account::create_account<Collateral>(', 'venue_account::new_binding('],
+    },
+    {
+        path: OPERATIONS_PATH,
+        from: 'fun fund_venue_account<',
+        to: '\n}\n',
+        markers: [
+            'account.deposit_collateral(',
+            'clearing_house.allocate_collateral(',
+            'clearing_house.create_market_position(',
+            'clearing_house.set_position_initial_margin_ratio(',
+        ],
+    },
+    {
+        path: ORDERS_PATH,
+        from: 'public(package) fun seed_position<',
+        to: '\n}\n',
+        markers: ['binding.update_funding_when_due(', 'snapshot::capture(', 'issuance.seed_terms(', 'open_seed_position('],
+    },
+    {
+        path: ORDERS_PATH,
+        from: 'fun open_seed_position<',
+        to: '\n}\n',
+        markers: [
+            'clearing_house.start_session(',
+            'session.place_market_order(',
+            'session.end_session(',
+            'assert_seed_fill(',
+            'issuance.assert_execution(',
+            'issuance.assert_order_notional_allowed(',
+        ],
+    },
 ];
+
 function fail(message) {
     throw new Error(message);
 }
@@ -166,10 +240,6 @@ function assertEqual(actual, expected, path = 'value') {
     if (left !== right) fail(`${path}: expected ${right}, got ${left}`);
 }
 
-function productType(adapterPackage, tagType) {
-    return `${adapterPackage}::product::Product<${tagType}>`;
-}
-
 function wrappedEventType(adapterPackage, payloadType) {
     return `${adapterPackage}::blast_events::Event<${payloadType}>`;
 }
@@ -179,83 +249,132 @@ function unwrapEventPayload(value, path) {
     return expectObject(wrapper.pos0, `${path}.pos0`);
 }
 
-function validateCall(call, path) {
-    expectObject(call, path, ['target', 'type', 'typeArguments', 'arguments']);
-    expectString(call.target, `${path}.target`);
-    expectString(call.type, `${path}.type`);
-    expectStringList(call.typeArguments, `${path}.typeArguments`);
-    expectStringList(call.arguments, `${path}.arguments`);
+function expectDecimal(value, path) {
+    const text = expectString(value, path);
+    if (!/^(0|[1-9][0-9]*)$/.test(text)) fail(`${path}: expected canonical decimal integer`);
+    return text;
 }
 
-function buildPlan(input) {
+function expectDecimals(object, path, keys) {
+    expectObject(object, path, keys);
+    for (const key of keys) expectDecimal(object[key], `${path}.${key}`);
+}
+
+function moveString(value, path) {
+    const text = expectString(value, path);
+    if (/["\\\n]/.test(text)) fail(`${path}: metadata strings may not contain quotes, backslashes or newlines`);
+    return `'"${text}"'`;
+}
+
+function validateBuilderInput(input) {
     expectObject(input, 'builderInput', [
         'sender',
+        'adminPackage',
+        'corePackage',
         'adapterPackage',
-        'productTagType',
-        'riskWitness',
+        'productType',
         'collateralType',
         'objects',
+        'side',
+        'rebalancePolicy',
+        'pricePolicy',
+        'vaultPolicy',
+        'maxOrderNotional',
+        'navCap',
+        'metadata',
         'seedReserve',
-        'seedFunder',
         'positionImr',
     ]);
-    const adapterPackage = expectAddress(
-        input.adapterPackage,
-        'builderInput.adapterPackage',
-    );
     expectAddress(input.sender, 'builderInput.sender');
-    expectAddress(input.seedFunder, 'builderInput.seedFunder');
-    if (BigInt(input.seedFunder) === 0n) fail('seedFunder must not be zero');
-    expectString(input.productTagType, 'builderInput.productTagType');
-    validateCall(input.riskWitness, 'builderInput.riskWitness');
+    expectAddress(input.adminPackage, 'builderInput.adminPackage');
+    expectAddress(input.corePackage, 'builderInput.corePackage');
+    expectAddress(input.adapterPackage, 'builderInput.adapterPackage');
+    expectString(input.productType, 'builderInput.productType');
     expectString(input.collateralType, 'builderInput.collateralType');
-    expectString(input.seedReserve, 'builderInput.seedReserve');
-    expectString(input.positionImr, 'builderInput.positionImr');
     expectObject(input.objects, 'builderInput.objects', OBJECT_ROLES);
-    for (const role of OBJECT_ROLES) {
-        expectAddress(input.objects[role], `builderInput.objects.${role}`);
-    }
+    for (const role of OBJECT_ROLES) expectAddress(input.objects[role], `builderInput.objects.${role}`);
+    if (input.side !== 'long' && input.side !== 'short') fail('builderInput.side: expected long or short');
+    expectDecimals(input.rebalancePolicy, 'builderInput.rebalancePolicy', REBALANCE_POLICY_FIELDS);
+    expectDecimals(input.pricePolicy, 'builderInput.pricePolicy', PRICE_POLICY_FIELDS);
+    expectDecimals(input.vaultPolicy, 'builderInput.vaultPolicy', VAULT_POLICY_FIELDS);
+    expectDecimal(input.maxOrderNotional, 'builderInput.maxOrderNotional');
+    expectDecimal(input.navCap, 'builderInput.navCap');
+    expectObject(input.metadata, 'builderInput.metadata', METADATA_FIELDS);
+    expectDecimal(input.seedReserve, 'builderInput.seedReserve');
+    expectDecimal(input.positionImr, 'builderInput.positionImr');
+}
+
+function call(target, typeArguments, args, assign) {
+    return { target, typeArguments, arguments: args, assign };
+}
+
+/// The issuer's activation PTB: sign in, build the immutable policy, issue the
+/// currency, seed and activate the Vault, share it. Every value is a literal
+/// or a prior result; nothing is read from the chain to build it.
+function buildPlan(input) {
+    validateBuilderInput(input);
+    const admin = input.adminPackage.toLowerCase();
+    const core = input.corePackage.toLowerCase();
+    const adapter = input.adapterPackage.toLowerCase();
+    const domain = `${core}::blast_boosts_core::BLAST_BOOSTS_CORE`;
+    const productArguments = [input.productType, input.collateralType];
+    const object = (role) => `@${input.objects[role].toLowerCase()}`;
+    const decimals = (record, keys) => keys.map((key) => record[key]);
 
     return {
         commands: [
-            {
-                target: input.riskWitness.target,
-                typeArguments: input.riskWitness.typeArguments,
-                arguments: input.riskWitness.arguments,
-                assign: 'risk_module',
-            },
-            {
-                target: `${adapterPackage}::operations::initialize`,
-                typeArguments: [
-                    productType(adapterPackage, input.productTagType),
-                    input.riskWitness.type,
-                    input.collateralType,
+            call(`${admin}::acl::sign_in`, [domain], [object('authority'), object('adminCap')], 'admin_witness'),
+            call(`${core}::policy::new_rebalance_policy`, [], decimals(input.rebalancePolicy, REBALANCE_POLICY_FIELDS), 'rebalance_policy'),
+            call(`${core}::policy::new_price_policy`, [], decimals(input.pricePolicy, PRICE_POLICY_FIELDS), 'price_policy'),
+            call(`${core}::policy::${input.side}`, [], [], 'side'),
+            call(
+                `${core}::policy::new_vault_policy`,
+                [],
+                ['side', 'rebalance_policy', 'price_policy', ...decimals(input.vaultPolicy, VAULT_POLICY_FIELDS)],
+                'vault_policy',
+            ),
+            call(
+                `${adapter}::vault::issue`,
+                productArguments,
+                [
+                    object('protocol'),
+                    'admin_witness',
+                    object('coinRegistry'),
+                    'vault_policy',
+                    input.maxOrderNotional,
+                    input.navCap,
+                    ...METADATA_FIELDS.map((key) => moveString(input.metadata[key], `builderInput.metadata.${key}`)),
                 ],
-                arguments: [
-                    `@${input.objects.vault}`,
-                    `@${input.objects.protocol}`,
-                    'risk_module',
-                    `@${input.objects.currency}`,
-                    `@${input.objects.registry}`,
-                    `@${input.objects.clearingHouse}`,
-                    `@${input.objects.baseOracle}`,
-                    `@${input.objects.collateralOracle}`,
-                    `@${input.objects.basePriceInfo}`,
-                    `@${input.objects.collateralPriceInfo}`,
-                    `@${input.objects.seedCoin}`,
+                'issuance',
+            ),
+            call(
+                `${adapter}::operations::initialize`,
+                productArguments,
+                [
+                    'issuance',
+                    object('protocol'),
+                    object('currency'),
+                    object('registry'),
+                    object('clearingHouse'),
+                    object('baseOracle'),
+                    object('collateralOracle'),
+                    object('basePriceInfo'),
+                    object('collateralPriceInfo'),
+                    object('seedCoin'),
                     input.seedReserve,
-                    `@${input.seedFunder}`,
                     input.positionImr,
-                    `@${input.objects.clock}`,
+                    object('clock'),
                 ],
-                assign: null,
-            },
+                'vault',
+            ),
+            call(`${adapter}::vault::share`, productArguments, ['vault'], null),
         ],
     };
 }
 
-function renderPtbArgs(input, plan) {
-    const args = ['client', '--client.env', 'mainnet', 'ptb'];
+/// The `sui client ptb` arguments for a plan, command by command.
+function renderMoveCalls(plan) {
+    const args = [];
     for (const command of plan.commands) {
         args.push('--move-call', command.target);
         if (command.typeArguments.length > 0) {
@@ -264,12 +383,17 @@ function renderPtbArgs(input, plan) {
         args.push(...command.arguments);
         if (command.assign !== null) args.push('--assign', command.assign);
     }
-    args.push(
+    return args;
+}
+
+function renderPtbArgs(input, plan) {
+    return [
+        'client', '--client.env', 'mainnet', 'ptb',
+        ...renderMoveCalls(plan),
         '--serialize-unsigned-transaction',
         '--sender',
         `@${input.sender}`,
-    );
-    return args;
+    ];
 }
 
 function renderSerializedInspectArgs(environment, transactionData) {
@@ -296,28 +420,26 @@ function parseSerializedTransaction(output, path) {
     return value;
 }
 
+/// The activation statements appear once each, in order, in the production
+/// sources; a reordered or duplicated boundary fails here before any chain read.
 function verifyProductionPhaseOrder() {
-    const source = readFileSync(OPERATIONS_PATH, 'utf8');
-    const start = source.indexOf('public fun initialize<');
-    const end = source.indexOf(
-        '/// Reconciles one bound Aftermath checkpoint',
-        start,
-    );
-    if (start < 0 || end < 0) {
-        fail('operations.move: initialize body is unavailable');
-    }
-    const body = source.slice(start, end);
-    let cursor = 0;
-    for (const marker of PHASE_MARKERS) {
-        const occurrences = body.split(marker).length - 1;
-        if (occurrences !== 1 && marker.startsWith('// BLAST_')) {
-            fail(`operations.move: ${marker} must occur exactly once`);
+    const sources = new Map();
+    for (const span of PHASE_ORDER) {
+        if (!sources.has(span.path)) sources.set(span.path, readFileSync(span.path, 'utf8'));
+        const source = sources.get(span.path);
+        const start = source.indexOf(span.from);
+        const end = start < 0 ? -1 : source.indexOf(span.to, start + span.from.length);
+        if (start < 0 || end < 0) fail(`${span.path}: ${span.from.trim()} body is unavailable`);
+        const body = source.slice(start, end);
+        let cursor = 0;
+        for (const marker of span.markers) {
+            if (marker.startsWith('// BLAST_') && body.split(marker).length !== 2) {
+                fail(`${span.path}: ${marker} must occur exactly once in ${span.from.trim()}`);
+            }
+            const next = body.indexOf(marker, cursor);
+            if (next < 0) fail(`${span.path}: activation phase missing or reordered at ${marker} in ${span.from.trim()}`);
+            cursor = next + marker.length;
         }
-        const next = body.indexOf(marker, cursor);
-        if (next < 0) {
-            fail(`operations.move: activation phase missing or reordered at ${marker}`);
-        }
-        cursor = next + marker.length;
     }
 }
 
@@ -400,16 +522,20 @@ function normalizeSimulationResponse(response, path = 'devInspect') {
 }
 
 function initializedEventType(input) {
-    return wrappedEventType(
-        input.adapterPackage,
-        `${input.adapterPackage}::events::VaultInitialized<${productType(
-            input.adapterPackage,
-            input.productTagType,
-        )}>`,
-    );
+    const adapter = input.adapterPackage.toLowerCase();
+    return wrappedEventType(adapter, `${adapter}::events::VaultInitialized<${input.productType}>`);
 }
 
-function normalizeInitializedEvent(events, input) {
+function createdObjectOfType(changedObjects, type, path) {
+    const matches = changedObjects.filter((change) =>
+        change?.idOperation === 'CREATED' && change?.objectType === type);
+    if (matches.length !== 1) fail(`${path}: expected exactly one created ${type}, got ${matches.length}`);
+    return expectAddress(matches[0].objectId, `${path}.objectId`);
+}
+
+/// The one VaultInitialized event, whose vault and account are the objects this
+/// transaction created and whose binding names the input venue objects.
+function normalizeInitializedEvent(events, changedObjects, input) {
     if (!Array.isArray(events)) fail('devInspect.events: expected list');
     const expectedType = initializedEventType(input);
     const matches = events.filter((event) => event?.type === expectedType);
@@ -422,12 +548,28 @@ function normalizeInitializedEvent(events, input) {
         'VaultInitialized.parsedJson',
     );
     expectObject(parsedJson, 'VaultInitialized.parsedJson.pos0', INITIALIZED_FIELDS);
+    const binding = expectObject(parsedJson.binding, 'VaultInitialized.binding', BINDING_FIELDS);
     expectObject(parsedJson.checkpoint, 'VaultInitialized.checkpoint', CHECKPOINT_FIELDS);
-    if (String(parsedJson.vault_id).toLowerCase() !== input.objects.vault) {
-        fail('VaultInitialized.vault_id: does not match the initialized Vault');
+    const adapter = input.adapterPackage.toLowerCase();
+    const vaultId = createdObjectOfType(
+        changedObjects,
+        `${adapter}::vault::Vault<${input.productType}, ${input.collateralType}>`,
+        'devInspect.changed_objects.vault',
+    );
+    assertEqual(expectAddress(parsedJson.vault_id, 'VaultInitialized.vault_id'), vaultId, 'VaultInitialized.vault_id');
+    const relations = [
+        ['registry_id', 'registry'],
+        ['clearing_house_id', 'clearingHouse'],
+        ['base_oracle_id', 'baseOracle'],
+        ['collateral_oracle_id', 'collateralOracle'],
+    ];
+    for (const [field, role] of relations) {
+        assertEqual(
+            expectAddress(binding[field], `VaultInitialized.binding.${field}`),
+            input.objects[role].toLowerCase(),
+            `VaultInitialized.binding.${field}`,
+        );
     }
-    assertEqual(expectAddress(parsedJson.seed_funder, 'VaultInitialized.seed_funder'),
-        input.seedFunder, 'VaultInitialized.seed_funder');
     return canonical({ type: event.type, parsedJson });
 }
 
@@ -445,7 +587,7 @@ function normalizeDevInspect(response, input, plan, objectTypes) {
         status: 'success',
         commandResults: standard.commandResults,
         changedObjects: standard.changedObjects,
-        vaultInitialized: normalizeInitializedEvent(standard.events, input),
+        vaultInitialized: normalizeInitializedEvent(standard.events, standard.changedObjects, input),
         objectTypes,
     });
 }
@@ -565,7 +707,7 @@ function validateFixture(fixture) {
         'expectedObservation',
         'objectTypes',
     ]);
-    if (fixture.schemaVersion !== 2
+    if (fixture.schemaVersion !== 3
         || fixture.fixtureKind !== 'standard-sui-dev-inspect') {
         fail('fixture: unsupported schema or kind');
     }
@@ -612,9 +754,14 @@ function selfTest() {
     const { plan } = validateFixture(fixture);
     let passed = 3;
 
-    const zeroFunder = structuredClone(fixture.builderInput);
-    zeroFunder.seedFunder = `0x${'0'.repeat(64)}`;
-    expectFailure('seedFunder must not be zero', () => buildPlan(zeroFunder));
+    const wrongSide = structuredClone(fixture.builderInput);
+    wrongSide.side = 'flat';
+    expectFailure('long or short', () => buildPlan(wrongSide));
+    passed += 1;
+
+    const quotedSymbol = structuredClone(fixture.builderInput);
+    quotedSymbol.metadata.symbol = 'SUI"2X';
+    expectFailure('metadata strings', () => buildPlan(quotedSymbol));
     passed += 1;
 
     const malformedResults = structuredClone(fixture.rawDevInspectResponse);
@@ -628,7 +775,7 @@ function selfTest() {
     passed += 1;
 
     const wrongType = structuredClone(fixture.objectTypes);
-    wrongType.vault = wrongType.protocol;
+    wrongType.protocol = wrongType.registry;
     expectFailure('objectTypes', () => assertEqual(
         wrongType,
         fixture.objectTypes,
@@ -637,8 +784,8 @@ function selfTest() {
     passed += 1;
 
     const wrongEvent = structuredClone(fixture.rawDevInspectResponse);
-    wrongEvent.transaction.event_json[0].pos0.absolute_notional = '100000001';
-    expectFailure('absolute_notional', () => assertEqual(
+    wrongEvent.transaction.event_json[0].pos0.locked_shares = '1';
+    expectFailure('locked_shares', () => assertEqual(
         normalizeDevInspect(
             wrongEvent,
             fixture.builderInput,
@@ -647,6 +794,26 @@ function selfTest() {
         ),
         fixture.expectedObservation,
         'observation',
+    ));
+    passed += 1;
+
+    const foreignVault = structuredClone(fixture.rawDevInspectResponse);
+    foreignVault.transaction.event_json[0].pos0.vault_id = fixture.builderInput.objects.protocol;
+    expectFailure('VaultInitialized.vault_id', () => normalizeDevInspect(
+        foreignVault,
+        fixture.builderInput,
+        plan,
+        fixture.objectTypes,
+    ));
+    passed += 1;
+
+    const foreignOracle = structuredClone(fixture.rawDevInspectResponse);
+    foreignOracle.transaction.event_json[0].pos0.binding.base_oracle_id = fixture.builderInput.objects.collateralOracle;
+    expectFailure('binding.base_oracle_id', () => normalizeDevInspect(
+        foreignOracle,
+        fixture.builderInput,
+        plan,
+        fixture.objectTypes,
     ));
     passed += 1;
 
@@ -680,10 +847,7 @@ function selfTest() {
     );
     passed += 1;
 
-    const transactionData = parseSerializedTransaction(
-        'AAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgp0eF9jb250ZXh0BnNlbmRlcgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc7oAwAAAAAAAAAgPYh5LQAAAA==',
-        'serializedTransaction',
-    );
+    const transactionData = parseSerializedTransaction(PINNED_SURFACE_TRANSACTION, 'serializedTransaction');
     const inspectArgs = renderSerializedInspectArgs('mainnet', transactionData);
     assertEqual(inspectArgs[4], transactionData, 'serialized transaction handoff');
     passed += 1;
@@ -710,7 +874,7 @@ function selfTest() {
         validatePinnedSurfaceFixture(changedTransaction));
     passed += 1;
 
-    process.stdout.write(`dev_inspect_activation self-test: PASS ${passed}/13 cases\n`);
+    process.stdout.write(`dev_inspect_activation self-test: PASS ${passed}/16 cases\n`);
 }
 
 function runSui(args) {
@@ -768,7 +932,7 @@ function live(configPath) {
         'objectTypes',
         'expectedObservation',
     ]);
-    if (config.schemaVersion !== 2
+    if (config.schemaVersion !== 3
         || config.fixtureKind !== 'live-mainnet-dev-inspect') {
         fail('config: unsupported schema or kind');
     }
@@ -840,10 +1004,14 @@ function parseArgs(args) {
     fail('usage: dev_inspect_activation.mjs [--self-test|--config <path>]');
 }
 
-try {
-    const args = parseArgs(process.argv.slice(2));
-    if (args.selfTest) selfTest(); else live(args.config);
-} catch (error) {
-    process.stderr.write(`dev_inspect_activation: FAIL ${error.message}\n`);
-    process.exitCode = 1;
+export { buildPlan, renderMoveCalls, renderPtbArgs, normalizeDevInspect, verifyProductionPhaseOrder };
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+    try {
+        const args = parseArgs(process.argv.slice(2));
+        if (args.selfTest) selfTest(); else live(args.config);
+    } catch (error) {
+        process.stderr.write(`dev_inspect_activation: FAIL ${error.message}\n`);
+        process.exitCode = 1;
+    }
 }
