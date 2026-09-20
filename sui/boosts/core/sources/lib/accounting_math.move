@@ -17,8 +17,10 @@
 /// This module owns no state and cannot authenticate a funding settlement.
 /// The adapter must reconcile the authoritative venue funding accumulator and
 /// its checkpoint before it passes one linear settlement into core. A
-/// priced operation must reject venue equity below the stored reserve and use
-/// a separate successful health transition for that loss state.
+/// priced operation must reject venue equity at or below the reserve the
+/// ceiling admits against the observed position (`state::admitted_reserve`),
+/// the same figure it prices with; the stored reserve may sit above the
+/// ceiling between a funding credit and the next priced operation.
 module blast_boosts_core::accounting_math;
 
 // === Package Functions ===
@@ -27,12 +29,13 @@ module blast_boosts_core::accounting_math;
 
 /// Returns whether venue equity backs the complete recorded reserve.
 ///
-/// Unlike `shareholder_nav`, this predicate never aborts. The later successful
-/// health transition must use it to detect a reserve-underwater account before
-/// it calls priced arithmetic. Backing alone is not enough for priced
-/// arithmetic: equality leaves zero shareholder NAV, and every leverage or
-/// sizing formula aborts on zero NAV. The health transition must also check
-/// `is_shareholder_nav_positive` before it computes accounting leverage.
+/// Unlike `shareholder_nav`, this predicate never aborts. A health path uses
+/// it to detect a reserve-underwater account before it calls priced
+/// arithmetic; pass the admitted reserve, not the stored one, or the answer
+/// disagrees with the priced operations. Backing alone is not enough for
+/// priced arithmetic: equality leaves zero shareholder NAV, and every leverage
+/// or sizing formula aborts on zero NAV, so `is_shareholder_nav_positive` is
+/// the check that precedes accounting leverage.
 public(package) fun is_reserve_backed(
     venue_equity: u64,
     maintenance_reserve: u64,

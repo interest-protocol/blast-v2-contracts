@@ -1839,11 +1839,12 @@ fun a_venue_fee_of_exactly_the_denominator_is_usable() {
 
 // --- Rebalance Orders ---
 
-/// A reduction that opens exactly at the cap is ordinary; when equity falls
-/// after its first fill the position is above the cap and the next order
-/// carries the emergency bound.
+/// A reduction that opens exactly at the cap is ordinary and stays ordinary:
+/// when equity falls after its first fill the position is above the cap, but
+/// the plan's own fills cannot widen its bound. Only a fresh plan, judged
+/// against a fresh observation, may carry the emergency bound.
 #[test]
-fun a_reduction_that_crosses_the_cap_mid_plan_switches_to_the_emergency_bound() {
+fun a_reduction_that_crosses_the_cap_mid_plan_keeps_the_ordinary_bound() {
     let fixture = start(domain::vault_issuer_role());
     let state = rebalance_state(&fixture, policy::long());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_TIME_MS);
@@ -1853,9 +1854,14 @@ fun a_reduction_that_crosses_the_cap_mid_plan_switches_to_the_emergency_bound() 
     state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_050_000, 2_900_000, policy::long()), 100_000_000, REFERENCE_TIME_MS);
 
     let next = state.next_rebalance_order(&plan);
-    assert!(next.is_emergency());
+    assert!(!next.is_emergency());
     assert!(next.order_base() > 0);
     destroy(plan);
+
+    // A fresh plan against the same observation is emergency from its first order.
+    let fresh = state.prepare_rebalance(rebalance_observation(1_050_000, 2_900_000, policy::long()), 10, REFERENCE_TIME_MS);
+    assert!(state.next_rebalance_order(&fresh).is_emergency());
+    destroy(fresh);
     state.destroy_for_testing();
     destroy(fixture);
 }

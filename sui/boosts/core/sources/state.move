@@ -514,10 +514,14 @@ public fun next_rebalance_order<Product>(self: &State<Product>, plan: &Rebalance
         return RebalanceOrder { base: self.increase_order(position, nav, plan.venue_fee_bps), increase: true, emergency: false }
     };
 
+    // The bound is the plan's, decided against the observation that opened it:
+    // a plan's own fills cannot widen it. A reduction that crosses the cap
+    // mid-plan either finishes within the ordinary bound or aborts, and the
+    // next plan is prepared, and judged emergency, against a fresh observation.
     let above_max = self.vault_policy.rebalance_policy().is_leverage_above_max(position.notional, nav);
     if (plan.emergency && !above_max) return RebalanceOrder { base: 0, increase: false, emergency: false };
 
-    RebalanceOrder { base: self.reduction_order(position, nav), increase: false, emergency: above_max }
+    RebalanceOrder { base: self.reduction_order(position, nav), increase: false, emergency: plan.emergency }
 }
 
 /// The position the rebalance was priced against.
