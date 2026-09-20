@@ -103,6 +103,23 @@ public fun sell_and_redeem_shutdown<Product, Collateral, Meme>(
     vault.redeem_shutdown(protocol, shares, minimum_cash, deadline, clock, ctx)
 }
 
+/// Typechecks issuance under a published product tag, which carries no
+/// abilities; requires the issuer's live objects to run.
+public fun issue_published_product<Collateral>(
+    protocol: &Protocol,
+    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    registry: &mut CoinRegistry,
+    vault_policy: VaultPolicy,
+    max_order_notional: u64,
+    nav_cap: u64,
+    ctx: &mut TxContext,
+): VaultIssuance<BTC_BULL_2X, Collateral> {
+    vault::issue<BTC_BULL_2X, Collateral>(
+        protocol, admin_witness, registry, vault_policy, max_order_notional, nav_cap,
+        b"BTC2X".to_string(), b"BTC 2x Bull".to_string(), b"Two times BTC".to_string(), b"".to_string(), ctx,
+    )
+}
+
 /// Typechecks the atomic mint -> launch buy handoff; requires authorized live objects to run.
 public fun mint_and_buy<Product, Collateral, Meme>(
     vault: &mut Vault<Product, Collateral>,
@@ -161,7 +178,7 @@ public fun sell_and_redeem<Product, Collateral, Meme>(
 
 // === Imports ===
 
-use blast_admin::acl::{Self, AdminCap};
+use blast_admin::acl::{Self, AdminCap, AdminWitness};
 
 use blast_fun::{
     bps, creator_authority, launch::{Self, Launch}, launch_config::{Self, LaunchConfig},
@@ -169,7 +186,11 @@ use blast_fun::{
     package_version::{Self, PackageVersion}, runtime_config::{Self, RuntimeConfig},
 };
 
-use blast_boosts_aftermath::{blast_boost::BlastBoost, operations, protocol::Protocol, vault::Vault};
+use blast_boosts_aftermath::{blast_boost::BlastBoost, operations, protocol::Protocol, vault::{Self, Vault, VaultIssuance}};
+
+use blast_boosts_core::{blast_boosts_core::BLAST_BOOSTS_CORE, policy::VaultPolicy};
+
+use blast_boosts_products::blast_boosts_products::BTC_BULL_2X;
 
 use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 
@@ -179,4 +200,4 @@ use pyth::price_info::PriceInfoObject;
 
 use std::unit_test::{assert_eq, destroy};
 
-use sui::{clock::Clock, coin::{Self, Coin}, test_scenario};
+use sui::{clock::Clock, coin::{Self, Coin}, coin_registry::CoinRegistry, test_scenario};

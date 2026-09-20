@@ -19,22 +19,20 @@ const LOT_SIZE: u64 = 1;
 const PRICE: u64 = 1_000_000_000;
 
 // === Product Tags ===
-// Product tags carry no abilities, exactly like the published product tags;
-// issuing must not require any.
 
 /// Tag for the 2x currency.
-public struct Sui2x {}
+public struct Sui2x() has drop;
 
 /// Tag for the 5x currency.
-public struct Sui5x {}
+public struct Sui5x() has drop;
 
 /// A second 2x tag, to prove two tags never share a currency.
-public struct TaggedSui2x {}
+public struct TaggedSui2x() has drop;
 
 /// A second 5x tag.
-public struct TaggedSui5x {}
+public struct TaggedSui5x() has drop;
 
-public struct Sui2xShort {}
+public struct Sui2xShort() has drop;
 public struct Sui4x() has drop;
 public struct Sui6xShort() has drop;
 
