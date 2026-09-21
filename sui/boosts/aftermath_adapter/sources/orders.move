@@ -50,8 +50,8 @@ public(package) fun seed_position<Product, Collateral>(
     ctx: &TxContext,
 ): ClearingHouse<Collateral> {
     binding.update_funding_when_due(&mut clearing_house, base_oracle, clock);
-    let (flat_observation, _) = snapshot::capture(
-        binding, account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
+    let (flat_observation, _) = binding.capture(
+        account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
     let (target_base, max_order_base, seed) = issuance.seed_terms(flat_observation, seed_reserve);
 
@@ -64,15 +64,15 @@ public(package) fun seed_position<Product, Collateral>(
 
 // --- Active ---
 
-/// The terms of an active operation: direction from policy, the live cap, and the plan's sealed prices.
-public(package) fun active_terms<Product, Collateral>(vault: &Vault<Product, Collateral>, reduce_only: bool, position: ActivePosition): OrderTerms {
-    let side = vault.state().side();
-    let is_ask = if (reduce_only) { !opens_with_ask(side) } else { opens_with_ask(side) };
+/// The terms of an operation that opens more of the vault's side: direction
+/// from policy, the live cap, and the plan's sealed prices.
+public(package) fun opening_terms<Product, Collateral>(vault: &Vault<Product, Collateral>, position: ActivePosition): OrderTerms {
+    active_terms(vault, false, position)
+}
 
-    OrderTerms {
-        is_ask, reduce_only, max_order_base: vault.state().max_order_base(&position),
-        lot_size: position.lot_size(), base_price: position.base_price(), collateral_price: position.collateral_price(),
-    }
+/// The terms of a reduce-only operation against the vault's side, otherwise as `opening_terms`.
+public(package) fun reducing_terms<Product, Collateral>(vault: &Vault<Product, Collateral>, position: ActivePosition): OrderTerms {
+    active_terms(vault, true, position)
 }
 
 /// Prices the step at fresh oracles: the close-only order terms, the whole-lot
@@ -134,8 +134,8 @@ public(package) fun fill_orders<Product, Collateral>(
         );
         clearing_house = next_market;
 
-        let after_checkpoint = snapshot::capture_checkpoint(
-            binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
+        let after_checkpoint = binding.capture_checkpoint(
+            account, registry, &clearing_house, base_oracle, collateral_oracle,
         );
         fill.assert_checkpoint(&terms, &checkpoint, &after_checkpoint);
 
@@ -177,8 +177,8 @@ public(package) fun rebalance_orders<Product, Collateral>(
         );
         clearing_house = next_market;
 
-        let (after, after_checkpoint) = snapshot::capture(
-            binding, account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
+        let (after, after_checkpoint) = binding.capture(
+            account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
         ).into_observation();
         fill.assert_checkpoint(terms, &checkpoint, &after_checkpoint);
         vault.state().accept_rebalance_fill(plan, order, after, fill.filled, clock.timestamp_ms());
@@ -220,8 +220,8 @@ public(package) fun close_orders<Product, Collateral>(
         );
         clearing_house = next_market;
 
-        let after = snapshot::capture_checkpoint(
-            binding, account, registry, &clearing_house, base_oracle, collateral_oracle,
+        let after = binding.capture_checkpoint(
+            account, registry, &clearing_house, base_oracle, collateral_oracle,
         );
         fill.assert_checkpoint(terms, &checkpoint, &after);
 
@@ -336,6 +336,18 @@ fun order_sizes(target_base: u64, max_order_base: u64): vector<u64> {
 }
 
 // --- Terms ---
+
+/// Direction from policy, the live cap, and the plan's sealed prices; a
+/// reduction faces the side that opens.
+fun active_terms<Product, Collateral>(vault: &Vault<Product, Collateral>, reduce_only: bool, position: ActivePosition): OrderTerms {
+    let side = vault.state().side();
+    let is_ask = if (reduce_only) { !opens_with_ask(side) } else { opens_with_ask(side) };
+
+    OrderTerms {
+        is_ask, reduce_only, max_order_base: vault.state().max_order_base(&position),
+        lot_size: position.lot_size(), base_price: position.base_price(), collateral_price: position.collateral_price(),
+    }
+}
 
 /// Aftermath's priority rate is an additional surcharge, not an alternative fee.
 /// Negative rebates are ignored conservatively; callers provide no fee input.
@@ -609,6 +621,11 @@ use blast_boosts_aftermath::{
     vault::Vault,
     venue_account::{Self, Binding},
 };
+
+// A capture starts from the binding it authenticates; `snapshot` sits above
+// `venue_account`, so the aliases stay local.
+use fun snapshot::capture as Binding.capture;
+use fun snapshot::capture_checkpoint as Binding.capture_checkpoint;
 
 use blast_boosts_core::{
     policy::{Self, PositionSide},

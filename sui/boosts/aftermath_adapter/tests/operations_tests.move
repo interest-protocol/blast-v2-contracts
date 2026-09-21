@@ -888,19 +888,19 @@ fun active_order_rejects_a_remainder_off_the_lot() {
 }
 
 #[test]
-fun active_terms_open_with_the_side_and_reduce_against_it() {
+fun terms_open_with_the_side_and_reduce_against_it() {
     let mut fixture = start();
     let vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_TIME_MS);
     let position = plan.mint_position();
 
     let (is_ask, reduce_only, max_order_base, lot_size, base_price, collateral_price) =
-        orders::active_terms(&vault, false, position).order_terms_fields();
+        orders::opening_terms(&vault, position).order_terms_fields();
     assert!(!is_ask && !reduce_only);
     assert_eq!(max_order_base, vault.state().max_order_base(&position));
     assert_eq!(vector[lot_size, base_price, collateral_price], vector[LOT_SIZE, PRICE, PRICE]);
 
-    let (is_ask, reduce_only, _, _, _, _) = orders::active_terms(&vault, true, position).order_terms_fields();
+    let (is_ask, reduce_only, _, _, _, _) = orders::reducing_terms(&vault, position).order_terms_fields();
     assert!(is_ask && reduce_only);
 
     destroy(plan);
@@ -909,16 +909,16 @@ fun active_terms_open_with_the_side_and_reduce_against_it() {
 }
 
 #[test]
-fun active_terms_of_a_short_vault_open_with_an_ask_and_reduce_with_a_bid() {
+fun terms_of_a_short_vault_open_with_an_ask_and_reduce_with_a_bid() {
     let mut fixture = start();
     let vault = issue_and_activate_product_with_side(&mut fixture, OtherProduct(), initial_checkpoint(),
         standard_vault_policy_for_side(policy::short()), policy::short());
     let plan = vault.state().prepare_mint(position_observation_for_side(SEED_EQUITY, policy::short()), 1_000, vault.total_share_supply(), 997_000, REFERENCE_TIME_MS);
     let position = plan.mint_position();
 
-    let (is_ask, reduce_only, _, _, _, _) = orders::active_terms(&vault, false, position).order_terms_fields();
+    let (is_ask, reduce_only, _, _, _, _) = orders::opening_terms(&vault, position).order_terms_fields();
     assert!(is_ask && !reduce_only);
-    let (is_ask, reduce_only, _, _, _, _) = orders::active_terms(&vault, true, position).order_terms_fields();
+    let (is_ask, reduce_only, _, _, _, _) = orders::reducing_terms(&vault, position).order_terms_fields();
     assert!(!is_ask && reduce_only);
 
     destroy(plan);
