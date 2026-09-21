@@ -51,6 +51,7 @@ public fun initialize<Product, Collateral>(
     ).into_observation();
     assert_position_imr_unchanged(&clearing_house, binding.account_number(), position_imr);
     let venue_account = venue_account::new(binding, checkpoint, admin_cap);
+    // A1-A5: failpoint anchors for scripts/activation_atomicity.mjs (ADR 0087).
     // BLAST_ACTIVATION_BOUNDARY_A1
     let (vault, seed_nav, seeded) = issuance.activate(
         final_observation, seed_reserve, venue_account, clock.timestamp_ms(), ctx,
@@ -98,12 +99,12 @@ public fun mint<Product, Collateral>(
     let plan = vault.state().prepare_mint(before, deposit, vault.total_share_supply(), minimum_shares, clock.timestamp_ms());
     let terms = orders::active_terms(vault, false, plan.mint_position());
 
-    let binding = vault.venue().binding();
     let checkpoint = fund_mint(
         vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle,
         cash, plan.admin_fee(), &before_checkpoint, ctx,
     );
 
+    let binding = vault.venue().binding();
     let clearing_house = orders::fill_orders(
         vault, account, registry, clearing_house, base_oracle, collateral_oracle,
         &binding, checkpoint, terms, plan.base_to_buy(), clock, ctx,
@@ -621,10 +622,10 @@ fun apply_post_capture<Product, Collateral>(
     checkpoint: Checkpoint,
     net: CheckpointChange,
 ) {
-    let stored_checkpoint = *vault.venue().checkpoint();
     let checkpoint_clean = net.is_clean();
     let (absorbed, uncovered, restored) = settle_net_funding(vault, &net);
     let reserve_after = vault.state().maintenance_reserve();
+    let stored_checkpoint = *vault.venue().checkpoint();
 
     if (checkpoint_clean) {
         vault.venue_mut().replace_checkpoint(checkpoint);
@@ -674,7 +675,6 @@ fun synchronize<Product, Collateral>(
     vault.state().assert_can_sync();
 
     let binding = vault.venue().binding();
-    let stored_checkpoint = *vault.venue().checkpoint();
     binding.update_funding_when_due(clearing_house, base_oracle, clock);
     let pre_capture = snapshot::capture(
         &binding, account, registry, clearing_house, base_oracle, collateral_oracle, clock,
@@ -686,6 +686,7 @@ fun synchronize<Product, Collateral>(
     let post_capture = snapshot::capture(
         &binding, account, registry, clearing_house, base_oracle, collateral_oracle, clock,
     );
+    let stored_checkpoint = *vault.venue().checkpoint();
     let (preexisting_change, local_change) = stored_checkpoint.classify_sync_changes(
         &pre_checkpoint, &post_capture.checkpoint(), collateral_price,
     );
@@ -807,10 +808,10 @@ fun complete_finalization<Product, Collateral>(
     checkpoint: Checkpoint,
     recovered: Coin<Collateral>,
 ) {
-    let recovered_amount = recovered.value();
     let (total_share_supply, locked_shares) = (vault.total_share_supply(), vault.locked_shares());
     let eligible = vault.state_mut().finalize_shutdown(total_share_supply, locked_shares);
 
+    let recovered_amount = recovered.value();
     vault.seal_terminal_cash(recovered, eligible);
     vault.venue_mut().replace_checkpoint(checkpoint);
 
