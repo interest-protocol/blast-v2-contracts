@@ -28,8 +28,9 @@ standing orders and unexplained intra-call effects abort. A successful bounded
 partial call can be retried against its new actual position. An abort rolls
 back that transaction; previously committed calls remain separate transactions.
 
-Frozen markets use only the pinned `close_position_at_settlement_prices` ABI
-with enabled, positive venue settlement prices. This is not a market order:
+Closed markets, paused by the venue with settlement enabled, use only the
+pinned `close_position_at_settlement_prices` ABI with positive venue
+settlement prices; a frozen clearing house admits no call at all. This is not a market order:
 its event contains no invented fill quote or isolated funding attribution.
 Both routes must converge on exact flat/no-order/settled-liability state before
 finalization. Unsupported or paused venue actions remain fail-closed.
@@ -59,8 +60,10 @@ positive shares to burn with explicit minimum zero and returns a composable
 zero coin. Inclusive deadlines and caller minimums apply; no fee, oracle,
 venue access, reactivation, cross-product payment or transfer restriction exists.
 
-Completed events are ShutdownBegun (declared reason), UnwindProgress (actual
-before/funding/after checkpoints and actual market-fill quote when available),
+Completed events are ShutdownBegun (declared reason), UnwindProgress (the
+adopted before checkpoint, the after checkpoint, the market-order count and the
+actual market-fill quote when available; drift found at the start of a step is
+reported by CheckpointDrifted before it),
 ShutdownFinalized (actual recovered cash, eligible supply, optional seed-funder
 payment, final checkpoint and raw unrecoverable collateral remainder), and ShutdownRedeemed (burn, payout, remaining
 cash and eligible supply). Existing unresolved/reconciled diagnostics remain
@@ -78,8 +81,8 @@ composition package typechecks launch sell → local terminal claim; independent
 native Quote buy/sell tests continue unchanged.
 
 Pinned Aftermath Move interface bodies abort locally. Compilation authenticates
-the selected ABI signatures, not venue runtime semantics. Direct frozen
-settlement, deallocation availability while frozen, network rollback/effects,
+the selected ABI signatures, not venue runtime semantics. Direct settlement of
+a closed market, deallocation availability while paused, network rollback/effects,
 live object/liability evidence, capacity/gas and full production rehearsal are
 not claimed. A-003 defers publication, live ABI reads, funded submissions,
 whole-feature verification and release evidence until separate authorization.

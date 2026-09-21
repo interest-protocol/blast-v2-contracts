@@ -543,7 +543,7 @@ fun an_invalid_share_amount_is_rejected_before_an_invalid_fee_rate() {
     accounting_math::redemption_quote_for_testing(100, 1_000, 1_000, 100, 10_000);
 }
 
-// === Private Test Helpers ===
+// === Test Helpers ===
 
 /// Computes the independent ceiling reference for a valid positive fee input.
 fun reference_fee_up(amount: u64, fee_bps: u64): u64 {

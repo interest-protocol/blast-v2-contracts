@@ -35,7 +35,8 @@ public struct Checkpoint has copy, drop, store {
 
 /// What moved between the checkpoint last accepted and the one just captured:
 /// nothing, one funding settlement carrying its raw signed collateral delta, or
-/// anything else, which no operation may build on.
+/// anything else, which no priced operation may build on and which shutdown
+/// adopts only after reporting it.
 public enum CheckpointChange has drop {
     Unchanged,
     FundingCredit(u256),
@@ -196,6 +197,18 @@ public(package) fun classify_change(self: &Checkpoint, after: &Checkpoint, colla
     )
 }
 
+/// What another caller settled between the stored checkpoint `self` and the
+/// one just read: nothing when only the market's cumulative rates advanced,
+/// the funding moved when the position's snapshots refreshed and nothing else
+/// changed, and otherwise a change no operation can attribute.
+public(package) fun classify_preexisting(self: &Checkpoint, before: &Checkpoint): CheckpointChange {
+    if (self.checkpoint_ready_for_settlement(before)) {
+        CheckpointChange::Unchanged
+    } else {
+        self.classify_preexisting_funding(before)
+    }
+}
+
 /// Splits what the venue shows after settlement into the funding another caller
 /// settled since `self` was stored and the funding this settlement moved.
 public(package) fun classify_sync_changes(
@@ -204,14 +217,7 @@ public(package) fun classify_sync_changes(
     after: &Checkpoint,
     collateral_price: u256,
 ): (CheckpointChange, CheckpointChange) {
-    let preexisting_change = if (self.checkpoint_ready_for_settlement(before)) {
-        CheckpointChange::Unchanged
-    } else {
-        self.classify_preexisting_funding(before)
-    };
-    let local_change = before.classify_change(after, collateral_price);
-
-    (preexisting_change, local_change)
+    (self.classify_preexisting(before), before.classify_change(after, collateral_price))
 }
 
 /// Nets authenticated settlement edges before rounding or buffer allocation.
@@ -233,11 +239,6 @@ public(package) fun net_funding(preexisting: CheckpointChange, settled: Checkpoi
     };
 
     funding_change(is_cost, amount)
-}
-
-/// A terminal market close may realize losses, but cannot misattribute an unrelated funding mutation.
-public(package) fun assert_expected(self: CheckpointChange) {
-    assert!(!self.is_unexpected(), blast_boosts_aftermath::errors::unresolved_checkpoint!());
 }
 
 // --- Funding Change Reads ---
@@ -293,12 +294,13 @@ public(package) fun assert_no_orders(self: &Checkpoint) {
     );
 }
 
-/// A venue-enabled frozen settlement can realize cash, but must finish exactly flat and order-free.
+/// The venue's settlement of a closed market can realize cash, but must start
+/// on a paused market with an open position and finish exactly flat and order-free.
 public(package) fun assert_direct_settlement_checkpoint(before: &Checkpoint, after: &Checkpoint) {
     before.assert_no_orders();
     after.assert_no_orders();
     assert!(
-        before.market_frozen && before.signed_base != 0
+        before.market_pause_mode != 0 && before.signed_base != 0
             && after.signed_base == 0 && after.signed_quote_notional == 0
             && after.funding_snapshot_long == after.market_funding_long
             && after.funding_snapshot_short == after.market_funding_short,

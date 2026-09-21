@@ -262,7 +262,7 @@ fun lot_validation_precedes_reserve_validation() {
     );
 }
 
-// === Private Functions ===
+// === Test Helpers ===
 
 fun new_policy(
     is_long: bool,

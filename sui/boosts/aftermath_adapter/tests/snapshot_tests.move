@@ -353,17 +353,6 @@ fun net_funding_refuses_an_overflowing_gross_sum() {
 }
 
 #[test]
-fun an_unchanged_change_is_expected() {
-    checkpoint::unchanged_change().assert_expected();
-}
-
-#[test]
-#[expected_failure(abort_code = errors::EUnresolvedCheckpoint, location = blast_boosts_aftermath::checkpoint)]
-fun an_unexpected_change_is_refused_as_unresolved() {
-    checkpoint::unexpected_change().assert_expected();
-}
-
-#[test]
 fun fixed_normalization_keeps_base_at_nine_and_quote_at_six_decimals() {
     // 1.234567890123 fixed units becomes 1.234567890 base units but
     // 1.234567 collateral/quote units: the scales differ by exactly 1,000.
@@ -732,8 +721,7 @@ fun neg(magnitude: u256): u256 {
 
 /// The stored → before edge alone: what another caller settled since `stored`.
 fun preexisting(stored: &Checkpoint, before: &Checkpoint): CheckpointChange {
-    let (change, _) = stored.classify_sync_changes(before, before, 1);
-    change
+    stored.classify_preexisting(before)
 }
 
 /// Both edges of one synchronization netted, as `synchronize` applies them.

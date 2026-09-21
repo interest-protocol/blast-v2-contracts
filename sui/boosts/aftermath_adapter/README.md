@@ -49,9 +49,17 @@ external change preserves the accepted economic checkpoint and emits
 Activation mints the locked seed shares to the burn address; they are never
 redeemable. `vault::begin_shutdown` requires a shutdown-role witness and no venue or oracle
 input. It irreversibly moves Active to Unwinding. Permissionless
-`operations::unwind` makes up to 16 bounded close-only market orders using fresh
-prices and the immutable emergency tolerance. A frozen market instead uses only
-the pinned direct settlement operation and authenticated settlement prices.
+`operations::unwind` first reconciles the stored checkpoint with the venue
+exactly as `sync_health` does: an explainable funding move is booked and
+emitted, anything else emits `CheckpointDrifted`, and the step proceeds from the
+live state either way, because shutdown closes what the venue holds whatever
+moved it there. It then makes up to 16 bounded close-only market orders using
+fresh prices and the immutable emergency tolerance. A market the venue has
+paused admits no session, funding update or settlement; once the venue has
+closed it and enabled settlement prices, the step reconciles without a venue
+call and uses only the pinned direct settlement operation at those prices. A
+frozen clearing house aborts every venue call until it is unfrozen, and
+`unwind` refuses it.
 `operations::finalize_shutdown` requires exact flat/no-order/settled-funding
 state, no negative collateral, and complete whole-atom cash recovery. The exact
 nonnegative allocated raw remainder below one collateral atom remains in the

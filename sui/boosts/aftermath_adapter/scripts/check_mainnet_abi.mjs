@@ -31,7 +31,7 @@ const PACKAGES = [
         previousTransaction: 'EwwGij6nQ1R8zHzSTcSsJXpAh45otaGKQNHqCGTM7tFx',
         modules: [
             { name: 'account', sha256: 'e94916287e63c4dbd2c8bb8b4939d306834740e50668eaca1ccc4bf3951ec23e', functions: ['create_account', 'consume_policy_and_share_account', 'deposit_collateral', 'withdraw_collateral', 'account_id', 'collateral_balance'] },
-            { name: 'clearing_house', sha256: '56290307f97f6d974b1a4edadd2d62963ac678e76c7b4b3193cbd379c7825eaf', functions: ['allocate_collateral', 'create_market_position', 'set_position_initial_margin_ratio', 'settle_position_funding', 'start_session', 'place_market_order', 'end_session', 'share', 'position', 'market_params', 'market_state', 'market_pause_mode', 'is_frozen', 'filled_base_and_quote', 'base_filled_bid', 'base_filled_ask', 'posted_orders', 'execution_price', 'liquidated_size', 'liquidation_bad_debt', 'mark_price', 'update_funding', 'deallocate_collateral', 'settlement_valuation_prices', 'close_position_at_settlement_prices'] },
+            { name: 'clearing_house', sha256: '56290307f97f6d974b1a4edadd2d62963ac678e76c7b4b3193cbd379c7825eaf', functions: ['allocate_collateral', 'create_market_position', 'set_position_initial_margin_ratio', 'settle_position_funding', 'start_session', 'place_market_order', 'end_session', 'share', 'position', 'market_params', 'market_state', 'market_pause_mode', 'is_frozen', 'is_market_paused', 'filled_base_and_quote', 'base_filled_bid', 'base_filled_ask', 'posted_orders', 'execution_price', 'liquidated_size', 'liquidation_bad_debt', 'mark_price', 'update_funding', 'deallocate_collateral', 'settlement_valuation_prices', 'close_position_at_settlement_prices'] },
             { name: 'market', sha256: '7b48781611318e2fe87686166925780cd0c73517d0f2a474be9d58761c340985', functions: ['lot_size', 'scaling_factor', 'base_storage_id', 'collateral_storage_id', 'base_source_id', 'collateral_source_id', 'margin_ratio_initial', 'margin_ratio_maintenance', 'collateral_haircut', 'cum_funding_rates', 'base_oracle_price', 'collateral_oracle_price', 'calculate_mark_price', 'funding_params', 'funding_last_upd_ms', 'is_time_to_update', 'next_funding_update_time', 'taker_fee', 'priority_taker_fee', 'resolve_priority_taker_fee'] },
         ],
     },
@@ -95,6 +95,7 @@ const ABI = {
     'clearing_house::execution_price': 'public fun execution_price(&@self::clearing_house::SessionSummary, bool): u256',
     'clearing_house::filled_base_and_quote': 'public fun filled_base_and_quote(&@self::clearing_house::SessionSummary, bool): (u256, u256)',
     'clearing_house::is_frozen': 'public fun is_frozen<$0>(&@self::clearing_house::ClearingHouse<$0>): bool',
+    'clearing_house::is_market_paused': 'public fun is_market_paused<$0>(&@self::clearing_house::ClearingHouse<$0>): bool',
     'clearing_house::liquidated_size': 'public fun liquidated_size(&@self::clearing_house::SessionSummary): u64',
     'clearing_house::liquidation_bad_debt': 'public fun liquidation_bad_debt(&@self::clearing_house::SessionSummary): u256',
     'clearing_house::mark_price': 'public fun mark_price<$0>(&@self::clearing_house::ClearingHouse<$0>, &0x9237337d846fc90b0a7acbdee4ab91809298691873d28e1d64d91e6303ff6ba4::price_feed_storage::PriceFeedStorage, &@sui::clock::Clock): u256',

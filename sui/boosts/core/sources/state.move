@@ -231,8 +231,8 @@ public fun activate<Product>(
 
 // --- Order Terms ---
 
-/// The immutable direction every order of this product takes.
-public fun issued_side<Product>(self: &Issuance<Product>): PositionSide {
+/// The immutable direction every seed order takes.
+public fun seed_side<Product>(self: &Issuance<Product>): PositionSide {
     self.vault_policy.side()
 }
 
@@ -527,6 +527,9 @@ public fun next_rebalance_order<Product>(self: &State<Product>, plan: &Rebalance
 /// The position the rebalance was priced against.
 public fun rebalance_position<Product>(self: &RebalancePlan<Product>): ActivePosition { self.before }
 
+/// Whether the plan buys toward the target rather than sells.
+public fun is_increasing<Product>(self: &RebalancePlan<Product>): bool { self.increase }
+
 public fun order_base(self: &RebalanceOrder): u64 { self.base }
 
 public fun is_increase(self: &RebalanceOrder): bool { self.increase }
@@ -662,6 +665,11 @@ public fun donate<Product>(self: &mut State<Product>, observation: PositionObser
     assert_invariant(self.maintenance_reserve <= reserve_funded && self.maintenance_reserve <= after.equity);
 }
 
+/// Rejects an ordinary operation outside Active, before the adapter touches the venue.
+public fun assert_active<Product>(self: &State<Product>) {
+    self.lifecycle.assert_active();
+}
+
 /// Rejects venue synchronization after the local cash pool has been sealed.
 public fun assert_can_sync<Product>(self: &State<Product>) {
     self.lifecycle.assert_can_sync();
@@ -706,7 +714,6 @@ public fun finalize_shutdown<Product>(self: &mut State<Product>, total_share_sup
 
     self.lifecycle.finalize_shutdown();
     self.maintenance_reserve = 0;
-    assert_invariant(self.lifecycle.is_settled());
 
     total_share_supply - locked_shares
 }
@@ -831,16 +838,14 @@ fun fee_allocation<Product>(self: &State<Product>, amount: u64, is_mint: bool): 
 /// because the adapter opens the seed on an account it created in the same
 /// transaction.
 fun flat_position(observation: PositionObservation): ActivePosition {
-    let position = ActivePosition {
+    ActivePosition {
         equity: observation.venue_equity(),
         base: 0,
         notional: 0,
         lot_size: observation.lot_size(),
         base_price: observation.base_oracle().price(),
         collateral_price: observation.collateral_oracle().price(),
-    };
-
-    position
+    }
 }
 
 fun assert_order_notional_within(max_order_notional: u64, order_notional: u64) {
@@ -969,7 +974,8 @@ fun validated_active_position<Product>(
 fun priced_position<Product>(self: &State<Product>, observation: PositionObservation): ActivePosition {
     let (base_price, collateral_price) = (observation.base_oracle().price(), observation.collateral_oracle().price());
     let base = observation.position_base();
-    let position = ActivePosition {
+
+    ActivePosition {
         equity: observation.venue_equity(),
         base,
         notional: rebalance_math::oracle_notional_up(
@@ -978,9 +984,7 @@ fun priced_position<Product>(self: &State<Product>, observation: PositionObserva
         lot_size: observation.lot_size(),
         base_price,
         collateral_price,
-    };
-
-    position
+    }
 }
 
 /// Rejects an observation whose oracle pair is stale, uncertain, or diverges from the venue mark.
@@ -1095,7 +1099,3 @@ use blast_boosts_core::{
     rebalance_math,
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
 };
-
-public use fun issued_side as Issuance.side;
-public use fun assert_seed_order_notional_allowed as Issuance.assert_order_notional_allowed;
-public use fun assert_seed_execution as Issuance.assert_execution;

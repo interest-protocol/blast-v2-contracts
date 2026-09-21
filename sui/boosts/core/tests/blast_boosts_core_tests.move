@@ -153,13 +153,13 @@ fun another_domains_capability_cannot_administer_this_package() {
         let (other_root, mut other_authority) = acl::new_for_testing<OTHER_DOMAIN>(
             MAX_ADMINS,
             ROOT_TRANSFER_DELAY_MS,
-            f.scenario.ctx(),
+            f.ctx!(),
         );
         other_authority.grant_admin(
             &other_root,
             domain::vault_issuer_role(),
             ADMIN,
-            f.scenario.ctx(),
+            f.ctx!(),
         );
 
         // The foreign admin is live in its own authority, and its witness type
@@ -196,7 +196,13 @@ fun a_revoked_administrator_can_no_longer_sign_in() {
     fixture.end();
 }
 
-// === Private Test Helpers ===
+// === Test Helpers ===
+
+macro fun domain_ctx($self: &mut DomainFixture): &mut TxContext {
+    let fixture = $self;
+
+    fixture.scenario.ctx()
+}
 
 macro fun domain_next_tx(
     $fixture: &mut DomainFixture,
@@ -230,7 +236,11 @@ fun domain_sign_in(self: &DomainFixture): AdminWitness<BLAST_BOOSTS_CORE> {
 }
 
 fun domain_end(self: DomainFixture) {
-    destroy(self);
+    let DomainFixture { scenario, authority, super_admin_cap, admin_cap } = self;
+    test_scenario::return_shared(authority);
+    destroy(super_admin_cap);
+    destroy(admin_cap);
+    scenario.end();
 }
 
 // === Imports ===
@@ -242,6 +252,8 @@ use blast_boosts_core::blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE};
 use std::unit_test::{assert_eq, destroy};
 
 use sui::test_scenario::{Self, Scenario};
+
+use fun domain_ctx as DomainFixture.ctx;
 
 use fun domain_end as DomainFixture.end;
 

@@ -331,8 +331,8 @@ public fun activate(self: Issued, seed: u64, seed_reserve: u64): Vault {
 
     while (remaining > 0) {
         let (executed, filled) = venue.fill(remaining.min(max_order_base), true);
-        issuance.assert_execution(seed_position.base_price(), executed);
-        issuance.assert_order_notional_allowed(venue.notional_of(filled));
+        issuance.assert_seed_execution(seed_position.base_price(), executed);
+        issuance.assert_seed_order_notional_allowed(venue.notional_of(filled));
         remaining = remaining - filled;
     };
     assert!(seed_position.collateral_price() == venue.collateral_price);

@@ -259,8 +259,8 @@ fun open_seed_position<Product, Collateral>(
     clock: &Clock,
     ctx: &TxContext,
 ): ClearingHouse<Collateral> {
-    let is_long = issuance.side() == policy::long();
-    let aftermath_order_side = opens_with_ask(issuance.side());
+    let is_long = issuance.seed_side() == policy::long();
+    let aftermath_order_side = opens_with_ask(issuance.seed_side());
 
     while (!orders.is_empty()) {
         let order_base = orders.pop_back();
@@ -277,9 +277,9 @@ fun open_seed_position<Product, Collateral>(
             summary.liquidation_bad_debt(),
         );
         let executed = execution_price(summary.execution_price(aftermath_order_side), is_long);
-        issuance.assert_execution(reference_base_price, executed);
+        issuance.assert_seed_execution(reference_base_price, executed);
         let (_, filled_quote) = summary.filled_base_and_quote(aftermath_order_side);
-        issuance.assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
+        issuance.assert_seed_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
         events::order_filled<Product>(
             object::id(account), aftermath_order_side, false, false, order_base, order_base, filled_quote,
             reference_base_price, executed,
@@ -331,7 +331,6 @@ fun order_sizes(target_base: u64, max_order_base: u64): vector<u64> {
         orders.push_back(order_base);
         remaining = remaining - order_base;
     };
-    assert!(remaining == 0, blast_boosts_aftermath::errors::normalization_overflow!());
 
     orders
 }
@@ -496,11 +495,14 @@ fun execution_price(raw_price: u256, round_up: bool): u64 {
 fun normalize_execution_price(raw_price: u256, round_up: bool, is_negative: bool): u64 {
     assert!(!is_negative, blast_boosts_aftermath::errors::normalization_overflow!());
 
-    let down = raw_price / constants::base_atom_to_ifixed_scale!();
-    let normalized = if (round_up && raw_price % constants::base_atom_to_ifixed_scale!() != 0) { down + 1 } else { down };
-    assert!(normalized <= std::u64::max_value!() as u256, blast_boosts_aftermath::errors::normalization_overflow!());
+    let (price, representable) = if (round_up) {
+        ifixed_math::fixed_to_u64_up(raw_price, constants::base_decimals!() as u64)
+    } else {
+        ifixed_math::fixed_to_u64_down(raw_price, constants::base_decimals!() as u64)
+    };
+    assert!(representable, blast_boosts_aftermath::errors::normalization_overflow!());
 
-    normalized as u64
+    price
 }
 
 // === Test-Only Functions ===

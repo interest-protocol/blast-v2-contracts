@@ -14,6 +14,12 @@ const ADMIN: address = @0xAD;
 
 // === Test-Only Types ===
 
+/// The adapter generation exactly as production initialization shared it.
+public struct InitFixture {
+    scenario: Scenario,
+}
+
+/// An unshared adapter generation under one live Series1 administrator.
 public struct Fixture {
     scenario: Scenario,
     protocol: Protocol,
@@ -27,16 +33,18 @@ public struct Fixture {
 #[test]
 /// Production initialization shares one adapter generation at generation one.
 fun init_shares_the_adapter_generation_at_its_first_generation() {
-    let mut scenario = test_scenario::begin(ROOT);
-    protocol::init_for_testing(scenario.ctx());
+    let mut fixture = start_init();
 
-    scenario.next_tx(ROOT);
-    let container = scenario.take_shared<Protocol>();
-    assert_eq!(container.version_for_testing(), 1);
-    container.assert_current_for_testing();
+    fixture.next_tx!(ROOT, |fixture| {
+        let container = fixture.take_protocol();
 
-    test_scenario::return_shared(container);
-    scenario.end();
+        assert_eq!(container.version_for_testing(), 1);
+        container.assert_current_for_testing();
+
+        fixture.return_protocol(container);
+    });
+
+    fixture.end();
 }
 
 #[test]
@@ -59,7 +67,7 @@ fun the_generation_advances_to_the_next_compiled_generation() {
     assert_eq!(new_generation, 2);
     assert_eq!(new_generation, fixture.protocol.version_for_testing());
 
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -71,7 +79,7 @@ fun the_finalizer_accepts_the_exact_next_generation_before_committing() {
 
     assert_eq!(fixture.protocol.version_for_testing(), 1);
 
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -86,7 +94,7 @@ fun the_finalizer_rejects_a_skipped_generation_before_committing() {
 
     fixture.protocol.assert_next_for_testing();
 
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -103,7 +111,7 @@ fun the_finalizer_rejects_an_already_advanced_generation_as_next() {
 
     fixture.protocol.assert_next_for_testing();
 
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -118,7 +126,7 @@ fun the_cutover_rejects_a_skipped_generation() {
 
     fixture.protocol.advance_for_testing();
 
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -133,7 +141,7 @@ fun the_cutover_rejects_a_generation_overflow() {
 
     fixture.protocol.advance_for_testing();
 
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -148,7 +156,7 @@ fun a_stale_generation_rejects_this_bytecode() {
 
     fixture.protocol.assert_current_for_testing();
 
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -161,10 +169,46 @@ fun series_domain_administration_does_not_depend_on_the_adapter_generation() {
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
     admin_witness.assert_role(domain::package_admin_role());
 
-    destroy(fixture);
+    fixture.end();
 }
 
-// === Fixture Setup ===
+// === Test Helpers ===
+
+// --- Initialization Fixture ---
+
+macro fun init_next_tx(
+    $self: &mut InitFixture,
+    $sender: address,
+    $body: |&mut InitFixture|,
+) {
+    let fixture = $self;
+
+    fixture.scenario.next_tx($sender);
+    $body(fixture);
+}
+
+fun start_init(): InitFixture {
+    let mut scenario = test_scenario::begin(ROOT);
+    protocol::init_for_testing(scenario.ctx());
+
+    InitFixture { scenario }
+}
+
+fun init_take_protocol(self: &InitFixture): Protocol {
+    self.scenario.take_shared<Protocol>()
+}
+
+fun init_return_protocol(_self: &InitFixture, container: Protocol) {
+    test_scenario::return_shared(container);
+}
+
+fun init_end(self: InitFixture) {
+    let InitFixture { scenario } = self;
+
+    scenario.end();
+}
+
+// --- Generation Fixture ---
 
 fun start(roles: u64): Fixture {
     let mut scenario = test_scenario::begin(ROOT);
@@ -177,6 +221,15 @@ fun start(roles: u64): Fixture {
     let admin_cap = scenario.take_from_sender<AdminCap<BLAST_BOOSTS_CORE>>();
 
     Fixture { scenario, protocol, authority, super_admin_cap, admin_cap }
+}
+
+fun end(self: Fixture) {
+    let Fixture { scenario, protocol, authority, super_admin_cap, admin_cap } = self;
+    destroy(protocol);
+    destroy(authority);
+    destroy(super_admin_cap);
+    destroy(admin_cap);
+    scenario.end();
 }
 
 // === Imports ===
@@ -192,3 +245,11 @@ use blast_boosts_core::{
 use std::unit_test::{assert_eq, destroy};
 
 use sui::test_scenario::{Self, Scenario};
+
+use fun init_end as InitFixture.end;
+
+use fun init_next_tx as InitFixture.next_tx;
+
+use fun init_return_protocol as InitFixture.return_protocol;
+
+use fun init_take_protocol as InitFixture.take_protocol;

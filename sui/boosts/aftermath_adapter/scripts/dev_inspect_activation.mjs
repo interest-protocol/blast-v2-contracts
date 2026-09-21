@@ -169,8 +169,8 @@ const PHASE_ORDER = [
         markers: [
             'venue_account::execute_order_with_cap(',
             'assert_seed_fill(',
-            'issuance.assert_execution(',
-            'issuance.assert_order_notional_allowed(',
+            'issuance.assert_seed_execution(',
+            'issuance.assert_seed_order_notional_allowed(',
         ],
     },
     {

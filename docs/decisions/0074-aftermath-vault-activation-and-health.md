@@ -1,6 +1,6 @@
 # 0074: Aftermath Vault activation and health evidence
 
-Active-contract amendment: 2026-09-20 (venue bytecode read). This is the pre-publication source
+Active-contract amendment: 2026-09-20 (venue bytecode read; shutdown reconciliation). This is the pre-publication source
 contract; local evidence does not establish publication or live release readiness.
 
 - Status: **accepted for dependency and raw-field normalization**
@@ -606,9 +606,10 @@ events; there is no event-only replay guard or extra on-chain claim ledger:
 
 - `ShutdownBegun`: Vault and administrator-declared shutdown reason, emitted
   after Active becomes Unwinding without a venue/oracle call.
-- `UnwindProgress`: Vault, before/optional isolated-funding/after checkpoints,
-  market-order count and optional actual filled quote. Direct frozen settlement
-  has no invented order, quote fill, or funding attribution.
+- `UnwindProgress`: Vault, the adopted before checkpoint, the after checkpoint,
+  market-order count and optional actual filled quote. The settlement of a
+  closed market has no invented order or quote fill (shutdown reconciliation
+  amendment, 2026-09-20).
 - `ShutdownFinalized`: Vault, actual recovered atomic cash, eligible native
   supply, optional recorded seed-funder payment beneficiary, final checkpoint,
   and `unrecoverable_collateral_raw: u256`. The final primitive deliberately
@@ -628,6 +629,25 @@ IFixed decoding outputs and venue facts; named ports still abort locally, so
 they do not prove deployed deallocation, settlement, or transaction effects.
 Publication, live ABI, funded submissions and whole-feature rehearsal remain
 separately authorized evidence under A-003.
+
+### Shutdown reconciliation amendment (2026-09-20)
+
+Every unwind step begins by reconciling the stored checkpoint with the venue
+through the same synchronization every priced operation uses. An explainable
+funding move is booked to the reserve and emitted as `FundingSettled`; a venue
+the stored checkpoint cannot explain emits `CheckpointDrifted` with the live
+checkpoint. Either way the step proceeds from the live state: shutdown closes
+what the venue holds, whatever moved it there, so a liquidation, an ADL or a
+settlement the adapter cannot replay never blocks the exit. A paused market
+admits no session, funding update or settlement, so the settlement path, which
+the venue opens only once it has closed the market and enabled settlement
+prices, reconciles without a venue call, classifying only the change since the
+stored checkpoint. A frozen clearing house aborts every venue call on its
+version check, the settlement close included, so `unwind` refuses it until it
+is unfrozen (finding F5 of the venue bytecode record). The
+isolated funding checkpoint the market path used to prove separately is gone
+with it, and `UnwindProgress` carries the adopted before checkpoint, the after
+checkpoint, the market-order count and the optional filled quote.
 
 ## Consequences
 

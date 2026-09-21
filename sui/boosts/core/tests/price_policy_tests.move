@@ -492,7 +492,7 @@ fun index_validation_precedes_the_mark_divergence_bound() {
     );
 }
 
-// === Private Functions ===
+// === Test Helpers ===
 
 /// Builds a policy whose two-sided freshness window is the bound under test.
 fun freshness_policy(

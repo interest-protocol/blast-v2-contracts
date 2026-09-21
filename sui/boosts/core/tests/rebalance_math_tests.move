@@ -356,7 +356,7 @@ fun leverage_rose_supports_maximum_widths() {
     assert!(!rebalance_math::leverage_rose(0, 1, 0, max));
 }
 
-// === Reference Helpers ===
+// === Test Helpers ===
 
 /// One exact positive-denominator rational for the independent reference.
 public struct Ratio has copy, drop { numerator: u128, denominator: u128 }

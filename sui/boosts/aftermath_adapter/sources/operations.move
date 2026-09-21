@@ -30,7 +30,7 @@ public fun initialize<Product, Collateral>(
 ): Vault<Product, Collateral> {
     protocol.assert_current();
     let terms = issuance.issuance();
-    let position_side = terms.side();
+    let position_side = terms.seed_side();
     let seed_amount = seed.value();
     assert_initialization_inputs(
         currency.decimals(), clearing_house.market_params().scaling_factor(), seed_amount, seed_reserve,
@@ -85,6 +85,7 @@ public fun mint<Product, Collateral>(
     ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
     protocol.assert_current();
+    vault.state().assert_active();
     let deposit = cash.value();
     assert!(deposit > 0, blast_boosts_aftermath::errors::zero_amount!());
     assert_deadline(clock.timestamp_ms(), deadline_ms);
@@ -134,6 +135,7 @@ public fun redeem<Product, Collateral>(
     ctx: &mut TxContext,
 ): Coin<Collateral> {
     protocol.assert_current();
+    vault.state().assert_active();
     assert!(shares.value() > 0, blast_boosts_aftermath::errors::zero_amount!());
     assert_deadline(clock.timestamp_ms(), deadline_ms);
 
@@ -181,6 +183,7 @@ public fun rebalance<Product, Collateral>(
     ctx: &mut TxContext,
 ) {
     protocol.assert_current();
+    vault.state().assert_active();
 
     let (before, checkpoint) = synchronize(
         vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle, clock,
@@ -188,7 +191,7 @@ public fun rebalance<Product, Collateral>(
     vault.venue().checkpoint().assert_unchanged(&checkpoint);
 
     let mut plan = vault.state().prepare_rebalance(before, orders::live_venue_fee_bps(&clearing_house), clock.timestamp_ms());
-    let terms = orders::active_terms(vault, !vault.state().next_rebalance_order(&plan).is_increase(), plan.rebalance_position());
+    let terms = orders::active_terms(vault, !plan.is_increasing(), plan.rebalance_position());
     let binding = vault.venue().binding();
 
     let (clearing_house, checkpoint) = orders::rebalance_orders(
@@ -218,6 +221,7 @@ public fun needs_rebalance<Product, Collateral>(
     clock: &Clock,
 ): bool {
     protocol.assert_current();
+    vault.state().assert_active();
 
     let (observation, checkpoint) = snapshot::capture(
         &vault.venue().binding(), account, registry, clearing_house, base_oracle, collateral_oracle, clock,
@@ -240,6 +244,7 @@ public fun donate<Product, Collateral>(
     clock: &Clock,
 ) {
     protocol.assert_current();
+    vault.state().assert_active();
     let amount = cash.value();
     assert!(amount > 0, blast_boosts_aftermath::errors::zero_amount!());
 
@@ -278,7 +283,11 @@ public fun sync_health<Product, Collateral>(
     );
 }
 
-/// Permissionless bounded close-only progress, never caller-sized or dependent on positive NAV.
+/// Permissionless bounded close-only progress, never caller-sized or dependent
+/// on positive NAV. A live market is closed by market orders; a market the
+/// venue has paused only by the venue's own settlement, once it has closed the
+/// market and enabled settlement prices; a frozen clearing house aborts every
+/// venue call on its version check, so it is refused here until unfrozen.
 public fun unwind<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
@@ -291,9 +300,11 @@ public fun unwind<Product, Collateral>(
     ctx: &mut TxContext,
 ) {
     protocol.assert_current();
+    vault.state().assert_unwinding();
+    assert!(!clearing_house.is_frozen(), blast_boosts_aftermath::errors::venue_not_ready!());
 
-    if (clearing_house.is_frozen()) {
-        unwind_frozen(vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle);
+    if (clearing_house.is_market_paused()) {
+        unwind_settlement(vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle);
     } else {
         clearing_house = unwind_market(
             vault, account, registry, clearing_house, base_oracle, collateral_oracle, clock, ctx,
@@ -315,6 +326,7 @@ public fun finalize_shutdown<Product, Collateral>(
     ctx: &mut TxContext,
 ) {
     protocol.assert_current();
+    vault.state().assert_unwinding();
 
     let binding = vault.venue().binding();
     let before = snapshot::capture_checkpoint(
@@ -596,15 +608,17 @@ fun complete_donation<Product, Collateral>(
 
 // --- Funding ---
 
-/// Applies the complete Blast-owned post-capture synchronization phase.
+/// Reconciles the stored checkpoint with one the venue just showed, given the
+/// net funding classified between them. A clean interval books the funding,
+/// adopts the checkpoint and emits the settlement; anything else emits the
+/// drift and leaves the accepted checkpoint standing. Every synchronization
+/// and every unwind step passes through here.
 fun apply_post_capture<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     checkpoint: Checkpoint,
-    preexisting_change: CheckpointChange,
-    local_change: CheckpointChange,
+    net: CheckpointChange,
 ) {
     let stored_checkpoint = *vault.venue().checkpoint();
-    let net = preexisting_change.net_funding(local_change);
     let checkpoint_clean = net.is_clean();
     let (absorbed, uncovered, restored) = settle_net_funding(vault, &net);
     let reserve_after = vault.state().maintenance_reserve();
@@ -672,16 +686,19 @@ fun synchronize<Product, Collateral>(
     let (preexisting_change, local_change) = stored_checkpoint.classify_sync_changes(
         &pre_checkpoint, &post_capture.checkpoint(), collateral_price,
     );
-    apply_post_capture(vault, post_capture.checkpoint(), preexisting_change, local_change);
+    apply_post_capture(vault, post_capture.checkpoint(), preexisting_change.net_funding(local_change));
 
     post_capture
 }
 
-
 // --- Shutdown ---
 
-/// The venue's direct frozen settlement is not a market order or a stale-price fallback.
-fun unwind_frozen<Product, Collateral>(
+/// The venue's settlement of a closed market is not a market order or a
+/// stale-price fallback. A paused market admits no funding update or
+/// settlement, so the stored checkpoint is reconciled with the one read here
+/// without a venue call, and the venue's settlement prices, which its admin
+/// enables only after closing the market, price the close.
+fun unwind_settlement<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     account: &mut Account<Collateral>,
     registry: &Registry,
@@ -698,18 +715,23 @@ fun unwind_frozen<Product, Collateral>(
     assert_settlement_valuation(
         enabled, base_price, base_price.is_neg(), collateral_price, collateral_price.is_neg(),
     );
+    let preexisting_change = vault.venue().checkpoint().classify_preexisting(&before);
+    apply_post_capture(vault, before, preexisting_change);
 
     clearing_house.close_position_at_settlement_prices(account, &vector[]);
     let after = snapshot::capture_checkpoint(
         &binding, account, registry, clearing_house, base_oracle, collateral_oracle,
     );
 
-    complete_unwind(vault, before, option::none(), after, 0, option::none());
+    complete_unwind(vault, before, after, 0, option::none());
 }
 
-/// One bounded unwind step on a live market: settle funding, then place up to
+/// One bounded unwind step on a live market: synchronize funding and the
+/// checkpoint exactly as every priced operation does, then place up to
 /// `max_active_orders` close-only orders under the emergency bound, proving
-/// each fill against the checkpoint before the next.
+/// each fill against the checkpoint before the next. A venue the stored
+/// checkpoint cannot explain is reported as drift and adopted: shutdown closes
+/// what the venue holds, whatever moved it there.
 fun unwind_market<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     account: &mut Account<Collateral>,
@@ -720,29 +742,23 @@ fun unwind_market<Product, Collateral>(
     clock: &Clock,
     ctx: &TxContext,
 ): ClearingHouse<Collateral> {
-    let binding = vault.venue().binding();
-    binding.update_funding_when_due(&mut clearing_house, base_oracle, clock);
-    let capture = snapshot::capture(
-        &binding, account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
+    let capture = synchronize(
+        vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle, clock,
     );
     let (terms, remaining, before) = orders::unwind_terms(vault, &capture, clock.timestamp_ms());
 
-    let funded = settle_funding_for_unwind(
-        &binding, account, registry, &mut clearing_house, base_oracle, collateral_oracle,
-        &before, capture.collateral_fixed(), clock,
-    );
-
+    let binding = vault.venue().binding();
     let (clearing_house, after, order_count, filled_quote) = orders::close_orders(
         vault, account, registry, clearing_house, base_oracle, collateral_oracle,
-        &binding, &terms, funded, remaining, clock, ctx,
+        &binding, &terms, before, remaining, clock, ctx,
     );
 
-    complete_unwind(vault, before, option::some(funded), after, order_count, option::some(filled_quote));
+    complete_unwind(vault, before, after, order_count, option::some(filled_quote));
 
     clearing_house
 }
 
-/// The venue must price a frozen settlement with two positive, nonzero prices.
+/// The venue must have enabled settlement with two positive, nonzero prices.
 fun assert_settlement_valuation(
     enabled: bool,
     base_price: u256,
@@ -756,51 +772,28 @@ fun assert_settlement_valuation(
     );
 }
 
-/// Settles the account's funding on the venue and proves the checkpoint moved
-/// only by the funding the venue's own settlement arithmetic yields at the
-/// captured collateral price. Returns the settled checkpoint.
-fun settle_funding_for_unwind<Collateral>(
-    binding: &Binding,
-    account: &Account<Collateral>,
-    registry: &Registry,
-    clearing_house: &mut ClearingHouse<Collateral>,
-    base_oracle: &PriceFeedStorage,
-    collateral_oracle: &PriceFeedStorage,
-    before: &Checkpoint,
-    collateral_fixed: u256,
-    clock: &Clock,
-): Checkpoint {
-    clearing_house.settle_position_funding(collateral_oracle, account.account_id(), clock);
-
-    let funded = snapshot::capture_checkpoint(binding, account, registry, clearing_house, base_oracle, collateral_oracle);
-    before.classify_change(&funded, collateral_fixed).assert_expected();
-
-    funded
-}
-
 /// Advances terminal checkpoint/event state only after an attributable close has completed.
 fun complete_unwind<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     before: Checkpoint,
-    funded: Option<Checkpoint>,
     after: Checkpoint,
     order_count: u64,
     filled_quote: Option<u256>,
 ) {
     vault.state().assert_unwinding();
     if (filled_quote.is_none()) {
-        assert!(funded.is_none() && order_count == 0, blast_boosts_aftermath::errors::terminal_venue_unsettled!());
+        assert!(order_count == 0, blast_boosts_aftermath::errors::terminal_venue_unsettled!());
         before.assert_direct_settlement_checkpoint(&after);
     } else {
         assert!(
-            funded.is_some() && order_count > 0 && order_count <= constants::max_active_orders!(),
+            order_count > 0 && order_count <= constants::max_active_orders!(),
             blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
         );
     };
 
     vault.venue_mut().replace_checkpoint(after);
 
-    events::unwind_progress<Product>(vault.id(), before, funded, after, order_count, filled_quote);
+    events::unwind_progress<Product>(vault.id(), before, after, order_count, filled_quote);
 }
 
 /// Settles the core on the proven withdrawal, then seals the recovered coin as
@@ -944,7 +937,7 @@ public fun apply_post_capture_for_testing<Product, Collateral>(
     checkpoint: Checkpoint,
     change: CheckpointChange,
 ) {
-    apply_post_capture(vault, checkpoint, checkpoint::unchanged_change(), change);
+    apply_post_capture(vault, checkpoint, change);
 }
 
 #[test_only]
@@ -954,19 +947,18 @@ public fun apply_post_captures_for_testing<Product, Collateral>(
     preexisting_change: CheckpointChange,
     local_change: CheckpointChange,
 ) {
-    apply_post_capture(vault, checkpoint, preexisting_change, local_change);
+    apply_post_capture(vault, checkpoint, preexisting_change.net_funding(local_change));
 }
 
 #[test_only]
 public fun complete_unwind_for_testing<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     before: Checkpoint,
-    funded: Option<Checkpoint>,
     after: Checkpoint,
     order_count: u64,
     filled_quote: Option<u256>,
 ) {
-    complete_unwind(vault, before, funded, after, order_count, filled_quote);
+    complete_unwind(vault, before, after, order_count, filled_quote);
 }
 
 #[test_only]
@@ -984,7 +976,7 @@ use authority_cap::authority::{ADMIN, AuthorityCap};
 
 use blast_boosts_aftermath::{
     blast_boost::BlastBoost,
-    checkpoint::{Self, Checkpoint, CheckpointChange},
+    checkpoint::{Checkpoint, CheckpointChange},
     constants,
     events,
     orders,

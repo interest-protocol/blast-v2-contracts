@@ -61,7 +61,7 @@ fun terminal_claim_quote_conserves_zero_dust_and_maximum_cash_for_both_sides() {
         assert_eq!(state.shutdown_claim_quote(maximum, maximum, 0, maximum, maximum), maximum);
         state.destroy_for_testing();
     });
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -73,7 +73,7 @@ fun terminal_partial_dust_requires_combining_native_shares() {
     state.finalize_shutdown(7, 2);
     state.shutdown_claim_quote(1, 7, 2, 1, 0);
     destroy(state);
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -85,7 +85,7 @@ fun terminal_zero_pool_requires_explicit_zero_minimum() {
     state.finalize_shutdown(7, 2);
     state.shutdown_claim_quote(0, 7, 2, 5, 1);
     destroy(state);
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -97,7 +97,7 @@ fun terminal_claim_cannot_include_locked_seed() {
     state.finalize_shutdown(7, 2);
     state.shutdown_claim_quote(13, 7, 2, 6, 0);
     destroy(state);
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -108,7 +108,7 @@ fun terminal_supply_below_locked_seed_fails_closed() {
     state.begin_shutdown();
     state.finalize_shutdown(1, 2);
     destroy(state);
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -130,7 +130,7 @@ fun unwind_uses_the_frozen_emergency_bound_without_a_nav_input_for_both_sides() 
         state.assert_execution(true, 1_000_000_000, 950_000_000);
         state.destroy_for_testing();
     });
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -142,7 +142,7 @@ fun ordinary_unwind_never_falls_back_to_a_stale_price() {
     state.unwind_constraints(observation::new_price(1_000_000_000, 0, 0),
         observation::new_price(1_000_000_000, 0, 0), LOT_SIZE, REFERENCE_TIME_MS);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -154,7 +154,7 @@ fun settled_cash_cannot_reopen_a_funding_buffer() {
     state.finalize_shutdown(5, 2);
     state.settle_funding(observation::funding_credit(1));
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -165,7 +165,7 @@ fun invalid_rebalance_fee_precedes_invalid_observation() {
     let invalid = standard_observation(policy::long()).with_observed_side(policy::short());
     destroy(state.prepare_rebalance(invalid.into_position_observation(), 10_001, REFERENCE_TIME_MS));
     destroy(state);
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -176,7 +176,7 @@ fun mint_outside_band_precedes_deposit_arithmetic() {
     let plan = state.prepare_mint(standard_observation(policy::long()).with_notional(1_000_000).into_position_observation(), 0, 1_000_000, 1, REFERENCE_TIME_MS);
     destroy(plan);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -187,7 +187,7 @@ fun mint_completion_rejects_missing_attributable_fill() {
     let plan = state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1_000_000, 1_000_000, 1, REFERENCE_TIME_MS);
     state.complete_mint(plan, standard_observation(policy::long()).into_position_observation(), REFERENCE_TIME_MS);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -199,7 +199,7 @@ fun redemption_rejects_output_one_above_net() {
     let plan = state.prepare_redemption(before.into_position_observation(), 500_000, 1_000_000, 499_501, REFERENCE_TIME_MS);
     state.complete_redemption(plan, before.with_position_base(1_000_000_000).into_position_observation(), REFERENCE_TIME_MS);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -211,7 +211,7 @@ fun mint_amount_supply_swap_cannot_satisfy_the_original_minimum() {
     let plan = state.prepare_mint(before.into_position_observation(), 1_000_000, 500_000, 600_000, REFERENCE_TIME_MS);
     state.complete_mint(plan, before.with_venue_equity(2_098_000).with_position_base(3_998_000_000).into_position_observation(), REFERENCE_TIME_MS);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -222,7 +222,7 @@ fun redemption_shares_supply_swap_is_rejected() {
     let plan = state.prepare_redemption(standard_observation(policy::long()).into_position_observation(), 1_000_000, 500_000, 1, REFERENCE_TIME_MS);
     destroy(plan);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -265,7 +265,7 @@ fun nav_cap_setter_replaces_the_initial_cap_and_returns_the_previous_one() {
     assert_eq!(state.nav_cap_for_testing(), NAV_CAP / 2);
     assert!(!state.is_within_nav_cap_for_testing(NAV_CAP / 2 + 1));
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -307,7 +307,7 @@ fun live_fee_setter_accepts_each_exact_immutable_cap() {
     let (mint, redeem, admin) = state.fee_settings();
     assert_eq!(vector[mint, redeem, admin], vector[100, 200, 3_000]);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -334,7 +334,7 @@ fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
             state.destroy_for_testing();
         });
     });
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -346,7 +346,7 @@ fun active_redemption_rejects_a_stale_price() {
     invalid.base_publish_time_ms = 0;
     destroy(state.prepare_redemption(invalid.into_position_observation(), 500_000, HEALTH_SHARE_SUPPLY, 1, REFERENCE_TIME_MS));
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -356,7 +356,7 @@ fun fee_update_cannot_raise_the_immutable_cap() {
     let mut state = initialized_state(&fixture, policy::long());
     state.set_fees(11, 10, 0);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -366,7 +366,7 @@ fun fee_update_rejects_an_unchanged_tuple() {
     let mut state = initialized_state(&fixture, policy::long());
     state.set_fees(10, 10, 0);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -376,7 +376,20 @@ fun mint_rejects_input_consumed_by_rounded_fee_before_sizing_exposure() {
     let state = initialized_state(&fixture, policy::long());
     destroy(state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1, HEALTH_SHARE_SUPPLY, 0, REFERENCE_TIME_MS));
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
+}
+
+#[test]
+fun a_rebalance_plan_reports_whether_it_buys_or_sells() {
+    let fixture = start(domain::vault_issuer_role());
+    let state = rebalance_state(&fixture, policy::long());
+    let buying = state.prepare_rebalance(rebalance_observation(1_100_000, 1_000_000, policy::long()), 10, REFERENCE_TIME_MS);
+    let selling = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_TIME_MS);
+    assert!(buying.is_increasing() && !selling.is_increasing());
+    destroy(buying);
+    destroy(selling);
+    state.destroy_for_testing();
+    fixture.end();
 }
 
 #[test]
@@ -398,7 +411,7 @@ fun rebalance_increase_reserves_cost_and_keeps_buffer_unchanged() {
     assert!(increased);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 /// An emergency reduction ends the moment leverage is no longer above the hard
@@ -420,7 +433,7 @@ fun rebalance_short_emergency_reduction_stops_once_leverage_is_below_the_cap() {
     state.complete_rebalance(plan);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -441,7 +454,7 @@ fun rebalance_one_rational_atom_below_lower_is_not_hidden_by_report_rounding() {
     state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_100_001, 1_600_002, policy::long()), 1_000, REFERENCE_TIME_MS);
     state.complete_rebalance(plan);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -454,7 +467,7 @@ fun rebalance_reduction_without_leverage_improvement_rejects() {
     state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_000_000, 2_700_000, policy::long()), 300_000_000, REFERENCE_TIME_MS);
     state.complete_rebalance(plan);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -467,7 +480,7 @@ fun rebalance_increase_rejects_post_cost_target_overshoot() {
     state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_089_225, 1_978_452, policy::long()), 978_452_000, REFERENCE_TIME_MS);
     state.complete_rebalance(plan);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -479,7 +492,7 @@ fun rebalance_hard_threshold_equality_does_not_enable_wide_tolerance() {
     state.assert_execution(state.next_rebalance_order(&plan).is_emergency(), 100, 102);
     state.complete_rebalance(plan);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -494,7 +507,7 @@ fun a_flat_short_product_redeems_without_inventing_a_long_position() {
     assert_eq!(vector[net, admin], vector[499_500, 0]);
     assert_eq!(fee, 500);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -520,7 +533,7 @@ fun redemption_keeps_remaining_nav_and_allocates_its_own_fee() {
     assert_eq!(state.maintenance_reserve(), 100_498);
     assert_eq!(final_equity - state.maintenance_reserve(), 500_000);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 /// A fill that raises NAV by more than the deposit net of the fee credits exactly
@@ -551,7 +564,7 @@ fun mint_credits_at_most_the_deposit_net_of_fee_when_the_fill_is_favorable() {
     let nav_after = 2_102_000 - state.maintenance_reserve();
     assert!((nav_after as u128) * (HEALTH_SHARE_SUPPLY as u128) > (SEED_NAV as u128) * ((HEALTH_SHARE_SUPPLY + shares) as u128));
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 /// A sell that leaves more NAV than the pre-sell reading pays exactly the
@@ -580,7 +593,7 @@ fun redemption_pays_at_most_the_proportional_claim_when_the_sell_is_favorable() 
     // Remaining holders keep 502_000 over 500_000 shares, above the 500_000 proportional keep.
     assert_eq!(final_equity - state.maintenance_reserve(), 502_000);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -608,7 +621,7 @@ fun mint_prices_actual_contribution_after_the_attributable_cost() {
     assert_eq!(state.maintenance_reserve(), 101_000);
     assert!((1_997_000u128) * 1_000_000 >= 1_000_000u128 * (1_000_000 + shares as u128));
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -629,7 +642,7 @@ fun fee_updates_change_future_allocations_without_relabeling_the_buffer() {
     assert_eq!(vector[fee, admin, buffer], vector[4_000, 1_200, 2_800]);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -637,9 +650,9 @@ fun an_issuance_reads_the_frozen_side() {
     let fixture = start(domain::vault_issuer_role());
     let issuance = issued(&fixture, policy::short());
 
-    assert_eq!(issuance.side(), policy::short());
+    assert_eq!(issuance.seed_side(), policy::short());
     destroy(issuance);
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -660,7 +673,7 @@ fun flat_seed_preflight_returns_authenticated_order_inputs() {
     assert_eq!(seed_position.base(), 0);
     assert_eq!(seed_position.notional(), 0);
     destroy(issuance);
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -668,10 +681,10 @@ fun initialization_strict_execution_uses_the_frozen_tolerance() {
     let fixture = start(domain::vault_issuer_role());
     let issuance = issued(&fixture, policy::long());
 
-    issuance.assert_execution(1_000_000, 1_010_000);
+    issuance.assert_seed_execution(1_000_000, 1_010_000);
 
     destroy(issuance);
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -682,10 +695,10 @@ fun initialization_strict_execution_rejects_one_unit_past_tolerance() {
     let fixture = start(domain::vault_issuer_role());
     let issuance = issued(&fixture, policy::long());
 
-    issuance.assert_execution(1_000_000, 1_010_001);
+    issuance.assert_seed_execution(1_000_000, 1_010_001);
 
     destroy(issuance);
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -701,7 +714,7 @@ fun an_authorized_issuance_activates_into_the_issued_terms() {
     assert_eq!(state.max_order_notional_for_testing(), MAX_ORDER_NOTIONAL);
 
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -714,7 +727,7 @@ fun issuance_requires_the_vault_issuer_role() {
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
 
     destroy(state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6));
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -726,7 +739,7 @@ fun max_order_notional_must_be_positive() {
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
 
     destroy(state::issue<Product>(&witness, standard_vault_policy(), 0, NAV_CAP, 9, 6));
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -740,7 +753,7 @@ fun max_order_notional_moves_both_directions_and_returns_the_previous_value() {
     assert_eq!(state.max_order_notional_for_testing(), std::u64::max_value!());
 
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -756,7 +769,7 @@ fun max_order_notional_rejects_the_current_value() {
     state.set_max_order_notional(MAX_ORDER_NOTIONAL);
 
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -771,7 +784,7 @@ fun max_order_notional_rejects_zero() {
     state.set_max_order_notional(0);
 
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -784,7 +797,7 @@ fun active_state_begins_shutdown() {
 
     assert!(state.is_unwinding_for_testing());
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 // --- Initialization ---
@@ -798,7 +811,7 @@ fun valid_long_seed_activates_and_records_only_the_reserve() {
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     assert!(state.is_active_for_testing());
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -809,7 +822,7 @@ fun valid_short_seed_activates() {
     assert_eq!(seed_nav, SEED_NAV);
     assert!(state.is_active_for_testing());
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -831,7 +844,7 @@ fun initialization_admits_nav_cap_equality() {
     assert_eq!(seed_nav, NAV_CAP);
 
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -848,7 +861,7 @@ fun initialization_admits_both_healthy_leverage_boundaries() {
     assert!(upper.is_active_for_testing());
     lower.destroy_for_testing();
     upper.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -1143,7 +1156,7 @@ fun an_order_at_the_live_maximum_is_allowed() {
     state.assert_order_notional_allowed(MAX_ORDER_NOTIONAL);
 
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -1157,7 +1170,7 @@ fun an_order_one_unit_above_the_live_maximum_is_rejected() {
     state.assert_order_notional_allowed(MAX_ORDER_NOTIONAL + 1);
 
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 // --- Funding Settlement ---
@@ -1235,7 +1248,7 @@ fun a_credit_repays_the_uncovered_deficit_before_rebuilding_the_reserve() {
     assert_eq!(vector[state.maintenance_reserve(), state.uncovered_deficit()], vector[250_000, 0]);
 
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 /// Two exhausting costs accumulate one deficit, and an over-repaying credit
@@ -1256,7 +1269,7 @@ fun deficits_accumulate_and_an_over_repaying_credit_splits() {
     assert_eq!(vector[state.maintenance_reserve(), state.uncovered_deficit()], vector[15_000, 0]);
 
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 // --- Reserve Ceiling ---
@@ -1268,7 +1281,7 @@ fun a_seed_reserve_above_the_ceiling_cannot_activate() {
     let fixture = start(domain::vault_issuer_role());
     let (state, _) = activate_with(capped_issuance(&fixture, 400), standard_observation(policy::long()), SEED_RESERVE);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 /// A seed reserve exactly at the ceiling activates; the ceiling is inclusive.
@@ -1279,7 +1292,7 @@ fun a_seed_reserve_at_the_ceiling_activates() {
     assert_eq!(seed_nav, SEED_NAV);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 /// A redemption that shrinks notional below what the reserve needs releases the
@@ -1308,7 +1321,7 @@ fun redemption_releases_reserve_above_the_ceiling_for_the_smaller_position() {
     assert_eq!(state.maintenance_reserve(), 50_000);
     assert_eq!(final_equity - state.maintenance_reserve(), 552_500);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 /// A reserve left above the ceiling by a funding credit is priced as released
@@ -1340,7 +1353,7 @@ fun a_mint_prices_shares_after_releasing_reserve_above_the_ceiling() {
     // The fee rebuilds the reserve from the ceiling, not from the stale 150_000.
     assert_eq!(state.maintenance_reserve(), 101_000);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 /// A donation is never rejected: the part above the ceiling counts as NAV.
@@ -1354,7 +1367,7 @@ fun a_donation_above_the_ceiling_is_accepted_and_the_excess_is_nav() {
     );
     assert_eq!(state.maintenance_reserve(), 100_000);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 /// A flat position has nothing to size the ceiling against and keeps its reserve.
@@ -1366,7 +1379,7 @@ fun a_flat_position_keeps_the_reserve_for_the_position_that_reopens() {
     state.donate(flat.with_venue_equity(SEED_VENUE_EQUITY + 70_000).into_position_observation(), 70_000, REFERENCE_TIME_MS);
     assert_eq!(state.maintenance_reserve(), 170_000);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 // --- Invariant ---
@@ -1404,7 +1417,7 @@ fun issuance_admits_both_decimals_at_the_maximum() {
     assert_eq!(target_base, SEED_NOTIONAL);
     assert_eq!(max_order_base, 0);
     destroy(issuance);
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -1445,7 +1458,7 @@ fun flat_seed_preflight_floors_the_order_cap_to_whole_lots() {
     assert_eq!(seed_position.equity(), SEED_VENUE_EQUITY);
     assert_eq!(seed_position.base_price(), 3_000_000_000);
     destroy(issuance);
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -1453,10 +1466,10 @@ fun a_seed_order_at_the_maximum_is_allowed() {
     let fixture = start(domain::vault_issuer_role());
     let issuance = issued(&fixture, policy::long());
 
-    issuance.assert_order_notional_allowed(MAX_ORDER_NOTIONAL);
+    issuance.assert_seed_order_notional_allowed(MAX_ORDER_NOTIONAL);
 
     destroy(issuance);
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -1464,7 +1477,7 @@ fun a_seed_order_at_the_maximum_is_allowed() {
 fun a_seed_order_one_unit_above_the_maximum_is_rejected() {
     let fixture = start(domain::vault_issuer_role());
     let issuance = issued(&fixture, policy::long());
-    issuance.assert_order_notional_allowed(MAX_ORDER_NOTIONAL + 1);
+    issuance.assert_seed_order_notional_allowed(MAX_ORDER_NOTIONAL + 1);
     abort
 }
 
@@ -1501,7 +1514,7 @@ fun activation_returns_the_priced_seed_position() {
     assert_eq!(seeded.base_price(), 1_000_000_000);
     assert_eq!(seeded.collateral_price(), 1_000_000_000);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -1511,7 +1524,7 @@ fun an_active_state_reads_the_frozen_side() {
 
     assert_eq!(state.side(), policy::short());
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 // --- Live Order Cap ---
@@ -1528,7 +1541,7 @@ fun max_order_base_floors_the_live_cap_to_whole_lots() {
     state.set_max_order_notional(1);
     assert_eq!(state.max_order_base(&seeded), 0);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 // --- Execution Bounds ---
@@ -1550,7 +1563,7 @@ fun ordinary_execution_admits_the_exact_bound() {
     state.assert_execution(false, 1_000_000_000, 1_010_000_000);
 
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 // --- Mint Preparation ---
@@ -1585,7 +1598,7 @@ fun mint_admits_both_band_endpoints() {
     destroy(lower);
     destroy(upper);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 /// A zero deposit dies in the fee allocation, before the contribution is sized.
@@ -1670,7 +1683,7 @@ fun a_mint_landing_exactly_on_the_nav_cap_is_accepted() {
     assert_eq!(shares, 997_000);
     assert_eq!(state.maintenance_reserve(), 101_000);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -1733,7 +1746,7 @@ fun a_mint_fee_above_the_ceiling_is_released_to_holders() {
     let nav_after = 2_100_000 - state.maintenance_reserve();
     assert!((nav_after as u128) * (HEALTH_SHARE_SUPPLY as u128) >= (seed_nav as u128) * ((HEALTH_SHARE_SUPPLY + shares) as u128));
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 // --- Redemption Preparation ---
@@ -1816,7 +1829,7 @@ fun a_redemption_with_an_admin_share_splits_the_fee() {
     assert_eq!(vector[net, admin, fee, reserve_fee], vector[497_502, 249, 498, 249]);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE + 249);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 // --- Rebalance Preparation ---
@@ -1834,7 +1847,7 @@ fun a_venue_fee_of_exactly_the_denominator_is_usable() {
     assert!(!order.is_increase() && !order.is_emergency());
     destroy(plan);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 // --- Rebalance Orders ---
@@ -1863,7 +1876,7 @@ fun a_reduction_that_crosses_the_cap_mid_plan_keeps_the_ordinary_bound() {
     assert!(state.next_rebalance_order(&fresh).is_emergency());
     destroy(fresh);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -1963,7 +1976,7 @@ fun a_reduction_reaching_target_ends_the_plan() {
     assert_eq!(vector[before_equity, after_equity, before_base, after_base], vector[1_100_000, 1_100_000, 3_000_000_000, 2_000_000_000]);
     assert!(!increased);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 // --- Funding Overflow ---
@@ -2025,10 +2038,20 @@ fun a_donation_under_the_ceiling_is_credited_in_full() {
 
     assert_eq!(state.maintenance_reserve(), 170_000);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 // --- Unwind ---
+
+#[test]
+#[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
+fun an_ordinary_operation_is_refused_once_unwinding() {
+    let fixture = start(domain::vault_issuer_role());
+    let mut state = initialized_state(&fixture, policy::long());
+    state.set_unwinding_for_testing();
+    state.assert_active();
+    abort
+}
 
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
@@ -2084,7 +2107,7 @@ fun unwind_floors_the_order_cap_to_whole_lots() {
 
     assert_eq!(max_order_base, 248_000);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 // --- Settlement ---
@@ -2168,7 +2191,7 @@ fun a_fee_update_that_changes_only_the_admin_share_is_accepted() {
     let (mint, redeem, admin) = state.fee_settings();
     assert_eq!(vector[mint, redeem, admin], vector[10, 10, 3_000]);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -2181,7 +2204,7 @@ fun max_order_notional_updates_in_every_lifecycle_state() {
     assert_eq!(state.set_max_order_notional(750), 500);
     assert_eq!(state.max_order_notional_for_testing(), 750);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 /// Lowering the cap under the live NAV is allowed and only blocks the next mint.
@@ -2234,7 +2257,7 @@ fun a_priced_operation_admits_equity_that_covers_the_admitted_reserve() {
     assert!(net > 0);
     assert!(state.maintenance_reserve() <= 100_000);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 /// Equity at or below the admitted reserve is still refused.
@@ -2248,7 +2271,7 @@ fun a_priced_operation_is_refused_when_equity_only_covers_the_admitted_reserve()
     abort
 }
 
-// === Fixture Setup ===
+// === Test Helpers ===
 
 fun rebalance_state(fixture: &Fixture, side: PositionSide): State<Product> {
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
@@ -2270,7 +2293,7 @@ fun rebalance_endpoint(notional: u64) {
     let plan = state.prepare_rebalance(rebalance_observation(1_100_000, notional, policy::long()), 10, REFERENCE_TIME_MS);
     state.complete_rebalance(plan);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 fun start(roles: u64): Fixture {
@@ -2288,6 +2311,14 @@ fun start(roles: u64): Fixture {
     let admin_cap = scenario.take_from_sender<AdminCap<BLAST_BOOSTS_CORE>>();
 
     Fixture { scenario, authority, super_admin_cap, admin_cap }
+}
+
+fun end(self: Fixture) {
+    let Fixture { scenario, authority, super_admin_cap, admin_cap } = self;
+    destroy(authority);
+    destroy(super_admin_cap);
+    destroy(admin_cap);
+    scenario.end();
 }
 
 fun standard_vault_policy(): VaultPolicy {
@@ -2381,7 +2412,7 @@ fun initialize_once(spec: ObservationSpec, side: PositionSide, seed_reserve: u64
     let (state, _) = activate_with(issued(&fixture, side), spec, seed_reserve);
 
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 /// The standard 1_000_000 deposit against the seed: 999_000 of contribution buys 1_998_000_000 of base.
@@ -2430,7 +2461,7 @@ fun accept_increase_fill_once(after: PositionObservation, filled_base: u64) {
 
     destroy(plan);
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 fun assert_funding_settlement(
@@ -2451,7 +2482,7 @@ fun assert_funding_settlement(
     assert_eq!(state.maintenance_reserve(), expected_reserve);
     assert!(state.is_active_for_testing());
     state.destroy_for_testing();
-    destroy(fixture);
+    fixture.end();
 }
 
 fun standard_observation(side: PositionSide): ObservationSpec {

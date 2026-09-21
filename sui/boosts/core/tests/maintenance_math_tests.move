@@ -1361,7 +1361,7 @@ fun a_zero_amount_is_rejected_before_an_invalid_admin_share() {
     accounting_math::fee_allocation(0, 100, 10_001);
 }
 
-// === Private Test Helpers ===
+// === Test Helpers ===
 
 /// Independent ceiling-fee formula used only by this test module.
 fun reference_fee_up(amount: u64, fee_bps: u64): u64 {
@@ -1585,7 +1585,7 @@ fun assert_split_redemption(
     );
 }
 
-// === Canonical Mint Helper ===
+// --- Canonical Mint Helper ---
 
 /// The reserve-aware mint as State performs it: fee once, reserve credited,
 /// then the production quote. Returns

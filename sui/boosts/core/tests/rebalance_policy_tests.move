@@ -310,7 +310,7 @@ fun below_max_is_strict_at_the_max_edge() {
     assert!(!value.is_leverage_below_max(30_001, 10_000));
 }
 
-// === Private Functions ===
+// === Test Helpers ===
 
 fun standard_policy(): RebalancePolicy {
     policy::new_rebalance_policy(

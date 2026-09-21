@@ -19,9 +19,9 @@ the package README or the relevant ADR and delete it here.
 
 The pure sizing formula takes a contribution. Before the trade only the
 expected contribution `deposit - fee` exists, and that is what sizes the sealed
-order through `accounting_math::mint_base_delta_from_equity_down`. After the
+order through `accounting_math::mint_base_to_buy_down`. After the
 trade the actual contribution `nav_after - nav_before` prices the shares. The
-Series must then call `assert_mint_base_within_bounds_from_equity` with both
+Series must then call `assert_mint_base_within_bounds` with both
 values and the final absolute base. Never pass the post-trade contribution as
 the sizing input, and never skip the post-fill assertion because the venue
 reported a full fill: the assertion also proves the actual contribution is not
@@ -34,7 +34,7 @@ proof.
 ### 1.2 Always supply the Series' immutable `min_order_lots`
 
 Every exposure function takes `min_order_lots`. It must come from the
-immutable `SeriesPolicy`, never from a caller or a live setter. Selecting the
+immutable `VaultPolicy`, never from a caller or a live setter. Selecting the
 value is a simulation gate, but the shape of the decision is fixed:
 
 - Relative under-exposure per mint and over-reduction per redemption are both
@@ -111,9 +111,10 @@ constant carries the message instead.
 
 ### 1.7 Compute shareholder NAV once and pass it explicitly
 
-`accounting_math` exposes its NAV-taking formulas as package functions and
-`shareholder_nav(venue_equity, reserve)` is the only way to derive their
-input. A State transition computes that NAV once at its checkpoint and passes
+`accounting_math` exposes its sizing formulas as package functions that take
+shareholder NAV, keeps the raw share quotes private behind the
+equity-and-reserve quotes, and `shareholder_nav(venue_equity, reserve)` is the
+only way to derive that input. A State transition computes that NAV once at its checkpoint and passes
 the same value to every formula it calls; it never re-derives NAV inline and
 never passes reserve-inclusive venue equity where NAV is expected. Tests call
 the formulas directly.
@@ -143,7 +144,7 @@ and is a release gate on the seed slice.
 
 ### 1.10 Run every price gate at the one operation checkpoint
 
-The `PricePolicy` type in `series_one/sources/policy.move` owns the freshness,
+The `PricePolicy` type in `sui/boosts/core/sources/policy.move` owns the freshness,
 confidence, and mark-divergence rules, but it cannot see how many times or
 against what a caller applies them. The Series and adapter must:
 
@@ -176,7 +177,7 @@ that rule: construct the lifecycle once during Vault issuance and change it
 only through `lifecycle.move`. Because a package upgrade adds modules to the
 same package, raw upgrade authority must not remain address-owned once a Vault
 can hold value. Series1 is therefore published with
-`series_one/scripts/publish_immutable.sh`, which consumes the returned
+`sui/boosts/core/scripts/publish_immutable.sh`, which consumes the returned
 `UpgradeCap` through `0x2::package::make_immutable` in the same PTB. It has no
 Publisher, package administrator, version cutover, or post-publication upgrade
 path. Series2 is a new immutable package and coin family.
@@ -275,7 +276,7 @@ remove the floor from every safety claim.
 ### 2.6 NAV cap as an admin-adjustable live value (owner: Series)
 
 The NAV cap is tied to executable book depth, not headline open interest. It
-lives in one place, `State`: issuance passes it to `state::new` beside the
+lives in one place, `State`: issuance passes it to `state::issue` beside the
 order-notional bounds, and the risk admin may move it through `set_nav_cap`, which applies the same bound as issuance
 (positive, and the max-leverage notional fits `u64`) and emits `NavCapUpdated`.
 Lowering it below current NAV only blocks further mints. The mint transition

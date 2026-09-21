@@ -122,7 +122,9 @@ public struct FundingSettled<phantom Product> has copy, drop {
 
 /// A sync found the venue in a state no vault operation explains. The accepted
 /// checkpoint stands and priced operations are refused until a later sync
-/// finds the venue explainable again; every such sync emits this event.
+/// finds the venue explainable again; every such sync emits this event. An
+/// unwind step that finds such a venue emits it too, then adopts the live
+/// state and closes what the venue holds.
 public struct CheckpointDrifted<phantom Product> has copy, drop {
     vault_id: ID,
     checkpoint: Checkpoint,
@@ -144,19 +146,19 @@ public struct ShutdownBegun<phantom Product> has copy, drop {
     reason: ShutdownReason,
 }
 
-/// Completed close-only progress with exact raw venue effects.
-/// Ordinary market closes expose the isolated funding checkpoint and filled quote.
-/// Direct frozen settlement has neither a market order nor a synthetic funding/fill attribution.
+/// Completed close-only progress with exact raw venue effects: the checkpoint
+/// the step adopted after reconciling the stored one, the checkpoint the close
+/// left, the market orders placed and the quote they filled. The venue's
+/// settlement of a closed market places no order and fills no quote.
 public struct UnwindProgress<phantom Product> has copy, drop {
     vault_id: ID,
     before: Checkpoint,
-    after_funding: Option<Checkpoint>,
     after: Checkpoint,
     market_orders: u64,
     filled_quote: Option<u256>,
 }
 
-/// Actual recovered holder cash and frozen eligible supply after venue finality.
+/// Actual recovered holder cash and fixed eligible supply after venue finality.
 public struct ShutdownFinalized<phantom Product> has copy, drop {
     vault_id: ID,
     recovered_cash: u64,
@@ -407,13 +409,12 @@ public(package) fun shutdown_begun<Product>(vault_id: ID, reason: ShutdownReason
 public(package) fun unwind_progress<Product>(
     vault_id: ID,
     before: Checkpoint,
-    after_funding: Option<Checkpoint>,
     after: Checkpoint,
     market_orders: u64,
     filled_quote: Option<u256>,
 ) {
     emit_event(UnwindProgress<Product> {
-        vault_id, before, after_funding, after, market_orders, filled_quote,
+        vault_id, before, after, market_orders, filled_quote,
     });
 }
 
@@ -636,8 +637,8 @@ public fun shutdown_begun_vault_id<Product>(
 #[test_only]
 public fun unwind_progress_fields<Product>(
     self: &UnwindProgress<Product>,
-): (ID, Checkpoint, Option<Checkpoint>, Checkpoint, u64, Option<u256>) {
-    (self.vault_id, self.before, self.after_funding, self.after, self.market_orders, self.filled_quote)
+): (ID, Checkpoint, Checkpoint, u64, Option<u256>) {
+    (self.vault_id, self.before, self.after, self.market_orders, self.filled_quote)
 }
 
 #[test_only]

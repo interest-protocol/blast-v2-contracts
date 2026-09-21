@@ -258,18 +258,17 @@ fun finalization_cannot_recover_or_pay_the_seed_funder_twice() {
 fun completed_direct_settlement_reports_actual_cash_and_no_market_order() {
     let mut fixture = start();
     let before = checkpoint::checkpoint_for_testing(0, 0, 1, 1, 11, 21, 11, 21, LOT_SIZE,
-        0, 0, 0, 0, true, 1, 1, 1);
+        0, 0, 0, 1, false, 1, 1, 1);
     let after = checkpoint::checkpoint_for_testing(5, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
-        0, 0, 0, 0, true, 1, 1, 1);
+        0, 0, 0, 1, false, 1, 1, 1);
     let mut vault = issue_and_activate(&mut fixture, before);
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
-    operations::complete_unwind_for_testing(&mut vault, before, option::none(), after, 0, option::none());
+    operations::complete_unwind_for_testing(&mut vault, before, after, 0, option::none());
     let event = events::collect_one<events::UnwindProgress<Product>>(0);
-    let (id, observed, funded, actual, orders, quote) = event.unwind_progress_fields();
+    let (id, observed, actual, orders, quote) = event.unwind_progress_fields();
     assert_eq!(id, vault.id());
     assert_eq!(observed, before);
-    assert!(funded.is_none());
     assert_eq!(actual, after);
     assert_eq!(orders, 0);
     assert!(quote.is_none());
@@ -2263,19 +2262,18 @@ fun funding_settles_while_unwinding_and_aborts_once_settled() {
 }
 
 #[test]
-fun completed_market_unwind_step_records_the_funded_checkpoint_orders_and_quote() {
+fun completed_market_unwind_step_records_the_checkpoints_orders_and_quote() {
     let mut fixture = start();
     let before = initial_checkpoint();
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
     let mut vault = issue_and_begin_shutdown(&mut fixture, before);
 
-    operations::complete_unwind_for_testing(&mut vault, before, option::some(before), after, 3, option::some(1_500));
+    operations::complete_unwind_for_testing(&mut vault, before, after, 3, option::some(1_500));
 
-    let (id, observed, funded, actual, orders, quote) =
+    let (id, observed, actual, orders, quote) =
         events::collect_one<events::UnwindProgress<Product>>(0).unwind_progress_fields();
     assert_eq!(id, vault.id());
     assert_eq!(observed, before);
-    assert_eq!(funded, option::some(before));
     assert_eq!(actual, after);
     assert_eq!(orders, 3);
     assert_eq!(quote, option::some(1_500));
@@ -2294,10 +2292,10 @@ fun completed_market_unwind_step_accepts_the_maximum_order_count() {
     let mut vault = issue_and_begin_shutdown(&mut fixture, before);
 
     operations::complete_unwind_for_testing(
-        &mut vault, before, option::some(before), after, constants::max_active_orders!(), option::some(1_500),
+        &mut vault, before, after, constants::max_active_orders!(), option::some(1_500),
     );
 
-    let (_, _, _, _, orders, _) = events::collect_one<events::UnwindProgress<Product>>(0).unwind_progress_fields();
+    let (_, _, _, orders, _) = events::collect_one<events::UnwindProgress<Product>>(0).unwind_progress_fields();
     assert_eq!(orders, 16);
     assert_eq!(*vault.venue().checkpoint(), after);
     destroy(vault);
@@ -2312,7 +2310,7 @@ fun completed_market_unwind_step_rejects_one_order_past_the_maximum() {
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
     let mut vault = issue_and_begin_shutdown(&mut fixture, before);
     operations::complete_unwind_for_testing(
-        &mut vault, before, option::some(before), after, constants::max_active_orders!() + 1, option::some(1_500),
+        &mut vault, before, after, constants::max_active_orders!() + 1, option::some(1_500),
     );
     destroy(vault);
     fixture.end();
@@ -2325,32 +2323,7 @@ fun completed_market_unwind_step_rejects_a_quote_without_orders() {
     let before = initial_checkpoint();
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
     let mut vault = issue_and_begin_shutdown(&mut fixture, before);
-    operations::complete_unwind_for_testing(&mut vault, before, option::some(before), after, 0, option::some(1_500));
-    destroy(vault);
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::operations)]
-fun completed_market_unwind_step_rejects_a_missing_funded_checkpoint() {
-    let mut fixture = start();
-    let before = initial_checkpoint();
-    let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
-    let mut vault = issue_and_begin_shutdown(&mut fixture, before);
-    operations::complete_unwind_for_testing(&mut vault, before, option::none(), after, 1, option::some(1_500));
-    destroy(vault);
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::operations)]
-fun completed_direct_settlement_rejects_a_funded_checkpoint() {
-    let mut fixture = start();
-    let before = frozen_checkpoint();
-    let mut vault = issue_and_begin_shutdown(&mut fixture, before);
-    operations::complete_unwind_for_testing(
-        &mut vault, before, option::some(before), settled_flat_checkpoint(), 0, option::none(),
-    );
+    operations::complete_unwind_for_testing(&mut vault, before, after, 0, option::some(1_500));
     destroy(vault);
     fixture.end();
 }
@@ -2359,20 +2332,20 @@ fun completed_direct_settlement_rejects_a_funded_checkpoint() {
 #[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::operations)]
 fun completed_direct_settlement_rejects_a_market_order() {
     let mut fixture = start();
-    let before = frozen_checkpoint();
+    let before = closed_checkpoint();
     let mut vault = issue_and_begin_shutdown(&mut fixture, before);
-    operations::complete_unwind_for_testing(&mut vault, before, option::none(), settled_flat_checkpoint(), 1, option::none());
+    operations::complete_unwind_for_testing(&mut vault, before, settled_flat_checkpoint(), 1, option::none());
     destroy(vault);
     fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
-fun completed_direct_settlement_rejects_an_unfrozen_market() {
+fun completed_direct_settlement_rejects_an_unpaused_market() {
     let mut fixture = start();
     let before = initial_checkpoint();
     let mut vault = issue_and_begin_shutdown(&mut fixture, before);
-    operations::complete_unwind_for_testing(&mut vault, before, option::none(), settled_flat_checkpoint(), 0, option::none());
+    operations::complete_unwind_for_testing(&mut vault, before, settled_flat_checkpoint(), 0, option::none());
     destroy(vault);
     fixture.end();
 }
@@ -2384,7 +2357,7 @@ fun unwind_progress_is_rejected_while_active() {
     let before = initial_checkpoint();
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
     let mut vault = issue_and_activate(&mut fixture, before);
-    operations::complete_unwind_for_testing(&mut vault, before, option::some(before), after, 3, option::some(1_500));
+    operations::complete_unwind_for_testing(&mut vault, before, after, 3, option::some(1_500));
     destroy(vault);
     fixture.end();
 }
@@ -2566,16 +2539,16 @@ fun terminal_checkpoint(): Checkpoint {
         0, 0, 0, 0, false, 1, 1, 1)
 }
 
-/// A frozen market still holding one unit of base, before a direct settlement.
-fun frozen_checkpoint(): Checkpoint {
+/// A closed market, paused with settlement enabled, still holding one unit of base.
+fun closed_checkpoint(): Checkpoint {
     checkpoint::checkpoint_for_testing(0, 0, 1, 1, 11, 21, 11, 21, LOT_SIZE,
-        0, 0, 0, 0, true, 1, 1, 1)
+        0, 0, 0, 1, false, 1, 1, 1)
 }
 
-/// The flat, order-free venue a direct settlement of `frozen_checkpoint` leaves, with its cash released.
+/// The flat, order-free venue the settlement of `closed_checkpoint` leaves, with its cash released.
 fun settled_flat_checkpoint(): Checkpoint {
     checkpoint::checkpoint_for_testing(5, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
-        0, 0, 0, 0, true, 1, 1, 1)
+        0, 0, 0, 1, false, 1, 1, 1)
 }
 
 /// The venue after a reduce-only fill halved the position at a quote the venue chose.
@@ -3097,7 +3070,7 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
         active_position_for_side(10_997, 21_780, side), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
     replay_mint(&mut replay, events::collect_one<events::Minted<Tag>>(0));
     let dirty = checkpoint::checkpoint_for_testing(13, 0, 1, 1, 11, 21, 11, 21, LOT_SIZE,
-        0, 0, 0, 0, true, 1, 1, 1);
+        0, 0, 0, 1, false, 1, 1, 1);
     apply_connected_change(&mut vault, dirty, checkpoint::unexpected_change());
     replay_drift(&mut replay, events::collect<events::CheckpointDrifted<Tag>>()[0]);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::observed_venue_change_reason());
@@ -3105,15 +3078,15 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     assert_eq!(shutdown.shutdown_reason(), blast_boosts_core::lifecycle::observed_venue_change_reason());
     replay_shutdown(&mut replay, shutdown);
     let flat = checkpoint::checkpoint_for_testing(12, 1_000_000_000_001, 0, 0, 11, 21, 11, 21, LOT_SIZE,
-        0, 0, 0, 0, true, 1, 1, 1);
-    operations::complete_unwind_for_testing(&mut vault, dirty, option::none(), flat, 0, option::none());
-    let (_, before, _, after, orders, quote) = events::collect_one<events::UnwindProgress<Tag>>(0).unwind_progress_fields();
+        0, 0, 0, 1, false, 1, 1, 1);
+    operations::complete_unwind_for_testing(&mut vault, dirty, flat, 0, option::none());
+    let (_, before, after, orders, quote) = events::collect_one<events::UnwindProgress<Tag>>(0).unwind_progress_fields();
     assert_eq!(before, dirty);
     assert_eq!(orders, 0);
     assert!(quote.is_none());
     replay.checkpoint = option::some(after);
     let final_checkpoint = checkpoint::checkpoint_for_testing(0, 1, 0, 0, 11, 21, 11, 21, LOT_SIZE,
-        0, 0, 0, 0, true, 1, 1, 1);
+        0, 0, 0, 1, false, 1, 1, 1);
     let recovered = sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!());
     flat.assert_terminal_withdrawal_checkpoint_decoded_for_testing(&final_checkpoint, recovered.value(), false, 1_000_000_000_001);
     operations::complete_finalization_for_testing(&mut vault, final_checkpoint, recovered);

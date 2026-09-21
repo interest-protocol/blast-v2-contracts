@@ -105,12 +105,13 @@ public fun make_immutable(
     self.custody.make_immutable(self.id.to_inner());
 }
 
+// === Test-Only Functions ===
+
+#[test_only]
 /// Reports whether native upgrade authority remains sealed in custody.
-public fun has_upgrade_cap(self: &PackageAdmin): bool {
+public fun has_upgrade_cap_for_testing(self: &PackageAdmin): bool {
     self.custody.has_upgrade_cap()
 }
-
-// === Test-Only Functions ===
 
 #[test_only]
 /// Creates unshared custody around this package's simulated capabilities.

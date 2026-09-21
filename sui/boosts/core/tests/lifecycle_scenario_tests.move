@@ -985,7 +985,7 @@ fun terminal_claims_pay_every_eligible_share_pro_rata() {
     vault.destroy();
 }
 
-// === Private Test Helpers ===
+// === Test Helpers ===
 
 /// Walks the price up one basis point at a time from the seed price until leverage
 /// first reads below the band, and restores the seed price before returning.

@@ -148,7 +148,7 @@ const ETerminalVenueUnsettled: u64 = 33;
 const EInvalidUnwindExposure: u64 = 34;
 
 #[test_only]
-/// A priced operation found the venue with open orders, unsafe margin, or a paused or frozen market.
+/// The venue cannot serve the operation: open orders, unsafe margin, a paused market, or a frozen clearing house.
 const EVenueNotReady: u64 = 35;
 
 #[test_only]

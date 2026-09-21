@@ -152,6 +152,151 @@ tolerance check was considered and not adopted: a different property (two
 sources, two update times) needing tolerance parameters, from the same
 publisher network as Lazer.
 
+## Finding applied with the shutdown reconciliation change (2026-09-20, evening)
+
+### F5. A frozen clearing house cannot settle; a closed one can
+
+`freeze_clearing_house` (clearing house 1196–1226) adds the `frozen_version`
+dynamic field and writes `version := u64::MAX`; `unfreeze_clearing_house`
+(1152–1184) removes the field and restores the stored version.
+`assert_package_version` (8510–8519) requires `version <= 1` and runs first in
+every mutator, `close_position_at_settlement_prices` (2806–2808) included. So
+while a clearing house is frozen nothing can be called on it, the settlement
+close included, and `is_frozen` is not the terminal predicate.
+
+The venue's terminal path is a *closed* market. `close_market` (1407–1445)
+writes `paused := 1`, updates funding once more and adds
+`SettlementPrices { base_price: none, collateral_price: none, enabled: false }`;
+`set_settlement_prices` (1458–1512) requires the closed field and two positive
+prices; `enable_settlement` (1522–1578) requires both prices and flips
+`enabled`. `close_position_at_settlement_prices` then requires, in order, an
+unfrozen version (abort `10`), `paused != 0` (abort `33`), the closed field
+(abort `34`) and `enabled` (abort `36`); with an empty order vector it requires
+no pending orders (abort `48`); it settles funding at the settlement
+collateral price, closes the whole base at the settlement base price through
+`add_base_to_position`, realizes the difference into the position collateral,
+resets negative collateral to zero against the insurance fund (abort `31`),
+subtracts the entire remaining position collateral and pays its `to_balance`
+floor to the account (vault balance abort `23`). The position collateral is
+therefore exactly zero after a settlement close; the sub-atomic remainder
+stays in the market vault, not in the position.
+
+Pause modes are `0` live, `1` paused and `2` cancel-only
+(`assert_valid_pause_mode` 8575). `update_funding` (2147), `update_twaps`,
+`settle_position_funding` (2207), `start_session` (3110),
+`deallocate_collateral` (7745), `create_market_position` and
+`allocate_collateral` all require `paused == 0` (abort `32`), so on a paused
+market the only venue action left to the adapter is the settlement close, and
+only once the market is closed and settlement is enabled.
+
+The adapter branched its unwind on `is_frozen()` and its settlement proof
+required `market_frozen`, so the settlement close could never run: a frozen
+market aborted inside the venue on the version check, and a closed market took
+the market path and aborted on the pause check. **Applied:** `unwind` refuses a
+frozen clearing house (`venue_not_ready`), branches on `is_market_paused()`,
+and `assert_direct_settlement_checkpoint` requires `market_pause_mode != 0`.
+`is_market_paused` joins the ABI gate.
+
+Read for the same change: `is_time_to_update(now, last, freq)` (market 1944)
+is `now >= last - last % freq + freq` (1954–1968), exactly the adapter's
+mirror; `update_funding` reads the base index and TWAP, asserts their
+divergence, refreshes both TWAPs when due, then `try_update_fundings`, which
+moves both cumulative rates by `premium_twap × period adjustment` and writes
+`funding_last_upd_ms := now`; `settle_position_funding` requires an unfrozen,
+unpaused market, reads `collateral_oracle_price` and settles through
+`settle_position_funding_and_emit` (F1); `withdraw_collateral` (account 282)
+checks only the registry version and the cap, so terminal cash leaves the
+account while the market is paused or frozen once the position is flat.
+
+## Session path, deallocation and account calls, re-read 2026-09-21
+
+Read the morning before the mainnet rehearsal, from the same disassemblies,
+plus `registry` (`2800bcd5…61a9`, not consumed directly). Nothing below
+changed the adapter; the table further down stays the summary.
+
+- `place_market_order` (version check; `assert_reduce_only` returns the
+  size, clamped to the net position for a reduce-only order and abort `9`
+  when the side does not reduce it or the position is flat; abort `19` for a
+  size that is not a lot multiple and `1` for zero) then
+  `execute_market_order`: walks the opposite book leaf by leaf, calling
+  `process_fill_maker` per maker order, subtracts each fill from the
+  remaining size and **aborts `45` if any size remains**. Expired makers,
+  the taker's own orders and makers a fill would push into bad debt fill
+  zero and are dropped. A market order never posts.
+- `process_fill_maker`: a fill against an ask maker (order key below 2^127)
+  is recorded in `base_filled_bid`/`quote_filled_bid`, against a bid maker in
+  the ask fields, and mixing sides in one session aborts `51`; the quote is
+  `fill_base_and_quote_deltas(price, size) = size × price` exactly, the
+  base `size × 10^9`. So `filled_base_and_quote(true)` is a taker ask's
+  fill, as `opens_with_ask` assumes.
+- `end_session_`: session and account ids must match (`18`); a session
+  without fills, posts or a liquidation aborts `11`; the taker fee is
+  `taker_fee`, plus `priority_taker_fee` when the transaction's gas price
+  exceeded the reference gas price at `start_session`; `apply_taker_fills_and_settle`
+  applies asks then bids through `add_base_to_position`, charges
+  `rate × quote / 10^18` toward zero per rate, and moves `realized − fees`
+  into the position collateral at the session's collateral price. With both
+  flags false no cash moves between account and market vault (`loc28 = 0`).
+  After the trade, `requirement > margin` at the effective IMR is tolerated
+  only through `position::ensure_margin_requirements`: the requirement may
+  not have grown, the position may not have flipped, and when margin fell
+  the margin-to-requirement ratio may not have worsened (`2001`/`2002`).
+  Open-interest limits: `new_oi ≤ max_open_interest` or not above the
+  previous (`15`), and when `new_oi` exceeds `max_open_interest_threshold`
+  and `|base|` grew, `|base| / new_oi ≤ max_open_interest_position_percent`
+  (`16`).
+- `add_base_to_position`: reducing a long closes `ceil(quote × fill / base)`
+  of the cost basis, reducing a short `floor(|quote| × fill / |base|)`, so
+  realized PnL rounds against the trader; opening adds base and quote under
+  one sign (F2); overflow aborts `2000`.
+- `deallocate_collateral` → `deallocate_collateral_internal` (version, not
+  paused, cap valid; reads both prices, asserts index/TWAP divergence,
+  refreshes fundings and TWAPs when due) → `withdraw_free_collateral_to_account_balance`:
+  settles the position's funding, computes `compute_free_collateral` at the
+  venue mark and effective IMR, floors it to atoms with `to_balance`, aborts
+  `0` on a zero request and `40` when the request exceeds that floor, then
+  subtracts exactly `from_balance(amount, scaling_factor)` from the position
+  and pays `amount` to the account, returning `amount`. A flat, order-free
+  position's free collateral is `max(0, collateral)` with no haircut, so
+  the finalize withdrawal of `floor(allocated)` is admissible and leaves the
+  sub-atomic remainder the adapter expects.
+- `clearing_house::mark_price` = `calculate_mark_price(state, params,
+  base TWAP, book price or index, now)`: the book price clamped between
+  the funding price and index plus spread TWAP. The adapter passes it
+  through unchanged.
+- `account::create_account` (registry version `5000`, collateral registered
+  `4002`, derived id, one `ACCOUNT/ADMIN` cap), `consume_policy_and_share_account`
+  (policy id must be the account's, `4003`), `deposit_collateral` and
+  `withdraw_collateral` (registry version, `assert_authority_cap_is_valid`:
+  `cap.for == account.id` and role `ADMIN`, or an active assistant; zero
+  amounts are no-ops).
+- `market::base_oracle_price` / `collateral_oracle_price`: storage id
+  (`1001`/`1002`), feed by source id (binary search, abort if absent),
+  `timestamp ≥ now − tolerance` (`1000`), the raw `u128` price as `u256`;
+  the collateral read also asserts index/TWAP divergence (`1003`).
+- `position` getters and `authority::for` are field reads; `Position` is
+  `{collateral, base, quote, snapshot_long, snapshot_short, asks, bids,
+  pending_orders, initial_margin_ratio}`; `create_position` starts every
+  position at IMR `1.0`.
+
+### Operational facts for launch
+
+- Both `ClearingHouse.version` and `Registry.version` must be `≤ 1`. An
+  Aftermath upgrade that raises either blocks every adapter call, exits
+  included, until the adapter is relinked against the new ABI; the ABI gate
+  reports the drift first.
+- The venue refuses an increase that pushes the vault past
+  `max_open_interest_position_percent` once open interest exceeds
+  `max_open_interest_threshold` (abort `16`); the NAV cap must respect the
+  market's limits.
+- A redemption's payout is deallocated against venue free collateral at the
+  position IMR floor. With the floor at the inverse of the hard cap, free
+  collateral is about zero at the cap, so a redemption there aborts `40`
+  until a rebalance brings leverage down.
+- A reducing trade may end under IMR only if the margin ratio did not
+  worsen, which holds unless margin is below the taker fee on the sold
+  notional.
+
 ## Everything else the adapter calls, and what it relies on
 
 Read→act→read→prove means most calls are proven by the checkpoint after them;
@@ -175,8 +320,8 @@ the table records what each call does that the proof does not already pin.
 | `clearing_house::update_funding` | `try_update_funding`: premium/spread TWAP updates when due, then `try_update_fundings` (both cumulative rates move by the same `premium_twap × period adjustment`, so long and short rates are always equal) | `update_funding_when_due` |
 | `clearing_house::mark_price` | `calculate_mark_price(state, params, index, book_or_index, now)`: funding price + spread TWAP, clipped | passed to `compute_margin_and_requirement` exactly as `end_session` does |
 | `clearing_house::settlement_valuation_prices` | reads the `SettlementPrices` dynamic field: `(enabled, base, collateral)` or `(false, 0, 0)` | shutdown path |
-| `clearing_house::close_position_at_settlement_prices` | requires paused and closed; cancels the named orders (empty vector: requires none pending, abort `48`); settles funding; closes the position at the settlement prices; realizes into collateral; negative collateral resets to zero; moves the floor of the collateral to the account | proven by `assert_direct_settlement_checkpoint` |
-| `clearing_house::share`, `position`, `market_params`, `market_state`, `market_pause_mode`, `is_frozen` | `share_object`; dynamic-field borrow by account id; field reads; `is_frozen` = a `frozen_version` dynamic field exists | checkpoint fields |
+| `clearing_house::close_position_at_settlement_prices` | requires an unfrozen version (abort `10`), `paused != 0` (abort `33`), the closed field (abort `34`) and `enabled` (abort `36`); cancels the named orders (empty vector: requires none pending, abort `48`); settles funding at the settlement collateral price; closes the position at the settlement base price; realizes into collateral; negative collateral resets to zero against the insurance fund (abort `31`); subtracts the whole position collateral and pays its floor to the account (abort `23`) | F5; proven by `assert_direct_settlement_checkpoint` |
+| `clearing_house::share`, `position`, `market_params`, `market_state`, `market_pause_mode`, `is_frozen`, `is_market_paused` | `share_object`; dynamic-field borrow by account id; field reads; `is_frozen` = a `frozen_version` dynamic field exists, and freezing also writes `version := u64::MAX` (F5); `is_market_paused` = `paused != 0` | checkpoint fields; the unwind branch |
 | `market::*_oracle_price` | storage-id check (abort `1001`/`1002`), feed by source id, staleness against `*_pfs_tolerance` (abort `1000`); the collateral read also checks index/TWAP divergence; returns the feed's raw `u128` price as `u256` | F4 |
 | `market::lot_size`, `margin_ratio_*`, `collateral_haircut`, `*_storage_id`, `*_source_id`, `scaling_factor`, `taker_fee`, `priority_taker_fee`, `funding_params` (frequency, period), `funding_last_upd_ms`, `cum_funding_rates` | field reads | checkpoint fields, fee bound, funding timing |
 | `market::resolve_priority_taker_fee` | unwraps the option, abort `1004` on none | fee bound |

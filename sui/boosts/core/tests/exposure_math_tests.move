@@ -826,7 +826,7 @@ fun a_mint_whose_plan_is_dust_is_rejected_before_its_actual_contribution() {
     accounting_math::mint_base_bounds_for_testing(99, 1_000_500, 1_000_000, 1_000_000_000, 100, 1);
 }
 
-// === Private Test Helpers ===
+// === Test Helpers ===
 
 /// Reference accounting leverage `ceil(notional * 10_000 / nav)` for drift measurements.
 fun leverage_bps_up(notional: u64, nav: u64): u64 {

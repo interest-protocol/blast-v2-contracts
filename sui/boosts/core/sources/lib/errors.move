@@ -257,8 +257,6 @@ const ESeedReserveAboveCap: u64 = 60;
 /// A mutation left the state in violation of an accounting invariant that must hold by construction.
 const EInvariantViolated: u64 = 61;
 
-// === Package Functions ===
-
 macro public(package) fun zero_amount(): u64 { 0 }
 macro public(package) fun invalid_fee_bps(): u64 { 1 }
 macro public(package) fun invalid_nav(): u64 { 2 }
