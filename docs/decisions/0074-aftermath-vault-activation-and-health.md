@@ -642,7 +642,10 @@ settlement the adapter cannot replay never blocks the exit. A paused market
 admits no session, funding update or settlement, so the settlement path, which
 the venue opens only once it has closed the market and enabled settlement
 prices, reconciles without a venue call, classifying only the change since the
-stored checkpoint. A frozen clearing house aborts every venue call on its
+stored checkpoint. The same settlement releases collateral still allocated to a
+position the market orders had already flattened, since a paused market
+refuses deallocation; a flat, unallocated position is refused, so the step is
+never a repeatable no-op. A frozen clearing house aborts every venue call on its
 version check, the settlement close included, so `unwind` refuses it until it
 is unfrozen (finding F5 of the venue bytecode record). The
 isolated funding checkpoint the market path used to prove separately is gone

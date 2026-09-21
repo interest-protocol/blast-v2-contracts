@@ -197,6 +197,16 @@ frozen clearing house (`venue_not_ready`), branches on `is_market_paused()`,
 and `assert_direct_settlement_checkpoint` requires `market_pause_mode != 0`.
 `is_market_paused` joins the ABI gate.
 
+Re-read 2026-09-21: the settlement close has no zero-base guard (2806–3050).
+With a flat position it skips the close, still subtracts the entire position
+collateral and pays its floor to the account, and `deallocate_collateral`
+aborts `32` on any paused market. So when the venue closes the market after the
+close-only steps have flattened the position but before `finalize_shutdown`
+has run, the settlement close is the only way the allocated collateral leaves.
+**Applied:** the proof admits a flat position whose collateral is still
+allocated; a flat, unallocated position is still refused, so the step cannot
+be repeated as a no-op.
+
 Read for the same change: `is_time_to_update(now, last, freq)` (market 1944)
 is `now >= last - last % freq + freq` (1954–1968), exactly the adapter's
 mirror; `update_funding` reads the base index and TWAP, asserts their
@@ -296,6 +306,10 @@ changed the adapter; the table further down stays the summary.
 - A reducing trade may end under IMR only if the margin ratio did not
   worsen, which holds unless margin is below the taker fee on the sold
   notional.
+- If the venue closes the market between the last close-only step and
+  `finalize_shutdown`, run `unwind` once more: the settlement close releases
+  the allocated collateral into the account, and `finalize_shutdown` then
+  withdraws it without a deallocation, which a paused market refuses.
 
 ## Everything else the adapter calls, and what it relies on
 

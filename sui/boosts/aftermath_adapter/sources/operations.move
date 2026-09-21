@@ -206,10 +206,11 @@ public fun rebalance<Product, Collateral>(
 /// A keeper's dry run of `rebalance`: whether the live position sits outside the band.
 ///
 /// Reads everything `rebalance` reads and asks the core the same question, so it
-/// aborts where `rebalance` would abort before its first order: unresolved venue
-/// drift, or an observation the price policy refuses. It does not settle funding
-/// first, so a due settlement can move the answer by that amount when the real
-/// call runs; intended for `dev_inspect`, not for on-chain gating.
+/// aborts where `rebalance` would abort before its first order: an interval
+/// since the stored checkpoint that the classifier cannot explain, or an
+/// observation the price policy refuses. It does not settle funding first, so a
+/// due settlement can move the answer by that amount when the real call runs;
+/// intended for `dev_inspect`, not for on-chain gating.
 public fun needs_rebalance<Product, Collateral>(
     vault: &Vault<Product, Collateral>,
     protocol: &Protocol,
@@ -226,7 +227,10 @@ public fun needs_rebalance<Product, Collateral>(
     let (observation, checkpoint) = snapshot::capture(
         &vault.venue().binding(), account, registry, clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
-    vault.venue().checkpoint().assert_unchanged(&checkpoint);
+    assert!(
+        vault.venue().checkpoint().classify_preexisting(&checkpoint).is_clean(),
+        blast_boosts_aftermath::errors::unresolved_checkpoint!(),
+    );
 
     vault.state().needs_rebalance(observation, clock.timestamp_ms())
 }
@@ -260,12 +264,11 @@ public fun donate<Product, Collateral>(
     complete_donation(vault, after, checkpoint, amount, clock.timestamp_ms());
 }
 
-/// Reconciles one bound Aftermath checkpoint and persists objective health.
-///
-/// Any caller may submit the immutable bound objects and exact Pyth updates.
-/// Source or identity authentication failures abort. Authenticated economic
-/// faults preserve lifecycle; unresolved external changes preserve the accepted
-/// economic checkpoint and emit only a novel diagnostic observation.
+/// Settles due funding and reconciles the stored checkpoint with the venue,
+/// with no priced operation attached and no lifecycle move. Any caller may
+/// submit the bound objects; a binding failure aborts. An explainable funding
+/// move is booked and emitted, and an interval the classifier cannot explain
+/// leaves the accepted checkpoint standing and emits `CheckpointDrifted`.
 public fun sync_health<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,

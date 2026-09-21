@@ -57,9 +57,11 @@ moved it there. It then makes up to 16 bounded close-only market orders using
 fresh prices and the immutable emergency tolerance. A market the venue has
 paused admits no session, funding update or settlement; once the venue has
 closed it and enabled settlement prices, the step reconciles without a venue
-call and uses only the pinned direct settlement operation at those prices. A
-frozen clearing house aborts every venue call until it is unfrozen, and
-`unwind` refuses it.
+call and uses only the pinned direct settlement operation at those prices. That
+settlement is also how collateral still allocated to a position the market
+orders had already flattened leaves a closed market, which refuses
+deallocation. A frozen clearing house aborts every venue call until it is
+unfrozen, and `unwind` refuses it.
 `operations::finalize_shutdown` requires exact flat/no-order/settled-funding
 state, no negative collateral, and complete whole-atom cash recovery. The exact
 nonnegative allocated raw remainder below one collateral atom remains in the

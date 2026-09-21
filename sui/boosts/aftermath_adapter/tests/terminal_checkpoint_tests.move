@@ -81,8 +81,17 @@ fun direct_settlement_requires_a_paused_market() {
 
 #[test]
 #[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
-fun direct_settlement_requires_an_open_position_to_close() {
+fun direct_settlement_requires_a_position_or_allocated_collateral_to_release() {
     let before = checkpoint::checkpoint_for_testing(0, 0, 0, 0, 9, 10, 9, 10, 1_000,
+        0, 0, 0, 1, false, 0, 0, 0);
+    let after = checkpoint::checkpoint_for_testing(5, 0, 0, 0, 9, 10, 9, 10, 1_000,
+        0, 0, 0, 1, false, 0, 0, 0);
+    before.assert_direct_settlement_checkpoint(&after);
+}
+
+#[test]
+fun direct_settlement_releases_the_collateral_still_allocated_to_a_flat_position() {
+    let before = checkpoint::checkpoint_for_testing(0, 5_000_000_000_000, 0, 0, 9, 10, 9, 10, 1_000,
         0, 0, 0, 1, false, 0, 0, 0);
     let after = checkpoint::checkpoint_for_testing(5, 0, 0, 0, 9, 10, 9, 10, 1_000,
         0, 0, 0, 1, false, 0, 0, 0);

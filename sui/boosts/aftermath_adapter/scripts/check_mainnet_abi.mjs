@@ -72,7 +72,7 @@ const PACKAGES = [
         version: 1,
         digest: 'BX5Yvqhi8d5J866fuzswViwTB6KKxPrxpip9oFFxFjj4',
         previousTransaction: '5G4cZbE56447Dfd5uxL1kP1xDv7u6uCG3t5a5FAks9Zj',
-        modules: [{ name: 'ifixed', sha256: 'ab7e23db8976e59a4e63db87c450ab72d70626050094d6a227bfdb11dccb140e', functions: ['decimal_scalar_from_decimals', 'one', 'is_neg', 'abs', 'to_balance'] }],
+        modules: [{ name: 'ifixed', sha256: 'ab7e23db8976e59a4e63db87c450ab72d70626050094d6a227bfdb11dccb140e', functions: ['decimal_scalar_from_decimals', 'one', 'is_neg', 'abs', 'add', 'sub', 'to_balance'] }],
     },
 ];
 
@@ -112,9 +112,11 @@ const ABI = {
     'clearing_house::start_session': 'public fun start_session<$0, $1>(@self::clearing_house::ClearingHouse<$0>, &0x4e2df80a5e2fd0392878298c51ce15164222111ccea05504b9291b158f552677::authority::AuthorityCap<@self::authority::ACCOUNT, $1>, &mut @self::account::Account<$0>, &0x9237337d846fc90b0a7acbdee4ab91809298691873d28e1d64d91e6303ff6ba4::price_feed_storage::PriceFeedStorage, &0x9237337d846fc90b0a7acbdee4ab91809298691873d28e1d64d91e6303ff6ba4::price_feed_storage::PriceFeedStorage, @std::option::Option<@self::account::IntegratorInfo>, &@sui::clock::Clock, &@sui::tx_context::TxContext): @self::clearing_house::SessionHotPotato<$0>',
     'clearing_house::update_funding': 'public fun update_funding<$0>(&mut @self::clearing_house::ClearingHouse<$0>, &0x9237337d846fc90b0a7acbdee4ab91809298691873d28e1d64d91e6303ff6ba4::price_feed_storage::PriceFeedStorage, &@sui::clock::Clock)',
     'ifixed::abs': 'public fun abs(u256): u256',
+    'ifixed::add': 'public fun add(u256, u256): u256',
     'ifixed::decimal_scalar_from_decimals': 'public fun decimal_scalar_from_decimals(u64): u64',
     'ifixed::is_neg': 'public fun is_neg(u256): bool',
     'ifixed::one': 'public fun one(): u256',
+    'ifixed::sub': 'public fun sub(u256, u256): u256',
     'ifixed::to_balance': 'public fun to_balance(u256, u256): u64',
     'market::base_oracle_price': 'public fun base_oracle_price(&@self::market::MarketParams, &0x9237337d846fc90b0a7acbdee4ab91809298691873d28e1d64d91e6303ff6ba4::price_feed_storage::PriceFeedStorage, &@sui::clock::Clock): u256',
     'market::base_source_id': 'public fun base_source_id(&@self::market::MarketParams): u16',

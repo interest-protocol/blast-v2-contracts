@@ -295,12 +295,14 @@ public(package) fun assert_no_orders(self: &Checkpoint) {
 }
 
 /// The venue's settlement of a closed market can realize cash, but must start
-/// on a paused market with an open position and finish exactly flat and order-free.
+/// on a paused market with something to release, an open position or collateral
+/// still allocated to a flat one, and finish exactly flat and order-free.
 public(package) fun assert_direct_settlement_checkpoint(before: &Checkpoint, after: &Checkpoint) {
     before.assert_no_orders();
     after.assert_no_orders();
     assert!(
-        before.market_pause_mode != 0 && before.signed_base != 0
+        before.market_pause_mode != 0
+            && (before.signed_base != 0 || before.allocated_collateral != 0)
             && after.signed_base == 0 && after.signed_quote_notional == 0
             && after.funding_snapshot_long == after.market_funding_long
             && after.funding_snapshot_short == after.market_funding_short,
