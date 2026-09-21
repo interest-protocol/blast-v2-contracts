@@ -64,13 +64,13 @@ public(package) fun seed_position<Product, Collateral>(
 
 // --- Active ---
 
-/// The terms of an operation that opens more of the vault's side: direction
-/// from policy, the live cap, and the plan's sealed prices.
-public(package) fun opening_terms<Product, Collateral>(vault: &Vault<Product, Collateral>, position: ActivePosition): OrderTerms {
+/// The terms of an operation that increases the vault's side: direction from
+/// policy, the live cap, and the plan's sealed prices.
+public(package) fun increasing_terms<Product, Collateral>(vault: &Vault<Product, Collateral>, position: ActivePosition): OrderTerms {
     active_terms(vault, false, position)
 }
 
-/// The terms of a reduce-only operation against the vault's side, otherwise as `opening_terms`.
+/// The terms of a reduce-only operation against the vault's side, otherwise as `increasing_terms`.
 public(package) fun reducing_terms<Product, Collateral>(vault: &Vault<Product, Collateral>, position: ActivePosition): OrderTerms {
     active_terms(vault, true, position)
 }
@@ -338,7 +338,7 @@ fun order_sizes(target_base: u64, max_order_base: u64): vector<u64> {
 // --- Terms ---
 
 /// Direction from policy, the live cap, and the plan's sealed prices; a
-/// reduction faces the side that opens.
+/// reduction faces the side that increases.
 fun active_terms<Product, Collateral>(vault: &Vault<Product, Collateral>, reduce_only: bool, position: ActivePosition): OrderTerms {
     let side = vault.state().side();
     let is_ask = if (reduce_only) { !opens_with_ask(side) } else { opens_with_ask(side) };

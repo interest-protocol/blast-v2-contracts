@@ -96,7 +96,7 @@ public fun mint<Product, Collateral>(
     ).into_observation();
 
     let plan = vault.state().prepare_mint(before, deposit, vault.total_share_supply(), minimum_shares, clock.timestamp_ms());
-    let terms = vault.opening_terms(plan.mint_position());
+    let terms = vault.increasing_terms(plan.mint_position());
 
     let checkpoint = fund_mint(
         vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle,
@@ -190,7 +190,7 @@ public fun rebalance<Product, Collateral>(
 
     let mut plan = vault.state().prepare_rebalance(before, clearing_house.live_venue_fee_bps(), clock.timestamp_ms());
     let position = plan.rebalance_position();
-    let terms = if (plan.is_increasing()) { vault.opening_terms(position) } else { vault.reducing_terms(position) };
+    let terms = if (plan.is_increasing()) { vault.increasing_terms(position) } else { vault.reducing_terms(position) };
     let binding = vault.venue().binding();
 
     let (clearing_house, checkpoint) = vault.rebalance_orders(
@@ -1015,8 +1015,8 @@ use blast_boosts_aftermath::{
 // the types' own, so the aliases stay local to the driver.
 use fun orders::close_orders as Vault.close_orders;
 use fun orders::fill_orders as Vault.fill_orders;
+use fun orders::increasing_terms as Vault.increasing_terms;
 use fun orders::live_venue_fee_bps as ClearingHouse.live_venue_fee_bps;
-use fun orders::opening_terms as Vault.opening_terms;
 use fun orders::rebalance_orders as Vault.rebalance_orders;
 use fun orders::reducing_terms as Vault.reducing_terms;
 use fun orders::seed_position as Issuance.seed_position;
