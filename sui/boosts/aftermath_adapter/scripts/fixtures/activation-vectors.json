@@ -10,6 +10,7 @@
     "adminPackage": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
     "corePackage": "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
     "adapterPackage": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "adapterOriginalPackage": "0x1111111111111111111111111111111111111111111111111111111111111111",
     "productType": "0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X",
     "collateralType": "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC",
     "objects": {
@@ -135,10 +136,10 @@
           "vault_policy",
           "250000000",
           "1000000000000",
-          "'\"SUI2X\"'",
-          "'\"SUI 2x Bull\"'",
-          "'\"Two times SUI\"'",
-          "'\"https://blast.fun/sui2x.png\"'"
+          "\"SUI2X\"",
+          "\"SUI 2x Bull\"",
+          "\"Two times SUI\"",
+          "\"https://blast.fun/sui2x.png\""
         ],
         "assign": "issuance"
       },
@@ -234,10 +235,10 @@
     "vault_policy",
     "250000000",
     "1000000000000",
-    "'\"SUI2X\"'",
-    "'\"SUI 2x Bull\"'",
-    "'\"Two times SUI\"'",
-    "'\"https://blast.fun/sui2x.png\"'",
+    "\"SUI2X\"",
+    "\"SUI 2x Bull\"",
+    "\"Two times SUI\"",
+    "\"https://blast.fun/sui2x.png\"",
     "--assign",
     "issuance",
     "--move-call",

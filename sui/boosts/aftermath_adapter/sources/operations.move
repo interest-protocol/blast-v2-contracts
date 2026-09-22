@@ -202,6 +202,33 @@ public fun rebalance<Product, Collateral>(
     clearing_house.share();
 }
 
+/// Returns one authenticated, module-private product observation for `dev_inspect`.
+///
+/// The adapter generation and the complete venue object graph are checked before
+/// returning the canonical capture, retained share supply, and clock reading.
+/// This function does not mutate state and its outputs are informational only;
+/// every state-changing operation repeats its own checks and capture.
+#[allow(unused_function)]
+fun observe<Product, Collateral>(
+    vault: &Vault<Product, Collateral>,
+    protocol: &Protocol,
+    account: &Account<Collateral>,
+    registry: &Registry,
+    clearing_house: &ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    clock: &Clock,
+): (CapturedSnapshot, ID, u64, u64) {
+    protocol.assert_current();
+
+    let binding = vault.venue().binding();
+    let captured = binding.capture(
+        account, registry, clearing_house, base_oracle, collateral_oracle, clock,
+    );
+
+    (captured, vault.treasury_cap_id(), vault.total_share_supply(), clock.timestamp_ms())
+}
+
 /// A keeper's dry run of `rebalance`: whether the live position sits outside the band.
 ///
 /// Reads everything `rebalance` reads and asks the core the same question, so it
@@ -418,8 +445,8 @@ fun fund_venue_account<Collateral>(
 ) {
     let seed_amount = seed.value();
     account.deposit_collateral(admin_cap, registry, seed);
-    clearing_house.allocate_collateral(admin_cap, account, seed_amount);
     clearing_house.create_market_position(admin_cap, account);
+    clearing_house.allocate_collateral(admin_cap, account, seed_amount);
     clearing_house.set_position_initial_margin_ratio(admin_cap, account, position_imr);
 }
 

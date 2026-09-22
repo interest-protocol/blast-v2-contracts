@@ -10,12 +10,11 @@ const input = (operation) => ({
     objects: Object.fromEntries(['vault', 'protocol', 'account', 'registry', 'clearingHouse',
         'baseOracle', 'collateralOracle', 'clock', 'inputCoin']
         .map((role, i) => [role, address(10 + i)])),
-    minimumOutput: '1', maximumFeeBps: '30', deadlineMs: '100000',
+    minimumOutput: '1', deadlineMs: '100000',
 });
 
 const terminal = (operation) => {
     const value = input(operation);
-    delete value.maximumFeeBps;
     value.corePackage = address(40);
     value.reason = 'observed_venue_change';
     value.objects.authority = address(41);
@@ -68,10 +67,12 @@ test('mint and redemption bind public argument order and transfer only the retur
         const value = input(operation);
         const plan = buildActivePlan(value);
         assert.equal(plan.commands[0].target, `${address(1)}::operations::${operation}`);
-        assert.deepEqual(plan.commands[0].arguments.slice(-5), [`@${value.objects.inputCoin}`, '1', '30', '100000', `@${value.objects.clock}`]);
-        assert.deepEqual(plan.commands[0].arguments.slice(0, 7),
-            ['vault', 'protocol', 'account', 'registry', 'clearingHouse', 'baseOracle',
-                'collateralOracle'].map((key) => `@${value.objects[key]}`));
+        assert.deepEqual(plan.commands[0].arguments, [
+            ...['vault', 'protocol', 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle']
+                .map((key) => `@${value.objects[key]}`),
+            `@${value.objects.inputCoin}`, '1', '100000', `@${value.objects.clock}`,
+        ]);
+        assert.throws(() => buildActivePlan({...value, maximumFeeBps: '30'}), /unexpected field/);
         const args = renderUnsignedPtbArgs(value);
         assert.deepEqual(args.slice(-3), ['--serialize-unsigned-transaction', '--sender', `@${address(2)}`]);
         assert(!args.includes('--gas-budget'));

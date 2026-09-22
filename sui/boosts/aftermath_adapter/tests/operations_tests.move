@@ -79,7 +79,7 @@ fun order_filled_event_carries_every_fill_fact_in_order() {
 fun terminal_claim_checks_version_before_lifecycle_or_zero_shares() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    fixture.protocol.set_version_for_testing(2);
+    fixture.protocol.set_version_for_testing(3);
     let shares = vault.mint_shares(0, fixture.ctx!());
     let clock = sui::clock::create_for_testing(fixture.ctx!());
     destroy(vault.redeem_shutdown<Product, Collateral>(&fixture.protocol, shares, 0, 0, &clock, fixture.ctx!()));
@@ -93,7 +93,7 @@ fun terminal_claim_checks_version_before_lifecycle_or_zero_shares() {
 fun shutdown_checks_version_before_an_authorized_transition() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    fixture.protocol.set_version_for_testing(2);
+    fixture.protocol.set_version_for_testing(3);
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     destroy(vault);

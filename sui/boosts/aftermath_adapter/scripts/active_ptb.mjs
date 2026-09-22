@@ -3,7 +3,7 @@
 const BOUND_OBJECTS = ['vault', 'protocol', 'account', 'registry', 'clearingHouse',
     'baseOracle', 'collateralOracle'];
 const INPUT_FIELDS = new Set(['operation', 'adapterPackage', 'sender', 'network',
-    'productType', 'collateralType', 'objects', 'minimumOutput', 'maximumFeeBps', 'deadlineMs', 'launch']);
+    'productType', 'collateralType', 'objects', 'minimumOutput', 'deadlineMs', 'launch']);
 
 function address(value) {
     if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value)) throw Error('canonical address required');
@@ -48,7 +48,7 @@ export function buildActivePlan(input) {
         return {commands: [call(`${adapter}::operations::rebalance`, [product, collateral], [...bound, clock], null)], transfers: []};
     }
     const coin = `@${address(objects.inputCoin)}`;
-    const limits = [u64(input.minimumOutput), u64(input.maximumFeeBps), u64(input.deadlineMs), clock];
+    const limits = [u64(input.minimumOutput), u64(input.deadlineMs), clock];
     const composed = operation === 'mint_buy' || operation === 'sell_redeem';
     let launchArgs, launchTypes, launchPackage, launchMinimum;
     if (composed) {

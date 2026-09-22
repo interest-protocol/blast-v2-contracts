@@ -74,8 +74,12 @@ contract. It never opens RPC, signs or submits. Rendered call plans/CLI argument
 are not BCS TransactionData: resolving live objects and running the generated unsigned
 serialization command belong to the authorized rehearsal and remain unrun.
 
-Mint/redeem clients provide a native input coin, minimum output, maximum protocol
-fee and inclusive deadline. Consume returned `Coin<BlastBoost<Product>>` directly as
+Mint/redeem clients provide a native input coin, minimum output and inclusive
+deadline. They do not provide a fee ceiling: administrators set the live mint
+and redeem fee rates through `vault::set_fees`, subject to the immutable caps
+fixed at issuance. Clients must read and present those current rates when quoting,
+but execution enforces only the administrator-configured rate, the minimum output
+and the deadline. Consume returned `Coin<BlastBoost<Product>>` directly as
 the launchpad Quote, or consume launchpad's returned Quote directly in redeem.
 Exact Quote admission remains launchpad administration; neither module gains
 the other's custody authority. The consumer-only composition package compiles

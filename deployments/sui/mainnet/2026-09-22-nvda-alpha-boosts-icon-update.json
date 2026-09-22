@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "sui-product-metadata-update",
+  "release": "alpha-boosts-nvda-bull-2x-icon",
+  "network": {
+    "chain": "sui",
+    "environment": "mainnet",
+    "chainIdentifierHex": "35834a8a",
+    "chainIdentifierBase58": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+  },
+  "timestampUtc": "2026-09-22T16:33:46.586Z",
+  "repository": {
+    "commit": "94e9a5419bac7d1860136ee32273a1802d5becf9",
+    "workingTree": "dirty",
+    "note": "The checkout contained unrelated pre-existing changes. This record covers only the hosted asset and confirmed metadata transaction below."
+  },
+  "toolchain": {
+    "suiCli": "sui 1.77.2-51d177ad7d65"
+  },
+  "deployer": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+  "status": "success",
+  "sourceDeployment": "2026-09-22-nvda-alpha-boosts.json",
+  "product": {
+    "key": "nvda-2x-bull",
+    "symbol": "NVDA2L",
+    "name": "NVDA 2x Bull",
+    "description": "NVDA 2x Bull",
+    "productType": "0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba::blast_boosts_products::NVDA_BULL_2X",
+    "shareType": "0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50::blast_boost::BlastBoost<0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba::blast_boosts_products::NVDA_BULL_2X>",
+    "vaultId": "0xc01b669f9c94c21806a557fb2f4e36a3cdcb5e5ef90c694c8a5229c62bb5e3fa",
+    "currencyId": "0xcb835962deeb4624df457a52887f5bd67ae51ee48f0decca05b4304a9d313de3"
+  },
+  "asset": {
+    "sourcePath": "deployments/sui/mainnet/assets/nvda-2x-bull.png",
+    "sha256": "3b0940493dae5d21af81641d2d7eda649d1b311e0602bcb247772d8c8c65b3c6",
+    "sizeBytes": 605784,
+    "mediaType": "image/png",
+    "url": "https://h4swpwiztxadr5wd.public.blob.vercel-storage.com/coins/nvda-2x-bull-8OrsG4qurY7WEAHlNuLSVYyXpJhaOu.png",
+    "storage": {
+      "provider": "vercel-blob",
+      "storeName": "blast-public-assets",
+      "storeId": "store_H4sWPWiZTxADr5WD",
+      "access": "public",
+      "cacheControlMaxAgeSeconds": 31536000
+    }
+  },
+  "transaction": {
+    "digest": "AY25iCccgBvnYG4nnjqHyqLxxJmghQH18AYUfnPv2MpP",
+    "checkpoint": "325656496",
+    "timestampUtc": "2026-09-22T16:33:46.586Z",
+    "status": "success",
+    "gasBudgetMist": "5000000",
+    "gasUsedMist": "1025264",
+    "eventType": "0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50::blast_events::Event<0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50::events::MetadataUpdated<0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba::blast_boosts_products::NVDA_BULL_2X>>"
+  },
+  "verification": {
+    "assetHttpStatus": 200,
+    "assetContentType": "image/png",
+    "currencyObjectVersion": "1013248785",
+    "currencyObjectDigest": "FhtmrAHVJfCze5FWQskynQVKjMFaxj6mXQmZWLibGP42",
+    "currencyPreviousTransaction": "AY25iCccgBvnYG4nnjqHyqLxxJmghQH18AYUfnPv2MpP",
+    "observedIconUrl": "https://h4swpwiztxadr5wd.public.blob.vercel-storage.com/coins/nvda-2x-bull-8OrsG4qurY7WEAHlNuLSVYyXpJhaOu.png",
+    "nameUnchanged": true,
+    "descriptionUnchanged": true,
+    "symbolUnchanged": true
+  }
+}

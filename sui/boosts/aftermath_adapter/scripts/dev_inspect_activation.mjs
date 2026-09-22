@@ -151,8 +151,8 @@ const PHASE_ORDER = [
         to: '\n}\n',
         markers: [
             'account.deposit_collateral(',
-            'clearing_house.allocate_collateral(',
             'clearing_house.create_market_position(',
+            'clearing_house.allocate_collateral(',
             'clearing_house.set_position_initial_margin_ratio(',
         ],
     },
@@ -265,10 +265,18 @@ function expectDecimals(object, path, keys) {
     for (const key of keys) expectDecimal(object[key], `${path}.${key}`);
 }
 
-function moveString(value, path) {
-    const text = expectString(value, path);
+function moveString(value, path, allowEmpty = false) {
+    const text = allowEmpty
+        ? (() => {
+            if (typeof value !== 'string') fail(`${path}: expected string`);
+            return value;
+        })()
+        : expectString(value, path);
     if (/["\\\n]/.test(text)) fail(`${path}: metadata strings may not contain quotes, backslashes or newlines`);
-    return `'"${text}"'`;
+    // execFileSync passes each argv item directly to `sui client ptb`; unlike a
+    // shell command, it must not include shell-only single-quote delimiters.
+    // Including them stores the double quotes as part of the on-chain string.
+    return `"${text}"`;
 }
 
 function validateBuilderInput(input) {
@@ -277,6 +285,7 @@ function validateBuilderInput(input) {
         'adminPackage',
         'corePackage',
         'adapterPackage',
+        'adapterOriginalPackage',
         'productType',
         'collateralType',
         'objects',
@@ -294,6 +303,7 @@ function validateBuilderInput(input) {
     expectAddress(input.adminPackage, 'builderInput.adminPackage');
     expectAddress(input.corePackage, 'builderInput.corePackage');
     expectAddress(input.adapterPackage, 'builderInput.adapterPackage');
+    expectAddress(input.adapterOriginalPackage, 'builderInput.adapterOriginalPackage');
     expectString(input.productType, 'builderInput.productType');
     expectString(input.collateralType, 'builderInput.collateralType');
     expectObject(input.objects, 'builderInput.objects', OBJECT_ROLES);
@@ -348,7 +358,11 @@ function buildPlan(input) {
                     'vault_policy',
                     input.maxOrderNotional,
                     input.navCap,
-                    ...METADATA_FIELDS.map((key) => moveString(input.metadata[key], `builderInput.metadata.${key}`)),
+                    ...METADATA_FIELDS.map((key) => moveString(
+                        input.metadata[key],
+                        `builderInput.metadata.${key}`,
+                        key === 'iconUrl',
+                    )),
                 ],
                 'issuance',
             ),
@@ -470,6 +484,25 @@ function normalizeResult(result, path) {
     return canonical({ mutableReferenceOutputs, returnValues });
 }
 
+function normalizeTypeTag(value, path) {
+    if (typeof value === 'string') return expectString(value, path);
+    const type = expectObject(value, path);
+    if (type.struct !== undefined) return normalizeTypeTag(type.struct, `${path}.struct`);
+    if (type.vector !== undefined) return `vector<${normalizeTypeTag(type.vector, `${path}.vector`)}>`;
+    expectObject(type, path, ['address', 'module', 'name', 'type_args']);
+    const rawAddress = expectString(type.address, `${path}.address`);
+    const address = expectAddress(
+        rawAddress.startsWith('0x') ? rawAddress : `0x${rawAddress}`,
+        `${path}.address`,
+    );
+    const module = expectString(type.module, `${path}.module`);
+    const name = expectString(type.name, `${path}.name`);
+    if (!Array.isArray(type.type_args)) fail(`${path}.type_args: expected list`);
+    const arguments_ = type.type_args.map((argument, index) =>
+        normalizeTypeTag(argument, `${path}.type_args[${index}]`));
+    return `${address}::${module}::${name}${arguments_.length > 0 ? `<${arguments_.join(', ')}>` : ''}`;
+}
+
 function normalizeEvents(transaction, path) {
     const eventJson = transaction.event_json;
     if (!Array.isArray(eventJson)) {
@@ -485,8 +518,10 @@ function normalizeEvents(transaction, path) {
     }
     return events.data.map((event, index) => {
         const raw = expectObject(event, `${path}.events.data[${index}]`);
-        const type = raw.type_ ?? raw.type;
-        expectString(type, `${path}.events.data[${index}].type_`);
+        const type = normalizeTypeTag(
+            raw.type_ ?? raw.type,
+            `${path}.events.data[${index}].type_`,
+        );
         return canonical({
             type,
             parsedJson: expectObject(
@@ -525,13 +560,15 @@ function normalizeSimulationResponse(response, path = 'devInspect') {
 }
 
 function initializedEventType(input) {
-    const adapter = input.adapterPackage.toLowerCase();
+    const adapter = input.adapterOriginalPackage.toLowerCase();
     return wrappedEventType(adapter, `${adapter}::events::VaultInitialized<${input.productType}>`);
 }
 
 function createdObjectOfType(changedObjects, type, path) {
     const matches = changedObjects.filter((change) =>
-        change?.idOperation === 'CREATED' && change?.objectType === type);
+        change?.idOperation === 'CREATED'
+        && typeof change?.objectType === 'string'
+        && change.objectType.replaceAll(' ', '') === type.replaceAll(' ', ''));
     if (matches.length !== 1) fail(`${path}: expected exactly one created ${type}, got ${matches.length}`);
     return expectAddress(matches[0].objectId, `${path}.objectId`);
 }
@@ -553,7 +590,7 @@ function normalizeInitializedEvent(events, changedObjects, input) {
     expectObject(parsedJson, 'VaultInitialized.parsedJson.pos0', INITIALIZED_FIELDS);
     const binding = expectObject(parsedJson.binding, 'VaultInitialized.binding', BINDING_FIELDS);
     expectObject(parsedJson.checkpoint, 'VaultInitialized.checkpoint', CHECKPOINT_FIELDS);
-    const adapter = input.adapterPackage.toLowerCase();
+    const adapter = input.adapterOriginalPackage.toLowerCase();
     const vaultId = createdObjectOfType(
         changedObjects,
         `${adapter}::vault::Vault<${input.productType}, ${input.collateralType}>`,
@@ -769,6 +806,13 @@ function selfTest() {
     expectFailure('metadata strings', () => buildPlan(quotedSymbol));
     passed += 1;
 
+    assertEqual(
+        plan.commands[5].arguments.slice(-4),
+        ['"SUI2X"', '"SUI 2x Bull"', '"Two times SUI"', '"https://blast.fun/sui2x.png"'],
+        'metadata PTB literals',
+    );
+    passed += 1;
+
     const malformedResults = structuredClone(fixture.rawDevInspectResponse);
     malformedResults.command_outputs.pop();
     expectFailure('command results', () => normalizeDevInspect(
@@ -879,7 +923,7 @@ function selfTest() {
         validatePinnedSurfaceFixture(changedTransaction));
     passed += 1;
 
-    process.stdout.write(`dev_inspect_activation self-test: PASS ${passed}/16 cases\n`);
+    process.stdout.write(`dev_inspect_activation self-test: PASS ${passed}/17 cases\n`);
 }
 
 function runSui(args) {

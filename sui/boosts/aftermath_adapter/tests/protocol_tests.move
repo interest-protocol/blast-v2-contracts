@@ -31,7 +31,7 @@ public struct Fixture {
 // === Tests ===
 
 #[test]
-/// Production initialization shares one adapter generation at generation one.
+/// Production initialization originally shared adapter generation one.
 fun init_shares_the_adapter_generation_at_its_first_generation() {
     let mut fixture = start_init();
 
@@ -39,8 +39,6 @@ fun init_shares_the_adapter_generation_at_its_first_generation() {
         let container = fixture.take_protocol();
 
         assert_eq!(container.version_for_testing(), 1);
-        container.assert_current_for_testing();
-
         fixture.return_protocol(container);
     });
 

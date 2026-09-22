@@ -3,10 +3,8 @@
 ///
 /// The complete native authorize/commit/advance matrix belongs to
 /// `blast_admin::upgrade_custody_tests`, which owns a package marker at a
-/// nonzero address. Under this package's test compilation
-/// `blast_boosts_aftermath` is `0x0`, and the framework refuses to authorize
-/// an upgrade for the zero package id, so these tests prove this package's
-/// wiring, provenance, and guard order.
+/// nonzero address. This package is tested at its canonical mainnet original
+/// address, so these tests prove its wiring, provenance, and guard order.
 module blast_boosts_aftermath::package_admin_tests;
 
 // === Constants ===
@@ -14,8 +12,8 @@ module blast_boosts_aftermath::package_admin_tests;
 const ROOT: address = @0xA11CE;
 const PACKAGE_ADMIN: address = @0xAD;
 
-/// This package's canonical original address under test compilation.
-const PACKAGE_ID: address = @0x0;
+/// This package's canonical original address from the mainnet publication.
+const PACKAGE_ID: address = @0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50;
 const OTHER_PACKAGE_ID: address = @0xBAD;
 
 // === Test-Only Types ===
@@ -298,7 +296,7 @@ fun a_zero_role_admin_cannot_make_the_adapter_immutable() {
 /// bytecode is refused even before a zero-role administrator is.
 fun a_stale_generation_rejects_immutability_before_the_role_check() {
     let mut fixture = start(0);
-    fixture.protocol.set_version_for_testing(2);
+    fixture.protocol.set_version_for_testing(3);
 
     fixture.make_immutable();
 
@@ -328,7 +326,7 @@ fun a_risk_only_admin_cannot_authorize_an_upgrade() {
 /// A stale generation aborts before the role check and before the native call.
 fun a_stale_generation_rejects_old_bytecode_before_the_role_check() {
     let mut fixture = start(0);
-    fixture.protocol.set_version_for_testing(2);
+    fixture.protocol.set_version_for_testing(3);
 
     let ticket = fixture.authorize_upgrade(package_digest());
 
