@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 #[test_only]
 /// Leverage, target notional, and the two-sided proportional-exposure bounds.
 module blast_boosts_core::exposure_math_tests;

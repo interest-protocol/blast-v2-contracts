@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 #[test_only]
 /// Canonical ACL domain marker used by foundational package tests.
 module blast_admin::test_domain;

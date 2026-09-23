@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 #[test_only]
 /// Structural and boundary tests for immutable rebalance policy.
 module blast_boosts_core::rebalance_policy_tests;

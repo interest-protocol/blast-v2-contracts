@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 // `blast_sui::errors` centralizes package abort codes through zero-cost macros. This narrow
 // suppression preserves caller-local abort locations and stable package error codes.
 #[allow(lint(abort_without_constant))]

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Bluefin migration with custodied concentrated-liquidity principal.
 ///
 /// Bluefin pools are keyed by their exact type-parameter order, so this module

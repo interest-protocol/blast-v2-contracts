@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 #[test_only]
 /// Pure binding tests for sealed Aftermath venue custody.
 module blast_boosts_aftermath::venue_account_tests;

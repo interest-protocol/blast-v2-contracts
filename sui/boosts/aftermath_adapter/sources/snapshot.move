@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 // `errors` intentionally centralizes package-wide abort codes through zero-cost macros.
 #[allow(lint(abort_without_constant))]
 /// Authenticated Aftermath capture: proves every source is the bound one,

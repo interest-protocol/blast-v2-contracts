@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Irrevocable creator-fee binding, public fee collection and executor-authorized deposits.
 ///
 /// Enrollment destroys the curve-fee cap and binds the launch's creator fees to this vault

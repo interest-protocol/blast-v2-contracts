@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// The migrators package's own operational generation.
 ///
 /// Migrators no longer treats the Launchpad generation as its own. A composed

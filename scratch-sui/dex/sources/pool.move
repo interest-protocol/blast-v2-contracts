@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Canonical full-range pools, separate LP fees and owned liquidity positions.
 module blast_fun_dex::pool;
 

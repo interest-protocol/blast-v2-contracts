@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Sealed custody for the DEX package's Publisher and UpgradeCap.
 ///
 /// The DEX owns its administration outright: every transition here accepts

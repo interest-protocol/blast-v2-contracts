@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Canonical package provenance witness for the DEX package.
 ///
 /// This marker types the package's own operational generation and upgrade

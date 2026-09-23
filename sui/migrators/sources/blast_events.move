@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Typed replay facts for migrations, custody, tier policy, and fee flows.
 module blast_fun_migrators::blast_events;
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 // Package error macros keep stable codes in `errors.move`; the lint sees the expanded literal.
 #[allow(lint(abort_without_constant))]
 /// Irreversible lifecycle and operation permissions for one Vault.

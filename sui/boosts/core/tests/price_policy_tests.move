@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 #[test_only]
 /// Validation and gate tests for the immutable Series valuation policy.
 module blast_boosts_core::price_policy_tests;

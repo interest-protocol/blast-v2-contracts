@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Replay-complete Aftermath adapter events.
 module blast_boosts_aftermath::events;
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 #[test_only]
 /// Independent boundary vectors for per-session cost-aware rebalance sizing.
 module blast_boosts_core::rebalance_math_tests;

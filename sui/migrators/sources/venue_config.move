@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Shared venue policy stored as sealed per-venue dynamic fields.
 ///
 /// `launch::migrate` is deliberately permissionless, so no migration caller may

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 #[allow(unused_const)]
 /// Stable append-only error registry for shared administration invariants.
 module blast_admin::errors;

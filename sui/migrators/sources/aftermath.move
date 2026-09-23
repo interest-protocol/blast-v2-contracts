@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Aftermath migration with complete source reconciliation and locked fungible LP.
 module blast_fun_migrators::aftermath;
 

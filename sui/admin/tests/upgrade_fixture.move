@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 #[test_only]
 /// Minimal consumer wrapper proving the shared custody/version composition boundary.
 module blast_admin::upgrade_fixture;

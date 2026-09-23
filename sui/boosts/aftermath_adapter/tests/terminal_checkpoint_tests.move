@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 #[test_only]
 /// Exact terminal venue finality and state-derived sub-atomic collateral remainder.
 module blast_boosts_aftermath::terminal_checkpoint_tests;

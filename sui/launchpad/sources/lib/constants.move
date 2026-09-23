@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Package-wide protocol constants exposed as zero-cost macros.
 module blast_fun::constants;
 

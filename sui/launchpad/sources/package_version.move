@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Owns the one shared package-generation cutover used by every mutable protocol object.
 ///
 /// The generation value, its arithmetic, and its replay event belong to

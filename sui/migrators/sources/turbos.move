@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Turbos migration with custodied concentrated-liquidity principal.
 ///
 /// Turbos pools are keyed by their exact `(CoinA, CoinB, FeeType)` order and

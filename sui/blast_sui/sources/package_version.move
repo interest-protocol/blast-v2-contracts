@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Shared cutover that prevents stale package generations from mutating protocol state.
 ///
 /// The generation value, its checked arithmetic, and its replay event belong to

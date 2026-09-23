@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Fully funded vesting at bounded, immutable cumulative checkpoints.
 module blast_fun_vesting::blast_fun_checkpoint_vesting;
 

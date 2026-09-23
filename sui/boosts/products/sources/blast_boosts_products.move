@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Blast-owned product tags for Series1 Boost currencies.
 ///
 /// A Boost currency is `blast_boost::BlastBoost<Product>` in the

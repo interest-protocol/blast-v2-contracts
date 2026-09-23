@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// The independent Blast SUI administration domain.
 ///
 /// This package governs its own liquid-staking product and shares no authority

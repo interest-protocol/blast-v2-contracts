@@ -1,7 +1,7 @@
 [package]
 name = "meme_template"
 edition = "2024"
-license = "MIT"
+license = "BUSL-1.1"
 authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
 
 [dependencies]

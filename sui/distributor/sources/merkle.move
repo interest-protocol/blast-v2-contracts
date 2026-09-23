@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Positional Blake2b-256 proofs with distinct leaf and internal-node domains.
 module blast_fun_distributor::merkle;
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Quote-denominated integrated fees and conservative constant-product accounting.
 module blast_fun_dex::math;
 

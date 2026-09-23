@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Scaling between Aftermath's 18-decimal IFixed carrier and the adapter's
 /// atomic units. Every conversion reports whether the value fit; nothing here
 /// aborts, the caller decides what an unrepresentable value means.

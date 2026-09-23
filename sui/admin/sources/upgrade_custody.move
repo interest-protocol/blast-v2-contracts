@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 // Shared package errors are zero-cost macros whose expanded literals trigger W04005.
 #[allow(lint(abort_without_constant))]
 /// Sealed custody and native transitions for one consumer package's framework capabilities.

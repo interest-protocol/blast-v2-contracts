@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Shared concentrated-liquidity price and utilization invariants for migrator venues.
 module blast_fun_migrators::migration_math;
 

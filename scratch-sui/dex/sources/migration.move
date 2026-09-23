@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Native migration and sealed custody of its complete issued LP position.
 module blast_fun_dex::migration;
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 #[test_only]
 /// Literal-vector tests for authenticated Aftermath snapshot normalization.
 module blast_boosts_aftermath::snapshot_tests;

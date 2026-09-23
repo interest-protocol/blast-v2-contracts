@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Sealed custody for the migrators package's Publisher and UpgradeCap.
 ///
 /// Migrators shares the Launchpad administration domain, so its governed

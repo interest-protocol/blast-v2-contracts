@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Live protocol share of fees collected from migrated liquidity positions.
 ///
 /// Bonding-curve trades read the runtime configuration's share; every migrator that

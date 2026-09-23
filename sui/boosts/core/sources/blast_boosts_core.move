@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// The core-owned administration domain shared with every leverage adapter.
 ///
 /// This module owns the domain one-time witness, the governance configuration,

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Creator-fee custody, authorized funded rounds and permissionless direct payouts.
 module blast_fun_distributor::blast_fun_distributor;
 

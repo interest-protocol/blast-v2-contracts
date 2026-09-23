@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// The independent DEX administration domain.
 ///
 /// This package governs its own factory, pool policy, and package custody. It

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Shared fee accounting and sealed dynamic-object custody for migration positions.
 module blast_fun_migrators::vault;
 

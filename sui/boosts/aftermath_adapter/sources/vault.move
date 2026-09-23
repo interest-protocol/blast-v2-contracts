@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 // `errors` intentionally centralizes package-wide abort codes through zero-cost macros.
 // W04005 sees the expanded literal; this suppression preserves stable codes and local checks.
 #[allow(lint(abort_without_constant))]

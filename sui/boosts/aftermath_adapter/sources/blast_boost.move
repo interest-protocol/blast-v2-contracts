@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// The share currency type of every Boost this adapter issues.
 ///
 /// Wallets, explorers, and indexers identify a coin by its type argument, so

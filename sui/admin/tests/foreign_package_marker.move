@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 #[test_only]
 /// Supplies a Publisher whose original package address is outside `blast_admin`.
 module 0xf::foreign_package_marker;

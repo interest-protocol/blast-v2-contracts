@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Canonical package marker for this adapter.
 module blast_boosts_aftermath::blast_boosts_aftermath;
 

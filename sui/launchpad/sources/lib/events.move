@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Replay-complete event payloads and the package-only emitters that publish them.
 module blast_fun::events;
 

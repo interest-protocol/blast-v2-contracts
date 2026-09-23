@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 #[test_only]
 /// Consumer-only native Quote integration; neither production package depends on the other.
 module blast_boosts_composition_tests::quote_composition_tests;

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 /// Migration-born, revocable authority over creator LP fees held by one migration vault.
 ///
 /// Every migration creates exactly one `Pending` authority from the witness-typed launch

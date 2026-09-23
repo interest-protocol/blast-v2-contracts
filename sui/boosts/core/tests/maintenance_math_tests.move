@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 #[test_only]
 /// Maintenance-reserve accounting and cross-operation conservation tests.
 module blast_boosts_core::maintenance_math_tests;

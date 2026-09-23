@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
 #[test_only]
 /// Pins the vendored `ifixed` bodies (transcribed from the deployed bytecode)
 /// to two's-complement reference semantics, so every adapter test that decodes
