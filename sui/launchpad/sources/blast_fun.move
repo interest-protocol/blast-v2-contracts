@@ -4,7 +4,7 @@
 /// Canonical package provenance witness named after the package.
 module blast_fun::blast_fun;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Canonical one-time witness used only to claim this package's Publisher.
 public struct BLAST_FUN() has drop;

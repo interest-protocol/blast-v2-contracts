@@ -4,14 +4,12 @@
 #[test_only]
 module blast_fun_dex::pool_tests;
 
-use blast_fun_dex::pool::{Self, Factory, Pool, Position};
-use std::{bcs, unit_test::{assert_eq, destroy}};
-use sui::{balance, clock::{Self, Clock}, coin::{Self, Coin}, event};
-
 // === Test-Only Types ===
 
 public struct MEME() has drop;
+
 public struct QUOTE() has drop;
+
 public struct PoolFixture {
     factory: Factory,
     pool: Pool<MEME, QUOTE>,
@@ -384,7 +382,7 @@ fun fee_growth_rejects_an_unrepresentable_accumulation() {
     f.end();
 }
 
-// === Fixture Functions ===
+// === Test Helpers ===
 
 fun start(): PoolFixture {
     let mut ctx = tx_context::dummy();
@@ -517,3 +515,11 @@ fun duplicate_pool(f: &mut PoolFixture): (Pool<MEME, QUOTE>, Position<MEME, QUOT
         ctx,
     )
 }
+
+// === Imports ===
+
+use blast_fun_dex::pool::{Self, Factory, Pool, Position};
+
+use std::{bcs, unit_test::{assert_eq, destroy}};
+
+use sui::{balance, clock::{Self, Clock}, coin::{Self, Coin}, event};

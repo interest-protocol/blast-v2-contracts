@@ -14,9 +14,9 @@ fail() { printf 'DEX source boundary failed: %s\n' "$1" >&2; exit 1; }
 
 # --- Manifest: the inward administration edge ---
 
-grep -Fq 'blast_admin = { local = "../admin" }' "$package_dir/Move.toml" \
+grep -Fq 'blast_admin = { local = "../../sui/admin" }' "$package_dir/Move.toml" \
   || fail "the manifest must depend on the immutable shared administration package"
-grep -Fq 'blast_fun = { local = "../launchpad" }' "$package_dir/Move.toml" \
+grep -Fq 'blast_fun = { local = "../../sui/launchpad" }' "$package_dir/Move.toml" \
   || fail "the manifest must keep its Launchpad product dependency"
 
 # --- No local administration implementation ---

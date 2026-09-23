@@ -7,7 +7,10 @@ module blast_sui::custody_tests;
 // === Constants ===
 
 const USER: address = @0xA11CE;
+
 const MIST_PER_SUI: u64 = 1_000_000_000;
+
+// === Test-Only Types ===
 
 /// Native system with two genesis validators for direct ledger operations.
 public struct CustodyFixture {
@@ -340,7 +343,7 @@ fun withdraw_exact_drains_the_newest_receipt_first() {
     fixture.end();
 }
 
-// === Fixture Macros ===
+// === Test Helpers ===
 
 /// Runs `$fn` as one transaction with the shared system state borrowed.
 macro fun custody_next_tx(
@@ -368,8 +371,6 @@ macro fun custody_system($fixture: &mut CustodyFixture): &mut SuiSystemState {
     fixture.system_state.borrow_mut()
 }
 
-// === Fixture Setup ===
-
 fun start(): CustodyFixture {
     let mut runner = test_runner::new().validators_count(2).build();
     runner.advance_epoch(option::none()).destroy_for_testing();
@@ -383,8 +384,6 @@ fun custody_end(self: CustodyFixture) {
     system_state.destroy_none();
     runner.finish();
 }
-
-// === Helpers ===
 
 fun new_funded_ledger(amount: u64, ctx: &mut TxContext): Custody {
     let mut ledger = custody::new();

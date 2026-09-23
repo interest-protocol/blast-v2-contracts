@@ -1,6 +1,6 @@
 # 0068: Compact the LP-fee principal snapshot before release
 
-- Status: **accepted**
+- Status: **superseded by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)**
 - Date: 2026-09-02
 - Amends: [0011](0011-event-schema-and-replay.md),
   [0012](0012-flywheel-features.md),

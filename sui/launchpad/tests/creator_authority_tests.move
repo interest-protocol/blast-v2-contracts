@@ -7,15 +7,21 @@ module blast_fun::creator_authority_tests;
 // === Constants ===
 
 const LAUNCHER: address = @0xA11CE;
+
 const CREATOR: address = @0xC0FFEE;
+
 const PROTOCOL_ADMIN: address = @0xAD;
+
 const ACCOUNT_CLAIMANT: address = @0xC0FFEE;
+
 const NOW_MS: u64 = 1_000_000;
+
 const EXPIRY_MS: u64 = 2_000_000;
 
 // === Test-Only Types ===
 
 public struct TEST_MEME() has drop;
+
 public struct OTHER_MEME() has drop;
 
 /// Bare transaction runner for singleton-creation event assertions.
@@ -628,7 +634,7 @@ fun signer_rotation_rejects_current_public_key() {
     fixture.end();
 }
 
-// === Private Test Helpers ===
+// === Test Helpers ===
 
 macro fun event_next_tx(
     $fixture: &mut EventFixture,

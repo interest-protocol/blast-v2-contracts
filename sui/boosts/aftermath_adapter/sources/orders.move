@@ -8,11 +8,11 @@
 /// each market session, and the proof of every fill against the checkpoint.
 module blast_boosts_aftermath::orders;
 
+// === Public Types ===
+
 // `unwind_base_decoded` takes the position already decoded from IFixed; the
 // pinned `ifixed` port aborts under test, so the pure check is exercised
 // from fixtures through it.
-
-// === Public Types ===
 
 /// The sealed terms every order of one operation is placed and proved under.
 /// Package-internal; Move has no private structs.
@@ -628,6 +628,7 @@ use blast_boosts_aftermath::{
 // A capture starts from the binding it authenticates; `snapshot` sits above
 // `venue_account`, so the aliases stay local.
 use fun snapshot::capture as Binding.capture;
+
 use fun snapshot::capture_checkpoint as Binding.capture_checkpoint;
 
 use blast_boosts_core::{
@@ -639,6 +640,7 @@ use ifixed::ifixed;
 
 // An IFixed value is a u256 carrier; only its sign and magnitude read as methods.
 use fun ifixed::abs as u256.abs;
+
 use fun ifixed::is_neg as u256.is_neg;
 
 use oracle_aggregator::price_feed_storage::PriceFeedStorage;

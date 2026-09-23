@@ -1,54 +1,78 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Creator-fee custody, authorized funded rounds and permissionless direct payouts.
+/// Creator-fee custody and pushed-coin intake, authorized funded rounds and permissionless direct
+/// payouts.
 module blast_fun_distributor::blast_fun_distributor;
 
 // === Constants ===
 
 const VERSION: u64 = 1;
+
 const MAX_LEAVES: u64 = 65_536;
+
+/// Maximum total coin objects one intake call can receive.
+const MAX_RECEIVING_COIN_BATCH_SIZE: u64 = 100;
 
 // === Errors ===
 
 #[error(code = 0)]
 const EWrongPublisher: vector<u8> = b"Publisher capability belongs to another distributor.";
+
 #[error(code = 1)]
 const EWrongSource: vector<u8> = b"Curve must match the enrolled launch.";
+
 #[error(code = 2)]
 const EWrongRound: vector<u8> = b"Round number must match the distributor's next round.";
+
 #[error(code = 3)]
 const EInvalidInterval: vector<u8> =
     b"Checkpoint interval must be nonempty and contiguous with the previous round.";
+
 #[error(code = 4)]
 const EInvalidCommitment: vector<u8> =
     b"Root and manifest digest must each contain exactly 32 bytes.";
+
 #[error(code = 5)]
 const EInvalidLeafCount: vector<u8> = b"Round must contain between 1 and 65,536 leaves.";
+
 #[error(code = 6)]
 const EEmptyBudget: vector<u8> = b"At least one reward amount must be nonzero.";
+
 #[error(code = 7)]
 const EInsufficientFunds: vector<u8> = b"Both reward amounts must fit the available balances.";
+
 #[error(code = 8)]
 const EInvalidIndex: vector<u8> = b"Claim index must be less than the committed leaf count.";
+
 #[error(code = 9)]
 const EAlreadyClaimed: vector<u8> = b"This allocation has already been paid.";
+
 #[error(code = 10)]
 const EInvalidBeneficiary: vector<u8> = b"Beneficiary must not be the zero address.";
+
 #[error(code = 11)]
 const EInvalidProof: vector<u8> = b"Proof must match the committed recipient, amounts and domain.";
+
 #[error(code = 12)]
 const EWrongVersion: vector<u8> = b"Version object must match this package version.";
+
 #[error(code = 13)]
 const EPaused: vector<u8> = b"Holder rewards are paused.";
+
 #[error(code = 14)]
 const EUnchangedPause: vector<u8> = b"Pause status must change.";
+
 #[error(code = 15)]
 const ENotUpgrade: vector<u8> = b"Version object is already migrated.";
 
+#[error(code = 16)]
+const EInvalidReceivingCoinBatch: vector<u8> =
+    b"Coin-receiving batches must contain between 1 and 100 total objects.";
+
 // === Public Types ===
 
-/// Proves a call originates in this module when binding or claiming custodied creator fees.
+/// Proves a call originates in this module when binding or claiming custodied curve fees.
 public struct Witness() has drop;
 
 /// Singleton administrator capability created at publication.
@@ -118,6 +142,15 @@ public struct FeesCollected has copy, drop {
     quote_total: u64,
 }
 
+/// Coins pushed to this distributor's address and the resulting unallocated balances.
+public struct CoinsReceived has copy, drop {
+    distributor: ID,
+    meme_amount: u64,
+    quote_amount: u64,
+    meme_total: u64,
+    quote_total: u64,
+}
+
 /// The authorized allocation commitment, reserved funds and remaining custody.
 public struct RoundPublished has copy, drop {
     distributor: ID,
@@ -152,9 +185,11 @@ fun init(ctx: &mut TxContext) {
     transfer::share_object(Version { id: object::new(ctx), version: VERSION, paused: false });
 }
 
-// === Admin Functions ===
+// === Public Functions ===
 
-/// Stops or resumes enrollment, collection, publication and claims.
+// Admin Functions
+
+/// Stops or resumes enrollment, collection, pushed-coin intake, publication and claims.
 public fun set_paused(self: &mut Version, _: &AdminCap, paused: bool) {
     assert!(self.version == VERSION, EWrongVersion);
     assert!(self.paused != paused, EUnchangedPause);
@@ -170,8 +205,6 @@ public fun migrate(self: &mut Version, _: &AdminCap) {
 
     self.version = VERSION;
 }
-
-// === Public Functions ===
 
 /// Destroys the curve-fee cap and binds the launch's creator fees to this distributor forever.
 /// No fee capability survives, so no administrator can reassign them; metadata is untouched.
@@ -226,53 +259,38 @@ public fun collect_curve_fees<Meme, Quote>(
     self.accrue(object::id(launch), meme, quote);
 }
 
-/// Collects already-accounted LP fees; venue fee collection can precede it in a PTB.
+/// Anyone can receive coins pushed to this distributor's address into its unallocated balances.
 ///
-/// No launch argument pins the source: the vault must already be bound to this module's
-/// witness, and `Meme` is a one-time witness, so exactly one launch, one vault and one
-/// distributor exist for `<Meme, Quote>`. The type arguments already name the only pair.
-public fun collect_lp_fees<Meme, Quote>(
+/// Fee routes and allocation channels pay a destination by transfer, so coins paid to this
+/// object's ID wait there, owned by it, until a call names them here, at most 100 per call.
+public fun receive_coins<Meme, Quote>(
     self: &mut Distributor<Meme, Quote>,
     version: &Version,
-    vault: &mut LpVault<Meme, Quote>,
-    migrators_version: &MigratorsVersion,
-    ctx: &mut TxContext,
+    meme_receivings: vector<Receiving<Coin<Meme>>>,
+    quote_receivings: vector<Receiving<Coin<Quote>>>,
 ) {
     version.assert_enabled();
+    let batch_size = meme_receivings.length() + quote_receivings.length();
+    assert!(
+        batch_size > 0 && batch_size <= MAX_RECEIVING_COIN_BATCH_SIZE,
+        EInvalidReceivingCoinBatch,
+    );
 
-    let (meme, quote) = vault.claim_custodied_creator_fees(migrators_version, Witness(), ctx);
-    self.accrue(object::id(vault), meme, quote);
-}
+    let meme = receive_all(&mut self.id, meme_receivings);
+    let quote = receive_all(&mut self.id, quote_receivings);
+    let meme_amount = meme.value();
+    let quote_amount = quote.value();
 
-/// Binds the vault's pending creator LP fees here forever without any capability.
-/// The enrolled launch proves this distributor already custodies its creator fees.
-public fun lock_lp_fees<Meme, Quote>(
-    self: &Distributor<Meme, Quote>,
-    version: &Version,
-    vault: &mut LpVault<Meme, Quote>,
-    migrators_version: &MigratorsVersion,
-    launch: &Launch<Meme, Quote>,
-) {
-    version.assert_enabled();
-    assert!(object::id(launch) == self.launch, EWrongSource);
+    let meme_total = self.meme.join(meme);
+    let quote_total = self.quote.join(quote);
 
-    vault.lock_pending_creator_fees(migrators_version, launch, Witness());
-}
-
-/// Destroys an already claimed live LP-fee cap and binds its creator LP fees here forever.
-/// The enrolled launch proves this distributor is the custodian those fees can reach.
-public fun lock_lp_fees_with_cap<Meme, Quote>(
-    self: &Distributor<Meme, Quote>,
-    version: &Version,
-    vault: &mut LpVault<Meme, Quote>,
-    migrators_version: &MigratorsVersion,
-    launch: &Launch<Meme, Quote>,
-    lp_fee_cap: LpFeeCap<Meme>,
-) {
-    version.assert_enabled();
-    assert!(object::id(launch) == self.launch, EWrongSource);
-
-    vault.lock_creator_fees(migrators_version, lp_fee_cap, Witness());
+    event::emit(CoinsReceived {
+        distributor: self.id.to_inner(),
+        meme_amount,
+        quote_amount,
+        meme_total,
+        quote_total,
+    });
 }
 
 /// Reserves existing funds for an allocation authorized by this distributor's cap.
@@ -425,36 +443,16 @@ fun accrue<Meme, Quote>(
     });
 }
 
-// === Test-Only Functions ===
-
-#[test_only]
-public fun init_for_testing(ctx: &mut TxContext) { init(ctx); }
-#[test_only]
-public fun new_version_for_testing(ctx: &mut TxContext): Version {
-    Version { id: object::new(ctx), version: VERSION, paused: false }
-}
-#[test_only]
-public fun new_admin_cap_for_testing(ctx: &mut TxContext): AdminCap {
-    AdminCap { id: object::new(ctx) }
-}
-#[test_only]
-public fun set_version_for_testing(self: &mut Version, version: u64) { self.version = version; }
-#[test_only]
-public fun version_for_testing(self: &Version): u64 { self.version }
-#[test_only]
-public fun paused_for_testing(self: &Version): bool { self.paused }
-#[test_only]
-public fun balances_for_testing<Meme, Quote>(self: &Distributor<Meme, Quote>): (u64, u64) {
-    (self.meme.value(), self.quote.value())
-}
-#[test_only]
-public fun round_balances_for_testing<Meme, Quote>(self: &Round<Meme, Quote>): (u64, u64) {
-    (self.meme.value(), self.quote.value())
-}
-#[test_only]
-#[test_only]
-public fun is_claimed_for_testing<Meme, Quote>(self: &Round<Meme, Quote>, index: u64): bool {
-    self.claimed[index / 256] & (1u256 << ((index % 256) as u8)) != 0
+/// Receives each named coin owned by `id` into one balance.
+fun receive_all<CoinType>(
+    id: &mut UID,
+    receivings: vector<Receiving<Coin<CoinType>>>,
+): Balance<CoinType> {
+    let mut received = balance::zero();
+    receivings.do!(|receiving| {
+        received.join(transfer::public_receive(id, receiving).into_balance());
+    });
+    received
 }
 
 #[test]
@@ -493,11 +491,49 @@ fun publisher_cap_is_bound_to_one_distributor() {
     std::unit_test::destroy(distributor);
 }
 
-// === Public Aliases ===
+// === Test-Only Functions ===
 
-public use fun round_balances_for_testing as Round.balances_for_testing;
+#[test_only]
+public fun init_for_testing(ctx: &mut TxContext) { init(ctx); }
+
+#[test_only]
+public fun new_version_for_testing(ctx: &mut TxContext): Version {
+    Version { id: object::new(ctx), version: VERSION, paused: false }
+}
+
+#[test_only]
+public fun new_admin_cap_for_testing(ctx: &mut TxContext): AdminCap {
+    AdminCap { id: object::new(ctx) }
+}
+
+#[test_only]
+public fun set_version_for_testing(self: &mut Version, version: u64) { self.version = version; }
+
+#[test_only]
+public fun version_for_testing(self: &Version): u64 { self.version }
+
+#[test_only]
+public fun paused_for_testing(self: &Version): bool { self.paused }
+
+#[test_only]
+public fun balances_for_testing<Meme, Quote>(self: &Distributor<Meme, Quote>): (u64, u64) {
+    (self.meme.value(), self.quote.value())
+}
+
+#[test_only]
+public fun round_balances_for_testing<Meme, Quote>(self: &Round<Meme, Quote>): (u64, u64) {
+    (self.meme.value(), self.quote.value())
+}
+
+#[test_only]
+public fun is_claimed_for_testing<Meme, Quote>(self: &Round<Meme, Quote>, index: u64): bool {
+    self.claimed[index / 256] & (1u256 << ((index % 256) as u8)) != 0
+}
 
 // === Imports ===
+
+#[test_only]
+public use fun round_balances_for_testing as Round.balances_for_testing;
 
 use blast_fun::{
     creator_authority::CurveFeeCap,
@@ -507,10 +543,4 @@ use blast_fun::{
 
 use blast_fun_distributor::merkle;
 
-use blast_fun_migrators::{
-    lp_fee_authority::LpFeeCap,
-    package_version::PackageVersion as MigratorsVersion,
-    vault::LpVault,
-};
-
-use sui::{balance::{Self, Balance}, coin::Coin, event};
+use sui::{balance::{Self, Balance}, coin::Coin, event, transfer::Receiving};

@@ -3,7 +3,7 @@
 
 // `blast_fun::errors` intentionally centralizes package-wide abort codes through zero-cost
 // macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
-// locations while retaining one append-only registry in `blast_fun::errors`.
+// locations while retaining one package registry in `blast_fun::errors`.
 #[allow(lint(abort_without_constant))]
 /// Pure constant-product quotes and the terminal-target input cap; owns no state.
 module blast_fun::curve;

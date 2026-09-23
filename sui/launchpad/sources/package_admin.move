@@ -3,7 +3,7 @@
 
 // `blast_fun::errors` intentionally centralizes package-wide abort codes through zero-cost
 // macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
-// locations while retaining one append-only registry in `blast_fun::errors`.
+// locations while retaining one package registry in `blast_fun::errors`.
 #[allow(lint(abort_without_constant))]
 /// Custodies the package Publisher and UpgradeCap and governs package administration.
 ///
@@ -13,7 +13,7 @@
 /// governed transition must follow.
 module blast_fun::package_admin;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Shared custody for the package's framework Publisher and UpgradeCap.
 public struct PackageAdmin has key {

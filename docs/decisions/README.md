@@ -67,7 +67,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0019](0019-consuming-creator-authority-and-cap-return.md) | Consuming creator authority and returning CreatorCap | **accepted** |
 | [0020](0020-admin-cap-self-destruction.md) | Admin-cap self-destruction and voluntary renunciation | **accepted** |
 | [0021](0021-pure-constant-product-curve-quotes.md) | Pure constant-product curve quotes | **accepted** |
-| [0022](0022-dual-asset-fee-ledger-and-claims.md) | Dual-asset fee ledger and capability claims | **accepted** |
+| [0022](0022-dual-asset-fee-ledger-and-claims.md) | Dual-asset fee ledger and capability claims | **accepted; amended by 0088** |
 | [0023](0023-generated-coin-supply-and-metadata-custody.md) | Generated coin supply and metadata custody | **accepted** |
 | [0024](0024-generated-coin-launch-ticket.md) | Generated coin launch ticket | **accepted** |
 | [0025](0025-quote-whitelist-and-migration-targets.md) | Quote whitelist and migration targets | **accepted** |
@@ -80,60 +80,61 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0032](0032-admin-authorized-upgrade-cap-custody.md) | Package administration custody and admin-authorized upgrades | **accepted** |
 | [0033](0033-meme-liquidity-provision.md) | Meme liquidity provision for destination pools | **accepted** |
 | [0034](0034-remove-premature-governance-cutover.md) | Remove the premature governance cutover | **accepted** |
-| [0035](0035-initializer-finalized-meme-supply.md) | Finalize generated Meme supply during initialization | **accepted** |
-| [0036](0036-fixed-nine-decimal-generated-memes.md) | Fix generated Meme precision at nine decimals | **accepted** |
+| [0035](0035-initializer-finalized-meme-supply.md) | Finalize generated Meme supply during initialization | **accepted; supply-mode timing amended by 0088** |
+| [0036](0036-fixed-nine-decimal-generated-memes.md) | Fix generated Meme precision at nine decimals | superseded by 0088 |
 | [0037](0037-remove-redundant-ticket-burn-mode.md) | Remove redundant supply mode from launch-ticket custody | superseded by 0043 |
 | [0038](0038-standard-method-names.md) | Standard method names for reads, conversions, and wrapper destruction | **accepted** |
 | [0039](0039-deterministic-quote-valuations.md) | Deterministic Quote-denominated launch valuations | **accepted** |
 | [0040](0040-normalized-launch-state-intake.md) | Normalized launch state intake | **accepted** |
 | [0041](0041-launch-config-owned-trade-fees.md) | LaunchConfig-owned trade fees | **accepted** |
-| [0042](0042-key-only-shared-launch.md) | Key-only shared launch publication | **accepted** |
-| [0043](0043-versioned-launch-trading-and-atomic-migration.md) | Versioned launch trading and atomic migration | **accepted** |
+| [0042](0042-key-only-shared-launch.md) | Key-only shared launch publication | **accepted; amended by 0088** |
+| [0043](0043-versioned-launch-trading-and-atomic-migration.md) | Versioned launch trading and atomic migration | **accepted; amended by 0088** |
 | [0044](0044-validated-basis-points-unit.md) | Validated basis-points unit | **accepted** |
 | [0045](0045-single-package-version.md) | Single package version | **accepted** |
-| [0046](0046-witness-authorized-migration-redemption.md) | Witness-authorized migration redemption | **accepted** |
-| [0047](0047-coin-registry-authoritative-supply-mode.md) | Coin Registry authoritative supply mode | **accepted** |
+| [0046](0046-witness-authorized-migration-redemption.md) | Witness-authorized migration redemption | **accepted; amended by 0088** |
+| [0047](0047-coin-registry-authoritative-supply-mode.md) | Coin Registry authoritative supply mode | **accepted; supply-mode timing amended by 0088** |
 | [0048](0048-sui-package-workspace.md) | Sui package workspace | **accepted** |
 | [0049](0049-audit-hardened-package-version-and-launch-intake.md) | Audit-hardened package cutover and launch intake | **accepted** |
 | [0050](0050-module-local-package-version-constant.md) | Module-local package-version constant | **accepted** |
-| [0051](0051-generated-meme-package-template.md) | Generated Meme package template | **accepted** |
+| [0051](0051-generated-meme-package-template.md) | Generated Meme package template | **accepted; publish-time immutability amended by 0088** |
 | [0052](0052-stepped-linear-vesting.md) | Fully funded stepped-linear vesting | **accepted** |
 | [0053](0053-single-validator-funsui-and-blastsui.md) | Single-validator `funSUI` and `blastSUI` | **accepted** |
-| [0054](0054-v3-dex-migrators-and-locked-lp-fees.md) | V3 DEX migrators, exact seed pricing, and locked LP fees | **accepted** |
+| [0054](0054-v3-dex-migrators-and-locked-lp-fees.md) | V3 DEX migrators, exact seed pricing, and locked LP fees | **accepted; new-lineage admission and fee custody amended by 0088** |
 | [0055](0055-global-vesting-package-and-checkpoints.md) | Global vesting package and checkpoint schedules | **accepted** |
 | [0056](0056-bounded-pending-stake-vector.md) | Bounded pending-stake vector in custody ledgers | **accepted** |
-| [0057](0057-admin-pinned-venue-tiers.md) | Admin-pinned venue tiers for permissionless migration | **accepted** |
+| [0057](0057-admin-pinned-venue-tiers.md) | Admin-pinned venue tiers for permissionless migration | **accepted; amended by 0088** |
 | [0058](0058-eventless-package-initialization.md) | Eventless package initialization | **accepted** |
-| [0059](0059-production-launchpad-abi-and-sdk-parity.md) | Production launchpad ABI and first SDK parity boundary | **accepted** |
+| [0059](0059-production-launchpad-abi-and-sdk-parity.md) | Production launchpad ABI and first SDK parity boundary | **accepted; amended by 0088** |
 | [0060](0060-blastsui-metadata-cap-custody.md) | Retain currency and receipt update capabilities in package-admin custody | **accepted** |
 | [0061](0061-blastsui-routine-admin-and-composable-package-custody.md) | Routine administration and composable package custody for blastSUI | **accepted** |
 | [0062](0062-table-backed-quote-registry.md) | Table-backed quote registry without a protocol cardinality cap | **accepted** |
-| [0063](0063-aftermath-weighted-pool-migrator.md) | Aftermath weighted-pool migration with permanently locked LP tokens | **accepted** |
+| [0063](0063-aftermath-weighted-pool-migrator.md) | Aftermath weighted-pool migration with permanently locked LP tokens | **accepted historically; adapter removed from the new lineage by 0088** |
 | [0064](0064-aftermath-backed-leverage-coins.md) | Aftermath-backed `SUI2L` and `SUI2S` leverage coins | proposed |
 | [0065](0065-discoverable-blastsui-treasury-caps.md) | Discoverable blastSUI treasury-cap custody | **accepted** |
-| [0066](0066-aftermath-dao-fee-pool.md) | Aftermath DAO-fee wrapper and claimable launch revenue | **accepted** |
-| [0067](0067-retire-full-sail-migrator.md) | Retire the Full Sail migrator before release | **accepted** |
-| [0068](0068-compact-lp-fee-principal-snapshot.md) | Compact the LP-fee principal snapshot before release | **accepted** |
-| [0069](0069-consolidate-launch-graduation-and-move-migration-math.md) | Consolidate launch graduation and move migration math into migrators | **accepted** |
+| [0066](0066-aftermath-dao-fee-pool.md) | Aftermath DAO-fee wrapper and claimable launch revenue | **accepted historically; adapter removed from the new lineage by 0088** |
+| [0067](0067-retire-full-sail-migrator.md) | Retire the Full Sail migrator before release | **accepted; remaining-venue release surface amended by 0088** |
+| [0068](0068-compact-lp-fee-principal-snapshot.md) | Compact the LP-fee principal snapshot before release | superseded by 0088 |
+| [0069](0069-consolidate-launch-graduation-and-move-migration-math.md) | Consolidate launch graduation and move migration math into migrators | **accepted; amended by 0088** |
 | [0070](0070-series-one-versioning-and-role-administration.md) | Series1 operational version and role administration | **superseded** |
 | [0071](0071-series-one-vault-issuance.md) | Series1 Vault and dynamic share-currency issuance | **superseded** |
 | [0072](0072-series-one-package-capability-custody.md) | Series1 package-capability custody | **superseded** |
 | [0073](0073-series-one-adapter-owned-vaults.md) | Series1 core with adapter-owned product Vaults | **accepted** |
 | [0074](0074-aftermath-vault-activation-and-health.md) | Aftermath Vault activation and health evidence | **accepted for dependency and raw-field normalization** |
-| [0075](0075-independent-holder-fee-distributor.md) | Independent holder fee distributor | **accepted; live release gates remain** |
-| [0076](0076-native-v2-and-auto-lp.md) | Native V2 and automatic liquidity deposits | **accepted; packages parked in `scratch-sui/` pending redesign ([0083](0083-migrators-own-lp-fee-policy-and-authority.md))** |
+| [0075](0075-independent-holder-fee-distributor.md) | Independent holder fee distributor | **accepted; amended by 0088; live release gates remain** |
+| [0076](0076-native-v2-and-auto-lp.md) | Native V2 and automatic liquidity deposits | **accepted; packages parked in `scratch-sui/` pending the redesign accepted by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)** |
 | [0077](0077-fixed-creator-selected-sell-burn.md) | Fixed creator-selected sell burn | **accepted** |
 | [0078](0078-explicit-curve-invariant-primitives.md) | Explicit curve invariant primitives | **accepted** |
-| [0079](0079-compact-launch-state-and-events.md) | Compact launch state and events before publication | **accepted** |
+| [0079](0079-compact-launch-state-and-events.md) | Compact launch state and events before publication | **accepted; amended by 0088** |
 | [0080](0080-provider-independent-creator-recipient.md) | Provider-independent creator recipients | **accepted** |
-| [0081](0081-separate-lp-fee-share-policy.md) | Separate LP-fee share policy with per-project pins | **accepted** |
-| [0082](0082-revocable-creator-and-lp-fee-capabilities.md) | Revocable curve-fee, metadata, and LP-fee capabilities | **accepted** |
-| [0083](0083-migrators-own-lp-fee-policy-and-authority.md) | Migrators own LP-fee policy and migration-born LP-fee authority | **accepted** |
+| [0081](0081-separate-lp-fee-share-policy.md) | Separate LP-fee share policy with per-project pins | superseded by 0088 |
+| [0082](0082-revocable-creator-and-lp-fee-capabilities.md) | Revocable curve-fee, metadata, and LP-fee capabilities | **accepted; LP-fee authority superseded by 0088** |
+| [0083](0083-migrators-own-lp-fee-policy-and-authority.md) | Migrators own LP-fee policy and migration-born LP-fee authority | superseded by 0088 |
 | [0085](0085-explorer-visible-type-naming.md) | Explorer-visible type naming: every on-chain type names Blast | **accepted** |
 | [0086](0086-maintenance-reserve-ceiling.md) | Maintenance reserve ceiling: `max_reserve_bps` of notional, clamped credits, priced-after-release, no admin release | **accepted** |
 | [0087](0087-vault-issuance-activated-in-one-transaction.md) | Vault issuance activated in one transaction: `issue` returns a hot-potato issuance, `initialize` returns the Vault, no optional activation fields | **accepted** |
+| [0088](0088-reusable-launch-accounting-and-atomic-migration.md) | Reusable launch accounting and atomic migration | **accepted; rewritten in place 2026-09-22: push payouts, no digests, venue selection, or type-guaranteed ID bindings, one linear migration value, creator-selected target, one-time-witness Meme; amended the same day: upgradeable migrators, ticket-bound adapter with venue preparation, adapter-supplied pool ID; amended 2026-09-23: Aftermath, MMT, and Turbos adapters removed; venue-operator trust assumptions and the migrators upgrade-policy rule recorded** |
 
-ADRs 0013–0036, 0038–0063, 0065–0069, 0073, 0077–0083, and 0085–0087 are accepted; ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
+ADRs 0013–0035, 0038–0067, 0069, 0073–0080, 0082, and 0085–0088 are accepted subject to the amendments shown above; ADR 0088 supersedes 0036, 0068, 0081, and 0083. ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -155,8 +156,10 @@ fair-cancellation policy.
 ADR 0028 consolidates the dedicated creator-claim signer and live protocol fee share into
 one small `RuntimeConfig`, while preserving separate `ProtocolAuthority` and
 cold `LaunchConfig` shared objects.
-ADR 0081 keeps that share for bonding-curve trades only and moves LP-fee splits
-to a separate `LpFeePolicy` with Meme-keyed partner pins.
+ADR 0081 historically separated LP-fee shares into migrator policy; ADR 0088
+supersedes that recurring path with frozen per-launch, per-asset Blast shares
+and bounded project routes in `FeeRouter`, paid to their destinations at every
+collection.
 
 ADR 0080 separates the launcher from the designated creator recipient and
 replaces provider-specific social identity with an opaque Blast account
@@ -180,7 +183,10 @@ initializers context-only unless they genuinely consume an OTW.
 
 ADR 0032 validates and wraps the package `Publisher` and `UpgradeCap` in one
 shared package-administration object and lets a live `AdminWitness` authorize
-exact upgrade digests and irreversibly narrow policy.
+exact upgrade digests and irreversibly narrow policy. ADR 0088 retains this
+launchpad custody and no-burn posture while fixing separate final cap postures
+for the upgradeable migrators, the publisher-held caps of upgradeable generated
+Meme packages, and the distributor's owner-held native repair cap.
 
 ADR 0033 adds an independent, nonzero Meme liquidity-provision rate to the cold
 launch snapshot. It reserves destination-pool principal separately from protocol
@@ -195,13 +201,15 @@ ADR 0035 mints the exact one-billion-coin Meme inventory during OTW currency
 initialization, immediately consumes mint authority into `Fixed` or `BurnOnly`,
 and stores only the resulting balance in `LaunchTicket`.
 
-ADR 0036 removes caller-selected precision from `launch_ticket::new`. Every
-generated Meme has nine decimals and exactly
-`1_000_000_000__000_000_000` atomic units.
+ADR 0036's fixed-nine-decimal rule is superseded by ADR 0088. Generated Memes
+select an allowlisted precision, initially six or nine decimals, while retaining
+exactly one billion whole tokens and finalized mint authority.
 
 ADR 0037's removal of ticket supply-mode custody was superseded by ADR 0043.
-ADR 0047 restores Coin Registry as the only supply-mode authority. The ticket
-and Launch bind only the sell-burn rate, while migration reads native mode.
+ADR 0047 restores Coin Registry as the only supply-mode authority. Under ADR
+0088 the ticket stores the owner's mode choice and keeps the treasury cap until
+launch intake fixes the native mode; the Launch binds only the sell-burn rate,
+and migration reads native mode.
 
 ADR 0038 replaces generic projection and decomposition verbs with one naming
 rule: field-named reads, destination-named `into_*` conversions, and `destroy`
@@ -236,9 +244,11 @@ ADR 0046 moves the sealed external adapter witness from permissionless
 the snapshotted witness type, while only that witness's owner can open the
 non-droppable payload in the same transaction.
 
-ADR 0047 makes native Coin Registry state the only supply-mode authority. The
-ticket and Launch retain `sell_burn_bps` but no cached `burnable` Boolean, and
-migration selects Fixed or BurnOnly disposal directly from `Currency<Meme>`.
+ADR 0047 makes native Coin Registry state the only supply-mode authority. Under
+ADR 0088 the ticket stores the owner's `burnable` choice until launch intake
+fixes the native mode; the Launch retains `sell_burn_bps` but no cached
+`burnable` Boolean, and migration selects Fixed or BurnOnly disposal directly
+from `Currency<Meme>`.
 
 ADR 0048 turns `sui/` into a package workspace. The current `blast_fun` package
 lives in `sui/launchpad/`; future venue adapters and vesting packages live below
@@ -275,9 +285,10 @@ LP principal, and the operational recommended SUI lane. Its Memez, Raydium,
 Pump, and Hop comparisons are context only; they do not set an on-chain USD
 oracle or immutable global default.
 
-ADR 0057 amends 0054: permissionless migration reads its venue fee tier from
-one admin-pinned shared `VenueConfig` singleton instead of caller parameters,
-failing closed until each venue is pinned.
+ADR 0057's administrator-pinned singleton tier remains the adapters' tier source
+under ADR 0088: core stores only the admitted migration witness type. The Cetus
+adapter reserves the pinned tier when a ticket is bound and migrates at that
+reserved tier; the Bluefin adapter validates its tier at migration.
 
 ADR 0058 amends 0011 and reverses 0030's creation-event exception: no `init`
 emits an event in any package, because every field those payloads carried is
@@ -301,10 +312,12 @@ package operations. Package custody now uses the composable
 construct–attach–finalize lifecycle, with exact-type dynamic object fields for
 current and future child capabilities.
 
-ADR 0063 adds an Aftermath weighted-pool migrator. It creates a zero-flatness
-pool with admin-pinned role weights, reconciles the complete
-source balances and LP supply, and permanently locks every liquid LP token.
-ADR 0066 wraps it with Aftermath's DAO-fee pool, fixes the unavoidable base fee
+ADR 0063 historically adds an Aftermath weighted-pool migrator. ADR 0088
+removes that adapter, its witness, interfaces, and dependency pins from the new
+lineage because it has no atomic migration route. The historical design creates a zero-flatness pool with admin-pinned role weights,
+reconciles the complete source balances and LP supply, and permanently locks
+every liquid LP token.
+ADR 0066 historically wraps it with Aftermath's DAO-fee pool, fixes the unavoidable base fee
 at 0.01%, sends a 2% default DAO fee to the vault address, and locks the DAO
 owner cap beside the LP. Admins can change the DAO rate for future or existing
 pools without changing the recipient. Permissionless typed receive paths accrue
@@ -327,13 +340,12 @@ mint or burn authority outside vault transitions.
 ADR 0067 retires Full Sail before the aggregate migrators package's first
 recorded production release. It removes the adapter, both local interface
 packages, all six routes, the venue-tier default, release checks, and SDK APIs.
-The remaining five venues expose 13 migration routes and eight fee-accrual or
-collection routes.
+Its former five-venue route counts are historical: ADR 0088 narrows the
+replacement release surface to Cetus and Bluefin only.
 
-ADR 0068 compacts the pre-release `LpFeesCollected` event. Venue adapters still
-read principal before and after collection and abort unless it is unchanged,
-but the completed event records only the verified final `principal_liquidity`
-snapshot. The SDK reducer consumes that one canonical value.
+ADR 0068's creator/protocol LP-fee snapshot is superseded by ADR 0088. Position
+principal remains invariant, while recurring fees are paid through the bound
+router's current routes with replay-complete per-route amounts.
 
 ADR 0069 removes the separate graduation helper module and puts its private
 balance partitions in `launch`. It also moves all seed-price, deviation,
@@ -346,6 +358,14 @@ administrator registry plus venue-neutral policy, lifecycle, accounting, and
 `Vault<Product>`, currency capabilities, risk-module selection, and venue
 state. Runtime product witnesses let one adapter package issue several distinct
 currencies without an adapter root or generic handoff.
+
+ADR 0088 accepts the reusable launch, allocation, protection, Cetus/Bluefin
+custody, atomic migration, and independent fee-router contract. A generated
+package creates its currency from its one-time witness at publication (ADR
+0051) and hands the persistable ticket to its publisher, who binds it to one
+admitted migration adapter; the launchpad applies the witness allowlist, the
+mutable decimal allowlist, the canonical supply, and the sell-burn ceiling, and
+fixes the supply mode, when `launch::new` consumes that ticket.
 
 ## Open premises
 
@@ -366,7 +386,6 @@ falsification test.
 | P10 | Can a no-ability struct be threaded through a call in another package within one transaction? | [0002](0002-coin-creation-and-currency-authority.md) |
 | P11 | Can `TreasuryCap<T>` be passed by value across a transaction command boundary? | [0002](0002-coin-creation-and-currency-authority.md) |
 | P12 | Does `display_registry::new_with_publisher<T>` accept a generic instantiation? | [0001](0001-sui-package-and-module-layout.md) |
-| P13 | Can a module's `init` accept a shared object such as `&mut CoinRegistry`? | [0002](0002-coin-creation-and-currency-authority.md) |
 | P14 | Can a transaction command result be a Move reference? | [0002](0002-coin-creation-and-currency-authority.md) |
 | P15 | Can every supported login return an immutable provider subject that the backend securely maps to exactly one Blast account without email-based auto-linking? | [0080](0080-provider-independent-creator-recipient.md) |
 | P16 | Does the deployed Aftermath ABI support the complete same-transaction account, cap-custody, and session flow? | [0064](0064-aftermath-backed-leverage-coins.md) |
@@ -375,12 +394,14 @@ falsification test.
 | P19 | Does the minimum external checkpoint detect every material liquidation, ADL, settlement, order, and collateral mutation? | [0064](0064-aftermath-backed-leverage-coins.md) |
 | P20 | Which risk-reduction and settlement operations remain live in every Aftermath pause, freeze, stale-oracle, and settlement mode? | [0064](0064-aftermath-backed-leverage-coins.md) |
 
-**Load-bearing premises.** P10, P11, P13 and P14 together carry the launch transaction composition:
-P13 forces currency creation into `init` and therefore the OTW path; P14 forces the `TreasuryCap` to move
-by value rather than by reference; P10 and P11 make the core-adapter-core threading expressible. Each has
-a stated fallback — reservation in its own transaction with a persisted single-use record — so a failure
-costs a transaction, not the architecture. Their owning ADRs define the
-required compile fixtures.
+**Load-bearing premises.** P10, P11, and P14 carry linear transaction
+composition after currency construction. P10 and P11 make cross-package
+threading expressible, while P14 forces capability movement by value rather
+than by reference. The former P13 is resolved at launch intake: module
+initializers cannot take the shared decimal configuration, so `launch::new`
+applies the allowlist when it consumes the ticket rather than at currency
+construction. Each remaining premise has a stated persisted-single-use fallback
+in its owning ADR.
 
 None is treated as established until its named compile, localnet, or integration
 test passes, and none is asserted as a cited fact in the records.

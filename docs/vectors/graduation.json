@@ -1,207 +1,507 @@
 {
-  "schema_version": 2,
-  "description": "Accepted Blast V2 on-chain graduation partitions and off-chain exact-target Quote-denominated previews.",
+  "schema_version": 4,
+  "description": "Canonical Blast V2 one-time Meme and terminal-Quote allocation tables, protected-first exact apportionment, and the amounts paid to each destination when migration completes.",
   "source_decisions": [
-    "docs/decisions/0027-graduation-economics-and-migration-witnesses.md",
-    "docs/decisions/0033-meme-liquidity-provision.md",
     "docs/decisions/0039-deterministic-quote-valuations.md",
-    "docs/decisions/0054-v3-dex-migrators-and-locked-lp-fees.md"
+    "docs/decisions/0088-reusable-launch-accounting-and-atomic-migration.md"
   ],
   "units": {
     "meme": "atomic units of the generated Meme currency",
     "quote": "atomic units of the selected Quote currency",
     "rate": "basis points, 10000 = 100%",
+    "channel_id": "stable u64 identity; zero is reserved for the curve and is valid only in the Meme table",
     "rounding": {
-      "protocol_meme_graduation_fee": "ceil - protocol obligation rounds up",
-      "meme_liquidity_provision": "floor - pool principal rounds down and leaves the remainder in curve inventory",
+      "protocol": "ceil - the configured protocol allocation is protected first when present",
+      "other_entries": "floor before residual distribution",
+      "residual": "one atomic unit per unprotected entry by descending fractional remainder, then ascending channel ID",
+      "conservation": "each asset's apportioned amounts sum exactly to that asset's input total",
       "terminal_curve_meme": "ceil - the curve never releases more Meme than the exact rational endpoint",
-      "quote_migration_fee": "ceil - protocol obligation rounds up",
       "valuations": "floor - reported implied total-supply value never exceeds the exact rational value"
     }
   },
   "parameters": {
     "basis_points_denominator": 10000,
-    "maximum_quote_migration_fee_bps": 500,
-    "maximum_protocol_meme_graduation_fee_bps": 1000,
-    "maximum_meme_liquidity_provision_bps": 9999
+    "maximum_migration_channels": 16,
+    "maximum_protocol_meme_bps": 9998,
+    "maximum_protocol_quote_bps": 9999
+  },
+  "policy": {
+    "owner": "LaunchConfig",
+    "mutability": "single-write",
+    "match": "Every launch plan must exactly match the configured protocol channel ID, destination, Meme BPS, and Quote BPS.",
+    "zero_policy": "A zero/zero protocol policy omits the protocol channel and both zero-weight entries from the plan."
   },
   "formulas": {
-    "protocol_meme_graduation_fee": "ceil(initial_meme_supply * protocol_meme_graduation_fee_bps / 10000)",
-    "meme_liquidity_provision": "floor(initial_meme_supply * meme_liquidity_provision_bps / 10000)",
-    "curve_inventory": "initial_meme_supply - protocol_meme_graduation_fee - meme_liquidity_provision",
-    "quote_migration_fee": "ceil(gross_terminal_quote * quote_migration_fee_bps / 10000)",
-    "net_quote": "gross_terminal_quote - quote_migration_fee",
-    "terminal_curve_meme": "ceil(curve_inventory * virtual_quote / (virtual_quote + migration_quote_target))",
-    "curve_meme_released": "curve_inventory - terminal_curve_meme",
-    "opening_valuation": "floor(initial_meme_supply * virtual_quote / curve_inventory)",
-    "curve_terminal_valuation": "floor(initial_meme_supply * (virtual_quote + migration_quote_target) / terminal_curve_meme)",
-    "dex_opening_valuation": "floor(initial_meme_supply * net_quote / meme_liquidity_provision)"
+    "terminal_curve_meme": "ceil(curve_meme * virtual_quote / (virtual_quote + graduation_target))",
+    "curve_meme_released": "curve_meme - terminal_curve_meme",
+    "opening_valuation": "floor(total_meme * virtual_quote / curve_meme)",
+    "curve_terminal_valuation": "floor(total_meme * (virtual_quote + graduation_target) / terminal_curve_meme)",
+    "dex_opening_valuation": "floor(total_meme * terminal_quote / liquidity_meme)"
+  },
+  "payout_semantics": {
+    "liquidity": "The sole liquidity channel's amounts enter the migration handoff to the launch's bound adapter.",
+    "non_liquidity": "Each non-liquidity channel's nonzero amounts are pushed to its immutable destination inside the successful migration transaction.",
+    "fees": "One-time allocations never enter the recurring LP-fee routes."
   },
   "cases": [
     {
-      "name": "worked_sui_valuation",
-      "given": {
-        "initial_meme_supply": "1000000000000000000",
-        "curve_inventory": "800000000000000000",
-        "meme_liquidity_provision": "200000000000000000",
-        "virtual_quote": "1000000000000",
-        "migration_quote_target": "3000000000000",
-        "quote_migration_fee_bps": 100
-      },
-      "expect": {
-        "terminal_curve_meme": "200000000000000000",
-        "curve_meme_released": "600000000000000000",
-        "quote_migration_fee": "30000000000",
-        "net_quote": "2970000000000",
-        "opening_valuation": "1250000000000",
-        "curve_terminal_valuation": "20000000000000",
-        "dex_opening_valuation": "14850000000000"
-      }
-    },
-    {
-      "name": "forty_percent_total_supply_curve_release",
-      "given": {
-        "initial_meme_supply": "1000000000000000000",
-        "curve_inventory": "800000000000000000",
-        "meme_liquidity_provision": "200000000000000000",
-        "virtual_quote": "800000000000",
-        "migration_quote_target": "800000000000",
-        "quote_migration_fee_bps": 0
-      },
-      "expect": {
-        "terminal_curve_meme": "400000000000000000",
-        "curve_meme_released": "400000000000000000",
-        "quote_migration_fee": "0",
-        "net_quote": "800000000000",
-        "opening_valuation": "1000000000000",
-        "curve_terminal_valuation": "4000000000000",
-        "dex_opening_valuation": "4000000000000"
-      }
-    },
-    {
       "name": "recommended_sui_lane",
+      "kind": "allocation_apportionment",
       "given": {
-        "initial_meme_supply": "1000000000000000000",
-        "curve_inventory": "800000000000000000",
-        "meme_liquidity_provision": "200000000000000000",
+        "total_meme": "1000000000000000000",
+        "total_quote": "8000000000000",
         "virtual_quote": "8000000000000",
-        "migration_quote_target": "8000000000000",
-        "protocol_meme_graduation_fee_bps": 0,
-        "meme_liquidity_provision_bps": 2000,
-        "quote_migration_fee_bps": 0
+        "graduation_target": "8000000000000",
+        "protocol_policy": {
+          "channel_id": "30",
+          "destination": "0x30",
+          "meme_bps": 0,
+          "quote_bps": 0
+        },
+        "channels": [
+          {
+            "channel_id": "20",
+            "role": "Liquidity",
+            "destination": "0x20"
+          }
+        ],
+        "meme_weights": [
+          {
+            "channel_id": "0",
+            "bps": 8000
+          },
+          {
+            "channel_id": "20",
+            "bps": 2000
+          }
+        ],
+        "quote_weights": [
+          {
+            "channel_id": "20",
+            "bps": 10000
+          }
+        ]
       },
       "expect": {
+        "canonical_channel_ids": [
+          "20"
+        ],
+        "meme_allocations": [
+          {
+            "channel_id": "0",
+            "amount": "800000000000000000"
+          },
+          {
+            "channel_id": "20",
+            "amount": "200000000000000000"
+          }
+        ],
+        "quote_allocations": [
+          {
+            "channel_id": "20",
+            "amount": "8000000000000"
+          }
+        ],
+        "protocol_paid_at_migration": {
+          "meme": "0",
+          "quote": "0"
+        },
         "terminal_curve_meme": "400000000000000000",
         "curve_meme_released": "400000000000000000",
-        "quote_migration_fee": "0",
-        "net_quote": "8000000000000",
         "opening_valuation": "10000000000000",
         "curve_terminal_valuation": "40000000000000",
         "dex_opening_valuation": "40000000000000"
-      }
+      },
+      "notes": "This preserves the illustrative 80/20 Meme and 100% liquidity-Quote lane without fixed protocol-fee or liquidity-provision fields."
     },
     {
-      "name": "zero_protocol_lines",
+      "name": "protected_first_and_remainder_order",
+      "kind": "allocation_apportionment",
       "given": {
-        "initial_meme_supply": "10001",
-        "protocol_meme_graduation_fee_bps": 0,
-        "meme_liquidity_provision_bps": 2000,
-        "gross_terminal_quote": "10001",
-        "quote_migration_fee_bps": 0
+        "total_meme": "10003",
+        "total_quote": "10003",
+        "protocol_policy": {
+          "channel_id": "10",
+          "destination": "0x10",
+          "meme_bps": 1000,
+          "quote_bps": 1000
+        },
+        "channels": [
+          {
+            "channel_id": "30",
+            "role": "External",
+            "destination": "0x30"
+          },
+          {
+            "channel_id": "10",
+            "role": "Protocol",
+            "destination": "0x10"
+          },
+          {
+            "channel_id": "20",
+            "role": "Liquidity",
+            "destination": "0x20"
+          }
+        ],
+        "meme_weights": [
+          {
+            "channel_id": "30",
+            "bps": 3000
+          },
+          {
+            "channel_id": "10",
+            "bps": 1000
+          },
+          {
+            "channel_id": "0",
+            "bps": 3000
+          },
+          {
+            "channel_id": "20",
+            "bps": 3000
+          }
+        ],
+        "quote_weights": [
+          {
+            "channel_id": "30",
+            "bps": 6000
+          },
+          {
+            "channel_id": "10",
+            "bps": 1000
+          },
+          {
+            "channel_id": "20",
+            "bps": 3000
+          }
+        ]
       },
       "expect": {
-        "curve_inventory": "8001",
-        "protocol_meme_graduation_fee": "0",
-        "meme_liquidity_provision": "2000",
-        "net_quote": "10001",
-        "quote_migration_fee": "0"
-      }
+        "canonical_channel_ids": [
+          "10",
+          "20",
+          "30"
+        ],
+        "meme_allocations": [
+          {
+            "channel_id": "0",
+            "amount": "3001"
+          },
+          {
+            "channel_id": "10",
+            "amount": "1001"
+          },
+          {
+            "channel_id": "20",
+            "amount": "3001"
+          },
+          {
+            "channel_id": "30",
+            "amount": "3000"
+          }
+        ],
+        "quote_allocations": [
+          {
+            "channel_id": "10",
+            "amount": "1001"
+          },
+          {
+            "channel_id": "20",
+            "amount": "3001"
+          },
+          {
+            "channel_id": "30",
+            "amount": "6001"
+          }
+        ],
+        "protocol_paid_at_migration": {
+          "meme": "1001",
+          "quote": "1001"
+        }
+      },
+      "notes": "The protocol ceiling is applied first. Meme residuals then follow equal remainder by ascending channel ID; Quote residual follows the larger unprotected remainder."
     },
     {
-      "name": "meme_protocol_line_only",
+      "name": "unprotected_channel_id_tie",
+      "kind": "allocation_apportionment",
       "given": {
-        "initial_meme_supply": "1000001",
-        "protocol_meme_graduation_fee_bps": 750,
-        "meme_liquidity_provision_bps": 2000,
-        "gross_terminal_quote": "1000001",
-        "quote_migration_fee_bps": 0
+        "total_meme": "3",
+        "total_quote": "3",
+        "protocol_policy": {
+          "channel_id": "30",
+          "destination": "0x30",
+          "meme_bps": 0,
+          "quote_bps": 0
+        },
+        "channels": [
+          {
+            "channel_id": "20",
+            "role": "Liquidity",
+            "destination": "0x20"
+          },
+          {
+            "channel_id": "10",
+            "role": "External",
+            "destination": "0x10"
+          }
+        ],
+        "meme_weights": [
+          {
+            "channel_id": "20",
+            "bps": 3334
+          },
+          {
+            "channel_id": "0",
+            "bps": 3333
+          },
+          {
+            "channel_id": "10",
+            "bps": 3333
+          }
+        ],
+        "quote_weights": [
+          {
+            "channel_id": "20",
+            "bps": 5000
+          },
+          {
+            "channel_id": "10",
+            "bps": 5000
+          }
+        ]
       },
       "expect": {
-        "curve_inventory": "725000",
-        "protocol_meme_graduation_fee": "75001",
-        "meme_liquidity_provision": "200000",
-        "net_quote": "1000001",
-        "quote_migration_fee": "0"
-      }
+        "canonical_channel_ids": [
+          "10",
+          "20"
+        ],
+        "meme_allocations": [
+          {
+            "channel_id": "0",
+            "amount": "1"
+          },
+          {
+            "channel_id": "10",
+            "amount": "1"
+          },
+          {
+            "channel_id": "20",
+            "amount": "1"
+          }
+        ],
+        "quote_allocations": [
+          {
+            "channel_id": "10",
+            "amount": "2"
+          },
+          {
+            "channel_id": "20",
+            "amount": "1"
+          }
+        ],
+        "protocol_paid_at_migration": {
+          "meme": "0",
+          "quote": "0"
+        }
+      },
+      "notes": "With no protocol channel, all entries floor first. Equal remainders award dust to the lower stable channel ID."
     },
     {
-      "name": "quote_protocol_line_only",
+      "name": "maximum_protocol_policy",
+      "kind": "allocation_apportionment",
       "given": {
-        "initial_meme_supply": "1000001",
-        "protocol_meme_graduation_fee_bps": 0,
-        "meme_liquidity_provision_bps": 2000,
-        "gross_terminal_quote": "1000001",
-        "quote_migration_fee_bps": 250
+        "total_meme": "10000",
+        "total_quote": "10000",
+        "protocol_policy": {
+          "channel_id": "2",
+          "destination": "0x2",
+          "meme_bps": 9998,
+          "quote_bps": 9999
+        },
+        "channels": [
+          {
+            "channel_id": "2",
+            "role": "Protocol",
+            "destination": "0x2"
+          },
+          {
+            "channel_id": "1",
+            "role": "Liquidity",
+            "destination": "0x1"
+          }
+        ],
+        "meme_weights": [
+          {
+            "channel_id": "2",
+            "bps": 9998
+          },
+          {
+            "channel_id": "0",
+            "bps": 1
+          },
+          {
+            "channel_id": "1",
+            "bps": 1
+          }
+        ],
+        "quote_weights": [
+          {
+            "channel_id": "2",
+            "bps": 9999
+          },
+          {
+            "channel_id": "1",
+            "bps": 1
+          }
+        ]
       },
       "expect": {
-        "curve_inventory": "800001",
-        "protocol_meme_graduation_fee": "0",
-        "meme_liquidity_provision": "200000",
-        "net_quote": "975000",
-        "quote_migration_fee": "25001"
-      }
+        "canonical_channel_ids": [
+          "1",
+          "2"
+        ],
+        "meme_allocations": [
+          {
+            "channel_id": "0",
+            "amount": "1"
+          },
+          {
+            "channel_id": "1",
+            "amount": "1"
+          },
+          {
+            "channel_id": "2",
+            "amount": "9998"
+          }
+        ],
+        "quote_allocations": [
+          {
+            "channel_id": "1",
+            "amount": "1"
+          },
+          {
+            "channel_id": "2",
+            "amount": "9999"
+          }
+        ],
+        "protocol_paid_at_migration": {
+          "meme": "9998",
+          "quote": "9999"
+        }
+      },
+      "notes": "The policy maxima preserve one positive BPS for Quote liquidity and one positive BPS each for the Meme curve and liquidity channel."
     },
     {
-      "name": "both_protocol_lines",
+      "name": "maximum_u64_width",
+      "kind": "allocation_apportionment",
       "given": {
-        "initial_meme_supply": "1000001",
-        "protocol_meme_graduation_fee_bps": 750,
-        "meme_liquidity_provision_bps": 2000,
-        "gross_terminal_quote": "1000001",
-        "quote_migration_fee_bps": 250
+        "total_meme": "18446744073709551615",
+        "total_quote": "18446744073709551615",
+        "protocol_policy": {
+          "channel_id": "2",
+          "destination": "0x2",
+          "meme_bps": 1000,
+          "quote_bps": 500
+        },
+        "channels": [
+          {
+            "channel_id": "2",
+            "role": "Protocol",
+            "destination": "0x2"
+          },
+          {
+            "channel_id": "1",
+            "role": "Liquidity",
+            "destination": "0x1"
+          }
+        ],
+        "meme_weights": [
+          {
+            "channel_id": "2",
+            "bps": 1000
+          },
+          {
+            "channel_id": "0",
+            "bps": 4500
+          },
+          {
+            "channel_id": "1",
+            "bps": 4500
+          }
+        ],
+        "quote_weights": [
+          {
+            "channel_id": "2",
+            "bps": 500
+          },
+          {
+            "channel_id": "1",
+            "bps": 9500
+          }
+        ]
       },
       "expect": {
-        "curve_inventory": "725000",
-        "protocol_meme_graduation_fee": "75001",
-        "meme_liquidity_provision": "200000",
-        "net_quote": "975000",
-        "quote_migration_fee": "25001"
-      }
-    },
-    {
-      "name": "maximum_u64",
-      "given": {
-        "initial_meme_supply": "18446744073709551615",
-        "protocol_meme_graduation_fee_bps": 1000,
-        "meme_liquidity_provision_bps": 8999,
-        "gross_terminal_quote": "18446744073709551615",
-        "quote_migration_fee_bps": 500
+        "canonical_channel_ids": [
+          "1",
+          "2"
+        ],
+        "meme_allocations": [
+          {
+            "channel_id": "0",
+            "amount": "8301034833169298227"
+          },
+          {
+            "channel_id": "1",
+            "amount": "8301034833169298226"
+          },
+          {
+            "channel_id": "2",
+            "amount": "1844674407370955162"
+          }
+        ],
+        "quote_allocations": [
+          {
+            "channel_id": "1",
+            "amount": "17524406870024074034"
+          },
+          {
+            "channel_id": "2",
+            "amount": "922337203685477581"
+          }
+        ],
+        "protocol_paid_at_migration": {
+          "meme": "1844674407370955162",
+          "quote": "922337203685477581"
+        }
       },
-      "expect": {
-        "curve_inventory": "1844674407370955",
-        "protocol_meme_graduation_fee": "1844674407370955162",
-        "meme_liquidity_provision": "16600224991931225498",
-        "net_quote": "17524406870024074034",
-        "quote_migration_fee": "922337203685477581"
-      }
+      "notes": "Products require u128 width before exact u64 outputs are narrowed. The Meme tie assigns the single residual unit to curve channel zero."
     }
   ],
   "properties": [
     {
-      "name": "meme_conservation",
-      "statement": "For every successful partition, curve_inventory + protocol_meme_graduation_fee + meme_liquidity_provision = initial_meme_supply."
+      "name": "canonical_identity",
+      "statement": "Channel records and both weight tables are sorted by ascending stable channel ID before storage.",
+      "status": "asserted"
     },
     {
-      "name": "quote_conservation",
-      "statement": "For every successful partition, net_quote + quote_migration_fee = gross_terminal_quote."
+      "name": "asset_conservation",
+      "statement": "For each successful table, the apportioned amounts sum exactly to that asset's input total.",
+      "status": "asserted"
     },
     {
-      "name": "curve_endpoint_conservation",
-      "statement": "At the exact migration target, terminal_curve_meme + curve_meme_released = curve_inventory."
+      "name": "protected_first",
+      "statement": "The configured protocol channel receives its ceiling before all other entries receive floors and deterministic residual units.",
+      "status": "asserted"
     },
     {
-      "name": "positive_launch_inventory",
-      "statement": "A successful Meme partition has positive curve inventory and positive destination-pool provision in atomic units."
+      "name": "destination_isolation",
+      "statement": "Each non-liquidity allocation is paid only to its immutable plan destination, inside the successful migration transaction.",
+      "status": "required integration coverage"
+    },
+    {
+      "name": "allocation_not_fee",
+      "statement": "Protocol and external one-time allocations are paid at migration and never enter the recurring LP-fee routes.",
+      "status": "required integration coverage"
     }
   ]
 }

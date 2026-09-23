@@ -1,6 +1,6 @@
 # 0082: Revocable curve-fee, metadata, and LP-fee capabilities
 
-- Status: accepted; amended by [0083](0083-migrators-own-lp-fee-policy-and-authority.md)
+- Status: accepted; LP-fee authority superseded by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 - Date: 2026-09-15
 - Amends: [0023](0023-generated-coin-supply-and-metadata-custody.md),
   [0054](0054-v3-dex-migrators-and-locked-lp-fees.md),

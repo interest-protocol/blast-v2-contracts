@@ -1,6 +1,6 @@
 # 0042: Key-only shared launch publication
 
-- Status: accepted
+- Status: accepted; amended by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 - Date: 2026-08-28
 - Amends: [0001](0001-sui-package-and-module-layout.md) and
   [0040](0040-normalized-launch-state-intake.md)

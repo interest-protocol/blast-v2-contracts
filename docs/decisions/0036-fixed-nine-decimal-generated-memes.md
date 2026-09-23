@@ -1,6 +1,6 @@
 # 0036: Fix generated Meme precision at nine decimals
 
-- Status: accepted
+- Status: superseded by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 - Date: 2026-08-25
 - Amends: [0002](0002-coin-creation-and-currency-authority.md), [0023](0023-generated-coin-supply-and-metadata-custody.md), [0024](0024-generated-coin-launch-ticket.md), [0035](0035-initializer-finalized-meme-supply.md)
 
@@ -25,8 +25,7 @@ fractional decimal positions; it has no numeric effect.
 
 The constructor then consumes the `TreasuryCap<Meme>` into the selected `Fixed`
 or `BurnOnly` state exactly as specified by ADR 0035. Callers cannot select a
-different precision or supply. Error code 61 is retired because an invalid
-decimal value can no longer enter the API, and that code must not be reused.
+different precision or supply. Remove the obsolete decimal-validation error.
 
 ## Consequences
 

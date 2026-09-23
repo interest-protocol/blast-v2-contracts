@@ -1,15 +1,16 @@
 # Holder fee distributor
 
 Optional, independent Sui package for redirecting creator fees to wallet holders.
-The existing launchpad and migrators remain unchanged. Enrollment consumes the
-launch's `CurveFeeCap<Meme>` and destroys it, binding the launch's creator fees
-to this module's drop-only `Witness` type forever. No fee capability survives, so
-no administrator can reassign those fees and no replacement can be minted.
+The existing launchpad remains unchanged, and this package links no migrator.
+Enrollment consumes the launch's `CurveFeeCap<Meme>` and destroys it, binding the
+launch's creator fees to this module's drop-only `Witness` type forever. No fee
+capability survives, so no administrator can reassign those fees and no
+replacement can be minted.
 
 ```mermaid
 flowchart LR
   Curve[Curve creator fees] --> D[Distributor bound as fee custodian]
-  LP[LP vault creator fees] --> D
+  Pushed[Router routes and allocation channels] -->|Coins wait at its address| D
   Indexer[Checkpoint holder accounting] --> Manifest[Public allocation manifest]
   Manifest --> Publisher[PublisherCap owner signs round]
   D --> Round[Funded Merkle round]
@@ -35,10 +36,8 @@ root or excess reserved budget cannot be recovered through the current API.
 | Operation | Authority | Result |
 | --- | --- | --- |
 | `new` + `share` | Existing CurveFeeCap owner | Cap destroyed; shared distributor; separately delivered PublisherCap |
-| `lock_lp_fees` | Anyone, with the enrolled launch | Pending LP fees bind here without any capability |
-| `lock_lp_fees_with_cap` | Live LpFeeCap owner | Cap destroyed; LP fees bind here forever |
 | `collect_curve_fees` | Anyone | Both creator fee assets enter distributor custody |
-| `collect_lp_fees` | Anyone | Accrued LP creator fees enter distributor custody |
+| `receive_coins` | Anyone | Coins pushed to the distributor's address enter distributor custody |
 | `publish_round` + `share_round` | Bound PublisherCap owner | Independently funded shared round |
 | `claim` | Anyone with allocation proof | Nonzero coins transfer to committed beneficiary |
 
@@ -47,10 +46,24 @@ transaction signatures; no server-message signature verifier is needed. Transfer
 PublisherCap to rotate authority. Destroying or losing it prevents future rounds.
 Permissionless collectors and relayers need only gas.
 
-Events: `Enrolled`, `FeesCollected`, `RoundPublished`, `RewardPaid`. `Enrolled`
-records the destroyed `CurveFeeCap` ID beside the launch and distributor, so an
-indexer can still link the retired capability to the custody that replaced it.
-`FeesCollected` names the paying launch or vault in its `source` field.
+Events: `Enrolled`, `FeesCollected`, `CoinsReceived`, `RoundPublished`,
+`RewardPaid`. `Enrolled` records the destroyed `CurveFeeCap` ID beside the
+launch and distributor, so an indexer can still link the retired capability to
+the custody that replaced it. `FeesCollected` names the paying launch in its
+`source` field. `CoinsReceived` records the Meme and Quote amounts an intake
+received and both unallocated balances after it.
+
+## Pushed coins
+
+A fee router route or migration allocation channel can name the distributor
+object's ID as its destination. The router's `FeesCollected` event records the
+amount paid to each route of its generation. The paid coins become owned by the
+distributor object and wait there. Anyone can call `receive_coins` with
+`Receiving<Coin<Meme>>` and `Receiving<Coin<Quote>>` references to those coins,
+at most 100 in total per call, to join them into the unallocated balances. The
+intake needs no router, channel, or venue authority and uses no migrators type.
+A paused or never-called intake cannot block router collection or any other
+destination; the coins wait until a later call receives them.
 
 ## Accounting and operation
 
@@ -64,9 +77,9 @@ policy; it does not identify each exchange customer.
 
 Distribute the assets actually collected for the interval. This implementation
 does not attribute every historical fee to the exact trade that generated it.
-Collect venue fees into the LP vault before collecting the vault's creator share;
-existing SDK venue collectors compose with this package in a transaction.
-Verify vault provenance against the launch's migration event.
+Recurring LP fees never accrue in a migrator vault: the launch's fee router pays
+each collection to its route destinations in the collecting transaction, so a
+route that names this distributor leaves its share here as pushed coins.
 
 ## Verification and release
 
@@ -78,10 +91,11 @@ sui move build --path sui/distributor --build-env testnet
 sui move lint --path sui/distributor --build-env testnet --warnings-are-errors
 ```
 
-The boundary checker pins the custody witness, both bind paths, both collection
-paths, the pause and version guards, the published struct and event layouts, and
-the error registry. Its self-test mutates each of those in a throwaway copy and
-requires the checker to reject every variant.
+The boundary checker pins the custody witness, the enrollment bind, the curve-fee
+collection path, the pushed-coin intake's guard order and batch bound, the
+absence of any migrator link, the pause and version guards, the published struct
+and event layouts, and the error registry. Its self-test mutates each of those in
+a throwaway copy and requires the checker to reject every variant.
 
 `docs/vectors/holder-rewards.json` is the fixed Move/SDK commitment vector.
 Tests cover actual curve-fee-cap enrollment and curve fee collection, sharing and
@@ -93,10 +107,10 @@ no cap borrow, mutable UID, or coin-returning withdrawal.
 
 Publication `init` sends one `distributor::AdminCap` to the publisher and shares
 one `distributor::Version` holding the version beside `paused`. The AdminCap
-holder calls `set_paused` to stop or resume enrollment, both fee-collection
-paths, new rounds, and existing claims. Resume leaves all claim roots, funds, and
-replay bits intact. Every economic transition rejects a version mismatch
-**before** it checks pause or touches funds.
+holder calls `set_paused` to stop or resume enrollment, curve-fee collection,
+the pushed-coin intake, new rounds, and existing claims. Resume leaves all claim
+roots, funds, and replay bits intact. Every economic transition rejects a
+version mismatch **before** it checks pause or touches funds.
 
 The publisher keeps the native UpgradeCap. After an upgrade that bumps `VERSION`,
 the AdminCap holder calls `migrate` through the new package; it moves the shared
@@ -107,8 +121,7 @@ transferable capability, independent of the AdminCap.
 
 This package is **unpublished**. Before accepting real creator caps:
 
-- Verify the selected deployed launchpad/migrator generation and every venue route
-  with live simulation. Interface link stubs do not establish live LP compatibility.
+- Verify the selected deployed launchpad generation with live simulation.
 - Verify compatible upgrades, commit-and-advance cutover, and resumption on the
   target network. Record the AdminCap, Version, and UpgradeCap IDs. Coordinate core cutovers with a tested dependency relink for creator-fee
   collection.

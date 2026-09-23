@@ -1,10 +1,18 @@
 # 0046: Witness-authorized migration redemption
 
-- Status: accepted
+- Status: accepted; amended by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 - Date: 2026-08-28
 - Amends: [0010](0010-migration-and-venue-adapters.md),
   [0027](0027-graduation-economics-and-migration-witnesses.md), and
   [0043](0043-versioned-launch-trading-and-atomic-migration.md)
+
+> ADR 0088 replaces the concrete `MigrationPayload` and
+> `redeem_migration` shape with one no-ability `Migration` value that
+> `begin_migration` returns with the liquidity balances and
+> `complete_migration` consumes under the launch's stored adapter witness in
+> the same transaction. This ADR remains authoritative only for
+> permissionless initiation, sealed witness authorization, linear handoff, and
+> transaction rollback.
 
 ## Context
 

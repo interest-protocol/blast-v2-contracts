@@ -17,7 +17,7 @@
 > [ADR 0077](0077-fixed-creator-selected-sell-burn.md) replaces the progress ramp
 > with a fixed creator-selected rate capped at 5,000 basis points.
 
-- Status: accepted
+- Status: accepted; amended by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 - Date: 2026-08-28
 - Amends: [0004](0004-bonding-curve.md),
   [0007](0007-acl-pause-and-versioning.md),

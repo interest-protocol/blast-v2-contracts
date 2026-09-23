@@ -16,13 +16,13 @@ const MAX_FEE_BPS: u64 = 500;
 
 // === Errors ===
 
-#[error(code = 1)]
+#[error(code = 0)]
 const EZeroTarget: vector<u8> = b"Fee volume target must be positive.";
-#[error(code = 2)]
+#[error(code = 1)]
 const EFeeCap: vector<u8> = b"Maximum fee must not exceed 500 basis points.";
-#[error(code = 3)]
+#[error(code = 2)]
 const EVolumeCap: vector<u8> = b"Volume score must not exceed the target in Q32 units.";
-#[error(code = 4)]
+#[error(code = 3)]
 const EShareOverflow: vector<u8> = b"Deposit must keep total shares within u128.";
 
 // === Package Functions ===

@@ -7,7 +7,7 @@
 /// Self-custodial native stake waiting to enter blast custody after activation.
 module blast_sui::deposit_receipt;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// An owned blastSUI deposit that has not entered vault custody or coin supply.
 ///

@@ -7,6 +7,10 @@
 /// a venue carrier runs the arithmetic the venue runs.
 module blast_boosts_aftermath::ifixed_port_tests;
 
+// === Constants ===
+
+const SIGN: u256 = 1 << 255;
+
 // === Tests ===
 
 #[test]
@@ -83,8 +87,6 @@ fun a_negative_difference_past_the_encoding_overflows() {
 
 // === Test Helpers ===
 
-const SIGN: u256 = 1 << 255;
-
 /// `-magnitude` in the venue's two's-complement carrier.
 fun negative(magnitude: u256): u256 {
     std::u256::max_value!() - magnitude + 1
@@ -102,6 +104,5 @@ fun wrapping_sub(x: u256, y: u256): u256 {
 // === Imports ===
 
 use blast_boosts_aftermath::constants;
-
 
 use std::unit_test::assert_eq;

@@ -2,10 +2,7 @@
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
 #[allow(unused_const)]
-/// Numeric abort registry for the Aftermath adapter package.
-///
-/// Codes run from zero with no gaps: a removed check renumbers what follows
-/// until the package is published, after which codes are append-only.
+/// Package error registry: numeric macros and matching test-only constants.
 module blast_boosts_aftermath::errors;
 
 // === Errors ===
@@ -159,39 +156,75 @@ const EVenueNotReady: u64 = 35;
 const EMetadataUnchanged: u64 = 36;
 
 macro public(package) fun invalid_package_publisher(): u64 { 0 }
+
 macro public(package) fun invalid_product_witness_type(): u64 { 1 }
+
 macro public(package) fun admin_cap_account_mismatch(): u64 { 2 }
+
 macro public(package) fun account_object_mismatch(): u64 { 3 }
+
 macro public(package) fun account_number_mismatch(): u64 { 4 }
+
 macro public(package) fun registry_mismatch(): u64 { 5 }
+
 macro public(package) fun clearing_house_mismatch(): u64 { 6 }
+
 macro public(package) fun base_oracle_mismatch(): u64 { 7 }
+
 macro public(package) fun collateral_oracle_mismatch(): u64 { 8 }
+
 macro public(package) fun oracle_storage_mismatch(): u64 { 9 }
+
 macro public(package) fun oracle_feed_mismatch(): u64 { 10 }
+
 macro public(package) fun oracle_observation_mismatch(): u64 { 11 }
+
 macro public(package) fun normalization_overflow(): u64 { 12 }
+
 macro public(package) fun invalid_collateral_decimals(): u64 { 13 }
+
 macro public(package) fun invalid_seed(): u64 { 14 }
+
 macro public(package) fun invalid_seed_reserve(): u64 { 15 }
+
 macro public(package) fun invalid_initialization_order_size(): u64 { 16 }
+
 macro public(package) fun initialization_fill_mismatch(): u64 { 17 }
+
 macro public(package) fun initialization_imr_mismatch(): u64 { 18 }
+
 macro public(package) fun locked_shares_overflow(): u64 { 19 }
+
 macro public(package) fun initialization_order_count_exceeded(): u64 { 20 }
+
 macro public(package) fun zero_amount(): u64 { 21 }
+
 macro public(package) fun insufficient_admin_cash(): u64 { 22 }
+
 macro public(package) fun cash_checkpoint_mismatch(): u64 { 23 }
+
 macro public(package) fun fill_mismatch(): u64 { 24 }
+
 macro public(package) fun orders_posted(): u64 { 25 }
+
 macro public(package) fun liquidation(): u64 { 26 }
+
 macro public(package) fun active_order_count_exceeded(): u64 { 27 }
+
 macro public(package) fun deadline_expired(): u64 { 28 }
+
 macro public(package) fun active_checkpoint_mismatch(): u64 { 29 }
+
 macro public(package) fun redemption_share_mismatch(): u64 { 30 }
+
 macro public(package) fun venue_fee_unusable(): u64 { 31 }
+
 macro public(package) fun unresolved_checkpoint(): u64 { 32 }
+
 macro public(package) fun terminal_venue_unsettled(): u64 { 33 }
+
 macro public(package) fun invalid_unwind_exposure(): u64 { 34 }
+
 macro public(package) fun venue_not_ready(): u64 { 35 }
+
 macro public(package) fun metadata_unchanged(): u64 { 36 }

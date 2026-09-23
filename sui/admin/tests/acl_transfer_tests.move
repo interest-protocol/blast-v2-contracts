@@ -8,9 +8,13 @@ module blast_admin::acl_transfer_tests;
 // === Constants ===
 
 const ROOT: address = @0xA11CE;
+
 const NEW_ROOT: address = @0xB0B;
+
 const OTHER: address = @0xDAD;
+
 const NOW_MS: u64 = 1_000;
+
 const DELAY_MS: u64 = 100;
 
 // === Test-Only Types ===
@@ -188,7 +192,7 @@ fun active_root_cap_cannot_be_destroyed() {
     destroy(fixture);
 }
 
-// === Fixture Setup ===
+// === Test Helpers ===
 
 fun start(): Fixture {
     let mut scenario = test_scenario::begin(ROOT);
@@ -207,8 +211,6 @@ fun start(): Fixture {
         clock,
     }
 }
-
-// === Fixture Helpers ===
 
 fun begin_transfer(self: &mut Fixture, recipient: address) {
     let Fixture { scenario, authority, root, clock } = self;

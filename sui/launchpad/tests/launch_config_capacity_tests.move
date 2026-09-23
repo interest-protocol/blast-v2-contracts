@@ -7,27 +7,45 @@ module blast_fun::launch_config_capacity_tests;
 // === Constants ===
 
 const PUBLISHER: address = @0xA11CE;
+
 const PROTOCOL_ADMIN: address = @0xAD;
 
 // === Test-Only Types ===
 
 public struct MIGRATION_WITNESS<phantom Marker>() has drop;
+
 public struct R0() has drop;
+
 public struct R1() has drop;
+
 public struct R2() has drop;
+
 public struct R3() has drop;
+
 public struct R4() has drop;
+
 public struct R5() has drop;
+
 public struct R6() has drop;
+
 public struct R7() has drop;
+
 public struct R8() has drop;
+
 public struct R9() has drop;
+
 public struct R10() has drop;
+
 public struct R11() has drop;
+
 public struct R12() has drop;
+
 public struct R13() has drop;
+
 public struct R14() has drop;
+
 public struct R15() has drop;
+
 public struct R16() has drop;
 
 /// Cold-policy administration through the ACL sign-in seam.
@@ -88,7 +106,7 @@ fun migration_witness_registry_rejects_seventeenth_type() {
     fixture.end();
 }
 
-// === Private Test Helpers ===
+// === Test Helpers ===
 
 macro fun next_tx(
     $fixture: &mut ConfigFixture,

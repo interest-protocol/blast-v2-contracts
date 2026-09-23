@@ -6,6 +6,7 @@
 .superpowers/
 /docs/superpowers/
 /skills-lock.json
+__pycache__/
 
 # Sui Move build artifacts in any package below sui/
 sui/**/.move/
@@ -14,6 +15,10 @@ sui/**/.trace
 sui/**/.coverage_map.mvcov
 sui/**/traces/
 sui/**/coverage/
+
+# Rust programmable-transaction harness output; each run relinks the fixture lockfiles
+sui/**/target/
+sui/launchpad/ptb_tests/fixture/*/Move.lock
 
 # Local reports; normalized public deployment records belong in deployments/
 coverage/

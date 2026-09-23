@@ -5,6 +5,11 @@
 /// Independent boundary vectors for per-session cost-aware rebalance sizing.
 module blast_boosts_core::rebalance_math_tests;
 
+// === Test-Only Types ===
+
+/// One exact positive-denominator rational for the independent reference.
+public struct Ratio has copy, drop { numerator: u128, denominator: u128 }
+
 // === Tests ===
 
 #[test]
@@ -360,9 +365,6 @@ fun leverage_rose_supports_maximum_widths() {
 }
 
 // === Test Helpers ===
-
-/// One exact positive-denominator rational for the independent reference.
-public struct Ratio has copy, drop { numerator: u128, denominator: u128 }
 
 /// Leverage distance from target as an exact rational in basis points.
 fun leverage_distance_bps(notional: u64, nav: u64, target_bps: u64): Ratio {

@@ -9,10 +9,11 @@ module blast_admin::upgrade_custody;
 // === Constants ===
 
 const PACKAGE_DIGEST_LENGTH: u64 = 32;
+
 /// The framework stamps a freshly published package's `UpgradeCap` with version one.
 const INITIAL_NATIVE_VERSION: u64 = 1;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Storable custody value with no capability release or borrow path.
 public struct UpgradeCustody<phantom PackageMarker: drop> has store {

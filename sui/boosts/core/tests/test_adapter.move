@@ -18,21 +18,34 @@ module blast_boosts_core::test_adapter;
 // === Constants ===
 
 const BASE_DECIMALS: u8 = 9;
+
 const COLLATERAL_DECIMALS: u8 = 6;
+
 const BASE_UNIT: u64 = 1_000_000_000;
+
 const COLLATERAL_UNIT: u64 = 1_000_000;
+
 const PRICE_SCALE: u64 = 1_000_000_000;
+
 const BPS: u64 = 10_000;
+
 const SEED_SHARE_SCALE: u64 = 1_000;
+
 const MAX_ORDERS: u64 = 16;
+
 const ORACLE_LAG_MS: u64 = 1_000;
 
-/// The venue cannot serve a priced operation: paused, under margin, orders open, or drifted.
-const EVenueNotReady: u64 = 1;
-/// A mint or redemption would need more capped orders than one transaction places.
-const EOrderLimitExceeded: u64 = 2;
 const ROOT: address = @0xA;
+
 const ISSUER: address = @0xB;
+
+// === Errors ===
+
+/// The venue cannot serve a priced operation: paused, under margin, orders open, or drifted.
+const EVenueNotReady: u64 = 0;
+
+/// A mint or redemption would need more capped orders than one transaction places.
+const EOrderLimitExceeded: u64 = 1;
 
 // === Test-Only Types ===
 
@@ -83,7 +96,7 @@ public struct Vault {
     scenario: Scenario,
 }
 
-// === Public Functions ===
+// === Test Helpers ===
 
 // --- Venue ---
 

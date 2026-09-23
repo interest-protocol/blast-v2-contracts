@@ -7,6 +7,30 @@ error, command, version, dependency, or implementation-status inventories.
 Add or amend an ADR only when a change settles a durable protocol, authority,
 storage, ABI, upgrade, dependency, deployment, or cross-package decision.
 
+## Greenfield development
+
+Treat first-party contracts as undeployed work in progress with no users.
+Change APIs and their callers together; delete obsolete paths and compatibility
+wrappers. Delete removed errors and renumber each error namespace sequentially
+from zero. Update exact-abort tests and source gates with the new codes; retain
+only current errors, without reserved gaps or retirement tombstones. External
+venue interfaces still follow their upstream ABI.
+
+## Module layout
+
+Use one declaration order across first-party Move sources and tests, omitting
+empty sections: Constants, Package Constants, Errors, Public Types, Private
+Initialization, Public Functions, Package Functions, Private Functions,
+Test-Only Types, Test-Only Functions, Tests, Test Helpers, Imports. Use
+`// === Title ===` headings. Keep imports and receiver aliases together at the
+end, overriding the generic skill's import placement. Keep domain subdivisions
+as ordinary comments within these sections.
+
+Group constants before functions. In error registries, put all `#[test_only]`
+constants first, then all `macro public(package) fun` declarations in matching
+numeric order. Keep invariant-owned local errors in their owning module.
+Run `python3 scripts/check_move_style.py` after editing Move files.
+
 ## Sui Move coding and review
 
 For Sui Move design or implementation, read

@@ -4,26 +4,12 @@
 #[test_only]
 module blast_fun_dex::pool_policy_tests;
 
-use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
-use blast_fun_dex::{
-    dex_domain::{Self, DEX_DOMAIN},
-    domain_fixture,
-    package_marker::PACKAGE_MARKER,
-    pool::{Self, Factory, Pool, Position}
-};
-use std::{bcs, unit_test::{assert_eq, destroy}};
-use sui::{
-    balance,
-    clock::{Self, Clock},
-    coin::{Self, Coin},
-    coin_registry::{Self, Currency},
-    test_scenario::{Self, Scenario}
-};
-
 // === Test-Only Types ===
 
 public struct POOL_POLICY_TESTS() has drop;
+
 public struct QUOTE() has drop;
+
 public struct PolicyFixture {
     scenario: Scenario,
     authority: Authority<DEX_DOMAIN>,
@@ -385,7 +371,7 @@ fun swap_deadline_precedes_zero_input() {
     f.end();
 }
 
-// === Fixture Functions ===
+// === Test Helpers ===
 
 fun start(burn: u64): PolicyFixture {
     let mut scenario = test_scenario::begin(@0xA);
@@ -534,3 +520,24 @@ fun fee_change_bytes(pool_id: ID, previous: u64, maximum: u64): vector<u8> {
     bytes.append(bcs::to_bytes(&maximum));
     bytes
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
+
+use blast_fun_dex::{
+    dex_domain::{Self, DEX_DOMAIN},
+    domain_fixture,
+    package_marker::PACKAGE_MARKER,
+    pool::{Self, Factory, Pool, Position}
+};
+
+use std::{bcs, unit_test::{assert_eq, destroy}};
+
+use sui::{
+    balance,
+    clock::{Self, Clock},
+    coin::{Self, Coin},
+    coin_registry::{Self, Currency},
+    test_scenario::{Self, Scenario}
+};

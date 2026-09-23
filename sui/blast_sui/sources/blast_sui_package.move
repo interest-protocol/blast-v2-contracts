@@ -4,7 +4,7 @@
 /// Canonical package provenance witness.
 module blast_sui::blast_sui_package;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// One-time witness used only to claim this package's Publisher.
 public struct BLAST_SUI_PACKAGE() has drop;

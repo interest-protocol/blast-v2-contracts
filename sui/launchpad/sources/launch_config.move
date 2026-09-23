@@ -3,29 +3,31 @@
 
 // `blast_fun::errors` intentionally centralizes package-wide abort codes through zero-cost
 // macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
-// locations while retaining one append-only registry in `blast_fun::errors`.
+// locations while retaining one package registry in `blast_fun::errors`.
 #[allow(lint(abort_without_constant))]
 /// Cold launch-time policy snapshotted before bonding begins.
 module blast_fun::launch_config;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Shared singleton containing cold policy snapshotted by each new launch.
+/// Each admitted Quote maps to the virtual reserve that shapes its curve.
 public struct LaunchConfig has key {
     id: UID,
-    quotes: Table<TypeName, QuoteParameters>,
+    meme_decimals: VecSet<u8>,
+    quotes: Table<TypeName, u64>,
     quote_fee_bps: Bps,
     meme_fee_bps: Bps,
-    protocol_quote_migration_fee_bps: Bps,
-    protocol_meme_graduation_fee_bps: Bps,
-    meme_liquidity_provision_bps: Bps,
     migration_witnesses: VecSet<TypeName>,
+    protocol_allocation: Option<ProtocolAllocation>,
 }
 
-/// Immutable curve-shape and terminal parameters admitted for one Quote type.
-public struct QuoteParameters has copy, drop, store {
-    virtual_quote: u64,
-    migration_quote_target: u64,
+/// One-time Blast allocation policy for all subsequently created immutable tables.
+public struct ProtocolAllocation has drop, store {
+    channel_id: u64,
+    destination: address,
+    meme_bps: Bps,
+    quote_bps: Bps,
 }
 
 // === Private Initialization ===
@@ -36,36 +38,91 @@ fun init(ctx: &mut TxContext) {
 
 // === Public Functions ===
 
-/// Admits one quote with a migration target of at least two atomic units.
+/// Permanently sets the named Blast migration identity and its per-asset allocations.
+/// A zero/zero policy omits the protocol channel from launch tables.
+public fun set_protocol_allocation(
+    self: &mut LaunchConfig,
+    package_version: &PackageVersion,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
+    channel_id: u64,
+    destination: address,
+    meme_bps: Bps,
+    quote_bps: Bps,
+) {
+    package_version.assert_current();
+    assert!(self.protocol_allocation.is_none(), blast_fun::errors::protocol_channel_mismatch!());
+    assert!(
+        channel_id != 0 && destination != @0x0,
+        blast_fun::errors::protocol_channel_mismatch!(),
+    );
+    // Meme must leave positive weights for both curve and LP; Quote needs only LP.
+    assert!(
+        meme_bps.value() <= 9_998 && quote_bps.value() <= 9_999,
+        blast_fun::errors::protocol_channel_mismatch!(),
+    );
+
+    self.protocol_allocation =
+        option::some(ProtocolAllocation { channel_id, destination, meme_bps, quote_bps });
+
+    events::protocol_allocation_configured(
+        channel_id,
+        destination,
+        meme_bps.value(),
+        quote_bps.value(),
+    );
+}
+
+/// Admits one decimal precision for launch intake.
+public fun allow_meme_decimals(
+    self: &mut LaunchConfig,
+    package_version: &PackageVersion,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
+    decimals: u8,
+) {
+    package_version.assert_current();
+
+    if (!self.meme_decimals.contains(&decimals)) {
+        self.meme_decimals.insert(decimals);
+
+        events::meme_decimals_allowed(decimals);
+    };
+}
+
+/// Disallows one decimal precision at launch intake, including for tickets that already exist.
+public fun disallow_meme_decimals(
+    self: &mut LaunchConfig,
+    package_version: &PackageVersion,
+    _: &AdminWitness<BLAST_FUN_DOMAIN>,
+    decimals: u8,
+) {
+    package_version.assert_current();
+    assert!(self.meme_decimals.contains(&decimals), blast_fun::errors::decimals_not_allowed!());
+
+    self.meme_decimals.remove(&decimals);
+
+    events::meme_decimals_disallowed(decimals);
+}
+
+/// Admits one quote, or replaces the virtual reserve future launches on it start from.
 public fun allow_quote<Quote>(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
     _: &AdminWitness<BLAST_FUN_DOMAIN>,
     virtual_quote: u64,
-    migration_quote_target: u64,
 ) {
     package_version.assert_current();
-
-    assert!(
-        virtual_quote > 0,
-        blast_fun::errors::invalid_virtual_quote!(),
-    );
-    assert!(
-        migration_quote_target > 1,
-        blast_fun::errors::invalid_migration_quote_target!(),
-    );
-
+    assert!(virtual_quote > 0, blast_fun::errors::invalid_virtual_quote!());
     let quote = type_name::with_original_ids<Quote>();
 
     if (self.quotes.contains(quote)) {
-        self.update_quote<Quote>(
-            quote,
-            virtual_quote,
-            migration_quote_target,
-        );
+        let stored = &mut self.quotes[quote];
+        assert!(*stored != virtual_quote, blast_fun::errors::quote_parameters_unchanged!());
+        *stored = virtual_quote;
     } else {
-        self.insert_quote<Quote>(quote, virtual_quote, migration_quote_target);
+        self.quotes.add(quote, virtual_quote);
     };
+
+    events::quote_allowed<Quote>(virtual_quote);
 }
 
 /// Disallows one quote from launches created afterward.
@@ -78,10 +135,7 @@ public fun disallow_quote<Quote>(
 
     let quote = type_name::with_original_ids<Quote>();
 
-    assert!(
-        self.quotes.contains(quote),
-        blast_fun::errors::quote_not_allowed!(),
-    );
+    assert!(self.quotes.contains(quote), blast_fun::errors::quote_not_allowed!());
 
     self.quotes.remove(quote);
     events::quote_disallowed<Quote>();
@@ -104,34 +158,11 @@ public fun set_trade_fees(
     events::launch_trade_fees_changed(quote_fee_bps.value(), meme_fee_bps.value());
 }
 
-/// Changes the graduation economics snapshotted by launches created afterward.
-public fun set_graduation_defaults(
-    self: &mut LaunchConfig,
-    package_version: &PackageVersion,
-    _: &AdminWitness<BLAST_FUN_DOMAIN>,
-    protocol_quote_migration_fee_bps: Bps,
-    protocol_meme_graduation_fee_bps: Bps,
-    meme_liquidity_provision_bps: Bps,
-) {
-    package_version.assert_current();
-    self.assert_valid_graduation_defaults(
-        protocol_quote_migration_fee_bps,
-        protocol_meme_graduation_fee_bps,
-        meme_liquidity_provision_bps,
-    );
-
-    self.protocol_quote_migration_fee_bps = protocol_quote_migration_fee_bps;
-    self.protocol_meme_graduation_fee_bps = protocol_meme_graduation_fee_bps;
-    self.meme_liquidity_provision_bps = meme_liquidity_provision_bps;
-
-    events::graduation_defaults_changed(
-        protocol_quote_migration_fee_bps.value(),
-        protocol_meme_graduation_fee_bps.value(),
-        meme_liquidity_provision_bps.value(),
-    );
-}
-
-/// Allows future launches to select one external migrator's sealed witness type.
+/// Admits one external migrator's sealed witness type: its adapter may then bind tickets, borrow
+/// their treasury capability before intake, and receive the launches created from them.
+///
+/// Primitive, vector, and `0x1`/`0x2` framework types are rejected because any caller can
+/// construct them, and a migration witness receives the launch's liquidity principal.
 public fun allow_migration_witness<MigrationWitness: drop>(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
@@ -145,6 +176,8 @@ public fun allow_migration_witness<MigrationWitness: drop>(
         !migration_witness.is_primitive(),
         blast_fun::errors::invalid_migration_witness_type!(),
     );
+    let origin = type_name::original_id<MigrationWitness>();
+    assert!(origin != @0x1 && origin != @0x2, blast_fun::errors::invalid_migration_witness_type!());
     assert!(
         !self.migration_witnesses.contains(&migration_witness),
         blast_fun::errors::migration_witness_already_allowed!(),
@@ -160,7 +193,9 @@ public fun allow_migration_witness<MigrationWitness: drop>(
     events::migration_witness_allowed<MigrationWitness>();
 }
 
-/// Disallows future launches from selecting one external migrator witness type.
+/// Removes one external migrator witness type: its adapter can no longer bind tickets or borrow
+/// their treasury capability, and tickets bound to it can no longer launch; existing launches keep
+/// their stored witness.
 public fun disallow_migration_witness<MigrationWitness: drop>(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
@@ -182,39 +217,52 @@ public fun disallow_migration_witness<MigrationWitness: drop>(
 
 // === Package Functions ===
 
-/// Validates a launch quote and returns all cold policy to snapshot into launch state.
-public(package) fun snapshot_for_launch<Quote, MigrationWitness: drop>(
+/// Requires explicit initialization and validates the sealed launch plan against the immutable policy.
+public(package) fun assert_allocation_policy(
     self: &LaunchConfig,
-): (u64, u64, Bps, Bps, Bps, Bps, Bps, TypeName) {
+    plan: &blast_fun::allocation::AllocationPlan,
+) {
+    assert!(self.protocol_allocation.is_some(), blast_fun::errors::protocol_channel_mismatch!());
+    let policy = self.protocol_allocation.borrow();
+    plan.assert_protocol_policy(
+        policy.channel_id,
+        policy.meme_bps,
+        policy.quote_bps,
+        policy.destination,
+    );
+}
+
+/// Validates the launch Quote and the ticket's bound witness against the allowlists and returns all
+/// cold policy to snapshot into launch state.
+public(package) fun snapshot_for_launch<Quote>(
+    self: &LaunchConfig,
+    migration_witness: Option<TypeName>,
+): (u64, Bps, Bps, TypeName) {
     let quote = type_name::with_original_ids<Quote>();
 
+    assert!(self.quotes.contains(quote), blast_fun::errors::quote_not_allowed!());
     assert!(
-        self.quotes.contains(quote),
-        blast_fun::errors::quote_not_allowed!(),
+        migration_witness.is_some_and!(|witness| self.migration_witnesses.contains(witness)),
+        blast_fun::errors::migration_witness_not_allowed!(),
     );
 
-    let parameters = &self.quotes[quote];
-    let migration_witness = type_name::with_original_ids<MigrationWitness>();
+    (self.quotes[quote], self.quote_fee_bps, self.meme_fee_bps, migration_witness.destroy_some())
+}
 
+/// Aborts unless the allowlist names `migration_witness`.
+public(package) fun assert_migration_witness_allowed(
+    self: &LaunchConfig,
+    migration_witness: TypeName,
+) {
     assert!(
         self.migration_witnesses.contains(&migration_witness),
         blast_fun::errors::migration_witness_not_allowed!(),
     );
-    assert!(
-        self.meme_liquidity_provision_bps.value() > 0,
-        blast_fun::errors::invalid_meme_liquidity_provision_bps!(),
-    );
+}
 
-    (
-        parameters.virtual_quote,
-        parameters.migration_quote_target,
-        self.quote_fee_bps,
-        self.meme_fee_bps,
-        self.protocol_quote_migration_fee_bps,
-        self.protocol_meme_graduation_fee_bps,
-        self.meme_liquidity_provision_bps,
-        migration_witness,
-    )
+/// Aborts unless `decimals` is admitted for launches created now.
+public(package) fun assert_decimals_allowed(self: &LaunchConfig, decimals: u8) {
+    assert!(self.meme_decimals.contains(&decimals), blast_fun::errors::decimals_not_allowed!());
 }
 
 // === Private Functions ===
@@ -222,62 +270,16 @@ public(package) fun snapshot_for_launch<Quote, MigrationWitness: drop>(
 fun new(ctx: &mut TxContext): LaunchConfig {
     LaunchConfig {
         id: object::new(ctx),
+        meme_decimals: vec_set::from_keys(vector[6, 9]),
         quotes: table::new(ctx),
         quote_fee_bps: bps::new(0),
         meme_fee_bps: bps::new(0),
-        protocol_quote_migration_fee_bps: bps::new(0),
-        protocol_meme_graduation_fee_bps: bps::new(0),
-        meme_liquidity_provision_bps: bps::new(0),
         migration_witnesses: vec_set::empty(),
+        protocol_allocation: option::none(),
     }
 }
 
-fun update_quote<Quote>(
-    self: &mut LaunchConfig,
-    quote: TypeName,
-    virtual_quote: u64,
-    migration_quote_target: u64,
-) {
-    let quote_parameters_mut = &mut self.quotes[quote];
-    let old_virtual_quote = quote_parameters_mut.virtual_quote;
-    let old_migration_quote_target = quote_parameters_mut.migration_quote_target;
-
-    assert!(
-        virtual_quote != old_virtual_quote
-            || migration_quote_target != old_migration_quote_target,
-        blast_fun::errors::quote_parameters_unchanged!(),
-    );
-
-    *quote_parameters_mut = QuoteParameters {
-        virtual_quote,
-        migration_quote_target,
-    };
-
-    events::quote_parameters_changed<Quote>(
-        virtual_quote,
-        migration_quote_target,
-    );
-}
-
-fun insert_quote<Quote>(
-    self: &mut LaunchConfig,
-    quote: TypeName,
-    virtual_quote: u64,
-    migration_quote_target: u64,
-) {
-    self.quotes.add(quote, QuoteParameters {
-        virtual_quote,
-        migration_quote_target,
-    });
-
-    events::quote_allowed<Quote>(virtual_quote, migration_quote_target);
-}
-
-fun assert_valid_trade_fees(
-    self: &LaunchConfig,
-    quote_fee_bps: Bps,
-    meme_fee_bps: Bps,
-) {
+fun assert_valid_trade_fees(self: &LaunchConfig, quote_fee_bps: Bps, meme_fee_bps: Bps) {
     assert!(
         quote_fee_bps.value() <= constants::max_launch_fee_bps!(),
         blast_fun::errors::invalid_quote_fee_bps!(),
@@ -293,40 +295,6 @@ fun assert_valid_trade_fees(
     );
 }
 
-fun assert_valid_graduation_defaults(
-    self: &LaunchConfig,
-    protocol_quote_migration_fee_bps: Bps,
-    protocol_meme_graduation_fee_bps: Bps,
-    meme_liquidity_provision_bps: Bps,
-) {
-    assert!(
-        protocol_quote_migration_fee_bps.value() <= constants::max_protocol_quote_migration_fee_bps!(),
-        blast_fun::errors::invalid_protocol_quote_migration_fee_bps!(),
-    );
-    assert!(
-        protocol_meme_graduation_fee_bps.value()
-            <= constants::max_protocol_meme_graduation_fee_bps!(),
-        blast_fun::errors::invalid_protocol_meme_graduation_fee_bps!(),
-    );
-    assert!(
-        meme_liquidity_provision_bps.value() > 0
-            && meme_liquidity_provision_bps.value()
-                < constants::basis_points_denominator!(),
-        blast_fun::errors::invalid_meme_liquidity_provision_bps!(),
-    );
-    assert!(
-        protocol_meme_graduation_fee_bps.value() + meme_liquidity_provision_bps.value()
-            < constants::basis_points_denominator!(),
-        blast_fun::errors::invalid_meme_supply_partition_bps!(),
-    );
-    assert!(
-        protocol_quote_migration_fee_bps != self.protocol_quote_migration_fee_bps
-            || protocol_meme_graduation_fee_bps != self.protocol_meme_graduation_fee_bps
-            || meme_liquidity_provision_bps != self.meme_liquidity_provision_bps,
-        blast_fun::errors::graduation_defaults_unchanged!(),
-    );
-}
-
 // === Test-Only Functions ===
 
 #[test_only]
@@ -336,21 +304,27 @@ public fun init_for_testing(ctx: &mut TxContext) {
 }
 
 #[test_only]
+/// Creates unshared cold launch policy for focused construction tests.
+public fun new_for_testing(ctx: &mut TxContext): LaunchConfig {
+    new(ctx)
+}
+
+#[test_only]
 /// Returns the number of quotes currently admitted by focused tests.
 public fun allowed_quote_count_for_testing(self: &LaunchConfig): u64 {
     self.quotes.length()
 }
 
 #[test_only]
-/// Returns the five stored rate defaults inspected by focused tests.
-public fun rate_defaults_for_testing(self: &LaunchConfig): (u64, u64, u64, u64, u64) {
-    (
-        self.quote_fee_bps.value(),
-        self.meme_fee_bps.value(),
-        self.protocol_quote_migration_fee_bps.value(),
-        self.protocol_meme_graduation_fee_bps.value(),
-        self.meme_liquidity_provision_bps.value(),
-    )
+/// Returns the number of decimal precisions admitted by focused tests.
+public fun allowed_meme_decimals_count_for_testing(self: &LaunchConfig): u64 {
+    self.meme_decimals.length()
+}
+
+#[test_only]
+/// Returns the trade rate defaults inspected by focused tests.
+public fun rate_defaults_for_testing(self: &LaunchConfig): (u64, u64) {
+    (self.quote_fee_bps.value(), self.meme_fee_bps.value())
 }
 
 #[test_only]
@@ -373,7 +347,4 @@ use blast_fun::{
 
 use std::type_name::{Self, TypeName};
 
-use sui::{
-    table::{Self, Table},
-    vec_set::{Self, VecSet},
-};
+use sui::{table::{Self, Table}, vec_set::{Self, VecSet}};

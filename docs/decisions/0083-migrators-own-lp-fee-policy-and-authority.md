@@ -1,6 +1,6 @@
 # 0083: Migrators own LP-fee policy and migration-born LP-fee authority
 
-- Status: accepted
+- Status: superseded by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 - Date: 2026-09-15
 - Amends: [0054](0054-v3-dex-migrators-and-locked-lp-fees.md),
   [0081](0081-separate-lp-fee-share-policy.md), and
@@ -28,7 +28,7 @@ independently of the migration it governs.
   transition `public(package)`. Only `destroy_lp_fee_cap` is public. Errors are
   module-local codes 0–5.
 
-Launchpad keeps no LP-fee code. Its codes 85–87 are retired, and it adds only
+Launchpad removes the LP-fee implementation and its errors, and adds only
 the reads `Launch::assert_fee_custodian` and `Launch::has_fee_custodian`.
 
 **Migration-born authority.** Every venue entry creates the vault's authority

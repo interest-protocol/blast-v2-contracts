@@ -1,6 +1,6 @@
 # 0081: Separate LP-fee share policy with per-project pins
 
-- Status: accepted; amended by [0083](0083-migrators-own-lp-fee-policy-and-authority.md)
+- Status: superseded by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 - Date: 2026-09-15
 - Amends: [0022](0022-dual-asset-fee-ledger-and-claims.md),
   [0028](0028-hot-cold-runtime-configuration.md),

@@ -2,8 +2,10 @@
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
 #[test_only]
-/// Pins the append-only shared administration error registry.
+/// Pins the shared administration error registry.
 module blast_admin::errors_tests;
+
+// === Tests ===
 
 #[test]
 fun shared_error_codes_are_stable() {

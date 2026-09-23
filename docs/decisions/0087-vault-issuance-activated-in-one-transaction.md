@@ -126,15 +126,12 @@ and its three error codes are gone, and `VaultIssued` no longer names a
 witness type. A separately rotatable keeper key can return as a role if it
 is ever needed.
 
-### D5. Retired codes
+### D5. Remove obsolete checks
 
-`venue_account_already_installed`, `share_supply_not_zero` (true by
-construction: the issuance mints nothing before its locked seed shares),
-`venue_account_not_installed`, the three risk-module codes,
-`seed_already_recorded`, `invalid_seed_funder` and
-`collateral_type_mismatch` are retired. Nothing is published, so each
-registry is renumbered to stay gap-free from zero; tests name codes through
-the registry's constants, never by number.
+Delete the errors for removed risk-module authority and states made
+unreachable by atomic issuance. Renumber each registry sequentially from zero
+under the greenfield policy in `AGENTS.md`; tests name errors through the
+registry's constants.
 
 ## Consequences
 

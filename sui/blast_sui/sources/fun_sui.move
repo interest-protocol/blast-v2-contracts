@@ -4,7 +4,7 @@
 /// The unrestricted 1:1 SUI quote coin used by Blast liquidity.
 module blast_sui::fun_sui;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// One-time witness and coin type for funSUI.
 public struct FUN_SUI() has drop;

@@ -1,0 +1,10 @@
+[package]
+name = "ptb_project"
+edition = "2024"
+license = "BUSL-1.1"
+
+[dependencies]
+blast_fun = { local = "../../.." }
+
+[addresses]
+ptb_project = "0x0"

@@ -205,33 +205,6 @@ public fun rebalance<Product, Collateral>(
     clearing_house.share();
 }
 
-/// Returns one authenticated, module-private product observation for `dev_inspect`.
-///
-/// The adapter generation and the complete venue object graph are checked before
-/// returning the canonical capture, retained share supply, and clock reading.
-/// This function does not mutate state and its outputs are informational only;
-/// every state-changing operation repeats its own checks and capture.
-#[allow(unused_function)]
-fun observe<Product, Collateral>(
-    vault: &Vault<Product, Collateral>,
-    protocol: &Protocol,
-    account: &Account<Collateral>,
-    registry: &Registry,
-    clearing_house: &ClearingHouse<Collateral>,
-    base_oracle: &PriceFeedStorage,
-    collateral_oracle: &PriceFeedStorage,
-    clock: &Clock,
-): (CapturedSnapshot, ID, u64, u64) {
-    protocol.assert_current();
-
-    let binding = vault.venue().binding();
-    let captured = binding.capture(
-        account, registry, clearing_house, base_oracle, collateral_oracle, clock,
-    );
-
-    (captured, vault.treasury_cap_id(), vault.total_share_supply(), clock.timestamp_ms())
-}
-
 /// A keeper's dry run of `rebalance`: whether the live position sits outside the band.
 ///
 /// Reads everything `rebalance` reads and asks the core the same question, so it
@@ -382,6 +355,33 @@ public fun finalize_shutdown<Product, Collateral>(
 }
 
 // === Private Functions ===
+
+/// Returns one authenticated, module-private product observation for `dev_inspect`.
+///
+/// The adapter generation and the complete venue object graph are checked before
+/// returning the canonical capture, retained share supply, and clock reading.
+/// This function does not mutate state and its outputs are informational only;
+/// every state-changing operation repeats its own checks and capture.
+#[allow(unused_function)]
+fun observe<Product, Collateral>(
+    vault: &Vault<Product, Collateral>,
+    protocol: &Protocol,
+    account: &Account<Collateral>,
+    registry: &Registry,
+    clearing_house: &ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    clock: &Clock,
+): (CapturedSnapshot, ID, u64, u64) {
+    protocol.assert_current();
+
+    let binding = vault.venue().binding();
+    let captured = binding.capture(
+        account, registry, clearing_house, base_oracle, collateral_oracle, clock,
+    );
+
+    (captured, vault.treasury_cap_id(), vault.total_share_supply(), clock.timestamp_ms())
+}
 
 // --- Initialization ---
 
@@ -1044,14 +1044,23 @@ use blast_boosts_aftermath::{
 // or the market first and read as their methods here; their modules sit above
 // the types' own, so the aliases stay local to the driver.
 use fun orders::close_orders as Vault.close_orders;
+
 use fun orders::fill_orders as Vault.fill_orders;
+
 use fun orders::increasing_terms as Vault.increasing_terms;
+
 use fun orders::live_venue_fee_bps as ClearingHouse.live_venue_fee_bps;
+
 use fun orders::rebalance_orders as Vault.rebalance_orders;
+
 use fun orders::reducing_terms as Vault.reducing_terms;
+
 use fun orders::seed_position as Issuance.seed_position;
+
 use fun orders::unwind_terms as Vault.unwind_terms;
+
 use fun snapshot::capture as Binding.capture;
+
 use fun snapshot::capture_checkpoint as Binding.capture_checkpoint;
 
 use blast_boosts_core::{

@@ -1,6 +1,6 @@
 # 0079: Compact launch state and events before publication
 
-- Status: accepted
+- Status: accepted; amended by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 - Date: 2026-09-13
 - Amends: [0011](0011-event-schema-and-replay.md),
   [0022](0022-dual-asset-fee-ledger-and-claims.md),
@@ -8,6 +8,12 @@
   [0047](0047-coin-registry-authoritative-supply-mode.md),
   [0059](0059-production-launchpad-abi-and-sdk-parity.md), and
   [0077](0077-fixed-creator-selected-sell-burn.md)
+
+> ADR 0088 replaces the compact launch and migration payload selections with
+> its canonical replay fields for the new lineage. This ADR remains
+> authoritative for avoiding derivable duplication, using native sender and
+> event position metadata, emitting after mutation, and replaying ordered
+> deltas; any field omission that conflicts with ADR 0088 no longer applies.
 
 ## Context
 

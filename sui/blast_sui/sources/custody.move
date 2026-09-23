@@ -15,7 +15,7 @@
 /// refreshes. The vault owns the applied rate; a ledger never reads the pool.
 module blast_sui::custody;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// One internal native-asset ledger with liquid, pending, and active stake layers.
 public struct Custody has store {

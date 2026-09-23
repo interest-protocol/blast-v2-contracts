@@ -24,282 +24,9 @@ fi
 mapfile -t move_files < <(find sources tests -type f -name '*.move' -print | sort)
 mapfile -t source_files < <(find sources -type f -name '*.move' -print | sort)
 
-# Deterministic Move reader used by every body-bound check below. It removes
-# comments and string contents before parsing, so a token inside a comment, a
-# doc comment, or a literal can never satisfy a requirement, and it reports each
-# declaration with brace-matched boundaries, so indentation and line breaks
-# cannot hide or split one. Records are tab separated:
-#   FN    name vis entry macro test_only after_marker line signature body
-#   TYPE  name kind vis test_only after_marker line declaration
-#   MARKER  first '// === Test-Only ... ===' line, or 0
-#   NORM    whole comment-free source with whitespace collapsed
-#   MALFORMED  reason (also exits nonzero, so unparsable source fails closed)
-move_facts_reader=$(cat <<'MOVE_FACTS_READER'
-function blanks(count,   pad) {
-    pad = ""
-    while (length(pad) < count) pad = pad "                                        "
-    return substr(pad, 1, count)
-}
-
-function normalize(chunk) {
-    gsub(/[ \t\n\r]+/, " ", chunk)
-    sub(/^ /, "", chunk)
-    sub(/ $/, "", chunk)
-    return chunk
-}
-
-function fail(reason) {
-    printf("MALFORMED\t%s\n", reason)
-    broken = 1
-    exit 3
-}
-
-function line_of(offset,   parts) {
-    return split(substr(text, 1, offset - 1), parts, "\n")
-}
-
-function match_paren(open, opener, closer,   depth, index_, char_) {
-    depth = 0
-    for (index_ = open; index_ <= text_length; index_++) {
-        char_ = substr(text, index_, 1)
-        if (char_ == opener) depth++
-        else if (char_ == closer) {
-            depth--
-            if (depth == 0) return index_
-        }
-    }
-    return 0
-}
-
-function modifiers_before(stop,   scan, char_, boundary, between) {
-    boundary = 0
-    for (scan = stop; scan >= 1; scan--) {
-        char_ = substr(text, scan, 1)
-        if (char_ == ";" || char_ == "}" || char_ == "]") { boundary = scan; break }
-    }
-    attribute_text = ""
-    if (boundary > 0 && substr(text, boundary, 1) == "]") collect_attributes(boundary)
-    between = normalize(substr(text, boundary + 1, stop - boundary))
-    return between
-}
-
-function collect_attributes(bracket_end,   depth, scan, char_, open) {
-    while (1) {
-        depth = 0
-        open = 0
-        for (scan = bracket_end; scan >= 1; scan--) {
-            char_ = substr(text, scan, 1)
-            if (char_ == "]") depth++
-            else if (char_ == "[") {
-                depth--
-                if (depth == 0) { open = scan; break }
-            }
-        }
-        if (open <= 1 || substr(text, open - 1, 1) != "#") return
-        attribute_text = normalize(substr(text, open - 1, bracket_end - open + 2)) " " attribute_text
-        bracket_end = 0
-        for (scan = open - 2; scan >= 1; scan--) {
-            char_ = substr(text, scan, 1)
-            if (char_ == " " || char_ == "\t" || char_ == "\n") continue
-            if (char_ == "]") { bracket_end = scan }
-            break
-        }
-        if (bracket_end == 0) return
-    }
-}
-
-{ source_lines[NR] = $0 }
-
-END {
-    total_lines = NR
-    marker_line = 0
-    for (index_ = 1; index_ <= total_lines; index_++) {
-        if (source_lines[index_] ~ /^\/\/ === Test-Only (Functions|Types) ===$/) {
-            marker_line = index_
-            break
-        }
-    }
-
-    text = ""
-    in_block = 0
-    block_depth = 0
-    in_string = 0
-    for (index_ = 1; index_ <= total_lines; index_++) {
-        line = source_lines[index_]
-        cleaned = ""
-        line_length = length(line)
-        cursor = 1
-        while (cursor <= line_length) {
-            char_ = substr(line, cursor, 1)
-            pair = substr(line, cursor, 2)
-            if (in_block) {
-                if (pair == "*/") {
-                    block_depth--
-                    if (block_depth == 0) in_block = 0
-                    cleaned = cleaned "  "
-                    cursor += 2
-                    continue
-                }
-                if (pair == "/*") {
-                    block_depth++
-                    cleaned = cleaned "  "
-                    cursor += 2
-                    continue
-                }
-                cleaned = cleaned " "
-                cursor++
-                continue
-            }
-            if (in_string) {
-                if (char_ == "\\") {
-                    cleaned = cleaned blanks(cursor + 1 <= line_length ? 2 : 1)
-                    cursor += 2
-                    continue
-                }
-                if (char_ == "\"") {
-                    in_string = 0
-                    cleaned = cleaned "\""
-                    cursor++
-                    continue
-                }
-                cleaned = cleaned "_"
-                cursor++
-                continue
-            }
-            if (pair == "//") {
-                cleaned = cleaned blanks(line_length - cursor + 1)
-                cursor = line_length + 1
-                continue
-            }
-            if (pair == "/*") {
-                in_block = 1
-                block_depth = 1
-                cleaned = cleaned "  "
-                cursor += 2
-                continue
-            }
-            if (char_ == "\"") {
-                in_string = 1
-                cleaned = cleaned "\""
-                cursor++
-                continue
-            }
-            cleaned = cleaned char_
-            cursor++
-        }
-        text = text cleaned "\n"
-    }
-    if (in_block) fail("unterminated block comment")
-    if (in_string) fail("unterminated string literal")
-
-    text_length = length(text)
-
-    cursor = 1
-    while (cursor <= text_length) {
-        remainder = substr(text, cursor)
-        if (!match(remainder, /(^|[^A-Za-z0-9_$])fun[ \t\n]/)) break
-        hit = substr(remainder, RSTART, 1)
-        keyword = cursor + RSTART - 1
-        if (hit != "f") keyword++
-        cursor = keyword + 3
-
-        if (substr(text, 1, keyword - 1) ~ /use[ \t\n]+$/) continue
-
-        if (!match(substr(text, cursor), /^[ \t\n]+[A-Za-z_][A-Za-z0-9_]*!?/)) {
-            fail("function keyword without a name at line " line_of(keyword))
-        }
-        name = normalize(substr(text, cursor + RSTART - 1, RLENGTH))
-        name_end = cursor + RSTART + RLENGTH - 2
-
-        modifiers = modifiers_before(keyword - 1)
-        attributes = attribute_text
-        if (modifiers != "" \
-            && modifiers !~ /^((public(\(package\)|\(friend\))?|entry|macro)( |$))+$/) {
-            fail("unrecognized function modifiers '" modifiers "' before " name)
-        }
-
-        visibility = "private"
-        if (modifiers ~ /(^| )public\(package\)( |$)/) visibility = "package"
-        else if (modifiers ~ /(^| )public\(friend\)( |$)/) visibility = "friend"
-        else if (modifiers ~ /(^| )public( |$)/) visibility = "public"
-        is_entry = (modifiers ~ /(^| )entry( |$)/) ? 1 : 0
-        is_macro = (modifiers ~ /(^| )macro( |$)/) ? 1 : 0
-        is_test_only = (attributes ~ /test_only/) ? 1 : 0
-        function_line = line_of(keyword)
-        after_marker = (marker_line > 0 && function_line >= marker_line) ? 1 : 0
-
-        open_paren = index(substr(text, name_end + 1), "(")
-        if (open_paren == 0) fail("function " name " has no parameter list")
-        open_paren += name_end
-        close_paren = match_paren(open_paren, "(", ")")
-        if (close_paren == 0) fail("function " name " has an unbalanced parameter list")
-
-        body_open = 0
-        for (index_ = close_paren + 1; index_ <= text_length; index_++) {
-            char_ = substr(text, index_, 1)
-            if (char_ == "{") { body_open = index_; break }
-            if (char_ == ";") break
-        }
-        if (body_open == 0) fail("function " name " has no body")
-        body_close = match_paren(body_open, "{", "}")
-        if (body_close == 0) fail("function " name " has an unbalanced body")
-
-        printf("FN\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%s\n",
-            name, visibility, is_entry, is_macro, is_test_only, after_marker,
-            function_line,
-            normalize(substr(text, keyword, body_open - keyword)),
-            normalize(substr(text, body_open + 1, body_close - body_open - 1)))
-
-        cursor = body_close + 1
-    }
-
-    cursor = 1
-    while (cursor <= text_length) {
-        remainder = substr(text, cursor)
-        if (!match(remainder, /(^|[^A-Za-z0-9_$])(struct|enum)[ \t\n]/)) break
-        hit = substr(remainder, RSTART, 1)
-        keyword = cursor + RSTART - 1
-        if (hit != "s" && hit != "e") keyword++
-        kind = (substr(text, keyword, 6) == "struct") ? "struct" : "enum"
-        cursor = keyword + length(kind)
-
-        if (!match(substr(text, cursor), /^[ \t\n]+[A-Za-z_][A-Za-z0-9_]*/)) {
-            fail(kind " keyword without a name at line " line_of(keyword))
-        }
-        name = normalize(substr(text, cursor + RSTART - 1, RLENGTH))
-
-        declaration_end = 0
-        for (index_ = cursor; index_ <= text_length; index_++) {
-            char_ = substr(text, index_, 1)
-            if (char_ == "{") {
-                declaration_end = match_paren(index_, "{", "}")
-                if (declaration_end == 0) fail(kind " " name " has an unbalanced body")
-                break
-            }
-            if (char_ == ";") { declaration_end = index_; break }
-        }
-        if (declaration_end == 0) fail(kind " " name " is unterminated")
-
-        modifiers = modifiers_before(keyword - 1)
-        attributes = attribute_text
-        visibility = (modifiers ~ /(^| )public( |$)/) ? "public" : "private"
-        declaration_line = line_of(keyword)
-
-        printf("TYPE\t%s\t%s\t%s\t%d\t%d\t%d\t%s\n",
-            name, kind, visibility,
-            (attributes ~ /test_only/) ? 1 : 0,
-            (marker_line > 0 && declaration_line >= marker_line) ? 1 : 0,
-            declaration_line,
-            normalize(substr(text, keyword, declaration_end - keyword + 1)))
-
-        cursor = declaration_end + 1
-    }
-
-    printf("MARKER\t%d\n", marker_line)
-    printf("NORM\t%s\n", normalize(text))
-}
-MOVE_FACTS_READER
-)
+# Deterministic Move reader shared with the migrator gate; see move_facts.awk for
+# the record format. Parser failures fail closed as MALFORMED records.
+move_facts_reader="$(<scripts/move_facts.awk)"
 
 move_facts_cache="$(mktemp -d)"
 trap 'rm -rf "$move_facts_cache"' EXIT
@@ -342,6 +69,18 @@ move_production_signature() {
   '
 }
 
+# Emits visibility, entry/macro flags, and the normalized signature so checks
+# can pin ABI-relevant modifiers without depending on their formatted order.
+move_production_function_contract() {
+  awk -F'\t' -v name="$1" '
+    $1 == "FN" && $2 == name && $6 == 0 {
+      contract = $3 ":" $4 ":" $5 ":" $9
+      found += 1
+    }
+    END { if (found == 1) print contract }
+  '
+}
+
 # Emits the exact production declaration of one named struct or enum.
 move_production_type() {
   awk -F'\t' -v name="$1" '
@@ -359,6 +98,34 @@ move_normalized_source() {
 # source is one long line.
 count_occurrences() {
   { rg -o "$1" || true; } | wc -l | tr -d ' '
+}
+
+# Succeeds when every literal needle occurs exactly once in stdin, in the given order.
+in_order() {
+  local text needle rest offset=-1
+  text="$(cat)"
+  for needle in "$@"; do
+    rest="${text//"$needle"/}"
+    (( ${#text} - ${#rest} == ${#needle} )) || return 1
+    rest="${text%%"$needle"*}"
+    (( ${#rest} > offset )) || return 1
+    offset=${#rest}
+  done
+}
+
+# Compares parser-isolated signatures and bodies independently of formatter-only
+# whitespace and optional trailing commas. The reader has already stripped
+# comments and string contents and brace-matched the declaration boundary.
+move_semantic_shape() {
+  tr '\n' ' ' | sed -E \
+    -e 's/[[:space:]]+/ /g' \
+    -e 's/^ //; s/ $//' \
+    -e 's/ *:: */::/g' \
+    -e 's/ *\. */./g' \
+    -e ':punctuation' \
+    -e 's/ +([(),{};])/\1/g' -e 't punctuation' \
+    -e 's/([(),{};]) +/\1/g' -e 't punctuation' \
+    -e ':trailing' -e 's/,([)}])/\1/g' -e 't trailing'
 }
 
 # Sorted list of every `self.<ledger balance>.<operation>(` in one body, so an
@@ -402,7 +169,6 @@ for move_file in "${source_files[@]}"; do
     failures=$((failures + 1))
   fi
 done
-
 duplicate_import_roots="$({
   for file in "${move_files[@]}"; do
     awk '
@@ -433,6 +199,36 @@ if rg -n '^use blast_fun::errors|^use sui::event::emit' \
   failures=$((failures + 1))
 fi
 
+if rg -ni '\b(cetus|bluefin|aftermath|turbos|flowx|deepbook|momentum|kriya|haedal|scallop|navi|mmt)\b' \
+  sources --glob '*.move'; then
+  echo 'Launchpad core must remain provider-neutral and name no venue-specific policy or package.' >&2
+  failures=$((failures + 1))
+fi
+
+core_import_roots="$(
+  rg -o '^use [A-Za-z_][A-Za-z0-9_]*' \
+    sources/launch.move sources/launch_config.move sources/lp_fee_policy.move \
+    sources/fee_router.move sources/lib/events.move \
+    | rg -v ':use fun$' | sed 's/.*use //' | sort -u
+)"
+if [[ "$core_import_roots" != $'blast_admin\nblast_fun\nstd\nsui' ]] \
+  || [[ "$(sed -n '/^\[dependencies\]/,/^\[/p' Move.toml | rg -o '^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=' | sed 's/[[:space:]]*=//' | sort)" != 'blast_admin' ]]; then
+  echo 'Provider-neutral launch state, config, router, selection, and events may import only local core, std, Sui, and blast_admin.' >&2
+  failures=$((failures + 1))
+fi
+
+if rg -ni '\b(referral|referrer|affiliate)\b' sources --glob '*.move'; then
+  echo 'Launch config, state, router, selection, and events must not depend on referral attribution.' >&2
+  failures=$((failures + 1))
+fi
+
+if rg -n '^public(\(package\))? fun [^(]+\([^)]*\):[^\n]*(VenueWitness|CustodyWitness)|^public struct (VenueWitness|CustodyWitness)\b' \
+  sources --glob '*.move' \
+  || rg -ni '^public(\(package\))? fun (new|create|issue)_[a-z_]*witness[a-z_]*\(' sources --glob '*.move'; then
+  echo 'Provider-neutral core must expose no venue/custody witness constructor or witness-return escape.' >&2
+  failures=$((failures + 1))
+fi
+
 if rg -n '\bfun (fields|into_parts)\b|\.(fields|into_parts)\(' sources tests; then
   echo 'APIs must use field-named reads, destination-named conversions, or destroy for consuming wrappers.' >&2
   failures=$((failures + 1))
@@ -457,18 +253,16 @@ fi
 
 if [[ ! -f sources/lib/bps.move ]] \
   || ! rg -q '^public struct Bps\(u64\) has copy, drop, store;' sources/lib/bps.move \
-  || [[ "$(rg -c '^public fun (new|value|apply_down|apply_up|complement)\(' sources/lib/bps.move)" != 5 ]] \
-  || [[ "$(rg -c '^public(\(package\))? fun ' sources/lib/bps.move)" != 5 ]] \
+  || [[ "$(rg -c '^public fun (new|value|apply_up|complement)\(' sources/lib/bps.move)" != 4 ]] \
+  || [[ "$(rg -c '^public(\(package\))? fun ' sources/lib/bps.move)" != 4 ]] \
   || rg -n '^(entry|public entry) fun |\b(UID|key|Balance|Coin|TxContext|transfer::|events::)\b' \
     sources/lib/bps.move \
   || ! rg -Fq 'value <= constants::basis_points_denominator!()' sources/lib/bps.move \
-  || ! rg -Fq 'amount.mul_div(self.value(), constants::basis_points_denominator!())' \
-    sources/lib/bps.move \
   || ! rg -Fq 'amount.mul_div_ceil(self.value(), constants::basis_points_denominator!())' \
     sources/lib/bps.move \
   || ! rg -Fq 'Bps(constants::basis_points_denominator!() - self.value())' \
     sources/lib/bps.move; then
-  echo 'bps.move must keep only a public validated opaque type and its five public validation, value, rounded application, and complement operations.' >&2
+  echo 'bps.move must keep only a public validated opaque type and its four public validation, value, round-up application, and complement operations.' >&2
   failures=$((failures + 1))
 fi
 
@@ -661,7 +455,7 @@ fi
 
 for test_file in tests/*.move; do
   tests_marker_count="$(rg -c '^// === Tests ===$' "$test_file" || true)"
-  helpers_marker_count="$(rg -c '^// === Private Test Helpers ===$' "$test_file" || true)"
+  helpers_marker_count="$(rg -c '^// === Test Helpers ===$' "$test_file" || true)"
   tests_marker_count="${tests_marker_count:-0}"
   helpers_marker_count="${helpers_marker_count:-0}"
 
@@ -678,17 +472,17 @@ for test_file in tests/*.move; do
 
   if [[ "$helpers_marker_count" -gt 1 ]] \
     || [[ "$scenario_backed" == 1 && "$helpers_marker_count" != 1 ]]; then
-    echo "$test_file: exactly one '// === Private Test Helpers ===' marker is required for scenario-backed suites and it may never be duplicated." >&2
+    echo "$test_file: exactly one '// === Test Helpers ===' marker is required for scenario-backed suites and it may never be duplicated." >&2
     failures=$((failures + 1))
     continue
   fi
 
   tests_marker_line="$(rg -n '^// === Tests ===$' "$test_file" | cut -d: -f1)"
   if [[ "$helpers_marker_count" == 1 ]]; then
-    helpers_marker_line="$(rg -n '^// === Private Test Helpers ===$' "$test_file" \
+    helpers_marker_line="$(rg -n '^// === Test Helpers ===$' "$test_file" \
       | cut -d: -f1)"
     if ((helpers_marker_line <= tests_marker_line)); then
-      echo "$test_file: the Tests section must precede Private Test Helpers." >&2
+      echo "$test_file: the Tests section must precede Test Helpers." >&2
       failures=$((failures + 1))
       continue
     fi
@@ -697,8 +491,8 @@ for test_file in tests/*.move; do
     test_bodies="$(sed -n "${tests_marker_line},\$p" "$test_file")"
   fi
 
-  if ! rg -q '^[[:space:]]*#\[test\]' <<<"$test_bodies"; then
-    echo "$test_file: the extracted Tests section contains no standalone '#[test]' attribute lines." >&2
+  if ! rg -q '^[[:space:]]*#\[test([,\]])' <<<"$test_bodies"; then
+    echo "$test_file: the extracted Tests section contains no '#[test]' attribute lines." >&2
     failures=$((failures + 1))
     continue
   fi
@@ -749,9 +543,9 @@ for test_file in tests/*.move; do
       failures=$((failures + 1))
     fi
     if ! rg -U -q \
-      "(^|\n)fun [a-z_0-9]*end\(self: ${fixture_type}\) \{\s*destroy\(self\);\s*\}" \
+      "(^|\n)fun [a-z_0-9]*end\(self: ${fixture_type}\) \{\s*(destroy\(self\);|let ${fixture_type} \{)" \
       "$test_file"; then
-      echo "$test_file: ${fixture_type} needs one consuming end helper that destroys it." >&2
+      echo "$test_file: ${fixture_type} needs one consuming end helper that destroys or destructures it." >&2
       failures=$((failures + 1))
     fi
   done <<<"$fixture_types"
@@ -774,7 +568,7 @@ for test_file in tests/*.move; do
     first_parameter="$(rg -o '\$[a-z_]+: [^,)]*' <<<"$macro_signature" | head -1)"
     macro_fixture_type="$(rg -o '^\$fixture: &mut ([A-Za-z0-9]*Fixture)$' -r '$1' \
       <<<"$first_parameter" || true)"
-    closure_parameter_count="$(rg -c ': \|' <<<"$macro_signature" || true)"
+    closure_parameter_count="$({ rg -o ': \|' <<<"$macro_signature" || true; } | wc -l | tr -d ' ')"
     fixture_type_mention_count="$(rg -o 'Fixture' <<<"$macro_signature" | wc -l)"
 
     if [[ -z "$macro_fixture_type" ]]; then
@@ -783,7 +577,7 @@ for test_file in tests/*.move; do
       continue
     fi
     if [[ "${closure_parameter_count:-0}" != 1 ]] \
-      || ! rg -q "^[[:space:]]*\\\$fn: \\|&mut ${macro_fixture_type}\\|,?$" \
+      || ! rg -q "\\\$fn: \\|&mut ${macro_fixture_type}\\|[,)]" \
         <<<"$macro_signature" \
       || [[ "$fixture_type_mention_count" != 2 ]]; then
       echo "$test_file:${macro_line}: a transaction macro needs exactly one |&mut ${macro_fixture_type}| closure and no extra fixture or closure values." >&2
@@ -833,14 +627,14 @@ fees_source="$(move_normalized_source <<<"$fees_facts")"
 
 if [[ ! -f sources/fees.move ]] \
   || [[ "$(move_production_functions <<<"$fees_facts")" \
-    != 'accrue:public:0 accrue_protocol_fees:package:0 claim_creator_fees:public:0 claim_protocol_fees:public:0 has_protocol_fees:public:0 new:public:0 ' ]] \
+    != 'accrue:public:0 claim_creator_fees:public:0 claim_protocol_fees:public:0 has_protocol_fees:public:0 new:public:0 ' ]] \
   || [[ "$(move_production_type FeeLedger <<<"$fees_facts")" \
     != 'struct FeeLedger<phantom Meme, phantom Quote> has store { protocol_meme: Balance<Meme>, creator_meme: Balance<Meme>, protocol_quote: Balance<Quote>, creator_quote: Balance<Quote>, }' ]] \
   || rg -q '\b(UID|key|transfer::|CreatorClaim|ed25519|recipient|launch_id)\b' <<<"$fees_source" \
   || rg -q '\b(creator_authority|CreatorCap|CurveFeeCap|BlastMetadataCap)\b' <<<"$fees_source" \
   || rg -q 'fee_balance_overflow|std::u64::max_value|max_balance' <<<"$fees_source" \
   || rg -q 'set_creator_fee_split|sui::event|events::' <<<"$fees_source"; then
-  echo 'fees.move must remain an embedded supply-conserved four-balance ledger exposing only its five approved cross-package functions and one package seam.' >&2
+  echo 'fees.move must remain an embedded supply-conserved four-balance ledger exposing only its five approved cross-package functions.' >&2
   failures=$((failures + 1))
 fi
 
@@ -908,10 +702,6 @@ check_fee_function claim_protocol_fees \
   'protocol_meme.withdraw_all protocol_quote.withdraw_all ' \
   'assert!( self.has_protocol_fees(), blast_fun::errors::nothing_accrued!(), ); ( self.protocol_meme.withdraw_all().into_coin(ctx), self.protocol_quote.withdraw_all().into_coin(ctx), )'
 
-check_fee_function accrue_protocol_fees \
-  'fun accrue_protocol_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, meme_fee: Balance<Meme>, quote_fee: Balance<Quote>, )' \
-  'protocol_meme.join protocol_quote.join ' \
-  'self.protocol_meme.join(meme_fee); self.protocol_quote.join(quote_fee);'
 
 # The raw accrual keeps a longer body, so it is bound to its guard and to one
 # contiguous rounding and custody sequence instead: the protocol share rounds up,
@@ -937,8 +727,10 @@ if [[ -n "$fee_ledger_violations" ]]; then
   failures=$((failures + 1))
 fi
 
-if ! rg -U -q 'macro public\(package\) fun max_launch_fee_bps\(\): u64 \{\s*1_000\s*\}' \
-  sources/lib/constants.move \
+constants_facts="$(move_facts sources/lib/constants.move)"
+
+if [[ "$(move_production_function_contract max_launch_fee_bps <<<"$constants_facts")" != 'package:0:1:fun max_launch_fee_bps(): u64' ]] \
+  || [[ "$(move_production_body max_launch_fee_bps <<<"$constants_facts")" != '1_000' ]] \
   || rg -n 'protocol_trade_fee_share_bps' sources; then
   echo 'The fee-rate ceiling is constant, while the protocol share must not be hard-coded.' >&2
   failures=$((failures + 1))
@@ -1009,40 +801,39 @@ check_runtime_function() {
 
 check_runtime_function init \
   'fun init(ctx: &mut TxContext)' \
-  'transfer::share_object(new(ctx));'
+  ''
 
 check_runtime_function new \
   'fun new(ctx: &mut TxContext): RuntimeConfig' \
-  'RuntimeConfig { id: object::new(ctx), creator_claim_signer_public_key: vector[], protocol_fee_share_bps: bps::new(0), }'
+  ''
 
 check_runtime_function protocol_fee_share \
   'fun protocol_fee_share(self: &RuntimeConfig): Bps' \
-  'self.protocol_fee_share_bps'
+  ''
 
 check_runtime_function assert_creator_claim_active \
   'fun assert_creator_claim_active(self: &RuntimeConfig)' \
-  'assert!( !self.creator_claim_signer_public_key.is_empty(), blast_fun::errors::creator_claim_signer_inactive!(), );'
+  ''
 
 check_runtime_function validate_creator_claim_public_key \
   'fun validate_creator_claim_public_key(signer_public_key: &vector<u8>)' \
-  'assert!( signer_public_key.length() == constants::ed25519_public_key_length!(), blast_fun::errors::invalid_creator_claim_public_key!(), );'
+  ''
 
 check_runtime_function assert_creator_claim_signature \
   'fun assert_creator_claim_signature( self: &RuntimeConfig, message: &vector<u8>, signature: &vector<u8>, )' \
-  'assert!( sui::ed25519::ed25519_verify( signature, &self.creator_claim_signer_public_key, message, ), blast_fun::errors::invalid_creator_claim_signature!(), );'
+  ''
 
 check_runtime_function set_creator_claim_signer \
   'fun set_creator_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<BLAST_FUN_DOMAIN>, signer_public_key: vector<u8>, )' \
-  'package_version.assert_current(); validate_creator_claim_public_key(&signer_public_key); assert!( self.creator_claim_signer_public_key != signer_public_key, blast_fun::errors::creator_claim_signer_unchanged!(), ); self.creator_claim_signer_public_key = signer_public_key; events::creator_claim_signer_set(self.creator_claim_signer_public_key);'
+  ''
 
 check_runtime_function revoke_creator_claim_signer \
   'fun revoke_creator_claim_signer( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<BLAST_FUN_DOMAIN>, )' \
-  'package_version.assert_current(); self.assert_creator_claim_active(); self.creator_claim_signer_public_key = vector[]; events::creator_claim_signer_revoked();'
+  ''
 
 check_runtime_function set_protocol_fee_share \
   'fun set_protocol_fee_share( self: &mut RuntimeConfig, package_version: &PackageVersion, _: &AdminWitness<BLAST_FUN_DOMAIN>, protocol_fee_share_bps: Bps, )' \
-  'package_version.assert_current(); assert!( protocol_fee_share_bps != self.protocol_fee_share_bps, blast_fun::errors::protocol_fee_share_unchanged!(), ); self.protocol_fee_share_bps = protocol_fee_share_bps; events::protocol_fee_share_changed(protocol_fee_share_bps.value());'
-
+  ''
 # The three named mutations are the complete set of RuntimeConfig transitions, and
 # each one must check the live package version as its first statement rather than
 # relying on any aggregate count.
@@ -1102,67 +893,33 @@ fi
 
 if [[ -f sources/creator_claim_config.move || -f sources/trade_fee_config.move ]] \
   || rg -n '\b(CreatorClaimConfig|TradeFeeConfig)\b' sources tests \
-  || [[ "$(rg -o 'transfer::share_object' sources --glob '*.move' --glob '!launch.move' | wc -l)" != 4 ]]; then
-  echo 'Core must keep exactly four locally shared protocol singletons; the domain authority is shared by blast_admin.' >&2
+  || [[ "$(rg -o 'transfer::share_object' sources --glob '*.move' --glob '!launch.move' | wc -l)" != 6 ]]; then
+  echo 'Core must keep its five shared protocol singletons plus the FeeRouter terminal sink; the domain authority is shared by blast_admin.' >&2
   failures=$((failures + 1))
 fi
 
-# LP-fee policy and LP-fee capability authority belong to `blast_fun_migrators`
-# (ADR 0083): launchpad may not re-declare the policy singleton, its share
-# events or abort codes, or the LP-fee capability. Comments and strings are
-# stripped first, so a doc pointer to the migrators module stays legal.
-lp_fee_residue="$(
-  for move_file in "${move_files[@]}"; do
-    { move_facts "$move_file" \
-      | move_normalized_source \
-      | rg -o '\b([A-Za-z_]*LpFee[A-Za-z_]*|[a-z_]*lp_fee_[a-z_]*|[A-Za-z_]*LpProtocolFeeShare[A-Za-z_]*|[a-z_]*lp_protocol_fee_share[a-z_]*)\b' \
-      || true; } | sed "s|^|  ${move_file}: |"
-  done
-)"
-
-if [[ -e sources/lp_fee_policy.move || -e tests/lp_fee_policy_tests.move ]] \
-  || [[ -n "$lp_fee_residue" ]] \
-  || rg -n 'runtime_config::' sources/fees.move; then
-  [[ -n "$lp_fee_residue" ]] && printf '%s\n' "$lp_fee_residue"
-  echo 'LP-fee policy, its share events and abort codes, and LpFeeCap must stay in blast_fun_migrators, never in launchpad; fees.move must not read runtime config.' >&2
-  failures=$((failures + 1))
-fi
-
+launch_config_facts="$(move_facts sources/launch_config.move)"
+launch_config_source="$(move_normalized_source <<<"$launch_config_facts")"
 launch_config_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/launch_config.move)"
 
+# T-003 replaces the mutable graduation partition knobs with a single-write
+# Blast allocation policy. The policy is cold: a launch copies only its
+# validated allocation plan, never a mutable partition default or target range.
 if [[ ! -f sources/launch_config.move ]] \
-  || ! rg -U -q \
-    'public struct LaunchConfig has key \{\s*id: UID,\s*quotes: Table<TypeName, QuoteParameters>,\s*quote_fee_bps: Bps,\s*meme_fee_bps: Bps,\s*protocol_quote_migration_fee_bps: Bps,\s*protocol_meme_graduation_fee_bps: Bps,\s*meme_liquidity_provision_bps: Bps,\s*migration_witnesses: VecSet<TypeName>,\s*\}' \
-    sources/launch_config.move \
-  || ! rg -U -q \
-    'public struct QuoteParameters has copy, drop, store \{\s*virtual_quote: u64,\s*migration_quote_target: u64,\s*\}' \
-    sources/launch_config.move \
-  || rg -n '\b(AdminCap|ProtocolAuthority)\b' <<<"$launch_config_production" \
-  || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' <<<"$launch_config_production" \
-  || [[ "$(rg -o '_: &AdminWitness<BLAST_FUN_DOMAIN>' <<<"$launch_config_production" | wc -l)" != 6 ]] \
-  || [[ "$(rg -c '^public fun ' <<<"$launch_config_production")" != 6 ]] \
-  || [[ "$(rg -c '^public fun (allow_quote|disallow_quote|allow_migration_witness|disallow_migration_witness)<' <<<"$launch_config_production")" != 4 ]] \
-  || [[ "$(rg -c '^public fun set_graduation_defaults\(' <<<"$launch_config_production")" != 1 ]] \
-  || ! rg -U -q \
-    'public fun set_trade_fees\(\s*self: &mut LaunchConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness<BLAST_FUN_DOMAIN>,\s*quote_fee_bps: Bps,\s*meme_fee_bps: Bps,\s*\)' \
-    sources/launch_config.move \
-  || ! rg -U -q \
-    'public fun set_graduation_defaults\(\s*self: &mut LaunchConfig,\s*package_version: &PackageVersion,\s*_: &AdminWitness<BLAST_FUN_DOMAIN>,\s*protocol_quote_migration_fee_bps: Bps,\s*protocol_meme_graduation_fee_bps: Bps,\s*meme_liquidity_provision_bps: Bps,\s*\)' \
-    sources/launch_config.move \
-  || [[ "$(rg -c '^public\(package\) fun ' <<<"$launch_config_production")" != 1 ]] \
-  || ! rg -U -q \
-    'public\(package\) fun snapshot_for_launch<Quote, MigrationWitness: drop>\(\s*self: &LaunchConfig,\s*\): \(u64, u64, Bps, Bps, Bps, Bps, Bps, TypeName\)' \
-    sources/launch_config.move; then
-  echo 'launch_config.move must own only future-launch policy and its AdminWitness-gated mutations.' >&2
+  || [[ "$(move_production_function_contract set_protocol_allocation <<<"$launch_config_facts")" != 'public:0:0:fun set_protocol_allocation( self: &mut LaunchConfig, package_version: &PackageVersion, _: &AdminWitness<BLAST_FUN_DOMAIN>,'* ]] \
+  || ! rg -Fq 'assert!(self.protocol_allocation.is_none(),' <<<"$launch_config_source" \
+  || ! rg -Fq 'self.protocol_allocation = option::some(ProtocolAllocation {' <<<"$launch_config_source" \
+  || ! rg -Fq 'plan.assert_protocol_policy(' <<<"$launch_config_source" \
+  || rg -n '\b(set_graduation_defaults|GraduationDefaultsChanged|protocol_(quote_migration|meme_graduation)_fee_bps|meme_liquidity_provision_bps|QuoteParameters|QuoteParametersChanged|min_graduation_target|max_graduation_target)\b' \
+    sources/launch_config.move sources/lib/events.move \
+  || rg -n '\b(AdminCap|ProtocolAuthority|sequence|schema_version|action_tag|nonce)\b' <<<"$launch_config_production"; then
+  echo 'LaunchConfig must own only future-launch settings plus an AdminWitness-gated, single-write Blast allocation policy; graduation partition defaults and target ranges are retired.' >&2
   failures=$((failures + 1))
 fi
 
-if ! rg -U -q 'macro public\(package\) fun max_migration_witnesses\(\): u64 \{\s*16\s*\}' \
-    sources/lib/constants.move \
-  || ! rg -U -q 'macro public\(package\) fun max_protocol_quote_migration_fee_bps\(\): u64 \{\s*500\s*\}' \
-    sources/lib/constants.move \
-  || ! rg -U -q 'macro public\(package\) fun max_protocol_meme_graduation_fee_bps\(\): u64 \{\s*1_000\s*\}' \
-  sources/lib/constants.move \
+if [[ "$(move_production_function_contract max_migration_channels <<<"$constants_facts")" != 'package:0:1:fun max_migration_channels(): u64' ]] \
+  || [[ "$(move_production_body max_migration_channels <<<"$constants_facts")" != '16' ]] \
+  || ! rg -Fq 'constants::max_migration_channels!()' sources/allocation.move \
   || ! rg -Fq 'type_name::with_original_ids<Quote>()' sources/launch_config.move \
   || ! rg -Fq 'type_name::with_original_ids<MigrationWitness>()' sources/launch_config.move \
   || ! rg -Fq '!migration_witness.is_primitive()' sources/launch_config.move \
@@ -1170,25 +927,12 @@ if ! rg -U -q 'macro public\(package\) fun max_migration_witnesses\(\): u64 \{\s
   || ! rg -Fq 'quote_fee_bps.value() <= constants::max_launch_fee_bps!()' sources/launch_config.move \
   || ! rg -Fq 'meme_fee_bps.value() <= constants::max_launch_fee_bps!()' sources/launch_config.move \
   || ! rg -Fq 'quotes: table::new(ctx)' sources/launch_config.move \
-  || ! rg -Fq 'self.quotes.add(quote, QuoteParameters {' sources/launch_config.move \
-  || rg -n '\b(VecMap|vec_map|max_quote_assets|quote_capacity_reached)\b' \
-    sources/launch_config.move sources/lib/constants.move sources/lib/errors.move \
-  || ! rg -Fq 'self.migration_witnesses.length()' sources/launch_config.move \
-  || ! rg -U -q \
-    'quotes: table::new\(ctx\),\s*quote_fee_bps: bps::new\(0\),\s*meme_fee_bps: bps::new\(0\),\s*protocol_quote_migration_fee_bps: bps::new\(0\),\s*protocol_meme_graduation_fee_bps: bps::new\(0\),\s*meme_liquidity_provision_bps: bps::new\(0\),\s*migration_witnesses: vec_set::empty\(\)' \
-    sources/launch_config.move \
-  || ! rg -U -q \
-    'protocol_meme_graduation_fee_bps\.value\(\) \+ meme_liquidity_provision_bps\.value\(\)\s*< constants::basis_points_denominator!\(\)' \
-    sources/launch_config.move \
-  || ! rg -U -q \
-    'meme_liquidity_provision_bps\.value\(\) > 0\s*&& meme_liquidity_provision_bps\.value\(\)\s*< constants::basis_points_denominator!\(\)' \
-    sources/launch_config.move \
-  || ! rg -Fq 'self.meme_liquidity_provision_bps.value() > 0' sources/launch_config.move \
-  || rg -n '\bCurrency<Quote>\b|coin_registry' <<<"$launch_config_production"; then
-  echo 'Launch policy must use Table-backed quotes, approved economic ceilings, original type identities, zero defaults, a bounded witness registry, and no Coin Registry dependency.' >&2
+  || ! rg -Fq 'self.meme_decimals.contains(&decimals)' sources/launch_config.move \
+  || rg -n '\b(VecMap|vec_map|max_quote_assets|quote_capacity_reached|Currency<Quote>|coin_registry)\b' \
+    sources/launch_config.move sources/lib/constants.move sources/lib/errors.move; then
+  echo 'Launch policy must retain bounded original-type quote/witness admission and the decimal allowlist while allocation identity capacity has one named limit.' >&2
   failures=$((failures + 1))
 fi
-
 if ! rg -U -q \
     'fun init\(ctx: &mut TxContext\) \{\s*transfer::share_object\(new\(ctx\)\);\s*\}' \
     sources/launch_config.move \
@@ -1197,75 +941,82 @@ if ! rg -U -q \
   failures=$((failures + 1))
 fi
 
-launch_config_event_payloads="$(sed -n \
-  -e '/^public struct QuoteAllowed/,/^}/p' \
-  -e '/^public struct QuoteParametersChanged/,/^}/p' \
-  -e '/^public struct QuoteDisallowed/,/^}/p' \
-  -e '/^public struct LaunchTradeFeesChanged/,/^}/p' \
-  -e '/^public struct GraduationDefaultsChanged/,/^}/p' \
-  -e '/^public struct MigrationWitnessAllowed/,/^}/p' \
-  -e '/^public struct MigrationWitnessDisallowed/,/^}/p' \
-  sources/lib/events.move)"
+protocol_allocation_event_payload="$(sed -n -e '/^public struct ProtocolAllocationConfigured/,/^}/p' sources/lib/events.move)"
 
-launch_config_mutation_event_payloads="$(sed -n \
-  -e '/^public struct QuoteAllowed/,/^}/p' \
-  -e '/^public struct QuoteParametersChanged/,/^}/p' \
-  -e '/^public struct QuoteDisallowed/,/^}/p' \
-  -e '/^public struct LaunchTradeFeesChanged/,/^}/p' \
-  -e '/^public struct GraduationDefaultsChanged/,/^}/p' \
-  -e '/^public struct MigrationWitnessAllowed/,/^}/p' \
-  -e '/^public struct MigrationWitnessDisallowed/,/^}/p' \
-  sources/lib/events.move)"
-
-if [[ -z "$launch_config_event_payloads" ]] \
-  || rg -n '\b(sequence|schema_version|action_tag|nonce)\b' \
-    <<<"$launch_config_event_payloads" \
-  || rg -n '\bconfig_id\b' <<<"$launch_config_mutation_event_payloads"; then
-  echo 'Launch-config mutations must use typed replay facts without repeated singleton, ordering, or schema fields.' >&2
+if [[ -z "$protocol_allocation_event_payload" ]] \
+  || ! rg -q '^[[:space:]]+channel_id: u64,' <<<"$protocol_allocation_event_payload" \
+  || ! rg -q '^[[:space:]]+destination: address,' <<<"$protocol_allocation_event_payload" \
+  || ! rg -q '^[[:space:]]+meme_bps: u64,' <<<"$protocol_allocation_event_payload" \
+  || ! rg -q '^[[:space:]]+quote_bps: u64,' <<<"$protocol_allocation_event_payload" \
+  || rg -n '\b(config_id|sequence|schema_version|action_tag|nonce)\b' <<<"$protocol_allocation_event_payload"; then
+  echo 'The one-time Blast allocation policy must emit its complete primitive replay fact without singleton or ordering noise.' >&2
   failures=$((failures + 1))
 fi
+
+launch_ticket_facts="$(move_facts sources/launch_ticket.move)"
+launch_ticket_source="$(move_normalized_source <<<"$launch_ticket_facts")"
+
+# The generated package's one-time witness names the currency and the Coin Registry proves it
+# is unique, so the constructor needs no package identity, launch policy, or registry borrow.
+# Binding reads launch policy only to require an admitted adapter and records the Quote with it.
+# The treasury capability stays in the ticket, lent only to the bound adapter witness, until
+# intake checks the whole minted supply and fixes the supply mode.
+launch_ticket_new_body="$(move_production_body new <<<"$launch_ticket_facts" | move_semantic_shape)"
+launch_ticket_destroy_body="$(move_production_body destroy <<<"$launch_ticket_facts" | move_semantic_shape)"
 
 if [[ ! -f sources/launch_ticket.move ]] \
-  || ! rg -U -q \
-    'public struct LaunchTicket<phantom Meme> has key, store \{\s*id: UID,\s*meme: Balance<Meme>,\s*metadata_cap: MetadataCap<Meme>,\s*creator_authority: CreatorAuthority<Meme>,\s*sell_burn_bps: Bps,\s*\}' \
-    sources/launch_ticket.move \
-  || [[ "$(rg -c '^public fun new<Meme: drop>\(' sources/launch_ticket.move)" != 1 ]] \
-  || [[ "$(rg -c 'creator_recipient: CreatorRecipient' sources/launch_ticket.move)" != 1 ]] \
-  || rg -n '^public fun new_(address|x)<Meme: drop>\(' sources/launch_ticket.move \
-  || ! rg -U -q \
-    'public\(package\) fun destroy<Meme>\(\s*self: LaunchTicket<Meme>,\s*\): \(\s*Balance<Meme>,\s*MetadataCap<Meme>,\s*CreatorAuthority<Meme>,\s*Bps,\s*\)' \
-    sources/launch_ticket.move \
-  || ! rg -q 'coin_registry::new_currency_with_otw' sources/launch_ticket.move \
-  || ! rg -Fq 'let meme = treasury_cap.mint_balance(constants::meme_total_supply_atomic_units!());' sources/launch_ticket.move \
-  || ! rg -U -q \
-    'if \(burnable\) \{\s*initializer\.make_supply_burn_only\(treasury_cap\);\s*\} else \{\s*initializer\.make_supply_fixed\(treasury_cap\);\s*\};\s*let metadata_cap = initializer\.finalize\(ctx\);' \
-    sources/launch_ticket.move \
-  || ! rg -Fq 'sell_burn_bps <= constants::max_sell_burn_bps!(),' sources/launch_ticket.move \
-  || ! rg -Fq 'let sell_burn_bps = bps::new(sell_burn_bps);' sources/launch_ticket.move \
-  || ! rg -Fq 'constants::meme_decimals!(),' sources/launch_ticket.move \
-  || rg -n '\bdecimals: u8\b' sources/launch_ticket.move \
-  || [[ "$(rg -c '^[[:space:]]+sell_burn_bps: Bps,' <<<"$(sed -n '/^public struct LaunchTicket/,/^}/p' sources/launch_ticket.move)")" != 1 ]] \
-  || rg -n '^[[:space:]]+burnable: bool,' <<<"$(sed -n '/^public struct LaunchTicket/,/^}/p' sources/launch_ticket.move)" \
-  || rg -n '\bTreasuryCap<Meme>\b|treasury_cap:' sources/launch_ticket.move \
-  || rg -n '\b(make_regulated|DenyCap|CoinMetadata)\b|coin_registry::new_currency\(' \
-    sources/launch_ticket.move \
-  || rg -n '\btransfer::|^(entry fun|public entry fun)' sources/launch_ticket.move; then
-  echo 'launch_ticket.move must mint fixed inventory, finalize native supply mode, retain only sell burn, and return composable custody.' >&2
+  || [[ "$(move_production_function_contract new <<<"$launch_ticket_facts")" != 'public:0:0:fun new<Meme: drop>( otw: Meme, decimals: u8,'* ]] \
+  || [[ "$(count_occurrences 'coin_registry::new_currency_with_otw\(' <<<"$launch_ticket_source")" != 1 ]] \
+  || ! in_order \
+    'constants::max_sell_burn_bps!()' \
+    'coin_registry::new_currency_with_otw(' \
+    'treasury_cap.mint_balance(atomic_supply)' \
+    'initializer.finalize(ctx)' \
+    'migration_witness: option::none()' \
+    'migration_quote: option::none()' \
+    <<<"$launch_ticket_new_body" \
+  || [[ "$(move_production_function_contract bind_migration_witness <<<"$launch_ticket_facts")" \
+    != 'public:0:0:fun bind_migration_witness<Meme, Quote, Witness: drop>( self: &mut LaunchTicket<Meme>, config: &LaunchConfig, _: Witness, )' ]] \
+  || ! in_order \
+    '.assert_migration_witness_allowed(' \
+    'self.migration_witness = option::some(' \
+    'self.migration_quote = option::some(type_name::with_original_ids<Quote>())' \
+    <<<"$(move_production_body bind_migration_witness <<<"$launch_ticket_facts" | move_semantic_shape)" \
+  || ! in_order \
+    'self.migration_quote == option::some(type_name::with_original_ids<Quote>())' \
+    'self.migration_witness' \
+    'option::none()' \
+    <<<"$(move_production_body migration_witness <<<"$launch_ticket_facts" | move_semantic_shape)" \
+  || [[ "$(move_production_function_contract treasury_cap_mut <<<"$launch_ticket_facts")" \
+    != 'public:0:0:fun treasury_cap_mut<Meme, Witness: drop>( self: &mut LaunchTicket<Meme>, config: &LaunchConfig, _: Witness, ): &mut TreasuryCap<Meme>' ]] \
+  || [[ "$(count_occurrences 'self\.migration_(witness|quote) = ' <<<"$launch_ticket_source")" != 2 ]] \
+  || [[ "$(move_production_function_contract destroy <<<"$launch_ticket_facts")" \
+    != 'package:0:0:fun destroy<Meme>( self: LaunchTicket<Meme>, currency: &mut Currency<Meme>, atomic_supply: u64, ): ( Balance<Meme>, MetadataCap<Meme>, CreatorAuthority<Meme>, Bps, )' ]] \
+  || ! in_order \
+    'meme.value()== atomic_supply && treasury_cap.total_supply()== atomic_supply' \
+    'invalid_initial_meme_supply!()' \
+    'currency.make_supply_burn_only(treasury_cap)' \
+    'currency.make_supply_fixed(treasury_cap)' \
+    <<<"$launch_ticket_destroy_body" \
+  || [[ "$(count_occurrences 'make_supply_' <<<"$launch_ticket_source")" != 2 ]] \
+  || ! in_order 'self.migration_witness == option::some(' 'invalid_migration_witness!()' '.assert_migration_witness_allowed(' '&mut self.treasury_cap' \
+    <<<"$(move_production_body treasury_cap_mut <<<"$launch_ticket_facts" | move_semantic_shape)" \
+  || [[ "$(count_occurrences '&mut self\.treasury_cap' <<<"$launch_ticket_source")" != 1 ]] \
+  || rg -q '\b(UpgradeCap|CoinRegistry|PackageVersion|make_regulated|DenyCap|CoinMetadata)\b' <<<"$launch_ticket_source" \
+  || rg -q '\btransfer::|\bentry fun\b' <<<"$launch_ticket_source"; then
+  echo 'launch_ticket.move must create the currency from the generated package one-time witness, mint the canonical supply once, bind only an admitted adapter together with its Quote, lend the treasury capability only to the bound, still-admitted adapter, fix the supply mode only at intake after checking the whole minted supply, and custody the metadata cap and creator authority without package or registry inputs.' >&2
   failures=$((failures + 1))
 fi
-
 if [[ "$(rg -o '\.mint_balance\(' sources | wc -l)" != 1 ]] \
   || rg -n '\bcoin::mint(_balance)?\(' sources \
   || rg -n '\.mint_balance\(' sources --glob '!launch_ticket.move'; then
-  echo 'The OTW launch-ticket constructor must remain the only Meme mint site in the package.' >&2
+  echo 'The launch-ticket constructor must remain the only Meme mint site in the package.' >&2
   failures=$((failures + 1))
 fi
 
-if ! rg -U -q 'macro public\(package\) fun meme_decimals\(\): u8 \{\s*9\s*\}' \
-    sources/lib/constants.move \
-  || ! rg -U -q 'macro public\(package\) fun meme_total_supply_atomic_units\(\): u64 \{\s*1_000_000_000__000_000_000\s*\}' \
-    sources/lib/constants.move; then
-  echo 'Generated Meme supply must remain exactly one billion coins at the canonical nine-decimal precision.' >&2
+if [[ "$(move_production_function_contract meme_total_supply_whole_tokens <<<"$constants_facts")" != 'package:0:1:fun meme_total_supply_whole_tokens(): u64' ]] \
+  || [[ "$(move_production_body meme_total_supply_whole_tokens <<<"$constants_facts")" != '1_000_000_000' ]]; then
+  echo 'Generated Meme supply must remain exactly one billion whole tokens at every admitted precision.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1274,119 +1025,72 @@ launch_ticket_event_payload="$(sed -n \
   sources/lib/events.move)"
 
 if [[ -z "$launch_ticket_event_payload" ]] \
-  || ! rg -q '^[[:space:]]+initial_supply: u64,' <<<"$launch_ticket_event_payload" \
+  || ! rg -q '^[[:space:]]+decimals: u8,' <<<"$launch_ticket_event_payload" \
+  || ! rg -q '^[[:space:]]+atomic_supply: u64,' <<<"$launch_ticket_event_payload" \
   || rg -n '\b(treasury_cap_id|sequence|schema_version|action_tag|nonce)\b' \
     <<<"$launch_ticket_event_payload"; then
   echo 'Launch-ticket creation must record minted supply, omit its consumed cap, and avoid duplicate ordering or schema fields.' >&2
   failures=$((failures + 1))
 fi
 
+allocation_facts="$(move_facts sources/allocation.move)"
+allocation_source="$(move_normalized_source <<<"$allocation_facts")"
+errors_facts="$(move_facts sources/lib/errors.move)"
 launch_facts="$(move_facts sources/launch.move)"
+launch_source="$(move_normalized_source <<<"$launch_facts")"
+launch_production_bodies="$(awk -F'\t' '$1 == "FN" && $6 == 0 { print $10 }' <<<"$launch_facts")"
 launch_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/launch.move)"
-partition_meme_body="$(move_production_body partition_meme <<<"$launch_facts")"
-partition_quote_body="$(move_production_body partition_quote <<<"$launch_facts")"
 
-if [[ -e sources/graduation.move ]] \
-  || [[ "$(move_production_signature partition_meme <<<"$launch_facts")" \
-    != 'fun partition_meme<Meme>( mut meme: Balance<Meme>, protocol_meme_graduation_fee_bps: Bps, meme_liquidity_provision_bps: Bps, ): (Balance<Meme>, Balance<Meme>, Balance<Meme>)' ]] \
-  || [[ "$(move_production_signature partition_quote <<<"$launch_facts")" \
-    != 'fun partition_quote<Quote>( mut quote: Balance<Quote>, protocol_quote_migration_fee_bps: Bps, ): (Balance<Quote>, Balance<Quote>)' ]] \
-  || [[ "$(count_occurrences 'partition_meme\(' <<<"$launch_production")" != 1 ]] \
-  || [[ "$(count_occurrences 'partition_quote\(' <<<"$launch_production")" != 1 ]] \
-  || ! rg -Fq 'protocol_meme_graduation_fee_bps.apply_up(initial_supply)' <<<"$partition_meme_body" \
-  || ! rg -Fq 'meme_liquidity_provision_bps.apply_down(initial_supply)' <<<"$partition_meme_body" \
-  || rg -q 'assert!' <<<"$partition_meme_body" \
-  || [[ "$(count_occurrences '\.split\(' <<<"${partition_meme_body} ${partition_quote_body}")" != 3 ]] \
-  || ! rg -Fq 'protocol_quote_migration_fee_bps.apply_up(quote.value())' <<<"$partition_quote_body"; then
-  echo 'launch.move must privately own graduation rounding and balance custody without revalidating snapshotted policy.' >&2
+# The allocation module is pure, canonical value validation and exact arithmetic.
+# It cannot custody an asset, issue a cap, or choose an external recipient.
+if [[ ! -f sources/allocation.move ]] \
+  || [[ "$(move_production_type Channel <<<"$allocation_facts")" != 'struct Channel has copy, drop, store { channel_id: u64, role: ChannelRole, destination: address, }' ]] \
+  || [[ "$(move_production_type Weight <<<"$allocation_facts")" != 'struct Weight has copy, drop, store { channel_id: u64, bps: Bps, }' ]] \
+  || [[ "$(move_production_type AllocationPlan <<<"$allocation_facts")" != 'struct AllocationPlan has copy, drop, store { channels: vector<Channel>, meme: vector<Weight>, quote: vector<Weight>, }' ]] \
+  || ! rg -Fq 'channels.insertion_sort_by!' sources/allocation.move \
+  || ! rg -Fq 'meme.insertion_sort_by!' sources/allocation.move \
+  || ! rg -Fq 'quote.insertion_sort_by!' sources/allocation.move \
+  || ! rg -Fq 'sum == 10_000' sources/allocation.move \
+  || ! rg -Fq 'liquidity_count == 1' sources/allocation.move \
+  || ! rg -Fq 'protocol_count <= 1' sources/allocation.move \
+  || ! rg -Fq 'product.div_ceil(10_000)' sources/allocation.move \
+  || ! rg -Fq 'product / 10_000' sources/allocation.move \
+  || ! rg -Fq 'remainder_a > remainder_b || (remainder_a == remainder_b && table[*a].channel_id <= table[*b].channel_id)' sources/allocation.move \
+  || ! rg -Fq 'amounts.fold!(0, |sum, amount| sum + amount) == total' sources/allocation.move \
+  || rg -q '\b(UID|Balance|Coin|TxContext|transfer::|object::)\b' <<<"$allocation_source"; then
+  echo 'allocation.move must canonically validate the bounded plan and protect exact apportionment without custody, cap, or transfer effects.' >&2
   failures=$((failures + 1))
 fi
 
-# The native MetadataCap is held inline for the launch lifetime; the pending claim
-# is the only optional linear resource; live creator authority is recorded per
-# concern as IDs, never as stored capabilities (ADR 0082).
+# Intake validates the ticket against this generation's policy before any custody moves, keeps
+# the native MetadataCap inline forever, and partitions Meme into the curve and pooled allocations.
+launch_new_body="$(move_production_body new <<<"$launch_facts")"
+
 if [[ ! -f sources/launch.move ]] \
-  || [[ "$(move_production_type Launch <<<"$launch_facts")" \
-    != 'struct Launch<phantom Meme, phantom Quote> has key { id: UID, lifecycle: Lifecycle, sell_burn_bps: Bps, virtual_quote: u64, migration_quote_target: u64, quote_fee_bps: Bps, meme_fee_bps: Bps, protocol_quote_migration_fee_bps: Bps, migration_witness: TypeName, meme_reserve: Balance<Meme>, real_quote_reserve: Balance<Quote>, pending_burn: Balance<Meme>, protocol_meme_graduation_fee: Balance<Meme>, meme_liquidity_provision: Balance<Meme>, fee_ledger: FeeLedger<Meme, Quote>, metadata_cap: MetadataCap<Meme>, creator_authority: Option<CreatorAuthority<Meme>>, curve_fee_authority: CurveFeeAuthority, blast_metadata_cap_id: Option<ID>, }' ]] \
-  || [[ "$(move_production_type CurveFeeAuthority <<<"$launch_facts")" \
-    != 'enum CurveFeeAuthority has copy, drop, store { Unassigned, Cap(ID), Custodian(TypeName), }' ]] \
-  || [[ "$(move_production_functions <<<"$launch_facts")" \
-    != 'accrue_and_emit_bought:private:0 accrue_and_emit_sold:private:0 accrue_graduation_fees:private:0 accrue_trade_fees:private:0 assert_blast_metadata_cap:private:0 assert_curve_fee_cap:public:0 assert_fee_custodian:public:0 assert_live:private:0 buy:public:0 claim_creator_caps:public:0 claim_creator_fees:public:0 claim_custodied_creator_fees:public:0 claim_ledger_creator_fees:private:0 claim_protocol_fees:public:0 curve_k:private:0 custodian_type:private:0 dispose_meme:private:0 emit_metadata_updated:private:0 has_fee_custodian:public:0 is_custodian:private:0 lock_creator_fees:public:0 migrate:public:0 new:public:0 partition_meme:private:0 partition_quote:private:0 reassign_curve_fee_cap:public:0 reassign_metadata_cap:public:0 redeem_migration:public:0 revoke_creator_authority:private:0 sell:public:0 set_description:public:0 set_icon_url:public:0 set_name:public:0 share:public:0 ' ]] \
-  || [[ "$(rg -c '^public fun ' <<<"$launch_production")" != 19 ]] \
-  || ! rg -U -q \
-    'public fun new<Meme, Quote, MigrationWitness: drop>\(\s*ticket: LaunchTicket<Meme>,\s*package_version: &PackageVersion,\s*config: &LaunchConfig,\s*ctx: &mut TxContext,\s*\): Launch<Meme, Quote>' \
-    sources/launch.move \
-  || ! rg -U -q \
-    'public fun share<Meme, Quote>\(self: Launch<Meme, Quote>\)' \
-    sources/launch.move \
-  || [[ "$(move_production_signature claim_creator_caps <<<"$launch_facts")" \
-    != 'fun claim_creator_caps<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, config: &RuntimeConfig, account_attestation: Option<vector<u8>>, clock: &Clock, ctx: &mut TxContext, ): (CurveFeeCap<Meme>, BlastMetadataCap<Meme>)' ]] \
-  || ! rg -U -q \
-    'public fun migrate<Meme, Quote, MigrationWitness: drop>\(\s*self: &mut Launch<Meme, Quote>,\s*package_version: &PackageVersion,\s*currency: &mut Currency<Meme>,\s*ctx: &mut TxContext,\s*\): MigrationPayload<Meme, Quote, MigrationWitness>' \
-    sources/launch.move \
-  || ! rg -U -q \
-    'public fun redeem_migration<Meme, Quote, MigrationWitness: drop>\(\s*self: MigrationPayload<Meme, Quote, MigrationWitness>,\s*_: MigrationWitness,\s*\): \(Balance<Meme>, Balance<Quote>\)' \
-    sources/launch.move \
-  || rg -n '\b(creation_fee|max_burn_bps|route|venue|Display|valuation|expected_release)\b' \
-    <<<"$launch_production" \
-  || [[ "$(rg -o '\btransfer::' <<<"$launch_production" | wc -l)" != 4 ]] \
-  || [[ "$(count_occurrences 'transfer::share_object\(self\);' <<<"$launch_production")" != 1 ]] \
-  || [[ "$(count_occurrences 'transfer::public_transfer\(disposal\.into_coin\(ctx\), @0x0\);' <<<"$launch_production")" != 1 ]] \
-  || [[ "$(count_occurrences 'transfer::public_transfer\(curve_fee_cap, recipient\);' <<<"$launch_production")" != 1 ]] \
-  || [[ "$(count_occurrences 'transfer::public_transfer\(blast_metadata_cap, recipient\);' <<<"$launch_production")" != 1 ]]; then
-  echo 'launch.move must own versioned key-only custody, trading, claims, per-concern revocable creator authority, and the witness-bound terminal handoff.' >&2
-  failures=$((failures + 1))
-fi
-
-if ! rg -Fq 'config.snapshot_for_launch<Quote, MigrationWitness>()' sources/launch.move \
-  || ! rg -Fq 'transfer::share_object(self);' sources/launch.move \
-  || ! rg -Fq 'ticket.destroy();' sources/launch.move \
-  || ! rg -Fq 'ticket.initial_supply() == constants::meme_total_supply_atomic_units!()' sources/launch.move \
-  || ! rg -Fq 'ticket.sell_burn_bps().value() <= constants::max_sell_burn_bps!()' sources/launch.move \
-  || ! rg -Fq 'type_name::with_original_ids<Meme>() != type_name::with_original_ids<Quote>()' sources/launch.move \
-  || ! rg -Fq 'fee_ledger: fees::new(),' sources/launch.move \
-  || ! rg -Fq 'real_quote_reserve: balance::zero(),' sources/launch.move \
-  || ! rg -Fq 'pending_burn: balance::zero(),' sources/launch.move \
-  || ! rg -Fq 'metadata_cap, creator_authority: option::some(creator_authority), curve_fee_authority: CurveFeeAuthority::Unassigned, blast_metadata_cap_id: option::none(), };' \
-    <<<"$(move_production_body new <<<"$launch_facts")" \
-  || [[ "$(count_occurrences 'self\.creator_authority\.extract\(\)' <<<"$(move_normalized_source <<<"$launch_facts")")" != 2 ]] \
-  || [[ "$(count_occurrences 'self\.metadata_cap\b' <<<"$(move_normalized_source <<<"$launch_facts")")" \
-    != "$(count_occurrences '&self\.metadata_cap\b' <<<"$(move_normalized_source <<<"$launch_facts")")" ]] \
+  || [[ "$(move_production_function_contract new <<<"$launch_facts")" != 'public:0:0:fun new<Meme, Quote>( ticket: LaunchTicket<Meme>, currency: &mut Currency<Meme>, package_version: &PackageVersion, config: &LaunchConfig, graduation_target: u64, allocation_plan: AllocationPlan, protection_window_ms: u64, cumulative_sender_bps: Bps, per_transaction_bps: Bps, ctx: &mut TxContext, ): Launch<Meme, Quote>' ]] \
+  || [[ "$launch_new_body" != *'.snapshot_for_launch<Quote>(ticket.migration_witness<'*'Quote>())'* ]] \
+  || [[ "$launch_new_body" != *'type_name::with_original_ids<Meme>() != type_name::with_original_ids<Quote>()'* ]] \
+  || [[ "$launch_new_body" != *'ticket.sell_burn_bps().value() <= constants::max_sell_burn_bps!()'* ]] \
+  || [[ "$launch_new_body" != *'config.assert_allocation_policy(&allocation_plan);'* ]] \
+  || [[ "$launch_new_body" != *'config.assert_decimals_allowed(decimals);'* ]] \
+  || [[ "$launch_new_body" != *'let atomic_supply = launch_ticket::atomic_supply(decimals);'* ]] \
+  || [[ "$launch_new_body" != *'ticket.destroy('*'atomic_supply'* ]] \
+  || [[ "$launch_new_body" != *'let meme_amounts = allocation_plan.apportion_meme(atomic_supply);'* ]] \
+  || [[ "$launch_new_body" != *'metadata_cap, creator_authority: option::some(creator_authority), curve_fee_authority: CurveFeeAuthority::Unassigned, blast_metadata_cap_id: option::none(), };'* ]] \
+  || [[ "$(count_occurrences 'self\.creator_authority\.extract\(\)' <<<"$launch_source")" != 2 ]] \
+  || [[ "$(count_occurrences 'self\.metadata_cap\b' <<<"$launch_source")" \
+    != "$(count_occurrences '&self\.metadata_cap\b' <<<"$launch_source")" ]] \
   || rg -q '\bmetadata_cap\.(extract|swap|fill)\(|option::(some|none)\(metadata_cap\)|\bMetadataCap<Meme>\)' \
-    <<<"$(move_normalized_source <<<"$launch_facts")" \
+    <<<"$launch_source" \
   || rg -n '\bbps::new\(' sources/launch.move \
   || ! rg -Fq 'let burnable = currency.is_supply_burn_only();' sources/launch.move \
-  || rg -n 'is_supply_fixed|supply_mode_mismatch' <<<"$launch_production" \
-  || rg -n 'self\.burnable|^[[:space:]]+burnable: bool,' <<<"$launch_production" \
+  || rg -q '\b(MigrationChannelCap|LaunchMigrationCap|MigrationChannelBalance|VenueSelection|venue_selection|vesting_id)\b' <<<"$launch_source" \
   || rg -n 'max_launch_fee_bps|invalid_(quote|meme)_fee_bps' sources/launch.move; then
-  echo 'Launch construction must snapshot configured fees, consume reviewed seams, initialize zero balances, retain the native MetadataCap by reference only, and start with only the pending creator claim and no live creator capability.' >&2
+  echo 'Launch intake must validate the pair, sell burn, allocation policy, decimals, and canonical supply before custody, keep the native MetadataCap inline, and carry no venue selection, per-channel custody, or vesting disclosure.' >&2
   failures=$((failures + 1))
 fi
 
-# Every creator-authority transition on a launch is bound to its own named body,
-# so the recorded-cap checks, the locked-fees precedence over the creator-admin
-# role, the per-concern ID record, and the recipient transfer cannot be dropped,
-# reordered, or swapped between the fee and metadata concerns (ADR 0082).
 launch_authority_violations=''
-
-check_launch_function() {
-  local name="$1" expected_signature="$2" expected_body="$3"
-  local signature body
-
-  signature="$(move_production_signature "$name" <<<"$launch_facts")"
-  body="$(move_production_body "$name" <<<"$launch_facts")"
-
-  if [[ -z "$signature" || -z "$body" ]]; then
-    launch_authority_violations+="  ${name} has no single production declaration"$'\n'
-    return
-  fi
-  if [[ "$signature" != "$expected_signature" ]]; then
-    launch_authority_violations+="  ${name} does not keep its approved authorization and result signature"$'\n'
-  fi
-  if [[ "$body" != "$expected_body" ]]; then
-    launch_authority_violations+="  ${name} body is not the approved transition"$'\n'
-  fi
-}
 
 # Sorted names of production launch functions whose body contains one fixed string.
 launch_functions_containing() {
@@ -1394,88 +1098,15 @@ launch_functions_containing() {
     $1 == "FN" && $6 == 0 && index($10, needle) > 0 { print $2 }
   ' <<<"$launch_facts" | sort | tr '\n' ' '
 }
-
 # The custodian binding is published indexing API: the payload names the witness type.
 if ! rg -U -q 'public struct CreatorFeesLocked has copy, drop \{\n    launch_id: ID,\n    curve_fee_cap_id: ID,\n    custodian: TypeName,\n\}' sources/lib/events.move; then
   echo 'CreatorFeesLocked must publish the launch, the destroyed curve-fee cap, and the custodian witness type.' >&2
   failures=$((failures + 1))
 fi
 
-check_launch_function claim_creator_caps \
-  'fun claim_creator_caps<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, config: &RuntimeConfig, account_attestation: Option<vector<u8>>, clock: &Clock, ctx: &mut TxContext, ): (CurveFeeCap<Meme>, BlastMetadataCap<Meme>)' \
-  'package_version.assert_current(); assert!( self.creator_authority.is_some(), blast_fun::errors::creator_authority_unavailable!(), ); let (curve_fee_cap, blast_metadata_cap) = self.creator_authority.extract().claim_creator_caps( config, account_attestation, clock, ctx, ); self.curve_fee_authority = CurveFeeAuthority::Cap(curve_fee_cap.id()); self.blast_metadata_cap_id = option::some(blast_metadata_cap.id()); (curve_fee_cap, blast_metadata_cap)'
-
-check_launch_function reassign_curve_fee_cap \
-  'fun reassign_curve_fee_cap<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, recipient: address, ctx: &mut TxContext, )' \
-  'package_version.assert_current(); assert!( !self.curve_fee_authority.is_custodian(), blast_fun::errors::creator_fees_locked!(), ); admin_witness.assert_role(blast_fun_domain::creator_admin_role()); assert!(recipient != @0x0, blast_fun::errors::invalid_creator_recipient!()); let revoked_curve_fee_cap_id = match (self.curve_fee_authority) { CurveFeeAuthority::Cap(curve_fee_cap_id) => option::some(curve_fee_cap_id), _ => option::none(), }; self.revoke_creator_authority(); let curve_fee_cap = creator_authority::new_curve_fee_cap<Meme>(ctx); let curve_fee_cap_id = curve_fee_cap.id(); self.curve_fee_authority = CurveFeeAuthority::Cap(curve_fee_cap_id); transfer::public_transfer(curve_fee_cap, recipient); events::curve_fee_cap_reassigned( self.id.to_inner(), revoked_curve_fee_cap_id, curve_fee_cap_id, recipient, );'
-
-check_launch_function reassign_metadata_cap \
-  'fun reassign_metadata_cap<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, recipient: address, ctx: &mut TxContext, )' \
-  'package_version.assert_current(); admin_witness.assert_role(blast_fun_domain::creator_admin_role()); assert!(recipient != @0x0, blast_fun::errors::invalid_creator_recipient!()); let revoked_metadata_cap_id = self.blast_metadata_cap_id; self.revoke_creator_authority(); let blast_metadata_cap = creator_authority::new_metadata_cap<Meme>(ctx); let metadata_cap_id = blast_metadata_cap.id(); self.blast_metadata_cap_id = option::some(metadata_cap_id); transfer::public_transfer(blast_metadata_cap, recipient); events::metadata_cap_reassigned( self.id.to_inner(), revoked_metadata_cap_id, metadata_cap_id, recipient, );'
-
-check_launch_function lock_creator_fees \
-  'fun lock_creator_fees<Meme, Quote, Custodian: drop>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, curve_fee_cap: CurveFeeCap<Meme>, _: Custodian, )' \
-  'package_version.assert_current(); self.assert_curve_fee_cap(&curve_fee_cap); let curve_fee_cap_id = curve_fee_cap.id(); let custodian = custodian_type<Custodian>(); curve_fee_cap.destroy_curve_fee_cap(); self.curve_fee_authority = CurveFeeAuthority::Custodian(custodian); events::creator_fees_locked(self.id.to_inner(), curve_fee_cap_id, custodian);'
-
-check_launch_function claim_custodied_creator_fees \
-  'fun claim_custodied_creator_fees<Meme, Quote, Custodian: drop>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, custodian: Custodian, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
-  'package_version.assert_current(); self.assert_fee_custodian(custodian); self.claim_ledger_creator_fees(ctx)'
-
-check_launch_function assert_fee_custodian \
-  'fun assert_fee_custodian<Meme, Quote, Custodian: drop>( self: &Launch<Meme, Quote>, _: Custodian, )' \
-  'assert!( self.curve_fee_authority == CurveFeeAuthority::Custodian(type_name::with_original_ids<Custodian>()), blast_fun::errors::creator_custodian_mismatch!(), );'
-
-check_launch_function has_fee_custodian \
-  'fun has_fee_custodian<Meme, Quote>(self: &Launch<Meme, Quote>): bool' \
-  'self.curve_fee_authority.is_custodian()'
-
-check_launch_function claim_creator_fees \
-  'fun claim_creator_fees<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, curve_fee_cap: &CurveFeeCap<Meme>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
-  'package_version.assert_current(); self.assert_curve_fee_cap(curve_fee_cap); self.claim_ledger_creator_fees(ctx)'
-
-check_launch_function assert_curve_fee_cap \
-  'fun assert_curve_fee_cap<Meme, Quote>( self: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, )' \
-  'assert!( self.curve_fee_authority == CurveFeeAuthority::Cap(curve_fee_cap.id()), blast_fun::errors::curve_fee_cap_not_live!(), );'
-
-check_launch_function assert_blast_metadata_cap \
-  'fun assert_blast_metadata_cap<Meme, Quote>( self: &Launch<Meme, Quote>, blast_metadata_cap: &BlastMetadataCap<Meme>, )' \
-  'assert!( self.blast_metadata_cap_id.contains(&blast_metadata_cap.id()), blast_fun::errors::metadata_cap_not_live!(), );'
-
-check_launch_function custodian_type \
-  'fun custodian_type<Custodian>(): TypeName' \
-  'let custodian = type_name::with_original_ids<Custodian>(); assert!(!custodian.is_primitive(), blast_fun::errors::invalid_fee_custodian!()); let origin = type_name::original_id<Custodian>(); assert!( origin != @0x1 && origin != @0x2, blast_fun::errors::invalid_fee_custodian!(), ); custodian'
-
-check_launch_function is_custodian \
-  'fun is_custodian(self: &CurveFeeAuthority): bool' \
-  'match (self) { CurveFeeAuthority::Custodian(_) => true, _ => false, }'
-
-check_launch_function revoke_creator_authority \
-  'fun revoke_creator_authority<Meme, Quote>(self: &mut Launch<Meme, Quote>)' \
-  'if (self.creator_authority.is_some()) { self.creator_authority.extract().revoke(); };'
-
-check_launch_function claim_ledger_creator_fees \
-  'fun claim_ledger_creator_fees<Meme, Quote>( self: &mut Launch<Meme, Quote>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)' \
-  'let (meme, quote) = self.fee_ledger.claim_creator_fees(ctx); events::creator_fees_claimed( self.id.to_inner(), meme.value(), quote.value(), ); (meme, quote)'
-
-check_launch_function set_name \
-  'fun set_name<Meme, Quote>( self: &Launch<Meme, Quote>, package_version: &PackageVersion, blast_metadata_cap: &BlastMetadataCap<Meme>, currency: &mut Currency<Meme>, name: String, )' \
-  'package_version.assert_current(); self.assert_blast_metadata_cap(blast_metadata_cap); assert!(currency.name() != name, blast_fun::errors::metadata_unchanged!()); currency.set_name(&self.metadata_cap, name); self.emit_metadata_updated(currency);'
-
-check_launch_function set_description \
-  'fun set_description<Meme, Quote>( self: &Launch<Meme, Quote>, package_version: &PackageVersion, blast_metadata_cap: &BlastMetadataCap<Meme>, currency: &mut Currency<Meme>, description: String, )' \
-  'package_version.assert_current(); self.assert_blast_metadata_cap(blast_metadata_cap); assert!( currency.description() != description, blast_fun::errors::metadata_unchanged!(), ); currency.set_description(&self.metadata_cap, description); self.emit_metadata_updated(currency);'
-
-check_launch_function set_icon_url \
-  'fun set_icon_url<Meme, Quote>( self: &Launch<Meme, Quote>, package_version: &PackageVersion, blast_metadata_cap: &BlastMetadataCap<Meme>, currency: &mut Currency<Meme>, icon_url: String, )' \
-  'package_version.assert_current(); self.assert_blast_metadata_cap(blast_metadata_cap); assert!(currency.icon_url() != icon_url, blast_fun::errors::metadata_unchanged!()); currency.set_icon_url(&self.metadata_cap, icon_url); self.emit_metadata_updated(currency);'
-
-check_launch_function emit_metadata_updated \
-  'fun emit_metadata_updated<Meme, Quote>( self: &Launch<Meme, Quote>, currency: &Currency<Meme>, )' \
-  'events::meme_metadata_updated( self.id.to_inner(), currency.name(), currency.description(), currency.icon_url(), );'
-
-# The same bodies are also the complete writer and reader sets, so a new sibling
-# or helper cannot record authority, claim from the creator ledger, revoke the pending
-# claim, or reach the native MetadataCap outside the approved paths.
+# Each authority effect has one exact writer and reader set, so a new sibling or helper cannot
+# record authority, claim from the creator ledger, revoke the pending claim, reach the native
+# MetadataCap, or transfer value outside the approved paths (ADR 0082).
 for authority_spec in \
   'self.curve_fee_authority = |claim_creator_caps lock_creator_fees reassign_curve_fee_cap ' \
   'self.blast_metadata_cap_id = |claim_creator_caps reassign_metadata_cap ' \
@@ -1489,7 +1120,7 @@ for authority_spec in \
   'custodian_type<Custodian>()|lock_creator_fees ' \
   'self.assert_blast_metadata_cap(|set_description set_icon_url set_name ' \
   '&self.metadata_cap|set_description set_icon_url set_name ' \
-  'transfer::public_transfer(|dispose_meme reassign_curve_fee_cap reassign_metadata_cap '; do
+  'transfer::public_transfer(|deliver_pending_setup_caps dispose_meme pay_allocations reassign_curve_fee_cap reassign_metadata_cap '; do
   authority_needle="${authority_spec%%|*}"
   authority_expected="${authority_spec#*|}"
   authority_actual="$(launch_functions_containing "$authority_needle")"
@@ -1498,7 +1129,6 @@ for authority_spec in \
     launch_authority_violations+="  '${authority_needle}' is used by '${authority_actual}' instead of '${authority_expected}'"$'\n'
   fi
 done
-
 # The package-only cap constructors and claim revocation are reached only from the
 # owning module and the launch that records the resulting authority.
 if [[ "$(rg -l '\bnew_curve_fee_cap\b' sources | sort | tr '\n' ' ')" \
@@ -1510,87 +1140,126 @@ if [[ "$(rg -l '\bnew_curve_fee_cap\b' sources | sort | tr '\n' ' ')" \
   launch_authority_violations+='  package-only creator capability constructors, claim revocation, or the ledger creator claim are reachable outside creator_authority.move and launch.move'$'\n'
 fi
 
+# T-004 keeps owned construction permissionless while creator authentication
+# remains post-share. The exact config cap is wrapped, never replaced, and only
+# an authenticated claim or the existing first takeover can remove it.
+for setup_spec in \
+  'self.router_config_cap.fill(|share ' \
+  'self.router_config_cap.extract()|claim_setup_caps deliver_pending_setup_caps ' \
+  'self.deliver_pending_setup_caps(|reassign_curve_fee_cap reassign_metadata_cap ' \
+  'self.claim_creator_caps(|claim_setup_caps ' \
+  'self.public_start_ms = |share ' \
+  'self.pre_share_buy_completed = |execute_buy ' \
+  'clock.timestamp_ms()|buy share ' \
+  'self.execute_buy(|buy pre_share_buy ' \
+  'curve::cap_buy_quote_input(|execute_buy ' \
+  'curve::quote_buy(|execute_buy ' \
+  'transfer::share_object(self)|share ' \
+  'events::launch_shared(|share ' \
+  'events::pre_share_bought(|execute_buy ' \
+  'events::bought(|execute_buy ' \
+  'events::router_config_cap_released(|claim_setup_caps ' \
+  'events::router_config_cap_delivered(|deliver_pending_setup_caps ' \
+  'self.protection_end_ms = |share ' \
+  'events::protection_configured(|new ' \
+  'self.assert_protected_purchase(|execute_buy ' \
+  'self.record_protected_purchase(|execute_buy ' \
+  '.add_dynamic_field(|record_protected_purchase ' \
+  '.dynamic_field_mut|record_protected_purchase ' \
+  'dynamic_field::|'; do
+  setup_needle="${setup_spec%%|*}"
+  setup_expected="${setup_spec#*|}"
+  setup_actual="$(launch_functions_containing "$setup_needle")"
+  if [[ "$setup_actual" != "$setup_expected" ]]; then
+    launch_authority_violations+="  T-004 '${setup_needle}' is used by '${setup_actual}' instead of '${setup_expected}'"$'\n'
+  fi
+done
+
+for setup_visibility in \
+  'share:public' 'claim_setup_caps:public' 'pre_share_buy:public' \
+  'public_start_ms:public' 'pre_share_buy_completed:public' \
+  'claim_creator_caps:private' 'deliver_pending_setup_caps:private' 'execute_buy:private' \
+  'assert_protected_purchase:private' 'record_protected_purchase:private'; do
+  setup_name="${setup_visibility%%:*}"
+  setup_contract="$(move_production_function_contract "$setup_name" <<<"$launch_facts")"
+  if [[ "$setup_contract" != "${setup_visibility#*:}:0:0:fun "* ]]; then
+    launch_authority_violations+="  T-004 ${setup_name} has widened or missing visibility"$'\n'
+  fi
+done
+
+launch_owned_sinks="$(awk -F'\t' '
+  $1 == "FN" && $6 == 0 && $9 ~ /[(,] (mut )?[A-Za-z_][A-Za-z0-9_]*: Launch</ { print $2 }
+' <<<"$launch_facts" | sort | tr '\n' ' ')"
+launch_buy_body="$(move_semantic_shape <<<"$(move_production_body execute_buy <<<"$launch_facts")")"
+
+if [[ "$launch_owned_sinks" != 'share ' ]] \
+  || ! in_order 'pre_share_buy_would_graduate!()' 'quote_in.into_balance()' <<<"$launch_buy_body"; then
+  launch_authority_violations+='  T-004 must share through one key-only sink and reject graduation before any pre-share balance movement'$'\n'
+fi
+# T-005 checks a protected purchase after slippage and before any balance moves, and records it
+# only after the curve mutation.
+if ! in_order 'slippage_exceeded!()' 'self.assert_protected_purchase(' 'quote_in.into_balance()' \
+  'self.record_protected_purchase(' <<<"$launch_buy_body"; then
+  launch_authority_violations+='  T-005 must check protected purchases after slippage and before custody, and record them after the curve mutation'$'\n'
+fi
+# T-005 reaches sender records only through these four module-local aliases. With no remove alias,
+# module-form call, member import, or module alias, no path can delete a record.
+launch_dynamic_field_aliases="$(rg -o 'use fun [^;]*dynamic_field[^;]*;' <<<"$launch_source" \
+  | LC_ALL=C sort | tr '\n' ' ')"
+if [[ "$launch_dynamic_field_aliases" != 'use fun dynamic_field::add as UID.add_dynamic_field; use fun dynamic_field::borrow as UID.dynamic_field; use fun dynamic_field::borrow_mut as UID.dynamic_field_mut; use fun dynamic_field::exists as UID.has_dynamic_field; ' ]] \
+  || [[ "$(count_occurrences 'dynamic_field::' <<<"$launch_source")" != 4 ]] \
+  || rg -q '\bdynamic_field as\b' <<<"$launch_source"; then
+  launch_authority_violations+='  T-005 must reach sender records only through the add, borrow, borrow_mut, and exists aliases'$'\n'
+fi
+for move_file in "${source_files[@]}"; do
+  setup_source="$(move_facts "$move_file" | move_normalized_source)"
+  if rg -q '\b(CreatorSetupReceipt|blast_fun_vesting|blast_fun_linear_vesting|blast_fun_checkpoint_vesting)\b' <<<"$setup_source"; then
+    launch_authority_violations+="  ${move_file} introduces a setup receipt or vesting dependency"$'\n'
+  fi
+done
+if rg -q 'vesting' Move.toml; then
+  launch_authority_violations+='  launchpad must not import the independently composed vesting package'$'\n'
+fi
+
 if [[ -n "$launch_authority_violations" ]]; then
   printf '%s' "$launch_authority_violations"
   echo 'Launch creator authority must stay split per concern: only the recorded CurveFeeCap or bound custodian claims creator fees, only the recorded BlastMetadataCap edits metadata through the retained MetadataCap, and only a version-gated creator admin reassigns, rejecting locked fees first.' >&2
   failures=$((failures + 1))
 fi
 
-launch_created_event_payload="$(sed -n \
-  -e '/^public struct LaunchCreated/,/^}/p' \
-  sources/lib/events.move)"
-
-if [[ -z "$launch_created_event_payload" ]] \
-  || [[ "$(rg -c '^[[:space:]]+[a-z_]+:' <<<"$launch_created_event_payload")" != 14 ]] \
-  || ! rg -q '^[[:space:]]+ticket_id: ID,' <<<"$launch_created_event_payload" \
-  || rg -n '^[[:space:]]+(meme|launcher|metadata_cap_id|sell_burn_bps|initial_meme_supply|real_quote_reserve|pending_burn):' <<<"$launch_created_event_payload" \
-  || rg -n '^[[:space:]]+(protocol|creator)_(meme|quote)_trade_fees:' <<<"$launch_created_event_payload" \
-  || rg -n '\b(burnable|state_version|supply_mode|sequence|schema_version|action_tag|nonce|valuation|expected_release)\b' \
-    <<<"$launch_created_event_payload"; then
-  echo 'LaunchCreated must keep only replay-complete launch facts; ticket-derived and initial-zero fields are forbidden.' >&2
+if [[ "$(launch_functions_containing 'events::migration_allocation_paid(')" != 'pay_allocations ' ]] \
+  || [[ "$(launch_functions_containing 'events::migrated(')" != 'complete_migration ' ]]; then
+  echo 'Allocation payouts and migration completion must be replayed only by their owning functions.' >&2
   failures=$((failures + 1))
 fi
-
-migrated_event_payload="$(sed -n \
-  -e '/^public struct Migrated/,/^}/p' \
-  sources/lib/events.move)"
-
-if [[ -z "$migrated_event_payload" ]] \
-  || ! rg -q '^[[:space:]]+native_supply_burned: bool,' <<<"$migrated_event_payload" \
-  || rg -q '^[[:space:]]+burnable: bool,' <<<"$migrated_event_payload"; then
-  echo 'Migrated must record the completed native burn action without a duplicate supply-mode field.' >&2
-  failures=$((failures + 1))
-fi
-
 if rg -n '\bstate_version\b|launch_state_version' sources tests; then
   echo 'PackageVersion must remain the only operational version; Launch state and events must not add another one.' >&2
   failures=$((failures + 1))
 fi
 
-# `package_admin` keeps four `assert_current` guards across authorize, both
-# restrictions, and immutability; commit-and-advance instead proves the exact
-# next generation, so it contributes the fifth PackageVersion parameter only.
-# `launch` gates construction, eleven Launch mutations, and the three metadata
-# edits. `creator_authority` owns no shared-object operation since LP-fee
-# capability issuance moved to `blast_fun_migrators` (ADR 0083), so it keeps none.
-for gate_spec in 'launch_config:6:6' 'runtime_config:3:3' 'package_admin:4:5' 'launch:14:14' 'creator_authority:0:0'; do
-  IFS=: read -r gate_module expected_guards expected_parameters <<<"$gate_spec"
-  actual_guards="$(rg -c '^[[:space:]]+package_version\.assert_current\(\);' "sources/${gate_module}.move" || true)"
-  actual_parameters="$(rg -c '^[[:space:]]+package_version: &(mut )?PackageVersion,' "sources/${gate_module}.move" || true)"
+# Every production function that takes the shared PackageVersion checks it as its first
+# statement, and no public function reaching mutable shared state escapes that guard.
+version_guard_violations="$(
+  for move_file in "${source_files[@]}"; do
+    move_facts "$move_file" | awk -F'\t' -v file="$move_file" '
+      $1 == "FN" && $6 == 0 && $9 ~ /[(,] package_version: &PackageVersion,/ \
+        && $10 !~ /^package_version\.assert_current\(\);/ {
+        print "  " file ": " $2 " must check the live package version as its first statement"
+      }
+      $1 == "FN" && $6 == 0 && $3 == "public" \
+        && ($9 ~ /: &mut (Launch|Currency|FeeRouter)</ || $9 ~ /: &mut (LaunchConfig|RuntimeConfig|LpFeePolicy|PackageAdmin),/) \
+        && $9 !~ /[(,] package_version: &(mut )?PackageVersion,/ {
+        print "  " file ": " $2 " reaches mutable shared state without PackageVersion"
+      }
+    '
+  done
+)"
 
-  if [[ "${actual_guards:-0}" != "$expected_guards" ]] \
-    || [[ "${actual_parameters:-0}" != "$expected_parameters" ]]; then
-    echo "${gate_module}.move must keep PackageVersion on every accepted mutable shared-object operation." >&2
-    failures=$((failures + 1))
-  fi
-done
-
-# Bound per named production function rather than by an aggregate count: the
-# versioned set is exact, each member checks the version as its first statement,
-# and no public function reaching `&mut Launch` or `&mut Currency` escapes it.
-launch_versioned_functions="$(awk -F'\t' '
-  $1 == "FN" && $6 == 0 && $9 ~ /[(,] package_version: &PackageVersion,/ { print $2 }
-' <<<"$launch_facts" | sort | tr '\n' ' ')"
-
-launch_version_violations="$(awk -F'\t' '
-  $1 == "FN" && $6 == 0 && $9 ~ /[(,] package_version: &PackageVersion,/ \
-    && $10 !~ /^package_version\.assert_current\(\);/ {
-    print "  " $2 " must check the live package version as its first statement"
-  }
-  $1 == "FN" && $6 == 0 && $3 == "public" \
-    && $9 ~ /: &mut (Launch|Currency)</ && $9 !~ /[(,] package_version: &PackageVersion,/ {
-    print "  " $2 " reaches mutable launch or currency state without PackageVersion"
-  }
-' <<<"$launch_facts")"
-
-if [[ "$launch_versioned_functions" \
-    != 'buy claim_creator_caps claim_creator_fees claim_custodied_creator_fees claim_protocol_fees lock_creator_fees migrate new reassign_curve_fee_cap reassign_metadata_cap sell set_description set_icon_url set_name ' ]] \
-  || [[ -n "$launch_version_violations" ]]; then
-  [[ -n "$launch_version_violations" ]] && printf '%s\n' "$launch_version_violations"
-  echo 'Launch construction, every public Launch mutation, and every launch-held metadata edit must check the one PackageVersion as its first statement.' >&2
+if [[ -n "$version_guard_violations" ]]; then
+  printf '%s\n' "$version_guard_violations"
+  echo 'Every accepted shared-object mutation and every launch-held metadata edit must check the one PackageVersion as its first statement.' >&2
   failures=$((failures + 1))
 fi
-
 # Reads call-normalized text, so whitespace around `::` or before an argument
 # list cannot disguise a module-form call as anything other than what it is.
 receiver_syntax_violations="$(
@@ -1599,7 +1268,7 @@ receiver_syntax_violations="$(
       | move_normalized_source \
       | sed 's/ *:: */::/g; s/ *(/(/g' \
       | rg -o \
-        '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_creator_claim_signer|revoke_creator_claim_signer|set_protocol_fee_share|assert_creator_claim_active|assert_creator_claim_signature|protocol_fee_share)|launch_config::(allow_quote|disallow_quote|set_trade_fees|set_graduation_defaults|allow_migration_witness|disallow_migration_witness|snapshot_for_launch|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|launch::(share|migrate|redeem_migration|claim_creator_caps|reassign_curve_fee_cap|reassign_metadata_cap|lock_creator_fees|claim_custodied_creator_fees|assert_fee_custodian|has_fee_custodian|assert_curve_fee_cap|set_name|set_description|set_icon_url)|creator_authority::(into_authority|recipient_address|account_commitment|claim_creator_caps|revoke|destroy_curve_fee_cap|destroy_metadata_cap)|launch_ticket::destroy|fees::(accrue|accrue_protocol_fees|has_protocol_fees|claim_creator_fees|claim_protocol_fees)|package::test_upgrade|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
+        '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_creator_claim_signer|revoke_creator_claim_signer|set_protocol_fee_share|assert_creator_claim_active|assert_creator_claim_signature|protocol_fee_share)|launch_config::(allow_meme_decimals|disallow_meme_decimals|allow_quote|disallow_quote|set_trade_fees|set_protocol_allocation|allow_migration_witness|disallow_migration_witness|assert_allocation_policy|assert_migration_witness_allowed|snapshot_for_launch|allowed_meme_decimals_count_for_testing|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|allocation::(channels|meme_weights|quote_weights|liquidity_channel_id|assert_protocol_policy|apportion_meme|apportion_quote|channel_id|destination|weight_channel_id|weight_bps)|launch::(share|allocation_plan|claim_creator_caps|reassign_curve_fee_cap|reassign_metadata_cap|lock_creator_fees|claim_custodied_creator_fees|assert_fee_custodian|assert_curve_fee_cap|set_name|set_description|set_icon_url)|creator_authority::(into_authority|recipient_address|account_commitment|claim_creator_caps|revoke|destroy_curve_fee_cap|destroy_metadata_cap)|launch_ticket::(destroy|bind_migration_witness|treasury_cap_mut|migration_witness)|fees::(accrue|accrue_protocol_fees|has_protocol_fees|claim_creator_fees|claim_protocol_fees)|package::test_upgrade|package_admin::(authorize_upgrade|commit_upgrade|restrict_to_additive|restrict_to_dependency_only|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
       || true; } | sed "s|^|  ${move_file}: |"
   done
 )"
@@ -1670,8 +1339,8 @@ for capability_spec in \
   fi
   if [[ "$(move_production_signature "$capability_destructor" <<<"$creator_authority_facts")" \
       != "fun ${capability_destructor}<Meme>(self: ${capability_type}<Meme>)" ]] \
-    || [[ "$(move_production_body "$capability_destructor" <<<"$creator_authority_facts")" \
-      != "let ${capability_type} { id } = self; id.delete();" ]]; then
+    || [[ "$(move_semantic_shape <<<"$(move_production_body "$capability_destructor" <<<"$creator_authority_facts")")" \
+      != "$(move_semantic_shape <<<"let ${capability_type} { id } = self; id.delete();")" ]]; then
     creator_capability_violations+="  ${capability_destructor} is not the approved holder self-destruction"$'\n'
   fi
 done
@@ -1704,35 +1373,27 @@ if ! rg -U -q \
 fi
 
 creator_authority_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/creator_authority.move)"
+creator_authority_source="$(move_normalized_source <<<"$creator_authority_facts")"
 
 # Without LP-fee issuance (ADR 0083) creator authority is neither version- nor
 # admin-gated: claims are signer-authorized and reassignment is gated in launch.
 if rg -n '\b[a-z_]*claimed:[[:space:]]*bool|\bissue_creator_cap\b|\btransfer::' \
   <<<"$creator_authority_production" \
-  || rg -q '\bMetadataCap\b|\bcoin_registry\b' <<<"$(move_normalized_source <<<"$creator_authority_facts")" \
+  || rg -q '\bMetadataCap\b|\bcoin_registry\b' <<<"$creator_authority_source" \
   || rg -q '\b(AdminWitness|BLAST_FUN_DOMAIN|blast_fun_domain|PackageVersion|package_version|assert_role)\b' \
-    <<<"$(move_normalized_source <<<"$creator_authority_facts")" \
+    <<<"$creator_authority_source" \
   || [[ "$(rg -c '^use blast_fun::' sources/creator_authority.move)" != 1 ]] \
   || ! rg -Fxq 'use blast_fun::{constants, events, runtime_config::RuntimeConfig};' sources/creator_authority.move \
-  || [[ "$(move_production_functions <<<"$creator_authority_facts")" \
-    != 'account_commitment:package:0 authorize_claim:private:0 blast_metadata_cap_id:package:0 claim_creator_caps:package:0 creator_claim_message_bytes:private:0 curve_fee_cap_id:package:0 destroy_curve_fee_cap:public:0 destroy_metadata_cap:public:0 into_authority:package:0 new_account:public:0 new_address:public:0 new_curve_fee_cap:package:0 new_metadata_cap:package:0 parse_creator_claim_attestation:private:0 recipient_address:package:0 revoke:package:0 ' ]] \
-  || [[ "$(move_production_signature claim_creator_caps <<<"$creator_authority_facts")" \
-    != 'fun claim_creator_caps<Meme>( self: CreatorAuthority<Meme>, config: &RuntimeConfig, account_attestation: Option<vector<u8>>, clock: &Clock, ctx: &mut TxContext, ): (CurveFeeCap<Meme>, BlastMetadataCap<Meme>)' ]] \
-  || [[ "$(move_production_body claim_creator_caps <<<"$creator_authority_facts")" \
-    != 'let claimant = ctx.sender(); self.recipient.authorize_claim<Meme>( config, account_attestation, claimant, clock, ); let CreatorAuthority { .. } = self; let curve_fee_cap = new_curve_fee_cap<Meme>(ctx); let metadata_cap = new_metadata_cap<Meme>(ctx); events::creator_caps_claimed<Meme>(object::id(&curve_fee_cap), object::id(&metadata_cap)); (curve_fee_cap, metadata_cap)' ]] \
-  || [[ "$(move_production_signature new_curve_fee_cap <<<"$creator_authority_facts")" \
-    != 'fun new_curve_fee_cap<Meme>(ctx: &mut TxContext): CurveFeeCap<Meme>' ]] \
-  || [[ "$(move_production_signature new_metadata_cap <<<"$creator_authority_facts")" \
-    != 'fun new_metadata_cap<Meme>(ctx: &mut TxContext): BlastMetadataCap<Meme>' ]] \
-  || [[ "$(move_production_signature revoke <<<"$creator_authority_facts")" \
-    != 'fun revoke<Meme>(self: CreatorAuthority<Meme>)' ]] \
-  || [[ "$(move_production_body revoke <<<"$creator_authority_facts")" \
-    != 'let CreatorAuthority { .. } = self;' ]] \
-  || [[ "$(count_occurrences 'let CreatorAuthority \{' <<<"$(move_normalized_source <<<"$creator_authority_facts")")" != 2 ]]; then
-  echo 'Creator-authority claims must consume CreatorAuthority and return exactly one CurveFeeCap and one BlastMetadataCap, revocation must only consume the claim, and the module must import only constants, events, and RuntimeConfig, with no version or admin gate, native MetadataCap pass-through, flag, wrapper, or transfer.' >&2
+  || [[ "$(move_production_function_contract claim_creator_caps <<<"$creator_authority_facts")" != 'package:0:0:fun claim_creator_caps<Meme>( self: CreatorAuthority<Meme>, config: &RuntimeConfig, account_attestation: Option<vector<u8>>, clock: &Clock, ctx: &mut TxContext, ): (CurveFeeCap<Meme>, BlastMetadataCap<Meme>)' ]] \
+  || [[ "$(move_production_function_contract new_curve_fee_cap <<<"$creator_authority_facts")" \
+    != 'package:0:0:fun new_curve_fee_cap<Meme>(ctx: &mut TxContext): CurveFeeCap<Meme>' ]] \
+  || [[ "$(move_production_function_contract new_metadata_cap <<<"$creator_authority_facts")" \
+    != 'package:0:0:fun new_metadata_cap<Meme>(ctx: &mut TxContext): BlastMetadataCap<Meme>' ]] \
+  || [[ "$(move_production_function_contract revoke <<<"$creator_authority_facts")" \
+    != 'package:0:0:fun revoke<Meme>(self: CreatorAuthority<Meme>)' ]]; then
+  echo 'Creator-authority claims must consume CreatorAuthority and return exactly one CurveFeeCap and one BlastMetadataCap, and the module must import only constants, events, and RuntimeConfig, with no version or admin gate, native MetadataCap pass-through, flag, wrapper, or transfer.' >&2
   failures=$((failures + 1))
 fi
-
 if rg -n 'schema_version|action_tag|nonce' sources/creator_authority.move; then
   echo 'The one-time creator claim must not duplicate its fixed type and consumed marker.' >&2
   failures=$((failures + 1))
@@ -1748,6 +1409,192 @@ if rg -l '^public struct (CurveFeeCap|BlastMetadataCap)\b' sources \
   | rg -v '^sources/creator_authority\.move$' \
   || rg -n '\bCreatorCap\b|\bclaim_creator_cap\b|\bcreator_cap_claimed\b|\bCreatorCapClaimed\b' sources; then
   echo 'Creator capabilities are declared outside their owning module, or the irrevocable possession-only CreatorCap was reintroduced.' >&2
+  failures=$((failures + 1))
+fi
+
+# T-007/T-008/T-009: the recurring router custodies nothing. Every collection pays the protocol
+# destination and every route destination in the same call, configuration is Pending-only
+# through the one config capability, and active route changes settle through the bound
+# adapter's private witness. The one-time-witness Meme type makes the launch, router, and
+# capability unique, so no cross-object ID check is pinned.
+fee_router_facts="$(move_facts sources/fee_router.move)"
+fee_router_source="$(move_normalized_source <<<"$fee_router_facts")"
+lp_fee_policy_facts="$(move_facts sources/lp_fee_policy.move)"
+lp_fee_policy_source="$(move_normalized_source <<<"$lp_fee_policy_facts")"
+
+router_public_mutations="$(awk -F'\t' '
+  $1 == "FN" && $6 == 0 && $3 == "public" && $9 ~ /self: &mut FeeRouter</ { print $2 }
+' <<<"$fee_router_facts" | sort | tr '\n' ' ')"
+router_public_sinks="$(
+  for move_file in "${source_files[@]}"; do
+    move_facts "$move_file" | awk -F'\t' -v file="$move_file" '
+      $1 == "FN" && $6 == 0 && $3 == "public" \
+        && $9 ~ /[,(] [A-Za-z_][A-Za-z0-9_]*: FeeRouter</ {
+        print file ":" $2
+      }
+    '
+  done | sort
+)"
+router_payers="$(awk -F'\t' '
+  $1 == "FN" && $6 == 0 && index($10, "transfer::public_transfer(") > 0 { print $2 }
+' <<<"$fee_router_facts" | sort | tr '\n' ' ')"
+router_distributors="$(awk -F'\t' '
+  $1 == "FN" && $6 == 0 && index($10, "self.distribute(") > 0 { print $2 }
+' <<<"$fee_router_facts" | sort | tr '\n' ' ')"
+router_config_cap_issuers="$(awk -F'\t' '
+  $1 == "FN" && $6 == 0 && $10 ~ /RouterConfigCap \{ id: object::new/ { print $2 }
+' <<<"$fee_router_facts" | sort | tr '\n' ' ')"
+router_activators="$(awk -F'\t' '
+  $1 == "FN" && $6 == 0 && index($10, "self.lifecycle = Lifecycle::Active") > 0 { print $2 }
+' <<<"$fee_router_facts" | sort | tr '\n' ' ')"
+
+if [[ ! -f sources/fee_router.move || ! -f sources/lp_fee_policy.move ]] \
+  || rg -q 'Balance<|Table<|Bag\b|dynamic_field' <<<"$(move_production_type FeeRouter <<<"$fee_router_facts")" \
+  || [[ "$(move_production_type RouterConfigCap <<<"$fee_router_facts")" != *' has key, store {'* ]] \
+  || [[ "$router_public_mutations" != 'collect configure settle_and_update_routes ' ]] \
+  || [[ "$router_public_sinks" != 'sources/launch.move:share' ]] \
+  || [[ "$(rg -l '\bfee_router::new\(' sources --glob '*.move' | sort | tr '\n' ' ')" != 'sources/launch.move ' ]] \
+  || [[ "$router_config_cap_issuers" != 'new ' ]] \
+  || [[ "$router_activators" != 'activate ' ]] \
+  || [[ "$(move_production_function_contract activate <<<"$fee_router_facts")" != package:0:0:fun\ activate* ]] \
+  || [[ "$(launch_functions_containing 'router.activate<')" != 'complete_migration ' ]] \
+  || [[ "$(launch_functions_containing 'router.share()')" != 'share ' ]]; then
+  echo 'Only Launch may create, activate, and terminally share a FeeRouter; the router custodies no balances, issues one config capability, and admits public mutation only through Pending configuration and the bound adapter witness.' >&2
+  failures=$((failures + 1))
+fi
+
+# Collection is exact and immediate: the protocol share rounds up, both route tables are
+# apportioned by the one allocation implementation, every destination is paid in the same call,
+# and nothing stays behind. Routes are replaced only after the outstanding collection is paid.
+if [[ "$router_payers" != 'pay ' ]] \
+  || [[ "$router_distributors" != 'collect settle_and_update_routes ' ]] \
+  || [[ "$(count_occurrences 'self\.assert_settlement<' <<<"$fee_router_source")" != 2 ]] \
+  || [[ "$(count_occurrences 'transfer::public_transfer\(' <<<"$fee_router_source")" != 1 ]] \
+  || [[ "$(rg -l 'fun apportion_routes' sources --glob '*.move' | sort | tr '\n' ' ')" != 'sources/allocation.move ' ]] \
+  || ! in_order 'self.assert_settlement<' 'self.distribute(' 'self.commit_routes(' \
+    <<<"$(move_production_body settle_and_update_routes <<<"$fee_router_facts")"; then
+  echo 'FeeRouter collection must pay the round-up protocol share and every route destination immediately through one apportionment implementation, leave no custody behind, and settle outstanding fees under the old routes before committing new ones.' >&2
+  failures=$((failures + 1))
+fi
+
+# Policy is future-only administration keyed by original Meme identity. It selects one complete
+# default-or-partner pair at activation and names the live protocol destination. The three
+# readers take the policy immutably, so the four admin setters stay its only mutations.
+policy_state_functions="$(awk -F'\t' '
+  $1 == "FN" && $6 == 0 && $10 ~ /self\.(defaults|partners|destination)/ { print $2 }
+' <<<"$lp_fee_policy_facts" | sort | tr '\n' ' ')"
+
+if [[ "$policy_state_functions" != 'clear_partner_shares default_shares protocol_destination set_default_shares set_partner_shares set_protocol_destination snapshot ' ]] \
+  || [[ "$(move_production_function_contract snapshot <<<"$lp_fee_policy_facts")" \
+    != 'public:0:0:fun snapshot<Meme>(self: &LpFeePolicy): PolicySnapshot' ]] \
+  || [[ "$(move_production_function_contract default_shares <<<"$lp_fee_policy_facts")" \
+    != 'public:0:0:fun default_shares(self: &LpFeePolicy): (Bps, Bps)' ]] \
+  || [[ "$lp_fee_policy_source" != *'type_name::with_original_ids<Meme>()'* ]] \
+  || [[ "$lp_fee_policy_source" != *'destination != @0x0 && destination != self.destination'* ]] \
+  || [[ "$(move_production_function_contract protocol_destination <<<"$lp_fee_policy_facts")" \
+    != 'public:0:0:fun protocol_destination(self: &LpFeePolicy): address' ]]; then
+  echo 'LP-fee policy must be an original-Meme-keyed, admin/version-gated future policy that snapshots one complete default-or-partner pair at router activation and redirects only future protocol payouts.' >&2
+  failures=$((failures + 1))
+fi
+
+# T-010: one linear migration value, the stored adapter witness checked on both ends, vault
+# and position identities derived from the actual key objects (the adapter reads the pool
+# identity from its venue position), every handed-off unit accounted for, and
+# Migrated committed last. Only order anchors are pinned, never whole statements.
+migration_returners="$(for file in "${source_files[@]}"; do move_facts "$file"; done \
+  | awk -F'\t' '$1 == "FN" && $6 == 0 && $9 ~ /\):.*Migration</ { print $2 }' | sort | tr '\n' ' ')"
+complete_migration_signature="$(move_production_signature complete_migration <<<"$launch_facts")"
+complete_migration_body="$(move_production_body complete_migration <<<"$launch_facts" | move_semantic_shape)"
+begin_migration_body="$(move_production_body begin_migration <<<"$launch_facts" | move_semantic_shape)"
+
+if [[ "$(move_production_type Migration <<<"$launch_facts")" == *' has '* ]] \
+  || [[ "$migration_returners" != 'begin_migration ' ]] \
+  || [[ "$(launch_functions_containing 'Migration {')" != 'begin_migration complete_migration ' ]] \
+  || [[ "$(launch_functions_containing 'self.assert_migration_witness<')" != 'begin_migration complete_migration ' ]] \
+  || [[ "$(launch_functions_containing 'self.lifecycle = Lifecycle::Migrating;')" != 'begin_migration ' ]] \
+  || [[ "$(launch_functions_containing 'self.lifecycle = Lifecycle::Migrated;')" != 'complete_migration ' ]] \
+  || ! in_order \
+    'package_version.assert_current();' \
+    'Lifecycle::MigrationReady' \
+    'self.assert_migration_witness<' \
+    'self.allocated_meme.split(' \
+    'self.real_quote_reserve.split(' \
+    'self.lifecycle = Lifecycle::Migrating;' \
+    'Migration{' \
+    <<<"$begin_migration_body" \
+  || [[ "$complete_migration_signature" =~ (vault|position)_id:\ ID ]] \
+  || [[ "$complete_migration_signature" != *' pool_id: ID,'* ]] \
+  || ! in_order \
+    'package_version.assert_current();' \
+    'self.assert_migration_witness<' \
+    'Migration{' \
+    'migration_settlement_mismatch!()' \
+    'router.activate<' \
+    'object::id(vault)' \
+    'pool_id' \
+    'object::id(position)' \
+    'self.pay_allocations(' \
+    'dispose_meme(' \
+    'self.lifecycle = Lifecycle::Migrated;' \
+    'events::migrated(' \
+    <<<"$complete_migration_body" \
+  || [[ ! "${complete_migration_body#*self.lifecycle = Lifecycle::Migrated;}" =~ ^events::migrated\([^\;]*\)\;$ ]] \
+  || ! in_order '.do_ref!(' 'allocation_sum_invalid!()' \
+    <<<"$(move_production_body pay_allocations <<<"$launch_facts" | move_semantic_shape)"; then
+  echo 'T-010 must keep the migration value linear, check the stored adapter witness at begin and completion, derive vault and position identities from the actual objects and take the pool identity from the adapter, account for every handed-off unit, pay every other allocation, and commit Migrated last.' >&2
+  failures=$((failures + 1))
+fi
+
+# T-013: each success event in the replay schema is emitted only after the state write or native
+# transfer it records, inside its writer's own production body. Only order anchors are pinned:
+# the written field, the called operation, or the constructed type, never a local or argument name.
+events_follow_mutations() {
+  local file="$1" function="$2"
+  shift 2
+
+  in_order "$@" <<<"$(move_facts "$file" | move_production_body "$function" | move_semantic_shape)"
+}
+
+# FeesCollected follows both drained balances, whichever local names hold them.
+fees_collected_body="$(move_facts sources/fee_router.move | move_production_body distribute | move_semantic_shape)"
+
+if ! events_follow_mutations sources/launch_ticket.move new 'LaunchTicket{' 'events::launch_ticket_created<' \
+  || ! events_follow_mutations sources/launch.move new 'Launch{' 'events::launch_created<' \
+  || ! events_follow_mutations sources/launch.move new_fee_router \
+    'self.fee_router_id = option::some(' 'events::fee_router_created(' \
+  || ! events_follow_mutations sources/launch.move execute_buy \
+    'self.real_quote_reserve.join(' \
+    'self.meme_reserve.split(' \
+    'self.accrue_trade_fees(' \
+    'self.pre_share_buy_completed = true;' \
+    'events::pre_share_bought(' \
+    'events::bought(' \
+  || ! events_follow_mutations sources/launch.move share 'transfer::share_object(' 'events::launch_shared(' \
+  || ! events_follow_mutations sources/launch.move claim_setup_caps \
+    'self.router_config_cap.extract()' 'events::router_config_cap_released(' \
+  || ! events_follow_mutations sources/launch.move deliver_pending_setup_caps \
+    'transfer::public_transfer(' 'events::router_config_cap_delivered(' \
+  || ! events_follow_mutations sources/launch.move pay_allocations \
+    'self.allocated_meme.split(' \
+    'self.real_quote_reserve.split(' \
+    'events::migration_allocation_paid(' \
+  || ! events_follow_mutations sources/fee_router.move activate \
+    'self.lifecycle = Lifecycle::Active{' 'events::router_activated(' \
+  || ! events_follow_mutations sources/fee_router.move distribute 'events::fees_collected(' \
+  || [[ "$(count_occurrences '\.destroy_zero\(\);' <<<"${fees_collected_body%%"events::fees_collected("*}")" != 2 ]] \
+  || ! events_follow_mutations sources/fee_router.move commit_routes \
+    'self.routes = ' 'self.generation = ' 'events::routes_changed(' \
+  || ! events_follow_mutations sources/lp_fee_policy.move set_protocol_destination \
+    'self.destination = ' 'events::lp_fee_destination_changed(' \
+  || ! events_follow_mutations sources/lp_fee_policy.move set_default_shares \
+    'self.defaults = ' 'events::lp_fee_policy_changed(' \
+  || ! events_follow_mutations sources/lp_fee_policy.move set_partner_shares \
+    'self.partners.add(' 'events::lp_fee_policy_changed(' \
+  || ! events_follow_mutations sources/lp_fee_policy.move clear_partner_shares \
+    'self.partners.remove(' 'events::lp_fee_policy_changed(' \
+  || ! events_follow_mutations sources/launch_config.move set_protocol_allocation \
+    'self.protocol_allocation = option::some(' 'events::protocol_allocation_configured('; then
+  echo 'Every replay-schema success event must follow the state write or native transfer it records.' >&2
   failures=$((failures + 1))
 fi
 

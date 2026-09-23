@@ -1,6 +1,6 @@
 # 0066: Aftermath DAO-fee wrapper and claimable launch revenue
 
-- Status: **accepted**
+- Status: **accepted historically; adapter removed from the new lineage by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)**
 - Date: 2026-09-02
 - Amends: [0054](0054-v3-dex-migrators-and-locked-lp-fees.md),
   [0059](0059-production-launchpad-abi-and-sdk-parity.md), and

@@ -195,7 +195,7 @@ transaction.
 One initialization may place at most 16 market orders. The adapter computes
 the exact ceiling of `target_base / max_order_base` through quotient and
 remainder before it constructs the order vector or enters the loop, then
-rejects a count above 16 with a dedicated append-only abort. Sixteen is the
+rejects a count above 16 with a dedicated error. Sixteen is the
 smallest fixed bound accepted for this generation: it keeps the only venue
 order loop small while allowing a launch target to be split across materially
 smaller risk-module order caps. The value is adapter bytecode, not configurable

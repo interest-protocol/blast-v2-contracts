@@ -6,6 +6,12 @@
   [0048](0048-sui-package-workspace.md)
 - Amended by: [0020](0020-admin-cap-self-destruction.md), [0028](0028-hot-cold-runtime-configuration.md), [0031](0031-package-witness-and-publisher-custody.md), [0032](0032-admin-authorized-upgrade-cap-custody.md)
 
+> Amended by [ADR 0088](0088-reusable-launch-accounting-and-atomic-migration.md):
+> the active core adds canonical allocation math and pushes each allocation to its
+> destination at migration. `LaunchConfig` now holds a one-time protocol allocation policy rather
+> than graduation defaults; the module inventory below is retained as historical
+> layout context.
+
 ## Sources
 
 | Ref | Full commit | Repository |

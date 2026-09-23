@@ -62,6 +62,21 @@ require_function_body() {
     [[ -n "$compact" && "$compact" == "$expected"* ]] || fail "$description"
 }
 
+# Requires each fixed anchor to appear in one whole function, in the given order.
+require_order() {
+    local source="$1"
+    local name="$2"
+    local description="$3"
+    shift 3
+    local rest anchor
+
+    rest="$(move_function_section "$source" "$name" | tr -d '[:space:]')"
+    for anchor in "$@"; do
+        [[ "$rest" == *"$anchor"* ]] || fail "$description"
+        rest="${rest#*"$anchor"}"
+    done
+}
+
 require_exact_count() {
     local pattern="$1"
     local required_count="$2"
@@ -94,19 +109,26 @@ require_struct_fields() {
 #
 # The distributor is a downstream custodian. It owns no launchpad or migrator
 # state, mints no fee capability of its own, and reaches custodied fees only
-# through the two upstream claim seams.
+# through the launch's curve-fee claim seam or coins already pushed to its
+# address. Recurring LP fees never pass through a migrator vault: the router
+# pays them out at collection, so the distributor links no migrator package.
 
-for forbidden in acl.move launch.move vault.move lp_fee_authority.move; do
+for forbidden in acl.move launch.move vault.move; do
     [[ -e "$SOURCE_DIR/$forbidden" ]] && \
         fail "the distributor must not define a local $forbidden"
 done
 
-if rg -n '^public struct (Authority|AdminWitness|SuperAdminCap|CurveFeeCap|LpFeeCap)\b' \
+if rg -n '^public struct (Authority|AdminWitness|SuperAdminCap|CurveFeeCap)\b' \
     "$SOURCE_DIR"; then
     fail "fee and administration capabilities must come from their owning packages"
 fi
 
+reject_pattern '\bblast_fun_migrators\b' \
+    "the distributor must not reach a migrator vault; LP fees leave only through the router"
+
 reject_pattern '\bentry fun\b' "the distributor must expose no entry functions"
+reject_pattern '\b(RouterConfigCap|FeeRouter|fee_router)\b' \
+    "the distributor must receive router payouts without router authority"
 if rg -q 'public\(package\) fun' "$DISTRIBUTOR_SOURCE"; then
     fail "the custody module must expose no package-visible seam; merkle owns the only one"
 fi
@@ -122,15 +144,15 @@ require_pattern "$DISTRIBUTOR_SOURCE" '^public struct Witness\(\) has drop;$' \
 if rg -n 'fun (new_witness|witness)\(' "$DISTRIBUTOR_SOURCE"; then
     fail "the custody witness must never be constructible outside this module"
 fi
-require_exact_count 'Witness()' 6 \
-    "custody must be one declaration plus exactly the five bind and claim call sites" \
+require_exact_count 'Witness()' 3 \
+    "custody must be one declaration plus exactly the enrollment bind and curve-fee claim call sites" \
     <(production_section "$DISTRIBUTOR_SOURCE")
 
 # === Enrollment and collection ===
 #
 # Enrollment destroys the curve-fee capability before any state exists, so no
 # administrator can reassign the fees afterwards. Every launch-facing call pins
-# the enrolled launch, and both collection paths must fund custody through the
+# the enrolled launch, and curve-fee collection must fund custody through the
 # single accounting seam.
 
 require_function_body "$DISTRIBUTOR_SOURCE" 'new' \
@@ -141,24 +163,41 @@ require_function_body "$DISTRIBUTOR_SOURCE" 'collect_curve_fees' \
     'publicfuncollect_curve_fees<Meme,Quote>(self:&mutDistributor<Meme,Quote>,version:&Version,launch:&mutLaunch<Meme,Quote>,package_version:&PackageVersion,ctx:&mutTxContext,){version.assert_enabled();assert!(object::id(launch)==self.launch,EWrongSource);let(meme,quote)=launch.claim_custodied_creator_fees(package_version,Witness(),ctx);self.accrue(object::id(launch),meme,quote);}' \
     "collect_curve_fees must pin the enrolled launch before it claims"
 
-require_function_body "$DISTRIBUTOR_SOURCE" 'collect_lp_fees' \
-    'publicfuncollect_lp_fees<Meme,Quote>(self:&mutDistributor<Meme,Quote>,version:&Version,vault:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,ctx:&mutTxContext,){version.assert_enabled();let(meme,quote)=vault.claim_custodied_creator_fees(migrators_version,Witness(),ctx);self.accrue(object::id(vault),meme,quote);}' \
-    "collect_lp_fees must claim only through the vault's custodian seam"
-
-require_function_body "$DISTRIBUTOR_SOURCE" 'lock_lp_fees' \
-    'publicfunlock_lp_fees<Meme,Quote>(self:&Distributor<Meme,Quote>,version:&Version,vault:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,launch:&Launch<Meme,Quote>,){version.assert_enabled();assert!(object::id(launch)==self.launch,EWrongSource);vault.lock_pending_creator_fees(migrators_version,launch,Witness());}' \
-    "lock_lp_fees must pin the enrolled launch before it binds pending fees"
-
-require_function_body "$DISTRIBUTOR_SOURCE" 'lock_lp_fees_with_cap' \
-    'publicfunlock_lp_fees_with_cap<Meme,Quote>(self:&Distributor<Meme,Quote>,version:&Version,vault:&mutLpVault<Meme,Quote>,migrators_version:&MigratorsVersion,launch:&Launch<Meme,Quote>,lp_fee_cap:LpFeeCap<Meme>,){version.assert_enabled();assert!(object::id(launch)==self.launch,EWrongSource);vault.lock_creator_fees(migrators_version,lp_fee_cap,Witness());}' \
-    "lock_lp_fees_with_cap must pin the enrolled launch before it destroys the capability"
-
 require_function_body "$DISTRIBUTOR_SOURCE" 'accrue' \
     'funaccrue<Meme,Quote>(self:&mutDistributor<Meme,Quote>,source:ID,meme:Coin<Meme>,quote:Coin<Quote>,){letmeme_amount=meme.value();letquote_amount=quote.value();letmeme_total=self.meme.join(meme.into_balance());letquote_total=self.quote.join(quote.into_balance());event::emit(FeesCollected{distributor:self.id.to_inner(),source,meme_amount,quote_amount,meme_total,quote_total,});}' \
     "accrue must join both balances into custody and report the resulting totals"
 
-require_exact_count 'self.accrue(' 2 \
-    "collection must reach custody only through the single accounting seam" \
+require_exact_count 'self.accrue(' 1 \
+    "curve-fee collection must reach custody only through the single accounting seam" \
+    <(production_section "$DISTRIBUTOR_SOURCE")
+
+# === Pushed-coin intake ===
+#
+# Routes and allocation channels pay the distributor's address by transfer. The
+# permissionless intake checks version and pause, then the batch bound, before
+# it receives anything, and joins only coins this object already owns.
+
+require_order "$DISTRIBUTOR_SOURCE" 'receive_coins' \
+    "receive_coins must check version and pause, then the batch bound, before it receives" \
+    '){version.assert_enabled();' \
+    'assert!(batch_size>0&&batch_size<=MAX_RECEIVING_COIN_BATCH_SIZE,EInvalidReceivingCoinBatch,);' \
+    'receive_all(&mutself.id,meme_receivings);' \
+    'receive_all(&mutself.id,quote_receivings);' \
+    'self.meme.join(meme);' \
+    'self.quote.join(quote);' \
+    'event::emit(CoinsReceived{'
+
+require_order "$DISTRIBUTOR_SOURCE" 'receive_all' \
+    "receive_all must receive only objects owned by the given parent" \
+    'transfer::public_receive(id,receiving)'
+
+require_pattern "$DISTRIBUTOR_SOURCE" 'const MAX_RECEIVING_COIN_BATCH_SIZE: u64 = 100;' \
+    "the pinned intake batch bound"
+require_exact_count 'receive(' 1 \
+    "receive_all must be the only object receiver" \
+    <(production_section "$DISTRIBUTOR_SOURCE")
+require_exact_count 'receive_all(' 2 \
+    "the intake must be the only caller of receive_all" \
     <(production_section "$DISTRIBUTOR_SOURCE")
 
 # === Version and pause ===
@@ -175,7 +214,7 @@ require_function_body "$DISTRIBUTOR_SOURCE" 'set_paused' \
     'publicfunset_paused(self:&mutVersion,_:&AdminCap,paused:bool){assert!(self.version==VERSION,EWrongVersion);assert!(self.paused!=paused,EUnchangedPause);self.paused=paused;event::emit(PauseChanged{paused});}' \
     "set_paused must reject a no-op transition and emit the change"
 
-require_exact_count 'version.assert_enabled();' 7 \
+require_exact_count 'version.assert_enabled();' 5 \
     "every value-moving entry point must be pausable" \
     <(production_section "$DISTRIBUTOR_SOURCE")
 
@@ -196,14 +235,16 @@ require_struct_fields 'Enrolled' \
 require_struct_fields 'FeesCollected' \
     'publicstructFeesCollectedhascopy,drop{distributor:ID,source:ID,meme_amount:u64,quote_amount:u64,meme_total:u64,quote_total:u64,}' \
     "the fee-collection event payload is a replay boundary"
+require_struct_fields 'CoinsReceived' \
+    'publicstructCoinsReceivedhascopy,drop{distributor:ID,meme_amount:u64,quote_amount:u64,meme_total:u64,quote_total:u64,}' \
+    "the pushed-coin intake event payload is a replay boundary"
 require_struct_fields 'RewardPaid' \
     'publicstructRewardPaidhascopy,drop{round:ID,index:u64,beneficiary:address,meme_amount:u64,quote_amount:u64,meme_remaining:u64,quote_remaining:u64,}' \
     "the payout event payload is a replay boundary"
 
 # === Error registry ===
 #
-# Error codes are an append-only public interface; renumbering one silently
-# changes what every existing client believes went wrong.
+# Keep the current greenfield error namespace sequential from zero.
 
 expected_errors="$(cat <<'EOF'
 #[error(code = 0)]
@@ -222,11 +263,12 @@ expected_errors="$(cat <<'EOF'
 #[error(code = 13)]
 #[error(code = 14)]
 #[error(code = 15)]
+#[error(code = 16)]
 EOF
 )"
 actual_errors="$(rg -o '^#\[error\(code = [0-9]+\)\]' "$DISTRIBUTOR_SOURCE")"
 [[ "$actual_errors" == "$expected_errors" ]] || \
-    fail "distributor error codes must remain contiguous 0-15 in their published order"
+    fail "distributor error codes must be sequential from zero"
 
 require_pattern "$DISTRIBUTOR_SOURCE" \
     'const EWrongSource: vector<u8> = b"Curve must match the enrolled launch\.";' \

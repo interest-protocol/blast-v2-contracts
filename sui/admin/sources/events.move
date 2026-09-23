@@ -4,7 +4,7 @@
 /// Replay-complete typed facts for shared administration transitions.
 module blast_admin::events;
 
-// === Public Structs ===
+// === Public Types ===
 
 public struct AuthorityCreated<phantom Domain: drop> has copy, drop {
     authority_id: ID,

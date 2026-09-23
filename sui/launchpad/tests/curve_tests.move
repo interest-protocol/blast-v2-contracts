@@ -7,11 +7,17 @@ module blast_fun::curve_tests;
 // === Constants ===
 
 const MEME_RESERVE: u64 = 800_000_000_000_000_000;
+
 const VIRTUAL_QUOTE: u64 = 1_000_000_000_000;
+
 const TERMINAL_THRESHOLD: u64 = 3_000_000_000_000;
+
 const QUOTE_FEE_BPS: u64 = 100;
+
 const MIN_PROPERTY_QUOTE_IN: u64 = 1_000_000_000;
+
 const PROPERTY_SEED: u64 = 314_159;
+
 const PROPERTY_OPERATION_COUNT: u64 = 256;
 
 // === Tests ===
@@ -907,7 +913,7 @@ fun sell_rejects_an_unreachable_state_instead_of_clamping_the_payout() {
     );
 }
 
-// === Private Test Helpers ===
+// === Test Helpers ===
 
 fun cap_buy_quote_input(
     real_quote: u64,

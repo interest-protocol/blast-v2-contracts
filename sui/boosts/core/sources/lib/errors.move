@@ -2,12 +2,7 @@
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
 #[allow(unused_const)]
-/// Numeric abort registry for the Blast Boosts core package.
-///
-/// Codes run from zero with no gaps: a removed check renumbers what follows
-/// until the package is published, after which codes are append-only. Each
-/// module raises these through the macros so the abort location stays the
-/// raising module.
+/// Package error registry: numeric macros and matching test-only constants.
 module blast_boosts_core::errors;
 
 // === Errors ===
@@ -261,64 +256,125 @@ const ESeedReserveAboveCap: u64 = 60;
 const EInvariantViolated: u64 = 61;
 
 macro public(package) fun zero_amount(): u64 { 0 }
+
 macro public(package) fun invalid_fee_bps(): u64 { 1 }
+
 macro public(package) fun invalid_nav(): u64 { 2 }
+
 macro public(package) fun invalid_share_supply(): u64 { 3 }
+
 macro public(package) fun invalid_share_amount(): u64 { 4 }
+
 macro public(package) fun nonpositive_contribution(): u64 { 5 }
+
 macro public(package) fun zero_shares_out(): u64 { 6 }
+
 macro public(package) fun nonpositive_gross(): u64 { 7 }
+
 macro public(package) fun zero_net_payout(): u64 { 8 }
+
 macro public(package) fun invalid_target_leverage_bps(): u64 { 9 }
+
 macro public(package) fun invalid_lot_size(): u64 { 10 }
+
 macro public(package) fun invalid_base(): u64 { 11 }
+
 macro public(package) fun order_below_min_lots(): u64 { 12 }
+
 macro public(package) fun redemption_under_reduced(): u64 { 13 }
+
 macro public(package) fun redemption_over_reduced(): u64 { 14 }
+
 macro public(package) fun arithmetic_overflow(): u64 { 15 }
+
 macro public(package) fun maintenance_reserve_exceeds_equity(): u64 { 16 }
+
 macro public(package) fun invalid_lifecycle_transition(): u64 { 17 }
+
 macro public(package) fun operation_not_permitted_in_lifecycle(): u64 { 18 }
+
 macro public(package) fun mint_base_above_bound(): u64 { 19 }
+
 macro public(package) fun mint_base_below_bound(): u64 { 20 }
+
 macro public(package) fun invalid_min_order_lots(): u64 { 21 }
+
 macro public(package) fun invalid_rebalance_policy(): u64 { 22 }
+
 macro public(package) fun invalid_nav_cap(): u64 { 23 }
+
 macro public(package) fun invalid_max_price_age(): u64 { 24 }
+
 macro public(package) fun invalid_max_confidence_bps(): u64 { 25 }
+
 macro public(package) fun invalid_max_mark_divergence_bps(): u64 { 26 }
+
 macro public(package) fun stale_price(): u64 { 27 }
+
 macro public(package) fun future_price(): u64 { 28 }
+
 macro public(package) fun invalid_price(): u64 { 29 }
+
 macro public(package) fun confidence_exceeds_bound(): u64 { 30 }
+
 macro public(package) fun mark_oracle_divergence_exceeds_bound(): u64 { 31 }
+
 macro public(package) fun invalid_max_slippage_bps(): u64 { 32 }
+
 macro public(package) fun invalid_emergency_max_slippage_bps(): u64 { 33 }
+
 macro public(package) fun invalid_min_leverage_improvement_bps(): u64 { 34 }
+
 macro public(package) fun shares_out_below_minimum(): u64 { 35 }
+
 macro public(package) fun nav_cap_exceeded(): u64 { 36 }
+
 macro public(package) fun execution_outside_max_slippage(): u64 { 37 }
+
 macro public(package) fun invalid_freshness_window(): u64 { 38 }
+
 macro public(package) fun invalid_max_order_notional(): u64 { 39 }
+
 macro public(package) fun max_order_notional_unchanged(): u64 { 40 }
+
 macro public(package) fun invalid_observation_lot_size(): u64 { 41 }
+
 macro public(package) fun invalid_position_observation(): u64 { 42 }
+
 macro public(package) fun order_notional_exceeds_maximum(): u64 { 43 }
+
 macro public(package) fun invalid_initialization_observation(): u64 { 44 }
+
 macro public(package) fun initialization_leverage_unhealthy(): u64 { 45 }
+
 macro public(package) fun initialization_base_below_min_order(): u64 { 46 }
+
 macro public(package) fun fee_cap_exceeded(): u64 { 47 }
+
 macro public(package) fun fee_settings_unchanged(): u64 { 48 }
+
 macro public(package) fun mint_outside_rebalance_band(): u64 { 49 }
+
 macro public(package) fun active_checkpoint_changed(): u64 { 50 }
+
 macro public(package) fun active_fill_incomplete(): u64 { 51 }
+
 macro public(package) fun active_leverage_above_cap(): u64 { 52 }
+
 macro public(package) fun redemption_output_below_minimum(): u64 { 53 }
+
 macro public(package) fun rebalance_inside_band(): u64 { 54 }
+
 macro public(package) fun rebalance_no_progress(): u64 { 55 }
+
 macro public(package) fun venue_fee_unusable(): u64 { 56 }
+
 macro public(package) fun invalid_asset_decimals(): u64 { 57 }
+
 macro public(package) fun nav_cap_unchanged(): u64 { 58 }
+
 macro public(package) fun invalid_max_reserve_bps(): u64 { 59 }
+
 macro public(package) fun seed_reserve_above_cap(): u64 { 60 }
+
 macro public(package) fun invariant_violated(): u64 { 61 }

@@ -1,53 +1,19 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Bluefin migration with custodied concentrated-liquidity principal.
+/// Bluefin migration, fee collection, and settled route updates over custodied
+/// concentrated-liquidity principal.
 ///
 /// Bluefin pools are keyed by their exact type-parameter order, so this module
-/// always creates `Pool<Meme, Quote>` with Meme as coin A. The release gate
-/// must prove against published bytecode that the venue accepts this order for
-/// every allowlisted Quote.
+/// always creates and expects `Pool<Meme, Quote>` with Meme as coin A.
 module blast_fun_migrators::bluefin;
-
-// === Constants ===
-
-/// Venue rounding can return at most one basis point of either source balance.
-const MAX_RESIDUAL_BPS: u64 = 1;
-
-/// Bluefin registers no fee-tier table, so the default is the venue's dominant
-/// production meme tier — spacing 200 at a 1% fee (1e6 denominator), observed
-/// across live mainnet `bluefin_spot::pool::Pool` objects on 2026-08-30.
-const DEFAULT_TICK_SPACING: u32 = 200;
-const DEFAULT_FEE_RATE: u64 = 10_000;
-
-/// Bluefin's inclusive lower Q64.64 initialization bound at the pinned package.
-const MIN_SQRT_PRICE_X64: u128 = 4_295_048_016;
-
-/// Bluefin rejects initialization at or above this exclusive Q64.64 bound.
-const MAX_SQRT_PRICE_X64: u128 = 79_226_673_515_401_279_992_447_579_055;
 
 // === Errors ===
 
 #[error(code = 0)]
-const EInvalidTickSpacing: vector<u8> = b"Tick spacing must be greater than zero.";
-#[error(code = 1)]
-const EUnsupportedCreationFee: vector<u8> = b"Quote type must support Bluefin pool creation fees.";
-#[error(code = 2)]
-const ENonzeroCreationFee: vector<u8> = b"Bluefin pool creation fee must be zero.";
-#[error(code = 3)]
-const EInvalidSqrtPrice: vector<u8> = b"Opening sqrt price must be within the pinned Bluefin bounds.";
-#[error(code = 4)]
-const EPositionPoolMismatch: vector<u8> = b"Pool, vault, and position identifiers must match.";
-#[error(code = 5)]
-const EZeroPositionLiquidity: vector<u8> = b"Position principal liquidity must be greater than zero.";
-#[error(code = 6)]
-const EPositionLiquidityChanged: vector<u8> = b"Fee collection must not change position principal liquidity.";
-#[error(code = 7)]
-const EVenueAmountMismatch: vector<u8> = b"Venue-reported usage must equal each source balance minus its residual.";
-#[error(code = 8)]
-const EMemeBelowQuote: vector<u8> = b"Meme atom balance must not be below Quote for a Meme-fixed seed.";
+const EPositionPoolMismatch: vector<u8> = b"Custodied position must belong to the supplied pool.";
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Sealed adapter identity selected by a Blast launch.
 public struct Witness() has drop;
@@ -57,154 +23,169 @@ public struct Venue() has drop;
 
 // === Public Functions ===
 
-/// Migrates with Meme as Bluefin coin A at the admin-pinned venue tier.
+/// Binds a launch ticket to Bluefin migration in `Quote`; the core aborts unless it admits Bluefin.
+public fun bind<Meme, Quote>(ticket: &mut LaunchTicket<Meme>, config: &LaunchConfig) {
+    ticket.bind_migration_witness<Meme, Quote, Witness>(config, Witness());
+}
+
+/// Migrates a MigrationReady launch into a new full-range pool at the admin-pinned tier.
 ///
-/// The full Meme balance is the fixed liquidity side: at the balance-derived
-/// opening price a full-range seed leaves its rounding residual on the Quote
-/// side, so fixing Meme is the only order the venue can satisfy from the
-/// migrated balances.
+/// The opening price derives from the handed-off balances. Meme is the fixed side when its atoms
+/// are at least the Quote atoms, and Quote otherwise: a full-range seed fixed on the fewer atoms
+/// can need slightly more of the other asset than was handed off. `creation_fee` is paid whole,
+/// and Bluefin aborts unless it is exactly the configured SUI fee. The position and the venue
+/// residuals stay in a shared vault with no withdrawal path. The caller receives no object;
+/// Bluefin records it as the new pool's manager, a role limited to the pool's reward emissions
+/// and to handing the role on (ADR 0088).
 public fun migrate<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
-    package_version: &PackageVersion,
     migrators_version: &MigratorsVersion,
-    venue_config: &VenueConfig,
-    meme_currency: &mut Currency<Meme>,
+    package_version: &PackageVersion,
+    router: &mut FeeRouter<Meme, Quote>,
+    policy: &LpFeePolicy,
+    currency: &mut Currency<Meme>,
     quote_currency: &Currency<Quote>,
+    venue_config: &VenueConfig,
     bluefin_config: &mut GlobalConfig,
+    creation_fee: Coin<SUI>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let launch_id = object::id(launch);
-    let (tick_spacing, fee_rate) = effective_tier(venue_config);
-    let (lower_tick_bits, upper_tick_bits) =
-        full_range_ticks(bluefin_config, tick_spacing);
-    let pool_name = pool_name(meme_currency, quote_currency);
-    let meme_icon_url = meme_currency.icon_url().into_bytes();
-    let coin_a_symbol = meme_currency.symbol().into_bytes();
-    let coin_a_decimals = meme_currency.decimals();
-    let coin_b_symbol = quote_currency.symbol().into_bytes();
-    let coin_b_decimals = quote_currency.decimals();
-    let coin_b_url = quote_currency.icon_url().into_bytes();
-    let creation_fee = zero_creation_fee<Quote>(bluefin_config);
+    let (tick_spacing, fee_rate) = venue_config.tier<Venue>();
+    let (minimum_tick, maximum_tick) = bluefin_config.get_tick_range();
+    let spacing = i32::from(tick_spacing);
+    let lower_tick = minimum_tick.div(spacing).mul(spacing).as_u32();
+    let upper_tick = maximum_tick.div(spacing).mul(spacing).as_u32();
+    let meme_icon_url = currency.icon_url().into_bytes();
+    let mut pool_name = currency.symbol().into_bytes();
+    pool_name.append(b"-");
+    pool_name.append(quote_currency.symbol().into_bytes());
 
-    let payload = launch.migrate<_, _, Witness>(
-        package_version,
-        meme_currency,
-        ctx,
-    );
-    let lp_fee_authority = lp_fee_authority::new(&payload, Witness());
-    let (meme, quote) = payload.redeem_migration(Witness());
-    let source_meme_amount = meme.value();
-    let source_quote_amount = quote.value();
-    // A full-range seed with Meme fixed is feasible only while the Meme atom
-    // balance is at least the Quote atom balance; reject the perverse
-    // configuration with a named guard instead of a venue abort.
-    assert!(source_meme_amount >= source_quote_amount, EMemeBelowQuote);
-    let sqrt_price_x64 = migration_math::sqrt_price_x64(
-        source_meme_amount,
-        source_quote_amount,
-        true,
-    );
-    assert_valid_sqrt_price(sqrt_price_x64);
+    let (meme, quote, migration) = launch.begin_migration(package_version, Witness());
+    let source_meme = meme.value();
+    let source_quote = quote.value();
+    let fix_meme = source_meme >= source_quote;
 
-    let (
-        pool_id,
-        position,
-        used_meme_amount,
-        used_quote_amount,
-        residual_meme,
-        residual_quote,
-    ) = pool::create_pool_with_liquidity<Meme, Quote, Quote>(
+    let mut pool = pool::create_pool_and_get_object<Meme, Quote, SUI>(
         clock,
         bluefin_config,
         pool_name,
         meme_icon_url,
-        coin_a_symbol,
-        coin_a_decimals,
+        currency.symbol().into_bytes(),
+        currency.decimals(),
         meme_icon_url,
-        coin_b_symbol,
-        coin_b_decimals,
-        coin_b_url,
+        quote_currency.symbol().into_bytes(),
+        quote_currency.decimals(),
+        quote_currency.icon_url().into_bytes(),
         tick_spacing,
         fee_rate,
-        sqrt_price_x64,
-        creation_fee,
-        lower_tick_bits,
-        upper_tick_bits,
-        meme,
-        quote,
-        source_meme_amount,
-        true,
+        migration_math::sqrt_price_x64(source_meme, source_quote, true),
+        creation_fee.into_balance(),
         ctx,
     );
+    let mut position = pool::open_position(bluefin_config, &mut pool, lower_tick, upper_tick, ctx);
+    let (supplied_meme, supplied_quote, residual_meme, residual_quote) =
+        pool::add_liquidity_with_fixed_amount(
+            clock,
+            bluefin_config,
+            &mut pool,
+            &mut position,
+            meme,
+            quote,
+            if (fix_meme) source_meme else source_quote,
+            fix_meme,
+        );
 
-    lock_and_share(
-        launch_id,
-        lp_fee_authority,
-        pool_id,
+    let mut vault = vault::prepare(residual_meme, residual_quote, ctx);
+    vault.attach(&Venue(), position.pool_id(), position);
+    let position = vault.position<_, _, _, Position>(&Venue());
+    let (residual_meme, residual_quote) = vault.pending_residuals();
+    launch.complete_migration(
+        package_version,
+        router,
+        policy,
+        currency,
+        migration,
+        Witness(),
+        &vault,
+        position.pool_id(),
         position,
-        source_meme_amount,
-        source_quote_amount,
-        used_meme_amount,
-        used_quote_amount,
+        supplied_meme,
+        supplied_quote,
         residual_meme,
         residual_quote,
-        sqrt_price_x64,
-        lower_tick_bits,
-        upper_tick_bits,
-        tick_spacing,
-        fee_rate,
+        position.liquidity(),
         ctx,
     );
+    vault.share(&Venue());
+    pool.share_pool_object();
 }
 
-/// Collects Meme and Quote fees without changing the position principal.
+/// Collects the custodied position's fees and pays them by the router's current routes.
 public fun collect_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    lp_fee_policy: &LpFeePolicy,
+    package_version: &PackageVersion,
+    router: &mut FeeRouter<Meme, Quote>,
+    policy: &LpFeePolicy,
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let pool_id = object::id(pool);
-    assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
+    let (position_id, meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
 
-    let venue = Venue();
-    let position =
-        self.position_mut<_, _, _, Position>(&venue);
-    let position_id = object::id(position);
-    assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
-    let liquidity_before = position.liquidity();
-    assert!(liquidity_before > 0, EZeroPositionLiquidity);
-
-    let (_, _, meme_fee, quote_fee) = pool::collect_fee(
-        clock,
-        bluefin_config,
-        pool,
-        position,
-    );
-
-    assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
-    let liquidity_after = position.liquidity();
-    assert!(liquidity_after == liquidity_before, EPositionLiquidityChanged);
-    assert!(self.pool_id() == pool_id, EPositionPoolMismatch);
-
-    self.accrue_fees(
-        &venue,
+    router.collect(
+        package_version,
+        policy,
+        Witness(),
+        object::id(self),
+        object::id(pool),
         position_id,
         meme_fee,
         quote_fee,
-        liquidity_after,
-        lp_fee_policy,
         ctx,
     );
 }
 
-/// Pins the Bluefin tier under a live core admin witness, replacing the default.
+/// Pays the custodied position's fees by the current routes, then commits `proposed`.
+public fun settle_and_update_routes<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
+    package_version: &PackageVersion,
+    router: &mut FeeRouter<Meme, Quote>,
+    policy: &LpFeePolicy,
+    router_config_cap: &RouterConfigCap<Meme, Quote>,
+    bluefin_config: &GlobalConfig,
+    pool: &mut Pool<Meme, Quote>,
+    proposed: Routes,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    migrators_version.assert_current();
+    let (position_id, meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
+
+    router.settle_and_update_routes(
+        package_version,
+        policy,
+        router_config_cap,
+        Witness(),
+        object::id(self),
+        object::id(pool),
+        position_id,
+        meme_fee,
+        quote_fee,
+        proposed,
+        ctx,
+    );
+}
+
+/// Pins the Bluefin tier under a live core admin witness.
+///
+/// Bluefin bounds the pair itself (tick spacing at most 400, fee rate at most 20,000): pool
+/// creation rejects a pin above either bound, so migration aborts until a valid pair is pinned.
 public fun set_tier(
     venue_config: &mut VenueConfig,
     migrators_version: &MigratorsVersion,
@@ -218,128 +199,19 @@ public fun set_tier(
 
 // === Private Functions ===
 
-fun effective_tier(venue_config: &VenueConfig): (u32, u64) {
-    if (venue_config.has_tier<Venue>()) {
-        venue_config.tier<Venue>()
-    } else {
-        (DEFAULT_TICK_SPACING, DEFAULT_FEE_RATE)
-    }
-}
-
-fun full_range_ticks(
+/// Collects the attached position's fees from `pool`, which must be the position's own pool.
+fun collect_position_fees<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
     bluefin_config: &GlobalConfig,
-    tick_spacing: u32,
-): (u32, u32) {
-    assert!(tick_spacing > 0, EInvalidTickSpacing);
+    pool: &mut Pool<Meme, Quote>,
+    clock: &Clock,
+): (ID, Balance<Meme>, Balance<Quote>) {
+    let position = self.position_mut<_, _, _, Position>(&Venue());
+    assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
 
-    let (minimum_tick, maximum_tick) = bluefin_config.tick_range();
-    let tick_spacing = i32::from(tick_spacing);
-    let lower_tick = minimum_tick.div(tick_spacing).mul(tick_spacing);
-    let upper_tick = maximum_tick.div(tick_spacing).mul(tick_spacing);
+    let (_, _, meme_fee, quote_fee) = pool::collect_fee(clock, bluefin_config, pool, position);
 
-    (lower_tick.as_u32(), upper_tick.as_u32())
-}
-
-fun zero_creation_fee<Quote>(
-    bluefin_config: &GlobalConfig,
-): Balance<Quote> {
-    let (supported, fee_amount) = bluefin_config.pool_creation_fee_amount<Quote>();
-    assert!(supported, EUnsupportedCreationFee);
-    assert!(fee_amount == 0, ENonzeroCreationFee);
-
-    balance::zero()
-}
-
-fun pool_name<CoinA, CoinB>(
-    currency_a: &Currency<CoinA>,
-    currency_b: &Currency<CoinB>,
-): vector<u8> {
-    let mut name = currency_a.symbol().into_bytes();
-    name.append(b"-");
-    name.append(currency_b.symbol().into_bytes());
-
-    name
-}
-
-fun assert_valid_sqrt_price(sqrt_price_x64: u128) {
-    assert!(
-        sqrt_price_x64 >= MIN_SQRT_PRICE_X64
-            && sqrt_price_x64 < MAX_SQRT_PRICE_X64,
-        EInvalidSqrtPrice,
-    );
-}
-
-fun lock_and_share<Meme, Quote>(
-    launch_id: ID,
-    lp_fee_authority: LpFeeAuthority<Meme>,
-    pool_id: ID,
-    position: Position,
-    source_meme_amount: u64,
-    source_quote_amount: u64,
-    used_meme_amount: u64,
-    used_quote_amount: u64,
-    residual_meme: Balance<Meme>,
-    residual_quote: Balance<Quote>,
-    sqrt_price_x64: u128,
-    lower_tick_bits: u32,
-    upper_tick_bits: u32,
-    tick_spacing: u32,
-    fee_rate: u64,
-    ctx: &mut TxContext,
-) {
-    assert!(position.pool_id() == pool_id, EPositionPoolMismatch);
-    assert!(position.liquidity() > 0, EZeroPositionLiquidity);
-    let residual_meme_amount = residual_meme.value();
-    let residual_quote_amount = residual_quote.value();
-    migration_math::assert_residual_within_bps(
-        source_meme_amount,
-        residual_meme_amount,
-        bps::new(MAX_RESIDUAL_BPS),
-    );
-    migration_math::assert_residual_within_bps(
-        source_quote_amount,
-        residual_quote_amount,
-        bps::new(MAX_RESIDUAL_BPS),
-    );
-    assert!(
-        used_meme_amount == source_meme_amount - residual_meme_amount
-            && used_quote_amount
-                == source_quote_amount - residual_quote_amount,
-        EVenueAmountMismatch,
-    );
-
-    let vault_id = vault::new<Meme, Quote, Venue, Position>(
-        Venue(),
-        lp_fee_authority,
-        pool_id,
-        position,
-        residual_meme,
-        residual_quote,
-        ctx,
-    );
-    blast_events::migration_completed<Meme, Quote, Venue>(
-        launch_id,
-        vault_id,
-        pool_id,
-        source_meme_amount,
-        source_quote_amount,
-        used_meme_amount,
-        used_quote_amount,
-        residual_meme_amount,
-        residual_quote_amount,
-        sqrt_price_x64,
-        lower_tick_bits,
-        upper_tick_bits,
-        tick_spacing,
-        fee_rate,
-    );
-}
-
-// === Test-Only Functions ===
-
-#[test_only]
-public fun effective_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
-    effective_tier(venue_config)
+    (object::id(position), meme_fee, quote_fee)
 }
 
 // === Imports ===
@@ -347,36 +219,27 @@ public fun effective_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
 use blast_admin::acl::AdminWitness;
 
 use blast_fun::{
-    bps,
-    launch::Launch,
+    allocation::Routes,
     blast_fun_domain::BLAST_FUN_DOMAIN,
+    fee_router::{FeeRouter, RouterConfigCap},
+    launch::Launch,
+    launch_config::LaunchConfig,
+    launch_ticket::LaunchTicket,
+    lp_fee_policy::LpFeePolicy,
     package_version::PackageVersion,
 };
 
 use blast_fun_migrators::{
-    blast_events,
-    lp_fee_authority::{Self, LpFeeAuthority},
-    lp_fee_policy::LpFeePolicy,
     migration_math,
     package_version::PackageVersion as MigratorsVersion,
     vault::{Self, LpVault},
     venue_config::VenueConfig,
 };
 
-use bluefin_spot::{
-    config::{Self, GlobalConfig},
-    pool::{Self, Pool},
-    position::Position,
-};
+use bluefin_spot::{config::GlobalConfig, pool::{Self, Pool}, position::Position};
 
 use integer_mate::i32;
 
-use sui::{
-    balance::{Self, Balance},
-    clock::Clock,
-    coin_registry::Currency,
-};
+use sui::{balance::Balance, clock::Clock, coin::Coin, coin_registry::Currency, sui::SUI};
 
-use fun config::get_tick_range as GlobalConfig.tick_range;
-
-use fun config::get_pool_creation_fee_amount as GlobalConfig.pool_creation_fee_amount;
+use fun collect_position_fees as LpVault.collect_position_fees;

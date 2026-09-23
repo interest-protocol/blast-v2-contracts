@@ -4,6 +4,114 @@
 [move]
 version = 4
 
+[pinned.mainnet.AftermathControlFlow]
+source = { local = "../aftermath_adapter/interfaces/aftermath/control-flow/control-flow" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.AftermathOrderedMap]
+source = { local = "../aftermath_adapter/interfaces/aftermath/ordered-map/ordered-map" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.MoveStdlib]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
+use_environment = "mainnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.mainnet.Sui]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
+use_environment = "mainnet"
+manifest_digest = "CD547CB1ACCE0880C835DAED2D8FFCB91D56C833AE5240D3AA5B918398263195"
+deps = { MoveStdlib = "MoveStdlib" }
+
+[pinned.mainnet.authority_cap]
+source = { local = "../aftermath_adapter/interfaces/aftermath/authority-cap/authority-cap" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.blast_admin]
+source = { local = "../../admin" }
+use_environment = "mainnet"
+manifest_digest = "294D98BBBEFA7E526C52FD7F30B5691CD30B86738DDC489AC065D612D0E5F9EF"
+deps = { Sui = "Sui" }
+
+[pinned.mainnet.blast_boosts_aftermath]
+source = { local = "../aftermath_adapter" }
+use_environment = "mainnet"
+manifest_digest = "4D5BCF3996811575DE261E6C3BA931332DD8D9C4F28E540226F5E9368A14A500"
+deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_boosts_core = "blast_boosts_core", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.blast_boosts_composition_tests]
+source = { root = true }
+use_environment = "mainnet"
+manifest_digest = "6A39BC1FE3590C251903B8657AE9F7C8512BF83618249E283DFC856AA14863E0"
+deps = { blast_admin = "blast_admin", blast_boosts_aftermath = "blast_boosts_aftermath", blast_boosts_products = "blast_boosts_products", blast_fun = "blast_fun", blast_fun_vesting = "blast_fun_vesting", meme_template = "meme_template", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.blast_boosts_core]
+source = { local = "../core" }
+use_environment = "mainnet"
+manifest_digest = "1D81A242A868996BDA2D034470EFF798AACC5958CF9958C94BAAACC9C2C92DC8"
+deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.blast_boosts_products]
+source = { local = "../products" }
+use_environment = "mainnet"
+manifest_digest = "294D98BBBEFA7E526C52FD7F30B5691CD30B86738DDC489AC065D612D0E5F9EF"
+deps = { Sui = "Sui" }
+
+[pinned.mainnet.blast_fun]
+source = { local = "../../launchpad" }
+use_environment = "mainnet"
+manifest_digest = "2EE0BE6CC23D1718E36913BC8AFF07AB623F8E972B9E6253C5BE9AFEE9962448"
+deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.blast_fun_vesting]
+source = { local = "../../vesting" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.ifixed]
+source = { local = "../aftermath_adapter/interfaces/aftermath/ifixed/ifixed" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.meme_template]
+source = { local = "../../meme_template" }
+use_environment = "mainnet"
+manifest_digest = "CD78309C00EDF20275FAD0D0EFC40A8B35B1A60AA4E07202289540C01DF505B6"
+deps = { blast_fun = "blast_fun", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.oracle_aggregator]
+source = { local = "../aftermath_adapter/interfaces/aftermath/oracle-aggregator/oracle-aggregator" }
+use_environment = "mainnet"
+manifest_digest = "1649E9DC99C54FE86C43D0035A2EE12B91C9EFC21E7AEF3399B0D3F6DC238F62"
+deps = { authority_cap = "authority_cap", std = "MoveStdlib", sui = "Sui", vendor = "vendor" }
+
+[pinned.mainnet.perpetuals]
+source = { local = "../aftermath_adapter/interfaces/aftermath/iperps/perpetuals" }
+use_environment = "mainnet"
+manifest_digest = "5B85B2C531AFA6D5B28337C8A87C3CF1ECBCD78582A7A79C14B9EDFB4013C925"
+deps = { authority_cap = "authority_cap", control_flow = "AftermathControlFlow", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", ordered_map = "AftermathOrderedMap", position = "position", std = "MoveStdlib", sui = "Sui", vendor = "vendor" }
+
+[pinned.mainnet.position]
+source = { local = "../aftermath_adapter/interfaces/aftermath/iperps/position" }
+use_environment = "mainnet"
+manifest_digest = "01FEE8DFDC5A09C4846BDD936E552D87DBF24A3F7727423CCD4F5A397B1AFDCB"
+deps = { control_flow = "AftermathControlFlow", ifixed = "ifixed", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.vendor]
+source = { local = "../aftermath_adapter/interfaces/aftermath/vendor/vendor" }
+use_environment = "mainnet"
+manifest_digest = "5AAF88D4918BE9A469E16737C8F5D9AEE925CAA6432331DCC4D3E46A73DC72C6"
+deps = { authority_cap = "authority_cap", std = "MoveStdlib", sui = "Sui" }
+
 [pinned.testnet.AftermathControlFlow]
 source = { local = "../aftermath_adapter/interfaces/aftermath/control-flow/control-flow" }
 use_environment = "testnet"
@@ -49,8 +157,8 @@ deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_boo
 [pinned.testnet.blast_boosts_composition_tests]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "2353AF377146DD667DA2CF7BF529DCD9388899CD984AB966B6A98D698D95FDD0"
-deps = { blast_admin = "blast_admin", blast_boosts_aftermath = "blast_boosts_aftermath", blast_boosts_products = "blast_boosts_products", blast_fun = "blast_fun", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "21FA15DCA2E6AA81C4F27792D62262ED4D2519708E40EA9D9475680F6748EC16"
+deps = { blast_admin = "blast_admin", blast_boosts_aftermath = "blast_boosts_aftermath", blast_boosts_products = "blast_boosts_products", blast_fun = "blast_fun", blast_fun_vesting = "blast_fun_vesting", meme_template = "meme_template", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.blast_boosts_core]
 source = { local = "../core" }
@@ -70,11 +178,23 @@ use_environment = "testnet"
 manifest_digest = "B9BC26466630CEB8A3C2BE1A745F7338CFDF92C219AC0FF7F363DA750C2676C3"
 deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
 
+[pinned.testnet.blast_fun_vesting]
+source = { local = "../../vesting" }
+use_environment = "testnet"
+manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
 [pinned.testnet.ifixed]
 source = { local = "../aftermath_adapter/interfaces/aftermath/ifixed/ifixed" }
 use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.testnet.meme_template]
+source = { local = "../../meme_template" }
+use_environment = "testnet"
+manifest_digest = "AF725ACDA2684A0E75470C38FBC4B71E174E4400A5E600E1E64B4CE9977075E3"
+deps = { blast_fun = "blast_fun", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.oracle_aggregator]
 source = { local = "../aftermath_adapter/interfaces/aftermath/oracle-aggregator/oracle-aggregator" }

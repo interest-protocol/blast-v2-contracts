@@ -4,28 +4,20 @@
 /// Native migration and sealed custody of its complete issued LP position.
 module blast_fun_dex::migration;
 
-use blast_admin::acl::AdminWitness;
-use blast_fun::{
-    creator_authority::{Self, LpFeeCap},
-    fees::{Self, FeeLedger},
-    launch::Launch,
-    blast_fun_domain::BLAST_FUN_DOMAIN,
-    lp_fee_policy::LpFeePolicy,
-    package_version::PackageVersion
-};
-use blast_fun_dex::pool::{Self, Factory, Pool, Position};
-use sui::{balance, clock::Clock, coin::Coin, coin_registry::Currency, dynamic_object_field, event};
-
 // === Errors ===
 
 #[error(code = 0)]
 const EWrongPool: vector<u8> = b"Native fee collection requires the locked position's pool.";
+
 #[error(code = 1)]
 const ELpFeeCapNotLive: vector<u8> = b"LP-fee capability must be the one this vault currently honors.";
+
 #[error(code = 2)]
 const EInvalidLpFeeCapRecipient: vector<u8> = b"LP-fee capability recipient must be a nonzero address.";
+
 #[error(code = 3)]
 const ELpFeesLocked: vector<u8> = b"Creator LP fees are permanently bound to a custodian.";
+
 #[error(code = 4)]
 const ELpFeeCustodianMismatch: vector<u8> = b"Custodian must be the one creator LP fees are bound to.";
 
@@ -336,3 +328,20 @@ public fun shares_for_testing<Meme, Quote>(self: &LockedLpVault<Meme, Quote>): u
         PositionKey(),
     ).shares_for_testing()
 }
+
+// === Imports ===
+
+use blast_admin::acl::AdminWitness;
+
+use blast_fun::{
+    creator_authority::{Self, LpFeeCap},
+    fees::{Self, FeeLedger},
+    launch::Launch,
+    blast_fun_domain::BLAST_FUN_DOMAIN,
+    lp_fee_policy::LpFeePolicy,
+    package_version::PackageVersion
+};
+
+use blast_fun_dex::pool::{Self, Factory, Pool, Position};
+
+use sui::{balance, clock::Clock, coin::Coin, coin_registry::Currency, dynamic_object_field, event};

@@ -1,10 +1,15 @@
 # 0051: Generated Meme package template
 
-- Status: accepted
+- Status: accepted; publish-time immutability amended by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 - Date: 2026-08-29
 - Amends: [0001](0001-sui-package-and-module-layout.md),
   [0002](0002-coin-creation-and-currency-authority.md),
   [0048](0048-sui-package-workspace.md)
+
+> ADR 0088 keeps the one-time-witness initializer and the ticket transfer to
+> the publisher, but generated packages stay upgradeable: the publisher keeps
+> the `UpgradeCap`, so step 6 and the SDK's immutable-call check are optional
+> publishing choices rather than requirements.
 
 ## Sources
 

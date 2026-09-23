@@ -6,6 +6,14 @@ module blast_fun::constants;
 
 // === Package Constants ===
 
+/// Maximum distinct recurring destinations across the Meme and Quote route tables.
+macro public(package) fun max_route_destinations(): u64 { 16 }
+
+/// Combined one-time migration identity bound across both asset tables, excluding the curve.
+macro public(package) fun max_migration_channels(): u64 {
+    16
+}
+
 /// Denominator for protocol rates expressed in basis points.
 macro public(package) fun basis_points_denominator(): u64 {
     10_000
@@ -26,24 +34,9 @@ macro public(package) fun max_migration_witnesses(): u64 {
     16
 }
 
-/// Maximum protocol share of gross terminal Quote collected at graduation.
-macro public(package) fun max_protocol_quote_migration_fee_bps(): u64 {
-    500
-}
-
-/// Maximum initial Meme supply reserved for the protocol at graduation.
-macro public(package) fun max_protocol_meme_graduation_fee_bps(): u64 {
-    1_000
-}
-
-/// Canonical decimal precision for every generated Meme currency.
-macro public(package) fun meme_decimals(): u8 {
-    9
-}
-
-/// One billion nine-decimal Meme coins expressed in atomic units.
-macro public(package) fun meme_total_supply_atomic_units(): u64 {
-    1_000_000_000__000_000_000
+/// Exact whole-token supply minted for every generated Meme currency.
+macro public(package) fun meme_total_supply_whole_tokens(): u64 {
+    1_000_000_000
 }
 
 /// Canonical Ed25519 public-key length.

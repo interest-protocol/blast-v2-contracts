@@ -8,9 +8,13 @@ module blast_admin::acl_tests;
 // === Constants ===
 
 const ROOT: address = @0xA11CE;
+
 const ADMIN: address = @0xAD;
+
 const OTHER_ADMIN: address = @0xB0B;
+
 const MAX_ADMINS: u64 = 2;
+
 const TRANSFER_DELAY_MS: u64 = 100;
 
 // === Test-Only Types ===
@@ -395,7 +399,7 @@ fun role_revoke_rejects_an_absent_role() {
     destroy(fixture);
 }
 
-// === Fixture Setup ===
+// === Test Helpers ===
 
 fun start_root(): Fixture {
     let mut scenario = test_scenario::begin(ROOT);
@@ -425,8 +429,6 @@ fun start_admin(roles: u64): Fixture {
 
     fixture
 }
-
-// === Fixture Helpers ===
 
 fun grant_admin(self: &mut Fixture, roles: u64, recipient: address) {
     let Fixture { scenario, authority, root, admin_cap: _ } = self;

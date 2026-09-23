@@ -179,8 +179,6 @@ fun flat_settled_checkpoint_recovers_every_integral_collateral_atom() {
     assert_eq!(checkpoint.recoverable_cash_for_testing(false, 7_000_000_000_000), 12);
 }
 
-// === Test Helpers ===
-
 #[test]
 #[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
 fun one_raw_base_unit_prevents_terminal_finality() {
@@ -278,6 +276,8 @@ fun signed_negative_liability_cannot_be_recovered_as_cash() {
     checkpoint(0, 0, 0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff,
         0, 9, 0).recoverable_cash_for_testing(true, 1);
 }
+
+// === Test Helpers ===
 
 fun checkpoint(base: u256, quote: u256, allocated: u256, pending: u64, funding: u256, free: u64): Checkpoint {
     checkpoint::checkpoint_for_testing(free, allocated, base, quote, funding, 10, 9, 10,

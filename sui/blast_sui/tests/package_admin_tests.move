@@ -7,12 +7,16 @@ module blast_sui::package_admin_tests;
 // === Constants ===
 
 const PUBLISHER: address = @0xA11CE;
+
 const ADMIN: address = @0xAD;
+
 const MAX_ADMINS: u64 = 16;
+
 const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 /// This package's canonical original address under test compilation.
 const PACKAGE_ID: address = @0x0;
+
 const OTHER_PACKAGE_ID: address = @0xBAD;
 
 // === Test-Only Types ===
@@ -580,7 +584,7 @@ fun stale_shared_version_rejects_old_bytecode() {
     fixture.end();
 }
 
-// === Fixture Macros ===
+// === Test Helpers ===
 
 macro fun wrap_next_tx(
     $fixture: &mut WrapFixture,
@@ -626,8 +630,6 @@ macro fun upgrade_ctx($fixture: &mut UpgradeFixture): &mut TxContext {
 
     fixture.scenario.ctx()
 }
-
-// === Fixture Setup ===
 
 fun start_wrap(): WrapFixture {
     WrapFixture { scenario: test_scenario::begin(PUBLISHER) }
@@ -759,8 +761,6 @@ fun new_authority(
 ): (SuperAdminCap<BLAST_SUI_DOMAIN>, Authority<BLAST_SUI_DOMAIN>) {
     acl::new_for_testing<BLAST_SUI_DOMAIN>(MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, ctx)
 }
-
-// === Helpers ===
 
 fun package_digest(): vector<u8> {
     x"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"

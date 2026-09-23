@@ -4,8 +4,11 @@
 > [ADR 0067](0067-retire-full-sail-migrator.md). ADR 0066 supersedes the
 > fee-policy and no-collection portions. ADR 0067 retires Full Sail, leaving
 > four CLMM adapters beside Aftermath.
+> ADR 0088 removes the Aftermath adapter from the replacement launch lineage.
+> This decision is historical; it does not authorize a new-lineage migration
+> witness, migration route, or custody.
 
-- Status: **accepted**
+- Status: **accepted historically; adapter removed from the new lineage by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)**
 - Date: 2026-08-31
 - Amends: [0054](0054-v3-dex-migrators-and-locked-lp-fees.md) and
   [0057](0057-admin-pinned-venue-tiers.md)

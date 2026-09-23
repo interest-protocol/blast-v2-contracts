@@ -7,14 +7,23 @@ module blast_fun_vesting::blast_fun_linear_vesting_tests;
 // === Constants ===
 
 const FUNDER: address = @0xF00D;
+
 const BENEFICIARY: address = @0xB0B;
+
 const REFUND_RECIPIENT: address = @0xCAFE;
+
 const CALLER: address = @0xC11;
+
 const CANCELER: address = @0xCA11;
+
 const TOTAL_AMOUNT: u64 = 1_001;
+
 const START_MS: u64 = 100;
+
 const CLIFF_MS: u64 = 200;
+
 const PERIOD_MS: u64 = 100;
+
 const PERIODS: u64 = 4;
 
 // === Test-Only Types ===
@@ -510,7 +519,7 @@ fun irrevocable_close_rejects_a_cancellable_schedule_before_time_checks() {
     fixture.end();
 }
 
-// === Private Test Helpers ===
+// === Test Helpers ===
 
 macro fun claim_next_tx(
     $fixture: &mut ClaimFixture,

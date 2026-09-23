@@ -24,7 +24,7 @@ const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 /// Role that authorizes package upgrade custody in this domain.
 const PACKAGE_ADMIN_ROLE: u64 = 1;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// One-time witness that names this administration domain at the type level.
 public struct DEX_DOMAIN has drop {}

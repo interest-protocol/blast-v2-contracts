@@ -23,7 +23,7 @@ const PACKAGE_ADMIN_ROLE: u64 = 1;
 /// Role that authorizes revoking and reissuing creator fee authority in every package.
 const CREATOR_ADMIN_ROLE: u64 = 2;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// One-time witness that names this administration domain at the type level.
 public struct BLAST_FUN_DOMAIN() has drop;
@@ -41,7 +41,7 @@ public fun package_admin_role(): u64 {
     PACKAGE_ADMIN_ROLE
 }
 
-/// The role a witness must carry to revoke and reissue creator or LP-fee capabilities.
+/// The role a witness must carry to revoke and reissue creator capabilities.
 public fun creator_admin_role(): u64 {
     CREATOR_ADMIN_ROLE
 }

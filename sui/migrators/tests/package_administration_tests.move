@@ -13,9 +13,15 @@ module blast_fun_migrators::package_administration_tests;
 // === Constants ===
 
 const PUBLISHER: address = @0xA11CE;
+
 const PROTOCOL_ADMIN: address = @0xAD;
+
 const MAX_ADMINS: u64 = 16;
+
 const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
+
+/// Any 32-byte package digest; custody rejects every other length before the cap is reached.
+const DIGEST: vector<u8> = x"0000000000000000000000000000000000000000000000000000000000000000";
 
 // === Test-Only Types ===
 
@@ -87,7 +93,7 @@ fun a_zero_role_launchpad_admin_pins_a_venue_tier() {
 
         f.config.set_cetus_tier(&f.package_version, &admin_witness, 220, 20_000);
 
-        let (tick_spacing, fee_rate) = f.config.cetus_tier_for_testing();
+        let (tick_spacing, fee_rate) = f.config.tier<cetus::Venue>();
         assert_eq!(tick_spacing, 220);
         assert_eq!(fee_rate, 20_000);
     });
@@ -107,41 +113,26 @@ fun a_zero_role_launchpad_admin_cannot_reach_package_custody() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.package_admin.restrict_to_additive(&f.package_version, &admin_witness);
+        let ticket = f.package_admin.authorize_upgrade(&f.package_version, &admin_witness, DIGEST);
+        destroy(ticket);
     });
 
     fixture.end();
 }
 
 #[test]
-/// The exported Launchpad role authorizes this package's own custody.
-fun the_exported_launchpad_role_governs_this_packages_custody() {
+#[expected_failure(abort_code = sui::package::EAlreadyAuthorized, location = sui::package)]
+/// The exported Launchpad role reaches this package's sealed UpgradeCap. A unit-test cap belongs
+/// to package `0x0`, which the framework reads as an authorization already in flight, so reaching
+/// the cap shows as the framework's own abort.
+fun the_exported_launchpad_role_reaches_this_packages_upgrade_cap() {
     let mut fixture = start_with_roles(blast_fun_domain::package_admin_role());
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.package_admin.restrict_to_additive(&f.package_version, &admin_witness);
-
-        assert_eq!(f.package_admin.policy_for_testing(), sui::package::additive_policy());
-        assert!(f.package_admin.has_upgrade_cap());
-    });
-
-    fixture.end();
-}
-
-#[test]
-/// Immutability destroys native upgrade authority for this package only.
-fun package_custody_can_be_made_permanently_immutable() {
-    let mut fixture = start_with_roles(blast_fun_domain::package_admin_role());
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.package_admin.make_immutable(&f.package_version, &admin_witness);
-
-        assert!(!f.package_admin.has_upgrade_cap());
-        assert_eq!(f.package_version.version_for_testing(), 1);
+        let ticket = f.package_admin.authorize_upgrade(&f.package_version, &admin_witness, DIGEST);
+        destroy(ticket);
     });
 
     fixture.end();
@@ -171,7 +162,7 @@ fun a_revocation_in_the_shared_authority_blocks_this_packages_sign_in() {
     fixture.end();
 }
 
-// === Private Test Helpers ===
+// === Test Helpers ===
 
 macro fun admin_next_tx(
     $fixture: &mut AdminFixtureState,
@@ -241,7 +232,5 @@ use fun admin_end as AdminFixtureState.end;
 use fun admin_next_tx as AdminFixtureState.next_tx;
 
 use fun admin_sign_in as AdminFixtureState.sign_in;
-
-use fun cetus::effective_tier_for_testing as VenueConfig.cetus_tier_for_testing;
 
 use fun cetus::set_tier as VenueConfig.set_cetus_tier;

@@ -62,15 +62,68 @@ sed -i 's/^public struct Witness() has drop;$/public struct Witness has drop { i
 expect_rejected "$case_dir"
 
 # Skipping the pause check keeps fees moving after an emergency stop.
-case_dir="$(new_case unpausable_lp_collection)"
+case_dir="$(new_case unpausable_curve_collection)"
 python3 - "$(source_of "$case_dir")" <<'PY'
 import sys
 p = sys.argv[1]
 s = open(p).read()
-marker = "    ctx: &mut TxContext,\n) {\n    version.assert_enabled();\n\n    let (meme, quote) = vault.claim_custodied_creator_fees("
-s = s.replace(marker, "    ctx: &mut TxContext,\n) {\n    let (meme, quote) = vault.claim_custodied_creator_fees(", 1)
+marker = "    ctx: &mut TxContext,\n) {\n    version.assert_enabled();\n    assert!(object::id(launch) == self.launch, EWrongSource);\n\n    let (meme, quote) = launch.claim_custodied_creator_fees("
+assert s.count(marker) == 1
+s = s.replace(marker, "    ctx: &mut TxContext,\n) {\n    assert!(object::id(launch) == self.launch, EWrongSource);\n\n    let (meme, quote) = launch.claim_custodied_creator_fees(", 1)
 open(p, "w").write(s)
 PY
+expect_rejected "$case_dir"
+
+# An unpausable intake keeps moving pushed coins into custody after an emergency stop.
+case_dir="$(new_case unpausable_intake)"
+python3 - "$(source_of "$case_dir")" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+old = "    version.assert_enabled();\n    let batch_size = meme_receivings.length()"
+assert s.count(old) == 1
+open(p, "w").write(s.replace(old, "    let batch_size = meme_receivings.length()"))
+PY
+expect_rejected "$case_dir"
+
+# An unbounded batch lets one call grow work without limit; an empty one emits a no-op fact.
+case_dir="$(new_case unbounded_intake)"
+python3 - "$(source_of "$case_dir")" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+old = "batch_size > 0 && batch_size <= MAX_RECEIVING_COIN_BATCH_SIZE"
+assert s.count(old) == 1
+open(p, "w").write(s.replace(old, "batch_size <= 1_000_000"))
+PY
+expect_rejected "$case_dir"
+
+# A second receiver bypasses the intake's gates, bound and event.
+case_dir="$(new_case adds_an_ungated_receiver)"
+python3 - "$(source_of "$case_dir")" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+marker = "// === Test-Only Functions ===\n"
+sweep = (
+    "public fun sweep<Meme, Quote>(self: &mut Distributor<Meme, Quote>, coin: Receiving<Coin<Meme>>) {\n"
+    "    self.meme.join(transfer::public_receive(&mut self.id, coin).into_balance());\n"
+    "}\n\n"
+)
+assert s.count(marker) == 1
+open(p, "w").write(s.replace(marker, sweep + marker))
+PY
+expect_rejected "$case_dir"
+
+# Router configuration authority must never reach the distributor.
+case_dir="$(new_case imports_router_authority)"
+printf '\nuse blast_fun::fee_router::RouterConfigCap;\n' >> "$(source_of "$case_dir")"
+expect_rejected "$case_dir"
+
+# A migrator-vault intake would reopen a second recurring LP-fee exit beside the router.
+case_dir="$(new_case reintroduces_a_vault_fee_intake)"
+printf '\npublic fun take_vault_fees<Meme, Quote>(_: &blast_fun_migrators::vault::LpVault<Meme, Quote>) {}\n' \
+  >> "$(source_of "$case_dir")"
 expect_rejected "$case_dir"
 
 # Renumbering a code silently changes what every existing client believes.

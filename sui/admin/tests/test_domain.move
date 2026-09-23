@@ -5,9 +5,13 @@
 /// Canonical ACL domain marker used by foundational package tests.
 module blast_admin::test_domain;
 
+// === Test-Only Types ===
+
 public struct TEST_DOMAIN has drop {}
 
 public struct NOT_AN_OTW has drop {}
+
+// === Test Helpers ===
 
 public fun otw(): TEST_DOMAIN {
     TEST_DOMAIN {}

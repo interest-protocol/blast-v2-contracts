@@ -7,11 +7,15 @@ module blast_fun::package_admin_tests;
 // === Constants ===
 
 const PUBLISHER: address = @0xA11CE;
+
 const PROTOCOL_ADMIN: address = @0xAD;
+
 const OTHER_PACKAGE_ID: address = @0xBAD;
 
 /// This package's canonical original address under test compilation.
 const PACKAGE_ID: address = @0x0;
+
+// === Test-Only Types ===
 
 /// Bare transaction runner for capability-provenance rejections; needs no ACL.
 public struct WrapFixture {
@@ -197,6 +201,49 @@ fun zero_role_admin_cannot_authorize_an_upgrade() {
         );
 
         destroy(ticket);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EAdminRoleNotGranted,
+    location = blast_admin::acl,
+)]
+/// The upgrade finalizer checks the package-admin role before touching the receipt or version.
+fun zero_role_admin_cannot_commit_an_upgrade() {
+    let mut fixture = start_without_package_admin_role();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+        let (receipt, foreign_cap) = f.foreign_receipt();
+
+        f.package_admin.commit_upgrade_and_advance(&mut f.package_version, &admin_witness, receipt);
+
+        destroy(foreign_cap);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+/// The upgrade finalizer proves the shared generation is exactly one behind before committing.
+fun commit_rejects_a_skipped_generation_before_the_native_cap_is_touched() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+        let (receipt, foreign_cap) = f.foreign_receipt();
+        f.package_version.set_for_testing(5);
+
+        f.package_admin.commit_upgrade_and_advance(&mut f.package_version, &admin_witness, receipt);
+
+        destroy(foreign_cap);
     });
 
     fixture.end();
@@ -431,7 +478,7 @@ fun policy_restriction_rejects_looser_policy() {
     fixture.end();
 }
 
-// === Private Test Helpers ===
+// === Test Helpers ===
 
 macro fun wrap_next_tx(
     $fixture: &mut WrapFixture,
@@ -545,6 +592,16 @@ fun package_digest(): vector<u8> {
     x"11223344556677889900aabbccddeeffffeeddccbbaa00998877665544332211"
 }
 
+/// A native receipt for another package. The test build compiles `blast_fun` at `0x0`, which
+/// `sui::package::authorize_upgrade` rejects, so no receipt can match the custodied cap here;
+/// the finalizer's own guards run before the framework compares caps.
+fun foreign_receipt(self: &mut UpgradeFixture): (UpgradeReceipt, UpgradeCap) {
+    let mut cap = package::test_publish(OTHER_PACKAGE_ID.to_id(), self.scenario.ctx());
+    let receipt = cap.authorize_upgrade(package::compatible_policy(), package_digest()).test_upgrade();
+
+    (receipt, cap)
+}
+
 // === Imports ===
 
 use blast_admin::{acl::{Authority, SuperAdminCap, AdminCap, AdminWitness}, errors, events};
@@ -564,7 +621,7 @@ use std::unit_test::{assert_eq, destroy};
 
 use sui::{
     event,
-    package::{Self, Publisher},
+    package::{Self, Publisher, UpgradeCap, UpgradeReceipt},
     test_scenario::{Self, Scenario},
 };
 

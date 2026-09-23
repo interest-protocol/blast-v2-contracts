@@ -1,25 +1,18 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Shared concentrated-liquidity price and utilization invariants for migrator venues.
+/// Shared concentrated-liquidity seed price for migrator venues.
 module blast_fun_migrators::migration_math;
 
 // === Constants ===
 
-/// Only the exact u256 price-deviation comparison needs the raw denominator.
-const BASIS_POINTS_DENOMINATOR: u64 = 10_000;
 const Q128_SHIFT: u8 = 128;
 const SQRT_UPPER_BOUND_SHIFT: u8 = 96;
 
 // === Errors ===
 
-// Code 0 retired: `blast_fun::bps::new` owns the inclusive basis-points range.
-#[error(code = 1)]
+#[error(code = 0)]
 const EInvalidMigrationSeedBalance: vector<u8> = b"Migration seed balances must both be greater than zero.";
-#[error(code = 2)]
-const EMigrationPriceDeviationExceeded: vector<u8> = b"Observed pool price must remain within the accepted migration seed deviation.";
-#[error(code = 3)]
-const EMigrationResidualExceeded: vector<u8> = b"Venue residual must remain within the accepted share of migration principal.";
 
 // === Package Functions ===
 
@@ -33,58 +26,6 @@ public(package) fun sqrt_price_x64(
     meme_is_coin_a: bool,
 ): u128 {
     integer_sqrt(ratio_q128(meme_amount, quote_amount, meme_is_coin_a))
-}
-
-/// Requires an observed CLMM price to remain within a bounded price-ratio deviation.
-///
-/// The comparison squares the observed Q64.64 value and compares it with the
-/// exact floor Q128 rational derived from the migration balances. Both products
-/// remain below u256 after first rejecting deviations larger than 100%.
-public(package) fun assert_price_within_bps(
-    meme_amount: u64,
-    quote_amount: u64,
-    meme_is_coin_a: bool,
-    actual_sqrt_price_x64: u128,
-    max_deviation_bps: Bps,
-) {
-    let max_deviation_bps = max_deviation_bps.value();
-
-    let expected_ratio_q128 = ratio_q128(
-        meme_amount,
-        quote_amount,
-        meme_is_coin_a,
-    );
-    let actual_sqrt_price_x64 = actual_sqrt_price_x64 as u256;
-    let actual_ratio_q128 = actual_sqrt_price_x64 * actual_sqrt_price_x64;
-    let difference = if (actual_ratio_q128 >= expected_ratio_q128) {
-        actual_ratio_q128 - expected_ratio_q128
-    } else {
-        expected_ratio_q128 - actual_ratio_q128
-    };
-
-    assert!(
-        difference <= expected_ratio_q128
-            && difference * (BASIS_POINTS_DENOMINATOR as u256)
-                <= expected_ratio_q128 * (max_deviation_bps as u256),
-        EMigrationPriceDeviationExceeded,
-    );
-}
-
-/// Returns the minimum venue-consumed amount after a ceiling-rounded residual allowance.
-public(package) fun minimum_utilized_amount(amount: u64, max_residual_bps: Bps): u64 {
-    amount - maximum_residual_amount(amount, max_residual_bps)
-}
-
-/// Rejects a returned venue residual above the ceiling-rounded allowance.
-public(package) fun assert_residual_within_bps(
-    source_amount: u64,
-    residual_amount: u64,
-    max_residual_bps: Bps,
-) {
-    assert!(
-        residual_amount <= maximum_residual_amount(source_amount, max_residual_bps),
-        EMigrationResidualExceeded,
-    );
 }
 
 // === Private Functions ===
@@ -125,11 +66,3 @@ fun integer_sqrt(value: u256): u128 {
 
     low as u128
 }
-
-fun maximum_residual_amount(amount: u64, max_residual_bps: Bps): u64 {
-    max_residual_bps.apply_up(amount)
-}
-
-// === Imports ===
-
-use blast_fun::bps::Bps;

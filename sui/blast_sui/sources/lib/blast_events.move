@@ -3,7 +3,7 @@
 
 module blast_sui::blast_events;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Stable package-wide envelope for every Blast SUI protocol event payload.
 public struct Event<T: copy + drop>(T) has copy, drop;

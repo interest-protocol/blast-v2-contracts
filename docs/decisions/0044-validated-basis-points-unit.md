@@ -78,8 +78,7 @@ inputs and replay event schemas do not change.
 - Unit tests cover both range boundaries, the first invalid value, downward and
   upward rounding, maximum-`u64` identity, complements, and remainder
   conservation.
-- Ticket and runtime setter tests prove invalid raw inputs abort in `bps::new`;
-  retired domain-specific codes 32 and 40 are not reused.
+- Ticket and runtime setter tests prove invalid raw inputs abort in `bps::new`.
 - Existing curve, fee, graduation, config, ticket, launch, event, and upgrade
   tests must continue to pass.
 - Source-boundary checks enforce `Bps` storage, raw event payloads, owner-local

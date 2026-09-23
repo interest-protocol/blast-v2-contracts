@@ -4,31 +4,12 @@
 #[test_only]
 module blast_fun_auto_lp::vault_tests;
 
-use blast_admin::acl::{AdminCap, SuperAdminCap};
-use blast_fun::{
-    bps,
-    creator_authority,
-    launch::{Self, Launch},
-    launch_config,
-    launch_ticket,
-    blast_fun_domain::BLAST_FUN_DOMAIN,
-    lp_fee_policy::{Self, LpFeePolicy},
-    package_version::{Self, PackageVersion},
-    runtime_config
-};
-use blast_fun_auto_lp::vault::{Self, Vault};
-use blast_fun_dex::{migration::{Self, LockedLpVault, Witness}, pool::{Self, Factory, Pool}};
-use blast_fun_migrators::package_version::{
-    Self as migrators_package_version,
-    PackageVersion as MigratorsVersion
-};
-use std::{bcs, unit_test::{assert_eq, destroy}};
-use sui::{clock::{Self, Clock}, coin, coin_registry::Currency, test_scenario::{Self, Scenario}};
-
 // === Test-Only Types ===
 
 public struct VAULT_TESTS() has drop;
+
 public struct QUOTE() has drop;
+
 public struct EXTERNAL_WITNESS() has drop;
 
 public struct AutoLpFixture {
@@ -388,7 +369,6 @@ fun external_witness_creator_funded_pool_supports_enrollment_and_fee_collection(
     f.end();
 }
 
-
 #[test]
 fun enrollment_destroys_the_creator_cap_and_binds_every_fee_stream_forever() {
     let f = start();
@@ -448,7 +428,7 @@ fun external_lp_collection_before_locking_is_rejected() {
     f.end();
 }
 
-// === Private Test Helpers ===
+// === Test Helpers ===
 
 macro fun ctx($f: &mut AutoLpFixture): &mut TxContext { let f = $f; f.scenario.ctx() }
 
@@ -729,3 +709,32 @@ fun launchpad_authority(
         ctx,
     )
 }
+
+// === Imports ===
+
+use blast_admin::acl::{AdminCap, SuperAdminCap};
+
+use blast_fun::{
+    bps,
+    creator_authority,
+    launch::{Self, Launch},
+    launch_config,
+    launch_ticket,
+    blast_fun_domain::BLAST_FUN_DOMAIN,
+    lp_fee_policy::{Self, LpFeePolicy},
+    package_version::{Self, PackageVersion},
+    runtime_config
+};
+
+use blast_fun_auto_lp::vault::{Self, Vault};
+
+use blast_fun_dex::{migration::{Self, LockedLpVault, Witness}, pool::{Self, Factory, Pool}};
+
+use blast_fun_migrators::package_version::{
+    Self as migrators_package_version,
+    PackageVersion as MigratorsVersion
+};
+
+use std::{bcs, unit_test::{assert_eq, destroy}};
+
+use sui::{clock::{Self, Clock}, coin, coin_registry::Currency, test_scenario::{Self, Scenario}};

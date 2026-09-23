@@ -13,16 +13,8 @@ module blast_boosts_aftermath::domain_fixture;
 // === Constants ===
 
 const MAX_ADMINS: u64 = 16;
+
 const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
-
-// === Public Functions ===
-
-/// Unshared Series1-domain authority state using the domain's real constants.
-public fun new_authority(
-    ctx: &mut TxContext,
-): (SuperAdminCap<BLAST_BOOSTS_CORE>, Authority<BLAST_BOOSTS_CORE>) {
-    acl::new_for_testing<BLAST_BOOSTS_CORE>(MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, ctx)
-}
 
 // === Tests ===
 
@@ -39,6 +31,15 @@ fun the_fixture_uses_the_core_governance_constants() {
     destroy(super_admin_cap);
     destroy(authority);
     destroy(ctx);
+}
+
+// === Test Helpers ===
+
+/// Unshared Series1-domain authority state using the domain's real constants.
+public fun new_authority(
+    ctx: &mut TxContext,
+): (SuperAdminCap<BLAST_BOOSTS_CORE>, Authority<BLAST_BOOSTS_CORE>) {
+    acl::new_for_testing<BLAST_BOOSTS_CORE>(MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, ctx)
 }
 
 // === Imports ===

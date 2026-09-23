@@ -48,21 +48,6 @@ public(package) fun base_for_notional_down(
     (base as u64) / lot_size * lot_size
 }
 
-/// Reserves adverse execution first, then the authenticated fee on that adverse quote.
-/// Each session calls this separately: rounding a multi-order total is not equivalent.
-fun execution_cost_up(notional: u64, venue_fee_bps: u64, max_slippage_bps: u64): u128 {
-    assert!(
-        venue_fee_bps <= constants::basis_points_denominator!() && max_slippage_bps < constants::basis_points_denominator!(),
-        blast_boosts_core::errors::venue_fee_unusable!(),
-    );
-
-    let denominator = constants::basis_points_denominator!() as u128;
-    let adverse = ((notional as u128) * (max_slippage_bps as u128)).div_ceil(denominator);
-    let fee = (((notional as u128) + adverse) * (venue_fee_bps as u128)).div_ceil(denominator);
-
-    adverse + fee
-}
-
 /// Finds the maximal next whole-lot increase under both the live order cap and post-cost target.
 /// The adapter must recompute from each accepted session and enforce its fixed work bound.
 public(package) fun increase_base_down(
@@ -148,6 +133,23 @@ public(package) fun reduction_is_sufficient(
         scaled_before >= scaled_after + (min_leverage_improvement_bps as u256) * nav_before * nav_after;
 
     (within_one_lot_of_target && not_farther_than_before) || improved_by_minimum
+}
+
+// === Private Functions ===
+
+/// Reserves adverse execution first, then the authenticated fee on that adverse quote.
+/// Each session calls this separately: rounding a multi-order total is not equivalent.
+fun execution_cost_up(notional: u64, venue_fee_bps: u64, max_slippage_bps: u64): u128 {
+    assert!(
+        venue_fee_bps <= constants::basis_points_denominator!() && max_slippage_bps < constants::basis_points_denominator!(),
+        blast_boosts_core::errors::venue_fee_unusable!(),
+    );
+
+    let denominator = constants::basis_points_denominator!() as u128;
+    let adverse = ((notional as u128) * (max_slippage_bps as u128)).div_ceil(denominator);
+    let fee = (((notional as u128) + adverse) * (venue_fee_bps as u128)).div_ceil(denominator);
+
+    adverse + fee
 }
 
 // === Test-Only Functions ===

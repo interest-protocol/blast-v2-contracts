@@ -13,8 +13,11 @@ module blast_sui::blast_sui_domain_tests;
 // === Constants ===
 
 const ROOT: address = @0xA11CE;
+
 const ADMIN: address = @0xAD;
+
 const MAX_ADMINS: u64 = 16;
+
 const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 // === Test-Only Types ===
@@ -137,7 +140,7 @@ fun a_revoked_administrator_can_no_longer_sign_in() {
     fixture.end();
 }
 
-// === Private Test Helpers ===
+// === Test Helpers ===
 
 macro fun domain_next_tx(
     $fixture: &mut DomainFixture,

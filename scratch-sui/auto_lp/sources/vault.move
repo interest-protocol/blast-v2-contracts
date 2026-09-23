@@ -14,30 +14,22 @@
 /// upstream package still refuses to serve stale bytecode.
 module blast_fun_auto_lp::vault;
 
-use blast_fun::{
-    creator_authority::{CurveFeeCap, LpFeeCap},
-    launch::Launch,
-    package_version::PackageVersion
-};
-use blast_fun_dex::{migration::LockedLpVault, pool::{Self, Factory, Pool, Position}};
-use blast_fun_migrators::{package_version::PackageVersion as MigratorsVersion, vault::LpVault};
-use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, dynamic_object_field, event};
-
 // === Errors ===
 
-// Codes 0 and 1 retired: this package holds no generation of its own, so it
-// raises neither a local mismatch nor a local overflow.
-#[error(code = 2)]
+#[error(code = 0)]
 const EWrongPool: vector<u8> = b"AutoLP can operate only on its enrolled native pool.";
-#[error(code = 3)]
+
+#[error(code = 1)]
 const EDeadlineExpired: vector<u8> = b"AutoLP deposit deadline has expired.";
-#[error(code = 4)]
+
+#[error(code = 2)]
 const EInvalidExecutor: vector<u8> = b"AutoLP requires a nonzero immutable execution address.";
-#[error(code = 5)]
+
+#[error(code = 3)]
 const EUnauthorizedExecutor: vector<u8> =
     b"Only the enrolled executor may choose AutoLP deposit price and timing.";
 
-#[error(code = 6)]
+#[error(code = 4)]
 const EMaximumInput: vector<u8> = b"Actual paired deposit exceeds the executor maximum input.";
 
 // === Public Types ===
@@ -321,3 +313,17 @@ public fun snapshot_for_testing<Meme, Quote>(self: &Vault<Meme, Quote>): (ID, ID
 public fun set_pool_id_for_testing<Meme, Quote>(self: &mut Vault<Meme, Quote>, pool_id: ID) {
     self.pool_id = pool_id;
 }
+
+// === Imports ===
+
+use blast_fun::{
+    creator_authority::{CurveFeeCap, LpFeeCap},
+    launch::Launch,
+    package_version::PackageVersion
+};
+
+use blast_fun_dex::{migration::LockedLpVault, pool::{Self, Factory, Pool, Position}};
+
+use blast_fun_migrators::{package_version::PackageVersion as MigratorsVersion, vault::LpVault};
+
+use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, dynamic_object_field, event};

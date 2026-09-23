@@ -1,6 +1,6 @@
 # 0069: Consolidate launch graduation and move migration math into migrators
 
-- Status: **accepted**
+- Status: **accepted; amended by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)**
 - Date: 2026-09-03
 - Amends: [0027](0027-graduation-economics-and-migration-witnesses.md),
   [0049](0049-audit-hardened-package-version-and-launch-intake.md),

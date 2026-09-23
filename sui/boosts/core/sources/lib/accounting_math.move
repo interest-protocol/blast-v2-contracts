@@ -116,27 +116,6 @@ public(package) fun shareholder_nav(
     venue_equity - maintenance_reserve
 }
 
-// --- Fees ---
-
-/// Returns the fee retained on `amount` at `fee_bps`, rounding up.
-///
-/// `amount` and the result are atomic collateral units. `fee_bps` is a rate on
-/// the 10,000 basis-point denominator and must stay below it, so
-/// `fee <= amount` always holds and a subtraction of the fee cannot underflow.
-/// The returned amount must be credited to the separately accounted
-/// maintenance reserve. It is excluded from shareholder NAV. A zero rate is
-/// the only fee-free result. One atomic unit at any positive rate still pays
-/// one unit, and the intermediate `amount * fee_bps` stays below `2^78`.
-fun fee_up(amount: u64, fee_bps: u64): u64 {
-    assert!(amount > 0, blast_boosts_core::errors::zero_amount!());
-    assert!(
-        fee_bps < constants::basis_points_denominator!(),
-        blast_boosts_core::errors::invalid_fee_bps!(),
-    );
-
-    amount.mul_div_ceil(fee_bps, constants::basis_points_denominator!())
-}
-
 /// Returns the admin's share of a collected fee, rounding down.
 ///
 /// `fee` and the result are atomic collateral units. `admin_share_bps` is a
@@ -158,74 +137,6 @@ public(package) fun fee_allocation(amount: u64, fee_bps: u64, admin_share_bps: u
     let admin = admin_share_down(fee, admin_share_bps);
 
     (fee, admin, fee - admin)
-}
-
-/// Returns the reserve after crediting an exact mint or redemption fee.
-///
-/// A zero fee is a valid no-op. Overflow aborts with the package arithmetic
-/// code instead of wrapping or silently narrowing.
-fun credit_fee(maintenance_reserve: u64, fee: u64): u64 {
-    maintenance_reserve
-        .checked_add(fee)
-        .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!())
-}
-
-// --- Mint ---
-
-/// Quotes shares from an already-derived positive shareholder NAV contribution.
-///
-/// Returns `shares_out` in atomic Share units:
-///
-/// ```text
-/// shares_out = floor(shares_before * contribution / nav_before)
-/// ```
-///
-/// `contribution` is `nav_after - nav_before`, where both values are
-/// shareholder NAV from one canonical price pair and `nav_after` already
-/// excludes the newly credited fee. `accounting_math::allocated_mint_quote`
-/// derives that contribution from the caller's reserve checkpoints and is the
-/// production entry point; this raw formula stays private and has a test-only
-/// seam for direct arithmetic checks. Venue fees and slippage reduce the
-/// actual contribution, so the depositor pays them. Flooring `shares_out` gives
-/// `nav_after / (shares_before + shares_out) >= nav_before / shares_before`
-/// (ADR 0064 I9).
-///
-/// Preconditions: positive `nav_before`, `shares_before`, and `contribution`.
-/// A contribution too small to buy one atomic share aborts instead of minting
-/// zero.
-///
-/// `shares_before * contribution` stays below `2^128`; `shares_out` and the
-/// final supply abort when they leave the `u64` range. This function proves
-/// no proportional order: pair it with `mint_base_to_buy_down` and
-/// `assert_mint_base_within_bounds`.
-fun mint_quote(
-    contribution: u64,
-    nav_before: u64,
-    shares_before: u64,
-): u64 {
-    assert!(nav_before > 0, blast_boosts_core::errors::invalid_nav!());
-    assert!(
-        shares_before > 0,
-        blast_boosts_core::errors::invalid_share_supply!(),
-    );
-    assert!(
-        contribution > 0,
-        blast_boosts_core::errors::nonpositive_contribution!(),
-    );
-
-    let shares_out = narrow_to_u64(
-        (shares_before as u128) * (contribution as u128) / (nav_before as u128),
-    );
-    assert!(
-        shares_out > 0,
-        blast_boosts_core::errors::zero_shares_out!(),
-    );
-    assert!(
-        shares_before.checked_add(shares_out).is_some(),
-        blast_boosts_core::errors::arithmetic_overflow!(),
-    );
-
-    shares_out
 }
 
 /// Prices shares after the separately allocated fee has left shareholder NAV.
@@ -344,58 +255,6 @@ public(package) fun mint_base_to_buy_down(
     proportional_base - proportional_base % lot_size
 }
 
-/// Returns the permitted absolute base order range for a mint.
-///
-/// Returns `(min_order_base, max_order_base)`:
-///
-/// ```text
-/// max_order_base = mint_base_to_buy_down(expected_contribution)
-/// min_order_base = min(mint_base_to_buy_down(actual_contribution), max_order_base)
-/// ```
-///
-/// `expected_contribution` is the pre-trade `deposit - fee` that sized the
-/// sealed order, and `actual_contribution` is the post-trade
-/// `nav_after - nav_before` that prices the shares. A full fill of the planned
-/// order always satisfies the range. When execution cost makes the actual
-/// contribution smaller, the range admits a partial fill down to the base
-/// the actual contribution funds. When a favorable fill makes it larger, the
-/// cap keeps the range non-empty and demands the complete plan. Both
-/// contributions pass the minimum-lot guard, so a mint whose actual credited
-/// contribution is dust aborts even when its plan was not.
-///
-/// The range does not bound execution-cost over-buying: `max_order_base -
-/// min_order_base` grows with the venue cost the depositor paid, and the admitted
-/// band is wide. From 2.0x with a deposit equal to NAV, a fill that loses half
-/// the deposit to execution still admits the complete plan and leaves the
-/// pool at 2.67x; at 95 percent loss it admits 3.81x. The core' post-trade
-/// leverage gate is therefore a hard release blocker, not an optional check,
-/// and the user's slippage bound owns the rest.
-fun mint_base_bounds(
-    expected_contribution: u64,
-    actual_contribution: u64,
-    base_before: u64,
-    nav_before: u64,
-    lot_size: u64,
-    min_order_lots: u64,
-): (u64, u64) {
-    let max_order_base = mint_base_to_buy_down(
-        expected_contribution,
-        base_before,
-        nav_before,
-        lot_size,
-        min_order_lots,
-    );
-    let actual_order_base = mint_base_to_buy_down(
-        actual_contribution,
-        base_before,
-        nav_before,
-        lot_size,
-        min_order_lots,
-    );
-
-    (actual_order_base.min(max_order_base), max_order_base)
-}
-
 /// Rejects an actual final absolute base outside the mint range.
 ///
 /// It derives both bounds from the same canonical inputs as
@@ -433,72 +292,6 @@ public(package) fun assert_mint_base_within_bounds(
         base_after >= base_before + min_order_base,
         blast_boosts_core::errors::mint_base_below_bound!(),
     );
-}
-
-// --- Redemption ---
-
-/// Quotes a redemption from the burned shares, the price pair, and the supply.
-///
-/// Returns `(gross, fee, net)` in atomic collateral units. With
-/// `S1 = shares_before - shares_to_redeem`:
-///
-/// ```text
-/// equity_keep = ceil(nav_before * S1 / shares_before)
-/// gross       = min(nav_after_sell, nav_before) - equity_keep
-/// fee         = ceil(gross * redeem_fee_bps / 10_000)
-/// net         = gross - fee
-/// ```
-///
-/// `nav_after_sell` is shareholder NAV after the proportional sell and before
-/// the payout or reserve credit, at the same price pair as `nav_before`.
-/// Production state transitions must use
-/// `accounting_math::redemption_accounting_quote`, which pins that checkpoint
-/// and credits the fee afterward. The gross is capped at the proportional
-/// claim `nav_before - equity_keep`: a favorable sell pays exactly the
-/// claim and its excess stays with the remaining holders (ADR 0084 D3).
-/// Final shareholder NAV is `nav_after_sell - gross`, at least `equity_keep`.
-/// Rounding the kept equity up gives
-/// `equity_keep / S1 >= nav_before / shares_before` (ADR 0064 I10).
-///
-/// Preconditions: positive `nav_before`, `0 < shares_to_redeem < shares_before`, a
-/// fee rate below 10,000, `min(nav_after_sell, nav_before) > equity_keep`, and a
-/// positive net payout. The function enforces the share bound directly; the future locked
-/// seed makes the complete production supply unpresentable. A zero supply
-/// cannot satisfy the bound and aborts with the share-amount code. Every cheap
-/// check precedes the kept-equity computation.
-///
-/// `nav_before * S1` stays below `2^128` and `equity_keep <= nav_before`, so no
-/// result can leave the `u64` range.
-fun redemption_quote(
-    shares_to_redeem: u64,
-    nav_before: u64,
-    nav_after_sell: u64,
-    shares_before: u64,
-    redeem_fee_bps: u64,
-): (u64, u64, u64) {
-    assert!(nav_before > 0, blast_boosts_core::errors::invalid_nav!());
-    assert!(
-        shares_to_redeem > 0 && shares_to_redeem < shares_before,
-        blast_boosts_core::errors::invalid_share_amount!(),
-    );
-    assert!(
-        redeem_fee_bps < constants::basis_points_denominator!(),
-        blast_boosts_core::errors::invalid_fee_bps!(),
-    );
-
-    let equity_keep = nav_before.mul_div_ceil(shares_before - shares_to_redeem, shares_before);
-    let claimable = nav_after_sell.min(nav_before);
-    assert!(
-        claimable > equity_keep,
-        blast_boosts_core::errors::nonpositive_gross!(),
-    );
-
-    let gross = claimable - equity_keep;
-    let fee = fee_up(gross, redeem_fee_bps);
-    let net = gross - fee;
-    assert!(net > 0, blast_boosts_core::errors::zero_net_payout!());
-
-    (gross, fee, net)
 }
 
 /// Quotes a redemption and credits its reserve fee at the correct checkpoint.
@@ -686,6 +479,213 @@ public(package) fun absorb_funding_cost(
 }
 
 // === Private Functions ===
+
+// --- Fees ---
+
+/// Returns the fee retained on `amount` at `fee_bps`, rounding up.
+///
+/// `amount` and the result are atomic collateral units. `fee_bps` is a rate on
+/// the 10,000 basis-point denominator and must stay below it, so
+/// `fee <= amount` always holds and a subtraction of the fee cannot underflow.
+/// The returned amount must be credited to the separately accounted
+/// maintenance reserve. It is excluded from shareholder NAV. A zero rate is
+/// the only fee-free result. One atomic unit at any positive rate still pays
+/// one unit, and the intermediate `amount * fee_bps` stays below `2^78`.
+fun fee_up(amount: u64, fee_bps: u64): u64 {
+    assert!(amount > 0, blast_boosts_core::errors::zero_amount!());
+    assert!(
+        fee_bps < constants::basis_points_denominator!(),
+        blast_boosts_core::errors::invalid_fee_bps!(),
+    );
+
+    amount.mul_div_ceil(fee_bps, constants::basis_points_denominator!())
+}
+
+/// Returns the reserve after crediting an exact mint or redemption fee.
+///
+/// A zero fee is a valid no-op. Overflow aborts with the package arithmetic
+/// code instead of wrapping or silently narrowing.
+fun credit_fee(maintenance_reserve: u64, fee: u64): u64 {
+    maintenance_reserve
+        .checked_add(fee)
+        .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!())
+}
+
+// --- Mint ---
+
+/// Quotes shares from an already-derived positive shareholder NAV contribution.
+///
+/// Returns `shares_out` in atomic Share units:
+///
+/// ```text
+/// shares_out = floor(shares_before * contribution / nav_before)
+/// ```
+///
+/// `contribution` is `nav_after - nav_before`, where both values are
+/// shareholder NAV from one canonical price pair and `nav_after` already
+/// excludes the newly credited fee. `accounting_math::allocated_mint_quote`
+/// derives that contribution from the caller's reserve checkpoints and is the
+/// production entry point; this raw formula stays private and has a test-only
+/// seam for direct arithmetic checks. Venue fees and slippage reduce the
+/// actual contribution, so the depositor pays them. Flooring `shares_out` gives
+/// `nav_after / (shares_before + shares_out) >= nav_before / shares_before`
+/// (ADR 0064 I9).
+///
+/// Preconditions: positive `nav_before`, `shares_before`, and `contribution`.
+/// A contribution too small to buy one atomic share aborts instead of minting
+/// zero.
+///
+/// `shares_before * contribution` stays below `2^128`; `shares_out` and the
+/// final supply abort when they leave the `u64` range. This function proves
+/// no proportional order: pair it with `mint_base_to_buy_down` and
+/// `assert_mint_base_within_bounds`.
+fun mint_quote(
+    contribution: u64,
+    nav_before: u64,
+    shares_before: u64,
+): u64 {
+    assert!(nav_before > 0, blast_boosts_core::errors::invalid_nav!());
+    assert!(
+        shares_before > 0,
+        blast_boosts_core::errors::invalid_share_supply!(),
+    );
+    assert!(
+        contribution > 0,
+        blast_boosts_core::errors::nonpositive_contribution!(),
+    );
+
+    let shares_out = narrow_to_u64(
+        (shares_before as u128) * (contribution as u128) / (nav_before as u128),
+    );
+    assert!(
+        shares_out > 0,
+        blast_boosts_core::errors::zero_shares_out!(),
+    );
+    assert!(
+        shares_before.checked_add(shares_out).is_some(),
+        blast_boosts_core::errors::arithmetic_overflow!(),
+    );
+
+    shares_out
+}
+
+/// Returns the permitted absolute base order range for a mint.
+///
+/// Returns `(min_order_base, max_order_base)`:
+///
+/// ```text
+/// max_order_base = mint_base_to_buy_down(expected_contribution)
+/// min_order_base = min(mint_base_to_buy_down(actual_contribution), max_order_base)
+/// ```
+///
+/// `expected_contribution` is the pre-trade `deposit - fee` that sized the
+/// sealed order, and `actual_contribution` is the post-trade
+/// `nav_after - nav_before` that prices the shares. A full fill of the planned
+/// order always satisfies the range. When execution cost makes the actual
+/// contribution smaller, the range admits a partial fill down to the base
+/// the actual contribution funds. When a favorable fill makes it larger, the
+/// cap keeps the range non-empty and demands the complete plan. Both
+/// contributions pass the minimum-lot guard, so a mint whose actual credited
+/// contribution is dust aborts even when its plan was not.
+///
+/// The range does not bound execution-cost over-buying: `max_order_base -
+/// min_order_base` grows with the venue cost the depositor paid, and the admitted
+/// band is wide. From 2.0x with a deposit equal to NAV, a fill that loses half
+/// the deposit to execution still admits the complete plan and leaves the
+/// pool at 2.67x; at 95 percent loss it admits 3.81x. The core' post-trade
+/// leverage gate is therefore a hard release blocker, not an optional check,
+/// and the user's slippage bound owns the rest.
+fun mint_base_bounds(
+    expected_contribution: u64,
+    actual_contribution: u64,
+    base_before: u64,
+    nav_before: u64,
+    lot_size: u64,
+    min_order_lots: u64,
+): (u64, u64) {
+    let max_order_base = mint_base_to_buy_down(
+        expected_contribution,
+        base_before,
+        nav_before,
+        lot_size,
+        min_order_lots,
+    );
+    let actual_order_base = mint_base_to_buy_down(
+        actual_contribution,
+        base_before,
+        nav_before,
+        lot_size,
+        min_order_lots,
+    );
+
+    (actual_order_base.min(max_order_base), max_order_base)
+}
+
+// --- Redemption ---
+
+/// Quotes a redemption from the burned shares, the price pair, and the supply.
+///
+/// Returns `(gross, fee, net)` in atomic collateral units. With
+/// `S1 = shares_before - shares_to_redeem`:
+///
+/// ```text
+/// equity_keep = ceil(nav_before * S1 / shares_before)
+/// gross       = min(nav_after_sell, nav_before) - equity_keep
+/// fee         = ceil(gross * redeem_fee_bps / 10_000)
+/// net         = gross - fee
+/// ```
+///
+/// `nav_after_sell` is shareholder NAV after the proportional sell and before
+/// the payout or reserve credit, at the same price pair as `nav_before`.
+/// Production state transitions must use
+/// `accounting_math::redemption_accounting_quote`, which pins that checkpoint
+/// and credits the fee afterward. The gross is capped at the proportional
+/// claim `nav_before - equity_keep`: a favorable sell pays exactly the
+/// claim and its excess stays with the remaining holders (ADR 0084 D3).
+/// Final shareholder NAV is `nav_after_sell - gross`, at least `equity_keep`.
+/// Rounding the kept equity up gives
+/// `equity_keep / S1 >= nav_before / shares_before` (ADR 0064 I10).
+///
+/// Preconditions: positive `nav_before`, `0 < shares_to_redeem < shares_before`, a
+/// fee rate below 10,000, `min(nav_after_sell, nav_before) > equity_keep`, and a
+/// positive net payout. The function enforces the share bound directly; the future locked
+/// seed makes the complete production supply unpresentable. A zero supply
+/// cannot satisfy the bound and aborts with the share-amount code. Every cheap
+/// check precedes the kept-equity computation.
+///
+/// `nav_before * S1` stays below `2^128` and `equity_keep <= nav_before`, so no
+/// result can leave the `u64` range.
+fun redemption_quote(
+    shares_to_redeem: u64,
+    nav_before: u64,
+    nav_after_sell: u64,
+    shares_before: u64,
+    redeem_fee_bps: u64,
+): (u64, u64, u64) {
+    assert!(nav_before > 0, blast_boosts_core::errors::invalid_nav!());
+    assert!(
+        shares_to_redeem > 0 && shares_to_redeem < shares_before,
+        blast_boosts_core::errors::invalid_share_amount!(),
+    );
+    assert!(
+        redeem_fee_bps < constants::basis_points_denominator!(),
+        blast_boosts_core::errors::invalid_fee_bps!(),
+    );
+
+    let equity_keep = nav_before.mul_div_ceil(shares_before - shares_to_redeem, shares_before);
+    let claimable = nav_after_sell.min(nav_before);
+    assert!(
+        claimable > equity_keep,
+        blast_boosts_core::errors::nonpositive_gross!(),
+    );
+
+    let gross = claimable - equity_keep;
+    let fee = fee_up(gross, redeem_fee_bps);
+    let net = gross - fee;
+    assert!(net > 0, blast_boosts_core::errors::zero_net_payout!());
+
+    (gross, fee, net)
+}
 
 /// Returns accounting leverage in leverage basis points, rounding up.
 ///

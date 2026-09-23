@@ -3,12 +3,12 @@
 
 // `blast_fun::errors` intentionally centralizes package-wide abort codes through zero-cost
 // macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
-// locations while retaining one append-only registry in `blast_fun::errors`.
+// locations while retaining one package registry in `blast_fun::errors`.
 #[allow(lint(abort_without_constant))]
 /// Validated basis-points values and explicit rounded application.
 module blast_fun::bps;
 
-// === Public Structs ===
+// === Public Types ===
 
 // The type and every operation are public so dependent packages share one rate unit. The tuple
 // field stays private and `new` validates the inclusive range, so no caller can hold an
@@ -33,14 +33,6 @@ public fun value(self: Bps): u64 {
     let Bps(value) = self;
 
     value
-}
-
-/// Applies the rate to atomic units, rounding any remainder down.
-///
-/// The standard method widens the `u64` product to `u128`. Because the rate is
-/// at most 10,000, the result is representable and no larger than `amount`.
-public fun apply_down(self: Bps, amount: u64): u64 {
-    amount.mul_div(self.value(), constants::basis_points_denominator!())
 }
 
 /// Applies the rate to atomic units, rounding any remainder up.

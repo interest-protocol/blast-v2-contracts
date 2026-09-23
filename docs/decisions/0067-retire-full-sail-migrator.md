@@ -1,6 +1,11 @@
 # 0067: Retire the Full Sail migrator before release
 
-- Status: **accepted**
+> ADR 0088 further narrows the replacement lineage to Cetus and Bluefin.
+> This ADR's Full Sail removal remains authoritative; its five-venue counts and
+> remaining-route inventory are historical and no longer define a release
+> surface.
+
+- Status: **accepted; remaining-venue release surface amended by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)**
 - Date: 2026-09-02
 - Amends: [0054](0054-v3-dex-migrators-and-locked-lp-fees.md),
   [0057](0057-admin-pinned-venue-tiers.md),
@@ -61,8 +66,9 @@ would duplicate policy and add state only for a pre-release adapter removal.
 
 ## Consequences
 
-- The aggregate package supports five venues, with 13 migration routes and
-  eight fee-accrual or collection routes.
+- Before ADR 0088, the aggregate package supported five venues, with 13
+  migration routes and eight fee-accrual or collection routes; those counts do
+  not describe the replacement lineage.
 - Full Sail package lineage, ABI fingerprints, configuration objects, and
   IntegerMate are no longer release dependencies.
 - Existing historical documents can still mention Full Sail, but current

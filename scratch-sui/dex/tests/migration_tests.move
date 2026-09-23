@@ -4,31 +4,12 @@
 #[test_only]
 module blast_fun_dex::migration_tests;
 
-use blast_admin::acl::{Authority, AdminCap};
-use blast_fun::{
-    bps,
-    creator_authority::{Self, CurveFeeCap, LpFeeCap},
-    launch::{Self, Launch},
-    launch_config,
-    launch_ticket,
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
-    lp_fee_policy::{Self, LpFeePolicy},
-    package_version::{Self, PackageVersion},
-    runtime_config::{Self, RuntimeConfig}
-};
-use blast_fun_dex::{
-    domain_fixture,
-    math,
-    migration::{Self, LockedLpVault, Witness},
-    pool::{Self, Factory, Pool, Position}
-};
-use std::{bcs, unit_test::{assert_eq, destroy}};
-use sui::{clock::{Self, Clock}, coin, coin_registry::Currency, test_scenario::{Self, Scenario}};
-
 // === Test-Only Types ===
 
 public struct MIGRATION_TESTS() has drop;
+
 public struct QUOTE() has drop;
+
 public struct OtherWitness() has drop;
 
 public struct MigrationFixture {
@@ -404,7 +385,6 @@ fun creator_constructor_checks_generation_before_live_launch_and_burn_policy() {
     f.end();
 }
 
-
 #[test]
 fun admin_issues_lp_fee_caps_and_each_reissue_retires_the_previous_cap() {
     let mut f = start(true);
@@ -498,7 +478,6 @@ fun creator_funded_pool_rejects_a_retired_creator_cap() {
     f.end();
 }
 
-
 #[test]
 fun locking_destroys_the_lp_fee_cap_and_binds_native_fees_forever() {
     let mut f = start(true);
@@ -566,7 +545,7 @@ fun wrong_custodian_is_rejected_before_the_empty_native_ledger_check() {
     f.end();
 }
 
-// === Private Test Helpers ===
+// === Test Helpers ===
 
 fun return_pool(pool: Pool<MIGRATION_TESTS, QUOTE>) {
     test_scenario::return_shared(pool);
@@ -726,3 +705,30 @@ fun end(f: MigrationFixture) {
     clock.destroy_for_testing();
     scenario.end();
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Authority, AdminCap};
+
+use blast_fun::{
+    bps,
+    creator_authority::{Self, CurveFeeCap, LpFeeCap},
+    launch::{Self, Launch},
+    launch_config,
+    launch_ticket,
+    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    lp_fee_policy::{Self, LpFeePolicy},
+    package_version::{Self, PackageVersion},
+    runtime_config::{Self, RuntimeConfig}
+};
+
+use blast_fun_dex::{
+    domain_fixture,
+    math,
+    migration::{Self, LockedLpVault, Witness},
+    pool::{Self, Factory, Pool, Position}
+};
+
+use std::{bcs, unit_test::{assert_eq, destroy}};
+
+use sui::{clock::{Self, Clock}, coin, coin_registry::Currency, test_scenario::{Self, Scenario}};

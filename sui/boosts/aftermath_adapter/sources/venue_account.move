@@ -88,27 +88,9 @@ public(package) fun assert_object_graph(
     );
 }
 
-/// Rejects a market or base oracle that is not the bound one before the venue
-/// funding update mutates it; the later capture re-authenticates everything.
-fun assert_funding_update_inputs(
-    self: &Binding,
-    clearing_house_id: ID,
-    base_oracle_id: ID,
-) {
-    assert!(
-        self.clearing_house_id == clearing_house_id,
-        blast_boosts_aftermath::errors::clearing_house_mismatch!(),
-    );
-    assert!(
-        self.base_oracle_id == base_oracle_id,
-        blast_boosts_aftermath::errors::base_oracle_mismatch!(),
-    );
-}
-
 public(package) fun account_number(self: &Binding): u64 { self.account_number }
 
 // --- Account ---
-
 
 /// Seals the bound account's identity, the checkpoint activation accepted, and
 /// the admin cap. The cap must name that account; both are immutable from here
@@ -281,6 +263,23 @@ public(package) fun update_funding_when_due<Collateral>(
 }
 
 // === Private Functions ===
+
+/// Rejects a market or base oracle that is not the bound one before the venue
+/// funding update mutates it; the later capture re-authenticates everything.
+fun assert_funding_update_inputs(
+    self: &Binding,
+    clearing_house_id: ID,
+    base_oracle_id: ID,
+) {
+    assert!(
+        self.clearing_house_id == clearing_house_id,
+        blast_boosts_aftermath::errors::clearing_house_mismatch!(),
+    );
+    assert!(
+        self.base_oracle_id == base_oracle_id,
+        blast_boosts_aftermath::errors::base_oracle_mismatch!(),
+    );
+}
 
 /// The account object, its venue number, and its collateral type are the bound ones.
 fun assert_account<Collateral>(self: &Binding, account: &Account<Collateral>) {

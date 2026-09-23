@@ -60,11 +60,11 @@ id or Blast package id. See [ADR 0017](0017-coin-type-domain-for-x-creator-claim
 
 ### Errors and events are diagnostic-only modules
 
-`blast_fun::errors` owns one append-only, package-wide numeric registry. It
-exposes `u64` error-code macros with package visibility, matching the current Su
-package and the historical Memez Fun pattern. The macros inline the stable
-number into the calling module. Named copies of those codes exist only as
-`#[test_only]` constants for source tooling and the test registry.
+`blast_fun::errors` owns one package-wide numeric registry. The contracts are
+undeployed greenfield work: remove obsolete errors and renumber the remaining
+codes sequentially from zero. It exposes package-visible `u64` macros that
+inline each number into the calling module. Named copies of those codes exist
+only as `#[test_only]` constants for source tooling and the test registry.
 
 The error module never asserts or aborts. The module that owns an invariant
 performs `assert!(condition, errors::name!())` at the check site, before mutation.
@@ -75,7 +75,7 @@ state or capability, but not in the diagnostic module.
 
 The pinned linter sees the literal after macro expansion and reports
 `abort_without_constant`. Each calling module therefore suppresses only that
-named lint with an adjacent rationale. The append-only `errors.move` registry
+named lint with an adjacent rationale. The `errors.move` registry
 owns no storage or authority.
 
 `blast_fun::events_wrapper` owns the public generic `Event<T>` envelope and the

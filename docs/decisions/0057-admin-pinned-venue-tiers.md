@@ -1,9 +1,19 @@
 # 0057 — Admin-pinned venue tiers for permissionless migration
 
-- Status: **accepted**
+- Status: **accepted; amended by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)**
 - Date: 2026-08-29
 - Amends: [0054](0054-v3-dex-migrators-and-locked-lp-fees.md)
-- Amended by: [0067](0067-retire-full-sail-migrator.md)
+- Amended by: [0067](0067-retire-full-sail-migrator.md) and
+  [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
+
+> ADR 0088 keeps the administrator-pinned `venue_config` tiers but changes three
+> things. The migrators package stays upgradeable and its `UpgradeCap` is never
+> destroyed, so the statements below about tiers freezing or staying correctable
+> after `UpgradeCap` destruction and about permanently locked positions no longer
+> apply. Cetus reserves the pinned tier when a ticket is bound and migrates at
+> that reserved tier, so a later pin affects only later Cetus bindings; Bluefin
+> still reads its tier at migration. No adapter adopts an existing pool, so the
+> adopted-pool rules below are historical.
 
 ## Context
 

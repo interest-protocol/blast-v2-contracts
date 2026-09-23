@@ -1,6 +1,6 @@
 # 0059 — Production launchpad ABI and first SDK parity boundary
 
-- Status: **accepted**
+- Status: **accepted; amended by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)**
 - Date: 2026-08-30
 - Amends: [0011](0011-event-schema-and-replay.md),
   [0054](0054-v3-dex-migrators-and-locked-lp-fees.md), and
@@ -14,6 +14,13 @@
 
 > ADR 0079 regenerates the pre-publication launchpad object and event ABI with
 > compact, replay-complete layouts.
+
+> ADR 0088 replaces the frozen package counts, adapter set, migration and
+> collection calls, returned objects, event schemas, and SDK parity surface.
+> Only the current-package/original-type identity rules, shared-object input
+> metadata, native event position metadata, and requirement for one generated
+> ABI/parity gate remain authoritative. The replacement gate covers only the
+> launchpad, Meme template, migrators with Cetus and Bluefin, and distributor.
 
 > ADR 0062 changes the pre-publication `LaunchConfig.quotes` field from
 > `VecMap` to `Table`. The ABI artifact and SDK parity baseline must be

@@ -8,7 +8,7 @@
 /// authority, and this module owns only package identity.
 module blast_fun_dex::package_marker;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// One-time witness used only to claim this package's Publisher.
 public struct PACKAGE_MARKER has drop {}

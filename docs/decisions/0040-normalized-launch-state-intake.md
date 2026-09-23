@@ -2,10 +2,17 @@
 
 - Status: accepted
 - Date: 2026-08-28
-- Amended by: [0041](0041-launch-config-owned-trade-fees.md), [0042](0042-key-only-shared-launch.md), [0043](0043-versioned-launch-trading-and-atomic-migration.md), [0047](0047-coin-registry-authoritative-supply-mode.md), and [0079](0079-compact-launch-state-and-events.md)
+- Amended by: [0041](0041-launch-config-owned-trade-fees.md), [0042](0042-key-only-shared-launch.md), [0043](0043-versioned-launch-trading-and-atomic-migration.md), [0047](0047-coin-registry-authoritative-supply-mode.md), [0079](0079-compact-launch-state-and-events.md), and [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 
 > ADR 0079 removes constructor-only graduation rates from stored launch state
 > and removes ticket-derived and initial-zero fields from `LaunchCreated`.
+>
+> ADR 0088 replaces the fixed constructor partition with one immutable canonical
+> allocation plan. Its non-liquidity allocations are pushed to their immutable
+> destinations when migration completes, and `LaunchCreated` carries the
+> complete plan and Meme partition; the fixed graduation fields in the
+> historical body below are no longer active.
+
 - Implements: [0016](0016-unified-creator-cap-claim-and-suins-periphery.md),
   [0019](0019-consuming-creator-authority-and-cap-return.md),
   [0022](0022-dual-asset-fee-ledger-and-claims.md),
@@ -100,8 +107,8 @@ the launch still contains both linear resources, removes the
 ```
 
 The metadata capability never enters `creator_authority`. A missing authority
-or metadata capability raises the new append-only
-`creator_authority_unavailable` error, code 66, without adding a claimed flag.
+or metadata capability raises `creator_authority_unavailable` without adding
+a claimed flag.
 
 ### Deferred boundaries
 

@@ -1,6 +1,6 @@
 # 0033: Meme liquidity provision for destination pools
 
-- Status: accepted
+- Status: accepted historically; fixed graduation partition superseded by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 - Date: 2026-08-25
 - Amends: [0025](0025-quote-whitelist-and-migration-targets.md),
   [0027](0027-graduation-economics-and-migration-witnesses.md)
@@ -18,6 +18,13 @@
 > Amended by [ADR 0062](0062-table-backed-quote-registry.md): the quote map in
 > the illustrative layout below is now a `Table`; graduation fields and
 > behavior are unchanged.
+>
+> Superseded by [ADR 0088](0088-reusable-launch-accounting-and-atomic-migration.md):
+> the active design has no fixed protocol graduation-fee or Meme-provision
+> fields. Canonical per-launch Meme and Quote allocation tables, exact
+> protected-first apportionment, and payouts pushed to immutable destinations at
+> migration replace the three-rate partition described below; the remaining body
+> is historical.
 
 The protocol Meme graduation fee and protocol Quote migration fee remain the two
 protocol-revenue lines fixed by ADR 0027. Blast grants no creator or

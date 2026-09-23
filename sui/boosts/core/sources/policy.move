@@ -285,14 +285,6 @@ public(package) fun is_leverage_below_band(self: &RebalancePolicy, notional: u64
     scale_by_denominator(notional) < (nav as u128) * (self.rebalance_below_bps as u128)
 }
 
-/// Returns whether leverage is strictly above the public rebalance band.
-///
-/// Same units and exact comparison as `is_leverage_below_band`:
-/// `notional * 10_000 > nav * rebalance_above_bps`. Equality is healthy.
-fun is_leverage_above_band(self: &RebalancePolicy, notional: u64, nav: u64): bool {
-    scale_by_denominator(notional) > (nav as u128) * (self.rebalance_above_bps as u128)
-}
-
 /// Returns whether leverage lies inside the public rebalance band, edges included.
 ///
 /// Same units and exact comparison as `is_leverage_below_band`.
@@ -318,20 +310,6 @@ public(package) fun is_leverage_above_max(self: &RebalancePolicy, notional: u64,
     scale_by_denominator(notional) > (nav as u128) * (self.max_leverage_bps as u128)
 }
 
-/// Returns whether an executed price stays within max slippage of its reference price.
-///
-/// Both values share one unit and scale; the gate is
-/// `|executed_price - reference_price| * 10_000 <= max_slippage_bps * reference_price`,
-/// cross-multiplied through `u128`. A zero reference price returns false. Risk
-/// increase and every ordinary rebalance use this bound.
-fun is_execution_within_max_slippage(
-    self: &RebalancePolicy,
-    reference_price: u64,
-    executed_price: u64,
-): bool {
-    is_within_relative_tolerance(self.max_slippage_bps, reference_price, executed_price)
-}
-
 /// Rejects an execution outside max slippage; a zero reference price aborts first.
 public(package) fun assert_execution_within_max_slippage(
     self: &RebalancePolicy,
@@ -346,23 +324,6 @@ public(package) fun assert_execution_within_max_slippage(
         self.is_execution_within_max_slippage(reference_price, executed_price),
         blast_boosts_core::errors::execution_outside_max_slippage!(),
     );
-}
-
-/// Returns whether an executed value stays within emergency max slippage.
-///
-/// Same gate as the strict form with the wider emergency bound. Reduce-only
-/// execution strictly above max leverage may use it. This finite wider bound
-/// does not guarantee executable liquidity or successful deleveraging.
-fun is_execution_within_emergency_max_slippage(
-    self: &RebalancePolicy,
-    reference_price: u64,
-    executed_price: u64,
-): bool {
-    is_within_relative_tolerance(
-        self.emergency_max_slippage_bps,
-        reference_price,
-        executed_price,
-    )
 }
 
 /// Rejects an execution outside emergency max slippage; a zero reference price aborts first.
@@ -394,26 +355,6 @@ public(package) fun assert_nav_cap_valid(self: &RebalancePolicy, nav_cap: u64) {
     );
 }
 
-// --- Price Policy ---
-
-/// Returns whether a source update lies inside the two-sided freshness window.
-///
-/// The admitted window is the closed interval
-/// `[now_ms - max_price_age_ms, now_ms + max_price_ahead_ms]`.
-/// Unlike `assert_price_fresh`, this predicate never aborts: health may report
-/// a stale or future-stamped source without changing lifecycle.
-fun is_price_fresh(
-    self: &PricePolicy,
-    publish_time_ms: u64,
-    now_ms: u64,
-): bool {
-    if (publish_time_ms > now_ms) {
-        publish_time_ms - now_ms <= self.max_price_ahead_ms
-    } else {
-        now_ms - publish_time_ms <= self.max_price_age_ms
-    }
-}
-
 /// Rejects a source update outside the two-sided freshness window.
 ///
 /// `publish_time_ms` is the source's own update time and `now_ms` is
@@ -439,22 +380,6 @@ public(package) fun assert_price_fresh(
     } else {
         assert!(fresh, blast_boosts_core::errors::stale_price!());
     };
-}
-
-/// Returns whether a positive share-pricing price has an admitted confidence.
-///
-/// A zero price returns false instead of aborting so the future objective
-/// health check can report the failure without changing lifecycle.
-/// `assert_confidence_within_bound` remains the priced-operation guard that
-/// reports a zero price separately from an excessive confidence interval.
-fun is_confidence_within_bound(
-    self: &PricePolicy,
-    confidence: u64,
-    price: u64,
-): bool {
-    price > 0
-        && (confidence as u128) * (constants::basis_points_denominator!() as u128)
-            <= (self.max_confidence_bps as u128) * (price as u128)
 }
 
 /// Rejects a share-pricing price whose confidence interval is too wide.
@@ -483,23 +408,6 @@ public(package) fun assert_confidence_within_bound(
         self.is_confidence_within_bound(confidence, price),
         blast_boosts_core::errors::confidence_exceeds_bound!(),
     );
-}
-
-/// Returns whether a venue mark is inside the admitted base-oracle band.
-///
-/// A zero oracle price returns false instead of aborting so the future objective
-/// health check can report invalid data. The mark may be zero
-/// at the type level, but every valid policy rejects it against a positive
-/// oracle price because the divergence bound stays below 10,000 basis points.
-fun is_mark_within_oracle_divergence(
-    self: &PricePolicy,
-    mark_price: u64,
-    oracle_price: u64,
-): bool {
-    oracle_price > 0
-        && (mark_price.diff(oracle_price) as u128)
-            * (constants::basis_points_denominator!() as u128)
-            <= (self.max_mark_divergence_bps as u128) * (oracle_price as u128)
 }
 
 /// Rejects a venue mark that diverges too far from the base oracle.
@@ -584,6 +492,98 @@ public(package) fun assert_fee_limits(
 }
 
 // === Private Functions ===
+
+/// Returns whether leverage is strictly above the public rebalance band.
+///
+/// Same units and exact comparison as `is_leverage_below_band`:
+/// `notional * 10_000 > nav * rebalance_above_bps`. Equality is healthy.
+fun is_leverage_above_band(self: &RebalancePolicy, notional: u64, nav: u64): bool {
+    scale_by_denominator(notional) > (nav as u128) * (self.rebalance_above_bps as u128)
+}
+
+/// Returns whether an executed price stays within max slippage of its reference price.
+///
+/// Both values share one unit and scale; the gate is
+/// `|executed_price - reference_price| * 10_000 <= max_slippage_bps * reference_price`,
+/// cross-multiplied through `u128`. A zero reference price returns false. Risk
+/// increase and every ordinary rebalance use this bound.
+fun is_execution_within_max_slippage(
+    self: &RebalancePolicy,
+    reference_price: u64,
+    executed_price: u64,
+): bool {
+    is_within_relative_tolerance(self.max_slippage_bps, reference_price, executed_price)
+}
+
+/// Returns whether an executed value stays within emergency max slippage.
+///
+/// Same gate as the strict form with the wider emergency bound. Reduce-only
+/// execution strictly above max leverage may use it. This finite wider bound
+/// does not guarantee executable liquidity or successful deleveraging.
+fun is_execution_within_emergency_max_slippage(
+    self: &RebalancePolicy,
+    reference_price: u64,
+    executed_price: u64,
+): bool {
+    is_within_relative_tolerance(
+        self.emergency_max_slippage_bps,
+        reference_price,
+        executed_price,
+    )
+}
+
+// --- Price Policy ---
+
+/// Returns whether a source update lies inside the two-sided freshness window.
+///
+/// The admitted window is the closed interval
+/// `[now_ms - max_price_age_ms, now_ms + max_price_ahead_ms]`.
+/// Unlike `assert_price_fresh`, this predicate never aborts: health may report
+/// a stale or future-stamped source without changing lifecycle.
+fun is_price_fresh(
+    self: &PricePolicy,
+    publish_time_ms: u64,
+    now_ms: u64,
+): bool {
+    if (publish_time_ms > now_ms) {
+        publish_time_ms - now_ms <= self.max_price_ahead_ms
+    } else {
+        now_ms - publish_time_ms <= self.max_price_age_ms
+    }
+}
+
+/// Returns whether a positive share-pricing price has an admitted confidence.
+///
+/// A zero price returns false instead of aborting so the future objective
+/// health check can report the failure without changing lifecycle.
+/// `assert_confidence_within_bound` remains the priced-operation guard that
+/// reports a zero price separately from an excessive confidence interval.
+fun is_confidence_within_bound(
+    self: &PricePolicy,
+    confidence: u64,
+    price: u64,
+): bool {
+    price > 0
+        && (confidence as u128) * (constants::basis_points_denominator!() as u128)
+            <= (self.max_confidence_bps as u128) * (price as u128)
+}
+
+/// Returns whether a venue mark is inside the admitted base-oracle band.
+///
+/// A zero oracle price returns false instead of aborting so the future objective
+/// health check can report invalid data. The mark may be zero
+/// at the type level, but every valid policy rejects it against a positive
+/// oracle price because the divergence bound stays below 10,000 basis points.
+fun is_mark_within_oracle_divergence(
+    self: &PricePolicy,
+    mark_price: u64,
+    oracle_price: u64,
+): bool {
+    oracle_price > 0
+        && (mark_price.diff(oracle_price) as u128)
+            * (constants::basis_points_denominator!() as u128)
+            <= (self.max_mark_divergence_bps as u128) * (oracle_price as u128)
+}
 
 /// Widens a notional and multiplies it by the basis-point denominator.
 ///

@@ -1,4 +1,4 @@
-/// Minimal Cetus mainnet revision-14 interface. Link stubs must not execute.
+/// Minimal Cetus mainnet revision-15 interface. Link stubs must not execute.
 module cetus_clmm::position;
 
 public struct Position has key, store { id: UID }

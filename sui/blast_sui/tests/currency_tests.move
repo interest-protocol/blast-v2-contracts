@@ -8,6 +8,8 @@ module blast_sui::currency_tests;
 
 const ADMIN: address = @0xAD;
 
+// === Test-Only Types ===
+
 /// Both protocol currencies freshly created through their production constructors.
 public struct CurrencyFixture {
     scenario: Scenario,
@@ -57,7 +59,7 @@ fun package_initialization_delivers_both_treasury_and_metadata_caps_to_the_sende
     fixture.end();
 }
 
-// === Fixture Macros ===
+// === Test Helpers ===
 
 macro fun currency_next_tx(
     $fixture: &mut CurrencyFixture,
@@ -75,8 +77,6 @@ macro fun currency_ctx($fixture: &mut CurrencyFixture): &mut TxContext {
 
     fixture.scenario.ctx()
 }
-
-// === Fixture Setup ===
 
 fun start(): CurrencyFixture {
     let mut scenario = test_scenario::begin(ADMIN);

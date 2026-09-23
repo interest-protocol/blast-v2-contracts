@@ -15,7 +15,7 @@ module blast_fun_migrators::package_admin;
 const EInvalidPackagePublisher: vector<u8> =
     b"Publisher must be claimed by the canonical migrators package module.";
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Shared custody for this package's framework Publisher and UpgradeCap.
 public struct PackageAdmin has key {
@@ -36,7 +36,10 @@ public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxConte
     transfer::share_object(PackageAdmin { id, custody });
 }
 
-/// Authorizes the exact package digest under the sealed cap's current policy.
+/// Authorizes the exact package digest under the sealed cap's compatible policy.
+///
+/// No path narrows that policy: every upgrade commits through `commit_upgrade_and_advance`,
+/// whose new bytecode must compile the next generation constants.
 public fun authorize_upgrade(
     self: &mut PackageAdmin,
     package_version: &PackageVersion,
@@ -51,6 +54,10 @@ public fun authorize_upgrade(
 }
 
 /// Commits the native receipt and advances one operational generation at once.
+///
+/// Every commit advances, so each upgrade must bump both constants in `package_version`: bytecode
+/// that still compiles the old generation fails every generation check, `authorize_upgrade`
+/// included, and would freeze the package.
 public fun commit_upgrade_and_advance(
     self: &mut PackageAdmin,
     package_version: &mut PackageVersion,
@@ -63,50 +70,6 @@ public fun commit_upgrade_and_advance(
 
     self.custody.commit_upgrade(custodian_id, receipt);
     package_version.advance();
-}
-
-/// Irreversibly narrows the sealed UpgradeCap to additive upgrades.
-public fun restrict_to_additive(
-    self: &mut PackageAdmin,
-    package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
-) {
-    package_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::package_admin_role());
-    let custodian_id = self.id.to_inner();
-
-    self.custody.restrict_to_additive(custodian_id);
-}
-
-/// Irreversibly narrows the sealed UpgradeCap to dependency-only upgrades.
-public fun restrict_to_dependency_only(
-    self: &mut PackageAdmin,
-    package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
-) {
-    package_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::package_admin_role());
-    let custodian_id = self.id.to_inner();
-
-    self.custody.restrict_to_dependency_only(custodian_id);
-}
-
-/// Irreversibly destroys native upgrade authority for this package.
-public fun make_immutable(
-    self: &mut PackageAdmin,
-    package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
-) {
-    package_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::package_admin_role());
-    let custodian_id = self.id.to_inner();
-
-    self.custody.make_immutable(custodian_id);
-}
-
-/// Reports whether native upgrade authority remains sealed in custody.
-public fun has_upgrade_cap(self: &PackageAdmin): bool {
-    self.custody.has_upgrade_cap()
 }
 
 // === Test-Only Functions ===
@@ -129,11 +92,6 @@ public fun new_for_testing(ctx: &mut TxContext): PackageAdmin {
 #[test_only]
 public fun id_for_testing(self: &PackageAdmin): ID {
     self.id.to_inner()
-}
-
-#[test_only]
-public fun policy_for_testing(self: &PackageAdmin): u8 {
-    self.custody.policy_for_testing()
 }
 
 // === Imports ===

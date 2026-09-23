@@ -9,8 +9,18 @@
 > Amended by [ADR 0081](0081-separate-lp-fee-share-policy.md), which splits LP
 > fees on a separate `LpFeePolicy` with per-project pins instead of the trade
 > share in `RuntimeConfig`.
+> Amended by [ADR 0088](0088-reusable-launch-accounting-and-atomic-migration.md),
+> which plans only Cetus and Bluefin adapters for the replacement lineage,
+> replaces the old LP-fee ledger with the launch's fee router, and requires
+> sealed `LpVault` custody. MMT, Turbos, and retained historical adapters stay
+> unadmitted as migration witnesses until they have atomic routes. The
+> migrators package keeps its `UpgradeCap`, so the `UpgradeCap` destruction in
+> the verification list below no longer applies. Cetus creates the pool with
+> the creation cap reserved at binding and never adopts an existing pool, and
+> Bluefin's pool-creation fee is paid in SUI at the exact configured amount;
+> the venue-route table below is historical for both.
 
-- Status: accepted
+- Status: accepted; new-lineage admission and fee custody amended by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 - Date: 2026-08-29
 - Amends: [0010](0010-migration-and-venue-adapters.md),
   [0011](0011-event-schema-and-replay.md),

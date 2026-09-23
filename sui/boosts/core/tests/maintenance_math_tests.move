@@ -976,61 +976,6 @@ fun a_sequence_after_reserve_exhaustion_charges_only_uncovered_funding_to_nav() 
     assert_eq!(venue_equity_3, nav_3 + reserve_3);
 }
 
-/// Samples the interior domain with Move random-test seeds.
-#[random_test]
-fun random_accounting_sequences_conserve(seed: u32) {
-    let seed = seed as u64;
-    let nav_before = seed * 97 + 10_000;
-    let reserve_before = seed % 10_001;
-    let venue_equity_before = nav_before + reserve_before;
-    let deposit = seed % 1_000_001 + 10_000;
-    let fee_bps = seed % 1_000;
-    let venue_equity_after = venue_equity_before + deposit;
-    let (
-        reserve_after,
-        quoted_nav_before,
-        quoted_nav_after,
-        fee,
-        contribution,
-        shares_out,
-        shares_after,
-    ) =
-        canonical_mint(
-            deposit,
-            venue_equity_before,
-            venue_equity_after,
-            reserve_before,
-            nav_before,
-            fee_bps,
-            0,
-        );
-    let nav_after = accounting_math::shareholder_nav(
-        venue_equity_after,
-        reserve_after,
-    );
-
-    assert_eq!(contribution, deposit - fee);
-    assert_eq!(quoted_nav_before, nav_before);
-    assert_eq!(quoted_nav_after, nav_after);
-    assert_eq!(shares_out, contribution);
-    assert_eq!(venue_equity_after, nav_after + reserve_after);
-
-    let funding_cost = seed * 53 % (venue_equity_after + 1);
-    let (reserve_funded, absorbed, uncovered) =
-        accounting_math::absorb_funding_cost(reserve_after, funding_cost);
-    let venue_equity_funded = venue_equity_after - funding_cost;
-    let nav_funded = accounting_math::shareholder_nav(
-        venue_equity_funded,
-        reserve_funded,
-    );
-
-    assert_eq!(reserve_funded + absorbed, reserve_after);
-    assert_eq!(absorbed + uncovered, funding_cost);
-    assert_eq!(nav_funded + uncovered, nav_after);
-    assert_eq!(venue_equity_funded, nav_funded + reserve_funded);
-    assert_eq!(shares_after, nav_after);
-}
-
 /// The favorable direction: equity that appears between the two readings stays
 /// with the remaining holders; the redeemer is paid exactly the proportional
 /// claim and the quote reports the NAV that actually remains (ADR 0084 D3).
@@ -1365,6 +1310,61 @@ fun a_zero_amount_is_rejected_before_an_invalid_admin_share() {
 }
 
 // === Test Helpers ===
+
+/// Samples the interior domain with Move random-test seeds.
+#[random_test]
+fun random_accounting_sequences_conserve(seed: u32) {
+    let seed = seed as u64;
+    let nav_before = seed * 97 + 10_000;
+    let reserve_before = seed % 10_001;
+    let venue_equity_before = nav_before + reserve_before;
+    let deposit = seed % 1_000_001 + 10_000;
+    let fee_bps = seed % 1_000;
+    let venue_equity_after = venue_equity_before + deposit;
+    let (
+        reserve_after,
+        quoted_nav_before,
+        quoted_nav_after,
+        fee,
+        contribution,
+        shares_out,
+        shares_after,
+    ) =
+        canonical_mint(
+            deposit,
+            venue_equity_before,
+            venue_equity_after,
+            reserve_before,
+            nav_before,
+            fee_bps,
+            0,
+        );
+    let nav_after = accounting_math::shareholder_nav(
+        venue_equity_after,
+        reserve_after,
+    );
+
+    assert_eq!(contribution, deposit - fee);
+    assert_eq!(quoted_nav_before, nav_before);
+    assert_eq!(quoted_nav_after, nav_after);
+    assert_eq!(shares_out, contribution);
+    assert_eq!(venue_equity_after, nav_after + reserve_after);
+
+    let funding_cost = seed * 53 % (venue_equity_after + 1);
+    let (reserve_funded, absorbed, uncovered) =
+        accounting_math::absorb_funding_cost(reserve_after, funding_cost);
+    let venue_equity_funded = venue_equity_after - funding_cost;
+    let nav_funded = accounting_math::shareholder_nav(
+        venue_equity_funded,
+        reserve_funded,
+    );
+
+    assert_eq!(reserve_funded + absorbed, reserve_after);
+    assert_eq!(absorbed + uncovered, funding_cost);
+    assert_eq!(nav_funded + uncovered, nav_after);
+    assert_eq!(venue_equity_funded, nav_funded + reserve_funded);
+    assert_eq!(shares_after, nav_after);
+}
 
 /// Independent ceiling-fee formula used only by this test module.
 fun reference_fee_up(amount: u64, fee_bps: u64): u64 {

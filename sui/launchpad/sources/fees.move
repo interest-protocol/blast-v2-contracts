@@ -3,12 +3,12 @@
 
 // `blast_fun::errors` intentionally centralizes package-wide abort codes through zero-cost
 // macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
-// locations while retaining one append-only registry in `blast_fun::errors`.
+// locations while retaining one package registry in `blast_fun::errors`.
 #[allow(lint(abort_without_constant))]
 /// Dual-asset protocol and creator fee ledger embedded by launches and LP vaults.
 module blast_fun::fees;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Creator and protocol dual-asset fee obligations embedded in one owner object.
 public struct FeeLedger<phantom Meme, phantom Quote> has store {
@@ -80,8 +80,7 @@ public fun has_protocol_fees<Meme, Quote>(self: &FeeLedger<Meme, Quote>): bool {
 
 /// Claims both creator balances as composable coins.
 ///
-/// The object embedding the ledger authorizes the claim with the creator capability it
-/// currently honors: `Launch` checks `CurveFeeCap`, post-migration vaults check `LpFeeCap`.
+/// The embedding `Launch` authorizes the claim with its live `CurveFeeCap` or bound custodian.
 public fun claim_creator_fees<Meme, Quote>(
     self: &mut FeeLedger<Meme, Quote>,
     ctx: &mut TxContext,
@@ -112,18 +111,6 @@ public fun claim_protocol_fees<Meme, Quote>(
         self.protocol_meme.withdraw_all().into_coin(ctx),
         self.protocol_quote.withdraw_all().into_coin(ctx),
     )
-}
-
-// === Package Functions ===
-
-/// Accrues protocol-only graduation revenue at terminal migration.
-public(package) fun accrue_protocol_fees<Meme, Quote>(
-    self: &mut FeeLedger<Meme, Quote>,
-    meme_fee: Balance<Meme>,
-    quote_fee: Balance<Quote>,
-) {
-    self.protocol_meme.join(meme_fee);
-    self.protocol_quote.join(quote_fee);
 }
 
 // === Test-Only Functions ===

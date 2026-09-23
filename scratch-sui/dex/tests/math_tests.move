@@ -4,9 +4,6 @@
 #[test_only]
 module blast_fun_dex::math_tests;
 
-use blast_fun_dex::math;
-use std::unit_test::assert_eq;
-
 // === Tests ===
 
 #[test]
@@ -165,3 +162,9 @@ fun checkpoint_cadence_has_subatom_rounding_difference() {
     };
     assert!(frequent.diff(math::decay(start, 1800)) < 1800);
 }
+
+// === Imports ===
+
+use blast_fun_dex::math;
+
+use std::unit_test::assert_eq;

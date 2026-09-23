@@ -1,9 +1,11 @@
 # Blast migration adapters
 
-This aggregate package redeems the launchpad's typed migration handoff into
-supported venue positions and custodies the resulting LP principal and fees.
-Venue code depends inward on the launchpad; the launchpad never imports this
-package.
+This aggregate package completes the launchpad's linear migration handoff into
+supported venue positions, keeps the LP principal and the protocol migration
+residuals in each launch's sealed `LpVault`, and pays collected LP fees through
+the launch's `FeeRouter` in the collecting transaction, so no LP fee accrues in
+the vault. Venue code depends inward on the launchpad; the launchpad never
+imports this package.
 
 Use task-specific sources instead of a duplicated route, event, dependency, or
 error inventory:

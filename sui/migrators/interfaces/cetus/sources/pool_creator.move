@@ -1,13 +1,14 @@
-/// Minimal Cetus mainnet revision-14 interface. Link stubs must not execute.
+/// Minimal Cetus mainnet revision-15 interface. Link stubs must not execute.
 module cetus_clmm::pool_creator;
 
-use cetus_clmm::{config::GlobalConfig, factory::Pools, position::Position};
+use cetus_clmm::{config::GlobalConfig, factory::{Pools, PoolCreationCap}, position::Position};
 use std::string::String;
 use sui::{clock::Clock, coin::Coin};
 
-public fun create_pool_v3<CoinTypeA, CoinTypeB>(
+public fun create_pool_v3_with_creation_cap<CoinTypeA, CoinTypeB>(
     config: &GlobalConfig,
     pools: &mut Pools,
+    pool_creation_cap: &PoolCreationCap,
     tick_spacing: u32,
     initialize_price: u128,
     url: String,

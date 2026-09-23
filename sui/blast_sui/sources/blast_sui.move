@@ -4,7 +4,7 @@
 /// The unrestricted residual-share LST that receives all vault staking rewards.
 module blast_sui::blast_sui;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// One-time witness and coin type for blastSUI.
 public struct BLAST_SUI() has drop;

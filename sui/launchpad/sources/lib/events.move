@@ -4,7 +4,106 @@
 /// Replay-complete event payloads and the package-only emitters that publish them.
 module blast_fun::events;
 
-// === Public Structs ===
+// === Public Types ===
+
+/// An activation policy source changed; absent old/new pairs represent override creation/removal.
+public struct LpFeePolicyChanged has copy, drop {
+    override_meme: Option<TypeName>,
+    old_meme_bps: Option<u64>,
+    old_quote_bps: Option<u64>,
+    new_meme_bps: Option<u64>,
+    new_quote_bps: Option<u64>,
+}
+
+/// The protocol share of every later collection pays a new address.
+public struct LpFeeDestinationChanged has copy, drop {
+    old_destination: address,
+    new_destination: address,
+}
+
+/// A launch committed its pending router, its sole configuration capability, and initial routes.
+public struct FeeRouterCreated has copy, drop {
+    router_id: ID,
+    launch_id: ID,
+    config_cap_id: ID,
+    routes: blast_fun::allocation::Routes,
+}
+
+/// Successful migration froze a router's policy, settlement binding, and routes.
+public struct RouterActivated has copy, drop {
+    router_id: ID,
+    launch_id: ID,
+    partner: bool,
+    meme_bps: u64,
+    quote_bps: u64,
+    settlement_witness: TypeName,
+    vault_id: ID,
+    pool_id: ID,
+    position_id: ID,
+    generation: u64,
+    routes: blast_fun::allocation::Routes,
+}
+
+/// One nonzero collection: the protocol share and every route paid under `generation`.
+/// Amounts align with the route tables frozen for that generation.
+public struct FeesCollected has copy, drop {
+    router_id: ID,
+    launch_id: ID,
+    generation: u64,
+    gross_meme: u64,
+    gross_quote: u64,
+    protocol_destination: address,
+    protocol_meme: u64,
+    protocol_quote: u64,
+    meme_amounts: vector<u64>,
+    quote_amounts: vector<u64>,
+}
+
+/// An authenticated creator claim released the pending cap for transaction composition.
+/// Subsequent custody follows native effects rather than a declared recipient.
+public struct RouterConfigCapReleased has copy, drop {
+    launch_id: ID,
+    cap_id: ID,
+}
+
+/// Creator-authority takeover natively delivered the still-pending cap to its recipient.
+public struct RouterConfigCapDelivered has copy, drop {
+    launch_id: ID,
+    cap_id: ID,
+    recipient: address,
+}
+
+/// Configuration authority committed complete new routes as the next generation.
+public struct RoutesChanged has copy, drop {
+    router_id: ID,
+    old_generation: u64,
+    new_generation: u64,
+    old_routes: blast_fun::allocation::Routes,
+    new_routes: blast_fun::allocation::Routes,
+}
+
+/// Immutable one-time Blast policy, including the stable identity and destination.
+public struct ProtocolAllocationConfigured has copy, drop {
+    channel_id: u64,
+    destination: address,
+    meme_bps: u64,
+    quote_bps: u64,
+}
+
+/// One non-liquidity allocation paid to its immutable destination when migration completed.
+public struct MigrationAllocationPaid has copy, drop {
+    launch_id: ID,
+    channel_id: u64,
+    destination: address,
+    meme: u64,
+    quote: u64,
+}
+
+/// Emitted after one Meme decimal precision is admitted for launch intake.
+public struct MemeDecimalsAllowed(u8) has copy, drop;
+
+/// Emitted after one Meme decimal precision is disallowed at launch intake.
+public struct MemeDecimalsDisallowed(u8) has copy, drop;
 
 /// Emitted after the trade-fee pair snapshotted by future launches changes.
 public struct LaunchTradeFeesChanged has copy, drop {
@@ -12,34 +111,19 @@ public struct LaunchTradeFeesChanged has copy, drop {
     meme_fee_bps: u64,
 }
 
-/// Emitted after a quote and its initial curve parameters are admitted.
+/// Emitted after a quote is admitted or its virtual reserve for future launches changes.
 public struct QuoteAllowed has copy, drop {
     quote: TypeName,
     virtual_quote: u64,
-    migration_quote_target: u64,
-}
-
-/// Emitted after either curve parameter used by future launches for one Quote changes.
-public struct QuoteParametersChanged has copy, drop {
-    quote: TypeName,
-    virtual_quote: u64,
-    migration_quote_target: u64,
 }
 
 /// Emitted after a quote is disallowed from future launch admission.
 public struct QuoteDisallowed(TypeName) has copy, drop;
 
-/// Emitted after the graduation defaults snapshotted by future launches change.
-public struct GraduationDefaultsChanged has copy, drop {
-    protocol_quote_migration_fee_bps: u64,
-    protocol_meme_graduation_fee_bps: u64,
-    meme_liquidity_provision_bps: u64,
-}
-
-/// Emitted after an external migrator witness type is admitted for future launches.
+/// Emitted after an external migrator witness type is admitted for binding and intake.
 public struct MigrationWitnessAllowed(TypeName) has copy, drop;
 
-/// Emitted after an external migrator witness type is disallowed for future launches.
+/// Emitted after an external migrator witness type is removed from binding and intake.
 public struct MigrationWitnessDisallowed(TypeName) has copy, drop;
 
 /// Emitted after the live bonding-curve trade protocol fee share is changed.
@@ -89,11 +173,12 @@ public struct MemeMetadataUpdated has copy, drop {
     icon_url: String,
 }
 
-/// Emitted after a generated OTW currency and its launch ticket are created.
+/// Emitted after a generated package's one-time witness creates its currency and launch ticket.
 public struct LaunchTicketCreated has copy, drop {
     ticket_id: ID,
     meme: TypeName,
-    initial_supply: u64,
+    decimals: u8,
+    atomic_supply: u64,
     metadata_cap_id: ID,
     creator_address: Option<address>,
     account_commitment: Option<vector<u8>>,
@@ -102,21 +187,55 @@ public struct LaunchTicketCreated has copy, drop {
 }
 
 /// Emitted after one ticket is normalized into launch custody and immutable policy.
+/// `meme_amounts` are the exact atomic Meme partition in the plan's Meme table order.
 public struct LaunchCreated has copy, drop {
     launch_id: ID,
     ticket_id: ID,
+    decimals: u8,
+    atomic_supply: u64,
     quote: TypeName,
     migration_witness: TypeName,
-    meme_reserve: u64,
-    protocol_meme_graduation_fee: u64,
-    meme_liquidity_provision: u64,
     virtual_quote: u64,
-    migration_quote_target: u64,
+    graduation_target: u64,
     quote_fee_bps: u64,
     meme_fee_bps: u64,
-    protocol_quote_migration_fee_bps: u64,
-    protocol_meme_graduation_fee_bps: u64,
-    meme_liquidity_provision_bps: u64,
+    allocation_plan: blast_fun::allocation::AllocationPlan,
+    meme_amounts: vector<u64>,
+}
+
+/// Emitted after launch creation with its immutable public curve-purchase protection.
+/// Limits are exact atomic Meme; a zero window with zero rates is the disabled form.
+public struct ProtectionConfigured has copy, drop {
+    launch_id: ID,
+    window_ms: u64,
+    cumulative_sender_bps: u64,
+    cumulative_atomic_limit: u64,
+    per_transaction_bps: u64,
+    per_transaction_atomic_limit: u64,
+}
+
+/// Emitted after the launch and bound router become public shared objects.
+public struct LaunchShared has copy, drop {
+    launch_id: ID,
+    fee_router_id: ID,
+    public_start_ms: u64,
+    pre_share_buy_completed: bool,
+}
+
+/// Emitted after the launch's single pre-share purchase completes without graduating.
+/// Amounts are atomic units; reserve fields are the post-purchase accounting snapshot.
+public struct PreShareBought has copy, drop {
+    launch_id: ID,
+    quote_in: u64,
+    meme_out_gross: u64,
+    protocol_meme_fee_delta: u64,
+    creator_meme_fee_delta: u64,
+    protocol_quote_fee_delta: u64,
+    creator_quote_fee_delta: u64,
+    post_meme_reserve: u64,
+    post_real_quote_reserve: u64,
+    meme_out_net: u64,
+    quote_refund: u64,
 }
 
 /// Emitted after a completed Quote-for-Meme curve purchase.
@@ -147,16 +266,18 @@ public struct Sold has copy, drop {
     real_quote_reserve: u64,
 }
 
-/// Emitted after terminal assets are atomically handed to a selected migrator.
+/// Emitted after one migration completed: exact reconciliation and disposal. The handoff is
+/// `supplied + residual`; the custody binding is in the same transaction's `RouterActivated`.
 public struct Migrated has copy, drop {
     launch_id: ID,
-    migration_meme: u64,
-    migration_quote: u64,
+    supplied_meme: u64,
+    supplied_quote: u64,
+    residual_meme: u64,
+    residual_quote: u64,
+    liquidity: u128,
     disposed_meme: u64,
     native_supply_burned: bool,
     total_supply_after: u64,
-    protocol_meme_graduation_fee: u64,
-    protocol_quote_migration_fee: u64,
 }
 
 /// Emitted after a creator claims both accrued trade-fee balances.
@@ -175,80 +296,221 @@ public struct ProtocolFeesClaimed has copy, drop {
 
 // === Package Functions ===
 
-/// Emits replacement of the launch trade-fee defaults.
-public(package) fun launch_trade_fees_changed(
-    quote_fee_bps: u64,
-    meme_fee_bps: u64,
+/// Records a default or original-type partner policy mutation with complete old/new pairs.
+public(package) fun lp_fee_policy_changed(
+    override_meme: Option<TypeName>,
+    old_meme_bps: Option<u64>,
+    old_quote_bps: Option<u64>,
+    new_meme_bps: Option<u64>,
+    new_quote_bps: Option<u64>,
 ) {
+    blast_fun::blast_events::emit_event(LpFeePolicyChanged {
+        override_meme,
+        old_meme_bps,
+        old_quote_bps,
+        new_meme_bps,
+        new_quote_bps,
+    });
+}
+
+/// Records the protocol share redirection.
+public(package) fun lp_fee_destination_changed(old_destination: address, new_destination: address) {
+    blast_fun::blast_events::emit_event(LpFeeDestinationChanged {
+        old_destination,
+        new_destination,
+    });
+}
+
+/// Records the complete pending router configuration after mutual binding.
+public(package) fun fee_router_created(
+    router_id: ID,
+    launch_id: ID,
+    config_cap_id: ID,
+    routes: blast_fun::allocation::Routes,
+) {
+    blast_fun::blast_events::emit_event(FeeRouterCreated {
+        router_id,
+        launch_id,
+        config_cap_id,
+        routes,
+    });
+}
+
+/// Records frozen activation inputs, the settlement binding, and complete canonical routes.
+public(package) fun router_activated(
+    router_id: ID,
+    launch_id: ID,
+    partner: bool,
+    meme_bps: u64,
+    quote_bps: u64,
+    settlement_witness: TypeName,
+    vault_id: ID,
+    pool_id: ID,
+    position_id: ID,
+    generation: u64,
+    routes: blast_fun::allocation::Routes,
+) {
+    blast_fun::blast_events::emit_event(RouterActivated {
+        router_id,
+        launch_id,
+        partner,
+        meme_bps,
+        quote_bps,
+        settlement_witness,
+        vault_id,
+        pool_id,
+        position_id,
+        generation,
+        routes,
+    });
+}
+
+/// Records one nonzero collection after every share has been paid.
+public(package) fun fees_collected(
+    router_id: ID,
+    launch_id: ID,
+    generation: u64,
+    gross_meme: u64,
+    gross_quote: u64,
+    protocol_destination: address,
+    protocol_meme: u64,
+    protocol_quote: u64,
+    meme_amounts: vector<u64>,
+    quote_amounts: vector<u64>,
+) {
+    blast_fun::blast_events::emit_event(FeesCollected {
+        router_id,
+        launch_id,
+        generation,
+        gross_meme,
+        gross_quote,
+        protocol_destination,
+        protocol_meme,
+        protocol_quote,
+        meme_amounts,
+        quote_amounts,
+    });
+}
+
+/// Records a composable creator claim's exact cap release without asserting its next owner.
+public(package) fun router_config_cap_released(launch_id: ID, cap_id: ID) {
+    blast_fun::blast_events::emit_event(RouterConfigCapReleased { launch_id, cap_id });
+}
+
+/// Records the exact recipient only after native delivery of the pending cap.
+public(package) fun router_config_cap_delivered(launch_id: ID, cap_id: ID, recipient: address) {
+    blast_fun::blast_events::emit_event(RouterConfigCapDelivered { launch_id, cap_id, recipient });
+}
+
+/// Records complete routing changes as the next generation.
+public(package) fun routes_changed(
+    router_id: ID,
+    old_generation: u64,
+    new_generation: u64,
+    old_routes: blast_fun::allocation::Routes,
+    new_routes: blast_fun::allocation::Routes,
+) {
+    blast_fun::blast_events::emit_event(RoutesChanged {
+        router_id,
+        old_generation,
+        new_generation,
+        old_routes,
+        new_routes,
+    });
+}
+
+/// Records the only protocol-allocation configuration transition.
+public(package) fun protocol_allocation_configured(
+    channel_id: u64,
+    destination: address,
+    meme_bps: u64,
+    quote_bps: u64,
+) {
+    blast_fun::blast_events::emit_event(ProtocolAllocationConfigured {
+        channel_id,
+        destination,
+        meme_bps,
+        quote_bps,
+    });
+}
+
+/// Records one allocation payout after both coins left the launch.
+public(package) fun migration_allocation_paid(
+    launch_id: ID,
+    channel_id: u64,
+    destination: address,
+    meme: u64,
+    quote: u64,
+) {
+    blast_fun::blast_events::emit_event(MigrationAllocationPaid {
+        launch_id,
+        channel_id,
+        destination,
+        meme,
+        quote,
+    });
+}
+
+/// Emits admission of one Meme decimal precision for launch intake.
+public(package) fun meme_decimals_allowed(decimals: u8) {
+    blast_fun::blast_events::emit_event(MemeDecimalsAllowed(decimals));
+}
+
+/// Emits removal of one Meme decimal precision from launch intake.
+public(package) fun meme_decimals_disallowed(decimals: u8) {
+    blast_fun::blast_events::emit_event(MemeDecimalsDisallowed(decimals));
+}
+
+/// Emits replacement of the launch trade-fee defaults.
+public(package) fun launch_trade_fees_changed(quote_fee_bps: u64, meme_fee_bps: u64) {
     blast_fun::blast_events::emit_event(LaunchTradeFeesChanged {
         quote_fee_bps,
         meme_fee_bps,
     });
 }
 
-/// Emits admission of one quote type and its initial curve parameters.
-public(package) fun quote_allowed<Quote>(
-    virtual_quote: u64,
-    migration_quote_target: u64,
-) {
+/// Emits admission of one quote type or the replacement of its virtual reserve.
+public(package) fun quote_allowed<Quote>(virtual_quote: u64) {
     blast_fun::blast_events::emit_event(QuoteAllowed {
         quote: type_name::with_original_ids<Quote>(),
         virtual_quote,
-        migration_quote_target,
-    });
-}
-
-/// Emits replacement of one admitted quote type's curve parameters.
-public(package) fun quote_parameters_changed<Quote>(
-    virtual_quote: u64,
-    migration_quote_target: u64,
-) {
-    blast_fun::blast_events::emit_event(QuoteParametersChanged {
-        quote: type_name::with_original_ids<Quote>(),
-        virtual_quote,
-        migration_quote_target,
     });
 }
 
 /// Emits removal of one quote type.
 public(package) fun quote_disallowed<Quote>() {
-    blast_fun::blast_events::emit_event(QuoteDisallowed(
-        type_name::with_original_ids<Quote>(),
-    ));
-}
-
-/// Emits replacement of the launch graduation defaults.
-public(package) fun graduation_defaults_changed(
-    protocol_quote_migration_fee_bps: u64,
-    protocol_meme_graduation_fee_bps: u64,
-    meme_liquidity_provision_bps: u64,
-) {
-    blast_fun::blast_events::emit_event(GraduationDefaultsChanged {
-        protocol_quote_migration_fee_bps,
-        protocol_meme_graduation_fee_bps,
-        meme_liquidity_provision_bps,
-    });
+    blast_fun::blast_events::emit_event(
+        QuoteDisallowed(
+            type_name::with_original_ids<Quote>(),
+        ),
+    );
 }
 
 /// Emits admission of one sealed migration-witness type.
 public(package) fun migration_witness_allowed<MigrationWitness>() {
-    blast_fun::blast_events::emit_event(MigrationWitnessAllowed(
-        type_name::with_original_ids<MigrationWitness>(),
-    ));
+    blast_fun::blast_events::emit_event(
+        MigrationWitnessAllowed(
+            type_name::with_original_ids<MigrationWitness>(),
+        ),
+    );
 }
 
 /// Emits removal of one sealed migration-witness type.
 public(package) fun migration_witness_disallowed<MigrationWitness>() {
-    blast_fun::blast_events::emit_event(MigrationWitnessDisallowed(
-        type_name::with_original_ids<MigrationWitness>(),
-    ));
+    blast_fun::blast_events::emit_event(
+        MigrationWitnessDisallowed(
+            type_name::with_original_ids<MigrationWitness>(),
+        ),
+    );
 }
 
 /// Emits replacement of the runtime protocol fee share.
 public(package) fun protocol_fee_share_changed(protocol_fee_share_bps: u64) {
-    blast_fun::blast_events::emit_event(ProtocolFeeShareChanged(
-        protocol_fee_share_bps,
-    ));
+    blast_fun::blast_events::emit_event(
+        ProtocolFeeShareChanged(
+            protocol_fee_share_bps,
+        ),
+    );
 }
 
 /// Emits installation or rotation of the creator-claim signer key.
@@ -301,11 +563,7 @@ public(package) fun metadata_cap_reassigned(
 }
 
 /// Emits the permanent binding of creator fees to a custodian module.
-public(package) fun creator_fees_locked(
-    launch_id: ID,
-    curve_fee_cap_id: ID,
-    custodian: TypeName,
-) {
+public(package) fun creator_fees_locked(launch_id: ID, curve_fee_cap_id: ID, custodian: TypeName) {
     blast_fun::blast_events::emit_event(CreatorFeesLocked {
         launch_id,
         curve_fee_cap_id,
@@ -331,7 +589,8 @@ public(package) fun meme_metadata_updated(
 /// Emits creation of one generated-coin launch ticket.
 public(package) fun launch_ticket_created<Meme>(
     ticket_id: ID,
-    initial_supply: u64,
+    decimals: u8,
+    atomic_supply: u64,
     metadata_cap_id: ID,
     creator_address: Option<address>,
     account_commitment: Option<vector<u8>>,
@@ -341,7 +600,8 @@ public(package) fun launch_ticket_created<Meme>(
     blast_fun::blast_events::emit_event(LaunchTicketCreated {
         ticket_id,
         meme: type_name::with_original_ids<Meme>(),
-        initial_supply,
+        decimals,
+        atomic_supply,
         metadata_cap_id,
         creator_address,
         account_commitment,
@@ -354,33 +614,92 @@ public(package) fun launch_ticket_created<Meme>(
 public(package) fun launch_created<Quote>(
     launch_id: ID,
     ticket_id: ID,
+    decimals: u8,
+    atomic_supply: u64,
     migration_witness: TypeName,
-    meme_reserve: u64,
-    protocol_meme_graduation_fee: u64,
-    meme_liquidity_provision: u64,
     virtual_quote: u64,
-    migration_quote_target: u64,
+    graduation_target: u64,
     quote_fee_bps: u64,
     meme_fee_bps: u64,
-    protocol_quote_migration_fee_bps: u64,
-    protocol_meme_graduation_fee_bps: u64,
-    meme_liquidity_provision_bps: u64,
+    allocation_plan: blast_fun::allocation::AllocationPlan,
+    meme_amounts: vector<u64>,
 ) {
     blast_fun::blast_events::emit_event(LaunchCreated {
         launch_id,
         ticket_id,
+        decimals,
+        atomic_supply,
         quote: type_name::with_original_ids<Quote>(),
         migration_witness,
-        meme_reserve,
-        protocol_meme_graduation_fee,
-        meme_liquidity_provision,
         virtual_quote,
-        migration_quote_target,
+        graduation_target,
         quote_fee_bps,
         meme_fee_bps,
-        protocol_quote_migration_fee_bps,
-        protocol_meme_graduation_fee_bps,
-        meme_liquidity_provision_bps,
+        allocation_plan,
+        meme_amounts,
+    });
+}
+
+/// Emits the protection settings and exact limits fixed at launch creation.
+public(package) fun protection_configured(
+    launch_id: ID,
+    window_ms: u64,
+    cumulative_sender_bps: u64,
+    cumulative_atomic_limit: u64,
+    per_transaction_bps: u64,
+    per_transaction_atomic_limit: u64,
+) {
+    blast_fun::blast_events::emit_event(ProtectionConfigured {
+        launch_id,
+        window_ms,
+        cumulative_sender_bps,
+        cumulative_atomic_limit,
+        per_transaction_bps,
+        per_transaction_atomic_limit,
+    });
+}
+
+/// Emits terminal sharing of the launch and its router.
+public(package) fun launch_shared(
+    launch_id: ID,
+    fee_router_id: ID,
+    public_start_ms: u64,
+    pre_share_buy_completed: bool,
+) {
+    blast_fun::blast_events::emit_event(LaunchShared {
+        launch_id,
+        fee_router_id,
+        public_start_ms,
+        pre_share_buy_completed,
+    });
+}
+
+/// Emits one completed pre-share purchase, exact outputs, and resulting accounting state.
+public(package) fun pre_share_bought(
+    launch_id: ID,
+    quote_in: u64,
+    meme_out_gross: u64,
+    protocol_meme_fee_delta: u64,
+    creator_meme_fee_delta: u64,
+    protocol_quote_fee_delta: u64,
+    creator_quote_fee_delta: u64,
+    post_meme_reserve: u64,
+    post_real_quote_reserve: u64,
+    meme_out_net: u64,
+    quote_refund: u64,
+) {
+    blast_fun::blast_events::emit_event(PreShareBought {
+        launch_id,
+        quote_in,
+        meme_out_gross,
+        protocol_meme_fee_delta,
+        creator_meme_fee_delta,
+        protocol_quote_fee_delta,
+        creator_quote_fee_delta,
+        post_meme_reserve,
+        post_real_quote_reserve,
+        meme_out_net,
+        quote_refund,
     });
 }
 
@@ -438,35 +757,33 @@ public(package) fun sold(
     });
 }
 
-/// Emits terminal launch settlement and the adapter-bound migration handoff.
+/// Emits the completed migration after the router activated and the lifecycle committed.
 public(package) fun migrated(
     launch_id: ID,
-    native_supply_burned: bool,
-    migration_meme: u64,
-    migration_quote: u64,
+    supplied_meme: u64,
+    supplied_quote: u64,
+    residual_meme: u64,
+    residual_quote: u64,
+    liquidity: u128,
     disposed_meme: u64,
+    native_supply_burned: bool,
     total_supply_after: u64,
-    protocol_meme_graduation_fee: u64,
-    protocol_quote_migration_fee: u64,
 ) {
     blast_fun::blast_events::emit_event(Migrated {
         launch_id,
-        migration_meme,
-        migration_quote,
+        supplied_meme,
+        supplied_quote,
+        residual_meme,
+        residual_quote,
+        liquidity,
         disposed_meme,
         native_supply_burned,
         total_supply_after,
-        protocol_meme_graduation_fee,
-        protocol_quote_migration_fee,
     });
 }
 
 /// Emits a creator-owned fee withdrawal.
-public(package) fun creator_fees_claimed(
-    launch_id: ID,
-    meme_amount: u64,
-    quote_amount: u64,
-) {
+public(package) fun creator_fees_claimed(launch_id: ID, meme_amount: u64, quote_amount: u64) {
     blast_fun::blast_events::emit_event(CreatorFeesClaimed {
         launch_id,
         meme_amount,
@@ -475,11 +792,7 @@ public(package) fun creator_fees_claimed(
 }
 
 /// Emits a protocol-owned fee withdrawal.
-public(package) fun protocol_fees_claimed(
-    launch_id: ID,
-    meme_amount: u64,
-    quote_amount: u64,
-) {
+public(package) fun protocol_fees_claimed(launch_id: ID, meme_amount: u64, quote_amount: u64) {
     blast_fun::blast_events::emit_event(ProtocolFeesClaimed {
         launch_id,
         meme_amount,
@@ -509,6 +822,32 @@ public fun collect_one<T: copy + drop>(abort_code: u64): T {
     assert!(events.length() == 1, abort_code);
 
     events.pop_back()
+}
+
+#[test_only]
+public fun protocol_destination_for_testing(self: &FeesCollected): address {
+    self.protocol_destination
+}
+
+#[test_only]
+public fun fees_collected_amounts_for_testing(
+    self: &FeesCollected,
+): (u64, u64, vector<u64>, vector<u64>) {
+    (self.protocol_meme, self.protocol_quote, self.meme_amounts, self.quote_amounts)
+}
+
+#[test_only]
+public fun migrated_accounting_fields_for_testing(
+    self: &Migrated,
+): (ID, u64, u64, u64, u64, u128) {
+    (
+        self.launch_id,
+        self.supplied_meme,
+        self.supplied_quote,
+        self.residual_meme,
+        self.residual_quote,
+        self.liquidity,
+    )
 }
 
 // === Imports ===

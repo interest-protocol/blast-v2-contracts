@@ -11,24 +11,15 @@
 /// id, so these tests prove this package's wiring, provenance, and guard order.
 module blast_fun_dex::package_admin_tests;
 
-use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
-use blast_fun_dex::{
-    dex_domain::{Self, DEX_DOMAIN},
-    domain_fixture,
-    package_admin::{Self, PackageAdmin},
-    package_marker::{Self, PACKAGE_MARKER},
-    pool::{Self, Factory}
-};
-use std::unit_test::{assert_eq, destroy};
-use sui::{package, test_scenario::{Self, Scenario}};
-
 // === Constants ===
 
 const ROOT: address = @0xA11CE;
+
 const PACKAGE_ADMIN: address = @0xAD;
 
 /// This package's canonical original address under test compilation.
 const PACKAGE_ID: address = @0x0;
+
 const OTHER_PACKAGE_ID: address = @0xBAD;
 
 // === Test-Only Types ===
@@ -258,7 +249,7 @@ fun a_revoked_administrator_can_no_longer_sign_in() {
     destroy(fixture);
 }
 
-// === Fixture Setup ===
+// === Test Helpers ===
 
 fun start(roles: u64): Fixture {
     let mut scenario = test_scenario::begin(ROOT);
@@ -284,8 +275,6 @@ fun start(roles: u64): Fixture {
 fun package_digest(): vector<u8> {
     x"11223344556677889900aabbccddeeffffeeddccbbaa00998877665544332211"
 }
-
-// === Fixture Helpers ===
 
 fun authorize_upgrade(self: &mut Fixture, digest: vector<u8>): package::UpgradeTicket {
     let Fixture { factory, authority, admin_cap, package_admin, .. } = self;
@@ -314,3 +303,19 @@ fun make_immutable(self: &mut Fixture) {
 
     package_admin.make_immutable(factory, &admin_witness);
 }
+
+// === Imports ===
+
+use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
+
+use blast_fun_dex::{
+    dex_domain::{Self, DEX_DOMAIN},
+    domain_fixture,
+    package_admin::{Self, PackageAdmin},
+    package_marker::{Self, PACKAGE_MARKER},
+    pool::{Self, Factory}
+};
+
+use std::unit_test::{assert_eq, destroy};
+
+use sui::{package, test_scenario::{Self, Scenario}};

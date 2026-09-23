@@ -8,24 +8,13 @@
 /// Launchpad capability reaches package custody.
 module blast_fun_dex::package_admin;
 
-use blast_admin::{
-    acl::AdminWitness,
-    upgrade_custody::{Self, UpgradeCustody},
-};
-use blast_fun_dex::{
-    dex_domain::{Self, DEX_DOMAIN},
-    package_marker::PACKAGE_MARKER,
-    pool::Factory
-};
-use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};
-
 // === Errors ===
 
 #[error(code = 0)]
 const EInvalidPackagePublisher: vector<u8> =
     b"Publisher must be claimed by the canonical DEX package module.";
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Shared custody for this package's framework Publisher and UpgradeCap.
 public struct PackageAdmin has key {
@@ -168,3 +157,18 @@ public fun version_for_testing(self: &PackageAdmin): u64 {
 public fun policy_for_testing(self: &PackageAdmin): u8 {
     self.custody.policy_for_testing()
 }
+
+// === Imports ===
+
+use blast_admin::{
+    acl::AdminWitness,
+    upgrade_custody::{Self, UpgradeCustody},
+};
+
+use blast_fun_dex::{
+    dex_domain::{Self, DEX_DOMAIN},
+    package_marker::PACKAGE_MARKER,
+    pool::Factory
+};
+
+use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};

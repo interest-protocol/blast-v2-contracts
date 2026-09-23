@@ -7,6 +7,7 @@ module blast_fun::runtime_config_tests;
 // === Constants ===
 
 const PUBLISHER: address = @0xA11CE;
+
 const PROTOCOL_ADMIN: address = @0xAD;
 
 // === Test-Only Types ===
@@ -166,7 +167,7 @@ fun protocol_fee_share_accepts_both_percentage_boundaries() {
     fixture.end();
 }
 
-// === Private Test Helpers ===
+// === Test Helpers ===
 
 macro fun init_next_tx(
     $fixture: &mut InitFixture,

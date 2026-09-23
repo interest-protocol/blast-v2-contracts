@@ -7,7 +7,7 @@
 /// Permanent shared custody for package capabilities.
 module blast_sui::package_admin;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Shared, non-releasable custody for package and update authority.
 ///

@@ -40,7 +40,6 @@ const SUI_FRAMEWORK_SUBDIR = 'crates/sui-framework/packages/sui-framework';
 const MOVE_STDLIB_SUBDIR = 'crates/sui-framework/packages/move-stdlib';
 const BLUEFIN_GIT =
     'https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git';
-const MMT_GIT = 'https://github.com/mmt-finance/mmt-contract-interface.git';
 const INTEGER_MATE_GIT = 'https://github.com/CetusProtocol/integer-mate.git';
 const INTEGER_LIBRARY_GIT =
     'https://github.com/fireflyprotocol/integer-library.git';
@@ -52,7 +51,6 @@ const REV = {
     suiLegacy: '17a9eb8e19146cac2f1fd8921c85911054d29e50',
     suiBluefin: '4e46da89efd5c5e59fe2b8e877bd960896601ec9',
     bluefin: '91ce930575b2aa3decab9b7e129b8002deba80c1',
-    mmt: 'e27d14caed53e1b7c4e1c12ea89b2ff87c58ee82',
     integerMate: '09a12d9b171122883d9350039d4ed6e8400033b9',
     integerMateBluefin: '06660f704c4ac1d443ab62346a46b5b60d49df33',
     integerLibrary: '8a534bd1c0b334cd3937c27987f3147a06ba6a18',
@@ -125,13 +123,19 @@ const PACKAGES = [
                 name: 'config',
                 sha256: 'e896bcbdab23bf5c04eb38b12306f8d6ced8bb9194c789cd1f7f09c78e595cab',
                 structs: ['GlobalConfig'],
-                functions: ['get_pool_creation_fee_amount', 'get_tick_range'],
+                functions: ['get_tick_range'],
             },
             {
                 name: 'pool',
                 sha256: 'd1436b0837eab8912797b91ed68755ad6e4228243f188a43c42ea040e844e97c',
                 structs: ['Pool'],
-                functions: ['collect_fee', 'create_pool_with_liquidity'],
+                functions: [
+                    'add_liquidity_with_fixed_amount',
+                    'collect_fee',
+                    'create_pool_and_get_object',
+                    'open_position',
+                    'share_pool_object',
+                ],
             },
             {
                 name: 'position',
@@ -142,258 +146,56 @@ const PACKAGES = [
         ],
     },
     {
-        key: 'mmt',
-        label: 'MMT V3',
-        addressName: 'mmt_v3',
-        originalId:
-            '0x70285592c97965e811e0c6f98dccc3a9c2b4ad854b3594faab9597ada267b860',
-        currentId:
-            '0xcf60a40f45d46fc1e828871a647c1e25a0915dec860d2662eb10fdb382c3c1d1',
-        version: 5,
-        digest: '3muHEfy71LYEbjYSuvJ1i8y2XcFJPzctyaTFCkatfEqd',
-        previousTransaction: '9ugrBxCA9yLJ4qrRDFoMnHSLbk1bP3N1A7cZ4DKvos5L',
-        manifest: null,
-        modules: [
-            { name: 'collect', sha256: '90e1f0a43280d678fef070be10afd190808cd24330af061d5e291fc51eb62647', structs: [], functions: ['fee'] },
-            {
-                name: 'create_pool',
-                sha256: '1e2d7986ba2c67db9916faf028b65376db99e5f956dc735ed432b1661572f1ad',
-                structs: [],
-                functions: ['check_coin_order', 'new'],
-            },
-            {
-                name: 'global_config',
-                sha256: '7d017415c735d25cdca6c3ba3c0351a047a9d25bcb6dc6fe0bab80b3971619b6',
-                structs: ['GlobalConfig'],
-                functions: [],
-            },
-            { name: 'i32', sha256: 'a497795e96c4eeff5558b945926b2a97229d691d30452340f989d441128ded72', structs: ['I32'], functions: ['as_u32'] },
-            {
-                name: 'liquidity',
-                sha256: '3c9b457444c43b8ebea2f1ba3daf9a370400d9ad3149654ea11123d3e9447bdb',
-                structs: [],
-                functions: ['add_liquidity', 'open_position'],
-            },
-            {
-                name: 'pool',
-                sha256: '0b1a2e676c909d3cac300d644c05b470418bd7b630ff57e14fab23afe15f002a',
-                structs: ['Pool'],
-                functions: [
-                    'get_friendly_ticks',
-                    'initialize',
-                    'tick_spacing',
-                    'transfer',
-                ],
-            },
-            {
-                name: 'position',
-                sha256: '7cceacd04adbe6a9955df17b2ca1738a77b27e9a4a681f5ce3621d1a92083a24',
-                structs: ['Position'],
-                functions: ['liquidity', 'pool_id'],
-            },
-            {
-                name: 'tick_math',
-                sha256: 'cb44cb32351dc86766ad76c433faad6a4fd20e97ce51c6bb5a1c68502ac59939',
-                structs: [],
-                functions: ['max_sqrt_price', 'min_sqrt_price'],
-            },
-            { name: 'version', sha256: '65ee05b54cbd66c35a20498b758990ba0c154ac1dd489037a6af81eea82ffba1', structs: ['Version'], functions: [] },
-        ],
-    },
-    {
         key: 'cetus',
         label: 'Cetus CLMM',
         addressName: 'cetus_clmm',
         originalId:
             '0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb',
         currentId:
-            '0x25ebb9a7c50eb17b3fa9c5a30fb8b5ad8f97caaf4928943acbcff7153dfee5e3',
-        version: 14,
-        digest: 'FEdn2yRh28atu7tANr6gCWQ3gtDSD2EZmyEeryTuokoi',
-        previousTransaction: '9feeN5tyxKLPPt1nRERtddp8xzxMVefNufkhxWAT1Jja',
+            '0x260693ec785a6e6c9d81d58c7d2ff72f1288ae0fa6a9725abe05a6478b11f084',
+        version: 15,
+        digest: '9rZP5D79m4Yfq9fvtPujtpvU5rhfiYm1JS6LaxcMZVSu',
+        previousTransaction: '5sSoTfTiti8kXjJhZeYuFWFcxxvjbZpFQ96rZ3dzeQbC',
         manifest: 'interfaces/cetus/Move.toml',
         modules: [
             {
                 name: 'config',
-                sha256: '8a1610d8e4f02ae48dcf0594f3553f26a6503721c00c3b775c9a1d7bdfa26016',
+                sha256: 'd0575fcd8fa5e6d63a779a19fbc1ee276459d151d8045bc7e7a9f5f380adfad5',
                 structs: ['GlobalConfig'],
                 functions: ['get_fee_rate'],
             },
             {
                 name: 'factory',
-                sha256: '324c4e4ef1fdd079f22b2088cabe8cae86772ceae87c5873b3d636a92fe06e68',
-                structs: ['Pools'],
-                functions: ['is_right_order', 'new_pool_key'],
+                sha256: '4cd33aca821e17cccb0004e3c78ec6033b7fec0360fdf17c03393e976efa5e9b',
+                structs: ['PoolCreationCap', 'Pools'],
+                // Revision 8 introduced the pool-creation capability.
+                structOrigins: {
+                    PoolCreationCap:
+                        '0x157468379cfe5616c063ae39a889dd184ad48350d3e08f8d9b4ade22b8e3fb61',
+                },
+                functions: [
+                    'is_right_order',
+                    'mint_pool_creation_cap',
+                    'register_permission_pair',
+                ],
             },
             {
                 name: 'pool',
-                sha256: 'aba0e2edaa3769e752a44acf314e8ac10850129e1cc7732ed93a6d4e2b9f35b5',
-                structs: ['AddLiquidityReceipt', 'Pool'],
-                functions: [
-                    'add_liquidity_fix_coin',
-                    'add_liquidity_pay_amount',
-                    'collect_fee',
-                    'current_sqrt_price',
-                    'fee_rate',
-                    'open_position',
-                    'repay_add_liquidity',
-                    'tick_spacing',
-                ],
+                sha256: '059cbeeb4502c7e54b1a9ada73709505f9572f4c80c441c1c31fbee64c32c7a1',
+                structs: ['Pool'],
+                functions: ['collect_fee'],
             },
             {
                 name: 'pool_creator',
-                sha256: 'bd52696c635f93ef334818763a1c7f4a4cefc77851e18af3e8b1bf463041d38c',
+                sha256: '23c78096ed45feda5349e098d9827f37cee0fce662544e98ea28de5f6e8c57b6',
                 structs: [],
-                functions: ['create_pool_v3', 'full_range_tick_range'],
+                functions: ['create_pool_v3_with_creation_cap', 'full_range_tick_range'],
             },
             {
                 name: 'position',
-                sha256: '3719452b1462b1b8dd59877eed3bb188bd3d154a10def3026ad3252f660947da',
+                sha256: '78f71fd13a5ab6528509d1a2ceb279e4d6616cd8e6877baf4a5ee25627789cc3',
                 structs: ['Position'],
                 functions: ['liquidity', 'pool_id'],
-            },
-        ],
-    },
-    {
-        key: 'turbos',
-        label: 'Turbos CLMM',
-        addressName: 'turbos_clmm',
-        originalId:
-            '0x91bfbc386a41afcfd9b2533058d7e915a1d3829089cc268ff4333d54d6339ca1',
-        currentId:
-            '0xa5a0c25c79e428eba04fb98b3fb2a34db45ab26d4c8faf0d7e39d66a63891e64',
-        version: 22,
-        digest: 'FxTpAy2BbjFLWXF2Ddd4pmiBizrU27us4CwNHo9DtzVn',
-        previousTransaction: '4iZ5nMJbgU6VtoDXg8TsuAEg6K6y4zovDgcMqxNn4diS',
-        manifest: 'interfaces/turbos/Move.toml',
-        modules: [
-            {
-                name: 'fee',
-                sha256: '0113ca7935faf508e936f6d74dfa6fa62c967f8f414572a9327b44c887a65141',
-                structs: ['Fee'],
-                functions: ['get_fee', 'get_tick_spacing'],
-            },
-            {
-                name: 'i32',
-                sha256: 'c2b649feed67ef880be3ae6fac1c729d7e65f9bcc03be74e1d2243968d968680',
-                structs: ['I32'],
-                functions: ['abs_u32', 'is_neg'],
-            },
-            {
-                name: 'math_tick',
-                sha256: '78a692af161feb4dedc3e0bd281f9fb792b83e022d5a1cc06a92168585263bcb',
-                structs: [],
-                functions: ['get_max_tick', 'get_min_tick'],
-            },
-            {
-                name: 'pool',
-                sha256: '4a44d2dc2f0920d1253a20c5cd1471d5f3a0d03c1812781b816d372789728d36',
-                structs: ['Pool', 'Versioned'],
-                functions: [
-                    'get_pool_fee',
-                    'get_pool_sqrt_price',
-                    'get_pool_tick_spacing',
-                ],
-            },
-            {
-                name: 'pool_factory',
-                sha256: 'ea8ef02d0fd0700daa020ba37360ad6a8f8dc8067af3ee99052b530494a53fef',
-                structs: ['PoolConfig'],
-                functions: ['deploy_pool_and_mint_with_return_'],
-            },
-            {
-                name: 'position_manager',
-                sha256: 'badc1be2ee1ba12fb56eb8332f412a58ba279b80f85144862656ceea6c0fa5fe',
-                structs: ['Positions'],
-                functions: [
-                    'collect_with_return_',
-                    'get_position_info',
-                    'mint_with_return_',
-                ],
-            },
-            {
-                name: 'position_nft',
-                sha256: '1c9264b0145915da01c3a072876ffbd753d5697b56d5f2bedb79d92136d3cbea',
-                structs: ['TurbosPositionNFT'],
-                functions: ['pool_id'],
-            },
-        ],
-    },
-    {
-        key: 'aftermath',
-        label: 'Aftermath AMM',
-        addressName: 'amm',
-        originalId:
-            '0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c',
-        currentId:
-            '0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29',
-        version: 3,
-        digest: 'Gxia3EZSdQeCXGPkmhXRzXWfmV6bnw7oRvSXNxNLQ9T1',
-        previousTransaction: '7qeJhR15a6jqo7xujZMMe5Bcm11vR7cSBiFHypW3VQ3J',
-        manifest: 'interfaces/aftermath/Move.toml',
-        modules: [
-            {
-                name: 'pool',
-                sha256: 'f952884b3e6ea275911ae488e9d1e3f4b2a4409cdd30e8bed69e98fd7d0f7d78',
-                structs: ['CreatePoolCapV2', 'Pool'],
-                structOrigins: { CreatePoolCapV2: 'current' },
-                functions: [
-                    'balance_of',
-                    'fees_deposit_for',
-                    'fees_swap_in_for',
-                    'fees_swap_out_for',
-                    'fees_withdraw_for',
-                    'flatness',
-                    'lp_decimals',
-                    'lp_supply_value',
-                    'share',
-                    'size',
-                    'weight_of',
-                ],
-            },
-            {
-                name: 'pool_factory',
-                sha256: 'e2601c8181d142cb10bf10bbbe90adbd9545688238cbc3ba8b1bf9cf0809b17d',
-                structs: [],
-                functions: ['create_pool_2_coins_v2'],
-            },
-            {
-                name: 'pool_registry',
-                sha256: '9d4f76ef56e619111d94b41bac54641f2012d16a7e796a83436479b319dc6a62',
-                structs: ['PoolRegistry'],
-                functions: ['contains_lp_coin', 'lp_type_to_pool_id'],
-            },
-        ],
-    },
-    {
-        key: 'aftermath_dao_fee',
-        label: 'Aftermath DAO Fee Pools',
-        addressName: 'dao_fee_amm',
-        originalId:
-            '0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d',
-        currentId:
-            '0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2',
-        version: 2,
-        digest: 'AeSpba79KZ8Ge8nGk2Li2c2tkLy7eC93wTGhgjEVHVpZ',
-        previousTransaction: '9eMeoFRPGDW1TUvbhtstVu2bAaWCCM7VCgbgkEkCUR4c',
-        manifest: 'interfaces/aftermath_dao_fee/Move.toml',
-        modules: [
-            {
-                name: 'pool',
-                sha256: '029b3e6e0a11a249147cdd0b7b3ea78556d399e03228cae9424529a06cd58f3e',
-                structs: ['DaoFeePool', 'OwnerCap'],
-                functions: [
-                    'fee_bps',
-                    'fee_recipient',
-                    'new',
-                    'update_fee_bps',
-                ],
-            },
-            {
-                name: 'version',
-                sha256: '6fbb4c1b78af3fa68654af6eb29be6fdbc945e9d715a46ac1ca9bc3f3f8920f2',
-                structs: ['Version'],
-                functions: [],
             },
         ],
     },
@@ -421,11 +223,7 @@ const MANIFESTS = [
             blast_admin: { local: '../admin' },
             blast_fun: { local: '../launchpad' },
             BluefinSpot: { git: BLUEFIN_GIT, rev: REV.bluefin },
-            mmt_v3: { git: MMT_GIT, subdir: 'mmt_v3', rev: REV.mmt },
             CetusClmm: { local: 'interfaces/cetus' },
-            TurbosCLMM: { local: 'interfaces/turbos' },
-            AftermathAmm: { local: 'interfaces/aftermath' },
-            AftermathDaoFeePools: { local: 'interfaces/aftermath_dao_fee' },
             Sui: {
                 git: SUI_GIT,
                 subdir: SUI_FRAMEWORK_SUBDIR,
@@ -440,35 +238,6 @@ const MANIFESTS = [
             IntegerLibrary: {
                 git: INTEGER_LIBRARY_GIT,
                 rev: REV.integerLibrary,
-                override: true,
-            },
-        },
-    },
-    {
-        path: 'interfaces/aftermath/Move.toml',
-        packageName: 'AftermathAmm',
-        packageKey: 'aftermath',
-        lockNode: 'AftermathAmm',
-        dependencies: {
-            Sui: {
-                git: SUI_GIT,
-                subdir: SUI_FRAMEWORK_SUBDIR,
-                rev: REV.sui,
-                override: true,
-            },
-        },
-    },
-    {
-        path: 'interfaces/aftermath_dao_fee/Move.toml',
-        packageName: 'AftermathDaoFeePools',
-        packageKey: 'aftermath_dao_fee',
-        lockNode: 'AftermathDaoFeePools',
-        dependencies: {
-            AftermathAmm: { local: '../aftermath' },
-            Sui: {
-                git: SUI_GIT,
-                subdir: SUI_FRAMEWORK_SUBDIR,
-                rev: REV.sui,
                 override: true,
             },
         },
@@ -493,115 +262,81 @@ const MANIFESTS = [
             MoveSTL: { git: MOVE_STL_GIT, rev: REV.moveStl, override: true },
         },
     },
-    {
-        path: 'interfaces/turbos/Move.toml',
-        packageName: 'TurbosCLMM',
-        packageKey: 'turbos',
-        lockNode: 'TurbosCLMM',
-        dependencies: {
-            Sui: {
-                git: SUI_GIT,
-                subdir: SUI_FRAMEWORK_SUBDIR,
-                rev: REV.sui,
-                override: true,
-            },
-        },
-    },
 ];
 
 /// Every pinned node the lock is allowed to contain, in both environments,
 /// bound to its exact source record and its exact resolved dependency edges.
 /// Both environments resolve identical edges, so one table covers both.
 const LOCK_NODES = {
-    AftermathAmm: {
-        source: { local: 'interfaces/aftermath' },
-        deps: { Sui: 'Sui' },
-    },
-    AftermathDaoFeePools: {
-        source: { local: 'interfaces/aftermath_dao_fee' },
-        deps: { AftermathAmm: 'AftermathAmm', Sui: 'Sui' },
-    },
     BluefinSpot: {
         source: { git: BLUEFIN_GIT, subdir: '.', rev: REV.bluefin },
-        deps: { IntegerLibrary: 'IntegerLibrary', IntegerMate: 'IntegerMate', Sui: 'Sui_2' },
+        deps: { IntegerLibrary: 'IntegerLibrary', IntegerMate: 'IntegerMate', Sui: 'Sui_1' },
     },
     CetusClmm: {
         source: { local: 'interfaces/cetus' },
-        deps: { IntegerMate: 'IntegerMate_1', MoveSTL: 'MoveSTL', Sui: 'Sui' },
+        deps: { IntegerMate: 'IntegerMate_1', MoveSTL: 'MoveSTL', Sui: 'Sui_2' },
     },
     IntegerLibrary: {
         source: { git: INTEGER_LIBRARY_GIT, subdir: '.', rev: REV.integerLibrary },
-        deps: { Sui: 'Sui_1' },
+        deps: { Sui: 'Sui' },
     },
     IntegerMate: {
         source: { git: INTEGER_MATE_GIT, subdir: 'sui', rev: REV.integerMateBluefin },
-        deps: { Sui: 'Sui_1' },
+        deps: { Sui: 'Sui' },
     },
     IntegerMate_1: {
         source: { git: INTEGER_MATE_GIT, subdir: '.', rev: REV.integerMate },
-        deps: { std: 'MoveStdlib', sui: 'Sui' },
+        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
     },
     MoveSTL: {
         source: { git: MOVE_STL_GIT, subdir: '.', rev: REV.moveStl },
-        deps: { std: 'MoveStdlib', sui: 'Sui' },
+        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
     },
     MoveStdlib: {
-        source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.sui },
-        deps: {},
-    },
-    MoveStdlib_1: {
         source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.suiLegacy },
         deps: {},
     },
-    MoveStdlib_2: {
+    MoveStdlib_1: {
         source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.suiBluefin },
         deps: {},
     },
+    MoveStdlib_2: {
+        source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.sui },
+        deps: {},
+    },
     Sui: {
-        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.sui },
+        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiLegacy },
         deps: { MoveStdlib: 'MoveStdlib' },
     },
     Sui_1: {
-        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiLegacy },
+        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiBluefin },
         deps: { MoveStdlib: 'MoveStdlib_1' },
     },
     Sui_2: {
-        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiBluefin },
+        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.sui },
         deps: { MoveStdlib: 'MoveStdlib_2' },
-    },
-    TurbosCLMM: {
-        source: { local: 'interfaces/turbos' },
-        deps: { Sui: 'Sui' },
     },
     // The immutable shared administration package is a local, inward-only edge:
     // it pins the same framework revision and adds no venue dependency.
     blast_admin: {
         source: { local: '../admin' },
-        deps: { Sui: 'Sui' },
+        deps: { Sui: 'Sui_2' },
     },
     blast_fun: {
         source: { local: '../launchpad' },
-        deps: { blast_admin: 'blast_admin', std: 'MoveStdlib', sui: 'Sui' },
+        deps: { blast_admin: 'blast_admin', std: 'MoveStdlib_2', sui: 'Sui_2' },
     },
     blast_fun_migrators: {
         source: { root: true },
         deps: {
-            AftermathAmm: 'AftermathAmm',
-            AftermathDaoFeePools: 'AftermathDaoFeePools',
             BluefinSpot: 'BluefinSpot',
             CetusClmm: 'CetusClmm',
             IntegerLibrary: 'IntegerLibrary',
             IntegerMate: 'IntegerMate_1',
-            Sui: 'Sui',
-            TurbosCLMM: 'TurbosCLMM',
+            Sui: 'Sui_2',
             blast_admin: 'blast_admin',
             blast_fun: 'blast_fun',
-            mmt_v3: 'mmt_v3',
         },
-    },
-    mmt_v3: {
-        source: { git: MMT_GIT, subdir: 'mmt_v3', rev: REV.mmt },
-        deps: { std: 'MoveStdlib', sui: 'Sui' },
     },
 };
 
@@ -612,92 +347,46 @@ const LOCK_NODES = {
 const ABI = {
     'bluefin_spot::config::GlobalConfig':
         'struct GlobalConfig has store, key',
-    'bluefin_spot::config::get_pool_creation_fee_amount':
-        'public fun get_pool_creation_fee_amount<$0>(&@self::config::GlobalConfig): (bool, u64)',
     'bluefin_spot::config::get_tick_range':
         'public fun get_tick_range(&@self::config::GlobalConfig): (0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57::i32::I32, 0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57::i32::I32)',
     'bluefin_spot::pool::Pool':
         'struct Pool<phantom $0, phantom $1> has store, key',
+    'bluefin_spot::pool::add_liquidity_with_fixed_amount':
+        'public fun add_liquidity_with_fixed_amount<$0, $1>(&@sui::clock::Clock, &@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, &mut @self::position::Position, @sui::balance::Balance<$0>, @sui::balance::Balance<$1>, u64, bool): (u64, u64, @sui::balance::Balance<$0>, @sui::balance::Balance<$1>)',
     'bluefin_spot::pool::collect_fee':
         'public fun collect_fee<$0, $1>(&@sui::clock::Clock, &@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, &mut @self::position::Position): (u64, u64, @sui::balance::Balance<$0>, @sui::balance::Balance<$1>)',
-    'bluefin_spot::pool::create_pool_with_liquidity':
-        'public fun create_pool_with_liquidity<$0, $1, $2>(&@sui::clock::Clock, &mut @self::config::GlobalConfig, vector<u8>, vector<u8>, vector<u8>, u8, vector<u8>, vector<u8>, u8, vector<u8>, u32, u64, u128, @sui::balance::Balance<$2>, u32, u32, @sui::balance::Balance<$0>, @sui::balance::Balance<$1>, u64, bool, &mut @sui::tx_context::TxContext): (@sui::object::ID, @self::position::Position, u64, u64, @sui::balance::Balance<$0>, @sui::balance::Balance<$1>)',
+    'bluefin_spot::pool::create_pool_and_get_object':
+        'public fun create_pool_and_get_object<$0, $1, $2>(&@sui::clock::Clock, &mut @self::config::GlobalConfig, vector<u8>, vector<u8>, vector<u8>, u8, vector<u8>, vector<u8>, u8, vector<u8>, u32, u64, u128, @sui::balance::Balance<$2>, &mut @sui::tx_context::TxContext): @self::pool::Pool<$0, $1>',
+    'bluefin_spot::pool::open_position':
+        'public fun open_position<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, u32, u32, &mut @sui::tx_context::TxContext): @self::position::Position',
+    'bluefin_spot::pool::share_pool_object':
+        'public fun share_pool_object<$0, $1>(@self::pool::Pool<$0, $1>)',
     'bluefin_spot::position::Position':
         'struct Position has store, key',
     'bluefin_spot::position::liquidity':
         'public fun liquidity(&@self::position::Position): u128',
     'bluefin_spot::position::pool_id':
         'public fun pool_id(&@self::position::Position): @sui::object::ID',
-    'mmt_v3::collect::fee':
-        'public fun fee<$0, $1>(&mut @self::pool::Pool<$0, $1>, &mut @self::position::Position, &@sui::clock::Clock, &@self::version::Version, &mut @sui::tx_context::TxContext): (@sui::coin::Coin<$0>, @sui::coin::Coin<$1>)',
-    'mmt_v3::create_pool::check_coin_order':
-        'public fun check_coin_order<$0, $1>(): bool',
-    'mmt_v3::create_pool::new':
-        'public fun new<$0, $1>(&mut @self::global_config::GlobalConfig, u64, &@self::version::Version, &mut @sui::tx_context::TxContext): @self::pool::Pool<$0, $1>',
-    'mmt_v3::global_config::GlobalConfig':
-        'struct GlobalConfig has store, key',
-    'mmt_v3::i32::I32':
-        'struct I32 has copy, drop, store',
-    'mmt_v3::i32::as_u32':
-        'public fun as_u32(@self::i32::I32): u32',
-    'mmt_v3::liquidity::add_liquidity':
-        'public fun add_liquidity<$0, $1>(&mut @self::pool::Pool<$0, $1>, &mut @self::position::Position, @sui::coin::Coin<$0>, @sui::coin::Coin<$1>, u64, u64, &@sui::clock::Clock, &@self::version::Version, &mut @sui::tx_context::TxContext): (@sui::coin::Coin<$0>, @sui::coin::Coin<$1>)',
-    'mmt_v3::liquidity::open_position':
-        'public fun open_position<$0, $1>(&mut @self::pool::Pool<$0, $1>, @self::i32::I32, @self::i32::I32, &@self::version::Version, &mut @sui::tx_context::TxContext): @self::position::Position',
-    'mmt_v3::pool::Pool':
-        'struct Pool<phantom $0, phantom $1> has key',
-    'mmt_v3::pool::get_friendly_ticks':
-        'public fun get_friendly_ticks<$0, $1>(&@self::pool::Pool<$0, $1>, u128, u128): (@self::i32::I32, @self::i32::I32)',
-    'mmt_v3::pool::initialize':
-        'public fun initialize<$0, $1>(&mut @self::pool::Pool<$0, $1>, u128, &@sui::clock::Clock)',
-    'mmt_v3::pool::tick_spacing':
-        'public fun tick_spacing<$0, $1>(&@self::pool::Pool<$0, $1>): u32',
-    'mmt_v3::pool::transfer':
-        'public fun transfer<$0, $1>(@self::pool::Pool<$0, $1>)',
-    'mmt_v3::position::Position':
-        'struct Position has store, key',
-    'mmt_v3::position::liquidity':
-        'public fun liquidity(&@self::position::Position): u128',
-    'mmt_v3::position::pool_id':
-        'public fun pool_id(&@self::position::Position): @sui::object::ID',
-    'mmt_v3::tick_math::max_sqrt_price':
-        'public fun max_sqrt_price(): u128',
-    'mmt_v3::tick_math::min_sqrt_price':
-        'public fun min_sqrt_price(): u128',
-    'mmt_v3::version::Version':
-        'struct Version has store, key',
     'cetus_clmm::config::GlobalConfig':
         'struct GlobalConfig has store, key',
     'cetus_clmm::config::get_fee_rate':
         'public fun get_fee_rate(u32, &@self::config::GlobalConfig): u64',
+    'cetus_clmm::factory::PoolCreationCap':
+        'struct PoolCreationCap has store, key',
     'cetus_clmm::factory::Pools':
         'struct Pools has store, key',
     'cetus_clmm::factory::is_right_order':
         'public fun is_right_order<$0, $1>(): bool',
-    'cetus_clmm::factory::new_pool_key':
-        'public fun new_pool_key<$0, $1>(u32): @sui::object::ID',
-    'cetus_clmm::pool::AddLiquidityReceipt':
-        'struct AddLiquidityReceipt<phantom $0, phantom $1>',
+    'cetus_clmm::factory::mint_pool_creation_cap':
+        'public fun mint_pool_creation_cap<$0>(&@self::config::GlobalConfig, &mut @self::factory::Pools, &mut @sui::coin::TreasuryCap<$0>, &mut @sui::tx_context::TxContext): @self::factory::PoolCreationCap',
+    'cetus_clmm::factory::register_permission_pair':
+        'public fun register_permission_pair<$0, $1>(&@self::config::GlobalConfig, &mut @self::factory::Pools, u32, &@self::factory::PoolCreationCap, &mut @sui::tx_context::TxContext)',
     'cetus_clmm::pool::Pool':
         'struct Pool<phantom $0, phantom $1> has store, key',
-    'cetus_clmm::pool::add_liquidity_fix_coin':
-        'public fun add_liquidity_fix_coin<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, &mut @self::position::Position, u64, bool, &@sui::clock::Clock): @self::pool::AddLiquidityReceipt<$0, $1>',
-    'cetus_clmm::pool::add_liquidity_pay_amount':
-        'public fun add_liquidity_pay_amount<$0, $1>(&@self::pool::AddLiquidityReceipt<$0, $1>): (u64, u64)',
     'cetus_clmm::pool::collect_fee':
         'public fun collect_fee<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, &@self::position::Position, bool): (@sui::balance::Balance<$0>, @sui::balance::Balance<$1>)',
-    'cetus_clmm::pool::current_sqrt_price':
-        'public fun current_sqrt_price<$0, $1>(&@self::pool::Pool<$0, $1>): u128',
-    'cetus_clmm::pool::fee_rate':
-        'public fun fee_rate<$0, $1>(&@self::pool::Pool<$0, $1>): u64',
-    'cetus_clmm::pool::open_position':
-        'public fun open_position<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, u32, u32, &mut @sui::tx_context::TxContext): @self::position::Position',
-    'cetus_clmm::pool::repay_add_liquidity':
-        'public fun repay_add_liquidity<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, @sui::balance::Balance<$0>, @sui::balance::Balance<$1>, @self::pool::AddLiquidityReceipt<$0, $1>)',
-    'cetus_clmm::pool::tick_spacing':
-        'public fun tick_spacing<$0, $1>(&@self::pool::Pool<$0, $1>): u32',
-    'cetus_clmm::pool_creator::create_pool_v3':
-        'public fun create_pool_v3<$0, $1>(&@self::config::GlobalConfig, &mut @self::factory::Pools, u32, u128, @std::string::String, u32, u32, @sui::coin::Coin<$0>, @sui::coin::Coin<$1>, bool, &@sui::clock::Clock, &mut @sui::tx_context::TxContext): (@self::position::Position, @sui::coin::Coin<$0>, @sui::coin::Coin<$1>)',
+    'cetus_clmm::pool_creator::create_pool_v3_with_creation_cap':
+        'public fun create_pool_v3_with_creation_cap<$0, $1>(&@self::config::GlobalConfig, &mut @self::factory::Pools, &@self::factory::PoolCreationCap, u32, u128, @std::string::String, u32, u32, @sui::coin::Coin<$0>, @sui::coin::Coin<$1>, bool, &@sui::clock::Clock, &mut @sui::tx_context::TxContext): (@self::position::Position, @sui::coin::Coin<$0>, @sui::coin::Coin<$1>)',
     'cetus_clmm::pool_creator::full_range_tick_range':
         'public fun full_range_tick_range(u32): (u32, u32)',
     'cetus_clmm::position::Position':
@@ -706,96 +395,6 @@ const ABI = {
         'public fun liquidity(&@self::position::Position): u128',
     'cetus_clmm::position::pool_id':
         'public fun pool_id(&@self::position::Position): @sui::object::ID',
-    'turbos_clmm::fee::Fee':
-        'struct Fee<phantom $0> has store, key',
-    'turbos_clmm::fee::get_fee':
-        'public fun get_fee<$0>(&@self::fee::Fee<$0>): u32',
-    'turbos_clmm::fee::get_tick_spacing':
-        'public fun get_tick_spacing<$0>(&@self::fee::Fee<$0>): u32',
-    'turbos_clmm::i32::I32':
-        'struct I32 has copy, drop, store',
-    'turbos_clmm::i32::abs_u32':
-        'public fun abs_u32(@self::i32::I32): u32',
-    'turbos_clmm::i32::is_neg':
-        'public fun is_neg(@self::i32::I32): bool',
-    'turbos_clmm::math_tick::get_max_tick':
-        'public fun get_max_tick(u32): @self::i32::I32',
-    'turbos_clmm::math_tick::get_min_tick':
-        'public fun get_min_tick(u32): @self::i32::I32',
-    'turbos_clmm::pool::Pool':
-        'struct Pool<phantom $0, phantom $1, phantom $2> has store, key',
-    'turbos_clmm::pool::Versioned':
-        'struct Versioned has store, key',
-    'turbos_clmm::pool::get_pool_fee':
-        'public fun get_pool_fee<$0, $1, $2>(&@self::pool::Pool<$0, $1, $2>): u32',
-    'turbos_clmm::pool::get_pool_sqrt_price':
-        'public fun get_pool_sqrt_price<$0, $1, $2>(&@self::pool::Pool<$0, $1, $2>): u128',
-    'turbos_clmm::pool::get_pool_tick_spacing':
-        'public fun get_pool_tick_spacing<$0, $1, $2>(&@self::pool::Pool<$0, $1, $2>): u32',
-    'turbos_clmm::pool_factory::PoolConfig':
-        'struct PoolConfig has store, key',
-    'turbos_clmm::pool_factory::deploy_pool_and_mint_with_return_':
-        'public fun deploy_pool_and_mint_with_return_<$0, $1, $2>(&mut @self::pool_factory::PoolConfig, &@self::fee::Fee<$2>, u128, &mut @self::position_manager::Positions, vector<@sui::coin::Coin<$0>>, vector<@sui::coin::Coin<$1>>, u32, bool, u32, bool, u64, u64, u64, u64, u64, &@sui::clock::Clock, &@self::pool::Versioned, &mut @sui::tx_context::TxContext): (@self::position_nft::TurbosPositionNFT, @sui::coin::Coin<$0>, @sui::coin::Coin<$1>, @sui::object::ID)',
-    'turbos_clmm::position_manager::Positions':
-        'struct Positions has store, key',
-    'turbos_clmm::position_manager::collect_with_return_':
-        'public fun collect_with_return_<$0, $1, $2>(&mut @self::pool::Pool<$0, $1, $2>, &mut @self::position_manager::Positions, &mut @self::position_nft::TurbosPositionNFT, u64, u64, address, u64, &@sui::clock::Clock, &@self::pool::Versioned, &mut @sui::tx_context::TxContext): (@sui::coin::Coin<$0>, @sui::coin::Coin<$1>)',
-    'turbos_clmm::position_manager::get_position_info':
-        'public fun get_position_info(&@self::position_manager::Positions, address): (@self::i32::I32, @self::i32::I32, u128)',
-    'turbos_clmm::position_manager::mint_with_return_':
-        'public fun mint_with_return_<$0, $1, $2>(&mut @self::pool::Pool<$0, $1, $2>, &mut @self::position_manager::Positions, vector<@sui::coin::Coin<$0>>, vector<@sui::coin::Coin<$1>>, u32, bool, u32, bool, u64, u64, u64, u64, u64, &@sui::clock::Clock, &@self::pool::Versioned, &mut @sui::tx_context::TxContext): (@self::position_nft::TurbosPositionNFT, @sui::coin::Coin<$0>, @sui::coin::Coin<$1>)',
-    'turbos_clmm::position_nft::TurbosPositionNFT':
-        'struct TurbosPositionNFT has store, key',
-    'turbos_clmm::position_nft::pool_id':
-        'public fun pool_id(&@self::position_nft::TurbosPositionNFT): @sui::object::ID',
-    'amm::pool::CreatePoolCapV2':
-        'struct CreatePoolCapV2 has store, key',
-    'amm::pool::Pool':
-        'struct Pool<phantom $0> has store, key',
-    'amm::pool::balance_of':
-        'public fun balance_of<$0, $1>(&@self::pool::Pool<$0>): u64',
-    'amm::pool::fees_deposit_for':
-        'public fun fees_deposit_for<$0, $1>(&@self::pool::Pool<$0>): u64',
-    'amm::pool::fees_swap_in_for':
-        'public fun fees_swap_in_for<$0, $1>(&@self::pool::Pool<$0>): u64',
-    'amm::pool::fees_swap_out_for':
-        'public fun fees_swap_out_for<$0, $1>(&@self::pool::Pool<$0>): u64',
-    'amm::pool::fees_withdraw_for':
-        'public fun fees_withdraw_for<$0, $1>(&@self::pool::Pool<$0>): u64',
-    'amm::pool::flatness':
-        'public fun flatness<$0>(&@self::pool::Pool<$0>): u64',
-    'amm::pool::lp_decimals':
-        'public fun lp_decimals<$0>(&@self::pool::Pool<$0>): u8',
-    'amm::pool::lp_supply_value':
-        'public fun lp_supply_value<$0>(&@self::pool::Pool<$0>): u64',
-    'amm::pool::share':
-        'public fun share<$0>(@self::pool::Pool<$0>)',
-    'amm::pool::size':
-        'public fun size<$0>(&@self::pool::Pool<$0>): u64',
-    'amm::pool::weight_of':
-        'public fun weight_of<$0, $1>(&@self::pool::Pool<$0>): u64',
-    'amm::pool_factory::create_pool_2_coins_v2':
-        'public fun create_pool_2_coins_v2<$0, $1, $2>(@self::pool::CreatePoolCapV2, &mut @self::pool_registry::PoolRegistry, vector<u8>, vector<u64>, u64, vector<u64>, vector<u64>, vector<u64>, vector<u64>, @sui::coin::Coin<$1>, @sui::coin::Coin<$2>, @std::option::Option<vector<u8>>, bool, &mut @sui::tx_context::TxContext): (@self::pool::Pool<$0>, @sui::coin::Coin<$0>)',
-    'amm::pool_registry::PoolRegistry':
-        'struct PoolRegistry has store, key',
-    'amm::pool_registry::contains_lp_coin':
-        'public fun contains_lp_coin<$0>(&@self::pool_registry::PoolRegistry): bool',
-    'amm::pool_registry::lp_type_to_pool_id':
-        'public fun lp_type_to_pool_id<$0>(&@self::pool_registry::PoolRegistry): @sui::object::ID',
-    'dao_fee_amm::pool::DaoFeePool':
-        'struct DaoFeePool<phantom $0> has store, key',
-    'dao_fee_amm::pool::OwnerCap':
-        'struct OwnerCap<phantom $0> has store, key',
-    'dao_fee_amm::pool::fee_bps':
-        'public fun fee_bps<$0>(&@self::pool::DaoFeePool<$0>): u16',
-    'dao_fee_amm::pool::fee_recipient':
-        'public fun fee_recipient<$0>(&@self::pool::DaoFeePool<$0>): address',
-    'dao_fee_amm::pool::new':
-        'public fun new<$0>(0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c::pool::Pool<$0>, &@self::version::Version, u16, address, &mut @sui::tx_context::TxContext): (@self::pool::DaoFeePool<$0>, @self::pool::OwnerCap<$0>)',
-    'dao_fee_amm::pool::update_fee_bps':
-        'public fun update_fee_bps<$0>(&@self::pool::OwnerCap<$0>, &mut @self::pool::DaoFeePool<$0>, &@self::version::Version, u16)',
-    'dao_fee_amm::version::Version':
-        'struct Version has key',
 };
 
 // === Failures ===
@@ -1321,13 +920,9 @@ async function verifyPackage(expected, observed) {
                 const key = `${module.name}::${name}`;
                 const definingId = origins.get(key);
                 if (check(definingId !== undefined, `${label}: missing type origin for ${key}`)) {
-                    const origin = module.structOrigins?.[name];
-                    const expectedOrigin = origin === 'current'
-                        ? expected.currentId
-                        : expected.originalId;
                     checkEqual(
                         definingId,
-                        expectedOrigin,
+                        expectedStructOrigin(expected, module, name),
                         `${label}: ${key} has the wrong defining package`,
                     );
                     checkedOrigins += 1;
@@ -1340,6 +935,12 @@ async function verifyPackage(expected, observed) {
     }
 
     return { currentId: live.address, checkedOrigins };
+}
+
+/// The package that must define a consumed struct: the original package, unless the expectation
+/// pins the id of the later revision that introduced it.
+function expectedStructOrigin(expected, module, name) {
+    return module.structOrigins?.[name] ?? expected.originalId;
 }
 
 async function verifyModule(expected, module, currentId, observed) {
@@ -1850,15 +1451,15 @@ function mutateSource(source, from, to) {
 
 function selfTestCases() {
     const rootManifest = readPackageFile('Move.toml');
-    const turbosManifest = readPackageFile('interfaces/turbos/Move.toml');
+    const cetusManifest = readPackageFile('interfaces/cetus/Move.toml');
     const lock = readPackageFile('Move.lock');
 
     const FIRST_LOCK_DIGEST = lock.match(/manifest_digest = "([^"]*)"/)?.[1];
     if (!FIRST_LOCK_DIGEST) throw new Error('self-test fixture missing: manifest_digest');
 
     const rootSpec = MANIFESTS.find((spec) => spec.path === 'Move.toml');
-    const turbosSpec = MANIFESTS.find(
-        (spec) => spec.path === 'interfaces/turbos/Move.toml',
+    const cetusSpec = MANIFESTS.find(
+        (spec) => spec.path === 'interfaces/cetus/Move.toml',
     );
     const manifest = (spec, source) => () => validateManifestSource(spec, source);
     const lockCase = (source) => () => validateLockSource(source);
@@ -2004,6 +1605,34 @@ function selfTestCases() {
             },
         },
         {
+            name: 'a struct pinned to its introducing revision expects that revision',
+            expect: 'pass',
+            run: () => {
+                const cetus = PACKAGES.find((venue) => venue.key === 'cetus');
+                const factory = cetus.modules.find((module) => module.name === 'factory');
+                const introducing =
+                    '0x157468379cfe5616c063ae39a889dd184ad48350d3e08f8d9b4ade22b8e3fb61';
+                if (
+                    expectedStructOrigin(cetus, factory, 'PoolCreationCap') !== introducing ||
+                    expectedStructOrigin(cetus, factory, 'Pools') !== cetus.originalId
+                ) {
+                    throw new Error('unexpected struct origin');
+                }
+            },
+        },
+        {
+            name: 'a struct pinned to its introducing revision rejects the original package',
+            run: () => {
+                const cetus = PACKAGES.find((venue) => venue.key === 'cetus');
+                const factory = cetus.modules.find((module) => module.name === 'factory');
+                checkEqual(
+                    cetus.originalId,
+                    expectedStructOrigin(cetus, factory, 'PoolCreationCap'),
+                    'PoolCreationCap origin',
+                );
+            },
+        },
+        {
             // A wrong defining id followed by the expected one must not be
             // overwritten into a passing lookup.
             name: 'duplicate type origin with a conflicting defining id is rejected',
@@ -2046,36 +1675,36 @@ function selfTestCases() {
         {
             name: 'commented-out dependency cannot satisfy an expectation',
             run: manifest(
-                turbosSpec,
-                mutateSource(turbosManifest, 'Sui = {', '# Sui = {'),
+                cetusSpec,
+                mutateSource(cetusManifest, 'Sui = {', '# Sui = {'),
             ),
         },
         {
             name: 'missing rev is rejected',
             run: manifest(
-                turbosSpec,
-                mutateSource(turbosManifest, `, rev = "${REV.sui}"`, ''),
+                cetusSpec,
+                mutateSource(cetusManifest, `, rev = "${REV.sui}"`, ''),
             ),
         },
         {
             name: 'branch selector is rejected',
             run: manifest(
-                turbosSpec,
-                mutateSource(turbosManifest, `rev = "${REV.sui}"`, 'branch = "main"'),
+                cetusSpec,
+                mutateSource(cetusManifest, `rev = "${REV.sui}"`, 'branch = "main"'),
             ),
         },
         {
             name: 'tag selector is rejected',
             run: manifest(
-                turbosSpec,
-                mutateSource(turbosManifest, `rev = "${REV.sui}"`, 'tag = "mainnet-v1.35.2"'),
+                cetusSpec,
+                mutateSource(cetusManifest, `rev = "${REV.sui}"`, 'tag = "mainnet-v1.35.2"'),
             ),
         },
         {
             name: 'wrong-but-40-hex Sui revision is rejected',
             run: manifest(
-                turbosSpec,
-                mutateSource(turbosManifest, REV.sui, REV.suiLegacy),
+                cetusSpec,
+                mutateSource(cetusManifest, REV.sui, REV.suiLegacy),
             ),
         },
         {
@@ -2085,22 +1714,22 @@ function selfTestCases() {
         {
             name: 'wrong Git repository is rejected',
             run: manifest(
-                turbosSpec,
-                mutateSource(turbosManifest, SUI_GIT, 'https://github.com/attacker/sui.git'),
+                cetusSpec,
+                mutateSource(cetusManifest, SUI_GIT, 'https://github.com/attacker/sui.git'),
             ),
         },
         {
             name: 'wrong Git subdirectory is rejected',
             run: manifest(
-                turbosSpec,
-                mutateSource(turbosManifest, SUI_FRAMEWORK_SUBDIR, MOVE_STDLIB_SUBDIR),
+                cetusSpec,
+                mutateSource(cetusManifest, SUI_FRAMEWORK_SUBDIR, MOVE_STDLIB_SUBDIR),
             ),
         },
         {
             name: 'dropped override rule is rejected',
             run: manifest(
-                turbosSpec,
-                mutateSource(turbosManifest, ', override = true', ''),
+                cetusSpec,
+                mutateSource(cetusManifest, ', override = true', ''),
             ),
         },
         {
@@ -2109,17 +1738,17 @@ function selfTestCases() {
                 rootSpec,
                 mutateSource(
                     rootManifest,
-                    `rev = "${REV.mmt}" }`,
-                    `rev = "${REV.mmt}", override = true }`,
+                    `rev = "${REV.bluefin}" }`,
+                    `rev = "${REV.bluefin}", override = true }`,
                 ),
             ),
         },
         {
             name: 'extra Git dependency is rejected',
             run: manifest(
-                turbosSpec,
+                cetusSpec,
                 mutateSource(
-                    turbosManifest,
+                    cetusManifest,
                     '[addresses]',
                     `Extra = { git = "${MOVE_STL_GIT}", rev = "main" }\n\n[addresses]`,
                 ),
@@ -2128,37 +1757,37 @@ function selfTestCases() {
         {
             name: 'duplicate manifest key is rejected',
             run: manifest(
-                turbosSpec,
-                mutateSource(turbosManifest, '[addresses]', '[addresses]\nturbos_clmm = "0x1"'),
+                cetusSpec,
+                mutateSource(cetusManifest, '[addresses]', '[addresses]\ncetus_clmm = "0x1"'),
             ),
         },
         {
             name: 'duplicate manifest table is rejected',
-            run: manifest(turbosSpec, `${turbosManifest}\n[addresses]\n`),
+            run: manifest(cetusSpec, `${cetusManifest}\n[addresses]\n`),
         },
         {
             name: 'changed published-at is rejected',
             run: manifest(
-                turbosSpec,
-                mutateSource(turbosManifest, packageByKey('turbos').currentId, `0x${'a'.repeat(64)}`),
+                cetusSpec,
+                mutateSource(cetusManifest, packageByKey('cetus').currentId, `0x${'a'.repeat(64)}`),
             ),
         },
         {
             name: 'changed named address is rejected',
             run: manifest(
-                turbosSpec,
-                mutateSource(turbosManifest, packageByKey('turbos').originalId, `0x${'b'.repeat(64)}`),
+                cetusSpec,
+                mutateSource(cetusManifest, packageByKey('cetus').originalId, `0x${'b'.repeat(64)}`),
             ),
         },
         {
             name: 'unexpected manifest table is rejected',
-            run: manifest(turbosSpec, `${turbosManifest}\n[dev-dependencies]\nX = { local = "." }\n`),
+            run: manifest(cetusSpec, `${cetusManifest}\n[dev-dependencies]\nX = { local = "." }\n`),
         },
         {
             name: 'rebound local interface path is rejected',
             run: manifest(
                 rootSpec,
-                mutateSource(rootManifest, 'local = "interfaces/turbos"', 'local = "interfaces/cetus"'),
+                mutateSource(rootManifest, 'local = "interfaces/cetus"', 'local = "../launchpad"'),
             ),
         },
 
@@ -2169,7 +1798,7 @@ function selfTestCases() {
         },
         {
             name: 'lock tag selector is rejected',
-            run: lockCase(mutateSource(lock, `rev = "${REV.mmt}"`, 'tag = "v1"')),
+            run: lockCase(mutateSource(lock, `rev = "${REV.moveStl}"`, 'tag = "v1"')),
         },
         {
             name: 'lock missing rev is rejected',
@@ -2180,8 +1809,8 @@ function selfTestCases() {
             run: lockCase(
                 mutateSource(
                     lock,
-                    `[pinned.testnet.Sui]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.sui}" }`,
-                    `[pinned.testnet.Sui]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.suiLegacy}" }`,
+                    `[pinned.testnet.Sui_2]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.sui}" }`,
+                    `[pinned.testnet.Sui_2]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.suiLegacy}" }`,
                 ),
             ),
         },
@@ -2190,25 +1819,22 @@ function selfTestCases() {
             run: lockCase(
                 mutateSource(
                     lock,
-                    '[pinned.mainnet.TurbosCLMM]\nsource = { local = "interfaces/turbos" }\nuse_environment = "mainnet"',
-                    '[pinned.mainnet.TurbosCLMM]\nsource = { local = "interfaces/turbos" }\nuse_environment = "mainnet"',
-                ).replace(
-                    /(\[pinned\.mainnet\.TurbosCLMM\][\s\S]*?deps = \{ Sui = ")Sui(" \})/,
-                    '$1Sui_1$2',
+                    'deps = { IntegerMate = "IntegerMate_1", MoveSTL = "MoveSTL", Sui = "Sui_2" }',
+                    'deps = { IntegerMate = "IntegerMate_1", MoveSTL = "MoveSTL", Sui = "Sui_1" }',
                 ),
             ),
         },
         {
             name: 'lock wrong Git repository is rejected',
-            run: lockCase(mutateSource(lock, MMT_GIT, 'https://github.com/attacker/mmt.git')),
+            run: lockCase(mutateSource(lock, MOVE_STL_GIT, 'https://github.com/attacker/move-stl.git')),
         },
         {
             name: 'lock wrong subdirectory is rejected',
             run: lockCase(
                 mutateSource(
                     lock,
-                    `subdir = "mmt_v3", rev = "${REV.mmt}"`,
-                    `subdir = ".", rev = "${REV.mmt}"`,
+                    `subdir = "sui", rev = "${REV.integerMateBluefin}"`,
+                    `subdir = ".", rev = "${REV.integerMateBluefin}"`,
                 ),
             ),
         },
@@ -2245,7 +1871,7 @@ function selfTestCases() {
         {
             name: 'lock local path change is rejected',
             run: lockCase(
-                mutateSource(lock, 'source = { local = "interfaces/cetus" }', 'source = { local = "interfaces/turbos" }'),
+                mutateSource(lock, 'source = { local = "interfaces/cetus" }', 'source = { local = "interfaces/bluefin" }'),
             ),
         },
         {

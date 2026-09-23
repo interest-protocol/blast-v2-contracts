@@ -7,7 +7,7 @@
 /// Single-validator custody of the 1:1 funSUI ledger and the blastSUI share ledger.
 module blast_sui::vault;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Shared owner of both treasury-cap child objects and the two native custody ledgers.
 ///

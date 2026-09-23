@@ -3,7 +3,7 @@
 
 module blast_sui::events;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Final native custody buckets of one ledger after a completed transition.
 ///

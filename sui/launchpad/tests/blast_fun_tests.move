@@ -30,7 +30,7 @@ fun package_init_claims_and_keeps_publisher() {
     fixture.end();
 }
 
-// === Private Test Helpers ===
+// === Test Helpers ===
 
 macro fun next_tx(
     $fixture: &mut PublisherFixture,

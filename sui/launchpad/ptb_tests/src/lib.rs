@@ -1,0 +1,428 @@
+//! In-memory programmable-transaction harness for the launchpad migration seam.
+//!
+//! Packages are compiled with the pinned `sui` CLI (offline, linked through an ephemeral
+//! pubfile) and published into a deterministic `simulacrum` chain. Nothing touches a network.
+//!
+//! Run from this directory, whose `rust-toolchain.toml` pins the compiler the Sui crates need:
+//! `cd sui/launchpad/ptb_tests && cargo test`.
+
+pub mod measure;
+
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    process::Command,
+    sync::Mutex,
+};
+
+use anyhow::{Context, Result, bail, ensure};
+use base64::Engine;
+use move_core_types::{account_address::AccountAddress, identifier::Identifier, language_storage::StructTag};
+use rand::{SeedableRng, rngs::StdRng};
+use simulacrum::Simulacrum;
+use sui_types::{
+    base_types::{ObjectID, SuiAddress},
+    crypto::AccountKeyPair,
+    effects::{TransactionEffects, TransactionEffectsAPI},
+    error::ExecutionError,
+    event::Event,
+    execution_status::{ExecutionFailureStatus, ExecutionStatus},
+    gas_coin::MIST_PER_SUI,
+    object::{Object, Owner},
+    programmable_transaction_builder::ProgrammableTransactionBuilder,
+    transaction::{
+        Argument, ObjectArg, ProgrammableTransaction, SharedObjectMutability, Transaction,
+        TransactionData,
+    },
+};
+
+/// The Sui revision `Cargo.toml` pins for the simulator. The CLI that compiles the packages must
+/// be built from the same revision, or bytecode and framework could disagree.
+const PINNED_SUI_REVISION: &str = "51d177ad7d65";
+
+/// Compiled modules and the on-chain packages they link against.
+#[derive(Clone)]
+pub struct CompiledPackage {
+    pub modules: Vec<Vec<u8>>,
+    pub dependencies: Vec<ObjectID>,
+}
+
+/// `sui move build` writes each package's `build/` directory, so concurrent tests build in turn.
+static BUILD_LOCK: Mutex<()> = Mutex::new(());
+
+/// Compiles `package` offline. `published` maps local dependency sources to the IDs they were
+/// published at in the simulator, so the bytecode links against those IDs.
+pub fn build(package: &Path, published: &[(&Path, ObjectID)], work: &Path) -> Result<CompiledPackage> {
+    let _build = BUILD_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let binary = std::env::var("SUI_BINARY").unwrap_or_else(|_| "sui".into());
+    let version = Command::new(&binary).arg("--version").output().context("run the sui CLI")?;
+    let version = String::from_utf8_lossy(&version.stdout);
+    ensure!(
+        version.contains(PINNED_SUI_REVISION),
+        "`{binary} --version` is {}; the harness needs revision {PINNED_SUI_REVISION}",
+        version.trim(),
+    );
+    std::fs::create_dir_all(work)?;
+    let client = work.join("client.yaml");
+    std::fs::write(
+        &client,
+        "---\nkeystore:\n  File: ~\nenvs:\n  - alias: localnet\n    rpc: \"http://127.0.0.1:1\"\n    ws: ~\n    basic_auth: ~\nactive_env: localnet\nactive_address: \"0x0000000000000000000000000000000000000000000000000000000000000000\"\n",
+    )?;
+    let mut command = Command::new(&binary);
+    command
+        .arg("move")
+        .arg("--client.config")
+        .arg(&client)
+        .arg("build")
+        .arg("--path")
+        .arg(package)
+        .args(["--dump", "-e", "testnet", "--no-tree-shaking"]);
+    if !published.is_empty() {
+        let mut pubfile = String::from("build-env = \"testnet\"\nchain-id = \"4c78adac\"\n");
+        for (source, id) in published {
+            pubfile.push_str(&format!(
+                "\n[[published]]\nsource = {{ local = \"{}\" }}\npublished-at = \"{id}\"\noriginal-id = \"{id}\"\nversion = 1\n",
+                source.canonicalize()?.display(),
+            ));
+        }
+        let name = package.file_name().context("package directory name")?.to_string_lossy();
+        let path = work.join(format!("Pub.{name}.toml"));
+        std::fs::write(&path, pubfile)?;
+        command.arg("--pubfile-path").arg(path);
+    }
+    let output = command.output().context("run the sui CLI")?;
+    if !output.status.success() {
+        bail!(
+            "building {} failed:\n{}",
+            package.display(),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let dump: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    let engine = base64::engine::general_purpose::STANDARD;
+    let modules = dump["modules"]
+        .as_array()
+        .context("dump modules")?
+        .iter()
+        .map(|module| Ok(engine.decode(module.as_str().context("module")?)?))
+        .collect::<Result<_>>()?;
+    let dependencies = dump["dependencies"]
+        .as_array()
+        .context("dump dependencies")?
+        .iter()
+        .map(|id| Ok(ObjectID::from_hex_literal(id.as_str().context("dependency")?)?))
+        .collect::<Result<_>>()?;
+
+    Ok(CompiledPackage { modules, dependencies })
+}
+
+/// Everything one executed transaction produced.
+pub struct Outcome {
+    pub transaction: Transaction,
+    pub effects: TransactionEffects,
+    pub error: Option<ExecutionError>,
+    pub events: Vec<Event>,
+}
+
+impl Outcome {
+    pub fn assert_success(&self) -> &Self {
+        assert!(
+            self.effects.status().is_ok(),
+            "transaction failed: {:?} {:?}",
+            self.effects.status(),
+            self.error
+        );
+        self
+    }
+
+    /// IDs of created objects whose type is `module::name`.
+    pub fn created(&self, harness: &Harness, module: &str, name: &str) -> Vec<ObjectID> {
+        self.effects
+            .created()
+            .into_iter()
+            .map(|(object, _)| object.0)
+            .filter(|id| harness.is_type(*id, module, name))
+            .collect()
+    }
+
+    /// Payload bytes of Blast events whose payload type is `module::name`. Blast wraps every
+    /// payload in `blast_events::Event<T>`, whose BCS encoding is the payload's.
+    pub fn events_of(&self, module: &str, name: &str) -> Vec<&[u8]> {
+        self.events
+            .iter()
+            .filter(|event| {
+                event.type_.module.as_str() == "blast_events"
+                    && event.type_.name.as_str() == "Event"
+                    && matches!(
+                        event.type_.type_params.as_slice(),
+                        [sui_types::TypeTag::Struct(payload)]
+                            if payload.module.as_str() == module && payload.name.as_str() == name
+                    )
+            })
+            .map(|event| event.contents.as_slice())
+            .collect()
+    }
+
+    /// Payload type names of every event, in native order. Each event must be a `package` payload
+    /// inside `package`'s `blast_events::Event<T>` envelope, so a bare or foreign event fails.
+    pub fn wrapped_payloads(&self, package: ObjectID) -> Vec<String> {
+        self.events
+            .iter()
+            .map(|event| {
+                let envelope = &event.type_;
+                assert!(
+                    ObjectID::from(envelope.address) == package
+                        && envelope.module.as_str() == "blast_events"
+                        && envelope.name.as_str() == "Event",
+                    "event {envelope} is not in the launchpad envelope"
+                );
+                let [sui_types::TypeTag::Struct(payload)] = envelope.type_params.as_slice() else {
+                    panic!("envelope {envelope} does not carry exactly one payload");
+                };
+                assert_eq!(ObjectID::from(payload.address), package, "foreign payload {payload}");
+                payload.name.to_string()
+            })
+            .collect()
+    }
+
+    /// Canonical coin type and value of every coin this transaction created for `owner`, sorted.
+    pub fn coins_created_for(&self, harness: &Harness, owner: SuiAddress) -> Vec<(String, u64)> {
+        let mut coins: Vec<_> = self
+            .effects
+            .created()
+            .into_iter()
+            .filter(|(_, created_owner)| *created_owner == Owner::AddressOwner(owner))
+            .map(|(object, _)| {
+                let coin = harness.object(object.0);
+                let tag = coin.coin_type_maybe().expect("coin").to_canonical_string(true);
+                (tag, coin.get_coin_value_unsafe())
+            })
+            .collect();
+        coins.sort();
+        coins
+    }
+}
+
+/// Every Move object's type and contents, plus the address-owned object IDs of the watched
+/// addresses. A failed transaction must leave this unchanged.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Snapshot {
+    objects: BTreeMap<ObjectID, (StructTag, Vec<u8>)>,
+    owned: BTreeMap<SuiAddress, Vec<ObjectID>>,
+}
+
+pub struct Harness {
+    pub sim: Simulacrum<StdRng>,
+    pub sender: SuiAddress,
+    key: AccountKeyPair,
+    gas: ObjectID,
+}
+
+impl Harness {
+    pub fn new() -> Result<Self> {
+        let mut sim = Simulacrum::new_with_rng(StdRng::seed_from_u64(0xB1A57));
+        let (sender, key, gas) = sim.funded_account(1_000 * MIST_PER_SUI)?;
+        Ok(Self { sim, sender, key, gas: gas.0 })
+    }
+
+    pub fn gas_id(&self) -> ObjectID {
+        self.gas
+    }
+
+    pub fn object(&self, id: ObjectID) -> Object {
+        self.sim
+            .store()
+            .get_object(&id)
+            .cloned()
+            .unwrap_or_else(|| panic!("object {id} is missing"))
+    }
+
+    pub fn contents(&self, id: ObjectID) -> Vec<u8> {
+        self.object(id).data.try_as_move().expect("Move object").contents().to_vec()
+    }
+
+    pub fn is_type(&self, id: ObjectID, module: &str, name: &str) -> bool {
+        self.object(id)
+            .data
+            .try_as_move()
+            .map(|object| {
+                let tag: StructTag = object.type_().clone().into();
+                tag.module.as_str() == module && tag.name.as_str() == name
+            })
+            .unwrap_or(false)
+    }
+
+    pub fn owned_by(&self, owner: SuiAddress) -> Vec<Object> {
+        self.sim.store().owned_objects(owner).cloned().collect()
+    }
+
+    pub fn owned_of_type(&self, owner: SuiAddress, module: &str, name: &str) -> Vec<ObjectID> {
+        self.owned_by(owner)
+            .into_iter()
+            .map(|object| object.id())
+            .filter(|id| self.is_type(*id, module, name))
+            .collect()
+    }
+
+    pub fn shared(&self, id: ObjectID, mutable: bool) -> ObjectArg {
+        let Owner::Shared { initial_shared_version } = self.object(id).owner().clone() else {
+            panic!("object {id} is not shared");
+        };
+        ObjectArg::SharedObject {
+            id,
+            initial_shared_version,
+            mutability: if mutable {
+                SharedObjectMutability::Mutable
+            } else {
+                SharedObjectMutability::Immutable
+            },
+        }
+    }
+
+    pub fn owned(&self, id: ObjectID) -> ObjectArg {
+        ObjectArg::ImmOrOwnedObject(self.object(id).compute_object_reference())
+    }
+
+    pub fn execute(&mut self, pt: ProgrammableTransaction) -> Result<Outcome> {
+        let gas = self.object(self.gas).compute_object_reference();
+        let data = TransactionData::new_programmable(
+            self.sender,
+            vec![gas],
+            pt,
+            50 * MIST_PER_SUI,
+            self.sim.reference_gas_price(),
+        );
+        let transaction = Transaction::from_data_and_signer(data, vec![&self.key]);
+        let (effects, error) = self.sim.execute_transaction(transaction.clone())?;
+        let events = self
+            .sim
+            .store()
+            .get_transaction_events(effects.transaction_digest())
+            .map(|events| events.data.clone())
+            .unwrap_or_default();
+
+        Ok(Outcome { transaction, effects, error, events })
+    }
+
+    /// Publishes upgradeably and keeps the UpgradeCap with the sender.
+    pub fn publish(&mut self, package: CompiledPackage) -> Result<(ObjectID, Outcome)> {
+        let mut builder = ProgrammableTransactionBuilder::new();
+        let cap = builder.publish_upgradeable(package.modules, package.dependencies);
+        builder.transfer_arg(self.sender, cap);
+        let outcome = self.execute(builder.finish())?;
+        outcome.assert_success();
+        let published = outcome.effects.published_packages();
+        ensure!(published.len() == 1, "expected one published package");
+
+        Ok((published[0], outcome))
+    }
+
+    pub fn snapshot(&self, objects: &[ObjectID], owners: &[SuiAddress]) -> Snapshot {
+        Snapshot {
+            objects: objects
+                .iter()
+                .map(|id| {
+                    let object = self.object(*id);
+                    let object = object.data.try_as_move().expect("Move object");
+                    (*id, (object.type_().clone().into(), object.contents().to_vec()))
+                })
+                .collect(),
+            owned: owners
+                .iter()
+                .map(|owner| {
+                    let mut ids: Vec<_> = self.owned_by(*owner).iter().map(|object| object.id()).collect();
+                    ids.sort();
+                    (*owner, ids)
+                })
+                .collect(),
+        }
+    }
+
+    /// Executes `pt`, requires it to fail as `expected`, and proves the failure committed nothing:
+    /// no object created, deleted, wrapped, or unwrapped; no event; every mutated input other than
+    /// gas is one of `objects` and all of `objects` and the `owners`' inventories are unchanged.
+    pub fn assert_rolled_back(
+        &mut self,
+        pt: ProgrammableTransaction,
+        expected: Expected,
+        objects: &[ObjectID],
+        owners: &[SuiAddress],
+    ) -> Result<()> {
+        let before = self.snapshot(objects, owners);
+        let outcome = self.execute(pt)?;
+        match (outcome.effects.status(), &expected) {
+            (ExecutionStatus::Failure(failure), expected) => {
+                assert!(
+                    expected.matches(&failure.error),
+                    "expected failure {expected:?}, got {:?} in command {:?}",
+                    failure.error,
+                    failure.command
+                );
+            }
+            (ExecutionStatus::Success, _) => panic!("expected failure {expected:?}, but it succeeded"),
+        }
+        let effects = &outcome.effects;
+        assert!(effects.created().is_empty(), "failed transaction created objects");
+        assert!(effects.deleted().is_empty(), "failed transaction deleted objects");
+        assert!(effects.wrapped().is_empty(), "failed transaction wrapped objects");
+        assert!(effects.unwrapped().is_empty(), "failed transaction unwrapped objects");
+        assert!(effects.unwrapped_then_deleted().is_empty(), "failed transaction unwrapped objects");
+        assert!(outcome.events.is_empty(), "failed transaction emitted events");
+        for (object, _) in effects.mutated() {
+            assert!(
+                object.0 == self.gas || objects.contains(&object.0),
+                "failed transaction touched unwatched object {}",
+                object.0
+            );
+        }
+        assert_eq!(self.snapshot(objects, owners), before, "failed transaction changed state");
+
+        Ok(())
+    }
+}
+
+/// The failure a rolled-back transaction must report.
+#[derive(Debug)]
+pub enum Expected {
+    /// `MoveAbort` with `code` from `package::module`.
+    Abort { package: ObjectID, module: &'static str, code: u64 },
+    /// Any other failure whose rendered error contains the text.
+    Error(&'static str),
+}
+
+impl Expected {
+    fn matches(&self, error: &ExecutionFailureStatus) -> bool {
+        match (self, error) {
+            (Expected::Abort { package, module, code }, ExecutionFailureStatus::MoveAbort(location, abort)) => {
+                *location.module.address() == AccountAddress::from(*package)
+                    && location.module.name().as_str() == *module
+                    && abort == code
+            }
+            (Expected::Abort { .. }, _) => false,
+            (Expected::Error(text), error) => format!("{error:?}").contains(text),
+        }
+    }
+}
+
+/// Shorthand for a Move call with `Identifier` names.
+pub fn call(
+    builder: &mut ProgrammableTransactionBuilder,
+    package: ObjectID,
+    module: &str,
+    function: &str,
+    type_arguments: Vec<sui_types::TypeTag>,
+    arguments: Vec<Argument>,
+) -> Argument {
+    builder.programmable_move_call(
+        package,
+        Identifier::new(module).expect("module name"),
+        Identifier::new(function).expect("function name"),
+        type_arguments,
+        arguments,
+    )
+}
+
+/// The repository's `sui/` directory.
+pub fn sui_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().expect("sui directory")
+}

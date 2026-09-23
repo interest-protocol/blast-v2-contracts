@@ -8,7 +8,7 @@
 /// Launchpad domain for membership and owns only its package-local state.
 module blast_fun_migrators::blast_fun_migrators;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// One-time witness used only to claim this package's Publisher.
 public struct BLAST_FUN_MIGRATORS has drop {}

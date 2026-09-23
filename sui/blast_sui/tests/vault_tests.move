@@ -7,14 +7,21 @@ module blast_sui::vault_tests;
 // === Constants ===
 
 const OWNER: address = @0xAD;
+
 const USER: address = @0xA11CE;
+
 /// Holder of the seed shares `vault::create` locks forever.
 const ZERO_ADDRESS: address = @0x0;
+
 const MIST_PER_SUI: u64 = 1_000_000_000;
+
 /// OWNER's blast bootstrap: locked blastSUI supply and its permanent backing.
 const BOOTSTRAP: u64 = 10 * MIST_PER_SUI;
+
 /// USER's ordinary blast deposit: the only redeemable shares in a funded vault.
 const DEPOSIT: u64 = 8 * MIST_PER_SUI;
+
+// === Test-Only Types ===
 
 /// Native system with two genesis validators and no vault yet; exercises `vault::create`.
 public struct CreateFixture {
@@ -37,7 +44,9 @@ public struct VaultFixture {
     system_state: Option<SuiSystemState>,
 }
 
-// === Creation Tests ===
+// === Tests ===
+
+// Creation Tests
 
 #[test]
 fun create_seeds_the_fun_reserve_and_stakes_the_bootstrap_in_blast_custody_only() {
@@ -203,7 +212,7 @@ fun create_rejects_a_treasury_cap_with_existing_supply() {
     fixture.end();
 }
 
-// === blastSUI Deposit Receipt Tests ===
+// blastSUI Deposit Receipt Tests
 
 #[test]
 fun blast_request_creates_a_receipt_without_changing_vault_custody_or_supply() {
@@ -431,7 +440,7 @@ fun activation_receipt_prevents_epoch_boundary_reward_sniping() {
     fixture.end();
 }
 
-// === funSUI Tests ===
+// funSUI Tests
 
 #[test]
 fun fun_sui_mints_one_to_one_into_fun_custody_and_never_touches_blast_custody() {
@@ -994,7 +1003,7 @@ fun zero_fun_sui_mint_is_rejected() {
     fixture.end();
 }
 
-// === blastSUI Tests ===
+// blastSUI Tests
 
 #[test]
 fun donation_increases_blast_assets_without_minting_shares() {
@@ -1604,7 +1613,7 @@ fun blast_sui_mint_is_rejected_after_the_validator_left() {
     fixture.end();
 }
 
-// === Exchange-Rate Cache Tests ===
+// Exchange-Rate Cache Tests
 
 /// A rewarded epoch with no vault interaction followed by a safe-mode epoch leaves
 /// the cache one rewarded epoch behind. Both ledgers keep that conservative value
@@ -1902,7 +1911,7 @@ fun stale_package_version_rejects_vault_mutation() {
     fixture.end();
 }
 
-// === Fee Tests ===
+// Fee Tests
 
 /// A zero rate is the only fee-free user redemption; every other exit retains its fee.
 #[test]
@@ -2049,7 +2058,7 @@ fun stale_package_version_rejects_fee_changes() {
     fixture.end();
 }
 
-// === Replay Tests ===
+// Replay Tests
 
 #[test]
 fun every_mutation_emits_a_custody_snapshot_that_replays_to_live_state() {
@@ -2228,7 +2237,7 @@ fun random_sequences_preserve_fun_backing_and_the_sweep_bound() {
     fixture.end();
 }
 
-// === Fixture Macros ===
+// === Test Helpers ===
 
 /// Runs `$fn` as one transaction with the shared system state borrowed.
 macro fun create_next_tx(
@@ -2289,8 +2298,6 @@ macro fun vault_system($fixture: &mut VaultFixture): &mut SuiSystemState {
 
     fixture.system_state.borrow_mut()
 }
-
-// === Fixture Setup ===
 
 /// Two genesis validators with 100 SUI each, advanced once so both pools have a rate entry.
 fun start_create(): CreateFixture {
@@ -2383,8 +2390,6 @@ fun vault_end(self: VaultFixture) {
     system_state.destroy_none();
     runner.finish();
 }
-
-// === Fixture Helpers ===
 
 /// The fixed vault validator: the second genesis validator.
 fun validator(self: &CreateFixture): address {
@@ -2713,8 +2718,6 @@ fun sync(self: &mut VaultFixture): events::VaultCustody {
 
     events::collect_one<events::VaultSynced>(0).vault_synced_custody()
 }
-
-// === Helpers ===
 
 fun advance_runner_epoch(runner: &mut TestRunner) {
     runner.advance_epoch(option::none()).destroy_for_testing();

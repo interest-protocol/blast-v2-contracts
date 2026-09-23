@@ -16,7 +16,7 @@ const PACKAGE_VERSION: u64 = 1;
 /// The generation this bytecode hands over to in a governed upgrade.
 const NEXT_PACKAGE_VERSION: u64 = 2;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Singleton operational package generation.
 public struct PackageVersion has key {

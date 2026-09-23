@@ -56,8 +56,7 @@ exists:
 - `disable_admin_authorization`, the `PackageAdminAuthorizationDisabled`
   event, and the `admin_authorization_enabled` field of `PackageAdminCreated`
   are deleted. The module exposes no `public(package)` function.
-- Error codes 55 and 58 are retired in the append-only registry and must not
-  be reused.
+- Delete the errors belonging to the removed authorization cutover.
 
 An active routine admin therefore remains full code authority under the
 wrapped cap's current policy until an approved governance ADR lands. That ADR
@@ -90,7 +89,6 @@ state; a `bool` planted years early is not a usable governance design.
   has a production caller or is the public deployment entrypoint.
 - The routine-admin path has no self-retirement affordance. Retirement arrives
   with the governance ADR that can actually replace it, via version gates.
-- Error codes 55 and 58 join the retired list; the next new code is still 61.
 - Indexers replay one fewer event type, and `PackageAdminCreated` loses a
   field that could never change after creation.
 

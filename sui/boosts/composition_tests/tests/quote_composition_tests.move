@@ -8,13 +8,18 @@ module blast_boosts_composition_tests::quote_composition_tests;
 // === Constants ===
 
 const MAX_ADMINS: u64 = 16;
+
 const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 // === Test-Only Types ===
 
-public struct QUOTE_COMPOSITION_TESTS() has drop;
+/// This module's one-time witness stands in for a generated package's.
+public struct QUOTE_COMPOSITION_TESTS has drop {}
+
 public struct Long2x() has drop;
+
 public struct Short2x() has drop;
+
 public struct Migration() has drop;
 
 // === Tests ===
@@ -32,7 +37,7 @@ fun admitted_short_vault_quote_uses_the_same_native_buy_and_sell_path() {
 }
 
 #[test]
-#[expected_failure(abort_code = 45, location = blast_fun::launch_config)]
+#[expected_failure(abort_code = 20, location = blast_fun::launch_config)]
 fun admitting_long_does_not_admit_the_distinct_short_vault_quote() {
     quote_round_trip<BlastBoost<Short2x>>(false);
 }
@@ -40,7 +45,7 @@ fun admitting_long_does_not_admit_the_distinct_short_vault_quote() {
 // === Test Helpers ===
 
 fun quote_round_trip<Quote>(admit_exact: bool) {
-    let mut scenario = test_scenario::begin(@0xa);
+    let mut scenario = test_scenario::begin(@0x0);
     let version = package_version::new_for_testing(scenario.ctx());
     let (super_admin, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(
         MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, scenario.ctx(),
@@ -52,31 +57,43 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     let witness = authority.sign_in(&admin);
     let mut config = scenario.take_shared<LaunchConfig>();
     if (admit_exact) {
-        config.allow_quote<Quote>(&version, &witness, 5_000_000, 25_000_000);
+        config.allow_quote<Quote>(&version, &witness, 5_000_000);
     } else {
-        config.allow_quote<BlastBoost<Long2x>>(&version, &witness, 5_000_000, 25_000_000);
+        config.allow_quote<BlastBoost<Long2x>>(&version, &witness, 5_000_000);
     };
     config.allow_migration_witness<Migration>(&version, &witness);
-    config.set_graduation_defaults(&version, &witness, bps::new(250), bps::new(750), bps::new(2_000));
+    config.set_protocol_allocation(&version, &witness, 1, @0xa, bps::new(0), bps::new(0));
     let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
-    let ticket = launch_ticket::new(
-        QUOTE_COMPOSITION_TESTS(), b"MEME".to_string(), b"Composition".to_string(),
+    let mut ticket = launch_ticket::new(
+        test_utils::create_one_time_witness<QUOTE_COMPOSITION_TESTS>(), 9,
+        b"MEME".to_string(), b"Composition".to_string(),
         b"Native Vault Quote test".to_string(), b"".to_string(),
         creator_authority::new_address(@0xa), false, 0, scenario.ctx(),
     );
-    let mut market = launch::new<QUOTE_COMPOSITION_TESTS, Quote, Migration>(
-        ticket, &version, &config, scenario.ctx(),
+    ticket.bind_migration_witness<_, Quote, _>(&config, Migration());
+    scenario.next_tx(@0xa);
+    let mut currency = scenario.take_from_address<Currency<QUOTE_COMPOSITION_TESTS>>(@0xc);
+    let mut market = launch::new<_, Quote>(
+        ticket, &mut currency, &version, &config, 25_000_000, default_allocation_plan(),
+        0, bps::new(0), bps::new(0), scenario.ctx(),
     );
+    let (router, config_cap) = market.new_fee_router(&version, default_fee_routes(), scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
+    market.share(&version, config_cap, router, &clock);
+    test_scenario::return_shared(config);
+    test_scenario::return_to_address(@0xc, currency);
+    scenario.next_tx(@0xa);
+    let mut market = scenario.take_shared<Launch<QUOTE_COMPOSITION_TESTS, Quote>>();
     let quote = coin::mint_for_testing<Quote>(1_000_000, scenario.ctx());
-    let (meme, refund) = market.buy(&version, &runtime, quote, 1, scenario.ctx());
+    let (meme, refund) = market.buy(&version, &runtime, quote, 1, &clock, scenario.ctx());
     assert!(meme.value() > 0);
     assert_eq!(refund.value(), 0);
     refund.destroy_zero();
     let quote: Coin<Quote> = market.sell(&version, &runtime, meme, 1, scenario.ctx());
     assert!(quote.value() > 0 && quote.value() <= 1_000_000);
     coin::burn_for_testing(quote);
-    test_scenario::return_shared(config);
-    destroy(market);
+    test_scenario::return_shared(market);
+    clock.destroy_for_testing();
     destroy(runtime);
     destroy(admin);
     destroy(authority);
@@ -85,7 +102,23 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     scenario.end();
 }
 
-// === Compile-Only Composition Contracts ===
+fun default_allocation_plan(): AllocationPlan {
+    allocation::new(
+        vector[allocation::channel(2, allocation::liquidity_role(), @0xa)],
+        vector[
+            allocation::weight(0, bps::new(8_000)),
+            allocation::weight(2, bps::new(2_000)),
+        ],
+        vector[allocation::weight(2, bps::new(10_000))],
+    )
+}
+
+fun default_fee_routes(): allocation::Routes {
+    let route = vector[allocation::route(@0xa, bps::new(10_000))];
+    allocation::routes(route, route)
+}
+
+// Compile-Only Composition Contracts
 
 /// External Quote trading is independent of retirement; returned shares can enter a local claim.
 /// This typechecks the actual terminal ABI without requiring a venue or oracle object.
@@ -145,7 +178,7 @@ public fun mint_and_buy<Product, Collateral, Meme>(
     let shares = operations::mint(vault, protocol, account, registry, clearing_house,
         base_oracle, collateral_oracle, cash,
         minimum_shares, deadline, clock, ctx);
-    market.buy(version, runtime, shares, minimum_meme, ctx)
+    market.buy(version, runtime, shares, minimum_meme, clock, ctx)
 }
 
 /// Typechecks the atomic launch sell -> redemption handoff without a receipt currency.
@@ -178,7 +211,7 @@ public fun sell_and_redeem<Product, Collateral, Meme>(
 use blast_admin::acl::{Self, AdminCap, AdminWitness};
 
 use blast_fun::{
-    bps, creator_authority, launch::{Self, Launch}, launch_config::{Self, LaunchConfig},
+    allocation::{Self as allocation, AllocationPlan}, bps, creator_authority, launch::{Self, Launch}, launch_config::{Self, LaunchConfig},
     launch_ticket, blast_fun_domain::BLAST_FUN_DOMAIN,
     package_version::{Self, PackageVersion}, runtime_config::{Self, RuntimeConfig},
 };
@@ -193,7 +226,12 @@ use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 
 use perpetuals::{account::Account, clearing_house::ClearingHouse, registry::Registry};
 
+use std::{type_name, unit_test::{assert_eq, destroy}};
 
-use std::unit_test::{assert_eq, destroy};
-
-use sui::{clock::Clock, coin::{Self, Coin}, coin_registry::CoinRegistry, test_scenario};
+use sui::{
+    clock::{Self, Clock},
+    coin::{Self, Coin},
+    coin_registry::{CoinRegistry, Currency},
+    test_scenario,
+    test_utils,
+};

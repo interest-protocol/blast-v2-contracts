@@ -30,8 +30,7 @@ mutation and package-administration operation checks it before other work. A
 successful native upgrade commit advances it exactly once.
 
 Remove the per-Launch version field, constant, guard, creation-event field,
-error, test helper, and mismatch test. Error code 69 is retired and must not be
-reused.
+error, test helper, and mismatch test.
 
 Blast does not imply object migration by incrementing a counter. If a future
 upgrade needs an object migration, that upgrade must define an explicit state

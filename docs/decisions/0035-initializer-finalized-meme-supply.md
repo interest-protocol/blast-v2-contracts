@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-25
 - Amends: [0002](0002-coin-creation-and-currency-authority.md), [0023](0023-generated-coin-supply-and-metadata-custody.md), [0024](0024-generated-coin-launch-ticket.md)
-- Amended by: [0036](0036-fixed-nine-decimal-generated-memes.md), [0037](0037-remove-redundant-ticket-burn-mode.md), [0043](0043-versioned-launch-trading-and-atomic-migration.md), [0047](0047-coin-registry-authoritative-supply-mode.md)
+- Amended by: [0036](0036-fixed-nine-decimal-generated-memes.md), [0037](0037-remove-redundant-ticket-burn-mode.md), [0043](0043-versioned-launch-trading-and-atomic-migration.md), [0047](0047-coin-registry-authoritative-supply-mode.md), [0088](0088-reusable-launch-accounting-and-atomic-migration.md) (the initializer still mints the supply; the ticket keeps the treasury capability until launch intake fixes the supply mode)
 
 ## Sources
 

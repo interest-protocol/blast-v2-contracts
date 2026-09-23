@@ -8,9 +8,10 @@ module blast_admin::upgrade_fixture;
 // === Constants ===
 
 const COMPILED_GENERATION: u64 = 1;
+
 const PACKAGE_ADMIN_ROLE: u64 = 1;
 
-// === Test-Only Structs ===
+// === Test-Only Types ===
 
 public struct PackageAdmin has key {
     id: UID,
@@ -18,7 +19,7 @@ public struct PackageAdmin has key {
     custody: upgrade_custody::UpgradeCustody<package_marker::PACKAGE_MARKER>,
 }
 
-// === Test-Only Functions ===
+// === Test Helpers ===
 
 public fun new(
     publisher: Publisher,

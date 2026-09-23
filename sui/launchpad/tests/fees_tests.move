@@ -7,13 +7,17 @@ module blast_fun::fees_tests;
 // === Constants ===
 
 const CREATOR: address = @0xC0FFEE;
+
 const BENEFICIARY: address = @0xB0B;
+
 const PAYOUT_RECIPIENT: address = @0xCAFE;
+
 const PROTOCOL_FEE_SHARE_BPS: u64 = 5_000;
 
 // === Test-Only Types ===
 
 public struct TEST_MEME() has drop;
+
 public struct TEST_QUOTE() has drop;
 
 /// Fee-claim authorities: the live protocol share plus one claimed creator cap.
@@ -393,7 +397,7 @@ fun transferred_creator_cap_claims_and_routes_both_assets_composably() {
     fixture.end();
 }
 
-// === Private Test Helpers ===
+// === Test Helpers ===
 
 fun accrue<Meme, Quote>(
     ledger: &mut fees::FeeLedger<Meme, Quote>,

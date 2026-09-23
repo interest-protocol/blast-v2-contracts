@@ -1,6 +1,6 @@
 # 0022: Dual-asset fee ledger and capability claims
 
-- Status: accepted
+- Status: accepted; amended by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 - Date: 2026-08-23
 - Partially accepts: [0006](0006-fees-and-launch-paths.md), [0007](0007-acl-pause-and-versioning.md), [0011](0011-event-schema-and-replay.md)
 - Amended by: [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0041](0041-launch-config-owned-trade-fees.md), [0058](0058-eventless-package-initialization.md), [0079](0079-compact-launch-state-and-events.md), and [0081](0081-separate-lp-fee-share-policy.md)

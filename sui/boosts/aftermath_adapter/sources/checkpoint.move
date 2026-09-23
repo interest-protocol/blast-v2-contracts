@@ -9,11 +9,11 @@
 /// must leave behind.
 module blast_boosts_aftermath::checkpoint;
 
+// === Public Types ===
+
 // The `*_decoded` helpers take collateral already decoded from IFixed into a
 // sign and magnitude; the pinned `ifixed` port aborts under test, so the pure
 // proof is exercised from fixtures through them.
-
-// === Public Types ===
 
 /// Raw Aftermath state captured at one authenticated mutation boundary.
 public struct Checkpoint has copy, drop, store {
@@ -151,30 +151,6 @@ public(package) fun assert_withdrawal_checkpoint(before: &Checkpoint, after: &Ch
         amount - from_free, false,
     );
     assert_cash_checkpoint(before, after, before.free_collateral - from_free);
-}
-
-// --- Funding ---
-
-/// Returns true when only the market's cumulative funding rates advanced.
-///
-/// This is the ordinary pre-settlement shape: the position still carries the
-/// stored funding snapshots while the market rates may have moved forward.
-fun checkpoint_ready_for_settlement(self: &Checkpoint, before: &Checkpoint): bool {
-    self.non_funding_fields_equal(before)
-        && self.allocated_collateral == before.allocated_collateral
-        && self.funding_snapshot_long == before.funding_snapshot_long
-        && self.funding_snapshot_short == before.funding_snapshot_short
-}
-
-/// Recognizes funding that another caller settled before this synchronization.
-///
-/// Aftermath settlement is permissionless. The adapter therefore accepts the
-/// one exact stored-to-pre shape that settlement can produce: funding
-/// snapshots refresh to the current market rates and allocated collateral
-/// changes, while every unrelated account, position, order, and risk field is
-/// byte-for-byte unchanged.
-fun classify_preexisting_funding(self: &Checkpoint, before: &Checkpoint): CheckpointChange {
-    classify_preexisting_from_delta(self, before, allocated_delta(self, before))
 }
 
 /// Classifies only an isolated funding-snapshot and allocated-collateral change.
@@ -338,6 +314,30 @@ public(package) fun assert_terminal_withdrawal_checkpoint(before: &Checkpoint, a
 }
 
 // === Private Functions ===
+
+// --- Funding ---
+
+/// Returns true when only the market's cumulative funding rates advanced.
+///
+/// This is the ordinary pre-settlement shape: the position still carries the
+/// stored funding snapshots while the market rates may have moved forward.
+fun checkpoint_ready_for_settlement(self: &Checkpoint, before: &Checkpoint): bool {
+    self.non_funding_fields_equal(before)
+        && self.allocated_collateral == before.allocated_collateral
+        && self.funding_snapshot_long == before.funding_snapshot_long
+        && self.funding_snapshot_short == before.funding_snapshot_short
+}
+
+/// Recognizes funding that another caller settled before this synchronization.
+///
+/// Aftermath settlement is permissionless. The adapter therefore accepts the
+/// one exact stored-to-pre shape that settlement can produce: funding
+/// snapshots refresh to the current market rates and allocated collateral
+/// changes, while every unrelated account, position, order, and risk field is
+/// byte-for-byte unchanged.
+fun classify_preexisting_funding(self: &Checkpoint, before: &Checkpoint): CheckpointChange {
+    classify_preexisting_from_delta(self, before, allocated_delta(self, before))
+}
 
 // --- Read ---
 
@@ -707,6 +707,7 @@ use ifixed::ifixed;
 
 // An IFixed value is a u256 carrier; only its sign and magnitude read as methods.
 use fun ifixed::abs as u256.abs;
+
 use fun ifixed::is_neg as u256.is_neg;
 
 use perpetuals::{account::Account, clearing_house::ClearingHouse};

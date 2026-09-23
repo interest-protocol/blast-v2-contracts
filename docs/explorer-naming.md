@@ -29,7 +29,7 @@ identified only through its package marker; ADR 0085 records why.
 | `blast_admin` | none: library package with no `init` | — | — |
 | `blast_fun_distributor` | none: `init` creates `AdminCap` and `Version` without a witness | — | — |
 | `blast_fun_vesting` | none: no `init` | — | — |
-| `meme_template` | generated coin OTW | `meme::MEME` | unchanged; the creator's coin, renamed per launch by the SDK template |
+| `meme_template` | generated package one-time witness | `meme::MEME` | unchanged name; the generated package's one-time witness, renamed per launch by the SDK template |
 
 The Publisher object shows `module_name` of the claiming module, and
 `PackageAdmin`/`PackageVersion` show `UpgradeCustody<Marker>` and
@@ -43,7 +43,7 @@ every package-administration object.
 | `blast_sui` | `blast_sui::BLAST_SUI` | unchanged | module and struct |
 | `blast_sui` | `fun_sui::FUN_SUI` | unchanged | ticker `funSUI`, the blast.fun quote coin |
 | `blast_boosts_aftermath` | `vault::Vault<Product>` | `blast_boost::BlastBoost<Product>` | module and struct; `Product` is a `blast_boosts_products` tag |
-| `meme_template` | `meme::MEME` | unchanged | creator-owned coin; not Blast's |
+| `meme_template` | `meme::MEME` | unchanged | module and struct; the generated package one-time witness |
 
 ## Key objects
 
@@ -65,10 +65,7 @@ every package-administration object.
 | `blast_fun` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_FUN>` |
 | `blast_fun` | `package_version::PackageVersion` | unchanged | holds `OperationalVersion<BLAST_FUN>` |
 | `blast_fun_migrators` | `vault::LpVault<Meme, Quote>` | unchanged | *residual* |
-| `blast_fun_migrators` | `lp_fee_authority::LpFeeCap<Meme>` | unchanged | *residual*, wallet-held |
-| `blast_fun_migrators` | `lp_fee_policy::LpFeePolicy` | unchanged | *residual* |
 | `blast_fun_migrators` | `venue_config::VenueConfig` | unchanged | *residual* |
-| `blast_fun_migrators` | `aftermath::AftermathPosition<Lp>` | unchanged | *residual*; a dynamic-object-field child of `LpVault`, named for the venue it wraps |
 | `blast_fun_migrators` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_FUN_MIGRATORS>` |
 | `blast_fun_migrators` | `package_version::PackageVersion` | unchanged | holds `OperationalVersion<BLAST_FUN_MIGRATORS>` |
 | `blast_fun_distributor` | `distributor::Distributor<Meme, Quote>` | `blast_fun_distributor::Distributor<Meme, Quote>` | module |
@@ -110,9 +107,10 @@ Payload struct names inside the envelopes (`Bought`, `Migrated`,
 | `blast_admin` | `Domain` parameter of every ACL type | — | always a Blast domain witness above |
 | `blast_admin` | `PackageMarker` parameter of `OperationalVersion` and `UpgradeCustody` | — | always a Blast marker above |
 | `blast_sui` | `vault::TreasuryKey<CoinType>`, `package_admin::CapabilityKey<Capability>` | unchanged | dynamic-field keys under `Vault` and `PackageAdmin` |
-| `blast_fun_migrators` | `aftermath::Venue`, `cetus::Venue`, `bluefin::Venue`, `mmt::Venue`, `turbos::Venue` | unchanged | sealed venue witnesses used as `PositionKey<Venue>` and `TierKey<Venue>` keys inside Blast objects; the module names the venue the migrator targets |
-| `blast_fun_migrators` | `aftermath::Witness`, `cetus::Witness`, … | unchanged | migration witnesses; appear as `TypeName` values in `LaunchConfig` and events |
-| `blast_fun_migrators` | `aftermath::PolicyKey`, `aftermath::AftermathPolicy` | unchanged | dynamic-field key and value under `VenueConfig` |
+| `blast_fun_migrators` | `cetus::Venue`, `bluefin::Venue` | unchanged | sealed venue witnesses used as `PositionKey<Venue>` and `TierKey<Venue>` keys inside Blast objects; the module names the venue the migrator targets |
+| `blast_fun_migrators` | `cetus::Witness`, `bluefin::Witness` | unchanged | the only migration witnesses; appear as `TypeName` values in `LaunchConfig` and events |
+| `blast_fun_migrators` | `cetus::CreationCapKey<Meme>` | unchanged | key under `VenueConfig` for the Meme type's Cetus `PoolCreationCap`, held by `VenueConfig` |
+| `blast_fun_migrators` | `cetus::ReservationKey<Meme, Quote>` | unchanged | dynamic-field key under `VenueConfig` naming one reserved Meme/Quote pair; the value is its reserved tick spacing |
 | `blast_boosts_aftermath` | `vault::TreasuryKey<Product>`, `vault::MetadataKey<Product>`, `vault::AdminCashKey`, `vault::TerminalCashKey` | unchanged | dynamic-field keys under `Vault` |
 | `blast_boosts_products` | `<TICKER>_<SIDE>_<LEVERAGE>` tags such as `NVDA_BULL_2X` | bull and bear 2X per Aftermath market | inner type of every Boost coin |
 

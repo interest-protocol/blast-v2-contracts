@@ -4,6 +4,8 @@
 #[test_only]
 module blast_boosts_core::errors_tests;
 
+// === Tests ===
+
 // Every code is pinned so a renumbering is a deliberate, reviewed edit.
 
 #[test]

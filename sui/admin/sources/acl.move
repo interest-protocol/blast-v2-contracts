@@ -7,7 +7,7 @@
 /// Typed, bounded administration membership and delayed cold-root rotation.
 module blast_admin::acl;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// One pending delayed replacement of a domain's active root capability.
 public struct PendingSuperAdminTransfer has drop, store {

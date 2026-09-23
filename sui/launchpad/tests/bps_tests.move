@@ -23,13 +23,6 @@ fun constructor_rejects_the_first_value_above_one_hundred_percent() {
 }
 
 #[test]
-fun downward_application_assigns_the_remainder_away_from_the_rate() {
-    assert_eq!(bps::new(0).apply_down(10_001), 0);
-    assert_eq!(bps::new(2_500).apply_down(10_001), 2_500);
-    assert_eq!(bps::new(10_000).apply_down(std::u64::max_value!()), std::u64::max_value!());
-}
-
-#[test]
 fun upward_application_assigns_the_remainder_to_the_rate() {
     assert_eq!(bps::new(0).apply_up(10_001), 0);
     assert_eq!(bps::new(2_500).apply_up(10_001), 2_501);
@@ -42,17 +35,6 @@ fun complement_is_exact_and_involutive() {
     assert_eq!(bps::new(0).complement().value(), 10_000);
     assert_eq!(bps::new(10_000).complement().value(), 0);
     assert_eq!(bps::new(2_501).complement().complement().value(), 2_501);
-}
-
-#[test]
-fun upward_rate_plus_downward_complement_conserves_the_amount() {
-    let amount = 10_001;
-    let rate = bps::new(2_500);
-
-    assert_eq!(
-        rate.apply_up(amount) + rate.complement().apply_down(amount),
-        amount,
-    );
 }
 
 // === Imports ===

@@ -1,6 +1,6 @@
 # 0047: Coin Registry authoritative supply mode
 
-- Status: accepted
+- Status: accepted; supply-mode timing amended by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 - Date: 2026-08-29
 - Amends: [0024](0024-generated-coin-launch-ticket.md),
   [0035](0035-initializer-finalized-meme-supply.md),
@@ -11,6 +11,12 @@
 
 > ADR 0079 keeps `sell_burn_bps` on the ticket and launch object but no longer
 > duplicates it in `LaunchCreated`; reducers join the referenced ticket.
+>
+> ADR 0088 moves the supply-mode change from the ticket constructor to launch
+> intake: the ticket keeps the `TreasuryCap` and stores the owner's `burnable`
+> choice, and `launch::new` borrows the registered `Currency`, checks the
+> canonical supply, and consumes the cap into `Fixed` or `BurnOnly`. Coin
+> Registry stays the authority for the mode once it is set, as below.
 
 ## Context
 

@@ -10,7 +10,7 @@ module blast_admin::operational_version;
 
 const INITIAL_GENERATION: u64 = 1;
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Storable, package-typed generation value with construction and mutation sealed here.
 public struct OperationalVersion<phantom PackageMarker: drop> has store {

@@ -1,5 +1,11 @@
 # Independent holder fee distributor
 
+> Amended by [ADR 0088](0088-reusable-launch-accounting-and-atomic-migration.md):
+> recurring LP fees arrive as coins a fee router pushes to the distributor's
+> object address, which it receives with `transfer::public_receive`; existing
+> pause, Merkle-round, double-claim, owner-held native `UpgradeCap`,
+> `AdminCap`, and stored-version migration behavior remains accepted.
+
 Accepted for implementation on 2026-09-05 following the user's request for an
 optional, separate package that consumes the creator capability and distributes
 fees to wallet holders. Publication remains subject to release verification.

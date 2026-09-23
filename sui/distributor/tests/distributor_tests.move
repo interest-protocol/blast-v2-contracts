@@ -7,20 +7,24 @@ module blast_fun_distributor::distributor_tests;
 // === Constants ===
 
 const CREATOR: address = @0xC;
+
 const ALICE: address = @0xA;
+
 const BOT: address = @0xB;
 
 // === Test-Only Types ===
 
-public struct DISTRIBUTOR_TESTS() has drop;
+/// This module's one-time witness stands in for a generated package's.
+public struct DISTRIBUTOR_TESTS has drop {}
+
 public struct QUOTE() has drop;
+
 public struct Venue() has drop;
 
 public struct DistributionFixture {
     scenario: Scenario,
-    launch: Launch<DISTRIBUTOR_TESTS, QUOTE>,
+    launch: Option<Launch<DISTRIBUTOR_TESTS, QUOTE>>,
     version: package_version::PackageVersion,
-    migrators_version: MigratorsVersion,
     control: Version,
     admin: AdminCap,
     distributor: Distributor<DISTRIBUTOR_TESTS, QUOTE>,
@@ -48,10 +52,10 @@ fun init_sends_admin_cap_to_publisher_and_shares_current_unpaused_version() {
 fun enrollment_destroys_the_creator_cap_and_binds_curve_fees_forever() {
     let f = start();
     assert_eq!(
-        f.launch.fee_custodian_for_testing(),
+        f.launch.borrow().fee_custodian_for_testing(),
         option::some(type_name::with_original_ids<distributor::Witness>()),
     );
-    assert!(f.launch.curve_fee_cap_id_for_testing().is_none());
+    assert!(f.launch.borrow().curve_fee_cap_id_for_testing().is_none());
     {
         let (meme, quote) = f.distributor.balances_for_testing();
         assert_eq!(meme, 0);
@@ -65,6 +69,7 @@ fun permissionless_collection_moves_only_creator_fees_into_distributor() {
     let mut f = start();
     let (protocol_meme, creator_meme, protocol_quote, creator_quote) = f
         .launch
+        .borrow()
         .fee_totals_for_testing();
     assert!(creator_meme > 0 && creator_quote > 0);
     f.next_tx!(BOT, |f| { f.collect!(); });
@@ -73,7 +78,7 @@ fun permissionless_collection_moves_only_creator_fees_into_distributor() {
         assert_eq!(meme, creator_meme);
         assert_eq!(quote, creator_quote);
     };
-    let (pm, cm, pq, cq) = f.launch.fee_totals_for_testing();
+    let (pm, cm, pq, cq) = f.launch.borrow().fee_totals_for_testing();
     assert_eq!(pm, protocol_meme);
     assert_eq!(cm, 0);
     assert_eq!(pq, protocol_quote);
@@ -587,7 +592,7 @@ fun enrollment_collection_and_publication_events_reconcile_every_funding_field()
     let enrolled = sui::event::events_by_type<distributor::Enrolled>();
     assert_eq!(enrolled.length(), 1);
     let mut expected = bcs::to_bytes(&object::id(&f.distributor));
-    expected.append(bcs::to_bytes(&object::id(&f.launch)));
+    expected.append(bcs::to_bytes(&object::id(f.launch.borrow())));
     expected.append(bcs::to_bytes(&f.creator_cap_id));
     expected.append(bcs::to_bytes(&object::id(&f.publisher)));
     assert_eq!(bcs::to_bytes(&enrolled[0]), expected);
@@ -597,7 +602,7 @@ fun enrollment_collection_and_publication_events_reconcile_every_funding_field()
     let collected = sui::event::events_by_type<distributor::FeesCollected>();
     assert_eq!(collected.length(), 1);
     let mut expected = bcs::to_bytes(&object::id(&f.distributor));
-    expected.append(bcs::to_bytes(&object::id(&f.launch)));
+    expected.append(bcs::to_bytes(&object::id(f.launch.borrow())));
     expected.append(bcs::to_bytes(&meme));
     expected.append(bcs::to_bytes(&quote));
     expected.append(bcs::to_bytes(&meme));
@@ -689,223 +694,41 @@ fun retired_code_cannot_resume_paused_rewards() {
 }
 
 #[test]
-fun locked_lp_fees_collect_only_creator_lp_fees() {
-    let mut f = start();
-    let lp_fee_policy = lp_fee_policy::new_for_testing(f.ctx!());
-    let share = lp_fee_policy.protocol_fee_share<DISTRIBUTOR_TESTS>().value();
-    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.ctx!()).into_balance();
-    let quote = coin::mint_for_testing<QUOTE>(2000, f.ctx!()).into_balance();
-    let mut source = blast_fun_migrators::vault::funded_for_testing(
-        object::id_from_address(@0xF00),
-        meme,
-        quote,
-        &lp_fee_policy,
-        f.ctx!(),
-    );
-    let lp_fee_cap = source.issue_lp_fee_cap_for_testing(f.ctx!());
-    f.next_tx!(BOT, |f| {
-        f.distributor.lock_lp_fees_with_cap(
-            &f.control,
-            &mut source,
-            &f.migrators_version,
-            &f.launch,
-            lp_fee_cap,
-        );
-        assert_eq!(
-            source.custodian_for_testing(),
-            option::some(type_name::with_original_ids<distributor::Witness>()),
-        );
-        assert!(source.lp_fee_cap_id_for_testing().is_none());
-        f.distributor.collect_lp_fees(&f.control, &mut source, &f.migrators_version, f.ctx!());
-    });
-    let (meme, quote) = f.distributor.balances_for_testing();
-    assert_eq!(meme, 1000 - (1000 * share + 9999) / 10000);
-    assert_eq!(quote, 2000 - (2000 * share + 9999) / 10000);
-    destroy(source);
-    destroy(lp_fee_policy);
-    f.end();
-}
-
-#[test]
 #[
     expected_failure(
-        abort_code = blast_fun_migrators::lp_fee_authority::ELpFeeCustodianMismatch,
-        location = blast_fun_migrators::lp_fee_authority,
+        abort_code = distributor::EWrongSource,
+        location = blast_fun_distributor::blast_fun_distributor,
     ),
 ]
-fun lp_collection_requires_lp_fees_bound_to_the_distributor() {
-    let mut f = start();
-    let lp_fee_policy = lp_fee_policy::new_for_testing(f.ctx!());
-    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.ctx!()).into_balance();
-    let quote = coin::mint_for_testing<QUOTE>(2000, f.ctx!()).into_balance();
-    let mut source = blast_fun_migrators::vault::funded_for_testing(
-        object::id_from_address(@0xF00),
-        meme,
-        quote,
-        &lp_fee_policy,
-        f.ctx!(),
-    );
-    f.next_tx!(BOT, |f| {
-        f.distributor.collect_lp_fees(&f.control, &mut source, &f.migrators_version, f.ctx!());
-    });
-    destroy(source);
-    destroy(lp_fee_policy);
-    f.end();
-}
-
-#[test]
-#[
-    expected_failure(
-        abort_code = blast_fun_migrators::lp_fee_authority::ELpFeeCapNotLive,
-        location = blast_fun_migrators::lp_fee_authority,
-    ),
-]
-fun retired_lp_fee_cap_cannot_lock_lp_fees() {
-    let mut f = start();
-    let lp_fee_policy = lp_fee_policy::new_for_testing(f.ctx!());
-    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1, f.ctx!()).into_balance();
-    let quote = coin::mint_for_testing<QUOTE>(1, f.ctx!()).into_balance();
-    let mut source = blast_fun_migrators::vault::funded_for_testing(
-        object::id_from_address(@0xF00),
-        meme,
-        quote,
-        &lp_fee_policy,
-        f.ctx!(),
-    );
-    let retired = source.issue_lp_fee_cap_for_testing(f.ctx!());
-    let live = source.issue_lp_fee_cap_for_testing(f.ctx!());
-    f.next_tx!(BOT, |f| {
-        f.distributor.lock_lp_fees_with_cap(
-            &f.control,
-            &mut source,
-            &f.migrators_version,
-            &f.launch,
-            retired,
-        );
-    });
-    destroy(live);
-    destroy(source);
-    destroy(lp_fee_policy);
-    f.end();
-}
-
-#[test]
-fun pending_lp_fees_bind_to_the_enrolled_distributor_without_a_cap() {
-    let mut f = start();
-    let lp_fee_policy = lp_fee_policy::new_for_testing(f.ctx!());
-    let share = lp_fee_policy.protocol_fee_share<DISTRIBUTOR_TESTS>().value();
-    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.ctx!()).into_balance();
-    let quote = coin::mint_for_testing<QUOTE>(2000, f.ctx!()).into_balance();
-    let mut source = blast_fun_migrators::vault::funded_for_testing(
-        object::id_from_address(@0xF00),
-        meme,
-        quote,
-        &lp_fee_policy,
-        f.ctx!(),
-    );
-    f.next_tx!(BOT, |f| {
-        f.distributor.lock_lp_fees(&f.control, &mut source, &f.migrators_version, &f.launch);
-        assert_eq!(
-            source.custodian_for_testing(),
-            option::some(type_name::with_original_ids<distributor::Witness>()),
-        );
-        f.distributor.collect_lp_fees(&f.control, &mut source, &f.migrators_version, f.ctx!());
-    });
-    let (meme, quote) = f.distributor.balances_for_testing();
-    assert_eq!(meme, 1000 - (1000 * share + 9999) / 10000);
-    assert_eq!(quote, 2000 - (2000 * share + 9999) / 10000);
-    destroy(source);
-    destroy(lp_fee_policy);
-    f.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = distributor::EWrongSource,
-    location = blast_fun_distributor::blast_fun_distributor,
-)]
-fun locking_a_claimed_lp_cap_rejects_an_unenrolled_launch() {
-    let mut f = start();
-    let lp_fee_policy = lp_fee_policy::new_for_testing(f.ctx!());
-    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.ctx!()).into_balance();
-    let quote = coin::mint_for_testing<QUOTE>(2000, f.ctx!()).into_balance();
-    let mut source = blast_fun_migrators::vault::funded_for_testing(
-        object::id_from_address(@0xF00),
-        meme,
-        quote,
-        &lp_fee_policy,
-        f.ctx!(),
-    );
-    let lp_fee_cap = source.issue_lp_fee_cap_for_testing(f.ctx!());
-    let unenrolled = f.new_unenrolled_launch();
-
-    f.distributor.lock_lp_fees_with_cap(
-        &f.control,
-        &mut source,
-        &f.migrators_version,
-        &unenrolled,
-        lp_fee_cap,
-    );
-
-    destroy(unenrolled);
-    destroy(source);
-    destroy(lp_fee_policy);
-    f.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = distributor::EWrongSource,
-    location = blast_fun_distributor::blast_fun_distributor,
-)]
 fun collecting_curve_fees_rejects_an_unenrolled_launch() {
     let mut f = start();
-    let mut unenrolled = f.new_unenrolled_launch();
+    let unenrolled = f.new_unenrolled_launch();
+    let unenrolled_id = object::id(&unenrolled);
+    test_scenario::return_shared(unenrolled);
 
     f.next_tx!(BOT, |f| {
+        let mut unenrolled = f
+            .scenario
+            .take_shared_by_id<Launch<DISTRIBUTOR_TESTS, QUOTE>>(unenrolled_id);
         f.distributor.collect_curve_fees(&f.control, &mut unenrolled, &f.version, f.ctx!());
+        test_scenario::return_shared(unenrolled);
     });
 
-    destroy(unenrolled);
     f.end();
 }
 
-#[test]
-#[expected_failure(
-    abort_code = distributor::EWrongSource,
-    location = blast_fun_distributor::blast_fun_distributor,
-)]
-fun binding_pending_lp_fees_rejects_an_unenrolled_launch() {
-    let mut f = start();
-    let lp_fee_policy = lp_fee_policy::new_for_testing(f.ctx!());
-    let meme = coin::mint_for_testing<DISTRIBUTOR_TESTS>(1000, f.ctx!()).into_balance();
-    let quote = coin::mint_for_testing<QUOTE>(2000, f.ctx!()).into_balance();
-    let mut source = blast_fun_migrators::vault::funded_for_testing(
-        object::id_from_address(@0xF00),
-        meme,
-        quote,
-        &lp_fee_policy,
-        f.ctx!(),
-    );
-    let unenrolled = f.new_unenrolled_launch();
-
-    f.distributor.lock_lp_fees(&f.control, &mut source, &f.migrators_version, &unenrolled);
-
-    destroy(unenrolled);
-    destroy(source);
-    destroy(lp_fee_policy);
-    f.end();
-}
-
-// === Private Test Helpers ===
+// === Test Helpers ===
 
 /// A second launch of the same pair that no distributor custodies.
-fun new_unenrolled_launch(self: &mut DistributionFixture): Launch<DISTRIBUTOR_TESTS, QUOTE> {
-    self.scenario.next_tx(CREATOR);
+fun new_unenrolled_launch(
+    self: &mut DistributionFixture,
+): Launch<DISTRIBUTOR_TESTS, QUOTE> {
+    // The test-only witness is constructible again; production has one initializer per package.
 
     let config = self.scenario.take_shared<launch_config::LaunchConfig>();
-    let ticket = launch_ticket::new(
-        DISTRIBUTOR_TESTS(),
+    let mut ticket = launch_ticket::new(
+        test_utils::create_one_time_witness<DISTRIBUTOR_TESTS>(),
+        9,
         b"OTHER".to_string(),
         b"Other".to_string(),
         b"".to_string(),
@@ -915,15 +738,34 @@ fun new_unenrolled_launch(self: &mut DistributionFixture): Launch<DISTRIBUTOR_TE
         0,
         self.ctx!(),
     );
-    let launch = launch::new<DISTRIBUTOR_TESTS, QUOTE, Venue>(
+    ticket.bind_migration_witness<_, QUOTE, _>(&config, Venue());
+    self.next_transaction(CREATOR);
+    let mut currency = self.scenario.take_from_address<Currency<DISTRIBUTOR_TESTS>>(@0xc);
+    let mut launch = launch::new<_, QUOTE>(
         ticket,
+        &mut currency,
         &self.version,
         &config,
+        25_000_000,
+        default_allocation_plan(),
+        0,
+        bps::new(0),
+        bps::new(0),
         self.ctx!(),
     );
+    let (router, config_cap) = launch.new_fee_router(
+        &self.version,
+        default_fee_routes(),
+        self.ctx!(),
+    );
+    let launch_id = object::id(&launch);
+    let clock = clock::create_for_testing(self.ctx!());
+    launch.share(&self.version, config_cap, router, &clock);
+    clock.destroy_for_testing();
     test_scenario::return_shared(config);
-
-    launch
+    test_scenario::return_to_address(@0xc, currency);
+    self.next_transaction(CREATOR);
+    self.scenario.take_shared_by_id(launch_id)
 }
 
 fun complete_shared_round(f: DistributionFixture) {
@@ -931,21 +773,23 @@ fun complete_shared_round(f: DistributionFixture) {
         mut scenario,
         launch,
         version,
-        migrators_version,
         control,
         admin,
         distributor,
         publisher,
         creator_cap_id: _,
     } = f;
+    assert_eq!(
+        launch.borrow().fee_custodian_for_testing(),
+        option::some(type_name::with_original_ids<distributor::Witness>()),
+    );
+    test_scenario::return_shared(launch.destroy_some());
     distributor.share();
     transfer::public_transfer(publisher, BOT);
     scenario.next_tx(BOT);
-    let mut distributor = scenario.take_shared<Distributor<DISTRIBUTOR_TESTS, QUOTE>>();
-    assert_eq!(
-        launch.fee_custodian_for_testing(),
-        option::some(type_name::with_original_ids<distributor::Witness>()),
-    );
+    let mut distributor = scenario.take_shared<
+        Distributor<DISTRIBUTOR_TESTS, QUOTE>,
+    >();
     let publisher = scenario.take_from_sender<PublisherCap>();
     let root = merkle::leaf(object::id(&distributor), 0, 0, ALICE, 1, 1);
     let round = distributor.publish_round(
@@ -971,9 +815,7 @@ fun complete_shared_round(f: DistributionFixture) {
     scenario.next_tx(CREATOR);
     let publisher = scenario.take_from_sender<PublisherCap>();
     scenario.return_to_sender(publisher);
-    destroy(launch);
     destroy(version);
-    destroy(migrators_version);
     destroy(control);
     destroy(admin);
     scenario.end();
@@ -1010,13 +852,13 @@ macro fun ctx($f: &mut DistributionFixture): &mut TxContext {
 
 macro fun next_tx($f: &mut DistributionFixture, $sender: address, $fn: |&mut DistributionFixture|) {
     let f = $f;
-    f.scenario.next_tx($sender);
+    f.next_transaction($sender);
     $fn(f);
 }
 
 macro fun collect($f: &mut DistributionFixture) {
     let f = $f;
-    f.distributor.collect_curve_fees(&f.control, &mut f.launch, &f.version, f.ctx!());
+    f.distributor.collect_curve_fees(&f.control, f.launch.borrow_mut(), &f.version, f.ctx!());
 }
 
 macro fun publish_round(
@@ -1100,9 +942,8 @@ fun start_funded(): DistributionFixture {
 fun start(): DistributionFixture { start_with_control(false, 1) }
 
 fun start_with_control(paused: bool, version_number: u64): DistributionFixture {
-    let mut scenario = test_scenario::begin(CREATOR);
+    let mut scenario = test_scenario::begin(@0x0);
     let version = package_version::new_for_testing(scenario.ctx());
-    let migrators_version = migrators_version::new_for_testing(scenario.ctx());
     let (root, mut authority) = new_authority(scenario.ctx());
     authority.grant_admin(&root, 0, CREATOR, scenario.ctx());
     launch_config::init_for_testing(scenario.ctx());
@@ -1110,14 +951,15 @@ fun start_with_control(paused: bool, version_number: u64): DistributionFixture {
     let launchpad_admin = scenario.take_from_sender<LaunchpadAdminCap<BLAST_FUN_DOMAIN>>();
     let witness = authority.sign_in(&launchpad_admin);
     let mut config = scenario.take_shared<launch_config::LaunchConfig>();
-    config.allow_quote<QUOTE>(&version, &witness, 5_000_000, 25_000_000);
+    config.allow_quote<QUOTE>(&version, &witness, 5_000_000);
     config.allow_migration_witness<Venue>(&version, &witness);
     config.set_trade_fees(&version, &witness, bps::new(100), bps::new(100));
-    config.set_graduation_defaults(&version, &witness, bps::new(0), bps::new(0), bps::new(2_000));
+    config.set_protocol_allocation(&version, &witness, 1, CREATOR, bps::new(0), bps::new(0));
     let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
-    let ticket = launch_ticket::new(
-        DISTRIBUTOR_TESTS(),
+    let mut ticket = launch_ticket::new(
+        test_utils::create_one_time_witness<DISTRIBUTOR_TESTS>(),
+        9,
         b"TEST".to_string(),
         b"Test".to_string(),
         b"".to_string(),
@@ -1127,23 +969,44 @@ fun start_with_control(paused: bool, version_number: u64): DistributionFixture {
         0,
         scenario.ctx(),
     );
-    let mut launch = launch::new<DISTRIBUTOR_TESTS, QUOTE, Venue>(
+    ticket.bind_migration_witness<_, QUOTE, _>(&config, Venue());
+    let sender = scenario.sender();
+    scenario.next_tx(sender);
+    let mut currency = scenario.take_from_address<Currency<DISTRIBUTOR_TESTS>>(@0xc);
+    let mut launch = launch::new<_, QUOTE>(
         ticket,
+        &mut currency,
         &version,
         &config,
+        25_000_000,
+        default_allocation_plan(),
+        0,
+        bps::new(0),
+        bps::new(0),
         scenario.ctx(),
     );
-    let (creator_cap, metadata_cap) = launch.claim_creator_caps(
+    let (router, config_cap) = launch.new_fee_router(
+        &version,
+        default_fee_routes(),
+        scenario.ctx(),
+    );
+    launch.share(&version, config_cap, router, &clock);
+    test_scenario::return_shared(config);
+    test_scenario::return_to_address(@0xc, currency);
+    scenario.next_tx(CREATOR);
+    let mut launch = scenario.take_shared<Launch<DISTRIBUTOR_TESTS, QUOTE>>();
+    let (creator_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
         &version,
         &runtime,
         option::none(),
         &clock,
         scenario.ctx(),
     );
+    transfer::public_transfer(config_cap, CREATOR);
     destroy(metadata_cap);
     let creator_cap_id = object::id(&creator_cap);
     let quote = coin::mint_for_testing<QUOTE>(1_000_000, scenario.ctx());
-    let (meme, refund) = launch.buy(&version, &runtime, quote, 1, scenario.ctx());
+    let (meme, refund) = launch.buy(&version, &runtime, quote, 1, &clock, scenario.ctx());
     destroy(meme);
     destroy(refund);
     let admin = distributor::new_admin_cap_for_testing(scenario.ctx());
@@ -1161,14 +1024,12 @@ fun start_with_control(paused: bool, version_number: u64): DistributionFixture {
     destroy(launchpad_admin);
     destroy(authority);
     destroy(root);
-    test_scenario::return_shared(config);
     destroy(runtime);
     clock.destroy_for_testing();
     DistributionFixture {
         scenario,
-        launch,
+        launch: option::some(launch),
         version,
-        migrators_version,
         control,
         admin,
         distributor,
@@ -1177,9 +1038,32 @@ fun start_with_control(paused: bool, version_number: u64): DistributionFixture {
     }
 }
 
+fun default_allocation_plan(): AllocationPlan {
+    allocation::new(
+        vector[allocation::channel(2, allocation::liquidity_role(), CREATOR)],
+        vector[allocation::weight(0, bps::new(8_000)), allocation::weight(2, bps::new(2_000))],
+        vector[allocation::weight(2, bps::new(10_000))],
+    )
+}
+
+fun default_fee_routes(): allocation::Routes {
+    let route = vector[allocation::route(CREATOR, bps::new(10_000))];
+    allocation::routes(route, route)
+}
+
 /// Unshared Launchpad-domain authority used only to configure the test launch.
-fun new_authority(ctx: &mut TxContext): (SuperAdminCap<BLAST_FUN_DOMAIN>, Authority<BLAST_FUN_DOMAIN>) {
+fun new_authority(
+    ctx: &mut TxContext,
+): (SuperAdminCap<BLAST_FUN_DOMAIN>, Authority<BLAST_FUN_DOMAIN>) {
     acl::new_for_testing<BLAST_FUN_DOMAIN>(16, 7 * 24 * 60 * 60 * 1_000, ctx)
+}
+
+fun next_transaction(self: &mut DistributionFixture, sender: address) {
+    let launch = self.launch.extract();
+    let launch_id = object::id(&launch);
+    test_scenario::return_shared(launch);
+    self.scenario.next_tx(sender);
+    self.launch.fill(self.scenario.take_shared_by_id(launch_id));
 }
 
 fun end(f: DistributionFixture) {
@@ -1187,16 +1071,14 @@ fun end(f: DistributionFixture) {
         scenario,
         launch,
         version,
-        migrators_version,
         control,
         admin,
         distributor,
         publisher,
         creator_cap_id: _,
     } = f;
-    destroy(launch);
+    test_scenario::return_shared(launch.destroy_some());
     destroy(version);
-    destroy(migrators_version);
     destroy(control);
     destroy(admin);
     destroy(distributor);
@@ -1209,26 +1091,36 @@ fun end(f: DistributionFixture) {
 use blast_admin::acl::{Self, Authority, AdminCap as LaunchpadAdminCap, SuperAdminCap};
 
 use blast_fun::{
+    allocation::{Self as allocation, AllocationPlan},
+    blast_fun_domain::BLAST_FUN_DOMAIN,
     bps,
     creator_authority,
+    fee_router,
     launch::{Self, Launch},
     launch_config,
     launch_ticket,
-    blast_fun_domain::BLAST_FUN_DOMAIN,
     package_version,
-    runtime_config
+    runtime_config,
 };
 
 use blast_fun_distributor::{
-    blast_fun_distributor::{Self as distributor, AdminCap, Distributor, PublisherCap, Round, Version},
-    merkle
-};
-
-use blast_fun_migrators::{
-    lp_fee_policy,
-    package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
+    blast_fun_distributor::{
+        Self as distributor,
+        AdminCap,
+        Distributor,
+        PublisherCap,
+        Round,
+        Version,
+    },
+    merkle,
 };
 
 use std::{bcs, type_name, unit_test::{assert_eq, destroy}};
 
-use sui::{clock, coin::{Self, Coin}, test_scenario::{Self, Scenario}};
+use sui::{
+    clock,
+    coin::{Self, Coin},
+    coin_registry::Currency,
+    test_scenario::{Self, Scenario},
+    test_utils,
+};

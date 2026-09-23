@@ -8,32 +8,44 @@ module blast_fun_vesting::blast_fun_linear_vesting;
 
 #[error(code = 0)]
 const EInvalidBeneficiary: vector<u8> = b"Beneficiary must not be the zero address.";
+
 #[error(code = 1)]
 const EInvalidRefundRecipient: vector<u8> = b"Refund recipient must not be the zero address.";
+
 #[error(code = 2)]
 const EZeroAllocation: vector<u8> = b"Vesting allocation must be greater than zero.";
+
 #[error(code = 3)]
 const EZeroPeriod: vector<u8> = b"Vesting period must be greater than zero.";
+
 #[error(code = 4)]
 const EZeroPeriods: vector<u8> = b"Vesting period count must be greater than zero.";
+
 #[error(code = 5)]
 const EInvalidCliff: vector<u8> = b"Cliff must not exceed the vesting duration.";
+
 #[error(code = 6)]
 const EScheduleOverflow: vector<u8> = b"Vesting schedule exceeds the u64 time range.";
+
 #[error(code = 7)]
 const ENothingClaimable: vector<u8> = b"No vested balance is available to claim.";
+
 #[error(code = 8)]
 const EInvalidCancelCap: vector<u8> = b"Cancellation capability does not match this schedule.";
+
 #[error(code = 9)]
 const EScheduleNotEnded: vector<u8> = b"Vesting schedule has not ended.";
+
 #[error(code = 10)]
 const EScheduleNotEmpty: vector<u8> = b"Vesting schedule still holds funds.";
+
 #[error(code = 11)]
 const ECancelCapRequired: vector<u8> = b"Cancelable schedule requires its cancellation capability.";
+
 #[error(code = 12)]
 const EStartInPast: vector<u8> = b"Vesting start must not precede the current clock time.";
 
-// === Public Structs ===
+// === Public Types ===
 
 /// Key-only shared custody for one immutable vesting schedule.
 public struct Vesting<phantom CoinType> has key {

@@ -8,12 +8,12 @@
 /// adapter's units.
 module blast_boosts_aftermath::snapshot;
 
+// === Public Types ===
+
 // The `*_decoded` helpers take a value's sign and magnitude already decoded
 // from IFixed. They exist because the pinned `ifixed` port aborts under test,
 // so the pure arithmetic can be exercised from fixtures; production callers
 // always go through the decoding wrapper above each one.
-
-// === Public Types ===
 
 /// One authenticated capture: the raw checkpoint, both oracle legs, the mark,
 /// the position's economics, and whether the venue can serve a priced
@@ -408,6 +408,7 @@ use ifixed::ifixed;
 
 // An IFixed value is a u256 carrier; only its sign and magnitude read as methods.
 use fun ifixed::abs as u256.abs;
+
 use fun ifixed::is_neg as u256.is_neg;
 
 use oracle_aggregator::{price_feed::PriceFeed, price_feed_storage::PriceFeedStorage};
@@ -422,4 +423,3 @@ use perpetuals::{
 use position::position::Position;
 
 use sui::clock::Clock;
-
