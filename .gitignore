@@ -23,3 +23,7 @@ sui/launchpad/ptb_tests/fixture/*/Move.lock
 # Local reports; normalized public deployment records belong in deployments/
 coverage/
 lcov.info
+
+# Claude Code per-user settings and scratch worktrees
+.claude/settings.local.json
+.claude/worktrees/
