@@ -3,6 +3,9 @@
 - Status: accepted
 - Date: 2026-08-25
 - Amends: [0032](0032-admin-authorized-upgrade-cap-custody.md)
+- Amended by: [0088](0088-reusable-launch-accounting-and-atomic-migration.md) —
+  `restrict_to_additive` and `restrict_to_dependency_only` were removed before
+  any deployment (owner, 2026-09-23); the rest of this record stands.
 
 ## Sources
 
@@ -97,8 +100,8 @@ state; a `bool` planted years early is not a usable governance design.
 - Structural checks require the two-capability `PackageAdmin` layout, forbid
   any `public(package)` function in the module, and reject reintroduction of
   `admin_authorization` state or the disabled event.
-- The error-registry tests pin codes 53, 54, 56, and 57 and no longer
-  reference 55 or 58.
+- The error-registry tests pin the remaining authorization errors and no
+  longer reference the removed ones.
 - Positive and negative package-administration tests (provenance, digest
   length, revoked admin, policy narrowing order, foreign receipt) pass
   unchanged without the cutover suite.

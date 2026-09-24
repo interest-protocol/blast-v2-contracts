@@ -12,13 +12,13 @@
 > Amended by [ADR 0088](0088-reusable-launch-accounting-and-atomic-migration.md),
 > which plans only Cetus and Bluefin adapters for the replacement lineage,
 > replaces the old LP-fee ledger with the launch's fee router, and requires
-> sealed `LpVault` custody. MMT, Turbos, and retained historical adapters stay
-> unadmitted as migration witnesses until they have atomic routes. The
-> migrators package keeps its `UpgradeCap`, so the `UpgradeCap` destruction in
-> the verification list below no longer applies. Cetus creates the pool with
-> the creation cap reserved at binding and never adopts an existing pool, and
-> Bluefin's pool-creation fee is paid in SUI at the exact configured amount;
-> the venue-route table below is historical for both.
+> sealed `LpVault` custody. MMT, Turbos, and Aftermath were removed before
+> publication with their witnesses (ADR 0088). The migrators package keeps its
+> `UpgradeCap`, so the `UpgradeCap` destruction in the verification list below
+> no longer applies. Cetus creates the pool with the creation cap reserved at
+> binding and never adopts an existing pool, and Bluefin's pool-creation fee is
+> paid in SUI at the exact configured amount; the venue-route table below is
+> historical for both.
 
 - Status: accepted; new-lineage admission and fee custody amended by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 - Date: 2026-08-29

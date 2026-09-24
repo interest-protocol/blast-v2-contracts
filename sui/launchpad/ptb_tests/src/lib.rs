@@ -5,6 +5,9 @@
 //!
 //! Run from this directory, whose `rust-toolchain.toml` pins the compiler the Sui crates need:
 //! `cd sui/launchpad/ptb_tests && cargo test`.
+//!
+//! The venue-fork tests also insert a committed mainnet snapshot (`fork/`) of real venue
+//! packages and objects at their real IDs; see `tests/venue_fork.rs`.
 
 pub mod measure;
 
@@ -17,6 +20,7 @@ use std::{
 
 use anyhow::{Context, Result, bail, ensure};
 use base64::Engine;
+use move_binary_format::CompiledModule;
 use move_core_types::{account_address::AccountAddress, identifier::Identifier, language_storage::StructTag};
 use rand::{SeedableRng, rngs::StdRng};
 use simulacrum::Simulacrum;
@@ -54,29 +58,8 @@ static BUILD_LOCK: Mutex<()> = Mutex::new(());
 /// published at in the simulator, so the bytecode links against those IDs.
 pub fn build(package: &Path, published: &[(&Path, ObjectID)], work: &Path) -> Result<CompiledPackage> {
     let _build = BUILD_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    let binary = std::env::var("SUI_BINARY").unwrap_or_else(|_| "sui".into());
-    let version = Command::new(&binary).arg("--version").output().context("run the sui CLI")?;
-    let version = String::from_utf8_lossy(&version.stdout);
-    ensure!(
-        version.contains(PINNED_SUI_REVISION),
-        "`{binary} --version` is {}; the harness needs revision {PINNED_SUI_REVISION}",
-        version.trim(),
-    );
-    std::fs::create_dir_all(work)?;
-    let client = work.join("client.yaml");
-    std::fs::write(
-        &client,
-        "---\nkeystore:\n  File: ~\nenvs:\n  - alias: localnet\n    rpc: \"http://127.0.0.1:1\"\n    ws: ~\n    basic_auth: ~\nactive_env: localnet\nactive_address: \"0x0000000000000000000000000000000000000000000000000000000000000000\"\n",
-    )?;
-    let mut command = Command::new(&binary);
-    command
-        .arg("move")
-        .arg("--client.config")
-        .arg(&client)
-        .arg("build")
-        .arg("--path")
-        .arg(package)
-        .args(["--dump", "-e", "testnet", "--no-tree-shaking"]);
+    let mut command = sui_move_build(package, work)?;
+    command.args(["--dump", "-e", "testnet", "--no-tree-shaking"]);
     if !published.is_empty() {
         let mut pubfile = String::from("build-env = \"testnet\"\nchain-id = \"4c78adac\"\n");
         for (source, id) in published {
@@ -114,6 +97,106 @@ pub fn build(package: &Path, published: &[(&Path, ObjectID)], work: &Path) -> Re
         .collect::<Result<_>>()?;
 
     Ok(CompiledPackage { modules, dependencies })
+}
+
+/// Compiled root modules whose local dependencies still sit at the build's placeholder addresses.
+pub struct UnlinkedPackage {
+    modules: Vec<CompiledModule>,
+    placeholders: BTreeMap<String, AccountAddress>,
+}
+
+/// Compiles `package` offline without a publication record, for a package that also links
+/// external venue packages at their pinned `published-at` IDs, which a pubfile cannot name. Each
+/// dependency in `local` compiles at a placeholder address that `UnlinkedPackage::link` replaces
+/// with the ID it was published at in the simulator.
+pub fn build_unlinked(package: &Path, local: &[&str], work: &Path) -> Result<UnlinkedPackage> {
+    let _build = BUILD_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let manifest = std::fs::read_to_string(package.join("Move.toml"))?;
+    let name = manifest
+        .lines()
+        .find_map(|line| line.strip_prefix("name = \""))
+        .and_then(|rest| rest.strip_suffix('"'))
+        .context("package name")?;
+    let mut command = sui_move_build(package, work)?;
+    let output = command.args(["-e", "testnet"]).output().context("run the sui CLI")?;
+    if !output.status.success() {
+        bail!("building {} failed:\n{}", package.display(), String::from_utf8_lossy(&output.stderr));
+    }
+    let bytecode = package.join("build").join(name).join("bytecode_modules");
+    let read = |directory: &Path| -> Result<Vec<CompiledModule>> {
+        let mut modules = Vec::new();
+        for entry in std::fs::read_dir(directory)? {
+            let path = entry?.path();
+            if path.extension().is_some_and(|extension| extension == "mv") {
+                modules.push(CompiledModule::deserialize_with_defaults(&std::fs::read(path)?)?);
+            }
+        }
+        modules.sort_by_key(|module| module.self_id());
+        Ok(modules)
+    };
+    let modules = read(&bytecode)?;
+    let mut placeholders = BTreeMap::new();
+    for dependency in local {
+        let module = read(&bytecode.join("dependencies").join(dependency))?
+            .into_iter()
+            .next()
+            .with_context(|| format!("{dependency} modules"))?;
+        placeholders.insert(dependency.to_string(), *module.self_id().address());
+    }
+
+    Ok(UnlinkedPackage { modules, placeholders })
+}
+
+impl UnlinkedPackage {
+    /// Rewrites each placeholder to the ID `published` gives its dependency and returns the
+    /// package ready to publish against `dependencies`.
+    pub fn link(&self, published: &[(&str, ObjectID)], dependencies: Vec<ObjectID>) -> Result<CompiledPackage> {
+        let mut replacements = BTreeMap::new();
+        for (name, id) in published {
+            let placeholder = self.placeholders.get(*name).with_context(|| format!("placeholder for {name}"))?;
+            replacements.insert(*placeholder, AccountAddress::from(*id));
+        }
+        ensure!(replacements.len() == self.placeholders.len(), "every local dependency needs an ID");
+        let modules = self
+            .modules
+            .iter()
+            .map(|module| {
+                let mut module = module.clone();
+                for address in module.address_identifiers.iter_mut() {
+                    if let Some(id) = replacements.get(address) {
+                        *address = *id;
+                    }
+                }
+                let mut bytes = Vec::new();
+                module.serialize_with_version(module.version, &mut bytes)?;
+                Ok(bytes)
+            })
+            .collect::<Result<_>>()?;
+
+        Ok(CompiledPackage { modules, dependencies })
+    }
+}
+
+/// A `sui move build` command for `package` under the pinned CLI and an offline client config.
+fn sui_move_build(package: &Path, work: &Path) -> Result<Command> {
+    let binary = std::env::var("SUI_BINARY").unwrap_or_else(|_| "sui".into());
+    let version = Command::new(&binary).arg("--version").output().context("run the sui CLI")?;
+    let version = String::from_utf8_lossy(&version.stdout);
+    ensure!(
+        version.contains(PINNED_SUI_REVISION),
+        "`{binary} --version` is {}; the harness needs revision {PINNED_SUI_REVISION}",
+        version.trim(),
+    );
+    std::fs::create_dir_all(work)?;
+    let client = work.join("client.yaml");
+    std::fs::write(
+        &client,
+        "---\nkeystore:\n  File: ~\nenvs:\n  - alias: localnet\n    rpc: \"http://127.0.0.1:1\"\n    ws: ~\n    basic_auth: ~\nactive_env: localnet\nactive_address: \"0x0000000000000000000000000000000000000000000000000000000000000000\"\n",
+    )?;
+    let mut command = Command::new(&binary);
+    command.arg("move").arg("--client.config").arg(&client).arg("build").arg("--path").arg(package);
+
+    Ok(command)
 }
 
 /// Everything one executed transaction produced.
@@ -250,6 +333,11 @@ impl Harness {
                 tag.module.as_str() == module && tag.name.as_str() == name
             })
             .unwrap_or(false)
+    }
+
+    /// Writes `object` into the store as is, at its own ID and version.
+    pub fn insert(&mut self, object: Object) {
+        self.sim.store_mut().update_objects(BTreeMap::from([(object.id(), object)]), vec![]);
     }
 
     pub fn owned_by(&self, owner: SuiAddress) -> Vec<Object> {
@@ -396,12 +484,18 @@ impl Expected {
             (Expected::Abort { package, module, code }, ExecutionFailureStatus::MoveAbort(location, abort)) => {
                 *location.module.address() == AccountAddress::from(*package)
                     && location.module.name().as_str() == *module
-                    && abort == code
+                    && abort_code(*abort) == *code
             }
             (Expected::Abort { .. }, _) => false,
             (Expected::Error(text), error) => format!("{error:?}").contains(text),
         }
     }
+}
+
+/// The error code of a Move abort: a plain code as is, and the `code` of an `#[error(code = N)]`
+/// constant from the tagged value such an abort carries (bit 63 set, code in bits 48..56).
+fn abort_code(abort: u64) -> u64 {
+    if abort >> 63 == 1 { (abort >> 48) & 0xFF } else { abort }
 }
 
 /// Shorthand for a Move call with `Identifier` names.

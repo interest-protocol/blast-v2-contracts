@@ -31,20 +31,9 @@ public struct LAUNCH_TICKET_TESTS has drop {}
 /// A droppable type that is not a one-time witness.
 public struct NotAWitness() has drop;
 
-/// Stand-ins for two migration adapters' sealed witnesses.
-public struct Adapter() has drop;
-
-public struct OtherAdapter() has drop;
-
-/// Stand-ins for two Quote types a ticket can be bound for.
-public struct QUOTE() has drop;
-
-public struct OTHER_QUOTE() has drop;
-
-/// Transaction runner for ticket-construction tests, with a configuration admitting both adapters.
+/// Transaction runner for ticket-construction tests.
 public struct TicketFixture {
     scenario: Scenario,
-    config: LaunchConfig,
 }
 
 // === Tests ===
@@ -61,7 +50,7 @@ fun address_ticket_mints_supply_and_fixes_it_at_intake() {
             false,
             0,
         );
-        let created = events::collect_one<events::LaunchTicketCreated>(0);
+        let created = collect_one<events::LaunchTicketCreated>();
 
         assert_eq!(
             bcs::to_bytes(&created),
@@ -69,9 +58,7 @@ fun address_ticket_mints_supply_and_fixes_it_at_intake() {
                 object::id(&ticket),
                 ticket.metadata_cap_id_for_testing(),
                 MEME_DECIMALS,
-                MEME_TOTAL_SUPPLY,
-                option::some(CREATOR),
-                option::none(),
+                creator_recipient,
                 false,
                 0,
             ),
@@ -86,7 +73,7 @@ fun address_ticket_mints_supply_and_fixes_it_at_intake() {
 
         assert!(currency.total_supply().is_none());
 
-        let (meme, metadata_cap, creator_authority, sell_burn_bps) = ticket.destroy(
+        let (meme, metadata_cap, creator, sell_burn_bps) = ticket.destroy(
             &mut currency,
             MEME_TOTAL_SUPPLY,
         );
@@ -96,10 +83,10 @@ fun address_ticket_mints_supply_and_fixes_it_at_intake() {
         assert_eq!(currency.decimals(), MEME_DECIMALS);
         assert_eq!(currency.total_supply().destroy_some(), MEME_TOTAL_SUPPLY);
         assert_eq!(meme.value(), MEME_TOTAL_SUPPLY);
+        assert_eq!(creator, creator_authority::new_address(CREATOR));
         assert_eq!(sell_burn_bps.value(), 0);
         destroy(meme);
         destroy(metadata_cap);
-        destroy(creator_authority);
         destroy(currency);
     });
 
@@ -123,7 +110,7 @@ fun account_ticket_is_composable_and_records_burn_only_selection() {
             SELL_BURN_BPS,
         );
         let created_ticket_id = object::id(&ticket);
-        let created = events::collect_one<events::LaunchTicketCreated>(0);
+        let created = collect_one<events::LaunchTicketCreated>();
         let metadata_cap_id = ticket.metadata_cap_id_for_testing();
 
         assert_eq!(
@@ -132,9 +119,7 @@ fun account_ticket_is_composable_and_records_burn_only_selection() {
                 created_ticket_id,
                 metadata_cap_id,
                 MEME_DECIMALS,
-                MEME_TOTAL_SUPPLY,
-                option::none(),
-                option::some(account_commitment),
+                creator_recipient,
                 true,
                 SELL_BURN_BPS,
             ),
@@ -151,13 +136,14 @@ fun account_ticket_is_composable_and_records_burn_only_selection() {
         let mut currency = f.take_currency();
         assert_eq!(object::id(&ticket), expected_ticket_id);
 
-        let (meme, metadata_cap, creator_authority, sell_burn_bps) = ticket.destroy(
+        let (meme, metadata_cap, creator, sell_burn_bps) = ticket.destroy(
             &mut currency,
             MEME_TOTAL_SUPPLY,
         );
 
         assert_eq!(object::id(&metadata_cap), expected_metadata_cap_id);
         assert_eq!(meme.value(), MEME_TOTAL_SUPPLY);
+        assert_eq!(creator, creator_authority::new_account(account_commitment));
         assert_eq!(sell_burn_bps.value(), SELL_BURN_BPS);
         assert!(!currency.is_supply_fixed());
         assert!(currency.is_supply_burn_only());
@@ -166,7 +152,6 @@ fun account_ticket_is_composable_and_records_burn_only_selection() {
 
         destroy(meme);
         destroy(metadata_cap);
-        destroy(creator_authority);
         destroy(currency);
     });
 
@@ -185,7 +170,7 @@ fun ticket_accepts_fifty_percent_sell_burn() {
             false,
             5_000,
         );
-        let created = events::collect_one<events::LaunchTicketCreated>(0);
+        let created = collect_one<events::LaunchTicketCreated>();
 
         assert_eq!(
             bcs::to_bytes(&created),
@@ -193,97 +178,11 @@ fun ticket_accepts_fifty_percent_sell_burn() {
                 object::id(&ticket),
                 ticket.metadata_cap_id_for_testing(),
                 MEME_DECIMALS,
-                MEME_TOTAL_SUPPLY,
-                option::some(CREATOR),
-                option::none(),
+                creator_recipient,
                 false,
                 5_000,
             ),
         );
-        assert_eq!(ticket.sell_burn_bps().value(), 5_000);
-        destroy(ticket);
-    });
-
-    fixture.end();
-}
-
-#[test]
-fun bound_adapter_borrows_the_treasury_cap_until_rebound() {
-    let mut fixture = start();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let mut ticket = f.new_ticket(
-            MEME_DECIMALS,
-            creator_authority::new_address(CREATOR),
-            false,
-            0,
-        );
-
-        assert!(ticket.migration_witness<_, QUOTE>().is_none());
-        ticket.bind_migration_witness<_, QUOTE, _>(&f.config, Adapter());
-        assert_eq!(ticket.treasury_cap_mut(&f.config, Adapter()).total_supply(), MEME_TOTAL_SUPPLY);
-        ticket.bind_migration_witness<_, OTHER_QUOTE, _>(&f.config, OtherAdapter());
-        assert!(ticket.migration_witness<_, QUOTE>().is_none());
-        assert_eq!(
-            ticket.migration_witness<_, OTHER_QUOTE>(),
-            option::some(type_name::with_original_ids<OtherAdapter>()),
-        );
-        assert_eq!(ticket.treasury_cap_mut(&f.config, OtherAdapter()).total_supply(), MEME_TOTAL_SUPPLY);
-
-        destroy(ticket);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[
-    expected_failure(
-        abort_code = blast_fun::errors::EInvalidMigrationWitness,
-        location = blast_fun::launch_ticket,
-    ),
-]
-fun unbound_ticket_lends_no_treasury_cap() {
-    let mut fixture = start();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let mut ticket = f.new_ticket(
-            MEME_DECIMALS,
-            creator_authority::new_address(CREATOR),
-            false,
-            0,
-        );
-
-        ticket.treasury_cap_mut(&f.config, Adapter());
-
-        destroy(ticket);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[
-    expected_failure(
-        abort_code = blast_fun::errors::EInvalidMigrationWitness,
-        location = blast_fun::launch_ticket,
-    ),
-]
-fun replaced_adapter_loses_the_treasury_cap() {
-    let mut fixture = start();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let mut ticket = f.new_ticket(
-            MEME_DECIMALS,
-            creator_authority::new_address(CREATOR),
-            false,
-            0,
-        );
-
-        ticket.bind_migration_witness<_, QUOTE, _>(&f.config, Adapter());
-        ticket.bind_migration_witness<_, QUOTE, _>(&f.config, OtherAdapter());
-        ticket.treasury_cap_mut(&f.config, Adapter());
-
         destroy(ticket);
     });
 
@@ -378,7 +277,7 @@ fun six_decimal_ticket_mints_exactly_one_billion_whole_tokens() {
 
     fixture.next_tx_expecting_events!(LAUNCHER, 1, |f| {
         let mut currency = f.take_currency();
-        let (meme, metadata_cap, creator_authority, _) = f
+        let (meme, metadata_cap, _, _) = f
             .take_ticket()
             .destroy(&mut currency, SIX_DECIMAL_SUPPLY);
 
@@ -387,7 +286,6 @@ fun six_decimal_ticket_mints_exactly_one_billion_whole_tokens() {
 
         destroy(meme);
         destroy(metadata_cap);
-        destroy(creator_authority);
         destroy(currency);
     });
 
@@ -433,27 +331,29 @@ fun ticket_rejects_a_type_that_is_not_a_one_time_witness() {
 
 // === Test Helpers ===
 
-/// Expected `LaunchTicketCreated` bytes in payload order for the canonical generated supply.
+/// Expected `LaunchTicketCreated` bytes in payload order.
 fun ticket_created_bytes(
     ticket_id: ID,
     metadata_cap_id: ID,
     decimals: u8,
-    atomic_supply: u64,
-    creator_address: Option<address>,
-    account_commitment: Option<vector<u8>>,
+    creator: CreatorRecipient,
     burnable: bool,
     sell_burn_bps: u64,
 ): vector<u8> {
     let mut expected = bcs::to_bytes(&ticket_id);
     expected.append(bcs::to_bytes(&type_name::with_original_ids<LAUNCH_TICKET_TESTS>()));
     expected.append(bcs::to_bytes(&decimals));
-    expected.append(bcs::to_bytes(&atomic_supply));
     expected.append(bcs::to_bytes(&metadata_cap_id));
-    expected.append(bcs::to_bytes(&creator_address));
-    expected.append(bcs::to_bytes(&account_commitment));
+    expected.append(bcs::to_bytes(&creator));
     expected.append(bcs::to_bytes(&burnable));
     expected.append(bcs::to_bytes(&sell_burn_bps));
     expected
+}
+
+fun collect_one<T: copy + drop>(): T {
+    let mut payloads = event::events_by_type<Event<T>>().map!(|event| event.unwrap());
+    assert_eq!(payloads.length(), 1);
+    payloads.pop_back()
 }
 
 macro fun next_tx(
@@ -480,29 +380,7 @@ macro fun next_tx_expecting_events(
 }
 
 fun start(): TicketFixture {
-    let mut scenario = test_scenario::begin(LAUNCHER);
-    let package_version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
-    authority.grant_admin(
-        &super_admin_cap,
-        blast_fun_domain::creator_admin_role(),
-        LAUNCHER,
-        scenario.ctx(),
-    );
-
-    scenario.next_tx(LAUNCHER);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
-    let admin_witness = authority.sign_in(&admin_cap);
-    let mut config = launch_config::new_for_testing(scenario.ctx());
-    config.allow_migration_witness<Adapter>(&package_version, &admin_witness);
-    config.allow_migration_witness<OtherAdapter>(&package_version, &admin_witness);
-    destroy(super_admin_cap);
-    destroy(authority);
-    destroy(admin_cap);
-    destroy(package_version);
-
-    scenario.next_tx(LAUNCHER);
-    TicketFixture { scenario, config }
+    TicketFixture { scenario: test_scenario::begin(LAUNCHER) }
 }
 
 macro fun ctx($fixture: &mut TicketFixture): &mut TxContext {
@@ -514,7 +392,7 @@ macro fun ctx($fixture: &mut TicketFixture): &mut TxContext {
 fun new_ticket(
     self: &mut TicketFixture,
     decimals: u8,
-    creator_recipient: creator_authority::CreatorRecipient,
+    creator_recipient: CreatorRecipient,
     burnable: bool,
     sell_burn_bps: u64,
 ): LaunchTicket<LAUNCH_TICKET_TESTS> {
@@ -547,18 +425,13 @@ fun end(self: TicketFixture) {
 
 // === Imports ===
 
-use blast_admin::acl::AdminCap;
-
 use blast_fun::{
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
-    creator_authority,
-    domain_fixture,
+    blast_events::Event,
+    creator_authority::{Self, CreatorRecipient},
     events,
-    launch_config::{Self, LaunchConfig},
     launch_ticket::{Self, LaunchTicket},
-    package_version,
 };
 
 use std::{bcs, type_name, unit_test::{assert_eq, destroy}};
 
-use sui::{coin_registry::Currency, test_scenario::{Self, Scenario}, test_utils};
+use sui::{coin_registry::Currency, event, test_scenario::{Self, Scenario}, test_utils};

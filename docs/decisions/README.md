@@ -77,9 +77,9 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0029](0029-composable-creator-identity.md) | Composable creator identity and protected linear authority | **accepted** |
 | [0030](0030-singleton-event-identity.md) | Singleton event identity without repeated object ids | **accepted** |
 | [0031](0031-package-witness-and-publisher-custody.md) | Package witness and Publisher custody | **accepted** |
-| [0032](0032-admin-authorized-upgrade-cap-custody.md) | Package administration custody and admin-authorized upgrades | **accepted** |
+| [0032](0032-admin-authorized-upgrade-cap-custody.md) | Package administration custody and admin-authorized upgrades | **accepted; policy narrowing removed by 0088** |
 | [0033](0033-meme-liquidity-provision.md) | Meme liquidity provision for destination pools | **accepted** |
-| [0034](0034-remove-premature-governance-cutover.md) | Remove the premature governance cutover | **accepted** |
+| [0034](0034-remove-premature-governance-cutover.md) | Remove the premature governance cutover | **accepted; amended by 0088** |
 | [0035](0035-initializer-finalized-meme-supply.md) | Finalize generated Meme supply during initialization | **accepted; supply-mode timing amended by 0088** |
 | [0036](0036-fixed-nine-decimal-generated-memes.md) | Fix generated Meme precision at nine decimals | superseded by 0088 |
 | [0037](0037-remove-redundant-ticket-burn-mode.md) | Remove redundant supply mode from launch-ticket custody | superseded by 0043 |
@@ -100,7 +100,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0053](0053-single-validator-funsui-and-blastsui.md) | Single-validator `funSUI` and `blastSUI` | **accepted** |
 | [0054](0054-v3-dex-migrators-and-locked-lp-fees.md) | V3 DEX migrators, exact seed pricing, and locked LP fees | **accepted; new-lineage admission and fee custody amended by 0088** |
 | [0056](0056-bounded-pending-stake-vector.md) | Bounded pending-stake vector in custody ledgers | **accepted** |
-| [0057](0057-admin-pinned-venue-tiers.md) | Admin-pinned venue tiers for permissionless migration | **accepted; amended by 0088** |
+| [0057](0057-admin-pinned-venue-tiers.md) | Admin-pinned venue tiers for permissionless migration | superseded by 0089 |
 | [0058](0058-eventless-package-initialization.md) | Eventless package initialization | **accepted** |
 | [0059](0059-production-launchpad-abi-and-sdk-parity.md) | Production launchpad ABI and first SDK parity boundary | **accepted; amended by 0088** |
 | [0060](0060-blastsui-metadata-cap-custody.md) | Retain currency and receipt update capabilities in package-admin custody | **accepted** |
@@ -118,21 +118,23 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0072](0072-series-one-package-capability-custody.md) | Series1 package-capability custody | **superseded** |
 | [0073](0073-series-one-adapter-owned-vaults.md) | Series1 core with adapter-owned product Vaults | **accepted** |
 | [0074](0074-aftermath-vault-activation-and-health.md) | Aftermath Vault activation and health evidence | **accepted for dependency and raw-field normalization** |
-| [0075](0075-independent-holder-fee-distributor.md) | Independent holder fee distributor | **accepted; amended by 0088; live release gates remain** |
-| [0076](0076-native-v2-and-auto-lp.md) | Native V2 and automatic liquidity deposits | **accepted; packages parked in `scratch-sui/` pending the redesign accepted by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)** |
+| [0075](0075-independent-holder-fee-distributor.md) | Independent holder fee distributor | superseded by 0089 |
+| [0076](0076-native-v2-and-auto-lp.md) | Native V2 and automatic liquidity deposits | **accepted; native DEX parked in `scratch-sui/` pending the redesign accepted by [0088](0088-reusable-launch-accounting-and-atomic-migration.md); auto-LP superseded by [0089](0089-migrators-own-post-migration-and-start-launches.md) and its package deleted** |
 | [0077](0077-fixed-creator-selected-sell-burn.md) | Fixed creator-selected sell burn | **accepted** |
 | [0078](0078-explicit-curve-invariant-primitives.md) | Explicit curve invariant primitives | **accepted** |
 | [0079](0079-compact-launch-state-and-events.md) | Compact launch state and events before publication | **accepted; amended by 0088** |
 | [0080](0080-provider-independent-creator-recipient.md) | Provider-independent creator recipients | **accepted** |
 | [0081](0081-separate-lp-fee-share-policy.md) | Separate LP-fee share policy with per-project pins | superseded by 0088 |
-| [0082](0082-revocable-creator-and-lp-fee-capabilities.md) | Revocable curve-fee, metadata, and LP-fee capabilities | **accepted; LP-fee authority superseded by 0088** |
+| [0082](0082-revocable-creator-and-lp-fee-capabilities.md) | Revocable curve-fee, metadata, and LP-fee capabilities | **accepted; LP-fee authority superseded by 0088; custodian lock removed by 0089** |
 | [0083](0083-migrators-own-lp-fee-policy-and-authority.md) | Migrators own LP-fee policy and migration-born LP-fee authority | superseded by 0088 |
 | [0085](0085-explorer-visible-type-naming.md) | Explorer-visible type naming: every on-chain type names Blast | **accepted** |
 | [0086](0086-maintenance-reserve-ceiling.md) | Maintenance reserve ceiling: `max_reserve_bps` of notional, clamped credits, priced-after-release, no admin release | **accepted** |
 | [0087](0087-vault-issuance-activated-in-one-transaction.md) | Vault issuance activated in one transaction: `issue` returns a hot-potato issuance, `initialize` returns the Vault, no optional activation fields | **accepted** |
-| [0088](0088-reusable-launch-accounting-and-atomic-migration.md) | Reusable launch accounting and atomic migration | **accepted; rewritten in place 2026-09-22: push payouts, no digests, venue selection, or type-guaranteed ID bindings, one linear migration value, creator-selected target, one-time-witness Meme; amended the same day: upgradeable migrators, ticket-bound adapter with venue preparation, adapter-supplied pool ID; amended 2026-09-23: Aftermath, MMT, and Turbos adapters removed; venue-operator trust assumptions and the migrators upgrade-policy rule recorded** |
+| [0088](0088-reusable-launch-accounting-and-atomic-migration.md) | Reusable launch accounting and atomic migration | **accepted; amended by 0089 and 0090; rewritten in place 2026-09-22: push payouts, no digests, venue selection, or type-guaranteed ID bindings, one linear migration value, creator-selected target, one-time-witness Meme; amended the same day: upgradeable migrators, ticket-bound adapter with venue preparation, adapter-supplied pool ID; amended 2026-09-23: Aftermath, MMT, and Turbos adapters removed; venue-operator trust assumptions and the migrators upgrade-policy rule recorded** |
+| [0089](0089-migrators-own-post-migration-and-start-launches.md) | One migrators package owns everything after migration and starts every launch | **accepted; amended by 0090** |
+| [0090](0090-minimal-launchpad-surface.md) | A minimal launchpad surface | **accepted** |
 
-ADRs 0013–0035, 0038–0067, 0069, 0073–0080, 0082, and 0085–0088 are accepted subject to the amendments shown above; ADR 0088 supersedes 0036, 0068, 0081, and 0083. ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
+ADRs 0013–0035, 0038–0056, 0058–0067, 0069, 0073, 0074, 0076–0080, 0082, and 0085–0089 are accepted subject to the amendments shown above; ADR 0088 supersedes 0036, 0068, 0081, and 0083, and ADR 0089 supersedes 0057 and 0075. ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
 semantics, embedded ledger, and claim boundary. ADR 0023 accepts the generated-coin
 supply modes, one-billion ceiling, and separate native metadata-cap return. ADR
@@ -150,9 +152,11 @@ ADR 0028 consolidates the dedicated creator-claim signer and live protocol fee s
 one small `RuntimeConfig`, while preserving separate `ProtocolAuthority` and
 cold `LaunchConfig` shared objects.
 ADR 0081 historically separated LP-fee shares into migrator policy; ADR 0088
-supersedes that recurring path with frozen per-launch, per-asset Blast shares
-and bounded project routes in `FeeRouter`, paid to their destinations at every
-collection.
+replaced that recurring path with a launchpad `FeeRouter`, and ADR 0089 moves
+the policy and the split back into the migrators: every permissionless
+collection pays Blast's live per-coin share, then splits the rest by the
+launch's `FeeSplit` into the creator's claimable share, auto-LP added back to
+the position, holder rewards, and direct recipients.
 
 ADR 0080 separates the launcher from the designated creator recipient and
 replaces provider-specific social identity with an opaque Blast account
@@ -176,10 +180,10 @@ initializers context-only unless they genuinely consume an OTW.
 
 ADR 0032 validates and wraps the package `Publisher` and `UpgradeCap` in one
 shared package-administration object and lets a live `AdminWitness` authorize
-exact upgrade digests and irreversibly narrow policy. ADR 0088 retains this
-launchpad custody and no-burn posture while fixing separate final cap postures
-for the upgradeable migrators, the publisher-held caps of upgradeable generated
-Meme packages, and the distributor's owner-held native repair cap.
+exact upgrade digests. ADR 0088 retains this launchpad custody and no-burn
+posture, removes policy narrowing, and fixes separate final cap postures for the
+upgradeable migrators, the publisher-held caps of upgradeable generated Meme
+packages, and the distributor's owner-held native repair cap.
 
 ADR 0033 adds an independent, nonzero Meme liquidity-provision rate to the cold
 launch snapshot. It reserves destination-pool principal separately from protocol
@@ -274,10 +278,10 @@ LP principal, and the operational recommended SUI lane. Its Memez, Raydium,
 Pump, and Hop comparisons are context only; they do not set an on-chain USD
 oracle or immutable global default.
 
-ADR 0057's administrator-pinned singleton tier remains the adapters' tier source
-under ADR 0088: core stores only the admitted migration witness type. The Cetus
-adapter reserves the pinned tier when a ticket is bound and migrates at that
-reserved tier; the Bluefin adapter validates its tier at migration.
+ADR 0089 supersedes ADR 0057's administrator-pinned tiers: the creator chooses
+the pool tier when the adapter starts the launch, the launch stores it, and the
+adapter migrates at it. Cetus validates the tick spacing against its registry
+and reserves pool creation at it; Bluefin's bounds are checked up front.
 
 ADR 0058 amends 0011 and reverses 0030's creation-event exception: no `init`
 emits an event in any package, because every field those payloads carried is
@@ -333,8 +337,8 @@ Its former five-venue route counts are historical: ADR 0088 narrows the
 replacement release surface to Cetus and Bluefin only.
 
 ADR 0068's creator/protocol LP-fee snapshot is superseded by ADR 0088. Position
-principal remains invariant, while recurring fees are paid through the bound
-router's current routes with replay-complete per-route amounts.
+principal remains invariant, while recurring fees are paid by the vault's
+current fee split with replay-complete per-part amounts (ADR 0089).
 
 ADR 0069 removes the separate graduation helper module and puts its private
 balance partitions in `launch`. It also moves all seed-price, deviation,
@@ -355,6 +359,14 @@ package creates its currency from its one-time witness at publication (ADR
 admitted migration adapter; the launchpad applies the witness allowlist, the
 mutable decimal allowlist, the canonical supply, and the sell-burn ceiling, and
 fixes the supply mode, when `launch::new` consumes that ticket.
+
+ADR 0089 amends that flow. An adapter's `new` starts the launch with its own
+witness and the creator's tier, `launch::new` returns a `LaunchInitializer` the
+creator configures through setters, and `finalize` checks every invariant and
+fixes the supply mode. The launch holds only the post-migration settings chosen
+at launch (DEX, tier, and LP-fee split). One migrators package owns the LP-fee
+policy, collection, auto-LP, holder rewards, and split updates, which the
+launch's live curve-fee cap authorizes.
 
 ## Open premises
 

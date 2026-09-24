@@ -46,8 +46,8 @@ the claim returns, that caller may transfer, store, or immediately use the
 returned creator capability in a later command. The future launch-level function
 provides the independent metadata-cap return.
 
-There is no `creator_cap_claimed` field and no separate `issue_creator_cap` function. Error code 12 is
-retired and remains reserved; a repeat claim is rejected structurally because the authority value no
+There is no `creator_cap_claimed` field and no separate `issue_creator_cap` function. A repeat claim is
+rejected structurally because the authority value no
 longer exists, not by a runtime boolean assertion.
 
 Consumption proves at most one cap per creator-authority resource. The stronger one-cap-per-launch

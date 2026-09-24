@@ -1142,6 +1142,8 @@ dependencies = [
  "anyhow",
  "base64 0.21.7",
  "bcs",
+ "blake2",
+ "move-binary-format",
  "move-core-types",
  "rand 0.8.5",
  "serde",

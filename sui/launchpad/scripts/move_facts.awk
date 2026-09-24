@@ -2,7 +2,8 @@
 # comments and string contents before parsing, so a token inside a comment, a
 # doc comment, or a literal can never satisfy a requirement, and it reports each
 # declaration with brace-matched boundaries, so indentation and line breaks
-# cannot hide or split one. Records are tab separated:
+# cannot hide or split one. A carriage return, which the compiler accepts only
+# as the `\r` of a `\r\n` line break, fails closed. Records are tab separated:
 #   FN    name vis entry macro test_only after_marker line signature body
 #   TYPE  name kind vis test_only after_marker line declaration
 #   MARKER  first '// === Test-Only ... ===' line, or 0
@@ -59,6 +60,15 @@ function modifiers_before(stop,   scan, char_, boundary, between) {
     return between
 }
 
+# Only the exact `#[test_only]` attribute marks test-only code. Any other attribute that names
+# `test_only`, such as `#[ext(test_only)]`, compiles into production, so the reader rejects it
+# rather than let it hide a declaration from the production checks.
+function is_test_only_attribute(attributes, name) {
+    if (attributes ~ /(^| )#\[ ?test_only ?\]( |$)/) return 1
+    if (attributes ~ /test_only/) fail("attribute naming test_only is not exactly #[test_only] on " name)
+    return 0
+}
+
 function collect_attributes(bracket_end,   depth, scan, char_, open) {
     while (1) {
         depth = 0
@@ -102,6 +112,7 @@ END {
     in_string = 0
     for (index_ = 1; index_ <= total_lines; index_++) {
         line = source_lines[index_]
+        if (index(line, "\r")) fail("carriage return at line " index_)
         cleaned = ""
         line_length = length(line)
         cursor = 1
@@ -200,7 +211,7 @@ END {
         else if (modifiers ~ /(^| )public( |$)/) visibility = "public"
         is_entry = (modifiers ~ /(^| )entry( |$)/) ? 1 : 0
         is_macro = (modifiers ~ /(^| )macro( |$)/) ? 1 : 0
-        is_test_only = (attributes ~ /test_only/) ? 1 : 0
+        is_test_only = is_test_only_attribute(attributes, name)
         function_line = line_of(keyword)
         after_marker = (marker_line > 0 && function_line >= marker_line) ? 1 : 0
 
@@ -263,7 +274,7 @@ END {
 
         printf("TYPE\t%s\t%s\t%s\t%d\t%d\t%d\t%s\n",
             name, kind, visibility,
-            (attributes ~ /test_only/) ? 1 : 0,
+            is_test_only_attribute(attributes, name),
             (marker_line > 0 && declaration_line >= marker_line) ? 1 : 0,
             declaration_line,
             normalize(substr(text, keyword, declaration_end - keyword + 1)))

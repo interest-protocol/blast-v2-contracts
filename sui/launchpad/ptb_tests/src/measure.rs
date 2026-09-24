@@ -17,8 +17,8 @@ use crate::{Harness, Outcome};
 enum Layout {
     Bool,
     U8,
+    U32,
     U64,
-    U128,
     Address,
     Vector(Box<Layout>),
     Struct(Vec<Layout>),
@@ -27,13 +27,13 @@ enum Layout {
 
 impl Layout {
     /// The VM abstract size `sui::event::emit` limits, of the BCS value at the front of `bytes`,
-    /// which it consumes: 8 per primitive below `u128`, 16 per `u128`, 32 per address, 2 per
+    /// which it consumes: 8 per primitive, 32 per address, 2 per
     /// struct, variant, or vector, and the packed element width inside a primitive vector.
     fn abstract_size(&self, bytes: &mut &[u8]) -> u64 {
         match self {
             Layout::Bool | Layout::U8 => advance(bytes, 1, 8),
+            Layout::U32 => advance(bytes, 4, 8),
             Layout::U64 => advance(bytes, 8, 8),
-            Layout::U128 => advance(bytes, 16, 16),
             Layout::Address => advance(bytes, 32, 32),
             Layout::Struct(fields) => 2 + fields.iter().map(|field| field.abstract_size(bytes)).sum::<u64>(),
             Layout::Enum(variants) => {
@@ -44,8 +44,8 @@ impl Layout {
                 let length = uleb128(bytes);
                 let width = match **element {
                     Layout::Bool | Layout::U8 => 1,
+                    Layout::U32 => 4,
                     Layout::U64 => 8,
-                    Layout::U128 => 16,
                     Layout::Address => 32,
                     _ => return 2 + (0..length).map(|_| element.abstract_size(bytes)).sum::<u64>(),
                 };
@@ -75,55 +75,43 @@ fn uleb128(bytes: &mut &[u8]) -> u64 {
 
 /// Layout of every event payload the measured transactions emit.
 fn payload_layout(payload: &StructTag) -> Layout {
-    use Layout::{Address, Bool, Enum, Struct, U8, U64, U128, Vector};
+    use Layout::{Address, Bool, Enum, Struct, U8, U32, U64, Vector};
     let id = || Struct(vec![Address]);
     let bps = || Struct(vec![U64]);
     let type_name = || Struct(vec![Struct(vec![Vector(Box::new(U8))])]);
-    let amounts = || Vector(Box::new(U64));
-    let routes = || {
-        let table = || Vector(Box::new(Struct(vec![Address, bps()])));
-        Struct(vec![table(), table()])
-    };
-    let weights = || Vector(Box::new(Struct(vec![U64, bps()])));
-    let channels = || Vector(Box::new(Struct(vec![U64, Enum(vec![vec![], vec![], vec![]]), Address])));
+    let fee_split = || Struct(vec![bps(), bps(), bps(), Vector(Box::new(Struct(vec![Address, bps()])))]);
+    let plan = || Struct(vec![bps(), bps(), bps(), Vector(Box::new(Struct(vec![Address, bps(), bps()])))]);
     match payload.name.as_str() {
         "LaunchCreated" => Struct(vec![
             id(),
             id(),
-            U8,
-            U64,
             type_name(),
             type_name(),
+            U32,
+            U64,
+            fee_split(),
             U64,
             U64,
             U64,
             U64,
-            Struct(vec![channels(), weights(), weights()]),
-            amounts(),
+            plan(),
+            U64,
+            U64,
+            U64,
         ]),
-        "ProtectionConfigured" => Struct(vec![id(), U64, U64, U64, U64, U64]),
-        "FeeRouterCreated" => Struct(vec![id(), id(), id(), routes()]),
-        "LaunchShared" => Struct(vec![id(), id(), U64, Bool]),
-        "RoutesChanged" => Struct(vec![id(), U64, U64, routes(), routes()]),
-        "RouterActivated" => {
-            Struct(vec![id(), id(), Bool, U64, U64, type_name(), id(), id(), id(), U64, routes()])
-        }
-        "MigrationAllocationPaid" => Struct(vec![id(), U64, Address, U64, U64]),
-        "Migrated" => Struct(vec![id(), U64, U64, U64, U64, U128, U64, Bool, U64]),
-        "FeesCollected" => Struct(vec![id(), id(), U64, U64, U64, Address, U64, U64, amounts(), amounts()]),
+        "LaunchShared" => Struct(vec![id(), U64]),
+        "MigrationAllocationPaid" => Struct(vec![id(), Address, U64, U64]),
+        "Migrated" => Struct(vec![id(), U64, U64, U64, Bool, U64]),
         "LaunchTicketCreated" => Struct(vec![
             id(),
             type_name(),
             U8,
-            U64,
             id(),
-            Struct(vec![Vector(Box::new(Address))]),
-            Struct(vec![Vector(Box::new(Vector(Box::new(U8))))]),
+            Enum(vec![vec![Address], vec![Vector(Box::new(U8))]]),
             Bool,
             U64,
         ]),
-        "PreShareBought" => Struct(vec![id(), U64, U64, U64, U64, U64, U64, U64, U64, U64, U64]),
-        "Bought" => Struct(vec![id(), U64, U64, U64, U64, U64, U64, U64, U64]),
+        "Bought" => Struct(vec![id(), U64, U64, U64, U64, U64, U64, U64, U64, U64, U64]),
         other => panic!("no layout for event payload {other}"),
     }
 }
@@ -300,8 +288,9 @@ impl Harness {
                     bcs::serialized_size(effects).expect("effects size") as u64,
                     config.max_serialized_tx_effects_size_bytes(),
                 ),
-                // Execution enforces the limit on this upper bound, not on the final encoding.
-                "enforced_size_estimate": at_most(
+                // Execution enforces the limit on this upper bound, not on the final encoding, and
+                // fails a transaction whose estimate reaches it.
+                "enforced_size_estimate": below(
                     TransactionEffects::estimate_effects_size_upperbound_v2(
                         changed.len(),
                         effects.modified_at_versions().len(),
@@ -310,16 +299,12 @@ impl Harness {
                     config.max_serialized_tx_effects_size_bytes(),
                 ),
                 // IDs created and destroyed or wrapped in the same transaction are not in effects,
-                // so this is a lower bound on new IDs.
+                // so this is a lower bound on new IDs. Effects do not record Move transfers, so the
+                // transferred-ID count is not measured.
                 "created": at_most(effects.created().len() as u64, config.max_num_new_move_object_ids()),
                 "created_address_owned": owner_count(|owner| matches!(owner, Owner::AddressOwner(_))),
                 "created_shared": owner_count(|owner| owner.is_shared()),
                 "created_object_owned": owner_count(|owner| matches!(owner, Owner::ObjectOwner(_))),
-                // Every created or unwrapped top-level object was transferred or shared.
-                "transferred": at_most(
-                    (effects.created().len() + effects.unwrapped().len()) as u64,
-                    config.max_num_transferred_move_object_ids(),
-                ),
                 "mutated": effects.mutated().len(),
                 "unwrapped": effects.unwrapped().len(),
                 "deleted": effects.deleted().len(),
@@ -327,7 +312,8 @@ impl Harness {
             },
             "written_objects": {
                 "count": written.len(),
-                "metered_bytes": at_most(
+                // Execution fails a transaction whose written bytes reach the limit.
+                "metered_bytes": below(
                     written.iter().map(|object| object.object_size_for_gas_metering() as u64).sum(),
                     config.max_size_written_objects(),
                 ),

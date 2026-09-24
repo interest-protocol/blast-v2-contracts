@@ -21,13 +21,12 @@ identified only through its package marker; ADR 0085 records why.
 | `blast_sui` | Publisher marker | `blast::BLAST` | `blast_sui_package::BLAST_SUI_PACKAGE` |
 | `blast_sui` | administration domain | `blast_sui_domain::BLAST_SUI_DOMAIN` | unchanged |
 | `blast_fun` (launchpad) | Publisher marker | `blast::BLAST` | `blast_fun::BLAST_FUN` |
-| `blast_fun` | administration domain, shared with migrators and distributor | `launchpad_domain::LAUNCHPAD_DOMAIN` | `blast_fun_domain::BLAST_FUN_DOMAIN` |
+| `blast_fun` | administration domain, shared with migrators | `launchpad_domain::LAUNCHPAD_DOMAIN` | `blast_fun_domain::BLAST_FUN_DOMAIN` |
 | `blast_fun_migrators` | Publisher marker | `package_marker::PACKAGE_MARKER` | `blast_fun_migrators::BLAST_FUN_MIGRATORS` |
 | `blast_boosts_aftermath` | Publisher marker | `aftermath::AFTERMATH` | `blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH` |
 | `blast_boosts_core` | administration domain and only OTW; no Publisher is claimed | `series_one_domain::SERIES_ONE_DOMAIN` | `blast_boosts_core::BLAST_BOOSTS_CORE` |
 | `blast_boosts_products` | Publisher marker (new package) | — | `blast_boosts_products::BLAST_BOOSTS_PRODUCTS` |
 | `blast_admin` | none: library package with no `init` | — | — |
-| `blast_fun_distributor` | none: `init` creates `AdminCap` and `Version` without a witness | — | — |
 | `meme_template` | generated package one-time witness | `meme::MEME` | unchanged name; the generated package's one-time witness, renamed per launch by the SDK template |
 
 The Publisher object shows `module_name` of the claiming module, and
@@ -67,11 +66,8 @@ every package-administration object.
 | `blast_fun_migrators` | `venue_config::VenueConfig` | unchanged | *residual* |
 | `blast_fun_migrators` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_FUN_MIGRATORS>` |
 | `blast_fun_migrators` | `package_version::PackageVersion` | unchanged | holds `OperationalVersion<BLAST_FUN_MIGRATORS>` |
-| `blast_fun_distributor` | `distributor::Distributor<Meme, Quote>` | `blast_fun_distributor::Distributor<Meme, Quote>` | module |
-| `blast_fun_distributor` | `distributor::Round<Meme, Quote>` | `blast_fun_distributor::Round<Meme, Quote>` | module |
-| `blast_fun_distributor` | `distributor::AdminCap` | `blast_fun_distributor::AdminCap` | module |
-| `blast_fun_distributor` | `distributor::PublisherCap` | `blast_fun_distributor::PublisherCap` | module |
-| `blast_fun_distributor` | `distributor::Version` | `blast_fun_distributor::Version` | module |
+| `blast_fun_migrators` | `lp_fee_policy::LpFeePolicy` | unchanged | *residual* |
+| `blast_fun_migrators` | `blast_holder_rewards::Round<Meme, Quote>` | new | module |
 | `blast_boosts_aftermath` | `vault::Vault<Product>` (shared custody) | unchanged | `Product` is a `blast_boosts_products` tag |
 | `blast_boosts_aftermath` | `protocol::Protocol` | unchanged | holds `OperationalVersion<BLAST_BOOSTS_AFTERMATH>` |
 | `blast_boosts_aftermath` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_BOOSTS_AFTERMATH>` |
@@ -88,7 +84,6 @@ every package-administration object.
 | `blast_fun` | `events_wrapper::Event<events::X>` | `blast_events::Event<events::X>` | envelope module |
 | `blast_boosts_aftermath` | `events_wrapper::Event<events::X<Product>>` | `blast_events::Event<events::X<Product>>` | envelope module and `Product` |
 | `blast_fun_migrators` | `events::X` (direct emission) | `blast_events::X` | module |
-| `blast_fun_distributor` | `distributor::X` | `blast_fun_distributor::X` | module |
 | `blast_admin` | `events::X<Domain>` | unchanged | `Domain` or `PackageMarker` is a Blast witness |
 
 Payload struct names inside the envelopes (`Bought`, `Migrated`,
@@ -103,7 +98,7 @@ Payload struct names inside the envelopes (`Bought`, `Migrated`,
 | `blast_sui` | `vault::TreasuryKey<CoinType>`, `package_admin::CapabilityKey<Capability>` | unchanged | dynamic-field keys under `Vault` and `PackageAdmin` |
 | `blast_fun_migrators` | `cetus::Venue`, `bluefin::Venue` | unchanged | sealed venue witnesses used as `PositionKey<Venue>` and `TierKey<Venue>` keys inside Blast objects; the module names the venue the migrator targets |
 | `blast_fun_migrators` | `cetus::Witness`, `bluefin::Witness` | unchanged | the only migration witnesses; appear as `TypeName` values in `LaunchConfig` and events |
-| `blast_fun_migrators` | `cetus::CreationCapKey<Meme>` | unchanged | key under `VenueConfig` for the Meme type's Cetus `PoolCreationCap`, held by `VenueConfig` |
+| `blast_fun_migrators` | `cetus::CreationCapKey<Meme>` | unchanged | dynamic-object-field key under `VenueConfig` for the Meme type's Cetus `PoolCreationCap`; the cap keeps its own object ID |
 | `blast_fun_migrators` | `cetus::ReservationKey<Meme, Quote>` | unchanged | dynamic-field key under `VenueConfig` naming one reserved Meme/Quote pair; the value is its reserved tick spacing |
 | `blast_boosts_aftermath` | `vault::TreasuryKey<Product>`, `vault::MetadataKey<Product>`, `vault::AdminCashKey`, `vault::TerminalCashKey` | unchanged | dynamic-field keys under `Vault` |
 | `blast_boosts_products` | `<TICKER>_<SIDE>_<LEVERAGE>` tags such as `NVDA_BULL_2X` | bull and bear 2X per Aftermath market | inner type of every Boost coin |

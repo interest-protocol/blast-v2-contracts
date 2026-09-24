@@ -53,10 +53,6 @@ both entitlements. `destroy_empty` accepts no remaining shares or whole-atom
 fees. Rounding dust and fees allocated to the 1,000 unrepresented initial
 shares remain in the pool fee pot.
 
-The separate [auto-LP package](../auto_lp/README.md) permanently holds a creator
-cap and position, collects fees, and uses a creator-selected executor to deposit
-supported paired balances. It makes no balancing swaps.
-
 Verify locally from the repository root:
 
 ```sh

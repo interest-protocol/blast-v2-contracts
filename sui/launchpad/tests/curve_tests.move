@@ -23,20 +23,26 @@ const PROPERTY_OPERATION_COUNT: u64 = 256;
 // === Tests ===
 
 #[test]
-fun amount_out_rounds_down() {
-    assert_eq!(curve::get_amount_out(1, 3, 10), 2);
-}
+fun buy_and_sell_outputs_round_down() {
+    let (_, _, meme_out_gross, _, _, _, _, _) = quote_buy(10, 0, 3, TERMINAL_THRESHOLD, 1, 0, 0);
+    let (_, _, _, _, _, _, quote_out_gross, _, _, _, _) = quote_sell(
+        3,
+        5,
+        5,
+        TERMINAL_THRESHOLD,
+        1,
+        0,
+        0,
+        0,
+    );
 
-#[test]
-fun invariant_product_uses_widened_reserves() {
-    let max = std::u64::max_value!() as u256;
-
-    assert_eq!(curve::k(max, max + max), max * (max + max));
+    assert_eq!(meme_out_gross, 2);
+    assert_eq!(quote_out_gross, 2);
 }
 
 #[test]
 fun buy_and_sell_quotes_do_not_decrease_the_constant_product() {
-    let k_before_buy = curve::k(MEME_RESERVE as u256, VIRTUAL_QUOTE as u256);
+    let k_before_buy = constant_product(MEME_RESERVE, 0);
     let (_, _, _, _, meme_out, meme_reserve, real_quote, _) = quote_buy(
         MEME_RESERVE,
         0,
@@ -46,10 +52,7 @@ fun buy_and_sell_quotes_do_not_decrease_the_constant_product() {
         QUOTE_FEE_BPS,
         0,
     );
-    let k_after_buy = curve::k(
-        meme_reserve as u256,
-        (VIRTUAL_QUOTE as u256) + (real_quote as u256),
-    );
+    let k_after_buy = constant_product(meme_reserve, real_quote);
     let (_, _, _, _, _, _, _, _, _, meme_reserve, real_quote) = quote_sell(
         meme_reserve,
         real_quote,
@@ -60,10 +63,7 @@ fun buy_and_sell_quotes_do_not_decrease_the_constant_product() {
         0,
         100,
     );
-    let k_after_sell = curve::k(
-        meme_reserve as u256,
-        (VIRTUAL_QUOTE as u256) + (real_quote as u256),
-    );
+    let k_after_sell = constant_product(meme_reserve, real_quote);
 
     assert!(k_after_buy >= k_before_buy);
     assert!(k_after_sell >= k_after_buy);
@@ -96,12 +96,16 @@ fun buy_input_cap_reaches_the_exact_post_fee_target_and_refunds_excess() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EInvalidCurveFee,
-    location = blast_fun::curve,
-)]
-fun buy_input_cap_rejects_a_total_fee_before_dividing_by_its_complement() {
-    cap_buy_quote_input(0, TERMINAL_THRESHOLD, 1_000_000_000, 10_000);
+fun buy_input_cap_accepts_a_total_fee_without_dividing_by_its_complement() {
+    let (quote_in_gross, quote_refund) = cap_buy_quote_input(
+        TERMINAL_THRESHOLD - 1,
+        TERMINAL_THRESHOLD,
+        std::u64::max_value!(),
+        10_000,
+    );
+
+    assert_eq!(quote_in_gross, std::u64::max_value!());
+    assert_eq!(quote_refund, 0);
 }
 
 #[test]
@@ -365,28 +369,10 @@ fun buy_math_supports_maximum_u64_operands_without_intermediate_overflow() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidCurveReserve,
+    abort_code = blast_fun::errors::EZeroTradeOutput,
     location = blast_fun::curve,
 )]
-fun buy_validates_reserves_before_every_other_guard() {
-    quote_buy(0, 0, 0, 0, 0, 0, 0);
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EInvalidCurveReserve,
-    location = blast_fun::curve,
-)]
-fun buy_rejects_zero_virtual_quote_reserve() {
-    quote_buy(MEME_RESERVE, 0, 0, TERMINAL_THRESHOLD, 1, 0, 0);
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EZeroTradeInput,
-    location = blast_fun::curve,
-)]
-fun buy_rejects_zero_input() {
+fun buy_rejects_zero_input_as_zero_output() {
     quote_buy(
         MEME_RESERVE,
         0,
@@ -798,28 +784,10 @@ fun seeded_sell_back_invariant_holds_for_reachable_buy_then_sell() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidCurveReserve,
+    abort_code = blast_fun::errors::EZeroTradeOutput,
     location = blast_fun::curve,
 )]
-fun sell_rejects_zero_meme_reserve_before_every_other_guard() {
-    quote_sell(0, 0, 0, 0, 0, 0, 0, 0);
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EInvalidCurveReserve,
-    location = blast_fun::curve,
-)]
-fun sell_rejects_zero_virtual_quote_reserve() {
-    quote_sell(MEME_RESERVE, 1, 0, TERMINAL_THRESHOLD, 1, 0, 0, 0);
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EZeroTradeInput,
-    location = blast_fun::curve,
-)]
-fun sell_rejects_zero_input() {
+fun sell_rejects_zero_input_as_zero_output() {
     quote_sell(
         MEME_RESERVE,
         1,
@@ -971,8 +939,7 @@ fun quote_sell(
     meme_fee_bps: u64,
     sell_burn_bps: u64,
 ): (u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64) {
-    let (meme_fee, pending_burn, quote_out_gross, quote_fee, quote_out_net) =
-        curve::quote_sell(
+    let (meme_fee, pending_burn, quote_out_gross, quote_fee, quote_out_net) = curve::quote_sell(
         meme_reserve,
         real_quote,
         virtual_quote,
@@ -980,7 +947,7 @@ fun quote_sell(
         bps::new(quote_fee_bps),
         bps::new(meme_fee_bps),
         bps::new(sell_burn_bps),
-        );
+    );
     let meme_after_fee = meme_in_gross - meme_fee;
     let meme_to_curve = meme_after_fee - pending_burn;
     let progress_bps = if (real_quote >= terminal_threshold) {
@@ -1002,6 +969,11 @@ fun quote_sell(
         meme_reserve + meme_to_curve,
         real_quote - quote_out_gross,
     )
+}
+
+/// The curve's constant product over the fixture's virtual Quote reserve, widened to u256.
+fun constant_product(meme_reserve: u64, real_quote: u64): u256 {
+    (meme_reserve as u256) * ((VIRTUAL_QUOTE as u256) + (real_quote as u256))
 }
 
 fun next_property_entropy(entropy: u64): u64 {

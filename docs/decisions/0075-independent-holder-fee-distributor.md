@@ -1,5 +1,10 @@
 # Independent holder fee distributor
 
+> Superseded by [ADR 0089](0089-migrators-own-post-migration-and-start-launches.md):
+> holder rewards are the `blast_holder_rewards` module of the migrators package, funded from
+> each vault's rewards share and published by a Blast administrator; the separate package,
+> enrollment, curve-fee lock, `PublisherCap`, pause switch, and `AdminCap` are removed.
+
 > Amended by [ADR 0088](0088-reusable-launch-accounting-and-atomic-migration.md):
 > recurring LP fees arrive as coins a fee router pushes to the distributor's
 > object address, which it receives with `transfer::public_receive`; existing

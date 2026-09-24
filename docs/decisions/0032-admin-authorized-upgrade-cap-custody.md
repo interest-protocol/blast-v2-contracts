@@ -6,7 +6,12 @@
 - Amended by: [0034](0034-remove-premature-governance-cutover.md) — the
   `admin_authorization_enabled` flag, package-only cutover, disabled event, and
   error codes 55/58 described below were removed before any deployment; the
-  custody, authorization, policy-restriction, and commit decisions stand.
+  custody, authorization, and commit decisions stand.
+- Amended by: [0088](0088-reusable-launch-accounting-and-atomic-migration.md) —
+  `restrict_to_additive` and `restrict_to_dependency_only` were removed before
+  any deployment (owner, 2026-09-23): every upgrade commits through
+  commit-and-advance, which a narrowed cap could never complete again. The
+  finalizer now checks the next generation before the role.
 
 ## Sources
 

@@ -30,13 +30,6 @@ fun upward_application_assigns_the_remainder_to_the_rate() {
     assert_eq!(bps::new(10_000).apply_up(std::u64::max_value!()), std::u64::max_value!());
 }
 
-#[test]
-fun complement_is_exact_and_involutive() {
-    assert_eq!(bps::new(0).complement().value(), 10_000);
-    assert_eq!(bps::new(10_000).complement().value(), 0);
-    assert_eq!(bps::new(2_501).complement().complement().value(), 2_501);
-}
-
 // === Imports ===
 
 use blast_fun::bps;

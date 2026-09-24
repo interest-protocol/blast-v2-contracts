@@ -2,7 +2,7 @@
 
 - Status: proposed
 - Date: 2026-08-22
-- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md), [0032](0032-admin-authorized-upgrade-cap-custody.md), [0041](0041-launch-config-owned-trade-fees.md), [0049](0049-audit-hardened-package-version-and-launch-intake.md)
+- Amended by: [0023](0023-generated-coin-supply-and-metadata-custody.md), [0032](0032-admin-authorized-upgrade-cap-custody.md), [0041](0041-launch-config-owned-trade-fees.md), [0049](0049-audit-hardened-package-version-and-launch-intake.md), [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 - Authority spine settled by: [0015](0015-protocol-authority-and-x-signer-state.md)
 - Admin-cap lifecycle settled by: [0020](0020-admin-cap-self-destruction.md)
 
@@ -26,7 +26,7 @@ the version gate must live in shared state, not in the entrypoint.
 | Capability | Held by | Grants |
 | --- | --- | --- |
 | `SuperAdminCap` | protocol multisig | add/revoke protocol admins; delayed root transfer |
-| `AdminCap` | protocol operations | bounded parameter changes, version bump, pause, adapter approval, `DisplayCap` custody, X-claim signer rotation, and—through a live `AdminWitness` while that path remains enabled—interim exact-digest package-upgrade authorization and irreversible policy restriction |
+| `AdminCap` | protocol operations | bounded parameter changes, version bump, pause, adapter approval, `DisplayCap` custody, X-claim signer rotation, and—through a live `AdminWitness`—interim exact-digest package-upgrade authorization |
 | `CreatorCap` | per launch, creator address | creator fee claim, LP fee collection after migration, metadata update during bonding |
 
 Possession of a `Launch` object grants nothing. Being the address recorded as creator grants nothing on
@@ -60,12 +60,11 @@ and never accidentally.
 | pause / unpause a scope | — | yes | — | — | scope enumerated | `Paused` / `Unpaused` |
 | bump package version | — | yes | — | — | monotonic | `VersionBumped` |
 | authorize / commit package upgrade | — | yes | — | — | exact 32-byte digest; wrapped cap's current policy; matching native receipt | `UpgradeAuthorized` / `UpgradeCommitted` |
-| restrict package upgrade policy | — | yes | — | — | strictly more restrictive; additive or dependency-only | `UpgradePolicyRestricted` |
 
 Every ordinary configuration row has a bound and an event. The package-upgrade
 row is intentionally stronger: an active routine admin can authorize arbitrary
-replacement code allowed by the wrapped cap's current policy and permanently
-narrow that policy. ADR 0032 accepts that interim authority explicitly, and
+replacement code allowed by the wrapped cap's current policy; ADR 0088 removed
+policy narrowing. ADR 0032 accepts that interim authority explicitly, and
 ADR 0034 keeps it in force until an approved governance design retires the
 routine-admin path through this ADR's version gate; it must not be described
 operationally as an ordinary parameter update.

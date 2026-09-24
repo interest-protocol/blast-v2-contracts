@@ -3,352 +3,198 @@
 
 // Package error macros preserve the allocation owner's abort location.
 #[allow(lint(abort_without_constant))]
-/// Canonical bounded allocation tables and protected-first exact apportionment.
+/// Migration allocation plans, LP-fee splits, and their exact apportionment.
 module blast_fun::allocation;
 
 // === Public Types ===
 
-/// Immutable migration identity role. Only Liquidity is handed to the launch's adapter.
-public enum ChannelRole has copy, drop, store {
-    Liquidity,
-    Protocol,
-    External,
-}
-
-/// Stable migration identity and the immutable destination its allocation is paid to.
-public struct Channel has copy, drop, store {
-    channel_id: u64,
-    role: ChannelRole,
+/// One address paid at migration, with its shares of the Meme supply and the final Quote reserve.
+public struct Recipient has copy, drop, store {
     destination: address,
+    meme_bps: Bps,
+    quote_bps: Bps,
 }
 
-/// Positive table entry. Channel zero denotes the curve and is valid only in the Meme table.
-public struct Weight has copy, drop, store {
-    channel_id: u64,
-    bps: Bps,
-}
-
-/// Validated, immutable tables sharing at most sixteen migration identities.
+/// How migration divides the Meme supply and the final Quote reserve between the curve, the pool,
+/// and the recipients. Each asset sums to 10,000 once Blast's allocation is added.
 public struct AllocationPlan has copy, drop, store {
-    channels: vector<Channel>,
-    meme: vector<Weight>,
-    quote: vector<Weight>,
+    curve_meme_bps: Bps,
+    lp_meme_bps: Bps,
+    lp_quote_bps: Bps,
+    recipients: vector<Recipient>,
 }
 
-/// One recurring-fee destination and its positive share of one asset.
+/// One LP-fee recipient and its share.
 public struct Route has copy, drop, store {
     destination: address,
     bps: Bps,
 }
 
-/// Canonical positive per-asset route tables naming at most sixteen distinct destinations.
-public struct Routes has copy, drop, store {
-    meme: vector<Route>,
-    quote: vector<Route>,
+/// The creator's split of every LP-fee collection after Blast's share, applied to both assets.
+/// The parts sum to 10,000.
+public struct FeeSplit has copy, drop, store {
+    creator_bps: Bps,
+    auto_lp_bps: Bps,
+    rewards_bps: Bps,
+    recipients: vector<Route>,
 }
 
 // === Public Functions ===
 
-/// Creates a migration identity. Zero is reserved for the curve.
-public fun channel(channel_id: u64, role: ChannelRole, destination: address): Channel {
-    assert!(channel_id != 0, blast_fun::errors::unknown_migration_channel!());
-    assert!(destination != @0x0, blast_fun::errors::unknown_migration_channel!());
+public fun recipient(destination: address, meme_bps: Bps, quote_bps: Bps): Recipient {
+    assert!(destination != @0x0, blast_fun::errors::invalid_destination!());
 
-    Channel { channel_id, role, destination }
+    Recipient { destination, meme_bps, quote_bps }
 }
 
-/// Creates a positive allocation entry; omitted entries express zero allocation.
-public fun weight(channel_id: u64, bps: Bps): Weight {
-    assert!(bps.value() > 0, blast_fun::errors::allocation_sum_invalid!());
-
-    Weight { channel_id, bps }
-}
-
-/// Constructs the unique LP role.
-public fun liquidity_role(): ChannelRole { ChannelRole::Liquidity }
-
-/// Constructs the named Blast protocol role.
-public fun protocol_role(): ChannelRole { ChannelRole::Protocol }
-
-/// Constructs a custom role paid to an external destination.
-public fun external_role(): ChannelRole { ChannelRole::External }
-
-/// Canonicalizes and validates both complete tables before any balance is partitioned.
-public fun new(
-    mut channels: vector<Channel>,
-    mut meme: vector<Weight>,
-    mut quote: vector<Weight>,
+/// The curve and the pool need positive shares; Blast's allocation is added at finalization.
+public fun plan(
+    curve_meme_bps: Bps,
+    lp_meme_bps: Bps,
+    lp_quote_bps: Bps,
+    recipients: vector<Recipient>,
 ): AllocationPlan {
-    // One-over inputs retain duplicate precedence without allowing unbounded sorting work.
     assert!(
-        channels.length() <= constants::max_migration_channels!() + 1
-            && meme.length() <= constants::max_migration_channels!() + 2
-            && quote.length() <= constants::max_migration_channels!() + 1,
-        blast_fun::errors::migration_channel_capacity_reached!(),
+        curve_meme_bps.value() > 0 && lp_meme_bps.value() > 0 && lp_quote_bps.value() > 0,
+        blast_fun::errors::invalid_shares!(),
     );
-    channels.insertion_sort_by!(|a, b| a.channel_id <= b.channel_id);
-    meme.insertion_sort_by!(|a, b| a.channel_id <= b.channel_id);
-    quote.insertion_sort_by!(|a, b| a.channel_id <= b.channel_id);
-    let mut liquidity_count = 0u64;
-    let mut protocol_count = 0u64;
-    channels.length().do!(|i| {
-        if (i > 0) {
-            assert!(
-                channels[i - 1].channel_id != channels[i].channel_id,
-                blast_fun::errors::duplicate_migration_channel!(),
-            );
-        };
-        if (channels[i].role == ChannelRole::Liquidity) liquidity_count = liquidity_count + 1;
-        if (channels[i].role == ChannelRole::Protocol) protocol_count = protocol_count + 1;
-    });
-    assert_weights_unique(&meme);
-    assert_weights_unique(&quote);
-    assert!(
-        channels.length() <= constants::max_migration_channels!(),
-        blast_fun::errors::migration_channel_capacity_reached!(),
-    );
-    assert!(
-        meme.length() <= constants::max_migration_channels!() + 1 && quote.length() <= constants::max_migration_channels!(),
-        blast_fun::errors::migration_channel_capacity_reached!(),
-    );
-    assert!(liquidity_count == 1, blast_fun::errors::invalid_liquidity_channel!());
-    assert!(protocol_count <= 1, blast_fun::errors::protocol_channel_mismatch!());
-    validate_table(&meme, &channels, true);
-    validate_table(&quote, &channels, false);
-    channels.do_ref!(|channel| {
-        let meme_bps = table_bps(&meme, channel.channel_id);
-        let quote_bps = table_bps(&quote, channel.channel_id);
-        assert!(meme_bps > 0 || quote_bps > 0, blast_fun::errors::unknown_migration_channel!());
-        if (channel.role == ChannelRole::Liquidity) {
-            assert!(meme_bps > 0 && quote_bps > 0, blast_fun::errors::invalid_liquidity_channel!());
-        };
-    });
 
-    AllocationPlan { channels, meme, quote }
+    AllocationPlan { curve_meme_bps, lp_meme_bps, lp_quote_bps, recipients }
 }
 
-/// Returns immutable identity records in ascending stable ID order.
-public fun channels(self: &AllocationPlan): &vector<Channel> { &self.channels }
-
-/// Returns immutable Meme weights in ascending stable ID order, including the curve at zero.
-public fun meme_weights(self: &AllocationPlan): &vector<Weight> { &self.meme }
-
-/// Returns immutable terminal Quote weights in ascending stable ID order.
-public fun quote_weights(self: &AllocationPlan): &vector<Weight> { &self.quote }
-
-/// Returns the stable migration identity.
-public fun channel_id(self: &Channel): u64 { self.channel_id }
-
-/// Returns the immutable role; only the Liquidity channel is handed to the adapter.
-public fun channel_role(self: &Channel): ChannelRole { self.role }
-
-/// Returns the immutable destination this channel's allocation is paid to.
-public fun channel_destination(self: &Channel): address { self.destination }
-
-/// Returns the stable identity named by a table entry; zero means the curve.
-public fun weight_channel_id(self: &Weight): u64 { self.channel_id }
-
-/// Returns the positive basis-point weight.
-public fun weight_bps(self: &Weight): u64 { self.bps.value() }
-
-/// Creates a positive recurring route; omitted destinations receive nothing for that asset.
 public fun route(destination: address, bps: Bps): Route {
-    assert!(destination != @0x0, blast_fun::errors::route_invalid_destination!());
-    assert!(bps.value() > 0, blast_fun::errors::route_sum_invalid!());
+    assert!(destination != @0x0, blast_fun::errors::invalid_destination!());
 
     Route { destination, bps }
 }
 
-/// Canonicalizes and validates both complete route tables before a router stores them.
-public fun routes(mut meme: vector<Route>, mut quote: vector<Route>): Routes {
-    // Permit one-over inputs for duplicate precedence, but never sort unbounded input.
+public fun fee_split(
+    creator_bps: Bps,
+    auto_lp_bps: Bps,
+    rewards_bps: Bps,
+    recipients: vector<Route>,
+): FeeSplit {
     assert!(
-        meme.length() <= constants::max_route_destinations!() + 1
-            && quote.length() <= constants::max_route_destinations!() + 1,
-        blast_fun::errors::route_capacity_reached!(),
+        recipients.length() <= constants::max_recipients!(),
+        blast_fun::errors::recipient_capacity_reached!(),
     );
-    meme.insertion_sort_by!(|a, b| address::to_u256(a.destination) <= address::to_u256(b.destination));
-    quote.insertion_sort_by!(|a, b| address::to_u256(a.destination) <= address::to_u256(b.destination));
-    assert_routes_unique(&meme);
-    assert_routes_unique(&quote);
-    let mut destinations = meme.map_ref!(|route| route.destination);
-    quote.do_ref!(|route| {
-        if (!destinations.contains(&route.destination)) destinations.push_back(route.destination);
-    });
+    recipients.do_ref!(|route| assert!(
+        recipients.count!(|other| other.destination == route.destination) == 1,
+        blast_fun::errors::duplicate_destination!(),
+    ));
     assert!(
-        destinations.length() <= constants::max_route_destinations!(),
-        blast_fun::errors::route_capacity_reached!(),
-    );
-    assert!(
-        meme.fold!(0, |sum, route| sum + route.bps.value()) == 10_000
-            && quote.fold!(0, |sum, route| sum + route.bps.value()) == 10_000,
-        blast_fun::errors::route_sum_invalid!(),
+        recipients.fold!(
+            creator_bps.value() + auto_lp_bps.value() + rewards_bps.value(),
+            |sum, route| sum + route.bps.value(),
+        ) == constants::basis_points_denominator!(),
+        blast_fun::errors::invalid_shares!(),
     );
 
-    Routes { meme, quote }
+    FeeSplit { creator_bps, auto_lp_bps, rewards_bps, recipients }
 }
 
-/// Returns the canonical Meme route table.
-public fun meme_routes(self: &Routes): &vector<Route> { &self.meme }
+public fun recipients(self: &FeeSplit): &vector<Route> { &self.recipients }
 
-/// Returns the canonical Quote route table.
-public fun quote_routes(self: &Routes): &vector<Route> { &self.quote }
-
-/// Returns the address paid for this route.
 public fun destination(self: &Route): address { self.destination }
 
-/// Returns the route's positive basis-point share.
-public fun route_bps(self: &Route): u64 { self.bps.value() }
+/// Splits `total` into the creator, auto-LP, rewards, and per-recipient amounts, exactly.
+public fun apportion_fee_split(self: &FeeSplit, total: u64): (u64, u64, u64, vector<u64>) {
+    let mut bps = vector[self.creator_bps, self.auto_lp_bps, self.rewards_bps];
+    self.recipients.do_ref!(|route| bps.push_back(route.bps));
+    let amounts = apportion(bps, total, option::none());
+    let recipients = vector::tabulate!(amounts.length() - 3, |i| amounts[i + 3]);
 
-/// Returns the sole LP identity for the migration handoff.
-public fun liquidity_channel_id(self: &AllocationPlan): u64 {
-    'found: {
-        self.channels.do_ref!(|channel| {
-            if (channel.role == ChannelRole::Liquidity) return 'found channel.channel_id;
-        });
-        abort blast_fun::errors::invalid_liquidity_channel!()
-    }
+    (amounts[0], amounts[1], amounts[2], recipients)
 }
 
 // === Package Functions ===
 
-/// Checks the named protected channel against the current cold policy before custody is created.
-public(package) fun assert_protocol_policy(
-    self: &AllocationPlan,
-    channel_id: u64,
-    meme_bps: Bps,
-    quote_bps: Bps,
-    destination: address,
-) {
-    let mut found = false;
-    self.channels.do_ref!(|channel| {
-        if (channel.role == ChannelRole::Protocol) {
-            found = true;
-            assert!(
-                channel.channel_id == channel_id && channel.destination == destination
-                    && table_bps(&self.meme, channel.channel_id) == meme_bps.value()
-                    && table_bps(&self.quote, channel.channel_id) == quote_bps.value(),
-                blast_fun::errors::protocol_channel_mismatch!(),
-            );
-        };
-    });
+/// Adds Blast's allocation as the first recipient and checks that each asset sums to 10,000.
+public(package) fun add_protocol(mut self: AllocationPlan, protocol: Recipient): AllocationPlan {
+    self.recipients.insert(protocol, 0);
     assert!(
-        found == (meme_bps.value() > 0 || quote_bps.value() > 0),
-        blast_fun::errors::protocol_channel_mismatch!(),
+        self.recipients.length() <= constants::max_recipients!(),
+        blast_fun::errors::recipient_capacity_reached!(),
     );
+    assert!(
+        self.recipients.fold!(
+            self.curve_meme_bps.value() + self.lp_meme_bps.value(),
+            |sum, recipient| sum + recipient.meme_bps.value(),
+        ) == constants::basis_points_denominator!()
+            && self.recipients.fold!(
+                self.lp_quote_bps.value(),
+                |sum, recipient| sum + recipient.quote_bps.value(),
+            ) == constants::basis_points_denominator!(),
+        blast_fun::errors::invalid_shares!(),
+    );
+
+    self
 }
 
-/// Apportions Meme in table order. Protocol receives its ceiling; other dust follows remainder/ID.
-public(package) fun apportion_meme(self: &AllocationPlan, total: u64): vector<u64> {
-    apportion(&self.meme, self.protocol_channel_id(), total)
+/// Splits the Meme `supply` into the curve's, the pool's, and each recipient's amounts; Blast's
+/// comes first and rounds up.
+public(package) fun apportion_meme(self: &AllocationPlan, supply: u64): (u64, u64, vector<u64>) {
+    let mut bps = vector[self.curve_meme_bps, self.lp_meme_bps];
+    self.recipients.do_ref!(|recipient| bps.push_back(recipient.meme_bps));
+    let amounts = apportion(bps, supply, option::some(2));
+    let recipients = vector::tabulate!(amounts.length() - 2, |i| amounts[i + 2]);
+
+    (amounts[0], amounts[1], recipients)
 }
 
-/// Apportions terminal Quote in table order using the same exact-conservation rule.
-public(package) fun apportion_quote(self: &AllocationPlan, total: u64): vector<u64> {
-    apportion(&self.quote, self.protocol_channel_id(), total)
+/// Splits the final Quote `reserve` into the pool's and each recipient's amounts; Blast's comes
+/// first and rounds up.
+public(package) fun apportion_quote(self: &AllocationPlan, reserve: u64): (u64, vector<u64>) {
+    let mut bps = vector[self.lp_quote_bps];
+    self.recipients.do_ref!(|recipient| bps.push_back(recipient.quote_bps));
+    let amounts = apportion(bps, reserve, option::some(1));
+    let recipients = vector::tabulate!(amounts.length() - 1, |i| amounts[i + 1]);
+
+    (amounts[0], recipients)
 }
 
-/// Returns the apportioned amount of one channel, or zero when the table omits it.
-public(package) fun amount_for(table: &vector<Weight>, amounts: &vector<u64>, channel_id: u64): u64 {
-    'found: {
-        table.length().do!(|i| if (table[i].channel_id == channel_id) return 'found amounts[i]);
-        0
-    }
-}
-
-/// Apportions the project remainder after the recurring protocol share has been removed.
-/// No route is protected; dust follows descending remainder then canonical route order.
-public(package) fun apportion_routes(table: &vector<Route>, total: u64): vector<u64> {
-    apportion(
-        &vector::tabulate!(table.length(), |i| Weight { channel_id: i, bps: table[i].bps }),
-        option::none(),
-        total,
-    )
+public(package) fun destinations(self: &AllocationPlan): vector<address> {
+    self.recipients.map_ref!(|recipient| recipient.destination)
 }
 
 // === Private Functions ===
 
-fun validate_table(table: &vector<Weight>, channels: &vector<Channel>, has_curve: bool) {
-    let mut sum = 0;
-    table.length().do!(|i| {
-        assert!(
-            (has_curve && table[i].channel_id == 0)
-                || channels.any!(|channel| channel.channel_id == table[i].channel_id),
-            blast_fun::errors::unknown_migration_channel!(),
-        );
-        sum = sum + table[i].bps.value();
+/// Largest-remainder apportionment of `total` over shares summing to 10,000: the `rounded_up` part
+/// takes its ceiling, every other part its floor, and the leftover units go one each to the largest
+/// remaining remainders, earlier parts first.
+fun apportion(bps: vector<Bps>, total: u64, rounded_up: Option<u64>): vector<u64> {
+    let denominator = constants::basis_points_denominator!() as u128;
+    let products = bps.map!(|share| (total as u128) * (share.value() as u128));
+    let mut amounts = vector::tabulate!(products.length(), |i| {
+        if (rounded_up.contains(&i)) products[i].div_ceil(denominator) as u64
+        else (products[i] / denominator) as u64
     });
-    assert!(sum == 10_000, blast_fun::errors::allocation_sum_invalid!());
-    if (has_curve) assert!(table_bps(table, 0) > 0, blast_fun::errors::allocation_sum_invalid!());
-}
-
-fun assert_routes_unique(table: &vector<Route>) {
-    table.length().do!(|i| {
-        if (i > 0)
-            assert!(
-                table[i - 1].destination != table[i].destination,
-                blast_fun::errors::route_duplicate_destination!(),
-            );
+    let mut order = vector::tabulate!(products.length(), |i| i)
+        .filter!(|i| !rounded_up.contains(i));
+    order.insertion_sort_by!(|a, b| {
+        let (remainder_a, remainder_b) = (products[*a] % denominator, products[*b] % denominator);
+        remainder_a > remainder_b || (remainder_a == remainder_b && *a <= *b)
     });
-}
-
-fun assert_weights_unique(table: &vector<Weight>) {
-    table.length().do!(|i| {
-        if (i > 0)
-            assert!(
-                table[i - 1].channel_id != table[i].channel_id,
-                blast_fun::errors::duplicate_migration_channel!(),
-            );
-    });
-}
-
-fun table_bps(table: &vector<Weight>, channel_id: u64): u64 {
-    'found: {
-        table.do_ref!(|entry| if (entry.channel_id == channel_id) return 'found entry.bps.value());
-        0
-    }
-}
-
-fun protocol_channel_id(self: &AllocationPlan): Option<u64> {
-    'found: {
-        self.channels.do_ref!(|channel| {
-            if (channel.role == ChannelRole::Protocol)
-                return 'found option::some(channel.channel_id);
-        });
-        option::none()
-    }
-}
-
-/// Products use u128; each result is bounded by total. Residue is awarded at most once per entry.
-fun apportion(table: &vector<Weight>, protocol_id: Option<u64>, total: u64): vector<u64> {
-    let mut amounts = vector[];
-    let mut ranked = vector[];
-    let mut allocated = 0u64;
-    table.length().do!(|i| {
-        let product = (total as u128) * (table[i].bps.value() as u128);
-        let protected = protocol_id.contains(&table[i].channel_id);
-        let amount = if (protected) product.div_ceil(10_000) else product / 10_000;
-        amounts.push_back(amount as u64);
-        allocated = allocated + (amount as u64);
-        if (!protected) ranked.push_back(i);
-    });
-    ranked.insertion_sort_by!(|a, b| {
-        let remainder_a = ((total as u128) * (table[*a].bps.value() as u128)) % 10_000;
-        let remainder_b = ((total as u128) * (table[*b].bps.value() as u128)) % 10_000;
-        remainder_a > remainder_b || (remainder_a == remainder_b && table[*a].channel_id <= table[*b].channel_id)
-    });
-    let residue = total - allocated;
-    assert!(residue <= ranked.length(), blast_fun::errors::allocation_sum_invalid!());
-    residue.do!(|i| *&mut amounts[ranked[i]] = amounts[ranked[i]] + 1);
-    assert!(
-        amounts.fold!(0, |sum, amount| sum + amount) == total,
-        blast_fun::errors::allocation_sum_invalid!(),
-    );
+    let leftover = total - amounts.fold!(0, |sum, amount| sum + amount);
+    leftover.do!(|i| *&mut amounts[order[i]] = amounts[order[i]] + 1);
 
     amounts
 }
 
+// === Test-Only Functions ===
+
+#[test_only]
+public fun creator_bps_for_testing(self: &FeeSplit): Bps { self.creator_bps }
+
+#[test_only]
+public fun auto_lp_bps_for_testing(self: &FeeSplit): Bps { self.auto_lp_bps }
+
+#[test_only]
+public fun rewards_bps_for_testing(self: &FeeSplit): Bps { self.rewards_bps }
+
+#[test_only]
+public fun route_bps_for_testing(self: &Route): u64 { self.bps.value() }
+
 // === Imports ===
 
 use blast_fun::{bps::Bps, constants};
-use sui::address;

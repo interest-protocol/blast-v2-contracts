@@ -11,6 +11,10 @@ const MAX_ADMINS: u64 = 16;
 
 const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
+const POOL_TICK_SPACING: u32 = 200;
+
+const POOL_FEE_RATE: u64 = 10_000;
+
 // === Test-Only Types ===
 
 /// This module's one-time witness stands in for a generated package's.
@@ -37,7 +41,7 @@ fun admitted_short_vault_quote_uses_the_same_native_buy_and_sell_path() {
 }
 
 #[test]
-#[expected_failure(abort_code = 20, location = blast_fun::launch_config)]
+#[expected_failure(abort_code = blast_fun::errors::EQuoteNotAllowed, location = blast_fun::launch_config)]
 fun admitting_long_does_not_admit_the_distinct_short_vault_quote() {
     quote_round_trip<BlastBoost<Short2x>>(false);
 }
@@ -57,29 +61,30 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     let witness = authority.sign_in(&admin);
     let mut config = scenario.take_shared<LaunchConfig>();
     if (admit_exact) {
-        config.allow_quote<Quote>(&version, &witness, 5_000_000);
+        config.set_quote<Quote>(&version, &witness, 5_000_000);
     } else {
-        config.allow_quote<BlastBoost<Long2x>>(&version, &witness, 5_000_000);
+        config.set_quote<BlastBoost<Long2x>>(&version, &witness, 5_000_000);
     };
-    config.allow_migration_witness<Migration>(&version, &witness);
-    config.set_protocol_allocation(&version, &witness, 1, @0xa, bps::new(0), bps::new(0));
+    config.set_migration_witness_allowed<Migration>(&version, &witness, true);
+    config.set_protocol_allocation(&version, &witness, @0xa, bps::new(0), bps::new(0));
     let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
-    let mut ticket = launch_ticket::new(
+    let ticket = launch_ticket::new(
         test_utils::create_one_time_witness<QUOTE_COMPOSITION_TESTS>(), 9,
         b"MEME".to_string(), b"Composition".to_string(),
         b"Native Vault Quote test".to_string(), b"".to_string(),
         creator_authority::new_address(@0xa), false, 0, scenario.ctx(),
     );
-    ticket.bind_migration_witness<_, Quote, _>(&config, Migration());
     scenario.next_tx(@0xa);
     let mut currency = scenario.take_from_address<Currency<QUOTE_COMPOSITION_TESTS>>(@0xc);
-    let mut market = launch::new<_, Quote>(
-        ticket, &mut currency, &version, &config, 25_000_000, default_allocation_plan(),
-        0, bps::new(0), bps::new(0), scenario.ctx(),
+    let mut initializer = launch::new<_, Quote, _>(
+        ticket, &version, &config, Migration(), POOL_TICK_SPACING, POOL_FEE_RATE,
     );
-    let (router, config_cap) = market.new_fee_router(&version, default_fee_routes(), scenario.ctx());
+    initializer.set_graduation_target(25_000_000);
+    initializer.set_allocation_plan(default_allocation_plan());
+    initializer.set_lp_fee_split(default_fee_split());
+    let market = initializer.finalize(&version, &mut currency, &config, scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
-    market.share(&version, config_cap, router, &clock);
+    market.share(&version, &clock);
     test_scenario::return_shared(config);
     test_scenario::return_to_address(@0xc, currency);
     scenario.next_tx(@0xa);
@@ -103,19 +108,11 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
 }
 
 fun default_allocation_plan(): AllocationPlan {
-    allocation::new(
-        vector[allocation::channel(2, allocation::liquidity_role(), @0xa)],
-        vector[
-            allocation::weight(0, bps::new(8_000)),
-            allocation::weight(2, bps::new(2_000)),
-        ],
-        vector[allocation::weight(2, bps::new(10_000))],
-    )
+    allocation::plan(bps::new(8_000), bps::new(2_000), bps::new(10_000), vector[])
 }
 
-fun default_fee_routes(): allocation::Routes {
-    let route = vector[allocation::route(@0xa, bps::new(10_000))];
-    allocation::routes(route, route)
+fun default_fee_split(): allocation::FeeSplit {
+    allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), vector[])
 }
 
 // Compile-Only Composition Contracts

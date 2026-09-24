@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-22
 - Amends: [0013](0013-creator-fee-authority-and-x-claims.md), [0014](0014-typed-creator-cap-and-diagnostic-modules.md)
-- Amended by: [0017](0017-coin-type-domain-for-x-creator-claims.md), [0018](0018-authority-module-separation.md), [0020](0020-admin-cap-self-destruction.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0031](0031-package-witness-and-publisher-custody.md), [0032](0032-admin-authorized-upgrade-cap-custody.md), [0080](0080-provider-independent-creator-recipient.md)
+- Amended by: [0017](0017-coin-type-domain-for-x-creator-claims.md), [0018](0018-authority-module-separation.md), [0020](0020-admin-cap-self-destruction.md), [0028](0028-hot-cold-runtime-configuration.md), [0030](0030-singleton-event-identity.md), [0031](0031-package-witness-and-publisher-custody.md), [0032](0032-admin-authorized-upgrade-cap-custody.md), [0080](0080-provider-independent-creator-recipient.md), [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 
 > ADR 0080 generalizes the dedicated X-claim signer into one dedicated
 > creator-claim signer for opaque Blast account recipients.
@@ -74,11 +74,11 @@ transaction.
 The super admin is a cold root. It may grant or revoke routine admins and manage
 its own transfer. An active `AdminCap` performs routine protocol configuration,
 beginning with X signer management. ADR 0032 additionally makes the resulting
-live `AdminWitness` interim authority to authorize exact package-upgrade
-digests and irreversibly narrow the wrapped cap's policy. That is package code
-authority under the current policy, not merely another bounded setter. Per ADR
-0034, later governance retires both admin operations through the mandatory
-shared-object version gate. No separate per-config admin exists.
+live `AdminWitness` interim authority to authorize exact package-upgrade digests
+under the wrapped cap's policy, which ADR 0088 no longer lets it narrow. That is
+package code authority under the current policy, not merely another bounded
+setter. Per ADR 0034, later governance retires that admin operation through the
+mandatory shared-object version gate. No separate per-config admin exists.
 
 Admin membership is bounded. Granting a seventeenth active admin aborts. Admin
 creation deliberately delivers the new capability to the named nonzero

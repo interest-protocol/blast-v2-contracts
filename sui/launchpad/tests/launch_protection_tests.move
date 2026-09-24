@@ -75,15 +75,12 @@ public struct ProtectionFixture {
 fun disabled_protection_records_zero_settings_and_creates_no_sender_record() {
     let mut fixture = start();
     let launch = fixture.new_launch(0, 0, 0);
-    let expected = protection_configured_bytes(object::id(&launch), 0, 0, 0, 0, 0);
 
-    assert_eq!(protection_configured(), expected);
-    assert_eq!(launch.protection_window_ms(), 0);
-    assert_eq!(launch.cumulative_sender_bps().value(), 0);
-    assert_eq!(launch.cumulative_atomic_limit(), 0);
-    assert_eq!(launch.per_transaction_bps().value(), 0);
-    assert_eq!(launch.per_transaction_atomic_limit(), 0);
-    assert_eq!(launch.protection_end_ms(), option::none());
+    assert_launch_created(object::id(&launch), 0, 0, 0);
+    assert_eq!(launch.protection_window_ms_for_testing(), 0);
+    assert_eq!(launch.cumulative_atomic_limit_for_testing(), 0);
+    assert_eq!(launch.per_transaction_atomic_limit_for_testing(), 0);
+    assert_eq!(launch.protection_end_ms_for_testing(), option::none());
     fixture.share(launch);
 
     fixture.buy(ALICE, EXCESSIVE_BUY, 1);
@@ -91,8 +88,8 @@ fun disabled_protection_records_zero_settings_and_creates_no_sender_record() {
     fixture.next_tx!(ALICE, |f| {
         let launch = f.take_launch();
 
-        assert_eq!(launch.protection_end_ms(), option::some(PUBLIC_START_MS));
-        assert_eq!(launch.protected_purchases(ALICE), 0);
+        assert_eq!(launch.protection_end_ms_for_testing(), option::some(PUBLIC_START_MS));
+        assert_eq!(launch.protected_purchases_for_testing(ALICE), 0);
         assert!(!launch.has_protected_purchases_for_testing(ALICE));
         launch.put_back();
     });
@@ -103,30 +100,21 @@ fun disabled_protection_records_zero_settings_and_creates_no_sender_record() {
 fun enabled_protection_records_exact_settings_and_atomic_limits() {
     let mut fixture = start();
     let launch = fixture.new_launch(WINDOW_MS, CUMULATIVE_BPS, PER_TRANSACTION_BPS);
-    let expected = protection_configured_bytes(
-        object::id(&launch),
-        WINDOW_MS,
-        CUMULATIVE_BPS,
-        CUMULATIVE_LIMIT,
-        PER_TRANSACTION_BPS,
-        PER_TRANSACTION_LIMIT,
-    );
 
-    assert_eq!(protection_configured(), expected);
-    assert_eq!(launch.protection_window_ms(), WINDOW_MS);
-    assert_eq!(launch.cumulative_sender_bps().value(), CUMULATIVE_BPS);
-    assert_eq!(launch.cumulative_atomic_limit(), CUMULATIVE_LIMIT);
-    assert_eq!(launch.per_transaction_bps().value(), PER_TRANSACTION_BPS);
-    assert_eq!(launch.per_transaction_atomic_limit(), PER_TRANSACTION_LIMIT);
-    assert_eq!(launch.protection_end_ms(), option::none());
-    assert_eq!(launch.protected_purchases(ALICE), 0);
+    assert_launch_created(object::id(&launch), WINDOW_MS, CUMULATIVE_BPS, PER_TRANSACTION_BPS);
+    assert_eq!(launch.protection_window_ms_for_testing(), WINDOW_MS);
+    assert_eq!(launch.cumulative_atomic_limit_for_testing(), CUMULATIVE_LIMIT);
+    assert_eq!(launch.per_transaction_atomic_limit_for_testing(), PER_TRANSACTION_LIMIT);
+    assert_eq!(launch.protection_end_ms_for_testing(), option::none());
+    assert_eq!(launch.protected_purchases_for_testing(ALICE), 0);
     fixture.share(launch);
+    assert_eq!(public_start_ms(), PUBLIC_START_MS);
 
     fixture.next_tx!(ALICE, |f| {
         let launch = f.take_launch();
 
-        assert_eq!(launch.protection_end_ms(), option::some(PROTECTION_END_MS));
-        assert_eq!(launch.protected_purchases(ALICE), 0);
+        assert_eq!(launch.protection_end_ms_for_testing(), option::some(PROTECTION_END_MS));
+        assert_eq!(launch.protected_purchases_for_testing(ALICE), 0);
         assert!(!launch.has_protected_purchases_for_testing(ALICE));
         launch.put_back();
     });
@@ -138,8 +126,8 @@ fun smallest_enabled_protection_limits_one_basis_point_of_supply() {
     let mut fixture = start();
     let launch = fixture.new_launch(1, 1, 0);
 
-    assert_eq!(launch.cumulative_atomic_limit(), 100_000__000_000_000);
-    assert_eq!(launch.per_transaction_atomic_limit(), 0);
+    assert_eq!(launch.cumulative_atomic_limit_for_testing(), 100_000__000_000_000);
+    assert_eq!(launch.per_transaction_atomic_limit_for_testing(), 0);
     destroy(launch);
     fixture.end();
 }
@@ -153,13 +141,13 @@ fun largest_protection_limits_the_whole_supply_and_ends_at_u64_max() {
         10_000,
     );
 
-    assert_eq!(launch.cumulative_atomic_limit(), 1_000_000_000__000_000_000);
-    assert_eq!(launch.per_transaction_atomic_limit(), 1_000_000_000__000_000_000);
+    assert_eq!(launch.cumulative_atomic_limit_for_testing(), 1_000_000_000__000_000_000);
+    assert_eq!(launch.per_transaction_atomic_limit_for_testing(), 1_000_000_000__000_000_000);
     fixture.share(launch);
     fixture.next_tx!(ALICE, |f| {
         let launch = f.take_launch();
 
-        assert_eq!(launch.protection_end_ms(), option::some(std::u64::max_value!()));
+        assert_eq!(launch.protection_end_ms_for_testing(), option::some(std::u64::max_value!()));
         launch.put_back();
     });
     fixture.end();
@@ -202,8 +190,8 @@ fun rates_above_ten_thousand_bps_are_unrepresentable() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::EInvalidSellBurnBps, location = blast_fun::launch)]
-fun ticket_sell_burn_precedes_invalid_protection() {
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidProtection, location = blast_fun::launch)]
+fun invalid_protection_precedes_the_ticket_sell_burn() {
     let mut fixture = start();
     let mut ticket = fixture.new_ticket();
     ticket.set_sell_burn_bps_for_testing(5_001);
@@ -213,11 +201,17 @@ fun ticket_sell_burn_precedes_invalid_protection() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::EInvalidProtection, location = blast_fun::launch)]
-fun invalid_protection_precedes_the_allocation_policy() {
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidShares, location = blast_fun::allocation)]
+fun allocation_sums_precede_invalid_protection() {
     let mut fixture = start();
     let ticket = fixture.new_ticket();
-    let launch = fixture.intake(ticket, protocol_plan(), 0, 1, 0);
+    let plan = allocation::plan(
+        bps::new(8_000),
+        bps::new(2_000),
+        bps::new(10_000),
+        vector[allocation::recipient(CREATOR, bps::new(1), bps::new(0))],
+    );
+    let launch = fixture.intake(ticket, plan, 0, 1, 0);
 
     destroy(launch);
     fixture.end();
@@ -257,7 +251,7 @@ fun protected_purchases_accumulate_gross_output_per_sender() {
         let meme = f.take_meme();
 
         assert!(meme.value() < first);
-        assert_eq!(launch.protected_purchases(ALICE), first);
+        assert_eq!(launch.protected_purchases_for_testing(ALICE), first);
         assert!(launch.has_protected_purchases_for_testing(ALICE));
         assert!(!launch.has_protected_purchases_for_testing(BOB));
         destroy(meme);
@@ -269,8 +263,8 @@ fun protected_purchases_accumulate_gross_output_per_sender() {
     fixture.next_tx!(ALICE, |f| {
         let launch = f.take_launch();
 
-        assert_eq!(launch.protected_purchases(ALICE), first + second);
-        assert_eq!(launch.protected_purchases(BOB), bob);
+        assert_eq!(launch.protected_purchases_for_testing(ALICE), first + second);
+        assert_eq!(launch.protected_purchases_for_testing(BOB), bob);
         launch.put_back();
     });
     fixture.end();
@@ -288,8 +282,8 @@ fun sells_and_transfers_never_reduce_protected_purchases() {
     fixture.next_tx!(ALICE, |f| {
         let launch = f.take_launch();
 
-        assert_eq!(launch.protected_purchases(ALICE), first + second);
-        assert_eq!(launch.protected_purchases(BOB), 0);
+        assert_eq!(launch.protected_purchases_for_testing(ALICE), first + second);
+        assert_eq!(launch.protected_purchases_for_testing(BOB), 0);
         assert!(!launch.has_protected_purchases_for_testing(BOB));
         launch.put_back();
     });
@@ -316,8 +310,8 @@ fun zero_per_transaction_rate_admits_a_purchase_the_cumulative_limit_allows() {
         let launch = f.take_launch();
 
         assert!(bought > PER_TRANSACTION_LIMIT && bought <= CUMULATIVE_LIMIT);
-        assert_eq!(launch.per_transaction_atomic_limit(), 0);
-        assert_eq!(launch.protected_purchases(ALICE), bought);
+        assert_eq!(launch.per_transaction_atomic_limit_for_testing(), 0);
+        assert_eq!(launch.protected_purchases_for_testing(ALICE), bought);
         launch.put_back();
     });
     fixture.end();
@@ -378,7 +372,7 @@ fun cumulative_limit_rejects_the_purchase_that_would_cross_it() {
     fixture.next_tx!(ALICE, |f| {
         let launch = f.take_launch();
 
-        assert_eq!(launch.protected_purchases(ALICE), bought);
+        assert_eq!(launch.protected_purchases_for_testing(ALICE), bought);
         assert!(bought <= CUMULATIVE_LIMIT);
         launch.put_back();
     });
@@ -393,10 +387,11 @@ fun per_transaction_limit_admits_exactly_its_limit() {
     fixture.open(WINDOW_MS, CUMULATIVE_BPS, PER_TRANSACTION_BPS);
     let bought = fixture.buy(ALICE, SMALL_BUY, 1);
     fixture.next_tx!(ALICE, |f| {
-        let launch = f.take_launch();
+        let mut launch = f.take_launch();
 
         assert!(CUMULATIVE_LIMIT - bought > PER_TRANSACTION_LIMIT);
-        launch.assert_protected_purchase_for_testing(ALICE, PER_TRANSACTION_LIMIT);
+        launch.record_protected_purchase_for_testing(ALICE, PER_TRANSACTION_LIMIT);
+        assert_eq!(launch.protected_purchases_for_testing(ALICE), bought + PER_TRANSACTION_LIMIT);
         launch.put_back();
     });
     fixture.end();
@@ -408,10 +403,12 @@ fun cumulative_limit_admits_exactly_the_remaining_allowance() {
     fixture.open(WINDOW_MS, CUMULATIVE_BPS, 0);
     let bought = fixture.buy(ALICE, SMALL_BUY, 1);
     fixture.next_tx!(ALICE, |f| {
-        let launch = f.take_launch();
+        let mut launch = f.take_launch();
 
-        launch.assert_protected_purchase_for_testing(ALICE, CUMULATIVE_LIMIT - bought);
-        launch.assert_protected_purchase_for_testing(BOB, CUMULATIVE_LIMIT);
+        launch.record_protected_purchase_for_testing(ALICE, CUMULATIVE_LIMIT - bought);
+        launch.record_protected_purchase_for_testing(BOB, CUMULATIVE_LIMIT);
+        assert_eq!(launch.protected_purchases_for_testing(ALICE), CUMULATIVE_LIMIT);
+        assert_eq!(launch.protected_purchases_for_testing(BOB), CUMULATIVE_LIMIT);
         launch.put_back();
     });
     fixture.end();
@@ -422,9 +419,9 @@ fun per_transaction_limit_rejects_one_atom_above_it() {
     let mut fixture = start();
     fixture.open(WINDOW_MS, CUMULATIVE_BPS, PER_TRANSACTION_BPS);
     fixture.next_tx!(ALICE, |f| {
-        let launch = f.take_launch();
+        let mut launch = f.take_launch();
 
-        launch.assert_protected_purchase_for_testing(ALICE, PER_TRANSACTION_LIMIT + 1);
+        launch.record_protected_purchase_for_testing(ALICE, PER_TRANSACTION_LIMIT + 1);
         launch.put_back();
     });
     fixture.end();
@@ -436,21 +433,22 @@ fun cumulative_limit_rejects_one_atom_above_the_remaining_allowance() {
     fixture.open(WINDOW_MS, CUMULATIVE_BPS, 0);
     let bought = fixture.buy(ALICE, SMALL_BUY, 1);
     fixture.next_tx!(ALICE, |f| {
-        let launch = f.take_launch();
+        let mut launch = f.take_launch();
 
-        launch.assert_protected_purchase_for_testing(ALICE, CUMULATIVE_LIMIT - bought + 1);
+        launch.record_protected_purchase_for_testing(ALICE, CUMULATIVE_LIMIT - bought + 1);
         launch.put_back();
     });
     fixture.end();
 }
 
 #[test]
-fun pre_share_purchase_never_enters_the_public_counter() {
+fun pre_share_purchases_never_enter_the_public_counter() {
     let mut fixture = start();
     let mut launch = fixture.new_launch(WINDOW_MS, CUMULATIVE_BPS, 0);
-    let pre_share_gross = fixture.pre_share_buy(&mut launch, EXCESSIVE_BUY);
+    let first = fixture.pre_share_buy(&mut launch, EXCESSIVE_BUY);
+    let second = fixture.pre_share_buy(&mut launch, EXCESSIVE_BUY);
 
-    assert!(pre_share_gross > CUMULATIVE_LIMIT);
+    assert!(first > CUMULATIVE_LIMIT && second > CUMULATIVE_LIMIT);
     assert!(!launch.has_protected_purchases_for_testing(LAUNCHER));
     fixture.share(launch);
 
@@ -458,7 +456,7 @@ fun pre_share_purchase_never_enters_the_public_counter() {
     fixture.next_tx!(LAUNCHER, |f| {
         let launch = f.take_launch();
 
-        assert_eq!(launch.protected_purchases(LAUNCHER), bought);
+        assert_eq!(launch.protected_purchases_for_testing(LAUNCHER), bought);
         launch.put_back();
     });
     fixture.end();
@@ -473,7 +471,7 @@ fun purchase_one_millisecond_before_the_end_is_recorded() {
     fixture.next_tx!(ALICE, |f| {
         let launch = f.take_launch();
 
-        assert_eq!(launch.protected_purchases(ALICE), bought);
+        assert_eq!(launch.protected_purchases_for_testing(ALICE), bought);
         launch.put_back();
     });
     fixture.end();
@@ -501,7 +499,7 @@ fun purchase_at_the_exact_end_is_unlimited_and_unrecorded() {
         let launch = f.take_launch();
 
         assert!(unprotected > CUMULATIVE_LIMIT);
-        assert_eq!(launch.protected_purchases(ALICE), protected);
+        assert_eq!(launch.protected_purchases_for_testing(ALICE), protected);
         assert!(!launch.has_protected_purchases_for_testing(BOB));
         launch.put_back();
     });
@@ -541,13 +539,16 @@ fun start(): ProtectionFixture {
     let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let mut config = scenario.take_shared<LaunchConfig>();
     let admin_witness = authority.sign_in(&admin_cap);
-    config.allow_quote<TEST_QUOTE>(&package_version, &admin_witness, 5_000_000);
-    config.allow_migration_witness<TEST_MIGRATION_WITNESS>(&package_version, &admin_witness);
+    config.set_quote<TEST_QUOTE>(&package_version, &admin_witness, 5_000_000);
+    config.set_migration_witness_allowed<TEST_MIGRATION_WITNESS>(
+        &package_version,
+        &admin_witness,
+        true,
+    );
     config.set_trade_fees(&package_version, &admin_witness, bps::new(100), bps::new(250));
     config.set_protocol_allocation(
         &package_version,
         &admin_witness,
-        1,
         PROTOCOL_ADMIN,
         bps::new(0),
         bps::new(0),
@@ -559,33 +560,13 @@ fun start(): ProtectionFixture {
     ProtectionFixture { scenario, package_version, config, runtime_config, clock }
 }
 
-/// A curve holding 80 percent of supply and one liquidity channel holding the rest.
+/// A curve holding 80 percent of supply and the pool the rest; Blast's allocation is zero.
 fun plan(): AllocationPlan {
-    allocation::new(
-        vector[allocation::channel(2, allocation::liquidity_role(), CREATOR)],
-        vector[allocation::weight(0, bps::new(8_000)), allocation::weight(2, bps::new(2_000))],
-        vector[allocation::weight(2, bps::new(10_000))],
-    )
-}
-
-/// Names a protocol channel the fixture's zero protocol policy does not admit.
-fun protocol_plan(): AllocationPlan {
-    allocation::new(
-        vector[
-            allocation::channel(1, allocation::protocol_role(), PROTOCOL_ADMIN),
-            allocation::channel(2, allocation::liquidity_role(), CREATOR),
-        ],
-        vector[
-            allocation::weight(0, bps::new(7_500)),
-            allocation::weight(1, bps::new(500)),
-            allocation::weight(2, bps::new(2_000)),
-        ],
-        vector[allocation::weight(2, bps::new(10_000))],
-    )
+    allocation::plan(bps::new(8_000), bps::new(2_000), bps::new(10_000), vector[])
 }
 
 fun new_ticket(self: &mut ProtectionFixture): LaunchTicket<LAUNCH_PROTECTION_TESTS> {
-    let mut ticket = launch_ticket::new(
+    launch_ticket::new(
         test_utils::create_one_time_witness<LAUNCH_PROTECTION_TESTS>(),
         9,
         b"GUARD".to_string(),
@@ -596,13 +577,11 @@ fun new_ticket(self: &mut ProtectionFixture): LaunchTicket<LAUNCH_PROTECTION_TES
         false,
         SELL_BURN_BPS,
         self.scenario.ctx(),
-    );
-    ticket.bind_migration_witness<_, TEST_QUOTE, _>(&self.config, TEST_MIGRATION_WITNESS());
-
-    ticket
+    )
 }
 
-/// Runs intake in the next transaction, once the Coin Registry holds the ticket's currency.
+/// Starts, configures, and finalizes the launch in the next transaction, once the Coin Registry
+/// holds the ticket's currency.
 fun intake(
     self: &mut ProtectionFixture,
     ticket: LaunchTicket<LAUNCH_PROTECTION_TESTS>,
@@ -615,16 +594,28 @@ fun intake(
     let mut currency = self
         .scenario
         .take_from_address<Currency<LAUNCH_PROTECTION_TESTS>>(COIN_REGISTRY);
-    let launch = launch::new(
+    let mut initializer = launch::new<_, TEST_QUOTE, _>(
         ticket,
-        &mut currency,
         &self.package_version,
         &self.config,
-        TARGET,
-        plan,
+        TEST_MIGRATION_WITNESS(),
+        200,
+        10_000,
+    );
+    initializer.set_graduation_target(TARGET);
+    initializer.set_allocation_plan(plan);
+    initializer.set_lp_fee_split(
+        allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), vector[]),
+    );
+    initializer.set_protection(
         window_ms,
         bps::new(cumulative_sender_bps),
         bps::new(per_transaction_bps),
+    );
+    let launch = initializer.finalize(
+        &self.package_version,
+        &mut currency,
+        &self.config,
         self.scenario.ctx(),
     );
     test_scenario::return_to_address(COIN_REGISTRY, currency);
@@ -641,22 +632,6 @@ fun new_launch(
     let ticket = self.new_ticket();
 
     self.intake(ticket, plan(), window_ms, cumulative_sender_bps, per_transaction_bps)
-}
-
-fun new_router(
-    self: &mut ProtectionFixture,
-    launch: &mut Launch<LAUNCH_PROTECTION_TESTS, TEST_QUOTE>,
-): (
-    FeeRouter<LAUNCH_PROTECTION_TESTS, TEST_QUOTE>,
-    RouterConfigCap<LAUNCH_PROTECTION_TESTS, TEST_QUOTE>,
-) {
-    let route = vector[allocation::route(CREATOR, bps::new(10_000))];
-
-    launch.new_fee_router(
-        &self.package_version,
-        allocation::routes(route, route),
-        self.scenario.ctx(),
-    )
 }
 
 /// Moves the fixture clock to `timestamp_ms` for the following transactions.
@@ -677,10 +652,8 @@ fun open(
 }
 
 /// Shares the launch at the fixture clock's current time.
-fun share(self: &mut ProtectionFixture, mut launch: Launch<LAUNCH_PROTECTION_TESTS, TEST_QUOTE>) {
-    let (router, config_cap) = self.new_router(&mut launch);
-
-    launch.share(&self.package_version, config_cap, router, &self.clock);
+fun share(self: &ProtectionFixture, launch: Launch<LAUNCH_PROTECTION_TESTS, TEST_QUOTE>) {
+    launch.share(&self.package_version, &self.clock);
 }
 
 fun take_launch(self: &ProtectionFixture): Launch<LAUNCH_PROTECTION_TESTS, TEST_QUOTE> {
@@ -697,7 +670,7 @@ fun take_meme(self: &ProtectionFixture): Coin<LAUNCH_PROTECTION_TESTS> {
     self.scenario.take_from_sender()
 }
 
-/// Runs the owned launch's pre-share purchase and returns its gross Meme output.
+/// Runs a pre-share purchase on the owned launch and returns its gross Meme output.
 fun pre_share_buy(
     self: &mut ProtectionFixture,
     launch: &mut Launch<LAUNCH_PROTECTION_TESTS, TEST_QUOTE>,
@@ -714,7 +687,7 @@ fun pre_share_buy(
     destroy(meme);
     destroy(refund);
 
-    pre_share_gross()
+    bought_gross()
 }
 
 /// Buys from the curve as `sender` in a new transaction and returns the gross Meme output.
@@ -753,47 +726,51 @@ fun sell_all(self: &mut ProtectionFixture, sender: address) {
     launch.put_back();
 }
 
-/// Decodes `meme_out_gross` from this transaction's only `PreShareBought` event.
-fun pre_share_gross(): u64 {
-    let bought = events::collect_one<events::PreShareBought>(0);
-    let mut fields = sui::bcs::new(bcs::to_bytes(&bought));
-    fields.peel_address();
-    fields.peel_u64();
-
-    fields.peel_u64()
-}
-
-/// Decodes `meme_out_gross` from this transaction's only `Bought` event.
+/// Decodes `meme_out_gross` from this transaction's latest `Bought` event.
 fun bought_gross(): u64 {
-    let bought = events::collect_one<events::Bought>(0);
-    let mut fields = sui::bcs::new(bcs::to_bytes(&bought));
+    let mut fields = sui::bcs::new(bcs::to_bytes(&latest_event<Bought>()));
     fields.peel_address();
     fields.peel_u64();
 
     fields.peel_u64()
 }
 
-/// The encoded payload of this transaction's only `ProtectionConfigured` event.
-fun protection_configured(): vector<u8> {
-    bcs::to_bytes(&events::collect_one<events::ProtectionConfigured>(0))
+/// Decodes `public_start_ms` from this transaction's only `LaunchShared` event.
+fun public_start_ms(): u64 {
+    let mut fields = sui::bcs::new(bcs::to_bytes(&only_event<LaunchShared>()));
+    fields.peel_address();
+
+    fields.peel_u64()
 }
 
-fun protection_configured_bytes(
+/// Checks this transaction's only `LaunchCreated` event names `launch_id` and ends with the
+/// protection window and rates.
+fun assert_launch_created(
     launch_id: ID,
     window_ms: u64,
     cumulative_sender_bps: u64,
-    cumulative_atomic_limit: u64,
     per_transaction_bps: u64,
-    per_transaction_atomic_limit: u64,
-): vector<u8> {
-    let mut expected = bcs::to_bytes(&launch_id);
-    expected.append(bcs::to_bytes(&window_ms));
-    expected.append(bcs::to_bytes(&cumulative_sender_bps));
-    expected.append(bcs::to_bytes(&cumulative_atomic_limit));
-    expected.append(bcs::to_bytes(&per_transaction_bps));
-    expected.append(bcs::to_bytes(&per_transaction_atomic_limit));
+) {
+    let created = bcs::to_bytes(&only_event<LaunchCreated>());
+    let mut protection = bcs::to_bytes(&window_ms);
+    protection.append(bcs::to_bytes(&cumulative_sender_bps));
+    protection.append(bcs::to_bytes(&per_transaction_bps));
+    let tail = created.length() - protection.length();
 
-    expected
+    assert_eq!(vector::tabulate!(32, |i| created[i]), bcs::to_bytes(&launch_id));
+    assert_eq!(vector::tabulate!(protection.length(), |i| created[tail + i]), protection);
+}
+
+/// This transaction's only event of type `T`.
+fun only_event<T: copy + drop>(): T {
+    assert_eq!(event::events_by_type<Event<T>>().length(), 1);
+
+    latest_event()
+}
+
+/// This transaction's latest event of type `T`.
+fun latest_event<T: copy + drop>(): T {
+    event::events_by_type<Event<T>>().pop_back().unwrap()
 }
 
 fun end(self: ProtectionFixture) {
@@ -809,9 +786,9 @@ use blast_fun::{
     blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     bps,
     creator_authority,
+    blast_events::Event,
     domain_fixture,
-    events,
-    fee_router::{FeeRouter, RouterConfigCap},
+    events::{Bought, LaunchCreated, LaunchShared},
     launch::{Self, Launch},
     launch_config::{Self, LaunchConfig},
     launch_ticket::{Self, LaunchTicket},
@@ -825,6 +802,7 @@ use sui::{
     clock::{Self, Clock},
     coin::{Self, Coin},
     coin_registry::Currency,
+    event,
     test_scenario::{Self, Scenario},
     test_utils,
 };

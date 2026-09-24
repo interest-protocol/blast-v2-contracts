@@ -114,11 +114,11 @@ complete cold policy in one read:
  migration_witness_type_name)
 ```
 
-Guard order: quote not admitted (`quote_not_allowed`, code 45), migration
-witness not admitted (`migration_witness_not_allowed`, code 52), then
-unconfigured provision (`invalid_meme_liquidity_provision_bps`, code 59). A
-launch can therefore never snapshot a zero provision, and the five values a
-launch stores are read from one consistent config state.
+Guard order: quote not admitted (`quote_not_allowed`), migration witness not
+admitted (`migration_witness_not_allowed`), then unconfigured provision
+(`invalid_meme_liquidity_provision_bps`). A launch can therefore never
+snapshot a zero provision, and the five values a launch stores are read from
+one consistent config state.
 
 ### Arithmetic, rounding, and conservation
 
