@@ -428,16 +428,17 @@ fun create_launch(self: &mut ReplayFixture) {
             bps::new(PER_TRANSACTION_BPS),
         );
         let mut launch = initializer.finalize(&f.version, &mut currency, &config, f.ctx!());
-        let (meme, refund) = launch.pre_share_buy(
+        let (meme, refund) = launch.buy(
             &f.version,
             &f.runtime,
             coin::mint_for_testing<QUOTE>(1_000_000, f.ctx!()),
             1,
+            &f.clock,
             f.ctx!(),
         );
         transfer::public_transfer(meme, LAUNCHER);
         transfer::public_transfer(refund, LAUNCHER);
-        launch.share(&f.version, &f.clock);
+        launch.share(&f.clock);
 
         test_scenario::return_to_address(COIN_REGISTRY, currency);
         test_scenario::return_shared(config);

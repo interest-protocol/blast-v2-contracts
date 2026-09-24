@@ -1064,12 +1064,11 @@ check_launch_needles() {
 check_launch_needles T-004 \
   'creator_authority::claim_creator_caps<|claim_creator_caps ' \
   'clock.timestamp_ms()|buy share ' \
-  'self.execute_buy(|buy pre_share_buy ' \
-  'curve::cap_buy_quote_input(|execute_buy ' \
-  'curve::quote_buy(|execute_buy ' \
+  'curve::cap_buy_quote_input(|buy ' \
+  'curve::quote_buy(|buy ' \
   'transfer::share_object(self)|share ' \
   'events::launch_shared(|share ' \
-  'events::bought(|execute_buy '
+  'events::bought(|buy '
 if ! in_order \
   'package_version.assert_current();' \
   'self.protection_end_ms.is_some()' \
@@ -1082,14 +1081,14 @@ fi
 # protected buy path.
 check_launch_needles T-005 \
   'self.protection_end_ms = |share ' \
-  'self.record_protected_purchase(|execute_buy ' \
+  'self.record_protected_purchase(|buy ' \
   '.add_dynamic_field(|record_protected_purchase ' \
   '.dynamic_field_mut|record_protected_purchase ' \
   'dynamic_field::|'
 
 for setup_visibility in \
-  T-004:share:public T-004:claim_creator_caps:public T-004:pre_share_buy:public \
-  T-004:execute_buy:private T-005:record_protected_purchase:private; do
+  T-004:share:public T-004:claim_creator_caps:public T-004:buy:public \
+  T-005:record_protected_purchase:private; do
   setup_ticket="${setup_visibility%%:*}"
   setup_rest="${setup_visibility#*:}"
   setup_name="${setup_rest%%:*}"
@@ -1100,9 +1099,9 @@ for setup_visibility in \
 done
 
 launch_owned_sinks="$(awk -F'\t' '
-  $1 == "FN" && $6 == 0 && $9 ~ /[(,] (mut )?[A-Za-z_][A-Za-z0-9_]*: Launch</ { print $2 }
+  $1 == "FN" && $6 == 0 && $9 ~ /[(,] ?(mut )?[A-Za-z_][A-Za-z0-9_]*: Launch</ { print $2 }
 ' <<<"$launch_facts" | sort | tr '\n' ' ')"
-launch_buy_body="$(move_semantic_shape <<<"$(move_production_body execute_buy <<<"$launch_facts")")"
+launch_buy_body="$(move_semantic_shape <<<"$(move_production_body buy <<<"$launch_facts")")"
 
 if [[ "$launch_owned_sinks" != 'share ' ]]; then
   launch_authority_violations+='  T-004 must share through one key-only sink'$'\n'
@@ -1373,7 +1372,7 @@ events_follow_mutations() {
 
 if ! events_follow_mutations sources/launch_ticket.move new 'LaunchTicket{' 'events::launch_ticket_created<' \
   || ! events_follow_mutations sources/launch.move finalize 'ticket.destroy(' 'Launch{' 'events::launch_created<' \
-  || ! events_follow_mutations sources/launch.move execute_buy \
+  || ! events_follow_mutations sources/launch.move buy \
     'self.real_quote_reserve.join(' \
     'self.meme_reserve.split(' \
     'self.lifecycle = Lifecycle::MigrationReady;' \

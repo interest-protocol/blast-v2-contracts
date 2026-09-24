@@ -202,10 +202,10 @@ Live -> MigrationReady -> Migrated
 ```
 
 - `Live`: the curve accepts buys and sells while enforcing slippage, fee, and
-  reserve rules. Before the launch is shared, its owner may buy (without
+  reserve rules. Before the launch is shared, its owner may `buy` (without
   protection); sell-designated burn waits in a pending balance.
 - `MigrationReady`: a buy reached the target, closed trading, and returned
-  excess Quote; a pre-share buy may do this. Only the adapter whose witness the
+  excess Quote; a buy before sharing may do this. Only the adapter whose witness the
   launch stored can migrate it.
 - `Migrated`: set by the one `migrate` call, which also completes terminal
   disposal.

@@ -1,5 +1,5 @@
 //! Resource measurements for the launch and protection family: the allocation-recipient capacity
-//! boundary, maximum launch creation with terminal share, the pre-share purchase, and first,
+//! boundary, maximum launch creation with terminal share, the purchase before sharing, and first,
 //! later, and expired protected buys.
 //!
 //! Every Meme comes from the actual `meme_template` source with only its decimals substituted, as
@@ -71,8 +71,8 @@ const PROTECTED: [u64; 3] = [WINDOW_MS, 100, 50];
 const PROTECTED_BUY: u64 = 25_000;
 /// Above both limits; bought at the protection end, where nothing is checked.
 const EXPIRED_BUY: u64 = 80_000;
-/// Far below the graduation target, as the pre-share purchase requires.
-const PRE_SHARE_BUY: u64 = 1_000_000;
+/// Far below the graduation target, so the purchase before sharing refunds nothing.
+const BUY_BEFORE_SHARE: u64 = 1_000_000;
 
 const PROTOCOL: ObjectID = address(&[0xAD]);
 const BENEFICIARY: ObjectID = address(&[0xBE]);
@@ -118,7 +118,7 @@ struct Shape {
     fee_recipients: usize,
     target: u64,
     protection: [u64; 3],
-    pre_share_buy: bool,
+    buy_before_share: bool,
 }
 
 impl Shape {
@@ -128,7 +128,7 @@ impl Shape {
             fee_recipients: MAX_FEE_RECIPIENTS,
             target: MAXIMUM_TARGET,
             protection: PROTECTED,
-            pre_share_buy: false,
+            buy_before_share: false,
         }
     }
 }
@@ -327,7 +327,7 @@ impl World {
             fee_recipients: 0,
             target: TARGET,
             protection: UNPROTECTED,
-            pre_share_buy: false,
+            buy_before_share: false,
         };
         self.open_and_record("smallest_plan_created_and_shared", &ticket, smallest)?;
 
@@ -337,7 +337,7 @@ impl World {
         self.protected_buys(decimals, &opened)?;
 
         let ticket = self.publish_template(decimals, None)?;
-        self.open_and_record("maximum_plan_pre_share_buy", &ticket, Shape { pre_share_buy: true, ..maximum })?;
+        self.open_and_record("maximum_plan_buy_before_share", &ticket, Shape { buy_before_share: true, ..maximum })?;
 
         Ok(())
     }
@@ -402,7 +402,7 @@ impl World {
         let outcome = self.h.execute(self.open(ticket, shape)?)?;
         outcome.assert_success();
         let names: Vec<_> = outcome.events.iter().map(payload_name).collect();
-        let expected: &[&str] = if shape.pre_share_buy {
+        let expected: &[&str] = if shape.buy_before_share {
             &["LaunchCreated", "Bought", "LaunchShared"]
         } else {
             &["LaunchCreated", "LaunchShared"]
@@ -465,8 +465,8 @@ impl World {
     }
 
     /// Composes one launch from the public calls: plan and fee split, the adapter's start, the
-    /// settings, finalization, the optional pre-share purchase delivered to the beneficiary, and
-    /// terminal share.
+    /// settings, finalization, the optional purchase before sharing, delivered to the beneficiary,
+    /// and terminal share.
     fn open(&self, ticket: &Ticket, shape: Shape) -> Result<ProgrammableTransaction> {
         let mut builder = ProgrammableTransactionBuilder::new();
         let plan = self.plan(&mut builder, shape.plan_recipients)?;
@@ -514,9 +514,9 @@ impl World {
                 vec![initializer, version, currency, config],
             );
         let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
-        if shape.pre_share_buy {
+        if shape.buy_before_share {
             let runtime = builder.obj(self.h.shared(self.runtime, false))?;
-            let amount = builder.pure(PRE_SHARE_BUY)?;
+            let amount = builder.pure(BUY_BEFORE_SHARE)?;
             let Argument::Result(split) = builder.command(Command::SplitCoins(Argument::GasCoin, vec![amount])) else {
                 unreachable!()
             };
@@ -525,9 +525,9 @@ impl World {
                 &mut builder,
                 self.blast,
                 "launch",
-                "pre_share_buy",
+                "buy",
                 pair.clone(),
-                vec![launch, version, runtime, Argument::NestedResult(split, 0), min_meme_out],
+                vec![launch, version, runtime, Argument::NestedResult(split, 0), min_meme_out, clock],
             ) else {
                 unreachable!()
             };
@@ -542,7 +542,7 @@ impl World {
             );
             builder.transfer_args(BENEFICIARY.into(), vec![Argument::NestedResult(bought, 0)]);
         }
-        call(&mut builder, self.blast, "launch", "share", pair, vec![launch, version, clock]);
+        call(&mut builder, self.blast, "launch", "share", pair, vec![launch, clock]);
 
         Ok(builder.finish())
     }
@@ -681,7 +681,7 @@ impl World {
                     "protection_window_ms": shape.protection[0],
                     "cumulative_sender_bps": shape.protection[1],
                     "per_transaction_bps": shape.protection[2],
-                    "pre_share_buy": shape.pre_share_buy,
+                    "buy_before_share": shape.buy_before_share,
                 })),
             },
             "units": "MIST, bytes, and gas units as each field names; an event's emit_size is the abstract \

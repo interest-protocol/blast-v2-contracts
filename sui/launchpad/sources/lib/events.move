@@ -104,7 +104,7 @@ public struct LaunchShared has copy, drop {
 }
 
 /// A curve purchase; reserves are after the purchase. Purchases before `LaunchShared` are the
-/// creator's pre-share purchases.
+/// creator's, made in the transaction that creates the launch.
 public struct Bought has copy, drop {
     launch_id: ID,
     quote_in: u64,

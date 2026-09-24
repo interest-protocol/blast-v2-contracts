@@ -262,12 +262,7 @@ public fun finalize<Meme, Quote>(
 }
 
 /// Shares the launch. Public trading starts now; protection ends `protection_window_ms` later.
-public fun share<Meme, Quote>(
-    mut self: Launch<Meme, Quote>,
-    package_version: &PackageVersion,
-    clock: &Clock,
-) {
-    package_version.assert_current();
+public fun share<Meme, Quote>(mut self: Launch<Meme, Quote>, clock: &Clock) {
     assert!(self.protection_end_ms.is_none(), blast_fun::errors::invalid_launch_lifecycle!());
 
     let public_start_ms = clock.timestamp_ms();
@@ -405,8 +400,9 @@ public fun set_icon_url<Meme, Quote>(
 
 /// Buys Meme with Quote; Quote beyond the graduation target is refunded.
 ///
-/// While protected, the gross Meme output must fit the per-purchase limit and the sender's
-/// remaining cumulative limit. Sells and transfers never reduce a sender's record.
+/// Before the launch is shared only the creator's own transaction can reach it, so those purchases
+/// are unprotected. While protected, the gross Meme output must fit the per-purchase limit and the
+/// sender's remaining cumulative limit. Sells and transfers never reduce a sender's record.
 public fun buy<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
@@ -417,26 +413,56 @@ public fun buy<Meme, Quote>(
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     package_version.assert_current();
-    assert!(self.protection_end_ms.is_some(), blast_fun::errors::invalid_launch_lifecycle!());
+    assert!(self.lifecycle == Lifecycle::Live, blast_fun::errors::invalid_launch_lifecycle!());
 
-    let protected = clock.timestamp_ms() < *self.protection_end_ms.borrow();
+    let protected = self.protection_end_ms.is_some_and!(|end_ms| clock.timestamp_ms() < *end_ms);
+    let (quote_in_gross, quote_refund) = curve::cap_buy_quote_input(
+        self.real_quote_reserve.value(),
+        self.graduation_target,
+        quote_in.value(),
+        self.quote_fee_bps,
+    );
+    let (quote_fee, meme_out_gross, meme_fee, meme_out_net) = curve::quote_buy(
+        self.meme_reserve.value(),
+        self.real_quote_reserve.value(),
+        self.virtual_quote,
+        quote_in_gross,
+        self.quote_fee_bps,
+        self.meme_fee_bps,
+    );
+    assert!(meme_out_net >= min_meme_out, blast_fun::errors::slippage_exceeded!());
+    if (protected) self.record_protected_purchase(ctx.sender(), meme_out_gross);
 
-    self.execute_buy(runtime_config, quote_in, min_meme_out, protected, ctx)
-}
+    let k_before = self.curve_k();
+    let mut quote_in = quote_in.into_balance();
+    let quote_refund = quote_in.split(quote_refund);
+    let quote_fee = quote_in.split(quote_fee);
+    self.real_quote_reserve.join(quote_in);
+    let mut meme_out = self.meme_reserve.split(meme_out_gross);
+    let meme_fee = meme_out.split(meme_fee);
+    assert!(self.curve_k() >= k_before, blast_fun::errors::constant_product_invariant_decreased!());
+    if (self.real_quote_reserve.value() >= self.graduation_target) {
+        self.lifecycle = Lifecycle::MigrationReady;
+    };
+    let (protocol_meme, creator_meme, protocol_quote, creator_quote) = self
+        .fee_ledger
+        .accrue(meme_fee, quote_fee, runtime_config.protocol_fee_share());
 
-/// A purchase before the launch is shared, without protection.
-public fun pre_share_buy<Meme, Quote>(
-    self: &mut Launch<Meme, Quote>,
-    package_version: &PackageVersion,
-    runtime_config: &RuntimeConfig,
-    quote_in: Coin<Quote>,
-    min_meme_out: u64,
-    ctx: &mut TxContext,
-): (Coin<Meme>, Coin<Quote>) {
-    package_version.assert_current();
-    assert!(self.protection_end_ms.is_none(), blast_fun::errors::invalid_launch_lifecycle!());
+    events::bought(
+        self.id.to_inner(),
+        quote_in_gross,
+        meme_out_gross,
+        meme_out_net,
+        quote_refund.value(),
+        protocol_meme,
+        creator_meme,
+        protocol_quote,
+        creator_quote,
+        self.meme_reserve.value(),
+        self.real_quote_reserve.value(),
+    );
 
-    self.execute_buy(runtime_config, quote_in, min_meme_out, false, ctx)
+    (meme_out.into_coin(ctx), quote_refund.into_coin(ctx))
 }
 
 /// Sells Meme for Quote; the sell-burn share of the input waits in `pending_burn`.
@@ -634,64 +660,6 @@ fun emit_metadata_updated<Meme, Quote>(self: &Launch<Meme, Quote>, currency: &Cu
 fun curve_k<Meme, Quote>(self: &Launch<Meme, Quote>): u256 {
     (self.meme_reserve.value() as u256)
         * ((self.virtual_quote as u256) + (self.real_quote_reserve.value() as u256))
-}
-
-fun execute_buy<Meme, Quote>(
-    self: &mut Launch<Meme, Quote>,
-    runtime_config: &RuntimeConfig,
-    quote_in: Coin<Quote>,
-    min_meme_out: u64,
-    protected: bool,
-    ctx: &mut TxContext,
-): (Coin<Meme>, Coin<Quote>) {
-    assert!(self.lifecycle == Lifecycle::Live, blast_fun::errors::invalid_launch_lifecycle!());
-    let (quote_in_gross, quote_refund) = curve::cap_buy_quote_input(
-        self.real_quote_reserve.value(),
-        self.graduation_target,
-        quote_in.value(),
-        self.quote_fee_bps,
-    );
-    let (quote_fee, meme_out_gross, meme_fee, meme_out_net) = curve::quote_buy(
-        self.meme_reserve.value(),
-        self.real_quote_reserve.value(),
-        self.virtual_quote,
-        quote_in_gross,
-        self.quote_fee_bps,
-        self.meme_fee_bps,
-    );
-    assert!(meme_out_net >= min_meme_out, blast_fun::errors::slippage_exceeded!());
-    if (protected) self.record_protected_purchase(ctx.sender(), meme_out_gross);
-
-    let k_before = self.curve_k();
-    let mut quote_in = quote_in.into_balance();
-    let quote_refund = quote_in.split(quote_refund);
-    let quote_fee = quote_in.split(quote_fee);
-    self.real_quote_reserve.join(quote_in);
-    let mut meme_out = self.meme_reserve.split(meme_out_gross);
-    let meme_fee = meme_out.split(meme_fee);
-    assert!(self.curve_k() >= k_before, blast_fun::errors::constant_product_invariant_decreased!());
-    if (self.real_quote_reserve.value() >= self.graduation_target) {
-        self.lifecycle = Lifecycle::MigrationReady;
-    };
-    let (protocol_meme, creator_meme, protocol_quote, creator_quote) = self
-        .fee_ledger
-        .accrue(meme_fee, quote_fee, runtime_config.protocol_fee_share());
-
-    events::bought(
-        self.id.to_inner(),
-        quote_in_gross,
-        meme_out_gross,
-        meme_out_net,
-        quote_refund.value(),
-        protocol_meme,
-        creator_meme,
-        protocol_quote,
-        creator_quote,
-        self.meme_reserve.value(),
-        self.real_quote_reserve.value(),
-    );
-
-    (meme_out.into_coin(ctx), quote_refund.into_coin(ctx))
 }
 
 /// Checks one protected purchase against the per-purchase limit and the sender's remaining

@@ -453,7 +453,7 @@ fun start(fee_split: FeeSplit): FeeSplitFixture {
         liquidity_quote: balance::zero(),
     };
     vault.attach(&Venue(), object::id_from_address(POOL), position, 1);
-    launch.share(&version, &clock);
+    launch.share(&clock);
     destroy(config);
 
     FeeSplitFixture {

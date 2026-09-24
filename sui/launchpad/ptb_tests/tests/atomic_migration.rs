@@ -648,7 +648,7 @@ impl World {
             config,
         ]);
         let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
-        call(&mut builder, self.blast, "launch", "share", pair, vec![launch, version, clock]);
+        call(&mut builder, self.blast, "launch", "share", pair, vec![launch, clock]);
 
         Ok(builder.finish())
     }

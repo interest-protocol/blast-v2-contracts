@@ -33,9 +33,12 @@ parts first. Recipients are paid when migration begins, and only the pool's
 share goes to the adapter.
 
 **Launch.** Before the launch is shared its owner may buy any number of times,
-and a purchase may reach the graduation target. The lifecycle is `Live`,
-`MigrationReady`, `Migrated`. **One migration call.** `migrate` pays the
-recipients, disposes of the unsold Meme, sets `Migrated`, and hands the pool's
+and a purchase may reach the graduation target. There is no separate pre-share
+purchase: `buy` treats an unshared launch as unprotected, since only the
+creation transaction can reach it. `share` takes no `PackageVersion`: the
+key-only launch cannot leave the transaction whose `finalize` checked the
+version. The lifecycle is `Live`, `MigrationReady`, `Migrated`. **One
+migration call.** `migrate` pays the recipients, disposes of the unsold Meme, sets `Migrated`, and hands the pool's
 share to the adapter; the `Migration` hot potato and `complete_migration` are
 removed. The launch could not verify what an adapter reported about its pool:
 the allowlisted adapter is the only caller, the version and witness were
@@ -51,9 +54,9 @@ an empty signer key revokes account claims. A setter called with the value
 already in place aborts with one shared `unchanged` error. The migration-witness
 capacity limit is removed.
 
-**Events and errors.** Each allow/disallow pair emits one event, the pre-share
-purchase emits `Bought`, protection settings move into `LaunchCreated`, and
-fields an indexer can derive (channel IDs, revoked cap IDs, running totals,
+**Events and errors.** Each allow/disallow pair emits one event, a purchase
+before sharing emits `Bought` like any other, protection settings move into
+`LaunchCreated`, and fields an indexer can derive (channel IDs, revoked cap IDs, running totals,
 supply already in `LaunchTicketCreated`) are dropped. Errors that could not fire
 or duplicated another are removed, and the registry is renumbered.
 

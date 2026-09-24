@@ -84,7 +84,7 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     initializer.set_lp_fee_split(default_fee_split());
     let market = initializer.finalize(&version, &mut currency, &config, scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
-    market.share(&version, &clock);
+    market.share(&clock);
     test_scenario::return_shared(config);
     test_scenario::return_to_address(@0xc, currency);
     scenario.next_tx(@0xa);

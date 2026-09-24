@@ -786,7 +786,7 @@ impl World {
         let launch =
             call(&mut b, self.blast, "launch", "finalize", pair.clone(), vec![initializer, version, currency, config]);
         let clock = self.clock(&mut b)?;
-        call(&mut b, self.blast, "launch", "share", pair, vec![launch, version, clock]);
+        call(&mut b, self.blast, "launch", "share", pair, vec![launch, clock]);
 
         Ok(b.finish())
     }

@@ -442,11 +442,11 @@ fun cumulative_limit_rejects_one_atom_above_the_remaining_allowance() {
 }
 
 #[test]
-fun pre_share_purchases_never_enter_the_public_counter() {
+fun purchases_before_share_never_enter_the_public_counter() {
     let mut fixture = start();
     let mut launch = fixture.new_launch(WINDOW_MS, CUMULATIVE_BPS, 0);
-    let first = fixture.pre_share_buy(&mut launch, EXCESSIVE_BUY);
-    let second = fixture.pre_share_buy(&mut launch, EXCESSIVE_BUY);
+    let first = fixture.buy_before_share(&mut launch, EXCESSIVE_BUY);
+    let second = fixture.buy_before_share(&mut launch, EXCESSIVE_BUY);
 
     assert!(first > CUMULATIVE_LIMIT && second > CUMULATIVE_LIMIT);
     assert!(!launch.has_protected_purchases_for_testing(LAUNCHER));
@@ -653,7 +653,7 @@ fun open(
 
 /// Shares the launch at the fixture clock's current time.
 fun share(self: &ProtectionFixture, launch: Launch<LAUNCH_PROTECTION_TESTS, TEST_QUOTE>) {
-    launch.share(&self.package_version, &self.clock);
+    launch.share(&self.clock);
 }
 
 fun take_launch(self: &ProtectionFixture): Launch<LAUNCH_PROTECTION_TESTS, TEST_QUOTE> {
@@ -670,18 +670,19 @@ fun take_meme(self: &ProtectionFixture): Coin<LAUNCH_PROTECTION_TESTS> {
     self.scenario.take_from_sender()
 }
 
-/// Runs a pre-share purchase on the owned launch and returns its gross Meme output.
-fun pre_share_buy(
+/// Buys on the owned launch before it is shared and returns its gross Meme output.
+fun buy_before_share(
     self: &mut ProtectionFixture,
     launch: &mut Launch<LAUNCH_PROTECTION_TESTS, TEST_QUOTE>,
     quote_in: u64,
 ): u64 {
     let quote = coin::mint_for_testing<TEST_QUOTE>(quote_in, self.scenario.ctx());
-    let (meme, refund) = launch.pre_share_buy(
+    let (meme, refund) = launch.buy(
         &self.package_version,
         &self.runtime_config,
         quote,
         1,
+        &self.clock,
         self.scenario.ctx(),
     );
     destroy(meme);

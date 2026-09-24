@@ -619,10 +619,10 @@ fun an_unadmitted_adapter_cannot_start_a_launch() {
     fixture.end();
 }
 
-// --- Pre-share buys and sharing ---
+// --- Buys before sharing, and sharing ---
 
 #[test]
-fun pre_share_buy_uses_the_curve_and_emits_bought() {
+fun buy_before_share_is_unprotected_and_emits_bought() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -635,7 +635,7 @@ fun pre_share_buy_uses_the_curve_and_emits_bought() {
             bps::new(QUOTE_FEE_BPS),
             bps::new(MEME_FEE_BPS),
         );
-        let (meme, refund) = f.pre_buy(&mut launch, 10_000_000, net);
+        let (meme, refund) = f.buy(&mut launch, 10_000_000, net);
 
         assert_eq!(meme.value(), net);
         assert_eq!(refund.value(), 0);
@@ -669,21 +669,21 @@ fun pre_share_buy_uses_the_curve_and_emits_bought() {
 }
 
 #[test]
-/// Two pre-share buys stay below the target; the third reaches it, refunds the excess, and closes
+/// Two buys before sharing stay below the target; the third reaches it, refunds the excess, and closes
 /// the curve before the launch is shared. The shared launch then migrates.
-fun pre_share_buys_repeat_until_one_graduates_the_launch() {
+fun buys_before_share_repeat_until_one_graduates_the_launch() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
         let mut launch = f.new_default_launch(CREATOR);
-        let (first, first_refund) = f.pre_buy(&mut launch, 10_000_000, 1);
-        let (second, second_refund) = f.pre_buy(&mut launch, 10_000_000, 1);
+        let (first, first_refund) = f.buy(&mut launch, 10_000_000, 1);
+        let (second, second_refund) = f.buy(&mut launch, 10_000_000, 1);
         let (_, real_quote, _, _) = launch.balances_for_testing();
 
         assert_eq!(real_quote, 19_800_000);
         launch.assert_lifecycle(true, false, false);
 
-        let (third, third_refund) = f.pre_buy(&mut launch, 10_000_000, 1);
+        let (third, third_refund) = f.buy(&mut launch, 10_000_000, 1);
         let (_, real_quote, _, _) = launch.balances_for_testing();
 
         assert_eq!(collect<events::Bought>().length(), 3);
@@ -709,15 +709,15 @@ fun pre_share_buys_repeat_until_one_graduates_the_launch() {
 }
 
 #[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
-fun pre_share_buy_after_graduation_is_rejected() {
+fun buy_before_share_after_graduation_is_rejected() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
         let mut launch = f.new_default_launch(CREATOR);
-        let (meme, refund) = f.pre_buy(&mut launch, 30_000_000, 1);
+        let (meme, refund) = f.buy(&mut launch, 30_000_000, 1);
         destroy(meme);
         destroy(refund);
-        let (meme, refund) = f.pre_buy(&mut launch, 1_000_000, 0);
+        let (meme, refund) = f.buy(&mut launch, 1_000_000, 0);
 
         destroy(meme);
         destroy(refund);
@@ -728,12 +728,12 @@ fun pre_share_buy_after_graduation_is_rejected() {
 }
 
 #[test, expected_failure(abort_code = blast_fun::errors::EZeroTradeOutput, location = blast_fun::curve)]
-fun pre_share_buy_rejects_zero_input() {
+fun buy_before_share_rejects_zero_input() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
         let mut launch = f.new_default_launch(CREATOR);
-        let (meme, refund) = f.pre_buy(&mut launch, 0, 0);
+        let (meme, refund) = f.buy(&mut launch, 0, 0);
 
         destroy(meme);
         destroy(refund);
@@ -744,47 +744,12 @@ fun pre_share_buy_rejects_zero_input() {
 }
 
 #[test, expected_failure(abort_code = blast_fun::errors::ESlippageExceeded, location = blast_fun::launch)]
-fun pre_share_buy_enforces_the_same_minimum_output() {
+fun buy_before_share_enforces_the_minimum_output() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
         let mut launch = f.new_default_launch(CREATOR);
-        let (meme, refund) = f.pre_buy(&mut launch, 1_000_000, INITIAL_MEME_SUPPLY);
-
-        destroy(meme);
-        destroy(refund);
-        destroy(launch);
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
-fun shared_launch_rejects_pre_share_buy_before_zero_input() {
-    let mut fixture = start();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let launch = f.new_default_launch(CREATOR);
-        let mut launch = f.open_launch(launch);
-        let (meme, refund) = f.pre_buy(&mut launch, 0, 0);
-
-        destroy(meme);
-        destroy(refund);
-        destroy(launch);
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
-fun pre_share_buy_checks_the_version_before_the_lifecycle() {
-    let mut fixture = start();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let launch = f.new_default_launch(CREATOR);
-        let mut launch = f.open_launch(launch);
-        f.package_version.set_for_testing(2);
-        let (meme, refund) = f.pre_buy(&mut launch, 0, 0);
+        let (meme, refund) = f.buy(&mut launch, 1_000_000, INITIAL_MEME_SUPPLY);
 
         destroy(meme);
         destroy(refund);
@@ -839,22 +804,6 @@ fun share_rejects_a_second_share() {
 }
 
 #[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
-fun owned_launch_rejects_public_buy_before_zero_input() {
-    let mut fixture = start();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
-        let (meme, refund) = f.buy(&mut launch, 0, 0);
-
-        destroy(meme);
-        destroy(refund);
-        destroy(launch);
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
 fun owned_launch_rejects_public_sell_before_zero_input() {
     let mut fixture = start();
 
@@ -871,7 +820,7 @@ fun owned_launch_rejects_public_sell_before_zero_input() {
 }
 
 #[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
-fun public_buy_checks_the_version_before_the_shared_state() {
+fun buy_checks_the_version_first() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -2310,7 +2259,7 @@ fun launch_mint_extra_supply_and_finalize(
 }
 
 fun share_launch(self: &LaunchFixture, launch: Launch<LAUNCH_TESTS, TEST_QUOTE>) {
-    launch.share(&self.package_version, &self.clock);
+    launch.share(&self.clock);
 }
 
 /// Shares the launch and takes it back in the next transaction from the same sender.
@@ -2339,22 +2288,6 @@ fun launch_buy(
         quote,
         min_meme_out,
         &self.clock,
-        self.scenario.ctx(),
-    )
-}
-
-fun pre_buy(
-    self: &mut LaunchFixture,
-    launch: &mut Launch<LAUNCH_TESTS, TEST_QUOTE>,
-    amount: u64,
-    min_meme_out: u64,
-): (Coin<LAUNCH_TESTS>, Coin<TEST_QUOTE>) {
-    let quote = coin::mint_for_testing<TEST_QUOTE>(amount, self.scenario.ctx());
-    launch.pre_share_buy(
-        &self.package_version,
-        &self.runtime_config,
-        quote,
-        min_meme_out,
         self.scenario.ctx(),
     )
 }
