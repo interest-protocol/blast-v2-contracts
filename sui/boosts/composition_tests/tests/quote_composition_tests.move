@@ -41,7 +41,7 @@ fun admitted_short_vault_quote_uses_the_same_native_buy_and_sell_path() {
 }
 
 #[test]
-#[expected_failure(abort_code = 20, location = blast_fun::launch_config)]
+#[expected_failure(abort_code = blast_fun::errors::EQuoteNotAllowed, location = blast_fun::launch_config)]
 fun admitting_long_does_not_admit_the_distinct_short_vault_quote() {
     quote_round_trip<BlastBoost<Short2x>>(false);
 }
@@ -61,12 +61,12 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     let witness = authority.sign_in(&admin);
     let mut config = scenario.take_shared<LaunchConfig>();
     if (admit_exact) {
-        config.allow_quote<Quote>(&version, &witness, 5_000_000);
+        config.set_quote<Quote>(&version, &witness, 5_000_000);
     } else {
-        config.allow_quote<BlastBoost<Long2x>>(&version, &witness, 5_000_000);
+        config.set_quote<BlastBoost<Long2x>>(&version, &witness, 5_000_000);
     };
-    config.allow_migration_witness<Migration>(&version, &witness);
-    config.set_protocol_allocation(&version, &witness, 1, @0xa, bps::new(0), bps::new(0));
+    config.set_migration_witness_allowed<Migration>(&version, &witness, true);
+    config.set_protocol_allocation(&version, &witness, @0xa, bps::new(0), bps::new(0));
     let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
     let ticket = launch_ticket::new(
         test_utils::create_one_time_witness<QUOTE_COMPOSITION_TESTS>(), 9,
@@ -108,14 +108,7 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
 }
 
 fun default_allocation_plan(): AllocationPlan {
-    allocation::new(
-        vector[allocation::channel(2, allocation::liquidity_role(), @0xa)],
-        vector[
-            allocation::weight(0, bps::new(8_000)),
-            allocation::weight(2, bps::new(2_000)),
-        ],
-        vector[allocation::weight(2, bps::new(10_000))],
-    )
+    allocation::plan(bps::new(8_000), bps::new(2_000), bps::new(10_000), vector[])
 }
 
 fun default_fee_split(): allocation::FeeSplit {

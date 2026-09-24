@@ -55,24 +55,23 @@ public struct CompositionResult has copy, drop {
     meme_out: u64,
 }
 
-public struct ExpectedPreShareBought has copy, drop {
+public struct ExpectedBought has copy, drop {
     launch_id: ID,
     quote_in: u64,
     meme_out_gross: u64,
-    protocol_meme_fee_delta: u64,
-    creator_meme_fee_delta: u64,
-    protocol_quote_fee_delta: u64,
-    creator_quote_fee_delta: u64,
-    post_meme_reserve: u64,
-    post_real_quote_reserve: u64,
     meme_out_net: u64,
     quote_refund: u64,
+    protocol_meme_fee: u64,
+    creator_meme_fee: u64,
+    protocol_quote_fee: u64,
+    creator_quote_fee: u64,
+    meme_reserve: u64,
+    real_quote_reserve: u64,
 }
 
 public struct ExpectedLaunchShared has copy, drop {
     launch_id: ID,
     public_start_ms: u64,
-    pre_share_buy_completed: bool,
 }
 
 public struct ExpectedVestingCreated has copy, drop {
@@ -178,7 +177,13 @@ fun cancelable_composition_delivers_cancel_cap_and_preserves_beneficiary_refund_
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = 9, location = blast_fun::creator_authority)]
+#[
+    test,
+    expected_failure(
+        abort_code = blast_fun::errors::ECreatorNotSender,
+        location = blast_fun::creator_authority,
+    ),
+]
 fun launcher_cannot_claim_a_distinct_address_creators_escrowed_caps() {
     let mut fixture = start();
     let result;
@@ -192,7 +197,13 @@ fun launcher_cannot_claim_a_distinct_address_creators_escrowed_caps() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = 2, location = blast_fun::runtime_config)]
+#[
+    test,
+    expected_failure(
+        abort_code = blast_fun::errors::EInvalidCreatorClaimSignature,
+        location = blast_fun::creator_authority,
+    ),
+]
 fun launcher_cannot_reuse_an_account_attestation_bound_to_the_creator_wallet() {
     let mut fixture = start();
     let result;
@@ -234,9 +245,9 @@ fun start(): CompositionFixture {
     scenario.next_tx(ADMIN);
     let admin = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let witness = authority.sign_in(&admin);
-    config.allow_quote<QUOTE>(&version, &witness, 5_000_000);
-    config.allow_migration_witness<Migration>(&version, &witness);
-    config.set_protocol_allocation(&version, &witness, 1, CREATOR, bps::new(0), bps::new(0));
+    config.set_quote<QUOTE>(&version, &witness, 5_000_000);
+    config.set_migration_witness_allowed<Migration>(&version, &witness, true);
+    config.set_protocol_allocation(&version, &witness, CREATOR, bps::new(0), bps::new(0));
     config.set_trade_fees(&version, &witness, bps::new(100), bps::new(200));
     runtime.set_protocol_fee_share(&version, &witness, bps::new(1_000));
     runtime.set_creator_claim_signer(&version, &witness, signer_public_key());
@@ -304,8 +315,7 @@ fun compose_and_share<Meme>(
     assert!(currency.is_supply_fixed());
     assert_eq!(currency.total_supply().destroy_some(), supply);
     test_scenario::return_to_address(COIN_REGISTRY, currency);
-    assert!(launch.public_start_ms_for_testing().is_none());
-    assert!(!launch.pre_share_buy_completed_for_testing());
+    assert!(launch.protection_end_ms_for_testing().is_none());
     assert_eq!(launch.lp_fee_split(), fee_split());
     let (tick_spacing, fee_rate) = launch.pool_tier();
     assert_eq!(tick_spacing, POOL_TICK_SPACING);
@@ -323,8 +333,7 @@ fun compose_and_share<Meme>(
     refund.destroy_zero();
     let meme_out = meme.value();
     assert_buy(launch_id, supply, meme_out);
-    assert!(launch.public_start_ms_for_testing().is_none());
-    assert!(launch.pre_share_buy_completed_for_testing());
+    assert!(launch.protection_end_ms_for_testing().is_none());
     let (vesting, cancel_cap_id) = if (cancelable) {
         let (vesting, cap) = linear_vesting::new_cancelable(
             meme,
@@ -380,12 +389,11 @@ fun compose_and_share<Meme>(
     vesting.share();
     launch.share(&self.version, &self.clock);
     assert_eq!(
-        bcs::to_bytes(&events::collect_one<events::LaunchShared>(0)),
+        bcs::to_bytes(&only_event<events::LaunchShared>()),
         bcs::to_bytes(
             &ExpectedLaunchShared {
                 launch_id,
                 public_start_ms: SHARE_MS,
-                pre_share_buy_completed: true,
             },
         ),
     );
@@ -404,8 +412,10 @@ fun claim_creator_caps<Meme>(
 ) {
     let mut launch = self.scenario.take_shared<Launch<Meme, QUOTE>>();
     assert_eq!(object::id(&launch), result.launch_id);
-    assert_eq!(launch.public_start_ms_for_testing(), option::some(SHARE_MS));
-    assert!(launch.pre_share_buy_completed_for_testing());
+    assert_eq!(
+        launch.protection_end_ms_for_testing(),
+        option::some(SHARE_MS + launch.protection_window_ms_for_testing()),
+    );
     let (curve, metadata) = launch.claim_creator_caps(
         &self.version,
         &self.runtime,
@@ -461,37 +471,31 @@ fun assert_buy(launch_id: ID, supply: u64, meme_out: u64) {
     let protocol_meme = (((meme_fee as u128) * 1_000 + 9_999) / 10_000) as u64;
     assert_eq!(meme_out, meme_out_gross - meme_fee);
     assert_eq!(
-        bcs::to_bytes(&events::collect_one<events::PreShareBought>(0)),
+        bcs::to_bytes(&only_event<events::Bought>()),
         bcs::to_bytes(
-            &ExpectedPreShareBought {
+            &ExpectedBought {
                 launch_id,
                 quote_in: 1_000_000,
                 meme_out_gross,
-                protocol_meme_fee_delta: protocol_meme,
-                creator_meme_fee_delta: meme_fee - protocol_meme,
-                protocol_quote_fee_delta: 1_000,
-                creator_quote_fee_delta: 9_000,
-                post_meme_reserve: curve - meme_out_gross,
-                post_real_quote_reserve: 990_000,
                 meme_out_net: meme_out,
                 quote_refund: 0,
+                protocol_meme_fee: protocol_meme,
+                creator_meme_fee: meme_fee - protocol_meme,
+                protocol_quote_fee: 1_000,
+                creator_quote_fee: 9_000,
+                meme_reserve: curve - meme_out_gross,
+                real_quote_reserve: 990_000,
             },
         ),
     );
 }
 
 fun allocation_plan(): AllocationPlan {
-    allocation::new(
-        vector[
-            allocation::channel(2, allocation::liquidity_role(), CREATOR),
-            allocation::channel(3, allocation::external_role(), CREATOR),
-        ],
-        vector[
-            allocation::weight(0, bps::new(8_000)),
-            allocation::weight(2, bps::new(1_000)),
-            allocation::weight(3, bps::new(1_000)),
-        ],
-        vector[allocation::weight(2, bps::new(9_000)), allocation::weight(3, bps::new(1_000))],
+    allocation::plan(
+        bps::new(8_000),
+        bps::new(1_000),
+        bps::new(9_000),
+        vector[allocation::recipient(CREATOR, bps::new(1_000), bps::new(1_000))],
     )
 }
 
@@ -533,6 +537,14 @@ fun signer_public_key(): vector<u8> {
     x"197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61"
 }
 
+/// This transaction's only event of type `T`.
+fun only_event<T: copy + drop>(): T {
+    let mut events = event::events_by_type<Event<T>>();
+    assert_eq!(events.length(), 1);
+
+    events.pop_back().unwrap()
+}
+
 // === Imports ===
 
 use blast_admin::acl::{Self, AdminCap};
@@ -540,6 +552,7 @@ use blast_admin::acl::{Self, AdminCap};
 use blast_fun::{
     allocation::{Self, AllocationPlan},
     blast_fun_domain::BLAST_FUN_DOMAIN,
+    blast_events::Event,
     bps,
     creator_authority::{Self, BlastMetadataCap, CurveFeeCap},
     events,
@@ -560,6 +573,7 @@ use sui::{
     clock::{Self, Clock},
     coin::{Self, Coin},
     coin_registry::Currency,
+    event,
     test_scenario::{Self, Scenario},
     test_utils
 };
