@@ -333,13 +333,46 @@ bash scripts/check_source_boundaries.sh
 
 A local build proves type compatibility only. The interface bodies are `abort 0`
 stubs, so no venue call executes in the Move tests under `tests/`; venue
-behaviour is exercised only by the dev-inspect matrix below.
+behaviour is exercised by the venue fork gate below.
+
+## Venue fork gate
+
+`sui/launchpad/ptb_tests/tests/venue_fork.rs` runs this package against the real
+mainnet bytecode of Cetus CLMM, Cetus LP Burn, and Bluefin Spot, offline. It
+inserts a committed snapshot, `sui/launchpad/ptb_tests/fork/snapshot/`, into
+Sui's in-memory simulator at the real IDs: every package those venues load
+(closed over linkage and type origins) and the live shared objects and dynamic
+fields their code reads, all read at one pinned checkpoint, each checked against
+its on-chain object digest. It then publishes the launchpad and this package
+linked to the pinned venue revisions and drives the matrix below through public
+PTBs, for Cetus with Meme as coin A (SUI Quote) and as coin B (USDC Quote, the
+other Quote Cetus admits), and for Bluefin, with real swaps generating the
+collected fees. The Bluefin migration with a Meme icon of about 256 KB is not in
+it. It runs with the rest of the harness:
+
+```bash
+cd ../launchpad/ptb_tests && cargo test --offline
+```
+
+`fork/fetch.py` (Python standard library, read-only GraphQL) owns the pinned
+checkpoint and the reason for every entry. To refresh the snapshot, run
+`python3 fork/fetch.py --checkpoint latest` from `sui/launchpad/ptb_tests`, set
+`CHECKPOINT` in the script to the checkpoint it prints, and rerun the tests. The
+fetch fails when a pinned venue lineage has a newer revision at the checkpoint,
+so a venue upgrade is re-pinned here first. Refresh after any venue re-pin and
+before a release.
+
+The fork gate is the local evidence for the matrix and replaces the dev-inspect
+fixtures for that purpose. It cannot see state that changes after its
+checkpoint, so a mainnet dry-run of each route against live objects remains the
+pre-deploy check.
 
 ## Mainnet dev-inspect matrix
 
-The release matrix is Cetus and Bluefin. Each row below is one dev-inspect
-fixture against the published venue packages above, in the orientation named by
-the route. No route may be skipped, and a skipped row is a release blocker, not
+The release matrix is Cetus and Bluefin. Each row below is one fixture against
+the published venue packages above, in the orientation named by the route: the
+venue fork gate proves it locally, and a mainnet dry-run repeats it before
+deployment. No route may be skipped, and a skipped row is a release blocker, not
 a documentation footnote. Vault claim: `vault::claim_protocol_fees` pays the
 protocol migration residuals under `AdminWitness<BLAST_FUN_DOMAIN>` and this
 package's current generation. It touches neither the venue nor the position.
@@ -459,9 +492,9 @@ Before release, in order:
    `node scripts/check_mainnet_abi.mjs` both pass, the latter against live
    mainnet;
 2. the local build, lint, test, and source-boundary gates pass;
-3. every row of the replacement Cetus and Bluefin dev-inspect matrix passes,
-   including each migration, collection, and settled route-update route in every
-   orientation; and
+3. every row of the Cetus and Bluefin matrix passes, including each migration,
+   collection, and settled route-update route in every orientation: in the venue
+   fork gate at a freshly refreshed snapshot, then as mainnet dry-runs; and
 4. the deployment runbook admits exactly `cetus::Witness` and
    `bluefin::Witness` in the Launchpad `LaunchConfig` with
    `launch_config::allow_migration_witness`, each only after that adapter's

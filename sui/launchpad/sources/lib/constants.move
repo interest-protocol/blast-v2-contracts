@@ -6,7 +6,7 @@ module blast_fun::constants;
 
 // === Package Constants ===
 
-/// Maximum distinct recurring destinations across the Meme and Quote route tables.
+/// Maximum distinct recipients in an LP-fee split.
 macro public(package) fun max_route_destinations(): u64 { 16 }
 
 /// Combined one-time migration identity bound across both asset tables, excluding the curve.

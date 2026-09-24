@@ -158,8 +158,8 @@ public fun set_trade_fees(
     events::launch_trade_fees_changed(quote_fee_bps.value(), meme_fee_bps.value());
 }
 
-/// Admits one external migrator's sealed witness type: its adapter may then bind tickets, borrow
-/// their treasury capability before intake, and receive the launches created from them.
+/// Admits one external migrator's sealed witness type: its adapter may then start launches, borrow
+/// the initializer's treasury capability while it prepares its venue, and migrate them.
 ///
 /// Primitive, vector, and `0x1`/`0x2` framework types are rejected because any caller can
 /// construct them, and a migration witness receives the launch's liquidity principal.
@@ -193,9 +193,8 @@ public fun allow_migration_witness<MigrationWitness: drop>(
     events::migration_witness_allowed<MigrationWitness>();
 }
 
-/// Removes one external migrator witness type: its adapter can no longer bind tickets or borrow
-/// their treasury capability, and tickets bound to it can no longer launch; existing launches keep
-/// their stored witness.
+/// Removes one external migrator witness type: its adapter can no longer start launches; existing
+/// launches keep their stored witness.
 public fun disallow_migration_witness<MigrationWitness: drop>(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
