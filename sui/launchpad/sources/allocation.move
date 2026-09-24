@@ -31,11 +31,13 @@ public struct Route has copy, drop, store {
 }
 
 /// The creator's split of every LP-fee collection after Blast's share, applied to both assets.
-/// The parts sum to 10,000.
+/// The burn part's Meme is burned at collection and its Quote buys Meme back to burn. The parts
+/// sum to 10,000.
 public struct FeeSplit has copy, drop, store {
     creator_bps: Bps,
     auto_lp_bps: Bps,
     rewards_bps: Bps,
+    burn_bps: Bps,
     recipients: vector<Route>,
 }
 
@@ -72,6 +74,7 @@ public fun fee_split(
     creator_bps: Bps,
     auto_lp_bps: Bps,
     rewards_bps: Bps,
+    burn_bps: Bps,
     recipients: vector<Route>,
 ): FeeSplit {
     assert!(
@@ -84,27 +87,27 @@ public fun fee_split(
     ));
     assert!(
         recipients.fold!(
-            creator_bps.value() + auto_lp_bps.value() + rewards_bps.value(),
+            creator_bps.value() + auto_lp_bps.value() + rewards_bps.value() + burn_bps.value(),
             |sum, route| sum + route.bps.value(),
         ) == constants::basis_points_denominator!(),
         blast_fun::errors::invalid_shares!(),
     );
 
-    FeeSplit { creator_bps, auto_lp_bps, rewards_bps, recipients }
+    FeeSplit { creator_bps, auto_lp_bps, rewards_bps, burn_bps, recipients }
 }
 
 public fun recipients(self: &FeeSplit): &vector<Route> { &self.recipients }
 
 public fun destination(self: &Route): address { self.destination }
 
-/// Splits `total` into the creator, auto-LP, rewards, and per-recipient amounts, exactly.
-public fun apportion_fee_split(self: &FeeSplit, total: u64): (u64, u64, u64, vector<u64>) {
-    let mut bps = vector[self.creator_bps, self.auto_lp_bps, self.rewards_bps];
+/// Splits `total` into the creator, auto-LP, rewards, burn, and per-recipient amounts, exactly.
+public fun apportion_fee_split(self: &FeeSplit, total: u64): (u64, u64, u64, u64, vector<u64>) {
+    let mut bps = vector[self.creator_bps, self.auto_lp_bps, self.rewards_bps, self.burn_bps];
     self.recipients.do_ref!(|route| bps.push_back(route.bps));
     let amounts = apportion(bps, total, option::none());
-    let recipients = vector::tabulate!(amounts.length() - 3, |i| amounts[i + 3]);
+    let recipients = vector::tabulate!(amounts.length() - 4, |i| amounts[i + 4]);
 
-    (amounts[0], amounts[1], amounts[2], recipients)
+    (amounts[0], amounts[1], amounts[2], amounts[3], recipients)
 }
 
 // === Package Functions ===
@@ -191,6 +194,9 @@ public fun auto_lp_bps_for_testing(self: &FeeSplit): Bps { self.auto_lp_bps }
 
 #[test_only]
 public fun rewards_bps_for_testing(self: &FeeSplit): Bps { self.rewards_bps }
+
+#[test_only]
+public fun burn_bps_for_testing(self: &FeeSplit): Bps { self.burn_bps }
 
 #[test_only]
 public fun route_bps_for_testing(self: &Route): u64 { self.bps.value() }

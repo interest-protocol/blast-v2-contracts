@@ -417,6 +417,7 @@ struct FeeSplit {
     creator_bps: u64,
     auto_lp_bps: u64,
     rewards_bps: u64,
+    burn_bps: u64,
     recipients: Vec<Route>,
 }
 
@@ -430,15 +431,15 @@ impl FeeSplit {
     /// Every part set, and sixteen recipients whose weights fall by `step`, so they are distinct;
     /// the whole split sums to 10,000.
     fn sixteen(tag: u8, step: u64) -> Self {
-        let (creator_bps, auto_lp_bps, rewards_bps) = (1_000, 600, 400);
-        let shared = 10_000 - creator_bps - auto_lp_bps - rewards_bps;
+        let (creator_bps, auto_lp_bps, rewards_bps, burn_bps) = (1_000, 600, 400, 400);
+        let shared = 10_000 - creator_bps - auto_lp_bps - rewards_bps - burn_bps;
         assert_eq!((shared - 120 * step) % 16, 0);
         let lowest = (shared - 120 * step) / 16;
         let recipients = (0..16u8)
             .map(|i| Route { destination: address(&[tag, i]).into(), bps: lowest + step * u64::from(15 - i) })
             .collect();
 
-        Self { creator_bps, auto_lp_bps, rewards_bps, recipients }
+        Self { creator_bps, auto_lp_bps, rewards_bps, burn_bps, recipients }
     }
 
     /// Moves the rewards share to a seventeenth distinct recipient; the sum stays whole.
@@ -817,11 +818,13 @@ impl World {
         let creator_bps = self.unique_bps(builder, fee_split.creator_bps)?;
         let auto_lp_bps = self.unique_bps(builder, fee_split.auto_lp_bps)?;
         let rewards_bps = self.unique_bps(builder, fee_split.rewards_bps)?;
+        let burn_bps = self.unique_bps(builder, fee_split.burn_bps)?;
 
         Ok(call(builder, self.blast, "allocation", "fee_split", vec![], vec![
             creator_bps,
             auto_lp_bps,
             rewards_bps,
+            burn_bps,
             recipients,
         ]))
     }

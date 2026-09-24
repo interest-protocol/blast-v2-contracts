@@ -605,7 +605,7 @@ fun intake(
     initializer.set_graduation_target(TARGET);
     initializer.set_allocation_plan(plan);
     initializer.set_lp_fee_split(
-        allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), vector[]),
+        allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), bps::new(0), vector[]),
     );
     initializer.set_protection(
         window_ms,

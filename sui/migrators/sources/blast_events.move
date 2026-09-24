@@ -39,8 +39,9 @@ public struct VaultCreated has copy, drop {
     fee_split: FeeSplit,
 }
 
-/// One nonzero collection split under `generation`: Blast's share, the creator, auto-LP, and
-/// rewards shares, and every recipient's amount in the split's recipient order.
+/// One nonzero collection split under `generation`: Blast's share, the creator, auto-LP, rewards,
+/// and burn shares, and every recipient's amount in the split's recipient order. `burn_meme` was
+/// burned; `burn_quote` waits for a buyback.
 public struct FeesCollected has copy, drop {
     vault_id: ID,
     generation: u64,
@@ -55,6 +56,8 @@ public struct FeesCollected has copy, drop {
     auto_lp_quote: u64,
     rewards_meme: u64,
     rewards_quote: u64,
+    burn_meme: u64,
+    burn_quote: u64,
     recipient_meme: vector<u64>,
     recipient_quote: vector<u64>,
 }
@@ -65,6 +68,15 @@ public struct AutoLiquidityAdded has copy, drop {
     meme_amount: u64,
     quote_amount: u64,
     meme_pending: u64,
+    quote_pending: u64,
+}
+
+/// A buyback admin swapped `quote_spent` of the burn Quote for `meme_burned` Meme and burned it;
+/// `quote_pending` still waits.
+public struct BuybackBurned has copy, drop {
+    vault_id: ID,
+    quote_spent: u64,
+    meme_burned: u64,
     quote_pending: u64,
 }
 
@@ -198,6 +210,8 @@ public(package) fun fees_collected(
     auto_lp_quote: u64,
     rewards_meme: u64,
     rewards_quote: u64,
+    burn_meme: u64,
+    burn_quote: u64,
     recipient_meme: vector<u64>,
     recipient_quote: vector<u64>,
 ) {
@@ -215,9 +229,21 @@ public(package) fun fees_collected(
         auto_lp_quote,
         rewards_meme,
         rewards_quote,
+        burn_meme,
+        burn_quote,
         recipient_meme,
         recipient_quote,
     });
+}
+
+/// Emits one buyback and burn.
+public(package) fun buyback_burned(
+    vault_id: ID,
+    quote_spent: u64,
+    meme_burned: u64,
+    quote_pending: u64,
+) {
+    sui::event::emit(BuybackBurned { vault_id, quote_spent, meme_burned, quote_pending });
 }
 
 /// Emits one nonzero auto-LP addition and the amounts still waiting.

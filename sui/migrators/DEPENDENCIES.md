@@ -410,8 +410,9 @@ disassemble`); the dev-inspect fixtures re-confirm it end to end:
 | --- | --- |
 | `new` | Starts a launch in `Quote` at the creator's tick spacing through the core and reserves the pair's Cetus pool creation; aborts unless `LaunchConfig` admits `cetus::Witness` and the Quote |
 | `migrate_meme_a`, `migrate_meme_b` | Permissionless; the route matching the pair's Cetus coin order; burns the position through the shared `BurnManager` |
-| `collect_fees_meme_a`, `collect_fees_meme_b` | Permissionless; splits the collection and adds the auto-LP share back through `add_liquidity_fix_coin` / `repay_add_liquidity`, fixing the side `clmm_math::get_liquidity_by_amount` says the other balance covers |
+| `collect_fees_meme_a`, `collect_fees_meme_b` | Permissionless; splits the collection, burns the burn part's Meme, and adds the auto-LP share back through `add_liquidity_fix_coin` / `repay_add_liquidity`, fixing the side `clmm_math::get_liquidity_by_amount` says the other balance covers |
 | `settle_and_update_fee_split_meme_a`, `settle_and_update_fee_split_meme_b` | Under the launch's live `CurveFeeCap`; settles under the current split, then commits the proposed one |
+| `buyback_and_burn_meme_a`, `buyback_and_burn_meme_b` | Under the buyback-admin role (ADR 0091); swaps the vault's burn Quote for Meme in its own pool through `flash_swap` / `swap_pay_amount` / `repay_flash_swap` at the widest sqrt-price limit, then burns the Meme if it reaches the administrator's minimum |
 
 Each Cetus fixture must show:
 
@@ -443,8 +444,9 @@ Each Cetus fixture must show:
 | --- | --- |
 | `new` | Starts a launch in `Quote` at the creator's tier through the core; aborts with `EInvalidTier` outside tick spacing 1–400 and fee rate 1–20,000, and unless `LaunchConfig` admits `bluefin::Witness` and the Quote |
 | `migrate` | Permissionless; creates `Pool<Meme, Quote>` with Meme as coin A |
-| `collect_fees` | Permissionless; splits the collection and adds the auto-LP share back through `add_liquidity_with_fixed_amount`, fixing the side chosen from the pool's and the position's bound tick sqrt prices with a two-atom margin |
+| `collect_fees` | Permissionless; splits the collection, burns the burn part's Meme, and adds the auto-LP share back through `add_liquidity_with_fixed_amount`, fixing the side chosen from the pool's and the position's bound tick sqrt prices with a two-atom margin |
 | `settle_and_update_fee_split` | Under the launch's live `CurveFeeCap`; settles under the current split, then commits the proposed one |
+| `buyback_and_burn` | Under the buyback-admin role (ADR 0091); swaps the vault's burn Quote for Meme in its own pool through `swap` at the widest sqrt-price limit, then burns the Meme if it reaches the administrator's minimum |
 
 Each Bluefin fixture must show:
 

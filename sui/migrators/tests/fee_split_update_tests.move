@@ -57,6 +57,7 @@ public struct FeeSplitFixture {
     clock: Clock,
     policy: LpFeePolicy,
     launch_id: ID,
+    currency: Currency<FEE_SPLIT_UPDATE_TESTS>,
     vault: LpVault<FEE_SPLIT_UPDATE_TESTS, QUOTE>,
 }
 
@@ -75,6 +76,8 @@ public struct ExpectedCollection has copy, drop {
     auto_lp_quote: u64,
     rewards_meme: u64,
     rewards_quote: u64,
+    burn_meme: u64,
+    burn_quote: u64,
     recipient_meme: vector<u64>,
     recipient_quote: vector<u64>,
 }
@@ -133,6 +136,8 @@ fun settled_update_splits_accrued_fees_under_the_old_split_then_commits_the_next
             auto_lp_quote: 0,
             rewards_meme: 0,
             rewards_quote: 0,
+            burn_meme: 0,
+            burn_quote: 0,
             recipient_meme: vector[5],
             recipient_quote: vector[10],
         },
@@ -173,6 +178,8 @@ fun settled_update_splits_accrued_fees_under_the_old_split_then_commits_the_next
             auto_lp_quote: 1,
             rewards_meme: 1,
             rewards_quote: 1,
+            burn_meme: 0,
+            burn_quote: 0,
             recipient_meme: vector[1],
             recipient_quote: vector[2],
         },
@@ -435,13 +442,14 @@ fun start(fee_split: FeeSplit): FeeSplitFixture {
     scenario.next_tx(ADMIN);
     let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     launch_fixture::admit<QUOTE, Venue>(&mut config, &version, &authority.sign_in(&admin_cap));
-    let launch = launch_fixture::open_launch<_, QUOTE, _>(
+    let (launch, currency) = launch_fixture::open_launch<_, QUOTE, _>(
         &mut scenario,
         test_utils::create_one_time_witness<FEE_SPLIT_UPDATE_TESTS>(),
         &version,
         &config,
         Venue(),
         fee_split,
+        false,
     );
     let launch_id = object::id(&launch);
     let mut vault = vault::prepare(&launch, balance::zero(), balance::zero(), scenario.ctx());
@@ -466,6 +474,7 @@ fun start(fee_split: FeeSplit): FeeSplitFixture {
         clock,
         policy,
         launch_id,
+        currency,
         vault,
     }
 }
@@ -521,7 +530,7 @@ fun collect_exact_position(self: &mut FeeSplitFixture) {
     let meme = position.fee_meme.withdraw_all();
     let quote = position.fee_quote.withdraw_all();
 
-    self.vault.split_fees(&self.policy, meme, quote, self.scenario.ctx());
+    self.vault.split_fees(&self.policy, &mut self.currency, meme, quote, self.scenario.ctx());
     self.compound();
 }
 
@@ -642,6 +651,7 @@ fun creator_and_a(): FeeSplit {
         bps::new(5_000),
         bps::new(0),
         bps::new(0),
+        bps::new(0),
         vector[allocation::route(ROUTE_A, bps::new(5_000))],
     )
 }
@@ -652,12 +662,13 @@ fun rewards_and_b(): FeeSplit {
         bps::new(0),
         bps::new(2_000),
         bps::new(3_000),
+        bps::new(0),
         vector[allocation::route(ROUTE_B, bps::new(5_000))],
     )
 }
 
 fun auto_lp_only(): FeeSplit {
-    allocation::fee_split(bps::new(0), bps::new(10_000), bps::new(0), vector[])
+    allocation::fee_split(bps::new(0), bps::new(10_000), bps::new(0), bps::new(0), vector[])
 }
 
 // === Imports ===
@@ -689,6 +700,7 @@ use sui::{
     balance::{Self, Balance},
     clock::{Self, Clock},
     coin::Coin,
+    coin_registry::Currency,
     event,
     test_scenario::{Self, Scenario},
     test_utils,

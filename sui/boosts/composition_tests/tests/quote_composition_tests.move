@@ -112,7 +112,7 @@ fun default_allocation_plan(): AllocationPlan {
 }
 
 fun default_fee_split(): allocation::FeeSplit {
-    allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), vector[])
+    allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), bps::new(0), vector[])
 }
 
 // Compile-Only Composition Contracts

@@ -7,6 +7,7 @@ use sui::{balance::Balance, clock::Clock};
 
 public struct Pool<phantom CoinTypeA, phantom CoinTypeB> has key, store { id: UID }
 public struct AddLiquidityReceipt<phantom CoinTypeA, phantom CoinTypeB> {}
+public struct FlashSwapReceipt<phantom CoinTypeA, phantom CoinTypeB> {}
 
 public fun collect_fee<CoinTypeA, CoinTypeB>(
     config: &GlobalConfig,
@@ -38,6 +39,28 @@ public fun repay_add_liquidity<CoinTypeA, CoinTypeB>(
     balance_a: Balance<CoinTypeA>,
     balance_b: Balance<CoinTypeB>,
     receipt: AddLiquidityReceipt<CoinTypeA, CoinTypeB>,
+) { abort 0 }
+
+public fun flash_swap<CoinTypeA, CoinTypeB>(
+    config: &GlobalConfig,
+    pool: &mut Pool<CoinTypeA, CoinTypeB>,
+    a2b: bool,
+    by_amount_in: bool,
+    amount: u64,
+    sqrt_price_limit: u128,
+    clock: &Clock,
+): (Balance<CoinTypeA>, Balance<CoinTypeB>, FlashSwapReceipt<CoinTypeA, CoinTypeB>) { abort 0 }
+
+public fun swap_pay_amount<CoinTypeA, CoinTypeB>(
+    receipt: &FlashSwapReceipt<CoinTypeA, CoinTypeB>,
+): u64 { abort 0 }
+
+public fun repay_flash_swap<CoinTypeA, CoinTypeB>(
+    config: &GlobalConfig,
+    pool: &mut Pool<CoinTypeA, CoinTypeB>,
+    coin_a: Balance<CoinTypeA>,
+    coin_b: Balance<CoinTypeB>,
+    receipt: FlashSwapReceipt<CoinTypeA, CoinTypeB>,
 ) { abort 0 }
 
 public fun tick_spacing<CoinTypeA, CoinTypeB>(pool: &Pool<CoinTypeA, CoinTypeB>): u32 { abort 0 }

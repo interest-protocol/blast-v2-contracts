@@ -18,6 +18,9 @@ const PACKAGE_ADMIN_ROLE: u64 = 1;
 /// Role that authorizes revoking and reissuing creator fee authority in every package.
 const CREATOR_ADMIN_ROLE: u64 = 2;
 
+/// Role that authorizes swapping a vault's burn Quote for Meme to burn.
+const BUYBACK_ADMIN_ROLE: u64 = 4;
+
 // === Public Types ===
 
 /// One-time witness that names this administration domain at the type level.
@@ -34,6 +37,11 @@ fun init(otw: BLAST_FUN_DOMAIN, ctx: &mut TxContext) {
 /// The role a witness must carry to authorize, cut over, restrict, or seal an upgrade.
 public fun package_admin_role(): u64 {
     PACKAGE_ADMIN_ROLE
+}
+
+/// The role a witness must carry to buy back and burn Meme with a vault's burn Quote.
+public fun buyback_admin_role(): u64 {
+    BUYBACK_ADMIN_ROLE
 }
 
 // === Package Functions ===

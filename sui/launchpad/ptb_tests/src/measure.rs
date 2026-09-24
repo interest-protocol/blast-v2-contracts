@@ -79,7 +79,7 @@ fn payload_layout(payload: &StructTag) -> Layout {
     let id = || Struct(vec![Address]);
     let bps = || Struct(vec![U64]);
     let type_name = || Struct(vec![Struct(vec![Vector(Box::new(U8))])]);
-    let fee_split = || Struct(vec![bps(), bps(), bps(), Vector(Box::new(Struct(vec![Address, bps()])))]);
+    let fee_split = || Struct(vec![bps(), bps(), bps(), bps(), Vector(Box::new(Struct(vec![Address, bps()])))]);
     let plan = || Struct(vec![bps(), bps(), bps(), Vector(Box::new(Struct(vec![Address, bps(), bps()])))]);
     match payload.name.as_str() {
         "LaunchCreated" => Struct(vec![

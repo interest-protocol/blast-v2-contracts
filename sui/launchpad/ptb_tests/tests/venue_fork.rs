@@ -16,7 +16,9 @@
 //! the Cetus position through LP Burn, and pays the allocations; permissionless collections split
 //! real swap fees exactly by Blast's live share (default, then a per-coin override) and the fee
 //! split, skip auto-LP while its balances are one-sided or tiny, and otherwise add auto-LP back
-//! at the pool price; collection against another pool of the same type is refused; the settled
+//! at the pool price, and burn the burn part's Meme at `@0x0` (the fixture's supply is fixed); the
+//! buyback administrator swaps the waiting burn Quote for Meme and burns it, and a minimum above
+//! the pool's output rolls back; collection against another pool of the same type is refused; the settled
 //! split update runs under the live curve-fee cap and a retired cap is refused; the creator claims
 //! its share; a holder-reward round is published from the rewards balance and paid by Merkle
 //! proof; and the administrator claims the migration residuals. Every venue observation prints as a `VENUE_FORK`
@@ -80,6 +82,8 @@ const ALLOCATION_BPS: u64 = 500;
 /// `blast_fun::errors` codes.
 const INVALID_LAUNCH_LIFECYCLE: u64 = 18;
 const CREATOR_CAP_NOT_LIVE: u64 = 28;
+/// `blast_fun_migrators::vault` code.
+const BUYBACK_BELOW_MINIMUM: u64 = 6;
 
 /// Blast's default LP-fee share, then per-coin overrides for the forked Meme.
 const DEFAULT_SHARES: (u64, u64) = (1_000, 500);
@@ -142,9 +146,10 @@ fn run(case: Case) -> Result<()> {
     let mut w = World::new(case)?;
     w.report(format!("snapshot checkpoint {}", w.checkpoint));
     let split = FeeSplit {
-        creator_bps: 3_000,
+        creator_bps: 2_500,
         auto_lp_bps: 2_000,
         rewards_bps: 1_000,
+        burn_bps: 500,
         recipients: vec![
             Recipient { destination: RECIPIENT_A.into(), bps: 2_500 },
             Recipient { destination: RECIPIENT_B.into(), bps: 1_500 },
@@ -200,9 +205,10 @@ fn run(case: Case) -> Result<()> {
     // Split update under the live curve-fee cap, settling under the old split first.
     let cap = w.claim_curve_fee_cap(&launch)?;
     let next = FeeSplit {
-        creator_bps: 4_000,
+        creator_bps: 3_000,
         auto_lp_bps: 3_000,
         rewards_bps: 1_000,
+        burn_bps: 1_000,
         recipients: vec![Recipient { destination: RECIPIENT_C.into(), bps: 2_000 }],
     };
     w.swap(&launch, &m, Side::QuoteIn, 2 * w.case.quote_unit())?;
@@ -213,6 +219,7 @@ fn run(case: Case) -> Result<()> {
     let c = w.collect(&launch, &mut m, None)?;
     ensure!(c.fees.generation == 1, "the next collection runs under generation 1");
     w.report(format!("collect generation 1: {}", c.line()));
+    w.buyback(&launch, &m)?;
 
     w.other_pool_is_refused(&launch, &m)?;
     w.claim_creator_fees(&launch, &m, cap)?;
@@ -402,7 +409,7 @@ impl Collection {
         let f = &self.fees;
         format!(
             "gen {} gross=({}, {}) protocol=({}, {}) creator=({}, {}) auto_lp=({}, {}) rewards=({}, {}) \
-             recipients=({:?}, {:?}) added={}",
+             burn=({}, {}) recipients=({:?}, {:?}) added={}",
             f.generation,
             f.gross_meme,
             f.gross_quote,
@@ -414,6 +421,8 @@ impl Collection {
             f.auto_lp_quote,
             f.rewards_meme,
             f.rewards_quote,
+            f.burn_meme,
+            f.burn_quote,
             f.recipient_meme,
             f.recipient_quote,
             match &self.added {
@@ -1266,6 +1275,7 @@ impl World {
             args.push(self.shared(&mut b, launch.launch, false)?);
             args.push(b.obj(self.h.owned(cap))?);
         }
+        args.push(self.shared(&mut b, launch.currency, true)?);
         if self.case.is_cetus() {
             args.push(self.shared(&mut b, self.venue("cetus_global_config"), false)?);
             args.push(self.shared(&mut b, self.venue("cetus_burn_manager"), false)?);
@@ -1329,6 +1339,8 @@ impl World {
         ensure!(fees == expected, "FeesCollected {fees:?} != expected {expected:?}");
         let mut payees: BTreeMap<SuiAddress, (u64, u64)> = BTreeMap::new();
         *payees.entry(LP_PROTOCOL.into()).or_default() = (fees.protocol_meme, fees.protocol_quote);
+        // The fixture's supply is fixed, so the burn share's Meme goes to `@0x0`.
+        *payees.entry(SuiAddress::ZERO).or_default() = (fees.burn_meme, 0);
         for (i, recipient) in before.fee_split.recipients.iter().enumerate() {
             let entry = payees.entry(recipient.destination).or_default();
             entry.0 += fees.recipient_meme[i];
@@ -1357,6 +1369,7 @@ impl World {
             (after.rewards_meme, after.rewards_quote)
                 == (before.rewards_meme + fees.rewards_meme, before.rewards_quote + fees.rewards_quote)
         );
+        ensure!(after.burn_quote == before.burn_quote + fees.burn_quote, "the burn Quote waits for a buyback");
         let opened: Vec<AutoLpPositionOpened> = self.events(&outcome, "AutoLpPositionOpened");
         let liquidity_after = self.position_liquidity(m.position)?;
         if let Some(added) = &added {
@@ -1555,11 +1568,85 @@ impl World {
         next.creator_bps -= 1_000;
         next.rewards_bps += 1_000;
         let pt = self.collect_pt(launch, m, m.pool, Some((cap, &next)))?;
-        self.h.assert_rolled_back(pt, refused, &[m.vault, m.pool, cap], &owners)?;
+        self.h.assert_rolled_back(pt, refused, &[m.vault, m.pool, cap, launch.currency], &owners)?;
         let refused = Expected::Abort { package: self.blast, module: "launch", code: CREATOR_CAP_NOT_LIVE };
         let pt = self.claim_creator_fees_pt(launch, m, cap)?;
         self.h.assert_rolled_back(pt, refused, &[m.vault, cap], &owners)?;
         self.report("after reassign_curve_fee_cap the retired cap: settle_and_update_fee_split and claim_creator_fees abort launch creator_cap_not_live, rolled back".into());
+
+        Ok(())
+    }
+
+    fn buyback_pt(
+        &self,
+        launch: &Launch,
+        m: &Migration,
+        pool: ObjectID,
+        min_meme_out: u64,
+    ) -> Result<ProgrammableTransaction> {
+        let mut b = ProgrammableTransactionBuilder::new();
+        let signed_in = self.sign_in(&mut b)?;
+        let vault = self.shared(&mut b, m.vault, true)?;
+        let migrators_version = self.shared(&mut b, self.migrators_version, false)?;
+        let currency = self.shared(&mut b, launch.currency, true)?;
+        let config = if self.case.is_cetus() { "cetus_global_config" } else { "bluefin_global_config" };
+        let config = self.shared(&mut b, self.venue(config), false)?;
+        let pool = self.shared(&mut b, pool, true)?;
+        let min_meme_out = b.pure(min_meme_out)?;
+        let clock = self.clock(&mut b)?;
+        call(
+            &mut b,
+            self.migrators,
+            self.case.module(),
+            &format!("buyback_and_burn{}", self.case.suffix()),
+            self.pair(launch),
+            vec![vault, migrators_version, signed_in, currency, config, pool, min_meme_out, clock],
+        );
+
+        Ok(b.finish())
+    }
+
+    /// The buyback administrator swaps the vault's burn Quote for Meme in its pool and burns it: a
+    /// minimum above what the pool returns rolls back, and a met minimum spends every waiting Quote
+    /// and sends the Meme bought to `@0x0`, since the fixture's supply is fixed.
+    fn buyback(&mut self, launch: &Launch, m: &Migration) -> Result<()> {
+        let before = self.vault(m)?;
+        ensure!(before.burn_quote > 0, "burn Quote accrued");
+        let owners = [self.h.sender, SuiAddress::ZERO];
+        let refused = Expected::Abort { package: self.migrators, module: "vault", code: BUYBACK_BELOW_MINIMUM };
+        let pt = self.buyback_pt(launch, m, m.pool, u64::MAX)?;
+        self.h.assert_rolled_back(pt, refused, &[m.vault, m.pool, launch.currency, self.admin_cap], &owners)?;
+
+        let pt = self.buyback_pt(launch, m, m.pool, 1)?;
+        let outcome = self.h.execute(pt)?;
+        outcome.assert_success();
+        let burned: Vec<BuybackBurned> = self.events(&outcome, "BuybackBurned");
+        ensure!(burned.len() == 1 && burned[0].vault_id == m.vault, "one BuybackBurned");
+        let burned = &burned[0];
+        ensure!(
+            (burned.quote_spent, burned.quote_pending) == (before.burn_quote, 0),
+            "the full-range pool takes every waiting Quote"
+        );
+        ensure!(burned.meme_burned > 0, "the swap returned Meme");
+        ensure!(
+            outcome.coins_created_for(&self.h, SuiAddress::ZERO) == self.coins(launch, burned.meme_burned, 0),
+            "the Meme bought is burned at @0x0"
+        );
+        let after = self.vault(m)?;
+        ensure!(after.burn_quote == 0);
+        ensure!(
+            (after.creator_meme, after.creator_quote, after.auto_lp_meme, after.auto_lp_quote)
+                == (before.creator_meme, before.creator_quote, before.auto_lp_meme, before.auto_lp_quote)
+                && (after.rewards_meme, after.rewards_quote) == (before.rewards_meme, before.rewards_quote),
+            "a buyback touches only the burn Quote"
+        );
+        self.report(format!(
+            "buyback_and_burn{}: min above the pool's output aborts vault EBuybackBelowMinimum, rolled back; \
+             then {} Quote bought and burned {} Meme at @0x0",
+            self.case.suffix(),
+            burned.quote_spent,
+            burned.meme_burned,
+        ));
 
         Ok(())
     }
@@ -1640,9 +1727,14 @@ impl World {
         let code = if self.case.is_cetus() { 1 } else { 0 };
         let expected = Expected::Abort { package: self.migrators, module, code };
         let pt = self.collect_pt(launch, m, other, None)?;
-        self.h.assert_rolled_back(pt, expected, &[m.vault, other], &[self.h.sender, LP_PROTOCOL.into()])?;
+        let watched = [m.vault, other, launch.currency];
+        self.h.assert_rolled_back(pt, expected, &watched, &[self.h.sender, LP_PROTOCOL.into()])?;
+        let expected = Expected::Abort { package: self.migrators, module, code };
+        let pt = self.buyback_pt(launch, m, other, 1)?;
+        let watched = [m.vault, other, launch.currency, self.admin_cap];
+        self.h.assert_rolled_back(pt, expected, &watched, &[self.h.sender, SuiAddress::ZERO])?;
         self.report(format!(
-            "collect against another {} pool {other}: EPositionPoolMismatch, rolled back",
+            "collect and buyback against another {} pool {other}: EPositionPoolMismatch, rolled back",
             if self.case.is_cetus() { "Cetus Pool<A, B> at tick spacing 60" } else { "Bluefin Pool<Meme, SUI>" }
         ));
 
@@ -1819,6 +1911,7 @@ impl World {
         let creator_bps = self.bps(b, split.creator_bps)?;
         let auto_lp_bps = self.bps(b, split.auto_lp_bps)?;
         let rewards_bps = self.bps(b, split.rewards_bps)?;
+        let burn_bps = self.bps(b, split.burn_bps)?;
 
         Ok(call(
             b,
@@ -1826,7 +1919,7 @@ impl World {
             "allocation",
             "fee_split",
             vec![],
-            vec![creator_bps, auto_lp_bps, rewards_bps, recipients],
+            vec![creator_bps, auto_lp_bps, rewards_bps, burn_bps, recipients],
         ))
     }
 }
@@ -1896,7 +1989,7 @@ fn apportion(weights: &[u64], total: u64) -> Vec<u64> {
 fn expected_fees(vault: &Vault, shares: (u64, u64), gross_meme: u64, gross_quote: u64) -> FeesCollected {
     let protocol = |gross: u64, bps: u64| (gross as u128 * bps as u128).div_ceil(10_000) as u64;
     let split = &vault.fee_split;
-    let mut weights = vec![split.creator_bps, split.auto_lp_bps, split.rewards_bps];
+    let mut weights = vec![split.creator_bps, split.auto_lp_bps, split.rewards_bps, split.burn_bps];
     weights.extend(split.recipients.iter().map(|route| route.bps));
     let (protocol_meme, protocol_quote) = (protocol(gross_meme, shares.0), protocol(gross_quote, shares.1));
     let meme = apportion(&weights, gross_meme - protocol_meme);
@@ -1915,8 +2008,10 @@ fn expected_fees(vault: &Vault, shares: (u64, u64), gross_meme: u64, gross_quote
         auto_lp_quote: quote[1],
         rewards_meme: meme[2],
         rewards_quote: quote[2],
-        recipient_meme: meme[3..].to_vec(),
-        recipient_quote: quote[3..].to_vec(),
+        burn_meme: meme[3],
+        burn_quote: quote[3],
+        recipient_meme: meme[4..].to_vec(),
+        recipient_quote: quote[4..].to_vec(),
     }
 }
 
@@ -1964,6 +2059,7 @@ struct FeeSplit {
     creator_bps: u64,
     auto_lp_bps: u64,
     rewards_bps: u64,
+    burn_bps: u64,
     recipients: Vec<Recipient>,
 }
 
@@ -1989,6 +2085,7 @@ struct Vault {
     auto_lp_quote: u64,
     rewards_meme: u64,
     rewards_quote: u64,
+    burn_quote: u64,
     next_round: u64,
     last_checkpoint: Option<u64>,
 }
@@ -2070,8 +2167,18 @@ struct FeesCollected {
     auto_lp_quote: u64,
     rewards_meme: u64,
     rewards_quote: u64,
+    burn_meme: u64,
+    burn_quote: u64,
     recipient_meme: Vec<u64>,
     recipient_quote: Vec<u64>,
+}
+
+#[derive(Deserialize)]
+struct BuybackBurned {
+    vault_id: ObjectID,
+    quote_spent: u64,
+    meme_burned: u64,
+    quote_pending: u64,
 }
 
 #[derive(Deserialize)]

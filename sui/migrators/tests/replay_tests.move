@@ -8,8 +8,9 @@
 /// starts from the eventless publication state. After every lifecycle step the model must equal
 /// the authoritative getters and object reads, and at the end every destination's native coins.
 /// Launchpad payloads must arrive only inside the `blast_events::Event<T>` envelope; migrator
-/// payloads only directly. After migration the mock adapter collects with auto-LP, the creator
-/// settles a fee-split update and claims the creator balance, Blast's live share changes between
+/// payloads only directly. After migration the mock adapter collects with auto-LP and burns the
+/// burn share's Meme, the creator settles a fee-split update and claims the creator balance, a
+/// buyback admin burns Meme bought with the burn Quote, Blast's live share changes between
 /// collections, and a holder-reward round is published and claimed.
 module blast_fun_migrators::replay_tests;
 
@@ -176,6 +177,7 @@ public struct Replay has drop {
     creator_balance: Pair,
     auto_lp: Pair,
     rewards: Pair,
+    burn_quote: u64,
     next_round: u64,
     last_checkpoint: Option<u64>,
     rounds: vector<RoundEntry>,
@@ -223,11 +225,12 @@ public struct RouteEntry has copy, drop {
     bps: u64,
 }
 
-/// A decoded `FeeSplit`: its three shares, then its recipients in payment order.
+/// A decoded `FeeSplit`: its four shares, then its recipients in payment order.
 public struct SplitEntry has copy, drop {
     creator_bps: u64,
     auto_lp_bps: u64,
     rewards_bps: u64,
+    burn_bps: u64,
     recipients: vector<RouteEntry>,
 }
 
@@ -274,6 +277,8 @@ fun replayed_events_equal_every_getter_and_native_payout_across_the_lifecycle() 
     fixture.assert_state();
     fixture.settle_fee_split(777, 0);
     fixture.assert_state();
+    fixture.buy_back_and_burn();
+    fixture.assert_state();
     fixture.change_blast_share();
     fixture.redirect_protocol_share(SECOND_PROTOCOL_DESTINATION);
     fixture.collect(5, 12_345);
@@ -315,7 +320,9 @@ fun start(): ReplayFixture {
     let version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
     let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(16, 1, scenario.ctx());
-    authority.grant_admin(&root, blast_fun_domain::creator_admin_role_for_testing(), ADMIN, scenario.ctx());
+    let roles = blast_fun_domain::creator_admin_role_for_testing()
+        | blast_fun_domain::buyback_admin_role();
+    authority.grant_admin(&root, roles, ADMIN, scenario.ctx());
     destroy(root);
     launch_config::init_for_testing(scenario.ctx());
     lp_fee_policy::init_for_testing(scenario.ctx());
@@ -501,9 +508,11 @@ fun collect(self: &mut ReplayFixture, meme: u64, quote: u64) {
     self.next_tx!(KEEPER, |f| {
         let mut vault = f.take_vault();
         let policy = f.take_policy();
+        let mut currency = f.take_currency();
 
         vault.split_fees(
             &policy,
+            &mut currency,
             balance::create_for_testing(meme),
             balance::create_for_testing(quote),
             f.ctx!(),
@@ -512,6 +521,7 @@ fun collect(self: &mut ReplayFixture, meme: u64, quote: u64) {
 
         test_scenario::return_shared(vault);
         test_scenario::return_shared(policy);
+        test_scenario::return_to_address(COIN_REGISTRY, currency);
     });
 }
 
@@ -522,9 +532,11 @@ fun settle_fee_split(self: &mut ReplayFixture, meme: u64, quote: u64) {
         let launch = f.take_launch();
         let mut vault = f.take_vault();
         let policy = f.take_policy();
+        let mut currency = f.take_currency();
 
         vault.split_fees(
             &policy,
+            &mut currency,
             balance::create_for_testing(meme),
             balance::create_for_testing(quote),
             f.ctx!(),
@@ -536,6 +548,28 @@ fun settle_fee_split(self: &mut ReplayFixture, meme: u64, quote: u64) {
         test_scenario::return_shared(launch);
         test_scenario::return_shared(vault);
         test_scenario::return_shared(policy);
+        test_scenario::return_to_address(COIN_REGISTRY, currency);
+    });
+}
+
+/// A buyback admin swaps the burn Quote through the mock venue, which takes two thirds of it into
+/// the position and pays three Meme per Quote taken out of the position, at exactly the minimum.
+fun buy_back_and_burn(self: &mut ReplayFixture) {
+    self.next_tx!(ADMIN, |f| {
+        let admin = f.authority.sign_in(&f.admin_cap);
+        let mut vault = f.take_vault();
+        let mut currency = f.take_currency();
+
+        let mut quote = vault.take_buyback_quote(&admin);
+        let quote_in = quote.value();
+        let spent = quote_in * 2 / 3;
+        let position = vault.position_mut<_, _, _, MockPosition<REPLAY_TESTS, QUOTE>>(&Venue());
+        position.quote.join(quote.split(spent));
+        let meme = position.meme.split(spent * 3);
+        vault.burn_buyback(&mut currency, meme, quote, quote_in, spent * 3, f.ctx!());
+
+        test_scenario::return_shared(vault);
+        test_scenario::return_to_address(COIN_REGISTRY, currency);
     });
 }
 
@@ -684,7 +718,8 @@ fun first_split(): FeeSplit {
     allocation::fee_split(
         bps::new(1_000),
         bps::new(2_000),
-        bps::new(3_000),
+        bps::new(2_000),
+        bps::new(1_000),
         vector[
             allocation::route(ROUTE_B, bps::new(2_500)),
             allocation::route(TEAM, bps::new(1_500)),
@@ -697,6 +732,7 @@ fun next_split(): FeeSplit {
     allocation::fee_split(
         bps::new(0),
         bps::new(5_000),
+        bps::new(0),
         bps::new(0),
         vector[
             allocation::route(ROUTE_C, bps::new(2_500)),
@@ -796,6 +832,10 @@ fun reduce_transaction(self: &mut ReplayFixture, sender: address) {
         replay.fee_split_changed(bytes);
         reduced = reduced + 1;
     });
+    direct<blast_events::BuybackBurned>().do!(|bytes| {
+        replay.buyback_burned(bytes);
+        reduced = reduced + 1;
+    });
     direct<blast_events::CreatorFeesClaimed>().do!(|bytes| {
         replay.creator_fees_claimed(bytes, sender);
         reduced = reduced + 1;
@@ -880,6 +920,7 @@ fun new_replay(publisher: address): Replay {
         creator_balance: Pair { meme: 0, quote: 0 },
         auto_lp: Pair { meme: 0, quote: 0 },
         rewards: Pair { meme: 0, quote: 0 },
+        burn_quote: 0,
         next_round: 0,
         last_checkpoint: option::none(),
         rounds: vector[],
@@ -1092,8 +1133,9 @@ fun migrated(self: &mut Replay, bytes: vector<u8>) {
 }
 
 /// Blast's live share for this Meme rounds up and pays the live destination; the rest splits
-/// under the stamped generation into the creator, auto-LP, and rewards balances and one payment
-/// per recipient in the split's order, conserving each asset.
+/// under the stamped generation into the creator, auto-LP, and rewards balances, the burned Meme
+/// and the waiting burn Quote, and one payment per recipient in the split's order, conserving each
+/// asset.
 fun fees_collected(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     assert_eq!(r.peel_id(), self.binding.vault_id);
@@ -1106,6 +1148,7 @@ fun fees_collected(self: &mut Replay, bytes: vector<u8>) {
     let creator = r.peel_pair();
     let auto_lp = r.peel_pair();
     let rewards = r.peel_pair();
+    let burn = r.peel_pair();
     let recipient_meme = r.peel_vec_u64();
     let recipient_quote = r.peel_vec_u64();
     r.assert_consumed();
@@ -1120,17 +1163,21 @@ fun fees_collected(self: &mut Replay, bytes: vector<u8>) {
     assert_eq!(recipient_meme.length(), recipients.length());
     assert_eq!(recipient_quote.length(), recipients.length());
     assert_eq!(
-        protocol_meme + creator.meme + auto_lp.meme + rewards.meme + recipient_meme.total(),
+        protocol_meme + creator.meme + auto_lp.meme + rewards.meme + burn.meme
+            + recipient_meme.total(),
         gross_meme,
     );
     assert_eq!(
-        protocol_quote + creator.quote + auto_lp.quote + rewards.quote + recipient_quote.total(),
+        protocol_quote + creator.quote + auto_lp.quote + rewards.quote + burn.quote
+            + recipient_quote.total(),
         gross_quote,
     );
     self.credit(protocol_destination, protocol_meme, protocol_quote);
     self.creator_balance = self.creator_balance.plus(creator);
     self.auto_lp = self.auto_lp.plus(auto_lp);
     self.rewards = self.rewards.plus(rewards);
+    self.burn(burn.meme);
+    self.burn_quote = self.burn_quote + burn.quote;
     recipients.length().do!(|i| {
         self.credit(recipients[i].destination, recipient_meme[i], recipient_quote[i]);
     });
@@ -1167,6 +1214,24 @@ fun fee_split_changed(self: &mut Replay, bytes: vector<u8>) {
     assert!(new_fee_split != old_fee_split);
     self.generation = new_generation;
     self.fee_split = new_fee_split;
+}
+
+/// A buyback spends part of the waiting burn Quote through the mock venue, which is the position,
+/// and burns the Meme it returns; the unspent Quote waits again.
+fun buyback_burned(self: &mut Replay, bytes: vector<u8>) {
+    let mut r = bcs::new(bytes);
+    assert_eq!(r.peel_id(), self.binding.vault_id);
+    let quote_spent = r.peel_u64();
+    let meme_burned = r.peel_u64();
+    let quote_pending = r.peel_u64();
+    r.assert_consumed();
+
+    assert!(quote_spent > 0);
+    assert_eq!(quote_pending, self.burn_quote - quote_spent);
+    self.burn_quote = quote_pending;
+    self.burn(meme_burned);
+    self.position_meme = self.position_meme - meme_burned;
+    self.position_quote = self.position_quote + quote_spent;
 }
 
 /// The whole creator balance leaves to the transaction sender, the live cap holder.
@@ -1239,6 +1304,12 @@ fun reward_paid(self: &mut Replay, bytes: vector<u8>) {
     self.credit(beneficiary, paid.meme, paid.quote);
 }
 
+/// Burned Meme leaves a burn-only supply and reaches `@0x0` under a fixed one.
+fun burn(self: &mut Replay, meme: u64) {
+    if (self.burnable) self.total_supply = self.total_supply - meme
+    else self.credit(@0x0, meme, 0);
+}
+
 fun credit(self: &mut Replay, destination: address, meme: u64, quote: u64) {
     let index = self.payouts.find_index!(|payout| payout.destination == destination);
     if (index.is_none()) {
@@ -1269,7 +1340,7 @@ fun plus(self: Pair, other: Pair): Pair {
 }
 
 fun empty_split(): SplitEntry {
-    SplitEntry { creator_bps: 0, auto_lp_bps: 0, rewards_bps: 0, recipients: vector[] }
+    SplitEntry { creator_bps: 0, auto_lp_bps: 0, rewards_bps: 0, burn_bps: 0, recipients: vector[] }
 }
 
 // Payload Decoding
@@ -1312,9 +1383,10 @@ fun peel_fee_split(r: &mut BCS): SplitEntry {
     let creator_bps = r.peel_u64();
     let auto_lp_bps = r.peel_u64();
     let rewards_bps = r.peel_u64();
+    let burn_bps = r.peel_u64();
     let recipients = r.peel_vec!(|r| r.peel_route());
 
-    SplitEntry { creator_bps, auto_lp_bps, rewards_bps, recipients }
+    SplitEntry { creator_bps, auto_lp_bps, rewards_bps, burn_bps, recipients }
 }
 
 /// One Meme amount followed by one Quote amount.
@@ -1522,6 +1594,7 @@ fun assert_vault(self: &Replay, vault: &LpVault<REPLAY_TESTS, QUOTE>) {
     assert_eq!(pair!(|| vault.creator_balances_for_testing()), self.creator_balance);
     assert_eq!(pair!(|| vault.auto_lp_balances_for_testing()), self.auto_lp);
     assert_eq!(pair!(|| vault.rewards_balances()), self.rewards);
+    assert_eq!(vault.burn_quote_for_testing(), self.burn_quote);
     assert_eq!(vault.next_round(), self.next_round);
     assert_eq!(vault.last_checkpoint(), self.last_checkpoint);
     let position = vault.position<_, _, _, MockPosition<REPLAY_TESTS, QUOTE>>(&Venue());
@@ -1550,6 +1623,7 @@ fun split_entry(fee_split: &FeeSplit): SplitEntry {
         creator_bps: fee_split.creator_bps_for_testing().value(),
         auto_lp_bps: fee_split.auto_lp_bps_for_testing().value(),
         rewards_bps: fee_split.rewards_bps_for_testing().value(),
+        burn_bps: fee_split.burn_bps_for_testing().value(),
         recipients: fee_split.recipients().map_ref!(|route| route_entry(route)),
     }
 }

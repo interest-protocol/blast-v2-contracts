@@ -211,6 +211,7 @@ fun later_setter_calls_replace_earlier_settings() {
             bps::new(0),
             bps::new(0),
             bps::new(0),
+            bps::new(0),
             vector[allocation::route(LAUNCHER, bps::new(10_000))],
         );
         initializer.set_graduation_target(MIGRATION_QUOTE_TARGET * 2);
@@ -2113,7 +2114,7 @@ fun recipients_plan(count: u64): AllocationPlan {
 }
 
 fun default_fee_split(): FeeSplit {
-    allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), vector[])
+    allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), bps::new(0), vector[])
 }
 
 // --- Construction ---

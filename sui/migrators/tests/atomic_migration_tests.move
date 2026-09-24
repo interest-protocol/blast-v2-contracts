@@ -142,8 +142,10 @@ fun the_migrated_vault_splits_later_collections_and_updates_its_split_under_the_
     let launch = f.take_launch();
     let mut vault = f.scenario.take_shared<LpVault<ATOMIC_MIGRATION_TESTS, QUOTE>>();
     let policy = f.scenario.take_shared<LpFeePolicy>();
+    let mut currency = f.take_currency();
     vault.split_fees(
         &policy,
+        &mut currency,
         balance::create_for_testing(100),
         balance::create_for_testing(200),
         f.scenario.ctx(),
@@ -152,11 +154,13 @@ fun the_migrated_vault_splits_later_collections_and_updates_its_split_under_the_
         bps::new(0),
         bps::new(0),
         bps::new(0),
+        bps::new(0),
         vector[allocation::route(ADMIN, bps::new(10_000))],
     );
     vault.update_fee_split(&launch, &curve_fee_cap, next);
     vault.split_fees(
         &policy,
+        &mut currency,
         balance::create_for_testing(3),
         balance::create_for_testing(4),
         f.scenario.ctx(),
@@ -180,6 +184,7 @@ fun the_migrated_vault_splits_later_collections_and_updates_its_split_under_the_
     test_scenario::return_shared(launch);
     test_scenario::return_shared(vault);
     test_scenario::return_shared(policy);
+    test_scenario::return_to_address(COIN_REGISTRY, currency);
 
     f.scenario.next_tx(ADMIN);
     assert_eq!(f.scenario.take_from_sender<Coin<ATOMIC_MIGRATION_TESTS>>().burn_for_testing(), 3);
@@ -360,7 +365,7 @@ fun collect<T: copy + drop>(): vector<T> {
 
 /// Everything after Blast's share goes to the creator.
 fun creator_split(): FeeSplit {
-    allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), vector[])
+    allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), bps::new(0), vector[])
 }
 
 fun end(f: Fixture) {

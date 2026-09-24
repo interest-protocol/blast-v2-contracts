@@ -308,14 +308,14 @@ fi
 
 blast_fun_domain_facts="$(move_facts sources/blast_fun_domain.move)"
 
-# The domain defines exactly two distinct role bits: package administration, which
-# the migrators share, and the package-internal creator administration that alone
-# may reassign creator fee authority.
+# The domain defines exactly three distinct role bits: package administration and
+# buyback administration, which the migrators share, and the package-internal
+# creator administration that alone may reassign creator fee authority.
 if [[ ! -f sources/blast_fun_domain.move ]] \
   || [[ "$(move_production_type BLAST_FUN_DOMAIN <<<"$blast_fun_domain_facts")" \
     != 'struct BLAST_FUN_DOMAIN() has drop;' ]] \
   || [[ "$(move_production_functions <<<"$blast_fun_domain_facts")" \
-    != 'creator_admin_role:package:0 init:private:0 package_admin_role:public:0 ' ]] \
+    != 'buyback_admin_role:public:0 creator_admin_role:package:0 init:private:0 package_admin_role:public:0 ' ]] \
   || [[ "$(move_production_signature init <<<"$blast_fun_domain_facts")" \
     != 'fun init(otw: BLAST_FUN_DOMAIN, ctx: &mut TxContext)' ]] \
   || [[ "$(move_production_body init <<<"$blast_fun_domain_facts")" \
@@ -324,6 +324,10 @@ if [[ ! -f sources/blast_fun_domain.move ]] \
     != 'fun package_admin_role(): u64' ]] \
   || [[ "$(move_production_body package_admin_role <<<"$blast_fun_domain_facts")" \
     != 'PACKAGE_ADMIN_ROLE' ]] \
+  || [[ "$(move_production_signature buyback_admin_role <<<"$blast_fun_domain_facts")" \
+    != 'fun buyback_admin_role(): u64' ]] \
+  || [[ "$(move_production_body buyback_admin_role <<<"$blast_fun_domain_facts")" \
+    != 'BUYBACK_ADMIN_ROLE' ]] \
   || [[ "$(move_production_signature creator_admin_role <<<"$blast_fun_domain_facts")" \
     != 'fun creator_admin_role(): u64' ]] \
   || [[ "$(move_production_body creator_admin_role <<<"$blast_fun_domain_facts")" \
@@ -333,8 +337,9 @@ if [[ ! -f sources/blast_fun_domain.move ]] \
     sources/blast_fun_domain.move \
   || ! rg -q '^const PACKAGE_ADMIN_ROLE: u64 = 1;$' sources/blast_fun_domain.move \
   || ! rg -q '^const CREATOR_ADMIN_ROLE: u64 = 2;$' sources/blast_fun_domain.move \
-  || [[ "$(rg -c '^const ' sources/blast_fun_domain.move)" != 4 ]]; then
-  echo 'blast_fun_domain.move must create exactly one typed domain from module constants and export only the package-admin role bit; the creator-admin bit stays package-internal.' >&2
+  || ! rg -q '^const BUYBACK_ADMIN_ROLE: u64 = 4;$' sources/blast_fun_domain.move \
+  || [[ "$(rg -c '^const ' sources/blast_fun_domain.move)" != 5 ]]; then
+  echo 'blast_fun_domain.move must create exactly one typed domain from module constants and export only the package-admin and buyback-admin role bits; the creator-admin bit stays package-internal.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1326,13 +1331,13 @@ if [[ -e sources/fee_router.move || -e sources/lp_fee_policy.move ]] \
     <<<"$launchpad_production_source" \
   || rg -n '^public struct (LpFeePolicyChanged|LpFeeDestinationChanged|FeeRouterCreated|RouterActivated|FeesCollected|RouterConfigCapReleased|RouterConfigCapDelivered|RoutesChanged|FeeSplitChanged|CreatorFeesLocked)\b' \
     sources/lib/events.move \
-  || [[ "$(move_production_type FeeSplit <<<"$allocation_facts")" != 'struct FeeSplit has copy, drop, store { creator_bps: Bps, auto_lp_bps: Bps, rewards_bps: Bps, recipients: vector<Route>, }' ]] \
+  || [[ "$(move_production_type FeeSplit <<<"$allocation_facts")" != 'struct FeeSplit has copy, drop, store { creator_bps: Bps, auto_lp_bps: Bps, rewards_bps: Bps, burn_bps: Bps, recipients: vector<Route>, }' ]] \
   || [[ "$(move_production_type Route <<<"$allocation_facts")" != 'struct Route has copy, drop, store { destination: address, bps: Bps, }' ]] \
   || [[ "$(move_production_function_contract fee_split <<<"$allocation_facts")" \
-    != 'public:0:0:fun fee_split( creator_bps: Bps, auto_lp_bps: Bps, rewards_bps: Bps, recipients: vector<Route>, ): FeeSplit' ]] \
+    != 'public:0:0:fun fee_split( creator_bps: Bps, auto_lp_bps: Bps, rewards_bps: Bps, burn_bps: Bps, recipients: vector<Route>, ): FeeSplit' ]] \
   || [[ "$(move_production_function_contract apportion_fee_split <<<"$allocation_facts")" \
-    != 'public:0:0:fun apportion_fee_split(self: &FeeSplit, total: u64): (u64, u64, u64, vector<u64>)' ]] \
-  || [[ "$(count_occurrences 'FeeSplit \{ creator_bps, auto_lp_bps, rewards_bps, recipients \}' <<<"$allocation_source")" != 1 ]] \
+    != 'public:0:0:fun apportion_fee_split(self: &FeeSplit, total: u64): (u64, u64, u64, u64, vector<u64>)' ]] \
+  || [[ "$(count_occurrences 'FeeSplit \{ creator_bps, auto_lp_bps, rewards_bps, burn_bps, recipients \}' <<<"$allocation_source")" != 1 ]] \
   || [[ "$(rg -l 'fun (fee_split|apportion_fee_split)\b' sources --glob '*.move' | sort | tr '\n' ' ')" != 'sources/allocation.move ' ]]; then
   echo 'Launchpad must keep only the launch-time LP-fee split, its public constructor, value, and apportionment, and no custodian lock; recurring LP-fee routing, policy, and their events belong to the migrators package.' >&2
   failures=$((failures + 1))

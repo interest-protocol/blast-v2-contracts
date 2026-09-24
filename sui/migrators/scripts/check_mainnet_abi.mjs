@@ -146,6 +146,7 @@ const PACKAGES = [
                     'get_tick_manager',
                     'open_position',
                     'share_pool_object',
+                    'swap',
                 ],
             },
             {
@@ -212,15 +213,18 @@ const PACKAGES = [
             {
                 name: 'pool',
                 sha256: '059cbeeb4502c7e54b1a9ada73709505f9572f4c80c441c1c31fbee64c32c7a1',
-                structs: ['AddLiquidityReceipt', 'Pool'],
+                structs: ['AddLiquidityReceipt', 'FlashSwapReceipt', 'Pool'],
                 functions: [
                     'add_liquidity_fix_coin',
                     'add_liquidity_pay_amount',
                     'collect_fee',
                     'current_sqrt_price',
                     'current_tick_index',
+                    'flash_swap',
                     'open_position',
                     'repay_add_liquidity',
+                    'repay_flash_swap',
+                    'swap_pay_amount',
                     'tick_spacing',
                 ],
             },
@@ -559,6 +563,8 @@ const ABI = {
         'public fun open_position<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, u32, u32, &mut @sui::tx_context::TxContext): @self::position::Position',
     'bluefin_spot::pool::share_pool_object':
         'public fun share_pool_object<$0, $1>(@self::pool::Pool<$0, $1>)',
+    'bluefin_spot::pool::swap':
+        'public fun swap<$0, $1>(&@sui::clock::Clock, &@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, @sui::balance::Balance<$0>, @sui::balance::Balance<$1>, bool, bool, u64, u64, u128): (@sui::balance::Balance<$0>, @sui::balance::Balance<$1>)',
     'bluefin_spot::position::Position':
         'struct Position has store, key',
     'bluefin_spot::position::liquidity':
@@ -595,6 +601,8 @@ const ABI = {
         'public fun register_permission_pair<$0, $1>(&@self::config::GlobalConfig, &mut @self::factory::Pools, u32, &@self::factory::PoolCreationCap, &mut @sui::tx_context::TxContext)',
     'cetus_clmm::pool::AddLiquidityReceipt':
         'struct AddLiquidityReceipt<phantom $0, phantom $1>',
+    'cetus_clmm::pool::FlashSwapReceipt':
+        'struct FlashSwapReceipt<phantom $0, phantom $1>',
     'cetus_clmm::pool::Pool':
         'struct Pool<phantom $0, phantom $1> has store, key',
     'cetus_clmm::pool::add_liquidity_fix_coin':
@@ -607,10 +615,16 @@ const ABI = {
         'public fun current_sqrt_price<$0, $1>(&@self::pool::Pool<$0, $1>): u128',
     'cetus_clmm::pool::current_tick_index':
         'public fun current_tick_index<$0, $1>(&@self::pool::Pool<$0, $1>): 0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57::i32::I32',
+    'cetus_clmm::pool::flash_swap':
+        'public fun flash_swap<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, bool, bool, u64, u128, &@sui::clock::Clock): (@sui::balance::Balance<$0>, @sui::balance::Balance<$1>, @self::pool::FlashSwapReceipt<$0, $1>)',
     'cetus_clmm::pool::open_position':
         'public fun open_position<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, u32, u32, &mut @sui::tx_context::TxContext): @self::position::Position',
     'cetus_clmm::pool::repay_add_liquidity':
         'public fun repay_add_liquidity<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, @sui::balance::Balance<$0>, @sui::balance::Balance<$1>, @self::pool::AddLiquidityReceipt<$0, $1>)',
+    'cetus_clmm::pool::repay_flash_swap':
+        'public fun repay_flash_swap<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, @sui::balance::Balance<$0>, @sui::balance::Balance<$1>, @self::pool::FlashSwapReceipt<$0, $1>)',
+    'cetus_clmm::pool::swap_pay_amount':
+        'public fun swap_pay_amount<$0, $1>(&@self::pool::FlashSwapReceipt<$0, $1>): u64',
     'cetus_clmm::pool::tick_spacing':
         'public fun tick_spacing<$0, $1>(&@self::pool::Pool<$0, $1>): u32',
     'cetus_clmm::pool_creator::create_pool_v3_with_creation_cap':

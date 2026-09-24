@@ -18,8 +18,8 @@
 /// collect fees. A burned position cannot receive liquidity, so auto-LP adds to a second full-range
 /// position the vault opens on first use and keeps with no removal path.
 ///
-/// Cetus orders a pool's coin types by type name, so migration, collection, and settled fee-split
-/// updates each exist once per ordering.
+/// Cetus orders a pool's coin types by type name, so migration, collection, settled fee-split
+/// updates, and buybacks each exist once per ordering.
 module blast_fun_migrators::cetus;
 
 // === Errors ===
@@ -193,12 +193,13 @@ public fun migrate_meme_b<Meme, Quote>(
     burn_into_vault(launch, burn_manager, position, residual_meme, residual_quote, ctx);
 }
 
-/// Collects the vault position's fees from its Meme-A pool, splits them, and adds the auto-LP
-/// share back to the position. Anyone may call it.
+/// Collects the vault position's fees from its Meme-A pool, splits them, burns the burn share's
+/// Meme, and adds the auto-LP share back to the position. Anyone may call it.
 public fun collect_fees_meme_a<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
     policy: &LpFeePolicy,
+    currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
     burn_manager: &BurnManager,
     pool: &mut Pool<Meme, Quote>,
@@ -208,16 +209,17 @@ public fun collect_fees_meme_a<Meme, Quote>(
     migrators_version.assert_current();
     let (meme_fee, quote_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
-    self.split_fees(policy, meme_fee, quote_fee, ctx);
+    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound_meme_a(cetus_config, pool, clock, ctx);
 }
 
-/// Collects the vault position's fees from its Meme-B pool, splits them, and adds the auto-LP
-/// share back to the position. Anyone may call it.
+/// Collects the vault position's fees from its Meme-B pool, splits them, burns the burn share's
+/// Meme, and adds the auto-LP share back to the position. Anyone may call it.
 public fun collect_fees_meme_b<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
     policy: &LpFeePolicy,
+    currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
     burn_manager: &BurnManager,
     pool: &mut Pool<Quote, Meme>,
@@ -227,7 +229,7 @@ public fun collect_fees_meme_b<Meme, Quote>(
     migrators_version.assert_current();
     let (quote_fee, meme_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
-    self.split_fees(policy, meme_fee, quote_fee, ctx);
+    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound_meme_b(cetus_config, pool, clock, ctx);
 }
 
@@ -238,6 +240,7 @@ public fun settle_and_update_fee_split_meme_a<Meme, Quote>(
     policy: &LpFeePolicy,
     launch: &Launch<Meme, Quote>,
     curve_fee_cap: &CurveFeeCap<Meme>,
+    currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
     burn_manager: &BurnManager,
     pool: &mut Pool<Meme, Quote>,
@@ -248,7 +251,7 @@ public fun settle_and_update_fee_split_meme_a<Meme, Quote>(
     migrators_version.assert_current();
     let (meme_fee, quote_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
-    self.split_fees(policy, meme_fee, quote_fee, ctx);
+    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound_meme_a(cetus_config, pool, clock, ctx);
     self.update_fee_split(launch, curve_fee_cap, proposed);
 }
@@ -260,6 +263,7 @@ public fun settle_and_update_fee_split_meme_b<Meme, Quote>(
     policy: &LpFeePolicy,
     launch: &Launch<Meme, Quote>,
     curve_fee_cap: &CurveFeeCap<Meme>,
+    currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
     burn_manager: &BurnManager,
     pool: &mut Pool<Quote, Meme>,
@@ -270,9 +274,57 @@ public fun settle_and_update_fee_split_meme_b<Meme, Quote>(
     migrators_version.assert_current();
     let (quote_fee, meme_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
-    self.split_fees(policy, meme_fee, quote_fee, ctx);
+    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound_meme_b(cetus_config, pool, clock, ctx);
     self.update_fee_split(launch, curve_fee_cap, proposed);
+}
+
+/// Swaps the vault's burn Quote for Meme in its Meme-A pool and burns it, under a buyback admin.
+/// Aborts unless the swap returns at least `min_meme_out`; the admin sets it from an off-chain
+/// price, since anyone can move the pool's price within a transaction.
+public fun buyback_and_burn_meme_a<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    currency: &mut Currency<Meme>,
+    cetus_config: &GlobalConfig,
+    pool: &mut Pool<Meme, Quote>,
+    min_meme_out: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    migrators_version.assert_current();
+    assert!(self.pool_id() == object::id(pool), EPositionPoolMismatch);
+    let quote = self.take_buyback_quote(admin_witness);
+    let quote_in = quote.value();
+
+    let (meme, quote) = swap(cetus_config, pool, balance::zero(), quote, false, clock);
+
+    self.burn_buyback(currency, meme, quote, quote_in, min_meme_out, ctx);
+}
+
+/// Swaps the vault's burn Quote for Meme in its Meme-B pool and burns it, under a buyback admin.
+///
+/// Identical to `buyback_and_burn_meme_a` with Quote as coin A.
+public fun buyback_and_burn_meme_b<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    currency: &mut Currency<Meme>,
+    cetus_config: &GlobalConfig,
+    pool: &mut Pool<Quote, Meme>,
+    min_meme_out: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    migrators_version.assert_current();
+    assert!(self.pool_id() == object::id(pool), EPositionPoolMismatch);
+    let quote = self.take_buyback_quote(admin_witness);
+    let quote_in = quote.value();
+
+    let (quote, meme) = swap(cetus_config, pool, quote, balance::zero(), true, clock);
+
+    self.burn_buyback(currency, meme, quote, quote_in, min_meme_out, ctx);
 }
 
 // === Private Functions ===
@@ -425,10 +477,45 @@ fun add_liquidity<A, B, Meme, Quote>(
     (a, b, paid_a, paid_b)
 }
 
+/// Swaps all of the input side (`a` when `a2b`) through `pool` up to the widest price limit, pays
+/// what Cetus asks, and returns both sides: the unspent input and the output.
+fun swap<A, B>(
+    cetus_config: &GlobalConfig,
+    pool: &mut Pool<A, B>,
+    mut a: Balance<A>,
+    mut b: Balance<B>,
+    a2b: bool,
+    clock: &Clock,
+): (Balance<A>, Balance<B>) {
+    let (amount, sqrt_price_limit) = if (a2b) (a.value(), constants::min_swap_sqrt_price!())
+    else (b.value(), constants::max_swap_sqrt_price!());
+    let (out_a, out_b, receipt) = pool::flash_swap(
+        cetus_config,
+        pool,
+        a2b,
+        true,
+        amount,
+        sqrt_price_limit,
+        clock,
+    );
+    let paid = receipt.swap_pay_amount();
+    let (pay_a, pay_b) = if (a2b) (a.split(paid), balance::zero())
+    else (balance::zero(), b.split(paid));
+
+    pool::repay_flash_swap(cetus_config, pool, pay_a, pay_b, receipt);
+    a.join(out_a);
+    b.join(out_b);
+
+    (a, b)
+}
+
 // === Imports ===
+
+use blast_admin::acl::AdminWitness;
 
 use blast_fun::{
     allocation::FeeSplit,
+    blast_fun_domain::BLAST_FUN_DOMAIN,
     creator_authority::CurveFeeCap,
     launch::{Self, Launch, LaunchInitializer},
     launch_config::LaunchConfig,
@@ -438,6 +525,7 @@ use blast_fun::{
 
 use blast_fun_migrators::{
     blast_events,
+    constants,
     lp_fee_policy::LpFeePolicy,
     migration_math,
     package_version::PackageVersion as MigratorsVersion,
@@ -456,7 +544,7 @@ use cetus_clmm::{
 
 use lp_burn::lp_burn::{Self, BurnManager, CetusLPBurnProof};
 
-use sui::{balance::Balance, clock::Clock, coin::Coin, coin_registry::Currency};
+use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, coin_registry::Currency};
 
 use fun add_liquidity as LpVault.add_liquidity;
 

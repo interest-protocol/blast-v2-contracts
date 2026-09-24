@@ -37,7 +37,8 @@ public fun admit<Quote, Witness: drop>(
 }
 
 /// Mints the ticket, then starts the launch for `witness` at the fixture tier with `fee_split` and
-/// finalizes it in the next transaction, once the Coin Registry holds the currency.
+/// finalizes it in the next transaction, once the Coin Registry holds the currency. Returns the
+/// launch and its currency, whose supply is burn-only when `burnable` and fixed otherwise.
 public fun open_launch<Meme: drop, Quote, Witness: drop>(
     scenario: &mut Scenario,
     otw: Meme,
@@ -45,7 +46,8 @@ public fun open_launch<Meme: drop, Quote, Witness: drop>(
     config: &LaunchConfig,
     witness: Witness,
     fee_split: FeeSplit,
-): Launch<Meme, Quote> {
+    burnable: bool,
+): (Launch<Meme, Quote>, Currency<Meme>) {
     let ticket = launch_ticket::new(
         otw,
         9,
@@ -54,7 +56,7 @@ public fun open_launch<Meme: drop, Quote, Witness: drop>(
         b"".to_string(),
         b"".to_string(),
         creator_authority::new_address(CREATOR),
-        false,
+        burnable,
         0,
         scenario.ctx(),
     );
@@ -75,9 +77,8 @@ public fun open_launch<Meme: drop, Quote, Witness: drop>(
     );
     initializer.set_lp_fee_split(fee_split);
     let launch = initializer.finalize(version, &mut currency, config, scenario.ctx());
-    test_scenario::return_to_address(COIN_REGISTRY, currency);
 
-    launch
+    (launch, currency)
 }
 
 /// Returns the creator recipient of every fixture launch.
@@ -100,4 +101,4 @@ use blast_fun::{
     package_version::PackageVersion,
 };
 
-use sui::{coin_registry::Currency, test_scenario::{Self, Scenario}};
+use sui::{coin_registry::Currency, test_scenario::Scenario};

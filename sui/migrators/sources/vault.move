@@ -22,6 +22,12 @@ const ENoCreatorFees: vector<u8> = b"No creator LP fees are available to claim."
 #[error(code = 4)]
 const EZeroLiquidity: vector<u8> = b"Migration position must hold liquidity.";
 
+#[error(code = 5)]
+const ENoBuybackQuote: vector<u8> = b"No burn Quote is waiting to buy Meme back.";
+
+#[error(code = 6)]
+const EBuybackBelowMinimum: vector<u8> = b"Buyback must return at least the minimum Meme.";
+
 // === Public Types ===
 
 /// A sealed field name that binds one venue position type to one vault.
@@ -38,8 +44,9 @@ public struct AutoLpPositionKey<phantom Venue>() has copy, drop, store;
 /// creator's `FeeSplit`: the creator share accrues here until the live curve-fee cap claims it,
 /// the auto-LP share goes back into the position in the same call (any part the pool does not
 /// take waits here for the next call), the rewards share funds holder-reward rounds, and every
-/// recipient is paid at once. The split changes only after the fees accrued under the current one
-/// are settled, so each fee follows the split it accrued under.
+/// recipient is paid at once. The burn share's Meme is burned at once and its Quote waits here until
+/// a buyback admin swaps it for Meme to burn. The split changes only after the fees accrued under
+/// the current one are settled, so each fee follows the split it accrued under.
 public struct LpVault<phantom Meme, phantom Quote> has key {
     id: UID,
     pool_id: ID,
@@ -53,6 +60,7 @@ public struct LpVault<phantom Meme, phantom Quote> has key {
     auto_lp_quote: Balance<Quote>,
     rewards_meme: Balance<Meme>,
     rewards_quote: Balance<Quote>,
+    burn_quote: Balance<Quote>,
     next_round: u64,
     last_checkpoint: Option<u64>,
 }
@@ -128,6 +136,7 @@ public(package) fun prepare<Meme, Quote>(
         auto_lp_quote: balance::zero(),
         rewards_meme: balance::zero(),
         rewards_quote: balance::zero(),
+        burn_quote: balance::zero(),
         next_round: 0,
         last_checkpoint: option::none(),
     }
@@ -251,11 +260,13 @@ public(package) fun auto_lp_position_mut<
 }
 
 /// Splits one collection of the position's fees: Blast's live share to the protocol destination,
-/// then the creator, auto-LP, and rewards shares into their balances and every recipient paid.
-/// A zero collection is valid, moves nothing, and emits nothing.
+/// then the creator, auto-LP, and rewards shares into their balances, the burn share's Meme burned
+/// and its Quote kept for buyback, and every recipient paid. A zero collection is valid, moves
+/// nothing, and emits nothing.
 public(package) fun split_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     policy: &LpFeePolicy,
+    currency: &mut Currency<Meme>,
     mut meme: Balance<Meme>,
     mut quote: Balance<Quote>,
     ctx: &mut TxContext,
@@ -265,10 +276,10 @@ public(package) fun split_fees<Meme, Quote>(
     let (meme_share, quote_share) = policy.shares<Meme>();
     let protocol_meme = meme_share.apply_up(gross_meme);
     let protocol_quote = quote_share.apply_up(gross_quote);
-    let (creator_meme, auto_lp_meme, rewards_meme, recipient_meme) = self
+    let (creator_meme, auto_lp_meme, rewards_meme, burn_meme, recipient_meme) = self
         .fee_split
         .apportion_fee_split(gross_meme - protocol_meme);
-    let (creator_quote, auto_lp_quote, rewards_quote, recipient_quote) = self
+    let (creator_quote, auto_lp_quote, rewards_quote, burn_quote, recipient_quote) = self
         .fee_split
         .apportion_fee_split(gross_quote - protocol_quote);
     let protocol_destination = policy.protocol_destination();
@@ -282,6 +293,8 @@ public(package) fun split_fees<Meme, Quote>(
     self.auto_lp_quote.join(quote.split(auto_lp_quote));
     self.rewards_meme.join(meme.split(rewards_meme));
     self.rewards_quote.join(quote.split(rewards_quote));
+    burn(currency, meme.split(burn_meme), ctx);
+    self.burn_quote.join(quote.split(burn_quote));
     recipients.length().do!(|i| {
         meme.pay(recipient_meme[i], recipients[i].destination(), ctx);
         quote.pay(recipient_quote[i], recipients[i].destination(), ctx);
@@ -304,8 +317,47 @@ public(package) fun split_fees<Meme, Quote>(
         auto_lp_quote,
         rewards_meme,
         rewards_quote,
+        burn_meme,
+        burn_quote,
         recipient_meme,
         recipient_quote,
+    );
+}
+
+/// Takes every Quote waiting to buy Meme back, under a live buyback admin.
+public(package) fun take_buyback_quote<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+): Balance<Quote> {
+    admin_witness.assert_role(blast_fun_domain::buyback_admin_role());
+    assert!(self.burn_quote.value() > 0, ENoBuybackQuote);
+
+    self.burn_quote.withdraw_all()
+}
+
+/// Burns the Meme a swap of `quote_in` returned, which must reach `min_meme_out`, and keeps the
+/// Quote the pool did not take for the next buyback.
+public(package) fun burn_buyback<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    currency: &mut Currency<Meme>,
+    meme: Balance<Meme>,
+    unspent_quote: Balance<Quote>,
+    quote_in: u64,
+    min_meme_out: u64,
+    ctx: &mut TxContext,
+) {
+    let meme_burned = meme.value();
+    assert!(meme_burned >= min_meme_out, EBuybackBelowMinimum);
+    let quote_spent = quote_in - unspent_quote.value();
+
+    burn(currency, meme, ctx);
+    self.burn_quote.join(unspent_quote);
+
+    blast_events::buyback_burned(
+        self.id.to_inner(),
+        quote_spent,
+        meme_burned,
+        self.burn_quote.value(),
     );
 }
 
@@ -401,6 +453,15 @@ fun pay<T>(balance: &mut Balance<T>, amount: u64, destination: address, ctx: &mu
     if (amount > 0) transfer::public_transfer(balance.split(amount).into_coin(ctx), destination);
 }
 
+/// Burns `meme`, or sends it to `@0x0` when the supply is fixed, as migration does.
+fun burn<Meme>(currency: &mut Currency<Meme>, mut meme: Balance<Meme>, ctx: &mut TxContext) {
+    if (currency.is_supply_burn_only()) return currency.burn_balance(meme);
+    let amount = meme.value();
+
+    meme.pay(amount, @0x0, ctx);
+    meme.destroy_zero();
+}
+
 // === Test-Only Functions ===
 
 #[test_only]
@@ -453,13 +514,19 @@ public fun auto_lp_balances_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>
     (self.auto_lp_meme.value(), self.auto_lp_quote.value())
 }
 
+#[test_only]
+/// Returns the Quote waiting to buy Meme back.
+public fun burn_quote_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): u64 {
+    self.burn_quote.value()
+}
+
 // === Imports ===
 
 use blast_admin::acl::AdminWitness;
 
 use blast_fun::{
     allocation::FeeSplit,
-    blast_fun_domain::BLAST_FUN_DOMAIN,
+    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     creator_authority::CurveFeeCap,
     launch::Launch,
 };
@@ -470,7 +537,7 @@ use blast_fun_migrators::{
     package_version::PackageVersion as MigratorsVersion,
 };
 
-use sui::{balance::{Self, Balance}, coin::Coin, dynamic_object_field};
+use sui::{balance::{Self, Balance}, coin::Coin, coin_registry::Currency, dynamic_object_field};
 
 use fun dynamic_object_field::add as UID.add_dynamic_object_field;
 

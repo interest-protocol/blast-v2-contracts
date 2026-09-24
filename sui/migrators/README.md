@@ -38,9 +38,16 @@ destination, and splits the rest by the launch's `FeeSplit`:
 | Creator | accrues in the vault; `vault::claim_creator_fees` pays it to the holder of the launch's live `CurveFeeCap` |
 | Auto-LP | added back at the pool's current price (Cetus: to a second position, because the migration position is burned through Cetus LP Burn; Bluefin: to the migration position); what the pool does not take waits for the next call |
 | Rewards | accrues in the vault for holder-reward rounds |
+| Burn | the Meme is burned at once (paid to `@0x0` when the supply is fixed); the Quote waits for a buyback |
 | Recipients | paid directly to each address |
 
-`FeesCollected` and `AutoLiquidityAdded` break down every amount for indexers.
+A Blast administrator with the buyback role calls the venue's `buyback_and_burn`
+with a minimum Meme out set from an off-chain price: it swaps the waiting burn
+Quote for Meme in the vault's pool and burns it. The swap is not permissionless,
+because anyone could move the pool's price around it (ADR 0091).
+
+`FeesCollected`, `AutoLiquidityAdded`, and `BuybackBurned` break down every amount
+for indexers.
 The curve-fee cap holder changes the split with `settle_and_update_fee_split`,
 which settles the fees accrued under the current split first. An administrator
 changes Blast's default or per-coin share in `LpFeePolicy`, from the next

@@ -53,7 +53,7 @@ without returning to core for its post-conditions.
 | Allocation math | the migration allocation plan, the LP-fee split, and their exact apportionment | lifecycle state, custody, claims, venue costs, transfers, or DEX dependencies |
 | Off-chain SDK | deterministic curve-release and native-Quote valuation previews from immutable launch facts | contract authority, balance mutation, migration permission, or a second source of truth |
 | Fees | creator/protocol curve-fee splitting and accrued accounting; the embedding launch checks its live curve-fee capability or bound custodian | recurring LP fees, arbitrary recipient execution, or referral attribution |
-| LP vault (migrators) | permanent position custody and the generation-versioned fee split; every permissionless collection pays Blast's live share and the recipients, credits the creator and rewards balances, and adds the auto-LP share back to the position; creator claims and split updates under the launch's live curve-fee cap | launch pricing or pre-migration settings |
+| LP vault (migrators) | permanent position custody and the generation-versioned fee split; every permissionless collection pays Blast's live share and the recipients, credits the creator and rewards balances, burns the burn share's Meme and keeps its Quote, and adds the auto-LP share back to the position; creator claims and split updates under the launch's live curve-fee cap; buyback-and-burn of the burn Quote under the buyback-admin role | launch pricing or pre-migration settings |
 | Holder rewards (migrators) | Merkle rounds a Blast administrator funds from a vault's rewards balance, and one-time proof claims | holder accounting, which stays off-chain |
 | Migration interface | one-time liquidity handoff, linear migration value, and reconciled completion | DEX-specific object/storage details |
 | Adapter | start a launch at a venue-valid tier, prepare its venue, complete a migration, and collect the position's fees | changing core economics |
@@ -139,10 +139,11 @@ and the protection settings, one `MigrationAllocationPaid` records each
 payout, the migrators' `VaultCreated` records the vault, pool, and position
 identities with the split, the residuals it keeps, and the position's liquidity,
 and `Migrated` records the handoff and disposal amounts. Each LP-fee collection's `FeesCollected`
-records Blast's share and every part of the split, and `AutoLiquidityAdded`
-what went back into the position. See
+records Blast's share and every part of the split, `AutoLiquidityAdded`
+what went back into the position, and `BuybackBurned` each buyback. See
 [ADR 0088](decisions/0088-reusable-launch-accounting-and-atomic-migration.md) and
-[ADR 0089](decisions/0089-migrators-own-post-migration-and-start-launches.md).
+[ADR 0089](decisions/0089-migrators-own-post-migration-and-start-launches.md), and
+[ADR 0091](decisions/0091-fee-split-buyback-and-burn.md).
 
 One property remains invariant regardless of the admitted quote set:
 

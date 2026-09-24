@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Bluefin launch start, migration, fee collection with auto-LP, and settled fee-split updates
-/// over custodied concentrated-liquidity principal.
+/// Bluefin launch start, migration, fee collection with auto-LP, settled fee-split updates, and
+/// buybacks over custodied concentrated-liquidity principal.
 ///
 /// Bluefin pools are keyed by their exact type-parameter order, so this module
 /// always creates and expects `Pool<Meme, Quote>` with Meme as coin A.
@@ -124,12 +124,13 @@ public fun migrate<Meme, Quote>(
     pool.share_pool_object();
 }
 
-/// Collects the custodied position's fees, splits them, and adds the auto-LP share back to the
-/// position. Anyone may call it.
+/// Collects the custodied position's fees, splits them, burns the burn share's Meme, and adds the
+/// auto-LP share back to the position. Anyone may call it.
 public fun collect_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
     policy: &LpFeePolicy,
+    currency: &mut Currency<Meme>,
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
     clock: &Clock,
@@ -138,7 +139,7 @@ public fun collect_fees<Meme, Quote>(
     migrators_version.assert_current();
     let (meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
 
-    self.split_fees(policy, meme_fee, quote_fee, ctx);
+    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound(bluefin_config, pool, clock);
 }
 
@@ -149,6 +150,7 @@ public fun settle_and_update_fee_split<Meme, Quote>(
     policy: &LpFeePolicy,
     launch: &Launch<Meme, Quote>,
     curve_fee_cap: &CurveFeeCap<Meme>,
+    currency: &mut Currency<Meme>,
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
     proposed: FeeSplit,
@@ -158,9 +160,44 @@ public fun settle_and_update_fee_split<Meme, Quote>(
     migrators_version.assert_current();
     let (meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
 
-    self.split_fees(policy, meme_fee, quote_fee, ctx);
+    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound(bluefin_config, pool, clock);
     self.update_fee_split(launch, curve_fee_cap, proposed);
+}
+
+/// Swaps the vault's burn Quote for Meme in its pool and burns it, under a buyback admin. Aborts
+/// unless the swap returns at least `min_meme_out`; the admin sets it from an off-chain price,
+/// since anyone can move the pool's price within a transaction.
+public fun buyback_and_burn<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    currency: &mut Currency<Meme>,
+    bluefin_config: &GlobalConfig,
+    pool: &mut Pool<Meme, Quote>,
+    min_meme_out: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    migrators_version.assert_current();
+    assert!(self.pool_id() == object::id(pool), EPositionPoolMismatch);
+    let quote = self.take_buyback_quote(admin_witness);
+    let quote_in = quote.value();
+
+    let (meme, quote) = pool::swap(
+        clock,
+        bluefin_config,
+        pool,
+        balance::zero(),
+        quote,
+        false,
+        true,
+        quote_in,
+        0,
+        constants::max_swap_sqrt_price!(),
+    );
+
+    self.burn_buyback(currency, meme, quote, quote_in, min_meme_out, ctx);
 }
 
 // === Private Functions ===
@@ -221,8 +258,11 @@ fun compound<Meme, Quote>(
 
 // === Imports ===
 
+use blast_admin::acl::AdminWitness;
+
 use blast_fun::{
     allocation::FeeSplit,
+    blast_fun_domain::BLAST_FUN_DOMAIN,
     creator_authority::CurveFeeCap,
     launch::{Self, Launch, LaunchInitializer},
     launch_config::LaunchConfig,
@@ -242,7 +282,7 @@ use bluefin_spot::{config::GlobalConfig, pool::{Self, Pool}, position::Position}
 
 use integer_mate::i32;
 
-use sui::{balance::Balance, clock::Clock, coin::Coin, coin_registry::Currency, sui::SUI};
+use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, coin_registry::Currency, sui::SUI};
 
 use fun collect_position_fees as LpVault.collect_position_fees;
 

@@ -48,13 +48,13 @@ fun an_oversized_quote_sum_is_rejected() { shaped(vector[8_000, 2_000, 0], vecto
 
 #[test, expected_failure(abort_code = blast_fun::errors::EDuplicateDestination, location = blast_fun::allocation)]
 fun a_fee_split_duplicate_is_rejected_before_the_sum() {
-    fee_split(vector[0, 0, 0], vector[route(DESTINATION_A, 1), route(DESTINATION_A, 1)]);
+    fee_split(vector[0, 0, 0, 0], vector[route(DESTINATION_A, 1), route(DESTINATION_A, 1)]);
 }
 
 #[test, expected_failure(abort_code = blast_fun::errors::EDuplicateDestination, location = blast_fun::allocation)]
 fun a_fee_split_duplicate_apart_from_its_twin_is_rejected() {
     fee_split(
-        vector[0, 0, 0],
+        vector[0, 0, 0, 0],
         vector[
             route(DESTINATION_A, 3_000),
             route(DESTINATION_B, 4_000),
@@ -71,7 +71,7 @@ fun a_zero_total_pays_nothing() {
 
     assert_eq!(meme_amounts(&plan, 0), vector[0, 0, 0, 0]);
     assert_eq!(quote_amounts(&plan, 0), vector[0, 0, 0]);
-    assert_eq!(fee_amounts(&split(vector[9_000, 500, 500]), 0), vector[0, 0, 0]);
+    assert_eq!(fee_amounts(&split(vector[9_000, 500, 0, 500]), 0), vector[0, 0, 0, 0]);
 }
 
 #[test]
@@ -81,7 +81,7 @@ fun blast_ceiling_takes_the_unit_a_larger_remainder_would_win() {
     assert_eq!(meme_amounts(&plan, 101), vector[70, 20, 6, 5]);
     assert_eq!(quote_amounts(&plan, 101), vector[90, 6, 5]);
     // The same shares without a rounded-up part: the pool's 0.9 remainder wins the unit.
-    assert_eq!(fee_amounts(&split(vector[9_000, 500, 500]), 101), vector[91, 5, 5]);
+    assert_eq!(fee_amounts(&split(vector[9_000, 500, 0, 500]), 101), vector[91, 5, 0, 5]);
 }
 
 #[test]
@@ -96,12 +96,12 @@ fun blast_ceiling_can_leave_a_one_basis_point_pool_empty() {
 
 #[test]
 fun equal_routes_take_leftover_units_in_table_order() {
-    let mut shares = vector[0, 0, 0];
+    let mut shares = vector[0, 0, 0, 0];
     16u64.do!(|_| shares.push_back(625));
     let split = split(shares);
 
-    let (_, _, _, fifteen) = split.apportion_fee_split(15);
-    let (_, _, _, seventeen) = split.apportion_fee_split(17);
+    let (_, _, _, _, fifteen) = split.apportion_fee_split(15);
+    let (_, _, _, _, seventeen) = split.apportion_fee_split(17);
 
     assert_eq!(fifteen, vector::tabulate!(16, |i| if (i < 15) 1 else 0));
     assert_eq!(seventeen, vector::tabulate!(16, |i| if (i == 0) 2 else 1));
@@ -109,10 +109,10 @@ fun equal_routes_take_leftover_units_in_table_order() {
 
 #[test]
 fun a_larger_total_can_pay_a_floored_part_one_unit_less() {
-    let split = split(vector[4_700, 4_200, 1_100]);
+    let split = split(vector[4_700, 4_200, 0, 1_100]);
 
-    assert_eq!(fee_amounts(&split, 22), vector[10, 9, 3]);
-    assert_eq!(fee_amounts(&split, 23), vector[11, 10, 2]);
+    assert_eq!(fee_amounts(&split, 22), vector[10, 9, 0, 3]);
+    assert_eq!(fee_amounts(&split, 23), vector[11, 10, 0, 2]);
 }
 
 #[test]
@@ -130,21 +130,22 @@ fun blast_amount_never_decreases_as_the_total_grows() {
 }
 
 #[test]
-fun every_three_parts_and_one_route_grid_split_follows_largest_remainder() {
-    6u64.do!(|creator| 6u64.do!(|auto_lp| 6u64.do!(|rewards| {
-        if (creator + auto_lp + rewards <= 5) {
+fun every_four_parts_and_one_route_grid_split_follows_largest_remainder() {
+    5u64.do!(|creator| 5u64.do!(|auto_lp| 5u64.do!(|rewards| 5u64.do!(|burn| {
+        if (creator + auto_lp + rewards + burn <= 4) {
             let shares = vector[
-                creator * 2_000,
-                auto_lp * 2_000,
-                rewards * 2_000,
-                (5 - creator - auto_lp - rewards) * 2_000,
+                creator * 2_500,
+                auto_lp * 2_500,
+                rewards * 2_500,
+                burn * 2_500,
+                (4 - creator - auto_lp - rewards - burn) * 2_500,
             ];
             let split = split(shares);
             25u64.do!(|total| {
                 assert_largest_remainder(&shares, fee_amounts(&split, total), option::none(), total)
             });
         };
-    })));
+    }))));
 }
 
 #[test]
@@ -173,7 +174,7 @@ fun random_fee_splits_follow_largest_remainder() {
     48u64.do!(|_| {
         seed = next(seed);
         let routes = seed % (constants::max_recipients!() + 1);
-        let shares = random_shares(3 + routes, constants::basis_points_denominator!(), next(seed));
+        let shares = random_shares(4 + routes, constants::basis_points_denominator!(), next(seed));
         let total = random_total(seed);
         let amounts = fee_amounts(&split(shares), total);
 
@@ -184,8 +185,8 @@ fun random_fee_splits_follow_largest_remainder() {
 #[test]
 fun a_full_fee_split_conserves_the_maximum_total() {
     let routes = constants::max_recipients!();
-    let mut shares = vector[1_000, 2_000, 3_000];
-    routes.do!(|i| shares.push_back(4_000 / routes + if (i == 0) 4_000 % routes else 0));
+    let mut shares = vector[1_000, 2_000, 3_000, 1_000];
+    routes.do!(|i| shares.push_back(3_000 / routes + if (i == 0) 3_000 % routes else 0));
     let total = std::u64::max_value!();
     let amounts = fee_amounts(&split(shares), total);
 
@@ -213,16 +214,23 @@ fun shaped(meme: vector<u64>, quote: vector<u64>): AllocationPlan {
 }
 
 fun fee_split(parts: vector<u64>, routes: vector<Route>): FeeSplit {
-    allocation::fee_split(bps::new(parts[0]), bps::new(parts[1]), bps::new(parts[2]), routes)
+    allocation::fee_split(
+        bps::new(parts[0]),
+        bps::new(parts[1]),
+        bps::new(parts[2]),
+        bps::new(parts[3]),
+        routes,
+    )
 }
 
-/// Builds a fee split from shares `[creator, auto_lp, rewards, ...]`; routes pay to `@0x2` onward.
+/// Builds a fee split from shares `[creator, auto_lp, rewards, burn, ...]`; routes pay to `@0x2`
+/// onward.
 fun split(shares: vector<u64>): FeeSplit {
     fee_split(
         shares,
         vector::tabulate!(
-            shares.length() - 3,
-            |i| route(address::from_u256((i + 2) as u256), shares[i + 3]),
+            shares.length() - 4,
+            |i| route(address::from_u256((i + 2) as u256), shares[i + 4]),
         ),
     )
 }
@@ -245,10 +253,10 @@ fun quote_amounts(plan: &AllocationPlan, reserve: u64): vector<u64> {
     amounts
 }
 
-/// The creator's, auto-LP's, rewards', then each route's amount.
+/// The creator's, auto-LP's, rewards', burn's, then each route's amount.
 fun fee_amounts(split: &FeeSplit, total: u64): vector<u64> {
-    let (creator, auto_lp, rewards, routes) = split.apportion_fee_split(total);
-    let mut amounts = vector[creator, auto_lp, rewards];
+    let (creator, auto_lp, rewards, burn, routes) = split.apportion_fee_split(total);
+    let mut amounts = vector[creator, auto_lp, rewards, burn];
     amounts.append(routes);
 
     amounts

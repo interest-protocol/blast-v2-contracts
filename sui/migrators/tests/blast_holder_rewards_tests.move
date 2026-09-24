@@ -601,24 +601,27 @@ fun start(): RewardsFixture {
     scenario.next_tx(ADMIN);
     let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     launch_fixture::admit<QUOTE, TestVenue>(&mut config, &version, &authority.sign_in(&admin_cap));
-    let launch = launch_fixture::open_launch<_, QUOTE, _>(
+    let (launch, mut currency) = launch_fixture::open_launch<_, QUOTE, _>(
         &mut scenario,
         test_utils::create_one_time_witness<BLAST_HOLDER_REWARDS_TESTS>(),
         &version,
         &config,
         TestVenue(),
-        allocation::fee_split(bps::new(0), bps::new(0), bps::new(10_000), vector[]),
+        allocation::fee_split(bps::new(0), bps::new(0), bps::new(10_000), bps::new(0), vector[]),
+        false,
     );
     let mut vault = vault::prepare(&launch, balance::zero(), balance::zero(), scenario.ctx());
     let position = TestPosition { id: object::new(scenario.ctx()) };
     vault.attach(&TestVenue(), object::id_from_address(POOL), position, 1);
     vault.split_fees(
         &policy,
+        &mut currency,
         balance::create_for_testing(FUNDED_MEME),
         balance::create_for_testing(FUNDED_QUOTE),
         scenario.ctx(),
     );
     destroy(launch);
+    destroy(currency);
     destroy(config);
     destroy(version);
     destroy(policy);

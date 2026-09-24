@@ -267,9 +267,9 @@ fun quote_amounts(plan: &AllocationPlan, reserve: u64): vector<u64> {
 
 /// Apportions `total` across a split whose whole share goes to `routes`.
 fun route_amounts(routes: &vector<Route>, total: u64): vector<u64> {
-    let split = allocation::fee_split(bps::new(0), bps::new(0), bps::new(0), *routes);
-    let (creator, auto_lp, rewards, amounts) = split.apportion_fee_split(total);
-    assert_eq!(creator + auto_lp + rewards, 0);
+    let split = allocation::fee_split(bps::new(0), bps::new(0), bps::new(0), bps::new(0), *routes);
+    let (creator, auto_lp, rewards, burn, amounts) = split.apportion_fee_split(total);
+    assert_eq!(creator + auto_lp + rewards + burn, 0);
 
     amounts
 }

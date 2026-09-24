@@ -159,6 +159,7 @@ struct LaunchCreated {
     creator_bps: u64,
     auto_lp_bps: u64,
     rewards_bps: u64,
+    burn_bps: u64,
     fee_recipients: Vec<(SuiAddress, u64)>,
     _virtual_quote: u64,
     _graduation_target: u64,
@@ -413,10 +414,10 @@ impl World {
         let [meme_bps, quote_bps] = self.protocol;
         assert_eq!(created.plan_recipients[0], (PROTOCOL.into(), meme_bps, quote_bps), "{name}: Blast first");
         assert_eq!((created.pool_tick_spacing, created.pool_fee_rate), (POOL_TICK_SPACING, POOL_FEE_RATE), "{name}");
-        let (creator_bps, auto_lp_bps, rewards_bps, recipients) = fee_split(shape.fee_recipients);
+        let (creator_bps, auto_lp_bps, rewards_bps, burn_bps, recipients) = fee_split(shape.fee_recipients);
         assert_eq!(
-            (created.creator_bps, created.auto_lp_bps, created.rewards_bps),
-            (creator_bps, auto_lp_bps, rewards_bps),
+            (created.creator_bps, created.auto_lp_bps, created.rewards_bps, created.burn_bps),
+            (creator_bps, auto_lp_bps, rewards_bps, burn_bps),
             "{name}: fee-split parts"
         );
         let expected: Vec<_> = recipients.into_iter().map(|(address, bps)| (SuiAddress::from(address), bps)).collect();
@@ -580,7 +581,7 @@ impl World {
 
     /// Builds `fee_split(recipients)` through the public constructors.
     fn fee_split(&self, builder: &mut ProgrammableTransactionBuilder, recipients: usize) -> Result<Argument> {
-        let (creator_bps, auto_lp_bps, rewards_bps, recipients) = fee_split(recipients);
+        let (creator_bps, auto_lp_bps, rewards_bps, burn_bps, recipients) = fee_split(recipients);
         let mut routes = Vec::new();
         for (destination, bps) in recipients {
             let destination = builder.pure(SuiAddress::from(destination))?;
@@ -591,6 +592,7 @@ impl World {
         let creator_bps = self.bps(builder, creator_bps)?;
         let auto_lp_bps = self.bps(builder, auto_lp_bps)?;
         let rewards_bps = self.bps(builder, rewards_bps)?;
+        let burn_bps = self.bps(builder, burn_bps)?;
 
         Ok(call(
             builder,
@@ -598,7 +600,7 @@ impl World {
             "allocation",
             "fee_split",
             vec![],
-            vec![creator_bps, auto_lp_bps, rewards_bps, routes],
+            vec![creator_bps, auto_lp_bps, rewards_bps, burn_bps, routes],
         ))
     }
 
@@ -778,13 +780,13 @@ fn generate_template(work: &Path, decimals: u8) -> Result<PathBuf> {
 
 /// The fixture fee split with `recipients` recipients: without recipients the creator takes everything; otherwise every part is set and the recipients share
 /// the rest with distinct weights.
-fn fee_split(recipients: usize) -> (u64, u64, u64, Vec<(ObjectID, u64)>) {
+fn fee_split(recipients: usize) -> (u64, u64, u64, u64, Vec<(ObjectID, u64)>) {
     if recipients == 0 {
-        return (10_000, 0, 0, Vec::new());
+        return (10_000, 0, 0, 0, Vec::new());
     }
     let addresses = (1..=recipients).map(|j| address(&[0xE1, j as u8]));
 
-    (1_000, 600, 400, addresses.zip(distinct_weights(recipients, 8_000)).collect())
+    (1_000, 600, 400, 500, addresses.zip(distinct_weights(recipients, 7_500)).collect())
 }
 
 /// `count` distinct positive weights rising by one and summing to `total`.

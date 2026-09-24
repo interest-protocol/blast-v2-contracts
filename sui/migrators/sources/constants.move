@@ -16,6 +16,18 @@ macro public(package) fun bluefin_max_fee_rate(): u64 {
     20_000
 }
 
+/// Lowest sqrt price a Cetus or Bluefin swap accepts as its limit; buybacks selling Quote as coin A
+/// run to it and rely on the caller's minimum Meme out instead.
+macro public(package) fun min_swap_sqrt_price(): u128 {
+    4_295_048_017
+}
+
+/// Highest sqrt price a Cetus or Bluefin swap accepts as its limit, for buybacks selling Quote as
+/// coin B.
+macro public(package) fun max_swap_sqrt_price(): u128 {
+    79_226_673_515_401_279_992_447_579_054
+}
+
 /// Fractional bits of a Q64.64 sqrt price.
 macro public(package) fun q64_shift(): u8 {
     64
