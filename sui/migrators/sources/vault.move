@@ -8,24 +8,21 @@ module blast_fun_migrators::vault;
 // === Errors ===
 
 #[error(code = 0)]
-const EWrongVenue: vector<u8> = b"Venue witness must match the vault's attached position marker.";
-
-#[error(code = 1)]
 const ENothingClaimable: vector<u8> = b"No protocol migration residuals are available to claim.";
 
-#[error(code = 2)]
+#[error(code = 1)]
 const EFeeSplitUnchanged: vector<u8> = b"Fee split proposal must differ from the current split.";
 
-#[error(code = 3)]
+#[error(code = 2)]
 const ENoCreatorFees: vector<u8> = b"No creator LP fees are available to claim.";
 
-#[error(code = 4)]
+#[error(code = 3)]
 const EZeroLiquidity: vector<u8> = b"Migration position must hold liquidity.";
 
-#[error(code = 5)]
+#[error(code = 4)]
 const ENoBuybackQuote: vector<u8> = b"No burn Quote is waiting to buy Meme back.";
 
-#[error(code = 6)]
+#[error(code = 5)]
 const EBuybackBelowMinimum: vector<u8> = b"Buyback must return at least the minimum Meme.";
 
 // === Public Types ===
@@ -141,7 +138,8 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
     );
 }
 
-/// Mutably borrows the venue position without providing a removal path.
+/// Mutably borrows the venue position without providing a removal path. Another venue's key
+/// finds no field, so the borrow aborts.
 public(package) fun position_mut<
     Meme,
     Quote,
@@ -151,11 +149,6 @@ public(package) fun position_mut<
     self: &mut LpVault<Meme, Quote>,
     _venue: &Venue,
 ): &mut Position {
-    assert!(
-        self.id.has_dynamic_object_field(PositionKey<Venue>()),
-        EWrongVenue,
-    );
-
     self.id.dynamic_object_field_mut(PositionKey<Venue>())
 }
 
@@ -335,16 +328,24 @@ public(package) fun keep_auto_lp<Meme, Quote>(
     );
 }
 
-/// Commits `proposed` as the next split generation under the launch's live curve-fee cap. The
-/// adapter settles the fees accrued under the current split first, in the same call.
-public(package) fun update_fee_split<Meme, Quote>(
-    self: &mut LpVault<Meme, Quote>,
+/// Checks the launch's live curve-fee cap and that `proposed` changes the split. The adapter
+/// checks first, settles the fees accrued under the current split, then calls `update_fee_split`.
+public(package) fun assert_fee_split_update<Meme, Quote>(
+    self: &LpVault<Meme, Quote>,
     launch: &Launch<Meme, Quote>,
     curve_fee_cap: &CurveFeeCap<Meme>,
     proposed: FeeSplit,
 ) {
     launch.assert_curve_fee_cap(curve_fee_cap);
     assert!(proposed != self.fee_split, EFeeSplitUnchanged);
+}
+
+/// Commits `proposed`, which `assert_fee_split_update` already checked, as the next split
+/// generation.
+public(package) fun update_fee_split<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    proposed: FeeSplit,
+) {
     let old_generation = self.generation;
     let old_fee_split = self.fee_split;
 

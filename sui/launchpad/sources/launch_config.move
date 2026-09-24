@@ -57,7 +57,6 @@ public fun set_meme_decimals_allowed(
     allowed: bool,
 ) {
     package_version.assert_current();
-    assert!(self.meme_decimals.contains(&decimals) != allowed, blast_fun::errors::unchanged!());
 
     if (allowed) self.meme_decimals.insert(decimals) else self.meme_decimals.remove(&decimals);
 
@@ -117,7 +116,6 @@ public fun set_migration_witness_allowed<MigrationWitness: drop>(
     let origin = type_name::original_id<MigrationWitness>();
     assert!(origin != @0x1 && origin != @0x2, blast_fun::errors::invalid_migration_witness_type!());
     let witness = type_name::with_original_ids<MigrationWitness>();
-    assert!(self.migration_witnesses.contains(&witness) != allowed, blast_fun::errors::unchanged!());
 
     if (allowed) self.migration_witnesses.insert(witness)
     else self.migration_witnesses.remove(&witness);
@@ -136,7 +134,6 @@ public(package) fun snapshot_for_launch<Quote>(
 ): (u64, Bps, Bps) {
     let quote = type_name::with_original_ids<Quote>();
 
-    assert!(self.virtual_quotes.contains(quote), blast_fun::errors::quote_not_allowed!());
     assert!(
         self.migration_witnesses.contains(&migration_witness),
         blast_fun::errors::migration_witness_not_allowed!(),
@@ -147,8 +144,6 @@ public(package) fun snapshot_for_launch<Quote>(
 }
 
 public(package) fun protocol_allocation(self: &LaunchConfig): Recipient {
-    assert!(self.protocol_allocation.is_some(), blast_fun::errors::invalid_protocol_allocation!());
-
     *self.protocol_allocation.borrow()
 }
 

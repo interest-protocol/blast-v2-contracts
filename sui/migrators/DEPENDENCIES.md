@@ -49,8 +49,9 @@ with their witnesses, local interfaces, and dependency pins.
   `lp_fee_policy::LpFeePolicy` and every recipient, and credits the creator,
   auto-LP, and rewards balances; the adapter then adds the auto-LP balances
   back to the position with the venue's own add-liquidity call. A split change
-  runs the same settlement first, then `vault::update_fee_split` under the
-  launch's live `CurveFeeCap` (ADR 0089).
+  first checks the launch's live `CurveFeeCap` and the proposal with
+  `vault::assert_fee_split_update`, runs the same settlement, then commits with
+  `vault::update_fee_split` (ADR 0089).
 - **Creator-chosen venue tiers.** The creator passes the pool tier to the
   adapter's `new`, which validates it against the venue before `launch::new`
   stores it; migration reads it from the launch and never trusts a migration

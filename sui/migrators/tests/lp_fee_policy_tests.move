@@ -424,10 +424,7 @@ fun unchanged_coin_pair_is_rejected() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = lp_fee_policy::ECoinSharesMissing,
-    location = blast_fun_migrators::lp_fee_policy,
-)]
+#[expected_failure(abort_code = dynamic_field::EFieldDoesNotExist, location = sui::dynamic_field)]
 fun clearing_an_absent_coin_pair_is_rejected() {
     let mut fixture = start_policy();
 
@@ -637,7 +634,7 @@ use blast_fun_migrators::{
 
 use std::{bcs, type_name::{Self, TypeName}, unit_test::{assert_eq, destroy}};
 
-use sui::{event, test_scenario::{Self, Scenario}};
+use sui::{dynamic_field, event, test_scenario::{Self, Scenario}};
 
 use fun init_end as InitFixture.end;
 

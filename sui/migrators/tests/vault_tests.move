@@ -216,7 +216,7 @@ fun borrow_returns_the_attached_position() {
 }
 
 #[test]
-#[expected_failure(abort_code = vault::EWrongVenue, location = blast_fun_migrators::vault)]
+#[expected_failure(abort_code = dynamic_field::EFieldDoesNotExist, location = sui::dynamic_field)]
 fun wrong_venue_borrow_fails_closed() {
     let mut f = start(mixed_split());
     let mut vault = f.new_vault(0, 0);

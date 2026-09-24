@@ -42,11 +42,6 @@ macro public(package) fun ed25519_public_key_length(): u64 {
     32
 }
 
-/// Canonical Ed25519 signature length.
-macro public(package) fun ed25519_signature_length(): u64 {
-    64
-}
-
 /// Byte length of an opaque Blast account commitment.
 macro public(package) fun account_commitment_length(): u64 {
     32

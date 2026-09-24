@@ -25,7 +25,7 @@ public struct BlastMetadataCap<phantom Meme> has key, store {
 }
 
 /// The BCS message the Blast backend signs for an account claim.
-public struct CreatorClaimMessage has copy, drop {
+public struct CreatorClaimMessage has drop {
     meme: TypeName,
     account_commitment: vector<u8>,
     claimant: address,
@@ -85,13 +85,11 @@ public(package) fun claim_creator_caps<Meme>(
             assert!(claimant == recipient, blast_fun::errors::creator_not_sender!());
         },
         CreatorRecipient::Account(account_commitment) => {
-            assert!(attestation.is_some(), blast_fun::errors::invalid_creator_claim_attestation!());
             let mut attestation = bcs::new(attestation.destroy_some());
             let expiry_ms = attestation.peel_u64();
             let signature = attestation.peel_vec_u8();
             assert!(
-                signature.length() == constants::ed25519_signature_length!()
-                    && attestation.into_remainder_bytes().is_empty(),
+                attestation.into_remainder_bytes().is_empty(),
                 blast_fun::errors::invalid_creator_claim_attestation!(),
             );
             assert!(clock.timestamp_ms() <= expiry_ms, blast_fun::errors::creator_claim_expired!());

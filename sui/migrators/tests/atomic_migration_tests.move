@@ -157,7 +157,8 @@ fun the_migrated_vault_splits_later_collections_and_updates_its_split_under_the_
         bps::new(0),
         vector[allocation::route(ADMIN, bps::new(10_000))],
     );
-    vault.update_fee_split(&launch, &curve_fee_cap, next);
+    vault.assert_fee_split_update(&launch, &curve_fee_cap, next);
+    vault.update_fee_split(next);
     vault.split_fees(
         &policy,
         &mut currency,

@@ -38,9 +38,6 @@ public struct AdminFixtureState {
     policy: LpFeePolicy,
 }
 
-/// A claimant in this package whose module is not the package's canonical one.
-public struct ForeignModule() has drop;
-
 // === Tests ===
 
 #[test]
@@ -209,15 +206,14 @@ fun a_revocation_in_the_shared_authority_blocks_this_packages_sign_in() {
 
 #[test]
 #[expected_failure(
-    abort_code = package_admin::EInvalidPackagePublisher,
-    location = blast_fun_migrators::package_admin,
+    abort_code = blast_admin::errors::EInvalidPackagePublisher,
+    location = blast_admin::upgrade_custody,
 )]
-/// Custody accepts only the Publisher of the canonical module, not one from any other module of
-/// the same package.
-fun a_publisher_from_another_module_cannot_seal_the_package_custody() {
+/// Custody accepts only this package's Publisher, not Launchpad's or any other package's.
+fun a_publisher_from_another_package_cannot_seal_the_package_custody() {
     let mut fixture = start_with_roles(0);
 
-    fixture.next_tx!(PUBLISHER, |f| f.wrap_with_foreign_module_publisher());
+    fixture.next_tx!(PUBLISHER, |f| f.wrap_with_foreign_package_publisher());
 
     fixture.end();
 }
@@ -311,10 +307,10 @@ fun foreign_receipt(self: &mut AdminFixtureState): UpgradeReceipt {
     receipt
 }
 
-/// Wraps this package's UpgradeCap with a Publisher claimed by a non-canonical module.
-fun wrap_with_foreign_module_publisher(self: &mut AdminFixtureState) {
+/// Wraps this package's UpgradeCap with a Publisher claimed from a Launchpad module.
+fun wrap_with_foreign_package_publisher(self: &mut AdminFixtureState) {
     let ctx = self.scenario.ctx();
-    let publisher = package::test_claim(ForeignModule(), ctx);
+    let publisher = package::test_claim(bps::new(0), ctx);
     let upgrade_cap = package::test_publish(
         type_name::original_id<BLAST_FUN_MIGRATORS>().to_id(),
         ctx,

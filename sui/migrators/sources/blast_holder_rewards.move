@@ -28,18 +28,15 @@ const EInvalidLeafCount: vector<u8> = b"Round must contain between 1 and 65,536 
 const EEmptyBudget: vector<u8> = b"At least one reward amount must be nonzero.";
 
 #[error(code = 5)]
-const EInsufficientFunds: vector<u8> = b"Both reward amounts must fit the available balances.";
-
-#[error(code = 6)]
 const EInvalidIndex: vector<u8> = b"Claim index must be less than the committed leaf count.";
 
-#[error(code = 7)]
+#[error(code = 6)]
 const EAlreadyClaimed: vector<u8> = b"This allocation has already been paid.";
 
-#[error(code = 8)]
+#[error(code = 7)]
 const EInvalidBeneficiary: vector<u8> = b"Beneficiary must not be the zero address.";
 
-#[error(code = 9)]
+#[error(code = 8)]
 const EInvalidProof: vector<u8> = b"Proof must match the committed recipient, amounts and domain.";
 
 // === Public Types ===
@@ -49,10 +46,7 @@ public struct Round<phantom Meme, phantom Quote> has key {
     id: UID,
     vault: ID,
     number: u64,
-    start_checkpoint: u64,
-    end_checkpoint: u64,
     root: vector<u8>,
-    manifest_digest: vector<u8>,
     leaf_count: u64,
     claimed: vector<u256>,
     meme: Balance<Meme>,
@@ -90,11 +84,6 @@ public fun publish_round<Meme, Quote>(
     );
     assert!(leaf_count > 0 && leaf_count <= constants::max_reward_leaves!(), EInvalidLeafCount);
     assert!(meme_amount > 0 || quote_amount > 0, EEmptyBudget);
-    let (meme_available, quote_available) = vault.rewards_balances();
-    assert!(
-        meme_amount <= meme_available && quote_amount <= quote_available,
-        EInsufficientFunds,
-    );
     let vault_id = object::id(vault);
 
     let (meme, quote) = vault.fund_round(end_checkpoint, meme_amount, quote_amount);
@@ -102,10 +91,7 @@ public fun publish_round<Meme, Quote>(
         id: object::new(ctx),
         vault: vault_id,
         number,
-        start_checkpoint,
-        end_checkpoint,
         root,
-        manifest_digest,
         leaf_count,
         claimed: vector::tabulate!(leaf_count.div_ceil(256), |_| 0u256),
         meme,
@@ -149,10 +135,6 @@ public fun claim<Meme, Quote>(
     assert!(self.claimed[word] & bit == 0, EAlreadyClaimed);
     assert!(beneficiary != @0x0, EInvalidBeneficiary);
     assert!(meme_amount > 0 || quote_amount > 0, EEmptyBudget);
-    assert!(
-        meme_amount <= self.meme.value() && quote_amount <= self.quote.value(),
-        EInsufficientFunds,
-    );
     let leaf = merkle::leaf(self.vault, self.number, index, beneficiary, meme_amount, quote_amount);
     assert!(merkle::verify(self.root, leaf, index, self.leaf_count, &proof), EInvalidProof);
 

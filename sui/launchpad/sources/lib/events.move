@@ -148,7 +148,6 @@ public struct Migrated has copy, drop {
     meme: u64,
     quote: u64,
     disposed_meme: u64,
-    native_supply_burned: bool,
     total_supply_after: u64,
 }
 
@@ -348,7 +347,6 @@ public(package) fun migrated(
     meme: u64,
     quote: u64,
     disposed_meme: u64,
-    native_supply_burned: bool,
     total_supply_after: u64,
 ) {
     emit(Migrated {
@@ -356,7 +354,6 @@ public(package) fun migrated(
         meme,
         quote,
         disposed_meme,
-        native_supply_burned,
         total_supply_after,
     });
 }

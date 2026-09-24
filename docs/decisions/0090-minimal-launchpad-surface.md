@@ -2,7 +2,8 @@
 
 - Status: accepted
 - Date: 2026-09-24
-- Amends: [0088](0088-reusable-launch-accounting-and-atomic-migration.md) and
+- Amends: [0047](0047-coin-registry-authoritative-supply-mode.md),
+  [0088](0088-reusable-launch-accounting-and-atomic-migration.md), and
   [0089](0089-migrators-own-post-migration-and-start-launches.md)
 
 ## Context
@@ -51,14 +52,22 @@ atomic protection limits.
 **Configuration.** Each allow/disallow pair is one setter (`set_quote` with zero
 disallowing, `set_meme_decimals_allowed`, `set_migration_witness_allowed`), and
 an empty signer key revokes account claims. A setter called with the value
-already in place aborts with one shared `unchanged` error. The migration-witness
-capacity limit is removed.
+already in place aborts: with one shared `unchanged` error, or, for the decimals
+and migration-witness sets, with the set's own insert or remove abort. The
+migration-witness capacity limit is removed.
 
 **Events and errors.** Each allow/disallow pair emits one event, a purchase
 before sharing emits `Bought` like any other, protection settings move into
 `LaunchCreated`, and fields an indexer can derive (channel IDs, revoked cap IDs, running totals,
-supply already in `LaunchTicketCreated`) are dropped. Errors that could not fire
-or duplicated another are removed, and the registry is renumbered.
+supply already in `LaunchTicketCreated`) are dropped; `Migrated` carries no
+supply-mode flag, since `LaunchCreated.ticket_id` leads to
+`LaunchTicketCreated.burnable`. Errors that could not fire or duplicated another
+are removed, and the registry is renumbered. A named check that only precedes a
+framework abort on the same condition is removed too: a missing initializer
+setting, Blast allocation, or account-claim attestation aborts in `std::option`,
+an unadmitted Quote in `sui::dynamic_field`, and a wrong-length signature fails
+verification. Package administration leaves Publisher and UpgradeCap provenance
+to `blast_admin`.
 
 ## Consequences
 

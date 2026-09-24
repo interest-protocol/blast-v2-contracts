@@ -18,11 +18,6 @@ public struct PackageAdmin has key {
 
 /// Wraps this package's Publisher and UpgradeCap in shared custody for good.
 public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext) {
-    assert!(
-        publisher.from_module<BLAST_FUN>(),
-        blast_fun::errors::invalid_package_publisher!(),
-    );
-
     let id = object::new(ctx);
     let custody = upgrade_custody::new<BLAST_FUN>(id.to_inner(), publisher, upgrade_cap);
 
@@ -71,11 +66,6 @@ public fun make_immutable(
     self.custody.make_immutable(custodian_id);
 }
 
-// === Test-Only Types ===
-
-#[test_only]
-public struct TEST_PACKAGE_ADMIN() has drop;
-
 // === Test-Only Functions ===
 
 #[test_only]
@@ -92,12 +82,6 @@ public fun new_for_testing(ctx: &mut TxContext): PackageAdmin {
     );
 
     PackageAdmin { id, custody }
-}
-
-#[test_only]
-/// Creates a Publisher from this package but not from the canonical Blast module.
-public fun non_blast_publisher_for_testing(ctx: &mut TxContext): Publisher {
-    sui::package::test_claim(TEST_PACKAGE_ADMIN(), ctx)
 }
 
 #[test_only]

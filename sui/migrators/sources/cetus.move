@@ -249,11 +249,12 @@ public fun settle_and_update_fee_split_meme_a<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
+    self.assert_fee_split_update(launch, curve_fee_cap, proposed);
     let (meme_fee, quote_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
     self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound_meme_a(cetus_config, pool, clock, ctx);
-    self.update_fee_split(launch, curve_fee_cap, proposed);
+    self.update_fee_split(proposed);
 }
 
 /// Settles the Meme-B position's accrued fees under the current split, then commits `proposed`.
@@ -272,11 +273,12 @@ public fun settle_and_update_fee_split_meme_b<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
+    self.assert_fee_split_update(launch, curve_fee_cap, proposed);
     let (quote_fee, meme_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
     self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound_meme_b(cetus_config, pool, clock, ctx);
-    self.update_fee_split(launch, curve_fee_cap, proposed);
+    self.update_fee_split(proposed);
 }
 
 /// Swaps the vault's burn Quote for Meme in its Meme-A pool and burns it, under a buyback admin.

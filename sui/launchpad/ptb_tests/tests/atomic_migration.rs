@@ -63,12 +63,12 @@ const OVERSIZED_BUY: u64 = 40_000;
 const EXCESSIVE_BUY: u64 = 80_000;
 
 /// `blast_fun::errors` codes.
-const INVALID_SHARES: u64 = 9;
-const RECIPIENT_CAPACITY_REACHED: u64 = 10;
-const INVALID_LAUNCH_LIFECYCLE: u64 = 18;
-const SLIPPAGE_EXCEEDED: u64 = 19;
-const PER_TRANSACTION_LIMIT_EXCEEDED: u64 = 21;
-const CUMULATIVE_LIMIT_EXCEEDED: u64 = 22;
+const INVALID_SHARES: u64 = 7;
+const RECIPIENT_CAPACITY_REACHED: u64 = 8;
+const INVALID_LAUNCH_LIFECYCLE: u64 = 15;
+const SLIPPAGE_EXCEEDED: u64 = 16;
+const PER_TRANSACTION_LIMIT_EXCEEDED: u64 = 18;
+const CUMULATIVE_LIMIT_EXCEEDED: u64 = 19;
 
 const DESTINATION: ObjectID = address(&[0xD5]);
 const PROTOCOL: ObjectID = address(&[0xAD]);
@@ -398,7 +398,6 @@ struct Migrated {
     meme: u64,
     quote: u64,
     _disposed_meme: u64,
-    _native_supply_burned: bool,
     _total_supply_after: u64,
 }
 

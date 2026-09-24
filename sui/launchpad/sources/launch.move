@@ -179,10 +179,6 @@ public fun finalize<Meme, Quote>(
         cumulative_sender_bps,
         per_transaction_bps,
     } = self;
-    assert!(
-        graduation_target.is_some() && allocation_plan.is_some() && lp_fee_split.is_some(),
-        blast_fun::errors::launch_settings_incomplete!(),
-    );
     let graduation_target = graduation_target.destroy_some();
     let allocation_plan = allocation_plan.destroy_some().add_protocol(config.protocol_allocation());
     assert!(
@@ -292,7 +288,6 @@ public fun claim_creator_caps<Meme, Quote>(
 ): (CurveFeeCap<Meme>, BlastMetadataCap<Meme>) {
     package_version.assert_current();
     assert!(self.protection_end_ms.is_some(), blast_fun::errors::invalid_launch_lifecycle!());
-    assert!(self.creator.is_some(), blast_fun::errors::creator_authority_unavailable!());
 
     let (curve_fee_cap, blast_metadata_cap) = creator_authority::claim_creator_caps<Meme>(
         self.creator.extract(),
@@ -603,7 +598,6 @@ public fun migrate<Meme, Quote, Witness: drop>(
         lp_meme,
         lp_quote,
         disposed_meme,
-        burnable,
         currency.total_supply().destroy_some(),
     );
 

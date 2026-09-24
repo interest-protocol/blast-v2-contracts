@@ -49,17 +49,14 @@ public fun recipient(destination: address, meme_bps: Bps, quote_bps: Bps): Recip
     Recipient { destination, meme_bps, quote_bps }
 }
 
-/// The curve and the pool need positive shares; Blast's allocation is added at finalization.
+/// The curve and the pool need positive Meme shares; Blast's allocation is added at finalization.
 public fun plan(
     curve_meme_bps: Bps,
     lp_meme_bps: Bps,
     lp_quote_bps: Bps,
     recipients: vector<Recipient>,
 ): AllocationPlan {
-    assert!(
-        curve_meme_bps.value() > 0 && lp_meme_bps.value() > 0 && lp_quote_bps.value() > 0,
-        blast_fun::errors::invalid_shares!(),
-    );
+    assert!(curve_meme_bps.value() > 0 && lp_meme_bps.value() > 0, blast_fun::errors::invalid_shares!());
 
     AllocationPlan { curve_meme_bps, lp_meme_bps, lp_quote_bps, recipients }
 }

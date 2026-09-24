@@ -17,9 +17,6 @@ const EProtocolDestinationUnchanged: vector<u8> = b"Protocol destination must be
 #[error(code = 1)]
 const EProtocolFeeSharesUnchanged: vector<u8> = b"LP-fee share update must change the stored pair.";
 
-#[error(code = 2)]
-const ECoinSharesMissing: vector<u8> = b"Meme type has no LP-fee shares of its own to clear.";
-
 // === Public Types ===
 
 /// Shared singleton holding independent Meme/Quote Blast shares and the address every vault pays
@@ -124,7 +121,6 @@ public fun clear_coin_shares<Meme>(
 ) {
     migrators_version.assert_current();
     let meme = type_name::with_original_ids<Meme>();
-    assert!(self.coins.contains(meme), ECoinSharesMissing);
 
     let old = self.coins.remove(meme);
 

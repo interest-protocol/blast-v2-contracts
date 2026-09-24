@@ -359,7 +359,7 @@ if rg -U -n 'fun init\([^)]*\) \{[^}]*events::' sources --glob '*.move' \
   failures=$((failures + 1))
 fi
 
-package_admin_production="$(sed '/^\/\/ === Test-Only Types ===/,$d' sources/package_admin.move)"
+package_admin_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/package_admin.move)"
 
 if [[ ! -f sources/package_admin.move || -f sources/upgrade.move ]] \
   || ! rg -U -q \
@@ -388,9 +388,9 @@ fi
 # is the post-upgrade finalizer and instead proves the exact next generation,
 # also before the role. No path narrows the upgrade policy: a narrowed cap could
 # never commit and advance again, which would end upgradeability silently.
-if ! rg -Fq 'publisher.from_module<BLAST_FUN>()' sources/package_admin.move \
-  || ! rg -Fq 'upgrade_custody::new<BLAST_FUN>(id.to_inner(), publisher, upgrade_cap)' \
-    sources/package_admin.move \
+# Wrapping delegates Publisher and UpgradeCap provenance wholly to shared custody.
+if [[ "$(move_production_body wrap <<<"$(move_facts sources/package_admin.move)")" \
+    != 'let id = object::new(ctx); let custody = upgrade_custody::new<BLAST_FUN>(id.to_inner(), publisher, upgrade_cap); transfer::share_object(PackageAdmin { id, custody });' ]] \
   || [[ "$(rg -c 'package_version\.assert_current\(\);' <<<"$package_admin_production")" != 2 ]] \
   || [[ "$(rg -c 'admin_witness\.assert_role\(blast_fun_domain::package_admin_role\(\)\);' <<<"$package_admin_production")" != 3 ]] \
   || [[ "$(move_facts sources/package_admin.move \
@@ -929,6 +929,7 @@ launch_source="$(move_normalized_source <<<"$launch_facts")"
 if [[ ! -f sources/allocation.move ]] \
   || [[ "$(move_production_type Recipient <<<"$allocation_facts")" != 'struct Recipient has copy, drop, store { destination: address, meme_bps: Bps, quote_bps: Bps, }' ]] \
   || [[ "$(move_production_type AllocationPlan <<<"$allocation_facts")" != 'struct AllocationPlan has copy, drop, store { curve_meme_bps: Bps, lp_meme_bps: Bps, lp_quote_bps: Bps, recipients: vector<Recipient>, }' ]] \
+  || [[ "$(move_production_body plan <<<"$allocation_facts")" != 'assert!(curve_meme_bps.value() > 0 && lp_meme_bps.value() > 0, blast_fun::errors::invalid_shares!()); AllocationPlan { curve_meme_bps, lp_meme_bps, lp_quote_bps, recipients }' ]] \
   || ! rg -Fq 'self.recipients.insert(protocol, 0);' <<<"$allocation_source" \
   || [[ "$(count_occurrences '\) == constants::basis_points_denominator!\(\)' <<<"$allocation_source")" != 3 ]] \
   || ! rg -Fq 'remainder_a > remainder_b || (remainder_a == remainder_b && *a <= *b)' <<<"$allocation_source" \
@@ -970,10 +971,10 @@ if [[ ! -f sources/launch.move ]] \
   || [[ "$(move_production_body treasury_cap_mut <<<"$launch_facts")" != 'assert!( self.migration_witness == type_name::with_original_ids<Witness>(), blast_fun::errors::invalid_migration_witness!(), ); self.ticket.treasury_cap_mut()' ]] \
   || [[ "$(move_production_function_contract finalize <<<"$launch_facts")" != 'public:0:0:fun finalize<Meme, Quote>( self: LaunchInitializer<Meme, Quote>, currency: &mut Currency<Meme>, config: &LaunchConfig, ctx: &mut TxContext, ): Launch<Meme, Quote>' ]] \
   || [[ "$launch_finalize_body" == *'assert_current'* ]] \
+  || [[ "$launch_finalize_body" == *'.is_some()'* ]] \
   || ! in_order \
-    'graduation_target.is_some() && allocation_plan.is_some() && lp_fee_split.is_some()' \
-    'launch_settings_incomplete!()' \
-    '.add_protocol(config.protocol_allocation());' \
+    'let graduation_target = graduation_target.destroy_some();' \
+    'allocation_plan.destroy_some().add_protocol(config.protocol_allocation());' \
     'invalid_protection!()' \
     'meme_symbol_too_long!()' \
     'invalid_graduation_target!()' \
@@ -981,6 +982,7 @@ if [[ ! -f sources/launch.move ]] \
     'allocation_plan.apportion_meme(atomic_supply)' \
     'ticket.destroy(currency, atomic_supply);' \
     'Launch {' \
+    'lp_fee_split: lp_fee_split.destroy_some(),' \
     <<<"$launch_finalize_body" \
   || [[ "$launch_finalize_body" != *'metadata_cap, creator: option::some(creator), curve_fee_cap_id: option::none(), blast_metadata_cap_id: option::none(), };'* ]] \
   || [[ "$(count_occurrences 'self\.metadata_cap\b' <<<"$launch_source")" \
@@ -1295,7 +1297,10 @@ if rg -n '\b[a-z_]*claimed:[[:space:]]*bool|\bissue_creator_cap\b|\btransfer::' 
   || [[ "$(move_production_function_contract new_curve_fee_cap <<<"$creator_authority_facts")" \
     != 'package:0:0:fun new_curve_fee_cap<Meme>(ctx: &mut TxContext): CurveFeeCap<Meme>' ]] \
   || [[ "$(move_production_function_contract new_metadata_cap <<<"$creator_authority_facts")" \
-    != 'package:0:0:fun new_metadata_cap<Meme>(ctx: &mut TxContext): BlastMetadataCap<Meme>' ]]; then
+    != 'package:0:0:fun new_metadata_cap<Meme>(ctx: &mut TxContext): BlastMetadataCap<Meme>' ]] \
+  || [[ "$(move_production_type CreatorClaimMessage <<<"$creator_authority_facts")" \
+    != 'struct CreatorClaimMessage has drop { meme: TypeName, account_commitment: vector<u8>, claimant: address, expiry_ms: u64, }' ]] \
+  || rg -q '\bed25519_signature_length\b' sources; then
   echo 'Creator claims must return exactly one CurveFeeCap and one BlastMetadataCap, and creator_authority.move must import no Blast module but constants and carry no version or admin gate, native MetadataCap pass-through, flag, or transfer.' >&2
   failures=$((failures + 1))
 fi
@@ -1349,6 +1354,7 @@ fi
 # pinned.
 if [[ "$(launch_functions_containing 'self.migration_witness == type_name::with_original_ids<Witness>()')" != 'migrate treasury_cap_mut ' ]] \
   || [[ "$(launch_functions_containing 'self.lifecycle = Lifecycle::Migrated;')" != 'migrate ' ]] \
+  || [[ "$(move_production_type Migrated <<<"$events_facts")" != 'struct Migrated has copy, drop { launch_id: ID, meme: u64, quote: u64, disposed_meme: u64, total_supply_after: u64, }' ]] \
   || [[ "$(move_production_signature migrate <<<"$launch_facts")" != 'fun migrate<Meme, Quote, Witness: drop>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, currency: &mut Currency<Meme>, _: Witness, ctx: &mut TxContext, ): (Balance<Meme>, Balance<Quote>)' ]] \
   || ! in_order \
     'package_version.assert_current();' \

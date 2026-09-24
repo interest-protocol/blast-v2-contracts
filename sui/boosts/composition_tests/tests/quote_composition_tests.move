@@ -41,7 +41,7 @@ fun admitted_short_vault_quote_uses_the_same_native_buy_and_sell_path() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun::errors::EQuoteNotAllowed, location = blast_fun::launch_config)]
+#[expected_failure(abort_code = sui::dynamic_field::EFieldDoesNotExist, location = sui::dynamic_field)]
 fun admitting_long_does_not_admit_the_distinct_short_vault_quote() {
     quote_round_trip<BlastBoost<Short2x>>(false);
 }

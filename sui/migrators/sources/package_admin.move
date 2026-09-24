@@ -9,12 +9,6 @@
 /// leaves Launchpad on its own generation.
 module blast_fun_migrators::package_admin;
 
-// === Errors ===
-
-#[error(code = 0)]
-const EInvalidPackagePublisher: vector<u8> =
-    b"Publisher must be claimed by the canonical migrators package module.";
-
 // === Public Types ===
 
 /// Shared custody for this package's framework Publisher and UpgradeCap.
@@ -26,10 +20,11 @@ public struct PackageAdmin has key {
 // === Public Functions ===
 
 /// Validates and permanently seals the migrators Publisher and raw UpgradeCap.
+///
+/// `upgrade_custody::new` requires this package's Publisher and its never-upgraded cap, and at
+/// version one `BLAST_FUN_MIGRATORS` is the package's only one-time witness, so no other module's
+/// Publisher can exist.
 public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext) {
-    // from_module compares both the package address and the canonical module name.
-    assert!(publisher.from_module<BLAST_FUN_MIGRATORS>(), EInvalidPackagePublisher);
-
     let id = object::new(ctx);
     let custody = upgrade_custody::new<BLAST_FUN_MIGRATORS>(id.to_inner(), publisher, upgrade_cap);
 

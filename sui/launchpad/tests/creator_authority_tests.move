@@ -104,7 +104,7 @@ fun account_claim_is_accepted_at_the_expiry() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::EInvalidCreatorClaimAttestation, location = blast_fun::creator_authority)]
+#[test, expected_failure(abort_code = std::option::EOPTION_NOT_SET, location = std::option)]
 fun account_claim_requires_an_attestation() {
     let mut fixture = start();
 
@@ -115,7 +115,7 @@ fun account_claim_requires_an_attestation() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::EInvalidCreatorClaimAttestation, location = blast_fun::creator_authority)]
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidCreatorClaimSignature, location = blast_fun::creator_authority)]
 fun account_claim_rejects_a_signature_that_is_not_64_bytes() {
     let mut fixture = start();
 

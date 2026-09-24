@@ -231,7 +231,7 @@ fun later_setter_calls_replace_earlier_settings() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::ELaunchSettingsIncomplete, location = blast_fun::launch)]
+#[test, expected_failure(abort_code = std::option::EOPTION_NOT_SET, location = std::option)]
 fun finalize_requires_a_graduation_target() {
     let mut fixture = start();
 
@@ -247,7 +247,7 @@ fun finalize_requires_a_graduation_target() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::ELaunchSettingsIncomplete, location = blast_fun::launch)]
+#[test, expected_failure(abort_code = std::option::EOPTION_NOT_SET, location = std::option)]
 fun finalize_requires_an_allocation_plan() {
     let mut fixture = start();
 
@@ -263,7 +263,7 @@ fun finalize_requires_an_allocation_plan() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::ELaunchSettingsIncomplete, location = blast_fun::launch)]
+#[test, expected_failure(abort_code = std::option::EOPTION_NOT_SET, location = std::option)]
 fun finalize_requires_lp_fee_split() {
     let mut fixture = start();
 
@@ -279,7 +279,7 @@ fun finalize_requires_lp_fee_split() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::EInvalidProtocolAllocation, location = blast_fun::launch_config)]
+#[test, expected_failure(abort_code = std::option::EOPTION_NOT_SET, location = std::option)]
 fun finalize_requires_the_protocol_allocation() {
     let mut fixture = start_unallocated();
 
@@ -375,6 +375,25 @@ fun target_that_leaves_the_pool_no_quote_is_rejected() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| destroy(f.new_launch_with(1, default_plan())));
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidGraduationTarget, location = blast_fun::launch)]
+/// A zero pool Quote share leaves the pool no Quote at any target.
+fun zero_lp_quote_share_is_rejected() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let plan = allocation::plan(
+            bps::new(CURVE_MEME_BPS),
+            bps::new(LP_MEME_BPS),
+            bps::new(0),
+            vector[allocation::recipient(ALICE, bps::new(0), bps::new(LP_QUOTE_BPS))],
+        );
+
+        destroy(f.new_launch_with(MIGRATION_QUOTE_TARGET, plan));
+    });
 
     fixture.end();
 }
@@ -476,7 +495,7 @@ fun intake_checks_the_version_before_the_symbol_length() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::EQuoteNotAllowed, location = blast_fun::launch_config)]
+#[test, expected_failure(abort_code = sui::dynamic_field::EFieldDoesNotExist, location = sui::dynamic_field)]
 fun launch_delegates_quote_admission_to_launch_config() {
     let mut fixture = start();
 
@@ -494,7 +513,7 @@ fun launch_delegates_quote_admission_to_launch_config() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::EQuoteNotAllowed, location = blast_fun::launch_config)]
+#[test, expected_failure(abort_code = sui::dynamic_field::EFieldDoesNotExist, location = sui::dynamic_field)]
 fun starting_checks_the_quote_before_finalize_checks_the_symbol() {
     let mut fixture = start();
 
@@ -874,7 +893,7 @@ fun designated_creator_claims_both_caps() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::ECreatorAuthorityUnavailable, location = blast_fun::launch)]
+#[test, expected_failure(abort_code = std::option::EOPTION_NOT_SET, location = std::option)]
 fun creator_claim_cannot_be_repeated() {
     let mut fixture = start();
 
@@ -1055,7 +1074,7 @@ fun admin_reassigns_an_unclaimed_creator_and_removes_the_pending_claim() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::ECreatorAuthorityUnavailable, location = blast_fun::launch)]
+#[test, expected_failure(abort_code = std::option::EOPTION_NOT_SET, location = std::option)]
 fun reassignment_prevents_the_original_recipient_from_claiming() {
     let mut fixture = start();
 
@@ -1787,7 +1806,6 @@ fun fixed_supply_migration_sends_the_disposal_to_zero() {
                 meme.value(),
                 quote.value(),
                 disposed_meme,
-                false,
                 supply,
             ),
         );
@@ -1835,7 +1853,6 @@ fun burn_only_migration_burns_the_disposal_from_native_supply() {
                 meme.value(),
                 quote.value(),
                 disposed_meme,
-                true,
                 supply - disposed_meme,
             ),
         );
@@ -2493,13 +2510,9 @@ fun migrated_bytes(
     meme: u64,
     quote: u64,
     disposed_meme: u64,
-    native_supply_burned: bool,
     total_supply_after: u64,
 ): vector<u8> {
-    let mut expected = u64_payload(launch_id, vector[meme, quote, disposed_meme]);
-    expected.append(bcs::to_bytes(&native_supply_burned));
-    expected.append(u64_bytes(total_supply_after));
-    expected
+    u64_payload(launch_id, vector[meme, quote, disposed_meme, total_supply_after])
 }
 
 /// Serializes one constant by value, so no test borrows a constant in place.

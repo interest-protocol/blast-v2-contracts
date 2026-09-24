@@ -289,10 +289,7 @@ fun an_empty_budget_is_rejected() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = blast_holder_rewards::EInsufficientFunds,
-    location = blast_fun_migrators::blast_holder_rewards,
-)]
+#[expected_failure(abort_code = balance::ENotEnough, location = sui::balance)]
 fun a_meme_budget_above_the_rewards_balance_is_rejected() {
     let mut f = start();
 
@@ -302,10 +299,7 @@ fun a_meme_budget_above_the_rewards_balance_is_rejected() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = blast_holder_rewards::EInsufficientFunds,
-    location = blast_fun_migrators::blast_holder_rewards,
-)]
+#[expected_failure(abort_code = balance::ENotEnough, location = sui::balance)]
 fun a_quote_budget_above_the_rewards_balance_is_rejected() {
     let mut f = start();
 
@@ -315,10 +309,7 @@ fun a_quote_budget_above_the_rewards_balance_is_rejected() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = blast_holder_rewards::EInsufficientFunds,
-    location = blast_fun_migrators::blast_holder_rewards,
-)]
+#[expected_failure(abort_code = balance::ENotEnough, location = sui::balance)]
 fun reserved_funds_cannot_back_a_second_round() {
     let mut f = start();
     f.round(0, FUNDED_MEME, 0);
@@ -556,13 +547,13 @@ fun an_empty_claim_cannot_consume_a_bitmap_bit() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = blast_holder_rewards::EInsufficientFunds,
-    location = blast_fun_migrators::blast_holder_rewards,
-)]
+#[expected_failure(abort_code = balance::ENotEnough, location = sui::balance)]
 fun a_claim_cannot_exceed_its_reserved_budget() {
     let mut f = start();
-    let round_id = f.round(0, 1, 1);
+    let root = f.leaf(0, 0, ALICE, 2, 1);
+    f.scenario.next_tx(ADMIN);
+    f.publish(0, 0, 10, root, digest(), 1, 1, 1);
+    let round_id = published_round_id();
 
     f.claim(round_id, 0, ALICE, 2, 1, vector[]);
 

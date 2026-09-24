@@ -167,11 +167,6 @@ fun zero_lp_meme_share_is_rejected() {
 }
 
 #[test, expected_failure(abort_code = blast_fun::errors::EInvalidShares, location = blast_fun::allocation)]
-fun zero_lp_quote_share_is_rejected() {
-    allocation::plan(bps::new(8_000), bps::new(2_000), bps::new(0), vector[]);
-}
-
-#[test, expected_failure(abort_code = blast_fun::errors::EInvalidShares, location = blast_fun::allocation)]
 fun invalid_meme_sum_is_rejected() { shaped(vector[7_999, 2_000, 0], vector[10_000, 0]); }
 
 #[test, expected_failure(abort_code = blast_fun::errors::EInvalidShares, location = blast_fun::allocation)]

@@ -101,7 +101,7 @@ fn payload_layout(payload: &StructTag) -> Layout {
         ]),
         "LaunchShared" => Struct(vec![id(), U64]),
         "MigrationAllocationPaid" => Struct(vec![id(), Address, U64, U64]),
-        "Migrated" => Struct(vec![id(), U64, U64, U64, Bool, U64]),
+        "Migrated" => Struct(vec![id(), U64, U64, U64, U64]),
         "LaunchTicketCreated" => Struct(vec![
             id(),
             type_name(),

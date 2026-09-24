@@ -153,8 +153,8 @@ fun protocol_allocation_maxima_leave_one_unit_for_the_curve_and_the_pool() {
 #[test]
 #[
     expected_failure(
-        abort_code = blast_fun::errors::EInvalidProtocolAllocation,
-        location = blast_fun::launch_config,
+        abort_code = std::option::EOPTION_NOT_SET,
+        location = std::option,
     ),
 ]
 fun unset_protocol_allocation_rejects_launch_intake() {
@@ -291,8 +291,8 @@ fun admin_removes_and_readds_decimal_precision_for_future_tickets() {
 #[test]
 #[
     expected_failure(
-        abort_code = blast_fun::errors::EUnchanged,
-        location = blast_fun::launch_config,
+        abort_code = sui::vec_set::EKeyAlreadyExists,
+        location = sui::vec_set,
     ),
 ]
 fun allowing_an_admitted_decimal_rejects_the_unchanged_set() {
@@ -310,8 +310,8 @@ fun allowing_an_admitted_decimal_rejects_the_unchanged_set() {
 #[test]
 #[
     expected_failure(
-        abort_code = blast_fun::errors::EUnchanged,
-        location = blast_fun::launch_config,
+        abort_code = sui::vec_set::EKeyDoesNotExist,
+        location = sui::vec_set,
     ),
 ]
 fun disallowing_an_unlisted_decimal_rejects_the_unchanged_set() {
@@ -574,8 +574,8 @@ fun stale_package_version_rejects_quote_before_the_unchanged_check() {
 #[test]
 #[
     expected_failure(
-        abort_code = blast_fun::errors::EQuoteNotAllowed,
-        location = blast_fun::launch_config,
+        abort_code = sui::dynamic_field::EFieldDoesNotExist,
+        location = sui::dynamic_field,
     ),
 ]
 fun launch_snapshot_rejects_disallowed_quote() {
@@ -807,8 +807,8 @@ fun disallowing_migration_witness_does_not_change_an_existing_launch_snapshot() 
 #[test]
 #[
     expected_failure(
-        abort_code = blast_fun::errors::EUnchanged,
-        location = blast_fun::launch_config,
+        abort_code = sui::vec_set::EKeyDoesNotExist,
+        location = sui::vec_set,
     ),
 ]
 fun disallowing_migration_witness_rejects_unlisted_type() {
@@ -832,8 +832,8 @@ fun disallowing_migration_witness_rejects_unlisted_type() {
 #[test]
 #[
     expected_failure(
-        abort_code = blast_fun::errors::EUnchanged,
-        location = blast_fun::launch_config,
+        abort_code = sui::vec_set::EKeyAlreadyExists,
+        location = sui::vec_set,
     ),
 ]
 fun allowing_migration_witness_rejects_duplicate_type() {

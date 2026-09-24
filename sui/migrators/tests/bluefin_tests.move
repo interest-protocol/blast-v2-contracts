@@ -147,8 +147,8 @@ fun new_aborts_until_the_config_admits_bluefin() {
 }
 
 #[test, expected_failure(
-    abort_code = blast_fun::errors::EQuoteNotAllowed,
-    location = blast_fun::launch_config,
+    abort_code = sui::dynamic_field::EFieldDoesNotExist,
+    location = sui::dynamic_field,
 )]
 fun new_admits_only_an_allowed_quote() {
     let mut f = start();

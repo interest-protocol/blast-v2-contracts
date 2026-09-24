@@ -542,8 +542,8 @@ fun collect_exact_position(self: &mut FeeSplitFixture) {
     self.compound();
 }
 
-/// Adapter-only wrapper: collects under the current split, then commits `proposed` under
-/// `curve_fee_cap`, all in one creator transaction.
+/// Adapter-only wrapper: checks `curve_fee_cap` and `proposed`, collects under the current split,
+/// then commits `proposed`, all in one creator transaction.
 fun settle_exact_position(
     self: &mut FeeSplitFixture,
     curve_fee_cap: &CurveFeeCap<FEE_SPLIT_UPDATE_TESTS>,
@@ -551,9 +551,10 @@ fun settle_exact_position(
 ) {
     self.scenario.next_tx(launch_fixture::creator());
     let launch = self.take_launch();
+    self.vault.assert_fee_split_update(&launch, curve_fee_cap, proposed);
 
     self.collect_exact_position();
-    self.vault.update_fee_split(&launch, curve_fee_cap, proposed);
+    self.vault.update_fee_split(proposed);
     test_scenario::return_shared(launch);
 }
 

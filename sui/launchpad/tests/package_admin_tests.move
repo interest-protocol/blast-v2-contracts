@@ -94,10 +94,10 @@ fun wrap_rejects_upgrade_cap_for_another_package() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::EInvalidPackagePublisher,
-    location = blast_fun::package_admin,
+    abort_code = errors::EInvalidPackagePublisher,
+    location = blast_admin::upgrade_custody,
 )]
-/// The consumer wrapper owns exact module provenance and runs before shared custody.
+/// Shared custody checks the Publisher's package before the upgrade cap's provenance.
 fun wrap_checks_publisher_before_upgrade_cap_provenance() {
     let mut fixture = start_wrap();
 
@@ -156,24 +156,6 @@ fun the_version_container_rejects_generation_overflow() {
 
     destroy(package_version);
     destroy(ctx);
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EInvalidPackagePublisher,
-    location = blast_fun::package_admin,
-)]
-fun wrap_rejects_a_publisher_from_another_module_in_the_blast_package() {
-    let mut fixture = start_wrap();
-
-    fixture.next_tx!(PUBLISHER, |f| {
-        let publisher = package_admin::non_blast_publisher_for_testing(f.ctx!());
-        let upgrade_cap = package::test_publish(@0x0.to_id(), f.ctx!());
-
-        package_admin::wrap(publisher, upgrade_cap, f.ctx!());
-    });
-
-    fixture.end();
 }
 
 // The complete native authorize/commit/advance matrix belongs to

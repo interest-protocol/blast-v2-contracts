@@ -165,11 +165,12 @@ public fun settle_and_update_fee_split<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
+    self.assert_fee_split_update(launch, curve_fee_cap, proposed);
     let (meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
 
     self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound(bluefin_config, pool, clock);
-    self.update_fee_split(launch, curve_fee_cap, proposed);
+    self.update_fee_split(proposed);
 }
 
 /// Swaps the vault's burn Quote for Meme in its pool and burns it, under a buyback admin. Aborts

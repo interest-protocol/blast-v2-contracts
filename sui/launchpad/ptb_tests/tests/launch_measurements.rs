@@ -317,7 +317,7 @@ impl World {
         let over = Shape::maximum(MAX_PLAN_RECIPIENTS + 1);
         let pt = self.open(&ticket, over)?;
         // `blast_fun::errors::recipient_capacity_reached`.
-        let rejected = Expected::Abort { package: self.blast, module: "allocation", code: 10 };
+        let rejected = Expected::Abort { package: self.blast, module: "allocation", code: 8 };
         let sender = self.h.sender;
         self.h.assert_rolled_back(pt, rejected, &[ticket.ticket, ticket.currency], &[sender])?;
         let outcome = self.last_outcome()?;

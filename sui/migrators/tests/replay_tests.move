@@ -533,6 +533,7 @@ fun settle_fee_split(self: &mut ReplayFixture, meme: u64, quote: u64) {
         let mut vault = f.take_vault();
         let policy = f.take_policy();
         let mut currency = f.take_currency();
+        vault.assert_fee_split_update(&launch, &curve_fee_cap, next_split());
 
         vault.split_fees(
             &policy,
@@ -542,7 +543,7 @@ fun settle_fee_split(self: &mut ReplayFixture, meme: u64, quote: u64) {
             f.ctx!(),
         );
         compound(&mut vault);
-        vault.update_fee_split(&launch, &curve_fee_cap, next_split());
+        vault.update_fee_split(next_split());
 
         f.scenario.return_to_sender(curve_fee_cap);
         test_scenario::return_shared(launch);
@@ -1109,7 +1110,6 @@ fun migrated(self: &mut Replay, bytes: vector<u8>) {
     let meme = r.peel_u64();
     let quote = r.peel_u64();
     let disposed_meme = r.peel_u64();
-    assert_eq!(r.peel_bool(), self.burnable);
     self.total_supply = r.peel_u64();
     r.assert_consumed();
 

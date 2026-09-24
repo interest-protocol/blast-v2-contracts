@@ -80,10 +80,10 @@ const LP_MEME: u64 = ATOMIC_SUPPLY / 5;
 const ALLOCATION_BPS: u64 = 500;
 
 /// `blast_fun::errors` codes.
-const INVALID_LAUNCH_LIFECYCLE: u64 = 18;
-const CREATOR_CAP_NOT_LIVE: u64 = 25;
+const INVALID_LAUNCH_LIFECYCLE: u64 = 15;
+const CREATOR_CAP_NOT_LIVE: u64 = 22;
 /// `blast_fun_migrators::vault` code.
-const BUYBACK_BELOW_MINIMUM: u64 = 6;
+const BUYBACK_BELOW_MINIMUM: u64 = 5;
 
 /// Blast's default LP-fee share, then per-coin overrides for the forked Meme.
 const DEFAULT_SHARES: (u64, u64) = (1_000, 500);
@@ -1869,11 +1869,11 @@ impl World {
         ];
         coins.sort();
         ensure!(outcome.coins_created_for(&self.h, beneficiary.into()) == coins);
-        let expected = Expected::Abort { package: self.migrators, module: "blast_holder_rewards", code: 7 };
+        let expected = Expected::Abort { package: self.migrators, module: "blast_holder_rewards", code: 6 };
         let pt = claim(self)?;
         self.h.assert_rolled_back(pt, expected, &[round], &[beneficiary.into()])?;
         self.report(format!(
-            "publish_round funds ({meme}, {quote}) from rewards; Merkle claim pays {beneficiary} ({meme_paid}, {quote_paid}); a second claim aborts 7"
+            "publish_round funds ({meme}, {quote}) from rewards; Merkle claim pays {beneficiary} ({meme_paid}, {quote_paid}); a second claim aborts 6"
         ));
 
         Ok(())
@@ -2117,7 +2117,6 @@ struct Migrated {
     meme: u64,
     quote: u64,
     _disposed_meme: u64,
-    _native_supply_burned: bool,
     _total_supply_after: u64,
 }
 
