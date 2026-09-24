@@ -77,7 +77,6 @@ public struct ExpectedLaunchShared has copy, drop {
 public struct ExpectedVestingCreated has copy, drop {
     vesting_id: ID,
     coin_type: TypeName,
-    funder: address,
     beneficiary: address,
     refund_recipient: Option<address>,
     cancel_cap_id: Option<ID>,
@@ -367,7 +366,6 @@ fun compose_and_share<Meme>(
             &ExpectedVestingCreated {
                 vesting_id,
                 coin_type: type_name::with_original_ids<Meme>(),
-                funder: LAUNCHER,
                 beneficiary: BENEFICIARY,
                 refund_recipient: if (cancelable) option::some(REFUND_RECIPIENT)
                 else option::none(),
@@ -457,7 +455,7 @@ fun complete_irrevocable<Meme>(self: &mut CompositionFixture, result: Compositio
     let mut vesting = self.scenario.take_shared<Vesting<Meme>>();
     assert_eq!(object::id(&vesting), result.vesting_id);
     vesting.claim(&self.clock, self.scenario.ctx());
-    vesting.close_irrevocable(&self.clock, self.scenario.ctx());
+    vesting.close_irrevocable();
 }
 
 fun cancel_half_vested<Meme>(self: &mut CompositionFixture, result: CompositionResult) {

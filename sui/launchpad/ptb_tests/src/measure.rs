@@ -128,7 +128,6 @@ fn payload_layout(payload: &StructTag) -> Layout {
             id(),
             type_name(),
             Address,
-            Address,
             Struct(vec![Vector(Box::new(Address))]),
             Struct(vec![Vector(Box::new(id()))]),
             U64,

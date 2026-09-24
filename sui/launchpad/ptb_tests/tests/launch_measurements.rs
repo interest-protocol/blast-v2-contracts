@@ -38,7 +38,7 @@ use sui_types::{
 const COMMAND: &str = "cd sui/launchpad/ptb_tests && cargo test --test launch_measurements -- --nocapture";
 /// The vesting package lives in its own repository; the pre-share purchase composes this revision.
 const VESTING_REPOSITORY: &str = "https://github.com/interest-protocol/blast-util-contracts.git";
-const VESTING_REVISION: &str = "f518095d8dff6a99fb0a2c406d8f495d6495f8a0";
+const VESTING_REVISION: &str = "8600b8fa096c685ba72cd39b384124cb01fc97d6";
 const NOT_MEASURED: [&str; 3] = [
     "IDs created and destroyed or wrapped within one transaction are absent from effects, so \
      resources.effects.created is a lower bound for max_num_new_move_object_ids",
