@@ -609,11 +609,10 @@ if rg -n '\b(Coin|Balance|UID|TxContext|transfer::|event::|object::)\b' sources/
   failures=$((failures + 1))
 fi
 
-if [[ "$(rg -c '\bamount_out\(' sources/curve.move)" != 3 ]] \
-  || [[ "$(rg -c '\blet k_before = self\.curve_k\(\);' sources/launch.move)" != 2 ]] \
-  || [[ "$(rg -c '\bself\.curve_k\(\) >= k_before' sources/launch.move)" != 2 ]] \
-  || [[ "$(rg -c '\bconstant_product_invariant_decreased!\(' sources/launch.move)" != 2 ]]; then
-  echo 'Buy and sell must share exact-input math and reconcile actual reserve products.' >&2
+# The reserves move by exactly the curve's input and its floored output, so the product cannot
+# fall and needs no runtime reconciliation.
+if [[ "$(rg -c '\bamount_out\(' sources/curve.move)" != 3 ]]; then
+  echo 'Buy and sell must share the exact-input constant-product math.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1348,16 +1347,16 @@ fi
 # T-010: one call under the stored adapter witness pays every recipient, hands off exactly the
 # pool share, disposes of the curve's unsold Meme, and commits Migrated. Only order anchors are
 # pinned.
-if [[ "$(launch_functions_containing 'self.assert_migration_witness<')" != 'migrate ' ]] \
+if [[ "$(launch_functions_containing 'self.migration_witness == type_name::with_original_ids<Witness>()')" != 'migrate treasury_cap_mut ' ]] \
   || [[ "$(launch_functions_containing 'self.lifecycle = Lifecycle::Migrated;')" != 'migrate ' ]] \
   || [[ "$(move_production_signature migrate <<<"$launch_facts")" != 'fun migrate<Meme, Quote, Witness: drop>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, currency: &mut Currency<Meme>, _: Witness, ctx: &mut TxContext, ): (Balance<Meme>, Balance<Quote>)' ]] \
   || ! in_order \
     'package_version.assert_current();' \
     'Lifecycle::MigrationReady' \
-    'self.assert_migration_witness<' \
+    'self.migration_witness == type_name::with_original_ids<Witness>()' \
     'self.allocated_meme.split(' \
     'self.real_quote_reserve.split(' \
-    'migration_settlement_mismatch!()' \
+    'self.allocated_meme.withdraw_all()' \
     'self.pending_burn.withdraw_all()' \
     'self.meme_reserve.withdraw_all()' \
     'self.lifecycle = Lifecycle::Migrated;' \

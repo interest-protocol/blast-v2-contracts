@@ -115,66 +115,30 @@ public fun claim_creator_fees<Meme, Quote>(
 
 // === Package Functions ===
 
-/// Creates unshared vault state whose address can be bound into an external position, holding
-/// the launch's fee split.
-public(package) fun prepare<Meme, Quote>(
+/// Creates and shares the launch's vault, holding its fee split and the protocol residuals, with
+/// `position`, holding `liquidity` in pool `pool_id`, attached under the venue's sealed key.
+public(package) fun create<Meme, Quote, Venue, Position: key + store>(
     launch: &Launch<Meme, Quote>,
-    protocol_meme_residual: Balance<Meme>,
-    protocol_quote_residual: Balance<Quote>,
-    ctx: &mut TxContext,
-): LpVault<Meme, Quote> {
-    LpVault {
-        id: object::new(ctx),
-        pool_id: object::id_from_address(@0x0),
-        protocol_meme_residual,
-        protocol_quote_residual,
-        generation: 0,
-        fee_split: launch.lp_fee_split(),
-        creator_meme: balance::zero(),
-        creator_quote: balance::zero(),
-        auto_lp_meme: balance::zero(),
-        auto_lp_quote: balance::zero(),
-        rewards_meme: balance::zero(),
-        rewards_quote: balance::zero(),
-        burn_quote: balance::zero(),
-        next_round: 0,
-        last_checkpoint: option::none(),
-    }
-}
-
-/// Attaches the exact venue position, holding `liquidity`, while retaining owned vault construction
-/// state.
-public(package) fun attach<Meme, Quote, Venue, Position: key + store>(
-    self: &mut LpVault<Meme, Quote>,
-    _venue: &Venue,
+    venue: &Venue,
     pool_id: ID,
     position: Position,
     liquidity: u128,
+    protocol_meme_residual: Balance<Meme>,
+    protocol_quote_residual: Balance<Quote>,
+    ctx: &mut TxContext,
 ) {
-    assert!(liquidity > 0, EZeroLiquidity);
-
-    self.pool_id = pool_id;
-    let position_id = object::id(&position);
-    self.id.add_dynamic_object_field(PositionKey<Venue>(), position);
-
-    blast_events::vault_created<Meme, Quote, Venue>(
-        self.id.to_inner(),
-        pool_id,
-        position_id,
-        self.protocol_meme_residual.value(),
-        self.protocol_quote_residual.value(),
-        liquidity,
-        self.fee_split,
+    transfer::share_object(
+        new(
+            launch,
+            venue,
+            pool_id,
+            position,
+            liquidity,
+            protocol_meme_residual,
+            protocol_quote_residual,
+            ctx,
+        ),
     );
-}
-
-/// Shares a fully attached vault; attachment already emitted the custody record.
-public(package) fun share<Meme, Quote, Venue>(self: LpVault<Meme, Quote>, _venue: &Venue) {
-    assert!(
-        self.id.has_dynamic_object_field(PositionKey<Venue>()),
-        EWrongVenue,
-    );
-    transfer::share_object(self);
 }
 
 /// Mutably borrows the venue position without providing a removal path.
@@ -193,24 +157,6 @@ public(package) fun position_mut<
     );
 
     self.id.dynamic_object_field_mut(PositionKey<Venue>())
-}
-
-/// Immutably borrows the exact attached venue position for atomic settlement validation.
-public(package) fun position<
-    Meme,
-    Quote,
-    Venue,
-    Position: key + store,
->(
-    self: &LpVault<Meme, Quote>,
-    _venue: &Venue,
-): &Position {
-    assert!(
-        self.id.has_dynamic_object_field(PositionKey<Venue>()),
-        EWrongVenue,
-    );
-
-    self.id.dynamic_object_field(PositionKey<Venue>())
 }
 
 /// Reports whether the auto-LP position exists under `Venue`.
@@ -449,6 +395,53 @@ public(package) fun rewards_balances<Meme, Quote>(self: &LpVault<Meme, Quote>): 
 
 // === Private Functions ===
 
+/// Builds the vault at generation zero with the launch's fee split and empty balances, attaches
+/// `position`, and announces the custody.
+fun new<Meme, Quote, Venue, Position: key + store>(
+    launch: &Launch<Meme, Quote>,
+    _venue: &Venue,
+    pool_id: ID,
+    position: Position,
+    liquidity: u128,
+    protocol_meme_residual: Balance<Meme>,
+    protocol_quote_residual: Balance<Quote>,
+    ctx: &mut TxContext,
+): LpVault<Meme, Quote> {
+    assert!(liquidity > 0, EZeroLiquidity);
+    let position_id = object::id(&position);
+
+    let mut vault = LpVault {
+        id: object::new(ctx),
+        pool_id,
+        protocol_meme_residual,
+        protocol_quote_residual,
+        generation: 0,
+        fee_split: launch.lp_fee_split(),
+        creator_meme: balance::zero(),
+        creator_quote: balance::zero(),
+        auto_lp_meme: balance::zero(),
+        auto_lp_quote: balance::zero(),
+        rewards_meme: balance::zero(),
+        rewards_quote: balance::zero(),
+        burn_quote: balance::zero(),
+        next_round: 0,
+        last_checkpoint: option::none(),
+    };
+    vault.id.add_dynamic_object_field(PositionKey<Venue>(), position);
+
+    blast_events::vault_created<Meme, Quote, Venue>(
+        vault.id.to_inner(),
+        pool_id,
+        position_id,
+        vault.protocol_meme_residual.value(),
+        vault.protocol_quote_residual.value(),
+        liquidity,
+        vault.fee_split,
+    );
+
+    vault
+}
+
 fun pay<T>(balance: &mut Balance<T>, amount: u64, destination: address, ctx: &mut TxContext) {
     if (amount > 0) transfer::public_transfer(balance.split(amount).into_coin(ctx), destination);
 }
@@ -463,6 +456,30 @@ fun burn<Meme>(currency: &mut Currency<Meme>, mut meme: Balance<Meme>, ctx: &mut
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+/// Builds the vault `create` shares, left unshared for focused tests.
+public fun new_for_testing<Meme, Quote, Venue, Position: key + store>(
+    launch: &Launch<Meme, Quote>,
+    venue: &Venue,
+    pool_id: ID,
+    position: Position,
+    liquidity: u128,
+    protocol_meme_residual: Balance<Meme>,
+    protocol_quote_residual: Balance<Quote>,
+    ctx: &mut TxContext,
+): LpVault<Meme, Quote> {
+    new(
+        launch,
+        venue,
+        pool_id,
+        position,
+        liquidity,
+        protocol_meme_residual,
+        protocol_quote_residual,
+        ctx,
+    )
+}
 
 #[test_only]
 /// Returns the ID of the position attached under `Venue`, or none for any other venue.

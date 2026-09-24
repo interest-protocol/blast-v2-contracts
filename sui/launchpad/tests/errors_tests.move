@@ -15,7 +15,7 @@ fun configuration_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::decimals_not_allowed!(), 4);
     assert_eq!(blast_fun::errors::migration_witness_not_allowed!(), 5);
     assert_eq!(blast_fun::errors::invalid_migration_witness_type!(), 6);
-    assert_eq!(blast_fun::errors::unchanged!(), 30);
+    assert_eq!(blast_fun::errors::unchanged!(), 27);
 }
 
 #[test]
@@ -24,7 +24,7 @@ fun allocation_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::invalid_destination!(), 8);
     assert_eq!(blast_fun::errors::invalid_shares!(), 9);
     assert_eq!(blast_fun::errors::recipient_capacity_reached!(), 10);
-    assert_eq!(blast_fun::errors::duplicate_destination!(), 31);
+    assert_eq!(blast_fun::errors::duplicate_destination!(), 28);
 }
 
 #[test]
@@ -43,30 +43,27 @@ fun launch_intake_error_registry_is_stable() {
 fun trade_and_fee_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::slippage_exceeded!(), 19);
     assert_eq!(blast_fun::errors::zero_trade_output!(), 20);
-    assert_eq!(blast_fun::errors::sell_back_invariant_violated!(), 21);
-    assert_eq!(blast_fun::errors::constant_product_invariant_decreased!(), 22);
-    assert_eq!(blast_fun::errors::per_transaction_limit_exceeded!(), 23);
-    assert_eq!(blast_fun::errors::cumulative_limit_exceeded!(), 24);
-    assert_eq!(blast_fun::errors::nothing_accrued!(), 25);
+    assert_eq!(blast_fun::errors::per_transaction_limit_exceeded!(), 21);
+    assert_eq!(blast_fun::errors::cumulative_limit_exceeded!(), 22);
+    assert_eq!(blast_fun::errors::nothing_accrued!(), 23);
 }
 
 #[test]
 fun migration_error_registry_is_stable() {
-    assert_eq!(blast_fun::errors::invalid_migration_witness!(), 26);
-    assert_eq!(blast_fun::errors::migration_settlement_mismatch!(), 27);
+    assert_eq!(blast_fun::errors::invalid_migration_witness!(), 24);
 }
 
 #[test]
 fun creator_authority_error_registry_is_stable() {
-    assert_eq!(blast_fun::errors::creator_cap_not_live!(), 28);
-    assert_eq!(blast_fun::errors::creator_authority_unavailable!(), 29);
-    assert_eq!(blast_fun::errors::invalid_creator_recipient!(), 32);
-    assert_eq!(blast_fun::errors::invalid_account_commitment!(), 33);
-    assert_eq!(blast_fun::errors::invalid_creator_claim_public_key!(), 34);
-    assert_eq!(blast_fun::errors::invalid_creator_claim_attestation!(), 35);
-    assert_eq!(blast_fun::errors::creator_claim_expired!(), 36);
-    assert_eq!(blast_fun::errors::creator_not_sender!(), 37);
-    assert_eq!(blast_fun::errors::invalid_creator_claim_signature!(), 38);
+    assert_eq!(blast_fun::errors::creator_cap_not_live!(), 25);
+    assert_eq!(blast_fun::errors::creator_authority_unavailable!(), 26);
+    assert_eq!(blast_fun::errors::invalid_creator_recipient!(), 29);
+    assert_eq!(blast_fun::errors::invalid_account_commitment!(), 30);
+    assert_eq!(blast_fun::errors::invalid_creator_claim_public_key!(), 31);
+    assert_eq!(blast_fun::errors::invalid_creator_claim_attestation!(), 32);
+    assert_eq!(blast_fun::errors::creator_claim_expired!(), 33);
+    assert_eq!(blast_fun::errors::creator_not_sender!(), 34);
+    assert_eq!(blast_fun::errors::invalid_creator_claim_signature!(), 35);
 }
 
 // === Imports ===

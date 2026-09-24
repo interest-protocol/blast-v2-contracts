@@ -61,11 +61,6 @@ fun new(ctx: &mut TxContext): PackageVersion {
 // === Test-Only Functions ===
 
 #[test_only]
-public fun init_for_testing(ctx: &mut TxContext) {
-    init(ctx);
-}
-
-#[test_only]
 public fun new_for_testing(ctx: &mut TxContext): PackageVersion {
     new(ctx)
 }

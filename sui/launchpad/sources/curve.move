@@ -71,7 +71,6 @@ public(package) fun quote_sell(
         meme_reserve as u256,
         (virtual_quote as u256) + (real_quote as u256),
     );
-    assert!(quote_out_gross <= real_quote, blast_fun::errors::sell_back_invariant_violated!());
     let quote_fee = quote_fee_bps.apply_up(quote_out_gross);
     let quote_out_net = quote_out_gross - quote_fee;
     assert!(quote_out_net > 0, blast_fun::errors::zero_trade_output!());

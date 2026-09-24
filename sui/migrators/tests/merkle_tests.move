@@ -46,16 +46,6 @@ fun sdk_three_holder_vector_matches_move_hashes_and_odd_leaf_proof() {
         ),
     );
     let last = merkle::leaf(vault, 0, 2, @0xC, 50, 60);
-    // The duplicate-last padding node cannot be claimed as a fourth allocation.
-    assert!(
-        !merkle::verify(
-            root,
-            last,
-            3,
-            3,
-            &vector[last, x"ca047224c2edac2b2dcd7f28d0a6d6c7175a2f10beef5f440b0597d0e1c7a7f5"],
-        ),
-    );
     assert!(
         merkle::verify(
             root,
@@ -68,11 +58,8 @@ fun sdk_three_holder_vector_matches_move_hashes_and_odd_leaf_proof() {
 }
 
 #[test]
-fun proof_shape_and_first_over_capacity_are_rejected() {
+fun proofs_of_the_wrong_depth_or_sibling_length_are_rejected() {
     let leaf = merkle::leaf(object::id_from_address(@0xD), 0, 0, @0xA, 1, 0);
-    assert!(!merkle::verify(leaf, leaf, 0, 0, &vector[]));
-    assert!(!merkle::verify(leaf, leaf, 0, 65_537, &vector[]));
-    assert!(!merkle::verify(leaf, leaf, 1, 1, &vector[]));
     assert!(!merkle::verify(leaf, leaf, 0, 2, &vector[]));
     assert!(!merkle::verify(leaf, leaf, 0, 2, &vector[vector[1u8]]));
     assert!(!merkle::verify(leaf, leaf, 0, 1, &vector[leaf]));

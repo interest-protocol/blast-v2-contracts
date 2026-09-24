@@ -681,9 +681,7 @@ fun mock_adapter(
     let pool = MockPool { id: object::new(ctx) };
     let pool_id = object::id(&pool);
     let position = MockPosition { id: object::new(ctx), pool_id, meme, quote, liquidity: 1 };
-    let mut pending_vault = vault::prepare(launch, residual_meme, residual_quote, ctx);
-    pending_vault.attach(&Venue(), pool_id, position, 1);
-    pending_vault.share<REPLAY_TESTS, QUOTE, Venue>(&Venue());
+    vault::create(launch, &Venue(), pool_id, position, 1, residual_meme, residual_quote, ctx);
     transfer::share_object(pool);
 }
 
@@ -1486,8 +1484,8 @@ fun assert_state(self: &mut ReplayFixture) {
         };
 
         if (f.replay.binding.vault_id != absent()) {
-            let vault = f.take_vault();
-            f.replay.assert_vault(&vault);
+            let mut vault = f.take_vault();
+            f.replay.assert_vault(&mut vault);
             test_scenario::return_shared(vault);
         };
 
@@ -1582,7 +1580,7 @@ fun assert_launch(self: &Replay, launch: &Launch<REPLAY_TESTS, QUOTE>, currency:
     assert_eq!(self.meme_fee_bps, meme_fee_bps);
 }
 
-fun assert_vault(self: &Replay, vault: &LpVault<REPLAY_TESTS, QUOTE>) {
+fun assert_vault(self: &Replay, vault: &mut LpVault<REPLAY_TESTS, QUOTE>) {
     assert_eq!(object::id(vault), self.binding.vault_id);
     assert_eq!(vault.pool_id(), self.binding.pool_id);
     assert_eq!(vault.position_id_for_testing<_, _, Venue>(), option::some(self.binding.position_id));
@@ -1597,7 +1595,7 @@ fun assert_vault(self: &Replay, vault: &LpVault<REPLAY_TESTS, QUOTE>) {
     assert_eq!(vault.burn_quote_for_testing(), self.burn_quote);
     assert_eq!(vault.next_round(), self.next_round);
     assert_eq!(vault.last_checkpoint(), self.last_checkpoint);
-    let position = vault.position<_, _, _, MockPosition<REPLAY_TESTS, QUOTE>>(&Venue());
+    let position = vault.position_mut<_, _, _, MockPosition<REPLAY_TESTS, QUOTE>>(&Venue());
     assert_eq!(position.meme.value(), self.position_meme);
     assert_eq!(position.quote.value(), self.position_quote);
     assert_eq!(position.liquidity, self.liquidity);

@@ -83,7 +83,6 @@ const EInvalidGraduationTarget: u64 = 17;
 /// The launch is not in the state this operation needs.
 const EInvalidLaunchLifecycle: u64 = 18;
 
-
 #[test_only]
 /// The output is below the caller's minimum.
 const ESlippageExceeded: u64 = 19;
@@ -93,76 +92,64 @@ const ESlippageExceeded: u64 = 19;
 const EZeroTradeOutput: u64 = 20;
 
 #[test_only]
-/// A sale would pay out more Quote than the curve holds.
-const ESellBackInvariantViolated: u64 = 21;
-
-#[test_only]
-/// A trade decreased the curve's constant product.
-const EConstantProductInvariantDecreased: u64 = 22;
-
-#[test_only]
 /// A protected purchase exceeds the per-purchase limit.
-const EPerTransactionLimitExceeded: u64 = 23;
+const EPerTransactionLimitExceeded: u64 = 21;
 
 #[test_only]
 /// A protected purchase exceeds the sender's remaining limit.
-const ECumulativeLimitExceeded: u64 = 24;
+const ECumulativeLimitExceeded: u64 = 22;
 
 #[test_only]
 /// There are no fees to claim.
-const ENothingAccrued: u64 = 25;
+const ENothingAccrued: u64 = 23;
 
 #[test_only]
 /// The witness is not the launch's migration adapter.
-const EInvalidMigrationWitness: u64 = 26;
-
-#[test_only]
-/// The migration handoff does not reconcile.
-const EMigrationSettlementMismatch: u64 = 27;
+const EInvalidMigrationWitness: u64 = 24;
 
 #[test_only]
 /// The creator cap is not the one the launch honors.
-const ECreatorCapNotLive: u64 = 28;
+const ECreatorCapNotLive: u64 = 25;
 
 #[test_only]
 /// The creator claim was already used or revoked.
-const ECreatorAuthorityUnavailable: u64 = 29;
+const ECreatorAuthorityUnavailable: u64 = 26;
 
 #[test_only]
 /// A setter was called with the value already in place.
-const EUnchanged: u64 = 30;
+const EUnchanged: u64 = 27;
 
 #[test_only]
 /// A fee split names the same recipient twice.
-const EDuplicateDestination: u64 = 31;
+const EDuplicateDestination: u64 = 28;
 
 #[test_only]
 /// The creator recipient address is zero.
-const EInvalidCreatorRecipient: u64 = 32;
+const EInvalidCreatorRecipient: u64 = 29;
 
 #[test_only]
 /// The account commitment is not 32 bytes.
-const EInvalidAccountCommitment: u64 = 33;
+const EInvalidAccountCommitment: u64 = 30;
 
 #[test_only]
 /// The claim signer key is neither empty nor 32 bytes.
-const EInvalidCreatorClaimPublicKey: u64 = 34;
+const EInvalidCreatorClaimPublicKey: u64 = 31;
 
 #[test_only]
 /// The claim attestation is missing, unexpected, or malformed.
-const EInvalidCreatorClaimAttestation: u64 = 35;
+const EInvalidCreatorClaimAttestation: u64 = 32;
 
 #[test_only]
 /// The claim attestation has expired.
-const ECreatorClaimExpired: u64 = 36;
+const ECreatorClaimExpired: u64 = 33;
 
 #[test_only]
 /// The sender is not the creator recipient.
-const ECreatorNotSender: u64 = 37;
+const ECreatorNotSender: u64 = 34;
 
 #[test_only]
 /// The claim attestation's signature does not verify.
-const EInvalidCreatorClaimSignature: u64 = 38;
+const EInvalidCreatorClaimSignature: u64 = 35;
 
 macro public(package) fun invalid_bps(): u64 { 0 }
 
@@ -206,38 +193,32 @@ macro public(package) fun slippage_exceeded(): u64 { 19 }
 
 macro public(package) fun zero_trade_output(): u64 { 20 }
 
-macro public(package) fun sell_back_invariant_violated(): u64 { 21 }
+macro public(package) fun per_transaction_limit_exceeded(): u64 { 21 }
 
-macro public(package) fun constant_product_invariant_decreased(): u64 { 22 }
+macro public(package) fun cumulative_limit_exceeded(): u64 { 22 }
 
-macro public(package) fun per_transaction_limit_exceeded(): u64 { 23 }
+macro public(package) fun nothing_accrued(): u64 { 23 }
 
-macro public(package) fun cumulative_limit_exceeded(): u64 { 24 }
+macro public(package) fun invalid_migration_witness(): u64 { 24 }
 
-macro public(package) fun nothing_accrued(): u64 { 25 }
+macro public(package) fun creator_cap_not_live(): u64 { 25 }
 
-macro public(package) fun invalid_migration_witness(): u64 { 26 }
+macro public(package) fun creator_authority_unavailable(): u64 { 26 }
 
-macro public(package) fun migration_settlement_mismatch(): u64 { 27 }
+macro public(package) fun unchanged(): u64 { 27 }
 
-macro public(package) fun creator_cap_not_live(): u64 { 28 }
+macro public(package) fun duplicate_destination(): u64 { 28 }
 
-macro public(package) fun creator_authority_unavailable(): u64 { 29 }
+macro public(package) fun invalid_creator_recipient(): u64 { 29 }
 
-macro public(package) fun unchanged(): u64 { 30 }
+macro public(package) fun invalid_account_commitment(): u64 { 30 }
 
-macro public(package) fun duplicate_destination(): u64 { 31 }
+macro public(package) fun invalid_creator_claim_public_key(): u64 { 31 }
 
-macro public(package) fun invalid_creator_recipient(): u64 { 32 }
+macro public(package) fun invalid_creator_claim_attestation(): u64 { 32 }
 
-macro public(package) fun invalid_account_commitment(): u64 { 33 }
+macro public(package) fun creator_claim_expired(): u64 { 33 }
 
-macro public(package) fun invalid_creator_claim_public_key(): u64 { 34 }
+macro public(package) fun creator_not_sender(): u64 { 34 }
 
-macro public(package) fun invalid_creator_claim_attestation(): u64 { 35 }
-
-macro public(package) fun creator_claim_expired(): u64 { 36 }
-
-macro public(package) fun creator_not_sender(): u64 { 37 }
-
-macro public(package) fun invalid_creator_claim_signature(): u64 { 38 }
+macro public(package) fun invalid_creator_claim_signature(): u64 { 35 }

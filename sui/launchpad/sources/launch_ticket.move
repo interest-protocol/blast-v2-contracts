@@ -6,8 +6,6 @@
 /// One-time-witness currency creation and custody of its inventory until a launch starts.
 module blast_fun::launch_ticket;
 
-// === Constants ===
-
 // === Public Types ===
 
 /// A generated coin's whole supply and authorities until launch finalization fixes the supply.

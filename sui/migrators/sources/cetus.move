@@ -345,14 +345,16 @@ fun burn_into_vault<Meme, Quote>(
     let pool_id = position.pool_id();
     let liquidity = position.liquidity();
     let burn_proof = lp_burn::burn_lp_v2(burn_manager, position, ctx);
-    let mut vault = vault::prepare(
+    vault::create(
         launch,
+        &Venue(),
+        pool_id,
+        burn_proof,
+        liquidity,
         residual_meme.into_balance(),
         residual_quote.into_balance(),
         ctx,
     );
-    vault.attach(&Venue(), pool_id, burn_proof, liquidity);
-    vault.share(&Venue());
 }
 
 /// Collects the burned migration position's fees and, once it exists, the auto-LP position's fees

@@ -391,7 +391,7 @@
     },
     {
       "name": "intermediate_width",
-      "statement": "All products and effective-reserve sums widen to u256. Buy output is bounded by M, sell output is checked against Q before narrowing, and post-trade u64 reserve additions are checked."
+      "statement": "All products and effective-reserve sums widen to u256. Buy output is bounded by M; sell output is at most Q in every reachable state (sell_back_invariant), and the real-reserve split aborts otherwise; post-trade u64 reserve additions are checked."
     }
   ]
 }

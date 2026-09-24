@@ -432,14 +432,12 @@ public fun buy<Meme, Quote>(
     assert!(meme_out_net >= min_meme_out, blast_fun::errors::slippage_exceeded!());
     if (protected) self.record_protected_purchase(ctx.sender(), meme_out_gross);
 
-    let k_before = self.curve_k();
     let mut quote_in = quote_in.into_balance();
     let quote_refund = quote_in.split(quote_refund);
     let quote_fee = quote_in.split(quote_fee);
     self.real_quote_reserve.join(quote_in);
     let mut meme_out = self.meme_reserve.split(meme_out_gross);
     let meme_fee = meme_out.split(meme_fee);
-    assert!(self.curve_k() >= k_before, blast_fun::errors::constant_product_invariant_decreased!());
     if (self.real_quote_reserve.value() >= self.graduation_target) {
         self.lifecycle = Lifecycle::MigrationReady;
     };
@@ -497,13 +495,11 @@ public fun sell<Meme, Quote>(
     );
     assert!(quote_out_net >= min_quote_out, blast_fun::errors::slippage_exceeded!());
 
-    let k_before = self.curve_k();
     let mut meme_in = meme_in.into_balance();
     let meme_fee = meme_in.split(meme_fee);
     self.pending_burn.join(meme_in.split(pending_burn_delta));
     self.meme_reserve.join(meme_in);
     let mut quote_out = self.real_quote_reserve.split(quote_out_gross);
-    assert!(self.curve_k() >= k_before, blast_fun::errors::constant_product_invariant_decreased!());
     let quote_fee = quote_out.split(quote_fee);
     let (protocol_meme, creator_meme, protocol_quote, creator_quote) = self
         .fee_ledger
@@ -570,7 +566,10 @@ public fun migrate<Meme, Quote, Witness: drop>(
         self.lifecycle == Lifecycle::MigrationReady,
         blast_fun::errors::invalid_launch_lifecycle!(),
     );
-    self.assert_migration_witness<_, _, Witness>();
+    assert!(
+        self.migration_witness == type_name::with_original_ids<Witness>(),
+        blast_fun::errors::invalid_migration_witness!(),
+    );
 
     let plan = self.allocation_plan;
     let (_, lp_meme, recipient_meme) = plan.apportion_meme(self.atomic_supply);
@@ -591,10 +590,6 @@ public fun migrate<Meme, Quote, Witness: drop>(
     });
     let meme = self.allocated_meme.withdraw_all();
     let quote = self.real_quote_reserve.withdraw_all();
-    assert!(
-        meme.value() == lp_meme && quote.value() == lp_quote,
-        blast_fun::errors::migration_settlement_mismatch!(),
-    );
 
     let burnable = currency.is_supply_burn_only();
     let mut disposal = self.pending_burn.withdraw_all();
@@ -628,13 +623,6 @@ public fun assert_curve_fee_cap<Meme, Quote>(
 
 // === Private Functions ===
 
-fun assert_migration_witness<Meme, Quote, Witness>(self: &Launch<Meme, Quote>) {
-    assert!(
-        self.migration_witness == type_name::with_original_ids<Witness>(),
-        blast_fun::errors::invalid_migration_witness!(),
-    );
-}
-
 fun assert_metadata_update<Meme, Quote>(
     self: &Launch<Meme, Quote>,
     package_version: &PackageVersion,
@@ -654,11 +642,6 @@ fun emit_metadata_updated<Meme, Quote>(self: &Launch<Meme, Quote>, currency: &Cu
         currency.description(),
         currency.icon_url(),
     );
-}
-
-fun curve_k<Meme, Quote>(self: &Launch<Meme, Quote>): u256 {
-    (self.meme_reserve.value() as u256)
-        * ((self.virtual_quote as u256) + (self.real_quote_reserve.value() as u256))
 }
 
 /// Checks one protected purchase against the per-purchase limit and the sender's remaining

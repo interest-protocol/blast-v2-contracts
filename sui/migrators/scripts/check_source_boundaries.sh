@@ -217,22 +217,19 @@ package_admin:public:fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx
 package_version:package:fun advance(self: &mut PackageVersion)
 package_version:package:fun assert_current(self: &PackageVersion)
 package_version:package:fun assert_next(self: &PackageVersion)
-vault:package:fun attach<Meme, Quote, Venue, Position: key + store>( self: &mut LpVault<Meme, Quote>, _venue: &Venue, pool_id: ID, position: Position, liquidity: u128, )
 vault:package:fun attach_auto_lp_position<Meme, Quote, Venue, Position: key + store>( self: &mut LpVault<Meme, Quote>, _venue: &Venue, position: Position, )
 vault:package:fun auto_lp_position< Meme, Quote, Venue, Position: key + store, >( self: &LpVault<Meme, Quote>, _venue: &Venue, ): &Position
 vault:package:fun auto_lp_position_mut< Meme, Quote, Venue, Position: key + store, >( self: &mut LpVault<Meme, Quote>, _venue: &Venue, ): &mut Position
 vault:package:fun burn_buyback<Meme, Quote>( self: &mut LpVault<Meme, Quote>, currency: &mut Currency<Meme>, meme: Balance<Meme>, unspent_quote: Balance<Quote>, quote_in: u64, min_meme_out: u64, ctx: &mut TxContext, )
+vault:package:fun create<Meme, Quote, Venue, Position: key + store>( launch: &Launch<Meme, Quote>, venue: &Venue, pool_id: ID, position: Position, liquidity: u128, protocol_meme_residual: Balance<Meme>, protocol_quote_residual: Balance<Quote>, ctx: &mut TxContext, )
 vault:package:fun fund_round<Meme, Quote>( self: &mut LpVault<Meme, Quote>, end_checkpoint: u64, meme_amount: u64, quote_amount: u64, ): (Balance<Meme>, Balance<Quote>)
 vault:package:fun has_auto_lp_position<Meme, Quote, Venue>( self: &LpVault<Meme, Quote>, _venue: &Venue, ): bool
 vault:package:fun keep_auto_lp<Meme, Quote>( self: &mut LpVault<Meme, Quote>, added_meme: u64, added_quote: u64, meme: Balance<Meme>, quote: Balance<Quote>, )
 vault:package:fun last_checkpoint<Meme, Quote>(self: &LpVault<Meme, Quote>): Option<u64>
 vault:package:fun next_round<Meme, Quote>(self: &LpVault<Meme, Quote>): u64
 vault:package:fun pool_id<Meme, Quote>(self: &LpVault<Meme, Quote>): ID
-vault:package:fun position< Meme, Quote, Venue, Position: key + store, >( self: &LpVault<Meme, Quote>, _venue: &Venue, ): &Position
 vault:package:fun position_mut< Meme, Quote, Venue, Position: key + store, >( self: &mut LpVault<Meme, Quote>, _venue: &Venue, ): &mut Position
-vault:package:fun prepare<Meme, Quote>( launch: &Launch<Meme, Quote>, protocol_meme_residual: Balance<Meme>, protocol_quote_residual: Balance<Quote>, ctx: &mut TxContext, ): LpVault<Meme, Quote>
 vault:package:fun rewards_balances<Meme, Quote>(self: &LpVault<Meme, Quote>): (u64, u64)
-vault:package:fun share<Meme, Quote, Venue>(self: LpVault<Meme, Quote>, _venue: &Venue)
 vault:package:fun split_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, policy: &LpFeePolicy, currency: &mut Currency<Meme>, mut meme: Balance<Meme>, mut quote: Balance<Quote>, ctx: &mut TxContext, )
 vault:package:fun take_auto_lp<Meme, Quote>( self: &mut LpVault<Meme, Quote>, ): (Balance<Meme>, Balance<Quote>)
 vault:package:fun take_buyback_quote<Meme, Quote>( self: &mut LpVault<Meme, Quote>, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, ): Balance<Quote>
@@ -292,9 +289,9 @@ fi
 # seams (starting a launch, the initializer's treasury-capability loan, and begin and complete
 # migration) only by constructing its own sealed `Witness()`, so the matrix is exactly the modules
 # that declare a witness and name those seams (a call, an alias, or an import alike). Each starts
-# its launches through `launch::new` and completes its migration into a vault it prepares,
-# attaches its position to, and shares; only Cetus needs local normalized venue interfaces. A
-# future adapter extends this matrix explicitly.
+# its launches through `launch::new` and completes its migration into a vault it creates, with its
+# position attached, under its own venue marker; only Cetus needs local normalized venue
+# interfaces. A future adapter extends this matrix explicitly.
 matrix_witness_modules=""
 matrix_seam_modules=""
 for source in "$SOURCE_DIR"/*.move; do
@@ -316,11 +313,10 @@ matrix_seam_modules="$(LC_ALL=C sort <<<"$matrix_seam_modules" | tr '\n' ' ' | s
     fail "only Cetus and Bluefin may reach the launchpad migration seams (found: ${matrix_seam_modules:-none})"
 for module in $matrix_witness_modules; do
     custody_body="$(move_facts "$SOURCE_DIR/${module}.move" \
-        | awk -F'\t' '$1 == "FN" && $6 == 0 && index($10, "vault::prepare(") > 0 { print $10 }' \
+        | awk -F'\t' '$1 == "FN" && $6 == 0 && index($10, "vault::create(") > 0 { print $10 }' \
         | tr -d '[:space:]')"
-    in_order 'vault::prepare(' '.attach(&Venue(),' '.share(&Venue())' \
-        <<<"$custody_body" || \
-        fail "${module} must lock the migration in a vault it prepares, attaches, and then shares"
+    in_order 'vault::create(launch,&Venue(),' <<<"$custody_body" || \
+        fail "${module} must lock the migration in a vault it creates under its own venue marker"
     start_body="$(move_facts "$SOURCE_DIR/${module}.move" \
         | awk -F'\t' '$1 == "FN" && $2 == "new" && $6 == 0 { print $10 }' | tr -d '[:space:]')"
     in_order 'migrators_version.assert_current();' \
@@ -353,27 +349,28 @@ fi
 require_pattern "$MIGRATION_MATH_SOURCE" \
     'module blast_fun_migrators::migration_math;' \
     'migrator-owned migration math module'
-[[ "$(rg -o '^#\[error\(code = [0-9]+\)\]' "$MIGRATION_MATH_SOURCE" | tr '\n' ' ')" \
-        == '#[error(code = 0)] ' ]] \
-    && rg -U -q '#\[error\(code = 0\)\]\nconst EInvalidMigrationSeedBalance: vector<u8> = b"Migration seed balances must both be greater than zero\.";' \
-        "$MIGRATION_MATH_SOURCE" || \
-    fail "migration math must use code 0 for its seed-balance failure"
+# Seed balances come only from `launch.migrate`, which hands off a positive amount of each asset,
+# so the math declares no errors of its own.
+if rg -q '#\[error|\bconst E\w*' "$MIGRATION_MATH_SOURCE"; then
+    fail "migration math must declare no errors; its seed balances are the launch's positive hand-off"
+fi
 require_pattern "$MIGRATION_MATH_SOURCE" \
     'integer_sqrt\(ratio_q128\(meme_amount, quote_amount, meme_is_coin_a\)\)' \
     'exact Q128 price derivation'
-# Auto-LP side selection adds nothing unless both sides hold funds and the price is strictly
-# inside the range, and whichever side it fixes leaves the pinned margin of the other unused.
+# Auto-LP side selection adds nothing unless the price is strictly inside the range, checked first
+# so every later subtraction is positive; an empty side yields zero liquidity or a need it cannot
+# meet, and whichever side it fixes leaves the pinned margin of the other unused.
 math_fixed_side_body="$(move_facts "$MIGRATION_MATH_SOURCE" \
     | awk -F'\t' '$1 == "FN" && $2 == "auto_lp_fixed_side" { print $10 }' | tr -d '[:space:]')"
 [[ "$(constant_body auto_lp_margin)" == '2' ]] \
+    && [[ "$math_fixed_side_body" == 'if(sqrt_price<=sqrt_lower||sqrt_price>=sqrt_upper)return(true,0);'* ]] \
     && in_order \
-        'if(amount_a==0||amount_b==0)return(true,0);' \
         'if(sqrt_price<=sqrt_lower||sqrt_price>=sqrt_upper)return(true,0);' \
         'if(needed_b+constants::auto_lp_margin!()<=(amount_basu256))return(true,amount_a);' \
         'if(needed_a+constants::auto_lp_margin!()<=(amount_aasu256))return(false,amount_b);' \
         <<<"$math_fixed_side_body" \
     && [[ "$math_fixed_side_body" == *'(true,0)' ]] || \
-    fail "auto-LP side selection must skip empty sides and out-of-range prices, prefer coin A, and keep a two-atom margin"
+    fail "auto-LP side selection must first skip out-of-range prices, prefer coin A, and keep a two-atom margin"
 if rg -q '\b(blast_fun::(constants|errors)|UID|key|Balance|Coin|TxContext|transfer::|blast_events::|RuntimeConfig)\b' \
     "$MIGRATION_MATH_SOURCE"; then
     fail "migration math must remain a pure migrator-owned arithmetic module"
@@ -421,7 +418,7 @@ for emitter in \
     'fee_split_changed:vault:update_fee_split' \
     'creator_fees_claimed:vault:claim_creator_fees' \
     'protocol_fees_claimed<Meme, Quote>:vault:claim_protocol_fees' \
-    'vault_created<Meme, Quote, Venue>:vault:attach' \
+    'vault_created<Meme, Quote, Venue>:vault:new' \
     'round_published:blast_holder_rewards:publish_round' \
     'reward_paid:blast_holder_rewards:claim' \
     'lp_fee_destination_changed:lp_fee_policy:set_protocol_destination' \
@@ -453,9 +450,14 @@ vault_body() {
     awk -F'\t' -v name="$1" '$1 == "FN" && $2 == name && $6 == 0 { print $10 }' <<<"$VAULT_FACTS" \
         | tr -d '[:space:]' | sed 's/,)/)/g'
 }
-[[ "$(vault_body prepare)" \
-    == 'LpVault{id:object::new(ctx),pool_id:object::id_from_address(@0x0),protocol_meme_residual,protocol_quote_residual,generation:0,fee_split:launch.lp_fee_split(),creator_meme:balance::zero(),creator_quote:balance::zero(),auto_lp_meme:balance::zero(),auto_lp_quote:balance::zero(),rewards_meme:balance::zero(),rewards_quote:balance::zero(),burn_quote:balance::zero(),next_round:0,last_checkpoint:option::none(),}' ]] || \
-    fail "vault::prepare must copy the launch's fee split at generation zero with empty balances and no round"
+# The vault is born shared with its real pool binding and its position already attached: `create`
+# only shares what `new` builds, and `new` copies the launch's fee split at generation zero with
+# empty balances and no round.
+[[ "$(vault_body create)" \
+    == 'transfer::share_object(new(launch,venue,pool_id,position,liquidity,protocol_meme_residual,protocol_quote_residual,ctx));' ]] \
+    && [[ "$(vault_body new)" \
+    == 'assert!(liquidity>0,EZeroLiquidity);letposition_id=object::id(&position);letmutvault=LpVault{id:object::new(ctx),pool_id,protocol_meme_residual,protocol_quote_residual,generation:0,fee_split:launch.lp_fee_split(),creator_meme:balance::zero(),creator_quote:balance::zero(),auto_lp_meme:balance::zero(),auto_lp_quote:balance::zero(),rewards_meme:balance::zero(),rewards_quote:balance::zero(),burn_quote:balance::zero(),next_round:0,last_checkpoint:option::none(),};vault.id.add_dynamic_object_field(PositionKey<Venue>(),position);blast_events::vault_created<Meme,Quote,Venue>(vault.id.to_inner(),pool_id,position_id,vault.protocol_meme_residual.value(),vault.protocol_quote_residual.value(),liquidity,vault.fee_split);vault' ]] || \
+    fail "vault::create must share only what vault::new builds: the launch's fee split at generation zero, empty balances, no round, and the attached position"
 [[ "$(awk -F'\t' '$1 == "FN" && $3 == "public" && $6 == 0 { print $2 }' <<<"$VAULT_FACTS" \
     | LC_ALL=C sort | tr '\n' ' ')" \
     == 'claim_creator_fees claim_protocol_fees ' ]] || \
@@ -577,7 +579,7 @@ require_pattern "$VAULT_SOURCE" 'public struct PositionKey' 'sealed position key
 require_pattern "$VAULT_SOURCE" 'dynamic_object_field::add' 'dynamic object-field position attachment'
 require_pattern "$VAULT_SOURCE" 'self\.id\.dynamic_object_field_mut' 'typed mutable position borrow'
 require_pattern "$VAULT_SOURCE" '_venue: &Venue' 'borrowed venue witness on position access'
-for guarded in share position position_mut; do
+for guarded in position_mut; do
     [[ "$(vault_body "$guarded")" == 'assert!(self.id.has_dynamic_object_field(PositionKey<Venue>()),EWrongVenue);'* ]] || \
         fail "vault::${guarded} must first guard the sealed venue key"
 done
@@ -606,8 +608,9 @@ require_pattern "$VAULT_SOURCE" 'protocol_quote_residual\.withdraw_all' \
     'protocol Quote residual claim'
 # T-013: VaultCreated is a direct event emitted only after the pool binding and position custody
 # it records are written.
-in_order 'assert!(liquidity>0,EZeroLiquidity);' 'self.pool_id=pool_id;' 'self.id.add_dynamic_object_field(' 'blast_events::vault_created<' \
-    <<<"$(vault_body attach)" || fail "VaultCreated must follow the liquidity check, the pool binding, and the position attachment"
+[[ "$(vault_body new)" == 'assert!(liquidity>0,EZeroLiquidity);'* ]] \
+    && in_order 'assert!(liquidity>0,EZeroLiquidity);' 'LpVault{id:object::new(ctx),pool_id,' 'vault.id.add_dynamic_object_field(' 'blast_events::vault_created<' \
+        <<<"$(vault_body new)" || fail "VaultCreated must follow the liquidity check, the pool binding, and the position attachment"
 require_exact_count 'PackageVersion' 1 \
     "vault must take only the Migrators generation, never a Launchpad PackageVersion" \
     "$VAULT_SOURCE"
@@ -696,7 +699,9 @@ require_errors "$REWARDS_SOURCE" "holder rewards must use sequential codes 0-9 f
 9 EInvalidProof Proof must match the committed recipient, amounts and domain.
 EOF
 # Leaves and internal nodes hash under distinct domains, and every leaf binds the vault, round,
-# index, beneficiary, and both amounts; the proof depth and the leaf bound match publication.
+# index, beneficiary, and both amounts. Verification rejects a proof whose depth does not match the
+# committed leaf count or whose siblings are not digests; the claim bounds the index first and
+# publication bounds the leaf count and root, so verification repeats neither.
 merkle_leaf_body="$(move_facts "$MERKLE_SOURCE" \
     | awk -F'\t' '$1 == "FN" && $2 == "leaf" { print $10 }' | tr -d '[:space:]')"
 rg -q '^    let mut bytes = b"\\x00blast-holder-rewards-v1";$' "$MERKLE_SOURCE" \
@@ -706,10 +711,11 @@ rg -q '^    let mut bytes = b"\\x00blast-holder-rewards-v1";$' "$MERKLE_SOURCE" 
         'hash::blake2b256(&bytes)' <<<"$merkle_leaf_body" \
     && [[ "$(move_facts "$MERKLE_SOURCE" | awk -F'\t' '$1 == "FN" && $2 == "node" { print $10 }' \
         | tr -d '[:space:]')" == 'letmutbytes=vector[1u8];bytes.append(left);bytes.append(right);hash::blake2b256(&bytes)' ]] \
-    && rg -q 'leaves > constants::max_reward_leaves!\(\)' "$MERKLE_SOURCE" \
+    && [[ "$(move_facts "$MERKLE_SOURCE" | awk -F'\t' '$1 == "FN" && $2 == "verify" { print $10 }' \
+        | tr -d '[:space:]')" == 'letmutwidth=leaves;letmutdepth=0;while(width>1){width=width.div_ceil(2);depth=depth+1;};if(proof.length()!=depth||!proof.all!(|sibling|sibling.length()==constants::digest_length!()))returnfalse;proof.do_ref!(|sibling|{digest=if(index%2==0)node(digest,*sibling)elsenode(*sibling,digest);index=index/2;});digest==root' ]] \
     && ! move_facts "$MERKLE_SOURCE" | awk -F'\t' '$1 == "FN" && $3 == "public" && $6 == 0 { found = 1 }
         END { exit !found }' || \
-    fail "merkle leaves must bind the vault-domain leaf fields under the leaf domain, nodes their own domain, with package-only verification"
+    fail "merkle leaves must bind the vault-domain leaf fields under the leaf domain, nodes their own domain, with package-only verification of proof depth and sibling length"
 
 # === Venue config ===
 
@@ -742,7 +748,7 @@ require_pattern "$BLUEFIN_SOURCE" 'public struct Venue' 'sealed Bluefin venue ma
 # Bluefin has exactly one launch start, one atomic migrate route, one collection entry, one
 # settled update entry, and one buyback entry. The start checks the creator's tier against Bluefin's bounds and delegates
 # to the core; migration reads that tier from the launch, begins, creates and funds the pool,
-# attaches the venue position, completes once, then shares the vault and the pool; and every fee
+# completes once into a shared vault holding the venue position, then shares the pool; and every fee
 # exit splits the collected position's fees through the vault and adds the auto-LP share back to
 # the same position. The buyback swaps the vault's whole burn Quote for Meme in the vault's own
 # pool and hands the result to the vault, which checks the admin's minimum and burns it.
@@ -780,12 +786,10 @@ in_order \
     'creation_fee.into_balance()' \
     'pool::open_position(' \
     'pool::add_liquidity_with_fixed_amount(' \
-    'vault::prepare(launch,residual_meme,residual_quote,ctx)' \
-    'vault.attach(&Venue(),position.pool_id(),position,liquidity)' \
-    'vault.share(&Venue())' \
+    'vault::create(launch,&Venue(),position.pool_id(),position,liquidity,residual_meme,residual_quote,ctx)' \
     'pool.share_pool_object()' \
     <<<"$bluefin_migrate_body" || \
-    fail "Bluefin migrate must migrate the launch, create, fund, attach, then share vault and pool"
+    fail "Bluefin migrate must migrate the launch, create and fund the pool, lock the position in a new vault, then share the pool"
 [[ "$bluefin_migrate_body" == *'letfix_meme=source_meme>=source_quote;'* \
     && "$bluefin_migrate_body" == *'if(fix_meme)source_memeelsesource_quote,fix_meme)'* ]] || \
     fail "Bluefin migrate must fix Meme when its atoms are at least the Quote atoms, else Quote"
@@ -935,9 +939,7 @@ in_order \
     'letpool_id=position.pool_id();' \
     'letliquidity=position.liquidity();' \
     'letburn_proof=lp_burn::burn_lp_v2(burn_manager,position,ctx);' \
-    'vault::prepare(launch,residual_meme.into_balance(),residual_quote.into_balance(),ctx);' \
-    'vault.attach(&Venue(),pool_id,burn_proof,liquidity);' \
-    'vault.share(&Venue());' \
+    'vault::create(launch,&Venue(),pool_id,burn_proof,liquidity,residual_meme.into_balance(),residual_quote.into_balance(),ctx);' \
     <<<"$(cetus_body burn_into_vault)" \
     && [[ "$(move_norm "$CETUS_SOURCE" | grep -o 'burn_lp_v2' | wc -l)" -eq 1 ]] || \
     fail "Cetus migration must burn the position through LP Burn exactly once, then lock the burn proof and residuals in the vault"
@@ -1084,8 +1086,8 @@ require_text "$object_custody_sites" \
     "only the vault's attachments and venue_config::add_object add object fields; only Cetus calls add_object" <<'EOF'
 cetus names .add_object(
 vault names dynamic_object_field::add as UID.add_dynamic_object_field
-vault::attach adds
 vault::attach_auto_lp_position adds
+vault::new adds
 venue_config names add_object<
 venue_config names dynamic_object_field::add as UID.add_dynamic_object_field
 venue_config::add_object adds
@@ -1093,7 +1095,7 @@ EOF
 # Functions with a natural first receiver are called with Move 2024 dot syntax, in sources and
 # tests alike.
 if rg -n \
-    'vault::(split_fees|take_auto_lp|keep_auto_lp|update_fee_split|fund_round|claim_creator_fees|claim_protocol_fees|attach|attach_auto_lp_position|share|position|position_mut|auto_lp_position|auto_lp_position_mut|has_auto_lp_position)[[:space:]]*(<[^>]*>)?\(|lp_fee_policy::(shares|set_protocol_destination|set_default_shares|set_coin_shares|clear_coin_shares|protocol_destination|default_shares)[[:space:]]*(<[^>]*>)?\(|blast_holder_rewards::claim[[:space:]]*(<[^>]*>)?\(|pool::add_liquidity_pay_amount[[:space:]]*\(|coin::from_balance[[:space:]]*\(|(^|[^.[:alnum:]_])collect_position_fees[[:space:]]*\(' \
+    'vault::(split_fees|take_auto_lp|keep_auto_lp|update_fee_split|fund_round|claim_creator_fees|claim_protocol_fees|attach_auto_lp_position|position_mut|auto_lp_position|auto_lp_position_mut|has_auto_lp_position)[[:space:]]*(<[^>]*>)?\(|lp_fee_policy::(shares|set_protocol_destination|set_default_shares|set_coin_shares|clear_coin_shares|protocol_destination|default_shares)[[:space:]]*(<[^>]*>)?\(|blast_holder_rewards::claim[[:space:]]*(<[^>]*>)?\(|pool::add_liquidity_pay_amount[[:space:]]*\(|coin::from_balance[[:space:]]*\(|(^|[^.[:alnum:]_])collect_position_fees[[:space:]]*\(' \
     "$SOURCE_DIR" "$PACKAGE_DIR/tests"; then
     fail "functions with a natural first receiver must use Move 2024 dot syntax"
 fi
@@ -1213,8 +1215,8 @@ FEE_SPLIT_UPDATE_TEST="$PACKAGE_DIR/tests/fee_split_update_tests.move"
 [[ "$(move_norm "$FEE_SPLIT_UPDATE_TEST" | rg -o '\.update_fee_split\(' | wc -l)" -eq 1 ]] || \
     fail "only the fixture's settling wrapper may call the vault split update"
 
-# T-010's cross-package conformance adapter migrates, attaches the child position, and shares
-# the vault, and exposes no protected return. Only order anchors are pinned, on whitespace-free
+# T-010's cross-package conformance adapter migrates, then locks the child position in a new
+# shared vault, and exposes no protected return. Only order anchors are pinned, on whitespace-free
 # text so formatting cannot change the verdict.
 ATOMIC_MIGRATION_TEST="$PACKAGE_DIR/tests/atomic_migration_tests.move"
 [[ -f "$ATOMIC_MIGRATION_TEST" ]] || fail "missing T-010 atomic migration adapter fixture"
@@ -1228,11 +1230,10 @@ atomic_body="$(awk -F'\t' '$1 == "FN" && $2 == "mock_adapter_with" { print $10 }
     fail "the atomic fixture's only public function must be the unit-returning mock_adapter"
 in_order \
     'launch.migrate(' \
-    'pending_vault.attach(' \
-    'pending_vault.share<' \
+    'vault::create(launch,&Venue(),pool_id,position,liquidity,' \
     'transfer::share_object(pool)' \
     <<<"$atomic_body" || \
-    fail "atomic adapter must migrate, attach, then share the vault"
+    fail "atomic adapter must migrate, then lock the position in a new vault"
 
 # No public migrator function, in any source or the atomic fixture, may hand out a raw balance, a
 # position, a vault, a round, a pool, or the reserved pool creation capability.

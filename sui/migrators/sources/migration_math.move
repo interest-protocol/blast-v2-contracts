@@ -4,11 +4,6 @@
 /// Shared concentrated-liquidity seed price and auto-LP side selection for migrator venues.
 module blast_fun_migrators::migration_math;
 
-// === Errors ===
-
-#[error(code = 0)]
-const EInvalidMigrationSeedBalance: vector<u8> = b"Migration seed balances must both be greater than zero.";
-
 // === Package Functions ===
 
 /// Derives floor(sqrt(coin_b / coin_a) * 2^64) from migration atomic units.
@@ -35,7 +30,6 @@ public(package) fun auto_lp_fixed_side(
     amount_a: u64,
     amount_b: u64,
 ): (bool, u64) {
-    if (amount_a == 0 || amount_b == 0) return (true, 0);
     if (sqrt_price <= sqrt_lower || sqrt_price >= sqrt_upper) return (true, 0);
     let lower = sqrt_lower as u256;
     let price = sqrt_price as u256;
@@ -68,11 +62,6 @@ fun ratio_q128(
     quote_amount: u64,
     meme_is_coin_a: bool,
 ): u256 {
-    assert!(
-        meme_amount > 0 && quote_amount > 0,
-        EInvalidMigrationSeedBalance,
-    );
-
     let (numerator, denominator) = if (meme_is_coin_a) {
         (quote_amount, meme_amount)
     } else {

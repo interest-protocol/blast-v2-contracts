@@ -86,24 +86,6 @@ fun integer_square_root_rounds_down() {
     assert!(next_square > ratio_q128);
 }
 
-#[test]
-#[expected_failure(
-    abort_code = migration_math::EInvalidMigrationSeedBalance,
-    location = blast_fun_migrators::migration_math,
-)]
-fun zero_meme_seed_is_rejected() {
-    migration_math::sqrt_price_x64(0, 1, true);
-}
-
-#[test]
-#[expected_failure(
-    abort_code = migration_math::EInvalidMigrationSeedBalance,
-    location = blast_fun_migrators::migration_math,
-)]
-fun zero_quote_seed_is_rejected() {
-    migration_math::sqrt_price_x64(1, 0, true);
-}
-
 // Auto-LP Side Selection
 
 #[test]

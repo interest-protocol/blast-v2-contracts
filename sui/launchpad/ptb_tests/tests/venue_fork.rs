@@ -81,7 +81,7 @@ const ALLOCATION_BPS: u64 = 500;
 
 /// `blast_fun::errors` codes.
 const INVALID_LAUNCH_LIFECYCLE: u64 = 18;
-const CREATOR_CAP_NOT_LIVE: u64 = 28;
+const CREATOR_CAP_NOT_LIVE: u64 = 25;
 /// `blast_fun_migrators::vault` code.
 const BUYBACK_BELOW_MINIMUM: u64 = 6;
 

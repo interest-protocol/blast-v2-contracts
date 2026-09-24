@@ -118,9 +118,16 @@ public fun migrate<Meme, Quote>(
         );
 
     let liquidity = position.liquidity();
-    let mut vault = vault::prepare(launch, residual_meme, residual_quote, ctx);
-    vault.attach(&Venue(), position.pool_id(), position, liquidity);
-    vault.share(&Venue());
+    vault::create(
+        launch,
+        &Venue(),
+        position.pool_id(),
+        position,
+        liquidity,
+        residual_meme,
+        residual_quote,
+        ctx,
+    );
     pool.share_pool_object();
 }
 

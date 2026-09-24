@@ -610,9 +610,17 @@ fun start(): RewardsFixture {
         allocation::fee_split(bps::new(0), bps::new(0), bps::new(10_000), bps::new(0), vector[]),
         false,
     );
-    let mut vault = vault::prepare(&launch, balance::zero(), balance::zero(), scenario.ctx());
     let position = TestPosition { id: object::new(scenario.ctx()) };
-    vault.attach(&TestVenue(), object::id_from_address(POOL), position, 1);
+    let mut vault = vault::new_for_testing(
+        &launch,
+        &TestVenue(),
+        object::id_from_address(POOL),
+        position,
+        1,
+        balance::zero(),
+        balance::zero(),
+        scenario.ctx(),
+    );
     vault.split_fees(
         &policy,
         &mut currency,

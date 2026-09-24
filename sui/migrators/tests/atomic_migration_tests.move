@@ -250,9 +250,16 @@ fun mock_adapter_with(
     let pool = MockPool { id: object::new(ctx) };
     let pool_id = object::id(&pool);
     let position = MockPosition { id: object::new(ctx), pool_id, meme, quote, liquidity };
-    let mut pending_vault = vault::prepare(launch, residual_meme, residual_quote, ctx);
-    pending_vault.attach(&Venue(), pool_id, position, liquidity);
-    pending_vault.share<ATOMIC_MIGRATION_TESTS, QUOTE, Venue>(&Venue());
+    vault::create(
+        launch,
+        &Venue(),
+        pool_id,
+        position,
+        liquidity,
+        residual_meme,
+        residual_quote,
+        ctx,
+    );
     transfer::share_object(pool);
 }
 

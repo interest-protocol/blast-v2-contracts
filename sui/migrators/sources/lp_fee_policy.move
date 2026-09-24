@@ -101,19 +101,11 @@ public fun set_coin_shares<Meme>(
     migrators_version.assert_current();
     let meme = type_name::with_original_ids<Meme>();
     let shares = SharePair { meme_bps, quote_bps };
-    let old = if (self.coins.contains(meme)) {
-        let old = self.coins[meme];
-        assert!(shares != old, EProtocolFeeSharesUnchanged);
-        option::some(old)
-    } else {
-        option::none()
-    };
+    let old = if (self.coins.contains(meme)) option::some(self.coins.remove(meme))
+    else option::none();
+    assert!(old != option::some(shares), EProtocolFeeSharesUnchanged);
 
-    if (old.is_some()) {
-        *&mut self.coins[meme] = shares;
-    } else {
-        self.coins.add(meme, shares);
-    };
+    self.coins.add(meme, shares);
 
     blast_events::lp_fee_policy_changed(
         option::some(meme),
@@ -133,9 +125,8 @@ public fun clear_coin_shares<Meme>(
     migrators_version.assert_current();
     let meme = type_name::with_original_ids<Meme>();
     assert!(self.coins.contains(meme), ECoinSharesMissing);
-    let old = self.coins[meme];
 
-    self.coins.remove(meme);
+    let old = self.coins.remove(meme);
 
     blast_events::lp_fee_policy_changed(
         option::some(meme),

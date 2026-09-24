@@ -426,7 +426,7 @@ fun a_stale_generation_rejects_the_creator_claim_before_the_cap_and_balance_chec
 
 // === Test Helpers ===
 
-/// Opens and shares a launch holding `fee_split`, and prepares its vault.
+/// Opens and shares a launch holding `fee_split`, and builds its vault.
 fun start(fee_split: FeeSplit): FeeSplitFixture {
     let mut scenario = test_scenario::begin(PROTOCOL);
     let version = package_version::new_for_testing(scenario.ctx());
@@ -452,7 +452,6 @@ fun start(fee_split: FeeSplit): FeeSplitFixture {
         false,
     );
     let launch_id = object::id(&launch);
-    let mut vault = vault::prepare(&launch, balance::zero(), balance::zero(), scenario.ctx());
     let position = MockPosition {
         id: object::new(scenario.ctx()),
         fee_meme: balance::zero(),
@@ -460,7 +459,16 @@ fun start(fee_split: FeeSplit): FeeSplitFixture {
         liquidity_meme: balance::zero(),
         liquidity_quote: balance::zero(),
     };
-    vault.attach(&Venue(), object::id_from_address(POOL), position, 1);
+    let vault = vault::new_for_testing(
+        &launch,
+        &Venue(),
+        object::id_from_address(POOL),
+        position,
+        1,
+        balance::zero(),
+        balance::zero(),
+        scenario.ctx(),
+    );
     launch.share(&clock);
     destroy(config);
 
@@ -580,8 +588,8 @@ fun take_launch(self: &FeeSplitFixture): Launch<FEE_SPLIT_UPDATE_TESTS, QUOTE> {
 }
 
 /// Returns the liquidity the mock venue holds for the position.
-fun position_liquidity(self: &FeeSplitFixture): (u64, u64) {
-    let position = self.vault.position<_, _, _, MockPosition>(&Venue());
+fun position_liquidity(self: &mut FeeSplitFixture): (u64, u64) {
+    let position = self.vault.position_mut<_, _, _, MockPosition>(&Venue());
 
     (position.liquidity_meme.value(), position.liquidity_quote.value())
 }

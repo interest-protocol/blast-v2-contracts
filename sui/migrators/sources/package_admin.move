@@ -89,11 +89,6 @@ public fun new_for_testing(ctx: &mut TxContext): PackageAdmin {
     PackageAdmin { id, custody }
 }
 
-#[test_only]
-public fun id_for_testing(self: &PackageAdmin): ID {
-    self.id.to_inner()
-}
-
 // === Imports ===
 
 use blast_admin::{

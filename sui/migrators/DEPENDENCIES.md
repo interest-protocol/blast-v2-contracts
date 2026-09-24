@@ -23,7 +23,7 @@ with their witnesses, local interfaces, and dependency pins.
   or non-private function fails it until the gate is extended, and no module
   declares an `entry` function. Within that set it fails when any module other
   than `cetus` and `bluefin` declares a `Witness` type or names a seam, when a
-  migration does not prepare, attach, and share its vault, or when a local
+  migration does not lock its position in a vault it creates, or when a local
   venue interface other than Cetus's exists.
   A future adapter is separate work: it first defines and tests its tier
   validation, its launch start with any venue preparation, `LpVault` custody

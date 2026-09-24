@@ -38,7 +38,7 @@ public struct OtherVenue() has drop;
 
 public struct TestPosition has key, store { id: UID }
 
-/// One owned launch whose fee split and Meme type every prepared vault copies, its currency, and a
+/// One owned launch whose fee split and Meme type every built vault copies, its currency, and a
 /// buyback admin.
 public struct VaultFixture {
     scenario: Scenario,
@@ -154,28 +154,49 @@ fun attaching_announces_the_residuals_liquidity_and_launch_fee_split_at_generati
 }
 
 #[test]
-fun prepared_vault_keeps_its_id_when_attached_and_shared() {
+fun create_shares_the_vault_it_announces_with_its_pool_and_position() {
     let mut f = start(mixed_split());
-    let vault = f.new_vault(0, 0);
-    let vault_id = object::id(&vault);
-    vault.share(&TestVenue());
+    let position = TestPosition { id: object::new(f.scenario.ctx()) };
+    let position_id = object::id(&position);
 
+    vault::create(
+        &f.launch,
+        &TestVenue(),
+        object::id_from_address(POOL),
+        position,
+        1,
+        balance::create_for_testing(3),
+        balance::create_for_testing(4),
+        f.scenario.ctx(),
+    );
+
+    let created = event::events_by_type<blast_events::VaultCreated>();
+    assert_eq!(created.length(), 1);
     f.scenario.next_tx(ADMIN);
     let shared = f.scenario.take_shared<LpVault<VAULT_TESTS, QUOTE>>();
-    assert_eq!(object::id(&shared), vault_id);
+    assert_eq!(
+        bcs::to_bytes(&created[0]),
+        bcs::to_bytes(
+            &ExpectedVaultCreated {
+                vault_id: object::id(&shared),
+                pool_id: object::id_from_address(POOL),
+                position_id,
+                venue: type_name::with_original_ids<TestVenue>(),
+                meme: type_name::with_original_ids<VAULT_TESTS>(),
+                quote: type_name::with_original_ids<QUOTE>(),
+                residual_meme: 3,
+                residual_quote: 4,
+                liquidity: 1,
+                fee_split: mixed_split(),
+            },
+        ),
+    );
     assert_eq!(shared.pool_id(), object::id_from_address(POOL));
+    assert_eq!(shared.position_id_for_testing<_, _, TestVenue>(), option::some(position_id));
+    assert_eq!(shared.auto_lp_position_id_for_testing<_, _, TestVenue>(), option::none());
+    assert_eq!(shared.protocol_meme_residual_for_testing(), 3);
+    assert_eq!(shared.protocol_quote_residual_for_testing(), 4);
     test_scenario::return_shared(shared);
-
-    f.end();
-}
-
-#[test]
-#[expected_failure(abort_code = vault::EWrongVenue, location = blast_fun_migrators::vault)]
-fun sharing_under_another_venue_fails_closed() {
-    let mut f = start(mixed_split());
-    let vault = f.new_vault(0, 0);
-
-    vault.share(&OtherVenue());
 
     f.end();
 }
@@ -238,26 +259,11 @@ fun the_auto_lp_position_attaches_once_announced_and_apart_from_the_main_positio
     // The main slot is untouched, and another venue sees neither slot.
     assert!(main_id != position_id);
     assert_eq!(vault.position_id_for_testing<_, _, TestVenue>(), option::some(main_id));
-    assert_eq!(object::id(vault.position<_, _, _, TestPosition>(&TestVenue())), main_id);
+    assert_eq!(object::id(vault.position_mut<_, _, _, TestPosition>(&TestVenue())), main_id);
     assert!(!vault.has_auto_lp_position(&OtherVenue()));
     assert_eq!(vault.auto_lp_position_id_for_testing<_, _, OtherVenue>(), option::none());
 
     destroy(vault);
-    f.end();
-}
-
-#[test]
-fun a_vault_without_an_auto_lp_position_still_shares() {
-    let mut f = start(mixed_split());
-    let vault = f.new_vault(0, 0);
-    let vault_id = object::id(&vault);
-
-    vault.share(&TestVenue());
-
-    f.scenario.next_tx(ADMIN);
-    let shared = f.scenario.take_shared_by_id<LpVault<VAULT_TESTS, QUOTE>>(vault_id);
-    assert_eq!(shared.auto_lp_position_id_for_testing<_, _, TestVenue>(), option::none());
-    test_scenario::return_shared(shared);
     f.end();
 }
 
@@ -991,22 +997,24 @@ fun start_with_supply(fee_split: FeeSplit, burnable: bool): VaultFixture {
     }
 }
 
-/// Prepares a vault from the fixture launch, then attaches a position.
+/// Builds an unshared vault from the fixture launch with a position holding one unit of liquidity.
 fun new_vault(
     self: &mut VaultFixture,
     protocol_meme_residual: u64,
     protocol_quote_residual: u64,
 ): LpVault<VAULT_TESTS, QUOTE> {
-    let mut vault = vault::prepare(
+    let position = TestPosition { id: object::new(self.scenario.ctx()) };
+
+    vault::new_for_testing(
         &self.launch,
+        &TestVenue(),
+        object::id_from_address(POOL),
+        position,
+        1,
         balance::create_for_testing(protocol_meme_residual),
         balance::create_for_testing(protocol_quote_residual),
         self.scenario.ctx(),
-    );
-    let position = TestPosition { id: object::new(self.scenario.ctx()) };
-    vault.attach(&TestVenue(), object::id_from_address(POOL), position, 1);
-
-    vault
+    )
 }
 
 /// Splits totals 1 through 32 of both assets at `share` for both, comparing every part with an

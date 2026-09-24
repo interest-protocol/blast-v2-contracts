@@ -863,24 +863,6 @@ fun sell_rejects_a_net_output_consumed_entirely_by_the_fee() {
     quote_sell(1, 1, 1, 1, 1, 10_000, 0, 0);
 }
 
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::ESellBackInvariantViolated,
-    location = blast_fun::curve,
-)]
-fun sell_rejects_an_unreachable_state_instead_of_clamping_the_payout() {
-    quote_sell(
-        MEME_RESERVE,
-        0,
-        VIRTUAL_QUOTE,
-        TERMINAL_THRESHOLD,
-        1_000_000_000,
-        QUOTE_FEE_BPS,
-        0,
-        100,
-    );
-}
-
 // === Test Helpers ===
 
 fun cap_buy_quote_input(

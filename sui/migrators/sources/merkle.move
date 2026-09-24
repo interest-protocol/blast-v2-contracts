@@ -25,7 +25,8 @@ public(package) fun leaf(
     hash::blake2b256(&bytes)
 }
 
-/// Rejects malformed, wrong-depth and out-of-range proofs before hashing.
+/// Rejects wrong-depth proofs and malformed siblings before hashing; the caller bounds the index,
+/// the leaf count, and the root.
 public(package) fun verify(
     root: vector<u8>,
     mut digest: vector<u8>,
@@ -33,11 +34,6 @@ public(package) fun verify(
     leaves: u64,
     proof: &vector<vector<u8>>,
 ): bool {
-    if (
-        leaves == 0 || leaves > constants::max_reward_leaves!() || index >= leaves
-            || root.length() != constants::digest_length!()
-            || digest.length() != constants::digest_length!()
-    ) return false;
     let mut width = leaves;
     let mut depth = 0;
     while (width > 1) {
