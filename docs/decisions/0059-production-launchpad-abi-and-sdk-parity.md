@@ -101,8 +101,8 @@ trade, creator-claim, and launch-fee behavior plus:
 - deterministic, idempotent reducers over native checkpoint, transaction
   digest, and event-index metadata.
 
-Routine administration, package upgrades, `blast_sui`, new vesting event
-indexing, and indexer/API/web processes remain outside this slice. Public math
+Routine administration, package upgrades, `blast_sui`, and indexer/API/web
+processes remain outside this slice. Public math
 and fee functions used by external Move composition do not receive transaction
 builders. Core `launch::migrate` and `launch::redeem_migration` remain available
 as compositional SDK calls for non-bundled adapters.

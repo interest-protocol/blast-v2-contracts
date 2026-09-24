@@ -55,7 +55,6 @@ without returning to core for its post-conditions.
 | Fees | creator/protocol curve-fee splitting and accrued accounting; the embedding launch checks its live curve-fee capability or bound custodian | recurring LP fees, arbitrary recipient execution, or referral attribution |
 | LP vault (migrators) | permanent position custody and the generation-versioned fee split; every permissionless collection pays Blast's live share and the recipients, credits the creator and rewards balances, and adds the auto-LP share back to the position; creator claims and split updates under the launch's live curve-fee cap | launch pricing or pre-migration settings |
 | Holder rewards (migrators) | Merkle rounds a Blast administrator funds from a vault's rewards balance, and one-time proof claims | holder accounting, which stays off-chain |
-| Vesting | bounded stakeholder schedules and claims | launch pricing or migration allocation |
 | Migration interface | one-time liquidity handoff, linear migration value, and reconciled completion | DEX-specific object/storage details |
 | Adapter | start a launch at a venue-valid tier, prepare its venue, complete a migration, and collect the position's fees | changing core economics |
 
@@ -247,7 +246,7 @@ reserves and is never a configured constant. See
 Any future chain implementation must preserve:
 
 - lifecycle transitions and authorization outcomes;
-- quote, fee, allocation, vesting, and migration arithmetic;
+- quote, fee, allocation, and migration arithmetic;
 - slippage, deadline, protection, pause, and limit behavior;
 - event meaning and reconstructable state;
 - error categories, even when numeric representations differ.

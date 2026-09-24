@@ -8,9 +8,8 @@ failures=0
 
 if [[ -e ../Move.toml ]] \
   || [[ ! -f Move.toml ]] \
-  || [[ ! -d ../migrators ]] \
-  || [[ ! -d ../vesting ]]; then
-  echo 'sui/ must remain a package workspace with launchpad core, migrators, and vesting boundaries.' >&2
+  || [[ ! -d ../migrators ]]; then
+  echo 'sui/ must remain a package workspace with launchpad core and migrators boundaries.' >&2
   failures=$((failures + 1))
 fi
 
@@ -988,9 +987,9 @@ if [[ ! -f sources/launch.move ]] \
   || [[ "$(count_occurrences 'bps::new\(' <<<"$launch_source")" != 2 ]] \
   || [[ "$(count_occurrences 'bps::new\(0\)' <<<"$launch_source")" != 2 ]] \
   || ! rg -Fq 'let burnable = currency.is_supply_burn_only();' sources/launch.move \
-  || rg -q '\b(MigrationChannelCap|LaunchMigrationCap|MigrationChannelBalance|VenueSelection|venue_selection|vesting_id)\b' <<<"$launch_source" \
+  || rg -q '\b(MigrationChannelCap|LaunchMigrationCap|MigrationChannelBalance|VenueSelection|venue_selection)\b' <<<"$launch_source" \
   || rg -n 'max_launch_fee_bps|invalid_trade_fee_bps' sources/launch.move; then
-  echo 'Launch start must be version-gated and validate the pair and admissions; the ability-less initializer must be reachable only through its setters, the adapter loan, and finalize, which checks every setting before custody, keeps the native MetadataCap inline, and carries no venue selection or vesting.' >&2
+  echo 'Launch start must be version-gated and validate the pair and admissions; the ability-less initializer must be reachable only through its setters, the adapter loan, and finalize, which checks every setting before custody, keeps the native MetadataCap inline, and carries no venue selection.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1130,13 +1129,10 @@ for move_file in "${source_files[@]}"; do
 done
 for move_file in "${source_files[@]}"; do
   setup_source="$(move_facts "$move_file" | move_normalized_source)"
-  if rg -q '\b(CreatorSetupReceipt|blast_fun_vesting|blast_fun_linear_vesting|blast_fun_checkpoint_vesting)\b' <<<"$setup_source"; then
-    launch_authority_violations+="  ${move_file} introduces a setup receipt or vesting dependency"$'\n'
+  if rg -q '\bCreatorSetupReceipt\b' <<<"$setup_source"; then
+    launch_authority_violations+="  ${move_file} introduces a setup receipt"$'\n'
   fi
 done
-if rg -q 'vesting' Move.toml; then
-  launch_authority_violations+='  launchpad must not import the independently composed vesting package'$'\n'
-fi
 
 if [[ -n "$launch_authority_violations" ]]; then
   printf '%s' "$launch_authority_violations"

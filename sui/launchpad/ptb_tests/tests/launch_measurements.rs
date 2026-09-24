@@ -1,6 +1,6 @@
 //! Resource measurements for the launch and protection family: the allocation-recipient capacity
-//! boundary, maximum launch creation with terminal share, the pre-share purchase with linear
-//! vesting, and first, later, and expired protected buys.
+//! boundary, maximum launch creation with terminal share, the pre-share purchase, and first,
+//! later, and expired protected buys.
 //!
 //! Every Meme comes from the actual `meme_template` source with only its decimals substituted, as
 //! the generator does, at both admitted precisions. Each launch is opened by one PTB composed from
@@ -76,8 +76,6 @@ const PRE_SHARE_BUY: u64 = 1_000_000;
 
 const PROTOCOL: ObjectID = address(&[0xAD]);
 const BENEFICIARY: ObjectID = address(&[0xBE]);
-const REFUND_RECIPIENT: ObjectID = address(&[0xDF]);
-const CREATOR: ObjectID = address(&[0xC0, 0xDE]);
 
 const fn address(suffix: &[u8]) -> ObjectID {
     let mut bytes = [0u8; 32];
@@ -112,12 +110,6 @@ fn blast_allocation_plans_and_maximum_shapes_fit_protocol_limits() -> Result<()>
     w.write()
 }
 
-#[derive(Clone, Copy, Debug)]
-enum Vesting {
-    Cancelable,
-    Irrevocable,
-}
-
 /// One launch-opening PTB.
 #[derive(Clone, Copy, Debug)]
 struct Shape {
@@ -126,7 +118,7 @@ struct Shape {
     fee_recipients: usize,
     target: u64,
     protection: [u64; 3],
-    vesting: Option<Vesting>,
+    pre_share_buy: bool,
 }
 
 impl Shape {
@@ -136,7 +128,7 @@ impl Shape {
             fee_recipients: MAX_FEE_RECIPIENTS,
             target: MAXIMUM_TARGET,
             protection: PROTECTED,
-            vesting: None,
+            pre_share_buy: false,
         }
     }
 }
@@ -186,7 +178,6 @@ struct World {
     h: Harness,
     blast: ObjectID,
     adapter: ObjectID,
-    vesting: ObjectID,
     version: ObjectID,
     runtime: ObjectID,
     config: ObjectID,
@@ -221,7 +212,6 @@ impl World {
         let runtime = one("runtime_config", "RuntimeConfig");
         let linked = [(admin_dir.as_path(), admin), (launchpad_dir.as_path(), blast)];
         let (adapter, _) = h.publish(build(&fixture.join("adapter"), &linked, &work)?)?;
-        let (vesting, _) = h.publish(build(&sui_dir.join("vesting"), &[], &work)?)?;
         let mut templates = Vec::new();
         for decimals in [6u8, 9] {
             templates.push((decimals, build(&generate_template(&work, decimals)?, &linked, &work)?));
@@ -241,7 +231,6 @@ impl World {
             h,
             blast,
             adapter,
-            vesting,
             version,
             runtime,
             config,
@@ -338,7 +327,7 @@ impl World {
             fee_recipients: 0,
             target: TARGET,
             protection: UNPROTECTED,
-            vesting: None,
+            pre_share_buy: false,
         };
         self.open_and_record("smallest_plan_created_and_shared", &ticket, smallest)?;
 
@@ -347,14 +336,8 @@ impl World {
         let opened = self.open_and_record("maximum_plan_created_and_shared", &ticket, maximum)?;
         self.protected_buys(decimals, &opened)?;
 
-        for vesting in [Vesting::Cancelable, Vesting::Irrevocable] {
-            let ticket = self.publish_template(decimals, None)?;
-            let name = match vesting {
-                Vesting::Cancelable => "maximum_plan_pre_share_cancelable_vesting",
-                Vesting::Irrevocable => "maximum_plan_pre_share_irrevocable_vesting",
-            };
-            self.open_and_record(name, &ticket, Shape { vesting: Some(vesting), ..maximum })?;
-        }
+        let ticket = self.publish_template(decimals, None)?;
+        self.open_and_record("maximum_plan_pre_share_buy", &ticket, Shape { pre_share_buy: true, ..maximum })?;
 
         Ok(())
     }
@@ -419,9 +402,10 @@ impl World {
         let outcome = self.h.execute(self.open(ticket, shape)?)?;
         outcome.assert_success();
         let names: Vec<_> = outcome.events.iter().map(payload_name).collect();
-        let expected: &[&str] = match shape.vesting {
-            None => &["LaunchCreated", "LaunchShared"],
-            Some(_) => &["LaunchCreated", "Bought", "VestingCreated", "LaunchShared"],
+        let expected: &[&str] = if shape.pre_share_buy {
+            &["LaunchCreated", "Bought", "LaunchShared"]
+        } else {
+            &["LaunchCreated", "LaunchShared"]
         };
         assert_eq!(names, expected, "{name}");
         let created: LaunchCreated = bcs::from_bytes(&outcome.events[0].contents)?;
@@ -481,7 +465,8 @@ impl World {
     }
 
     /// Composes one launch from the public calls: plan and fee split, the adapter's start, the
-    /// settings, finalization, the optional pre-share purchase vested linearly, and terminal share.
+    /// settings, finalization, the optional pre-share purchase delivered to the beneficiary, and
+    /// terminal share.
     fn open(&self, ticket: &Ticket, shape: Shape) -> Result<ProgrammableTransaction> {
         let mut builder = ProgrammableTransactionBuilder::new();
         let plan = self.plan(&mut builder, shape.plan_recipients)?;
@@ -529,7 +514,7 @@ impl World {
                 vec![initializer, version, currency, config],
             );
         let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
-        if let Some(vesting) = shape.vesting {
+        if shape.pre_share_buy {
             let runtime = builder.obj(self.h.shared(self.runtime, false))?;
             let amount = builder.pure(PRE_SHARE_BUY)?;
             let Argument::Result(split) = builder.command(Command::SplitCoins(Argument::GasCoin, vec![amount])) else {
@@ -555,39 +540,7 @@ impl World {
                 vec![sui()],
                 vec![Argument::NestedResult(bought, 1)],
             );
-            let beneficiary = builder.pure(SuiAddress::from(BENEFICIARY))?;
-            let start_ms = builder.pure(self.h.sim.store().get_clock().timestamp_ms())?;
-            let cliff_ms = builder.pure(0u64)?;
-            let period_ms = builder.pure(1_000u64)?;
-            let periods = builder.pure(2u64)?;
-            let meme = vec![ticket.meme.clone()];
-            let funds = Argument::NestedResult(bought, 0);
-            let schedule = match vesting {
-                Vesting::Cancelable => {
-                    let refund_recipient = builder.pure(SuiAddress::from(REFUND_RECIPIENT))?;
-                    let Argument::Result(created) = call(
-                        &mut builder,
-                        self.vesting,
-                        "blast_fun_linear_vesting",
-                        "new_cancelable",
-                        meme.clone(),
-                        vec![funds, beneficiary, refund_recipient, start_ms, cliff_ms, period_ms, periods, clock],
-                    ) else {
-                        unreachable!()
-                    };
-                    builder.transfer_args(CREATOR.into(), vec![Argument::NestedResult(created, 1)]);
-                    Argument::NestedResult(created, 0)
-                }
-                Vesting::Irrevocable => call(
-                    &mut builder,
-                    self.vesting,
-                    "blast_fun_linear_vesting",
-                    "new_irrevocable",
-                    meme.clone(),
-                    vec![funds, beneficiary, start_ms, cliff_ms, period_ms, periods, clock],
-                ),
-            };
-            call(&mut builder, self.vesting, "blast_fun_linear_vesting", "share", meme, vec![schedule]);
+            builder.transfer_args(BENEFICIARY.into(), vec![Argument::NestedResult(bought, 0)]);
         }
         call(&mut builder, self.blast, "launch", "share", pair, vec![launch, version, clock]);
 
@@ -728,7 +681,7 @@ impl World {
                     "protection_window_ms": shape.protection[0],
                     "cumulative_sender_bps": shape.protection[1],
                     "per_transaction_bps": shape.protection[2],
-                    "pre_share_vesting": shape.vesting.map(|vesting| format!("{vesting:?}")),
+                    "pre_share_buy": shape.pre_share_buy,
                 })),
             },
             "units": "MIST, bytes, and gas units as each field names; an event's emit_size is the abstract \
