@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-// `blast_fun::errors` intentionally centralizes package-wide abort codes through zero-cost
-// macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
-// locations while retaining one package registry in `blast_fun::errors`.
+// Package error macros preserve the admin's abort location.
 #[allow(lint(abort_without_constant))]
-/// Custodies the package Publisher and UpgradeCap and governs package administration.
-///
-/// Sealing, native transitions, and their replay events belong to
-/// `blast_admin::upgrade_custody`. This module owns only the canonical shared
-/// container, the Blast module provenance rule, and the guard order every
-/// governed transition must follow.
+/// Shared custody of this package's Publisher and UpgradeCap, driven by package administrators.
 module blast_fun::package_admin;
 
 // === Public Types ===
@@ -23,9 +16,8 @@ public struct PackageAdmin has key {
 
 // === Public Functions ===
 
-/// Validates and permanently wraps Blast's Publisher and raw UpgradeCap in shared custody.
+/// Wraps this package's Publisher and UpgradeCap in shared custody for good.
 public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext) {
-    // from_module compares both the package address and the canonical module name.
     assert!(
         publisher.from_module<BLAST_FUN>(),
         blast_fun::errors::invalid_package_publisher!(),
@@ -51,10 +43,7 @@ public fun authorize_upgrade(
     self.custody.authorize_upgrade(custodian_id, digest)
 }
 
-/// Commits the native receipt and advances one operational generation in one call.
-///
-/// This is the only upgrade finalizer. Both mutations belong to the same
-/// transaction, so a failure at either step rolls back the whole upgrade.
+/// Commits the upgrade and advances the package version together.
 public fun commit_upgrade_and_advance(
     self: &mut PackageAdmin,
     package_version: &mut PackageVersion,
@@ -80,11 +69,6 @@ public fun make_immutable(
     let custodian_id = self.id.to_inner();
 
     self.custody.make_immutable(custodian_id);
-}
-
-/// Reports whether native upgrade authority remains sealed in this package's custody.
-public fun has_upgrade_cap(self: &PackageAdmin): bool {
-    self.custody.has_upgrade_cap()
 }
 
 // === Test-Only Types ===
@@ -144,6 +128,12 @@ public fun version_for_testing(self: &PackageAdmin): u64 {
 #[test_only]
 public fun policy_for_testing(self: &PackageAdmin): u8 {
     self.custody.policy_for_testing()
+}
+
+#[test_only]
+/// Reports whether native upgrade authority remains sealed in this package's custody.
+public fun has_upgrade_cap_for_testing(self: &PackageAdmin): bool {
+    self.custody.has_upgrade_cap()
 }
 
 // === Imports ===

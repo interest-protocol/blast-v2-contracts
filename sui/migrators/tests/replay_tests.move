@@ -296,7 +296,7 @@ fun start(): ReplayFixture {
     let version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
     let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(16, 1, scenario.ctx());
-    authority.grant_admin(&root, blast_fun_domain::creator_admin_role(), ADMIN, scenario.ctx());
+    authority.grant_admin(&root, blast_fun_domain::creator_admin_role_for_testing(), ADMIN, scenario.ctx());
     destroy(root);
     launch_config::init_for_testing(scenario.ctx());
     lp_fee_policy::init_for_testing(scenario.ctx());
@@ -610,42 +610,21 @@ fun redirect_protocol_share(self: &mut ReplayFixture, destination: address) {
     });
 }
 
-/// Begin, keep one residual unit per asset in the vault, attach the position, complete, share.
-/// Between begin and completion no lifecycle read reports a resting state.
+/// Migrate, keep one residual unit per asset in the vault, attach the position, share.
 fun mock_adapter(
     launch: &mut Launch<REPLAY_TESTS, QUOTE>,
     version: &PackageVersion,
     currency: &mut Currency<REPLAY_TESTS>,
     ctx: &mut TxContext,
 ) {
-    let (mut meme, mut quote, migration) = launch.begin_migration(version, Venue());
-    assert!(!launch.is_live() && !launch.is_migration_ready() && !launch.is_migrated());
+    let (mut meme, mut quote) = launch.migrate(version, currency, Venue(), ctx);
     let residual_meme = meme.split(1);
     let residual_quote = quote.split(1);
     let pool = MockPool { id: object::new(ctx) };
     let pool_id = object::id(&pool);
     let position = MockPosition { id: object::new(ctx), pool_id, meme, quote, liquidity: 1 };
     let mut pending_vault = vault::prepare(launch, residual_meme, residual_quote, ctx);
-    pending_vault.attach(&Venue(), pool_id, position);
-    let position = pending_vault.position<
-        REPLAY_TESTS,
-        QUOTE,
-        Venue,
-        MockPosition<REPLAY_TESTS, QUOTE>,
-    >(&Venue());
-    let (residual_meme, residual_quote) = pending_vault.pending_residuals();
-    launch.complete_migration(
-        version,
-        currency,
-        migration,
-        Venue(),
-        position.meme.value(),
-        position.quote.value(),
-        residual_meme,
-        residual_quote,
-        position.liquidity,
-        ctx,
-    );
+    pending_vault.attach(&Venue(), pool_id, position, 1);
     pending_vault.share<REPLAY_TESTS, QUOTE, Venue>(&Venue());
     transfer::share_object(pool);
 }
@@ -781,16 +760,16 @@ fun reduce_transaction(self: &mut ReplayFixture, sender: address) {
         replay.bought(bytes);
         reduced = reduced + 1;
     });
-    direct<blast_events::VaultCreated>().do!(|bytes| {
-        replay.vault_created(bytes);
-        reduced = reduced + 1;
-    });
     wrapped<events::MigrationAllocationPaid>().do!(|bytes| {
         replay.migration_allocation_paid(bytes);
         reduced = reduced + 1;
     });
     wrapped<events::Migrated>().do!(|bytes| {
         replay.migrated(bytes);
+        reduced = reduced + 1;
+    });
+    direct<blast_events::VaultCreated>().do!(|bytes| {
+        replay.vault_created(bytes);
         reduced = reduced + 1;
     });
     direct<blast_events::FeesCollected>().do!(|bytes| {
@@ -1041,7 +1020,7 @@ fun reduce_purchase(self: &mut Replay, r: &mut BCS) {
 }
 
 /// Migration copies the creator's launch fee split into the custody `VaultCreated` announces, at
-/// generation zero.
+/// generation zero, and the residuals it keeps leave the rest of the hand-off in the position.
 fun vault_created(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     self.binding.vault_id = r.peel_id();
@@ -1050,6 +1029,9 @@ fun vault_created(self: &mut Replay, bytes: vector<u8>) {
     self.venue = r.peel_type_name();
     assert_eq!(r.peel_type_name(), self.meme);
     assert_eq!(r.peel_type_name(), type_name::with_original_ids<QUOTE>().into_string());
+    self.residual_meme = r.peel_u64();
+    self.residual_quote = r.peel_u64();
+    assert!(r.peel_u128() > 0);
     let fee_split = r.peel_fee_split();
     r.assert_consumed();
 
@@ -1057,6 +1039,8 @@ fun vault_created(self: &mut Replay, bytes: vector<u8>) {
     assert_eq!(fee_split, self.launch_fee_split);
     self.generation = 0;
     self.fee_split = fee_split;
+    self.position_meme = self.position_meme - self.residual_meme;
+    self.position_quote = self.position_quote - self.residual_quote;
 }
 
 fun migration_allocation_paid(self: &mut Replay, bytes: vector<u8>) {
@@ -1082,11 +1066,8 @@ fun migration_allocation_paid(self: &mut Replay, bytes: vector<u8>) {
 fun migrated(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     assert_eq!(r.peel_id(), self.launch_id);
-    let supplied_meme = r.peel_u64();
-    let supplied_quote = r.peel_u64();
-    self.residual_meme = r.peel_u64();
-    self.residual_quote = r.peel_u64();
-    assert!(r.peel_u128() > 0);
+    let meme = r.peel_u64();
+    let quote = r.peel_u64();
     let disposed_meme = r.peel_u64();
     assert_eq!(r.peel_bool(), self.burnable);
     self.total_supply = r.peel_u64();
@@ -1094,22 +1075,23 @@ fun migrated(self: &mut Replay, bytes: vector<u8>) {
 
     let liquidity_id = self.channels.find_role(LIQUIDITY_ROLE).channel_id;
     assert_eq!(
-        supplied_meme + self.residual_meme,
+        meme,
         self.meme_weights.amount_of(&self.meme_amounts, liquidity_id),
     );
     assert_eq!(
-        supplied_meme + self.residual_meme + self.allocated_meme_paid,
+        meme + self.allocated_meme_paid,
         self.atomic_supply - self.meme_weights.amount_of(&self.meme_amounts, 0),
     );
     assert_eq!(
-        supplied_quote + self.residual_quote + self.allocated_quote_paid,
+        quote + self.allocated_quote_paid,
         self.real_quote_reserve,
     );
     assert_eq!(disposed_meme, self.meme_reserve);
     assert_eq!(self.total_supply, self.atomic_supply - disposed_meme);
     self.lifecycle = MIGRATED;
-    self.position_meme = supplied_meme;
-    self.position_quote = supplied_quote;
+    // The whole hand-off until `VaultCreated` moves the residuals out.
+    self.position_meme = meme;
+    self.position_quote = quote;
     self.meme_reserve = 0;
     self.real_quote_reserve = 0;
 }
@@ -1406,7 +1388,7 @@ fun assert_state(self: &mut ReplayFixture) {
 }
 
 fun assert_policy(self: &Replay, policy: &LpFeePolicy) {
-    let (default_meme_share, default_quote_share) = policy.default_shares();
+    let (default_meme_share, default_quote_share) = policy.default_shares_for_testing();
     assert_eq!(default_meme_share.value(), self.default_shares.meme_bps);
     assert_eq!(default_quote_share.value(), self.default_shares.quote_bps);
     assert_eq!(policy.protocol_destination(), self.protocol_destination);
@@ -1423,34 +1405,37 @@ fun assert_policy(self: &Replay, policy: &LpFeePolicy) {
 }
 
 fun assert_launch(self: &Replay, launch: &Launch<REPLAY_TESTS, QUOTE>, currency: &Currency<REPLAY_TESTS>) {
+    let (meme_reserve, real_quote_reserve, _, _) = launch.balances_for_testing();
+
     assert_eq!(object::id(launch), self.launch_id);
-    assert_eq!(launch.is_live(), self.lifecycle == LIVE);
-    assert_eq!(launch.is_migration_ready(), self.lifecycle == MIGRATION_READY);
-    assert_eq!(launch.is_migrated(), self.lifecycle == MIGRATED);
-    assert_eq!(launch.graduation_target(), self.graduation_target);
-    assert_eq!(launch.meme_reserve(), self.meme_reserve);
-    assert_eq!(launch.real_quote_reserve(), self.real_quote_reserve);
-    assert_eq!(launch.virtual_quote(), self.virtual_quote);
-    assert_eq!(launch.public_start_ms(), self.public_start_ms);
-    assert_eq!(launch.pre_share_buy_completed(), self.pre_share_buy_completed);
-    assert_eq!(launch.atomic_supply(), self.atomic_supply);
-    assert_eq!(launch.migration_witness().into_string(), self.migration_witness);
+    assert_eq!(launch.is_live_for_testing(), self.lifecycle == LIVE);
+    assert_eq!(launch.is_migration_ready_for_testing(), self.lifecycle == MIGRATION_READY);
+    assert_eq!(launch.is_migrated_for_testing(), self.lifecycle == MIGRATED);
+    assert_eq!(launch.graduation_target_for_testing(), self.graduation_target);
+    assert_eq!(meme_reserve, self.meme_reserve);
+    assert_eq!(real_quote_reserve, self.real_quote_reserve);
+    assert_eq!(launch.virtual_quote_for_testing(), self.virtual_quote);
+    assert_eq!(launch.public_start_ms_for_testing(), self.public_start_ms);
+    assert_eq!(launch.pre_share_buy_completed_for_testing(), self.pre_share_buy_completed);
+    assert_eq!(launch.atomic_supply_for_testing(), self.atomic_supply);
+    assert_eq!(launch.migration_witness_for_testing().into_string(), self.migration_witness);
     let (pool_tick_spacing, pool_fee_rate) = launch.pool_tier();
     assert_eq!(pool_tick_spacing, self.pool_tick_spacing);
     assert_eq!(pool_fee_rate, self.pool_fee_rate);
     assert_eq!(split_entry(&launch.lp_fee_split()), self.launch_fee_split);
 
-    let plan = launch.allocation_plan();
     assert_eq!(
-        plan.channels().map_ref!(|channel| ChannelEntry {
-            channel_id: channel.channel_id(),
-            role: role_tag(channel.channel_role()),
-            destination: channel.channel_destination(),
-        }),
-        self.channels,
+        *launch.allocation_plan_for_testing(),
+        allocation::new(
+            self.channels.map_ref!(|entry| allocation::channel(
+                entry.channel_id,
+                channel_role(entry.role),
+                entry.destination,
+            )),
+            self.meme_weights.map_ref!(|entry| allocation::weight(entry.channel_id, bps::new(entry.bps))),
+            self.quote_weights.map_ref!(|entry| allocation::weight(entry.channel_id, bps::new(entry.bps))),
+        ),
     );
-    assert_eq!(plan.meme_weights().map_ref!(|entry| weight_entry(entry)), self.meme_weights);
-    assert_eq!(plan.quote_weights().map_ref!(|entry| weight_entry(entry)), self.quote_weights);
 
     // Native Coin Registry reads own decimals, supply, and the supply mode.
     assert_eq!(currency.decimals(), self.decimals);
@@ -1470,14 +1455,14 @@ fun assert_launch(self: &Replay, launch: &Launch<REPLAY_TESTS, QUOTE>, currency:
 fun assert_vault(self: &Replay, vault: &LpVault<REPLAY_TESTS, QUOTE>) {
     assert_eq!(object::id(vault), self.binding.vault_id);
     assert_eq!(vault.pool_id(), self.binding.pool_id);
-    assert_eq!(vault.position_id<_, _, Venue>(), option::some(self.binding.position_id));
+    assert_eq!(vault.position_id_for_testing<_, _, Venue>(), option::some(self.binding.position_id));
     assert_eq!(self.venue, type_name::with_original_ids<Venue>().into_string());
-    assert_eq!(vault.protocol_meme_residual(), self.residual_meme);
-    assert_eq!(vault.protocol_quote_residual(), self.residual_quote);
-    assert_eq!(vault.generation(), self.generation);
-    assert_eq!(split_entry(&vault.fee_split()), self.fee_split);
-    assert_eq!(pair!(|| vault.creator_balances()), self.creator_balance);
-    assert_eq!(pair!(|| vault.auto_lp_balances()), self.auto_lp);
+    assert_eq!(vault.protocol_meme_residual_for_testing(), self.residual_meme);
+    assert_eq!(vault.protocol_quote_residual_for_testing(), self.residual_quote);
+    assert_eq!(vault.generation_for_testing(), self.generation);
+    assert_eq!(split_entry(&vault.fee_split_for_testing()), self.fee_split);
+    assert_eq!(pair!(|| vault.creator_balances_for_testing()), self.creator_balance);
+    assert_eq!(pair!(|| vault.auto_lp_balances_for_testing()), self.auto_lp);
     assert_eq!(pair!(|| vault.rewards_balances()), self.rewards);
     assert_eq!(vault.next_round(), self.next_round);
     assert_eq!(vault.last_checkpoint(), self.last_checkpoint);
@@ -1497,26 +1482,22 @@ fun assert_native_payouts(self: &mut ReplayFixture) {
     });
 }
 
-fun role_tag(role: ChannelRole): u32 {
-    if (role == allocation::liquidity_role()) return LIQUIDITY_ROLE;
-    if (role == allocation::protocol_role()) return PROTOCOL_ROLE;
-    assert_eq!(role, allocation::external_role());
-    EXTERNAL_ROLE
-}
-
-fun weight_entry(entry: &Weight): WeightEntry {
-    WeightEntry { channel_id: entry.weight_channel_id(), bps: entry.weight_bps() }
+fun channel_role(tag: u32): ChannelRole {
+    if (tag == LIQUIDITY_ROLE) return allocation::liquidity_role();
+    if (tag == PROTOCOL_ROLE) return allocation::protocol_role();
+    assert_eq!(tag, EXTERNAL_ROLE);
+    allocation::external_role()
 }
 
 fun route_entry(route: &Route): RouteEntry {
-    RouteEntry { destination: route.destination(), bps: route.route_bps() }
+    RouteEntry { destination: route.destination(), bps: route.route_bps_for_testing() }
 }
 
 fun split_entry(fee_split: &FeeSplit): SplitEntry {
     SplitEntry {
-        creator_bps: fee_split.creator_bps().value(),
-        auto_lp_bps: fee_split.auto_lp_bps().value(),
-        rewards_bps: fee_split.rewards_bps().value(),
+        creator_bps: fee_split.creator_bps_for_testing().value(),
+        auto_lp_bps: fee_split.auto_lp_bps_for_testing().value(),
+        rewards_bps: fee_split.rewards_bps_for_testing().value(),
         recipients: fee_split.recipients().map_ref!(|route| route_entry(route)),
     }
 }
@@ -1533,7 +1514,7 @@ macro fun pair($balances: || -> (u64, u64)): Pair {
 use blast_admin::acl::{Self, Authority, AdminCap};
 
 use blast_fun::{
-    allocation::{Self, AllocationPlan, ChannelRole, FeeSplit, Route, Weight},
+    allocation::{Self, AllocationPlan, ChannelRole, FeeSplit, Route},
     blast_events::Event as BlastEvent,
     blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     bps,

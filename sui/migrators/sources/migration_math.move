@@ -4,16 +4,6 @@
 /// Shared concentrated-liquidity seed price and auto-LP side selection for migrator venues.
 module blast_fun_migrators::migration_math;
 
-// === Constants ===
-
-const Q64_SHIFT: u8 = 64;
-const Q128_SHIFT: u8 = 128;
-const SQRT_UPPER_BOUND_SHIFT: u8 = 96;
-
-/// Atoms of the other asset kept in reserve beyond the estimate, covering the venue's own
-/// rounding of the liquidity it derives from the fixed amount.
-const AUTO_LP_MARGIN: u256 = 2;
-
 // === Errors ===
 
 #[error(code = 0)]
@@ -50,20 +40,22 @@ public(package) fun auto_lp_fixed_side(
     let lower = sqrt_lower as u256;
     let price = sqrt_price as u256;
     let upper = sqrt_upper as u256;
-    let one = 1u256 << Q64_SHIFT;
+    let one = 1u256 << constants::q64_shift!();
 
     // Fixing A: L = a * P * U / (U - P), then B = ceil(L * (P - lower)).
     let liquidity = (amount_a as u256) * (price * upper / one) / (upper - price);
-    if (liquidity > 0 && liquidity < (1u256 << Q128_SHIFT)) {
+    if (liquidity > 0 && liquidity < (1u256 << constants::q128_shift!())) {
         let needed_b = (liquidity * (price - lower)).div_ceil(one);
-        if (needed_b + AUTO_LP_MARGIN <= (amount_b as u256)) return (true, amount_a);
+        if (needed_b + constants::auto_lp_margin!() <= (amount_b as u256)) return (true, amount_a);
     };
 
     // Fixing B: L = b / (P - lower), then A = ceil(L / P) - floor(L / U).
-    let liquidity = ((amount_b as u256) << Q64_SHIFT) / (price - lower);
+    let liquidity = ((amount_b as u256) << constants::q64_shift!()) / (price - lower);
     if (liquidity > 0) {
-        let needed_a = (liquidity << Q64_SHIFT).div_ceil(price) - (liquidity << Q64_SHIFT) / upper;
-        if (needed_a + AUTO_LP_MARGIN <= (amount_a as u256)) return (false, amount_b);
+        let needed_a =
+            (liquidity << constants::q64_shift!()).div_ceil(price)
+                - (liquidity << constants::q64_shift!()) / upper;
+        if (needed_a + constants::auto_lp_margin!() <= (amount_a as u256)) return (false, amount_b);
     };
 
     (true, 0)
@@ -87,13 +79,13 @@ fun ratio_q128(
         (meme_amount, quote_amount)
     };
 
-    ((numerator as u256) << Q128_SHIFT) / (denominator as u256)
+    ((numerator as u256) << constants::q128_shift!()) / (denominator as u256)
 }
 
 /// Uses a fixed 96-step upper bound because a positive u64/u64 Q128 ratio is below 2^192.
 fun integer_sqrt(value: u256): u128 {
     let mut low = 0u256;
-    let mut high = 1u256 << SQRT_UPPER_BOUND_SHIFT;
+    let mut high = 1u256 << constants::sqrt_upper_bound_shift!();
 
     while (low + 1 < high) {
         let middle = (low + high) / 2;
@@ -107,3 +99,7 @@ fun integer_sqrt(value: u256): u128 {
 
     low as u128
 }
+
+// === Imports ===
+
+use blast_fun_migrators::constants;

@@ -1,70 +1,37 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-// `blast_fun::errors` intentionally centralizes package-wide abort codes through zero-cost
-// macros. W04005 sees the expanded literal; this narrow suppression preserves caller-local abort
-// locations while retaining one package registry in `blast_fun::errors`.
+// Package error macros preserve the curve's abort location.
 #[allow(lint(abort_without_constant))]
-/// Pure constant-product quotes and the terminal-target input cap; owns no state.
+/// Constant-product quotes over the virtual Quote reserve; owns no state.
 module blast_fun::curve;
 
 // === Package Functions ===
 
-/// Returns the output for an exact constant-product input, rounded down.
-///
-/// The caller owns positive input, reserve, and output validation.
-public(package) fun get_amount_out(
-    amount_in: u256,
-    reserve_in: u256,
-    reserve_out: u256,
-): u256 {
-    reserve_out * amount_in / (reserve_in + amount_in)
-}
-
-/// Returns the constant product for two widened effective reserves.
-public(package) fun k(reserve_x: u256, reserve_y: u256): u256 {
-    reserve_x * reserve_y
-}
-
-/// Caps a supplied buy coin so its post-fee Quote cannot exceed the terminal target.
-///
-/// Returns `(quote_in_gross, quote_refund)`. The accepted gross amount is the
-/// smallest amount whose post-fee value reaches the remaining target.
-///
-/// The complement of `quote_fee_bps` is the divisor, so the rate must stay below one hundred
-/// percent. `launch_config` caps trade fees at ten percent and every launch snapshots that
-/// value; the guard here only rejects a total fee, so a later ceiling change can never turn
-/// the division into a bare arithmetic fault or strand a launch created under an older ceiling.
+/// Caps a buy so its post-fee Quote cannot pass the graduation target. Returns
+/// `(quote_in_gross, quote_refund)`: the smallest gross input that reaches the target, and the
+/// rest of `quote_supplied`.
 public(package) fun cap_buy_quote_input(
     real_quote: u64,
-    terminal_threshold: u64,
+    graduation_target: u64,
     quote_supplied: u64,
     quote_fee_bps: Bps,
 ): (u64, u64) {
-    assert!(
-        quote_fee_bps.value() < blast_fun::constants::basis_points_denominator!(),
-        blast_fun::errors::invalid_curve_fee!(),
-    );
+    let quote_remaining = graduation_target - real_quote;
 
-    let quote_fee = quote_fee_bps.apply_up(quote_supplied);
-    let quote_in_net = quote_supplied - quote_fee;
-    let quote_remaining = terminal_threshold - real_quote;
-
-    if (quote_in_net <= quote_remaining) {
+    if (quote_supplied - quote_fee_bps.apply_up(quote_supplied) <= quote_remaining) {
         (quote_supplied, 0)
     } else {
         let quote_in_gross = quote_remaining.mul_div_ceil(
-            blast_fun::constants::basis_points_denominator!(),
-            quote_fee_bps.complement().value(),
+            constants::basis_points_denominator!(),
+            constants::basis_points_denominator!() - quote_fee_bps.value(),
         );
 
         (quote_in_gross, quote_supplied - quote_in_gross)
     }
 }
 
-/// Quotes a buy without moving coins or mutating launch state.
-///
-/// Returns `(quote_fee, meme_out_gross, meme_fee, meme_out_net)`.
+/// Returns `(quote_fee, meme_out_gross, meme_fee, meme_out_net)`, rounded against the buyer.
 public(package) fun quote_buy(
     meme_reserve: u64,
     real_quote: u64,
@@ -73,24 +40,12 @@ public(package) fun quote_buy(
     quote_fee_bps: Bps,
     meme_fee_bps: Bps,
 ): (u64, u64, u64, u64) {
-    assert!(
-        meme_reserve > 0 && virtual_quote > 0,
-        blast_fun::errors::invalid_curve_reserve!(),
-    );
-    assert!(quote_in_gross > 0, blast_fun::errors::zero_trade_input!());
-
     let quote_fee = quote_fee_bps.apply_up(quote_in_gross);
-    let quote_after_fee = quote_in_gross - quote_fee;
-    assert!(quote_after_fee > 0, blast_fun::errors::zero_trade_output!());
-
-    let effective_quote = (virtual_quote as u256) + (real_quote as u256);
-    let meme_out_gross = get_amount_out(
-        quote_after_fee as u256,
-        effective_quote,
+    let meme_out_gross = amount_out(
+        (quote_in_gross - quote_fee) as u256,
+        (virtual_quote as u256) + (real_quote as u256),
         meme_reserve as u256,
-    ) as u64;
-    assert!(meme_out_gross > 0, blast_fun::errors::zero_trade_output!());
-
+    );
     let meme_fee = meme_fee_bps.apply_up(meme_out_gross);
     let meme_out_net = meme_out_gross - meme_fee;
     assert!(meme_out_net > 0, blast_fun::errors::zero_trade_output!());
@@ -98,9 +53,8 @@ public(package) fun quote_buy(
     (quote_fee, meme_out_gross, meme_fee, meme_out_net)
 }
 
-/// Quotes a sell without moving coins or mutating launch state.
-///
-/// Returns `(meme_fee, pending_burn, quote_out_gross, quote_fee, quote_out_net)`.
+/// Returns `(meme_fee, pending_burn, quote_out_gross, quote_fee, quote_out_net)`, rounded against
+/// the seller. The sell-burn share of the post-fee input never reaches the curve.
 public(package) fun quote_sell(
     meme_reserve: u64,
     real_quote: u64,
@@ -110,34 +64,14 @@ public(package) fun quote_sell(
     meme_fee_bps: Bps,
     sell_burn_bps: Bps,
 ): (u64, u64, u64, u64, u64) {
-    assert!(
-        meme_reserve > 0 && virtual_quote > 0,
-        blast_fun::errors::invalid_curve_reserve!(),
-    );
-    assert!(meme_in_gross > 0, blast_fun::errors::zero_trade_input!());
-
     let meme_fee = meme_fee_bps.apply_up(meme_in_gross);
-    let meme_after_fee = meme_in_gross - meme_fee;
-    assert!(meme_after_fee > 0, blast_fun::errors::zero_trade_output!());
-
-    let pending_burn = sell_burn_bps.apply_up(meme_after_fee);
-    let meme_to_curve = meme_after_fee - pending_burn;
-    assert!(meme_to_curve > 0, blast_fun::errors::zero_trade_output!());
-
-    let effective_quote = (virtual_quote as u256) + (real_quote as u256);
-    let quote_out_gross_wide = get_amount_out(
-        meme_to_curve as u256,
+    let pending_burn = sell_burn_bps.apply_up(meme_in_gross - meme_fee);
+    let quote_out_gross = amount_out(
+        (meme_in_gross - meme_fee - pending_burn) as u256,
         meme_reserve as u256,
-        effective_quote,
+        (virtual_quote as u256) + (real_quote as u256),
     );
-
-    assert!(quote_out_gross_wide > 0, blast_fun::errors::zero_trade_output!());
-    assert!(
-        quote_out_gross_wide <= (real_quote as u256),
-        blast_fun::errors::sell_back_invariant_violated!(),
-    );
-
-    let quote_out_gross = quote_out_gross_wide as u64;
+    assert!(quote_out_gross <= real_quote, blast_fun::errors::sell_back_invariant_violated!());
     let quote_fee = quote_fee_bps.apply_up(quote_out_gross);
     let quote_out_net = quote_out_gross - quote_fee;
     assert!(quote_out_net > 0, blast_fun::errors::zero_trade_output!());
@@ -145,6 +79,13 @@ public(package) fun quote_sell(
     (meme_fee, pending_burn, quote_out_gross, quote_fee, quote_out_net)
 }
 
+// === Private Functions ===
+
+/// Constant-product output for an exact input, rounded down.
+fun amount_out(amount_in: u256, reserve_in: u256, reserve_out: u256): u64 {
+    (reserve_out * amount_in / (reserve_in + amount_in)) as u64
+}
+
 // === Imports ===
 
-use blast_fun::bps::{Self, Bps};
+use blast_fun::{bps::Bps, constants};

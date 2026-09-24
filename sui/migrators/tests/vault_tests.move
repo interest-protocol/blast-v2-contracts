@@ -56,6 +56,9 @@ public struct ExpectedVaultCreated has copy, drop {
     venue: TypeName,
     meme: TypeName,
     quote: TypeName,
+    residual_meme: u64,
+    residual_quote: u64,
+    liquidity: u128,
     fee_split: FeeSplit,
 }
 
@@ -98,17 +101,17 @@ public struct ExpectedAutoLiquidityAdded has copy, drop {
 // Custody
 
 #[test]
-fun attaching_announces_the_launch_fee_split_at_generation_zero() {
+fun attaching_announces_the_residuals_liquidity_and_launch_fee_split_at_generation_zero() {
     let mut f = start(mixed_split());
 
     f.scenario.next_tx(ADMIN);
-    let vault = f.new_vault(0, 0);
+    let vault = f.new_vault(3, 4);
 
-    assert_eq!(vault.generation(), 0);
-    assert_eq!(vault.fee_split(), f.launch.lp_fee_split());
-    assert_eq!(vault.fee_split(), mixed_split());
-    assert_balances!(|| vault.creator_balances(), 0, 0);
-    assert_balances!(|| vault.auto_lp_balances(), 0, 0);
+    assert_eq!(vault.generation_for_testing(), 0);
+    assert_eq!(vault.fee_split_for_testing(), f.launch.lp_fee_split());
+    assert_eq!(vault.fee_split_for_testing(), mixed_split());
+    assert_balances!(|| vault.creator_balances_for_testing(), 0, 0);
+    assert_balances!(|| vault.auto_lp_balances_for_testing(), 0, 0);
     assert_balances!(|| vault.rewards_balances(), 0, 0);
     assert_eq!(vault.next_round(), 0);
     assert_eq!(vault.last_checkpoint(), option::none());
@@ -120,10 +123,13 @@ fun attaching_announces_the_launch_fee_split_at_generation_zero() {
             &ExpectedVaultCreated {
                 vault_id: object::id(&vault),
                 pool_id: object::id_from_address(POOL),
-                position_id: vault.position_id<_, _, TestVenue>().destroy_some(),
+                position_id: vault.position_id_for_testing<_, _, TestVenue>().destroy_some(),
                 venue: type_name::with_original_ids<TestVenue>(),
                 meme: type_name::with_original_ids<VAULT_TESTS>(),
                 quote: type_name::with_original_ids<QUOTE>(),
+                residual_meme: 3,
+                residual_quote: 4,
+                liquidity: 1,
                 fee_split: mixed_split(),
             },
         ),
@@ -164,12 +170,12 @@ fun sharing_under_another_venue_fails_closed() {
 fun borrow_returns_the_attached_position() {
     let mut f = start(mixed_split());
     let mut vault = f.new_vault(0, 0);
-    let position_id = vault.position_id<_, _, TestVenue>().destroy_some();
+    let position_id = vault.position_id_for_testing<_, _, TestVenue>().destroy_some();
 
     let position = vault.position_mut<_, _, _, TestPosition>(&TestVenue());
 
     assert_eq!(object::id(position), position_id);
-    assert_eq!(vault.position_id<_, _, OtherVenue>(), option::none());
+    assert_eq!(vault.position_id_for_testing<_, _, OtherVenue>(), option::none());
     destroy(vault);
     f.end();
 }
@@ -192,9 +198,9 @@ fun wrong_venue_borrow_fails_closed() {
 fun the_auto_lp_position_attaches_once_announced_and_apart_from_the_main_position() {
     let mut f = start(mixed_split());
     let mut vault = f.new_vault(0, 0);
-    let main_id = vault.position_id<_, _, TestVenue>().destroy_some();
+    let main_id = vault.position_id_for_testing<_, _, TestVenue>().destroy_some();
     assert!(!vault.has_auto_lp_position(&TestVenue()));
-    assert_eq!(vault.auto_lp_position_id<_, _, TestVenue>(), option::none());
+    assert_eq!(vault.auto_lp_position_id_for_testing<_, _, TestVenue>(), option::none());
 
     f.scenario.next_tx(ADMIN);
     let position = TestPosition { id: object::new(f.scenario.ctx()) };
@@ -208,7 +214,7 @@ fun the_auto_lp_position_attaches_once_announced_and_apart_from_the_main_positio
         bcs::to_bytes(&ExpectedAutoLpPositionOpened { vault_id: object::id(&vault), position_id }),
     );
     assert!(vault.has_auto_lp_position(&TestVenue()));
-    assert_eq!(vault.auto_lp_position_id<_, _, TestVenue>(), option::some(position_id));
+    assert_eq!(vault.auto_lp_position_id_for_testing<_, _, TestVenue>(), option::some(position_id));
     let position = vault.auto_lp_position<_, _, _, TestPosition>(&TestVenue());
     assert_eq!(object::id(position), position_id);
     assert_eq!(
@@ -217,10 +223,10 @@ fun the_auto_lp_position_attaches_once_announced_and_apart_from_the_main_positio
     );
     // The main slot is untouched, and another venue sees neither slot.
     assert!(main_id != position_id);
-    assert_eq!(vault.position_id<_, _, TestVenue>(), option::some(main_id));
+    assert_eq!(vault.position_id_for_testing<_, _, TestVenue>(), option::some(main_id));
     assert_eq!(object::id(vault.position<_, _, _, TestPosition>(&TestVenue())), main_id);
     assert!(!vault.has_auto_lp_position(&OtherVenue()));
-    assert_eq!(vault.auto_lp_position_id<_, _, OtherVenue>(), option::none());
+    assert_eq!(vault.auto_lp_position_id_for_testing<_, _, OtherVenue>(), option::none());
 
     destroy(vault);
     f.end();
@@ -236,7 +242,7 @@ fun a_vault_without_an_auto_lp_position_still_shares() {
 
     f.scenario.next_tx(ADMIN);
     let shared = f.scenario.take_shared_by_id<LpVault<VAULT_TESTS, QUOTE>>(vault_id);
-    assert_eq!(shared.auto_lp_position_id<_, _, TestVenue>(), option::none());
+    assert_eq!(shared.auto_lp_position_id_for_testing<_, _, TestVenue>(), option::none());
     test_scenario::return_shared(shared);
     f.end();
 }
@@ -295,8 +301,8 @@ fun protocol_claim_pays_both_residuals_once_and_emits_the_exact_claim() {
 
     assert_eq!(meme.value(), 3);
     assert_eq!(quote.value(), 4);
-    assert_eq!(vault.protocol_meme_residual(), 0);
-    assert_eq!(vault.protocol_quote_residual(), 0);
+    assert_eq!(vault.protocol_meme_residual_for_testing(), 0);
+    assert_eq!(vault.protocol_quote_residual_for_testing(), 0);
     let events = event::events_by_type<blast_events::ProtocolFeesClaimed>();
     let mut expected = bcs::to_bytes(&object::id(&vault));
     expected.append(bcs::to_bytes(&type_name::with_original_ids<VAULT_TESTS>()));
@@ -420,8 +426,8 @@ fun split_rounds_blast_up_then_credits_every_balance_and_pays_every_recipient_ex
             },
         ),
     );
-    assert_balances!(|| vault.creator_balances(), 2, 1);
-    assert_balances!(|| vault.auto_lp_balances(), 3, 2);
+    assert_balances!(|| vault.creator_balances_for_testing(), 2, 1);
+    assert_balances!(|| vault.auto_lp_balances_for_testing(), 3, 2);
     assert_balances!(|| vault.rewards_balances(), 1, 0);
     f.assert_received(PROTOCOL, 2, 2);
     f.assert_received(DESTINATION_A, 1, 1);
@@ -502,8 +508,8 @@ fun zero_collection_is_eventless_and_one_sided_collections_pay_only_the_nonzero_
     f.scenario.next_tx(ADMIN);
     f.split(&mut vault, 0, 0);
     assert_eq!(event::num_events(), 0);
-    assert_balances!(|| vault.creator_balances(), 0, 0);
-    assert_balances!(|| vault.auto_lp_balances(), 0, 0);
+    assert_balances!(|| vault.creator_balances_for_testing(), 0, 0);
+    assert_balances!(|| vault.auto_lp_balances_for_testing(), 0, 0);
     assert_balances!(|| vault.rewards_balances(), 0, 0);
     f.split(&mut vault, 0, 9);
 
@@ -512,8 +518,8 @@ fun zero_collection_is_eventless_and_one_sided_collections_pay_only_the_nonzero_
     assert_eq!(quote.gross_quote, 9);
     assert_eq!(quote.recipient_meme, vector[0, 0]);
     assert_eq!(quote.recipient_quote, vector[1, 2]);
-    assert_balances!(|| vault.creator_balances(), 0, 2);
-    assert_balances!(|| vault.auto_lp_balances(), 0, 3);
+    assert_balances!(|| vault.creator_balances_for_testing(), 0, 2);
+    assert_balances!(|| vault.auto_lp_balances_for_testing(), 0, 3);
     assert_balances!(|| vault.rewards_balances(), 0, 1);
     f.assert_received(DESTINATION_A, 0, 1);
     f.assert_received(DESTINATION_B, 0, 2);
@@ -524,7 +530,7 @@ fun zero_collection_is_eventless_and_one_sided_collections_pay_only_the_nonzero_
     let meme = collection(0);
     assert_eq!(meme.recipient_meme, vector[1, 2]);
     assert_eq!(meme.recipient_quote, vector[0, 0]);
-    assert_balances!(|| vault.creator_balances(), 2, 2);
+    assert_balances!(|| vault.creator_balances_for_testing(), 2, 2);
     f.assert_received(DESTINATION_A, 1, 0);
     f.assert_received(DESTINATION_B, 2, 0);
 
@@ -554,8 +560,8 @@ fun full_blast_share_pays_only_the_protocol_destination() {
     );
     assert_eq!(paid.recipient_meme, vector[0, 0]);
     assert_eq!(paid.recipient_quote, vector[0, 0]);
-    assert_balances!(|| vault.creator_balances(), 0, 0);
-    assert_balances!(|| vault.auto_lp_balances(), 0, 0);
+    assert_balances!(|| vault.creator_balances_for_testing(), 0, 0);
+    assert_balances!(|| vault.auto_lp_balances_for_testing(), 0, 0);
     assert_balances!(|| vault.rewards_balances(), 0, 0);
     f.assert_received(PROTOCOL, 17, 19);
     f.assert_received(DESTINATION_A, 0, 0);
@@ -615,8 +621,8 @@ fun u64_max_collection_uses_wide_products_and_conserves_every_unit() {
             + paid.recipient_quote[0] + paid.recipient_quote[1],
         project_quote,
     );
-    assert_balances!(|| vault.creator_balances(), paid.creator_meme, paid.creator_quote);
-    assert_balances!(|| vault.auto_lp_balances(), paid.auto_lp_meme, paid.auto_lp_quote);
+    assert_balances!(|| vault.creator_balances_for_testing(), paid.creator_meme, paid.creator_quote);
+    assert_balances!(|| vault.auto_lp_balances_for_testing(), paid.auto_lp_meme, paid.auto_lp_quote);
     assert_balances!(|| vault.rewards_balances(), paid.rewards_meme, paid.rewards_quote);
     f.assert_received(PROTOCOL, paid.protocol_meme, paid.protocol_quote);
     f.assert_received(DESTINATION_A, paid.recipient_meme[0], paid.recipient_quote[0]);
@@ -647,7 +653,7 @@ fun sixteen_recipients_are_canonical_and_all_paid() {
     assert_eq!(paid.recipient_meme, meme);
     assert_eq!(paid.recipient_quote, quote);
     assert_eq!(vector[paid.creator_meme, paid.auto_lp_meme, paid.rewards_meme], vector[0, 0, 0]);
-    let recipients = *vault.fee_split().recipients();
+    let recipients = *vault.fee_split_for_testing().recipients();
     16u64.do!(|i| {
         let destination = sui::address::from_u256((i as u256) + 1);
         assert_eq!(recipients[i].destination(), destination);
@@ -670,7 +676,7 @@ fun take_auto_lp_hands_over_every_waiting_unit_and_empties_the_balances() {
 
     assert_eq!(meme.value(), 5);
     assert_eq!(quote.value(), 7);
-    assert_balances!(|| vault.auto_lp_balances(), 0, 0);
+    assert_balances!(|| vault.auto_lp_balances_for_testing(), 0, 0);
     destroy(meme);
     destroy(quote);
     destroy(vault);
@@ -688,7 +694,7 @@ fun kept_residuals_wait_for_the_next_collection_and_only_an_addition_is_announce
     destroy(meme.split(4));
     vault.keep_auto_lp(4, 0, meme, quote);
 
-    assert_balances!(|| vault.auto_lp_balances(), 1, 7);
+    assert_balances!(|| vault.auto_lp_balances_for_testing(), 1, 7);
     let added = event::events_by_type<blast_events::AutoLiquidityAdded>();
     assert_eq!(added.length(), 1);
     assert_eq!(
@@ -708,12 +714,12 @@ fun kept_residuals_wait_for_the_next_collection_and_only_an_addition_is_announce
     f.scenario.next_tx(ADMIN);
     let (meme, quote) = vault.take_auto_lp();
     vault.keep_auto_lp(0, 0, meme, quote);
-    assert_balances!(|| vault.auto_lp_balances(), 1, 7);
+    assert_balances!(|| vault.auto_lp_balances_for_testing(), 1, 7);
     assert_eq!(event::num_events(), 0);
 
     // The residual joins the next collection's auto-LP share.
     f.split(&mut vault, 2, 3);
-    assert_balances!(|| vault.auto_lp_balances(), 3, 10);
+    assert_balances!(|| vault.auto_lp_balances_for_testing(), 3, 10);
 
     destroy(vault);
     f.end();
@@ -772,7 +778,7 @@ fun new_vault(
         self.scenario.ctx(),
     );
     let position = TestPosition { id: object::new(self.scenario.ctx()) };
-    vault.attach(&TestVenue(), object::id_from_address(POOL), position);
+    vault.attach(&TestVenue(), object::id_from_address(POOL), position, 1);
 
     vault
 }
@@ -817,8 +823,8 @@ fun dense_totals(share: u64) {
         5u64.do!(|part| *&mut sums[part + 1] = sums[part + 1] + parts[part]);
     });
 
-    assert_balances!(|| vault.creator_balances(), sums[1], sums[1]);
-    assert_balances!(|| vault.auto_lp_balances(), sums[2], sums[2]);
+    assert_balances!(|| vault.creator_balances_for_testing(), sums[1], sums[1]);
+    assert_balances!(|| vault.auto_lp_balances_for_testing(), sums[2], sums[2]);
     assert_balances!(|| vault.rewards_balances(), sums[3], sums[3]);
     assert_eq!(f.received<VAULT_TESTS>(PROTOCOL), sums[0]);
     assert_eq!(f.received<QUOTE>(PROTOCOL), sums[0]);

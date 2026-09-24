@@ -116,8 +116,8 @@ fun settled_update_splits_accrued_fees_under_the_old_split_then_commits_the_next
     f.accrue(10, 20);
     f.settle_exact_position(&curve_fee_cap, rewards_and_b());
 
-    assert_eq!(f.vault.generation(), 1);
-    assert_eq!(f.vault.fee_split(), rewards_and_b());
+    assert_eq!(f.vault.generation_for_testing(), 1);
+    assert_eq!(f.vault.fee_split_for_testing(), rewards_and_b());
     assert_collection(
         ExpectedCollection {
             vault_id: object::id(&f.vault),
@@ -178,7 +178,7 @@ fun settled_update_splits_accrued_fees_under_the_old_split_then_commits_the_next
         },
     );
     f.assert_auto_liquidity_added(1, 1, 0, 0);
-    assert_balances!(|| f.vault.creator_balances(), 5, 10);
+    assert_balances!(|| f.vault.creator_balances_for_testing(), 5, 10);
     assert_balances!(|| f.vault.rewards_balances(), 1, 1);
     f.assert_received(ROUTE_A, 5, 10);
     f.assert_received(ROUTE_B, 1, 2);
@@ -194,7 +194,7 @@ fun zero_fee_settlement_still_advances_exactly_once_without_a_collection_event()
 
     f.settle_exact_position(&curve_fee_cap, rewards_and_b());
 
-    assert_eq!(f.vault.generation(), 1);
+    assert_eq!(f.vault.generation_for_testing(), 1);
     assert!(event::events_by_type<blast_events::FeesCollected>().is_empty());
     assert!(event::events_by_type<blast_events::AutoLiquidityAdded>().is_empty());
     assert_eq!(event::events_by_type<blast_events::FeeSplitChanged>().length(), 1);
@@ -211,7 +211,7 @@ fun a_reassigned_curve_fee_cap_updates_the_split() {
     let curve_fee_cap = f.take_reassigned_cap();
     f.settle_exact_position(&curve_fee_cap, rewards_and_b());
 
-    assert_eq!(f.vault.generation(), 1);
+    assert_eq!(f.vault.generation_for_testing(), 1);
     destroy(retired);
     destroy(curve_fee_cap);
     f.end();
@@ -272,19 +272,19 @@ fun auto_lp_keeps_what_the_venue_does_not_take_and_announces_only_real_additions
     f.accrue(5, 2);
     f.collect_exact_position();
     f.assert_auto_liquidity_added(2, 2, 3, 0);
-    assert_balances!(|| f.vault.auto_lp_balances(), 3, 0);
+    assert_balances!(|| f.vault.auto_lp_balances_for_testing(), 3, 0);
 
     f.scenario.next_tx(KEEPER);
     f.accrue(0, 4);
     f.collect_exact_position();
     f.assert_auto_liquidity_added(3, 3, 0, 1);
-    assert_balances!(|| f.vault.auto_lp_balances(), 0, 1);
+    assert_balances!(|| f.vault.auto_lp_balances_for_testing(), 0, 1);
 
     // Nothing to pair with the waiting Quote: no addition and no event.
     f.scenario.next_tx(KEEPER);
     f.collect_exact_position();
     assert_eq!(event::num_events(), 0);
-    assert_balances!(|| f.vault.auto_lp_balances(), 0, 1);
+    assert_balances!(|| f.vault.auto_lp_balances_for_testing(), 0, 1);
     assert_balances!(|| f.position_liquidity(), 5, 5);
 
     f.end();
@@ -305,7 +305,7 @@ fun the_live_cap_claims_exactly_the_creator_balances() {
 
     assert_eq!(meme.burn_for_testing(), 5);
     assert_eq!(quote.burn_for_testing(), 11);
-    assert_balances!(|| f.vault.creator_balances(), 0, 0);
+    assert_balances!(|| f.vault.creator_balances_for_testing(), 0, 0);
     let claims = event::events_by_type<blast_events::CreatorFeesClaimed>();
     assert_eq!(claims.length(), 1);
     assert_eq!(
@@ -427,7 +427,7 @@ fun start(fee_split: FeeSplit): FeeSplitFixture {
     let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(16, 1, scenario.ctx());
-    authority.grant_admin(&root, blast_fun_domain::creator_admin_role(), ADMIN, scenario.ctx());
+    authority.grant_admin(&root, blast_fun_domain::creator_admin_role_for_testing(), ADMIN, scenario.ctx());
     destroy(root);
     let policy = lp_fee_policy::new_for_testing(scenario.ctx());
     let mut config = launch_config::new_for_testing(scenario.ctx());
@@ -452,7 +452,7 @@ fun start(fee_split: FeeSplit): FeeSplitFixture {
         liquidity_meme: balance::zero(),
         liquidity_quote: balance::zero(),
     };
-    vault.attach(&Venue(), object::id_from_address(POOL), position);
+    vault.attach(&Venue(), object::id_from_address(POOL), position, 1);
     launch.share(&version, &clock);
     destroy(config);
 

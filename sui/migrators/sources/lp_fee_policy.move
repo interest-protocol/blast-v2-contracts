@@ -65,11 +65,6 @@ public fun set_protocol_destination(
     blast_events::lp_fee_destination_changed(old_destination, destination);
 }
 
-/// Returns the address paid the protocol share of every collection.
-public fun protocol_destination(self: &LpFeePolicy): address {
-    self.destination
-}
-
 /// Changes both default shares for every coin without its own pair, from its next collection.
 public fun set_default_shares(
     self: &mut LpFeePolicy,
@@ -92,11 +87,6 @@ public fun set_default_shares(
         option::some(meme_bps.value()),
         option::some(quote_bps.value()),
     );
-}
-
-/// Returns the Meme and Quote shares of every coin without its own pair.
-public fun default_shares(self: &LpFeePolicy): (Bps, Bps) {
-    (self.defaults.meme_bps, self.defaults.quote_bps)
 }
 
 /// Sets both shares for this original Meme type, from its next collection.
@@ -156,8 +146,15 @@ public fun clear_coin_shares<Meme>(
     );
 }
 
+// === Package Functions ===
+
+/// Returns the address paid the protocol share of every collection.
+public(package) fun protocol_destination(self: &LpFeePolicy): address {
+    self.destination
+}
+
 /// Returns the Meme and Quote shares a collection for `Meme` pays Blast now.
-public fun shares<Meme>(self: &LpFeePolicy): (Bps, Bps) {
+public(package) fun shares<Meme>(self: &LpFeePolicy): (Bps, Bps) {
     let meme = type_name::with_original_ids<Meme>();
     let shares = if (self.coins.contains(meme)) self.coins[meme] else self.defaults;
 
@@ -194,6 +191,12 @@ public fun new_for_testing(ctx: &mut TxContext): LpFeePolicy {
 /// Returns the number of stored per-coin pairs for type-key and cleanup tests.
 public fun coin_count_for_testing(self: &LpFeePolicy): u64 {
     self.coins.length()
+}
+
+#[test_only]
+/// Returns the Meme and Quote shares of every coin without its own pair.
+public fun default_shares_for_testing(self: &LpFeePolicy): (Bps, Bps) {
+    (self.defaults.meme_bps, self.defaults.quote_bps)
 }
 
 // === Imports ===

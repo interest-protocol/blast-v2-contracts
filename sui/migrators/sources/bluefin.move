@@ -8,13 +8,6 @@
 /// always creates and expects `Pool<Meme, Quote>` with Meme as coin A.
 module blast_fun_migrators::bluefin;
 
-// === Constants ===
-
-/// Bluefin pool creation's own tier bounds (`pool` aborts 1026 and 1027 above them).
-const MAX_TICK_SPACING: u32 = 400;
-
-const MAX_FEE_RATE: u64 = 20_000;
-
 // === Errors ===
 
 #[error(code = 0)]
@@ -49,8 +42,8 @@ public fun new<Meme, Quote>(
 ): LaunchInitializer<Meme, Quote> {
     migrators_version.assert_current();
     assert!(
-        tick_spacing > 0 && tick_spacing <= MAX_TICK_SPACING && fee_rate > 0
-            && fee_rate <= MAX_FEE_RATE,
+        tick_spacing > 0 && tick_spacing <= constants::bluefin_max_tick_spacing!() && fee_rate > 0
+            && fee_rate <= constants::bluefin_max_fee_rate!(),
         EInvalidTier,
     );
 
@@ -87,7 +80,7 @@ public fun migrate<Meme, Quote>(
     pool_name.append(b"-");
     pool_name.append(quote_currency.symbol().into_bytes());
 
-    let (meme, quote, migration) = launch.begin_migration(package_version, Witness());
+    let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
     let source_meme = meme.value();
     let source_quote = quote.value();
     let fix_meme = source_meme >= source_quote;
@@ -112,7 +105,7 @@ public fun migrate<Meme, Quote>(
         ctx,
     );
     let mut position = pool::open_position(bluefin_config, &mut pool, lower_tick, upper_tick, ctx);
-    let (supplied_meme, supplied_quote, residual_meme, residual_quote) =
+    let (_, _, residual_meme, residual_quote) =
         pool::add_liquidity_with_fixed_amount(
             clock,
             bluefin_config,
@@ -126,20 +119,7 @@ public fun migrate<Meme, Quote>(
 
     let liquidity = position.liquidity();
     let mut vault = vault::prepare(launch, residual_meme, residual_quote, ctx);
-    vault.attach(&Venue(), position.pool_id(), position);
-    let (residual_meme, residual_quote) = vault.pending_residuals();
-    launch.complete_migration(
-        package_version,
-        currency,
-        migration,
-        Witness(),
-        supplied_meme,
-        supplied_quote,
-        residual_meme,
-        residual_quote,
-        liquidity,
-        ctx,
-    );
+    vault.attach(&Venue(), position.pool_id(), position, liquidity);
     vault.share(&Venue());
     pool.share_pool_object();
 }
@@ -251,6 +231,7 @@ use blast_fun::{
 };
 
 use blast_fun_migrators::{
+    constants,
     lp_fee_policy::LpFeePolicy,
     migration_math,
     package_version::PackageVersion as MigratorsVersion,

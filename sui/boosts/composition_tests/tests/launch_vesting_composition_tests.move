@@ -304,8 +304,8 @@ fun compose_and_share<Meme>(
     assert!(currency.is_supply_fixed());
     assert_eq!(currency.total_supply().destroy_some(), supply);
     test_scenario::return_to_address(COIN_REGISTRY, currency);
-    assert!(launch.public_start_ms().is_none());
-    assert!(!launch.pre_share_buy_completed());
+    assert!(launch.public_start_ms_for_testing().is_none());
+    assert!(!launch.pre_share_buy_completed_for_testing());
     assert_eq!(launch.lp_fee_split(), fee_split());
     let (tick_spacing, fee_rate) = launch.pool_tier();
     assert_eq!(tick_spacing, POOL_TICK_SPACING);
@@ -323,8 +323,8 @@ fun compose_and_share<Meme>(
     refund.destroy_zero();
     let meme_out = meme.value();
     assert_buy(launch_id, supply, meme_out);
-    assert!(launch.public_start_ms().is_none());
-    assert!(launch.pre_share_buy_completed());
+    assert!(launch.public_start_ms_for_testing().is_none());
+    assert!(launch.pre_share_buy_completed_for_testing());
     let (vesting, cancel_cap_id) = if (cancelable) {
         let (vesting, cap) = linear_vesting::new_cancelable(
             meme,
@@ -404,8 +404,8 @@ fun claim_creator_caps<Meme>(
 ) {
     let mut launch = self.scenario.take_shared<Launch<Meme, QUOTE>>();
     assert_eq!(object::id(&launch), result.launch_id);
-    assert_eq!(launch.public_start_ms(), option::some(SHARE_MS));
-    assert!(launch.pre_share_buy_completed());
+    assert_eq!(launch.public_start_ms_for_testing(), option::some(SHARE_MS));
+    assert!(launch.pre_share_buy_completed_for_testing());
     let (curve, metadata) = launch.claim_creator_caps(
         &self.version,
         &self.runtime,

@@ -41,7 +41,7 @@ fun start(): MatrixFixture {
     let mut scenario = test_scenario::begin(ADMIN);
     let version = package_version::new_for_testing(scenario.ctx());
     let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(16, 1, scenario.ctx());
-    authority.grant_admin(&root, blast_fun_domain::creator_admin_role(), ADMIN, scenario.ctx());
+    authority.grant_admin(&root, blast_fun_domain::creator_admin_role_for_testing(), ADMIN, scenario.ctx());
     destroy(root);
     let config = launch_config::new_for_testing(scenario.ctx());
 

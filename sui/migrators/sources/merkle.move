@@ -34,7 +34,9 @@ public(package) fun verify(
     proof: &vector<vector<u8>>,
 ): bool {
     if (
-        leaves == 0 || leaves > 65_536 || index >= leaves || root.length() != 32 || digest.length() != 32
+        leaves == 0 || leaves > constants::max_reward_leaves!() || index >= leaves
+            || root.length() != constants::digest_length!()
+            || digest.length() != constants::digest_length!()
     ) return false;
     let mut width = leaves;
     let mut depth = 0;
@@ -42,7 +44,10 @@ public(package) fun verify(
         width = width.div_ceil(2);
         depth = depth + 1;
     };
-    if (proof.length() != depth || !proof.all!(|sibling| sibling.length() == 32)) return false;
+    if (
+        proof.length() != depth
+            || !proof.all!(|sibling| sibling.length() == constants::digest_length!())
+    ) return false;
     proof.do_ref!(|sibling| {
         digest = if (index % 2 == 0) node(digest, *sibling) else node(*sibling, digest);
         index = index / 2;
@@ -65,6 +70,8 @@ fun node(left: vector<u8>, right: vector<u8>): vector<u8> {
 public fun node_for_testing(left: vector<u8>, right: vector<u8>): vector<u8> { node(left, right) }
 
 // === Imports ===
+
+use blast_fun_migrators::constants;
 
 use std::bcs;
 

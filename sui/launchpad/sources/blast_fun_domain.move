@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// The blast.fun administration domain shared with Migrators.
-///
-/// This module owns the domain one-time witness, the governance configuration,
-/// and the exported role bits. Reusing packages import
-/// `AdminWitness<BLAST_FUN_DOMAIN>` and the role accessors; they never create
-/// another authority and never restate a numeric role.
+/// The blast.fun administration domain and its roles, shared with the migrators.
 module blast_fun::blast_fun_domain;
 
 // === Constants ===
@@ -41,8 +36,10 @@ public fun package_admin_role(): u64 {
     PACKAGE_ADMIN_ROLE
 }
 
+// === Package Functions ===
+
 /// The role a witness must carry to revoke and reissue creator capabilities.
-public fun creator_admin_role(): u64 {
+public(package) fun creator_admin_role(): u64 {
     CREATOR_ADMIN_ROLE
 }
 
@@ -52,4 +49,9 @@ public fun creator_admin_role(): u64 {
 /// Runs domain initialization with a genuine test one-time witness.
 public fun init_for_testing(ctx: &mut TxContext) {
     init(sui::test_utils::create_one_time_witness<BLAST_FUN_DOMAIN>(), ctx);
+}
+
+#[test_only]
+public fun creator_admin_role_for_testing(): u64 {
+    CREATOR_ADMIN_ROLE
 }

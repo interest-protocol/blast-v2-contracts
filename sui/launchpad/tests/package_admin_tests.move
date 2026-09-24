@@ -67,7 +67,7 @@ fun wrap_accepts_blast_capabilities_and_shares_complete_custody_fact() {
         assert_eq!(emitted_native_version, f.package_admin.version_for_testing());
         assert_eq!(emitted_policy, package::compatible_policy());
         assert_eq!(emitted_policy, f.package_admin.policy_for_testing());
-        assert!(f.package_admin.has_upgrade_cap());
+        assert!(f.package_admin.has_upgrade_cap_for_testing());
     });
 
     fixture.end();
@@ -307,7 +307,7 @@ fun package_admin_can_permanently_destroy_native_upgrade_authority() {
         assert_eq!(emitted_upgrade_cap_id, upgrade_cap_id);
         assert_eq!(final_native_version, 1);
         assert_eq!(final_policy, package::compatible_policy());
-        assert!(!f.package_admin.has_upgrade_cap());
+        assert!(!f.package_admin.has_upgrade_cap_for_testing());
         assert_eq!(f.package_version.version_for_testing(), 1);
     });
 

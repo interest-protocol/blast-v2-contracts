@@ -12,131 +12,47 @@ const PROTOCOL_ADMIN: address = @0xAD;
 
 // === Test-Only Types ===
 
-/// Package-initialization facts only; carries no ACL or admin state.
-public struct InitFixture {
-    scenario: Scenario,
-    config: runtime_config::RuntimeConfig,
-}
-
 /// Live-settings administration through the ACL sign-in seam.
 public struct ConfigFixture {
     scenario: Scenario,
     authority: Authority<BLAST_FUN_DOMAIN>,
     admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
-    package_version: package_version::PackageVersion,
-    config: runtime_config::RuntimeConfig,
+    package_version: PackageVersion,
+    config: RuntimeConfig,
 }
 
 // === Tests ===
 
 #[test]
-fun package_init_creates_disabled_zero_share_runtime_config() {
-    let mut fixture = start_init();
+/// Package initialization shares a silent configuration with account claims disabled and no
+/// protocol share.
+fun package_init_shares_a_config_without_signer_or_protocol_share() {
+    let mut scenario = test_scenario::begin(PUBLISHER);
+    runtime_config::init_for_testing(scenario.ctx());
 
-    fixture.next_tx!(PUBLISHER, |f| {
-        assert_eq!(f.config.protocol_fee_share().value(), 0);
-    });
+    assert_eq!(scenario.next_tx(PUBLISHER).num_user_events(), 0);
+    let config = scenario.take_shared<RuntimeConfig>();
+    assert!(config.creator_claim_signer().is_empty());
+    assert_eq!(config.protocol_fee_share().value(), 0);
 
-    fixture.end();
+    test_scenario::return_shared(config);
+    scenario.end();
 }
 
+// --- Protocol fee share ---
+
 #[test]
-fun active_admin_updates_live_share_and_emits_new_value() {
+fun admin_sets_the_protocol_fee_share_and_it_emits_the_new_value() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        f.set_protocol_fee_share(bps::new(7_000));
 
-        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(7_000));
-
-        let changed = events::collect_one<events::ProtocolFeeShareChanged>(0);
         assert_eq!(f.config.protocol_fee_share().value(), 7_000);
-        assert_eq!(bcs::to_bytes(&changed), bcs::to_bytes(&7_000u64));
-        assert!(event::events_by_type<events::ProtocolFeeShareChanged>().is_empty());
-    });
-
-    fixture.end();
-}
-
-#[test]
-fun one_runtime_config_and_admin_witness_update_both_live_settings() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-        let signer_public_key =
-            x"11223344556677889900aabbccddeeffffeeddccbbaa00998877665544332211";
-
-        f.config.set_creator_claim_signer(
-            &f.package_version,
-            &admin_witness,
-            signer_public_key,
+        assert_eq!(
+            bcs::to_bytes(&collect_one<events::ProtocolFeeShareChanged>()),
+            bcs::to_bytes(&7_000u64),
         );
-        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(2_500));
-
-        let signer_set = events::collect_one<events::CreatorClaimSignerSet>(0);
-        let fee_share_changed =
-            events::collect_one<events::ProtocolFeeShareChanged>(0);
-
-        assert_eq!(bcs::to_bytes(&signer_set), bcs::to_bytes(&signer_public_key));
-        assert_eq!(bcs::to_bytes(&fee_share_changed), bcs::to_bytes(&2_500u64));
-        assert_eq!(f.config.protocol_fee_share().value(), 2_500);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EInvalidBps,
-    location = blast_fun::bps,
-)]
-fun protocol_fee_share_input_cannot_exceed_one_hundred_percent() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(10_001));
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
-)]
-fun stale_package_version_rejects_runtime_config_before_unchanged_check() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-        f.package_version.set_for_testing(2);
-
-        f.config.set_protocol_fee_share(
-            &f.package_version,
-            &admin_witness,
-            bps::new(0),
-        );
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EProtocolFeeShareUnchanged,
-    location = blast_fun::runtime_config,
-)]
-fun protocol_fee_share_rejects_unchanged_value() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(0));
     });
 
     fixture.end();
@@ -147,38 +63,134 @@ fun protocol_fee_share_accepts_both_percentage_boundaries() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(10_000));
+        f.set_protocol_fee_share(bps::new(10_000));
         assert_eq!(f.config.protocol_fee_share().value(), 10_000);
 
-        f.config.set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(0));
+        f.set_protocol_fee_share(bps::new(0));
         assert_eq!(f.config.protocol_fee_share().value(), 0);
 
-        let mut changes = events::collect<events::ProtocolFeeShareChanged>();
+        let changes = collect<events::ProtocolFeeShareChanged>();
         assert_eq!(changes.length(), 2);
-        let second = changes.pop_back();
-        let first = changes.pop_back();
+        assert_eq!(bcs::to_bytes(&changes[0]), bcs::to_bytes(&10_000u64));
+        assert_eq!(bcs::to_bytes(&changes[1]), bcs::to_bytes(&0u64));
+    });
 
-        assert_eq!(bcs::to_bytes(&first), bcs::to_bytes(&10_000u64));
-        assert_eq!(bcs::to_bytes(&second), bcs::to_bytes(&0u64));
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EUnchanged, location = blast_fun::runtime_config)]
+fun protocol_fee_share_rejects_the_current_value() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.set_protocol_fee_share(bps::new(0));
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun protocol_fee_share_checks_the_version_before_the_current_value() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.package_version.set_for_testing(2);
+
+        f.set_protocol_fee_share(bps::new(0));
+    });
+
+    fixture.end();
+}
+
+// --- Creator-claim signer ---
+
+#[test]
+fun admin_sets_the_claim_signer_and_it_emits_the_key() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.set_creator_claim_signer(signer_public_key());
+
+        assert_eq!(*f.config.creator_claim_signer(), signer_public_key());
+        assert_eq!(
+            bcs::to_bytes(&collect_one<events::CreatorClaimSignerSet>()),
+            bcs::to_bytes(&signer_public_key()),
+        );
+    });
+
+    fixture.end();
+}
+
+#[test]
+/// An empty key revokes account claims and emits the empty key.
+fun an_empty_key_revokes_the_claim_signer() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.set_creator_claim_signer(signer_public_key());
+    });
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.set_creator_claim_signer(vector[]);
+
+        assert!(f.config.creator_claim_signer().is_empty());
+        assert_eq!(
+            bcs::to_bytes(&collect_one<events::CreatorClaimSignerSet>()),
+            bcs::to_bytes(&vector<u8>[]),
+        );
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidCreatorClaimPublicKey, location = blast_fun::runtime_config)]
+fun claim_signer_rejects_a_key_that_is_not_32_bytes() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.set_creator_claim_signer(x"00");
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EUnchanged, location = blast_fun::runtime_config)]
+fun claim_signer_rejects_the_current_key() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.set_creator_claim_signer(signer_public_key());
+        f.set_creator_claim_signer(signer_public_key());
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EUnchanged, location = blast_fun::runtime_config)]
+fun claim_signer_rejects_revoking_an_absent_signer() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.set_creator_claim_signer(vector[]);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun claim_signer_checks_the_version_before_the_key_length() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.package_version.set_for_testing(2);
+
+        f.set_creator_claim_signer(x"00");
     });
 
     fixture.end();
 }
 
 // === Test Helpers ===
-
-macro fun init_next_tx(
-    $fixture: &mut InitFixture,
-    $sender: address,
-    $fn: |&mut InitFixture|,
-) {
-    let fixture = $fixture;
-
-    fixture.scenario.next_tx($sender);
-    $fn(fixture);
-}
 
 macro fun config_next_tx(
     $fixture: &mut ConfigFixture,
@@ -191,18 +203,7 @@ macro fun config_next_tx(
     $fn(fixture);
 }
 
-fun start_init(): InitFixture {
-    let mut scenario = test_scenario::begin(PUBLISHER);
-    runtime_config::init_for_testing(scenario.ctx());
-
-    assert_eq!(event::num_events(), 0);
-
-    scenario.next_tx(PUBLISHER);
-    let config = scenario.take_shared<runtime_config::RuntimeConfig>();
-
-    InitFixture { scenario, config }
-}
-
+/// A zero-role administrator over a configuration as package initialization leaves it.
 fun start(): ConfigFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
@@ -217,29 +218,48 @@ fun start(): ConfigFixture {
     ConfigFixture { scenario, authority, admin_cap, package_version, config }
 }
 
-fun sign_in(self: &ConfigFixture): AdminWitness<BLAST_FUN_DOMAIN> {
-    self.authority.sign_in(&self.admin_cap)
+fun config_set_protocol_fee_share(self: &mut ConfigFixture, protocol_fee_share_bps: Bps) {
+    let admin_witness = self.authority.sign_in(&self.admin_cap);
+
+    self.config.set_protocol_fee_share(&self.package_version, &admin_witness, protocol_fee_share_bps);
 }
 
-fun init_end(self: InitFixture) {
-    destroy(self);
+fun config_set_creator_claim_signer(self: &mut ConfigFixture, signer_public_key: vector<u8>) {
+    let admin_witness = self.authority.sign_in(&self.admin_cap);
+
+    self.config.set_creator_claim_signer(&self.package_version, &admin_witness, signer_public_key);
 }
 
 fun config_end(self: ConfigFixture) {
     destroy(self);
 }
 
+fun signer_public_key(): vector<u8> {
+    x"11223344556677889900aabbccddeeffffeeddccbbaa00998877665544332211"
+}
+
+fun collect<T: copy + drop>(): vector<T> {
+    event::events_by_type<Event<T>>().map!(|event| event.unwrap())
+}
+
+fun collect_one<T: copy + drop>(): T {
+    let mut payloads = collect<T>();
+    assert_eq!(payloads.length(), 1);
+    payloads.pop_back()
+}
+
 // === Imports ===
 
-use blast_admin::acl::{Authority, AdminCap, AdminWitness};
+use blast_admin::acl::{Authority, AdminCap};
 
 use blast_fun::{
-    bps,
+    blast_events::Event,
+    blast_fun_domain::BLAST_FUN_DOMAIN,
+    bps::{Self, Bps},
     domain_fixture,
     events,
-    blast_fun_domain::BLAST_FUN_DOMAIN,
-    package_version,
-    runtime_config,
+    package_version::{Self, PackageVersion},
+    runtime_config::{Self, RuntimeConfig},
 };
 
 use std::{bcs, unit_test::{assert_eq, destroy}};
@@ -250,6 +270,6 @@ use fun config_end as ConfigFixture.end;
 
 use fun config_next_tx as ConfigFixture.next_tx;
 
-use fun init_end as InitFixture.end;
+use fun config_set_creator_claim_signer as ConfigFixture.set_creator_claim_signer;
 
-use fun init_next_tx as InitFixture.next_tx;
+use fun config_set_protocol_fee_share as ConfigFixture.set_protocol_fee_share;

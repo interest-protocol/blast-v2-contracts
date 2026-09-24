@@ -30,13 +30,6 @@ fun init(ctx: &mut TxContext) {
     transfer::share_object(new(ctx));
 }
 
-// === Public Functions ===
-
-/// Rejects every migrators generation except the active one.
-public fun assert_current(self: &PackageVersion) {
-    self.generation.assert_current(PACKAGE_VERSION);
-}
-
 // === Package Functions ===
 
 /// Proves the cutover target is exactly next before any upgrade finalizer effect.
@@ -49,6 +42,11 @@ public(package) fun advance(self: &mut PackageVersion) {
     let container_id = self.id.to_inner();
 
     self.generation.advance(container_id, NEXT_PACKAGE_VERSION);
+}
+
+/// Rejects every migrators generation except the active one.
+public(package) fun assert_current(self: &PackageVersion) {
+    self.generation.assert_current(PACKAGE_VERSION);
 }
 
 // === Private Functions ===

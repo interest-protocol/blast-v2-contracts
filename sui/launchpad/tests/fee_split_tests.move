@@ -15,20 +15,19 @@ const U64_MAX: u64 = 18_446_744_073_709_551_615;
 // === Tests ===
 
 #[test]
-fun recipients_are_canonical_under_permutation() {
-    let left = split(0, 0, 0, vector[route(DESTINATION_B, 5_000), route(DESTINATION_A, 5_000)]);
-    let right = split(0, 0, 0, vector[route(DESTINATION_A, 5_000), route(DESTINATION_B, 5_000)]);
+fun recipients_keep_the_creator_order() {
+    let fee_split = split(0, 0, 0, vector[route(DESTINATION_B, 4_000), route(DESTINATION_A, 6_000)]);
 
-    assert_eq!(bcs::to_bytes(&left), bcs::to_bytes(&right));
-    assert_eq!(left.recipients()[0].destination(), DESTINATION_A);
-    assert_eq!(left.recipients()[0].route_bps(), 5_000);
+    assert_eq!(fee_split.recipients()[0].destination(), DESTINATION_B);
+    assert_eq!(fee_split.recipients()[0].route_bps_for_testing(), 4_000);
+    assert_eq!(fee_split.recipients()[1].destination(), DESTINATION_A);
 }
 
 #[test]
 fun every_part_alone_can_take_the_whole_split() {
-    assert_eq!(split(10_000, 0, 0, vector[]).creator_bps().value(), 10_000);
-    assert_eq!(split(0, 10_000, 0, vector[]).auto_lp_bps().value(), 10_000);
-    assert_eq!(split(0, 0, 10_000, vector[]).rewards_bps().value(), 10_000);
+    assert_eq!(split(10_000, 0, 0, vector[]).creator_bps_for_testing().value(), 10_000);
+    assert_eq!(split(0, 10_000, 0, vector[]).auto_lp_bps_for_testing().value(), 10_000);
+    assert_eq!(split(0, 0, 10_000, vector[]).rewards_bps_for_testing().value(), 10_000);
     assert_eq!(split(0, 0, 0, vector[route(DESTINATION_A, 10_000)]).recipients().length(), 1);
 }
 
@@ -39,8 +38,8 @@ fun sixteen_recipients_are_admitted() {
 
     let fee_split = split(0, 0, 0, recipients);
 
-    assert_eq!(fee_split.recipients()[0].destination(), sui::address::from_u256(1));
-    assert_eq!(fee_split.recipients()[15].destination(), sui::address::from_u256(16));
+    assert_eq!(fee_split.recipients().length(), 16);
+    assert_eq!(fee_split.recipients()[0].destination(), sui::address::from_u256(16));
 }
 
 #[test]
@@ -83,51 +82,33 @@ fun u64_max_total_uses_wide_products_and_exact_conservation() {
     );
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::ERouteSumInvalid, location = blast_fun::allocation)]
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidShares, location = blast_fun::allocation)]
 fun an_empty_split_fails_the_sum() {
     split(0, 0, 0, vector[]);
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::ERouteSumInvalid, location = blast_fun::allocation)]
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidShares, location = blast_fun::allocation)]
 fun an_incomplete_split_fails_the_sum() {
     split(2_500, 2_500, 2_500, vector[route(DESTINATION_A, 2_499)]);
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::ERouteSumInvalid, location = blast_fun::allocation)]
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidShares, location = blast_fun::allocation)]
 fun an_oversized_split_fails_the_sum() {
     split(10_000, 0, 0, vector[route(DESTINATION_A, 1)]);
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::ERouteSumInvalid, location = blast_fun::allocation)]
-fun zero_weight_rejected_at_public_route_boundary() { route(DESTINATION_A, 0); }
-
-#[test, expected_failure(abort_code = blast_fun::errors::ERouteInvalidDestination, location = blast_fun::allocation)]
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidDestination, location = blast_fun::allocation)]
 fun zero_destination_rejected() { route(@0x0, 10_000); }
 
-#[test, expected_failure(abort_code = blast_fun::errors::ERouteDuplicateDestination, location = blast_fun::allocation)]
+#[test, expected_failure(abort_code = blast_fun::errors::EDuplicateDestination, location = blast_fun::allocation)]
 fun duplicate_recipient_rejected() {
     split(0, 0, 0, vector[route(DESTINATION_A, 5_000), route(DESTINATION_A, 5_000)]);
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::ERouteDuplicateDestination, location = blast_fun::allocation)]
-fun duplicate_at_one_over_precedes_capacity() {
+#[test, expected_failure(abort_code = blast_fun::errors::ERecipientCapacityReached, location = blast_fun::allocation)]
+fun seventeen_recipients_rejected_before_duplicates_and_the_sum() {
     let mut recipients = vector[];
-    16u64.do!(|i| recipients.push_back(route(sui::address::from_u256((i as u256) + 1), 625)));
-    recipients.push_back(route(sui::address::from_u256(1), 1));
-    split(0, 0, 0, recipients);
-}
-
-#[test, expected_failure(abort_code = blast_fun::errors::ERouteCapacityReached, location = blast_fun::allocation)]
-fun seventeen_recipients_rejected_before_the_sum() {
-    let mut recipients = vector[];
-    17u64.do!(|i| recipients.push_back(route(sui::address::from_u256((i as u256) + 1), 1)));
-    split(0, 0, 0, recipients);
-}
-
-#[test, expected_failure(abort_code = blast_fun::errors::ERouteCapacityReached, location = blast_fun::allocation)]
-fun gross_overlength_rejected_before_sort_or_duplicates() {
-    let mut recipients = vector[];
-    18u64.do!(|_| recipients.push_back(route(DESTINATION_A, 1)));
+    17u64.do!(|_| recipients.push_back(route(DESTINATION_A, 1)));
     split(0, 0, 0, recipients);
 }
 
@@ -143,4 +124,4 @@ fun split(creator: u64, auto_lp: u64, rewards: u64, recipients: vector<Route>): 
 
 use blast_fun::{allocation::{Self, FeeSplit, Route}, bps};
 
-use std::{bcs, unit_test::assert_eq};
+use std::unit_test::assert_eq;

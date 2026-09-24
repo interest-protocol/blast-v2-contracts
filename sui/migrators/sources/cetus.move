@@ -121,7 +121,7 @@ public fun migrate_meme_a<Meme, Quote>(
     let (tick_spacing, _) = launch.pool_tier();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
 
-    let (meme, quote, migration) = launch.begin_migration(package_version, Witness());
+    let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
     let meme_amount = meme.value();
     let quote_amount = quote.value();
 
@@ -145,18 +145,7 @@ public fun migrate_meme_a<Meme, Quote>(
             ctx,
         );
 
-    launch.complete_into_vault(
-        package_version,
-        currency,
-        burn_manager,
-        migration,
-        meme_amount,
-        quote_amount,
-        position,
-        residual_meme,
-        residual_quote,
-        ctx,
-    );
+    burn_into_vault(launch, burn_manager, position, residual_meme, residual_quote, ctx);
 }
 
 /// Migrates a MigrationReady launch whose Meme is Cetus coin B into vault custody.
@@ -179,7 +168,7 @@ public fun migrate_meme_b<Meme, Quote>(
     let (tick_spacing, _) = launch.pool_tier();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
 
-    let (meme, quote, migration) = launch.begin_migration(package_version, Witness());
+    let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
     let meme_amount = meme.value();
     let quote_amount = quote.value();
 
@@ -201,18 +190,7 @@ public fun migrate_meme_b<Meme, Quote>(
             ctx,
         );
 
-    launch.complete_into_vault(
-        package_version,
-        currency,
-        burn_manager,
-        migration,
-        meme_amount,
-        quote_amount,
-        position,
-        residual_meme,
-        residual_quote,
-        ctx,
-    );
+    burn_into_vault(launch, burn_manager, position, residual_meme, residual_quote, ctx);
 }
 
 /// Collects the vault position's fees from its Meme-A pool, splits them, and adds the auto-LP
@@ -303,19 +281,10 @@ fun pool_creation_cap<Meme>(venue_config: &VenueConfig): &PoolCreationCap {
     venue_config.object(CreationCapKey<Meme>())
 }
 
-/// Burns the position, locks its burn proof and the residuals in a new vault, and completes the
-/// launch against them.
-///
-/// The supplied principal is what Cetus took from the handed-off balances: everything it did not
-/// return as a residual.
-fun complete_into_vault<Meme, Quote>(
-    launch: &mut Launch<Meme, Quote>,
-    package_version: &PackageVersion,
-    currency: &mut Currency<Meme>,
+/// Burns the position and locks its burn proof and the residuals in a new vault.
+fun burn_into_vault<Meme, Quote>(
+    launch: &Launch<Meme, Quote>,
     burn_manager: &mut BurnManager,
-    migration: Migration<Meme, Quote>,
-    meme_amount: u64,
-    quote_amount: u64,
     position: Position,
     residual_meme: Coin<Meme>,
     residual_quote: Coin<Quote>,
@@ -330,21 +299,7 @@ fun complete_into_vault<Meme, Quote>(
         residual_quote.into_balance(),
         ctx,
     );
-    vault.attach(&Venue(), pool_id, burn_proof);
-
-    let (residual_meme, residual_quote) = vault.pending_residuals();
-    launch.complete_migration(
-        package_version,
-        currency,
-        migration,
-        Witness(),
-        meme_amount - residual_meme.value(),
-        quote_amount - residual_quote.value(),
-        residual_meme,
-        residual_quote,
-        liquidity,
-        ctx,
-    );
+    vault.attach(&Venue(), pool_id, burn_proof, liquidity);
     vault.share(&Venue());
 }
 
@@ -475,7 +430,7 @@ fun add_liquidity<A, B, Meme, Quote>(
 use blast_fun::{
     allocation::FeeSplit,
     creator_authority::CurveFeeCap,
-    launch::{Self, Launch, LaunchInitializer, Migration},
+    launch::{Self, Launch, LaunchInitializer},
     launch_config::LaunchConfig,
     launch_ticket::LaunchTicket,
     package_version::PackageVersion,
@@ -510,8 +465,6 @@ use fun collect_position_fees as LpVault.collect_position_fees;
 use fun compound_meme_a as LpVault.compound_meme_a;
 
 use fun compound_meme_b as LpVault.compound_meme_b;
-
-use fun complete_into_vault as Launch.complete_into_vault;
 
 use fun pool_creation_cap as VenueConfig.pool_creation_cap;
 

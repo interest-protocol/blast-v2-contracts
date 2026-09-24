@@ -19,7 +19,6 @@ enum Layout {
     U8,
     U32,
     U64,
-    U128,
     Address,
     Vector(Box<Layout>),
     Struct(Vec<Layout>),
@@ -28,14 +27,13 @@ enum Layout {
 
 impl Layout {
     /// The VM abstract size `sui::event::emit` limits, of the BCS value at the front of `bytes`,
-    /// which it consumes: 8 per primitive below `u128`, 16 per `u128`, 32 per address, 2 per
+    /// which it consumes: 8 per primitive, 32 per address, 2 per
     /// struct, variant, or vector, and the packed element width inside a primitive vector.
     fn abstract_size(&self, bytes: &mut &[u8]) -> u64 {
         match self {
             Layout::Bool | Layout::U8 => advance(bytes, 1, 8),
             Layout::U32 => advance(bytes, 4, 8),
             Layout::U64 => advance(bytes, 8, 8),
-            Layout::U128 => advance(bytes, 16, 16),
             Layout::Address => advance(bytes, 32, 32),
             Layout::Struct(fields) => 2 + fields.iter().map(|field| field.abstract_size(bytes)).sum::<u64>(),
             Layout::Enum(variants) => {
@@ -48,7 +46,6 @@ impl Layout {
                     Layout::Bool | Layout::U8 => 1,
                     Layout::U32 => 4,
                     Layout::U64 => 8,
-                    Layout::U128 => 16,
                     Layout::Address => 32,
                     _ => return 2 + (0..length).map(|_| element.abstract_size(bytes)).sum::<u64>(),
                 };
@@ -78,20 +75,16 @@ fn uleb128(bytes: &mut &[u8]) -> u64 {
 
 /// Layout of every event payload the measured transactions emit.
 fn payload_layout(payload: &StructTag) -> Layout {
-    use Layout::{Address, Bool, Enum, Struct, U8, U32, U64, U128, Vector};
+    use Layout::{Address, Bool, Enum, Struct, U8, U32, U64, Vector};
     let id = || Struct(vec![Address]);
     let bps = || Struct(vec![U64]);
     let type_name = || Struct(vec![Struct(vec![Vector(Box::new(U8))])]);
-    let amounts = || Vector(Box::new(U64));
     let fee_split = || Struct(vec![bps(), bps(), bps(), Vector(Box::new(Struct(vec![Address, bps()])))]);
-    let weights = || Vector(Box::new(Struct(vec![U64, bps()])));
-    let channels = || Vector(Box::new(Struct(vec![U64, Enum(vec![vec![], vec![], vec![]]), Address])));
+    let plan = || Struct(vec![bps(), bps(), bps(), Vector(Box::new(Struct(vec![Address, bps(), bps()])))]);
     match payload.name.as_str() {
         "LaunchCreated" => Struct(vec![
             id(),
             id(),
-            U8,
-            U64,
             type_name(),
             type_name(),
             U32,
@@ -101,26 +94,24 @@ fn payload_layout(payload: &StructTag) -> Layout {
             U64,
             U64,
             U64,
-            Struct(vec![channels(), weights(), weights()]),
-            amounts(),
+            plan(),
+            U64,
+            U64,
+            U64,
         ]),
-        "ProtectionConfigured" => Struct(vec![id(), U64, U64, U64, U64, U64]),
-        "LaunchShared" => Struct(vec![id(), U64, Bool]),
-        "MigrationAllocationPaid" => Struct(vec![id(), U64, Address, U64, U64]),
-        "Migrated" => Struct(vec![id(), U64, U64, U64, U64, U128, U64, Bool, U64]),
+        "LaunchShared" => Struct(vec![id(), U64]),
+        "MigrationAllocationPaid" => Struct(vec![id(), Address, U64, U64]),
+        "Migrated" => Struct(vec![id(), U64, U64, U64, Bool, U64]),
         "LaunchTicketCreated" => Struct(vec![
             id(),
             type_name(),
             U8,
-            U64,
             id(),
-            Struct(vec![Vector(Box::new(Address))]),
-            Struct(vec![Vector(Box::new(Vector(Box::new(U8))))]),
+            Enum(vec![vec![Address], vec![Vector(Box::new(U8))]]),
             Bool,
             U64,
         ]),
-        "PreShareBought" => Struct(vec![id(), U64, U64, U64, U64, U64, U64, U64, U64, U64, U64]),
-        "Bought" => Struct(vec![id(), U64, U64, U64, U64, U64, U64, U64, U64]),
+        "Bought" => Struct(vec![id(), U64, U64, U64, U64, U64, U64, U64, U64, U64, U64]),
         "VestingCreated" => Struct(vec![
             id(),
             type_name(),

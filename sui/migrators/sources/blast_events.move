@@ -23,8 +23,9 @@ public struct LpFeeDestinationChanged has copy, drop {
     new_destination: address,
 }
 
-/// Records discovery and typed position custody for one completed vault, with the creator's fee
-/// split it holds from migration (generation zero).
+/// Records discovery and typed position custody for one completed vault: the position's
+/// `liquidity`, the handoff the venue returned as protocol residuals, and the creator's fee split
+/// it holds from migration (generation zero).
 public struct VaultCreated has copy, drop {
     vault_id: ID,
     pool_id: ID,
@@ -32,6 +33,9 @@ public struct VaultCreated has copy, drop {
     venue: TypeName,
     meme: TypeName,
     quote: TypeName,
+    residual_meme: u64,
+    residual_quote: u64,
+    liquidity: u128,
     fee_split: FeeSplit,
 }
 
@@ -160,6 +164,9 @@ public(package) fun vault_created<Meme, Quote, Venue>(
     vault_id: ID,
     pool_id: ID,
     position_id: ID,
+    residual_meme: u64,
+    residual_quote: u64,
+    liquidity: u128,
     fee_split: FeeSplit,
 ) {
     sui::event::emit(VaultCreated {
@@ -169,6 +176,9 @@ public(package) fun vault_created<Meme, Quote, Venue>(
         venue: type_name::with_original_ids<Venue>(),
         meme: type_name::with_original_ids<Meme>(),
         quote: type_name::with_original_ids<Quote>(),
+        residual_meme,
+        residual_quote,
+        liquidity,
         fee_split,
     });
 }

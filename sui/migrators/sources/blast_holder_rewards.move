@@ -8,10 +8,6 @@
 /// relay a proof afterwards; each leaf pays its committed beneficiary once.
 module blast_fun_migrators::blast_holder_rewards;
 
-// === Constants ===
-
-const MAX_LEAVES: u64 = 65_536;
-
 // === Errors ===
 
 #[error(code = 0)]
@@ -87,8 +83,12 @@ public fun publish_round<Meme, Quote>(
             && vault.last_checkpoint().is_none_or!(|last| *last == start_checkpoint),
         EInvalidInterval,
     );
-    assert!(root.length() == 32 && manifest_digest.length() == 32, EInvalidCommitment);
-    assert!(leaf_count > 0 && leaf_count <= MAX_LEAVES, EInvalidLeafCount);
+    assert!(
+        root.length() == constants::digest_length!()
+            && manifest_digest.length() == constants::digest_length!(),
+        EInvalidCommitment,
+    );
+    assert!(leaf_count > 0 && leaf_count <= constants::max_reward_leaves!(), EInvalidLeafCount);
     assert!(meme_amount > 0 || quote_amount > 0, EEmptyBudget);
     let (meme_available, quote_available) = vault.rewards_balances();
     assert!(
@@ -193,6 +193,7 @@ use blast_fun::blast_fun_domain::BLAST_FUN_DOMAIN;
 
 use blast_fun_migrators::{
     blast_events,
+    constants,
     merkle,
     package_version::PackageVersion as MigratorsVersion,
     vault::LpVault,

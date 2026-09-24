@@ -611,7 +611,7 @@ fun start(): RewardsFixture {
     );
     let mut vault = vault::prepare(&launch, balance::zero(), balance::zero(), scenario.ctx());
     let position = TestPosition { id: object::new(scenario.ctx()) };
-    vault.attach(&TestVenue(), object::id_from_address(POOL), position);
+    vault.attach(&TestVenue(), object::id_from_address(POOL), position, 1);
     vault.split_fees(
         &policy,
         balance::create_for_testing(FUNDED_MEME),

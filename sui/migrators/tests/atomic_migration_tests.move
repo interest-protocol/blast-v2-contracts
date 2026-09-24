@@ -21,9 +21,6 @@ const POOL_TICK_SPACING: u32 = 60;
 
 const POOL_FEE_RATE: u64 = 2_500;
 
-/// The launchpad generation a fresh test package version starts at.
-const CURRENT_VERSION: u64 = 1;
-
 // === Errors ===
 
 #[error]
@@ -52,13 +49,6 @@ public struct MockPosition<phantom Meme, phantom Quote> has key, store {
     liquidity: u128,
 }
 
-/// The adapter-reported amounts core must reconcile against the handed-off principal.
-public struct Failpoint has copy, drop {
-    liquidity: u128,
-    meme_shortfall: u64,
-    quote_shortfall: u64,
-}
-
 public struct Fixture {
     scenario: Scenario,
     version: PackageVersion,
@@ -83,27 +73,12 @@ fun single_ptb_sealed_mock_adapter_keeps_principal_and_residuals_in_vault_custod
     let (_, quote_before, _, allocated_before) = launch.balances_for_testing();
     mock_adapter(&mut launch, &f.version, &mut currency, f.scenario.ctx());
 
-    assert!(!launch.is_live() && !launch.is_migration_ready());
-    assert!(launch.is_migrated() && !launch.is_migrating_for_testing());
+    assert!(!launch.is_live_for_testing() && !launch.is_migration_ready_for_testing());
+    assert!(launch.is_migrated_for_testing() && !launch.is_migrating_for_testing());
     let (_, quote_after, _, allocated_after) = launch.balances_for_testing();
     assert_eq!(quote_after, 0);
     assert_eq!(allocated_after, 0);
-    let (
-        event_launch_id,
-        supplied_meme,
-        supplied_quote,
-        residual_meme,
-        residual_quote,
-        liquidity,
-    ) = events::collect_one<events::Migrated>(0).migrated_accounting_fields_for_testing();
-    assert_eq!(event_launch_id, f.launch_id);
-    // Two thirds of the pooled Meme and nine tenths of the terminal Quote are the LP principal.
-    assert_eq!(supplied_meme + residual_meme, allocated_before * 2 / 3);
-    assert_eq!(supplied_quote + residual_quote, quote_before * 9 / 10);
-    assert_eq!(residual_meme, 1);
-    assert_eq!(residual_quote, 1);
-    assert_eq!(liquidity, 1);
-
+    assert_eq!(events::collect<events::Migrated>().length(), 1);
     assert_eq!(event::events_by_type<blast_events::VaultCreated>().length(), 1);
     assert_eq!(events::collect<events::MigrationAllocationPaid>().length(), 1);
 
@@ -113,13 +88,13 @@ fun single_ptb_sealed_mock_adapter_keeps_principal_and_residuals_in_vault_custod
 
     f.scenario.next_tx(TESTER);
     let mut vault = f.scenario.take_shared<LpVault<ATOMIC_MIGRATION_TESTS, QUOTE>>();
-    assert_eq!(vault.protocol_meme_residual(), 1);
-    assert_eq!(vault.protocol_quote_residual(), 1);
-    assert_eq!(vault.generation(), 0);
-    assert_eq!(vault.fee_split(), fee_split);
+    assert_eq!(vault.protocol_meme_residual_for_testing(), 1);
+    assert_eq!(vault.protocol_quote_residual_for_testing(), 1);
+    assert_eq!(vault.generation_for_testing(), 0);
+    assert_eq!(vault.fee_split_for_testing(), fee_split);
     assert_eq!(fee_split, creator_split());
     let pool_id = vault.pool_id();
-    let position_id = vault.position_id<_, _, Venue>().destroy_some();
+    let position_id = vault.position_id_for_testing<_, _, Venue>().destroy_some();
     let position = vault.position_mut<
         ATOMIC_MIGRATION_TESTS,
         QUOTE,
@@ -128,8 +103,9 @@ fun single_ptb_sealed_mock_adapter_keeps_principal_and_residuals_in_vault_custod
     >(&Venue());
     assert_eq!(object::id(position), position_id);
     assert_eq!(position.pool_id, pool_id);
-    assert_eq!(position.meme.value(), supplied_meme);
-    assert_eq!(position.quote.value(), supplied_quote);
+    // Two thirds of the pooled Meme and nine tenths of the terminal Quote are the LP principal.
+    assert_eq!(position.meme.value() + 1, allocated_before * 2 / 3);
+    assert_eq!(position.quote.value() + 1, quote_before * 9 / 10);
     assert_eq!(position.liquidity, 1);
     test_scenario::return_shared(vault);
 
@@ -184,9 +160,9 @@ fun the_migrated_vault_splits_later_collections_and_updates_its_split_under_the_
         balance::create_for_testing(4),
         f.scenario.ctx(),
     );
-    assert_eq!(vault.generation(), 1);
-    assert_eq!(vault.fee_split(), next);
-    let (creator_meme, creator_quote) = vault.creator_balances();
+    assert_eq!(vault.generation_for_testing(), 1);
+    assert_eq!(vault.fee_split_for_testing(), next);
+    let (creator_meme, creator_quote) = vault.creator_balances_for_testing();
     assert_eq!(creator_meme, 100);
     assert_eq!(creator_quote, 200);
     assert_eq!(event::events_by_type<blast_events::FeesCollected>().length(), 2);
@@ -215,111 +191,33 @@ fun the_migrated_vault_splits_later_collections_and_updates_its_split_under_the_
     abort_code = blast_fun::errors::EInvalidMigrationWitness,
     location = blast_fun::launch,
 )]
-fun another_adapter_cannot_begin_the_migration() {
+fun another_adapter_cannot_migrate() {
     let mut f = start();
     reach_migration(&mut f);
 
     f.scenario.next_tx(TESTER);
     let mut launch = f.take_launch();
-    let (_meme, _quote, _migration) = launch.begin_migration(&f.version, OtherVenue());
+    let mut currency = f.take_currency();
+    let (_meme, _quote) = launch.migrate(&f.version, &mut currency, OtherVenue(), f.scenario.ctx());
     abort EUnexpectedSuccess
 }
 
 #[test, expected_failure(
-    abort_code = blast_fun::errors::EInvalidMigrationWitness,
-    location = blast_fun::launch,
+    abort_code = blast_fun_migrators::vault::EZeroLiquidity,
+    location = blast_fun_migrators::vault,
 )]
-fun another_adapter_cannot_complete_the_migration() {
-    complete_as_other_venue(1, CURRENT_VERSION)
-}
+fun zero_liquidity_aborts_the_migration() {
+    let mut f = start();
+    reach_migration(&mut f);
 
-#[test, expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
-)]
-fun completion_checks_the_version_before_the_witness() {
-    complete_as_other_venue(1, CURRENT_VERSION + 1)
-}
-
-#[test, expected_failure(
-    abort_code = blast_fun::errors::EInvalidMigrationWitness,
-    location = blast_fun::launch,
-)]
-fun completion_checks_the_witness_before_conservation() {
-    complete_as_other_venue(0, CURRENT_VERSION)
-}
-
-#[test, expected_failure(
-    abort_code = blast_fun::errors::EMigrationSettlementMismatch,
-    location = blast_fun::launch,
-)]
-fun zero_liquidity_aborts_before_the_migration_commits() {
-    run_failpoint(failpoint_with_liquidity(0))
-}
-
-#[test, expected_failure(
-    abort_code = blast_fun::errors::EMigrationSettlementMismatch,
-    location = blast_fun::launch,
-)]
-fun underfunded_meme_principal_rolls_back_atomic_migration() {
-    let mut failpoint = failpoint_with_liquidity(1);
-    failpoint.meme_shortfall = 1;
-    run_failpoint(failpoint)
-}
-
-#[test, expected_failure(
-    abort_code = blast_fun::errors::EMigrationSettlementMismatch,
-    location = blast_fun::launch,
-)]
-fun underfunded_quote_principal_rolls_back_atomic_migration() {
-    let mut failpoint = failpoint_with_liquidity(1);
-    failpoint.quote_shortfall = 1;
-    run_failpoint(failpoint)
+    f.scenario.next_tx(TESTER);
+    let mut launch = f.take_launch();
+    let mut currency = f.take_currency();
+    mock_adapter_with(&mut launch, &f.version, &mut currency, 0, f.scenario.ctx());
+    abort EUnexpectedSuccess
 }
 
 // === Test Helpers ===
-
-fun failpoint_with_liquidity(liquidity: u128): Failpoint {
-    Failpoint { liquidity, meme_shortfall: 0, quote_shortfall: 0 }
-}
-
-/// Begins as the mock adapter, sets the launchpad generation to `version`, then completes as
-/// another adapter reporting `liquidity`.
-fun complete_as_other_venue(liquidity: u128, version: u64) {
-    let mut f = start();
-    reach_migration(&mut f);
-
-    f.scenario.next_tx(TESTER);
-    let mut launch = f.take_launch();
-    let mut currency = f.take_currency();
-    let (meme, quote, migration) = launch.begin_migration(&f.version, Venue());
-    let residual_meme = balance::zero();
-    let residual_quote = balance::zero();
-    f.version.set_for_testing(version);
-    launch.complete_migration(
-        &f.version,
-        &mut currency,
-        migration,
-        OtherVenue(),
-        meme.value(),
-        quote.value(),
-        &residual_meme,
-        &residual_quote,
-        liquidity,
-        f.scenario.ctx(),
-    );
-    abort EUnexpectedSuccess
-}
-
-fun run_failpoint(failpoint: Failpoint) {
-    let mut f = start();
-    reach_migration(&mut f);
-    f.scenario.next_tx(TESTER);
-    let mut launch = f.take_launch();
-    let mut currency = f.take_currency();
-    mock_adapter_with(&mut launch, &f.version, &mut currency, failpoint, f.scenario.ctx());
-    abort EUnexpectedSuccess
-}
 
 /// The mock adapter constructs and consumes its sealed witness and returns no protected value.
 public fun mock_adapter(
@@ -328,52 +226,26 @@ public fun mock_adapter(
     currency: &mut Currency<ATOMIC_MIGRATION_TESTS>,
     ctx: &mut TxContext,
 ) {
-    mock_adapter_with(launch, version, currency, failpoint_with_liquidity(1), ctx)
+    mock_adapter_with(launch, version, currency, 1, ctx)
 }
 
-/// Begin, seed a mock position with one residual unit per asset kept in the vault, attach it,
-/// complete, then share the vault and pool. The failpoint changes only what the adapter reports.
+/// Migrate, seed a mock position holding `liquidity` with one residual unit per asset kept in the
+/// vault, attach it, then share the vault and pool.
 fun mock_adapter_with(
     launch: &mut Launch<ATOMIC_MIGRATION_TESTS, QUOTE>,
     version: &PackageVersion,
     currency: &mut Currency<ATOMIC_MIGRATION_TESTS>,
-    failpoint: Failpoint,
+    liquidity: u128,
     ctx: &mut TxContext,
 ) {
-    let (mut meme, mut quote, migration) = launch.begin_migration(version, Venue());
+    let (mut meme, mut quote) = launch.migrate(version, currency, Venue(), ctx);
     let residual_meme = meme.split(1);
     let residual_quote = quote.split(1);
     let pool = MockPool { id: object::new(ctx) };
     let pool_id = object::id(&pool);
-    let position = MockPosition {
-        id: object::new(ctx),
-        pool_id,
-        meme,
-        quote,
-        liquidity: failpoint.liquidity,
-    };
+    let position = MockPosition { id: object::new(ctx), pool_id, meme, quote, liquidity };
     let mut pending_vault = vault::prepare(launch, residual_meme, residual_quote, ctx);
-    pending_vault.attach(&Venue(), pool_id, position);
-    let position = pending_vault.position<
-        ATOMIC_MIGRATION_TESTS,
-        QUOTE,
-        Venue,
-        MockPosition<ATOMIC_MIGRATION_TESTS, QUOTE>,
-    >(&Venue());
-    let (residual_meme, residual_quote) = pending_vault.pending_residuals();
-    assert_eq!(position.pool_id, pool_id);
-    launch.complete_migration(
-        version,
-        currency,
-        migration,
-        Venue(),
-        position.meme.value() - failpoint.meme_shortfall,
-        position.quote.value() - failpoint.quote_shortfall,
-        residual_meme,
-        residual_quote,
-        position.liquidity,
-        ctx,
-    );
+    pending_vault.attach(&Venue(), pool_id, position, liquidity);
     pending_vault.share<ATOMIC_MIGRATION_TESTS, QUOTE, Venue>(&Venue());
     transfer::share_object(pool);
 }
@@ -383,7 +255,7 @@ fun start(): Fixture {
     let version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
     let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(16, 1, scenario.ctx());
-    authority.grant_admin(&root, blast_fun_domain::creator_admin_role(), ADMIN, scenario.ctx());
+    authority.grant_admin(&root, blast_fun_domain::creator_admin_role_for_testing(), ADMIN, scenario.ctx());
     destroy(root);
     launch_config::init_for_testing(scenario.ctx());
     lp_fee_policy::init_for_testing(scenario.ctx());

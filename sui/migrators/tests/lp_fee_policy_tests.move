@@ -57,7 +57,7 @@ fun publication_shares_one_eventless_zero_default_policy() {
         let (meme_share, quote_share) = f.policy.shares<MemeA>();
         assert_eq!(meme_share.value(), 0);
         assert_eq!(quote_share.value(), 0);
-        let (default_meme_share, default_quote_share) = f.policy.default_shares();
+        let (default_meme_share, default_quote_share) = f.policy.default_shares_for_testing();
         assert_eq!(default_meme_share.value(), 0);
         assert_eq!(default_quote_share.value(), 0);
         assert_eq!(f.policy.coin_count_for_testing(), 0);
@@ -587,7 +587,7 @@ fun assert_shares<Meme>(self: &PolicyFixture, meme_bps: u64, quote_bps: u64) {
 }
 
 fun assert_default_shares(self: &PolicyFixture, meme_bps: u64, quote_bps: u64) {
-    let (meme_share, quote_share) = self.policy.default_shares();
+    let (meme_share, quote_share) = self.policy.default_shares_for_testing();
 
     assert_eq!(meme_share.value(), meme_bps);
     assert_eq!(quote_share.value(), quote_bps);

@@ -50,7 +50,7 @@ fun new_records_bluefin_and_the_smallest_tier_for_launch_intake() {
 
     let launch = f.open_launch(1, 1);
 
-    assert_eq!(launch.migration_witness(), type_name::with_original_ids<bluefin::Witness>());
+    assert_eq!(launch.migration_witness_for_testing(), type_name::with_original_ids<bluefin::Witness>());
     let (tick_spacing, fee_rate) = launch.pool_tier();
     assert_eq!(tick_spacing, 1);
     assert_eq!(fee_rate, 1);
@@ -174,7 +174,7 @@ fun start(): BluefinFixture {
     let version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_package_version::new_for_testing(scenario.ctx());
     let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(16, 1, scenario.ctx());
-    authority.grant_admin(&root, blast_fun_domain::creator_admin_role(), ADMIN, scenario.ctx());
+    authority.grant_admin(&root, blast_fun_domain::creator_admin_role_for_testing(), ADMIN, scenario.ctx());
     destroy(root);
     let mut config = launch_config::new_for_testing(scenario.ctx());
 

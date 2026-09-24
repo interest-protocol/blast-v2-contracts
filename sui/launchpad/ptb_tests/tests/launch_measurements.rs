@@ -1,12 +1,13 @@
-//! Resource measurements for the launch and protection family: the one-time channel boundary,
-//! maximum launch creation with terminal share, the pre-share purchase with linear vesting, and
-//! first, later, and expired protected buys.
+//! Resource measurements for the launch and protection family: the allocation-recipient capacity
+//! boundary, maximum launch creation with terminal share, the pre-share purchase with linear
+//! vesting, and first, later, and expired protected buys.
 //!
 //! Every Meme comes from the actual `meme_template` source with only its decimals substituted, as
 //! the generator does, at both admitted precisions. Each launch is opened by one PTB composed from
 //! the public launchpad calls and measured by `Harness::resources` against the simulator's protocol
-//! limits. Maximum shapes feed every table in descending order and use a graduation target whose
-//! Quote remainders are all distinct, the worst case for intake's insertion sorts and dust ranking.
+//! limits. Maximum shapes give every creator share a distinct weight rising with its position and
+//! use a graduation target whose Quote remainders are all distinct, the worst case for
+//! apportionment's remainder ranking.
 //!
 //! Records are JSON in `$BLAST_MEASUREMENTS_DIR`, by default
 //! `<cargo target tmp>/<package>/launch_measurements/`, never in the repository.
@@ -50,11 +51,12 @@ const NOT_MEASURED: [&str; 5] = [
 ];
 
 const TARGET: u64 = 25_000_000;
-/// One atom over a round target gives every Quote weight a distinct remainder, so intake ranks the
-/// whole Quote table for dust.
+/// One atom over a round target gives every distinct Quote share a distinct remainder, so
+/// apportionment ranks them all.
 const MAXIMUM_TARGET: u64 = 25_000_001;
-const MAX_IDENTITIES: usize = 16;
-const MAX_RECIPIENTS: usize = 16;
+/// Allocation recipients per launch, Blast's included.
+const MAX_PLAN_RECIPIENTS: usize = 16;
+const MAX_FEE_RECIPIENTS: usize = 16;
 const CURVE_BPS: u64 = 7_000;
 /// The pool tier every launch starts at, in the mock venue's native units.
 const POOL_TICK_SPACING: u32 = 60;
@@ -72,8 +74,6 @@ const EXPIRED_BUY: u64 = 80_000;
 /// Far below the graduation target, as the pre-share purchase requires.
 const PRE_SHARE_BUY: u64 = 1_000_000;
 
-const PROTOCOL_CHANNEL: u64 = 1;
-const LIQUIDITY_CHANNEL: u64 = 2;
 const PROTOCOL: ObjectID = address(&[0xAD]);
 const BENEFICIARY: ObjectID = address(&[0xBE]);
 const REFUND_RECIPIENT: ObjectID = address(&[0xDF]);
@@ -89,11 +89,11 @@ const fn address(suffix: &[u8]) -> ObjectID {
     ObjectID::new(bytes)
 }
 
-/// Without a protocol channel the LP-only plan is the smallest: it and sixteen identities open,
-/// and a seventeenth aborts at the allocation capacity check, committing nothing.
+/// A zero Blast allocation: the Blast-only plan and sixteen recipients open, and a seventeenth
+/// aborts at the allocation capacity check, committing nothing.
 #[test]
-fn lp_only_through_sixteen_identities_and_maximum_shapes_fit_protocol_limits() -> Result<()> {
-    let mut w = World::new("launch_measurements_lp_only", None)?;
+fn zero_blast_allocation_through_sixteen_recipients_and_maximum_shapes_fit_protocol_limits() -> Result<()> {
+    let mut w = World::new("launch_measurements_zero_blast", [0, 0])?;
     for decimals in [6, 9] {
         w.measure_family(decimals)?;
     }
@@ -101,11 +101,10 @@ fn lp_only_through_sixteen_identities_and_maximum_shapes_fit_protocol_limits() -
     w.write()
 }
 
-/// The same matrix when the one-time Blast allocation names a protocol channel, which every plan
-/// must then carry, so the smallest plan is liquidity plus protocol.
+/// The same matrix with a nonzero Blast allocation, which every plan pays first.
 #[test]
-fn protocol_channel_plans_and_maximum_shapes_fit_protocol_limits() -> Result<()> {
-    let mut w = World::new("launch_measurements_protocol", Some([500, 400]))?;
+fn blast_allocation_plans_and_maximum_shapes_fit_protocol_limits() -> Result<()> {
+    let mut w = World::new("launch_measurements_blast", [500, 400])?;
     for decimals in [6, 9] {
         w.measure_family(decimals)?;
     }
@@ -122,18 +121,19 @@ enum Vesting {
 /// One launch-opening PTB.
 #[derive(Clone, Copy, Debug)]
 struct Shape {
-    identities: usize,
-    recipients: usize,
+    /// Allocation recipients, Blast's included.
+    plan_recipients: usize,
+    fee_recipients: usize,
     target: u64,
     protection: [u64; 3],
     vesting: Option<Vesting>,
 }
 
 impl Shape {
-    fn maximum(identities: usize) -> Self {
+    fn maximum(plan_recipients: usize) -> Self {
         Self {
-            identities,
-            recipients: MAX_RECIPIENTS,
+            plan_recipients,
+            fee_recipients: MAX_FEE_RECIPIENTS,
             target: MAXIMUM_TARGET,
             protection: PROTECTED,
             vesting: None,
@@ -160,8 +160,6 @@ struct Opened {
 struct LaunchCreated {
     _launch_id: ObjectID,
     _ticket_id: ObjectID,
-    _decimals: u8,
-    _atomic_supply: u64,
     _quote: String,
     _migration_witness: String,
     pool_tick_spacing: u32,
@@ -169,22 +167,18 @@ struct LaunchCreated {
     creator_bps: u64,
     auto_lp_bps: u64,
     rewards_bps: u64,
-    recipients: Vec<(SuiAddress, u64)>,
+    fee_recipients: Vec<(SuiAddress, u64)>,
     _virtual_quote: u64,
     _graduation_target: u64,
     _quote_fee_bps: u64,
     _meme_fee_bps: u64,
-    channels: Vec<(u64, Role, SuiAddress)>,
-    meme: Vec<(u64, u64)>,
-    quote: Vec<(u64, u64)>,
-    meme_amounts: Vec<u64>,
-}
-
-#[derive(Deserialize)]
-enum Role {
-    Liquidity,
-    Protocol,
-    External,
+    _curve_meme_bps: u64,
+    _lp_meme_bps: u64,
+    _lp_quote_bps: u64,
+    plan_recipients: Vec<(SuiAddress, u64, u64)>,
+    _protection_window_ms: u64,
+    _cumulative_sender_bps: u64,
+    _per_transaction_bps: u64,
 }
 
 struct World {
@@ -196,7 +190,7 @@ struct World {
     version: ObjectID,
     runtime: ObjectID,
     config: ObjectID,
-    protocol: Option<[u64; 2]>,
+    protocol: [u64; 2],
     templates: Vec<(u8, CompiledPackage)>,
     environment: Value,
     records: Vec<Value>,
@@ -204,9 +198,9 @@ struct World {
 
 impl World {
     /// Publishes the packages, admits SUI and the adapter under the production admin path, fixes
-    /// the one-time Blast allocation (none when `protocol` is `None`), and compiles one generated
+    /// the one-time Blast allocation at `protocol` (Meme, Quote) BPS, and compiles one generated
     /// template per admitted precision.
-    fn new(label: &'static str, protocol: Option<[u64; 2]>) -> Result<Self> {
+    fn new(label: &'static str, protocol: [u64; 2]) -> Result<Self> {
         let sui_dir = sui_dir();
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixture");
         let work = Path::new(env!("CARGO_TARGET_TMPDIR")).join(env!("CARGO_PKG_NAME")).join(label);
@@ -285,18 +279,19 @@ impl World {
             &mut builder,
             blast,
             "launch_config",
-            "allow_quote",
+            "set_quote",
             vec![sui()],
             vec![config_arg, version_arg, signed_in, virtual_quote],
         );
         let witness = parse_sui_type_tag(&format!("{adapter}::mock_adapter::Venue"))?;
+        let allowed = builder.pure(true)?;
         call(
             &mut builder,
             blast,
             "launch_config",
-            "allow_migration_witness",
+            "set_migration_witness_allowed",
             vec![witness],
-            vec![config_arg, version_arg, signed_in],
+            vec![config_arg, version_arg, signed_in, allowed],
         );
         let fee = w.bps(&mut builder, 100)?;
         call(
@@ -307,8 +302,7 @@ impl World {
             vec![],
             vec![config_arg, version_arg, signed_in, fee, fee],
         );
-        let [meme_bps, quote_bps] = protocol.unwrap_or([0, 0]);
-        let channel = builder.pure(PROTOCOL_CHANNEL)?;
+        let [meme_bps, quote_bps] = protocol;
         let destination = builder.pure(SuiAddress::from(PROTOCOL))?;
         let meme_bps = w.bps(&mut builder, meme_bps)?;
         let quote_bps = w.bps(&mut builder, quote_bps)?;
@@ -318,7 +312,7 @@ impl World {
             "launch_config",
             "set_protocol_allocation",
             vec![],
-            vec![config_arg, version_arg, signed_in, channel, destination, meme_bps, quote_bps],
+            vec![config_arg, version_arg, signed_in, destination, meme_bps, quote_bps],
         );
         w.h.execute(builder.finish())?.assert_success();
 
@@ -327,20 +321,21 @@ impl World {
 
     /// Every boundary and maximum transaction at one precision.
     fn measure_family(&mut self, decimals: u8) -> Result<()> {
-        // A seventeenth identity aborts in allocation intake, before the ticket is consumed, and
-        // commits nothing; the same ticket then opens the smallest valid plan.
+        // A seventeenth recipient aborts when finalization adds Blast's allocation and commits
+        // nothing; the same ticket then opens the smallest valid plan.
         let ticket = self.publish_template(decimals, Some("generated_package_published"))?;
-        let over = Shape::maximum(MAX_IDENTITIES + 1);
+        let over = Shape::maximum(MAX_PLAN_RECIPIENTS + 1);
         let pt = self.open(&ticket, over)?;
-        let rejected = Expected::Abort { package: self.blast, module: "allocation", code: 46 };
+        // `blast_fun::errors::recipient_capacity_reached`.
+        let rejected = Expected::Abort { package: self.blast, module: "allocation", code: 10 };
         let sender = self.h.sender;
         self.h.assert_rolled_back(pt, rejected, &[ticket.ticket, ticket.currency], &[sender])?;
         let outcome = self.last_outcome()?;
-        self.record("seventeen_identities_rejected", decimals, Some(over), &outcome);
+        self.record("seventeen_recipients_rejected", decimals, Some(over), &outcome);
 
         let smallest = Shape {
-            identities: if self.protocol.is_some() { 2 } else { 1 },
-            recipients: 0,
+            plan_recipients: 1,
+            fee_recipients: 0,
             target: TARGET,
             protection: UNPROTECTED,
             vesting: None,
@@ -348,7 +343,7 @@ impl World {
         self.open_and_record("smallest_plan_created_and_shared", &ticket, smallest)?;
 
         let ticket = self.publish_template(decimals, None)?;
-        let maximum = Shape::maximum(MAX_IDENTITIES);
+        let maximum = Shape::maximum(MAX_PLAN_RECIPIENTS);
         let opened = self.open_and_record("maximum_plan_created_and_shared", &ticket, maximum)?;
         self.protected_buys(decimals, &opened)?;
 
@@ -425,30 +420,23 @@ impl World {
         outcome.assert_success();
         let names: Vec<_> = outcome.events.iter().map(payload_name).collect();
         let expected: &[&str] = match shape.vesting {
-            None => &["LaunchCreated", "ProtectionConfigured", "LaunchShared"],
-            Some(_) => &[
-                "LaunchCreated",
-                "ProtectionConfigured",
-                "PreShareBought",
-                "VestingCreated",
-                "LaunchShared",
-            ],
+            None => &["LaunchCreated", "LaunchShared"],
+            Some(_) => &["LaunchCreated", "Bought", "VestingCreated", "LaunchShared"],
         };
         assert_eq!(names, expected, "{name}");
         let created: LaunchCreated = bcs::from_bytes(&outcome.events[0].contents)?;
-        assert_eq!(created.channels.len(), shape.identities, "{name}: identities");
-        assert_eq!(created.meme.len(), shape.identities + 1, "{name}: every identity and the curve in the Meme table");
-        assert_eq!(created.quote.len(), shape.identities, "{name}: every identity in the Quote table");
-        assert_eq!(created.meme_amounts.len(), shape.identities + 1, "{name}: Meme amounts");
+        assert_eq!(created.plan_recipients.len(), shape.plan_recipients, "{name}: plan recipients");
+        let [meme_bps, quote_bps] = self.protocol;
+        assert_eq!(created.plan_recipients[0], (PROTOCOL.into(), meme_bps, quote_bps), "{name}: Blast first");
         assert_eq!((created.pool_tick_spacing, created.pool_fee_rate), (POOL_TICK_SPACING, POOL_FEE_RATE), "{name}");
-        let (creator_bps, auto_lp_bps, rewards_bps, recipients) = fee_split(shape.recipients);
+        let (creator_bps, auto_lp_bps, rewards_bps, recipients) = fee_split(shape.fee_recipients);
         assert_eq!(
             (created.creator_bps, created.auto_lp_bps, created.rewards_bps),
             (creator_bps, auto_lp_bps, rewards_bps),
             "{name}: fee-split parts"
         );
         let expected: Vec<_> = recipients.into_iter().map(|(address, bps)| (SuiAddress::from(address), bps)).collect();
-        assert_eq!(created.recipients, expected, "{name}: recipients in canonical order");
+        assert_eq!(created.fee_recipients, expected, "{name}: fee-split recipients");
         let launch = outcome.created(&self.h, "launch", "Launch");
         assert_eq!(launch.len(), 1);
         assert!(self.h.object(launch[0]).is_shared());
@@ -462,7 +450,7 @@ impl World {
     /// itself never grows.
     fn protected_buys(&mut self, decimals: u8, opened: &Opened) -> Result<()> {
         let launch_bytes = self.h.contents(opened.launch).len();
-        let shape = Some(Shape::maximum(MAX_IDENTITIES));
+        let shape = Some(Shape::maximum(MAX_PLAN_RECIPIENTS));
 
         let first = self.h.execute(self.buy(opened, PROTECTED_BUY)?)?;
         first.assert_success();
@@ -496,8 +484,8 @@ impl World {
     /// settings, finalization, the optional pre-share purchase vested linearly, and terminal share.
     fn open(&self, ticket: &Ticket, shape: Shape) -> Result<ProgrammableTransaction> {
         let mut builder = ProgrammableTransactionBuilder::new();
-        let plan = self.plan(&mut builder, shape.identities)?;
-        let fee_split = self.fee_split(&mut builder, shape.recipients)?;
+        let plan = self.plan(&mut builder, shape.plan_recipients)?;
+        let fee_split = self.fee_split(&mut builder, shape.fee_recipients)?;
         let ticket_arg = builder.obj(self.h.owned(ticket.ticket))?;
         let version = builder.obj(self.h.shared(self.version, false))?;
         let config = builder.obj(self.h.shared(self.config, false))?;
@@ -558,7 +546,7 @@ impl World {
             ) else {
                 unreachable!()
             };
-            // Only a graduating purchase refunds, and a pre-share purchase cannot graduate.
+            // Only a graduating purchase refunds, and this one is far below the target.
             call(
                 &mut builder,
                 SUI_FRAMEWORK_PACKAGE_ID,
@@ -606,62 +594,42 @@ impl World {
         Ok(builder.finish())
     }
 
-    /// Builds the allocation plan in descending identity order. Liquidity is channel 2 and a
-    /// configured protocol channel is channel 1 with the configured weights; every other weight
-    /// is distinct and rises with its channel ID.
-    fn plan(&self, builder: &mut ProgrammableTransactionBuilder, identities: usize) -> Result<Argument> {
-        let mut ids = vec![LIQUIDITY_CHANNEL];
-        ids.extend(self.protocol.map(|_| PROTOCOL_CHANNEL));
-        ids.extend((3..).take(identities.saturating_sub(ids.len())));
-        ids.sort();
-        let [protocol_meme, protocol_quote] = self.protocol.unwrap_or([0, 0]);
-        let custom: Vec<_> =
-            ids.iter().copied().filter(|id| self.protocol.is_none() || *id != PROTOCOL_CHANNEL).collect();
-        let weights = |total: u64, fixed: &[(u64, u64)]| {
-            let mut table: Vec<_> = custom.iter().copied().zip(distinct_weights(custom.len(), total)).collect();
-            table.extend(fixed.iter().copied().filter(|(_, bps)| *bps > 0));
-            table.sort();
-            table.reverse();
-            table
-        };
-        let meme = weights(10_000 - CURVE_BPS - protocol_meme, &[(0, CURVE_BPS), (PROTOCOL_CHANNEL, protocol_meme)]);
-        let quote = weights(10_000 - protocol_quote, &[(PROTOCOL_CHANNEL, protocol_quote)]);
-
-        let liquidity = call(builder, self.blast, "allocation", "liquidity_role", vec![], vec![]);
-        let protocol = call(builder, self.blast, "allocation", "protocol_role", vec![], vec![]);
-        let external = call(builder, self.blast, "allocation", "external_role", vec![], vec![]);
-        let mut channels = Vec::new();
-        for id in ids.iter().rev().copied() {
-            let (role, destination) = match id {
-                LIQUIDITY_CHANNEL => (liquidity, address(&[0xC1, id as u8])),
-                PROTOCOL_CHANNEL if self.protocol.is_some() => (protocol, PROTOCOL),
-                _ => (external, address(&[0xC1, id as u8])),
-            };
-            let id = builder.pure(id)?;
-            let destination = builder.pure(SuiAddress::from(destination))?;
-            channels.push(call(builder, self.blast, "allocation", "channel", vec![], vec![id, role, destination]));
+    /// Builds the creator's plan for `plan_recipients` recipients, Blast's included, which
+    /// finalization adds first: 70% of the Meme on the curve, and the pool and each creator
+    /// recipient sharing the rest of each asset with distinct weights rising in that order.
+    fn plan(&self, builder: &mut ProgrammableTransactionBuilder, plan_recipients: usize) -> Result<Argument> {
+        let [protocol_meme, protocol_quote] = self.protocol;
+        let meme = distinct_weights(plan_recipients, 10_000 - CURVE_BPS - protocol_meme);
+        let quote = distinct_weights(plan_recipients, 10_000 - protocol_quote);
+        let mut recipients = Vec::new();
+        for i in 1..plan_recipients {
+            let destination = builder.pure(SuiAddress::from(address(&[0xC1, i as u8])))?;
+            let meme_bps = self.bps(builder, meme[i])?;
+            let quote_bps = self.bps(builder, quote[i])?;
+            recipients.push(call(builder, self.blast, "allocation", "recipient", vec![], vec![
+                destination,
+                meme_bps,
+                quote_bps,
+            ]));
         }
-        let channels = builder.command(Command::MakeMoveVec(Some(self.allocation_type("Channel")?), channels));
-        let mut tables = Vec::new();
-        for table in [meme, quote] {
-            let mut entries = Vec::new();
-            for (id, bps) in table {
-                let id = builder.pure(id)?;
-                let bps = self.bps(builder, bps)?;
-                entries.push(call(builder, self.blast, "allocation", "weight", vec![], vec![id, bps]));
-            }
-            tables.push(builder.command(Command::MakeMoveVec(Some(self.allocation_type("Weight")?), entries)));
-        }
+        let recipients = builder.command(Command::MakeMoveVec(Some(self.allocation_type("Recipient")?), recipients));
+        let curve_meme_bps = self.bps(builder, CURVE_BPS)?;
+        let lp_meme_bps = self.bps(builder, meme[0])?;
+        let lp_quote_bps = self.bps(builder, quote[0])?;
 
-        Ok(call(builder, self.blast, "allocation", "new", vec![], vec![channels, tables[0], tables[1]]))
+        Ok(call(builder, self.blast, "allocation", "plan", vec![], vec![
+            curve_meme_bps,
+            lp_meme_bps,
+            lp_quote_bps,
+            recipients,
+        ]))
     }
 
-    /// Builds `fee_split(recipients)` through the public constructors, recipients in descending
-    /// address order, the canonical sort's worst case.
+    /// Builds `fee_split(recipients)` through the public constructors.
     fn fee_split(&self, builder: &mut ProgrammableTransactionBuilder, recipients: usize) -> Result<Argument> {
         let (creator_bps, auto_lp_bps, rewards_bps, recipients) = fee_split(recipients);
         let mut routes = Vec::new();
-        for (destination, bps) in recipients.into_iter().rev() {
+        for (destination, bps) in recipients {
             let destination = builder.pure(SuiAddress::from(destination))?;
             let bps = self.bps(builder, bps)?;
             routes.push(call(builder, self.blast, "allocation", "route", vec![], vec![destination, bps]));
@@ -752,10 +720,10 @@ impl World {
             "fixture": {
                 "meme": "actual meme_template with DECIMALS substituted",
                 "decimals": decimals,
-                "protocol_allocation_bps": self.protocol.map(|[meme, quote]| json!({ "meme": meme, "quote": quote })),
+                "protocol_allocation_bps": json!({ "meme": self.protocol[0], "quote": self.protocol[1] }),
                 "launch": shape.map(|shape| json!({
-                    "identities": shape.identities,
-                    "fee_split_recipients": shape.recipients,
+                    "plan_recipients": shape.plan_recipients,
+                    "fee_split_recipients": shape.fee_recipients,
                     "graduation_target": shape.target,
                     "protection_window_ms": shape.protection[0],
                     "cumulative_sender_bps": shape.protection[1],
@@ -855,8 +823,7 @@ fn generate_template(work: &Path, decimals: u8) -> Result<PathBuf> {
     Ok(dir)
 }
 
-/// The fixture fee split with `recipients` recipients, in canonical address order: without
-/// recipients the creator takes everything; otherwise every part is set and the recipients share
+/// The fixture fee split with `recipients` recipients: without recipients the creator takes everything; otherwise every part is set and the recipients share
 /// the rest with distinct weights.
 fn fee_split(recipients: usize) -> (u64, u64, u64, Vec<(ObjectID, u64)>) {
     if recipients == 0 {

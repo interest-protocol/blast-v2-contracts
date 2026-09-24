@@ -9,13 +9,13 @@ re-verified against mainnet, and which gates must pass before release.
 Cetus and Bluefin are the only venues (ADR 0088), as modules in one
 independently deployed package. The launchpad core never imports this package;
 each venue module depends inward on the narrow core interface, owns one sealed
-`Witness() has drop`, and redeems the core's linear `Migration` value in the same
-Move call. Aftermath, MMT, and Turbos were removed before publication together
+`Witness() has drop`, and locks what the core's `migrate` hands off in a vault in
+the same Move call. Aftermath, MMT, and Turbos were removed before publication together
 with their witnesses, local interfaces, and dependency pins.
 
 - **Release adapter matrix.** An adapter reaches the launchpad seams
   (`launch::new`, the initializer's treasury-capability borrow,
-  `begin_migration`, and `complete_migration`) only by constructing its own
+  and `migrate`) only by constructing its own
   witness. The matrix is therefore exactly
   `cetus::Witness` and `bluefin::Witness`, each completing into sealed `LpVault`
   custody. `scripts/check_source_boundaries.sh` pins the package's exact module
@@ -23,7 +23,7 @@ with their witnesses, local interfaces, and dependency pins.
   or non-private function fails it until the gate is extended, and no module
   declares an `entry` function. Within that set it fails when any module other
   than `cetus` and `bluefin` declares a `Witness` type or names a seam, when a
-  completion does not prepare, attach, and share its vault, or when a local
+  migration does not prepare, attach, and share its vault, or when a local
   venue interface other than Cetus's exists.
   A future adapter is separate work: it first defines and tests its tier
   validation, its launch start with any venue preparation, `LpVault` custody
@@ -497,12 +497,12 @@ Before release, in order:
    fork gate at a freshly refreshed snapshot, then as mainnet dry-runs; and
 4. the deployment runbook admits exactly `cetus::Witness` and
    `bluefin::Witness` in the Launchpad `LaunchConfig` with
-   `launch_config::allow_migration_witness`, each only after that adapter's
+   `launch_config::set_migration_witness_allowed`, each only after that adapter's
    launch start, migration routes, collection, and settled update are reviewed
    and its dev-inspect rows pass. No other migration witness exists in this
    package, and none is admitted.
 
-After release, before `launch_config::allow_meme_decimals` admits a new Meme
+After release, before `launch_config::set_meme_decimals_allowed` admits a new Meme
 precision, rerun the migration extremes at that precision (the smallest and
 largest LP Meme and LP Quote hand-offs, in each coin order) against real venue
 bytecode on each admitted venue.

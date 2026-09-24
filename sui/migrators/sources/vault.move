@@ -19,6 +19,9 @@ const EFeeSplitUnchanged: vector<u8> = b"Fee split proposal must differ from the
 #[error(code = 3)]
 const ENoCreatorFees: vector<u8> = b"No creator LP fees are available to claim.";
 
+#[error(code = 4)]
+const EZeroLiquidity: vector<u8> = b"Migration position must hold liquidity.";
+
 // === Public Types ===
 
 /// A sealed field name that binds one venue position type to one vault.
@@ -102,66 +105,6 @@ public fun claim_creator_fees<Meme, Quote>(
     (meme, quote)
 }
 
-/// Returns the venue pool the attached position belongs to.
-public fun pool_id<Meme, Quote>(self: &LpVault<Meme, Quote>): ID {
-    self.pool_id
-}
-
-/// Returns the ID of the position attached under `Venue`, or none for any other venue.
-public fun position_id<Meme, Quote, Venue>(self: &LpVault<Meme, Quote>): Option<ID> {
-    self.id.dynamic_object_field_id(PositionKey<Venue>())
-}
-
-/// Returns the ID of the auto-LP position attached under `Venue`, or none before its first use.
-public fun auto_lp_position_id<Meme, Quote, Venue>(self: &LpVault<Meme, Quote>): Option<ID> {
-    self.id.dynamic_object_field_id(AutoLpPositionKey<Venue>())
-}
-
-/// Returns the unclaimed protocol-owned Meme residual that migration left in the vault.
-public fun protocol_meme_residual<Meme, Quote>(self: &LpVault<Meme, Quote>): u64 {
-    self.protocol_meme_residual.value()
-}
-
-/// Returns the unclaimed protocol-owned Quote residual that migration left in the vault.
-public fun protocol_quote_residual<Meme, Quote>(self: &LpVault<Meme, Quote>): u64 {
-    self.protocol_quote_residual.value()
-}
-
-/// Returns the split generation stamped on every collection.
-public fun generation<Meme, Quote>(self: &LpVault<Meme, Quote>): u64 {
-    self.generation
-}
-
-/// Returns the creator's current split of every collection after Blast's share.
-public fun fee_split<Meme, Quote>(self: &LpVault<Meme, Quote>): FeeSplit {
-    self.fee_split
-}
-
-/// Returns the creator's unclaimed Meme and Quote LP fees.
-public fun creator_balances<Meme, Quote>(self: &LpVault<Meme, Quote>): (u64, u64) {
-    (self.creator_meme.value(), self.creator_quote.value())
-}
-
-/// Returns the Meme and Quote waiting to be added back to the position.
-public fun auto_lp_balances<Meme, Quote>(self: &LpVault<Meme, Quote>): (u64, u64) {
-    (self.auto_lp_meme.value(), self.auto_lp_quote.value())
-}
-
-/// Returns the Meme and Quote not yet reserved by a holder-reward round.
-public fun rewards_balances<Meme, Quote>(self: &LpVault<Meme, Quote>): (u64, u64) {
-    (self.rewards_meme.value(), self.rewards_quote.value())
-}
-
-/// Returns the number the next holder-reward round must carry.
-public fun next_round<Meme, Quote>(self: &LpVault<Meme, Quote>): u64 {
-    self.next_round
-}
-
-/// Returns the checkpoint the next holder-reward round must start at, or none before the first.
-public fun last_checkpoint<Meme, Quote>(self: &LpVault<Meme, Quote>): Option<u64> {
-    self.last_checkpoint
-}
-
 // === Package Functions ===
 
 /// Creates unshared vault state whose address can be bound into an external position, holding
@@ -190,20 +133,17 @@ public(package) fun prepare<Meme, Quote>(
     }
 }
 
-/// Borrows the exact residual balances that will remain in the shared vault.
-public(package) fun pending_residuals<Meme, Quote>(
-    self: &LpVault<Meme, Quote>,
-): (&Balance<Meme>, &Balance<Quote>) {
-    (&self.protocol_meme_residual, &self.protocol_quote_residual)
-}
-
-/// Attaches the exact venue position while retaining owned vault construction state.
+/// Attaches the exact venue position, holding `liquidity`, while retaining owned vault construction
+/// state.
 public(package) fun attach<Meme, Quote, Venue, Position: key + store>(
     self: &mut LpVault<Meme, Quote>,
     _venue: &Venue,
     pool_id: ID,
     position: Position,
+    liquidity: u128,
 ) {
+    assert!(liquidity > 0, EZeroLiquidity);
+
     self.pool_id = pool_id;
     let position_id = object::id(&position);
     self.id.add_dynamic_object_field(PositionKey<Venue>(), position);
@@ -212,6 +152,9 @@ public(package) fun attach<Meme, Quote, Venue, Position: key + store>(
         self.id.to_inner(),
         pool_id,
         position_id,
+        self.protocol_meme_residual.value(),
+        self.protocol_quote_residual.value(),
+        liquidity,
         self.fee_split,
     );
 }
@@ -432,10 +375,82 @@ public(package) fun fund_round<Meme, Quote>(
     (self.rewards_meme.split(meme_amount), self.rewards_quote.split(quote_amount))
 }
 
+/// Returns the venue pool the attached position belongs to.
+public(package) fun pool_id<Meme, Quote>(self: &LpVault<Meme, Quote>): ID {
+    self.pool_id
+}
+
+/// Returns the number the next holder-reward round must carry.
+public(package) fun next_round<Meme, Quote>(self: &LpVault<Meme, Quote>): u64 {
+    self.next_round
+}
+
+/// Returns the checkpoint the next holder-reward round must start at, or none before the first.
+public(package) fun last_checkpoint<Meme, Quote>(self: &LpVault<Meme, Quote>): Option<u64> {
+    self.last_checkpoint
+}
+
+/// Returns the Meme and Quote not yet reserved by a holder-reward round.
+public(package) fun rewards_balances<Meme, Quote>(self: &LpVault<Meme, Quote>): (u64, u64) {
+    (self.rewards_meme.value(), self.rewards_quote.value())
+}
+
 // === Private Functions ===
 
 fun pay<T>(balance: &mut Balance<T>, amount: u64, destination: address, ctx: &mut TxContext) {
     if (amount > 0) transfer::public_transfer(balance.split(amount).into_coin(ctx), destination);
+}
+
+// === Test-Only Functions ===
+
+#[test_only]
+/// Returns the ID of the position attached under `Venue`, or none for any other venue.
+public fun position_id_for_testing<Meme, Quote, Venue>(self: &LpVault<Meme, Quote>): Option<ID> {
+    dynamic_object_field::id(&self.id, PositionKey<Venue>())
+}
+
+#[test_only]
+/// Returns the ID of the auto-LP position attached under `Venue`, or none before its first use.
+public fun auto_lp_position_id_for_testing<Meme, Quote, Venue>(
+    self: &LpVault<Meme, Quote>,
+): Option<ID> {
+    dynamic_object_field::id(&self.id, AutoLpPositionKey<Venue>())
+}
+
+#[test_only]
+/// Returns the unclaimed protocol-owned Meme residual that migration left in the vault.
+public fun protocol_meme_residual_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): u64 {
+    self.protocol_meme_residual.value()
+}
+
+#[test_only]
+/// Returns the unclaimed protocol-owned Quote residual that migration left in the vault.
+public fun protocol_quote_residual_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): u64 {
+    self.protocol_quote_residual.value()
+}
+
+#[test_only]
+/// Returns the split generation stamped on every collection.
+public fun generation_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): u64 {
+    self.generation
+}
+
+#[test_only]
+/// Returns the creator's current split of every collection after Blast's share.
+public fun fee_split_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): FeeSplit {
+    self.fee_split
+}
+
+#[test_only]
+/// Returns the creator's unclaimed Meme and Quote LP fees.
+public fun creator_balances_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): (u64, u64) {
+    (self.creator_meme.value(), self.creator_quote.value())
+}
+
+#[test_only]
+/// Returns the Meme and Quote waiting to be added back to the position.
+public fun auto_lp_balances_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): (u64, u64) {
+    (self.auto_lp_meme.value(), self.auto_lp_quote.value())
 }
 
 // === Imports ===
@@ -464,7 +479,5 @@ use fun dynamic_object_field::borrow as UID.dynamic_object_field;
 use fun dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut;
 
 use fun dynamic_object_field::exists as UID.has_dynamic_object_field;
-
-use fun dynamic_object_field::id as UID.dynamic_object_field_id;
 
 use fun pay as Balance.pay;

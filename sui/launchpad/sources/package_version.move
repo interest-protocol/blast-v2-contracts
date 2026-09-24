@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Owns the one shared package-generation cutover used by every mutable protocol object.
-///
-/// The generation value, its arithmetic, and its replay event belong to
-/// `blast_admin::operational_version`. This module owns only the canonical
-/// shared container and the two compiled constants that identify this bytecode
-/// and the bytecode a governed upgrade cuts over to.
+/// The shared package version every entry point checks, so old bytecode stops after an upgrade.
 module blast_fun::package_version;
 
 // === Constants ===

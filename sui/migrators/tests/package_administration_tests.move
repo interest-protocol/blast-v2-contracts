@@ -98,7 +98,7 @@ fun a_zero_role_launchpad_admin_changes_the_lp_fee_policy() {
 
         f.policy.set_default_shares(&f.package_version, &admin_witness, bps::new(1), bps::new(2));
 
-        let (meme_share, quote_share) = f.policy.default_shares();
+        let (meme_share, quote_share) = f.policy.default_shares_for_testing();
         assert_eq!(meme_share.value(), 1);
         assert_eq!(quote_share.value(), 2);
     });
