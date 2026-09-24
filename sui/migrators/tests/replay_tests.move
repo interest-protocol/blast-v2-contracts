@@ -434,7 +434,7 @@ fun create_launch(self: &mut ReplayFixture) {
             bps::new(CUMULATIVE_SENDER_BPS),
             bps::new(PER_TRANSACTION_BPS),
         );
-        let mut launch = initializer.finalize(&f.version, &mut currency, &config, f.ctx!());
+        let mut launch = initializer.finalize(&mut currency, &config, f.ctx!());
         let (meme, refund) = launch.buy(
             &f.version,
             &f.runtime,

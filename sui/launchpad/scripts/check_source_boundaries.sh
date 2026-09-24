@@ -969,8 +969,8 @@ if [[ ! -f sources/launch.move ]] \
     <<<"$launch_new_body" \
   || [[ "$(move_production_function_contract treasury_cap_mut <<<"$launch_facts")" != 'public:0:0:fun treasury_cap_mut<Meme, Quote, Witness: drop>( self: &mut LaunchInitializer<Meme, Quote>, _: Witness, ): &mut TreasuryCap<Meme>' ]] \
   || [[ "$(move_production_body treasury_cap_mut <<<"$launch_facts")" != 'assert!( self.migration_witness == type_name::with_original_ids<Witness>(), blast_fun::errors::invalid_migration_witness!(), ); self.ticket.treasury_cap_mut()' ]] \
-  || [[ "$(move_production_function_contract finalize <<<"$launch_facts")" != 'public:0:0:fun finalize<Meme, Quote>( self: LaunchInitializer<Meme, Quote>, package_version: &PackageVersion, currency: &mut Currency<Meme>, config: &LaunchConfig, ctx: &mut TxContext, ): Launch<Meme, Quote>' ]] \
-  || [[ "$launch_finalize_body" != 'package_version.assert_current(); '* ]] \
+  || [[ "$(move_production_function_contract finalize <<<"$launch_facts")" != 'public:0:0:fun finalize<Meme, Quote>( self: LaunchInitializer<Meme, Quote>, currency: &mut Currency<Meme>, config: &LaunchConfig, ctx: &mut TxContext, ): Launch<Meme, Quote>' ]] \
+  || [[ "$launch_finalize_body" == *'assert_current'* ]] \
   || ! in_order \
     'graduation_target.is_some() && allocation_plan.is_some() && lp_fee_split.is_some()' \
     'launch_settings_incomplete!()' \
@@ -1156,7 +1156,8 @@ fi
 
 # Every production function that takes the shared PackageVersion checks it as its first
 # statement, directly or by first calling a receiver helper that does, and no public function
-# reaching mutable shared state escapes that guard.
+# reaching mutable shared state escapes that guard. The one exception consumes the no-ability
+# LaunchInitializer, which cannot leave the transaction whose `new` checked the version.
 version_guard_violations="$(
   for move_file in "${source_files[@]}"; do
     move_facts "$move_file" | awk -F'\t' -v file="$move_file" '
@@ -1166,7 +1167,8 @@ version_guard_violations="$(
       }
       $1 == "FN" && $6 == 0 && $3 == "public" \
         && ($9 ~ /: &mut (Launch|Currency)</ || $9 ~ /: &mut (LaunchConfig|RuntimeConfig|PackageAdmin),/) \
-        && $9 !~ /[(,] package_version: &(mut )?PackageVersion,/ {
+        && $9 !~ /[(,] package_version: &(mut )?PackageVersion,/ \
+        && $9 !~ /\( ?self: LaunchInitializer</ {
         print "  " file ": " $2 " reaches mutable shared state without PackageVersion"
       }
       END {

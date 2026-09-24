@@ -642,12 +642,8 @@ impl World {
             ]);
         }
         let currency = builder.obj(self.h.shared(currency, true))?;
-        let launch = call(&mut builder, self.blast, "launch", "finalize", pair.clone(), vec![
-            initializer,
-            version,
-            currency,
-            config,
-        ]);
+        let launch =
+            call(&mut builder, self.blast, "launch", "finalize", pair.clone(), vec![initializer, currency, config]);
         let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
         call(&mut builder, self.blast, "launch", "share", pair, vec![launch, clock]);
 

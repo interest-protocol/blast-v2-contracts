@@ -258,7 +258,7 @@ fun open_launch(
     initializer.set_lp_fee_split(
         allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), bps::new(0), vector[]),
     );
-    let launch = initializer.finalize(&f.version, &mut currency, &f.config, f.scenario.ctx());
+    let launch = initializer.finalize(&mut currency, &f.config, f.scenario.ctx());
     test_scenario::return_to_address(COIN_REGISTRY, currency);
 
     launch

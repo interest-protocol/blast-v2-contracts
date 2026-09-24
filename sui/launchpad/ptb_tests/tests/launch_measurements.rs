@@ -512,7 +512,7 @@ impl World {
                 "launch",
                 "finalize",
                 pair.clone(),
-                vec![initializer, version, currency, config],
+                vec![initializer, currency, config],
             );
         let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
         if shape.buy_before_share {

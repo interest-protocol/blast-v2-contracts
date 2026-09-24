@@ -2235,12 +2235,7 @@ fun launch_finalize<Quote>(
     initializer: LaunchInitializer<LAUNCH_TESTS, Quote>,
 ): Launch<LAUNCH_TESTS, Quote> {
     let mut currency = self.take_currency();
-    let launch = initializer.finalize(
-        &self.package_version,
-        &mut currency,
-        &self.config,
-        self.scenario.ctx(),
-    );
+    let launch = initializer.finalize(&mut currency, &self.config, self.scenario.ctx());
     test_scenario::return_to_address(COIN_REGISTRY, currency);
 
     launch

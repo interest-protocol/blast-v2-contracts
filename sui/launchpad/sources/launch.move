@@ -156,15 +156,14 @@ public fun set_protection<Meme, Quote>(
 }
 
 /// Checks every setting, adds Blast's allocation to the plan, fixes the canonical supply in the
-/// Coin Registry, and splits the Meme into the curve reserve and the migration allocations.
+/// Coin Registry, and splits the Meme into the curve reserve and the migration allocations. The
+/// initializer cannot leave the transaction whose `new` checked the package version.
 public fun finalize<Meme, Quote>(
     self: LaunchInitializer<Meme, Quote>,
-    package_version: &PackageVersion,
     currency: &mut Currency<Meme>,
     config: &LaunchConfig,
     ctx: &mut TxContext,
 ): Launch<Meme, Quote> {
-    package_version.assert_current();
     let LaunchInitializer {
         ticket,
         migration_witness,

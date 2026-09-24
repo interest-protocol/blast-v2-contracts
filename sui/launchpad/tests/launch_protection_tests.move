@@ -612,12 +612,7 @@ fun intake(
         bps::new(cumulative_sender_bps),
         bps::new(per_transaction_bps),
     );
-    let launch = initializer.finalize(
-        &self.package_version,
-        &mut currency,
-        &self.config,
-        self.scenario.ctx(),
-    );
+    let launch = initializer.finalize(&mut currency, &self.config, self.scenario.ctx());
     test_scenario::return_to_address(COIN_REGISTRY, currency);
 
     launch

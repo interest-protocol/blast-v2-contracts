@@ -35,9 +35,9 @@ share goes to the adapter.
 **Launch.** Before the launch is shared its owner may buy any number of times,
 and a purchase may reach the graduation target. There is no separate pre-share
 purchase: `buy` treats an unshared launch as unprotected, since only the
-creation transaction can reach it. `share` takes no `PackageVersion`: the
-key-only launch cannot leave the transaction whose `finalize` checked the
-version. The lifecycle is `Live`, `MigrationReady`, `Migrated`. **One
+creation transaction can reach it. Only `new` checks the `PackageVersion` on
+the creation path: the no-ability initializer and the key-only launch cannot
+leave that transaction, so neither `finalize` nor `share` takes it. The lifecycle is `Live`, `MigrationReady`, `Migrated`. **One
 migration call.** `migrate` pays the recipients, disposes of the unsold Meme, sets `Migrated`, and hands the pool's
 share to the adapter; the `Migration` hot potato and `complete_migration` are
 removed. The launch could not verify what an adapter reported about its pool:

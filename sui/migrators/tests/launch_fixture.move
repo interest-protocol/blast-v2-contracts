@@ -76,7 +76,7 @@ public fun open_launch<Meme: drop, Quote, Witness: drop>(
         allocation::plan(bps::new(8_000), bps::new(2_000), bps::new(10_000), vector[]),
     );
     initializer.set_lp_fee_split(fee_split);
-    let launch = initializer.finalize(version, &mut currency, config, scenario.ctx());
+    let launch = initializer.finalize(&mut currency, config, scenario.ctx());
 
     (launch, currency)
 }
